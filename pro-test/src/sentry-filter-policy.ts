@@ -57,7 +57,7 @@ export interface PolicyEvent {
 }
 
 const SAFE_MARKETING_PATH = /^\/(?:pro\/?)?$/;
-const SAFE_MARKETING_HASH = /^#(?:pricing|tiers|api|enterprise|enterprise-contact)$/i;
+const SAFE_MARKETING_HASH = /^#(?:pricing|tiers|api|enterprise|enterprise-contact|plan-proBusiness)$/i;
 const MAX_MARKETING_ORIGIN_LENGTH = 200;
 
 /**
@@ -503,6 +503,8 @@ const MODULE_LOAD_FAILURE =
  * infinitely, and suppressing this by message alone would hide it.
  */
 const STACK_OVERFLOW = /Maximum call stack size exceeded|too much recursion/i;
+/** Firefox's `onerror` message for `throw undefined` / `throw null`. */
+const BARE_PRIMITIVE_THROW = /^(?:Error: )?uncaught exception: (?:undefined|null)$/;
 /**
  * A fetch cancelled by a bare `AbortController.abort()`, in the engine's own
  * default wording. Deliberately NOT in `MARKETING_IGNORE_ERRORS`: this bundle
@@ -548,6 +550,14 @@ const MASKED_URL_FRAME = /^webkit-masked-url:/;
  * that must page.
  */
 const CSP_EVAL_BLOCK = /unsafe-eval.*Content Security Policy|Content Security Policy.*unsafe-eval/;
+/**
+ * Chrome's refusal of a screen-capture request under the page's permission
+ * policy. No first-party code on either surface calls `getDisplayMedia`.
+ * Deliberately NOT in `MARKETING_IGNORE_ERRORS`: if this bundle ever adds
+ * screen capture, a refusal breaks that feature and must page, so only a frame
+ * gate may drop it.
+ */
+const DISPLAY_CAPTURE_BLOCKED = /^(?:NotAllowedError: )?Failed to execute 'getDisplayMedia' on 'MediaDevices': Access to the feature "display-capture" is disallowed by permission policy/;
 /**
  * Chrome's wording for a `<script>` whose inline source failed to parse when it
  * was inserted: the DOM call is prefixed onto the parse error. Deliberately NOT
@@ -686,6 +696,20 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // (WORLDMONITOR-103).
   if (!hasFirstParty && STACK_OVERFLOW.test(msg)) return null;
 
+  // Firefox's `onerror` wording for a script that throws a bare primitive
+  // (`throw undefined` / `throw null`). WORLDMONITOR-1CH is the shape: Firefox
+  // 159 / Windows at `/pro`, one synthesized frame on the document URL at line
+  // 0, no breadcrumbs. A primitive carries no stack, so the frame names no
+  // script at all. The dashboard drops the same signature (WORLDMONITOR-106);
+  // the two surfaces run separate Sentry clients.
+  //
+  // Licensed by a source invariant, not by the frame shape: no first-party
+  // source on this surface, inline HTML scripts included, throws a bare
+  // primitive, and `tests/pro-sentry-filter-policy.test.mts` pins that. Gated
+  // on `!hasFirstParty` so a stack that does name `/pro/assets/*.js` still
+  // reports, and `[object Object]` (a thrown object) is not matched.
+  if (!hasFirstParty && BARE_PRIMITIVE_THROW.test(msg)) return null;
+
   // A leaked fetch cancellation. WORLDMONITOR-11M is the shape: `AbortError:
   // The user aborted a request.` (`DOMException.code: 20`) on Chrome 151 /
   // macOS at `/`, via `onunhandledrejection` with zero frames.
@@ -776,6 +800,20 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // injection.
   if (nonInfraFrames.length === 0
       && CSP_EVAL_BLOCK.test(msg)
+      && frames.some((f) => f.filename === '<anonymous>')) return null;
+
+  // An injected snapshot script asking for screen capture. WORLDMONITOR-121 is
+  // the shape: Chrome 124 / Windows at `/`, an unhandled rejection whose only
+  // frames are `<anonymous>:1` and `window.__wpxTakeSnapshot` at
+  // `<anonymous>:183`, refused by our permission policy. It came back after
+  // five plain resolves: this bundle runs its own Sentry client, so the
+  // dashboard's filters never applied. Gated like the eval rule above, on the
+  // WHOLE stack being `<anonymous>` or infra, so a first-party caller (an asset
+  // frame, or the document URL for an inline script) still reports, and a
+  // frame with no filename keeps the event reporting.
+  if (nonInfraFrames.length === 0
+      && frames.every((f) => Boolean(f.filename?.trim()))
+      && DISPLAY_CAPTURE_BLOCKED.test(msg)
       && frames.some((f) => f.filename === '<anonymous>')) return null;
 
   // An injected script inserting a `<script>` whose inline source fails to

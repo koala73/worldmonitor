@@ -7,7 +7,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import schema from "../schema";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -54,7 +54,8 @@ describe("alertRules.chokepoints", () => {
   test("a Pro user without API access stores a normalized chokepoint list", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    await t.withIdentity(USER).mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       ...base,
       chokepoints: [" HORMUZ_STRAIT", "suez", "hormuz_strait", "atlantis", "", "panama"],
     });
@@ -66,15 +67,17 @@ describe("alertRules.chokepoints", () => {
   test("absent on insert when omitted, preserved on omit, reset by []", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
-    await asUser.mutation(api.alertRules.setAlertRules, base);
+    await t.mutation(internal.alertRules.setAlertRulesForUser, { userId: USER.subject, ...base });
     expect(await readRow(t)).not.toHaveProperty("chokepoints");
 
-    await asUser.mutation(api.alertRules.setAlertRules, { ...base, chokepoints: ["suez"] });
-    await asUser.mutation(api.alertRules.setAlertRules, { ...base, countries: ["FR"] });
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject, ...base, chokepoints: ["suez"] });
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject, ...base, countries: ["FR"] });
     expect((await readRow(t))?.chokepoints).toEqual(["suez"]);
 
-    await asUser.mutation(api.alertRules.setAlertRules, { ...base, chokepoints: [] });
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject, ...base, chokepoints: [] });
     expect((await readRow(t))?.chokepoints).toEqual([]);
   });
 
@@ -111,7 +114,8 @@ describe("alertRules.chokepoints rejects a list with no known id", () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
     await expect(
-      t.withIdentity(USER).mutation(api.alertRules.setAlertRules, { ...base, chokepoints: ["hormuz", "Strait of Hormuz"] }),
+      t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject, ...base, chokepoints: ["hormuz", "Strait of Hormuz"] }),
     ).rejects.toThrow(/CHOKEPOINTS_INVALID/);
     expect(await readRow(t)).toBeNull();
   });

@@ -46,10 +46,13 @@ export const Moments = () => (
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: '-60px' }}
               transition={{ duration: 0.5, delay: (mi % 2) * 0.1 }}
-              className="bg-wm-card border border-wm-border rounded-sm p-6 sm:p-8 hover:border-wm-green/30 transition-colors flex flex-col"
+              className="min-w-0 bg-wm-card border border-wm-border rounded-xl p-6 sm:p-8 hover:border-white/20 transition-colors flex flex-col"
             >
-              <p className="font-mono text-xs uppercase tracking-[2px] text-wm-green mb-2">{t(`welcome.moments.${key}.kicker`)}</p>
-              <h3 className="text-2xl font-display font-bold mb-6">
+              <p className="font-mono text-xs text-wm-muted mb-2">{t(`welcome.moments.${key}.kicker`)}</p>
+              {/* One-word compounds ("Rohstoffbewegungen", "Marknadsrörelsen")
+                  are wider than a 320px card at text-2xl: hyphenate where the
+                  browser can, break the word where it cannot. */}
+              <h3 className="text-2xl font-display font-medium mb-6 break-words hyphens-auto">
                 {twoLineTitle ? (
                   <>
                     {t(`welcome.moments.${key}.title1`)}
@@ -61,31 +64,31 @@ export const Moments = () => (
                 )}
               </h3>
               <div className="mb-6 flex-1">
-                <div className="font-mono text-xs uppercase tracking-[2px] text-wm-muted mb-3">
+                <div className="font-mono text-xs text-wm-muted mb-3">
                   {t('welcome.moments.signalStack')}
                 </div>
                 <div className="space-y-3">
                   {signalRows.map((signal, si) => (
-                    <div key={signal} className="grid grid-cols-[4.75rem_1fr] gap-3 items-start">
+                    <div key={signal} className="grid grid-cols-[4.75rem_minmax(0,1fr)] gap-3 items-start">
                       <span className={`mt-0.5 inline-flex items-center justify-center rounded-sm border px-2 py-1 font-mono text-xs ${CHIP_CLASS[chips[si] ?? 'free']}`}>
                         {signal}
                       </span>
-                      <p className="text-sm text-wm-muted leading-relaxed">
+                      <p className="text-sm text-wm-muted leading-relaxed break-words hyphens-auto">
                         {t(`welcome.moments.${key}.s${si + 1}`, depthProofStats)}
                       </p>
                     </div>
                   ))}
                 </div>
                 <div className="mt-5 border-t border-wm-border pt-5">
-                  <div className="grid grid-cols-[4.75rem_1fr] gap-3 items-start">
+                  <div className="grid grid-cols-[4.75rem_minmax(0,1fr)] gap-3 items-start">
                     <span className={`mt-0.5 inline-flex items-center justify-center rounded-sm border px-2 py-1 font-mono text-xs ${CHIP_CLASS[correlationTier]}`}>
                       {correlationCode}
                     </span>
                     <div>
-                      <p className="font-mono text-xs uppercase tracking-[2px] text-wm-text mb-1">
+                      <p className="font-mono text-xs text-wm-text mb-1">
                         {t('welcome.moments.correlation')}
                       </p>
-                      <p className="text-sm text-wm-text leading-relaxed">
+                      <p className="text-sm text-wm-text leading-relaxed break-words hyphens-auto">
                         {t(`welcome.moments.${key}.s${signals.length}`)}
                       </p>
                     </div>

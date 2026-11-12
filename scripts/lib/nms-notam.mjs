@@ -40,7 +40,7 @@ const CLOSED_TO_ALL_TEXT = /\b(?:CLSD|CLOSED) TO ALL (?:TFC|TRAFFIC|ACFT|FLIGHTS
 // these flagged major US hubs as disrupted. Only the classes listed here drop;
 // any other "CLSD TO <class>" (civil, commercial, IFR, size limits) still
 // counts as a restriction.
-const NARROW_CLOSURE_TEXT = /\b(?:CLSD|CLOSED) (?:TO|FOR) (?:NON[- ]?SKED|TRANSIENT|VISITING|GA|ULTRALIGHT|STUDENT|TRG|TRAINING|CIV(?:IL)? TRG|PRKG|PARKING|MIL(?:ITARY)? ACFT|[A-Z]{1,3}-\d{1,3}[A-Z]?|COMMERCIAL AIR CARRIER DIVERTS)\b/;
+export const NARROW_CLOSURE_TEXT = /\b(?:CLSD|CLOSED) (?:TO|FOR) (?:NON[- ]?SKED|TRANSIENT|VISITING|GA|ULTRALIGHT|STUDENT|TRG|TRAINING|CIV(?:IL)? TRG|PRKG|PARKING|MIL(?:ITARY)? ACFT|[A-Z]{1,3}-\d{1,3}[A-Z]?|COMMERCIAL AIR CARRIER DIVERTS)\b/;
 const AIRPORT_RESTRICTION_SUBJECTS = new Set(['RA', 'RO', 'RT', 'RR', 'RP']);
 
 // Written by seed-notam-nms.mjs, read by seed-aviation.mjs's NOTAM side-car.

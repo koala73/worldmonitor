@@ -30,24 +30,22 @@ const KEYS = {
   customsRevenue: 'trade:customs-revenue:v1',
 };
 
-// NOTE (issue #4864): these TTLs are DELIBERATELY left at 8h. The data-loss fix
-// ("manual seed required" — canonical key lapsed and could not be recreated) is the
-// lockTtlMs bump in runSeed opts below, which lets slow-but-legit runs complete and
-// reach atomicPublish again — restoring republishing every 6h so the key stays alive
-// and, once lost, is RECOVERABLE on the next good run (before, it never republished).
-// Widening these TTLs for extra gap-buffer is a valid follow-up but NOT free: each is
-// co-pinned to a health-check maxStaleMin (see tests/trade-policy-tariffs.test.mjs —
-// data-key TTL must satisfy maxStaleMin ∈ [TTL_min, TTL_min+120] or it opens a silent
-// EMPTY / false-STALE window), so raising a TTL means moving its maxStaleMin in lockstep.
-const SHIPPING_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was 1h = 5h expired gap)
+// #4864 restored republishing with the lockTtlMs bump below. #4873 widens
+// retention to 24h so keys survive three missed 6h ticks at 6h, 12h and 18h.
+// Trade and tariff health probes watch only their 7-day seed-meta records;
+// shipping also probes its data key. maxStaleMin is 1140: three 6h ticks plus
+// 1h grace, below the 1440min data TTL so health warns 5h before expiry.
+// Pinned by tests/trade-policy-tariffs.test.mjs, tests/trade-flows-health.test.mjs
+// and tests/tariff-trends-coverage.test.mts.
+export const SHIPPING_TTL = 86400; // 24h
 // Exported so tests/trade-flows-health.test.mjs can assert the tradeFlows
-// staleness budget against the REAL data TTL. A test that hardcoded 480 would
-// stay green if this constant moved, re-opening the silent window where the
-// flow keys have expired but health still reads OK.
-export const TRADE_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was 6h = 0 buffer)
+// staleness budget against the REAL data TTL. A test that hardcoded the
+// minutes would stay green if this constant moved, re-opening the silent
+// window where the flow keys have expired but health still reads OK.
+export const TRADE_TTL = 86400; // 24h
 // Exported so tests can pin the tariffTrendsUs staleness budget against the
 // real data TTL the same way tradeFlows pins TRADE_TTL.
-export const TARIFF_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was TRADE_TTL=6h = 0 buffer)
+export const TARIFF_TTL = 86400; // 24h
 const CUSTOMS_TTL = 86400; // 24h — monthly Treasury data, matches maxStaleMin:1440 (was TRADE_TTL=6h = 0 buffer)
 
 // Reporter list fetched dynamically from WTO API at startup.
@@ -950,6 +948,7 @@ export async function publishTradeFlows({ flows, manifest }) {
     // manifest comment in fetchTradeFlows). An envelope-less top-level field is
     // the one thing health can read and echo verbatim.
     dominantFailureMode: dominantFailureMode(manifest.stats ?? {}),
+    payloadTtlSeconds: TRADE_TTL,
   });
 }
 
@@ -1269,7 +1268,9 @@ export async function publishTariffTrends({ trends, manifest }) {
   // previous meta record then ages out on its own TTL instead of crashing the
   // seeder. Mirrors the isolation policy in _seed-utils.mjs.
   try {
-    await writeSeedMeta(TARIFF_KEY_PREFIX, written, TARIFF_META_KEY);
+    await writeSeedMeta(TARIFF_KEY_PREFIX, written, TARIFF_META_KEY, undefined, undefined, {
+      payloadTtlSeconds: TARIFF_TTL,
+    });
   } catch (err) {
     console.warn(`  Tariff trends: seed-meta write failed: ${err?.message || err}`);
   }
@@ -1549,7 +1550,7 @@ if (process.argv[1]?.endsWith('seed-supply-chain-trade.mjs')) {
 
     declareRecords,
     schemaVersion: 1,
-    maxStaleMin: 420,
+    maxStaleMin: 1140,
     contentMeta: supplyChainContentMeta,
     maxContentAgeMin: SUPPLY_CHAIN_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {

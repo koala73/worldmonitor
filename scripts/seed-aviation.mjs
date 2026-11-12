@@ -45,7 +45,7 @@ import notificationDedup from './shared/notification-dedup.cjs';
 import countryNameMap from './shared/country-name-to-iso2.cjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { airportNotifyLocation } from './lib/airport-notify-location.mjs';
-import { NMS_ACTIVATION_KEY, NMS_CLOSURES_KEY, isFreshNmsClosures, mergeClosureSources } from './lib/nms-notam.mjs';
+import { NARROW_CLOSURE_TEXT, NMS_ACTIVATION_KEY, NMS_CLOSURES_KEY, isFreshNmsClosures, mergeClosureSources } from './lib/nms-notam.mjs';
 
 const {
   buildDedupMaterial,
@@ -493,8 +493,20 @@ async function fetchAviationStackSingle(
       const authFailed = AVIATIONSTACK_AUTH_ERROR_CODES.has(json.error.code);
       return { iata, status: 'failed', alert: null, flightCount: 0, authFailed };
     }
-    const flights = Array.isArray(json?.data) ? json.data : [];
+    const flights = operatingFlights(Array.isArray(json?.data) ? json.data : []);
     if (flights.length === 0) {
+      const dataType = json.data === undefined ? 'missing'
+        : json.data === null ? 'null' : Array.isArray(json.data) ? 'array' : typeof json.data;
+      const pagination = Object.fromEntries(['limit', 'offset', 'count', 'total'].map(key => {
+        const value = json.pagination?.[key];
+        return [key, Number.isSafeInteger(value) && value >= 0 ? value : null];
+      }));
+      logger.warn(JSON.stringify({
+        event: 'aviationstack_omission', iata, requestDate: today, requestLimit: 100,
+        httpStatus: resp.status, dataType,
+        rawCount: Array.isArray(json.data) ? json.data.length : null,
+        operatingCount: flights.length, pagination,
+      }));
       logger.warn(`[Aviation] ${iata}: provider omitted hub (0 flight records)`);
       return { iata, status: 'omitted', alert: null, flightCount: 0 };
     }
@@ -511,6 +523,50 @@ async function fetchAviationStackSingle(
   }
 }
 
+// A codeshare row repeats its operating flight under another airline's number,
+// so rows count once per operating flight. The operating row is often not on
+// the page, and late pages can hold codeshares only, so a codeshare stands in.
+function operatingFlights(rows) {
+  const seen = new Set();
+  const operatingFirst = [...rows.filter(f => !f?.flight?.codeshared), ...rows.filter(f => f?.flight?.codeshared)];
+  return operatingFirst.filter(f => {
+    const shared = f?.flight?.codeshared;
+    const number = shared ? shared.flight_iata : f?.flight?.iata;
+    if (!number) return !shared;
+    const key = `${String(number).toUpperCase()} ${f?.departure?.scheduled ?? ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+const zoneFormats = new Map();
+
+// AviationStack writes departure times as the airport's local wall clock with
+// a "+00:00" suffix, so the wall clock is read in the departure time zone.
+function departureMs(departure) {
+  const wall = Date.parse(departure?.scheduled ?? '');
+  const zone = departure?.timezone;
+  if (!Number.isFinite(wall) || !zone) return wall;
+  try {
+    if (!zoneFormats.has(zone)) {
+      zoneFormats.set(zone, new Intl.DateTimeFormat('en-US', {
+        timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric',
+        hour: 'numeric', minute: 'numeric', second: 'numeric',
+      }));
+    }
+    const offsetAt = (at) => {
+      const p = Object.fromEntries(zoneFormats.get(zone).formatToParts(at).map(({ type, value }) => [type, Number(value)]));
+      return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - at;
+    };
+    // The offset at the wall clock read as UTC can be the other side of a
+    // clock change, so take it again at the first estimate of the departure.
+    return wall - offsetAt(wall - offsetAt(wall));
+  } catch {
+    return wall;
+  }
+}
+
 function aviationAggregateFlights(iata, flights) {
   if (flights.length === 0) return null;
   const meta = AIRPORT_META[iata];
@@ -524,13 +580,15 @@ function aviationAggregateFlights(iata, flights) {
   // cancellations as "resolved" — cancelled/cancelled = 100%, and RUH read as
   // closed (22/22) after it reopened. Delays are counted over the same flights
   // as the denominator; counting every row against a resolved-only total once
-  // reported "179% delayed". Too few due flights → the whole page.
+  // reported "179% delayed". Too few due flights → the whole page, which only
+  // shows a closure: advance cancellations in the day's last hours are schedule
+  // changes, and RUH read "67% flights cancelled" from one such page.
   const now = Date.now();
   const page = { flights: 0, cancelled: 0, delayed: 0, totalDelay: 0 };
   const dueOnly = { flights: 0, cancelled: 0, delayed: 0, totalDelay: 0 };
   for (const f of flights) {
     const status = f.flight_status || '';
-    const scheduledAt = Date.parse(f.departure?.scheduled ?? '');
+    const scheduledAt = departureMs(f.departure);
     const isDue = DEPARTED_STATUSES.has(status) || (Number.isFinite(scheduledAt) && scheduledAt <= now);
     const delay = f.departure?.delay > 0 ? f.departure.delay : 0;
     for (const bucket of isDue ? [page, dueOnly] : [page]) {
@@ -543,14 +601,19 @@ function aviationAggregateFlights(iata, flights) {
     }
   }
 
-  const sample = dueOnly.flights >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE ? dueOnly : page;
-  const { flights: total, cancelled: cancelledCount, delayed, totalDelay } = sample;
+  const fromDue = dueOnly.flights >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE;
+  const sample = fromDue ? dueOnly : page;
+  const { flights: total, cancelled, delayed, totalDelay } = sample;
+  const closed = cancelled / total >= 0.8 && total >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE;
+  // get-airport-ops-summary rebuilds the cancellation rate from the alert, so
+  // cancellations that set no level here are not reported either.
+  const cancelledCount = fromDue || closed ? cancelled : 0;
   const cancelledPct = (cancelledCount / total) * 100;
   const delayedPct = (delayed / total) * 100;
   const avgDelay = delayed > 0 ? Math.round(totalDelay / delayed) : 0;
 
   let severity, delayType, reason;
-  if (cancelledPct >= 80 && total >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE) {
+  if (closed) {
     severity = 'severe'; delayType = 'closure';
     reason = 'Airport closure / airspace restrictions';
   } else if (cancelledPct >= 50 && total >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE) {
@@ -685,7 +748,7 @@ function faaSeverityFromAvg(avgDelay) {
   return 'normal';
 }
 
-function parseFaaXml(text) {
+export function parseFaaXml(text) {
   const delays = new Map();
   const parseTag = (xml, tag) => {
     const re = new RegExp(`<${tag}>(.*?)</${tag}>`, 'gs');
@@ -724,6 +787,9 @@ function parseFaaXml(text) {
   }
   for (const ac of parseTag(text, 'Airport')) {
     const arpt = getVal(ac, 'ARPT');
+    // The FAA lists LAX, SAN and LAS here all year for a NOTAM that only
+    // closes them to non-scheduled transient GA. Airline service runs.
+    if (NARROW_CLOSURE_TEXT.test(getVal(ac, 'Reason').toUpperCase())) continue;
     if (arpt && FAA_LIST.includes(arpt)) {
       delays.set(arpt, { airport: arpt, reason: 'Airport closure', avgDelay: 120, type: 'ground_stop' });
     }

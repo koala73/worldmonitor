@@ -738,17 +738,20 @@ describe('SearchAdapter recovery path', () => {
     // jiomart_in moved OFF `/p/groceries/`, which now answers 200 with a
     // "We couldn't find the page" SPA shell on every sampled URL; coldstorage_sg
     // serves a second legacy `/product/<slug>` route alongside the catalogue one.
+    // jiomart_in has no Exa extraction fallback: Exa's render of its pages
+    // lacks the selling price and every Exa observation was a modal
+    // placeholder (₹3,700 / ₹77,000).
     const recoveryPolicies = [
-      ['jiomart_in', '/product/', 'www.jiomart.com'],
-      ['noon_grocery_ae', ['/p/', '/now-product/'], 'minutes.noon.com'],
-      ['noon_sa', ['/p/', '/now-product/'], 'minutes.noon.com'],
-      ['carrefour_sa', '/p/', 'www.carrefourksa.com'],
-      ['coldstorage_sg', ['/p/', '/product/'], 'www.coldstorage.com.sg'],
+      ['jiomart_in', '/product/', 'www.jiomart.com', 'none'],
+      ['noon_grocery_ae', ['/p/', '/now-product/'], 'minutes.noon.com', 'exa'],
+      ['noon_sa', ['/p/', '/now-product/'], 'minutes.noon.com', 'exa'],
+      ['carrefour_sa', '/p/', 'www.carrefourksa.com', 'exa'],
+      ['coldstorage_sg', ['/p/', '/product/'], 'www.coldstorage.com.sg', 'exa'],
     ] as const;
 
-    for (const [slug, path, alias] of recoveryPolicies) {
+    for (const [slug, path, alias, fallback] of recoveryPolicies) {
       const searchConfig = loadRetailerConfig(slug).searchConfig;
-      expect(searchConfig?.extractionFallback, slug).toBe('exa');
+      expect(searchConfig?.extractionFallback, slug).toBe(fallback);
       expect(searchConfig?.requireStrictValidator, slug).toBe(true);
       expect(searchConfig?.urlPathContains, slug).toEqual(path);
       expect(searchConfig?.allowedHosts, slug).toContain(alias);

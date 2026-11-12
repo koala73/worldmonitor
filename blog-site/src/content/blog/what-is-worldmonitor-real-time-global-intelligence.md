@@ -6,14 +6,14 @@ keywords: "global intelligence dashboard, real-time intelligence platform, OSINT
 audience: "General tech audience, OSINT researchers, analysts, journalists"
 heroImage: "/blog/images/blog/what-is-worldmonitor-real-time-global-intelligence.jpg"
 pubDate: "2026-02-10"
-modifiedDate: "2026-08-05"
+modifiedDate: "2026-10-26"
 ---
 
 World Monitor is a **free, open-source, real-time global intelligence dashboard** that correlates conflicts, markets, shipping, aviation, infrastructure, cyber threats, natural hazards, and live news on one map. The public dashboard requires no signup; paid Pro, API, and Enterprise plans add analyst, automation, programmatic, and team workflows.
 
 ## What Does World Monitor Do?
 
-World Monitor turns many public signals into one situational-awareness view. Instead of reading a conflict map, ship tracker, market terminal, disaster feed, and news dashboard separately, an analyst can inspect where those signals overlap and then follow the underlying sources.
+World Monitor turns many public signals into one situational-awareness view. Instead of reading a [conflict map](/blog/posts/track-global-conflicts-in-real-time/), ship tracker, market terminal, disaster feed, and [news dashboard](/blog/posts/five-dashboards-one-platform-worldmonitor-variants/) separately, an analyst can inspect where those signals overlap and then follow the underlying sources.
 
 | Signal family | What World Monitor shows | Example primary sources |
 | --- | --- | --- |
@@ -24,7 +24,7 @@ World Monitor turns many public signals into one situational-awareness view. Ins
 | Natural hazards | Earthquakes, fires, volcanoes, floods, weather, and radiation signals | [USGS](https://earthquake.usgs.gov/), [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/), and official alert feeds |
 | Cyber and infrastructure | Outages, malicious infrastructure, datacenters, nuclear sites, and dependency cascades | Cloudflare Radar, abuse.ch feeds, and public infrastructure datasets |
 
-The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) documents provider, cadence, license posture, and provenance details for 775 attributed providers across 790 observed source hosts. A source being present does not make every observation equally fresh or authoritative; each feed retains its own reporting delay and revision policy.
+The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) documents provider, cadence, license posture, and provenance details for 854 attributed providers across 876 observed source hosts. A source being present does not make every observation equally fresh or authoritative; each feed retains its own reporting delay and revision policy.
 
 ## How Is It Different From a News Dashboard?
 
@@ -38,8 +38,8 @@ The public dashboard exposes a shared map-layer catalog, curated news feeds back
 
 World Monitor currently maintains:
 
-- The Tier-1 country registry in the high-frequency Country Instability Index
-- The public Country Resilience Index universe
+- The Tier-1 country registry in the high-frequency Country [Instability Index](/blog/posts/country-instability-index-methodology-explained/)
+- The public Country [Resilience Index](/blog/posts/country-resilience-index-methodology-explained/) universe
 - Stock exchanges and central-bank or supranational institutions in the generated market catalog
 - Interface languages, including right-to-left Arabic
 - Dashboard variants (registry keys): `full`, `tech`, `finance`, `commodity`, `happy`, and `energy`
@@ -76,6 +76,8 @@ Developers can start with the [API reference](https://www.worldmonitor.app/docs/
 Yes. The platform source is published under AGPL-3.0 on [GitHub](https://github.com/koala73/worldmonitor). The web app uses Preact, TypeScript, and Vite; the desktop shell uses Tauri with a Node.js sidecar. The hosted service also offers paid Pro, API, and Enterprise plans with separate subscription-license terms.
 
 Open source makes the implementation inspectable, but it does not eliminate source limitations. Public feeds can be delayed, revised, rate-limited, unavailable, or wrong. World Monitor preserves timestamps and provenance so users can distinguish an observed fact from an analytical inference and return to the original publisher.
+
+The inputs do not all share one clock. Read [what real-time means in an intelligence dashboard](/blog/posts/real-time-intelligence-data-freshness/) to distinguish observation age from screen refresh.
 
 ## Frequently Asked Questions
 

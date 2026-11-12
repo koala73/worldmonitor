@@ -231,6 +231,28 @@ describe('UCDP version selection prefers the newest release', () => {
     assert.deepEqual(ucdpRedisWriterPaths(), EXPECTED_UCDP_WRITER_PATHS);
   });
 
+  // The bootstrap tier reads the compact projection, and health watches its
+  // own seed-meta. The backup cron skips while the canonical seed-meta is
+  // fresh, so a writer that refreshes only the canonical key leaves the
+  // projection to age past its 420 min budget (Sentry WORLDMONITOR-1DC).
+  it('every UCDP writer also refreshes the bootstrap projection and its seed-meta', () => {
+    for (const path of ucdpRedisWriterPaths()) {
+      const text = readFileSync(path, 'utf8');
+      assert.ok(/compactUcdpDashboardPayload\(/.test(text), `${path} must build the compact projection`);
+      // Match the write call, not the name: an import alone must not pass.
+      assert.ok(/(?:upstashSet\(|\['SET',\s*)UCDP_BOOTSTRAP_KEY,/.test(text), `${path} must write the projection key`);
+      assert.ok(/(?:upstashSet\(|\['SET',\s*)UCDP_BOOTSTRAP_META_KEY,/.test(text), `${path} must write the projection seed-meta`);
+    }
+  });
+
+  it('the shared projection keys are the ones bootstrap and health read', async () => {
+    const { UCDP_BOOTSTRAP_KEY, UCDP_BOOTSTRAP_META_KEY } = await import('../scripts/_ucdp-dashboard.mjs');
+    const tierKeys = readFileSync('api/_bootstrap-tier-keys.js', 'utf8');
+    const health = readFileSync('api/health.js', 'utf8');
+    assert.ok(tierKeys.includes(`ucdpEvents: '${UCDP_BOOTSTRAP_KEY}'`));
+    assert.ok(health.includes(`ucdpEventsBootstrap: { key: '${UCDP_BOOTSTRAP_META_KEY}'`));
+  });
+
   it('does not treat ephemeral repo-root tmp fixtures as UCDP writers', () => {
     const fixtureDir = 'tmp-ucdp-writer-scan-test';
     mkdirSync(fixtureDir, { recursive: true });

@@ -43,7 +43,7 @@ function dataEntries(doc, fileLabel) {
  * Bundle the feed catalog plus theater presets into a temp dir and import it.
  * Returns { feeds, cleanup } — caller MUST run cleanup() when done.
  */
-async function bundleFeedsModule(repoRoot) {
+export async function bundleFeedsModule(repoRoot) {
   const tempDir = mkdtempSync(join(tmpdir(), 'geo-coverage-health-'));
   const outfile = join(tempDir, 'feeds-bundle.mjs');
   let cleaned = false;
@@ -234,7 +234,7 @@ export function validateSourceGeography({
       }
     }
   }
-  for (const name of [...requiredMappedSourceNames].sort((a, b) => a.localeCompare(b))) {
+  for (const name of [...requiredMappedSourceNames].sort((a, b) => a.localeCompare(b, 'en-US'))) {
     if (!sourceGeography.has(name)) {
       problems.push(
         `source-geography.json: required source "${name}" has no geography classification`,
@@ -282,7 +282,7 @@ export function computeGeoCoverage({ keyCountries, sourceGeography, defaultEnabl
   const floors = policy.floors ?? {};
   const allowlist = policy.zeroDefaultOnAllowlist ?? {};
   return keyCountries.map(({ iso2, regions }) => {
-    const catalogSources = [...(localByIso.get(iso2) ?? [])].sort((a, b) => a.localeCompare(b));
+    const catalogSources = [...(localByIso.get(iso2) ?? [])].sort((a, b) => a.localeCompare(b, 'en-US'));
     const defaultOnSources = catalogSources.filter((name) => defaultEnabled.has(name));
     return {
       iso2,

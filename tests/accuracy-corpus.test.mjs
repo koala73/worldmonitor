@@ -1836,9 +1836,9 @@ describe('accuracy page publishing contract', () => {
       'the nav plus the country, crisis and CII page links must all be present',
     );
     assert.match(
-      read('src/app/panel-layout.ts'),
+      read('src/config/dashboard-reference-links.ts'),
       /\{ label: 'Accuracy', path: '\/accuracy\/' \}/,
-      'DASHBOARD_REFERENCE_LINKS feeds both the desktop footer and the mobile menu',
+      'DASHBOARD_REFERENCE_LINKS feeds Settings and the mobile More menu',
     );
     assert.match(
       read('docs/methodology/cii-risk-scores.mdx'),

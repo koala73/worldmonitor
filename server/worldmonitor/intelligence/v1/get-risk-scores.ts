@@ -1011,21 +1011,28 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   ]);
   // The previous year covers a year not yet seeded. An errored current-year
   // read has already thrown above, so it never masquerades as that.
-  const displacementRaw = displacementCurrentRaw
-    ?? (await readRiskInputs([{ key: `displacement:summary:v1:${currentYear - 1}`, raw: true }]))[0];
-  // The summary is written by the same seeder run as the canonical key, after
-  // it. A miss therefore means the reader deployed before the seeder's next
-  // tick or that extra-key write failed; recompute the projection from the
+  //
+  // The fires summary is written by the same seeder run as the canonical key,
+  // after it. A miss therefore means the reader deployed before the seeder's
+  // next tick or that extra-key write failed; recompute the projection from the
   // canonical key then, and only then, so a present-but-unusable summary still
   // surfaces in health instead of hiding behind the fallback. A canonical
   // payload that cannot be summarized is passed through so the parser below
   // reports it unusable rather than missing.
-  const firesCanonicalRaw = firesSummaryRaw == null
-    ? (await readRiskInputs([{ key: 'wildfire:fires:v1', raw: true }]))[0]
-    : null;
+  //
+  // The two fallbacks and the border snapshots read unrelated keys, so they
+  // share one round trip instead of three.
+  const [displacementRaw, firesCanonicalRaw, borderSnapshots] = await Promise.all([
+    displacementCurrentRaw != null
+      ? displacementCurrentRaw
+      : readRiskInputs([{ key: `displacement:summary:v1:${currentYear - 1}`, raw: true }]).then(values => values[0]),
+    firesSummaryRaw == null
+      ? readRiskInputs([{ key: 'wildfire:fires:v1', raw: true }]).then(values => values[0])
+      : null,
+    readRiskInputs(CROSS_BORDER_SOURCES.map(source => ({ key: source.key, raw: true, envelope: true }))),
+  ]);
   const firesRaw = firesSummaryRaw
     ?? (firesCanonicalRaw == null ? null : summarizeWildfireDetections(firesCanonicalRaw) ?? firesCanonicalRaw);
-  const borderSnapshots = await readRiskInputs(CROSS_BORDER_SOURCES.map(source => ({ key: source.key, raw: true, envelope: true })));
   return buildCiiAuxiliarySources({
     ucdp: ucdpRaw,
     outages: outagesRaw,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, it } from 'node:test';
@@ -8,15 +8,17 @@ import { describe, it } from 'node:test';
 import {
   assertNoSecrets,
   collectGscSnapshot,
-  parseCoverageLedger,
   createFixtureTransport,
   createLiveTransport,
   createServiceAccountAssertion,
   decodeServiceAccount,
+  buildNonBrandQueries,
+  buildQueryPages,
   describeDisagreement,
   buildInventory,
   BRAND_QUERY_PATTERN,
   isBrandQuery,
+  queryCell,
   pickIndexStatus,
   QuotaExhaustedError,
   weeklyTotals,
@@ -26,6 +28,7 @@ import {
   toScorecardSearchExport,
 } from '../scripts/seo-gsc-collect.mjs';
 import { normalizeSearchExport } from '../scripts/seo-ai-visibility-collector.mjs';
+import { computeQuerySetDigest } from '../scripts/seo-ai-visibility-scorecard.mjs';
 
 const repoPath = (relativePath) => new URL(`../${relativePath}`, import.meta.url).pathname;
 
@@ -38,6 +41,21 @@ const collect = async (fixtures = FIXTURES) => {
     { log: silent },
   );
   return { snapshot, markdown };
+};
+
+/**
+ * The repository is public: a query's text needs one page with 20 impressions,
+ * and a page is a bare www path that cannot carry a tracking parameter.
+ */
+const assertPublishableQueryPages = (list, label) => {
+  for (const row of list.rows) {
+    assert.ok(row.pages[0].impressions >= 20, `${label}: "${row.query}" is published below the floor`);
+    assert.ok(row.pages.length <= 10, `${label}: "${row.query}" lists more than 10 pages`);
+    for (const page of row.pages) {
+      assert.match(page.path, /^\/[^?#]*$/, `${label}: "${row.query}" names ${page.path}, not a bare path`);
+    }
+  }
+  assert.ok(list.rows.length <= 500, `${label}: more than 500 queries`);
 };
 
 const querySet = JSON.parse(
@@ -291,6 +309,23 @@ describe('Search Console collector secrecy', () => {
       /property identifier/,
     );
     assert.equal(assertNoSecrets('{"ok":true}', { property: 'sc-domain:example.test' }), '{"ok":true}');
+  });
+
+  it('publishes query pages only above the floor and as bare paths in every committed snapshot', () => {
+    assert.throws(
+      () => assertPublishableQueryPages({ rows: [{ query: 'rare', pages: [{ path: '/', impressions: 19 }] }] }, 'probe'),
+      /below the floor/,
+    );
+    assert.throws(
+      () => assertPublishableQueryPages({ rows: [{ query: 'q', pages: [{ path: 'https://www.worldmonitor.app/', impressions: 20 }] }] }, 'probe'),
+      /not a bare path/,
+    );
+    const directory = repoPath('docs/research/seo-ai-visibility/gsc');
+    for (const name of readdirSync(directory).filter((entry) => entry.endsWith('.json'))) {
+      const snapshot = JSON.parse(readFileSync(join(directory, name), 'utf8'));
+      const list = snapshot.performance?.queryPages;
+      if (list) assertPublishableQueryPages(list, name);
+    }
   });
 
   it('keeps every committed research artifact free of credential markers', () => {
@@ -725,6 +760,217 @@ describe('Search Console site totals and brand split', () => {
     }
   });
 
+  it('joins non-brand queries to their page and desktop share across paginated rows', async () => {
+    const { snapshot } = await collect();
+    const list = snapshot.performance.nonBrandQueries;
+    assert.equal(list.status, 'available');
+    assert.equal(list.window, '28d');
+    assert.deepEqual(list.rows.map((row) => row.query), [
+      'kerch strait',
+      'pizza index',
+      'quiet desktop query',
+    ]);
+    const pizza = list.rows[1];
+    assert.equal(pizza.page, 'https://www.worldmonitor.app/blog/glossary/pentagon-pizza-index/');
+    assert.equal(pizza.impressions, 1000);
+    assert.equal(pizza.clicks, 13);
+    assert.equal(pizza.position, 7.2);
+    assert.equal(pizza.desktopShare, 0.2);
+    assert.equal(pizza.likelyAutomated, false);
+  });
+
+  it('flags only zero-click, nearly all-desktop queries with enough impressions', async () => {
+    const { snapshot } = await collect();
+    const list = snapshot.performance.nonBrandQueries;
+    const flagged = list.rows.filter((row) => row.likelyAutomated).map((row) => row.query);
+    assert.deepEqual(flagged, ['kerch strait']);
+    assert.equal(list.rows.find((row) => row.query === 'quiet desktop query').desktopShare, 1);
+    assert.deepEqual(list.summary, {
+      queries: 4,
+      nonBrandImpressions: 2155,
+      likelyAutomatedQueries: 1,
+      likelyAutomatedImpressions: 1000,
+      nonBrandImpressionsExcludingLikelyAutomated: 1155,
+    });
+  });
+
+  it('keeps rare queries out of the committed list but inside the summary', async () => {
+    const { snapshot } = await collect();
+    const list = snapshot.performance.nonBrandQueries;
+    assert.equal(list.rows.some((row) => row.query === 'tiny query'), false);
+    assert.equal(list.summary.queries, 4);
+  });
+
+  it('reports the query list as unavailable when its view was not collected', async () => {
+    const { snapshot, markdown } = await collect(`${FIXTURES}quota/`);
+    const list = snapshot.performance.nonBrandQueries;
+    assert.equal(list.status, 'unavailable');
+    assert.equal(list.summary, null);
+    assert.deepEqual(list.rows, []);
+    assert.match(list.reason, /queryNonBrandDevice view was not collected/);
+    assert.match(markdown, /Non-brand queries: unavailable/);
+  });
+
+  it('summarizes low-click non-brand queries and names the automated ones', async () => {
+    const { markdown } = await collect();
+    assert.match(markdown, /### Non-brand queries with few clicks \(28d\)/);
+    assert.match(markdown, /1 of 4 non-brand queries look automated, 1000 of 2155 impressions/);
+    assert.match(markdown, /\| kerch strait \| \/chokepoints\/kerch-strait\/ \| 1000 \| 0 \| 0\.0% \| 9\.2 \| 98% \| yes \|/);
+  });
+
+  it('asks Google for the query rows by device and by page, without brand queries', async () => {
+    const bodies = [];
+    const transport = createLiveTransport({
+      accessToken: 't',
+      property: 'sc-domain:example.com',
+      fetchImpl: async (_url, init) => {
+        bodies.push(JSON.parse(init.body));
+        return jsonResponse(200, { rows: [] });
+      },
+      sleep: async () => {},
+    });
+    const window = { startDate: '2026-08-27', endDate: '2026-09-23' };
+    await transport.searchAnalytics({ dimension: 'queryNonBrandDevice', page: 0, ...window });
+    await transport.searchAnalytics({ dimension: 'queryNonBrandPage', page: 0, ...window });
+    assert.deepEqual(bodies[0].dimensions, ['query', 'device']);
+    assert.deepEqual(bodies[1].dimensions, ['query', 'page']);
+    for (const body of bodies) {
+      assert.equal(body.dimensionFilterGroups[0].filters[0].operator, 'excludingRegex');
+    }
+  });
+
+  it('compares the unrounded desktop share with the automated cutoff', () => {
+    const row = (device, impressions) => ({ key: 'near cutoff', secondKey: device, clicks: 0, impressions, position: 5 });
+    const list = buildNonBrandQueries({
+      window: { label: '28d' },
+      device: { rows: [row('DESKTOP', 8999), row('MOBILE', 1001)], truncationReason: null, recorded: true },
+      page: { rows: [], truncationReason: null, recorded: true },
+    });
+    assert.equal(list.rows[0].desktopShare, 0.9);
+    assert.equal(list.rows[0].likelyAutomated, false);
+  });
+
+  it('withholds top pages and says why when the page view is cut short', async () => {
+    const { snapshot } = await collect();
+    const list = buildNonBrandQueries({
+      window: { label: '28d' },
+      device: {
+        rows: [{ key: 'pizza index', secondKey: 'MOBILE', clicks: 0, impressions: 500, position: 5 }],
+        truncationReason: null,
+        recorded: true,
+      },
+      page: {
+        rows: [{ key: 'pizza index', secondKey: 'https://www.worldmonitor.app/', clicks: 0, impressions: 9, position: 5 }],
+        truncationReason: 'searchanalytics quota was exhausted after 1 queryNonBrandPage rows: x',
+        recorded: true,
+      },
+    });
+    assert.equal(list.status, 'partial');
+    assert.equal(list.rows[0].page, null);
+    const copy = structuredClone(snapshot);
+    copy.performance.nonBrandQueries = list;
+    assert.match(renderGscMarkdown(copy), /Top pages are withheld: searchanalytics quota was exhausted/);
+  });
+
+  it('lists every www page each non-brand query showed over the widest window', async () => {
+    const { snapshot } = await collect();
+    const list = snapshot.performance.queryPages;
+    assert.equal(list.status, 'available');
+    assert.equal(list.window, '90d');
+    assert.deepEqual(list.rows, [
+      {
+        query: 'kerch strait',
+        impressions: 3040,
+        likelyAutomated: true,
+        pages: [
+          { path: '/chokepoints/kerch-strait/', impressions: 3000, position: 9 },
+          { path: '/blog/posts/black-sea-shipping/', impressions: 40, position: 12.5 },
+        ],
+      },
+      {
+        query: 'bab el mandeb',
+        impressions: 25,
+        likelyAutomated: false,
+        pages: [{ path: '/chokepoints/bab-el-mandeb/', impressions: 25, position: 6 }],
+      },
+    ]);
+    assertPublishableQueryPages(list, 'fixture snapshot');
+  });
+
+  it('keeps a query out of the query pages until one page alone has 20 impressions', async () => {
+    const { snapshot } = await collect();
+    // 15 + 10 page rows can be one search counted twice, so the sum is no floor.
+    assert.equal(snapshot.performance.queryPages.rows.some((row) => row.query === 'split query'), false);
+  });
+
+  it('reports the query pages as unavailable when the view was not collected or was cut short', async () => {
+    const { snapshot } = await collect(`${FIXTURES}quota/`);
+    assert.equal(snapshot.performance.queryPages.status, 'unavailable');
+    assert.match(snapshot.performance.queryPages.reason, /90d queryNonBrandPage view was not collected/);
+    assert.deepEqual(snapshot.performance.queryPages.rows, []);
+
+    const cut = buildQueryPages({
+      window: { label: '90d' },
+      page: {
+        rows: [{ key: 'pizza index', secondKey: 'https://www.worldmonitor.app/', clicks: 0, impressions: 90, position: 5 }],
+        truncationReason: 'stopped after 40 pages of queryNonBrandPage rows',
+        recorded: true,
+      },
+    }, { status: 'available', window: '28d', rows: [] });
+    assert.equal(cut.status, 'unavailable');
+    assert.equal(cut.reason, 'stopped after 40 pages of queryNonBrandPage rows');
+    assert.deepEqual(cut.rows, []);
+  });
+
+  it('caps the query pages at 500 queries of 10 pages and leaves automation unknown without the device view', () => {
+    const rows = [];
+    for (let query = 0; query < 501; query += 1) {
+      rows.push({ key: `query ${query}`, secondKey: 'https://www.worldmonitor.app/', clicks: 0, impressions: 1000 - query, position: 4 });
+    }
+    for (let page = 0; page < 12; page += 1) {
+      rows.push({ key: 'query 0', secondKey: `https://www.worldmonitor.app/p${page}/`, clicks: 0, impressions: 30, position: 8 });
+    }
+    const list = buildQueryPages(
+      { window: { label: '90d' }, page: { rows, truncationReason: null, recorded: true } },
+      { status: 'unavailable', window: '28d', rows: [] },
+    );
+    assert.equal(list.rows.length, 500);
+    assert.equal(list.rows.at(-1).query, 'query 499');
+    assert.equal(list.rows[0].pages.length, 10);
+    assert.equal(list.rows[0].impressions, 1000 + 12 * 30);
+    assert.equal(list.rows[0].likelyAutomated, null);
+  });
+
+  it('publishes a query only when one URL alone reaches the floor', () => {
+    const page = (key, url, impressions) => ({ key, secondKey: `https://www.worldmonitor.app${url}`, clicks: 0, impressions, position: 6 });
+    const list = buildQueryPages(
+      {
+        window: { label: '90d' },
+        page: {
+          rows: [
+            page('merged variants', '/tools/', 15),
+            page('merged variants', '/tools/#faq', 10),
+            page('one url', '/crises/', 20),
+            page('one url', '/crises/?x=1', 4),
+          ],
+          truncationReason: null,
+          recorded: true,
+        },
+      },
+      { status: 'available', window: '28d', rows: [] },
+    );
+    assert.deepEqual(list.rows.map((row) => row.query), ['one url']);
+    assert.deepEqual(list.rows[0].pages, [{ path: '/crises/', impressions: 24, position: 6 }]);
+  });
+
+  it('keeps Markdown in a query cell from rendering as links, images or HTML', () => {
+    const cell = queryCell('[x](https://a.example/) <img src=y> ![i](z) www.a.example `c` *b* _d_ ~e~');
+    assert.doesNotMatch(cell, /(?<!\\)</);
+    for (const live of ['[x](', '![i]', 'https://', 'www.a', '`c`', '*b*', '_d_', '~e~']) {
+      assert.equal(cell.includes(live), false, `${live} stays live in ${cell}`);
+    }
+  });
+
   it('escapes backslashes and pipes in a query cell', async () => {
     const { snapshot } = await collect();
     const copy = structuredClone(snapshot);
@@ -743,13 +989,17 @@ describe('Search Console site totals and brand split', () => {
     );
   });
 
-  it('classifies the brand spellings seen in Search Console and nothing generic', () => {
+  it('classifies the brand spellings seen in Search Console and Bing and nothing generic', () => {
     for (const query of ['world monitor', 'worldmonitor', 'World Monitor app', 'worldmonitor.ap',
-      'word monitor', 'world-monitor github', 'ワールドモニター']) {
+      'word monitor', 'world-monitor github', 'ワールドモニター', 'worldmoniter', 'worldmoniter.app',
+      'worl monitor', 'woldmonitor', 'world montior', 'wordl monitor', 'world montor', 'world monitar',
+      'world monter', 'wordmonintor', 'world monotor', 'worldmoniteur', 'wordmonitro', 'worldmoniterapp',
+      'worldmonitorapp', 'world monitoring', 'world_moniter_app', 'worl_monitor_github']) {
       assert.equal(isBrandQuery(query), true, query);
     }
     for (const query of ['war monitor', 'warmonitor', 'monitor the situation', 'ww3 monitor',
-      'pentagon pizza index', 'osint world map', 'world news']) {
+      'pentagon pizza index', 'osint world map', 'world news', 'world monetary fund', 'world montreal',
+      'word montage', 'world mentor', 'world monuments', 'world monterrey', 'world monteria', 'world montería']) {
       assert.equal(isBrandQuery(query), false, query);
     }
   });
@@ -871,114 +1121,206 @@ describe('Search Console live transport resilience', () => {
   });
 });
 
-describe('Search Console coverage totals recorded by hand', () => {
-  const reading = (exportedOn, extra = {}) => ({
-    exportedOn,
-    declaredUrls: 888,
-    pageWithRedirect: 1685,
-    notFound404: 666,
-    crawledNotIndexed: 1486,
-    source: 'https://github.com/koala73/worldmonitor/issues/8602',
-    ...extra,
-  });
-  const ledger = (...readings) => JSON.stringify({ readings });
+describe('Search Console reviewed-query lookups', () => {
+  const lookupOf = (snapshot, label, queryId) => snapshot.reviewedQueries.windows
+    .find((window) => window.label === label)
+    .lookups.find((lookup) => lookup.queryId === queryId);
+  const exportedRow = (exported, label, queryId) => exported.windows
+    .find((window) => window.label === label)
+    .queryRows.find((row) => row.queryId === queryId);
 
-  it('accepts the committed ledger', () => {
-    const readings = parseCoverageLedger(
-      readFileSync(repoPath('docs/research/seo-ai-visibility/gsc/coverage-totals.json'), 'utf8'),
+  it('looks up every reviewed query in every window and records the query set identity', async () => {
+    const { snapshot } = await collect();
+    const section = snapshot.reviewedQueries;
+    assert.equal(section.querySetId, querySet.querySetId);
+    assert.equal(section.querySetDigest, computeQuerySetDigest(querySet));
+    assert.equal(section.operator, 'equals');
+    assert.deepEqual(section.windows.map((window) => window.label), ['28d', '90d']);
+    for (const window of section.windows) {
+      assert.deepEqual(
+        window.lookups.map((lookup) => lookup.queryId),
+        querySet.queries.map((query) => query.id),
+      );
+    }
+  });
+
+  it('matches a reviewed query on the lowercased, space-collapsed text Google stores', async () => {
+    const { snapshot } = await collect();
+    const pricing = lookupOf(snapshot, '28d', 'q23');
+    assert.equal(pricing.query, 'World Monitor pricing');
+    assert.equal(pricing.expression, 'world monitor pricing');
+    assert.equal(pricing.status, 'reported');
+    assert.equal(pricing.reason, null);
+    assert.deepEqual(
+      [pricing.clicks, pricing.impressions, pricing.position],
+      [2, 40, 6.5],
     );
-    assert.ok(readings.length >= 2);
-    assert.deepEqual(readings.slice(0, 2).map((row) => row.exportedOn), ['2026-09-04', '2026-09-24']);
-  });
-
-  it('rejects a reading that would corrupt the trend', () => {
-    const cases = [
-      [ledger(reading('2026-09-24'), reading('2026-09-04')), /ascending/],
-      [ledger(reading('2026-09-24'), reading('2026-09-24')), /ascending/],
-      [ledger(reading('2026-9-24')), /exportedOn/],
-      [ledger(reading('2026-02-30')), /exportedOn/],
-      [ledger(reading('2026-09-24', { notFound404: '666' })), /notFound404/],
-      [ledger(reading('2026-09-24', { pageWithRedirect: -1 })), /pageWithRedirect/],
-      [ledger(reading('2026-09-24', { crawledNotIndexed: undefined })), /crawledNotIndexed/],
-      [ledger(reading('2026-09-24', { source: 'see issue' })), /source/],
-      [ledger(null), /reading 0: must be an object/],
-      [JSON.stringify({ readings: 'none' }), /readings/],
-      [JSON.stringify({}), /readings/],
-      ['{"readings": [', /not valid JSON/],
-    ];
-    for (const [text, expected] of cases) {
-      assert.throws(() => parseCoverageLedger(text), expected, text);
-    }
-  });
-
-  it('loads the ledger from the fixture set into the snapshot and the summary, oldest first', async () => {
-    const { snapshot, markdown } = await collect();
-    assert.deepEqual(snapshot.coverageTotals.readings.map((row) => row.exportedOn), ['2026-08-01', '2026-09-04']);
-    assert.equal(snapshot.coverageTotals.overdue, false);
-    assert.match(markdown, /## Coverage totals \(recorded by hand\)/);
-    assert.match(markdown, /\| 2026-08-01 \| 800 \| 900 \| 400 \| 1100 \|/);
-    assert.match(markdown, /\| 2026-09-04 \| 845 \| 1271 \| 512 \| 1245 \|/);
-    assert.doesNotMatch(markdown, /Overdue/);
-  });
-
-  it('treats a fixture set without a ledger as having no reading', async () => {
-    const { snapshot, markdown } = await collect(`${FIXTURES}quota/`);
-    assert.deepEqual(snapshot.coverageTotals.readings, []);
-    assert.equal(snapshot.coverageTotals.overdue, true);
-    assert.match(markdown, /Overdue: no reading is recorded/);
-  });
-
-  it('fails the run on a malformed ledger instead of dropping it', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'wm-gsc-ledger-'));
-    try {
-      cpSync(repoPath(FIXTURES), dir, { recursive: true });
-      writeFileSync(join(dir, 'coverage-totals.json'), ledger(reading('2026-09-04', { notFound404: 'n/a' })));
-      await assert.rejects(() => collect(`${dir}/`), /notFound404 must be a non-negative integer/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('flags the monthly reading as overdue once the latest one is too old', async () => {
-    const fresh = await collectFrom(memoryTransport(), {
-      coverageReadings: [reading('2026-09-04')],
+    const row = exportedRow(toScorecardSearchExport(snapshot, { querySet }), '28d', 'q23');
+    assert.deepEqual(row, {
+      queryId: 'q23',
+      query: 'World Monitor pricing',
+      clicks: 2,
+      impressions: 40,
+      ctr: 0.05,
+      position: 6.5,
+      reason: null,
     });
-    assert.equal(fresh.coverageTotals.latestAgeDays, 20);
-    assert.equal(fresh.coverageTotals.overdue, false);
-    assert.doesNotMatch(renderGscMarkdown(fresh), /Overdue/);
 
-    const limit = await collectFrom(memoryTransport(), {
-      coverageReadings: [reading('2026-08-20')],
+    const expressions = [];
+    const spaced = {
+      ...querySet,
+      queries: [{ ...querySet.queries[22], query: '  World   Monitor PRICING ' }],
+    };
+    const section = (await collectFrom({
+      ...memoryTransport(),
+      lookupQuery: async ({ expression }) => { expressions.push(expression); return { rows: [] }; },
+    }, { querySet: spaced })).reviewedQueries;
+    assert.deepEqual(expressions, ['world monitor pricing']);
+    assert.equal(section.windows[0].lookups[0].expression, 'world monitor pricing');
+  });
+
+  it('reports a query Google returns no row for as not reported, never as zero', async () => {
+    const { snapshot } = await collect();
+    const gdelt = lookupOf(snapshot, '28d', 'q18');
+    assert.equal(gdelt.status, 'not-reported');
+    assert.match(gdelt.reason, /not reported by Search Console/i);
+    assert.deepEqual([gdelt.clicks, gdelt.impressions, gdelt.position], [null, null, null]);
+
+    const exported = toScorecardSearchExport(snapshot, { querySet });
+    const row = exportedRow(exported, '28d', 'q18');
+    assert.deepEqual(
+      [row.clicks, row.impressions, row.ctr, row.position],
+      [null, null, null, null],
+    );
+    assert.match(row.reason, /privacy threshold/);
+
+    const normalized = normalizeSearchExport(exported, {
+      querySet,
+      observedAt: '2026-09-24T00:00:00Z',
+      provider: 'Google Search Console',
+      schemaVersion: 2,
     });
-    assert.equal(limit.coverageTotals.latestAgeDays, 35);
-    assert.equal(limit.coverageTotals.overdue, false);
-
-    const stale = await collectFrom(memoryTransport(), {
-      coverageReadings: [reading('2026-08-19')],
+    const normalizedRow = normalized.queryRows.find(
+      (entry) => entry.windowLabel === '28d' && entry.queryId === 'q18',
+    );
+    assert.deepEqual(normalizedRow.metrics, {
+      impressions: null, clicks: null, ctr: null, averagePosition: null,
     });
-    assert.equal(stale.coverageTotals.latestAgeDays, 36);
-    assert.equal(stale.coverageTotals.overdue, true);
-    assert.match(renderGscMarkdown(stale), /Overdue: the latest reading is 36 days old/);
+    assert.equal(normalizedRow.reason, row.reason);
+    assert.equal(normalized.status, 'partial');
+  });
 
+  it('records a failed or unrecorded lookup as unavailable with its reason and keeps going', async () => {
+    const { snapshot } = await collect();
+    const failed = lookupOf(snapshot, '28d', 'q12');
+    assert.equal(failed.status, 'unavailable');
+    assert.match(failed.reason, /lookup failed: .*HTTP 500/);
+    const unrecorded = lookupOf(snapshot, '28d', 'q01');
+    assert.equal(unrecorded.status, 'unavailable');
+    assert.match(unrecorded.reason, /no lookup was recorded/);
+    assert.equal(lookupOf(snapshot, '90d', 'q23').status, 'reported');
+    assert.equal(snapshot.reviewedQueries.status, 'partial');
+    assert.match(snapshot.reviewedQueries.reason, /28d: 23 of 25 lookups unavailable/);
+
+    const row = exportedRow(toScorecardSearchExport(snapshot, { querySet }), '28d', 'q12');
+    assert.deepEqual([row.impressions, row.clicks], [null, null]);
+    assert.match(row.reason, /HTTP 500/);
+  });
+
+  it('stops looking up once the quota runs out and says so for every remaining query', async () => {
     let calls = 0;
-    const counting = memoryTransport({
-      searchAnalytics: async () => { calls += 1; return { rows: [] }; },
-      inspect: async () => { calls += 1; return indexedResponse; },
-    });
-    await assert.rejects(
-      () => collectFrom(counting, { coverageReadings: [reading('2026-09-25')] }),
-      /later than the snapshot date/,
-    );
-    assert.equal(calls, 0, 'a bad ledger must stop the run before any API quota is spent');
+    const snapshot = await collectFrom({
+      ...memoryTransport(),
+      lookupQuery: async () => {
+        calls += 1;
+        if (calls === 2) throw new QuotaExhaustedError('Search Console daily quota is exhausted (HTTP 429)');
+        return { rows: [] };
+      },
+    }, { querySet });
+    assert.equal(calls, 2);
+    const [window] = snapshot.reviewedQueries.windows;
+    assert.equal(window.lookups[0].status, 'not-reported');
+    for (const lookup of window.lookups.slice(1)) {
+      assert.equal(lookup.status, 'unavailable');
+      assert.match(lookup.reason, /quota was exhausted/);
+    }
+    assert.equal(snapshot.reviewedQueries.status, 'partial');
+  });
 
-    const piped = await collectFrom(memoryTransport(), {
-      coverageReadings: [reading('2026-09-04', { source: 'https://example.com/a|b' })],
-    });
-    assert.match(renderGscMarkdown(piped), /\| https:\/\/example\.com\/a\\\|b \|$/m);
+  it('records a row with missing counts as unavailable instead of filling in a zero', async () => {
+    const snapshot = await collectFrom({
+      ...memoryTransport(),
+      lookupQuery: async ({ expression }) => ({ rows: [{ keys: [expression], impressions: 12, position: 4 }] }),
+    }, { querySet });
+    const [lookup] = snapshot.reviewedQueries.windows[0].lookups;
+    assert.equal(lookup.status, 'unavailable');
+    assert.match(lookup.reason, /without clicks or impressions/);
+    assert.deepEqual([lookup.clicks, lookup.impressions, lookup.position], [null, null, null]);
+  });
 
-    const none = await collectFrom(memoryTransport());
-    assert.equal(none.coverageTotals.latestAgeDays, null);
-    assert.equal(none.coverageTotals.overdue, true);
-    assert.match(renderGscMarkdown(none), /Overdue: no reading is recorded/);
+  it('is unavailable with a reason when no query set is supplied', async () => {
+    const snapshot = await collectFrom(memoryTransport());
+    assert.equal(snapshot.reviewedQueries.status, 'unavailable');
+    assert.match(snapshot.reviewedQueries.reason, /no reviewed query set was supplied/);
+    assert.deepEqual(snapshot.reviewedQueries.windows, []);
+  });
+
+  it('refuses to map lookups that were made for a different query set', async () => {
+    const { snapshot } = await collect();
+    const edited = structuredClone(querySet);
+    edited.queries[22].query = 'World Monitor price';
+    const exported = toScorecardSearchExport(snapshot, { querySet: edited });
+    for (const window of exported.windows) assert.deepEqual(window.queryRows, []);
+    assert.match(exported.reason, /lookups were made for query set seo-ai-visibility-v1 \(sha256:[0-9a-f]{12}/);
+    assert.match(exported.reason, /not the supplied/);
+  });
+
+  it('maps a snapshot that predates the lookups to no query rows, with the reason', () => {
+    const committed = JSON.parse(readFileSync(
+      repoPath('docs/research/seo-ai-visibility/gsc/2026-11-03.json'),
+      'utf8',
+    ));
+    assert.equal(committed.reviewedQueries, undefined);
+    const exported = toScorecardSearchExport(committed, { querySet });
+    for (const window of exported.windows) assert.deepEqual(window.queryRows, []);
+    assert.match(exported.reason, /predates reviewed-query lookups/);
+    assert.doesNotMatch(exported.reason, /top 20/);
+  });
+
+  it('summarizes how many reviewed queries Google reported in the markdown', async () => {
+    const { markdown } = await collect();
+    assert.match(markdown, /### Reviewed queries/);
+    assert.match(markdown, /\| 28d \| 25 \| 1 \| 1 \| 23 \|/);
+    assert.match(markdown, /\| World Monitor pricing \| 40 \| 2 \| 5\.0% \| 6\.5 \|/);
+  });
+
+  it('asks Google for an exact match on the query dimension, retrying a 5xx', async () => {
+    const bodies = [];
+    let calls = 0;
+    const transport = createLiveTransport({
+      accessToken: 't',
+      property: 'sc-domain:example.com',
+      fetchImpl: async (_url, init) => {
+        calls += 1;
+        bodies.push(JSON.parse(init.body));
+        return calls === 1 ? jsonResponse(503, {}) : jsonResponse(200, { responseAggregationType: 'byProperty' });
+      },
+      sleep: async () => {},
+    });
+    const response = await transport.lookupQuery({
+      expression: 'world monitor pricing',
+      startDate: '2026-08-27',
+      endDate: '2026-09-23',
+    });
+    assert.deepEqual(response, { responseAggregationType: 'byProperty' });
+    assert.equal(calls, 2);
+    // Without a dimension Google answers an unknown query with a zero row;
+    // grouped by query it answers with no row, which is the honest outcome.
+    assert.deepEqual(bodies[1].dimensions, ['query']);
+    assert.deepEqual(bodies[1].dimensionFilterGroups[0].filters, [
+      { dimension: 'query', operator: 'equals', expression: 'world monitor pricing' },
+    ]);
+    assert.equal(bodies[1].dataState, 'final');
+    assert.deepEqual([bodies[1].startDate, bodies[1].endDate], ['2026-08-27', '2026-09-23']);
   });
 });

@@ -24,6 +24,7 @@ import {
   clientBelievesPro,
   isTransientDenial,
   readDenialErrorCode,
+  reconcileSessionDenial,
   routeDenial,
   shouldSkipDoomedFetch,
   PRO_TIER,
@@ -335,6 +336,10 @@ describe('isTransientDenial', () => {
   it('desync and access_denied are worth retrying', () => {
     assert.equal(isTransientDenial('entitlement_desync'), true);
     assert.equal(isTransientDenial('access_denied'), true);
+  });
+
+  it('SM-138: a 401 against a live client session is worth retrying', () => {
+    assert.equal(isTransientDenial('session_desync'), true);
   });
 
   it('sign-in and upgrade are terminal — retrying cannot flip them', () => {
@@ -711,7 +716,7 @@ describe('routeDenial', () => {
   });
 
   it('#5608: a transient verdict NEVER routes to the upsell', () => {
-    for (const verdict of ['entitlement_desync', 'access_denied'] as const) {
+    for (const verdict of ['entitlement_desync', 'access_denied', 'session_desync'] as const) {
       for (const streak of [0, 1, MAX, MAX + 1, MAX + 100]) {
         assert.notEqual(
           routeDenial(verdict, streak, MAX),
@@ -723,7 +728,7 @@ describe('routeDenial', () => {
   });
 
   it('transient verdicts retry while the budget lasts', () => {
-    for (const verdict of ['entitlement_desync', 'access_denied'] as const) {
+    for (const verdict of ['entitlement_desync', 'access_denied', 'session_desync'] as const) {
       for (let streak = 0; streak <= MAX; streak++) {
         assert.equal(routeDenial(verdict, streak, MAX), 'retry', `streak ${streak} still retries`);
       }
@@ -731,7 +736,7 @@ describe('routeDenial', () => {
   });
 
   it('the loop terminates once the budget is spent', () => {
-    for (const verdict of ['entitlement_desync', 'access_denied'] as const) {
+    for (const verdict of ['entitlement_desync', 'access_denied', 'session_desync'] as const) {
       assert.equal(routeDenial(verdict, MAX + 1, MAX), 'give_up');
       assert.equal(routeDenial(verdict, MAX + 50, MAX), 'give_up');
     }
@@ -741,6 +746,32 @@ describe('routeDenial', () => {
     // The whole point: exhausting retries means we could not verify, which is
     // not evidence the user needs to buy anything.
     assert.equal(routeDenial('entitlement_desync', MAX + 1, MAX), 'give_up');
+  });
+});
+
+describe('reconcileSessionDenial (SM-138)', () => {
+  it('a sign-in verdict while the client holds a session is a session desync', () => {
+    assert.equal(reconcileSessionDenial('sign_in_required', true), 'session_desync');
+  });
+
+  it('a sign-in verdict for a signed-out client stays terminal sign-in', () => {
+    assert.equal(reconcileSessionDenial('sign_in_required', false), 'sign_in_required');
+    assert.equal(routeDenial(reconcileSessionDenial('sign_in_required', false), 0, 8), 'sign_in');
+  });
+
+  it('end to end: a signed-in 401 retries, then gives up — never the sign-in card', () => {
+    const classified = classifyPremiumDenial({ status: 401, errorCode: null, belief: PRO });
+    assert.ok(classified !== null);
+    const verdict = reconcileSessionDenial(classified, true);
+    assert.equal(routeDenial(verdict, 1, 8), 'retry');
+    assert.equal(routeDenial(verdict, 9, 8), 'give_up');
+  });
+
+  it('every other verdict passes through unchanged, signed in or not', () => {
+    for (const verdict of ['upgrade_required', 'entitlement_desync', 'access_denied'] as const) {
+      assert.equal(reconcileSessionDenial(verdict, true), verdict);
+      assert.equal(reconcileSessionDenial(verdict, false), verdict);
+    }
   });
 });
 

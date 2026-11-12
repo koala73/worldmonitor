@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { __testing__ } from '../api/health.js';
-import { findOperationalProblems } from '../scripts/check-seed-freshness.mjs';
 
 const NAME = 'techEventsSeeder';
 const KEY = 'research:tech-events:v1';
@@ -38,7 +37,7 @@ test('compact health alerts on an overdue tech-events seeder independently of th
       checkedAt: new Date(NOW).toISOString(),
       checks: { [NAME]: entry },
     }, true);
-    const problems = findOperationalProblems(compact, NOW);
+    const problems = __testing__.collectFailureLogProblems(compact.problems ?? {}, NOW).sigKeys;
     assert.equal(problems.length, expected === 'OK' ? 0 : 1);
     if (expected === 'STALE_SEED') assert.equal(compact.problems[NAME].status, 'STALE_SEED');
   }

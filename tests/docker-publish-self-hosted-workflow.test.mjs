@@ -67,6 +67,48 @@ test('the self-hosted workflow accepts the dispatch and tags latest for a releas
   assert.match(latest, /!contains\(github\.ref, '-'\)/, 'a pre-release tag must not move latest');
 });
 
+test('main-side runs move `main` and never `latest`, so a clone pulls images from its own tree', () => {
+  const meta = selfHosted.jobs.docker.steps.find((s) => String(s.uses ?? '').startsWith('docker/metadata-action'));
+  const rules = meta.with.tags.split('\n').map((line) => line.trim()).filter(Boolean);
+  const main = rules.find((line) => line.includes('value=main'));
+  assert.ok(main, 'no main tag rule');
+  assert.match(main, /github\.ref == 'refs\/heads\/main'/);
+  assert.equal(meta.with.flavor, 'latest=false', 'latest must be decided by the explicit rule alone');
+  assert.ok(rules.some((line) => line.startsWith('type=sha')), 'every run publishes sha-<commit>');
+
+  for (const [service, def] of Object.entries(compose.services)) {
+    if (!def.build) continue;
+    assert.match(def.image, /:\$\{WM_IMAGE_TAG:-main\}$/, `${service}: compose must default to the main tag`);
+  }
+});
+
+test('the workflow keeps docker-publish.yml\'s safeguards for unattended publishes', () => {
+  const t = selfHostedTriggers;
+  assert.ok(t.schedule?.length, 'a daily rebuild backstops what the push filter misses');
+  assert.ok(t.push?.paths?.includes('Dockerfile') && t.push.paths.includes('Dockerfile.relay') && t.push.paths.includes('docker/**'));
+  const job = selfHosted.jobs.docker;
+  assert.equal(typeof job['timeout-minutes'], 'number', 'a QEMU hang must not hold the slot for six hours');
+  assert.equal(job.strategy['fail-fast'], false, 'one broken image must not block the other two');
+  assert.match(job.if, /github\.event_name != 'schedule' \|\| github\.repository == 'koala73\/worldmonitor'/, 'forks must not run the cron');
+  assert.equal(selfHosted.concurrency['cancel-in-progress'], false);
+
+  const smoke = job.steps.find((s) => s.name?.startsWith('Smoke the app image'));
+  assert.ok(smoke, 'the app image must be run before it is pushed');
+  assert.equal(smoke.if, 'matrix.smoke');
+  const smokeBuild = job.steps.find((s) => s.name?.startsWith('Build the amd64 image'));
+  assert.ok(job.steps.indexOf(smokeBuild) < job.steps.indexOf(smoke));
+  assert.ok(job.steps.indexOf(smoke) < job.steps.findIndex((s) => s.with?.push === true), 'smoke must precede the push');
+  assert.equal(job.strategy.matrix.include.filter((l) => l.smoke).map((l) => l.image).join(), 'worldmonitor-selfhosted');
+
+  const report = selfHosted.jobs['report-failure'];
+  assert.equal(report.needs, 'docker');
+  assert.equal(report.permissions?.issues, 'write');
+});
+
+test('the root Dockerfile builds its frontend on the build host, not under QEMU', () => {
+  assert.match(readText('Dockerfile'), /^FROM --platform=\$BUILDPLATFORM node:\S+ AS builder$/m);
+});
+
 test('the build matrix covers every compose service with the context its Dockerfile needs', () => {
   const legs = selfHosted.jobs.docker.strategy.matrix.include;
 

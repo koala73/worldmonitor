@@ -23,4 +23,8 @@ message SanctionsEntry {
   int64 effective_at = 8;
   bool is_new = 9;
   string note = 10;
+  // Direct linked-parent countries for addressless entities. These are not
+  // address/nationality evidence and do not feed country risk counts.
+  repeated string parent_country_codes = 11;
+  repeated string parent_country_names = 12;
 }

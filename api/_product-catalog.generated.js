@@ -26,6 +26,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": false,
       "selfServe": false,
       "dashboardAiCallsPerDay": 0,
+      "travelRiskAssessment": false,
       "description": "Core dashboard panels, Global news feed, Earthquake & weather alerts, Basic map view, 3 dashboard tabs"
     },
     {
@@ -41,7 +42,8 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 500,
-      "description": "Everything in Free — panels, sources & followed countries uncapped, WM Analyst chat + AI stock analysis & backtesting, Cost-shock modelling & supply-chain stress tests, Intel memory — historical search, timelines & similar events, Physical metals divergence, minerals concentration & sovereign debt data, Scheduled AI digest + alert rules engine, MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Custom widgets & 10 dashboards (vs 3), Personal license, 1 named user"
+      "travelRiskAssessment": false,
+      "description": "Everything in Free — panels, sources & followed countries uncapped, WM Analyst chat + AI stock analysis & backtesting, Cost-shock modelling & supply-chain stress tests, Intel memory — historical search, timelines & similar events, Physical metals divergence, minerals concentration & sovereign debt data, Scheduled AI digest + alert rules engine, MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Custom widgets & 10 dashboards (vs 3), Desktop key for the desktop app (2 keys), Personal license, 1 named user"
     },
     {
       "planKey": "pro_annual",
@@ -56,6 +58,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 500,
+      "travelRiskAssessment": false,
       "description": ""
     },
     {
@@ -71,7 +74,8 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 2500,
-      "description": "Everything in Pro, Use for client work, internal tools & reporting, Data export — CSV, JSON & PDF reports, 25 custom dashboards (vs 10), MCP + SDK: 250 calls/day (vs 50), Priority support, Commercial license included, 1 named user — not a shared login"
+      "travelRiskAssessment": true,
+      "description": "Everything in Pro, Use for client work, internal tools & reporting, Data export — CSV, JSON & PDF reports, 25 custom dashboards (vs 10), MCP + SDK: 250 calls/day (vs 50), Desktop key for the desktop app (3 keys), Priority support, Travel risk assessment drafts in the dashboard and over MCP, Commercial license included, 1 named user — not a shared login"
     },
     {
       "planKey": "pro_business_annual",
@@ -86,6 +90,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 2500,
+      "travelRiskAssessment": true,
       "description": ""
     },
     {
@@ -101,7 +106,8 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 1000,
-      "description": "REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), Webhook notifications, Commercial license — for your organization"
+      "travelRiskAssessment": false,
+      "description": "Full Pro dashboard included (1 named user), REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), Webhook notifications, Commercial use — internal only, not customer-facing"
     },
     {
       "planKey": "api_starter_annual",
@@ -116,6 +122,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 1000,
+      "travelRiskAssessment": false,
       "description": ""
     },
     {
@@ -131,7 +138,8 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 10000,
-      "description": "Everything in API Starter, R1–R3 redistribution rights for customer-facing products, 300 requests/minute, 10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), 5 Pro licenses — invite users at any corporate email domain, Priority support, Commercial license — for your customers"
+      "travelRiskAssessment": true,
+      "description": "Everything in API Starter, R1–R3 redistribution rights for customer-facing products, 300 requests/minute, 10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), 5 Pro licenses — invite users at any corporate email domain, Shared team dashboards, Priority support, Travel risk assessment drafts in the dashboard and over MCP, Commercial use — in your customer-facing products"
     },
     {
       "planKey": "api_business_annual",
@@ -146,6 +154,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 10000,
+      "travelRiskAssessment": true,
       "description": ""
     },
     {
@@ -160,35 +169,36 @@ export const PUBLIC_PRODUCT_FACTS = {
       "url": "https://www.worldmonitor.app/pro#pricing",
       "currentForCheckout": false,
       "selfServe": false,
-      "dashboardAiCallsPerDay": 25000,
-      "description": "Everything in Pro + API, Unlimited API requests, Dedicated support, Custom integrations, SLA guarantee, On-premise option, Data processing agreement (DPA), Purchase-order billing, SAML SSO, SCIM, Custom security and privacy settings, Fully white-labeled — with or without revenue sharing"
+      "dashboardAiCallsPerDay": 10000,
+      "travelRiskAssessment": true,
+      "description": "Everything in Pro + API, Shared team dashboards, 10,000 API requests a day, more by contract, Dedicated support, Custom integrations, SLA guarantee (by contract), On-premise option, Data processing agreement (DPA), Purchase-order billing, SAML SSO and SCIM (by contract), Custom security and privacy settings, Fully white-labeled — with or without revenue sharing, Travel risk assessment drafts in the dashboard and over MCP"
     }
   ],
   "heroProofStats": {
-    "mapLayers": 58,
-    "feeds": 469,
-    "providers": 775,
+    "mapLayers": 60,
+    "feeds": 470,
+    "providers": 854,
     "alertOrigins": 5
   },
   "depthProofStats": {
-    "mapLayers": 58,
-    "feeds": 469,
-    "providers": 775,
+    "mapLayers": 60,
+    "feeds": 470,
+    "providers": 854,
     "alertOrigins": 5,
     "chokepoints": 13,
     "instabilityCountries": 31,
-    "resilienceRanked": 170,
+    "resilienceRanked": 169,
     "submarineCables": 98,
     "pipelinesLng": 159,
     "aiDatacenters": 313,
     "hotspots": 29,
     "stockExchanges": 29,
-    "mcpTools": 95,
-    "commands": 621,
+    "mcpTools": 104,
+    "commands": 625,
     "languages": 28
   },
   "resilienceCoverage": {
-    "ranked": 170,
+    "ranked": 169,
     "universe": 196
   }
 };
@@ -259,8 +269,12 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 0,
       "dashboardAiCallsPerDay": 0,
       "mcpBurstRequestsPerMinute": 0,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": false
     },
+    "maxDashboards": 3,
+    "dataExport": false,
     "cta": "Get Started",
     "href": "https://worldmonitor.app/dashboard",
     "highlighted": false
@@ -277,7 +291,8 @@ export const TIER_CONFIG = {
       "Physical metals divergence, minerals concentration & sovereign debt data",
       "Scheduled AI digest + alert rules engine",
       "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
-      "Custom widgets & 10 dashboards (vs 3)"
+      "Custom widgets & 10 dashboards (vs 3)",
+      "Desktop key for the desktop app (2 keys)"
     ],
     "highlightFeatures": [
       "Personal license",
@@ -289,8 +304,12 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 50,
       "dashboardAiCallsPerDay": 500,
       "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 7500,
+      "desktopKeyBurstPerMinute": 120,
       "mcpDailyBudgetSharedWithRest": false
     },
+    "maxDashboards": 10,
+    "dataExport": false,
     "highlighted": true
   },
   "pro_business": {
@@ -303,7 +322,9 @@ export const TIER_CONFIG = {
       "Data export — CSV, JSON & PDF reports",
       "25 custom dashboards (vs 10)",
       "MCP + SDK: 250 calls/day (vs 50)",
-      "Priority support"
+      "Desktop key for the desktop app (3 keys)",
+      "Priority support",
+      "Travel risk assessment drafts in the dashboard and over MCP"
     ],
     "highlightFeatures": [
       "Commercial license included",
@@ -315,8 +336,12 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 250,
       "dashboardAiCallsPerDay": 2500,
       "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 7500,
+      "desktopKeyBurstPerMinute": 120,
       "mcpDailyBudgetSharedWithRest": false
     },
+    "maxDashboards": 25,
+    "dataExport": true,
     "highlighted": false
   },
   "api_starter": {
@@ -324,6 +349,7 @@ export const TIER_CONFIG = {
     "localeKey": "api",
     "description": "Build internal tools on live intelligence data",
     "features": [
+      "Full Pro dashboard included (1 named user)",
       "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
       "License / API key included",
       "Real-time data streams",
@@ -332,7 +358,7 @@ export const TIER_CONFIG = {
       "Webhook notifications"
     ],
     "highlightFeatures": [
-      "Commercial license — for your organization"
+      "Commercial use — internal only, not customer-facing"
     ],
     "planLimits": {
       "apiRequestsPerDay": 1000,
@@ -340,24 +366,30 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 1000,
       "dashboardAiCallsPerDay": 1000,
       "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
+    "maxDashboards": 25,
+    "dataExport": true,
     "highlighted": false
   },
   "api_business": {
     "name": "API Business",
     "localeKey": "apiBusiness",
-    "description": "Launch your own product on WorldMonitor data",
+    "description": "Launch your own product on World Monitor data",
     "features": [
       "Everything in API Starter",
       "R1–R3 redistribution rights for customer-facing products",
       "300 requests/minute",
       "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "5 Pro licenses — invite users at any corporate email domain",
-      "Priority support"
+      "Shared team dashboards",
+      "Priority support",
+      "Travel risk assessment drafts in the dashboard and over MCP"
     ],
     "highlightFeatures": [
-      "Commercial license — for your customers"
+      "Commercial use — in your customer-facing products"
     ],
     "planLimits": {
       "apiRequestsPerDay": 10000,
@@ -365,8 +397,12 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 10000,
       "dashboardAiCallsPerDay": 10000,
       "mcpBurstRequestsPerMinute": 300,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
+    "maxDashboards": 100,
+    "dataExport": true,
     "highlighted": false
   },
   "enterprise": {
@@ -375,25 +411,31 @@ export const TIER_CONFIG = {
     "description": "Custom solutions for organizations",
     "features": [
       "Everything in Pro + API",
-      "Unlimited API requests",
+      "Shared team dashboards",
+      "10,000 API requests a day, more by contract",
       "Dedicated support",
       "Custom integrations",
-      "SLA guarantee",
+      "SLA guarantee (by contract)",
       "On-premise option",
       "Data processing agreement (DPA)",
       "Purchase-order billing",
-      "SAML SSO, SCIM",
+      "SAML SSO and SCIM (by contract)",
       "Custom security and privacy settings",
-      "Fully white-labeled — with or without revenue sharing"
+      "Fully white-labeled — with or without revenue sharing",
+      "Travel risk assessment drafts in the dashboard and over MCP"
     ],
     "planLimits": {
-      "apiRequestsPerDay": 100000,
-      "apiBurstRequestsPerMinute": 1000,
-      "mcpCallsPerDay": 25000,
-      "dashboardAiCallsPerDay": 25000,
-      "mcpBurstRequestsPerMinute": 1000,
-      "mcpDailyBudgetSharedWithRest": false
+      "apiRequestsPerDay": 10000,
+      "apiBurstRequestsPerMinute": 300,
+      "mcpCallsPerDay": 10000,
+      "dashboardAiCallsPerDay": 10000,
+      "mcpBurstRequestsPerMinute": 300,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
+      "mcpDailyBudgetSharedWithRest": true
     },
+    "maxDashboards": -1,
+    "dataExport": true,
     "cta": "Contact Sales",
     "href": "mailto:enterprise@worldmonitor.app",
     "highlighted": false

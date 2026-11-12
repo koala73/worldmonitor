@@ -1,6 +1,7 @@
 import { SUB_REQUEST_MARKER_HEADER } from './sub-request-admission.js';
 import { Ratelimit, type Duration } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import { upstashRedisOptions } from '../../api/_upstash-redis-options.js';
 import { getClientIp, getClientRateLimitKey, hasUnprovenCloudflareClientIp, UNKNOWN_CLIENT_IP } from './client-ip.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../api/_sentry-edge.js';
@@ -15,15 +16,6 @@ import { durationToSeconds, limitWithFallback, resetRateLimitFallbackForTest } f
 // UNKNOWN_CLIENT_IP: turnstile.ts; plus the rate-limit test suites).
 export { getClientIp, getClientRateLimitKey, hasCloudflareTransitProof, hasUnprovenCloudflareClientIp, rateLimitKeyForIp, UNKNOWN_CLIENT_IP } from './client-ip.js';
 
-// @upstash/redis defaults to 5 retries with exponential backoff (~4.3s total)
-// before surfacing an unreachable-Redis error. The node test runner sets
-// NODE_TEST_CONTEXT in the child that executes each file; in that context the
-// fail-open / fail-closed rate-limit tests point UPSTASH_REDIS_REST_URL at a
-// fake host and would otherwise burn that full backoff on every limiter call.
-// Skip retries under the test runner only — production (env unset) keeps the
-// resilient default untouched. Mirrors the retry:false already shipped on the
-// MCP limiter to unblock the suite (PR #3963).
-const REDIS_TEST_RETRY_OPTS: { retry?: false } = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
 // @upstash/ratelimit v2 returns an allow-shaped result with reason="timeout"
 // when this deadline wins the Redis race. Endpoint policies inspect that
 // reason below and fail closed; keeping the SDK timeout enabled bounds the
@@ -63,7 +55,7 @@ function getRatelimit(): Ratelimit | null {
   if (!url || !token) return null;
 
   ratelimit = new Ratelimit({
-    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
+    redis: new Redis(upstashRedisOptions(url, token)),
     limiter: Ratelimit.slidingWindow(GLOBAL_RATE_LIMIT, GLOBAL_RATE_WINDOW),
     prefix: 'rl',
     analytics: false,
@@ -571,13 +563,15 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
     getClientRateLimitKey(request);
 
   try {
-    const { success, limit, reset } = await limitWithFallback(
+    const { success, limit, reset, reason } = await limitWithFallback(
       rl,
       identifier,
       `rl:fw:${identifier}`,
       GLOBAL_RATE_LIMIT,
       GLOBAL_RATE_WINDOW_SECONDS,
     );
+
+    if (reason === 'timeout') throw new Error('rate-limit decision timed out');
 
     if (!success) {
       return tooManyRequestsResponse(limit, reset, corsHeaders, GLOBAL_RATE_WINDOW_SECONDS);
@@ -603,6 +597,10 @@ interface EndpointRatePolicy {
 // using checkEndpointRateLimit / hasEndpointRatePolicy below — the export is
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
+  '/api/cyber/v1/get-network-info': { limit: 20, window: '60 s' },
+  '/api/scorecard/v1/get-five-factor-scorecard': { limit: 30, window: '60 s' },
+  '/api/scorecard/v1/get-bloc-scorecard': { limit: 30, window: '60 s' },
+  '/api/scorecard/v1/list-five-factor-scorecards': { limit: 30, window: '60 s' },
   // #9094 /verify fact-check lookup: public, and a cache miss spends the
   // Google Fact Check Tools API quota.
   '/api/news/v1/search-fact-checks': { limit: 20, window: '60 s' },
@@ -766,6 +764,10 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/leads/v1/register-interest': { limit: 5, window: '1 h' },
   // #9093 reader error reports: anonymous writes to the review queue.
   '/api/news/v1/submit-error-report': { limit: 5, window: '1 h' },
+  // #8721 agent feedback: coarse outer guard only. The real model is the five
+  // buckets in admitFeedbackReport (server/_shared/agent-feedback.ts), which
+  // the MCP report_issue tool shares.
+  '/api/feedback/v1/submit-report': { limit: 20, window: '1 h' },
   // #9093 /trust page read: public and CDN-cached, bounded per IP.
   '/api/news/v1/list-label-changes': { limit: 60, window: '60 s' },
   // Operator review: secret-gated, but still bounded against secret guessing.
@@ -901,6 +903,9 @@ interface RateLimitPolicyDecision {
 // defence. scripts/enforce-rate-limit-policies.mjs fails if any route listed
 // here can drift back to the gateway's availability-first global fallback.
 export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimitPolicyDecision> = {
+  '/api/cyber/v1/get-network-info': {
+    reason: 'Public IP lookups proxy RIPEstat on cache misses and must retain the caller cap during Redis outages.',
+  },
   '/api/news/v1/list-feed-digest': { reason: 'Cold digest builds fan out to RSS providers and require a fail-closed caller budget.' },
   '/api/aviation/v1/track-aircraft': {
     reason: 'Distinct aircraft viewports call Wingbits on cache misses and can fall back to authenticated OpenSky quota.',
@@ -1027,6 +1032,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   '/api/news/v1/submit-error-report': {
     reason: 'Anonymous error reports write to the review queue (#9093).',
   },
+  '/api/feedback/v1/submit-report': {
+    reason: 'Anonymous agent feedback writes to Convex and can email the owner (#8721).',
+  },
   '/api/news/v1/list-error-reports': {
     reason: 'Operator review is gated by a shared secret; the limit bounds guessing (#9093).',
   },
@@ -1119,12 +1127,7 @@ function getEndpointRatelimit(pathname: string): Ratelimit | null {
   if (!url || !token) return null;
 
   const rl = new Ratelimit({
-    redis: new Redis({
-      url,
-      token,
-      ...REDIS_TEST_RETRY_OPTS,
-      signal: () => AbortSignal.timeout(ENDPOINT_REDIS_ABORT_TIMEOUT_MS),
-    }),
+    redis: new Redis(upstashRedisOptions(url, token, { timeoutMs: ENDPOINT_REDIS_ABORT_TIMEOUT_MS })),
     limiter: Ratelimit.slidingWindow(policy.limit, policy.window),
     prefix: 'rl:ep',
     analytics: false,
@@ -1252,7 +1255,7 @@ function getScopedRatelimit(scope: string, limit: number, window: Duration): Rat
   if (!url || !token) return null;
 
   const rl = new Ratelimit({
-    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
+    redis: new Redis(upstashRedisOptions(url, token)),
     limiter: Ratelimit.slidingWindow(limit, window),
     prefix: 'rl:scope',
     analytics: false,

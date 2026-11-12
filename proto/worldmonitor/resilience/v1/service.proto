@@ -13,6 +13,7 @@ import "worldmonitor/resilience/v1/get_resilience_score.proto";
 service ResilienceService {
   option (sebuf.http.service_config) = {base_path: "/api/resilience/v1"};
 
+  // GetResilienceScore returns a country's resilience score with domain and pillar scores, trend and confidence.
   rpc GetResilienceScore(GetResilienceScoreRequest) returns (GetResilienceScoreResponse) {
     option (sebuf.http.config) = {path: "/get-resilience-score", method: HTTP_METHOD_GET};
   }
@@ -22,7 +23,7 @@ service ResilienceService {
     option (sebuf.http.config) = {path: "/get-resilience-indicators", method: HTTP_METHOD_GET};
   }
 
-  // Returns seeded PSD cereal balances with FAOSTAT gap fill.
+  // GetFoodStocks returns USDA PSD grain and oilseed stocks-to-use by country or WORLD; FAOSTAT fills supply gaps without stock ratios (see hasStocksToUse).
   rpc GetFoodStocks(GetFoodStocksRequest) returns (GetFoodStocksResponse) {
     option (sebuf.http.config) = {path: "/get-food-stocks", method: HTTP_METHOD_GET};
   }

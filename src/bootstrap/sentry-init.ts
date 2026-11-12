@@ -8,6 +8,7 @@
 
 import { isDesktopRuntime } from '@/services/desktop-runtime';
 import { isIosLikeUserAgent } from './platform-ua';
+import { installPageUnloadSignal, isPageUnloading } from './page-unload-signal';
 import { SENTRY_ALLOW_URLS } from './sentry-allow-urls';
 import { getSentryBuildMetadata, isolateNonProductionSentryEvent } from '../../shared/sentry-build-metadata';
 import { scrubSentryCredentials } from '../../shared/sensitive-url-params';
@@ -39,6 +40,9 @@ const THIRD_PARTY_FETCH_HOST_ALLOWLIST = new Set([
   'tilecache.rainviewer.com',
   'api.rainviewer.com', // weather radar API used by MapContainer.fetchAndApplyRadar — WORLDMONITOR-QG
   'basemaps.cartocdn.com',
+  // CARTO style.json (basemaps.cartocdn.com) points its vector tiles at this
+  // subdomain; hosts match exactly, so it needs its own entry. WORLDMONITOR-1BF.
+  'tiles.basemaps.cartocdn.com',
   'tiles.openfreemap.org',
   'protomaps.github.io',
   // Clerk Frontend API (CNAME → Clerk's auth infra). The bundled Clerk SDK
@@ -168,7 +172,6 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /contentWindow\.postMessage/,
       /Could not compile vertex shader/,
       /objectStoreNames/,
-      /Unexpected identifier 'https'/,
       /Can't find variable: _0x/,
       // The Chromium/Gecko half of the entry above. javascript-obfuscator names
       // its identifiers `_0x<hex>`, and a userscript or extension bundle that
@@ -401,7 +404,6 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /literal not terminated before end of script/,
       /'' is not a valid selector/,
       /frappe is not defined/,
-      /Unexpected identifier 'does'/,
       /Failed reading data from the file system/,
       /^UnavailableError(:.*)?$/,
       /null is not an object \(evaluating '\w{1,3}\.indexOf'\)/,
@@ -437,7 +439,6 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Cannot set properties of undefined \(setting 'bodyTouched'\)/, // Quark browser (Alibaba mobile) touch-tracking script injection (WORLDMONITOR-N1)
       /Cannot read properties of \w+ \(reading '[^']*[^\x00-\x7F][^']*'\)/, // Non-ASCII property name in message = mojibake/corrupted identifier from injected extension; our bundle emits ASCII-only identifiers (WORLDMONITOR-NS)
       /Octal literals are not allowed in strict mode/, // Runtime SyntaxError from injected extension script; our TS bundle never emits octal literals and doesn't eval (WORLDMONITOR-NV)
-      /Unexpected identifier 'm'/, // Foreign script injection on Opera; pre-compiled bundle can't parse-fail at runtime (WORLDMONITOR-NT)
       /PlayerControlsInterface\.\w+ is not a function/, // Android Chrome WebView native bridge injection (Bilibili/UC/QQ-style host) — never emitted by our code (WORLDMONITOR-P2)
       /github\.com\/styled-components\/styled-components\/blob/, // styled-components runtime error (errors.md#N URL); we don't depend on styled-components, so it can only be a browser extension (Grammarly et al.) injecting its own bundle — WORLDMONITOR-SE
       // The Umami tracker's beacon POST failed at the network layer and the
@@ -466,6 +467,15 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       }
       const msg = event.exception?.values?.[0]?.value ?? '';
       if (msg.length <= 3 && /^[a-zA-Z_$]+$/.test(msg)) return null;
+      // A reload or navigation aborts every in-flight fetch, and the rejections
+      // land while the page is going away. A `kind` claim does not rescue them:
+      // the owner is reporting the teardown, not an outage (WORLDMONITOR-1AY).
+      // Only the three engines' fetch-failure wordings, only as a TypeError.
+      if (
+        isPageUnloading()
+        && (event.exception?.values?.[0]?.type === 'TypeError' || msg.startsWith('TypeError: '))
+        && /^(?:TypeError: )?(?:Load failed|Failed to fetch|NetworkError when attempting to fetch resource\.?)(?: \(.*\))?$/.test(msg)
+      ) return null;
       // WebKit's wording for a failed fetch, relocated verbatim from
       // `ignoreErrors`. Reach is unchanged — still only a `TypeError` whose
       // message is exactly `Load failed`, optionally with a parenthesised
@@ -710,6 +720,11 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       if (excType === 'TypeError' && frames.some(f => /sortedTrackListForMenu/.test(f.function ?? ''))) return null;
       // Suppress TypeErrors from anonymous/injected scripts (no real source files or only inline page URL)
       if ((excType === 'TypeError' || /^TypeError:/.test(msg)) && frames.length > 0 && frames.every(f => !f.filename || f.filename === '<anonymous>' || /^blob:/.test(f.filename) || /^https?:\/\/[^/]+\/?$/.test(f.filename))) return null;
+      // Suppress ReferenceErrors whose every frame is `<anonymous>` (WORLDMONITOR-1A2:
+      // `Clerk is not defined` from an injected script or console snippet). Nothing
+      // we ship evaluates code at runtime, so our own ReferenceErrors always carry a
+      // bundle or page-URL frame; stricter than the TypeError gate above on purpose.
+      if (excType === 'ReferenceError' && frames.length > 0 && frames.every(f => f.filename === '<anonymous>')) return null;
       // Suppress errors thrown by an injected browser-automation harness driving
       // the page (e.g. Floot's agent). Its selector-resolution helpers throw
       // `Element not found: <sel>`, `No element found: <sel>`, and
@@ -786,10 +801,18 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // `Error` and synthesizes exactly ONE document-URL frame for it, and that
       // error can be ours — Firefox's `uncaught exception: [object Object]`
       // (WORLDMONITOR-106) is a bundle throwing a non-Error.
+      //
+      // An `EvalError` joins on the same multi-frame terms. Our CSP has no
+      // 'unsafe-eval', our bundle's evals would ride an `/assets/*.js` frame,
+      // and no inline script in our HTML entries evaluates a string (pinned by
+      // tests/sentry-beforesend.test.mjs). WORLDMONITOR-161 / -1CQ: Firefox's
+      // `call to eval() blocked by CSP` from a ~300 KB injected script at
+      // `/dashboard` 47:309244, where the served line 47 is a short meta tag.
+      // Chrome's wording of the same refusal is already in ignoreErrors.
       const isNonScriptUrlFrame = (filename: string) =>
         !/\.(?:m|c)?[jt]sx?(?:[?#]|$)/.test(filename)
         && (/^\/(?!\/)/.test(filename) || /^https?:\/\//.test(filename));
-      if ((excType === 'TypeError' || /^TypeError:/.test(msg) || (excType === 'Error' && nonInfraFrames.length > 1))
+      if ((excType === 'TypeError' || /^TypeError:/.test(msg) || ((excType === 'Error' || excType === 'EvalError') && nonInfraFrames.length > 1))
           && !hasFirstParty
           && nonInfraFrames.length > 0
           && nonInfraFrames.every(f => isNonScriptUrlFrame(f.filename ?? ''))) return null;
@@ -1152,6 +1175,15 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // token gate below misses this zero-frame variant (WORLDMONITOR-??:
           // Unexpected token 'else' / 'for', 2026-07-18).
           || /^(?:SyntaxError: )?Unexpected token '(?:else|for)'$/.test(msg)
+          // `Unexpected identifier '<name>'` from a script injected into the
+          // page: no stack at all via window.onerror (Sentry WORLDMONITOR-19G,
+          // Chrome 155 / Windows), or only `<anonymous>` / extension frames
+          // (WORLDMONITOR-NT, Opera). A parse failure in one of our hashed
+          // chunks reports that chunk's URL as its frame (hasFirstParty →
+          // preserved). Matches any identifier, and WebKit's trailing
+          // `. Expected ...` clause, so this replaces the per-identifier
+          // ignoreErrors entries that could not see frames.
+          || /^(?:SyntaxError: )?Unexpected identifier '[^']+'/.test(msg)
           // Firefox's wording for a failed `fetch()` — the engine-emitted
           // equivalent of Chrome's bare `Failed to fetch` (above) and Safari's
           // `Load failed`. Surfaces via `onunhandledrejection` with zero captured
@@ -1323,6 +1355,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
 }
 
 export async function loadAndInitSentry(): Promise<SentryNs> {
+  installPageUnloadSignal();
   const ns = await import('@sentry/browser');
   ns.init(buildSentryInitOptions());
   return ns;

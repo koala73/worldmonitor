@@ -33,7 +33,7 @@ Classifications: `parity` · `intentional difference` · `blocked` · `n/a`.
 | Desktop build env omits Clerk/Convex/VAPID/cyber `VITE_*` vars → sign-in, Pro, push, Cyber Threats dead in shipped builds | #5905 | fix landed (env declared + completeness gate + release preflight); remaining ops step: provision the four new repo secrets, after which release builds hard-fail if they go empty again |
 | Linux secret storage fails without an activatable Secret Service; every keyring error in `SecretsCache::load_from_keychain` is silently swallowed (`if let Ok`), so users get an empty vault with zero diagnostics | #802 / #1905 | open — needs secure fallback + migration + diagnostics |
 | Released 2.5.23 lacks Internet Outages / Cyber Threats layers | #5829 | diagnosed — three compounding causes, see row below |
-| Desktop readiness/error diagnosability; `src/services/desktop-readiness.ts:64-65` still cites deleted `/api/risk-scores` routes in the Service Status UI; sidecar readiness is assumed on port-file timeout (`main.rs:1443-1452`) rather than verified | #1942 | open — reassess with this evidence |
+| Desktop readiness/error diagnosability; sidecar readiness is assumed on port-file timeout (`main.rs:1443-1452`) rather than verified. (The stale `/api/risk-scores` citation in `src/services/desktop-readiness.ts` was repointed at the intelligence RPC under #5910, pinned by `tests/desktop-readiness-registry-paths.test.mjs`) | #1942 | open — reassess with this evidence |
 | AppImage update metadata (AppImageUpdate/zsync) | #5757 | open |
 | Uninstall experience | #5435 / #5487 | open |
 
@@ -62,7 +62,7 @@ current code does in a current desktop build — not the stale v2.5.23 binary.
 | Capability | Desktop behavior vs web | Classification | Evidence |
 | --- | --- | --- | --- |
 | API routing | All `/api/*` calls proxied through the Rust `proxy_local_api_request` command to a bundled Node sidecar on `127.0.0.1:46123` (port-file discovery, default 46123); web uses direct fetch | intentional difference (richer: local-first) | `src/services/runtime.ts:115-126,346-413`; `src-tauri/src/main.rs:25` |
-| Cloud fallback | Only with a valid `WORLDMONITOR_API_KEY` in the keyring, except a small key-free allowlist (`register-interest`, `leads/*`, `version`); web N/A | intentional difference — default install is local+anonymous-cloud-free | `src/services/runtime.ts:299-304,367-378` |
+| Cloud fallback | Carries the strongest credential available: a signed-in Pro session forwards its bearer, a desktop key or API key in the keyring is sent as `X-WorldMonitor-Key`, and a signed-out desktop uses an anonymous session (public routes only); web N/A | intentional difference — signed-out desktop sees what a signed-out browser sees | `src/services/runtime.ts:299-304,367-378` |
 | Sidecar route surface | 60 routes: 34 sebuf `{domain}/v1/[rpc].js` (esbuild-bundled at release) + 26 raw `.js`; `.ts`-only routes (87 files) are cloud-only | mixed — see gaps | `src-tauri/sidecar/local-api-server.mjs:531-557`; `scripts/build-sidecar-handlers.mjs` |
 | Seed-backed RPC data | **Fixed by #8154 (#5906)**: the sidecar has no Redis credentials, so every RPC route whose handler only reads seed-owned Redis (144 of 238 generated routes, in 31 of 37 route families) is cloud-preferred whether or not `WS_RELAY_URL` is set — 14 whole-family prefixes plus exact entries. Handlers that call an upstream themselves still run locally. A contract test derives the set from the generated route tables and fails when a seed-only route is uncovered, an exact entry is not a real route, or an entry's handler goes live. Historical state: hardcoded `cloudPreferred` covered only market/economic/infrastructure/news/research (5 of 34 domains) + `/api/bootstrap`, and the other domains served empty 200s that never tripped the `!ok` fallback | intentional difference — seed-backed data is served from the cloud | `local-api-server.mjs:838-987`; `tests/sidecar-cloud-preferred-seed-only.test.mjs`; `server/_shared/redis.ts:81-93` |
 | `api/v2/shipping` family | **Declared cloud-only**: `scripts/build-sidecar-handlers.mjs` lists it in `CLOUD_ONLY_ROUTE_FAMILIES` and fails the build on any undeclared `api/v{N}/{domain}` family; the sidecar routes `/api/v2/shipping/` to the cloud on purpose (`cloudOnlyRouteFamilyPrefixes`) instead of via the 404 fallback. `tests/sidecar-desktop-path-decisions.test.mjs` requires every `server/worldmonitor/` family to be either bundled or declared | intentional difference — cloud-only by design (#5907) | `scripts/build-sidecar-handlers.mjs`; `src-tauri/sidecar/local-api-server.mjs`; `src/shared/premium-paths.ts` |
@@ -90,7 +90,7 @@ current code does in a current desktop build — not the stale v2.5.23 binary.
 | --- | --- | --- | --- |
 | Clerk sign-in | No desktop gating in code; CSP allowlists Clerk — but **dead in shipped builds** (missing `VITE_CLERK_PUBLISHABLE_KEY`) | blocked → #5905 | `src/services/clerk.ts:30-49,233-236`; `src-tauri/tauri.conf.json:32` |
 | Convex entitlements | Same pattern: `VITE_CONVEX_URL` missing from the desktop build (workflow passes non-`VITE_` `CONVEX_URL`, which never reaches the client) | blocked → #5905 | `src/services/entitlements.ts:96-99`; `vite.config.ts` (no define) |
-| Premium access | `WORLDMONITOR_API_KEY` from keyring is the only working Pro path in shipped builds; sidecar attaches the key natively (renderer skip is by design) | parity for key users; blocked for subscribers | `src/services/panel-gating.ts:53-58`; `src/services/premium-fetch.ts:223-237` |
+| Premium access | Signed-in Pro forwards a bearer; a desktop key (Pro 2, Pro Business 3) or API key from the keyring also works, and the sidecar attaches the key natively (renderer skip is by design); signed-out uses an anonymous session. Desktop keys do not reach the API-only set (`/api/v2/`, shipping webhooks, MCP via key, OAuth key grants) | parity | `src/services/panel-gating.ts:53-58`; `src/services/premium-fetch.ts:223-237` |
 | Billing portal / checkout | Every billing, checkout and upgrade exit routes through `openExternalUrl`, which hands the URL to the OS browser via `open_url` on desktop (5s timeout, Sentry-reported failure, scheme-checked) and reports whether the handoff actually happened, so a failed open surfaces as a checkout error instead of a false "check your browser". The return URL is built from the canonical web origin; the app unlocks over the live Convex entitlement watch with no redirect back in. `openBillingPortal` reports `open-failed` rather than `opened` when nothing opened, and the checkout toast names the OS browser only when the native handoff actually succeeded. All seven remaining renderer call sites were migrated (#6120). **Residual**: the returning browser cannot acknowledge the purchase (its `handleCheckoutReturn` needs a session-local attempt record the app holds) → #6121; a plain-`http://` external link still cannot leave the app, because the native allowlist is https-only → tracked separately | intentional difference (desktop pays in the browser) — #5911 | `src/services/external-navigation.ts`; `src/services/checkout-return-url.ts:resolveCheckoutReturnOrigin`; `src/services/checkout.ts` (`navigateToWebSurface` + hosted-checkout branch) |
 | Settings → Plan &amp; billing tab | Uses the same Clerk auth-state gate on desktop and web. Signed-in desktop users can reach plan status, Manage Billing, upgrade fallback, and reactivation actions; web-only plan links use the canonical web origin so the desktop interceptor hands them to the OS browser | parity — #6108 | `src/components/UnifiedSettings.ts`; `tests/dom/unified-settings-upgrade-click-runtime.test.mts` |
 | #5901 unified user menu | No desktop-specific handling; hosts the billing surface above; menu itself requires Clerk (so absent from shipped builds until the env fix lands) | inherits the two rows above | `src/app/event-handlers.ts:1963` (commit `53181fb71`) |
@@ -150,11 +150,17 @@ release-candidate checklist:
    key changes and update both `NODE_RELEASE_KEYS_COMMIT` and
    `NODE_RELEASE_KEYS_SHA256` in the downloader. Verify the intended Node
    release against the updated keyring before committing the change.
-3. README/docs drift: "Stable" label, missing Linux ARM64 row, `windows-exe`
-   badges vs `windows-msi` in-app, wrong updater host/TTL in
-   `docs/desktop-app.mdx`, phantom 50 MB cap in `docs/usage-rate-limits.mdx`,
-   `api/api-route-exceptions.json` misdescribing `api/fwdstart.js`, no Linux
-   packaging doc. → #5910.
+3. README/docs drift → #5910. Corrected: Linux ARM64 in the README binaries
+   row, updater host/TTL and Linux Secret Service in `docs/desktop-app.mdx`
+   (+ zh), the phantom 50 MB cap in `docs/usage-rate-limits.mdx` (+ zh), a
+   Linux section in `docs/release-packaging.mdx` (via the existing
+   `desktop:package -- --os linux` runner), the two pre-sebuf `local-backend-audit.md` drafts marked superseded,
+   and the stale `/api/risk-scores` citation in `desktop-readiness.ts`.
+   `api/api-route-exceptions.json` already describes `api/fwdstart.js` correctly.
+   Still open: the "Stable" label against release cadence, and `windows-exe`
+   README/download.md badges vs the `windows-msi` in-app banner and updater —
+   a product call on which installer is canonical.
+
 4. macOS updater artifacts (`.app.tar.gz`) ship without `.sig` — no signed
    update chain. Documented as unsigned fallback; revisit with the release
    train. → tracked in #5902 §3.

@@ -20,6 +20,7 @@ import {
   FRESHNESS_REGISTRY,
   ALL_META_KEYS,
 } from '../scripts/regional-snapshot/freshness.mjs';
+import { classifyRegion as classifyGpsjamRegion } from '../scripts/_gpsjam-parse.mjs';
 
 // ────────────────────────────────────────────────────────────────────────────
 // airportToSnapshotRegion
@@ -646,5 +647,80 @@ describe('classifyInputs metaKey fallback (PR #2976 P2 #2)', () => {
       { 'seed-meta:military:flights': { recordCount: 100 } }, // meta has no fetchedAt
     );
     assert.ok(result.stale.includes('military:flights:v1'));
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Lat/lon parity with the airport registry and shared/iso2-to-region.json
+// ────────────────────────────────────────────────────────────────────────────
+//
+// The MENA box (12-42°N, 20-63°E) reached Greece and North Macedonia, the
+// Europe box reached the Algerian and Tunisian coast, and Morocco and western
+// Libya fell between boxes, so military flights there counted toward the
+// wrong region's reroute_intensity (or none). src/config/airports.ts files
+// ATH under europe and ALG/TUN/CMN under mena.
+
+describe('latLonToSnapshotRegion agrees with the airport registry by country', () => {
+  const places = [
+    ['Athens (ATH)', 37.94, 23.94, 'europe'],
+    ['Thessaloniki', 40.64, 22.94, 'europe'],
+    ['Heraklion', 35.34, 25.13, 'europe'],
+    ['Rhodes', 36.43, 28.22, 'europe'],
+    ['Patmos', 37.31, 26.55, 'europe'],
+    ['Didim', 37.37, 27.27, 'mena'],
+    ['Skopje', 42.00, 21.43, 'europe'],
+    ['Haskovo', 41.93, 25.55, 'europe'],
+    ['Reykjavik', 64.15, -21.94, 'europe'],
+    ['Ponta Delgada', 37.74, -25.67, 'europe'],
+    ['Las Palmas', 28.12, -15.43, 'europe'],
+    ['Palermo', 38.12, 13.36, 'europe'],
+    ['Valletta', 35.90, 14.51, 'europe'],
+    ['Lisbon', 38.72, -9.14, 'europe'],
+    ['Algiers (ALG)', 36.69, 3.22, 'mena'],
+    ['Tunis (TUN)', 36.85, 10.23, 'mena'],
+    ['Casablanca (CMN)', 33.37, -7.59, 'mena'],
+    ['Tangier', 35.77, -5.80, 'mena'],
+    ['Tripoli', 32.89, 13.19, 'mena'],
+    ['Tamanrasset', 22.79, 5.52, 'mena'],
+    ['Laayoune', 27.15, -13.20, 'mena'],
+    ['Istanbul (SAW)', 40.90, 29.31, 'mena'],
+    ['Izmir', 38.42, 27.14, 'mena'],
+    ['Edirne', 41.68, 26.56, 'mena'],
+    ['Cairo (CAI)', 30.12, 31.41, 'mena'],
+    ['Jeddah', 21.49, 39.19, 'mena'],
+    ['Khartoum', 15.50, 32.56, 'sub-saharan-africa'],
+    ['Port Sudan', 19.62, 37.22, 'sub-saharan-africa'],
+    ['Asmara', 15.32, 38.93, 'sub-saharan-africa'],
+    ['Zouérat', 22.73, -12.47, null], // northern Mauritania: outside every box, and not mena
+    ['Belize City', 17.50, -88.20, 'latam'],
+    ['Corozal', 18.39, -88.39, 'latam'],
+    ['Roatán', 16.33, -86.53, 'latam'],
+    ['Chetumal', 18.50, -88.30, 'north-america'],
+    // The Belize/Petén latitude band (16-17.82°N) on other continents.
+    ['Jizan', 16.90, 42.57, 'mena'],
+    ['Timbuktu', 16.77, -3.01, 'sub-saharan-africa'],
+    ['Hyderabad', 17.38, 78.49, 'south-asia'],
+    ['Hue', 16.46, 107.59, 'east-asia'],
+    ['Havana', 23.11, -82.37, 'latam'],
+    ['San Juan', 18.47, -66.11, 'latam'],
+    ['Nassau', 25.05, -77.35, 'latam'],
+    ['Cancún', 21.16, -86.85, 'north-america'],
+    ['Miami', 25.76, -80.19, 'north-america'],
+    ['Key West', 24.56, -81.78, 'north-america'],
+  ];
+
+  it('routes each place to its country\'s region', () => {
+    const wrong = places
+      .map(([place, lat, lon, region]) => [place, region, latLonToSnapshotRegion(lat, lon)])
+      .filter(([, want, got]) => want !== got);
+    assert.deepEqual(wrong, []);
+  });
+
+  it('GPS-jam hexes on the North African shore count toward mena airspace', () => {
+    assert.equal(classifyGpsjamRegion(36.75, 3.06), 'north-africa'); // Algiers
+    assert.equal(classifyGpsjamRegion(32.89, 13.19), 'north-africa'); // Tripoli
+    assert.equal(classifyGpsjamRegion(37.39, -5.98), 'western-europe'); // Seville
+    assert.equal(classifyGpsjamRegion(35.90, 14.51), 'western-europe'); // Valletta
+    assert.equal(gpsjamRegionToSnapshotRegion('north-africa'), 'mena');
   });
 });

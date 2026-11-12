@@ -54,6 +54,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { collectConvexRows } from "./lib/convex-run-pages.mjs";
 
 const CONVEX_URL = process.env.CONVEX_URL;
 const CONVEX_DEPLOY_KEY = process.env.CONVEX_DEPLOY_KEY;
@@ -79,23 +80,14 @@ console.log("");
 // `alertRules:getByEnabled` is an internalQuery (GHSA-r649-4cqj-w93h) —
 // unreachable via ConvexHttpClient — so fetch it through `npx convex run`,
 // which authenticates with CONVEX_DEPLOY_KEY (same path as the mutations below).
-const rulesResult = spawnSync(
-  "npx",
-  ["convex", "run", "alertRules:getByEnabled", '{"enabled":true}'],
-  { env: { ...process.env, CONVEX_URL, CONVEX_DEPLOY_KEY }, encoding: "utf-8", timeout: 30_000 },
-);
-if (rulesResult.status !== 0) {
-  console.error(`[disable-free-notif] getByEnabled failed (exit ${rulesResult.status}):`);
-  const tail = (rulesResult.stderr || rulesResult.stdout || "").trim().split("\n").slice(-3).join(" | ");
-  if (tail) console.error(`  ${tail}`);
-  process.exit(3);
-}
+// It is paginated (one byte-bounded page per call); the helper walks the pages.
 let allEnabled;
 try {
-  allEnabled = JSON.parse(rulesResult.stdout);
-} catch {
-  console.error("[disable-free-notif] getByEnabled returned unparseable output:");
-  console.error(`  ${(rulesResult.stdout || "").trim().split("\n").slice(-5).join(" | ")}`);
+  allEnabled = collectConvexRows("alertRules:getByEnabled", { enabled: true }, {
+    env: { ...process.env, CONVEX_URL, CONVEX_DEPLOY_KEY },
+  });
+} catch (err) {
+  console.error(`[disable-free-notif] ${err.message}`);
   process.exit(3);
 }
 

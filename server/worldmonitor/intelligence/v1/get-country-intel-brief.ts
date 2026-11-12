@@ -417,11 +417,13 @@ export async function getCountryIntelBrief(
       ? JSON.stringify(sources.filter(source => isBriefRelevantTitle(source.title)))
       : JSON.stringify({ contextSnapshot, sources });
   }
-  const [contextHashFull, frameworkHashFull] = await Promise.all([
+  // The routing policy is independent of the two content digests, and all
+  // three gate the cache key, so resolve them in one pass.
+  const [contextHashFull, frameworkHashFull, aiRouting] = await Promise.all([
     cacheContext ? sha256Hex(cacheContext) : Promise.resolve('base'),
     frameworkRaw    ? sha256Hex(frameworkRaw)    : Promise.resolve(''),
+    resolveAiRouting(ctx.request),
   ]);
-  const aiRouting = await resolveAiRouting(ctx.request);
   const cacheKey = deriveCountryIntelCacheKey({
     countryCode: req.countryCode.toUpperCase(),
     lang,

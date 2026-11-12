@@ -226,7 +226,7 @@ describe('direct country paid original reuse', () => {
     assert.equal(reads, 2); assert.equal(bundle.pipe.count, 1);
   });
   it('keeps private and wire budgets while reusing originals before JMESPath', async () => {
-    const bundle = makeProDeps(); brief.brief = '界'.repeat(25000); assert.equal(value(await invoke(bundle))._budget_exceeded, true);
+    const bundle = makeProDeps(); brief.brief = '界'.repeat(50000); assert.equal(value(await invoke(bundle))._budget_exceeded, true);
     assert.deepEqual(value(await invoke(bundle, 'get_country_brief', { country_code: 'US', jmespath: 'evidence' })), brief.evidence); assert.equal(calls.length, 2); assert.equal(bundle.pipe.count, 1);
     const huge = makeProDeps(); brief.brief = '界'.repeat(180000); await invoke(huge); await invoke(huge); assert.equal(cache(huge).length, 0); assert.equal(calls.length, 6); assert.equal(huge.pipe.count, 1);
   });

@@ -14,7 +14,7 @@ export interface VariantMeta {
 export const VARIANT_META: { full: VariantMeta; [k: string]: VariantMeta } = {
   full: {
     title: 'World Monitor - Real-Time Global Intelligence Dashboard',
-    description: 'Real-time global intelligence: conflicts, markets, military, OSINT signals — live in 190+ countries; structural resilience ranked for 170 of 196 countries.',
+    description: 'Real-time global intelligence: conflicts, markets, military, OSINT signals — live in 190+ countries; structural resilience ranked for 169 of 196 countries.',
     keywords: 'AI intelligence, AI-powered dashboard, global intelligence, geopolitical dashboard, world news, market data, military bases, nuclear facilities, undersea cables, conflict zones, real-time monitoring, situation awareness, OSINT, flight tracking, AIS ships, earthquake monitor, protest tracker, power outages, oil prices, government spending, polymarket predictions',
     url: 'https://www.worldmonitor.app/dashboard',
     siteName: 'World Monitor',
@@ -105,7 +105,7 @@ export const VARIANT_META: { full: VariantMeta; [k: string]: VariantMeta } = {
     ],
   },
   commodity: {
-    title: 'Commodity Monitor - Real-Time Commodity Markets & Supply Chain Dashboard',
+    title: 'Commodity Monitor: Live Commodity Markets & Supply Chains',
     description: 'Real-time commodity markets dashboard tracking mining sites, processing plants, commodity ports, supply chains, and global trade flows with live context.',
     keywords: 'commodity dashboard, mining sites, processing plants, commodity ports, supply chain, commodity markets, oil, gas, metals, agriculture, mining operations, commodity trade, logistics, infrastructure, resource tracking, commodity prices, futures markets',
     url: 'https://commodity.worldmonitor.app/dashboard',
@@ -128,7 +128,7 @@ export const VARIANT_META: { full: VariantMeta; [k: string]: VariantMeta } = {
     ],
   },
   energy: {
-    title: 'Energy Atlas - Real-Time Global Energy Intelligence Dashboard',
+    title: 'Energy Atlas - Live Global Energy Intelligence Dashboard',
     description: 'Real-time global energy atlas tracking oil and gas pipelines, storage facilities, chokepoints, fuel shortages, tanker flows, and disruption events worldwide.',
     keywords: 'energy dashboard, oil pipeline tracker, gas pipeline map, LNG terminals, gas storage map, oil storage, SPR tracker, Strait of Hormuz, chokepoint monitor, fuel shortage tracker, pipeline disruption, energy crisis, OPEC, tanker tracking, energy infrastructure, natural gas storage, crude oil inventories, IEA oil stocks, days of cover, energy sanctions, petroleum, diesel, jet fuel, heating oil',
     url: 'https://energy.worldmonitor.app/dashboard',

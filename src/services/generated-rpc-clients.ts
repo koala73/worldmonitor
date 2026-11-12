@@ -32,6 +32,7 @@ import type { UnrestServiceClient as UnrestServiceClientInstance } from '@/gener
 import type { WebcamServiceClient as WebcamServiceClientInstance } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import type { WildfireServiceClient as WildfireServiceClientInstance } from '@/generated/client/worldmonitor/wildfire/v1/service_client';
 import type { MarketServiceClient as MarketServiceClientCtor } from '@/generated/client/worldmonitor/market/v1/service_client';
+import { createRequestTimeoutSignal } from './timeout-signal';
 
 /** Derived from generated service client constructors so protoc-gen option drift fails typecheck. */
 type RpcClientOptions = NonNullable<ConstructorParameters<typeof MarketServiceClientCtor>[1]>;
@@ -42,11 +43,20 @@ type AsyncMethodsOnly<T> = { [K in keyof T]: T[K] extends (...args: never[]) => 
 
 export function createLazyRpcClientConstructor<T extends object & AsyncMethodsOnly<T>>(loadConstructor: RpcClientConstructorLoader<T>): RpcClientConstructor<T> {
   return function LazyRpcClient(baseURL: string, options?: RpcClientOptions): T {
+    const transport = options?.fetch ?? ((...args: Parameters<typeof fetch>) => globalThis.fetch(...args));
+    const boundedOptions: RpcClientOptions = {
+      ...options,
+      fetch: (input, init) => {
+        // A final guard for adapters that merely forward fetch. Callers keep
+        // their shorter budgets; 120s also accommodates the 90s LLM path.
+        return transport(input, { ...init, signal: createRequestTimeoutSignal(input, init, 120_000) });
+      },
+    };
     let clientPromise: Promise<T> | undefined;
     const getClient = () => {
       if (!clientPromise) {
         clientPromise = loadConstructor()
-          .then((ClientCtor) => new ClientCtor(baseURL, options))
+          .then((ClientCtor) => new ClientCtor(baseURL, boundedOptions))
           .catch((error) => {
             clientPromise = undefined;
             throw error;

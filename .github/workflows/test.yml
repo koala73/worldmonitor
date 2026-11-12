@@ -33,7 +33,27 @@ jobs:
       desktop_config: ${{ steps.diff.outputs.desktop_config }}
       desktop_rust: ${{ steps.diff.outputs.desktop_rust }}
       zapier: ${{ steps.diff.outputs.zapier }}
+      durations_key: ${{ steps.durations.outputs.cache-matched-key }}
     steps:
+      # The newest shard duration estimates CI has measured, found once per run
+      # so every unit shard partitions the inventory from the same file: each
+      # shard computes the whole partition and keeps its part, so two shards
+      # reading different estimates would drop or repeat test files. The shards
+      # save new entries as they finish. A PR run finds its own newest entry or
+      # main's. No entry, or a failed lookup, leaves the key empty and every
+      # shard falls back to scripts/shared/data-test-durations.json.
+      - name: Find the newest measured test durations
+        id: durations
+        continue-on-error: true
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/data-test-durations/durations.json
+          # A key nothing is saved under: actions/cache prefix-matches the
+          # primary key before restore-keys, so a run_id here would make a
+          # re-run of an old run prefer its own stale entry over the newest.
+          key: data-test-durations-v1-lookup
+          restore-keys: data-test-durations-v1-
+          lookup-only: true
       - id: diff
         shell: bash
         env:
@@ -256,9 +276,12 @@ jobs:
             /^src-tauri\// { count++; next }
             /^package\.json$/ { count++; next }
             /^scripts\/repack-linux-appimage\.sh$/ { count++; next }
+            /^scripts\/prefetch-appimage-tools\.sh$/ { count++; next }
+            /^scripts\/fetch-with-retry\.sh$/ { count++; next }
             /^scripts\/check-desktop-build-env\.mjs$/ { count++; next }
             /^scripts\/sync-desktop-version\.mjs$/ { count++; next }
             /^scripts\/check-rust-security-floors\.mjs$/ { count++; next }
+            /^scripts\/download-node\.sh$/ { count++; next }
             /^\.github\/workflows\/.*\.ya?ml$/ { count++ }
             END { print count + 0 }
           ')
@@ -327,19 +350,14 @@ jobs:
         run: node --test tests/docs-i18n-parity.test.mjs
       - name: Published internal links resolve without redirects
         run: node --import tsx --test tests/internal-link-redirects.test.mjs
-      - name: Source attribution inventory is current
-        run: node scripts/source-attribution.mjs --check
-      - name: Homepage teaser strip matches the committed pulse snapshot
-        # Belongs in this always-on job, not `unit`: a PR that touches only
-        # docs/snapshots/ sets changes.code=false and skips `unit` entirely, so
-        # the snapshot could move out from under the generated teaser strip
-        # without any gate running. Pure Node builtins, no install required.
-        run: node scripts/build-welcome-teasers.mjs --check
-      - name: Every entitlement gate is classified
-        # Fails when a new free-vs-paid gate ships without a capability id or a
-        # documented exclusion (exit 1), or when the tree is missing a source the
-        # sweep expects (exit 2) — a partial sweep must never certify as complete.
-        run: node scripts/generate-entitlement-crosswalk.mjs --check
+      - name: Derived files are current (npm run generate)
+        # Every committed generated file with a freshness check: product facts,
+        # llms.txt, AI search, source attribution, the homepage teaser strip,
+        # the entitlement crosswalk (exit 2 there means a missing source, and
+        # its output is printed), catalogs and notices. Always-on because a
+        # docs-only PR skips `unit`, yet docs feed several of these. zh-TW is
+        # skipped here (no OpenCC) and checked in unit-built-output.
+        run: node scripts/generate-derived.mjs --check
 
   unit-shards:
     name: unit-shard (${{ matrix.shard }})
@@ -380,12 +398,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            pro-test/package-lock.json
-            blog-site/package-lock.json
-            scripts/package-lock.json
       # tests/pizzint-history-redis.test.mjs is the only place the PizzINT
       # archive's Lua runs against a real server: the relay harness stubs the
       # EVAL and the proxy command-gate test only matches the script TEXT. That
@@ -398,26 +410,60 @@ jobs:
       # fails the shard if the binaries are missing.
       #
       # It runs before install-root-deps, not beside it: both composite actions
-      # use actions/cache, which this job does not reference at the top level,
-      # so in a parallel group the runner downloaded it twice at once and one
-      # copy failed ("Could not find file .../actions/cache/<sha>/examples.md",
-      # run 39936254975). Run in turn, the second reuses the first download.
+      # use actions/cache, and when a job does not reference it at the top
+      # level, a parallel group made the runner download it twice at once and
+      # one copy failed ("Could not find file .../actions/cache/<sha>/examples.md",
+      # run 39936254975). This job now references actions/cache/restore and
+      # save directly, so the runner fetches them at setup; keep the steps
+      # sequential anyway.
       - name: Install Redis for the archive Lua suite
         uses: ./.github/actions/install-redis
       - uses: ./.github/actions/install-root-deps
+      # The two nested trees are restored whole, like the root tree. Restoring
+      # setup-node's npm download cache for them cost 4-9s per shard, and the
+      # two installs another 7-10s. The key hashes every file that decides
+      # their contents; bump the version when an install command below (or
+      # ci:blog-site in package.json) changes.
+      - name: Restore blog-site and scripts/ dependencies
+        id: nested-deps
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
-          # setup-node restores the npm cache for this job's other install.
-          npm-cache: 'false'
+          path: |
+            blog-site/node_modules
+            scripts/node_modules
+          key: nested-deps-v1-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('blog-site/package.json', 'blog-site/package-lock.json', 'blog-site/.npmrc', 'scripts/package.json', 'scripts/package-lock.json', 'scripts/.npmrc', '.npmrc', 'vendor/http-cache-semantics/**') }}
       - name: Install blog-site deps for SEO contract tests
         # Unit-only nested install; keeps postinstall free of blog-site.
-        # Needed so blog-seo-contract can load astro.config.mjs.
+        # tests/dependency-backports.test.mjs checks the patched source Astro
+        # installs, and skips that check when blog-site/node_modules is absent.
+        if: steps.nested-deps.outputs.cache-hit != 'true'
         run: npm run ci:blog-site
       - name: Install scripts/ deps for the seeder link check
         # Railway seeders install scripts/package-lock.json, not the root tree.
         # tests/nixpacks-seeder-import-graph.test.mjs links their named package
         # imports against this install (#9608 shipped an undici 8 import to an
-        # undici 7 container with every suite green).
+        # undici 7 container with every suite green). WM_EXPECT_SCRIPTS_DEPS
+        # below fails the shard if a restored tree is missing it.
+        if: steps.nested-deps.outputs.cache-hit != 'true'
         run: npm ci --prefix scripts --ignore-scripts --no-audit --no-fund
+      - name: Save blog-site and scripts/ dependencies
+        if: steps.nested-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            blog-site/node_modules
+            scripts/node_modules
+          key: ${{ steps.nested-deps.outputs.cache-primary-key }}
+      # The exact entry the changes job found, with no fallback key: a shard
+      # that read anything else would partition differently from the others,
+      # so a miss fails the shard instead.
+      - name: Restore the newest measured durations
+        if: needs.changes.outputs.durations_key != ''
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/data-test-durations/durations.json
+          key: ${{ needs.changes.outputs.durations_key }}
+          fail-on-cache-miss: true
       - name: Data tests without built output
         # No build here: the unit-built-output job builds dist/ and public/pro/
         # once and runs every suite that names them. The marker stays set, so a
@@ -425,7 +471,49 @@ jobs:
         env:
           WM_EXPECT_BUILT_OUTPUT: '1'
           WM_EXPECT_SCRIPTS_DEPS: '1'
-        run: npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/5 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
+          DURATIONS_KEY: ${{ needs.changes.outputs.durations_key }}
+        run: npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/5 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl ${DURATIONS_KEY:+--durations="$HOME/data-test-durations/durations.json"}
+      # The next run's estimates, saved whether the tests passed or not: a cache
+      # saved only by green runs goes stale exactly while main is red. The next
+      # run reads only the newest entry, so if every shard saved, whichever
+      # finished last would win and the same shard could win every run. One
+      # shard saves per run instead: the one after the shard that saved the
+      # entry this run restored (the key ends in its number), so the turn
+      # rotates within each cache scope, a PR's or main's. It moves its own
+      # files halfway to what they measured; if its tests failed it saves the
+      # estimates unchanged, so a red shard passes the turn on instead of
+      # holding it. Neither step can fail the shard.
+      - name: Blend this shard's timings into the estimates
+        id: blend-durations
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          DURATIONS_KEY: ${{ needs.changes.outputs.durations_key }}
+          SHARD: ${{ matrix.shard }}
+          SHARD_TOTAL: ${{ strategy.job-total }}
+        run: |
+          last=0
+          [[ "$DURATIONS_KEY" =~ -([0-9]+)$ ]] && last=${BASH_REMATCH[1]}
+          saver=$(( last % SHARD_TOTAL + 1 ))
+          if (( saver != SHARD )); then
+            echo "Shard $saver saves this run's estimates, not this one."
+            exit 0
+          fi
+          previous=scripts/shared/data-test-durations.json
+          [ -n "$DURATIONS_KEY" ] && previous="$HOME/data-test-durations/durations.json"
+          next="$RUNNER_TEMP/next-durations.json"
+          node scripts/refresh-data-test-durations.mjs --blend --previous "$previous" --output "$next" "$RUNNER_TEMP/data-test-timings.jsonl" || true
+          [ -f "$next" ] || cp "$previous" "$next"
+          mkdir -p "$HOME/data-test-durations"
+          mv "$next" "$HOME/data-test-durations/durations.json"
+          echo "updated=true" >> "$GITHUB_OUTPUT"
+      - name: Save the estimates for the next run
+        if: ${{ !cancelled() && steps.blend-durations.outputs.updated == 'true' }}
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/data-test-durations/durations.json
+          key: data-test-durations-v1-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
       - name: Upload data test timings
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -456,16 +544,40 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            pro-test/package-lock.json
-            blog-site/package-lock.json
       - uses: ./.github/actions/install-root-deps
+      # Like the unit shards' nested-deps cache: the two nested trees are
+      # restored whole. Before, setup-node restored the npm download cache for
+      # all three lockfiles (6-9s, most of it the root's), and the two installs
+      # still took 3s (blog-site) and 12s (pro-test). The key hashes every
+      # file that decides their contents (both trees link packages from
+      # vendor/); bump the version when an install command below, ci:blog-site,
+      # or the install half of build:pro in package.json changes.
+      - name: Restore blog-site and pro-test dependencies
+        id: built-output-deps
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
-          # setup-node restores the npm cache for this job's other install.
-          npm-cache: 'false'
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+          path: |
+            blog-site/node_modules
+            pro-test/node_modules
+          key: built-output-deps-v1-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('blog-site/package.json', 'blog-site/package-lock.json', 'blog-site/.npmrc', 'pro-test/package.json', 'pro-test/package-lock.json', 'pro-test/.npmrc', '.npmrc', 'vendor/**') }}
+      - name: Install blog-site deps
+        if: steps.built-output-deps.outputs.cache-hit != 'true'
+        run: npm run ci:blog-site
+      - name: Install /pro deps
+        # The install half of build:pro; the build step below runs the other.
+        if: steps.built-output-deps.outputs.cache-hit != 'true'
+        env:
+          npm_config_allow_scripts: ''
+        run: npm --prefix pro-test ci --prefer-offline
+      - name: Save blog-site and pro-test dependencies
+        if: steps.built-output-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            blog-site/node_modules
+            pro-test/node_modules
+          key: ${{ steps.built-output-deps.outputs.cache-primary-key }}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
       - name: zh-TW catalogues reproduce from their Simplified source (#6555)
@@ -548,15 +660,15 @@ jobs:
           retention-days: 14
       - name: Build and verify buying guides
         run: |
-          npm run ci:blog-site
           npm --prefix blog-site run build
           npm --prefix blog-site run verify:guides
       - name: Build /pro artifacts for built-output tests
         # public/pro/ stopped being committed in #6898, so the suites that read
         # it need the same treatment dist/ already gets. Ordered before the
         # dashboard build to mirror production: root `vite build` copies
-        # public/ into dist/, so /pro must exist by then.
-        run: npm run build:pro
+        # public/ into dist/, so /pro must exist by then. This is the build
+        # half of build:pro; its install half is the cached step above.
+        run: npm --prefix pro-test run build
       - name: Build dashboard artifacts for built-output tests
         run: VITE_VARIANT=full ./node_modules/.bin/vite build
       - name: Client bundle size budget (#7111, #7119)
@@ -653,6 +765,7 @@ jobs:
           node-version: '24'
           cache: 'npm'
           cache-dependency-path: consumer-prices-core/package-lock.json
+      - uses: ./.github/actions/install-redis
       - run: npm ci --prefix consumer-prices-core
       - run: npm test --prefix consumer-prices-core
 
@@ -710,14 +823,42 @@ jobs:
       - uses: ./.github/actions/install-root-deps
       - run: npm run test:sidecar
 
+      # The downloader verifies the release signature and checksum. The cache
+      # holds only a runtime that passed that check, keyed on the script that
+      # pins the version, so a hit skips three uncached, unretried fetches
+      # (one failed run 40668904151).
+      - name: Restore the shipped Node.js runtime
+        id: shipped-node
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: src-tauri/sidecar/node
+          key: shipped-node-x86_64-unknown-linux-gnu-${{ hashFiles('scripts/download-node.sh') }}
+
       - name: Download the shipped Node.js runtime
-        run: bash scripts/download-node.sh --target x86_64-unknown-linux-gnu
+        if: steps.shipped-node.outputs.cache-hit != 'true'
+        run: |
+          for attempt in 1 2 3; do
+            bash scripts/download-node.sh --target x86_64-unknown-linux-gnu && exit 0
+            echo "::warning::shipped runtime download failed (attempt $attempt)"
+            sleep $((attempt * 10))
+          done
+          exit 1
+
+      # The desktop app loads these bundles, not the api/ sources the suite
+      # imports. Build them so the shipped-route check below reads what ships.
+      - name: Build the sidecar handler bundles
+        run: |
+          node scripts/build-sidecar-sebuf.mjs
+          node scripts/build-sidecar-handlers.mjs
 
       - name: Test sidecar with the shipped Node.js runtime
         run: |
           export PATH="$PWD/src-tauri/sidecar/node:$PATH"
           node --version
           npm run test:sidecar
+          # Every route the app ships must load from the shipped files alone
+          # on this runtime (#9906).
+          node scripts/check-sidecar-shipped-routes.mjs
 
   # Desktop drift gates (#5902): path-conditional so unrelated PRs skip them
   # (deploy-gate counts "skipped" as passing). desktop-config is the cheap
@@ -743,8 +884,11 @@ jobs:
             echo '::error::Desktop versions out of sync — run `npm run version:sync` and commit the result.'
             exit 1
           }
-      - name: Linux AppImage post-processing script parses
-        run: bash -n scripts/repack-linux-appimage.sh
+      - name: Linux AppImage build scripts parse
+        run: |
+          bash -n scripts/repack-linux-appimage.sh
+          bash -n scripts/prefetch-appimage-tools.sh
+          bash -n scripts/fetch-with-retry.sh
       - name: Desktop build env parity (#5905)
         # A VITE_ key missing from the Tauri build steps silently disables the
         # capability in every shipped build (sign-in, Pro, Cyber Threats were
@@ -791,6 +935,22 @@ jobs:
         # advisory.
         run: node scripts/check-rust-security-floors.mjs
 
+  # The release build bundles Node on Windows through Git Bash, which the
+  # Linux sidecar job never runs. v2.11.5's Windows build failed there first.
+  desktop-node-windows:
+    needs: changes
+    if: needs.changes.outputs.desktop_config == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Bundle the shipped Windows Node.js runtime
+        shell: bash
+        run: bash scripts/download-node.sh --target x86_64-pc-windows-msvc
+      - name: Run the bundled Windows Node.js runtime
+        shell: bash
+        run: src-tauri/sidecar/node/node.exe --version
+
   desktop-rust:
     needs: changes
     if: needs.changes.outputs.desktop_rust == 'true'
@@ -803,7 +963,7 @@ jobs:
         with:
           toolchain: 1.99.1
       - name: Rust cache
-        uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           workspaces: './src-tauri -> target'
           cache-on-failure: true
@@ -871,8 +1031,9 @@ jobs:
         # lists in package.json (test:e2e:ci-smoke:1..4) are balanced by
         # measured test-seconds (history in docs/solutions/performance-issues/
         # ci-runners-are-cpu-bound-shard-before-parallel-steps.md). Re-balance
-        # them from the per-test durations in the list reporter output when a
-        # spec grows.
+        # them with `node scripts/balance-smoke-shards.mjs --write`, which packs
+        # the specs from per-test durations in recent main runs, when a spec is
+        # added or grows.
         shard: [1, 2, 3, 4]
     timeout-minutes: 20
     needs: changes
@@ -1045,10 +1206,14 @@ jobs:
     # 40097331565), so the gates moved off its path instead. Both parts keep the
     # full setup: each builds /pro (the legacy WebMCP tests load
     # /pro/welcome.html) and a retry records video with Playwright's ffmpeg.
+    #
+    # The plugin parts run the MCP Apps view specs (news and country views) on
+    # the built views in dist/plugin. No other job ran them, so a change could
+    # break a view spec and still merge green (#10494 broke 31 metering tests).
     strategy:
       fail-fast: false
       matrix:
-        part: [webmcp, pro-gates]
+        part: [webmcp, pro-gates, plugin-news, plugin-country]
     runs-on: ubuntu-latest
     # No secrets are injected here. The smoke allows provider-level
     # unavailable/stale states and gates app-level boot, variant, 401,
@@ -1155,6 +1320,8 @@ jobs:
             # public/pro/ is built output since #6898. Keep this explicit and
             # immediately before the focused specs so the browser checks cannot
             # run against missing or stale bytes from another build.
+            # The plugin parts never load /pro.
+            if: ${{ !startsWith(matrix.part, 'plugin-') }}
             run: npm run build:pro
       - name: Run fail-closed prehydration browser checks
         id: prehydration
@@ -1170,15 +1337,16 @@ jobs:
           retention-days: 14
       # Named explicitly for the same reason as the ci-smoke set above: nothing
       # runs the e2e/ glob, so an unnamed gate reported green while never
-      # executing. The four /pro gates (critical-CSS layout shift, mobile
-      # overflow, hero native animation, hero LCP) share one Playwright run:
+      # executing. The /pro gates (critical-CSS layout shift, mobile
+      # overflow, hero native animation, hero LCP, landing nav fit in every
+      # locale) share one Playwright run:
       # each run starts the Vite dev server and Chrome (~3.5s), and separate
       # runs went one after another. They read the same public/pro/ bytes the
       # build step above produced, and nothing between here and there rebuilds
       # them -- they sit after the prehydration upload rather than beside its
       # build because dashboard-build-guards.test.mjs pins that
       # build/prehydration pair as literally adjacent text.
-      - name: Run /pro critical-CSS, overflow, hero animation and LCP gates
+      - name: Run /pro critical-CSS, overflow, hero animation, LCP and nav-fit gates
         id: pro-gates
         if: matrix.part == 'pro-gates'
         run: npm run test:e2e:pro-gates
@@ -1210,6 +1378,21 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-webmcp-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # Each plugin script builds dist/plugin first: the specs load the built
+      # views, never the source.
+      - name: Run MCP Apps view specs
+        id: plugin
+        if: startsWith(matrix.part, 'plugin-')
+        run: npm run test:e2e:${{ matrix.part }}
+      - name: Upload MCP Apps view Playwright artifacts
+        if: ${{ !cancelled() && steps.plugin.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-${{ matrix.part }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14

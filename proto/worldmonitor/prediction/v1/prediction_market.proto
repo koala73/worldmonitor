@@ -47,4 +47,8 @@ message PredictionMarket {
     (buf.validate.field).double.gte = -1,
     (buf.validate.field).double.lte = 1
   ];
+  // Resting order-book depth in USD, measured per venue: Polymarket CLOB
+  // liquidity, or the sum of price times size over every Kalshi yes and no bid.
+  // Absent when the venue reports none or the order book could not be fetched.
+  optional double liquidity = 12 [(buf.validate.field).double.gte = 0];
 }

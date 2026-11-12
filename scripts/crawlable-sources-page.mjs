@@ -101,7 +101,7 @@ const SOURCE_DOMAIN_MATCHERS = [
   ['environment', /climate|natural|earthquake|wildfire|fire-detection|weather|cyclone|disaster|air-quality|radiation|disease|eonet|firms/],
   ['energy', /energy|fuel|gas-storage|petroleum|oil-stock|electricity|gold|commodity|mineral|jodi|eia\.gov|gie\.eu|ember|low-carbon|power-reliability|fossil/],
   ['infrastructure', /infrastructure|cyber|cable|cloudflare|service-status|pipeline|internet-outage|portwatch|chokepoint|maritime|navigational-warning|abuseipdb|abuse\.ch/],
-  ['finance', /econom|market|finance|stock|crypto|coin|exchange-rate|\bfx\b|yield|central-bank|trade|supply-chain|grocery|bigmac|debt|bis-|ecb-|eurostat|world-bank|comtrade|fao-food|treasury|fiscaldata|world-cpi|oecd|e-stat|abs\.gov\.au/],
+  ['finance', /econom|market|finance|stock|crypto|coin|exchange-rate|\bfx\b|yield|central-bank|trade|supply-chain|grocery|food-prices|bigmac|debt|bis-|ecb-|eurostat|world-bank|comtrade|fao-food|treasury|fiscaldata|world-cpi|oecd|e-stat|abs\.gov\.au/],
   ['technology', /research|company|github|agentskills|technology|regulatory|tender|patent|startup|product-hunt|ossinsight|exa\.ai|firecrawl/],
   ['geopolitics', /conflict|unrest|acled|ucdp|gdelt|security-advisor|sanction|travel-advisor|displacement|cross-border|resilience|country-fact|prediction-market|forecast-market|hapi/],
 ];
@@ -110,17 +110,51 @@ const SOURCE_DOMAIN_MATCHERS = [
 // Keep ambiguous structured providers explicit so a new unmatched provider
 // fails the build instead of silently becoming "geopolitics".
 const SOURCE_DOMAIN_OVERRIDES = new Map([
+  ['ammancity.gov.jo', 'finance'],
+  ['data.1212.mn', 'finance'],
+  ['madr.gov.dz', 'finance'],
+  ['api.siat.stat.uz', 'finance'],
+  ['precios.maga.gob.gt', 'finance'],
+  ['simaniger.net', 'finance'],
+  ['stat.gov.kg', 'finance'],
+  ['stat.gov.kz', 'finance'],
+  ['stat.uz', 'finance'],
+  ['tcb.gov.bd', 'finance'],
+  ['ugandacoffee.go.ug', 'finance'],
+  ['www.nabc.go.th', 'finance'],
+  ['www.ocpv-ci.com', 'finance'],
+  ['www.viwanda.go.tz', 'finance'],
+  ['www.bi.go.id', 'finance'],
+  ['www.cbsl.gov.lk', 'finance'],
+  ['www.da.gov.ph', 'finance'],
+  ['www.economia-sniim.gob.mx', 'finance'],
+  ['www.onagri.nat.tn', 'finance'],
+  ['www.pbs.gov.pk', 'finance'],
+  ['hormuz.data-tracking.net', 'infrastructure'],
+  // NGA broadcast warnings feed chokepoint status and cable health from server/_shared.
+  ['msi.nga.mil', 'infrastructure'],
   ['Alberta Emergency Alert', 'environment'],
   ['B.C. Evacuation Orders and Alerts', 'environment'],
   ['SaskAlert', 'environment'],
   ['Hyperliquid', 'finance'],
   ['Barchart', 'finance'],
+  // ICESat-2 ATL13 granule search and subsetting for Strategic Water Levels.
+  ['NASA Earthdata CMR', 'environment'],
+  ['SlideRule Earth', 'environment'],
   ['TradingView', 'finance'],
   ['api.rainviewer.com', 'environment'],
+  // #6229: NVD CVE reference store for the cyber surface (scripts/seed-cve-reference.mjs).
+  ['NVD (NIST)', 'infrastructure'],
+  // #6153: Moscow Exchange ISS serves the RU country stock index (scripts/_country-stock-index-moex.mjs).
+  ['iss.moex.com', 'finance'],
   // #9094: locates published fact-checks for /verify and verify_claim.
   ['factchecktools.googleapis.com', 'news'],
   // BestTime live busyness is the fallback feed for the PizzINT (Pentagon pizza) panel.
   ['besttime.app', 'military'],
+  // Turkey's crude imports by origin for the energy shock model.
+  ['www.epdk.gov.tr', 'energy'],
+  // UN M49 region table behind media-perspective outlet_regions (build-time only).
+  ['unstats.un.org', 'news'],
   ['api.scrapecreators.com', 'news'],
   ['api.telegram.org', 'news'],
   ['api.tzevaadom.co.il', 'military'],
@@ -128,6 +162,8 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['api.windy.com', 'environment'],
   ['archive-api.open-meteo.com', 'environment'],
   ['open-meteo.caseyjhand.com', 'environment'],
+  ['identity.dataspace.copernicus.eu', 'environment'],
+  ['sh.dataspace.copernicus.eu', 'environment'],
   ['British Geological Survey World Mineral Statistics', 'energy'],
   ['Bank of Canada', 'finance'],
   ['bothsidesofthetable.com', 'technology'],
@@ -194,6 +230,7 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
 // Keep the hostname as the traceability link, but never make it do double duty
 // as the visible provider title.
 const SOURCE_NAME_OVERRIDES = new Map([
+  ['hormuz.data-tracking.net', 'UK Maritime Trade Operations (UKMTO) via hormuz.data-tracking.net'],
   ['acleddata.com', 'ACLED'],
   ['factchecktools.googleapis.com', 'Google Fact Check Tools API'],
   ['adsb.lol', 'ADSB.lol'],
@@ -270,6 +307,8 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['feodotracker.abuse.ch', 'Feodo Tracker'],
   ['finance.yahoo.com', 'Yahoo Finance'],
   ['firms.modaps.eosdis.nasa.gov', 'NASA FIRMS'],
+  ['identity.dataspace.copernicus.eu', 'Copernicus Data Space Ecosystem (identity)'],
+  ['sh.dataspace.copernicus.eu', 'Copernicus Sentinel Hub (Sentinel-5P TROPOMI)'],
   ['gain.nd.edu', 'Notre Dame Global Adaptation Initiative'],
   ['gamma-api.polymarket.com', 'Polymarket'],
   ['geospatial-usace.opendata.arcgis.com', 'U.S. Army Corps of Engineers'],
@@ -369,12 +408,44 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['urlhaus-api.abuse.ch', 'URLhaus'],
   ['wabi-europe-north-b-api.analysis.windows.net', 'Microsoft Power BI'],
   ['web.archive.org', 'Internet Archive'],
+  ['ammancity.gov.jo', 'Greater Amman Municipality Central Market'],
+  ['data.1212.mn', 'National Statistics Office of Mongolia'],
+  ['fdw.fews.net', 'FEWS NET Data Warehouse'],
+  ['data.moa.gov.tw', 'Taiwan Ministry of Agriculture'],
+  ['www.geostat.ge', 'National Statistics Office of Georgia'],
+  ['storage.data.gov.my', 'Malaysia KPDN PriceCatcher'],
+  ['mercadocentral.gob.ar', 'Mercado Central de Buenos Aires'],
+  ['ws.cso.ie', 'Central Statistics Office of Ireland'],
+  ['lustat.statec.lu', 'STATEC Luxembourg'],
+  ['agriculture.ld.admin.ch', 'Swiss FOAG linked data'],
+  ['lindas.cz-aws.net', 'Swiss FOAG on LINDAS'],
+  ['data.stat.gov.lv', 'Central Statistical Bureau of Latvia'],
+  ['makstat.stat.gov.mk', 'North Macedonia MakStat'],
+  ['madr.gov.dz', 'Algeria Ministry of Agriculture (MADR)'],
+  ['api.siat.stat.uz', 'Uzbekistan Statistics Agency'],
+  ['precios.maga.gob.gt', 'Guatemala Ministry of Agriculture (MAGA)'],
+  ['simaniger.net', 'SIMA Niger'],
+  ['stat.gov.kg', 'National Statistical Committee of Kyrgyzstan'],
+  ['stat.gov.kz', 'Kazakhstan Bureau of National Statistics'],
+  ['stat.uz', 'Uzbekistan Statistics Agency'],
+  ['tcb.gov.bd', 'Trading Corporation of Bangladesh'],
+  ['ugandacoffee.go.ug', 'Uganda Coffee Development Authority'],
+  ['www.nabc.go.th', 'Thailand National Agricultural Big Data Center'],
+  ['www.ocpv-ci.com', "Côte d'Ivoire OCPV"],
+  ['www.viwanda.go.tz', 'Tanzania Ministry of Industry and Trade'],
+  ['www.bi.go.id', 'Bank Indonesia PIHPS'],
+  ['www.cbsl.gov.lk', 'Central Bank of Sri Lanka'],
+  ['www.da.gov.ph', 'Philippines Department of Agriculture'],
+  ['www.economia-sniim.gob.mx', 'Mexico SNIIM'],
+  ['www.onagri.nat.tn', 'Tunisia ONAGRI'],
+  ['www.pbs.gov.pk', 'Pakistan Bureau of Statistics'],
   ['www.cbr.ru', 'Bank of Russia'],
   ['www.contractsfinder.service.gov.uk', 'UK Contracts Finder'],
   ['www.cidrap.umn.edu', 'Center for Infectious Disease Research and Policy (CIDRAP)'],
   ['www.ecb.europa.eu', 'European Central Bank (ECB)'],
   ['www.ecdc.europa.eu', 'European Centre for Disease Prevention and Control'],
   ['www.eia.gov', 'U.S. Energy Information Administration (EIA)'],
+  ['www.epdk.gov.tr', 'Energy Market Regulatory Authority of Türkiye (EPDK)'],
   ['www.fao.org', 'UN Food and Agriculture Organization (FAO)'],
   ['www.federalreserve.gov', 'U.S. Federal Reserve'],
   ['www.gdacs.org', 'Global Disaster Alert and Coordination System (GDACS)'],
@@ -384,7 +455,7 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['www.iea.org', 'International Energy Agency (IEA)'],
   ['www.jodidata.org', 'Joint Organisations Data Initiative (JODI)'],
   ['www.gets.govt.nz', 'New Zealand Government Electronic Tenders Service'],
-  ['www.mbie.govt.nz', 'New Zealand Ministry of Business, Innovation and Employment'],
+  ['www.comcom.govt.nz', 'New Zealand Commerce Commission'],
   ['www.mnd.gov.tw', 'Taiwan Ministry of National Defense'],
   ['www.mod.go.jp', 'Japan Ministry of Defense'],
   ['www.ncei.noaa.gov', 'NOAA National Centers for Environmental Information'],
@@ -414,14 +485,20 @@ const US_EMBASSY_COUNTRIES = new Map([
   ['co', 'Colombia'],
   ['de', 'Germany'],
   ['do', 'the Dominican Republic'],
+  ['id', 'Indonesia'],
   ['in', 'India'],
   ['it', 'Italy'],
+  ['kh', 'Cambodia'],
   ['mm', 'Myanmar'],
   ['mx', 'Mexico'],
+  ['my', 'Malaysia'],
+  ['ph', 'the Philippines'],
   ['pk', 'Pakistan'],
   ['pl', 'Poland'],
+  ['sg', 'Singapore'],
   ['th', 'Thailand'],
   ['ua', 'Ukraine'],
+  ['vn', 'Vietnam'],
 ]);
 
 const BRAND_TOKEN_OVERRIDES = new Map([
@@ -810,6 +887,17 @@ export function buildSourcePages(sourceCatalog) {
   });
 }
 
+function sourceCategoryDocumentTitle(name) {
+  const longTitle = `${name}: Data Sources and Providers | World Monitor`;
+  const title = [...longTitle].length > 60
+    ? `${name} Data Sources | World Monitor`
+    : longTitle;
+  if ([...title].length > 60) {
+    throw new Error(`${name} document title is ${[...title].length} characters: ${title}`);
+  }
+  return title;
+}
+
 export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets = [], baseUrl, lastmod, helpers, directoryPages = null, sourcePage = null, catalogAnchors = sourceCardAnchors(sourceCatalog), siblingPages = [] }) {
   const { absoluteUrl, breadcrumbLd, dataCatalogLd, escapeHtml, pageDocument } = helpers;
   const path = sourcePage?.path || '/sources/';
@@ -1159,7 +1247,7 @@ ${providerCards}
   return pageDocument({
     baseUrl,
     path,
-    title: sourcePage ? `${sourcePage.name}: Data Sources and Providers | World Monitor` : 'Data Source Catalog | World Monitor',
+    title: sourcePage ? sourceCategoryDocumentTitle(sourcePage.name) : 'Global Data Sources: OSINT, Markets, Energy | World Monitor',
     description,
     lastmod,
     jsonLd: [

@@ -26,7 +26,6 @@ process.env.UPSTASH_REDIS_REST_TOKEN = 'mock-token';
 process.env.WORLDMONITOR_VALID_KEYS = 'test-health-admin-key';
 
 const { default: handler, __testing__ } = await import('../api/health.js');
-const { findOperationalProblems, findPendingDiagnostics } = await import('../scripts/check-seed-freshness.mjs');
 const {
   HEALTH_VERDICT_SNAPSHOT_KEY: HEALTH_SNAPSHOT_KEY,
   HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY: HEALTH_COMPACT_SNAPSHOT_KEY,
@@ -293,8 +292,6 @@ test('a first unreachable or erroring relay is RELAY_GATE_UNREACHABLE under grac
   assert.equal(detailed.summary.pending, (control.pending ?? 0) + 1, 'summary.pending is published once something is pending');
   assert.equal(compact.problems?.[RELAY_GATEWAY_GATE_CHECK_NAME], undefined);
   assert.equal(compact.pending[RELAY_GATEWAY_GATE_CHECK_NAME].status, 'RELAY_GATE_UNREACHABLE');
-  assert.equal(findOperationalProblems(compact).some((p) => p.name === RELAY_GATEWAY_GATE_CHECK_NAME), false);
-  assert.ok(findPendingDiagnostics(compact).some((p) => p.name === RELAY_GATEWAY_GATE_CHECK_NAME));
 });
 
 test('a stall that outlives its grace becomes an operational RELAY_GATE_UNREACHABLE problem and the grace is carried, not restarted', async () => {
@@ -325,7 +322,7 @@ test('a stall that outlives its grace becomes an operational RELAY_GATE_UNREACHA
   const snapshotTtlArg = snapshotWrite[3 + Number(snapshotWrite[2]) + 3];
   assert.equal(snapshotTtlArg, String(__testing__.HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS), 'the warning snapshot keeps its full TTL');
   assert.equal(compact.problems[RELAY_GATEWAY_GATE_CHECK_NAME].status, 'RELAY_GATE_UNREACHABLE');
-  assert.ok(findOperationalProblems(compact).some((p) => p.name === RELAY_GATEWAY_GATE_CHECK_NAME), 'now operational');
+  assert.notEqual(compact.dataStatus, 'OK');
   // Owner publish: EVAL <script> 2 <lease> <verdict> <token> <json> <ttl>.
   const publish = redisCommands.find(([op, , numkeys, , target]) => op === 'EVAL' && numkeys === '2' && target === RELAY_GATEWAY_GATE_PROBE_KEY);
   assert.equal(publish[3], RELAY_GATEWAY_GATE_LEASE_KEY, 'the publish is guarded by the lease');
@@ -333,10 +330,10 @@ test('a stall that outlives its grace becomes an operational RELAY_GATE_UNREACHA
   // With no other traffic the operational monitor is the only sweep, every
   // 15 minutes; the streak must survive that gap or every run would be a
   // "first sighting" and a dead relay would sit in pending forever.
-  const { SEED_FRESHNESS_MONITOR_INTERVAL_MS } = __testing__;
-  assert.equal(SEED_FRESHNESS_MONITOR_INTERVAL_MS, 15 * 60 * 1_000, 'mirrors seed-freshness-monitor.yml cron */15');
+  const { HEALTH_POLL_INTERVAL_MS } = __testing__;
+  assert.equal(HEALTH_POLL_INTERVAL_MS, 15 * 60 * 1_000, 'bounds the slowest external health poll');
   assert.ok(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS * 1_000
-    > RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS + SEED_FRESHNESS_MONITOR_INTERVAL_MS,
+    > RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS + HEALTH_POLL_INTERVAL_MS,
   'retention outlives grace plus one monitor interval');
 });
 

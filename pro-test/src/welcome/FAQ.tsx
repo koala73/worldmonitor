@@ -43,7 +43,7 @@ export const FAQ = () => {
       <SectionHeading eyebrow={t('welcome.faq.eyebrow')} title={t('welcome.faq.title')} subtitle={t('welcome.faq.sub', { answers: faqs.length })} />
       <div className="space-y-4">
         {faqs.map((faq, i) => (
-          <details key={i} open={faq.open} className="group bg-wm-card border border-wm-border rounded-sm [&_summary::-webkit-details-marker]:hidden">
+          <details key={i} open={faq.open} className="group bg-wm-card border border-wm-border rounded-lg [&_summary::-webkit-details-marker]:hidden">
             <summary className="flex items-center justify-between p-6 cursor-pointer font-medium">
               {faq.q}
               <ChevronDown className="w-5 h-5 text-wm-muted group-open:rotate-180 transition-transform shrink-0 ml-4" aria-hidden="true" />

@@ -24,7 +24,7 @@
 # robots.www.txt.
 
 User-agent: *
-Content-Signal: ai-train=no, search=yes, ai-input=yes
+Content-Signal: ai-train=yes, search=yes, ai-input=yes
 Allow: /
 Allow: /dashboard$
 Allow: /api/story
@@ -48,7 +48,7 @@ User-agent: PerplexityBot
 User-agent: Google-Extended
 User-agent: Applebot-Extended
 User-agent: DuckAssistBot
-Content-Signal: ai-train=no, search=yes, ai-input=yes
+Content-Signal: ai-train=yes, search=yes, ai-input=yes
 Allow: /
 Allow: /dashboard$
 Allow: /api/story
@@ -68,7 +68,7 @@ User-agent: ChatGPT-User
 User-agent: Claude-User
 User-agent: Perplexity-User
 User-agent: MistralAI-User
-Content-Signal: ai-train=no, search=yes, ai-input=yes
+Content-Signal: ai-train=yes, search=yes, ai-input=yes
 Allow: /
 Allow: /dashboard$
 Allow: /api/story
@@ -83,7 +83,6 @@ Disallow: /tmp/
 
 User-agent: CCBot
 User-agent: Bytespider
-User-agent: anthropic-ai
 Disallow: /
 
 Sitemap: https://www.worldmonitor.app/sitemap.xml

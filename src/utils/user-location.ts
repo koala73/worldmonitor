@@ -1,42 +1,177 @@
 import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
 
-type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
+export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 
-const ASIA_EAST_TIMEZONES = new Set([
-  'Asia/Tokyo', 'Asia/Seoul', 'Asia/Shanghai', 'Asia/Hong_Kong',
-  'Asia/Taipei', 'Asia/Singapore',
+// Region names follow the countries in shared/iso2-to-region.json, with the map
+// views' own choices kept: Mexico, the US and Canada are 'america'; the
+// Caribbean and Central America are 'latam'; Turkey and the Caucasus are
+// 'mena'; Egypt is 'mena' and the Maghreb 'africa'; Central Asia and Siberia
+// are 'asia'.
+
+// US, Canadian, Mexican and Greenland zones. Every other America/* zone is in
+// the Caribbean, Central America or South America.
+const NORTH_AMERICA_ZONE = /^America\/(New_York|Chicago|Denver|Los_Angeles|Phoenix|Anchorage|Juneau|Sitka|Yakutat|Nome|Metlakatla|Adak|Atka|Boise|Detroit|Menominee|Indiana\/.+|Indianapolis|Fort_Wayne|Knox_IN|Kentucky\/.+|Louisville|North_Dakota\/.+|Shiprock|Toronto|Montreal|Nipigon|Thunder_Bay|Rainy_River|Atikokan|Coral_Harbour|Vancouver|Edmonton|Calgary|Winnipeg|Regina|Swift_Current|Halifax|Glace_Bay|Moncton|Goose_Bay|St_Johns|Blanc-Sablon|Whitehorse|Dawson|Dawson_Creek|Fort_Nelson|Creston|Yellowknife|Inuvik|Cambridge_Bay|Iqaluit|Pangnirtung|Rankin_Inlet|Resolute|Mexico_City|Cancun|Merida|Monterrey|Matamoros|Chihuahua|Ciudad_Juarez|Ojinaga|Mazatlan|Bahia_Banderas|Hermosillo|Tijuana|Ensenada|Santa_Isabel|Nuuk|Godthab|Danmarkshavn|Scoresbysund|Thule|Miquelon)$/;
+
+// Asia/* zones in the Gulf, the Levant, Iran, Iraq and the Caucasus. Every
+// other Asia/* zone is 'asia', apart from Cyprus, which is 'eu'.
+const MENA_ASIA_ZONES = new Set([
+  'Dubai', 'Muscat', 'Riyadh', 'Qatar', 'Bahrain', 'Kuwait', 'Aden', 'Baghdad',
+  'Tehran', 'Jerusalem', 'Tel_Aviv', 'Gaza', 'Hebron', 'Beirut', 'Damascus',
+  'Amman', 'Istanbul', 'Tbilisi', 'Yerevan', 'Baku',
 ]);
 
-function timezoneToRegion(tz: string): MapView | null {
-  if (ASIA_EAST_TIMEZONES.has(tz)) return 'asia';
-  const prefix = tz.split('/')[0];
+const ATLANTIC_ZONES: Record<string, MapView> = {
+  Reykjavik: 'eu', Azores: 'eu', Madeira: 'eu', Canary: 'eu', Faroe: 'eu', Faeroe: 'eu',
+  Jan_Mayen: 'eu', Bermuda: 'america', Cape_Verde: 'africa', St_Helena: 'africa',
+  Stanley: 'latam', South_Georgia: 'latam',
+};
+
+const INDIAN_ZONES: Record<string, MapView> = {
+  Maldives: 'asia', Chagos: 'asia', Christmas: 'asia', Cocos: 'asia',
+  Mauritius: 'africa', Reunion: 'africa', Mayotte: 'africa', Comoro: 'africa',
+  Antananarivo: 'africa', Mahe: 'africa',
+};
+
+export function timezoneToRegion(tz: string): MapView | null {
+  const slash = tz.indexOf('/');
+  const prefix = slash < 0 ? tz : tz.slice(0, slash);
+  const city = slash < 0 ? '' : tz.slice(slash + 1);
   switch (prefix) {
     case 'America':
+      return NORTH_AMERICA_ZONE.test(tz) ? 'america' : 'latam';
     case 'US':
     case 'Canada':
+    case 'Mexico':
       return 'america';
+    case 'Brazil':
+    case 'Chile':
+      return 'latam';
     case 'Europe':
+      if (city === 'Istanbul') return 'mena';
+      return 'eu';
+    case 'Arctic':
       return 'eu';
     case 'Africa':
-      return 'africa';
+      return city === 'Cairo' ? 'mena' : 'africa';
     case 'Asia':
-      return 'mena';
+      if (city === 'Nicosia' || city === 'Famagusta') return 'eu';
+      return MENA_ASIA_ZONES.has(city) ? 'mena' : 'asia';
+    case 'Atlantic':
+      return ATLANTIC_ZONES[city] ?? null;
+    case 'Indian':
+      return INDIAN_ZONES[city] ?? null;
     case 'Australia':
+      return 'oceania';
     case 'Pacific':
+      if (city === 'Honolulu' || city === 'Johnston') return 'america';
+      if (city === 'Galapagos' || city === 'Easter') return 'latam';
       return 'oceania';
     default:
       return null;
   }
 }
 
-function coordsToRegion(lat: number, lon: number): MapView {
-  if (lat > 15 && lon > 60 && lon < 150) return 'asia';
-  if (lat > 10 && lat < 45 && lon > 25 && lon < 65) return 'mena';
-  if (lat > -40 && lat < 40 && lon > -25 && lon < 55) return 'africa';
-  if (lat > 35 && lat < 72 && lon > -25 && lon < 45) return 'eu';
-  if (lat > -60 && lat < 15 && lon > -90 && lon < -30) return 'latam';
-  if (lat > 15 && lon > -170 && lon < -50) return 'america';
-  if (lat < 0 && lon > 100) return 'oceania';
+// Southern Europe and the North African shore share 35-38°N west of 25°E.
+// Morocco tops out below 36.0°N (Spain's Tarifa is 36.01°N), Algeria below
+// 37.1°N (Spain's Águilas is 37.4°N), and Tunisia from 8°E below 37.6°N (Cape
+// Serrat 37.22°N, Ras Ben Sakka 37.35°N, La Galite 37.53°N; Sardinia starts at
+// 38.86°N, and Sicily and Pantelleria lie east of 11.5°E).
+function isNorthAfricanCoast(lat: number, lon: number): boolean {
+  if (lon < -1.8) return lat < 36.0;
+  if (lon < 8.0) return lat < 37.1;
+  if (lon < 11.5) return lat < 37.6;
+  return false;
+}
+
+// European land inside the Middle East box (10-45°N, 25-60°E). The lines follow
+// the Greek and Bulgarian borders with Turkey (Edirne and Kırklareli are
+// Turkish, Burgas and Malko Tarnovo Bulgarian), the Black Sea (Turkey's coast
+// stays south of 42.15°N, so Crimea, Romania and Bulgaria are north of it) and
+// the Greater Caucasus (Sochi, Vladikavkaz, Grozny and Derbent are Russian;
+// Sukhumi, Tbilisi and Baku are not). The boxes after them are Cyprus and the
+// Greek islands off Turkey's coast.
+function isEuropeInMenaBox(lat: number, lon: number): boolean {
+  if (lon < 26.3 && lat > 40.6) return true;
+  if (lon >= 26.3 && lon < 28.3 && lat > 41.7 + (lon - 26.3) * 0.176) return true;
+  if (lon >= 28.3 && lon < 39.9 && lat > 42.15) return true;
+  if (lon >= 39.9 && lon < 42 && lat > 43.4) return true;
+  if (lon >= 42 && lon < 46 && lat > 42.8) return true;
+  if (lon >= 46 && lon < 49.5 && lat > 41.9) return true;
+  if (lat > 34.5 && lat < 35.75 && lon > 32.2 && lon < 34.65) return true; // Cyprus
+  if (lat < 34.8) return false;
+  if (lon < 26.0) return true; // western Aegean, Lemnos, western Crete
+  if (lat < 35.7 && lon < 26.4) return true; // eastern Crete
+  if (lat > 38.95 && lat < 39.45 && lon < 26.65) return true; // Lesbos
+  if (lat > 38.15 && lat < 38.62 && lon < 26.2) return true; // Chios
+  if (lat > 37.55 && lat < 37.82 && lon < 27.08) return true; // Samos, Ikaria
+  if (lat > 36.7 && lat < 37.5 && lon < 27.05) return true; // Kalymnos to Agathonisi
+  if (lat > 36.7 && lat < 36.95 && lon < 27.33) return true; // Kos
+  return lat < 36.62 && lon < 28.3; // Rhodes, Karpathos, Symi
+}
+
+// African land inside the Middle East box: the Horn below 12.5°N and west of
+// 51.6°E (Arabia ends at 12.6°N; Yemen's Socotra lies east of Cape
+// Guardafui), and Sudan and Eritrea west of a line down the Red Sea (Port
+// Sudan and Massawa are west of it; Jeddah, Jizan and Hodeidah east).
+function isAfricaInMenaBox(lat: number, lon: number): boolean {
+  if (lat < 12.5 && lon < 51.6) return true;
+  return lat < 22 && lon < 38 + 0.55 * (22 - lat);
+}
+
+// Kazakhstan west of 60°E (Atyrau, Oral, Aktobe; Astrakhan and Orenburg are
+// Russian) and Turkmenistan (Ashgabat is north of Iran's Bojnurd and Mashhad).
+function isCentralAsiaWestOf60(lat: number, lon: number): boolean {
+  if (lon < 49.5 || lon > 60 || lat >= 51.5) return false;
+  return lat >= 42 || (lat >= 37.7 && lon >= 52.5);
+}
+
+function isOceania(lat: number, lon: number): boolean {
+  if (lat <= -60) return false;
+  if (lat < -10.6 && lon > 110) return true; // Australia, New Zealand
+  if (lat < 0 && (lon >= 141 || lon <= -130)) return true; // PNG to Polynesia
+  if (lat >= 0 && lat < 23 && lon > 130) return true; // Palau, Guam, Micronesia
+  return lat >= 0 && lat < 10 && lon < -150; // Line Islands
+}
+
+function isLatinAmerica(lat: number, lon: number): boolean {
+  if (lat <= -60 || lon >= -30 || lon <= -115) return false;
+  // Central America: Mexico reaches 14.5°N only at the Suchiate (92.2°W), and
+  // Guatemala's Petén, Belize and the Bay Islands run up to 17.82°N east of
+  // 90.98°W. Northern Belize follows the Río Hondo up to Corozal (Chetumal is
+  // Mexican), and Ambergris Caye stops south of Mexico's Xcalak.
+  if (lat < 14.5) return true;
+  if (lat < 16.07 && lon > -92.2) return true;
+  if (lat < 17.82 && lon > -90.98) return true;
+  if (lon > -89.15 && lon < -88.3 && lat < 17.82 + (lon + 89.15) * 0.79) return true;
+  if (lon >= -88.3 && lon < -87.4 && lat < 18.15) return true;
+  // The Caribbean (Key West is 24.55°N, Cancún 86.85°W) and the Bahamas
+  // (Florida's coast is west of 79.35°W).
+  if (lat >= 10 && lat < 23.6 && lon > -85.2 && lon < -59) return true;
+  return lat > 20.9 && lat < 27.3 && lon > -79.35 && lon < -72.7;
+}
+
+export function coordsToRegion(lat: number, lon: number): MapView {
+  // Atlantic islands of Portugal and Spain: Azores, Madeira, Canaries.
+  if (lat > 36.8 && lat < 39.8 && lon > -31.4 && lon < -24.9) return 'eu';
+  if (lat > 32.3 && lat < 33.2 && lon > -17.4 && lon < -16.2) return 'eu';
+  if (lat > 27.5 && lat < 29.5 && lon > -18.3 && lon < -13.3) return 'eu';
+  if (isOceania(lat, lon)) return 'oceania';
+  if (isLatinAmerica(lat, lon)) return 'latam';
+  // Greenland's east coast (Iceland is 63.2-66.7°N, 24.6-13.4°W).
+  const iceland = lat > 63.2 && lat < 66.7 && lon > -24.6 && lon < -13.4;
+  if (lat > 59.5 && lon >= -75 && lon < -11 && !iceland) return 'america';
+  if (lat > 14.5 && lon >= -180 && lon < -50) return 'america';
+  if (isCentralAsiaWestOf60(lat, lon)) return 'asia';
+  if (lat > 15 && lon > 60) return 'asia';
+  if (lat > -10.6 && lat <= 15 && lon > 65 && lon < 141) return 'asia';
+  if (lat > 10 && lat < 45 && lon > 25 && lon <= 60) {
+    if (isEuropeInMenaBox(lat, lon)) return 'eu';
+    if (isAfricaInMenaBox(lat, lon)) return 'africa';
+    return 'mena';
+  }
+  if (lat > 35 && lat < 82 && lon > -25 && lon <= 60 && !isNorthAfricanCoast(lat, lon)) return 'eu';
+  if (lat > -40 && lat < 40 && lon > -26 && lon < 55) return 'africa';
+  if (lat > -40 && lat < 0 && lon >= 55 && lon < 64) return 'africa'; // Mascarenes
   return 'global';
 }
 

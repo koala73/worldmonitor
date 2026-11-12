@@ -35,8 +35,8 @@ function makeRequest(method, url, headers = {}) {
 
 const CANONICAL_FALLBACK = 'https://worldmonitor.app';
 const KNOWN_GOOD = 'https://www.worldmonitor.app';
-const ACAH_EXPECTED = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, Idempotency-Key, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID';
-const ACEH_EXPECTED = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, Location, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-Wm-Upstream-Timeout, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox, Link, Deprecation, Sunset';
+const ACAH_EXPECTED = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, Idempotency-Key, Mcp-Session-Id, MCP-Protocol-Version, Mcp-Method, Mcp-Name, Last-Event-ID';
+const ACEH_EXPECTED = 'Allow, Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, Location, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-Wm-Upstream-Timeout, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox, Link, Deprecation, Sunset';
 // Must be a superset of every method any api/* route advertises. Notably
 // includes DELETE for api/product-catalog.js — pinning this prevents the
 // regression that PR review caught (Worker omitted DELETE → product-catalog
@@ -269,22 +269,22 @@ test('GET response preserves origin cache variance when the Worker adds Origin v
     const storyResp = await worker.fetch(storyReq);
     assert.equal(storyResp.status, 200);
     assert.equal(storyResp.headers.get('vary'), 'User-Agent, Origin');
-    assert.deepEqual(calls[0].options, {
-      cf: {
+    assert.ok(calls[0].options.signal instanceof AbortSignal);
+    assert.deepEqual(calls[0].options.cf, {
         vary: {
           default: { action: 'bypass' },
           headers: {
             'user-agent': { action: 'passthrough' },
           },
         },
-      },
     });
 
     const healthReq = makeRequest('GET', 'https://api.worldmonitor.app/api/health', {
       Origin: KNOWN_GOOD,
     });
     await worker.fetch(healthReq);
-    assert.equal(calls[1].options, undefined, 'other API routes must keep the default fetch policy');
+    assert.ok(calls[1].options.signal instanceof AbortSignal);
+    assert.equal(calls[1].options.cf, undefined, 'other API routes must keep the default cache policy');
   } finally {
     globalThis.fetch = original;
   }
@@ -349,7 +349,6 @@ test('hasPublicCorsPolicy: exact-match paths', () => {
   assert.equal(hasPublicCorsPolicy('/api/security/report'), true);
   assert.equal(hasPublicCorsPolicy('/api/geo'), true);
   assert.equal(hasPublicCorsPolicy('/api/version'), true);
-  assert.equal(hasPublicCorsPolicy('/api/fwdstart'), true);
   assert.equal(hasPublicCorsPolicy('/api/gpsjam'), true);
   assert.equal(hasPublicCorsPolicy('/api/reverse-geocode'), true);
   assert.equal(hasPublicCorsPolicy('/api/product-catalog'), true);
@@ -468,7 +467,6 @@ test('public cacheable endpoint paths pass Vercel CORS headers through unchanged
   // endpoint policy. Pin every path because this Worker is the final CORS
   // layer before the browser.
   const paths = [
-    '/api/fwdstart',
     '/api/gpsjam',
     '/api/reverse-geocode',
     '/api/product-catalog',

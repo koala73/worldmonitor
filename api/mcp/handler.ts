@@ -8,6 +8,7 @@ import {
   MCP_DEFAULT_BURST_PER_MINUTE,
   PRODUCTION_DEPS,
   resolveAuthContext,
+  mcpAnonymousRefusalResponse,
   runContextPreChecks,
   validateProMcpAuthorization,
   wwwAuthHeader,
@@ -15,17 +16,19 @@ import {
 import { readBoundedRequestBody, RequestBodyTooLargeError } from './bounded-body';
 import {
   allSupportedProtocolVersionsNewestFirst,
+  CHATGPT_MODERN_SERVER_INSTRUCTIONS,
+  CHATGPT_SERVER_INSTRUCTIONS,
   MAX_JSON_RPC_BODY_BYTES,
   MCP_LOG_LEVELS,
   MODERN_SERVER_INSTRUCTIONS,
   negotiateProtocolVersion,
   SERVER_INSTRUCTIONS,
-  SERVER_NAME,
-  SERVER_VERSION,
+  SERVER_INFO,
 } from './constants';
 import { dispatchToolsCall } from './dispatch';
 import { buildPromptResponse, PROMPT_LIST_RESPONSE } from './prompts/index';
-import { FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE } from './registry/index';
+import { CHATGPT_TOOL_LIST_RESPONSE, FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE, TRAVEL_RISK_TOOL_NAMES } from './registry/index';
+import { applyChatGptCommercePolicy, applyViewDomainPolicy, isChatGptHost, mintSessionId } from './host-policy';
 import {
   ACCOUNT_RESOURCE_LIST_RESPONSE,
   buildAccountAllowanceResourceResponse,
@@ -55,6 +58,8 @@ import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from 
 import { emitTelemetry, principalIdForLog } from './telemetry';
 import { classifyAgentClientHints, sanitizeClientName } from '../../shared/agent-client-source';
 import { hashKeySync } from '../../server/_shared/usage-identity';
+import { deriveRequestId } from '../../server/_shared/usage';
+import { attachRequestIdToErrors } from './request-id';
 import {
   createMcpUsage,
   emitMcpRequestEvent,
@@ -564,7 +569,9 @@ async function maybeStreamJsonRpcResponse(req: Request, owner: string | null, re
   if (!sessionId) return response;
 
   const streamId = crypto.randomUUID();
-  const responseBody = await response.text();
+  // Framed here, before mcpHandler's exit step can see JSON, so the error
+  // request id is stamped now for the live stream and the replay buffer.
+  const responseBody = await (await attachRequestIdToErrors(response, deriveRequestId(req))).text();
   // A single `message` event carrying the fully-computed JSON-RPC response. The
   // body is already resolved (`await response.text()` above) before the stream
   // is constructed, so there is no slow-result window a separate priming event
@@ -668,7 +675,9 @@ async function handleAuthenticatedSseReplay(
   // No `id` argument on purpose (#7818): the SSE replay channel is a GET with
   // no JSON-RPC body, so there is no request id to echo and the denial keeps
   // the spec's null. Every POST caller below passes the parsed `body.id`.
-  const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders, getPreCheck.burstPerMinute);
+  // A replay serves no data, so an Enterprise contract member stays on the
+  // per-user limiter rather than spending the account's REST-shared burst.
+  const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders, getPreCheck.burstPerMinute, null);
   if (getLimited) {
     usage.phase = 'limit';
     return getLimited;
@@ -694,7 +703,8 @@ async function handleAuthenticatedSseReplay(
 //
 // A plain GET to `/mcp` itself is NOT an MCP protocol handshake (that stays
 // POST); it is a human or a crawler opening the endpoint in a browser. They
-// get the human-readable server guide (`/mcp-server.md`) instead of the
+// get HTML setup instructions when explicitly accepting HTML, otherwise the
+// server guide (`/mcp-server.md`), instead of the
 // spec-correct 405 that Google Search Console reports as "cannot access".
 // SSE-flavored GETs and GETs with Last-Event-ID still fall through to the
 // normal 405 / replay paths so Streamable HTTP transport semantics are
@@ -740,9 +750,10 @@ const DISCOVERY_VARY = 'Accept, Last-Event-ID, Origin, MCP-Protocol-Version';
 const STATIC_ASSET_FETCH_TIMEOUT_MS = 5_000;
 const STATIC_ASSET_USER_AGENT = 'WorldMonitor-MCP/1.0 (+https://worldmonitor.app)';
 
-// Module-scope caches: both documents are static assets, immutable per deployment.
+// Module-scope caches: discovery documents are static assets, immutable per deployment.
 let serverCardCache: string | null = null;
 let mcpGuideCache: string | null = null;
+let mcpSetupCache: string | null = null;
 
 // Self-fetch a static asset off our own deployment. Redirects are followed:
 // `/mcp-server.md` is NOT in the Cloudflare apex→www exemption list
@@ -805,6 +816,36 @@ async function serveServerCard(req: Request, corsHeaders: Record<string, string>
 // depend on that. The cost is one function invocation per crawler GET — the
 // cacheable copy of this document still lives at `/mcp-server.md`.
 async function serveMcpGuide(req: Request, corsHeaders: Record<string, string>, headOnly = false): Promise<Response> {
+  // Require an explicit HTML media type: wildcard and machine discovery
+  // requests retain their Markdown representation. SSE/replay/auth probes
+  // are handled before reaching this helper.
+  const wantsHtml = (req.headers.get('accept') ?? '').split(',').some((entry) => {
+    const [type, ...params] = entry.split(';').map((part) => part.trim().toLowerCase());
+    if (type !== 'text/html') return false;
+    const quality = params.find((part) => part.startsWith('q='));
+    return !quality || (Number.isFinite(Number(quality.slice(2))) && Number(quality.slice(2)) > 0);
+  });
+  if (wantsHtml) {
+    if (mcpSetupCache === null) mcpSetupCache = await fetchStaticAsset(req, '/mcp-setup.html');
+    if (mcpSetupCache === null) {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          ...corsHeaders,
+          Location: 'https://www.worldmonitor.app/docs/mcp-quickstart',
+          Vary: DISCOVERY_VARY,
+        },
+      });
+    }
+    return new Response(headOnly ? null : mcpSetupCache, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/html; charset=utf-8',
+        Vary: DISCOVERY_VARY,
+        Link: MCP_CANONICAL_LINK,
+      },
+    });
+  }
   if (mcpGuideCache === null) {
     const text = await fetchStaticAsset(req, '/mcp-server.md');
     if (text === null) {
@@ -855,10 +896,13 @@ export async function mcpHandler(
   let res: Response;
   try {
     res = await mcpHandlerInner(req, deps, usage, exchange, ctx);
+    // Before modern shaping, which may re-frame a JSON body as SSE.
+    res = await attachRequestIdToErrors(res, deriveRequestId(req));
+    // Before modern shaping too: it reads the legacy denial envelope.
+    if (isChatGptHost(req)) res = await applyChatGptCommercePolicy(res);
     if (usage.era === 'modern') {
       res = await shapeModernResponse(res, {
         method: exchange.method,
-        onAlias: WELL_KNOWN_MCP_PATHS.has(new URL(req.url).pathname),
         acceptsSse: clientAcceptsSse(req),
       });
     }
@@ -941,7 +985,7 @@ async function mcpHandlerInner(
   // by the request's own path — never by a query parameter, which the caller
   // controls. `/mcp` and the well-known aliases are rewritten to `/api/mcp`,
   // and this function still observes the original path: the dual-role branches
-  // below serve markdown at `/mcp` and the JSON card at `/.well-known/mcp` by
+  // below serve the guide at `/mcp` and the JSON card at `/.well-known/mcp` by
   // reading that pathname. The aliases sit under neither transport path, so
   // they take the origin-wide document, which covers every path on the host.
 
@@ -983,7 +1027,7 @@ async function mcpHandlerInner(
 
   if (anonymousAuthProbe) {
     usage.phase = 'auth';
-    return authRequiredResponse(null, resourceMetadataUrl, corsHeaders);
+    return mcpAnonymousRefusalResponse(req, resourceMetadataUrl, corsHeaders, null, { handshake: true });
   }
 
   if (req.method === 'HEAD') {
@@ -1004,11 +1048,10 @@ async function mcpHandlerInner(
     // HEAD is the matching GET with the body suppressed. Reuse the discovery
     // helpers so cache policy, canonical Link, and static-asset fallback status
     // cannot drift between the two methods.
-    const pathname = new URL(req.url).pathname;
-    if (WELL_KNOWN_MCP_PATHS.has(pathname)) {
+    if (WELL_KNOWN_MCP_PATHS.has(requestPathname)) {
       return serveServerCard(req, corsHeaders, true);
     }
-    if (pathname === MCP_TRANSPORT_PATH) {
+    if (requestPathname === MCP_TRANSPORT_PATH) {
       return serveMcpGuide(req, corsHeaders, true);
     }
     return new Response(null, {
@@ -1020,7 +1063,7 @@ async function mcpHandlerInner(
   // Discovery GETs. A GET with no `Last-Event-ID` and no `text/event-stream`
   // Accept is not a transport operation: on the well-known aliases it is a
   // manifest fetch (JSON server card), and on `/mcp` itself it is a human or
-  // crawler opening the endpoint (the markdown server guide). Both are
+  // crawler opening the endpoint (HTML setup or the Markdown server guide). Both are
   // answered BEFORE the transport GET branch, so the standalone-stream 405 and
   // the authenticated replay path below are untouched.
   if (
@@ -1028,12 +1071,11 @@ async function mcpHandlerInner(
     !req.headers.get('last-event-id') &&
     !clientAcceptsSse(req)
   ) {
-    const pathname = new URL(req.url).pathname;
-    if (WELL_KNOWN_MCP_PATHS.has(pathname)) {
+    if (WELL_KNOWN_MCP_PATHS.has(requestPathname)) {
       usage.skip = true;
       return serveServerCard(req, corsHeaders);
     }
-    if (pathname === MCP_TRANSPORT_PATH) {
+    if (requestPathname === MCP_TRANSPORT_PATH) {
       usage.skip = true;
       return serveMcpGuide(req, corsHeaders);
     }
@@ -1046,8 +1088,8 @@ async function mcpHandlerInner(
 
   // GET has three roles on the MCP endpoint:
   //   1. A plain GET (no `text/event-stream` Accept, no `Last-Event-ID`) is a
-  //      discovery read and has already been answered above — the markdown
-  //      server guide at `/mcp`, the JSON server card at the well-known
+  //      discovery read and has already been answered above — the HTML setup
+  //      or Markdown server guide at `/mcp`, the JSON server card at the well-known
   //      aliases. The MCP handshake itself remains POST-only.
   //   2. A GET asking for `text/event-stream` or carrying `Last-Event-ID` is
   //      either a client opening the OPTIONAL server->client SSE stream of the
@@ -1238,7 +1280,9 @@ async function mcpHandlerInner(
   const challengeAnonymous = (method === 'initialize' && (modernEra || !isGenericHttpClient(req)))
     || (modernEra && !isFreeTierToolCall && uiResourceReadUri === null);
   if (challengeAnonymous && !hasCredentials(req) && !WELL_KNOWN_MCP_PATHS.has(requestPathname)) {
-    const denied = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders, id);
+    const denied = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders, id, {
+      handshake: method === 'initialize',
+    });
     if (!denied.ok) {
       usage.phase = 'auth';
       return denied.response;
@@ -1254,6 +1298,7 @@ async function mcpHandlerInner(
   let burstPerMinute: number | undefined;
   let freeAccountAllowance = false;
   let planKey: string | undefined;
+  let travelRiskAssessment = false;
   if (isPublicMcpMethod(method, modernEra) || isAnonResourceRead || isFreeTierToolCall) {
     if (hasCredentials(req)) {
       // Credentials presented on a public method are still validated so a
@@ -1317,7 +1362,14 @@ async function mcpHandlerInner(
     }
     context = auth.context;
     setUsageContext(usage, context);
-    const preCheck = await runContextPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx, id);
+    // A cached entitlement written before the flag existed would read as "not
+    // included" for up to its TTL, so only a call to the tool that needs the
+    // flag pays for a refetch of such an entry.
+    const requireTravelRiskShape = typeof toolCallName === 'string' && TRAVEL_RISK_TOOL_NAMES.has(toolCallName);
+    const preCheck = await runContextPreChecks(
+      context, deps, resourceMetadataUrl, corsHeaders, ctx, id,
+      requireTravelRiskShape ? { requireTravelRiskShape } : {},
+    );
     if (!preCheck.ok) {
       usage.phase = preCheck.response.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
       return preCheck.response;
@@ -1326,7 +1378,13 @@ async function mcpHandlerInner(
     burstPerMinute = preCheck.burstPerMinute;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
     planKey = preCheck.planKey;
-    const limited = method === 'tools/call' ? null : await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute, id);
+    travelRiskAssessment = preCheck.travelRiskAssessment === true;
+    // Only a data-bearing resources/read spends an Enterprise contract
+    // account's burst (shared with its REST requests); the account status
+    // read and unsupported methods stay on the per-user limiter. tools/call
+    // takes its burst in dispatchToolsCall.
+    const dataResourceRead = method === 'resources/read' && !isAccountResourceRead;
+    const limited = method === 'tools/call' ? null : await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute, id, undefined, dataResourceRead ? budget?.account : undefined);
     if (limited) {
       usage.phase = 'limit';
       return limited;
@@ -1341,9 +1399,14 @@ async function mcpHandlerInner(
   // so its answer is never framed as a replayable SSE stream or stored for
   // Last-Event-ID replay. It goes out as the plain JSON response, which
   // mcpHandler shapes and, for tools/call, frames as session-free SSE.
-  const respond = (response: Response): Promise<Response> => modernEra
-    ? Promise.resolve(response)
-    : maybeStreamJsonRpcResponse(req, sseOwner, response);
+  // A travel-plan draft is streamed live but never kept for Last-Event-ID
+  // replay: the server holds no copy of a trip (#10451).
+  const noReplay = method === 'tools/call'
+    && TRAVEL_RISK_TOOL_NAMES.has((body.params as { name?: unknown } | undefined)?.name as string);
+  const respond = async (response: Response): Promise<Response> => {
+    const shaped = await applyViewDomainPolicy(req, method, response, body);
+    return modernEra ? shaped : maybeStreamJsonRpcResponse(req, noReplay ? null : sseOwner, shaped);
+  };
 
   if (['tools/list', 'prompts/list', 'resources/list', 'resources/templates/list'].includes(method)) {
     const cursor = (body.params as { cursor?: unknown } | undefined)?.cursor;
@@ -1360,7 +1423,7 @@ async function mcpHandlerInner(
     return respond(rpcOk(id, {
       supportedVersions: allSupportedProtocolVersionsNewestFirst(),
       capabilities: modernServerCapabilities(),
-      instructions: MODERN_SERVER_INSTRUCTIONS,
+      instructions: isChatGptHost(req) ? CHATGPT_MODERN_SERVER_INSTRUCTIONS : MODERN_SERVER_INSTRUCTIONS,
     }, corsHeaders));
   }
   if (modernEra && method === 'subscriptions/listen') {
@@ -1372,7 +1435,7 @@ async function mcpHandlerInner(
   // Dispatch
   switch (method) {
     case 'initialize': {
-      const sessionId = crypto.randomUUID();
+      const sessionId = mintSessionId((body.params as { clientInfo?: { name?: unknown } } | null | undefined)?.clientInfo?.name);
       // Bind the server-minted session before content negotiation can return a
       // JSON response. Otherwise a different principal that learns the session
       // id can make the first SSE write and claim the replay bucket.
@@ -1399,8 +1462,8 @@ async function mcpHandlerInner(
       return respond(rpcOk(id, {
         protocolVersion: negotiatedVersion,
         capabilities: serverCapabilities(),
-        serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-        instructions: SERVER_INSTRUCTIONS,
+        serverInfo: SERVER_INFO,
+        instructions: isChatGptHost(req) ? CHATGPT_SERVER_INSTRUCTIONS : SERVER_INSTRUCTIONS,
       }, { 'Mcp-Session-Id': sessionId, ...corsHeaders }));
     }
     case 'notifications/initialized':
@@ -1408,7 +1471,7 @@ async function mcpHandlerInner(
     case 'ping':
       return respond(rpcOk(id, {}, corsHeaders));
     case 'tools/list':
-      return respond(rpcOk(id, { tools: TOOL_LIST_RESPONSE }, corsHeaders));
+      return respond(rpcOk(id, { tools: isChatGptHost(req) ? CHATGPT_TOOL_LIST_RESPONSE : TOOL_LIST_RESPONSE }, corsHeaders));
     case 'tools/call': {
       // context is always set here. tools/call is never a PUBLIC_MCP_METHOD, and
       // since U7 a free-tier call takes the anon branch above but still sets an
@@ -1433,6 +1496,7 @@ async function mcpHandlerInner(
         usage,
         // Supported versions are YYYY-MM-DD, so string order is date order.
         protocolVersion !== null && protocolVersion >= '2025-11-25',
+        travelRiskAssessment,
       );
       classifyDispatchedUsage(usage, dispatched);
       return respond(dispatched);

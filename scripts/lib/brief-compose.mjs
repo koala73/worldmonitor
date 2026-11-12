@@ -72,6 +72,106 @@ export function groupEligibleRulesByUser(rules) {
 }
 
 /**
+ * Default in-app brief rules for paid users with no digest rule of their own
+ * (ids from Convex `/relay/brief-only-users`). Before these existed such a user
+ * got no brief, and the dashboard's Latest Brief panel said "composing"
+ * forever. The rule is compose-only: it carries no channels and is never put
+ * in the send loop, so nothing is delivered anywhere.
+ *
+ * @param {unknown} userIds
+ * @param {Array<{ userId?: unknown }>} digestRules users already covered by a real rule
+ */
+export function buildBriefOnlyRules(userIds, digestRules) {
+  if (!Array.isArray(userIds)) return [];
+  const covered = new Set((digestRules ?? []).map((r) => r?.userId));
+  const out = [];
+  for (const userId of userIds) {
+    if (typeof userId !== 'string' || !userId || covered.has(userId)) continue;
+    covered.add(userId);
+    out.push({
+      userId,
+      variant: 'full',
+      enabled: true,
+      digestMode: 'daily',
+      sensitivity: 'high',
+      aiDigestEnabled: true,
+      channels: [],
+      eventTypes: [],
+      updatedAt: 0,
+      briefOnly: true,
+    });
+  }
+  return out;
+}
+
+/**
+ * Each user's last compose time from a pipeline of `GET brief:latest:{id}`
+ * results (same order as `userIds`). The pointer's `composedAt` is stamped on
+ * every compose, fresh or reused prose, so it is the scheduling key;
+ * `synthesizedAt` only ages reused prose. Missing, legacy (no composedAt) and
+ * malformed pointers are left out, which orders those users first. Returns
+ * null when the pipeline or any single read failed: a failed read is not "no
+ * brief", and the caller keeps the Convex order for that tick.
+ *
+ * @param {string[]} userIds
+ * @param {unknown} cells
+ * @returns {Map<string, number> | null}
+ */
+export function briefComposeTimesFromPointerCells(userIds, cells) {
+  if (!Array.isArray(cells) || cells.length !== userIds.length) return null;
+  if (cells.some((c) => !c || typeof c !== 'object' || 'error' in c)) return null;
+  const out = new Map();
+  cells.forEach((cell, i) => {
+    try {
+      const ptr = typeof cell.result === 'string' ? JSON.parse(cell.result) : null;
+      if (Number.isFinite(ptr?.composedAt)) out.set(userIds[i], ptr.composedAt);
+    } catch { /* malformed pointer → treated as no brief */ }
+  });
+  return out;
+}
+
+/**
+ * Order default-brief rules for this tick, stalest first: users with no brief,
+ * then the oldest last-compose time (from each user's brief:latest pointer).
+ * The pass runs after deliveries under a time budget, so whoever it does not
+ * reach this tick is first on the next one. A rotation that shifted the start
+ * by one user per tick recomposed nearly the same users every tick and left
+ * most of them without a brief for days (first run 2026-10-27: 99 composed,
+ * 152 deferred).
+ *
+ * @template {{ userId: string }} T
+ * @param {T[]} rules
+ * @param {Map<string, unknown>} composedAtByUser
+ * @returns {T[]}
+ */
+export function orderBriefOnlyRulesByStaleness(rules, composedAtByUser) {
+  if (!Array.isArray(rules)) return [];
+  const at = (r) => {
+    const v = composedAtByUser?.get(r.userId);
+    return typeof v === 'number' && Number.isFinite(v) ? v : -Infinity;
+  };
+  return rules
+    .map((rule, index) => ({ rule, index, t: at(rule) }))
+    .sort((a, b) => (a.t === b.t ? a.index - b.index : a.t - b.t))
+    .map((x) => x.rule);
+}
+
+/**
+ * Whether a compose candidate is due this tick. A brief-only rule never is:
+ * nothing is ever sent for it, so a due flag would request a fresh paid
+ * synthesis on every ~30-min tick; non-due candidates reuse recent prose
+ * (brief-synthesis-reuse.mjs).
+ *
+ * @param {{ briefOnly?: boolean }} rule
+ * @param {number|null} lastSentAt
+ * @param {(rule: object, lastSentAt: number|null) => boolean} isDue
+ */
+export function briefCandidateDue(rule, lastSentAt, isDue) {
+  if (rule?.briefOnly) return false;
+  return isDue(rule, lastSentAt);
+}
+
+/**
  * @deprecated Kept for existing test imports. Prefer
  * groupEligibleRulesByUser + per-user fallback at call sites.
  */

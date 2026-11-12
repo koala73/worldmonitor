@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '@/services/timeout-signal';
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
@@ -192,7 +193,7 @@ export class OilInventoriesPanel extends Panel {
 
   public async fetchData(): Promise<void> {
     try {
-      const resp = await fetch(toApiUrl('/api/economic/v1/get-oil-inventories'));
+      const resp = await fetch(toApiUrl('/api/economic/v1/get-oil-inventories'), { signal: createTimeoutSignal(15_000) });
       if (!resp.ok) { this.showError('Oil inventory data unavailable', () => void this.fetchData(), 300); return; }
       const data = (await resp.json()) as OilInventoriesData;
       if (!this.element?.isConnected) return;

@@ -4,6 +4,7 @@
  * snapshots can be written to Redis and read directly by WorldMonitor handlers.
  */
 import { query } from '../db/client.js';
+import { INDEX_METHODOLOGY_VERSION } from '../index-methodology.js';
 
 // ---------------------------------------------------------------------------
 // Snapshot interfaces — mirror proto-generated response types exactly
@@ -33,7 +34,7 @@ export interface WMOverviewSnapshot {
   coveragePct: number;
   freshnessLagMin: number;
   topCategories: WMCategorySnapshot[];
-  upstreamUnavailable: false;
+  upstreamUnavailable: boolean;
 }
 
 export interface WMPriceMover {
@@ -127,11 +128,13 @@ async function buildTopCategories(basketId: string, rangeDays = 7): Promise<WMCa
        SELECT category, metric_key, metric_value::float AS metric_value
        FROM computed_indices
        WHERE basket_id = $1 AND category IS NOT NULL AND retailer_id IS NULL AND metric_date = CURRENT_DATE
+         AND (metric_key <> 'essentials_index' OR methodology_version = $3)
      ),
      prev_period AS (
        SELECT category, metric_key, metric_value::float AS metric_value
        FROM computed_indices
        WHERE basket_id = $1 AND category IS NOT NULL AND retailer_id IS NULL
+         AND (metric_key <> 'essentials_index' OR methodology_version = $3)
          AND metric_date = (
            SELECT MAX(metric_date) FROM computed_indices
            WHERE basket_id = $1 AND category IS NOT NULL
@@ -158,7 +161,7 @@ async function buildTopCategories(basketId: string, rangeDays = 7): Promise<WMCa
      HAVING MAX(CASE WHEN t.metric_key = 'essentials_index' THEN 1 ELSE 0 END) = 1
      ORDER BY ABS(COALESCE(MAX(CASE WHEN t.metric_key = 'essentials_index' THEN t.metric_value END), 100) - 100) DESC
      LIMIT 8`,
-    [basketId, lookbackDays],
+    [basketId, lookbackDays, INDEX_METHODOLOGY_VERSION],
   );
 
   return result.rows.map((r) => {
@@ -204,11 +207,12 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
          JOIN baskets b ON b.id = ci.basket_id
          WHERE b.market_code = $1
            AND ci.retailer_id IS NULL AND ci.category IS NULL
+           AND (ci.metric_key NOT IN ('essentials_index', 'value_index') OR ci.methodology_version = $2)
            AND ci.metric_date = (
              SELECT MAX(metric_date) FROM computed_indices ci2 JOIN baskets b2 ON b2.id = ci2.basket_id
              WHERE b2.market_code = $1 AND ci2.retailer_id IS NULL
            )`,
-        [marketCode],
+        [marketCode, INDEX_METHODOLOGY_VERSION],
       ),
       query<{ metric_key: string; metric_value: string }>(
         `SELECT ci.metric_key, ci.metric_value
@@ -216,12 +220,13 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
          JOIN baskets b ON b.id = ci.basket_id
          WHERE b.market_code = $1
            AND ci.retailer_id IS NULL AND ci.category IS NULL
+           AND (ci.metric_key NOT IN ('essentials_index', 'value_index') OR ci.methodology_version = $2)
            AND ci.metric_date = (
              SELECT MAX(metric_date) FROM computed_indices ci2 JOIN baskets b2 ON b2.id = ci2.basket_id
              WHERE b2.market_code = $1 AND ci2.retailer_id IS NULL
                AND ci2.metric_date < CURRENT_DATE - INTERVAL '6 days'
            )`,
-        [marketCode],
+        [marketCode, INDEX_METHODOLOGY_VERSION],
       ),
       query<{ metric_key: string; metric_value: string }>(
         `SELECT ci.metric_key, ci.metric_value
@@ -229,12 +234,13 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
          JOIN baskets b ON b.id = ci.basket_id
          WHERE b.market_code = $1
            AND ci.retailer_id IS NULL AND ci.category IS NULL
+           AND (ci.metric_key NOT IN ('essentials_index', 'value_index') OR ci.methodology_version = $2)
            AND ci.metric_date = (
              SELECT MAX(metric_date) FROM computed_indices ci2 JOIN baskets b2 ON b2.id = ci2.basket_id
              WHERE b2.market_code = $1 AND ci2.retailer_id IS NULL
                AND ci2.metric_date < CURRENT_DATE - INTERVAL '29 days'
            )`,
-        [marketCode],
+        [marketCode, INDEX_METHODOLOGY_VERSION],
       ),
       query<{ spread_pct: string }>(
         `SELECT metric_value AS spread_pct FROM computed_indices ci
@@ -266,6 +272,32 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
   const prevMonth: Record<string, number> = {};
   for (const row of prevMonthResult.rows) prevMonth[row.metric_key] = parseFloat(row.metric_value);
 
+  const freshnessLagMin = freshnessResult.rows[0]?.avg_lag_min
+    ? parseInt(freshnessResult.rows[0].avg_lag_min, 10)
+    : 0;
+
+  // Aggregate records zero coverage on a day no fresh product priced the
+  // basket. Its newest index is then the last covered day's, so publishing it
+  // under a current asOf would present an expired price level as today's.
+  // Covered rows with no current-methodology index (no item has a baseline)
+  // are equally unpublishable: the fallback would present 100 as a measurement.
+  if (!((metrics.coverage_pct ?? 0) > 0) || metrics.essentials_index == null) {
+    return {
+      marketCode,
+      asOf: String(now),
+      currencyCode: currencyResult.rows[0]?.currency_code ?? 'USD',
+      essentialsIndex: 0,
+      valueBasketIndex: 0,
+      wowPct: 0,
+      momPct: 0,
+      retailerSpreadPct: 0,
+      coveragePct: 0,
+      freshnessLagMin,
+      topCategories: [],
+      upstreamUnavailable: true,
+    };
+  }
+
   const ess = metrics.essentials_index ?? 100;
   const val = metrics.value_index ?? 100;
   const prevEss = prevWeek.essentials_index;
@@ -287,9 +319,7 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
       ? Math.round(parseFloat(spreadResult.rows[0].spread_pct) * 10) / 10
       : 0,
     coveragePct: Math.round((metrics.coverage_pct ?? 0) * 10) / 10,
-    freshnessLagMin: freshnessResult.rows[0]?.avg_lag_min
-      ? parseInt(freshnessResult.rows[0].avg_lag_min, 10)
-      : 0,
+    freshnessLagMin,
     topCategories,
     upstreamUnavailable: false,
   };
@@ -597,10 +627,11 @@ export async function buildBasketSeriesSnapshot(
        JOIN baskets b ON b.id = ci.basket_id
        WHERE b.slug = $1 AND b.market_code = $2
          AND ci.metric_key = 'essentials_index'
+         AND ci.methodology_version = $4
          AND ci.retailer_id IS NULL AND ci.category IS NULL
          AND ci.metric_date >= CURRENT_DATE - ($3 || ' days')::INTERVAL
        ORDER BY ci.metric_date ASC`,
-      [basketSlug, marketCode, days],
+      [basketSlug, marketCode, days, INDEX_METHODOLOGY_VERSION],
     ),
     query<{ metric_date: Date; metric_value: string }>(
       `SELECT ci.metric_date, ci.metric_value
@@ -608,10 +639,11 @@ export async function buildBasketSeriesSnapshot(
        JOIN baskets b ON b.id = ci.basket_id
        WHERE b.slug = $1 AND b.market_code = $2
          AND ci.metric_key = 'value_index'
+         AND ci.methodology_version = $4
          AND ci.retailer_id IS NULL AND ci.category IS NULL
          AND ci.metric_date >= CURRENT_DATE - ($3 || ' days')::INTERVAL
        ORDER BY ci.metric_date ASC`,
-      [basketSlug, marketCode, days],
+      [basketSlug, marketCode, days, INDEX_METHODOLOGY_VERSION],
     ),
     query<{ currency_code: string }>(
       `SELECT currency_code FROM retailers WHERE market_code = $1 AND active = true LIMIT 1`,

@@ -104,6 +104,10 @@ const ON_DEMAND_CACHE_PROFILES = {
     browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
     cdn: 'public, s-maxage=300, stale-while-revalidate=120, stale-if-error=900',
   },
+  ukmtoIncidents: {
+    browser: 'max-age=60, stale-while-revalidate=60, stale-if-error=60',
+    cdn: 'public, s-maxage=60, stale-while-revalidate=60, stale-if-error=60',
+  },
   liveVideoResolved: {
     browser: 'max-age=300, stale-while-revalidate=300, stale-if-error=1800',
     cdn: 'public, s-maxage=1800, stale-while-revalidate=300, stale-if-error=3600',

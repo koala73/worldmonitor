@@ -44,7 +44,7 @@
         de: { title: "Sie sind offline", msg: "World Monitor benötigt eine Internetverbindung für Echtzeit-Aufklärungsdaten.", retry: "Erneut versuchen" },
         el: { title: "Είστε Χωρίς Σύνδεση", msg: "Το World Monitor απαιτεί σύνδεση στο διαδίκτυο για δεδομένα πραγματικού χρόνου.", retry: "Δοκιμάστε Ξανά" },
         es: { title: "Estás sin conexión", msg: "World Monitor requiere una conexión a internet para datos de inteligencia en tiempo real.", retry: "Reintentar" },
-        fa: { title: "You're Offline", msg: "World Monitor requires an internet connection for real-time intelligence data.", retry: "Retry" },
+        fa: { title: "شما آفلاین هستید", msg: "World Monitor برای داده‌های اطلاعاتی لحظه‌ای به اتصال اینترنت نیاز دارد.", retry: "تلاش مجدد" },
         fr: { title: "Vous êtes hors ligne", msg: "World Monitor nécessite une connexion Internet pour les données de renseignement en temps réel.", retry: "Réessayer" },
         hi: { title: "आप ऑफलाइन हैं", msg: "वर्ल्ड मॉनिटर के लिए रियल-टाइम जानकारी के लिए इंटरनेट कनेक्शन चाहिए।", retry: "फिर कोशिश करें" },
         hr: { title: "Niste Mrežom Povezani", msg: "Svjetski Monitor zahtijeva internetsku vezu za podatke obavještajne informacije u realnom vremenu.", retry: "Pokušaj Ponovno" },
@@ -75,7 +75,7 @@
           : raw.split('-')[0];
         var d = T[l] || T.en;
         document.documentElement.lang = l;
-        if (l === 'ar') document.documentElement.dir = 'rtl';
+        if (l === 'ar' || l === 'fa') document.documentElement.dir = 'rtl';
         document.title = 'World Monitor — ' + d.title;
         document.getElementById('t-title').textContent = d.title;
         document.getElementById('t-msg').textContent = d.msg;

@@ -1,0 +1,42 @@
+---
+title: "MCP 工具：能源"
+sidebarTitle: "能源"
+description: "World Monitor MCP 工具参考：能源供应、价格、石油贸易与供应冲击情景。逐一列出每个工具的输入参数与类型、数据新鲜度窗口、对应的后端 REST API 端点，以及可直接复制使用的示例调用负载，帮助开发者构建情报智能体、工作流自动化与自定义 MCP 客户端集成。"
+---
+
+本页属于 [MCP 工具参考](/zh/mcp-tools-reference)，该索引列出全部工具。连接、认证、套餐与错误见 [MCP Server 概览](/zh/mcp-overview)。
+
+以下工具暂仅提供英文参考：[`get_oil_trade_series`](/mcp-tools/energy#get_oil_trade_series)、[`compute_energy_shock`](/mcp-tools/energy#compute_energy_shock)、[`get_supply_chain_cost_shock`](/mcp-tools/energy#get_supply_chain_cost_shock)、[`get_energy_storage`](/mcp-tools/energy#get_energy_storage)。
+
+`curl` 示例假设已执行 `export WM_KEY="wm_…"`；使用 OAuth 时，请将 `-H "X-WorldMonitor-Key: $WM_KEY"` 替换为 `-H "Authorization: Bearer $TOKEN"`。
+
+### `get_energy_intelligence`
+
+能源供应、价格、存储、中断和政策：EIA 石油库存、电力价格（Ember）、各国天然气存储（GIE）、燃料短缺、化石和可再生能源份额、活跃能源中断、政府危机政策，以及欧盟天然气总存储、美国天然气存储和美国商业原油库存的带日期历史。原 `get_energy_storage` 已并入本工具，旧名称仍可调用并返回 `deprecation` 提示。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `dataset` | `array<string: eia-petroleum / electricity / ember / gas-storage / fuel-shortages / disruptions / crisis-policies / fossil-share / renewable / eu-gas-storage / nat-gas-storage / crude-inventories>` | 将响应限制为一个或多个能源子数据集。省略则返回完整捆绑包。 |
+| `country` | string | 将按国家键控的数据集（Ember 电力组合、天然气存储、燃料短缺、能源中断、化石份额）筛选为一个 ISO 3166-1 alpha-2 代码。 |
+| `limit` | integer | 将每个含列表的能源切片（危机政策、电力地区、天然气存储国家、世界银行可再生能源历史/地区、按新到旧排列的存储和库存历史）限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** `GET /api/economic/v1/get-energy-crisis-policies`, `GET /api/supply-chain/v1/get-fuel-shortage-detail`, `GET /api/supply-chain/v1/list-energy-disruptions`, `GET /api/supply-chain/v1/list-fuel-shortages`, `GET /api/economic/v1/get-eu-gas-storage`, `GET /api/economic/v1/get-nat-gas-storage`, `GET /api/economic/v1/get-crude-inventories`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **3 天**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_energy_intelligence","arguments":{}}
+  }'
+```
+
+</CodeGroup>

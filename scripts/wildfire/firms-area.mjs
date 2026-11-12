@@ -62,10 +62,7 @@ const SAFE_FAILURE_CODES = new Set([
   'ERR_TLS_CERT_ALTNAME_INVALID',
 ]);
 
-function safeFailureReason(error, phase) {
-  if (Number.isInteger(error?.status)) return `HTTP ${error.status}`;
-  if (error?.name === 'TimeoutError' || error?.name === 'AbortError') return 'timeout';
-  const codes = new Set();
+function* failureChain(error) {
   const seen = new Set();
   const pending = [error];
   // Fetch wraps transport errors in causes, sometimes with aggregate connection errors.
@@ -74,11 +71,33 @@ function safeFailureReason(error, phase) {
     const current = pending[index];
     if (!current || typeof current !== 'object' || seen.has(current)) continue;
     seen.add(current);
-    if (SAFE_FAILURE_CODES.has(current.code)) codes.add(current.code);
+    yield current;
     if (current.cause) pending.push(current.cause);
     if (Array.isArray(current.errors)) pending.push(...current.errors.slice(0, 8));
   }
+}
+
+function safeFailureReason(error, phase) {
+  if (Number.isInteger(error?.status)) return `HTTP ${error.status}`;
+  if (error?.name === 'TimeoutError' || error?.name === 'AbortError') return 'timeout';
+  const codes = new Set();
+  for (const current of failureChain(error)) {
+    if (SAFE_FAILURE_CODES.has(current.code)) codes.add(current.code);
+  }
   return `${phase} error${codes.size ? ` [${[...codes].join(', ')}]` : ''}`;
+}
+
+function transportDetails(error) {
+  const entries = [];
+  for (const current of failureChain(error)) {
+    const code = SAFE_FAILURE_CODES.has(current.code) ? current.code : null;
+    const syscall = ['connect', 'getaddrinfo', 'read', 'write'].includes(current.syscall) ? current.syscall : null;
+    const family = current.family === 4 || current.family === 'IPv4' ? 4
+      : current.family === 6 || current.family === 'IPv6' ? 6 : null;
+    if (code || syscall || family) entries.push({ code, syscall, family });
+    if (entries.length === 8) break;
+  }
+  return entries;
 }
 
 function buildAreaUrl(baseUrl, apiKey, source, bbox) {
@@ -90,16 +109,20 @@ export async function fetchFirmsRegionSource(apiKey, regionName, bbox, source, {
   fetchFn = globalThis.fetch,
   sleepFn = sleep,
   logger = console,
+  diagnosticContext = {},
 } = {}) {
   const failures = [];
   const labels = ['primary', 'primary retry'];
   for (let index = 0; index < labels.length; index++) {
+    const startedAt = performance.now();
     let phase = 'request';
+    let responseStatus;
     try {
       const response = await fetchFn(buildAreaUrl(FIRMS_API_BASE_URL, apiKey, source, bbox), {
         headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA },
         signal: AbortSignal.timeout(30_000),
       });
+      responseStatus = response.status;
       if (!response.ok) {
         const error = new Error('FIRMS request failed');
         error.status = response.status;
@@ -108,6 +131,21 @@ export async function fetchFirmsRegionSource(apiKey, regionName, bbox, source, {
       phase = 'body';
       return parseCsv(await response.text());
     } catch (error) {
+      try {
+        const status = responseStatus ?? error?.status;
+        logger.log(JSON.stringify({
+          event: 'firms_attempt_failure',
+          runId: diagnosticContext?.runId ?? null,
+          deploymentId: diagnosticContext?.deploymentId ?? null,
+          commitSha: diagnosticContext?.commitSha ?? null,
+          source: FIRMS_SOURCES.includes(source) ? source : null,
+          region: Object.hasOwn(MONITORED_REGIONS, regionName) ? regionName : null,
+          attempt: index + 1, phase, durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+          httpStatus: Number.isInteger(status) && status >= 100 && status <= 599 ? status : null,
+          timeout: error?.name === 'TimeoutError' || error?.name === 'AbortError',
+          transport: transportDetails(error),
+        }));
+      } catch {}
       const endpoint = labels[index];
       failures.push(`${endpoint} ${safeFailureReason(error, phase)}`);
       const retryable = !Number.isInteger(error?.status) || error.status === 408
@@ -126,6 +164,7 @@ export async function fetchAllFirmsRegions(apiKey, {
   fetchFn = globalThis.fetch,
   sleepFn = sleep,
   logger = console,
+  diagnosticContext = {},
 } = {}) {
   const seen = new Set();
   const fireDetections = [];
@@ -139,6 +178,7 @@ export async function fetchAllFirmsRegions(apiKey, {
           fetchFn,
           sleepFn,
           logger,
+          diagnosticContext,
         });
         fulfilled++;
         const now = Date.now();

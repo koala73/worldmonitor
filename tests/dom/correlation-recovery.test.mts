@@ -554,6 +554,7 @@ describe('CorrelationPanel presentation', () => {
     mount.call({
       ctx: { correlationEngine: engine, panelSettings: {} },
       observePanelForHydration: vi.fn(),
+      bindPanelFilterChoice: vi.fn(),
     }, 'economic-correlation', result);
     await settle();
     result.getElement().querySelector<HTMLElement>('.correlation-card-header')!.click();

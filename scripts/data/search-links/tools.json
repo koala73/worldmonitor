@@ -1,0 +1,12 @@
+{
+  "snapshot": "docs/research/seo-ai-visibility/gsc/2026-11-10.json",
+  "pages": {
+    "/tools/natural-hazard-pulse/": [
+      {
+        "href": "/blog/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/",
+        "anchor": "Real-time disaster data"
+      }
+    ]
+  },
+  "exclusions": []
+}

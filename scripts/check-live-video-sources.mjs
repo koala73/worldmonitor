@@ -541,6 +541,10 @@ function firstVariantUri(text) {
 }
 
 const HLS_NOT_HTTPS = 'the manifest must be an https URL';
+// Browsers other than Safari play HLS through hls.js, which reads every playlist hop with XHR from the dashboard.
+const DASHBOARD_ORIGIN = 'https://www.worldmonitor.app';
+const HLS_REDIRECT_NO_CORS = 'the redirect has no Access-Control-Allow-Origin for the dashboard, so browsers block it';
+const HLS_RESPONSE_NO_CORS = 'the playlist has no Access-Control-Allow-Origin for the dashboard, so browsers block it';
 const HLS_MAX_REDIRECTS = 5;
 const defaultFetch = (...args) => globalThis.fetch(...args);
 
@@ -552,6 +556,12 @@ function httpsHref(raw, base) {
   } catch {
     return null;
   }
+}
+
+/** True when a browser on the dashboard origin may read this response. */
+function allowsDashboard(response) {
+  const allowed = response.headers?.get?.('access-control-allow-origin')?.trim();
+  return allowed === '*' || allowed === DASHBOARD_ORIGIN;
 }
 
 /** Resolves after `ms`, or rejects with the signal's reason (the probe's TimeoutError) when it aborts first. */
@@ -589,7 +599,7 @@ export async function probeHlsCandidate(candidate, { fetch: fetchPlaylist = defa
       if (!httpsUrl) return { error: HLS_NOT_HTTPS };
       const response = await fetchPlaylist(httpsUrl, {
         signal,
-        headers: reload ? { 'user-agent': BROWSER_UA, ...HLS_RELOAD_HEADERS } : { 'user-agent': BROWSER_UA },
+        headers: { 'user-agent': BROWSER_UA, origin: DASHBOARD_ORIGIN, ...(reload ? HLS_RELOAD_HEADERS : {}) },
         redirect: 'manual',
       });
       if (response.status >= 300 && response.status < 400) {
@@ -597,10 +607,13 @@ export async function probeHlsCandidate(candidate, { fetch: fetchPlaylist = defa
         if (!location) return { error: 'redirect missing Location' };
         const next = httpsHref(location, response.url || httpsUrl);
         if (!next) return { error: HLS_NOT_HTTPS };
+        if (!allowsDashboard(response)) return { error: HLS_REDIRECT_NO_CORS };
         current = next;
         continue;
       }
       if (response.url && !httpsHref(response.url)) return { error: HLS_NOT_HTTPS };
+      // An error status is reported as such below; only a readable playlist needs the CORS check.
+      if (response.ok && !allowsDashboard(response)) return { error: HLS_RESPONSE_NO_CORS };
       return { response };
     }
     return { error: 'too many redirects' };

@@ -114,7 +114,8 @@ test('unusable, incomplete and moved diff metadata runs every Test job', () => {
   ]) {
     const result = classify(files, options);
     assert.ok(Object.values(result).every((value) => value === 'true'), JSON.stringify({ files: files.slice(0, 2), options, result }));
-    assert.equal(Object.keys(result).length, Object.keys(workflow.jobs.changes.outputs).length);
+    // durations_key is the unit shards' cache lookup, not a path selection.
+    assert.equal(Object.keys(result).length, Object.keys(workflow.jobs.changes.outputs).filter((key) => key !== 'durations_key').length);
   }
 });
 

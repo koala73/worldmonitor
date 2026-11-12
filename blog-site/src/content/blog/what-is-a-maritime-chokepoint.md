@@ -13,7 +13,7 @@ A maritime chokepoint is a narrow passage where a large share of global trade, e
 
 Chokepoints matter because rerouting is expensive, slow, or sometimes impossible. When a canal, strait, or sea lane is disrupted, the effects can move from vessel schedules to freight rates, commodity prices, insurance costs, factory inventories, and national security planning.
 
-The familiar examples are the Strait of Hormuz, Suez Canal, Panama Canal, Bab el-Mandeb, Strait of Malacca, Bosporus, and Taiwan Strait. But the operational question is not just "is this place famous?" It is:
+The familiar examples are the Strait of Hormuz, Suez Canal, Panama Canal, Bab el-Mandeb, Strait of Malacca, Bosporus, and [Taiwan Strait](https://www.worldmonitor.app/crises/taiwan-strait-tensions/). But the operational question is not just "is this place famous?" It is:
 
 > Is the passage strategically concentrated, exposed to disruption, and connected to a trade or energy flow that matters?
 
@@ -103,7 +103,7 @@ For operational follow-through, connect this explainer to the [supply-chain scen
 
 WorldMonitor's chokepoint status combines Redis-backed transit summaries, flow estimates, navigational warnings, AIS disruption matching, and a static threat taxonomy. Upstream gaps are surfaced as unavailable data rather than silently turned into calm conditions.
 
-The model has known limits. AIS coverage can degrade near conflict zones or regions with jamming. Only the seven energy-baseline waterways have live oil/gas flow estimates today. Baseline values are used to convert observed ratios into flow estimates; they are not a promise that live observations perfectly capture every vessel.
+The model has known limits. AIS coverage can degrade near [conflict zones](/blog/posts/track-global-conflicts-in-real-time/) or regions with jamming. Only the seven energy-baseline waterways have live oil/gas flow estimates today. Baseline values are used to convert observed ratios into flow estimates; they are not a promise that live observations perfectly capture every vessel.
 
 For independently published baselines and current definitions, see the U.S. Energy Information Administration's [World Oil Transit Chokepoints analysis](https://www.eia.gov/international/content/analysis/special_topics/World_Oil_Transit_Chokepoints/).
 

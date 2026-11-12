@@ -3,7 +3,7 @@
  *
  * `conflict:ucdp-events:v1` carries 2,000 events (662 KB) and rides in the
  * bootstrap slow tier that EVERY client downloads on EVERY boot. Nothing renders
- * 2,000 events. Three consumers read it, and each wants something small:
+ * 2,000 events. Each dashboard consumer wants a different projection:
  *
  *   1. CII  — `deriveUcdpClassifications` folds all 2,000 events into a per-country
  *             conflict status. 42 countries. Derived, not displayed.
@@ -14,6 +14,9 @@
  *   3. map   — draws every event, but the `ucdpEvents` layer is OFF by default in
  *             all 12 variant configs. Clients that switch it on re-fetch the full
  *             set from the RPC; they do not need it in everyone's boot payload.
+ *   4. exposure — the first ten eligible locations from the full set, each with
+ *             its event count, independent of the conflict panel's per-tab cap,
+ *             plus counts of the events those rows leave out.
  *
  * So the projection ships: the rows we render + the aggregates we compute +
  * the classifications we derive. ~662 KB -> ~55 KB, with every number on screen
@@ -30,7 +33,25 @@
  * fails.
  */
 
+import { exposureLocationKey } from './shared/exposure-location-key.mjs';
+import countryNames from './shared/country-name-to-iso2.cjs';
+import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
+
+// Both UCDP writers (scripts/ais-relay.cjs and scripts/seed-ucdp-events.mjs)
+// publish the projection under these keys. The bootstrap slow tier reads the
+// first; api/health.js watches the second.
+export const UCDP_BOOTSTRAP_KEY = 'conflict:ucdp-events-bootstrap:v1';
+export const UCDP_BOOTSTRAP_META_KEY = 'seed-meta:conflict:ucdp-events-bootstrap';
+
 export const UCDP_PANEL_ROWS_PER_TAB = 50;
+const UCDP_EXPOSURE_ROWS = 10;
+
+// The scripts-only seed runner cannot import the dashboard's TypeScript model.
+// The projection test checks this selection against its density and point rules.
+const EXPOSURE_COUNTRIES = new Set([
+  'AF', 'BF', 'CD', 'ET', 'IL', 'IN', 'IR', 'ML', 'MM', 'NG',
+  'PK', 'PS', 'RU', 'SD', 'SO', 'SS', 'SY', 'TW', 'UA', 'YE',
+]);
 
 export const UCDP_VIOLENCE_TYPES = [
   'UCDP_VIOLENCE_TYPE_STATE_BASED',
@@ -136,13 +157,52 @@ export function selectUcdpPanelRows(events, rowsPerTab = UCDP_PANEL_ROWS_PER_TAB
   return kept;
 }
 
+// One row per location, carrying how many events the full feed reports there,
+// and a count of the feed events the rows leave out, by reason.
+// Both match the dashboard's grouping in src/services/population-exposure.ts.
+export function selectUcdpExposureRows(events) {
+  const rows = new Map();
+  const coverage = { totalEvents: events.length, withoutPreciseLocation: 0, withoutEstimate: 0, atOtherPlaces: 0 };
+  for (const event of events) {
+    if (event.hasPreciseLocation !== true) {
+      coverage.withoutPreciseLocation += 1;
+      continue;
+    }
+    const { latitude, longitude } = event.location ?? {};
+    const country = Number.isFinite(latitude) && Number.isFinite(longitude)
+      && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180
+      && !(latitude === 0 && longitude === 0) && typeof event.country === 'string'
+      ? countryNames.countryNameToIso2(event.country) ?? iso3ToIso2[event.country.trim().toUpperCase()]
+      : undefined;
+    if (!EXPOSURE_COUNTRIES.has(country)) {
+      coverage.withoutEstimate += 1;
+      continue;
+    }
+    const key = exposureLocationKey(latitude, longitude);
+    const row = rows.get(key);
+    if (row) {
+      row.exposureEventCount += 1;
+      continue;
+    }
+    if (rows.size === UCDP_EXPOSURE_ROWS) {
+      coverage.atOtherPlaces += 1;
+      continue;
+    }
+    rows.set(key, { ...event, exposureEventCount: 1 });
+  }
+  return { rows: [...rows.values()], coverage };
+}
+
 export function compactUcdpDashboardPayload(payload, nowMs = Date.now(), rowsPerTab = UCDP_PANEL_ROWS_PER_TAB) {
   if (!payload || typeof payload !== 'object' || !Array.isArray(payload.events)) return payload;
 
   const events = payload.events;
+  const exposure = selectUcdpExposureRows(events);
   return {
     ...payload,
     events: selectUcdpPanelRows(events, rowsPerTab),
+    exposureEvents: exposure.rows,
+    exposureCoverage: exposure.coverage,
     // Everything the UI derives from the full set, precomputed so the capped
     // array cannot change what the user sees.
     classifications: classifyUcdpEvents(events, nowMs),

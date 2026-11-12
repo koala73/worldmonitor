@@ -1,3 +1,6 @@
+// These source checks pin helper use and allowed window.open counts in the
+// migrated renderer files (#8690, section 2).
+// Runtime tests of openExternalUrl cannot prove that every listed caller uses it.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -52,7 +55,7 @@ describe('external navigation call-site contract (#6120)', () => {
     // fire-and-forget (the handle is never read), which is why passing
     // `noopener,noreferrer` — and getting null back — is harmless here.
     const ALLOWED_WINDOW_OPEN = new Map([
-      ['src/services/upgrade-flow.ts', 1], //       web checkout fallback (shared funnel helper)
+      ['src/services/upgrade-flow.ts', 0],
       ['src/app/event-handlers.ts', 2], //          download-banner links
       ['src/app/desktop-updater.ts', 1], //         non-desktop update link
       ['src/settings-main.ts', 0],

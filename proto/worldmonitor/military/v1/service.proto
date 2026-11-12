@@ -54,12 +54,12 @@ service MilitaryService {
     option (sebuf.http.config) = {path: "/list-military-bases", method: HTTP_METHOD_GET};
   }
 
-  // GetWingbitsLiveFlight retrieves real-time position data from the Wingbits ECS network for a single aircraft.
+  // GetWingbitsLiveFlight returns one aircraft's live Wingbits ECS position by ICAO24 hex, with its schedule, delays and a Planespotters photo, cached 30 seconds.
   rpc GetWingbitsLiveFlight(GetWingbitsLiveFlightRequest) returns (GetWingbitsLiveFlightResponse) {
     option (sebuf.http.config) = {path: "/get-wingbits-live-flight", method: HTTP_METHOD_GET};
   }
 
-  // ListDefensePatents retrieves recent defense/dual-use patent filings from the USPTO Open Data Portal.
+  // ListDefensePatents returns weekly-seeded USPTO filings by key defense and dual-use assignees, filterable by CPC class and assignee, up to 100 rows.
   rpc ListDefensePatents(ListDefensePatentsRequest) returns (ListDefensePatentsResponse) {
     option (sebuf.http.config) = {path: "/list-defense-patents", method: HTTP_METHOD_GET};
   }

@@ -29,6 +29,25 @@ function enabledSourceNames() {
 }
 
 describe('X news-account public trust registries (#6654)', () => {
+  it('keeps The Iran Watcher at specialist trust without official or state affiliation', () => {
+    const entry = X_ACCOUNT_TRUST.find((item) => item.sourceName === 'The Iran Watcher');
+    assert.ok(entry);
+    assert.equal(entry.tier, 3);
+    assert.equal(entry.type, 'intel');
+    assert.equal(entry.risk, 'medium');
+    assert.equal(entry.note, 'Iran and Persian Gulf monitor; not a newsroom, wire, or official publisher');
+    assert.doesNotMatch(entry.note, /independent/i);
+    assert.equal(entry.stateAffiliated, undefined);
+    assert.equal(entry.reuseTier, undefined);
+    assert.equal(entry.reuseType, undefined);
+    assert.equal(entry.reuseRisk, undefined);
+    assert.equal(X_ACCOUNT_SOURCE_TIERS['The Iran Watcher'], 3);
+    assert.equal(SOURCE_TIERS['The Iran Watcher'], 3);
+    assert.equal(SOURCE_TYPES['The Iran Watcher'], 'intel');
+    assert.equal(SOURCE_PROPAGANDA_RISK['The Iran Watcher'].risk, 'medium');
+    assert.equal(SOURCE_PROPAGANDA_RISK['The Iran Watcher'].stateAffiliated, undefined);
+  });
+
   it('registers every enabled X sourceName in the public trust registries', () => {
     const missing = [];
     for (const name of enabledSourceNames()) {
@@ -128,20 +147,6 @@ describe('X news-account public trust registries (#6654)', () => {
       healthSrc,
       /xFeed:[^\n]*cutover/,
       'the xFeed cutover is complete — a lingering declaration re-opens a closed deploy window',
-    );
-    // The EMPTY acknowledgement was scoped to the deploy window before the
-    // first ais-relay poll. That poll has happened — production has served
-    // seed-meta:intelligence:x-feed:v1 since generation 1 — so the entry is
-    // spent and is removed rather than left to lapse. An ack only suppresses
-    // an exact name:status match, so it never covered the SEED_ERROR the
-    // unpollable accounts were actually producing; keeping it past its window
-    // would have added an expired entry that reds the scheduled monitor while
-    // still passing the PR gate.
-    const baseline = JSON.parse(readFileSync(join(__dirname, '../scripts/seed-freshness-baseline.json'), 'utf8'));
-    assert.equal(
-      baseline.acknowledged.find((row) => row.name === 'xFeed'),
-      undefined,
-      'the xFeed cutover ack is spent — the producer is live, so EMPTY is now a real fault',
     );
   });
 });

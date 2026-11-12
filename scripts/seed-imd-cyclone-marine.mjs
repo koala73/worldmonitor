@@ -19,6 +19,8 @@ import {
   validateImdEnvelope,
 } from './lib/imd-cyclone-marine.mjs';
 
+import { createImdFailureCapture } from './lib/imd-failure-evidence.mjs';
+
 loadEnvFile(import.meta.url);
 
 export const IMD_ACTIVATION_KEY = 'seed-activated:weather:imd-cyclone-marine:v2';
@@ -38,7 +40,7 @@ async function markImdActivated(data) {
   return result;
 }
 
-async function fetchSnapshot() {
+async function fetchSnapshot({ runStartedAtMs } = {}) {
   let previous = null;
   try {
     const existing = await readCanonicalValue(IMD_CANONICAL_KEY);
@@ -46,7 +48,13 @@ async function fetchSnapshot() {
   } catch (err) {
     console.warn(`imd-cyclone-marine: last-good read failed: ${err.message || err}`);
   }
-  return fetchImdCycloneMarine({ userAgent: CHROME_UA, previous });
+  let captureFailure;
+  try {
+    captureFailure = await createImdFailureCapture({ directory: process.env.IMD_FAILURE_EVIDENCE_DIR, runStartedAtMs });
+  } catch {
+    console.warn('imd-cyclone-marine: failure evidence unavailable');
+  }
+  return fetchImdCycloneMarine({ userAgent: CHROME_UA, previous, captureFailure });
 }
 
 runSeed('weather', 'imd-cyclone-marine', IMD_CANONICAL_KEY, fetchSnapshot, {

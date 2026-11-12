@@ -7,6 +7,9 @@ import { XMLParser } from 'fast-xml-parser';
 import Papa from 'papaparse';
 
 import { decodeHtmlEntities } from './_html-entities.mjs';
+import { ADDITIONAL_TENDER_ADAPTERS } from './_global-tender-feeds.mjs';
+import { createTenderReceipt, observeTenderSource, observeTenderRequest, readTenderBody, completeTenderReceipt, writeTenderReceipt } from './_global-tender-receipts.mjs';
+import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { loadEnvFile, CHROME_UA, httpRetryError, readCanonicalValue, runSeed, withRetry, writeExtraKey } from './_seed-utils.mjs';
 import {
   GLOBAL_TENDER_KEY,
@@ -18,10 +21,14 @@ import {
   normalizeCanadaBuysNotice,
   normalizeGetsNotice,
   normalizeWorldBankNotice,
+  tracksTenderFreshness,
 } from './_global-tenders.mjs';
 
 const CACHE_TTL_SECONDS = 10_800; // 3h, safely beyond the hourly Railway cadence.
-const SOURCE_STATUS_TTL_SECONDS = CACHE_TTL_SECONDS;
+// Per-source status must outlive the 24h last-good budget health grades it
+// against; 26h leaves two hourly ticks for the key to age into STALE_SEED
+// before it expires into EMPTY.
+const SOURCE_STATUS_TTL_SECONDS = 26 * 60 * 60;
 const MAX_PER_SOURCE = 100;
 const GETS_FEED_URL = 'https://www.gets.govt.nz/ExternalRSSFeed.htm';
 const CANADA_BUYS_OPEN_CSV_URL = 'https://canadabuys.canada.ca/opendata/pub/openTenderNotice-ouvertAvisAppelOffres.csv';
@@ -85,12 +92,12 @@ function samIpv4ResponseTransport(httpsGetFn = httpsGet) {
 async function fetchResponse(url, options = {}, transport = fetchResponseTransport) {
   const { timeoutMs = 20_000, maxRetries = 2, retryDelayMs = 1000, retry429 = true, ...fetchOptions } = options;
   return withRetry(async () => {
-    const response = await transport(url, {
+    const response = await observeTenderRequest(url, {
       ...fetchOptions,
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, ...(fetchOptions.headers || {}) },
       timeoutMs,
-    });
-    if (!response.ok) {
+    }, transport);
+    if (!response.ok && !(fetchOptions.redirect === 'manual' && [301, 302, 303, 307, 308].includes(response.status))) {
       // Reuse the repository retry contract: 408 and 429 remain retryable, permanent
       // 4xx responses fail fast, and Retry-After is capped before it reaches withRetry.
       const error = httpRetryError(response);
@@ -105,18 +112,18 @@ async function fetchResponse(url, options = {}, transport = fetchResponseTranspo
 }
 
 async function fetchJson(url, options = {}) {
-  return (await fetchResponse(url, options)).json();
+  return readTenderBody(await fetchResponse(url, options), 'json');
 }
 
 function createSamFetchJson(httpsGetFn = httpsGet) {
   const transport = samIpv4ResponseTransport(httpsGetFn);
-  return async (url, options = {}) => (await fetchResponse(url, options, transport)).json();
+  return async (url, options = {}) => readTenderBody(await fetchResponse(url, options, transport), 'json');
 }
 
-export const __testing__ = { createSamFetchJson };
+export const __testing__ = { createSamFetchJson, writeSourceStatus, fetchResponse };
 
 async function fetchText(url, options = {}) {
-  return (await fetchResponse(url, { ...options, headers: { Accept: 'application/rss+xml, application/xml, text/xml', ...(options.headers || {}) } })).text();
+  return readTenderBody(await fetchResponse(url, { ...options, headers: { Accept: 'application/rss+xml, application/xml, text/xml', ...(options.headers || {}) } }), 'text');
 }
 
 export function sourceStatus(source, state, records = [], error = '', now = Date.now()) {
@@ -336,17 +343,17 @@ async function fetchWorldBankJson(url) {
     }
     let phase = 'headers';
     try {
-      const response = await fetchResponseTransport(url, {
+      const response = await observeTenderRequest(url, {
         timeoutMs: Math.min(20_000, remaining),
         headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      });
+      }, fetchResponseTransport);
       if (!response.ok) {
         const error = httpRetryError(response, { remainingBudgetMs: deadline - Date.now() });
         await response.body?.cancel().catch(() => {});
         throw error;
       }
       phase = 'body';
-      return await response.json();
+      return await readTenderBody(response, 'json');
     } catch (error) {
       const wait = Math.max(5000 * 2 ** (attempt - 1), error.retryAfterMs || 0);
       if (wait >= deadline - Date.now()) error.nonRetryable = true;
@@ -412,17 +419,23 @@ const SOURCE_ADAPTERS = [
   ['canada-buys', fetchCanadaBuys],
   ['gets', fetchGets],
   ['world-bank', fetchWorldBank],
+  ...ADDITIONAL_TENDER_ADAPTERS.map(([source, fetchSource]) => [source,
+    (options) => fetchSource({ ...options, fetchJsonFn: fetchJson, fetchTextFn: fetchText, fetchResponseFn: fetchResponse })]),
 ];
 
-export async function fetchGlobalTenders({ previousSnapshot = null, adapters = SOURCE_ADAPTERS, now = Date.now() } = {}) {
+export async function fetchGlobalTenders({ previousSnapshot = null, adapters = SOURCE_ADAPTERS, now = Date.now(), receipt } = {}) {
   const attemptedAt = new Date(now).toISOString();
-  const settled = await Promise.allSettled(adapters.map(([, fetchSource]) => fetchSource({ now, previousSnapshot })));
-  return mergeTenderSourceResults({
+  const settled = await Promise.allSettled(adapters.map(([source, fetchSource]) => receipt
+    ? observeTenderSource(source, fetchSource, { now, previousSnapshot }, receipt)
+    : fetchSource({ now, previousSnapshot })));
+  const snapshot = mergeTenderSourceResults({
     settled,
     sourceNames: adapters.map(([source]) => source),
     previousSnapshot,
     attemptedAt,
   });
+  if (receipt) completeTenderReceipt(receipt, snapshot);
+  return snapshot;
 }
 
 function validate(snapshot) {
@@ -444,7 +457,7 @@ async function recordUnavailableSourceHealth(snapshot) {
 }
 
 export function sourceHealthMeta(status) {
-  const trackedSource = ['contracts-finder', 'world-bank'].includes(status.source);
+  const trackedSource = tracksTenderFreshness(status.source);
   const successTime = status.lastSuccessfulAt || ((!trackedSource || status.state === 'ok') ? status.fetchedAt : '');
   const successfulAt = Date.parse(successTime || '');
   const failed = status.state !== 'ok';
@@ -469,31 +482,49 @@ async function writeSourceStatus(status) {
   const metaKey = `seed-meta:economic:global-tenders:${status.source}`;
   await writeExtraKey(key, status, SOURCE_STATUS_TTL_SECONDS);
   await writeExtraKey(metaKey, sourceHealthMeta(status), SOURCE_STATUS_TTL_SECONDS);
+  if (status.state === 'ok' && ADDITIONAL_TENDER_ADAPTERS.some(([source]) => source === status.source)) {
+    const creds = getOptionalUpstashCreds();
+    if (creds) await upstashCommand(creds, ['SET', `seed-activated:economic:global-tenders:${status.source}`, '1']);
+  }
 }
 
 export async function main({ adapters, now } = {}) {
   loadEnvFile(import.meta.url);
+  let receipt;
   await runSeed('economic', 'global-tenders', GLOBAL_TENDER_KEY, async () => {
+    receipt = createTenderReceipt();
+    console.log(`  Procurement receipt: ${receipt.runId}`);
     const snapshot = await fetchGlobalTenders({
-      adapters, now,
+      adapters, now, receipt,
       previousSnapshot: await readCanonicalValue(GLOBAL_TENDER_KEY, { strict: true }),
     });
     // A fully unavailable initial run fails canonical validation by design, but
     // operators still need the per-source failure states written to health.
-    await recordUnavailableSourceHealth(snapshot);
+    if (!snapshot.dataAvailable) {
+      try {
+        await writeTenderReceipt(receipt);
+      } finally {
+        await recordUnavailableSourceHealth(snapshot);
+      }
+    }
     return snapshot;
   }, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL_SECONDS,
     declareRecords,
-    sourceVersion: 'sam-ted-contractsfinder-canadabuys-gets-worldbank-v2',
+    sourceVersion: 'global-tenders-22-sources-v5',
     schemaVersion: 1,
     maxStaleMin: 180,
     zeroIsValid: true,
     contentMeta,
     maxContentAgeMin: 14 * 24 * 60,
+    beforePublish: async () => { await writeTenderReceipt(receipt); },
     afterPublish: async (snapshot) => {
       await Promise.all(snapshot.sourceStatuses.map(writeSourceStatus));
+    },
+    afterFreshness: async (_snapshot, { runId }) => {
+      receipt.publication = { state: 'published', publishedAt: new Date().toISOString(), seedRunId: runId };
+      await writeTenderReceipt(receipt);
     },
   });
 }
