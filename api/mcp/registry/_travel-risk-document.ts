@@ -204,7 +204,15 @@ export function cleanText(value: unknown, max = MAX_TEXT_CHARS): string {
     .replace(/\s+/g, ' ')
     .trim();
   const bounded = [...flat].length > max ? `${[...flat].slice(0, max - 1).join('').trimEnd()}…` : flat;
-  return bounded.replace(/\|/g, '/').replace(/"/g, "'").replace(/[\\[\]<>`*_~]/g, '\\$&');
+  return neutraliseAttribution(bounded).replace(/\|/g, '/').replace(/"/g, "'").replace(/[\\[\]<>`*_~]/g, '\\$&');
+}
+
+/**
+ * The draft appends its own "Source: <name>, <date>." to every finding, so feed
+ * text must not carry one. Covers the look-alike colons a feed could use.
+ */
+function neutraliseAttribution(value: string): string {
+  return value.replace(/\b(sources?)\s*[:\uFF1A\uA789\uFE55\u2236]/gi, '$1 -');
 }
 
 /**
@@ -214,7 +222,7 @@ export function cleanText(value: unknown, max = MAX_TEXT_CHARS): string {
  */
 function sourceLabel(value: string): string {
   return value
-    .replace(/\bsource\s*:/gi, 'source -')
+    .replace(/\bsources?\s*[:\uFF1A\uA789\uFE55\u2236]/gi, 'source -')
     .replace(/,\s*\d{4}-\d{2}-\d{2}\s*\.?/g, ',')
     .replace(/\s+/g, ' ')
     .replace(/[,\s]+$/, '');
@@ -222,7 +230,10 @@ function sourceLabel(value: string): string {
 
 function httpsUrl(value: unknown): string | null {
   const url = str(value).trim();
-  return /^https:\/\/[^\s<>"]+$/.test(url) && url.length <= 500 ? url : null;
+  // A link is shown to the analyst as well as followed: direction and invisible
+  // controls could make the shown address differ from the real one.
+  const controls = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/;
+  return /^https:\/\/[^\s<>"]+$/.test(url) && url.length <= 500 && !controls.test(url) ? url : null;
 }
 
 /** Epoch milliseconds from a number or a parseable string; null otherwise. */
