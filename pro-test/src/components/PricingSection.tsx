@@ -423,6 +423,7 @@ export function PricingSection({
             return (
               <motion.div
                 key={tier.name}
+                id={`plan-${tierKey(tier)}`}
                 className={`relative bg-zinc-900 rounded-lg p-6 flex flex-col ${
                   tier.highlighted
                     ? 'border-2 border-wm-green shadow-lg shadow-wm-green/10'
@@ -506,6 +507,7 @@ export function PricingSection({
 
           return (
             <motion.div
+              id={`plan-${tierKey(bandTier)}`}
               data-tier-band={BAND_TIER_KEY}
               className="mt-6 bg-zinc-900 border border-wm-border rounded-lg p-6 md:p-8 flex flex-col gap-6 lg:flex-row lg:items-center lg:gap-10"
               initial={{ opacity: 0, y: 30 }}

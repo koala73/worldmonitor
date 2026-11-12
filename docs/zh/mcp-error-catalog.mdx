@@ -162,7 +162,7 @@ Content-Type: application/json
 
 **ChatGPT。** ChatGPT 的应用规范不允许应用发起结账或推广升级，因此 `User-Agent` 为 ChatGPT 的 `openai-mcp/…`（Codex 除外）的请求不会收到 `recommendedPlan` 或 `checkoutTool`。其 `nextStep` 只说明当前套餐包含什么，并指出 `upgradeUrl` 介绍各套餐；订阅失效和 API 套餐的消息也去掉了重新订阅或升级的引导。`reason`、JSON-RPC 代码、HTTP 状态和 `upgradeUrl` 与其他客户端相同。`start_upgrade` 不会出现在 ChatGPT 的工具列表中，调用它会返回 `Unknown tool`。
 
-**套餐功能拒绝。** 某些工具除订阅外还需要一个指定的套餐标志，套餐中没有该标志的已绑定身份调用方都会被拒绝。拒绝发生在参数校验和任何额度扣减之前。目前唯一的此类标志是 `travelRiskAssessment`，`prepare_travel_risk_assessment` 需要它，且只有 Pro Business、API Business 和 Enterprise 套餐带有该标志。拒绝为 HTTP 403 下的 `-32002`，`reason` 仍为 `"upgrade-required"`，并附带 `data.planFeature`，因此按 `reason` 分支的客户端无需改动。`message` 列出包含该工具的套餐。免费和 Pro 调用方的 `recommendedPlan` 为 `pro_business_monthly`（Pro 不含该标志），API Starter 调用方为 `api_business`。`checkoutTool` 仍只对免费账户出现，ChatGPT 收到仅作说明的 `nextStep`。运营方密钥不受套餐限制。
+**套餐功能拒绝。** 某些工具除订阅外还需要一个指定的套餐标志，套餐中没有该标志的已绑定身份调用方都会被拒绝。拒绝发生在参数校验和任何额度扣减之前。目前唯一的此类标志是 `travelRiskAssessment`，`prepare_travel_risk_assessment` 需要它，且只有 Pro Business、API Business 和 Enterprise 套餐带有该标志。拒绝为 HTTP 403 下的 `-32002`，`reason` 仍为 `"upgrade-required"`，并附带 `data.planFeature`，因此按 `reason` 分支的客户端无需改动。`message` 列出包含该工具的套餐。免费和 Pro 调用方的 `recommendedPlan` 为 `pro_business_monthly`（Pro 不含该标志），API Starter 调用方为 `api_business`。免费和 Pro 调用方的 `upgradeUrl` 是带 `#plan-proBusiness` 的套餐页，链接会打开 Pro Business 卡片。API Starter 调用方仍使用不带该卡片锚点的套餐页，因为这一级升级在账单门户中完成。`checkoutTool` 仍只对免费账户出现，ChatGPT 收到仅作说明的 `nextStep`。运营方密钥不受套餐限制。
 
 ```json
 {
@@ -174,7 +174,7 @@ Content-Type: application/json
     "data": {
       "reason": "upgrade-required",
       "nextStep": "Upgrade to Pro Business or API Business at the upgrade URL to use this tool. Every other tool the current plan includes still works.",
-      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel",
+      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel#plan-proBusiness",
       "planFeature": "travelRiskAssessment",
       "recommendedPlan": "pro_business_monthly"
     }
