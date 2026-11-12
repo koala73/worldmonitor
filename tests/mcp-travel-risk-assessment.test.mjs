@@ -747,7 +747,7 @@ describe('review follow-ups (#10505)', () => {
       { title: 'Regional connectivity disruption', link: `https://radar.cloudflare.com/o1${String.fromCharCode(0x200b)}x`, detectedAt: NOW - 6 * DAY, endedAt: NOW - 5 * DAY, country: 'Indonesia', cause: 'POWER_OUTAGE' },
     ] });
     const { markdown, document } = buildTravelRiskResult(TRIP, sources, NOW);
-    const controls = new RegExp('[\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u2069\\ufeff]');
+    const controls = /[\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/;
     assert.doesNotMatch(markdown, controls);
     assert.doesNotMatch(JSON.stringify(document), controls);
     assert.doesNotMatch(markdown, /example\.com\/a/);
@@ -760,7 +760,7 @@ describe('review follow-ups (#10505)', () => {
       { title: `Road${hidden} closed`, city: `Bang${hidden}kok`, country: 'Thailand', occurredAt: NOW - 2 * DAY, sources: [`Post${hidden}`], sourceUrls: [`https://example.com/a${hidden}b`] },
     ] });
     const { markdown, document } = buildTravelRiskResult(TRIP, sources, NOW);
-    const invisible = /[\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}\ufe00-\ufe0f\u00ad\u034f\u180e]/u;
+    const invisible = /[\u{e0000}-\u{e007f}\u00ad\u180e]|[\u034f\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/u;
     assert.doesNotMatch(markdown, invisible);
     assert.doesNotMatch(JSON.stringify(document), invisible);
     assert.match(markdown, /Road closed/);

@@ -195,7 +195,7 @@ function str(value: unknown): string {
  * controls, the Unicode tag block and variation selectors (both can carry
  * hidden text to a model reading the draft), soft hyphen and joiner fillers.
  */
-const INVISIBLE_CHARS = /[\u061c\u00ad\u034f\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufe00-\ufe0f\ufeff\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}]/gu;
+const INVISIBLE_CHARS = /[\u061c\u00ad\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\u{e0000}-\u{e007f}]|[\u034f\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/gu;
 
 /**
  * Feed text is untrusted: one line, no direction or invisible format controls,
