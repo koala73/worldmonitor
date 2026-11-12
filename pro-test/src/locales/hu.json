@@ -336,7 +336,8 @@
           "Beszerzési megrendelés alapú számlázás",
           "SAML SSO és SCIM (szerződés alapján)",
           "Egyedi biztonsági és adatvédelmi beállítások",
-          "Teljes mértékben fehér címkés – bevételmegosztással vagy anélkül"
+          "Teljes mértékben fehér címkés – bevételmegosztással vagy anélkül",
+          "Utazási kockázatértékelési tervezetek MCP-n keresztül"
         ],
         "cta": "Kapcsolat az értékesítéssel"
       },
@@ -349,7 +350,8 @@
           "10 000 kérés/nap (REST + MCP kombinálva; egy élő MCP hívás 2-3-nak számít)",
           "5 Pro licenc — hívjon meg felhasználókat bármely vállalati e-mail-domainről",
           "Megosztott csapat-irányítópultok",
-          "Prioritásos támogatás"
+          "Prioritásos támogatás",
+          "Utazási kockázatértékelési tervezetek MCP-n keresztül"
         ],
         "highlightFeatures": [
           "Kereskedelmi felhasználás — az ügyfeleinek szóló termékekben"
@@ -364,7 +366,8 @@
           "25 egyéni irányítópult (szemben 10-zel)",
           "MCP + SDK: 250 hívás/nap (vs. 50)",
           "Asztali kulcs az asztali alkalmazáshoz (3 kulcs)",
-          "Prioritásos támogatás"
+          "Prioritásos támogatás",
+          "Utazási kockázatértékelési tervezetek MCP-n keresztül"
         ],
         "highlightFeatures": [
           "Kereskedelmi licenc mellékelve",
