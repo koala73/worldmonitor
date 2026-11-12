@@ -6,7 +6,7 @@ import { loadQualifiedCountrySignals } from '@/services/country-signal-projectio
 import { countrySignalsFromMilitary, recoverCountrySignals, recoverRawSignals, composeCountrySignals, type CountryRawSignalSlot } from '@/services/country-signals';
 import './styles/base-layer.css';
 import './styles/plugin-country.css';
-import { z } from 'zod';
+import * as z from 'zod';
 import { countryViewSchema, panelAdmissionSchema, type PanelAdmission } from '../shared/country-brief-host';
 import { RAW_SIGNAL_FAMILIES, failedRawSignal, assembleRawSignals } from '../shared/country-raw-signals';
 import { projectQualifiedCountrySignalContext } from '../shared/country-signal-observations';
