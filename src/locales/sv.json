@@ -5156,6 +5156,90 @@
       "noPreview": "Arkivet har ännu ingen förhandsvisning av den här scenen."
     },
     "dailyMosaics": "dagliga mosaiker",
-    "weatherFrames": "väderbilder"
+    "weatherFrames": "väderbilder",
+    "ui": {
+      "change": "Ändra",
+      "share": "Dela",
+      "shareCopied": "Länk kopierad",
+      "headline": "Under de senaste {{days}} dagarna passerade {{satellites}} över {{place}}.",
+      "satellites": "{{count}} satelliter",
+      "subline": "{{count}} bilder publicerades.",
+      "closestLook": "Närmaste blick",
+      "replay": "Spela upp",
+      "openFull": "Öppna helvy",
+      "previous": "Föregående bild",
+      "next": "Nästa bild",
+      "passes": "passager",
+      "showAll": "Visa alla passager",
+      "noRecentDays": "Inga färska dagar i arkivet: {{sources}}",
+      "tab": {
+        "all": "Alla",
+        "detailed": "Detaljerat",
+        "weather": "Väder"
+      },
+      "caption": {
+        "clear": "Klart",
+        "clouded": "Molnigt · {{pct}} %",
+        "cloudShadow": "Molnskugga",
+        "spotNotChecked": "Platsen ej kontrollerad för moln",
+        "sceneCloud": "Scenens molnighet {{pct}} % · platsen ej kontrollerad",
+        "radar": "Radarbild",
+        "dailyMosaic": "Dagligt mosaik",
+        "geostationary": "Geostationär helskiva",
+        "geostationaryCadence": "Geostationär · var {{minutes}}:e min"
+      },
+      "tile": {
+        "failed": "Bild ej tillgänglig · {{archive}}",
+        "noPreview": "Arkivet har ännu ingen förhandsvisning av scenen"
+      },
+      "grid": {
+        "watched": "Bevakad",
+        "watchedDef": "Ett offentligt arkiv har en bild av platsen.",
+        "likely": "Troligen bevakad",
+        "likelyDef": "En sensor med fast stråk täckte den; ingen bild publicerad ännu.",
+        "could": "Kunde ha riktats hit",
+        "couldDef": "En styrbar eller kommersiell sensor var inom räckhåll; operatören säger inte om den tittade.",
+        "overhead": "Passerade över",
+        "overheadDef": "Korsade himlen här, utan bildbevis."
+      },
+      "group": {
+        "watched": "bevakade",
+        "likely": "troligen bevakade",
+        "upcoming": "kommande",
+        "could": "som kunde ha riktats hit",
+        "overhead": "som passerade över",
+        "weather": "väderkällor"
+      },
+      "order": {
+        "closest": "Närmaste blick, sedan nyaste",
+        "newest": "Nyaste först",
+        "soonest": "Närmast i tid först"
+      },
+      "row": {
+        "cloud": "Moln {{pct}} %",
+        "days": "{{count}} dagar",
+        "repeats": "{{count}} passager av satelliten i gruppen"
+      },
+      "section": {
+        "summary": "Sammanfattning",
+        "passes": "Passager"
+      },
+      "status": {
+        "objects": "{{count}} objekt · CelesTrak GP",
+        "fetched": "Hämtad {{time}} · {{ago}}",
+        "sun": "Sol {{point}} · subsolär punkt"
+      },
+      "step": {
+        "computing": "Beräknar",
+        "catalogLoading": "Katalog · laddar",
+        "catalog": "Katalog · {{count}} objekt",
+        "propagating": "Beräknar banor · {{done}} / {{total}}",
+        "archives": "Arkiv · {{done}} / {{total}} svarade",
+        "matching": "Matchar scener mot {{passes}} passager",
+        "window": "7-dagarsfönster · {{start}} → {{end}}",
+        "failed": "Misslyckades",
+        "note": "Planetary Computer och NASA GIBS skapar bilder på begäran, så steget kan ta några sekunder."
+      }
+    }
   }
 }
