@@ -122,7 +122,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const calibrate = async () => {
     for (let round = 0; round < 8; round++) {
       const here = await settled();
-      if (Math.abs(here.lat - PLACE.lat) < 0.003 && Math.abs(here.lon - PLACE.lon) < 0.003) break;
+      if (Math.abs(here.lat - PLACE.lat) < 0.0005 && Math.abs(here.lon - PLACE.lon) < 0.0005) break;
       const right = await pickedAt({ dx: aim.dx + 40, dy: aim.dy });
       const down = await pickedAt({ dx: aim.dx, dy: aim.dy + 40 });
       const [a, b, c, d] = [(right.lat - here.lat) / 40, (down.lat - here.lat) / 40, (right.lon - here.lon) / 40, (down.lon - here.lon) / 40];
@@ -169,7 +169,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const heroCredit = await hero.locator('.ow-image-credit').innerText();
   log('hero credit', heroCredit);
   if (!/COPERNICUS SENTINEL DATA|LANDSAT/i.test(heroCredit)) throw new Error(`closest look has no image credit: ${heroCredit}`);
-  if (await sheet.locator('.ow-body').evaluate((b, ack) => b.textContent.includes(ack), "We acknowledge the use of imagery")) throw new Error('acknowledgement paragraph in the sheet body');
+  if (await sheet.locator('.orbital-watch-sheet, .ow-panel').first().evaluate((el) => el.textContent.includes('We acknowledge'))) throw new Error('acknowledgement paragraph in the sheet');
+  await hero.locator('.ow-image-credit').evaluate((el) => el.scrollIntoView({ block: 'nearest' }));
   await shot('sheet-closest-look');
   const credits = await sourceCredits(true);
   log('sources', credits);

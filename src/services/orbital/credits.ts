@@ -7,7 +7,6 @@ export const IMAGE_CREDIT = {
   usgs: 'Landsat imagery courtesy of the U.S. Geological Survey',
   eumetsat: 'Contains EUMETSAT Meteosat imagery',
   gibs: 'NASA GIBS / EOSDIS',
-  gibsAcknowledgement: "We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).",
   celestrak: 'Orbit elements from CelesTrak',
 } as const;
 
@@ -43,7 +42,7 @@ const CREDIT_RULES: readonly CreditRule[] = [
   (_, evidence) => (evidence?.acquisitions.some((acquisition) => acquisition.profileId === 'landsat') ? { source: 'USGS Landsat', text: IMAGE_CREDIT.usgs } : null),
   (_, evidence) =>
     evidence?.mosaics.some((mosaic) => mosaic.days.length > 0) || evidence?.frames.some((frame) => frame.latest && frame.archive === 'nasa-gibs')
-      ? { source: 'NASA GIBS', text: IMAGE_CREDIT.gibsAcknowledgement }
+      ? { source: 'NASA GIBS', text: IMAGE_CREDIT.gibs }
       : null,
   (_, evidence) => (evidence?.frames.some((frame) => frame.latest && frame.archive === 'eumetsat') ? { source: 'EUMETSAT', text: IMAGE_CREDIT.eumetsat } : null),
 ];

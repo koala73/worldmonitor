@@ -308,7 +308,7 @@ describe('satellite pass lookup sheet', () => {
 
   it('words its credits as the source attribution manifest does', () => {
     const attributions = (manifest as { entries: Array<{ attribution?: string }> }).entries.map((e) => e.attribution ?? '').join('\n');
-    for (const credit of [IMAGE_CREDIT.copernicus(2026).replace(' 2026', ''), IMAGE_CREDIT.usgs, IMAGE_CREDIT.eumetsat, IMAGE_CREDIT.gibsAcknowledgement, IMAGE_CREDIT.celestrak]) {
+    for (const credit of [IMAGE_CREDIT.copernicus(2026).replace(' 2026', ''), IMAGE_CREDIT.usgs, IMAGE_CREDIT.eumetsat, IMAGE_CREDIT.celestrak]) {
       expect(attributions).toContain(credit);
     }
   });
@@ -328,7 +328,7 @@ describe('satellite pass lookup sheet', () => {
     expect(credits()).toEqual([IMAGE_CREDIT.celestrak]);
     expect(sources().querySelector<HTMLAnchorElement>('.ow-source-name a')?.href).toBe('https://celestrak.org/');
     expect(sources().querySelector<HTMLAnchorElement>('.ow-sources-docs')?.href).toBe(ORBITAL_WATCH_DOCS_URL);
-    expect(sheet().querySelector('.ow-body')!.textContent).not.toContain(IMAGE_CREDIT.gibsAcknowledgement);
+    expect(sheet().querySelector('.ow-body')!.textContent).not.toContain('We acknowledge');
 
     const acquisitions = [
       { platform: 'sentinel-2c', profileId: 'sentinel-2', startMs: confirmedNew.timeMs, pass: null, imageUrl: null, condition: 'clear', cloudCoverPct: 0 },
@@ -342,7 +342,7 @@ describe('satellite pass lookup sheet', () => {
       IMAGE_CREDIT.celestrak,
       'Contains modified Copernicus Sentinel data 2025-2026',
       IMAGE_CREDIT.usgs,
-      IMAGE_CREDIT.gibsAcknowledgement,
+      IMAGE_CREDIT.gibs,
       IMAGE_CREDIT.eumetsat,
     ]);
 
@@ -351,7 +351,7 @@ describe('satellite pass lookup sheet', () => {
     page().render({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all, { mosaics: emptySources, frames: [{ ...frames[0]!, latest: null }] }) } });
     expect(credits()).toEqual([IMAGE_CREDIT.celestrak]);
     page().render({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all, { frames: gibsFrame }) } });
-    expect(credits()).toEqual([IMAGE_CREDIT.celestrak, IMAGE_CREDIT.gibsAcknowledgement]);
+    expect(credits()).toEqual([IMAGE_CREDIT.celestrak, IMAGE_CREDIT.gibs]);
   });
 
   it('credits weather frames by their archive', () => {
