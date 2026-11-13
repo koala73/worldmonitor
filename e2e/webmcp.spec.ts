@@ -1478,7 +1478,8 @@ test.describe('top-level WebMCP dashboard contract', () => {
       tab: 'settings',
     });
     await expect(page.locator('#unifiedSettingsModal.active')).toBeVisible();
-    await expect(page.locator('#unifiedSettingsModal [data-tab="settings"][aria-selected="true"]')).toBeVisible();
+    // The `settings` wire value opens the home list.
+    await expect(page.locator('#unifiedSettingsModal [data-settings-home]')).toBeVisible();
 
     const alerts = await executeDashboardTool(page, 'open_alerts', {});
     expect(alerts).toMatchObject({
@@ -1488,7 +1489,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
       tab: 'notifications',
     });
     await expect(page.locator('#unifiedSettingsModal.active')).toBeVisible();
-    await expect(page.locator('#unifiedSettingsModal [data-tab="notifications"][aria-selected="true"]')).toBeVisible();
+    await expect(page.locator('#unifiedSettingsModal #us-page-notifications')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.locator('#unifiedSettingsModal.active')).toHaveCount(0);
 

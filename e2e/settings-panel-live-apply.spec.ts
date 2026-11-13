@@ -45,8 +45,8 @@ async function seedDashboard(page: Page): Promise<void> {
 test('email preference link opens Notifications directly', async ({ page }) => {
   await seedDashboard(page);
   await page.goto('/dashboard?settings=notifications', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#us-tab-notifications')).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 });
-  await expect(page.locator('#us-tab-panel-notifications')).toBeVisible();
+  await expect(page.locator('#us-page-notifications')).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('[data-settings-home]')).toBeHidden();
 });
 
 test('enabling a panel in Settings shows it on the dashboard without a reload', async ({ page }) => {
@@ -61,7 +61,7 @@ test('enabling a panel in Settings shows it on the dashboard without a reload', 
   await expect(page.locator(PANEL_SELECTOR)).toHaveCount(0);
 
   await settingsBtn.click();
-  await page.locator('#us-tab-panels').click();
+  await page.locator('[data-settings-nav="panels"]').click();
 
   const toggle = page.locator(`#usPanelToggles .panel-toggle-item[data-panel="${PANEL_KEY}"]`);
   await expect(toggle).toBeVisible({ timeout: 15_000 });
@@ -92,7 +92,7 @@ test('closing Settings with unsaved panel changes shows a clickable discard conf
   await settingsBtn.click();
   const settings = page.locator('#unifiedSettingsModal');
   await expect(settings).toHaveClass(/\bactive\b/);
-  await page.locator('#us-tab-panels').click();
+  await page.locator('[data-settings-nav="panels"]').click();
 
   const toggle = page.locator(`#usPanelToggles .panel-toggle-item[data-panel="${PANEL_KEY}"]`);
   await expect(toggle).toBeVisible({ timeout: 15_000 });
