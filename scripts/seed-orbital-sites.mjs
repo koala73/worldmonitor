@@ -10,6 +10,7 @@ import {
   ORBITAL_SITES_ACTIVATION_KEY,
   ORBITAL_SITES_KEY,
   planPublication,
+  ROLLUP_MAX_AGE_MS,
   siteKey,
   STAC_SEARCH_URL,
   stacSearchBody,
@@ -107,6 +108,7 @@ export function redisSiteStore({ credentials = getRedisCredentials, fetchImpl = 
 export function publicationCommands(plan, { canonicalKey, payload, ttlSeconds }) {
   return [
     ...plan.siteWrites.map((record) => ['SET', siteKey(record.siteId), JSON.stringify(record), 'EX', RECORD_TTL_SECONDS]),
+    ...plan.retainedSiteIds.map((id) => ['EXPIRE', siteKey(id), RECORD_TTL_SECONDS]),
     ...plan.rollupWrites.map((rollup) => ['SET', countryKey(rollup.countryCode), JSON.stringify(rollup), 'EX', RECORD_TTL_SECONDS]),
     ...plan.deletes.map((key) => ['DEL', key]),
     ['SET', canonicalKey, payload, 'EX', ttlSeconds],
@@ -142,12 +144,16 @@ export function makeFetchSites({ store, searchArchive, sites = WATCHED_SITES, re
   return { fetchSites, publishAtomically };
 }
 
+/** Health counts only sites evaluated recently enough for their country rollup to pass the freshness gate. */
+export const freshSiteCount = (data) =>
+  Object.values(data?.sites ?? {}).filter((site) => data.runAt - site.evaluatedAt <= ROLLUP_MAX_AGE_MS).length;
+
 export function buildSeedOptions(publishAtomically) {
   return {
     validateFn: (data) => data?.schema === 1 && data.sites && typeof data.sites === 'object',
     publishAtomically,
     ttlSeconds: RECORD_TTL_SECONDS,
-    recordCount: (data) => Object.keys(data?.sites ?? {}).length,
+    recordCount: freshSiteCount,
     declareRecords: (data) => Object.keys(data?.sites ?? {}).length,
     sourceVersion: 'planetary-computer-stac',
     schemaVersion: 1,

@@ -113,9 +113,13 @@ function passesFor(satellite, profile, catalog, point, nowMs) {
   return passes;
 }
 
+const spacecraft = (name) => String(name).toLowerCase().replace(/[^a-z0-9]/g, '');
+
 function archiveAnswerFor(pass, acquisitions) {
   if (!Object.values(ARCHIVE_COLLECTION_PROFILE).includes(pass.profileId)) return null;
-  const match = acquisitions.find((a) => a.profileId === pass.profileId && Math.abs(Date.parse(a.datetime) - pass.timeMs) <= MATCH_TOLERANCE_MS);
+  const match = acquisitions.find((a) => a.profileId === pass.profileId
+    && (a.platform === null || spacecraft(a.platform) === spacecraft(pass.name))
+    && Math.abs(Date.parse(a.datetime) - pass.timeMs) <= MATCH_TOLERANCE_MS);
   return match ? { status: 'match', itemId: match.itemId } : { status: 'no-match' };
 }
 
@@ -133,9 +137,10 @@ export function buildSiteRecord({ site, catalog, acquisitions, previous, nowMs }
     if (profile) passes.push(...passesFor(satellite, profile, catalog, site, nowMs).map((pass) => ({ pass, profile })));
   }
   passes.sort((a, b) => a.pass.timeMs - b.pass.timeMs || a.pass.noradId - b.pass.noradId);
+  const imaging = passes.filter(({ pass }) => pass.inFootprint);
 
-  const recentPasses = passes
-    .filter(({ pass }) => !pass.opportunity && pass.inFootprint)
+  const recentPasses = imaging
+    .filter(({ pass }) => !pass.opportunity)
     .map(({ pass, profile }) => {
       const archive = archiveAnswerFor(pass, acquisitions);
       return {
@@ -146,16 +151,16 @@ export function buildSiteRecord({ site, catalog, acquisitions, previous, nowMs }
     })
     .slice(-MAX_RECENT_PASSES)
     .reverse();
-  const nextWindows = passes
+  const nextWindows = imaging
     .filter(({ pass }) => pass.opportunity)
     .slice(0, MAX_NEXT_WINDOWS)
     .map(({ pass }) => ({
       noradId: pass.noradId, name: pass.name, profileId: pass.profileId, category: pass.category, time: pass.time,
-      inFootprint: pass.inFootprint, sunElevationDeg: Math.round(pass.sunElevationDeg * 10) / 10,
+      sunElevationDeg: Math.round(pass.sunElevationDeg * 10) / 10,
     }));
 
   const byOperator = new Map();
-  for (const { pass, profile } of passes) {
+  for (const { pass, profile } of imaging) {
     const key = `${profile.operator}|${profile.category}`;
     const entry = byOperator.get(key) ?? { operator: profile.operator, category: profile.category, satellites: new Set(), passes: 0 };
     entry.satellites.add(pass.noradId);
@@ -227,11 +232,6 @@ export async function evaluateSites({ sites, catalog, previousRecords, cursor, s
   return { records, failed, evaluated, nextSiteId };
 }
 
-function nextImagingWindow(record) {
-  const window = record.nextWindows.find((candidate) => candidate.inFootprint);
-  return window ? { profileId: window.profileId, time: window.time } : null;
-}
-
 /** Per-country projection of site records: no state of its own beyond what its sites carry. */
 export function buildCountryRollup(countryCode, records) {
   const sites = records
@@ -249,7 +249,7 @@ export function buildCountryRollup(countryCode, records) {
       lastObservation: record.lastObservation
         ? { itemId: record.lastObservation.itemId, profileId: record.lastObservation.profileId, datetime: record.lastObservation.datetime }
         : null,
-      nextWindow: nextImagingWindow(record),
+      nextWindow: record.nextWindows[0] ? { profileId: record.nextWindows[0].profileId, time: record.nextWindows[0].time } : null,
       operators: [...new Set(record.coverage.map((entry) => entry.operator))],
       flag: record.flag,
     }));
@@ -306,6 +306,7 @@ export function planPublication({ sites, registryVersion, previousIndex, previou
   return {
     index,
     siteWrites: [...evaluation.records.values()].filter((record) => registryIds.has(record.siteId)),
+    retainedSiteIds: [...records.keys()].filter((id) => !evaluation.records.has(id)).sort(),
     rollupWrites: [...rollups.values()],
     deletes: [...removedSiteIds.map(siteKey), ...removedCountries.map(countryKey)],
   };

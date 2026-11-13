@@ -23,7 +23,7 @@ import {
   ROLLUP_MAX_BYTES,
   siteKey,
 } from '../scripts/_orbital-sites.mjs';
-import { makeFetchSites, publicationCommands } from '../scripts/seed-orbital-sites.mjs';
+import { freshSiteCount, makeFetchSites, publicationCommands } from '../scripts/seed-orbital-sites.mjs';
 import { PUBLISH_BLOCKED_EXIT_CODE } from '../scripts/_seed-utils.mjs';
 import { WATCHED_SITES } from '../scripts/shared/orbital-watched-sites.generated.mjs';
 
@@ -46,18 +46,21 @@ const SITES = [
 
 function memoryStore() {
   const kv = new Map();
-  return {
+  const store = {
     kv,
+    expired: [],
     readCatalog: async () => catalog,
     readIndex: async () => kv.get(ORBITAL_SITES_KEY) ?? null,
     readRecords: async (ids) => new Map(ids.filter((id) => kv.has(siteKey(id))).map((id) => [id, kv.get(siteKey(id))])),
     write: async (commands) => {
       for (const [verb, key, value] of commands) {
         if (verb === 'DEL') kv.delete(key);
+        else if (verb === 'EXPIRE') store.expired.push(key);
         else kv.set(key, key === ORBITAL_SITES_ACTIVATION_KEY ? value : JSON.parse(value));
       }
     },
   };
+  return store;
 }
 
 async function run(store, { sites = SITES, searchArchive = async () => fixtureAcquisitions, nowMs = NOW, budgetMs = 60_000, clock } = {}) {
@@ -69,6 +72,23 @@ async function run(store, { sites = SITES, searchArchive = async () => fixtureAc
 }
 
 describe('orbital site records', () => {
+  it('lists and counts only passes whose footprint covers the site', () => {
+    const record = buildSiteRecord({ site: SITES[0], catalog, acquisitions: [], previous: null, nowMs: NOW });
+    const overhead = record.coverage.reduce((sum, entry) => sum + entry.passes, 0);
+    assert.ok(record.nextWindows.length > 0);
+    assert.ok(overhead >= record.recentPasses.length + record.nextWindows.length, 'coverage counts imaging passes');
+    for (const window of record.nextWindows) assert.equal('inFootprint' in window, false);
+  });
+
+  it('confirms an image only for the spacecraft that took it', () => {
+    const scene = fixtureAcquisitions.find((a) => a.platform === 'Sentinel-2B');
+    const base = buildSiteRecord({ site: SITES[0], catalog, acquisitions: [scene], previous: null, nowMs: NOW });
+    const confirmed = base.recentPasses.filter((pass) => pass.itemId === scene.itemId);
+    assert.ok(confirmed.every((pass) => pass.name === 'SENTINEL-2B'));
+    const relabelled = buildSiteRecord({ site: SITES[0], catalog, acquisitions: [{ ...scene, platform: 'Sentinel-2Z' }], previous: null, nowMs: NOW });
+    assert.equal(relabelled.recentPasses.some((pass) => pass.itemId === scene.itemId), false);
+  });
+
   it('keeps last week of passes when the stored elements are older than the age limit today', () => {
     const later = NOW + 7.5 * DAY_MS;
     const record = buildSiteRecord({ site: SITES[0], catalog, acquisitions: [], previous: null, nowMs: later });
@@ -115,6 +135,15 @@ describe('orbital site records', () => {
       else assert.equal(after.evaluatedAt, NOW + DAY_MS, s.id);
     }
     assert.deepEqual(index.failed.map((f) => f.siteId), ['hotspot:a', 'hotspot:c']);
+    assert.deepEqual(store.expired, [siteKey('hotspot:a'), siteKey('hotspot:c')], 'kept records do not expire');
+  });
+
+  it('reports to health only the sites evaluated within the rollup freshness limit', async () => {
+    const store = memoryStore();
+    await run(store);
+    const later = await run(store, { nowMs: NOW + ROLLUP_MAX_AGE_MS + DAY_MS, searchArchive: async (s) => { if (s.id !== 'hotspot:a') throw new Error('HTTP 503'); return fixtureAcquisitions; } });
+    assert.equal(Object.keys(later.sites).length, 4);
+    assert.equal(freshSiteCount(later), 1);
   });
 
   it('deletes the record and the country rollup of a site removed from the registry', async () => {
@@ -153,16 +182,6 @@ describe('orbital site records', () => {
 });
 
 describe('orbital country rollups', () => {
-  it('names the next window inside the imaging footprint, not the next overhead pass', () => {
-    const window = (time, inFootprint) => ({ noradId: 1, name: 'S', profileId: 'sentinel-2', category: 'open-optical', time, inFootprint, sunElevationDeg: 30 });
-    const record = {
-      siteId: 'hotspot:a', name: 'a', lat: 24.4, lon: 54.6, countryCode: 'AE', surface: 'land', origins: [{ list: 'hotspot', id: 'a' }],
-      revision: 'r', evaluatedAt: NOW, lastObservation: null, coverage: [], flag: null,
-      nextWindows: [window('2026-11-13T13:00:00.000Z', false), window('2026-11-13T19:00:00.000Z', true)],
-    };
-    assert.deepEqual(buildCountryRollup('AE', [record]).sites[0].nextWindow, { profileId: 'sentinel-2', time: '2026-11-13T19:00:00.000Z' });
-  });
-
   it('holds only its own sites and stays under the per-key size limit', async () => {
     const store = memoryStore();
     await run(store);
@@ -194,11 +213,11 @@ describe('orbital country rollups', () => {
 
   it('publishes site records and rollups before the index that names them', () => {
     const commands = publicationCommands(
-      { siteWrites: [{ siteId: 'hotspot:a' }], rollupWrites: [{ countryCode: 'AE' }], deletes: ['orbital:site:v1:gone'] },
+      { siteWrites: [{ siteId: 'hotspot:a' }], retainedSiteIds: ['hotspot:b'], rollupWrites: [{ countryCode: 'AE' }], deletes: ['orbital:site:v1:gone'] },
       { canonicalKey: ORBITAL_SITES_KEY, payload: '{}', ttlSeconds: 60 },
     );
     assert.deepEqual(commands.map(([verb, key]) => `${verb} ${key}`), [
-      `SET ${siteKey('hotspot:a')}`, `SET ${countryKey('AE')}`, 'DEL orbital:site:v1:gone', `SET ${ORBITAL_SITES_KEY}`, `SET ${ORBITAL_SITES_ACTIVATION_KEY}`,
+      `SET ${siteKey('hotspot:a')}`, `EXPIRE ${siteKey('hotspot:b')}`, `SET ${countryKey('AE')}`, 'DEL orbital:site:v1:gone', `SET ${ORBITAL_SITES_KEY}`, `SET ${ORBITAL_SITES_ACTIVATION_KEY}`,
     ]);
   });
 });
