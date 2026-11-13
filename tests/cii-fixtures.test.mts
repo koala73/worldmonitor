@@ -262,3 +262,18 @@ describe('strike feed through the relay and the trimmed fixture path', () => {
     assert.ok(v14.IR.strikePressure > 0);
   });
 });
+
+it('capture and reader retain every full-window party group without changing the integration score table', () => {
+  const f = FIXTURES.at(-1)!;
+  const partyMonths = [{ country: 'Ukraine', sideA: 'Government of Russia (Soviet Union)', sideB: 'Government of Ukraine', month: '2026-09', deaths: 123, events: 25 },
+    { country: 'Philippines', sideA: '[unknown]', sideB: 'Rebels', month: '2026-08', deaths: 3, events: 1 }];
+  const raw = { ...f.inputs, ucdp: { ...(f.inputs.ucdp as object), partyMonths, window: { complete: true } } };
+  const trimmed = trimCiiRawInputs(raw);
+  assert.deepEqual((trimmed.ucdp as any).partyMonths, partyMonths);
+  const options = { nowMs: f.nowMs, iranEventsEnabled: f.iranEventsEnabled };
+  const original = computeCiiScoreTable(f.inputs, options);
+  const table = computeCiiScoreTable(trimmed, options);
+  assert.deepEqual(table.aux.ucdpPartyMonths, partyMonths);
+  assert.deepEqual(table.rows, original.rows);
+  assert.deepEqual(table.scores, original.scores);
+});

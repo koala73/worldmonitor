@@ -21,7 +21,8 @@ const readJson = (relativePath) => JSON.parse(
   readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8'),
 );
 
-const querySet = readJson('docs/research/seo-ai-visibility/query-set.json');
+// The fixtures and the 2026-07-27 baseline were measured with seo-ai-visibility-v1.
+const querySet = readJson('docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json');
 const template = readJson(
   'docs/research/seo-ai-visibility/baselines/2026-07-27.json',
 );
@@ -714,7 +715,7 @@ describe('SEO/AI visibility collector', () => {
     writeFileSync(sourcesPath, JSON.stringify(sources));
     try {
       await runCli([
-        '--queries', 'docs/research/seo-ai-visibility/query-set.json',
+        '--queries', 'docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json',
         '--template', 'docs/research/seo-ai-visibility/baselines/2026-07-27.json',
         '--sources', sourcesPath,
         '--observed-at', observedAt,
@@ -722,12 +723,12 @@ describe('SEO/AI visibility collector', () => {
         '--output', baselinePath,
       ]);
       await runScorecardCli([
-        '--queries', 'docs/research/seo-ai-visibility/query-set.json',
+        '--queries', 'docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json',
         '--baseline', baselinePath,
         '--output', scorecardPath,
       ]);
       await runScorecardCli([
-        '--queries', 'docs/research/seo-ai-visibility/query-set.json',
+        '--queries', 'docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json',
         '--baseline', baselinePath,
         '--output', scorecardPath,
         '--check',
@@ -845,7 +846,7 @@ describe('SEO/AI visibility collector', () => {
       aiSurfaces: template.aiSurfaces,
     }));
     const args = [
-      '--queries', 'docs/research/seo-ai-visibility/query-set.json',
+      '--queries', 'docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json',
       '--template', 'docs/research/seo-ai-visibility/baselines/2026-07-27.json',
       '--sources', sourcesPath,
       '--observed-at', observedAt,
@@ -873,7 +874,7 @@ describe('SEO/AI visibility collector', () => {
     try {
       await assert.rejects(
         runCli([
-          '--queries', 'docs/research/seo-ai-visibility/query-set.json',
+          '--queries', 'docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json',
           '--template', 'docs/research/seo-ai-visibility/baselines/2026-07-27.json',
           '--sources', sourcesPath,
           '--observed-at', observedAt,

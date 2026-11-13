@@ -15,6 +15,7 @@ import { CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
 import { CII_DAY_MS, parseCiiDailyPoints } from '../../../../shared/cii-daily-history';
 import { ciiCountryAt, ciiCountryForIso2, ciiIsLand } from '../../../../scripts/shared/cii-country-borders.mjs';
 import { missingRegistersFromPayload } from '../../../../scripts/shared/advisory-registers.mjs';
+import { parsePartyMonths } from '../../../../scripts/shared/ucdp-state-parties.cjs';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
 import { isAcledConfigured } from '../../../_shared/acled-auth';
@@ -1167,6 +1168,8 @@ export function strikePressureBoost(pressure: number): number {
 
 export interface AuxiliarySources {
   ucdpEvents: CiiUcdpRow[];
+  /** Full-window party facts; retained as auxiliary data, not scored. */
+  ucdpPartyMonths?: ReturnType<typeof parsePartyMonths>;
   /** Events per UTC day across every country, from the UCDP writers; null for a payload without them. */
   ucdpDailyTotals?: Record<string, number> | null;
   /** The UCDP writers' `window.complete`; null for a payload without it. */
@@ -1515,6 +1518,7 @@ export function buildCiiAuxiliarySources(
   const ucdp = parseUcdpCache(ucdpRaw);
   return {
     ucdpEvents: ucdp.rows,
+    ucdpPartyMonths: parsePartyMonths((ucdpRaw as { partyMonths?: unknown } | null)?.partyMonths),
     ucdpDailyTotals: ucdp.dailyTotals,
     ucdpWriterComplete: ucdp.writerComplete,
     ucdpUpstreamGapMonths: ucdp.upstreamGapMonths,

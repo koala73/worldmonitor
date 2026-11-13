@@ -1,4 +1,5 @@
 'use strict';
+const { UNKNOWN_PARTY } = require('./ucdp-state-parties.cjs');
 
 // UCDP GED Candidate releases — shared by BOTH UCDP Redis writers.
 //
@@ -419,6 +420,7 @@ function utcMonth(ms) {
  */
 function summarizeUcdpWindow(mappedEvents, { startMs, endMs }) {
   const byCountry = new Map();
+  const partyGroups = new Map();
   const daily = new Map();
   const months = {};
   if (Number.isFinite(startMs) && Number.isFinite(endMs)) {
@@ -437,6 +439,16 @@ function summarizeUcdpWindow(mappedEvents, { startMs, endMs }) {
     daily.set(day, (daily.get(day) ?? 0) + 1);
     const month = utcMonth(ms);
     if (month in months) months[month] += 1;
+    const sideA = typeof event.sideA === 'string' && event.sideA.trim() ? event.sideA.trim() : UNKNOWN_PARTY;
+    const sideB = typeof event.sideB === 'string' && event.sideB.trim() ? event.sideB.trim() : UNKNOWN_PARTY;
+    const country = name || '[unknown]';
+    const key = JSON.stringify([country, sideA, sideB, month]);
+    const group = partyGroups.get(key) ?? { country, sideA, sideB, month, deaths: 0, events: 0 };
+    // Facts only: unlike the legacy activity rollup, do not invent one death for a zero-death row.
+    const best = Number(event.deathsBest);
+    group.deaths += Number.isFinite(best) ? Math.max(0, best) : 0;
+    group.events += 1;
+    partyGroups.set(key, group);
     if (!name) continue;
     if (!byCountry.has(name)) byCountry.set(name, new Map());
     const days = byCountry.get(name);
@@ -467,6 +479,7 @@ function summarizeUcdpWindow(mappedEvents, { startMs, endMs }) {
   }
   return {
     countryDays,
+    partyMonths: [...partyGroups.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, row]) => row),
     dailyTotals: [...daily.entries()].sort((a, b) => a[0] - b[0]),
     months,
     gapMonths,

@@ -11,6 +11,7 @@ import path from 'node:path';
 import { feature as topojsonFeature } from 'topojson-client';
 
 import { resolveIso2 } from './_country-resolver.mjs';
+import { actorName, withoutHistoricalName } from './shared/ucdp-state-parties.cjs';
 
 export const ACTIVE_WAR_DEATH_THRESHOLD = 25;
 export const ACTIVE_WARS_SOURCE = 'UCDP Georeferenced Event Dataset (candidate release)';
@@ -23,19 +24,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 function isoDay(ms) {
   return new Date(ms).toISOString().slice(0, 10);
-}
-
-// UCDP appends the historical name: "Yemen (North Yemen)", "Government of
-// Russia (Soviet Union)". Readers know the current one.
-function withoutHistoricalName(name) {
-  return String(name ?? '').replace(/\s*\([^)]*\)\s*$/, '').trim();
-}
-
-// Candidate releases code actors UCDP has not identified yet as "XXX" plus
-// the Gleditsch-Ward country number (XXX475 is Nigeria).
-function actorName(side) {
-  const name = withoutHistoricalName(side);
-  return /^XXX\d+$/.test(name) ? '' : name;
 }
 
 function inRing(lon, lat, ring) {

@@ -45,8 +45,8 @@ The top-level `status` describes user-visible platform availability, not perfect
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "dataStatus": "OK | DEGRADED | CRITICAL",
   "summary": {
-    "total": 416,
-    "ok": 415,
+    "total": 418,
+    "ok": 417,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 1,
@@ -147,6 +147,26 @@ Keys are grouped into three tiers that determine alert severity:
 | **Bootstrap** | CRIT | Seeded data required at startup. Empty means the dashboard is missing critical data |
 | **Standalone** | CRIT (seeded) / WARN (on-demand) | Populated by seed loops or RPC handlers. On-demand keys are expected to be empty until first request |
 | **On-demand** | WARN | Populated lazily by RPC calls. Empty is normal if nobody has requested the data yet |
+
+The standalone `ciiStructuralPrior` check monitors
+`intelligence:cii-structural-prior:v1`, with the distinct metadata key
+`seed-meta:intelligence:cii-structural-prior`. The source is the World Bank WGI
+`GOV_WGI_PV.EST` estimate, pinned to data year 2025. Taiwan comes from the matching
+2026 WGI bulk release. The payload records each country's value, year and source URL.
+The seeder refreshes the annual data every 30 days, with a 400-day TTL; metadata
+older than 35 days is stale. Health reads the payload as well as metadata. A missing
+or invalid scored-country value reports `COVERAGE_PARTIAL` with `missingCountries`,
+even when metadata is fresh. A Redis read failure reports `REDIS_PARTIAL`.
+The durable `seed-activated:intelligence:cii-structural-prior` marker is written
+only after successful publication. Before any publication, an absent key is
+pending; after activation, missing data remains a fault even if the data TTL expires.
+
+The proposed runner is the live `seed-bundle-static-ref-heavy` service, verified
+on 2026-11-12 to run daily at 04:00 UTC from `scripts/`. Its existing cadence
+rotation admits the prior after Supply-Vulnerability on every second tick.
+Deploying this bundle and applying its new watch patterns require owner approval.
+Use `node scripts/seed-cii-structural-prior.mjs --dry-run` for a GET-only source check.
+This key has no scoring consumer until the separate CII aggregation change ships.
 
 ### Per-Key Statuses
 
@@ -1085,3 +1105,34 @@ activation marker `seed-activated:correlation:market-alerts`, which the seeder
 sets after its first publish. Before the marker exists, a missing payload reads
 as the soft on-demand state. After it exists, a missing publication reports
 `STALE_SEED` once the 30-minute gate passes.
+
+### CII economic-stress coverage
+
+`ciiEconomicStress` monitors `intelligence:cii-economic-stress:v1`, with separate
+`seed-meta:intelligence:cii-economic-stress` metadata. It is pending until its first
+successful publication activates the key. The hourly producer reads existing
+currency, CPI and monthly government-yield caches; it changes no CII score.
+
+Coverage is checked from the payload, not from metadata counts. Fewer than 23 of
+the 31 released countries with a still-fresh member gives `COVERAGE_PARTIAL`.
+The owner's 13 November follow-up set that line two below the 25 countries
+measured at the time: Russia, Iran, Venezuela and Iraq rely on inflation alone.
+The currency member now reads cleaned daily quotes, with a second source for
+a currency whose Yahoo quotes are unreliable, so the expected count stays 25.
+If that second source is down, Qatar reads `unreliable-quotes` and the count
+is 24. Expected
+unmeasured countries do not alarm. Member expiry is checked at health-read
+time, so an old payload cannot keep a country measured after its last member
+expires. A Redis read failure gives `REDIS_PARTIAL`. Coverage defects also remove
+stale containment evidence. Transport age above 180 minutes is stale.
+
+OQ9 (owner, 13 November 2026) permits partial coverage. A country without a fresh
+member is published as `measured: false` with the label “economic stress not
+measured”; missing data is never a zero stress observation. India losing its
+July CPI observation alone does not reduce measured coverage while its currency
+observation remains fresh. The currency member needs the `daily90` block that
+`seed-fx-yoy.mjs` publishes; an FX payload written before that block existed
+gives `insufficient-history` for every currency until the seeder next runs.
+A currency whose daily quotes keep reverting, and which the second source
+cannot supply either, is published as `unreliable-quotes`, which is an
+absence, not a zero move.

@@ -285,6 +285,7 @@ export function trimCiiRawInputs(raw: CiiCaptureInputs, targetCodes: readonly st
     // read-time window check counts (all countries, so the trim cannot change it).
     ucdp: calibration ? structuredClone(raw.ucdp) : nullable(raw.ucdp, (v) => (isObj(v) && isObj(v.countryDays)
       ? {
+        ...(v.partyMonths !== undefined ? { partyMonths: structuredClone(v.partyMonths) } : {}),
         countryDays: Object.fromEntries(Object.entries(v.countryDays).filter(([name]) => nameCode(name))),
         dailyTotals: Array.isArray(v.dailyTotals) ? v.dailyTotals : [],
         ...(isObj(v.window) ? { window: {
@@ -293,6 +294,7 @@ export function trimCiiRawInputs(raw: CiiCaptureInputs, targetCodes: readonly st
         } } : {}),
       }
       : {
+        ...(v.partyMonths !== undefined ? { partyMonths: structuredClone(v.partyMonths) } : {}),
         events: rows(v, 'events')
           .filter((e) => targetNameCode(e?.country || e?.location))
           .map((e) => pick(e, e?.country ? ['country', 'dateStart', 'deathsBest'] : ['location', 'dateStart', 'deathsBest'])),

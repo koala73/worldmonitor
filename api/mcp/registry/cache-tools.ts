@@ -45,7 +45,6 @@ import { OUTLET_PROFILE_OUTPUT_PROPERTIES, OUTLET_PROFILE_REQUIRED, withOutletPr
 import { FLOW_SOURCE_WIRE_VALUES, narrowFlowSource } from '../../../server/_shared/flow-source';
 import { RECEIPT_FIELDS, selectMarketAlertScorecard, selectScorecardFields } from '../../../server/worldmonitor/forecast/v1/scorecard-fields';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
-import { torontoSafetySourceById } from '../../../shared/toronto-safety.js';
 import { accuracyAuditOverride, forecastAccuracyAudit, type ForecastAccuracyAudit } from '../../../shared/forecast-accuracy-audit.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 // @ts-expect-error — generated Edge-safe JS mirror; authored types live in shared/bootstrap-tier-keys.d.ts
@@ -332,7 +331,7 @@ export function projectConflictSourceObservation(value: unknown): ConflictSource
 
 // Per-country day aggregates the UCDP writers add for the CII's one-year term
 // (about 85 KB); they would crowd the events out of the output budget.
-const UCDP_CII_AGGREGATE_FIELDS = ['countryDays', 'dailyTotals'] as const;
+const UCDP_CII_AGGREGATE_FIELDS = ['countryDays', 'dailyTotals', 'partyMonths'] as const;
 
 function filterConflictEvents(data: Record<string, unknown>, params: Record<string, unknown>): Record<string, unknown> {
   const ucdp = data['ucdp-events'];
@@ -933,151 +932,6 @@ function pageStoryPool(
 
 export const CACHE_TOOLS: ToolDef[] = [
   COUNTRY_HISTORY_TOOL,
-  {
-    name: 'get_toronto_reported_occurrences',
-    title: 'Toronto reported crime occurrences',
-    _outputBudgetBytes: 65536,
-    // TPS rows are licensed for reuse with attribution. Extract it from the
-    // cache envelope so a projection over `records` cannot leave the rows
-    // without the licence assertion that permits redistributing them.
-    _attribution: 'data.reported_occurrences.{attribution: attribution, source: source, fetchedAt: fetchedAt}',
-    description: 'Return Toronto Police Service Major Crime Indicators rows: reported occurrences with offence, division, neighbourhood, approximate coordinates and report dates, from the seeded open-data extract (flagged stale after 2 weeks). Retrospective reported crime only; not live dispatch, and coordinates are approximate by design. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. Attribution rides with every projection.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        division: { type: 'string', description: 'TPS police division code such as "D51". Keeps rows whose division contains this text, ignoring case.' },
-        neighbourhood: { type: 'string', description: 'Toronto 158-neighbourhood name such as "Downtown Yonge East". Keeps rows whose neighbourhood contains this text, ignoring case.' },
-        offence: { type: 'string', description: 'Offence name as TPS records it, such as "Assault", "Robbery" or "Assault With Weapon". Keeps rows whose offence contains this text, ignoring case, so "Assault" also matches "Assault With Weapon".' },
-        limit: { type: 'number', description: 'Rows to return after filtering. Values are clamped to 1-100; omitted returns 50.' },
-      },
-      required: [],
-    },
-    outputSchema: cacheEnvelope({
-      reported_occurrences: {
-        type: ['object', 'null'],
-        description: 'Seeded TPS Major Crime Indicators extract, or null when the seed is missing.',
-        properties: {
-          semantic: { type: 'string', enum: ['reported_occurrence'] },
-          source: { type: 'string', enum: ['tps-mci'] },
-          attribution: { type: 'string', description: 'Licence attribution that must accompany redistributed rows.' },
-          fetchedAt: { type: 'string', description: 'ISO-8601 time the extract was fetched from TPS.' },
-          newestContentAt: { type: ['number', 'null'], description: 'Newest report date in the extract, epoch milliseconds; null when no row has one.' },
-          records: {
-            type: 'array',
-            maxItems: 100,
-            description: 'Matching occurrence rows. One event can have several offence or victim rows.',
-            items: {
-              type: 'object',
-              properties: {
-                eventUniqueId: { type: 'string', description: 'TPS event ID shared by every row of one event.' },
-                offence: { type: ['string', 'null'], description: 'Offence name.' },
-                division: { type: ['string', 'null'], description: 'TPS division code.' },
-                neighbourhood158: { type: ['string', 'null'], description: 'Neighbourhood name in the 158-neighbourhood model.' },
-                reportDate: { type: ['string', 'null'], description: 'ISO-8601 date the occurrence was reported.' },
-                occDate: { type: ['string', 'null'], description: 'ISO-8601 date the occurrence happened.' },
-                lat: { type: ['number', 'null'], description: 'Latitude, deliberately offset by TPS.' },
-                lon: { type: ['number', 'null'], description: 'Longitude, deliberately offset by TPS.' },
-              },
-            },
-          },
-        },
-      },
-    }),
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _postFilter: (data, params) => {
-      const division = argStr(params.division);
-      const neighbourhood = argStr(params.neighbourhood);
-      const offence = argStr(params.offence);
-      narrowNested(data, 'reported_occurrences', 'records', (row) => (
-        (!division || ciIncludes(row.division, division))
-        && (!neighbourhood || ciIncludes(row.neighbourhood158, neighbourhood))
-        && (!offence || ciIncludes(row.offence, offence))
-      ));
-      const requested = argNum(params.limit);
-      capNested(data, 'reported_occurrences', 'records', Math.min(Math.max(requested ?? 50, 1), 100));
-      return data;
-    },
-    _cacheKeys: ['safety:toronto:tps-mci:v1'],
-    _cacheLabels: { 'safety:toronto:tps-mci:v1': 'reported_occurrences' },
-    _freshnessChecks: [{ key: 'seed-meta:safety:tps-mci', maxStaleMin: 20160 }],
-    _apiPaths: ['GET /api/safety/v1/get-toronto-safety'],
-  },
-  {
-    name: 'get_toronto_calls_attended',
-    title: 'Toronto police calls attended',
-    _outputBudgetBytes: 65536,
-    // Read AFTER `_postFilter`, which rewrites `attribution` from the source
-    // descriptor — a pre-CKAN cached blob still carries the retired
-    // OGL-Ontario claim, and the rider must publish the current licence.
-    _attribution: 'data.annual_aggregates.{attribution: attribution, source: source, fetchedAt: fetchedAt}',
-    description: 'Bounded Toronto Police Service Calls for Service Attended annual aggregates. These are neighbourhood and division counts, not incident points.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        year: { type: 'number', description: 'Calendar year of the attended calls (e.g. 2024). Keeps only that year\'s rows.' },
-        division: { type: 'string', description: 'TPS police division code such as "D51". Keeps rows whose original or final division contains this text, ignoring case.' },
-        neighbourhood: { type: 'string', description: 'Toronto 158-neighbourhood name such as "Downtown Yonge East". Keeps rows whose neighbourhood contains this text, ignoring case.' },
-        limit: { type: 'number', description: 'Rows to return after filtering. Values are clamped to 1-100; omitted returns 50.' },
-      },
-      required: [],
-    },
-    outputSchema: cacheEnvelope({
-      annual_aggregates: {
-        type: ['object', 'null'],
-        description: 'Seeded TPS calls-attended aggregates, or null when the seed is missing.',
-        properties: {
-          semantic: { type: 'string', enum: ['annual_aggregate'] },
-          source: { type: 'string', enum: ['tps-calls-attended'] },
-          attribution: { type: 'string', description: 'Licence attribution that must accompany redistributed rows.' },
-          fetchedAt: { type: 'string', description: 'ISO-8601 time the extract was fetched from TPS.' },
-          newestContentYear: { type: ['number', 'null'], description: 'Latest event year in the extract; null when no row has one.' },
-          records: {
-            type: 'array',
-            maxItems: 100,
-            description: 'Matching annual count rows by division and neighbourhood.',
-            items: {
-              type: 'object',
-              properties: {
-                eventYear: { type: 'number', description: 'Year the calls were attended.' },
-                divisionOriginal: { type: ['string', 'null'], description: 'Division originally assigned the calls.' },
-                divisionFinal: { type: ['string', 'null'], description: 'Division the calls were finally attributed to.' },
-                neighbourhood158: { type: ['string', 'null'], description: 'Neighbourhood name in the 158-neighbourhood model.' },
-                eventCount: { type: ['number', 'null'], description: 'Number of calls attended.' },
-              },
-            },
-          },
-        },
-      },
-    }),
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _postFilter: (data, params) => {
-      const year = argNum(params.year);
-      const division = argStr(params.division);
-      const neighbourhood = argStr(params.neighbourhood);
-      narrowNested(data, 'annual_aggregates', 'records', (row) => (
-        (year == null || row.eventYear === year)
-        && (!division || ciIncludes(row.divisionOriginal, division) || ciIncludes(row.divisionFinal, division))
-        && (!neighbourhood || ciIncludes(row.neighbourhood158, neighbourhood))
-      ));
-      const requested = argNum(params.limit);
-      capNested(data, 'annual_aggregates', 'records', Math.min(Math.max(requested ?? 50, 1), 100));
-      // Attribution is a licence assertion, so it comes from the descriptor —
-      // never from whatever snapshot happens to be cached. A pre-CKAN blob
-      // still carries the retired OGL-Ontario claim until it is overwritten.
-      const aggregates = (data as Record<string, unknown>).annual_aggregates;
-      if (aggregates && typeof aggregates === 'object') {
-        const descriptor = torontoSafetySourceById('tps-calls-attended');
-        if (descriptor?.attribution) {
-          (aggregates as Record<string, unknown>).attribution = descriptor.attribution;
-        }
-      }
-      return data;
-    },
-    _cacheKeys: ['safety:toronto:tps-calls-attended:v1'],
-    _cacheLabels: { 'safety:toronto:tps-calls-attended:v1': 'annual_aggregates' },
-    _freshnessChecks: [{ key: 'seed-meta:safety:tps-calls-attended', maxStaleMin: 20160 }],
-    _apiPaths: ['GET /api/safety/v1/get-toronto-safety'],
-  },
   {
     // Intentionally fixed-universe, unlike the ListMarketQuotes RPC: this reads
     // and filters the seeded bootstrap snapshot and never gap-fetches an
@@ -4241,7 +4095,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           source: { type: 'string', enum: [...FLOW_SOURCE_WIRE_VALUES] },
           // Raw seeder value, NOT the closed hazard enum. Hand-authored JSON
           // Schema COULD express it here today (#6113 says so explicitly; see
-          // the `source` enums on get_toronto_* above) — this is DEFERRED, not
+          // the closed `source` enums elsewhere) — this is DEFERRED, not
           // blocked: #6106 blocks the REST twin on sebuf codegen, and shipping
           // the closed set on one surface only would recreate the very
           // declare-vs-serve split this tool just closed for `source`.

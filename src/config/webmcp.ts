@@ -9,7 +9,7 @@ import type { SiteVariant } from './variant';
  * while the entitled, visible panel has settled data.
  */
 export const WEBMCP_HOMEPAGE_TOOL_NAMES = [
-  'openDashboard',
+  'open_dashboard',
   'getWorldMonitorMcpEndpoint',
   'listCountryScorecards',
   'getCountryScorecard',

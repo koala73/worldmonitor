@@ -1,0 +1,259 @@
+---
+title: "Real-Time Systems, Maps and Performance"
+sidebarTitle: "Real-time & maps"
+description: "AIS relay backpressure, ONNX capability detection, map overlays, conditional data loading, web worker analysis, virtual scrolling, cross-module data flow and the refresh intervals World Monitor uses."
+---
+
+Part of the [Architecture and Design Philosophy](/architecture) guide, which indexes every topic. For deployment topology, directory layout and CI/CD, see [`ARCHITECTURE.md`](https://github.com/koala73/worldmonitor/blob/main/ARCHITECTURE.md).
+
+---
+
+## Real-Time Systems
+
+### AIS Relay Backpressure Architecture
+
+The AIS vessel tracking relay maintains a persistent WebSocket connection to AISStream.io that can deliver hundreds of position reports per second during peak maritime traffic. Without flow control, a slow consumer (e.g., a client on a poor network) would cause unbounded memory growth in the relay's message queue.
+
+The relay implements a **three-watermark backpressure system**:
+
+| Watermark | Threshold | Behavior |
+| --- | --- | --- |
+| **Low** | 1,000 messages | Normal operation — all messages queued |
+| **High** | 4,000 messages | Warning state — oldest messages evicted to make room |
+| **Hard cap** | 8,000 messages | Overflow — new messages dropped until queue drains below high watermark |
+
+Additionally, the relay caps the total tracked vessel count at 20,000 positions (the most recent position per MMSI). A secondary **density cell** system aggregates positions into 2°×2° geographic grid cells (max 5,000 cells) for overview visualization when the full vessel list exceeds rendering capacity.
+
+Vessel history trails are capped at 30 position points per vessel. When a new position arrives, the oldest trail point is evicted. This creates a "comet tail" visualization showing recent movement direction without unbounded memory growth.
+
+The relay also implements HMAC authentication between the frontend and relay server, preventing unauthorized clients from consuming the expensive AIS data feed.
+
+### ONNX Runtime Capability Detection
+
+The browser-side ML pipeline (embeddings, NER, sentiment, summarization) uses ONNX Runtime Web for inference. Model execution speed varies dramatically across browsers and devices depending on available hardware acceleration.
+
+The system uses a cascading capability detection strategy at initialization:
+
+```
+WebGPU (fastest)  →  WebGL (fast)  →  WASM + SIMD (baseline)
+```
+
+1. **WebGPU** — checked via `navigator.gpu` presence. Provides GPU-accelerated inference with the lowest latency. Available in Chrome 113+ and Edge 113+
+2. **WebGL** — fallback when WebGPU is unavailable. Uses the existing GPU via WebGL compute shaders. Available in all modern browsers
+3. **WASM + SIMD** — CPU-only fallback. `SharedArrayBuffer` and WASM SIMD availability are probed. SIMD provides ~2–4x speedup over plain WASM for vector operations
+
+A `deviceMemory` API guard excludes the ML pipeline entirely on low-memory devices (mobile phones with &lt;4GB RAM), preventing out-of-memory crashes from loading 384-dimensional float32 embedding models alongside the map renderer and live video streams.
+
+---
+
+## Map & Visualization
+
+### Geopolitical Boundary Overlays
+
+The map supports typed geopolitical boundary polygons with associated metadata. Each boundary carries a `boundaryType` discriminant (`demilitarized`, `ceasefire`, `disputed`, `armistice`) that controls rendering style and popup content.
+
+**Korean DMZ** — the first boundary implemented is the Korean Demilitarized Zone, defined as a 43-point closed-ring polygon derived from OpenStreetMap Way 369265305 and the Korean Armistice Agreement Article I demarcation line. On the flat map, it renders as a `GeoJsonLayer` with a translucent blue fill and labeled tooltip. On the 3D globe, it renders as `polygonsData` under the conflicts layer. The boundary has a dedicated help entry and layer toggle, and is enabled by default on the `full` variant only.
+
+The boundary system is designed to be extensible — additional geopolitical boundaries (Line of Control in Kashmir, Golan Heights, Northern Cyprus Green Line) can be added to the `GEOPOLITICAL_BOUNDARIES` constant with appropriate typing and will render automatically on both map engines.
+
+### CII Choropleth Heatmap
+
+The Country Instability Index can be projected as a full-coverage choropleth layer on both map engines, painting every country's polygon in a five-stop color gradient based on its live CII score (0–100):
+
+| Score Range | Level     | Color     |
+| ----------- | --------- | --------- |
+| 0–30        | Low       | Green     |
+| 31–50       | Normal    | Yellow    |
+| 51–65       | Elevated  | Orange    |
+| 66–80       | High      | Red       |
+| 81–100      | Critical  | Dark Red  |
+
+On the **flat map** (deck.gl), a `GeoJsonLayer` maps ISO 3166-1 alpha-2 country codes to fixed RGBA values via the `getLevel()` threshold function. Updates are triggered by a monotonic version counter (`ciiScoresVersion`) — the layer compares the counter on each render pass and only recomputes fill colors when it increments, avoiding O(n) data spreads.
+
+On the **3D globe** (globe.gl), CII country polygons merge into the same `polygonsData` array as geopolitical boundaries. A `_kind` discriminant (`'boundary' | 'cii'`) in each polygon object lets a single `.polygonCapColor()` callback dispatch rendering logic for both types. CII polygons render at `polygonAltitude: 0.002` (below the `0.006` altitude used by conflict-zone outlines), preventing visual Z-fighting.
+
+Countries GeoJSON is lazy-loaded from a shared `getCountriesGeoJson()` function, cached after first fetch, and shared between the CII layer and the country-detection ray-casting service.
+
+### Unified Layer Toggle Catalog
+
+All map layer toggle definitions — icon, localization key, fallback display label, and supported renderer types — are consolidated in a single shared registry (`src/config/map-layer-definitions.ts`). Each entry declares which map renderers support it via a `renderers: MapRenderer[]` field (e.g., `dayNight` is flat-only, `ciiChoropleth` is both flat and globe), preventing the two map components from showing inconsistent layer options.
+
+A `def()` factory function reduces per-entry boilerplate. Variant-specific layer ordering (`VARIANT_LAYER_ORDER`) defines the display sequence for each published dashboard variant without duplicating the definitions themselves. Adding a new map layer requires a single registry entry — both the flat map and 3D globe derive their toggle panels from this catalog automatically.
+
+The same registry also carries the v1 layer-explanation catalog for high-adoption layers. Each curated explanation records purpose, provider/source, freshness expectations, confidence notes, limitations, related panels/actions, and grounding paths; unsupported layers intentionally fall back to a generic card so the UI never implies a fabricated freshness or confidence value.
+
+---
+
+## Conditional Data Loading
+
+API calls are expensive. The system only fetches data for **enabled layers**, reducing unnecessary network traffic and rate limit consumption.
+
+### Layer-Aware Loading
+
+When a layer is toggled OFF:
+
+- No API calls for that data source
+- No refresh interval scheduled
+- WebSocket connections closed (for AIS)
+
+When a layer is toggled ON:
+
+- Data is fetched immediately
+- Refresh interval begins
+- Loading indicator shown on toggle button
+
+### Unconfigured Services
+
+Some data sources require API keys (AIS relay, Cloudflare Radar). If credentials are not configured:
+
+- The layer toggle is hidden entirely
+- No failed requests pollute the console
+- Users see only functional layers
+
+This prevents confusion when deploying without full API access.
+
+---
+
+## Performance Optimizations
+
+The dashboard processes thousands of data points in real-time. Several techniques keep the UI responsive even with heavy data loads.
+
+### Web Worker for Analysis
+
+CPU-intensive operations run in a dedicated Web Worker to avoid blocking the main thread:
+
+| Operation | Complexity | Worker? |
+|-----------|------------|---------|
+| News clustering (Jaccard) | O(n²) | Yes |
+| Correlation detection | O(n × m) | Yes |
+| DOM rendering | O(n) | Main thread |
+
+The worker manager implements:
+
+- **Lazy initialization**: Worker spawns on first use
+- **10-second ready timeout**: Rejects if worker fails to initialize
+- **30-second request timeout**: Prevents hanging on stuck operations
+- **Automatic cleanup**: Terminates worker on fatal errors
+
+### Virtual Scrolling
+
+Large lists (100+ news items) use virtualized rendering:
+
+**Fixed-Height Mode** (VirtualList):
+
+- Only renders items visible in viewport + 3-item overscan buffer
+- Element pooling—reuses DOM nodes rather than creating new ones
+- Invisible spacers maintain scroll position without rendering all items
+
+**Variable-Height Mode** (WindowedList):
+
+- Chunk-based rendering (10 items per chunk)
+- Renders chunks on-scroll with 1-chunk buffer
+- CSS containment for performance isolation
+
+This reduces DOM node count from thousands to ~30, dramatically improving scroll performance.
+
+### Request Deduplication
+
+Identical requests within a short window are deduplicated:
+
+- Market quotes batch multiple symbols into single API call
+- Concurrent layer toggles don't spawn duplicate fetches
+- `Promise.allSettled` ensures one failing request doesn't block others
+
+### Efficient Data Updates
+
+When refreshing data:
+
+- **Incremental updates**: Only changed items trigger re-renders
+- **Stale-while-revalidate**: Old data displays while fetch completes
+- **Delta compression**: Baselines store 7-day/30-day deltas, not raw history
+
+---
+
+## Cross-Module Integration
+
+Intelligence modules don't operate in isolation. Data flows between systems to enable composite analysis.
+
+### Data Flow Architecture
+
+```
+News Feeds → Clustering → Velocity Analysis → Hotspot Correlation
+                ↓                                    ↓
+         Topic Extraction                    CII Information Score
+                ↓                                    ↓
+         Keyword Monitors              Strategic Risk Overview
+                                                     ↑
+Military Flights → Near-Hotspot Detection ──────────┤
+                                                     ↑
+AIS Vessels → Chokepoint Monitoring ────────────────┤
+                                                     ↑
+ACLED/GDELT → Protest Events ───────────────────────┤
+                       ↓
+                CII Unrest Score
+```
+
+### Module Dependencies
+
+| Consumer Module | Data Source | Integration |
+|----------------|-------------|-------------|
+| **CII Unrest Score** | ACLED, GDELT protests | Event count, fatalities |
+| **CII Security Score** | Military flights, vessels | Activity near hotspots |
+| **CII Information Score** | News clusters | Velocity, keyword matches |
+| **Strategic Risk** | CII, Convergence, Cascade | Composite scoring |
+| **Related Assets** | News location inference | Pipeline/cable proximity |
+| **Geographic Convergence** | All geo-located events | Multi-type clustering |
+
+### Alert Propagation
+
+When a threshold is crossed:
+
+1. **Source module** generates alert (e.g., CII spike)
+2. **Alert merges** with related alerts (same country/region)
+3. **Strategic Risk** receives composite alert
+4. **UI updates** header badge and panel indicators
+
+This ensures a single escalation (e.g., Ukraine military flights + protests + news spike) surfaces as one coherent signal rather than three separate alerts.
+
+---
+
+## Refresh Intervals
+
+Different data sources update at different frequencies based on volatility and API constraints.
+
+### Polling Schedule
+
+| Data Type | Interval | Rationale |
+|-----------|----------|-----------|
+| **News feeds** | 5 min | Balance freshness vs. rate limits |
+| **Stock quotes** | 1 min | Market hours require near-real-time |
+| **Crypto prices** | 1 min | 24/7 markets, high volatility |
+| **Predictions** | 5 min | Probabilities shift slowly |
+| **Earthquakes** | 5 min | USGS updates every 5 min |
+| **Weather alerts** | 10 min | NWS alert frequency |
+| **Flight delays** | 10 min | FAA status update cadence |
+| **Internet outages** | 60 min | BGP events are rare |
+| **Economic data** | 30 min | FRED data rarely changes intraday |
+| **Military tracking** | 5 min | Activity patterns need timely updates |
+| **PizzINT** | 15 min | Foot traffic changes slowly; BestTime plan budget |
+
+### Real-Time Streams
+
+AIS vessel tracking uses WebSocket for true real-time:
+
+- **Connection**: Persistent WebSocket to Railway relay
+- **Messages**: Position updates as vessels transmit
+- **Reconnection**: Automatic with exponential backoff (5s → 10s → 20s)
+
+### User Control
+
+Time range selector affects displayed data, not fetch frequency:
+
+| Selection | Effect |
+|-----------|--------|
+| **1 hour** | Show only events from last 60 minutes |
+| **6 hours** | Show events from last 6 hours |
+| **24 hours** | Show events from last day |
+| **7 days** | Show all recent events |
+
+Historical filtering is client-side—all data is fetched but filtered for display.

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { MONITORED_AIRPORTS } from '../src/config/airports.ts';
+import { COUNTRY_COORDS } from '../scripts/lib/radar-country-coords.mjs';
 import {
   airportCountry,
   countryCodeFromName,
@@ -103,6 +104,16 @@ describe('countryCodeFromName', () => {
       Ukraine: 'UA', 'Dominican Republic': 'DO', Peru: 'PE', Guyana: 'GY',
       Bangladesh: 'BD', Syria: 'SY', 'Sri Lanka': 'LK',
     })) assert.equal(countryCodeFromName(name), code, name);
+  });
+
+  it('resolves the English name of every country the outage seeder can emit', () => {
+    // seed-internet-outages writes Radar's location name as `country`, but
+    // only for codes in COUNTRY_COORDS; the focus attributes by that name.
+    const names = new Intl.DisplayNames(['en'], { type: 'region' });
+    const misses = Object.keys(COUNTRY_COORDS)
+      .filter((code) => countryCodeFromName(names.of(code)) !== code)
+      .map((code) => `${code} ${names.of(code)}`);
+    assert.deepEqual(misses, []);
   });
 
   it('resolves UCDP spellings', () => {
