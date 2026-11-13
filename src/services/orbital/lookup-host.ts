@@ -1,6 +1,9 @@
 /** What the satellite pass lookup needs from the dashboard it opens over, without importing it. */
 export interface LookupMapHandle {
   setCenter(lat: number, lon: number, zoom?: number): unknown;
+  /** False on the SVG map, whose zoom is a plain scale factor rather than a tile zoom level. */
+  isDeckGLActive(): boolean;
+  isGlobeMode(): boolean;
 }
 
 let mapAccess: () => LookupMapHandle | null = () => null;

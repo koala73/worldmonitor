@@ -27,6 +27,8 @@ const MINUTE_MS = 60_000;
 /** Recomputed passes can shift by a minute when the orbit elements were refreshed in between. */
 const LINKED_PASS_TOLERANCE_MS = 2 * MINUTE_MS;
 const PLACE_ZOOM = 6;
+/** The SVG map's zoom is a scale factor that tops out at 10, which still frames less tightly than tile zoom 6. */
+const SVG_PLACE_ZOOM = 10;
 const SHARE_LABEL_RESET_MS = 2000;
 
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
@@ -206,7 +208,12 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, view }: { recentr
 }
 
 function recentreOn(at: GeoPoint, view: OrbitalView): void {
-  const centre = () => orbitalLookupMap()?.setCenter(coarse(at.lat), coarse(at.lon), PLACE_ZOOM);
+  const centre = () => {
+    const map = orbitalLookupMap();
+    if (!map) return;
+    const zoom = map.isDeckGLActive() || map.isGlobeMode() ? PLACE_ZOOM : SVG_PLACE_ZOOM;
+    map.setCenter(coarse(at.lat), coarse(at.lon), zoom);
+  };
   centre();
   // Raising the map to full screen resizes it after this frame, which moves its centre.
   if (view === 'full') requestAnimationFrame(() => requestAnimationFrame(centre));

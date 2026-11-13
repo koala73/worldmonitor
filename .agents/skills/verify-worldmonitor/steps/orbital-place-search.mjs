@@ -32,13 +32,41 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const requests = [];
   page.on('request', (req) => requests.push(req.url()));
 
+  page.on('pageerror', (err) => log('pageerror stack', String(err.stack ?? err).slice(0, 600)));
+  const sheet = page.locator('.orbital-watch-sheet');
   await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': '"flat"' } });
+
+  // Before and after a pick from the dashboard's own view, so the map visibly moves to the place.
+  await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
+  await waitForBoot(page, { data: true });
+  const renderer = await waitForMap(page);
+  log('renderer', renderer);
+  await (await expectVisible('#searchBtn')).click();
+  await (await expectVisible('.search-modal .search-input')).pressSequentially('satellite passes', { delay: 25 });
+  await page.locator('.search-modal .search-result-item[data-index]').first().click();
+  await expectVisible('.ow-search-input');
+  await sheet.locator('.ow-search-input').fill('Palm Jumeirah');
+  await sheet.locator('.ow-search-input').press('Enter');
+  await expectVisible('.ow-search-result');
+  log('url before pick', await page.evaluate(() => location.href));
+  await shot('before-pick-dashboard-view');
+  await sheet.locator('.ow-search-result').first().click();
+  await page.waitForFunction(() => document.querySelector('.ow-place')?.textContent?.includes('Palm Jumeirah, Dubai'));
+  await settled(page);
+  const zoom = Number(new URL(await page.evaluate(() => location.href)).searchParams.get('zoom'));
+  const wanted = renderer === 'svg' ? 10 : 6;
+  log('zoom after pick', zoom, 'wanted', wanted);
+  if (Math.abs(zoom - wanted) > 0.5) throw new Error(`the map did not zoom to the place: ${zoom}, wanted ${wanted}`);
+  await shot('after-pick-recentred-on-place');
+  await sheet.locator('.ow-close').click();
+  searches.length = 0;
+
+  await page.goto('about:blank');
   await page.goto(`${base}/dashboard${SHARE_FRAGMENT}`, { waitUntil: 'domcontentloaded' });
   log('opened', `${base}/dashboard${SHARE_FRAGMENT}`);
   await waitForBoot(page, { data: true });
-  log('renderer', await waitForMap(page));
+  await waitForMap(page);
 
-  const sheet = page.locator('.orbital-watch-sheet');
   await expectVisible('.orbital-watch-sheet');
   const place = async () => (await sheet.locator('.ow-place').textContent()) ?? '';
   if (!(await place()).includes('25.110°N 55.140°E')) throw new Error(`share link did not open the rounded point: ${await place()}`);
@@ -63,7 +91,6 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await settled(page);
   log('url while open', await page.evaluate(() => location.href));
   if (/[?&]lat=/.test(await page.evaluate(() => location.search))) throw new Error('map URL sync wrote the centre while the lookup is open');
-  await shot('picked-place-recentred-results');
 
   await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('blocked')) } }));
   await sheet.locator('.ow-share').click();

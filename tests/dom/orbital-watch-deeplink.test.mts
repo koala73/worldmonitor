@@ -66,6 +66,7 @@ function submitSearch(value: string): void {
 
 let fetchMock: ReturnType<typeof vi.fn>;
 const setCenter = vi.fn();
+let deckGL = true;
 const sendBeacon = vi.fn(() => true);
 const writeText = vi.fn(async (_text: string) => {});
 
@@ -90,7 +91,8 @@ beforeEach(() => {
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
   lookupMock.mockImplementation(async ({ point }: { point: { lat: number; lon: number } }) => lookupAt(point));
   evidenceMock.mockImplementation(async (found: PointPassLookup) => answered(found.passes));
-  connectOrbitalLookupMap(() => ({ setCenter }));
+  deckGL = true;
+  connectOrbitalLookupMap(() => ({ setCenter, isDeckGLActive: () => deckGL, isGlobeMode: () => false }));
 });
 
 afterEach(() => {
@@ -219,6 +221,22 @@ describe('the search row', () => {
     expect(sheet()!.querySelector<HTMLElement>('.ow-place')!.title).toBe('Rotterdam, South Holland, Netherlands');
     expect(sheet()!.querySelector('.ow-zone')!.textContent).toBe('EUROPE/AMSTERDAM · UTC+1');
     await vi.waitFor(() => expect(sheet()!.querySelector('.ow-headline')?.textContent).toContain('Rotterdam, South Holland.'));
+  });
+
+  it('zooms the SVG map to its own scale, which differs from the tile zoom of the deck.gl map', async () => {
+    deckGL = false;
+    openOrbitalWatch(EXACT, null);
+    button('.ow-change').click();
+    submitSearch('Rotterdam');
+    await vi.waitFor(() => expect(sheet()!.querySelectorAll('.ow-search-result')).toHaveLength(1));
+    button('.ow-search-result').click();
+    expect(setCenter).toHaveBeenLastCalledWith(51.9, 4.5, 10);
+    deckGL = true;
+    button('.ow-change').click();
+    submitSearch('Rotterdam');
+    await vi.waitFor(() => expect(sheet()!.querySelectorAll('.ow-search-result')).toHaveLength(1));
+    button('.ow-search-result').click();
+    expect(setCenter).toHaveBeenLastCalledWith(51.9, 4.5, 6);
   });
 
   it('shows pass times in the place\'s zone, and switches them to UTC', async () => {
