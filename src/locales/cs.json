@@ -5206,7 +5206,9 @@
       "imageAlt": "Snímek {{name}}, {{time}}",
       "mosaicDays": "Dní v archivu: {{count}}",
       "cadence": "nový snímek každých {{minutes}} min",
-      "sourceUnavailable": "Archiv pro tyto dny neobsahuje žádné snímky z tohoto zdroje."
+      "sourceUnavailable": "Archiv pro tyto dny neobsahuje žádné snímky z tohoto zdroje.",
+      "imageLoading": "Načítání snímku…",
+      "imageFailed": "Snímek se nenačetl. Archiv může být pomalý nebo nedostupný."
     },
     "dailyMosaics": "denní mozaiky",
     "weatherFrames": "meteorologické snímky"

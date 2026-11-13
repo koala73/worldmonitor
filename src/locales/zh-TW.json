@@ -5122,7 +5122,9 @@
       "imageAlt": "{{name}} 影像，{{time}}",
       "mosaicDays": "存檔中的天數：{{count}}",
       "cadence": "每 {{minutes}} 分鐘一幀新影象",
-      "sourceUnavailable": "存檔中沒有該來源在這些日期的影象。"
+      "sourceUnavailable": "存檔中沒有該來源在這些日期的影象。",
+      "imageLoading": "正在載入影像…",
+      "imageFailed": "影像未能載入。檔案庫可能較慢或無法使用。"
     },
     "dailyMosaics": "每日鑲嵌圖",
     "weatherFrames": "氣象影象"

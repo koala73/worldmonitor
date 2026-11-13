@@ -5178,7 +5178,9 @@
       "imageAlt": "Imagine {{name}}, {{time}}",
       "mosaicDays": "Zile în arhivă: {{count}}",
       "cadence": "imagine nouă la fiecare {{minutes}} min",
-      "sourceUnavailable": "Arhiva nu are imagini de la această sursă pentru aceste zile."
+      "sourceUnavailable": "Arhiva nu are imagini de la această sursă pentru aceste zile.",
+      "imageLoading": "Se încarcă imaginea…",
+      "imageFailed": "Imaginea nu s-a încărcat. Arhiva poate fi lentă sau indisponibilă."
     },
     "dailyMosaics": "mozaicuri zilnice",
     "weatherFrames": "imagini meteo"

@@ -5122,7 +5122,9 @@
       "imageAlt": "Ảnh {{name}}, {{time}}",
       "mosaicDays": "Số ngày trong kho lưu trữ: {{count}}",
       "cadence": "ảnh mới mỗi {{minutes}} phút",
-      "sourceUnavailable": "Kho lưu trữ không có ảnh từ nguồn này cho những ngày này."
+      "sourceUnavailable": "Kho lưu trữ không có ảnh từ nguồn này cho những ngày này.",
+      "imageLoading": "Đang tải ảnh…",
+      "imageFailed": "Ảnh không tải được. Kho lưu trữ có thể chậm hoặc ngừng hoạt động."
     },
     "dailyMosaics": "ảnh ghép hằng ngày",
     "weatherFrames": "ảnh thời tiết"

@@ -5150,7 +5150,9 @@
       "imageAlt": "Bild från {{name}}, {{time}}",
       "mosaicDays": "Dagar i arkivet: {{count}}",
       "cadence": "ny bild var {{minutes}}:e minut",
-      "sourceUnavailable": "Arkivet har inga bilder från den här källan för dessa dagar."
+      "sourceUnavailable": "Arkivet har inga bilder från den här källan för dessa dagar.",
+      "imageLoading": "Läser in bild…",
+      "imageFailed": "Bilden lästes inte in. Arkivet kan vara långsamt eller nere."
     },
     "dailyMosaics": "dagliga mosaiker",
     "weatherFrames": "väderbilder"

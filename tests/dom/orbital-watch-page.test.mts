@@ -132,11 +132,33 @@ describe('satellite pass lookup sheet', () => {
     expect(group('checking')!.textContent).not.toContain('No image in the archive');
   });
 
-  it('acknowledges NASA GIBS as soon as an early answer brings its images', () => {
+  it('acknowledges NASA GIBS beside its mosaics as soon as an early answer brings them', () => {
     const { all } = tiered();
     const mosaics = [{ kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'MODIS Terra', layer: 'm', noradId: 25994, days: [{ date: '2026-11-12', imageUrl: 'https://gibs.earthdata.nasa.gov/m.jpg' }] }] as OrbitalEvidence['mosaics'];
     mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'checking', total: 5, progress: { settled: ['gibs-daily-mosaics'], pendingProfiles: ['sentinel-2', 'landsat'], evidence: evidence(all, { status: 'partial', mosaics }) } } });
-    expect(text()).toContain("We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS)");
+    group('mosaic')!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
+    const modis = [...group('mosaic')!.querySelectorAll('.ow-row')].find((r) => r.textContent?.includes('MODIS Terra'))!;
+    expect(modis.querySelector('figure .ow-image-credit')?.textContent).toBe(IMAGE_CREDIT.gibsAcknowledgement);
+  });
+
+  it('shows each image loading, then the image or a visible failure', () => {
+    const { all, confirmedNew, confirmedOld } = tiered();
+    const acquisitions = [
+      { platform: 'sentinel-2c', profileId: 'sentinel-2', startMs: confirmedNew.timeMs, pass: { noradId: confirmedNew.noradId, timeMs: confirmedNew.timeMs }, imageUrl: 'https://earth-search.aws.element84.com/a.jpg', condition: 'clear', cloudCoverPct: 2 },
+      { platform: 'landsat-9', profileId: 'landsat', startMs: confirmedOld.timeMs, pass: { noradId: confirmedOld.noradId, timeMs: confirmedOld.timeMs }, imageUrl: 'https://planetarycomputer.microsoft.com/api/data/v1/b.png', condition: 'clear', cloudCoverPct: 4 },
+    ] as unknown as MatchedAcquisition[];
+    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all, { acquisitions }) } });
+    const frame = (name: string) => [...sheet().querySelectorAll('.ow-row')].find((r) => r.textContent?.includes(name))!.querySelector<HTMLElement>('.ow-image-frame')!;
+
+    for (const name of [confirmedNew.name, confirmedOld.name]) {
+      expect(frame(name).dataset.state).toBe('loading');
+      expect(frame(name).textContent).toBe('Loading image…');
+    }
+    frame(confirmedNew.name).querySelector('img')!.dispatchEvent(new Event('load'));
+    frame(confirmedOld.name).querySelector('img')!.dispatchEvent(new Event('error'));
+    expect(frame(confirmedNew.name).dataset.state).toBe('loaded');
+    expect(frame(confirmedOld.name).dataset.state).toBe('failed');
+    expect(frame(confirmedOld.name).textContent).toBe('Image did not load. The archive may be slow or down.');
   });
 
   it('keeps keyboard focus on the same row while archives keep answering', () => {
@@ -232,12 +254,13 @@ describe('satellite pass lookup sheet', () => {
     expect(text()).toContain('Daily mosaics: 1 · Weather frames: 1');
 
     for (const id of ['mosaic', 'frames']) group(id)!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
-    expect(figure('MODIS Terra')).toContain('NASA GIBS');
+    expect(figure('MODIS Terra')).toContain(IMAGE_CREDIT.gibsAcknowledgement);
     expect(figure('Meteosat-10')).toContain('Contains EUMETSAT Meteosat imagery');
     const viirs = [...group('mosaic')!.querySelectorAll<HTMLElement>('.ow-row')].find((r) => r.textContent?.includes('VIIRS Suomi NPP'))!;
     expect(viirs.querySelector('.ow-tier-label')?.textContent).toBe('unavailable');
     expect(viirs.querySelector('img')).toBeNull();
-    expect(text()).toContain("We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS)");
+    expect(figure('Meteosat-10')).not.toContain('NASA');
+    expect(text().split(IMAGE_CREDIT.gibsAcknowledgement)).toHaveLength(2);
   });
 
   it('words its credits as the source attribution manifest does', () => {

@@ -5122,7 +5122,9 @@
       "imageAlt": "{{name}} 영상, {{time}}",
       "mosaicDays": "아카이브의 일수: {{count}}",
       "cadence": "{{minutes}}분마다 새 영상",
-      "sourceUnavailable": "아카이브에 이 기간 동안 이 출처의 영상이 없습니다."
+      "sourceUnavailable": "아카이브에 이 기간 동안 이 출처의 영상이 없습니다.",
+      "imageLoading": "이미지 불러오는 중…",
+      "imageFailed": "이미지를 불러오지 못했습니다. 아카이브가 느리거나 중단되었을 수 있습니다."
     },
     "dailyMosaics": "일일 모자이크",
     "weatherFrames": "기상 영상"
