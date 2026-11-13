@@ -1879,6 +1879,60 @@ describe('marketingBeforeSend — Firefox bare-primitive throw (WORLDMONITOR-1CH
   });
 });
 
+describe('marketingBeforeSend — injected numeric-literal parse failure on document line 1 (WORLDMONITOR-10B)', () => {
+  const MSG = 'No identifiers allowed directly after numeric literal';
+  const parseEvent = (
+    frames: { filename: string; lineno?: number }[],
+    value = MSG,
+    type: string | undefined = 'SyntaxError',
+  ): PolicyEvent => ({
+    exception: { values: [{ type, value, stacktrace: { frames } }] },
+  });
+
+  it('drops the production shape: one frame, the document URL at line 1', () => {
+    assert.equal(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }])), null);
+  });
+
+  it('drops the same shape on /pro', () => {
+    assert.equal(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/pro', lineno: 1 }])), null);
+  });
+
+  it('uses the message prefix when Sentry omits the type', () => {
+    const missingTypeEvent = {
+      exception: { values: [{
+        value: `SyntaxError: ${MSG}`,
+        stacktrace: { frames: [{ filename: 'https://www.worldmonitor.app/', lineno: 1 }] },
+      }] },
+    } satisfies PolicyEvent;
+    assert.equal(Object.hasOwn(missingTypeEvent.exception.values[0]!, 'type'), false);
+    assert.equal(marketingBeforeSend(missingTypeEvent), null);
+  });
+
+  it('keeps the parse failure when it sits below line 1, where our inline scripts live', () => {
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 40 }])), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/' }])), null);
+  });
+
+  it('keeps it with a first-party asset frame, an unnamed frame, an empty stack, or another message', () => {
+    assert.notEqual(marketingBeforeSend(parseEvent([
+      { filename: 'https://www.worldmonitor.app/', lineno: 1 },
+      { filename: 'https://www.worldmonitor.app/pro/assets/index-a1b2c3.js', lineno: 1 },
+    ])), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([])), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }, {} as { filename: string }])), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], `${MSG} in config`)), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], 'Unexpected end of input')), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], MSG, 'TypeError')), null);
+  });
+
+  it('pins line 1 of every marketing document to the doctype alone, which is what licenses the rule', () => {
+    for (const rel of ['pro-test/welcome.html', 'pro-test/index.html']) {
+      const firstLine = readFileSync(resolve(root, rel), 'utf-8').split('\n', 1)[0]!.trim();
+      assert.equal(firstLine.toLowerCase(), '<!doctype html>', rel);
+    }
+  });
+});
+
 describe('marketingBeforeSend — ReferenceError with only <anonymous> frames (WORLDMONITOR-1E7, -1E8)', () => {
   // The production shape: an `onerror` capture whose only frame is the
   // `<anonymous>:1:1` slot an engine gives code evaluated from a string.
