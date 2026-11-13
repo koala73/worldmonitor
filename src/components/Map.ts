@@ -475,6 +475,10 @@ export class MapComponent {
    * height-only change is what the mobile URL bar produces on every scroll,
    * so neither may arm it. A reveal after a hide starts from width 0 again and
    * is likewise not a layout change.
+   *
+   * A size change of the painted map renders here, before the next paint. A
+   * scheduled render would paint at least one frame of the old viewBox
+   * stretched into the new box, with markers off their countries.
    */
   private onContainerResized(width: number, height: number): void {
     if (width === this.observedContainerWidth && height === this.observedContainerHeight) return;
@@ -485,7 +489,7 @@ export class MapComponent {
     this.rememberContainerSize({ width, height });
     if (width > 0 && height > 0) {
       if (previousWidth > 0 && previousHeight > 0 && width !== previousWidth) this.armMobileLabelVisibilityForLayoutChange();
-      this.resize();
+      this.resize(this.baseRendered && (width !== this.baseWidth || height !== this.baseHeight));
     }
   }
 
@@ -508,12 +512,13 @@ export class MapComponent {
     }
   }
 
-  public resize(): void {
+  public resize(renderNow = false): void {
     const pendingFocusFit = this.pendingFocusFit;
     const pendingCenter = this.pendingCenter;
     if (pendingFocusFit) this.fitFocusBounds(pendingFocusFit);
     else if (pendingCenter) this.setCenter(pendingCenter.lat, pendingCenter.lon);
-    this.scheduleRender();
+    if (renderNow) this.render();
+    else this.scheduleRender();
   }
 
   public destroy(): void {

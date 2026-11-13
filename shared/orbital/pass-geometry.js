@@ -17,6 +17,7 @@ const SCAN_STEP_S = 20;
 const SCAN_MARGIN_KM = 100;
 const REFINE_TOLERANCE_S = 0.5;
 const DUPLICATE_WINDOW_MS = 60_000;
+const GROUND_TRACK_MIN_STEP_S = 1;
 const GEOSTATIONARY_MEAN_MOTION = [0.95, 1.05];
 
 export function parseOrbitElements(omm) {
@@ -258,7 +259,9 @@ export function findPasses({ elements, profile, point, window, now }) {
 
 export function groundTrack(elements, window, stepSeconds = 60) {
   const { startMs, endMs } = windowBounds(window);
-  if (!(stepSeconds > 0)) throw new RangeError('stepSeconds must be positive');
+  if (!(stepSeconds >= GROUND_TRACK_MIN_STEP_S)) {
+    throw new RangeError(`stepSeconds must be at least ${GROUND_TRACK_MIN_STEP_S} second`);
+  }
   const segments = [];
   let segment = [];
   for (let t = startMs; t <= endMs; t += stepSeconds * 1000) {
