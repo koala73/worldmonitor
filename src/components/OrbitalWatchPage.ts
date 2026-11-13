@@ -314,7 +314,7 @@ export class OrbitalWatchPage {
     const list = GROUPS.map(({ id }) => groups.get(id)!).filter((group) => group.rows.length > 0).map((group) => this.renderGroup(group));
     const shown = evidence ?? (archives.kind === 'checking' ? archives.progress?.evidence ?? null : null);
     const credits = resultCredits(lookup, shown);
-    const creditLine = credits.length > 0 ? h('ul', { className: 'ow-credits' }, ...credits.map((credit) => h('li', null, credit))) : null;
+    const creditLine = credits.length > 0 ? h('ul', { className: 'ow-credits' }, ...credits.map(({ text, href }) => h('li', null, href ? h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text) : text))) : null;
     return [stale, this.renderSummary(archives, groups, evidence), empty, ...list, creditLine];
   }
 

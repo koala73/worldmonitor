@@ -257,6 +257,7 @@ describe('satellite pass lookup sheet', () => {
 
     page().render({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all) } });
     expect(credits()).toEqual([IMAGE_CREDIT.celestrak]);
+    expect(sheet().querySelector<HTMLAnchorElement>('.ow-credits a')?.href).toBe('https://celestrak.org/');
 
     const acquisitions = [
       { platform: 'sentinel-2c', profileId: 'sentinel-2', startMs: confirmedNew.timeMs, pass: null, imageUrl: null, condition: 'clear', cloudCoverPct: 0 },

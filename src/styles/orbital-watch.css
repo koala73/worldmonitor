@@ -54,6 +54,7 @@
 .ow-row-image figcaption { color: var(--text-dim); margin-top: 2px; }
 .ow-credits { list-style: none; margin: 12px 0 0; padding: 0; color: var(--text-dim); font-size: 11px; line-height: 1.4; }
 .ow-credits li + li { margin-top: 2px; }
+.ow-credits a { color: inherit; }
 .ow-privacy { margin: 0; padding: 8px 14px 12px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 11px; line-height: 1.4; }
 
 @media (max-width: 768px) {
