@@ -6,6 +6,7 @@ const EARTH_RADIUS_KM = 6371;
 const EARTH_ROTATION_KM_S = 0.4651;
 const DEG = Math.PI / 180;
 const DAY_MS = 86_400_000;
+const MAX_DATE_MS = 8.64e15;
 
 export const ORBIT_ELEMENTS_MAX_AGE_DAYS = 7;
 export const PASS_MIN_ELEVATION_DEG = 10;
@@ -43,8 +44,9 @@ function groundDistanceKm(lat1, lon1, lat2, lon2) {
 function windowBounds(window) {
   const startMs = toMs(window.start);
   const endMs = toMs(window.end);
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs || endMs - startMs > PASS_WINDOW_MAX_DAYS * DAY_MS) {
-    throw new RangeError(`window must be finite, ordered and at most ${PASS_WINDOW_MAX_DAYS} days long`);
+  const inDateRange = (ms) => Number.isFinite(ms) && Math.abs(ms) <= MAX_DATE_MS;
+  if (!inDateRange(startMs) || !inDateRange(endMs) || endMs < startMs || endMs - startMs > PASS_WINDOW_MAX_DAYS * DAY_MS) {
+    throw new RangeError(`window must be valid dates, ordered and at most ${PASS_WINDOW_MAX_DAYS} days long`);
   }
   return { startMs, endMs };
 }
