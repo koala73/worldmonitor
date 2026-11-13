@@ -1,4 +1,4 @@
-import { failed, requestArchive, type ArchiveRequestOptions, type ArchiveResult } from './archive-result';
+import { requestArchive, type ArchiveRequestOptions, type ArchiveResult } from './archive-result';
 import { layerFailures, GEOSTATIONARY_LOOKBACK_MS, parseTimeDomain, timesWithin, type FrameQuery, type GeostationaryRow, type LayerTimes } from './archive-gibs';
 import { cropBox, eumetsatSnapshotUrl } from './crop-url';
 
@@ -34,8 +34,7 @@ export async function searchEumetsatGeostationary(query: FrameQuery & { visibleN
   const layers = EUMETSAT_GEOSTATIONARY.filter((layer) => query.visibleNoradIds.has(layer.noradId));
   const box = query.box ?? cropBox(query.point);
   const answers = await Promise.all(layers.map((layer) => layerTimes(layer, query.nowMs - GEOSTATIONARY_LOOKBACK_MS, query.nowMs, query)));
-  const { failures, allFailed } = layerFailures(answers);
-  if (allFailed) return failed(failures[0]!);
+  const failures = layerFailures(answers);
   const items = layers.map((layer, i): GeostationaryRow => {
     const answer = answers[i]!;
     const latestMs = answer.ok ? answer.times[answer.times.length - 1] : undefined;
