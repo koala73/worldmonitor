@@ -91,7 +91,12 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   while (await collapsed.count()) await collapsed.first().click();
   await sheet.locator('.ow-body').evaluate((el) => { el.scrollTop = el.scrollHeight; });
   await shot('tiered-results-expanded-credits');
-  log('image captions', [...new Set(await sheet.locator('.ow-row-image figcaption, .ow-credit').allInnerTexts())]);
+  log('image captions', [...new Set(await sheet.locator('.ow-row-image figcaption').allInnerTexts())]);
+  const credits = await sheet.locator('.ow-credits li').allInnerTexts();
+  log('result credits', credits);
+  if (!credits.includes('Orbit elements from CelesTrak')) throw new Error(`credit line misses CelesTrak: ${credits.join(' | ')}`);
+  await sheet.locator('.ow-credits').scrollIntoViewIfNeeded();
+  await shot('result-credit-line');
   await close();
 
   failing.add('earth-search.aws.element84.com');

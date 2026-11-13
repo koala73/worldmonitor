@@ -7,7 +7,7 @@ Right-click or long-press any point on the map, land or ocean, and choose **Sate
 - `entry` adds the context-menu item on the flat deck.gl map and the globe. It needs only the point, not a country.
 - `progress` shows pass computation, then archive answers counted out of five (Earth Search, Planetary Computer, GIBS daily mosaics, GIBS geostationary, EUMETSAT).
 - `tiers` gives every row its tier as text: checking archive, confirmed image, likely imaged, upcoming pass, in daily mosaic, weather frame, within reach, passed overhead, capability overhead, unavailable.
-- `credits` puts each source credit under its image, plus the NASA GIBS acknowledgement when a GIBS image is shown.
+- `credits` puts each source credit under its image, and ends the result with a credit line for only the sources it holds: CelesTrak orbit elements, Copernicus Sentinel, USGS Landsat, the NASA GIBS acknowledgement and EUMETSAT.
 - `partial` names the archive that failed and offers Retry. `stale` shows the orbit-data age. `empty` explains the searched window.
 - `privacy` keeps the disclosure visible in every state.
 
@@ -30,4 +30,4 @@ It fails if any request to a non-archive host carries the picked point, and if a
 - DebugBear RUM loads only on production hosts. Its request-window wait is covered by `tests/debugbear-rum.test.mts`. Crops cannot become the LCP element because the sheet opens only after a user input, which ends LCP.
 - Live imagery varies. The fixture proves the states, not a specific scene.
 
-Handles: `.orbital-watch-sheet`, `.ow-headline`, `.ow-group-toggle[aria-expanded]`, `.ow-row`, `.ow-tier-label`, `.ow-row-image figcaption`, `.ow-banner-partial`, `.ow-banner-stale`, `.ow-empty`, `.ow-privacy`, `.ow-retry`.
+Handles: `.orbital-watch-sheet`, `.ow-headline`, `.ow-group-toggle[aria-expanded]`, `.ow-row`, `.ow-tier-label`, `.ow-row-image figcaption`, `.ow-credits li`, `.ow-banner-partial`, `.ow-banner-stale`, `.ow-empty`, `.ow-privacy`, `.ow-retry`.
