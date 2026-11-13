@@ -1906,12 +1906,13 @@ describe('marketingBeforeSend — injected numeric-literal parse failure on docu
     assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/' }])), null);
   });
 
-  it('keeps it with a first-party asset frame, an empty stack, or another message', () => {
+  it('keeps it with a first-party asset frame, an unnamed frame, an empty stack, or another message', () => {
     assert.notEqual(marketingBeforeSend(parseEvent([
       { filename: 'https://www.worldmonitor.app/', lineno: 1 },
       { filename: 'https://www.worldmonitor.app/pro/assets/index-a1b2c3.js', lineno: 1 },
     ])), null);
     assert.notEqual(marketingBeforeSend(parseEvent([])), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }, {} as { filename: string }])), null);
     assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], `${MSG} in config`)), null);
     assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], 'Unexpected end of input')), null);
     assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], MSG, 'TypeError')), null);

@@ -973,6 +973,7 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
       && exceptionValues.length === 1
       && !hasFirstParty
       && NUMERIC_LITERAL_PARSE_FAILURE.test(msg)
+      && frames.every((f) => Boolean(f.filename?.trim()))
       && nonInfraFrames.length > 0
       && nonInfraFrames.every((f) => MARKETING_DOCUMENT_FRAME.test(f.filename ?? '') && f.lineno === 1)) return null;
 
