@@ -12,7 +12,7 @@ import '../styles/reservoir-levels.css';
 import type { ReservoirLevel } from '@/services/climate';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import type { FocusFitBounds } from '@/utils/focus-map';
-import { oneWorldBounds, type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
+import { type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import {
   isLayerToggleAllowed,
   isLayerEntitled,
@@ -200,6 +200,9 @@ type CIIScore = { code: string; score: number; level: string };
  * Unified map interface that delegates to either DeckGLMap or MapComponent
  * based on device capabilities
  */
+/** A pass's swath is a few degrees wide, so the flat SVG map frames it at its deepest zoom. */
+const SVG_ORBITAL_MAX_ZOOM = 10;
+
 export class MapContainer {
   private container: HTMLElement;
   private isMobile: boolean;
@@ -1995,7 +1998,7 @@ export class MapContainer {
   }
 
   /** Frames a box on the active map, longitudes continuous so a box over the antimeridian stays local. */
-  public frameOrbitalBounds(bounds: FrameBounds): void {
+  public frameOrbitalBounds(bounds: FrameBounds, occluders: DOMRect[] = []): void {
     const [[west, south], [east, north]] = bounds;
     const lonSpan = Math.max(east - west, 0.05);
     const latSpan = Math.max(north - south, 0.05);
@@ -2007,8 +2010,8 @@ export class MapContainer {
       const reach = Math.max(Math.abs(west - center.lon), Math.abs(east - center.lon), Math.abs(south - center.lat), Math.abs(north - center.lat));
       this.globeMap?.fitFocusBounds({ ...fit, center: { lat: center.lat, lon: center.lon } }, Math.min(2.5, Math.max(0.35, reach * Math.PI / 180 * 5)));
     }
-    else if (this.useDeckGL) this.deckGLMap?.frameOrbitalBounds(oneWorldBounds(bounds));
-    else this.svgMap?.fitFocusBounds(fit);
+    else if (this.useDeckGL) this.deckGLMap?.frameOrbitalBounds(bounds, occluders);
+    else this.svgMap?.fitFocusBounds(fit, SVG_ORBITAL_MAX_ZOOM);
   }
 
   private applyOrbitalTarget(): void {

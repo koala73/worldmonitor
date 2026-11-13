@@ -356,6 +356,9 @@
 .ow-hud-reduced { flex: none; padding: 1px 6px; border: 1px solid var(--ow-accent); color: var(--ow-accent); font-family: var(--ow-font-mono); font-size: 10px; line-height: 14px; letter-spacing: var(--ow-label-tracking); text-transform: uppercase; white-space: nowrap; }
 
 @media (max-width: 768px) {
+  /* The phone map strip is short: while a point is pinned, its time chips and zoom buttons give way to the pass. */
+  .orbital-pinned .time-slider,
+  .orbital-pinned .map-controls { display: none; }
   .orbital-watch-sheet,
   .orbital-watch-sheet[data-view="full"] {
     inset: 38vh 0 calc(58px + env(safe-area-inset-bottom, 0px)) 0;

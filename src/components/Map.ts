@@ -217,7 +217,7 @@ export class MapComponent {
   private orbitalSweptNode: SVGPathElement | null = null;
   private orbitalEdgeNode: SVGPathElement | null = null;
   /** A focus fit requested while the map had no size (a collapsed mobile map). */
-  private pendingFocusFit: FocusFitBounds | null = null;
+  private pendingFocusFit: { fit: FocusFitBounds; maxZoom: number } | null = null;
   private isResizing = false;
   private baseLayerGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
   private dynamicLayerGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
@@ -522,7 +522,7 @@ export class MapComponent {
   public resize(renderNow = false): void {
     const pendingFocusFit = this.pendingFocusFit;
     const pendingCenter = this.pendingCenter;
-    if (pendingFocusFit) this.fitFocusBounds(pendingFocusFit);
+    if (pendingFocusFit) this.fitFocusBounds(pendingFocusFit.fit, pendingFocusFit.maxZoom);
     else if (pendingCenter) this.setCenter(pendingCenter.lat, pendingCenter.lon);
     if (renderNow) this.render();
     else this.scheduleRender();
@@ -5151,6 +5151,7 @@ export class MapComponent {
 
   public setOrbitalTarget(target: OrbitalTarget | null): void {
     this.orbitalTarget = target;
+    this.container.classList.toggle('orbital-pinned', !!target);
     if (!target) this.dynamicLayerGroup?.node()?.querySelector('.orbital-target')?.remove();
     this.render();
   }
@@ -5229,6 +5230,7 @@ export class MapComponent {
       return;
     }
     node.removeAttribute('display');
+    node.setAttribute('r', String(4 / Math.max(1, this.state.zoom)));
     node.setAttribute('cx', String(xy[0]));
     node.setAttribute('cy', String(xy[1]));
   }
@@ -5294,12 +5296,12 @@ export class MapComponent {
    * this flat map has one world copy, so a dateline-crossing union centres on
    * the arc's midpoint and shows the part of it on this side of the edge.
    */
-  public fitFocusBounds(fit: FocusFitBounds): void {
+  public fitFocusBounds(fit: FocusFitBounds, maxZoom = SVG_FOCUS_MAX_ZOOM): void {
     const { width, height } = this.readContainerSize();
     if (width <= 0 || height <= 0) {
       // Collapsed (the mobile "Show map" toggle) or not laid out: fit when
       // resize() reports a size, unless another view command comes first.
-      this.pendingFocusFit = fit;
+      this.pendingFocusFit = { fit, maxZoom };
       return;
     }
     this.pendingFocusFit = null;
@@ -5307,9 +5309,9 @@ export class MapComponent {
     // Equirectangular: pixels per degree are the same on both axes.
     const pxPerDegree = projection.scale() * Math.PI / 180;
     const padFactor = 0.8;
-    const zoomX = fit.lonSpan > 0 ? (width * padFactor) / (fit.lonSpan * pxPerDegree) : SVG_FOCUS_MAX_ZOOM;
-    const zoomY = fit.latSpan > 0 ? (height * padFactor) / (fit.latSpan * pxPerDegree) : SVG_FOCUS_MAX_ZOOM;
-    this.state.zoom = Math.max(1, Math.min(SVG_FOCUS_MAX_ZOOM, zoomX, zoomY));
+    const zoomX = fit.lonSpan > 0 ? (width * padFactor) / (fit.lonSpan * pxPerDegree) : maxZoom;
+    const zoomY = fit.latSpan > 0 ? (height * padFactor) / (fit.latSpan * pxPerDegree) : maxZoom;
+    this.state.zoom = Math.max(1, Math.min(maxZoom, zoomX, zoomY));
     this.setCenter(fit.center.lat, fit.center.lon);
     this.resumeMobileLabelVisibility();
   }

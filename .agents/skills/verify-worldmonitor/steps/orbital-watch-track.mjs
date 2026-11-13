@@ -76,6 +76,27 @@ export default async function ({ page, base, shot: capture, log, expectVisible }
   await shot('replay-in-progress');
   await page.waitForTimeout(7_000);
   await shot('replay-at-closest-approach-acquired');
+  const midCountdown = await page.evaluate((secondsBefore) => {
+    const scrub = document.querySelector('[data-slot="replay-hud"] .ow-hud-scrub');
+    const countdown = document.querySelector('[data-slot="replay-hud"] .ow-hud-countdown');
+    const seek = (value) => { scrub.value = String(value); scrub.dispatchEvent(new Event('input')); };
+    const left = () => {
+      const [, h, m, s] = countdown.textContent.match(/(\d+):(\d+):(\d+)/) ?? [];
+      return Number(h) * 3600 + Number(m) * 60 + Number(s);
+    };
+    let lo = 0;
+    let hi = Number(scrub.max);
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      seek(mid);
+      if (left() > secondsBefore) lo = mid + 1; else hi = mid;
+    }
+    seek(lo);
+    return countdown.textContent;
+  }, 7);
+  log('scrubbed to', midCountdown);
+  await page.waitForTimeout(800);
+  await shot('scrubbed-seven-seconds-before-acquisition');
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await play(firstIndex);

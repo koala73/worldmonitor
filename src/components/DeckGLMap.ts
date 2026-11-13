@@ -57,7 +57,7 @@ import { getMineralColor } from '@/config/mineral-colors';
 import { getWindColor } from '@/config/wind-colors';
 import { CII_LEVEL_COLORS, type CiiLevel } from '@/config/cii-colors';
 import type { GpsJamHex } from '@/services/gps-interference';
-import { sweptSwath, type FootprintRing, type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
+import { continuousTrack, pointNear, sweptSwath, type FootprintRing, type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { fetchImageryScenes } from '@/services/imagery';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
@@ -788,6 +788,7 @@ export class DeckGLMap {
   private orbitalTrack: PassTrack | null = null;
   private orbitalTrackMarker: TrackPoint | null = null;
   private orbitalTarget: OrbitalTarget | null = null;
+  private orbitalFramedPastEdge = false;
   /** The layer list last handed to deck.gl, so the replay marker can move without a full rebuild. */
   private committedLayers: LayersList | null = null;
   private scenarioState: ScenarioVisualState | null = null;
@@ -8175,7 +8176,27 @@ export class DeckGLMap {
   public setOrbitalTrack(track: PassTrack | null, marker: TrackPoint | null): void {
     this.orbitalTrack = track;
     this.orbitalTrackMarker = track ? marker : null;
+    this.syncOrbitalWorldCopies();
     this.render();
+  }
+
+  /** Orbital shapes are drawn whole, with longitudes continuous near the looked-up point. */
+  private orbitalAroundLon(track: PassTrack): number {
+    return this.orbitalTarget?.lon ?? track.closest.lon;
+  }
+
+  /**
+   * The map draws no world copies, so a pass across the antimeridian would end at the map edge.
+   * While one is drawn or framed, the copies are on so the ground past ±180 shows under it.
+   */
+  private syncOrbitalWorldCopies(framed?: FrameBounds): void {
+    const track = this.orbitalTrack;
+    const beyond = (lon: number) => lon < -180 || lon > 180;
+    if (framed) this.orbitalFramedPastEdge = beyond(framed[0][0]) || beyond(framed[1][0]);
+    if (!track && !this.orbitalTarget) this.orbitalFramedPastEdge = false;
+    const shapes = track ? continuousTrack(track, this.orbitalAroundLon(track)) : null;
+    const past = this.orbitalFramedPastEdge || !!shapes && [shapes.path, ...shapes.footprint].some((line) => line.some(([lon]) => beyond(lon)));
+    this.maplibreMap?.setRenderWorldCopies(past);
   }
 
   /** Moves the replay to a moment by swapping only the replay layers into the layers already committed to deck.gl. */
@@ -8200,7 +8221,8 @@ export class DeckGLMap {
     const marker = this.orbitalTrackMarker;
     const track = this.orbitalTrack;
     if (!marker || !track) return [];
-    const swept = sweptSwath(track, marker.timeMs);
+    const aroundLon = this.orbitalAroundLon(track);
+    const swept = sweptSwath(track, marker.timeMs, aroundLon);
     return [
       new PolygonLayer<FootprintRing>({
         id: ORBITAL_SWEPT_LAYER_ID,
@@ -8222,7 +8244,7 @@ export class DeckGLMap {
       }),
       new ScatterplotLayer<TrackPoint>({
         id: 'orbital-track-marker-layer',
-        data: [marker],
+        data: [pointNear(marker, aroundLon)],
         getPosition: (point) => [point.lon, point.lat],
         getRadius: 5,
         radiusUnits: 'pixels',
@@ -8237,18 +8259,31 @@ export class DeckGLMap {
 
   public setOrbitalTarget(target: OrbitalTarget | null): void {
     this.orbitalTarget = target;
+    this.container.classList.toggle('orbital-pinned', !!target);
+    this.syncOrbitalWorldCopies();
     this.render();
   }
 
-  /** Fits the map to a box, leaving room for the lookup sheet: on the right on desktop, at the bottom on a phone. */
-  public frameOrbitalBounds([[west, south], [east, north]]: FrameBounds): void {
+  /**
+   * Fits the map to a box inside the part of the map left visible by `occluders`, the screen boxes
+   * of the lookup's sheet and HUD. Each one pads the side of the map it costs least to give up.
+   */
+  public frameOrbitalBounds(bounds: FrameBounds, occluders: DOMRect[] = []): void {
     if (!this.maplibreMap) return;
-    const { clientWidth: width, clientHeight: height } = this.container;
-    const narrow = width < 768;
-    const padding = narrow
-      ? { top: 56, bottom: Math.round(height * 0.62) + 24, left: 32, right: 32 }
-      : { top: 96, bottom: 72, left: 72, right: Math.min(480, Math.round(width * 0.4)) };
-    if (width - padding.left - padding.right < 80 || height - padding.top - padding.bottom < 80) return;
+    const box = this.container.getBoundingClientRect();
+    const width = box.width || this.container.clientWidth;
+    const height = box.height || this.container.clientHeight;
+    const padding = { top: 40, bottom: 40, left: 40, right: 40 };
+    for (const r of occluders) {
+      if (Math.min(r.right, box.right) <= Math.max(r.left, box.left) || Math.min(r.bottom, box.bottom) <= Math.max(r.top, box.top)) continue;
+      const cost = { top: r.bottom - box.top, bottom: box.bottom - r.top, left: r.right - box.left, right: box.right - r.left };
+      const share = (side: keyof typeof cost) => cost[side] / (side === 'top' || side === 'bottom' ? height : width);
+      const side = (Object.keys(cost) as Array<keyof typeof cost>).reduce((best, next) => (share(next) < share(best) ? next : best));
+      padding[side] = Math.max(padding[side], Math.round(cost[side]) + 16);
+    }
+    if (width - padding.left - padding.right < 80 || height - padding.top - padding.bottom < 60) return;
+    this.syncOrbitalWorldCopies(bounds);
+    const [[west, south], [east, north]] = bounds;
     this.maplibreMap.fitBounds([[west, south], [east, north]], { padding, maxZoom: 9, duration: 600 });
     this.maplibreMap.once('moveend', () => this.render());
   }
@@ -8308,20 +8343,21 @@ export class DeckGLMap {
   private createOrbitalTrackLayers(): Layer[] {
     const track = this.orbitalTrack;
     if (!track) return this.createOrbitalTargetLayer();
+    const shapes = continuousTrack(track, this.orbitalAroundLon(track));
     const layers: Layer[] = [
       new PolygonLayer<FootprintRing>({
         id: 'orbital-footprint-layer',
-        data: track.footprint,
+        data: shapes.footprint,
         getPolygon: (ring) => ring,
         getFillColor: [...ORBITAL_ACCENT, 18],
         getLineColor: [...ORBITAL_ACCENT, 120],
         lineWidthMinPixels: 1,
         pickable: false,
       }),
-      new PathLayer<TrackPoint[]>({
+      new PathLayer<Array<[number, number]>>({
         id: 'orbital-track-layer',
-        data: track.segments,
-        getPath: (segment) => segment.map((point): [number, number] => [point.lon, point.lat]),
+        data: [shapes.path],
+        getPath: (path) => path,
         getColor: [...ORBITAL_TEXT, 170],
         getWidth: 1.5,
         widthUnits: 'pixels',

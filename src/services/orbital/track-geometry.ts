@@ -204,8 +204,21 @@ function splitLine(line: Array<[number, number]>): Array<Array<[number, number]>
 
 const lerp = (a: [number, number], b: [number, number], f: number): [number, number] => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
 
-/** The part of each footprint band swept by a moment of the pass, and the cross-track line at that moment. */
-export function sweptSwath(track: Pick<PassTrack, 'swath'>, timeMs: number): SweptSwath {
+/** A longitude moved by whole turns to sit nearest `aroundLon`. */
+const nearLon = (lon: number, aroundLon: number) => lon + 360 * Math.round((aroundLon - lon) / 360);
+
+/** Positions moved together by the whole turns that bring the one at `anchor` nearest `aroundLon`, keeping them continuous. */
+function shiftNear(positions: Array<[number, number]>, anchor: number, aroundLon: number): Array<[number, number]> {
+  const by = nearLon(positions[anchor]![0], aroundLon) - positions[anchor]![0];
+  return positions.map(([lon, lat]) => [lon + by, lat]);
+}
+
+/**
+ * The part of each footprint band swept by a moment of the pass, and the cross-track line at that moment.
+ * By default every piece is cut to -180..180; given `aroundLon`, pieces stay whole with longitudes
+ * continuous near it, for a map that draws past ±180.
+ */
+export function sweptSwath(track: Pick<PassTrack, 'swath'>, timeMs: number, aroundLon?: number): SweptSwath {
   const rings: FootprintRing[] = [];
   const leadingEdge: Array<Array<[number, number]>> = [];
   for (const side of track.swath) {
@@ -216,11 +229,33 @@ export function sweptSwath(track: Pick<PassTrack, 'swath'>, timeMs: number): Swe
     const f = timesMs[k] === timesMs[k - 1] ? 1 : Math.min(1, (timeMs - timesMs[k - 1]!) / (timesMs[k]! - timesMs[k - 1]!));
     const innerAt = lerp(inner[k - 1]!, inner[k]!, f);
     const outerAt = lerp(outer[k - 1]!, outer[k]!, f);
-    rings.push(...splitAtAntimeridian(band([...inner.slice(0, k), innerAt], [...outer.slice(0, k), outerAt])!));
-    leadingEdge.push(...splitLine([innerAt, outerAt]));
+    const swept = band([...inner.slice(0, k), innerAt], [...outer.slice(0, k), outerAt])!;
+    if (aroundLon === undefined) {
+      rings.push(...splitAtAntimeridian(swept));
+      leadingEdge.push(...splitLine([innerAt, outerAt]));
+      continue;
+    }
+    const whole = shiftNear(swept, k, aroundLon);
+    rings.push(counterClockwise([...whole, whole[0]!]));
+    leadingEdge.push([whole[k]!, whole[k + 1]!]);
   }
   return { rings, leadingEdge };
 }
+
+/** The track and footprint as whole shapes with longitudes continuous near `aroundLon`, for a map that draws past ±180. */
+export function continuousTrack(track: Pick<PassTrack, 'segments' | 'swath' | 'closest'>, aroundLon: number): { path: Array<[number, number]>; footprint: FootprintRing[] } {
+  const run = unwrap(track.segments).map((point): [number, number] => [point.lon, point.lat]);
+  const times = track.segments.flat().map((point) => point.timeMs);
+  const at = times.reduce((best, time, i) => (Math.abs(time - track.closest.timeMs) < Math.abs(times[best]! - track.closest.timeMs) ? i : best), 0);
+  const footprint = track.swath.map((side) => {
+    const ring = shiftNear(band([...side.inner], [...side.outer])!, Math.floor(side.inner.length / 2), aroundLon);
+    return counterClockwise([...ring, ring[0]!]);
+  });
+  return { path: run.length > 0 ? shiftNear(run, at, aroundLon) : [], footprint };
+}
+
+/** A track position moved by whole turns to sit nearest `aroundLon`. */
+export const pointNear = <T extends { lon: number }>(point: T, aroundLon: number): T => ({ ...point, lon: nearLon(point.lon, aroundLon) });
 
 function trackSegments(elements: OrbitElements, startMs: number, endMs: number, stepSeconds: number): TrackPoint[][] {
   try {
@@ -280,20 +315,11 @@ export interface OrbitalTarget {
 
 export type FrameBounds = [[number, number], [number, number]];
 
-/** A box holding the point, the satellite at closest approach and the swath line imaged then, longitudes continuous with the point. */
+/** A box centred on the point that holds the satellite at closest approach and the swath line imaged then; longitudes continuous with the point. */
 export function framingBounds(track: PassTrack, target: { lat: number; lon: number }): FrameBounds {
-  const positions: Array<[number, number]> = [[target.lon, target.lat], [track.closest.lon, track.closest.lat]];
+  const positions: Array<[number, number]> = [[track.closest.lon, track.closest.lat]];
   for (const line of sweptSwath(track, track.closest.timeMs).leadingEdge) positions.push(...line);
-  const lons = positions.map(([lon]) => lon + 360 * Math.round((target.lon - lon) / 360));
-  const lats = positions.map(([, lat]) => lat);
-  return [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]];
-}
-
-/**
- * Clamps target-relative bounds to one world for a map that draws no world
- * copies: across the antimeridian the target's side stays framed at its own
- * zoom instead of a fit that the camera clamp then pushes off-centre.
- */
-export function oneWorldBounds([[west, south], [east, north]]: FrameBounds): FrameBounds {
-  return [[Math.max(west, -180), south], [Math.min(east, 180), north]];
+  const halfLon = Math.max(...positions.map(([lon]) => Math.abs(nearLon(lon, target.lon) - target.lon)));
+  const halfLat = Math.max(...positions.map(([, lat]) => Math.abs(lat - target.lat)));
+  return [[target.lon - halfLon, Math.max(-85, target.lat - halfLat)], [target.lon + halfLon, Math.min(85, target.lat + halfLat)]];
 }

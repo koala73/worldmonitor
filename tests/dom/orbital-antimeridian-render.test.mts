@@ -41,4 +41,22 @@ describe('orbital tag and swath at the antimeridian', () => {
     expect(outlines).toHaveLength(1);
     expect(outlines[0]!.points.map((point) => point[0])).toEqual([179.5, 180.5, 179.5, 178.5, 179.5]);
   });
+
+  it('fits the frame inside what the sheet and HUD leave of the map, and draws world copies past 180', () => {
+    const container = document.createElement('div');
+    container.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 800);
+    const fitBounds = vi.fn();
+    const setRenderWorldCopies = vi.fn();
+    const map = Object.assign(Object.create(DeckGLMap.prototype), {
+      container, orbitalTarget: FIJI, orbitalTrack: null, render: vi.fn(),
+      maplibreMap: { fitBounds, setRenderWorldCopies, once: vi.fn() },
+    }) as DeckGLMap;
+    const hud = new DOMRect(700, 0, 300, 150);
+    const sheet = new DOMRect(1010, 0, 400, 800);
+    map.frameOrbitalBounds([[175, -20], [185, -14]], [hud, sheet]);
+    expect(fitBounds).toHaveBeenCalledWith([[175, -20], [185, -14]], expect.objectContaining({ padding: { top: 166, bottom: 40, left: 40, right: 40 } }));
+    expect(setRenderWorldCopies).toHaveBeenLastCalledWith(true);
+    map.setOrbitalTarget(null);
+    expect(setRenderWorldCopies).toHaveBeenLastCalledWith(false);
+  });
 });

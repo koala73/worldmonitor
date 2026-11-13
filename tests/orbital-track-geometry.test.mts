@@ -6,7 +6,7 @@ import { findPasses, parseOrbitElements } from '../shared/orbital/pass-geometry.
 import type { GeoPoint, OmmRecord, OrbitElements, Pass } from '../shared/orbital/pass-geometry.js';
 import { matchSensorProfile } from '../shared/orbital/sensor-profiles.js';
 import type { SensorProfile } from '../shared/orbital/sensor-profiles.js';
-import { buildPassTrack, framingBounds, oneWorldBounds, sweptSwath, trackPositionAt, type FootprintRing, type PassTrack } from '../src/services/orbital/track-geometry.ts';
+import { buildPassTrack, continuousTrack, framingBounds, pointNear, sweptSwath, trackPositionAt, type FootprintRing, type PassTrack } from '../src/services/orbital/track-geometry.ts';
 import { createTrackReplay, replayWindow, type ReplayFrame } from '../src/services/orbital/track-replay.ts';
 
 const { records } = JSON.parse(readFileSync(new URL('./fixtures/orbital/celestrak-gp-2026-11-13.json', import.meta.url), 'utf8')) as { records: OmmRecord[] };
@@ -166,20 +166,35 @@ describe('pass ground track', () => {
     for (const pass of found) {
       const track = buildPassTrack(elements, profile.footprint, pass)!;
       const [[west], [east]] = framingBounds(track, point);
-      assert.ok(east - west < 30, 'the box stays local to the point');
+      assert.ok(east - west < 60, 'the box, centred on the point, stays local to it');
     }
   });
 
-  it('keeps the side of the point in an antimeridian frame for a map with no world copies', () => {
-    assert.deepEqual(oneWorldBounds([[176, -20], [185, -15]]), [[176, -20], [180, -15]]);
-    assert.deepEqual(oneWorldBounds([[-186, -20], [-178, -15]]), [[-180, -20], [-178, -15]]);
-    assert.deepEqual(oneWorldBounds([[50, 20], [60, 30]]), [[50, 20], [60, 30]]);
-    const point = { lat: -17.7, lon: 179.9 };
+  it('centres the frame on the point, past 180 when the point sits by the antimeridian', () => {
+    const point = { lat: -16.85, lon: 179.95 };
     const { elements, profile, passes: found } = passes('SENTINEL-2A', point);
     for (const pass of found) {
-      const [[west], [east]] = oneWorldBounds(framingBounds(buildPassTrack(elements, profile.footprint, pass)!, point));
-      assert.ok(west <= point.lon && point.lon <= east && west >= -180 && east <= 180);
+      const [[west, south], [east, north]] = framingBounds(buildPassTrack(elements, profile.footprint, pass)!, point);
+      assert.ok(Math.abs((west + east) / 2 - point.lon) < 1e-9 && Math.abs((south + north) / 2 - point.lat) < 1e-9, 'the point is the centre');
+      assert.ok(east > 180, 'the far side of 180 is framed');
     }
+  });
+
+  it('draws a pass across the antimeridian as whole shapes, continuous past 180 near the point', () => {
+    const point = { lat: -17.7, lon: 178.5 };
+    const { elements, profile, passes: found } = passes('SENTINEL-2A', point);
+    const crossing = found.map((pass) => buildPassTrack(elements, profile.footprint, pass)).find((track) => track !== null && track.footprint.length > 1);
+    assert.ok(crossing, 'a Fiji footprint is split at the antimeridian');
+    const { path, footprint } = continuousTrack(crossing, point.lon);
+    for (let i = 1; i < path.length; i += 1) assert.ok(Math.abs(path[i]![0] - path[i - 1]![0]) < 5, 'the track never jumps across the map');
+    assert.equal(footprint.length, crossing.swath.length, 'one whole ring per band, not cut at 180');
+    assert.ok(footprint.flat().some(([lon]) => lon > 180), 'the band runs on past 180');
+    for (const time of crossing.swath[0]!.timesMs.slice(1)) {
+      const { rings, leadingEdge } = sweptSwath(crossing, time, point.lon);
+      assert.equal(rings.length, 1);
+      for (const [lon] of [...rings.flat(), ...leadingEdge.flat()]) assert.ok(Math.abs(lon - point.lon) < 20, 'swept shapes stay beside the point');
+    }
+    assert.ok(Math.abs(pointNear({ lon: -179.5, lat: 0 }, 179.9).lon - 180.5) < 1e-9);
   });
 
   it('keeps the swept swath and its leading edge inside the map across the antimeridian', () => {

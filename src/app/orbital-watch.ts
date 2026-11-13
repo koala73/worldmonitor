@@ -25,7 +25,7 @@ export interface OrbitalTrackSurface {
   setOrbitalTrack(track: PassTrack | null): void;
   setOrbitalTrackMarker(point: TrackPoint | null): void;
   setOrbitalTarget(target: OrbitalTarget | null): void;
-  frameOrbitalBounds?(bounds: FrameBounds): void;
+  frameOrbitalBounds?(bounds: FrameBounds, occluders?: DOMRect[]): void;
 }
 
 let surface: OrbitalTrackSurface | null = null;
@@ -145,6 +145,13 @@ function targetFor(at: GeoPoint, acquisition: MatchedAcquisition | null): Orbita
   return { lat: at.lat, lon: at.lon, lines: [formatTargetCoordinates(at), ...(acquisition ? [formatAcquiredLine(acquisition)] : [])] };
 }
 
+/** Frames the pass in the part of the map the lookup's sheet, dock and HUD leave visible. */
+function frameTrack(target: OrbitalTrackSurface, track: PassTrack, at: GeoPoint, slot: HTMLElement): void {
+  const sheet = slot.closest('.orbital-watch-sheet');
+  const occluders = sheet ? [...sheet.querySelectorAll('.ow-panel, .ow-hud, .ow-dock')].map((el) => el.getBoundingClientRect()) : [];
+  target.frameOrbitalBounds?.(framingBounds(track, at), occluders);
+}
+
 /** Draws a pass's ground track and swath on the map and plays it into the replay HUD slot. */
 async function showTrack(noradId: number, timeMs: number): Promise<void> {
   const pass = lookup?.passes.find((p) => p.noradId === noradId && p.timeMs === timeMs);
@@ -163,7 +170,6 @@ async function showTrack(noradId: number, timeMs: number): Promise<void> {
     return;
   }
   target.setOrbitalTrack(track);
-  target.frameOrbitalBounds?.(framingBounds(track, at));
   const deps = browserReplayDeps();
   let playing = false;
   const hud = createReplayHud(track, deps.prefersReducedMotion(), {
@@ -171,6 +177,7 @@ async function showTrack(noradId: number, timeMs: number): Promise<void> {
     onSeek: (progress) => replay?.seek(progress),
   });
   slot.replaceChildren(hud.overlay, hud.controls);
+  frameTrack(target, track, at, slot);
   replay = createTrackReplay(track, (frame) => {
     playing = frame.playing;
     target.setOrbitalTrackMarker(frame.point);
