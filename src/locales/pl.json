@@ -5208,7 +5208,8 @@
       "cadence": "nowe zdjęcie co {{minutes}} min",
       "sourceUnavailable": "Archiwum nie ma zdjęć z tego źródła dla tych dni.",
       "imageLoading": "Wczytywanie obrazu…",
-      "imageFailed": "Obraz się nie wczytał. Archiwum może działać wolno lub być niedostępne."
+      "imageFailed": "Obraz się nie wczytał. Archiwum może działać wolno lub być niedostępne.",
+      "noPreview": "Archiwum nie ma jeszcze podglądu tej sceny."
     },
     "dailyMosaics": "dzienne mozaiki",
     "weatherFrames": "zdjęcia pogodowe"

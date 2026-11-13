@@ -5180,7 +5180,8 @@
       "cadence": "imagine nouă la fiecare {{minutes}} min",
       "sourceUnavailable": "Arhiva nu are imagini de la această sursă pentru aceste zile.",
       "imageLoading": "Se încarcă imaginea…",
-      "imageFailed": "Imaginea nu s-a încărcat. Arhiva poate fi lentă sau indisponibilă."
+      "imageFailed": "Imaginea nu s-a încărcat. Arhiva poate fi lentă sau indisponibilă.",
+      "noPreview": "Arhiva nu are încă o previzualizare a acestei scene."
     },
     "dailyMosaics": "mozaicuri zilnice",
     "weatherFrames": "imagini meteo"

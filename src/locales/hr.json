@@ -5191,7 +5191,8 @@
       "cadence": "nova snimka svakih {{minutes}} min",
       "sourceUnavailable": "Arhiva nema snimaka iz ovog izvora za te dane.",
       "imageLoading": "Učitavanje slike…",
-      "imageFailed": "Slika se nije učitala. Arhiva je možda spora ili nedostupna."
+      "imageFailed": "Slika se nije učitala. Arhiva je možda spora ili nedostupna.",
+      "noPreview": "Arhiv još nema pregled ove scene."
     },
     "dailyMosaics": "dnevni mozaici",
     "weatherFrames": "meteorološke snimke"

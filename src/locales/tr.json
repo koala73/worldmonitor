@@ -5152,7 +5152,8 @@
       "cadence": "her {{minutes}} dakikada yeni görüntü",
       "sourceUnavailable": "Arşivde bu günler için bu kaynaktan görüntü yok.",
       "imageLoading": "Görüntü yükleniyor…",
-      "imageFailed": "Görüntü yüklenmedi. Arşiv yavaş ya da erişilemez olabilir."
+      "imageFailed": "Görüntü yüklenmedi. Arşiv yavaş ya da erişilemez olabilir.",
+      "noPreview": "Arşivde bu sahnenin henüz bir önizlemesi yok."
     },
     "dailyMosaics": "günlük mozaikler",
     "weatherFrames": "hava durumu görüntüleri"

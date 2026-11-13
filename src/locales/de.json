@@ -5152,7 +5152,8 @@
       "cadence": "neues Bild alle {{minutes}} Min.",
       "sourceUnavailable": "Das Archiv führt für diese Tage keine Bilder dieser Quelle.",
       "imageLoading": "Bild wird geladen…",
-      "imageFailed": "Bild wurde nicht geladen. Das Archiv ist möglicherweise langsam oder nicht erreichbar."
+      "imageFailed": "Bild wurde nicht geladen. Das Archiv ist möglicherweise langsam oder nicht erreichbar.",
+      "noPreview": "Das Archiv hat noch keine Vorschau dieser Szene."
     },
     "dailyMosaics": "Tagesmosaike",
     "weatherFrames": "Wetterbilder"

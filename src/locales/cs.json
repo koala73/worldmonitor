@@ -5208,7 +5208,8 @@
       "cadence": "nový snímek každých {{minutes}} min",
       "sourceUnavailable": "Archiv pro tyto dny neobsahuje žádné snímky z tohoto zdroje.",
       "imageLoading": "Načítání snímku…",
-      "imageFailed": "Snímek se nenačetl. Archiv může být pomalý nebo nedostupný."
+      "imageFailed": "Snímek se nenačetl. Archiv může být pomalý nebo nedostupný.",
+      "noPreview": "Archiv zatím nemá náhled této scény."
     },
     "dailyMosaics": "denní mozaiky",
     "weatherFrames": "meteorologické snímky"

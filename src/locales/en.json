@@ -4613,7 +4613,8 @@
       "cadence": "new frame every {{minutes}} min",
       "sourceUnavailable": "The archive lists no imagery from this source for these days.",
       "imageLoading": "Loading image…",
-      "imageFailed": "Image did not load. The archive may be slow or down."
+      "imageFailed": "Image did not load. The archive may be slow or down.",
+      "noPreview": "The archive has no preview of this scene yet."
     }
   },
   "contextMenu": {

@@ -5124,7 +5124,8 @@
       "cadence": "ảnh mới mỗi {{minutes}} phút",
       "sourceUnavailable": "Kho lưu trữ không có ảnh từ nguồn này cho những ngày này.",
       "imageLoading": "Đang tải ảnh…",
-      "imageFailed": "Ảnh không tải được. Kho lưu trữ có thể chậm hoặc ngừng hoạt động."
+      "imageFailed": "Ảnh không tải được. Kho lưu trữ có thể chậm hoặc ngừng hoạt động.",
+      "noPreview": "Kho lưu trữ chưa có bản xem trước của cảnh này."
     },
     "dailyMosaics": "ảnh ghép hằng ngày",
     "weatherFrames": "ảnh thời tiết"

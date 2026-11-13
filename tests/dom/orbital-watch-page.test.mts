@@ -161,6 +161,17 @@ describe('satellite pass lookup sheet', () => {
     expect(frame(confirmedOld.name).textContent).toBe('Image did not load. The archive may be slow or down.');
   });
 
+  it('says when a confirmed scene has no preview yet instead of leaving the image area blank', () => {
+    const { all, confirmedNew } = tiered();
+    const acquisitions = [
+      { platform: 'sentinel-2c', profileId: 'sentinel-2', startMs: confirmedNew.timeMs, pass: { noradId: confirmedNew.noradId, timeMs: confirmedNew.timeMs }, imageUrl: null, condition: 'unknown', cloudCoverPct: 2 },
+    ] as unknown as MatchedAcquisition[];
+    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all, { acquisitions }) } });
+    const row = [...sheet().querySelectorAll('.ow-row')].find((r) => r.textContent?.includes(confirmedNew.name))!;
+    expect(row.querySelector('.ow-image-frame')).toBeNull();
+    expect(row.querySelector('.ow-row-note')?.textContent).toBe('The archive has no preview of this scene yet.');
+  });
+
   it('keeps keyboard focus on the same row while archives keep answering', () => {
     const { all, soon } = tiered();
     mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'checking', total: 5, progress: progress(['eumetsat'], ['sentinel-2', 'landsat'], all) } });

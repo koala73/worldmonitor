@@ -183,7 +183,9 @@ function imageFigure(url: string | null, alt: string, condition: string | null, 
 }
 
 function imageSlot(acquisition: MatchedAcquisition | null, alt: string): DomChild {
-  return acquisition ? imageFigure(acquisition.imageUrl, alt, describePointCondition(acquisition), acquisitionCredit(acquisition)) : null;
+  if (!acquisition) return null;
+  return imageFigure(acquisition.imageUrl, alt, describePointCondition(acquisition), acquisitionCredit(acquisition))
+    ?? h('p', { className: 'ow-row-note' }, t('orbitalWatch.row.noPreview'));
 }
 
 function sourceRow(tier: string, name: string, tierLabel: string, time: string | null, detail: string | null, image: DomChild): HTMLElement {

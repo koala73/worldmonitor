@@ -5180,7 +5180,8 @@
       "cadence": "nuova immagine ogni {{minutes}} min",
       "sourceUnavailable": "L’archivio non contiene immagini di questa fonte per questi giorni.",
       "imageLoading": "Caricamento immagine…",
-      "imageFailed": "L’immagine non è stata caricata. L’archivio potrebbe essere lento o non disponibile."
+      "imageFailed": "L’immagine non è stata caricata. L’archivio potrebbe essere lento o non disponibile.",
+      "noPreview": "L'archivio non ha ancora un'anteprima di questa scena."
     },
     "dailyMosaics": "mosaici giornalieri",
     "weatherFrames": "immagini meteo"
