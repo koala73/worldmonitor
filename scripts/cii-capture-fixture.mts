@@ -18,6 +18,8 @@ import { getRedisCredentials, loadEnvFile } from './_seed-utils.mjs';
 import { CII_FIXTURE_DIR, CII_EXPANDED_CAPTURE_TARGETS, buildCiiFixture, ciiFiresInput, scoreCiiFixture } from './lib/cii-fixtures.mts';
 import { CROSS_BORDER_SOURCES } from '../server/worldmonitor/displacement/v1/cross-border-data.ts';
 import { unwrapEnvelope } from '../server/_shared/seed-envelope.ts';
+import { parsePartyMonths, statePartyIso2 } from './shared/ucdp-state-parties.cjs';
+import { CII_COUNTRY_CODES } from '../shared/cii-weights.ts';
 import { CII_FORMULA_VERSION } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
 
 const { values } = parseArgs({
@@ -76,6 +78,17 @@ const [
   'intelligence:military-cii:v1', 'gdelt:bulk:country-events:v1', 'conflict:strike-pressure:v1',
   'intelligence:cii-structural-prior:v1',
 ].map((key) => get(key)));
+const partyValue = (ucdp as { partyMonths?: unknown } | null)?.partyMonths;
+const partyMonths = parsePartyMonths(partyValue);
+if (partyValue !== undefined && partyMonths === null) throw new Error('Malformed full-window UCDP party table');
+const scoredStates = new Set<string>(CII_COUNTRY_CODES);
+const partyDeaths = partyMonths?.reduce((n, row) => n + row.deaths, 0) ?? 0;
+const resolvedDeaths = partyMonths?.reduce((n, row) => n + ([row.sideA, row.sideB].some(side => scoredStates.has(statePartyIso2(side) ?? '')) ? row.deaths : 0), 0) ?? 0;
+const partyNotes = partyMonths ? [
+  `UCDP party table: ${partyMonths.length} groups; ${partyMonths.reduce((n, row) => n + row.events, 0)} events; ${partyDeaths} deaths; ${resolvedDeaths} deaths with at least one scored state party (no double counting).`,
+  `UCDP payload bytes: ${Buffer.byteLength(JSON.stringify({ ...(ucdp as object), partyMonths: undefined }))} without party table; ${Buffer.byteLength(JSON.stringify(ucdp))} with table.`,
+  `UCDP window: ${JSON.stringify((ucdp as { window?: unknown })?.window)}.`,
+] : [];
 const displacement = displacementCurrent ?? await get(`displacement:summary:v1:${year - 1}`);
 const fires = ciiFiresInput(firesSummary, firesSummary == null ? await get('wildfire:fires:v1') : null);
 const crossBorder = Object.fromEntries(await Promise.all(
@@ -109,6 +122,7 @@ const fixture = buildCiiFixture({
       .filter((id) => ({ oref, threatSummary, gdeltCountryEvents, strikePressure, advisories } as Record<string, unknown>)[id] == null)
       .map((id) => `${id} was missing from Redis.`),
     'ACLED unconfigured.',
+    ...partyNotes,
     ...(targetCodes ? ['Capture target: 37 countries; the released table still scores 31.'] : []),
   ],
   production: stored ? {

@@ -283,12 +283,13 @@ describe('UCDP window aggregates for the CII', () => {
 });
 
 describe('consumers of the canonical key that do not read the CII aggregates', () => {
-  const aggregates = { countryDays: { Ukraine: [[20_700, 3, 9]] }, dailyTotals: [[20_700, 3]], window: { complete: true } };
+  const aggregates = { partyMonths: [{ country: 'Ukraine', sideA: 'Government of Russia', sideB: 'Government of Ukraine', month: '2026-09', deaths: 9, events: 3 }], countryDays: { Ukraine: [[20_700, 3, 9]] }, dailyTotals: [[20_700, 3]], window: { complete: true } };
 
   it('the dashboard bootstrap projection drops countryDays and dailyTotals', async () => {
     const { compactUcdpDashboardPayload } = await import('../scripts/_ucdp-dashboard.mjs');
     const compact = compactUcdpDashboardPayload({ events: [{ id: '1', country: 'Ukraine', dateStart: NOW, deathsBest: 1 }], ...aggregates }, NOW);
     assert.equal('countryDays' in compact, false);
+    assert.equal('partyMonths' in compact, false);
     assert.equal('dailyTotals' in compact, false);
     assert.equal(compact.events.length, 1);
   });
@@ -316,6 +317,7 @@ describe('consumers of the canonical key that do not read the CII aggregates', (
     const ucdp = result.data['ucdp-events'];
     assert.deepEqual(ucdp.events.map((e) => e.id), ['event']);
     assert.equal('countryDays' in ucdp, false);
+    assert.equal('partyMonths' in ucdp, false);
     assert.equal('dailyTotals' in ucdp, false);
   });
 });
