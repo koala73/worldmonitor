@@ -1,8 +1,9 @@
 /**
- * Settings opens on a home list of sections. Each row drills into one page,
- * the header's back button returns to the list, and the list's summaries
- * follow what changed on the pages. These drive the real component the way a
- * user does: clicking rows, the back button and the controls on a page.
+ * On a phone Settings opens on a home list of sections. Each row drills into
+ * one page, the header's back button returns to the list, and the list's
+ * summaries follow what changed on the pages. Wider screens show the same list
+ * as a sidebar beside the open page. These drive the real component the way
+ * a user does: clicking rows, the back button and the controls on a page.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -59,6 +60,15 @@ const page = (id: string) => $(`[data-settings-page="${id}"]`);
 const summary = (id: string) => row(id)?.querySelector('[data-settings-summary]')?.textContent ?? null;
 const home = () => $('[data-settings-home]')!;
 const back = () => $<HTMLButtonElement>('[data-settings-back]')!;
+const current = () => [...document.querySelectorAll<HTMLElement>('[aria-current="page"]')].map((el) => el.dataset.settingsNav);
+const visibleRows = () => [...document.querySelectorAll<HTMLElement>('[data-settings-rows] [data-settings-nav], [data-settings-rows] [data-settings-signin]')]
+  .map((el) => el.dataset.settingsNav ?? 'sign-in');
+
+/** isMobileDevice() reads innerWidth; 768 and below is the phone sheet. */
+function setWidth(width: number): void {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+  window.dispatchEvent(new Event('resize'));
+}
 
 function chooseTheme(value: string): void {
   const radio = page('display')!.querySelector<HTMLInputElement>(`input[name="us-theme"][value="${value}"]`)!;
@@ -71,6 +81,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 393 });
   localStorage.clear();
   openSignIn.mockClear();
   notificationsMount.attached = 0;
@@ -225,5 +236,94 @@ describe('Settings pages after a revisit', () => {
 
     const listed = [...page('sources')!.querySelectorAll<HTMLElement>('.source-toggle-item')].map((el) => el.dataset.source);
     expect(listed).toEqual(['Reuters', 'AP']);
+  });
+});
+
+describe('Settings two-pane modal', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 });
+  });
+
+  it('opens on Display beside the sidebar, with its row marked current and no back button', () => {
+    settings.open();
+
+    expect(home().hidden).toBe(false);
+    expect(page('display')!.hidden).toBe(false);
+    expect(back().hidden).toBe(true);
+    expect(current()).toEqual(['display']);
+  });
+
+  it('selects a page from the sidebar and keeps focus on the row', () => {
+    settings.open();
+    row('sources')!.focus();
+    row('sources')!.click();
+
+    expect(page('sources')!.hidden).toBe(false);
+    expect(page('display')!.hidden).toBe(true);
+    expect(home().hidden).toBe(false);
+    expect(current()).toEqual(['sources']);
+    expect(document.activeElement).toBe(row('sources'));
+  });
+
+  it('reopens on the page selected last, and opens a requested page directly', () => {
+    settings.open();
+    row('about')!.click();
+    settings.close();
+
+    settings.open();
+    expect(page('about')!.hidden).toBe(false);
+    expect(current()).toEqual(['about']);
+    settings.close();
+
+    settings.open('notifications');
+    expect(page('notifications')!.hidden).toBe(false);
+    expect(current()).toEqual(['notifications']);
+  });
+
+  it('falls back to the recent page for a target this account cannot open', () => {
+    settings.open();
+    row('map')!.click();
+    settings.close();
+
+    settings.open('account');
+    expect(page('map')!.hidden).toBe(false);
+    expect(page('account')).toBeNull();
+  });
+
+  it('updates a sidebar summary as soon as the page changes it', () => {
+    settings.open();
+    expect(summary('display')).toBe('Auto');
+
+    chooseTheme('light');
+
+    expect(summary('display')).toBe('Light');
+  });
+
+  it('shows the open page on the phone sheet when the window narrows, and Back goes home', () => {
+    settings.open();
+    row('map')!.click();
+
+    setWidth(393);
+
+    expect(page('map')!.hidden).toBe(false);
+    expect(home().hidden).toBe(true);
+    expect(back().hidden).toBe(false);
+    expect(current()).toEqual([]);
+
+    back().click();
+    expect(home().hidden).toBe(false);
+    expect(visibleRows()).toContain('about');
+  });
+
+  it('selects the recent page when the phone home list widens into the modal', () => {
+    setWidth(393);
+    settings.open();
+    row('video')!.click();
+    back().click();
+
+    setWidth(1280);
+
+    expect(page('video')!.hidden).toBe(false);
+    expect(current()).toEqual(['video']);
   });
 });

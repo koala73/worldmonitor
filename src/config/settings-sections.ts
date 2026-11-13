@@ -186,50 +186,84 @@ export function buildNav(f: SettingsFacts): readonly NavGroup[] {
 
 declare const resolved: unique symbol;
 
+/** Where Settings is drawn: the full-height phone 'sheet', or the two-pane 'modal' on wider screens. */
+export type NavLayout = 'sheet' | 'modal';
+
+/** The page the modal shows when nothing else applies. Every account can open it. */
+const MODAL_FALLBACK_PAGE = 'display' satisfies SettingsSectionId;
+
 /**
- * Where the settings window is. `page` null is the home list.
+ * Where the settings window is. On the sheet `page` null is the home list; the
+ * modal's sidebar is always beside a page, so its `page` is never null.
  *
  * Branded, so only reduceNav builds one: the current page is always an
  * available section, and a deeper stack is unrepresentable.
  */
-export type NavState = { readonly page: SettingsSectionId | null } & { readonly [resolved]: true };
+export type NavState = (
+  | { readonly layout: 'sheet'; readonly page: SettingsSectionId | null }
+  | { readonly layout: 'modal'; readonly page: SettingsSectionId }
+) & { readonly [resolved]: true };
 
+/**
+ * `recent` is the last page selected while the shell has been alive, open or
+ * closed. The modal falls back to it when a page has to be chosen for the user.
+ */
 export type NavEvent =
-  | { readonly type: 'open'; readonly target?: SettingsSectionId }
+  | {
+    readonly type: 'open';
+    readonly target?: SettingsSectionId;
+    readonly layout: NavLayout;
+    readonly recent: SettingsSectionId | null;
+  }
   | { readonly type: 'select'; readonly id: SettingsSectionId }
   | { readonly type: 'back' }
-  | { readonly type: 'facts-changed' };
+  | { readonly type: 'facts-changed' }
+  | { readonly type: 'relayout'; readonly layout: NavLayout; readonly recent: SettingsSectionId | null };
 
-function navAt(page: SettingsSectionId | null): NavState {
-  return { page } as NavState;
+function availableOrNull(id: SettingsSectionId | null | undefined, f: SettingsFacts): SettingsSectionId | null {
+  return id != null && isAvailable(id, f) ? id : null;
 }
 
 /**
  * Pure and total. A transition that lands where it started returns `prev`
  * itself, so a double tap or a replayed event produces no effects.
  *
- *   open(t)        t available ? t : home
+ *   open(t)        t available ? t : no page
  *   select(id)     id available ? id : unchanged
- *   back           home
- *   facts-changed  current page still available ? unchanged : home
+ *   back           no page
+ *   facts-changed  current page still available ? unchanged : no page
+ *   relayout       the same page in the new layout
+ *
+ * "No page" is the home list on the sheet. The modal always shows a page, so
+ * there it means the recent page if still available, else Display, and back
+ * keeps the page it is on.
  */
 export function reduceNav(prev: NavState | null, ev: NavEvent, f: SettingsFacts): NavState {
+  const layout = ev.type === 'open' || ev.type === 'relayout' ? ev.layout : prev?.layout ?? 'sheet';
   let page: SettingsSectionId | null;
   switch (ev.type) {
     case 'open':
-      page = ev.target !== undefined && isAvailable(ev.target, f) ? ev.target : null;
+      page = availableOrNull(ev.target, f);
       break;
     case 'select':
-      page = isAvailable(ev.id, f) ? ev.id : prev?.page ?? null;
+      page = availableOrNull(ev.id, f) ?? prev?.page ?? null;
       break;
     case 'back':
-      page = null;
+      page = layout === 'modal' ? prev?.page ?? null : null;
       break;
     case 'facts-changed':
-      page = prev?.page != null && isAvailable(prev.page, f) ? prev.page : null;
+      page = availableOrNull(prev?.page, f);
+      break;
+    case 'relayout':
+      page = prev?.page ?? null;
       break;
   }
-  return prev !== null && prev.page === page ? prev : navAt(page);
+  if (layout === 'modal' && page === null) {
+    const recent = ev.type === 'open' || ev.type === 'relayout' ? ev.recent : null;
+    page = availableOrNull(recent, f) ?? MODAL_FALLBACK_PAGE;
+  }
+  if (prev !== null && prev.layout === layout && prev.page === page) return prev;
+  return { layout, page } as NavState;
 }
 
 /** What the shell must do to get from prev to next. Leave always runs before enter. */
@@ -244,9 +278,6 @@ export function diffNav(prev: NavState | null, next: NavState): NavEffects {
   return { leave: from, enter: next.page };
 }
 
-/** Where Settings is drawn: the full-height phone 'sheet', or the centred 'modal'. */
-export type NavLayout = 'sheet' | 'modal';
-
 /** What the shell does with the open page's history entry. Both are idempotent. */
 export type PageEntryEffect = 'hold' | 'release';
 
@@ -254,9 +285,10 @@ export type PageEntryEffect = 'hold' | 'release';
  * On the sheet an open page holds a history entry above Settings' own, so
  * device Back returns to the home list before it closes Settings. Without a
  * Settings entry beneath it, Back would pop the page and then leave the app.
+ * The modal has no home list to return to, so it holds none.
  */
-export function pageEntryEffect(nav: NavState | null, layout: NavLayout, settingsEntry: boolean): PageEntryEffect {
-  return layout === 'sheet' && settingsEntry && nav?.page != null ? 'hold' : 'release';
+export function pageEntryEffect(nav: NavState | null, settingsEntry: boolean): PageEntryEffect {
+  return nav?.layout === 'sheet' && nav.page !== null && settingsEntry ? 'hold' : 'release';
 }
 
 /** A mounted page. The shell calls enter on every activation and dispose on close or eviction. */

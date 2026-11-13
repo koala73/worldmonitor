@@ -10,6 +10,8 @@ import {
   isPreferenceSection,
   pageEntryEffect,
   reduceNav,
+  type NavGroup,
+  type NavLayout,
   type NavState,
   type SettingsFacts,
   type SettingsSectionId,
@@ -28,8 +30,16 @@ const facts = (overrides: Partial<SettingsFacts> = {}): SettingsFacts => ({
 
 const signedOut = facts({ signedIn: false, account: null, embedAccess: false });
 
-function at(page: SettingsSectionId | null, f = facts()): NavState {
-  return page === null ? reduceNav(null, { type: 'open' }, f) : reduceNav(null, { type: 'open', target: page }, f);
+function at(page: SettingsSectionId | null, f = facts(), layout: NavLayout = 'sheet'): NavState {
+  return reduceNav(null, { type: 'open', target: page ?? undefined, layout, recent: null }, f);
+}
+
+function openIn(layout: NavLayout, target?: SettingsSectionId, recent: SettingsSectionId | null = null, f = facts()): NavState {
+  return reduceNav(null, { type: 'open', target, layout, recent }, f);
+}
+
+function relayout(prev: NavState, layout: NavLayout, recent: SettingsSectionId | null = null, f = facts()): NavState {
+  return reduceNav(prev, { type: 'relayout', layout, recent }, f);
 }
 
 function rowIds(f: SettingsFacts): string[] {
@@ -162,8 +172,9 @@ describe('settings navigation reducer', () => {
 
   it('re-opens onto a new target while already open', () => {
     const map = at('map');
-    assert.equal(reduceNav(map, { type: 'open', target: 'notifications' }, facts()).page, 'notifications');
-    assert.equal(reduceNav(map, { type: 'open' }, facts()).page, null);
+    const reopen = (target?: SettingsSectionId) => reduceNav(map, { type: 'open', target, layout: 'sheet', recent: 'map' }, facts());
+    assert.equal(reopen('notifications').page, 'notifications');
+    assert.equal(reopen().page, null);
   });
 });
 
@@ -194,27 +205,105 @@ describe('settings navigation effects', () => {
 
 describe('settings page history entry', () => {
   it('holds an entry for an open page on the phone sheet above a Settings entry', () => {
-    assert.equal(pageEntryEffect(at('notifications'), 'sheet', true), 'hold');
+    assert.equal(pageEntryEffect(at('notifications'), true), 'hold');
   });
 
   it('releases it on the home list, in the modal, or without a Settings entry beneath', () => {
-    assert.equal(pageEntryEffect(at(null), 'sheet', true), 'release');
-    assert.equal(pageEntryEffect(null, 'sheet', true), 'release');
-    assert.equal(pageEntryEffect(at('notifications'), 'modal', true), 'release');
-    assert.equal(pageEntryEffect(at('notifications'), 'sheet', false), 'release');
+    assert.equal(pageEntryEffect(at(null), true), 'release');
+    assert.equal(pageEntryEffect(null, true), 'release');
+    assert.equal(pageEntryEffect(openIn('modal', 'notifications'), true), 'release');
+    assert.equal(pageEntryEffect(at('notifications'), false), 'release');
   });
 
   it('follows navigation: a row holds it, back releases it, an evicted page releases it', () => {
     const page = reduceNav(at(null), { type: 'select', id: 'account' }, facts());
-    assert.equal(pageEntryEffect(page, 'sheet', true), 'hold');
-    assert.equal(pageEntryEffect(reduceNav(page, { type: 'back' }, facts()), 'sheet', true), 'release');
-    assert.equal(pageEntryEffect(reduceNav(page, { type: 'facts-changed' }, signedOut), 'sheet', true), 'release');
+    assert.equal(pageEntryEffect(page, true), 'hold');
+    assert.equal(pageEntryEffect(reduceNav(page, { type: 'back' }, facts()), true), 'release');
+    assert.equal(pageEntryEffect(reduceNav(page, { type: 'facts-changed' }, signedOut), true), 'release');
   });
 
   it('keeps holding one entry while the open page changes', () => {
     const panels = at('panels');
-    const sources = reduceNav(panels, { type: 'open', target: 'sources' }, facts());
-    assert.equal(pageEntryEffect(panels, 'sheet', true), 'hold');
-    assert.equal(pageEntryEffect(sources, 'sheet', true), 'hold');
+    const sources = reduceNav(panels, { type: 'open', target: 'sources', layout: 'sheet', recent: 'panels' }, facts());
+    assert.equal(pageEntryEffect(panels, true), 'hold');
+    assert.equal(pageEntryEffect(sources, true), 'hold');
+  });
+
+  it('releases it when the sheet widens into the modal and holds it again on return', () => {
+    const map = at('map');
+    const wide = relayout(map, 'modal', 'map');
+    assert.equal(pageEntryEffect(wide, true), 'release');
+    assert.equal(pageEntryEffect(relayout(wide, 'sheet', 'map'), true), 'hold');
+  });
+});
+
+describe('settings navigation in the two-pane modal', () => {
+  it('opens on Display the first time, then on the recent page', () => {
+    assert.deepEqual(openIn('modal'), openIn('modal', undefined, null));
+    assert.equal(openIn('modal').page, 'display');
+    assert.equal(openIn('modal').layout, 'modal');
+    assert.equal(openIn('modal', undefined, 'sources').page, 'sources');
+  });
+
+  it('opens straight onto an available target', () => {
+    assert.equal(openIn('modal', 'notifications', 'sources').page, 'notifications');
+  });
+
+  it('falls back to the recent page, then Display, for an unavailable target', () => {
+    const noEmbeds = facts({ embedAccess: false });
+    assert.equal(openIn('modal', 'embeds', 'map', noEmbeds).page, 'map');
+    assert.equal(openIn('modal', 'embeds', null, noEmbeds).page, 'display');
+    assert.equal(openIn('modal', 'account', 'account', signedOut).page, 'display');
+  });
+
+  it('selects an available section and ignores an unavailable one', () => {
+    const noEmbeds = facts({ embedAccess: false });
+    const display = openIn('modal', undefined, null, noEmbeds);
+    const about = reduceNav(display, { type: 'select', id: 'about' }, noEmbeds);
+    assert.equal(about.page, 'about');
+    assert.equal(reduceNav(about, { type: 'select', id: 'embeds' }, noEmbeds), about);
+  });
+
+  it('never shows the home list: back keeps the page', () => {
+    const map = openIn('modal', 'map');
+    assert.equal(reduceNav(map, { type: 'back' }, facts()), map);
+  });
+
+  it('moves an evicted page to Display, not to a home list', () => {
+    const account = openIn('modal', 'account');
+    const after = reduceNav(account, { type: 'facts-changed' }, signedOut);
+    assert.equal(after.page, 'display');
+    assert.equal(after.layout, 'modal');
+    assert.deepEqual(diffNav(account, after), { leave: 'account', enter: 'display' });
+  });
+
+  it('keeps the open page when the modal narrows into the sheet', () => {
+    const map = openIn('modal', 'map');
+    const narrow = relayout(map, 'sheet', 'map');
+    assert.equal(narrow.layout, 'sheet');
+    assert.equal(narrow.page, 'map');
+    assert.deepEqual(diffNav(map, narrow), { leave: null, enter: null });
+    assert.equal(reduceNav(narrow, { type: 'back' }, facts()).page, null);
+  });
+
+  it('keeps the open sheet page when the sheet widens into the modal', () => {
+    const sources = relayout(at('sources'), 'modal', 'sources');
+    assert.equal(sources.layout, 'modal');
+    assert.equal(sources.page, 'sources');
+  });
+
+  it('selects the recent page, else Display, when the sheet home list widens into the modal', () => {
+    const fromHome = (recent: SettingsSectionId | null) => relayout(at(null), 'modal', recent);
+    assert.equal(fromHome(null).page, 'display');
+    assert.equal(fromHome('about').page, 'about');
+    assert.deepEqual(diffNav(at(null), fromHome('about')), { leave: null, enter: 'about' });
+    assert.equal(relayout(at(null, signedOut), 'modal', 'account', signedOut).page, 'display');
+  });
+
+  it('returns the same state for a relayout that keeps the layout', () => {
+    const map = openIn('modal', 'map');
+    assert.equal(relayout(map, 'modal', 'about'), map);
+    const home = at(null);
+    assert.equal(relayout(home, 'sheet', 'about'), home);
   });
 });

@@ -60,6 +60,13 @@ async function openSettings(page: Page): Promise<void> {
   await expect(page.locator('#unifiedSettingsModal')).toBeVisible();
 }
 
+/** Reach a Settings page: through the home list on a phone, from the sidebar on wider screens. */
+async function openSettingsPage(page: Page, id: string): Promise<void> {
+  const back = page.locator('[data-settings-back]');
+  if (await back.isVisible()) await back.click();
+  await page.locator(`[data-settings-nav="${id}"]`).click();
+}
+
 /** The global text size lives on the Display page of Settings. */
 async function openDisplaySettings(page: Page): Promise<void> {
   await openSettings(page);
@@ -201,8 +208,7 @@ test.describe('panel font scaling', () => {
 
     await openDisplaySettings(page);
     await page.locator('#us-font-scale').selectOption('2');
-    await page.locator('[data-settings-back]').click();
-    await page.locator('[data-settings-nav="panels"]').click();
+    await openSettingsPage(page, 'panels');
 
     const panelScale = page.locator(`#usPanelToggles [data-panel-font-scale="${panelId}"]`);
     await panelScale.locator('xpath=ancestor::details').locator('summary').click();
@@ -231,8 +237,7 @@ test.describe('panel font scaling', () => {
 
     await openDisplaySettings(page);
     await expect(page.locator('#us-font-scale')).toHaveValue('2');
-    await page.locator('[data-settings-back]').click();
-    await page.locator('[data-settings-nav="panels"]').click();
+    await openSettingsPage(page, 'panels');
     await expect(page.locator(`#usPanelToggles [data-panel-font-scale="${panelId}"]`)).toHaveValue('0.9');
     await page.locator('.unified-settings-close').click();
 
