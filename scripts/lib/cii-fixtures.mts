@@ -392,6 +392,7 @@ export function validateCiiCalibrationInputs(raw: CiiCaptureInputs, targets: rea
   if (!isObj(prior?.countries) || targets.some(code => !Number.isFinite(prior!.countries[code]?.pv))) fail('structural prior missing countries');
   const economic = raw.economicStress as Obj | null;
   if (economic?.schemaVersion !== 1 || !isObj(economic.countries) || [...TIER1].some(code => typeof economic.countries[code]?.measured !== 'boolean')) fail('economic key missing or incomplete');
+  if ([...TIER1].filter(code => economic!.countries[code].measured === true).length < 25) fail('at least 25 measured economic countries required');
   const u = raw.ucdp as Obj | null;
   const w = u?.window;
   if (!w || w.complete !== true || !Array.isArray(w.gapMonths) || w.gapMonths.length || !Array.isArray(w.missingReleases) || w.missingReleases.length

@@ -166,7 +166,7 @@ it('calibration captures retain both maps and the entire UCDP payload', () => {
   const f = FIXTURES[0]!;
   const raw = { ...f.inputs,
     structuralPrior: { countries: Object.fromEntries(CII_EXPANDED_CAPTURE_TARGETS.map(code => [code, { pv: -0.5, year: 2024 }])) },
-    economicStress: { schemaVersion: 1, countries: Object.fromEntries(Object.keys(TIER1_COUNTRIES).map(code => [code, { measured: false, members: {} }])) },
+    economicStress: { schemaVersion: 1, countries: Object.fromEntries(Object.keys(TIER1_COUNTRIES).map((code, i) => [code, { measured: i < 25, members: {} }])) },
     ucdp: (() => {
       const startMs = Date.UTC(2025, 9, 1);
       const endMs = startMs + 365 * 86400000;
@@ -189,6 +189,11 @@ it('calibration captures retain both maps and the entire UCDP payload', () => {
   assert.throws(() => buildCiiFixture({ ...raw, economicStress: null }, { label: 'bad-calibration', capturedAt: f.capturedAt,
     nowMs: f.nowMs, iranEventsEnabled: f.iranEventsEnabled, notes: [], production: null, targetCodes: CII_EXPANDED_CAPTURE_TARGETS, calibration: true }), /economic/);
   assert.throws(() => validateCiiCalibrationInputs({ ...raw, economicStress: null }, CII_EXPANDED_CAPTURE_TARGETS), /economic/);
+  for (const measured of [0, 24]) {
+    const low = { ...raw, economicStress: { ...raw.economicStress, measuredCount: 31,
+      countries: Object.fromEntries(Object.keys(TIER1_COUNTRIES).map((code, i) => [code, { measured: i < measured, members: {} }])) } };
+    assert.throws(() => validateCiiCalibrationInputs(low, CII_EXPANDED_CAPTURE_TARGETS), /25 measured/);
+  }
   assert.throws(() => validateCiiCalibrationInputs({ ...raw, structuralPrior: null }, CII_EXPANDED_CAPTURE_TARGETS), /prior/);
   assert.throws(() => validateCiiCalibrationInputs({ ...raw, ucdp: { ...raw.ucdp, partyMonths: [] } }, CII_EXPANDED_CAPTURE_TARGETS), /party/);
   assert.throws(() => validateCiiCalibrationInputs({ ...raw, ucdp: { ...raw.ucdp, window: { ...raw.ucdp.window, complete: false } } }, CII_EXPANDED_CAPTURE_TARGETS), /window/);
