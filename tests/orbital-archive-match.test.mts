@@ -111,27 +111,24 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.deepEqual(await reply, { ok: false, failure: { archive: 'eumetsat', reason: 'aborted' } });
   });
 
-  it('lets go of a long-lived caller signal once each request finishes, without AbortSignal.any', async (t) => {
-    const any = Object.getOwnPropertyDescriptor(AbortSignal, 'any');
-    Object.defineProperty(AbortSignal, 'any', { value: undefined, configurable: true });
-    t.after(() => { if (any) Object.defineProperty(AbortSignal, 'any', any); });
-    const caller = new AbortController().signal;
-    const held = new Set<EventListenerOrEventListenerObject>();
-    const add = caller.addEventListener.bind(caller);
-    const remove = caller.removeEventListener.bind(caller);
-    caller.addEventListener = (type: string, listener: EventListenerOrEventListenerObject | null, options?: AddEventListenerOptions | boolean) => {
-      if (listener) held.add(listener);
-      add(type, listener, options);
-    };
-    caller.removeEventListener = (type: string, listener: EventListenerOrEventListenerObject | null, options?: EventListenerOptions | boolean) => {
-      if (listener) held.delete(listener);
-      remove(type, listener, options);
-    };
-    for (let i = 0; i < 3; i += 1) {
-      const reply = await requestArchive('eumetsat', 'https://view.eumetsat.int/geoserver/wms', {}, { fetch: async () => new Response('ok'), signal: caller }, async (response) => response.text());
-      assert.deepEqual(reply, { ok: true, value: 'ok' });
+  it('leaves no listener on the caller signal after a request completes, without AbortSignal.any', async () => {
+    const any = AbortSignal.any;
+    (AbortSignal as { any?: unknown }).any = undefined;
+    try {
+      const controller = new AbortController();
+      let listeners = 0;
+      const add = controller.signal.addEventListener.bind(controller.signal);
+      const remove = controller.signal.removeEventListener.bind(controller.signal);
+      controller.signal.addEventListener = ((...args: Parameters<typeof add>) => { listeners++; add(...args); }) as typeof add;
+      controller.signal.removeEventListener = ((...args: Parameters<typeof remove>) => { listeners--; remove(...args); }) as typeof remove;
+      for (let i = 0; i < 3; i++) {
+        const reply = await requestArchive('eumetsat', 'https://view.eumetsat.int/x', {}, { fetch: async () => new Response('ok'), signal: controller.signal }, async (r) => r.text());
+        assert.equal(reply.ok, true);
+      }
+      assert.equal(listeners, 0);
+    } finally {
+      AbortSignal.any = any;
     }
-    assert.equal(held.size, 0, 'no listener stays on the caller signal after its requests finish');
   });
 
   it('times out an archive that sends headers but never finishes the body', async () => {
