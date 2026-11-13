@@ -1,6 +1,7 @@
 // The committed CII fixtures (tests/fixtures/cii/) as a regression snapshot
 // and as the proof that the scoring seam reproduces production. See
 // docs/methodology/cii-change-brief.md.
+import { summarizeUcdpWindow } from '../scripts/shared/ucdp-candidate.cjs';
 import assert from 'node:assert/strict';
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -9,6 +10,8 @@ import { describe, it } from 'node:test';
 import {
   CII_FIXTURE_DIR,
   CII_FIXTURE_SCHEMA,
+  CII_EXPANDED_CAPTURE_TARGETS,
+  validateCiiCalibrationInputs,
   buildCiiFixture,
   expectedFromTable,
   loadCiiFixtures,
@@ -64,14 +67,18 @@ describe('CII fixtures', () => {
     }
   });
 
-  it('stay small: under 1 MB in total', () => {
-    const bytes = readdirSync(CII_FIXTURE_DIR).reduce((sum, name) => sum + statSync(join(CII_FIXTURE_DIR, name)).size, 0);
+  it('keep regression snapshots under 1 MB and each full calibration capture under 2 MB', () => {
+    for (const f of FIXTURES.filter(f => f.calibration)) {
+      assert.ok(statSync(join(CII_FIXTURE_DIR, `${f.label}.json`)).size < 2 * 1024 * 1024, `${f.label} exceeds 2 MB`);
+      validateCiiCalibrationInputs(f.inputs, f.captureTargets ?? []);
+    }
+    const bytes = FIXTURES.filter(f => !f.calibration).reduce((sum, f) => sum + statSync(join(CII_FIXTURE_DIR, `${f.label}.json`)).size, 0);
     assert.ok(bytes < 1024 * 1024, `fixtures total ${bytes} bytes`);
   });
 
   it('are already trimmed, and keep no strike-feed text or headline other than a country name', () => {
     for (const f of FIXTURES) {
-      assert.deepEqual(trimCiiRawInputs(f.inputs, f.captureTargets), f.inputs, `${f.label} holds untrimmed inputs`);
+      assert.deepEqual(trimCiiRawInputs(f.inputs, f.captureTargets, f.calibration), f.inputs, `${f.label} holds untrimmed inputs`);
       if (!f.captureTargets) assert.equal(JSON.stringify(trimCiiRawInputs(f.inputs)), JSON.stringify(f.inputs), `${f.label} default bytes changed`);
       for (const event of (f.inputs.iranEvents as { events?: object[] } | null)?.events ?? []) {
         assert.deepEqual(Object.keys(event).sort(), ['countryCode', 'severity', 'timestamp'], `${f.label} strike event keeps extra fields`);
@@ -152,4 +159,40 @@ it('capture and reader retain every full-window party group without changing v14
   assert.deepEqual(table.aux.ucdpPartyMonths, partyMonths);
   assert.deepEqual(table.rows, original.rows);
   assert.deepEqual(table.scores, original.scores);
+});
+
+
+it('calibration captures retain both maps and the entire UCDP payload', () => {
+  const f = FIXTURES[0]!;
+  const raw = { ...f.inputs,
+    structuralPrior: { countries: Object.fromEntries(CII_EXPANDED_CAPTURE_TARGETS.map(code => [code, { pv: -0.5, year: 2024 }])) },
+    economicStress: { schemaVersion: 1, countries: Object.fromEntries(Object.keys(TIER1_COUNTRIES).map(code => [code, { measured: false, members: {} }])) },
+    ucdp: (() => {
+      const startMs = Date.UTC(2025, 9, 1);
+      const endMs = startMs + 365 * 86400000;
+      const events = Array.from({ length: 11000 }, (_, i) => ({ country: 'Philippines', dateStart: startMs + (i % 366) * 86400000,
+        deathsBest: i % 3, sideA: 'Government of Philippines', sideB: 'Rebels' }));
+      const summary = summarizeUcdpWindow(events, { startMs, endMs });
+      return { events, ...summary, window: { startMs, endMs, complete: true, gapMonths: summary.gapMonths, missingReleases: [], months: summary.months } };
+    })(),
+  };
+  const trimmed = trimCiiRawInputs(raw, CII_EXPANDED_CAPTURE_TARGETS, true);
+  assert.deepEqual(trimmed.ucdp, raw.ucdp);
+  assert.deepEqual(trimmed.structuralPrior, raw.structuralPrior);
+  assert.deepEqual(trimmed.economicStress, raw.economicStress);
+  assert.doesNotThrow(() => validateCiiCalibrationInputs(trimmed, CII_EXPANDED_CAPTURE_TARGETS));
+  const captured = buildCiiFixture(raw, { label: 'calibration-test', capturedAt: f.capturedAt, nowMs: f.nowMs,
+    iranEventsEnabled: f.iranEventsEnabled, notes: [], production: null, targetCodes: CII_EXPANDED_CAPTURE_TARGETS, calibration: true });
+  assert.equal(captured.calibration, true);
+  assert.deepEqual(trimCiiRawInputs(captured.inputs, captured.captureTargets, captured.calibration), captured.inputs);
+  assert.deepEqual(expectedFromTable(scoreCiiFixture(captured)), expectedFromTable(computeCiiScoreTable(raw, { nowMs: f.nowMs, iranEventsEnabled: f.iranEventsEnabled })));
+  assert.throws(() => buildCiiFixture({ ...raw, economicStress: null }, { label: 'bad-calibration', capturedAt: f.capturedAt,
+    nowMs: f.nowMs, iranEventsEnabled: f.iranEventsEnabled, notes: [], production: null, targetCodes: CII_EXPANDED_CAPTURE_TARGETS, calibration: true }), /economic/);
+  assert.throws(() => validateCiiCalibrationInputs({ ...raw, economicStress: null }, CII_EXPANDED_CAPTURE_TARGETS), /economic/);
+  assert.throws(() => validateCiiCalibrationInputs({ ...raw, structuralPrior: null }, CII_EXPANDED_CAPTURE_TARGETS), /prior/);
+  assert.throws(() => validateCiiCalibrationInputs({ ...raw, ucdp: { ...raw.ucdp, partyMonths: [] } }, CII_EXPANDED_CAPTURE_TARGETS), /party/);
+  assert.throws(() => validateCiiCalibrationInputs({ ...raw, ucdp: { ...raw.ucdp, window: { ...raw.ucdp.window, complete: false } } }, CII_EXPANDED_CAPTURE_TARGETS), /window/);
+  assert.throws(() => validateCiiCalibrationInputs({ ...raw, ucdp: { ...raw.ucdp, dailyTotals: raw.ucdp.dailyTotals.slice(-60) } }, CII_EXPANDED_CAPTURE_TARGETS), /truncated/);
+  assert.throws(() => validateCiiCalibrationInputs({ ...raw, ucdp: { ...raw.ucdp, countryDays: { Philippines: [[20362, 1, 1]] } } }, CII_EXPANDED_CAPTURE_TARGETS), /counts/);
+  assert.throws(() => validateCiiCalibrationInputs(raw, Object.keys(TIER1_COUNTRIES)), /37/);
 });
