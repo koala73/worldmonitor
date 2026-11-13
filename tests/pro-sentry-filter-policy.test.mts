@@ -1920,7 +1920,7 @@ describe('marketingBeforeSend — ReferenceError with only <anonymous> frames (W
   });
 
   // Code evaluated from a string is what produces an `<anonymous>` frame.
-  const STRING_EVAL_SOURCE = /(?<![\w$.])eval\s*\(|\bnew\s+Function\s*\(|\bset(?:Timeout|Interval)\s*\(\s*['"`]/;
+  const STRING_EVAL_SOURCE = /(?<![\w$.])(?:(?:(?:window|globalThis)\s*\.\s*)?eval|Function)\s*\(|\bset(?:Timeout|Interval)\s*\(\s*['"`]/;
 
   it('the source scan catches common string-evaluation spellings', () => {
     for (const src of [
