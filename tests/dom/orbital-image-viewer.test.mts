@@ -39,7 +39,7 @@ const viewerText = () => viewer()?.textContent ?? '';
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 function open(selected: MatchedAcquisition, deps: ViewerDependencies, others: MatchedAcquisition[] = [], returnFocusTo: HTMLElement | null = null) {
-  return openOrbitalImageViewer({ point, nowMs: NOW, selected: sceneFromAcquisition(selected), scenes: others.map(sceneFromAcquisition), historyProfile: selected.profileId }, returnFocusTo, deps);
+  return openOrbitalImageViewer({ point, nowMs: NOW, selected: sceneFromAcquisition(selected), scenes: others.map(sceneFromAcquisition), historyProfile: selected.profileId }, returnFocusTo, { loadImage: loaded, ...deps });
 }
 
 beforeAll(async () => {
@@ -117,23 +117,57 @@ describe('orbital image viewer', () => {
     expect(viewer()!.querySelector('.oiv-before')!.getAttribute('src')).toBe(expected.imageUrl);
 
     viewer()!.querySelector<HTMLButtonElement>(`.oiv-date[data-key="${nearButRecent.key}"]`)!.click();
+    await settle();
     expect(viewer()!.querySelector('.oiv-before')!.getAttribute('src')).toBe(nearButRecent.imageUrl);
+  });
+
+  it('leaves cloudy dates out of the compare strip, since they would only compare cloud', async () => {
+    const selected = scene(1, 5);
+    const cloudy = [scene(8, 98), scene(15, 96), scene(22, 100)];
+    const clear = scene(36, 4);
+    open(selected, { searchHistory: history([selected, ...cloudy, clear]) });
+    await settle();
+    const dates = [...viewer()!.querySelectorAll<HTMLElement>('.oiv-date')].map((date) => date.dataset.key);
+    expect(dates).toEqual([clear.key]);
+  });
+
+  it('shows the before and after split only once both dates have loaded', async () => {
+    const selected = scene(1, 5);
+    const other = scene(36, 4);
+    const pending = new Map<string, () => void>();
+    open(selected, {
+      searchHistory: history([selected, other]),
+      loadImage: (url) => new Promise<void>((resolve) => pending.set(url, resolve)),
+    });
+    await settle();
+    expect(viewer()!.querySelector('.oiv-slider')).toBeNull();
+    expect(viewer()!.querySelector('.oiv-compare .oiv-status')!.textContent).toBe('Loading frames: 0 of 2');
+    pending.get(selected.imageUrl!)!();
+    await settle();
+    expect(viewer()!.querySelector('.oiv-slider')).toBeNull();
+    expect(viewer()!.querySelector('.oiv-compare .oiv-status')!.textContent).toBe('Loading frames: 1 of 2');
+    pending.get(other.imageUrl!)!();
+    await settle();
+    expect(viewer()!.querySelector('.oiv-before')!.getAttribute('src')).toBe(other.imageUrl);
+    expect(viewer()!.querySelector('.oiv-after')!.getAttribute('src')).toBe(selected.imageUrl);
+    expect([...viewer()!.querySelectorAll('.oiv-slider-label')].map((label) => label.textContent)).toEqual(['2026-10-08', '2026-11-12']);
   });
 
   it('moves the compare default to a clear scene from history once it arrives, unless a date was picked', async () => {
     const selected = scene(1, 5);
-    const recentCloudy = scene(4, 50);
+    const pressed = () => viewer()!.querySelector<HTMLElement>('.oiv-date[aria-pressed="true"]')!.dataset.key;
+    const recentClear = scene(4, 12);
     const clearMonthAgo = scene(35, 3);
-    open(selected, { searchHistory: history([selected, recentCloudy, clearMonthAgo]) }, [recentCloudy]);
-    expect(viewer()!.querySelector('.oiv-before')!.getAttribute('src')).toBe(recentCloudy.imageUrl);
+    open(selected, { searchHistory: history([selected, recentClear, clearMonthAgo]) }, [recentClear]);
+    expect(pressed()).toBe(recentClear.key);
     await settle();
-    expect(viewer()!.querySelector('.oiv-before')!.getAttribute('src')).toBe(clearMonthAgo.imageUrl);
+    expect(pressed()).toBe(clearMonthAgo.key);
 
     document.body.replaceChildren();
-    open(selected, { searchHistory: history([selected, recentCloudy, clearMonthAgo]) }, [recentCloudy]);
-    viewer()!.querySelector<HTMLButtonElement>(`.oiv-date[data-key="${recentCloudy.key}"]`)!.click();
+    open(selected, { searchHistory: history([selected, recentClear, clearMonthAgo]) }, [recentClear]);
+    viewer()!.querySelector<HTMLButtonElement>(`.oiv-date[data-key="${recentClear.key}"]`)!.click();
     await settle();
-    expect(viewer()!.querySelector('.oiv-before')!.getAttribute('src')).toBe(recentCloudy.imageUrl);
+    expect(pressed()).toBe(recentClear.key);
   });
 
   it('keeps Escape working after the focused time-lapse control is replaced', async () => {
@@ -187,7 +221,33 @@ describe('orbital image viewer', () => {
     await vi.advanceTimersByTimeAsync(5_000);
     expect(viewerText()).toContain('Frame 1 of 4');
     viewer()!.querySelector<HTMLButtonElement>('[data-action="frame-next"]')!.click();
+    await vi.advanceTimersByTimeAsync(0);
     expect(viewerText()).toContain('Frame 2 of 4');
+  });
+
+  it('advances a frame only after that frame has loaded, keeping the shown frame meanwhile', async () => {
+    const frames = [scene(50, 2), scene(40, 3), scene(30, 4), scene(20, 5)];
+    let release: (() => void) | null = null;
+    let preloading = true;
+    open(frames[3]!, {
+      searchHistory: history(frames),
+      prefersReducedMotion: () => true,
+      loadImage: (url) => (preloading || url !== frames[1]!.imageUrl ? Promise.resolve() : new Promise<void>((resolve) => { release = resolve; })),
+    });
+    await settle();
+    viewer()!.querySelector<HTMLButtonElement>('[data-action="timelapse-start"]')!.click();
+    await settle();
+    preloading = false;
+    const frameImage = viewer()!.querySelector('.oiv-timelapse-frame')!;
+    viewer()!.querySelector<HTMLButtonElement>('[data-action="frame-next"]')!.click();
+    await settle();
+    expect(viewerText()).toContain('Frame 1 of 4');
+    expect(frameImage.getAttribute('src')).toBe(frames[0]!.imageUrl);
+    release!();
+    await settle();
+    expect(viewerText()).toContain('Frame 2 of 4');
+    expect(viewer()!.querySelector('.oiv-timelapse-frame')).toBe(frameImage);
+    expect(frameImage.getAttribute('src')).toBe(frames[1]!.imageUrl);
   });
 
   it('replaces the time-lapse control when fewer than four clear scenes exist', async () => {

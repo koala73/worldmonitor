@@ -8,21 +8,22 @@
 .oiv-body { overflow-y: auto; padding: 10px 14px 14px; }
 .oiv-figure { margin: 0; }
 .oiv-figure figcaption { color: var(--text-dim); margin-top: 4px; font-variant-numeric: tabular-nums; }
-.oiv-frame { position: relative; }
-.oiv-image { display: block; width: 100%; max-height: 52vh; object-fit: contain; border-radius: 4px; background: var(--surface); }
+.oiv-stage { position: relative; width: min(100%, 52vh); aspect-ratio: 1 / 1; margin: 0 auto; overflow: hidden; border-radius: 4px; background: var(--surface); }
+.oiv-stage-loading { display: flex; align-items: center; justify-content: center; }
+.oiv-stage-loading .oiv-status { margin: 0; }
+.oiv-image { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
 .oiv-north { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; align-items: center; padding: 3px 6px; border-radius: 4px; background: rgba(0, 0, 0, 0.6); color: #fff; font-weight: 700; font-size: 11px; line-height: 1.1; }
 .oiv-orientation { display: block; margin-top: 4px; color: var(--text-dim); font-style: italic; }
 .oiv-credit { margin: 6px 0 0; color: var(--text-dim); font-size: 11px; line-height: 1.4; }
 .oiv-status, .oiv-note { margin: 10px 0 0; color: var(--text-dim); }
 .oiv-section { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
 .oiv-section h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
-.oiv-slider { position: relative; overflow: hidden; border-radius: 4px; }
-.oiv-slider .oiv-after { position: absolute; inset: 0; height: 100%; clip-path: inset(0 0 0 var(--oiv-divider, 50%)); }
+.oiv-slider .oiv-after { clip-path: inset(0 0 0 var(--oiv-divider, 50%)); }
 .oiv-slider::after { content: ''; position: absolute; top: 0; bottom: 0; left: var(--oiv-divider, 50%); width: 2px; background: var(--accent, #fff); pointer-events: none; }
 .oiv-slider-label { position: absolute; bottom: 6px; padding: 2px 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 11px; font-variant-numeric: tabular-nums; }
 .oiv-slider-label-before { left: 6px; }
 .oiv-slider-label-after { right: 6px; }
-.oiv-divider { display: block; width: 100%; margin: 8px 0; accent-color: var(--accent); }
+.oiv-divider { display: block; width: min(100%, 52vh); margin: 8px auto; accent-color: var(--accent); }
 .oiv-strip { position: relative; display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
 .oiv-date { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; font: inherit; font-variant-numeric: tabular-nums; cursor: pointer; }
 .oiv-date[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -33,5 +34,5 @@
 @media (max-width: 768px) {
   .oiv-backdrop { align-items: flex-end; }
   .oiv-dialog { width: 100%; max-height: 92vh; border-radius: 12px 12px 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
-  .oiv-image { max-height: 40vh; }
+  .oiv-stage, .oiv-divider { width: min(100%, 40vh); }
 }

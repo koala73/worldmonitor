@@ -7,6 +7,7 @@ import { describePointCondition, type MatchedAcquisition, type OrbitalEvidence }
 import {
   defaultCompareScene,
   HISTORY_DAYS,
+  isLowCloud,
   MIN_TIMELAPSE_FRAMES,
   preloadFrames,
   searchSceneHistory,
@@ -175,7 +176,12 @@ export class OrbitalImageViewer {
   private scenes: ViewerScene[];
   private pickedCompareKey: string | null = null;
   private dividerPct = 50;
+  /** Image URLs the browser has finished loading, and those that failed; compare shows only fully loaded pairs. */
+  private readonly loadedUrls = new Set<string>();
+  private readonly failedUrls = new Set<string>();
+  private readonly pendingUrls = new Set<string>();
   private timelapse: TimelapseState = { kind: 'idle' };
+  private stepping = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly deps: Required<ViewerDependencies>;
 
@@ -243,8 +249,31 @@ export class OrbitalImageViewer {
     this.render();
   }
 
+  /** Clear scenes that can sit beside the selected one: cloudy dates would only compare cloud. */
+  private get compareCandidates(): ViewerScene[] {
+    if (this.subject.selected.grid !== 'north-up') return [];
+    return this.scenes.filter((scene) => scene.key !== this.subject.selected.key && isLowCloud(scene) && !this.failedUrls.has(scene.imageUrl!));
+  }
+
   private get compareKey(): string | null {
-    return this.pickedCompareKey ?? defaultCompareScene(this.subject.selected, this.scenes)?.key ?? null;
+    return this.pickedCompareKey ?? defaultCompareScene(this.subject.selected, this.compareCandidates)?.key ?? null;
+  }
+
+  /** Counts how many of the images are loaded, starting a load for each one not yet requested. */
+  private ensureLoaded(urls: string[]): number {
+    const { signal } = this.controller;
+    for (const url of urls) {
+      if (this.loadedUrls.has(url) || this.failedUrls.has(url) || this.pendingUrls.has(url)) continue;
+      this.pendingUrls.add(url);
+      this.deps.loadImage(url, signal).then(
+        () => this.loadedUrls.add(url),
+        () => this.failedUrls.add(url),
+      ).finally(() => {
+        this.pendingUrls.delete(url);
+        if (!signal.aborted) this.render();
+      });
+    }
+    return urls.filter((url) => this.loadedUrls.has(url)).length;
   }
 
   private render(): void {
@@ -271,7 +300,7 @@ export class OrbitalImageViewer {
       : h('span', { className: 'oiv-orientation' }, t('orbitalWatch.viewer.unreferenced'));
     const caption = [scene.dateLabel, scene.conditionText].filter(Boolean).join(' · ');
     return h('figure', { className: 'oiv-figure' },
-      h('div', { className: 'oiv-frame' }, sceneImage(scene, 'oiv-image'), north),
+      h('div', { className: 'oiv-stage' }, sceneImage(scene, 'oiv-image'), north),
       h('figcaption', null, caption));
   }
 
@@ -293,13 +322,14 @@ export class OrbitalImageViewer {
   }
 
   private renderCompare(): DomChild {
-    if (this.subject.selected.grid !== 'north-up') return null;
-    const others = this.scenes.filter((scene) => scene.key !== this.subject.selected.key);
+    const { selected } = this.subject;
+    if (selected.grid !== 'north-up' || this.failedUrls.has(selected.imageUrl!)) return null;
+    const others = this.compareCandidates;
     if (others.length === 0) {
       return this.history.kind === 'searching' || this.history.kind === 'failed' ? null : h('p', { className: 'oiv-note' }, t('orbitalWatch.viewer.compareNone'));
     }
     const other = others.find((scene) => scene.key === this.compareKey) ?? others[0]!;
-    const [before, after] = other.timeMs < this.subject.selected.timeMs ? [other, this.subject.selected] : [this.subject.selected, other];
+    const [before, after] = other.timeMs < selected.timeMs ? [other, selected] : [selected, other];
     const strip = h('div', { className: 'oiv-strip', role: 'group', 'aria-label': t('orbitalWatch.viewer.compareDates') },
       ...others.map((scene) => h('button', {
         type: 'button',
@@ -307,9 +337,17 @@ export class OrbitalImageViewer {
         'aria-pressed': String(scene.key === other.key),
         dataset: { action: 'compare-date', key: scene.key },
       }, scene.dateLabel.slice(0, 10), scene.cloudApplies && scene.cloudCoverPct !== null ? h('span', { className: 'oiv-date-cloud' }, t('orbitalWatch.viewer.cloud', { pct: Math.round(scene.cloudCoverPct) })) : null)));
-    return h('section', { className: 'oiv-section oiv-compare', 'aria-label': t('orbitalWatch.viewer.compare') },
-      h('h3', null, t('orbitalWatch.viewer.compare')),
-      h('div', { className: 'oiv-slider', style: `--oiv-divider: ${this.dividerPct}%` },
+    const pair = [before.imageUrl!, after.imageUrl!];
+    const loaded = this.ensureLoaded(pair);
+    const heading = h('h3', null, t('orbitalWatch.viewer.compare'));
+    const section = (...children: DomChild[]) => h('section', { className: 'oiv-section oiv-compare', 'aria-label': t('orbitalWatch.viewer.compare') }, heading, ...children);
+    if (loaded < pair.length) {
+      return section(
+        h('div', { className: 'oiv-stage oiv-stage-loading' }, h('p', { className: 'oiv-status', role: 'status' }, t('orbitalWatch.viewer.loading', { loaded, total: pair.length }))),
+        strip);
+    }
+    return section(
+      h('div', { className: 'oiv-stage oiv-slider', style: `--oiv-divider: ${this.dividerPct}%` },
         sceneImage(before, 'oiv-image oiv-before'),
         sceneImage(after, 'oiv-image oiv-after'),
         h('span', { className: 'oiv-slider-label oiv-slider-label-before' }, before.dateLabel.slice(0, 10)),
@@ -344,7 +382,7 @@ export class OrbitalImageViewer {
           ]
           : [h('button', { type: 'button', className: 'ow-retry', dataset: { action: 'timelapse-toggle' } }, state.playing ? t('orbitalWatch.viewer.pause') : t('orbitalWatch.viewer.resume'))];
         return section(
-          h('div', { className: 'oiv-frame', dataset: { timelapse: reduced ? 'stepper' : 'autoplay' } }, sceneImage(frame, 'oiv-image oiv-timelapse-frame')),
+          h('div', { className: 'oiv-stage', dataset: { timelapse: reduced ? 'stepper' : 'autoplay' } }, sceneImage(frame, 'oiv-image oiv-timelapse-frame')),
           h('p', { className: 'oiv-frame-label', 'aria-live': 'polite' }, t('orbitalWatch.viewer.frame', { index: state.index + 1, total: state.frames.length, date: frame.dateLabel.slice(0, 10) })),
           h('div', { className: 'oiv-controls' }, ...controls));
       }
@@ -372,16 +410,36 @@ export class OrbitalImageViewer {
     this.render();
   }
 
-  private step(delta: number): void {
-    if (this.timelapse.kind !== 'ready') return;
+  /** Shows the next frame only once it has loaded, swapping it into the existing image so nothing else redraws. */
+  private async step(delta: number): Promise<void> {
+    if (this.timelapse.kind !== 'ready' || this.stepping) return;
     const { frames } = this.timelapse;
-    this.timelapse = { ...this.timelapse, index: (this.timelapse.index + delta + frames.length) % frames.length };
-    this.render();
+    const index = (this.timelapse.index + delta + frames.length) % frames.length;
+    const frame = frames[index]!;
+    this.stepping = true;
+    try {
+      await this.deps.loadImage(frame.imageUrl!, this.controller.signal);
+    } catch {
+      return;
+    } finally {
+      this.stepping = false;
+    }
+    if (this.controller.signal.aborted || this.timelapse.kind !== 'ready') return;
+    this.timelapse = { ...this.timelapse, index };
+    const image = this.body.querySelector<HTMLImageElement>('.oiv-timelapse-frame');
+    const label = this.body.querySelector<HTMLElement>('.oiv-frame-label');
+    if (!image || !label) {
+      this.render();
+      return;
+    }
+    image.src = frame.imageUrl!;
+    image.alt = t('orbitalWatch.viewer.imageAlt', { name: frame.name, time: frame.dateLabel });
+    label.textContent = t('orbitalWatch.viewer.frame', { index: index + 1, total: frames.length, date: frame.dateLabel.slice(0, 10) });
   }
 
   private startTimer(): void {
     this.stopTimer();
-    this.timer = setInterval(() => this.step(1), FRAME_INTERVAL_MS);
+    this.timer = setInterval(() => void this.step(1), FRAME_INTERVAL_MS);
   }
 
   private stopTimer(): void {
@@ -418,10 +476,10 @@ export class OrbitalImageViewer {
         this.render();
         return;
       case 'frame-previous':
-        this.step(-1);
+        void this.step(-1);
         return;
       case 'frame-next':
-        this.step(1);
+        void this.step(1);
         return;
     }
   };
