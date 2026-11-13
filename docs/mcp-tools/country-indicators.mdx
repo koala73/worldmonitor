@@ -86,11 +86,11 @@ Return the frozen v1 scorecard. Pass one of a country code, an official bloc pre
 |------|------|---------:|-------------|
 | `country_code` | string | at most one selector | ISO alpha-2 or alpha-3 code, or a country name in any supported dashboard locale. Case-insensitive. |
 | `preset` | string | at most one selector | `USMCA`, `EU27`, `BRICS`, `GCC`, `ASEAN`, or `NATO`. |
-| `members` | string[] | at most one selector | Custom bloc of 2–30 unique uppercase ISO-2 codes. |
+| `members` | string[] | at most one selector | Custom bloc of 2–30 unique member countries, each a code or name in the same forms as `country_code`. |
 
 Two selectors in one call return Invalid params before any allowance is spent.
 
-- **API endpoints:** `GET /api/scorecard/v1/get-five-factor-scorecard`, `GET /api/scorecard/v1/get-bloc-scorecard`, `GET /api/scorecard/v1/list-five-factor-scorecards`
+- **API endpoints:** `GET /api/scorecard/v1/get-five-factor-scorecard`, `GET /api/scorecard/v1/get-bloc-scorecard`, `GET /api/scorecard/v1/list-five-factor-scorecards` — free for anonymous REST callers.
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument; use `jmespath` to trim evidence.
 - **Kind:** canonical RPC proxy over `scorecard:five-factor:v1`; it does not fetch source datasets at request time.
 - **Freshness:** daily seed with a 36-hour freshness budget. Read `computedAt`, `methodologyVersion`, and the seed health metadata separately when operational freshness matters.
