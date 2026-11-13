@@ -135,6 +135,7 @@ export const FX_NOISE_LOOKAHEAD = 3;
 export const FX_MAX_NOISE_SHARE = 0.10;
 const FX_DAILY_MIN_POINTS = 70;
 const FX_ANCHOR_MAX_GAP_DAYS = 7;
+const FX_WINDOW_MAX_SPAN_DAYS = 12;
 
 const median = (values) => {
   const sorted = [...values].sort((a, b) => a - b);
@@ -154,41 +155,71 @@ export function cleanDailyQuotes(points, timeZone = 'UTC') {
     .sort((a, b) => a.t - b.t);
   if (series.length < FX_DAILY_MIN_POINTS) return null;
   const closes = series.map((p) => p.close);
-  const last = series.length - 1;
-  const half = FX_DAILY_MEDIAN_POINTS >> 1;
-  let anchorIdx = -1;
-  for (let i = last; i >= 0; i--) {
-    if (series[i].t <= series[last].t - FX_DAILY_WINDOW_DAYS * DAY_MS) { anchorIdx = i; break; }
-  }
-  if (anchorIdx < half) return null;
-  if (series[last].t - FX_DAILY_WINDOW_DAYS * DAY_MS - series[anchorIdx].t > FX_ANCHOR_MAX_GAP_DAYS * DAY_MS) return null;
 
+  // A move above 1% that returns to its starting level within three sessions
+  // is a quote error. Count it, and drop the sessions it covers so that a run
+  // of bad prints at either end of the window cannot set a median.
+  const excursion = new Array(closes.length).fill(false);
   let reverted = 0;
   for (let i = 1; i < closes.length; i++) {
     if (Math.abs(closes[i] / closes[i - 1] - 1) <= FX_NOISE_MOVE) continue;
-    for (let j = i + 1; j <= Math.min(last, i + FX_NOISE_LOOKAHEAD); j++) {
-      if (Math.abs(closes[j] / closes[i - 1] - 1) < FX_NOISE_RETURN) { reverted += 1; break; }
+    for (let j = i + 1; j <= Math.min(closes.length - 1, i + FX_NOISE_LOOKAHEAD); j++) {
+      if (Math.abs(closes[j] / closes[i - 1] - 1) < FX_NOISE_RETURN) {
+        reverted += 1;
+        for (let k = i; k < j; k++) excursion[k] = true;
+        break;
+      }
     }
   }
   const noiseShare = Math.round((reverted / closes.length) * 1000) / 1000;
+  const reliable = noiseShare <= FX_MAX_NOISE_SHARE;
   let dayFormat;
   try {
     dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
   } catch {
     dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' });
   }
+  const day = (p) => dayFormat.format(new Date(p.t));
+  // A series too noisy to compare still reports why, so the second source is tried.
+  const unusable = reliable ? null : { asOf: day(series.at(-1)), latest: null, anchor: null, sessions: closes.length, noiseShare, reliable: false, source: 'yahoo' };
+
+  const clean = series.filter((_, i) => !excursion[i]);
+  const half = FX_DAILY_MEDIAN_POINTS >> 1;
+  const last = clean.length - 1;
+  if (clean.length < FX_DAILY_MEDIAN_POINTS * 2) return unusable;
+  let anchorIdx = -1;
+  for (let i = last; i >= 0; i--) {
+    if (clean[i].t <= clean[last].t - FX_DAILY_WINDOW_DAYS * DAY_MS) { anchorIdx = i; break; }
+  }
+  if (anchorIdx < half || anchorIdx + half > last) return unusable;
+  if (clean[last].t - FX_DAILY_WINDOW_DAYS * DAY_MS - clean[anchorIdx].t > FX_ANCHOR_MAX_GAP_DAYS * DAY_MS) return unusable;
+  // Five sessions normally span five to seven calendar days. A wider window
+  // means the feed had a hole, and its median would mix old quotes with new.
+  const lateWindow = clean.slice(-FX_DAILY_MEDIAN_POINTS);
+  const anchorWindow = clean.slice(anchorIdx - half, anchorIdx + half + 1);
+  const span = (w) => (w.at(-1).t - w[0].t) / DAY_MS;
+  if (span(lateWindow) > FX_WINDOW_MAX_SPAN_DAYS || span(anchorWindow) > FX_WINDOW_MAX_SPAN_DAYS) return unusable;
+
   return {
-    asOf: dayFormat.format(new Date(series[last].t)),
-    latest: median(closes.slice(-FX_DAILY_MEDIAN_POINTS)),
-    anchor: {
-      date: dayFormat.format(new Date(series[anchorIdx].t)),
-      value: median(closes.slice(anchorIdx - half, anchorIdx + half + 1)),
-    },
+    asOf: day(clean[last]),
+    latest: median(lateWindow.map((p) => p.close)),
+    anchor: { date: day(clean[anchorIdx]), value: median(anchorWindow.map((p) => p.close)) },
     sessions: closes.length,
     noiseShare,
-    reliable: noiseShare <= FX_MAX_NOISE_SHARE,
+    reliable,
     source: 'yahoo',
   };
+}
+
+// The daily series is optional; the YoY rows the resilience score reads are
+// not. runSeed stops the fetch at its deadline, so the optional request is
+// skipped once it would eat into the time the remaining required requests
+// need, at the slowest pace seen so far plus a publish reserve.
+const FX_PUBLISH_RESERVE_MS = 15_000;
+export function hasTimeForOptionalFetch({ nowMs, deadlineAtMs, remainingRequired, slowestRequestMs }) {
+  if (!Number.isFinite(deadlineAtMs)) return true;
+  const perRequest = slowestRequestMs + PER_CURRENCY_DELAY_MS;
+  return nowMs + perRequest * (remainingRequired + 1) + FX_PUBLISH_RESERVE_MS <= deadlineAtMs;
 }
 
 function computeYoy(series) {
@@ -240,24 +271,36 @@ function computeYoy(series) {
   };
 }
 
-async function fetchFxYoy() {
+async function fetchFxYoy({ fetchDeadlineAtMs = Infinity } = {}) {
   const rates = [];
   const failures = [];
   const dailyFailures = [];
+  const currencies = Object.entries(CURRENCY_COUNTRY);
+  let done = 0;
+  let slowestRequestMs = 0;
   for (const [currency, countryCode] of Object.entries(CURRENCY_COUNTRY)) {
+    done += 1;
     try {
+      const startedAt = Date.now();
       const series = await fetchYahooHistory(currency);
+      slowestRequestMs = Math.max(slowestRequestMs, Date.now() - startedAt);
       const yoy = computeYoy(series);
-      await new Promise((r) => setTimeout(r, PER_CURRENCY_DELAY_MS));
-      // A failed or thin daily series costs the CII member only; the YoY row
-      // the resilience score reads is still published.
+      // A failed, thin or skipped daily series costs the CII member only; the
+      // YoY row the resilience score reads is still published.
       let daily90 = null;
-      try {
-        const daily = await fetchYahooDaily(currency);
-        daily90 = cleanDailyQuotes(daily.points, daily.timeZone);
-        if (!daily90) dailyFailures.push({ currency, error: 'insufficient daily history' });
-      } catch (err) {
-        dailyFailures.push({ currency, error: err instanceof Error ? err.message : String(err) });
+      if (!hasTimeForOptionalFetch({ nowMs: Date.now(), deadlineAtMs: fetchDeadlineAtMs, remainingRequired: currencies.length - done, slowestRequestMs })) {
+        dailyFailures.push({ currency, error: 'skipped: time budget' });
+      } else {
+        await new Promise((r) => setTimeout(r, PER_CURRENCY_DELAY_MS));
+        try {
+          const dailyStartedAt = Date.now();
+          const daily = await fetchYahooDaily(currency);
+          slowestRequestMs = Math.max(slowestRequestMs, Date.now() - dailyStartedAt);
+          daily90 = cleanDailyQuotes(daily.points, daily.timeZone);
+          if (!daily90) dailyFailures.push({ currency, error: 'insufficient daily history' });
+        } catch (err) {
+          dailyFailures.push({ currency, error: err instanceof Error ? err.message : String(err) });
+        }
       }
       rates.push({ countryCode, currency, ...yoy, ...(daily90 ? { daily90 } : {}) });
     } catch (err) {
@@ -274,6 +317,7 @@ async function fetchFxYoy() {
   if (needFallback.length > 0) {
     let windows = null;
     try {
+      if (Date.now() + FX_PUBLISH_RESERVE_MS * 2 > fetchDeadlineAtMs) throw new Error('skipped: time budget');
       windows = await fetchFallbackWindows(Date.now(), { windowDays: FX_DAILY_WINDOW_DAYS, points: FX_DAILY_MEDIAN_POINTS });
     } catch (err) {
       console.log(`  FX fallback failed: ${err instanceof Error ? err.message : String(err)}`);

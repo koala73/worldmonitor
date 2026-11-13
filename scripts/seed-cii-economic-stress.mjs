@@ -50,11 +50,12 @@ function currencyMember(raw, code, nowMs) {
   // seed-fx-yoy cleans the daily quotes upstream: medians remove isolated bad
   // prints, and a series that keeps reverting is flagged, not compared.
   const daily = row.daily90;
-  if (!daily || !Number.isFinite(daily.latest) || !(daily.latest > 0) || !Number.isFinite(daily.anchor?.value) || !(daily.anchor.value > 0)) return absent('insufficient-history', row.asOf ?? null);
+  if (!daily) return absent('insufficient-history', row.asOf ?? null);
   const observedMs = Date.parse(daily.asOf);
   if (!Number.isFinite(observedMs)) return absent('invalid-date');
   if (nowMs - observedMs > 7 * DAY) return absent('stale', daily.asOf);
   if (daily.reliable !== true) return absent('unreliable-quotes', daily.asOf);
+  if (!Number.isFinite(daily.latest) || !(daily.latest > 0) || !Number.isFinite(daily.anchor?.value) || !(daily.anchor.value > 0)) return absent('insufficient-history', daily.asOf);
   return observation(100 * (1 - daily.latest / daily.anchor.value), observedMs, observedMs + 7 * DAY, INPUT_KEYS.currency, 'percent', nowMs,
     { date: daily.anchor.date, value: daily.anchor.value, method: 'median-of-5-sessions-depreciation-vs-90-day-anchor', quoteSource: daily.source ?? 'yahoo', noiseShare: daily.noiseShare ?? daily.yahooNoiseShare ?? null });
 }

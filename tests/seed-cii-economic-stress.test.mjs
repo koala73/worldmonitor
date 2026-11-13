@@ -4,7 +4,7 @@ import { CII_COUNTRY_CODES } from '../shared/cii-weights.ts';
 import { __testing__ as health } from '../api/health.js';
 import { buildEconomicStress, economicCountry, seedEconomicStress, ECONOMIC_COUNTRIES, ECONOMIC_KEY, ECONOMIC_META_KEY, ECONOMIC_ACTIVATION_KEY, INPUT_KEYS } from '../scripts/seed-cii-economic-stress.mjs';
 import { readFileSync } from 'node:fs';
-import { computeYoy, cleanDailyQuotes, FX_MAX_NOISE_SHARE } from '../scripts/seed-fx-yoy.mjs';
+import { computeYoy, cleanDailyQuotes, hasTimeForOptionalFetch, FX_MAX_NOISE_SHARE } from '../scripts/seed-fx-yoy.mjs';
 import { fallbackDailyQuotes, fetchFallbackWindows } from '../scripts/_currency-api.mjs';
 const RECORDED = JSON.parse(readFileSync(new URL('./fixtures/fx-daily-quotes-2026-11-13.json', import.meta.url), 'utf8')).series;
 const recorded = (ccy) => cleanDailyQuotes(RECORDED[ccy].timestamps.map((ts, i) => ({ t: ts * 1000, close: RECORDED[ccy].closes[i] })), RECORDED[ccy].timeZone);
@@ -44,7 +44,7 @@ test('recorded Yahoo quote noise is cleaned or flagged upstream, and a real move
   assert.equal(egp.reliable, true);
   assert.equal(egp.noiseShare, 0);
   assert.ok(100 * (1 - egp.latest / egp.anchor.value) > 5);
-  for (const row of [qar, sar, aed, egp]) {
+  for (const row of [sar, aed, egp]) {
     assert.equal(row.asOf, '2026-11-13');
     const gap = (Date.parse(row.asOf) - Date.parse(row.anchor.date)) / DAY;
     assert.ok(gap >= 90 && gap <= 97, `anchor gap ${gap}`);
@@ -66,6 +66,38 @@ test('unreliable quotes leave the currency unmeasured, never zero, and thin seri
   const holed = flatDaily().filter(p => p.t > Date.UTC(2026, 7, 20) || p.t < Date.UTC(2026, 6, 20));
   assert.equal(cleanDailyQuotes(holed), null, 'a month-long hole at the anchor is not bridged');
   assert.equal(cleanDailyQuotes([...flatDaily(), { t: NaN, close: 1 }, { t: Date.UTC(2026, 10, 12), close: null }]).sessions, 133);
+});
+test('a reverted run at the end of the window cannot set the latest value', () => {
+  // Three bad prints at 0.97, then back to 1: the quotes returned, so nothing depreciated.
+  const pts = flatDaily().map((p, i) => ({ ...p, close: i >= 129 && i <= 131 ? 0.97 : 1 }));
+  const row = cleanDailyQuotes(pts);
+  assert.equal(row.reliable, true);
+  assert.equal(row.latest, 1);
+  assert.equal(row.anchor.value, 1);
+  // The same run at the anchor end is dropped too.
+  const anchored = cleanDailyQuotes(flatDaily().map((p, i) => ({ ...p, close: i >= 40 && i <= 42 ? 1.03 : 1 })));
+  assert.equal(anchored.anchor.value, 1);
+  // A move that does not come back is a price, and is kept.
+  assert.ok(Math.abs(cleanDailyQuotes(flatDaily().map((p, i) => ({ ...p, close: i >= 129 ? 0.97 : 1 }))).latest - 0.97) < 1e-12);
+});
+test('a feed that resumes after a hole is not published as a fresh median', () => {
+  // Three weeks of missing closes, then one new quote at a new level.
+  const pts = flatDaily().filter((p, i) => i < 111 || i === 132).map((p, i, all) => (i === all.length - 1 ? { ...p, close: 0.9 } : p));
+  assert.equal(cleanDailyQuotes(pts), null);
+  const raw = inputs();
+  raw.currency.rates = [{ countryCode: 'AE', asOf: '2026-11-12' }];
+  assert.equal(economicCountry(raw, 'AE', NOW).absent.currency.reason, 'insufficient-history');
+  // A hole at the anchor end is refused the same way.
+  assert.equal(cleanDailyQuotes(flatDaily().filter((p, i) => i < 25 || i > 41 || i === 33)), null);
+});
+test('the optional daily request yields to the required rows when time is short', () => {
+  const base = { nowMs: 0, slowestRequestMs: 3000 };
+  assert.equal(hasTimeForOptionalFetch({ ...base, deadlineAtMs: Infinity, remainingRequired: 44 }), true);
+  // 44 required requests at 3.15 s each plus this one and the reserve need about 157 s.
+  assert.equal(hasTimeForOptionalFetch({ ...base, deadlineAtMs: 240_000, remainingRequired: 44 }), true);
+  assert.equal(hasTimeForOptionalFetch({ ...base, nowMs: 90_000, deadlineAtMs: 240_000, remainingRequired: 44 }), false);
+  assert.equal(hasTimeForOptionalFetch({ ...base, nowMs: 220_000, deadlineAtMs: 240_000, remainingRequired: 0 }), true);
+  assert.equal(hasTimeForOptionalFetch({ ...base, nowMs: 223_000, deadlineAtMs: 240_000, remainingRequired: 0 }), false);
 });
 test('a second source keeps a country measured when Yahoo quotes are unreliable', async () => {
   const asked = [];
