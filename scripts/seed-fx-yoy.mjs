@@ -31,6 +31,7 @@
  *                     noiseShare, reliable, source, yahooNoiseShare? } },
  *       ...
  *     ],
+ *     dailyOnly: [{ countryCode: "RU", currency: "RUB", daily90 }, ...],
  *     fetchedAt: "<iso>",
  *   }
  *
@@ -72,6 +73,24 @@ const CURRENCY_COUNTRY = {
   // Africa
   ZAR: 'ZA', NGN: 'NG', KES: 'KE',
 };
+
+// Currencies read from the second source only, for the CII currency member of
+// countries that otherwise rest on inflation alone. They are published in
+// `dailyOnly`, not `rates`, so the 45-currency stress table and its readers do
+// not change. Checked on 2026-11-13 against 240 days of snapshots: RUB moves as
+// a market rate; VES follows the official crawl; IQD held the 1,310 peg until
+// the central bank devalued by about 15% on 2026-10-07. IRR is left out: the
+// source sat near 1,375,000 from June to September 2026 while the official
+// rate moved from about 1.59 to 1.74 million, so its 90-day anchor was stale.
+export const DAILY_ONLY_CURRENCY_COUNTRY = Object.freeze({ RUB: 'RU', VES: 'VE', IQD: 'IQ' });
+
+/** One daily block per daily-only currency the second source covers. */
+export function buildDailyOnlyRates(windows) {
+  return Object.entries(DAILY_ONLY_CURRENCY_COUNTRY).flatMap(([currency, countryCode]) => {
+    const daily90 = fallbackDailyQuotes(currency, windows);
+    return daily90 ? [{ countryCode, currency, daily90 }] : [];
+  });
+}
 
 const FETCH_TIMEOUT_MS = 10_000;
 // AGENTS.md: stagger Yahoo Finance requests by 150 ms. This ran at 120 ms with
@@ -337,15 +356,16 @@ async function fetchFxYoy({ fetchDeadlineAtMs = Infinity } = {}) {
   console.log(`  FX daily: ${rates.filter((r) => r.daily90).length} cleaned, unreliable quotes: ${noisy.join(', ') || 'none'}`);
   // Never let a noisy, missing or frozen Yahoo series cost a country its
   // currency member while a clean second source has it.
+  // The daily-only currencies need the same snapshots, so they are always read.
   const needFallback = rates.filter((r) => needsFallback(r.daily90));
+  let windows = null;
+  try {
+    if (Date.now() + FX_PUBLISH_RESERVE_MS * 2 > fetchDeadlineAtMs) throw new Error('skipped: time budget');
+    windows = await fetchFallbackWindows(Date.now(), { windowDays: FX_DAILY_WINDOW_DAYS, points: FX_DAILY_MEDIAN_POINTS });
+  } catch (err) {
+    console.log(`  FX fallback failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
   if (needFallback.length > 0) {
-    let windows = null;
-    try {
-      if (Date.now() + FX_PUBLISH_RESERVE_MS * 2 > fetchDeadlineAtMs) throw new Error('skipped: time budget');
-      windows = await fetchFallbackWindows(Date.now(), { windowDays: FX_DAILY_WINDOW_DAYS, points: FX_DAILY_MEDIAN_POINTS });
-    } catch (err) {
-      console.log(`  FX fallback failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
     const recovered = [];
     for (const row of needFallback) {
       const fallback = fallbackDailyQuotes(row.currency, windows);
@@ -355,6 +375,8 @@ async function fetchFxYoy({ fetchDeadlineAtMs = Infinity } = {}) {
     }
     console.log(`  FX fallback (currency-api): recovered ${recovered.join(', ') || 'none'} of ${needFallback.map((r) => r.currency).join(', ')}`);
   }
+  const dailyOnly = buildDailyOnlyRates(windows);
+  console.log(`  FX daily-only (currency-api): ${dailyOnly.map((r) => r.currency).join(', ') || 'none'} of ${Object.keys(DAILY_ONLY_CURRENCY_COUNTRY).join(', ')}`);
   if (dailyFailures.length > 0) {
     console.log(`  Daily failures: ${dailyFailures.map((f) => `${f.currency}(${f.error})`).join(', ')}`);
   }
@@ -364,7 +386,7 @@ async function fetchFxYoy({ fetchDeadlineAtMs = Infinity } = {}) {
   if (rates.length === 0) {
     throw new Error('All Yahoo FX history fetches failed');
   }
-  return { rates, fetchedAt: new Date().toISOString() };
+  return { rates, dailyOnly, fetchedAt: new Date().toISOString() };
 }
 
 const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;

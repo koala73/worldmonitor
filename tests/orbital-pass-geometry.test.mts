@@ -122,15 +122,18 @@ describe('pass geometry rules', () => {
     assert.deepEqual(groundTrack(elements, { start: epochMs, end: epochMs + HOUR }), []);
   });
 
-  it('rejects a window that is unbounded, reversed or longer than the search limit', () => {
+  it('rejects a window that is unbounded, outside the Date range, reversed or longer than the search limit', () => {
     const { elements, profile } = satellite('SENTINEL-2B');
     const search = (start: number, end: number) => () => findPasses({ elements, profile, point: paris, window: { start, end }, now: FIXTURE_NOW });
     assert.throws(search(FIXTURE_NOW, Infinity), RangeError);
     assert.throws(search(FIXTURE_NOW, Number.NaN), RangeError);
+    assert.throws(search(2 ** 68, 2 ** 68 + HOUR), RangeError);
+    assert.doesNotThrow(search(8.64e15 - HOUR, 8.64e15));
     assert.throws(search(FIXTURE_NOW, FIXTURE_NOW - HOUR), RangeError);
     assert.throws(search(FIXTURE_NOW - 7 * DAY, FIXTURE_NOW + 365 * DAY), RangeError);
     assert.doesNotThrow(search(FIXTURE_NOW - 7 * DAY, FIXTURE_NOW - 7 * DAY + PASS_WINDOW_MAX_DAYS * DAY));
     assert.throws(() => groundTrack(elements, { start: FIXTURE_NOW, end: Infinity }), RangeError);
+    assert.throws(() => groundTrack(elements, { start: 2 ** 68, end: 2 ** 68 + HOUR }), RangeError);
     assert.throws(() => groundTrack(elements, { start: FIXTURE_NOW, end: FIXTURE_NOW + HOUR }, 0), RangeError);
   });
 
