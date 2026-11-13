@@ -198,7 +198,7 @@ export function assembleEvidence(input: EvidenceInput): OrbitalEvidence {
   });
 
   const failures = [...input.stac, ...(input.mosaics ? [input.mosaics] : []), ...(input.frames ?? [])]
-    .flatMap((r) => (r.status === 'failed' ? [r.failure] : []));
+    .flatMap((r) => (r.status === 'failed' ? [r.failure] : r.failures ?? []));
   const viewable = acquisitions.filter((a) => a.imageUrl);
   return {
     passes,

@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 
 import { redactSensitiveUrl, scrubSentryCredentials } from '../shared/sensitive-url-params.ts';
 import { findArchiveEvidence } from '../src/services/orbital/match.ts';
+import { parseStacItem, readPointCondition } from '../src/services/orbital/archive-stac.ts';
+import { cropBox, gibsSnapshotUrl, planetaryComputerCropUrl } from '../src/services/orbital/crop-url.ts';
 import { ARCHIVE_RESPONSES, fakeArchiveFetch, fixtureLookup } from './helpers/orbital-archive-fetch.mts';
 
 const ARCHIVE_HOSTS = new Set(['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com', 'gibs.earthdata.nasa.gov', 'view.eumetsat.int']);
@@ -69,6 +71,29 @@ describe('a free lookup keeps the exact point to the archives', () => {
     assert.equal(scrubbed.searchParams.get('BBOX'), null);
     assert.equal(scrubbed.searchParams.get('LAYERS'), new URL(gibs).searchParams.get('LAYERS'));
     assert.deepEqual(scrubSentryCredentials({ request: { query_string: [['BBOX', '25.1,55.2,25.3,55.3'], ['TIME', '2026-11-12']] } }).request.query_string, [['TIME', '2026-11-12']]);
+  });
+
+  it('writes a point near zero in fixed decimals, and scrubs exponent-form coordinates too', async () => {
+    const nearZero = { lat: 1e-7, lon: 55.2708 };
+    const tile = ARCHIVE_RESPONSES.points.dubai['planetary-computer'].features.find((f) => f.assets?.SCL)!;
+    const item = parseStacItem('planetary-computer', tile as never)!;
+    const urls: string[] = [];
+    await readPointCondition(item, nearZero, { fetch: async (url: string) => { urls.push(url); return new Response('{"values":[4]}'); } });
+    const box = cropBox(nearZero, 0.00001);
+    urls.push(planetaryComputerCropUrl(item.renderedPreviewHref!, box)!, gibsSnapshotUrl('MODIS_Terra_CorrectedReflectance_TrueColor', '2026-11-12', box)!);
+    for (const url of urls) {
+      assert.doesNotMatch(decodeURIComponent(url), /\d[eE][-+]?\d/, `${url} has no exponent`);
+      const crumb = scrubSentryCredentials({ data: { url } });
+      assert.doesNotMatch(crumb.data.url, /55\.27/, `${crumb.data.url} is scrubbed`);
+    }
+    for (const raw of [
+      'https://planetarycomputer.microsoft.com/api/data/v1/item/point/55.2708,1e-7?collection=sentinel-2-l2a',
+      'https://planetarycomputer.microsoft.com/api/data/v1/item/bbox/55.27,-1E-7,55.28,2.5e-1/512x512.png?collection=sentinel-2-l2a',
+      'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?BBOX=1e-7,55.27,2e-7,55.28&TIME=2026-11-12',
+    ]) {
+      const scrubbed = scrubSentryCredentials({ data: { url: raw } }).data.url;
+      assert.doesNotMatch(scrubbed, /55\.27|1e-7|1E-7/, scrubbed);
+    }
   });
 
   it('runs the scrubber on every Sentry breadcrumb and span', () => {
