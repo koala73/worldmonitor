@@ -395,8 +395,11 @@ function weatherCards(evidence: OrbitalEvidence): ImageCard[] {
 
 interface Summary {
   satellites: number;
+  /** Scenes of this spot a user can open; weather mosaics and frames have their own group. */
   images: number;
   counts: Record<GroupId, number>;
+  /** Some likely-watched passes are waiting on an archive that did not answer. */
+  likelyUnanswered: boolean;
   cards: ImageCard[];
   closestKey: string | null;
 }
@@ -413,10 +416,9 @@ function summarize(lookup: PointPassLookup, evidence: OrbitalEvidence): Summary 
   for (const acquisition of evidence.acquisitions) if (!acquisition.pass) platforms.add(acquisition.platform);
   return {
     satellites: platforms.size,
-    images: evidence.acquisitions.length
-      + evidence.mosaics.reduce((sum, mosaic) => sum + mosaic.days.filter((day) => day.imageUrl).length, 0)
-      + evidence.frames.filter((frame) => frame.latest).length,
+    images: evidence.acquisitions.length,
     counts,
+    likelyUnanswered: past.some((pass) => isUnanswered(pass, evidence)),
     cards: [...acquisitions.map((acquisition) => acquisitionCard(acquisition, lookup.nowMs, names)), ...weatherCards(evidence)],
     closestKey: closest ? `image:${closest.key}` : null,
   };
@@ -457,7 +459,12 @@ function acquisitionBadges(acquisition: MatchedAcquisition | null): HTMLElement[
   return [];
 }
 
-function passRow(pass: PointPass, nowMs: number, acquisition: MatchedAcquisition | null, repeats: number): HTMLElement {
+/** Likely watched only because an archive for its mission did not reply, not because no image exists. */
+function isUnanswered(pass: PointPass, evidence: OrbitalEvidence): boolean {
+  return pass.tier.kind === 'likely-imaged' && (evidence.unansweredProfiles as readonly string[]).includes(pass.profileId);
+}
+
+function passRow(pass: PointPass, nowMs: number, acquisition: MatchedAcquisition | null, repeats: number, unanswered = false): HTMLElement {
   const military = pass.tier.kind === 'capability-overhead';
   const glyph = GLYPH_OF_TIER[pass.tier.kind];
   const name = pass.name;
@@ -471,6 +478,7 @@ function passRow(pass: PointPass, nowMs: number, acquisition: MatchedAcquisition
     military ? badge(t('orbitalWatch.tier.capabilityOverhead')) : null,
     pass.edgeOfSwath ? badge(t('orbitalWatch.row.edgeOfSwath')) : null,
     pass.tier.kind === 'passed-overhead' && pass.tier.note === 'not-in-archive' ? badge(t('orbitalWatch.row.notInArchive')) : null,
+    unanswered ? badge(t('orbitalWatch.row.archiveUnanswered')) : null,
     repeats > 1 ? h('span', { className: 'ow-repeat ow-label', title: t('orbitalWatch.ui.row.repeats', { count: repeats }) }, `×${repeats}`) : null,
   ];
   return rowShell(`pass:${passKey(pass)}`, pass.tier.kind, thumb, name, t(TIER_LABEL_KEY[pass.tier.kind]),
@@ -534,7 +542,7 @@ function groupPasses(lookup: PointPassLookup, evidence: OrbitalEvidence): Map<Gr
     group.count++;
     group.rows.push({
       sortMs: id === 'watched' ? closestFirst(key, pass.timeMs) : pass.timeMs,
-      render: () => passRow(pass, lookup.nowMs, acquisitionByPass.get(key) ?? null, repeats.get(`${id}:${pass.noradId}`) ?? 1),
+      render: () => passRow(pass, lookup.nowMs, acquisitionByPass.get(key) ?? null, repeats.get(`${id}:${pass.noradId}`) ?? 1, isUnanswered(pass, evidence)),
     });
   }
   for (const acquisition of evidence.acquisitions) {
@@ -951,15 +959,17 @@ export class OrbitalWatchPage {
 
   private tierGrid(summary: Summary): HTMLElement {
     return h('div', { className: 'ow-tier-grid' },
-      ...GRID.map(({ id, glyph, key }) =>
-        h('button', { type: 'button', className: 'ow-tier-cell', dataset: { action: 'filter', group: id, glyph }, 'aria-pressed': String(this.filter === id) },
+      ...GRID.map(({ id, glyph, key: tier }) => {
+        const key = tier === 'likely' && summary.likelyUnanswered ? 'likelyUnanswered' : tier;
+        return h('button', { type: 'button', className: 'ow-tier-cell', dataset: { action: 'filter', group: id, glyph }, 'aria-pressed': String(this.filter === id) },
           h('span', { className: 'ow-tier-count' },
             h('span', { className: 'ow-glyph', dataset: { glyph } }, TIER_GLYPH_CHAR[glyph]),
             h('span', { className: 'ow-tier-number' }, formatInt(summary.counts[id])),
             h('span', { className: 'ow-label' }, t('orbitalWatch.ui.passes', { count: summary.counts[id] }))),
-          h('span', { className: 'ow-tier-name ow-label' }, t(`orbitalWatch.ui.grid.${key}`)),
+          h('span', { className: 'ow-tier-name ow-label' }, t(`orbitalWatch.ui.grid.${tier}`)),
           h('span', { className: 'ow-tier-def' }, t(`orbitalWatch.ui.grid.${key}Def`)),
-          h('span', { className: 'ow-tier-short' }, t(`orbitalWatch.ui.grid.${key}Short`)))));
+          h('span', { className: 'ow-tier-short' }, t(`orbitalWatch.ui.grid.${key}Short`)));
+      }));
   }
 
   private passList(lookup: PointPassLookup, evidence: OrbitalEvidence): HTMLElement {

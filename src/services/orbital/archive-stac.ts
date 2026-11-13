@@ -30,7 +30,7 @@ export interface ArchiveItem {
   /** Planetary Computer's rendering link, which also drives point crops. */
   renderedPreviewHref: string | null;
   /** The classification asset the archive can read at a point, with how to decode it. */
-  classification: { asset: string; scheme: 'sentinel-2-scl' | 'landsat-qa-pixel' } | null;
+  classification: { asset: string; scheme: 'sentinel-2-scl' | 'landsat-qa-pixel'; epsg: number | null } | null;
 }
 
 interface StacArchiveConfig {
@@ -133,10 +133,11 @@ export function parseStacItem(archive: StacArchiveId, feature: StacFeature): Arc
   const renderedPreviewHref = archive === 'planetary-computer' ? href('rendered_preview') : null;
   const thumbnail = renderedPreviewHref ?? href('thumbnail');
   const zenith = num(p['s2:mean_solar_zenith']);
+  const epsg = num(p['proj:epsg']);
   const classification =
     archive !== 'planetary-computer' ? null
-    : profileId === 'sentinel-2' && assets.SCL ? { asset: 'SCL', scheme: 'sentinel-2-scl' as const }
-    : profileId === 'landsat' && assets.qa_pixel ? { asset: 'qa_pixel', scheme: 'landsat-qa-pixel' as const }
+    : profileId === 'sentinel-2' && assets.SCL ? { asset: 'SCL', scheme: 'sentinel-2-scl' as const, epsg }
+    : profileId === 'landsat' && assets.qa_pixel ? { asset: 'qa_pixel', scheme: 'landsat-qa-pixel' as const, epsg }
     : null;
   return {
     archive,
@@ -255,6 +256,8 @@ export interface PointConditionReading {
 export async function readPointCondition(item: ArchiveItem, point: GeoPoint, options: ArchiveRequestOptions = {}): Promise<PointConditionReading> {
   if (!item.classification) return { condition: 'unknown' };
   const params = new URLSearchParams({ collection: item.collection, item: item.itemId, assets: item.classification.asset });
+  // In the scene's own grid the box falls inside the one pixel under the point; reprojected, it can land on a neighbour.
+  if (item.classification.epsg !== null) params.set('dst_crs', `epsg:${item.classification.epsg}`);
   const url = `${PLANETARY_COMPUTER_STATISTICS_URL}?${params}`;
   // The point travels in the body: RUM collectors report request paths, and the archive's point route puts it there.
   const [west, east, south, north] = [point.lon - POINT_BOX_DEG, point.lon + POINT_BOX_DEG, point.lat - POINT_BOX_DEG, point.lat + POINT_BOX_DEG].map((v) => Number(formatCoordinate(v)));

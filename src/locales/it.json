@@ -5186,6 +5186,7 @@
       "orbitAge": "dati orbitali di {{age}} fa",
       "edgeOfSwath": "Bordo della strisciata",
       "notInArchive": "Nessuna immagine nell’archivio",
+      "archiveUnanswered": "L'archivio non ha risposto",
       "imageAlt": "Immagine di {{name}}, {{time}}",
       "mosaicDays": "Giorni nell’archivio: {{count}}",
       "cadence": "nuova immagine ogni {{minutes}} min",
@@ -5248,6 +5249,8 @@
         "overheadDef": "Ha attraversato il cielo qui, senza prove di immagini.",
         "watchedShort": "Immagine in un archivio pubblico",
         "likelyShort": "Coperto, ancora nessuna immagine",
+        "likelyUnansweredDef": "Un sensore a strisciata fissa lo ha coperto; un archivio non ha risposto, quindi un'immagine potrebbe esistere.",
+        "likelyUnansweredShort": "Coperto, l'archivio non ha risposto",
         "couldShort": "Sensore orientabile in portata",
         "overheadShort": "Sorvolato, nessuna immagine"
       },

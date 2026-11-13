@@ -5130,6 +5130,7 @@
       "orbitAge": "軌道資料已有 {{age}}",
       "edgeOfSwath": "幅寬邊緣",
       "notInArchive": "檔案庫中無影像",
+      "archiveUnanswered": "存檔未響應",
       "imageAlt": "{{name}} 影像，{{time}}",
       "mosaicDays": "存檔中的天數：{{count}}",
       "cadence": "每 {{minutes}} 分鐘一幀新影象",
@@ -5186,6 +5187,8 @@
         "overheadDef": "從這裡的天空經過，沒有成像證據。",
         "watchedShort": "公開檔案中有影像",
         "likelyShort": "已覆蓋，尚無影像",
+        "likelyUnansweredDef": "固定幅寬感測器覆蓋了此處；有存檔未響應，因此可能存在影象。",
+        "likelyUnansweredShort": "已覆蓋，存檔未響應",
         "couldShort": "可指向感測器在範圍內",
         "overheadShort": "過頂，無影像"
       },

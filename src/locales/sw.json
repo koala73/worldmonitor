@@ -5158,6 +5158,7 @@
       "orbitAge": "data ya obiti ya {{age}} iliyopita",
       "edgeOfSwath": "Ukingo wa ukanda",
       "notInArchive": "Hakuna picha kwenye kumbukumbu",
+      "archiveUnanswered": "Hifadhi haikujibu",
       "imageAlt": "Picha ya {{name}}, {{time}}",
       "mosaicDays": "Siku katika hifadhi: {{count}}",
       "cadence": "picha mpya kila dakika {{minutes}}",
@@ -5217,6 +5218,8 @@
         "overheadDef": "Ilivuka anga hapa, bila ushahidi wa picha.",
         "watchedShort": "Picha katika hifadhi ya umma",
         "likelyShort": "Imefunikwa, bado hakuna picha",
+        "likelyUnansweredDef": "Kihisi chenye ukanda usiobadilika kililifunika; hifadhi moja haikujibu, kwa hivyo picha huenda ipo.",
+        "likelyUnansweredShort": "Imefunikwa, hifadhi haikujibu",
         "couldShort": "Kihisi kinachoelekezwa kipo karibu",
         "overheadShort": "Ilipita juu, hakuna picha"
       },
