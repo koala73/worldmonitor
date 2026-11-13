@@ -181,23 +181,19 @@ describe('orbital change scoring', () => {
     assert.deepEqual(moved.flag.events, flag.events);
   });
 
-  it('raises on at least half of the sites with a known change, from recorded archive statistics', () => {
+  it('raises on at least half of the sites with a known change, from recorded archive statistics', async () => {
     const dir = new URL('./fixtures/orbital/change-replay/', import.meta.url);
-    const replays = readdirSync(dir).map((file) => {
+    const replays = await Promise.all(readdirSync(dir).map(async (file) => {
       const { scenes } = JSON.parse(readFileSync(new URL(file, dir), 'utf8'));
-      const tracks = {};
-      const kinds = [];
-      for (const recorded of scenes) {
-        const radar = radarGeometry({ 'sat:relative_orbit': recorded.relativeOrbit, 'sat:orbit_state': recorded.orbitState, 'sar:instrument_mode': recorded.mode, 'sar:polarizations': recorded.polarizations });
-        const observation = observationFromStatistics({ ...recorded, radar }, recorded.statistics);
-        if (!observation) continue;
-        const key = geometryKey(radar);
-        const next = advanceTrack(tracks[key] ?? newTrack(radar), observation);
-        tracks[key] = next.track;
-        if (next.event) kinds.push(next.event.kind);
-      }
-      return { file, raised: kinds.includes('raised') };
-    });
+      const acquisitions = scenes.map((recorded) => ({
+        ...recorded,
+        radar: radarGeometry({ 'sat:relative_orbit': recorded.relativeOrbit, 'sat:orbit_state': recorded.orbitState, 'sar:instrument_mode': recorded.mode, 'sar:polarizations': recorded.polarizations }),
+      }));
+      const statistics = new Map(scenes.map((recorded) => [recorded.itemId, recorded.statistics]));
+      const nowMs = Math.max(...scenes.map((recorded) => Date.parse(recorded.datetime))) + DAY_MS;
+      const { flag } = await scoreSiteChange({ site: LAND, acquisitions, previous: null, fetchStatistics: async (scene) => statistics.get(scene.itemId), nowMs, deadlineMs: Infinity });
+      return { file, raised: flag.events.some((event) => event.kind === 'raised') };
+    }));
     assert.ok(replays.length >= 4);
     const raised = replays.filter((replay) => replay.raised).length;
     assert.ok(raised * 2 >= replays.length, `raised at ${raised} of ${replays.length} sites`);
@@ -247,7 +243,7 @@ describe('orbital change stage in the site seeder', () => {
     assert.ok(store.kv.get(countryKey('UA')).sites.every((site) => site.flag === null));
     assert.equal(store.kv.has(flagShadowKey(PORT.id)), false, 'a port has no flag record');
     assert.equal(requested.length, 8, 'only the land site was scored');
-    assert.deepEqual(index.change, { shadow: true, scoredSites: 1, statisticsRequests: 8, halted: null });
+    assert.deepEqual(index.change, { shadow: true, scoredSites: 1, unfinishedSites: 0, skippedSites: 0, lastStopReason: null, statisticsRequests: 8, halted: null });
     assert.ok(!JSON.stringify(store.kv.get(siteKey(LAND.id))).includes('confirmed'));
   });
 
@@ -265,6 +261,14 @@ describe('orbital change stage in the site seeder', () => {
     const previous = { schema: 1, footprint: { lat: LAND.lat, lon: LAND.lon, halfSizeDeg: 0.01 }, tracks: {}, events: [], backfilledAt: NOW };
     assert.equal(await stage.score({ site: LAND, acquisitions: [radarScene(40)], previous, nowMs: NOW }), previous);
     assert.equal(stage.summary().halted, 'HTTP 429');
+    await stage.score({ site: LAND, acquisitions: [radarScene(40)], previous, nowMs: NOW });
+    assert.equal(stage.summary().skippedSites, 1);
+  });
+
+  it('counts a site whose scoring stopped early as unfinished, with the reason', async () => {
+    const stage = makeChangeStage({ fetchStatistics: async () => { throw new Error('HTTP 502'); }, budgetMs: 60_000, clock: () => NOW });
+    await stage.score({ site: LAND, acquisitions: [radarScene(40)], previous: null, nowMs: NOW });
+    assert.deepEqual(stage.summary(), { shadow: true, scoredSites: 0, unfinishedSites: 1, skippedSites: 0, lastStopReason: 'HTTP 502', statisticsRequests: 1, halted: null });
   });
 
   it('stops scoring, keeping the previous flag, when the archive refuses the backfill search', async () => {

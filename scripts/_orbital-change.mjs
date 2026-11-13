@@ -197,6 +197,9 @@ export function makeChangeStage({ fetchStatistics, searchBackfill = null, budget
   let deadlineMs = null;
   let halted = null;
   let scoredSites = 0;
+  let unfinishedSites = 0;
+  let skippedSites = 0;
+  let lastStopReason = null;
   let requests = 0;
   return {
     shadow,
@@ -204,17 +207,24 @@ export function makeChangeStage({ fetchStatistics, searchBackfill = null, budget
     async score({ site, acquisitions, previous, nowMs }) {
       if (site.surface !== 'land') return null;
       deadlineMs ??= clock() + budgetMs;
-      if (halted || clock() >= deadlineMs) return previous;
+      if (halted || clock() >= deadlineMs) {
+        skippedSites += 1;
+        return previous;
+      }
       try {
         const result = await scoreSiteChange({ site, acquisitions, previous, fetchStatistics, searchBackfill, nowMs, deadlineMs, clock, thresholds });
         requests += result.requests;
-        scoredSites += 1;
+        if (result.stopped === null) scoredSites += 1;
+        else {
+          unfinishedSites += 1;
+          lastStopReason = result.stopped;
+        }
         return result.flag;
       } catch (error) {
         halted = error?.message || String(error);
         return previous;
       }
     },
-    summary: () => ({ shadow, scoredSites, statisticsRequests: requests, halted }),
+    summary: () => ({ shadow, scoredSites, unfinishedSites, skippedSites, lastStopReason, statisticsRequests: requests, halted }),
   };
 }

@@ -198,7 +198,7 @@ export function makeFetchSites({ store, searchArchive, sites = WATCHED_SITES, re
     }
     pending = planPublication({ sites, registryVersion, previousIndex, previousRecords, evaluation, nowMs });
     console.log(`  Sites evaluated: ${evaluation.evaluated} of ${sites.length} (${evaluation.failed.length} kept after archive failure); next: ${evaluation.nextSiteId ?? 'full pass'}; countries: ${pending.rollupWrites.length}; deleted keys: ${pending.deletes.length}`);
-    if (evaluation.change) console.log(`  Change scoring${evaluation.change.shadow ? ' (shadow)' : ''}: ${evaluation.change.scoredSites} sites, ${evaluation.change.statisticsRequests} statistics requests${evaluation.change.halted ? `; halted: ${evaluation.change.halted}` : ''}`);
+    if (evaluation.change) console.log(`  Change scoring${evaluation.change.shadow ? ' (shadow)' : ''}: ${evaluation.change.scoredSites} sites, ${evaluation.change.unfinishedSites} unfinished${evaluation.change.lastStopReason ? ` (last: ${evaluation.change.lastStopReason})` : ''}, ${evaluation.change.skippedSites} skipped, ${evaluation.change.statisticsRequests} statistics requests${evaluation.change.halted ? `; halted: ${evaluation.change.halted}` : ''}`);
     return pending.index;
   }
   async function publishAtomically(_index, context) {
