@@ -87,9 +87,6 @@ export function buildFixtures(now = new Date()) {
     get_maritime_activity: { country_code: 'US' },
     analyze_situation: { query: 'What are the implications of shipping disruption in the Strait of Hormuz?' },
     search_flights: { origin: 'JFK', destination: 'LHR', departure_date: isoDateOffset(30, now) },
-    search_flight_prices_by_date: {
-      origin: 'JFK', destination: 'LHR', start_date: isoDateOffset(30, now), end_date: isoDateOffset(37, now),
-    },
     get_supply_vulnerabilities: { country_code: 'JP' },
     get_chokepoint_dependencies: { chokepoint_id: 'hormuz_strait' },
     search_intel_history: { query: 'naval blockade of a shipping strait' },
