@@ -5153,6 +5153,95 @@
     },
     "search": {
       "empty": "No settings match"
+    },
+    "keywords": {
+      "account": {
+        "0": "plan",
+        "1": "billing",
+        "2": "subscription",
+        "3": "invoice",
+        "4": "seats",
+        "5": "sign out",
+        "6": "delete account"
+      },
+      "panels": {
+        "0": "layout",
+        "1": "widgets",
+        "2": "text size",
+        "3": "reset layout"
+      },
+      "sources": {
+        "0": "news",
+        "1": "feeds",
+        "2": "rss",
+        "3": "regions",
+        "4": "coverage"
+      },
+      "notifications": {
+        "0": "alerts",
+        "1": "telegram",
+        "2": "slack",
+        "3": "email",
+        "4": "discord",
+        "5": "webhook",
+        "6": "push"
+      },
+      "display": {
+        "0": "theme",
+        "1": "dark",
+        "2": "light",
+        "3": "font",
+        "4": "language",
+        "5": "text size"
+      },
+      "map": {
+        "0": "globe",
+        "1": "provider",
+        "2": "tiles",
+        "3": "basemap"
+      },
+      "ai": {
+        "0": "llm",
+        "1": "ollama",
+        "2": "frameworks",
+        "3": "headline memory",
+        "4": "browser model"
+      },
+      "video": {
+        "0": "stream",
+        "1": "autoplay",
+        "2": "quality",
+        "3": "live"
+      },
+      "apiKeys": {
+        "0": "key",
+        "1": "token",
+        "2": "desktop key"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "embed key"
+      },
+      "aiAgents": {
+        "0": "mcp",
+        "1": "claude",
+        "2": "agents",
+        "3": "chatgpt",
+        "4": "clients"
+      },
+      "sync": {
+        "0": "import",
+        "1": "export",
+        "2": "backup",
+        "3": "cloud"
+      },
+      "about": {
+        "0": "terms",
+        "1": "privacy",
+        "2": "license",
+        "3": "legal"
+      }
     }
   }
 }

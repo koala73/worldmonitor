@@ -30,6 +30,7 @@ import {
   pageEntryEffect,
   reduceNav,
   searchNav,
+  searchTerms,
   sectionLabelKey,
   type MountedSection,
   type NavEvent,
@@ -1101,7 +1102,7 @@ export class UnifiedSettings {
     if (!rows) return;
     const facts = this.readFacts();
     this.renderedEmbedAccess = facts.embedAccess;
-    const { groups, hits } = searchNav(buildNav(facts), this.navQuery, (key) => t(key));
+    const { groups, hits } = searchNav(buildNav(facts), this.navQuery, searchTerms(t));
     setTrustedHtml(rows, trustedHtml(
       groups.map((group) => this.renderNavGroup(group)).join(''),
       'settings home rows; every interpolated value escaped',
