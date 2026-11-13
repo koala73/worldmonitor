@@ -187,7 +187,8 @@ const { UnifiedSettings } = await import('@/components/UnifiedSettings');
 
 type SettingsInternals = {
   overlay: HTMLElement;
-  activeTab: 'api-keys' | 'mcp-clients';
+  nav: { page: string | null } | null;
+  ensurePage(id: 'api-keys' | 'mcp-clients'): unknown;
   accountDataGeneration: number;
   accountEntitlementRefreshPending: boolean;
   apiKeys: ApiKeyInfo[];
@@ -366,7 +367,6 @@ beforeEach(() => {
   settings = new UnifiedSettings(config);
   internal = settings as unknown as SettingsInternals;
   internal.overlay.classList.add('active');
-  internal.activeTab = 'api-keys';
 });
 
 afterEach(() => {
@@ -400,8 +400,8 @@ describe('UnifiedSettings real auth-subscription handoff', () => {
   });
 
   // AI Agents stays open after a downgrade, so the hidden quota must stop
-  // polling: before #10301 losing access moved the user off the tab.
-  it('stops quota polling when the open AI Agents tab loses mcpAccess', async () => {
+  // polling: before #10301 losing access moved the user off the page.
+  it('stops quota polling when the open AI Agents page loses mcpAccess', async () => {
     vi.useFakeTimers();
     try {
       settings.open('mcp-clients');
@@ -412,7 +412,7 @@ describe('UnifiedSettings real auth-subscription handoff', () => {
 
       emitEntitlement(entitlement({ planKey: 'free', apiAccess: false, mcpAccess: false }));
       expect(internal.overlay.querySelector('[data-mcp-manage]')).toBeNull();
-      expect(internal.activeTab).toBe('mcp-clients');
+      expect(internal.nav?.page).toBe('mcp-clients');
 
       await vi.advanceTimersByTimeAsync(90_000);
       expect(mcpMocks.quota.mock.calls.length).toBe(callsWhilePro);
@@ -427,7 +427,7 @@ describe('UnifiedSettings real auth-subscription handoff', () => {
     internal.mcpClientsLoading = false;
     internal.renderMcpClientsList();
 
-    const panel = internal.overlay.querySelector<HTMLElement>('[data-panel-id="mcp-clients"]')!;
+    const panel = internal.overlay.querySelector<HTMLElement>('[data-settings-page="mcp-clients"]')!;
     const copy = panel.querySelector<HTMLButtonElement>('.mcp-agents-url .mcp-copy-btn');
     expect(copy?.dataset.copyValue).toBe('https://worldmonitor.app/mcp');
     const claude = panel.querySelector<HTMLAnchorElement>('[data-agent-id="claude"] a');
@@ -443,7 +443,7 @@ describe('UnifiedSettings real auth-subscription handoff', () => {
     entitlementMocks.verificationStatus = 'pending';
 
     try {
-      settings.open('billing');
+      settings.open('account');
       expect(internal.overlay.textContent).toContain('Checking your plan');
 
       vi.advanceTimersByTime(12_000);
@@ -459,7 +459,7 @@ describe('UnifiedSettings real auth-subscription handoff', () => {
     panelGatingMocks.hasPremiumAccess = false;
     entitlementMocks.state = null;
     entitlementMocks.verificationStatus = 'pending';
-    settings.open('billing');
+    settings.open('account');
 
     expect(internal.overlay.textContent).toContain('Checking your plan');
     expect(internal.overlay.querySelector('.retry-plan-status-btn')).toBeNull();
@@ -479,7 +479,8 @@ describe('UnifiedSettings real auth-subscription handoff', () => {
       limit: 50,
       resetsAt: new Date(Date.now() + 86_400_000).toISOString(),
     };
-    internal.render(false);
+    internal.ensurePage('api-keys');
+    internal.ensurePage('mcp-clients');
     internal.showCreatedBanner('wm_A_PLAINTEXT_SECRET');
     internal.renderApiKeysList();
     internal.renderMcpClientsList();
@@ -529,7 +530,8 @@ describe('UnifiedSettings real auth-subscription handoff', () => {
     internal.apiKeys = [apiKey()];
     internal.planLimitNotices = [notice()];
     internal.mcpClients = [mcpClient()];
-    internal.render(false);
+    internal.ensurePage('api-keys');
+    internal.ensurePage('mcp-clients');
     internal.renderApiKeysList();
     const input = internal.overlay.querySelector<HTMLInputElement>('.api-keys-name-input');
     expect(input).not.toBeNull();
@@ -587,7 +589,7 @@ describe('UnifiedSettings real auth-subscription handoff', () => {
 
   it('preserves notices and renders a current-account authentication error', async () => {
     internal.planLimitNotices = [notice()];
-    internal.render(false);
+    internal.ensurePage('api-keys');
     noticeMocks.list.mockRejectedValue(
       new Error('Authentication unavailable while loading API plan-limit notices. Try again.'),
     );
@@ -606,18 +608,20 @@ describe('UnifiedSettings real auth-subscription handoff', () => {
 
   it('rebuilds MCP capability from B across reset, free, and Pro snapshots', async () => {
     mcpMocks.list.mockResolvedValue([mcpClient('client-b', 'B private MCP client')]);
-    settings.open('api-keys');
-    // The AI Agents tab is always present; the account-scoped part is the
+    settings.open('mcp-clients');
+    // AI Agents is open to every account; the account-scoped part is the
     // connected-clients section, which must follow B's snapshot.
     const manage = () => internal.overlay.querySelector('[data-mcp-manage]');
     expect(manage()).not.toBeNull();
+    await vi.waitFor(() => expect(mcpMocks.list).toHaveBeenCalledTimes(1));
+    mcpMocks.list.mockClear();
 
     emitAccount('B');
     expect(internal.accountEntitlementRefreshPending).toBe(true);
 
     emitEntitlement(null);
     expect(internal.accountEntitlementRefreshPending).toBe(true);
-    expect(internal.overlay.querySelector('[data-tab="mcp-clients"]')).not.toBeNull();
+    expect(internal.nav?.page).toBe('mcp-clients');
     expect(manage()).toBeNull();
     expect(mcpMocks.list).not.toHaveBeenCalled();
 
@@ -630,14 +634,13 @@ describe('UnifiedSettings real auth-subscription handoff', () => {
     expect(manage()).toBeNull();
     expect(mcpMocks.list).not.toHaveBeenCalled();
 
+    // Gaining mcpAccess on the open page rebuilds it and runs its entry load.
     emitEntitlement(entitlement({
       planKey: 'pro',
       apiAccess: false,
       mcpAccess: true,
     }));
     expect(manage()).not.toBeNull();
-    const mcpTab = internal.overlay.querySelector<HTMLButtonElement>('[data-tab="mcp-clients"]');
-    mcpTab!.click();
 
     await vi.waitFor(() => {
       expect(mcpMocks.list).toHaveBeenCalledTimes(1);

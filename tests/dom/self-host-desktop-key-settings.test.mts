@@ -137,7 +137,7 @@ async function mount(): Promise<void> {
     isDesktopApp: false,
   } satisfies UnifiedSettingsConfig);
   overlay = (settings as unknown as { overlay: HTMLElement }).overlay;
-  settings.open('settings');
+  settings.open('api-keys');
   await settle();
 }
 
@@ -190,6 +190,9 @@ describe('Settings -> Desktop key on a self-hosted install', () => {
   it('renders on a self-hosted install with the relay and trust copy', async () => {
     await mount();
     expect(section()).not.toBeNull();
+    // The key block leads the API keys page, above the account's own keys.
+    const keys = overlay.querySelector('[data-api-keys-host]')!;
+    expect(section()!.compareDocumentPosition(keys) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const text = section()!.textContent ?? '';
     expect(text).toContain('Desktop key');
     expect(text).toContain("this install's server");
@@ -209,7 +212,7 @@ describe('Settings -> Desktop key on a self-hosted install', () => {
     onGet = () => new Response('{}', { status: 404 });
     await mount();
     expect(section()).toBeNull();
-    expect(overlay.querySelector('[data-prefs-stub]')).not.toBeNull();
+    expect(overlay.querySelector('[data-api-keys-host]')).not.toBeNull();
   });
 
   it('appears when the verdict arrives after Settings opened', async () => {
@@ -241,7 +244,7 @@ describe('Settings -> Desktop key on a self-hosted install', () => {
 
   it('a full re-render resets the section cache so the next refresh is not skipped', async () => {
     await mount();
-    const internals = settings as unknown as { render(): void; selfHostKeyMessage: string; refreshSelfHostKeySection(): void };
+    const internals = settings as unknown as { rebuild(runEnter: boolean): void; selfHostKeyMessage: string; refreshSelfHostKeySection(): void };
     await enterAndSave('   ');
     const message = () => section()!.querySelector<HTMLElement>('[data-selfhost-key-message]')!;
     expect(message().hidden).toBe(false);
@@ -250,7 +253,7 @@ describe('Settings -> Desktop key on a self-hosted install', () => {
     // A full render draws the section without the message; the refresh cache
     // still holds the with-message markup.
     internals.selfHostKeyMessage = '';
-    internals.render();
+    internals.rebuild(false);
     expect(message().hidden).toBe(true);
 
     // State returns to the cached markup: the refresh must still redraw.

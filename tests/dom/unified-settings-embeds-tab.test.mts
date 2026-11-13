@@ -160,7 +160,7 @@ const { UnifiedSettings } = await import('@/components/UnifiedSettings');
 
 type SettingsInternals = {
   overlay: HTMLElement;
-  render(loadAccountData?: boolean): void;
+  rebuild(runEnter: boolean): void;
   handleAccountIdentityChange(userId: string): void;
 };
 
@@ -187,18 +187,18 @@ function mount(): void {
     isDesktopApp: false,
   } satisfies UnifiedSettingsConfig);
   internal = settings as unknown as SettingsInternals;
-  internal.overlay.classList.add('active');
 }
 
-const tabButton = (id: string) =>
-  internal.overlay.querySelector<HTMLButtonElement>(`.unified-settings-tab[data-tab="${id}"]`);
+const navRow = (id: string) =>
+  internal.overlay.querySelector<HTMLButtonElement>(`[data-settings-nav="${id}"]`);
 const panel = (id: string) =>
-  internal.overlay.querySelector<HTMLElement>(`[data-panel-id="${id}"]`);
+  internal.overlay.querySelector<HTMLElement>(`[data-settings-page="${id}"]`);
 
-/** Render, then reach the tab the way a user does — through switchTab. */
-function openEmbedsTab(): void {
-  internal.render(false);
-  tabButton('embeds')!.click();
+/** Open Settings, then reach the page the way a user does: its home row. */
+function openPage(id: string): void {
+  if (!internal.overlay.classList.contains('active')) settings.open();
+  else internal.overlay.querySelector<HTMLButtonElement>('[data-settings-back]')!.click();
+  navRow(id)!.click();
 }
 
 beforeAll(async () => {
@@ -227,39 +227,39 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-describe('Settings -> Embeds tab gating', () => {
-  it('shows the tab for a plan with embedAccess but no apiAccess', () => {
+describe('Settings -> Embeds page gating', () => {
+  it('shows the page for a plan with embedAccess but no apiAccess', () => {
     // The load-bearing case: Pro sells embedding without REST access, and the
     // API Keys tab renders an upgrade CTA for exactly this account.
-    internal.render(false);
+    openPage('embeds');
 
-    expect(tabButton('embeds')).not.toBeNull();
     expect(panel('embeds')).not.toBeNull();
     expect(panel('embeds')?.textContent).toContain('Create Embed Key');
+    openPage('api-keys');
     expect(panel('api-keys')?.textContent).toContain('Upgrade to API Starter');
   });
 
-  it('shows the tab for a verified Clerk PRO role before Convex entitlement hydration', () => {
+  it('shows the page for a verified Clerk PRO role before Convex entitlement hydration', () => {
     features.embedAccess = false;
-    internal.render(false);
+    openPage('embeds');
 
-    expect(tabButton('embeds')).not.toBeNull();
     expect(panel('embeds')?.textContent).toContain('Create Embed Key');
   });
 
-  it('hides the tab entirely without embedAccess, even with apiAccess', () => {
+  it('hides the page entirely without embedAccess, even with apiAccess', () => {
     session.user = { id: 'A', name: 'User A', email: 'a@example.com', role: 'free' };
     features.embedAccess = false;
     features.apiAccess = true;
-    internal.render(false);
+    settings.open('embeds');
 
-    expect(tabButton('embeds')).toBeNull();
+    expect(navRow('embeds')).toBeNull();
     expect(panel('embeds')).toBeNull();
-    expect(tabButton('api-keys')).not.toBeNull();
+    expect(internal.overlay.querySelector<HTMLElement>('[data-settings-home]')!.hidden).toBe(false);
+    expect(navRow('api-keys')).not.toBeNull();
   });
 
   it('states that an embed key is meant to be published, unlike an API key', () => {
-    internal.render(false);
+    openPage('embeds');
     const note = panel('embeds')?.querySelector('.embed-keys-note')?.textContent ?? '';
 
     expect(note).toContain('meant to be public');
@@ -268,7 +268,7 @@ describe('Settings -> Embeds tab gating', () => {
   });
 
   it('distinguishes new reads, rendered panels, and existing map grants on revocation', () => {
-    internal.render(false);
+    openPage('embeds');
     const note = panel('embeds')?.querySelector('.embed-keys-note')?.textContent ?? '';
 
     expect(note).toContain('New reads with a revoked key are denied within about a minute');
@@ -278,7 +278,7 @@ describe('Settings -> Embeds tab gating', () => {
 
   it('says the key is shown once BEFORE anyone clicks create', () => {
     // The banner says it after the fact, which is too late to be a warning.
-    internal.render(false);
+    openPage('embeds');
     const desc = panel('embeds')?.querySelector('.embed-keys-desc')?.textContent ?? '';
 
     expect(desc).toContain('shown once at creation');
@@ -296,11 +296,11 @@ describe('Settings -> Embeds key lifecycle', () => {
   it('keeps one mint pending across repeated Enter and a rerender', async () => {
     const pending = deferred<Awaited<ReturnType<typeof createEmbedKey>>>();
     createEmbedKey.mockImplementationOnce(() => pending.promise);
-    openEmbedsTab();
+    openPage('embeds');
     enter();
     enter();
     expect(createEmbedKey).toHaveBeenCalledTimes(1);
-    internal.render(false);
+    internal.rebuild(false);
     expect(button().disabled).toBe(true);
     enter();
     expect(createEmbedKey).toHaveBeenCalledTimes(1);
@@ -314,9 +314,9 @@ describe('Settings -> Embeds key lifecycle', () => {
   it('allows retry after a failed mint, including a rerender while pending', async () => {
     const pending = deferred<Awaited<ReturnType<typeof createEmbedKey>>>();
     createEmbedKey.mockImplementationOnce(() => pending.promise);
-    openEmbedsTab();
+    openPage('embeds');
     enter();
-    internal.render(false);
+    internal.rebuild(false);
     pending.reject(new Error('Temporary failure'));
     await vi.waitFor(() => expect(button().disabled).toBe(false));
     expect(internal.overlay.querySelector('#usEmbedKeysError')?.textContent).toContain('Temporary failure');
@@ -328,7 +328,7 @@ describe('Settings -> Embeds key lifecycle', () => {
     const first = deferred<Awaited<ReturnType<typeof createEmbedKey>>>();
     const second = deferred<Awaited<ReturnType<typeof createEmbedKey>>>();
     createEmbedKey.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise);
-    openEmbedsTab();
+    openPage('embeds');
     enter('account-a');
     session.user = { id: 'B', name: 'User B', email: 'b@example.com', role: 'pro' };
     internal.handleAccountIdentityChange('B');
@@ -347,7 +347,7 @@ describe('Settings -> Embeds key lifecycle', () => {
   });
 
   it('mints a key, shows the plaintext once, and keeps it out of the list', async () => {
-    openEmbedsTab();
+    openPage('embeds');
     const input = panel('embeds')!.querySelector<HTMLInputElement>('.embed-keys-name-input')!;
     input.value = 'marketing-site';
 
@@ -375,7 +375,7 @@ describe('Settings -> Embeds key lifecycle', () => {
 
   it('revokes through the real click delegation once confirmed', async () => {
     embedKeyRows = [{ id: 'ek_9', name: 'old-site', keyPrefix: 'wme_00001', createdAt: 1 }];
-    openEmbedsTab();
+    openPage('embeds');
     await vi.waitFor(() => expect(listEmbedKeys).toHaveBeenCalled());
     await vi.waitFor(() =>
       expect(internal.overlay.querySelector('.embed-keys-revoke-btn')).not.toBeNull(),
@@ -398,7 +398,7 @@ describe('Settings -> Embeds key lifecycle', () => {
     // a service: revoking here must not touch userApiKeys.
     const apiKeys = await import('@/services/api-keys');
     embedKeyRows = [{ id: 'ek_9', name: 'old-site', keyPrefix: 'wme_00001', createdAt: 1 }];
-    openEmbedsTab();
+    openPage('embeds');
     await vi.waitFor(() =>
       expect(internal.overlay.querySelector('.embed-keys-revoke-btn')).not.toBeNull(),
     );

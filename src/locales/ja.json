@@ -5082,5 +5082,46 @@
     "errGeneric": "初版を作成できませんでした。再度お試しください。",
     "errDownload": "ファイルをここからダウンロードできません。代わりに印刷または PDF として保存を使用してください。",
     "errLoad": "旅行リスク評価を開くことができませんでした。ページを再度読み込んでもう一度お試しください。"
+  },
+  "settings": {
+    "back": "設定に戻る",
+    "signIn": {
+      "label": "サインイン",
+      "desc": "設定を同期してプランを管理"
+    },
+    "summary": {
+      "themeAuto": "自動",
+      "count": "{{total}}中{{on}}"
+    },
+    "groups": {
+      "dashboard": "ダッシュボード",
+      "preferences": "プリファレンス",
+      "developer": "デベロッパー",
+      "app": "アプリ"
+    },
+    "sections": {
+      "account": "アカウント",
+      "map": "マップ",
+      "ai": "AI & 分析",
+      "video": "ビデオ & ストリーム",
+      "apiKeys": "APIキー",
+      "embeds": "Embeds",
+      "aiAgents": "AIエージェント(MCP)",
+      "sync": "同期、インポート & エクスポート",
+      "about": "概要"
+    },
+    "descriptions": {
+      "panels": "表示、非表示、並び替え",
+      "sources": "地域とフィード",
+      "notifications": "チャネルとアラートルール",
+      "display": "テーマ、フォント、言語",
+      "map": "プロバイダー、テーマ、グローブ",
+      "ai": "モデル、メモリ、フレームワーク",
+      "video": "品質と自動再生",
+      "apiKeys": "World Monitor APIのキー",
+      "embeds": "自分のサイト用widget",
+      "aiAgents": "接続されたMCPクライアント",
+      "about": "サイトリンク、利用規約、プライバシー"
+    }
   }
 }

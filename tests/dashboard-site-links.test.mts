@@ -57,18 +57,16 @@ describe('dashboard site links (#10461)', () => {
     assert.ok(html.includes('href="/pro#pricing"'));
   });
 
-  it('Settings mounts the site-links row above the legal row in one sticky stack', () => {
+  it('Settings lists the site links above the legal links on the About page', () => {
     const source = read('src/components/UnifiedSettings.ts');
-    assert.match(source, /class="dashboard-chrome-links"/);
-    assert.match(source, /dashboardSiteLinksHtml\(/);
-    assert.match(source, /resolveDashboardSiteOrigin\(/);
-    const siteIdx = source.indexOf('dashboardSiteLinksHtml(');
-    const legalIdx = source.indexOf('legalLinksHtml(');
+    const about = source.slice(source.indexOf('    about: (body) => {'));
+    assert.match(about, /dashboardSiteLinksHtml\(resolveDashboardSiteOrigin\(/);
+    const siteIdx = about.indexOf('dashboardSiteLinksHtml(');
+    const legalIdx = about.indexOf('legalLinksHtml(');
     assert.ok(siteIdx >= 0 && legalIdx > siteIdx, 'site links must render above legal links');
-    const css = read('src/styles/main.css');
-    const stack = css.match(/\.dashboard-chrome-links\s*\{([^}]*)\}/);
-    assert.ok(stack, '.dashboard-chrome-links rule must exist');
-    assert.match(stack[1], /position:\s*sticky/);
+    // About replaces the footer that used to pin both rows under every tab.
+    assert.doesNotMatch(source, /dashboard-chrome-links/);
+    assert.doesNotMatch(read('src/styles/main.css'), /dashboard-chrome-links/);
   });
 
   it('compact dashboard footer CSS caps height at 28px', () => {

@@ -5166,5 +5166,46 @@
     "errGeneric": "Nie można było zbudować szkicu. Spróbuj ponownie.",
     "errDownload": "Nie można było pobrać pliku tutaj. Użyj funkcji Drukuj lub zapisz jako PDF.",
     "errLoad": "Nie można było otworzyć oceny podróży. Odśwież stronę i spróbuj ponownie."
+  },
+  "settings": {
+    "back": "Powrót do ustawień",
+    "signIn": {
+      "label": "Zaloguj się",
+      "desc": "Synchronizuj ustawienia i zarządzaj planem"
+    },
+    "summary": {
+      "themeAuto": "Automatycznie",
+      "count": "{{on}} z {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Preferencje",
+      "developer": "Deweloper",
+      "app": "Aplikacja"
+    },
+    "sections": {
+      "account": "Konto",
+      "map": "Mapa",
+      "ai": "AI i analiza",
+      "video": "Wideo i strumienie",
+      "apiKeys": "Klucze API",
+      "embeds": "Osadzanie",
+      "aiAgents": "Agenci AI (MCP)",
+      "sync": "Synchronizacja, import i eksport",
+      "about": "O aplikacji"
+    },
+    "descriptions": {
+      "panels": "Pokaż, ukryj i zmień kolejność",
+      "sources": "Regiony i źródła",
+      "notifications": "Kanały i reguły alertów",
+      "display": "Motyw, czcionka i język",
+      "map": "Dostawca, motyw i globus",
+      "ai": "Modele, pamięć i frameworki",
+      "video": "Jakość i automatyczne odtwarzanie",
+      "apiKeys": "Klucze API World Monitor",
+      "embeds": "Widgety na własną stronę",
+      "aiAgents": "Połączeni klienci MCP",
+      "about": "Linki, warunki i prywatność"
+    }
   }
 }

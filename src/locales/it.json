@@ -5138,5 +5138,46 @@
     "errGeneric": "La bozza non può essere creata. Riprova.",
     "errDownload": "Il file non può essere scaricato qui. Usa Stampa o salva come PDF.",
     "errLoad": "Non è stato possibile aprire la valutazione del viaggio. Ricarica la pagina e riprova."
+  },
+  "settings": {
+    "back": "Torna alle impostazioni",
+    "signIn": {
+      "label": "Accedi",
+      "desc": "Sincronizza le impostazioni e gestisci il tuo piano"
+    },
+    "summary": {
+      "themeAuto": "Automatico",
+      "count": "{{on}} di {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Preferenze",
+      "developer": "Sviluppatore",
+      "app": "App"
+    },
+    "sections": {
+      "account": "Account",
+      "map": "Mappa",
+      "ai": "AI & analisi",
+      "video": "Video e stream",
+      "apiKeys": "Chiavi API",
+      "embeds": "Widget",
+      "aiAgents": "Agenti AI (MCP)",
+      "sync": "Sincronizzazione, importazione ed esportazione",
+      "about": "Informazioni"
+    },
+    "descriptions": {
+      "panels": "Mostra, nascondi e riordina",
+      "sources": "Regioni e feed",
+      "notifications": "Canali e regole di avviso",
+      "display": "Tema, carattere e lingua",
+      "map": "Provider, tema e globo",
+      "ai": "Modelli, memoria e framework",
+      "video": "Qualità e riproduzione automatica",
+      "apiKeys": "Chiavi per l'API World Monitor",
+      "embeds": "Widget per il tuo sito",
+      "aiAgents": "Client MCP collegati",
+      "about": "Link del sito, termini e privacy"
+    }
   }
 }

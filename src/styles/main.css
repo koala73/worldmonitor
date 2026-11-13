@@ -21353,62 +21353,262 @@ button.popup-link {
   max-height: 80vh;
 }
 
-/* Tabs that do not fit wrap onto more rows instead of scrolling out of
-   sight. Each tab's shadow rules off its row; on the last row it lands on
-   the strip's border, so a single row looks unchanged. */
-.unified-settings-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 12px;
+/* Settings opens on a grouped list of sections (the home list). Each row
+   drills into one page; the header's back button returns to the list. */
+.unified-settings-modal .modal-header {
+  min-height: 32px;
 }
 
-.unified-settings-tab {
-  flex: 1 0 auto;
-  min-height: 44px;
-  padding: 10px 8px;
-  background: none;
+.us-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  margin-inline-start: -6px;
+  padding: 4px 6px;
   border: none;
-  border-bottom: 2px solid transparent;
-  box-shadow: 0 1px var(--border);
+  border-radius: 4px;
+  background: none;
   color: var(--text-dim);
-  font-family: inherit;
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font: inherit;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   letter-spacing: 0.5px;
   text-transform: uppercase;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+}
+
+.us-back:hover {
+  color: var(--text);
+}
+
+.us-back span {
+  font-size: 1.4em;
+  line-height: 1;
+}
+
+.us-home {
+  display: grid;
+  gap: 16px;
+}
+
+.us-home[hidden],
+.us-pages [hidden] {
+  display: none;
+}
+
+.us-install-slot:empty {
+  display: none;
+}
+
+.us-install-slot .pwa-install-entry {
+  margin-block-end: 0;
+}
+
+.us-home-rows {
+  display: grid;
+  gap: 16px;
+}
+
+.us-group {
+  display: grid;
+  gap: 6px;
+}
+
+.us-group-label {
+  margin: 0;
+  padding: 0 2px;
+  color: var(--text-faint);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.us-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.us-list li + li {
+  border-top: 1px solid var(--border);
+}
+
+.us-row,
+.us-account-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  text-align: start;
+  cursor: pointer;
+}
+
+.us-row:hover,
+.us-account-card:hover {
+  background: var(--surface-hover);
+}
+
+.us-row:focus-visible,
+.us-account-card:focus-visible,
+.us-back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.us-row-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.us-row-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.us-row-desc {
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.unified-settings-tab:hover {
+.us-row-value {
+  flex: none;
+  color: var(--text-dim);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.us-row-chev {
+  flex: none;
+  color: var(--text-faint);
+  font-size: calc(16px * var(--wm-panel-effective-scale, 1));
+  line-height: 1;
+}
+
+.us-account-card {
+  min-height: 56px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.us-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+  color: var(--green);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.us-signin-row .us-avatar {
+  background: var(--surface-hover);
+  color: var(--text-dim);
+}
+
+.us-page-title {
+  margin: 0 0 12px;
   color: var(--text);
+  font-size: calc(15px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
 }
 
-.unified-settings-tab.active {
-  border-bottom-color: var(--text);
-  color: var(--text);
+.us-page-title:focus {
+  outline: none;
 }
 
-/* Forced colors paint every transparent border, which hid the selected tab. */
-@media (forced-colors: active) {
-  .unified-settings-tab {
-    border-bottom-color: Canvas;
-  }
-
-  .unified-settings-tab.active {
-    border-bottom-color: Highlight;
-  }
+.us-page-title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-.unified-settings-tab-panel {
-  display: none;
+.us-page-body {
   padding: 0 4px;
 }
 
-.unified-settings-tab-panel.active {
-  display: block;
+.wm-pref-heading {
+  margin: 16px 0 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.us-page-body > .wm-pref-heading:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* About lists the site and legal links as two tappable lists. */
+.us-about {
+  display: grid;
+  gap: 16px;
+}
+
+.us-about .dashboard-site-links-row,
+.us-about .legal-links-row {
+  display: grid;
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+}
+
+.us-about .dashboard-site-links-item,
+.us-about .legal-links-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 12px;
+  color: var(--text);
+}
+
+.us-about .dashboard-site-links-item + .dashboard-site-links-item,
+.us-about .legal-links-item + .legal-links-item {
+  border-top: 1px solid var(--border);
+}
+
+.us-about .dashboard-site-links-item::after,
+.us-about .legal-links-item::after {
+  content: "\2197";
+  color: var(--text-faint);
+}
+
+.us-about .dashboard-site-links-item:hover,
+.us-about .legal-links-item:hover {
+  background: var(--surface-hover);
+  text-decoration: none;
 }
 
 .billing-settings-intro {
@@ -21417,7 +21617,7 @@ button.popup-link {
   padding: 4px 0 8px;
 }
 
-.billing-settings-intro h2 {
+.billing-settings-intro h3 {
   margin: 0;
   color: var(--text);
   font-size: calc(15px * var(--wm-panel-effective-scale, 1));
@@ -27716,27 +27916,11 @@ body.map-width-resizing {
    straight to Dodo's hosted checkout, where Dodo (merchant of record) shows its
    terms and never ours. Both surfaces are built by src/utils/legal-links.ts. */
 
-/* #10461: site destinations + legal docs pin together so opening Settings
-   keeps both rows one tap away without scrolling a long tab. -20px cancels
-   .modal's own bottom padding so the stack sits flush to the edge. */
-.dashboard-chrome-links {
-  position: sticky;
-  bottom: -20px;
-  z-index: 1;
-  margin-top: 8px;
-  background: var(--surface);
-}
-
-/* Wrapped tabs and pinned links leave little room for controls on short
-   screens. Use the available height while keeping phone navigation clear. */
+/* Short screens: use the available height while keeping phone navigation clear. */
 @media (max-height: 650px) {
   .unified-settings-modal {
     max-height: calc(100dvh - 16px);
     padding: 12px;
-  }
-
-  .unified-settings-modal .dashboard-chrome-links {
-    bottom: -12px;
   }
 }
 
