@@ -93,7 +93,7 @@ describe('AuthHeaderWidget signed-out chrome', () => {
     const openBilling = vi.fn();
 
     const widget = new AuthHeaderWidget(undefined, openSettings, openBilling);
-    const actions = mountUserButton.mock.calls.at(-1)?.[1];
+    const actions = mountUserButton.mock.lastCall?.[1];
 
     expect(actions?.billing?.label).toBe('Abonnement et facturation');
     expect(actions?.settings?.label).toBe('Paramètres');
