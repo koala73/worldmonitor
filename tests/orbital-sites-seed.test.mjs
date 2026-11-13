@@ -81,11 +81,10 @@ describe('orbital site records', () => {
   });
 
   it('confirms an image only for the spacecraft that took it', () => {
-    const scene = fixtureAcquisitions.find((a) => a.platform === 'Sentinel-2B');
+    const scene = fixtureAcquisitions.find((a) => a.itemId.startsWith('S1D_IW_GRDH_1SDV_20261111T1423'));
     const base = buildSiteRecord({ site: SITES[0], catalog, acquisitions: [scene], previous: null, nowMs: NOW });
-    const confirmed = base.recentPasses.filter((pass) => pass.itemId === scene.itemId);
-    assert.ok(confirmed.every((pass) => pass.name === 'SENTINEL-2B'));
-    const relabelled = buildSiteRecord({ site: SITES[0], catalog, acquisitions: [{ ...scene, platform: 'Sentinel-2Z' }], previous: null, nowMs: NOW });
+    assert.deepEqual(base.recentPasses.filter((pass) => pass.itemId === scene.itemId).map((pass) => pass.name), ['SENTINEL-1D']);
+    const relabelled = buildSiteRecord({ site: SITES[0], catalog, acquisitions: [{ ...scene, platform: 'sentinel-1c' }], previous: null, nowMs: NOW });
     assert.equal(relabelled.recentPasses.some((pass) => pass.itemId === scene.itemId), false);
   });
 
