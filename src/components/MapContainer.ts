@@ -2002,7 +2002,11 @@ export class MapContainer {
     const centerLon = ((((west + east) / 2) + 540) % 360) - 180;
     const westLon = (((west + 540) % 360) - 180);
     const fit: FocusFitBounds = { south, north, west: westLon, east: westLon + lonSpan, lonSpan, latSpan, center: { lat: (south + north) / 2, lon: centerLon } };
-    if (this.useGlobe) this.globeMap?.fitFocusBounds(fit, Math.min(2.5, Math.max(0.12, Math.max(lonSpan, latSpan) * Math.PI / 180 * 2.4)));
+    if (this.useGlobe) {
+      const center = this.orbitalTarget ?? fit.center;
+      const reach = Math.max(Math.abs(west - center.lon), Math.abs(east - center.lon), Math.abs(south - center.lat), Math.abs(north - center.lat));
+      this.globeMap?.fitFocusBounds({ ...fit, center: { lat: center.lat, lon: center.lon } }, Math.min(2.5, Math.max(0.35, reach * Math.PI / 180 * 5)));
+    }
     else if (this.useDeckGL) this.deckGLMap?.frameOrbitalBounds(oneWorldBounds(bounds));
     else this.svgMap?.fitFocusBounds(fit);
   }
