@@ -33,11 +33,13 @@ import { computeQuerySetDigest } from '../scripts/seo-ai-visibility-scorecard.mj
 const repoPath = (relativePath) => new URL(`../${relativePath}`, import.meta.url).pathname;
 
 const FIXTURES = 'tests/fixtures/gsc/';
+// The recorded lookups answer the queries of the set they were recorded with.
+const FIXTURE_QUERY_SET = 'docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json';
 const silent = () => {};
 
 const collect = async (fixtures = FIXTURES) => {
   const { snapshot, markdown } = await runCli(
-    ['--fixtures', fixtures, '--stdout'],
+    ['--fixtures', fixtures, '--stdout', '--query-set', FIXTURE_QUERY_SET],
     { log: silent },
   );
   return { snapshot, markdown };
@@ -58,9 +60,7 @@ const assertPublishableQueryPages = (list, label) => {
   assert.ok(list.rows.length <= 500, `${label}: more than 500 queries`);
 };
 
-const querySet = JSON.parse(
-  readFileSync(repoPath('docs/research/seo-ai-visibility/query-set.json'), 'utf8'),
-);
+const querySet = JSON.parse(readFileSync(repoPath(FIXTURE_QUERY_SET), 'utf8'));
 
 describe('Search Console collector', () => {
   it('produces the same snapshot from the same fixtures', async () => {

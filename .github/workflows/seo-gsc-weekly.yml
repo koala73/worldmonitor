@@ -374,7 +374,7 @@ jobs:
           if [ "$BASELINE_OUTCOME" = "failure" ]; then
             baseline_note="The AI-visibility baseline and scorecard failed to regenerate in this run, so neither is in this PR. See the run log."
           else
-            baseline_note="Also regenerates the AI-visibility baseline and scorecard (baselines/${snapshot_date}.json, scorecards/${snapshot_date}.md) from these snapshots, compared with the previous baseline. A source without a snapshot is unavailable with a reason, never zero, and the AI-answer surfaces are unavailable because the manual panel was dropped (#10024)."
+            baseline_note="Also regenerates the AI-visibility baseline and scorecard (baselines/${snapshot_date}.json, scorecards/${snapshot_date}.md) from these snapshots, compared with the previous baseline unless the reviewed query set changed, which the scorecard states. A source without a snapshot is unavailable with a reason, never zero, and the AI-answer surfaces are unavailable because the manual panel was dropped (#10024)."
           fi
           pr_url=$(gh pr create \
             --base main \
