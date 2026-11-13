@@ -1,3 +1,8 @@
+---
+title: CII coverage ledger
+noindex: true
+---
+
 # CII coverage ledger
 
 The coverage floor is a list of countries, not a count that another country can
