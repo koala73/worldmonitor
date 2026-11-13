@@ -175,7 +175,7 @@ function imageSlot(acquisition: MatchedAcquisition | null, alt: string): DomChil
 }
 
 function sourceRow(tier: string, name: string, tierLabel: string, time: string | null, detail: string | null, image: DomChild): HTMLElement {
-  return h('li', { className: 'ow-row', tabindex: '0', dataset: { tier } },
+  return h('li', { className: 'ow-row', tabindex: '0', dataset: { tier, key: `source:${name}` } },
     h('div', { className: 'ow-row-head' },
       h('span', { className: 'ow-row-name' }, name),
       h('span', { className: 'ow-tier-label' }, tierLabel)),
@@ -209,9 +209,9 @@ function passRow(pass: PointPass, checking: boolean, acquisition: MatchedAcquisi
   ];
   const notes = [
     pass.edgeOfSwath ? t('orbitalWatch.row.edgeOfSwath') : null,
-    pass.tier.kind === 'passed-overhead' && pass.tier.note === 'not-in-archive' ? t('orbitalWatch.row.notInArchive') : null,
+    !checking && pass.tier.kind === 'passed-overhead' && pass.tier.note === 'not-in-archive' ? t('orbitalWatch.row.notInArchive') : null,
   ].filter((note): note is string => note !== null);
-  return h('li', { className: 'ow-row', tabindex: '0', dataset: { tier: checking ? 'checking' : pass.tier.kind, pass: passKey(pass) } },
+  return h('li', { className: 'ow-row', tabindex: '0', dataset: { tier: checking ? 'checking' : pass.tier.kind, pass: passKey(pass), key: `pass:${passKey(pass)}` } },
     h('div', { className: 'ow-row-head' },
       h('span', { className: 'ow-row-name' }, pass.name),
       h('span', { className: 'ow-tier-label' }, tierLabel)),
@@ -223,7 +223,7 @@ function passRow(pass: PointPass, checking: boolean, acquisition: MatchedAcquisi
 
 function unmatchedImageRow(acquisition: MatchedAcquisition): HTMLElement {
   const name = acquisition.platform.toUpperCase();
-  return h('li', { className: 'ow-row', tabindex: '0', dataset: { tier: 'confirmed-image' } },
+  return h('li', { className: 'ow-row', tabindex: '0', dataset: { tier: 'confirmed-image', key: `image:${acquisition.platform}:${acquisition.startMs}` } },
     h('div', { className: 'ow-row-head' },
       h('span', { className: 'ow-row-name' }, name),
       h('span', { className: 'ow-tier-label' }, t('orbitalWatch.tier.unmatchedImage'))),
@@ -240,6 +240,9 @@ export class OrbitalWatchPage {
   private readonly sheet: HTMLElement;
   private readonly body: HTMLElement;
   private readonly pointLabel: HTMLElement;
+  private readonly title: HTMLElement;
+  private readonly closeButton: HTMLElement;
+  private readonly privacy: HTMLElement;
   private returnFocusTo: HTMLElement | null = null;
   /** Groups the user opened or closed, against their default. */
   private readonly toggled = new Set<GroupId>();
@@ -252,11 +255,13 @@ export class OrbitalWatchPage {
     const titleId = 'orbital-watch-title';
     this.pointLabel = h('p', { className: 'ow-point' });
     this.body = h('div', { className: 'ow-body' });
-    const close = h('button', { type: 'button', className: 'ow-close', 'aria-label': t('countryBrief.closeBtn'), onClick: () => this.close() }, '×');
+    this.title = h('h2', { id: titleId });
+    this.closeButton = h('button', { type: 'button', className: 'ow-close', onClick: () => this.close() }, '×');
+    this.privacy = h('p', { className: 'ow-privacy' });
     this.sheet = h('section', { className: 'orbital-watch-sheet', role: 'dialog', 'aria-labelledby': titleId, tabindex: '-1' },
-      h('header', { className: 'ow-header' }, h('div', null, h('h2', { id: titleId }, t('contextMenu.satellitePasses')), this.pointLabel), close),
+      h('header', { className: 'ow-header' }, h('div', null, this.title, this.pointLabel), this.closeButton),
       this.body,
-      h('p', { className: 'ow-privacy' }, t('orbitalWatch.privacy')));
+      this.privacy);
     declareOverlay(this.sheet, { reload: 'safe' });
     this.sheet.addEventListener('keydown', this.onSheetKeydown);
     this.sheet.addEventListener('click', this.onSheetClick);
@@ -269,6 +274,9 @@ export class OrbitalWatchPage {
   open(point: GeoPoint, returnFocusTo: HTMLElement | null): void {
     this.returnFocusTo = returnFocusTo;
     this.toggled.clear();
+    this.title.textContent = t('contextMenu.satellitePasses');
+    this.closeButton.setAttribute('aria-label', t('countryBrief.closeBtn'));
+    this.privacy.textContent = t('orbitalWatch.privacy');
     this.pointLabel.textContent = formatPoint(point);
     this.render({ kind: 'computing', done: 0, total: 0 });
     if (!this.isOpen) {
@@ -295,8 +303,12 @@ export class OrbitalWatchPage {
   render(state: OrbitalWatchState): void {
     if (state.kind !== 'passes') this.selectedKey = null;
     this.state = state;
-    const content = this.renderState(state);
-    replaceChildren(this.body, ...content);
+    const focused = document.activeElement instanceof HTMLElement && this.body.contains(document.activeElement) ? document.activeElement : null;
+    const selector = focused?.dataset.key ? `.ow-row[data-key="${CSS.escape(focused.dataset.key)}"]`
+      : focused?.dataset.group ? `.ow-group-toggle[data-group="${focused.dataset.group}"]`
+      : null;
+    replaceChildren(this.body, ...this.renderState(state));
+    if (focused) ((selector ? this.body.querySelector<HTMLElement>(selector) : null) ?? this.sheet).focus();
     if (this.selectedKey) {
       const row = this.body.querySelector<HTMLElement>(`.ow-row[data-pass="${this.selectedKey}"]`);
       row?.classList.add('is-selected');
@@ -343,7 +355,8 @@ export class OrbitalWatchPage {
       ? h('p', { className: 'ow-empty' }, t('orbitalWatch.empty', { pastDays: Math.round((lookup.nowMs - lookup.window.startMs) / DAY_MS), futureHours: Math.round((lookup.window.endMs - lookup.nowMs) / 3_600_000) }))
       : null;
     const list = GROUPS.map(({ id }) => groups.get(id)!).filter((group) => group.rows.length > 0).map((group) => this.renderGroup(group));
-    const usesGibs = evidence?.mosaics.some((m) => m.days.length > 0) || evidence?.frames.some((f) => f.latest && f.archive === 'nasa-gibs');
+    const shown = evidence ?? (archives.kind === 'checking' ? archives.progress?.evidence ?? null : null);
+    const usesGibs = shown?.mosaics.some((m) => m.days.length > 0) || shown?.frames.some((f) => f.latest && f.archive === 'nasa-gibs');
     const acknowledgement = usesGibs ? h('p', { className: 'ow-credit' }, IMAGE_CREDIT.gibsAcknowledgement) : null;
     this.timeline.update({
       lookup,
@@ -413,8 +426,8 @@ export class OrbitalWatchPage {
     if (this.selectedKey && groupsHolding(this.body, id, this.selectedKey)) this.selectedKey = null;
     if (this.toggled.has(id)) this.toggled.delete(id);
     else this.toggled.add(id);
+    toggle!.focus();
     this.render(this.state);
-    this.body.querySelector<HTMLElement>(`.ow-group-toggle[data-group="${id}"]`)?.focus();
   };
 
   private readonly onSheetKeydown = (event: KeyboardEvent): void => {

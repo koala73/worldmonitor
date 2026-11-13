@@ -1,3 +1,4 @@
+import i18next from 'i18next';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { initTestI18n } from './helpers/i18n.mts';
@@ -112,6 +113,58 @@ describe('satellite pass lookup sheet', () => {
     const likelyRow = [...group('checking')!.querySelectorAll('.ow-row')].find((r) => r.textContent?.includes(likely.name))!;
     expect(likelyRow.querySelector('.ow-tier-label')?.textContent).toBe('checking archive');
     expect(likelyRow.textContent).not.toContain('No image');
+  });
+
+  it('keeps the confirmed headline back while a matched image is already listed', () => {
+    const { all, confirmedNew } = tiered();
+    const early = evidence(all, { status: 'partial', acquisitions: [{ platform: 'sentinel-2c', profileId: 'sentinel-2', startMs: confirmedNew.timeMs, pass: { noradId: confirmedNew.noradId, timeMs: confirmedNew.timeMs }, imageUrl: 'https://earth-search.aws.element84.com/a.jpg', condition: 'clear', cloudCoverPct: 2 }] as unknown as MatchedAcquisition[] });
+    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'checking', total: 5, progress: { settled: ['earth-search'], pendingProfiles: ['landsat'], evidence: early } } });
+    expect(sheet().querySelector('.ow-headline')?.textContent).toBe('Checking archives: 1 of 5 answered');
+    expect(text()).not.toContain('Confirmed images:');
+    expect(rowNames('confirmed')).toContain(confirmedNew.name);
+  });
+
+  it('does not say "no image in the archive" for a pass another archive has yet to answer', () => {
+    const likely = pass('LANDSAT 9', 'landsat', -30, { kind: 'likely-imaged' });
+    const answeredOne = { ...likely, tier: { kind: 'passed-overhead', note: 'not-in-archive' } as PassTier };
+    mounted({ kind: 'passes', lookup: lookup([likely]), archives: { kind: 'checking', total: 5, progress: progress(['earth-search'], ['landsat'], [answeredOne]) } });
+    expect(rowNames('checking')).toEqual([likely.name]);
+    expect(group('checking')!.textContent).not.toContain('No image in the archive');
+  });
+
+  it('acknowledges NASA GIBS as soon as an early answer brings its images', () => {
+    const { all } = tiered();
+    const mosaics = [{ kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'MODIS Terra', layer: 'm', noradId: 25994, days: [{ date: '2026-11-12', imageUrl: 'https://gibs.earthdata.nasa.gov/m.jpg' }] }] as OrbitalEvidence['mosaics'];
+    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'checking', total: 5, progress: { settled: ['gibs-daily-mosaics'], pendingProfiles: ['sentinel-2', 'landsat'], evidence: evidence(all, { status: 'partial', mosaics }) } } });
+    expect(text()).toContain("We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS)");
+  });
+
+  it('keeps keyboard focus on the same row while archives keep answering', () => {
+    const { all, soon } = tiered();
+    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'checking', total: 5, progress: progress(['eumetsat'], ['sentinel-2', 'landsat'], all) } });
+    const focusedRow = () => [...sheet().querySelectorAll<HTMLElement>('.ow-row')].find((r) => r.textContent?.includes(soon.name))!;
+    focusedRow().focus();
+    page().render({ kind: 'passes', lookup: lookup(all), archives: { kind: 'checking', total: 5, progress: progress(['eumetsat', 'earth-search'], ['landsat'], all) } });
+    expect(document.activeElement).toBe(focusedRow());
+    group('upcoming')!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.focus();
+    page().render({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all) } });
+    expect(document.activeElement).toBe(group('upcoming')!.querySelector('.ow-group-toggle'));
+  });
+
+  it('shows its fixed labels in the language chosen since it was last opened', async () => {
+    i18next.addResourceBundle('de', 'translation', { contextMenu: { satellitePasses: 'Satellitenüberflüge hier' }, countryBrief: { closeBtn: 'Schließen' }, orbitalWatch: { privacy: 'Dieser Punkt bleibt in Ihrem Browser.' } }, true, true);
+    const reused = mounted();
+    reused.close();
+    await i18next.changeLanguage('de');
+    try {
+      reused.open(point, null);
+      pages.push(reused);
+      expect(document.getElementById(sheet().getAttribute('aria-labelledby')!)?.textContent).toBe('Satellitenüberflüge hier');
+      expect(sheet().querySelector('.ow-close')?.getAttribute('aria-label')).toBe('Schließen');
+      expect(text()).toContain('Dieser Punkt bleibt in Ihrem Browser.');
+    } finally {
+      await i18next.changeLanguage('en');
+    }
   });
 
   it('groups answered passes by tier with text labels, newest images first and soonest opportunities first', () => {
