@@ -15,7 +15,7 @@ import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { getRedisCredentials, loadEnvFile } from './_seed-utils.mjs';
-import { CII_FIXTURE_DIR, CII_EXPANDED_CAPTURE_TARGETS, buildCiiFixture, ciiFiresInput, scoreCiiFixture } from './lib/cii-fixtures.mts';
+import { CII_FIXTURE_DIR, CII_EXPANDED_CAPTURE_TARGETS, buildCiiFixture, ciiFiresInput, publishedCiiCaptureTargets, scoreCiiFixture } from './lib/cii-fixtures.mts';
 import { CROSS_BORDER_SOURCES } from '../server/worldmonitor/displacement/v1/cross-border-data.ts';
 import { unwrapEnvelope } from '../server/_shared/seed-envelope.ts';
 import { parsePartyMonths, statePartyIso2 } from './shared/ucdp-state-parties.cjs';
@@ -28,12 +28,11 @@ const { values } = parseArgs({
     // Inputs keep moving after a build, so a stored table minutes old no longer
     // matches them. Wait (GET-polling) for production's next rebuild first.
     'wait-for-rebuild': { type: 'boolean', default: false },
-    'target-set': { type: 'string', default: 'released' },
+    'target-set': { type: 'string', default: 'published' },
   },
 });
 const iranEventsEnabled = values['iran-events-enabled'] !== 'false';
-if (!['released', '37'].includes(values['target-set']!)) throw new Error('--target-set must be released or 37');
-const targetCodes = values['target-set'] === '37' ? CII_EXPANDED_CAPTURE_TARGETS : undefined;
+if (!['published', 'released', '37'].includes(values['target-set']!)) throw new Error('--target-set must be published, released or 37');
 
 loadEnvFile(import.meta.url);
 const { url, token } = getRedisCredentials();
@@ -69,7 +68,7 @@ const year = new Date(capturedAt).getUTCFullYear();
 const [
   ucdp, outages, climate, firesSummary, gpsjam, iranEvents, oref, advisories, displacementCurrent, newsInsights,
   threatSummary, aviation, earthquakes, sanctionsPressure, sanctionsCounts, temporalAnomalies, militaryCii,
-  gdeltCountryEvents, strikePressure, structuralPrior,
+  gdeltCountryEvents, strikePressure, structuralPrior, economicStress,
 ] = await Promise.all([
   'conflict:ucdp-events:v1', 'infra:outages:v1', 'climate:anomalies:v2', 'wildfire:fires-summary:v1',
   'intelligence:gpsjam:v2', 'conflict:iran-events:v1', 'relay:oref:history:v1', 'intelligence:advisories:v1',
@@ -77,7 +76,11 @@ const [
   'seismology:earthquakes:v1', 'sanctions:pressure:v1', 'sanctions:country-counts:v1', 'temporal:anomalies:v1',
   'intelligence:military-cii:v1', 'gdelt:bulk:country-events:v1', 'conflict:strike-pressure:v1',
   'intelligence:cii-structural-prior:v1',
+  'intelligence:cii-economic-stress:v1',
 ].map((key) => get(key)));
+const targetCodes = values['target-set'] === 'published'
+  ? publishedCiiCaptureTargets({ structuralPrior, economicStress, gdeltCountryEvents, ucdp })
+  : values['target-set'] === '37' ? CII_EXPANDED_CAPTURE_TARGETS : undefined;
 const partyValue = (ucdp as { partyMonths?: unknown } | null)?.partyMonths;
 const partyMonths = parsePartyMonths(partyValue);
 if (partyValue !== undefined && partyMonths === null) throw new Error('Malformed full-window UCDP party table');
@@ -108,6 +111,7 @@ const fixture = buildCiiFixture({
   ucdp, outages, climate, fires, gpsjam, iranEvents, oref, advisories, displacement, newsInsights, threatSummary,
   aviation, earthquakes, sanctionsPressure, sanctionsCounts, temporalAnomalies, militaryCii, gdeltCountryEvents,
   strikePressure, crossBorder, ...(structuralPrior != null ? { structuralPrior } : {}),
+  ...(economicStress != null ? { economicStress } : {}),
 }, {
   targetCodes,
   label,
@@ -123,7 +127,7 @@ const fixture = buildCiiFixture({
       .map((id) => `${id} was missing from Redis.`),
     'ACLED unconfigured.',
     ...partyNotes,
-    ...(targetCodes ? ['Capture target: 37 countries; the released table still scores 31.'] : []),
+    ...(targetCodes ? [`Capture target: ${targetCodes.length} ${values['target-set']} countries; the released table still scores ${CII_COUNTRY_CODES.length}.`] : []),
   ],
   production: stored ? {
     key: scoreKey,

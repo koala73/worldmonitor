@@ -22,7 +22,28 @@ The 25 expected economic countries are US, RU, CN, UA, IR, IL, TW, SA, TR, PL,
 DE, FR, GB, IN, PK, VE, MX, BR, AE, KR, IQ, LB, EG, JP and QA. KP, CU, SY, YE,
 MM and AF are recorded gaps, not zero-stress observations. Other input families
 have no measured-country floor recorded here yet; this is not a claim that they
-cover every scored country. U23 will inventory their global coverage.
+cover every scored country.
+
+## U23 candidate inventory (13 November 2026)
+
+The [global coverage inventory](cii-global-coverage-inventory.md) records a
+GET-only read at 11:58 UTC and local evaluation of the proposed producers:
+
+| Family | Live publication | Candidate publication | Measured coverage |
+|---|---:|---:|---|
+| Structural prior | 208 countries | unchanged | 208 pinned 2025 values |
+| UCDP | 84 located country-day groups; 2,397 party groups | unchanged | Global published window through 30 September; October/November unpublished |
+| Economic stress | 31 countries; 25 measured | 199 countries; 149 measured | At least one fresh derived member; the C0 expected 25 retained |
+| GDELT | 186 summary codes | 232 summary codes | 81 of the 208 prior countries have at least 200 articles over the measured week |
+
+The proposed OQ11 rule would qualify 81 countries before its optional economic label
+condition, with 72 also economically measured. The report gives all clause
+counts and per-country evidence. These counts are not an admission ruling.
+
+C0 remains active. Append C1 to the baseline only after the owner merges and
+deploys U23 and GET-only reads confirm natural global publication. Do not promote
+a local candidate count to a production floor. No scored country or formula
+changes in U23.
 
 Health requires each expected economic country to retain at least one fresh
 member. It reports `missingExpectedCountries` in operator details and strips the

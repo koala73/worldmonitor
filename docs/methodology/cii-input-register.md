@@ -99,8 +99,21 @@ for monthly CPI, 7 months for quarterly CPI, 7 days for currency and 3 months fo
 monthly yields. US, DE and FR have no currency member. A held peg with clean
 quotes is a measured zero move; a peg with unreliable quotes is not measured. Stale or insufficient-history members retain their absence reason and
 last observation date, with no numeric scoring value. Countries with no fresh
-member are published as not measured. The source country list is the released
-31; the dry run separately reports PH, TH, ID, VN, MY and KH.
+member are published as not measured. The producer publishes the union of valid
+country codes in its input keys, plus every released country. It retains a row
+even when no member is fresh. The scored set stays at 31; neither global input
+publication nor extra fixture capture targets admit a country to scoring.
+
+U23's [GET-only coverage inventory](cii-global-coverage-inventory.md), captured
+on 13 November 2026, finds 199 economic country rows with 149 measured, compared
+with the live key's 31 rows and 25 measured. The GDELT bulk counters are already
+global. Retaining quiet countries with measured article coverage expands their
+summary from 186 to 232 mapped codes for 6,504 additional bytes, with no new
+downloads. The report lists each prior country's article volume and each OQ11
+clause count. These are candidate results; deployment and natural-run GET-only
+acceptance are still required. `cii-capture-fixture.mts` defaults to the published
+country union and retains the economic key; `--target-set released` and
+`--target-set 37` remain available. Existing fixture bytes do not change.
 
 Cuba and North Korea currently have no usable economic member despite economic
 distress. Their lack of a term is a coverage limitation, not evidence of low

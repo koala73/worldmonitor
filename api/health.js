@@ -5158,7 +5158,7 @@ function composeCiiEconomicStressHealth(entry, raw, readError = false, now = Dat
   const required = CII_COVERAGE_BASELINE.scoredCountries;
   const countries = payload?.countries;
   let valid = payload?.schemaVersion === 1 && countries && typeof countries === 'object'
-    && Object.keys(countries).sort().join() === [...required].sort().join();
+    && !Array.isArray(countries) && required.every(code => Object.hasOwn(countries, code));
   const measuredCountries = [], unmeasuredCountries = [];
   for (const code of required) {
     const row = countries?.[code];

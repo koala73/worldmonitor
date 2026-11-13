@@ -26,8 +26,22 @@ export const CII_FIXTURE_SCHEMA = 'worldmonitor-cii-fixture/v1';
 export const CII_FIXTURE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../tests/fixtures/cii');
 
 /** Recorded for future calibration; the released scorer does not consume it. */
-export type CiiCaptureInputs = CiiRawInputs & { structuralPrior?: unknown };
+export type CiiCaptureInputs = CiiRawInputs & { structuralPrior?: unknown; economicStress?: unknown };
 export const CII_EXPANDED_CAPTURE_TARGETS = [...Object.keys(TIER1_COUNTRIES), 'PH', 'TH', 'ID', 'VN', 'MY', 'KH'];
+
+/** Producer coverage is independent of the released scoring set. */
+export function publishedCiiCaptureTargets(raw: CiiCaptureInputs): string[] {
+  const maps = [
+    (raw.structuralPrior as { countries?: object } | null)?.countries,
+    (raw.economicStress as { countries?: object } | null)?.countries,
+    (raw.gdeltCountryEvents as { byCountry?: object } | null)?.byCountry,
+  ];
+  const ucdp = raw.ucdp as { countryDays?: object; events?: Array<{ country?: string; location?: string }> } | null;
+  const locatedCodes = [...Object.keys(ucdp?.countryDays ?? {}), ...(ucdp?.events ?? []).map(e => e.country || e.location || '')]
+    .map(resolveCountryCode).filter((code): code is string => code !== null);
+  return [...new Set([...Object.keys(TIER1_COUNTRIES), ...maps.flatMap(map => Object.keys(map ?? {})), ...locatedCodes])]
+    .filter(isAssignedCountryCode).sort();
+}
 
 /** One country's score as a formula version computed it on a fixture. */
 export interface CiiFixtureExpectedRow {
@@ -271,6 +285,7 @@ export function trimCiiRawInputs(raw: CiiCaptureInputs, targetCodes: readonly st
     // projection reads most of their fields.
     crossBorder: raw.crossBorder ?? {},
     ...(raw.structuralPrior !== undefined ? { structuralPrior: raw.structuralPrior } : {}),
+    ...(raw.economicStress !== undefined ? { economicStress: raw.economicStress } : {}),
   };
 }
 

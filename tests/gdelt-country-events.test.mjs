@@ -188,6 +188,23 @@ describe('country-events repair planning', () => {
 });
 
 describe('summarizeCountryEvents', () => {
+  it('retains measured article coverage when a country has no conflict, protest or strikes', () => {
+    const now = Date.parse('2026-11-13T00:00:00Z');
+    const days = Object.fromEntries(Array.from({ length: 29 }, (_, i) => [
+      dayOf(now - (i + 1) * DAY), fullDay({ NO: [40, 0, 0, 0] }),
+    ]));
+    const snapshot = mergeCountryEventsBuckets({ days, cursor: '' }, [{
+      timestamp: '20261113000000', countries: { NO: [1, 0, 0, 0] },
+    }], now);
+    const summary = summarizeCountryEvents(snapshot, now);
+    assert.deepEqual(summary.byCountry.NO, {
+      conflict: { current: 0, baselineMedian: 0 },
+      protest: { current: 0, baselineMedian: 0 },
+      week: { articles: 280, conflict: 0, protest: 0 },
+    });
+    assert.equal(summary.baselineReady, true);
+    assert.equal(summary.weekReady, true);
+  });
   // 18:00 UTC: today holds 72 cohorts, so 24 of yesterday's 96 complete the window.
   const now = Date.parse('2026-10-12T18:00:00Z');
 

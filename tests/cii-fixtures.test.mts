@@ -14,6 +14,7 @@ import {
   loadCiiFixtures,
   scoreCiiFixture,
   trimCiiRawInputs,
+  publishedCiiCaptureTargets,
 } from '../scripts/lib/cii-fixtures.mts';
 import { computeCiiScoreTable } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
 import { CII_FORMULA_VERSION } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
@@ -21,6 +22,33 @@ import { TIER1_COUNTRIES } from '../server/worldmonitor/intelligence/v1/_shared.
 
 const FIXTURES = loadCiiFixtures();
 const TIER1_NAMES = new Set(Object.values(TIER1_COUNTRIES));
+
+it('captures published global inputs while preserving every released score byte', () => {
+  for (const f of FIXTURES) {
+    const raw = { ...f.inputs,
+      structuralPrior: { countries: { NO: { pv: 1 }, ZZ: { pv: 0 } } },
+      economicStress: { schemaVersion: 1, countries: { KE: { measured: false } } },
+      gdeltCountryEvents: { ...(f.inputs.gdeltCountryEvents as object), byCountry: {
+        ...(f.inputs.gdeltCountryEvents as any)?.byCountry, NZ: { conflict: { current: 0, baselineMedian: 0 }, protest: { current: 0, baselineMedian: 0 }, week: { articles: 250, conflict: 0, protest: 0 } },
+      } },
+      ucdp: { ...(f.inputs.ucdp as object), events: [
+        ...((f.inputs.ucdp as any)?.events ?? []), { country: 'Norway', dateStart: f.nowMs, deathsBest: 5 },
+        { country: 'Ghana', dateStart: f.nowMs, deathsBest: 5 },
+      ] },
+    };
+    const targets = publishedCiiCaptureTargets(raw);
+    assert.deepEqual(targets, [...Object.keys(TIER1_COUNTRIES), 'NO', 'KE', 'NZ', 'GH'].sort());
+    const fixture = buildCiiFixture(raw, { label: 'global', capturedAt: f.capturedAt, nowMs: f.nowMs,
+      iranEventsEnabled: f.iranEventsEnabled, notes: [], production: null, targetCodes: targets });
+    assert.deepEqual(fixture.inputs.economicStress, raw.economicStress);
+    assert.ok((fixture.inputs.ucdp as any).events.some((e: any) => e.country === 'Norway'));
+    assert.ok((fixture.inputs.gdeltCountryEvents as any).byCountry.NZ);
+    const before = scoreCiiFixture(f), after = scoreCiiFixture(fixture);
+    assert.equal(JSON.stringify(after.scores), JSON.stringify(before.scores));
+    assert.equal(JSON.stringify(after.rows), JSON.stringify(before.rows));
+    assert.deepEqual(trimCiiRawInputs(fixture.inputs, targets), fixture.inputs);
+  }
+});
 
 it('capture targets retain the six future countries without changing the released table', () => {
   const extra = ['PH', 'TH', 'ID', 'VN', 'MY', 'KH'];
