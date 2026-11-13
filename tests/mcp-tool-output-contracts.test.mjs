@@ -52,6 +52,8 @@ const REQUIRED_ARGS = {
   get_country_history: { country_code: 'US' },
   get_media_perspective: { subject_country: 'SA' },
   get_defense_industrial_base: { country_code: 'US' },
+  get_point_satellite_passes: { lat: 39.74, lon: -104.99 },
+  get_country_imagery_evidence: { country_code: 'UA' },
   get_country_coverage: { country_code: 'US' },
   get_food_stocks: { country_code: 'US' },
   get_demographics_capability: { country_code: 'US' },
@@ -125,6 +127,11 @@ const STUB_FIXTURES = {
   get_country_brief_section: assembleRawSignals('US', Object.fromEntries(RAW_SIGNAL_FAMILIES.map(family =>
     [family, failedRawSignal(family, 'unavailable', '2026-10-05T12:00:00Z', 'Controlled failure')])), '2026-10-05T12:00:00Z'),
   get_stock_research: { operation: 'analysis', data: { available: false, symbol: 'AAPL' } },
+  get_point_satellite_passes: {
+    point: { lat: 39.74, lon: -104.99 }, windowStartMs: 1, windowEndMs: 2, computedAt: 1, inventoryVersion: 'v', catalogFetchedAt: 0,
+    stale: true, passes: [], outOfFootprintPasses: 0, acquisitions: [], archiveStatus: 'complete', failedSources: [], unansweredProfiles: [],
+  },
+  get_country_imagery_evidence: { countryCode: 'UA', asOf: 0, stale: true, siteCount: 0, confirmedFlagCount: 0, sites: [] },
   get_five_factor_scorecard: { unavailable: true, unavailableReason: 'country-unavailable' },
   list_five_factor_scorecards: {
     methodologyVersion: '', computedAt: '', scorecards: [], unavailable: true, unavailableReason: 'scorecard-snapshot-unavailable',

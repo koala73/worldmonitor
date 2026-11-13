@@ -75,6 +75,8 @@ export function buildFixtures(now = new Date()) {
   return {
     get_country_history: { country_code: 'US' },
     get_defense_industrial_base: { country_code: 'DE' },
+    get_point_satellite_passes: { lat: 39.74, lon: -104.99 },
+    get_country_imagery_evidence: { country_code: 'UA' },
     get_country_brief: { country_code: 'US' },
     get_country_risk: { country_code: 'US' },
     get_country_coverage: { country_code: 'US' },
