@@ -63,25 +63,32 @@ export function defaultCompareScene<T extends DatedScene>(selected: DatedScene, 
 
 export type LoadImage = (url: string, signal: AbortSignal) => Promise<void>;
 
+/** How long one archive image may take before it counts as failed. */
+export const IMAGE_LOAD_TIMEOUT_MS = 30_000;
+
 export const loadImageElement: LoadImage = (url, signal) => new Promise((resolve, reject) => {
   const image = new Image();
   image.referrerPolicy = 'no-referrer';
   image.decoding = 'async';
-  const stop = () => {
-    image.src = '';
-    reject(new DOMException('Aborted', 'AbortError'));
-  };
-  signal.addEventListener('abort', stop, { once: true });
-  image.onload = () => {
-    image.decode().catch(() => undefined).then(() => {
-      signal.removeEventListener('abort', stop);
+  const finish = (error: Error | null) => {
+    clearTimeout(deadline);
+    signal.removeEventListener('abort', abort);
+    image.onload = null;
+    image.onerror = null;
+    if (error) {
+      image.src = '';
+      reject(error);
+    } else {
       resolve();
-    });
+    }
   };
-  image.onerror = () => {
-    signal.removeEventListener('abort', stop);
-    reject(new Error('frame failed to load'));
+  const abort = () => finish(new DOMException('Aborted', 'AbortError'));
+  const deadline = setTimeout(() => finish(new Error('image load timed out')), IMAGE_LOAD_TIMEOUT_MS);
+  signal.addEventListener('abort', abort, { once: true });
+  image.onload = () => {
+    void image.decode().catch(() => undefined).then(() => finish(null));
   };
+  image.onerror = () => finish(new Error('image failed to load'));
   image.src = url;
 });
 

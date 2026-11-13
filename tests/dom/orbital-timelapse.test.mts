@@ -9,7 +9,7 @@ import { openOrbitalTimelapse, type TimelapseDependencies } from '@/components/O
 const stac = vi.hoisted(() => ({ search: vi.fn() }));
 vi.mock('@/services/orbital/archive-stac', async (original) => ({ ...(await original<object>()), searchStacArchive: stac.search }));
 
-const { CLEAR_LOOK_CLOUD_PCT, searchYearlyLooks, seasonWindow } = await import('@/services/orbital/timelapse');
+const { CLEAR_LOOK_CLOUD_PCT, IMAGE_LOAD_TIMEOUT_MS, loadImageElement, preloadFrames, searchYearlyLooks, seasonWindow } = await import('@/services/orbital/timelapse');
 
 const NOW = Date.UTC(2026, 10, 13, 12);
 const point = { lat: 25.003, lon: 54.99 };
@@ -53,6 +53,18 @@ afterEach(() => {
 });
 
 describe('yearly looks', () => {
+  it('drops a look whose image never answers instead of stalling the rest', async () => {
+    vi.useFakeTimers();
+    try {
+      const frames = [{ imageUrl: 'https://planetarycomputer.microsoft.com/stall.png' }];
+      const done = preloadFrames(frames, new AbortController().signal, () => {}, loadImageElement);
+      await vi.advanceTimersByTimeAsync(IMAGE_LOAD_TIMEOUT_MS);
+      await expect(done).resolves.toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('searches a different season each year so the run crosses every quarter', () => {
     const months = [2015, 2016, 2017, 2018, 2019].map((year) => new Date(seasonWindow(year).startMs).getUTCMonth());
     expect(months).toEqual([9, 0, 3, 6, 9]);

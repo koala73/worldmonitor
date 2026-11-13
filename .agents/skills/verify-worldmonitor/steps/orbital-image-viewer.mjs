@@ -1,8 +1,8 @@
 /**
  * Open the point lookup at an exact place through openOrbitalWatch, the entry
- * the map's "Satellite passes here" menu calls, then open an archive image: read the viewer and the
- * same-collection compare slider, close back to the pass row, and open the
- * yearly time-lapse from the sheet. The satellite catalog comes from the orbital fixture; archive
+ * the map's "Satellite passes here" menu calls, then open the hero image: read
+ * the viewer and the same-collection compare slider, close back to the sheet,
+ * open the yearly time-lapse, and open a pass detail in the full view. The satellite catalog comes from the orbital fixture; archive
  * requests reach the real archives, so scenes vary by day.
  *
  * WM_VERIFY_ORBITAL_VIEWPORT=mobile drives a phone-sized viewport.
@@ -34,11 +34,16 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const sheet = page.locator('.orbital-watch-sheet');
   const pointText = await sheet.locator('.ow-point').innerText();
   log('picked point', pointText, 'target', lat, lon);
-  await sheet.locator('.ow-headline', { hasText: /Confirmed images: \d+/ }).waitFor({ timeout: 90_000 });
+  await sheet.locator('.ow-headline').waitFor({ timeout: 90_000 });
+  log('headline', await sheet.locator('.ow-headline').innerText());
+  const hero = sheet.locator('.ow-card').first();
+  await hero.locator('.ow-tile[data-state="loaded"]').waitFor({ timeout: 90_000 });
+  await sheet.locator('.ow-timelapse-entry').scrollIntoViewIfNeeded();
+  await shot('sheet');
 
-  const trigger = sheet.locator('.ow-best-view').or(sheet.locator('.ow-view-image[data-image-kind="acquisition"]')).first();
-  await trigger.waitFor({ timeout: 30_000 });
-  log('trigger', await trigger.getAttribute('class'), await trigger.innerText().catch(() => ''));
+  const trigger = hero.locator('[data-action="view-image"]');
+  log('trigger', await trigger.getAttribute('aria-label'));
+  await hero.locator('.ow-tile').scrollIntoViewIfNeeded();
   await trigger.click();
   const viewer = page.locator('.oiv-dialog');
   await expectVisible('.oiv-dialog');
@@ -92,6 +97,19 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await shot('timelapse');
   await page.keyboard.press('Escape');
   await timelapse.waitFor({ state: 'detached' });
+
+  await sheet.locator('.ow-primary').click();
+  await page.locator('.orbital-watch-sheet[data-view="full"]').waitFor();
+  const passRow = sheet.locator('.ow-group[data-group="watched"] .ow-row[data-key^="pass:"]').first();
+  await passRow.waitFor({ timeout: 30_000 });
+  await passRow.locator('.ow-row-name').click();
+  const detail = sheet.locator('.ow-detail');
+  await detail.waitFor();
+  log('pass detail', (await detail.innerText()).replace(/\s+/g, ' '));
+  await shot('pass-detail');
+  await page.keyboard.press('Escape');
+  await detail.waitFor({ state: 'detached' });
+  if (!(await page.locator('.orbital-watch-sheet[data-view="full"]').count())) throw new Error('Escape from the pass detail left the full view');
 
   const needles = pointText.match(/\d+\.\d\d/g);
   const leaks = requests.filter(({ url, body }) => !ARCHIVE_HOSTS.includes(new URL(url).hostname) && needles.every((n) => `${url} ${body}`.includes(n)));

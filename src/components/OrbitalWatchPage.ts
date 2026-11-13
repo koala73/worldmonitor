@@ -536,6 +536,8 @@ export class OrbitalWatchPage {
   private shareReset: ReturnType<typeof setTimeout> | null = null;
   /** The pass whose detail fills the pass-detail slot in the full view. */
   private detailKey: string | null = null;
+  /** Counts open() calls, so a lazy chunk that lands after the sheet moved to another place is ignored. */
+  private openSeq = 0;
 
   constructor(private readonly callbacks: OrbitalWatchPageCallbacks) {
     const titleId = 'orbital-watch-title';
@@ -581,6 +583,7 @@ export class OrbitalWatchPage {
   }
 
   open(point: GeoPoint, returnFocusTo: HTMLElement | null, view: OrbitalView = 'sheet'): void {
+    this.openSeq++;
     this.returnFocusTo = returnFocusTo;
     this.point = point;
     this.toggled.clear();
@@ -1007,17 +1010,19 @@ export class OrbitalWatchPage {
     const { lookup } = this.state;
     const image = { kind: trigger.dataset.imageKind, key: trigger.dataset.imageKey } as ViewableImage;
     const returnFocusTo = trigger.closest<HTMLElement>('.ow-row') ?? trigger;
+    const seq = this.openSeq;
     void import('./OrbitalImageViewer').then(({ openOrbitalImageViewer, subjectForImage }) => {
       const subject = subjectForImage(evidence, image, lookup);
-      if (subject && this.isOpen) openOrbitalImageViewer(subject, returnFocusTo);
+      if (subject && this.isOpen && seq === this.openSeq) openOrbitalImageViewer(subject, returnFocusTo);
     });
   }
 
   private openTimelapse(trigger: HTMLElement): void {
     if (this.state?.kind !== 'passes') return;
     const { point, nowMs } = this.state.lookup;
+    const seq = this.openSeq;
     void import('./OrbitalTimelapse').then(({ openOrbitalTimelapse }) => {
-      if (this.isOpen) openOrbitalTimelapse({ point, nowMs, place: formatPoint(point) }, trigger);
+      if (this.isOpen && seq === this.openSeq) openOrbitalTimelapse({ point, nowMs, place: formatPoint(point) }, trigger);
     });
   }
 

@@ -259,6 +259,24 @@ describe('opening the viewer from the lookup sheet', () => {
     page.close();
   });
 
+  it('drops a viewer whose chunk lands after the sheet reopened at another place', async () => {
+    const acquisition = scene(2, 5);
+    const evidence: OrbitalEvidence = { passes: [], acquisitions: [acquisition], mosaics: [], frames: [], bestView: acquisition, status: 'complete', failures: [], unansweredProfiles: [] };
+    const state = (at: typeof point) => ({ kind: 'passes' as const, lookup: { point: at, window: { startMs: NOW - 30 * DAY, endMs: NOW + 2 * DAY }, nowMs: NOW, catalog: { status: 'fresh' as const, fetchedAt: NOW, inventoryVersion: 't' }, passes: [], satellites: [], computedOn: 'worker' as const }, archives: { kind: 'answered' as const, evidence } });
+    const page = new OrbitalWatchPage({ onClose: vi.fn(), onRetry: vi.fn() });
+    page.open(point, null);
+    page.render(state(point));
+    document.querySelector<HTMLButtonElement>('.ow-card [data-action="view-image"]')!.click();
+    page.close();
+    const elsewhere = { lat: 48.85, lon: 2.35 };
+    page.open(elsewhere, null);
+    page.render(state(elsewhere));
+    await import('@/components/OrbitalImageViewer');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(viewer()).toBeNull();
+    page.close();
+  });
+
   it('opens the hero image from the sheet summary', async () => {
     const acquisition = scene(2, 5);
     const evidence: OrbitalEvidence = { passes: [], acquisitions: [acquisition], mosaics: [], frames: [], bestView: acquisition, status: 'complete', failures: [], unansweredProfiles: [] };
