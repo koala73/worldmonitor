@@ -18,7 +18,7 @@ import { h, replaceChildren } from '@/utils/dom-utils';
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 /** Passes closer than this share of the width (about one glyph wide) draw as one glyph with a ×n count. */
-const CLUSTER_PCT = 1.2;
+const CLUSTER_PCT = 1.8;
 /** A day is labelled at the middle of its visible span; only an edge sliver narrower than this goes unlabelled. */
 const MIN_DAY_PCT = 4;
 /** Where NOW sits across a sideways-scrolling dock when it first opens. */

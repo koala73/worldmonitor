@@ -426,6 +426,8 @@
   letter-spacing: 0.08em;
 }
 
+.ow-tl-axis { letter-spacing: 0.02em; }
+
 .ow-tl-head {
   display: flex;
   flex-wrap: wrap;
@@ -561,7 +563,8 @@
 
 .ow-tl-mark.is-hover {
   color: var(--ow-text, #ecebe7);
-  text-shadow: 0 0 4px var(--ow-accent, #f5a524);
+  outline: 1px solid var(--ow-text, #ecebe7);
+  outline-offset: 1px;
   z-index: 2;
 }
 
@@ -630,7 +633,7 @@
   transform: translate(-50%, calc(-100% - 6px));
   padding: 4px 6px;
   background: var(--ow-bg, #0b0c0e);
-  border: 1px solid var(--ow-line, #24272d);
+  border: 1px solid var(--ow-dim, #8b9099);
   color: var(--ow-text, #ecebe7);
   max-width: calc(100% - 8px);
   width: max-content;
@@ -647,7 +650,7 @@
   left: var(--ow-tip-arrow, 50%);
   top: 100%;
   border: 5px solid transparent;
-  border-top-color: var(--ow-line, #24272d);
+  border-top-color: var(--ow-dim, #8b9099);
   transform: translateX(-50%);
 }
 
@@ -655,7 +658,7 @@
   top: auto;
   bottom: 100%;
   border-top-color: transparent;
-  border-bottom-color: var(--ow-line, #24272d);
+  border-bottom-color: var(--ow-dim, #8b9099);
 }
 
 .ow-tl-tip[hidden] { display: none; }
