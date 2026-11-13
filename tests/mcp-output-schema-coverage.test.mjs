@@ -975,7 +975,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // `adds` lists the keys `_execute` or MCP dispatch layers on top; they are legitimately
   // absent from the wire, so they are subtracted before comparing.
   const SPREAD_PASSTHROUGH_TOOLS = new Map([
-    ['open_news_dashboard', { adds: ['requestedView', 'panelRequest'] }],
+    ['open_news_dashboard', { adds: ['requestedView', 'panelRequest', 'headlineAnalysis'] }],
     ['get_country_brief', { adds: ['digestCoverage', 'groundingStories', 'sources[].sourceProvenance', 'panelRequest'] }],
     ['get_country_risk', { adds: ['ciiHistory', 'panelRequest'] }],
     // The live tariff tools add what answered and where it stops (buildCoverage).

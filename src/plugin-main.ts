@@ -28,7 +28,7 @@ import { applyHostLayout, createExpandButton, EXPAND_REFUSED } from './plugin-di
 
 const DIGEST_RELOAD_FAILED = 'The news feed could not be loaded. Ask for the dashboard again.';
 
-type DashboardDigest = ListFeedDigestResponse & { requestedView?: unknown; panelRequest?: unknown };
+type DashboardDigest = ListFeedDigestResponse & { requestedView?: unknown; panelRequest?: unknown; headlineAnalysis?: boolean };
 type HostBilling = { refresh: false } | { refresh: true; request_id?: string };
 
 function resolveNewsCategory(requested: string, keys: string[]): { category: string } | { reason: 'unknown_category' | 'ambiguous_category' } {
@@ -49,6 +49,7 @@ function mountPlugin(): void {
   status.after(categoryNotice);
   const usageNotice = document.getElementById('pluginUsage')!;
   let admission: NewsPanelAdmission | undefined;
+  let headlineAnalysis = true;
   let hostView: unknown;
   // How the host's own call was billed: a refresh is reused only through its request_id.
   let hostBilling: HostBilling = { refresh: false };
@@ -136,6 +137,10 @@ function mountPlugin(): void {
     const admissionChanged = !nextAdmission || nextAdmission.token !== admission?.token;
     if (admissionChanged) hazardCache.clear();
     admission = nextAdmission;
+    // A host that cannot summarize or translate headlines (ChatGPT) gets
+    // headlineAnalysis: false; the summarize and translate controls go.
+    headlineAnalysis = data.headlineAnalysis !== false;
+    document.documentElement.classList.toggle('no-headline-analysis', !headlineAnalysis);
     showUsage();
     digest = data;
     latestInteraction = null;
@@ -197,7 +202,7 @@ function mountPlugin(): void {
     usageNotice.hidden = !admission;
     if (!admission) return;
     const { remaining, limit, resetsAt } = admission.usage;
-    usageNotice.textContent = `${remaining === null ? 'Unlimited allowance' : `${remaining} of ${limit} requests remaining`}, at the last dashboard request. Resets ${new Date(resetsAt).toLocaleString()}. Opening this dashboard uses 1 request; its news panels and map loads are included. Refresh uses 1 new request. AI summaries and translations are separate requests.`;
+    usageNotice.textContent = `${remaining === null ? 'Unlimited allowance' : `${remaining} of ${limit} requests remaining`}, at the last dashboard request. Resets ${new Date(resetsAt).toLocaleString()}. Opening this dashboard uses 1 request; its news panels and map loads are included. Refresh uses 1 new request.${headlineAnalysis ? ' AI summaries and translations are separate requests.' : ''}`;
   }
 
   function refreshDashboard(): Promise<void> {

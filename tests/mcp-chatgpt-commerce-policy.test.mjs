@@ -21,7 +21,7 @@ import {
   MODERN_SERVER_INSTRUCTIONS,
   SERVER_INSTRUCTIONS,
 } from '../api/mcp/constants.ts';
-import { applyChatGptCommercePolicy, isChatGptHost } from '../api/mcp/host-policy.ts';
+import { applyChatGptCommercePolicy, CHATGPT_HIDDEN_TOOLS, isChatGptHost } from '../api/mcp/host-policy.ts';
 import { CHATGPT_TOOL_LIST_RESPONSE, TOOL_LIST_RESPONSE, TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 import { AGENT_GUIDE, AGENT_GUIDE_RESOURCE_URI } from '../api/mcp/constants.ts';
 import { MCP_UPGRADE_URL } from '../shared/mcp-attribution.ts';
@@ -100,10 +100,12 @@ describe('what ChatGPT is offered', () => {
   });
 
   it('every other tool is listed to ChatGPT, with no selling copy anywhere in the list', () => {
+    // The headline-summary tools are hidden too (mcp-chatgpt-news-policy.test.mjs).
     assert.deepEqual(
       CHATGPT_TOOL_LIST_RESPONSE.map((tool) => tool.name),
-      TOOL_LIST_RESPONSE.map((tool) => tool.name).filter((name) => name !== 'start_upgrade'),
+      TOOL_LIST_RESPONSE.map((tool) => tool.name).filter((name) => !CHATGPT_HIDDEN_TOOLS.has(name)),
     );
+    assert.ok(CHATGPT_HIDDEN_TOOLS.has('start_upgrade'));
     for (const tool of CHATGPT_TOOL_LIST_RESPONSE) {
       assert.doesNotMatch(JSON.stringify(tool), SELLING, tool.name);
     }

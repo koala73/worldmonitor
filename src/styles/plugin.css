@@ -47,3 +47,9 @@ body.plugin-body[data-wm-fill] { height: var(--wm-fill-height, 100vh); min-heigh
   body.plugin-body[data-wm-fill] { display: flex; flex-direction: column; overflow: hidden; }
   body.plugin-body[data-wm-fill] #pluginRoot { flex: 1 1 auto; height: auto; min-height: 0; }
 }
+
+/* The host cannot summarize or translate headlines (headlineAnalysis: false). */
+.no-headline-analysis .panel-summarize-btn,
+.no-headline-analysis .item-translate-btn {
+  display: none;
+}

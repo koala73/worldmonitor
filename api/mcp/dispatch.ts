@@ -37,6 +37,7 @@ import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimi
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
 import { CHATGPT_HIDDEN_TOOLS, isChatGptHost } from './host-policy';
+import { pointerOnlyNewsResult } from './chatgpt-news';
 import { MCP_UPGRADE_URL } from '../../shared/mcp-attribution';
 import {
   checkoutProductIdForPlan,
@@ -1204,6 +1205,10 @@ export async function dispatchToolsCall(
     // presentation step and before the projection, so `jmespath` projects
     // the envelope (`jmespath: "spoken"` returns only the sentence) and the
     // attribution rider below is still built from the full payload.
+    // ChatGPT gets news as pointers: no snippets, briefs or publisher body
+    // text (chatgpt-news.ts). Before the spoken envelope and the attribution
+    // rider, so neither is built from the removed text.
+    if (chatGptHost) result = pointerOnlyNewsResult(tool.name, result);
     const narratedFrom = result;
     if (spokenRequested && tool._spoken && result && typeof result === 'object' && !Array.isArray(result)) {
       result = buildSpokenEnvelope(tool, result as Record<string, unknown>, callArguments, Date.now(), spokenLanguage);

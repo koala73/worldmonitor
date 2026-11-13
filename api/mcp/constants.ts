@@ -555,7 +555,23 @@ export const AGENT_GUIDE = [
 ].join('\n');
 
 // The guide as an inform-only host (ChatGPT) reads it.
-export const CHATGPT_AGENT_GUIDE = AGENT_GUIDE.replace(ACCESS_GUIDE_PARAGRAPH, CHATGPT_ACCESS_GUIDE_PARAGRAPH);
+// ChatGPT has no headline-summary tools (host-policy.ts), so its routing
+// guide does not name them. Each clause must be present: a reworded guide
+// fails the replace loudly instead of leaving the names in.
+const SUMMARY_TOOL_ROUTING_CLAUSES = [
+  ' get_country_brief only for a text-only assessment;',
+  ' get_world_brief for one written summary;',
+  '; analyze_news_headlines only to summarize or translate headlines you supply',
+];
+function withoutSummaryToolRouting(guide: string): string {
+  return SUMMARY_TOOL_ROUTING_CLAUSES.reduce((text, clause) => {
+    if (!text.includes(clause)) throw new Error(`constants.ts: guide clause not found: ${clause}`);
+    return text.replace(clause, '');
+  }, guide);
+}
+export const CHATGPT_AGENT_GUIDE = withoutSummaryToolRouting(
+  AGENT_GUIDE.replace(ACCESS_GUIDE_PARAGRAPH, CHATGPT_ACCESS_GUIDE_PARAGRAPH),
+);
 
 function buildServerInstructions({ allowanceExhausted, entitlement, offersCheckout }: InstructionDenialCodes): string {
   const checkoutFlow = offersCheckout

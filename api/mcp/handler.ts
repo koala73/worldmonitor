@@ -26,9 +26,9 @@ import {
   SERVER_INFO,
 } from './constants';
 import { dispatchToolsCall } from './dispatch';
-import { buildPromptResponse, PROMPT_LIST_RESPONSE } from './prompts/index';
+import { buildPromptResponse, PROMPT_LIST_RESPONSE, WITHOUT_SUMMARY_TOOLS_PROMPT_LIST_RESPONSE } from './prompts/index';
 import { CHATGPT_TOOL_LIST_RESPONSE, FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE, TRAVEL_RISK_TOOL_NAMES } from './registry/index';
-import { applyChatGptCommercePolicy, applyViewDomainPolicy, declaredClientName, isChatGptHost, mintSessionId } from './host-policy';
+import { applyChatGptCommercePolicy, applyViewDomainPolicy, CHATGPT_HIDDEN_TOOLS, declaredClientName, isChatGptHost, mintSessionId } from './host-policy';
 import {
   ACCOUNT_RESOURCE_LIST_RESPONSE,
   buildAccountAllowanceResourceResponse,
@@ -1508,13 +1508,13 @@ async function mcpHandlerInner(
     // defeats the prompt-discovery point), but the per-minute rate limit
     // applied above still gates abusive loops.
     case 'prompts/list':
-      return respond(rpcOk(id, { prompts: PROMPT_LIST_RESPONSE }, corsHeaders));
+      return respond(rpcOk(id, { prompts: isChatGptHost(req) ? WITHOUT_SUMMARY_TOOLS_PROMPT_LIST_RESPONSE : PROMPT_LIST_RESPONSE }, corsHeaders));
     case 'prompts/get': {
       const params = body.params as { name?: unknown; arguments?: unknown } | null;
       if (!params || typeof params.name !== 'string') {
         return respond(rpcError(id, -32602, 'Invalid params: missing prompt name', corsHeaders));
       }
-      const built = buildPromptResponse(params.name, params.arguments);
+      const built = buildPromptResponse(params.name, params.arguments, isChatGptHost(req) ? { hiddenTools: CHATGPT_HIDDEN_TOOLS } : {});
       if (!built.ok) return respond(rpcError(id, built.code, built.message, corsHeaders));
       return respond(rpcOk(id, { description: built.description, messages: built.messages }, corsHeaders));
     }
