@@ -111,6 +111,26 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.deepEqual(await reply, { ok: false, failure: { archive: 'eumetsat', reason: 'aborted' } });
   });
 
+  it('leaves no listener on the caller signal after a request completes, without AbortSignal.any', async () => {
+    const any = AbortSignal.any;
+    (AbortSignal as { any?: unknown }).any = undefined;
+    try {
+      const controller = new AbortController();
+      let listeners = 0;
+      const add = controller.signal.addEventListener.bind(controller.signal);
+      const remove = controller.signal.removeEventListener.bind(controller.signal);
+      controller.signal.addEventListener = ((...args: Parameters<typeof add>) => { listeners++; add(...args); }) as typeof add;
+      controller.signal.removeEventListener = ((...args: Parameters<typeof remove>) => { listeners--; remove(...args); }) as typeof remove;
+      for (let i = 0; i < 3; i++) {
+        const reply = await requestArchive('eumetsat', 'https://view.eumetsat.int/x', {}, { fetch: async () => new Response('ok'), signal: controller.signal }, async (r) => r.text());
+        assert.equal(reply.ok, true);
+      }
+      assert.equal(listeners, 0);
+    } finally {
+      AbortSignal.any = any;
+    }
+  });
+
   it('times out an archive that sends headers but never finishes the body', async () => {
     const stalledBody = new Response(new ReadableStream({ start() {} }), { status: 200 });
     const reply = await requestArchive('nasa-gibs', 'https://gibs.earthdata.nasa.gov/x.xml', {}, { fetch: async () => stalledBody, timeoutMs: 50 }, async (response) => response.text());
