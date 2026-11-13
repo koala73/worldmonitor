@@ -111,6 +111,29 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.deepEqual(await reply, { ok: false, failure: { archive: 'eumetsat', reason: 'aborted' } });
   });
 
+  it('lets go of a long-lived caller signal once each request finishes, without AbortSignal.any', async (t) => {
+    const any = Object.getOwnPropertyDescriptor(AbortSignal, 'any');
+    Object.defineProperty(AbortSignal, 'any', { value: undefined, configurable: true });
+    t.after(() => { if (any) Object.defineProperty(AbortSignal, 'any', any); });
+    const caller = new AbortController().signal;
+    const held = new Set<EventListenerOrEventListenerObject>();
+    const add = caller.addEventListener.bind(caller);
+    const remove = caller.removeEventListener.bind(caller);
+    caller.addEventListener = (type: string, listener: EventListenerOrEventListenerObject | null, options?: AddEventListenerOptions | boolean) => {
+      if (listener) held.add(listener);
+      add(type, listener, options);
+    };
+    caller.removeEventListener = (type: string, listener: EventListenerOrEventListenerObject | null, options?: EventListenerOptions | boolean) => {
+      if (listener) held.delete(listener);
+      remove(type, listener, options);
+    };
+    for (let i = 0; i < 3; i += 1) {
+      const reply = await requestArchive('eumetsat', 'https://view.eumetsat.int/geoserver/wms', {}, { fetch: async () => new Response('ok'), signal: caller }, async (response) => response.text());
+      assert.deepEqual(reply, { ok: true, value: 'ok' });
+    }
+    assert.equal(held.size, 0, 'no listener stays on the caller signal after its requests finish');
+  });
+
   it('times out an archive that sends headers but never finishes the body', async () => {
     const stalledBody = new Response(new ReadableStream({ start() {} }), { status: 200 });
     const reply = await requestArchive('nasa-gibs', 'https://gibs.earthdata.nasa.gov/x.xml', {}, { fetch: async () => stalledBody, timeoutMs: 50 }, async (response) => response.text());

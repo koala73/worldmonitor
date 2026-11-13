@@ -33,14 +33,18 @@ export type ArchiveReply<T> =
   | { ok: true; value: T }
   | { ok: false; failure: ArchiveFailure };
 
-function eitherSignal(a: AbortSignal, b: AbortSignal): AbortSignal {
-  if (typeof AbortSignal.any === 'function') return AbortSignal.any([a, b]);
+function eitherSignal(a: AbortSignal, b: AbortSignal): { signal: AbortSignal; release: () => void } {
+  if (typeof AbortSignal.any === 'function') return { signal: AbortSignal.any([a, b]), release: () => {} };
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (a.aborted || b.aborted) abort();
   a.addEventListener('abort', abort, { once: true });
   b.addEventListener('abort', abort, { once: true });
-  return controller.signal;
+  const release = () => {
+    a.removeEventListener('abort', abort);
+    b.removeEventListener('abort', abort);
+  };
+  return { signal: controller.signal, release };
 }
 
 /**
@@ -57,7 +61,7 @@ export async function requestArchive<T>(
   const fetchFn = options.fetch ?? defaultFetch;
   const deadline = new AbortController();
   const timer = setTimeout(() => deadline.abort(), options.timeoutMs ?? ARCHIVE_REQUEST_TIMEOUT_MS);
-  const signal = options.signal ? eitherSignal(options.signal, deadline.signal) : deadline.signal;
+  const { signal, release } = options.signal ? eitherSignal(options.signal, deadline.signal) : { signal: deadline.signal, release: () => {} };
   const stopped = () => ({ ok: false as const, failure: { archive, reason: deadline.signal.aborted && !options.signal?.aborted ? 'timeout' as const : 'aborted' as const } });
   const work = (async (): Promise<ArchiveReply<T>> => {
     let response: Response;
@@ -81,6 +85,7 @@ export async function requestArchive<T>(
     return await Promise.race([work, abandoned]);
   } finally {
     clearTimeout(timer);
+    release();
   }
 }
 
