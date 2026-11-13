@@ -154,6 +154,24 @@ describe('orbital time-lapse page', () => {
     expect(text()).toContain('Clear yearly looks of this place: 3. A time-lapse needs 4.');
   });
 
+  it('keeps the failed archive and a retry when failures leave too few looks', async () => {
+    const few = looks(years(2025, 2026));
+    open({ searchLooks: async (...args: Parameters<typeof few>) => ({ ...(await few(...args)), failures: [{ archive: 'planetary-computer', reason: 'timeout' }] as never }) });
+    await vi.waitFor(() => expect(page()!.querySelector('[data-timelapse="insufficient"]')).not.toBeNull());
+    expect(text()).toContain('Missing years because Microsoft Planetary Computer did not answer: 1.');
+    expect(page()!.querySelector('[data-timelapse="insufficient"] [data-action="retry"]')).not.toBeNull();
+  });
+
+  it('shares a link that reopens this place', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    open({ searchLooks: async () => ({ looks: [], failures: [] }) });
+    await vi.waitFor(() => expect(document.querySelector('[data-action="share"]')).not.toBeNull());
+    document.querySelector<HTMLButtonElement>('[data-action="share"]')!.click();
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(writeText.mock.calls[0]![0]).toMatch(/#orbital=25\.0030,54\.9900$/);
+  });
+
   it('names the archive that timed out and retries', async () => {
     const searchLooks = vi.fn(async (): Promise<YearlyLooks> => ({ looks: [], failures: [{ archive: 'planetary-computer', reason: 'timeout' }] }));
     open({ searchLooks });

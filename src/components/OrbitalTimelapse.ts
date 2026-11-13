@@ -167,7 +167,13 @@ export class OrbitalTimelapsePage {
       case 'too-few':
         return [h('div', { className: 'oiv-column' },
           h('div', { className: 'oiv-stage oiv-stage-empty', dataset: { timelapse: 'insufficient' } },
-            h('p', null, t('orbitalWatch.timelapse.tooFew', { count: state.count, min: MIN_TIMELAPSE_FRAMES })))), this.side(null)];
+            h('p', null, t('orbitalWatch.timelapse.tooFew', { count: state.count, min: MIN_TIMELAPSE_FRAMES })),
+            state.failures.length > 0
+              ? h('p', { className: 'oiv-note', role: 'note' }, t('orbitalWatch.timelapse.partial', { count: state.failures.length, archive: ARCHIVE_NAME[state.failures[0]!.archive] }))
+              : null,
+            state.failures.length > 0
+              ? h('button', { type: 'button', className: 'oiv-button', dataset: { action: 'retry' } }, t('countryBrief.retryBtn'))
+              : null)), this.side(null)];
       case 'ready':
         return [this.player(state), this.side(state)];
     }
@@ -274,7 +280,9 @@ export class OrbitalTimelapsePage {
   }
 
   private async share(): Promise<void> {
-    const url = location.href;
+    // The same `#orbital=<lat>,<lon>` route the lookup sheet reads, so the link opens this place.
+    const { lat, lon } = this.subject.point;
+    const url = `${location.origin}${location.pathname}${location.search}#orbital=${lat.toFixed(4)},${lon.toFixed(4)}`;
     const title = `${t('orbitalWatch.timelapse.heading')} / ${this.subject.place}`;
     try {
       if (typeof navigator.share === 'function') await navigator.share({ title, url });
