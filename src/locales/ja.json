@@ -5134,14 +5134,14 @@
       "share": "共有",
       "shareCopied": "リンクをコピーしました",
       "headline": "過去{{days}}日間に{{satellites}}が{{place}}の上空を通過しました。",
-      "satellites": "{{count}}基の衛星",
-      "subline": "{{count}}枚の画像が公開されました。",
+      "satellites_other": "{{count}}基の衛星",
+      "subline_other": "{{count}}枚の画像が公開されました。",
       "closestLook": "最も近い撮影",
       "replay": "再生",
       "openFull": "全画面表示を開く",
       "previous": "前の画像",
       "next": "次の画像",
-      "passes": "回の通過",
+      "passes_other": "回の通過",
       "showAll": "すべての通過を表示",
       "noRecentDays": "アーカイブに最近の日がありません: {{sources}}",
       "tab": {
@@ -5184,7 +5184,7 @@
         "upcoming": "今後",
         "could": "ここを向けた可能性",
         "overhead": "上空を通過",
-        "weather": "気象ソース"
+        "weather_other": "気象ソース"
       },
       "order": {
         "closest": "最も近い撮影、次に新しい順",
@@ -5193,7 +5193,7 @@
       },
       "row": {
         "cloud": "雲 {{pct}}%",
-        "days": "{{count}}日",
+        "days_other": "{{count}}日",
         "repeats": "このグループでのこの衛星の通過 {{count}}回"
       },
       "section": {

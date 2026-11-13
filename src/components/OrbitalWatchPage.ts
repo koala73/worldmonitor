@@ -845,13 +845,13 @@ export class OrbitalWatchPage {
     const days = Math.round((lookup.nowMs - lookup.window.startMs) / DAY_MS);
     const template = t('orbitalWatch.ui.headline', { days, satellites: '\u0001', place: '\u0002' });
     const parts = template.split(/(\u0001|\u0002)/).map((part) =>
-      part === '\u0001' ? h('strong', null, t('orbitalWatch.ui.satellites', { count: formatInt(summary.satellites) }))
+      part === '\u0001' ? h('strong', null, t('orbitalWatch.ui.satellites', { count: summary.satellites }))
         : part === '\u0002' ? h('strong', null, formatPoint(lookup.point))
         : part);
     return h('div', { className: 'ow-headline-row' },
       h('div', null,
         h('p', { className: 'ow-headline', role: 'status' }, ...parts),
-        h('p', { className: 'ow-subline' }, t('orbitalWatch.ui.subline', { count: formatInt(summary.images) }))),
+        h('p', { className: 'ow-subline' }, t('orbitalWatch.ui.subline', { count: summary.images }))),
       h('button', { type: 'button', className: 'ow-share ow-label', dataset: { action: 'share' } }, t('orbitalWatch.ui.share')));
   }
 
@@ -922,7 +922,7 @@ export class OrbitalWatchPage {
           h('span', { className: 'ow-tier-count' },
             h('span', { className: 'ow-glyph', dataset: { glyph } }, TIER_GLYPH_CHAR[glyph]),
             h('span', { className: 'ow-tier-number' }, formatInt(summary.counts[id])),
-            h('span', { className: 'ow-label' }, t('orbitalWatch.ui.passes'))),
+            h('span', { className: 'ow-label' }, t('orbitalWatch.ui.passes', { count: summary.counts[id] }))),
           h('span', { className: 'ow-tier-name ow-label' }, t(`orbitalWatch.ui.grid.${key}`)),
           h('span', { className: 'ow-tier-def' }, t(`orbitalWatch.ui.grid.${key}Def`)),
           h('span', { className: 'ow-tier-short' }, t(`orbitalWatch.ui.grid.${key}Short`)))));
@@ -947,7 +947,7 @@ export class OrbitalWatchPage {
     const toggle = h('button', { type: 'button', className: 'ow-group-toggle ow-label', 'aria-expanded': String(expanded), 'aria-controls': listId, dataset: { group: id } },
       h('span', { className: 'ow-glyph', dataset: { glyph } }, TIER_GLYPH_CHAR[glyph]),
       h('span', { className: 'ow-group-count' }, formatInt(group.count)),
-      h('span', { className: 'ow-group-name' }, id === 'weather' ? t('orbitalWatch.ui.group.weather') : `${t('orbitalWatch.ui.passes')} ${t(`orbitalWatch.ui.group.${id}`)}`),
+      h('span', { className: 'ow-group-name' }, id === 'weather' ? t('orbitalWatch.ui.group.weather', { count: group.count }) : `${t('orbitalWatch.ui.passes', { count: group.count })} ${t(`orbitalWatch.ui.group.${id}`)}`),
       h('span', { className: 'ow-group-order' }, `· ${t(`orbitalWatch.ui.order.${order}`)}`));
     const list = h('ul', { className: 'ow-rows', id: listId, hidden: !expanded });
     if (expanded) list.append(...group.rows.map((row) => row.render()));

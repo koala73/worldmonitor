@@ -5162,14 +5162,17 @@
       "share": "Megosztás",
       "shareCopied": "Link másolva",
       "headline": "Az elmúlt {{days}} napban {{satellites}} haladt el {{place}} felett.",
-      "satellites": "{{count}} műhold",
-      "subline": "{{count}} kép vált nyilvánossá.",
+      "satellites_one": "{{count}} műhold",
+      "satellites_other": "{{count}} műhold",
+      "subline_one": "{{count}} kép vált nyilvánossá.",
+      "subline_other": "{{count}} kép vált nyilvánossá.",
       "closestLook": "Legközelebbi nézet",
       "replay": "Lejátszás",
       "openFull": "Teljes nézet megnyitása",
       "previous": "Előző kép",
       "next": "Következő kép",
-      "passes": "áthaladás",
+      "passes_one": "áthaladás",
+      "passes_other": "áthaladás",
       "showAll": "Összes áthaladás",
       "noRecentDays": "Nincs friss nap az archívumban: {{sources}}",
       "tab": {
@@ -5212,7 +5215,8 @@
         "upcoming": "közelgő",
         "could": "amely ide célozhatott",
         "overhead": "felette elhaladt",
-        "weather": "időjárási források"
+        "weather_one": "időjárási forrás",
+        "weather_other": "időjárási forrás"
       },
       "order": {
         "closest": "Legközelebbi nézet, aztán legújabb",
@@ -5221,7 +5225,8 @@
       },
       "row": {
         "cloud": "Felhő {{pct}}%",
-        "days": "{{count}} nap",
+        "days_one": "{{count}} nap",
+        "days_other": "{{count}} nap",
         "repeats": "E műhold {{count}} áthaladása ebben a csoportban"
       },
       "section": {

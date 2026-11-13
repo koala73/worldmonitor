@@ -5162,14 +5162,17 @@
       "share": "Paylaş",
       "shareCopied": "Bağlantı kopyalandı",
       "headline": "Son {{days}} günde {{satellites}} {{place}} üzerinden geçti.",
-      "satellites": "{{count}} uydu",
-      "subline": "{{count}} görüntü yayımlandı.",
+      "satellites_one": "{{count}} uydu",
+      "satellites_other": "{{count}} uydu",
+      "subline_one": "{{count}} görüntü yayımlandı.",
+      "subline_other": "{{count}} görüntü yayımlandı.",
       "closestLook": "En yakın bakış",
       "replay": "Tekrar oynat",
       "openFull": "Tam görünümü aç",
       "previous": "Önceki görüntü",
       "next": "Sonraki görüntü",
-      "passes": "geçiş",
+      "passes_one": "geçiş",
+      "passes_other": "geçiş",
       "showAll": "Tüm geçişleri göster",
       "noRecentDays": "Arşivde yakın tarihli gün yok: {{sources}}",
       "tab": {
@@ -5212,7 +5215,8 @@
         "upcoming": "yaklaşan",
         "could": "buraya yönelebilirdi",
         "overhead": "üzerinden geçti",
-        "weather": "hava kaynakları"
+        "weather_one": "hava kaynağı",
+        "weather_other": "hava kaynağı"
       },
       "order": {
         "closest": "En yakın bakış, sonra en yeni",
@@ -5221,7 +5225,8 @@
       },
       "row": {
         "cloud": "Bulut %{{pct}}",
-        "days": "{{count}} gün",
+        "days_one": "{{count}} gün",
+        "days_other": "{{count}} gün",
         "repeats": "Bu uydunun grupta {{count}} geçişi"
       },
       "section": {
