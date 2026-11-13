@@ -5200,7 +5200,11 @@
         "could": "Ide célozhatott",
         "couldDef": "Egy irányítható vagy kereskedelmi érzékelő hatótávon belül volt; az üzemeltető nem mondja meg, nézett-e.",
         "overhead": "Elhaladt felette",
-        "overheadDef": "Átszelte itt az eget, képi bizonyíték nélkül."
+        "overheadDef": "Átszelte itt az eget, képi bizonyíték nélkül.",
+        "watchedShort": "Kép nyilvános archívumban",
+        "likelyShort": "Lefedve, még nincs kép",
+        "couldShort": "Elforgatható érzékelő hatótávon belül",
+        "overheadShort": "Áthaladt, kép nélkül"
       },
       "group": {
         "watched": "megfigyelt",
@@ -5239,7 +5243,12 @@
         "window": "7 napos ablak · {{start}} → {{end}}",
         "failed": "Sikertelen",
         "note": "A Planetary Computer és a NASA GIBS igény szerint készíti a képeket, ezért ez a lépés néhány másodpercig tarthat."
-      }
+      },
+      "privacyLine": "A pont a böngészőjében marad",
+      "privacyHow": "Hogyan",
+      "sources": "Források",
+      "archiveScene": "Archív jelenet",
+      "archiveOnly": "Egyik számított áthaladás sem egyezik ezekkel a képekkel, ezért archív jelenetként jelennek meg."
     },
     "timeline": {
       "now": "most",

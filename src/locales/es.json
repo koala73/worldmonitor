@@ -5228,7 +5228,11 @@
         "could": "Pudo apuntar aquí",
         "couldDef": "Un sensor orientable o comercial estaba al alcance; el operador no dice si miró.",
         "overhead": "Pasó por encima",
-        "overheadDef": "Cruzó el cielo aquí, sin evidencia de imagen."
+        "overheadDef": "Cruzó el cielo aquí, sin evidencia de imagen.",
+        "watchedShort": "Imagen en un archivo público",
+        "likelyShort": "Cubierto, aún sin imagen",
+        "couldShort": "Sensor orientable a su alcance",
+        "overheadShort": "Pasó encima, sin imagen"
       },
       "group": {
         "watched": "observados",
@@ -5267,7 +5271,12 @@
         "window": "Ventana de 7 días · {{start}} → {{end}}",
         "failed": "Error",
         "note": "Planetary Computer y NASA GIBS generan las imágenes bajo demanda, así que este paso puede tardar unos segundos."
-      }
+      },
+      "privacyLine": "El punto se queda en tu navegador",
+      "privacyHow": "Cómo",
+      "sources": "Fuentes",
+      "archiveScene": "Escena de archivo",
+      "archiveOnly": "Ningún paso calculado coincide con estas imágenes, así que se muestran como escenas de archivo."
     },
     "timeline": {
       "now": "ahora",

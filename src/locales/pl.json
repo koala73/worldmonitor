@@ -5256,7 +5256,11 @@
         "could": "Mógł tu celować",
         "couldDef": "Sterowalny lub komercyjny czujnik był w zasięgu; operator nie mówi, czy patrzył.",
         "overhead": "Przeleciał nad",
-        "overheadDef": "Przeciął tu niebo, bez dowodu obrazowania."
+        "overheadDef": "Przeciął tu niebo, bez dowodu obrazowania.",
+        "watchedShort": "Zdjęcie w publicznym archiwum",
+        "likelyShort": "Pokryte, jeszcze bez zdjęcia",
+        "couldShort": "Sterowalny sensor w zasięgu",
+        "overheadShort": "Nad punktem, bez zdjęcia"
       },
       "group": {
         "watched": "obserwowanych",
@@ -5295,7 +5299,12 @@
         "window": "Okno 7 dni · {{start}} → {{end}}",
         "failed": "Niepowodzenie",
         "note": "Planetary Computer i NASA GIBS generują obrazy na żądanie, więc ten krok może potrwać kilka sekund."
-      }
+      },
+      "privacyLine": "Punkt zostaje w Twojej przeglądarce",
+      "privacyHow": "Jak",
+      "sources": "Źródła",
+      "archiveScene": "Scena archiwalna",
+      "archiveOnly": "Żaden obliczony przelot nie pasuje do tych zdjęć, więc są pokazane jako sceny archiwalne."
     },
     "timeline": {
       "now": "teraz",

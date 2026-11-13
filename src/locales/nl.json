@@ -5200,7 +5200,11 @@
         "could": "Had hierop kunnen richten",
         "couldDef": "Een richtbare of commerciële sensor was binnen bereik; de operator zegt niet of hij keek.",
         "overhead": "Overgevlogen",
-        "overheadDef": "Kruiste hier de hemel, zonder beeldbewijs."
+        "overheadDef": "Kruiste hier de hemel, zonder beeldbewijs.",
+        "watchedShort": "Beeld in een openbaar archief",
+        "likelyShort": "Gedekt, nog geen beeld",
+        "couldShort": "Richtbare sensor binnen bereik",
+        "overheadShort": "Overgevlogen, geen beeld"
       },
       "group": {
         "watched": "waargenomen",
@@ -5239,7 +5243,12 @@
         "window": "Venster van 7 dagen · {{start}} → {{end}}",
         "failed": "Mislukt",
         "note": "Planetary Computer en NASA GIBS maken beelden op aanvraag, dus deze stap kan een paar seconden duren."
-      }
+      },
+      "privacyLine": "Het punt blijft in je browser",
+      "privacyHow": "Hoe",
+      "sources": "Bronnen",
+      "archiveScene": "Archiefscène",
+      "archiveOnly": "Geen berekende overkomst past bij deze beelden, dus ze worden als archiefscènes getoond."
     },
     "timeline": {
       "now": "nu",

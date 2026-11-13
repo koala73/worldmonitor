@@ -164,8 +164,9 @@ describe('satellite pass lookup sheet', () => {
     const [first] = cards();
     const lines = [...first!.querySelectorAll('.ow-caption-lines span')].map((l) => l.textContent);
     expect(lines[0]).toMatch(/^LANDSAT 9 · .* UTC$/);
-    expect(lines[1]).toBe('10 M · 8 days ago · Clouded · 69%');
-    expect(first!.querySelector('.ow-image-credit')!.textContent).toBe(IMAGE_CREDIT.usgs);
+    expect(lines[1]).toBe('10 M · 8d ago · Clouded · 69%');
+    expect(first!.querySelector('.ow-image-credit')!.textContent).toBe('USGS / Landsat');
+    expect(first!.querySelector<HTMLElement>('.ow-image-credit')!.title).toBe(IMAGE_CREDIT.usgs);
     for (const overlay of ['.ow-reticle', '.ow-scale', '.ow-north', '.ow-expand']) expect(first!.querySelector(overlay)).not.toBeNull();
     expect(first!.querySelector('.ow-scale')!.textContent).toBe('2 KM');
     expect(cards()[2]!.querySelector('.ow-caption-lines')!.textContent).toContain('Daily mosaic · 250 M');
@@ -185,7 +186,8 @@ describe('satellite pass lookup sheet', () => {
     const bottom = (i: number) => cards()[i]!.querySelectorAll('.ow-caption-lines span')[1]!.textContent;
     expect(bottom(0)).toContain('Radar · VV · 10 M');
     expect(bottom(1)).toContain('Scene cloud 12% · spot not checked');
-    expect(cards()[1]!.querySelector('.ow-image-credit')!.textContent).toBe('Contains modified Copernicus Sentinel data 2026');
+    expect(cards()[1]!.querySelector('.ow-image-credit')!.textContent).toBe('© Copernicus Sentinel 2026');
+    expect(cards()[1]!.querySelector<HTMLElement>('.ow-image-credit')!.title).toBe('Contains modified Copernicus Sentinel data 2026');
   });
 
   it('shows every image as a labelled skeleton, then the image or a failure tile with retry', () => {
@@ -351,7 +353,8 @@ describe('satellite pass lookup sheet', () => {
   it('credits weather frames by their archive', () => {
     const { all } = tiered();
     mounted(answered(all, { frames: [meteosat] }));
-    expect(cards()[0]!.querySelector('.ow-image-credit')!.textContent).toBe('Contains EUMETSAT Meteosat imagery');
+    expect(cards()[0]!.querySelector('.ow-image-credit')!.textContent).toBe('© EUMETSAT');
+    expect(cards()[0]!.querySelector<HTMLElement>('.ow-image-credit')!.title).toBe('Contains EUMETSAT Meteosat imagery');
     expect(cards()[0]!.querySelector('.ow-caption-lines')!.textContent).toContain('Geostationary · every 15 min');
   });
 
@@ -366,8 +369,18 @@ describe('satellite pass lookup sheet', () => {
   it('names a layer that timed out while its archive answered other layers', () => {
     const { all } = tiered();
     mounted(answered(all, { status: 'partial', failures: [{ archive: 'earth-search', reason: 'timeout' }, { archive: 'nasa-gibs', reason: 'timeout', source: 'GOES-West' }] }));
-    expect(text()).toContain('Earth Search, NASA GIBS (GOES-West) did not answer');
+    expect(text()).toContain('Earth Search and NASA GIBS (GOES-West) did not answer');
     expect(sheet().querySelector('[data-action="retry"]')).not.toBeNull();
+  });
+
+  it.each([
+    [['earth-search'], 'Earth Search did not answer'],
+    [['earth-search', 'planetary-computer'], 'Earth Search and Microsoft Planetary Computer did not answer'],
+    [['earth-search', 'planetary-computer', 'eumetsat'], 'Earth Search, Microsoft Planetary Computer, and EUMETSAT did not answer'],
+  ] as const)('joins %j failed archives as a sentence', (archives, sentence) => {
+    const { all } = tiered();
+    mounted(answered(all, { status: 'partial', failures: archives.map((archive) => ({ archive, reason: 'timeout' as const })) }));
+    expect(sheet().querySelector('.ow-banner-partial p')!.textContent).toBe(`${sentence}, so some passes may be missing their images.`);
   });
 
   it('warns about stale orbit data with its age, while computing and after', () => {
@@ -383,6 +396,63 @@ describe('satellite pass lookup sheet', () => {
     expect(text()).toContain('In the last 30 days, 0 satellites passed over');
     expect(text()).toContain('No profiled imaging satellite passed over this point in the last 30 days or will in the next 48 hours.');
     expect(text()).toContain('This point stays in your browser');
+  });
+
+  it('keeps the point note to one line that opens to the full note and every source credit', () => {
+    mounted(answered([]));
+    const note = sheet().querySelector<HTMLDetailsElement>('.ow-privacy')!;
+    expect(note.tagName).toBe('DETAILS');
+    expect(note.open).toBe(false);
+    expect(note.querySelector('summary')!.textContent).toBe('Point stays in your browser · How ›');
+    const sources = [...note.querySelectorAll('.ow-sources li')].map((li) => li.textContent);
+    expect(sources).toEqual([IMAGE_CREDIT.copernicus(new Date().getUTCFullYear()), IMAGE_CREDIT.usgs, IMAGE_CREDIT.eumetsat, IMAGE_CREDIT.gibsAcknowledgement]);
+  });
+
+  it('counts the satellite behind every image it shows and labels images with no computed pass as archive scenes', () => {
+    const s2 = { ...acquisition(pass('SENTINEL-2A', 'sentinel-2', -40, { kind: 'confirmed-image' })), pass: null };
+    const l8 = { ...acquisition(pass('LANDSAT 8', 'landsat', -90, { kind: 'confirmed-image' })), pass: null };
+    mounted(answered([], { acquisitions: [s2, l8], bestView: s2 }), null, 'full');
+    expect(sheet().querySelector('.ow-headline')!.textContent).toBe('In the last 30 days, 2 satellites passed over 25.205°N 55.271°E.');
+    expect(text()).not.toContain('No profiled imaging satellite passed over this point');
+    expect(text()).toContain('shown as archive scenes');
+    expect(cards()[0]!.querySelectorAll('.ow-caption-lines span')[1]!.textContent).toMatch(/^Archive scene · /);
+    expect([...sheet().querySelectorAll('.ow-row[data-tier="confirmed-image"]')].map((row) => row.querySelector('.ow-badge')?.textContent)).toEqual(['Archive scene', 'Archive scene']);
+  });
+
+  it('keeps each pass row line short: a compact age and a one-line credit with the full credit on hover', () => {
+    const { all, confirmedNew } = tiered();
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew)] }), null, 'full');
+    const row = rowOf('SENTINEL-2C');
+    expect(row.querySelectorAll('.ow-row-meta')[0]!.textContent).toMatch(/ · \d+[mhd] ago$/);
+    const credit = row.querySelector<HTMLElement>('.ow-row-credit')!;
+    expect(credit.textContent).toBe('© Copernicus Sentinel 2026');
+    expect(credit.title).toBe(IMAGE_CREDIT.copernicus(2026));
+    const css = readFileSync(resolve(process.cwd(), 'src/styles/orbital-watch.css'), 'utf8');
+    expect(css).toMatch(/\.ow-row-meta, \.ow-row-credit \{ white-space: nowrap;/);
+  });
+
+  it('gives every tier cell a one-line definition on narrow screens', () => {
+    const { all } = tiered();
+    mounted(answered(all));
+    expect([...sheet().querySelectorAll('.ow-tier-cell .ow-tier-short')].map((d) => d.textContent))
+      .toEqual(['Image in a public archive', 'Covered, no image yet', 'Steerable sensor in reach', 'Overhead, no image']);
+    const css = readFileSync(resolve(process.cwd(), 'src/styles/orbital-watch.css'), 'utf8');
+    const mobile = css.slice(css.indexOf('@media (max-width: 768px)'));
+    expect(mobile).toContain('.ow-tier-short { display: block; }');
+  });
+
+  it('takes the whole screen in the full view and marks the point on the map', () => {
+    const { all } = tiered();
+    const reused = mounted(answered(all));
+    expect(document.body.classList.contains('orbital-full-view')).toBe(false);
+    reused.setView('full');
+    expect(document.body.classList.contains('orbital-full-view')).toBe(true);
+    expect(sheet().querySelector('.ow-mapmark-label')!.textContent).toBe('25.205°N 55.271°E');
+    reused.setView('sheet');
+    expect(document.body.classList.contains('orbital-full-view')).toBe(false);
+    reused.setView('full');
+    reused.close();
+    expect(document.body.classList.contains('orbital-full-view')).toBe(false);
   });
 
   it('walks pass rows with the arrow keys and keeps focus on a row across renders', () => {

@@ -5172,7 +5172,11 @@
         "could": "可能對準過這裡",
         "couldDef": "可轉向或商業感測器在可達範圍內；運營方未說明是否觀測。",
         "overhead": "上空經過",
-        "overheadDef": "從這裡的天空經過，沒有成像證據。"
+        "overheadDef": "從這裡的天空經過，沒有成像證據。",
+        "watchedShort": "公開檔案中有影像",
+        "likelyShort": "已覆蓋，尚無影像",
+        "couldShort": "可指向感測器在範圍內",
+        "overheadShort": "過頂，無影像"
       },
       "group": {
         "watched": "已拍攝",
@@ -5211,7 +5215,12 @@
         "window": "7 天視窗 · {{start}} → {{end}}",
         "failed": "失敗",
         "note": "Planetary Computer 和 NASA GIBS 按需生成影象，因此此步驟可能需要幾秒鐘。"
-      }
+      },
+      "privacyLine": "該點僅保留在你的瀏覽器中",
+      "privacyHow": "原理",
+      "sources": "來源",
+      "archiveScene": "檔案場景",
+      "archiveOnly": "沒有計算出的過境與這些影像匹配，因此顯示為檔案場景。"
     },
     "timeline": {
       "now": "現在",
