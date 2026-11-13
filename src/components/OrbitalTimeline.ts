@@ -292,10 +292,15 @@ export class OrbitalTimeline {
     const box = target.getBoundingClientRect();
     this.tip.textContent = target.dataset.tip ?? '';
     this.tip.hidden = false;
-    // Stay over the plot so the row legend stays readable, and point the arrow at the glyph.
+    // Stay over the visible part of the plot so the row legend stays readable, and point the arrow at the glyph.
+    const view = this.element.parentElement?.getBoundingClientRect() ?? frame;
+    const lo = Math.max(plot.left, view.left) - frame.left;
+    const hi = Math.min(plot.right, view.right) - frame.left;
     const half = this.tip.offsetWidth / 2;
     const x = (target.classList.contains('ow-tl-geo-line') ? event.clientX : box.left + box.width / 2) - frame.left;
-    const [min, max] = half * 2 <= plot.width ? [plot.left - frame.left + half, plot.right - frame.left - half] : [half, Math.max(half, frame.width - half)];
+    const [min, max] = half * 2 <= hi - lo
+      ? [lo + half, hi - half]
+      : [Math.max(0, view.left - frame.left) + half, Math.max(half, Math.min(frame.width, view.right - frame.left) - half)];
     const left = Math.min(Math.max(x, min), max);
     const above = box.top - frame.top >= this.tip.offsetHeight + 8;
     this.tip.dataset.place = above ? 'above' : 'below';

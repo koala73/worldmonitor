@@ -169,6 +169,27 @@ describe('orbital timeline dock', () => {
     expect(mark.classList.contains('is-hover')).toBe(false);
   });
 
+  it('keeps the tooltip inside the visible part of a sideways-scrolled dock', () => {
+    const dock = document.createElement('div');
+    dock.getBoundingClientRect = () => ({ left: 0, right: 390, top: 0, bottom: 110, width: 390, height: 110 } as DOMRect);
+    const timelineDock = new OrbitalTimeline(onSelect);
+    dock.append(timelineDock.element);
+    document.body.append(dock);
+    timelineDock.update({ lookup: lookup([]), passes: [pass('SENTINEL-2B', -30, { kind: 'confirmed-image' })], acquisitions: [], context: { kind: 'loading' }, selectedKey: null });
+    timelineDock.element.getBoundingClientRect = () => ({ left: -200, right: 800, top: 0, bottom: 110, width: 1000, height: 110 } as DOMRect);
+    dock.querySelector<HTMLElement>('.ow-tl-plot')!.getBoundingClientRect = () => ({ left: -100, right: 800, top: 10, bottom: 100, width: 900, height: 90 } as DOMRect);
+    const mark = dock.querySelector<HTMLElement>('.ow-tl-row[data-row="photo"] .ow-tl-mark')!;
+    mark.getBoundingClientRect = () => ({ left: 370, right: 380, top: 60, bottom: 70, width: 10, height: 10 } as DOMRect);
+    const tip = dock.querySelector<HTMLElement>('.ow-tl-tip')!;
+    Object.defineProperty(tip, 'offsetWidth', { value: 200 });
+    Object.defineProperty(tip, 'offsetHeight', { value: 20 });
+    mark.dispatchEvent(new Event('pointerover', { bubbles: true }));
+    const left = parseFloat(tip.style.left) - 200;
+    expect(left - 100).toBeGreaterThanOrEqual(0);
+    expect(left + 100).toBeLessThanOrEqual(390);
+    expect(parseFloat(tip.style.getPropertyValue('--ow-tip-arrow'))).toBeGreaterThan(100);
+  });
+
   it('opens a dock narrower than the timeline scrolled so NOW sits about 70% across', async () => {
     const dock = document.createElement('div');
     Object.defineProperty(dock, 'scrollWidth', { value: 1000 });
