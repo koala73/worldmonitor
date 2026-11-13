@@ -177,15 +177,21 @@ const defaultSources: PointContextSources = {
       return data.events.map((event) => ({ id: event.id, lat: event.lat, lon: event.lon, timeMs: event.time.getTime(), label: event.title }));
     },
     outages: async () => {
-      const [{ fetchInternetOutages }, { effectivePubDateMs }] = await Promise.all([import('@/services/infrastructure'), import('@/services/feed-date')]);
+      const [{ fetchInternetOutages, getOutagesDataState }, { effectivePubDateMs }, { nameToCountryCode }] = await Promise.all([
+        import('@/services/infrastructure'),
+        import('@/services/feed-date'),
+        import('@/services/country-geometry'),
+      ]);
       const outages = await fetchInternetOutages();
+      // A failed outage request also comes back as an empty list, so only the breaker tells failure from a quiet week.
+      if (outages.length === 0 && getOutagesDataState().mode === 'unavailable') throw new Error('outage feed unavailable');
       return outages.map((outage) => ({
         id: outage.id,
         lat: outage.lat,
         lon: outage.lon,
         timeMs: effectivePubDateMs(outage),
         label: outage.title,
-        countryCode: outage.country,
+        countryCode: nameToCountryCode(outage.country) ?? outage.country,
       }));
     },
   },
