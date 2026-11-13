@@ -14,6 +14,7 @@ import { PUBLISH_BLOCKED_EXIT_CODE } from '../scripts/_seed-utils.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const META_KEY = 'seed-meta:orbital:catalog';
+const COMPLETION_KEY = 'seed-completion:orbital:catalog';
 const DAY_MS = 86_400_000;
 const { records: fixtureRecords } = JSON.parse(readFileSync(new URL('./fixtures/orbital/celestrak-gp-2026-11-13.json', import.meta.url), 'utf8'));
 
@@ -68,6 +69,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 const KEY = ${JSON.stringify(ORBITAL_CATALOG_KEY)};
 const META_KEY = ${JSON.stringify(META_KEY)};
 const ACTIVATION_KEY = ${JSON.stringify(ORBITAL_CATALOG_ACTIVATION_KEY)};
+const COMPLETION_KEY = ${JSON.stringify(COMPLETION_KEY)};
 const values = new Map();
 if (process.env.TEST_LAST_GOOD) {
   const lastGood = JSON.parse(process.env.TEST_LAST_GOOD);
@@ -122,11 +124,11 @@ globalThis.fetch = async (input, options = {}) => {
   throw new Error('fixture source unavailable: ' + url.hostname);
 };
 process.on('exit', () => {
-  writeFileSync(process.env.TEST_STATE_FILE, JSON.stringify({ writes, celestrakCalls, userAgent, initial, canonical: values.get(KEY) ?? null, meta: values.get(META_KEY) ?? null, activation: values.get(ACTIVATION_KEY) ?? null }));
+  writeFileSync(process.env.TEST_STATE_FILE, JSON.stringify({ writes, celestrakCalls, userAgent, initial, canonical: values.get(KEY) ?? null, meta: values.get(META_KEY) ?? null, completion: values.get(COMPLETION_KEY) ?? null, activation: values.get(ACTIVATION_KEY) ?? null }));
 });
 `;
 
-function runSeeder({ mode = 'ok', records = [], lastGood = null } = {}) {
+function runSeeder({ mode = 'ok', records = [], lastGood = null, extraEnv = {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'orbital-catalog-seed-'));
   const preloadPath = join(dir, 'preload.mjs');
   writeFileSync(preloadPath, preload);
@@ -148,6 +150,7 @@ function runSeeder({ mode = 'ok', records = [], lastGood = null } = {}) {
         TEST_CELESTRAK_FILE: celestrakFile,
         TEST_STATE_FILE: stateFile,
         ...(lastGood ? { TEST_LAST_GOOD: JSON.stringify(lastGood) } : {}),
+        ...extraEnv,
       },
       encoding: 'utf8',
       timeout: 60_000,
@@ -174,27 +177,29 @@ function lastGoodCatalog() {
 
 describe('seed-orbital-catalog run', () => {
   it('publishes the profiled satellites, extends the ring and activates the health probe', () => {
-    const r = runSeeder({ records: [...UNPROFILED, ...PROFILED], lastGood: lastGoodCatalog() });
+    const r = runSeeder({ records: [...UNPROFILED, ...PROFILED], lastGood: lastGoodCatalog(), extraEnv: { WM_BUNDLE_COMPLETION_META_KEY: COMPLETION_KEY } });
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    const { canonical, meta, activation, userAgent } = r.fixture;
+    const { canonical, meta, completion, activation, userAgent } = r.fixture;
     const envelope = JSON.parse(canonical);
     assert.deepEqual(envelope.data.satellites.map((s) => s.noradId), ids(PROFILED));
     assert.equal(envelope._seed.recordCount, PROFILED.length);
     assert.deepEqual(envelope.data.ring.map((d) => d.day), [utcDay(Date.now() - DAY_MS), utcDay(Date.now())]);
     assert.ok(JSON.parse(meta).fetchedAt > Date.now() - 60_000, 'seed-meta refreshed');
     assert.equal(activation, '1');
+    assert.equal(JSON.parse(completion)?.fetchedAt, envelope._seed.fetchedAt, 'the bundle completion marker binds to this run');
     assert.match(userAgent, /WorldMonitor/);
   });
 
   it('exits publish-blocked on an upstream 403 and leaves the catalog and its ring unchanged', () => {
     const r = runSeeder({ mode: 'forbidden', lastGood: lastGoodCatalog() });
     assert.equal(r.status, PUBLISH_BLOCKED_EXIT_CODE, r.stdout + r.stderr);
-    const { canonical, meta, initial, writes, activation, celestrakCalls } = r.fixture;
+    const { canonical, meta, initial, writes, activation, completion, celestrakCalls } = r.fixture;
     assert.equal(celestrakCalls, 1, 'a refusal is not retried');
     assert.equal(canonical, initial.canonical);
     assert.equal(meta, initial.meta);
     assert.ok(!writes.includes(ORBITAL_CATALOG_KEY) && !writes.includes(META_KEY), `writes ${writes}`);
     assert.equal(activation, null);
+    assert.equal(completion, null);
   });
 
   it('does not overwrite the stored catalog when no object matches a profile', () => {
