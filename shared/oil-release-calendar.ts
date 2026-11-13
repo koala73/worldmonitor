@@ -1,30 +1,61 @@
-// EIA rechecked 2026-11-13: published schedule covers 2026-01-16 through 2028-01-14; last release 2028-01-20.
-// CME reviewed 2026-11-10. Update when publishers revise their schedules.
-// EIA: https://www.eia.gov/petroleum/supply/weekly/schedule.php
-// Keys are the NEW observation's week-ending date; values include the ET offset.
-export const EIA_RELEASE_SHIFTS: Readonly<Record<string, string>> = {
+const DAY = 86_400_000;
+const utc = (year: number, month: number, day: number) => Date.UTC(year, month - 1, day);
+
+// EIA releases the Weekly Petroleum Status Report Wednesday 10:30 ET. A federal
+// holiday on the Monday through Wednesday of that week moves it to Thursday 12:00 ET.
+// https://www.eia.gov/petroleum/supply/weekly/schedule.php
+// The rule has no expiry. Only publisher departures from it are listed here, keyed
+// by the NEW observation's week-ending date, with the ET offset in the value.
+export const EIA_RELEASE_OVERRIDES: Readonly<Record<string, string>> = {
   '2024-12-27': '2025-01-02T11:00:00-05:00',
-  '2025-01-17': '2025-01-23T12:00:00-05:00',
-  '2025-02-14': '2025-02-20T12:00:00-05:00',
-  '2025-05-23': '2025-05-29T12:00:00-04:00',
-  '2025-08-29': '2025-09-04T12:00:00-04:00',
-  '2025-10-10': '2025-10-16T12:00:00-04:00',
-  '2025-11-07': '2025-11-13T12:00:00-05:00',
   '2025-12-19': '2025-12-29T17:00:00-05:00',
-  '2026-01-16': '2026-01-22T12:00:00-05:00',
-  '2026-02-13': '2026-02-19T12:00:00-05:00',
-  '2026-05-22': '2026-05-28T12:00:00-04:00',
-  '2026-09-04': '2026-09-10T12:00:00-04:00',
-  '2026-10-09': '2026-10-15T12:00:00-04:00',
-  '2026-11-06': '2026-11-12T12:00:00-05:00',
-  '2027-01-15': '2027-01-21T12:00:00-05:00',
-  '2027-02-12': '2027-02-18T12:00:00-05:00',
-  '2027-05-28': '2027-06-03T12:00:00-04:00',
-  '2027-07-02': '2027-07-08T12:00:00-04:00',
-  '2027-09-03': '2027-09-09T12:00:00-04:00',
-  '2027-10-08': '2027-10-14T12:00:00-04:00',
-  '2028-01-14': '2028-01-20T12:00:00-05:00',
 };
+
+function nthWeekday(year: number, month: number, weekday: number, n: number): number {
+  const first = new Date(utc(year, month, 1)).getUTCDay();
+  return utc(year, month, 1 + ((weekday - first + 7) % 7) + (n - 1) * 7);
+}
+
+function lastMonday(year: number, month: number): number {
+  const last = utc(year, month + 1, 0);
+  return last - ((new Date(last).getUTCDay() + 6) % 7) * DAY;
+}
+
+// A Saturday holiday is observed Friday and a Sunday holiday Monday.
+function observed(time: number): number {
+  const day = new Date(time).getUTCDay();
+  return day === 6 ? time - DAY : day === 0 ? time + DAY : time;
+}
+
+export function usFederalHolidays(year: number): ReadonlySet<number> {
+  return new Set([
+    observed(utc(year, 1, 1)), observed(utc(year + 1, 1, 1)), observed(utc(year, 6, 19)),
+    observed(utc(year, 7, 4)), observed(utc(year, 11, 11)), observed(utc(year, 12, 25)),
+    nthWeekday(year, 1, 1, 3), nthWeekday(year, 2, 1, 3), lastMonday(year, 5),
+    nthWeekday(year, 9, 1, 1), nthWeekday(year, 10, 1, 2), nthWeekday(year, 11, 4, 4),
+  ]);
+}
+
+const easternClock = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', hourCycle: 'h23',
+});
+
+// Convert an Eastern wall-clock time on a UTC calendar day to an instant, across DST.
+export function easternWallTime(day: number, minutes: number): number {
+  const candidate = day + minutes * 60_000;
+  const parts = Object.fromEntries(easternClock.formatToParts(candidate).map(part => [part.type, part.value]));
+  return candidate + (minutes - (Number(parts.hour) * 60 + Number(parts.minute))) * 60_000;
+}
+
+// First EIA release for a week ending on or after `weekEnding` (UTC midnight).
+export function eiaReleaseFor(weekEnding: number): number {
+  const override = EIA_RELEASE_OVERRIDES[new Date(weekEnding).toISOString().slice(0, 10)];
+  if (override) return Date.parse(override);
+  const wednesday = weekEnding + ((3 - new Date(weekEnding).getUTCDay() + 7) % 7) * DAY;
+  const holidays = usFederalHolidays(new Date(wednesday).getUTCFullYear());
+  const shifted = [0, 1, 2].some(back => holidays.has(wednesday - back * DAY));
+  return shifted ? easternWallTime(wednesday + DAY, 12 * 60) : easternWallTime(wednesday, 10 * 60 + 30);
+}
 
 // CME Globex NYMEX energy, 2026–2027. Values are minutes after midnight EASTERN,
 // not CME's Central time. Zero means no session, including the preceding evening.
@@ -56,22 +87,19 @@ export const CME_ENERGY_CLOSES: Readonly<Record<string, number>> = {
   '2027-12-24': 0,
 };
 
-// Derive horizons from the actual rows, so adding a year cannot leave a separate
-// expiry constant behind. CME date-only entries use midnight UTC conservatively.
+// Only the CME table is hand-maintained. Derive its horizon from the rows so adding a
+// year cannot leave a separate expiry constant behind. Date-only entries use midnight
+// UTC conservatively.
 export function oilCalendarHorizons(now = Date.now()): Record<string, {
   lastDate: string; daysLeft: number; status: 'ok' | 'expiring' | 'expired';
 }> {
   if (!Number.isFinite(now)) throw new Error('Invalid oil calendar check time');
-  const ends = {
-    eia: Math.max(...Object.values(EIA_RELEASE_SHIFTS).map(Date.parse)),
-    cme: Math.max(...Object.keys(CME_ENERGY_CLOSES).map(Date.parse)),
+  const end = Math.max(...Object.keys(CME_ENERGY_CLOSES).map(Date.parse));
+  if (!Number.isFinite(end)) throw new Error('Missing cme oil calendar horizon');
+  return {
+    cme: {
+      lastDate: new Date(end).toISOString(), daysLeft: Math.floor((end - now) / DAY),
+      status: now > end ? 'expired' : end - now <= 45 * DAY ? 'expiring' : 'ok',
+    },
   };
-  return Object.fromEntries(Object.entries(ends).map(([name, end]) => {
-    if (!Number.isFinite(end)) throw new Error(`Missing ${name} oil calendar horizon`);
-    const daysLeft = Math.floor((end - now) / 86_400_000);
-    return [name, {
-      lastDate: new Date(end).toISOString(), daysLeft,
-      status: now > end ? 'expired' : end - now <= 45 * 86_400_000 ? 'expiring' : 'ok',
-    }];
-  }));
 }

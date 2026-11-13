@@ -4,42 +4,84 @@ import { spawnSync } from 'node:child_process';
 import { it } from 'node:test';
 import YAML from 'yaml';
 import * as calendar from '../shared/oil-release-calendar.ts';
+import { diffEiaSchedule, parseEiaSchedule } from '../scripts/_eia-schedule.mts';
 
 const DAY = 86_400_000;
-for (const [name, end] of Object.entries({
-  eia: Math.max(...Object.values(calendar.EIA_RELEASE_SHIFTS).map(Date.parse)),
-  cme: Math.max(...Object.keys(calendar.CME_ENERGY_CLOSES).map(Date.parse)),
-})) {
-  it(`${name} calendar horizon warns at 45 days and expires after its last date`, () => {
-    for (const [daysLeft, status] of [[60, 'ok'], [45, 'expiring'], [30, 'expiring'], [0, 'expiring'], [-1, 'expired']] as const) {
-      const result = calendar.oilCalendarHorizons(end - daysLeft * DAY)[name];
-      assert.equal(result.status, status);
-      assert.equal(result.daysLeft, daysLeft);
-      assert.equal(result.lastDate, new Date(end).toISOString());
-    }
-  });
-}
+const cmeEnd = Math.max(...Object.keys(calendar.CME_ENERGY_CLOSES).map(Date.parse));
+
+it('cme calendar horizon warns at 45 days and expires after its last date', () => {
+  for (const [daysLeft, status] of [[60, 'ok'], [45, 'expiring'], [30, 'expiring'], [0, 'expiring'], [-1, 'expired']] as const) {
+    const result = calendar.oilCalendarHorizons(cmeEnd - daysLeft * DAY).cme;
+    assert.equal(result.status, status);
+    assert.equal(result.daysLeft, daysLeft);
+    assert.equal(result.lastDate, new Date(cmeEnd).toISOString());
+  }
+});
+
+it('eia has no horizon because its holiday rule never expires', () => {
+  assert.deepEqual(Object.keys(calendar.oilCalendarHorizons(Date.parse('2040-01-01'))), ['cme']);
+});
 
 it('calendar monitor exits unsuccessfully and identifies the expiring calendar', () => {
-  const end = Math.max(...Object.values(calendar.EIA_RELEASE_SHIFTS).map(Date.parse));
   const run = (days: number) => spawnSync(process.execPath, [
-    'scripts/check-oil-calendar-horizon.mts', new Date(end - days * DAY).toISOString(),
+    'scripts/check-oil-calendar-horizon.mts', new Date(cmeEnd - days * DAY).toISOString(),
   ], { encoding: 'utf8' });
-  const earliestEnd = Math.min(end, Math.max(...Object.keys(calendar.CME_ENERGY_CLOSES).map(Date.parse)));
-  assert.equal(spawnSync(process.execPath, [
-    'scripts/check-oil-calendar-horizon.mts', new Date(earliestEnd - 60 * DAY).toISOString(),
-  ], { encoding: 'utf8' }).status, 0);
+  assert.equal(run(60).status, 0);
   const warning = run(30);
   assert.equal(warning.status, 1);
-  assert.match(warning.stdout, /eia: expiring.*30 days/);
+  assert.match(warning.stdout, /cme: expiring.*30 days/);
   assert.match(warning.stdout, /::error::/);
-  const cmeEnd = Math.max(...Object.keys(calendar.CME_ENERGY_CLOSES).map(Date.parse));
-  const cme = spawnSync(process.execPath, [
-    'scripts/check-oil-calendar-horizon.mts', new Date(cmeEnd - 30 * DAY).toISOString(),
-  ], { encoding: 'utf8' });
-  assert.equal(cme.status, 1);
-  assert.match(cme.stdout, /cme: expiring.*30 days/);
   assert.throws(() => calendar.oilCalendarHorizons(NaN), /Invalid/);
+});
+
+const release = (week: string) => new Date(calendar.eiaReleaseFor(Date.parse(`${week}T00:00:00Z`))).toISOString().replace('.000Z', 'Z');
+
+it('eia release rule reproduces every shift published for 2025 through 2028', () => {
+  const published: Record<string, string> = {
+    '2025-01-17': '2025-01-23T17:00:00Z', '2025-02-14': '2025-02-20T17:00:00Z',
+    '2025-05-23': '2025-05-29T16:00:00Z', '2025-08-29': '2025-09-04T16:00:00Z',
+    '2025-10-10': '2025-10-16T16:00:00Z', '2025-11-07': '2025-11-13T17:00:00Z',
+    '2026-01-16': '2026-01-22T17:00:00Z', '2026-02-13': '2026-02-19T17:00:00Z',
+    '2026-05-22': '2026-05-28T16:00:00Z', '2026-09-04': '2026-09-10T16:00:00Z',
+    '2026-10-09': '2026-10-15T16:00:00Z', '2026-11-06': '2026-11-12T17:00:00Z',
+    '2027-01-15': '2027-01-21T17:00:00Z', '2027-02-12': '2027-02-18T17:00:00Z',
+    '2027-05-28': '2027-06-03T16:00:00Z', '2027-07-02': '2027-07-08T16:00:00Z',
+    '2027-09-03': '2027-09-09T16:00:00Z', '2027-10-08': '2027-10-14T16:00:00Z',
+    '2028-01-14': '2028-01-20T17:00:00Z',
+  };
+  for (const [week, expected] of Object.entries(published)) assert.equal(release(week), expected, week);
+});
+
+it('eia release rule keeps the regular Wednesday 10:30 ET release and the listed overrides', () => {
+  assert.equal(release('2026-11-13'), '2026-11-18T15:30:00Z');
+  assert.equal(release('2026-06-26'), '2026-07-01T14:30:00Z');
+  assert.equal(release('2025-12-19'), '2025-12-29T22:00:00Z');
+  assert.equal(release('2024-12-27'), '2025-01-02T16:00:00Z');
+});
+
+it('eia release rule keeps shifting holiday weeks beyond the last published row', () => {
+  assert.equal(release('2030-05-24'), '2030-05-30T16:00:00Z');
+  assert.equal(release('2031-11-07'), '2031-11-13T17:00:00Z');
+  assert.equal(release('2035-06-15'), '2035-06-21T16:00:00Z');
+});
+
+const FIXTURE = (week: string, alternate: string, time: string) => `<table><tbody><tr class="past-holiday">
+  <th scope="row">${week}</th><td>${alternate}</td><td>Thursday</td><td>${time}</td><td>Holiday</td></tr></tbody></table>`;
+
+it('publisher schedule parser and diff agree with the rule and flag a departure', () => {
+  const agree = parseEiaSchedule(FIXTURE('May 22, 2026', 'May 28, 2026', '12:00 p.m.')
+    + FIXTURE('September 4, 2026', 'September 10, 2026', '12:00 p.m.'));
+  assert.equal(agree.length, 2);
+  assert.deepEqual(diffEiaSchedule(agree), []);
+  const moved = parseEiaSchedule(FIXTURE('May 22, 2026', 'May 28, 2026', '12:00 p.m.')
+    + FIXTURE('September 4, 2026', 'September 11, 2026', '12:00 p.m.'));
+  const problems = diffEiaSchedule(moved);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /week ending 2026-09-04/);
+  const extra = parseEiaSchedule(FIXTURE('May 22, 2026', 'May 28, 2026', '12:00 p.m.')
+    + FIXTURE('July 24, 2026', 'July 30, 2026', '12:00 p.m.'));
+  assert.match(diffEiaSchedule(extra).join('\n'), /week ending 2026-07-24/);
+  assert.deepEqual(parseEiaSchedule('<html>layout changed</html>'), []);
 });
 
 it('calendar warning runs daily in CI without suppressing failure', () => {
@@ -59,14 +101,4 @@ it('market documentation and tool description acknowledge modeled CME holidays',
   assert.match(docs, /CME energy holiday sessions for 2026–2027/);
   const source = readFileSync(new URL('../api/mcp/registry/cache-tools.ts', import.meta.url), 'utf8');
   assert.match(source, /futures NYMEX breaks and CME energy holidays \(2026–2027\) plus 30m restart grace/);
-});
-
-it('published 2027 EIA shifts are Thursday noon ET releases for the Friday week ending six days earlier', () => {
-  const rows = Object.entries(calendar.EIA_RELEASE_SHIFTS).filter(([week]) => week.startsWith('2027-') || week === '2028-01-14');
-  assert.equal(rows.length, 7);
-  for (const [week, release] of rows) {
-    assert.equal(new Date(`${week}T12:00:00Z`).getUTCDay(), 5, `${week} is a Friday`);
-    assert.match(release, /T12:00:00-0[45]:00$/);
-    assert.equal(new Date(release).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'America/New_York' }), 'Thursday');
-  }
 });
