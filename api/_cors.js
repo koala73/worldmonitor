@@ -10,11 +10,6 @@ export function isHostedAppOrigin(origin) {
 
 const ALLOWED_ORIGIN_PATTERNS = [
   APP_ORIGIN_PATTERN,
-  // Vercel preview deployments under the "eliewm" team scope, e.g.
-  //   worldmonitor-git-<branch>-eliewm.vercel.app  (git-branch alias)
-  //   worldmonitor-<hash>-eliewm.vercel.app        (deployment URL)
-  // Tight on purpose: never a bare *.vercel.app (this is a security allowlist).
-  /^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$/,
   /^https?:\/\/tauri\.localhost(:\d+)?$/,
   /^https?:\/\/[a-z0-9-]+\.tauri\.localhost(:\d+)?$/i,
   /^tauri:\/\/localhost$/,
@@ -142,11 +137,26 @@ function isWorldMonitorGoogleTranslateOrigin(origin) {
   }
 }
 
+/**
+ * A Vercel preview deployment trusts only its own hostnames: the deployment
+ * URL (VERCEL_URL) and the git-branch alias (VERCEL_BRANCH_URL). Never match
+ * previews by name pattern: `<project>.vercel.app` goes to whichever Vercel
+ * account claims the project name first, so `worldmonitor-*-eliewm.vercel.app`
+ * is registrable by anyone. Read at call time; production never matches.
+ * Keep in sync with server/cors.ts.
+ */
+function isOwnPreviewDeploymentOrigin(origin) {
+  if (process.env.VERCEL_ENV !== 'preview') return false;
+  return [process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL]
+    .some((host) => Boolean(host) && origin === `https://${host}`);
+}
+
 function isAllowedOrigin(origin) {
   if (!origin || origin.length > MAX_ORIGIN_BYTES
     || ORIGIN_ENCODER.encode(origin).byteLength > MAX_ORIGIN_BYTES) return false;
   if (isWorldMonitorGoogleTranslateOrigin(origin)) return true;
   const candidate = originForAllowlistMatch(origin);
+  if (isOwnPreviewDeploymentOrigin(candidate)) return true;
   return ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(candidate));
 }
 
