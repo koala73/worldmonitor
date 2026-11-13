@@ -146,16 +146,47 @@ export default async function ({ page, base, shot, log, expectVisible }) {
 
   await sheet.locator('.ow-primary').click();
   await page.locator('.orbital-watch-sheet[data-view="full"]').waitFor();
-  const passRow = sheet.locator('.ow-group[data-group="watched"] .ow-row[data-key^="pass:"]').first();
+  const passRow = sheet.locator('.ow-group[data-group="watched"] .ow-row[data-key^="pass:"]:has(.ow-tile img)').first();
   await passRow.waitFor({ timeout: 30_000 });
   await passRow.locator('.ow-row-name').click();
   const detail = sheet.locator('.ow-detail');
   await detail.waitFor();
+  // A pass that made an image opens on its own crop, decoded, with the reticle and credit, and the crop opens the viewer.
+  const crop = detail.locator('.ow-detail-media[data-media="image"] .ow-tile-hero[data-state="loaded"]');
+  await crop.waitFor({ timeout: 60_000 });
+  const cropInfo = await crop.evaluate((tile) => {
+    const img = tile.querySelector('img');
+    const box = tile.getBoundingClientRect();
+    return { src: img.src, natural: [img.naturalWidth, img.naturalHeight], box: [Math.round(box.width), Math.round(box.height)], reticle: Boolean(tile.querySelector('.ow-reticle')), credit: tile.closest('.ow-detail-media').querySelector('.ow-detail-credit')?.textContent };
+  });
+  log('pass detail crop', JSON.stringify(cropInfo));
+  if (!ARCHIVE_HOSTS.includes(new URL(cropInfo.src).hostname) || !cropInfo.natural[0] || !cropInfo.reticle || !cropInfo.credit) throw new Error(`pass detail crop incomplete: ${JSON.stringify(cropInfo)}`);
   log('pass detail', (await detail.innerText()).replace(/\s+/g, ' '));
   log('pass detail map mark', JSON.stringify(await markAt()));
   await shot('pass-detail');
+  await crop.locator('[data-action="view-image"]').click();
+  const cropViewer = page.locator('.oiv-dialog');
+  await cropViewer.waitFor();
+  const viewerSrc = await cropViewer.locator('img.oiv-image').first().getAttribute('src');
+  log('pass detail crop opens the viewer on', viewerSrc === cropInfo.src ? 'the same crop' : viewerSrc);
+  if (viewerSrc !== cropInfo.src) throw new Error('the pass detail crop opened the viewer on another image');
+  await page.keyboard.press('Escape');
+  await cropViewer.waitFor({ state: 'detached' });
   await page.keyboard.press('Escape');
   await detail.waitFor({ state: 'detached' });
+
+  // A pass with no image of the spot shows its tier glyph and label instead of a blank box.
+  const bare = sheet.locator('.ow-row[data-key^="pass:"]:has(.ow-glyph-tile)').first();
+  if (await bare.count()) {
+    await bare.scrollIntoViewIfNeeded();
+    await bare.locator('.ow-row-name').click();
+    await detail.waitFor();
+    const glyph = await detail.locator('.ow-detail-media[data-media="glyph"]').innerText();
+    log('pass detail without an image', glyph.replace(/\s+/g, ' '));
+    await shot('pass-detail-glyph');
+    await page.keyboard.press('Escape');
+    await detail.waitFor({ state: 'detached' });
+  } else log('pass detail without an image', 'no imageless pass in this lookup');
   if (!(await page.locator('.orbital-watch-sheet[data-view="full"]').count())) throw new Error('Escape from the pass detail left the full view');
 
   const needles = pointText.match(/\d+\.\d\d/g);

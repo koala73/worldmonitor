@@ -389,6 +389,7 @@ body.orbital-full-view #mapSection > .panel-header { display: none !important; }
 .ow-status-right { text-align: right; }
 
 @media (max-width: 768px) {
+  .ow-detail-media .ow-tile-hero { aspect-ratio: 2 / 1; }
   .orbital-watch-sheet,
   .orbital-watch-sheet[data-view="full"] {
     inset: 38vh 0 calc(58px + env(safe-area-inset-bottom, 0px)) 0;
@@ -481,6 +482,10 @@ body.orbital-full-view #mapSection > .panel-header { display: none !important; }
 .ow-detail-title strong { font-size: 18px; line-height: 24px; color: var(--ow-text); }
 .ow-detail-title .ow-glyph { color: var(--ow-accent); }
 .ow-detail-title .ow-label { color: var(--ow-dim); }
+.ow-detail-media { margin: 0 0 var(--ow-space-3); }
+.ow-detail-glyph { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--ow-space-2); aspect-ratio: 2 / 1; border: 1px dashed var(--ow-line); color: var(--ow-dim); }
+.ow-detail-glyph .ow-glyph { font-size: 32px; line-height: 1; color: var(--ow-accent); }
+.ow-detail-credit { display: block; margin-top: var(--ow-space-1); color: var(--ow-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ow-detail-grid { display: grid; grid-template-columns: 1fr 1fr; margin: 0; border-top: 1px solid var(--ow-line); }
 .ow-detail-cell { padding: var(--ow-space-2) 0; border-bottom: 1px solid var(--ow-line); }
 .ow-detail-cell:nth-child(2n) { padding-left: var(--ow-space-3); border-left: 1px solid var(--ow-line); }

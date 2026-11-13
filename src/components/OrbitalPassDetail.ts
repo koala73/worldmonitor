@@ -9,6 +9,8 @@ export interface PassDetailInput {
   /** The archive image this pass produced, or null when none is public. */
   acquisition: MatchedAcquisition | null;
   point: GeoPoint;
+  /** This pass's crop with its reticle, credit and viewer button, or a glyph tile with the tier when it made no image. */
+  media: HTMLElement;
   glyph: string;
   /** Day and time of the pass, already formatted. */
   when: string;
@@ -92,6 +94,7 @@ export function renderPassDetail(input: PassDetailInput): HTMLElement {
       h('span', { className: 'ow-glyph', 'aria-hidden': 'true' }, input.glyph),
       h('strong', null, pass.name),
       h('span', { className: 'ow-label' }, input.when)),
+    input.media,
     h('dl', { className: 'ow-detail-grid' },
       cell(t('orbitalWatch.passDetail.altitude'), `${altitude} KM`),
       cell(t('orbitalWatch.passDetail.offNadir'), `${input.offNadirDeg.toFixed(1)}°`),

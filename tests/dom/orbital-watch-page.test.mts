@@ -243,6 +243,10 @@ describe('satellite pass lookup sheet', () => {
     expect(detail.querySelector<HTMLButtonElement>('[data-action="clearest-look"]')!.disabled).toBe(false);
 
     detail.querySelector<HTMLButtonElement>('[data-action="detail-step"][data-step="1"]')!.click();
+    expect(detail.querySelector('.ow-detail-media')!.getAttribute('data-media')).toBe('glyph');
+    expect(detail.querySelector('.ow-detail-media img')).toBeNull();
+    expect(detail.querySelector('.ow-detail-glyph .ow-glyph')!.textContent).toBe(TIER_GLYPH_CHAR.watched);
+    expect(detail.querySelector('.ow-detail-glyph .ow-label')!.textContent).toBe('confirmed image');
     expect(detail.querySelector('.ow-detail-title strong')!.textContent).toBe(confirmedOld.name);
     expect(detail.querySelector('.ow-detail-cell:nth-child(3)')!.textContent).toBe('Pixel—');
     expect(detail.querySelector('.ow-detail-sentence')!.textContent).toMatch(/^LANDSAT 9 crossed 700 km up, 42 km to the north, at \d\d:\d\d UTC, moving south at 6\.71 km\/s over the ground\./);
@@ -253,6 +257,43 @@ describe('satellite pass lookup sheet', () => {
     expect(document.activeElement).toBe(rowOf(confirmedOld.name));
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(sheet().dataset.view).toBe('sheet');
+  });
+
+  it('tops a pass detail with the pass crop, its reticle and credit, and opens the viewer on that crop', async () => {
+    const { all, confirmedNew } = tiered();
+    const image = acquisition(confirmedNew, { cloudCoverPct: 12, condition: 'clear' });
+    mounted(answered(all, { acquisitions: [image] }), null, 'full');
+    rowOf(confirmedNew.name).click();
+    const detail = page().slot('pass-detail');
+    const media = detail.querySelector<HTMLElement>('.ow-detail-media')!;
+    expect(media.dataset.media).toBe('image');
+    expect(detail.querySelector('.ow-detail-title')!.nextElementSibling).toBe(media);
+    expect(media.nextElementSibling!.classList.contains('ow-detail-grid')).toBe(true);
+    const tile = media.querySelector<HTMLElement>('.ow-tile-hero')!;
+    expect(tile.querySelector('img')!.getAttribute('src')).toBe(image.imageUrl);
+    expect(tile.querySelector('.ow-reticle')).not.toBeNull();
+    expect(media.querySelector('.ow-detail-credit')!.textContent).toBe(`confirmed image · © Copernicus Sentinel ${new Date(confirmedNew.timeMs).getUTCFullYear()}`);
+    expect(detail.querySelector('.ow-detail-sentence')).not.toBeNull();
+    expect(detail.querySelectorAll('.ow-detail-cell')).toHaveLength(4);
+
+    tile.querySelector('img')!.dispatchEvent(new Event('load'));
+    const open = tile.querySelector<HTMLButtonElement>('[data-action="view-image"]')!;
+    expect(open.dataset.imageKey).toBe(image.key);
+    open.click();
+    await vi.waitFor(() => expect(document.querySelector('.oiv-dialog')).not.toBeNull());
+    expect(document.querySelector('.oiv-dialog img.oiv-image')!.getAttribute('src')).toBe(image.imageUrl);
+    document.querySelector('.oiv-dialog')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(document.activeElement).toBe(open);
+  });
+
+  it('shows a capability-overhead pass as its tier glyph, not an image', () => {
+    const { all, military } = tiered();
+    mounted(answered(all, { acquisitions: [acquisition(military)] }), null, 'full');
+    page().select(`${military.noradId}:${military.timeMs}`);
+    const media = page().slot('pass-detail').querySelector<HTMLElement>('.ow-detail-media')!;
+    expect(media.dataset.media).toBe('glyph');
+    expect(media.querySelector('img, [data-action="view-image"]')).toBeNull();
+    expect(media.querySelector('.ow-detail-glyph .ow-label')!.textContent).toBe('capability overhead');
   });
 
   it('asks the globe to replay a pass that has one', () => {

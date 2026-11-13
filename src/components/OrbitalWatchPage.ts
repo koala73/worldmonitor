@@ -470,6 +470,23 @@ function rowShell(key: string, tier: string, thumb: HTMLElement, name: string, t
 const glyphTile = (glyph: TierGlyph) =>
   h('div', { className: 'ow-glyph-tile', dataset: { glyph }, 'aria-hidden': 'true' }, h('span', { className: 'ow-glyph', dataset: { glyph } }, TIER_GLYPH_CHAR[glyph]));
 
+/** The top of a pass detail: the pass's own crop, opening the viewer, or its tier glyph when the pass left no image. */
+function passDetailMedia(pass: PointPass, acquisition: MatchedAcquisition | null): HTMLElement {
+  const tierLabel = t(TIER_LABEL_KEY[pass.tier.kind]);
+  if (!acquisition?.imageUrl) {
+    const glyph = GLYPH_OF_TIER[pass.tier.kind];
+    return h('figure', { className: 'ow-detail-media', dataset: { media: 'glyph' } },
+      h('div', { className: 'ow-detail-glyph', dataset: { glyph } },
+        h('span', { className: 'ow-glyph', dataset: { glyph }, 'aria-hidden': 'true' }, TIER_GLYPH_CHAR[glyph]),
+        h('span', { className: 'ow-label' }, tierLabel)));
+  }
+  const alt = t('orbitalWatch.row.imageAlt', { name: pass.name, time: formatWhen(pass.timeMs) });
+  const credit = acquisitionRowCredit(acquisition);
+  return h('figure', { className: 'ow-detail-media', dataset: { media: 'image' } },
+    imageTile(acquisition.imageUrl, alt, sensorName(acquisition.platform), 'hero', [...heroOverlays(), viewButton({ kind: 'acquisition', key: acquisition.key }, alt)]),
+    h('figcaption', { className: 'ow-detail-credit ow-label', title: credit.full }, `${tierLabel} · ${credit.short}`));
+}
+
 function acquisitionBadges(acquisition: MatchedAcquisition | null): HTMLElement[] {
   if (!acquisition) return [];
   if (acquisition.profileId === 'sentinel-1') return [badge(t('orbitalWatch.ui.caption.radar'), 'radar')];
@@ -1192,6 +1209,7 @@ export class OrbitalWatchPage {
       pass,
       acquisition: military ? null : acquisition,
       point: this.state.lookup.point,
+      media: passDetailMedia(pass, military ? null : acquisition),
       glyph: TIER_GLYPH_CHAR[GLYPH_OF_TIER[pass.tier.kind]],
       when: formatWhen(pass.timeMs),
       clock: formatOrbitalTime(pass.timeMs, 'when').split(' · ').pop()!,
