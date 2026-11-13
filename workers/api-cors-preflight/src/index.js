@@ -30,6 +30,9 @@ import { maybeServeBootstrapFromKv } from './kv-serve.js';
 // superset of (or identical to) the function-side allowlist; if it's narrower,
 // origins that the function would accept get the canonical fallback origin
 // echoed back and fail CORS at the browser.
+// The one exception is a Vercel preview deployment's own hostname, which the
+// function admits only on that preview (VERCEL_ENV=preview) and which never
+// reaches api.worldmonitor.app.
 // App-serving hosts only; sibling vendor hosts do not inherit browser trust.
 // Keep aligned with convex/payments/returnUrlOrigin.ts and CORS parity tests.
 const APP_ORIGIN_PATTERN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
@@ -38,10 +41,9 @@ const ORIGIN_ENCODER = new TextEncoder();
 
 const ALLOWED_ORIGIN_PATTERNS = [
   APP_ORIGIN_PATTERN,
-  // Vercel previews under the "eliewm" team scope, e.g.
-  //   worldmonitor-git-<branch>-eliewm.vercel.app / worldmonitor-<hash>-eliewm.vercel.app
-  // Mirror of api/_cors.js + server/cors.ts (see superset note above).
-  /^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$/,
+  // No *.vercel.app entry: preview pages call their own deployment's /api
+  // (src/services/runtime.ts routes only *.worldmonitor.app hosts here), and a
+  // `<project>.vercel.app` name pattern is claimable by any Vercel account.
   /^https?:\/\/tauri\.localhost(:\d+)?$/,
   /^https?:\/\/[a-z0-9-]+\.tauri\.localhost(:\d+)?$/i,
   /^tauri:\/\/localhost$/,

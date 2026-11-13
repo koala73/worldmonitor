@@ -8,6 +8,9 @@ const originalFetch = globalThis.fetch;
 const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
 const originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 const preview = 'https://worldmonitor-git-review-eliewm.vercel.app';
+// Previews are trusted only as their own deployment (api/_cors.js), so run as one.
+process.env.VERCEL_ENV = 'preview';
+process.env.VERCEL_BRANCH_URL = new URL(preview).host;
 const stateToken = 's'.repeat(27);
 
 // The route now admits by IP before touching the launch key. The limiter uses
