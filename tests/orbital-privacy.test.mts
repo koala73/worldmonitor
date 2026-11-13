@@ -33,7 +33,7 @@ describe('a free lookup keeps the exact point to the archives', () => {
 
   it('removes the point from every archive request before Sentry sees it', async () => {
     const { requests, evidence } = await lookupRequests();
-    const imageUrls = [...evidence.acquisitions.map((a) => a.imageUrl), ...evidence.mosaics.flatMap((m) => m.days.map((d) => d.imageUrl)), ...evidence.frames.map((f) => f.latest?.imageUrl)]
+    const imageUrls = [...evidence.acquisitions.map((a) => a.imageUrl), ...evidence.mosaics.flatMap((m) => m.days.map((d) => d.imageUrl)), ...evidence.frames.flatMap((f) => [f.latest?.imageUrl, ...(f.latest?.fallbacks ?? []).map((frame) => frame.imageUrl)])]
       .filter((url): url is string => Boolean(url));
     const urls = [...requests.map((r) => r.url), ...imageUrls];
     const event = scrubSentryCredentials({
