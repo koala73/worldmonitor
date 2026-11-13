@@ -189,6 +189,18 @@ describe('orbital pass job', () => {
     assert.ok(result.passes.every((pass) => Math.abs(pass.orbitAgeDays - Math.abs(pass.timeMs - pass.elementsEpochMs) / DAY) < 1e-9));
   });
 
+  it('covers the whole window from usable element sets when a stored set is too old to trust', async () => {
+    const [sentinel] = satellites;
+    const current = sentinel!.elementSets[0]!;
+    const stale = { ...current, EPOCH: new Date(Date.parse(`${current.EPOCH}Z`) - 7 * DAY).toISOString().replace('Z', '') };
+    const window = { startMs: NOW - 7 * DAY, endMs: NOW };
+    const withStale = await runPassJob({ point: PARIS, window, nowMs: NOW, satellites: [{ ...sentinel!, elementSets: [stale, current] }] });
+    const currentOnly = await runPassJob({ point: PARIS, window, nowMs: NOW, satellites: [{ ...sentinel!, elementSets: [current] }] });
+    assert.equal(withStale!.satellites[0]!.status, 'ok');
+    assert.ok(withStale!.passes.some((pass) => pass.timeMs < NOW - 5 * DAY), 'passes early in the window are kept');
+    assert.deepEqual(summary(withStale!.passes), summary(currentOnly!.passes));
+  });
+
   it('reports a satellite with unusable elements without failing the lookup', async () => {
     const broken = { ...satellites[0]!, elementSets: [{ ...satellites[0]!.elementSets[0]!, MEAN_MOTION: 'not a number', EPOCH: 'garbage' }] };
     const result = await runPassJob({ point: PARIS, window: lookupWindow, nowMs: NOW, satellites: [broken, satellites[1]!] });

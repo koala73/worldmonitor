@@ -1,5 +1,6 @@
 import {
   findPasses,
+  ORBIT_ELEMENTS_MAX_AGE_DAYS,
   parseOrbitElements,
   PASS_WINDOW_MAX_DAYS,
   type GeoPoint,
@@ -106,7 +107,11 @@ function satellitePasses(satellite: CatalogSatellite, input: PassJobInput): { ou
 
   const passes: PointPass[] = [];
   let anyFresh = false;
-  for (const segment of segmentsByNearestEpoch(sets, input.window)) {
+  const usable = sets.filter((elements) => (input.nowMs - elements.epochMs) / DAY_MS <= ORBIT_ELEMENTS_MAX_AGE_DAYS);
+  const segments = usable.length > 0
+    ? segmentsByNearestEpoch(usable, input.window)
+    : [{ elements: sets[sets.length - 1]!, startMs: input.window.startMs, endMs: input.window.endMs }];
+  for (const segment of segments) {
     const search = findPasses({
       elements: segment.elements,
       profile,
