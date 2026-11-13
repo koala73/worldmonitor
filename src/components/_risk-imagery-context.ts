@@ -7,6 +7,6 @@ export const IMAGERY_CONTEXT_METHODOLOGY_HREF = '/docs/methodology/cii-risk-scor
 export function imageryChangeSummary(context: ImageryChangeContext | null | undefined): string | null {
   const sites = context?.confirmedSites ?? [];
   if (sites.length === 0) return null;
-  const named = sites.map((site) => `${site.name} (confirmed ${site.confirmedAt.slice(0, 10)})`).join('; ');
+  const named = sites.map((site) => `${site.name} (confirmed ${new Date(site.confirmedAt).toISOString().slice(0, 10)})`).join('; ');
   return `Imagery statistics changed at ${sites.length} of ${context!.watchedSiteCount} watched sites: ${named}.`;
 }

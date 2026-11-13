@@ -110,7 +110,7 @@ describe('imagery change context beside country risk', () => {
     const response = await read('IR');
     assert.deepEqual(response.imageryChange, {
       watchedSiteCount: 3,
-      confirmedSites: [{ siteId: 'nuclear-facility:natanz', name: 'Natanz nuclear facility', confirmedAt: '2026-11-10T02:41:00Z' }],
+      confirmedSites: [{ siteId: 'nuclear-facility:natanz', name: 'Natanz nuclear facility', confirmedAt: Date.parse('2026-11-10T02:41:00Z') }],
     });
   });
 
@@ -148,7 +148,7 @@ describe('published exclusion', () => {
   it('the risk display pairs the named flag with the exclusion text', () => {
     const summary = imageryChangeSummary({
       watchedSiteCount: 3,
-      confirmedSites: [{ siteId: 'nuclear-facility:natanz', name: 'Natanz nuclear facility', confirmedAt: '2026-11-10T02:41:00Z' }],
+      confirmedSites: [{ siteId: 'nuclear-facility:natanz', name: 'Natanz nuclear facility', confirmedAt: Date.parse('2026-11-10T02:41:00Z') }],
     });
     assert.equal(summary, 'Imagery statistics changed at 1 of 3 watched sites: Natanz nuclear facility (confirmed 2026-11-10).');
     assert.match(IMAGERY_CONTEXT_EXCLUSION, /not part of the instability score/);

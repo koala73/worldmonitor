@@ -268,7 +268,7 @@ export interface ImageryChangeContext {
 export interface ImageryChangeSite {
   siteId: string;
   name: string;
-  confirmedAt: string;
+  confirmedAt: number;
 }
 
 export interface GetCountryIntelBriefRequest {

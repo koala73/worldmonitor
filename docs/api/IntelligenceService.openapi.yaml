@@ -8068,8 +8068,9 @@ components:
                 name:
                     type: string
                 confirmedAt:
-                    type: string
-                    description: ISO 8601 time of the confirming scene.
+                    type: integer
+                    format: int64
+                    description: 'Time of the confirming scene, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: A watched site with a confirmed change.
         GetCountryIntelBriefRequest:
             type: object

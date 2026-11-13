@@ -50,6 +50,6 @@ message ImageryChangeContext {
 message ImageryChangeSite {
   string site_id = 1;
   string name = 2;
-  // ISO 8601 time of the confirming scene.
-  string confirmed_at = 3;
+  // Time of the confirming scene, as Unix epoch milliseconds.
+  int64 confirmed_at = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }

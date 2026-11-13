@@ -37,6 +37,6 @@ export function imageryChangeContext(rollupRaw: unknown, indexRaw: unknown, coun
     watchedSiteCount: rollup.sites.length,
     confirmedSites: rollup.sites
       .filter((site) => site.flag?.state === 'confirmed' && site.flag.confirmed)
-      .map((site) => ({ siteId: site.siteId, name: site.name, confirmedAt: site.flag!.confirmed!.datetime })),
+      .map((site) => ({ siteId: site.siteId, name: site.name, confirmedAt: Date.parse(site.flag!.confirmed!.datetime) })),
   };
 }
