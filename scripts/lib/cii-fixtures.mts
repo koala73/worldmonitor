@@ -415,21 +415,40 @@ export function validateCiiCalibrationInputs(raw: CiiCaptureInputs, targets: rea
   for (let ms = Date.UTC(new Date(w.startMs).getUTCFullYear(), new Date(w.startMs).getUTCMonth(), 1); ms <= w.endMs;) {
     const d = new Date(ms);
     const month = d.toISOString().slice(0, 7);
-    if (!months[month] || months[month] !== w.months?.[month]
-        || months[month] !== parties!.filter(r => r.month === month).reduce((n, r) => n + r.events, 0)) fail('UCDP monthly counts disagree');
+    const count = months[month] ?? 0;
+    if (count !== w.months?.[month]
+        || count !== parties!.filter(r => r.month === month).reduce((n, r) => n + r.events, 0)) fail('UCDP monthly counts disagree');
     ms = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
   }
   const byDay = new Map<number, number>();
-  for (const [day, count] of dailyRows) byDay.set(day!, (byDay.get(day!) ?? 0) + count!);
-  if (byDay.size !== totals.length || totals.some(([day, count]) => byDay.get(day!) !== count)) fail('UCDP country-day counts disagree');
-  const partyEvents = parties!.reduce((n, r) => n + r.events, 0);
-  const partyDeaths = parties!.reduce((n, r) => n + r.deaths, 0);
+  const dailyByCountryMonth = new Map<string, number>();
+  for (const [country, rows] of Object.entries(u!.countryDays)) {
+    for (const [day, count] of rows as number[][]) {
+      byDay.set(day!, (byDay.get(day!) ?? 0) + count!);
+      const key = JSON.stringify([country, new Date(day! * dayMs).toISOString().slice(0, 7)]);
+      dailyByCountryMonth.set(key, (dailyByCountryMonth.get(key) ?? 0) + count!);
+    }
+  }
+  // The producer omits unnamed events from countryDays, but includes them in
+  // global totals and in explicit [unknown] party groups. Never drop those facts.
+  if (totals.some(([day, count]) => (byDay.get(day!) ?? 0) > count!)
+      || [...byDay.keys()].some(day => !days.includes(day))) fail('UCDP country-day counts disagree');
+  const locatedParties = parties!.filter(row => row.country !== '[unknown]');
+  const partyByCountryMonth = new Map<string, number>();
+  for (const row of locatedParties) {
+    const key = JSON.stringify([row.country, row.month]);
+    partyByCountryMonth.set(key, (partyByCountryMonth.get(key) ?? 0) + row.events);
+  }
+  const countryMonths = new Set([...dailyByCountryMonth.keys(), ...partyByCountryMonth.keys()]);
+  if ([...countryMonths].some(key => (dailyByCountryMonth.get(key) ?? 0) !== (partyByCountryMonth.get(key) ?? 0))) fail('UCDP country-month counts disagree');
+  const partyEvents = locatedParties.reduce((n, r) => n + r.events, 0);
+  const partyDeaths = locatedParties.reduce((n, r) => n + r.deaths, 0);
   const events = dailyRows.reduce((n, r) => n + r[1]!, 0);
   const deaths = dailyRows.reduce((n, r) => n + r[2]!, 0);
   if (events <= 0 || events !== partyEvents
       // Legacy activity counts at least one death per event; party facts retain real zeros.
       || deaths < partyDeaths
       || deaths > partyDeaths + partyEvents
-      || events !== u!.dailyTotals.reduce((n: number, r: number[]) => n + r[1]!, 0)
-      || !isObj(w.months) || events !== Object.values(w.months).reduce<number>((n, v) => n + Number(v), 0)) fail('UCDP window counts disagree');
+      || parties!.reduce((n, r) => n + r.events, 0) !== totals.reduce((n, r) => n + r[1]!, 0)
+      || !isObj(w.months) || totals.reduce((n, r) => n + r[1]!, 0) !== Object.values(w.months).reduce<number>((n, v) => n + Number(v), 0)) fail('UCDP window counts disagree');
 }

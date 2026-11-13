@@ -194,6 +194,19 @@ it('calibration captures retain both maps and the entire UCDP payload', () => {
   assert.throws(() => validateCiiCalibrationInputs({ ...raw, ucdp: { ...raw.ucdp, window: { ...raw.ucdp.window, complete: false } } }, CII_EXPANDED_CAPTURE_TARGETS), /window/);
   assert.throws(() => validateCiiCalibrationInputs({ ...raw, ucdp: { ...raw.ucdp, dailyTotals: raw.ucdp.dailyTotals.slice(-60) } }, CII_EXPANDED_CAPTURE_TARGETS), /truncated/);
   assert.throws(() => validateCiiCalibrationInputs({ ...raw, ucdp: { ...raw.ucdp, countryDays: { Philippines: [[20362, 1, 1]] } } }, CII_EXPANDED_CAPTURE_TARGETS), /counts/);
+  const boundaryEvents = raw.ucdp.events.filter(e => e.dateStart !== raw.ucdp.window.endMs);
+  const boundarySummary = summarizeUcdpWindow(boundaryEvents, raw.ucdp.window);
+  const boundary = { ...raw, ucdp: { events: boundaryEvents, ...boundarySummary,
+    window: { ...raw.ucdp.window, months: boundarySummary.months, gapMonths: boundarySummary.gapMonths } } };
+  assert.equal(boundary.ucdp.window.gapMonths.length, 0);
+  assert.doesNotThrow(() => validateCiiCalibrationInputs(boundary, CII_EXPANDED_CAPTURE_TARGETS));
+  const unnamedEvents = [...raw.ucdp.events, { ...raw.ucdp.events[0]!, country: '', deathsBest: 0 }];
+  const unnamedSummary = summarizeUcdpWindow(unnamedEvents, raw.ucdp.window);
+  const unnamed = { ...raw, ucdp: { events: unnamedEvents, ...unnamedSummary,
+    window: { ...raw.ucdp.window, months: unnamedSummary.months, gapMonths: unnamedSummary.gapMonths } } };
+  assert.doesNotThrow(() => validateCiiCalibrationInputs(unnamed, CII_EXPANDED_CAPTURE_TARGETS));
+  const mislabeled = { ...raw, ucdp: { ...raw.ucdp, partyMonths: raw.ucdp.partyMonths.map((r: any) => ({ ...r, country: 'Ukraine' })) } };
+  assert.throws(() => validateCiiCalibrationInputs(mislabeled, CII_EXPANDED_CAPTURE_TARGETS), /country-month/);
   const shortStartMs = raw.ucdp.window.endMs - 340 * 86400000;
   const shortEvents = raw.ucdp.events.filter(e => e.dateStart >= shortStartMs);
   const shortSummary = summarizeUcdpWindow(shortEvents, { startMs: shortStartMs, endMs: raw.ucdp.window.endMs });
