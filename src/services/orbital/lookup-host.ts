@@ -1,27 +1,35 @@
 /** What the satellite pass lookup needs from the dashboard it opens over, without importing it. */
 export interface LookupMapHandle {
-  setCenter(lat: number, lon: number, zoom?: number): unknown;
-  /** False on the SVG map, whose zoom is a plain scale factor rather than a tile zoom level. */
-  isDeckGLActive(): boolean;
-  isGlobeMode(): boolean;
+  getCenter(): { lat: number; lon: number } | null;
 }
 
 let mapAccess: () => LookupMapHandle | null = () => null;
 let lookupOpen = false;
+/** Where the lookup left the map: centred on the looked-up place, which the URL must not carry. */
+let leftAt: { lat: number; lon: number } | null = null;
 
 export function connectOrbitalLookupMap(access: () => LookupMapHandle | null): void {
   mapAccess = access;
 }
 
-export function orbitalLookupMap(): LookupMapHandle | null {
-  return mapAccess();
-}
+const sameCentre = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) =>
+  Math.abs(a.lat - b.lat) < 1e-6 && Math.abs(a.lon - b.lon) < 1e-6;
 
-/** While the lookup is open the map URL sync leaves the map centre out, so a looked-up place stays out of the query string. */
+/**
+ * While the lookup is open, and after it closes until the map moves, the map URL sync leaves the map centre out,
+ * so a looked-up place stays out of the query string.
+ */
 export function isOrbitalLookupOpen(): boolean {
-  return lookupOpen;
+  if (lookupOpen) return true;
+  if (!leftAt) return false;
+  const centre = mapAccess()?.getCenter();
+  if (centre && sameCentre(centre, leftAt)) return true;
+  leftAt = null;
+  return false;
 }
 
 export function setOrbitalLookupOpen(open: boolean): void {
+  if (lookupOpen && !open) leftAt = mapAccess()?.getCenter() ?? null;
+  if (open) leftAt = null;
   lookupOpen = open;
 }

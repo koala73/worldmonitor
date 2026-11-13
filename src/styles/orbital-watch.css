@@ -62,13 +62,27 @@
 .ow-close:hover { color: var(--ow-text) !important; }
 .ow-body { flex: 1; overflow-y: auto; padding: var(--ow-panel-pad); scrollbar-width: thin; }
 .ow-privacy {
-  margin: 0;
-  padding: var(--ow-space-2) var(--ow-panel-pad);
+  flex: none;
   border-top: 1px solid var(--ow-line);
   color: var(--ow-faint);
   font-size: 11px;
   line-height: 15px;
 }
+.ow-privacy-line {
+  display: block;
+  padding: 5px var(--ow-panel-pad);
+  list-style: none;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ow-privacy-line::-webkit-details-marker { display: none; }
+.ow-privacy-line:hover, .ow-privacy[open] .ow-privacy-line { color: var(--ow-dim); }
+.ow-privacy-body { max-height: 40vh; overflow-y: auto; padding: 0 var(--ow-panel-pad) var(--ow-space-2); color: var(--ow-dim); }
+.ow-privacy-body p { margin: 0 0 var(--ow-space-2); }
+.ow-sources-head { color: var(--ow-text); }
+.ow-sources { margin: 0; padding-left: 14px; }
 .ow-section + .ow-section { margin-top: var(--ow-section-gap); padding-top: var(--ow-section-gap); border-top: 1px solid var(--ow-line-soft); }
 .ow-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
@@ -143,7 +157,7 @@
 .ow-caption-lines span { overflow-wrap: anywhere; }
 .ow-caption-lines span:first-child { color: var(--ow-text); }
 .ow-replay { flex: none; padding: 4px 0 4px var(--ow-space-3); border: 0; border-left: 1px solid var(--ow-line); background: none; color: var(--ow-accent) !important; }
-.ow-image-credit { display: block; margin-top: var(--ow-space-1); color: var(--ow-faint); font-size: 10px; line-height: 14px; }
+.ow-image-credit { display: block; margin-top: var(--ow-space-1); color: var(--ow-faint); font-size: 10px; line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .ow-tile {
   position: relative;
@@ -230,7 +244,8 @@
 .ow-tier-number { font-family: var(--ow-font-mono); font-size: 22px; line-height: 26px; color: var(--ow-text); font-variant-numeric: tabular-nums; }
 .ow-tier-cell[data-glyph="watched"] .ow-tier-number { color: var(--ow-accent); }
 .ow-tier-name { color: var(--ow-text); }
-.ow-tier-def { color: var(--ow-dim); font-size: 11px; line-height: 15px; }
+.ow-tier-def, .ow-tier-short { color: var(--ow-dim); font-size: 11px; line-height: 15px; }
+.ow-tier-short { display: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ow-primary {
   width: 100%;
   padding: 11px 16px;
@@ -281,7 +296,7 @@
 .ow-row[aria-current="true"] { box-shadow: inset 2px 0 0 var(--ow-accent); background: rgba(245, 165, 36, 0.05); }
 .ow-row-main { flex: 1; min-width: 0; }
 .ow-row-name { font-size: 15px; line-height: 20px; color: var(--ow-text); font-weight: 500; }
-.ow-row-meta { overflow-wrap: anywhere; }
+.ow-row-meta, .ow-row-credit { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ow-row-credit { color: var(--ow-faint); font-size: 10px; line-height: 13px; }
 .ow-badges { display: flex; flex-direction: column; align-items: flex-end; gap: var(--ow-space-1); flex: none; max-width: 40%; }
 .ow-badge { padding: 1px 6px; border: 1px solid var(--ow-line); color: var(--ow-dim); white-space: nowrap; }
@@ -297,6 +312,42 @@
   inset: 0;
   width: auto;
   z-index: 10001;
+  pointer-events: auto;
+}
+body.orbital-full-view #mapSection > .panel-header { display: none !important; }
+.ow-mapmark {
+  position: fixed;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+.ow-mapmark[hidden] { display: none; }
+.ow-mapmark-ring {
+  position: absolute;
+  left: -14px;
+  top: -14px;
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid var(--ow-accent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(11, 12, 14, 0.6);
+}
+.ow-mapmark-ring::before, .ow-mapmark-ring::after {
+  content: '';
+  position: absolute;
+  background: var(--ow-accent);
+}
+.ow-mapmark-ring::before { left: 12px; top: -10px; width: 1.5px; height: 46px; background: linear-gradient(var(--ow-accent) 0 8px, transparent 8px 38px, var(--ow-accent) 38px); }
+.ow-mapmark-ring::after { top: 12px; left: -10px; height: 1.5px; width: 46px; background: linear-gradient(90deg, var(--ow-accent) 0 8px, transparent 8px 38px, var(--ow-accent) 38px); }
+.ow-mapmark-ring { background: radial-gradient(circle, var(--ow-accent) 0 2px, transparent 2.5px); }
+.ow-mapmark-label {
+  position: absolute;
+  left: 26px;
+  top: -9px;
+  padding: 2px 6px;
+  background: rgba(11, 12, 14, 0.82);
+  color: var(--ow-text);
+  white-space: nowrap;
 }
 .orbital-watch-sheet[data-view="full"] .ow-panel {
   inset: 16px 16px 44px auto;
@@ -350,9 +401,31 @@
     border-width: 1px 0 0;
   }
   .ow-handle { display: block; width: 36px; height: 4px; margin: 6px auto 0; border-radius: 2px; background: var(--ow-line); }
-  .ow-header { min-height: 48px; }
-  .ow-card { flex-basis: 86%; }
+  .ow-header { min-height: 42px; }
+  .ow-body { padding-top: var(--ow-space-2); }
+  .orbital-watch-sheet[data-view="sheet"] .ow-summary > .ow-section-head { display: none; }
+  .ow-headline-row { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: var(--ow-space-3); margin-bottom: 6px; }
+  .ow-headline-row > div { display: contents; }
+  .ow-headline { grid-column: 1 / -1; font-size: 16px; line-height: 20px; margin-bottom: 2px; }
+  .ow-subline { font-size: 13px; }
+  .ow-subline { line-height: 18px; }
+  .ow-share { padding: 0 10px; line-height: 18px; }
+  .ow-carousel { margin-bottom: var(--ow-space-3); }
+  .ow-track { align-items: flex-start; }
+  .ow-card { flex-basis: min(78%, 184px); }
+  .ow-caption { margin-top: 3px; line-height: 15px; }
+  .ow-caption .ow-label { line-height: 15px; }
+  .ow-caption-row { display: block; }
+  .ow-replay { display: block; padding: 0; border-left: 0; }
+  .ow-image-credit { margin-top: 0; }
+  .ow-row { display: grid; grid-template-columns: var(--ow-thumb-size) minmax(0, 1fr) auto; gap: 0 var(--ow-space-3); align-items: start; align-content: center; }
+  .ow-row > .ow-tile-thumb, .ow-row > .ow-glyph-tile { grid-row: 1 / span 4; align-self: center; }
+  .ow-row-main { display: contents; }
+  .ow-row-name { grid-column: 2; }
+  .ow-badges { grid-column: 3; grid-row: 1; flex-direction: row; max-width: none; }
+  .ow-row-meta, .ow-row-credit { grid-column: 2 / -1; }
   .ow-tier-def { display: none; }
+  .ow-tier-short { display: block; }
   .orbital-watch-sheet[data-view="full"] .ow-dock {
     left: 0;
     right: 0;

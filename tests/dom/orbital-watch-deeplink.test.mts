@@ -26,6 +26,7 @@ import { EventHandlerManager } from '@/app/event-handlers';
 import { SearchSelectionDispatcher } from '@/app/search-selection-dispatcher';
 import { COMMANDS } from '@/config/commands';
 import { connectOrbitalLookupMap, isOrbitalLookupOpen } from '@/services/orbital/lookup-host';
+import { setOrbitalMapView } from '@/app/orbital-map-focus';
 import { saveToStorage } from '@/utils';
 
 const NOW = Date.UTC(2026, 10, 13, 12);
@@ -65,8 +66,11 @@ function submitSearch(value: string): void {
 }
 
 let fetchMock: ReturnType<typeof vi.fn>;
-const setCenter = vi.fn();
-let deckGL = true;
+const center = vi.fn((_point: { lat: number; lon: number }, _offset: { x: number; y: number }) => true);
+let mapCentre: { lat: number; lon: number } | null = null;
+let releaseMapView = () => {};
+/** The points the map was centred on, rounded to 0.01 degree for comparison. */
+const centredOn = () => center.mock.calls.map(([p]) => `${p.lat.toFixed(2)},${p.lon.toFixed(2)}`);
 const sendBeacon = vi.fn(() => true);
 const writeText = vi.fn(async (_text: string) => {});
 
@@ -91,8 +95,9 @@ beforeEach(() => {
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
   lookupMock.mockImplementation(async ({ point }: { point: { lat: number; lon: number } }) => lookupAt(point));
   evidenceMock.mockImplementation(async (found: PointPassLookup) => answered(found.passes));
-  deckGL = true;
-  connectOrbitalLookupMap(() => ({ setCenter, isDeckGLActive: () => deckGL, isGlobeMode: () => false }));
+  mapCentre = null;
+  connectOrbitalLookupMap(() => ({ getCenter: () => mapCentre }));
+  releaseMapView = setOrbitalMapView({ rect: () => new DOMRect(0, 0, 1440, 900), center, project: () => null, hold: () => {} });
 });
 
 afterEach(() => {
@@ -102,6 +107,7 @@ afterEach(() => {
   vi.clearAllMocks();
   vi.useRealTimers();
   connectOrbitalLookupMap(() => null);
+  releaseMapView();
 });
 
 describe('place search in the satellite pass lookup', () => {
@@ -216,27 +222,11 @@ describe('the search row', () => {
     await vi.waitFor(() => expect(sheet()!.querySelectorAll('.ow-search-result')).toHaveLength(1));
     button('.ow-search-result').click();
     expect(sheet()!.querySelector<HTMLElement>('.ow-search-slot')!.hidden).toBe(true);
-    expect(setCenter).toHaveBeenCalledWith(51.9, 4.5, expect.any(Number));
+    await vi.waitFor(() => expect(centredOn()).toContain('51.92,4.48'));
     expect(sheet()!.querySelector('.ow-place')!.textContent).toBe('Rotterdam, South Holland');
     expect(sheet()!.querySelector<HTMLElement>('.ow-place')!.title).toBe('Rotterdam, South Holland, Netherlands');
     expect(sheet()!.querySelector('.ow-zone')!.textContent).toBe('EUROPE/AMSTERDAM · UTC+1');
     await vi.waitFor(() => expect(sheet()!.querySelector('.ow-headline')?.textContent).toContain('Rotterdam, South Holland.'));
-  });
-
-  it('zooms the SVG map to its own scale, which differs from the tile zoom of the deck.gl map', async () => {
-    deckGL = false;
-    openOrbitalWatch(EXACT, null);
-    button('.ow-change').click();
-    submitSearch('Rotterdam');
-    await vi.waitFor(() => expect(sheet()!.querySelectorAll('.ow-search-result')).toHaveLength(1));
-    button('.ow-search-result').click();
-    expect(setCenter).toHaveBeenLastCalledWith(51.9, 4.5, 10);
-    deckGL = true;
-    button('.ow-change').click();
-    submitSearch('Rotterdam');
-    await vi.waitFor(() => expect(sheet()!.querySelectorAll('.ow-search-result')).toHaveLength(1));
-    button('.ow-search-result').click();
-    expect(setCenter).toHaveBeenLastCalledWith(51.9, 4.5, 6);
   });
 
   it('shows pass times in the place\'s zone, and switches them to UTC', async () => {
@@ -313,7 +303,7 @@ describe('satellite pass share link', () => {
     await vi.waitFor(() => expect(sheet()?.dataset.view).toBe('full'));
     expect(lookupMock).toHaveBeenCalledWith({ point: { lat: 48.86, lon: 2.29 } }, expect.anything());
     // Raising the map to full screen resizes it, so the centre is set again once that has happened.
-    await vi.waitFor(() => expect(setCenter.mock.calls.filter(([lat, lon]) => lat === 48.9 && lon === 2.3)).toHaveLength(2));
+    await vi.waitFor(() => expect(centredOn()).toContain('48.86,2.29'));
   });
 
   it('opens a valid link after the map has had time to render, at the rounded point, and selects its pass', async () => {
@@ -332,7 +322,7 @@ describe('satellite pass share link', () => {
     await vi.waitFor(() => expect(linked).toHaveBeenCalledTimes(1));
     expect(lookupMock).toHaveBeenCalledWith({ point: { lat: 48.86, lon: 2.29 } }, expect.anything());
     expect(linked.mock.calls[0]![0]).toEqual({ noradId: 40697, timeMs: PASSES[0]!.timeMs });
-    expect(setCenter).toHaveBeenCalledWith(48.9, 2.3, expect.any(Number));
+    await vi.waitFor(() => expect(centredOn()).toContain('48.86,2.29'));
   });
 
   it('copies the selected pass into the shared link', async () => {
@@ -406,13 +396,17 @@ describe('satellite pass share link', () => {
     expect(new URL(manager.getShareUrl()!).searchParams.get('lat')).toBe('48.9000');
     openOrbitalWatchSearch(null);
     submitSearch('48.8584, 2.2945');
-    await vi.waitFor(() => expect(setCenter).toHaveBeenCalledWith(48.9, 2.3, expect.any(Number)));
+    await vi.waitFor(() => expect(centredOn()).toContain('48.86,2.29'));
     expect(isOrbitalLookupOpen()).toBe(true);
     const url = new URL(manager.getShareUrl()!);
     expect(url.searchParams.has('lat')).toBe(false);
     expect(url.searchParams.has('lon')).toBe(false);
     expect(precisePoint(url.href)).toEqual([]);
+    mapCentre = { lat: 48.8584, lon: 2.2945 };
     button('.ow-close').click();
-    expect(isOrbitalLookupOpen()).toBe(false);
+    expect(isOrbitalLookupOpen(), 'the map still sits on the typed point after closing').toBe(true);
+    expect(new URL(manager.getShareUrl()!).searchParams.has('lat')).toBe(false);
+    mapCentre = { lat: 50, lon: 3 };
+    expect(isOrbitalLookupOpen(), 'a map moved after closing writes its centre again').toBe(false);
   });
 });

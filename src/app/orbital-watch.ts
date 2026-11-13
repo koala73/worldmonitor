@@ -1,7 +1,7 @@
 import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import { getOrbitalPassClient, type PointPassLookup } from '@/services/orbital/pass-client';
 import { ARCHIVE_SEARCHES, findArchiveEvidence } from '@/services/orbital/match';
-import { orbitalLookupMap, setOrbitalLookupOpen } from '@/services/orbital/lookup-host';
+import { setOrbitalLookupOpen } from '@/services/orbital/lookup-host';
 import { t } from '@/services/i18n';
 import { OrbitalWatchPage, type OrbitalView } from '@/components/OrbitalWatchPage';
 import { OrbitalPlaceTools } from '@/components/OrbitalPlaceTools';
@@ -10,6 +10,8 @@ import { formatOrbitalRoute, parseOrbitalRoute } from '@/app/orbital-route';
 import { DASHBOARD_SITE_ORIGIN } from '@/config/dashboard-reference-links';
 import { isDesktopRuntime } from '@/config/desktop-runtime';
 import { buildOrbitalShareFragment, type OrbitalShareLink, type OrbitalSharePass } from '@/utils/urlState';
+import { getOrbitalMapView } from '@/app/orbital-map-focus';
+import { visibleMapArea, type ScreenArea } from '@/utils/map-point-offset';
 
 let page: OrbitalWatchPage | null = null;
 let tools: OrbitalPlaceTools | null = null;
@@ -21,23 +23,66 @@ let linkedPass: OrbitalSharePass | null = null;
 /** The pass last selected in the sheet, so a shared link opens on it too. */
 let selectedPass: { noradId: number; timeMs: number } | null = null;
 let returnFocus: HTMLElement | null = null;
+let markFrame: number | null = null;
+let centredFor: string | null = null;
+const RETRY = 'retry';
 
 const MAP_FULLSCREEN_CLASS = 'live-news-fullscreen-active';
 const MINUTE_MS = 60_000;
 /** Recomputed passes can shift by a minute when the orbit elements were refreshed in between. */
 const LINKED_PASS_TOLERANCE_MS = 2 * MINUTE_MS;
-const PLACE_ZOOM = 6;
-/** The SVG map's zoom is a scale factor that tops out at 10, which still frames less tightly than tile zoom 6. */
-const SVG_PLACE_ZOOM = 10;
 const SHARE_LABEL_RESET_MS = 2000;
 
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
-/** The map centre is written to the page URL later, so it only ever carries a place to 0.1 degree. */
-const coarse = (value: number) => Math.round(value * 10) / 10;
 
 function cancel(): void {
   run?.abort();
   run = null;
+}
+
+function mapArea(): { map: DOMRect; area: ScreenArea } | null {
+  const map = getOrbitalMapView()?.rect();
+  if (!map || !page?.isOpen || map.width <= 0 || map.height <= 0) return null;
+  return { map, area: visibleMapArea(map, page.coverRects()) };
+}
+
+const layoutKey = ({ map, area }: { map: DOMRect; area: ScreenArea }) =>
+  [map.left, map.top, map.width, map.height, area.left, area.top, area.right, area.bottom].map(Math.round).join();
+
+/** Centres the point in the part of the map the sheet leaves visible. */
+function centreMap(): void {
+  const view = getOrbitalMapView();
+  const box = mapArea();
+  if (!view || !box || !point) return;
+  const { map, area } = box;
+  const offset = {
+    x: (area.left + area.right - map.left - map.right) / 2,
+    y: (area.top + area.bottom - map.top - map.bottom) / 2,
+  };
+  // A map still booting cannot move yet; RETRY never matches a layout, so the next frame tries again.
+  centredFor = view.center(point, offset) ? layoutKey(box) : RETRY;
+}
+
+/** Keeps the reticle on the point as the map moves, while the lookup is open. */
+function trackMark(): void {
+  markFrame = null;
+  if (!page?.isOpen || !point) return;
+  const box = mapArea();
+  // A resize (the map raised for the full view, a rotated phone) moves the visible area, so centre again.
+  if (box && centredFor !== null && centredFor !== layoutKey(box)) centreMap();
+  const at = getOrbitalMapView()?.project(point) ?? null;
+  const area = box?.area;
+  const inside = !!at && !!area && at.x >= area.left && at.x <= area.right && at.y >= area.top && at.y <= area.bottom;
+  page.placeMapMark(inside ? at : null);
+  markFrame = requestAnimationFrame(trackMark);
+}
+
+/** Flies the map to the point once the sheet's layout, and a raised map's size, have settled. */
+function focusMap(): void {
+  centredFor = null;
+  getOrbitalMapView()?.hold(true);
+  requestAnimationFrame(() => requestAnimationFrame(centreMap));
+  if (markFrame === null) markFrame = requestAnimationFrame(trackMark);
 }
 
 /** The full view sits over the map, so the map is raised to fill the page while it is open. */
@@ -51,6 +96,7 @@ function syncMap(view: OrbitalView): void {
     if (active) button?.click();
     raisedMap = false;
   }
+  focusMap();
 }
 
 function writeRoute(view: OrbitalView): void {
@@ -157,6 +203,7 @@ function ensurePage(): OrbitalWatchPage {
   if (!page) {
     page = new OrbitalWatchPage({
       onClose: () => {
+        getOrbitalMapView()?.hold(false);
         cancel();
         lookup = null;
         point = null;
@@ -193,7 +240,7 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, view }: { recentr
   if (sheet.isOpen && samePoint(point, at)) {
     sheet.setPlaceName(name);
     sheet.setView(view);
-    if (recentre) recentreOn(at, view);
+    if (recentre) focusMap();
     return;
   }
   point = at;
@@ -203,20 +250,8 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, view }: { recentr
   sheet.open(at, returnFocus, view);
   sheet.setPlaceName(name);
   if (view === 'full' || wasFull) onViewChange(view);
-  if (recentre) recentreOn(at, view);
+  else focusMap();
   void start();
-}
-
-function recentreOn(at: GeoPoint, view: OrbitalView): void {
-  const centre = () => {
-    const map = orbitalLookupMap();
-    if (!map) return;
-    const zoom = map.isDeckGLActive() || map.isGlobeMode() ? PLACE_ZOOM : SVG_PLACE_ZOOM;
-    map.setCenter(coarse(at.lat), coarse(at.lon), zoom);
-  };
-  centre();
-  // Raising the map to full screen resizes it after this frame, which moves its centre.
-  if (view === 'full') requestAnimationFrame(() => requestAnimationFrame(centre));
 }
 
 /** Opens the satellite pass lookup for a point. The point stays in the browser. */

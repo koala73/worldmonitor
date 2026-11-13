@@ -5256,7 +5256,11 @@
         "could": "Mohl sem mířit",
         "couldDef": "Natáčitelný nebo komerční senzor byl v dosahu; provozovatel neuvádí, zda se díval.",
         "overhead": "Přeletěl nad",
-        "overheadDef": "Přešel zde oblohu, bez důkazu snímkování."
+        "overheadDef": "Přešel zde oblohu, bez důkazu snímkování.",
+        "watchedShort": "Snímek ve veřejném archivu",
+        "likelyShort": "Pokryto, zatím bez snímku",
+        "couldShort": "Natáčecí senzor v dosahu",
+        "overheadShort": "Nad bodem, bez snímku"
       },
       "group": {
         "watched": "sledovaných",
@@ -5296,6 +5300,11 @@
         "failed": "Selhalo",
         "note": "Planetary Computer a NASA GIBS vytvářejí snímky na vyžádání, proto tento krok může trvat několik sekund."
       },
+      "privacyLine": "Bod zůstává ve vašem prohlížeči",
+      "privacyHow": "Jak",
+      "sources": "Zdroje",
+      "archiveScene": "Archivní scéna",
+      "archiveOnly": "Těmto snímkům neodpovídá žádný vypočtený přelet, proto jsou zobrazeny jako archivní scény.",
       "zoneShowUtc": "Zobrazit časy v UTC",
       "zoneShowLocal": "Zobrazit časy v místním čase tohoto místa"
     },

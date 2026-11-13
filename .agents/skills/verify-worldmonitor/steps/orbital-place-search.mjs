@@ -56,7 +56,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await page.waitForFunction(() => document.querySelector('.ow-place')?.textContent?.includes('Palm Jumeirah, Dubai'));
   await settled(page);
   const zoom = Number(new URL(await page.evaluate(() => location.href)).searchParams.get('zoom'));
-  const wanted = renderer === 'svg' ? 10 : 6;
+  // The lookup asks for tile zoom 11; the SVG map's scale factor tops out at 10.
+  const wanted = renderer === 'svg' ? 10 : 11;
   log('zoom after pick', zoom, 'wanted', wanted);
   if (Math.abs(zoom - wanted) > 0.5) throw new Error(`the map did not zoom to the place: ${zoom}, wanted ${wanted}`);
   await shot('after-pick-recentred-on-place');

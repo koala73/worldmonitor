@@ -5239,7 +5239,11 @@
         "could": "Mogao je ciljati ovamo",
         "couldDef": "Usmjerivi ili komercijalni senzor bio je u dometu; operater ne kaže je li gledao.",
         "overhead": "Prošao iznad",
-        "overheadDef": "Prešao je nebo ovdje, bez dokaza snimanja."
+        "overheadDef": "Prešao je nebo ovdje, bez dokaza snimanja.",
+        "watchedShort": "Snimka u javnom arhivu",
+        "likelyShort": "Pokriveno, još nema snimke",
+        "couldShort": "Usmjerivi senzor u dometu",
+        "overheadShort": "Iznad točke, bez snimke"
       },
       "group": {
         "watched": "promatranih",
@@ -5279,6 +5283,11 @@
         "failed": "Neuspjelo",
         "note": "Planetary Computer i NASA GIBS izrađuju snimke na zahtjev, pa ovaj korak može potrajati nekoliko sekundi."
       },
+      "privacyLine": "Točka ostaje u vašem pregledniku",
+      "privacyHow": "Kako",
+      "sources": "Izvori",
+      "archiveScene": "Arhivska scena",
+      "archiveOnly": "Nijedan izračunati prelet ne odgovara ovim snimkama, pa su prikazane kao arhivske scene.",
       "zoneShowUtc": "Prikaži vremena u UTC-u",
       "zoneShowLocal": "Prikaži vremena po lokalnom vremenu ovog mjesta"
     },

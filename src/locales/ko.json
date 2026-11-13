@@ -5172,7 +5172,11 @@
         "could": "이곳을 겨눌 수 있었음",
         "couldDef": "지향 가능하거나 상업용 센서가 범위 안에 있었으나 운영자는 관측 여부를 밝히지 않습니다.",
         "overhead": "상공 통과",
-        "overheadDef": "촬영 증거 없이 이곳 하늘을 지나갔습니다."
+        "overheadDef": "촬영 증거 없이 이곳 하늘을 지나갔습니다.",
+        "watchedShort": "공개 아카이브에 영상 있음",
+        "likelyShort": "관측됨, 아직 영상 없음",
+        "couldShort": "지향형 센서가 범위 내",
+        "overheadShort": "상공 통과, 영상 없음"
       },
       "group": {
         "watched": "촬영됨",
@@ -5212,6 +5216,11 @@
         "failed": "실패",
         "note": "Planetary Computer와 NASA GIBS는 요청 시 이미지를 생성하므로 이 단계는 몇 초 걸릴 수 있습니다."
       },
+      "privacyLine": "지점은 브라우저에만 남습니다",
+      "privacyHow": "방법",
+      "sources": "출처",
+      "archiveScene": "아카이브 장면",
+      "archiveOnly": "계산된 통과와 일치하지 않는 영상이므로 아카이브 장면으로 표시합니다.",
       "zoneShowUtc": "시간을 UTC로 표시",
       "zoneShowLocal": "시간을 이 장소의 현지 시간으로 표시"
     },
