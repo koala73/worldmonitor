@@ -74,6 +74,11 @@ describe('CII fixtures', () => {
         assert.deepEqual(trimmed[key], f.inputs[key], `${f.label}: ${key} was trimmed`);
       }
       assert.equal(f.captureTargets!.length, 37);
+      for (const measured of [0, 24]) {
+        const low = { ...f.inputs, economicStress: { ...(f.inputs.economicStress as any), measuredCount: 31,
+          countries: Object.fromEntries(Object.keys(TIER1_COUNTRIES).map((code, i) => [code, { measured: i < measured }])) } };
+        assert.throws(() => validateCiiCalibrationInputs(low, f.captureTargets!), /25 measured/);
+      }
       assert.throws(() => validateCiiCalibrationInputs({ ...f.inputs, economicStress: null }, f.captureTargets!), /economic key/);
     }
   });
