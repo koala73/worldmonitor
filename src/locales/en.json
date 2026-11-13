@@ -4640,7 +4640,37 @@
       "pause": "Pause",
       "resume": "Play",
       "previous": "Previous frame",
-      "next": "Next frame"
+      "next": "Next frame",
+      "closeLabel": "Close",
+      "agoNow": "Just now",
+      "agoHours": "{{count}} h ago",
+      "agoDays": "{{count}} days ago",
+      "clear": "Clear",
+      "clouded": "Clouded · {{pct}}%",
+      "tabImage": "Image",
+      "tabChange": "Change",
+      "metaAcquired": "Acquired",
+      "metaDate": "Date",
+      "metaPixel": "Pixel",
+      "metaSpot": "Cloud at spot",
+      "metaScene": "Scene cloud",
+      "metaSun": "Sun elevation",
+      "showCloudy": "Show cloudy dates ({{count}})"
+    },
+    "timelapse": {
+      "title": "Time-lapse",
+      "entry": "This place, year by year",
+      "open": "Open the year-by-year time-lapse of this place",
+      "searching": "Finding one clear look per year since 2015 · {{archive}}",
+      "loading": "Loading looks · {{loaded}} / {{total}}",
+      "failed": "{{archive}} did not answer, so the yearly looks are missing.",
+      "timeout": "{{archive}} did not answer in time, so the yearly looks are missing.",
+      "partial": "{{count}} years are missing because {{archive}} did not answer.",
+      "tooFew": "Only {{count}} clear yearly looks of this place; a time-lapse needs {{min}}.",
+      "total": "{{count}} clear looks · one a year",
+      "years": "Years",
+      "share": "Share",
+      "method": "Each frame is the same 6 km square from Sentinel-2, in natural colour. Each year searches a different season and keeps its least cloudy scene; a year with no scene under 30% cloud is left out."
     }
   },
   "contextMenu": {

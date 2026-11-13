@@ -85,7 +85,7 @@ export const ARCHIVE_NAME: Record<ArchiveId, string> = {
 
 /** Credit lines the archives ask for, worded as in the source attribution manifest. */
 export const IMAGE_CREDIT = {
-  copernicus: (year: number) => `Contains modified Copernicus Sentinel data ${year}`,
+  copernicus: (year: number | string) => `Contains modified Copernicus Sentinel data ${year}`,
   usgs: 'Landsat imagery courtesy of the U.S. Geological Survey',
   eumetsat: 'Contains EUMETSAT Meteosat imagery',
   gibsAcknowledgement: "We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).",
