@@ -368,7 +368,8 @@ export class OrbitalImageViewer {
   private renderCompareStage(): HTMLElement {
     const { selected } = this.subject;
     const others = this.compareCandidates;
-    const other = others.find((scene) => scene.key === this.compareKey);
+    const stillSearching = this.history.kind === 'searching' && !this.pickedCompareKey;
+    const other = stillSearching ? undefined : others.find((scene) => scene.key === this.compareKey);
     if (!other) {
       const message = this.history.kind === 'searching'
         ? t('orbitalWatch.viewer.searching', { days: HISTORY_DAYS })
