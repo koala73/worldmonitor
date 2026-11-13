@@ -393,7 +393,9 @@ export const SERVER_NAME = 'worldmonitor';
 // that ask Claude for its side panel (preferredDisplayMode).
 // Bumped 1.51.0 → 1.52.0 for get_reservoir_levels (102 → 103 tools, #10515).
 // Bumped 1.52.0 → 1.53.0 for prepare_travel_risk_assessment (103 → 104 tools, #10451).
-export const SERVER_VERSION = '1.53.0';
+// Bumped 1.53.0 → 1.54.0 when get_toronto_reported_occurrences and
+// get_toronto_calls_attended left the tool list (104 → 102 tools).
+export const SERVER_VERSION = '1.54.0';
 
 // MCP `Implementation` (initialize serverInfo, and the modern-era
 // _meta["io.modelcontextprotocol/serverInfo"]). `title`, `description`,

@@ -6,15 +6,6 @@ import jmespath from 'jmespath';
 
 import { executeTool } from '../api/mcp/dispatch.ts';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
-import { torontoSafetySourceById } from '../shared/toronto-safety.js';
-import {
-  TPS_CALLS_ATTRIBUTION,
-  TPS_CALLS_SOURCE,
-  TPS_MCI_SOURCE,
-  TPS_OGL_ATTRIBUTION,
-  buildTpsCallsSnapshot,
-  buildTpsMciSnapshot,
-} from '../scripts/lib/tps-open-data.mjs';
 import {
   IMD_RIGHTS_DECISION,
   IMD_SEA_BULLETIN_PAGE,
@@ -184,54 +175,6 @@ describe('attribution rider — extraction against real payload shapes', () => {
       retrievedAt: '2026-09-03T00:00:00.000Z',
       key: 'iea', name: 'IEA', attribution: 'IEA', license: 'IEA Terms', url: 'https://iea.org',
     });
-  });
-
-  test('the toronto tools extract from their cache envelopes', () => {
-    const occurrences = buildAttributionRider(
-      {
-        cached_at: '2026-09-01T00:00:00.000Z',
-        stale: false,
-        data: {
-          reported_occurrences: {
-            semantic: 'reported_occurrence',
-            source: 'tps-mci',
-            attribution: 'Toronto Police Service Public Safety Data Portal',
-            fetchedAt: '2026-09-01T00:00:00.000Z',
-            records: [{ id: '1' }],
-          },
-        },
-      },
-      extractionFor('get_toronto_reported_occurrences'),
-    );
-    assert.ok(occurrences);
-    assert.deepEqual(occurrences.sources, [{
-      attribution: 'Toronto Police Service Public Safety Data Portal',
-      source: 'tps-mci',
-      fetchedAt: '2026-09-01T00:00:00.000Z',
-    }]);
-
-    const aggregates = buildAttributionRider(
-      {
-        cached_at: null,
-        stale: true,
-        data: {
-          annual_aggregates: {
-            semantic: 'annual_aggregate',
-            source: 'tps-calls-attended',
-            attribution: 'Toronto Police Service Public Safety Data Portal',
-            fetchedAt: '2026-09-01T00:00:00.000Z',
-            records: [],
-          },
-        },
-      },
-      extractionFor('get_toronto_calls_attended'),
-    );
-    assert.ok(aggregates);
-    assert.deepEqual(aggregates.sources, [{
-      attribution: 'Toronto Police Service Public Safety Data Portal',
-      source: 'tps-calls-attended',
-      fetchedAt: '2026-09-01T00:00:00.000Z',
-    }]);
   });
 
   test('get_imd_cyclone_marine extracts its source name, url and attribution', () => {
@@ -414,52 +357,6 @@ describe('attribution rider — against real producer output', () => {
     else process.env.UPSTASH_REDIS_REST_TOKEN = ORIGINAL_UPSTASH_TOKEN;
   });
 
-  test('get_toronto_reported_occurrences extracts from a real buildTpsMciSnapshot', async () => {
-    const snapshot = buildTpsMciSnapshot({
-      records: [{ id: 'r1', reportDateMs: Date.parse('2026-08-01T00:00:00.000Z'), division: 'D51', offence: 'Assault' }],
-      fetchedAt: '2026-09-01T00:00:00.000Z',
-    });
-    const { envelope, rider } = await riderFromCache('get_toronto_reported_occurrences', snapshot);
-    // The envelope really is the cache envelope, keyed by _cacheLabels.
-    assert.ok('cached_at' in envelope && 'stale' in envelope);
-    assert.ok(envelope.data.reported_occurrences);
-    assert.ok(rider, 'the declared expression found nothing in the real snapshot');
-    assert.deepEqual(rider.sources, [{
-      attribution: TPS_OGL_ATTRIBUTION,
-      source: TPS_MCI_SOURCE,
-      fetchedAt: '2026-09-01T00:00:00.000Z',
-    }]);
-    // The MCI seeder writes the same licence claim the descriptor asserts, so
-    // this tool needs no post-filter repair — unlike calls-attended below.
-    assert.equal(rider.sources[0].attribution, torontoSafetySourceById('tps-mci').attribution);
-  });
-
-  test('get_toronto_calls_attended publishes the CURRENT licence, not a stale cached one', async () => {
-    const snapshot = buildTpsCallsSnapshot({
-      records: [{ id: 'a1', eventYear: 2025, divisionFinal: 'D52', eventCount: 12 }],
-      fetchedAt: '2026-09-02T00:00:00.000Z',
-    });
-    const fresh = await riderFromCache('get_toronto_calls_attended', snapshot);
-    assert.ok(fresh.rider);
-    assert.deepEqual(fresh.rider.sources, [{
-      attribution: TPS_CALLS_ATTRIBUTION,
-      source: TPS_CALLS_SOURCE,
-      fetchedAt: '2026-09-02T00:00:00.000Z',
-    }]);
-
-    // A pre-CKAN blob still carries the retired OGL-Ontario claim. The tool's
-    // _postFilter rewrites it from the descriptor, and the rider is extracted
-    // AFTER that filter — so the rider must publish the current claim. This is
-    // the case that makes "read the post-filtered payload" load-bearing rather
-    // than incidental.
-    const stale = await riderFromCache('get_toronto_calls_attended', {
-      ...snapshot,
-      attribution: TPS_OGL_ATTRIBUTION,
-    });
-    assert.equal(stale.rider.sources[0].attribution, torontoSafetySourceById('tps-calls-attended').attribution);
-    assert.notEqual(stale.rider.sources[0].attribution, TPS_OGL_ATTRIBUTION);
-  });
-
   test('get_imd_cyclone_marine extracts from a real assembleImdSnapshot over IMD fixtures', async () => {
     const html = readFileSync(new URL('./fixtures/imd/seaBulletin-bay-of-bengal.html', import.meta.url), 'utf8');
     const snapshot = assembleImdSnapshot({
@@ -483,15 +380,4 @@ describe('attribution rider — against real producer output', () => {
     assert.equal(rider.sources[0].attribution, IMD_RIGHTS_DECISION.attribution);
   });
 
-  test('an unavailable TPS snapshot yields no rider, because it serves no licensed values', async () => {
-    // What the seeder writes when the upstream fetch fails: no attribution, no
-    // source, no fetchedAt. Nothing to accompany, so nothing is wrapped.
-    const { rider } = await riderFromCache('get_toronto_reported_occurrences', {
-      sourceUnavailable: true,
-      sourceState: 'degraded',
-      sourceReason: 'fetch_failed',
-      semantic: 'reported_occurrence',
-    });
-    assert.equal(rider, null);
-  });
 });
