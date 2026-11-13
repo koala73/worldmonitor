@@ -98,14 +98,16 @@ function elementsNear(catalog, noradId, targetMs) {
 function passesFor(satellite, profile, catalog, point, nowMs) {
   const segments = [];
   for (let start = nowMs - PAST_DAYS * DAY_MS; start < nowMs; start += DAY_MS) {
-    segments.push({ start, end: Math.min(start + DAY_MS, nowMs), omm: elementsNear(catalog, satellite.noradId, start + DAY_MS / 2) ?? satellite.elements });
+    const end = Math.min(start + DAY_MS, nowMs);
+    segments.push({ start, end, asOf: end, omm: elementsNear(catalog, satellite.noradId, start + DAY_MS / 2) ?? satellite.elements });
   }
-  segments.push({ start: nowMs, end: nowMs + FUTURE_HOURS * 3_600_000, omm: satellite.elements });
+  segments.push({ start: nowMs, end: nowMs + FUTURE_HOURS * 3_600_000, asOf: nowMs, omm: satellite.elements });
   const passes = [];
-  for (const { start, end, omm } of segments) {
+  // A historical day is judged by element age on that day, not today.
+  for (const { start, end, asOf, omm } of segments) {
     let elements;
     try { elements = parseOrbitElements(omm); } catch { continue; }
-    const result = findPasses({ elements, profile, point, window: { start, end }, now: nowMs });
+    const result = findPasses({ elements, profile, point, window: { start, end }, now: asOf });
     if (result.status === 'ok') passes.push(...result.passes);
   }
   return passes;
@@ -225,6 +227,11 @@ export async function evaluateSites({ sites, catalog, previousRecords, cursor, s
   return { records, failed, evaluated, nextSiteId };
 }
 
+function nextImagingWindow(record) {
+  const window = record.nextWindows.find((candidate) => candidate.inFootprint);
+  return window ? { profileId: window.profileId, time: window.time } : null;
+}
+
 /** Per-country projection of site records: no state of its own beyond what its sites carry. */
 export function buildCountryRollup(countryCode, records) {
   const sites = records
@@ -242,7 +249,7 @@ export function buildCountryRollup(countryCode, records) {
       lastObservation: record.lastObservation
         ? { itemId: record.lastObservation.itemId, profileId: record.lastObservation.profileId, datetime: record.lastObservation.datetime }
         : null,
-      nextWindow: record.nextWindows[0] ? { profileId: record.nextWindows[0].profileId, time: record.nextWindows[0].time } : null,
+      nextWindow: nextImagingWindow(record),
       operators: [...new Set(record.coverage.map((entry) => entry.operator))],
       flag: record.flag,
     }));

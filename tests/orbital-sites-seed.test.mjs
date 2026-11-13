@@ -14,6 +14,7 @@ import {
   ArchiveRefusal,
   acquisitionsFromStac,
   buildCountryRollup,
+  buildSiteRecord,
   countryKey,
   isRollupCurrent,
   ORBITAL_SITES_ACTIVATION_KEY,
@@ -68,6 +69,13 @@ async function run(store, { sites = SITES, searchArchive = async () => fixtureAc
 }
 
 describe('orbital site records', () => {
+  it('keeps last week of passes when the stored elements are older than the age limit today', () => {
+    const later = NOW + 7.5 * DAY_MS;
+    const record = buildSiteRecord({ site: SITES[0], catalog, acquisitions: [], previous: null, nowMs: later });
+    assert.ok(record.recentPasses.length > 0, 'historical days within the element age limit still yield passes');
+    assert.ok(record.recentPasses.every((pass) => Date.parse(pass.time) <= NOW + 7 * DAY_MS));
+  });
+
   it('writes one record per site with its newest confirmed image, next windows and coverage', async () => {
     const store = memoryStore();
     const index = await run(store);
@@ -145,6 +153,16 @@ describe('orbital site records', () => {
 });
 
 describe('orbital country rollups', () => {
+  it('names the next window inside the imaging footprint, not the next overhead pass', () => {
+    const window = (time, inFootprint) => ({ noradId: 1, name: 'S', profileId: 'sentinel-2', category: 'open-optical', time, inFootprint, sunElevationDeg: 30 });
+    const record = {
+      siteId: 'hotspot:a', name: 'a', lat: 24.4, lon: 54.6, countryCode: 'AE', surface: 'land', origins: [{ list: 'hotspot', id: 'a' }],
+      revision: 'r', evaluatedAt: NOW, lastObservation: null, coverage: [], flag: null,
+      nextWindows: [window('2026-11-13T13:00:00.000Z', false), window('2026-11-13T19:00:00.000Z', true)],
+    };
+    assert.deepEqual(buildCountryRollup('AE', [record]).sites[0].nextWindow, { profileId: 'sentinel-2', time: '2026-11-13T19:00:00.000Z' });
+  });
+
   it('holds only its own sites and stays under the per-key size limit', async () => {
     const store = memoryStore();
     await run(store);
