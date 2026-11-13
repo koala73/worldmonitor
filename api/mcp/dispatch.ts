@@ -369,7 +369,10 @@ async function executeCacheTool(
     ...(freshnessUnknown || intelligenceFreshness?.freshnessUnknown || chokepointPolicy?.freshnessUnknown ? { freshnessUnknown: true } : {}),
     ...(unreadable.length > 0 ? { unreadable } : {}),
     ...(contentFreshnessPendingUntil === undefined ? {} : { contentFreshnessPendingUntil }),
-    ...(lockedKeys.length > 0 ? { locked: lockedKeys.map(key => cacheKeyLabel(tool, key)), upgradeUrl: MCP_UPGRADE_URL } : {}),
+    // An inform-only host (ChatGPT) gets the locked list without the plans link.
+    ...(lockedKeys.length > 0
+      ? { locked: lockedKeys.map(key => cacheKeyLabel(tool, key)), ...(execution?.informOnly ? {} : { upgradeUrl: MCP_UPGRADE_URL }) }
+      : {}),
     data: result,
   };
   recordStaleFreshnessKeys(value, staleCheckKeys);

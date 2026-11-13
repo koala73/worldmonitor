@@ -10,8 +10,13 @@
  *
  * So for ChatGPT the server hides `start_upgrade` (it returns a checkout link),
  * drops the checkout hint from denials and rewrites their copy to state the
- * plan fact. Plan gating, limits and the plans page link (`upgradeUrl`, /pro)
- * stay the same. Every other client keeps the in-flow upgrade from #9144.
+ * plan fact. Plan gating and limits stay the same. Every other client keeps the
+ * in-flow upgrade from #9144.
+ *
+ * OpenAI's review on 2026-11-13 still rejected the app for facilitating
+ * commerce in digital services, so ChatGPT also loses the plans page link
+ * (`upgradeUrl`), the API-plan billing wording in tool descriptions and
+ * schemas, and the call-weight metadata (chatgpt-copy.ts).
  */
 
 import { START_UPGRADE_TOOL } from './checkout';
@@ -221,6 +226,7 @@ function rewriteError(message: unknown): boolean {
   });
   delete data.recommendedPlan;
   delete data.checkoutTool;
+  delete data.upgradeUrl;
   if (typeof err.message === 'string') err.message = INFORM_ONLY_MESSAGES.get(err.message) ?? err.message;
   return true;
 }

@@ -1571,7 +1571,7 @@ async function mcpHandlerInner(
       // probe) is likewise served anonymously + quota-exempt via its direct
       // reader — no data, no dispatchToolsCall, no Pro reservation.
       if (isPublicResourceRead) {
-        return respond(await buildPublicResourceResponse(body, corsHeaders));
+        return respond(await buildPublicResourceResponse(body, corsHeaders, { informOnly: isChatGptHost(req) }));
       }
       // Account allowance status is authenticated but quota-exempt. The gated
       // branch above already resolved identity, durable token validity, and the
