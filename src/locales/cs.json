@@ -5317,7 +5317,7 @@
         "militaryFlights": "Vojenské lety",
         "gpsJamming": "Rušení GPS"
       },
-      "title": "Časová osa",
+      "name": "Časová osa",
       "span": "{{days}} dní · dalších {{hours}} h",
       "daylightHere": "Denní světlo zde",
       "row": {

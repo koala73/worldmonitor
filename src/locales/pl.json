@@ -5317,7 +5317,7 @@
         "militaryFlights": "Loty wojskowe",
         "gpsJamming": "Zakłócanie GPS"
       },
-      "title": "Oś czasu",
+      "name": "Oś czasu",
       "span": "{{days}} dni · następne {{hours}} h",
       "daylightHere": "Światło dzienne tutaj",
       "row": {

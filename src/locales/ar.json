@@ -5373,7 +5373,7 @@
         "militaryFlights": "الرحلات العسكرية",
         "gpsJamming": "تشويش GPS"
       },
-      "title": "الخط الزمني",
+      "name": "الخط الزمني",
       "span": "{{days}} أيام · الساعات {{hours}} القادمة",
       "daylightHere": "ضوء النهار هنا",
       "row": {

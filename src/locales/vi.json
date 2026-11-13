@@ -5233,7 +5233,7 @@
         "militaryFlights": "Chuyến bay quân sự",
         "gpsJamming": "Gây nhiễu GPS"
       },
-      "title": "Dòng thời gian",
+      "name": "Dòng thời gian",
       "span": "{{days}} ngày · {{hours}} giờ tới",
       "daylightHere": "Ban ngày tại đây",
       "row": {

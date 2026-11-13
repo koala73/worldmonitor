@@ -5261,7 +5261,7 @@
         "militaryFlights": "Militära flygningar",
         "gpsJamming": "GPS-störning"
       },
-      "title": "Tidslinje",
+      "name": "Tidslinje",
       "span": "{{days}} dagar · nästa {{hours}} h",
       "daylightHere": "Dagsljus här",
       "row": {

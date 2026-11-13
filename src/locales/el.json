@@ -5261,7 +5261,7 @@
         "militaryFlights": "Στρατιωτικές πτήσεις",
         "gpsJamming": "Παρεμβολές GPS"
       },
-      "title": "Χρονολόγιο",
+      "name": "Χρονολόγιο",
       "span": "{{days}} ημέρες · επόμενες {{hours}} ώρες",
       "daylightHere": "Φως ημέρας εδώ",
       "row": {

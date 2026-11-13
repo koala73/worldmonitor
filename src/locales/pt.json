@@ -5289,7 +5289,7 @@
         "militaryFlights": "Voos militares",
         "gpsJamming": "Interferência de GPS"
       },
-      "title": "Linha do tempo",
+      "name": "Linha do tempo",
       "span": "{{days}} dias · próximas {{hours}} h",
       "daylightHere": "Luz do dia aqui",
       "row": {

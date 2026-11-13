@@ -4720,7 +4720,7 @@
         "militaryFlights": "Military flights",
         "gpsJamming": "GPS jamming"
       },
-      "title": "Timeline",
+      "name": "Timeline",
       "span": "{{days}} days · next {{hours}} h",
       "daylightHere": "Daylight here",
       "row": {

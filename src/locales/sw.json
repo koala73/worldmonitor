@@ -5261,7 +5261,7 @@
         "militaryFlights": "Safari za ndege za kijeshi",
         "gpsJamming": "Uzuiaji wa GPS"
       },
-      "title": "Ratiba ya wakati",
+      "name": "Ratiba ya wakati",
       "span": "Siku {{days}} · saa {{hours}} zijazo",
       "daylightHere": "Mchana hapa",
       "row": {

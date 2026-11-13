@@ -5233,7 +5233,7 @@
         "militaryFlights": "军用航班",
         "gpsJamming": "GPS 干扰"
       },
-      "title": "时间线",
+      "name": "时间线",
       "span": "{{days}} 天 · 未来 {{hours}} 小时",
       "daylightHere": "此地白昼",
       "row": {

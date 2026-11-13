@@ -5233,7 +5233,7 @@
         "militaryFlights": "군용기",
         "gpsJamming": "GPS 교란"
       },
-      "title": "타임라인",
+      "name": "타임라인",
       "span": "{{days}}일 · 향후 {{hours}}시간",
       "daylightHere": "이곳의 낮",
       "row": {

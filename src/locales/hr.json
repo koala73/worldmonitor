@@ -5300,7 +5300,7 @@
         "militaryFlights": "Vojni letovi",
         "gpsJamming": "Ometanje GPS-a"
       },
-      "title": "Vremenska crta",
+      "name": "Vremenska crta",
       "span": "{{days}} dana · sljedećih {{hours}} h",
       "daylightHere": "Dnevno svjetlo ovdje",
       "row": {

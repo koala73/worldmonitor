@@ -5317,7 +5317,7 @@
         "militaryFlights": "Військові рейси",
         "gpsJamming": "Глушіння GPS"
       },
-      "title": "Хронологія",
+      "name": "Хронологія",
       "span": "{{days}} днів · наступні {{hours}} год",
       "daylightHere": "Світловий день тут",
       "row": {

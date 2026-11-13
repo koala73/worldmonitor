@@ -5233,7 +5233,7 @@
         "militaryFlights": "軍用機",
         "gpsJamming": "GPS妨害"
       },
-      "title": "タイムライン",
+      "name": "タイムライン",
       "span": "{{days}}日間 · 今後{{hours}}時間",
       "daylightHere": "この地点の日中",
       "row": {

@@ -5261,7 +5261,7 @@
         "militaryFlights": "सैन्य उड़ानें",
         "gpsJamming": "GPS जैमिंग"
       },
-      "title": "समयरेखा",
+      "name": "समयरेखा",
       "span": "{{days}} दिन · अगले {{hours}} घंटे",
       "daylightHere": "यहाँ दिन का उजाला",
       "row": {

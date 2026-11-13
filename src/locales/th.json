@@ -5233,7 +5233,7 @@
         "militaryFlights": "เที่ยวบินทหาร",
         "gpsJamming": "การรบกวน GPS"
       },
-      "title": "ไทม์ไลน์",
+      "name": "ไทม์ไลน์",
       "span": "{{days}} วัน · อีก {{hours}} ชม.",
       "daylightHere": "ช่วงกลางวันที่นี่",
       "row": {

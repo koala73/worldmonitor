@@ -5261,7 +5261,7 @@
         "militaryFlights": "Военни полети",
         "gpsJamming": "Заглушаване на GPS"
       },
-      "title": "Времева линия",
+      "name": "Времева линия",
       "span": "{{days}} дни · следващите {{hours}} ч",
       "daylightHere": "Дневна светлина тук",
       "row": {

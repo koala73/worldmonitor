@@ -135,9 +135,9 @@ export class OrbitalTimeline {
     const entries: ListEntry[] = [];
 
     const span = `${t('orbitalWatch.timeline.span', { days: Math.round((nowMs - window.startMs) / DAY_MS), hours: Math.round((window.endMs - nowMs) / HOUR_MS) })} · ${clock.timeZone} · ${clock.abbreviation}`;
-    this.element.setAttribute('aria-label', `${t('orbitalWatch.timeline.title')}, ${span}`);
+    this.element.setAttribute('aria-label', `${t('orbitalWatch.timeline.name')}, ${span}`);
     replaceChildren(this.head,
-      h('h3', { className: 'ow-tl-title' }, h('span', { className: 'ow-tl-num' }, '03 / '), t('orbitalWatch.timeline.title')),
+      h('h3', { className: 'ow-tl-title' }, h('span', { className: 'ow-tl-num' }, '03 / '), t('orbitalWatch.timeline.name')),
       h('span', { className: 'ow-tl-span' }, span),
       h('span', { className: 'ow-tl-daylight-key' }, h('span', { className: 'ow-tl-swatch' }), t('orbitalWatch.timeline.daylightHere')));
 
@@ -147,14 +147,18 @@ export class OrbitalTimeline {
     for (const row of ROWS) {
       const passes = input.passes.filter((pass) => row.tiers.includes(pass.tier.kind));
       const label = t(`orbitalWatch.timeline.row.${row.id}`);
+      const unmatched = row.id === 'photo' ? input.acquisitions.filter((acquisition) => !acquisition.pass) : [];
+      const unmatchedLabel = t('orbitalWatch.tier.unmatchedImage');
+      for (const image of unmatched) entries.push({ timeMs: image.startMs, text: `${unmatchedLabel}: ${image.platform.toUpperCase()}, ${formatUtc(image.startMs)}` });
       const geoLine = row.id === 'geo' && geostationary.length > 0
         ? h('span', { className: 'ow-tl-geo-line', style: between(window.startMs, window.endMs), dataset: { tip: t('orbitalWatch.timeline.geoLine', { names: geostationary.map((s) => s.name).join(', ') }) } })
         : null;
       keys.push(h('li', { className: 'ow-tl-key', dataset: { row: row.id } },
         h('span', { className: 'ow-tl-glyph', 'aria-hidden': 'true' }, row.glyph),
         h('span', { className: 'ow-tl-key-label' }, label),
-        h('span', { className: 'ow-tl-count' }, count(passes.length + (row.id === 'geo' ? geostationary.length : 0)))));
-      rows.push(h('div', { className: 'ow-tl-row', dataset: { row: row.id } }, geoLine, ...this.marks(passes, row, input.selectedKey, pct, when)));
+        h('span', { className: 'ow-tl-count' }, count(passes.length + unmatched.length + (row.id === 'geo' ? geostationary.length : 0)))));
+      rows.push(h('div', { className: 'ow-tl-row', dataset: { row: row.id } }, geoLine, ...this.marks(passes, row, input.selectedKey, pct, when),
+        ...unmatched.map((image) => h('span', { className: 'ow-tl-mark', style: at(image.startMs), dataset: { tier: 'confirmed-image', tip: `${image.platform.toUpperCase()} · ${when(image.startMs)} · ${unmatchedLabel}` } }, row.glyph))));
       if (row.dense) {
         for (const bin of hourlyBins(passes)) {
           entries.push({ timeMs: bin.startMs, text: t('orbitalWatch.timeline.density', { label, count: bin.count, start: formatUtc(bin.startMs), end: formatHour(bin.startMs + HOUR_MS) }) });

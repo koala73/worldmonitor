@@ -5261,7 +5261,7 @@
         "militaryFlights": "پروازهای نظامی",
         "gpsJamming": "پارازیت GPS"
       },
-      "title": "خط زمانی",
+      "name": "خط زمانی",
       "span": "{{days}} روز · {{hours}} ساعت آینده",
       "daylightHere": "روشنایی روز در اینجا",
       "row": {

@@ -5261,7 +5261,7 @@
         "militaryFlights": "Katonai repülések",
         "gpsJamming": "GPS-zavarás"
       },
-      "title": "Idővonal",
+      "name": "Idővonal",
       "span": "{{days}} nap · következő {{hours}} óra",
       "daylightHere": "Nappal itt",
       "row": {

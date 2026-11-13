@@ -5261,7 +5261,7 @@
         "militaryFlights": "Militaire vluchten",
         "gpsJamming": "GPS-storing"
       },
-      "title": "Tijdlijn",
+      "name": "Tijdlijn",
       "span": "{{days}} dagen · komende {{hours}} u",
       "daylightHere": "Daglicht hier",
       "row": {

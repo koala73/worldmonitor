@@ -5,7 +5,7 @@ import type { PassTier } from '../../shared/orbital/tiers.js';
 import type { PointPassLookup } from '@/services/orbital/pass-client';
 import { daylightSpans, type PointPass } from '@/services/orbital/pass-job';
 import { loadPointContext, type EventLane, type LiveStrip, type PointContext } from '@/services/orbital/point-context';
-import { OrbitalTimeline } from '@/components/OrbitalTimeline';
+import { OrbitalTimeline, type OrbitalTimelineInput } from '@/components/OrbitalTimeline';
 
 const NOW = Date.UTC(2026, 10, 13, 12);
 const HOUR = 3_600_000;
@@ -121,6 +121,18 @@ describe('orbital timeline dock', () => {
     mounted([terra], context(), { found: { ...lookup([terra]), satellites: [geo] } });
     expect(legendKey('geo').querySelector('.ow-tl-count')!.textContent).toBe('2');
     expect(row('geo').querySelector<HTMLElement>('.ow-tl-geo-line')!.dataset.tip).toBe('Geostationary in view: METEOSAT-9');
+  });
+
+  it('puts an archive image with no computed pass on the Photo row and counts it', () => {
+    const dock = new OrbitalTimeline(onSelect);
+    document.body.append(dock.element);
+    const image = { startMs: NOW - 30 * HOUR, platform: 'sentinel-2c', pass: null } as unknown as OrbitalTimelineInput['acquisitions'][number];
+    dock.update({ lookup: lookup([]), passes: [], acquisitions: [image], context: { kind: 'loaded', context: context() }, selectedKey: null });
+    expect(legendKey('photo').querySelector('.ow-tl-count')!.textContent).toBe('1');
+    const mark = row('photo').querySelector<HTMLElement>('.ow-tl-mark')!;
+    expect(leftPct(mark)).toBeCloseTo(pctOf(image.startMs), 2);
+    expect(mark.dataset.tip).toBe('SENTINEL-2C · Thu 12 Nov · 10:00 · image, no computed pass');
+    expect(listText()).toContain('image, no computed pass: SENTINEL-2C, 2026-11-12 06:00 UTC');
   });
 
   it('shows satellite, local time and tier in a tooltip on hover', () => {

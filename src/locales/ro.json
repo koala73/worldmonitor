@@ -5289,7 +5289,7 @@
         "militaryFlights": "Zboruri militare",
         "gpsJamming": "Bruiaj GPS"
       },
-      "title": "Cronologie",
+      "name": "Cronologie",
       "span": "{{days}} zile · următoarele {{hours}} h",
       "daylightHere": "Lumină de zi aici",
       "row": {

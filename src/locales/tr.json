@@ -5261,7 +5261,7 @@
         "militaryFlights": "Askerî uçuşlar",
         "gpsJamming": "GPS karıştırma"
       },
-      "title": "Zaman çizelgesi",
+      "name": "Zaman çizelgesi",
       "span": "{{days}} gün · sonraki {{hours}} sa",
       "daylightHere": "Burada gün ışığı",
       "row": {

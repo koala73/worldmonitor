@@ -5289,7 +5289,7 @@
         "militaryFlights": "Voli militari",
         "gpsJamming": "Disturbo GPS"
       },
-      "title": "Cronologia",
+      "name": "Cronologia",
       "span": "{{days}} giorni · prossime {{hours}} h",
       "daylightHere": "Luce del giorno qui",
       "row": {

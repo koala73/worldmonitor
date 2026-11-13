@@ -5261,7 +5261,7 @@
         "militaryFlights": "Militärflüge",
         "gpsJamming": "GPS-Störungen"
       },
-      "title": "Zeitachse",
+      "name": "Zeitachse",
       "span": "{{days}} Tage · nächste {{hours}} Std.",
       "daylightHere": "Tageslicht hier",
       "row": {
