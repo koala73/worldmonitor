@@ -81,7 +81,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': JSON.stringify(mapMode) } });
   await page.goto(`${base}/dashboard?view=global&lat=${PLACE.lat}&lon=${PLACE.lon}&zoom=${PLACE.zoom}`, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
-  log('renderer', await waitForMap(page));
+  const renderer = await waitForMap(page);
+  log('renderer', renderer);
 
   const sheet = page.locator('.orbital-watch-sheet');
   const sources = sheet.locator('.ow-body .ow-sources');
@@ -182,7 +183,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     await expectVisible('.orbital-watch-sheet');
   };
   const calibrate = async () => {
-    if (!(await page.locator('#mapContainer canvas').count())) return log('context menu pick', 'skipped: the SVG map has no context menu');
+    if (renderer === 'svg') return log('context menu pick', 'skipped: the SVG map has no context menu');
     const picked = await pickedAt(null);
     log('context menu pick', JSON.stringify(picked));
   };
