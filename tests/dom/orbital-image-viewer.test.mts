@@ -37,6 +37,7 @@ const loaded: ViewerDependencies['loadImage'] = async () => {};
 const viewer = () => document.querySelector<HTMLElement>('.oiv-dialog');
 const viewerText = () => viewer()?.textContent ?? '';
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const showChange = () => viewer()!.querySelector<HTMLButtonElement>('[data-action="mode"][data-mode="change"]')!.click();
 
 function open(selected: MatchedAcquisition, deps: ViewerDependencies, others: MatchedAcquisition[] = [], returnFocusTo: HTMLElement | null = null) {
   return openOrbitalImageViewer({ point, nowMs: NOW, selected: sceneFromAcquisition(selected), scenes: others.map(sceneFromAcquisition), historyProfile: selected.profileId }, returnFocusTo, { loadImage: loaded, ...deps });
@@ -66,7 +67,7 @@ describe('orbital image viewer', () => {
     openOrbitalImageViewer({ point, nowMs: NOW, selected: sceneFromFrame(meteosat)!, scenes: [], historyProfile: null }, null, {});
     expect(viewerText()).toContain(IMAGE_CREDIT.eumetsat);
     expect(viewerText()).not.toContain(IMAGE_CREDIT.gibsAcknowledgement);
-    expect(viewer()!.querySelector('.oiv-timelapse')).toBeNull();
+    expect(viewer()!.querySelector('[data-action="timelapse"]')).toBeNull();
   });
 
   it('offers compare only when a second scene of the same collection exists', async () => {
@@ -74,17 +75,20 @@ describe('orbital image viewer', () => {
     const radar = scene(40, null, { profileId: 'sentinel-1', platform: 'sentinel-1c', key: 'sentinel-1c:1:x' });
     open(selected, { searchHistory: history([selected]) }, [radar]);
     await settle();
+    showChange();
     expect(viewer()!.querySelector('.oiv-slider')).toBeNull();
     expect(viewerText()).toContain('No other scene of this collection to compare with.');
 
     document.querySelector<HTMLButtonElement>('.oiv-close')!.click();
     open(selected, { searchHistory: history([selected, scene(20, 5)]) });
     await settle();
+    showChange();
+    await settle();
     expect(viewer()!.querySelectorAll('.oiv-slider img')).toHaveLength(2);
     expect(viewer()!.querySelector('input[type="range"]')).not.toBeNull();
   });
 
-  it('compares and animates only point crops, never whole-scene previews with other footprints', async () => {
+  it('compares only point crops, never whole-scene previews with other footprints', async () => {
     const preview = (id: string) => `https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s1-l1c/${id}/preview.jpg`;
     const radar = (daysAgo: number) => scene(daysAgo, null, { profileId: 'sentinel-1', platform: 'sentinel-1c', key: `sentinel-1c:${daysAgo}`, imageUrl: preview(`S1C_${daysAgo}`) });
     const searchHistory = history([radar(1), radar(13), radar(25), radar(37), radar(49)]);
@@ -92,25 +96,42 @@ describe('orbital image viewer', () => {
     await settle();
     expect(viewer()!.querySelector('img.oiv-image')).not.toBeNull();
     expect(viewer()!.querySelector('.oiv-north')).toBeNull();
-    expect(viewer()!.querySelector('.oiv-slider')).toBeNull();
-    expect(viewer()!.querySelector('.oiv-timelapse')).toBeNull();
+    expect(viewer()!.querySelector('[data-mode="change"]')).toBeNull();
+    expect(viewer()!.querySelector('[data-action="timelapse"]')).toBeNull();
+    expect(viewerText()).toContain('Orientation as delivered by the archive');
     expect(searchHistory).not.toHaveBeenCalled();
 
     document.querySelector<HTMLButtonElement>('.oiv-close')!.click();
     const earthSearchOnly = scene(40, 5, { key: 'sentinel-2c:1:es', imageUrl: preview('S2C_es') });
     open(scene(1, 5), { searchHistory: history([earthSearchOnly]) }, [earthSearchOnly]);
     await settle();
+    showChange();
     expect(viewer()!.querySelector('.oiv-slider')).toBeNull();
     expect(viewer()!.querySelector(`.oiv-date[data-key="${earthSearchOnly.key}"]`)).toBeNull();
   });
 
-  it('defaults the compare picker to the nearest low-cloud scene at least 30 days away', async () => {
+  it('shows the large crop with a reticle, scale bar, two-line caption and metadata column', async () => {
+    open(scene(1, 5), { searchHistory: history([]) });
+    await settle();
+    expect(viewer()!.querySelector('.oiv-stage .oiv-reticle')).not.toBeNull();
+    expect(viewer()!.querySelector('.oiv-scale')!.textContent).toBe('2 KM');
+    expect([...viewer()!.querySelectorAll('.oiv-caption span')].map((line) => line.textContent)).toEqual([
+      'SENTINEL-2C · THU 12 NOV · 12:00 UTC',
+      '10 M · 24 h ago · Clear',
+    ]);
+    const meta = Object.fromEntries([...viewer()!.querySelectorAll('.oiv-meta div')].map((cell) => [cell.querySelector('dt')!.textContent, cell.querySelector('dd')!.textContent]));
+    expect(meta).toMatchObject({ Pixel: '10M', 'Scene cloud': '5%', 'Sun elevation': '40°' });
+  });
+
+  it('defaults the compare picker to the nearest clear scene at least 30 days away', async () => {
     const selected = scene(1, 5);
     const nearButRecent = scene(10, 2);
     const farButCloudy = scene(32, 60);
     const expected = scene(38, 8);
     const further = scene(55, 1);
     open(selected, { searchHistory: history([selected, nearButRecent, farButCloudy, expected, further]) });
+    await settle();
+    showChange();
     await settle();
     const pressed = viewer()!.querySelector<HTMLElement>('.oiv-date[aria-pressed="true"]')!;
     expect(pressed.dataset.key).toBe(expected.key);
@@ -121,17 +142,24 @@ describe('orbital image viewer', () => {
     expect(viewer()!.querySelector('.oiv-before')!.getAttribute('src')).toBe(nearButRecent.imageUrl);
   });
 
-  it('leaves cloudy dates out of the compare strip, since they would only compare cloud', async () => {
+  it('leaves dates over 30% cloud out of the compare list until cloudy dates are asked for', async () => {
     const selected = scene(1, 5);
-    const cloudy = [scene(8, 98), scene(15, 96), scene(22, 100)];
+    const cloudy = [scene(8, 98), scene(15, 96), scene(22, 31)];
+    const hazy = scene(29, 25);
     const clear = scene(36, 4);
-    open(selected, { searchHistory: history([selected, ...cloudy, clear]) });
+    open(selected, { searchHistory: history([selected, ...cloudy, hazy, clear]) });
     await settle();
-    const dates = [...viewer()!.querySelectorAll<HTMLElement>('.oiv-date')].map((date) => date.dataset.key);
-    expect(dates).toEqual([clear.key]);
+    showChange();
+    const dates = () => [...viewer()!.querySelectorAll<HTMLElement>('.oiv-date')].map((date) => date.dataset.key);
+    expect(dates()).toEqual([hazy.key, clear.key]);
+    const toggle = viewer()!.querySelector<HTMLButtonElement>('[data-action="show-cloudy"]')!;
+    expect(toggle.textContent).toBe('Show cloudy dates (3)');
+    toggle.click();
+    expect(dates()).toEqual([...cloudy, hazy, clear].map((s) => s.key));
+    expect(viewer()!.querySelector('[data-action="show-cloudy"]')!.getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('shows the before and after split only once both dates have loaded', async () => {
+  it('shows the before and after split only once both dates have decoded', async () => {
     const selected = scene(1, 5);
     const other = scene(36, 4);
     const pending = new Map<string, () => void>();
@@ -140,17 +168,19 @@ describe('orbital image viewer', () => {
       loadImage: (url) => new Promise<void>((resolve) => pending.set(url, resolve)),
     });
     await settle();
+    showChange();
+    const status = () => viewer()!.querySelector('.oiv-compare [role="status"]')!.textContent;
     expect(viewer()!.querySelector('.oiv-slider')).toBeNull();
-    expect(viewer()!.querySelector('.oiv-compare .oiv-status')!.textContent).toBe('Loading frames: 0 of 2');
+    expect(status()).toBe('Loading frames: 0 of 2');
     pending.get(selected.imageUrl!)!();
     await settle();
     expect(viewer()!.querySelector('.oiv-slider')).toBeNull();
-    expect(viewer()!.querySelector('.oiv-compare .oiv-status')!.textContent).toBe('Loading frames: 1 of 2');
+    expect(status()).toBe('Loading frames: 1 of 2');
     pending.get(other.imageUrl!)!();
     await settle();
     expect(viewer()!.querySelector('.oiv-before')!.getAttribute('src')).toBe(other.imageUrl);
     expect(viewer()!.querySelector('.oiv-after')!.getAttribute('src')).toBe(selected.imageUrl);
-    expect([...viewer()!.querySelectorAll('.oiv-slider-label')].map((label) => label.textContent)).toEqual(['2026-10-08', '2026-11-12']);
+    expect([...viewer()!.querySelectorAll('.oiv-chip')].map((chip) => chip.textContent)).toEqual(['8 OCT 2026', '12 NOV 2026']);
   });
 
   it('moves the compare default to a clear scene from history once it arrives, unless a date was picked', async () => {
@@ -159,104 +189,27 @@ describe('orbital image viewer', () => {
     const recentClear = scene(4, 12);
     const clearMonthAgo = scene(35, 3);
     open(selected, { searchHistory: history([selected, recentClear, clearMonthAgo]) }, [recentClear]);
+    showChange();
     expect(pressed()).toBe(recentClear.key);
     await settle();
     expect(pressed()).toBe(clearMonthAgo.key);
 
     document.body.replaceChildren();
     open(selected, { searchHistory: history([selected, recentClear, clearMonthAgo]) }, [recentClear]);
+    showChange();
     viewer()!.querySelector<HTMLButtonElement>(`.oiv-date[data-key="${recentClear.key}"]`)!.click();
     await settle();
     expect(pressed()).toBe(recentClear.key);
   });
 
-  it('keeps Escape working after the focused time-lapse control is replaced', async () => {
-    const frames = [scene(50, 2), scene(40, 3), scene(30, 4), scene(20, 5)];
-    open(frames[3]!, { searchHistory: history(frames), prefersReducedMotion: () => false, loadImage: loaded });
-    await settle();
-    const start = viewer()!.querySelector<HTMLButtonElement>('[data-action="timelapse-start"]')!;
-    start.focus();
-    start.click();
-    await settle();
-    expect(viewer()!.querySelector('[data-timelapse="autoplay"]')).not.toBeNull();
-    expect(viewer()!.contains(document.activeElement)).toBe(true);
+  it('keeps Escape working after the focused tab is replaced', () => {
+    open(scene(1, 5), { searchHistory: history([]) });
+    const tab = viewer()!.querySelector<HTMLButtonElement>('[data-mode="change"]')!;
+    tab.focus();
+    tab.click();
+    expect(document.activeElement?.closest('.oiv-dialog')).toBe(viewer());
     document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(viewer()).toBeNull();
-  });
-
-  it('skips a frame that fails to load and plays the rest', async () => {
-    vi.useFakeTimers();
-    const frames = [scene(50, 2), scene(40, 3), scene(30, 4), scene(20, 5), scene(10, 6)];
-    const failing = frames[2]!.imageUrl;
-    open(frames[4]!, {
-      searchHistory: history(frames),
-      prefersReducedMotion: () => false,
-      loadImage: async (url) => {
-        if (url === failing) throw new Error('404');
-      },
-    });
-    await vi.advanceTimersByTimeAsync(0);
-    viewer()!.querySelector<HTMLButtonElement>('[data-action="timelapse-start"]')!.click();
-    await vi.advanceTimersByTimeAsync(0);
-    const frameSrc = () => viewer()!.querySelector('.oiv-timelapse-frame')!.getAttribute('src');
-    const shown = new Set<string | null>([frameSrc()]);
-    expect(viewer()!.querySelector('[data-timelapse="autoplay"]')).not.toBeNull();
-    expect(viewerText()).toContain('Frame 1 of 4');
-    for (let i = 0; i < 4; i++) {
-      await vi.advanceTimersByTimeAsync(800);
-      shown.add(frameSrc());
-    }
-    expect(shown).toEqual(new Set(frames.filter((f) => f.imageUrl !== failing).map((f) => f.imageUrl)));
-  });
-
-  it('gives reduced-motion users a manual stepper instead of autoplay', async () => {
-    vi.useFakeTimers();
-    const frames = [scene(50, 2), scene(40, 3), scene(30, 4), scene(20, 5)];
-    open(frames[3]!, { searchHistory: history(frames), prefersReducedMotion: () => true, loadImage: loaded });
-    await vi.advanceTimersByTimeAsync(0);
-    viewer()!.querySelector<HTMLButtonElement>('[data-action="timelapse-start"]')!.click();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(viewer()!.querySelector('[data-timelapse="stepper"]')).not.toBeNull();
-    expect(viewer()!.querySelector('[data-action="timelapse-toggle"]')).toBeNull();
-    await vi.advanceTimersByTimeAsync(5_000);
-    expect(viewerText()).toContain('Frame 1 of 4');
-    viewer()!.querySelector<HTMLButtonElement>('[data-action="frame-next"]')!.click();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(viewerText()).toContain('Frame 2 of 4');
-  });
-
-  it('advances a frame only after that frame has loaded, keeping the shown frame meanwhile', async () => {
-    const frames = [scene(50, 2), scene(40, 3), scene(30, 4), scene(20, 5)];
-    let release: (() => void) | null = null;
-    let preloading = true;
-    open(frames[3]!, {
-      searchHistory: history(frames),
-      prefersReducedMotion: () => true,
-      loadImage: (url) => (preloading || url !== frames[1]!.imageUrl ? Promise.resolve() : new Promise<void>((resolve) => { release = resolve; })),
-    });
-    await settle();
-    viewer()!.querySelector<HTMLButtonElement>('[data-action="timelapse-start"]')!.click();
-    await settle();
-    preloading = false;
-    const frameImage = viewer()!.querySelector('.oiv-timelapse-frame')!;
-    viewer()!.querySelector<HTMLButtonElement>('[data-action="frame-next"]')!.click();
-    await settle();
-    expect(viewerText()).toContain('Frame 1 of 4');
-    expect(frameImage.getAttribute('src')).toBe(frames[0]!.imageUrl);
-    release!();
-    await settle();
-    expect(viewerText()).toContain('Frame 2 of 4');
-    expect(viewer()!.querySelector('.oiv-timelapse-frame')).toBe(frameImage);
-    expect(frameImage.getAttribute('src')).toBe(frames[1]!.imageUrl);
-  });
-
-  it('replaces the time-lapse control when fewer than four clear scenes exist', async () => {
-    const frames = [scene(50, 2), scene(40, 45), scene(30, 4), scene(20, 5), scene(75, 1)];
-    open(frames[3]!, { searchHistory: history(frames), loadImage: loaded });
-    await settle();
-    expect(viewer()!.querySelector('[data-action="timelapse-start"]')).toBeNull();
-    expect(viewer()!.querySelector('[data-timelapse="insufficient"]')!.textContent)
-      .toBe('Not enough clear scenes for a time-lapse: 3 of 4 needed from the last 60 days.');
   });
 
   it('names the archive that timed out instead of implying there are no earlier scenes', async () => {
@@ -268,12 +221,16 @@ describe('orbital image viewer', () => {
     searchHistory.mockResolvedValueOnce({ status: 'ok', scenes: [scene(1, 5), scene(40, 3)] });
     viewer()!.querySelector<HTMLButtonElement>('[data-action="retry-history"]')!.click();
     await settle();
+    showChange();
+    await settle();
     expect(viewer()!.querySelector('.oiv-slider')).not.toBeNull();
   });
 
   it('never renders an image from a host outside the archive allowlist', async () => {
     const selected = scene(1, 5);
     open(selected, { searchHistory: history([selected, scene(40, 3, { imageUrl: 'https://evil.example/x.png' })]) });
+    await settle();
+    showChange();
     await settle();
     expect([...document.querySelectorAll('img')].every((img) => new URL(img.src).hostname === 'planetarycomputer.microsoft.com')).toBe(true);
     expect(viewerText()).toContain('No other scene of this collection to compare with.');

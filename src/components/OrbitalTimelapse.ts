@@ -120,7 +120,8 @@ export class OrbitalTimelapsePage {
       this.render();
       return;
     }
-    const { looks, failures } = result;
+    const { failures } = result;
+    const looks = result.looks.filter((look) => look.imageUrl !== null && isAllowedPreviewUrl(look.imageUrl));
     this.state = { kind: 'loading', looks, failures, loaded: 0 };
     this.render();
     const frames = await preloadFrames(looks, signal, (loaded) => {
