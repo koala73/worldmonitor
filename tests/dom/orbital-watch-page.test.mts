@@ -16,7 +16,8 @@ import type { PassTier } from '../../shared/orbital/tiers.js';
 import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
-import { IMAGE_CREDIT, OrbitalWatchPage, type OrbitalWatchState } from '@/components/OrbitalWatchPage';
+import { OrbitalWatchPage, type OrbitalWatchState } from '@/components/OrbitalWatchPage';
+import { IMAGE_CREDIT } from '@/services/orbital/credits';
 import manifest from '../../shared/source-attribution-manifest.json';
 import { openOrbitalWatch } from '@/app/orbital-watch';
 
@@ -242,9 +243,43 @@ describe('satellite pass lookup sheet', () => {
 
   it('words its credits as the source attribution manifest does', () => {
     const attributions = (manifest as { entries: Array<{ attribution?: string }> }).entries.map((e) => e.attribution ?? '').join('\n');
-    for (const credit of [IMAGE_CREDIT.copernicus(2026).replace(' 2026', ''), IMAGE_CREDIT.usgs, IMAGE_CREDIT.eumetsat, IMAGE_CREDIT.gibsAcknowledgement]) {
+    for (const credit of [IMAGE_CREDIT.copernicus(2026).replace(' 2026', ''), IMAGE_CREDIT.usgs, IMAGE_CREDIT.eumetsat, IMAGE_CREDIT.gibsAcknowledgement, IMAGE_CREDIT.celestrak]) {
       expect(attributions).toContain(credit);
     }
+  });
+
+  it('credits only the sources present in the current result', () => {
+    const credits = () => [...sheet().querySelectorAll('.ow-credits li')].map((li) => li.textContent);
+    const { all, confirmedNew, confirmedOld } = tiered();
+
+    mounted({ kind: 'passes', lookup: lookup([]), archives: { kind: 'answered', evidence: evidence([]) } });
+    expect(sheet().querySelector('.ow-credits')).toBeNull();
+
+    page().render({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all) } });
+    expect(credits()).toEqual([IMAGE_CREDIT.celestrak]);
+
+    const acquisitions = [
+      { platform: 'sentinel-2c', profileId: 'sentinel-2', startMs: confirmedNew.timeMs, pass: null, imageUrl: null, condition: 'clear', cloudCoverPct: 0 },
+      { platform: 'sentinel-1a', profileId: 'sentinel-1', startMs: Date.UTC(2025, 11, 30), pass: null, imageUrl: null, condition: 'not-applicable', cloudCoverPct: null },
+      { platform: 'landsat-9', profileId: 'landsat', startMs: confirmedOld.timeMs, pass: null, imageUrl: null, condition: 'clear', cloudCoverPct: 0 },
+    ] as unknown as MatchedAcquisition[];
+    const mosaics = [{ kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'MODIS Terra', layer: 'm', noradId: 25994, days: [{ date: '2026-11-12', imageUrl: null }] }] as OrbitalEvidence['mosaics'];
+    const frames = [{ kind: 'geostationary', archive: 'eumetsat', source: 'Meteosat-10', layer: 'x', noradId: 38552, cadenceMinutes: 15, latest: { time: '2026-11-13T11:45:00Z', imageUrl: null } }] as OrbitalEvidence['frames'];
+    page().render({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all, { acquisitions, mosaics, frames }) } });
+    expect(credits()).toEqual([
+      IMAGE_CREDIT.celestrak,
+      'Contains modified Copernicus Sentinel data 2025-2026',
+      IMAGE_CREDIT.usgs,
+      IMAGE_CREDIT.gibsAcknowledgement,
+      IMAGE_CREDIT.eumetsat,
+    ]);
+
+    const emptySources = [{ ...mosaics[0]!, days: [] }];
+    const gibsFrame = [{ ...frames[0]!, archive: 'nasa-gibs', source: 'GOES-East' }] as OrbitalEvidence['frames'];
+    page().render({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all, { mosaics: emptySources, frames: [{ ...frames[0]!, latest: null }] }) } });
+    expect(credits()).toEqual([IMAGE_CREDIT.celestrak]);
+    page().render({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all, { frames: gibsFrame }) } });
+    expect(credits()).toEqual([IMAGE_CREDIT.celestrak, IMAGE_CREDIT.gibsAcknowledgement]);
   });
 
   it('says an aged-out open-mission pass is not in the archive only once the archives answered', () => {

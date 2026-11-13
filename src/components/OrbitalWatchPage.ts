@@ -5,6 +5,7 @@ import type { PointPass } from '@/services/orbital/pass-job';
 import { describePointCondition, type EvidenceProgress, type MatchedAcquisition, type OrbitalEvidence } from '@/services/orbital/match';
 import type { ArchiveId } from '@/services/orbital/archive-result';
 import type { DailyMosaicRow, GeostationaryRow } from '@/services/orbital/archive-gibs';
+import { acquisitionCredit, IMAGE_CREDIT, resultCredits } from '@/services/orbital/credits';
 import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
@@ -81,19 +82,6 @@ const ARCHIVE_NAME: Record<ArchiveId, string> = {
   'nasa-gibs': 'NASA GIBS',
   eumetsat: 'EUMETSAT',
 };
-
-/** Credit lines the archives ask for, worded as in the source attribution manifest. */
-export const IMAGE_CREDIT = {
-  copernicus: (year: number) => `Contains modified Copernicus Sentinel data ${year}`,
-  usgs: 'Landsat imagery courtesy of the U.S. Geological Survey',
-  eumetsat: 'Contains EUMETSAT Meteosat imagery',
-  gibs: 'NASA GIBS',
-  gibsAcknowledgement: "We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).",
-} as const;
-
-function acquisitionCredit(acquisition: MatchedAcquisition): string {
-  return acquisition.profileId === 'landsat' ? IMAGE_CREDIT.usgs : IMAGE_CREDIT.copernicus(new Date(acquisition.startMs).getUTCFullYear());
-}
 
 const frameCredit = (archive: ArchiveId) => (archive === 'eumetsat' ? IMAGE_CREDIT.eumetsat : IMAGE_CREDIT.gibs);
 
@@ -325,9 +313,9 @@ export class OrbitalWatchPage {
       : null;
     const list = GROUPS.map(({ id }) => groups.get(id)!).filter((group) => group.rows.length > 0).map((group) => this.renderGroup(group));
     const shown = evidence ?? (archives.kind === 'checking' ? archives.progress?.evidence ?? null : null);
-    const usesGibs = shown?.mosaics.some((m) => m.days.length > 0) || shown?.frames.some((f) => f.latest && f.archive === 'nasa-gibs');
-    const acknowledgement = usesGibs ? h('p', { className: 'ow-credit' }, IMAGE_CREDIT.gibsAcknowledgement) : null;
-    return [stale, this.renderSummary(archives, groups, evidence), empty, ...list, acknowledgement];
+    const credits = resultCredits(lookup, shown);
+    const creditLine = credits.length > 0 ? h('ul', { className: 'ow-credits' }, ...credits.map((credit) => h('li', null, credit))) : null;
+    return [stale, this.renderSummary(archives, groups, evidence), empty, ...list, creditLine];
   }
 
   private renderSummary(archives: ArchiveState, groups: Map<GroupId, Group>, evidence: OrbitalEvidence | null): HTMLElement {

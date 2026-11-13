@@ -915,6 +915,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Contains EUMETSAT Meteosat imagery; credit EUMETSAT and link to EUMETView.',
     status: 'terms-review',
   },
+  'celestrak.org': {
+    provider: 'CelesTrak',
+    license: 'Public U.S. Space Force GP orbit elements republished by CelesTrak; CelesTrak usage terms apply and require review',
+    attribution: 'Orbit elements from CelesTrak; link to celestrak.org.',
+    status: 'terms-review',
+  },
   'cmr.earthdata.nasa.gov': {
     provider: 'NASA Earthdata CMR',
     license: 'U.S. government public metadata; NASA Earthdata terms apply',
@@ -1164,7 +1170,9 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '643f8cada01894c1371e01501e618c0705be96672e0c4ac146349b792a7a3b26',
+  sha256: '9b147ba2da242b6dd891c82c1beb3f96083c8bd279ce1c3ce24ed3605bb080c3',
+  // 2026-11-13: name CelesTrak as the provider of the orbit elements behind
+  // satellite tracking and the point lookup (issue #10615), with its licence.
   // 2026-11-13: add the browser-direct satellite image archives for the point
   // lookup (issue #10615): Microsoft Planetary Computer, NASA GIBS and
   // EUMETSAT EUMETView. Each publishes terms that allow display in a web
