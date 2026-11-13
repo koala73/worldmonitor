@@ -331,7 +331,7 @@ export function projectConflictSourceObservation(value: unknown): ConflictSource
 
 // Per-country day aggregates the UCDP writers add for the CII's one-year term
 // (about 85 KB); they would crowd the events out of the output budget.
-const UCDP_CII_AGGREGATE_FIELDS = ['countryDays', 'dailyTotals'] as const;
+const UCDP_CII_AGGREGATE_FIELDS = ['countryDays', 'dailyTotals', 'partyMonths'] as const;
 
 function filterConflictEvents(data: Record<string, unknown>, params: Record<string, unknown>): Record<string, unknown> {
   const ucdp = data['ucdp-events'];

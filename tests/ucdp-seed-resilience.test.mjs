@@ -322,7 +322,7 @@ describe('a run that cannot complete its window keeps the last good one', () => 
   const NOW = Date.now();
   const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10);
   const ANNUAL_ROW_MS = NOW - 300 * DAY_MS;
-  const annualRow = { id: 'annual-1', date_start: isoDay(ANNUAL_ROW_MS), date_end: isoDay(ANNUAL_ROW_MS), country: 'Mexico', best: 2 };
+  const annualRow = { id: 'annual-1', date_start: isoDay(ANNUAL_ROW_MS), date_end: isoDay(ANNUAL_ROW_MS), country: 'Mexico', best: 2, side_a: 'Government of Mexico', side_b: 'Rebels' };
   const goodWindow = (endMs) => ({ countryDays: { Ukraine: [[1, 1, 1]] }, window: { complete: true, endMs } });
   const recentGood = goodWindow(NOW - 30 * DAY_MS);
 
@@ -443,6 +443,7 @@ describe('a run that cannot complete its window keeps the last good one', () => 
         const calls = await runRelay({ existing });
         assert.equal(calls.writes.length, 1, `must publish over ${JSON.stringify(existing)}`);
         assert.equal(calls.writes[0].payload.window.complete, false);
+        assert.deepEqual(calls.writes[0].payload.partyMonths, [{ country: 'Mexico', sideA: 'Government of Mexico', sideB: 'Rebels', month: isoDay(ANNUAL_ROW_MS).slice(0, 7), deaths: 2, events: 1 }]);
         assert.deepEqual(calls.expires, []);
       }
     });
@@ -459,7 +460,7 @@ describe('a run that cannot complete its window keeps the last good one', () => 
 import { writeFileSync } from 'node:fs';
 const existing = ${JSON.stringify(existing)};
 const annualRow = ${JSON.stringify(annualRow)};
-const calls = { sets: [], expires: [] };
+const calls = { sets: [], expires: [], payloads: [] };
 let clock = ${NOW};
 if (${exhaustBudget}) Date.now = () => clock;
 process.on('exit', () => writeFileSync(${JSON.stringify(outPath)}, JSON.stringify(calls)));
@@ -472,7 +473,8 @@ globalThis.fetch = async (url, init) => {
     return Response.json({ TotalPages: 1, Result: ${nullAnnualRow ? '[null, annualRow]' : '[annualRow]'} });
   }
   if (u.includes('/get/')) return Response.json({ result: existing === null ? null : JSON.stringify(existing) });
-  const [command, key] = JSON.parse(init.body);
+  const [command, key, value] = JSON.parse(init.body);
+  if (command === 'SET' && key === 'conflict:ucdp-events:v1') calls.payloads.push(JSON.parse(value));
   (command === 'SET' ? calls.sets : calls.expires).push(key);
   return Response.json({ result: command === 'SET' ? 'OK' : 1 });
 };
@@ -500,6 +502,8 @@ globalThis.fetch = async (url, init) => {
     it('still publishes an incomplete run when no complete, later window is cached', () => {
       const calls = runStandalone(goodWindow(ANNUAL_ROW_MS - DAY_MS));
       assert.ok(calls.sets.includes(UCDP_REDIS_KEY));
+      const payload = calls.payloads[0].data ?? calls.payloads[0];
+      assert.deepEqual(payload.partyMonths, [{ country: 'Mexico', sideA: 'Government of Mexico', sideB: 'Rebels', month: isoDay(ANNUAL_ROW_MS).slice(0, 7), deaths: 2, events: 1 }]);
       assert.ok(calls.sets.includes('seed-meta:conflict:ucdp-events'));
       assert.ok(!calls.expires.includes(UCDP_REDIS_KEY));
     });

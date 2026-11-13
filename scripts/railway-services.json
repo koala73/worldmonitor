@@ -102,6 +102,7 @@
       "scripts/shared/stablecoins.json",
       "scripts/shared/stocks.json",
       "scripts/shared/ucdp-candidate.cjs",
+      "scripts/shared/ucdp-state-parties.cjs",
       "scripts/_ucdp-dashboard.mjs",
       "scripts/shared/exposure-location-key.mjs",
       "scripts/shared/yahoo-closed-session.cjs",
@@ -1408,6 +1409,7 @@
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
       "scripts/shared/ucdp-candidate.cjs",
+      "scripts/shared/ucdp-state-parties.cjs",
       "scripts/shared/world-bank-rpc-cache.js"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-11-seed-bundle-relay-backup"

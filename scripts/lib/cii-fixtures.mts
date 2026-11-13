@@ -199,6 +199,9 @@ export function trimCiiRawInputs(raw: CiiCaptureInputs, targetCodes: readonly st
   const nullable = <T,>(v: unknown, fn: (v: any) => T): T | null => (v == null ? null : fn(v));
   return {
     ucdp: nullable(raw.ucdp, (v) => ({
+      ...(v.partyMonths !== undefined ? { partyMonths: structuredClone(v.partyMonths) } : {}),
+      ...(v.window !== undefined ? { window: structuredClone(v.window) } : {}),
+      ...(v.countryDays !== undefined ? { countryDays: structuredClone(v.countryDays), dailyTotals: structuredClone(v.dailyTotals) } : {}),
       events: rows(v, 'events')
         .filter((e) => targetNameCode(e?.country || e?.location))
         .map((e) => pick(e, e?.country ? ['country', 'dateStart', 'deathsBest'] : ['location', 'dateStart', 'deathsBest'])),

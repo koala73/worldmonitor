@@ -20,6 +20,7 @@ import {
   WILDFIRE_FIRES_SUMMARY_KEY,
   type WildfireFireIntensity,
 } from '../../../../scripts/shared/wildfire-fires-summary.mjs';
+import { parsePartyMonths } from '../../../../scripts/shared/ucdp-state-parties.cjs';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
 import { isAcledConfigured } from '../../../_shared/acled-auth';
@@ -836,6 +837,8 @@ export function strikePressureBoost(pressure: number): number {
 
 export interface AuxiliarySources {
   ucdpEvents: any[];
+  // Full-window facts retained for v15; released v14 does not score this table.
+  ucdpPartyMonths?: ReturnType<typeof parsePartyMonths>;
   outages: any[];
   climate: any[];
   // Detections inside each Tier-1 country, from wildfire:fires-summary:v1
@@ -1202,6 +1205,7 @@ export function buildCiiAuxiliarySources(
 
   return {
     ucdpEvents: arr(ucdpRaw, 'events'),
+    ucdpPartyMonths: parsePartyMonths((ucdpRaw as { partyMonths?: unknown } | null)?.partyMonths),
     outages: arr(outagesRaw, 'outages'),
     climate: arr(climateRaw, 'anomalies'),
     fires: parseWildfireFiresSummary(firesRaw)?.byCountry ?? null,
