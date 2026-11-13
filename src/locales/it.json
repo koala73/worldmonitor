@@ -5154,6 +5154,8 @@
     "partial": "{{sources}} non ha risposto, quindi ad alcuni passaggi potrebbero mancare le immagini.",
     "stale": "I dati orbitali non sono aggiornati. Il catalogo satellitare risale a {{age}} fa, quindi gli orari dei passaggi potrebbero essere imprecisi.",
     "empty": "Nessun satellite per immagini censito è passato sopra questo punto negli ultimi {{pastDays}} giorni né passerà nelle prossime {{futureHours}} ore.",
+    "sources": "Fonti · {{count}}",
+    "sourcesDocs": "Come vengono usate queste fonti",
     "privacy": "Questo punto resta nel tuo browser. Viene inviato solo agli archivi pubblici che il browser interroga direttamente: Earth Search, Microsoft Planetary Computer, NASA GIBS ed EUMETSAT. L’unica eccezione è la ricerca per nome di luogo: il nome digitato va al servizio di ricerca dei luoghi.",
     "inRange": "a portata",
     "tier": {
@@ -5185,7 +5187,89 @@
     },
     "dailyMosaics": "mosaici giornalieri",
     "weatherFrames": "immagini meteo",
-    "sources": "Fonti · {{count}}",
-    "sourcesDocs": "Come vengono usate queste fonti"
+    "ui": {
+      "change": "Cambia",
+      "share": "Condividi",
+      "shareCopied": "Link copiato",
+      "headline": "Negli ultimi {{days}} giorni, {{satellites}} sono passati sopra {{place}}.",
+      "satellites": "{{count}} satelliti",
+      "subline": "Sono state pubblicate {{count}} immagini.",
+      "closestLook": "Vista più ravvicinata",
+      "replay": "Riproduci",
+      "openFull": "Apri vista completa",
+      "previous": "Immagine precedente",
+      "next": "Immagine successiva",
+      "passes": "passaggi",
+      "showAll": "Mostra tutti i passaggi",
+      "noRecentDays": "Nessun giorno recente nell’archivio: {{sources}}",
+      "tab": {
+        "all": "Tutto",
+        "detailed": "Dettagliato",
+        "weather": "Meteo"
+      },
+      "caption": {
+        "clear": "Sereno",
+        "clouded": "Nuvoloso · {{pct}}%",
+        "cloudShadow": "Ombra di nube",
+        "spotNotChecked": "Punto non verificato per le nubi",
+        "sceneCloud": "Nuvolosità della scena {{pct}}% · punto non verificato",
+        "radar": "Radar",
+        "dailyMosaic": "Mosaico giornaliero",
+        "geostationary": "Disco intero geostazionario",
+        "geostationaryCadence": "Geostazionario · ogni {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Immagine non disponibile · {{archive}}",
+        "noPreview": "L’archivio non ha ancora un’anteprima di questa scena"
+      },
+      "grid": {
+        "watched": "Osservato",
+        "watchedDef": "Un archivio pubblico contiene un’immagine di questo punto.",
+        "likely": "Probabilmente osservato",
+        "likelyDef": "Un sensore a strisciata fissa l’ha coperto; nessuna immagine ancora pubblicata.",
+        "could": "Avrebbe potuto puntare qui",
+        "couldDef": "Un sensore orientabile o commerciale era a portata; l’operatore non dice se ha guardato.",
+        "overhead": "Passato sopra",
+        "overheadDef": "Ha attraversato il cielo qui, senza prove di immagini."
+      },
+      "group": {
+        "watched": "osservati",
+        "likely": "probabilmente osservati",
+        "upcoming": "in arrivo",
+        "could": "che avrebbero potuto puntare qui",
+        "overhead": "passati sopra",
+        "weather": "fonti meteo"
+      },
+      "order": {
+        "closest": "Vista più ravvicinata, poi più recenti",
+        "newest": "Più recenti prima",
+        "soonest": "Più vicini prima"
+      },
+      "row": {
+        "cloud": "Nubi {{pct}}%",
+        "days": "{{count}} giorni",
+        "repeats": "{{count}} passaggi di questo satellite nel gruppo"
+      },
+      "section": {
+        "summary": "Riepilogo",
+        "passes": "Passaggi"
+      },
+      "status": {
+        "objects": "{{count}} oggetti · CelesTrak GP",
+        "fetched": "Recuperato {{time}} · {{ago}}",
+        "sun": "Sole {{point}} · punto subsolare"
+      },
+      "step": {
+        "computing": "Calcolo",
+        "catalogLoading": "Catalogo · caricamento",
+        "catalog": "Catalogo · {{count}} oggetti",
+        "propagating": "Propagazione orbite · {{done}} / {{total}}",
+        "archives": "Archivi · {{done}} / {{total}} hanno risposto",
+        "matching": "Abbinamento scene a {{passes}} passaggi",
+        "window": "Finestra di 7 giorni · {{start}} → {{end}}",
+        "failed": "Non riuscito",
+        "note": "Planetary Computer e NASA GIBS generano le immagini su richiesta, quindi questo passaggio può richiedere alcuni secondi."
+      }
+    }
   }
 }

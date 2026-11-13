@@ -5182,6 +5182,8 @@
     "partial": "{{sources}} neodpověděl, proto u některých přeletů mohou chybět snímky.",
     "stale": "Orbitální data jsou zastaralá. Katalog satelitů je starý {{age}}, proto se časy přeletů mohou lišit.",
     "empty": "Žádný evidovaný snímkovací satelit nad tímto bodem za posledních {{pastDays}} dní nepřeletěl a během příštích {{futureHours}} hodin nepřeletí.",
+    "sources": "Zdroje · {{count}}",
+    "sourcesDocs": "Jak se tyto zdroje používají",
     "privacy": "Tento bod zůstává ve vašem prohlížeči. Odesílá se pouze veřejným archivům, které prohlížeč volá přímo: Earth Search, Microsoft Planetary Computer, NASA GIBS a EUMETSAT. Jedinou výjimkou je hledání podle názvu místa: zadaný název jde do služby vyhledávání míst.",
     "inRange": "v dosahu",
     "tier": {
@@ -5213,7 +5215,89 @@
     },
     "dailyMosaics": "denní mozaiky",
     "weatherFrames": "meteorologické snímky",
-    "sources": "Zdroje · {{count}}",
-    "sourcesDocs": "Jak se tyto zdroje používají"
+    "ui": {
+      "change": "Změnit",
+      "share": "Sdílet",
+      "shareCopied": "Odkaz zkopírován",
+      "headline": "Za posledních {{days}} dní nad {{place}} přeletělo: {{satellites}}.",
+      "satellites": "{{count}} satelitů",
+      "subline": "Zveřejněno snímků: {{count}}.",
+      "closestLook": "Nejbližší pohled",
+      "replay": "Přehrát",
+      "openFull": "Otevřít celé zobrazení",
+      "previous": "Předchozí snímek",
+      "next": "Další snímek",
+      "passes": "přeletů",
+      "showAll": "Zobrazit všechny přelety",
+      "noRecentDays": "V archivu nejsou nedávné dny: {{sources}}",
+      "tab": {
+        "all": "Vše",
+        "detailed": "Podrobné",
+        "weather": "Počasí"
+      },
+      "caption": {
+        "clear": "Jasno",
+        "clouded": "Oblačno · {{pct}} %",
+        "cloudShadow": "Stín mraku",
+        "spotNotChecked": "Místo nezkontrolováno na oblačnost",
+        "sceneCloud": "Oblačnost scény {{pct}} % · místo nezkontrolováno",
+        "radar": "Radar",
+        "dailyMosaic": "Denní mozaika",
+        "geostationary": "Geostacionární celý disk",
+        "geostationaryCadence": "Geostacionární · každých {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Snímek nedostupný · {{archive}}",
+        "noPreview": "Archiv zatím nemá náhled této scény"
+      },
+      "grid": {
+        "watched": "Sledováno",
+        "watchedDef": "Veřejný archiv má snímek tohoto místa.",
+        "likely": "Pravděpodobně sledováno",
+        "likelyDef": "Senzor s pevným pásem ho pokryl; snímek zatím nezveřejněn.",
+        "could": "Mohl sem mířit",
+        "couldDef": "Natáčitelný nebo komerční senzor byl v dosahu; provozovatel neuvádí, zda se díval.",
+        "overhead": "Přeletěl nad",
+        "overheadDef": "Přešel zde oblohu, bez důkazu snímkování."
+      },
+      "group": {
+        "watched": "sledovaných",
+        "likely": "pravděpodobně sledovaných",
+        "upcoming": "nadcházejících",
+        "could": "které sem mohly mířit",
+        "overhead": "nad místem",
+        "weather": "zdroje počasí"
+      },
+      "order": {
+        "closest": "Nejbližší pohled, pak nejnovější",
+        "newest": "Nejnovější první",
+        "soonest": "Nejbližší první"
+      },
+      "row": {
+        "cloud": "Oblačnost {{pct}} %",
+        "days": "Dní: {{count}}",
+        "repeats": "Přelety tohoto satelitu ve skupině: {{count}}"
+      },
+      "section": {
+        "summary": "Souhrn",
+        "passes": "Přelety"
+      },
+      "status": {
+        "objects": "Objekty: {{count}} · CelesTrak GP",
+        "fetched": "Načteno {{time}} · {{ago}}",
+        "sun": "Slunce {{point}} · subsolární bod"
+      },
+      "step": {
+        "computing": "Výpočet",
+        "catalogLoading": "Katalog · načítání",
+        "catalog": "Katalog · objekty: {{count}}",
+        "propagating": "Výpočet drah · {{done}} / {{total}}",
+        "archives": "Archivy · odpovědělo {{done}} / {{total}}",
+        "matching": "Párování scén s přelety: {{passes}}",
+        "window": "7denní okno · {{start}} → {{end}}",
+        "failed": "Selhalo",
+        "note": "Planetary Computer a NASA GIBS vytvářejí snímky na vyžádání, proto tento krok může trvat několik sekund."
+      }
+    }
   }
 }

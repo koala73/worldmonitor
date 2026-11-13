@@ -5182,6 +5182,8 @@
     "partial": "{{sources}} nie odpowiedział, więc niektórym przelotom mogą brakować zdjęć.",
     "stale": "Dane orbitalne są nieaktualne. Katalog satelitów ma {{age}}, więc czasy przelotów mogą się różnić.",
     "empty": "Żaden skatalogowany satelita obrazujący nie przeleciał nad tym punktem w ciągu ostatnich {{pastDays}} dni ani nie przeleci w ciągu najbliższych {{futureHours}} godzin.",
+    "sources": "Źródła · {{count}}",
+    "sourcesDocs": "Jak wykorzystywane są te źródła",
     "privacy": "Ten punkt pozostaje w Twojej przeglądarce. Jest wysyłany tylko do publicznych archiwów, z którymi przeglądarka łączy się bezpośrednio: Earth Search, Microsoft Planetary Computer, NASA GIBS i EUMETSAT. Jedynym wyjątkiem jest wyszukiwanie po nazwie miejsca: wpisana nazwa trafia do usługi wyszukiwania miejsc.",
     "inRange": "w zasięgu",
     "tier": {
@@ -5213,7 +5215,89 @@
     },
     "dailyMosaics": "dzienne mozaiki",
     "weatherFrames": "zdjęcia pogodowe",
-    "sources": "Źródła · {{count}}",
-    "sourcesDocs": "Jak wykorzystywane są te źródła"
+    "ui": {
+      "change": "Zmień",
+      "share": "Udostępnij",
+      "shareCopied": "Skopiowano link",
+      "headline": "W ciągu ostatnich {{days}} dni nad {{place}} przeleciało: {{satellites}}.",
+      "satellites": "{{count}} satelitów",
+      "subline": "Opublikowano obrazy: {{count}}.",
+      "closestLook": "Najbliższe ujęcie",
+      "replay": "Odtwórz",
+      "openFull": "Otwórz pełny widok",
+      "previous": "Poprzedni obraz",
+      "next": "Następny obraz",
+      "passes": "przelotów",
+      "showAll": "Pokaż wszystkie przeloty",
+      "noRecentDays": "Brak niedawnych dni w archiwum: {{sources}}",
+      "tab": {
+        "all": "Wszystko",
+        "detailed": "Szczegółowe",
+        "weather": "Pogoda"
+      },
+      "caption": {
+        "clear": "Bezchmurnie",
+        "clouded": "Zachmurzenie · {{pct}}%",
+        "cloudShadow": "Cień chmury",
+        "spotNotChecked": "Miejsce niesprawdzone pod kątem chmur",
+        "sceneCloud": "Zachmurzenie sceny {{pct}}% · miejsce niesprawdzone",
+        "radar": "Radar",
+        "dailyMosaic": "Dzienna mozaika",
+        "geostationary": "Pełna tarcza geostacjonarna",
+        "geostationaryCadence": "Geostacjonarny · co {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Obraz niedostępny · {{archive}}",
+        "noPreview": "Archiwum nie ma jeszcze podglądu tej sceny"
+      },
+      "grid": {
+        "watched": "Obserwowane",
+        "watchedDef": "Publiczne archiwum ma obraz tego miejsca.",
+        "likely": "Prawdopodobnie obserwowane",
+        "likelyDef": "Czujnik o stałym pasie je objął; obraz nie został jeszcze opublikowany.",
+        "could": "Mógł tu celować",
+        "couldDef": "Sterowalny lub komercyjny czujnik był w zasięgu; operator nie mówi, czy patrzył.",
+        "overhead": "Przeleciał nad",
+        "overheadDef": "Przeciął tu niebo, bez dowodu obrazowania."
+      },
+      "group": {
+        "watched": "obserwowanych",
+        "likely": "prawdopodobnie obserwowanych",
+        "upcoming": "nadchodzących",
+        "could": "które mogły tu celować",
+        "overhead": "nad miejscem",
+        "weather": "źródła pogodowe"
+      },
+      "order": {
+        "closest": "Najbliższe ujęcie, potem najnowsze",
+        "newest": "Najpierw najnowsze",
+        "soonest": "Najpierw najbliższe"
+      },
+      "row": {
+        "cloud": "Chmury {{pct}}%",
+        "days": "Dni: {{count}}",
+        "repeats": "Przeloty tego satelity w grupie: {{count}}"
+      },
+      "section": {
+        "summary": "Podsumowanie",
+        "passes": "Przeloty"
+      },
+      "status": {
+        "objects": "Obiekty: {{count}} · CelesTrak GP",
+        "fetched": "Pobrano {{time}} · {{ago}}",
+        "sun": "Słońce {{point}} · punkt podsłoneczny"
+      },
+      "step": {
+        "computing": "Obliczanie",
+        "catalogLoading": "Katalog · wczytywanie",
+        "catalog": "Katalog · obiekty: {{count}}",
+        "propagating": "Propagacja orbit · {{done}} / {{total}}",
+        "archives": "Archiwa · odpowiedziało {{done}} / {{total}}",
+        "matching": "Dopasowywanie scen do przelotów: {{passes}}",
+        "window": "Okno 7 dni · {{start}} → {{end}}",
+        "failed": "Niepowodzenie",
+        "note": "Planetary Computer i NASA GIBS generują obrazy na żądanie, więc ten krok może potrwać kilka sekund."
+      }
+    }
   }
 }

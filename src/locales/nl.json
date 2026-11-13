@@ -5126,6 +5126,8 @@
     "partial": "{{sources}} heeft niet geantwoord, dus bij sommige passages kunnen beelden ontbreken.",
     "stale": "De baangegevens zijn verouderd. De satellietcatalogus is {{age}} oud, dus passagetijden kunnen afwijken.",
     "empty": "Geen geregistreerde beeldvormingssatelliet is de afgelopen {{pastDays}} dagen over dit punt gevlogen of doet dat in de komende {{futureHours}} uur.",
+    "sources": "Bronnen · {{count}}",
+    "sourcesDocs": "Hoe deze bronnen worden gebruikt",
     "privacy": "Dit punt blijft in je browser. Het wordt alleen verzonden naar de openbare archieven die je browser rechtstreeks aanroept: Earth Search, Microsoft Planetary Computer, NASA GIBS en EUMETSAT. Zoeken op plaatsnaam is de enige uitzondering: de naam die je typt gaat naar de zoekdienst voor plaatsnamen.",
     "inRange": "binnen bereik",
     "tier": {
@@ -5157,7 +5159,89 @@
     },
     "dailyMosaics": "dagmozaïeken",
     "weatherFrames": "weerbeelden",
-    "sources": "Bronnen · {{count}}",
-    "sourcesDocs": "Hoe deze bronnen worden gebruikt"
+    "ui": {
+      "change": "Wijzigen",
+      "share": "Delen",
+      "shareCopied": "Link gekopieerd",
+      "headline": "In de afgelopen {{days}} dagen kwamen {{satellites}} over {{place}}.",
+      "satellites": "{{count}} satellieten",
+      "subline": "Er zijn {{count}} beelden openbaar gemaakt.",
+      "closestLook": "Dichtstbijzijnde blik",
+      "replay": "Afspelen",
+      "openFull": "Volledige weergave openen",
+      "previous": "Vorige afbeelding",
+      "next": "Volgende afbeelding",
+      "passes": "overkomsten",
+      "showAll": "Alle overkomsten tonen",
+      "noRecentDays": "Geen recente dagen in het archief: {{sources}}",
+      "tab": {
+        "all": "Alles",
+        "detailed": "Gedetailleerd",
+        "weather": "Weer"
+      },
+      "caption": {
+        "clear": "Helder",
+        "clouded": "Bewolkt · {{pct}}%",
+        "cloudShadow": "Wolkenschaduw",
+        "spotNotChecked": "Plek niet op wolken gecontroleerd",
+        "sceneCloud": "Scènebewolking {{pct}}% · plek niet gecontroleerd",
+        "radar": "Radarbeeld",
+        "dailyMosaic": "Dagelijks mozaïek",
+        "geostationary": "Geostationaire volledige schijf",
+        "geostationaryCadence": "Geostationair · elke {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Beeld niet beschikbaar · {{archive}}",
+        "noPreview": "Het archief heeft nog geen voorbeeld van deze scène"
+      },
+      "grid": {
+        "watched": "Waargenomen",
+        "watchedDef": "Een openbaar archief heeft een beeld van deze plek.",
+        "likely": "Waarschijnlijk waargenomen",
+        "likelyDef": "Een sensor met vaste strook dekte het; nog geen beeld gepubliceerd.",
+        "could": "Had hierop kunnen richten",
+        "couldDef": "Een richtbare of commerciële sensor was binnen bereik; de operator zegt niet of hij keek.",
+        "overhead": "Overgevlogen",
+        "overheadDef": "Kruiste hier de hemel, zonder beeldbewijs."
+      },
+      "group": {
+        "watched": "waargenomen",
+        "likely": "waarschijnlijk waargenomen",
+        "upcoming": "binnenkort",
+        "could": "die hierop hadden kunnen richten",
+        "overhead": "overgevlogen",
+        "weather": "weerbronnen"
+      },
+      "order": {
+        "closest": "Dichtstbijzijnde blik, dan nieuwste",
+        "newest": "Nieuwste eerst",
+        "soonest": "Eerstvolgende eerst"
+      },
+      "row": {
+        "cloud": "Bewolking {{pct}}%",
+        "days": "{{count}} dagen",
+        "repeats": "{{count}} overkomsten van deze satelliet in deze groep"
+      },
+      "section": {
+        "summary": "Samenvatting",
+        "passes": "Overkomsten"
+      },
+      "status": {
+        "objects": "{{count}} objecten · CelesTrak GP",
+        "fetched": "Opgehaald {{time}} · {{ago}}",
+        "sun": "Zon {{point}} · subsolair punt"
+      },
+      "step": {
+        "computing": "Berekenen",
+        "catalogLoading": "Catalogus · laden",
+        "catalog": "Catalogus · {{count}} objecten",
+        "propagating": "Banen doorrekenen · {{done}} / {{total}}",
+        "archives": "Archieven · {{done}} / {{total}} beantwoord",
+        "matching": "Scènes koppelen aan {{passes}} overkomsten",
+        "window": "Venster van 7 dagen · {{start}} → {{end}}",
+        "failed": "Mislukt",
+        "note": "Planetary Computer en NASA GIBS maken beelden op aanvraag, dus deze stap kan een paar seconden duren."
+      }
+    }
   }
 }

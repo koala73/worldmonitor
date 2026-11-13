@@ -5154,6 +5154,8 @@
     "partial": "{{sources}} nu a răspuns, așa că unor treceri le pot lipsi imaginile.",
     "stale": "Datele orbitale sunt învechite. Catalogul de sateliți are o vechime de {{age}}, așa că orele trecerilor pot fi inexacte.",
     "empty": "Niciun satelit de imagistică catalogat nu a trecut peste acest punct în ultimele {{pastDays}} zile și nici nu va trece în următoarele {{futureHours}} ore.",
+    "sources": "Surse · {{count}}",
+    "sourcesDocs": "Cum sunt folosite aceste surse",
     "privacy": "Acest punct rămâne în browserul tău. Este trimis doar arhivelor publice pe care browserul le apelează direct: Earth Search, Microsoft Planetary Computer, NASA GIBS și EUMETSAT. Căutarea după numele locului este singura excepție: numele introdus ajunge la serviciul de căutare a locurilor.",
     "inRange": "în rază",
     "tier": {
@@ -5185,7 +5187,89 @@
     },
     "dailyMosaics": "mozaicuri zilnice",
     "weatherFrames": "imagini meteo",
-    "sources": "Surse · {{count}}",
-    "sourcesDocs": "Cum sunt folosite aceste surse"
+    "ui": {
+      "change": "Schimbă",
+      "share": "Distribuie",
+      "shareCopied": "Link copiat",
+      "headline": "În ultimele {{days}} zile, {{satellites}} au trecut peste {{place}}.",
+      "satellites": "{{count}} sateliți",
+      "subline": "Au fost publicate {{count}} imagini.",
+      "closestLook": "Cea mai apropiată vedere",
+      "replay": "Redă",
+      "openFull": "Deschide vizualizarea completă",
+      "previous": "Imaginea anterioară",
+      "next": "Imaginea următoare",
+      "passes": "treceri",
+      "showAll": "Arată toate trecerile",
+      "noRecentDays": "Nicio zi recentă în arhivă: {{sources}}",
+      "tab": {
+        "all": "Toate",
+        "detailed": "Detaliat",
+        "weather": "Vreme"
+      },
+      "caption": {
+        "clear": "Senin",
+        "clouded": "Înnorat · {{pct}}%",
+        "cloudShadow": "Umbră de nor",
+        "spotNotChecked": "Punct neverificat pentru nori",
+        "sceneCloud": "Nebulozitatea scenei {{pct}}% · punct neverificat",
+        "radar": "Radar",
+        "dailyMosaic": "Mozaic zilnic",
+        "geostationary": "Disc complet geostaționar",
+        "geostationaryCadence": "Geostaționar · la fiecare {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Imagine indisponibilă · {{archive}}",
+        "noPreview": "Arhiva nu are încă o previzualizare a acestei scene"
+      },
+      "grid": {
+        "watched": "Observat",
+        "watchedDef": "O arhivă publică deține o imagine a acestui punct.",
+        "likely": "Probabil observat",
+        "likelyDef": "Un senzor cu bandă fixă l-a acoperit; încă nicio imagine publicată.",
+        "could": "Ar fi putut ținti aici",
+        "couldDef": "Un senzor orientabil sau comercial era în rază; operatorul nu spune dacă a privit.",
+        "overhead": "A trecut deasupra",
+        "overheadDef": "A traversat cerul aici, fără dovezi de imagine."
+      },
+      "group": {
+        "watched": "observate",
+        "likely": "probabil observate",
+        "upcoming": "următoare",
+        "could": "care ar fi putut ținti aici",
+        "overhead": "trecute deasupra",
+        "weather": "surse meteo"
+      },
+      "order": {
+        "closest": "Cea mai apropiată vedere, apoi cele mai noi",
+        "newest": "Cele mai noi întâi",
+        "soonest": "Cele mai apropiate întâi"
+      },
+      "row": {
+        "cloud": "Nori {{pct}}%",
+        "days": "{{count}} zile",
+        "repeats": "{{count}} treceri ale acestui satelit în grup"
+      },
+      "section": {
+        "summary": "Rezumat",
+        "passes": "Treceri"
+      },
+      "status": {
+        "objects": "{{count}} obiecte · CelesTrak GP",
+        "fetched": "Preluat {{time}} · {{ago}}",
+        "sun": "Soare {{point}} · punct subsolar"
+      },
+      "step": {
+        "computing": "Calcul",
+        "catalogLoading": "Catalog · se încarcă",
+        "catalog": "Catalog · {{count}} obiecte",
+        "propagating": "Propagarea orbitelor · {{done}} / {{total}}",
+        "archives": "Arhive · {{done}} / {{total}} au răspuns",
+        "matching": "Potrivirea scenelor cu {{passes}} treceri",
+        "window": "Fereastră de 7 zile · {{start}} → {{end}}",
+        "failed": "Eșuat",
+        "note": "Planetary Computer și NASA GIBS generează imaginile la cerere, așa că acest pas poate dura câteva secunde."
+      }
+    }
   }
 }
