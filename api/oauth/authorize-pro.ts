@@ -90,6 +90,7 @@ import { captureSilentError } from '../_sentry-edge.js';
 import { mcpGrantName } from '../../shared/agent-client-source';
 // @ts-expect-error — JS module, no declaration file
 import { clientAllowsRedirectUri, describeClientFailure, isClientMetadataDocumentId, resolveOAuthClient } from './_client-metadata.js';
+// @ts-expect-error — JS module, no declaration file
 import { isAllowedRedirectUri } from './_redirect-uri.js';
 
 /** OAuth authorization-code TTL — matches `api/oauth/authorize.js:10`. */
