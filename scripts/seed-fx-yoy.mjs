@@ -134,6 +134,7 @@ function computeYoy(series) {
   const trough = troughAtWorst;
 
   return {
+    monthlyBars: series.map((bar) => ({ date: new Date(bar.t).toISOString().slice(0, 10), value: bar.close })),
     currentRate: latest.close,
     yearAgoRate: yearAgo.close,
     yoyChange: Math.round(yoyChange * 10) / 10,

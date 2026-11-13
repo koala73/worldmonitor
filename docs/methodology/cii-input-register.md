@@ -61,3 +61,28 @@ This register has one row per input the CII reads. Under `docs/methodology/cii-c
 8. Population and area normalisers.
 9. Air-raid alerts beyond OREF.
 10. A per-family "unknown" state.
+
+## Pending v15 economic input (OQ9, owner ruling 13 November 2026)
+
+The producer-only key `intelligence:cii-economic-stress:v1` is not read by v14.
+It contains three possible country members: currency depreciation against the
+last monthly bar on or before 90 days earlier (at most 35 days of anchor lag),
+year-on-year CPI inflation minus the preceding year's year-on-year inflation,
+and monthly 10-year government yield minus its preceding 12-month mean.
+Values retain their units, source key, observation date and reference method.
+U18 must evaluate the scoring transformation and member-count fairness; these
+producer measurements do not select score constants or weights.
+
+CPI mirrors supply one member, selected from the freshest usable history.
+Monthly/quarterly reference periods are dated at their end. Limits are 4 months
+for monthly CPI, 7 months for quarterly CPI, 7 days for currency and 3 months for
+monthly yields. US, DE and FR have no currency member. A held peg is a measured
+zero move. Stale or insufficient-history members retain their absence reason and
+last observation date, with no numeric scoring value. Countries with no fresh
+member are published as not measured. The source country list is the released
+31; the dry run separately reports PH, TH, ID, VN, MY and KH.
+
+Cuba and North Korea currently have no usable economic member despite economic
+distress. Their lack of a term is a coverage limitation, not evidence of low
+risk. U8 must carry the not-measured label and this limitation onto the public
+methodology page and response when v15 starts consuming the key.
