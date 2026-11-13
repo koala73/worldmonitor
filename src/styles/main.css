@@ -21350,6 +21350,7 @@ button.popup-link {
 .unified-settings-modal {
   max-width: 640px;
   width: 95%;
+  height: 80vh;
   max-height: 80vh;
 }
 
@@ -21392,6 +21393,7 @@ button.popup-link {
   gap: 16px;
 }
 
+.us-back[hidden],
 .us-home[hidden],
 .us-pages [hidden] {
   display: none;
@@ -21550,9 +21552,7 @@ button.popup-link {
 }
 
 .wm-pref-heading {
-  margin: 16px 0 4px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
+  margin: 20px 0 4px;
   color: var(--text);
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
@@ -21562,8 +21562,6 @@ button.popup-link {
 
 .us-page-body > .wm-pref-heading:first-child {
   margin-top: 0;
-  padding-top: 0;
-  border-top: none;
 }
 
 /* About lists the site and legal links as two tappable lists. */
@@ -21575,6 +21573,7 @@ button.popup-link {
 .us-about .dashboard-site-links-row,
 .us-about .legal-links-row {
   display: grid;
+  justify-content: normal;
   gap: 0;
   padding: 0;
   border: 1px solid var(--border);
