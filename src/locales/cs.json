@@ -5212,6 +5212,8 @@
       "noPreview": "Archiv zatím nemá náhled této scény."
     },
     "dailyMosaics": "denní mozaiky",
-    "weatherFrames": "meteorologické snímky"
+    "weatherFrames": "meteorologické snímky",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

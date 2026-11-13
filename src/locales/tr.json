@@ -5156,6 +5156,8 @@
       "noPreview": "Arşivde bu sahnenin henüz bir önizlemesi yok."
     },
     "dailyMosaics": "günlük mozaikler",
-    "weatherFrames": "hava durumu görüntüleri"
+    "weatherFrames": "hava durumu görüntüleri",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

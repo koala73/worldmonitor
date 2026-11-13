@@ -62,11 +62,15 @@
 @media (prefers-reduced-motion: reduce) { .ow-image-frame[data-state="loading"] { animation: none; } }
 .ow-row-image figcaption { color: var(--text-dim); margin-top: 2px; }
 .ow-image-condition { display: block; }
-.ow-image-credit { display: block; font-size: 10px; line-height: 1.35; }
-.ow-credits { list-style: none; margin: 12px 0 0; padding: 0; color: var(--text-dim); font-size: 11px; line-height: 1.4; }
-.ow-credits li + li { margin-top: 2px; }
-.ow-credits a { color: inherit; }
-.ow-privacy { margin: 0; padding: 8px 14px 12px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 11px; line-height: 1.4; }
+.ow-image-credit { display: block; margin-top: 2px; color: var(--text-dim); opacity: 0.7; font-family: var(--font-mono); font-size: 10px; line-height: 1.35; letter-spacing: 0.08em; text-transform: uppercase; }
+.ow-footer { border-top: 1px solid var(--border); }
+.ow-sources { padding: 8px 14px 0; color: var(--text-dim); font-size: 11px; line-height: 1.4; }
+.ow-sources summary { cursor: pointer; font-family: var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
+.ow-sources ul { list-style: none; margin: 6px 0; padding: 0; }
+.ow-sources li + li { margin-top: 4px; }
+.ow-source-name, .ow-source-name a { color: var(--text); }
+.ow-sources a { color: inherit; }
+.ow-privacy { margin: 0; padding: 8px 14px 12px; color: var(--text-dim); font-size: 11px; line-height: 1.4; }
 
 @media (max-width: 768px) {
   .orbital-watch-sheet {

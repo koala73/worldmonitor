@@ -5184,6 +5184,8 @@
       "noPreview": "Arhiva nu are încă o previzualizare a acestei scene."
     },
     "dailyMosaics": "mozaicuri zilnice",
-    "weatherFrames": "imagini meteo"
+    "weatherFrames": "imagini meteo",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

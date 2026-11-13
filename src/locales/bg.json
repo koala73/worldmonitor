@@ -5156,6 +5156,8 @@
       "noPreview": "Архивът все още няма преглед на тази сцена."
     },
     "dailyMosaics": "дневни мозайки",
-    "weatherFrames": "метеорологични изображения"
+    "weatherFrames": "метеорологични изображения",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

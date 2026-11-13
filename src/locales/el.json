@@ -5156,6 +5156,8 @@
       "noPreview": "Το αρχείο δεν έχει ακόμη προεπισκόπηση αυτής της σκηνής."
     },
     "dailyMosaics": "ημερήσια μωσαϊκά",
-    "weatherFrames": "μετεωρολογικές εικόνες"
+    "weatherFrames": "μετεωρολογικές εικόνες",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

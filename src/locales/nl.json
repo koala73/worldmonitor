@@ -5156,6 +5156,8 @@
       "noPreview": "Het archief heeft nog geen voorbeeld van deze opname."
     },
     "dailyMosaics": "dagmozaïeken",
-    "weatherFrames": "weerbeelden"
+    "weatherFrames": "weerbeelden",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

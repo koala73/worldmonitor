@@ -5156,6 +5156,8 @@
       "noPreview": "Hifadhi bado haina onyesho la awali la tukio hili."
     },
     "dailyMosaics": "picha mseto za kila siku",
-    "weatherFrames": "picha za hali ya hewa"
+    "weatherFrames": "picha za hali ya hewa",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

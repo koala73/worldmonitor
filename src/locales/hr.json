@@ -5195,6 +5195,8 @@
       "noPreview": "Arhiv još nema pregled ove scene."
     },
     "dailyMosaics": "dnevni mozaici",
-    "weatherFrames": "meteorološke snimke"
+    "weatherFrames": "meteorološke snimke",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

@@ -5156,6 +5156,8 @@
       "noPreview": "Az archívumban még nincs előnézet erről a jelenetről."
     },
     "dailyMosaics": "napi mozaikok",
-    "weatherFrames": "időjárási felvételek"
+    "weatherFrames": "időjárási felvételek",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

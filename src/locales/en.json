@@ -4585,6 +4585,8 @@
     "partial": "{{sources}} did not answer, so some passes may be missing their images.",
     "stale": "Orbit data is stale. The satellite catalog is {{age}} old, so pass times may be off.",
     "empty": "No profiled imaging satellite passed over this point in the last {{pastDays}} days or will in the next {{futureHours}} hours.",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used",
     "privacy": "This point stays in your browser. It is sent only to the public archives your browser calls directly: Earth Search, Microsoft Planetary Computer, NASA GIBS and EUMETSAT. Searching by place name is the one exception: the name you type goes to the place-name search service.",
     "inRange": "in range",
     "dailyMosaics": "daily mosaics",

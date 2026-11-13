@@ -6,6 +6,7 @@ export const IMAGE_CREDIT = {
   copernicus: (years: string | number) => `Contains modified Copernicus Sentinel data ${years}`,
   usgs: 'Landsat imagery courtesy of the U.S. Geological Survey',
   eumetsat: 'Contains EUMETSAT Meteosat imagery',
+  gibs: 'NASA GIBS / EOSDIS',
   gibsAcknowledgement: "We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).",
   celestrak: 'Orbit elements from CelesTrak',
 } as const;
@@ -21,7 +22,10 @@ function yearSpan(acquisitions: readonly MatchedAcquisition[]): string {
   return first === last ? String(first) : `${first}-${last}`;
 }
 
+export const ORBITAL_WATCH_DOCS_URL = 'https://www.worldmonitor.app/docs/orbital-watch';
+
 export interface ResultCredit {
+  source: string;
   text: string;
   href?: string;
 }
@@ -31,17 +35,17 @@ type CreditRule = (lookup: PointPassLookup, evidence: OrbitalEvidence | null) =>
 
 /** Every source the lookup can show, in the order their credits read. */
 const CREDIT_RULES: readonly CreditRule[] = [
-  (lookup) => (lookup.passes.length > 0 ? { text: IMAGE_CREDIT.celestrak, href: 'https://celestrak.org' } : null),
+  (lookup) => (lookup.passes.length > 0 ? { source: 'CelesTrak', text: IMAGE_CREDIT.celestrak, href: 'https://celestrak.org' } : null),
   (_, evidence) => {
     const sentinel = evidence?.acquisitions.filter((acquisition) => acquisition.profileId !== 'landsat') ?? [];
-    return sentinel.length > 0 ? { text: IMAGE_CREDIT.copernicus(yearSpan(sentinel)) } : null;
+    return sentinel.length > 0 ? { source: 'Copernicus Sentinel', text: IMAGE_CREDIT.copernicus(yearSpan(sentinel)) } : null;
   },
-  (_, evidence) => (evidence?.acquisitions.some((acquisition) => acquisition.profileId === 'landsat') ? { text: IMAGE_CREDIT.usgs } : null),
+  (_, evidence) => (evidence?.acquisitions.some((acquisition) => acquisition.profileId === 'landsat') ? { source: 'USGS Landsat', text: IMAGE_CREDIT.usgs } : null),
   (_, evidence) =>
     evidence?.mosaics.some((mosaic) => mosaic.days.length > 0) || evidence?.frames.some((frame) => frame.latest && frame.archive === 'nasa-gibs')
-      ? { text: IMAGE_CREDIT.gibsAcknowledgement }
+      ? { source: 'NASA GIBS', text: IMAGE_CREDIT.gibsAcknowledgement }
       : null,
-  (_, evidence) => (evidence?.frames.some((frame) => frame.latest && frame.archive === 'eumetsat') ? { text: IMAGE_CREDIT.eumetsat } : null),
+  (_, evidence) => (evidence?.frames.some((frame) => frame.latest && frame.archive === 'eumetsat') ? { source: 'EUMETSAT', text: IMAGE_CREDIT.eumetsat } : null),
 ];
 
 /** The credit lines for the sources present in one lookup result. */

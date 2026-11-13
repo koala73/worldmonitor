@@ -17,7 +17,7 @@ import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
 import { OrbitalWatchPage, type OrbitalWatchState } from '@/components/OrbitalWatchPage';
-import { IMAGE_CREDIT } from '@/services/orbital/credits';
+import { IMAGE_CREDIT, ORBITAL_WATCH_DOCS_URL } from '@/services/orbital/credits';
 import manifest from '../../shared/source-attribution-manifest.json';
 import { openOrbitalWatch } from '@/app/orbital-watch';
 
@@ -139,7 +139,7 @@ describe('satellite pass lookup sheet', () => {
     mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'checking', total: 5, progress: { settled: ['gibs-daily-mosaics'], pendingProfiles: ['sentinel-2', 'landsat'], evidence: evidence(all, { status: 'partial', mosaics }) } } });
     group('mosaic')!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
     const modis = [...group('mosaic')!.querySelectorAll('.ow-row')].find((r) => r.textContent?.includes('MODIS Terra'))!;
-    expect(modis.querySelector('figure .ow-image-credit')?.textContent).toBe(IMAGE_CREDIT.gibsAcknowledgement);
+    expect(modis.querySelector('figure .ow-image-credit')?.textContent).toBe(IMAGE_CREDIT.gibs);
   });
 
   it('shows each image loading, then the image or a visible failure', () => {
@@ -266,13 +266,14 @@ describe('satellite pass lookup sheet', () => {
     expect(text()).toContain('Daily mosaics: 1 · Weather frames: 1');
 
     for (const id of ['mosaic', 'frames']) group(id)!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
-    expect(figure('MODIS Terra')).toContain(IMAGE_CREDIT.gibsAcknowledgement);
+    expect(figure('MODIS Terra')).toContain(IMAGE_CREDIT.gibs);
     expect(figure('Meteosat-10')).toContain('Contains EUMETSAT Meteosat imagery');
     const viirs = [...group('mosaic')!.querySelectorAll<HTMLElement>('.ow-row')].find((r) => r.textContent?.includes('VIIRS Suomi NPP'))!;
     expect(viirs.querySelector('.ow-tier-label')?.textContent).toBe('unavailable');
     expect(viirs.querySelector('img')).toBeNull();
     expect(figure('Meteosat-10')).not.toContain('NASA');
-    expect([...sheet().querySelectorAll('.ow-image-credit')].filter((c) => c.textContent === IMAGE_CREDIT.gibsAcknowledgement)).toHaveLength(1);
+    expect([...sheet().querySelectorAll('.ow-image-credit')].filter((c) => c.textContent === IMAGE_CREDIT.gibs)).toHaveLength(1);
+    expect(sheet().querySelector('.ow-body')!.textContent).not.toContain(IMAGE_CREDIT.gibsAcknowledgement);
   });
 
   it('words its credits as the source attribution manifest does', () => {
@@ -282,16 +283,21 @@ describe('satellite pass lookup sheet', () => {
     }
   });
 
-  it('credits only the sources present in the current result', () => {
-    const credits = () => [...sheet().querySelectorAll('.ow-credits li')].map((li) => li.textContent);
+  it('lists only the sources present in the current result in the footer', () => {
+    const sources = () => sheet().querySelector<HTMLDetailsElement>('.ow-footer .ow-sources')!;
+    const credits = () => [...sources().querySelectorAll('.ow-source-credit')].map((c) => c.textContent);
     const { all, confirmedNew, confirmedOld } = tiered();
 
     mounted({ kind: 'passes', lookup: lookup([]), archives: { kind: 'answered', evidence: evidence([]) } });
-    expect(sheet().querySelector('.ow-credits')).toBeNull();
+    expect(sources().hidden).toBe(true);
 
     page().render({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all) } });
+    expect(sources().hidden).toBe(false);
+    expect(sources().open).toBe(false);
+    expect(sources().querySelector('summary')?.textContent).toBe('Sources · 1');
     expect(credits()).toEqual([IMAGE_CREDIT.celestrak]);
-    expect(sheet().querySelector<HTMLAnchorElement>('.ow-credits a')?.href).toBe('https://celestrak.org/');
+    expect(sources().querySelector<HTMLAnchorElement>('.ow-source-name a')?.href).toBe('https://celestrak.org/');
+    expect(sources().querySelector<HTMLAnchorElement>('.ow-sources-docs')?.href).toBe(ORBITAL_WATCH_DOCS_URL);
 
     const acquisitions = [
       { platform: 'sentinel-2c', profileId: 'sentinel-2', startMs: confirmedNew.timeMs, pass: null, imageUrl: null, condition: 'clear', cloudCoverPct: 0 },

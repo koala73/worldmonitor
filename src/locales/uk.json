@@ -5212,6 +5212,8 @@
       "noPreview": "В архіві ще немає попереднього перегляду цієї сцени."
     },
     "dailyMosaics": "щоденні мозаїки",
-    "weatherFrames": "метеознімки"
+    "weatherFrames": "метеознімки",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

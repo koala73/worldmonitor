@@ -82,6 +82,12 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     const states = await sheet.locator('.ow-image-frame').evaluateAll((frames) => frames.map((f) => f.dataset.state));
     log('image states', states);
   };
+  const sourceCredits = async () => {
+    const sources = sheet.locator('.ow-footer .ow-sources');
+    if (await sources.isHidden()) return [];
+    if (!(await sources.evaluate((d) => d.open))) await sources.locator('summary').click();
+    return sources.locator('.ow-source-credit').allInnerTexts();
+  };
   const privacy = async () => {
     if (!(await sheet.locator('.ow-privacy').isVisible())) throw new Error('privacy notice missing');
   };
@@ -165,10 +171,10 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await gibsImage.evaluate((el) => el.scrollIntoView({ block: 'center' }));
   await settleImagesInView();
   const gibsCredit = gibsImage.locator('.ow-image-credit');
-  if (!(await gibsCredit.isVisible()) || !/Global Imagery Browse Services/.test(await gibsCredit.innerText())) throw new Error('NASA GIBS credit missing beside its mosaic image');
+  if (!(await gibsCredit.isVisible()) || !/NASA GIBS/.test(await gibsCredit.innerText())) throw new Error('NASA GIBS credit missing beside its mosaic image');
   await shot('tiered-results-expanded-credits');
   log('image captions', [...new Set(await sheet.locator('.ow-image-credit').allInnerTexts())]);
-  const credits = await sheet.locator('.ow-credits li').allInnerTexts();
+  const credits = await sourceCredits();
   log('result credits', credits);
   if (!credits.includes('Orbit elements from CelesTrak')) throw new Error(`credit line misses CelesTrak: ${credits.join(' | ')}`);
   if (!credits.some((c) => c.startsWith('Contains modified Copernicus Sentinel data'))) throw new Error(`credit line misses Copernicus beside a confirmed crop: ${credits.join(' | ')}`);
@@ -195,11 +201,11 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   failing.add('planetarycomputer.microsoft.com');
   await openAtPlace();
   await sheet.locator('.ow-banner-partial').waitFor({ timeout: 90_000 });
-  const withoutScenes = await sheet.locator('.ow-credits li').allInnerTexts();
+  const withoutScenes = await sourceCredits();
   log('credits with both scene archives down', withoutScenes);
   if (withoutScenes.some((c) => /Copernicus|Landsat/.test(c))) throw new Error(`credit for an absent source: ${withoutScenes.join(' | ')}`);
   if (!withoutScenes.includes('Orbit elements from CelesTrak')) throw new Error(`credit line misses CelesTrak: ${withoutScenes.join(' | ')}`);
-  await sheet.locator('.ow-credits').scrollIntoViewIfNeeded();
+  await sheet.locator('.ow-sources').scrollIntoViewIfNeeded();
   await shot('credits-without-scene-archives');
   failing.clear();
   await close();
@@ -226,7 +232,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     await sheet.locator('.ow-empty').waitFor({ timeout: 90_000 });
     await privacy();
     log('empty state', await sheet.locator('.ow-empty').innerText());
-    log('empty state credits', await sheet.locator('.ow-credits li').allInnerTexts());
+    log('empty state credits', await sourceCredits());
     await shot('empty-no-passes');
     await close();
   }

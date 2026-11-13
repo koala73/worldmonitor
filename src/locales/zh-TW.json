@@ -5124,10 +5124,12 @@
       "cadence": "每 {{minutes}} 分鐘一幀新影象",
       "sourceUnavailable": "存檔中沒有該來源在這些日期的影象。",
       "imageLoading": "正在載入影像…",
-      "imageFailed": "影像未能載入。檔案庫可能較慢或無法使用。",
-      "noPreview": "封存庫尚無此場景的預覽。"
+      "imageFailed": "影像未能載入。檔案庫可能較慢或無法存取。",
+      "noPreview": "存檔中尚無此場景的預覽。"
     },
     "dailyMosaics": "每日鑲嵌圖",
-    "weatherFrames": "氣象影象"
+    "weatherFrames": "氣象影象",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

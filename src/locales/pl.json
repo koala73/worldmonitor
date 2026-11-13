@@ -5212,6 +5212,8 @@
       "noPreview": "Archiwum nie ma jeszcze podglądu tej sceny."
     },
     "dailyMosaics": "dzienne mozaiki",
-    "weatherFrames": "zdjęcia pogodowe"
+    "weatherFrames": "zdjęcia pogodowe",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

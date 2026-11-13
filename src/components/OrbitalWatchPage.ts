@@ -5,7 +5,7 @@ import type { PointPass } from '@/services/orbital/pass-job';
 import { describePointCondition, type EvidenceProgress, type MatchedAcquisition, type OrbitalEvidence } from '@/services/orbital/match';
 import type { ArchiveId } from '@/services/orbital/archive-result';
 import type { DailyMosaicRow, GeostationaryRow } from '@/services/orbital/archive-gibs';
-import { acquisitionCredit, IMAGE_CREDIT, resultCredits } from '@/services/orbital/credits';
+import { acquisitionCredit, IMAGE_CREDIT, ORBITAL_WATCH_DOCS_URL, resultCredits, type ResultCredit } from '@/services/orbital/credits';
 import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
@@ -83,7 +83,10 @@ const ARCHIVE_NAME: Record<ArchiveId, string> = {
   eumetsat: 'EUMETSAT',
 };
 
-const frameCredit = (archive: ArchiveId) => (archive === 'eumetsat' ? IMAGE_CREDIT.eumetsat : IMAGE_CREDIT.gibsAcknowledgement);
+const frameCredit = (archive: ArchiveId) => (archive === 'eumetsat' ? IMAGE_CREDIT.eumetsat : IMAGE_CREDIT.gibs);
+
+const shownEvidence = (archives: ArchiveState): OrbitalEvidence | null =>
+  archives.kind === 'answered' ? archives.evidence : archives.kind === 'checking' ? archives.progress?.evidence ?? null : null;
 
 const EARTH_RADIUS_KM = 6371;
 const DAY_MS = 86_400_000;
@@ -191,7 +194,7 @@ function mosaicRow(mosaic: DailyMosaicRow): HTMLElement {
   const latest = mosaic.days[0];
   if (!latest) return sourceRow('unavailable', mosaic.source, t('orbitalWatch.tier.unavailable'), null, t('orbitalWatch.row.sourceUnavailable'), null);
   return sourceRow('daily-mosaic', mosaic.source, t('orbitalWatch.tier.dailyMosaic'), latest.date, t('orbitalWatch.row.mosaicDays', { count: mosaic.days.length }),
-    imageFigure(latest.imageUrl, t('orbitalWatch.row.imageAlt', { name: mosaic.source, time: latest.date }), null, IMAGE_CREDIT.gibsAcknowledgement));
+    imageFigure(latest.imageUrl, t('orbitalWatch.row.imageAlt', { name: mosaic.source, time: latest.date }), null, IMAGE_CREDIT.gibs));
 }
 
 function frameRow(frame: GeostationaryRow): HTMLElement {
@@ -242,6 +245,7 @@ export class OrbitalWatchPage {
   private readonly title: HTMLElement;
   private readonly closeButton: HTMLElement;
   private readonly privacy: HTMLElement;
+  private readonly sources: HTMLDetailsElement;
   private returnFocusTo: HTMLElement | null = null;
   /** Groups the user opened or closed, against their default. */
   private readonly toggled = new Set<GroupId>();
@@ -254,10 +258,11 @@ export class OrbitalWatchPage {
     this.title = h('h2', { id: titleId });
     this.closeButton = h('button', { type: 'button', className: 'ow-close', onClick: () => this.close() }, '×');
     this.privacy = h('p', { className: 'ow-privacy' });
+    this.sources = h('details', { className: 'ow-sources', hidden: true }) as HTMLDetailsElement;
     this.sheet = h('section', { className: 'orbital-watch-sheet', role: 'dialog', 'aria-labelledby': titleId, tabindex: '-1' },
       h('header', { className: 'ow-header' }, h('div', null, this.title, this.pointLabel), this.closeButton),
       this.body,
-      this.privacy);
+      h('footer', { className: 'ow-footer' }, this.sources, this.privacy));
     declareOverlay(this.sheet, { reload: 'safe' });
     this.sheet.addEventListener('keydown', this.onSheetKeydown);
     this.sheet.addEventListener('click', this.onSheetClick);
@@ -302,6 +307,7 @@ export class OrbitalWatchPage {
     const selector = focused?.dataset.key ? `.ow-row[data-key="${CSS.escape(focused.dataset.key)}"]`
       : focused?.dataset.group ? `.ow-group-toggle[data-group="${focused.dataset.group}"]`
       : null;
+    this.renderSources(state.kind === 'passes' ? resultCredits(state.lookup, shownEvidence(state.archives)) : []);
     replaceChildren(this.body, ...this.renderState(state));
     if (focused) ((selector ? this.body.querySelector<HTMLElement>(selector) : null) ?? this.sheet).focus();
   }
@@ -329,10 +335,17 @@ export class OrbitalWatchPage {
       ? h('p', { className: 'ow-empty' }, t('orbitalWatch.empty', { pastDays: Math.round((lookup.nowMs - lookup.window.startMs) / DAY_MS), futureHours: Math.round((lookup.window.endMs - lookup.nowMs) / 3_600_000) }))
       : null;
     const list = GROUPS.map(({ id }) => groups.get(id)!).filter((group) => group.rows.length > 0).map((group) => this.renderGroup(group));
-    const shown = evidence ?? (archives.kind === 'checking' ? archives.progress?.evidence ?? null : null);
-    const credits = resultCredits(lookup, shown);
-    const creditLine = credits.length > 0 ? h('ul', { className: 'ow-credits' }, ...credits.map(({ text, href }) => h('li', null, href ? h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text) : text))) : null;
-    return [stale, this.renderSummary(archives, groups, evidence), empty, ...list, creditLine];
+    return [stale, this.renderSummary(archives, groups, evidence), empty, ...list];
+  }
+
+  private renderSources(credits: ResultCredit[]): void {
+    this.sources.hidden = credits.length === 0;
+    replaceChildren(this.sources,
+      h('summary', null, t('orbitalWatch.sources', { count: credits.length })),
+      h('ul', null, ...credits.map(({ source, text, href }) => h('li', null,
+        h('span', { className: 'ow-source-name' }, href ? h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, source) : source),
+        ' ', h('span', { className: 'ow-source-credit' }, text)))),
+      h('a', { className: 'ow-sources-docs', href: ORBITAL_WATCH_DOCS_URL, target: '_blank', rel: 'noopener noreferrer' }, t('orbitalWatch.sourcesDocs')));
   }
 
   private renderSummary(archives: ArchiveState, groups: Map<GroupId, Group>, evidence: OrbitalEvidence | null): HTMLElement {

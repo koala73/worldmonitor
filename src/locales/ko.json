@@ -5128,6 +5128,8 @@
       "noPreview": "아카이브에 아직 이 장면의 미리보기가 없습니다."
     },
     "dailyMosaics": "일일 모자이크",
-    "weatherFrames": "기상 영상"
+    "weatherFrames": "기상 영상",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

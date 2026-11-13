@@ -5128,6 +5128,8 @@
       "noPreview": "存档中尚无此场景的预览。"
     },
     "dailyMosaics": "每日镶嵌图",
-    "weatherFrames": "气象图像"
+    "weatherFrames": "气象图像",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

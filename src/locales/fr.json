@@ -5184,6 +5184,8 @@
       "noPreview": "L'archive n'a pas encore d'aperçu de cette scène."
     },
     "dailyMosaics": "mosaïques quotidiennes",
-    "weatherFrames": "images météo"
+    "weatherFrames": "images météo",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

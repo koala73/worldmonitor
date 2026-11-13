@@ -5128,6 +5128,8 @@
       "noPreview": "คลังข้อมูลยังไม่มีภาพตัวอย่างของฉากนี้"
     },
     "dailyMosaics": "ภาพโมเสกรายวัน",
-    "weatherFrames": "ภาพสภาพอากาศ"
+    "weatherFrames": "ภาพสภาพอากาศ",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

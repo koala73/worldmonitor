@@ -5156,6 +5156,8 @@
       "noPreview": "Arkivet har ännu ingen förhandsvisning av den här scenen."
     },
     "dailyMosaics": "dagliga mosaiker",
-    "weatherFrames": "väderbilder"
+    "weatherFrames": "väderbilder",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

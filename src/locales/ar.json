@@ -5268,6 +5268,8 @@
       "noPreview": "لا يملك الأرشيف معاينة لهذا المشهد بعد."
     },
     "dailyMosaics": "فسيفساء يومية",
-    "weatherFrames": "صور الطقس"
+    "weatherFrames": "صور الطقس",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

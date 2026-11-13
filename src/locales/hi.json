@@ -5156,6 +5156,8 @@
       "noPreview": "संग्रह में इस दृश्य का पूर्वावलोकन अभी नहीं है।"
     },
     "dailyMosaics": "दैनिक मोज़ेक",
-    "weatherFrames": "मौसम चित्र"
+    "weatherFrames": "मौसम चित्र",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }

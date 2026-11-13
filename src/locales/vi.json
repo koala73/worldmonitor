@@ -5128,6 +5128,8 @@
       "noPreview": "Kho lưu trữ chưa có bản xem trước của cảnh này."
     },
     "dailyMosaics": "ảnh ghép hằng ngày",
-    "weatherFrames": "ảnh thời tiết"
+    "weatherFrames": "ảnh thời tiết",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used"
   }
 }
