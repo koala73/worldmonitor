@@ -100,6 +100,7 @@ export const CATEGORY_GLYPH_EXCLUDED_POINT_LAYER_IDS: Readonly<Record<string, st
   'protest-clusters-pulse': 'pulse ring decoration',
   'positive-events-pulse': 'pulse ring decoration',
   'kindness-pulse': 'pulse ring decoration',
+  'orbital-track-marker-layer': 'replay marker on a selected satellite pass, not a layer marker',
 };
 
 /**

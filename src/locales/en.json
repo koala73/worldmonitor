@@ -4572,6 +4572,10 @@
     }
   },
   "orbitalWatch": {
+    "track": {
+      "shown": "Ground track and footprint shown on the map",
+      "replay": "Replay pass"
+    },
     "computing": "Loading the satellite catalog…",
     "computingProgress": "Computing passes: {{done}} of {{total}} satellites",
     "unavailable": "The satellite catalog could not be loaded, so no passes were computed for this point.",

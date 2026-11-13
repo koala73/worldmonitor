@@ -57,6 +57,7 @@ import { getMineralColor } from '@/config/mineral-colors';
 import { getWindColor } from '@/config/wind-colors';
 import { CII_LEVEL_COLORS, type CiiLevel } from '@/config/cii-colors';
 import type { GpsJamHex } from '@/services/gps-interference';
+import type { FootprintRing, PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
 import { fetchImageryScenes } from '@/services/imagery';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
@@ -769,6 +770,8 @@ export class DeckGLMap {
   private highlightedLane: { routeId: string; path: [number, number][]; chokepointIds: string[] } | null = null;
   private highlightedMarkers: HighlightedMarker[] = [];
   private bypassArcData: BypassArcDatum[] = [];
+  private orbitalTrack: PassTrack | null = null;
+  private orbitalTrackMarker: TrackPoint | null = null;
   private scenarioState: ScenarioVisualState | null = null;
   private selectedChinaCorridorOverlay: ChinaCorridorOverlayProjection | null = null;
   private affectedIso2Set: Set<string> = new Set();
@@ -2598,6 +2601,8 @@ export class DeckGLMap {
         onClick: (info) => this.handleWebcamLayerClick(info),
       }));
     }
+
+    layers.push(...this.createOrbitalTrackLayers());
 
     // News geo-locations (always shown if data exists)
     if (this.newsLocations.length > 0) {
@@ -8146,6 +8151,59 @@ export class DeckGLMap {
       target: c.toPort,
     }));
     this.render();
+  }
+
+  public setOrbitalTrack(track: PassTrack | null, marker: TrackPoint | null): void {
+    this.orbitalTrack = track;
+    this.orbitalTrackMarker = track ? marker : null;
+    this.render();
+  }
+
+  public setOrbitalTrackMarker(point: TrackPoint | null): void {
+    if (!this.orbitalTrack) return;
+    this.orbitalTrackMarker = point;
+    this.render();
+  }
+
+  private createOrbitalTrackLayers(): Layer[] {
+    const track = this.orbitalTrack;
+    if (!track) return [];
+    const layers: Layer[] = [
+      new PolygonLayer<FootprintRing>({
+        id: 'orbital-footprint-layer',
+        data: track.footprint,
+        getPolygon: (ring) => ring,
+        getFillColor: [0, 180, 255, 45],
+        getLineColor: [0, 180, 255, 200],
+        lineWidthMinPixels: 1,
+        pickable: false,
+      }),
+      new PathLayer<TrackPoint[]>({
+        id: 'orbital-track-layer',
+        data: track.segments,
+        getPath: (segment) => segment.map((point): [number, number] => [point.lon, point.lat]),
+        getColor: [255, 214, 10, 230],
+        getWidth: 2,
+        widthUnits: 'pixels',
+        pickable: false,
+      }),
+    ];
+    const marker = this.orbitalTrackMarker;
+    if (marker) {
+      layers.push(new ScatterplotLayer<TrackPoint>({
+        id: 'orbital-track-marker-layer',
+        data: [marker],
+        getPosition: (point) => [point.lon, point.lat],
+        getRadius: 6,
+        radiusUnits: 'pixels',
+        getFillColor: [255, 214, 10, 255],
+        getLineColor: [10, 10, 10, 220],
+        stroked: true,
+        lineWidthMinPixels: 1.5,
+        pickable: false,
+      }));
+    }
+    return layers;
   }
 
   public clearBypassRoutes(): void {

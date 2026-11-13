@@ -23,6 +23,9 @@ export type OrbitalWatchState =
 export interface OrbitalWatchPageCallbacks {
   onClose: () => void;
   onRetry: () => void;
+  /** A pass row was chosen, so its ground track can be drawn on the map. */
+  onSelectPass?: (pass: PointPass) => void;
+  onReplayPass?: () => void;
 }
 
 type GroupId = 'confirmed' | 'likely' | 'checking' | 'upcoming' | 'mosaic' | 'frames' | 'inRange' | 'passed';
@@ -135,7 +138,7 @@ interface Group {
  * A pass is still checking while an archive its mission uses has not answered and the pass
  * could have been imaged, so it never reads "no image" before the archives have spoken.
  */
-function groupPasses(lookup: PointPassLookup, archives: ArchiveState): Map<GroupId, Group> {
+function groupPasses(lookup: PointPassLookup, archives: ArchiveState, selectedKey: string | null): Map<GroupId, Group> {
   const evidence = archives.kind === 'answered' ? archives.evidence : archives.progress?.evidence ?? null;
   const pendingProfiles = new Set(archives.kind === 'answered' ? [] : archives.progress?.pendingProfiles ?? lookup.passes.map((p) => p.profileId));
   const candidates = new Set(lookup.passes.filter((p) => p.tier.kind === 'likely-imaged').map(passKey));
@@ -146,7 +149,7 @@ function groupPasses(lookup: PointPassLookup, archives: ArchiveState): Map<Group
   for (const pass of evidence?.passes ?? lookup.passes) {
     const checking = pendingProfiles.has(pass.profileId) && candidates.has(passKey(pass)) && pass.tier.kind !== 'confirmed-image';
     const group = checking ? 'checking' : GROUP_OF_TIER[pass.tier.kind];
-    groups.get(group)!.rows.push({ sortMs: pass.timeMs, render: () => passRow(pass, checking, acquisitionByPass.get(passKey(pass)) ?? null) });
+    groups.get(group)!.rows.push({ sortMs: pass.timeMs, render: () => passRow(pass, checking, acquisitionByPass.get(passKey(pass)) ?? null, passKey(pass) === selectedKey) });
   }
   for (const acquisition of evidence?.acquisitions ?? []) {
     if (!acquisition.pass) groups.get('confirmed')!.rows.push({ sortMs: acquisition.startMs, render: () => unmatchedImageRow(acquisition) });
@@ -197,7 +200,7 @@ function frameRow(frame: GeostationaryRow): HTMLElement {
     imageFigure(frame.latest.imageUrl, t('orbitalWatch.row.imageAlt', { name: frame.source, time }), [frameCredit(frame.archive)]));
 }
 
-function passRow(pass: PointPass, checking: boolean, acquisition: MatchedAcquisition | null): HTMLElement {
+function passRow(pass: PointPass, checking: boolean, acquisition: MatchedAcquisition | null, selected: boolean): HTMLElement {
   const tierLabel = checking ? t('orbitalWatch.tier.checking') : t(TIER_LABEL_KEY[pass.tier.kind]);
   const military = pass.tier.kind === 'capability-overhead';
   const details = [
@@ -209,14 +212,21 @@ function passRow(pass: PointPass, checking: boolean, acquisition: MatchedAcquisi
     pass.edgeOfSwath ? t('orbitalWatch.row.edgeOfSwath') : null,
     pass.tier.kind === 'passed-overhead' && pass.tier.note === 'not-in-archive' ? t('orbitalWatch.row.notInArchive') : null,
   ].filter((note): note is string => note !== null);
-  return h('li', { className: 'ow-row', tabindex: '0', dataset: { tier: checking ? 'checking' : pass.tier.kind } },
+  return h('li', { className: 'ow-row', tabindex: '0', 'aria-current': selected ? 'true' : null, dataset: { tier: checking ? 'checking' : pass.tier.kind, passKey: passKey(pass) } },
     h('div', { className: 'ow-row-head' },
       h('span', { className: 'ow-row-name' }, pass.name),
       h('span', { className: 'ow-tier-label' }, tierLabel)),
     h('div', { className: 'ow-row-time' }, formatUtc(pass.timeMs)),
     h('div', { className: 'ow-row-detail' }, details.join(' · ')),
     ...notes.map((note) => h('div', { className: 'ow-row-note' }, note)),
+    selected ? trackControls() : null,
     military ? null : imageSlot(acquisition, t('orbitalWatch.row.imageAlt', { name: pass.name, time: formatUtc(pass.timeMs) })));
+}
+
+function trackControls(): HTMLElement {
+  return h('div', { className: 'ow-track' },
+    h('span', { className: 'ow-track-note' }, t('orbitalWatch.track.shown')),
+    h('button', { type: 'button', className: 'ow-replay', dataset: { action: 'replay' } }, t('orbitalWatch.track.replay')));
 }
 
 function unmatchedImageRow(acquisition: MatchedAcquisition): HTMLElement {
@@ -238,6 +248,8 @@ export class OrbitalWatchPage {
   /** Groups the user opened or closed, against their default. */
   private readonly toggled = new Set<GroupId>();
   private state: OrbitalWatchState | null = null;
+  private selectedPassKey: string | null = null;
+  private passesByKey = new Map<string, PointPass>();
 
   constructor(private readonly callbacks: OrbitalWatchPageCallbacks) {
     const titleId = 'orbital-watch-title';
@@ -260,6 +272,7 @@ export class OrbitalWatchPage {
   open(point: GeoPoint, returnFocusTo: HTMLElement | null): void {
     this.returnFocusTo = returnFocusTo;
     this.toggled.clear();
+    this.selectedPassKey = null;
     this.pointLabel.textContent = formatPoint(point);
     this.render({ kind: 'computing', done: 0, total: 0 });
     if (!this.isOpen) {
@@ -274,6 +287,7 @@ export class OrbitalWatchPage {
     document.removeEventListener('keydown', this.onDocumentKeydown);
     this.sheet.remove();
     this.state = null;
+    this.selectedPassKey = null;
     this.callbacks.onClose();
     const target = this.returnFocusTo;
     this.returnFocusTo = null;
@@ -304,7 +318,9 @@ export class OrbitalWatchPage {
 
   private renderPasses(lookup: PointPassLookup, archives: ArchiveState): DomChild[] {
     const evidence = archives.kind === 'answered' ? archives.evidence : null;
-    const groups = groupPasses(lookup, archives);
+    const passes = evidence?.passes ?? lookup.passes;
+    this.passesByKey = new Map(passes.map((pass) => [passKey(pass), pass]));
+    const groups = groupPasses(lookup, archives, this.selectedPassKey);
     const stale = lookup.catalog.status === 'stale'
       ? h('p', { className: 'ow-banner ow-banner-stale', role: 'note' }, t('orbitalWatch.stale', { age: formatAgeDays((lookup.nowMs - lookup.catalog.fetchedAt) / DAY_MS) }))
       : null;
@@ -363,6 +379,15 @@ export class OrbitalWatchPage {
       this.callbacks.onRetry();
       return;
     }
+    if (target.closest('[data-action="replay"]')) {
+      this.callbacks.onReplayPass?.();
+      return;
+    }
+    const row = target.closest<HTMLElement>('.ow-row[data-pass-key]');
+    if (row) {
+      this.selectPass(row.dataset.passKey!);
+      return;
+    }
     const toggle = target.closest<HTMLElement>('.ow-group-toggle');
     const id = toggle?.dataset.group as GroupId | undefined;
     if (!id || !this.state) return;
@@ -372,7 +397,22 @@ export class OrbitalWatchPage {
     this.body.querySelector<HTMLElement>(`.ow-group-toggle[data-group="${id}"]`)?.focus();
   };
 
+  private selectPass(key: string): void {
+    const pass = this.passesByKey.get(key);
+    if (!pass || !this.state) return;
+    this.selectedPassKey = key;
+    this.render(this.state);
+    this.body.querySelector<HTMLElement>(`.ow-row[data-pass-key="${key}"]`)?.focus();
+    this.callbacks.onSelectPass?.(pass);
+  }
+
   private readonly onSheetKeydown = (event: KeyboardEvent): void => {
+    const target = event.target as HTMLElement;
+    if ((event.key === 'Enter' || event.key === ' ') && target.matches('.ow-row[data-pass-key]')) {
+      event.preventDefault();
+      this.selectPass(target.dataset.passKey!);
+      return;
+    }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     const row = (event.target as HTMLElement).closest('.ow-row');
     if (!row) return;

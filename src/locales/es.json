@@ -5141,6 +5141,10 @@
     "errLoad": "No se pudo abrir la evaluación del viaje. Recarga la página e intenta de nuevo."
   },
   "orbitalWatch": {
+    "track": {
+      "shown": "Traza terrestre y huella mostradas en el mapa",
+      "replay": "Reproducir paso"
+    },
     "computing": "Cargando el catálogo de satélites…",
     "computingProgress": "Calculando pasos: {{done}} de {{total}} satélites",
     "unavailable": "No se pudo cargar el catálogo de satélites, por lo que no se calcularon pasos para este punto.",

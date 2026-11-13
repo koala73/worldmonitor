@@ -12,12 +12,13 @@ import { installLongPressContextMenu } from '@/utils/long-press';
 
 type ContextMenuPayload = { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string };
 
+const dashboardMap = { onCountryClicked: () => {}, onMapContextMenu: (cb: (payload: ContextMenuPayload) => void) => { menuHandler = cb; } };
+let menuHandler!: (payload: ContextMenuPayload) => void;
+
 async function mapWithMenu(): Promise<(payload: ContextMenuPayload) => void> {
-  let handler!: (payload: ContextMenuPayload) => void;
-  const map = { onCountryClicked: () => {}, onMapContextMenu: (cb: typeof handler) => { handler = cb; } };
-  const manager = new CountryIntelManager({ map, isDestroyed: false } as unknown as AppContext);
+  const manager = new CountryIntelManager({ map: dashboardMap, isDestroyed: false } as unknown as AppContext);
   await Reflect.get(manager, 'setupCountryIntel').call(manager);
-  return handler;
+  return menuHandler;
 }
 
 const menuItem = (label: string) => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((el) => el.textContent === label);
@@ -47,7 +48,7 @@ describe('map context menu satellite pass entry', () => {
     expect(item).toBeDefined();
     item!.click();
     await vi.waitFor(() => expect(openOrbitalWatch).toHaveBeenCalledTimes(1));
-    expect(openOrbitalWatch).toHaveBeenCalledWith({ lat: payload.lat, lon: payload.lon }, map);
+    expect(openOrbitalWatch).toHaveBeenCalledWith({ lat: payload.lat, lon: payload.lon }, map, dashboardMap);
     expect(document.querySelector('[role="menu"]')).toBeNull();
   });
 });

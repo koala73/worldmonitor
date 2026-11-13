@@ -5085,6 +5085,10 @@
     "errLoad": "Không thể mở đánh giá chuyến đi. Tải lại trang và thử lại."
   },
   "orbitalWatch": {
+    "track": {
+      "shown": "Vệt mặt đất và vùng phủ hiển thị trên bản đồ",
+      "replay": "Phát lại lượt bay qua"
+    },
     "computing": "Đang tải danh mục vệ tinh…",
     "computingProgress": "Đang tính các lượt bay: {{done}} trên {{total}} vệ tinh",
     "unavailable": "Không thể tải danh mục vệ tinh nên chưa tính được lượt bay nào cho điểm này.",

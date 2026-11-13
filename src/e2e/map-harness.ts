@@ -26,6 +26,7 @@ import { AI_DATA_CENTERS } from '../config/ai-datacenters';
 import { UNDERSEA_CABLES, NUCLEAR_FACILITIES, ECONOMIC_CENTERS, SPACEPORTS, CRITICAL_MINERALS } from '../config/geo-map';
 import type { PositiveGeoEvent } from '../services/positive-events-geo';
 import type { KindnessPoint } from '../services/kindness-data';
+import type { PassTrack, TrackPoint } from '../services/orbital/track-geometry';
 import type { SpeciesRecovery } from '../services/conservation-data';
 import type { RenewableInstallation } from '../services/renewable-installations';
 import type {
@@ -199,6 +200,7 @@ type MapHarness = {
   getProtestClusterCount: () => number;
   getOverlaySnapshot: () => OverlaySnapshot;
   getCyberTooltipHtml: (indicator: string) => string;
+  setOrbitalTrack: (track: PassTrack | null, marker?: TrackPoint | null) => void;
   showChinaCorridor: (index?: number) => void;
   runTradeAnimationProfile: (
     options?: TradeAnimationProfileOptions,
@@ -1995,6 +1997,9 @@ window.__mapHarness = {
   getOverlaySnapshot,
   getCyberTooltipHtml,
   runTradeAnimationProfile,
+  setOrbitalTrack: (track: PassTrack | null, marker: TrackPoint | null = null): void => {
+    map.setOrbitalTrack(track, marker);
+  },
   showChinaCorridor: (index = 0): void => {
     const definition = CHINA_LOGISTICS_CORRIDORS[index] ?? CHINA_LOGISTICS_CORRIDORS[0]!;
     map.setChinaCorridorSelection({

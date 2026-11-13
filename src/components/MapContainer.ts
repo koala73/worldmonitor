@@ -12,6 +12,7 @@ import '../styles/reservoir-levels.css';
 import type { ReservoirLevel } from '@/services/climate';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import type { FocusFitBounds } from '@/utils/focus-map';
+import type { PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
 import {
   isLayerToggleAllowed,
   isLayerEntitled,
@@ -236,6 +237,8 @@ export class MapContainer {
   private pendingCenter: PendingCenter | null = null;
   private pendingViewportActions: PendingViewportAction[] = [];
   private focusOutline: MapFocusOutline | null = null;
+  private orbitalTrack: PassTrack | null = null;
+  private orbitalTrackMarker: TrackPoint | null = null;
   /** Bumped by fits, clears and chosen-country changes; stale fits drop themselves. */
   private focusFitSeq = 0;
   private pendingChokepointOpen: string | null = null;
@@ -946,6 +949,7 @@ export class MapContainer {
     for (const [layer, hasData] of this.layerReadyState) this.setLayerReady(layer, hasData);
     if (this.cachedScenarioState !== undefined) this.applyScenarioState(this.cachedScenarioState);
     if (this.focusOutline) this.applyFocusOutline();
+    if (this.orbitalTrack) this.applyOrbitalTrack();
     for (const layer of this.hiddenLayerToggles) this.hideLayerToggle(layer);
   }
 
@@ -1964,6 +1968,26 @@ export class MapContainer {
     if (this.useGlobe) { this.globeMap?.fitFocusBounds(action.fit, action.altitude); return; }
     if (this.useDeckGL) this.deckGLMap?.fitFocusBounds(action.flatFit, action.maxZoom);
     else this.svgMap?.fitFocusBounds(action.flatFit);
+  }
+
+  /** Draws a satellite pass's ground track and sensor footprint; null removes it. The flat SVG fallback draws nothing. */
+  public setOrbitalTrack(track: PassTrack | null): void {
+    this.orbitalTrack = track;
+    this.orbitalTrackMarker = null;
+    this.applyOrbitalTrack();
+  }
+
+  /** Moves the replay marker along the drawn pass; null hides it. */
+  public setOrbitalTrackMarker(point: TrackPoint | null): void {
+    if (!this.orbitalTrack) return;
+    this.orbitalTrackMarker = point;
+    this.deckGLMap?.setOrbitalTrackMarker(point);
+    this.globeMap?.setOrbitalTrackMarker(point);
+  }
+
+  private applyOrbitalTrack(): void {
+    this.deckGLMap?.setOrbitalTrack(this.orbitalTrack, this.orbitalTrackMarker);
+    this.globeMap?.setOrbitalTrack(this.orbitalTrack, this.orbitalTrackMarker);
   }
 
   public highlightCountry(code: string): void {

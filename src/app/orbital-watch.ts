@@ -1,5 +1,10 @@
-import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
+import { parseOrbitElements, type GeoPoint, type OrbitElements } from '../../shared/orbital/pass-geometry.js';
 import { getOrbitalPassClient, type PointPassLookup } from '@/services/orbital/pass-client';
+import type { PointPass } from '@/services/orbital/pass-job';
+import { profileFor } from '@/services/orbital/pass-query';
+import { loadOrbitalCatalog } from '@/services/orbital/catalog';
+import { buildPassTrack, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
+import { browserReplayDeps, createTrackReplay, type TrackReplay } from '@/services/orbital/track-replay';
 import { ARCHIVE_SEARCHES, findArchiveEvidence } from '@/services/orbital/match';
 import { OrbitalWatchPage } from '@/components/OrbitalWatchPage';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
@@ -8,6 +13,16 @@ let page: OrbitalWatchPage | null = null;
 let point: GeoPoint | null = null;
 let lookup: PointPassLookup | null = null;
 let run: AbortController | null = null;
+
+/** The map the selected pass's ground track is drawn on. */
+export interface OrbitalTrackSurface {
+  setOrbitalTrack(track: PassTrack | null): void;
+  setOrbitalTrackMarker(point: TrackPoint | null): void;
+}
+
+let surface: OrbitalTrackSurface | null = null;
+let replay: TrackReplay | null = null;
+let trackRequest = 0;
 
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
 
@@ -55,16 +70,61 @@ async function start(): Promise<void> {
   }
 }
 
+function clearTrack(): void {
+  trackRequest += 1;
+  replay?.stop();
+  replay = null;
+  surface?.setOrbitalTrack(null);
+}
+
+function parseSets(records: Parameters<typeof parseOrbitElements>[0][]): OrbitElements[] {
+  return records.flatMap((record) => {
+    try {
+      return [parseOrbitElements(record)];
+    } catch {
+      return [];
+    }
+  });
+}
+
+async function trackFor(pass: PointPass): Promise<PassTrack | null> {
+  const profile = profileFor(pass.profileId);
+  const satellite = (await loadOrbitalCatalog()).satellites.find((s) => s.noradId === pass.noradId);
+  if (!profile || !satellite) return null;
+  const sets = parseSets(satellite.elementSets);
+  if (sets.length === 0) return null;
+  const elements = sets.reduce((best, next) =>
+    Math.abs(next.epochMs - pass.elementsEpochMs) < Math.abs(best.epochMs - pass.elementsEpochMs) ? next : best);
+  return buildPassTrack(elements, profile.footprint, pass);
+}
+
+async function showTrack(pass: PointPass): Promise<void> {
+  clearTrack();
+  const request = trackRequest;
+  const target = surface;
+  if (!target) return;
+  const track = await trackFor(pass).catch(() => null);
+  if (request !== trackRequest || !track) return;
+  target.setOrbitalTrack(track);
+  replay = createTrackReplay(track, (point) => target.setOrbitalTrackMarker(point), browserReplayDeps());
+  replay.play();
+}
+
 /** Opens the satellite pass lookup for a point. The point stays in the browser. */
-export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null): void {
+export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null, map: OrbitalTrackSurface | null = null): void {
   page ??= new OrbitalWatchPage({
     onClose: () => {
       cancel();
+      clearTrack();
       lookup = null;
       point = null;
     },
     onRetry: () => void start(),
+    onSelectPass: (pass) => void showTrack(pass),
+    onReplayPass: () => replay?.play(),
   });
+  clearTrack();
+  surface = map;
   point = at;
   lookup = null;
   page.open(at, returnFocusTo);

@@ -2931,6 +2931,8 @@
   "orbitalWatch.tier.unmatchedImage": "image, no computed pass",
   "orbitalWatch.tier.weatherFrame": "weather frame",
   "orbitalWatch.tier.withinReach": "within reach",
+  "orbitalWatch.track.replay": "Replay pass",
+  "orbitalWatch.track.shown": "Ground track and footprint shown on the map",
   "orbitalWatch.unavailable": "The satellite catalog could not be loaded, so no passes were computed for this point.",
   "orbitalWatch.weatherFrames": "weather frames",
   "panelVariants.commodity.insights": "AI Commodity Insights",

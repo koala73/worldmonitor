@@ -5085,6 +5085,10 @@
     "errLoad": "无法打开行程评估。请刷新页面后重试。"
   },
   "orbitalWatch": {
+    "track": {
+      "shown": "地面轨迹和覆盖范围已显示在地图上",
+      "replay": "回放过境"
+    },
     "computing": "正在加载卫星目录…",
     "computingProgress": "正在计算过境：{{done}} / {{total}} 颗卫星",
     "unavailable": "无法加载卫星目录，因此未计算此地点的过境。",

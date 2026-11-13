@@ -5113,6 +5113,10 @@
     "errLoad": "Tathmini ya safari haikuweza kufunguliwa. Pakia upya ukurasa kisha ujaribu tena."
   },
   "orbitalWatch": {
+    "track": {
+      "shown": "Njia ya ardhini na eneo la sensa vimeonyeshwa kwenye ramani",
+      "replay": "Rudia kupita"
+    },
     "computing": "Inapakia orodha ya satelaiti…",
     "computingProgress": "Inakokotoa mapito: {{done}} kati ya satelaiti {{total}}",
     "unavailable": "Orodha ya satelaiti haikuweza kupakiwa, kwa hivyo hakuna mapito yaliyokokotolewa kwa sehemu hii.",

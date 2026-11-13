@@ -5085,6 +5085,10 @@
     "errLoad": "여행 위험 평가를 열 수 없습니다. 페이지를 새로고침하고 다시 시도하세요."
   },
   "orbitalWatch": {
+    "track": {
+      "shown": "지상 궤적과 관측 범위가 지도에 표시됨",
+      "replay": "통과 다시 보기"
+    },
     "computing": "위성 카탈로그를 불러오는 중…",
     "computingProgress": "통과 계산 중: 위성 {{total}}개 중 {{done}}개",
     "unavailable": "위성 카탈로그를 불러오지 못해 이 지점의 통과를 계산하지 않았습니다.",

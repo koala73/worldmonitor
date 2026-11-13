@@ -5113,6 +5113,10 @@
     "errLoad": "Seyahat değerlendirmesi açılamadı. Sayfayı yeniden yükleyin ve tekrar deneyin."
   },
   "orbitalWatch": {
+    "track": {
+      "shown": "Yer izi ve kapsama alanı haritada gösteriliyor",
+      "replay": "Geçişi yeniden oynat"
+    },
     "computing": "Uydu kataloğu yükleniyor…",
     "computingProgress": "Geçişler hesaplanıyor: {{total}} uydudan {{done}}",
     "unavailable": "Uydu kataloğu yüklenemedi, bu nedenle bu nokta için geçiş hesaplanmadı.",

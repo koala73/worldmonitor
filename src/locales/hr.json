@@ -5152,6 +5152,10 @@
     "errLoad": "Procjena putovanja nije mogla biti otvorena. Ponovno učitajte stranicu i pokušajte ponovno."
   },
   "orbitalWatch": {
+    "track": {
+      "shown": "Zemaljski trag i obuhvat prikazani su na karti",
+      "replay": "Ponovi prelet"
+    },
     "computing": "Učitavanje kataloga satelita…",
     "computingProgress": "Izračun preleta: {{done}} od {{total}} satelita",
     "unavailable": "Katalog satelita nije se mogao učitati pa za ovu točku nisu izračunati preleti.",

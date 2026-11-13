@@ -52,6 +52,12 @@
 .ow-row-image { margin: 6px 0 0; }
 .ow-row-image img { display: block; width: 100%; max-height: 180px; object-fit: cover; border-radius: 4px; background: var(--surface); }
 .ow-row-image figcaption { color: var(--text-dim); margin-top: 2px; }
+.ow-row[data-pass-key] { cursor: pointer; }
+.ow-row[data-pass-key]:hover { background: var(--surface); }
+.ow-row[aria-current="true"] { background: var(--surface); box-shadow: inset 0 0 0 1px rgba(255, 214, 10, 0.6); }
+.ow-track { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.ow-track-note { color: var(--text-dim); }
+.ow-replay { background: var(--surface); color: var(--text); border: 1px solid rgba(255, 214, 10, 0.6); border-radius: 4px; padding: 3px 10px; cursor: pointer; white-space: nowrap; }
 .ow-privacy { margin: 0; padding: 8px 14px 12px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 11px; line-height: 1.4; }
 
 @media (max-width: 768px) {

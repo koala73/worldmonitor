@@ -106,7 +106,7 @@ function horizonRangeKm(elevationDeg, altitudeKm) {
 }
 
 // The footprint as a band of ground range from the ground track, on the sides it can see.
-function footprintBand(footprint, altitudeKm) {
+export function footprintBand(footprint, altitudeKm) {
   switch (footprint.kind) {
     case 'nadir-swath':
       return { nearKm: 0, farKm: footprint.swathKm / 2, sides: ['left', 'right'] };

@@ -5169,6 +5169,10 @@
     "errLoad": "Nie można było otworzyć oceny podróży. Odśwież stronę i spróbuj ponownie."
   },
   "orbitalWatch": {
+    "track": {
+      "shown": "Ślad naziemny i obszar obserwacji pokazane na mapie",
+      "replay": "Odtwórz przelot"
+    },
     "computing": "Wczytywanie katalogu satelitów…",
     "computingProgress": "Obliczanie przelotów: {{done}} z {{total}} satelitów",
     "unavailable": "Nie udało się wczytać katalogu satelitów, więc dla tego punktu nie obliczono przelotów.",

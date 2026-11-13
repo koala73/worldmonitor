@@ -5085,6 +5085,10 @@
     "errLoad": "無法開啟行程評估。請重新整理頁面後重試。"
   },
   "orbitalWatch": {
+    "track": {
+      "shown": "地面軌跡和覆蓋範圍已顯示在地圖上",
+      "replay": "回放過境"
+    },
     "computing": "正在載入衛星目錄…",
     "computingProgress": "正在計算過境：{{done}} / {{total}} 顆衛星",
     "unavailable": "無法載入衛星目錄，因此未計算此地點的過境。",

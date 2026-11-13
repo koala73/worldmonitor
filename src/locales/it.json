@@ -5141,6 +5141,10 @@
     "errLoad": "Non è stato possibile aprire la valutazione del viaggio. Ricarica la pagina e riprova."
   },
   "orbitalWatch": {
+    "track": {
+      "shown": "Traccia al suolo e impronta mostrate sulla mappa",
+      "replay": "Riproduci passaggio"
+    },
     "computing": "Caricamento del catalogo satellitare…",
     "computingProgress": "Calcolo dei passaggi: {{done}} di {{total}} satelliti",
     "unavailable": "Impossibile caricare il catalogo satellitare, quindi non sono stati calcolati passaggi per questo punto.",
