@@ -189,6 +189,7 @@ export class OrbitalTimelapsePage {
       : h('button', { type: 'button', className: 'oiv-play', 'aria-label': state.playing ? t('orbitalWatch.viewer.pause') : t('orbitalWatch.viewer.resume'), 'aria-pressed': String(state.playing), dataset: { action: 'toggle' } }, state.playing ? '❚❚' : '▶');
     return h('div', { className: 'oiv-column' },
       h('div', { className: 'oiv-stage', dataset: { timelapse: reduced ? 'stepper' : 'autoplay' } },
+        h('span', { className: 'otl-stage-loading oiv-label', 'aria-hidden': 'true' }, `${t('orbitalWatch.row.imageLoading')} ${frame.year} · ${platformName(frame)}`),
         frameImage(frame),
         reticle(),
         h('span', { className: 'oiv-counter', 'aria-hidden': 'true' }, `${pad2(state.index + 1)} / ${pad2(state.frames.length)}`),
@@ -256,8 +257,17 @@ export class OrbitalTimelapsePage {
       this.render();
       return;
     }
-    image.src = frame.imageUrl!;
-    image.alt = t('orbitalWatch.viewer.imageAlt', { name: platformName(frame), time: `${dayMonth(frame.timeMs)} ${frame.year}` });
+    const next = frameImage(frame) as HTMLImageElement | null;
+    if (!next) return;
+    if (!next.complete) {
+      await new Promise<void>((resolve) => {
+        next.addEventListener('load', () => resolve(), { once: true });
+        next.addEventListener('error', () => resolve(), { once: true });
+      });
+      if (this.controller.signal.aborted || !image.isConnected) return;
+    }
+    next.classList.remove('oiv-pending');
+    image.replaceWith(next);
     this.body.querySelector('.otl-year-number')!.textContent = String(frame.year);
     this.body.querySelector('.otl-year-detail')!.textContent = `${dayMonth(frame.timeMs)} ${frame.year} · ${platformName(frame)}`;
     this.body.querySelector('.oiv-counter')!.textContent = `${pad2(target + 1)} / ${pad2(frames.length)}`;

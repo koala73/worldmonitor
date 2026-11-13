@@ -36,7 +36,7 @@
 .oiv-stage-empty, .oiv-skeleton { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 32px; text-align: center; color: var(--oiv-dim); }
 .oiv-skeleton { background: linear-gradient(100deg, #111317 30%, #1a1d22 50%, #111317 70%) 0 0 / 300% 100%; animation: oiv-shimmer 1.6s linear infinite; }
 @keyframes oiv-shimmer { to { background-position: -150% 0; } }
-.oiv-reticle { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border: 1.5px solid var(--oiv-accent); border-radius: 50%; pointer-events: none; }
+.oiv-reticle { position: absolute; z-index: 1; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; border: 2px solid var(--oiv-accent); border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(0, 0, 0, 0.6); pointer-events: none; }
 .oiv-reticle::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: var(--oiv-accent); }
 .oiv-counter, .oiv-chip { position: absolute; padding: 3px 7px; background: rgba(11, 12, 14, 0.82); color: var(--oiv-text); }
 .oiv-counter { top: 12px; right: 12px; }
@@ -109,3 +109,5 @@
   .oiv-side { width: auto; }
   .otl-year-number { font-size: 26px; }
 }
+
+.otl-stage-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--oiv-dim); }
