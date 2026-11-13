@@ -401,9 +401,9 @@ export function buildCiiFixture(raw: CiiCaptureInputs, meta: {
 /** Reject partial calibration inputs; legacy regression snapshots remain valid. */
 export function validateCiiCalibrationInputs(raw: CiiCaptureInputs, targets: readonly string[]): void {
   const fail = (reason: string): never => { throw new Error(`Incomplete calibration capture: ${reason}`); };
-  if (new Set(targets).size !== CII_EXPANDED_CAPTURE_TARGETS.length || CII_EXPANDED_CAPTURE_TARGETS.some(code => !targets.includes(code))) fail('37-country target required');
+  if (CII_EXPANDED_CAPTURE_TARGETS.some(code => !targets.includes(code))) fail('37-country target required');
   const prior = raw.structuralPrior as Obj | null;
-  if (!isObj(prior?.countries) || targets.some(code => !Number.isFinite(prior!.countries[code]?.pv))) fail('structural prior missing countries');
+  if (!isObj(prior?.countries) || CII_EXPANDED_CAPTURE_TARGETS.some(code => !Number.isFinite(prior!.countries[code]?.pv))) fail('structural prior missing countries');
   const economic = raw.economicStress as Obj | null;
   if (economic?.schemaVersion !== 1 || !isObj(economic.countries) || [...TIER1].some(code => typeof economic.countries[code]?.measured !== 'boolean')) fail('economic key missing or incomplete');
   if ([...TIER1].filter(code => economic!.countries[code].measured === true).length < 25) fail('at least 25 measured economic countries required');

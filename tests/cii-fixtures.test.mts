@@ -212,6 +212,18 @@ it('calibration captures retain both maps and the entire UCDP payload', () => {
   const captured = buildCiiFixture(raw, { label: 'calibration-test', capturedAt: f.capturedAt, nowMs: f.nowMs,
     iranEventsEnabled: f.iranEventsEnabled, notes: [], production: null, targetCodes: CII_EXPANDED_CAPTURE_TARGETS, calibration: true });
   assert.equal(captured.calibration, true);
+  // Global capture may include measured countries with no prior yet. The 37
+  // calibration countries still require their priors and cannot be omitted.
+  const globalTargets = [...CII_EXPANDED_CAPTURE_TARGETS, 'NO'];
+  const globalCapture = buildCiiFixture(raw, { label: 'global-calibration-test', capturedAt: f.capturedAt,
+    nowMs: f.nowMs, iranEventsEnabled: f.iranEventsEnabled, notes: [], production: null,
+    targetCodes: globalTargets, calibration: true });
+  assert.deepEqual(globalCapture.captureTargets, globalTargets);
+  assert.deepEqual(globalCapture.inputs.ucdp, raw.ucdp);
+  assert.throws(() => validateCiiCalibrationInputs(raw, globalTargets.filter(code => code !== 'PH')), /37-country/);
+  const missingPrior = { ...raw, structuralPrior: { countries: { ...raw.structuralPrior.countries } } };
+  delete missingPrior.structuralPrior.countries.PH;
+  assert.throws(() => validateCiiCalibrationInputs(missingPrior, globalTargets), /prior/);
   assert.deepEqual(trimCiiRawInputs(captured.inputs, captured.captureTargets, captured.calibration), captured.inputs);
   assert.deepEqual(expectedFromTable(scoreCiiFixture(captured)), expectedFromTable(computeCiiScoreTable(raw, { nowMs: f.nowMs, iranEventsEnabled: f.iranEventsEnabled })));
   assert.throws(() => buildCiiFixture({ ...raw, economicStress: null }, { label: 'bad-calibration', capturedAt: f.capturedAt,

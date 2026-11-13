@@ -114,6 +114,9 @@ clause count. These are candidate results; deployment and natural-run GET-only
 acceptance are still required. `cii-capture-fixture.mts` defaults to the published
 country union and retains the economic key; `--target-set released` and
 `--target-set 37` remain available. Existing fixture bytes do not change.
+Calibration captures also accept the published superset; all 37 calibration
+countries and their priors are still required. An extra input country without
+a prior is retained without becoming eligible for scoring.
 
 Cuba and North Korea currently have no usable economic member despite economic
 distress. Their lack of a term is a coverage limitation, not evidence of low
