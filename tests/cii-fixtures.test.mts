@@ -9,6 +9,7 @@ import { describe, it } from 'node:test';
 import {
   CII_FIXTURE_DIR,
   CII_FIXTURE_SCHEMA,
+  buildCiiFixture,
   expectedFromTable,
   loadCiiFixtures,
   scoreCiiFixture,
@@ -20,6 +21,36 @@ import { TIER1_COUNTRIES } from '../server/worldmonitor/intelligence/v1/_shared.
 
 const FIXTURES = loadCiiFixtures();
 const TIER1_NAMES = new Set(Object.values(TIER1_COUNTRIES));
+
+it('capture targets retain the six future countries without changing the released table', () => {
+  const extra = ['PH', 'TH', 'ID', 'VN', 'MY', 'KH'];
+  const names = ['Philippines', 'Thailand', 'Indonesia', 'Vietnam', 'Malaysia', 'Cambodia'];
+  const f = FIXTURES.at(-1)!;
+  const raw = { ...f.inputs,
+    ucdp: { events: names.map((country) => ({ country, dateStart: f.nowMs, deathsBest: 5 })) },
+    gdeltCountryEvents: { byCountry: Object.fromEntries(extra.map((code) => [code, { conflict: [2, 1], protest: [3, 1] }])) },
+    outages: { outages: extra.map((countryCode) => ({ countryCode, severity: 'major', detectedAt: f.nowMs - 60_000, endedAt: f.nowMs })) },
+    structuralPrior: { countries: { PH: { pv: -0.5 }, ZZ: { pv: 1 } } },
+  };
+  const targets = [...Object.keys(TIER1_COUNTRIES), ...extra];
+  const trimmed = trimCiiRawInputs(raw, targets);
+  assert.equal((trimmed.ucdp as any).events.length, 6);
+  assert.deepEqual(Object.keys((trimmed.gdeltCountryEvents as any).byCountry), extra);
+  assert.deepEqual(trimmed.structuralPrior, raw.structuralPrior);
+  assert.deepEqual(trimmed.outages, raw.outages);
+  const options = { nowMs: f.nowMs, iranEventsEnabled: f.iranEventsEnabled };
+  assert.deepEqual(computeCiiScoreTable(trimmed, options).rows, computeCiiScoreTable(raw, options).rows);
+  assert.equal(computeCiiScoreTable(trimmed, options).rows.length, 31);
+  assert.throws(() => trimCiiRawInputs(raw, ['PH']), /omits released country/);
+  assert.throws(() => trimCiiRawInputs(raw, [...targets, 'invalid']), /invalid capture target/);
+  assert.throws(() => trimCiiRawInputs(raw, [...targets, 'ZZ']), /invalid capture target/);
+  const saved = JSON.parse(JSON.stringify(buildCiiFixture(raw, {
+    label: 'expanded-test', capturedAt: f.capturedAt, nowMs: f.nowMs,
+    iranEventsEnabled: f.iranEventsEnabled, notes: [], production: null, targetCodes: targets,
+  })));
+  assert.deepEqual(saved.captureTargets, targets);
+  assert.deepEqual(trimCiiRawInputs(saved.inputs, saved.captureTargets), saved.inputs);
+});
 
 describe('CII fixtures', () => {
   it('cover at least three production captures on at least two days, all in the current schema', () => {
@@ -40,7 +71,8 @@ describe('CII fixtures', () => {
 
   it('are already trimmed, and keep no strike-feed text or headline other than a country name', () => {
     for (const f of FIXTURES) {
-      assert.deepEqual(trimCiiRawInputs(f.inputs), f.inputs, `${f.label} holds untrimmed inputs`);
+      assert.deepEqual(trimCiiRawInputs(f.inputs, f.captureTargets), f.inputs, `${f.label} holds untrimmed inputs`);
+      if (!f.captureTargets) assert.equal(JSON.stringify(trimCiiRawInputs(f.inputs)), JSON.stringify(f.inputs), `${f.label} default bytes changed`);
       for (const event of (f.inputs.iranEvents as { events?: object[] } | null)?.events ?? []) {
         assert.deepEqual(Object.keys(event).sort(), ['countryCode', 'severity', 'timestamp'], `${f.label} strike event keeps extra fields`);
       }

@@ -7,6 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import iso3ToIso2 from '../../shared/iso3-to-iso2.json' with { type: 'json' };
+import { isAssignedCountryCode, resolveCountryCode } from '../../shared/country-code-resolve.ts';
 import { ciiCountryForIso2 } from '../shared/cii-country-borders.mjs';
 import { parseWildfireFiresSummary, summarizeWildfireDetections } from '../shared/wildfire-fires-summary.mjs';
 import {
@@ -23,6 +24,10 @@ import { TIER1_COUNTRIES } from '../../server/worldmonitor/intelligence/v1/_shar
 
 export const CII_FIXTURE_SCHEMA = 'worldmonitor-cii-fixture/v1';
 export const CII_FIXTURE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../tests/fixtures/cii');
+
+/** Recorded for future calibration; the released scorer does not consume it. */
+export type CiiCaptureInputs = CiiRawInputs & { structuralPrior?: unknown };
+export const CII_EXPANDED_CAPTURE_TARGETS = [...Object.keys(TIER1_COUNTRIES), 'PH', 'TH', 'ID', 'VN', 'MY', 'KH'];
 
 /** One country's score as a formula version computed it on a fixture. */
 export interface CiiFixtureExpectedRow {
@@ -45,7 +50,9 @@ export interface CiiFixture {
   /** Production has had no ACLED access since 2026-07; fixtures carry no ACLED rows. */
   acledConfigured: boolean;
   notes: string[];
-  inputs: CiiRawInputs;
+  inputs: CiiCaptureInputs;
+  /** Omitted for legacy/released-set captures to preserve their bytes. */
+  captureTargets?: string[];
   /** The seam's output per formula version, keyed by CII_FORMULA_VERSION. */
   expected: Record<string, Record<string, CiiFixtureExpectedRow>>;
   /** The table production stored at the same time, when it was captured. */
@@ -175,17 +182,30 @@ function trimStrikeTally(raw: unknown): unknown {
   return { version: raw.version, updatedAt: raw.updatedAt, days };
 }
 
-export function trimCiiRawInputs(raw: CiiRawInputs): CiiRawInputs {
+export function trimCiiRawInputs(raw: CiiCaptureInputs, targetCodes: readonly string[] = [...TIER1]): CiiCaptureInputs {
+  const targets = new Set(targetCodes);
+  for (const code of targets) {
+    if (resolveCountryCode(code) !== code || !isAssignedCountryCode(code)) throw new Error(`invalid capture target: ${code}`);
+  }
+  for (const code of TIER1) {
+    if (!targets.has(code)) throw new Error(`capture target omits released country: ${code}`);
+  }
+  const targetNameCode = (name: unknown) => {
+    const released = nameCode(name);
+    if (released) return released;
+    const code = resolveCountryCode(String(name || ''));
+    return code && !TIER1.has(code) && targets.has(code) ? code : null;
+  };
   const nullable = <T,>(v: unknown, fn: (v: any) => T): T | null => (v == null ? null : fn(v));
   return {
     ucdp: nullable(raw.ucdp, (v) => ({
       events: rows(v, 'events')
-        .filter((e) => nameCode(e?.country || e?.location))
+        .filter((e) => targetNameCode(e?.country || e?.location))
         .map((e) => pick(e, e?.country ? ['country', 'dateStart', 'deathsBest'] : ['location', 'dateStart', 'deathsBest'])),
     })),
     // `country` is not scored; it shows which records the countryCode reader fails to map.
     outages: nullable(raw.outages, (v) => ({
-      outages: rows(v, 'outages').map((o) => pick(o, ['countryCode', 'country_code', 'severity', 'country'])),
+      outages: rows(v, 'outages').map((o) => pick(o, ['countryCode', 'country_code', 'severity', 'country', 'detectedAt', 'endedAt'])),
     })),
     climate: nullable(raw.climate, (v) => ({
       anomalies: rows(v, 'anomalies').map((a) => pick(a, ['zone', 'region', 'severity', 'score', 'location', 'lat', 'lon', 'latitude', 'longitude', 'lng'])),
@@ -240,13 +260,14 @@ export function trimCiiRawInputs(raw: CiiRawInputs): CiiRawInputs {
     } : {})),
     gdeltCountryEvents: nullable(raw.gdeltCountryEvents, (v) => ({
       ...pick(v, ['baselineReady', 'currentComplete', 'weekReady', 'updatedAt', 'strikeDays']),
-      byCountry: Object.fromEntries(Object.entries(tier1Entries(v.byCountry))
+      byCountry: Object.fromEntries(Object.entries(isObj(v.byCountry) ? v.byCountry : {}).filter(([code]) => targets.has(code))
         .map(([code, row]) => [code, pick(row as Obj, ['conflict', 'protest', 'week', 'strikes'])])),
     })),
     strikePressure: trimStrikeTally(raw.strikePressure),
     // Seed envelopes of public aggregate border statistics, kept whole: the
     // projection reads most of their fields.
     crossBorder: raw.crossBorder ?? {},
+    ...(raw.structuralPrior !== undefined ? { structuralPrior: raw.structuralPrior } : {}),
   };
 }
 
@@ -315,15 +336,16 @@ export function scoreCiiFixture(fixture: Pick<CiiFixture, 'inputs' | 'nowMs' | '
  * country's terms and score, and every input's health state, must match the
  * untrimmed inputs exactly, or this throws.
  */
-export function buildCiiFixture(raw: CiiRawInputs, meta: {
+export function buildCiiFixture(raw: CiiCaptureInputs, meta: {
   label: string;
   capturedAt: string;
   nowMs: number;
   iranEventsEnabled: boolean;
   notes: string[];
   production: CiiFixture['production'];
+  targetCodes?: readonly string[];
 }): CiiFixture {
-  const inputs = trimCiiRawInputs(raw);
+  const inputs = trimCiiRawInputs(raw, meta.targetCodes);
   const options = { nowMs: meta.nowMs, iranEventsEnabled: meta.iranEventsEnabled };
   const full = computeCiiScoreTable(raw, options);
   const trimmed = computeCiiScoreTable(inputs, options);
@@ -346,6 +368,7 @@ export function buildCiiFixture(raw: CiiRawInputs, meta: {
     acledConfigured: false,
     notes: meta.notes,
     inputs,
+    ...(meta.targetCodes ? { captureTargets: [...meta.targetCodes] } : {}),
     expected: { [CII_FORMULA_VERSION]: expectedFromTable(trimmed) },
     production: meta.production,
   };
