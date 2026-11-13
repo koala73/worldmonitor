@@ -1,6 +1,7 @@
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
 import type { CatalogStatus, OrbitalCatalog } from './catalog';
-import type { PassJobInput, PassJobReply, PassJobRequest, PassJobResult, PassWindow, PointPass, SatelliteOutcome } from './pass-job';
+import type { PassJobInput, PassJobReply, PassJobRequest, PassJobResult, PointPass, SatelliteOutcome } from './pass-job';
+import { assertPassQuery, type PassWindow } from './pass-query';
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -107,31 +108,41 @@ export function createOrbitalPassClient(deps: PassClientDeps = {}): OrbitalPassC
     else job.reject(errorFromReply(reply.name, reply.message));
   }
 
-  /** Resolves null when the worker cannot be constructed or fails to load; rejects when it never signals ready. */
-  async function establishWorker(): Promise<PassWorkerLike | null> {
-    let worker: PassWorkerLike;
-    try {
-      worker = await createWorker();
-    } catch {
-      return null;
-    }
+  /** Resolves null when the worker cannot be constructed or fails to load; rejects when it is not ready in time, download included. */
+  function establishWorker(): Promise<PassWorkerLike | null> {
     return new Promise<PassWorkerLike | null>((resolve, reject) => {
+      let timedOut = false;
+      let worker: PassWorkerLike | null = null;
       const timer = setTimeout(() => {
-        worker.terminate();
+        timedOut = true;
+        worker?.terminate();
         reject(new Error(`Orbital pass worker did not become ready within ${readyTimeoutMs} ms`));
       }, readyTimeoutMs);
-      worker.onmessage = (event) => {
-        if (event.data.type !== 'ready') return;
-        clearTimeout(timer);
-        worker.onmessage = (next) => onReply(next.data);
-        worker.onerror = (failure) => resetWorker(new Error(`Orbital pass worker failed: ${failure.message}`));
-        resolve(worker);
-      };
-      worker.onerror = () => {
-        clearTimeout(timer);
-        worker.terminate();
-        resolve(null);
-      };
+      Promise.resolve().then(createWorker).then(
+        (created) => {
+          if (timedOut) {
+            created.terminate();
+            return;
+          }
+          worker = created;
+          created.onmessage = (event) => {
+            if (event.data.type !== 'ready') return;
+            clearTimeout(timer);
+            created.onmessage = (next) => onReply(next.data);
+            created.onerror = (failure) => resetWorker(new Error(`Orbital pass worker failed: ${failure.message}`));
+            resolve(created);
+          };
+          created.onerror = () => {
+            clearTimeout(timer);
+            created.terminate();
+            resolve(null);
+          };
+        },
+        () => {
+          clearTimeout(timer);
+          if (!timedOut) resolve(null);
+        },
+      );
     });
   }
 
@@ -210,7 +221,6 @@ export function createOrbitalPassClient(deps: PassClientDeps = {}): OrbitalPassC
         startMs: nowMs - (query.pastDays ?? 7) * DAY_MS,
         endMs: nowMs + (query.futureHours ?? 72) * HOUR_MS,
       };
-      const { assertPassQuery } = await import('./pass-job');
       assertPassQuery(query.point, window);
       const catalog = await Promise.race([loadCatalog(), cancelled]);
       const base = {

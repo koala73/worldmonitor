@@ -2,12 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { findPasses, parseOrbitElements, type OmmRecord } from '../shared/orbital/pass-geometry.js';
+import { findPasses, parseOrbitElements, PASS_WINDOW_MAX_DAYS, type OmmRecord } from '../shared/orbital/pass-geometry.js';
 import { matchSensorProfile } from '../shared/orbital/sensor-profiles.js';
 import { decidePassTier } from '../shared/orbital/tiers.js';
 import type { ListImagingSatellitesResponse, OmmElements } from '../src/generated/client/worldmonitor/orbital/v1/service_client.ts';
 import { toOmmRecord, toOrbitalCatalog, type OrbitalCatalog } from '../src/services/orbital/catalog.ts';
 import { createOrbitalPassClient, type PassWorkerLike } from '../src/services/orbital/pass-client.ts';
+import { PASS_QUERY_MAX_DAYS } from '../src/services/orbital/pass-query.ts';
 import { createPassJobHandler, runPassJob, type CatalogSatellite, type PassJobReply, type PassJobRequest } from '../src/services/orbital/pass-job.ts';
 
 const HOUR = 3_600_000;
@@ -144,6 +145,19 @@ describe('orbital pass client', () => {
     assert.equal(workers.length, 2);
   });
 
+  it('times out a worker whose code never finishes loading and terminates it if it arrives late', async () => {
+    const late = new InProcessWorker();
+    const client = createOrbitalPassClient({
+      createWorker: () => new Promise((resolve) => setTimeout(() => resolve(late), 60)),
+      loadCatalog: async () => catalog,
+      now: () => NOW,
+      readyTimeoutMs: 20,
+    });
+    await assert.rejects(client.lookup(lookupQuery()), /did not become ready within 20 ms/);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert.equal(late.terminated, true);
+  });
+
   it('terminates a worker that finishes starting after the client was disposed', async () => {
     const workers: InProcessWorker[] = [];
     const client = createOrbitalPassClient({
@@ -170,6 +184,10 @@ describe('orbital pass client', () => {
     await assert.rejects(client.lookup({ point: { lat: 91, lon: 0 } }), RangeError);
     await assert.rejects(client.lookup({ point: { lat: 0, lon: Number.POSITIVE_INFINITY } }), RangeError);
     await assert.rejects(runPassJob({ point: PARIS, window: { startMs: NOW, endMs: NOW + 11 * DAY }, nowMs: NOW, satellites }), RangeError);
+  });
+
+  it('validates lookups against the same window limit as the pass geometry', () => {
+    assert.equal(PASS_QUERY_MAX_DAYS, PASS_WINDOW_MAX_DAYS);
   });
 
   it('returns no passes without starting a worker when the catalog is empty', async () => {

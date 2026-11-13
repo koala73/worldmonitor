@@ -2,15 +2,16 @@ import {
   findPasses,
   ORBIT_ELEMENTS_MAX_AGE_DAYS,
   parseOrbitElements,
-  PASS_WINDOW_MAX_DAYS,
   type GeoPoint,
   type GeostationaryVisibility,
   type OmmRecord,
   type OrbitElements,
   type Pass,
 } from '../../../shared/orbital/pass-geometry.js';
-import { SENSOR_PROFILES, type SensorProfile } from '../../../shared/orbital/sensor-profiles.js';
 import { decidePassTier, type PassTier } from '../../../shared/orbital/tiers.js';
+import { assertPassQuery, profileFor, type PassWindow } from './pass-query';
+
+export type { PassWindow };
 
 const DAY_MS = 86_400_000;
 const DUPLICATE_PASS_MS = 60_000;
@@ -21,11 +22,6 @@ export interface CatalogSatellite {
   profileId: string;
   /** Every published element set for the satellite, oldest epoch first. */
   elementSets: OmmRecord[];
-}
-
-export interface PassWindow {
-  startMs: number;
-  endMs: number;
 }
 
 export interface PassJobInput {
@@ -55,22 +51,6 @@ export interface PassJobHooks {
   onProgress?: (done: number, total: number) => void;
   isCancelled?: () => boolean;
   batchSize?: number;
-}
-
-const PROFILES_BY_ID = new Map(SENSOR_PROFILES.map((profile) => [profile.id, profile]));
-
-export function profileFor(profileId: string): SensorProfile | undefined {
-  return PROFILES_BY_ID.get(profileId);
-}
-
-export function assertPassQuery(point: GeoPoint, window: PassWindow): void {
-  if (!Number.isFinite(point.lat) || !Number.isFinite(point.lon) || Math.abs(point.lat) > 90 || Math.abs(point.lon) > 180) {
-    throw new RangeError('point must have a finite latitude within ±90 and longitude within ±180');
-  }
-  const { startMs, endMs } = window;
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs || endMs - startMs > PASS_WINDOW_MAX_DAYS * DAY_MS) {
-    throw new RangeError(`window must be finite, ordered and at most ${PASS_WINDOW_MAX_DAYS} days long`);
-  }
 }
 
 function parseSets(records: OmmRecord[]): OrbitElements[] {

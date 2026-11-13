@@ -2,7 +2,8 @@ import type { ListImagingSatellitesResponse, OmmElements } from '@/generated/cli
 import { OrbitalServiceClient } from '@/services/generated-rpc-clients';
 import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
 import type { OmmRecord } from '../../../shared/orbital/pass-geometry.js';
-import { profileFor, type CatalogSatellite } from './pass-job';
+import type { CatalogSatellite } from './pass-job';
+import { profileFor } from './pass-query';
 
 export type CatalogStatus = 'fresh' | 'stale' | 'empty';
 
