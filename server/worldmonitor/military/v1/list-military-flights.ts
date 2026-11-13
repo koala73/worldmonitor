@@ -12,6 +12,7 @@ import { hasFiniteRequestBounds, normalizeBounds, type RequestBounds } from './_
 import { MILITARY_FLIGHTS_SEED_KEY, MILITARY_FLIGHTS_STALE_KEY } from './_tracked-aircraft';
 import { cachedFetchJson, getRawJson, readCachedJson, setCachedJson, setCachedJsonIfAbsent } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
+import { SeedUnavailableError } from '../../../_shared/required-seed';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 import {
   hasRedistributableProviderAttribution,
@@ -685,7 +686,7 @@ export async function readMilitaryFlights(
     if (staleResult) {
       return paginateResponseForCaller(redistributableOnly, staleResult.flights, staleResult.clusters, requestBounds, req);
     }
-    if (!policy.allowProviderFetch) throw new Error('Country military snapshot unavailable');
+    if (!policy.allowProviderFetch) throw new SeedUnavailableError(MILITARY_FLIGHTS_SEED_KEY);
     markNoCacheResponse(ctx.request);
     return emptyResponse();
   }
