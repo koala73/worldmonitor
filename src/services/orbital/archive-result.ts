@@ -33,6 +33,7 @@ export type ArchiveReply<T> =
   | { ok: true; value: T }
   | { ok: false; failure: ArchiveFailure };
 
+/** A signal that aborts when either does, and a release for the listeners the fallback adds. */
 function eitherSignal(a: AbortSignal, b: AbortSignal): { signal: AbortSignal; release: () => void } {
   if (typeof AbortSignal.any === 'function') return { signal: AbortSignal.any([a, b]), release: () => {} };
   const controller = new AbortController();
@@ -40,11 +41,13 @@ function eitherSignal(a: AbortSignal, b: AbortSignal): { signal: AbortSignal; re
   if (a.aborted || b.aborted) abort();
   a.addEventListener('abort', abort, { once: true });
   b.addEventListener('abort', abort, { once: true });
-  const release = () => {
-    a.removeEventListener('abort', abort);
-    b.removeEventListener('abort', abort);
+  return {
+    signal: controller.signal,
+    release: () => {
+      a.removeEventListener('abort', abort);
+      b.removeEventListener('abort', abort);
+    },
   };
-  return { signal: controller.signal, release };
 }
 
 /**
@@ -61,7 +64,8 @@ export async function requestArchive<T>(
   const fetchFn = options.fetch ?? defaultFetch;
   const deadline = new AbortController();
   const timer = setTimeout(() => deadline.abort(), options.timeoutMs ?? ARCHIVE_REQUEST_TIMEOUT_MS);
-  const { signal, release } = options.signal ? eitherSignal(options.signal, deadline.signal) : { signal: deadline.signal, release: () => {} };
+  const combined = options.signal ? eitherSignal(options.signal, deadline.signal) : { signal: deadline.signal, release: () => {} };
+  const { signal } = combined;
   const stopped = () => ({ ok: false as const, failure: { archive, reason: deadline.signal.aborted && !options.signal?.aborted ? 'timeout' as const : 'aborted' as const } });
   const work = (async (): Promise<ArchiveReply<T>> => {
     let response: Response;
@@ -85,7 +89,7 @@ export async function requestArchive<T>(
     return await Promise.race([work, abandoned]);
   } finally {
     clearTimeout(timer);
-    release();
+    combined.release();
   }
 }
 
