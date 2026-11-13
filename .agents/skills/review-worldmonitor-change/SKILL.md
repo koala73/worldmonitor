@@ -25,7 +25,7 @@ Review the diff once per lens and report only findings with evidence (file and l
 
 ## Key patterns to check
 
-- Panels extend `Panel` (`src/components/Panel.ts`), implement `fetchData()`, render through the `setContentHtml` / `setContentNodes` / `setTrustedContent` helpers, and call `showError(msg, retry)` on failure. A private `_hasData` guard keeps good data on screen when a retry fails.
+- Panels extend `Panel` (`src/components/Panel.ts`), implement `fetchData()`, render through `setSafeContent` / `setSafeContentImmediate` / `setContentNodes` / `setTrustedContent` (`setContentHtml` is private), and call `showError(msg, retry)` on failure. A private `_hasData` guard keeps good data on screen when a retry fails.
 - Panels are registered in `src/config/panels.ts` (`FULL_PANELS`, `FINANCE_PANELS`, and the other variant maps) and `src/app/panel-layout.ts`.
 - Seed scripts use `runSeed(domain, resource, canonicalKey, fetchFn, opts)` with `ttlSeconds` at least 3x the seed interval, and write `seed-meta:<key>`.
 - RPC handlers read seeded data with `getCachedJson(key, true)` and return the typed proto response.

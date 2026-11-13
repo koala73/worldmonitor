@@ -12,7 +12,7 @@ Source: [CONTRIBUTING.md#adding-rss-feeds](../../../CONTRIBUTING.md#adding-rss-f
 ## Editorial checks first
 
 1. The feed is reliable and actively maintained.
-2. Assign a source tier (1-4) by editorial reliability. Tiers live in `server/_shared/source-tiers.ts` (`src/config/feeds.ts` only re-exports them).
+2. Assign a source tier (1-4) by editorial reliability. RSS tiers live in `shared/source-tiers.json` with a byte-identical mirror in `scripts/shared/source-tiers.json` (Railway reads the mirror). `server/_shared/source-tiers.ts` only merges that JSON with the Telegram and X overlays.
 3. Flag state affiliation or propaganda risk in `SOURCE_PROPAGANDA_RISK` (`shared/source-provenance.ts`).
 4. Pick the category (geopolitics, defense, energy, tech, ...).
 
@@ -31,5 +31,5 @@ Source: [CONTRIBUTING.md#adding-rss-feeds](../../../CONTRIBUTING.md#adding-rss-f
 
 - `node scripts/run-data-tests.mjs tests/feed-catalog-drift.test.mts tests/edge-functions.test.mjs` (allowlist coverage and mirror parity), then `npm run test:related`.
 - `npm run generate` if derived files are stale.
-- `npm run test:feeds` fetches live feeds; run it locally only for the feeds you added. PR CI never runs it on purpose (contributor-controlled URLs would be an SSRF surface).
+- To check only a new feed live, call the exported `fetchFeed`: `node -e "import('./scripts/validate-rss-feeds.mjs').then(m => m.fetchFeed('<feed-url>')).then(x => console.log('ok', String(x).length))"`. `npm run test:feeds` fetches the whole catalog. PR CI never runs either on purpose (contributor-controlled URLs would be an SSRF surface).
 - A panel showing "No news available" with HTTP 403 "Domain not allowed" in the console means a missing allowlist entry.
