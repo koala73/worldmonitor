@@ -197,3 +197,22 @@ describe('best view', () => {
     for (const group of groups) assert.equal(new Set(group.items.map((i) => `${i.platform}:${i.orbit}`)).size, 1);
   });
 });
+
+describe('archive search progress', () => {
+  it('reports each archive as it settles and holds a mission pending until every archive it uses has answered', async () => {
+    const lookup = await fixtureLookup(denver);
+    const progress: Array<{ settled: string[]; pendingProfiles: string[] }> = [];
+    const evidence = await findArchiveEvidence(lookup, {
+      fetch: fakeArchiveFetch(denver).fetch,
+      onProgress: ({ settled, pendingProfiles }) => progress.push({ settled, pendingProfiles }),
+    });
+    assert.equal(progress.length, 5, 'one report per archive search');
+    assert.deepEqual(progress.map((p) => p.settled.length), [1, 2, 3, 4, 5]);
+    for (const report of progress) {
+      const stacSettled = ['earth-search', 'planetary-computer'].filter((id) => report.settled.includes(id));
+      if (stacSettled.length < 2) assert.ok(report.pendingProfiles.includes('sentinel-2'), 'Sentinel-2 waits for both of its archives');
+    }
+    assert.deepEqual(progress.at(-1)!.pendingProfiles, []);
+    assert.equal(evidence.status, 'complete');
+  });
+});

@@ -463,7 +463,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Open Country Brief",
-    "copyCoordinates": "Copy Coordinates"
+    "copyCoordinates": "Copy Coordinates",
+    "satellitePasses": "Satellite passes here"
   },
   "components": {
     "breakingNews": {

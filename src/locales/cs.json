@@ -4455,7 +4455,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Otevřít přehled země",
-    "copyCoordinates": "Kopírovat souřadnice"
+    "copyCoordinates": "Kopírovat souřadnice",
+    "satellitePasses": "Přelety satelitů zde"
   },
   "shell": {
     "documentTitle": "World Monitor — Přehled reálných globálních informací",
@@ -5166,5 +5167,41 @@
     "errGeneric": "Návrh nemohl být vytvořen. Zkuste to znovu.",
     "errDownload": "Soubor nelze stáhnout zde. Místo toho použijte Tisk nebo Uložit jako PDF.",
     "errLoad": "Posouzení cesty se nepodařilo otevřít. Znovu načtěte stránku a zkuste to znovu."
+  },
+  "orbitalWatch": {
+    "computing": "Načítání katalogu satelitů…",
+    "computingProgress": "Výpočet přeletů: {{done}} z {{total}} satelitů",
+    "unavailable": "Katalog satelitů se nepodařilo načíst, proto pro tento bod nebyly vypočteny žádné přelety.",
+    "checkingArchives": "Kontrola archivů: odpovědělo {{done}} z {{total}}",
+    "confirmedCount": "Potvrzené snímky: {{count}}",
+    "counts": {
+      "mosaics": "Denní mozaiky: {{count}}",
+      "frames": "Meteorologické snímky: {{count}}",
+      "inRange": "Přelety v dosahu: {{count}}"
+    },
+    "partial": "{{sources}} neodpověděl, proto u některých přeletů mohou chybět snímky.",
+    "stale": "Orbitální data jsou zastaralá. Katalog satelitů je starý {{age}}, proto se časy přeletů mohou lišit.",
+    "empty": "Žádný evidovaný snímkovací satelit nad tímto bodem za posledních {{pastDays}} dní nepřeletěl a během příštích {{futureHours}} hodin nepřeletí.",
+    "privacy": "Tento bod zůstává ve vašem prohlížeči. Odesílá se pouze veřejným archivům, které prohlížeč volá přímo: Earth Search, Microsoft Planetary Computer, NASA GIBS a EUMETSAT. Jedinou výjimkou je hledání podle názvu místa: zadaný název jde do služby vyhledávání míst.",
+    "inRange": "v dosahu",
+    "tier": {
+      "checking": "kontrola archivu",
+      "confirmed": "potvrzený snímek",
+      "likely": "pravděpodobně nasnímáno",
+      "opportunity": "nadcházející přelet",
+      "dailyMosaic": "v denní mozaice",
+      "withinReach": "v dosahu",
+      "capabilityOverhead": "schopnost nad místem",
+      "passedOverhead": "přeletěl nad",
+      "unmatchedImage": "snímek bez vypočteného přeletu"
+    },
+    "row": {
+      "offNadir": "{{deg}}° od nadiru",
+      "distance": "{{km}} km od pozemní stopy",
+      "orbitAge": "orbitální data stará {{age}}",
+      "edgeOfSwath": "Okraj záběru",
+      "notInArchive": "Žádný snímek v archivu",
+      "imageAlt": "Snímek {{name}}, {{time}}"
+    }
   }
 }

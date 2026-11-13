@@ -4433,7 +4433,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Deschide prezentarea țării",
-    "copyCoordinates": "Copiază coordonatele"
+    "copyCoordinates": "Copiază coordonatele",
+    "satellitePasses": "Treceri de sateliți aici"
   },
   "shell": {
     "documentTitle": "World Monitor — Tabloul de Bord al Inteligenței Globale în Timp Real",
@@ -5138,5 +5139,41 @@
     "errGeneric": "Varianta nu a putut fi construită. Încercați din nou.",
     "errDownload": "Fișierul nu a putut fi descărcat aici. Utilizați Tipărire sau salvare ca PDF în schimb.",
     "errLoad": "Evaluarea călătoriei nu a putut fi deschisă. Reîncărcați pagina și încercați din nou."
+  },
+  "orbitalWatch": {
+    "computing": "Se încarcă catalogul de sateliți…",
+    "computingProgress": "Se calculează trecerile: {{done}} din {{total}} sateliți",
+    "unavailable": "Catalogul de sateliți nu a putut fi încărcat, așa că nu s-au calculat treceri pentru acest punct.",
+    "checkingArchives": "Se verifică arhivele: {{done}} din {{total}} au răspuns",
+    "confirmedCount": "Imagini confirmate: {{count}}",
+    "counts": {
+      "mosaics": "Mozaicuri zilnice: {{count}}",
+      "frames": "Imagini meteo: {{count}}",
+      "inRange": "Treceri în rază: {{count}}"
+    },
+    "partial": "{{sources}} nu a răspuns, așa că unor treceri le pot lipsi imaginile.",
+    "stale": "Datele orbitale sunt învechite. Catalogul de sateliți are o vechime de {{age}}, așa că orele trecerilor pot fi inexacte.",
+    "empty": "Niciun satelit de imagistică catalogat nu a trecut peste acest punct în ultimele {{pastDays}} zile și nici nu va trece în următoarele {{futureHours}} ore.",
+    "privacy": "Acest punct rămâne în browserul tău. Este trimis doar arhivelor publice pe care browserul le apelează direct: Earth Search, Microsoft Planetary Computer, NASA GIBS și EUMETSAT. Căutarea după numele locului este singura excepție: numele introdus ajunge la serviciul de căutare a locurilor.",
+    "inRange": "în rază",
+    "tier": {
+      "checking": "se verifică arhiva",
+      "confirmed": "imagine confirmată",
+      "likely": "probabil fotografiat",
+      "opportunity": "trecere viitoare",
+      "dailyMosaic": "în mozaicul zilnic",
+      "withinReach": "în rază",
+      "capabilityOverhead": "capacitate deasupra",
+      "passedOverhead": "a trecut deasupra",
+      "unmatchedImage": "imagine fără trecere calculată"
+    },
+    "row": {
+      "offNadir": "{{deg}}° față de nadir",
+      "distance": "la {{km}} km de urma la sol",
+      "orbitAge": "date orbitale vechi de {{age}}",
+      "edgeOfSwath": "Marginea benzii",
+      "notInArchive": "Nicio imagine în arhivă",
+      "imageAlt": "Imagine {{name}}, {{time}}"
+    }
   }
 }

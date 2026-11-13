@@ -4389,7 +4389,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "打开国家简报",
-    "copyCoordinates": "复制坐标"
+    "copyCoordinates": "复制坐标",
+    "satellitePasses": "经过此处的卫星"
   },
   "shell": {
     "documentTitle": "World Monitor — 实时全球情报仪表板",
@@ -5082,5 +5083,41 @@
     "errGeneric": "初稿生成失败。请重试。",
     "errDownload": "无法在此处下载文件。请改用打印或另存为 PDF。",
     "errLoad": "无法打开行程评估。请刷新页面后重试。"
+  },
+  "orbitalWatch": {
+    "computing": "正在加载卫星目录…",
+    "computingProgress": "正在计算过境：{{done}} / {{total}} 颗卫星",
+    "unavailable": "无法加载卫星目录，因此未计算此地点的过境。",
+    "checkingArchives": "正在检查档案库：{{done}} / {{total}} 已响应",
+    "confirmedCount": "已确认影像：{{count}}",
+    "counts": {
+      "mosaics": "每日镶嵌图：{{count}}",
+      "frames": "气象图像：{{count}}",
+      "inRange": "覆盖范围内的过境：{{count}}"
+    },
+    "partial": "{{sources}} 未响应，因此部分过境可能缺少影像。",
+    "stale": "轨道数据已过时。卫星目录已有 {{age}}，过境时间可能有偏差。",
+    "empty": "过去 {{pastDays}} 天内没有已收录的成像卫星经过此地点，未来 {{futureHours}} 小时内也不会经过。",
+    "privacy": "此地点仅保留在你的浏览器中。它只会发送给浏览器直接调用的公共档案库：Earth Search、Microsoft Planetary Computer、NASA GIBS 和 EUMETSAT。按地名搜索是唯一的例外：你输入的地名会发送给地名搜索服务。",
+    "inRange": "覆盖范围内",
+    "tier": {
+      "checking": "正在检查档案库",
+      "confirmed": "已确认影像",
+      "likely": "可能已成像",
+      "opportunity": "即将过境",
+      "dailyMosaic": "在每日镶嵌图中",
+      "withinReach": "覆盖范围内",
+      "capabilityOverhead": "能力过顶",
+      "passedOverhead": "已过顶",
+      "unmatchedImage": "影像无计算过境"
+    },
+    "row": {
+      "offNadir": "偏离星下点 {{deg}}°",
+      "distance": "距地面轨迹 {{km}} 公里",
+      "orbitAge": "轨道数据已有 {{age}}",
+      "edgeOfSwath": "幅宽边缘",
+      "notInArchive": "档案库中无影像",
+      "imageAlt": "{{name}} 影像，{{time}}"
+    }
   }
 }

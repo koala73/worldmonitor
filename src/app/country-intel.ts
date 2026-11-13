@@ -328,6 +328,13 @@ export class CountryIntelManager implements AppModule {
           },
         });
       }
+      items.push({
+        label: t('contextMenu.satellitePasses'),
+        action: () => {
+          void import('@/app/orbital-watch').then(({ openOrbitalWatch }) =>
+            openOrbitalWatch({ lat: payload.lat, lon: payload.lon }, document.getElementById('mapContainer')));
+        },
+      });
       items.push({ label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) });
       showMapContextMenu(payload.screenX, payload.screenY, items);
     });

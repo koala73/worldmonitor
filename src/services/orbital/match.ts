@@ -212,26 +212,58 @@ export function assembleEvidence(input: EvidenceInput): OrbitalEvidence {
   };
 }
 
+export type ArchiveSearchId = 'earth-search' | 'planetary-computer' | 'gibs-daily-mosaics' | 'gibs-geostationary' | 'eumetsat';
+
+export const ARCHIVE_SEARCHES: readonly ArchiveSearchId[] = ['earth-search', 'planetary-computer', 'gibs-daily-mosaics', 'gibs-geostationary', 'eumetsat'];
+
+export interface EvidenceProgress {
+  evidence: OrbitalEvidence;
+  settled: ArchiveSearchId[];
+  /** Missions with an archive still searching, so their passes are not in their final tier yet. */
+  pendingProfiles: ImagingProfileId[];
+}
+
+export interface ArchiveEvidenceOptions extends ArchiveRequestOptions {
+  /** Called with a partial result each time one archive search settles. */
+  onProgress?: (progress: EvidenceProgress) => void;
+}
+
 /** Queries every archive straight from the browser and attaches what they hold to the computed passes. */
-export async function findArchiveEvidence(lookup: PointPassLookup, options: ArchiveRequestOptions = {}): Promise<OrbitalEvidence> {
+export async function findArchiveEvidence(lookup: PointPassLookup, options: ArchiveEvidenceOptions = {}): Promise<OrbitalEvidence> {
+  const { onProgress, ...requestOptions } = options;
   const point: GeoPoint = lookup.point;
   const window = { startMs: lookup.window.startMs, endMs: Math.min(lookup.window.endMs, lookup.nowMs) };
   const box = cropBox(point);
   const visibleNoradIds = new Set(lookup.satellites.flatMap((s) => (s.status === 'geostationary' && s.visibility.visible ? [s.noradId] : [])));
-  const frameQuery = { ...options, point, window, nowMs: lookup.nowMs, box, visibleNoradIds };
-  const [earthSearch, planetaryComputer, mosaics, gibsFrames, eumetsatFrames] = await Promise.all([
-    searchStacArchive('earth-search', { ...options, point, window }),
-    searchStacArchive('planetary-computer', { ...options, point, window }),
-    searchGibsDailyMosaics(frameQuery),
-    searchGibsGeostationary(frameQuery),
-    searchEumetsatGeostationary(frameQuery),
+  const frameQuery = { ...requestOptions, point, window, nowMs: lookup.nowMs, box, visibleNoradIds };
+
+  const stacById = new Map<StacArchiveId, ArchiveResult<ArchiveItem>>();
+  let mosaics: ArchiveResult<DailyMosaicRow> | undefined;
+  const frames = new Map<ArchiveSearchId, ArchiveResult<GeostationaryRow>>();
+  const settled: ArchiveSearchId[] = [];
+  const snapshot = () => ({ lookup, stac: [...stacById.values()], mosaics, frames: [...frames.values()], box });
+  const settle = <T>(id: ArchiveSearchId, search: Promise<T>, store: (result: T) => void) => search.then((result) => {
+    store(result);
+    settled.push(id);
+    if (!onProgress) return;
+    const pendingProfiles = (Object.keys(PROFILE_ARCHIVES) as ImagingProfileId[])
+      .filter((profileId) => PROFILE_ARCHIVES[profileId].some((archive) => !stacById.has(archive)));
+    onProgress({ evidence: assembleEvidence(snapshot()), settled: [...settled], pendingProfiles });
+  });
+
+  await Promise.all([
+    settle('earth-search', searchStacArchive('earth-search', { ...requestOptions, point, window }), (r) => stacById.set('earth-search', r)),
+    settle('planetary-computer', searchStacArchive('planetary-computer', { ...requestOptions, point, window }), (r) => stacById.set('planetary-computer', r)),
+    settle('gibs-daily-mosaics', searchGibsDailyMosaics(frameQuery), (r) => { mosaics = r; }),
+    settle('gibs-geostationary', searchGibsGeostationary(frameQuery), (r) => frames.set('gibs-geostationary', r)),
+    settle('eumetsat', searchEumetsatGeostationary(frameQuery), (r) => frames.set('eumetsat', r)),
   ]);
-  const stac = [earthSearch, planetaryComputer];
+  const stac = (['earth-search', 'planetary-computer'] as const).map((id) => stacById.get(id)!);
   const items = stac.flatMap((r) => (r.status === 'ok' ? r.items : []));
   const conditions = new Map<string, PointCondition>();
   await Promise.all(groupAcquisitions(items).map(async (acquisition) => {
     const classified = acquisition.items.find((item) => item.classification);
-    if (classified) conditions.set(acquisition.key, await readPointCondition(classified, point, options));
+    if (classified) conditions.set(acquisition.key, await readPointCondition(classified, point, requestOptions));
   }));
-  return assembleEvidence({ lookup, stac, mosaics, frames: [gibsFrames, eumetsatFrames], conditions, box });
+  return assembleEvidence({ lookup, stac, mosaics, frames: [frames.get('gibs-geostationary')!, frames.get('eumetsat')!], conditions, box });
 }

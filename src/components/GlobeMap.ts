@@ -46,6 +46,7 @@ import { GAMMA_IRRADIATORS } from '@/config/irradiators';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import { getCountryBbox, getCountriesGeoJson, getCountryAtCoordinates, getCountryNameByCode } from '@/services/country-geometry';
 import { escapeHtml } from '@/utils/sanitize';
+import { installLongPressContextMenu } from '@/utils/long-press';
 import type { FocusFitBounds } from '@/utils/focus-map';
 import { corroborationLabelHtml } from '@/utils/corroboration-flag';
 import { showLayerWarning } from '@/utils/layer-warning';
@@ -673,6 +674,7 @@ export class GlobeMap {
   private viewportAutoRotateBeforeMove: boolean | null = null;
   private viewportMovementGeneration = 0;
   private onMapContextMenuCb?: (payload: { lat: number; lon: number; screenX: number; screenY: number }) => void;
+  private removeLongPress: (() => void) | null = null;
   private readonly handleContextMenu = (e: MouseEvent): void => {
     e.preventDefault();
     if (!this.onMapContextMenuCb || !this.globe) return;
@@ -887,6 +889,7 @@ export class GlobeMap {
     }
 
     this.container.addEventListener('contextmenu', this.handleContextMenu);
+    this.removeLongPress = installLongPressContextMenu(this.container);
 
     // Wire HTML marker layer
     globe
@@ -4319,6 +4322,8 @@ export class GlobeMap {
     this.vesselData.clear();
     this.clusterData.clear();
     this.container.removeEventListener('contextmenu', this.handleContextMenu);
+    this.removeLongPress?.();
+    this.removeLongPress = null;
     this.unsubscribeGlobeQuality?.();
     this.unsubscribeGlobeQuality = null;
     this.unsubscribeGlobeTexture?.();

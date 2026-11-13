@@ -4433,7 +4433,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Ouvrir la fiche pays",
-    "copyCoordinates": "Copier les coordonnées"
+    "copyCoordinates": "Copier les coordonnées",
+    "satellitePasses": "Passages de satellites ici"
   },
   "shell": {
     "documentTitle": "World Monitor — Tableau de Bord de Renseignement Mondial en Temps Réel",
@@ -5138,5 +5139,41 @@
     "errGeneric": "Le brouillon n'a pas pu être généré. Réessayez.",
     "errDownload": "Le fichier n'a pas pu être téléchargé ici. Utilisez l'impression ou enregistrez en PDF à la place.",
     "errLoad": "L'évaluation de voyage n'a pas pu être ouverte. Rechargez la page et réessayez."
+  },
+  "orbitalWatch": {
+    "computing": "Chargement du catalogue de satellites…",
+    "computingProgress": "Calcul des passages : {{done}} sur {{total}} satellites",
+    "unavailable": "Le catalogue de satellites n’a pas pu être chargé, aucun passage n’a donc été calculé pour ce point.",
+    "checkingArchives": "Vérification des archives : {{done}} sur {{total}} ont répondu",
+    "confirmedCount": "Images confirmées : {{count}}",
+    "counts": {
+      "mosaics": "Mosaïques quotidiennes : {{count}}",
+      "frames": "Images météo : {{count}}",
+      "inRange": "Passages à portée : {{count}}"
+    },
+    "partial": "{{sources}} n’a pas répondu, certaines images de passages peuvent donc manquer.",
+    "stale": "Les données orbitales sont obsolètes. Le catalogue de satellites date de {{age}}, les heures de passage peuvent donc être inexactes.",
+    "empty": "Aucun satellite d’imagerie répertorié n’est passé au-dessus de ce point au cours des {{pastDays}} derniers jours et aucun n’y passera dans les {{futureHours}} prochaines heures.",
+    "privacy": "Ce point reste dans votre navigateur. Il est envoyé uniquement aux archives publiques que votre navigateur interroge directement : Earth Search, Microsoft Planetary Computer, NASA GIBS et EUMETSAT. La recherche par nom de lieu est la seule exception : le nom saisi est envoyé au service de recherche de lieux.",
+    "inRange": "à portée",
+    "tier": {
+      "checking": "vérification de l’archive",
+      "confirmed": "image confirmée",
+      "likely": "probablement imagé",
+      "opportunity": "passage à venir",
+      "dailyMosaic": "dans la mosaïque quotidienne",
+      "withinReach": "à portée",
+      "capabilityOverhead": "capacité au-dessus",
+      "passedOverhead": "passé au-dessus",
+      "unmatchedImage": "image sans passage calculé"
+    },
+    "row": {
+      "offNadir": "{{deg}}° hors nadir",
+      "distance": "à {{km}} km de la trace au sol",
+      "orbitAge": "données orbitales datant de {{age}}",
+      "edgeOfSwath": "Bord de la fauchée",
+      "notInArchive": "Aucune image dans l’archive",
+      "imageAlt": "Image de {{name}}, {{time}}"
+    }
   }
 }

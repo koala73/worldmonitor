@@ -4534,7 +4534,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Otvori Sažetak Zemlje",
-    "copyCoordinates": "Kopiraj Koordinate"
+    "copyCoordinates": "Kopiraj Koordinate",
+    "satellitePasses": "Preleti satelita ovdje"
   },
   "auth": {
     "signIn": "Prijava",
@@ -5149,5 +5150,41 @@
     "errGeneric": "Nacrt se ne može izraditi. Pokušajte ponovno.",
     "errDownload": "Datoteka se ne može preuzeti odavdje. Umjesto toga koristite Ispis ili spremi kao PDF.",
     "errLoad": "Procjena putovanja nije mogla biti otvorena. Ponovno učitajte stranicu i pokušajte ponovno."
+  },
+  "orbitalWatch": {
+    "computing": "Učitavanje kataloga satelita…",
+    "computingProgress": "Izračun preleta: {{done}} od {{total}} satelita",
+    "unavailable": "Katalog satelita nije se mogao učitati pa za ovu točku nisu izračunati preleti.",
+    "checkingArchives": "Provjera arhiva: {{done}} od {{total}} odgovorilo",
+    "confirmedCount": "Potvrđene snimke: {{count}}",
+    "counts": {
+      "mosaics": "Dnevni mozaici: {{count}}",
+      "frames": "Meteorološke snimke: {{count}}",
+      "inRange": "Preleti u dometu: {{count}}"
+    },
+    "partial": "{{sources}} nije odgovorio pa nekim preletima možda nedostaju snimke.",
+    "stale": "Orbitalni podaci su zastarjeli. Katalog satelita star je {{age}} pa vremena preleta mogu odstupati.",
+    "empty": "Nijedan evidentirani satelit za snimanje nije preletio ovu točku u posljednjih {{pastDays}} dana niti će u sljedećih {{futureHours}} sati.",
+    "privacy": "Ova točka ostaje u vašem pregledniku. Šalje se samo javnim arhivima koje preglednik izravno poziva: Earth Search, Microsoft Planetary Computer, NASA GIBS i EUMETSAT. Jedina iznimka je pretraživanje po nazivu mjesta: upisani naziv šalje se usluzi pretraživanja mjesta.",
+    "inRange": "u dometu",
+    "tier": {
+      "checking": "provjera arhiva",
+      "confirmed": "potvrđena snimka",
+      "likely": "vjerojatno snimljeno",
+      "opportunity": "nadolazeći prelet",
+      "dailyMosaic": "u dnevnom mozaiku",
+      "withinReach": "u dometu",
+      "capabilityOverhead": "sposobnost iznad",
+      "passedOverhead": "preletio iznad",
+      "unmatchedImage": "snimka bez izračunatog preleta"
+    },
+    "row": {
+      "offNadir": "{{deg}}° od nadira",
+      "distance": "{{km}} km od traga na tlu",
+      "orbitAge": "orbitalni podaci stari {{age}}",
+      "edgeOfSwath": "Rub pojasa snimanja",
+      "notInArchive": "Nema snimke u arhivi",
+      "imageAlt": "Snimka {{name}}, {{time}}"
+    }
   }
 }

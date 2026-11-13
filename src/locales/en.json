@@ -4571,9 +4571,46 @@
       "xIntel2": "API-fresh posts and permalinks"
     }
   },
+  "orbitalWatch": {
+    "computing": "Loading the satellite catalog…",
+    "computingProgress": "Computing passes: {{done}} of {{total}} satellites",
+    "unavailable": "The satellite catalog could not be loaded, so no passes were computed for this point.",
+    "checkingArchives": "Checking archives: {{done}} of {{total}} answered",
+    "confirmedCount": "Confirmed images: {{count}}",
+    "counts": {
+      "mosaics": "Daily mosaics: {{count}}",
+      "frames": "Weather frames: {{count}}",
+      "inRange": "Passes in range: {{count}}"
+    },
+    "partial": "{{sources}} did not answer, so some passes may be missing their images.",
+    "stale": "Orbit data is stale. The satellite catalog is {{age}} old, so pass times may be off.",
+    "empty": "No profiled imaging satellite passed over this point in the last {{pastDays}} days or will in the next {{futureHours}} hours.",
+    "privacy": "This point stays in your browser. It is sent only to the public archives your browser calls directly: Earth Search, Microsoft Planetary Computer, NASA GIBS and EUMETSAT. Searching by place name is the one exception: the name you type goes to the place-name search service.",
+    "inRange": "in range",
+    "tier": {
+      "checking": "checking archive",
+      "confirmed": "confirmed image",
+      "likely": "likely imaged",
+      "opportunity": "upcoming pass",
+      "dailyMosaic": "in daily mosaic",
+      "withinReach": "within reach",
+      "capabilityOverhead": "capability overhead",
+      "passedOverhead": "passed overhead",
+      "unmatchedImage": "image, no computed pass"
+    },
+    "row": {
+      "offNadir": "{{deg}}° off nadir",
+      "distance": "{{km}} km from ground track",
+      "orbitAge": "orbit data {{age}} old",
+      "edgeOfSwath": "Edge of swath",
+      "notInArchive": "No image in the archive",
+      "imageAlt": "{{name}} image, {{time}}"
+    }
+  },
   "contextMenu": {
     "openCountryBrief": "Open Country Brief",
-    "copyCoordinates": "Copy Coordinates"
+    "copyCoordinates": "Copy Coordinates",
+    "satellitePasses": "Satellite passes here"
   },
   "auth": {
     "signIn": "Sign In",

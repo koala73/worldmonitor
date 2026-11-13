@@ -4433,7 +4433,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Apri scheda paese",
-    "copyCoordinates": "Copia coordinate"
+    "copyCoordinates": "Copia coordinate",
+    "satellitePasses": "Passaggi satellitari qui"
   },
   "shell": {
     "documentTitle": "World Monitor — Dashboard di intelligence globale in tempo reale",
@@ -5138,5 +5139,41 @@
     "errGeneric": "La bozza non può essere creata. Riprova.",
     "errDownload": "Il file non può essere scaricato qui. Usa Stampa o salva come PDF.",
     "errLoad": "Non è stato possibile aprire la valutazione del viaggio. Ricarica la pagina e riprova."
+  },
+  "orbitalWatch": {
+    "computing": "Caricamento del catalogo satellitare…",
+    "computingProgress": "Calcolo dei passaggi: {{done}} di {{total}} satelliti",
+    "unavailable": "Impossibile caricare il catalogo satellitare, quindi non sono stati calcolati passaggi per questo punto.",
+    "checkingArchives": "Verifica degli archivi: {{done}} di {{total}} hanno risposto",
+    "confirmedCount": "Immagini confermate: {{count}}",
+    "counts": {
+      "mosaics": "Mosaici giornalieri: {{count}}",
+      "frames": "Immagini meteo: {{count}}",
+      "inRange": "Passaggi a portata: {{count}}"
+    },
+    "partial": "{{sources}} non ha risposto, quindi ad alcuni passaggi potrebbero mancare le immagini.",
+    "stale": "I dati orbitali non sono aggiornati. Il catalogo satellitare risale a {{age}} fa, quindi gli orari dei passaggi potrebbero essere imprecisi.",
+    "empty": "Nessun satellite per immagini censito è passato sopra questo punto negli ultimi {{pastDays}} giorni né passerà nelle prossime {{futureHours}} ore.",
+    "privacy": "Questo punto resta nel tuo browser. Viene inviato solo agli archivi pubblici che il browser interroga direttamente: Earth Search, Microsoft Planetary Computer, NASA GIBS ed EUMETSAT. L’unica eccezione è la ricerca per nome di luogo: il nome digitato va al servizio di ricerca dei luoghi.",
+    "inRange": "a portata",
+    "tier": {
+      "checking": "verifica archivio",
+      "confirmed": "immagine confermata",
+      "likely": "probabilmente ripreso",
+      "opportunity": "passaggio imminente",
+      "dailyMosaic": "nel mosaico giornaliero",
+      "withinReach": "a portata",
+      "capabilityOverhead": "capacità in transito",
+      "passedOverhead": "passato sopra",
+      "unmatchedImage": "immagine senza passaggio calcolato"
+    },
+    "row": {
+      "offNadir": "{{deg}}° fuori nadir",
+      "distance": "a {{km}} km dalla traccia a terra",
+      "orbitAge": "dati orbitali di {{age}} fa",
+      "edgeOfSwath": "Bordo della strisciata",
+      "notInArchive": "Nessuna immagine nell’archivio",
+      "imageAlt": "Immagine di {{name}}, {{time}}"
+    }
   }
 }

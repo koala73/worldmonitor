@@ -4389,7 +4389,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "国の概要を開く",
-    "copyCoordinates": "座標をコピー"
+    "copyCoordinates": "座標をコピー",
+    "satellitePasses": "この地点を通過した衛星"
   },
   "shell": {
     "documentTitle": "ワールドモニター — リアルタイム グローバルインテリジェンスダッシュボード",
@@ -5082,5 +5083,41 @@
     "errGeneric": "初版を作成できませんでした。再度お試しください。",
     "errDownload": "ファイルをここからダウンロードできません。代わりに印刷または PDF として保存を使用してください。",
     "errLoad": "旅行リスク評価を開くことができませんでした。ページを再度読み込んでもう一度お試しください。"
+  },
+  "orbitalWatch": {
+    "computing": "衛星カタログを読み込み中…",
+    "computingProgress": "通過を計算中：{{total}} 機中 {{done}} 機",
+    "unavailable": "衛星カタログを読み込めなかったため、この地点の通過は計算されていません。",
+    "checkingArchives": "アーカイブを確認中：{{total}} 件中 {{done}} 件が応答",
+    "confirmedCount": "確認済み画像：{{count}}",
+    "counts": {
+      "mosaics": "日次モザイク：{{count}}",
+      "frames": "気象画像：{{count}}",
+      "inRange": "範囲内の通過：{{count}}"
+    },
+    "partial": "{{sources}} が応答しなかったため、一部の通過で画像が欠けている可能性があります。",
+    "stale": "軌道データが古くなっています。衛星カタログは {{age}} 前のもので、通過時刻がずれる可能性があります。",
+    "empty": "過去 {{pastDays}} 日間に、登録済みの撮像衛星はこの地点の上空を通過しておらず、今後 {{futureHours}} 時間も通過しません。",
+    "privacy": "この地点はブラウザー内にとどまります。送信先は、ブラウザーが直接呼び出す公開アーカイブ（Earth Search、Microsoft Planetary Computer、NASA GIBS、EUMETSAT）のみです。唯一の例外は地名検索で、入力した地名は地名検索サービスに送られます。",
+    "inRange": "範囲内",
+    "tier": {
+      "checking": "アーカイブ確認中",
+      "confirmed": "確認済み画像",
+      "likely": "撮像の可能性が高い",
+      "opportunity": "今後の通過",
+      "dailyMosaic": "日次モザイク内",
+      "withinReach": "範囲内",
+      "capabilityOverhead": "能力上空通過",
+      "passedOverhead": "上空通過",
+      "unmatchedImage": "計算済み通過のない画像"
+    },
+    "row": {
+      "offNadir": "天底から {{deg}}°",
+      "distance": "地上軌跡から {{km}} km",
+      "orbitAge": "軌道データ {{age}} 前",
+      "edgeOfSwath": "観測幅の端",
+      "notInArchive": "アーカイブに画像なし",
+      "imageAlt": "{{name}} の画像、{{time}}"
+    }
   }
 }

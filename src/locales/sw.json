@@ -4501,7 +4501,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Fungua Muhtasari wa Nchi",
-    "copyCoordinates": "Nakili Viratibu"
+    "copyCoordinates": "Nakili Viratibu",
+    "satellitePasses": "Satelaiti zinazopita hapa"
   },
   "auth": {
     "signIn": "Ingia",
@@ -5110,5 +5111,41 @@
     "errGeneric": "Rasimu haikuweza kujenguliwa. Jaribu tena.",
     "errDownload": "Faili haikuweza kupakuliwa hapa. Tumia Chapisha au hifadhi kama PDF badala yake.",
     "errLoad": "Tathmini ya safari haikuweza kufunguliwa. Pakia upya ukurasa kisha ujaribu tena."
+  },
+  "orbitalWatch": {
+    "computing": "Inapakia orodha ya satelaiti…",
+    "computingProgress": "Inakokotoa mapito: {{done}} kati ya satelaiti {{total}}",
+    "unavailable": "Orodha ya satelaiti haikuweza kupakiwa, kwa hivyo hakuna mapito yaliyokokotolewa kwa sehemu hii.",
+    "checkingArchives": "Inakagua kumbukumbu: {{done}} kati ya {{total}} zimejibu",
+    "confirmedCount": "Picha zilizothibitishwa: {{count}}",
+    "counts": {
+      "mosaics": "Mosaiki za kila siku: {{count}}",
+      "frames": "Picha za hali ya hewa: {{count}}",
+      "inRange": "Mapito yaliyo karibu: {{count}}"
+    },
+    "partial": "{{sources}} haikujibu, kwa hivyo baadhi ya mapito huenda yakakosa picha.",
+    "stale": "Data ya obiti imepitwa na wakati. Orodha ya satelaiti ina umri wa {{age}}, kwa hivyo nyakati za mapito zinaweza kutofautiana.",
+    "empty": "Hakuna satelaiti ya upigaji picha iliyoorodheshwa iliyopita juu ya sehemu hii katika siku {{pastDays}} zilizopita wala haitapita katika saa {{futureHours}} zijazo.",
+    "privacy": "Sehemu hii inabaki kwenye kivinjari chako. Inatumwa tu kwa kumbukumbu za umma ambazo kivinjari chako huziita moja kwa moja: Earth Search, Microsoft Planetary Computer, NASA GIBS na EUMETSAT. Kutafuta kwa jina la mahali ndiyo tofauti pekee: jina unaloandika linakwenda kwa huduma ya kutafuta majina ya mahali.",
+    "inRange": "karibu",
+    "tier": {
+      "checking": "inakagua kumbukumbu",
+      "confirmed": "picha imethibitishwa",
+      "likely": "huenda ilipigwa picha",
+      "opportunity": "pito lijalo",
+      "dailyMosaic": "katika mosaiki ya kila siku",
+      "withinReach": "karibu",
+      "capabilityOverhead": "uwezo juu",
+      "passedOverhead": "ilipita juu",
+      "unmatchedImage": "picha bila pito lililokokotolewa"
+    },
+    "row": {
+      "offNadir": "{{deg}}° kutoka nadiri",
+      "distance": "km {{km}} kutoka njia ya ardhini",
+      "orbitAge": "data ya obiti ya {{age}} iliyopita",
+      "edgeOfSwath": "Ukingo wa ukanda",
+      "notInArchive": "Hakuna picha kwenye kumbukumbu",
+      "imageAlt": "Picha ya {{name}}, {{time}}"
+    }
   }
 }

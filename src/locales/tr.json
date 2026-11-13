@@ -4411,7 +4411,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Ülke özetini aç",
-    "copyCoordinates": "Koordinatları kopyala"
+    "copyCoordinates": "Koordinatları kopyala",
+    "satellitePasses": "Buradan geçen uydular"
   },
   "shell": {
     "documentTitle": "World Monitor — Gerçek Zamanlı Küresel İstihbarat Paneli",
@@ -5110,5 +5111,41 @@
     "errGeneric": "Taslak oluşturulamadı. Yeniden deneyin.",
     "errDownload": "Dosya buraya indirilemedi. Bunun yerine Yazdır seçeneğini kullanın veya PDF olarak kaydedin.",
     "errLoad": "Seyahat değerlendirmesi açılamadı. Sayfayı yeniden yükleyin ve tekrar deneyin."
+  },
+  "orbitalWatch": {
+    "computing": "Uydu kataloğu yükleniyor…",
+    "computingProgress": "Geçişler hesaplanıyor: {{total}} uydudan {{done}}",
+    "unavailable": "Uydu kataloğu yüklenemedi, bu nedenle bu nokta için geçiş hesaplanmadı.",
+    "checkingArchives": "Arşivler kontrol ediliyor: {{total}} arşivden {{done}} yanıt verdi",
+    "confirmedCount": "Doğrulanmış görüntüler: {{count}}",
+    "counts": {
+      "mosaics": "Günlük mozaikler: {{count}}",
+      "frames": "Hava durumu kareleri: {{count}}",
+      "inRange": "Erişimdeki geçişler: {{count}}"
+    },
+    "partial": "{{sources}} yanıt vermedi, bu nedenle bazı geçişlerin görüntüleri eksik olabilir.",
+    "stale": "Yörünge verileri eski. Uydu kataloğu {{age}} önce güncellendi, bu nedenle geçiş saatleri sapabilir.",
+    "empty": "Kayıtlı hiçbir görüntüleme uydusu son {{pastDays}} gün içinde bu noktanın üzerinden geçmedi ve önümüzdeki {{futureHours}} saat içinde geçmeyecek.",
+    "privacy": "Bu nokta tarayıcınızda kalır. Yalnızca tarayıcınızın doğrudan çağırdığı herkese açık arşivlere gönderilir: Earth Search, Microsoft Planetary Computer, NASA GIBS ve EUMETSAT. Tek istisna yer adıyla aramadır: yazdığınız ad yer adı arama hizmetine gider.",
+    "inRange": "erişimde",
+    "tier": {
+      "checking": "arşiv kontrol ediliyor",
+      "confirmed": "doğrulanmış görüntü",
+      "likely": "muhtemelen görüntülendi",
+      "opportunity": "yaklaşan geçiş",
+      "dailyMosaic": "günlük mozaikte",
+      "withinReach": "erişimde",
+      "capabilityOverhead": "kabiliyet üzerinde",
+      "passedOverhead": "üzerinden geçti",
+      "unmatchedImage": "hesaplanmış geçişi olmayan görüntü"
+    },
+    "row": {
+      "offNadir": "nadirden {{deg}}°",
+      "distance": "yer izinden {{km}} km",
+      "orbitAge": "yörünge verileri {{age}} önce",
+      "edgeOfSwath": "Tarama şeridinin kenarı",
+      "notInArchive": "Arşivde görüntü yok",
+      "imageAlt": "{{name}} görüntüsü, {{time}}"
+    }
   }
 }

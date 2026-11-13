@@ -4389,7 +4389,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "국가 개요 열기",
-    "copyCoordinates": "좌표 복사"
+    "copyCoordinates": "좌표 복사",
+    "satellitePasses": "이 지점을 지나는 위성"
   },
   "shell": {
     "documentTitle": "World Monitor — 실시간 글로벌 인텔리전스 대시보드",
@@ -5082,5 +5083,41 @@
     "errGeneric": "초안을 작성할 수 없습니다. 다시 시도하세요.",
     "errDownload": "파일을 여기서 다운로드할 수 없습니다. 대신 인쇄 또는 PDF 저장을 사용하세요.",
     "errLoad": "여행 위험 평가를 열 수 없습니다. 페이지를 새로고침하고 다시 시도하세요."
+  },
+  "orbitalWatch": {
+    "computing": "위성 카탈로그를 불러오는 중…",
+    "computingProgress": "통과 계산 중: 위성 {{total}}개 중 {{done}}개",
+    "unavailable": "위성 카탈로그를 불러오지 못해 이 지점의 통과를 계산하지 않았습니다.",
+    "checkingArchives": "아카이브 확인 중: {{total}}곳 중 {{done}}곳 응답",
+    "confirmedCount": "확인된 영상: {{count}}",
+    "counts": {
+      "mosaics": "일일 모자이크: {{count}}",
+      "frames": "기상 영상: {{count}}",
+      "inRange": "범위 내 통과: {{count}}"
+    },
+    "partial": "{{sources}}이(가) 응답하지 않아 일부 통과에 영상이 없을 수 있습니다.",
+    "stale": "궤도 데이터가 오래되었습니다. 위성 카탈로그가 {{age}} 전 것이므로 통과 시간이 다를 수 있습니다.",
+    "empty": "지난 {{pastDays}}일 동안 이 지점 위를 지난 등록된 영상 위성이 없으며 향후 {{futureHours}}시간 동안에도 지나지 않습니다.",
+    "privacy": "이 지점은 브라우저에만 남습니다. 브라우저가 직접 호출하는 공개 아카이브인 Earth Search, Microsoft Planetary Computer, NASA GIBS, EUMETSAT에만 전송됩니다. 유일한 예외는 지명 검색으로, 입력한 이름은 지명 검색 서비스로 전송됩니다.",
+    "inRange": "범위 내",
+    "tier": {
+      "checking": "아카이브 확인 중",
+      "confirmed": "확인된 영상",
+      "likely": "촬영 가능성 높음",
+      "opportunity": "예정된 통과",
+      "dailyMosaic": "일일 모자이크에 포함",
+      "withinReach": "범위 내",
+      "capabilityOverhead": "능력 상공 통과",
+      "passedOverhead": "상공 통과",
+      "unmatchedImage": "계산된 통과 없는 영상"
+    },
+    "row": {
+      "offNadir": "천저에서 {{deg}}°",
+      "distance": "지상 궤적에서 {{km}}km",
+      "orbitAge": "궤도 데이터 {{age}} 전",
+      "edgeOfSwath": "관측폭 가장자리",
+      "notInArchive": "아카이브에 영상 없음",
+      "imageAlt": "{{name}} 영상, {{time}}"
+    }
   }
 }

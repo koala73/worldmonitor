@@ -4433,7 +4433,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Abrir resumen del país",
-    "copyCoordinates": "Copiar coordenadas"
+    "copyCoordinates": "Copiar coordenadas",
+    "satellitePasses": "Pasos de satélites aquí"
   },
   "shell": {
     "documentTitle": "World Monitor — Panel de Control de Inteligencia Global en Tiempo Real",
@@ -5138,5 +5139,41 @@
     "errGeneric": "No se pudo generar el borrador. Intenta de nuevo.",
     "errDownload": "El archivo no se pudo descargar aquí. Usa Imprimir o guarda como PDF en su lugar.",
     "errLoad": "No se pudo abrir la evaluación del viaje. Recarga la página e intenta de nuevo."
+  },
+  "orbitalWatch": {
+    "computing": "Cargando el catálogo de satélites…",
+    "computingProgress": "Calculando pasos: {{done}} de {{total}} satélites",
+    "unavailable": "No se pudo cargar el catálogo de satélites, por lo que no se calcularon pasos para este punto.",
+    "checkingArchives": "Consultando archivos: {{done}} de {{total}} respondieron",
+    "confirmedCount": "Imágenes confirmadas: {{count}}",
+    "counts": {
+      "mosaics": "Mosaicos diarios: {{count}}",
+      "frames": "Imágenes meteorológicas: {{count}}",
+      "inRange": "Pasos al alcance: {{count}}"
+    },
+    "partial": "{{sources}} no respondió, por lo que a algunos pasos les pueden faltar imágenes.",
+    "stale": "Los datos orbitales están desactualizados. El catálogo de satélites tiene {{age}} de antigüedad, por lo que las horas de paso pueden variar.",
+    "empty": "Ningún satélite de imágenes catalogado pasó sobre este punto en los últimos {{pastDays}} días ni lo hará en las próximas {{futureHours}} horas.",
+    "privacy": "Este punto permanece en tu navegador. Solo se envía a los archivos públicos que tu navegador consulta directamente: Earth Search, Microsoft Planetary Computer, NASA GIBS y EUMETSAT. La búsqueda por nombre de lugar es la única excepción: el nombre que escribes se envía al servicio de búsqueda de lugares.",
+    "inRange": "al alcance",
+    "tier": {
+      "checking": "consultando archivo",
+      "confirmed": "imagen confirmada",
+      "likely": "probablemente captado",
+      "opportunity": "próximo paso",
+      "dailyMosaic": "en mosaico diario",
+      "withinReach": "al alcance",
+      "capabilityOverhead": "capacidad en vuelo",
+      "passedOverhead": "pasó por encima",
+      "unmatchedImage": "imagen sin paso calculado"
+    },
+    "row": {
+      "offNadir": "{{deg}}° fuera del nadir",
+      "distance": "a {{km}} km de la traza terrestre",
+      "orbitAge": "datos orbitales de hace {{age}}",
+      "edgeOfSwath": "Borde de la franja",
+      "notInArchive": "Sin imagen en el archivo",
+      "imageAlt": "Imagen de {{name}}, {{time}}"
+    }
   }
 }

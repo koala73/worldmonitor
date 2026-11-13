@@ -4455,7 +4455,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Otwórz przegląd kraju",
-    "copyCoordinates": "Kopiuj współrzędne"
+    "copyCoordinates": "Kopiuj współrzędne",
+    "satellitePasses": "Przeloty satelitów tutaj"
   },
   "shell": {
     "documentTitle": "World Monitor — Tablica bieżącej analizy globalnej",
@@ -5166,5 +5167,41 @@
     "errGeneric": "Nie można było zbudować szkicu. Spróbuj ponownie.",
     "errDownload": "Nie można było pobrać pliku tutaj. Użyj funkcji Drukuj lub zapisz jako PDF.",
     "errLoad": "Nie można było otworzyć oceny podróży. Odśwież stronę i spróbuj ponownie."
+  },
+  "orbitalWatch": {
+    "computing": "Wczytywanie katalogu satelitów…",
+    "computingProgress": "Obliczanie przelotów: {{done}} z {{total}} satelitów",
+    "unavailable": "Nie udało się wczytać katalogu satelitów, więc dla tego punktu nie obliczono przelotów.",
+    "checkingArchives": "Sprawdzanie archiwów: odpowiedziało {{done}} z {{total}}",
+    "confirmedCount": "Potwierdzone zdjęcia: {{count}}",
+    "counts": {
+      "mosaics": "Mozaiki dzienne: {{count}}",
+      "frames": "Zdjęcia pogodowe: {{count}}",
+      "inRange": "Przeloty w zasięgu: {{count}}"
+    },
+    "partial": "{{sources}} nie odpowiedział, więc niektórym przelotom mogą brakować zdjęć.",
+    "stale": "Dane orbitalne są nieaktualne. Katalog satelitów ma {{age}}, więc czasy przelotów mogą się różnić.",
+    "empty": "Żaden skatalogowany satelita obrazujący nie przeleciał nad tym punktem w ciągu ostatnich {{pastDays}} dni ani nie przeleci w ciągu najbliższych {{futureHours}} godzin.",
+    "privacy": "Ten punkt pozostaje w Twojej przeglądarce. Jest wysyłany tylko do publicznych archiwów, z którymi przeglądarka łączy się bezpośrednio: Earth Search, Microsoft Planetary Computer, NASA GIBS i EUMETSAT. Jedynym wyjątkiem jest wyszukiwanie po nazwie miejsca: wpisana nazwa trafia do usługi wyszukiwania miejsc.",
+    "inRange": "w zasięgu",
+    "tier": {
+      "checking": "sprawdzanie archiwum",
+      "confirmed": "potwierdzone zdjęcie",
+      "likely": "prawdopodobnie sfotografowano",
+      "opportunity": "nadchodzący przelot",
+      "dailyMosaic": "w mozaice dziennej",
+      "withinReach": "w zasięgu",
+      "capabilityOverhead": "zdolność nad punktem",
+      "passedOverhead": "przeleciał nad",
+      "unmatchedImage": "zdjęcie bez obliczonego przelotu"
+    },
+    "row": {
+      "offNadir": "{{deg}}° od nadiru",
+      "distance": "{{km}} km od śladu naziemnego",
+      "orbitAge": "dane orbitalne sprzed {{age}}",
+      "edgeOfSwath": "Krawędź pasa zobrazowania",
+      "notInArchive": "Brak zdjęcia w archiwum",
+      "imageAlt": "Zdjęcie {{name}}, {{time}}"
+    }
   }
 }

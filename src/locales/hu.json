@@ -4501,7 +4501,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Országbeszámoló megnyitása",
-    "copyCoordinates": "Koordináták másolása"
+    "copyCoordinates": "Koordináták másolása",
+    "satellitePasses": "Műholdas áthaladások itt"
   },
   "auth": {
     "signIn": "Bejelentkezés",
@@ -5110,5 +5111,41 @@
     "errGeneric": "Az első változat nem állítható össze. Próbálja újra.",
     "errDownload": "A fájl innen nem tölthető le. Használja a Nyomtatást vagy a PDF-ként mentést helyette.",
     "errLoad": "Az utazási értékelés nem nyitható meg. Töltse be újra az oldalt, és próbálja újra."
+  },
+  "orbitalWatch": {
+    "computing": "Műholdkatalógus betöltése…",
+    "computingProgress": "Áthaladások számítása: {{done}} / {{total}} műhold",
+    "unavailable": "A műholdkatalógust nem sikerült betölteni, ezért ehhez a ponthoz nem készült áthaladás-számítás.",
+    "checkingArchives": "Archívumok ellenőrzése: {{done}} / {{total}} válaszolt",
+    "confirmedCount": "Megerősített felvételek: {{count}}",
+    "counts": {
+      "mosaics": "Napi mozaikok: {{count}}",
+      "frames": "Időjárási képek: {{count}}",
+      "inRange": "Hatótávon belüli áthaladások: {{count}}"
+    },
+    "partial": "{{sources}} nem válaszolt, ezért egyes áthaladásokhoz hiányozhatnak a felvételek.",
+    "stale": "A pályaadatok elavultak. A műholdkatalógus {{age}} régi, ezért az áthaladási idők eltérhetnek.",
+    "empty": "Egyetlen nyilvántartott képalkotó műhold sem haladt el e pont felett az elmúlt {{pastDays}} napban, és a következő {{futureHours}} órában sem fog.",
+    "privacy": "Ez a pont a böngészőjében marad. Csak azokhoz a nyilvános archívumokhoz kerül, amelyeket a böngésző közvetlenül hív: Earth Search, Microsoft Planetary Computer, NASA GIBS és EUMETSAT. Az egyetlen kivétel a helynév szerinti keresés: a beírt név a helynévkereső szolgáltatáshoz kerül.",
+    "inRange": "hatótávon belül",
+    "tier": {
+      "checking": "archívum ellenőrzése",
+      "confirmed": "megerősített felvétel",
+      "likely": "valószínűleg lefényképezve",
+      "opportunity": "közelgő áthaladás",
+      "dailyMosaic": "napi mozaikban",
+      "withinReach": "hatótávon belül",
+      "capabilityOverhead": "képesség a pont felett",
+      "passedOverhead": "elhaladt felette",
+      "unmatchedImage": "felvétel számított áthaladás nélkül"
+    },
+    "row": {
+      "offNadir": "{{deg}}° a nadírtól",
+      "distance": "{{km}} km a talajnyomtól",
+      "orbitAge": "{{age}} régi pályaadatok",
+      "edgeOfSwath": "A sáv széle",
+      "notInArchive": "Nincs felvétel az archívumban",
+      "imageAlt": "{{name}} felvétel, {{time}}"
+    }
   }
 }

@@ -4411,7 +4411,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Länderübersicht öffnen",
-    "copyCoordinates": "Koordinaten kopieren"
+    "copyCoordinates": "Koordinaten kopieren",
+    "satellitePasses": "Satellitenüberflüge hier"
   },
   "shell": {
     "documentTitle": "World Monitor — Dashboard für globale Echtzeitinformationen",
@@ -5110,5 +5111,41 @@
     "errGeneric": "Der Entwurf konnte nicht erstellt werden. Versuchen Sie es erneut.",
     "errDownload": "Die Datei konnte hier nicht heruntergeladen werden. Verwenden Sie stattdessen „Drucken\" oder „Als PDF speichern\".",
     "errLoad": "Die Reisebewertung konnte nicht geöffnet werden. Laden Sie die Seite neu und versuchen Sie es erneut."
+  },
+  "orbitalWatch": {
+    "computing": "Satellitenkatalog wird geladen…",
+    "computingProgress": "Überflüge werden berechnet: {{done}} von {{total}} Satelliten",
+    "unavailable": "Der Satellitenkatalog konnte nicht geladen werden, daher wurden für diesen Punkt keine Überflüge berechnet.",
+    "checkingArchives": "Archive werden geprüft: {{done}} von {{total}} haben geantwortet",
+    "confirmedCount": "Bestätigte Aufnahmen: {{count}}",
+    "counts": {
+      "mosaics": "Tägliche Mosaike: {{count}}",
+      "frames": "Wetterbilder: {{count}}",
+      "inRange": "Überflüge in Reichweite: {{count}}"
+    },
+    "partial": "{{sources}} hat nicht geantwortet, daher fehlen manchen Überflügen möglicherweise die Aufnahmen.",
+    "stale": "Die Bahndaten sind veraltet. Der Satellitenkatalog ist {{age}} alt, daher können die Überflugzeiten abweichen.",
+    "empty": "Kein erfasster Erdbeobachtungssatellit hat diesen Punkt in den letzten {{pastDays}} Tagen überflogen oder wird es in den nächsten {{futureHours}} Stunden tun.",
+    "privacy": "Dieser Punkt bleibt in Ihrem Browser. Er wird nur an die öffentlichen Archive gesendet, die Ihr Browser direkt abfragt: Earth Search, Microsoft Planetary Computer, NASA GIBS und EUMETSAT. Die einzige Ausnahme ist die Suche nach Ortsnamen: Der eingegebene Name geht an den Ortsnamen-Suchdienst.",
+    "inRange": "in Reichweite",
+    "tier": {
+      "checking": "Archiv wird geprüft",
+      "confirmed": "bestätigte Aufnahme",
+      "likely": "wahrscheinlich aufgenommen",
+      "opportunity": "bevorstehender Überflug",
+      "dailyMosaic": "im Tagesmosaik",
+      "withinReach": "in Reichweite",
+      "capabilityOverhead": "Fähigkeit überfliegend",
+      "passedOverhead": "überflogen",
+      "unmatchedImage": "Aufnahme ohne berechneten Überflug"
+    },
+    "row": {
+      "offNadir": "{{deg}}° außerhalb des Nadirs",
+      "distance": "{{km}} km von der Bodenspur",
+      "orbitAge": "Bahndaten {{age}} alt",
+      "edgeOfSwath": "Rand des Aufnahmestreifens",
+      "notInArchive": "Keine Aufnahme im Archiv",
+      "imageAlt": "Aufnahme von {{name}}, {{time}}"
+    }
   }
 }

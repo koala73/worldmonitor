@@ -4389,7 +4389,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Mở tổng quan quốc gia",
-    "copyCoordinates": "Sao chép tọa độ"
+    "copyCoordinates": "Sao chép tọa độ",
+    "satellitePasses": "Vệ tinh bay qua đây"
   },
   "shell": {
     "documentTitle": "World Monitor — Bảng điều khiển tình báo toàn cầu theo thời gian thực",
@@ -5082,5 +5083,41 @@
     "errGeneric": "Không thể xây dựng dự thảo. Thử lại.",
     "errDownload": "Không thể tải xuống tệp tại đây. Hãy sử dụng In hoặc lưu dưới dạng PDF.",
     "errLoad": "Không thể mở đánh giá chuyến đi. Tải lại trang và thử lại."
+  },
+  "orbitalWatch": {
+    "computing": "Đang tải danh mục vệ tinh…",
+    "computingProgress": "Đang tính các lượt bay: {{done}} trên {{total}} vệ tinh",
+    "unavailable": "Không thể tải danh mục vệ tinh nên chưa tính được lượt bay nào cho điểm này.",
+    "checkingArchives": "Đang kiểm tra kho lưu trữ: {{done}} trên {{total}} đã phản hồi",
+    "confirmedCount": "Ảnh đã xác nhận: {{count}}",
+    "counts": {
+      "mosaics": "Ảnh ghép hằng ngày: {{count}}",
+      "frames": "Khung ảnh thời tiết: {{count}}",
+      "inRange": "Lượt bay trong tầm: {{count}}"
+    },
+    "partial": "{{sources}} không phản hồi nên một số lượt bay có thể thiếu ảnh.",
+    "stale": "Dữ liệu quỹ đạo đã cũ. Danh mục vệ tinh đã {{age}} nên thời gian bay qua có thể sai lệch.",
+    "empty": "Không có vệ tinh chụp ảnh nào trong danh mục bay qua điểm này trong {{pastDays}} ngày qua hoặc sẽ bay qua trong {{futureHours}} giờ tới.",
+    "privacy": "Điểm này được giữ trong trình duyệt của bạn. Điểm chỉ được gửi tới các kho lưu trữ công khai mà trình duyệt gọi trực tiếp: Earth Search, Microsoft Planetary Computer, NASA GIBS và EUMETSAT. Ngoại lệ duy nhất là tìm kiếm theo tên địa điểm: tên bạn nhập được gửi tới dịch vụ tìm kiếm địa điểm.",
+    "inRange": "trong tầm",
+    "tier": {
+      "checking": "đang kiểm tra kho",
+      "confirmed": "ảnh đã xác nhận",
+      "likely": "có thể đã chụp",
+      "opportunity": "lượt bay sắp tới",
+      "dailyMosaic": "trong ảnh ghép hằng ngày",
+      "withinReach": "trong tầm",
+      "capabilityOverhead": "năng lực trên không",
+      "passedOverhead": "đã bay qua",
+      "unmatchedImage": "ảnh không có lượt bay tính toán"
+    },
+    "row": {
+      "offNadir": "lệch thiên đế {{deg}}°",
+      "distance": "cách vết mặt đất {{km}} km",
+      "orbitAge": "dữ liệu quỹ đạo đã {{age}}",
+      "edgeOfSwath": "Mép dải quét",
+      "notInArchive": "Không có ảnh trong kho",
+      "imageAlt": "Ảnh {{name}}, {{time}}"
+    }
   }
 }
