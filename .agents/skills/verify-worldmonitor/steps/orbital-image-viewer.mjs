@@ -24,6 +24,18 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const requests = [];
   page.on('request', (req) => requests.push({ url: req.url(), body: req.postData() ?? '' }));
 
+  if (process.env.WM_VERIFY_FORCE_DECK === '1') {
+    // With WM_VERIFY_SOFTWARE_GL=1 on a machine with no GPU, name the software renderer as a GPU so the desktop map runs on deck.gl.
+    await page.addInitScript(() => {
+      for (const proto of [WebGLRenderingContext.prototype, WebGL2RenderingContext.prototype]) {
+        const getParameter = proto.getParameter;
+        proto.getParameter = function (name) {
+          const value = getParameter.call(this, name);
+          return name === 0x9246 && typeof value === 'string' ? 'ANGLE (verify GPU)' : value;
+        };
+      }
+    });
+  }
   await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': '"flat"' } });
   await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
@@ -34,11 +46,46 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const sheet = page.locator('.orbital-watch-sheet');
   const pointText = await sheet.locator('.ow-place').innerText();
   log('picked point', pointText, 'target', lat, lon);
+  // Where the reticle sits once the map has stopped flying, and that it sits mid-way across the map the panels leave visible.
+  const markAt = async () => {
+    let prev = null;
+    for (let tries = 0; tries < 60; tries++) {
+      const now = await page.evaluate(() => {
+        const mark = document.querySelector('.ow-mapmark');
+        if (!mark || mark.hidden) return null;
+        const ring = mark.querySelector('.ow-mapmark-ring').getBoundingClientRect();
+        const m = document.getElementById('mapContainer').getBoundingClientRect();
+        let area = { left: m.left, top: m.top, right: m.right, bottom: m.bottom };
+        const size = (r) => Math.max(0, r.right - r.left) * Math.max(0, r.bottom - r.top);
+        for (const sel of ['.ow-panel', '.ow-dock', '.ow-statusbar']) {
+          const c = document.querySelector(`.orbital-watch-sheet ${sel}`)?.getBoundingClientRect();
+          if (!c || !c.width || !c.height || c.right <= area.left || c.left >= area.right || c.bottom <= area.top || c.top >= area.bottom) continue;
+          area = [{ ...area, right: Math.min(area.right, c.left) }, { ...area, left: Math.max(area.left, c.right) },
+            { ...area, bottom: Math.min(area.bottom, c.top) }, { ...area, top: Math.max(area.top, c.bottom) }]
+            .reduce((best, side) => (size(side) > size(best) ? side : best));
+        }
+        return { x: Math.round(ring.left + ring.width / 2), y: Math.round(ring.top + ring.height / 2),
+          cx: Math.round((area.left + area.right) / 2), cy: Math.round((area.top + area.bottom) / 2),
+          left: Math.round(area.left), top: Math.round(area.top) };
+      });
+      if (now && prev && now.x === prev.x && now.y === prev.y) {
+        if (Math.abs(now.x - now.cx) > 40 || Math.abs(now.y - now.cy) > 40) {
+          throw new Error(`reticle at ${now.x},${now.y}, not centred in the visible map at ${now.cx},${now.cy}`);
+        }
+        return now;
+      }
+      prev = now;
+      await page.waitForTimeout(250);
+    }
+    throw new Error(`reticle never settled on the map: ${JSON.stringify(prev)}`);
+  };
   await sheet.locator('.ow-headline').waitFor({ timeout: 90_000 });
   log('headline', await sheet.locator('.ow-headline').innerText());
   const hero = sheet.locator('.ow-card').first();
   await hero.locator('.ow-tile[data-state="loaded"]').waitFor({ timeout: 90_000 });
   await sheet.locator('.ow-timelapse-entry').scrollIntoViewIfNeeded();
+  // The phone map is the SVG renderer, which cannot project the point, so only the desktop map must mark it.
+  log('sheet map mark', mobile ? await markAt().then(JSON.stringify, (error) => error.message) : JSON.stringify(await markAt()));
   await shot('sheet');
 
   const trigger = hero.locator('[data-action="view-image"]');
@@ -106,6 +153,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const detail = sheet.locator('.ow-detail');
   await detail.waitFor();
   log('pass detail', (await detail.innerText()).replace(/\s+/g, ' '));
+  log('pass detail map mark', mobile ? await markAt().then(JSON.stringify, (error) => error.message) : JSON.stringify(await markAt()));
   await shot('pass-detail');
   await page.keyboard.press('Escape');
   await detail.waitFor({ state: 'detached' });
