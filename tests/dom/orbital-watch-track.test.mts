@@ -20,6 +20,7 @@ import type { PointPass } from '@/services/orbital/pass-job';
 import type { MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
 import type { OrbitalTarget, PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
 import { openOrbitalWatch, type OrbitalTrackSurface } from '@/app/orbital-watch';
+import { watchOrbitalRoute } from '@/app/orbital-route';
 import fixture from '../fixtures/orbital/celestrak-gp-2026-11-13.json';
 
 const records = fixture.records as OmmRecord[];
@@ -196,6 +197,36 @@ describe('replayed pass ground track', () => {
     expect(slot().querySelectorAll('.ow-replay-hud')).toHaveLength(1);
     expect(hud()?.querySelector('.ow-hud-label')?.textContent).toBe(`ACQUISITION · ${landsat.name.toUpperCase()}`);
     expect(frames.size).toBe(1);
+  });
+
+  it('closes the sheet on Escape from the scrubber, but keeps arrow keys on the scrubber', async () => {
+    await openWithPasses();
+    replay(sentinel);
+    await vi.waitFor(() => expect(drawn()).toHaveLength(1));
+    const reachedDocument: string[] = [];
+    const listen = (event: KeyboardEvent) => reachedDocument.push(event.key);
+    document.addEventListener('keydown', listen);
+    scrub()!.focus();
+    scrub()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    scrub()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.removeEventListener('keydown', listen);
+    expect(reachedDocument).toEqual(['Escape']);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(lastTrack()).toBeNull();
+  });
+
+  it('replays a pass on the map after opening from a shared link', async () => {
+    history.replaceState(null, '', `#orbital=${point.lat},${point.lon}`);
+    const unwatch = watchOrbitalRoute(() => surface);
+    try {
+      await vi.waitFor(() => expect(replayButton(sentinel)).not.toBeNull());
+      replay(sentinel);
+      await vi.waitFor(() => expect(drawn()).toHaveLength(1));
+      expect(hud()).not.toBeNull();
+    } finally {
+      unwatch();
+      history.replaceState(null, '', window.location.pathname);
+    }
   });
 
   it('removes the track and stops the replay when the sheet closes', async () => {
