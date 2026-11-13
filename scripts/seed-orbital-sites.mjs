@@ -21,7 +21,7 @@ import {
   backfillSearchBody,
   flagShadowKey,
   makeChangeStage,
-  StatisticsRefusal,
+  ScoringRefusal,
   statisticsUrl,
 } from './_orbital-change.mjs';
 import {
@@ -87,7 +87,9 @@ export function makeArchiveSearch({ fetchImpl = (...args) => globalThis.fetch(..
     return acquisitionsFromStac(json?.features);
   }
   const searchArchive = (site, nowMs) => search(stacSearchBody(site, nowMs));
-  searchArchive.backfill = (site, nowMs) => search(backfillSearchBody(site, nowMs, ARCHIVE_LOOKBACK_DAYS));
+  searchArchive.backfill = (site, nowMs) => search(backfillSearchBody(site, nowMs, ARCHIVE_LOOKBACK_DAYS)).catch((error) => {
+    throw error instanceof ArchiveRefusal ? new ScoringRefusal(error.message) : error;
+  });
   return searchArchive;
 }
 
@@ -104,7 +106,7 @@ export function makeStatisticsFetch({ fetchImpl = (...args) => globalThis.fetch(
     });
     if (REFUSAL_STATUSES.has(response.status)) {
       await response.body?.cancel();
-      throw new StatisticsRefusal(`Planetary Computer refused the statistics request (HTTP ${response.status})`);
+      throw new ScoringRefusal(`Planetary Computer refused the statistics request (HTTP ${response.status})`);
     }
     if (!response.ok) {
       await response.body?.cancel();
@@ -182,11 +184,13 @@ export function makeFetchSites({ store, searchArchive, sites = WATCHED_SITES, re
     const previousIndex = await store.readIndex();
     const knownIds = [...new Set([...sites.map((site) => site.id), ...Object.keys(previousIndex?.sites ?? {})])];
     const previousRecords = await store.readRecords(knownIds);
+    // Scoring runs after the site pass, inside the same run budget.
+    const changeBudgetMs = scoring ? Math.min(scoring.budgetMs, budgetMs / 2) : 0;
     const change = scoring && makeChangeStage({
-      ...scoring, clock, previousFlags: scoring.shadow === false ? new Map() : await store.readFlags(knownIds),
+      ...scoring, budgetMs: changeBudgetMs, clock, previousFlags: scoring.shadow === false ? new Map() : await store.readFlags(knownIds),
     });
     const evaluation = await evaluateSites({
-      sites, catalog, previousRecords, cursor: previousIndex?.nextSiteId ?? null, searchArchive, nowMs, deadlineMs: nowMs + budgetMs, clock, change,
+      sites, catalog, previousRecords, cursor: previousIndex?.nextSiteId ?? null, searchArchive, nowMs, deadlineMs: nowMs + budgetMs - changeBudgetMs, clock, change,
     });
     if (evaluation.refused) return { publishBlocked: evaluation.refused, sites: {} };
     if (evaluation.evaluated > 0 && evaluation.failed.length === evaluation.evaluated) {

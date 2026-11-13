@@ -208,14 +208,16 @@ export function siteOrder(sites, cursor) {
 /**
  * Evaluates sites in cursor order until the deadline. A site whose archive search fails
  * keeps its previous record; a refusal stops the run before anything is written. With a
- * change stage, each land site's flag is scored from the same archive answer; a shadowed
- * flag goes to `flags` only, and the site record carries none.
+ * change stage, each evaluated site's flag is then scored from the same archive answer,
+ * least recently scored first, so sites the stage's budget missed go first next run; a
+ * shadowed flag goes to `flags` only, and the site record carries none.
  */
 export async function evaluateSites({ sites, catalog, previousRecords, cursor, searchArchive, nowMs, deadlineMs, clock = Date.now, change = null }) {
   const order = siteOrder(sites, cursor);
   const records = new Map();
   const flags = new Map();
   const failed = [];
+  const searched = [];
   let evaluated = 0;
   let nextSiteId = null;
   for (const site of order) {
@@ -234,11 +236,11 @@ export async function evaluateSites({ sites, catalog, previousRecords, cursor, s
     } finally {
       evaluated += 1;
     }
-    if (!change) {
-      records.set(site.id, buildSiteRecord({ site, catalog, acquisitions, previous, nowMs }));
-      continue;
-    }
-    const previousFlag = change.shadow ? change.previousFlags.get(site.id) ?? null : previous?.flag ?? null;
+    if (change) searched.push({ site, acquisitions, previous, previousFlag: change.shadow ? change.previousFlags.get(site.id) ?? null : previous?.flag ?? null });
+    else records.set(site.id, buildSiteRecord({ site, catalog, acquisitions, previous, nowMs }));
+  }
+  searched.sort((a, b) => (a.previousFlag?.updatedAt ?? 0) - (b.previousFlag?.updatedAt ?? 0));
+  for (const { site, acquisitions, previous, previousFlag } of searched) {
     const flag = await change.score({ site, acquisitions, previous: previousFlag, nowMs });
     if (change.shadow && flag) flags.set(site.id, flag);
     records.set(site.id, buildSiteRecord({ site, catalog, acquisitions, previous, nowMs, flag: change.shadow ? null : flag }));

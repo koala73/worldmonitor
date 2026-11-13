@@ -12,10 +12,11 @@ import {
   makeChangeStage,
   observationFromStatistics,
   radarGeometry,
+  ScoringRefusal,
   scoreSiteChange,
 } from '../scripts/_orbital-change.mjs';
-import { acquisitionsFromStac, countryKey, ORBITAL_SITES_KEY, siteKey, stacSearchBody } from '../scripts/_orbital-sites.mjs';
-import { makeFetchSites, publicationCommands } from '../scripts/seed-orbital-sites.mjs';
+import { acquisitionsFromStac, countryKey, evaluateSites, ORBITAL_SITES_KEY, siteKey, stacSearchBody } from '../scripts/_orbital-sites.mjs';
+import { makeArchiveSearch, makeFetchSites, publicationCommands } from '../scripts/seed-orbital-sites.mjs';
 import { advanceTrack, geometryKey, newTrack } from '../scripts/shared/orbital/flag-record.js';
 
 const NOW = Date.parse('2026-11-13T12:00:00Z');
@@ -260,10 +261,30 @@ describe('orbital change stage in the site seeder', () => {
   });
 
   it('keeps every previous flag when the statistics service refuses', async () => {
-    const stage = makeChangeStage({ fetchStatistics: async () => { const { StatisticsRefusal } = await import('../scripts/_orbital-change.mjs'); throw new StatisticsRefusal('HTTP 429'); }, budgetMs: 60_000, clock: () => NOW });
+    const stage = makeChangeStage({ fetchStatistics: async () => { throw new ScoringRefusal('HTTP 429'); }, budgetMs: 60_000, clock: () => NOW });
     const previous = { schema: 1, footprint: { lat: LAND.lat, lon: LAND.lon, halfSizeDeg: 0.01 }, tracks: {}, events: [], backfilledAt: NOW };
     assert.equal(await stage.score({ site: LAND, acquisitions: [radarScene(40)], previous, nowMs: NOW }), previous);
     assert.equal(stage.summary().halted, 'HTTP 429');
+  });
+
+  it('stops scoring, keeping the previous flag, when the archive refuses the backfill search', async () => {
+    const searchArchive = makeArchiveSearch({ fetchImpl: async () => new Response(null, { status: 429 }), minIntervalMs: 0 });
+    const stage = makeChangeStage({ fetchStatistics: async () => assert.fail('nothing is scored'), searchBackfill: searchArchive.backfill, budgetMs: 60_000, clock: () => NOW });
+    assert.equal(await stage.score({ site: LAND, acquisitions: [radarScene(40)], previous: null, nowMs: NOW }), null);
+    assert.match(stage.summary().halted, /HTTP 429/);
+  });
+
+  it('scores the least recently scored sites first, so sites a short budget missed catch up next run', async () => {
+    const sites = ['a', 'b', 'c'].map((id) => ({ ...LAND, id: `hotspot:${id}` }));
+    const scored = [];
+    const change = {
+      shadow: true,
+      previousFlags: new Map([['hotspot:a', { updatedAt: NOW - DAY_MS }], ['hotspot:c', { updatedAt: NOW - 3 * DAY_MS }]]),
+      score: async ({ site }) => { scored.push(site.id); return null; },
+      summary: () => null,
+    };
+    await evaluateSites({ sites, catalog, previousRecords: new Map(), cursor: null, searchArchive: async () => [], nowMs: NOW, deadlineMs: Infinity, clock: () => NOW, change });
+    assert.deepEqual(scored, ['hotspot:b', 'hotspot:c', 'hotspot:a']);
   });
 
   it('refreshes shadow keys of sites it did not evaluate and deletes those of removed sites', () => {

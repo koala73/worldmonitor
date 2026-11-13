@@ -118,8 +118,8 @@ function emptyFlag(site, halfSizeDeg) {
 
 const sameFootprint = (a, b) => a?.lat === b.lat && a?.lon === b.lon && a?.halfSizeDeg === b.halfSizeDeg;
 
-/** The statistics request refused service: scoring stops for the rest of the run. */
-export class StatisticsRefusal extends Error {}
+/** The archive refused a request made for scoring: scoring stops for the rest of the run. */
+export class ScoringRefusal extends Error {}
 
 /**
  * Folds every radar scene the flag has not yet seen into the site's flag record. A site
@@ -145,6 +145,7 @@ export async function scoreSiteChange({
       const archived = await searchBackfill(site, nowMs);
       scenes = [...radarScenes(archived, (thresholds ?? CHANGE_THRESHOLDS).minBaselineScenes), ...scenes];
     } catch (error) {
+      if (error instanceof ScoringRefusal) throw error;
       backfilling = false;
       stopped = error?.message || String(error);
     }
@@ -165,7 +166,7 @@ export async function scoreSiteChange({
       requests += 1;
       statistics = await fetchStatistics(scene, feature);
     } catch (error) {
-      if (error instanceof StatisticsRefusal) throw error;
+      if (error instanceof ScoringRefusal) throw error;
       stopped = error?.message || String(error);
       break;
     }
