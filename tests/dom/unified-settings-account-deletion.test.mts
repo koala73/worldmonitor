@@ -247,6 +247,8 @@ describe('UnifiedSettings account card', () => {
     const page = document.querySelector<HTMLElement>('[data-settings-page="account"]')!;
     expect(page.hidden).toBe(false);
     expect(page.querySelector('.billing-settings-intro h3')?.textContent).toBe('Plan & billing');
+    expect(page.querySelector('.billing-settings-intro p')?.textContent)
+      .toBe('See your current plan and manage payment details, invoices, or cancellation.');
     expect(page.querySelector('[data-account-deletion]')).not.toBeNull();
   });
 });

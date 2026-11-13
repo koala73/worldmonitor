@@ -7,6 +7,7 @@
 import { escapeHtml } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { showToast } from '@/utils/toast';
+import { t } from '@/services/i18n';
 import {
   listBusinessSeats,
   inviteBusinessSeats,
@@ -71,7 +72,7 @@ export class BusinessSeatsSection {
       // under them — the error renders inside the section instead. A first load
       // that fails leaves it `undefined`, so an unconfirmed account still shows
       // nothing rather than a guessed surface.
-      this.error = err instanceof Error ? err.message : 'Failed to load seats';
+      this.error = err instanceof Error ? err.message : t('settings.account.businessSeats.loadFailed');
     } finally {
       if (generation === this.accountGeneration) {
         this.loading = false;
@@ -99,10 +100,12 @@ export class BusinessSeatsSection {
     const seatCount = activeSeats.length + pendingSeats.length;
 
     const renderSeat = (seat: BusinessSeat) => {
-      const statusLabel = seat.status === 'accepted' ? 'Accepted' : seat.status === 'expired' ? 'Expired' : 'Pending';
+      const statusLabel = t(seat.status === 'accepted'
+        ? 'settings.account.businessSeats.statusAccepted'
+        : seat.status === 'expired' ? 'settings.account.businessSeats.statusExpired' : 'settings.account.businessSeats.statusPending');
       const statusColor = seat.status === 'accepted' ? '#22c55e' : seat.status === 'expired' ? '#666' : '#eab308';
       const expires = seat.status === 'pending'
-        ? `<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:#666;">Expires ${new Date(seat.expiresAt).toLocaleDateString()}</div>`
+        ? `<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:#666;">${escapeHtml(t('settings.account.businessSeats.expires', { date: new Date(seat.expiresAt).toLocaleDateString() }))}</div>`
         : '';
       return `
         <div class="business-seat-item" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid #1a1a1a;border-radius:6px;margin-bottom:8px;background:#0d0d0d;">
@@ -110,36 +113,36 @@ export class BusinessSeatsSection {
             <div style="font-size:calc(13px * var(--wm-panel-effective-scale, 1));color:#fff;">${escapeHtml(seat.inviteeEmail)}</div>
             <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
               <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${statusColor};"></span>
-              <span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:${statusColor};">${statusLabel}</span>
+              <span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:${statusColor};">${escapeHtml(statusLabel)}</span>
             </div>
             ${expires}
           </div>
-          <button class="btn btn-ghost business-seat-remove-btn" data-grant-id="${escapeHtml(seat.grantId)}" style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));" ${this.removingGrantIds.has(seat.grantId) ? 'disabled' : ''}>${this.removingGrantIds.has(seat.grantId) ? 'Removing...' : 'Remove'}</button>
+          <button class="btn btn-ghost business-seat-remove-btn" data-grant-id="${escapeHtml(seat.grantId)}" style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));" ${this.removingGrantIds.has(seat.grantId) ? 'disabled' : ''}>${escapeHtml(t(this.removingGrantIds.has(seat.grantId) ? 'settings.account.seats.removing' : 'settings.account.seats.remove'))}</button>
         </div>
       `;
     };
 
-    const inviteHint = isCorporateDomain
-      ? 'Invite teammates at any corporate email domain.'
-      : 'Add a company email to invite teammates.';
+    const inviteHint = t(isCorporateDomain
+      ? 'settings.account.businessSeats.hintCorporate'
+      : 'settings.account.businessSeats.hintPersonal');
 
     return `
       <div class="business-seats-section" style="margin-top:16px;padding:14px 16px;border:1px solid #1a1a1a;border-radius:6px;background:#0d0d0d;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-          <div style="font-size:calc(13px * var(--wm-panel-effective-scale, 1));font-weight:600;color:#fff;">Business Seats</div>
-          <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:#888;">${seatCount} / 4 used</div>
+          <div style="font-size:calc(13px * var(--wm-panel-effective-scale, 1));font-weight:600;color:#fff;">${escapeHtml(t('settings.account.businessSeats.heading'))}</div>
+          <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:#888;">${escapeHtml(t('settings.account.seats.used', { used: String(seatCount), cap: '4' }))}</div>
         </div>
         <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:#999;margin-bottom:12px;">${escapeHtml(inviteHint)}</div>
-        ${!isCorporateDomain ? `<div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:#ef4444;margin-bottom:12px;">Free or disposable email domains cannot invite teammates. Add a company email to use this feature.</div>` : ''}
+        ${!isCorporateDomain ? `<div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:#ef4444;margin-bottom:12px;">${escapeHtml(t('settings.account.businessSeats.personalDomain'))}</div>` : ''}
         ${isCorporateDomain ? `
           <div class="business-seats-invite-form" style="display:flex;gap:8px;margin-bottom:12px;">
             <input type="email" class="business-seats-email-input" placeholder="teammate@company.com" style="flex:1;padding:8px 10px;background:#111;border:1px solid #1a1a1a;border-radius:4px;color:#fff;font-size:calc(13px * var(--wm-panel-effective-scale, 1));" ${seatCount >= 4 ? 'disabled' : ''} />
-            <button class="btn btn-primary business-seats-invite-btn" ${seatCount >= 4 ? 'disabled' : ''}>Invite</button>
+            <button class="btn btn-primary business-seats-invite-btn" ${seatCount >= 4 ? 'disabled' : ''}>${escapeHtml(t('settings.account.seats.invite'))}</button>
           </div>
         ` : ''}
         ${this.error ? `<div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:#ef4444;margin-bottom:12px;">${escapeHtml(this.error)}</div>` : ''}
         <div id="usBusinessSeatsList">
-          ${seats.length === 0 ? `<div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:#666;padding:12px;text-align:center;">No seats invited yet.</div>` : seats.map(renderSeat).join('')}
+          ${seats.length === 0 ? `<div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:#666;padding:12px;text-align:center;">${escapeHtml(t('settings.account.businessSeats.empty'))}</div>` : seats.map(renderSeat).join('')}
         </div>
       </div>
     `;
@@ -153,28 +156,28 @@ export class BusinessSeatsSection {
     if (!email || !btn || btn.disabled) return;
 
     btn.disabled = true;
-    btn.textContent = 'Inviting...';
+    btn.textContent = t('settings.account.seats.inviting');
     this.error = '';
     try {
       const result = await inviteBusinessSeats([email]);
       if (generation !== this.accountGeneration) return;
       if (result.invited[0]?.status === 'created') {
-        showToast('Invite sent');
+        showToast(t('settings.account.seats.inviteSent'));
       } else {
-        showToast('Already invited');
+        showToast(t('settings.account.seats.alreadyInvited'));
       }
       await this.load();
     } catch (err) {
       if (generation !== this.accountGeneration) return;
-      const msg = err instanceof Error ? err.message : 'Failed to send invite';
+      const msg = err instanceof Error ? err.message : t('settings.account.businessSeats.inviteFailed');
       if (msg.includes('SEAT_CAP_REACHED')) {
-        this.error = 'All 4 seats are used. Remove a seat first.';
+        this.error = t('settings.account.businessSeats.errors.seatCap');
       } else if (msg.includes('OWNER_DOMAIN_NOT_CORPORATE')) {
-        this.error = 'Your account email must be a company domain to invite teammates.';
+        this.error = t('settings.account.businessSeats.errors.ownerDomain');
       } else if (msg.includes('CANNOT_INVITE_SELF')) {
-        this.error = 'You cannot invite yourself.';
+        this.error = t('settings.account.businessSeats.errors.self');
       } else if (msg.includes('INVITEE_DOMAIN_NOT_CORPORATE')) {
-        this.error = 'The invitee email must be a company domain.';
+        this.error = t('settings.account.businessSeats.errors.inviteeDomain');
       } else {
         this.error = msg;
       }
@@ -187,18 +190,18 @@ export class BusinessSeatsSection {
   async handleRemove(grantId: string): Promise<void> {
     const generation = this.accountGeneration;
     if (this.removingGrantIds.has(grantId)) return;
-    if (!confirm('Remove this seat? The invitee will lose Pro access immediately.')) return;
+    if (!confirm(t('settings.account.businessSeats.confirmRemove'))) return;
 
     this.removingGrantIds.add(grantId);
     this.renderInPlace();
     try {
       const result = await removeBusinessSeat(grantId);
       if (generation !== this.accountGeneration) return;
-      showToast(result.status === 'already_inactive' ? 'Seat was already inactive' : 'Seat removed');
+      showToast(t(result.status === 'already_inactive' ? 'settings.account.businessSeats.alreadyInactive' : 'settings.account.businessSeats.removed'));
       await this.load();
     } catch (err) {
       if (generation !== this.accountGeneration) return;
-      this.error = err instanceof Error ? err.message : 'Failed to remove seat';
+      this.error = err instanceof Error ? err.message : t('settings.account.businessSeats.removeFailed');
       this.renderInPlace();
     } finally {
       if (generation === this.accountGeneration) {

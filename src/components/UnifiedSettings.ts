@@ -144,6 +144,9 @@ export interface UnifiedSettingsConfig {
 }
 
 /** What the self-host Desktop key section shows (plan 2026-11-04-001, U6). */
+/** What the user types to confirm account deletion. Not translated: it is a token, not prose. */
+const DELETION_PHRASE = 'DELETE';
+
 const SELF_HOST_KEY_TONE: Record<SelfHostKeyStatus, 'ok' | 'warn' | 'bad' | 'neutral'> = {
   none: 'neutral',
   active: 'ok',
@@ -336,13 +339,11 @@ export class UnifiedSettings {
           // refused and the browser fallback was blocked). Saying nothing here
           // reads as a dead click on a paid feature.
           if (result.outcome === 'open-failed') {
-            showToast('Could not open the billing portal. Please allow pop-ups and try again.');
+            showToast(t('settings.account.portal.openFailed'));
             return;
           }
           if (result.outcome === 'no-customer') {
-            showToast(
-              'Billing portal unavailable. Email support@worldmonitor.app for help.',
-            );
+            showToast(t('settings.account.portal.unavailable'));
           }
         });
         return;
@@ -368,13 +369,11 @@ export class UnifiedSettings {
           // refused and the browser fallback was blocked). Saying nothing here
           // reads as a dead click on a paid feature.
           if (result.outcome === 'open-failed') {
-            showToast('Could not open the billing portal. Please allow pop-ups and try again.');
+            showToast(t('settings.account.portal.openFailed'));
             return;
           }
           if (result.outcome === 'no-customer') {
-            showToast(
-              'Billing portal unavailable. Email support@worldmonitor.app for help.',
-            );
+            showToast(t('settings.account.portal.unavailable'));
           }
         });
         return;
@@ -1078,9 +1077,9 @@ export class UnifiedSettings {
 
   /** Short plan name for the account card. Empty while the plan is still resolving. */
   private accountPlanLabel(): string {
-    if (!isEntitled() && hasPremiumAccess()) return 'Premium';
+    if (!isEntitled() && hasPremiumAccess()) return t('settings.account.planPremium');
     if (isEntitled()) return getSubscription()?.displayName ?? 'Pro';
-    return getEntitlementState() === null ? '' : 'Free';
+    return getEntitlementState() === null ? '' : t('settings.account.planFree');
   }
 
   private formatSummary(summary: RowSummary): string {
@@ -1401,8 +1400,8 @@ export class UnifiedSettings {
     account: (body) => {
       setTrustedHtml(body, trustedHtml(`
         <div class="billing-settings-intro">
-          <h3>Plan &amp; billing</h3>
-          <p>See your current plan and manage payment details, invoices, or cancellation.</p>
+          <h3>${escapeHtml(t('auth.planBilling'))}</h3>
+          <p>${escapeHtml(t('settings.account.intro'))}</p>
         </div>
         ${this.renderUpgradeSection()}
         <div id="usEnterpriseSeats">${this.enterpriseSeatsSection.renderContent()}</div>
@@ -1561,8 +1560,8 @@ export class UnifiedSettings {
   private renderPlanCheckingState(): string {
     return `
         <div class="upgrade-pro-section upgrade-pro-loading" role="status" aria-live="polite">
-          <div class="upgrade-pro-title">Checking your plan…</div>
-          <div class="upgrade-pro-desc">This usually takes only a moment.</div>
+          <div class="upgrade-pro-title">${escapeHtml(t('settings.account.checking.heading'))}</div>
+          <div class="upgrade-pro-desc">${escapeHtml(t('settings.account.checking.desc'))}</div>
         </div>
       `;
   }
@@ -1575,8 +1574,8 @@ export class UnifiedSettings {
     if (!isEntitled() && hasPremiumAccess()) {
       return `
         <div class="upgrade-pro-section upgrade-pro-external" data-billing-state="external">
-          <div class="upgrade-pro-title">Premium access</div>
-          <div class="upgrade-pro-desc">This access is not billed through your WorldMonitor account. No payment method or invoices are available here.</div>
+          <div class="upgrade-pro-title">${escapeHtml(t('settings.account.external.heading'))}</div>
+          <div class="upgrade-pro-desc">${escapeHtml(t('settings.account.external.desc'))}</div>
         </div>
       `;
     }
@@ -1632,20 +1631,20 @@ export class UnifiedSettings {
         const dateStr = new Date(sub.currentPeriodEnd).toLocaleDateString();
         if (sub.status === 'active') {
           statusLine = sub.cancelAtPeriodEnd
-            ? `Cancellation scheduled -- access until ${dateStr}`
-            : `Renews: ${dateStr}`;
+            ? t('settings.account.status.cancelScheduled', { date: dateStr })
+            : t('settings.account.status.renews', { date: dateStr });
         } else if (sub.status === 'on_hold') {
-          statusLine = 'On hold -- please update payment method';
+          statusLine = t('settings.account.status.onHold');
         } else if (sub.status === 'cancelled') {
-          statusLine = `Cancelled -- access until ${dateStr}`;
+          statusLine = t('settings.account.status.cancelled', { date: dateStr });
         } else if (sub.status === 'expired') {
-          statusLine = 'Expired';
+          statusLine = t('settings.account.status.expired');
         } else {
           // A status this client does not model yet. We are inside the
           // isEntitled() branch, so access is working — say only that, and
           // point at the billing portal rather than leaving the `unknown`
           // tone as a bare grey dot with no sentence at all.
-          statusLine = 'See Manage Billing for your current plan details.';
+          statusLine = t('settings.account.status.unknown');
         }
       }
 
@@ -1655,7 +1654,7 @@ export class UnifiedSettings {
       // the Manage Billing CTA that would 404 against Dodo.
       const hasOwnSubscription = sub !== null;
       if (!hasOwnSubscription) {
-        statusLine = 'Billing is managed by your plan owner.';
+        statusLine = t('settings.account.status.ownerManaged');
       }
 
       return `
@@ -1665,8 +1664,8 @@ export class UnifiedSettings {
             <span class="upgrade-pro-plan-name">${escapeHtml(planName)}</span>
           </div>
           ${statusLine ? `<div class="upgrade-pro-status-line">${escapeHtml(statusLine)}</div>` : ''}
-          ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">Upgrade to Business</button>` : ''}
-          ${hasOwnSubscription ? `<button class="manage-billing-btn">Manage Billing</button>` : ''}
+          ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">${escapeHtml(t('settings.account.upgradeToBusiness'))}</button>` : ''}
+          ${hasOwnSubscription ? `<button class="manage-billing-btn">${escapeHtml(t('components.billingState.manageBilling'))}</button>` : ''}
         </div>
         ${hasOwnSubscription ? `<div id="usBusinessSeats">${this.businessSeatsSection.renderContent()}</div>` : ''}
       `;
@@ -1678,19 +1677,19 @@ export class UnifiedSettings {
     if (getAuthState().user && getEntitlementState() === null) {
       return `
         <div class="upgrade-pro-section upgrade-pro-fallback">
-          <div class="upgrade-pro-title">Plan status unavailable</div>
-          <div class="upgrade-pro-desc">We could not verify your current plan. Try again or view plans in a new tab.</div>
-          <button class="manage-billing-btn retry-plan-status-btn" style="margin-bottom:8px;">Try again</button>
-          <a class="upgrade-pro-cta-link" href="${WEB_APP_ORIGIN}/pro" target="_blank" rel="noopener">View plans →</a>
+          <div class="upgrade-pro-title">${escapeHtml(t('settings.account.unavailable.heading'))}</div>
+          <div class="upgrade-pro-desc">${escapeHtml(t('settings.account.unavailable.desc'))}</div>
+          <button class="manage-billing-btn retry-plan-status-btn" style="margin-bottom:8px;">${escapeHtml(t('components.checkoutFailureBanner.retry'))}</button>
+          <a class="upgrade-pro-cta-link" href="${WEB_APP_ORIGIN}/pro" target="_blank" rel="noopener">${escapeHtml(t('modals.settingsWindow.worldMonitor.register.submitBtn'))} →</a>
         </div>
       `;
     }
 
     return `
       <div class="upgrade-pro-section" data-billing-state="free">
-        <div class="upgrade-pro-title">WorldMonitor Free</div>
-        <div class="upgrade-pro-desc">Your current plan is Free. Upgrade for all panels, AI analysis, and priority data refresh.</div>
-        <button class="upgrade-pro-cta">Upgrade to Pro</button>
+        <div class="upgrade-pro-title">${escapeHtml(t('settings.account.free.heading'))}</div>
+        <div class="upgrade-pro-desc">${escapeHtml(t('settings.account.free.desc'))}</div>
+        <button class="upgrade-pro-cta">${escapeHtml(t('premium.upgradeToPro'))}</button>
       </div>
     `;
   }
@@ -1698,9 +1697,9 @@ export class UnifiedSettings {
   private renderAccountDeletionSection(): string {
     return `
       <section class="account-deletion-zone" data-account-deletion>
-        <h3 class="account-deletion-title">Delete account</h3>
-        <p class="account-deletion-desc">Permanently delete this World Monitor account. Subscriptions cancel immediately with no refund of remaining prepaid time. API keys, embed keys, and MCP tokens stop working. Billing records needed for accounting, disputes, and lawful requests are kept with the customer contact details they carry; they stop naming your login account, though payment-provider webhook logs written before deletion keep the identifiers they were delivered with. Dashboard preferences and desktop keychain secrets on this device are not wiped remotely.</p>
-        <button type="button" class="delete-account-btn" data-delete-account>Delete account</button>
+        <h3 class="account-deletion-title">${escapeHtml(t('settings.account.deletion.heading'))}</h3>
+        <p class="account-deletion-desc">${escapeHtml(t('settings.account.deletion.desc'))}</p>
+        <button type="button" class="delete-account-btn" data-delete-account>${escapeHtml(t('settings.account.deletion.heading'))}</button>
       </section>
     `;
   }
@@ -1711,7 +1710,7 @@ export class UnifiedSettings {
     const input = overlay.querySelector<HTMLInputElement>('[data-deletion-phrase]');
     const confirm = overlay.querySelector<HTMLButtonElement>('[data-deletion-confirm]');
     if (!input || !confirm) return;
-    confirm.disabled = this.deletionBusy || input.value.trim() !== 'DELETE';
+    confirm.disabled = this.deletionBusy || input.value.trim() !== DELETION_PHRASE;
     input.disabled = this.deletionBusy;
     const error = overlay.querySelector('[data-deletion-error]');
     if (error) error.textContent = this.deletionError;
@@ -1732,18 +1731,18 @@ export class UnifiedSettings {
       trustedHtml(
         `
       <div class="account-deletion-dialog">
-        <h2 id="account-deletion-dialog-title" class="account-deletion-dialog-title">Delete this account?</h2>
-        <p class="account-deletion-dialog-copy">This cannot be undone. Subscriptions cancel, keys stop working immediately, and billing records are kept for accounting, disputes, and lawful requests — including the contact details they carry. Sign out on other devices and clear this device's site data afterwards — those are out of server reach.</p>
-        <label class="account-deletion-dialog-label" for="account-deletion-phrase">Type DELETE to confirm</label>
+        <h2 id="account-deletion-dialog-title" class="account-deletion-dialog-title">${escapeHtml(t('settings.account.deletion.dialogTitle'))}</h2>
+        <p class="account-deletion-dialog-copy">${escapeHtml(t('settings.account.deletion.dialogCopy'))}</p>
+        <label class="account-deletion-dialog-label" for="account-deletion-phrase">${escapeHtml(t('settings.account.deletion.phraseLabel', { phrase: DELETION_PHRASE }))}</label>
         <input id="account-deletion-phrase" class="account-deletion-dialog-input" data-deletion-phrase type="text" autocomplete="off" spellcheck="false" />
         <p class="account-deletion-dialog-error" data-deletion-error role="alert"></p>
         <div class="account-deletion-dialog-actions">
-          <button type="button" class="confirm-dialog-btn" data-deletion-cancel>Cancel</button>
-          <button type="button" class="confirm-dialog-btn confirm-dialog-confirm" data-deletion-confirm disabled>Delete account</button>
+          <button type="button" class="confirm-dialog-btn" data-deletion-cancel>${escapeHtml(t('common.cancel'))}</button>
+          <button type="button" class="confirm-dialog-btn confirm-dialog-confirm" data-deletion-confirm disabled>${escapeHtml(t('settings.account.deletion.heading'))}</button>
         </div>
       </div>
     `,
-        'account deletion confirm dialog; static copy only',
+        'account deletion confirm dialog; escaped translations',
       ),
     );
     overlay.addEventListener('click', (event) => {
@@ -1790,7 +1789,7 @@ export class UnifiedSettings {
   private async confirmAccountDeletion(): Promise<void> {
     const overlay = this.deletionDialog;
     const input = overlay?.querySelector<HTMLInputElement>('[data-deletion-phrase]');
-    if (!overlay || !input || input.value.trim() !== 'DELETE' || this.deletionBusy) return;
+    if (!overlay || !input || input.value.trim() !== DELETION_PHRASE || this.deletionBusy) return;
     this.deletionBusy = true;
     this.deletionError = '';
     this.syncDeletionConfirmEnabled();
@@ -1802,9 +1801,9 @@ export class UnifiedSettings {
       // would stop to ask "discard changes?" for it while signOut() proceeds.
       this.teardownSettings('control');
       await signOut();
-      showToast('Account deleted. Sign out on other devices and clear this device\'s site data.');
+      showToast(t('settings.account.deletion.deleted'));
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Account deletion failed. Try again.';
+      const message = err instanceof Error ? err.message : t('settings.account.deletion.failed');
       if (message.includes('Account changed')) {
         // Only speak if this attempt still owns the dialog. When the account
         // switch already tore it down, the user has moved on and a late
@@ -1857,13 +1856,11 @@ export class UnifiedSettings {
         // refused and the browser fallback was blocked). Saying nothing here
         // reads as a dead click on a paid feature.
         if (result.outcome === 'open-failed') {
-          showToast('Could not open the billing portal. Please allow pop-ups and try again.');
+          showToast(t('settings.account.portal.openFailed'));
           return;
         }
         if (result.outcome === 'no-customer') {
-          showToast(
-            'Billing portal unavailable. Email support@worldmonitor.app for help.',
-          );
+          showToast(t('settings.account.portal.unavailable'));
         }
       });
       return;

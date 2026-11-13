@@ -1309,9 +1309,15 @@ export function subscribeClerk(callback: () => void): () => void {
  * Mount Clerk's UserButton component into a DOM element.
  * Returns an unmount function.
  */
+/** A custom avatar-menu entry. The caller translates the label, so this module stays i18n-free. */
+export interface AccountMenuEntry {
+  readonly label: string;
+  readonly onClick: () => void;
+}
+
 export interface UserButtonMenuActions {
-  onBillingClick?: () => void;
-  onSettingsClick?: () => void;
+  readonly billing?: AccountMenuEntry;
+  readonly settings?: AccountMenuEntry;
 }
 
 type UserButtonProps = NonNullable<Parameters<ClerkInstance['mountUserButton']>[1]>;
@@ -1350,18 +1356,18 @@ function mountMenuIcon(el: HTMLDivElement, kind: MenuIconKind): void {
 
 export function createAccountMenuItems(actions: UserButtonMenuActions): CustomMenuItem[] {
   const items: CustomMenuItem[] = [];
-  if (actions.onBillingClick) {
+  if (actions.billing) {
     items.push({
-      label: 'Plan & billing',
-      onClick: actions.onBillingClick,
+      label: actions.billing.label,
+      onClick: actions.billing.onClick,
       mountIcon: (el) => mountMenuIcon(el, 'billing'),
       unmountIcon: (el) => el?.replaceChildren(),
     });
   }
-  if (actions.onSettingsClick) {
+  if (actions.settings) {
     items.push({
-      label: 'Settings',
-      onClick: actions.onSettingsClick,
+      label: actions.settings.label,
+      onClick: actions.settings.onClick,
       mountIcon: (el) => mountMenuIcon(el, 'settings'),
       unmountIcon: (el) => el?.replaceChildren(),
     });
