@@ -62,6 +62,19 @@ describe('orbital watch map focus', () => {
     }
   });
 
+  it('leaves the point to the map when the map draws its own reticle there', async () => {
+    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center: () => true, project: () => ({ x: 494, y: 450 }), hold: vi.fn() });
+    const targets: unknown[] = [];
+    try {
+      openOrbitalWatch(PALM, null, 'sheet', { setOrbitalTrack: () => {}, setOrbitalTrackMarker: () => {}, setOrbitalTarget: (t) => targets.push(t) });
+      await frames();
+      expect(targets[targets.length - 1]).not.toBeNull();
+      expect(document.querySelector<HTMLElement>('.ow-mapmark')!.hidden, 'one reticle, not two').toBe(true);
+    } finally {
+      release();
+    }
+  });
+
   it('keeps trying to centre until a booting map can move', async () => {
     let ready = false;
     const center = vi.fn(() => ready);

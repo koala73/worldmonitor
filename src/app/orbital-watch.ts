@@ -36,6 +36,7 @@ export interface OrbitalTrackSurface {
 let surface: OrbitalTrackSurface | null = null;
 let replay: TrackReplay | null = null;
 let trackRequest = 0;
+let targetDrawn = false;
 
 const MAP_FULLSCREEN_CLASS = 'live-news-fullscreen-active';
 
@@ -79,7 +80,7 @@ function trackMark(): void {
   const at = getOrbitalMapView()?.project(point) ?? null;
   const area = box?.area;
   const inside = !!at && !!area && at.x >= area.left && at.x <= area.right && at.y >= area.top && at.y <= area.bottom;
-  page.placeMapMark(inside ? at : null);
+  page.placeMapMark(inside && !targetDrawn ? at : null);
   markFrame = requestAnimationFrame(trackMark);
 }
 
@@ -198,9 +199,14 @@ function targetFor(at: GeoPoint, acquisition: MatchedAcquisition | null): Orbita
 
 /** Frames the pass in the part of the map the lookup's sheet, dock and HUD leave visible. */
 function frameTrack(target: OrbitalTrackSurface, track: PassTrack, at: GeoPoint, slot: HTMLElement): void {
-  const sheet = slot.closest('.orbital-watch-sheet');
-  const occluders = sheet ? [...sheet.querySelectorAll('.ow-panel, .ow-hud, .ow-dock')].map((el) => el.getBoundingClientRect()) : [];
+  const occluders = [...(page?.coverRects() ?? []), ...[...slot.children].map((el) => el.getBoundingClientRect())];
   target.frameOrbitalBounds?.(framingBounds(track, at), occluders);
+}
+
+/** Draws the point's reticle and tag on the map, which then stands in for the sheet's own map mark. */
+function drawTarget(target: OrbitalTarget | null): void {
+  surface?.setOrbitalTarget(target);
+  targetDrawn = !!surface && !!target;
 }
 
 /** Draws a pass's ground track and swath on the map and plays it into the replay HUD slot. */
@@ -212,7 +218,7 @@ async function showTrack(noradId: number, timeMs: number): Promise<void> {
   const request = trackRequest;
   const target = surface;
   const at = point;
-  target?.setOrbitalTarget(targetFor(at, acquisition));
+  drawTarget(targetFor(at, acquisition));
   const track = target ? await trackFor(pass).catch(() => null) : null;
   if (request !== trackRequest || !page?.isOpen) return;
   const slot = page.slot('replay-hud');
@@ -252,7 +258,7 @@ export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null
       getOrbitalMapView()?.hold(false);
       cancel();
       clearTrack();
-      surface?.setOrbitalTarget(null);
+      drawTarget(null);
       surface = null;
       lookup = null;
       evidence = null;
@@ -264,17 +270,17 @@ export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null
   const moved = map !== undefined && map !== surface;
   if (moved) {
     clearTrack();
-    surface?.setOrbitalTarget(null);
+    drawTarget(null);
     surface = map;
   }
   if (page.isOpen && samePoint(point, at)) {
-    if (moved) surface?.setOrbitalTarget(targetFor(at, null));
+    if (moved) drawTarget(targetFor(at, null));
     page.setView(view);
     return;
   }
   clearTrack();
   point = at;
-  surface?.setOrbitalTarget(targetFor(at, null));
+  drawTarget(targetFor(at, null));
   lookup = null;
   evidence = null;
   const wasFull = page.isOpen && page.currentView === 'full';

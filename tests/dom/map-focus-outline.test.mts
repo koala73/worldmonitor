@@ -184,6 +184,24 @@ describe('SVG focus outline', () => {
     expect(map.state.zoom).toBeLessThan(2);
   });
 
+  it('fits into the visible part of the map and shifts the centre so the bounds sit in it', () => {
+    const setCenter = vi.fn();
+    const map = Object.assign(Object.create(MapComponent.prototype), {
+      state: { zoom: 1 },
+      readContainerSize: () => ({ width: 390, height: 300 }),
+      setCenter,
+      resumeMobileLabelVisibility: vi.fn(),
+    });
+    const fit = focusFitBounds(['TH', 'VN', 'ID'])!;
+    map.fitFocusBounds(fit, 6);
+    const whole = map.state.zoom;
+    map.fitFocusBounds(fit, 6, { width: 390, height: 150, x: 0, y: -75 });
+    expect(map.state.zoom, 'half the height fits a smaller zoom').toBeLessThan(whole);
+    const [lat, lon] = setCenter.mock.calls[setCenter.mock.calls.length - 1]!;
+    expect(lon).toBeCloseTo(fit.center.lon, 6);
+    expect(lat, 'a visible area above the middle moves the centre south of the bounds').toBeLessThan(fit.center.lat);
+  });
+
   it('rings missing small-country boundaries at their projected centres and clears them', async () => {
     const d3 = await import('d3');
     const { group } = svgHost(['764', '458']);

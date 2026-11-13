@@ -166,7 +166,7 @@ describe('pass ground track', () => {
     for (const pass of found) {
       const track = buildPassTrack(elements, profile.footprint, pass)!;
       const [[west], [east]] = framingBounds(track, point);
-      assert.ok(east - west < 60, 'the box, centred on the point, stays local to it');
+      assert.ok(east - west < 90, 'the box, centred on the point, stays local to it');
     }
   });
 

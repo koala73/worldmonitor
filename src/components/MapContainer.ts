@@ -13,7 +13,7 @@ import type { ReservoirLevel } from '@/services/climate';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import type { FocusFitBounds } from '@/utils/focus-map';
 import { type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
-import { mercatorCenterForOffset, type ScreenOffset } from '@/utils/map-point-offset';
+import { mercatorCenterForOffset, visibleMapArea, type ScreenOffset } from '@/utils/map-point-offset';
 import {
   isLayerToggleAllowed,
   isLayerEntitled,
@@ -202,7 +202,7 @@ type CIIScore = { code: string; score: number; level: string };
  * based on device capabilities
  */
 /** A pass's swath is a few degrees wide, so the flat SVG map frames it at its deepest zoom. */
-const SVG_ORBITAL_MAX_ZOOM = 10;
+const SVG_ORBITAL_MAX_ZOOM = 5;
 
 export class MapContainer {
   private container: HTMLElement;
@@ -2044,7 +2044,16 @@ export class MapContainer {
       this.globeMap?.fitFocusBounds({ ...fit, center: { lat: center.lat, lon: center.lon } }, Math.min(2.5, Math.max(0.35, reach * Math.PI / 180 * 5)));
     }
     else if (this.useDeckGL) this.deckGLMap?.frameOrbitalBounds(bounds, occluders);
-    else this.svgMap?.fitFocusBounds(fit, SVG_ORBITAL_MAX_ZOOM);
+    else {
+      const box = this.container.getBoundingClientRect();
+      const area = visibleMapArea(box, occluders);
+      this.svgMap?.fitFocusBounds(fit, SVG_ORBITAL_MAX_ZOOM, {
+        width: area.right - area.left,
+        height: area.bottom - area.top,
+        x: (area.left + area.right - box.left - box.right) / 2,
+        y: (area.top + area.bottom - box.top - box.bottom) / 2,
+      });
+    }
   }
 
   private applyOrbitalTarget(): void {

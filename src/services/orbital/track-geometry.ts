@@ -315,11 +315,14 @@ export interface OrbitalTarget {
 
 export type FrameBounds = [[number, number], [number, number]];
 
-/** A box centred on the point that holds the satellite at closest approach and the swath line imaged then; longitudes continuous with the point. */
+/** How far past the swath line the frame reaches, so both of the swath's side edges show. */
+const FRAME_MARGIN = 1.5;
+
+/** A box centred on the point that holds the satellite at closest approach and the swath line imaged then, with a margin; longitudes continuous with the point. */
 export function framingBounds(track: PassTrack, target: { lat: number; lon: number }): FrameBounds {
   const positions: Array<[number, number]> = [[track.closest.lon, track.closest.lat]];
   for (const line of sweptSwath(track, track.closest.timeMs).leadingEdge) positions.push(...line);
-  const halfLon = Math.max(...positions.map(([lon]) => Math.abs(nearLon(lon, target.lon) - target.lon)));
-  const halfLat = Math.max(...positions.map(([, lat]) => Math.abs(lat - target.lat)));
+  const halfLon = FRAME_MARGIN * Math.max(...positions.map(([lon]) => Math.abs(nearLon(lon, target.lon) - target.lon)));
+  const halfLat = FRAME_MARGIN * Math.max(...positions.map(([, lat]) => Math.abs(lat - target.lat)));
   return [[target.lon - halfLon, Math.max(-85, target.lat - halfLat)], [target.lon + halfLon, Math.min(85, target.lat + halfLat)]];
 }
