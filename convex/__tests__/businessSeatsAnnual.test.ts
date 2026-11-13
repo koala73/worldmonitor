@@ -9,7 +9,7 @@ const modules = import.meta.glob("../**/*.ts");
 const NOW = 1_800_000_000_000;
 const END = NOW + 365 * 86_400_000;
 const owner = { subject: "annual_owner", email: "owner@acme.test" };
-const invitee = { subject: "annual_invitee", email: "member@other.test" };
+const invitee = { subject: "annual_invitee", email: "member@other.test", emailVerified: true };
 
 beforeEach(() => {
   vi.useFakeTimers();

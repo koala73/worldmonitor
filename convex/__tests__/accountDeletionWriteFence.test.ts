@@ -169,7 +169,7 @@ for (const state of states) {
       await rejected(user.mutation(api.payments.businessSeats.acceptBusinessInvite, { grantId, token: "stale" }));
       // A surviving invitee must not claim an owner's seat after owner deletion started.
       await rejected(t.withIdentity({
-        subject: "teammate", tokenIdentifier: "clerk|teammate", email: "teammate@company.test",
+        subject: "teammate", tokenIdentifier: "clerk|teammate", email: "teammate@company.test", emailVerified: true,
       }).mutation(api.payments.businessSeats.acceptBusinessInvite, { grantId, token: "stale" }));
       await t.run(async (ctx) => {
         expect(await ctx.db.query("checkoutAdmissions").collect()).toEqual([]);

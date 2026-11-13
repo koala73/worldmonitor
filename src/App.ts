@@ -2911,6 +2911,8 @@ export class App {
               if (!isAccountStillCurrent(userId)) return;
               if (kind === 'INVITE_EMAIL_MISMATCH') {
                 showToast('This invite is for a different email address');
+              } else if (kind === 'INVITEE_EMAIL_UNVERIFIED') {
+                showToast('Verify your email address to accept this invite');
               } else if (kind === 'INVITE_EXPIRED') {
                 showToast('This invite has expired');
               } else if (kind === 'BUSINESS_NOT_ACTIVE') {

@@ -1940,8 +1940,16 @@ export function countCiiRealtimeSignalDensityCoverage(
   const acledCoversTier1 = (acled ?? []).some((ev) => isTier1CountryCode(normalizeCountryName(ev.country)));
   const ucdpCoversTier1 = deriveUcdpIntensityByRegion(aux?.ucdpEvents, nowMs).size > 0;
   // GDELT stands in for ACLED only while the ACLED path is empty, as in computeCIIScores.
+  // Global summaries also retain article-only rows; those are availability,
+  // not conflict signal density. Preserve the pre-expansion signal test.
   const gdeltCoversTier1 = !(acled ?? []).length
-    && Object.keys(aux?.gdeltCountryEvents?.byCountry ?? {}).some(isTier1CountryCode);
+    && Object.entries(aux?.gdeltCountryEvents?.byCountry ?? {}).some(([code, row]) => (
+      isTier1CountryCode(code)
+      && ((row.conflict?.current ?? 0) > 0 || (row.conflict?.baselineMedian ?? 0) > 0
+        || (row.protest?.current ?? 0) > 0 || (row.protest?.baselineMedian ?? 0) > 0
+        || (row.week?.conflict ?? 0) > 0 || (row.week?.protest ?? 0) > 0
+        || row.strikes != null)
+    ));
   if (acledCoversTier1 || ucdpCoversTier1 || gdeltCoversTier1) {
     coveredFamilies.add('conflict');
   }

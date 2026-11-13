@@ -208,3 +208,14 @@ export function withUrlFragment(url: string, hash: string): string {
   next.hash = hash;
   return next.toString();
 }
+
+/**
+ * Layer sets are variant-specific. A same-origin variant switch reloads the
+ * page, so the previous variant's `layers` param must not become a deep link
+ * that overrides the next variant's defaults.
+ */
+export function withoutVariantScopedUrlState(url: string): string {
+  const next = new URL(url);
+  next.searchParams.delete('layers');
+  return next.toString();
+}

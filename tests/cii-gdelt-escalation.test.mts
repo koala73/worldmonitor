@@ -154,6 +154,15 @@ describe('CII Conflict and Unrest from GDELT escalation while ACLED is dark', ()
     assert.equal(countCiiRealtimeSignalDensityCoverage([], aux(seed({ US: { conflict: CONFLICT.US_OCT14 } })), NOW), 1);
   });
 
+  it('does not count article-only global rows as conflict signal density', () => {
+    const quiet = { US: { week: { articles: 280, conflict: 0, protest: 0 } } };
+    assert.equal(countCiiRealtimeSignalDensityCoverage([], aux(seed(quiet)), NOW), 0);
+    // Keep the pre-expansion baseline-only coverage behavior.
+    assert.equal(countCiiRealtimeSignalDensityCoverage([], aux(seed({
+      US: { conflict: { current: 0, baselineMedian: 12 } },
+    })), NOW), 1);
+  });
+
   it('parses only well-formed country rows from the snapshot', () => {
     const parsed = gdeltCountryEventsFromSeed({
       byCountry: {

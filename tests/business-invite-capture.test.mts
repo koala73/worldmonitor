@@ -130,7 +130,7 @@ describe('Enterprise invite links', () => {
   });
 
   it('maps the Enterprise accept rejections to their kinds', () => {
-    for (const kind of ['CONTRACT_ENDED', 'ALREADY_MEMBER_OF_ANOTHER_ACCOUNT', 'INVITE_NOT_FOUND']) {
+    for (const kind of ['CONTRACT_ENDED', 'ALREADY_MEMBER_OF_ANOTHER_ACCOUNT', 'INVITE_NOT_FOUND', 'INVITEE_EMAIL_UNVERIFIED']) {
       assert.equal(businessInviteErrorKind(new Error(`[CONVEX M(enterpriseSeats:acceptInvite)] ${kind}`)), kind);
     }
   });
@@ -255,6 +255,10 @@ describe('keepInviteAfterAttempt', () => {
 
   it('keeps the invite after a wrong-account rejection', () => {
     assert.equal(keepInviteAfterAttempt({ accepted: false, accountChanged: false, errorKind: 'INVITE_EMAIL_MISMATCH' }), true);
+  });
+
+  it('keeps the invite until the invited account verifies its email', () => {
+    assert.equal(keepInviteAfterAttempt({ accepted: false, accountChanged: false, errorKind: 'INVITEE_EMAIL_UNVERIFIED' }), true);
   });
 
   it('drops the invite after a final rejection or an unknown failure', () => {

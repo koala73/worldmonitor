@@ -5,7 +5,7 @@ import { getOperatorKeys, timingSafeIncludes, sha256Hex } from '../_crypto.js';
 import { loadUpstashRatelimit } from '../_upstash-ratelimit.js';
 import { upstashRedisOptions } from '../_upstash-redis-options.js';
 import { checkBootstrapUserApiKeyRateLimit, validateBootstrapUserApiKey } from '../_user-api-key.js';
-import { redirectDisplayHost } from './_redirect-uri.js';
+import { isAllowedRedirectUri, redirectDisplayHost } from './_redirect-uri.js';
 import { clientAllowsRedirectUri, clientDisplayInfo, describeClientFailure, isClientMetadataDocumentId, resolveOAuthClient } from './_client-metadata.js';
 import { isHostedAppOrigin } from '../_cors.js';
 import {
@@ -131,6 +131,14 @@ async function redisSet(key, value, exSeconds) {
 const GLOBE_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
 
 const PAGE_HEADERS = { 'Content-Type': 'text/html; charset=utf-8', 'X-Frame-Options': 'DENY', 'Cache-Control': 'no-store', 'Pragma': 'no-cache' };
+
+// A DCR registration keeps the URIs it was created with, so re-check the
+// current allowlist (as mcp-grant-mint.ts does) to honour a removal. A CIMD
+// document is fetched fresh and validated on every resolve.
+function clientRedirectStillAllowed(client, redirectUri) {
+  return clientAllowsRedirectUri(client, redirectUri)
+    && (client.cimd || isAllowedRedirectUri(redirectUri));
+}
 
 function htmlError(title, detail) {
   return new Response(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Error &#x2014; WorldMonitor MCP</title>
@@ -322,7 +330,7 @@ export default async function handler(req) {
     }
     const { client } = resolved;
 
-    if (!clientAllowsRedirectUri(client, redirect_uri)) {
+    if (!clientRedirectStillAllowed(client, redirect_uri)) {
       return htmlError('Redirect URI Mismatch', 'The redirect_uri does not match any registered redirect URI for this client.');
     }
 
@@ -402,7 +410,7 @@ export default async function handler(req) {
     }
     const { client } = resolved;
 
-    if (!clientAllowsRedirectUri(client, redirect_uri)) {
+    if (!clientRedirectStillAllowed(client, redirect_uri)) {
       return htmlError('Redirect URI Mismatch', 'redirect_uri does not match registered set.');
     }
 

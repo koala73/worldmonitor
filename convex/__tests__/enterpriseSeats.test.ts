@@ -24,6 +24,7 @@ const identity = (userId: string, email: string) => ({
   subject: userId,
   tokenIdentifier: `clerk|${userId}`,
   email,
+  emailVerified: true,
 });
 const ADMIN_ID = identity(ADMIN, "admin@hexion.com");
 const MEMBER_ID = identity(MEMBER, "member@hexion.com");
@@ -220,6 +221,17 @@ describe("acceptInvite", () => {
       t.withIdentity(identity(OTHER, "intruder@hexion.com")).mutation(api.enterpriseSeats.acceptInvite, { memberId, token }),
     ).rejects.toThrow(/INVITE_EMAIL_MISMATCH/);
     expect((await row(t, memberId))?.status).toBe("pending");
+  });
+
+  test("a matching but unverified session email cannot accept", async () => {
+    const { t, memberId, token } = await invited();
+    for (const emailVerified of [false, undefined]) {
+      await expect(
+        t.withIdentity({ ...INVITEE_ID, emailVerified }).mutation(api.enterpriseSeats.acceptInvite, { memberId, token }),
+      ).rejects.toThrow(/INVITEE_EMAIL_UNVERIFIED/);
+    }
+    expect(await row(t, memberId)).toMatchObject({ status: "pending" });
+    expect(await planKey(t, INVITEE)).toBe("free");
   });
 
   test("a forged, wrong-row or Business token is refused", async () => {
