@@ -4,6 +4,10 @@
  *
  * WM_VERIFY_ORBITAL_CATALOG=live skips the catalog fixture and uses the local
  * API. WM_VERIFY_ORBITAL_VIEWPORT=mobile drives a phone-sized viewport.
+ * The drive uses the flat map, whose coastlines and labels show where the
+ * reticle sits: deck.gl on desktop, the SVG map on a phone. The SVG map has
+ * no context menu, so there every lookup opens through its route.
+ * WM_VERIFY_ORBITAL_MAP=globe drives the 3D globe instead.
  */
 import { readFileSync } from 'node:fs';
 import { matchSensorProfile } from '../../../../shared/orbital/sensor-profiles.js';
@@ -57,10 +61,22 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     url: req.url(), body: req.postData() ?? '', harnessNavigation: req.isNavigationRequest() && req.frame() === page.mainFrame(),
   }));
 
-  await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': '"globe"' } });
-  await page.goto(`${base}/dashboard?view=global&lat=${PLACE.lat}&lon=${PLACE.lon}&zoom=${PLACE.zoom}`, { waitUntil: 'domcontentloaded' });
+  const mapMode = process.env.WM_VERIFY_ORBITAL_MAP === 'globe' ? 'globe' : 'flat';
+  if (mapMode === 'flat') {
+    // MapContainer refuses deck.gl on a software GL renderer, and this VM only has SwiftShader.
+    await page.addInitScript(() => {
+      const UNMASKED_RENDERER = 0x9246;
+      const original = WebGL2RenderingContext.prototype.getParameter;
+      WebGL2RenderingContext.prototype.getParameter = function (parameter) {
+        return parameter === UNMASKED_RENDERER ? 'verify renderer' : original.call(this, parameter);
+      };
+    });
+  }
+  await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': JSON.stringify(mapMode) } });
+  await page.goto(`${base}/dashboard?view=global&layers=none&lat=${PLACE.lat}&lon=${PLACE.lon}&zoom=${PLACE.zoom}`, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
-  log('renderer', await waitForMap(page));
+  const renderer = await waitForMap(page);
+  log('renderer', renderer);
 
   const sheet = page.locator('.orbital-watch-sheet');
   // Opening a lookup flies the map so the point sits in the middle of what the sheet leaves visible, so aim at
@@ -79,6 +95,22 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     await sheet.waitFor({ state: 'hidden' });
     const focused = await page.evaluate(() => document.activeElement?.id);
     if (focused !== 'mapContainer') throw new Error(`focus after close went to ${focused}`);
+  };
+  // A banner pushes the hero down; both it and the hero's caption and credit must show above the privacy line.
+  const showHeroCredit = async () => {
+    const clipped = await page.evaluate(() => {
+      const credit = document.querySelector('.orbital-watch-sheet .ow-card .ow-image-credit');
+      if (!credit) return 'no hero credit';
+      const floor = () => Math.min(...[...document.querySelectorAll('.orbital-watch-sheet .ow-privacy, .mobile-tab-bar')]
+        .map((el) => el.getBoundingClientRect()).filter((r) => r.height > 0).map((r) => r.top), window.innerHeight);
+      const over = credit.getBoundingClientRect().bottom + 4 - floor();
+      if (over > 0) document.querySelector('.orbital-watch-sheet .ow-body')?.scrollBy(0, over);
+      if (credit.getBoundingClientRect().bottom > floor()) return 'hero credit under the privacy line';
+      const banner = document.querySelector('.orbital-watch-sheet .ow-banner')?.getBoundingClientRect();
+      const top = document.querySelector('.orbital-watch-sheet .ow-body')?.getBoundingClientRect().top ?? 0;
+      return banner && banner.top < top - 1 ? 'banner scrolled out of the sheet' : null;
+    });
+    if (clipped) throw new Error(clipped);
   };
   const settleImagesInView = async () => {
     await page.waitForFunction(() => {
@@ -153,6 +185,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     await expectVisible('.orbital-watch-sheet');
   };
   const calibrate = async () => {
+    if (renderer === 'svg') return;
     const picked = await pickedAt(null);
     log('context menu pick', JSON.stringify(picked));
   };
@@ -242,6 +275,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await sheet.locator('.ow-banner-partial').evaluate((el) => el.scrollIntoView({ block: 'start' }));
   await privacy();
   log('partial banner', await sheet.locator('.ow-banner-partial').innerText());
+  await showHeroCredit();
   await settleImagesInView();
   await shot('partial-archive-failure');
   failing.clear();
@@ -256,11 +290,12 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     await openAtPlace();
     await sheet.locator('.ow-headline').waitFor({ timeout: 90_000 });
     await sheet.locator('.ow-banner-stale').waitFor();
+    await showHeroCredit();
     await settleImagesInView();
     await privacy();
     log('stale banner', await sheet.locator('.ow-banner-stale').innerText());
     log('stale map mark', JSON.stringify(await markAt()));
-  await shot('stale-orbit-data');
+    await shot('stale-orbit-data');
     await close();
 
     catalog = { ...fixture, satellites: fixture.satellites.filter((s) => s.profileId === 'himawari') };
@@ -297,7 +332,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   if (timeline.lcp.some((url) => ARCHIVE_HOSTS.includes(new URL(url).hostname))) throw new Error('archive crop became the LCP element');
 
   // A shared link opens with no click on the globe, so nothing else stops its idle spin carrying the point away.
-  await page.goto(`${base}/dashboard?view=global#orbital=${PLACE.lat.toFixed(4)},${PLACE.lon.toFixed(4)}&view=full`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${base}/dashboard?view=global&layers=none#orbital=${PLACE.lat.toFixed(4)},${PLACE.lon.toFixed(4)}&view=full`, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
   await waitForMap(page);
   await expectVisible('.orbital-watch-sheet');

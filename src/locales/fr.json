@@ -5190,14 +5190,20 @@
       "share": "Partager",
       "shareCopied": "Lien copié",
       "headline": "Au cours des {{days}} derniers jours, {{satellites}} ont survolé {{place}}.",
-      "satellites": "{{count}} satellites",
-      "subline": "{{count}} images ont été rendues publiques.",
+      "satellites_one": "{{count}} satellite",
+      "satellites_many": "{{count}} satellites",
+      "satellites_other": "{{count}} satellites",
+      "subline_one": "{{count}} image a été rendue publique.",
+      "subline_many": "{{count}} images ont été rendues publiques.",
+      "subline_other": "{{count}} images ont été rendues publiques.",
       "closestLook": "Vue la plus proche",
       "replay": "Rejouer",
       "openFull": "Ouvrir la vue complète",
       "previous": "Image précédente",
       "next": "Image suivante",
-      "passes": "passages",
+      "passes_one": "passage",
+      "passes_many": "passages",
+      "passes_other": "passages",
       "showAll": "Afficher tous les passages",
       "noRecentDays": "Aucun jour récent dans l’archive : {{sources}}",
       "tab": {
@@ -5240,7 +5246,9 @@
         "upcoming": "à venir",
         "could": "qui auraient pu viser ici",
         "overhead": "passés au-dessus",
-        "weather": "sources météo"
+        "weather_one": "source météo",
+        "weather_many": "sources météo",
+        "weather_other": "sources météo"
       },
       "order": {
         "closest": "Vue la plus proche, puis plus récents",
@@ -5249,7 +5257,9 @@
       },
       "row": {
         "cloud": "Nuages {{pct}} %",
-        "days": "{{count}} jours",
+        "days_one": "{{count}} jour",
+        "days_many": "{{count}} jours",
+        "days_other": "{{count}} jours",
         "repeats": "{{count}} passages de ce satellite dans ce groupe"
       },
       "section": {

@@ -19,7 +19,7 @@ import type { PassTier } from '../../shared/orbital/tiers.js';
 import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
-import { IMAGE_CREDIT, OrbitalWatchPage, subSolarPoint, type OrbitalWatchState } from '@/components/OrbitalWatchPage';
+import { IMAGE_CREDIT, OrbitalWatchPage, subSolarPoint, TIER_GLYPH_CHAR, type OrbitalWatchState } from '@/components/OrbitalWatchPage';
 import manifest from '../../shared/source-attribution-manifest.json';
 import { openOrbitalWatch } from '@/app/orbital-watch';
 import { formatOrbitalRoute, parseOrbitalRoute } from '@/app/orbital-route';
@@ -154,6 +154,19 @@ describe('satellite pass lookup sheet', () => {
     expect(cell('overhead').querySelector('.ow-tier-number')!.textContent).toBe('1');
     expect(cell('watched').textContent).toContain('A public archive holds an image of this spot.');
     expect(cell('could').textContent).toContain("the operator doesn't say if it looked");
+  });
+
+  it('uses singular wording for one satellite, image, pass and weather source', () => {
+    const { confirmedNew } = tiered();
+    mounted(answered([confirmedNew], { acquisitions: [acquisition(confirmedNew)] }), null, 'full');
+    expect(sheet().querySelector('.ow-headline strong')!.textContent).toBe('1 satellite');
+    expect(sheet().querySelector('.ow-subline')!.textContent).toBe('1 image was made public.');
+    const cell = sheet().querySelector<HTMLElement>('.ow-tier-cell[data-group="watched"] .ow-tier-count')!;
+    expect(cell.textContent).toBe(`${TIER_GLYPH_CHAR.watched}1pass`);
+    expect(group('watched')!.querySelector('.ow-group-name')!.textContent).toBe('pass watched');
+    expect(sheet().querySelector('.ow-tier-cell[data-group="could"] .ow-label')!.textContent).toBe('passes');
+    page().render(answered([confirmedNew], { acquisitions: [acquisition(confirmedNew)], frames: [meteosat] }));
+    expect(group('weather')!.querySelector('.ow-group-name')!.textContent).toBe('weather source');
   });
 
   it('leads the hero carousel with the closest look and pages through the rest', () => {
