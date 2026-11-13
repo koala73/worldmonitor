@@ -4,7 +4,12 @@ const DAY = 86_400_000;
 const DATE = /^[A-Z][a-z]+ \d{1,2}, \d{4}$/;
 const TIME = /^(\d{1,2}):(\d{2}) ([ap])\.m\.$/;
 
-const utcDay = (text: string) => Date.parse(`${text} UTC`);
+// Undefined for text that is not a real calendar date. Date.parse rolls February 31
+// over to March 3, so the day of month must survive the round trip.
+function utcDay(text: string): number | undefined {
+  const time = Date.parse(`${text} UTC`);
+  return Number.isFinite(time) && new Date(time).getUTCDate() === Number(/ (\d+),/.exec(text)?.[1]) ? time : undefined;
+}
 
 export interface PublishedEiaShift { weekEnding: number; release: number }
 
@@ -15,12 +20,14 @@ export function parseEiaSchedule(html: string): PublishedEiaShift[] {
   return (html.match(/<tr[\s>][\s\S]*?<\/tr>/g) ?? []).filter(row => /<th[^>]*scope="row"/.test(row)).map(row => {
     const cells = [...row.matchAll(/<(?:th|td)[^>]*>([\s\S]*?)<\/(?:th|td)>/g)].map(match => cellText(match[1]));
     const time = TIME.exec(cells[3] ?? '');
-    if (cells.length < 4 || !DATE.test(cells[0]) || !DATE.test(cells[1]) || !time) {
+    const weekEnding = DATE.test(cells[0] ?? '') ? utcDay(cells[0]) : undefined;
+    const releaseDay = DATE.test(cells[1] ?? '') ? utcDay(cells[1]) : undefined;
+    if (weekEnding === undefined || releaseDay === undefined || !time) {
       throw new Error(`Unreadable EIA schedule row: ${cellText(row).slice(0, 120)}`);
     }
     return {
-      weekEnding: utcDay(cells[0]),
-      release: easternWallTime(utcDay(cells[1]), (Number(time[1]) % 12 + (time[3] === 'p' ? 12 : 0)) * 60 + Number(time[2])),
+      weekEnding,
+      release: easternWallTime(releaseDay, (Number(time[1]) % 12 + (time[3] === 'p' ? 12 : 0)) * 60 + Number(time[2])),
     };
   });
 }

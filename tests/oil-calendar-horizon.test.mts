@@ -88,6 +88,9 @@ it('publisher schedule parser and diff agree with the rule and flag a departure'
   const malformed = FIXTURE('May 22, 2026', 'May 28, 2026', '12:00 p.m.')
     + FIXTURE('July 24, 2026', 'July 30, 2026', 'noon');
   assert.throws(() => parseEiaSchedule(malformed), /Unreadable EIA schedule row.*July 24, 2026/);
+  for (const [week, alternate] of [['May 99, 2026', 'May 28, 2026'], ['May 22, 2026', 'May 99, 2026'], ['February 31, 2026', 'March 5, 2026'], ['Smarch 3, 2026', 'March 5, 2026']]) {
+    assert.throws(() => parseEiaSchedule(FIXTURE(week, alternate, '12:00 p.m.')), /Unreadable EIA schedule row/, `${week} / ${alternate}`);
+  }
 });
 
 it('calendar warning runs daily in CI without suppressing failure', () => {
