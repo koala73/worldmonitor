@@ -33,6 +33,7 @@ import { readBoundedResponseBody, ResponseBodyTooLargeError } from '../bounded-b
 import { utf8ByteLength } from '../utils';
 import { MCP_CHECKOUT_PLANS, START_UPGRADE_TOOL } from '../checkout';
 import { describedPanelReceipt } from './news-dashboard';
+import { ORBITAL_TOOLS } from './_orbital';
 import { panelAdmissionSchema } from '../../../shared/country-brief-host';
 import { worldBriefPanelAdmissionSchema } from '../../../shared/panel-admission';
 import filterParamContracts from '../../../shared/openapi-filter-param-contracts.json';
@@ -1233,6 +1234,7 @@ const MINERAL_STAGE_OUTPUT_SCHEMA = {
 };
 
 export const RPC_TOOLS: ToolDef[] = [
+  ...ORBITAL_TOOLS,
   NO2_ACTIVITY_TOOL,
   {
     name: 'get_defense_industrial_base',

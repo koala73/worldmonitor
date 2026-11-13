@@ -1,0 +1,131 @@
+syntax = "proto3";
+
+package worldmonitor.orbital.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// GetPointPassesRequest names a point on Earth. Both coordinates are required and are rounded to 0.01 degrees before anything is computed.
+message GetPointPassesRequest {
+  // Latitude in decimal degrees, -90 to 90.
+  double lat = 1 [
+    (buf.validate.field).double.gte = -90,
+    (buf.validate.field).double.lte = 90,
+    (sebuf.http.query) = {name: "lat"}
+  ];
+  // Longitude in decimal degrees, -180 to 180.
+  double lon = 2 [
+    (buf.validate.field).double.gte = -180,
+    (buf.validate.field).double.lte = 180,
+    (sebuf.http.query) = {name: "lon"}
+  ];
+}
+
+// OrbitalPoint is a point in decimal degrees.
+message OrbitalPoint {
+  double lat = 1;
+  double lon = 2;
+}
+
+// PointPass is one pass of a profiled imaging satellite whose footprint covers the point.
+message PointPass {
+  int32 norad_id = 1;
+  // Satellite name as published, e.g. "SENTINEL-2C".
+  string name = 2;
+  // Id of the sensor profile the satellite belongs to.
+  string profile_id = 3;
+  // Sensor category, e.g. open-optical, open-radar, weather-polar, commercial-radar, military, crewed-station.
+  string category = 4;
+  // Time of closest approach, as Unix epoch milliseconds.
+  int64 time_ms = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // True for a future pass: a chance to image, never an image.
+  bool opportunity = 6;
+  // Ground distance from the sub-satellite point to the point, km.
+  double ground_distance_km = 7;
+  // Side of the ground track the point lies on, facing the direction of travel: "left" or "right".
+  string side = 8;
+  // Elevation of the satellite seen from the point, degrees.
+  double elevation_deg = 9;
+  // Incidence angle at the point, degrees from vertical.
+  double incidence_deg = 10;
+  // Sun elevation at the point at pass time, degrees.
+  double sun_elevation_deg = 11;
+  // True when the point is within 5 km of the footprint edge, so whether it was imaged is uncertain.
+  bool edge_of_swath = 12;
+  // True when the mission acquires over this point at all (land and coasts for the open missions).
+  bool coverage = 13;
+  // One of confirmed-image, likely-imaged, within-reach, capability-overhead, daily-mosaic, passed-overhead, opportunity.
+  string tier = 14;
+  // "not-in-archive" when the archive answered without this pass after its publication delay; empty otherwise.
+  string tier_note = 15;
+  // Days between the pass and the epoch of the orbit elements it was computed from.
+  double orbit_age_days = 16;
+  // Key of the archive acquisition this pass produced; empty when none matched.
+  string acquisition_key = 17;
+}
+
+// ImageAcquisition is one archive acquisition at the point. Overlapping tiles and copies of one acquisition count once.
+message ImageAcquisition {
+  string key = 1;
+  // Sensor profile: sentinel-2, sentinel-1 or landsat.
+  string profile_id = 2;
+  // Platform, e.g. "sentinel-2c" or "landsat-9".
+  string platform = 3;
+  // Relative orbit, or the Landsat WRS path; 0 when unknown.
+  int32 orbit = 4;
+  // Sensing span, as Unix epoch milliseconds.
+  int64 start_ms = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 end_ms = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Archive item ids that make up the acquisition.
+  repeated string item_ids = 7;
+  // Archives holding it: earth-search, planetary-computer.
+  repeated string archives = 8;
+  // Scene cloud cover in percent, for optical acquisitions that report it.
+  optional double cloud_cover_pct = 9;
+  // Native resolution, metres.
+  double resolution_m = 10;
+  // Public image of the acquisition: a crop around the point when the archive can render one, else a whole-scene preview; empty when neither exists.
+  string image_url = 11;
+  // NORAD id of the pass that produced it; 0 for an image no computed pass explains.
+  int32 pass_norad_id = 12;
+  // Time of that pass, as Unix epoch milliseconds; 0 when unmatched.
+  int64 pass_time_ms = 13 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// ArchiveSourceFailure names an archive that gave no answer. It carries no URL.
+message ArchiveSourceFailure {
+  // earth-search or planetary-computer.
+  string archive = 1;
+  // network, http-status, invalid-response or aborted.
+  string reason = 2;
+  // Upstream HTTP status for http-status failures; 0 otherwise.
+  int32 http_status = 3;
+}
+
+// GetPointPassesResponse lists imaging passes over the rounded point for the last 7 days and the next 72 hours, with the archive images matched to them.
+message GetPointPassesResponse {
+  // The point every pass was computed for: the requested point rounded to 0.01 degrees.
+  OrbitalPoint point = 1;
+  // Search window, as Unix epoch milliseconds.
+  int64 window_start_ms = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 window_end_ms = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // When the passes were computed, as Unix epoch milliseconds; past and future are judged against it.
+  int64 computed_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Version of the sensor-profile inventory used.
+  string inventory_version = 5;
+  // When the orbit elements were fetched, as Unix epoch milliseconds; 0 with no catalog.
+  int64 catalog_fetched_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // True when the orbit catalog is missing or older than its freshness limit.
+  bool stale = 7;
+  // Passes whose footprint covers the point, oldest first.
+  repeated PointPass passes = 8;
+  // Passes in range whose footprint misses the point; they are counted, not listed.
+  int32 out_of_footprint_passes = 9;
+  // Archive acquisitions at the point, newest first.
+  repeated ImageAcquisition acquisitions = 10;
+  // "complete" when every archive answered, "partial" when one failed and the passes it serves keep geometry tiers.
+  string archive_status = 11;
+  repeated ArchiveSourceFailure failed_sources = 12;
+  // Missions whose every archive failed, so their passes could not be confirmed or ruled out.
+  repeated string unanswered_profiles = 13;
+}

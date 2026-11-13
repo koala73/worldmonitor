@@ -56,6 +56,120 @@ export interface CatalogDay {
   elements: OmmElements[];
 }
 
+export interface GetPointPassesRequest {
+  lat: number;
+  lon: number;
+}
+
+export interface GetPointPassesResponse {
+  point?: OrbitalPoint;
+  windowStartMs: number;
+  windowEndMs: number;
+  computedAt: number;
+  inventoryVersion: string;
+  catalogFetchedAt: number;
+  stale: boolean;
+  passes: PointPass[];
+  outOfFootprintPasses: number;
+  acquisitions: ImageAcquisition[];
+  archiveStatus: string;
+  failedSources: ArchiveSourceFailure[];
+  unansweredProfiles: string[];
+}
+
+export interface OrbitalPoint {
+  lat: number;
+  lon: number;
+}
+
+export interface PointPass {
+  noradId: number;
+  name: string;
+  profileId: string;
+  category: string;
+  timeMs: number;
+  opportunity: boolean;
+  groundDistanceKm: number;
+  side: string;
+  elevationDeg: number;
+  incidenceDeg: number;
+  sunElevationDeg: number;
+  edgeOfSwath: boolean;
+  coverage: boolean;
+  tier: string;
+  tierNote: string;
+  orbitAgeDays: number;
+  acquisitionKey: string;
+}
+
+export interface ImageAcquisition {
+  key: string;
+  profileId: string;
+  platform: string;
+  orbit: number;
+  startMs: number;
+  endMs: number;
+  itemIds: string[];
+  archives: string[];
+  cloudCoverPct?: number;
+  resolutionM: number;
+  imageUrl: string;
+  passNoradId: number;
+  passTimeMs: number;
+}
+
+export interface ArchiveSourceFailure {
+  archive: string;
+  reason: string;
+  httpStatus: number;
+}
+
+export interface GetCountryImageryEvidenceRequest {
+  countryCode: string;
+}
+
+export interface GetCountryImageryEvidenceResponse {
+  countryCode: string;
+  asOf: number;
+  stale: boolean;
+  siteCount: number;
+  confirmedFlagCount: number;
+  sites: WatchedSiteEvidence[];
+}
+
+export interface WatchedSiteEvidence {
+  siteId: string;
+  name: string;
+  lat: number;
+  lon: number;
+  surface: string;
+  originLists: string[];
+  evaluatedAt: number;
+  lastObservation?: SiteObservation;
+  nextWindow?: SiteImagingWindow;
+  operators: string[];
+  confirmedFlag?: ConfirmedChangeFlag;
+}
+
+export interface SiteObservation {
+  itemId: string;
+  profileId: string;
+  datetime: string;
+}
+
+export interface SiteImagingWindow {
+  profileId: string;
+  time: string;
+}
+
+export interface ConfirmedChangeFlag {
+  wording: string;
+  itemId: string;
+  datetime: string;
+  geometryKey: string;
+  updatedAt: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -102,6 +216,8 @@ export interface RouteDescriptor {
 
 export interface OrbitalServiceHandler {
   listImagingSatellites(ctx: ServerContext, req: ListImagingSatellitesRequest): Promise<ListImagingSatellitesResponse>;
+  getPointPasses(ctx: ServerContext, req: GetPointPassesRequest): Promise<GetPointPassesResponse>;
+  getCountryImageryEvidence(ctx: ServerContext, req: GetCountryImageryEvidenceRequest): Promise<GetCountryImageryEvidenceResponse>;
 }
 
 export function createOrbitalServiceRoutes(
@@ -125,6 +241,101 @@ export function createOrbitalServiceRoutes(
 
           const result = await handler.listImagingSatellites(ctx, body);
           return new Response(JSON.stringify(result as ListImagingSatellitesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/orbital/v1/get-point-passes",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetPointPassesRequest = {
+            lat: Number(params.get("lat") ?? "0"),
+            lon: Number(params.get("lon") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getPointPasses", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getPointPasses(ctx, body);
+          return new Response(JSON.stringify(result as GetPointPassesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/orbital/v1/get-country-imagery-evidence",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetCountryImageryEvidenceRequest = {
+            countryCode: params.get("country_code") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getCountryImageryEvidence", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getCountryImageryEvidence(ctx, body);
+          return new Response(JSON.stringify(result as GetCountryImageryEvidenceResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

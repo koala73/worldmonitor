@@ -6,7 +6,7 @@ import { findPasses, parseOrbitElements, PASS_WINDOW_MAX_DAYS, type OmmRecord } 
 import { matchSensorProfile } from '../shared/orbital/sensor-profiles.js';
 import { decidePassTier } from '../shared/orbital/tiers.js';
 import type { ListImagingSatellitesResponse, OmmElements } from '../src/generated/client/worldmonitor/orbital/v1/service_client.ts';
-import { toOmmRecord, toOrbitalCatalog, type OrbitalCatalog } from '../src/services/orbital/catalog.ts';
+import { toOmmRecord, toOrbitalCatalog, type OrbitalCatalog } from '../src/services/orbital/catalog-shape.ts';
 import { createOrbitalPassClient, type PassWorkerLike } from '../src/services/orbital/pass-client.ts';
 import { PASS_QUERY_MAX_DAYS } from '../src/services/orbital/pass-query.ts';
 import { createPassJobHandler, runPassJob, type CatalogSatellite, type PassJobReply, type PassJobRequest } from '../src/services/orbital/pass-job.ts';
