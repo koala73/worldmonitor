@@ -1505,7 +1505,7 @@ describe('deploy gate stale-base drift', () => {
   const mergedPull = { state: 'closed', merged_at: '2026-08-12T12:00:00Z', head: { sha: SHA } };
   const overlap = diverged({ headFiles: ['api/widget-agent.ts'], mainFiles: ['api/widget-agent.ts'] });
 
-  const openPull = (base) => ({ state: 'open', merged_at: null, head: { sha: SHA }, base: { ref: base, repo: { full_name: 'koala73/worldmonitor' } } });
+  const openPull = (base) => ({ state: 'open', merged_at: null, head: { sha: SHA, repo: { full_name: 'koala73/worldmonitor' } }, base: { ref: base, repo: { full_name: 'koala73/worldmonitor' } } });
 
   it('compares an integration PR against its target instead of main', () => {
     const result = runGate(conclusionsFor('success'), { associatedPulls: [[openPull('cii-v15')]] });
@@ -1549,6 +1549,36 @@ describe('deploy gate stale-base drift', () => {
     assert.equal(result.posted.at(-1).state, 'failure');
     assert.match(result.posted.at(-1).description, /^Stale base: cii-v15 changed/);
     assert.ok(!result.calls.includes('associated-pulls'));
+  });
+
+  it('ignores a foreign head that tries to add a target to the same commit', () => {
+    const foreign = { ...openPull('main'), head: { sha: SHA, repo: { full_name: 'attacker/fork' } } };
+    const result = runGate(conclusionsFor('success'), {
+      openPulls: [[openPull('cii-v15'), foreign]],
+      drift: { ...overlap, targetFiles: [] },
+    });
+    assert.equal(result.posted.at(-1).state, 'success');
+    assert.equal(result.fetches.length, 1);
+    assert.match(result.fetches[0], /\+refs\/heads\/cii-v15:/);
+  });
+
+  it('retains main drift for fork-only heads', () => {
+    const foreign = { ...openPull('cii-v15'), head: { sha: SHA, repo: { full_name: 'attacker/fork' } } };
+    const result = runGate(conclusionsFor('success'), {
+      openPulls: [[foreign]],
+      drift: { ...overlap, targetFiles: [] },
+    });
+    assert.equal(result.posted.at(-1).state, 'failure');
+    assert.equal(result.fetches.length, 1);
+    assert.match(result.fetches[0], /\+refs\/heads\/main:/);
+  });
+
+  it('leaves missing head ownership metadata pending', () => {
+    const result = runGate(conclusionsFor('success'), {
+      openPulls: [[{ ...openPull('cii-v15'), head: { sha: SHA } }]],
+    });
+    assert.equal(result.posted.at(-1).state, 'pending');
+    assert.equal(result.fetches.length, 0);
   });
 
   it('leaves unreadable or incomplete open PR inventories pending', () => {

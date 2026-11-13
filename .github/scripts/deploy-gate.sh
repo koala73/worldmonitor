@@ -623,7 +623,11 @@ if ! pr_targets=$(gh_api_with_rate_limit_retry core \
   jq -ce --arg sha "$SHA" --arg repo "$REPO" '
     if type == "array" and length > 0 and all(.[];
       type == "array" and all(.[]; .state == "open" and (.head.sha | type) == "string"))
-    then [.[][] | select(.head.sha == $sha)] as $open |
+    then [.[][] | select(.head.sha == $sha)] as $matching |
+      (if all($matching[]; (.head | has("repo")) and
+        (.head.repo == null or (.head.repo.full_name | type) == "string"))
+      then [$matching[] | select(.head.repo.full_name? == $repo)]
+      else error("Incomplete PR head ownership metadata") end) as $open |
       if all($open[];
         (.base.ref | type) == "string" and (.base.ref | length) > 0 and
         .base.repo.full_name == $repo)
