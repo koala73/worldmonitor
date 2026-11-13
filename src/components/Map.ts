@@ -5321,8 +5321,13 @@ export class MapComponent {
     const zoomX = fit.lonSpan > 0 ? (view.width * padFactor) / (fit.lonSpan * pxPerDegree) : maxZoom;
     const zoomY = fit.latSpan > 0 ? (view.height * padFactor) / (fit.latSpan * pxPerDegree) : maxZoom;
     this.state.zoom = Math.max(1, Math.min(maxZoom, zoomX, zoomY));
-    const degreesPerPx = 1 / (pxPerDegree * this.state.zoom);
-    this.setCenter(fit.center.lat + view.y * degreesPerPx, fit.center.lon - view.x * degreesPerPx);
+    this.setCenter(fit.center.lat, fit.center.lon);
+    if (view.x || view.y) {
+      // Shift in pixels, not degrees: a centre moved past ±180 would project into the other world.
+      this.state.pan.x += view.x / this.state.zoom;
+      this.state.pan.y += view.y / this.state.zoom;
+      this.applyTransform();
+    }
     this.resumeMobileLabelVisibility();
   }
 
