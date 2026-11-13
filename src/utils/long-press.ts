@@ -8,22 +8,33 @@ const SLOP_PX = 10;
 export function installLongPressContextMenu(target: HTMLElement): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let start: { id: number; x: number; y: number } | null = null;
+  /** The click some browsers send when the held finger lifts would dismiss the menu it opened. */
+  let swallowReleaseClick = false;
   const cancel = () => {
     if (timer) clearTimeout(timer);
     timer = null;
     start = null;
   };
   const onDown = (e: PointerEvent) => {
+    swallowReleaseClick = false;
     if (e.pointerType !== 'touch' || start) return cancel();
     start = { id: e.pointerId, x: e.clientX, y: e.clientY };
     timer = setTimeout(() => {
       const at = start;
       cancel();
-      if (at) target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: at.x, clientY: at.y }));
+      if (!at) return;
+      swallowReleaseClick = true;
+      target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: at.x, clientY: at.y }));
     }, HOLD_MS);
   };
   const onMove = (e: PointerEvent) => {
     if (start?.id === e.pointerId && Math.hypot(e.clientX - start.x, e.clientY - start.y) > SLOP_PX) cancel();
+  };
+  const onClick = (e: MouseEvent) => {
+    if (!swallowReleaseClick) return;
+    swallowReleaseClick = false;
+    e.preventDefault();
+    e.stopPropagation();
   };
   const onNativeMenu = (e: MouseEvent) => {
     if (e.isTrusted) cancel();
@@ -33,6 +44,7 @@ export function installLongPressContextMenu(target: HTMLElement): () => void {
     ['pointermove', onMove as EventListener],
     ['pointerup', cancel],
     ['pointercancel', cancel],
+    ['click', onClick as EventListener],
     ['contextmenu', onNativeMenu as EventListener],
   ];
   for (const [type, listener] of listeners) target.addEventListener(type, listener, { capture: true });
