@@ -476,6 +476,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/news/v1/summarize-article-cache': 'slow',
 
   '/api/imagery/v1/search-imagery': 'static',
+  '/api/orbital/v1/list-imaging-satellites': 'slow',
 
   '/api/infrastructure/v1/list-temporal-anomalies': 'medium',
   '/api/infrastructure/v1/get-ip-geo': 'no-store',
