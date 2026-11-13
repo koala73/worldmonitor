@@ -84,8 +84,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const hero = sheet.locator('.ow-card').first();
   await hero.locator('.ow-tile[data-state="loaded"]').waitFor({ timeout: 90_000 });
   await sheet.locator('.ow-timelapse-entry').scrollIntoViewIfNeeded();
-  // The phone map is the SVG renderer, which cannot project the point, so only the desktop map must mark it.
-  log('sheet map mark', mobile ? await markAt().then(JSON.stringify, (error) => error.message) : JSON.stringify(await markAt()));
+  log('sheet map mark', JSON.stringify(await markAt()));
   await shot('sheet');
 
   const trigger = hero.locator('[data-action="view-image"]');
@@ -153,7 +152,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const detail = sheet.locator('.ow-detail');
   await detail.waitFor();
   log('pass detail', (await detail.innerText()).replace(/\s+/g, ' '));
-  log('pass detail map mark', mobile ? await markAt().then(JSON.stringify, (error) => error.message) : JSON.stringify(await markAt()));
+  log('pass detail map mark', JSON.stringify(await markAt()));
   await shot('pass-detail');
   await page.keyboard.press('Escape');
   await detail.waitFor({ state: 'detached' });
