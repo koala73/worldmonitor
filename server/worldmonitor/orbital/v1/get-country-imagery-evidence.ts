@@ -62,7 +62,10 @@ function unavailable(countryCode: string, siteCount = 0): GetCountryImageryEvide
 export function toCountryEvidence(countryCode: string, index: unknown, rollup: unknown, nowMs: number): GetCountryImageryEvidenceResponse {
   if (!isRecord(index) || index.schema !== ORBITAL_SITES_SCHEMA || !isRecord(index.countries)) return unavailable(countryCode);
   const entry = index.countries[countryCode];
-  if (!isRecord(entry)) return { countryCode, asOf: 0, stale: false, siteCount: 0, confirmedFlagCount: 0, sites: [] };
+  if (!isRecord(entry)) {
+    const watched = !Array.isArray(index.registryCountries) || index.registryCountries.includes(countryCode);
+    return watched ? unavailable(countryCode) : { countryCode, asOf: 0, stale: false, siteCount: 0, confirmedFlagCount: 0, sites: [] };
+  }
   const current = isRecord(rollup) &&
     rollup.schema === ORBITAL_SITES_SCHEMA &&
     rollup.countryCode === countryCode &&

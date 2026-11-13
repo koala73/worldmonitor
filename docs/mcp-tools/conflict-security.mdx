@@ -236,7 +236,7 @@ Returns the watched sites in one country with each site's newest archive scene, 
 - **API endpoint:** `GET /api/orbital/v1/get-country-imagery-evidence` (takes the alpha-2 code as `country_code`)
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Flags:** only confirmed flags are returned. Raised and retracted changes never appear, and while the change signal is unreleased no flag appears at all. See the [change-signal methodology](/methodology/orbital-change-signal).
-- **Freshness:** `stale: true` with an empty `sites` list when the country's evidence is missing or its least recently evaluated site is older than 3 days. `siteCount: 0` with `stale: false` means the country has no watched sites.
+- **Freshness:** `stale: true` with an empty `sites` list when the country's evidence is missing, its watched sites have not been evaluated yet, or its least recently evaluated site is older than 3 days. `siteCount: 0` with `stale: false` means the country has no watched sites.
 - **Not in the OpenAPI JSON:** the operation is documented in the OrbitalService spec and the YAML bundle; the scanner JSON bundle leaves it out for size.
 
 ```bash curl

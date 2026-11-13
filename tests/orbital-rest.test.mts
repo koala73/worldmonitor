@@ -83,6 +83,7 @@ describe('point passes over REST', () => {
   });
 
   it('computes and caches on the 0.01-degree cell and names the point used', async () => {
+    assert.deepEqual(parsePoint(new Request('https://api.worldmonitor.app/api/orbital/v1/get-point-passes?lon=31.2')), { lat: 0, lon: 31.2 }, 'the generated client omits a zero latitude');
     const a = parsePoint(new Request('https://api.worldmonitor.app/api/orbital/v1/get-point-passes?lat=39.7392&lon=-104.9903'));
     const b = parsePoint(new Request('https://api.worldmonitor.app/api/orbital/v1/get-point-passes?lat=39.7449&lon=-104.9851'));
     assert.deepEqual(a, { lat: 39.74, lon: -104.99 });
@@ -103,7 +104,7 @@ describe('point passes over REST', () => {
 
   it('answers invalid caller input with 400, never 500', async () => {
     const handler = route('/api/orbital/v1/get-point-passes');
-    for (const query of ['lat=91&lon=0', 'lat=-90.5&lon=0', 'lat=0&lon=180.01', 'lat=abc&lon=0', 'lat=0', 'lon=0', 'lat=&lon=0', 'lat=Infinity&lon=0']) {
+    for (const query of ['lat=91&lon=0', 'lat=-90.5&lon=0', 'lat=0&lon=180.01', 'lat=abc&lon=0', 'lat=&lon=0', 'lat=Infinity&lon=0']) {
       const res = await handler(new Request(`https://api.worldmonitor.app/api/orbital/v1/get-point-passes?${query}`));
       assert.equal(res.status, 400, query);
       assert.ok(Array.isArray((await res.json()).violations), query);
@@ -208,5 +209,8 @@ describe('country imagery evidence over REST', () => {
     assert.deepEqual({ stale: none.stale, siteCount: none.siteCount }, { stale: false, siteCount: 0 });
     const unseeded = toCountryEvidence(site.countryCode, null, null, NOW);
     assert.deepEqual({ stale: unseeded.stale, siteCount: unseeded.siteCount }, { stale: true, siteCount: 0 });
+    const { [site.countryCode]: _, ...countries } = plan.index.countries;
+    const pending = toCountryEvidence(site.countryCode, { ...plan.index, countries }, null, NOW);
+    assert.deepEqual({ stale: pending.stale, siteCount: pending.siteCount }, { stale: true, siteCount: 0 }, 'a registry country with no records yet is not reported as unwatched');
   });
 });
