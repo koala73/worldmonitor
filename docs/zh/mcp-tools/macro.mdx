@@ -60,18 +60,36 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_country_macro`
 
-来自 IMF WEO 的逐国宏观经济指标（约 210 个国家，月度节奏）。捆绑财政/外部平衡（通胀、经常账户、政府收入/支出/初级余额、CPI）、增长与人均（实际 GDP 增长、人均 GDP 美元和 PPP、储蓄和投资率、储蓄-投资缺口）、劳动力和人口统计（失业率、人口），以及对外贸易（经常账户美元、进口/出口量百分比变化）。每个序列取最新可用年份。用于国家级经济筛选、同侪基准对比和滞胀/失衡标志。注意：以美元计的出口/进口水平（exportsUsd、importsUsd、tradeBalanceUsd）返回 null — WEO 在 2026-04 收回了 BX/BM 指标的广泛覆盖；请改用 currentAccountUsd 或量变化（import/exportVolumePctChg）。
+按 `dataset` 选择的逐国宏观经济指标。IMF WEO 覆盖约 210 个国家，每个序列取最新可用年份：
+
+- `macro`：通胀、CPI、经常账户、政府收入、支出与初级余额。
+- `growth`：实际 GDP 增长、人均 GDP（美元与 PPP）、储蓄与投资率、储蓄-投资缺口。
+- `labor`：失业率与人口。
+- `external`：经常账户（美元）与进口/出口量百分比变化。以美元计的出口/进口水平（`exportsUsd`、`importsUsd`、`tradeBalanceUsd`）返回 null，因为 WEO 在 2026-04 收回了 BX/BM 指标的广泛覆盖；请改用 `currentAccountUsd` 或量变化。
+
+Eurostat 覆盖 27 个欧盟成员国以及 EA20 与 EU27_2020 汇总：
+
+- `house-prices`：年度房价指数（prc_hpi_a，2015=100），附 10 年序列。
+- `gov-debt-q`：季度一般政府总债务（gov_10q_ggdebt，占 GDP 百分比），附 8 个季度序列。
+- `industrial-production`：月度工业生产指数（sts_inpr_m，NACE B-D 不含建筑业，经季节与日历调整，2021=100），附 12 个月序列。
+
+每个 Eurostat 国家条目包含 `value`、`priorValue`、`hasPrior`、`date`、`unit` 与 `series`。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `countries` | `array<string>` | 在所有四个 IMF 数据集中要保留的 ISO 3166-1 alpha-2 国家代码（例如 ["US","DE","CN"]）。省略则返回全部约 210 个国家。 |
-| `limit` | integer | 在未提供 countries 筛选时，将每个 IMF 数据集国家映射限制为最多这么多条目（默认 30，传 0 表示不限）。 |
+| `dataset` | `array<string: macro / growth / labor / external / house-prices / gov-debt-q / industrial-production>` | 将响应限制为一个或多个数据集。省略则返回全部七个。 |
+| `countries` | `array<string>` | 在每个数据集中要保留的 ISO 3166-1 alpha-2 国家代码（例如 ["US","DE","GR"]）；希腊在 Eurostat 数据集中以 EL 为键。EA20 与 EU27_2020 选择 Eurostat 汇总。省略则返回全部。接受国家名称与 alpha-3 代码；无法解析的输入返回 Invalid params。 |
+| `limit` | integer | 在未提供 countries 筛选时，将每个数据集国家映射限制为最多这么多条目（默认 30，传 0 表示不限）。 |
+
+IMF 映射以 ISO-2 为键，Eurostat 映射以 Eurostat 地理代码为键，因此一次 `countries: ["Greece"]` 调用会在 IMF 数据集中返回 `GR`，在 Eurostat 数据集中返回 `EL`。
 
 - **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **70 天**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 按数据集 — IMF **70 天**，`house-prices` **50 天**，`gov-debt-q` **14 天**，`industrial-production` **5 天**。一次调用只读取所选数据集，并只据此判断 `stale`；省略 `dataset` 时按全部七个判断。
+
+旧名称 `get_eu_housing_cycle`、`get_eu_quarterly_gov_debt` 与 `get_eu_industrial_production` 已退役，但仍可调用：它们以各自的数据集调用 `get_country_macro`，并返回指明替代工具的 `deprecation` 通知。
 
 <CodeGroup>
 
@@ -82,7 +100,7 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"get_country_macro","arguments":{}}
+    "params":{"name":"get_country_macro","arguments":{"dataset":["gov-debt-q"],"countries":["DE","EL","EA20"]}}
   }'
 ```
 
@@ -90,93 +108,15 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_eu_housing_cycle`
 
-Eurostat 年度房价指数（prc_hpi_a，基准 2015=100），覆盖所有 27 个欧盟成员国以及 EA20 和 EU27_2020 汇总。每个国家条目包含最新值、前值、日期、单位和 10 年迷你图序列。以更广泛的 EU 覆盖补充 BIS WS_SPP，用于 Housing 周期磁贴。
-
-**参数（工具特定）：**
-
-| 名称 | 类型 | 描述 |
-|------|------|-------------|
-| `countries` | `array<string>` | 要保留的 Eurostat 地理代码 — ISO 3166-1 alpha-2，但希腊用 "EL"，外加汇总 "EA20" 和 "EU27_2020"。省略则返回全部。 |
-| `limit` | integer | 在未提供 countries 筛选时，将国家映射限制为最多这么多条目（默认 30，传 0 表示不限）。 |
-
-- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
-- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **50 天**（由 seeder cron 的预期间隔设定）。
-
-<CodeGroup>
-
-```bash curl
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":1,
-    "method":"tools/call",
-    "params":{"name":"get_eu_housing_cycle","arguments":{}}
-  }'
-```
-
-</CodeGroup>
+兼容别名，不出现在 `tools/list` 中。请使用 [`get_country_macro`](#get_country_macro)。旧名称仍可调用，并返回 `deprecation` 提示。
 
 ### `get_eu_quarterly_gov_debt`
 
-Eurostat 季度一般政府总债务（gov_10q_ggdebt，%GDP），覆盖所有 27 个欧盟成员国以及 EA20 和 EU27_2020 汇总。每个国家条目包含最新值、前值、季度标签和 8 季度迷你图序列。为 EU 面板提供比年度 IMF GGXWDG_NGDP 更新的债务轨迹信号。
-
-**参数（工具特定）：**
-
-| 名称 | 类型 | 描述 |
-|------|------|-------------|
-| `countries` | `array<string>` | 要保留的 Eurostat 地理代码 — ISO 3166-1 alpha-2，但希腊用 "EL"，外加汇总 "EA20" 和 "EU27_2020"。省略则返回全部。 |
-| `limit` | integer | 在未提供 countries 筛选时，将国家映射限制为最多这么多条目（默认 30，传 0 表示不限）。 |
-
-- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
-- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **14 天**（由 seeder cron 的预期间隔设定）。
-
-<CodeGroup>
-
-```bash curl
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":1,
-    "method":"tools/call",
-    "params":{"name":"get_eu_quarterly_gov_debt","arguments":{}}
-  }'
-```
-
-</CodeGroup>
+兼容别名，不出现在 `tools/list` 中。请使用 [`get_country_macro`](#get_country_macro)。旧名称仍可调用，并返回 `deprecation` 提示。
 
 ### `get_eu_industrial_production`
 
-Eurostat 月度工业生产指数（sts_inpr_m，NACE B-D 工业，不含建筑业，SCA，基准 2021=100），覆盖所有 27 个欧盟成员国以及 EA20 和 EU27_2020 汇总。每个国家条目包含最新值、前值、月份标签和 12 个月迷你图序列。作为实体经济活动的领先指标，被 "Real economy pulse" 迷你图使用。
-
-**参数（工具特定）：**
-
-| 名称 | 类型 | 描述 |
-|------|------|-------------|
-| `countries` | `array<string>` | 要保留的 Eurostat 地理代码 — ISO 3166-1 alpha-2，但希腊用 "EL"，外加汇总 "EA20" 和 "EU27_2020"。省略则返回全部。 |
-| `limit` | integer | 在未提供 countries 筛选时，将国家映射限制为最多这么多条目（默认 30，传 0 表示不限）。 |
-
-- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
-- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **5 天**（由 seeder cron 的预期间隔设定）。
-
-<CodeGroup>
-
-```bash curl
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":1,
-    "method":"tools/call",
-    "params":{"name":"get_eu_industrial_production","arguments":{}}
-  }'
-```
-
-</CodeGroup>
+兼容别名，不出现在 `tools/list` 中。请使用 [`get_country_macro`](#get_country_macro)。旧名称仍可调用，并返回 `deprecation` 提示。
 
 ### `get_price_and_debt_indicators`
 
