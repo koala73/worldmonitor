@@ -9234,10 +9234,8 @@ function brotliSyncBuffer(body) {
 
 function getClientIp(req, isPublic = false) {
   if (isPublic) {
-    // Public routes: only trust CF-Connecting-IP (set by Cloudflare, not spoofable).
-    // x-real-ip is excluded — client-spoofable on unauthenticated endpoints.
-    const cfIp = req.headers['cf-connecting-ip'];
-    if (typeof cfIp === 'string' && cfIp.trim()) return cfIp.trim();
+    // Direct-origin callers can forge forwarding headers. None is authenticated
+    // here, so public callers must share their socket peer's bucket.
     return req.socket?.remoteAddress || 'unknown';
   }
   // Authenticated routes: x-real-ip is safe because auth token validates the caller
