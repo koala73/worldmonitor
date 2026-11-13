@@ -53,12 +53,13 @@ for (const theme of ['light', 'dark']) {
         expect((await page.locator('.unified-settings-close').boundingBox())!.width).toBeGreaterThanOrEqual(44);
       }
       await page.locator('#us-tab-panels').click();
-      const disclosure = page.locator('.panel-font-scale-details').first();
-      await expect(disclosure.locator('select')).not.toBeVisible();
-      await disclosure.locator('summary').focus();
-      await page.keyboard.press('Enter');
-      await expect(disclosure.locator('select')).toBeVisible();
-      await expect(page.locator('[data-panel="map"] + details')).toHaveCount(0);
+      const row = page.locator('#usPanelToggles .panel-settings-item:has([data-panel-font-scale])').first();
+      await expect(row.locator('.panel-font-scale-value')).toBeVisible();
+      await expect(row.locator('.panel-font-scale-value')).toHaveText('Aa');
+      await expect(page.locator('#usPanelToggles .panel-settings-item:has([data-panel="map"]) [data-panel-font-scale]')).toHaveCount(0);
+      if (mobile) {
+        expect((await row.locator('.panel-toggle-item').boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      }
       await page.locator('#us-tab-notifications').click();
       await expect(page.locator('#usNotifUpgradeBtn')).toHaveText('Sign In');
       await page.locator('#us-tab-api-keys').click();
@@ -107,9 +108,9 @@ for (const theme of ['light', 'dark']) {
     await page.locator('#us-tab-sources').click();
     await expect.poll(() => page.locator('.sources-toggle-grid').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
     await page.locator('#us-tab-panels').click();
-    await page.locator('.panel-font-scale-details > summary').first().click();
-    const panel = page.locator('.panel-font-scale-details').first();
-    await expect.poll(() => panel.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+    const rows = page.locator('#usPanelToggles');
+    await expect(rows.locator('[data-panel-font-scale]').first()).toBeAttached();
+    await expect.poll(() => rows.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
     await page.locator('.unified-settings-close').click();
     await page.locator('[data-mobile-tab="search"]').click();
     await expect(page.locator('.search-launch-grid')).toBeVisible();
