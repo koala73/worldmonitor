@@ -80,8 +80,6 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_oil_trade_series: 'energy',
   // Geopolitical & security
   get_conflict_events: 'geopolitical-security',
-  get_toronto_reported_occurrences: 'geopolitical-security',
-  get_toronto_calls_attended: 'geopolitical-security',
   get_country_risk: 'geopolitical-security',
   prepare_travel_risk_assessment: 'geopolitical-security',
   get_country_history: 'geopolitical-security',

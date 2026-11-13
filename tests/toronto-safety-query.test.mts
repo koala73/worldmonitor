@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { queryTorontoSafety } from '../server/worldmonitor/safety/v1/get-toronto-safety.ts';
-import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
 import { validationFailure } from './helpers/validation-failure.mts';
 
 const MCI_KEY = 'safety:toronto:tps-mci:v1';
@@ -109,42 +108,5 @@ describe('Toronto safety bounded query surfaces (#7012)', () => {
       queryTorontoSafety(request({ dataset: 'live_dispatch' }), reader(new Map())),
       validationFailure('dataset'),
     );
-  });
-
-  it('registers two independent, bounded MCP cache tools with the Safety RPC path', () => {
-    const occurrences = CACHE_TOOLS.find((tool) => tool.name === 'get_toronto_reported_occurrences');
-    const calls = CACHE_TOOLS.find((tool) => tool.name === 'get_toronto_calls_attended');
-    assert.ok(occurrences && '_cacheKeys' in occurrences && occurrences._postFilter);
-    assert.ok(calls && '_cacheKeys' in calls && calls._postFilter);
-    assert.deepEqual(occurrences._cacheKeys, [MCI_KEY]);
-    assert.deepEqual(calls._cacheKeys, [CALLS_KEY]);
-    assert.deepEqual(occurrences._apiPaths, ['GET /api/safety/v1/get-toronto-safety']);
-    assert.deepEqual(calls._apiPaths, ['GET /api/safety/v1/get-toronto-safety']);
-    assert.equal(occurrences._freshnessChecks[0]?.key, MCI_META);
-    assert.equal(calls._freshnessChecks[0]?.key, CALLS_META);
-
-    const occurrenceData = {
-      reported_occurrences: {
-        records: Array.from({ length: 120 }, (_, index) => ({ division: index ? 'D51' : 'D52', neighbourhood158: 'Downtown', offence: 'Assault' })),
-      },
-    };
-    occurrences._postFilter(occurrenceData, { division: 'd51', limit: 500 });
-    assert.equal(occurrenceData.reported_occurrences.records.length, 100);
-
-    const callsData = {
-      annual_aggregates: {
-        // A snapshot cached before the CKAN migration still carries the retired
-        // licence claim; the MCP surface must not pass it through.
-        attribution: 'Contains information licensed under the Open Government Licence - Ontario.',
-        records: [
-          { eventYear: 2025, divisionOriginal: 'D51', divisionFinal: 'D52', neighbourhood158: 'Harbourfront' },
-          { eventYear: 2024, divisionOriginal: 'D51', divisionFinal: 'D51', neighbourhood158: 'Downtown' },
-        ],
-      },
-    };
-    calls._postFilter(callsData, { year: 2025, division: '52' });
-    assert.equal(callsData.annual_aggregates.records.length, 1);
-    assert.doesNotMatch(callsData.annual_aggregates.attribution, /Open Government Licence/);
-    assert.match(callsData.annual_aggregates.attribution, /via City of Toronto Open Data/);
   });
 });
