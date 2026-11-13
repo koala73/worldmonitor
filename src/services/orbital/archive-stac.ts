@@ -1,7 +1,7 @@
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
 import { isAllowedPreviewUrl } from '../../utils/imagery-preview';
 import { formatCoordinate } from './crop-url';
-import { failed, requestArchive, type ArchiveReply, type ArchiveRequestOptions, type ArchiveResult } from './archive-result';
+import { failed, requestArchive, type ArchiveFailure, type ArchiveReply, type ArchiveRequestOptions, type ArchiveResult } from './archive-result';
 import type { PassWindow } from './pass-query';
 
 export type StacArchiveId = 'earth-search' | 'planetary-computer';
@@ -245,13 +245,20 @@ export function decodePointCondition(scheme: 'sentinel-2-scl' | 'landsat-qa-pixe
 }
 
 /** Reads the archive's classification pixel at the point. Only Planetary Computer serves this. */
-export async function readPointCondition(item: ArchiveItem, point: GeoPoint, options: ArchiveRequestOptions = {}): Promise<PointCondition> {
-  if (!item.classification) return 'unknown';
+export interface PointConditionReading {
+  condition: PointCondition;
+  failure?: ArchiveFailure;
+}
+
+export async function readPointCondition(item: ArchiveItem, point: GeoPoint, options: ArchiveRequestOptions = {}): Promise<PointConditionReading> {
+  if (!item.classification) return { condition: 'unknown' };
   const params = new URLSearchParams({ collection: item.collection, item: item.itemId, assets: item.classification.asset });
   const url = `${PLANETARY_COMPUTER_POINT_URL}/${formatCoordinate(point.lon)},${formatCoordinate(point.lat)}?${params}`;
   const reply = await requestArchive('planetary-computer', url, {}, options, async (response) => {
     const { values } = (await response.json()) as { values?: unknown };
     return Array.isArray(values) ? num(values[0]) : null;
   });
-  return reply.ok ? decodePointCondition(item.classification.scheme, reply.value) : 'unknown';
+  return reply.ok
+    ? { condition: decodePointCondition(item.classification.scheme, reply.value) }
+    : { condition: 'unknown', failure: reply.failure };
 }
