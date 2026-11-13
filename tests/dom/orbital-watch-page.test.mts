@@ -169,7 +169,7 @@ describe('satellite pass lookup sheet', () => {
     expect(first!.querySelector('.ow-image-credit')!.textContent).toBe(IMAGE_CREDIT.usgs);
     for (const overlay of ['.ow-reticle', '.ow-scale', '.ow-north', '.ow-expand']) expect(first!.querySelector(overlay)).not.toBeNull();
     expect(first!.querySelector('.ow-scale')!.textContent).toBe('2 KM');
-    expect(cards()[2]!.querySelector('.ow-caption-lines')!.textContent).toContain('Daily mosaic · 250 M');
+    expect(cards()[2]!.querySelector('.ow-caption-lines')!.textContent).toContain('250 M · Daily mosaic');
     expect(cards()[2]!.querySelector('.ow-image-credit')!.textContent).toBe('NASA GIBS / EOSDIS');
     expect(sheet().querySelector('.ow-pager-count')!.textContent).toBe('1 / 3');
     click('.ow-pager-btn[data-action="next"]');
@@ -351,9 +351,10 @@ describe('satellite pass lookup sheet', () => {
     }
   });
 
-  it('lists only the sources present in the current result in the footer', () => {
-    const sources = () => sheet().querySelector<HTMLDetailsElement>('.ow-footer .ow-sources')!;
-    const credits = () => [...sources().querySelectorAll('.ow-source-credit')].map((c) => c.textContent);
+  it('lists only the sources present in the current result, and what each supplied, at the end of the content', () => {
+    const sources = () => sheet().querySelector<HTMLDetailsElement>('.ow-body .ow-sources')!;
+    const credits = () => [...sources().querySelectorAll('li')].map((c) => c.textContent);
+    const celestrak = 'CelesTrak · orbit elements';
     const { all, confirmedNew, confirmedOld } = tiered();
 
     mounted({ kind: 'passes', lookup: lookup([]), archives: { kind: 'answered', evidence: evidence([]) } });
@@ -363,7 +364,9 @@ describe('satellite pass lookup sheet', () => {
     expect(sources().hidden).toBe(false);
     expect(sources().open).toBe(false);
     expect(sources().querySelector('summary')?.textContent).toBe('Sources · 1');
-    expect(credits()).toEqual([IMAGE_CREDIT.celestrak]);
+    expect(sheet().querySelector('.ow-body')!.lastElementChild).toBe(sources());
+    expect(sheet().querySelector('.ow-footer .ow-sources')).toBeNull();
+    expect(credits()).toEqual([celestrak]);
     expect(sources().querySelector<HTMLAnchorElement>('.ow-source-name a')?.href).toBe('https://celestrak.org/');
     expect(sources().querySelector<HTMLAnchorElement>('.ow-sources-docs')?.href).toBe(ORBITAL_WATCH_DOCS_URL);
     expect(sheet().querySelector('.ow-body')!.textContent).not.toContain('We acknowledge');
@@ -373,23 +376,26 @@ describe('satellite pass lookup sheet', () => {
       { platform: 'sentinel-1a', profileId: 'sentinel-1', startMs: Date.UTC(2025, 11, 30), pass: null, imageUrl: null, condition: 'not-applicable', cloudCoverPct: null },
       { platform: 'landsat-9', profileId: 'landsat', startMs: confirmedOld.timeMs, pass: null, imageUrl: null, condition: 'clear', cloudCoverPct: 0 },
     ] as unknown as MatchedAcquisition[];
-    const mosaics = [{ kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'MODIS Terra', layer: 'm', noradId: 25994, days: [{ date: '2026-11-12', imageUrl: null }] }] as OrbitalEvidence['mosaics'];
+    const mosaics = [
+      { kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'MODIS Terra', layer: 'm', noradId: 25994, days: [{ date: '2026-11-12', imageUrl: null }] },
+      { kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'VIIRS NOAA-20', layer: 'v', noradId: 43013, days: [{ date: '2026-11-12', imageUrl: null }] },
+    ] as OrbitalEvidence['mosaics'];
     const frames = [{ kind: 'geostationary', archive: 'eumetsat', source: 'Meteosat-10', layer: 'x', noradId: 38552, cadenceMinutes: 15, latest: { time: '2026-11-13T11:45:00Z', imageUrl: null } }] as OrbitalEvidence['frames'];
     page().render({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all, { acquisitions, mosaics, frames }) } });
     expect(credits()).toEqual([
-      IMAGE_CREDIT.celestrak,
-      'Contains modified Copernicus Sentinel data 2025-2026',
-      IMAGE_CREDIT.usgs,
-      IMAGE_CREDIT.gibs,
-      IMAGE_CREDIT.eumetsat,
+      celestrak,
+      'Copernicus Sentinel · contains modified Copernicus Sentinel data 2025-2026',
+      `USGS Landsat · ${IMAGE_CREDIT.usgs}`,
+      'NASA GIBS / EOSDIS · daily MODIS and VIIRS mosaics',
+      'EUMETSAT · contains EUMETSAT Meteosat imagery',
     ]);
 
-    const emptySources = [{ ...mosaics[0]!, days: [] }];
+    const emptySources = mosaics.map((mosaic) => ({ ...mosaic, days: [] }));
     const gibsFrame = [{ ...frames[0]!, archive: 'nasa-gibs', source: 'GOES-East' }] as OrbitalEvidence['frames'];
     page().render({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all, { mosaics: emptySources, frames: [{ ...frames[0]!, latest: null }] }) } });
-    expect(credits()).toEqual([IMAGE_CREDIT.celestrak]);
+    expect(credits()).toEqual([celestrak]);
     page().render({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all, { frames: gibsFrame }) } });
-    expect(credits()).toEqual([IMAGE_CREDIT.celestrak, IMAGE_CREDIT.gibs]);
+    expect(credits()).toEqual([celestrak, 'NASA GIBS / EOSDIS · geostationary frames']);
   });
 
   it('credits weather frames by their archive', () => {

@@ -306,7 +306,7 @@ function weatherCards(evidence: OrbitalEvidence): ImageCard[] {
       url: latest.imageUrl,
       sortMs: ms,
       top: `${mosaic.source.toUpperCase()} · ${formatDay(ms)}`,
-      bottom: [t('orbitalWatch.ui.caption.dailyMosaic'), resolution ? `${resolution} M` : null].filter(Boolean).join(' · '),
+      bottom: [resolution ? `${resolution} M` : null, t('orbitalWatch.ui.caption.dailyMosaic')].filter(Boolean).join(' · '),
       credit: IMAGE_CREDIT.gibs,
       pass: null,
     });
@@ -541,7 +541,7 @@ export class OrbitalWatchPage {
         this.closeButton),
       this.slots['pass-detail'],
       this.body,
-      h('footer', { className: 'ow-footer' }, this.sources, this.privacy));
+      h('footer', { className: 'ow-footer' }, this.privacy));
     this.statusBar = h('div', { className: 'ow-statusbar ow-label' });
     this.sheet = h('section', { className: 'orbital-watch-sheet', role: 'dialog', 'aria-labelledby': titleId, tabindex: '-1', dataset: { view: 'sheet' } },
       this.panel, this.slots.timeline, this.slots['replay-hud'], this.statusBar);
@@ -649,7 +649,7 @@ export class OrbitalWatchPage {
     const selector = focused?.dataset.key ? `.ow-row[data-key="${CSS.escape(focused.dataset.key)}"]`
       : focused?.dataset.group ? `.ow-group-toggle[data-group="${focused.dataset.group}"]`
       : null;
-    replaceChildren(this.body, ...this.renderState(state));
+    replaceChildren(this.body, ...this.renderState(state), this.sources);
     this.renderSources(state.kind === 'passes' ? resultCredits(state.lookup, state.archives.kind === 'answered' ? state.archives.evidence : null) : []);
     this.renderStatusBar();
     if (focused) ((selector ? this.body.querySelector<HTMLElement>(selector) : null) ?? this.sheet).focus();
@@ -763,7 +763,7 @@ export class OrbitalWatchPage {
       h('summary', { className: 'ow-label' }, t('orbitalWatch.sources', { count: credits.length })),
       h('ul', null, ...credits.map(({ source, text, href }) => h('li', null,
         h('span', { className: 'ow-source-name' }, href ? h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, source) : source),
-        ' ', h('span', { className: 'ow-source-credit' }, text)))),
+        ' · ', h('span', { className: 'ow-source-credit' }, text)))),
       h('a', { className: 'ow-sources-docs', href: ORBITAL_WATCH_DOCS_URL, target: '_blank', rel: 'noopener noreferrer' }, t('orbitalWatch.sourcesDocs')));
   }
 

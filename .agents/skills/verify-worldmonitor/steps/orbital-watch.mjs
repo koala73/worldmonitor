@@ -57,11 +57,11 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('renderer', await waitForMap(page));
 
   const sheet = page.locator('.orbital-watch-sheet');
-  const sources = sheet.locator('.ow-footer .ow-sources');
+  const sources = sheet.locator('.ow-body .ow-sources');
   const sourceCredits = async (keepOpen = false) => {
     if (await sources.isHidden()) return [];
     if (!(await sources.evaluate((d) => d.open))) await sources.locator('summary').click();
-    const credits = await sources.locator('.ow-source-credit').allInnerTexts();
+    const credits = await sources.locator('li').allInnerTexts();
     if (!keepOpen) await sources.locator('summary').click();
     return credits;
   };
@@ -181,8 +181,10 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await shot('sheet-closest-look');
   const credits = await sourceCredits(true);
   log('sources', credits);
-  if (!credits.includes('Orbit elements from CelesTrak')) throw new Error(`sources miss CelesTrak: ${credits.join(' | ')}`);
-  if (!credits.some((c) => c.startsWith('Contains modified Copernicus Sentinel data'))) throw new Error(`sources miss Copernicus beside a confirmed crop: ${credits.join(' | ')}`);
+  if (!credits.includes('CelesTrak · orbit elements')) throw new Error(`sources miss CelesTrak: ${credits.join(' | ')}`);
+  if (!credits.some((c) => c.startsWith('Copernicus Sentinel · contains modified Copernicus Sentinel data'))) throw new Error(`sources miss Copernicus beside a confirmed crop: ${credits.join(' | ')}`);
+  if (credits.some((c) => { const [name, supplied] = c.split(' · '); return supplied?.toLowerCase().startsWith(name.toLowerCase()); })) throw new Error(`a source entry repeats its name: ${credits.join(' | ')}`);
+  await sources.evaluate((el) => el.scrollIntoView({ block: 'end' }));
   await shot('sheet-sources-open');
   await sources.locator('summary').click();
   await sheet.locator('.ow-tier-grid').evaluate((el) => el.scrollIntoView({ block: 'end' }));
@@ -226,19 +228,27 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await openAtPlace();
   await sheet.locator('.ow-banner-partial').waitFor({ timeout: 90_000 });
   await settleImagesInView();
+  const shownCard = async () => sheet.locator('.ow-track .ow-card').nth(Number((await sheet.locator('.ow-pager-count').innerText()).split('/')[0]) - 1);
   for (let step = 0; step < 8; step++) {
-    const index = Number((await sheet.locator('.ow-pager-count').innerText()).split('/')[0]) - 1;
-    if ((await sheet.locator('.ow-track .ow-card').nth(index).locator('.ow-tile').getAttribute('data-state')) === 'loaded') break;
+    if ((await (await shownCard()).locator('.ow-tile').getAttribute('data-state')) === 'loaded') break;
     const next = sheet.locator('.ow-pager-btn[data-action="next"]');
     if (await next.isDisabled()) break;
     await next.click();
     await settleImagesInView();
   }
+  const weatherHero = await shownCard();
+  const weatherCaption = (await weatherHero.locator('.ow-caption-lines').innerText()).replace(/\s+/g, ' ');
+  const weatherCredit = await weatherHero.locator('.ow-image-credit').innerText();
+  log('weather hero caption', weatherCaption, '|', weatherCredit);
+  if (!/\d/.test(weatherCaption) || !/DAILY MOSAIC|GEOSTATIONARY/i.test(weatherCaption) || !/NASA GIBS|EUMETSAT/i.test(weatherCredit)) throw new Error(`weather hero caption incomplete: ${weatherCaption} | ${weatherCredit}`);
+  await weatherHero.locator('.ow-image-credit').evaluate((el) => el.scrollIntoView({ block: 'nearest' }));
+  await privacy();
+  await shot('weather-hero-without-scene-archives');
   const withoutScenes = await sourceCredits(true);
   log('sources with both scene archives down', withoutScenes);
   if (withoutScenes.some((c) => /Copernicus|Landsat/.test(c))) throw new Error(`credit for an absent source: ${withoutScenes.join(' | ')}`);
-  if (!withoutScenes.includes('Orbit elements from CelesTrak')) throw new Error(`sources miss CelesTrak: ${withoutScenes.join(' | ')}`);
-  await privacy();
+  if (!withoutScenes.includes('CelesTrak · orbit elements')) throw new Error(`sources miss CelesTrak: ${withoutScenes.join(' | ')}`);
+  await sources.evaluate((el) => el.scrollIntoView({ block: 'end' }));
   await shot('sources-without-scene-archives');
   failing.clear();
   await close();
@@ -270,7 +280,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     log('empty state', await sheet.locator('.ow-empty').innerText());
     const emptyCredits = await sourceCredits();
     log('empty state sources', emptyCredits);
-    if (emptyCredits.includes('Orbit elements from CelesTrak')) throw new Error('CelesTrak credited with no passes listed');
+    if (emptyCredits.some((c) => c.startsWith('CelesTrak'))) throw new Error('CelesTrak credited with no passes listed');
     await shot('empty-no-passes');
     await close();
   }

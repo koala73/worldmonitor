@@ -29,22 +29,36 @@ export interface ResultCredit {
   href?: string;
 }
 
-/** A source's credit line for one result, or null when the result holds nothing from it. */
+const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
+
+function listJoin(items: string[]): string {
+  return items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}` : (items[0] ?? '');
+}
+
+/** What NASA GIBS supplied to one result: its daily mosaic families and any geostationary frames. */
+function gibsSupplied(evidence: OrbitalEvidence | null): string | null {
+  const families = [...new Set(evidence?.mosaics.filter((mosaic) => mosaic.days.length > 0).map((mosaic) => mosaic.source.split(' ')[0]!) ?? [])];
+  const frames = evidence?.frames.some((frame) => frame.latest && frame.archive === 'nasa-gibs') ?? false;
+  const supplied = [families.length > 0 ? `daily ${listJoin(families)} mosaics` : null, frames ? 'geostationary frames' : null].filter((part): part is string => part !== null);
+  return supplied.length > 0 ? supplied.join(' and ') : null;
+}
+
+/** A source's entry for one result, naming what it supplied, or null when the result holds nothing from it. */
 type CreditRule = (lookup: PointPassLookup, evidence: OrbitalEvidence | null) => ResultCredit | null;
 
 /** Every source the lookup can show, in the order their credits read. */
 const CREDIT_RULES: readonly CreditRule[] = [
-  (lookup) => (lookup.passes.length > 0 ? { source: 'CelesTrak', text: IMAGE_CREDIT.celestrak, href: 'https://celestrak.org' } : null),
+  (lookup) => (lookup.passes.length > 0 ? { source: 'CelesTrak', text: 'orbit elements', href: 'https://celestrak.org' } : null),
   (_, evidence) => {
     const sentinel = evidence?.acquisitions.filter((acquisition) => acquisition.profileId !== 'landsat') ?? [];
-    return sentinel.length > 0 ? { source: 'Copernicus Sentinel', text: IMAGE_CREDIT.copernicus(yearSpan(sentinel)) } : null;
+    return sentinel.length > 0 ? { source: 'Copernicus Sentinel', text: lowerFirst(IMAGE_CREDIT.copernicus(yearSpan(sentinel))) } : null;
   },
   (_, evidence) => (evidence?.acquisitions.some((acquisition) => acquisition.profileId === 'landsat') ? { source: 'USGS Landsat', text: IMAGE_CREDIT.usgs } : null),
-  (_, evidence) =>
-    evidence?.mosaics.some((mosaic) => mosaic.days.length > 0) || evidence?.frames.some((frame) => frame.latest && frame.archive === 'nasa-gibs')
-      ? { source: 'NASA GIBS', text: IMAGE_CREDIT.gibs }
-      : null,
-  (_, evidence) => (evidence?.frames.some((frame) => frame.latest && frame.archive === 'eumetsat') ? { source: 'EUMETSAT', text: IMAGE_CREDIT.eumetsat } : null),
+  (_, evidence) => {
+    const supplied = gibsSupplied(evidence);
+    return supplied ? { source: IMAGE_CREDIT.gibs, text: supplied } : null;
+  },
+  (_, evidence) => (evidence?.frames.some((frame) => frame.latest && frame.archive === 'eumetsat') ? { source: 'EUMETSAT', text: lowerFirst(IMAGE_CREDIT.eumetsat) } : null),
 ];
 
 /** The credit lines for the sources present in one lookup result. */

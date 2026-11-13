@@ -62,9 +62,9 @@
 .ow-close:hover { color: var(--ow-text) !important; }
 .ow-body { flex: 1; overflow-y: auto; padding: var(--ow-panel-pad); scrollbar-width: thin; }
 .ow-footer { border-top: 1px solid var(--ow-line); }
-.ow-sources { padding: var(--ow-space-2) var(--ow-panel-pad) 0; color: var(--ow-faint); font-size: 11px; line-height: 15px; }
-.ow-sources summary { cursor: pointer; font-variant-numeric: tabular-nums; }
-.ow-sources ul { list-style: none; max-height: 30vh; overflow-y: auto; margin: var(--ow-space-2) 0; padding: 0; }
+.ow-sources { margin-top: var(--ow-space-4); padding-top: var(--ow-space-2); border-top: 1px solid var(--ow-line); color: var(--ow-faint); font-size: 11px; line-height: 15px; }
+.ow-sources summary { cursor: pointer; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ow-sources ul { list-style: none; margin: var(--ow-space-2) 0; padding: 0; }
 .ow-sources li + li { margin-top: var(--ow-space-1); }
 .ow-source-name, .ow-source-name a { color: var(--ow-dim); }
 .ow-sources a { color: inherit; }
