@@ -41,6 +41,9 @@ export async function fetchOrbitalCatalog({
   readPrevious = () => readCanonicalValue(ORBITAL_CATALOG_KEY, { strict: true }),
   nowMs = Date.now(),
 } = {}) {
+  // Before the download: a failed Redis read retries the run, and a repeat download
+  // inside CelesTrak's update interval is refused.
+  const previous = await readPrevious();
   let response;
   try {
     response = await fetchImpl(CELESTRAK_ACTIVE_URL, {
@@ -65,7 +68,7 @@ export async function fetchOrbitalCatalog({
     throw outage(`CelesTrak returned unreadable JSON: ${err?.message || err}`);
   }
   if (!Array.isArray(records)) return blocked('CelesTrak returned no element list');
-  const catalog = buildCatalog({ records, previous: await readPrevious(), nowMs });
+  const catalog = buildCatalog({ records, previous, nowMs });
   if (catalog.satellites.length === 0) return blocked(`none of ${records.length} CelesTrak objects matches a sensor profile`);
   console.log(`  Profiled satellites: ${catalog.satellites.length} of ${records.length}; ring days: ${catalog.ring.map((d) => d.day).join(', ')}`);
   return catalog;

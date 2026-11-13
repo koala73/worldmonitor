@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
 import { buildCatalog, mergeRing, RING_DAYS, utcDay } from '../scripts/_orbital-catalog.mjs';
-import { ORBITAL_CATALOG_ACTIVATION_KEY, ORBITAL_CATALOG_KEY } from '../scripts/seed-orbital-catalog.mjs';
+import { fetchOrbitalCatalog, ORBITAL_CATALOG_ACTIVATION_KEY, ORBITAL_CATALOG_KEY } from '../scripts/seed-orbital-catalog.mjs';
 import { PUBLISH_BLOCKED_EXIT_CODE } from '../scripts/_seed-utils.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -61,6 +61,16 @@ describe('catalog selection and ring', () => {
     const catalog = buildCatalog({ records: [PROFILED[0], older], previous: null, nowMs });
     assert.equal(catalog.satellites.length, 1);
     assert.equal(catalog.satellites[0].elements.EPOCH, PROFILED[0].EPOCH);
+  });
+});
+
+describe('fetchOrbitalCatalog', () => {
+  it('reads the stored catalog before downloading, so a Redis failure never spends a download', async () => {
+    let downloads = 0;
+    const fetchImpl = async () => { downloads++; return Response.json(PROFILED); };
+    const readPrevious = async () => { throw new Error('Redis GET failed: HTTP 503'); };
+    await assert.rejects(fetchOrbitalCatalog({ fetchImpl, readPrevious }), /Redis GET failed/);
+    assert.equal(downloads, 0);
   });
 });
 
