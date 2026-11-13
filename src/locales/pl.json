@@ -5218,14 +5218,23 @@
       "share": "Udostępnij",
       "shareCopied": "Skopiowano link",
       "headline": "W ciągu ostatnich {{days}} dni nad {{place}} przeleciało: {{satellites}}.",
-      "satellites": "{{count}} satelitów",
-      "subline": "Opublikowano obrazy: {{count}}.",
+      "satellites_one": "{{count}} satelita",
+      "satellites_few": "{{count}} satelity",
+      "satellites_many": "{{count}} satelitów",
+      "satellites_other": "{{count}} satelity",
+      "subline_one": "Opublikowano obrazy: {{count}}.",
+      "subline_few": "Opublikowano obrazy: {{count}}.",
+      "subline_many": "Opublikowano obrazy: {{count}}.",
+      "subline_other": "Opublikowano obrazy: {{count}}.",
       "closestLook": "Najbliższe ujęcie",
       "replay": "Odtwórz",
       "openFull": "Otwórz pełny widok",
       "previous": "Poprzedni obraz",
       "next": "Następny obraz",
-      "passes": "przelotów",
+      "passes_one": "przelot",
+      "passes_few": "przeloty",
+      "passes_many": "przelotów",
+      "passes_other": "przelotu",
       "showAll": "Pokaż wszystkie przeloty",
       "noRecentDays": "Brak niedawnych dni w archiwum: {{sources}}",
       "tab": {
@@ -5268,7 +5277,10 @@
         "upcoming": "nadchodzących",
         "could": "które mogły tu celować",
         "overhead": "nad miejscem",
-        "weather": "źródła pogodowe"
+        "weather_one": "źródło pogodowe",
+        "weather_few": "źródła pogodowe",
+        "weather_many": "źródeł pogodowych",
+        "weather_other": "źródła pogodowego"
       },
       "order": {
         "closest": "Najbliższe ujęcie, potem najnowsze",
@@ -5277,7 +5289,10 @@
       },
       "row": {
         "cloud": "Chmury {{pct}}%",
-        "days": "Dni: {{count}}",
+        "days_one": "Dni: {{count}}",
+        "days_few": "Dni: {{count}}",
+        "days_many": "Dni: {{count}}",
+        "days_other": "Dni: {{count}}",
         "repeats": "Przeloty tego satelity w grupie: {{count}}"
       },
       "section": {

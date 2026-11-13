@@ -5162,14 +5162,17 @@
       "share": "Teilen",
       "shareCopied": "Link kopiert",
       "headline": "In den letzten {{days}} Tagen haben {{satellites}} {{place}} überflogen.",
-      "satellites": "{{count}} Satelliten",
-      "subline": "{{count}} Bilder wurden veröffentlicht.",
+      "satellites_one": "{{count}} Satellit",
+      "satellites_other": "{{count}} Satelliten",
+      "subline_one": "{{count}} Bild wurde veröffentlicht.",
+      "subline_other": "{{count}} Bilder wurden veröffentlicht.",
       "closestLook": "Nächster Blick",
       "replay": "Wiedergabe",
       "openFull": "Vollansicht öffnen",
       "previous": "Vorheriges Bild",
       "next": "Nächstes Bild",
-      "passes": "Überflüge",
+      "passes_one": "Überflug",
+      "passes_other": "Überflüge",
       "showAll": "Alle Überflüge zeigen",
       "noRecentDays": "Keine aktuellen Tage im Archiv: {{sources}}",
       "tab": {
@@ -5212,7 +5215,8 @@
         "upcoming": "demnächst",
         "could": "hätte hierher zielen können",
         "overhead": "überflogen",
-        "weather": "Wetterquellen"
+        "weather_one": "Wetterquelle",
+        "weather_other": "Wetterquellen"
       },
       "order": {
         "closest": "Nächster Blick, dann neueste",
@@ -5221,7 +5225,8 @@
       },
       "row": {
         "cloud": "Wolken {{pct}} %",
-        "days": "{{count}} Tage",
+        "days_one": "{{count}} Tag",
+        "days_other": "{{count}} Tage",
         "repeats": "{{count}} Überflüge dieses Satelliten in dieser Gruppe"
       },
       "section": {
