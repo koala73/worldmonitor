@@ -75,6 +75,24 @@ describe('touch long-press', () => {
     expect([menus[0]!.clientX, menus[0]!.clientY]).toEqual([120, 80]);
   });
 
+  it('swallows the click from lifting the held finger, and only that one', () => {
+    vi.useFakeTimers();
+    const { el } = target();
+    const clicks: MouseEvent[] = [];
+    const onClick = (e: MouseEvent) => clicks.push(e);
+    document.addEventListener('click', onClick);
+    el.dispatchEvent(touch('pointerdown', 120, 80));
+    vi.advanceTimersByTime(700);
+    el.dispatchEvent(touch('pointerup', 120, 80));
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(clicks).toHaveLength(0);
+    el.dispatchEvent(touch('pointerdown', 120, 80));
+    el.dispatchEvent(touch('pointerup', 120, 80));
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(clicks).toHaveLength(1);
+    document.removeEventListener('click', onClick);
+  });
+
   it('leaves drags, quick taps, pinches and mouse presses alone', () => {
     vi.useFakeTimers();
     const { el, menus } = target();
