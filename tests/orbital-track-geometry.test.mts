@@ -6,8 +6,8 @@ import { findPasses, parseOrbitElements } from '../shared/orbital/pass-geometry.
 import type { GeoPoint, OmmRecord, OrbitElements, Pass } from '../shared/orbital/pass-geometry.js';
 import { matchSensorProfile } from '../shared/orbital/sensor-profiles.js';
 import type { SensorProfile } from '../shared/orbital/sensor-profiles.js';
-import { buildPassTrack, sweptSwath, trackPositionAt, type FootprintRing, type PassTrack } from '../src/services/orbital/track-geometry.ts';
-import { createTrackReplay } from '../src/services/orbital/track-replay.ts';
+import { buildPassTrack, framingBounds, sweptSwath, trackPositionAt, type FootprintRing, type PassTrack } from '../src/services/orbital/track-geometry.ts';
+import { createTrackReplay, replayWindow, type ReplayFrame } from '../src/services/orbital/track-replay.ts';
 
 const { records } = JSON.parse(readFileSync(new URL('./fixtures/orbital/celestrak-gp-2026-11-13.json', import.meta.url), 'utf8')) as { records: OmmRecord[] };
 
@@ -146,6 +146,30 @@ describe('pass ground track', () => {
     }
   });
 
+  it('frames a right-looking radar swath together with the looked-up point', () => {
+    const point = { lat: 25.112, lon: 55.139 };
+    const { elements, profile, passes: found } = passes('SENTINEL-1C', point, 240);
+    const track = found
+      .map((pass) => buildPassTrack(elements, profile.footprint, pass))
+      .find((candidate) => candidate?.footprint.some((ring) => insideRing(ring, point)));
+    assert.ok(track, 'a Sentinel-1C swath covers the point');
+    const [[west, south], [east, north]] = framingBounds(track, point);
+    const inside = (lon: number, lat: number) => lon >= west && lon <= east && lat >= south && lat <= north;
+    assert.ok(inside(point.lon, point.lat) && inside(track.closest.lon, track.closest.lat));
+    for (const [lon, lat] of sweptSwath(track, track.closest.timeMs).leadingEdge.flat()) assert.ok(inside(lon, lat));
+    assert.ok(east - west < 15 && north - south < 15, `close enough to see the swath beside the track: ${east - west} x ${north - south}`);
+  });
+
+  it('frames a pass over the antimeridian without spanning the whole map', () => {
+    const point = { lat: -17.7, lon: 178.5 };
+    const { elements, profile, passes: found } = passes('SENTINEL-2A', point);
+    for (const pass of found) {
+      const track = buildPassTrack(elements, profile.footprint, pass)!;
+      const [[west], [east]] = framingBounds(track, point);
+      assert.ok(east - west < 30, 'the box stays local to the point');
+    }
+  });
+
   it('keeps the swept swath and its leading edge inside the map across the antimeridian', () => {
     const { elements, profile, passes: found } = passes('SENTINEL-2A', { lat: -17.7, lon: 178.5 });
     const crossing = found
@@ -201,36 +225,61 @@ describe('pass replay', () => {
     };
   }
 
-  it('places the marker at closest approach without animating when motion is reduced', () => {
+  it('places the marker at acquisition without animating when motion is reduced', () => {
     const clock = frames();
-    const positions: unknown[] = [];
-    createTrackReplay(track, (point) => positions.push(point), { ...clock, prefersReducedMotion: () => true }).play();
-    assert.deepEqual(positions, [track.closest]);
+    const seen: ReplayFrame[] = [];
+    const replay = createTrackReplay(track, (frame) => seen.push(frame), { ...clock, prefersReducedMotion: () => true });
+    replay.play();
+    assert.equal(replay.reducedMotion, true);
+    assert.deepEqual(seen, [{ point: track.closest, progress: 1, playing: false }]);
     assert.equal(clock.pending, 0, 'no animation frame was requested');
+    replay.seek(0.5);
+    assert.equal(clock.pending, 0, 'scrubbing does not animate either');
+    assert.equal(seen[1]!.progress, 0.5);
   });
 
-  it('flies the marker from the start of the track and settles at closest approach', () => {
+  it('flies the marker from the start of the swath and settles at acquisition', () => {
     const clock = frames();
-    const positions: Array<{ timeMs: number }> = [];
-    createTrackReplay(track, (point) => positions.push(point), { ...clock, prefersReducedMotion: () => false, durationMs: 1000 }).play();
+    const seen: ReplayFrame[] = [];
+    createTrackReplay(track, (frame) => seen.push(frame), { ...clock, prefersReducedMotion: () => false, durationMs: 1000 }).play();
     clock.run(0);
     clock.run(500);
     clock.run(1000);
-    assert.equal(positions[0]!.timeMs, track.startMs);
-    assert.equal(positions[1]!.timeMs, (track.startMs + track.endMs) / 2);
-    assert.deepEqual(positions[2], track.closest);
+    const { fromMs, toMs } = replayWindow(track);
+    assert.ok(fromMs < toMs && toMs === track.closest.timeMs);
+    assert.equal(seen[0]!.point.timeMs, fromMs);
+    assert.equal(seen[1]!.point.timeMs, (fromMs + toMs) / 2);
+    assert.deepEqual(seen[2], { point: track.closest, progress: 1, playing: false });
     assert.equal(clock.pending, 0);
+  });
+
+  it('pauses, scrubs and resumes from the scrubbed moment', () => {
+    const clock = frames();
+    const seen: ReplayFrame[] = [];
+    const replay = createTrackReplay(track, (frame) => seen.push(frame), { ...clock, prefersReducedMotion: () => false, durationMs: 1000 });
+    replay.play();
+    clock.run(0);
+    clock.run(200);
+    replay.pause();
+    assert.equal(clock.pending, 0);
+    assert.deepEqual(seen.at(-1), { ...seen.at(-2)!, playing: false });
+    replay.seek(0.75);
+    assert.equal(seen.at(-1)!.progress, 0.75);
+    replay.play();
+    clock.run(1000);
+    clock.run(1100);
+    assert.ok(Math.abs(seen.at(-1)!.progress - 0.85) < 1e-9, 'playing resumes from the scrubbed moment');
   });
 
   it('stops moving the marker once stopped', () => {
     const clock = frames();
-    const positions: unknown[] = [];
-    const replay = createTrackReplay(track, (point) => positions.push(point), { ...clock, prefersReducedMotion: () => false });
+    const seen: unknown[] = [];
+    const replay = createTrackReplay(track, (frame) => seen.push(frame), { ...clock, prefersReducedMotion: () => false });
     replay.play();
     clock.run(0);
     replay.stop();
     clock.run(100);
-    assert.equal(positions.length, 1);
+    assert.equal(seen.length, 1);
     assert.equal(clock.pending, 0);
   });
 });

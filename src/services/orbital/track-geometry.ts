@@ -270,3 +270,21 @@ export function trackPositionAt(track: PassTrack, timeMs: number): TrackPoint {
   }
   return points[points.length - 1]!;
 }
+
+/** The looked-up point as drawn on the map: a reticle with a mono label of one or two lines. */
+export interface OrbitalTarget {
+  lat: number;
+  lon: number;
+  lines: string[];
+}
+
+export type FrameBounds = [[number, number], [number, number]];
+
+/** A box holding the point, the satellite at closest approach and the swath line imaged then, longitudes continuous with the point. */
+export function framingBounds(track: PassTrack, target: { lat: number; lon: number }): FrameBounds {
+  const positions: Array<[number, number]> = [[target.lon, target.lat], [track.closest.lon, track.closest.lat]];
+  for (const line of sweptSwath(track, track.closest.timeMs).leadingEdge) positions.push(...line);
+  const lons = positions.map(([lon]) => lon + 360 * Math.round((target.lon - lon) / 360));
+  const lats = positions.map(([, lat]) => lat);
+  return [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]];
+}
