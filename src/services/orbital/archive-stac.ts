@@ -1,0 +1,249 @@
+import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
+import { isAllowedPreviewUrl } from '../../utils/imagery-preview';
+import { failed, requestArchive, type ArchiveRequestOptions, type ArchiveResult } from './archive-result';
+import type { PassWindow } from './pass-query';
+
+export type StacArchiveId = 'earth-search' | 'planetary-computer';
+export type ImagingProfileId = 'sentinel-2' | 'sentinel-1' | 'landsat';
+
+/** What the archive's own per-pixel classification says at the point. */
+export type PointCondition = 'clear' | 'cloud' | 'cloud-shadow' | 'unknown';
+
+export interface ArchiveItem {
+  archive: StacArchiveId;
+  collection: string;
+  itemId: string;
+  profileId: ImagingProfileId;
+  /** Lower-case platform with dashes, comparable to a normalised satellite name ("sentinel-2b", "landsat-9"). */
+  platform: string;
+  /** Relative orbit, or the Landsat WRS path. */
+  orbit: number | null;
+  /** The span in which the item can have sensed the point. */
+  startMs: number;
+  endMs: number;
+  cloudCoverPct: number | null;
+  sunElevationDeg: number | null;
+  resolutionM: number;
+  /** A whole-scene preview on an allowlisted host. */
+  previewUrl: string | null;
+  /** Planetary Computer's rendering link, which also drives point crops. */
+  renderedPreviewHref: string | null;
+  /** The classification asset the archive can read at a point, with how to decode it. */
+  classification: { asset: string; scheme: 'sentinel-2-scl' | 'landsat-qa-pixel' } | null;
+}
+
+interface StacArchiveConfig {
+  searchUrl: string;
+  collections: Record<string, ImagingProfileId>;
+}
+
+export const STAC_ARCHIVES: Record<StacArchiveId, StacArchiveConfig> = {
+  'earth-search': {
+    searchUrl: 'https://earth-search.aws.element84.com/v1/search',
+    collections: { 'sentinel-2-l2a': 'sentinel-2', 'sentinel-1-grd': 'sentinel-1' },
+  },
+  'planetary-computer': {
+    searchUrl: 'https://planetarycomputer.microsoft.com/api/stac/v1/search',
+    collections: { 'sentinel-2-l2a': 'sentinel-2', 'landsat-c2-l2': 'landsat' },
+  },
+};
+
+const PLANETARY_COMPUTER_POINT_URL = 'https://planetarycomputer.microsoft.com/api/data/v1/item/point';
+const SEARCH_LIMIT = 100;
+const MINUTE_MS = 60_000;
+/** A Sentinel-2 strip reaches a point within this long of its sensing start (1.5 to 12 minutes in the reference set). */
+const SENTINEL_2_STRIP_REACH_MS = 20 * MINUTE_MS;
+const LANDSAT_SCENE_HALF_MS = 15_000;
+const NATIVE_RESOLUTION_M: Record<ImagingProfileId, number> = { 'sentinel-2': 10, 'sentinel-1': 10, landsat: 30 };
+
+export const normalisePlatform = (name: string) => name.trim().toLowerCase().replace(/[\s_]+/g, '-');
+
+type StacProperties = Record<string, unknown>;
+interface StacFeature {
+  id?: unknown;
+  collection?: unknown;
+  properties?: StacProperties;
+  assets?: Record<string, { href?: unknown } | undefined>;
+}
+
+const num = (value: unknown): number | null => {
+  const parsed = typeof value === 'string' ? Number(value) : value;
+  return typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : null;
+};
+const str = (value: unknown): string | null => (typeof value === 'string' && value.length > 0 ? value : null);
+const time = (value: unknown): number | null => {
+  const ms = typeof value === 'string' ? Date.parse(value) : NaN;
+  return Number.isFinite(ms) ? ms : null;
+};
+
+function compactTimeMs(compact: string): number | null {
+  const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/.exec(compact);
+  return m ? Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!) : null;
+}
+
+function s3ToHttps(url: string): string {
+  if (!url.startsWith('s3://')) return url;
+  const rest = url.slice(5);
+  const slash = rest.indexOf('/');
+  return slash === -1 ? url : `https://${rest.slice(0, slash)}.s3.amazonaws.com/${rest.slice(slash + 1)}`;
+}
+
+function senseSpan(archive: StacArchiveId, profileId: ImagingProfileId, p: StacProperties): [number, number] | null {
+  const at = time(p.datetime);
+  if (profileId === 'sentinel-2' && archive === 'planetary-computer') {
+    // Planetary Computer stamps the datatake start; the datastrip start is closer to the point.
+    const strip = /_S(\d{8}T\d{6})_/.exec(str(p['s2:datastrip_id']) ?? '');
+    const start = (strip && compactTimeMs(strip[1]!)) ?? at;
+    return start === null ? null : [start, start + SENTINEL_2_STRIP_REACH_MS];
+  }
+  if (profileId === 'landsat') return at === null ? null : [at - LANDSAT_SCENE_HALF_MS, at + LANDSAT_SCENE_HALF_MS];
+  const start = time(p.start_datetime) ?? at;
+  const end = time(p.end_datetime) ?? at;
+  return start === null || end === null ? null : [start, Math.max(start, end)];
+}
+
+function orbitOf(p: StacProperties): number | null {
+  const relative = num(p['sat:relative_orbit']) ?? num(p['landsat:wrs_path']);
+  if (relative !== null) return relative;
+  const fromUri = /_R(\d{3})_/.exec(str(p['s2:product_uri']) ?? '');
+  return fromUri ? Number(fromUri[1]) : null;
+}
+
+export function parseStacItem(archive: StacArchiveId, feature: StacFeature): ArchiveItem | null {
+  const collection = str(feature.collection);
+  const profileId = collection ? STAC_ARCHIVES[archive].collections[collection] : undefined;
+  const itemId = str(feature.id);
+  const p = feature.properties;
+  const platform = str(p?.platform);
+  if (!collection || !profileId || !itemId || !p || !platform) return null;
+  const span = senseSpan(archive, profileId, p);
+  if (!span) return null;
+  const assets = feature.assets ?? {};
+  const href = (key: string) => {
+    const raw = str(assets[key]?.href);
+    return raw ? s3ToHttps(raw) : null;
+  };
+  const renderedPreviewHref = archive === 'planetary-computer' ? href('rendered_preview') : null;
+  const thumbnail = renderedPreviewHref ?? href('thumbnail');
+  const zenith = num(p['s2:mean_solar_zenith']);
+  const classification =
+    archive !== 'planetary-computer' ? null
+    : profileId === 'sentinel-2' && assets.SCL ? { asset: 'SCL', scheme: 'sentinel-2-scl' as const }
+    : profileId === 'landsat' && assets.qa_pixel ? { asset: 'qa_pixel', scheme: 'landsat-qa-pixel' as const }
+    : null;
+  return {
+    archive,
+    collection,
+    itemId,
+    profileId,
+    platform: normalisePlatform(platform),
+    orbit: orbitOf(p),
+    startMs: span[0],
+    endMs: span[1],
+    cloudCoverPct: num(p['eo:cloud_cover']),
+    sunElevationDeg: num(p['view:sun_elevation']) ?? (zenith === null ? null : 90 - zenith),
+    resolutionM: num(p.gsd) ?? NATIVE_RESOLUTION_M[profileId],
+    previewUrl: thumbnail && isAllowedPreviewUrl(thumbnail) ? thumbnail : null,
+    renderedPreviewHref,
+    classification,
+  };
+}
+
+export interface StacSearchQuery extends ArchiveRequestOptions {
+  point: GeoPoint;
+  window: PassWindow;
+}
+
+const SEARCH_HEADERS = { 'Content-Type': 'application/json', Accept: 'application/geo+json' };
+/** Pages followed before a search counts as unanswered rather than silently cut short. */
+const MAX_SEARCH_PAGES = 10;
+/** Planetary Computer stamps Sentinel-2 items with the datatake start, up to half an hour before the point is sensed. */
+const SEARCH_LEAD_MS = 60 * MINUTE_MS;
+
+interface StacLink {
+  rel?: unknown;
+  href?: unknown;
+  method?: unknown;
+  body?: unknown;
+  merge?: unknown;
+}
+
+type NextRequest = { url: string; init: RequestInit } | null;
+
+function nextRequest(links: unknown, searchUrl: string, body: Record<string, unknown>): NextRequest {
+  const next = Array.isArray(links) ? (links as StacLink[]).find((link) => link?.rel === 'next') : undefined;
+  const href = str(next?.href);
+  let url: URL;
+  try {
+    url = new URL(href ?? '', searchUrl);
+  } catch {
+    return null;
+  }
+  if (!next || !href || url.origin !== new URL(searchUrl).origin) return null;
+  if (String(next.method ?? 'GET').toUpperCase() !== 'POST') return { url: url.toString(), init: { method: 'GET' } };
+  const nextBody = next.body && typeof next.body === 'object' ? next.body as Record<string, unknown> : {};
+  return {
+    url: url.toString(),
+    init: { method: 'POST', headers: SEARCH_HEADERS, body: JSON.stringify(next.merge === true ? { ...body, ...nextBody } : nextBody) },
+  };
+}
+
+/** One search per archive, sent straight from the browser to the archive. */
+export async function searchStacArchive(archive: StacArchiveId, query: StacSearchQuery): Promise<ArchiveResult<ArchiveItem>> {
+  const config = STAC_ARCHIVES[archive];
+  const body = {
+    collections: Object.keys(config.collections),
+    intersects: { type: 'Point', coordinates: [query.point.lon, query.point.lat] },
+    datetime: `${new Date(query.window.startMs - SEARCH_LEAD_MS).toISOString()}/${new Date(query.window.endMs).toISOString()}`,
+    limit: SEARCH_LIMIT,
+  };
+  const features: unknown[] = [];
+  let request: NextRequest = { url: config.searchUrl, init: { method: 'POST', headers: SEARCH_HEADERS, body: JSON.stringify(body) } };
+  for (let page = 0; request; page++) {
+    if (page === MAX_SEARCH_PAGES) return failed({ archive, reason: 'invalid-response' });
+    const reply = await requestArchive(archive, request.url, request.init, query);
+    if (!reply.ok) return failed(reply.failure);
+    let parsed: { features?: unknown; links?: unknown };
+    try {
+      parsed = (await reply.response.json()) as typeof parsed;
+    } catch {
+      return failed({ archive, reason: 'invalid-response' });
+    }
+    if (!Array.isArray(parsed.features)) return failed({ archive, reason: 'invalid-response' });
+    features.push(...parsed.features);
+    request = parsed.features.length > 0 ? nextRequest(parsed.links, config.searchUrl, body) : null;
+  }
+  const items = features.flatMap((feature) => {
+    const item = feature && typeof feature === 'object' ? parseStacItem(archive, feature as StacFeature) : null;
+    return item && item.endMs >= query.window.startMs && item.startMs <= query.window.endMs ? [item] : [];
+  });
+  return { status: 'ok', archive, items };
+}
+
+const SCL_CONDITION: Record<number, PointCondition> = {
+  2: 'clear', 3: 'cloud-shadow', 4: 'clear', 5: 'clear', 6: 'clear', 7: 'clear', 8: 'cloud', 9: 'cloud', 10: 'cloud', 11: 'clear',
+};
+
+export function decodePointCondition(scheme: 'sentinel-2-scl' | 'landsat-qa-pixel', value: number | null): PointCondition {
+  if (value === null || !Number.isInteger(value)) return 'unknown';
+  if (scheme === 'sentinel-2-scl') return SCL_CONDITION[value] ?? 'unknown';
+  const bit = (n: number) => (value & (1 << n)) !== 0;
+  if (bit(0)) return 'unknown';
+  if (bit(1) || bit(2) || bit(3)) return 'cloud';
+  if (bit(4)) return 'cloud-shadow';
+  return bit(6) || bit(7) ? 'clear' : 'unknown';
+}
+
+/** Reads the archive's classification pixel at the point. Only Planetary Computer serves this. */
+export async function readPointCondition(item: ArchiveItem, point: GeoPoint, options: ArchiveRequestOptions = {}): Promise<PointCondition> {
+  if (!item.classification) return 'unknown';
+  const params = new URLSearchParams({ collection: item.collection, item: item.itemId, assets: item.classification.asset });
+  const reply = await requestArchive('planetary-computer', `${PLANETARY_COMPUTER_POINT_URL}/${point.lon},${point.lat}?${params}`, {}, options);
+  if (!reply.ok) return 'unknown';
+  try {
+    const { values } = (await reply.response.json()) as { values?: unknown };
+    return decodePointCondition(item.classification.scheme, Array.isArray(values) ? num(values[0]) : null);
+  } catch {
+    return 'unknown';
+  }
+}
