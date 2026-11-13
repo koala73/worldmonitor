@@ -74,7 +74,7 @@ export interface GroundTrackPoint {
 export const ORBIT_ELEMENTS_MAX_AGE_DAYS: number;
 export const PASS_MIN_ELEVATION_DEG: number;
 export const EDGE_OF_SWATH_KM: number;
-/** Longest search or ground-track window; longer, unordered or non-finite windows throw a RangeError. */
+/** Longest search or ground-track window; longer or unordered windows, or bounds outside the Date range, throw a RangeError. */
 export const PASS_WINDOW_MAX_DAYS: number;
 
 export function parseOrbitElements(omm: OmmRecord): OrbitElements;
