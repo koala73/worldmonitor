@@ -1,4 +1,4 @@
-// EIA rechecked 2026-11-11: all 14 published rows match; last release 2026-11-12.
+// EIA rechecked 2026-11-13: published schedule covers 2026-01-16 through 2028-01-14; last release 2028-01-20.
 // CME reviewed 2026-11-10. Update when publishers revise their schedules.
 // EIA: https://www.eia.gov/petroleum/supply/weekly/schedule.php
 // Keys are the NEW observation's week-ending date; values include the ET offset.
@@ -17,6 +17,13 @@ export const EIA_RELEASE_SHIFTS: Readonly<Record<string, string>> = {
   '2026-09-04': '2026-09-10T12:00:00-04:00',
   '2026-10-09': '2026-10-15T12:00:00-04:00',
   '2026-11-06': '2026-11-12T12:00:00-05:00',
+  '2027-01-15': '2027-01-21T12:00:00-05:00',
+  '2027-02-12': '2027-02-18T12:00:00-05:00',
+  '2027-05-28': '2027-06-03T12:00:00-04:00',
+  '2027-07-02': '2027-07-08T12:00:00-04:00',
+  '2027-09-03': '2027-09-09T12:00:00-04:00',
+  '2027-10-08': '2027-10-14T12:00:00-04:00',
+  '2028-01-14': '2028-01-20T12:00:00-05:00',
 };
 
 // CME Globex NYMEX energy, 2026–2027. Values are minutes after midnight EASTERN,

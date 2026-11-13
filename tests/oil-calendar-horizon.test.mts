@@ -25,7 +25,10 @@ it('calendar monitor exits unsuccessfully and identifies the expiring calendar',
   const run = (days: number) => spawnSync(process.execPath, [
     'scripts/check-oil-calendar-horizon.mts', new Date(end - days * DAY).toISOString(),
   ], { encoding: 'utf8' });
-  assert.equal(run(60).status, 0);
+  const earliestEnd = Math.min(end, Math.max(...Object.keys(calendar.CME_ENERGY_CLOSES).map(Date.parse)));
+  assert.equal(spawnSync(process.execPath, [
+    'scripts/check-oil-calendar-horizon.mts', new Date(earliestEnd - 60 * DAY).toISOString(),
+  ], { encoding: 'utf8' }).status, 0);
   const warning = run(30);
   assert.equal(warning.status, 1);
   assert.match(warning.stdout, /eia: expiring.*30 days/);
@@ -56,4 +59,14 @@ it('market documentation and tool description acknowledge modeled CME holidays',
   assert.match(docs, /CME energy holiday sessions for 2026–2027/);
   const source = readFileSync(new URL('../api/mcp/registry/cache-tools.ts', import.meta.url), 'utf8');
   assert.match(source, /futures NYMEX breaks and CME energy holidays \(2026–2027\) plus 30m restart grace/);
+});
+
+it('published 2027 EIA shifts are Thursday noon ET releases for the Friday week ending six days earlier', () => {
+  const rows = Object.entries(calendar.EIA_RELEASE_SHIFTS).filter(([week]) => week.startsWith('2027-') || week === '2028-01-14');
+  assert.equal(rows.length, 7);
+  for (const [week, release] of rows) {
+    assert.equal(new Date(`${week}T12:00:00Z`).getUTCDay(), 5, `${week} is a Friday`);
+    assert.match(release, /T12:00:00-0[45]:00$/);
+    assert.equal(new Date(release).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'America/New_York' }), 'Thursday');
+  }
 });
