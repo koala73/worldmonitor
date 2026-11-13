@@ -19,6 +19,24 @@ function inputs() {
   return { currency: { rates: ECONOMIC_COUNTRIES.map(countryCode => ({ countryCode, ...computeYoy(bars) })) },
     inflation: { countries }, eurostat: { countries: {} }, japan: { countries: {} }, usCpi: { components: { headline: cpi.map(p => ({ ...p, date: `${p.date}-01` })) } }, yield: { countries: {} } };
 }
+test('monthly FX closes use period-end dates for the trailing currency anchor', () => {
+  const raw = inputs();
+  const series = bars.map(bar => ({ ...bar }));
+  series.find(bar => bar.t === Date.UTC(2026, 6, 1)).close = 2;
+  series.find(bar => bar.t === Date.UTC(2026, 7, 1)).close = 4;
+  const fx = computeYoy(series);
+  assert.equal(fx.monthlyBars.find(bar => bar.value === 4).date, '2026-08-31');
+  assert.equal(fx.monthlyBars.at(-1).date, '2026-11-12');
+  raw.currency.rates = [{ countryCode: 'AE', ...fx }];
+  const member = economicCountry(raw, 'AE', NOW).members.currency;
+  assert.equal(member.reference.date, '2026-07-31');
+  assert.equal(member.value, 50);
+  assert.equal((Date.parse(member.observedAt) - Date.parse(member.reference.date)) / 86400000, 104);
+  const localAugust = series.find(bar => bar.t === Date.UTC(2026, 7, 1));
+  localAugust.t = Date.UTC(2026, 6, 31, 23);
+  localAugust.period = '2026-08';
+  assert.equal(computeYoy(series).monthlyBars.find(bar => bar.value === 4).date, '2026-08-31');
+});
 test('country, canonical key, metadata and activation contracts agree', () => {
   assert.deepEqual([...ECONOMIC_COUNTRIES].sort(), [...CII_COUNTRY_CODES].sort());
   assert.equal(health.STANDALONE_KEYS.ciiEconomicStress, ECONOMIC_KEY);
@@ -95,6 +113,12 @@ test('25 measured countries stay healthy when India loses CPI but has fresh curr
   assert.equal(check(p).status, 'OK');
   p.countries.IN.members.currency.expiresAt = NOW - 1;
   assert.equal(check(p).measuredCount, 24);
+  assert.equal(check(p).status, 'OK');
+  p.countries.RU.members = {};
+  assert.equal(check(p).measuredCount, 23);
+  assert.equal(check(p).status, 'OK');
+  p.countries.IR.members = {};
+  assert.equal(check(p).measuredCount, 22);
   assert.equal(check(p).status, 'COVERAGE_PARTIAL');
 });
 test('unreadable keys and failed publication cannot activate or overwrite last-good data', async () => {

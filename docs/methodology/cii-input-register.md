@@ -66,9 +66,12 @@ This register has one row per input the CII reads. Under `docs/methodology/cii-c
 
 The producer-only key `intelligence:cii-economic-stress:v1` is not read by v14.
 It contains three possible country members: currency depreciation against the
-last monthly bar on or before 90 days earlier (at most 35 days of anchor lag),
+last monthly close on or before 90 days earlier (at most 35 days of anchor lag),
 year-on-year CPI inflation minus the preceding year's year-on-year inflation,
 and monthly 10-year government yield minus its preceding 12-month mean.
+Completed FX bars use the end of their exchange-local month; the current bar
+uses the latest observation date. Thus the monthly anchor is at least 90 days
+old, with its actual date exposed, rather than an exact daily 90-day return.
 Values retain their units, source key, observation date and reference method.
 U18 must evaluate the scoring transformation and member-count fairness; these
 producer measurements do not select score constants or weights.

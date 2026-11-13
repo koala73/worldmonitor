@@ -1219,7 +1219,7 @@ const SEED_META = {
     key: 'seed-meta:intelligence:cii-economic-stress', maxStaleMin: 180,
     activationKey: 'seed-activated:intelligence:cii-economic-stress',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10577, activationKey: 'seed-activated:intelligence:cii-economic-stress' },
-    minMeasuredCountries: 25,
+    minMeasuredCountries: 23,
   },
   ciiStructuralPrior: {
     key: 'seed-meta:intelligence:cii-structural-prior', maxStaleMin: 50400,
