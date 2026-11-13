@@ -77,7 +77,7 @@ describe('imagery country signal family', () => {
 
   it('projects one confirmed flag with its site, satellites and scene dates', () => {
     const outcome = project(rollupOf('IR', now, [{ site: natanz, flag: flagAfter(natanz.id, now, CONFIRMED) }]));
-    expect(outcome).toMatchObject({ state: 'observed', partial: false, scope: 'Confirmed radar statistics changes at 1 of 1 watched sites with published change scoring' });
+    expect(outcome).toMatchObject({ state: 'observed', partial: false, scope: 'Confirmed radar statistics changes only; change scoring is published for 1 of 1 watched sites' });
     expect(outcome.observations).toEqual([expect.objectContaining({
       id: natanz.id, family: 'imagery', type: 'imagery_statistics_changed', severity: 'low', eventAt: '2026-09-09T12:00:00.000Z', timeBasis: 'event',
       title: 'Imagery statistics changed at Natanz Enrichment Facility: raised by Sentinel-1A scene 2026-08-28, confirmed by Sentinel-1C scene 2026-09-09',

@@ -125,7 +125,7 @@ export function projectImagerySignalFamily(countryCode: string, body: unknown, n
   return boundCountrySignalFamily({
     ...unavailableCountrySignal(countryCode, 'imagery', ''), state: 'observed', reason: null, partial: scored < read.rollup.sites.length,
     observations, snapshotAt: sourceClock(read.rollup.asOf), attribution: IMAGERY_ATTRIBUTION,
-    scope: `Confirmed radar statistics changes at ${scored} of ${read.rollup.sites.length} watched sites with published change scoring`,
+    scope: `Confirmed radar statistics changes only; change scoring is published for ${scored} of ${read.rollup.sites.length} watched sites`,
     matchedRows: observations.length, sampledRows: Math.min(observations.length, 100), omittedRows: Math.max(0, observations.length - 100),
   });
 }
