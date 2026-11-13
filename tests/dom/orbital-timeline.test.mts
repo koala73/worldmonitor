@@ -4,9 +4,8 @@ import { initTestI18n } from './helpers/i18n.mts';
 import type { PassTier } from '../../shared/orbital/tiers.js';
 import type { PointPassLookup } from '@/services/orbital/pass-client';
 import { daylightSpans, type PointPass } from '@/services/orbital/pass-job';
-import type { OrbitalEvidence } from '@/services/orbital/match';
 import { loadPointContext, type EventLane, type LiveStrip, type PointContext } from '@/services/orbital/point-context';
-import { OrbitalWatchPage } from '@/components/OrbitalWatchPage';
+import { OrbitalTimeline } from '@/components/OrbitalTimeline';
 
 const NOW = Date.UTC(2026, 10, 13, 12);
 const HOUR = 3_600_000;
@@ -32,9 +31,6 @@ function lookup(passes: PointPass[], at = point): PointPassLookup {
   };
 }
 
-const evidence = (passes: PointPass[]): OrbitalEvidence =>
-  ({ passes, acquisitions: [], mosaics: [], frames: [], bestView: null, status: 'complete', failures: [], unansweredProfiles: [] });
-
 const ok = (events: Extract<EventLane, { status: 'ok' }>['events'] = [], retained: { startMs: number; endMs: number } | null = { startMs: WINDOW.startMs, endMs: NOW }): EventLane =>
   ({ status: 'ok', events, retained });
 const liveOk = (labels: string[] = []): LiveStrip => ({ status: 'ok', items: labels.map((label, i) => ({ id: label, label, distanceKm: 10 + i })) });
@@ -47,16 +43,19 @@ function context(over: { events?: Partial<PointContext['events']>; live?: Partia
   };
 }
 
-const pages: OrbitalWatchPage[] = [];
-const onSelectPass = vi.fn();
+const onSelect = vi.fn();
 
-function mounted(passes: PointPass[], ctx: PointContext | null, at = point): OrbitalWatchPage {
-  const page = new OrbitalWatchPage({ onClose: vi.fn(), onRetry: vi.fn(), onSelectPass });
-  pages.push(page);
-  page.open(at, null);
-  page.render({ kind: 'passes', lookup: lookup(passes, at), archives: { kind: 'answered', evidence: evidence(passes) } });
-  if (ctx) page.setPointContext({ kind: 'loaded', context: ctx });
-  return page;
+function mounted(passes: PointPass[], ctx: PointContext | null, options: { at?: typeof point; selectedKey?: string; found?: PointPassLookup } = {}): OrbitalTimeline {
+  const dock = new OrbitalTimeline(onSelect);
+  document.body.append(dock.element);
+  dock.update({
+    lookup: options.found ?? lookup(passes, options.at),
+    passes,
+    acquisitions: [],
+    context: ctx ? { kind: 'loaded', context: ctx } : { kind: 'loading' },
+    selectedKey: options.selectedKey ?? null,
+  });
+  return dock;
 }
 
 const timeline = () => document.querySelector<HTMLElement>('.ow-timeline')!;
@@ -80,7 +79,6 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
-  for (const page of pages.splice(0)) page.close();
   document.body.replaceChildren();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
@@ -118,12 +116,9 @@ describe('orbital timeline dock', () => {
   });
 
   it('counts geostationary satellites in view on the Geo row', () => {
-    const page = new OrbitalWatchPage({ onClose: vi.fn(), onRetry: vi.fn() });
-    pages.push(page);
-    page.open(point, null);
     const geo = { noradId: 1, name: 'METEOSAT-9', profileId: 'seviri', status: 'geostationary', visibility: { visible: true } } as unknown as PointPassLookup['satellites'][number];
     const terra = pass('TERRA', -20, { kind: 'daily-mosaic' });
-    page.render({ kind: 'passes', lookup: { ...lookup([terra]), satellites: [geo] }, archives: { kind: 'answered', evidence: evidence([terra]) } });
+    mounted([terra], context(), { found: { ...lookup([terra]), satellites: [geo] } });
     expect(legendKey('geo').querySelector('.ow-tl-count')!.textContent).toBe('2');
     expect(row('geo').querySelector<HTMLElement>('.ow-tl-geo-line')!.dataset.tip).toBe('Geostationary in view: METEOSAT-9');
   });
@@ -137,34 +132,15 @@ describe('orbital timeline dock', () => {
     expect(tip.textContent).toBe('SENTINEL-2B · Thu 12 Nov · 10:00 · confirmed image');
   });
 
-  it('clicking a glyph selects the same pass in the sheet and hands it to the pass detail', () => {
+  it('clicking a glyph hands its pass to the selection, and marks the selected glyph', () => {
     const likely = pass('SENTINEL-2B', -30, { kind: 'likely-imaged' });
     const other = pass('LANDSAT 9', -60, { kind: 'likely-imaged' });
     mounted([likely, other], context());
     row('likely').querySelector<HTMLElement>(`[data-pass="${keyOf(likely)}"]`)!.click();
-    const sheetRow = document.querySelector<HTMLElement>('.ow-row.is-selected')!;
-    expect(sheetRow.querySelector('.ow-row-name')!.textContent).toBe('SENTINEL-2B');
-    expect(row('likely').querySelector('.is-selected')!.getAttribute('data-pass')).toBe(keyOf(likely));
-    expect(onSelectPass).toHaveBeenCalledWith(likely);
-  });
-
-  it('selecting a pass in the sheet by keyboard selects its glyph', () => {
-    const likely = pass('SENTINEL-2B', -30, { kind: 'likely-imaged' });
-    mounted([likely], context());
-    document.querySelector<HTMLElement>(`.ow-row[data-pass="${keyOf(likely)}"]`)!
-      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    expect(row('likely').querySelector(`[data-pass="${keyOf(likely)}"]`)!.classList.contains('is-selected')).toBe(true);
-  });
-
-  it('shows a pass as a photo as soon as one archive confirms it, like its sheet row', () => {
-    const likely = pass('SENTINEL-2B', -30, { kind: 'likely-imaged' });
-    const page = new OrbitalWatchPage({ onClose: vi.fn(), onRetry: vi.fn(), onSelectPass });
-    pages.push(page);
-    page.open(point, null);
-    page.render({ kind: 'passes', lookup: lookup([likely]), archives: { kind: 'checking', total: 3,
-      progress: { evidence: evidence([{ ...likely, tier: { kind: 'confirmed-image' } }]), settled: ['earth-search'] as never, pendingProfiles: [] } } });
-    expect(row('photo').querySelector(`[data-pass="${keyOf(likely)}"]`)).not.toBeNull();
-    expect(row('likely').querySelector(`[data-pass="${keyOf(likely)}"]`)).toBeNull();
+    expect(onSelect).toHaveBeenCalledWith(keyOf(likely));
+    document.body.replaceChildren();
+    mounted([likely, other], context(), { selectedKey: keyOf(likely) });
+    expect([...row('likely').querySelectorAll('.is-selected')].map((el) => el.getAttribute('data-pass'))).toEqual([keyOf(likely)]);
   });
 
   it('draws an upcoming pass right of NOW on the overhead row, styled as an opportunity', () => {
@@ -243,12 +219,9 @@ describe('orbital timeline dock', () => {
   it('draws one unbroken daylight band for a polar point in continuous daylight', () => {
     const june = Date.UTC(2026, 5, 21);
     const polar = { lat: 80, lon: 15 };
-    const page = new OrbitalWatchPage({ onClose: vi.fn(), onRetry: vi.fn() });
-    pages.push(page);
-    page.open(polar, null);
     const window = { startMs: june - 7 * DAY, endMs: june + 72 * HOUR };
     const found = { ...lookup([], polar), window, nowMs: june, daylight: daylightSpans(polar, window) };
-    page.render({ kind: 'passes', lookup: found, archives: { kind: 'answered', evidence: evidence([]) } });
+    mounted([], context(), { found });
     const bands = timeline().querySelectorAll<HTMLElement>('.ow-tl-daylight');
     expect(bands).toHaveLength(1);
     expect(bands[0]!.style.left).toBe('0.000%');

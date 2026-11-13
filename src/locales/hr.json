@@ -5196,6 +5196,90 @@
     },
     "dailyMosaics": "dnevni mozaici",
     "weatherFrames": "meteorološke snimke",
+    "ui": {
+      "change": "Promijeni",
+      "share": "Podijeli",
+      "shareCopied": "Poveznica kopirana",
+      "headline": "U posljednjih {{days}} dana iznad {{place}} prošlo je: {{satellites}}.",
+      "satellites": "{{count}} satelita",
+      "subline": "Objavljeno snimaka: {{count}}.",
+      "closestLook": "Najbliži pogled",
+      "replay": "Reproduciraj",
+      "openFull": "Otvori puni prikaz",
+      "previous": "Prethodna snimka",
+      "next": "Sljedeća snimka",
+      "passes": "prelazaka",
+      "showAll": "Prikaži sve prelaske",
+      "noRecentDays": "Nema nedavnih dana u arhivi: {{sources}}",
+      "tab": {
+        "all": "Sve",
+        "detailed": "Detaljno",
+        "weather": "Vrijeme"
+      },
+      "caption": {
+        "clear": "Vedro",
+        "clouded": "Oblačno · {{pct}} %",
+        "cloudShadow": "Sjena oblaka",
+        "spotNotChecked": "Mjesto nije provjereno za oblake",
+        "sceneCloud": "Naoblaka scene {{pct}} % · mjesto nije provjereno",
+        "radar": "Radarska snimka",
+        "dailyMosaic": "Dnevni mozaik",
+        "geostationary": "Geostacionarni puni disk",
+        "geostationaryCadence": "Geostacionarni · svakih {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Snimka nedostupna · {{archive}}",
+        "noPreview": "Arhiva još nema pregled ove scene"
+      },
+      "grid": {
+        "watched": "Promatrano",
+        "watchedDef": "Javna arhiva ima snimku ovog mjesta.",
+        "likely": "Vjerojatno promatrano",
+        "likelyDef": "Senzor fiksnog pojasa ga je pokrio; snimka još nije objavljena.",
+        "could": "Mogao je ciljati ovamo",
+        "couldDef": "Usmjerivi ili komercijalni senzor bio je u dometu; operater ne kaže je li gledao.",
+        "overhead": "Prošao iznad",
+        "overheadDef": "Prešao je nebo ovdje, bez dokaza snimanja."
+      },
+      "group": {
+        "watched": "promatranih",
+        "likely": "vjerojatno promatranih",
+        "upcoming": "nadolazećih",
+        "could": "koji su mogli ciljati ovamo",
+        "overhead": "iznad mjesta",
+        "weather": "izvori vremena"
+      },
+      "order": {
+        "closest": "Najbliži pogled, zatim najnoviji",
+        "newest": "Najnoviji prvo",
+        "soonest": "Najbliži prvo"
+      },
+      "row": {
+        "cloud": "Oblaci {{pct}} %",
+        "days": "Dana: {{count}}",
+        "repeats": "Prelasci ovog satelita u skupini: {{count}}"
+      },
+      "section": {
+        "summary": "Sažetak",
+        "passes": "Prelasci"
+      },
+      "status": {
+        "objects": "Objekti: {{count}} · CelesTrak GP",
+        "fetched": "Dohvaćeno {{time}} · {{ago}}",
+        "sun": "Sunce {{point}} · podsolarna točka"
+      },
+      "step": {
+        "computing": "Izračun",
+        "catalogLoading": "Katalog · učitavanje",
+        "catalog": "Katalog · objekti: {{count}}",
+        "propagating": "Propagacija orbita · {{done}} / {{total}}",
+        "archives": "Arhive · odgovorilo {{done}} / {{total}}",
+        "matching": "Uparivanje scena s prelascima: {{passes}}",
+        "window": "7-dnevni prozor · {{start}} → {{end}}",
+        "failed": "Neuspjelo",
+        "note": "Planetary Computer i NASA GIBS izrađuju snimke na zahtjev, pa ovaj korak može potrajati nekoliko sekundi."
+      }
+    },
     "timeline": {
       "now": "sada",
       "nowAt": "Sada: {{time}}",

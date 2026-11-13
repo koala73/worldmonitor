@@ -5157,6 +5157,90 @@
     },
     "dailyMosaics": "picha mseto za kila siku",
     "weatherFrames": "picha za hali ya hewa",
+    "ui": {
+      "change": "Badilisha",
+      "share": "Shiriki",
+      "shareCopied": "Kiungo kimenakiliwa",
+      "headline": "Katika siku {{days}} zilizopita, {{satellites}} zilipita juu ya {{place}}.",
+      "satellites": "setilaiti {{count}}",
+      "subline": "Picha {{count}} zilitolewa hadharani.",
+      "closestLook": "Mtazamo wa karibu zaidi",
+      "replay": "Rudia",
+      "openFull": "Fungua mwonekano kamili",
+      "previous": "Picha iliyotangulia",
+      "next": "Picha inayofuata",
+      "passes": "mapito",
+      "showAll": "Onyesha mapito yote",
+      "noRecentDays": "Hakuna siku za karibuni kwenye hifadhi: {{sources}}",
+      "tab": {
+        "all": "Zote",
+        "detailed": "Kina",
+        "weather": "Hali ya hewa"
+      },
+      "caption": {
+        "clear": "Wazi",
+        "clouded": "Mawingu · {{pct}}%",
+        "cloudShadow": "Kivuli cha wingu",
+        "spotNotChecked": "Mahali hapajakaguliwa kwa mawingu",
+        "sceneCloud": "Mawingu ya tukio {{pct}}% · mahali hapajakaguliwa",
+        "radar": "Rada",
+        "dailyMosaic": "Mozaiki ya kila siku",
+        "geostationary": "Diski nzima ya geostationary",
+        "geostationaryCadence": "Geostationary · kila dakika {{minutes}}"
+      },
+      "tile": {
+        "failed": "Picha haipatikani · {{archive}}",
+        "noPreview": "Hifadhi bado haina hakikisho la tukio hili"
+      },
+      "grid": {
+        "watched": "Imeonwa",
+        "watchedDef": "Hifadhi ya umma ina picha ya mahali hapa.",
+        "likely": "Huenda imeonwa",
+        "likelyDef": "Kihisi cha ukanda usiobadilika kilifunika; bado hakuna picha iliyochapishwa.",
+        "could": "Ingeweza kulenga hapa",
+        "couldDef": "Kihisi kinachoelekezwa au cha kibiashara kilikuwa karibu; mwendeshaji hasemi kama kiliangalia.",
+        "overhead": "Ilipita juu",
+        "overheadDef": "Ilivuka anga hapa, bila ushahidi wa picha."
+      },
+      "group": {
+        "watched": "zilizoonwa",
+        "likely": "huenda zimeonwa",
+        "upcoming": "zijazo",
+        "could": "zingeweza kulenga hapa",
+        "overhead": "zilizopita juu",
+        "weather": "vyanzo vya hali ya hewa"
+      },
+      "order": {
+        "closest": "Mtazamo wa karibu, kisha mpya zaidi",
+        "newest": "Mpya zaidi kwanza",
+        "soonest": "Za karibu zaidi kwanza"
+      },
+      "row": {
+        "cloud": "Mawingu {{pct}}%",
+        "days": "siku {{count}}",
+        "repeats": "mapito {{count}} ya setilaiti hii kwenye kundi"
+      },
+      "section": {
+        "summary": "Muhtasari",
+        "passes": "Mapito"
+      },
+      "status": {
+        "objects": "vitu {{count}} · CelesTrak GP",
+        "fetched": "Imepakuliwa {{time}} · {{ago}}",
+        "sun": "Jua {{point}} · nukta chini ya jua"
+      },
+      "step": {
+        "computing": "Inakokotoa",
+        "catalogLoading": "Katalogi · inapakia",
+        "catalog": "Katalogi · vitu {{count}}",
+        "propagating": "Inakokotoa mizunguko · {{done}} / {{total}}",
+        "archives": "Hifadhi · {{done}} / {{total}} zimejibu",
+        "matching": "Inalinganisha matukio na mapito {{passes}}",
+        "window": "Kipindi cha siku 7 · {{start}} → {{end}}",
+        "failed": "Imeshindwa",
+        "note": "Planetary Computer na NASA GIBS huunda picha zinapoombwa, kwa hivyo hatua hii inaweza kuchukua sekunde chache."
+      }
+    },
     "timeline": {
       "now": "sasa",
       "nowAt": "Sasa: {{time}}",

@@ -5269,6 +5269,90 @@
     },
     "dailyMosaics": "فسيفساء يومية",
     "weatherFrames": "صور الطقس",
+    "ui": {
+      "change": "تغيير",
+      "share": "مشاركة",
+      "shareCopied": "تم نسخ الرابط",
+      "headline": "خلال آخر {{days}} أيام، مرّ {{satellites}} فوق {{place}}.",
+      "satellites": "{{count}} قمرًا صناعيًا",
+      "subline": "نُشرت {{count}} صورة.",
+      "closestLook": "أقرب لقطة",
+      "replay": "إعادة العرض",
+      "openFull": "فتح العرض الكامل",
+      "previous": "الصورة السابقة",
+      "next": "الصورة التالية",
+      "passes": "مرورًا",
+      "showAll": "عرض كل المرورات",
+      "noRecentDays": "لا أيام حديثة في الأرشيف: {{sources}}",
+      "tab": {
+        "all": "الكل",
+        "detailed": "مفصّل",
+        "weather": "الطقس"
+      },
+      "caption": {
+        "clear": "صافٍ",
+        "clouded": "غائم · {{pct}}٪",
+        "cloudShadow": "ظل سحابة",
+        "spotNotChecked": "لم تُفحص النقطة بحثًا عن السحب",
+        "sceneCloud": "غيوم المشهد {{pct}}٪ · لم تُفحص النقطة",
+        "radar": "رادار",
+        "dailyMosaic": "فسيفساء يومية",
+        "geostationary": "قرص كامل ثابت بالنسبة للأرض",
+        "geostationaryCadence": "ثابت بالنسبة للأرض · كل {{minutes}} دقيقة"
+      },
+      "tile": {
+        "failed": "الصورة غير متاحة · {{archive}}",
+        "noPreview": "لا يملك الأرشيف معاينة لهذا المشهد بعد"
+      },
+      "grid": {
+        "watched": "مرصود",
+        "watchedDef": "يحتفظ أرشيف عام بصورة لهذه النقطة.",
+        "likely": "مرصود على الأرجح",
+        "likelyDef": "غطّاها مستشعر بشريط ثابت؛ لم تُنشر صورة بعد.",
+        "could": "كان يمكن أن يوجَّه هنا",
+        "couldDef": "كان مستشعر قابل للتوجيه أو تجاري في المدى؛ لا يذكر المشغّل إن كان قد نظر.",
+        "overhead": "مرّ فوقها",
+        "overheadDef": "عبر السماء هنا دون دليل على التصوير."
+      },
+      "group": {
+        "watched": "مرصودة",
+        "likely": "مرصودة على الأرجح",
+        "upcoming": "قادمة",
+        "could": "كان يمكن توجيهها هنا",
+        "overhead": "مرّت فوقها",
+        "weather": "مصادر الطقس"
+      },
+      "order": {
+        "closest": "أقرب لقطة ثم الأحدث",
+        "newest": "الأحدث أولًا",
+        "soonest": "الأقرب أولًا"
+      },
+      "row": {
+        "cloud": "غيوم {{pct}}٪",
+        "days": "{{count}} يومًا",
+        "repeats": "{{count}} مرورًا لهذا القمر في هذه المجموعة"
+      },
+      "section": {
+        "summary": "الملخص",
+        "passes": "المرورات"
+      },
+      "status": {
+        "objects": "{{count}} جسمًا · CelesTrak GP",
+        "fetched": "جُلب {{time}} · {{ago}}",
+        "sun": "الشمس {{point}} · النقطة تحت الشمسية"
+      },
+      "step": {
+        "computing": "جارٍ الحساب",
+        "catalogLoading": "الكتالوج · جارٍ التحميل",
+        "catalog": "الكتالوج · {{count}} جسمًا",
+        "propagating": "حساب المدارات · {{done}} / {{total}}",
+        "archives": "الأرشيفات · أجاب {{done}} / {{total}}",
+        "matching": "مطابقة المشاهد مع {{passes}} مرورًا",
+        "window": "نافذة 7 أيام · {{start}} → {{end}}",
+        "failed": "فشل",
+        "note": "يولّد Planetary Computer وNASA GIBS الصور عند الطلب، لذا قد تستغرق هذه الخطوة بضع ثوانٍ."
+      }
+    },
     "timeline": {
       "now": "الآن",
       "nowAt": "الآن: {{time}}",
