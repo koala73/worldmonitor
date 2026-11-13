@@ -349,14 +349,19 @@ export function reticle(): HTMLElement {
 
 function frameImage(look: YearlyLook): DomChild {
   if (!look.imageUrl || !isAllowedPreviewUrl(look.imageUrl)) return null;
-  return h('img', {
+  const image = h('img', {
     className: 'oiv-image',
     src: look.imageUrl,
     alt: t('orbitalWatch.viewer.imageAlt', { name: platformName(look), time: `${dayMonth(look.timeMs)} ${look.year}` }),
     decoding: 'async',
     referrerpolicy: 'no-referrer',
     draggable: 'false',
-  });
+  }) as HTMLImageElement;
+  if (!image.complete) {
+    image.classList.add('oiv-pending');
+    image.addEventListener('load', () => image.classList.remove('oiv-pending'), { once: true });
+  }
+  return image;
 }
 
 function skeleton(label: string): HTMLElement {

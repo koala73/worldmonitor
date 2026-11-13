@@ -197,7 +197,7 @@ function sceneImage(scene: ViewerScene, className: string): DomChild {
 }
 
 function metaCell(label: string, value: string, unit: string | null = null): HTMLElement {
-  return h('div', null, h('dt', null, label), h('dd', null, value, unit ? h('small', null, unit) : null));
+  return h('div', null, h('dt', null, label), h('dd', { className: /\d/.test(value) ? undefined : 'oiv-meta-text' }, value, unit ? h('small', null, unit) : null));
 }
 
 /** A full-screen viewer over the lookup sheet: one large crop with its metadata, and a before/after slider. */
@@ -422,7 +422,7 @@ export class OrbitalImageViewer {
       tabs,
       ...(this.mode === 'change' ? this.renderDates() : [this.renderMeta(scene)]),
       this.renderHistoryNote(),
-      timelapse ? h('div', { className: 'oiv-actions', style: 'margin-top: 16px' }, timelapse) : null);
+      timelapse ? h('div', { className: 'oiv-actions' }, timelapse) : null);
   }
 
   private renderMeta(scene: ViewerScene): HTMLElement {

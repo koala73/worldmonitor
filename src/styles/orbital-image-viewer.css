@@ -61,6 +61,8 @@
 .oiv-meta div { padding: 10px 0; border-bottom: 1px solid var(--oiv-line-soft); }
 .oiv-meta dt { color: var(--oiv-dim); }
 .oiv-meta dd { margin: 4px 0 0; font: 500 18px/22px var(--font-mono, monospace); font-variant-numeric: tabular-nums; }
+.oiv-meta dd.oiv-meta-text { font: 500 13px/18px system-ui, sans-serif; }
+.oiv-image.oiv-pending { visibility: hidden; }
 .oiv-meta dd small { margin-left: 3px; color: var(--oiv-dim); font-size: 11px; }
 .oiv-slider .oiv-after { clip-path: inset(0 0 0 var(--oiv-divider, 50%)); }
 .oiv-slider::after { content: ''; position: absolute; top: 0; bottom: 0; left: var(--oiv-divider, 50%); width: 2px; margin-left: -1px; background: var(--oiv-accent); pointer-events: none; }
@@ -72,6 +74,7 @@
 .oiv-date[aria-pressed="true"] { color: var(--oiv-text); box-shadow: inset 2px 0 0 var(--oiv-accent); background: rgba(255, 255, 255, 0.03); }
 .oiv-date-cloud { color: var(--ow-cloud, #9aa3ad); }
 .oiv-toggle { margin-top: 12px; align-self: flex-start; }
+.oiv-side > .oiv-actions:last-child { margin: 16px 0 0; }
 .oiv-toggle[aria-pressed="true"] { border-color: var(--oiv-accent); }
 .otl-year { position: absolute; left: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; background: rgba(11, 12, 14, 0.82); }
 .otl-year-number { font: 500 36px/1 var(--font-mono, monospace); font-variant-numeric: tabular-nums; }
