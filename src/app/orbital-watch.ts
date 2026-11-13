@@ -68,16 +68,11 @@ function drawTimeline(): void {
   if (timeline.element.parentElement !== slot) slot.replaceChildren(timeline.element);
 }
 
-/** A glyph picks its pass: the sheet row takes focus and the pass detail hears which pass it was. */
+/** A glyph picks its pass the same way a sheet row does, so the pass detail and the row follow. */
 function selectTimelinePass(key: string): void {
-  const pass = timelinePasses?.passes.find((candidate) => `${candidate.noradId}:${candidate.timeMs}` === key);
-  if (!pass || !timeline) return;
   selectedPass = key;
+  page?.select(key);
   drawTimeline();
-  const row = document.querySelector<HTMLElement>(`.orbital-watch-sheet .ow-row[data-key="pass:${CSS.escape(key)}"]`);
-  row?.scrollIntoView?.({ block: 'nearest' });
-  row?.focus({ preventScroll: true });
-  timeline.element.dispatchEvent(new CustomEvent('orbital-watch:select-pass', { bubbles: true, detail: { noradId: pass.noradId, timeMs: pass.timeMs } }));
 }
 
 /** Renders the sheet and keeps the timeline dock on the same passes, with archive tiers as soon as any archive answers. */
