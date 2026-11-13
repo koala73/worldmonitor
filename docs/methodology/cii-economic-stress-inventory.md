@@ -4,13 +4,21 @@ noindex: true
 
 # CII economic-stress input inventory
 
-## Decision required: U20 / OQ9
+## OQ9 owner ruling — 13 November 2026
 
-The existing inputs do **not** supply two independent economic series for all 31 scored countries. No candidate below covers all 31 even before freshness and trailing-history checks. U20 stops here for the owner's OQ9 ruling. No economic-stress producer, score change, new upstream source or deployment is included.
+The owner approved partial coverage after this inventory found no two independent series covering all 31 countries. The selected members are currency depreciation, consumer-price inflation acceleration and the 10-year government yield, each measured against the country's own trailing level. CPI mirrors count as one member.
 
-The decision must specify how to handle countries with no usable member. The current plan requires the producer to refuse publication in that case. Missing observations cannot be converted to zero stress. A peg does not establish that price stress is zero. Different mirrors of the same CPI series do not count as independent evidence.
+A country with at least one fresh member is measured. A country with none is published with `measured: false`, scored without the family, and labelled **economic stress not measured** in the response and methodology page. Missing or stale members are absent, never zero. A held peg is an observed zero currency move. The United States, Germany and France have no currency member.
 
-**Owner ruling: pending.** This inventory is the decision input, not completion of U20's producer or live acceptance. If full 31-country coverage remains mandatory, identify qualifying public series for the uncovered countries before implementation. If coverage may differ, amend the publication and missing-data contract explicitly before implementing it.
+Freshness limits are 7 days for currency, 4 months for monthly inflation, 7 months for quarterly inflation, and 3 months for monthly yields. U18 may tighten these limits; loosening them requires the owner. U18 must show that member count alone does not increase a country's score. An unreadable input key or an incorrect country list still refuses publication; a country without a member does not.
+
+The unmeasured released countries are KP, CU, SY, YE, MM and AF. Cuba and North Korea receive no economic term despite economic distress; the methodology page must state this cost. Among the six additions, PH, TH, ID, VN and MY have inflation and currency; KH has neither fresh.
+
+The GET-only refresh begun **2026-11-13T05:25:57.688Z** confirms 25/31 with at least one fresh source observation under these limits. This is source coverage, not proof that the unpublished currency monthly path or every derived member is ready. The producer must verify sufficient history separately. Monthly and quarterly dates represent observation periods; their end dates determine age.
+
+**Health threshold check:** keep the owner's threshold of fewer than 25 measured countries. India's CPI ends in July 2026, but its currency observation is dated 2026-11-12. Removing India's inflation member alone still leaves 25 measured countries. Normal CPI publication lag therefore does not trigger this count alarm while currency stays fresh. Member-level absence remains visible; a later loss of all fresh members must alarm. Do not lower the threshold automatically to match an outage.
+
+This ruling unblocks U20's producer; it does not complete its implementation or live acceptance. The original inventory below remains a dated record of the inputs examined.
 
 ## Evidence and limits
 
@@ -172,6 +180,6 @@ Recorded exceptions include Bank of Canada reuse with attribution, SSB CC BY 4.0
 
 Existing IMF access supports an optional subscription header; FRED, EIA, e-Stat, retail search and some electricity paths use existing credentials. Reading their already-seeded keys introduces no new upstream subscription, but their access requirements must remain visible in the source decision. No new paid or key-gated source is proposed.
 
-## Required OQ9 record before the producer
+## Remaining producer verification
 
-Record the selected independent members, per-country coverage rule, observation-age limits, history windows, peg/shared-currency treatment and missing-input behavior. Retain the plan's refusal-to-publish rule unless the owner explicitly changes it. Then implement and test the producer against those decisions. The 37-country matrix must be refreshed when capturing U21 fixtures; this inventory is a dated observation, not a continuing coverage guarantee.
+Retain the currency monthly bars already fetched by `seed-fx-yoy.mjs`. Derive the selected members from existing keys with observation dates and explicit fresh/absent states. Verify sufficient trailing history, peg/shared-currency behavior, CPI mirror selection, stale-member exclusion, unreadable-input preservation and the 25-country health threshold. Refresh the 37-country matrix when capturing U21 fixtures; this inventory is not a continuing coverage guarantee.
