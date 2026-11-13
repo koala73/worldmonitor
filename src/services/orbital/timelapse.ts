@@ -5,10 +5,10 @@ import { cropBox, planetaryComputerCropUrl } from './crop-url';
 import { assembleEvidence, type MatchedAcquisition } from './match';
 
 const DAY_MS = 86_400_000;
-/** How far back the date strip and the time-lapse look. */
+/** How far back the compare dates look. */
 export const HISTORY_DAYS = 60;
-/** Scene-wide cloud below which a scene counts as clear enough to compare or animate. */
-export const LOW_CLOUD_PCT = 20;
+/** Cloud over the scene at or above which a look would mostly show cloud. */
+export const CLEAR_LOOK_CLOUD_PCT = 30;
 /** The compare picker prefers a scene at least this far from the one being viewed. */
 export const COMPARE_MIN_GAP_DAYS = 30;
 export const MIN_TIMELAPSE_FRAMES = 4;
@@ -49,23 +49,16 @@ export interface DatedScene {
   imageUrl: string | null;
 }
 
-export const isLowCloud = (scene: DatedScene): boolean =>
-  !scene.cloudApplies || (scene.cloudCoverPct !== null && scene.cloudCoverPct < LOW_CLOUD_PCT);
+export const isClearScene = (scene: DatedScene): boolean =>
+  !scene.cloudApplies || (scene.cloudCoverPct !== null && scene.cloudCoverPct < CLEAR_LOOK_CLOUD_PCT);
 
 const gapMs = (a: DatedScene, b: DatedScene) => Math.abs(a.timeMs - b.timeMs);
 
-/** The nearest low-cloud scene at least 30 days away, else the nearest other scene. */
+/** The nearest clear scene at least 30 days away, else the nearest other scene. */
 export function defaultCompareScene<T extends DatedScene>(selected: DatedScene, candidates: readonly T[]): T | null {
   const others = candidates.filter((scene) => scene.key !== selected.key);
   const nearest = (pool: readonly T[]) => pool.reduce<T | null>((best, scene) => (!best || gapMs(scene, selected) < gapMs(best, selected) ? scene : best), null);
-  return nearest(others.filter((scene) => isLowCloud(scene) && gapMs(scene, selected) >= COMPARE_MIN_GAP_DAYS * DAY_MS)) ?? nearest(others);
-}
-
-/** Low-cloud scenes with an image from the prior 60 days, oldest first. */
-export function timelapseFrames<T extends DatedScene>(scenes: readonly T[], nowMs: number): T[] {
-  return scenes
-    .filter((scene) => scene.imageUrl && isLowCloud(scene) && scene.timeMs <= nowMs && scene.timeMs >= nowMs - HISTORY_DAYS * DAY_MS)
-    .sort((a, b) => a.timeMs - b.timeMs);
+  return nearest(others.filter((scene) => isClearScene(scene) && gapMs(scene, selected) >= COMPARE_MIN_GAP_DAYS * DAY_MS)) ?? nearest(others);
 }
 
 export type LoadImage = (url: string, signal: AbortSignal) => Promise<void>;
@@ -116,8 +109,6 @@ export async function preloadFrames<T extends { imageUrl: string | null }>(
 
 /** The first year Sentinel-2 imaged anywhere. */
 export const FIRST_LOOK_YEAR = 2015;
-/** Cloud over the scene above which a year's look is not clear enough to keep. */
-export const CLEAR_LOOK_CLOUD_PCT = 30;
 /** Each year searches a different quarter, so the run of looks crosses every season. */
 const SEASON_START_MONTH = [9, 0, 3, 6];
 const SEASON_MONTHS = 3;

@@ -7,6 +7,7 @@ import { describePointCondition, type MatchedAcquisition, type OrbitalEvidence }
 import {
   CLEAR_LOOK_CLOUD_PCT,
   defaultCompareScene,
+  isClearScene,
   HISTORY_DAYS,
   searchSceneHistory,
   type DatedScene,
@@ -150,8 +151,7 @@ type HistoryState =
 
 type ViewerMode = 'image' | 'change';
 
-/** One acquisition per sensing time: the lookup's scenes and the history search can return the same acquisition. */
-/** Only crops requested for this point's box in a latitude-longitude grid line up, so only they compare. */
+/** One acquisition per sensing time, since the lookup and the history search can return the same one. Only crops requested for this point's box in a latitude-longitude grid line up, so only they compare. */
 function mergeScenes(collection: string, ...sources: ViewerScene[][]): ViewerScene[] {
   const merged: ViewerScene[] = [];
   for (const scene of sources.flat()) {
@@ -162,8 +162,6 @@ function mergeScenes(collection: string, ...sources: ViewerScene[][]): ViewerSce
   return merged.sort((a, b) => b.timeMs - a.timeMs);
 }
 
-/** Cloud at or above which a scene would mostly compare cloud. */
-const isClearEnough = (scene: DatedScene) => !scene.cloudApplies || (scene.cloudCoverPct !== null && scene.cloudCoverPct <= CLEAR_LOOK_CLOUD_PCT);
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 const shortDate = (ms: number) => {
@@ -189,7 +187,7 @@ function ago(ms: number, nowMs: number): string {
 function cloudWord(scene: ViewerScene): string | null {
   if (!scene.cloudApplies) return null;
   if (scene.cloudCoverPct === null) return null;
-  return scene.cloudCoverPct <= CLEAR_LOOK_CLOUD_PCT ? t('orbitalWatch.viewer.clear') : t('orbitalWatch.viewer.clouded', { pct: Math.round(scene.cloudCoverPct) });
+  return scene.cloudCoverPct < CLEAR_LOOK_CLOUD_PCT ? t('orbitalWatch.viewer.clear') : t('orbitalWatch.viewer.clouded', { pct: Math.round(scene.cloudCoverPct) });
 }
 
 function sceneImage(scene: ViewerScene, className: string): DomChild {
@@ -292,11 +290,11 @@ export class OrbitalImageViewer {
   /** Scenes that can sit beside the selected one; cloudy dates are left out unless asked for, since they would only compare cloud. */
   private get compareCandidates(): ViewerScene[] {
     if (this.subject.selected.grid !== 'north-up') return [];
-    return this.scenes.filter((scene) => scene.key !== this.subject.selected.key && (this.showCloudy || isClearEnough(scene)) && !this.failedUrls.has(scene.imageUrl!));
+    return this.scenes.filter((scene) => scene.key !== this.subject.selected.key && (this.showCloudy || isClearScene(scene)) && !this.failedUrls.has(scene.imageUrl!));
   }
 
   private get hiddenCloudyCount(): number {
-    return this.scenes.filter((scene) => scene.key !== this.subject.selected.key && !isClearEnough(scene)).length;
+    return this.scenes.filter((scene) => scene.key !== this.subject.selected.key && !isClearScene(scene)).length;
   }
 
   private get compareKey(): string | null {
