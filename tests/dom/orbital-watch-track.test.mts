@@ -58,7 +58,7 @@ const lookup = (): PointPassLookup => ({
 function acquisition(p: PointPass): MatchedAcquisition {
   const platform = p.name.toLowerCase().replace(' ', '-');
   return {
-    key: `${platform}:${p.timeMs}`, platform, profileId: p.profileId as MatchedAcquisition['profileId'], orbit: null, startMs: p.timeMs, endMs: p.timeMs, items: [],
+    key: `${platform}:${p.timeMs}`, platform, profileId: p.profileId as MatchedAcquisition['profileId'], orbit: null, startMs: p.timeMs, endMs: p.timeMs + 20 * 60_000, items: [],
     pass: { noradId: p.noradId, timeMs: p.timeMs }, condition: 'clear', cloudCoverPct: 2, sunElevationDeg: 50, resolutionM: 10,
     imageUrl: `https://planetarycomputer.microsoft.com/api/data/v1/item/bbox/${platform}.png`,
   };

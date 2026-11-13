@@ -9,9 +9,9 @@ export function formatTargetCoordinates(point: { lat: number; lon: number }): st
   return `${lat} ${lon}`;
 }
 
-/** `ACQUIRED Sun, 8 Nov · 07:11 UTC · 10 M`: the image time in the lookup's display zone and its ground resolution. */
-export function formatAcquiredLine(acquisition: Pick<MatchedAcquisition, 'startMs' | 'endMs' | 'resolutionM'>): string {
-  const time = formatOrbitalTime((acquisition.startMs + acquisition.endMs) / 2, 'when');
+/** `ACQUIRED Sun, 8 Nov · 07:11 UTC · 10 M`: the image's start, as its card shows it, in the lookup's display zone and its ground resolution. */
+export function formatAcquiredLine(acquisition: Pick<MatchedAcquisition, 'startMs' | 'resolutionM'>): string {
+  const time = formatOrbitalTime(acquisition.startMs, 'when');
   const resolution = acquisition.resolutionM >= 1000 ? `${Math.round(acquisition.resolutionM / 1000)} KM` : `${Math.round(acquisition.resolutionM)} M`;
   return t('orbitalWatch.replay.acquired', { time, resolution });
 }
