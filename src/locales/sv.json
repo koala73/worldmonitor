@@ -4507,7 +4507,8 @@
     "createAccount": "Skapa konto",
     "freeReason": "Gratis: spara layout, följ länder, aviseringar",
     "settings": "Inställningar",
-    "passkeyOffer": {}
+    "passkeyOffer": {},
+    "planBilling": "Plan & fakturering"
   },
   "mcp": {
     "connectPanel": "Anslut MCP",
@@ -5154,6 +5155,207 @@
     "signOutFailed": "Det gick inte att logga ut. Försök igen.",
     "search": {
       "empty": "Inga inställningar matchar"
+    },
+    "account": {
+      "intro": "Se din aktuella plan och hantera betalningsuppgifter, fakturor eller uppsägning.",
+      "planFree": "Gratis",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Premiumåtkomst",
+        "desc": "Denna åtkomst faktureras inte via ditt WorldMonitor-konto. Ingen betalningsmetod eller fakturor är tillgängliga här."
+      },
+      "checking": {
+        "heading": "Kontrollerar din plan…",
+        "desc": "Detta tar vanligtvis bara ett ögonblick."
+      },
+      "status": {
+        "cancelScheduled": "Uppsägning planerad – åtkomst till {{date}}",
+        "renews": "Förnyar: {{date}}",
+        "onHold": "Pausad – uppdatera din betalningsmetod",
+        "cancelled": "Uppsagd – åtkomst till {{date}}",
+        "expired": "Utgången",
+        "unknown": "Se Hantera fakturering för detaljer om din aktuella plan.",
+        "ownerManaged": "Faktureringen hanteras av planägaren."
+      },
+      "upgradeToBusiness": "Uppgradera till Business",
+      "unavailable": {
+        "heading": "Planstatus ej tillgänglig",
+        "desc": "Vi kunde inte verifiera din aktuella plan. Försök igen eller visa planer i en ny flik."
+      },
+      "free": {
+        "heading": "WorldMonitor Gratis",
+        "desc": "Din aktuella plan är Gratis. Uppgradera för alla paneler, AI-analys och prioriterad datauppdatering."
+      },
+      "portal": {
+        "openFailed": "Kunde inte öppna faktureringportalen. Tillåt pop-ups och försök igen.",
+        "unavailable": "Faktureringportalen är ej tillgänglig. Mejla support@worldmonitor.app för hjälp."
+      },
+      "deletion": {
+        "heading": "Radera konto",
+        "desc": "Radera detta World Monitor-konto permanent. Prenumerationer avbryts omedelbart utan återbetalning av återstående förbetalt tid. API-nycklar, embed-nycklar och MCP-tokens slutar fungera. Faktureringsposter som krävs för redovisning, tvister och juridiska förfrågningar sparas tillsammans med de kundkontaktuppgifter de innehåller; de slutar namnge ditt inloggningskonto, men webhook-loggar från betalningsleverantörer som skrevs innan radering behåller de identifierare de levererades med. Instrumentpanelsinställningar och skrivbordsnyckelkedjehemliga koder på denna enhet raderas inte på distans.",
+        "dialogTitle": "Radera det här kontot?",
+        "dialogCopy": "Detta kan inte ångras. Prenumerationer avbryts, nycklar slutar fungera omedelbar, och faktureringsposter sparas för redovisning, tvister och juridiska förfrågningar – inklusive de kontaktuppgifter de innehåller. Logga ut på andra enheter och rensa den här enhetens webbplatsdata efteråt – dessa är utom serverens räckvidd.",
+        "phraseLabel": "Skriv {{phrase}} för att bekräfta",
+        "deleted": "Konto raderat. Logga ut på andra enheter och rensa den här enhetens webbplatsdata.",
+        "failed": "Kontoradering misslyckades. Försök igen."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} använd",
+        "invite": "Bjud in",
+        "inviting": "Bjuder in...",
+        "remove": "Ta bort",
+        "removing": "Tar bort...",
+        "inviteSent": "Inbjudan skickad",
+        "alreadyInvited": "Redan inbjuden"
+      },
+      "businessSeats": {
+        "heading": "Business-platser",
+        "statusAccepted": "Accepterad",
+        "statusExpired": "Utgången",
+        "statusPending": "Väntande",
+        "expires": "Utgår {{date}}",
+        "hintCorporate": "Bjud in lagkamrater på valfri företagsdomän.",
+        "hintPersonal": "Lägg till en företagse-postadress för att bjuda in lagkamrater.",
+        "personalDomain": "Gratis eller engångse-postdomäner kan inte bjuda in lagkamrater. Lägg till en företagse-postadress för att använda denna funktion.",
+        "empty": "Inga platser inbjudna än.",
+        "confirmRemove": "Ta bort denna plats? Den inbjudne förlorar Pro-åtkomst omedelbar.",
+        "removed": "Plats borttagen",
+        "alreadyInactive": "Platsen var redan inaktiv",
+        "loadFailed": "Misslyckades att ladda platser",
+        "inviteFailed": "Misslyckades att skicka inbjudan",
+        "removeFailed": "Misslyckades att ta bort plats",
+        "errors": {
+          "seatCap": "Alla 4 platser är använda. Ta bort en plats först.",
+          "ownerDomain": "Din kontoe-postadress måste vara en företagsdomän för att bjuda in lagkamrater.",
+          "self": "Du kan inte bjuda in dig själv.",
+          "inviteeDomain": "Den inbjudne e-postadressen måste vara en företagsdomän."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "{{account}} Enterprise-platser",
+        "memberHint": "Din kontoadministratör lägger till och tar bort personer på detta konto.",
+        "hintFull": "Alla platser används. Ta bort någon eller dra tillbaka en inbjudan för att frigöra en plats.",
+        "hintOpen": "Bjud in personer med företagse-postadress. De får en länk som är giltig i 14 dagar och delar denna konto's tilldelning.",
+        "emailLabel": "E-postadress att bjuda in",
+        "statusActive": "Aktiv",
+        "statusExpired": "Inbjudan utgången",
+        "statusInvited": "Inbjuden",
+        "emailFailed": "Inbjudane-posten kunde inte skickas. Kontrollera adressen och dra sedan tillbaka och bjud in på nytt.",
+        "inviteExpires": "Inbjudan utgår {{date}}",
+        "roleAdmin": "Administratör",
+        "you": "Du",
+        "withdraw": "Dra tillbaka",
+        "unknownEmail": "Okänd e-postadress",
+        "alreadyMember": "Redan medlem",
+        "confirmRemove": "Ta bort {{email}}? De förlorar Enterprise-åtkomst omedelbar.",
+        "confirmRemoveUnknown": "Ta bort denna person? De förlorar Enterprise-åtkomst omedelbar.",
+        "confirmWithdraw": "Dra tillbaka inbjudan till {{email}}?",
+        "confirmWithdrawUnknown": "Dra tillbaka inbjudan till denna adress?",
+        "removed": "Medlem borttagen",
+        "withdrawn": "Inbjudan tillbakadragen",
+        "loadFailed": "Kunde inte ladda platser. Försök igen.",
+        "inviteFailed": "Kunde inte skicka inbjudan. Försök igen.",
+        "removeFailed": "Kunde inte ta bort. Försök igen.",
+        "errors": {
+          "seatCap": "Alla platser är redan tagna. Ta bort någon eller dra tillbaka en inbjudan först.",
+          "inviteeDomain": "Bjud in en företagsadress. Kostnadsfria och engångsadresser accepteras inte.",
+          "self": "Du har redan en plats.",
+          "contractEnded": "Ditt Enterprise-avtal har upphört. Kontakta support för att förnya.",
+          "notAdmin": "Endast kontoadministratören kan hantera platser.",
+          "removeSelf": "Du kan inte ta bort din egen plats. Kontakta support för att byta administratör.",
+          "tooMany": "Bjud in högst 10 personer åt gången.",
+          "rateLimited": "Du har skickat maximalt antal inbjudningar per dag. Försök igen imorgon."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "layout",
+        "1": "widgets",
+        "2": "textstorlek",
+        "3": "återställ layout"
+      },
+      "sources": {
+        "0": "nyheter",
+        "1": "flöden",
+        "2": "RSS",
+        "3": "regioner",
+        "4": "nyhetsrapportering"
+      },
+      "notifications": {
+        "0": "aviseringar",
+        "1": "Telegram",
+        "2": "Slack",
+        "3": "e-post",
+        "4": "Discord",
+        "5": "webhook",
+        "6": "push"
+      },
+      "display": {
+        "0": "tema",
+        "1": "mörk",
+        "2": "ljus",
+        "3": "typsnitt",
+        "4": "språk",
+        "5": "textstorlek"
+      },
+      "map": {
+        "0": "glob",
+        "1": "leverantör",
+        "2": "tiles",
+        "3": "basbild"
+      },
+      "ai": {
+        "0": "LLM",
+        "1": "Ollama",
+        "2": "ramverk",
+        "3": "rubrikinne",
+        "4": "webbläsarmodell"
+      },
+      "video": {
+        "0": "stream",
+        "1": "automatisk uppspelning",
+        "2": "kvalitet",
+        "3": "live"
+      },
+      "apiKeys": {
+        "0": "nyckel",
+        "1": "token",
+        "2": "skrivbordsnyckel"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "inbäddningsnyckel"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "agenter",
+        "3": "ChatGPT",
+        "4": "klienter"
+      },
+      "sync": {
+        "0": "importera",
+        "1": "exportera",
+        "2": "säkerhetskopia",
+        "3": "moln"
+      },
+      "about": {
+        "0": "villkor",
+        "1": "sekretess",
+        "2": "licens",
+        "3": "juridik"
+      },
+      "account": {
+        "0": "plan",
+        "1": "fakturering",
+        "2": "prenumeration",
+        "3": "faktura",
+        "4": "platser",
+        "5": "logga ut",
+        "6": "ta bort konto"
+      }
     }
   }
 }

@@ -7,7 +7,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { initTestI18n } from './helpers/i18n.mts';
+import { initTestI18n, restoreEnglish, useCatalogue } from './helpers/i18n.mts';
+import fr from '@/locales/fr.json';
 import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AuthSession } from '@/services/auth-state';
 import type { SubscriptionInfo } from '@/services/billing';
@@ -250,6 +251,38 @@ describe('UnifiedSettings account card', () => {
     expect(page.querySelector('.billing-settings-intro p')?.textContent)
       .toBe('See your current plan and manage payment details, invoices, or cancellation.');
     expect(page.querySelector('[data-account-deletion]')).not.toBeNull();
+  });
+});
+
+describe('UnifiedSettings account page in French', () => {
+  beforeEach(async () => {
+    await useCatalogue('fr', fr);
+  });
+
+  afterEach(async () => {
+    await restoreEnglish();
+  });
+
+  it('renders the plan, billing, sign-out and deletion copy from the French catalogue', () => {
+    settings.open('account');
+    const page = document.querySelector<HTMLElement>('[data-settings-page="account"]')!;
+    const text = (selector: string) => page.querySelector(selector)?.textContent?.trim();
+    const renewsOn = new Date(mockSubscription!.currentPeriodEnd!).toLocaleDateString();
+
+    expect(fr.auth.planBilling).not.toBe('Plan & billing');
+    expect(text('.billing-settings-intro h3')).toBe(fr.auth.planBilling);
+    expect(text('.billing-settings-intro p')).toBe(fr.settings.account.intro);
+    expect(text('.upgrade-pro-status-line')).toBe(fr.settings.account.status.renews.replace('{{date}}', renewsOn));
+    expect(text('.manage-billing-btn')).toBe(fr.components.billingState.manageBilling);
+    expect(text('[data-settings-signout]')).toBe(fr.settings.signOut);
+    expect(text('.account-deletion-title')).toBe(fr.settings.account.deletion.heading);
+    expect(text('.account-deletion-desc')).toBe(fr.settings.account.deletion.desc);
+
+    page.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
+    const dialog = document.querySelector<HTMLElement>('.account-deletion-dialog')!;
+    expect(dialog.querySelector('.account-deletion-dialog-title')?.textContent).toBe(fr.settings.account.deletion.dialogTitle);
+    expect(dialog.querySelector('label')?.textContent).toBe(fr.settings.account.deletion.phraseLabel.replace('{{phrase}}', 'DELETE'));
+    expect(dialog.querySelector('[data-deletion-cancel]')?.textContent).toBe(fr.common.cancel);
   });
 });
 
