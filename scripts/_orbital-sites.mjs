@@ -39,7 +39,7 @@ export const countryKey = (countryCode) => `${ORBITAL_COUNTRY_KEY_PREFIX}${count
 
 const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 16);
 
-/** The archive answered, refused (stop the run, keep everything), or failed for this site only. */
+/** The archive refused service: the run stops and every record is kept. */
 export class ArchiveRefusal extends Error {}
 
 export function stacSearchBody(site, nowMs) {
