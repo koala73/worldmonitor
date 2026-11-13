@@ -1002,8 +1002,7 @@ export class UnifiedSettings {
   /** The panels that read as on in the Panels page, out of every panel it lists. */
   private panelCounts(): { on: number; total: number } {
     const pro = isProUser();
-    const entries = Object.entries(this.draftPanelSettings)
-      .filter(([key]) => (key !== 'runtime-config' || this.config.isDesktopApp) && !key.startsWith('cw-'));
+    const entries = this.listedPanelEntries();
     const on = entries.filter(([key, panel]) => {
       const resolvedPanel = ALL_PANELS[key] ? getEffectivePanelConfig(key, SITE_VARIANT) : panel;
       return panel.enabled && isPanelEntitled(key, resolvedPanel, pro);
@@ -1696,11 +1695,14 @@ export class UnifiedSettings {
     ];
   }
 
+  /** Every panel the Panels page can list, before the category and filter narrow it. */
+  private listedPanelEntries(): Array<[string, PanelConfig]> {
+    return Object.entries(this.draftPanelSettings)
+      .filter(([key]) => (key !== 'runtime-config' || this.config.isDesktopApp) && !key.startsWith('cw-'));
+  }
+
   private getVisiblePanelEntries(): Array<[string, PanelConfig]> {
-    const panelSettings = this.draftPanelSettings;
-    let entries = Object.entries(panelSettings)
-      .filter(([key]) => key !== 'runtime-config' || this.config.isDesktopApp)
-      .filter(([key]) => !key.startsWith('cw-'));
+    let entries = this.listedPanelEntries();
 
     if (this.activePanelCategory !== 'all') {
       const catDef = PANEL_CATEGORY_MAP[this.activePanelCategory];
