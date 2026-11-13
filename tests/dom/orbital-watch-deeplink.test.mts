@@ -295,10 +295,10 @@ describe('satellite pass share link', () => {
     expect(lookupMock).toHaveBeenCalledWith({ point: { lat: 48.86, lon: 2.29 } }, expect.anything());
   });
 
-  it('opens a valid link after the map has had time to render, at the rounded point, and hands its pass to the pass detail', async () => {
+  it('opens a valid link after the map has had time to render, at the rounded point, and selects its pass', async () => {
     vi.useFakeTimers();
     const linked = vi.fn();
-    document.addEventListener('orbital-watch:linked-pass', (event) => linked((event as CustomEvent).detail), { once: true });
+    document.addEventListener('orbital-watch:select', (event) => linked((event as CustomEvent).detail), { once: true });
     history.replaceState(null, '', '/dashboard?view=eu#orbital=48.86,2.29;40697-202611120600');
     const link = takeOrbitalShareLink();
     expect(location.hash).toBe('');

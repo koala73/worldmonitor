@@ -242,6 +242,9 @@ describe('overlay reload-contract gate', () => {
       'src/components/AboutYouCard.ts :: root',
       'src/components/IntelligenceGapBadge.ts :: overlay',
       'src/components/MobileWarningModal.ts :: this.element',
+      // Read-only satellite pass results; a reload only drops the lookup and
+      // an unsent place query, which is not saved work.
+      'src/components/OrbitalWatchPage.ts :: this.sheet',
       'src/components/RouteExplorer/KeyboardHelp.ts :: this.element',
       'src/components/SignalModal.ts :: this.element',
       'src/components/StoryModal.ts :: modalEl',

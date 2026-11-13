@@ -145,7 +145,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
 
   let release;
   holdArchives = new Promise((resolve) => { release = resolve; });
-  await open();
+  await openAtPlace();
   const pointText = await sheet.locator('.ow-place').innerText();
   log('picked point', pointText, 'target', PLACE.name);
   assertAtPlace(pointText);

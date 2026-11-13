@@ -61,7 +61,7 @@ function writeRoute(view: OrbitalView): void {
   }
 }
 
-/** A shared pass, once the lookup has it, goes to the pass detail; a pass no longer there gets a note. */
+/** A shared pass, once the lookup has it, is selected; a pass no longer there gets a note. */
 function applyLinkedPass(found: PointPassLookup): void {
   const wanted = linkedPass;
   linkedPass = null;
@@ -71,7 +71,7 @@ function applyLinkedPass(found: PointPassLookup): void {
     ? found.passes.find((pass) => pass.noradId === wanted.noradId && Math.abs(pass.timeMs - wanted.minuteMs) <= LINKED_PASS_TOLERANCE_MS)
     : undefined;
   if (match) {
-    document.querySelector('.orbital-watch-sheet')?.dispatchEvent(new CustomEvent('orbital-watch:linked-pass', { bubbles: true, detail: { noradId: match.noradId, timeMs: match.timeMs } }));
+    page?.select(`${match.noradId}:${match.timeMs}`);
     return;
   }
   tools!.showNote(t(inWindow ? 'orbitalWatch.share.passNotFound' : 'orbitalWatch.share.passOutsideWindow'));
