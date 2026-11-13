@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import i18next from 'i18next';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -268,6 +271,39 @@ describe('satellite pass lookup sheet', () => {
     mounted(answered(passes), null, 'full');
     expect(group('could')!.querySelector('.ow-group-count')!.textContent).toBe('900');
     expect(sheet().querySelectorAll('.ow-row')).toHaveLength(30);
+  });
+
+  it('selects a pass by key: opens the full view, expands its group, marks and focuses its row and announces it', () => {
+    const { all, commercial } = tiered();
+    mounted(answered(all));
+    const announced = vi.fn();
+    sheet().addEventListener('orbital-watch:select', (event) => announced((event as CustomEvent).detail));
+    expect(page().select(`${commercial.noradId}:${commercial.timeMs}`)).toBe(true);
+    expect(sheet().dataset.view).toBe('full');
+    expect(callbacks.onViewChange).toHaveBeenCalledWith('full');
+    expect(group('could')!.querySelector('.ow-group-toggle')!.getAttribute('aria-expanded')).toBe('true');
+    const row = rowOf(commercial.name);
+    expect(row.getAttribute('aria-current')).toBe('true');
+    expect(document.activeElement).toBe(row);
+    expect(announced).toHaveBeenCalledWith({ noradId: commercial.noradId, timeMs: commercial.timeMs });
+    expect(page().select('0:0')).toBe(false);
+  });
+
+  it('keeps the timeline dock on phones as a full-width, horizontally scrolling strip above the panel', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/styles/orbital-watch.css'), 'utf8');
+    const mobile = css.slice(css.indexOf('@media (max-width: 768px)'));
+    const dock = mobile.slice(mobile.indexOf('[data-view="full"] .ow-dock {'));
+    const rule = dock.slice(0, dock.indexOf('}'));
+    expect(rule).toMatch(/left: 0;/);
+    expect(rule).toMatch(/right: 0;/);
+    expect(rule).toMatch(/top: -\d+px;/);
+    expect(rule).toMatch(/overflow-x: auto;/);
+    expect(mobile).not.toMatch(/\.ow-dock[^{]*\{[^}]*display: none/);
+    mounted(answered(tiered().all), null, 'full');
+    page().slot('timeline').append(document.createElement('canvas'));
+    const slot = sheet().querySelector<HTMLElement>('.ow-dock[data-slot="timeline"]')!;
+    expect(slot.parentElement).toBe(sheet());
+    expect(slot.querySelector('canvas')).not.toBeNull();
   });
 
   it('filters the full list to a tier from the count grid', () => {
