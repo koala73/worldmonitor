@@ -294,6 +294,8 @@ describe('satellite pass share link', () => {
     scheduleOrbitalShareLink(takeOrbitalShareLink()!, 0, () => false);
     await vi.waitFor(() => expect(sheet()?.dataset.view).toBe('full'));
     expect(lookupMock).toHaveBeenCalledWith({ point: { lat: 48.86, lon: 2.29 } }, expect.anything());
+    // Raising the map to full screen resizes it, so the centre is set again once that has happened.
+    await vi.waitFor(() => expect(setCenter.mock.calls.filter(([lat, lon]) => lat === 48.9 && lon === 2.3)).toHaveLength(2));
   });
 
   it('opens a valid link after the map has had time to render, at the rounded point, and selects its pass', async () => {

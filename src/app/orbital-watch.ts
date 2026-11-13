@@ -188,10 +188,10 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, view }: { recentr
   tools!.clearShare();
   showSearchRow(false);
   setOrbitalLookupOpen(true);
-  if (recentre) orbitalLookupMap()?.setCenter(coarse(at.lat), coarse(at.lon), PLACE_ZOOM);
   if (sheet.isOpen && samePoint(point, at)) {
     sheet.setPlaceName(name);
     sheet.setView(view);
+    if (recentre) recentreOn(at, view);
     return;
   }
   point = at;
@@ -201,7 +201,15 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, view }: { recentr
   sheet.open(at, returnFocus, view);
   sheet.setPlaceName(name);
   if (view === 'full' || wasFull) onViewChange(view);
+  if (recentre) recentreOn(at, view);
   void start();
+}
+
+function recentreOn(at: GeoPoint, view: OrbitalView): void {
+  const centre = () => orbitalLookupMap()?.setCenter(coarse(at.lat), coarse(at.lon), PLACE_ZOOM);
+  centre();
+  // Raising the map to full screen resizes it after this frame, which moves its centre.
+  if (view === 'full') requestAnimationFrame(() => requestAnimationFrame(centre));
 }
 
 /** Opens the satellite pass lookup for a point. The point stays in the browser. */
