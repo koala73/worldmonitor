@@ -303,7 +303,7 @@ export const DOCS_PAGE_DATES: Record<string, { datePublished: string; dateModifi
   "corrections": {"datePublished":"2026-04-23","dateModified":"2026-10-16"},
   "cors": {"datePublished":"2026-03-11","dateModified":"2026-10-24"},
   "country-instability-index": {"datePublished":"2026-03-12","dateModified":"2026-11-11"},
-  "data-sources": {"datePublished":"2026-03-11","dateModified":"2026-11-13"},
+  "data-sources": {"datePublished":"2026-03-11","dateModified":"2026-11-12"},
   "decision-signal-provenance": {"datePublished":"2026-07-25","dateModified":"2026-07-26"},
   "desktop-app": {"datePublished":"2026-03-11","dateModified":"2026-11-04"},
   "documentation": {"datePublished":"2026-03-11","dateModified":"2026-10-25"},
