@@ -5297,10 +5297,13 @@ export class MapComponent {
     const projection = this.getProjection(width, height);
     const pos = projection([lon, lat]);
     const scale = Math.max(1, Math.min(10, zoom));
-    const centre = pos && projection.invert?.([pos[0] - offset.x / scale, pos[1] - offset.y / scale]);
-    if (!centre) return { lat, lon };
-    // The SVG map does not repeat, so a centre wrapped across the antimeridian would pan the place off screen.
-    return { lat: centre[1], lon: Math.abs(centre[0] - lon) > 180 ? lon : centre[0] };
+    if (!pos) return { lat, lon };
+    // One world is drawn, so a centre past the antimeridian would wrap to the far edge.
+    const west = projection([-180, 0])?.[0] ?? -Infinity;
+    const east = projection([180, 0])?.[0] ?? Infinity;
+    const x = Math.min(east - 1e-6, Math.max(west + 1e-6, pos[0] - offset.x / scale));
+    const centre = projection.invert?.([x, pos[1] - offset.y / scale]);
+    return centre ? { lat: centre[1], lon: centre[0] } : { lat, lon };
   }
 
   /** Where (lat, lon) is drawn in client coordinates, through the same translate and scale applyTransform() sets. */
