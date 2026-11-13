@@ -114,4 +114,3 @@ test('the default publisher uses one transaction and refuses activation on a met
   await assert.rejects(seedStructuralPrior({ fetchImpl, nowMs: NOW,
     activate: async () => assert.fail('failed transaction activated') }), /Atomic extra-key publish failed/);
 });
-
