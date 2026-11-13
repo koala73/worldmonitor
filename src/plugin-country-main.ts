@@ -744,6 +744,7 @@ async function mountPlugin(): Promise<void> {
     status.textContent = `${name} country brief. Sections load independently. Use the topic tabs to explore.`;
     void source.intelligence.getCountryRisk({ countryCode: code }, { signal }).then(risk => {
       if (!current()) return;
+      panel.updateImageryChange(risk.imageryChange ?? null);
       if (risk.upstreamUnavailable || !risk.cii?.components) { panel.updateScore(null, null); return; }
       const score = toCachedCII(risk.cii);
       panel.updateScore({ ...score, lastUpdated: score.lastUpdated ? new Date(score.lastUpdated) : null }, null);

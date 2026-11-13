@@ -95,7 +95,8 @@ const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
   DEPENDENCY_FLAG_DIVERSIFIABLE:            { text: 'Diversifiable',   cls: 'cdp-dep-ok' },
 };
 import { toApiUrl } from '@/services/runtime';
-import type { ComputeEnergyShockScenarioResponse, CrudeShareBaseline, ProductImpact, RegionalEnergyFeed } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import type { ComputeEnergyShockScenarioResponse, CrudeShareBaseline, ImageryChangeContext, ProductImpact, RegionalEnergyFeed } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { IMAGERY_CONTEXT_EXCLUSION, IMAGERY_CONTEXT_METHODOLOGY_HREF, imageryChangeSummary } from './_risk-imagery-context';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { overlayHistory, type OverlayCloseOrigin } from '@/utils/overlay-history';
 import type { GetDefenseIndustrialBaseResponse } from '@/generated/client/worldmonitor/military/v1/service_client';
@@ -212,6 +213,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private commodityVulnerabilityBody: HTMLElement | null = null;
   private debtBody: HTMLElement | null = null;
   private sanctionsBody: HTMLElement | null = null;
+  private readonly imageryContext = this.el('div', 'cdp-imagery-context');
   private no2ActivityBody: HTMLElement | null = null;
   private comtradeBody: HTMLElement | null = null;
   private tariffBody: HTMLElement | null = null;
@@ -3260,6 +3262,23 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     } else {
       this.scoreCard.append(this.makeEmpty(t('countryBrief.ciiUnavailable')));
     }
+    this.scoreCard.append(this.imageryContext);
+  }
+
+  public updateImageryChange(context: ImageryChangeContext | null): void {
+    const summary = imageryChangeSummary(context);
+    if (!summary) {
+      this.imageryContext.replaceChildren();
+      return;
+    }
+    const link = this.el('a', '', 'Methodology');
+    link.setAttribute('href', IMAGERY_CONTEXT_METHODOLOGY_HREF);
+    link.setAttribute('target', '_blank');
+    link.setAttribute('rel', 'noopener noreferrer');
+    const exclusion = this.el('p', 'cdp-imagery-exclusion', `${IMAGERY_CONTEXT_EXCLUSION} `);
+    exclusion.append(link);
+    this.imageryContext.replaceChildren(this.el('p', 'cdp-imagery-summary', summary), exclusion);
+    if (this.scoreCard && !this.imageryContext.isConnected) this.scoreCard.append(this.imageryContext);
   }
 
   public updateStock(data: StockIndexData): void {

@@ -257,6 +257,18 @@ export interface GetCountryRiskResponse {
   sanctionsCount: number;
   fetchedAt: number;
   upstreamUnavailable: boolean;
+  imageryChange?: ImageryChangeContext;
+}
+
+export interface ImageryChangeContext {
+  watchedSiteCount: number;
+  confirmedSites: ImageryChangeSite[];
+}
+
+export interface ImageryChangeSite {
+  siteId: string;
+  name: string;
+  confirmedAt: string;
 }
 
 export interface GetCountryIntelBriefRequest {
