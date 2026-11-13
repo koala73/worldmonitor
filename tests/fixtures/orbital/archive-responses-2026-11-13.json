@@ -416,7 +416,8 @@
        "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261111T205205_S20261111T175554_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 141,
-       "s2:mean_solar_zenith": 58.4223876967104
+       "s2:mean_solar_zenith": 58.4223876967104,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -438,7 +439,8 @@
        "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261111T205205_S20261111T175554_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 141,
-       "s2:mean_solar_zenith": 58.5993282361611
+       "s2:mean_solar_zenith": 58.5993282361611,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -460,7 +462,8 @@
        "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261111T205205_S20261111T175554_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 141,
-       "s2:mean_solar_zenith": 57.5303425662165
+       "s2:mean_solar_zenith": 57.5303425662165,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -482,7 +485,8 @@
        "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261111T205205_S20261111T175554_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 141,
-       "s2:mean_solar_zenith": 57.7079262133676
+       "s2:mean_solar_zenith": 57.7079262133676,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -504,7 +508,8 @@
        "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261108T210005_S20261108T174949_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 98,
-       "s2:mean_solar_zenith": 57.9829194936591
+       "s2:mean_solar_zenith": 57.9829194936591,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -526,7 +531,8 @@
        "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261108T210005_S20261108T174949_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 98,
-       "s2:mean_solar_zenith": 58.2032260711194
+       "s2:mean_solar_zenith": 58.2032260711194,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -548,7 +554,8 @@
        "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261108T210005_S20261108T174949_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 98,
-       "s2:mean_solar_zenith": 57.0983976376945
+       "s2:mean_solar_zenith": 57.0983976376945,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -570,7 +577,8 @@
        "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261108T210005_S20261108T174949_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 98,
-       "s2:mean_solar_zenith": 57.319768412102
+       "s2:mean_solar_zenith": 57.319768412102,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -592,7 +600,8 @@
        "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261106T201016_S20261106T180021_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 141,
-       "s2:mean_solar_zenith": 56.9944221910512
+       "s2:mean_solar_zenith": 56.9944221910512,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -614,7 +623,8 @@
        "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261106T201016_S20261106T180021_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 141,
-       "s2:mean_solar_zenith": 57.1734409986646
+       "s2:mean_solar_zenith": 57.1734409986646,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -636,7 +646,8 @@
        "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261106T201016_S20261106T180021_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 141,
-       "s2:mean_solar_zenith": 56.1026632425764
+       "s2:mean_solar_zenith": 56.1026632425764,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -658,7 +669,8 @@
        "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261106T201016_S20261106T180021_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 141,
-       "s2:mean_solar_zenith": 56.282419183384
+       "s2:mean_solar_zenith": 56.282419183384,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -680,7 +692,8 @@
        "s2:datastrip_id": "S2A_OPER_MSI_L2A_DS_2APS_20261103T210906_S20261103T175732_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 141,
-       "s2:mean_solar_zenith": 56.087758878609
+       "s2:mean_solar_zenith": 56.087758878609,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -702,7 +715,8 @@
        "s2:datastrip_id": "S2A_OPER_MSI_L2A_DS_2APS_20261103T210906_S20261103T175732_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 141,
-       "s2:mean_solar_zenith": 56.2687090441586
+       "s2:mean_solar_zenith": 56.2687090441586,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -724,7 +738,8 @@
        "s2:datastrip_id": "S2A_OPER_MSI_L2A_DS_2APS_20261103T210906_S20261103T175732_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 141,
-       "s2:mean_solar_zenith": 55.1962772950576
+       "s2:mean_solar_zenith": 55.1962772950576,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -746,7 +761,8 @@
        "s2:datastrip_id": "S2A_OPER_MSI_L2A_DS_2APS_20261103T210906_S20261103T175732_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 141,
-       "s2:mean_solar_zenith": 55.3780314232922
+       "s2:mean_solar_zenith": 55.3780314232922,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -768,7 +784,8 @@
        "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261103T195949_S20261103T174732_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 98,
-       "s2:mean_solar_zenith": 56.5009910214339
+       "s2:mean_solar_zenith": 56.5009910214339,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -790,7 +807,8 @@
        "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261103T195949_S20261103T174732_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 98,
-       "s2:mean_solar_zenith": 56.7254224280773
+       "s2:mean_solar_zenith": 56.7254224280773,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -812,7 +830,8 @@
        "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261103T195949_S20261103T174732_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 98,
-       "s2:mean_solar_zenith": 55.6172796296782
+       "s2:mean_solar_zenith": 55.6172796296782,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -834,7 +853,8 @@
        "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261103T195949_S20261103T174732_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 98,
-       "s2:mean_solar_zenith": 55.8429152933045
+       "s2:mean_solar_zenith": 55.8429152933045,
+       "proj:epsg": 32613
       },
       "assets": {
        "SCL": {
@@ -955,7 +975,8 @@
        "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261108T103534_S20261108T070105_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 20,
-       "s2:mean_solar_zenith": 43.8168092358511
+       "s2:mean_solar_zenith": 43.8168092358511,
+       "proj:epsg": 32640
       },
       "assets": {
        "SCL": {
@@ -977,7 +998,8 @@
        "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261103T101659_S20261103T065604_N05.13",
        "sat:orbit_state": "descending",
        "sat:relative_orbit": 20,
-       "s2:mean_solar_zenith": 42.3906464171539
+       "s2:mean_solar_zenith": 42.3906464171539,
+       "proj:epsg": 32640
       },
       "assets": {
        "SCL": {
@@ -998,7 +1020,8 @@
        "eo:cloud_cover": 0.98,
        "landsat:wrs_row": "043",
        "landsat:wrs_path": "160",
-       "view:sun_elevation": 46.23476419
+       "view:sun_elevation": 46.23476419,
+       "proj:epsg": 32640
       },
       "assets": {
        "qa_pixel": {
@@ -1019,7 +1042,8 @@
        "eo:cloud_cover": 1.77,
        "landsat:wrs_row": "042",
        "landsat:wrs_path": "160",
-       "view:sun_elevation": 45.04935741
+       "view:sun_elevation": 45.04935741,
+       "proj:epsg": 32640
       },
       "assets": {
        "qa_pixel": {
