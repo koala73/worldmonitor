@@ -136,6 +136,10 @@ const EXCLUDED_FROM_MCP = new Map([
     'intermediate: OGL-BC Evacuation Orders and Alerts snapshot materialized into alerts:canada:v1; the map consumes only the shared union.'],
   ['alerts:canada:saskalert:v1',
     'intermediate: SaskAlert public JSON snapshot materialized into alerts:canada:v1; the map consumes only the shared union.'],
+  ['safety:toronto:tps-mci:v1',
+    'city-level: Toronto Police Major Crime Indicators serve the Toronto Safety panel and GET /api/safety/v1/get-toronto-safety. The MCP tool was removed (1.54.0): city-level tools return at country level once more countries are covered.'],
+  ['safety:toronto:tps-calls-attended:v1',
+    'city-level: Toronto Police Calls for Service Attended annual aggregates serve the Toronto Safety panel and GET /api/safety/v1/get-toronto-safety. The MCP tool was removed (1.54.0); see safety:toronto:tps-mci:v1.'],
   ['weather:hko-warnings:v1',
     'intermediate: dedicated HKO warning snapshot is independently health-monitored, while its warning events are merged into natural:events:v1 and exposed by get_natural_disasters. The raw side snapshot has no separate MCP schema or filter surface.'],
 

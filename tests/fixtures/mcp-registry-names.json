@@ -85,8 +85,6 @@
   "get_tariff_averages",
   "get_temporal_anomalies",
   "get_test_site_seismicity",
-  "get_toronto_calls_attended",
-  "get_toronto_reported_occurrences",
   "get_us_import_duty",
   "get_webcam_media",
   "get_world_brief",
