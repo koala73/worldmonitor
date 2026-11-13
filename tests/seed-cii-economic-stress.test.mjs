@@ -4,7 +4,7 @@ import { CII_COUNTRY_CODES } from '../shared/cii-weights.ts';
 import { __testing__ as health } from '../api/health.js';
 import { buildEconomicStress, economicCountry, seedEconomicStress, ECONOMIC_COUNTRIES, ECONOMIC_KEY, ECONOMIC_META_KEY, ECONOMIC_ACTIVATION_KEY, INPUT_KEYS } from '../scripts/seed-cii-economic-stress.mjs';
 import { readFileSync } from 'node:fs';
-import { computeYoy, cleanDailyQuotes, hasTimeForOptionalFetch, FX_MAX_NOISE_SHARE } from '../scripts/seed-fx-yoy.mjs';
+import { computeYoy, cleanDailyQuotes, hasTimeForOptionalFetch, withTimeCap, needsFallback, FX_MAX_NOISE_SHARE, FX_OPTIONAL_CAP_MS } from '../scripts/seed-fx-yoy.mjs';
 import { fallbackDailyQuotes, fetchFallbackWindows } from '../scripts/_currency-api.mjs';
 const RECORDED = JSON.parse(readFileSync(new URL('./fixtures/fx-daily-quotes-2026-11-13.json', import.meta.url), 'utf8')).series;
 const recorded = (ccy) => cleanDailyQuotes(RECORDED[ccy].timestamps.map((ts, i) => ({ t: ts * 1000, close: RECORDED[ccy].closes[i] })), RECORDED[ccy].timeZone);
@@ -90,14 +90,31 @@ test('a feed that resumes after a hole is not published as a fresh median', () =
   // A hole at the anchor end is refused the same way.
   assert.equal(cleanDailyQuotes(flatDaily().filter((p, i) => i < 25 || i > 41 || i === 33)), null);
 });
-test('the optional daily request yields to the required rows when time is short', () => {
+test('the optional daily request yields to the required rows when time is short', async () => {
   const base = { nowMs: 0, slowestRequestMs: 3000 };
   assert.equal(hasTimeForOptionalFetch({ ...base, deadlineAtMs: Infinity, remainingRequired: 44 }), true);
-  // 44 required requests at 3.15 s each plus this one and the reserve need about 157 s.
+  // Its 20 s worst case, 44 required requests at 3.15 s each and the 15 s reserve need about 174 s.
   assert.equal(hasTimeForOptionalFetch({ ...base, deadlineAtMs: 240_000, remainingRequired: 44 }), true);
   assert.equal(hasTimeForOptionalFetch({ ...base, nowMs: 90_000, deadlineAtMs: 240_000, remainingRequired: 44 }), false);
-  assert.equal(hasTimeForOptionalFetch({ ...base, nowMs: 220_000, deadlineAtMs: 240_000, remainingRequired: 0 }), true);
-  assert.equal(hasTimeForOptionalFetch({ ...base, nowMs: 223_000, deadlineAtMs: 240_000, remainingRequired: 0 }), false);
+  // At 150 s with 20 required requests left, admitting a request that can run its full cap would miss the deadline.
+  assert.equal(hasTimeForOptionalFetch({ ...base, nowMs: 150_000, deadlineAtMs: 240_000, remainingRequired: 20 }), false);
+  assert.equal(hasTimeForOptionalFetch({ ...base, nowMs: 205_000, deadlineAtMs: 240_000, remainingRequired: 0 }), true);
+  assert.equal(hasTimeForOptionalFetch({ ...base, nowMs: 205_001, deadlineAtMs: 240_000, remainingRequired: 0 }), false);
+  assert.equal(FX_OPTIONAL_CAP_MS, 20_000);
+  // The cap is enforced, not assumed: a request that never settles is cut off.
+  await assert.rejects(withTimeCap(new Promise(() => {}), 20, 'XXX fx-daily'), /exceeded 20 ms/);
+  assert.equal(await withTimeCap(Promise.resolve('ok'), 20, 'XXX'), 'ok');
+});
+test('a frozen, noisy or missing Yahoo series is sent to the second source', () => {
+  const fresh = cleanDailyQuotes(flatDaily());
+  assert.equal(needsFallback(fresh, NOW), false);
+  // A frozen feed has constant closes, so its noise share is 0 and it reads reliable.
+  const frozen = cleanDailyQuotes(flatDaily().map(p => ({ ...p, t: p.t - 10 * DAY })));
+  assert.equal(frozen.reliable, true);
+  assert.equal(needsFallback(frozen, NOW), true);
+  assert.equal(needsFallback(recorded('QAR'), NOW), true);
+  assert.equal(needsFallback(null, NOW), true);
+  assert.equal(needsFallback({ ...fresh, asOf: 'not a date' }, NOW), true);
 });
 test('a second source keeps a country measured when Yahoo quotes are unreliable', async () => {
   const asked = [];

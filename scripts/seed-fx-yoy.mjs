@@ -109,7 +109,9 @@ async function fetchYahooHistory(currency) {
 async function fetchYahooDaily(currency) {
   const symbol = `${currency}USD=X`;
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=6mo&interval=1d`;
-  const data = await fetchYahooJson(url, { label: `${symbol} fx-daily`, timeoutMs: FETCH_TIMEOUT_MS });
+  // One attempt, no backoff: this request is optional, and the second source
+  // covers a currency it misses. The caller also caps its total time.
+  const data = await fetchYahooJson(url, { label: `${symbol} fx-daily`, timeoutMs: FETCH_TIMEOUT_MS, maxRetries: 0 });
   const result = data?.chart?.result?.[0];
   const timestamps = result?.timestamp;
   const closes = result?.indicators?.quote?.[0]?.close;
@@ -211,15 +213,34 @@ export function cleanDailyQuotes(points, timeZone = 'UTC') {
   };
 }
 
+// The producer drops a currency observation older than seven days, so a block
+// that is noisy, empty or stale all need the second source.
+const FX_DAILY_MAX_AGE_DAYS = 7;
+export function needsFallback(daily90, nowMs = Date.now()) {
+  if (!daily90 || daily90.reliable !== true || !Number.isFinite(daily90.latest)) return true;
+  const asOfMs = Date.parse(daily90.asOf);
+  return !Number.isFinite(asOfMs) || nowMs - asOfMs > FX_DAILY_MAX_AGE_DAYS * DAY_MS;
+}
+
 // The daily series is optional; the YoY rows the resilience score reads are
-// not. runSeed stops the fetch at its deadline, so the optional request is
-// skipped once it would eat into the time the remaining required requests
-// need, at the slowest pace seen so far plus a publish reserve.
+// not. runSeed rejects the whole fetch at its deadline and publishes nothing,
+// so the optional request is skipped unless its worst case fits beside the
+// remaining required requests (at the slowest pace seen so far) and a publish
+// reserve. Its worst case is a hard cap: one direct attempt plus the proxy
+// fallback, cut off at FX_OPTIONAL_CAP_MS.
 const FX_PUBLISH_RESERVE_MS = 15_000;
+export const FX_OPTIONAL_CAP_MS = 20_000;
 export function hasTimeForOptionalFetch({ nowMs, deadlineAtMs, remainingRequired, slowestRequestMs }) {
   if (!Number.isFinite(deadlineAtMs)) return true;
-  const perRequest = slowestRequestMs + PER_CURRENCY_DELAY_MS;
-  return nowMs + perRequest * (remainingRequired + 1) + FX_PUBLISH_RESERVE_MS <= deadlineAtMs;
+  const perRequired = slowestRequestMs + PER_CURRENCY_DELAY_MS;
+  return nowMs + FX_OPTIONAL_CAP_MS + perRequired * remainingRequired + FX_PUBLISH_RESERVE_MS <= deadlineAtMs;
+}
+
+/** Reject after `capMs` so an optional request can never run past its reserved time. */
+export function withTimeCap(promise, capMs, label) {
+  let timer;
+  const cap = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} exceeded ${capMs} ms`)), capMs); });
+  return Promise.race([promise, cap]).finally(() => clearTimeout(timer));
 }
 
 function computeYoy(series) {
@@ -282,8 +303,13 @@ async function fetchFxYoy({ fetchDeadlineAtMs = Infinity } = {}) {
     done += 1;
     try {
       const startedAt = Date.now();
-      const series = await fetchYahooHistory(currency);
-      slowestRequestMs = Math.max(slowestRequestMs, Date.now() - startedAt);
+      let series;
+      try {
+        series = await fetchYahooHistory(currency);
+      } finally {
+        // A failed required request sets the pace too: it is the slow case.
+        slowestRequestMs = Math.max(slowestRequestMs, Date.now() - startedAt);
+      }
       const yoy = computeYoy(series);
       // A failed, thin or skipped daily series costs the CII member only; the
       // YoY row the resilience score reads is still published.
@@ -293,9 +319,7 @@ async function fetchFxYoy({ fetchDeadlineAtMs = Infinity } = {}) {
       } else {
         await new Promise((r) => setTimeout(r, PER_CURRENCY_DELAY_MS));
         try {
-          const dailyStartedAt = Date.now();
-          const daily = await fetchYahooDaily(currency);
-          slowestRequestMs = Math.max(slowestRequestMs, Date.now() - dailyStartedAt);
+          const daily = await withTimeCap(fetchYahooDaily(currency), FX_OPTIONAL_CAP_MS, `${currency} fx-daily`);
           daily90 = cleanDailyQuotes(daily.points, daily.timeZone);
           if (!daily90) dailyFailures.push({ currency, error: 'insufficient daily history' });
         } catch (err) {
@@ -311,9 +335,9 @@ async function fetchFxYoy({ fetchDeadlineAtMs = Infinity } = {}) {
   console.log(`  FX YoY: ${rates.length}/${Object.keys(CURRENCY_COUNTRY).length} currencies`);
   const noisy = rates.filter((r) => r.daily90 && !r.daily90.reliable).map((r) => `${r.currency}(${r.daily90.noiseShare})`);
   console.log(`  FX daily: ${rates.filter((r) => r.daily90).length} cleaned, unreliable quotes: ${noisy.join(', ') || 'none'}`);
-  // Never let a noisy or missing Yahoo series cost a country its currency
-  // member while a clean second source has it.
-  const needFallback = rates.filter((r) => !r.daily90?.reliable);
+  // Never let a noisy, missing or frozen Yahoo series cost a country its
+  // currency member while a clean second source has it.
+  const needFallback = rates.filter((r) => needsFallback(r.daily90));
   if (needFallback.length > 0) {
     let windows = null;
     try {
