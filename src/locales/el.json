@@ -5225,14 +5225,14 @@
         "passes": "Διελεύσεις"
       },
       "status": {
-        "objects": "{{count}} αντικείμενα · CelesTrak GP",
+        "objects": "{{count}} δορυφόροι απεικόνισης · CelesTrak GP",
         "fetched": "Λήψη {{time}} · {{ago}}",
         "sun": "Ήλιος {{point}} · υποηλιακό σημείο"
       },
       "step": {
         "computing": "Υπολογισμός",
         "catalogLoading": "Κατάλογος · φόρτωση",
-        "catalog": "Κατάλογος · {{count}} αντικείμενα",
+        "catalog": "Κατάλογος · {{count}} δορυφόροι απεικόνισης",
         "propagating": "Υπολογισμός τροχιών · {{done}} / {{total}}",
         "archives": "Αρχεία · απάντησαν {{done}} / {{total}}",
         "matching": "Αντιστοίχιση σκηνών σε {{passes}} διελεύσεις",

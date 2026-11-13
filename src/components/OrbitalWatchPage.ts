@@ -165,19 +165,32 @@ function formatPoint({ lat, lon }: GeoPoint, decimals = 3): string {
   return `${Math.abs(lat).toFixed(decimals)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lon).toFixed(decimals)}°${lon >= 0 ? 'E' : 'W'}`;
 }
 
-function formatDay(ms: number): string {
-  return new Intl.DateTimeFormat(lang(), { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(ms);
+/** The zone every displayed time uses, so the whole sheet can switch to the point's local time at once. */
+let displayZone = { timeZone: 'UTC', label: 'UTC' };
+
+export function setOrbitalDisplayZone(timeZone: string, label: string): void {
+  displayZone = { timeZone, label };
 }
 
-function formatShortDate(ms: number): string {
-  return new Intl.DateTimeFormat(lang(), { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(ms);
+export function formatOrbitalTime(ms: number, style: 'day' | 'date' | 'clock' | 'when' | 'stamp'): string {
+  const { timeZone, label } = displayZone;
+  const day = () => new Intl.DateTimeFormat(lang(), { weekday: 'short', day: 'numeric', month: 'short', timeZone }).format(ms);
+  const clock = () => new Intl.DateTimeFormat(lang(), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone }).format(ms);
+  switch (style) {
+    case 'day': return day();
+    case 'date': return new Intl.DateTimeFormat(lang(), { day: 'numeric', month: 'short', timeZone }).format(ms);
+    case 'clock': return clock();
+    case 'when': return `${day()} · ${clock()} ${label}`;
+    case 'stamp': return `${formatOrbitalTime(ms, 'date')} ${clock()}`;
+  }
 }
 
-function formatClock(ms: number, seconds = false): string {
-  return new Intl.DateTimeFormat(lang(), { hour: '2-digit', minute: '2-digit', ...(seconds ? { second: '2-digit' } : {}), hourCycle: 'h23', timeZone: 'UTC' }).format(ms);
-}
+const formatDay = (ms: number) => formatOrbitalTime(ms, 'day');
+const formatWhen = (ms: number) => formatOrbitalTime(ms, 'when');
 
-const formatWhen = (ms: number) => `${formatDay(ms)} · ${formatClock(ms)} UTC`;
+function formatUtcClock(ms: number): string {
+  return new Intl.DateTimeFormat(lang(), { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZone: 'UTC' }).format(ms);
+}
 
 function formatRelative(ms: number, nowMs: number): string {
   const diff = ms - nowMs;
@@ -692,7 +705,7 @@ export class OrbitalWatchPage {
       h('div', { className: 'ow-progress', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(pct)) },
         h('span', { className: 'ow-progress-fill', style: `width: ${pct.toFixed(1)}%` })),
       h('div', { className: 'ow-steps-foot ow-label' },
-        h('span', null, t('orbitalWatch.ui.step.window', { start: `${formatShortDate(windowStart)} ${formatClock(windowStart)}`, end: `${formatShortDate(nowMs)} ${formatClock(nowMs)} UTC` })),
+        h('span', null, t('orbitalWatch.ui.step.window', { start: formatOrbitalTime(windowStart, 'stamp'), end: `${formatOrbitalTime(nowMs, 'stamp')} ${displayZone.label}` })),
         h('span', { className: 'ow-steps-pct' }, `${Math.round(pct)}%`)),
       archives ? h('p', { className: 'ow-steps-note' }, t('orbitalWatch.ui.step.note')) : null);
   }
@@ -857,7 +870,7 @@ export class OrbitalWatchPage {
     replaceChildren(this.statusBar,
       h('span', { className: 'ow-status-left' },
         lookup ? `${t('orbitalWatch.ui.status.objects', { count: formatInt(lookup.satellites.length) })} · ${t('orbitalWatch.ui.status.fetched', { time: fetched, ago: formatRelative(lookup.catalog.fetchedAt, nowMs) })}` : ''),
-      h('span', { className: 'ow-status-right' }, `${t('orbitalWatch.ui.status.sun', { point: formatPoint(sun, 1) })} · ${formatClock(nowMs, true)} UTC`));
+      h('span', { className: 'ow-status-right' }, `${t('orbitalWatch.ui.status.sun', { point: formatPoint(sun, 1) })} · ${formatUtcClock(nowMs)} UTC`));
   }
 
   private startClock(): void {

@@ -5337,14 +5337,14 @@
         "passes": "المرورات"
       },
       "status": {
-        "objects": "{{count}} جسمًا · CelesTrak GP",
+        "objects": "{{count}} قمرًا للتصوير · CelesTrak GP",
         "fetched": "جُلب {{time}} · {{ago}}",
         "sun": "الشمس {{point}} · النقطة تحت الشمسية"
       },
       "step": {
         "computing": "جارٍ الحساب",
         "catalogLoading": "الكتالوج · جارٍ التحميل",
-        "catalog": "الكتالوج · {{count}} جسمًا",
+        "catalog": "الكتالوج · {{count}} قمرًا للتصوير",
         "propagating": "حساب المدارات · {{done}} / {{total}}",
         "archives": "الأرشيفات · أجاب {{done}} / {{total}}",
         "matching": "مطابقة المشاهد مع {{passes}} مرورًا",

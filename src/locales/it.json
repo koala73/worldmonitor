@@ -5253,14 +5253,14 @@
         "passes": "Passaggi"
       },
       "status": {
-        "objects": "{{count}} oggetti · CelesTrak GP",
+        "objects": "{{count}} satelliti per immagini · CelesTrak GP",
         "fetched": "Recuperato {{time}} · {{ago}}",
         "sun": "Sole {{point}} · punto subsolare"
       },
       "step": {
         "computing": "Calcolo",
         "catalogLoading": "Catalogo · caricamento",
-        "catalog": "Catalogo · {{count}} oggetti",
+        "catalog": "Catalogo · {{count}} satelliti per immagini",
         "propagating": "Propagazione orbite · {{done}} / {{total}}",
         "archives": "Archivi · {{done}} / {{total}} hanno risposto",
         "matching": "Abbinamento scene a {{passes}} passaggi",

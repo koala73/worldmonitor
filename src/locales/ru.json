@@ -5281,14 +5281,14 @@
         "passes": "Пролёты"
       },
       "status": {
-        "objects": "объектов: {{count}} · CelesTrak GP",
+        "objects": "{{count}} съёмочных спутников · CelesTrak GP",
         "fetched": "Получено {{time}} · {{ago}}",
         "sun": "Солнце {{point}} · подсолнечная точка"
       },
       "step": {
         "computing": "Расчёт",
         "catalogLoading": "Каталог · загрузка",
-        "catalog": "Каталог · объектов: {{count}}",
+        "catalog": "Каталог · {{count}} съёмочных спутников",
         "propagating": "Расчёт орбит · {{done}} / {{total}}",
         "archives": "Архивы · ответили {{done}} / {{total}}",
         "matching": "Сопоставление сцен с пролётами: {{passes}}",

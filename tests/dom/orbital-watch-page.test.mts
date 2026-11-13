@@ -125,7 +125,7 @@ describe('satellite pass lookup sheet', () => {
   it('steps through the catalog, orbit propagation and archive answers before showing results', () => {
     mounted({ kind: 'computing', done: 12, total: 48 });
     const status = (n: number) => sheet().querySelectorAll<HTMLElement>('.ow-step')[n]!.dataset.status;
-    expect(text()).toContain('Catalog · 48 objects');
+    expect(text()).toContain('Catalog · 48 imaging satellites');
     expect(text()).toContain('Propagating orbits · 12 / 48');
     expect([status(0), status(1), status(2)]).toEqual(['ok', 'running', 'pending']);
     const { all } = tiered();
@@ -236,7 +236,7 @@ describe('satellite pass lookup sheet', () => {
       expect(page().slot(slot as 'timeline').dataset.slot).toBe(slot);
       expect(page().slot(slot as 'timeline').childElementCount).toBe(0);
     }
-    expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/^0 objects · CelesTrak GP · Fetched \d{4}-\d\d-\d\d \d\d:\d\dZ · 3 days ago/);
+    expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/^0 imaging satellites · CelesTrak GP · Fetched \d{4}-\d\d-\d\d \d\d:\d\dZ · 3 days ago/);
     expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/Sun \d+\.\d°[NS] \d+\.\d°[EW] · sub-solar point · \d\d:\d\d:\d\d UTC$/);
     expect(sheet().querySelector('[data-action="open-full"].ow-primary')).toBeNull();
   });
