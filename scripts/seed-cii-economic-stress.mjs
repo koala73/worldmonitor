@@ -45,9 +45,12 @@ function observation(value, observedMs, expiresAt, sourceKey, unit, nowMs, refer
   return { status: 'fresh', value, observedAt, expiresAt, sourceKey, unit, reference };
 }
 
+const dailyOnlyRows = raw => (Array.isArray(raw.dailyOnly) ? raw.dailyOnly : []);
+
 function currencyMember(raw, code, nowMs) {
   if (['US', 'DE', 'FR'].includes(code)) return absent('not-applicable');
-  const row = raw.rates.find(x => x?.countryCode === code);
+  // A Yahoo row keeps priority; daily-only rows come from the second source alone.
+  const row = raw.rates.find(x => x?.countryCode === code) ?? dailyOnlyRows(raw).find(x => x?.countryCode === code);
   if (!row) return absent('missing');
   // seed-fx-yoy cleans the daily quotes upstream: medians remove isolated bad
   // prints, and a series that keeps reverting is flagged, not compared.
@@ -121,6 +124,7 @@ export function buildEconomicStress(inputs, nowMs = Date.now()) {
   const codes = [...new Set([
     ...ECONOMIC_COUNTRIES,
     ...inputs.currency.rates.map(row => row?.countryCode),
+    ...dailyOnlyRows(inputs.currency).map(row => row?.countryCode),
     ...['inflation', 'eurostat', 'japan', 'yield'].flatMap(id => Object.keys(inputs[id].countries)),
   ])].filter(code => INPUT_COUNTRY_CODES.has(code)).sort();
   const countries = Object.fromEntries(codes.map(code => [code, economicCountry(inputs, code, nowMs)]));
