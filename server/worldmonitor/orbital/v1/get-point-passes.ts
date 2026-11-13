@@ -39,9 +39,10 @@ export const roundToCell = (degrees: number) => Math.round(degrees * 100) / 100 
 
 function coordinate(params: URLSearchParams, name: 'lat' | 'lon', limit: number): number {
   const raw = params.get(name);
-  const value = raw === null || raw.trim() === '' ? Number.NaN : Number(raw);
+  // Generated clients omit a zero coordinate, so an absent one is the equator or prime meridian.
+  const value = raw === null ? 0 : raw.trim() === '' ? Number.NaN : Number(raw);
   if (!Number.isFinite(value) || Math.abs(value) > limit) {
-    throw new ValidationError([{ field: name, description: `${name} is required and must be a number from -${limit} to ${limit}` }]);
+    throw new ValidationError([{ field: name, description: `${name} must be a number from -${limit} to ${limit}` }]);
   }
   return value;
 }

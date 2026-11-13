@@ -58681,7 +58681,7 @@ components:
                     minimum: -180
                     format: double
                     description: Longitude in decimal degrees, -180 to 180.
-            description: GetPointPassesRequest names a point on Earth. Both coordinates are required and are rounded to 0.01 degrees before anything is computed.
+            description: GetPointPassesRequest names a point on Earth. Coordinates are rounded to 0.01 degrees before anything is computed; an omitted coordinate is 0.
         worldmonitor_orbital_v1_GetPointPassesResponse:
             type: object
             properties:

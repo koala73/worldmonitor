@@ -5,7 +5,7 @@ package worldmonitor.orbital.v1;
 import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
-// GetPointPassesRequest names a point on Earth. Both coordinates are required and are rounded to 0.01 degrees before anything is computed.
+// GetPointPassesRequest names a point on Earth. Coordinates are rounded to 0.01 degrees before anything is computed; an omitted coordinate is 0.
 message GetPointPassesRequest {
   // Latitude in decimal degrees, -90 to 90.
   double lat = 1 [
