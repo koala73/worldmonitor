@@ -4,6 +4,8 @@
  *
  * WM_VERIFY_ORBITAL_CATALOG=live skips the catalog fixture and uses the local
  * API. WM_VERIFY_ORBITAL_VIEWPORT=mobile drives a phone-sized viewport.
+ * WM_VERIFY_ORBITAL_AT=lat,lon centres the map on the point to pick, Palm
+ * Jumeirah by default so crops can be checked against the real place.
  */
 import { readFileSync } from 'node:fs';
 import { matchSensorProfile } from '../../../../shared/orbital/sensor-profiles.js';
@@ -49,12 +51,14 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   page.on('request', (req) => requests.push({ url: req.url(), body: req.postData() ?? '' }));
 
   await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': '"globe"' } });
-  await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
+  const [atLat, atLon] = (process.env.WM_VERIFY_ORBITAL_AT ?? '25.112,55.139').split(',');
+  await page.goto(`${base}/dashboard?lat=${atLat}&lon=${atLon}&zoom=6`, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
   log('renderer', await waitForMap(page));
 
   const sheet = page.locator('.orbital-watch-sheet');
-  const open = async (dx = 0, dy = 0) => {
+  const aim = { dx: 0, dy: 0 };
+  const open = async (dx = aim.dx, dy = aim.dy) => {
     const box = await page.locator('#mapContainer canvas').first().boundingBox();
     await page.mouse.click(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, { button: 'right' });
     await page.getByRole('menuitem', { name: 'Satellite passes here' }).or(page.getByText('Satellite passes here', { exact: true })).first().click();
@@ -69,6 +73,23 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const privacy = async () => {
     if (!(await sheet.locator('.ow-privacy').isVisible())) throw new Error('privacy notice missing');
   };
+
+  const pickedAt = async (dx, dy) => {
+    await open(dx, dy);
+    const [lat, ns, lon, ew] = (await sheet.locator('.ow-point').innerText()).match(/([\d.]+)°([NS]), ([\d.]+)°([EW])/).slice(1);
+    await close();
+    return { lat: ns === 'S' ? -lat : +lat, lon: ew === 'W' ? -lon : +lon };
+  };
+  for (let pass = 0; pass < 2; pass++) {
+    const at = await pickedAt(aim.dx, aim.dy);
+    const right = await pickedAt(aim.dx + 100, aim.dy);
+    const down = await pickedAt(aim.dx, aim.dy + 100);
+    const [a, b, c, d] = [(right.lon - at.lon) / 100, (down.lon - at.lon) / 100, (right.lat - at.lat) / 100, (down.lat - at.lat) / 100];
+    const [eLon, eLat] = [Number(atLon) - at.lon, Number(atLat) - at.lat];
+    const det = a * d - b * c;
+    aim.dx += (d * eLon - b * eLat) / det;
+    aim.dy += (a * eLat - c * eLon) / det;
+  }
 
   let release;
   holdArchives = new Promise((resolve) => { release = resolve; });
@@ -95,8 +116,13 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const credits = await sheet.locator('.ow-credits li').allInnerTexts();
   log('result credits', credits);
   if (!credits.includes('Orbit elements from CelesTrak')) throw new Error(`credit line misses CelesTrak: ${credits.join(' | ')}`);
+  const openGroups = sheet.locator('.ow-group-toggle[aria-expanded="true"]');
+  while (await openGroups.count() > 1) await openGroups.last().click();
+  const viewport = page.viewportSize();
+  if (!mobile) await page.setViewportSize({ width: 1920, height: 1080 });
   await sheet.locator('.ow-credits').scrollIntoViewIfNeeded();
-  await shot('result-credit-line');
+  await shot('confirmed-image-and-result-credit-line');
+  await page.setViewportSize(viewport);
   await close();
 
   failing.add('earth-search.aws.element84.com');
@@ -105,6 +131,17 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await privacy();
   log('partial banner', await sheet.locator('.ow-banner-partial').innerText());
   await shot('partial-archive-failure');
+  await close();
+
+  failing.add('planetarycomputer.microsoft.com');
+  await open();
+  await sheet.locator('.ow-banner-partial').waitFor({ timeout: 90_000 });
+  const withoutScenes = await sheet.locator('.ow-credits li').allInnerTexts();
+  log('credits with both scene archives down', withoutScenes);
+  if (withoutScenes.some((c) => /Copernicus|Landsat/.test(c))) throw new Error(`credit for an absent source: ${withoutScenes.join(' | ')}`);
+  if (!withoutScenes.includes('Orbit elements from CelesTrak')) throw new Error(`credit line misses CelesTrak: ${withoutScenes.join(' | ')}`);
+  await sheet.locator('.ow-credits').scrollIntoViewIfNeeded();
+  await shot('credits-without-scene-archives');
   failing.clear();
   await close();
 
@@ -128,6 +165,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     await sheet.locator('.ow-empty').waitFor({ timeout: 90_000 });
     await privacy();
     log('empty state', await sheet.locator('.ow-empty').innerText());
+    log('empty state credits', await sheet.locator('.ow-credits li').allInnerTexts());
     await shot('empty-no-passes');
     await close();
   }
