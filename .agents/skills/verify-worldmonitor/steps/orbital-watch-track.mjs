@@ -34,7 +34,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
 
   const switchToSvg = flat && mobile;
   await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': flat && !mobile ? '"flat"' : '"globe"' } });
-  await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
+  const startUrl = `${base}/dashboard?lat=25.112&lon=55.139&zoom=${flat ? 7 : 4}`;
+  await page.goto(startUrl, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
   const renderer = await waitForMap(page);
   log('renderer', renderer);
@@ -42,8 +43,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   if (renderer !== expected) throw new Error(`expected the ${expected} map, got ${renderer}`);
 
   const box = await page.locator('#mapContainer canvas').first().boundingBox();
-  const dx = mobile || !flat ? 0 : -box.width / 6;
-  const dy = mobile && flat ? -box.height / 5 : 0;
+  const dx = 0;
+  const dy = 0;
   await page.mouse.click(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, { button: 'right' });
   await page.getByRole('menuitem', { name: 'Satellite passes here' }).or(page.getByText('Satellite passes here', { exact: true })).first().click();
   const sheet = await expectVisible('.orbital-watch-sheet');
@@ -51,7 +52,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('picked point', pointText);
   await sheet.locator('.ow-headline', { hasText: /Confirmed images: \d+/ }).waitFor({ timeout: 120_000 });
 
-  const rows = sheet.locator('.ow-row[data-pass-key]');
+  const confirmed = sheet.locator('.ow-group[data-group="confirmed"] .ow-row[data-pass-key]');
+  const rows = (await confirmed.count()) >= 2 ? confirmed : sheet.locator('.ow-row[data-pass-key]');
   log('selectable passes', await rows.count());
   const first = rows.first();
   const firstName = await first.locator('.ow-row-name').innerText();
@@ -90,7 +92,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await shot('track-removed-on-close');
 
   const needles = pointText.match(/\d+\.\d\d/g);
-  const leaks = requests.filter(({ url, body }) => !ARCHIVE_HOSTS.includes(new URL(url).hostname)
+  const leaks = requests.filter(({ url, body }) => url !== startUrl && !ARCHIVE_HOSTS.includes(new URL(url).hostname)
     && needles.every((n) => `${url} ${body}`.includes(n)));
   if (leaks.length) throw new Error(`picked point left the browser: ${leaks.map((l) => l.url).join(', ')}`);
   return { mobile, flat, renderer, pointText, firstName, secondName, leaks: leaks.length };
