@@ -259,6 +259,8 @@ export class OrbitalTimelapsePage {
     }
     const next = frameImage(frame) as HTMLImageElement | null;
     if (!next) return;
+    const loading = this.body.querySelector('.otl-stage-loading');
+    if (loading) loading.textContent = `${t('orbitalWatch.row.imageLoading')} ${frame.year} · ${platformName(frame)}`;
     if (!next.complete) {
       await new Promise<void>((resolve) => {
         next.addEventListener('load', () => resolve(), { once: true });

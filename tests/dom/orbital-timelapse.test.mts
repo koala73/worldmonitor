@@ -133,6 +133,11 @@ describe('orbital time-lapse page', () => {
     page()!.querySelector<HTMLButtonElement>('[data-action="frame-next"]')!.click();
     await settle();
     expect(shownYear()).toBe('2015');
+    const images = page()!.querySelectorAll<HTMLImageElement>('.oiv-stage .oiv-image');
+    expect(images.length).toBe(1);
+    expect(images[0]!.getAttribute('src')).toBe(crop('S2_2015'));
+    expect(images[0]!.classList.contains('oiv-pending')).toBe(false);
+    expect(page()!.querySelector('.otl-stage-loading')!.textContent).toContain('2015');
     release!();
     await settle();
     expect(shownYear()).toBe('2016');
