@@ -298,7 +298,16 @@ describe('satellite pass share link', () => {
     assert.deepEqual(parseOrbitalShareFragment(`#${fragment}`), {
       point: { lat: 48.86, lon: 2.29 },
       pass: { noradId: 40697, minuteMs: Date.UTC(2026, 10, 13, 10, 42) },
+      view: 'sheet',
     });
+  });
+
+  it('opens the full view when the link asks for it', () => {
+    const fragment = buildOrbitalShareFragment(eiffel, null, 'full');
+    assert.equal(fragment, 'orbital=48.86,2.29&view=full');
+    assert.equal(parseOrbitalShareFragment(`#${fragment}`)?.view, 'full');
+    assert.equal(parseOrbitalShareFragment('#orbital=48.86,2.29&view=globe')?.view, 'sheet');
+    assert.equal(withoutOrbitalShareFragment(`#tab=1&${fragment}`), 'tab=1');
   });
 
   it('reads the key beside other fragment params and leaves them in place', () => {

@@ -224,8 +224,12 @@ export function withoutVariantScopedUrlState(url: string): string {
  * Satellite pass share links put the place in the fragment, which browsers never send to a
  * server: `#orbital=48.86,2.29` or, with a selected pass, `#orbital=48.86,2.29;40697-202611131230`
  * (NORAD id and closest-approach minute, UTC). Coordinates are rounded to 0.01 degrees.
+ * `&view=full` opens the full-screen view instead of the side sheet.
  */
 export const ORBITAL_SHARE_KEY = 'orbital';
+const ORBITAL_VIEW_KEY = 'view';
+
+export type OrbitalShareView = 'sheet' | 'full';
 
 export interface OrbitalSharePass {
   noradId: number;
@@ -236,6 +240,7 @@ export interface OrbitalSharePass {
 export interface OrbitalShareLink {
   point: { lat: number; lon: number };
   pass: OrbitalSharePass | null;
+  view: OrbitalShareView;
 }
 
 const SHARE_VALUE_RE = /^(-?\d{1,2}(?:\.\d{1,2})?),(-?\d{1,3}(?:\.\d{1,2})?)(?:;(\d{1,9})-(\d{12}))?$/;
@@ -256,16 +261,22 @@ function parseShareMinute(stamp: string): number | null {
   return Number.isFinite(ms) && formatShareMinute(ms) === stamp ? ms : null;
 }
 
-export function buildOrbitalShareFragment(point: { lat: number; lon: number }, pass?: { noradId: number; timeMs: number } | null): string {
+export function buildOrbitalShareFragment(
+  point: { lat: number; lon: number },
+  pass?: { noradId: number; timeMs: number } | null,
+  view: OrbitalShareView = 'sheet',
+): string {
   const coords = `${roundShareCoordinate(point.lat).toFixed(2)},${roundShareCoordinate(point.lon).toFixed(2)}`;
-  return `${ORBITAL_SHARE_KEY}=${pass ? `${coords};${pass.noradId}-${formatShareMinute(pass.timeMs)}` : coords}`;
+  const value = `${ORBITAL_SHARE_KEY}=${pass ? `${coords};${pass.noradId}-${formatShareMinute(pass.timeMs)}` : coords}`;
+  return view === 'full' ? `${value}&${ORBITAL_VIEW_KEY}=full` : value;
 }
 
 /** The share link in a `location.hash`, or null when it is absent or malformed. */
 export function parseOrbitalShareFragment(hash: string): OrbitalShareLink | null {
   const fragment = hash.startsWith('#') ? hash.slice(1) : hash;
   if (!fragment.includes(`${ORBITAL_SHARE_KEY}=`)) return null;
-  const match = SHARE_VALUE_RE.exec(new URLSearchParams(fragment).get(ORBITAL_SHARE_KEY) ?? '');
+  const params = new URLSearchParams(fragment);
+  const match = SHARE_VALUE_RE.exec(params.get(ORBITAL_SHARE_KEY) ?? '');
   if (!match) return null;
   const lat = Number(match[1]);
   const lon = Number(match[2]);
@@ -276,7 +287,7 @@ export function parseOrbitalShareFragment(hash: string): OrbitalShareLink | null
     if (minuteMs === null) return null;
     pass = { noradId: Number(match[3]), minuteMs };
   }
-  return { point: { lat, lon }, pass };
+  return { point: { lat, lon }, pass, view: params.get(ORBITAL_VIEW_KEY) === 'full' ? 'full' : 'sheet' };
 }
 
 /** `hash` without the share key, keeping anything else another surface routes on. */
@@ -285,5 +296,6 @@ export function withoutOrbitalShareFragment(hash: string): string {
   if (!fragment.includes(`${ORBITAL_SHARE_KEY}=`)) return fragment;
   const params = new URLSearchParams(fragment);
   params.delete(ORBITAL_SHARE_KEY);
+  params.delete(ORBITAL_VIEW_KEY);
   return params.toString();
 }
