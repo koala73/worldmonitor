@@ -5,6 +5,11 @@ import { initTestI18n } from './helpers/i18n.mts';
 const lookupMock = vi.hoisted(() => vi.fn());
 const evidenceMock = vi.hoisted(() => vi.fn());
 
+const desktop = vi.hoisted(() => ({ value: false }));
+vi.mock('@/config/desktop-runtime', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/config/desktop-runtime')>()),
+  isDesktopRuntime: () => desktop.value,
+}));
 vi.mock('@/services/orbital/pass-client', () => ({ getOrbitalPassClient: () => ({ lookup: lookupMock, dispose: () => {} }) }));
 vi.mock('@/services/orbital/match', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/orbital/match')>()),
@@ -203,6 +208,30 @@ describe('satellite pass share link', () => {
     button('.ow-share').click();
     await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     expect(new URL(writeText.mock.calls[0]![0]).hash).toBe('#orbital=48.86,2.29;40697-202611120600');
+  });
+
+  it('points a desktop share link at the public dashboard, not the local WebView origin', async () => {
+    desktop.value = true;
+    try {
+      openOrbitalWatch(EXACT, null);
+      await vi.waitFor(() => expect(sheet()!.querySelector('.ow-row[data-pass]')).not.toBeNull());
+      button('.ow-share').click();
+      await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+      expect(writeText.mock.calls[0]![0]).toBe('https://www.worldmonitor.app/dashboard#orbital=48.86,2.29');
+    } finally {
+      desktop.value = false;
+    }
+  });
+
+  it('keeps a group the reader opened open when they select a pass in it', async () => {
+    openOrbitalWatch(EXACT, null);
+    const toggle = () => sheet()!.querySelector<HTMLButtonElement>('.ow-group-toggle[data-group="passed"]')!;
+    await vi.waitFor(() => expect(toggle()).not.toBeNull());
+    toggle().click();
+    expect(toggle().getAttribute('aria-expanded')).toBe('true');
+    sheet()!.querySelector<HTMLElement>('.ow-row[data-pass^="48917:"]')!.click();
+    expect(toggle().getAttribute('aria-expanded')).toBe('true');
+    expect(sheet()!.querySelector('.ow-row[aria-current="true"]')?.textContent).toContain('SAT 48917');
   });
 
   it('opens a valid link after the map has had time to render, at the rounded point with its pass selected', async () => {

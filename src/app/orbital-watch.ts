@@ -6,6 +6,8 @@ import { t } from '@/services/i18n';
 import { OrbitalWatchPage } from '@/components/OrbitalWatchPage';
 import { OrbitalPlaceTools } from '@/components/OrbitalPlaceTools';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
+import { DASHBOARD_SITE_ORIGIN } from '@/config/dashboard-reference-links';
+import { isDesktopRuntime } from '@/config/desktop-runtime';
 import { buildOrbitalShareFragment, type OrbitalShareLink, type OrbitalSharePass } from '@/utils/urlState';
 
 let page: OrbitalWatchPage | null = null;
@@ -85,7 +87,9 @@ async function start(): Promise<void> {
 
 function shareLink(): string | null {
   if (!point) return null;
-  return `${location.origin}${location.pathname}#${buildOrbitalShareFragment(point, page?.selectedPass)}`;
+  // The desktop WebView origin is local, so its links point at the public dashboard.
+  const base = isDesktopRuntime() ? `${DASHBOARD_SITE_ORIGIN}/dashboard` : `${location.origin}${location.pathname}`;
+  return `${base}#${buildOrbitalShareFragment(point, page?.selectedPass)}`;
 }
 
 function ensurePage(): OrbitalWatchPage {
