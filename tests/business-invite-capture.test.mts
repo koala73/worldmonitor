@@ -257,6 +257,10 @@ describe('keepInviteAfterAttempt', () => {
     assert.equal(keepInviteAfterAttempt({ accepted: false, accountChanged: false, errorKind: 'INVITE_EMAIL_MISMATCH' }), true);
   });
 
+  it('keeps the invite until the invited account verifies its email', () => {
+    assert.equal(keepInviteAfterAttempt({ accepted: false, accountChanged: false, errorKind: 'INVITEE_EMAIL_UNVERIFIED' }), true);
+  });
+
   it('drops the invite after a final rejection or an unknown failure', () => {
     for (const kind of ['INVITE_EXPIRED', 'INVITE_ALREADY_USED', 'BUSINESS_NOT_ACTIVE', 'INVALID_INVITE_TOKEN', 'GRANT_NOT_FOUND', null]) {
       assert.equal(keepInviteAfterAttempt({ accepted: false, accountChanged: false, errorKind: kind }), false, String(kind));

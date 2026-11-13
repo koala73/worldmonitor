@@ -179,14 +179,14 @@ export interface BusinessInviteAttempt {
 /**
  * Whether the invite should stay pending after an accept attempt settles.
  * An accepted invite is done. A rejection the account caused, either a
- * different signed-in address or an account switch before the answer came
- * back, leaves it for the invited account to accept in this tab. Any other
- * rejection is final for this invite.
+ * different signed-in address, an email not yet verified, or an account
+ * switch before the answer came back, leaves it for the invited account to
+ * accept in this tab. Any other rejection is final for this invite.
  */
 export function keepInviteAfterAttempt(attempt: BusinessInviteAttempt): boolean {
   if (attempt.accepted) return false;
   if (attempt.accountChanged) return true;
-  return attempt.errorKind === 'INVITE_EMAIL_MISMATCH';
+  return attempt.errorKind === 'INVITE_EMAIL_MISMATCH' || attempt.errorKind === 'INVITEE_EMAIL_UNVERIFIED';
 }
 
 export function resetBusinessInviteMemoryForTests(): void {
