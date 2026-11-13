@@ -43,7 +43,7 @@ vi.mock('@/services/entitlements', () => ({
 vi.mock('@/services/panel-gating', () => ({ hasPremiumAccess: () => false }));
 vi.mock('@/services/widget-store', () => ({ isProUser: () => false }));
 vi.mock('@/services/preferences-content', () => ({
-  renderPreferences: () => ({ html: '<div data-prefs-stub></div>', attach: () => () => {} }),
+  renderPreferenceSection: () => ({ html: '<div data-prefs-stub></div>', attach: () => () => {} }),
 }));
 vi.mock('@/services/notifications-settings', () => ({
   renderNotificationsSettings: () => ({ html: '', attach: () => () => {} }),

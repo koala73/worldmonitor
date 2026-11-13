@@ -106,7 +106,7 @@ vi.mock('@/services/entitlements', () => ({
 vi.mock('@/services/panel-gating', () => ({ hasPremiumAccess: () => true }));
 vi.mock('@/services/widget-store', () => ({ isProUser: () => true }));
 vi.mock('@/services/preferences-content', () => ({
-  renderPreferences: () => ({ html: '', attach: () => () => {} }),
+  renderPreferenceSection: () => ({ html: '', attach: () => () => {} }),
 }));
 vi.mock('@/services/notifications-settings', () => ({
   renderNotificationsSettings: () => ({ html: '', attach: () => () => {} }),

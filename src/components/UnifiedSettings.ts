@@ -30,7 +30,9 @@ import type { MapProvider } from '@/config/basemap';
 import { escapeHtml } from '@/utils/sanitize';
 import { safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
 import type { PanelConfig } from '@/types';
-import { renderPreferences } from '@/services/preferences-content';
+import { renderPreferenceSection } from '@/services/preferences-content';
+import { mountInstallEntry } from '@/services/pwa-install';
+import type { PreferenceSectionId } from '@/config/settings-sections';
 import { renderNotificationsSettings, type NotificationsSettingsResult } from '@/services/notifications-settings';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { signOut } from '@/services/clerk';
@@ -946,12 +948,14 @@ export class UnifiedSettings {
     this.pendingNotifs = null;
 
     const isSignedIn = getAuthState().user !== null;
-    const prefs = renderPreferences({
+    const prefsHost = {
       isDesktopApp: this.config.isDesktopApp,
       onMapProviderChange: this.config.onMapProviderChange,
       onSettingSaved: () => showToast(t('modals.settingsWindow.saved')),
       isSignedIn,
-    });
+    };
+    const prefSections = (['display', 'map', 'ai', 'video', 'sync'] as const satisfies readonly PreferenceSectionId[])
+      .map((id) => ({ id, ...renderPreferenceSection(id, prefsHost) }));
     const showNotificationsTab = !this.config.isDesktopApp;
     const notifs = showNotificationsTab
       ? renderNotificationsSettings({ isSignedIn })
@@ -997,7 +1001,8 @@ export class UnifiedSettings {
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'settings' ? ' active' : ''}" data-panel-id="settings" id="us-tab-panel-settings" role="tabpanel" aria-labelledby="us-tab-settings">
           <div data-selfhost-key-host>${selfHostKeyHtml}</div>
-          ${prefs.html}
+          ${this.config.isDesktopApp ? '' : '<div data-pwa-install-entry></div>'}
+          ${prefSections.map(({ id, html }) => `<div data-pref-section="${id}">${html}</div>`).join('')}
         </div>
         ${isSignedIn ? `
         <div class="unified-settings-tab-panel${this.activeTab === 'billing' ? ' active' : ''}" data-panel-id="billing" id="us-tab-panel-billing" role="tabpanel" aria-labelledby="us-tab-billing">
@@ -1072,10 +1077,13 @@ export class UnifiedSettings {
       </div>
     `, "legacy direct innerHTML migration"));
 
-    const settingsPanel = this.overlay.querySelector('#us-tab-panel-settings');
-    if (settingsPanel) {
-      this.prefsCleanup = prefs.attach(settingsPanel as HTMLElement);
-    }
+    const cleanups = prefSections.flatMap(({ id, attach }) => {
+      const root = this.overlay.querySelector<HTMLElement>(`[data-pref-section="${id}"]`);
+      return root ? [attach(root)] : [];
+    });
+    const installHost = this.overlay.querySelector<HTMLElement>('[data-pwa-install-entry]');
+    if (installHost) cleanups.push(mountInstallEntry(installHost));
+    this.prefsCleanup = () => cleanups.forEach((cleanup) => cleanup());
 
     // Defer notifications attach until the tab is first activated —
     // otherwise Pro users pay a getChannelsData() fetch on every modal
