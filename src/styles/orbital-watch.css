@@ -656,4 +656,3 @@
   cursor: pointer;
 }
 
-.orbital-watch-sheet:not([data-view="full"]) .ow-dock { display: none; }
