@@ -203,6 +203,8 @@ export class UnifiedSettings {
   private recentPage: SettingsSectionId | null = null;
   /** The sidebar search text. The sheet has no search, so it is empty there. */
   private navQuery = '';
+  /** Embed access the home rows were last built for. Search can hide the row, so the DOM cannot answer this. */
+  private renderedEmbedAccess = false;
   private installCleanup: (() => void) | null = null;
   private legalLinkHandoffAttached = false;
   private activeSourceRegion = 'all';
@@ -774,8 +776,7 @@ export class UnifiedSettings {
 
       const mcpPageStale = this.pages.has('mcp-clients')
         && (this.overlay.querySelector('[data-mcp-manage]') !== null) !== this.canManageMcpClients();
-      const embedsRowStale = (this.overlay.querySelector('[data-settings-nav="embeds"]') !== null)
-        !== hasEmbedAccessForAccount(getAuthState().user?.role);
+      const embedsRowStale = this.renderedEmbedAccess !== hasEmbedAccessForAccount(getAuthState().user?.role);
       if (mcpPageStale || embedsRowStale) {
         // Entitlements can legitimately progress from a free/default snapshot
         // to Pro after the account handoff's first non-null emission. Rebuild
@@ -1090,7 +1091,9 @@ export class UnifiedSettings {
   private renderHome(): void {
     const rows = this.overlay.querySelector<HTMLElement>('[data-settings-rows]');
     if (!rows) return;
-    const { groups, hits } = searchNav(buildNav(this.readFacts()), this.navQuery, (key) => t(key));
+    const facts = this.readFacts();
+    this.renderedEmbedAccess = facts.embedAccess;
+    const { groups, hits } = searchNav(buildNav(facts), this.navQuery, (key) => t(key));
     setTrustedHtml(rows, trustedHtml(
       groups.map((group) => this.renderNavGroup(group)).join(''),
       'settings home rows; every interpolated value escaped',

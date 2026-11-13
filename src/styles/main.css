@@ -28020,8 +28020,10 @@ body.map-width-resizing {
 
 /* Wider screens: a two-pane sheet over the dimmed dashboard, so a theme or
    panel change shows behind it. The sidebar holds the section list and its
-   search; the page pane scrolls on its own under a pinned page title. */
-@media (min-width: 769px) {
+   search; the page pane scrolls on its own under a pinned page title. The
+   query is the exact complement of the phone sheet's, so a fractional width
+   from browser zoom still gets one of the two layouts. */
+@media (width > 768px) {
   #unifiedSettingsModal {
     padding: 16px;
     background: rgb(0 0 0 / 0.5);
