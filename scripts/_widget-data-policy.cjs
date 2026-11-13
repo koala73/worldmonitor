@@ -286,6 +286,8 @@ const EXCLUDED_RPC_ROUTES = {
   "/api/health/v1/list-disease-outbreaks": "Same data as bootstrap key diseaseOutbreaks",
   "/api/imagery/v1/search-imagery": "Map satellite-imagery search; needs a bbox, returns scene metadata",
   "/api/orbital/v1/list-imaging-satellites": "Orbit elements for the point lookup; raw OMM records, not displayable values",
+  "/api/orbital/v1/get-point-passes": "Pro-only (401 for the anonymous widget session)",
+  "/api/orbital/v1/get-country-imagery-evidence": "Pro-only (401 for the anonymous widget session)",
   "/api/infrastructure/v1/get-bootstrap-data": "Internal duplicate of /api/bootstrap",
   "/api/infrastructure/v1/get-cable-health": "Returned empty (cables {}) in production",
   "/api/infrastructure/v1/get-ip-geo": "Blocked by relay widget endpoint policy",

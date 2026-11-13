@@ -1397,6 +1397,9 @@ const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
 // generated route tables and fails when an entry is not a real RPC path, when
 // its handler reaches an upstream itself, or when a seed-only route is missing.
 const cloudPreferredExact = new Set([
+  // Orbital reads that only read seed-owned Redis; get-point-passes searches the archives live.
+  '/api/orbital/v1/list-imaging-satellites',
+  '/api/orbital/v1/get-country-imagery-evidence',
   '/api/cyber/v1/list-cyber-threats',
   '/api/maritime/v1/list-ukmto-incidents',
   '/api/bootstrap',
@@ -1535,7 +1538,6 @@ const cloudPreferredSeedOnlyPrefixes = [
   '/api/consumer-prices/v1/',
   '/api/health/v1/',
   '/api/natural/v1/',
-  '/api/orbital/v1/',
   '/api/positive-events/v1/',
   '/api/prediction/v1/',
   '/api/radiation/v1/',
