@@ -124,3 +124,10 @@ describe('local time of a point', () => {
     assert.equal(zonedClock(null, 'en-US', NOW).abbreviation, 'UTC');
   });
 });
+
+describe('local time across daylight saving', () => {
+  const JULY = Date.UTC(2026, 6, 1, 12);
+  it('still picks New York for Manhattan in summer', () => {
+    assert.equal(pointTimeZone('US', -73.97, JULY), 'America/New_York');
+  });
+});
