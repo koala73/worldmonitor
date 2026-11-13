@@ -85,6 +85,20 @@ describe('point passes over REST', () => {
     }
   });
 
+  it('serves STAC acquisitions only, so no geostationary frame or fallback URL reaches REST or MCP', async () => {
+    for (const fixture of POINTS) {
+      const { fetch, requests } = fakeArchiveFetch(fixture);
+      const rest = await computePointPasses({ lat: fixture.lat, lon: fixture.lon }, storedCatalog, FIXTURE_NOW, { fetch });
+      const hosts = new Set(requests.map(({ url }) => new URL(url).hostname));
+      assert.deepEqual([...hosts].sort(), ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com']);
+      assert.deepEqual(Object.keys(rest).sort(), [
+        'acquisitions', 'archiveStatus', 'catalogFetchedAt', 'computedAt', 'failedSources', 'inventoryVersion',
+        'outOfFootprintPasses', 'passes', 'point', 'stale', 'unansweredProfiles', 'windowEndMs', 'windowStartMs',
+      ]);
+      assert.doesNotMatch(JSON.stringify(rest), /gibs\.earthdata|eumetsat|fallbacks/);
+    }
+  });
+
   it('keeps geometry tiers and names the failed sources when the archives fail', async () => {
     const fixture = ARCHIVE_RESPONSES.points.denver;
     const failing = ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com'];
