@@ -184,6 +184,7 @@ describe('orbital timeline dock', () => {
     Object.defineProperty(tip, 'offsetWidth', { value: 200 });
     Object.defineProperty(tip, 'offsetHeight', { value: 20 });
     mark.dispatchEvent(new Event('pointerover', { bubbles: true }));
+    expect(tip.style.maxWidth).toBe('382px');
     const left = parseFloat(tip.style.left) - 200;
     expect(left - 100).toBeGreaterThanOrEqual(0);
     expect(left + 100).toBeLessThanOrEqual(390);

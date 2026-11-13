@@ -23,6 +23,8 @@ const CLUSTER_PCT = 1.8;
 const MIN_DAY_PCT = 4;
 /** Where NOW sits across a sideways-scrolling dock when it first opens. */
 const NOW_AT = 0.7;
+/** A tooltip squeezed into a narrow visible plot still keeps this much width before it wraps. */
+const MIN_TIP_PX = 160;
 const TIP_NAMES = 4;
 
 export const passKey = (pass: { noradId: number; timeMs: number }) => `${pass.noradId}:${pass.timeMs}`;
@@ -290,12 +292,13 @@ export class OrbitalTimeline {
     const frame = this.element.getBoundingClientRect();
     const plot = this.plot.getBoundingClientRect();
     const box = target.getBoundingClientRect();
-    this.tip.textContent = target.dataset.tip ?? '';
-    this.tip.hidden = false;
     // Stay over the visible part of the plot so the row legend stays readable, and point the arrow at the glyph.
     const view = this.element.parentElement?.getBoundingClientRect() ?? frame;
     const lo = Math.max(plot.left, view.left) - frame.left;
     const hi = Math.min(plot.right, view.right) - frame.left;
+    this.tip.style.maxWidth = `${Math.max(MIN_TIP_PX, hi - lo - 8)}px`;
+    this.tip.textContent = target.dataset.tip ?? '';
+    this.tip.hidden = false;
     const half = this.tip.offsetWidth / 2;
     const x = (target.classList.contains('ow-tl-geo-line') ? event.clientX : box.left + box.width / 2) - frame.left;
     const [min, max] = half * 2 <= hi - lo
