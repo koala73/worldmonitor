@@ -3769,6 +3769,11 @@ function stubRssUpstream(respond) {
         respond(res, req);
       });
     };
+    options.signal?.addEventListener('abort', () => {
+      const error = new Error('The operation was aborted');
+      error.name = 'AbortError';
+      req.destroy(error);
+    }, { once: true });
     outbound.push({ options, req });
     return req;
   };
@@ -5755,5 +5760,86 @@ test('fetchWithTimeout hands https.request a signal that aborts with the caller 
     assert.ok(seen.every((signal) => signal instanceof AbortSignal));
   } finally {
     https.request = original;
+  }
+});
+
+test('rate-limit keys stay bounded and group each IPv6 /64', () => {
+  const limits = new Map();
+  const hit = (ip) => __testing__.clientWithinLimit({ headers: { 'x-real-ip': ip } }, limits, 2, 60_000);
+
+  assert.equal(hit('2001:db8:1:2::1').ok, true);
+  assert.equal(hit('2001:db8:1:2:ffff:ffff:ffff:ffff').ok, true);
+  assert.equal(hit('2001:db8:1:2::abcd').ok, false);
+  assert.equal(hit('2001:db8:1:3::1').ok, true);
+  assert.equal(hit('::ffff:203.0.113.7').ok, true);
+  assert.ok(limits.has('203.0.113.7'));
+
+  for (let i = 0; i < 20_000; i += 1) hit(`198.51.${i >> 8}.${i & 0xff}`);
+  assert.equal(limits.size, 10_000);
+});
+
+test('docker-mode rss-proxy lets one client hold at most half the fetch slots', async () => {
+  const localApi = await setupApiDir({});
+  const upstream = stubHeldRssUpstream();
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    mode: 'docker',
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const feed = (clientIp) => authFetch(
+    `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent('https://news.google.com/rss')}`,
+    { headers: { 'X-Real-IP': clientIp } },
+  );
+  const pending = [];
+
+  try {
+    for (let i = 0; i < 12; i += 1) pending.push(feed('203.0.113.7'));
+    await waitForCondition(() => upstream.outbound.length === 6, '6 active fetches');
+    await sleep(100);
+    assert.equal(upstream.outbound.length, 6);
+
+    pending.push(feed('203.0.113.8'));
+    await waitForCondition(() => upstream.outbound.length === 7, 'second client fetch');
+
+    upstream.releaseAll();
+    const responses = await Promise.all(pending);
+    assert.deepEqual([...new Set(responses.map((r) => r.status))], [200]);
+    await Promise.all(responses.map((r) => r.text()));
+    assert.equal(upstream.outbound.length, 13);
+  } finally {
+    upstream.releaseAll();
+    upstream.restore();
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('rss-proxy aborts the upstream fetch when the client disconnects', async () => {
+  const localApi = await setupApiDir({});
+  const upstream = stubHeldRssUpstream();
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const abandoned = new AbortController();
+
+  try {
+    const request = authFetch(
+      `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent('https://slow.example/feed.xml')}`,
+      { signal: abandoned.signal },
+    ).catch(() => null);
+    await waitForCondition(() => upstream.outbound.length === 1, 'active fetch');
+    abandoned.abort();
+    await request;
+    await waitForCondition(() => upstream.outbound[0].req.destroyed, 'upstream abort');
+  } finally {
+    upstream.releaseAll();
+    upstream.restore();
+    await app.close();
+    await localApi.cleanup();
   }
 });

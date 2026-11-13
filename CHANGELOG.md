@@ -207,7 +207,7 @@ All notable changes to World Monitor are documented here.
 
 ### Security
 
-- **Self-hosted RSS proxy is no longer an open proxy**: in Docker mode (`LOCAL_API_MODE=docker`), the sidecar's `/api/rss-proxy` now enforces the hosted proxy's feed allowlist (`api/_rss-allowed-domain-match.js`) and default ports, and limits each client IP (`X-Real-IP`) to 300 requests a minute. In every mode it stops reading a feed past 5 MiB and runs at most 12 feed fetches at once, with up to 48 more waiting at most 10 seconds each; past that it answers 503. Before, nginx's injected local token let any caller who could reach the published port fetch any public host and port through the install and buffer unbounded responses in memory.
+- **Self-hosted RSS proxy is no longer an open proxy**: in Docker mode (`LOCAL_API_MODE=docker`), the sidecar's `/api/rss-proxy` now enforces the hosted proxy's feed allowlist (`api/_rss-allowed-domain-match.js`) and default ports, and limits each client IP (`X-Real-IP`) to 300 requests a minute. In every mode it stops reading a feed past 5 MiB and runs at most 12 feed fetches at once, with up to 48 more waiting at most 10 seconds each; past that it answers 503. In Docker mode one client (an IPv4 address or IPv6 /64) may hold at most 6 of those fetches, and a fetch stops when its viewer disconnects. Before, nginx's injected local token let any caller who could reach the published port fetch any public host and port through the install and buffer unbounded responses in memory.
 
 ### Added
 

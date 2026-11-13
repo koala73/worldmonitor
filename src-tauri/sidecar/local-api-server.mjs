@@ -400,24 +400,36 @@ const RSS_PROXY_CLIENT_WINDOW_MS = 60_000;
 // a backlog that delays every other viewer's feeds.
 const RSS_PROXY_MAX_QUEUED = 48;
 const RSS_PROXY_QUEUE_WAIT_MS = 10_000;
+// Docker mode only: one client key may hold at most half the slots, so a
+// single caller cannot keep every viewer's feeds waiting.
+const RSS_PROXY_CLIENT_MAX_ACTIVE = 6;
 let _rssProxyQueueWaitMs = RSS_PROXY_QUEUE_WAIT_MS;
 let _activeRssProxyFetches = 0;
 const _rssProxyQueue = [];
+const _rssProxyClientActive = new Map();
 function rssProxyQueueError(code, message) {
   const error = new Error(message);
   error.code = code;
   return error;
 }
-function acquireRssProxySlot(req) {
-  if (_activeRssProxyFetches < RSS_PROXY_MAX_CONCURRENT) {
+function rssProxyClientAtShare(client) {
+  return client != null && (_rssProxyClientActive.get(client) || 0) >= RSS_PROXY_CLIENT_MAX_ACTIVE;
+}
+function takeRssProxyClientShare(client) {
+  if (client != null) _rssProxyClientActive.set(client, (_rssProxyClientActive.get(client) || 0) + 1);
+}
+// `client` is the caller's rate-limit key in Docker mode and null otherwise.
+function acquireRssProxySlot(req, client = null) {
+  if (_activeRssProxyFetches < RSS_PROXY_MAX_CONCURRENT && !rssProxyClientAtShare(client)) {
     _activeRssProxyFetches++;
+    takeRssProxyClientShare(client);
     return Promise.resolve();
   }
   if (_rssProxyQueue.length >= RSS_PROXY_MAX_QUEUED) {
     return Promise.reject(rssProxyQueueError('ERSSQUEUEFULL', 'RSS proxy queue full'));
   }
   return new Promise((resolve, reject) => {
-    const waiter = { req, resolve, reject };
+    const waiter = { req, client, resolve, reject };
     waiter.timer = setTimeout(() => {
       _rssProxyQueue.splice(_rssProxyQueue.indexOf(waiter), 1);
       reject(rssProxyQueueError('ERSSQUEUETIMEOUT', 'RSS proxy queue wait timed out'));
@@ -425,14 +437,27 @@ function acquireRssProxySlot(req) {
     _rssProxyQueue.push(waiter);
   });
 }
-function releaseRssProxySlot() {
-  while (_rssProxyQueue.length > 0) {
-    const waiter = _rssProxyQueue.shift();
-    clearTimeout(waiter.timer);
+function releaseRssProxySlot(client = null) {
+  if (client != null) {
+    const held = (_rssProxyClientActive.get(client) || 1) - 1;
+    if (held > 0) _rssProxyClientActive.set(client, held);
+    else _rssProxyClientActive.delete(client);
+  }
+  for (let i = 0; i < _rssProxyQueue.length;) {
+    const waiter = _rssProxyQueue[i];
     if (waiter.req.destroyed || waiter.req.socket?.destroyed) {
+      _rssProxyQueue.splice(i, 1);
+      clearTimeout(waiter.timer);
       waiter.reject(rssProxyQueueError('ERSSCLIENTGONE', 'Client disconnected while queued'));
       continue;
     }
+    if (rssProxyClientAtShare(waiter.client)) {
+      i++;
+      continue;
+    }
+    _rssProxyQueue.splice(i, 1);
+    clearTimeout(waiter.timer);
+    takeRssProxyClientShare(waiter.client);
     waiter.resolve();
     return;
   }
@@ -1180,18 +1205,37 @@ function selfHostKeyJson(body, status = 200, extraHeaders = {}) {
   return json(body, status, { 'Cache-Control': 'no-store', ...extraHeaders });
 }
 
-// Fixed-window count per client IP. nginx sets X-Real-IP from the connection
-// (or a trusted proxy's header), so the browser cannot choose its own key.
+const CLIENT_LIMIT_MAX_KEYS = 10_000;
+
+// nginx sets X-Real-IP from the connection (or a trusted proxy's header), so
+// the browser cannot choose its own key. One IPv6 /64 is one client: a single
+// host commonly owns the whole prefix.
+function clientLimitKey(req) {
+  const client = String(req.headers['x-real-ip'] || req.socket?.remoteAddress || 'unknown');
+  const groups = ipv6Hextets(client);
+  if (!groups) return client;
+  if (groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff) {
+    return [groups[6] >> 8, groups[6] & 0xff, groups[7] >> 8, groups[7] & 0xff].join('.');
+  }
+  return `${groups.slice(0, 4).map((group) => group.toString(16)).join(':')}::/64`;
+}
+
+// Fixed-window count per client. Every window in one map has the same length
+// and is re-inserted when it starts, so the map stays ordered by expiry:
+// expired entries are dropped from the front and, past CLIENT_LIMIT_MAX_KEYS,
+// the oldest window is evicted. Each call does constant amortized work.
 function clientWithinLimit(req, limits, limit, windowMs) {
-  const client = String(req.headers['x-real-ip'] || req.socket.remoteAddress || 'unknown');
+  const client = clientLimitKey(req);
   const now = Date.now();
-  if (limits.size > SELFHOST_VERDICT_CACHE_MAX) {
-    for (const [ip, window] of limits) if (window.resetAt <= now) limits.delete(ip);
+  for (const [key, window] of limits) {
+    if (window.resetAt > now) break;
+    limits.delete(key);
   }
   let window = limits.get(client);
-  if (!window || window.resetAt <= now) {
+  if (!window) {
     window = { count: 0, resetAt: now + windowMs };
     limits.set(client, window);
+    if (limits.size > CLIENT_LIMIT_MAX_KEYS) limits.delete(limits.keys().next().value);
   }
   window.count += 1;
   if (window.count <= limit) return { ok: true };
@@ -2522,7 +2566,13 @@ async function dispatch(requestUrl, req, routes, context) {
         context.logger.warn(`[local-api] rss-proxy SSRF blocked: no validated address (url=${JSON.stringify(feedUrl)})`);
         return rssProxyJson({ error: 'Could not resolve hostname' }, 403);
       }
-      await acquireRssProxySlot(req);
+      const client = context.mode === 'docker' ? clientLimitKey(req) : null;
+      await acquireRssProxySlot(req, client);
+      // nginx closes its upstream connection when the viewer goes away; stop the
+      // feed fetch then instead of holding the slot until it times out.
+      const clientGone = new AbortController();
+      const onClientGone = () => clientGone.abort();
+      req.socket?.once('close', onClientGone);
       let rssBody;
       let status;
       try {
@@ -2535,11 +2585,13 @@ async function dispatch(requestUrl, req, routes, context) {
           resolvedAddress: pinned.address,
           resolvedFamily: pinned.family,
           maxBodyBytes: RSS_PROXY_MAX_BODY_BYTES,
+          signal: clientGone.signal,
         }, parsed.hostname === 'news.google.com' ? 20000 : 12000);
         status = response.status;
         rssBody = await response.text();
       } finally {
-        releaseRssProxySlot();
+        req.socket?.off('close', onClientGone);
+        releaseRssProxySlot(client);
       }
       return rssProxyResponse(rssBody || '', status);
     } catch (e) {
@@ -2739,6 +2791,7 @@ export const __testing__ = {
   setSelfHostVerdictTtlMs(ms) {
     selfHostVerdictTtlMs = ms;
   },
+  clientWithinLimit,
   setRssProxyQueueWaitMs(ms) {
     _rssProxyQueueWaitMs = ms;
   },
