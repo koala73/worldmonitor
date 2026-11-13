@@ -115,9 +115,16 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     const [lat, lon] = text.match(/[\d.]+/g).map(Number);
     if (Math.abs(lat - PLACE.lat) > 0.005 || Math.abs(lon - PLACE.lon) > 0.005) throw new Error(`picked ${text}, not ${PLACE.name}`);
   };
-  const openAtPlace = async () => {
+  const openAtPlace = async (retry = true) => {
     await open();
-    assertAtPlace(await sheet.locator('.ow-place').innerText());
+    try {
+      assertAtPlace(await sheet.locator('.ow-place').innerText());
+    } catch (error) {
+      if (!retry) throw error;
+      await close();
+      await calibrate();
+      await openAtPlace(false);
+    }
   };
   const calibrate = async () => {
     for (let round = 0; round < 8; round++) {

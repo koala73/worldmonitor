@@ -346,6 +346,7 @@
   .orbital-watch-sheet[data-view="full"] {
     inset: 38vh 0 0 0;
     width: auto;
+    z-index: 10005;
   }
   .orbital-watch-sheet .ow-panel,
   .orbital-watch-sheet[data-view="full"] .ow-panel {
