@@ -99,6 +99,21 @@ describe('pass ground track', () => {
     assert.equal(insideRing(track.footprint[0]!, track.closest), false, 'the nadir point is outside the radar swath');
   });
 
+  it('never joins a polar footprint across the map', () => {
+    const { elements, profile, passes: found } = passes('TERRA', { lat: 84, lon: 30 });
+    for (const pass of found) {
+      const track = buildPassTrack(elements, profile.footprint, pass);
+      assert.ok(track);
+      for (const ring of track.footprint) {
+        for (let i = 1; i < ring.length; i += 1) {
+          assert.ok(Math.abs(ring[i]![0] - ring[i - 1]![0]) <= 180, 'no ring edge jumps across the map');
+        }
+        const span = Math.max(...ring.map(([lon]) => lon)) - Math.min(...ring.map(([lon]) => lon));
+        assert.ok(span < 360, 'a ring never wraps the whole map');
+      }
+    }
+  });
+
   it('returns no track, and throws nothing, when the orbit gives no positions for the pass', () => {
     const { elements, profile, passes: found } = passes('SENTINEL-2C', { lat: 48.85, lon: 2.35 });
     assert.equal(buildPassTrack(elements, profile.footprint, { ...found[0]!, timeMs: Number.NaN }), null);

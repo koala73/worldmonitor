@@ -95,9 +95,23 @@ function headings(run: TrackPoint[]): number[] {
   return run.map((_, i) => bearingDeg(run[Math.max(0, i - 1)]!, run[Math.min(run.length - 1, i + 1)]!));
 }
 
-function edge(run: TrackPoint[], heading: number[], side: 'left' | 'right', distanceKm: number): Array<[number, number]> {
+/** The swath edge on one side, its longitudes kept continuous along the track; null when it wraps over a pole. */
+function edge(run: TrackPoint[], heading: number[], side: 'left' | 'right', distanceKm: number): Array<[number, number]> | null {
   const turn = side === 'right' ? 90 : -90;
-  return run.map((point, i) => (distanceKm === 0 ? [point.lon, point.lat] : destination(point, heading[i]! + turn, distanceKm)));
+  const points: Array<[number, number]> = [];
+  for (let i = 0; i < run.length; i += 1) {
+    const point = run[i]!;
+    let [lon, lat] = distanceKm === 0 ? [point.lon, point.lat] : destination(point, heading[i]! + turn, distanceKm);
+    lon += 360 * Math.round((point.lon - lon) / 360);
+    const previous = points[points.length - 1];
+    if (previous && Math.abs(lon - previous[0]) > 90) return null;
+    points.push([lon, lat]);
+  }
+  return points;
+}
+
+function band(left: Array<[number, number]> | null, right: Array<[number, number]> | null): Array<[number, number]> | null {
+  return left && right ? [...left, ...right.reverse()] : null;
 }
 
 function clipLon(ring: Array<[number, number]>, bound: number, keep: (lon: number) => boolean): Array<[number, number]> {
@@ -137,13 +151,13 @@ function splitAtAntimeridian(ring: Array<[number, number]>): FootprintRing[] {
 
 function footprintRings(run: TrackPoint[], footprint: Footprint, altitudeKm: number): FootprintRing[] {
   if (run.length < 2) return [];
-  const band = footprintBand(footprint, altitudeKm);
-  if (band.sides.length === 0 || !(band.farKm > band.nearKm)) return [];
+  const reach = footprintBand(footprint, altitudeKm);
+  if (reach.sides.length === 0 || !(reach.farKm > reach.nearKm)) return [];
   const heading = headings(run);
-  const rings: Array<Array<[number, number]>> = band.nearKm === 0 && band.sides.length === 2
-    ? [[...edge(run, heading, 'left', band.farKm), ...edge(run, heading, 'right', band.farKm).reverse()]]
-    : band.sides.map((side) => [...edge(run, heading, side, band.farKm), ...edge(run, heading, side, band.nearKm).reverse()]);
-  return rings.flatMap(splitAtAntimeridian);
+  const rings = reach.nearKm === 0 && reach.sides.length === 2
+    ? [band(edge(run, heading, 'left', reach.farKm), edge(run, heading, 'right', reach.farKm))]
+    : reach.sides.map((side) => band(edge(run, heading, side, reach.farKm), edge(run, heading, side, reach.nearKm)));
+  return rings.filter((ring): ring is Array<[number, number]> => ring !== null).flatMap(splitAtAntimeridian);
 }
 
 function trackSegments(elements: OrbitElements, startMs: number, endMs: number, stepSeconds: number): TrackPoint[][] {
