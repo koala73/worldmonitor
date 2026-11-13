@@ -5225,14 +5225,14 @@
         "passes": "Geçişler"
       },
       "status": {
-        "objects": "{{count}} nesne · CelesTrak GP",
+        "objects": "{{count}} görüntüleme uydusu · CelesTrak GP",
         "fetched": "Alındı {{time}} · {{ago}}",
         "sun": "Güneş {{point}} · güneş altı noktası"
       },
       "step": {
         "computing": "Hesaplanıyor",
         "catalogLoading": "Katalog · yükleniyor",
-        "catalog": "Katalog · {{count}} nesne",
+        "catalog": "Katalog · {{count}} görüntüleme uydusu",
         "propagating": "Yörüngeler hesaplanıyor · {{done}} / {{total}}",
         "archives": "Arşivler · {{done}} / {{total}} yanıtladı",
         "matching": "Sahneler {{passes}} geçişle eşleştiriliyor",

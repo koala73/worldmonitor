@@ -5197,14 +5197,14 @@
         "passes": "Lượt bay qua"
       },
       "status": {
-        "objects": "{{count}} vật thể · CelesTrak GP",
+        "objects": "{{count}} vệ tinh chụp ảnh · CelesTrak GP",
         "fetched": "Lấy lúc {{time}} · {{ago}}",
         "sun": "Mặt Trời {{point}} · điểm cận nhật"
       },
       "step": {
         "computing": "Đang tính",
         "catalogLoading": "Danh mục · đang tải",
-        "catalog": "Danh mục · {{count}} vật thể",
+        "catalog": "Danh mục · {{count}} vệ tinh chụp ảnh",
         "propagating": "Đang tính quỹ đạo · {{done}} / {{total}}",
         "archives": "Kho lưu trữ · {{done}} / {{total}} đã phản hồi",
         "matching": "Đang khớp cảnh với {{passes}} lượt bay qua",
