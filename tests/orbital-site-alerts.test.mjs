@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
+import { OPTICAL_MIN_SUN_ELEVATION_DEG as TIER_SUN_FLOOR } from '../scripts/shared/orbital/tiers.js';
+
 const {
   CHANGE_COOLDOWN_MS,
+  OPTICAL_MIN_SUN_ELEVATION_DEG,
   IMAGING_WINDOW_EVENT_TYPE,
   SITE_CHANGE_EVENT_TYPE,
   WINDOW_COOLDOWN_MS,
@@ -96,6 +99,17 @@ describe('confirmed-change alerts', () => {
     assert.equal(h.published[1].payload.itemId, 'scene-4');
   });
 
+  it('drops a pending confirmation once it is older than a week', async () => {
+    let fail = true;
+    const h = harness({ publishResult: () => !fail });
+    const record = site('site-a', { flag: flagWith(confirmed('scene-2')) });
+    await h.run([record]);
+    fail = false;
+    await h.run([record], { now: NOW + 8 * 24 * HOUR });
+    assert.equal(h.published.length, 1, 'the stale retry is not sent');
+    assert.equal(h.state['site-a'].change.pending, undefined);
+  });
+
   it('a failed publish keeps the event pending and retries it with the same coalesce key', async () => {
     let fail = true;
     const h = harness({ publishResult: () => !fail });
@@ -120,6 +134,15 @@ describe('imaging-window alerts', () => {
     assert.equal(event.eventType, IMAGING_WINDOW_EVENT_TYPE);
     assert.deepEqual(event.payload.windows.map((w) => w.noradId), [1, 2], 'windows past the lead horizon wait');
     assert.equal(event.payload.coalesceKey, `orbital_imaging_window:site-a:${iso(NOW + 2 * HOUR)}`);
+  });
+
+  it('skips optical passes in the dark and keeps radar passes at night', async () => {
+    assert.equal(OPTICAL_MIN_SUN_ELEVATION_DEG, TIER_SUN_FLOOR, 'same daylight floor as the pass tiers');
+    const h = harness();
+    const dark = { ...window(1, HOUR), sunElevationDeg: -20 };
+    const radar = { ...window(2, 2 * HOUR, 'open-radar'), sunElevationDeg: -20 };
+    await h.run([site('site-a', { nextWindows: [dark, radar] })]);
+    assert.deepEqual(h.published[0].payload.windows.map((w) => w.noradId), [2]);
   });
 
   it('alerts for open optical and radar sensors only', async () => {

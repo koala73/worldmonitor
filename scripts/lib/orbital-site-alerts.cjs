@@ -19,6 +19,8 @@ const ORBITAL_SITE_EVENT_TYPES = Object.freeze([IMAGING_WINDOW_EVENT_TYPE, SITE_
 
 // Only open archives publish the image a window produces.
 const OPEN_IMAGING_CATEGORIES = new Set(['open-optical', 'open-radar']);
+// Same daylight floor as the pass tiers (scripts/shared/orbital/tiers.js): an optical pass in the dark images nothing.
+const OPTICAL_MIN_SUN_ELEVATION_DEG = 5;
 const WINDOW_LEAD_MS = 24 * 60 * 60 * 1000;
 const WINDOW_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 const CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -36,7 +38,8 @@ function openWindowsAhead(record, nowMs) {
   const windows = Array.isArray(record?.nextWindows) ? record.nextWindows : [];
   return windows.filter((window) => {
     const timeMs = Date.parse(window?.time);
-    return OPEN_IMAGING_CATEGORIES.has(window?.category) && timeMs >= nowMs && timeMs - nowMs <= WINDOW_LEAD_MS;
+    const lit = window?.category !== 'open-optical' || window.sunElevationDeg >= OPTICAL_MIN_SUN_ELEVATION_DEG;
+    return OPEN_IMAGING_CATEGORIES.has(window?.category) && lit && timeMs >= nowMs && timeMs - nowMs <= WINDOW_LEAD_MS;
   });
 }
 
@@ -76,8 +79,12 @@ function advanceWindows(previous, record, nowMs) {
 }
 
 /** One site's confirmed-change edge: the newest confirmation the producer has not yet answered. */
-function advanceChange(previous, record, nowMs) {
-  if (previous?.pending) return { next: previous, owed: previous.pending };
+function advanceChange(stored, record, nowMs) {
+  // A pending confirmation that aged past the news window while publishing failed is dropped.
+  const pendingFresh = stored?.pending && nowMs - Date.parse(stored.pending.datetime) <= CHANGE_MAX_AGE_MS;
+  if (pendingFresh) return { next: stored, owed: stored.pending };
+  const { pending: _expired, ...rest } = stored ?? {};
+  const previous = stored ? rest : undefined;
   const confirmation = latestConfirmation(record?.flag);
   if (!confirmation || (previous?.datetime && confirmation.datetime <= previous.datetime)) return { next: previous, owed: null };
   const answered = { ...previous, datetime: confirmation.datetime, itemId: confirmation.itemId };
@@ -191,6 +198,7 @@ module.exports = {
   SITE_CHANGE_EVENT_TYPE,
   ORBITAL_SITE_EVENT_TYPES,
   OPEN_IMAGING_CATEGORIES,
+  OPTICAL_MIN_SUN_ELEVATION_DEG,
   WINDOW_LEAD_MS,
   WINDOW_COOLDOWN_MS,
   CHANGE_COOLDOWN_MS,
