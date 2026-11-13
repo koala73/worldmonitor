@@ -84,7 +84,8 @@ describe('ChatGPT host detection', () => {
     const req = (ua) => new Request('https://worldmonitor.app/mcp', { headers: ua === null ? {} : { 'User-Agent': ua } });
     // Seen in wm_api_usage: plain and "(ChatGPT)" from ChatGPT, "(Codex)" from the Codex CLI.
     for (const ua of ['openai-mcp/1.0.0', 'openai-mcp/1.0.0 (ChatGPT)', 'OpenAI-MCP/2.0']) assert.equal(isChatGptHost(req(ua)), true, ua);
-    for (const ua of ['openai-mcp/1.0.0 (Codex)', 'Claude-User', 'Cursor/1.0.0', 'python-httpx/0.28.1', 'my-openai-mcp/1.0', '', null]) {
+    // "(Responses API)" is a developer calling MCP through OpenAI's API, not the ChatGPT app.
+    for (const ua of ['openai-mcp/1.0.0 (Codex)', 'openai-mcp/1.0.0 (Responses API)', 'Claude-User', 'Cursor/1.0.0', 'python-httpx/0.28.1', 'my-openai-mcp/1.0', '', null]) {
       assert.equal(isChatGptHost(req(ua)), false, String(ua));
     }
   });
