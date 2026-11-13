@@ -242,7 +242,11 @@ function authRequiredResponse(id: unknown, resourceMetadataUrl: string, corsHead
 //
 // `initialize` advertises this object as is; `server/discover` advertises it
 // minus `logging`, which the modern era does not serve.
-function serverCapabilities() {
+//
+// ChatGPT gets no skills extension. The skills are recipes for API-key and
+// agent clients: they link the plans page and name tools ChatGPT does not
+// have (host-policy.ts).
+function serverCapabilities({ skills = true }: { skills?: boolean } = {}) {
   return {
     tools: {},
     logging: {},
@@ -250,13 +254,13 @@ function serverCapabilities() {
     resources: { subscribe: false, listChanged: false },
     extensions: {
       'io.modelcontextprotocol/ui': {},
-      'io.modelcontextprotocol/skills': {},
+      ...(skills ? { 'io.modelcontextprotocol/skills': {} } : {}),
     },
   };
 }
 
-function modernServerCapabilities() {
-  const { logging: _logging, ...capabilities } = serverCapabilities();
+function modernServerCapabilities(options: { skills?: boolean } = {}) {
+  const { logging: _logging, ...capabilities } = serverCapabilities(options);
   return capabilities;
 }
 
@@ -1423,7 +1427,7 @@ async function mcpHandlerInner(
   if (modernEra && method === 'server/discover') {
     return respond(rpcOk(id, {
       supportedVersions: allSupportedProtocolVersionsNewestFirst(),
-      capabilities: modernServerCapabilities(),
+      capabilities: modernServerCapabilities({ skills: !isChatGptHost(req) }),
       instructions: isChatGptHost(req) ? CHATGPT_MODERN_SERVER_INSTRUCTIONS : MODERN_SERVER_INSTRUCTIONS,
     }, corsHeaders));
   }
@@ -1462,7 +1466,7 @@ async function mcpHandlerInner(
       });
       return respond(rpcOk(id, {
         protocolVersion: negotiatedVersion,
-        capabilities: serverCapabilities(),
+        capabilities: serverCapabilities({ skills: !isChatGptHost(req) }),
         serverInfo: SERVER_INFO,
         instructions: isChatGptHost(req) ? CHATGPT_SERVER_INSTRUCTIONS : SERVER_INSTRUCTIONS,
       }, { 'Mcp-Session-Id': sessionId, ...corsHeaders }));
@@ -1519,9 +1523,12 @@ async function mcpHandlerInner(
       return respond(rpcOk(id, { description: built.description, messages: built.messages }, corsHeaders));
     }
     case 'skills/list':
-      return respond(buildSkillsListResponse(id, body.params, corsHeaders));
     case 'skills/get':
-      return respond(buildSkillsGetResponse(id, body.params, corsHeaders));
+      // Not offered to ChatGPT (serverCapabilities).
+      if (isChatGptHost(req)) return respond(rpcError(id, -32601, `Method not found: ${method}`, corsHeaders));
+      return respond(method === 'skills/list'
+        ? buildSkillsListResponse(id, body.params, corsHeaders)
+        : buildSkillsGetResponse(id, body.params, corsHeaders));
     // Resources split by data sensitivity. resources/list + the new
     // resources/templates/list are metadata-class — public catalog-enumeration
     // methods (in PUBLIC_MCP_METHODS, quota-exempt, anon-rate-limited) that
@@ -1551,7 +1558,7 @@ async function mcpHandlerInner(
       return respond(rpcOk(id, { resourceTemplates: RESOURCE_TEMPLATE_LIST_RESPONSE }, corsHeaders));
     case 'resources/read':
       if (isSkillResourceRead) {
-        if (!skillResourceReadUri) {
+        if (!skillResourceReadUri || isChatGptHost(req)) {
           return respond(rpcError(
             id,
             -32602,

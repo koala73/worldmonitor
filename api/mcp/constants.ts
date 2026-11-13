@@ -501,8 +501,9 @@ const JMESPATH_SPEC_URL = 'https://jmespath.org/specification.html';
 //
 // `offersCheckout: false` renders the text for hosts whose app rules forbid
 // promoting an upgrade (ChatGPT, see host-policy.ts): no start_upgrade, no
-// checkout hint, and the plans page named as a description, not a call to buy.
-type InstructionDenialCodes = { allowanceExhausted: number; entitlement: number; offersCheckout: boolean };
+// checkout hint, and no plans page link. `offersSkills: false` leaves out the
+// skills discovery step for a host that gets no skills extension (ChatGPT).
+type InstructionDenialCodes = { allowanceExhausted: number; entitlement: number; offersCheckout: boolean; offersSkills: boolean };
 
 // Claude Code truncates server instructions past 2 KB (UTF-8), so the wire
 // `instructions` field carries only the rules an agent needs before its first
@@ -524,6 +525,8 @@ export const AGENT_GUIDE_RESOURCE_URI = 'worldmonitor://guide/agents';
 const ACCESS_GUIDE_PARAGRAPH = `get_sources is the sole credential-free data tool and consumes no daily quota. It has a separate fail-closed ceiling of 10 unauthenticated calls/minute/IP. Signed-in accounts without a subscription get a free taste of CACHED-data tools (3 request windows/day, 5 calls/day); live-fetch tools stay Pro-only. Structured account-access denials carry \`error.data\` = {reason, nextStep, upgradeUrl} with reason no-account, allowance-exhausted, upgrade-required or lapsed-subscription; the server instructions name the JSON-RPC code for each. Other rate-limit and service errors may omit those fields; branch on the JSON-RPC code and HTTP status. Read each tool's \`_meta["worldmonitor/access"]\`: \`free\` is anonymous and quota-free, \`free-account\` is available to signed-in free accounts (cache-backed data calls spend the allowance; describe_tool and get_mcp_allowance do not), and \`subscription\` requires Pro. Each tool also carries \`_meta["worldmonitor/weight"]\`: what one call COSTS, in REST-request units. It is charged only on an API plan, whose MCP calls and REST requests draw one daily budget (1 for a cache-backed read, 2 for a live downstream fetch, 3 for the two that fetch twice); Pro and Pro Business meter one unit per standalone data call. Opening any embedded panel costs one request including its rendered details. Country briefs include bounded section reads; news dashboards include bounded hazard map loads. Repeated same-country or news-dashboard opens reuse the admission for at least five minutes, local topic/filter/layer navigation reuses loaded data, and explicit refresh costs one new request. News summaries and translations are separate user requests. Budget before you call: get_mcp_allowance or the allowance resource reports \`sharedWithRestApi\` so you can tell whether \`used\` also counts REST traffic. Plans: ${MCP_UPGRADE_URL}.`;
 const CHATGPT_ACCESS_GUIDE_PARAGRAPH = `get_sources is the sole credential-free data tool and consumes no daily quota. It has a separate fail-closed ceiling of 10 unauthenticated calls/minute/IP. Signed-in accounts without a subscription get a free taste of CACHED-data tools (3 request windows/day, 5 calls/day); live-fetch tools need an account whose plan includes them. Structured account-access denials carry \`error.data\` = {reason, nextStep} with reason no-account, allowance-exhausted, upgrade-required or lapsed-subscription; the server instructions name the JSON-RPC code for each. Other rate-limit and service errors may omit those fields; branch on the JSON-RPC code and HTTP status. Read each tool's \`_meta["worldmonitor/access"]\`: \`free\` is anonymous and quota-free, \`free-account\` is available to signed-in free accounts (cache-backed data calls spend the allowance; describe_tool and get_mcp_allowance do not), and \`subscription\` is not available on a free account. Opening any embedded panel counts as one request including its rendered details; repeated same-country opens reuse it for at least five minutes, and local navigation reuses loaded data. Call get_mcp_allowance before a long run to read what remains today.`;
 
+const AGENT_SKILLS_GUIDE_PARAGRAPH = 'Agent Skills: when the `io.modelcontextprotocol/skills` extension is available, issue `skills/list` to discover skills (follow `nextCursor` until it is absent), `skills/get` for one skill, then `resources/read` for each advertised `skill://` resource. Treat the returned `sha256` digest and byte `size` as the integrity contract; text resources use `text` and binary resources use base64 `blob` content.';
+
 export const AGENT_GUIDE = [
   'For webcam visual context, discover a viewport with find_webcams, then resolve one returned ID with get_webcam_media. Results are recent visual context, not confirmation of live conditions. Check lastUpdated separately from catalog freshness and URL resolvedAt. Keep Windy courtesy and link displayed images to windyUrl or playerUrl.',
   '',
@@ -543,7 +546,7 @@ export const AGENT_GUIDE = [
   '',
   `Issue resources/list for concrete read-only resources (seed-meta freshness and this guide — anonymous + quota-free) and resources/templates/list for parameterised URI templates (country risk, chokepoint status, market quote). Substitute the template placeholder, then resources/read the concrete URI; a template read is metered IDENTICALLY to the equivalent tools/call — same \`_meta["worldmonitor/access"]\` rules, spending the free-account allowance or the Pro daily quota according to the caller. There is no unmetered path around the cap via those resources.`,
   '',
-  'Agent Skills: when the `io.modelcontextprotocol/skills` extension is available, issue `skills/list` to discover skills (follow `nextCursor` until it is absent), `skills/get` for one skill, then `resources/read` for each advertised `skill://` resource. Treat the returned `sha256` digest and byte `size` as the integrity contract; text resources use `text` and binary resources use base64 `blob` content.',
+  AGENT_SKILLS_GUIDE_PARAGRAPH,
   '',
   // Which tool fits which question. Tool descriptions describe only their own
   // tool: the Claude Connectors Directory forbids descriptions that name other
@@ -569,11 +572,17 @@ function withoutSummaryToolRouting(guide: string): string {
     return text.replace(clause, '');
   }, guide);
 }
-export const CHATGPT_AGENT_GUIDE = withoutSummaryToolRouting(
+// ChatGPT gets no skills extension (handler.ts serverCapabilities).
+function withoutSkillsParagraph(guide: string): string {
+  const paragraph = `${AGENT_SKILLS_GUIDE_PARAGRAPH}\n\n`;
+  if (!guide.includes(paragraph)) throw new Error('constants.ts: skills guide paragraph not found');
+  return guide.replace(paragraph, '');
+}
+export const CHATGPT_AGENT_GUIDE = withoutSkillsParagraph(withoutSummaryToolRouting(
   AGENT_GUIDE.replace(ACCESS_GUIDE_PARAGRAPH, CHATGPT_ACCESS_GUIDE_PARAGRAPH),
-);
+));
 
-function buildServerInstructions({ allowanceExhausted, entitlement, offersCheckout }: InstructionDenialCodes): string {
+function buildServerInstructions({ allowanceExhausted, entitlement, offersCheckout, offersSkills }: InstructionDenialCodes): string {
   const checkoutFlow = offersCheckout
     ? ' A free account\'s denial with checkoutTool="start_upgrade": call start_upgrade({plan: recommendedPlan}) for a checkout link the user opens, then poll get_mcp_allowance.'
     : '';
@@ -591,14 +600,14 @@ function buildServerInstructions({ allowanceExhausted, entitlement, offersChecko
     `Access: read each tool's _meta["worldmonitor/access"] (free, free-account, subscription)${weightMeta}. Signed-in free accounts get a free taste of CACHED-data tools (3 request windows/day, 5 calls/day); ${liveFetchAccess}. get_mcp_allowance({}) reads the allowance at no cost. Structured account-access denials carry error.data ${denialFields}: -32001/401 reason=no-account, ${allowanceExhausted}/429 reason=allowance-exhausted, and ${entitlement}/403 reason=upgrade-required or lapsed-subscription. Other rate-limit and service errors may omit those fields.${checkoutFlow}${plansLink}`,
     `Every tool accepts optional \`jmespath\` (${JMESPATH_SPEC_URL}; expr ≤${JMESPATH_MAX_EXPR_BYTES}B, output ≤${JMESPATH_MAX_OUTPUT_BYTES}B); attributed data returns {data, _attribution}, keep it when redistributing. Bad projections soft-fail as {_jmespath_error, original_keys}; a retry spends daily quota.`,
     `tools/list ships each complete description (≤${TOOL_DESCRIPTION_MAX_BYTES}B); describe_tool({tool_name}) re-reads one, quota-exempt.`,
-    'Discovery: prompts/list; resources/list and resources/templates/list (a template read is metered like its tools/call under worldmonitor/access); skills/list (follow nextCursor), skills/get, then resources/read each skill:// file and verify its sha256 digest and size.',
+    `Discovery: prompts/list; resources/list and resources/templates/list (a template read is metered like its tools/call under worldmonitor/access)${offersSkills ? '; skills/list (follow nextCursor), skills/get, then resources/read each skill:// file and verify its sha256 digest and size' : ''}.`,
   ].join('\n');
 }
 
-export const SERVER_INSTRUCTIONS = buildServerInstructions({ allowanceExhausted: -32029, entitlement: -32002, offersCheckout: true });
-export const MODERN_SERVER_INSTRUCTIONS = buildServerInstructions({ allowanceExhausted: -31029, entitlement: -31002, offersCheckout: true });
-export const CHATGPT_SERVER_INSTRUCTIONS = buildServerInstructions({ allowanceExhausted: -32029, entitlement: -32002, offersCheckout: false });
-export const CHATGPT_MODERN_SERVER_INSTRUCTIONS = buildServerInstructions({ allowanceExhausted: -31029, entitlement: -31002, offersCheckout: false });
+export const SERVER_INSTRUCTIONS = buildServerInstructions({ allowanceExhausted: -32029, entitlement: -32002, offersCheckout: true, offersSkills: true });
+export const MODERN_SERVER_INSTRUCTIONS = buildServerInstructions({ allowanceExhausted: -31029, entitlement: -31002, offersCheckout: true, offersSkills: true });
+export const CHATGPT_SERVER_INSTRUCTIONS = buildServerInstructions({ allowanceExhausted: -32029, entitlement: -32002, offersCheckout: false, offersSkills: false });
+export const CHATGPT_MODERN_SERVER_INSTRUCTIONS = buildServerInstructions({ allowanceExhausted: -31029, entitlement: -31002, offersCheckout: false, offersSkills: false });
 
 // Country-code whitelist for get_consumer_prices. The consumer-prices seeder
 // currently only produces data for AE (UAE); future markets will be added

@@ -149,6 +149,17 @@ describe('news results reach ChatGPT as pointers', () => {
     }
   });
 
+  it('climate news items lose their RSS summary; other climate datasets keep theirs', () => {
+    const out = pointerOnlyNewsResult('get_climate_data', {
+      data: {
+        'news-intelligence': { items: [{ title: 'Heatwave', url: 'https://x.test/c', source: 'Carbon Brief', publishedAt: 1, summary: 'RSS description text' }] },
+        anomalies: { summary: 'kept: computed by WorldMonitor' },
+      },
+    });
+    assert.deepEqual(out.data['news-intelligence'].items[0], { title: 'Heatwave', url: 'https://x.test/c', source: 'Carbon Brief', publishedAt: 1 });
+    assert.equal(out.data.anomalies.summary, 'kept: computed by WorldMonitor');
+  });
+
   it('fleet body text and stock news summaries go', () => {
     assert.deepEqual(
       pointerOnlyNewsResult('get_country_brief_section', { value: { report: { vessels: [{ name: 'USS X', activityDescription: 'USNI text' }] } } }),
@@ -179,5 +190,37 @@ describe('news results reach ChatGPT as pointers', () => {
 
     const claude = await invoke(call, 'Claude-User');
     assert.equal(claude.result.structuredContent.records[0].summary, 'Publisher body text');
+  });
+});
+
+describe('skills are not offered to ChatGPT', () => {
+  // The skills are HTTP recipes for API-key clients: they link the plans page
+  // and name the hidden summary tools.
+  it('initialize and server/discover leave out the skills extension for ChatGPT only', async () => {
+    const init = { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'x', version: '1' } } };
+    const extensions = async (ua) => (await invoke(init, ua)).result.capabilities.extensions;
+    assert.equal('io.modelcontextprotocol/skills' in await extensions(CHATGPT_UA), false);
+    assert.ok('io.modelcontextprotocol/ui' in await extensions(CHATGPT_UA));
+    assert.ok('io.modelcontextprotocol/skills' in await extensions('Claude-User'));
+    assert.ok('io.modelcontextprotocol/skills' in await extensions('openai-mcp/1.0.0 (Codex)'));
+  });
+
+  it('skills/list, skills/get and skill:// reads are refused for ChatGPT only', async () => {
+    const list = { jsonrpc: '2.0', id: 1, method: 'skills/list', params: {} };
+    assert.equal((await invoke(list, CHATGPT_UA)).error?.code, -32601);
+    const skills = (await invoke(list, 'Claude-User')).result.skills;
+    assert.ok(skills.length > 0);
+    const uri = skills[0].uri;
+    assert.equal((await invoke({ jsonrpc: '2.0', id: 2, method: 'skills/get', params: { uri } }, CHATGPT_UA)).error?.code, -32601);
+    const read = { jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: 'skill://fetch-news-digest/SKILL.md' } };
+    assert.equal((await invoke(read, CHATGPT_UA)).error?.code, -32602);
+    assert.match((await invoke(read, 'Claude-User')).result.contents[0].text, /analyze_news_headlines/);
+  });
+
+  it('instructions and the guide ChatGPT reads do not describe skills discovery', () => {
+    for (const text of [CHATGPT_SERVER_INSTRUCTIONS, CHATGPT_MODERN_SERVER_INSTRUCTIONS, CHATGPT_AGENT_GUIDE]) {
+      assert.doesNotMatch(text, /skills\/list|skill:\/\//);
+    }
+    assert.match(AGENT_GUIDE, /skills\/list/);
   });
 });
