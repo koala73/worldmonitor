@@ -1,17 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { cache, limiter } = vi.hoisted(() => ({
+const { cache, inflight, limiter } = vi.hoisted(() => ({
   cache: new Map<string, unknown>(),
+  inflight: new Map<string, Promise<unknown>>(),
   limiter: vi.fn(async (_scope: string, _limit: number, _window: string, _identifier: string) => ({ allowed: true, degraded: false })),
 }));
 vi.mock('../_shared/rate-limit', () => ({ checkScopedRateLimit: limiter }));
 vi.mock('../_shared/redis', () => ({
-  getCachedJson: vi.fn(async (key: string) => cache.get(key) ?? null),
-  setCachedJson: vi.fn(async (key: string, value: unknown) => { cache.set(key, value); }),
+  cachedFetchJson: vi.fn(async (key: string, ttl: number, fetcher: () => Promise<unknown>, negativeTtl: number) => {
+    if (cache.has(key)) return (cache.get(key) as { value: unknown }).value;
+    const pending = inflight.get(key) ?? fetcher()
+      .then((value) => { cache.set(key, { value, ttl: value === null ? negativeTtl : ttl }); return value; })
+      .finally(() => inflight.delete(key));
+    inflight.set(key, pending);
+    return pending;
+  }),
 }));
 
 import { normalizePlaceQuery, placeSearchCacheKey, searchPlace } from '../worldmonitor/infrastructure/v1/search-place';
-import { setCachedJson } from '../_shared/redis';
 
 const ctx = { request: new Request('https://worldmonitor.test') } as Parameters<typeof searchPlace>[0];
 const rotterdam = [
@@ -22,6 +28,7 @@ const rotterdam = [
 
 beforeEach(() => {
   cache.clear();
+  inflight.clear();
   limiter.mockResolvedValue({ allowed: true, degraded: false });
   vi.stubGlobal('fetch', vi.fn(async () => Response.json(rotterdam)));
 });
@@ -48,6 +55,22 @@ describe('place-name search', () => {
     expect(cache.has(placeSearchCacheKey(normalizePlaceQuery('rotterdam')))).toBe(true);
   });
 
+  it('shares one Nominatim call between concurrent searches for the same name', async () => {
+    limiter.mockResolvedValueOnce({ allowed: true, degraded: false }).mockResolvedValue({ allowed: false, degraded: false });
+    const [first, second] = await Promise.all([searchPlace(ctx, { q: 'Rotterdam' }), searchPlace(ctx, { q: 'rotterdam' })]);
+    expect(first.places).toHaveLength(1);
+    expect(second).toEqual(first);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a name with no match for a day and a found name for a week', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json([]));
+    expect(await searchPlace(ctx, { q: 'Nowhereville' })).toEqual({ places: [], error: '' });
+    await searchPlace(ctx, { q: 'Rotterdam' });
+    expect(cache.get(placeSearchCacheKey('nowhereville'))).toMatchObject({ ttl: 86_400 });
+    expect(cache.get(placeSearchCacheKey('rotterdam'))).toMatchObject({ ttl: 604_800 });
+  });
+
   it('spends the shared one-per-second Nominatim bucket on a cache miss', async () => {
     await searchPlace(ctx, { q: 'Rotterdam' });
     expect(limiter).toHaveBeenCalledWith('reverse-geocode', 1, '1 s', 'global');
@@ -70,6 +93,6 @@ describe('place-name search', () => {
   it('reports an upstream failure without caching it', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response('busy', { status: 503 }));
     expect(await searchPlace(ctx, { q: 'Rotterdam' })).toEqual({ places: [], error: 'Place search failed' });
-    expect(setCachedJson).not.toHaveBeenCalled();
+    expect(cache.size).toBe(0);
   });
 });
