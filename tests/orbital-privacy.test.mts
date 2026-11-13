@@ -80,7 +80,7 @@ describe('a free lookup keeps the exact point to the archives', () => {
     const urls: string[] = [];
     await readPointCondition(item, nearZero, { fetch: async (url: string) => { urls.push(url); return new Response('{"values":[4]}'); } });
     const box = cropBox(nearZero, 0.00001);
-    urls.push(planetaryComputerCropUrl(item.renderedPreviewHref!, box)!, gibsSnapshotUrl('MODIS_Terra_CorrectedReflectance_TrueColor', '2026-11-12', box)!);
+    urls.push(planetaryComputerCropUrl(item.collection, item.itemId, box)!, gibsSnapshotUrl('MODIS_Terra_CorrectedReflectance_TrueColor', '2026-11-12', box)!);
     for (const url of urls) {
       assert.doesNotMatch(decodeURIComponent(url), /\d[eE][-+]?\d/, `${url} has no exponent`);
       const crumb = scrubSentryCredentials({ data: { url } });
