@@ -14,6 +14,7 @@ import {
   parseRankableRecordCount,
 } from './_rankable-coverage.js';
 import { assessCiiInputs, CII_INPUT_POLICY } from './_cii-input-health.js';
+import { CII_COVERAGE_BASELINE } from './_cii-coverage-baseline.generated.js';
 // Seed-envelope helper. PR 1 imports it here so PR 2 can wire envelope-aware
 // reads at specific call sites without further plumbing. It's a no-op on
 // legacy-shape seed-meta values (they have no `_seed` wrapper and pass through
@@ -1219,7 +1220,7 @@ const SEED_META = {
     key: 'seed-meta:intelligence:cii-economic-stress', maxStaleMin: 180,
     activationKey: 'seed-activated:intelligence:cii-economic-stress',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10577, activationKey: 'seed-activated:intelligence:cii-economic-stress' },
-    minMeasuredCountries: 23,
+    expectedCountries: CII_COVERAGE_BASELINE.families.economicStress,
   },
   ciiStructuralPrior: {
     key: 'seed-meta:intelligence:cii-structural-prior', maxStaleMin: 50400,
@@ -5154,7 +5155,7 @@ function composeCiiEconomicStressHealth(entry, raw, readError = false, now = Dat
     return { ...entry, status: 'REDIS_PARTIAL' };
   }
   const payload = unwrapEnvelope(parseRedisValue(raw)).data;
-  const required = SEED_META.ciiStructuralPrior.requiredCountries;
+  const required = CII_COVERAGE_BASELINE.scoredCountries;
   const countries = payload?.countries;
   let valid = payload?.schemaVersion === 1 && countries && typeof countries === 'object'
     && Object.keys(countries).sort().join() === [...required].sort().join();
@@ -5168,10 +5169,11 @@ function composeCiiEconomicStressHealth(entry, raw, readError = false, now = Dat
       && Number.isFinite(Date.parse(member.observedAt)) && Date.parse(member.observedAt) <= now);
     (fresh ? measuredCountries : unmeasuredCountries).push(code);
   }
-  const shortfall = !valid || measuredCountries.length < SEED_META.ciiEconomicStress.minMeasuredCountries;
+  const missingExpectedCountries = SEED_META.ciiEconomicStress.expectedCountries.filter(code => !measuredCountries.includes(code));
+  const shortfall = !valid || missingExpectedCountries.length > 0;
   if (shortfall) containmentEvidenceByName?.delete('ciiEconomicStress');
   return { ...entry, ...(entry.status === 'OK' && shortfall ? { status: 'COVERAGE_PARTIAL' } : {}),
-    measuredCount: measuredCountries.length, unmeasuredCountries, validCoverage: Boolean(valid) };
+    measuredCount: measuredCountries.length, unmeasuredCountries, missingExpectedCountries, validCoverage: Boolean(valid) };
 }
 
 function composeCiiStructuralPriorHealth(entry, raw, readError = false, containmentEvidenceByName) {
@@ -6160,11 +6162,13 @@ function healthResponseBody(snapshot, compact) {
         && check?.decisionGroups === undefined
         && check?.chinaRow === undefined
         && check?.ciiInputs === undefined
-        && check?.unmeasuredCountries === undefined) continue;
+        && check?.unmeasuredCountries === undefined
+        && check?.missingExpectedCountries === undefined) continue;
       // `ciiInputs` names which CII sources are unconfigured or dead.
       const {
         contentFreshness: _detail,
         unmeasuredCountries: _unmeasuredCountries,
+        missingExpectedCountries: _missingExpectedCountries,
         decisionGroups: _groups,
         chinaRow: _chinaRow,
         ciiInputs: _ciiInputs,

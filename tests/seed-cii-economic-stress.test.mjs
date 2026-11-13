@@ -221,10 +221,11 @@ test('25 measured countries stay healthy when India loses CPI but has fresh curr
   assert.equal(check(p).status, 'OK');
   p.countries.IN.members.currency.expiresAt = NOW - 1;
   assert.equal(check(p).measuredCount, 24);
-  assert.equal(check(p).status, 'OK');
+  assert.equal(check(p).status, 'COVERAGE_PARTIAL');
+  assert.deepEqual(check(p).missingExpectedCountries, ['IN']);
   p.countries.RU.members = {};
   assert.equal(check(p).measuredCount, 23);
-  assert.equal(check(p).status, 'OK');
+  assert.equal(check(p).status, 'COVERAGE_PARTIAL');
   p.countries.IR.members = {};
   assert.equal(check(p).measuredCount, 22);
   assert.equal(check(p).status, 'COVERAGE_PARTIAL');
