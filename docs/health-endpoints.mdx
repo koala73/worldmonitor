@@ -45,8 +45,8 @@ The top-level `status` describes user-visible platform availability, not perfect
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "dataStatus": "OK | DEGRADED | CRITICAL",
   "summary": {
-    "total": 417,
-    "ok": 416,
+    "total": 418,
+    "ok": 417,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 1,
@@ -1098,3 +1098,27 @@ activation marker `seed-activated:correlation:market-alerts`, which the seeder
 sets after its first publish. Before the marker exists, a missing payload reads
 as the soft on-demand state. After it exists, a missing publication reports
 `STALE_SEED` once the 30-minute gate passes.
+
+### CII economic-stress coverage
+
+`ciiEconomicStress` monitors `intelligence:cii-economic-stress:v1`, with separate
+`seed-meta:intelligence:cii-economic-stress` metadata. It is pending until its first
+successful publication activates the key. The hourly producer reads existing
+currency, CPI and monthly government-yield caches; it changes no CII score.
+
+Coverage is checked from the payload, not from metadata counts. Fewer than 23 of
+the 31 released countries with a still-fresh member gives `COVERAGE_PARTIAL`.
+The owner's 13 November follow-up allows two countries of headroom below the
+25-country baseline: Russia, Iran, Venezuela and Iraq rely on inflation alone.
+Initial deployment acceptance still requires 25 measured countries. Expected
+unmeasured countries do not alarm. Member expiry is checked at health-read
+time, so an old payload cannot keep a country measured after its last member
+expires. A Redis read failure gives `REDIS_PARTIAL`. Coverage defects also remove
+stale containment evidence. Transport age above 180 minutes is stale.
+
+OQ9 (owner, 13 November 2026) permits partial coverage. A country without a fresh
+member is published as `measured: false` with the label “economic stress not
+measured”; missing data is never a zero stress observation. India losing its
+July CPI observation alone does not reduce measured coverage while its currency
+observation remains fresh. The producer must deploy after the FX seeder retains
+its monthly bars; older FX summaries cannot supply a 90-day change.
