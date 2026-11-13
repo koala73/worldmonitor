@@ -149,6 +149,48 @@ describe('runCanary', () => {
     assert.equal(summarize(report).healthy, false);
   });
 
+  it('waits for a removed tool to leave production before calling tools', async () => {
+    const current = [tool('get_a')];
+    const { fetchImpl, calls } = fakeFetch(current, () => ({ body: rpcResult(GOOD) }));
+    let lists = 0;
+    const report = await runCanary({
+      key: 'wm_test', ...FAST, expectedToolNames: ['get_a'], catalogPollMs: 0,
+      fetchImpl: async (url, init) => {
+        if (JSON.parse(init.body).method === 'tools/list' && lists++ === 0) {
+          return new Response(rpcResult({ tools: [...current, tool('search_flight_prices_by_date')] }));
+        }
+        return fetchImpl(url, init);
+      },
+    });
+    assert.equal(lists, 2);
+    assert.deepEqual(calls.map((c) => c.name), ['get_a']);
+    assert.equal(summarize(report).healthy, true);
+  });
+
+  it('fails without tool calls when production never reaches the expected catalog', async () => {
+    const { fetchImpl, calls } = fakeFetch([tool('get_a')], () => ({ body: rpcResult(GOOD) }));
+    const report = await runCanary({
+      key: 'wm_test', fetchImpl, ...FAST,
+      expectedToolNames: ['get_a', 'get_new'], catalogWaitMs: 0,
+    });
+    assert.match(report.setupError, /catalog.*missing: get_new/);
+    assert.deepEqual(calls, []);
+    assert.equal(summarize(report).healthy, false);
+    const published = [];
+    assert.equal(finalizeRun(report, { publish: true, log() {}, publishFn: (r) => published.push(r) }), 1);
+    assert.equal(summarize(published[0]).healthy, false);
+  });
+
+  it('accepts an unchanged catalog in a different order without waiting', async () => {
+    const { fetchImpl, calls } = fakeFetch([tool('get_b'), tool('get_a')], () => ({ body: rpcResult(GOOD) }));
+    const report = await runCanary({
+      key: 'wm_test', fetchImpl, ...FAST,
+      expectedToolNames: ['get_a', 'get_b'], catalogWaitMs: 0,
+    });
+    assert.equal(summarize(report).healthy, true);
+    assert.equal(calls.length, 2);
+  });
+
   it('requests one forecast so full case files cannot exhaust the list budget before chaining', async () => {
     const tools = [
       tool('get_forecast_case', { inputSchema: { type: 'object', properties: {}, required: ['forecast_id', 'generated_at'] } }),
