@@ -415,14 +415,15 @@ describe('satellite pass lookup sheet', () => {
       }
       expect(tile().dataset.state).toBe('failed');
     };
-    const steps: Array<[string, string]> = [['https://view.eumetsat.int/x.png', '11:45'], ['https://view.eumetsat.int/x-1130.png', '11:30'], ['https://view.eumetsat.int/x-1115.png', '11:15']];
+    // The sheet shows the point's local time; Dubai is UTC+4.
+    const steps: Array<[string, string]> = [['https://view.eumetsat.int/x.png', '15:45'], ['https://view.eumetsat.int/x-1130.png', '15:30'], ['https://view.eumetsat.int/x-1115.png', '15:15']];
     const hero = () => cards()[0]!.querySelector<HTMLElement>('.ow-tile')!;
     check(hero, () => cards()[0]!.querySelector('.ow-caption-lines span')!.textContent!, steps);
     expect(hero().querySelector('.ow-tile-status')!.textContent).toContain('Image unavailable · EUMETSAT');
     hero().querySelector<HTMLButtonElement>('[data-action="retry-image"]')!.click();
     expect(hero().dataset.state).toBe('loading');
     expect(hero().querySelector('img')!.getAttribute('src')).toBe(steps[0]![0]);
-    expect(cards()[0]!.querySelector('.ow-caption-lines span')!.textContent).toContain('11:45');
+    expect(cards()[0]!.querySelector('.ow-caption-lines span')!.textContent).toContain(steps[0]![1]);
     page.setView('full');
     group('weather')!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
     const row = () => rowOf('Meteosat-10');
