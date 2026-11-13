@@ -208,7 +208,7 @@ describe('archive acquisitions attached to computed passes', () => {
 
   it('marks the lookup partial when the point classification read fails', async () => {
     const lookup = await fixtureLookup(dubai);
-    const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { scl: 9, failingPaths: ['/item/point/'] }).fetch });
+    const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { scl: 9, failingPaths: ['/item/statistics'] }).fetch });
     assert.equal(evidence.acquisitions.find((a) => a.platform === 'sentinel-2b')!.condition, 'unknown');
     assert.equal(evidence.status, 'partial');
     assert.ok(evidence.failures.length > 0 && evidence.failures.every((f) => f.archive === 'planetary-computer' && f.reason === 'http-status'));
