@@ -5843,3 +5843,39 @@ test('rss-proxy aborts the upstream fetch when the client disconnects', async ()
     await localApi.cleanup();
   }
 });
+
+test('cloud fallback logs a timestamp, duration and upstream load for each failed cloud request', async () => {
+  const remote = createServer((req, res) => {
+    if (answerSessionMint(req, res)) return;
+    if (req.url.startsWith('/api/test/v1/unavailable')) {
+      res.writeHead(502, { 'content-type': 'application/json' });
+      res.end('{}');
+      return;
+    }
+    req.socket.destroy();
+  });
+  const remotePort = await listen(remote);
+  const localApi = await setupApiDir({});
+  const lines = [];
+  const capture = (...args) => lines.push(args.map(String).join(' '));
+  const app = await createLocalApiServer({
+    port: 0, apiDir: localApi.apiDir,
+    remoteBase: `http://127.0.0.1:${remotePort}`, cloudFallback: 'true', allowPrivateRemoteBase: true,
+    logger: { log() {}, warn: capture, error: capture },
+  });
+  const { port } = await app.start();
+  try {
+    await authFetch(`http://127.0.0.1:${port}/api/test/v1/unavailable`);
+    await authFetch(`http://127.0.0.1:${port}/api/test/v1/dropped`);
+    const timed = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z`;
+    const load = String.raw`in \d+ms \(upstream \d+\/6 active, \d+ queued\)`;
+    assert.ok(lines.some(line => new RegExp(`^\\[local-api\\] ${timed} /api/test/v1/unavailable → cloud \\(handler missing\\)$`).test(line)), lines.join('\n'));
+    assert.ok(lines.some(line => new RegExp(`^\\[local-api\\] ${timed} cloud returned 502 for /api/test/v1/unavailable ${load}$`).test(line)), lines.join('\n'));
+    assert.ok(lines.some(line => new RegExp(`^\\[local-api\\] ${timed} cloud fallback failed for /api/test/v1/dropped ${load} `).test(line)), lines.join('\n'));
+  } finally {
+    remote.closeAllConnections();
+    await new Promise(resolve => remote.close(resolve));
+    await app.close();
+    await localApi.cleanup();
+  }
+});
