@@ -145,6 +145,23 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.deepEqual(evidence.failures, [{ archive: 'nasa-gibs', reason: 'http-status', httpStatus: 503, source: 'GOES-West' }]);
   });
 
+  it('keeps the single EUMETSAT layer as an unavailable row when it fails', async () => {
+    const lookup = await fixtureLookup(dubai);
+    const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { failing: ['view.eumetsat.int'] }).fetch });
+    const eumetsat = evidence.frames.filter((f) => f.archive === 'eumetsat');
+    assert.ok(eumetsat.length > 0);
+    assert.ok(eumetsat.every((f) => f.latest === null));
+    assert.ok(evidence.failures.some((f) => f.archive === 'eumetsat'));
+  });
+
+  it('keeps every source as an unavailable row when all of its layers fail', async () => {
+    const lookup = await fixtureLookup(denver);
+    const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(denver, { failingPaths: ['GOES-East', 'GOES-West'] }).fetch });
+    assert.deepEqual(evidence.frames.map((f) => [f.source, f.latest !== null]), [['GOES-East', false], ['GOES-West', false]]);
+    assert.equal(evidence.status, 'partial');
+    assert.deepEqual(evidence.failures.map((f) => f.source), ['GOES-East', 'GOES-West']);
+  });
+
   it('keeps the first day of a window that opens after midnight', async () => {
     const nowMs = Date.parse('2026-11-13T12:00:00Z');
     const result = await searchGibsDailyMosaics({

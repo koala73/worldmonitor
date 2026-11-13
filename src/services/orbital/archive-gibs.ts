@@ -1,5 +1,5 @@
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
-import { failed, requestArchive, type ArchiveFailure, type ArchiveId, type ArchiveRequestOptions, type ArchiveResult } from './archive-result';
+import { requestArchive, type ArchiveFailure, type ArchiveId, type ArchiveRequestOptions, type ArchiveResult } from './archive-result';
 import { cropBox, gibsSnapshotUrl, type CropBox } from './crop-url';
 import type { PassWindow } from './pass-query';
 
@@ -107,10 +107,9 @@ async function layerTimes(layer: GibsLayer, fromMs: number, toMs: number, daily:
   return { ok: true, times: timesWithin(ranges, daily ? startOfUtcDay(fromMs) : fromMs, toMs), stepMs: ranges[ranges.length - 1]?.stepMs ?? null };
 }
 
-/** Every layer's failure; the whole archive counts as failed only when no layer answered. */
-export function layerFailures(answers: LayerTimes[]): { failures: ArchiveFailure[]; allFailed: boolean } {
-  const failures = answers.flatMap((answer) => (answer.ok ? [] : [answer.failure]));
-  return { failures, allFailed: answers.length > 0 && failures.length === answers.length };
+/** Every failed layer, so a source that did not answer still keeps its row. */
+export function layerFailures(answers: LayerTimes[]): ArchiveFailure[] {
+  return answers.flatMap((answer) => (answer.ok ? [] : [answer.failure]));
 }
 
 export interface FrameQuery extends ArchiveRequestOptions {
@@ -124,8 +123,7 @@ export async function searchGibsDailyMosaics(query: FrameQuery): Promise<Archive
   const box = query.box ?? cropBox(query.point);
   const toMs = Math.min(query.window.endMs, query.nowMs);
   const answers = await Promise.all(GIBS_DAILY_MOSAICS.map((layer) => layerTimes(layer, query.window.startMs, toMs, true, query)));
-  const { failures, allFailed } = layerFailures(answers);
-  if (allFailed) return failed(failures[0]!);
+  const failures = layerFailures(answers);
   const items = GIBS_DAILY_MOSAICS.map((layer, i): DailyMosaicRow => {
     const answer = answers[i]!;
     const days = (answer.ok ? answer.times : []).map((t) => isoDate(t)).reverse().map((date) => ({ date, imageUrl: gibsSnapshotUrl(layer.layer, date, box) }));
@@ -140,8 +138,7 @@ export async function searchGibsGeostationary(query: FrameQuery & { visibleNorad
   const box = query.box ?? cropBox(query.point);
   const fromMs = query.nowMs - GEOSTATIONARY_LOOKBACK_MS;
   const answers = await Promise.all(layers.map((layer) => layerTimes(layer, fromMs, query.nowMs, false, query)));
-  const { failures, allFailed } = layerFailures(answers);
-  if (allFailed) return failed(failures[0]!);
+  const failures = layerFailures(answers);
   const items = layers.map((layer, i): GeostationaryRow => {
     const answer = answers[i]!;
     const latestMs = answer.ok ? answer.times[answer.times.length - 1] : undefined;
