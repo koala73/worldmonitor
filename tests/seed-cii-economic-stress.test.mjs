@@ -5,6 +5,13 @@ import { __testing__ as health } from '../api/health.js';
 import { buildEconomicStress, economicCountry, seedEconomicStress, ECONOMIC_COUNTRIES, ECONOMIC_KEY, ECONOMIC_META_KEY, ECONOMIC_ACTIVATION_KEY, INPUT_KEYS } from '../scripts/seed-cii-economic-stress.mjs';
 import { computeYoy } from '../scripts/seed-fx-yoy.mjs';
 const NOW = Date.UTC(2026, 10, 13);
+test('public health scrubs country diagnostics from fresh and cached compact responses', () => {
+  const entry = { status: 'COVERAGE_PARTIAL', measuredCount: 22, unmeasuredCountries: ['TW', 'AE', 'QA'] };
+  const snapshot = { status: 'WARNING', checks: { ciiEconomicStress: entry } };
+  assert.equal(health.healthResponseBody(snapshot, true).problems.ciiEconomicStress.unmeasuredCountries, undefined);
+  assert.equal(health.healthResponseBody({ status: 'WARNING', problems: { ciiEconomicStress: entry } }, true).problems.ciiEconomicStress.unmeasuredCountries, undefined);
+  assert.deepEqual(health.healthResponseBody(snapshot, false).checks.ciiEconomicStress.unmeasuredCountries, entry.unmeasuredCountries);
+});
 const cpi = Array.from({ length: 37 }, (_, i) => ({ date: new Date(Date.UTC(2023, 9 + i, 1)).toISOString().slice(0, 7), value: 100 * 1.01 ** i }));
 const bars = Array.from({ length: 25 }, (_, i) => ({ t: Date.UTC(2024, 10 + i, i === 24 ? 12 : 1), close: 1 }));
 function inputs() {
@@ -54,6 +61,21 @@ test('CPI mirrors supply one member and a stale mirror cannot hide a fresh one',
   assert.equal(row.members.inflation.sourceKey, INPUT_KEYS.eurostat);
   assert.equal(Object.keys(row.members).length, 1);
   assert.ok(Math.abs(row.members.inflation.value) < 1e-10);
+});
+test('OQ9 publishes readable partial coverage instead of treating absence as failure', async () => {
+  const raw = inputs();
+  raw.currency.rates = [];
+  raw.inflation.countries = {};
+  let published, activated = false;
+  await seedEconomicStress({
+    read: async key => raw[Object.keys(INPUT_KEYS).find(id => INPUT_KEYS[id] === key)],
+    publish: async options => { published = options.data; return true; },
+    activateKey: async () => { activated = true; }, nowMs: NOW,
+  });
+  assert.equal(published.measuredCount, 1); // US CPI is still readable and fresh.
+  assert.equal(published.countries.AE.measured, false);
+  assert.equal(Object.keys(published.countries).length, 31);
+  assert.equal(activated, true);
 });
 test('monthly yield change uses twelve distinct preceding months, including negative yields', () => {
   const raw = inputs();

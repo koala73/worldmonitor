@@ -6159,10 +6159,12 @@ function healthResponseBody(snapshot, compact) {
       if (check?.contentFreshness === undefined
         && check?.decisionGroups === undefined
         && check?.chinaRow === undefined
-        && check?.ciiInputs === undefined) continue;
+        && check?.ciiInputs === undefined
+        && check?.unmeasuredCountries === undefined) continue;
       // `ciiInputs` names which CII sources are unconfigured or dead.
       const {
         contentFreshness: _detail,
+        unmeasuredCountries: _unmeasuredCountries,
         decisionGroups: _groups,
         chinaRow: _chinaRow,
         ciiInputs: _ciiInputs,
