@@ -48,22 +48,26 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_five_factor_scorecard`
 
-返回冻结版 v1 五因素评分卡。一次调用必须且只能选择一个国家、一个官方集团，或一个自定义成员列表。响应读取同一个原子快照，因此国家与集团使用相同的证据批次和方法版本。
+返回冻结版 v1 五因素评分卡。传入国家代码、官方集团或自定义成员列表之一，返回该国家或集团的完整证据；三者都不传时，返回所有已评分国家的紧凑列表。响应读取同一个原子快照，因此国家、集团与列表使用相同的证据批次和方法版本。
 
 **参数：**
 
 | 名称 | 类型 | 必填 | 描述 |
 |------|------|-----:|------|
-| `country_code` | string | 三选一 | ISO 3166-1 alpha-2 国家代码，不区分大小写。 |
-| `preset` | string | 三选一 | `USMCA`、`EU27`、`BRICS`、`GCC`、`ASEAN` 或 `NATO`。 |
-| `members` | string[] | 三选一 | 2–30 个唯一的大写 ISO-2 代码组成的自定义集团。 |
+| `country_code` | string | 至多选一 | ISO 3166-1 alpha-2 国家代码，不区分大小写。 |
+| `preset` | string | 至多选一 | `USMCA`、`EU27`、`BRICS`、`GCC`、`ASEAN` 或 `NATO`。 |
+| `members` | string[] | 至多选一 | 2–30 个唯一的大写 ISO-2 代码组成的自定义集团。 |
 
-- **API 端点：** `GET /api/scorecard/v1/get-five-factor-scorecard`、`GET /api/scorecard/v1/get-bloc-scorecard`
+一次调用传入两个选择器时，会在消耗任何额度之前返回 Invalid params。
+
+- **API 端点：** `GET /api/scorecard/v1/get-five-factor-scorecard`、`GET /api/scorecard/v1/get-bloc-scorecard`、`GET /api/scorecard/v1/list-five-factor-scorecards`
 - **访问：** `subscription`，需要 Pro 订阅。
 - **类型：** 规范 RPC 代理，读取 `scorecard:five-factor:v1`；请求时不获取上游来源。
 - **新鲜度：** 每日播种，新鲜度预算为 36 小时。
 
 读取每个支柱的 `score` 与 `subScore` 前，必须先检查 `hasScore`。当标志为 false 时，proto3 的零只是占位值，不是评分。读取输入数值前，必须先检查 `available` 与 `hasValue`。`insufficientReasons` 与 `unavailableReason` 会说明缺失原因，包括来源政策限制 `redistribution-blocked`。
+
+列表（不传选择器）保留每个国家的支柱评分、档位、输入覆盖率和数据不足原因，但省略原始输入和来源观测，确保完整国家集合不超过输出预算。如需输入来源、原始观测或集团汇总，请传入选择器。旧名称 `list_five_factor_scorecards` 已退役但仍可调用，它执行列表调用并返回 `deprecation` 通知。
 
 集团的食品和能源支柱先汇总实际生产与消费，再计算评分。人口结构、科技与国防的连续子分数按人口加权。因此，集团评分不是成员档位的简单平均。参见[五因素评分卡方法](/zh/methodology/five-factor-scorecard)。
 
@@ -91,30 +95,22 @@ curl -s https://worldmonitor.app/mcp \
   }'
 ```
 
-</CodeGroup>
-
-### `list_five_factor_scorecards`
-
-紧凑列出冻结评分卡批次中的所有国家。每条记录保留支柱评分、档位、输入覆盖率和数据不足原因，但省略原始输入和来源观测，确保完整国家集合不超过 MCP 输出预算。
-
-- **参数：** 无
-- **API 端点：** `GET /api/scorecard/v1/list-five-factor-scorecards`
-- **访问：** `subscription`，需要 Pro 订阅。
-- **类型：** 同一个原子 `scorecard:five-factor:v1` 快照的紧凑投影。
-
-如需输入来源、原始观测或集团汇总，请使用 `get_five_factor_scorecard`。
-读取 `score` 或 `subScore` 前必须检查 `hasScore`。若 `hasScore` 为 false，两个数值零只是 protobuf 的数据不足占位符，并不表示韧性实测为零。
-
-```bash
+```bash 全部国家
 curl -s https://worldmonitor.app/mcp \
   -H "X-WorldMonitor-Key: $WM_KEY" \
   -H 'Content-Type: application/json' \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"list_five_factor_scorecards","arguments":{}}
+    "params":{"name":"get_five_factor_scorecard","arguments":{}}
   }'
 ```
+
+</CodeGroup>
+
+### `list_five_factor_scorecards`
+
+兼容别名，不出现在 `tools/list` 中。请使用 [`get_five_factor_scorecard`](#get_five_factor_scorecard)。旧名称仍可调用，并返回 `deprecation` 提示。
 
 ### `get_resilience_indicators`
 

@@ -61,19 +61,35 @@ Example: `get_fred_series({"series_ids":["UNRATE","CPIAUCSL"],"limit":24})`.
 
 ### `get_country_macro`
 
-Per-country macroeconomic indicators from IMF WEO (~210 countries, monthly cadence). Bundles fiscal/external balance (inflation, current account, gov revenue/expenditure/primary balance, CPI), growth & per-capita (real GDP growth, GDP/capita USD & PPP, savings & investment rates, savings-investment gap), labor & demographics (unemployment, population), and external trade (current account USD, import/export volume % changes). Latest available year per series. Use for country-level economic screening, peer benchmarking, and stagflation/imbalance flags. NOTE: export/import LEVELS in USD (exportsUsd, importsUsd, tradeBalanceUsd) are returned as null — WEO retracted broad coverage for BX/BM indicators in 2026-04; use currentAccountUsd or volume changes (import/exportVolumePctChg) instead.
+Per-country macroeconomic indicators, selected by `dataset`. IMF WEO covers ~210 countries with the latest available year per series:
+
+- `macro`: inflation, CPI, current account, government revenue, expenditure and primary balance.
+- `growth`: real GDP growth, GDP per capita (USD and PPP), savings and investment rates, savings-investment gap.
+- `labor`: unemployment and population.
+- `external`: current account (USD) and import/export volume % changes. Export and import LEVELS in USD (`exportsUsd`, `importsUsd`, `tradeBalanceUsd`) are null because WEO retracted broad BX/BM coverage in 2026-04; use `currentAccountUsd` or the volume changes instead.
+
+Eurostat covers the 27 EU members plus the EA20 and EU27_2020 aggregates:
+
+- `house-prices`: annual house price index (prc_hpi_a, 2015=100) with a 10-year series.
+- `gov-debt-q`: quarterly general government gross debt (gov_10q_ggdebt, % of GDP) with an 8-quarter series.
+- `industrial-production`: monthly industrial production index (sts_inpr_m, NACE B-D excluding construction, seasonally and calendar adjusted, 2021=100) with a 12-month series.
+
+Each Eurostat country entry carries `value`, `priorValue`, `hasPrior`, `date`, `unit` and `series`.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `countries` | `array<string>` | Countries to keep across all four IMF datasets, as ISO 3166-1 alpha-2 or alpha-3 codes or country names (e.g. ["US","DEU","China"]). Omit for all ~210 countries. Unresolved inputs return Invalid params. |
-| `limit` | integer | Country entries to return per IMF dataset when countries is omitted; ignored when countries is set. Omitted returns 30; 0 returns every country. |
+| `dataset` | `array<string: macro / growth / labor / external / house-prices / gov-debt-q / industrial-production>` | Restrict the response to one or more datasets. Omit for all seven. |
+| `countries` | `array<string>` | ISO 3166-1 alpha-2 country codes to keep in every dataset (e.g. ["US","DE","GR"]); Greece is keyed EL in the Eurostat datasets. EA20 and EU27_2020 select the Eurostat aggregates. Omit for all. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
+| `limit` | integer | Cap each dataset country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
 
-- **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
+The IMF maps are keyed by ISO-2 and the Eurostat maps by Eurostat geo code, so one `countries: ["Greece"]` call returns `GR` in the IMF datasets and `EL` in the Eurostat ones.
+
+- **API endpoints:** none directly — reads from bootstrap-aggregate cache keys (no 1:1 REST endpoint).
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **70 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget:** per dataset — IMF **70 d**, `house-prices` **50 d**, `gov-debt-q` **14 d**, `industrial-production` **5 d**. A call reads, and judges `stale` on, only the datasets it selects; omitting `dataset` judges all seven.
 
 <CodeGroup>
 
@@ -84,7 +100,7 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"get_country_macro","arguments":{}}
+    "params":{"name":"get_country_macro","arguments":{"dataset":["gov-debt-q"],"countries":["DE","EL","EA20"]}}
   }'
 ```
 
@@ -92,96 +108,15 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_eu_housing_cycle`
 
-Eurostat annual house price index (prc_hpi_a, base 2015=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes the latest value, prior value, date, unit, and a 10-year sparkline series. Complements BIS WS_SPP with broader EU coverage for the Housing cycle tile.
-
-**Parameters (tool-specific):**
-
-| Name | Type | Description |
-|------|------|-------------|
-| `countries` | `array<string>` | Countries to keep, as ISO 3166-1 alpha-2 or alpha-3 codes or country names, plus the aggregates "EA20" and "EU27_2020". Results use Eurostat geo codes, so Greece ("GR" or "EL") is keyed "EL". Omit for all. Unresolved names or alpha-3 codes return Invalid params. |
-| `limit` | integer | Country entries to return when countries is omitted; ignored when countries is set. Omitted returns 30; 0 returns every country. |
-
-- **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
-- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
-- **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **50 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
-
-<CodeGroup>
-
-```bash curl
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":1,
-    "method":"tools/call",
-    "params":{"name":"get_eu_housing_cycle","arguments":{}}
-  }'
-```
-
-</CodeGroup>
+Retired. This Eurostat series is the `house-prices` dataset of [`get_country_macro`](#get_country_macro), with the same fields. Calls to the old name still work: they run `get_country_macro` with that dataset, keep the `countries` and `limit` arguments, and return a `deprecation` notice that names the replacement. A dataset the old tool never served is rejected.
 
 ### `get_eu_quarterly_gov_debt`
 
-Eurostat quarterly general government gross debt (gov_10q_ggdebt, %GDP) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, quarter label, and an 8-quarter sparkline series. Provides fresher debt-trajectory signal than annual IMF GGXWDG_NGDP for EU panels.
-
-**Parameters (tool-specific):**
-
-| Name | Type | Description |
-|------|------|-------------|
-| `countries` | `array<string>` | Countries to keep, as ISO 3166-1 alpha-2 or alpha-3 codes or country names, plus the aggregates "EA20" and "EU27_2020". Results use Eurostat geo codes, so Greece ("GR" or "EL") is keyed "EL". Omit for all. Unresolved names or alpha-3 codes return Invalid params. |
-| `limit` | integer | Country entries to return when countries is omitted; ignored when countries is set. Omitted returns 30; 0 returns every country. |
-
-- **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
-- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
-- **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **14 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
-
-<CodeGroup>
-
-```bash curl
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":1,
-    "method":"tools/call",
-    "params":{"name":"get_eu_quarterly_gov_debt","arguments":{}}
-  }'
-```
-
-</CodeGroup>
+Retired. This Eurostat series is the `gov-debt-q` dataset of [`get_country_macro`](#get_country_macro), with the same fields. Calls to the old name still work: they run `get_country_macro` with that dataset, keep the `countries` and `limit` arguments, and return a `deprecation` notice that names the replacement. A dataset the old tool never served is rejected.
 
 ### `get_eu_industrial_production`
 
-Return the Eurostat monthly industrial production index (sts_inpr_m: NACE B-D industry excluding construction, seasonally and calendar adjusted, 2021=100) for the 27 EU members plus the EA20 and EU27_2020 aggregates. Each country entry has the latest value, prior value, month label and a 12-month series. Monthly data; the seed is flagged stale after 5 days. Covers the EU industrial index only; no other production or GDP measures. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance.
-
-**Parameters (tool-specific):**
-
-| Name | Type | Description |
-|------|------|-------------|
-| `countries` | `array<string>` | Countries to keep, as ISO 3166-1 alpha-2 or alpha-3 codes or country names, plus the aggregates "EA20" and "EU27_2020". Results use Eurostat geo codes, so Greece ("GR" or "EL") is keyed "EL". Omit for all. Unresolved names or alpha-3 codes return Invalid params. |
-| `limit` | integer | Country entries to return when countries is omitted; ignored when countries is set. Omitted returns 30; 0 returns every country. |
-
-- **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
-- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
-- **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **5 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
-
-<CodeGroup>
-
-```bash curl
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":1,
-    "method":"tools/call",
-    "params":{"name":"get_eu_industrial_production","arguments":{}}
-  }'
-```
-
-</CodeGroup>
+Retired. This Eurostat series is the `industrial-production` dataset of [`get_country_macro`](#get_country_macro), with the same fields. Calls to the old name still work: they run `get_country_macro` with that dataset, keep the `countries` and `limit` arguments, and return a `deprecation` notice that names the replacement. A dataset the old tool never served is rejected.
 
 ### `get_price_and_debt_indicators`
 
