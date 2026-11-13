@@ -247,9 +247,10 @@ describe('pass replay', () => {
     clock.run(1000);
     const { fromMs, toMs } = replayWindow(track);
     assert.ok(fromMs < toMs && toMs === track.closest.timeMs);
-    assert.equal(seen[0]!.point.timeMs, fromMs);
-    assert.equal(seen[1]!.point.timeMs, (fromMs + toMs) / 2);
-    assert.deepEqual(seen[2], { point: track.closest, progress: 1, playing: false });
+    assert.deepEqual(seen[0], { point: seen[1]!.point, progress: 0, playing: true }, 'play shows the start before the first frame');
+    assert.equal(seen[1]!.point.timeMs, fromMs);
+    assert.equal(seen[2]!.point.timeMs, (fromMs + toMs) / 2);
+    assert.deepEqual(seen[3], { point: track.closest, progress: 1, playing: false });
     assert.equal(clock.pending, 0);
   });
 
@@ -279,7 +280,7 @@ describe('pass replay', () => {
     clock.run(0);
     replay.stop();
     clock.run(100);
-    assert.equal(seen.length, 1);
+    assert.equal(seen.length, 2);
     assert.equal(clock.pending, 0);
   });
 });

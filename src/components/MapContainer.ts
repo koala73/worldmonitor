@@ -12,8 +12,7 @@ import '../styles/reservoir-levels.css';
 import type { ReservoirLevel } from '@/services/climate';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import type { FocusFitBounds } from '@/utils/focus-map';
-import type { PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
-import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
+import type { FrameBounds, OrbitalTarget, PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
 import {
   isLayerToggleAllowed,
   isLayerEntitled,
@@ -240,7 +239,7 @@ export class MapContainer {
   private focusOutline: MapFocusOutline | null = null;
   private orbitalTrack: PassTrack | null = null;
   private orbitalTrackMarker: TrackPoint | null = null;
-  private orbitalTarget: GeoPoint | null = null;
+  private orbitalTarget: OrbitalTarget | null = null;
   /** Bumped by fits, clears and chosen-country changes; stale fits drop themselves. */
   private focusFitSeq = 0;
   private pendingChokepointOpen: string | null = null;
@@ -1990,9 +1989,22 @@ export class MapContainer {
   }
 
   /** Pins the point a satellite lookup is about; null removes the pin. */
-  public setOrbitalTarget(point: GeoPoint | null): void {
-    this.orbitalTarget = point;
+  public setOrbitalTarget(target: OrbitalTarget | null): void {
+    this.orbitalTarget = target;
     this.applyOrbitalTarget();
+  }
+
+  /** Frames a box on the active map, longitudes continuous so a box over the antimeridian stays local. */
+  public frameOrbitalBounds(bounds: FrameBounds): void {
+    const [[west, south], [east, north]] = bounds;
+    const lonSpan = Math.max(east - west, 0.05);
+    const latSpan = Math.max(north - south, 0.05);
+    const centerLon = ((((west + east) / 2) + 540) % 360) - 180;
+    const westLon = (((west + 540) % 360) - 180);
+    const fit: FocusFitBounds = { south, north, west: westLon, east: westLon + lonSpan, lonSpan, latSpan, center: { lat: (south + north) / 2, lon: centerLon } };
+    if (this.useGlobe) this.globeMap?.fitFocusBounds(fit, Math.min(2.5, Math.max(0.12, Math.max(lonSpan, latSpan) * Math.PI / 180 * 2.4)));
+    else if (this.useDeckGL) this.deckGLMap?.frameOrbitalBounds([[fit.west, south], [fit.east, north]]);
+    else this.svgMap?.fitFocusBounds(fit);
   }
 
   private applyOrbitalTarget(): void {

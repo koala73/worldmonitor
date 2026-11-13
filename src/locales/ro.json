@@ -5143,9 +5143,15 @@
   "orbitalWatch": {
     "track": {
       "shown": "Urma la sol și amprenta sunt afișate pe hartă",
-      "replay": "Redă trecerea",
-      "reducedMotion": "Mișcarea redusă este activă: marcajul rămâne la punctul de apropiere maximă",
       "unavailable": "Urma la sol a acestei treceri nu a putut fi desenată"
+    },
+    "replay": {
+      "acquisition": "ACHIZIȚIE · {{name}}",
+      "acquired": "ACHIZIȚIONAT {{time}} · {{resolution}}",
+      "play": "Redă reluarea",
+      "pause": "Întrerupe reluarea",
+      "scrub": "Poziția reluării",
+      "reducedMotion": "MIȘCARE REDUSĂ"
     },
     "computing": "Se încarcă catalogul de sateliți…",
     "computingProgress": "Se calculează trecerile: {{done}} din {{total}} sateliți",

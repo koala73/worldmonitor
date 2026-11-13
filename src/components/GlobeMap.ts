@@ -26,8 +26,7 @@ import { NUCLEAR_FACILITIES, SPACEPORTS, ECONOMIC_CENTERS, CRITICAL_MINERALS, UN
 import { PIPELINES } from '@/config/pipelines';
 import { getLocale, initI18n, t } from '@/services/i18n';
 import type { ReservoirLevel } from '@/services/climate';
-import type { PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
-import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
+import { sweptSwath, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { reservoirHeadline, reservoirTone, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
 import { SITE_VARIANT } from '@/config/variant';
 import { staticAssetUrl } from '@/config/static-asset-url';
@@ -393,6 +392,10 @@ interface NewsLocationMarker extends BaseMarker {
   threatLevel: string;
   corroboration?: NewsLocationInput['corroboration'];
 }
+interface OrbitalTargetMarker extends BaseMarker {
+  _kind: 'orbitalTarget';
+  lines: string[];
+}
 interface FlashMarker extends BaseMarker {
   _kind: 'flash';
   id: string;
@@ -471,7 +474,7 @@ interface GlobePath {
   id: string;
   name: string;
   points: number[][];
-  pathType: 'cable' | 'oil' | 'gas' | 'products' | 'orbit' | 'stormTrack' | 'stormHistory' | 'orbitalTrack';
+  pathType: 'cable' | 'oil' | 'gas' | 'products' | 'orbit' | 'stormTrack' | 'stormHistory' | 'orbitalTrack' | 'orbitalEdge';
   status: string;
   country?: string;
   windKt?: number;
@@ -479,7 +482,7 @@ interface GlobePath {
 interface GlobePolygon {
   coords: number[][][];
   name: string;
-  _kind: 'cii' | 'conflict' | 'imageryFootprint' | 'forecastCone' | 'scenario' | 'focusChosen' | 'focusNeighbour' | 'orbitalFootprint';
+  _kind: 'cii' | 'conflict' | 'imageryFootprint' | 'forecastCone' | 'scenario' | 'focusChosen' | 'focusNeighbour' | 'orbitalFootprint' | 'orbitalSwept';
   level?: string;
   score?: number;
 
@@ -494,6 +497,7 @@ interface GlobePolygon {
   previewUrl?: string;
 }
 type GlobeMarker =
+  | OrbitalTargetMarker
   | UkmtoMarker
   | ReservoirMarker
   | ConflictMarker | HotspotMarker | FlightMarker | VesselMarker | ClusterMarker
@@ -615,8 +619,12 @@ export class GlobeMap {
   private stormConePolygons: GlobePolygon[] = [];
   private orbitalTrackPaths: GlobePath[] = [];
   private orbitalFootprintPolygons: GlobePolygon[] = [];
+  private orbitalTrack: PassTrack | null = null;
   private orbitalTrackMarker: TrackPoint | null = null;
-  private orbitalTarget: GeoPoint | null = null;
+  private orbitalTarget: OrbitalTargetMarker | null = null;
+  private orbitalReplayPaths: GlobePath[] = [];
+  private orbitalSweptPolygons: GlobePolygon[] = [];
+  private orbitalSweepFlushAt = 0;
   private satelliteFootprintMarkers: SatFootprintMarker[] = [];
   private imagerySceneMarkers: ImagerySceneMarker[] = [];
   private webcamMarkers: (WebcamMarkerData | WebcamClusterData)[] = [];
@@ -941,6 +949,7 @@ export class GlobeMap {
       .pathPointAlt((p: number[], _idx: number, path: object) => {
         const pathType = (path as GlobePath)?.pathType;
         if (pathType === 'orbitalTrack') return 0.007;
+        if (pathType === 'orbitalEdge') return 0.008;
         return pathType === 'orbit' && p.length > 2 ? (p[2] ?? 0) / 6371 : 0;
       })
       .pathColor((d: GlobePath) => {
@@ -957,7 +966,8 @@ export class GlobeMap {
         if (d.pathType === 'oil')   return 'rgba(255,140,0,0.6)';
         if (d.pathType === 'gas')   return 'rgba(80,220,120,0.6)';
         if (d.pathType === 'stormTrack') return 'rgba(255,100,100,0.8)';
-        if (d.pathType === 'orbitalTrack') return 'rgba(255,214,10,0.95)';
+        if (d.pathType === 'orbitalTrack') return 'rgba(236,235,231,0.7)';
+        if (d.pathType === 'orbitalEdge') return 'rgba(245,165,36,1)';
         if (d.pathType === 'stormHistory') {
           const w = d.windKt || 0;
           if (w >= 137) return 'rgba(255,96,96,0.8)';
@@ -972,6 +982,7 @@ export class GlobeMap {
         if (!d) return 0.6;
         if (d.pathType === 'orbit') return 0.3;
         if (d.pathType === 'cable') return 0.3;
+        if (d.pathType === 'orbitalEdge') return 2.6;
         if (d.pathType === 'stormTrack' || d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack') return 1.2;
         return 0.6;
       })
@@ -980,7 +991,7 @@ export class GlobeMap {
         if (d.pathType === 'orbit') return 0.4;
         if (d.pathType === 'cable') return 1;
         if (d.pathType === 'stormTrack') return 0.8;
-        if (d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack') return 1;
+        if (d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack' || d.pathType === 'orbitalEdge') return 1;
         return 0.6;
       })
       .pathDashGap((d: GlobePath) => {
@@ -988,7 +999,7 @@ export class GlobeMap {
         if (d.pathType === 'orbit') return 0.15;
         if (d.pathType === 'cable') return 0;
         if (d.pathType === 'stormTrack') return 0.4;
-        if (d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack') return 0;
+        if (d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack' || d.pathType === 'orbitalEdge') return 0;
         return 0.25;
       })
       .pathDashAnimateTime((d: GlobePath) => {
@@ -996,18 +1007,18 @@ export class GlobeMap {
         if (d.pathType === 'orbit') return 0;
         if (d.pathType === 'cable') return 0;
         if (d.pathType === 'stormTrack') return 3000;
-        if (d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack') return 0;
+        if (d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack' || d.pathType === 'orbitalEdge') return 0;
         return 5000;
       })
       .pathLabel((d: GlobePath) => escapeHtml(d?.name ?? ''));
 
     (globe as any)
       .pointsData([])
-      .pointLat((d: GeoPoint) => d.lat)
-      .pointLng((d: GeoPoint) => d.lon)
-      .pointColor((d: GeoPoint) => (d === this.orbitalTarget ? 'rgba(255,255,255,1)' : 'rgba(255,214,10,1)'))
-      .pointAltitude((d: GeoPoint) => (d === this.orbitalTarget ? 0.012 : 0.01))
-      .pointRadius((d: GeoPoint) => (d === this.orbitalTarget ? 0.6 : 1.1));
+      .pointLat((d: TrackPoint) => d.lat)
+      .pointLng((d: TrackPoint) => d.lon)
+      .pointColor(() => 'rgba(236,235,231,1)')
+      .pointAltitude(() => 0.01)
+      .pointRadius(() => 0.5);
 
     // Polygon accessors — set once
     (globe as any)
@@ -1017,7 +1028,8 @@ export class GlobeMap {
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_CAP[d.intensity!] ?? GlobeMap.CONFLICT_CAP.low;
         if (d._kind === 'imageryFootprint') return 'rgba(0,0,0,0)';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.2)';
-        if (d._kind === 'orbitalFootprint') return 'rgba(0,180,255,0.18)';
+        if (d._kind === 'orbitalFootprint') return 'rgba(245,165,36,0.07)';
+        if (d._kind === 'orbitalSwept') return 'rgba(245,165,36,0.24)';
         if (d._kind === 'scenario') return 'rgba(220,60,40,0.3)';
         if (d._kind === 'focusChosen' || d._kind === 'focusNeighbour') return '';
         return 'rgba(255,60,60,0.15)';
@@ -1027,7 +1039,7 @@ export class GlobeMap {
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_SIDE[d.intensity!] ?? GlobeMap.CONFLICT_SIDE.low;
         if (d._kind === 'imageryFootprint') return 'rgba(0,0,0,0)';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.1)';
-        if (d._kind === 'orbitalFootprint') return 'rgba(0,0,0,0)';
+        if (d._kind === 'orbitalFootprint' || d._kind === 'orbitalSwept') return 'rgba(0,0,0,0)';
         if (d._kind === 'scenario') return 'rgba(0,0,0,0)';
         if (d._kind === 'focusChosen' || d._kind === 'focusNeighbour') return '';
         return 'rgba(255,60,60,0.08)';
@@ -1037,7 +1049,8 @@ export class GlobeMap {
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_STROKE[d.intensity!] ?? GlobeMap.CONFLICT_STROKE.low;
         if (d._kind === 'imageryFootprint') return '#00b4ff';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.5)';
-        if (d._kind === 'orbitalFootprint') return 'rgba(0,180,255,0.9)';
+        if (d._kind === 'orbitalFootprint') return 'rgba(245,165,36,0.5)';
+        if (d._kind === 'orbitalSwept') return 'rgba(0,0,0,0)';
         if (d._kind === 'scenario') return 'transparent';
         if (d._kind === 'focusChosen') return GlobeMap.FOCUS_CHOSEN_STROKE;
         if (d._kind === 'focusNeighbour') return GlobeMap.FOCUS_NEIGHBOUR_STROKE;
@@ -1422,6 +1435,9 @@ export class GlobeMap {
     } else if (d._kind === 'webcam-cluster') {
       setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(`<span style="background:#00d4ff33;border:1px solid #00d4ff88;border-radius:12px;padding:2px 7px;font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:bold;color:#00d4ff;">${d.count}</span>`), "legacy direct innerHTML migration"));
       el.title = `${d.count} webcams`;
+    } else if (d._kind === 'orbitalTarget') {
+      el.style.pointerEvents = 'none';
+      el.replaceChildren(GlobeMap.orbitalReticle(d.lines));
     } else if (d._kind === 'flash') {
       el.style.pointerEvents = 'none';
       setTrustedHtml(el, trustedHtml(`
@@ -2429,6 +2445,7 @@ export class GlobeMap {
     // Flash markers are the "jump to this location" affordance — dropping one
     // would break navigation, and there are only ever a handful.
     add('flash', this.flashMarkers, { exempt: true });
+    if (this.orbitalTarget) add('orbitalTarget', [this.orbitalTarget], { exempt: true });
 
     // Layers with no severity signal fall back to "nearest what the camera is
     // looking at" rather than raw feed order — see proximityRank. Without this a
@@ -2487,7 +2504,7 @@ export class GlobeMap {
       : this.globePaths.filter(p => p.pathType === 'cable' ? showCables : showPipelines);
     const orbitPaths = this.layers.satellites ? this.satelliteTrailPaths : [];
     const stormPaths = this.layers.natural ? this.stormTrackPaths : [];
-    (this.globe as any).pathsData([...paths, ...orbitPaths, ...stormPaths, ...this.orbitalTrackPaths]);
+    (this.globe as any).pathsData([...paths, ...orbitPaths, ...stormPaths, ...this.orbitalTrackPaths, ...this.orbitalReplayPaths]);
   }
 
   private static readonly CII_GLOBE_COLORS: Record<string, string> = {
@@ -2578,7 +2595,7 @@ export class GlobeMap {
     }
 
     polys.push(...this.buildFocusPolygons());
-    polys.push(...this.orbitalFootprintPolygons);
+    polys.push(...this.orbitalFootprintPolygons, ...this.orbitalSweptPolygons);
 
     (this.globe as any).polygonsData(polys);
   }
@@ -2586,6 +2603,7 @@ export class GlobeMap {
   // ─── Public data setters ──────────────────────────────────────────────────
 
   public setOrbitalTrack(track: PassTrack | null, marker: TrackPoint | null): void {
+    this.orbitalTrack = track;
     this.orbitalTrackPaths = track
       ? track.segments.map((segment, i) => ({
         id: `orbital-track-${track.key}-${i}`,
@@ -2595,34 +2613,76 @@ export class GlobeMap {
         status: 'active',
       }))
       : [];
-    // The globe fills clockwise rings, like the reversed country rings above.
-    this.orbitalFootprintPolygons = track
-      ? track.footprint.map((ring) => ({ coords: [[...ring].reverse()], name: track.name, _kind: 'orbitalFootprint' as const }))
-      : [];
+    this.orbitalFootprintPolygons = track ? track.footprint.map((ring) => GlobeMap.orbitalPolygon(ring, track.name, 'orbitalFootprint')) : [];
     this.orbitalTrackMarker = track ? marker : null;
+    this.updateOrbitalSweep();
     this.flushPaths();
     this.flushPolygons();
     this.flushOrbitalTrackMarker();
   }
 
+  /** Moves the replay; the swept swath is redrawn at most five times a second, since a globe flush rebuilds every path. */
   public setOrbitalTrackMarker(point: TrackPoint | null): void {
-    if (this.orbitalTrackPaths.length === 0) return;
+    if (!this.orbitalTrack) return;
     this.orbitalTrackMarker = point;
     this.flushOrbitalTrackMarker();
+    const now = performance.now();
+    if (now - this.orbitalSweepFlushAt < 200 && point?.timeMs !== this.orbitalTrack.closest.timeMs) return;
+    this.orbitalSweepFlushAt = now;
+    this.updateOrbitalSweep();
+    this.flushPaths();
+    this.flushPolygons();
   }
 
-  public setOrbitalTarget(point: GeoPoint | null): void {
-    this.orbitalTarget = point;
-    this.flushOrbitalTrackMarker();
+  public setOrbitalTarget(target: OrbitalTarget | null): void {
+    this.orbitalTarget = target ? { _kind: 'orbitalTarget', _lat: target.lat, _lng: target.lon, lines: target.lines } : null;
+    this.flushMarkers();
+  }
+
+  // The globe fills clockwise rings, like the reversed country rings.
+  private static orbitalPolygon(ring: Array<[number, number]>, name: string, kind: 'orbitalFootprint' | 'orbitalSwept'): GlobePolygon {
+    return { coords: [[...ring].reverse()], name, _kind: kind };
+  }
+
+  private updateOrbitalSweep(): void {
+    const track = this.orbitalTrack;
+    const marker = this.orbitalTrackMarker;
+    const swept = track && marker ? sweptSwath(track, marker.timeMs) : { rings: [], leadingEdge: [] };
+    this.orbitalSweptPolygons = swept.rings.map((ring) => GlobeMap.orbitalPolygon(ring, track?.name ?? '', 'orbitalSwept'));
+    this.orbitalReplayPaths = swept.leadingEdge.map((line, i) => ({
+      id: `orbital-edge-${i}`,
+      name: track?.name ?? '',
+      points: line.map(([lon, lat]) => [lon, lat, 0]),
+      pathType: 'orbitalEdge' as const,
+      status: 'active',
+    }));
+  }
+
+  /** An accent ring with a dot on the point and a mono label beside it. */
+  private static orbitalReticle(lines: readonly string[]): HTMLElement {
+    const root = document.createElement('div');
+    root.className = 'orbital-reticle';
+    root.style.cssText = 'position:relative;width:0;height:0;';
+    const ring = document.createElement('div');
+    ring.style.cssText = 'position:absolute;left:-14px;top:-14px;width:24px;height:24px;border:2px solid #f5a524;border-radius:50%;';
+    const dot = document.createElement('div');
+    dot.style.cssText = 'position:absolute;left:-3px;top:-3px;width:6px;height:6px;background:#f5a524;border-radius:50%;';
+    const label = document.createElement('div');
+    label.style.cssText = 'position:absolute;left:22px;top:0;transform:translateY(-50%);padding:4px 7px;background:rgba(11,12,14,.88);color:#ecebe7;font:500 11px/16px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.06em;white-space:nowrap;font-variant-numeric:tabular-nums;';
+    for (const line of lines) {
+      const row = document.createElement('div');
+      row.textContent = line;
+      label.append(row);
+    }
+    root.append(ring, dot, label);
+    return root;
   }
 
   private flushOrbitalTrackMarker(): void {
     if (!this.globe || !this.initialized || this.destroyed || this.webglLost) return;
     this.wakeGlobe();
-    const points: GeoPoint[] = [this.orbitalTrackMarker, this.orbitalTarget].filter((point): point is GeoPoint => point !== null);
-    (this.globe as any).pointsData(points);
+    (this.globe as any).pointsData(this.orbitalTrackMarker ? [this.orbitalTrackMarker] : []);
   }
-
 
   /**
    * Outline the dashboard focus (#10453): chosen countries solid, neighbours

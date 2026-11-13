@@ -5115,9 +5115,15 @@
   "orbitalWatch": {
     "track": {
       "shown": "Yer izi ve kapsama alanı haritada gösteriliyor",
-      "replay": "Geçişi yeniden oynat",
-      "reducedMotion": "Hareketi azalt açık: işaretçi en yakın geçiş noktasında kalır",
       "unavailable": "Bu geçişin yer izi çizilemedi"
+    },
+    "replay": {
+      "acquisition": "ÇEKİM · {{name}}",
+      "acquired": "ÇEKİLDİ {{time}} · {{resolution}}",
+      "play": "Tekrarı oynat",
+      "pause": "Tekrarı duraklat",
+      "scrub": "Tekrar konumu",
+      "reducedMotion": "AZALTILMIŞ HAREKET"
     },
     "computing": "Uydu kataloğu yükleniyor…",
     "computingProgress": "Geçişler hesaplanıyor: {{total}} uydudan {{done}}",

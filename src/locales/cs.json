@@ -5171,9 +5171,15 @@
   "orbitalWatch": {
     "track": {
       "shown": "Pozemní stopa a záběr jsou zobrazeny na mapě",
-      "replay": "Přehrát přelet",
-      "reducedMotion": "Omezení pohybu je zapnuté: značka zůstává v bodě největšího přiblížení",
       "unavailable": "Pozemní stopu tohoto přeletu nelze vykreslit"
+    },
+    "replay": {
+      "acquisition": "SNÍMKOVÁNÍ · {{name}}",
+      "acquired": "POŘÍZENO {{time}} · {{resolution}}",
+      "play": "Přehrát záznam",
+      "pause": "Pozastavit záznam",
+      "scrub": "Pozice záznamu",
+      "reducedMotion": "OMEZENÝ POHYB"
     },
     "computing": "Načítání katalogu satelitů…",
     "computingProgress": "Výpočet přeletů: {{done}} z {{total}} satelitů",

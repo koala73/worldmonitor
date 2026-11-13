@@ -5143,9 +5143,15 @@
   "orbitalWatch": {
     "track": {
       "shown": "Traccia al suolo e impronta mostrate sulla mappa",
-      "replay": "Riproduci passaggio",
-      "reducedMotion": "Movimento ridotto attivo: il segnaposto resta nel punto di massimo avvicinamento",
       "unavailable": "Impossibile disegnare la traccia al suolo di questo passaggio"
+    },
+    "replay": {
+      "acquisition": "ACQUISIZIONE · {{name}}",
+      "acquired": "ACQUISITA {{time}} · {{resolution}}",
+      "play": "Avvia riproduzione",
+      "pause": "Metti in pausa la riproduzione",
+      "scrub": "Posizione della riproduzione",
+      "reducedMotion": "MOVIMENTO RIDOTTO"
     },
     "computing": "Caricamento del catalogo satellitare…",
     "computingProgress": "Calcolo dei passaggi: {{done}} di {{total}} satelliti",

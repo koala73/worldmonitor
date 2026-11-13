@@ -76,6 +76,7 @@ export function createTrackReplay(track: PassTrack, onFrame: (frame: ReplayFrame
         emit(playing);
       };
       frame = deps.requestFrame(step);
+      emit(true);
     },
     pause() {
       if (frame === null) return;

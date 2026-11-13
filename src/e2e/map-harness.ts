@@ -201,8 +201,8 @@ type MapHarness = {
   getOverlaySnapshot: () => OverlaySnapshot;
   getCyberTooltipHtml: (indicator: string) => string;
   setOrbitalTrack: (track: PassTrack | null, marker?: TrackPoint | null) => void;
-  setOrbitalTarget: (point: { lat: number; lon: number } | null) => void;
-  moveOrbitalMarkerCountingRenders: (points: TrackPoint[]) => { renders: number; marker: unknown };
+  setOrbitalTarget: (point: { lat: number; lon: number; lines?: string[] } | null) => void;
+  moveOrbitalMarkerCountingRenders: (points: TrackPoint[]) => Promise<{ renders: number; marker: unknown }>;
   showChinaCorridor: (index?: number) => void;
   runTradeAnimationProfile: (
     options?: TradeAnimationProfileOptions,
@@ -2002,11 +2002,14 @@ window.__mapHarness = {
   setOrbitalTrack: (track: PassTrack | null, marker: TrackPoint | null = null): void => {
     map.setOrbitalTrack(track, marker);
   },
-  setOrbitalTarget: (point: { lat: number; lon: number } | null): void => {
-    map.setOrbitalTarget(point);
+  setOrbitalTarget: (point: { lat: number; lon: number; lines?: string[] } | null): void => {
+    map.setOrbitalTarget(point ? { lines: [], ...point } : null);
   },
-  moveOrbitalMarkerCountingRenders: (points: TrackPoint[]): { renders: number; marker: unknown } => {
-    const target = map as unknown as { render: () => void; committedLayers?: Array<{ id: string; props?: { data?: unknown } }> | null };
+  moveOrbitalMarkerCountingRenders: async (points: TrackPoint[]): Promise<{ renders: number; marker: unknown }> => {
+    const target = map as unknown as { render: () => void; renderRafId: number | null; committedLayers?: Array<{ id: string; props?: { data?: unknown } }> | null };
+    for (let frame = 0; target.renderRafId !== null && frame < 60; frame += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
     const render = target.render;
     let renders = 0;
     target.render = () => { renders += 1; render.call(target); };

@@ -5087,9 +5087,15 @@
   "orbitalWatch": {
     "track": {
       "shown": "지상 궤적과 관측 범위가 지도에 표시됨",
-      "replay": "통과 다시 보기",
-      "reducedMotion": "동작 줄이기가 켜져 있음: 표시가 최근접 지점에 머뭅니다",
       "unavailable": "이 통과의 지상 궤적을 그릴 수 없습니다"
+    },
+    "replay": {
+      "acquisition": "촬영 · {{name}}",
+      "acquired": "촬영됨 {{time}} · {{resolution}}",
+      "play": "재생",
+      "pause": "일시정지",
+      "scrub": "재생 위치",
+      "reducedMotion": "동작 줄이기"
     },
     "computing": "위성 카탈로그를 불러오는 중…",
     "computingProgress": "통과 계산 중: 위성 {{total}}개 중 {{done}}개",

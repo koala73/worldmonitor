@@ -5115,9 +5115,15 @@
   "orbitalWatch": {
     "track": {
       "shown": "Bodenspur und Aufnahmebereich auf der Karte angezeigt",
-      "replay": "Überflug abspielen",
-      "reducedMotion": "Reduzierte Bewegung ist aktiv: Die Markierung bleibt am Punkt der größten Annäherung",
       "unavailable": "Die Bodenspur dieses Überflugs konnte nicht gezeichnet werden"
+    },
+    "replay": {
+      "acquisition": "AUFNAHME · {{name}}",
+      "acquired": "AUFGENOMMEN {{time}} · {{resolution}}",
+      "play": "Wiedergabe starten",
+      "pause": "Wiedergabe anhalten",
+      "scrub": "Wiedergabeposition",
+      "reducedMotion": "REDUZIERTE BEWEGUNG"
     },
     "computing": "Satellitenkatalog wird geladen…",
     "computingProgress": "Überflüge werden berechnet: {{done}} von {{total}} Satelliten",

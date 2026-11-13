@@ -5,8 +5,7 @@ import { UKMTO_SOURCE_URL, ukmtoIncidentLabel, type UkmtoMapIncident } from '../
 import { iso2ToUnCode } from '../../shared/country-numeric-codes';
 import { FOCUS_CENTRES, type FocusFitBounds } from '@/utils/focus-map';
 import type { ReservoirLevel } from '@/services/climate';
-import type { PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
-import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
+import { sweptSwath, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { reservoirTone, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
 import * as topojson from 'topojson-client';
 import { escapeHtml } from '@/utils/sanitize';
@@ -213,8 +212,10 @@ export class MapComponent {
   private focusOutline: { chosen: Set<string>; neighbours: Set<string> } | null = null;
   private orbitalTrack: PassTrack | null = null;
   private orbitalTrackMarker: TrackPoint | null = null;
-  private orbitalTarget: GeoPoint | null = null;
+  private orbitalTarget: OrbitalTarget | null = null;
   private orbitalMarkerNode: SVGCircleElement | null = null;
+  private orbitalSweptNode: SVGPathElement | null = null;
+  private orbitalEdgeNode: SVGPathElement | null = null;
   /** A focus fit requested while the map had no size (a collapsed mobile map). */
   private pendingFocusFit: FocusFitBounds | null = null;
   private isResizing = false;
@@ -5113,6 +5114,8 @@ export class MapComponent {
     if (!track) {
       this.dynamicLayerGroup?.node()?.querySelector('.orbital-track')?.remove();
       this.orbitalMarkerNode = null;
+      this.orbitalSweptNode = null;
+      this.orbitalEdgeNode = null;
     }
     this.render();
   }
@@ -5128,43 +5131,62 @@ export class MapComponent {
     const track = this.orbitalTrack;
     const group = this.dynamicLayerGroup;
     if (!track || !group) return;
-    const toPath = (positions: Array<[number, number]>, close: boolean): string => {
-      const projected = positions.map((position) => projection(position)).filter((xy): xy is [number, number] => xy !== null);
-      return projected.length < 2 ? '' : `M${projected.map(([x, y]) => `${x},${y}`).join('L')}${close ? 'Z' : ''}`;
-    };
+    const toPath = (positions: Array<[number, number]>, close: boolean) => MapComponent.orbitalPathData(projection, positions, close);
     const layer = group.append('g').attr('class', 'orbital-track').attr('pointer-events', 'none');
     for (const ring of track.footprint) {
       layer.append('path').attr('d', toPath(ring, true))
-        .attr('fill', 'rgba(0,180,255,0.18)').attr('stroke', 'rgba(0,180,255,0.9)').attr('stroke-width', 1).attr('vector-effect', 'non-scaling-stroke');
+        .attr('fill', 'rgba(245,165,36,0.07)').attr('stroke', 'rgba(245,165,36,0.5)').attr('stroke-width', 1).attr('vector-effect', 'non-scaling-stroke');
     }
     for (const segment of track.segments) {
       layer.append('path').attr('d', toPath(segment.map((point): [number, number] => [point.lon, point.lat]), false))
-        .attr('fill', 'none').attr('stroke', 'rgb(255,214,10)').attr('stroke-width', 2).attr('vector-effect', 'non-scaling-stroke');
+        .attr('fill', 'none').attr('stroke', 'rgba(236,235,231,0.7)').attr('stroke-width', 1.5).attr('vector-effect', 'non-scaling-stroke');
     }
-    this.orbitalMarkerNode = layer.append('circle').attr('r', 4).attr('fill', 'rgb(255,214,10)').attr('stroke', '#111')
+    this.orbitalSweptNode = layer.append('path').attr('class', 'orbital-swept').attr('fill', 'rgba(245,165,36,0.24)').attr('stroke', 'none').node();
+    this.orbitalEdgeNode = layer.append('path').attr('class', 'orbital-leading-edge').attr('fill', 'none')
+      .attr('stroke', '#f5a524').attr('stroke-width', 2.6).attr('stroke-linecap', 'round').attr('vector-effect', 'non-scaling-stroke').node();
+    this.orbitalMarkerNode = layer.append('circle').attr('r', 4).attr('fill', '#ecebe7').attr('stroke', '#0b0c0e')
       .attr('vector-effect', 'non-scaling-stroke').node();
     this.placeOrbitalMarker(projection);
   }
 
-  public setOrbitalTarget(point: GeoPoint | null): void {
-    this.orbitalTarget = point;
-    if (!point) this.dynamicLayerGroup?.node()?.querySelector('.orbital-target')?.remove();
+  public setOrbitalTarget(target: OrbitalTarget | null): void {
+    this.orbitalTarget = target;
+    if (!target) this.dynamicLayerGroup?.node()?.querySelector('.orbital-target')?.remove();
     this.render();
+  }
+
+  private static orbitalPathData(projection: d3.GeoProjection, positions: Array<[number, number]>, close: boolean): string {
+    const projected = positions.map((position) => projection(position)).filter((xy): xy is [number, number] => xy !== null);
+    return projected.length < 2 ? '' : `M${projected.map(([x, y]) => `${x},${y}`).join('L')}${close ? 'Z' : ''}`;
   }
 
   private renderOrbitalTarget(projection: d3.GeoProjection): void {
     const target = this.orbitalTarget;
     const xy = target ? projection([target.lon, target.lat]) : null;
     if (!xy || !this.dynamicLayerGroup) return;
-    this.dynamicLayerGroup.append('circle').attr('class', 'orbital-target').attr('pointer-events', 'none')
-      .attr('cx', xy[0]).attr('cy', xy[1]).attr('r', 6)
-      .attr('fill', 'rgba(255,255,255,0.25)').attr('stroke', '#fff').attr('stroke-width', 2).attr('vector-effect', 'non-scaling-stroke');
+    const unit = 1 / Math.max(1, this.state.zoom);
+    const reticle = this.dynamicLayerGroup.append('g').attr('class', 'orbital-target').attr('pointer-events', 'none')
+      .attr('transform', `translate(${xy[0]},${xy[1]}) scale(${unit})`);
+    reticle.append('circle').attr('r', 12).attr('fill', 'none').attr('stroke', '#f5a524').attr('stroke-width', 2);
+    reticle.append('circle').attr('r', 3).attr('fill', '#f5a524');
+    const lines = target?.lines ?? [];
+    if (lines.length === 0) return;
+    reticle.append('rect').attr('x', 20).attr('y', -9 * lines.length - 3).attr('height', 18 * lines.length + 6)
+      .attr('width', 10 + 7 * Math.max(...lines.map((line) => line.length))).attr('fill', 'rgba(11,12,14,0.88)');
+    const text = reticle.append('text').attr('x', 25).attr('fill', '#ecebe7')
+      .attr('font-family', 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace').attr('font-size', 11).attr('letter-spacing', '0.06em');
+    lines.forEach((line, i) => {
+      text.append('tspan').attr('x', 25).attr('y', (i - (lines.length - 1) / 2) * 18 + 4).text(line);
+    });
   }
 
   private placeOrbitalMarker(projection: d3.GeoProjection): void {
     const node = this.orbitalMarkerNode;
     if (!node?.isConnected) return;
     const marker = this.orbitalTrackMarker;
+    const swept = this.orbitalTrack && marker ? sweptSwath(this.orbitalTrack, marker.timeMs) : { rings: [], leadingEdge: [] };
+    this.orbitalSweptNode?.setAttribute('d', swept.rings.map((ring) => MapComponent.orbitalPathData(projection, ring, true)).join(''));
+    this.orbitalEdgeNode?.setAttribute('d', swept.leadingEdge.map((line) => MapComponent.orbitalPathData(projection, line, false)).join(''));
     const xy = marker ? projection([marker.lon, marker.lat]) : null;
     if (!xy) {
       node.setAttribute('display', 'none');

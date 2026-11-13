@@ -57,8 +57,7 @@ import { getMineralColor } from '@/config/mineral-colors';
 import { getWindColor } from '@/config/wind-colors';
 import { CII_LEVEL_COLORS, type CiiLevel } from '@/config/cii-colors';
 import type { GpsJamHex } from '@/services/gps-interference';
-import type { FootprintRing, PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
-import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
+import { sweptSwath, type FootprintRing, type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { fetchImageryScenes } from '@/services/imagery';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
@@ -587,6 +586,15 @@ function positionAlongPath(path: [number, number][], progress: number): [number,
 }
 
 const ORBITAL_TRACK_MARKER_LAYER_ID = 'orbital-track-marker-layer';
+const ORBITAL_SWEPT_LAYER_ID = 'orbital-swept-layer';
+const ORBITAL_LEADING_EDGE_LAYER_ID = 'orbital-leading-edge-layer';
+const ORBITAL_REPLAY_LAYER_IDS = new Set([ORBITAL_SWEPT_LAYER_ID, ORBITAL_LEADING_EDGE_LAYER_ID, ORBITAL_TRACK_MARKER_LAYER_ID]);
+/** The Orbital Watch accent, text and background tokens as deck.gl RGB. */
+const ORBITAL_ACCENT = [245, 165, 36] as const;
+const ORBITAL_TEXT = [236, 235, 231] as const;
+const ORBITAL_BG = [11, 12, 14] as const;
+const ORBITAL_MONO_FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+const ORBITAL_RETICLE = { pickable: false } as const;
 
 function deckLayerId(layer: LayersList[number]): string | null {
   return layer && !Array.isArray(layer) && typeof layer === 'object' ? (layer as Layer).id : null;
@@ -779,7 +787,7 @@ export class DeckGLMap {
   private bypassArcData: BypassArcDatum[] = [];
   private orbitalTrack: PassTrack | null = null;
   private orbitalTrackMarker: TrackPoint | null = null;
-  private orbitalTarget: GeoPoint | null = null;
+  private orbitalTarget: OrbitalTarget | null = null;
   /** The layer list last handed to deck.gl, so the replay marker can move without a full rebuild. */
   private committedLayers: LayersList | null = null;
   private scenarioState: ScenarioVisualState | null = null;
@@ -8170,59 +8178,125 @@ export class DeckGLMap {
     this.render();
   }
 
+  /** Moves the replay to a moment by swapping only the replay layers into the layers already committed to deck.gl. */
   public setOrbitalTrackMarker(point: TrackPoint | null): void {
     if (!this.orbitalTrack) return;
     this.orbitalTrackMarker = point;
-    const layers = this.committedLayers?.filter((layer) => deckLayerId(layer) !== ORBITAL_TRACK_MARKER_LAYER_ID);
+    const layers = this.committedLayers?.filter((layer) => !ORBITAL_REPLAY_LAYER_IDS.has(deckLayerId(layer) ?? ''));
     const at = layers?.findIndex((layer) => deckLayerId(layer) === 'orbital-track-layer') ?? -1;
     if (!layers || at < 0 || this.renderRafId !== null || this.renderPaused || this.webglLost || !this.maplibreMap) {
       this.render();
       return;
     }
-    layers.splice(at + 1, 0, ...this.createOrbitalTrackMarkerLayer());
+    layers.splice(at + 1, 0, ...this.createOrbitalReplayLayers());
     this.committedLayers = layers;
     this.deckFrameProvider.wake();
     this.deckOverlay?.setProps({ layers });
     this.maplibreMap.triggerRepaint();
   }
 
-  private createOrbitalTrackMarkerLayer(): Layer[] {
+  /** The swath swept so far, its leading edge and the satellite, at the replay moment. */
+  private createOrbitalReplayLayers(): Layer[] {
     const marker = this.orbitalTrackMarker;
-    if (!marker) return [];
-    return [new ScatterplotLayer<TrackPoint>({
-      id: ORBITAL_TRACK_MARKER_LAYER_ID,
-      data: [marker],
-      getPosition: (point) => [point.lon, point.lat],
-      getRadius: 6,
-      radiusUnits: 'pixels',
-      getFillColor: [255, 214, 10, 255],
-      getLineColor: [10, 10, 10, 220],
-      stroked: true,
-      lineWidthMinPixels: 1.5,
-      pickable: false,
-    })];
+    const track = this.orbitalTrack;
+    if (!marker || !track) return [];
+    const swept = sweptSwath(track, marker.timeMs);
+    return [
+      new PolygonLayer<FootprintRing>({
+        id: ORBITAL_SWEPT_LAYER_ID,
+        data: swept.rings,
+        getPolygon: (ring) => ring,
+        getFillColor: [...ORBITAL_ACCENT, 56],
+        stroked: false,
+        pickable: false,
+      }),
+      new PathLayer<Array<[number, number]>>({
+        id: ORBITAL_LEADING_EDGE_LAYER_ID,
+        data: swept.leadingEdge,
+        getPath: (line) => line,
+        getColor: [...ORBITAL_ACCENT, 255],
+        getWidth: 3,
+        widthUnits: 'pixels',
+        capRounded: true,
+        pickable: false,
+      }),
+      new ScatterplotLayer<TrackPoint>({
+        id: 'orbital-track-marker-layer',
+        data: [marker],
+        getPosition: (point) => [point.lon, point.lat],
+        getRadius: 5,
+        radiusUnits: 'pixels',
+        getFillColor: [...ORBITAL_TEXT, 255],
+        getLineColor: [...ORBITAL_BG, 230],
+        stroked: true,
+        lineWidthMinPixels: 1.5,
+        pickable: false,
+      }),
+    ];
   }
 
-  public setOrbitalTarget(point: GeoPoint | null): void {
-    this.orbitalTarget = point;
+  public setOrbitalTarget(target: OrbitalTarget | null): void {
+    this.orbitalTarget = target;
     this.render();
   }
 
+  /** Fits the map to a box, leaving room for the lookup sheet: on the right on desktop, at the bottom on a phone. */
+  public frameOrbitalBounds([[west, south], [east, north]]: FrameBounds): void {
+    if (!this.maplibreMap) return;
+    const { clientWidth: width, clientHeight: height } = this.container;
+    const narrow = width < 768;
+    const padding = narrow
+      ? { top: 56, bottom: Math.round(height * 0.62) + 24, left: 32, right: 32 }
+      : { top: 96, bottom: 72, left: 72, right: Math.min(480, Math.round(width * 0.4)) };
+    if (width - padding.left - padding.right < 80 || height - padding.top - padding.bottom < 80) return;
+    this.maplibreMap.fitBounds([[west, south], [east, north]], { padding, maxZoom: 9, duration: 600 });
+  }
+
+  /** The reticle on the looked-up point: an accent ring with a dot and a mono label. */
   private createOrbitalTargetLayer(): Layer[] {
     const target = this.orbitalTarget;
     if (!target) return [];
-    return [new ScatterplotLayer<GeoPoint>({
-      id: 'orbital-target-layer',
-      data: [target],
-      getPosition: (point) => [point.lon, point.lat],
-      getRadius: 7,
-      radiusUnits: 'pixels',
-      getFillColor: [255, 255, 255, 60],
-      getLineColor: [255, 255, 255, 255],
-      stroked: true,
-      lineWidthMinPixels: 2.5,
-      pickable: false,
-    })];
+    const ring = { ...ORBITAL_RETICLE, getPosition: (point: OrbitalTarget) => [point.lon, point.lat] as [number, number] };
+    return [
+      new ScatterplotLayer<OrbitalTarget>({
+        id: 'orbital-target-layer',
+        data: [target],
+        ...ring,
+        getRadius: 14,
+        radiusUnits: 'pixels',
+        filled: false,
+        stroked: true,
+        getLineColor: [...ORBITAL_ACCENT, 255],
+        lineWidthUnits: 'pixels',
+        getLineWidth: 2,
+      }),
+      new ScatterplotLayer<OrbitalTarget>({
+        id: 'orbital-target-dot-layer',
+        data: [target],
+        ...ring,
+        getRadius: 3,
+        radiusUnits: 'pixels',
+        getFillColor: [...ORBITAL_ACCENT, 255],
+      }),
+      new TextLayer<OrbitalTarget>({
+        id: 'orbital-target-label-layer',
+        data: [target],
+        ...ring,
+        getText: (point) => point.lines.join('\n'),
+        getSize: 11,
+        fontFamily: ORBITAL_MONO_FONT,
+        fontWeight: 500,
+        characterSet: 'auto',
+        lineHeight: 1.45,
+        getColor: [...ORBITAL_TEXT, 255],
+        getTextAnchor: 'start',
+        getAlignmentBaseline: 'center',
+        getPixelOffset: [24, 0],
+        background: true,
+        getBackgroundColor: [...ORBITAL_BG, 225],
+        backgroundPadding: [7, 4, 7, 4],
+      }),
+    ];
   }
 
   private createOrbitalTrackLayers(): Layer[] {
@@ -8233,8 +8307,8 @@ export class DeckGLMap {
         id: 'orbital-footprint-layer',
         data: track.footprint,
         getPolygon: (ring) => ring,
-        getFillColor: [0, 180, 255, 45],
-        getLineColor: [0, 180, 255, 200],
+        getFillColor: [...ORBITAL_ACCENT, 18],
+        getLineColor: [...ORBITAL_ACCENT, 120],
         lineWidthMinPixels: 1,
         pickable: false,
       }),
@@ -8242,13 +8316,13 @@ export class DeckGLMap {
         id: 'orbital-track-layer',
         data: track.segments,
         getPath: (segment) => segment.map((point): [number, number] => [point.lon, point.lat]),
-        getColor: [255, 214, 10, 230],
-        getWidth: 2,
+        getColor: [...ORBITAL_TEXT, 170],
+        getWidth: 1.5,
         widthUnits: 'pixels',
         pickable: false,
       }),
     ];
-    return [...layers, ...this.createOrbitalTrackMarkerLayer(), ...this.createOrbitalTargetLayer()];
+    return [...layers, ...this.createOrbitalReplayLayers(), ...this.createOrbitalTargetLayer()];
   }
 
   public clearBypassRoutes(): void {

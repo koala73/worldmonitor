@@ -5171,9 +5171,15 @@
   "orbitalWatch": {
     "track": {
       "shown": "Ślad naziemny i obszar obserwacji pokazane na mapie",
-      "replay": "Odtwórz przelot",
-      "reducedMotion": "Ograniczenie ruchu jest włączone: znacznik pozostaje w punkcie największego zbliżenia",
       "unavailable": "Nie udało się narysować śladu naziemnego tego przelotu"
+    },
+    "replay": {
+      "acquisition": "AKWIZYCJA · {{name}}",
+      "acquired": "ZAREJESTROWANO {{time}} · {{resolution}}",
+      "play": "Odtwórz powtórkę",
+      "pause": "Wstrzymaj powtórkę",
+      "scrub": "Pozycja powtórki",
+      "reducedMotion": "OGRANICZONY RUCH"
     },
     "computing": "Wczytywanie katalogu satelitów…",
     "computingProgress": "Obliczanie przelotów: {{done}} z {{total}} satelitów",

@@ -5087,9 +5087,15 @@
   "orbitalWatch": {
     "track": {
       "shown": "地面軌跡和覆蓋範圍已顯示在地圖上",
-      "replay": "回放過境",
-      "reducedMotion": "已開啟減少動態效果：標記停留在最近點",
       "unavailable": "無法繪製此次過境的地面軌跡"
+    },
+    "replay": {
+      "acquisition": "採集 · {{name}}",
+      "acquired": "已採集 {{time}} · {{resolution}}",
+      "play": "播放回放",
+      "pause": "暫停回放",
+      "scrub": "回放位置",
+      "reducedMotion": "減弱動態效果"
     },
     "computing": "正在載入衛星目錄…",
     "computingProgress": "正在計算過境：{{done}} / {{total}} 顆衛星",
@@ -5130,8 +5136,8 @@
       "cadence": "每 {{minutes}} 分鐘一幀新影象",
       "sourceUnavailable": "存檔中沒有該來源在這些日期的影象。",
       "imageLoading": "正在載入影像…",
-      "imageFailed": "影像未能載入。檔案庫可能較慢或無法使用。",
-      "noPreview": "封存庫尚無此場景的預覽。"
+      "imageFailed": "影像未能載入。檔案庫可能較慢或無法存取。",
+      "noPreview": "存檔中尚無此場景的預覽。"
     },
     "dailyMosaics": "每日鑲嵌圖",
     "weatherFrames": "氣象影象"

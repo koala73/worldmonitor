@@ -3,10 +3,12 @@ import { getOrbitalPassClient, type PointPassLookup } from '@/services/orbital/p
 import type { PointPass } from '@/services/orbital/pass-job';
 import { profileFor } from '@/services/orbital/pass-query';
 import { loadOrbitalCatalog } from '@/services/orbital/catalog';
-import { buildPassTrack, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
+import { buildPassTrack, framingBounds, type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { browserReplayDeps, createTrackReplay, type TrackReplay } from '@/services/orbital/track-replay';
-import { ARCHIVE_SEARCHES, findArchiveEvidence } from '@/services/orbital/match';
+import { ARCHIVE_SEARCHES, findArchiveEvidence, type MatchedAcquisition } from '@/services/orbital/match';
 import { OrbitalWatchPage } from '@/components/OrbitalWatchPage';
+import { createReplayHud } from '@/components/OrbitalReplayHud';
+import { formatTargetCoordinates, formatAcquiredLine } from '@/components/orbital-target-label';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 
 let page: OrbitalWatchPage | null = null;
@@ -18,11 +20,13 @@ let run: AbortController | null = null;
 export interface OrbitalTrackSurface {
   setOrbitalTrack(track: PassTrack | null): void;
   setOrbitalTrackMarker(point: TrackPoint | null): void;
-  setOrbitalTarget(point: GeoPoint | null): void;
+  setOrbitalTarget(target: OrbitalTarget | null): void;
+  frameOrbitalBounds?(bounds: FrameBounds): void;
 }
 
 let surface: OrbitalTrackSurface | null = null;
 let replay: TrackReplay | null = null;
+let hudOverlay: HTMLElement | null = null;
 let trackRequest = 0;
 
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
@@ -75,6 +79,8 @@ function clearTrack(): void {
   trackRequest += 1;
   replay?.stop();
   replay = null;
+  hudOverlay?.remove();
+  hudOverlay = null;
   surface?.setOrbitalTrack(null);
 }
 
@@ -99,16 +105,35 @@ async function trackFor(pass: PointPass): Promise<PassTrack | null> {
   return buildPassTrack(elements, profile.footprint, pass);
 }
 
-async function showTrack(pass: PointPass): Promise<void> {
+function targetFor(at: GeoPoint, acquisition: MatchedAcquisition | null): OrbitalTarget {
+  return { lat: at.lat, lon: at.lon, lines: [formatTargetCoordinates(at), ...(acquisition ? [formatAcquiredLine(acquisition)] : [])] };
+}
+
+async function showTrack(pass: PointPass, acquisition: MatchedAcquisition | null): Promise<void> {
   clearTrack();
   const request = trackRequest;
   const target = surface;
+  if (point) target?.setOrbitalTarget(targetFor(point, acquisition));
   const track = target ? await trackFor(pass).catch(() => null) : null;
   if (request !== trackRequest) return;
   page?.setTrackState(pass, target && track ? 'shown' : 'unavailable');
-  if (!target || !track) return;
+  if (!target || !track || !point) return;
   target.setOrbitalTrack(track);
-  replay = createTrackReplay(track, (point) => target.setOrbitalTrackMarker(point), browserReplayDeps());
+  target.frameOrbitalBounds?.(framingBounds(track, point));
+  const deps = browserReplayDeps();
+  const hud = createReplayHud(track, deps.prefersReducedMotion(), {
+    onToggle: () => (playing ? replay?.pause() : replay?.play()),
+    onSeek: (progress) => replay?.seek(progress),
+  });
+  let playing = false;
+  hudOverlay = hud.overlay;
+  document.body.append(hud.overlay);
+  page?.setReplayControls(pass, hud.controls);
+  replay = createTrackReplay(track, (frame) => {
+    playing = frame.playing;
+    target.setOrbitalTrackMarker(frame.point);
+    hud.update(frame);
+  }, deps);
   replay.play();
 }
 
@@ -124,14 +149,13 @@ export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null
       point = null;
     },
     onRetry: () => void start(),
-    onSelectPass: (pass) => void showTrack(pass),
-    onReplayPass: () => replay?.play(),
+    onSelectPass: (pass, acquisition) => void showTrack(pass, acquisition),
   });
   clearTrack();
   if (surface !== map) surface?.setOrbitalTarget(null);
   surface = map;
-  surface?.setOrbitalTarget(at);
   point = at;
+  surface?.setOrbitalTarget(targetFor(at, null));
   lookup = null;
   page.open(at, returnFocusTo);
   void start();

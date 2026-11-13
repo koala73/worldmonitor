@@ -8,7 +8,6 @@ import type { DailyMosaicRow, GeostationaryRow } from '@/services/orbital/archiv
 import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
-import { REDUCED_MOTION_QUERY } from '@/services/orbital/track-replay';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
 import '../styles/orbital-watch.css';
 
@@ -25,8 +24,7 @@ export interface OrbitalWatchPageCallbacks {
   onClose: () => void;
   onRetry: () => void;
   /** A pass row was chosen, so its ground track can be drawn on the map. */
-  onSelectPass?: (pass: PointPass) => void;
-  onReplayPass?: () => void;
+  onSelectPass?: (pass: PointPass, acquisition: MatchedAcquisition | null) => void;
 }
 
 type GroupId = 'confirmed' | 'likely' | 'checking' | 'upcoming' | 'mosaic' | 'frames' | 'inRange' | 'passed';
@@ -149,7 +147,7 @@ function groupPasses(lookup: PointPassLookup, archives: ArchiveState, selected: 
   for (const pass of evidence?.passes ?? lookup.passes) {
     const checking = pendingProfiles.has(pass.profileId) && candidates.has(passKey(pass)) && pass.tier.kind !== 'confirmed-image';
     const group = checking ? 'checking' : GROUP_OF_TIER[pass.tier.kind];
-    groups.get(group)!.rows.push({ sortMs: pass.timeMs, render: () => passRow(pass, checking, acquisitionByPass.get(passKey(pass)) ?? null, passKey(pass) === selected?.key ? selected.track : null) });
+    groups.get(group)!.rows.push({ sortMs: pass.timeMs, render: () => passRow(pass, checking, acquisitionByPass.get(passKey(pass)) ?? null, passKey(pass) === selected?.key ? selected : null) });
   }
   for (const acquisition of evidence?.acquisitions ?? []) {
     if (!acquisition.pass) groups.get('confirmed')!.rows.push({ sortMs: acquisition.startMs, render: () => unmatchedImageRow(acquisition) });
@@ -223,9 +221,12 @@ export type TrackState = 'drawing' | 'shown' | 'unavailable';
 interface SelectedPass {
   key: string;
   track: TrackState;
+  /** The replay play button and scrubber, moved into the row while its track is shown. */
+  controls: HTMLElement | null;
 }
 
-function passRow(pass: PointPass, checking: boolean, acquisition: MatchedAcquisition | null, track: TrackState | null): HTMLElement {
+function passRow(pass: PointPass, checking: boolean, acquisition: MatchedAcquisition | null, selected: SelectedPass | null): HTMLElement {
+  const track = selected?.track ?? null;
   const tierLabel = checking ? t('orbitalWatch.tier.checking') : t(TIER_LABEL_KEY[pass.tier.kind]);
   const military = pass.tier.kind === 'capability-overhead';
   const details = [
@@ -244,18 +245,16 @@ function passRow(pass: PointPass, checking: boolean, acquisition: MatchedAcquisi
     h('div', { className: 'ow-row-time' }, formatUtc(pass.timeMs)),
     h('div', { className: 'ow-row-detail' }, details.join(' · ')),
     ...notes.map((note) => h('div', { className: 'ow-row-note' }, note)),
-    track === 'shown' ? trackControls()
+    track === 'shown' ? trackControls(selected?.controls ?? null)
       : track === 'unavailable' ? h('div', { className: 'ow-track ow-track-note' }, t('orbitalWatch.track.unavailable'))
       : null,
     military ? null : imageSlot(acquisition, t('orbitalWatch.row.imageAlt', { name: pass.name, time: formatUtc(pass.timeMs) })));
 }
 
-function trackControls(): HTMLElement {
-  const still = typeof matchMedia === 'function' && matchMedia(REDUCED_MOTION_QUERY).matches;
+function trackControls(controls: HTMLElement | null): HTMLElement {
   return h('div', { className: 'ow-track' },
     h('span', { className: 'ow-track-note' }, t('orbitalWatch.track.shown')),
-    h('button', { type: 'button', className: 'ow-replay', dataset: { action: 'replay' } }, t('orbitalWatch.track.replay')),
-    still ? h('span', { className: 'ow-track-motion' }, t('orbitalWatch.track.reducedMotion')) : null);
+    controls);
 }
 
 function unmatchedImageRow(acquisition: MatchedAcquisition): HTMLElement {
@@ -282,6 +281,7 @@ export class OrbitalWatchPage {
   private state: OrbitalWatchState | null = null;
   private selected: SelectedPass | null = null;
   private passesByKey = new Map<string, PointPass>();
+  private acquisitionsByKey = new Map<string, MatchedAcquisition>();
 
   constructor(private readonly callbacks: OrbitalWatchPageCallbacks) {
     const titleId = 'orbital-watch-title';
@@ -361,6 +361,8 @@ export class OrbitalWatchPage {
     const evidence = archives.kind === 'answered' ? archives.evidence : null;
     const passes = evidence?.passes ?? lookup.passes;
     this.passesByKey = new Map(passes.map((pass) => [passKey(pass), pass]));
+    const shown = evidence ?? (archives.kind === 'checking' ? archives.progress?.evidence ?? null : null);
+    this.acquisitionsByKey = new Map((shown?.acquisitions ?? []).flatMap((acquisition) => (acquisition.pass ? [[passKey(acquisition.pass), acquisition] as const] : [])));
     const groups = groupPasses(lookup, archives, this.selected);
     const stale = lookup.catalog.status === 'stale'
       ? h('p', { className: 'ow-banner ow-banner-stale', role: 'note' }, t('orbitalWatch.stale', { age: formatAgeDays((lookup.nowMs - lookup.catalog.fetchedAt) / DAY_MS) }))
@@ -418,10 +420,6 @@ export class OrbitalWatchPage {
       this.callbacks.onRetry();
       return;
     }
-    if (target.closest('[data-action="replay"]')) {
-      this.callbacks.onReplayPass?.();
-      return;
-    }
     const row = target.closest<HTMLElement>('.ow-row[data-pass-key]');
     if (row) {
       this.selectPass(row.dataset.passKey!);
@@ -436,20 +434,27 @@ export class OrbitalWatchPage {
     this.render(this.state);
   };
 
+  /** Puts the replay controls for the selected pass in its row; ignored once another pass is selected. */
+  setReplayControls(pass: PointPass, controls: HTMLElement | null): void {
+    if (this.selected?.key !== passKey(pass) || !this.state) return;
+    this.selected = { ...this.selected, controls };
+    this.render(this.state);
+  }
+
   /** Reports how drawing the selected pass went; ignored once another pass is selected. */
   setTrackState(pass: PointPass, track: TrackState): void {
     if (this.selected?.key !== passKey(pass) || !this.state) return;
-    this.selected = { key: this.selected.key, track };
+    this.selected = { ...this.selected, track };
     this.render(this.state);
   }
 
   private selectPass(key: string): void {
     const pass = this.passesByKey.get(key);
     if (!pass || !this.state) return;
-    this.selected = { key, track: 'drawing' };
+    this.selected = { key, track: 'drawing', controls: null };
     this.render(this.state);
     this.body.querySelector<HTMLElement>(`.ow-row[data-pass-key="${key}"]`)?.focus();
-    this.callbacks.onSelectPass?.(pass);
+    this.callbacks.onSelectPass?.(pass, this.acquisitionsByKey.get(key) ?? null);
   }
 
   private readonly onSheetKeydown = (event: KeyboardEvent): void => {

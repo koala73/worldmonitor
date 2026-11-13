@@ -5115,9 +5115,15 @@
   "orbitalWatch": {
     "track": {
       "shown": "Njia ya ardhini na eneo la sensa vimeonyeshwa kwenye ramani",
-      "replay": "Rudia kupita",
-      "reducedMotion": "Mwendo uliopunguzwa umewashwa: alama inabaki kwenye sehemu ya karibu zaidi",
       "unavailable": "Njia ya ardhini ya kupita huku haikuweza kuchorwa"
+    },
+    "replay": {
+      "acquisition": "UPIGAJI · {{name}}",
+      "acquired": "IMEPIGWA {{time}} · {{resolution}}",
+      "play": "Cheza marudio",
+      "pause": "Sitisha marudio",
+      "scrub": "Nafasi ya marudio",
+      "reducedMotion": "MWENDO ULIOPUNGUZWA"
     },
     "computing": "Inapakia orodha ya satelaiti…",
     "computingProgress": "Inakokotoa mapito: {{done}} kati ya satelaiti {{total}}",

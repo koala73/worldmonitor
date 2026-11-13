@@ -262,7 +262,7 @@ describe('Globe focus outline', () => {
       destroyed: false,
       webglLost: false,
       layers: {},
-      scenarioPolygons: [], orbitalFootprintPolygons: [],
+      scenarioPolygons: [], orbitalFootprintPolygons: [], orbitalSweptPolygons: [],
       focusOutline: null,
       reversedRingCache: new Map(),
       countriesGeoData: { type: 'FeatureCollection', features: ['TH', 'LA', 'FR', 'VN'].map(feature) },
@@ -285,7 +285,7 @@ describe('Globe focus outline', () => {
     const polygonsData = vi.fn();
     const map = Object.assign(Object.create(GlobeMap.prototype), {
       globe: { polygonsData }, initialized: true, destroyed: false, webglLost: false,
-      layers: { ciiChoropleth: true }, scenarioPolygons: [], orbitalFootprintPolygons: [], focusOutline: null,
+      layers: { ciiChoropleth: true }, scenarioPolygons: [], orbitalFootprintPolygons: [], orbitalSweptPolygons: [], focusOutline: null,
       reversedRingCache: new Map(), ciiScoresMap: new Map(), wakeGlobe: vi.fn(),
       countriesGeoData: { type: 'FeatureCollection', features: [boundary] },
     });
@@ -301,7 +301,7 @@ describe('Globe focus outline', () => {
     const polygonsData = vi.fn();
     const map = Object.assign(Object.create(GlobeMap.prototype), {
       globe: { polygonsData },
-      initialized: true, destroyed: false, webglLost: false, layers: {}, scenarioPolygons: [], orbitalFootprintPolygons: [],
+      initialized: true, destroyed: false, webglLost: false, layers: {}, scenarioPolygons: [], orbitalFootprintPolygons: [], orbitalSweptPolygons: [],
       focusOutline: null, reversedRingCache: new Map(), countriesGeoData: null, wakeGlobe: vi.fn(),
     });
     map.setFocusOutline({ chosen: ['TH'], neighbours: [] });

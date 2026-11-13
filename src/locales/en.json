@@ -4574,9 +4574,15 @@
   "orbitalWatch": {
     "track": {
       "shown": "Ground track and footprint shown on the map",
-      "replay": "Replay pass",
-      "reducedMotion": "Reduced motion is on: the marker stays at closest approach",
       "unavailable": "This pass's ground track couldn't be drawn"
+    },
+    "replay": {
+      "acquisition": "ACQUISITION · {{name}}",
+      "acquired": "ACQUIRED {{time}} · {{resolution}}",
+      "play": "Play replay",
+      "pause": "Pause replay",
+      "scrub": "Replay position",
+      "reducedMotion": "REDUCED MOTION"
     },
     "computing": "Loading the satellite catalog…",
     "computingProgress": "Computing passes: {{done}} of {{total}} satellites",
