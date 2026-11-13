@@ -347,7 +347,8 @@
 .ow-replay-hud .ow-hud-reduced { display: inline-block; margin-top: var(--ow-space-2); }
 .ow-replay-controls { display: flex; align-items: center; gap: var(--ow-space-3); min-height: 32px; padding: var(--ow-space-2) var(--ow-space-3); background: var(--ow-panel); border: 1px solid var(--ow-line); font-family: var(--ow-font-mono); font-size: var(--ow-label-size); letter-spacing: var(--ow-label-tracking); color: var(--ow-text); font-variant-numeric: tabular-nums; }
 .ow-replay-controls[data-reduced-motion="true"] { flex-wrap: wrap; }
-.ow-replay-controls .ow-hud-reduced { order: -1; }
+/* Desktop names the reduced-motion state once, under the countdown; the phone HUD shows it in the control row. */
+.ow-replay-controls .ow-hud-reduced { order: -1; display: none; }
 .ow-hud-toggle { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--ow-line); background: var(--ow-bg); color: var(--ow-accent) !important; font-size: 11px; line-height: 1; }
 .ow-hud-scrub { flex: 1; min-width: 0; height: 4px; accent-color: var(--ow-accent); cursor: pointer; }
 .ow-hud-scrub:focus-visible { outline: 1px solid var(--ow-accent); outline-offset: 2px; }
@@ -391,6 +392,7 @@
   .ow-replay-hud .ow-hud-label,
   .ow-replay-hud .ow-hud-reduced,
   .ow-replay-controls .ow-hud-short { display: none; }
+  .ow-replay-controls .ow-hud-reduced { display: inline-block; }
   .ow-hud-countdown { margin-top: 0; font-size: 15px; line-height: 18px; }
   .ow-replay-controls,
   .ow-replay-controls[data-reduced-motion="true"] { flex: 1; min-width: 0; flex-wrap: nowrap; min-height: 0; padding: 2px var(--ow-space-2); }

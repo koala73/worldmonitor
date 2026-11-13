@@ -474,7 +474,7 @@ interface GlobePath {
   id: string;
   name: string;
   points: number[][];
-  pathType: 'cable' | 'oil' | 'gas' | 'products' | 'orbit' | 'stormTrack' | 'stormHistory' | 'orbitalTrack' | 'orbitalEdge';
+  pathType: 'cable' | 'oil' | 'gas' | 'products' | 'orbit' | 'stormTrack' | 'stormHistory' | 'orbitalTrack' | 'orbitalEdge' | 'orbitalOutline';
   status: string;
   country?: string;
   windKt?: number;
@@ -618,6 +618,7 @@ export class GlobeMap {
   private stormTrackPaths: GlobePath[] = [];
   private stormConePolygons: GlobePolygon[] = [];
   private orbitalTrackPaths: GlobePath[] = [];
+  private orbitalOutlinePaths: GlobePath[] = [];
   private orbitalFootprintPolygons: GlobePolygon[] = [];
   private orbitalTrack: PassTrack | null = null;
   private orbitalTrackMarker: TrackPoint | null = null;
@@ -950,6 +951,7 @@ export class GlobeMap {
         const pathType = (path as GlobePath)?.pathType;
         if (pathType === 'orbitalTrack') return 0.007;
         if (pathType === 'orbitalEdge') return 0.008;
+        if (pathType === 'orbitalOutline') return 0.006;
         return pathType === 'orbit' && p.length > 2 ? (p[2] ?? 0) / 6371 : 0;
       })
       .pathColor((d: GlobePath) => {
@@ -968,6 +970,7 @@ export class GlobeMap {
         if (d.pathType === 'stormTrack') return 'rgba(255,100,100,0.8)';
         if (d.pathType === 'orbitalTrack') return 'rgba(236,235,231,0.7)';
         if (d.pathType === 'orbitalEdge') return 'rgba(245,165,36,1)';
+        if (d.pathType === 'orbitalOutline') return 'rgba(245,165,36,0.55)';
         if (d.pathType === 'stormHistory') {
           const w = d.windKt || 0;
           if (w >= 137) return 'rgba(255,96,96,0.8)';
@@ -984,6 +987,7 @@ export class GlobeMap {
         if (d.pathType === 'cable') return 0.3;
         if (d.pathType === 'orbitalEdge') return 2.6;
         if (d.pathType === 'stormTrack' || d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack') return 1.2;
+        if (d.pathType === 'orbitalOutline') return 0.8;
         return 0.6;
       })
       .pathDashLength((d: GlobePath) => {
@@ -991,7 +995,7 @@ export class GlobeMap {
         if (d.pathType === 'orbit') return 0.4;
         if (d.pathType === 'cable') return 1;
         if (d.pathType === 'stormTrack') return 0.8;
-        if (d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack' || d.pathType === 'orbitalEdge') return 1;
+        if (d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack' || d.pathType === 'orbitalEdge' || d.pathType === 'orbitalOutline') return 1;
         return 0.6;
       })
       .pathDashGap((d: GlobePath) => {
@@ -999,7 +1003,7 @@ export class GlobeMap {
         if (d.pathType === 'orbit') return 0.15;
         if (d.pathType === 'cable') return 0;
         if (d.pathType === 'stormTrack') return 0.4;
-        if (d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack' || d.pathType === 'orbitalEdge') return 0;
+        if (d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack' || d.pathType === 'orbitalEdge' || d.pathType === 'orbitalOutline') return 0;
         return 0.25;
       })
       .pathDashAnimateTime((d: GlobePath) => {
@@ -1007,7 +1011,7 @@ export class GlobeMap {
         if (d.pathType === 'orbit') return 0;
         if (d.pathType === 'cable') return 0;
         if (d.pathType === 'stormTrack') return 3000;
-        if (d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack' || d.pathType === 'orbitalEdge') return 0;
+        if (d.pathType === 'stormHistory' || d.pathType === 'orbitalTrack' || d.pathType === 'orbitalEdge' || d.pathType === 'orbitalOutline') return 0;
         return 5000;
       })
       .pathLabel((d: GlobePath) => escapeHtml(d?.name ?? ''));
@@ -1049,8 +1053,7 @@ export class GlobeMap {
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_STROKE[d.intensity!] ?? GlobeMap.CONFLICT_STROKE.low;
         if (d._kind === 'imageryFootprint') return '#00b4ff';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.5)';
-        if (d._kind === 'orbitalFootprint') return 'rgba(245,165,36,0.5)';
-        if (d._kind === 'orbitalSwept') return 'rgba(0,0,0,0)';
+        if (d._kind === 'orbitalFootprint' || d._kind === 'orbitalSwept') return 'rgba(0,0,0,0)';
         if (d._kind === 'scenario') return 'transparent';
         if (d._kind === 'focusChosen') return GlobeMap.FOCUS_CHOSEN_STROKE;
         if (d._kind === 'focusNeighbour') return GlobeMap.FOCUS_NEIGHBOUR_STROKE;
@@ -2504,7 +2507,7 @@ export class GlobeMap {
       : this.globePaths.filter(p => p.pathType === 'cable' ? showCables : showPipelines);
     const orbitPaths = this.layers.satellites ? this.satelliteTrailPaths : [];
     const stormPaths = this.layers.natural ? this.stormTrackPaths : [];
-    (this.globe as any).pathsData([...paths, ...orbitPaths, ...stormPaths, ...this.orbitalTrackPaths, ...this.orbitalReplayPaths]);
+    (this.globe as any).pathsData([...paths, ...orbitPaths, ...stormPaths, ...this.orbitalOutlinePaths, ...this.orbitalTrackPaths, ...this.orbitalReplayPaths]);
   }
 
   private static readonly CII_GLOBE_COLORS: Record<string, string> = {
@@ -2613,7 +2616,17 @@ export class GlobeMap {
         status: 'active',
       }))
       : [];
+    // The fill is split at the antimeridian; the outline follows each band unbroken, so no seam is drawn at 180°.
     this.orbitalFootprintPolygons = track ? track.footprint.map((ring) => GlobeMap.orbitalPolygon(ring, track.name, 'orbitalFootprint')) : [];
+    this.orbitalOutlinePaths = track
+      ? track.swath.map((side, i) => ({
+        id: `orbital-outline-${track.key}-${i}`,
+        name: track.name,
+        points: [...side.inner, ...[...side.outer].reverse(), side.inner[0]!].map(([lon, lat]) => [lon, lat, 0]),
+        pathType: 'orbitalOutline' as const,
+        status: 'active',
+      }))
+      : [];
     this.orbitalTrackMarker = track ? marker : null;
     this.updateOrbitalSweep();
     this.flushPaths();

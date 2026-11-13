@@ -8250,6 +8250,7 @@ export class DeckGLMap {
       : { top: 96, bottom: 72, left: 72, right: Math.min(480, Math.round(width * 0.4)) };
     if (width - padding.left - padding.right < 80 || height - padding.top - padding.bottom < 80) return;
     this.maplibreMap.fitBounds([[west, south], [east, north]], { padding, maxZoom: 9, duration: 600 });
+    this.maplibreMap.once('moveend', () => this.render());
   }
 
   /** The reticle on the looked-up point: an accent ring with a dot and a mono label. */
@@ -8257,6 +8258,10 @@ export class DeckGLMap {
     const target = this.orbitalTarget;
     if (!target) return [];
     const ring = { ...ORBITAL_RETICLE, getPosition: (point: OrbitalTarget) => [point.lon, point.lat] as [number, number] };
+    // The tag sits right of the reticle unless that would run it off the map, as at the antimeridian edge.
+    const x = this.maplibreMap?.project([target.lon, target.lat]).x;
+    const labelWidth = 14 + 7 * Math.max(0, ...target.lines.map((line) => line.length));
+    const left = x !== undefined && x + 24 + labelWidth > this.container.clientWidth && x - 24 - labelWidth >= 0;
     return [
       new ScatterplotLayer<OrbitalTarget>({
         id: 'orbital-target-layer',
@@ -8289,9 +8294,10 @@ export class DeckGLMap {
         characterSet: 'auto',
         lineHeight: 1.45,
         getColor: [...ORBITAL_TEXT, 255],
-        getTextAnchor: 'start',
+        getTextAnchor: left ? 'end' : 'start',
         getAlignmentBaseline: 'center',
-        getPixelOffset: [24, 0],
+        getPixelOffset: [left ? -24 : 24, 0],
+        updateTriggers: { getTextAnchor: left, getPixelOffset: left },
         background: true,
         getBackgroundColor: [...ORBITAL_BG, 225],
         backgroundPadding: [7, 4, 7, 4],
