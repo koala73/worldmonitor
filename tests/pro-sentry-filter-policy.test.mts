@@ -1893,12 +1893,19 @@ describe('marketingBeforeSend — injected numeric-literal parse failure on docu
     assert.equal(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }])), null);
   });
 
-  it('drops the same shape on /pro and when Sentry omits the type', () => {
+  it('drops the same shape on /pro', () => {
     assert.equal(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/pro', lineno: 1 }])), null);
-    assert.equal(
-      marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], `SyntaxError: ${MSG}`, undefined)),
-      null,
-    );
+  });
+
+  it('uses the message prefix when Sentry omits the type', () => {
+    const missingTypeEvent = {
+      exception: { values: [{
+        value: `SyntaxError: ${MSG}`,
+        stacktrace: { frames: [{ filename: 'https://www.worldmonitor.app/', lineno: 1 }] },
+      }] },
+    } satisfies PolicyEvent;
+    assert.equal(Object.hasOwn(missingTypeEvent.exception.values[0]!, 'type'), false);
+    assert.equal(marketingBeforeSend(missingTypeEvent), null);
   });
 
   it('keeps the parse failure when it sits below line 1, where our inline scripts live', () => {
