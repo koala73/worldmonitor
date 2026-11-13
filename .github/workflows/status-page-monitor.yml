@@ -2,7 +2,7 @@ name: Status Page Monitor
 
 on:
   schedule:
-    - cron: '7,22,37,52 * * * *'
+    - cron: '7 * * * *'
   workflow_dispatch:
   pull_request:
     paths:
