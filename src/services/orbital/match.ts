@@ -125,7 +125,7 @@ const maxOf = (values: Array<number | null>) => {
 
 function acquisitionImage(acquisition: Acquisition, box: CropBox): string | null {
   for (const item of acquisition.items) {
-    const crop = item.renderedPreviewHref ? planetaryComputerCropUrl(item.renderedPreviewHref, box) : null;
+    const crop = item.archive === 'planetary-computer' ? planetaryComputerCropUrl(item.collection, item.itemId, box) : null;
     if (crop) return crop;
   }
   return acquisition.items.find((item) => item.previewUrl)?.previewUrl ?? null;

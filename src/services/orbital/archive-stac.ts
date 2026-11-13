@@ -57,6 +57,10 @@ const SENTINEL_2_STRIP_REACH_MS = 20 * MINUTE_MS;
 const LANDSAT_SCENE_HALF_MS = 15_000;
 const NATIVE_RESOLUTION_M: Record<ImagingProfileId, number> = { 'sentinel-2': 10, 'sentinel-1': 10, landsat: 30 };
 
+/** These previews render the visual (TCI) asset, which clips bright ground to flat white or yellow. */
+const CLIPPED_PREVIEW = (_archive: StacArchiveId, profileId: ImagingProfileId) =>
+  profileId === 'sentinel-2';
+
 export const normalisePlatform = (name: string) => name.trim().toLowerCase().replace(/[\s_]+/g, '-');
 
 type StacProperties = Record<string, unknown>;
@@ -144,7 +148,7 @@ export function parseStacItem(archive: StacArchiveId, feature: StacFeature): Arc
     cloudCoverPct: num(p['eo:cloud_cover']),
     sunElevationDeg: num(p['view:sun_elevation']) ?? (zenith === null ? null : 90 - zenith),
     resolutionM: num(p.gsd) ?? NATIVE_RESOLUTION_M[profileId],
-    previewUrl: thumbnail && isAllowedPreviewUrl(thumbnail) ? thumbnail : null,
+    previewUrl: thumbnail && isAllowedPreviewUrl(thumbnail) && !CLIPPED_PREVIEW(archive, profileId) ? thumbnail : null,
     renderedPreviewHref,
     classification,
   };
