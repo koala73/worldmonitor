@@ -4,6 +4,7 @@
 // One run evaluates as many sites as fit its budget and the next run resumes after them.
 import {
   ArchiveRefusal,
+  ARCHIVE_LOOKBACK_DAYS,
   acquisitionsFromStac,
   countryKey,
   evaluateSites,
@@ -16,6 +17,13 @@ import {
   stacSearchBody,
 } from './_orbital-sites.mjs';
 import { ORBITAL_CATALOG_KEY } from './_orbital-catalog.mjs';
+import {
+  backfillSearchBody,
+  flagShadowKey,
+  makeChangeStage,
+  StatisticsRefusal,
+  statisticsUrl,
+} from './_orbital-change.mjs';
 import {
   getRedisCredentials,
   loadEnvFile,
@@ -43,16 +51,28 @@ const REFUSAL_STATUSES = new Set([401, 403, 429, 451]);
 const MGET_CHUNK = 100;
 const PIPELINE_CHUNK = 50;
 
-export function makeArchiveSearch({ fetchImpl = (...args) => globalThis.fetch(...args), minIntervalMs = ARCHIVE_MIN_INTERVAL_MS, clock = Date.now, wait = sleep } = {}) {
+// Change scoring gets its own share of the run, so a pass of the registry stays within the rollup freshness gate.
+export const CHANGE_BUDGET_MS = 2 * 60_000;
+
+/** One request at a time, `minIntervalMs` apart. */
+function makeThrottle({ minIntervalMs, clock, wait }) {
   let lastRequestAt = -Infinity;
-  return async function searchArchive(site, nowMs) {
+  return async () => {
     const gap = lastRequestAt + minIntervalMs - clock();
     if (gap > 0) await wait(gap);
     lastRequestAt = clock();
+  };
+}
+
+/** Searches the archive for one site; `bodyFor` picks the window. Its `backfill` reads older radar scenes on the same throttle. */
+export function makeArchiveSearch({ fetchImpl = (...args) => globalThis.fetch(...args), minIntervalMs = ARCHIVE_MIN_INTERVAL_MS, clock = Date.now, wait = sleep } = {}) {
+  const throttle = makeThrottle({ minIntervalMs, clock, wait });
+  async function search(body) {
+    await throttle();
     const response = await fetchImpl(STAC_SEARCH_URL, {
       method: 'POST',
       headers: { 'User-Agent': USER_AGENT, 'Content-Type': 'application/json', Accept: 'application/geo+json' },
-      body: JSON.stringify(stacSearchBody(site, nowMs)),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(ARCHIVE_TIMEOUT_MS),
     });
     if (REFUSAL_STATUSES.has(response.status)) {
@@ -63,28 +83,57 @@ export function makeArchiveSearch({ fetchImpl = (...args) => globalThis.fetch(..
       await response.body?.cancel();
       throw new Error(`Planetary Computer HTTP ${response.status}`);
     }
-    const body = await response.json();
-    return acquisitionsFromStac(body?.features);
+    const json = await response.json();
+    return acquisitionsFromStac(json?.features);
+  }
+  const searchArchive = (site, nowMs) => search(stacSearchBody(site, nowMs));
+  searchArchive.backfill = (site, nowMs) => search(backfillSearchBody(site, nowMs, ARCHIVE_LOOKBACK_DAYS));
+  return searchArchive;
+}
+
+/** Radar statistics of one scene over a footprint; null statistics mean the response had none. */
+export function makeStatisticsFetch({ fetchImpl = (...args) => globalThis.fetch(...args), minIntervalMs = ARCHIVE_MIN_INTERVAL_MS, clock = Date.now, wait = sleep } = {}) {
+  const throttle = makeThrottle({ minIntervalMs, clock, wait });
+  return async function fetchStatistics(scene, feature) {
+    await throttle();
+    const response = await fetchImpl(statisticsUrl(scene), {
+      method: 'POST',
+      headers: { 'User-Agent': USER_AGENT, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(feature),
+      signal: AbortSignal.timeout(ARCHIVE_TIMEOUT_MS),
+    });
+    if (REFUSAL_STATUSES.has(response.status)) {
+      await response.body?.cancel();
+      throw new StatisticsRefusal(`Planetary Computer refused the statistics request (HTTP ${response.status})`);
+    }
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error(`Planetary Computer statistics HTTP ${response.status} for ${scene.itemId}`);
+    }
+    const json = await response.json();
+    return json?.properties?.statistics ?? null;
   };
 }
 
 export function redisSiteStore({ credentials = getRedisCredentials, fetchImpl = (...args) => globalThis.fetch(...args) } = {}) {
+  async function readMany(siteIds, keyOf, label) {
+    const { url, token } = credentials();
+    const values = new Map();
+    for (let start = 0; start < siteIds.length; start += MGET_CHUNK) {
+      const chunk = siteIds.slice(start, start + MGET_CHUNK);
+      const { result } = await redisCommand(url, token, ['MGET', ...chunk.map(keyOf)], { label });
+      chunk.forEach((id, i) => {
+        const raw = Array.isArray(result) ? result[i] : null;
+        if (typeof raw === 'string') values.set(id, JSON.parse(raw));
+      });
+    }
+    return values;
+  }
   return {
     readIndex: () => readCanonicalValue(ORBITAL_SITES_KEY, { strict: true }),
     readCatalog: () => readCanonicalValue(ORBITAL_CATALOG_KEY, { strict: true }),
-    async readRecords(siteIds) {
-      const { url, token } = credentials();
-      const records = new Map();
-      for (let start = 0; start < siteIds.length; start += MGET_CHUNK) {
-        const chunk = siteIds.slice(start, start + MGET_CHUNK);
-        const { result } = await redisCommand(url, token, ['MGET', ...chunk.map(siteKey)], { label: 'Redis MGET orbital site records' });
-        chunk.forEach((id, i) => {
-          const raw = Array.isArray(result) ? result[i] : null;
-          if (typeof raw === 'string') records.set(id, JSON.parse(raw));
-        });
-      }
-      return records;
-    },
+    readRecords: (siteIds) => readMany(siteIds, siteKey, 'Redis MGET orbital site records'),
+    readFlags: (siteIds) => readMany(siteIds, flagShadowKey, 'Redis MGET orbital shadow flags'),
     async write(commands) {
       const { url, token } = credentials();
       for (let start = 0; start < commands.length; start += PIPELINE_CHUNK) {
@@ -109,6 +158,8 @@ export function publicationCommands(plan, { canonicalKey, payload, ttlSeconds })
   return [
     ...plan.siteWrites.map((record) => ['SET', siteKey(record.siteId), JSON.stringify(record), 'EX', RECORD_TTL_SECONDS]),
     ...plan.retainedSiteIds.map((id) => ['EXPIRE', siteKey(id), RECORD_TTL_SECONDS]),
+    ...(plan.flagWrites ?? []).map((flag) => ['SET', flagShadowKey(flag.siteId), JSON.stringify(flag), 'EX', RECORD_TTL_SECONDS]),
+    ...(plan.flagWrites ? plan.retainedSiteIds.map((id) => ['EXPIRE', flagShadowKey(id), RECORD_TTL_SECONDS]) : []),
     ...plan.rollupWrites.map((rollup) => ['SET', countryKey(rollup.countryCode), JSON.stringify(rollup), 'EX', RECORD_TTL_SECONDS]),
     ...plan.deletes.map((key) => ['DEL', key]),
     ['SET', canonicalKey, payload, 'EX', ttlSeconds],
@@ -116,7 +167,11 @@ export function publicationCommands(plan, { canonicalKey, payload, ttlSeconds })
   ];
 }
 
-export function makeFetchSites({ store, searchArchive, sites = WATCHED_SITES, registryVersion = WATCHED_SITES_VERSION, budgetMs = RUN_BUDGET_MS, clock = Date.now }) {
+/**
+ * `scoring` ({ fetchStatistics, searchBackfill, budgetMs, shadow }) adds the change stage;
+ * without it site records pass their previous flag through.
+ */
+export function makeFetchSites({ store, searchArchive, sites = WATCHED_SITES, registryVersion = WATCHED_SITES_VERSION, budgetMs = RUN_BUDGET_MS, clock = Date.now, scoring = null }) {
   let pending = null;
   async function fetchSites() {
     const nowMs = clock();
@@ -127,8 +182,11 @@ export function makeFetchSites({ store, searchArchive, sites = WATCHED_SITES, re
     const previousIndex = await store.readIndex();
     const knownIds = [...new Set([...sites.map((site) => site.id), ...Object.keys(previousIndex?.sites ?? {})])];
     const previousRecords = await store.readRecords(knownIds);
+    const change = scoring && makeChangeStage({
+      ...scoring, clock, previousFlags: scoring.shadow === false ? new Map() : await store.readFlags(knownIds),
+    });
     const evaluation = await evaluateSites({
-      sites, catalog, previousRecords, cursor: previousIndex?.nextSiteId ?? null, searchArchive, nowMs, deadlineMs: nowMs + budgetMs, clock,
+      sites, catalog, previousRecords, cursor: previousIndex?.nextSiteId ?? null, searchArchive, nowMs, deadlineMs: nowMs + budgetMs, clock, change,
     });
     if (evaluation.refused) return { publishBlocked: evaluation.refused, sites: {} };
     if (evaluation.evaluated > 0 && evaluation.failed.length === evaluation.evaluated) {
@@ -136,6 +194,7 @@ export function makeFetchSites({ store, searchArchive, sites = WATCHED_SITES, re
     }
     pending = planPublication({ sites, registryVersion, previousIndex, previousRecords, evaluation, nowMs });
     console.log(`  Sites evaluated: ${evaluation.evaluated} of ${sites.length} (${evaluation.failed.length} kept after archive failure); next: ${evaluation.nextSiteId ?? 'full pass'}; countries: ${pending.rollupWrites.length}; deleted keys: ${pending.deletes.length}`);
+    if (evaluation.change) console.log(`  Change scoring${evaluation.change.shadow ? ' (shadow)' : ''}: ${evaluation.change.scoredSites} sites, ${evaluation.change.statisticsRequests} statistics requests${evaluation.change.halted ? `; halted: ${evaluation.change.halted}` : ''}`);
     return pending.index;
   }
   async function publishAtomically(_index, context) {
@@ -164,10 +223,16 @@ export function buildSeedOptions(publishAtomically) {
 }
 
 if (isMainModule(import.meta.url, process.argv[1])) {
+  const searchArchive = makeArchiveSearch();
   const { fetchSites, publishAtomically } = makeFetchSites({
     store: redisSiteStore(),
-    searchArchive: makeArchiveSearch(),
+    searchArchive,
     budgetMs: Number(process.env.ORBITAL_SITES_RUN_BUDGET_MS) || RUN_BUDGET_MS,
+    scoring: {
+      fetchStatistics: makeStatisticsFetch(),
+      searchBackfill: searchArchive.backfill,
+      budgetMs: Number(process.env.ORBITAL_CHANGE_BUDGET_MS) || CHANGE_BUDGET_MS,
+    },
   });
   runSeed('orbital', 'sites', ORBITAL_SITES_KEY, fetchSites, buildSeedOptions(publishAtomically)).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';

@@ -242,6 +242,12 @@
                       "methodology/disease-alert-level",
                       "methodology/thermal-escalation"
                     ]
+                  },
+                  {
+                    "group": "Satellite imagery",
+                    "pages": [
+                      "methodology/orbital-change-signal"
+                    ]
                   }
                 ]
               },

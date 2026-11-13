@@ -5,6 +5,8 @@ import { createHash } from 'node:crypto';
 import { findPasses, parseOrbitElements } from './shared/orbital/pass-geometry.js';
 import { SENSOR_PROFILES } from './shared/orbital/sensor-profiles.js';
 import { decidePassTier } from './shared/orbital/tiers.js';
+import { projectFlag } from './shared/orbital/flag-record.js';
+import { flagShadowKey, RADAR_COLLECTION, radarGeometry, STAC_RADAR_FIELDS } from './_orbital-change.mjs';
 
 export const ORBITAL_SITES_KEY = 'orbital:sites:v1';
 export const ORBITAL_SITE_KEY_PREFIX = 'orbital:site:v1:';
@@ -51,7 +53,7 @@ export function stacSearchBody(site, nowMs) {
     sortby: [{ field: 'properties.datetime', direction: 'desc' }],
     limit: 100,
     fields: {
-      include: ['id', 'collection', 'properties.datetime', 'properties.platform', 'properties.eo:cloud_cover'],
+      include: ['id', 'collection', 'properties.datetime', 'properties.platform', 'properties.eo:cloud_cover', ...STAC_RADAR_FIELDS],
       exclude: ['assets', 'links', 'geometry', 'bbox'],
     },
   };
@@ -77,6 +79,8 @@ export function acquisitionsFromStac(features) {
       datetime: new Date(timeMs).toISOString(),
       cloudCover: Number.isFinite(cloud) ? Math.round(cloud * 10) / 10 : null,
     };
+    const radar = feature.collection === RADAR_COLLECTION ? radarGeometry(feature.properties) : null;
+    if (radar) acquisition.radar = radar;
     const key = `${acquisition.platform}|${Math.round(timeMs / 60_000)}`;
     const held = byPass.get(key);
     if (!held || (acquisition.cloudCover ?? 101) < (held.cloudCover ?? 101)) byPass.set(key, acquisition);
@@ -127,10 +131,10 @@ const newest = (a, b) => (!a ? b ?? null : !b ? a : a.datetime >= b.datetime ? a
 
 /**
  * One site's record. `previous` carries what a scene that is absent this run cannot
- * replace: the last observation stays until a newer scene exists, and flag state is
- * owned by change scoring and passes through untouched.
+ * replace: the last observation stays until a newer scene exists. Flag state is owned by
+ * change scoring; without it the previous flag passes through untouched.
  */
-export function buildSiteRecord({ site, catalog, acquisitions, previous, nowMs }) {
+export function buildSiteRecord({ site, catalog, acquisitions, previous, nowMs, flag = previous?.flag ?? null }) {
   const passes = [];
   for (const satellite of catalog.satellites ?? []) {
     const profile = PROFILES_BY_ID.get(satellite.profileId);
@@ -186,7 +190,7 @@ export function buildSiteRecord({ site, catalog, acquisitions, previous, nowMs }
     recentPasses,
     nextWindows,
     coverage,
-    flag: previous?.flag ?? null,
+    flag,
   };
   const record = { ...body, revision: hash(body), evaluatedAt: nowMs };
   const bytes = Buffer.byteLength(JSON.stringify(record));
@@ -203,11 +207,14 @@ export function siteOrder(sites, cursor) {
 
 /**
  * Evaluates sites in cursor order until the deadline. A site whose archive search fails
- * keeps its previous record; a refusal stops the run before anything is written.
+ * keeps its previous record; a refusal stops the run before anything is written. With a
+ * change stage, each land site's flag is scored from the same archive answer; a shadowed
+ * flag goes to `flags` only, and the site record carries none.
  */
-export async function evaluateSites({ sites, catalog, previousRecords, cursor, searchArchive, nowMs, deadlineMs, clock = Date.now }) {
+export async function evaluateSites({ sites, catalog, previousRecords, cursor, searchArchive, nowMs, deadlineMs, clock = Date.now, change = null }) {
   const order = siteOrder(sites, cursor);
   const records = new Map();
+  const flags = new Map();
   const failed = [];
   let evaluated = 0;
   let nextSiteId = null;
@@ -227,9 +234,16 @@ export async function evaluateSites({ sites, catalog, previousRecords, cursor, s
     } finally {
       evaluated += 1;
     }
-    records.set(site.id, buildSiteRecord({ site, catalog, acquisitions, previous, nowMs }));
+    if (!change) {
+      records.set(site.id, buildSiteRecord({ site, catalog, acquisitions, previous, nowMs }));
+      continue;
+    }
+    const previousFlag = change.shadow ? change.previousFlags.get(site.id) ?? null : previous?.flag ?? null;
+    const flag = await change.score({ site, acquisitions, previous: previousFlag, nowMs });
+    if (change.shadow && flag) flags.set(site.id, flag);
+    records.set(site.id, buildSiteRecord({ site, catalog, acquisitions, previous, nowMs, flag: change.shadow ? null : flag }));
   }
-  return { records, failed, evaluated, nextSiteId };
+  return { records, flags, failed, evaluated, nextSiteId, change: change?.summary() ?? null };
 }
 
 /** Per-country projection of site records: no state of its own beyond what its sites carry. */
@@ -251,7 +265,7 @@ export function buildCountryRollup(countryCode, records) {
         : null,
       nextWindow: record.nextWindows[0] ? { profileId: record.nextWindows[0].profileId, time: record.nextWindows[0].time } : null,
       operators: [...new Set(record.coverage.map((entry) => entry.operator))],
-      flag: record.flag,
+      flag: projectFlag(record.flag),
     }));
   const rollup = {
     schema: SITES_SCHEMA,
@@ -298,6 +312,7 @@ export function planPublication({ sites, registryVersion, previousIndex, previou
     nextSiteId: evaluation.nextSiteId,
     evaluated: evaluation.evaluated,
     failed: evaluation.failed,
+    ...(evaluation.change && { change: evaluation.change }),
     sites: Object.fromEntries([...records.entries()].sort(([a], [b]) => a.localeCompare(b))
       .map(([id, record]) => [id, { countryCode: record.countryCode, revision: record.revision, evaluatedAt: record.evaluatedAt }])),
     countries: Object.fromEntries([...rollups.entries()]
@@ -308,6 +323,7 @@ export function planPublication({ sites, registryVersion, previousIndex, previou
     siteWrites: [...evaluation.records.values()].filter((record) => registryIds.has(record.siteId)),
     retainedSiteIds: [...records.keys()].filter((id) => !evaluation.records.has(id)).sort(),
     rollupWrites: [...rollups.values()],
-    deletes: [...removedSiteIds.map(siteKey), ...removedCountries.map(countryKey)],
+    flagWrites: evaluation.change?.shadow ? [...evaluation.flags.values()].filter((flag) => registryIds.has(flag.siteId)) : null,
+    deletes: [...removedSiteIds.flatMap((id) => [siteKey(id), flagShadowKey(id)]), ...removedCountries.map(countryKey)],
   };
 }

@@ -1,0 +1,104 @@
+---
+title: "Orbital Change Signal Methodology"
+description: "How WorldMonitor compares radar statistics of new Sentinel-1 scenes over a watched site with earlier scenes from the same orbit, and when a change flag is raised, confirmed or retracted."
+---
+
+_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
+
+## Start here
+
+Every few days a Sentinel-1 radar satellite passes over each watched land site, day or
+night and through cloud. WorldMonitor reads summary statistics of each new radar scene over
+a small box around the site and compares them with earlier scenes taken from exactly the same
+orbit. When a scene differs from that baseline by more than its normal spread and by more
+than a fixed floor, the site's flag is raised. The next scene from the same orbit then
+either confirms the change or retracts it.
+
+A confirmed flag says only that **imagery statistics changed**. It does not say what changed
+or why. Flooding, harvest, snow, a drained reservoir, new construction and demolition can all
+move radar statistics. Read the flag as a prompt to look at the scenes, not as a finding.
+
+The flag is in a shadow period. During it, flags are computed and stored for review but are
+not shown on site evidence, country summaries or the API.
+
+## What is measured
+
+| Input | Value |
+|---|---|
+| Archive | Microsoft Planetary Computer, collection `sentinel-1-grd` (Copernicus Sentinel data, free and open) |
+| Footprint | A box of about 2 km on a side (±0.01° latitude) centred on the site |
+| Statistics | Median and 98th percentile of each polarization band (VV and VH for most of the world) |
+| Units | Decibels, 20·log10 of the ground-range amplitude |
+| Sites | Watched land sites only; ports, chokepoints and other maritime sites are never scored |
+
+A scene with less than 90% valid pixels over the footprint is no observation. A band whose
+statistic is missing is skipped, never read as zero. Neither moves the flag.
+
+## Comparable scenes
+
+Radar backscatter depends strongly on viewing geometry, so a scene is compared only with
+scenes that share all of:
+
+- the constellation (Sentinel-1; its spacecraft share one baseline)
+- the relative orbit
+- the pass direction (ascending or descending)
+- the acquisition mode and polarization set
+
+A change of acquisition mode starts a new baseline. A scene from another orbit can neither
+confirm nor retract a flag raised on this one. A site with no scene on an orbit for 180 days
+drops that orbit.
+
+## Baseline and change test
+
+For each band statistic the baseline holds the newest 12 comparable scenes. It needs 6 before
+any scene is scored; until then the site is **building its baseline**. The centre is the
+median and the spread is a robust standard deviation (1.4826 × median absolute deviation),
+never less than 0.25 dB.
+
+A scene changes a statistic when its difference from the median is at least 3 spreads **and**
+at least 1.5 dB.
+
+| State | Next comparable scene | Result |
+|---|---|---|
+| Building baseline | any | added to the baseline; monitoring once 6 scenes are held |
+| Monitoring | no statistic changed | added to the baseline |
+| Monitoring | a statistic changed | **raised**; the scene is held aside, not added |
+| Raised | the same statistic changed the same way | **confirmed**; the baseline restarts from the two changed scenes |
+| Raised | no statistic changed | **retracted**; the held scene is dropped and the new one added |
+| Raised | a different change | the newer change replaces the held one |
+| Confirmed | any | added to the new baseline; monitoring once 6 scenes are held |
+
+A site's state is the most significant state of its orbits: confirmed, then raised, then
+monitoring, then building its baseline.
+
+When a site is first scored, its baselines are filled from up to 6 archived scenes per orbit
+from the previous 120 days, so it starts monitoring without waiting for new passes. Each daily
+run spends a bounded share of its time on statistics requests; a site it does not reach keeps
+its flag and is scored on a later run from the scenes still in the 30-day archive window.
+
+## Shadow period and thresholds
+
+The thresholds above were set from the spread of real scene statistics, and they will be
+revised from the shadow period's distribution. The shadow period lasts at least 30 days and
+until at least 30 raised flags have been confirmed or retracted. Before flags are shown, a
+replay of 90 days over 30 sites is reviewed by hand and each confirmed flag is labelled as
+environmental or not.
+
+Observed during development, over 90 days ending 13 November 2026 on a spread sample of
+watched land sites, a typical comparable scene differed from its baseline median by a few
+tenths of a decibel. Coastal and river sites showed much wider spread from water surface
+roughness, and most of their raised flags were retracted by the next scene.
+
+## Limits
+
+- The statistic is a summary of a 2 km box. A change confined to a few buildings can leave
+  the median and the 98th percentile unchanged.
+- Seasonal change (crops, snow, soil moisture, water level) is the most common cause of a
+  confirmed flag. The flag does not attempt to remove it.
+- Sentinel-1 does not image every site on every orbit. Some sites have one orbit only, and a
+  few have none in the archive.
+
+## Sources
+
+- [Copernicus Sentinel-1](https://sentinels.copernicus.eu/web/sentinel/missions/sentinel-1)
+- [Microsoft Planetary Computer, Sentinel-1 GRD](https://planetarycomputer.microsoft.com/dataset/sentinel-1-grd)
