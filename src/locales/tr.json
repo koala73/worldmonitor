@@ -5200,7 +5200,11 @@
         "could": "Buraya yönelebilirdi",
         "couldDef": "Yönlendirilebilir ya da ticari bir algılayıcı menzildeydi; işletmeci bakıp bakmadığını söylemiyor.",
         "overhead": "Üzerinden geçti",
-        "overheadDef": "Görüntüleme kanıtı olmadan burada gökyüzünü geçti."
+        "overheadDef": "Görüntüleme kanıtı olmadan burada gökyüzünü geçti.",
+        "watchedShort": "Herkese açık arşivde görüntü",
+        "likelyShort": "Kapsandı, henüz görüntü yok",
+        "couldShort": "Yönlendirilebilir sensör menzilde",
+        "overheadShort": "Üstünden geçti, görüntü yok"
       },
       "group": {
         "watched": "izlendi",
@@ -5239,7 +5243,12 @@
         "window": "7 günlük pencere · {{start}} → {{end}}",
         "failed": "Başarısız",
         "note": "Planetary Computer ve NASA GIBS görüntüleri istek üzerine oluşturur, bu adım birkaç saniye sürebilir."
-      }
+      },
+      "privacyLine": "Nokta tarayıcınızda kalır",
+      "privacyHow": "Nasıl",
+      "sources": "Kaynaklar",
+      "archiveScene": "Arşiv sahnesi",
+      "archiveOnly": "Hesaplanan hiçbir geçiş bu görüntülerle eşleşmiyor, bu yüzden arşiv sahneleri olarak gösteriliyor."
     }
   }
 }

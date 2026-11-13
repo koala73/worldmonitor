@@ -4,12 +4,17 @@ import { ARCHIVE_SEARCHES, findArchiveEvidence } from '@/services/orbital/match'
 import { OrbitalWatchPage, type OrbitalView } from '@/components/OrbitalWatchPage';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 import { formatOrbitalRoute, parseOrbitalRoute } from '@/app/orbital-route';
+import { getOrbitalMapView } from '@/app/orbital-map-focus';
+import { visibleMapArea, type ScreenArea } from '@/utils/map-point-offset';
 
 let page: OrbitalWatchPage | null = null;
 let point: GeoPoint | null = null;
 let lookup: PointPassLookup | null = null;
 let run: AbortController | null = null;
 let raisedMap = false;
+let markFrame: number | null = null;
+let centredFor: string | null = null;
+const RETRY = 'retry';
 
 const MAP_FULLSCREEN_CLASS = 'live-news-fullscreen-active';
 
@@ -18,6 +23,51 @@ const isAbort = (error: unknown) => error instanceof DOMException && error.name 
 function cancel(): void {
   run?.abort();
   run = null;
+}
+
+function mapArea(): { map: DOMRect; area: ScreenArea } | null {
+  const map = getOrbitalMapView()?.rect();
+  if (!map || !page?.isOpen || map.width <= 0 || map.height <= 0) return null;
+  return { map, area: visibleMapArea(map, page.coverRects()) };
+}
+
+const layoutKey = ({ map, area }: { map: DOMRect; area: ScreenArea }) =>
+  [map.left, map.top, map.width, map.height, area.left, area.top, area.right, area.bottom].map(Math.round).join();
+
+/** Centres the point in the part of the map the sheet leaves visible. */
+function centreMap(): void {
+  const view = getOrbitalMapView();
+  const box = mapArea();
+  if (!view || !box || !point) return;
+  const { map, area } = box;
+  const offset = {
+    x: (area.left + area.right - map.left - map.right) / 2,
+    y: (area.top + area.bottom - map.top - map.bottom) / 2,
+  };
+  // A map still booting cannot move yet; RETRY never matches a layout, so the next frame tries again.
+  centredFor = view.center(point, offset) ? layoutKey(box) : RETRY;
+}
+
+/** Keeps the reticle on the point as the map moves, while the lookup is open. */
+function trackMark(): void {
+  markFrame = null;
+  if (!page?.isOpen || !point) return;
+  const box = mapArea();
+  // A resize (the map raised for the full view, a rotated phone) moves the visible area, so centre again.
+  if (box && centredFor !== null && centredFor !== layoutKey(box)) centreMap();
+  const at = getOrbitalMapView()?.project(point) ?? null;
+  const area = box?.area;
+  const inside = !!at && !!area && at.x >= area.left && at.x <= area.right && at.y >= area.top && at.y <= area.bottom;
+  page.placeMapMark(inside ? at : null);
+  markFrame = requestAnimationFrame(trackMark);
+}
+
+/** Flies the map to the point once the sheet's layout, and a raised map's size, have settled. */
+function focusMap(): void {
+  centredFor = null;
+  getOrbitalMapView()?.hold(true);
+  requestAnimationFrame(() => requestAnimationFrame(centreMap));
+  if (markFrame === null) markFrame = requestAnimationFrame(trackMark);
 }
 
 /** The full view sits over the map, so the map is raised to fill the page while it is open. */
@@ -31,6 +81,7 @@ function syncMap(view: OrbitalView): void {
     if (active) button?.click();
     raisedMap = false;
   }
+  focusMap();
 }
 
 function writeRoute(view: OrbitalView): void {
@@ -95,6 +146,7 @@ const samePoint = (a: GeoPoint | null, b: GeoPoint) => !!a && Math.abs(a.lat - b
 export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null, view: OrbitalView = 'sheet'): void {
   page ??= new OrbitalWatchPage({
     onClose: () => {
+      getOrbitalMapView()?.hold(false);
       cancel();
       lookup = null;
       point = null;
@@ -111,6 +163,7 @@ export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null
   const wasFull = page.isOpen && page.currentView === 'full';
   page.open(at, returnFocusTo, view);
   if (view === 'full' || wasFull) onViewChange(view);
+  else focusMap();
   void start();
 }
 

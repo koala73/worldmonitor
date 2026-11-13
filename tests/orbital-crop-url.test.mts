@@ -67,7 +67,9 @@ describe('point crop URLs', () => {
       assert.ok(!url.searchParams.getAll('assets').includes('visual'), 'not the TCI asset');
       assert.equal(url.searchParams.get('asset_bidx'), null);
     }
-    assert.equal(planetaryComputerCropUrl('sentinel-1-grd', 'S1', box), null, 'no crop without a published natural-colour rendering');
+    assert.equal(planetaryComputerCropUrl('sentinel-1-slc', 'S1', box), null, 'no crop without a published rendering');
+    const radar = new URL(planetaryComputerCropUrl('sentinel-1-grd', 'S1A_IW_GRDH', box)!);
+    assert.deepEqual([radar.searchParams.get('assets'), radar.searchParams.get('colormap_name')], ['vv', 'gray'], 'radar crops are greyscale VV backscatter');
   });
 });
 

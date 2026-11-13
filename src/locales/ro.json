@@ -5228,7 +5228,11 @@
         "could": "Ar fi putut ținti aici",
         "couldDef": "Un senzor orientabil sau comercial era în rază; operatorul nu spune dacă a privit.",
         "overhead": "A trecut deasupra",
-        "overheadDef": "A traversat cerul aici, fără dovezi de imagine."
+        "overheadDef": "A traversat cerul aici, fără dovezi de imagine.",
+        "watchedShort": "Imagine într-o arhivă publică",
+        "likelyShort": "Acoperit, încă fără imagine",
+        "couldShort": "Senzor orientabil în rază",
+        "overheadShort": "Deasupra, fără imagine"
       },
       "group": {
         "watched": "observate",
@@ -5267,7 +5271,12 @@
         "window": "Fereastră de 7 zile · {{start}} → {{end}}",
         "failed": "Eșuat",
         "note": "Planetary Computer și NASA GIBS generează imaginile la cerere, așa că acest pas poate dura câteva secunde."
-      }
+      },
+      "privacyLine": "Punctul rămâne în browserul tău",
+      "privacyHow": "Cum",
+      "sources": "Surse",
+      "archiveScene": "Scenă de arhivă",
+      "archiveOnly": "Nicio trecere calculată nu corespunde acestor imagini, așa că sunt afișate ca scene de arhivă."
     }
   }
 }
