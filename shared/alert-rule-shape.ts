@@ -27,10 +27,18 @@ export const ALERT_RULE_EVENT_TYPE_MAX_LENGTH = 64;
 // Same control / bidi character set /api/notify rejects on ingest.
 const EVENT_TYPE_FORBIDDEN_CHARS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/;
 
+/** Opt-in watched-site alerts; mirrored by scripts/lib/orbital-site-alerts.cjs for the relay. */
+export const ORBITAL_SITE_ALERT_EVENT_TYPES = ['orbital_imaging_window', 'orbital_site_change'] as const;
+/** A rule watches at most this many sites; each one can page on every seed run. */
+export const ORBITAL_ALERT_SITES_MAX = 25;
+/** Watched-site ids are `<list>:<slug>` (shared/watched-sites.ts). */
+const ORBITAL_SITE_ID_PATTERN = /^[a-z][a-z0-9-]{0,31}:[a-z0-9_.-]{1,96}$/;
+
 export type AlertRuleShapeCode =
   | 'VARIANT_INVALID'
   | 'EVENT_TYPES_INVALID'
-  | 'CHANNELS_INVALID';
+  | 'CHANNELS_INVALID'
+  | 'ORBITAL_SITES_INVALID';
 
 export interface AlertRuleShapeViolation {
   code: AlertRuleShapeCode;
@@ -57,6 +65,7 @@ export function listAlertRuleShapeViolations(input: {
   variant: unknown;
   eventTypes?: unknown;
   channels?: unknown;
+  orbitalSites?: unknown;
 }): AlertRuleShapeViolation[] {
   const violations: AlertRuleShapeViolation[] = [];
   if (!isAlertRuleVariant(input.variant)) {
@@ -91,6 +100,19 @@ export function listAlertRuleShapeViolations(input: {
       });
     }
   }
+  if (input.orbitalSites !== undefined) {
+    if (!Array.isArray(input.orbitalSites) || input.orbitalSites.length > ORBITAL_ALERT_SITES_MAX) {
+      violations.push({
+        code: 'ORBITAL_SITES_INVALID',
+        message: `orbitalSites must be an array of at most ${ORBITAL_ALERT_SITES_MAX} watched-site ids`,
+      });
+    } else if (!input.orbitalSites.every((id) => typeof id === 'string' && ORBITAL_SITE_ID_PATTERN.test(id))) {
+      violations.push({
+        code: 'ORBITAL_SITES_INVALID',
+        message: 'each orbitalSites entry must be a watched-site id such as "chokepoint:hormuz_strait"',
+      });
+    }
+  }
   return violations;
 }
 
@@ -99,6 +121,7 @@ export function getAlertRuleShapeViolation(input: {
   variant: unknown;
   eventTypes?: unknown;
   channels?: unknown;
+  orbitalSites?: unknown;
 }): AlertRuleShapeViolation | null {
   return listAlertRuleShapeViolations(input)[0] ?? null;
 }

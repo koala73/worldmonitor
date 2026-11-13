@@ -246,6 +246,9 @@ export default defineSchema({
     // shared/chokepoint-alert-ids.js. The event itself is opt-in through
     // eventTypes; empty/absent here → every chokepoint.
     chokepoints: v.optional(v.array(v.string())),
+    // Watched-site ids (shared/watched-sites.ts) for the opt-in watched-site
+    // alerts. Empty/absent → none: the list is the user's own watch list.
+    orbitalSites: v.optional(v.array(v.string())),
   })
     .index("by_user", ["userId"])
     .index("by_user_variant", ["userId", "variant"])

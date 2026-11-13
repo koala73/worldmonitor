@@ -40,7 +40,7 @@ Action-dispatched writer. The body's `action` field selects the mutation:
 | `set-alert-rules` | Replace the caller's alert-rules set in one shot. |
 | `set-quiet-hours` | Set do-not-disturb windows. |
 | `set-digest-settings` | Configure digest cadence and channel routing. |
-| `set-notification-config` | Per-variant notification config: `variant` (required), `enabled`, `eventTypes`, `sensitivity` (`all`/`high`/`critical`), `channels`, `aiDigestEnabled`, `digestMode` (`realtime`/`daily`/`twice_daily`/`weekly`), `digestHour`, `digestTimezone`, `countries`, `tickers`, `chokepoints`. Validation errors return structured 400 codes (e.g. `COUNTRIES_MUST_BE_ARRAY`, `TICKERS_LIMIT_EXCEEDED`, `CHOKEPOINTS_MUST_BE_ARRAY`, `CHOKEPOINTS_INVALID`). |
+| `set-notification-config` | Per-variant notification config: `variant` (required), `enabled`, `eventTypes`, `sensitivity` (`all`/`high`/`critical`), `channels`, `aiDigestEnabled`, `digestMode` (`realtime`/`daily`/`twice_daily`/`weekly`), `digestHour`, `digestTimezone`, `countries`, `tickers`, `chokepoints`, `orbitalSites`. Validation errors return structured 400 codes (e.g. `COUNTRIES_MUST_BE_ARRAY`, `TICKERS_LIMIT_EXCEEDED`, `CHOKEPOINTS_MUST_BE_ARRAY`, `CHOKEPOINTS_INVALID`, `ORBITAL_SITES_INVALID`). |
 
 All actions require Clerk bearer + PRO, and PRO here specifically means a **billed entitlement row** at `tier >= 1`. A Clerk session whose role is `pro` but which has no entitlement row does **not** qualify, unlike the gateway's tier-1 REST gate: notification delivery is enforced a second time inside Convex (`assertProEntitlement`), so the edge gate returns the clean `403 pro_required` rather than letting the request fail deeper with a less useful error. Invalid actions return `400 Unknown action`. Requests are forwarded to Convex via `RELAY_SHARED_SECRET`.
 
@@ -61,6 +61,18 @@ A rule receives `chokepoint_disruption` only when its `eventTypes` lists it. A r
 - **Payload**: `title`, `source` (`Chokepoint Monitor`), `chokepointId`, `chokepointName`, `disruptionScore`, `status` (`red`), `activeWarnings`, `congestionLevel`, `triggeredAt`, and `coalesceKey`, which names one alert and stays the same if the relay re-sends it. Webhook deliveries also carry `link`, the dashboard URL.
 
 `POST /api/notify` rejects this event type: only the relay publishes it.
+
+## Watched-site satellite alerts
+
+Two event types tell a user about the watched sites they list: `orbital_imaging_window` and `orbital_site_change`. A rule receives each one only when its `eventTypes` lists it, and only for sites in its `orbitalSites` list. An empty or absent `orbitalSites` list means no watched-site alerts. Listing either type does not narrow the rule's other alerts.
+
+- **Imaging windows**: after each daily watched-site refresh, a site alerts for the open optical and radar satellite passes (Sentinel-2, Landsat, Sentinel-1 and the other open archives) that will image it within the next 24 hours. Commercial, weather and military satellites never alert. Each pass alerts once. All new passes of one site in one refresh arrive as one alert, and a site sends at most one imaging-window alert every 12 hours.
+- **Confirmed changes**: a site alerts when its radar change flag moves to confirmed, meaning a later pass repeated a change in the imagery statistics. A flag that is only raised does not alert, and a flag that stays confirmed does not alert again. A site sends at most one change alert every 24 hours, and a confirmation older than seven days never alerts. While change detection is in its review period, no change alerts are sent.
+- **Severity**: always `critical`. Like other queue events, they are delivered to real-time rules only, not digests.
+- **Scope**: `orbitalSites` takes watched-site ids such as `chokepoint:hormuz_strait` or `conflict-zone:sudan`, at most 25 per rule. A longer list or a malformed id is rejected with `400 ORBITAL_SITES_INVALID`. Asking for either event type, or listing a site, needs a Pro entitlement and otherwise returns `402 PRO_REQUIRED`. A `countries` scope does not filter these events.
+- **Payload**: `title`, `source` (`Orbital Watch`), `siteId`, `siteName`, `triggeredAt` and `coalesceKey`, which names one alert and stays the same if the relay re-sends it. Imaging-window alerts add `windows`, up to five passes with `noradId`, `name`, `profileId`, `category` and `time`. Change alerts add `itemId`, the archive scene that confirmed the change, and `platform`.
+
+`POST /api/notify` rejects both event types: only the watched-site seeder publishes them.
 
 ## Webhook delivery contract
 

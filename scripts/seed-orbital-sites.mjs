@@ -19,6 +19,7 @@ import {
 import { ORBITAL_CATALOG_KEY } from './_orbital-catalog.mjs';
 import {
   backfillSearchBody,
+  CHANGE_SHADOW,
   flagShadowKey,
   makeChangeStage,
   ScoringRefusal,
@@ -34,6 +35,8 @@ import {
   sleep,
 } from './_seed-utils.mjs';
 import { isMainModule } from './lib/main-module.mjs';
+import orbitalSiteAlerts from './lib/orbital-site-alerts.cjs';
+import { publishNotificationEventOutcome } from './regional-snapshot/alert-emitter.mjs';
 import { WATCHED_SITES, WATCHED_SITES_VERSION } from './shared/orbital-watched-sites.generated.mjs';
 
 loadEnvFile(import.meta.url);
@@ -169,12 +172,48 @@ export function publicationCommands(plan, { canonicalKey, payload, ttlSeconds })
   ];
 }
 
+/** Watched-site alerts over the records a run just published; their state lives beside the site keys. */
+export function redisSiteAlerts({ credentials = getRedisCredentials, publish = publishNotificationEventOutcome, now = Date.now } = {}) {
+  return (records, { shadow }) => {
+    const { url, token } = credentials();
+    return orbitalSiteAlerts.publishOrbitalSiteAlerts(records, {
+      shadow,
+      now,
+      async readState(key, onError) {
+        try {
+          const { result } = await redisCommand(url, token, ['GET', key], { label: 'Redis GET orbital alert state' });
+          return typeof result === 'string' ? JSON.parse(result) : null;
+        } catch (error) {
+          console.warn(`  Orbital alerts: state read failed: ${error.message}`);
+          onError();
+          return null;
+        }
+      },
+      async writeState(key, state, ttlSeconds) {
+        try {
+          await redisCommand(url, token, ['SET', key, JSON.stringify(state), 'EX', ttlSeconds], { label: 'Redis SET orbital alert state' });
+          return true;
+        } catch (error) {
+          console.warn(`  Orbital alerts: state write failed: ${error.message}`);
+          return false;
+        }
+      },
+      publish: async (event) => {
+        const outcome = await publish(event);
+        return outcome.enqueued || outcome.dedupHit;
+      },
+    });
+  };
+}
+
 /**
  * `scoring` ({ fetchStatistics, searchBackfill, budgetMs, shadow }) adds the change stage;
- * without it site records pass their previous flag through.
+ * without it site records pass their previous flag through. `alerts` runs after a
+ * successful publish; a failure there is logged and never fails the run.
  */
-export function makeFetchSites({ store, searchArchive, sites = WATCHED_SITES, registryVersion = WATCHED_SITES_VERSION, budgetMs = RUN_BUDGET_MS, clock = Date.now, scoring = null }) {
+export function makeFetchSites({ store, searchArchive, sites = WATCHED_SITES, registryVersion = WATCHED_SITES_VERSION, budgetMs = RUN_BUDGET_MS, clock = Date.now, scoring = null, alerts = null }) {
   let pending = null;
+  let shadow = CHANGE_SHADOW;
   async function fetchSites() {
     const nowMs = clock();
     const catalog = await store.readCatalog();
@@ -192,6 +231,7 @@ export function makeFetchSites({ store, searchArchive, sites = WATCHED_SITES, re
     const evaluation = await evaluateSites({
       sites, catalog, previousRecords, cursor: previousIndex?.nextSiteId ?? null, searchArchive, nowMs, deadlineMs: nowMs + budgetMs - changeBudgetMs, clock, change,
     });
+    shadow = change ? change.shadow : CHANGE_SHADOW;
     if (evaluation.refused) return { publishBlocked: evaluation.refused, sites: {} };
     if (evaluation.evaluated > 0 && evaluation.failed.length === evaluation.evaluated) {
       throw markPreservableFetchFailure(new Error(`archive search failed for all ${evaluation.evaluated} sites: ${evaluation.failed[0].reason}`));
@@ -203,6 +243,13 @@ export function makeFetchSites({ store, searchArchive, sites = WATCHED_SITES, re
   }
   async function publishAtomically(_index, context) {
     await store.write(publicationCommands(pending, context));
+    if (!alerts) return;
+    try {
+      const summary = await alerts(pending.siteWrites, { shadow });
+      if (summary) console.log(`  Orbital alerts: ${summary.published} queued, ${summary.failed} failed${shadow ? '; change alerts held (shadow)' : ''}`);
+    } catch (error) {
+      console.warn(`  Orbital alerts failed: ${error.message}`);
+    }
   }
   return { fetchSites, publishAtomically };
 }
@@ -237,6 +284,7 @@ if (isMainModule(import.meta.url, process.argv[1])) {
       searchBackfill: searchArchive.backfill,
       budgetMs: Number(process.env.ORBITAL_CHANGE_BUDGET_MS) || CHANGE_BUDGET_MS,
     },
+    alerts: redisSiteAlerts(),
   });
   runSeed('orbital', 'sites', ORBITAL_SITES_KEY, fetchSites, buildSeedOptions(publishAtomically)).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';

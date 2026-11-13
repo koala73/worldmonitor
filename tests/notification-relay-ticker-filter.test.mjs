@@ -84,11 +84,8 @@ describe('notification-relay watchlist ticker filter — source-grep contract', 
       /function\s+ruleMatchesEventType\s*\(\s*rule\s*,\s*event\s*\)/,
       'relay must declare ruleMatchesEventType(rule, event)',
     );
-    assert.match(
-      relaySrc,
-      /return\s+rule\.eventTypes\.includes\(WATCHLIST_STORY_EVENT_TYPE\)/,
-      'watchlist events must require explicit eventTypes inclusion',
-    );
+    assert.equal(ruleMatchesEventType({ eventTypes: [] }, { eventType: 'watchlist_story_alert', payload: {} }), false,
+      'watchlist events must require explicit eventTypes inclusion');
     // The legacy inline wildcard must be replaced by the helper in the
     // matching filter — otherwise wildcard rules would silently receive
     // watchlist events they never opted into.
@@ -100,11 +97,9 @@ describe('notification-relay watchlist ticker filter — source-grep contract', 
   });
 
   it('watchlist opt-in does not shrink the broadcast wildcard', () => {
-    assert.match(
-      relaySrc,
-      /const\s+broadcastTypes\s*=\s*rule\.eventTypes\.filter\(\s*\(?t\)?\s*=>\s*t\s*!==\s*WATCHLIST_STORY_EVENT_TYPE\s*\)/,
-      'ruleMatchesEventType must exclude the watchlist opt-in when evaluating the broadcast wildcard',
-    );
+    const rss = { eventType: 'rss_alert', payload: {} };
+    assert.equal(ruleMatchesEventType({ eventTypes: ['watchlist_story_alert'] }, rss), true,
+      'ruleMatchesEventType must exclude the watchlist opt-in when evaluating the broadcast wildcard');
   });
 
   it('filter is wired into the per-rule matching loop alongside shouldNotify + country scope', () => {
