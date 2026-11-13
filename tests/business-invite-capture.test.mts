@@ -130,7 +130,7 @@ describe('Enterprise invite links', () => {
   });
 
   it('maps the Enterprise accept rejections to their kinds', () => {
-    for (const kind of ['CONTRACT_ENDED', 'ALREADY_MEMBER_OF_ANOTHER_ACCOUNT', 'INVITE_NOT_FOUND']) {
+    for (const kind of ['CONTRACT_ENDED', 'ALREADY_MEMBER_OF_ANOTHER_ACCOUNT', 'INVITE_NOT_FOUND', 'INVITEE_EMAIL_UNVERIFIED']) {
       assert.equal(businessInviteErrorKind(new Error(`[CONVEX M(enterpriseSeats:acceptInvite)] ${kind}`)), kind);
     }
   });
