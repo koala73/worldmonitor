@@ -16,6 +16,8 @@ The first fixture, **`2026-11-13T0952Z.json`**, was read at **09:52:18.324 UTC**
 
 Capture provenance: an export of released `main@e5c5c69f759ef4d3394e991d322672bcebd235da`, with only the two capture harness files from PR #10616 at `884f6ad1a89bbff29735c012d0a720da51b0ab0a` overlaid. The scorer, server and shared source are byte-identical to that released main commit. The fixture belongs on `cii-v15`, with `expected.v15` recorded only by that branch's table-diff script. This does not imply the tooling PR was merged.
 
+The first fixture is durably retained as [`tests/fixtures/cii/2026-11-13T0952Z.json`](https://github.com/koala73/worldmonitor/blob/570fd245b5ce47f7c3790e8eae574d7157dc455a/tests/fixtures/cii/2026-11-13T0952Z.json) on `codex/cii-calibration-fixtures`. Its delivery is [PR #10618](https://github.com/koala73/worldmonitor/pull/10618), targeting `cii-v15`; it is not yet merged. Resume by fetching that existing PR branch, preserve its first fixture, and add the second-day fixture there. Both captures must reach the integration line before U21 is done. Merge still needs separate owner authorization.
+
 ## Resume on a different UTC date
 
 1. Refresh released `main` and the U21 capture harness. An in-progress integration scorer is rejected; do not relabel its output as released v14.
