@@ -7383,6 +7383,9 @@
         },
         {
           "path": "server/worldmonitor/infrastructure/v1/reverse-geocode.ts"
+        },
+        {
+          "path": "server/worldmonitor/infrastructure/v1/search-place.ts"
         }
       ]
     },
