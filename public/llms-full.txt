@@ -303,7 +303,7 @@ Unique layers: stock exchanges, financial centers, and central-bank and supranat
 <a id="corpus-data-sources"></a>
 ## Data Sources
 
-The live inventory currently covers 854 attributed providers across 876 observed source hosts. The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) maps coverage by domain, and the [source attribution page](https://www.worldmonitor.app/docs/source-attribution) lists hosts and observed surfaces. The [committed attribution manifest](https://github.com/koala73/worldmonitor/blob/main/shared/source-attribution-manifest.json) records license posture, required attribution, and review status, including terms-review entries.
+The live inventory currently covers 854 attributed providers across 877 observed source hosts. The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) maps coverage by domain, and the [source attribution page](https://www.worldmonitor.app/docs/source-attribution) lists hosts and observed surfaces. The [committed attribution manifest](https://github.com/koala73/worldmonitor/blob/main/shared/source-attribution-manifest.json) records license posture, required attribution, and review status, including terms-review entries.
 
 - ACLED (Armed Conflict Location & Event Data), self-hosted deployments with ACLED credentials only: Protests, riots, conflicts — 30-day window, tokenized API
 - GDELT (Global Database of Events, Language, and Tone): Geo-events, protest keywords, topic feeds

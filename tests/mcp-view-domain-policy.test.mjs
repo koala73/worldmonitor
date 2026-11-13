@@ -157,7 +157,7 @@ describe('view domain per host', () => {
       const meta = {
         'io.modelcontextprotocol/protocolVersion': '2026-07-28',
         'io.modelcontextprotocol/clientCapabilities': {},
-        'io.modelcontextprotocol/clientInfo': { name: clientName, version: '1' },
+        'io.modelcontextprotocol/clientInfo': typeof clientName === 'object' ? clientName : { name: clientName, version: '1' },
       };
       process.env.MCP_PROTOCOL_2026_07_28 = 'on';
       const body = { jsonrpc: '2.0', id: 3, method, params: { ...params, _meta: meta } };
@@ -184,6 +184,46 @@ describe('view domain per host', () => {
     for (const clientName of ['claude-ai', 'Claude Code', 'claude-code']) {
       it(`${clientName} on the 2026-07-28 protocol gets views without ui.domain`, async () => {
         const list = await modernRpc('resources/list', {}, clientName);
+        const views = list.resources.filter((r) => r.uri.startsWith('ui://'));
+        assert.ok(views.length >= 12);
+        for (const view of views) assert.equal('domain' in (view._meta?.ui ?? {}), false, view.uri);
+      });
+    }
+
+    // The 2026-11-13 02:24 UTC re-scan still stripped the domain on the `node`
+    // reader's resources/list (12736 bytes against 13216 with it): a name we had
+    // not listed. The policy matches Manufact's family and its sites instead.
+    const MANUFACT_FAMILY = [
+      'mcp-use-ts', 'mcp-use-inspector', 'MCP-Use Review', 'manufact-scan', 'Manufact Review Bot',
+      { name: 'Some Generic Client', version: '1', websiteUrl: 'https://mcp-use.com' },
+      { name: 'Some Generic Client', version: '1', websiteUrl: 'https://www.manufact.com/review' },
+    ];
+    for (const clientInfo of MANUFACT_FAMILY) {
+      const label = typeof clientInfo === 'object' ? `${clientInfo.name} at ${clientInfo.websiteUrl}` : clientInfo;
+      it(`${label} on the 2026-07-28 protocol gets the site origin on every view`, async () => {
+        const list = await modernRpc('resources/list', {}, clientInfo);
+        assert.deepEqual([...new Set(viewDomains(list.resources))], ['https://www.worldmonitor.app']);
+        const read = await modernRpc('resources/read', { uri: SHELL_VIEW.uri }, clientInfo);
+        assert.equal(read.contents[0]._meta.ui.domain, 'https://www.worldmonitor.app');
+      });
+    }
+
+    it('a session started by an unlisted Manufact-family name keeps the domain', async () => {
+      const sessionId = await initialize('mcp-use-ts');
+      const list = await sessionRpc('resources/list', {}, sessionId);
+      assert.deepEqual([...new Set(viewDomains(list.resources))], ['https://www.worldmonitor.app']);
+    });
+
+    const NOT_MANUFACT = [
+      'not-manufact', 'xmcp-use', 'Claude',
+      { name: 'Some Generic Client', version: '1', websiteUrl: 'https://evil.example/mcp-use.com' },
+      { name: 'Some Generic Client', version: '1', websiteUrl: 'https://mcp-use.com.evil.example' },
+      { name: 'Some Generic Client', version: '1', websiteUrl: 'not a url' },
+    ];
+    for (const clientInfo of NOT_MANUFACT) {
+      const label = typeof clientInfo === 'object' ? `${clientInfo.name} at ${clientInfo.websiteUrl}` : clientInfo;
+      it(`${label} on the 2026-07-28 protocol still gets views without ui.domain`, async () => {
+        const list = await modernRpc('resources/list', {}, clientInfo);
         const views = list.resources.filter((r) => r.uri.startsWith('ui://'));
         assert.ok(views.length >= 12);
         for (const view of views) assert.equal('domain' in (view._meta?.ui ?? {}), false, view.uri);

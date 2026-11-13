@@ -1,0 +1,110 @@
+---
+title: "Caching and Bandwidth"
+sidebarTitle: "Caching & bandwidth"
+description: "Vercel CDN headers, circuit breakers, Brotli pre-compression, relay compression, request deduplication, polling intervals and the multi-tier caching architecture of World Monitor."
+---
+
+Part of the [Architecture and Design Philosophy](/architecture) guide, which indexes every topic. For deployment topology, directory layout and CI/CD, see [`ARCHITECTURE.md`](https://github.com/koala73/worldmonitor/blob/main/ARCHITECTURE.md).
+
+---
+
+## Bandwidth & Caching
+
+### Vercel CDN Headers
+
+Every API edge function includes `Cache-Control` headers that enable Vercel's CDN to serve cached responses without hitting the origin:
+
+| Data Type              | `s-maxage`   | `stale-while-revalidate` | Rationale                        |
+| ---------------------- | ------------ | ------------------------ | -------------------------------- |
+| Classification results | 3600s (1h)   | 600s (10min)             | Headlines don't reclassify often |
+| Country intelligence   | 3600s (1h)   | 600s (10min)             | Briefs change slowly             |
+| Risk scores            | 300s (5min)  | 60s (1min)               | Near real-time, low latency      |
+| Market data            | 3600s (1h)   | 600s (10min)             | Intraday granularity sufficient  |
+| Fire detection         | 600s (10min) | 120s (2min)              | VIIRS updates every ~12 hours    |
+| Economic indicators    | 3600s (1h)   | 600s (10min)             | Monthly/quarterly releases       |
+
+Static assets use content-hash filenames with 1-year immutable cache headers. The service worker file (`sw.js`) is never cached (`max-age=0, must-revalidate`) to ensure update detection.
+
+### Client-Side Circuit Breakers
+
+Every data-fetching panel uses a circuit breaker that prevents cascading failures from bringing down the entire dashboard. The pattern works at two levels:
+
+**Per-feed circuit breakers** (RSS) — each RSS feed URL has an independent failure counter. After 2 consecutive failures, the feed enters a 5-minute cooldown during which no fetch attempts are made. The feed automatically re-enters the pool after the cooldown expires. This prevents a single misconfigured or downed feed from consuming fetch budget and slowing the entire news refresh cycle.
+
+**Per-panel circuit breakers** (data panels) — panels that fetch from API endpoints use IndexedDB-backed persistent caches (`worldmonitor_persistent_cache` store) with TTL envelopes. When a fetch succeeds, the result is stored with an expiration timestamp. On subsequent loads, the circuit breaker serves the cached result immediately and attempts a background refresh. If the background refresh fails, the stale cached data continues to display — panels never go blank due to transient API failures. Cache entries survive page reloads and browser restarts.
+
+The circuit breaker degrades gracefully across storage tiers: IndexedDB (primary, up to device quota) → localStorage fallback (5MB limit) → in-memory Map (session-only). When device storage quota is exhausted (common on mobile Safari), a global `_storageQuotaExceeded` flag disables all further writes while reads continue normally.
+
+### Brotli Pre-Compression (Build-Time)
+
+`vite build` now emits pre-compressed Brotli artifacts (`*.br`) for static assets larger than 1KB (JS, CSS, HTML, SVG, JSON, XML, TXT, WASM). This reduces transfer size by roughly 20–30% vs gzip-only delivery when the edge can serve Brotli directly.
+
+For the Hetzner Nginx origin, enable static compressed file serving so `dist/*.br` files are returned without runtime recompression:
+
+```nginx
+gzip on;
+gzip_static on;
+
+brotli on;
+brotli_static on;
+```
+
+Cloudflare will negotiate Brotli automatically for compatible clients when the origin/edge has Brotli assets available.
+
+### Railway Relay Compression
+
+All relay server responses pass through `gzipSync` when the client accepts gzip and the payload exceeds 1KB. Sidecar API responses prefer Brotli and use gzip fallback with proper `Content-Encoding`/`Vary` headers for the same threshold. This applies to OpenSky aircraft JSON, RSS XML feeds, UCDP event data, AIS snapshots, and health checks — reducing wire size by approximately 50–80%.
+
+### In-Flight Request Deduplication
+
+When multiple connected clients poll simultaneously (common with the relay's multi-tenant WebSocket architecture), identical upstream requests are deduplicated at the relay level. The first request for a given resource key (e.g., an RSS feed URL or OpenSky bounding box) creates a Promise stored in an in-flight Map. All concurrent requests for the same key await that single Promise rather than stampeding the upstream API. Subsequent requests are served from cache with an `X-Cache: DEDUP` header. This prevents scenarios like 53 concurrent RSS cache misses or 5 simultaneous OpenSky requests for the same geographic region — all resolved by a single upstream fetch.
+
+### Adaptive Refresh Scheduling
+
+Rather than polling at fixed intervals, the dashboard uses an adaptive refresh scheduler that responds to network conditions, tab visibility, and data freshness:
+
+- **Exponential backoff on failure** — when a refresh fails or returns no new data, the next poll interval doubles, up to a maximum of 4× the base interval. A successful fetch with new data resets the multiplier to 1×
+- **Hidden-tab throttle** — when `document.visibilityState` is `hidden`, all poll intervals are multiplied by 10×. A tab polling every 60 seconds in the foreground slows to every 10 minutes in the background, dramatically reducing wasted requests from inactive tabs
+- **Jitter** — each computed interval is randomized by ±10% to prevent synchronized API storms when multiple tabs or users share the same server. Without jitter, two tabs opened at the same time would poll in lockstep indefinitely
+- **Stale flush on visibility restore** — when a hidden tab becomes visible, the scheduler identifies all refresh tasks whose data is older than their base interval and re-runs them immediately, staggered 150ms apart to avoid a request burst. This ensures users returning to a background tab see fresh data within seconds
+- **In-flight deduplication** — concurrent calls to the same named refresh are collapsed; only one is allowed in-flight at a time
+- **Conditional registration** — refresh tasks can include a `condition` function that is evaluated before each poll; tasks whose conditions are no longer met (e.g., a panel that has been collapsed) skip their fetch cycle entirely
+
+### Frontend Polling Intervals
+
+Panels refresh at staggered intervals to avoid synchronized API storms:
+
+| Panel                              | Interval    | Rationale                      |
+| ---------------------------------- | ----------- | ------------------------------ |
+| AIS maritime snapshot              | 10s         | Real-time vessel positions     |
+| Service status                     | 60s         | Health check cadence           |
+| Market signals / ETF / Stablecoins | 180s (3min) | Market hours granularity       |
+| Risk scores / Theater posture      | 300s (5min) | Composite scores change slowly |
+
+All animations and polling pause when the tab is hidden or after 2 minutes of inactivity, preventing wasted requests from background tabs.
+
+### Caching Architecture
+
+Every external API call passes through a three-tier cache with stale-on-error fallback:
+
+```
+Request → [1] In-Memory Cache → [2] Redis (Upstash) → [3] Upstream API
+                                                             │
+            ◄──── stale data served on error ────────────────┘
+```
+
+| Tier                | Scope                      | TTL                | Purpose                                       |
+| ------------------- | -------------------------- | ------------------ | --------------------------------------------- |
+| **In-memory**       | Per edge function instance | Varies (60s–900s)  | Eliminates Redis round-trips for hot paths    |
+| **Redis (Upstash)** | Cross-user, cross-instance | Varies (120s–900s) | Deduplicates API calls across all visitors    |
+| **Upstream**        | Source of truth            | N/A                | External API (Yahoo Finance, CoinGecko, etc.) |
+
+Cache keys are versioned (`opensky:v2:lamin=...`, `macro-signals:v2:default`) so schema changes don't serve stale formats. Every response includes an `X-Cache` header (`HIT`, `REDIS-HIT`, `MISS`, `REDIS-STALE`, `REDIS-ERROR-FALLBACK`) for debugging.
+
+**Shared caching layer** — all sebuf handler implementations share a unified Upstash Redis caching module (`_upstash-cache.js`) with a consistent API: `getCachedOrFetch(cacheKey, ttlSeconds, fetchFn)`. This eliminates per-handler caching boilerplate and ensures every RPC endpoint benefits from the three-tier strategy. Cache keys include request-varying parameters (e.g., requested symbols, country codes, bounding boxes) to prevent cache contamination across callers with different inputs. On desktop, the same module runs in the sidecar with an in-memory + persistent file backend when Redis is unavailable.
+
+**In-flight promise deduplication** — the `cachedFetchJson` function in `server/_shared/redis.ts` maintains an in-memory `Map<string, Promise>` of active upstream requests. When a cache miss occurs, the first caller's fetch creates and registers a Promise in the map. All concurrent callers for the same cache key await that single Promise rather than independently hitting the upstream API. This eliminates the "thundering herd" problem where multiple edge function instances simultaneously race to refill an expired cache entry — a scenario that previously caused 50+ concurrent upstream requests during the ~15-second refill window for popular endpoints.
+
+**Negative caching** — when an upstream API returns an error, the system caches a sentinel value (`__WM_NEG__`) for 120 seconds rather than leaving the cache empty. This prevents a failure cascade where hundreds of concurrent requests all independently discover the cache is empty and simultaneously hammer the downed API. The negative sentinel is transparent to consumers — `cachedFetchJson` returns `null` for negative-cached keys, and panels fall back to stale data or show an appropriate empty state. Longer negative TTLs are used for specific APIs: UCDP uses 5-minute backoff, Polymarket queue rejections use 30-second backoff.
+
+The AI summarization pipeline adds content-based deduplication: headlines are hashed and checked against Redis before calling the LLM provider, so the same breaking news viewed by 1,000 concurrent users triggers exactly one LLM call.

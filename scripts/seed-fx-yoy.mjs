@@ -88,10 +88,16 @@ async function fetchYahooHistory(currency) {
     throw new Error('Yahoo chart payload missing timestamp/close arrays');
   }
   const series = [];
+  const monthFormat = new Intl.DateTimeFormat('en-CA', {
+    timeZone: result.meta?.exchangeTimezoneName || 'UTC', year: 'numeric', month: '2-digit',
+  });
   for (let i = 0; i < timestamps.length; i++) {
     const close = closes[i];
     if (typeof close === 'number' && Number.isFinite(close) && close > 0) {
-      series.push({ t: timestamps[i] * 1000, close });
+      const t = timestamps[i] * 1000;
+      const parts = monthFormat.formatToParts(new Date(t));
+      const period = `${parts.find(p => p.type === 'year').value}-${parts.find(p => p.type === 'month').value}`;
+      series.push({ t, close, period });
     }
   }
   if (series.length < 13) throw new Error(`Insufficient bars (${series.length})`);
@@ -134,6 +140,13 @@ function computeYoy(series) {
   const trough = troughAtWorst;
 
   return {
+    // Yahoo labels a monthly close by its opening month in exchange-local time.
+    // Do not let that label turn an August close into an early-August anchor.
+    monthlyBars: series.map((bar) => {
+      const period = bar.period ?? new Date(bar.t).toISOString().slice(0, 7);
+      const end = Date.UTC(Number(period.slice(0, 4)), Number(period.slice(5, 7)), 0);
+      return { date: new Date(Math.min(end, latest.t)).toISOString().slice(0, 10), value: bar.close };
+    }),
     currentRate: latest.close,
     yearAgoRate: yearAgo.close,
     yoyChange: Math.round(yoyChange * 10) / 10,

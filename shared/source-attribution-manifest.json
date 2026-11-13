@@ -1528,6 +1528,9 @@
           "path": "scripts/seed-capital-flows.mjs"
         },
         {
+          "path": "scripts/seed-cii-structural-prior.mjs"
+        },
+        {
           "path": "scripts/seed-education-attainment.mjs"
         },
         {
@@ -3307,6 +3310,20 @@
         },
         {
           "path": "scripts/seed-wb-external-debt.mjs"
+        }
+      ]
+    },
+    {
+      "host": "datacatalogfiles.worldbank.org",
+      "provider": "World Bank Open Data",
+      "kind": "structured",
+      "observed": true,
+      "license": "Worldwide Governance Indicators: Creative Commons Attribution 4.0 (CC BY 4.0).",
+      "attribution": "World Bank Worldwide Governance Indicators, 2026 release, data year 2025. Link the original bulk release recorded in each prior payload.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-cii-structural-prior.mjs"
         }
       ]
     },
@@ -15561,6 +15578,9 @@
         },
         {
           "path": "api/not-found.ts"
+        },
+        {
+          "path": "api/oauth-protected-resource.ts"
         },
         {
           "path": "api/story.js"

@@ -147,6 +147,7 @@ COPY scripts/shared/pizzint-location.cjs ./scripts/shared/pizzint-location.cjs
 # scripts/seed-ucdp-events.mjs. Missing it = ERR_MODULE_NOT_FOUND at relay
 # startup (the require is top-level in the UCDP section).
 COPY scripts/shared/ucdp-candidate.cjs ./scripts/shared/ucdp-candidate.cjs
+COPY scripts/shared/ucdp-state-parties.cjs ./scripts/shared/ucdp-state-parties.cjs
 # _ucdp-dashboard.mjs builds the compact UCDP projection the bootstrap tier
 # reads. seedUcdpEvents() imports it lazily, so a missing file fails only that
 # write (pinned in tests/dockerfile-relay-imports.test.mjs).

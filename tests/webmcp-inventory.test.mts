@@ -374,7 +374,7 @@ interface HomepageTool {
 }
 
 const HOMEPAGE_VALID_INPUTS: Record<string, Record<string, unknown>> = {
-  openDashboard: { monitor: 'world' },
+  open_dashboard: { monitor: 'world' },
   getWorldMonitorMcpEndpoint: {},
   listCountryScorecards: { countryCodes: ['DE'] },
   getCountryScorecard: { countryCode: 'DE' },
