@@ -9814,6 +9814,20 @@
       ]
     },
     {
+      "host": "status.worldmonitor.app",
+      "provider": "status.worldmonitor.app",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/status-page-smoke.mjs"
+        }
+      ]
+    },
+    {
       "host": "storage.data.gov.my",
       "provider": "storage.data.gov.my",
       "kind": "structured",
