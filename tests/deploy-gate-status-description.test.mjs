@@ -197,6 +197,7 @@ function runGate(conclusions, {
   const postTargetsFile = join(tempDir, 'post-targets');
   const rejectedFile = join(tempDir, 'rejected');
   const callsFile = join(tempDir, 'calls');
+  const fetchesFile = join(tempDir, 'fetches');
   const currentStatusesFile = join(tempDir, 'current-statuses.json');
   const statusReadFailuresFile = join(tempDir, 'status-read-failures');
   const summaryFile = join(tempDir, 'summary');
@@ -215,6 +216,7 @@ function runGate(conclusions, {
     writeFileSync(postTargetsFile, '');
     writeFileSync(rejectedFile, '');
     writeFileSync(callsFile, '');
+    writeFileSync(fetchesFile, '');
     writeFileSync(summaryFile, '');
     const gatedRunsFile = join(tempDir, 'gated-runs.json');
     writeFileSync(gatedRunsFile, JSON.stringify((gatedRuns ?? []).map((run, index) => ({ id: 100 + index, ...run }))));
@@ -540,11 +542,13 @@ function runGate(conclusions, {
       'case "$1 $2" in',
       '  "fetch --no-tags")',
       '    echo "git-fetch" >> "$FAKE_CALLS"',
+      '    echo "$*" >> "$FAKE_FETCHES"',
       '    [ "$FAKE_GIT_FETCH_FAILS" = "1" ] && { echo "fatal: forced fetch failure" >&2; exit 128; }',
       '    exit 0',
       '    ;;',
       'esac',
       'case "$1" in',
+      '  check-ref-format) exit 0 ;;',
       '  rev-parse)',
       '    case "$*" in',
       '      *head*) printf \'%s\\n\' "$FAKE_GIT_HEAD_TIP" ;;',
@@ -595,6 +599,7 @@ function runGate(conclusions, {
         env: {
           ...process.env,
           FAKE_CALLS: callsFile,
+          FAKE_FETCHES: fetchesFile,
           FAKE_ASSOCIATED_PULLS: typeof associatedPulls === 'string' ? associatedPulls : JSON.stringify(associatedPulls),
           FAKE_CURRENT_STATUSES: currentStatusesFile,
           FAKE_STATUS_READ_FAILURES: statusReadFailuresFile,
@@ -654,6 +659,7 @@ function runGate(conclusions, {
     return {
       ...result,
       exitCodes,
+      fetches: readFileSync(fetchesFile, 'utf8').split('\n').filter(Boolean),
       statusReads: readFileSync(callsFile, 'utf8').split('\n').filter((call) => call === 'status-read').length,
       calls: readFileSync(callsFile, 'utf8').split('\n').filter((call) => call && call !== 'status-read'),
       postTargets: readFileSync(postTargetsFile, 'utf8').split('\n').filter(Boolean),
@@ -1038,7 +1044,7 @@ describe('deploy gate commit-status description', () => {
       { state: 'success', description: stamped('All required PR gates passed') },
     ]);
     assert.deepEqual(result.calls, [
-      'graphql-check-page', 'graphql-check-page', 'git-fetch', 'git-merge-base', 'status:success',
+      'graphql-check-page', 'graphql-check-page', 'associated-pulls', 'git-fetch', 'git-merge-base', 'status:success',
     ]);
   });
 
@@ -1062,6 +1068,7 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(result.calls, [
       'graphql-check-page',
       'rest-check-runs-page',
+      'associated-pulls',
       'git-fetch',
       'git-merge-base',
       'status:success',
@@ -1133,11 +1140,13 @@ describe('deploy gate commit-status description', () => {
       'status:pending',
       'graphql-check-page',
       'graphql-check-page',
+      'associated-pulls',
       'git-fetch',
       'git-merge-base',
       'status:success',
       'graphql-check-page',
       'graphql-check-page',
+      'associated-pulls',
       'git-fetch',
       'git-merge-base',
       'status:success',
@@ -1272,6 +1281,7 @@ describe('deploy gate commit-status description', () => {
       'sleep:15',
       'graphql-check-page',
       'graphql-check-page',
+      'associated-pulls',
       'git-fetch',
       'git-merge-base',
       'status:success',
@@ -1324,6 +1334,7 @@ describe('deploy gate commit-status description', () => {
       'graphql-check-page',
       'rate-limit:graphql',
       'rest-check-runs-page',
+      'associated-pulls',
       'git-fetch',
       'git-merge-base',
       'status:success',
@@ -1340,6 +1351,7 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(result.calls, [
       'graphql-check-page',
       'graphql-check-page',
+      'associated-pulls',
       'git-fetch',
       'git-merge-base',
       'status:success',
@@ -1360,6 +1372,7 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(result.calls, [
       'graphql-check-page',
       'graphql-check-page',
+      'associated-pulls',
       'git-fetch',
       'git-merge-base',
       'status:success',
@@ -1468,6 +1481,38 @@ describe('deploy gate stale-base drift', () => {
   const mergedPull = { state: 'closed', merged_at: '2026-08-12T12:00:00Z', head: { sha: SHA } };
   const overlap = diverged({ headFiles: ['api/widget-agent.ts'], mainFiles: ['api/widget-agent.ts'] });
 
+  const openPull = (base) => ({ state: 'open', merged_at: null, head: { sha: SHA }, base: { ref: base, repo: { full_name: 'koala73/worldmonitor' } } });
+
+  it('compares an integration PR against its target instead of main', () => {
+    const result = runGate(conclusionsFor('success'), { associatedPulls: [[openPull('cii-v15')]] });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.posted.at(-1).state, 'success');
+    assert.match(result.fetches[0], /\+refs\/heads\/cii-v15:/);
+    assert.ok(!result.fetches[0].includes('+refs/heads/main:'));
+  });
+
+  it('still blocks overlapping changes on the integration target', () => {
+    const result = runGate(conclusionsFor('success'), { drift: overlap, associatedPulls: [[openPull('cii-v15')]] });
+    assert.equal(result.posted.at(-1).state, 'failure');
+    assert.match(result.posted.at(-1).description, /^Stale base: cii-v15 changed/);
+  });
+
+  it('checks every open target for a shared exact head, including main', () => {
+    const result = runGate(conclusionsFor('success'), { associatedPulls: [[openPull('cii-v15')], [openPull('main')]] });
+    assert.equal(result.posted.at(-1).state, 'success');
+    assert.equal(result.fetches.length, 2);
+    assert.match(result.fetches[0], /\+refs\/heads\/cii-v15:/);
+    assert.match(result.fetches[1], /\+refs\/heads\/main:/);
+  });
+
+  it('does not approve a head with missing or foreign target metadata', () => {
+    for (const base of [undefined, { ref: '' }, { ref: 'main', repo: { full_name: 'other/repo' } }]) {
+      const result = runGate(conclusionsFor('success'), { associatedPulls: [[{ ...openPull('main'), base }]] });
+      assert.equal(result.posted.at(-1).state, 'pending');
+      assert.equal(result.fetches.length, 0);
+    }
+  });
+
   it('passes a squash-merged exact head when a queued evaluation sees overlapping main changes', () => {
     const result = runGate(conclusionsFor('success'), {
       drift: overlap,
@@ -1481,7 +1526,7 @@ describe('deploy gate stale-base drift', () => {
 
   it('keeps drift blocking for open exact heads, unmerged closures and unrelated merged heads', () => {
     for (const associatedPulls of [
-      [[mergedPull], [{ state: 'open', merged_at: null, head: { sha: SHA } }]],
+      [[mergedPull], [openPull('main')]],
       [[{ ...mergedPull, merged_at: null }]],
       [[{ ...mergedPull, head: { sha: HEAD_TIP } }]],
       [[]],
@@ -1653,9 +1698,14 @@ describe('deploy gate stale-base drift over a real repository', () => {
     git(remote, 'config', 'uploadpack.allowFilter', 'true');
     git(remote, 'config', 'uploadpack.allowAnySHA1InWant', 'true');
     commit(shape.base ?? ['README.md'], 'base');
+    if (shape.targetBranch) git(remote, 'branch', shape.targetBranch);
     git(remote, 'checkout', '-q', '-b', 'feature');
     if ((shape.head ?? []).length > 0) commit(shape.head, 'head');
     const headSha = git(remote, 'rev-parse', 'HEAD').trim();
+    if (shape.target?.length) {
+      git(remote, 'checkout', '-q', shape.targetBranch);
+      commit(shape.target, 'target');
+    }
     git(remote, 'checkout', '-q', 'main');
     if ((shape.main ?? []).length > 0) commit(shape.main, 'main');
     if (shape.shallow) {
@@ -1676,7 +1726,7 @@ describe('deploy gate stale-base drift over a real repository', () => {
     const root = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-git-'));
     try {
       const { remote, work, headSha } = fixture(root, shape);
-      const result = spawnSync('bash', ['-e', gateScriptPath, 'drift'], {
+      const result = spawnSync('bash', ['-e', gateScriptPath, 'drift', shape.targetBranch ?? 'main'], {
         cwd: work,
         encoding: 'utf8',
         timeout: 60_000,
@@ -1694,6 +1744,18 @@ describe('deploy gate stale-base drift over a real repository', () => {
       rmSync(root, { recursive: true, force: true });
     }
   };
+
+  it('ignores unrelated main drift when the actual integration target is unchanged', () => {
+    const result = drift({ base: ['a.ts'], head: ['a.ts'], main: ['a.ts'], targetBranch: 'cii-v15' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, '');
+  });
+
+  it('detects overlapping drift on the actual integration target', () => {
+    const result = drift({ base: ['a.ts'], head: ['a.ts'], main: ['b.ts'], targetBranch: 'cii-v15', target: ['a.ts'] });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'a.ts');
+  });
 
   it('names exactly the files both sides touched', () => {
     const result = drift({
