@@ -3,6 +3,7 @@
 // injected statistics fetch and archive search; the site seeder owns Redis.
 import {
   advanceTrack,
+  CHANGE_THRESHOLDS,
   FLAG_SCHEMA,
   FLAG_WORDING,
   geometryKey,
@@ -123,7 +124,7 @@ export class StatisticsRefusal extends Error {}
 /**
  * Folds every radar scene the flag has not yet seen into the site's flag record. A site
  * that has never been backfilled first reads enough archived scenes per geometry to build
- * its baselines. Scoring stops at the deadline or the first failed statistics request;
+ * its baselines. Scoring stops at the deadline or the first failed archive request;
  * what was folded before that is kept, and the rest is read next run.
  */
 export async function scoreSiteChange({
@@ -137,16 +138,21 @@ export async function scoreSiteChange({
     : { ...emptyFlag(site, halfSizeDeg), events: previous?.events ?? [] };
 
   let scenes = radarScenes(acquisitions);
-  const backfilling = flag.backfilledAt === null && searchBackfill !== null;
+  let stopped = null;
+  let backfilling = flag.backfilledAt === null && searchBackfill !== null;
   if (backfilling) {
-    const archived = await searchBackfill(site, nowMs);
-    scenes = [...radarScenes(archived, thresholds?.minBaselineScenes ?? 6), ...scenes];
+    try {
+      const archived = await searchBackfill(site, nowMs);
+      scenes = [...radarScenes(archived, (thresholds ?? CHANGE_THRESHOLDS).minBaselineScenes), ...scenes];
+    } catch (error) {
+      backfilling = false;
+      stopped = error?.message || String(error);
+    }
   }
 
   const feature = footprintFeature(site, halfSizeDeg);
   let requests = 0;
-  let stopped = null;
-  for (const scene of scenes) {
+  for (const scene of stopped === null ? scenes : []) {
     const key = geometryKey(scene.radar);
     const track = flag.tracks[key] ?? newTrack(scene.radar);
     if (track.lastDatetime !== null && scene.datetime <= track.lastDatetime) continue;

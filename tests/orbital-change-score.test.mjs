@@ -123,6 +123,18 @@ describe('orbital change scoring', () => {
     assert.deepEqual(second.flag.tracks, first.flag.tracks);
   });
 
+  it('keeps the flag and retries backfill next run when the archived-scene search fails', async () => {
+    const scenes = [radarScene(40)];
+    const { flag, stopped, requests } = await scoreSiteChange({
+      site: LAND, acquisitions: scenes, previous: null, fetchStatistics: async () => assert.fail('nothing is scored'),
+      searchBackfill: async () => { throw new Error('Planetary Computer HTTP 503'); }, nowMs: NOW, deadlineMs: Infinity,
+    });
+    assert.equal(stopped, 'Planetary Computer HTTP 503');
+    assert.equal(requests, 0);
+    assert.equal(flag.backfilledAt, null);
+    assert.deepEqual(flag.tracks, {});
+  });
+
   it('treats a scene without valid pixels as no observation', async () => {
     const baseline = BASELINE_DB.map((db) => radarScene(db));
     const { flag: before } = await score(LAND, baseline);

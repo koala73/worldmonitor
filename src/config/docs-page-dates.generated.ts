@@ -363,6 +363,7 @@ export const DOCS_PAGE_DATES: Record<string, { datePublished: string; dateModifi
   "methodology/mineral-production": {"datePublished":"2026-08-31","dateModified":"2026-09-10"},
   "methodology/news-credibility": {"datePublished":"2026-08-18","dateModified":"2026-09-10"},
   "methodology/news-digest-and-briefing": {"datePublished":"2026-06-07","dateModified":"2026-11-03"},
+  "methodology/orbital-change-signal": {"datePublished":"2026-11-13","dateModified":"2026-11-13"},
   "methodology/physical-divergence-index": {"datePublished":"2026-08-30","dateModified":"2026-10-27"},
   "methodology/pipelines": {"datePublished":"2026-04-22","dateModified":"2026-10-21"},
   "methodology/resilience-indicator-licensing": {"datePublished":"2026-08-30","dateModified":"2026-09-10"},
