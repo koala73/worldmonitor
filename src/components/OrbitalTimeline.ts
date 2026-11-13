@@ -12,7 +12,7 @@ import {
   type PointContext,
 } from '@/services/orbital/point-context';
 import { getLocale, t } from '@/services/i18n';
-import { orbitalDisplayZone } from './OrbitalWatchPage';
+import { formatOrbitalTime, orbitalDisplayZone } from './OrbitalWatchPage';
 import { h, replaceChildren } from '@/utils/dom-utils';
 
 const HOUR_MS = 3_600_000;
@@ -20,7 +20,7 @@ const DAY_MS = 86_400_000;
 /** Passes closer than this share of the width draw as one glyph, so a busy row stays readable. */
 const CLUSTER_PCT = 1;
 /** Day labels run right of their midnight, so they give way to NOW and to the right edge. */
-const DAY_LABEL_PCT = 6;
+const DAY_LABEL_PCT = 10;
 const TIP_NAMES = 4;
 
 export const passKey = (pass: { noradId: number; timeMs: number }) => `${pass.noradId}:${pass.timeMs}`;
@@ -34,8 +34,6 @@ export interface OrbitalTimelineInput {
   acquisitions: MatchedAcquisition[];
   context: PointContextState;
   selectedKey: string | null;
-  /** IANA zone the labels read in; defaults to the sheet's display zone. */
-  timeZone?: string | null;
 }
 
 type RowId = 'geo' | 'photo' | 'likely' | 'could' | 'overhead';
@@ -129,15 +127,15 @@ export class OrbitalTimeline {
   update(input: OrbitalTimelineInput): void {
     const { window, nowMs } = input.lookup;
     const context = input.context.kind === 'loaded' ? input.context.context : null;
-    const clock = zonedClock(input.timeZone ?? orbitalDisplayZone().timeZone, getLocale(), nowMs);
-    const when = (ms: number) => `${clock.day(ms)} · ${clock.time(ms)}`;
+    const clock = zonedClock(orbitalDisplayZone().timeZone, getLocale(), nowMs);
+    const when = (ms: number) => `${formatOrbitalTime(ms, 'day')} · ${formatOrbitalTime(ms, 'clock')}`;
     const pct = (ms: number) => ((Math.min(Math.max(ms, window.startMs), window.endMs) - window.startMs) / (window.endMs - window.startMs)) * 100;
     const at = (ms: number) => `left:${pct(ms).toFixed(3)}%`;
     const between = (startMs: number, endMs: number) => `left:${pct(startMs).toFixed(3)}%;width:${Math.max(0, pct(endMs) - pct(startMs)).toFixed(3)}%`;
     const count = (n: number) => n.toLocaleString(getLocale());
     const entries: ListEntry[] = [];
 
-    const span = `${t('orbitalWatch.timeline.span', { days: Math.round((nowMs - window.startMs) / DAY_MS), hours: Math.round((window.endMs - nowMs) / HOUR_MS) })} · ${clock.timeZone} · ${clock.abbreviation}`;
+    const span = `${t('orbitalWatch.timeline.span', { days: Math.round((nowMs - window.startMs) / DAY_MS), hours: Math.round((window.endMs - nowMs) / HOUR_MS) })} · ${[...new Set([clock.timeZone, clock.abbreviation])].join(' · ')}`;
     this.element.setAttribute('aria-label', `${t('orbitalWatch.timeline.name')}, ${span}`);
     replaceChildren(this.head,
       h('h3', { className: 'ow-tl-title' }, h('span', { className: 'ow-tl-num' }, '03 / '), t('orbitalWatch.timeline.name')),
@@ -194,7 +192,7 @@ export class OrbitalTimeline {
       const kept = whole
         ? t('orbitalWatch.timeline.notRetained')
         : gaps.length > 0 && lane.retained
-          ? t('orbitalWatch.timeline.retained', { start: clock.day(Math.max(window.startMs, lane.retained.startMs)), end: clock.day(Math.min(nowMs, lane.retained.endMs)) })
+          ? t('orbitalWatch.timeline.retained', { start: formatOrbitalTime(Math.max(window.startMs, lane.retained.startMs), 'day'), end: formatOrbitalTime(Math.min(nowMs, lane.retained.endMs), 'day') })
           : null;
       return h('li', { className: 'ow-tl-event-key', dataset: { source: id, state: 'ok' } },
         h('span', { className: 'ow-tl-dot' }), label, ' ', h('span', { className: 'ow-tl-count' }, count(lane.events.length)),

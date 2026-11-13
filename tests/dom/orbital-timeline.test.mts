@@ -48,13 +48,13 @@ const onSelect = vi.fn();
 function mounted(passes: PointPass[], ctx: PointContext | null, options: { at?: typeof point; selectedKey?: string; found?: PointPassLookup } = {}): OrbitalTimeline {
   const dock = new OrbitalTimeline(onSelect);
   document.body.append(dock.element);
+  setOrbitalDisplayZone('Asia/Dubai', 'GST');
   dock.update({
     lookup: options.found ?? lookup(passes, options.at),
     passes,
     acquisitions: [],
     context: ctx ? { kind: 'loaded', context: ctx } : { kind: 'loading' },
     selectedKey: options.selectedKey ?? null,
-    timeZone: 'Asia/Dubai',
   });
   return dock;
 }
@@ -84,6 +84,8 @@ afterEach(() => {
   vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
+
+afterEach(() => setOrbitalDisplayZone('UTC', 'UTC'));
 
 describe('orbital timeline dock', () => {
   it('always shows the five tier rows with a glyph, a whole label and a count, zero included', () => {
@@ -127,12 +129,13 @@ describe('orbital timeline dock', () => {
   it('puts an archive image with no computed pass on the Photo row and counts it', () => {
     const dock = new OrbitalTimeline(onSelect);
     document.body.append(dock.element);
+    setOrbitalDisplayZone('Asia/Dubai', 'GST');
     const image = { startMs: NOW - 30 * HOUR, platform: 'sentinel-2c', pass: null } as unknown as OrbitalTimelineInput['acquisitions'][number];
-    dock.update({ lookup: lookup([]), passes: [], acquisitions: [image], context: { kind: 'loaded', context: context() }, selectedKey: null, timeZone: 'Asia/Dubai' });
+    dock.update({ lookup: lookup([]), passes: [], acquisitions: [image], context: { kind: 'loaded', context: context() }, selectedKey: null });
     expect(legendKey('photo').querySelector('.ow-tl-count')!.textContent).toBe('1');
     const mark = row('photo').querySelector<HTMLElement>('.ow-tl-mark')!;
     expect(leftPct(mark)).toBeCloseTo(pctOf(image.startMs), 2);
-    expect(mark.dataset.tip).toBe('SENTINEL-2C · Thu 12 Nov · 10:00 · image, no computed pass');
+    expect(mark.dataset.tip).toBe('SENTINEL-2C · Thu, Nov 12 · 10:00 · image, no computed pass');
     expect(listText()).toContain('image, no computed pass: SENTINEL-2C, 2026-11-12 06:00 UTC');
   });
 
@@ -142,7 +145,7 @@ describe('orbital timeline dock', () => {
     expect(tip.hidden).toBe(true);
     row('photo').querySelector('.ow-tl-mark')!.dispatchEvent(new Event('pointerover', { bubbles: true }));
     expect(tip.hidden).toBe(false);
-    expect(tip.textContent).toBe('SENTINEL-2B · Thu 12 Nov · 10:00 · confirmed image');
+    expect(tip.textContent).toBe('SENTINEL-2B · Thu, Nov 12 · 10:00 · confirmed image');
   });
 
   it('clicking a glyph hands its pass to the selection, and marks the selected glyph', () => {
@@ -169,21 +172,21 @@ describe('orbital timeline dock', () => {
     mounted([], context({ events: { fires: ok([{ id: 'f1', timeMs: at, label: '41 MW', distanceKm: 3 }], { startMs: WINDOW.startMs, endMs: NOW }) } }));
     const mark = timeline().querySelector<HTMLElement>('.ow-tl-strip .ow-tl-event[data-source="fires"]')!;
     expect(leftPct(mark)).toBeCloseTo(pctOf(at), 2);
-    expect(mark.dataset.tip).toBe('Fires · 41 MW · 3 km away · Thu 12 Nov · 20:00');
+    expect(mark.dataset.tip).toBe('Fires · 41 MW · 3 km away · Thu, Nov 12 · 20:00');
     expect(eventKey('fires').textContent).toBe('Fires 1');
     expect(listText()).toContain('Fires: 41 MW, 2026-11-12 16:00 UTC, 3 km away');
   });
 
   it('says how far back a feed keeps history instead of drawing hatched gaps', () => {
     mounted([], context({ events: { fires: ok([], { startMs: Date.UTC(2026, 10, 12), endMs: NOW }) } }));
-    expect(eventKey('fires').querySelector('.ow-tl-retained')!.textContent).toBe(' · Thu 12 Nov to Fri 13 Nov');
+    expect(eventKey('fires').querySelector('.ow-tl-retained')!.textContent).toBe(' · Thu, Nov 12 to Fri, Nov 13');
     expect(timeline().querySelector('.ow-tl-not-retained')).toBeNull();
     expect(listText()).toContain('Fires: not retained from 2026-11-06 12:00 UTC to 2026-11-12 00:00 UTC');
   });
 
   it('marks conflict history after its newest event as not retained up to now', () => {
     mounted([], context({ events: { conflict: ok([], { startMs: NOW - 400 * DAY, endMs: NOW - 3 * DAY }) } }));
-    expect(eventKey('conflict').querySelector('.ow-tl-retained')!.textContent).toBe(' · Fri 6 Nov to Tue 10 Nov');
+    expect(eventKey('conflict').querySelector('.ow-tl-retained')!.textContent).toBe(' · Fri, Nov 6 to Tue, Nov 10');
     expect(listText()).toContain('Conflict: not retained from 2026-11-10 12:00 UTC to 2026-11-13 12:00 UTC');
   });
 
@@ -260,7 +263,6 @@ describe('point context requests', () => {
 });
 
 describe('timeline zone', () => {
-  afterEach(() => setOrbitalDisplayZone('UTC', 'UTC'));
   it('reads its labels in the sheet display zone when none is injected', () => {
     setOrbitalDisplayZone('Asia/Dubai', 'GST');
     const dock = new OrbitalTimeline(vi.fn());

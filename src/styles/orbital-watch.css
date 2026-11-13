@@ -367,6 +367,35 @@
   }
   .orbital-watch-sheet[data-view="full"] .ow-hud,
   .orbital-watch-sheet[data-view="full"] .ow-statusbar { display: none; }
+  .ow-dock .ow-timeline {
+    --ow-tl-row: 11px;
+    --ow-tl-strip: 7px;
+    --ow-tl-axis: 14px;
+    display: grid;
+    grid-template-columns: minmax(600px, 1fr) max-content;
+    grid-template-rows: auto auto;
+    width: max-content;
+    min-width: 100%;
+    padding: 4px 10px;
+    font-size: 10px;
+  }
+  .ow-dock .ow-tl-head { flex-wrap: nowrap; white-space: nowrap; padding-bottom: 3px; margin-bottom: 3px; }
+  .ow-dock .ow-tl-day,
+  .ow-dock .ow-tl-now-label { top: 2px; }
+  .ow-dock .ow-tl-foot {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 3px;
+    margin: 0 0 0 12px;
+    padding: 0 0 0 12px;
+    border-top: 0;
+    border-left: 1px solid var(--ow-line-soft, #1a1c20);
+  }
+  .ow-dock .ow-tl-event-keys,
+  .ow-dock .ow-now-strip { flex-direction: column; flex-wrap: nowrap; gap: 3px; }
 }
 
 .ow-timeline {
