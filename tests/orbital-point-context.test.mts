@@ -131,3 +131,12 @@ describe('local time across daylight saving', () => {
     assert.equal(pointTimeZone('US', -73.97, JULY), 'America/New_York');
   });
 });
+
+describe('local midnights across a daylight-saving change', () => {
+  it('finds Sydney midnight on the day clocks go forward', () => {
+    const clock = zonedClock('Australia/Sydney', 'en-US', Date.UTC(2026, 9, 1));
+    const midnights = clock.midnights(Date.UTC(2026, 9, 2, 12), Date.UTC(2026, 9, 4, 12));
+    assert.deepEqual(midnights.map((ms) => clock.day(ms)), ['Sat 3 Oct', 'Sun 4 Oct']);
+    assert.deepEqual(midnights, [Date.UTC(2026, 9, 2, 14), Date.UTC(2026, 9, 3, 14)]);
+  });
+});

@@ -58,7 +58,9 @@ export function zonedClock(timeZone: string | null, locale: string, nowMs: numbe
     midnights: (startMs, endMs) => {
       const out: number[] = [];
       for (let day = Math.floor((startMs + offset * 60_000) / DAY_MS) + 1; ; day++) {
-        const guess = day * DAY_MS - utcOffsetMinutes(zone, day * DAY_MS) * 60_000;
+        const first = day * DAY_MS - utcOffsetMinutes(zone, day * DAY_MS) * 60_000;
+        // The offset at UTC midnight can differ from the one at local midnight on a daylight-saving day.
+        const guess = day * DAY_MS - utcOffsetMinutes(zone, first) * 60_000;
         if (guess >= endMs) break;
         if (guess > startMs) out.push(guess);
       }
