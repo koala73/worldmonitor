@@ -282,7 +282,11 @@ function rewriteSchemaDescriptions(node: unknown): void {
     }
   }
   if (Array.isArray(record.required)) record.required = record.required.filter((field) => field !== 'upgradeUrl');
-  if (typeof record.description === 'string') record.description = stripBillingCopy(record.description);
+  if (typeof record.description === 'string') {
+    const description = stripBillingCopy(record.description);
+    if (description) record.description = description;
+    else delete record.description;
+  }
   for (const [key, value] of Object.entries(record)) {
     if (key !== 'description') rewriteSchemaDescriptions(value);
   }

@@ -65,7 +65,8 @@ export function stripBillingCopy(text: string, { keepLead = false }: { keepLead?
     if (!drop) kept.push(fragment);
     droppedClause = drop && fragment.endsWith(';');
   });
-  if (kept.length === 0) return scrubKept(text);
+  // Nothing but billing copy: nothing to keep.
+  if (kept.length === 0) return '';
   let out = kept.map(scrubKept).join(' ').trim();
   if (out.endsWith(';')) out = `${out.slice(0, -1)}.`;
   // A kept clause that ended in `;` now runs into a new sentence.

@@ -25,6 +25,7 @@ import { applyChatGptCommercePolicy, CHATGPT_HIDDEN_TOOLS, isChatGptHost } from 
 import { CHATGPT_TOOL_LIST_RESPONSE, TOOL_LIST_RESPONSE, TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 import { AGENT_GUIDE, AGENT_GUIDE_RESOURCE_URI } from '../api/mcp/constants.ts';
 import { MCP_UPGRADE_URL } from '../shared/mcp-attribution.ts';
+import { stripBillingCopy } from '../api/mcp/chatgpt-copy.ts';
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
 
 const CHATGPT_UA = 'openai-mcp/1.0.0';
@@ -136,6 +137,13 @@ describe('what ChatGPT is offered', () => {
     const market = TOOL_LIST_RESPONSE.find((tool) => tool.name === 'get_market_data');
     assert.match(market.description, /API plans/);
     assert.equal(typeof market._meta['worldmonitor/weight'], 'number');
+  });
+
+  it('a description made only of billing copy becomes empty, not unchanged', () => {
+    assert.equal(stripBillingCopy('API plans use weight 2.'), '');
+    assert.equal(stripBillingCopy('Paid plans only; refresh starts a new allocation.'), '');
+    // A tool description keeps its lead sentence, scrubbed.
+    assert.equal(stripBillingCopy('Read quotes. API plans use weight 2.', { keepLead: true }), 'Read quotes.');
   });
 
   it('the agent guide ChatGPT reads has no billing copy', async () => {
