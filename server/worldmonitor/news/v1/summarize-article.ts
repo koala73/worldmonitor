@@ -344,6 +344,7 @@ export async function summarizeArticle(
   // Provider credential check
   const skipReasons: Record<string, string> = {
     ollama: 'OLLAMA_API_URL not configured',
+    atlascloud: 'ATLASCLOUD_API_KEY not configured',
     openrouter: 'OPENROUTER_API_KEY not configured',
     anthropic: 'ANTHROPIC_API_KEY not configured',
     '': 'No AI provider is available for this request',
