@@ -5147,6 +5147,7 @@
       "orbitAge": "baangegevens {{age}} oud",
       "edgeOfSwath": "Rand van de opnamestrook",
       "notInArchive": "Geen beeld in het archief",
+      "archiveUnanswered": "Archief gaf geen antwoord",
       "imageAlt": "Beeld van {{name}}, {{time}}",
       "mosaicDays": "Dagen in het archief: {{count}}",
       "cadence": "nieuw beeld elke {{minutes}} min",
@@ -5206,6 +5207,8 @@
         "overheadDef": "Kruiste hier de hemel, zonder beeldbewijs.",
         "watchedShort": "Beeld in een openbaar archief",
         "likelyShort": "Gedekt, nog geen beeld",
+        "likelyUnansweredDef": "Een sensor met vaste strook heeft het gedekt; een archief gaf geen antwoord, dus er kan een beeld zijn.",
+        "likelyUnansweredShort": "Gedekt, archief gaf geen antwoord",
         "couldShort": "Richtbare sensor binnen bereik",
         "overheadShort": "Overgevlogen, geen beeld"
       },
