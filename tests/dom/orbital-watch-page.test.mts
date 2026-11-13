@@ -291,6 +291,20 @@ describe('satellite pass lookup sheet', () => {
     expect(page().select('0:0')).toBe(false);
   });
 
+  it('keeps the selected pass marked across a rerender and moves the mark on a new selection', () => {
+    const { all, commercial, military } = tiered();
+    mounted(answered(all));
+    expect(page().select(`${commercial.noradId}:${commercial.timeMs}`)).toBe(true);
+    click('.ow-group-toggle[data-group="watched"]');
+    page().render(answered(all));
+    expect(rowOf(commercial.name).getAttribute('aria-current'), 'a group toggle and a fresh render rebuild the rows').toBe('true');
+    expect(page().select(`${military.noradId}:${military.timeMs}`)).toBe(true);
+    expect([...sheet().querySelectorAll('.ow-row[aria-current]')]).toEqual([rowOf(military.name)]);
+    page().open({ lat: 25.003, lon: 54.99 }, null, 'full');
+    page().render(answered(all));
+    expect(sheet().querySelectorAll('.ow-row[aria-current]'), 'a new point starts with no selection').toHaveLength(0);
+  });
+
   it('keeps the timeline dock on phones as a full-width, horizontally scrolling strip above the panel', () => {
     const css = readFileSync(resolve(process.cwd(), 'src/styles/orbital-watch.css'), 'utf8');
     const mobile = css.slice(css.indexOf('@media (max-width: 768px)'));
