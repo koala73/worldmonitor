@@ -235,8 +235,7 @@ export class OrbitalTimeline {
     const groups: PointPass[][] = [];
     for (const pass of [...passes].sort((a, b) => a.timeMs - b.timeMs)) {
       const last = groups[groups.length - 1];
-      const joins = last && pct(pass.timeMs) - pct(last[0]!.timeMs) < CLUSTER_PCT
-        && (pass.tier.kind === 'opportunity') === (last[0]!.tier.kind === 'opportunity');
+      const joins = last && pct(pass.timeMs) - pct(last[0]!.timeMs) < CLUSTER_PCT && pass.tier.kind === last[0]!.tier.kind;
       if (joins) last.push(pass);
       else groups.push([pass]);
     }

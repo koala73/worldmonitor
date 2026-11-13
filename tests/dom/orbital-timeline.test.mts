@@ -114,16 +114,16 @@ describe('orbital timeline dock', () => {
   });
 
   it('draws every row with its legend glyph, and passes closer than a glyph as one glyph with a ×n count', () => {
-    const could = [pass('A', -10.2, { kind: 'within-reach' }), pass('B', -10.6, { kind: 'capability-overhead' }), pass('C', -40, { kind: 'within-reach' })];
+    const could = [pass('A', -10.2, { kind: 'within-reach' }), pass('B', -10.6, { kind: 'within-reach' }), pass('C', -40, { kind: 'within-reach' }), pass('D', -10.4, { kind: 'capability-overhead' })];
     const photo = pass('SENTINEL-2B', -30, { kind: 'confirmed-image' });
     mounted([...could, photo], context());
     const mark = row('photo').querySelector<HTMLElement>('.ow-tl-mark')!;
     expect(mark.textContent).toBe('◆');
     expect(leftPct(mark)).toBeCloseTo(pctOf(photo.timeMs), 2);
     const coulds = [...row('could').querySelectorAll<HTMLElement>('.ow-tl-mark')];
-    expect(coulds.map((m) => [m.textContent, m.dataset.count])).toEqual([['□', '1'], ['□', '2']]);
-    expect(coulds[1]!.dataset.tip!.split('\n')[0]).toBe('×2 · capability overhead');
-    expect(listText()).toContain('Could passes, 2026-11-13 01:00 UTC to 02:00: 2');
+    expect(coulds.map((m) => [m.textContent, m.dataset.count, m.dataset.tier])).toEqual([['□', '1', 'within-reach'], ['□', '2', 'within-reach'], ['□', '1', 'capability-overhead']]);
+    expect(coulds[1]!.dataset.tip!.split('\n')[0]).toBe('×2 · could have pointed here');
+    expect(listText()).toContain('Could passes, 2026-11-13 01:00 UTC to 02:00: 3');
     expect(listText()).toContain('confirmed image: SENTINEL-2B, 2026-11-12 06:00 UTC');
   });
 
