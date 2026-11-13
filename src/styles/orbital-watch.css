@@ -312,7 +312,7 @@
   inset: 0;
   width: auto;
   z-index: 10001;
-  pointer-events: auto;
+  pointer-events: none;
 }
 body.orbital-full-view #mapSection > .panel-header { display: none !important; }
 .ow-mapmark {
