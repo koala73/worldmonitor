@@ -6,7 +6,6 @@ export const IMAGE_CREDIT = {
   copernicus: (years: string | number) => `Contains modified Copernicus Sentinel data ${years}`,
   usgs: 'Landsat imagery courtesy of the U.S. Geological Survey',
   eumetsat: 'Contains EUMETSAT Meteosat imagery',
-  gibs: 'NASA GIBS',
   gibsAcknowledgement: "We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).",
   celestrak: 'Orbit elements from CelesTrak',
 } as const;

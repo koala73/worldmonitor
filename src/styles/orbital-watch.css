@@ -50,8 +50,19 @@
 .ow-row-time, .ow-row-detail { color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .ow-row-note { color: var(--text-secondary, var(--text-dim)); font-style: italic; }
 .ow-row-image { margin: 6px 0 0; }
-.ow-row-image img { display: block; width: 100%; max-height: 180px; object-fit: cover; border-radius: 4px; background: var(--surface); }
+.ow-image-frame { position: relative; min-height: 120px; border-radius: 4px; background: var(--surface); overflow: hidden; }
+.ow-image-frame[data-state="loaded"] { min-height: 0; }
+.ow-image-frame img { display: block; width: 100%; max-height: 180px; object-fit: cover; }
+.ow-image-frame:not([data-state="loaded"]) img { position: absolute; inset: 0; opacity: 0; }
+.ow-image-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-dim); }
+.ow-image-frame[data-state="loading"] { animation: ow-image-pulse 1.4s ease-in-out infinite; }
+.ow-image-frame[data-state="loaded"] .ow-image-status { display: none; }
+.ow-image-frame[data-state="failed"] { border: 1px dashed var(--border); }
+@keyframes ow-image-pulse { 50% { opacity: 0.6; } }
+@media (prefers-reduced-motion: reduce) { .ow-image-frame[data-state="loading"] { animation: none; } }
 .ow-row-image figcaption { color: var(--text-dim); margin-top: 2px; }
+.ow-image-condition { display: block; }
+.ow-image-credit { display: block; font-size: 10px; line-height: 1.35; }
 .ow-credits { list-style: none; margin: 12px 0 0; padding: 0; color: var(--text-dim); font-size: 11px; line-height: 1.4; }
 .ow-credits li + li { margin-top: 2px; }
 .ow-credits a { color: inherit; }

@@ -5150,7 +5150,10 @@
       "imageAlt": "{{name}} görüntüsü, {{time}}",
       "mosaicDays": "Arşivdeki gün sayısı: {{count}}",
       "cadence": "her {{minutes}} dakikada yeni görüntü",
-      "sourceUnavailable": "Arşivde bu günler için bu kaynaktan görüntü yok."
+      "sourceUnavailable": "Arşivde bu günler için bu kaynaktan görüntü yok.",
+      "imageLoading": "Görüntü yükleniyor…",
+      "imageFailed": "Görüntü yüklenmedi. Arşiv yavaş ya da erişilemez olabilir.",
+      "noPreview": "Arşivde bu sahnenin henüz bir önizlemesi yok."
     },
     "dailyMosaics": "günlük mozaikler",
     "weatherFrames": "hava durumu görüntüleri"
