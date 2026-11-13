@@ -1,12 +1,14 @@
 /**
  * ChatGPT's app guidelines forbid an app from starting a checkout, linking to
- * one, or promoting an upgrade. They allow saying a feature is not on the
- * user's current plan and linking a page that describes the plans
+ * one, or promoting an upgrade
  * (https://developers.openai.com/apps-sdk/app-submission-guidelines).
  *
  * So a request from ChatGPT gets no `start_upgrade` tool, no checkout hint in
  * denials, and denial copy that states the plan fact without telling the
- * agent to subscribe. Every other client, Codex included, keeps the in-flow
+ * agent to subscribe. OpenAI's review on 2026-11-13 still rejected the app
+ * for facilitating commerce in digital services, so ChatGPT also gets no plans
+ * page link (`upgradeUrl`), no API-plan billing wording in tool copy and no
+ * call-weight metadata. Every other client, Codex included, keeps the in-flow
  * upgrade from #9144 unchanged.
  */
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -19,15 +21,19 @@ import {
   MODERN_SERVER_INSTRUCTIONS,
   SERVER_INSTRUCTIONS,
 } from '../api/mcp/constants.ts';
-import { applyChatGptCommercePolicy, isChatGptHost } from '../api/mcp/host-policy.ts';
+import { applyChatGptCommercePolicy, CHATGPT_HIDDEN_TOOLS, isChatGptHost } from '../api/mcp/host-policy.ts';
 import { CHATGPT_TOOL_LIST_RESPONSE, TOOL_LIST_RESPONSE, TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
+import { AGENT_GUIDE, AGENT_GUIDE_RESOURCE_URI } from '../api/mcp/constants.ts';
 import { MCP_UPGRADE_URL } from '../shared/mcp-attribution.ts';
+import { stripBillingCopy } from '../api/mcp/chatgpt-copy.ts';
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
 
 const CHATGPT_UA = 'openai-mcp/1.0.0';
 // Words that sell rather than inform. `upgradeUrl` is a field name, so the
 // check runs on copy, never on keys.
 const SELLING = /subscribe|upgrade (?:to|at)|upgrade:|checkout|start_upgrade|recommendedPlan|checkoutTool|purchase|\bbuy\b/i;
+// API-plan billing and plan-tier wording, which ChatGPT copy must not carry.
+const BILLING = /\bAPI plans?\b|\bbilling\b|\bweight \d|\bpaid (?:plans?|panel|allocation|MCP)|\bPro Business\b|\bAPI Business\b|\bupgradeUrl\b|worldmonitor\/weight|\/pro\?utm/i;
 
 const originalEnv = { ...process.env };
 beforeEach(() => {
@@ -66,7 +72,7 @@ const FREE_ACCOUNT_CACHE_TOOL = TOOL_REGISTRY.find((tool) => tool._execute === u
 const SUBSCRIPTION_TOOL = TOOL_REGISTRY.find((tool) => toolAccess(tool) === 'subscription' && tool.inputSchema.required.length === 0);
 
 function assertInformsOnly(error, label) {
-  assert.equal(error.data.upgradeUrl, MCP_UPGRADE_URL, `${label}: the plans page link stays`);
+  assert.equal('upgradeUrl' in error.data, false, `${label}: no plans page link`);
   assert.equal('recommendedPlan' in error.data, false, `${label}: no plan pitch`);
   assert.equal('checkoutTool' in error.data, false, `${label}: no checkout tool`);
   assert.doesNotMatch(error.data.nextStep, SELLING, `${label}: nextStep`);
@@ -95,10 +101,12 @@ describe('what ChatGPT is offered', () => {
   });
 
   it('every other tool is listed to ChatGPT, with no selling copy anywhere in the list', () => {
+    // The headline-summary tools are hidden too (mcp-chatgpt-news-policy.test.mjs).
     assert.deepEqual(
       CHATGPT_TOOL_LIST_RESPONSE.map((tool) => tool.name),
-      TOOL_LIST_RESPONSE.map((tool) => tool.name).filter((name) => name !== 'start_upgrade'),
+      TOOL_LIST_RESPONSE.map((tool) => tool.name).filter((name) => !CHATGPT_HIDDEN_TOOLS.has(name)),
     );
+    assert.ok(CHATGPT_HIDDEN_TOOLS.has('start_upgrade'));
     for (const tool of CHATGPT_TOOL_LIST_RESPONSE) {
       assert.doesNotMatch(JSON.stringify(tool), SELLING, tool.name);
     }
@@ -107,7 +115,8 @@ describe('what ChatGPT is offered', () => {
   it('initialize and server/discover instructions drop the checkout flow for ChatGPT', async () => {
     for (const text of [CHATGPT_SERVER_INSTRUCTIONS, CHATGPT_MODERN_SERVER_INSTRUCTIONS]) {
       assert.doesNotMatch(text, SELLING);
-      assert.ok(text.includes(MCP_UPGRADE_URL), 'the plans page is still named');
+      assert.doesNotMatch(text, BILLING);
+      assert.equal(text.includes(MCP_UPGRADE_URL), false, 'no plans page link');
     }
     // Everyone else keeps the documented checkout flow.
     for (const text of [SERVER_INSTRUCTIONS, MODERN_SERVER_INSTRUCTIONS]) assert.match(text, /start_upgrade\(\{plan: recommendedPlan\}\)/);
@@ -115,6 +124,35 @@ describe('what ChatGPT is offered', () => {
     const init = { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'openai-mcp', version: '1.0.0' } } };
     assert.equal((await invoke(fixture().deps, init, CHATGPT_UA)).body.result.instructions, CHATGPT_SERVER_INSTRUCTIONS);
     assert.equal((await invoke(fixture().deps, init, 'Claude-User')).body.result.instructions, SERVER_INSTRUCTIONS);
+  });
+
+  it('ChatGPT tool copy carries no API-plan billing, weights or plans link', () => {
+    for (const tool of CHATGPT_TOOL_LIST_RESPONSE) {
+      assert.doesNotMatch(JSON.stringify(tool), BILLING, tool.name);
+      assert.equal('worldmonitor/weight' in tool._meta, false, `${tool.name} weight`);
+      assert.ok(tool._meta['worldmonitor/access'], `${tool.name} keeps its access class`);
+      assert.ok(tool.description.length > 40, `${tool.name} keeps a description`);
+    }
+    // Other clients keep the full copy and the weight.
+    const market = TOOL_LIST_RESPONSE.find((tool) => tool.name === 'get_market_data');
+    assert.match(market.description, /API plans/);
+    assert.equal(typeof market._meta['worldmonitor/weight'], 'number');
+  });
+
+  it('a description made only of billing copy becomes empty, not unchanged', () => {
+    assert.equal(stripBillingCopy('API plans use weight 2.'), '');
+    assert.equal(stripBillingCopy('Paid plans only; refresh starts a new allocation.'), '');
+    // A tool description keeps its lead sentence, scrubbed.
+    assert.equal(stripBillingCopy('Read quotes. API plans use weight 2.', { keepLead: true }), 'Read quotes.');
+  });
+
+  it('the agent guide ChatGPT reads has no billing copy', async () => {
+    const read = (ua) => invoke(fixture().deps, { jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: AGENT_GUIDE_RESOURCE_URI } }, ua);
+    const chatgpt = (await read(CHATGPT_UA)).body.result.contents[0].text;
+    assert.doesNotMatch(chatgpt, BILLING);
+    assert.doesNotMatch(chatgpt, SELLING);
+    assert.match(chatgpt, /worldmonitor\/access/);
+    assert.equal((await read('Claude-User')).body.result.contents[0].text, AGENT_GUIDE);
   });
 
   it('start_upgrade called from ChatGPT is an unknown tool and opens no checkout', async () => {
