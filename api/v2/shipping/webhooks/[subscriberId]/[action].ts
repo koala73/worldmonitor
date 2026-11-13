@@ -150,6 +150,8 @@ const PERSIST_SCRIPT = [
   "redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])",
   "redis.call('SADD', KEYS[2], ARGV[4])",
   "redis.call('EXPIRE', KEYS[2], ARGV[3])",
+  "redis.call('SADD', KEYS[4], ARGV[4])",
+  "redis.call('EXPIRE', KEYS[4], ARGV[3])",
   "redis.call('SADD', KEYS[3], ARGV[4])",
   'return 1',
 ].join(' ');
@@ -172,8 +174,9 @@ async function persistWebhook(
   ownerTag: string,
 ): Promise<'stored' | 'conflict' | 'unavailable'> {
   const [row] = await runRedisPipeline([[
-    'EVAL', PERSIST_SCRIPT, '3',
+    'EVAL', PERSIST_SCRIPT, '4',
     webhookKey(subscriberId), ownerIndexKey(ownerTag), ALL_INDEX_KEY,
+    ownerIndexKey(record.quotaTag || ownerTag),
     expectedRaw, JSON.stringify(record), String(WEBHOOK_TTL), subscriberId,
   ]]);
   if (!row || row.error) return 'unavailable';

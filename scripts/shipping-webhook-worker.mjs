@@ -1360,6 +1360,34 @@ async function deliverForRecord(group, deliver, now, beforeSend) {
   return { record, outcomes };
 }
 
+export const MAX_DELIVERIES_PER_OWNER_PER_TICK = 20;
+
+function deliveryOwner(record) {
+  return record.quotaTag || record.ownerTag || 'legacy-unowned';
+}
+
+// Redis set order must not put a large owner's entire portfolio ahead of
+// another owner's first alert. Retain order within each owner's subscriptions.
+function interleaveOwners(groups) {
+  const byOwner = new Map();
+  for (const group of groups) {
+    const owner = deliveryOwner(group.record);
+    if (!byOwner.has(owner)) byOwner.set(owner, []);
+    byOwner.get(owner).push(group);
+  }
+  const result = [];
+  let remaining = [...byOwner.values()];
+  for (let round = 0; remaining.length; round += 1) {
+    const next = [];
+    for (const ownerGroups of remaining) {
+      result.push(ownerGroups[round]);
+      if (round + 1 < ownerGroups.length) next.push(ownerGroups);
+    }
+    remaining = next;
+  }
+  return result;
+}
+
 function groupBySubscriber(deliveries, rawById) {
   const groups = new Map();
   for (const delivery of deliveries) {
@@ -1428,10 +1456,16 @@ async function writeWorkerStatus(redis, fence, summary, now) {
 async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
   const fence = lock.fence();
   let lockLost = false;
+  const ownerAttempts = new Map();
   // One round trip renews the lease and re-reads the record. A transport error
   // is retried once; only a confirmed loss or a changed record stops sending.
   const beforeSend = async (group) => {
     if (lockLost) return false;
+    const owner = deliveryOwner(group.record);
+    const attempts = ownerAttempts.get(owner) || 0;
+    if (attempts >= MAX_DELIVERIES_PER_OWNER_PER_TICK) return false;
+    // Reserve before awaiting Redis so concurrent subscriptions share the cap.
+    ownerAttempts.set(owner, attempts + 1);
     const commands = [
       ['EVAL', LOCK_RENEW_SCRIPT, '1', fence.key, fence.token, String(LOCK_TTL_MS)],
       ['GET', webhookKey(group.record.subscriberId)],
@@ -1529,7 +1563,7 @@ async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
 
   // Persist each crossing's delivery id before sending, so a tick that dies
   // after a send still retries under the same id.
-  const groups = groupBySubscriber(deliveries, rawById);
+  const groups = interleaveOwners(groupBySubscriber(deliveries, rawById));
   const pendingStored = assertFenced(await runBatched(redis, groups, (group) => stateWrite(
     fence,
     group.record.subscriberId,

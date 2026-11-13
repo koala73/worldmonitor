@@ -78,6 +78,8 @@ GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&h
 
 Registers a webhook for one push event. Returns `200 OK`.
 
+Registration is limited to 10 stored subscriptions per API key, including inactive subscriptions. New subscriptions registered with user API keys also share a 10-subscription quota across the user's keys. Legacy subscriptions count against the per-key limit and retain their per-key ownership. At the limit, registration returns `429`; delete a subscription to free a slot. Expired records are cleaned from quota indexes during registration.
+
 The events, their thresholds, cooldowns, payload schemas and id rules are defined once in the event registry, [`shared/event-triggers.json`](https://github.com/koala73/worldmonitor/blob/main/shared/event-triggers.json). The [Zapier integration](https://github.com/koala73/worldmonitor/tree/main/integrations/zapier) reads the same file for its instant triggers.
 
 | `eventType` | Kind | Fires when | Scope fields |
@@ -251,6 +253,8 @@ Flips `active: true` on the record and resets `failureCount` to 0 (use after inv
 ```
 
 ### Delivery worker
+
+Each tick attempts at most 20 deliveries per owner, shared across a user's keys for subscriptions registered with the account quota. Legacy subscriptions use their API-key owner. Subscription groups are interleaved by owner; unsent deliveries remain pending for later ticks under the existing retry and expiry rules. Slow successful callbacks consume this budget too.
 
 A worker evaluates every active webhook every 5 minutes. `chokepoint.disruption` webhooks are compared with the chokepoint status feed (the same data as `get-chokepoint-status`); `country.risk_surge` webhooks with the Country Instability Index feed (the same data as `get-risk-scores`, refreshed every 8 minutes). When one feed is unreadable for a tick, webhooks on the other event still run.
 

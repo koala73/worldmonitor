@@ -11,6 +11,7 @@ import {
   CHOKEPOINT_STATUS_RPC_URL,
   LOCK_KEY,
   LOCK_RENEW_SCRIPT,
+  MAX_DELIVERIES_PER_OWNER_PER_TICK,
   RECORD_CAS_SCRIPT,
   RISK_SCORES_KEY,
   RISK_SCORES_STALE_KEY,
@@ -541,6 +542,51 @@ const tick = (fake, deliver, extra = {}) => runTick({
 });
 
 describe('runTick', () => {
+  for (const accountQuota of [false, true]) {
+    it(`bounds slow successful fanout and preserves other owners and deferred state (${accountQuota ? 'account' : 'legacy key'})`, async () => {
+      const fake = seeded();
+      fake.store.delete(RECORD_KEY);
+      const ids = Array.from({ length: 100 }, (_, i) => `wh_mallory_${i}`);
+      for (const [i, id] of ids.entries()) {
+        fake.store.set(`webhook:sub:${id}:v1`, JSON.stringify(record({
+          subscriberId: id,
+          ownerTag: accountQuota ? `rotated-key-${i}` : 'mallory',
+          ...(accountQuota ? { quotaTag: 'mallory-account' } : {}),
+        })));
+      }
+      fake.store.set(RECORD_KEY, JSON.stringify(record({ ownerTag: 'alice' })));
+      fake.store.set('webhook:all:v1', new Set([...ids, SUB]));
+      const sent = [];
+      let aliceSent;
+      const alice = new Promise(resolve => { aliceSent = resolve; });
+      let release;
+      const slow = new Promise(resolve => { release = resolve; });
+      const deliver = async rec => {
+        sent.push(rec.subscriberId);
+        if (rec.ownerTag === 'alice') aliceSent();
+        else await slow;
+        return { ok: true, status: 200 };
+      };
+      const running = tick(fake, deliver);
+      // Alice must start while Mallory's successful callbacks are still blocked.
+      await Promise.race([alice, new Promise((_, reject) => {
+        const timer = setTimeout(() => reject(new Error('Alice was starved')), 1000);
+        timer.unref();
+      })]);
+      assert.ok(sent.indexOf(SUB) < 4);
+      release();
+      const summary = await running;
+      assert.equal(summary.deliveries, MAX_DELIVERIES_PER_OWNER_PER_TICK + 1);
+      const deferredId = ids.find(id => !sent.includes(id));
+      const pending = JSON.parse(fake.store.get(stateKey(deferredId)).suez).pending;
+      assert.ok(pending.deliveryId);
+      const retry = deliverStub([]);
+      await tick(fake, retry.deliver);
+      const delivery = retry.sent.find(({ rec }) => rec.subscriberId === deferredId);
+      assert.equal(delivery.deliveryId, pending.deliveryId);
+    });
+  }
+
   it('delivers, disarms the chokepoint, and records the outcome on the subscriber', async () => {
     const fake = seeded();
     const { sent, deliver } = deliverStub([{ ok: true, status: 202 }]);
