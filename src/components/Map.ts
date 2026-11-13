@@ -6,6 +6,7 @@ import { iso2ToUnCode } from '../../shared/country-numeric-codes';
 import { FOCUS_CENTRES, type FocusFitBounds } from '@/utils/focus-map';
 import type { ReservoirLevel } from '@/services/climate';
 import type { PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
+import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import { reservoirTone, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
 import * as topojson from 'topojson-client';
 import { escapeHtml } from '@/utils/sanitize';
@@ -212,6 +213,7 @@ export class MapComponent {
   private focusOutline: { chosen: Set<string>; neighbours: Set<string> } | null = null;
   private orbitalTrack: PassTrack | null = null;
   private orbitalTrackMarker: TrackPoint | null = null;
+  private orbitalTarget: GeoPoint | null = null;
   private orbitalMarkerNode: SVGCircleElement | null = null;
   /** A focus fit requested while the map had no size (a collapsed mobile map). */
   private pendingFocusFit: FocusFitBounds | null = null;
@@ -1578,6 +1580,7 @@ export class MapComponent {
     steps.push(() => this.renderClusterLayer(projection));
     steps.push(() => this.renderOverlays(projection));
     if (this.orbitalTrack) steps.push(() => this.renderOrbitalTrack(projection));
+    if (this.orbitalTarget) steps.push(() => this.renderOrbitalTarget(projection));
 
     for (let i = 0; i < steps.length; i++) {
       if (chunk && (this.destroyed || token !== this.dynamicRenderToken)) return;
@@ -5141,6 +5144,21 @@ export class MapComponent {
     this.orbitalMarkerNode = layer.append('circle').attr('r', 4).attr('fill', 'rgb(255,214,10)').attr('stroke', '#111')
       .attr('vector-effect', 'non-scaling-stroke').node();
     this.placeOrbitalMarker(projection);
+  }
+
+  public setOrbitalTarget(point: GeoPoint | null): void {
+    this.orbitalTarget = point;
+    if (!point) this.dynamicLayerGroup?.node()?.querySelector('.orbital-target')?.remove();
+    this.render();
+  }
+
+  private renderOrbitalTarget(projection: d3.GeoProjection): void {
+    const target = this.orbitalTarget;
+    const xy = target ? projection([target.lon, target.lat]) : null;
+    if (!xy || !this.dynamicLayerGroup) return;
+    this.dynamicLayerGroup.append('circle').attr('class', 'orbital-target').attr('pointer-events', 'none')
+      .attr('cx', xy[0]).attr('cy', xy[1]).attr('r', 6)
+      .attr('fill', 'rgba(255,255,255,0.25)').attr('stroke', '#fff').attr('stroke-width', 2).attr('vector-effect', 'non-scaling-stroke');
   }
 
   private placeOrbitalMarker(projection: d3.GeoProjection): void {

@@ -12,6 +12,7 @@ type HarnessWindow = Window & {
     setCamera: (camera: { lon: number; lat: number; zoom: number }) => void;
     getDeckLayerSnapshot: () => { id: string; dataCount: number }[];
     setOrbitalTrack: (track: PassTrack | null, marker?: TrackPoint | null) => void;
+    setOrbitalTarget: (point: GeoPoint | null) => void;
   };
 };
 
@@ -27,7 +28,7 @@ function trackOver(name: string, point: GeoPoint, accept: (track: PassTrack) => 
   return track;
 }
 
-const ORBITAL_LAYERS = ['orbital-footprint-layer', 'orbital-track-layer', 'orbital-track-marker-layer'];
+const ORBITAL_LAYERS = ['orbital-footprint-layer', 'orbital-target-layer', 'orbital-track-layer', 'orbital-track-marker-layer'];
 
 const ready = async (page: Page) => {
   await page.goto('/tests/map-harness.html');
@@ -50,6 +51,20 @@ test('draws a selected pass track and footprint on the flat map, moves its marke
   await expect.poll(() => orbitalLayers(page)).toContain('orbital-track-marker-layer:1');
   await page.screenshot({ path: '.claude/verify-evidence/orbital-track-flat.png' });
   await page.evaluate(() => (window as HarnessWindow).__mapHarness!.setOrbitalTrack(null));
+  await expect.poll(() => orbitalLayers(page)).toEqual([]);
+});
+
+test('pins the looked-up point with or without a drawn pass', async ({ page }) => {
+  const point = { lat: 25.112, lon: 55.139 };
+  const track = trackOver('SENTINEL-2A', point);
+  await ready(page);
+  await page.evaluate((p) => (window as HarnessWindow).__mapHarness!.setOrbitalTarget(p), point);
+  await expect.poll(() => orbitalLayers(page)).toEqual(['orbital-target-layer:1']);
+  await page.evaluate((t) => (window as HarnessWindow).__mapHarness!.setOrbitalTrack(t), track);
+  await expect.poll(() => orbitalLayers(page)).toContain('orbital-target-layer:1');
+  await page.evaluate(() => (window as HarnessWindow).__mapHarness!.setOrbitalTrack(null));
+  await expect.poll(() => orbitalLayers(page)).toEqual(['orbital-target-layer:1']);
+  await page.evaluate(() => (window as HarnessWindow).__mapHarness!.setOrbitalTarget(null));
   await expect.poll(() => orbitalLayers(page)).toEqual([]);
 });
 

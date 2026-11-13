@@ -4574,7 +4574,8 @@
   "orbitalWatch": {
     "track": {
       "shown": "Ground track and footprint shown on the map",
-      "replay": "Replay pass"
+      "replay": "Replay pass",
+      "reducedMotion": "Reduced motion is on: the marker stays at closest approach"
     },
     "computing": "Loading the satellite catalog…",
     "computingProgress": "Computing passes: {{done}} of {{total}} satellites",

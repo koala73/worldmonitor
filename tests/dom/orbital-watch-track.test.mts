@@ -13,7 +13,7 @@ vi.mock('@/services/orbital/match', async (importOriginal) => ({
 }));
 vi.mock('@/services/orbital/catalog', () => ({ loadOrbitalCatalog: catalogMock }));
 
-import { findPasses, parseOrbitElements, type OmmRecord } from '../../shared/orbital/pass-geometry.js';
+import { findPasses, parseOrbitElements, type GeoPoint, type OmmRecord } from '../../shared/orbital/pass-geometry.js';
 import { matchSensorProfile } from '../../shared/orbital/sensor-profiles.js';
 import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
@@ -57,6 +57,7 @@ const evidence = (): OrbitalEvidence => ({ passes, acquisitions: [], mosaics: []
 
 let tracks: Array<PassTrack | null>;
 let markers: Array<TrackPoint | null>;
+let targets: Array<GeoPoint | null>;
 let surface: OrbitalTrackSurface;
 let frames: Map<number, FrameRequestCallback>;
 let reducedMotion: boolean;
@@ -79,7 +80,12 @@ beforeAll(async () => {
 beforeEach(() => {
   tracks = [];
   markers = [];
-  surface = { setOrbitalTrack: (track) => tracks.push(track), setOrbitalTrackMarker: (marker) => markers.push(marker) };
+  targets = [];
+  surface = {
+    setOrbitalTrack: (track) => tracks.push(track),
+    setOrbitalTrackMarker: (marker) => markers.push(marker),
+    setOrbitalTarget: (target) => targets.push(target),
+  };
   frames = new Map();
   let nextFrame = 1;
   reducedMotion = false;
@@ -110,7 +116,27 @@ describe('selected pass ground track', () => {
     expect(row(sentinel).getAttribute('aria-current')).toBe('true');
     expect(row(sentinel).textContent).toContain('Ground track and footprint shown on the map');
     expect(row(sentinel).querySelector('[data-action="replay"]')?.textContent).toBe('Replay pass');
+    expect(row(sentinel).querySelector('.ow-track-motion')).toBeNull();
     expect(frames.size).toBe(1);
+  });
+
+  it('pins the looked-up point while the sheet is open and removes the pin on close', async () => {
+    await openWithPasses();
+    expect(targets).toEqual([point]);
+    row(sentinel).click();
+    await vi.waitFor(() => expect(drawn()).toHaveLength(1));
+    expect(targets).toEqual([point]);
+    sheet().querySelector<HTMLButtonElement>('.ow-close')!.click();
+    expect(targets).toEqual([point, null]);
+  });
+
+  it('moves the pin to another map when the sheet reopens there', async () => {
+    await openWithPasses();
+    const other: Array<GeoPoint | null> = [];
+    const next = { lat: -17.7, lon: 178.5 };
+    openOrbitalWatch(next, null, { setOrbitalTrack: () => {}, setOrbitalTrackMarker: () => {}, setOrbitalTarget: (target) => other.push(target) });
+    expect(targets).toEqual([point, null]);
+    expect(other).toEqual([next]);
   });
 
   it('replaces the first pass when a second is chosen', async () => {
@@ -159,6 +185,7 @@ describe('selected pass ground track', () => {
     await vi.waitFor(() => expect(markers).toHaveLength(1));
     expect(markers[0]).toEqual({ lon: sentinel.subSatellite.lon, lat: sentinel.subSatellite.lat, timeMs: sentinel.timeMs });
     expect(frames.size).toBe(0);
+    expect(row(sentinel).querySelector('.ow-track-motion')?.textContent).toBe('Reduced motion is on: the marker stays at closest approach');
     row(sentinel).querySelector<HTMLButtonElement>('[data-action="replay"]')!.click();
     expect(markers).toHaveLength(2);
     expect(markers[1]).toEqual(markers[0]);

@@ -27,6 +27,7 @@ import { PIPELINES } from '@/config/pipelines';
 import { getLocale, initI18n, t } from '@/services/i18n';
 import type { ReservoirLevel } from '@/services/climate';
 import type { PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
+import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import { reservoirHeadline, reservoirTone, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
 import { SITE_VARIANT } from '@/config/variant';
 import { staticAssetUrl } from '@/config/static-asset-url';
@@ -615,6 +616,7 @@ export class GlobeMap {
   private orbitalTrackPaths: GlobePath[] = [];
   private orbitalFootprintPolygons: GlobePolygon[] = [];
   private orbitalTrackMarker: TrackPoint | null = null;
+  private orbitalTarget: GeoPoint | null = null;
   private satelliteFootprintMarkers: SatFootprintMarker[] = [];
   private imagerySceneMarkers: ImagerySceneMarker[] = [];
   private webcamMarkers: (WebcamMarkerData | WebcamClusterData)[] = [];
@@ -1001,11 +1003,11 @@ export class GlobeMap {
 
     (globe as any)
       .pointsData([])
-      .pointLat((d: TrackPoint) => d.lat)
-      .pointLng((d: TrackPoint) => d.lon)
-      .pointColor(() => 'rgba(255,214,10,1)')
-      .pointAltitude(0.01)
-      .pointRadius(1.1);
+      .pointLat((d: GeoPoint) => d.lat)
+      .pointLng((d: GeoPoint) => d.lon)
+      .pointColor((d: GeoPoint) => (d === this.orbitalTarget ? 'rgba(255,255,255,1)' : 'rgba(255,214,10,1)'))
+      .pointAltitude((d: GeoPoint) => (d === this.orbitalTarget ? 0.012 : 0.01))
+      .pointRadius((d: GeoPoint) => (d === this.orbitalTarget ? 0.6 : 1.1));
 
     // Polygon accessors — set once
     (globe as any)
@@ -2609,10 +2611,16 @@ export class GlobeMap {
     this.flushOrbitalTrackMarker();
   }
 
+  public setOrbitalTarget(point: GeoPoint | null): void {
+    this.orbitalTarget = point;
+    this.flushOrbitalTrackMarker();
+  }
+
   private flushOrbitalTrackMarker(): void {
     if (!this.globe || !this.initialized || this.destroyed || this.webglLost) return;
     this.wakeGlobe();
-    (this.globe as any).pointsData(this.orbitalTrackMarker ? [this.orbitalTrackMarker] : []);
+    const points: GeoPoint[] = [this.orbitalTrackMarker, this.orbitalTarget].filter((point): point is GeoPoint => point !== null);
+    (this.globe as any).pointsData(points);
   }
 
 

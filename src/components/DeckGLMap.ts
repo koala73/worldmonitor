@@ -58,6 +58,7 @@ import { getWindColor } from '@/config/wind-colors';
 import { CII_LEVEL_COLORS, type CiiLevel } from '@/config/cii-colors';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { FootprintRing, PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
+import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import { fetchImageryScenes } from '@/services/imagery';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
@@ -772,6 +773,7 @@ export class DeckGLMap {
   private bypassArcData: BypassArcDatum[] = [];
   private orbitalTrack: PassTrack | null = null;
   private orbitalTrackMarker: TrackPoint | null = null;
+  private orbitalTarget: GeoPoint | null = null;
   private scenarioState: ScenarioVisualState | null = null;
   private selectedChinaCorridorOverlay: ChinaCorridorOverlayProjection | null = null;
   private affectedIso2Set: Set<string> = new Set();
@@ -8165,9 +8167,31 @@ export class DeckGLMap {
     this.render();
   }
 
+  public setOrbitalTarget(point: GeoPoint | null): void {
+    this.orbitalTarget = point;
+    this.render();
+  }
+
+  private createOrbitalTargetLayer(): Layer[] {
+    const target = this.orbitalTarget;
+    if (!target) return [];
+    return [new ScatterplotLayer<GeoPoint>({
+      id: 'orbital-target-layer',
+      data: [target],
+      getPosition: (point) => [point.lon, point.lat],
+      getRadius: 7,
+      radiusUnits: 'pixels',
+      getFillColor: [255, 255, 255, 60],
+      getLineColor: [255, 255, 255, 255],
+      stroked: true,
+      lineWidthMinPixels: 2.5,
+      pickable: false,
+    })];
+  }
+
   private createOrbitalTrackLayers(): Layer[] {
     const track = this.orbitalTrack;
-    if (!track) return [];
+    if (!track) return this.createOrbitalTargetLayer();
     const layers: Layer[] = [
       new PolygonLayer<FootprintRing>({
         id: 'orbital-footprint-layer',
@@ -8203,7 +8227,7 @@ export class DeckGLMap {
         pickable: false,
       }));
     }
-    return layers;
+    return [...layers, ...this.createOrbitalTargetLayer()];
   }
 
   public clearBypassRoutes(): void {

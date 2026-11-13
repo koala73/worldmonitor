@@ -5115,7 +5115,8 @@
   "orbitalWatch": {
     "track": {
       "shown": "A földi nyomvonal és a lefedettség a térképen látható",
-      "replay": "Áthaladás visszajátszása"
+      "replay": "Áthaladás visszajátszása",
+      "reducedMotion": "A csökkentett mozgás be van kapcsolva: a jelölő a legközelebbi ponton marad"
     },
     "computing": "Műholdkatalógus betöltése…",
     "computingProgress": "Áthaladások számítása: {{done}} / {{total}} műhold",

@@ -5087,7 +5087,8 @@
   "orbitalWatch": {
     "track": {
       "shown": "Vệt mặt đất và vùng phủ hiển thị trên bản đồ",
-      "replay": "Phát lại lượt bay qua"
+      "replay": "Phát lại lượt bay qua",
+      "reducedMotion": "Giảm chuyển động đang bật: điểm đánh dấu dừng ở điểm tiếp cận gần nhất"
     },
     "computing": "Đang tải danh mục vệ tinh…",
     "computingProgress": "Đang tính các lượt bay: {{done}} trên {{total}} vệ tinh",

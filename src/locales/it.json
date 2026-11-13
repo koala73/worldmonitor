@@ -5143,7 +5143,8 @@
   "orbitalWatch": {
     "track": {
       "shown": "Traccia al suolo e impronta mostrate sulla mappa",
-      "replay": "Riproduci passaggio"
+      "replay": "Riproduci passaggio",
+      "reducedMotion": "Movimento ridotto attivo: il segnaposto resta nel punto di massimo avvicinamento"
     },
     "computing": "Caricamento del catalogo satellitare…",
     "computingProgress": "Calcolo dei passaggi: {{done}} di {{total}} satelliti",

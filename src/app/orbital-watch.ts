@@ -18,6 +18,7 @@ let run: AbortController | null = null;
 export interface OrbitalTrackSurface {
   setOrbitalTrack(track: PassTrack | null): void;
   setOrbitalTrackMarker(point: TrackPoint | null): void;
+  setOrbitalTarget(point: GeoPoint | null): void;
 }
 
 let surface: OrbitalTrackSurface | null = null;
@@ -116,6 +117,8 @@ export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null
     onClose: () => {
       cancel();
       clearTrack();
+      surface?.setOrbitalTarget(null);
+      surface = null;
       lookup = null;
       point = null;
     },
@@ -124,7 +127,9 @@ export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null
     onReplayPass: () => replay?.play(),
   });
   clearTrack();
+  if (surface !== map) surface?.setOrbitalTarget(null);
   surface = map;
+  surface?.setOrbitalTarget(at);
   point = at;
   lookup = null;
   page.open(at, returnFocusTo);

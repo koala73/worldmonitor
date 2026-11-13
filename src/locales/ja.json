@@ -5087,7 +5087,8 @@
   "orbitalWatch": {
     "track": {
       "shown": "地上軌跡と観測範囲を地図に表示中",
-      "replay": "通過を再生"
+      "replay": "通過を再生",
+      "reducedMotion": "動きを減らす設定が有効：マーカーは最接近点に留まります"
     },
     "computing": "衛星カタログを読み込み中…",
     "computingProgress": "通過を計算中：{{total}} 機中 {{done}} 機",

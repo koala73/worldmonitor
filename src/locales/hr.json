@@ -5154,7 +5154,8 @@
   "orbitalWatch": {
     "track": {
       "shown": "Zemaljski trag i obuhvat prikazani su na karti",
-      "replay": "Ponovi prelet"
+      "replay": "Ponovi prelet",
+      "reducedMotion": "Smanjeno kretanje je uključeno: oznaka ostaje na točki najvećeg približavanja"
     },
     "computing": "Učitavanje kataloga satelita…",
     "computingProgress": "Izračun preleta: {{done}} od {{total}} satelita",

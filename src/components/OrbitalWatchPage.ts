@@ -8,6 +8,7 @@ import type { DailyMosaicRow, GeostationaryRow } from '@/services/orbital/archiv
 import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
+import { REDUCED_MOTION_QUERY } from '@/services/orbital/track-replay';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
 import '../styles/orbital-watch.css';
 
@@ -224,9 +225,11 @@ function passRow(pass: PointPass, checking: boolean, acquisition: MatchedAcquisi
 }
 
 function trackControls(): HTMLElement {
+  const still = typeof matchMedia === 'function' && matchMedia(REDUCED_MOTION_QUERY).matches;
   return h('div', { className: 'ow-track' },
     h('span', { className: 'ow-track-note' }, t('orbitalWatch.track.shown')),
-    h('button', { type: 'button', className: 'ow-replay', dataset: { action: 'replay' } }, t('orbitalWatch.track.replay')));
+    h('button', { type: 'button', className: 'ow-replay', dataset: { action: 'replay' } }, t('orbitalWatch.track.replay')),
+    still ? h('span', { className: 'ow-track-motion' }, t('orbitalWatch.track.reducedMotion')) : null);
 }
 
 function unmatchedImageRow(acquisition: MatchedAcquisition): HTMLElement {

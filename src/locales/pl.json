@@ -5171,7 +5171,8 @@
   "orbitalWatch": {
     "track": {
       "shown": "Ślad naziemny i obszar obserwacji pokazane na mapie",
-      "replay": "Odtwórz przelot"
+      "replay": "Odtwórz przelot",
+      "reducedMotion": "Ograniczenie ruchu jest włączone: znacznik pozostaje w punkcie największego zbliżenia"
     },
     "computing": "Wczytywanie katalogu satelitów…",
     "computingProgress": "Obliczanie przelotów: {{done}} z {{total}} satelitów",

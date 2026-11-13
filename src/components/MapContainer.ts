@@ -13,6 +13,7 @@ import type { ReservoirLevel } from '@/services/climate';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import type { FocusFitBounds } from '@/utils/focus-map';
 import type { PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
+import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import {
   isLayerToggleAllowed,
   isLayerEntitled,
@@ -239,6 +240,7 @@ export class MapContainer {
   private focusOutline: MapFocusOutline | null = null;
   private orbitalTrack: PassTrack | null = null;
   private orbitalTrackMarker: TrackPoint | null = null;
+  private orbitalTarget: GeoPoint | null = null;
   /** Bumped by fits, clears and chosen-country changes; stale fits drop themselves. */
   private focusFitSeq = 0;
   private pendingChokepointOpen: string | null = null;
@@ -950,6 +952,7 @@ export class MapContainer {
     if (this.cachedScenarioState !== undefined) this.applyScenarioState(this.cachedScenarioState);
     if (this.focusOutline) this.applyFocusOutline();
     if (this.orbitalTrack) this.applyOrbitalTrack();
+    if (this.orbitalTarget) this.applyOrbitalTarget();
     for (const layer of this.hiddenLayerToggles) this.hideLayerToggle(layer);
   }
 
@@ -1984,6 +1987,18 @@ export class MapContainer {
     this.deckGLMap?.setOrbitalTrackMarker(point);
     this.svgMap?.setOrbitalTrackMarker(point);
     this.globeMap?.setOrbitalTrackMarker(point);
+  }
+
+  /** Pins the point a satellite lookup is about; null removes the pin. */
+  public setOrbitalTarget(point: GeoPoint | null): void {
+    this.orbitalTarget = point;
+    this.applyOrbitalTarget();
+  }
+
+  private applyOrbitalTarget(): void {
+    this.deckGLMap?.setOrbitalTarget(this.orbitalTarget);
+    this.svgMap?.setOrbitalTarget(this.orbitalTarget);
+    this.globeMap?.setOrbitalTarget(this.orbitalTarget);
   }
 
   private applyOrbitalTrack(): void {

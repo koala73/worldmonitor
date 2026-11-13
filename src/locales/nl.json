@@ -5115,7 +5115,8 @@
   "orbitalWatch": {
     "track": {
       "shown": "Grondspoor en opnamegebied op de kaart getoond",
-      "replay": "Overkomst afspelen"
+      "replay": "Overkomst afspelen",
+      "reducedMotion": "Beperkte beweging staat aan: de markering blijft op het punt van dichtste nadering"
     },
     "computing": "Satellietcatalogus laden…",
     "computingProgress": "Passages berekenen: {{done}} van {{total}} satellieten",

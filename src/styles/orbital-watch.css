@@ -55,8 +55,9 @@
 .ow-row[data-pass-key] { cursor: pointer; }
 .ow-row[data-pass-key]:hover { background: var(--surface); }
 .ow-row[aria-current="true"] { background: var(--surface); box-shadow: inset 0 0 0 1px rgba(255, 214, 10, 0.6); }
-.ow-track { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.ow-track { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
 .ow-track-note { color: var(--text-dim); }
+.ow-track-motion { flex-basis: 100%; color: var(--text-dim); font-size: 11px; }
 .ow-replay { background: var(--surface); color: var(--text); border: 1px solid rgba(255, 214, 10, 0.6); border-radius: 4px; padding: 3px 10px; cursor: pointer; white-space: nowrap; }
 .ow-privacy { margin: 0; padding: 8px 14px 12px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 11px; line-height: 1.4; }
 

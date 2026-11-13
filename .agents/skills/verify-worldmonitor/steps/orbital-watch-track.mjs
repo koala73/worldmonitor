@@ -60,6 +60,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await first.click();
   await sheet.locator('.ow-row[aria-current="true"] .ow-replay').waitFor();
   log('selected', firstName, await sheet.locator('.ow-row[aria-current="true"] .ow-track-note').innerText());
+  const crop = sheet.locator('.ow-row[aria-current="true"] img').first();
+  if (await crop.count()) log('crop', await crop.getAttribute('src'));
   if (switchToSvg) {
     await page.getByRole('button', { name: '2D', exact: true }).click();
     await page.waitForSelector('#mapContainer.svg-mode:not([aria-busy])', { timeout: 60_000 });

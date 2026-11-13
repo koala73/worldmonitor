@@ -201,6 +201,7 @@ type MapHarness = {
   getOverlaySnapshot: () => OverlaySnapshot;
   getCyberTooltipHtml: (indicator: string) => string;
   setOrbitalTrack: (track: PassTrack | null, marker?: TrackPoint | null) => void;
+  setOrbitalTarget: (point: { lat: number; lon: number } | null) => void;
   showChinaCorridor: (index?: number) => void;
   runTradeAnimationProfile: (
     options?: TradeAnimationProfileOptions,
@@ -1999,6 +2000,9 @@ window.__mapHarness = {
   runTradeAnimationProfile,
   setOrbitalTrack: (track: PassTrack | null, marker: TrackPoint | null = null): void => {
     map.setOrbitalTrack(track, marker);
+  },
+  setOrbitalTarget: (point: { lat: number; lon: number } | null): void => {
+    map.setOrbitalTarget(point);
   },
   showChinaCorridor: (index = 0): void => {
     const definition = CHINA_LOGISTICS_CORRIDORS[index] ?? CHINA_LOGISTICS_CORRIDORS[0]!;

@@ -5087,7 +5087,8 @@
   "orbitalWatch": {
     "track": {
       "shown": "地面轨迹和覆盖范围已显示在地图上",
-      "replay": "回放过境"
+      "replay": "回放过境",
+      "reducedMotion": "已开启减少动态效果：标记停留在最近点"
     },
     "computing": "正在加载卫星目录…",
     "computingProgress": "正在计算过境：{{done}} / {{total}} 颗卫星",

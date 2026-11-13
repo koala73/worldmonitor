@@ -5143,7 +5143,8 @@
   "orbitalWatch": {
     "track": {
       "shown": "Traza terrestre y huella mostradas en el mapa",
-      "replay": "Reproducir paso"
+      "replay": "Reproducir paso",
+      "reducedMotion": "Movimiento reducido activado: el marcador se queda en el punto de máxima aproximación"
     },
     "computing": "Cargando el catálogo de satélites…",
     "computingProgress": "Calculando pasos: {{done}} de {{total}} satélites",
