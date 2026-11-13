@@ -22,6 +22,7 @@ import {
 } from '../../../../shared/orbital/sensor-profiles.js';
 import { ORBITAL_CATALOG_KEY } from '../../../_shared/cache-keys';
 import { readCachedJson } from '../../../_shared/redis';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 /** Must equal api/health.js SEED_META.orbitalCatalog.maxStaleMin; pinned by tests. */
 export const ORBITAL_CATALOG_MAX_STALE_MINUTES = 540;
@@ -140,15 +141,15 @@ export function toCatalogResponse(value: unknown, nowMs: number): ListImagingSat
 }
 
 export async function listImagingSatellites(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   _req: ListImagingSatellitesRequest,
 ): Promise<ListImagingSatellitesResponse> {
   const read = await readCachedJson(ORBITAL_CATALOG_KEY, true);
   if (read.status === 'error') {
     const message = read.error instanceof Error ? read.error.message : String(read.error);
     console.warn(`[orbital-catalog] ${ORBITAL_CATALOG_KEY} read failed: ${message}`);
-    return emptyCatalog();
   }
-  if (read.status !== 'hit') return emptyCatalog();
-  return toCatalogResponse(read.value, Date.now());
+  const response = read.status === 'hit' ? toCatalogResponse(read.value, Date.now()) : emptyCatalog();
+  // An empty catalog must not sit in the CDN for the slow tier's hour after the seeder recovers.
+  return response.satellites.length === 0 ? markNoStoreFallbackResponse(ctx.request, response) : response;
 }

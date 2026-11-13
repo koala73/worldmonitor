@@ -7,6 +7,7 @@ vi.mock('../_shared/redis', () => ({ readCachedJson: reads }));
 import { buildCatalog } from '../../scripts/_orbital-catalog.mjs';
 import { SENSOR_INVENTORY_VERSION, SENSOR_PROFILES } from '../../shared/orbital/sensor-profiles.js';
 import { ORBITAL_CATALOG_KEY } from '../_shared/cache-keys';
+import { drainResponseHeaders } from '../_shared/response-headers';
 import {
   listImagingSatellites,
   ORBITAL_CATALOG_MAX_STALE_MINUTES,
@@ -51,6 +52,7 @@ describe('listImagingSatellites', () => {
       ['2026-11-13', NOW],
     ]);
     expect(res.ring[1]?.elements).toHaveLength(res.satellites.length);
+    expect(drainResponseHeaders(ctx.request)).toBeUndefined();
   });
 
   it('returns an empty stale catalog when the key is missing', async () => {
@@ -58,6 +60,7 @@ describe('listImagingSatellites', () => {
     const res = await listImagingSatellites(ctx, {});
     expect(res).toMatchObject({ satellites: [], ring: [], fetchedAt: 0, stale: true });
     expect(res.profiles).toHaveLength(SENSOR_PROFILES.length);
+    expect(drainResponseHeaders(ctx.request)).toEqual({ 'X-No-Cache': '1' });
   });
 
   it('returns an empty stale catalog instead of failing when Redis errors', async () => {
