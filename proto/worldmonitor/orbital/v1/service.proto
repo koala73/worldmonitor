@@ -16,12 +16,12 @@ service OrbitalService {
     option (sebuf.http.config) = {path: "/list-imaging-satellites", method: HTTP_METHOD_GET};
   }
 
-  // GetPointPasses returns every imaging pass whose footprint covers a point over the last 7 days and the next 72 hours, each with one tier, and the archive images matched to them. The point is rounded to 0.01 degrees and the response names the point used. Requires a subscription.
+  // GetPointPasses returns every imaging pass whose footprint covers a point over the last 7 days and the next 72 hours, each with one tier, and the archive images matched to them. The point is rounded to 0.01 degrees and the response names the point used.
   rpc GetPointPasses(GetPointPassesRequest) returns (GetPointPassesResponse) {
     option (sebuf.http.config) = {path: "/get-point-passes", method: HTTP_METHOD_GET};
   }
 
-  // GetCountryImageryEvidence returns a country's watched sites with their newest scene, next imaging window and any confirmed change flag. Requires a subscription.
+  // GetCountryImageryEvidence returns a country's watched sites with their newest scene, next imaging window and any confirmed change flag.
   rpc GetCountryImageryEvidence(GetCountryImageryEvidenceRequest) returns (GetCountryImageryEvidenceResponse) {
     option (sebuf.http.config) = {path: "/get-country-imagery-evidence", method: HTTP_METHOD_GET};
   }
