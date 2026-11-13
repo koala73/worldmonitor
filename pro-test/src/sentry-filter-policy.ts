@@ -785,6 +785,23 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // `src/bootstrap/sentry-init.ts`.
   if (!hasFirstParty && nonInfraFrames.some((f) => MASKED_URL_FRAME.test(f.filename ?? ''))) return null;
 
+  // A ReferenceError whose every frame is `<anonymous>`: an injected script
+  // naming a bare global it never defined. Sentry WORLDMONITOR-1E7 and -1E8
+  // are the shape: two sibling `is not defined` errors from one VivoBrowser /
+  // Android page load at `/`, each with a single `<anonymous>:1:1` frame.
+  // `<anonymous>` is the filename an engine gives code evaluated from a
+  // string, and no first-party source on this surface does that (no `eval`,
+  // `new Function`, or string-bodied timer; tests/pro-sentry-filter-policy
+  // .test.mts pins it across `pro-test/src`, its `shared/` leaves and the
+  // inline scripts). So a first-party ReferenceError always carries an asset
+  // or document frame. Keyed on that stack invariant rather than on the
+  // identifier, so the next injected global needs no entry of its own. Ports
+  // the dashboard's WORLDMONITOR-1A2 gate (`src/bootstrap/sentry-init.ts`),
+  // including its strictness: a blob:, filename-less or empty stack reports.
+  if (exceptionType === 'ReferenceError'
+      && frames.length > 0
+      && frames.every((f) => f.filename === '<anonymous>')) return null;
+
   // An injected script's `eval` refused by our CSP. WORLDMONITOR-129 is the
   // shape: `EvalError` on Edge 150 / Windows at `/pro`, an `onerror` capture
   // whose only frames are two `<anonymous>:1` entries, the filename V8 gives
