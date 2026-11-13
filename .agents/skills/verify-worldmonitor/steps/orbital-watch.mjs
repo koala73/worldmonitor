@@ -52,16 +52,22 @@ export default async function ({ page, base, shot, log, expectVisible }) {
 
   await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': '"globe"' } });
   const [atLat, atLon] = (process.env.WM_VERIFY_ORBITAL_AT ?? '25.112,55.139').split(',');
-  await page.goto(`${base}/dashboard?lat=${atLat}&lon=${atLon}&zoom=6`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${base}/dashboard?lat=${Number(atLat).toFixed(1)}&lon=${Number(atLon).toFixed(1)}&zoom=6`, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
   log('renderer', await waitForMap(page));
 
   const sheet = page.locator('.orbital-watch-sheet');
-  const aim = { dx: 0, dy: 0 };
-  const open = async (dx = aim.dx, dy = aim.dy) => {
+  const rightClickOpen = async () => {
     const box = await page.locator('#mapContainer canvas').first().boundingBox();
-    await page.mouse.click(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, { button: 'right' });
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: 'right' });
     await page.getByRole('menuitem', { name: 'Satellite passes here' }).or(page.getByText('Satellite passes here', { exact: true })).first().click();
+    await expectVisible('.orbital-watch-sheet');
+  };
+  const open = async () => {
+    await page.evaluate(async ([lat, lon]) => {
+      const { openOrbitalWatch } = await import('/src/app/orbital-watch.ts');
+      openOrbitalWatch({ lat, lon }, document.getElementById('mapContainer'));
+    }, [Number(atLat), Number(atLon)]);
     await expectVisible('.orbital-watch-sheet');
   };
   const close = async () => {
@@ -74,22 +80,9 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     if (!(await sheet.locator('.ow-privacy').isVisible())) throw new Error('privacy notice missing');
   };
 
-  const pickedAt = async (dx, dy) => {
-    await open(dx, dy);
-    const [lat, ns, lon, ew] = (await sheet.locator('.ow-point').innerText()).match(/([\d.]+)°([NS]), ([\d.]+)°([EW])/).slice(1);
-    await close();
-    return { lat: ns === 'S' ? -lat : +lat, lon: ew === 'W' ? -lon : +lon };
-  };
-  for (let pass = 0; pass < 2; pass++) {
-    const at = await pickedAt(aim.dx, aim.dy);
-    const right = await pickedAt(aim.dx + 100, aim.dy);
-    const down = await pickedAt(aim.dx, aim.dy + 100);
-    const [a, b, c, d] = [(right.lon - at.lon) / 100, (down.lon - at.lon) / 100, (right.lat - at.lat) / 100, (down.lat - at.lat) / 100];
-    const [eLon, eLat] = [Number(atLon) - at.lon, Number(atLat) - at.lat];
-    const det = a * d - b * c;
-    aim.dx += (d * eLon - b * eLat) / det;
-    aim.dy += (a * eLat - c * eLon) / det;
-  }
+  await rightClickOpen();
+  log('right-click picked', await sheet.locator('.ow-point').innerText());
+  await close();
 
   let release;
   holdArchives = new Promise((resolve) => { release = resolve; });
@@ -119,8 +112,10 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const openGroups = sheet.locator('.ow-group-toggle[aria-expanded="true"]');
   while (await openGroups.count() > 1) await openGroups.last().click();
   const viewport = page.viewportSize();
-  if (!mobile) await page.setViewportSize({ width: 1920, height: 1080 });
-  await sheet.locator('.ow-credits').scrollIntoViewIfNeeded();
+  await page.setViewportSize({ width: viewport.width, height: mobile ? 1800 : 1600 });
+  const sentinel2 = sheet.locator('.ow-row', { hasText: /SENTINEL-2/ }).filter({ has: page.locator('.ow-row-image img') }).last();
+  await sentinel2.evaluate((row) => row.scrollIntoView({ block: 'start' }));
+  await page.waitForFunction(() => [...document.querySelectorAll('.orbital-watch-sheet .ow-row-image img')].every((img) => img.complete && img.naturalWidth > 0), null, { timeout: 30_000 });
   await shot('confirmed-image-and-result-credit-line');
   await page.setViewportSize(viewport);
   await close();
