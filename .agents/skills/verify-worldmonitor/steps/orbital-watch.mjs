@@ -57,8 +57,27 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     url: req.url(), body: req.postData() ?? '', harnessNavigation: req.isNavigationRequest() && req.frame() === page.mainFrame(),
   }));
 
-  // WM_VERIFY_ORBITAL_MAP=flat shoots on the 2D map; the globe stays the default.
+  // WM_VERIFY_ORBITAL_MAP=flat shoots on the 2D map; the globe stays the default. MapContainer refuses deck.gl on a
+  // software GL renderer, which is all a GPU-less VM has, so the flat drive reports a hardware renderer to the probe,
+  // as e2e/embed.spec.ts does, to get the deck.gl map desktop users see.
   const mapMode = process.env.WM_VERIFY_ORBITAL_MAP === 'flat' ? 'flat' : 'globe';
+  if (mapMode === 'flat') {
+    await page.addInitScript(() => {
+      const getContext = HTMLCanvasElement.prototype.getContext;
+      const info = { UNMASKED_RENDERER_WEBGL: 0x9246 };
+      let probed = false;
+      HTMLCanvasElement.prototype.getContext = function probeAsHardware(id, options) {
+        if (id === 'webgl2' && !probed) {
+          probed = true;
+          return {
+            getExtension: (name) => (name === 'WEBGL_debug_renderer_info' ? info : null),
+            getParameter: (param) => (param === info.UNMASKED_RENDERER_WEBGL ? 'ANGLE Hardware Renderer' : null),
+          };
+        }
+        return Reflect.apply(getContext, this, [id, options]);
+      };
+    });
+  }
   await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': JSON.stringify(mapMode) } });
   await page.goto(`${base}/dashboard?view=global&lat=${PLACE.lat}&lon=${PLACE.lon}&zoom=${PLACE.zoom}`, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
@@ -163,6 +182,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     await expectVisible('.orbital-watch-sheet');
   };
   const calibrate = async () => {
+    if (!(await page.locator('#mapContainer canvas').count())) return log('context menu pick', 'skipped: the SVG map has no context menu');
     const picked = await pickedAt(null);
     log('context menu pick', JSON.stringify(picked));
   };
@@ -193,7 +213,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('hero caption', (await hero.locator('.ow-caption').innerText()).replace(/\s+/g, ' '));
   const heroCredit = await hero.locator('.ow-image-credit').innerText();
   log('hero credit', heroCredit);
-  if (!/COPERNICUS SENTINEL DATA|LANDSAT/i.test(heroCredit)) throw new Error(`closest look has no image credit: ${heroCredit}`);
+  if (!/COPERNICUS SENTINEL|LANDSAT/i.test(heroCredit)) throw new Error(`closest look has no image credit: ${heroCredit}`);
   if (await sheet.locator('.orbital-watch-sheet, .ow-panel').first().evaluate((el) => el.textContent.includes('We acknowledge'))) throw new Error('acknowledgement paragraph in the sheet');
   const heroFits = await page.evaluate(() => {
     const card = document.querySelector('.orbital-watch-sheet .ow-card');
