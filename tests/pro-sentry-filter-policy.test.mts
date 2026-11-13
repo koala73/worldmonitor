@@ -1878,3 +1878,49 @@ describe('marketingBeforeSend — Firefox bare-primitive throw (WORLDMONITOR-1CH
     assert.deepEqual(offenders, [], 'a first-party bare-primitive throw — re-derive the WORLDMONITOR-1CH rule');
   });
 });
+
+describe('marketingBeforeSend — injected numeric-literal parse failure on document line 1 (WORLDMONITOR-10B)', () => {
+  const MSG = 'No identifiers allowed directly after numeric literal';
+  const parseEvent = (
+    frames: { filename: string; lineno?: number }[],
+    value = MSG,
+    type: string | undefined = 'SyntaxError',
+  ): PolicyEvent => ({
+    exception: { values: [{ type, value, stacktrace: { frames } }] },
+  });
+
+  it('drops the production shape: one frame, the document URL at line 1', () => {
+    assert.equal(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }])), null);
+  });
+
+  it('drops the same shape on /pro and when Sentry omits the type', () => {
+    assert.equal(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/pro', lineno: 1 }])), null);
+    assert.equal(
+      marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], `SyntaxError: ${MSG}`, undefined)),
+      null,
+    );
+  });
+
+  it('keeps the parse failure when it sits below line 1, where our inline scripts live', () => {
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 40 }])), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/' }])), null);
+  });
+
+  it('keeps it with a first-party asset frame, an empty stack, or another message', () => {
+    assert.notEqual(marketingBeforeSend(parseEvent([
+      { filename: 'https://www.worldmonitor.app/', lineno: 1 },
+      { filename: 'https://www.worldmonitor.app/pro/assets/index-a1b2c3.js', lineno: 1 },
+    ])), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([])), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], `${MSG} in config`)), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], 'Unexpected end of input')), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], MSG, 'TypeError')), null);
+  });
+
+  it('pins line 1 of every marketing document to the doctype alone, which is what licenses the rule', () => {
+    for (const rel of ['pro-test/welcome.html', 'pro-test/index.html']) {
+      const firstLine = readFileSync(resolve(root, rel), 'utf-8').split('\n', 1)[0]!.trim();
+      assert.equal(firstLine.toLowerCase(), '<!doctype html>', rel);
+    }
+  });
+});

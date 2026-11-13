@@ -38,6 +38,7 @@ type PolicyPrimitive = number | string | boolean | bigint | symbol | null | unde
 interface PolicyFrame {
   filename?: string;
   function?: string;
+  lineno?: number;
 }
 interface PolicyException {
   type?: string;
@@ -571,6 +572,8 @@ const APPEND_CHILD_PARSE_FAILURE = /^Failed to execute 'appendChild' on 'Node': 
  * own bundle could in principle produce one (a `JSON.parse` on a malformed API
  * body throws exactly these phrasings), so it must stay behind the frame gate.
  */
+/** JavaScriptCore's and SpiderMonkey's wording for a malformed numeric literal (`3foo`). */
+const NUMERIC_LITERAL_PARSE_FAILURE = /^(?:SyntaxError: )?No identifiers allowed directly after numeric literal$/;
 const PARSE_FAILURE = /^(?:Unexpected token|Unexpected identifier|Invalid or unexpected token|Unexpected end of (?:script|input))\b/;
 /**
  * The `action` tags our third-party-SDK loader call sites stamp on a capture.
@@ -954,6 +957,24 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
       && /\bcontentWindow\b/.test(msg)
       && nonInfraFrames.length > 0
       && nonInfraFrames.every((f) => MARKETING_DOCUMENT_FRAME.test(f.filename ?? ''))) return null;
+
+  // An injected script that does not parse, attributed to line 1 of the
+  // document. Sentry WORLDMONITOR-10B's 2026-11-13 event is the shape:
+  // `SyntaxError: No identifiers allowed directly after numeric literal` on
+  // Firefox iOS 159 / iOS 18.7 at `/`, an `onerror` capture whose only frame
+  // is the document URL at line 1. The dashboard drops the same sentence
+  // behind its `!hasFirstParty` gate; that gate alone is not enough here,
+  // because this surface ships inline script that WebKit also attributes to
+  // the document URL. Line 1 is the licence: every marketing document opens
+  // with `<!doctype html>` on its own line (pinned by the test suite), so no
+  // inline script of ours can sit there. An inline parse failure of ours
+  // would also fire for every visitor on that engine, not as a one-off.
+  if ((excType === 'SyntaxError' || /^SyntaxError: /.test(msg))
+      && exceptionValues.length === 1
+      && !hasFirstParty
+      && NUMERIC_LITERAL_PARSE_FAILURE.test(msg)
+      && nonInfraFrames.length > 0
+      && nonInfraFrames.every((f) => MARKETING_DOCUMENT_FRAME.test(f.filename ?? '') && f.lineno === 1)) return null;
 
   return event;
 }
