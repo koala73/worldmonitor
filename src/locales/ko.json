@@ -5211,7 +5211,9 @@
         "window": "7일 범위 · {{start}} → {{end}}",
         "failed": "실패",
         "note": "Planetary Computer와 NASA GIBS는 요청 시 이미지를 생성하므로 이 단계는 몇 초 걸릴 수 있습니다."
-      }
+      },
+      "zoneShowUtc": "시간을 UTC로 표시",
+      "zoneShowLocal": "시간을 이 장소의 현지 시간으로 표시"
     },
     "search": {
       "label": "장소 이름 또는 좌표",

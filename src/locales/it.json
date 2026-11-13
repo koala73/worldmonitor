@@ -5267,7 +5267,9 @@
         "window": "Finestra di 7 giorni · {{start}} → {{end}}",
         "failed": "Non riuscito",
         "note": "Planetary Computer e NASA GIBS generano le immagini su richiesta, quindi questo passaggio può richiedere alcuni secondi."
-      }
+      },
+      "zoneShowUtc": "Mostra gli orari in UTC",
+      "zoneShowLocal": "Mostra gli orari nell'ora locale di questo luogo"
     },
     "search": {
       "label": "Nome del luogo o coordinate",

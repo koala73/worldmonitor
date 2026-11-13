@@ -220,6 +220,21 @@ describe('the search row', () => {
     await vi.waitFor(() => expect(sheet()!.querySelector('.ow-headline')?.textContent).toContain('Rotterdam, South Holland, Netherlands'));
   });
 
+  it('shows pass times in the place\'s zone, and switches them to UTC', async () => {
+    const zoneChange = vi.fn();
+    document.addEventListener('orbital-watch:zone-change', (event) => zoneChange((event as CustomEvent).detail), { once: true });
+    openOrbitalWatch(EXACT, null, 'full');
+    await vi.waitFor(() => expect(sheet()!.querySelector('.ow-headline')).not.toBeNull());
+    expect(text()).toMatch(/\d\d:\d\d UTC\+1/);
+    button('.ow-zone').click();
+    expect(zoneChange).toHaveBeenCalledWith({ timeZone: 'UTC', label: 'UTC' });
+    expect(button('.ow-zone').textContent).toBe('UTC');
+    expect(button('.ow-zone').getAttribute('aria-pressed')).toBe('false');
+    expect(text()).not.toMatch(/UTC\+1/);
+    button('.ow-zone').click();
+    expect(button('.ow-zone').textContent).toBe('EUROPE/PARIS · UTC+1');
+  });
+
   it('keeps the full view when a place is picked from it', async () => {
     openOrbitalWatch(EXACT, null, 'full');
     button('.ow-change').click();

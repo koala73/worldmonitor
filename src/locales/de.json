@@ -5239,7 +5239,9 @@
         "window": "7-Tage-Fenster · {{start}} → {{end}}",
         "failed": "Fehlgeschlagen",
         "note": "Planetary Computer und NASA GIBS erzeugen Bilder auf Abruf, daher kann dieser Schritt einige Sekunden dauern."
-      }
+      },
+      "zoneShowUtc": "Zeiten in UTC anzeigen",
+      "zoneShowLocal": "Zeiten in der Ortszeit dieses Ortes anzeigen"
     },
     "search": {
       "label": "Ortsname oder Koordinaten",

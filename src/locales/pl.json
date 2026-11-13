@@ -5295,7 +5295,9 @@
         "window": "Okno 7 dni · {{start}} → {{end}}",
         "failed": "Niepowodzenie",
         "note": "Planetary Computer i NASA GIBS generują obrazy na żądanie, więc ten krok może potrwać kilka sekund."
-      }
+      },
+      "zoneShowUtc": "Pokaż godziny w UTC",
+      "zoneShowLocal": "Pokaż godziny w czasie lokalnym tego miejsca"
     },
     "search": {
       "label": "Nazwa miejsca lub współrzędne",

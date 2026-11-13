@@ -160,7 +160,7 @@ describe('satellite pass lookup sheet', () => {
     expect(cards().map((c) => c.querySelector('.ow-card-tag')!.textContent)).toEqual(['Closest look', 'SENTINEL-2C', 'MODIS TERRA']);
     const [first] = cards();
     const lines = [...first!.querySelectorAll('.ow-caption-lines span')].map((l) => l.textContent);
-    expect(lines[0]).toMatch(/^LANDSAT 9 · .* UTC$/);
+    expect(lines[0]).toMatch(/^LANDSAT 9 · .* UTC\+4$/);
     expect(lines[1]).toBe('10 M · 8 days ago · Clouded · 69%');
     expect(first!.querySelector('.ow-image-credit')!.textContent).toBe(IMAGE_CREDIT.usgs);
     for (const overlay of ['.ow-reticle', '.ow-scale', '.ow-north', '.ow-expand']) expect(first!.querySelector(overlay)).not.toBeNull();

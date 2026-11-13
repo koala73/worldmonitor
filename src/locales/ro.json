@@ -5267,7 +5267,9 @@
         "window": "Fereastră de 7 zile · {{start}} → {{end}}",
         "failed": "Eșuat",
         "note": "Planetary Computer și NASA GIBS generează imaginile la cerere, așa că acest pas poate dura câteva secunde."
-      }
+      },
+      "zoneShowUtc": "Afișează orele în UTC",
+      "zoneShowLocal": "Afișează orele în ora locală a acestui loc"
     },
     "search": {
       "label": "Nume de loc sau coordonate",

@@ -3018,6 +3018,8 @@
   "orbitalWatch.ui.tab.weather": "Weather",
   "orbitalWatch.ui.tile.failed": "Image unavailable · {{archive}}",
   "orbitalWatch.ui.tile.noPreview": "The archive has no preview of this scene yet",
+  "orbitalWatch.ui.zoneShowLocal": "Show times in this place's local time",
+  "orbitalWatch.ui.zoneShowUtc": "Show times in UTC",
   "orbitalWatch.unavailable": "The satellite catalog could not be loaded, so no passes were computed for this point.",
   "orbitalWatch.weatherFrames": "weather frames",
   "panelVariants.commodity.insights": "AI Commodity Insights",

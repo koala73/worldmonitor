@@ -5239,7 +5239,9 @@
         "window": "Kipindi cha siku 7 · {{start}} → {{end}}",
         "failed": "Imeshindwa",
         "note": "Planetary Computer na NASA GIBS huunda picha zinapoombwa, kwa hivyo hatua hii inaweza kuchukua sekunde chache."
-      }
+      },
+      "zoneShowUtc": "Onyesha nyakati kwa UTC",
+      "zoneShowLocal": "Onyesha nyakati kwa saa za mahali hapa"
     },
     "search": {
       "label": "Jina la mahali au viwianishi",

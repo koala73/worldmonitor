@@ -5239,7 +5239,9 @@
         "window": "7 napos ablak · {{start}} → {{end}}",
         "failed": "Sikertelen",
         "note": "A Planetary Computer és a NASA GIBS igény szerint készíti a képeket, ezért ez a lépés néhány másodpercig tarthat."
-      }
+      },
+      "zoneShowUtc": "Időpontok megjelenítése UTC szerint",
+      "zoneShowLocal": "Időpontok megjelenítése a hely helyi ideje szerint"
     },
     "search": {
       "label": "Helynév vagy koordináták",

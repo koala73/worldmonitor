@@ -5267,7 +5267,9 @@
         "window": "Janela de 7 dias · {{start}} → {{end}}",
         "failed": "Falhou",
         "note": "Planetary Computer e NASA GIBS geram imagens sob demanda, então esta etapa pode levar alguns segundos."
-      }
+      },
+      "zoneShowUtc": "Mostrar horários em UTC",
+      "zoneShowLocal": "Mostrar horários na hora local deste lugar"
     },
     "search": {
       "label": "Nome do local ou coordenadas",

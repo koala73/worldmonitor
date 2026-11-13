@@ -5211,7 +5211,9 @@
         "window": "7 天窗口 · {{start}} → {{end}}",
         "failed": "失败",
         "note": "Planetary Computer 和 NASA GIBS 按需生成图像，因此此步骤可能需要几秒钟。"
-      }
+      },
+      "zoneShowUtc": "以 UTC 显示时间",
+      "zoneShowLocal": "以此地的当地时间显示时间"
     },
     "search": {
       "label": "地名或坐标",

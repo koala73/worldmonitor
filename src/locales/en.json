@@ -4698,7 +4698,9 @@
         "window": "7-day window · {{start}} → {{end}}",
         "failed": "Failed",
         "note": "Planetary Computer and NASA GIBS render images on demand, so this step can take a few seconds."
-      }
+      },
+      "zoneShowUtc": "Show times in UTC",
+      "zoneShowLocal": "Show times in this place's local time"
     },
     "search": {
       "label": "Place name or coordinates",

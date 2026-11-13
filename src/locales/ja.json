@@ -5211,7 +5211,9 @@
         "window": "7日間の範囲 · {{start}} → {{end}}",
         "failed": "失敗",
         "note": "Planetary ComputerとNASA GIBSは画像を要求時に生成するため、この手順には数秒かかることがあります。"
-      }
+      },
+      "zoneShowUtc": "時刻をUTCで表示",
+      "zoneShowLocal": "時刻をこの場所の現地時間で表示"
     },
     "search": {
       "label": "地名または座標",

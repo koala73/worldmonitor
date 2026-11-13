@@ -5239,7 +5239,9 @@
         "window": "Venster van 7 dagen · {{start}} → {{end}}",
         "failed": "Mislukt",
         "note": "Planetary Computer en NASA GIBS maken beelden op aanvraag, dus deze stap kan een paar seconden duren."
-      }
+      },
+      "zoneShowUtc": "Tijden in UTC tonen",
+      "zoneShowLocal": "Tijden in de lokale tijd van deze plek tonen"
     },
     "search": {
       "label": "Plaatsnaam of coördinaten",

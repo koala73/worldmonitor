@@ -5295,7 +5295,9 @@
         "window": "7denní okno · {{start}} → {{end}}",
         "failed": "Selhalo",
         "note": "Planetary Computer a NASA GIBS vytvářejí snímky na vyžádání, proto tento krok může trvat několik sekund."
-      }
+      },
+      "zoneShowUtc": "Zobrazit časy v UTC",
+      "zoneShowLocal": "Zobrazit časy v místním čase tohoto místa"
     },
     "search": {
       "label": "Název místa nebo souřadnice",

@@ -10,7 +10,7 @@ import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
-import { placeTimeZone, placeTimeZoneLabel } from '@/utils/place-time-zone';
+import { placeTimeZone, placeTimeZoneLabel, zoneAbbreviation, type PlaceTimeZone } from '@/utils/place-time-zone';
 import '../styles/orbital-tokens.css';
 import '../styles/orbital-watch.css';
 
@@ -176,6 +176,11 @@ export function setOrbitalDisplayZone(timeZone: string, label: string): void {
   displayZone = { timeZone, label };
 }
 
+/** The zone the sheet shows times in, for surfaces that label their own times (the timeline header). */
+export function getOrbitalDisplayZone(): { timeZone: string; label: string } {
+  return displayZone;
+}
+
 export function formatOrbitalTime(ms: number, style: 'day' | 'date' | 'clock' | 'when' | 'stamp'): string {
   const { timeZone, label } = displayZone;
   const day = () => new Intl.DateTimeFormat(lang(), { weekday: 'short', day: 'numeric', month: 'short', timeZone }).format(ms);
@@ -184,7 +189,8 @@ export function formatOrbitalTime(ms: number, style: 'day' | 'date' | 'clock' | 
     case 'day': return day();
     case 'date': return new Intl.DateTimeFormat(lang(), { day: 'numeric', month: 'short', timeZone }).format(ms);
     case 'clock': return clock();
-    case 'when': return `${day()} · ${clock()} ${label}`;
+    // The abbreviation follows the moment shown, so a pass across a daylight-saving change reads right.
+    case 'when': return `${day()} · ${clock()} ${timeZone === 'UTC' ? label : zoneAbbreviation(timeZone, ms)}`;
     case 'stamp': return `${formatOrbitalTime(ms, 'date')} ${clock()}`;
   }
 }
@@ -514,6 +520,9 @@ export class OrbitalWatchPage {
   private readonly place: HTMLElement;
   private readonly zone: HTMLElement;
   private placeName: string | null = null;
+  private placeZone: PlaceTimeZone | null = null;
+  /** Times show in the point's local zone unless the reader switched to UTC; the choice holds across places. */
+  private localTime = true;
   private readonly changeButton: HTMLElement;
   private readonly closeButton: HTMLElement;
   private readonly privacy: HTMLElement;
@@ -535,7 +544,7 @@ export class OrbitalWatchPage {
   constructor(private readonly callbacks: OrbitalWatchPageCallbacks) {
     const titleId = 'orbital-watch-title';
     this.place = h('h2', { id: titleId, className: 'ow-place' });
-    this.zone = h('p', { className: 'ow-zone ow-label' });
+    this.zone = h('button', { type: 'button', className: 'ow-zone ow-label', dataset: { action: 'zone' } });
     this.changeButton = h('button', { type: 'button', className: 'ow-change ow-label', dataset: { action: 'change' } });
     this.closeButton = h('button', { type: 'button', className: 'ow-close', dataset: { action: 'close' } }, '×');
     this.body = h('div', { className: 'ow-body' });
@@ -585,6 +594,18 @@ export class OrbitalWatchPage {
     if (this.state) this.render(this.state);
   }
 
+  /** Points every time on the sheet at the place's zone, or at UTC when the reader asked for it or the zone is unknown. */
+  private applyZone(): void {
+    const zone = this.placeZone;
+    const local = this.localTime && zone !== null;
+    if (local) setOrbitalDisplayZone(zone.zone, zone.abbr);
+    else setOrbitalDisplayZone('UTC', 'UTC');
+    this.zone.hidden = zone === null;
+    this.zone.textContent = local ? placeTimeZoneLabel(zone) : 'UTC';
+    this.zone.setAttribute('aria-pressed', String(local));
+    this.zone.title = t(local ? 'orbitalWatch.ui.zoneShowUtc' : 'orbitalWatch.ui.zoneShowLocal');
+  }
+
   private placeLabel(): string {
     return this.placeName ?? (this.point ? formatPoint(this.point) : t('orbitalWatch.search.label'));
   }
@@ -598,8 +619,8 @@ export class OrbitalWatchPage {
     this.cardIndex = 0;
     this.filter = null;
     this.place.textContent = this.placeLabel();
-    const zone = point ? placeTimeZone(point) : null;
-    this.zone.textContent = zone ? placeTimeZoneLabel(zone) : '';
+    this.placeZone = point ? placeTimeZone(point) : null;
+    this.applyZone();
     this.sheet.setAttribute('aria-label', t('contextMenu.satellitePasses'));
     this.changeButton.textContent = t('orbitalWatch.ui.change');
     this.closeButton.setAttribute('aria-label', t('countryBrief.closeBtn'));
@@ -935,6 +956,12 @@ export class OrbitalWatchPage {
       case 'close': this.view === 'full' ? this.setView('sheet') : this.close(); return;
       case 'change': this.callbacks.onChangePlace ? this.callbacks.onChangePlace() : this.close(); return;
       case 'open-full': this.setView('full'); return;
+      case 'zone':
+        this.localTime = !this.localTime;
+        this.applyZone();
+        if (this.state) this.render(this.state);
+        this.sheet.dispatchEvent(new CustomEvent('orbital-watch:zone-change', { bubbles: true, detail: getOrbitalDisplayZone() }));
+        return;
       case 'share': this.callbacks.onShare ? this.callbacks.onShare(actionEl!) : this.share(actionEl!); return;
       case 'retry-image': {
         const tile = actionEl!.closest<HTMLElement>('.ow-tile');

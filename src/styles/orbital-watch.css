@@ -358,8 +358,9 @@
 }
 
 .ow-place-block { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.ow-zone { margin: 0; color: var(--ow-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ow-zone:empty { display: none; }
+.ow-zone { align-self: flex-start; max-width: 100%; margin: 0; padding: 0; border: 0; background: none; color: var(--ow-faint); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.ow-zone:hover, .ow-zone:focus-visible { color: var(--ow-text); }
+.ow-zone[hidden], .ow-zone:empty { display: none; }
 .ow-search-slot[hidden] { display: none; }
 .ow-tools { padding: var(--ow-space-3) var(--ow-panel-pad); border-bottom: 1px solid var(--ow-line); display: flex; flex-direction: column; gap: var(--ow-space-2); }
 .ow-search { display: flex; gap: var(--ow-space-2); flex-wrap: wrap; }

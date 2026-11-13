@@ -5239,7 +5239,9 @@
         "window": "7-dagarsfönster · {{start}} → {{end}}",
         "failed": "Misslyckades",
         "note": "Planetary Computer och NASA GIBS skapar bilder på begäran, så steget kan ta några sekunder."
-      }
+      },
+      "zoneShowUtc": "Visa tider i UTC",
+      "zoneShowLocal": "Visa tider i platsens lokala tid"
     },
     "search": {
       "label": "Platsnamn eller koordinater",

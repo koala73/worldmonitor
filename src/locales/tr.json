@@ -5239,7 +5239,9 @@
         "window": "7 günlük pencere · {{start}} → {{end}}",
         "failed": "Başarısız",
         "note": "Planetary Computer ve NASA GIBS görüntüleri istek üzerine oluşturur, bu adım birkaç saniye sürebilir."
-      }
+      },
+      "zoneShowUtc": "Saatleri UTC olarak göster",
+      "zoneShowLocal": "Saatleri bu yerin yerel saatiyle göster"
     },
     "search": {
       "label": "Yer adı veya koordinatlar",

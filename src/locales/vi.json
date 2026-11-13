@@ -5211,7 +5211,9 @@
         "window": "Khung 7 ngày · {{start}} → {{end}}",
         "failed": "Thất bại",
         "note": "Planetary Computer và NASA GIBS tạo ảnh theo yêu cầu, nên bước này có thể mất vài giây."
-      }
+      },
+      "zoneShowUtc": "Hiển thị thời gian theo UTC",
+      "zoneShowLocal": "Hiển thị thời gian theo giờ địa phương của nơi này"
     },
     "search": {
       "label": "Tên địa điểm hoặc tọa độ",

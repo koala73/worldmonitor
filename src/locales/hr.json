@@ -5278,7 +5278,9 @@
         "window": "7-dnevni prozor · {{start}} → {{end}}",
         "failed": "Neuspjelo",
         "note": "Planetary Computer i NASA GIBS izrađuju snimke na zahtjev, pa ovaj korak može potrajati nekoliko sekundi."
-      }
+      },
+      "zoneShowUtc": "Prikaži vremena u UTC-u",
+      "zoneShowLocal": "Prikaži vremena po lokalnom vremenu ovog mjesta"
     },
     "search": {
       "label": "Naziv mjesta ili koordinate",
