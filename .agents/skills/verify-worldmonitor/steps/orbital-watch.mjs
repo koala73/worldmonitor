@@ -324,6 +324,11 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     && needles.every((n) => `${url} ${body}`.includes(n)));
   log('requests', requests.length, 'archive requests', requests.filter(({ url }) => ARCHIVE_HOSTS.includes(new URL(url).hostname)).length);
   if (leaks.length) throw new Error(`picked point left the browser: ${leaks.map((l) => l.url).join(', ')}`);
+  // RUM resource timings keep a URL's path, so the point may ride only in an archive request's query or body.
+  const pathLeaks = requests.filter(({ url }) => ARCHIVE_HOSTS.includes(new URL(url).hostname)
+    && needles.some((n) => new URL(url).pathname.includes(n)));
+  log('archive requests with the point in the path', pathLeaks.length);
+  if (pathLeaks.length) throw new Error(`picked point in an archive URL path: ${pathLeaks.map((l) => l.url).join(', ')}`);
   const timeline = await page.evaluate((hosts) => ({
     lcp: performance.getEntriesByType('largest-contentful-paint').map((e) => e.url).filter(Boolean),
     archiveResources: performance.getEntriesByType('resource').filter((e) => hosts.includes(new URL(e.name).hostname)).length,
