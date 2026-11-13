@@ -5293,6 +5293,7 @@
       "altitude": "Höhe",
       "offNadir": "Off-Nadir",
       "crossed": "{{name}} überflog den Ort in {{altitude}} km Höhe, {{distance}} km {{direction}}, um {{time}} UTC, mit {{speed}} km/s über Grund.",
+      "crossedHeading": "{{name}} überflog den Ort in {{altitude}} km Höhe, {{distance}} km {{direction}}, um {{time}} UTC, Richtung {{heading}} mit {{speed}} km/s über Grund.",
       "looking": "Es blickte {{deg}}° neben die Senkrechte.",
       "sceneCloud": "Wolkenbedeckung der Szene: {{pct}} %.",
       "pixelLine": "{{m}} m Pixel",
@@ -5309,6 +5310,10 @@
         "sw": "südwestlich",
         "w": "westlich",
         "nw": "nordwestlich"
+      },
+      "heading": {
+        "north": "Norden",
+        "south": "Süden"
       }
     }
   }

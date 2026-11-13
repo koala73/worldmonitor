@@ -5293,6 +5293,7 @@
       "altitude": "ऊँचाई",
       "offNadir": "नादिर से विचलन",
       "crossed": "{{name}} {{altitude}} किमी ऊपर, {{distance}} किमी {{direction}}, {{time}} UTC पर, ज़मीन पर {{speed}} किमी/से की गति से गुज़रा।",
+      "crossedHeading": "{{name}} {{altitude}} किमी ऊपर, {{distance}} किमी {{direction}}, {{time}} UTC पर, {{heading}} की ओर ज़मीन पर {{speed}} किमी/से की गति से गुज़रा।",
       "looking": "यह सीधे नीचे से {{deg}}° हटकर देख रहा था।",
       "sceneCloud": "दृश्य में बादल: {{pct}}%।",
       "pixelLine": "{{m}} मी पिक्सेल",
@@ -5309,6 +5310,10 @@
         "sw": "दक्षिण-पश्चिम में",
         "w": "पश्चिम में",
         "nw": "उत्तर-पश्चिम में"
+      },
+      "heading": {
+        "north": "उत्तर",
+        "south": "दक्षिण"
       }
     }
   }

@@ -5349,6 +5349,7 @@
       "altitude": "Высота",
       "offNadir": "Отклонение от надира",
       "crossed": "{{name}} пролетел на высоте {{altitude}} км, в {{distance}} км {{direction}}, в {{time}} UTC, со скоростью {{speed}} км/с над землёй.",
+      "crossedHeading": "{{name}} пролетел на высоте {{altitude}} км, в {{distance}} км {{direction}}, в {{time}} UTC, двигаясь на {{heading}} со скоростью {{speed}} км/с над землёй.",
       "looking": "Он смотрел под углом {{deg}}° от вертикали.",
       "sceneCloud": "Облачность сцены: {{pct}}%.",
       "pixelLine": "Пиксель {{m}} м",
@@ -5365,6 +5366,10 @@
         "sw": "к юго-западу",
         "w": "к западу",
         "nw": "к северо-западу"
+      },
+      "heading": {
+        "north": "север",
+        "south": "юг"
       }
     }
   }

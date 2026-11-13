@@ -5293,6 +5293,7 @@
       "altitude": "Mwinuko",
       "offNadir": "Mkengeuko kutoka nadiri",
       "crossed": "{{name}} ilipita kilomita {{altitude}} juu, kilomita {{distance}} {{direction}}, saa {{time}} UTC, kwa kasi ya km/s {{speed}} juu ya ardhi.",
+      "crossedHeading": "{{name}} ilipita kilomita {{altitude}} juu, kilomita {{distance}} {{direction}}, saa {{time}} UTC, ikielekea {{heading}} kwa kasi ya km/s {{speed}} juu ya ardhi.",
       "looking": "Ilikuwa ikitazama {{deg}}° mbali na wima.",
       "sceneCloud": "Mawingu ya picha: {{pct}}%.",
       "pixelLine": "Pikseli ya m {{m}}",
@@ -5309,6 +5310,10 @@
         "sw": "upande wa kusini-magharibi",
         "w": "upande wa magharibi",
         "nw": "upande wa kaskazini-magharibi"
+      },
+      "heading": {
+        "north": "kaskazini",
+        "south": "kusini"
       }
     }
   }

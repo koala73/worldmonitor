@@ -5293,6 +5293,7 @@
       "altitude": "Υψόμετρο",
       "offNadir": "Απόκλιση από ναδίρ",
       "crossed": "Ο {{name}} πέρασε σε ύψος {{altitude}} km, {{distance}} km {{direction}}, στις {{time}} UTC, με {{speed}} km/s πάνω από το έδαφος.",
+      "crossedHeading": "Ο {{name}} πέρασε σε ύψος {{altitude}} km, {{distance}} km {{direction}}, στις {{time}} UTC, κινούμενος προς τα {{heading}} με {{speed}} km/s πάνω από το έδαφος.",
       "looking": "Κοιτούσε {{deg}}° από την κατακόρυφο.",
       "sceneCloud": "Νεφοκάλυψη σκηνής: {{pct}}%.",
       "pixelLine": "Εικονοστοιχείο {{m}} m",
@@ -5309,6 +5310,10 @@
         "sw": "νοτιοδυτικά",
         "w": "δυτικά",
         "nw": "βορειοδυτικά"
+      },
+      "heading": {
+        "north": "βόρεια",
+        "south": "νότια"
       }
     }
   }

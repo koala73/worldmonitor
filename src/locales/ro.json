@@ -5321,6 +5321,7 @@
       "altitude": "Altitudine",
       "offNadir": "Abatere de la nadir",
       "crossed": "{{name}} a trecut la {{altitude}} km altitudine, la {{distance}} km {{direction}}, la {{time}} UTC, cu {{speed}} km/s deasupra solului.",
+      "crossedHeading": "{{name}} a trecut la {{altitude}} km altitudine, la {{distance}} km {{direction}}, la {{time}} UTC, deplasându-se spre {{heading}} cu {{speed}} km/s deasupra solului.",
       "looking": "Privea la {{deg}}° de verticală.",
       "sceneCloud": "Acoperirea cu nori a scenei: {{pct}}%.",
       "pixelLine": "Pixel de {{m}} m",
@@ -5337,6 +5338,10 @@
         "sw": "spre sud-vest",
         "w": "spre vest",
         "nw": "spre nord-vest"
+      },
+      "heading": {
+        "north": "nord",
+        "south": "sud"
       }
     }
   }

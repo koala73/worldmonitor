@@ -5293,6 +5293,7 @@
       "altitude": "Височина",
       "offNadir": "Отклонение от надира",
       "crossed": "{{name}} премина на {{altitude}} км височина, на {{distance}} км {{direction}}, в {{time}} UTC, със скорост {{speed}} км/с над земята.",
+      "crossedHeading": "{{name}} премина на {{altitude}} км височина, на {{distance}} км {{direction}}, в {{time}} UTC, движейки се на {{heading}} със скорост {{speed}} км/с над земята.",
       "looking": "Гледаше на {{deg}}° от вертикалата.",
       "sceneCloud": "Облачност на сцената: {{pct}}%.",
       "pixelLine": "Пиксел {{m}} м",
@@ -5309,6 +5310,10 @@
         "sw": "на югозапад",
         "w": "на запад",
         "nw": "на северозапад"
+      },
+      "heading": {
+        "north": "север",
+        "south": "юг"
       }
     }
   }

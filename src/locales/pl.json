@@ -5349,6 +5349,7 @@
       "altitude": "Wysokość",
       "offNadir": "Odchylenie od nadiru",
       "crossed": "{{name}} przeleciał na wysokości {{altitude}} km, {{distance}} km {{direction}}, o {{time}} UTC, z prędkością {{speed}} km/s nad ziemią.",
+      "crossedHeading": "{{name}} przeleciał na wysokości {{altitude}} km, {{distance}} km {{direction}}, o {{time}} UTC, lecąc na {{heading}} z prędkością {{speed}} km/s nad ziemią.",
       "looking": "Patrzył {{deg}}° od pionu.",
       "sceneCloud": "Zachmurzenie sceny: {{pct}}%.",
       "pixelLine": "Piksel {{m}} m",
@@ -5365,6 +5366,10 @@
         "sw": "na południowy zachód",
         "w": "na zachód",
         "nw": "na północny zachód"
+      },
+      "heading": {
+        "north": "północ",
+        "south": "południe"
       }
     }
   }

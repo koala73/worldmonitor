@@ -25,7 +25,7 @@ const EARTH_RADIUS_KM = 6371;
 const EARTH_MU_KM3_S2 = 398_600.4418;
 const DIRECTIONS = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'] as const;
 
-/** Speed of the point under the satellite across the ground, for a circular orbit at this altitude. */
+/** Ground speed for a circular orbit at this altitude, used when the pass carries no propagated motion. */
 export function groundSpeedKmS(altitudeKm: number): number {
   const radius = EARTH_RADIUS_KM + altitudeKm;
   return Math.sqrt(EARTH_MU_KM3_S2 / radius) * (EARTH_RADIUS_KM / radius);
@@ -60,15 +60,18 @@ function cell(label: string, value: string): HTMLElement {
 export function renderPassDetail(input: PassDetailInput): HTMLElement {
   const { pass, acquisition } = input;
   const altitude = Math.round(pass.altitudeKm);
+  const crossing = {
+    name: pass.name,
+    altitude,
+    distance: Math.round(pass.groundDistanceKm),
+    direction: t(`orbitalWatch.passDetail.dir.${compassFrom(input.point, pass.subSatellite)}`),
+    time: input.clock,
+    speed: (pass.motion?.groundSpeedKmS ?? groundSpeedKmS(pass.altitudeKm)).toFixed(2),
+  };
   const sentence = [
-    t('orbitalWatch.passDetail.crossed', {
-      name: pass.name,
-      altitude,
-      distance: Math.round(pass.groundDistanceKm),
-      direction: t(`orbitalWatch.passDetail.dir.${compassFrom(input.point, pass.subSatellite)}`),
-      time: input.clock,
-      speed: groundSpeedKmS(pass.altitudeKm).toFixed(2),
-    }),
+    pass.motion
+      ? t('orbitalWatch.passDetail.crossedHeading', { ...crossing, heading: t(`orbitalWatch.passDetail.heading.${pass.motion.heading}`) })
+      : t('orbitalWatch.passDetail.crossed', crossing),
     t('orbitalWatch.passDetail.looking', { deg: input.offNadirDeg.toFixed(1) }),
     acquisition?.cloudCoverPct != null && acquisition.profileId !== 'sentinel-1'
       ? t('orbitalWatch.passDetail.sceneCloud', { pct: Math.round(acquisition.cloudCoverPct) })

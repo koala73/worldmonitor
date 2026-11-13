@@ -5293,6 +5293,7 @@
       "altitude": "İrtifa",
       "offNadir": "Nadirden sapma",
       "crossed": "{{name}}, {{altitude}} km yükseklikte, {{distance}} km {{direction}}, {{time}} UTC'de, yerde {{speed}} km/sn hızla geçti.",
+      "crossedHeading": "{{name}}, {{altitude}} km yükseklikte, {{distance}} km {{direction}}, {{time}} UTC'de, {{heading}} yönünde yerde {{speed}} km/sn hızla geçti.",
       "looking": "Dikeyden {{deg}}° sapmış bakıyordu.",
       "sceneCloud": "Sahne bulut örtüsü: %{{pct}}.",
       "pixelLine": "{{m}} m piksel",
@@ -5309,6 +5310,10 @@
         "sw": "güneybatıda",
         "w": "batıda",
         "nw": "kuzeybatıda"
+      },
+      "heading": {
+        "north": "kuzey",
+        "south": "güney"
       }
     }
   }

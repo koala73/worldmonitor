@@ -210,6 +210,7 @@ describe('satellite pass lookup sheet', () => {
 
   it('opens a pass detail from a pass row in the full view and steps between passes', () => {
     const { all, confirmedNew, confirmedOld } = tiered();
+    confirmedOld.motion = { heading: 'south', groundSpeedKmS: 6.71 };
     mounted(answered(all, { acquisitions: [acquisition(confirmedNew, { cloudCoverPct: 12, condition: 'clear' })] }), null, 'full');
     rowOf(confirmedNew.name).click();
     const detail = page().slot('pass-detail');
@@ -225,6 +226,7 @@ describe('satellite pass lookup sheet', () => {
     detail.querySelector<HTMLButtonElement>('[data-action="detail-step"][data-step="1"]')!.click();
     expect(detail.querySelector('.ow-detail-title strong')!.textContent).toBe(confirmedOld.name);
     expect(detail.querySelector('.ow-detail-cell:nth-child(3)')!.textContent).toBe('Pixel—');
+    expect(detail.querySelector('.ow-detail-sentence')!.textContent).toMatch(/^LANDSAT 9 crossed 700 km up, 42 km to the north, at \d\d:\d\d UTC, moving south at 6\.71 km\/s over the ground\./);
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(detail.childElementCount).toBe(0);

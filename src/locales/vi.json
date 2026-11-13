@@ -5265,6 +5265,7 @@
       "altitude": "Độ cao",
       "offNadir": "Lệch thiên đế",
       "crossed": "{{name}} bay qua ở độ cao {{altitude}} km, cách {{distance}} km {{direction}}, lúc {{time}} UTC, với tốc độ mặt đất {{speed}} km/s.",
+      "crossedHeading": "{{name}} bay qua ở độ cao {{altitude}} km, cách {{distance}} km {{direction}}, lúc {{time}} UTC, đi về phía {{heading}} với tốc độ mặt đất {{speed}} km/s.",
       "looking": "Nó nhìn lệch {{deg}}° so với phương thẳng đứng.",
       "sceneCloud": "Độ che phủ mây của cảnh: {{pct}}%.",
       "pixelLine": "Điểm ảnh {{m}} m",
@@ -5281,6 +5282,10 @@
         "sw": "về phía tây nam",
         "w": "về phía tây",
         "nw": "về phía tây bắc"
+      },
+      "heading": {
+        "north": "bắc",
+        "south": "nam"
       }
     }
   }

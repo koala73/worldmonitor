@@ -5265,6 +5265,7 @@
       "altitude": "高度",
       "offNadir": "オフナディア角",
       "crossed": "{{name}} は高度 {{altitude}} km、この地点の{{direction}} {{distance}} km を {{time}} UTC に地表速度 {{speed}} km/s で通過しました。",
+      "crossedHeading": "{{name}} は高度 {{altitude}} km、この地点の{{direction}} {{distance}} km を {{time}} UTC に{{heading}}へ地表速度 {{speed}} km/s で通過しました。",
       "looking": "真下から {{deg}}° 傾けて観測していました。",
       "sceneCloud": "シーンの雲量: {{pct}}%。",
       "pixelLine": "{{m}} m ピクセル",
@@ -5281,6 +5282,10 @@
         "sw": "南西",
         "w": "西",
         "nw": "北西"
+      },
+      "heading": {
+        "north": "北",
+        "south": "南"
       }
     }
   }

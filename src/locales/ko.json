@@ -5265,6 +5265,7 @@
       "altitude": "고도",
       "offNadir": "오프나디르",
       "crossed": "{{name}}은(는) 고도 {{altitude}}km에서 이 지점의 {{direction}} {{distance}}km 지점을 {{time}} UTC에 지상 속도 {{speed}}km/s로 지나갔습니다.",
+      "crossedHeading": "{{name}}은(는) 고도 {{altitude}}km에서 이 지점의 {{direction}} {{distance}}km 지점을 {{time}} UTC에 {{heading}}으로 지상 속도 {{speed}}km/s로 지나갔습니다.",
       "looking": "바로 아래에서 {{deg}}° 기울여 보고 있었습니다.",
       "sceneCloud": "장면 구름량: {{pct}}%.",
       "pixelLine": "{{m}}m 픽셀",
@@ -5281,6 +5282,10 @@
         "sw": "남서쪽",
         "w": "서쪽",
         "nw": "북서쪽"
+      },
+      "heading": {
+        "north": "북쪽",
+        "south": "남쪽"
       }
     }
   }

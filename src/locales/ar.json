@@ -5405,6 +5405,7 @@
       "altitude": "الارتفاع",
       "offNadir": "الانحراف عن النظير",
       "crossed": "عبر {{name}} على ارتفاع {{altitude}} كم، على بعد {{distance}} كم {{direction}}، في {{time}} UTC، بسرعة {{speed}} كم/ث فوق الأرض.",
+      "crossedHeading": "عبر {{name}} على ارتفاع {{altitude}} كم، على بعد {{distance}} كم {{direction}}، في {{time}} UTC، متجهًا نحو {{heading}} بسرعة {{speed}} كم/ث فوق الأرض.",
       "looking": "كان ينظر بزاوية {{deg}}° عن الاتجاه العمودي.",
       "sceneCloud": "الغطاء السحابي للمشهد: {{pct}}%.",
       "pixelLine": "بكسل {{m}} م",
@@ -5421,6 +5422,10 @@
         "sw": "إلى الجنوب الغربي",
         "w": "إلى الغرب",
         "nw": "إلى الشمال الغربي"
+      },
+      "heading": {
+        "north": "الشمال",
+        "south": "الجنوب"
       }
     }
   }

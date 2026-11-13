@@ -5293,6 +5293,7 @@
       "altitude": "Höjd",
       "offNadir": "Från nadir",
       "crossed": "{{name}} passerade på {{altitude}} km höjd, {{distance}} km {{direction}}, kl. {{time}} UTC, med {{speed}} km/s över marken.",
+      "crossedHeading": "{{name}} passerade på {{altitude}} km höjd, {{distance}} km {{direction}}, kl. {{time}} UTC, på väg {{heading}} med {{speed}} km/s över marken.",
       "looking": "Den tittade {{deg}}° från rakt ned.",
       "sceneCloud": "Molntäcke i scenen: {{pct}} %.",
       "pixelLine": "{{m}} m pixel",
@@ -5309,6 +5310,10 @@
         "sw": "åt sydväst",
         "w": "västerut",
         "nw": "åt nordväst"
+      },
+      "heading": {
+        "north": "norrut",
+        "south": "söderut"
       }
     }
   }

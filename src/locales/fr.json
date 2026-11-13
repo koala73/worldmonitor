@@ -5321,6 +5321,7 @@
       "altitude": "Altitude",
       "offNadir": "Dépointage",
       "crossed": "{{name}} est passé à {{altitude}} km d'altitude, {{distance}} km {{direction}}, à {{time}} UTC, à {{speed}} km/s au sol.",
+      "crossedHeading": "{{name}} est passé à {{altitude}} km d'altitude, {{distance}} km {{direction}}, à {{time}} UTC, en direction du {{heading}} à {{speed}} km/s au sol.",
       "looking": "Il visait à {{deg}}° de la verticale.",
       "sceneCloud": "Couverture nuageuse de la scène : {{pct}} %.",
       "pixelLine": "Pixel de {{m}} m",
@@ -5337,6 +5338,10 @@
         "sw": "au sud-ouest",
         "w": "à l'ouest",
         "nw": "au nord-ouest"
+      },
+      "heading": {
+        "north": "nord",
+        "south": "sud"
       }
     }
   }

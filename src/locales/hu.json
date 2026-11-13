@@ -5293,6 +5293,7 @@
       "altitude": "Magasság",
       "offNadir": "Nadírtól való eltérés",
       "crossed": "A(z) {{name}} {{altitude}} km magasan haladt el, {{distance}} km-re {{direction}}, {{time}} UTC-kor, {{speed}} km/s talajsebességgel.",
+      "crossedHeading": "A(z) {{name}} {{altitude}} km magasan haladt el, {{distance}} km-re {{direction}}, {{time}} UTC-kor, {{heading}} felé, {{speed}} km/s talajsebességgel.",
       "looking": "{{deg}}°-kal nézett el a függőlegestől.",
       "sceneCloud": "A jelenet felhőzete: {{pct}}%.",
       "pixelLine": "{{m}} m-es pixel",
@@ -5309,6 +5310,10 @@
         "sw": "délnyugatra",
         "w": "nyugatra",
         "nw": "északnyugatra"
+      },
+      "heading": {
+        "north": "észak",
+        "south": "dél"
       }
     }
   }

@@ -5293,6 +5293,7 @@
       "altitude": "Hoogte",
       "offNadir": "Buiten nadir",
       "crossed": "{{name}} kwam over op {{altitude}} km hoogte, {{distance}} km {{direction}}, om {{time}} UTC, met {{speed}} km/s over de grond.",
+      "crossedHeading": "{{name}} kwam over op {{altitude}} km hoogte, {{distance}} km {{direction}}, om {{time}} UTC, richting {{heading}} met {{speed}} km/s over de grond.",
       "looking": "Het keek {{deg}}° naast loodrecht omlaag.",
       "sceneCloud": "Bewolking van de scène: {{pct}}%.",
       "pixelLine": "Pixel van {{m}} m",
@@ -5309,6 +5310,10 @@
         "sw": "ten zuidwesten",
         "w": "ten westen",
         "nw": "ten noordwesten"
+      },
+      "heading": {
+        "north": "noorden",
+        "south": "zuiden"
       }
     }
   }
