@@ -370,28 +370,6 @@ canvas,
   z-index: 600;
 }
 
-/* -- Tauri desktop: separate title bar for traffic lights -- */
-.tauri-titlebar {
-  height: 28px;
-  background: var(--bg);
-  flex-shrink: 0;
-  -webkit-app-region: drag;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.tauri-titlebar + .header {
-  border-top: none;
-  -webkit-app-region: drag;
-}
-
-.tauri-titlebar + .header button,
-.tauri-titlebar + .header a,
-.tauri-titlebar + .header input,
-.tauri-titlebar + .header select,
-.tauri-titlebar + .header .search-wrapper {
-  -webkit-app-region: no-drag;
-}
-
 .header-left {
   display: flex;
   align-items: center;
@@ -22290,10 +22268,6 @@ body.has-critical-banner .panels-grid {
   flex-direction: column;
   gap: 2px;
   pointer-events: none;
-}
-
-body:has(.tauri-titlebar) .breaking-news-container {
-  top: 70px;
 }
 
 .breaking-alert {
