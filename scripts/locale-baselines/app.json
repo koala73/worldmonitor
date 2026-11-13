@@ -3874,7 +3874,6 @@
   "preferences.selfHostKey.state.unavailable": "Could not verify",
   "preferences.selfHostKey.trust": "If someone else runs this install, create a separate desktop key for it. You can revoke it on worldmonitor.app at any time.",
   "preferences.theme": "Theme",
-  "preferences.themeAuto": "Auto (follow system)",
   "preferences.themeDark": "Dark",
   "preferences.themeDesc": "Auto follows your system preference.",
   "preferences.themeLight": "Light",

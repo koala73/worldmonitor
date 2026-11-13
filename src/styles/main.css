@@ -21712,6 +21712,63 @@ button.popup-link {
   margin-top: 4px;
 }
 
+/* A short choice (Theme, Font) as one row of segments. Each segment is a
+   native radio, so the group keeps arrow-key movement and its form semantics. */
+.us-segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 4px 0 6px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.us-segment {
+  position: relative;
+  flex: 1 1 auto;
+}
+
+.us-segment input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.us-segment span {
+  display: block;
+  min-width: 64px;
+  padding: 6px 14px;
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  text-align: center;
+  white-space: nowrap;
+}
+
+.us-segment:hover span {
+  color: var(--text);
+}
+
+.us-segment input:checked + span {
+  background: var(--surface-hover);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.us-segment input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .unified-settings-select:focus,
 .unified-settings-lang-select:focus {
   outline: none;

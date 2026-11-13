@@ -142,7 +142,10 @@ type ChangeHandler = (
 
 interface PreferenceSectionSpec {
   html(host: PreferencesHost): string;
-  /** Keyed by control id. A handler only touches ids inside `root`, its own page. */
+  /**
+   * Keyed by control id, or by group id for a radio group. A handler only
+   * touches ids inside `root`, its own page.
+   */
   onChange: Readonly<Record<string, ChangeHandler>>;
   attach?(root: HTMLElement, host: PreferencesHost, signal: AbortSignal): void;
 }
@@ -165,6 +168,28 @@ function selectHtml(
     .join('')}</select>`;
 }
 
+/**
+ * A short choice as a row of radio buttons sharing the name `id`; the group
+ * carries the id. Arrow keys move between options, as in any radio group.
+ */
+function segmentedHtml(
+  id: string,
+  label: string,
+  desc: string,
+  options: ReadonlyArray<{ value: string; label: string }>,
+  current: string,
+): string {
+  return `<div class="ai-flow-toggle-row">
+    <div class="ai-flow-toggle-label-wrap">
+      <div class="ai-flow-toggle-label" id="${id}-label">${label}</div>
+      <div class="ai-flow-toggle-desc" id="${id}-desc">${desc}</div>
+    </div>
+  </div>
+  <div class="us-segmented" role="radiogroup" id="${id}" aria-labelledby="${id}-label" aria-describedby="${id}-desc">${options
+    .map(opt => `<label class="us-segment"><input type="radio" name="${id}" value="${opt.value}"${opt.value === current ? ' checked' : ''}><span>${escapeHtml(opt.label)}</span></label>`)
+    .join('')}</div>`;
+}
+
 function sectionHeading(label: string): string {
   return `<h3 class="wm-pref-heading">${label}</h3>`;
 }
@@ -174,12 +199,13 @@ const displaySection: PreferenceSectionSpec = {
     // Compared against LANGUAGES[].code below, which carries full tags (`zh-TW`).
     // The region-stripped accessor would mark 简体中文 selected for a Traditional reader.
     const currentLang = getCurrentLanguageTag();
-    let html = selectHtml('us-theme', t('preferences.theme'), t('preferences.themeDesc'), [
-      { value: 'auto', label: t('preferences.themeAuto') },
-      { value: 'dark', label: t('preferences.themeDark') },
+    // The description says what Auto follows, so its segment needs only the short label.
+    let html = segmentedHtml('us-theme', t('preferences.theme'), t('preferences.themeDesc'), [
       { value: 'light', label: t('preferences.themeLight') },
+      { value: 'dark', label: t('preferences.themeDark') },
+      { value: 'auto', label: t('settings.summary.themeAuto') },
     ] satisfies Array<{ value: ThemePreference; label: string }>, getThemePreference());
-    html += selectHtml('us-font-family', t('preferences.fontFamily'), t('preferences.fontFamilyDesc'), [
+    html += segmentedHtml('us-font-family', t('preferences.fontFamily'), t('preferences.fontFamilyDesc'), [
       { value: 'mono', label: t('preferences.fontMono') },
       { value: 'system', label: t('preferences.fontSystem') },
     ] satisfies Array<{ value: FontFamily; label: string }>, getFontFamily());
@@ -563,7 +589,8 @@ export function renderPreferenceSection(id: PreferenceSectionId, host: Preferenc
       const { signal } = ac;
       root.addEventListener('change', (e) => {
         const target = e.target as HTMLInputElement;
-        const handler = Object.prototype.hasOwnProperty.call(spec.onChange, target.id) ? spec.onChange[target.id] : undefined;
+        const key = target.type === 'radio' ? target.name : target.id;
+        const handler = Object.prototype.hasOwnProperty.call(spec.onChange, key) ? spec.onChange[key] : undefined;
         if (!handler) return;
         const saveResult = handler(target, root, host);
         if (typeof saveResult === 'boolean') {

@@ -104,7 +104,7 @@ test.describe('settings navigation on a desktop', () => {
     await expect(page.locator('[data-settings-home]')).toBeVisible();
 
     await page.locator('[data-settings-nav="display"]').click();
-    await page.locator('#us-page-display #us-theme').selectOption('light');
+    await page.locator('#us-theme label', { hasText: 'Light' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await page.locator('[data-settings-back]').click();
     await expect(page.locator('[data-settings-nav="display"] [data-settings-summary]')).toHaveText('Light');

@@ -4500,7 +4500,6 @@
     "dataAndCommunity": "Data & Community",
     "theme": "Theme",
     "themeDesc": "Auto follows your system preference.",
-    "themeAuto": "Auto (follow system)",
     "themeDark": "Dark",
     "themeLight": "Light",
     "mapProvider": "Map Tile Provider",

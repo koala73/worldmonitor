@@ -4330,7 +4330,6 @@
     "dataAndCommunity": "데이터 및 커뮤니티",
     "theme": "테마",
     "themeDesc": "자동으로 시스템 설정을 따릅니다.",
-    "themeAuto": "자동 (시스템 따르기)",
     "themeDark": "다크",
     "themeLight": "라이트",
     "mapProvider": "지도 타일 제공자",

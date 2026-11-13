@@ -60,6 +60,12 @@ const summary = (id: string) => row(id)?.querySelector('[data-settings-summary]'
 const home = () => $('[data-settings-home]')!;
 const back = () => $<HTMLButtonElement>('[data-settings-back]')!;
 
+function chooseTheme(value: string): void {
+  const radio = page('display')!.querySelector<HTMLInputElement>(`input[name="us-theme"][value="${value}"]`)!;
+  radio.checked = true;
+  radio.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
 beforeAll(async () => {
   await initTestI18n();
 });
@@ -193,9 +199,7 @@ describe('Settings row summaries', () => {
     expect(summary('display')).toBe('Auto');
 
     row('display')!.click();
-    const theme = page('display')!.querySelector<HTMLSelectElement>('#us-theme')!;
-    theme.value = 'dark';
-    theme.dispatchEvent(new Event('change', { bubbles: true }));
+    chooseTheme('dark');
     back().click();
 
     expect(summary('display')).toBe('Dark');
