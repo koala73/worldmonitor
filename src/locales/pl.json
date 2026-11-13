@@ -5283,14 +5283,14 @@
         "passes": "Przeloty"
       },
       "status": {
-        "objects": "Obiekty: {{count}} · CelesTrak GP",
+        "objects": "Satelity obrazujące: {{count}} · CelesTrak GP",
         "fetched": "Pobrano {{time}} · {{ago}}",
         "sun": "Słońce {{point}} · punkt podsłoneczny"
       },
       "step": {
         "computing": "Obliczanie",
         "catalogLoading": "Katalog · wczytywanie",
-        "catalog": "Katalog · obiekty: {{count}}",
+        "catalog": "Katalog · Satelity obrazujące: {{count}}",
         "propagating": "Propagacja orbit · {{done}} / {{total}}",
         "archives": "Archiwa · odpowiedziało {{done}} / {{total}}",
         "matching": "Dopasowywanie scen do przelotów: {{passes}}",

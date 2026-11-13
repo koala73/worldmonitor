@@ -5199,14 +5199,14 @@
         "passes": "通過"
       },
       "status": {
-        "objects": "{{count}}個の物体 · CelesTrak GP",
+        "objects": "{{count}}基の撮像衛星 · CelesTrak GP",
         "fetched": "取得 {{time}} · {{ago}}",
         "sun": "太陽 {{point}} · 太陽直下点"
       },
       "step": {
         "computing": "計算中",
         "catalogLoading": "カタログ · 読み込み中",
-        "catalog": "カタログ · {{count}}個の物体",
+        "catalog": "カタログ · {{count}}基の撮像衛星",
         "propagating": "軌道を計算中 · {{done}} / {{total}}",
         "archives": "アーカイブ · {{done}} / {{total}} が応答",
         "matching": "シーンを{{passes}}回の通過と照合中",

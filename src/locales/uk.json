@@ -5283,14 +5283,14 @@
         "passes": "Прольоти"
       },
       "status": {
-        "objects": "об’єктів: {{count}} · CelesTrak GP",
+        "objects": "{{count}} знімальних супутників · CelesTrak GP",
         "fetched": "Отримано {{time}} · {{ago}}",
         "sun": "Сонце {{point}} · підсонячна точка"
       },
       "step": {
         "computing": "Розрахунок",
         "catalogLoading": "Каталог · завантаження",
-        "catalog": "Каталог · об’єктів: {{count}}",
+        "catalog": "Каталог · {{count}} знімальних супутників",
         "propagating": "Розрахунок орбіт · {{done}} / {{total}}",
         "archives": "Архіви · відповіли {{done}} / {{total}}",
         "matching": "Зіставлення сцен із прольотами: {{passes}}",

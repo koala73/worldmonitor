@@ -5255,14 +5255,14 @@
         "passes": "Passages"
       },
       "status": {
-        "objects": "{{count}} objets · CelesTrak GP",
+        "objects": "{{count}} satellites d’imagerie · CelesTrak GP",
         "fetched": "Récupéré {{time}} · {{ago}}",
         "sun": "Soleil {{point}} · point subsolaire"
       },
       "step": {
         "computing": "Calcul",
         "catalogLoading": "Catalogue · chargement",
-        "catalog": "Catalogue · {{count}} objets",
+        "catalog": "Catalogue · {{count}} satellites d’imagerie",
         "propagating": "Propagation des orbites · {{done}} / {{total}}",
         "archives": "Archives · {{done}} / {{total}} ont répondu",
         "matching": "Association des scènes à {{passes}} passages",

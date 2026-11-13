@@ -5283,14 +5283,14 @@
         "passes": "Přelety"
       },
       "status": {
-        "objects": "Objekty: {{count}} · CelesTrak GP",
+        "objects": "Zobrazovací satelity: {{count}} · CelesTrak GP",
         "fetched": "Načteno {{time}} · {{ago}}",
         "sun": "Slunce {{point}} · subsolární bod"
       },
       "step": {
         "computing": "Výpočet",
         "catalogLoading": "Katalog · načítání",
-        "catalog": "Katalog · objekty: {{count}}",
+        "catalog": "Katalog · Zobrazovací satelity: {{count}}",
         "propagating": "Výpočet drah · {{done}} / {{total}}",
         "archives": "Archivy · odpovědělo {{done}} / {{total}}",
         "matching": "Párování scén s přelety: {{passes}}",

@@ -5227,14 +5227,14 @@
         "passes": "Áthaladások"
       },
       "status": {
-        "objects": "{{count}} objektum · CelesTrak GP",
+        "objects": "{{count}} képalkotó műhold · CelesTrak GP",
         "fetched": "Lekérve {{time}} · {{ago}}",
         "sun": "Nap {{point}} · napalatti pont"
       },
       "step": {
         "computing": "Számítás",
         "catalogLoading": "Katalógus · betöltés",
-        "catalog": "Katalógus · {{count}} objektum",
+        "catalog": "Katalógus · {{count}} képalkotó műhold",
         "propagating": "Pályák számítása · {{done}} / {{total}}",
         "archives": "Archívumok · {{done}} / {{total}} válaszolt",
         "matching": "Jelenetek párosítása {{passes}} áthaladáshoz",

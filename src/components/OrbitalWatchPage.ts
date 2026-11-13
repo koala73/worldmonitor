@@ -154,19 +154,34 @@ function formatPoint({ lat, lon }: GeoPoint, decimals = 3): string {
   return `${Math.abs(lat).toFixed(decimals)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lon).toFixed(decimals)}°${lon >= 0 ? 'E' : 'W'}`;
 }
 
-function formatDay(ms: number): string {
-  return new Intl.DateTimeFormat(lang(), { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(ms);
+/** The zone every displayed time uses, so the whole sheet can switch to the point's local time at once. */
+let displayZone = { timeZone: 'UTC', label: 'UTC' };
+
+/** Sets the IANA zone and its short label that every displayed time uses. */
+export function setOrbitalDisplayZone(timeZone: string, label: string): void {
+  displayZone = { timeZone, label };
 }
 
-function formatShortDate(ms: number): string {
-  return new Intl.DateTimeFormat(lang(), { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(ms);
+/** Formats a time in the display zone: weekday and date, date, clock, both with the zone label, or date and clock. */
+export function formatOrbitalTime(ms: number, style: 'day' | 'date' | 'clock' | 'when' | 'stamp'): string {
+  const { timeZone, label } = displayZone;
+  const day = () => new Intl.DateTimeFormat(lang(), { weekday: 'short', day: 'numeric', month: 'short', timeZone }).format(ms);
+  const clock = () => new Intl.DateTimeFormat(lang(), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone }).format(ms);
+  switch (style) {
+    case 'day': return day();
+    case 'date': return new Intl.DateTimeFormat(lang(), { day: 'numeric', month: 'short', timeZone }).format(ms);
+    case 'clock': return clock();
+    case 'when': return `${day()} · ${clock()} ${label}`;
+    case 'stamp': return `${formatOrbitalTime(ms, 'date')} ${clock()}`;
+  }
 }
 
-function formatClock(ms: number, seconds = false): string {
-  return new Intl.DateTimeFormat(lang(), { hour: '2-digit', minute: '2-digit', ...(seconds ? { second: '2-digit' } : {}), hourCycle: 'h23', timeZone: 'UTC' }).format(ms);
-}
+const formatDay = (ms: number) => formatOrbitalTime(ms, 'day');
+const formatWhen = (ms: number) => formatOrbitalTime(ms, 'when');
 
-const formatWhen = (ms: number) => `${formatDay(ms)} · ${formatClock(ms)} UTC`;
+function formatUtcClock(ms: number): string {
+  return new Intl.DateTimeFormat(lang(), { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZone: 'UTC' }).format(ms);
+}
 
 function formatRelative(ms: number, nowMs: number): string {
   const diff = ms - nowMs;
@@ -362,7 +377,7 @@ function rowShell(key: string, tier: string, thumb: HTMLElement, name: string, t
     h('div', { className: 'ow-row-main' },
       h('div', { className: 'ow-row-name' }, name, h('span', { className: 'ow-tier-label ow-sr' }, tierLabel)),
       ...lines.map((line) => h('div', { className: 'ow-row-meta ow-label' }, line)),
-      credit ? h('div', { className: 'ow-image-credit ow-label' }, credit) : null),
+      credit ? h('div', { className: 'ow-row-credit ow-label' }, credit) : null),
     h('div', { className: 'ow-badges' }, ...badges));
 }
 
@@ -588,6 +603,29 @@ export class OrbitalWatchPage {
     }
   }
 
+  /** Opens the full view on a pass's row, expanding its group, and announces it for the pass detail. */
+  select(key: string): boolean {
+    const state = this.state;
+    if (!this.isOpen || state?.kind !== 'passes' || state.archives.kind !== 'answered') return false;
+    const pass = state.archives.evidence.passes.find((p) => passKey(p) === key);
+    if (!pass || pass.tier.kind === 'daily-mosaic') return false;
+    const id = GROUP_OF_TIER[pass.tier.kind];
+    const spec = GROUPS.find((g) => g.id === id)!;
+    if (!spec.expanded) this.toggled.add(id);
+    else this.toggled.delete(id);
+    this.filter = null;
+    if (this.view === 'full') this.render(state);
+    else this.setView('full');
+    const row = this.body.querySelector<HTMLElement>(`.ow-row[data-key="pass:${CSS.escape(key)}"]`);
+    if (!row) return false;
+    for (const other of this.body.querySelectorAll('.ow-row[aria-current]')) other.removeAttribute('aria-current');
+    row.setAttribute('aria-current', 'true');
+    row.scrollIntoView?.({ block: 'center' });
+    row.focus();
+    this.sheet.dispatchEvent(new CustomEvent('orbital-watch:select', { bubbles: true, detail: { noradId: pass.noradId, timeMs: pass.timeMs } }));
+    return true;
+  }
+
   setView(view: OrbitalView): void {
     if (view === this.view || !this.isOpen) return;
     this.applyView(view);
@@ -686,7 +724,7 @@ export class OrbitalWatchPage {
       h('div', { className: 'ow-progress', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(pct)) },
         h('span', { className: 'ow-progress-fill', style: `width: ${pct.toFixed(1)}%` })),
       h('div', { className: 'ow-steps-foot ow-label' },
-        h('span', null, t('orbitalWatch.ui.step.window', { start: `${formatShortDate(windowStart)} ${formatClock(windowStart)}`, end: `${formatShortDate(nowMs)} ${formatClock(nowMs)} UTC` })),
+        h('span', null, t('orbitalWatch.ui.step.window', { start: formatOrbitalTime(windowStart, 'stamp'), end: `${formatOrbitalTime(nowMs, 'stamp')} ${displayZone.label}` })),
         h('span', { className: 'ow-steps-pct' }, `${Math.round(pct)}%`)),
       archives ? h('p', { className: 'ow-steps-note' }, t('orbitalWatch.ui.step.note')) : null);
   }
@@ -822,7 +860,7 @@ export class OrbitalWatchPage {
   private passList(lookup: PointPassLookup, evidence: OrbitalEvidence): HTMLElement {
     const groups = groupPasses(lookup, evidence);
     const shown = GROUPS.map(({ id }) => groups.get(id)!).filter((group) => group.count > 0 && (!this.filter || group.spec.id === this.filter));
-    const missing = evidence.mosaics.filter((mosaic) => mosaic.days.length === 0).map((mosaic) => mosaic.source);
+    const missing = [...evidence.mosaics.filter((mosaic) => mosaic.days.length === 0), ...evidence.frames.filter((frame) => !frame.latest)].map((row) => row.source);
     return h('section', { className: 'ow-section ow-passes' },
       this.sectionHead('02', t('orbitalWatch.ui.section.passes')),
       this.filter
@@ -861,7 +899,7 @@ export class OrbitalWatchPage {
     replaceChildren(this.statusBar,
       h('span', { className: 'ow-status-left' },
         lookup ? `${t('orbitalWatch.ui.status.objects', { count: formatInt(lookup.satellites.length) })} · ${t('orbitalWatch.ui.status.fetched', { time: fetched, ago: formatRelative(lookup.catalog.fetchedAt, nowMs) })}` : ''),
-      h('span', { className: 'ow-status-right' }, `${t('orbitalWatch.ui.status.sun', { point: formatPoint(sun, 1) })} · ${formatClock(nowMs, true)} UTC`));
+      h('span', { className: 'ow-status-right' }, `${t('orbitalWatch.ui.status.sun', { point: formatPoint(sun, 1) })} · ${formatUtcClock(nowMs)} UTC`));
   }
 
   private startClock(): void {

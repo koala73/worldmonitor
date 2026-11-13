@@ -5227,14 +5227,14 @@
         "passes": "Passager"
       },
       "status": {
-        "objects": "{{count}} objekt · CelesTrak GP",
+        "objects": "{{count}} avbildande satelliter · CelesTrak GP",
         "fetched": "Hämtad {{time}} · {{ago}}",
         "sun": "Sol {{point}} · subsolär punkt"
       },
       "step": {
         "computing": "Beräknar",
         "catalogLoading": "Katalog · laddar",
-        "catalog": "Katalog · {{count}} objekt",
+        "catalog": "Katalog · {{count}} avbildande satelliter",
         "propagating": "Beräknar banor · {{done}} / {{total}}",
         "archives": "Arkiv · {{done}} / {{total}} svarade",
         "matching": "Matchar scener mot {{passes}} passager",

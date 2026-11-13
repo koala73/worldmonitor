@@ -5227,14 +5227,14 @@
         "passes": "Overkomsten"
       },
       "status": {
-        "objects": "{{count}} objecten · CelesTrak GP",
+        "objects": "{{count}} beeldvormende satellieten · CelesTrak GP",
         "fetched": "Opgehaald {{time}} · {{ago}}",
         "sun": "Zon {{point}} · subsolair punt"
       },
       "step": {
         "computing": "Berekenen",
         "catalogLoading": "Catalogus · laden",
-        "catalog": "Catalogus · {{count}} objecten",
+        "catalog": "Catalogus · {{count}} beeldvormende satellieten",
         "propagating": "Banen doorrekenen · {{done}} / {{total}}",
         "archives": "Archieven · {{done}} / {{total}} beantwoord",
         "matching": "Scènes koppelen aan {{passes}} overkomsten",

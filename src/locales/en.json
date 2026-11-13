@@ -4686,14 +4686,14 @@
         "passes": "Passes"
       },
       "status": {
-        "objects": "{{count}} objects · CelesTrak GP",
+        "objects": "{{count}} imaging satellites · CelesTrak GP",
         "fetched": "Fetched {{time}} · {{ago}}",
         "sun": "Sun {{point}} · sub-solar point"
       },
       "step": {
         "computing": "Computing",
         "catalogLoading": "Catalog · loading",
-        "catalog": "Catalog · {{count}} objects",
+        "catalog": "Catalog · {{count}} imaging satellites",
         "propagating": "Propagating orbits · {{done}} / {{total}}",
         "archives": "Archives · {{done}} / {{total}} answered",
         "matching": "Matching scenes to {{passes}} passes",
