@@ -5236,14 +5236,14 @@
         "passes": "عبورها"
       },
       "status": {
-        "objects": "{{count}} شیء · CelesTrak GP",
+        "objects": "{{count}} ماهواره تصویربرداری · CelesTrak GP",
         "fetched": "دریافت {{time}} · {{ago}}",
         "sun": "خورشید {{point}} · نقطه زیرخورشیدی"
       },
       "step": {
         "computing": "در حال محاسبه",
         "catalogLoading": "کاتالوگ · در حال بارگیری",
-        "catalog": "کاتالوگ · {{count}} شیء",
+        "catalog": "کاتالوگ · {{count}} ماهواره تصویربرداری",
         "propagating": "محاسبه مدارها · {{done}} / {{total}}",
         "archives": "بایگانی‌ها · {{done}} / {{total}} پاسخ دادند",
         "matching": "تطبیق صحنه‌ها با {{passes}} عبور",

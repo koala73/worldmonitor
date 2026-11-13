@@ -5208,14 +5208,14 @@
         "passes": "통과"
       },
       "status": {
-        "objects": "물체 {{count}}개 · CelesTrak GP",
+        "objects": "{{count}}기의 영상 위성 · CelesTrak GP",
         "fetched": "가져옴 {{time}} · {{ago}}",
         "sun": "태양 {{point}} · 태양 직하점"
       },
       "step": {
         "computing": "계산 중",
         "catalogLoading": "카탈로그 · 불러오는 중",
-        "catalog": "카탈로그 · 물체 {{count}}개",
+        "catalog": "카탈로그 · {{count}}기의 영상 위성",
         "propagating": "궤도 계산 중 · {{done}} / {{total}}",
         "archives": "아카이브 · {{done}} / {{total}} 응답",
         "matching": "장면을 통과 {{passes}}회와 대조 중",

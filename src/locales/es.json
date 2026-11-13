@@ -5264,14 +5264,14 @@
         "passes": "Pasos"
       },
       "status": {
-        "objects": "{{count}} objetos · CelesTrak GP",
+        "objects": "{{count}} satélites de imágenes · CelesTrak GP",
         "fetched": "Obtenido {{time}} · {{ago}}",
         "sun": "Sol {{point}} · punto subsolar"
       },
       "step": {
         "computing": "Calculando",
         "catalogLoading": "Catálogo · cargando",
-        "catalog": "Catálogo · {{count}} objetos",
+        "catalog": "Catálogo · {{count}} satélites de imágenes",
         "propagating": "Propagando órbitas · {{done}} / {{total}}",
         "archives": "Archivos · {{done}} / {{total}} respondieron",
         "matching": "Asociando escenas a {{passes}} pasos",

@@ -5236,14 +5236,14 @@
         "passes": "Преминавания"
       },
       "status": {
-        "objects": "{{count}} обекта · CelesTrak GP",
+        "objects": "{{count}} спътника за изображения · CelesTrak GP",
         "fetched": "Изтеглено {{time}} · {{ago}}",
         "sun": "Слънце {{point}} · подслънчева точка"
       },
       "step": {
         "computing": "Изчисляване",
         "catalogLoading": "Каталог · зареждане",
-        "catalog": "Каталог · {{count}} обекта",
+        "catalog": "Каталог · {{count}} спътника за изображения",
         "propagating": "Изчисляване на орбити · {{done}} / {{total}}",
         "archives": "Архиви · отговориха {{done}} / {{total}}",
         "matching": "Съпоставяне на сцени с {{passes}} преминавания",

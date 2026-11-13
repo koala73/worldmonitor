@@ -5236,14 +5236,14 @@
         "passes": "Überflüge"
       },
       "status": {
-        "objects": "{{count}} Objekte · CelesTrak GP",
+        "objects": "{{count}} Bildgebungssatelliten · CelesTrak GP",
         "fetched": "Abgerufen {{time}} · {{ago}}",
         "sun": "Sonne {{point}} · Subsolarpunkt"
       },
       "step": {
         "computing": "Berechnung",
         "catalogLoading": "Katalog · wird geladen",
-        "catalog": "Katalog · {{count}} Objekte",
+        "catalog": "Katalog · {{count}} Bildgebungssatelliten",
         "propagating": "Bahnen werden berechnet · {{done}} / {{total}}",
         "archives": "Archive · {{done}} / {{total}} geantwortet",
         "matching": "Szenen werden {{passes}} Überflügen zugeordnet",

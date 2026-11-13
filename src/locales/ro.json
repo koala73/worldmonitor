@@ -5264,14 +5264,14 @@
         "passes": "Treceri"
       },
       "status": {
-        "objects": "{{count}} obiecte · CelesTrak GP",
+        "objects": "{{count}} sateliți de imagistică · CelesTrak GP",
         "fetched": "Preluat {{time}} · {{ago}}",
         "sun": "Soare {{point}} · punct subsolar"
       },
       "step": {
         "computing": "Calcul",
         "catalogLoading": "Catalog · se încarcă",
-        "catalog": "Catalog · {{count}} obiecte",
+        "catalog": "Catalog · {{count}} sateliți de imagistică",
         "propagating": "Propagarea orbitelor · {{done}} / {{total}}",
         "archives": "Arhive · {{done}} / {{total}} au răspuns",
         "matching": "Potrivirea scenelor cu {{passes}} treceri",

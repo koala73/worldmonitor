@@ -5208,14 +5208,14 @@
         "passes": "การผ่าน"
       },
       "status": {
-        "objects": "วัตถุ {{count}} ชิ้น · CelesTrak GP",
+        "objects": "{{count}}ดวงดาวเทียมถ่ายภาพ · CelesTrak GP",
         "fetched": "ดึงข้อมูล {{time}} · {{ago}}",
         "sun": "ดวงอาทิตย์ {{point}} · จุดใต้ดวงอาทิตย์"
       },
       "step": {
         "computing": "กำลังคำนวณ",
         "catalogLoading": "แคตตาล็อก · กำลังโหลด",
-        "catalog": "แคตตาล็อก · วัตถุ {{count}} ชิ้น",
+        "catalog": "แคตตาล็อก · {{count}}ดวงดาวเทียมถ่ายภาพ",
         "propagating": "กำลังคำนวณวงโคจร · {{done}} / {{total}}",
         "archives": "คลังภาพ · ตอบแล้ว {{done}} / {{total}}",
         "matching": "กำลังจับคู่ฉากกับการผ่าน {{passes}} ครั้ง",

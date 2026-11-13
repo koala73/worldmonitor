@@ -5275,14 +5275,14 @@
         "passes": "Prelasci"
       },
       "status": {
-        "objects": "Objekti: {{count}} · CelesTrak GP",
+        "objects": "Satelita za snimanje: {{count}} · CelesTrak GP",
         "fetched": "Dohvaćeno {{time}} · {{ago}}",
         "sun": "Sunce {{point}} · podsolarna točka"
       },
       "step": {
         "computing": "Izračun",
         "catalogLoading": "Katalog · učitavanje",
-        "catalog": "Katalog · objekti: {{count}}",
+        "catalog": "Katalog · Satelita za snimanje: {{count}}",
         "propagating": "Propagacija orbita · {{done}} / {{total}}",
         "archives": "Arhive · odgovorilo {{done}} / {{total}}",
         "matching": "Uparivanje scena s prelascima: {{passes}}",

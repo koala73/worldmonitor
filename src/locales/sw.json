@@ -5236,14 +5236,14 @@
         "passes": "Mapito"
       },
       "status": {
-        "objects": "vitu {{count}} · CelesTrak GP",
+        "objects": "{{count}} setilaiti za upigaji picha · CelesTrak GP",
         "fetched": "Imepakuliwa {{time}} · {{ago}}",
         "sun": "Jua {{point}} · nukta chini ya jua"
       },
       "step": {
         "computing": "Inakokotoa",
         "catalogLoading": "Katalogi · inapakia",
-        "catalog": "Katalogi · vitu {{count}}",
+        "catalog": "Katalogi · {{count}} setilaiti za upigaji picha",
         "propagating": "Inakokotoa mizunguko · {{done}} / {{total}}",
         "archives": "Hifadhi · {{done}} / {{total}} zimejibu",
         "matching": "Inalinganisha matukio na mapito {{passes}}",

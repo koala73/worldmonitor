@@ -5208,14 +5208,14 @@
         "passes": "过境"
       },
       "status": {
-        "objects": "{{count}} 个目标 · CelesTrak GP",
+        "objects": "{{count}}颗成像卫星 · CelesTrak GP",
         "fetched": "获取于 {{time}} · {{ago}}",
         "sun": "太阳 {{point}} · 太阳直射点"
       },
       "step": {
         "computing": "计算中",
         "catalogLoading": "目录 · 加载中",
-        "catalog": "目录 · {{count}} 个目标",
+        "catalog": "目录 · {{count}}颗成像卫星",
         "propagating": "正在推算轨道 · {{done}} / {{total}}",
         "archives": "存档 · {{done}} / {{total}} 已响应",
         "matching": "正在将场景与 {{passes}} 次过境匹配",
