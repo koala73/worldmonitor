@@ -41,7 +41,7 @@ function groundDistanceKm(lat1, lon1, lat2, lon2) {
 
 function stateAt(elements, timeMs) {
   const date = new Date(timeMs);
-  const { position } = propagate(elements.satrec, date);
+  const position = propagate(elements.satrec, date)?.position;
   if (!position || typeof position === 'boolean') return null;
   const gmst = gstime(date);
   const geodetic = eciToGeodetic(position, gmst);
@@ -208,7 +208,8 @@ export function findPasses({ elements, profile, point, window, now }) {
   const minima = [];
   let previous = Infinity;
   let falling = false;
-  for (let t = startMs; t <= endMs;) {
+  const scanEndMs = endMs + 2 * SCAN_STEP_S * 1000;
+  for (let t = startMs - SCAN_STEP_S * 1000; t <= scanEndMs;) {
     const state = stateAt(elements, t);
     if (!state) {
       t += SCAN_STEP_S * 1000;
@@ -230,8 +231,8 @@ export function findPasses({ elements, profile, point, window, now }) {
 
   const passes = [];
   for (const centre of minima) {
-    const state = refineClosestApproach(elements, point, Math.max(startMs, centre - SCAN_STEP_S * 1000), Math.min(endMs, centre + SCAN_STEP_S * 1000));
-    if (!state) continue;
+    const state = refineClosestApproach(elements, point, centre - SCAN_STEP_S * 1000, centre + SCAN_STEP_S * 1000);
+    if (!state || state.timeMs < startMs || state.timeMs > endMs) continue;
     const pass = describePass(elements, profile, point, state, nowMs);
     if (!pass.inFootprint && pass.elevationDeg < PASS_MIN_ELEVATION_DEG) continue;
     const duplicate = passes.find((existing) => Math.abs(existing.timeMs - pass.timeMs) < DUPLICATE_WINDOW_MS);

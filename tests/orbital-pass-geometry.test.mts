@@ -99,6 +99,29 @@ describe('pass geometry rules', () => {
     assert.ok(imaging[0].sunElevationDeg >= 5, 'daylight at the morning pass');
   });
 
+  it('keeps a closest approach just inside either end of the window, and invents none at the edge', () => {
+    const acquiredMs = Date.parse(paris.acquiredAt);
+    const { elements, profile } = satellite('SENTINEL-2B');
+    const search = (start: number, end: number) =>
+      findPasses({ elements, profile, point: paris, window: { start, end }, now: FIXTURE_NOW }).passes;
+    const [pass] = search(acquiredMs - 30 * 60_000, acquiredMs + 30 * 60_000).filter((p) => p.inFootprint);
+    assert.ok(pass, 'reference pass');
+    assert.equal(search(pass.timeMs - 30 * 60_000, pass.timeMs + 3_000).filter((p) => p.inFootprint).length, 1, 'approach 3 s before the end');
+    assert.equal(search(pass.timeMs - 3_000, pass.timeMs + 30 * 60_000).filter((p) => p.inFootprint).length, 1, 'approach 3 s after the start');
+    assert.deepEqual(search(pass.timeMs + 90_000, pass.timeMs + 30 * 60_000), [], 'no pass at a start that follows the approach');
+    assert.deepEqual(search(pass.timeMs - 30 * 60_000, pass.timeMs - 90_000), [], 'no pass at an end that precedes the approach');
+  });
+
+  it('skips states SGP4 cannot propagate instead of throwing', () => {
+    const omm = records.find((record) => record.OBJECT_NAME === 'SENTINEL-2B')!;
+    const elements = parseOrbitElements({ ...omm, MEAN_MOTION: 17.5 });
+    const { profile } = satellite('SENTINEL-2B');
+    const epochMs = elements.epochMs;
+    const result = findPasses({ elements, profile, point: paris, window: { start: epochMs, end: epochMs + DAY }, now: epochMs });
+    assert.deepEqual(result.passes, []);
+    assert.deepEqual(groundTrack(elements, { start: epochMs, end: epochMs + HOUR }), []);
+  });
+
   it('gives Sentinel-1 no likely-imaged pass on the side it does not look', () => {
     const acquiredMs = Date.parse(berlin.acquiredAt);
     const imaged = closestTo(passesNear('SENTINEL-1C', berlin, acquiredMs, 30 * 60_000).result.passes, acquiredMs);
