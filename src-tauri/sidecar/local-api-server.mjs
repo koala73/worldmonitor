@@ -396,21 +396,47 @@ const RSS_PROXY_MAX_CONCURRENT = 12;
 // several viewers behind one NAT.
 const RSS_PROXY_CLIENT_LIMIT = 300;
 const RSS_PROXY_CLIENT_WINDOW_MS = 60_000;
+// Waiting requests are bounded in number and time so one client cannot build
+// a backlog that delays every other viewer's feeds.
+const RSS_PROXY_MAX_QUEUED = 48;
+const RSS_PROXY_QUEUE_WAIT_MS = 10_000;
+let _rssProxyQueueWaitMs = RSS_PROXY_QUEUE_WAIT_MS;
 let _activeRssProxyFetches = 0;
 const _rssProxyQueue = [];
-function acquireRssProxySlot() {
+function rssProxyQueueError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+function acquireRssProxySlot(req) {
   if (_activeRssProxyFetches < RSS_PROXY_MAX_CONCURRENT) {
     _activeRssProxyFetches++;
     return Promise.resolve();
   }
-  return new Promise(resolve => _rssProxyQueue.push(resolve));
+  if (_rssProxyQueue.length >= RSS_PROXY_MAX_QUEUED) {
+    return Promise.reject(rssProxyQueueError('ERSSQUEUEFULL', 'RSS proxy queue full'));
+  }
+  return new Promise((resolve, reject) => {
+    const waiter = { req, resolve, reject };
+    waiter.timer = setTimeout(() => {
+      _rssProxyQueue.splice(_rssProxyQueue.indexOf(waiter), 1);
+      reject(rssProxyQueueError('ERSSQUEUETIMEOUT', 'RSS proxy queue wait timed out'));
+    }, _rssProxyQueueWaitMs);
+    _rssProxyQueue.push(waiter);
+  });
 }
 function releaseRssProxySlot() {
-  if (_rssProxyQueue.length > 0) {
-    _rssProxyQueue.shift()();
-  } else {
-    _activeRssProxyFetches--;
+  while (_rssProxyQueue.length > 0) {
+    const waiter = _rssProxyQueue.shift();
+    clearTimeout(waiter.timer);
+    if (waiter.req.destroyed || waiter.req.socket?.destroyed) {
+      waiter.reject(rssProxyQueueError('ERSSCLIENTGONE', 'Client disconnected while queued'));
+      continue;
+    }
+    waiter.resolve();
+    return;
   }
+  _activeRssProxyFetches--;
 }
 const RSS_PROXY_SECURITY_HEADERS = Object.freeze({
   // RSS publishers are untrusted. The response must not become a same-origin
@@ -2496,7 +2522,7 @@ async function dispatch(requestUrl, req, routes, context) {
         context.logger.warn(`[local-api] rss-proxy SSRF blocked: no validated address (url=${JSON.stringify(feedUrl)})`);
         return rssProxyJson({ error: 'Could not resolve hostname' }, 403);
       }
-      await acquireRssProxySlot();
+      await acquireRssProxySlot(req);
       let rssBody;
       let status;
       try {
@@ -2519,6 +2545,15 @@ async function dispatch(requestUrl, req, routes, context) {
     } catch (e) {
       if (e.code === 'EBODYTOOLARGE') {
         return rssProxyJson({ error: 'Feed too large', url: feedUrl }, 502);
+      }
+      if (e.code === 'ERSSQUEUEFULL') {
+        return json({ error: 'Too many feed requests in progress' }, 503, {
+          ...RSS_PROXY_SECURITY_HEADERS,
+          'Retry-After': String(Math.ceil(RSS_PROXY_QUEUE_WAIT_MS / 1000)),
+        });
+      }
+      if (e.code === 'ERSSQUEUETIMEOUT' || e.code === 'ERSSCLIENTGONE') {
+        return rssProxyJson({ error: 'Feed timeout', url: feedUrl }, 504);
       }
       const isTimeout = e.name === 'AbortError' || e.message?.includes('timeout');
       return rssProxyJson({ error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed', url: feedUrl }, isTimeout ? 504 : 502);
@@ -2703,6 +2738,9 @@ export const __testing__ = {
   parseDesktopKeyVerdict,
   setSelfHostVerdictTtlMs(ms) {
     selfHostVerdictTtlMs = ms;
+  },
+  setRssProxyQueueWaitMs(ms) {
+    _rssProxyQueueWaitMs = ms;
   },
   setSelfHostRelayTimeoutMs(ms) {
     selfHostRelayTimeoutMs = ms;

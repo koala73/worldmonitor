@@ -3922,6 +3922,117 @@ test('rss-proxy rejects a declared Content-Length over the size cap before readi
   }
 });
 
+function stubHeldRssUpstream() {
+  const held = [];
+  let holding = true;
+  const upstream = stubRssUpstream((res) => {
+    if (holding) {
+      held.push(res);
+    } else {
+      res.emit('data', Buffer.from('<rss/>'));
+      res.emit('end');
+    }
+  });
+  return {
+    ...upstream,
+    releaseAll() {
+      holding = false;
+      for (const res of held.splice(0)) {
+        res.emit('data', Buffer.from('<rss/>'));
+        res.emit('end');
+      }
+    },
+  };
+}
+
+async function waitForCondition(check, label) {
+  for (let i = 0; i < 200; i += 1) {
+    if (check()) return;
+    await sleep(10);
+  }
+  throw new Error(`timed out waiting for ${label}`);
+}
+
+test('rss-proxy bounds its wait queue and skips clients that disconnected while queued', async () => {
+  const localApi = await setupApiDir({});
+  const upstream = stubHeldRssUpstream();
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const feed = (signal) => authFetch(
+    `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent('https://slow.example/feed.xml')}`,
+    { signal },
+  );
+  const pending = [];
+
+  try {
+    for (let i = 0; i < 12; i += 1) pending.push(feed());
+    await waitForCondition(() => upstream.outbound.length === 12, '12 active fetches');
+
+    const abandoned = new AbortController();
+    const abandonedRequest = feed(abandoned.signal).catch(() => null);
+    for (let i = 0; i < 47; i += 1) pending.push(feed());
+    await sleep(300);
+    abandoned.abort();
+    await abandonedRequest;
+
+    const rejected = await feed();
+    assert.equal(rejected.status, 503);
+    assert.ok(Number(rejected.headers.get('retry-after')) >= 1);
+    assert.equal(upstream.outbound.length, 12);
+
+    upstream.releaseAll();
+    const responses = await Promise.all(pending);
+    assert.deepEqual([...new Set(responses.map((r) => r.status))], [200]);
+    await Promise.all(responses.map((r) => r.text()));
+    // 12 active + 47 queued; the disconnected waiter never reached the upstream.
+    assert.equal(upstream.outbound.length, 59);
+  } finally {
+    upstream.releaseAll();
+    upstream.restore();
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('rss-proxy times out a queued request instead of fetching it late', async () => {
+  const localApi = await setupApiDir({});
+  const upstream = stubHeldRssUpstream();
+  __testing__.setRssProxyQueueWaitMs(100);
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const feed = () => authFetch(
+    `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent('https://slow.example/feed.xml')}`,
+  );
+  const active = [];
+
+  try {
+    for (let i = 0; i < 12; i += 1) active.push(feed());
+    await waitForCondition(() => upstream.outbound.length === 12, '12 active fetches');
+
+    const queued = await feed();
+    assert.equal(queued.status, 504);
+    assert.equal((await queued.json()).error, 'Feed timeout');
+
+    upstream.releaseAll();
+    await Promise.all((await Promise.all(active)).map((r) => r.text()));
+    assert.equal(upstream.outbound.length, 12);
+  } finally {
+    __testing__.setRssProxyQueueWaitMs(10_000);
+    upstream.releaseAll();
+    upstream.restore();
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('a malformed request-target gets a 400 and the sidecar keeps serving', async () => {
   const localApi = await setupApiDir({
     'ping.js': `
