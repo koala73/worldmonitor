@@ -211,11 +211,14 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     log('map mark', await sheet.locator('.ow-mapmark-label').innerText());
     if (!(await sheet.locator('.ow-mapmark-ring').isVisible())) throw new Error('point not marked on the map');
     const chrome = await page.evaluate(() => {
-      const sheetEl = document.querySelector('.orbital-watch-sheet');
-      const hits = [[1440 - 30, 8], [1440 - 120, 8], [1440 - 220, 8], [80, 8]].map(([x, y]) => document.elementFromPoint(x, y));
-      return hits.filter((el) => el && !sheetEl.contains(el)).map((el) => el.className || el.tagName);
+      // The full view lets pointer input through to the map around its panels, so the map is the only other thing allowed here.
+      const owners = [document.querySelector('.orbital-watch-sheet'), document.getElementById('mapContainer')];
+      const hits = [[1440 - 30, 8], [1440 - 120, 8], [1440 - 220, 8], [80, 8], [300, 300]].map(([x, y]) => document.elementFromPoint(x, y));
+      return hits.filter((el) => el && !owners.some((owner) => owner?.contains(el))).map((el) => el.className || el.tagName);
     });
     if (chrome.length) throw new Error(`app chrome shows through the full view: ${chrome.join(', ')}`);
+    const mapTakesInput = await page.evaluate(() => !!document.getElementById('mapContainer')?.contains(document.elementFromPoint(300, 300)));
+    if (!mapTakesInput) throw new Error('the full view blocks pointer input to the map around its panels');
   }
   const wrapped = await sheet.locator('.ow-row-meta, .ow-row-credit').evaluateAll((els) => els.filter((el) => el.scrollHeight > 18).length);
   if (wrapped) throw new Error(`${wrapped} pass row lines wrap`);
