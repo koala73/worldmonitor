@@ -12,6 +12,7 @@ import {
   type PointContext,
 } from '@/services/orbital/point-context';
 import { getLocale, t } from '@/services/i18n';
+import { orbitalDisplayZone } from './OrbitalWatchPage';
 import { h, replaceChildren } from '@/utils/dom-utils';
 
 const HOUR_MS = 3_600_000;
@@ -33,7 +34,7 @@ export interface OrbitalTimelineInput {
   acquisitions: MatchedAcquisition[];
   context: PointContextState;
   selectedKey: string | null;
-  /** IANA zone the labels read in; UTC until the place's zone is known. */
+  /** IANA zone the labels read in; defaults to the sheet's display zone. */
   timeZone?: string | null;
 }
 
@@ -128,7 +129,7 @@ export class OrbitalTimeline {
   update(input: OrbitalTimelineInput): void {
     const { window, nowMs } = input.lookup;
     const context = input.context.kind === 'loaded' ? input.context.context : null;
-    const clock = zonedClock(input.timeZone ?? null, getLocale(), nowMs);
+    const clock = zonedClock(input.timeZone ?? orbitalDisplayZone().timeZone, getLocale(), nowMs);
     const when = (ms: number) => `${clock.day(ms)} · ${clock.time(ms)}`;
     const pct = (ms: number) => ((Math.min(Math.max(ms, window.startMs), window.endMs) - window.startMs) / (window.endMs - window.startMs)) * 100;
     const at = (ms: number) => `left:${pct(ms).toFixed(3)}%`;

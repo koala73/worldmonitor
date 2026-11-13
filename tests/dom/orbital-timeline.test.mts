@@ -6,6 +6,7 @@ import type { PointPassLookup } from '@/services/orbital/pass-client';
 import { daylightSpans, type PointPass } from '@/services/orbital/pass-job';
 import { loadPointContext, type EventLane, type LiveStrip, type PointContext } from '@/services/orbital/point-context';
 import { OrbitalTimeline, type OrbitalTimelineInput } from '@/components/OrbitalTimeline';
+import { setOrbitalDisplayZone } from '@/components/OrbitalWatchPage';
 
 const NOW = Date.UTC(2026, 10, 13, 12);
 const HOUR = 3_600_000;
@@ -255,5 +256,16 @@ describe('point context requests', () => {
     for (const url of urls) {
       expect(url).not.toMatch(/25\.2|55\.27/);
     }
+  });
+});
+
+describe('timeline zone', () => {
+  afterEach(() => setOrbitalDisplayZone('UTC', 'UTC'));
+  it('reads its labels in the sheet display zone when none is injected', () => {
+    setOrbitalDisplayZone('Asia/Dubai', 'GST');
+    const dock = new OrbitalTimeline(vi.fn());
+    document.body.append(dock.element);
+    dock.update({ lookup: lookup([]), passes: [], acquisitions: [], context: { kind: 'loading' }, selectedKey: null });
+    expect(dock.element.querySelector('.ow-tl-head')!.textContent).toContain('Asia/Dubai · UTC+4');
   });
 });

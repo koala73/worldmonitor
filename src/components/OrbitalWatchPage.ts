@@ -173,6 +173,11 @@ export function setOrbitalDisplayZone(timeZone: string, label: string): void {
   displayZone = { timeZone, label };
 }
 
+/** The IANA zone and short label every displayed time currently uses. */
+export function orbitalDisplayZone(): { timeZone: string; label: string } {
+  return { ...displayZone };
+}
+
 /** Formats a time in the display zone: weekday and date, date, clock, both with the zone label, or date and clock. */
 export function formatOrbitalTime(ms: number, style: 'day' | 'date' | 'clock' | 'when' | 'stamp'): string {
   const { timeZone, label } = displayZone;
