@@ -193,3 +193,59 @@ curl -s https://worldmonitor.app/mcp \
     "params":{"name":"get_defense_industrial_base","arguments":{"country_code":"UA"}}
   }'
 ```
+
+### `get_point_satellite_passes`
+
+Returns every imaging-satellite pass whose footprint covers a point over the last 7 days and the next 72 hours, with one tier per pass, and the Sentinel-2, Sentinel-1 and Landsat acquisitions the open archives hold for the point, each with a public image URL. The tiers are the ones the WorldMonitor point lookup assigns. Military and intelligence passes read `capability-overhead` and never count as an image.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `lat` | number | **yes** | Latitude in decimal degrees, -90 to 90. |
+| `lon` | number | **yes** | Longitude in decimal degrees, -180 to 180. |
+
+- **API endpoint:** `GET /api/orbital/v1/get-point-passes`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Point used:** the point is rounded to 0.01 degrees before anything is computed or cached, and `point` in the response names the rounded point. Two points in one 0.01-degree cell get the same answer.
+- **Kind:** live RPC. Passes are computed on the edge from the seeded imaging catalog; the two STAC archives are searched on each uncached point, and answers are cached for 10 minutes.
+- **Freshness:** `stale: true` when the orbit catalog is missing or older than its 9-hour limit. `archiveStatus: "partial"` with `failedSources` means an archive did not answer; the passes it serves keep their geometry tiers and the mission is listed in `unansweredProfiles`. Passes whose footprint misses the point are counted in `outOfFootprintPasses`, not listed.
+- **Not in the OpenAPI JSON:** the operation is documented in the OrbitalService spec and the YAML bundle; the scanner JSON bundle leaves it out for size.
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_point_satellite_passes","arguments":{"lat":39.74,"lon":-104.99}}
+  }'
+```
+
+### `get_country_imagery_evidence`
+
+Returns the watched sites in one country with each site's newest archive scene, its next expected imaging pass, the operators whose satellites passed over it, and any confirmed change flag. A confirmed flag means radar backscatter statistics changed at the site and a second comparable scene confirmed it. It reports that statistics changed, not what changed.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | **yes** | ISO 3166-1 alpha-2 or alpha-3 code or a country name, for example `UA`, `UKR` or `Ukraine`. |
+
+- **API endpoint:** `GET /api/orbital/v1/get-country-imagery-evidence` (takes the alpha-2 code as `country_code`)
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Flags:** only confirmed flags are returned. Raised and retracted changes never appear, and while the change signal is unreleased no flag appears at all. See the [change-signal methodology](/methodology/orbital-change-signal).
+- **Freshness:** `stale: true` with an empty `sites` list when the country's evidence is missing or its least recently evaluated site is older than 3 days. `siteCount: 0` with `stale: false` means the country has no watched sites.
+- **Not in the OpenAPI JSON:** the operation is documented in the OrbitalService spec and the YAML bundle; the scanner JSON bundle leaves it out for size.
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_country_imagery_evidence","arguments":{"country_code":"UA"}}
+  }'
+```
