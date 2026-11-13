@@ -43,6 +43,8 @@ export interface FlagTrack {
   baseline: FlagObservation[];
   /** The changed scene awaiting a second comparable scene. */
   candidate: { observation: FlagObservation; changes: ComponentChange[] } | null;
+  /** The scene that confirmed the track's current change. */
+  confirmedBy: { itemId: string; datetime: string } | null;
   lastDatetime: string | null;
 }
 

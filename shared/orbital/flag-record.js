@@ -34,7 +34,7 @@ export function geometryKey(geometry) {
 }
 
 export function newTrack(geometry) {
-  return { geometry, state: 'baseline-building', baseline: [], candidate: null, lastDatetime: null };
+  return { geometry, state: 'baseline-building', baseline: [], candidate: null, confirmedBy: null, lastDatetime: null };
 }
 
 const median = (values) => {
@@ -90,12 +90,19 @@ const TRANSITIONS = {
     const repeated = changes.filter((change) => track.candidate.changes.some((raised) => sameDirection(raised, change)));
     if (repeated.length > 0) {
       return {
-        track: { ...track, state: 'confirmed', baseline: [track.candidate.observation, observation], candidate: null },
+        track: {
+          ...track, state: 'confirmed', baseline: [track.candidate.observation, observation], candidate: null,
+          confirmedBy: { itemId: observation.itemId, datetime: observation.datetime },
+        },
         event: eventOf('confirmed', observation, repeated),
       };
     }
     if (changes.length > 0) {
       return { track: { ...track, candidate: { observation, changes } }, event: eventOf('raised', observation, changes) };
+    }
+    // A scene that did not measure a raised statistic can neither confirm nor retract it.
+    if (!track.candidate.changes.some((raised) => Number.isFinite(observation.values[raised.component]))) {
+      return { track, event: null };
     }
     const retracted = grow({ ...track, state: 'monitoring', candidate: null }, observation, thresholds);
     return { track: retracted.track, event: eventOf('retracted', observation, []) };
@@ -119,16 +126,15 @@ export function siteFlagState(tracks) {
   return state;
 }
 
-/** What a country rollup carries for a site: its state and, only when confirmed, the confirming scene. */
+/** What a country rollup carries for a site: its state and, only when confirmed, the latest scene of a still-confirmed track. */
 export function projectFlag(flag) {
   if (!flag) return null;
-  const confirmed = flag.state === 'confirmed'
-    ? flag.events.findLast((event) => event.kind === 'confirmed') ?? null
-    : null;
-  return {
-    state: flag.state,
-    wording: FLAG_WORDING,
-    updatedAt: flag.updatedAt,
-    confirmed: confirmed && { geometryKey: confirmed.geometryKey, itemId: confirmed.itemId, datetime: confirmed.datetime },
-  };
+  let confirmed = null;
+  if (flag.state === 'confirmed') {
+    for (const [key, track] of Object.entries(flag.tracks)) {
+      if (track.state !== 'confirmed' || !track.confirmedBy) continue;
+      if (!confirmed || track.confirmedBy.datetime > confirmed.datetime) confirmed = { geometryKey: key, ...track.confirmedBy };
+    }
+  }
+  return { state: flag.state, wording: FLAG_WORDING, updatedAt: flag.updatedAt, confirmed };
 }

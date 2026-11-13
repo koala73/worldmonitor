@@ -99,18 +99,36 @@ describe('orbital change flag lifecycle', () => {
     assert.deepEqual(changesFrom(monitoringTrack().baseline, observation), []);
   });
 
+  it('neither confirms nor retracts a raised change from a scene that did not measure it', () => {
+    const raised = fold(monitoringTrack(), [scene(42.5, 34)]).track;
+    assert.deepEqual(raised.candidate.changes.map((change) => change.component), ['vv_median']);
+    const next = advanceTrack(raised, { ...scene(40), values: { vh_median: 34 } });
+    assert.equal(next.track.state, 'raised');
+    assert.equal(next.event, null);
+    assert.deepEqual(next.track.baseline, raised.baseline);
+  });
+
+  it('projects the confirming scene of a track that is still confirmed, not of a newer one that moved on', () => {
+    const older = fold(monitoringTrack(), [scene(42.5), scene(42.4)]);
+    const newer = fold(monitoringTrack(), [scene(42.5), scene(42.4), ...[42.3, 42.4, 42.6, 42.4].map((vv) => scene(vv))]);
+    assert.equal(newer.track.state, 'monitoring');
+    const flag = { state: 'confirmed', updatedAt: 1, tracks: { older: older.track, newer: newer.track }, events: [...older.events, ...newer.events] };
+    const confirming = older.events.at(-1);
+    assert.deepEqual(projectFlag(flag).confirmed, { geometryKey: 'older', itemId: confirming.itemId, datetime: confirming.datetime });
+  });
+
   it('gives the site the most significant state of its tracks and projects only a confirmed scene', () => {
     const raised = fold(monitoringTrack(), [scene(42.5)]).track;
     const confirmed = fold(monitoringTrack(), [scene(42.5), scene(42.4)]);
     assert.equal(siteFlagState({ a: monitoringTrack(), b: raised }), 'raised');
     assert.equal(siteFlagState({}), 'baseline-building');
     const event = confirmed.events.at(-1);
-    const flag = { state: 'confirmed', updatedAt: 1, events: confirmed.events };
+    const flag = { state: 'confirmed', updatedAt: 1, tracks: { [event.geometryKey]: confirmed.track }, events: confirmed.events };
     assert.deepEqual(projectFlag(flag), {
       state: 'confirmed', wording: FLAG_WORDING, updatedAt: 1,
       confirmed: { geometryKey: event.geometryKey, itemId: event.itemId, datetime: event.datetime },
     });
-    assert.equal(projectFlag({ state: 'raised', updatedAt: 1, events: confirmed.events.slice(0, 1) }).confirmed, null);
+    assert.equal(projectFlag({ state: 'raised', updatedAt: 1, tracks: { [event.geometryKey]: raised }, events: confirmed.events.slice(0, 1) }).confirmed, null);
     assert.equal(FLAG_WORDING, 'imagery statistics changed');
   });
 });
