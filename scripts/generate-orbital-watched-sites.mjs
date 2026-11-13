@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Writes the composed watched-site registry (shared/orbital/watched-sites.ts) to
+// Writes the composed watched-site registry (shared/watched-sites.ts) to
 // scripts/shared/, where the Railway site seeder can import it without the TypeScript
 // sources. Run through `npm run generate`; `--check` fails when the committed copy is stale.
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { composeWatchedSites } from '../shared/orbital/watched-sites.ts';
+import { composeWatchedSites } from '../shared/watched-sites.ts';
 import { isMainModule } from './lib/main-module.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -15,13 +15,13 @@ export const WATCHED_SITES_OUTPUT = 'scripts/shared/orbital-watched-sites.genera
 export function renderWatchedSitesModule(sites) {
   const lines = sites.map((site) => `  ${JSON.stringify(site)},`);
   const version = createHash('sha256').update(JSON.stringify(sites)).digest('hex').slice(0, 16);
-  return `// AUTO-GENERATED from shared/orbital/watched-sites.ts. Do not edit manually.
+  return `// AUTO-GENERATED from shared/watched-sites.ts. Do not edit manually.
 // Run: npm run generate
 // @ts-check
 
 export const WATCHED_SITES_VERSION = ${JSON.stringify(version)};
 
-/** @type {ReadonlyArray<import('../../shared/orbital/watched-sites.ts').WatchedSite>} */
+/** @type {ReadonlyArray<import('../../shared/watched-sites.ts').WatchedSite>} */
 export const WATCHED_SITES = Object.freeze([
 ${lines.join('\n')}
 ]);

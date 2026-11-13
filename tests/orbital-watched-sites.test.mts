@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
-import { composeWatchedSites, type WatchedSiteCandidate } from '../shared/orbital/watched-sites.ts';
+import { composeWatchedSites, type WatchedSiteCandidate } from '../shared/watched-sites.ts';
 import { NUCLEAR_FACILITIES } from '../shared/nuclear-facilities-data.ts';
 import { isWatchedSitesModuleCurrent, renderWatchedSitesModule } from '../scripts/generate-orbital-watched-sites.mjs';
 import { WATCHED_SITES } from '../scripts/shared/orbital-watched-sites.generated.mjs';

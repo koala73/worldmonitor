@@ -667,6 +667,8 @@
       "scripts/shared/orbital/pass-geometry.js",
       "scripts/shared/orbital/sensor-profiles.js",
       "scripts/shared/orbital/sun.js",
+      "scripts/shared/orbital/tiers.js",
+      "scripts/lib/main-module.mjs",
       "scripts/_upstash-rest.mjs",
       "scripts/data/strategic-reservoirs.json",
       "scripts/data/reservoir-levels-baseline.json",

@@ -1,10 +1,10 @@
-// AUTO-GENERATED from shared/orbital/watched-sites.ts. Do not edit manually.
+// AUTO-GENERATED from shared/watched-sites.ts. Do not edit manually.
 // Run: npm run generate
 // @ts-check
 
 export const WATCHED_SITES_VERSION = "4e46e15c0ea8eaa1";
 
-/** @type {ReadonlyArray<import('../../shared/orbital/watched-sites.ts').WatchedSite>} */
+/** @type {ReadonlyArray<import('../../shared/watched-sites.ts').WatchedSite>} */
 export const WATCHED_SITES = Object.freeze([
   {"id":"chokepoint:bab_el_mandeb","name":"BAB EL-MANDEB","lat":12.5,"lon":43.3,"countryCode":"YE","surface":"maritime","origins":[{"list":"chokepoint","id":"bab_el_mandeb"}]},
   {"id":"chokepoint:bosphorus","name":"BOSPHORUS STRAIT","lat":41.1,"lon":29,"countryCode":"TR","surface":"maritime","origins":[{"list":"chokepoint","id":"bosphorus"}]},

@@ -3,12 +3,12 @@
 // curated lists the map already shows, so a site is only watched because one of them
 // names it. `npm run generate` writes the composed list to
 // scripts/shared/orbital-watched-sites.generated.mjs, the copy the seeder reads.
-import countryNamesToIso2 from '../country-names.json';
-import { CHOKEPOINT_COUNTRY_CODES } from '../chokepoint-countries.js';
-import { CONFLICT_ZONES, INTEL_HOTSPOTS, STRATEGIC_WATERWAYS } from '../geo-data';
-import { MILITARY_BASES_EXPANDED } from '../military-bases-data';
-import { NUCLEAR_FACILITIES } from '../nuclear-facilities-data';
-import { PORTS } from '../ports-data';
+import countryNamesToIso2 from './country-names.json';
+import { CHOKEPOINT_COUNTRY_CODES } from './chokepoint-countries.js';
+import { CONFLICT_ZONES, INTEL_HOTSPOTS, STRATEGIC_WATERWAYS } from './geo-data';
+import { MILITARY_BASES_EXPANDED } from './military-bases-data';
+import { NUCLEAR_FACILITIES } from './nuclear-facilities-data';
+import { PORTS } from './ports-data';
 
 export type WatchedSiteOriginList =
   | 'hotspot'
