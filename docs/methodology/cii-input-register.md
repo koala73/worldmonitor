@@ -89,6 +89,22 @@ highest was the Saudi riyal at 0.06, whose isolated spikes the medians remove.
 The second source read both pegs as flat and agreed with Yahoo on the Egyptian
 pound (6.30% against 6.27%). Its terms are under review in the attribution ledger.
 The noise share and the anchor date are published with each member.
+
+Russia, Venezuela and Iraq have no Yahoo row, so on 13 November 2026 they rested
+on inflation alone and a late IMF release would have left them unmeasured. The
+seeder now reads RUB, VES and IQD from the second source only and publishes them
+in a separate `dailyOnly` list of the same key, so the 45-currency stress table
+and its readers do not change; a Yahoo row for the same country keeps priority.
+A check of 240 days of snapshots found RUB moving as a market rate, VES following
+the official crawl (which understates the parallel market), and IQD holding the
+1,310 peg until the central bank devalued by about 15% on 7 October 2026. On the
+same day these gave Russia −1.35% (a small appreciation), Venezuela 14.58% and
+Iraq 13.82% against 15 August. The Iranian rial is excluded: the source sat near
+1,375,000 from June to September 2026 while the official rate moved from about
+1.59 to 1.74 million, so its 90-day anchor was stale, not a measurement. Iran
+keeps its inflation member only until a source with a reliable market rate is
+reviewed.
+
 Values retain their units, source key, observation date and reference method.
 U18 must evaluate the scoring transformation and member-count fairness; these
 producer measurements do not select score constants or weights.
