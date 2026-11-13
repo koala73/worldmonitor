@@ -93,6 +93,7 @@ import {
   PremiumLayerGate,
 } from './premium-layer-gate';
 import { globeAltitudeToMapZoom, mapZoomToGlobeAltitude } from '@/utils/globe-zoom';
+import { globeCenterForOffset, isOnVisibleHemisphere, type ScreenOffset } from '@/utils/map-point-offset';
 import { headingToCompass } from '@/utils/heading-to-compass';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
 
@@ -543,6 +544,8 @@ export class GlobeMap {
   private controls: GlobeControlsLike | null = null;
   private pendingMarkerGestureCleanup: (() => void) | null = null;
   private renderPaused = false;
+  private autoRotateHeld = false;
+
   private outerGlow: any = null;
   private innerGlow: any = null;
   private starField: any = null;
@@ -784,7 +787,7 @@ export class GlobeMap {
     // surviving/second pointer's position in mixed mouse|pen + touch gestures —
     // crashes reading undefined.x on touchscreen laptops (WORLDMONITOR-QD).
     guardOrbitControlsPointerTracking(controls);
-    controls.autoRotate = !desktop;
+    controls.autoRotate = !desktop && !this.autoRotateHeld;
     controls.autoRotateSpeed = 0.3;
     controls.enablePan = false;
     controls.enableZoom = true;
@@ -870,7 +873,7 @@ export class GlobeMap {
       if (this.renderPaused) return;
       if (this.autoRotateTimer) clearTimeout(this.autoRotateTimer);
       this.autoRotateTimer = setTimeout(() => {
-        if (this.renderPaused || this.orbitalTarget) return;
+        if (this.renderPaused || this.orbitalTarget || this.autoRotateHeld) return;
         if (this.viewportAutoRotateBeforeMove !== null) {
           this.viewportAutoRotateBeforeMove = !desktop;
         } else {
@@ -3389,7 +3392,7 @@ export class GlobeMap {
         // the state that existed before the programmatic movement.
         this.controlsAutoRotateBeforePause = this.viewportAutoRotateBeforeMove;
       } else if (this.controls) {
-        this.controls.autoRotate = this.viewportAutoRotateBeforeMove;
+        this.controls.autoRotate = this.viewportAutoRotateBeforeMove && !this.autoRotateHeld;
       }
     }
     this.viewportAutoRotateBeforeMove = null;
@@ -3464,6 +3467,32 @@ export class GlobeMap {
     this.wakeGlobe();
     const altitude = zoom === undefined ? 1.2 : mapZoomToGlobeAltitude(zoom);
     this.moveViewport({ lat, lng: lon, altitude });
+  }
+
+  /** The point of view that draws (lat, lon) `offset` pixels from the canvas centre at `zoom`. */
+  public centerForOffset(lat: number, lon: number, zoom: number, offset: ScreenOffset): { lat: number; lon: number } {
+    const camera = this.globe?.camera() as { fov?: number } | undefined;
+    return globeCenterForOffset(lat, lon, mapZoomToGlobeAltitude(zoom), camera?.fov ?? 50, this.getDrawingRect()?.height ?? this.container.clientHeight, offset);
+  }
+
+  /** The canvas at the size the globe last drew; its CSS stretches it to a resized container before the renderer catches up. */
+  public getDrawingRect(): DOMRect | null {
+    if (!this.globe) return null;
+    const renderer = this.globe.renderer();
+    const canvas = renderer.domElement;
+    const ratio = renderer.getPixelRatio() || 1;
+    const { left, top } = canvas.getBoundingClientRect();
+    return new DOMRect(left, top, canvas.width / ratio, canvas.height / ratio);
+  }
+
+  /** Where (lat, lon) is drawn in client coordinates, or null when it faces away from the camera. */
+  public projectToClient(lat: number, lon: number): { x: number; y: number } | null {
+    if (!this.globe) return null;
+    const pov = this.globe.pointOfView();
+    if (!isOnVisibleHemisphere(lat, lon, pov.lat, pov.lng, pov.altitude ?? 0)) return null;
+    const point = this.globe.getScreenCoords(lat, lon, 0);
+    const rect = this.globe.renderer().domElement.getBoundingClientRect();
+    return { x: rect.left + point.x, y: rect.top + point.y };
   }
 
   public getCenter(): { lat: number; lon: number } | null {
@@ -3549,6 +3578,14 @@ export class GlobeMap {
       altitude: mapZoomToGlobeAltitude(zoom),
     });
   }
+  /** Stops the idle spin while a caller keeps a point in view; releasing it resumes the spin. */
+  public holdAutoRotate(held: boolean): void {
+    if (this.autoRotateHeld === held) return;
+    this.autoRotateHeld = held;
+    if (!this.controls || this.renderPaused || this.viewportAutoRotateBeforeMove !== null) return;
+    this.controls.autoRotate = !held && !isDesktopRuntime();
+  }
+
   public setRenderPaused(paused: boolean): void {
     if (this.renderPaused === paused) return;
     this.renderPaused = paused;
@@ -3575,7 +3612,7 @@ export class GlobeMap {
         this.controls.enableDamping = false;
       } else {
         if (this.controlsAutoRotateBeforePause !== null) {
-          this.controls.autoRotate = this.controlsAutoRotateBeforePause;
+          this.controls.autoRotate = this.controlsAutoRotateBeforePause && !this.autoRotateHeld;
         }
         if (this.controlsDampingBeforePause !== null) {
           this.controls.enableDamping = this.controlsDampingBeforePause;

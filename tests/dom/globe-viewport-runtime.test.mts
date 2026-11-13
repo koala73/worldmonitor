@@ -103,6 +103,18 @@ describe('Globe viewport runtime', () => {
     }
   });
 
+  it('keeps a held globe from spinning after a move and spins again once released', async () => {
+    const { map, controls } = camera();
+    map.holdAutoRotate(true);
+    expect(controls.autoRotate).toBe(false);
+    map.setCenter(25.112, 55.139, 11);
+    await vi.advanceTimersByTimeAsync(1500);
+    await expect(map.whenViewportSettled()).resolves.toBe(true);
+    expect(controls.autoRotate, 'a spin would carry the held point out of view').toBe(false);
+    map.holdAutoRotate(false);
+    expect(controls.autoRotate).toBe(true);
+  });
+
   it('allows a state subscriber to start a new move during settlement', async () => {
     const { map } = camera();
     let next: Promise<boolean> | undefined;

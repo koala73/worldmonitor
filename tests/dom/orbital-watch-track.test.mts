@@ -106,7 +106,12 @@ beforeEach(() => {
   frames = new Map();
   let nextFrame = 1;
   reducedMotion = false;
-  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.set(nextFrame, callback); return nextFrame++; });
+  // Only the replay's frames are kept; the lookup's map focus also asks for frames to follow the point.
+  const forMapFocus = (callback: FrameRequestCallback) => callback.name === 'trackMark' || String(callback).includes('centreMap');
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    if (!forMapFocus(callback)) frames.set(nextFrame, callback);
+    return nextFrame++;
+  });
   vi.stubGlobal('cancelAnimationFrame', (handle: number) => { frames.delete(handle); });
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: reducedMotion && query.includes('reduce'), media: query, addEventListener() {}, removeEventListener() {} }));
   lookupMock.mockResolvedValue(lookup());

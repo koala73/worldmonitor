@@ -4670,7 +4670,11 @@
         "could": "Could have pointed here",
         "couldDef": "A steerable or commercial sensor was in reach; the operator doesn't say if it looked.",
         "overhead": "Passed overhead",
-        "overheadDef": "Crossed the sky here, with no imaging evidence."
+        "overheadDef": "Crossed the sky here, with no imaging evidence.",
+        "watchedShort": "Image in a public archive",
+        "likelyShort": "Covered, no image yet",
+        "couldShort": "Steerable sensor in reach",
+        "overheadShort": "Overhead, no image"
       },
       "group": {
         "watched": "watched",
@@ -4709,7 +4713,12 @@
         "window": "7-day window · {{start}} → {{end}}",
         "failed": "Failed",
         "note": "Planetary Computer and NASA GIBS render images on demand, so this step can take a few seconds."
-      }
+      },
+      "privacyLine": "Point stays in your browser",
+      "privacyHow": "How",
+      "sources": "Sources",
+      "archiveScene": "Archive scene",
+      "archiveOnly": "No computed pass matches these images, so they are shown as archive scenes."
     }
   },
   "contextMenu": {

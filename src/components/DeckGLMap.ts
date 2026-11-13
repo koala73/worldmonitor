@@ -7005,6 +7005,14 @@ export class DeckGLMap {
     });
   }
 
+  /** Where (lat, lon) is drawn in client coordinates. */
+  public projectToClient(lat: number, lon: number): { x: number; y: number } | null {
+    const point = this.projectToScreen(lat, lon);
+    if (!point || !this.maplibreMap) return null;
+    const rect = this.maplibreMap.getContainer().getBoundingClientRect();
+    return { x: rect.left + point.x, y: rect.top + point.y };
+  }
+
   public getCenter(): { lat: number; lon: number } | null {
     if (this.pendingCenter) return this.pendingCenter;
     if (this.maplibreMap) {

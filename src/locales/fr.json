@@ -5239,7 +5239,11 @@
         "could": "Aurait pu viser ici",
         "couldDef": "Un capteur orientable ou commercial était à portée ; l’opérateur ne dit pas s’il a regardé.",
         "overhead": "Passé au-dessus",
-        "overheadDef": "A traversé le ciel ici, sans preuve d’imagerie."
+        "overheadDef": "A traversé le ciel ici, sans preuve d’imagerie.",
+        "watchedShort": "Image dans une archive publique",
+        "likelyShort": "Couvert, pas encore d'image",
+        "couldShort": "Capteur orientable à portée",
+        "overheadShort": "Survolé, sans image"
       },
       "group": {
         "watched": "observés",
@@ -5278,7 +5282,12 @@
         "window": "Fenêtre de 7 jours · {{start}} → {{end}}",
         "failed": "Échec",
         "note": "Planetary Computer et NASA GIBS génèrent les images à la demande ; cette étape peut prendre quelques secondes."
-      }
+      },
+      "privacyLine": "Le point reste dans votre navigateur",
+      "privacyHow": "Comment",
+      "sources": "Sources",
+      "archiveScene": "Scène d'archive",
+      "archiveOnly": "Aucun passage calculé ne correspond à ces images ; elles sont donc présentées comme des scènes d'archive."
     }
   }
 }

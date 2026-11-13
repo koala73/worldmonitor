@@ -5211,7 +5211,11 @@
         "could": "Ingeweza kulenga hapa",
         "couldDef": "Kihisi kinachoelekezwa au cha kibiashara kilikuwa karibu; mwendeshaji hasemi kama kiliangalia.",
         "overhead": "Ilipita juu",
-        "overheadDef": "Ilivuka anga hapa, bila ushahidi wa picha."
+        "overheadDef": "Ilivuka anga hapa, bila ushahidi wa picha.",
+        "watchedShort": "Picha katika hifadhi ya umma",
+        "likelyShort": "Imefunikwa, bado hakuna picha",
+        "couldShort": "Kihisi kinachoelekezwa kipo karibu",
+        "overheadShort": "Ilipita juu, hakuna picha"
       },
       "group": {
         "watched": "zilizoonwa",
@@ -5250,7 +5254,12 @@
         "window": "Kipindi cha siku 7 · {{start}} → {{end}}",
         "failed": "Imeshindwa",
         "note": "Planetary Computer na NASA GIBS huunda picha zinapoombwa, kwa hivyo hatua hii inaweza kuchukua sekunde chache."
-      }
+      },
+      "privacyLine": "Sehemu inabaki kwenye kivinjari chako",
+      "privacyHow": "Vipi",
+      "sources": "Vyanzo",
+      "archiveScene": "Picha ya hifadhi",
+      "archiveOnly": "Hakuna mpito uliokokotolewa unaolingana na picha hizi, kwa hivyo zinaonyeshwa kama picha za hifadhi."
     }
   }
 }

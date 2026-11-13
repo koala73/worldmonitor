@@ -125,7 +125,10 @@ const maxOf = (values: Array<number | null>) => {
 
 function acquisitionImage(acquisition: Acquisition, box: CropBox): string | null {
   for (const item of acquisition.items) {
-    const crop = item.archive === 'planetary-computer' ? planetaryComputerCropUrl(item.collection, item.itemId, box) : null;
+    // Planetary Computer holds the same Sentinel-1 GRD products under the same IDs, so radar is cropped there too.
+    const crop = item.archive === 'planetary-computer' || item.profileId === 'sentinel-1'
+      ? planetaryComputerCropUrl(item.collection, item.itemId, box)
+      : null;
     if (crop) return crop;
   }
   return acquisition.items.find((item) => item.previewUrl)?.previewUrl ?? null;

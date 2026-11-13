@@ -46,8 +46,9 @@ const allowed = (url: string): string | null => (isAllowedPreviewUrl(url) ? url 
 const PLANETARY_COMPUTER_CROP_URL = 'https://planetarycomputer.microsoft.com/api/data/v1/item/bbox';
 
 /**
- * The "Natural color" render options Planetary Computer publishes per
- * collection at /api/data/v1/mosaic/info?collection=<id> (read 2026-11-13).
+ * The render options Planetary Computer publishes per collection at
+ * /api/data/v1/mosaic/info?collection=<id> (read 2026-11-13): "Natural color"
+ * for optical scenes, "VV polarization" greyscale backscatter for radar.
  * The items' own rendered previews use the visual (TCI) asset, which clips
  * bright ground such as desert, snow and cloud to flat white or yellow.
  */
@@ -60,9 +61,10 @@ export const PLANETARY_COMPUTER_NATURAL_COLOUR: Readonly<Record<string, Readonly
     ['assets', 'red'], ['assets', 'green'], ['assets', 'blue'], ['nodata', '0'],
     ['color_formula', 'gamma RGB 2.7, saturation 1.5, sigmoidal RGB 15 0.55'],
   ],
+  'sentinel-1-grd': [['assets', 'vv'], ['rescale', '0,250'], ['colormap_name', 'gray']],
 };
 
-/** Crops a Planetary Computer item to the box in the archive's natural-colour rendering. */
+/** Crops a Planetary Computer item to the box in the archive's published rendering. */
 export function planetaryComputerCropUrl(collection: string, itemId: string, box: CropBox, pixels = DEFAULT_CROP_PIXELS): string | null {
   const render = PLANETARY_COMPUTER_NATURAL_COLOUR[collection];
   if (!render) return null;
