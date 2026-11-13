@@ -17,10 +17,12 @@ import { h, replaceChildren } from '@/utils/dom-utils';
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
-/** Passes closer than this share of the width draw as one glyph, so a busy row stays readable. */
-const CLUSTER_PCT = 1;
-/** Day labels run right of their midnight, so they give way to NOW and to the right edge. */
-const DAY_LABEL_PCT = 10;
+/** Passes closer than this share of the width (about one glyph wide) draw as one glyph with a ×n count. */
+const CLUSTER_PCT = 1.2;
+/** A day is labelled at the middle of its visible span; only an edge sliver narrower than this goes unlabelled. */
+const MIN_DAY_PCT = 4;
+/** Where NOW sits across a sideways-scrolling dock when it first opens. */
+const NOW_AT = 0.7;
 const TIP_NAMES = 4;
 
 export const passKey = (pass: { noradId: number; timeMs: number }) => `${pass.noradId}:${pass.timeMs}`;
@@ -38,7 +40,7 @@ export interface OrbitalTimelineInput {
 
 type RowId = 'geo' | 'photo' | 'likely' | 'could' | 'overhead';
 
-/** Five fixed rows, one glyph each, the same glyphs that mark these tiers everywhere else. The many "could" passes draw as ticks. */
+/** Five fixed rows, one glyph each, the same glyphs that mark these tiers everywhere else. Dense rows list hourly counts for screen readers. */
 const ROWS: ReadonlyArray<{ id: RowId; glyph: string; tiers: ReadonlyArray<PassTier['kind']>; dense?: true }> = [
   { id: 'geo', glyph: '○', tiers: ['daily-mosaic'] },
   { id: 'photo', glyph: '◆', tiers: ['confirmed-image'] },
@@ -110,6 +112,8 @@ export class OrbitalTimeline {
   private readonly tip = h('div', { className: 'ow-tl-tip', role: 'tooltip' });
   private readonly foot = h('div', { className: 'ow-tl-foot' });
   private readonly list = h('ol', { className: 'ow-tl-sr' });
+  private hovered: HTMLElement | null = null;
+  private revealedFor: string | null = null;
 
   constructor(private readonly onSelect: (key: string) => void) {
     this.tip.hidden = true;
@@ -200,18 +204,22 @@ export class OrbitalTimeline {
     });
 
     const midnights = clock.midnights(window.startMs, window.endMs);
-    const nowPct = pct(nowMs);
+    const dayStarts = [window.startMs, ...midnights.filter((ms) => ms > window.startMs && ms < window.endMs)];
+    const days = dayStarts.flatMap((startMs, i) => {
+      const endMs = dayStarts[i + 1] ?? window.endMs;
+      return pct(endMs) - pct(startMs) < MIN_DAY_PCT ? [] : [this.dayLabel(clock, startMs, `left:${((pct(startMs) + pct(endMs)) / 2).toFixed(3)}%`)];
+    });
     replaceChildren(this.plot,
       h('div', { className: 'ow-tl-backdrop' },
         ...input.lookup.daylight.map((band) => h('span', { className: 'ow-tl-daylight', style: between(band.startMs, band.endMs) })),
         ...midnights.map((ms) => h('span', { className: 'ow-tl-midnight', style: at(ms) })),
         h('span', { className: 'ow-tl-now', style: at(nowMs) })),
+      h('div', { className: 'ow-tl-flags' }, h('span', { className: 'ow-tl-now-label', style: at(nowMs) }, t('orbitalWatch.timeline.now'))),
       h('div', { className: 'ow-tl-strip' }, ...eventMarks),
       ...rows,
-      h('div', { className: 'ow-tl-axis' },
-        ...midnights.filter((ms) => !(pct(ms) > nowPct - DAY_LABEL_PCT && pct(ms) < nowPct + 3) && pct(ms) < 100 - DAY_LABEL_PCT / 2).map((ms) => this.dayLabel(clock, ms, at(ms))),
-        h('span', { className: 'ow-tl-now-label', style: at(nowMs) }, t('orbitalWatch.timeline.now'))));
+      h('div', { className: 'ow-tl-axis' }, ...days));
     this.hideTip();
+    requestAnimationFrame(() => this.revealNow(`${window.startMs}:${window.endMs}`));
 
     for (const band of input.lookup.daylight) {
       entries.push({ timeMs: band.startMs, text: t('orbitalWatch.timeline.daylight', { start: formatUtc(band.startMs), end: formatUtc(band.endMs) }) });
@@ -227,7 +235,7 @@ export class OrbitalTimeline {
     const groups: PointPass[][] = [];
     for (const pass of [...passes].sort((a, b) => a.timeMs - b.timeMs)) {
       const last = groups[groups.length - 1];
-      const joins = !row.dense && last && pct(pass.timeMs) - pct(last[0]!.timeMs) < CLUSTER_PCT
+      const joins = last && pct(pass.timeMs) - pct(last[0]!.timeMs) < CLUSTER_PCT
         && (pass.tier.kind === 'opportunity') === (last[0]!.tier.kind === 'opportunity');
       if (joins) last.push(pass);
       else groups.push([pass]);
@@ -237,14 +245,14 @@ export class OrbitalTimeline {
       const tier = t(TIER_LABEL_KEY[first.tier.kind]);
       const tip = group.length === 1
         ? `${first.name} · ${when(first.timeMs)} · ${tier}`
-        : [...group.slice(0, TIP_NAMES).map((pass) => `${pass.name} · ${when(pass.timeMs)}`), ...(group.length > TIP_NAMES ? [`+${group.length - TIP_NAMES}`] : []), tier].join('\n');
-      const classes = ['ow-tl-mark', row.dense ? 'is-tick' : '', first.tier.kind === 'opportunity' ? 'is-opportunity' : '',
+        : [`×${group.length} · ${tier}`, ...group.slice(0, TIP_NAMES).map((pass) => `${pass.name} · ${when(pass.timeMs)}`), ...(group.length > TIP_NAMES ? [`+${group.length - TIP_NAMES}`] : [])].join('\n');
+      const classes = ['ow-tl-mark', first.tier.kind === 'opportunity' ? 'is-opportunity' : '',
         group.some((pass) => passKey(pass) === selectedKey) ? 'is-selected' : ''];
       return h('span', {
         className: classes.filter(Boolean).join(' '),
         style: `left:${pct(first.timeMs).toFixed(3)}%`,
         dataset: { pass: passKey(first), tier: first.tier.kind, count: String(group.length), tip },
-      }, row.dense ? '' : row.glyph);
+      }, row.glyph);
     });
   }
 
@@ -273,19 +281,41 @@ export class OrbitalTimeline {
       this.hideTip();
       return;
     }
+    this.hovered?.classList.remove('is-hover');
+    this.hovered = target;
+    target.classList.add('is-hover');
     const frame = this.element.getBoundingClientRect();
+    const plot = this.plot.getBoundingClientRect();
     const box = target.getBoundingClientRect();
     this.tip.textContent = target.dataset.tip ?? '';
     this.tip.hidden = false;
+    // Stay over the plot so the row legend stays readable, and point the arrow at the glyph.
     const half = this.tip.offsetWidth / 2;
     const x = (target.classList.contains('ow-tl-geo-line') ? event.clientX : box.left + box.width / 2) - frame.left;
-    this.tip.style.left = `${Math.min(Math.max(x, half), Math.max(half, frame.width - half))}px`;
-    this.tip.style.top = `${box.top - frame.top}px`;
+    const [min, max] = half * 2 <= plot.width ? [plot.left - frame.left + half, plot.right - frame.left - half] : [half, Math.max(half, frame.width - half)];
+    const left = Math.min(Math.max(x, min), max);
+    const above = box.top - frame.top >= this.tip.offsetHeight + 8;
+    this.tip.dataset.place = above ? 'above' : 'below';
+    this.tip.style.left = `${left}px`;
+    this.tip.style.top = `${(above ? box.top : box.bottom) - frame.top}px`;
+    this.tip.style.setProperty('--ow-tip-arrow', `${x - left + half}px`);
   };
 
   private readonly hideTip = (): void => {
     this.tip.hidden = true;
+    this.hovered?.classList.remove('is-hover');
+    this.hovered = null;
   };
+
+  /** A dock narrower than the timeline opens scrolled so NOW and the coming passes are in view. */
+  private revealNow(key: string): void {
+    const scroller = this.element.parentElement;
+    const now = this.plot.querySelector<HTMLElement>('.ow-tl-now');
+    if (this.revealedFor === key || !scroller || !now || scroller.scrollWidth <= scroller.clientWidth) return;
+    this.revealedFor = key;
+    const x = now.getBoundingClientRect().left - scroller.getBoundingClientRect().left + scroller.scrollLeft;
+    scroller.scrollLeft = Math.max(0, x - scroller.clientWidth * NOW_AT);
+  }
 
   private readonly onClick = (event: MouseEvent): void => {
     const key = (event.target as HTMLElement).closest<HTMLElement>('[data-pass]')?.dataset.pass;

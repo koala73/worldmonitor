@@ -101,19 +101,28 @@ describe('orbital timeline dock', () => {
     expect(timeline().querySelector('.ow-tl-head')!.textContent).toContain('7 days · next 72 h · Asia/Dubai · UTC+4');
     const firstDay = timeline().querySelector<HTMLElement>('.ow-tl-day')!;
     expect(firstDay.textContent).toBe('Sat 7 Nov');
-    expect(leftPct(firstDay)).toBeCloseTo(pctOf(Date.UTC(2026, 10, 6, 20)), 2);
-    expect(timeline().querySelector('.ow-tl-now-label')!.textContent).toBe('now');
+    expect(leftPct(firstDay)).toBeCloseTo(pctOf(Date.UTC(2026, 10, 7, 8)), 2);
+    expect(timeline().querySelector('.ow-tl-flags .ow-tl-now-label')!.textContent).toBe('now');
     expect(nowPct()).toBeCloseTo(pctOf(NOW), 2);
   });
 
-  it('draws one glyph per pass at its time, and the many "could" passes as ticks', () => {
+  it('labels every whole day in the window, today and tomorrow included, with NOW on its own flag row', () => {
+    mounted([], context());
+    const days = [...timeline().querySelectorAll('.ow-tl-axis .ow-tl-day')].map((day) => day.textContent);
+    expect(days).toEqual(['Sat 7 Nov', 'Sun 8 Nov', 'Mon 9 Nov', 'Tue 10 Nov', 'Wed 11 Nov', 'Thu 12 Nov', 'Fri 13 Nov', 'Sat 14 Nov', 'Sun 15 Nov', 'Mon 16 Nov']);
+    expect(timeline().querySelector('.ow-tl-axis .ow-tl-now-label')).toBeNull();
+  });
+
+  it('draws every row with its legend glyph, and passes closer than a glyph as one glyph with a ×n count', () => {
     const could = [pass('A', -10.2, { kind: 'within-reach' }), pass('B', -10.6, { kind: 'capability-overhead' }), pass('C', -40, { kind: 'within-reach' })];
     const photo = pass('SENTINEL-2B', -30, { kind: 'confirmed-image' });
     mounted([...could, photo], context());
     const mark = row('photo').querySelector<HTMLElement>('.ow-tl-mark')!;
     expect(mark.textContent).toBe('◆');
     expect(leftPct(mark)).toBeCloseTo(pctOf(photo.timeMs), 2);
-    expect(row('could').querySelectorAll('.ow-tl-mark.is-tick')).toHaveLength(3);
+    const coulds = [...row('could').querySelectorAll<HTMLElement>('.ow-tl-mark')];
+    expect(coulds.map((m) => [m.textContent, m.dataset.count])).toEqual([['□', '1'], ['□', '2']]);
+    expect(coulds[1]!.dataset.tip!.split('\n')[0]).toBe('×2 · capability overhead');
     expect(listText()).toContain('Could passes, 2026-11-13 01:00 UTC to 02:00: 2');
     expect(listText()).toContain('confirmed image: SENTINEL-2B, 2026-11-12 06:00 UTC');
   });
@@ -146,6 +155,32 @@ describe('orbital timeline dock', () => {
     row('photo').querySelector('.ow-tl-mark')!.dispatchEvent(new Event('pointerover', { bubbles: true }));
     expect(tip.hidden).toBe(false);
     expect(tip.textContent).toBe('SENTINEL-2B · Thu, Nov 12 · 10:00 · confirmed image');
+  });
+
+  it('anchors the tooltip over the plot, points it at the hovered glyph and highlights that glyph', () => {
+    mounted([pass('SENTINEL-2B', -30, { kind: 'confirmed-image' })], context());
+    const mark = row('photo').querySelector<HTMLElement>('.ow-tl-mark')!;
+    mark.dispatchEvent(new Event('pointerover', { bubbles: true }));
+    const tip = timeline().querySelector<HTMLElement>('.ow-tl-tip')!;
+    expect(mark.classList.contains('is-hover')).toBe(true);
+    expect(tip.dataset.place).toBeDefined();
+    expect(tip.style.getPropertyValue('--ow-tip-arrow')).toMatch(/px$/);
+    timeline().querySelector('.ow-tl-plot')!.dispatchEvent(new Event('pointerleave'));
+    expect(mark.classList.contains('is-hover')).toBe(false);
+  });
+
+  it('opens a dock narrower than the timeline scrolled so NOW sits about 70% across', async () => {
+    const dock = document.createElement('div');
+    Object.defineProperty(dock, 'scrollWidth', { value: 1000 });
+    Object.defineProperty(dock, 'clientWidth', { value: 400 });
+    const timelineDock = new OrbitalTimeline(onSelect);
+    dock.append(timelineDock.element);
+    document.body.append(dock);
+    timelineDock.update({ lookup: lookup([]), passes: [], acquisitions: [], context: { kind: 'loading' }, selectedKey: null });
+    const now = dock.querySelector<HTMLElement>('.ow-tl-now')!;
+    now.getBoundingClientRect = () => ({ left: 900 } as DOMRect);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(dock.scrollLeft).toBe(900 - 400 * 0.7);
   });
 
   it('clicking a glyph hands its pass to the selection, and marks the selected glyph', () => {
