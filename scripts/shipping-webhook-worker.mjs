@@ -1349,8 +1349,8 @@ async function backfillIndex(redis) {
 async function deliverForRecord(group, deliver, now, beforeSend) {
   let { record } = group;
   const outcomes = [];
-  for (const delivery of group.deliveries) {
-    if (record.active === false || !(await beforeSend(group))) break;
+  for (const [index, delivery] of group.deliveries.entries()) {
+    if (record.active === false || !(await beforeSend(group, group.deliveries.length - index))) break;
     const outcome = await deliver(record, delivery.payload, delivery.deliveryId, delivery.event);
     const at = now();
     outcomes.push({ stateField: delivery.stateField, sources: delivery.sources, outcome, at });
@@ -1427,6 +1427,7 @@ async function writeWorkerStatus(redis, fence, summary, now) {
     fanoutState: summary.fanoutState,
     hazardSourceState: summary.hazardSourceState,
     deliveries: summary.deliveries,
+    ownerBudgetDeferred: summary.ownerBudgetDeferred,
     failures: summary.failures,
     deactivated: summary.deactivated,
     pruned: summary.pruned,
@@ -1439,6 +1440,7 @@ async function writeWorkerStatus(redis, fence, summary, now) {
     lastRunAt: fetchedAt,
     subscribers: summary.subscribers,
     deliveries: summary.deliveries,
+    ownerBudgetDeferred: summary.ownerBudgetDeferred,
     failures: summary.failures,
     occurrences: summary.occurrences,
     hazards: summary.hazards,
@@ -1459,11 +1461,14 @@ async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
   const ownerAttempts = new Map();
   // One round trip renews the lease and re-reads the record. A transport error
   // is retried once; only a confirmed loss or a changed record stops sending.
-  const beforeSend = async (group) => {
+  const beforeSend = async (group, remaining) => {
     if (lockLost) return false;
     const owner = deliveryOwner(group.record);
     const attempts = ownerAttempts.get(owner) || 0;
-    if (attempts >= MAX_DELIVERIES_PER_OWNER_PER_TICK) return false;
+    if (attempts >= MAX_DELIVERIES_PER_OWNER_PER_TICK) {
+      summary.ownerBudgetDeferred += remaining;
+      return false;
+    }
     // Reserve before awaiting Redis so concurrent subscriptions share the cap.
     ownerAttempts.set(owner, attempts + 1);
     const commands = [
@@ -1495,6 +1500,7 @@ async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
     hazards: emptyHazardCounters(),
     subscribers: 0,
     deliveries: 0,
+    ownerBudgetDeferred: 0,
     failures: 0,
     deactivated: 0,
     pruned: 0,

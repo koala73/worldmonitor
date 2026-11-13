@@ -369,6 +369,8 @@ describe('runTick: occurrence deliveries', () => {
     const first = deliverStub();
     const summary = await tick(fake, first.deliver);
     assert.equal(summary.deliveries, MAX_DELIVERIES_PER_OWNER_PER_TICK);
+    assert.equal(summary.ownerBudgetDeferred, 40);
+    assert.equal(JSON.parse(fake.store.get(WORKER_META_KEY)).ownerBudgetDeferred, 40);
     assert.equal(fake.store.has(FANOUT_LIST_KEY), false);
     const deferred = [];
     for (const rec of records) {

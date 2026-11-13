@@ -577,6 +577,7 @@ describe('runTick', () => {
       release();
       const summary = await running;
       assert.equal(summary.deliveries, MAX_DELIVERIES_PER_OWNER_PER_TICK + 1);
+      assert.equal(summary.ownerBudgetDeferred, 100 - MAX_DELIVERIES_PER_OWNER_PER_TICK);
       const deferredId = ids.find(id => !sent.includes(id));
       const pending = JSON.parse(fake.store.get(stateKey(deferredId)).suez).pending;
       assert.ok(pending.deliveryId);
@@ -850,6 +851,7 @@ describe('runTick', () => {
       fanoutState: 'ok',
       hazardSourceState: 'error',
       deliveries: 1,
+      ownerBudgetDeferred: 0,
       failures: 0,
       deactivated: 0,
       pruned: 0,
