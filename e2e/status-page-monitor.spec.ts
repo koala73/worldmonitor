@@ -8,6 +8,15 @@ test('status probe waits for asynchronously rendered uptime', async ({ page }) =
   expect((await checkStatusPage(page))['Last 90 days']).toBe('99.123%');
 });
 
+test('status probe waits for all four uptime windows', async ({ page }) => {
+  await page.setContent(markup.replaceAll('99.123%', ''));
+  await page.locator('h3').first().evaluate((node) => { node.textContent = '99.123%'; });
+  await page.evaluate(() => {
+    setTimeout(() => document.querySelectorAll('h3').forEach((node) => { node.textContent = '99.123%'; }), 200);
+  });
+  expect((await checkStatusPage(page))['Last 90 days']).toBe('99.123%');
+});
+
 test('status probe rejects the provider error even with cached figures', async ({ page }) => {
   await page.setContent(`${markup}<p>There was an error while fetching the data.</p>`);
   await expect(checkStatusPage(page)).rejects.toThrow('fetching the data');
