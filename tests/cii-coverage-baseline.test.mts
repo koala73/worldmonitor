@@ -69,6 +69,12 @@ function validate(releases: Release[], approvals: Exception[], previous: Release
     transition(old, releases[index], approvals);
   });
   for (let i = 1; i < releases.length; i++) transition(releases[i - 1], releases[i], approvals);
+  // Checked after contraction so a removed scored country reports as a removal.
+  for (const r of releases) {
+    for (const [family, values] of Object.entries(r.families)) {
+      for (const code of values) assert.ok(r.scoredCountries.includes(code), `Expected ${family} country is not scored: ${code}`);
+    }
+  }
 }
 test('recorded release coverage is well formed and never contracts without a ruling', () => {
   assert.equal(baseline.schemaVersion, 1);
@@ -78,6 +84,13 @@ test('removing Qatar from the recorded floor fails', () => {
   const changed = structuredClone(original);
   changed.families.economicStress = changed.families.economicStress.filter(c => c !== 'QA');
   assert.throws(() => validate([changed], []), /without owner ruling: QA/);
+});
+test('an expected-country alarm list cannot name a country outside the scored set', () => {
+  // Wider producer coverage is recorded in the inventory; health alarms by name
+  // only on scored countries, so an upstream lag elsewhere never raises a warning.
+  const wide = structuredClone(original);
+  wide.families.economicStress.push('NO');
+  assert.throws(() => validate([wide], []), /Expected economicStress country is not scored: NO/);
 });
 test('later scored steps cannot contract', () => {
   const later = { ...structuredClone(original), step: 'C1' };

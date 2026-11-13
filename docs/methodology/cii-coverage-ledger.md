@@ -22,7 +22,41 @@ The 25 expected economic countries are US, RU, CN, UA, IR, IL, TW, SA, TR, PL,
 DE, FR, GB, IN, PK, VE, MX, BR, AE, KR, IQ, LB, EG, JP and QA. KP, CU, SY, YE,
 MM and AF are recorded gaps, not zero-stress observations. Other input families
 have no measured-country floor recorded here yet; this is not a claim that they
-cover every scored country. U23 will inventory their global coverage.
+cover every scored country.
+
+## U23 candidate inventory (13 November 2026)
+
+The [global coverage inventory](cii-global-coverage-inventory.md) records a
+GET-only read at 11:58 UTC and local evaluation of the proposed producers:
+
+| Family | Live publication | Candidate publication | Measured coverage |
+|---|---:|---:|---|
+| Structural prior | 208 countries | unchanged | 208 pinned 2025 values |
+| UCDP | 84 located country-day groups; 2,397 party groups | unchanged | Global published window through 30 September; October/November unpublished |
+| Economic stress | 31 countries; 25 measured | 199 countries; 149 measured | At least one fresh derived member; the C0 expected 25 retained |
+| GDELT | 186 summary codes | 232 summary codes | 81 of the 208 prior countries have at least 200 articles over the measured week |
+
+The proposed OQ11 rule would qualify 81 countries before its optional economic label
+condition, with 72 also economically measured. The report gives all clause
+counts and per-country evidence. These counts are not an admission ruling.
+
+C0 remains active. No scored country or formula changes in U23.
+
+## The alarm covers scored countries only
+
+Owner ruling, 13 November 2026: a family's expected list may name only countries
+in that step's scored set. Health alarms by name on those countries and on no
+others. Producers publish every country their sources carry, but coverage
+outside the scored set is recorded in the inventory as dated counts, not in the
+baseline. About 100 of the 149 measured economic countries rest on IMF inflation
+alone; naming them would turn one late IMF release into a hundred warnings for
+countries no score depends on. The tests reject an expected country that is not
+scored.
+
+A step is appended when the scored set grows, not when a producer widens. The
+countries a release admits join the scored set and, where measured, the expected
+lists in the same PR. Confirm U23's natural global publication with GET-only
+reads and record the result in the inventory; it does not create C1.
 
 Health requires each expected economic country to retain at least one fresh
 member. It reports `missingExpectedCountries` in operator details and strips the

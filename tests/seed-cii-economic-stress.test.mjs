@@ -152,6 +152,44 @@ test('country, canonical key, metadata and activation contracts agree', () => {
   assert.notEqual(ECONOMIC_KEY, ECONOMIC_META_KEY);
   assert.equal(health.ACTIVATION_MARKERS.ciiEconomicStress, ECONOMIC_ACTIVATION_KEY);
 });
+test('publishes the union of input countries, including unmeasured rows, with the actual record count', async () => {
+  const raw = inputs();
+  raw.inflation.countries.NO = { frequency: 'M', points: cpi };
+  raw.eurostat.countries.ES = { frequency: 'M', points: cpi };
+  raw.japan.countries.AU = { frequency: 'Q', points: [] };
+  raw.yield.countries.CA = { curves: [] };
+  raw.currency.rates.push({ countryCode: 'PH', daily90: cleanDailyQuotes(flatDaily()) });
+  // Aggregates and malformed identifiers are not countries.
+  raw.inflation.countries.WLD = { frequency: 'M', points: cpi };
+  raw.currency.rates.push({ countryCode: null }, { countryCode: 'ZZ' });
+  let published;
+  const { payload } = await seedEconomicStress({
+    read: async key => raw[Object.keys(INPUT_KEYS).find(id => INPUT_KEYS[id] === key)],
+    publish: async options => { published = options; return true; },
+    activateKey: async () => {}, nowMs: NOW,
+  });
+  assert.deepEqual(Object.keys(payload.countries).sort(), [...ECONOMIC_COUNTRIES, 'NO', 'ES', 'AU', 'CA', 'PH'].sort());
+  assert.equal(payload.countries.NO.measured, true);
+  assert.equal(payload.countries.PH.measured, true);
+  assert.equal(payload.countries.CA.measured, false);
+  assert.equal(payload.countries.AU.measured, false);
+  assert.equal(payload.measuredCount, 34);
+  assert.equal(published.recordCount, 36);
+  assert.equal(published.data, payload);
+  const scoredOnly = buildEconomicStress(inputs(), NOW);
+  for (const code of ECONOMIC_COUNTRIES) assert.deepEqual(payload.countries[code], scoredOnly.countries[code]);
+});
+test('health accepts global economic rows but still requires every scored country', () => {
+  const payload = buildEconomicStress(inputs(), NOW);
+  payload.countries.PH = economicCountry(inputs(), 'PH', NOW);
+  const check = () => health.composeCiiEconomicStressHealth({ status: 'OK' }, JSON.stringify(payload), false, NOW);
+  assert.equal(check().status, 'OK');
+  assert.equal(check().validCoverage, true);
+  delete payload.countries.KP; // Even a country with no expected economic member must exist.
+  assert.equal(check().status, 'COVERAGE_PARTIAL');
+  assert.equal(check().validCoverage, false);
+  assert.ok(check().unmeasuredCountries.includes('KP'));
+});
 test('peg zero is observed and GDP does not affect the member', () => {
   const raw = inputs();
   assert.equal(raw.currency.rates[0].monthlyBars, undefined);

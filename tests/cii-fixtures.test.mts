@@ -17,6 +17,7 @@ import {
   loadCiiFixtures,
   scoreCiiFixture,
   trimCiiRawInputs,
+  publishedCiiCaptureTargets,
 } from '../scripts/lib/cii-fixtures.mts';
 import { computeCiiScoreTable } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
 import { CII_FORMULA_VERSION } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
@@ -24,6 +25,33 @@ import { TIER1_COUNTRIES } from '../server/worldmonitor/intelligence/v1/_shared.
 
 const FIXTURES = loadCiiFixtures();
 const TIER1_NAMES = new Set(Object.values(TIER1_COUNTRIES));
+
+it('captures published global inputs while preserving every released score byte', () => {
+  for (const f of FIXTURES) {
+    const raw = { ...f.inputs,
+      structuralPrior: { countries: { NO: { pv: 1 }, ZZ: { pv: 0 } } },
+      economicStress: { schemaVersion: 1, countries: { KE: { measured: false } } },
+      gdeltCountryEvents: { ...(f.inputs.gdeltCountryEvents as object), byCountry: {
+        ...(f.inputs.gdeltCountryEvents as any)?.byCountry, NZ: { conflict: { current: 0, baselineMedian: 0 }, protest: { current: 0, baselineMedian: 0 }, week: { articles: 250, conflict: 0, protest: 0 } },
+      } },
+      ucdp: { ...(f.inputs.ucdp as object), events: [
+        ...((f.inputs.ucdp as any)?.events ?? []), { country: 'Norway', dateStart: f.nowMs, deathsBest: 5 },
+        { country: 'Ghana', dateStart: f.nowMs, deathsBest: 5 },
+      ] },
+    };
+    const targets = publishedCiiCaptureTargets(raw);
+    assert.deepEqual(targets, [...Object.keys(TIER1_COUNTRIES), 'NO', 'KE', 'NZ', 'GH'].sort());
+    const fixture = buildCiiFixture(raw, { label: 'global', capturedAt: f.capturedAt, nowMs: f.nowMs,
+      iranEventsEnabled: f.iranEventsEnabled, notes: [], production: null, targetCodes: targets });
+    assert.deepEqual(fixture.inputs.economicStress, raw.economicStress);
+    assert.ok((fixture.inputs.ucdp as any).events.some((e: any) => e.country === 'Norway'));
+    assert.ok((fixture.inputs.gdeltCountryEvents as any).byCountry.NZ);
+    const before = scoreCiiFixture(f), after = scoreCiiFixture(fixture);
+    assert.equal(JSON.stringify(after.scores), JSON.stringify(before.scores));
+    assert.equal(JSON.stringify(after.rows), JSON.stringify(before.rows));
+    assert.deepEqual(trimCiiRawInputs(fixture.inputs, targets), fixture.inputs);
+  }
+});
 
 it('capture targets retain the six future countries without changing the released table', () => {
   const extra = ['PH', 'TH', 'ID', 'VN', 'MY', 'KH'];
@@ -184,6 +212,18 @@ it('calibration captures retain both maps and the entire UCDP payload', () => {
   const captured = buildCiiFixture(raw, { label: 'calibration-test', capturedAt: f.capturedAt, nowMs: f.nowMs,
     iranEventsEnabled: f.iranEventsEnabled, notes: [], production: null, targetCodes: CII_EXPANDED_CAPTURE_TARGETS, calibration: true });
   assert.equal(captured.calibration, true);
+  // Global capture may include measured countries with no prior yet. The 37
+  // calibration countries still require their priors and cannot be omitted.
+  const globalTargets = [...CII_EXPANDED_CAPTURE_TARGETS, 'NO'];
+  const globalCapture = buildCiiFixture(raw, { label: 'global-calibration-test', capturedAt: f.capturedAt,
+    nowMs: f.nowMs, iranEventsEnabled: f.iranEventsEnabled, notes: [], production: null,
+    targetCodes: globalTargets, calibration: true });
+  assert.deepEqual(globalCapture.captureTargets, globalTargets);
+  assert.deepEqual(globalCapture.inputs.ucdp, raw.ucdp);
+  assert.throws(() => validateCiiCalibrationInputs(raw, globalTargets.filter(code => code !== 'PH')), /37-country/);
+  const missingPrior = { ...raw, structuralPrior: { countries: { ...raw.structuralPrior.countries } } };
+  delete missingPrior.structuralPrior.countries.PH;
+  assert.throws(() => validateCiiCalibrationInputs(missingPrior, globalTargets), /prior/);
   assert.deepEqual(trimCiiRawInputs(captured.inputs, captured.captureTargets, captured.calibration), captured.inputs);
   assert.deepEqual(expectedFromTable(scoreCiiFixture(captured)), expectedFromTable(computeCiiScoreTable(raw, { nowMs: f.nowMs, iranEventsEnabled: f.iranEventsEnabled })));
   assert.throws(() => buildCiiFixture({ ...raw, economicStress: null }, { label: 'bad-calibration', capturedAt: f.capturedAt,
