@@ -1,7 +1,7 @@
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
 import type { ArchiveFailure, ArchiveRequestOptions } from './archive-result';
 import { searchStacArchive, type ImagingProfileId, type StacArchiveId } from './archive-stac';
-import { cropBox } from './crop-url';
+import { cropBox, planetaryComputerCropUrl } from './crop-url';
 import { assembleEvidence, type MatchedAcquisition } from './match';
 
 const DAY_MS = 86_400_000;
@@ -80,8 +80,10 @@ export const loadImageElement: LoadImage = (url, signal) => new Promise((resolve
   };
   signal.addEventListener('abort', stop, { once: true });
   image.onload = () => {
-    signal.removeEventListener('abort', stop);
-    resolve();
+    image.decode().catch(() => undefined).then(() => {
+      signal.removeEventListener('abort', stop);
+      resolve();
+    });
   };
   image.onerror = () => {
     signal.removeEventListener('abort', stop);
@@ -110,4 +112,67 @@ export async function preloadFrames<T extends { imageUrl: string | null }>(
     }
   }));
   return frames.filter((_, i) => outcomes[i]);
+}
+
+/** The first year Sentinel-2 imaged anywhere. */
+export const FIRST_LOOK_YEAR = 2015;
+/** Cloud over the scene above which a year's look is not clear enough to keep. */
+export const CLEAR_LOOK_CLOUD_PCT = 30;
+/** Each year searches a different quarter, so the run of looks crosses every season. */
+const SEASON_START_MONTH = [9, 0, 3, 6];
+const SEASON_MONTHS = 3;
+
+export interface YearlyLook extends DatedScene {
+  year: number;
+  /** "S2A", "S2B", "S2C". */
+  platformCode: string;
+  platform: string;
+}
+
+export interface YearlyLooks {
+  looks: YearlyLook[];
+  failures: ArchiveFailure[];
+}
+
+export function seasonWindow(year: number): { startMs: number; endMs: number } {
+  const month = SEASON_START_MONTH[(year - FIRST_LOOK_YEAR) % SEASON_START_MONTH.length]!;
+  return { startMs: Date.UTC(year, month, 1), endMs: Date.UTC(year, month + SEASON_MONTHS, 1) - 1 };
+}
+
+/** One clear Sentinel-2 look per year since 2015, the lowest-cloud scene of that year's season; a year with none is left out. */
+export async function searchYearlyLooks(point: GeoPoint, nowMs: number, options: ArchiveRequestOptions = {}): Promise<YearlyLooks> {
+  const box = cropBox(point);
+  const years = Array.from({ length: new Date(nowMs).getUTCFullYear() - FIRST_LOOK_YEAR + 1 }, (_, i) => FIRST_LOOK_YEAR + i);
+  const results = await Promise.all(years.map(async (year) => {
+    const season = seasonWindow(year);
+    if (season.startMs > nowMs) return null;
+    return { year, result: await searchStacArchive('planetary-computer', { ...options, point, window: { startMs: season.startMs, endMs: Math.min(season.endMs, nowMs) } }) };
+  }));
+  const looks: YearlyLook[] = [];
+  const failures: ArchiveFailure[] = [];
+  for (const entry of results) {
+    if (!entry) continue;
+    if (entry.result.status === 'failed') {
+      failures.push(entry.result.failure);
+      continue;
+    }
+    const clearest = entry.result.items
+      .filter((item) => item.profileId === 'sentinel-2' && item.cloudCoverPct !== null && item.cloudCoverPct < CLEAR_LOOK_CLOUD_PCT)
+      .sort((a, b) => a.cloudCoverPct! - b.cloudCoverPct!)
+      .map((item) => ({ item, imageUrl: planetaryComputerCropUrl(item.collection, item.itemId, box) }))
+      .find((candidate) => candidate.imageUrl);
+    if (!clearest) continue;
+    const { item, imageUrl } = clearest;
+    looks.push({
+      key: `${item.collection}:${item.itemId}`,
+      year: entry.year,
+      timeMs: item.startMs,
+      cloudCoverPct: item.cloudCoverPct,
+      cloudApplies: true,
+      imageUrl,
+      platform: item.platform,
+      platformCode: `S2${item.platform.slice(-1).toUpperCase()}`,
+    });
+  }
+  return { looks: looks.sort((a, b) => a.timeMs - b.timeMs), failures };
 }
