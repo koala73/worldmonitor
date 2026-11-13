@@ -112,8 +112,9 @@ export class OrbitalTimeline {
     this.tip.hidden = true;
     this.element = h('section', { className: 'ow-timeline' },
       this.head,
-      h('div', { className: 'ow-tl-body' }, this.legend, h('div', { className: 'ow-tl-plot-wrap' }, this.plot, this.tip)),
+      h('div', { className: 'ow-tl-body' }, this.legend, h('div', { className: 'ow-tl-plot-wrap' }, this.plot)),
       this.foot,
+      this.tip,
       this.list);
     this.element.addEventListener('click', this.onClick);
     this.plot.addEventListener('pointerover', this.onPointerOver);
@@ -262,12 +263,13 @@ export class OrbitalTimeline {
   private readonly onPointerOver = (event: PointerEvent): void => {
     const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tip]');
     if (!target) return this.hideTip();
-    const frame = this.plot.getBoundingClientRect();
+    const frame = this.element.getBoundingClientRect();
     const box = target.getBoundingClientRect();
     this.tip.textContent = target.dataset.tip ?? '';
     this.tip.hidden = false;
-    const x = target.classList.contains('ow-tl-geo-line') ? event.clientX : box.left + box.width / 2;
-    this.tip.style.left = `${Math.min(Math.max(x - frame.left, 0), frame.width)}px`;
+    const half = this.tip.offsetWidth / 2;
+    const x = (target.classList.contains('ow-tl-geo-line') ? event.clientX : box.left + box.width / 2) - frame.left;
+    this.tip.style.left = `${Math.min(Math.max(x, half), Math.max(half, frame.width - half))}px`;
     this.tip.style.top = `${box.top - frame.top}px`;
   };
 
