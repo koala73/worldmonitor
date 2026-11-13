@@ -1,31 +1,33 @@
 # U21 calibration capture handoff
 
-U21 of [#10577](https://github.com/koala73/worldmonitor/issues/10577) is **incomplete**. No calibration fixture has been accepted yet. The October fixtures remain regression snapshots, not calibration inputs.
+U21 of [#10577](https://github.com/koala73/worldmonitor/issues/10577) is **incomplete**: one valid calibration capture exists for **2026-11-13 UTC**. A second genuinely different UTC date is required. October fixtures remain unchanged regression snapshots.
 
-## Production prerequisite check, 2026-11-13
+## Production evidence and first capture
 
-GET-only Redis reads at **09:18:35 UTC**, repeated at **09:21:56 UTC**, found:
+GET-only reads at **09:18:35** and **09:21:56 UTC** initially found corrected Qatar FX history upstream but an old economic key (08:50:14.561 UTC, Qatar depreciation 3.4303403626763873%). No capture was accepted from those inputs.
 
-- Structural prior: 208 countries, including all 37 capture targets.
-- Full UCDP window: **2025-09-30 through 2026-09-30**, 365 days between endpoints. `complete: true`; no gap months or missing releases. October and November candidate releases are explicitly unpublished, outside this window.
-- UCDP records: **2,514 recent sample events**, **6,600 country-day rows**, **366 daily-total rows**, and **2,397 party-month rows** representing **21,177 events** and **238,890 factual deaths**. The country-day activity rollup reports 241,331 because its legacy rule counts at least one death per event; it must not be equated to factual party deaths. Russia and Ukraine state parties resolve.
-- Economic key: generated **08:50:14.561 UTC**, **25/31 measured**, with Qatar still publishing the old **3.4303403626763873%** currency depreciation.
-- FX source key: fetched **09:14:17.700 UTC**, after #10613 merged as `e5c5c69f759ef4d3394e991d322672bcebd235da`. Qatar now has reliable `currency-api` daily history, latest and 90-day anchor both `0.2747252747252747`, implying zero depreciation. This verifies corrected source data, but the downstream economic key has not consumed it yet.
+A fresh read at **09:47:12.978 UTC** found the economic key naturally refreshed at **09:40:50.278 UTC**: **25/31 measured**, Qatar currency depreciation **0%**, using reliable `currency-api` history with the 90-day anchor `0.2747252747252747`. The prior covers 208 countries, including all 37 targets.
 
-The calibration structural-completeness validator passes on these payloads. This does **not** clear the economic correctness prerequisite. No production seed, deployment, service edit or merge was performed by this work.
+The complete UCDP window is **2025-09-30 through 2026-09-30**, exactly 365 days between endpoints, with `complete: true`, no gap months and no missing releases. October and November candidate releases are explicitly unpublished outside this window. It retains **2,514 recent sample events**, **6,600 country-day rows**, **366 daily-total rows**, and **2,397 party-month groups**, representing **21,177 events** and **238,890 factual deaths**. Legacy country-day activity reports 241,331 deaths because it clamps each event to at least one; those totals must not be equated. Russia and Ukraine state parties resolve.
 
-## Resume and delivery
+At **09:50:19.269 UTC**, `seed-meta:intelligence:risk-scores` reported both Iran events and strike pressure live. The accepted capture therefore uses **`iranEventsEnabled: true`**.
 
-1. Land the U21 capture-tooling PR on `main` with owner authorization. Capture must run from a released checkout; `cii-v15` has an in-progress formula and is rejected. This tooling PR changes no formula.
-2. Re-read the production keys and source/deployment evidence. Require the economic key to consume the corrected FX input, preserve at least 25 measured countries, and report Qatar's corrected value. The producer's repository interval is hourly; do not force it without owner authorization. Recheck the prior and complete UCDP party window too.
-3. From refreshed `main`, using its own dependencies and an explicitly supplied trusted `WM_SEED_ENV_FILE`, run:
+The first fixture, **`2026-11-13T0952Z.json`**, was read at **09:52:18.324 UTC**, three seconds after the natural production build. The released scorer reproduces the stored **v14 table for all 31/31 countries**. Its capture target is 37 countries; full UCDP and both calibration maps are retained. No timestamp or expected v14 score was edited.
+
+Capture provenance: an export of released `main@e5c5c69f759ef4d3394e991d322672bcebd235da`, with only the two capture harness files from PR #10616 at `884f6ad1a89bbff29735c012d0a720da51b0ab0a` overlaid. The scorer, server and shared source are byte-identical to that released main commit. The fixture belongs on `cii-v15`, with `expected.v15` recorded only by that branch's table-diff script. This does not imply the tooling PR was merged.
+
+## Resume on a different UTC date
+
+1. Refresh released `main` and the U21 capture harness. An in-progress integration scorer is rejected; do not relabel its output as released v14.
+2. Re-read production inputs and deployment evidence. Require the complete UCDP party window, all 37 priors, corrected Qatar FX input and at least 25 measured economic countries. Verify the current deployed Iran-feed setting again.
+3. With an explicitly supplied trusted `WM_SEED_ENV_FILE`, run from released source:
 
    ```sh
-   node --import tsx scripts/cii-capture-fixture.mts --calibration --target-set=37 --iran-events-enabled=false --wait-for-rebuild
+   node --import tsx scripts/cii-capture-fixture.mts --calibration --target-set=37 --iran-events-enabled=true --wait-for-rebuild
    ```
 
-   First verify the deployed `IRAN_EVENTS_ENABLED` setting; `false` above is conditional on production remaining unconfigured. The capture performs only Redis GETs, refuses missing/partial calibration inputs, preserves both maps and the complete UCDP payload, and requires exact reproduction of the stored released table. If a concurrent rebuild or moving input causes a mismatch, retry after inspecting the error. Never alter production timestamps or expected scores.
-4. Capture again on a **different UTC date**. Compare `capturedAt` dates, not filenames or the stored table's clock. Two same-day reads do not meet U21.
-5. Deliver both fixtures to `cii-v15`, bringing over the capture-tooling changes and producer reader support as necessary without changing the formula. Record `expected.v15` only through the integration line's `cii-table-diff.mts --write-expected`. Prove the stored released v14 table for all 31 from the released checkout and P9 on the integration line. Keep all October fixtures byte-for-byte.
+   The flag reflects the first capture's verified live setting; match production on the next capture. The script performs only Redis GETs, waits for a natural rebuild, rejects incomplete inputs and requires exact reproduction of the stored released table. Inspect any mismatch before retrying. Never adjust timestamps or expected scores to make a capture pass.
+4. Compare **`capturedAt` UTC dates**. Another November 13 read does not satisfy the second-day requirement.
+5. Deliver the second fixture to `cii-v15` without changing October fixtures. Record `expected.v15` through `scripts/cii-table-diff.mts --write-expected`, verify released v14 reproduction and integration P9, and monitor required checks on the exact PR head.
 
-U18 and formula changes remain out of scope. Do not mark U21 done until both different-day captures are committed to the integration line and its required checks pass.
+No production seeds, service edits, deployments or merges were performed. U18 and formula changes remain out of scope. Do not mark U21 done until both different-day captures are delivered to the integration line and required checks pass.
