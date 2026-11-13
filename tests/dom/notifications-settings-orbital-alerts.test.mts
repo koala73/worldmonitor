@@ -151,6 +151,21 @@ describe('notification settings watched-site alerts', () => {
     expect(saved.orbitalSites).toEqual([SUDAN]);
   });
 
+  it('gives sites that share a name and country distinct options', async () => {
+    const container = await mount(rule({ eventTypes: ['orbital_imaging_window'], orbitalSites: [] }));
+    await vi.waitFor(() => {
+      expect(container.querySelectorAll('#usOrbitalSiteOptions option').length).toBeGreaterThan(100);
+    });
+    const values = Array.from(container.querySelectorAll<HTMLOptionElement>('#usOrbitalSiteOptions option')).map((el) => el.value);
+    expect(new Set(values).size).toBe(values.length);
+    const second = values.find((value) => value.endsWith('military-base:naval_support_activity_2'))!;
+    const search = container.querySelector<HTMLInputElement>('#usOrbitalSiteSearch')!;
+    search.value = second;
+    search.dispatchEvent(new Event('change', { bubbles: true }));
+    const saved = await lastSave();
+    expect(saved.orbitalSites).toEqual(['military-base:naval_support_activity_2']);
+  });
+
   it('restores stored sites with their names and removes one on click', async () => {
     const container = await mount(rule({ eventTypes: ['orbital_site_change'], orbitalSites: [SUDAN, 'chokepoint:suez'] }));
     expect(container.querySelector<HTMLElement>('#usOrbitalScope')?.hidden).toBe(false);

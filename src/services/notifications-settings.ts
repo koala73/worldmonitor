@@ -61,7 +61,21 @@ function loadWatchedSiteOptions(): Promise<WatchedSiteOption[]> {
       .sort((a, b) => a.name.localeCompare(b.name)));
   return watchedSiteOptions;
 }
-const watchedSiteLabel = (site: WatchedSiteOption) => `${site.name} (${site.countryCode})`;
+const watchedSiteLabelCounts = new WeakMap<WatchedSiteOption[], Map<string, number>>();
+// Several registry sites share a name and country; those labels also carry the id.
+function watchedSiteLabel(site: WatchedSiteOption, options: WatchedSiteOption[]): string {
+  let counts = watchedSiteLabelCounts.get(options);
+  if (!counts) {
+    counts = new Map();
+    for (const option of options) {
+      const key = `${option.name} (${option.countryCode})`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    watchedSiteLabelCounts.set(options, counts);
+  }
+  const label = `${site.name} (${site.countryCode})`;
+  return (counts.get(label) ?? 0) > 1 ? `${label} · ${site.id}` : label;
+}
 
 export interface NotificationsSettingsHost {
   isSignedIn?: boolean;
@@ -935,7 +949,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const byId = new Map(options.map((site) => [site.id, site]));
         setTrustedHtml(chips, trustedHtml(ids.map((id) => {
           const site = byId.get(id);
-          const label = site ? watchedSiteLabel(site) : id;
+          const label = site ? watchedSiteLabel(site, options) : id;
           return `<button type="button" class="us-notif-country-chip us-notif-country-chip-on" data-orbital-site-id="${escapeHtml(id)}" aria-label="Remove ${escapeHtml(label)}">${escapeHtml(label)} ×</button>`;
         }).join(''), 'watched-site chips built from escaped registry fields'));
         const search = container.querySelector<HTMLInputElement>('#usOrbitalSiteSearch');
@@ -947,7 +961,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           if (signal.aborted) return;
           const list = container.querySelector<HTMLElement>('#usOrbitalSiteOptions');
           if (list) {
-            setTrustedHtml(list, trustedHtml(options.map((site) => `<option value="${escapeHtml(watchedSiteLabel(site))}"></option>`).join(''), 'watched-site options built from escaped registry fields'));
+            setTrustedHtml(list, trustedHtml(options.map((site) => `<option value="${escapeHtml(watchedSiteLabel(site, options))}"></option>`).join(''), 'watched-site options built from escaped registry fields'));
           }
           renderOrbitalSiteChips(selectedOrbitalSites(), options);
         }).catch((err) => console.warn('[notifications] watched sites unavailable:', err));
@@ -957,7 +971,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const wanted = input.value.trim();
         if (!wanted) return;
         void loadWatchedSiteOptions().then((options) => {
-          const site = options.find((option) => watchedSiteLabel(option) === wanted);
+          const site = options.find((option) => watchedSiteLabel(option, options) === wanted);
           if (!site) return;
           const ids = selectedOrbitalSites();
           input.value = '';
