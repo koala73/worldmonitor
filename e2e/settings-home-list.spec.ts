@@ -9,7 +9,6 @@ import { devices, expect, test, type Page } from '@playwright/test';
 
 const { defaultBrowserType, ...pixel } = devices['Pixel 7'];
 void defaultBrowserType;
-const DESKTOP = { viewport: { width: 1440, height: 900 } };
 
 async function seed(page: Page): Promise<void> {
   await page.addInitScript(() => {
