@@ -224,7 +224,8 @@ const defaultSources: PointContextSources = {
     },
   },
   countryAt: async (point) => {
-    const { getCountryAtCoordinates } = await import('@/services/country-geometry');
+    const { getCountryAtCoordinates, preloadCountryGeometry } = await import('@/services/country-geometry');
+    await preloadCountryGeometry();
     return getCountryAtCoordinates(point.lat, point.lon)?.code ?? null;
   },
 };

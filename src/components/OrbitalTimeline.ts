@@ -16,6 +16,9 @@ import { h, replaceChildren } from '@/utils/dom-utils';
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
+/** Passes closer than this share of the width draw as one glyph, so a busy row stays readable. */
+const CLUSTER_PCT = 0.4;
+const TIP_NAMES = 4;
 
 export const passKey = (pass: { noradId: number; timeMs: number }) => `${pass.noradId}:${pass.timeMs}`;
 
@@ -148,7 +151,7 @@ export class OrbitalTimeline {
         h('span', { className: 'ow-tl-glyph', 'aria-hidden': 'true' }, row.glyph),
         h('span', { className: 'ow-tl-key-label' }, label),
         h('span', { className: 'ow-tl-count' }, count(passes.length + (row.id === 'geo' ? geostationary.length : 0)))));
-      rows.push(h('div', { className: 'ow-tl-row', dataset: { row: row.id } }, geoLine, ...passes.map((pass) => this.mark(pass, row, input.selectedKey, at(pass.timeMs), when))));
+      rows.push(h('div', { className: 'ow-tl-row', dataset: { row: row.id } }, geoLine, ...this.marks(passes, row, input.selectedKey, pct, when)));
       if (row.dense) {
         for (const bin of hourlyBins(passes)) {
           entries.push({ timeMs: bin.startMs, text: t('orbitalWatch.timeline.density', { label, count: bin.count, start: formatUtc(bin.startMs), end: formatHour(bin.startMs + HOUR_MS) }) });
@@ -212,14 +215,29 @@ export class OrbitalTimeline {
     replaceChildren(this.foot, h('ul', { className: 'ow-tl-event-keys' }, ...eventKeys), this.renderLive(context));
   }
 
-  private mark(pass: PointPass, row: (typeof ROWS)[number], selectedKey: string | null, style: string, when: (ms: number) => string): HTMLElement {
-    const key = passKey(pass);
-    const classes = ['ow-tl-mark', row.dense ? 'is-tick' : '', pass.tier.kind === 'opportunity' ? 'is-opportunity' : '', key === selectedKey ? 'is-selected' : ''];
-    return h('span', {
-      className: classes.filter(Boolean).join(' '),
-      style,
-      dataset: { pass: key, tier: pass.tier.kind, tip: `${pass.name} · ${when(pass.timeMs)} · ${t(TIER_LABEL_KEY[pass.tier.kind])}` },
-    }, row.dense ? '' : row.glyph);
+  private marks(passes: PointPass[], row: (typeof ROWS)[number], selectedKey: string | null, pct: (ms: number) => number, when: (ms: number) => string): HTMLElement[] {
+    const groups: PointPass[][] = [];
+    for (const pass of [...passes].sort((a, b) => a.timeMs - b.timeMs)) {
+      const last = groups[groups.length - 1];
+      const joins = !row.dense && last && pct(pass.timeMs) - pct(last[0]!.timeMs) < CLUSTER_PCT
+        && (pass.tier.kind === 'opportunity') === (last[0]!.tier.kind === 'opportunity');
+      if (joins) last.push(pass);
+      else groups.push([pass]);
+    }
+    return groups.map((group) => {
+      const first = group[0]!;
+      const tier = t(TIER_LABEL_KEY[first.tier.kind]);
+      const tip = group.length === 1
+        ? `${first.name} · ${when(first.timeMs)} · ${tier}`
+        : [...group.slice(0, TIP_NAMES).map((pass) => `${pass.name} · ${when(pass.timeMs)}`), ...(group.length > TIP_NAMES ? [`+${group.length - TIP_NAMES}`] : []), tier].join('\n');
+      const classes = ['ow-tl-mark', row.dense ? 'is-tick' : '', first.tier.kind === 'opportunity' ? 'is-opportunity' : '',
+        group.some((pass) => passKey(pass) === selectedKey) ? 'is-selected' : ''];
+      return h('span', {
+        className: classes.filter(Boolean).join(' '),
+        style: `left:${pct(first.timeMs).toFixed(3)}%`,
+        dataset: { pass: passKey(first), tier: first.tier.kind, count: String(group.length), tip },
+      }, row.dense ? '' : row.glyph);
+    });
   }
 
   private dayLabel(clock: ZonedClock, ms: number, style: string): HTMLElement {

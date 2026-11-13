@@ -306,7 +306,7 @@
   background: var(--ow-bg, #0b0c0e);
   border: 1px solid var(--ow-line, #24272d);
   color: var(--ow-text, #ecebe7);
-  white-space: nowrap;
+  white-space: pre;
   pointer-events: none;
   z-index: 3;
 }

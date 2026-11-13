@@ -17,6 +17,7 @@ vi.mock('@/services/infrastructure', () => ({
 
 vi.mock('@/services/country-geometry', () => ({
   getCountryAtCoordinates: () => ({ code: 'AE', name: 'United Arab Emirates' }),
+  preloadCountryGeometry: async () => {},
   nameToCountryCode: (name: string) => ({ 'united arab emirates': 'AE', iran: 'IR' } as Record<string, string>)[name.toLowerCase()] ?? null,
 }));
 
