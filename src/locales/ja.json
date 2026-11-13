@@ -5122,7 +5122,10 @@
       "imageAlt": "{{name}} の画像、{{time}}",
       "mosaicDays": "アーカイブ内の日数：{{count}}",
       "cadence": "{{minutes}} 分ごとに新しい画像",
-      "sourceUnavailable": "アーカイブには、この期間のこのソースの画像がありません。"
+      "sourceUnavailable": "アーカイブには、この期間のこのソースの画像がありません。",
+      "imageLoading": "画像を読み込み中…",
+      "imageFailed": "画像を読み込めませんでした。アーカイブが遅いか停止している可能性があります。",
+      "noPreview": "アーカイブにはまだこのシーンのプレビューがありません。"
     },
     "dailyMosaics": "日次モザイク",
     "weatherFrames": "気象画像",

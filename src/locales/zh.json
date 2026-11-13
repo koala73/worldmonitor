@@ -5122,7 +5122,10 @@
       "imageAlt": "{{name}} 影像，{{time}}",
       "mosaicDays": "存档中的天数：{{count}}",
       "cadence": "每 {{minutes}} 分钟一帧新图像",
-      "sourceUnavailable": "存档中没有该来源在这些日期的图像。"
+      "sourceUnavailable": "存档中没有该来源在这些日期的图像。",
+      "imageLoading": "正在加载影像…",
+      "imageFailed": "影像未能加载。档案库可能较慢或无法访问。",
+      "noPreview": "存档中尚无此场景的预览。"
     },
     "dailyMosaics": "每日镶嵌图",
     "weatherFrames": "气象图像",

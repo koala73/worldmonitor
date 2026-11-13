@@ -5150,7 +5150,10 @@
       "imageAlt": "Picha ya {{name}}, {{time}}",
       "mosaicDays": "Siku katika hifadhi: {{count}}",
       "cadence": "picha mpya kila dakika {{minutes}}",
-      "sourceUnavailable": "Hifadhi haina picha kutoka chanzo hiki kwa siku hizi."
+      "sourceUnavailable": "Hifadhi haina picha kutoka chanzo hiki kwa siku hizi.",
+      "imageLoading": "Inapakia picha…",
+      "imageFailed": "Picha haikupakia. Hifadhi inaweza kuwa polepole au haipatikani.",
+      "noPreview": "Hifadhi bado haina onyesho la awali la tukio hili."
     },
     "dailyMosaics": "picha mseto za kila siku",
     "weatherFrames": "picha za hali ya hewa",

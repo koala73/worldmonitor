@@ -33,7 +33,6 @@ export interface ViewerScene extends DatedScene {
   name: string;
   dateLabel: string;
   credit: string;
-  acknowledgement: string | null;
   conditionText: string | null;
   grid: ImageGrid;
 }
@@ -86,7 +85,6 @@ export function sceneFromAcquisition(acquisition: MatchedAcquisition): ViewerSce
     cloudCoverPct: acquisition.cloudCoverPct,
     cloudApplies: acquisition.profileId !== 'sentinel-1',
     credit: acquisition.profileId === 'landsat' ? IMAGE_CREDIT.usgs : IMAGE_CREDIT.copernicus(new Date(acquisition.startMs).getUTCFullYear()),
-    acknowledgement: null,
     conditionText: describePointCondition(acquisition),
     grid: imageUrl ? imageGrid(imageUrl) : 'unreferenced',
   };
@@ -104,8 +102,7 @@ export function scenesFromMosaic(mosaic: DailyMosaicRow): ViewerScene[] {
       imageUrl: url,
       cloudCoverPct: null,
       cloudApplies: false,
-      credit: IMAGE_CREDIT.gibs,
-      acknowledgement: IMAGE_CREDIT.gibsAcknowledgement,
+      credit: IMAGE_CREDIT.gibsAcknowledgement,
       conditionText: null,
       grid: url ? imageGrid(url) : 'unreferenced',
     };
@@ -126,8 +123,7 @@ export function sceneFromFrame(frame: GeostationaryRow): ViewerScene | null {
     imageUrl: url,
     cloudCoverPct: null,
     cloudApplies: false,
-    credit: eumetsat ? IMAGE_CREDIT.eumetsat : IMAGE_CREDIT.gibs,
-    acknowledgement: eumetsat ? null : IMAGE_CREDIT.gibsAcknowledgement,
+    credit: eumetsat ? IMAGE_CREDIT.eumetsat : IMAGE_CREDIT.gibsAcknowledgement,
     conditionText: null,
     grid: url ? imageGrid(url) : 'unreferenced',
   };
@@ -283,7 +279,6 @@ export class OrbitalImageViewer {
     replaceChildren(this.body,
       this.renderImage(selected),
       h('p', { className: 'oiv-credit' }, selected.credit),
-      selected.acknowledgement ? h('p', { className: 'oiv-credit oiv-acknowledgement' }, selected.acknowledgement) : null,
       this.renderHistoryNote(),
       this.renderCompare(),
       this.renderTimelapse());
