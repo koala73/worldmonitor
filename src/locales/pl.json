@@ -5211,7 +5211,7 @@
     "dailyMosaics": "dzienne mozaiki",
     "weatherFrames": "zdjęcia pogodowe",
     "timeline": {
-      "title": "Oś czasu, ostatnie 7 dni i następne 72 godziny (UTC)",
+      "heading": "Oś czasu, ostatnie 7 dni i następne 72 godziny (UTC)",
       "asList": "Oś czasu jako lista",
       "now": "teraz",
       "nowAt": "Teraz: {{time}}",

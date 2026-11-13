@@ -5155,7 +5155,7 @@
     "dailyMosaics": "günlük mozaikler",
     "weatherFrames": "hava durumu görüntüleri",
     "timeline": {
-      "title": "Zaman çizelgesi, son 7 gün ve sonraki 72 saat (UTC)",
+      "heading": "Zaman çizelgesi, son 7 gün ve sonraki 72 saat (UTC)",
       "asList": "Liste olarak zaman çizelgesi",
       "now": "şimdi",
       "nowAt": "Şimdi: {{time}}",

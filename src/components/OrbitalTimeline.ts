@@ -88,8 +88,8 @@ export class OrbitalTimeline {
     this.chart = h('div', { className: 'ow-tl-chart', 'aria-hidden': 'true' });
     this.now = h('div', { className: 'ow-now-strip' });
     this.list = h('ol', { className: 'ow-tl-list' });
-    this.element = h('section', { className: 'ow-timeline', 'aria-label': t('orbitalWatch.timeline.title') },
-      h('h3', { className: 'ow-tl-title' }, t('orbitalWatch.timeline.title')),
+    this.element = h('section', { className: 'ow-timeline', 'aria-label': t('orbitalWatch.timeline.heading') },
+      h('h3', { className: 'ow-tl-title' }, t('orbitalWatch.timeline.heading')),
       this.chart,
       h('details', { className: 'ow-tl-list-wrap' }, h('summary', null, t('orbitalWatch.timeline.asList')), this.list),
       this.now);

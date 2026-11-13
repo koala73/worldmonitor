@@ -5155,7 +5155,7 @@
     "dailyMosaics": "napi mozaikok",
     "weatherFrames": "időjárási felvételek",
     "timeline": {
-      "title": "Idővonal, az elmúlt 7 nap és a következő 72 óra (UTC)",
+      "heading": "Idővonal, az elmúlt 7 nap és a következő 72 óra (UTC)",
       "asList": "Idővonal listaként",
       "now": "most",
       "nowAt": "Most: {{time}}",

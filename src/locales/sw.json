@@ -5155,7 +5155,7 @@
     "dailyMosaics": "picha mseto za kila siku",
     "weatherFrames": "picha za hali ya hewa",
     "timeline": {
-      "title": "Ratiba ya matukio, siku 7 zilizopita na saa 72 zijazo (UTC)",
+      "heading": "Ratiba ya matukio, siku 7 zilizopita na saa 72 zijazo (UTC)",
       "asList": "Ratiba ya matukio kama orodha",
       "now": "sasa",
       "nowAt": "Sasa: {{time}}",

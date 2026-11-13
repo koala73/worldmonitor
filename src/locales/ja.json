@@ -5127,7 +5127,7 @@
     "dailyMosaics": "日次モザイク",
     "weatherFrames": "気象画像",
     "timeline": {
-      "title": "タイムライン、過去7日間と今後72時間 (UTC)",
+      "heading": "タイムライン、過去7日間と今後72時間 (UTC)",
       "asList": "リスト形式のタイムライン",
       "now": "現在",
       "nowAt": "現在: {{time}}",

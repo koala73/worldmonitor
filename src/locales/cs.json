@@ -5211,7 +5211,7 @@
     "dailyMosaics": "denní mozaiky",
     "weatherFrames": "meteorologické snímky",
     "timeline": {
-      "title": "Časová osa, posledních 7 dní a příštích 72 hodin (UTC)",
+      "heading": "Časová osa, posledních 7 dní a příštích 72 hodin (UTC)",
       "asList": "Časová osa jako seznam",
       "now": "teď",
       "nowAt": "Teď: {{time}}",

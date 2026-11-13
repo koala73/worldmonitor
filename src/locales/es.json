@@ -5183,7 +5183,7 @@
     "dailyMosaics": "mosaicos diarios",
     "weatherFrames": "imágenes meteorológicas",
     "timeline": {
-      "title": "Cronología, últimos 7 días y próximas 72 horas (UTC)",
+      "heading": "Cronología, últimos 7 días y próximas 72 horas (UTC)",
       "asList": "Cronología como lista",
       "now": "ahora",
       "nowAt": "Ahora: {{time}}",

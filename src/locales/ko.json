@@ -5127,7 +5127,7 @@
     "dailyMosaics": "일일 모자이크",
     "weatherFrames": "기상 영상",
     "timeline": {
-      "title": "타임라인, 지난 7일과 앞으로 72시간 (UTC)",
+      "heading": "타임라인, 지난 7일과 앞으로 72시간 (UTC)",
       "asList": "목록으로 보는 타임라인",
       "now": "현재",
       "nowAt": "현재: {{time}}",

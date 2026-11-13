@@ -177,13 +177,13 @@ const defaultSources: PointContextSources = {
       return data.events.map((event) => ({ id: event.id, lat: event.lat, lon: event.lon, timeMs: event.time.getTime(), label: event.title }));
     },
     outages: async () => {
-      const { fetchInternetOutages } = await import('@/services/infrastructure');
+      const [{ fetchInternetOutages }, { effectivePubDateMs }] = await Promise.all([import('@/services/infrastructure'), import('@/services/feed-date')]);
       const outages = await fetchInternetOutages();
       return outages.map((outage) => ({
         id: outage.id,
         lat: outage.lat,
         lon: outage.lon,
-        timeMs: outage.pubDate.getTime(),
+        timeMs: effectivePubDateMs(outage),
         label: outage.title,
         countryCode: outage.country,
       }));

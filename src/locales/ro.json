@@ -5183,7 +5183,7 @@
     "dailyMosaics": "mozaicuri zilnice",
     "weatherFrames": "imagini meteo",
     "timeline": {
-      "title": "Cronologie, ultimele 7 zile și următoarele 72 de ore (UTC)",
+      "heading": "Cronologie, ultimele 7 zile și următoarele 72 de ore (UTC)",
       "asList": "Cronologie ca listă",
       "now": "acum",
       "nowAt": "Acum: {{time}}",

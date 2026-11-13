@@ -5127,7 +5127,7 @@
     "dailyMosaics": "每日鑲嵌圖",
     "weatherFrames": "氣象影象",
     "timeline": {
-      "title": "時間線，過去 7 天和未來 72 小時 (UTC)",
+      "heading": "時間線，過去 7 天和未來 72 小時 (UTC)",
       "asList": "以列表顯示時間線",
       "now": "現在",
       "nowAt": "現在：{{time}}",

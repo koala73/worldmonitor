@@ -5155,7 +5155,7 @@
     "dailyMosaics": "Tagesmosaike",
     "weatherFrames": "Wetterbilder",
     "timeline": {
-      "title": "Zeitachse, letzte 7 Tage und nächste 72 Stunden (UTC)",
+      "heading": "Zeitachse, letzte 7 Tage und nächste 72 Stunden (UTC)",
       "asList": "Zeitachse als Liste",
       "now": "jetzt",
       "nowAt": "Jetzt: {{time}}",

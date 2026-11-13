@@ -5127,7 +5127,7 @@
     "dailyMosaics": "ảnh ghép hằng ngày",
     "weatherFrames": "ảnh thời tiết",
     "timeline": {
-      "title": "Dòng thời gian, 7 ngày qua và 72 giờ tới (UTC)",
+      "heading": "Dòng thời gian, 7 ngày qua và 72 giờ tới (UTC)",
       "asList": "Dòng thời gian dạng danh sách",
       "now": "bây giờ",
       "nowAt": "Bây giờ: {{time}}",

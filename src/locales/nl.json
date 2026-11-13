@@ -5155,7 +5155,7 @@
     "dailyMosaics": "dagmozaïeken",
     "weatherFrames": "weerbeelden",
     "timeline": {
-      "title": "Tijdlijn, afgelopen 7 dagen en komende 72 uur (UTC)",
+      "heading": "Tijdlijn, afgelopen 7 dagen en komende 72 uur (UTC)",
       "asList": "Tijdlijn als lijst",
       "now": "nu",
       "nowAt": "Nu: {{time}}",

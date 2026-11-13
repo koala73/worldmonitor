@@ -5194,7 +5194,7 @@
     "dailyMosaics": "dnevni mozaici",
     "weatherFrames": "meteorološke snimke",
     "timeline": {
-      "title": "Vremenska crta, zadnjih 7 dana i sljedeća 72 sata (UTC)",
+      "heading": "Vremenska crta, zadnjih 7 dana i sljedeća 72 sata (UTC)",
       "asList": "Vremenska crta kao popis",
       "now": "sada",
       "nowAt": "Sada: {{time}}",

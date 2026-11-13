@@ -4614,7 +4614,7 @@
       "sourceUnavailable": "The archive lists no imagery from this source for these days."
     },
     "timeline": {
-      "title": "Timeline, last 7 days and next 72 hours (UTC)",
+      "heading": "Timeline, last 7 days and next 72 hours (UTC)",
       "asList": "Timeline as a list",
       "now": "now",
       "nowAt": "Now: {{time}}",

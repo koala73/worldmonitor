@@ -5155,7 +5155,7 @@
     "dailyMosaics": "dagliga mosaiker",
     "weatherFrames": "väderbilder",
     "timeline": {
-      "title": "Tidslinje, senaste 7 dagarna och kommande 72 timmarna (UTC)",
+      "heading": "Tidslinje, senaste 7 dagarna och kommande 72 timmarna (UTC)",
       "asList": "Tidslinje som lista",
       "now": "nu",
       "nowAt": "Nu: {{time}}",
