@@ -81,6 +81,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const link = await sheet.locator('.ow-share-link').inputValue();
   if (!link.endsWith(SHARE_FRAGMENT)) throw new Error(`share link is not the rounded fragment: ${link}`);
   log('share link', link);
+  await sheet.locator('.ow-share-link').evaluate((field) => { field.setSelectionRange(field.value.length, field.value.length); field.scrollLeft = field.scrollWidth; });
   await shot('share-link-field-rounded-fragment', { locator: sheet });
 
   const leaks = requests.filter((url) => !ARCHIVE_HOSTS.includes(new URL(url).hostname) && /25\.11[0-9]|55\.1[34][0-9]/.test(url));
