@@ -1,18 +1,17 @@
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
 import { InfrastructureServiceClient } from '@/services/generated-rpc-clients';
 import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
-import { getCountryCentroid, getCountryNameByCode, nameToCountryCode } from '@/services/country-geometry';
 
 export interface PlaceResult {
   name: string;
   point: GeoPoint;
-  /** "coordinates", "country", or the OpenStreetMap feature kind of a searched name. */
+  /** "coordinates", or the OpenStreetMap feature kind of a searched name. */
   kind: string;
 }
 
 /**
  * How a submitted query resolved. Only `searched` involved a request, and it carried the
- * typed name alone: coordinates and country names resolve in the browser.
+ * typed name alone: coordinates resolve in the browser.
  */
 export type PlaceSearchOutcome =
   | { kind: 'empty' }
@@ -40,12 +39,6 @@ export function parseTypedCoordinates(text: string): GeoPoint | 'invalid' | null
   return { lat, lon };
 }
 
-function countryResult(text: string): PlaceResult | null {
-  const code = nameToCountryCode(text);
-  const point = code ? getCountryCentroid(code) : null;
-  return code && point ? { name: getCountryNameByCode(code) ?? text.trim(), point, kind: 'country' } : null;
-}
-
 const getInfrastructureClient = createLazyClient(() => new InfrastructureServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) }));
 
 /** Resolves a submitted query. Call once per submit, never per keystroke. */
@@ -55,8 +48,6 @@ export async function searchPlaces(text: string, signal?: AbortSignal): Promise<
   const coordinates = parseTypedCoordinates(query);
   if (coordinates === 'invalid') return { kind: 'invalid-coordinates' };
   if (coordinates) return { kind: 'local', results: [{ name: query, point: coordinates, kind: 'coordinates' }] };
-  const country = countryResult(query);
-  if (country) return { kind: 'local', results: [country] };
   if (query.length < MIN_PLACE_QUERY_CHARS) return { kind: 'empty' };
   try {
     const response = await getInfrastructureClient().searchPlace({ q: query.slice(0, MAX_PLACE_QUERY_CHARS) }, { signal });
