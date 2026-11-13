@@ -5129,7 +5129,7 @@
     },
     "dailyMosaics": "每日鑲嵌圖",
     "weatherFrames": "氣象影象",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "來源 · {{count}}",
+    "sourcesDocs": "這些來源的使用方式"
   }
 }

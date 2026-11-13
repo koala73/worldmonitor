@@ -5129,7 +5129,7 @@
     },
     "dailyMosaics": "日次モザイク",
     "weatherFrames": "気象画像",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "出典 · {{count}}",
+    "sourcesDocs": "これらの出典の使い方"
   }
 }

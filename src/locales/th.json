@@ -5129,7 +5129,7 @@
     },
     "dailyMosaics": "ภาพโมเสกรายวัน",
     "weatherFrames": "ภาพสภาพอากาศ",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "แหล่งข้อมูล · {{count}}",
+    "sourcesDocs": "วิธีใช้แหล่งข้อมูลเหล่านี้"
   }
 }

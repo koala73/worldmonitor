@@ -2922,6 +2922,8 @@
   "orbitalWatch.row.offNadir": "{{deg}}° off nadir",
   "orbitalWatch.row.orbitAge": "orbit data {{age}} old",
   "orbitalWatch.row.sourceUnavailable": "The archive lists no imagery from this source for these days.",
+  "orbitalWatch.sources": "Sources · {{count}}",
+  "orbitalWatch.sourcesDocs": "How these sources are used",
   "orbitalWatch.stale": "Orbit data is stale. The satellite catalog is {{age}} old, so pass times may be off.",
   "orbitalWatch.tier.capabilityOverhead": "capability overhead",
   "orbitalWatch.tier.checking": "checking archive",

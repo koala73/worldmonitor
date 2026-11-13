@@ -5157,7 +5157,7 @@
     },
     "dailyMosaics": "dagliga mosaiker",
     "weatherFrames": "väderbilder",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "Källor · {{count}}",
+    "sourcesDocs": "Hur dessa källor används"
   }
 }

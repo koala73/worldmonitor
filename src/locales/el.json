@@ -5157,7 +5157,7 @@
     },
     "dailyMosaics": "ημερήσια μωσαϊκά",
     "weatherFrames": "μετεωρολογικές εικόνες",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "Πηγές · {{count}}",
+    "sourcesDocs": "Πώς χρησιμοποιούνται αυτές οι πηγές"
   }
 }

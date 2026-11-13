@@ -5185,7 +5185,7 @@
     },
     "dailyMosaics": "mosaici giornalieri",
     "weatherFrames": "immagini meteo",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "Fonti · {{count}}",
+    "sourcesDocs": "Come vengono usate queste fonti"
   }
 }

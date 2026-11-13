@@ -5157,7 +5157,7 @@
     },
     "dailyMosaics": "picha mseto za kila siku",
     "weatherFrames": "picha za hali ya hewa",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "Vyanzo · {{count}}",
+    "sourcesDocs": "Jinsi vyanzo hivi vinavyotumika"
   }
 }

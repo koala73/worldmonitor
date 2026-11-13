@@ -5157,7 +5157,7 @@
     },
     "dailyMosaics": "dagmozaïeken",
     "weatherFrames": "weerbeelden",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "Bronnen · {{count}}",
+    "sourcesDocs": "Hoe deze bronnen worden gebruikt"
   }
 }

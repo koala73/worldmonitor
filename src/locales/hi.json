@@ -5157,7 +5157,7 @@
     },
     "dailyMosaics": "दैनिक मोज़ेक",
     "weatherFrames": "मौसम चित्र",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "स्रोत · {{count}}",
+    "sourcesDocs": "ये स्रोत कैसे उपयोग किए जाते हैं"
   }
 }

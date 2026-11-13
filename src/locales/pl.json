@@ -5213,7 +5213,7 @@
     },
     "dailyMosaics": "dzienne mozaiki",
     "weatherFrames": "zdjęcia pogodowe",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "Źródła · {{count}}",
+    "sourcesDocs": "Jak wykorzystywane są te źródła"
   }
 }

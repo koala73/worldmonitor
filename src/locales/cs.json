@@ -5213,7 +5213,7 @@
     },
     "dailyMosaics": "denní mozaiky",
     "weatherFrames": "meteorologické snímky",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "Zdroje · {{count}}",
+    "sourcesDocs": "Jak se tyto zdroje používají"
   }
 }

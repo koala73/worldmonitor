@@ -5269,7 +5269,7 @@
     },
     "dailyMosaics": "فسيفساء يومية",
     "weatherFrames": "صور الطقس",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "المصادر · {{count}}",
+    "sourcesDocs": "كيف تُستخدم هذه المصادر"
   }
 }

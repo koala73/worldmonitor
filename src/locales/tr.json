@@ -5157,7 +5157,7 @@
     },
     "dailyMosaics": "günlük mozaikler",
     "weatherFrames": "hava durumu görüntüleri",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "Kaynaklar · {{count}}",
+    "sourcesDocs": "Bu kaynaklar nasıl kullanılıyor"
   }
 }

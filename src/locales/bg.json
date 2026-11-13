@@ -5157,7 +5157,7 @@
     },
     "dailyMosaics": "дневни мозайки",
     "weatherFrames": "метеорологични изображения",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "Източници · {{count}}",
+    "sourcesDocs": "Как се използват тези източници"
   }
 }

@@ -5157,7 +5157,7 @@
     },
     "dailyMosaics": "موزاییک‌های روزانه",
     "weatherFrames": "تصاویر هواشناسی",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "منابع · {{count}}",
+    "sourcesDocs": "این منابع چگونه استفاده می‌شوند"
   }
 }

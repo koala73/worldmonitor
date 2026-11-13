@@ -5213,7 +5213,7 @@
     },
     "dailyMosaics": "щоденні мозаїки",
     "weatherFrames": "метеознімки",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "Джерела · {{count}}",
+    "sourcesDocs": "Як використовуються ці джерела"
   }
 }

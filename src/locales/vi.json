@@ -5129,7 +5129,7 @@
     },
     "dailyMosaics": "ảnh ghép hằng ngày",
     "weatherFrames": "ảnh thời tiết",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "Nguồn · {{count}}",
+    "sourcesDocs": "Cách sử dụng các nguồn này"
   }
 }

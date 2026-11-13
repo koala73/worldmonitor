@@ -5129,7 +5129,7 @@
     },
     "dailyMosaics": "일일 모자이크",
     "weatherFrames": "기상 영상",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "How these sources are used"
+    "sources": "출처 · {{count}}",
+    "sourcesDocs": "이 출처를 사용하는 방법"
   }
 }
