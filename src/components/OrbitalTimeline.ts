@@ -105,7 +105,7 @@ export class OrbitalTimeline {
     const labels: HTMLElement[] = [];
     const tracks: HTMLElement[] = [];
     const lane = (id: string, label: string, marks: DomChild[], state?: string) => {
-      labels.push(h('div', { className: 'ow-tl-label', dataset: { lane: id } }, label));
+      labels.push(h('div', { className: 'ow-tl-label', title: label, dataset: { lane: id } }, label));
       tracks.push(h('div', { className: 'ow-tl-track', dataset: { lane: id, ...(state ? { state } : {}) } }, ...marks));
     };
 

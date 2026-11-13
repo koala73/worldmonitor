@@ -175,6 +175,7 @@
 .ow-tl-mark.is-opportunity {
   background: transparent;
   border: 1px dashed var(--accent, #4da3ff);
+  opacity: 0.6;
 }
 
 .ow-tl-mark.is-selected {
@@ -219,7 +220,8 @@
   max-height: 180px;
   overflow-y: auto;
   margin: 4px 0 0;
-  padding-left: 18px;
+  padding-left: 0;
+  list-style-position: inside;
 }
 
 .ow-tl-select {
