@@ -1,0 +1,101 @@
+---
+title: "Analysis Tradecraft and Frontend Design"
+sidebarTitle: "Analysis & frontend design"
+description: "Intelligence analysis tradecraft, algorithmic design decisions and the vanilla TypeScript architecture behind the World Monitor dashboard, including discriminated unions and panel event delegation."
+---
+
+Part of the [Architecture and Design Philosophy](/architecture) guide, which indexes every topic. For deployment topology, directory layout and CI/CD, see [`ARCHITECTURE.md`](https://github.com/koala73/worldmonitor/blob/main/ARCHITECTURE.md).
+
+---
+
+## Intelligence Analysis Tradecraft
+
+The dashboard's design draws from established intelligence analysis methodology, adapted for automated open-source intelligence:
+
+**Structured Analytic Techniques (SATs)** — rather than presenting raw data, the system applies structured frameworks to reduce cognitive bias. The Country Instability Index decomposes "instability" into four weighted components (unrest, conflict, security, information velocity) — forcing analysts to consider each dimension independently rather than anchoring on the most salient headline. The Strategic Risk Score similarly decomposes geopolitical risk into convergence, CII, infrastructure, theater, and breaking news components.
+
+**Analysis of Competing Hypotheses (ACH)** — composite intelligence products reduce single-source bias by corroborating independent inputs before they move a score: the Country Instability Index blends unrest, conflict, security, and information-velocity signals; protest data merges ACLED and GDELT; disaster data fuses USGS, GDACS, and NASA EONET. The breaking-news banner is deliberately different: the current code wires two independent producers, `rss_alert` and `oref_siren`, without a corroboration-count or cross-origin convergence requirement. A qualifying RSS item may raise a high or critical alert after recency, source-tier, story-phase, importance, deduplication, cooldown, startup, and user-sensitivity gates. A non-empty OREF siren batch escalates directly to critical when alerts are enabled and the event is not a duplicate; it bypasses the RSS-only gates and global cooldown.
+
+**Intelligence gap awareness** — professional intelligence assessments always note what they *don't* know. The data freshness tracker explicitly reports "what can't be seen" for every registered source group, with status categorization (fresh, stale, very_stale, no_data, error, disabled). Two browser-tracker sources (GDELT, RSS) are flagged as `requiredForRisk`, meaning their absence can force the Strategic Risk panel into its hard insufficient-data state. That flag is narrower than the full CII scoring dependency graph: UCDP events, ACLED conflict, news summaries, cyber threats, and other score inputs are monitored through source-specific health plus the `riskScores` health/cache signal-density coverage. When a critical data source goes down, the system displays the gap prominently rather than silently omitting it, preventing false confidence from incomplete data.
+
+**Source credibility weighting** — the 4-tier source hierarchy (wire services → major outlets → specialty → aggregators) mirrors intelligence community source evaluation (A–F reliability, 1–6 confidence). State-affiliated sources are included for completeness but tagged with propaganda risk indicators, enabling analysts to factor in editorial bias. Higher-tier sources carry more weight in focal point detection and alert generation.
+
+**Temporal context** — Welford's online baseline computation provides the temporal context that raw counts lack. "50 military flights" is meaningless without knowing that the average for this day of week and month is 15 — making the observation 3.3σ above normal. The system automatically provides this context for every signal type.
+
+**Alert-channel separation** — keyword spikes, hotspot escalation, and military surges contribute to correlation and anomaly products, but they are not wired as breaking-news banner producers. The banner presents qualifying RSS items and OREF sirens as separate alerts; it does not imply that those channels were fused into a corroborated assessment.
+
+## Algorithmic Design Decisions
+
+Several non-obvious algorithmic choices are worth explaining:
+
+**Logarithmic vs. linear protest scoring** — Democracies experience routine protests that don't indicate instability (France's yellow vest movement, US campus protests). Authoritarian states rarely see public protest, so each event is significant. The CII uses `log(protestCount)` for democracies and linear scaling for authoritarian states, preventing democratic noise from drowning genuine authoritarian unrest signals.
+
+**Welford's online algorithm for baselines** — Traditional mean/variance computation requires storing all historical data points. Welford's method maintains a running mean and M2 (sum of squared deviations) that can be updated with each new observation in O(1) time and O(1) space. This makes it feasible to track baselines for hundreds of event-type × region × weekday × month combinations in Redis without storing raw observations.
+
+**H3 hexagonal grid for GPS jamming** — Hexagonal grids (H3 resolution 4, ~22km edge length) are used instead of rectangular lat/lon cells because hexagons have uniform adjacency (6 neighbors vs. 4/8 for squares), equal area at any latitude, and no meridian convergence distortion. This matters for interference zone detection where spatial uniformity affects clustering accuracy.
+
+**Cosine-latitude-corrected distance** — Cable health matching and several proximity calculations use equirectangular approximation with `cos(lat)` longitude correction instead of full Haversine. At the distances involved (50–600km), the error is &lt;0.5% while being ~10x faster — important when computing distances against large infrastructure catalogs per event.
+
+**Negative caching** — When an upstream API returns an error, the system caches the failure state for a defined period (5 minutes for UCDP, 30 seconds for Polymarket queue rejections) rather than retrying immediately. This prevents thundering-herd effects where hundreds of concurrent users all hammer a downed API, and it provides clear signal to the intelligence gap tracker that a source is unavailable.
+
+**O(1) inflection suffix matching** — The keyword-matching pipeline checks every word in every ingested headline against a set of English inflection suffixes (`-ing`, `-ed`, `-tion`, `-ment`, etc.) for morphological normalization. The suffix list was converted from an `Array` (O(n) `.some()` scan per word) to a `Set` (O(1) `.has()` lookup), eliminating a linear scan executed on every word of every headline — a meaningful hot-path optimization given the system processes thousands of headlines per refresh cycle.
+
+**Stack-safe array operations** — The `Math.min(...array)` and `Math.max(...array)` spread patterns are limited by V8's argument stack (~65,535 entries). With large news clusters (common during breaking events), the spread silently overflows and returns `Infinity` / `-Infinity`, corrupting `firstSeen` and `lastUpdated` timestamps. These are replaced with `Array.prototype.reduce` loops that operate in O(1) stack space regardless of array size.
+
+---
+
+## TypeScript Architecture
+
+### Vanilla TypeScript Architecture
+
+World Monitor is written in vanilla TypeScript — no frontend framework (React, Vue, Svelte, Angular) is used. This is a deliberate architectural decision, not an oversight.
+
+**Why no framework:**
+
+- **Bundle size** — the dashboard loads dozens of data layers, map renderers, ML models, and live video streams. Every kilobyte of framework overhead competes with actual intelligence data. The entire application shell (panel system, routing, state management) compiles to less JavaScript than React's runtime alone
+- **DOM control** — the panel system manipulates `innerHTML` directly with debounced content replacement (`setContent()`) and event delegation on stable container elements. Framework virtual DOM diffing would fight this pattern, adding overhead without benefit — the dashboard doesn't have the fine-grained reactive state updates that frameworks optimize for
+- **WebView compatibility** — the Tauri desktop app runs in WKWebView (macOS) and WebKitGTK (Linux), which have idiosyncratic behavior around drag-and-drop, clipboard, autoplay, and memory management. Direct DOM manipulation makes it possible to work around these platform quirks without fighting framework abstractions
+- **Long-term simplicity** — no framework version upgrades, no breaking API migrations, no adapter libraries. The codebase depends on browser standards (DOM, Web Workers, IndexedDB, Intersection Observer, ResizeObserver) that are stable across engine updates
+
+**What fills the framework gap:**
+
+| Concern | Solution |
+| --- | --- |
+| Component model | `Panel` base class with lifecycle methods (`render`, `destroy`), debounced content updates, and event delegation |
+| State management | `localStorage` for user preferences, `CustomEvent` dispatch for inter-panel communication (`wm:breaking-news`, `wm:deduct-context`, `theme-changed`, `ai-flow-changed`), and a centralized signal aggregator for intelligence state |
+| Routing | URL query parameters (`?view=`, `?c=`, `?layers=`) parsed at startup; `history.pushState` for shareable deep links |
+| Reactivity | `SmartPollLoop` and `RefreshScheduler` classes with named refresh runners, visibility-aware scheduling, and in-flight deduplication |
+| Virtual scrolling | Custom `VirtualList` with DOM element pooling, top/bottom spacer divs, and `requestAnimationFrame`-batched scroll handling |
+
+### Discriminated Union Marker System
+
+All map markers — across both the globe.gl and deck.gl engines — carry a `_kind` discriminant field that identifies their type at runtime. Rather than using class inheritance (which requires `instanceof` checks and prevents marker data from being plain serializable objects), each marker is a plain TypeScript object with a literal `_kind` string:
+
+```typescript
+type MapMarker =
+  | { _kind: 'conflict'; lat: number; lon: number; severity: string; ... }
+  | { _kind: 'flight'; lat: number; lon: number; callsign: string; ... }
+  | { _kind: 'vessel'; lat: number; lon: number; mmsi: number; ... }
+  | { _kind: 'protest'; lat: number; lon: number; crowd_size: number; ... }
+  // ... 15+ additional marker kinds
+```
+
+This enables exhaustive `switch` matching in the rendering pipeline — the TypeScript compiler verifies that every marker kind is handled, and adding a new kind produces compile errors at every unhandled site. Marker data can be serialized to/from JSON (for IndexedDB persistence and Web Worker transfer) without custom serialization logic. The same marker objects flow through clustering, tooltip generation, and layer filtering without type casting.
+
+### Panel Event Delegation Pattern
+
+The `Panel` base class uses a debounced `setContent(html)` method (150ms delay) to batch rapid DOM updates. This creates a subtle but critical problem: any event listeners attached to elements inside the panel's `innerHTML` are destroyed when the debounce fires and replaces the content.
+
+The solution is **event delegation** — all click, change, and input handlers are bound to the stable outer `this.content` container element (which is never replaced, only its `innerHTML` changes), using `event.target.closest('.selector')` to match the intended element:
+
+```typescript
+// WRONG — listener destroyed on next setContent()
+this.content.querySelector('.btn')?.addEventListener('click', handler);
+
+// CORRECT — survives innerHTML replacement
+this.content.addEventListener('click', (e) => {
+  if (e.target.closest('.btn')) handler(e);
+});
+```
+
+This pattern is enforced project-wide across all panel subclasses. In E2E tests, element references also go stale after the debounced render — test code must re-query the DOM after each render cycle rather than holding onto cached element references.
