@@ -171,9 +171,9 @@ describe('orbital timeline', () => {
   });
 
   it('shows vessel and GPS-jamming context only in the now strip', () => {
-    mounted([], context({ live: { vessels: liveOk(['MV EVER GIVEN']), 'gps-jamming': liveOk(['38%']) } }));
+    mounted([], context({ live: { vessels: liveOk(['Strait of Hormuz']), 'gps-jamming': liveOk(['38%']) } }));
     const strip = timeline().querySelector('.ow-now-strip')!;
-    expect(strip.querySelector('[data-live="vessels"]')!.textContent).toBe('Vessels within 100 km: 1, nearest MV EVER GIVEN');
+    expect(strip.querySelector('[data-live="vessels"]')!.textContent).toBe('Shipping traffic within 100 km: 1, nearest Strait of Hormuz');
     expect(strip.querySelector('[data-live="gps-jamming"]')!.textContent).toContain('nearest 38%');
     expect(timeline().querySelector('.ow-tl-chart')!.textContent).not.toMatch(/EVER GIVEN|38%/);
     expect(listText()).not.toMatch(/EVER GIVEN|38%/);

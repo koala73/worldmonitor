@@ -5147,7 +5147,7 @@
       },
       "nowTitle": "현재, 실시간만",
       "live": {
-        "vessels": "선박",
+        "vessels": "선박 교통",
         "militaryFlights": "군용기",
         "gpsJamming": "GPS 교란"
       },

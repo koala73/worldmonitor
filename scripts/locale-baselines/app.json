@@ -2939,7 +2939,7 @@
   "orbitalWatch.timeline.images": "Images",
   "orbitalWatch.timeline.live.gpsJamming": "GPS jamming",
   "orbitalWatch.timeline.live.militaryFlights": "Military flights",
-  "orbitalWatch.timeline.live.vessels": "Vessels",
+  "orbitalWatch.timeline.live.vessels": "Shipping traffic",
   "orbitalWatch.timeline.liveCount": "within {{km}} km: {{count}}, nearest {{nearest}}",
   "orbitalWatch.timeline.liveNone": "none within {{km}} km",
   "orbitalWatch.timeline.loading": "loading",
