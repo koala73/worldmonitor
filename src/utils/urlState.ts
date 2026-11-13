@@ -219,3 +219,71 @@ export function withoutVariantScopedUrlState(url: string): string {
   next.searchParams.delete('layers');
   return next.toString();
 }
+
+/**
+ * Satellite pass share links put the place in the fragment, which browsers never send to a
+ * server: `#orbital=48.86,2.29` or, with a selected pass, `#orbital=48.86,2.29;40697-202611131230`
+ * (NORAD id and closest-approach minute, UTC). Coordinates are rounded to 0.01 degrees.
+ */
+export const ORBITAL_SHARE_KEY = 'orbital';
+
+export interface OrbitalSharePass {
+  noradId: number;
+  /** Closest approach, floored to the UTC minute. */
+  minuteMs: number;
+}
+
+export interface OrbitalShareLink {
+  point: { lat: number; lon: number };
+  pass: OrbitalSharePass | null;
+}
+
+const SHARE_VALUE_RE = /^(-?\d{1,2}(?:\.\d{1,2})?),(-?\d{1,3}(?:\.\d{1,2})?)(?:;(\d{1,9})-(\d{12}))?$/;
+const MINUTE_MS = 60_000;
+
+/** Rounds to the 0.01-degree grid share links use, without a "-0". */
+export function roundShareCoordinate(value: number): number {
+  return Math.round(value * 100) / 100 || 0;
+}
+
+function formatShareMinute(ms: number): string {
+  return new Date(Math.floor(ms / MINUTE_MS) * MINUTE_MS).toISOString().slice(0, 16).replace(/[-:T]/g, '');
+}
+
+function parseShareMinute(stamp: string): number | null {
+  const iso = `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}T${stamp.slice(8, 10)}:${stamp.slice(10, 12)}:00Z`;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) && formatShareMinute(ms) === stamp ? ms : null;
+}
+
+export function buildOrbitalShareFragment(point: { lat: number; lon: number }, pass?: { noradId: number; timeMs: number } | null): string {
+  const coords = `${roundShareCoordinate(point.lat).toFixed(2)},${roundShareCoordinate(point.lon).toFixed(2)}`;
+  return `${ORBITAL_SHARE_KEY}=${pass ? `${coords};${pass.noradId}-${formatShareMinute(pass.timeMs)}` : coords}`;
+}
+
+/** The share link in a `location.hash`, or null when it is absent or malformed. */
+export function parseOrbitalShareFragment(hash: string): OrbitalShareLink | null {
+  const fragment = hash.startsWith('#') ? hash.slice(1) : hash;
+  if (!fragment.includes(`${ORBITAL_SHARE_KEY}=`)) return null;
+  const match = SHARE_VALUE_RE.exec(new URLSearchParams(fragment).get(ORBITAL_SHARE_KEY) ?? '');
+  if (!match) return null;
+  const lat = Number(match[1]);
+  const lon = Number(match[2]);
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  let pass: OrbitalSharePass | null = null;
+  if (match[3] && match[4]) {
+    const minuteMs = parseShareMinute(match[4]);
+    if (minuteMs === null) return null;
+    pass = { noradId: Number(match[3]), minuteMs };
+  }
+  return { point: { lat, lon }, pass };
+}
+
+/** `hash` without the share key, keeping anything else another surface routes on. */
+export function withoutOrbitalShareFragment(hash: string): string {
+  const fragment = hash.startsWith('#') ? hash.slice(1) : hash;
+  if (!fragment.includes(`${ORBITAL_SHARE_KEY}=`)) return fragment;
+  const params = new URLSearchParams(fragment);
+  params.delete(ORBITAL_SHARE_KEY);
+  return params.toString();
+}
