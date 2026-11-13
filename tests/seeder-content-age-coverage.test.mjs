@@ -52,6 +52,11 @@ const FREEZE_PRONE_MARKERS = [
 // computed without first reshaping the seeder's output. A placeholder is
 // rejected by the "no stale EXEMPT entry" test below.
 const EXEMPT = {
+  'seed-cii-structural-prior.mjs':
+    'Pinned 2025 WGI reference snapshot, intentionally unchanged when a newer ' +
+    'vintage appears. Coverage and year are checked in the producer and health; ' +
+    'adopting a new data year requires a reviewed constant change. Rolling ' +
+    'content-age would incorrectly mark the required fixed vintage stale.',
   'seed-economic-calendar.mjs':
     'Forward-looking release calendar — its payload is UPCOMING economic events, ' +
     'not historical observations. Content-age does not apply; freshness is the ' +

@@ -524,6 +524,7 @@ const STANDALONE_KEYS = {
   theaterPostureBackup:  'theater-posture:sebuf:backup:v1',
   riskScoresLive:        CII_RISK_SCORE_CACHE_KEYS.live,
   riskScoresHistory:     CII_RISK_SCORE_CACHE_KEYS.dailyHistoryIndex,
+  ciiStructuralPrior:    'intelligence:cii-structural-prior:v1',
   countryHistory:        'history:country:index',
   usniFleet:             'usni-fleet:sebuf:v1',
   usniFleetStale:        'usni-fleet:sebuf:stale:v1',
@@ -1213,6 +1214,13 @@ const SEED_META = {
   gpsjam:           { key: 'seed-meta:intelligence:gpsjam',       maxStaleMin: 1440 }, // Wingbits API (scripts/fetch-gpsjam.mjs); 1440min = 24h tolerance gives operator headroom to handle upstream outages and monthly quota exhaustion (HTTP 402 observed 2026-04-29) without dashboard noise. Seeder catch-block extends TTL on fail without refreshing fetchedAt, so STALE_SEED via age is the only alarm path.
   positiveGeoEvents:{ key: 'seed-meta:positive-events:geo',       maxStaleMin: 60 },
   riskScores:       { key: 'seed-meta:intelligence:risk-scores',  maxStaleMin: 30, minRecordCount: 2 }, // CII warm-ping every 8min; recordCount is realtime signal-density coverage for score-relevant conflict (ACLED or UCDP) and news families, not raw feed availability; quiet-but-fresh feeds may warn COVERAGE_PARTIAL. Per-input availability (seed-meta `inputs`) is graded by composeRiskScoresInputHealth.
+  ciiStructuralPrior: {
+    key: 'seed-meta:intelligence:cii-structural-prior', maxStaleMin: 50400,
+    activationKey: 'seed-activated:intelligence:cii-structural-prior',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10577, activationKey: 'seed-activated:intelligence:cii-structural-prior' },
+    year: 2025,
+    requiredCountries: ['US', 'RU', 'CN', 'UA', 'IR', 'IL', 'TW', 'KP', 'SA', 'TR', 'PL', 'DE', 'FR', 'GB', 'IN', 'PK', 'SY', 'YE', 'MM', 'VE', 'CU', 'MX', 'BR', 'AE', 'KR', 'IQ', 'AF', 'LB', 'EG', 'JP', 'QA'],
+  },
   riskScoresHistory: {
     key: 'seed-meta:intelligence:risk-scores-history', maxStaleMin: 30, minRecordCount: 31,
     activationKey: CII_RISK_SCORE_CACHE_KEYS.dailyHistoryActivation,
@@ -2957,6 +2965,7 @@ const ON_DEMAND_KEYS = new Set([
   // never covers a key that has data behind it (see classifyKey).
   'pizzintHistory',
   'riskScoresHistory', // first fresh leader build atomically activates daily history
+  'ciiStructuralPrior', // pending until the first complete prior publication
   'countryHistory',
   // #6070 retired six expired deployment-order bridges after live producer
   // verification. Future temporary softening needs an activation marker or an
@@ -3036,6 +3045,7 @@ const ACTIVATION_MARKERS = {
   // Written by the PizzINT archive's Lua (scripts/shared/pizzint-history.cjs).
   pizzintHistory: SEED_META.pizzintHistory.activationKey,
   riskScoresHistory: SEED_META.riskScoresHistory.activationKey,
+  ciiStructuralPrior: SEED_META.ciiStructuralPrior.activationKey,
   countryHistory: SEED_META.countryHistory.activationKey,
   companyMonitoringWorker: 'seed-activated:company-monitoring:worker',
   shippingWebhookWorker: SEED_META.shippingWebhookWorker.activationKey,
@@ -5128,6 +5138,27 @@ function composeChokepointTransitsCoverage(entry, rawMeta) {
   return { ...entry, status: 'COVERAGE_PARTIAL', missingMeasurable };
 }
 
+function composeCiiStructuralPriorHealth(entry, raw, readError = false, containmentEvidenceByName) {
+  if (!entry) return entry;
+  if (readError) {
+    containmentEvidenceByName?.delete('ciiStructuralPrior');
+    return { ...entry, status: 'REDIS_PARTIAL' };
+  }
+  const payload = unwrapEnvelope(parseRedisValue(raw)).data;
+  const cfg = SEED_META.ciiStructuralPrior;
+  const valid = payload?.indicator === 'GOV_WGI_PV.EST' && payload?.year === cfg.year;
+  const missingCountries = cfg.requiredCountries.filter((code) => {
+    const row = payload?.countries?.[code];
+    return !valid || !Number.isFinite(row?.pv) || row.year !== cfg.year || typeof row.source !== 'string' || !row.source.startsWith('https://');
+  });
+  if (missingCountries.length) containmentEvidenceByName?.delete('ciiStructuralPrior');
+  return {
+    ...entry,
+    ...(entry.status === 'OK' && missingCountries.length ? { status: 'COVERAGE_PARTIAL' } : {}),
+    missingCountries,
+  };
+}
+
 function composeRiskScoresInputHealth(entry, rawMeta, checks, now, containmentEvidenceByName) {
   if (!entry) return entry;
   const meta = unwrapEnvelope(parseRedisValue(rawMeta)).data;
@@ -5983,7 +6014,7 @@ const SOURCE_INCIDENT_DIAGNOSTIC_FIELDS = [
   // Set by the composers after classification: chokepoint transits missing
   // their measurable inputs, the CII input audit, the read-model gate, and the
   // vulnerability floors a COVERAGE_PARTIAL compares against.
-  'missingMeasurable', 'ciiInputs', 'readModelReady', 'requiredVulnerabilityCoverage',
+  'missingMeasurable', 'missingCountries', 'ciiInputs', 'readModelReady', 'requiredVulnerabilityCoverage',
 ];
 // Per-field cap on the serialized value: a coverage block can list every
 // country, and Sentry rejects oversized events whole.
@@ -6414,6 +6445,7 @@ export async function handleHealth(req, ctx, options = {}) {
       ['HEXISTS', sweepKey(FIVE_FACTOR_SCORECARD_READ_MODEL_KEY), 'metadata'],
       ...fredRolloutCommands,
       ...regionalRolloutCommands,
+      ['GET', sweepKey(STANDALONE_KEYS.ciiStructuralPrior)],
     ];
     if (!getRedisCredentials()) throw new Error('Redis not configured');
     if (budget.exhausted()) return deadlineFallback();
@@ -6640,6 +6672,11 @@ export async function handleHealth(req, ctx, options = {}) {
     keyMetaValues.get(SEED_META.riskScores.key),
     checks,
     evaluationNow,
+    containmentEvidenceByName,
+  );
+  const priorResult = results.at(-1);
+  checks.ciiStructuralPrior = composeCiiStructuralPriorHealth(
+    checks.ciiStructuralPrior, priorResult?.result, Boolean(priorResult?.error),
     containmentEvidenceByName,
   );
 
@@ -6892,6 +6929,7 @@ export const __testing__ = {
   composeContractsFinderHealth,
   composeChokepointTransitsCoverage,
   composeRiskScoresInputHealth,
+  composeCiiStructuralPriorHealth,
   readSeedMeta,
   classifyKey,
   healthResponseBody,

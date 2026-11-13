@@ -1094,10 +1094,21 @@ costs nothing. One service carries all three heavy members instead of three
 | **Start command** | `node scripts/seed-bundle-static-ref-heavy.mjs` |
 | **Cron schedule** | `0 4 * * *` (daily 04:00 UTC, staggered off leftover's 03:00) |
 | **Lifecycle** | active — service `6285c37b-1327-46f1-bfd0-7454612764fb`, provisioned 2026-08-19, first tick published `bundle:heartbeat:static-ref-heavy` at 2026-08-20T04:01:04Z |
-| **Members** | Supply-Vulnerability (160s / daily), Mineral-Production (180s / 60d), Arms-Suppliers (370s / 14d), and Military-Bases (400s / 30d), ordered by the durable turn policy below |
+| **Members** | Supply-Vulnerability (160s / daily), CII-Structural-Prior (90s / 30d, pending owner deployment), Mineral-Production (180s / 60d), Arms-Suppliers (370s / 14d), and Military-Bases (400s / 30d), ordered by the durable turn policy below |
 | **Wall-time budget** | `maxBundleMs: 570_000` |
 | **Required variable** | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `CLOUDFLARE_R2_ACCOUNT_ID` and one of `CLOUDFLARE_R2_TOKEN` / `CLOUDFLARE_API_TOKEN`. `USPTO_API_KEY` stays on leftover. The R2 pair is NOT optional here: `scripts/data/military-bases-final.json` is gitignored and the service has no volume, so without it Military-Bases falls back to the published version and exits non-zero once that is past its 30-day interval (#6845). |
 | **Heartbeat** | `bundle:heartbeat:static-ref-heavy` |
+
+The proposed CII prior section follows Supply-Vulnerability in the cadence class
+that leads every second claimed turn. Their combined reservations are 270 seconds,
+including kill grace, within the 570-second bundle budget. The heavy-member
+rotation remains unchanged. The prior is pinned to WGI data year 2025, has a
+400-day TTL, and refreshes every 30 days. Owner deployment must add
+`scripts/seed-cii-structural-prior.mjs` and `scripts/_china-exchange-transport.mjs`
+to the live watch patterns, as recorded in `scripts/railway-services.json`.
+The live service configuration was checked read-only on 2026-11-12; no live
+setting was changed. After deployment, verify the standalone `ciiStructuralPrior`
+health check, its 31-country coverage, and the distinct seed-meta record.
 
 Supply-Vulnerability is a Redis-only projection with a 170s reservation,
 including kill grace. It does not always run first: Supply-Vulnerability leads

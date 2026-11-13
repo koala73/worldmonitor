@@ -45,8 +45,8 @@ The top-level `status` describes user-visible platform availability, not perfect
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "dataStatus": "OK | DEGRADED | CRITICAL",
   "summary": {
-    "total": 416,
-    "ok": 415,
+    "total": 417,
+    "ok": 416,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 1,
@@ -147,6 +147,26 @@ Keys are grouped into three tiers that determine alert severity:
 | **Bootstrap** | CRIT | Seeded data required at startup. Empty means the dashboard is missing critical data |
 | **Standalone** | CRIT (seeded) / WARN (on-demand) | Populated by seed loops or RPC handlers. On-demand keys are expected to be empty until first request |
 | **On-demand** | WARN | Populated lazily by RPC calls. Empty is normal if nobody has requested the data yet |
+
+The standalone `ciiStructuralPrior` check monitors
+`intelligence:cii-structural-prior:v1`, with the distinct metadata key
+`seed-meta:intelligence:cii-structural-prior`. The source is the World Bank WGI
+`GOV_WGI_PV.EST` estimate, pinned to data year 2025. Taiwan comes from the matching
+2026 WGI bulk release. The payload records each country's value, year and source URL.
+The seeder refreshes the annual data every 30 days, with a 400-day TTL; metadata
+older than 35 days is stale. Health reads the payload as well as metadata. A missing
+or invalid scored-country value reports `COVERAGE_PARTIAL` with `missingCountries`,
+even when metadata is fresh. A Redis read failure reports `REDIS_PARTIAL`.
+The durable `seed-activated:intelligence:cii-structural-prior` marker is written
+only after successful publication. Before any publication, an absent key is
+pending; after activation, missing data remains a fault even if the data TTL expires.
+
+The proposed runner is the live `seed-bundle-static-ref-heavy` service, verified
+on 2026-11-12 to run daily at 04:00 UTC from `scripts/`. Its existing cadence
+rotation admits the prior after Supply-Vulnerability on every second tick.
+Deploying this bundle and applying its new watch patterns require owner approval.
+Use `node scripts/seed-cii-structural-prior.mjs --dry-run` for a GET-only source check.
+This key has no scoring consumer until the separate CII aggregation change ships.
 
 ### Per-Key Statuses
 

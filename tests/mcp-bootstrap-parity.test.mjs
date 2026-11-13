@@ -37,6 +37,8 @@ const { TOOL_REGISTRY } = mcpTesting;
 //   - operational:         relay heartbeats and similar — visible via /api/health, not MCP.
 // -----------------------------------------------------------------------------
 const EXCLUDED_FROM_MCP = new Map([
+  ['intelligence:cii-structural-prior:v1',
+    'internal-reference: pinned WGI prior for the future CII scorer (#10577 U3); producer-only and not yet consumed by a released score or MCP tool.'],
   ['cyber:cve-reference:v1', 'deferred: standalone CISA KEV reference store; advisory/CVE lookup consumer and bounded MCP query are follow-ups to #6229.'],
   ['maritime:ukmto-incidents:v1', 'UKMTO publisher reports await activation and source-aware MCP composition (#9831)'],
   ['risk:scores:history:index',
