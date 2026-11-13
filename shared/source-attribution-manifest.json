@@ -8048,6 +8048,9 @@
       "references": [
         {
           "path": "src/services/orbital/archive-stac.ts"
+        },
+        {
+          "path": "src/services/orbital/crop-url.ts"
         }
       ]
     },
