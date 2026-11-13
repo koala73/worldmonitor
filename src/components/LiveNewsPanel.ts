@@ -1,16 +1,17 @@
 import { Panel } from './Panel';
 import { isDesktopRuntime } from '@/services/runtime';
 import { t } from '../services/i18n';
+import { getPanelDisplayName } from '@/services/panel-display-name';
 import { createFocusTrap } from '@/utils/focus-trap';
 import { loadFromStorage, saveToStorage } from '@/utils';
 import { STORAGE_KEYS } from '@/config';
 
 import { getActiveLiveMedia, playAllLiveMedia, registerLiveMediaStarter, releaseLiveMediaPlayback, requestLiveMediaPlayback, stopLiveMediaPlayback, unregisterLiveMediaStarter, type LiveMediaStopReason } from '@/services/live-media-controller';
-import { getLiveStreamsAlwaysOn, subscribeLiveStreamsAlwaysOnChange } from '@/services/live-stream-settings';
+import { getLiveNewsAutoplay, subscribeLiveNewsAutoplayChange } from '@/services/live-stream-settings';
 import { subscribeLiveMediaIdle } from '@/services/live-media-idle';
 import { sourceListsChannel, type LiveVideoSource, type OfflineReason } from '@/services/live-video/model';
 import { withResolvedLiveVideos } from '@/services/live-video/resolved';
-import { createFailureMemory, openLiveVideo, type LiveVideoSession, type LiveVideoState } from '@/services/live-video/session';
+import { createFailureMemory, openLiveVideo, type AudioAvailability, type LiveVideoSession, type LiveVideoState } from '@/services/live-video/session';
 import { track } from '@/services/analytics';
 import { createLiveMediaIdleNotice, trackLiveMediaIdleStop } from './live-media-idle-notice';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -67,6 +68,8 @@ export class LiveNewsPanel extends Panel {
   private isPlaying = false;
   private idleStoppedAfterMs: number | null = null;
   private muteBtn: HTMLButtonElement | null = null;
+  private audioAvailability: AudioAvailability = 'unknown';
+  private audioStatus: HTMLSpanElement | null = null;
   private fullscreenBtn: HTMLButtonElement | null = null;
   private isFullscreen = false;
   private liveBtn: HTMLButtonElement | null = null;
@@ -74,7 +77,8 @@ export class LiveNewsPanel extends Panel {
     if (document.hidden) stopLiveMediaPlayback('live-news', 'hidden');
     else this.startAlwaysOnPlaybackIfVisible();
   };
-  private alwaysOn = getLiveStreamsAlwaysOn();
+  // Live News autoplay (on by default); the webcam wall keeps its own opt-in.
+  private alwaysOn = getLiveNewsAutoplay();
   private unsubscribeStreamSettings: (() => void) | null = null;
   private unsubscribeIdle: (() => void) | null = null;
 
@@ -154,7 +158,7 @@ export class LiveNewsPanel extends Panel {
   };
 
   constructor() {
-    super({ id: 'live-news', title: t('panels.liveNews'), className: 'panel-wide', closable: true, collapsible: true });
+    super({ id: 'live-news', title: getPanelDisplayName('live-news'), className: 'panel-wide', closable: true, collapsible: true });
     this.insertLiveCountBadge(OPTIONAL_LIVE_CHANNELS.filter(hasBuiltinStreams).length);
     this.channels = loadChannelsFromStorage();
     if (this.channels.length === 0) this.channels = getDefaultLiveChannels();
@@ -168,7 +172,7 @@ export class LiveNewsPanel extends Panel {
     this.setupLazyInit();
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
     this.unsubscribeIdle = subscribeLiveMediaIdle((idleAfterMs) => this.stopForIdle(idleAfterMs));
-    this.unsubscribeStreamSettings = subscribeLiveStreamsAlwaysOnChange((alwaysOn) => {
+    this.unsubscribeStreamSettings = subscribeLiveNewsAutoplayChange((alwaysOn) => {
       this.alwaysOn = alwaysOn;
       if (!alwaysOn) {
         // Cancel any pending lazy-init so leaving always-on cannot auto-start playback without intent.
@@ -243,20 +247,32 @@ export class LiveNewsPanel extends Panel {
   }
 
   private setupLazyInit(): void {
+    // Re-checked when it runs: during the wait the viewer may collapse the panel, scroll it
+    // away or switch tabs. Off screen, observe again so the start waits for the panel's return.
+    const startWhenVisible = () => {
+      this.idleCallbackId = null;
+      if (!this.alwaysOn || this.idleStoppedAfterMs !== null || !this.canHostLiveMedia()) return;
+      if (document.hidden || !this.isPanelVisible()) {
+        if (!this.lazyObserver) this.setupLazyInit();
+        return;
+      }
+      this.triggerInit();
+    };
     this.lazyObserver = new IntersectionObserver(
       (entries) => {
         if (entries.some(e => e.isIntersecting)) {
           this.lazyObserver?.disconnect();
           this.lazyObserver = null;
           // An idle stop ends only through Resume or Play; scrolling back into view is neither.
-          if (!this.alwaysOn || this.idleStoppedAfterMs !== null) return;
+          // A collapsed panel shows only its header, so it waits for onCollapsedChange.
+          if (!this.alwaysOn || this.idleStoppedAfterMs !== null || !this.canHostLiveMedia()) return;
           if ('requestIdleCallback' in window) {
             this.idleCallbackId = (window as any).requestIdleCallback(
-              () => { this.idleCallbackId = null; this.triggerInit(); },
+              startWhenVisible,
               { timeout: 1000 },
             );
           } else {
-            this.idleCallbackId = setTimeout(() => { this.idleCallbackId = null; this.triggerInit(); }, 1000);
+            this.idleCallbackId = setTimeout(startWhenVisible, 1000);
           }
         }
       },
@@ -300,7 +316,7 @@ export class LiveNewsPanel extends Panel {
       this.videoSession !== null ||
       this.pendingMount ||
       this.ownsLiveNewsMedia() ||
-      (this.idleStoppedAfterMs === null && this.alwaysOn && !document.hidden && this.isPanelVisible());
+      (this.idleStoppedAfterMs === null && this.alwaysOn && !document.hidden && this.canHostLiveMedia() && this.isPanelVisible());
   }
 
   private ownsLiveMediaForChannel(channelId: string): boolean {
@@ -317,7 +333,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   private startAlwaysOnPlaybackIfVisible(): void {
-    if (!this.alwaysOn || document.hidden || !this.element.isConnected || !this.isPanelVisible()) return;
+    if (!this.alwaysOn || document.hidden || !this.canHostLiveMedia() || !this.isPanelVisible()) return;
     // An idle stop ends only through Resume or Play, so autoplay must not restart it on tab return.
     if (this.idleStoppedAfterMs !== null || this.ownsActiveLiveMedia()) return;
     this.beginPlayback('implicit');
@@ -356,6 +372,9 @@ export class LiveNewsPanel extends Panel {
     this.pendingMount = false;
     this.videoSession?.destroy();
     this.videoSession = null;
+    this.audioAvailability = 'unknown';
+    this.updateMuteIcon();
+    this.audioStatus = null;
     this.videoPhase = null;
     this.playerContainer = null;
   }
@@ -447,10 +466,19 @@ export class LiveNewsPanel extends Panel {
 
   private updateMuteIcon(): void {
     if (!this.muteBtn) return;
-    setTrustedHtml(this.muteBtn, trustedHtml(this.isMuted
+    const unavailable = this.audioAvailability === 'unavailable';
+    const label = unavailable ? t('components.liveNews.audioUnavailable') : 'Toggle sound';
+    this.muteBtn.disabled = unavailable;
+    this.muteBtn.title = label;
+    this.muteBtn.setAttribute('aria-label', label);
+    if (this.audioStatus) {
+      this.audioStatus.hidden = !unavailable;
+      this.audioStatus.textContent = unavailable ? label : '';
+    }
+    setTrustedHtml(this.muteBtn, trustedHtml(this.isMuted || unavailable
       ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>'
       : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>', "legacy direct innerHTML migration"));
-    this.muteBtn.classList.toggle('unmuted', !this.isMuted);
+    this.muteBtn.classList.toggle('unmuted', !this.isMuted && !unavailable);
   }
 
   private toggleMute(): void {
@@ -777,6 +805,7 @@ export class LiveNewsPanel extends Panel {
       source,
       autoplay: true,
       muted: this.isMuted,
+      holdUnstarted: true,
       presentation: { title: `${this.getChannelDisplayName(channel)} live feed`, className: 'live-news-media', controls: true },
       onState: (state) => {
         if (isCurrent()) this.onVideoState(channel, state);
@@ -784,6 +813,11 @@ export class LiveNewsPanel extends Panel {
       onMutedChange: (muted) => {
         if (!isCurrent()) return;
         this.isMuted = muted;
+        this.updateMuteIcon();
+      },
+      onAudioAvailabilityChange: (availability) => {
+        if (!isCurrent()) return;
+        this.audioAvailability = availability;
         this.updateMuteIcon();
       },
       onPlayingChange: (playing) => {
@@ -802,6 +836,11 @@ export class LiveNewsPanel extends Panel {
     this.deferredInit = true;
     const container = document.createElement('div');
     container.className = 'live-news-player';
+    this.audioStatus = document.createElement('span');
+    this.audioStatus.className = 'live-audio-status';
+    this.audioStatus.hidden = true;
+    this.audioStatus.setAttribute('role', 'status');
+    container.appendChild(this.audioStatus);
     this.playerContainer = container;
     this.setContentNodes(container);
     return container;
@@ -811,9 +850,13 @@ export class LiveNewsPanel extends Panel {
     this.videoPhase = state.phase;
     if (state.phase !== 'connecting') this.clearChannelLoadingState();
     switch (state.phase) {
-      case 'connecting':
-        this.showPlayerStatus('cover', t('components.liveNews.connecting', { name: this.getChannelDisplayName(channel) }));
+      case 'connecting': {
+        const connecting = t('components.liveNews.connecting', { name: this.getChannelDisplayName(channel) });
+        // Once the player is up, a corner chip replaces the cover so its own controls can be reached.
+        if (state.tapToPlay) this.showPlayerStatus('chip', t('components.liveNews.tapToPlay'), null, true);
+        else this.showPlayerStatus(state.ready ? 'chip' : 'cover', connecting);
         return;
+      }
       case 'live':
         this.failureMemory.clear(channel.id);
         this.skippedChannelIds.clear();
@@ -829,15 +872,19 @@ export class LiveNewsPanel extends Panel {
       case 'unverified':
         this.failureMemory.clear(channel.id);
         this.setChannelOffline(channel.id, false);
-        this.showPlayerStatus('chip', t('components.liveNews.unverified'), state.watchUrl);
+        if (state.reason === 'not-started') {
+          this.showPlayerStatus('chip', t('components.liveNews.tapToPlay'), state.watchUrl, true);
+        } else {
+          this.showPlayerStatus('chip', t('components.liveNews.unverified'), state.watchUrl);
+        }
         return;
       case 'offline':
         this.handleChannelOffline(channel, state.reason, state.watchUrl);
     }
   }
 
-  /** A cover over the player while it connects, a corner chip for a disclosed state, or nothing once live. */
-  private showPlayerStatus(kind: 'cover' | 'chip' | null, text = '', watchUrl: string | null = null): void {
+  /** A cover over the player until it is ready, a corner chip for a ready player or a disclosed state (with a play button when it is waiting to start), or nothing once live. */
+  private showPlayerStatus(kind: 'cover' | 'chip' | null, text = '', watchUrl: string | null = null, playButton = false): void {
     const container = this.playerContainer;
     if (!container) return;
     container.querySelector('.live-news-status')?.remove();
@@ -846,9 +893,15 @@ export class LiveNewsPanel extends Panel {
     const status = document.createElement('div');
     status.className = `live-news-status live-news-status--${kind}`;
     status.setAttribute('role', 'status');
-    const label = document.createElement('span');
-    label.textContent = text;
-    status.appendChild(label);
+    if (playButton) {
+      status.dataset.tapToPlay = '';
+      // The text is the button's label: one tap target, not a caption beside it.
+      status.appendChild(actionButton(text, () => this.videoSession?.setPaused(false)));
+    } else {
+      const label = document.createElement('span');
+      label.textContent = text;
+      status.appendChild(label);
+    }
     if (watchUrl) {
       status.appendChild(actionButton(t('components.liveNews.signInToYouTube') || 'Sign in to YouTube', () => void this.openYouTubeSignIn()));
       status.appendChild(youtubeLink(watchUrl));
@@ -934,6 +987,10 @@ export class LiveNewsPanel extends Panel {
       this.destroyPlayer();
       this.renderPlaceholder();
     }
+  }
+
+  protected override onCollapsedChange(collapsed: boolean): void {
+    if (!collapsed) this.resumeLiveMediaForShow();
   }
 
   public resumeLiveMediaForShow(): void {

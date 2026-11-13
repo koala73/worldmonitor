@@ -114,8 +114,48 @@
       "manifestSha256": "2a6ea6bb7a7b20970b1358335fd4a65b94286aad08ccec20b1581bad4ca7b047"
     },
     "1.45.0": {
-      "tools": 88,
-      "manifestSha256": "a633e5dc2e8c167f0d9877da68cd8dddf8135328af1842aa4db0fc681627edf0"
+      "tools": 96,
+      "manifestSha256": "705ab2847f34880f5f998c98bbcebc171ab51829e885145d68c02d91ad111c32"
+    },
+    "1.46.0": {
+      "tools": 97,
+      "manifestSha256": "cc9d68a0f9db74bddc33d0ad847fa229623dabf81b1d58dfb706877a562b6ec1"
+    },
+    "1.47.0": {
+      "tools": 99,
+      "manifestSha256": "b21bca07f365be3a2f15e4881f7354078a8fc679b2827620e1400b42848e4d69"
+    },
+    "1.48.0": {
+      "tools": 100,
+      "manifestSha256": "6398a24227227a2ac50d6f494fa912c903968a5aba844a213b23060a33b0ee5e"
+    },
+    "1.49.0": {
+      "tools": 101,
+      "manifestSha256": "1cb8c409298a1dbb5b38f3164a9141d5161c59022d3fec11d916dbca4cbf3ebe"
+    },
+    "1.50.0": {
+      "tools": 102,
+      "manifestSha256": "7e1a3c4e9aa17e47bd5e4c1e9c045a4592f821591ca48c547565f0b51b9daf4b"
+    },
+    "1.51.0": {
+      "tools": 102,
+      "manifestSha256": "a788c64b7358b36065b6a4c6dba9c63540a92036ce602e22e392236824f1237e"
+    },
+    "1.52.0": {
+      "tools": 103,
+      "manifestSha256": "c70bb8f9180d98a79c17e56476667aaa4f79cb699121ceb6741270c1528465c7"
+    },
+    "1.53.0": {
+      "tools": 104,
+      "manifestSha256": "a09e2ccadf54e93eb88c26d2570015597389d401ff26f30db7629143c70ba193"
+    },
+    "1.54.0": {
+      "tools": 102,
+      "manifestSha256": "2e09aa40b9eb4dd0ffa10d6ba532def325a3ff72fdf30727da47f5480e6ba956"
+    },
+    "1.55.0": {
+      "tools": 97,
+      "manifestSha256": "d3d2bbe95543d5b95976320e90aba8ce10b6960c289b3e87b5f7b290a7f2d302"
     }
   }
 }

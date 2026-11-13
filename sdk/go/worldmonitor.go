@@ -38,7 +38,7 @@ import (
 
 // Version of this SDK. The release workflow checks it against the
 // sdk/go/vX.Y.Z tag before warming the module proxy.
-const Version = "0.1.1"
+const Version = "0.1.2"
 
 // UserAgent identifies the SDK on every request. Cloudflare's WAF challenges
 // generic library User-Agents (Go-http-client, curl, empty) on the API edge,
@@ -103,7 +103,8 @@ type Client struct {
 	BaseURL string
 	// MCPURL is the MCP endpoint (default https://worldmonitor.app/mcp).
 	MCPURL string
-	// HTTPClient performs requests; override its Transport in tests.
+	// HTTPClient performs requests; override its Transport in tests. Its
+	// CheckRedirect is ignored: redirects are never followed.
 	HTTPClient *http.Client
 }
 
@@ -323,7 +324,12 @@ func (c *Client) do(req *http.Request) (status int, contentType string, body []b
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: defaultTimeout}
 	}
-	res, err := httpClient.Do(req)
+	// Never follow redirects: net/http forwards custom headers such as
+	// X-WorldMonitor-Key to the redirect target, even on another host. The
+	// 3xx surfaces as an APIError instead.
+	noRedirect := *httpClient
+	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	res, err := noRedirect.Do(req)
 	if err != nil {
 		return 0, "", nil, err
 	}

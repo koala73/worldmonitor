@@ -7,7 +7,9 @@
 //   - startCommand: node seed-earthquakes.mjs
 //   - Cron schedule: "*/5 * * * *" (every 5min UTC)
 
-import { loadEnvFile, CHROME_UA, httpRetryError, readSeedSnapshot, runSeed, writeExtraKey } from './_seed-utils.mjs';
+import {
+  loadEnvFile, CHROME_UA, httpRetryError, readSeedSnapshot, resolveProxyForConnect, runSeed, writeExtraKey,
+} from './_seed-utils.mjs';
 import {
   EARTHQUAKES_MAX_CONTENT_AGE_MIN,
   EARTHQUAKE_PROVIDERS_KEY,
@@ -99,7 +101,9 @@ async function fetchEarthquakes() {
   const merged = await fetchMergedEarthquakes({
     previousSources,
     fetchUsgs: () => fetchUsgs(globalThis.fetch),
-    fetchNrcan: () => fetchNrcanAtom({ fetchFn: globalThis.fetch, cache, url: NRCAN_ATOM_URL }),
+    fetchNrcan: () => fetchNrcanAtom({
+      fetchFn: globalThis.fetch, proxyAuth: resolveProxyForConnect(), cache, url: NRCAN_ATOM_URL,
+    }),
   });
   return {
     ...merged,

@@ -1,6 +1,10 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
+  agentFeedbackKindValidator,
+  agentFeedbackStatusValidator,
+} from "./lib/agentFeedbackValidators";
+import {
   channelTypeValidator,
   digestModeValidator,
   proActivationStepIdValidator,
@@ -28,6 +32,7 @@ import {
   companyMonitoringXStorageStateValidator,
 } from "./companyMonitoring/validators";
 import { entitlementFeaturesValidator } from "./lib/entitlementFeaturesValidator";
+import { teamDashboardLayoutValidator } from "./lib/teamDashboardLayout";
 
 // Subscription status enum — maps Dodo statuses to our internal set
 const subscriptionStatus = v.union(
@@ -630,6 +635,52 @@ export default defineSchema({
     value: v.number(),
   }).index("by_name", ["name"]),
 
+  // Agent feedback channel (#8721). One row per admitted report; grouping by
+  // fingerprint is a read, never a write. Every text field is
+  // attacker-controlled and already sanitized and redacted by the edge. See
+  // docs/architecture/agent-feedback-threat-model.md before changing a field.
+  agentFeedback: defineTable({
+    kind: agentFeedbackKindValidator,
+    surfaceType: v.union(v.literal("mcp_tool"), v.literal("rpc"), v.literal("other")),
+    surfaceName: v.string(),
+    // Text fields are optional because a `filed` row drops them (Decision 10).
+    summary: v.optional(v.string()),
+    expected: v.optional(v.string()),
+    actual: v.optional(v.string()),
+    requestId: v.optional(v.string()),
+    clientName: v.optional(v.string()),
+    redacted: v.boolean(),
+    fingerprint: v.string(),
+    retryKey: v.string(),
+    reporterKey: v.string(),
+    authKind: v.union(v.literal("anonymous"), v.literal("keyed")),
+    principalId: v.optional(v.string()),
+    ipHash: v.optional(v.string()),
+    uaHash: v.optional(v.string()),
+    status: agentFeedbackStatusValidator,
+    issueNumber: v.optional(v.number()),
+    duplicateOf: v.optional(v.id("agentFeedback")),
+    dismissReason: v.optional(v.string()),
+    receivedAt: v.number(),
+    updatedAt: v.number(),
+    // Security rows only. Scheduling and delivery are separate so a failed
+    // send stays visible to the daily digest (Decisions 11 and 12).
+    notifyScheduledAt: v.optional(v.number()),
+    // Set once the owner has been told about the row: by a security notice or
+    // digest, by the daily feedback digest, or by triage.
+    notifiedAt: v.optional(v.number()),
+  })
+    .index("by_fingerprint_received", ["fingerprint", "receivedAt"])
+    .index("by_status_received", ["status", "receivedAt"])
+    .index("by_kind_received", ["kind", "receivedAt"])
+    .index("by_retryKey_received", ["retryKey", "receivedAt"])
+    .index("by_reporter_received", ["reporterKey", "receivedAt"])
+    .index("by_principal", ["principalId"])
+    .index("by_kind_notified_received", ["kind", "notifiedAt", "receivedAt"])
+    // Daily feedback digest: unannounced `received` rows, oldest first across
+    // every kind, so no terminal row enters the scan and no kind starves.
+    .index("by_status_notified_received", ["status", "notifiedAt", "receivedAt"]),
+
   // --- Payment tables (Dodo Payments integration) ---
 
   subscriptions: defineTable({
@@ -709,6 +760,15 @@ export default defineSchema({
       v.literal("lapsed"),
     )),
     renewalVerificationAttemptAt: v.optional(v.number()),
+    // Billing address the user set through payments/billing:updateBillingEmail,
+    // as Dodo reported it back, with the time of that read. Lifecycle
+    // webhooks replace rawPayload, so a delayed event generated before the
+    // repair would restore the bounced address; resolveBillingRecipient
+    // prefers this while observedAt is newer than updatedAt.
+    billingEmailOverride: v.optional(v.object({
+      email: v.string(),
+      observedAt: v.number(),
+    })),
   })
     .index("by_userId", ["userId"])
     .index("by_userId_status_currentPeriodEnd", ["userId", "status", "currentPeriodEnd"])
@@ -807,6 +867,13 @@ export default defineSchema({
   // payment-failure episode legitimately re-sends the sequence while webhook
   // replays and overlapping cron ticks stay idempotent. Growth is bounded by
   // real billing events (≤4 rows per episode), so no prune cron is needed.
+  // Last payments/billing:updateBillingEmail attempt per user. Every attempt
+  // calls Dodo on the shared API key, so one row per user carries the cooldown.
+  billingEmailUpdateAttempts: defineTable({
+    userId: v.string(),
+    attemptedAt: v.number(),
+  }).index("by_userId", ["userId"]),
+
   dunningEmails: defineTable({
     dodoSubscriptionId: v.string(),
     step: v.union(
@@ -837,10 +904,88 @@ export default defineSchema({
     // Independent goodwill source; never derive this from a paid effective plan.
     // Legacy rows without it require an audited source before migration.
     compPlanKey: v.optional(v.string()),
+    // Pending recompute at `validUntil` when another source outlives the
+    // winning one. Stored so repeat recomputes reuse one job instead of
+    // scheduling a duplicate per webhook.
+    coverageRecheckJobId: v.optional(v.id("_scheduled_functions")),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
     .index("by_validUntil", ["validUntil"]),
+
+  // Customer AI routing restriction (contractual, e.g. "Anthropic only").
+  // Kept out of `entitlements.features` on purpose: billing webhooks rewrite
+  // that object, and a compliance control must not ride on it. When a row
+  // exists, the edge uses `allowedProviders` as the whole LLM provider chain
+  // for this user's own input (server/_shared/ai-routing-policy.ts).
+  aiRoutingPolicies: defineTable({
+    userId: v.string(),
+    allowedProviders: v.array(v.string()),
+    reason: v.string(),
+    updatedAt: v.number(),
+  }).index("by_userId", ["userId"]),
+
+  // Enterprise contract accounts (convex/enterpriseAccounts.ts). One row per
+  // contract customer: its members share one request pool and one AI token
+  // allowance. Not keyed to a Dodo subscription; an operator creates and edits
+  // it. "Ended" is derived (contractEnd <= now), never stored.
+  enterpriseAccounts: defineTable({
+    name: v.string(),
+    contractStart: v.number(),
+    contractEnd: v.number(),
+    dailyRequestAllowance: v.number(),
+    perMinuteBurst: v.number(),
+    monthlyInputTokens: v.number(),
+    monthlyOutputTokens: v.number(),
+    overagePerThousandRequestsUsd: v.number(),
+    overagePerMillionInputTokensUsd: v.number(),
+    overagePerMillionOutputTokensUsd: v.number(),
+    breakerMultiple: v.number(),
+    seatCap: v.number(),
+    // AI routing policy every active member inherits (and keeps after the
+    // contract ends, until removed). Same provider names as aiRoutingPolicies.
+    allowedProviders: v.array(v.string()),
+    // Pending recomputes at contractStart / contractEnd, replaced on edit.
+    contractStartJobId: v.optional(v.id("_scheduled_functions")),
+    contractEndJobId: v.optional(v.id("_scheduled_functions")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_name", ["name"]),
+
+  // Membership of an enterprise account. `userId` is optional because a
+  // pending email invite has no account yet; `email` is stored lowercased.
+  // Active rows and unexpired pending rows count against the seat cap. A
+  // pending row past `inviteExpiresAt` frees its seat. Removed rows stay as
+  // history. A membership row, not a comp grant, is the entitlement source.
+  enterpriseMembers: defineTable({
+    accountId: v.id("enterpriseAccounts"),
+    userId: v.optional(v.string()),
+    email: v.optional(v.string()),
+    status: v.union(v.literal("active"), v.literal("pending"), v.literal("removed")),
+    role: v.union(v.literal("admin"), v.literal("member")),
+    invitedAt: v.optional(v.number()),
+    // Set on admin email invites (convex/enterpriseSeats.ts); the emailed
+    // token expires at the same time.
+    inviteExpiresAt: v.optional(v.number()),
+    // Set when the invite email could not be sent (no mail key, suppressed
+    // recipient, or a send error); the admin sees it on the roster.
+    inviteEmailFailedAt: v.optional(v.number()),
+    joinedAt: v.optional(v.number()),
+    removedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_accountId", ["accountId"])
+    .index("by_userId", ["userId"])
+    .index("by_email", ["email"])
+    .index("by_status", ["status"]),
+
+  // Per-account serialization row for the seat cap, mirroring
+  // businessSeatLocks: every mutation that changes an account's seats reads
+  // AND writes this row so concurrent adds cannot both pass the cap check.
+  enterpriseAccountLocks: defineTable({
+    accountId: v.id("enterpriseAccounts"),
+    lastTouchedAt: v.number(),
+  }).index("by_accountId", ["accountId"]),
 
   apiUsageRollups: defineTable({
     userId: v.string(),
@@ -976,6 +1121,29 @@ export default defineSchema({
     // OPTIONAL and not backfilled.
     signupRef: v.optional(v.string()),
     signupSource: v.optional(v.string()),
+    // About-you answers (what the account uses WorldMonitor for, personal or
+    // work, who pays, role, and an optional free-text alternative). Option ids
+    // come from shared/audience-profile.ts; `convex/audienceProfile.ts` is the
+    // only writer. Lives on this row so account deletion erases it with the
+    // row. `write*` fields are the per-user write limit, not answers.
+    aboutYou: v.optional(
+      v.object({
+        version: v.number(),
+        primaryUse: v.optional(v.string()),
+        usageContext: v.optional(v.string()),
+        payer: v.optional(v.string()),
+        role: v.optional(v.string()),
+        alternative: v.optional(v.string()),
+        firstAnsweredAt: v.optional(v.number()),
+        updatedAt: v.optional(v.number()),
+        answerSurface: v.optional(v.string()),
+        skippedAt: v.optional(v.number()),
+        skipSurface: v.optional(v.string()),
+        returnShownAt: v.optional(v.number()),
+        writeWindowStart: v.optional(v.number()),
+        writeCount: v.optional(v.number()),
+      }),
+    ),
   })
     .index("by_userId", ["userId"])
     .index("by_normalizedEmail", ["normalizedEmail"])
@@ -1195,6 +1363,15 @@ export default defineSchema({
     count: v.number(),
   }).index("by_user", ["userId"]),
 
+  // Per-account fixed window for the Pro → Pro Business upgrade action. The
+  // /pro edge route has its own Redis limit; the dashboard calls the Convex
+  // action directly, so this row is the limit both paths share.
+  proBusinessUpgradeAdmissions: defineTable({
+    userId: v.string(),
+    windowStart: v.number(),
+    count: v.number(),
+  }).index("by_user", ["userId"]),
+
   // One row per checkout that exhausted the #6027 provider-429 retry ladder
   // and returned a terminal CHECKOUT_RATE_LIMITED to the buyer (#6698). This
   // is the rate signal the alarm in `payments/checkoutRateLimitAlarm.ts`
@@ -1224,6 +1401,19 @@ export default defineSchema({
     productId: v.string(),
     occurredAt: v.number(),
   }).index("by_occurredAt", ["occurredAt"]),
+
+  // Dodo checkout sessions handed to buyers: the funnel step between Umami
+  // `checkout-start` and a Dodo payment attempt. See payments/checkoutSessionLog.ts.
+  checkoutSessionEvents: defineTable({
+    userId: v.string(),
+    productId: v.string(),
+    // Dodo session id; joins to a payment's `checkout_session_id`.
+    sessionId: v.optional(v.string()),
+    anonymous: v.boolean(),
+    occurredAt: v.number(),
+  })
+    .index("by_occurredAt", ["occurredAt"])
+    .index("by_user", ["userId"]),
 
   productPlans: defineTable({
     dodoProductId: v.string(),
@@ -1713,6 +1903,13 @@ export default defineSchema({
     // counting only. OPTIONAL and not backfilled.
     sourceRef: v.optional(v.string()),
     source: v.optional(v.string()),
+    // What the key is for, fixed at creation (plan 2026-10-25-001, KTD2).
+    // "api" is an API-plan key; "desktop" is a Pro desktop key scoped to what
+    // a signed-in Pro session reaches minus the API-only surfaces. A separate
+    // column because `scopes` belongs to Company Monitoring. OPTIONAL and not
+    // backfilled: a missing value means "api", and every read path in
+    // apiKeys.ts maps it there so callers always see an explicit kind.
+    keyKind: v.optional(v.union(v.literal("api"), v.literal("desktop"))),
   })
     .index("by_userId", ["userId"])
     .index("by_userId_revokedAt", ["userId", "revokedAt"])
@@ -1807,6 +2004,20 @@ export default defineSchema({
     lastTouchedAt: v.number(),
   }).index("by_businessSubscriptionId", ["businessSubscriptionId"]),
 
+  // Dashboard layouts a team shares with its members (convex/teamDashboards.ts).
+  // `teamKey` is `business:<dodoSubscriptionId>` or `enterprise:<accountId>`,
+  // always derived from the caller on the server. No user identifier: the
+  // dashboard belongs to the team.
+  teamDashboards: defineTable({
+    teamKey: v.string(),
+    variant: v.string(),
+    name: v.string(),
+    layout: teamDashboardLayoutValidator,
+    version: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_team_variant", ["teamKey", "variant"]),
+
   emailSuppressions: defineTable({
     normalizedEmail: v.string(),
     // unsubscribe withdraws broadcast and marketing consent. The other
@@ -1881,6 +2092,16 @@ export default defineSchema({
   // so one global serialization point is intentional and keeps the invariant
   // simple. It is seeded by the deploy workflow; append fails loudly if it is
   // absent rather than silently weakening idempotency.
+  // One short-lived claim per Dodo subscription while a Pro → Pro Business
+  // change-plan call is in flight. Two concurrent confirms (two tabs, or the
+  // dashboard and /pro at once) both pass the provider re-read before either
+  // change lands; the serializable claim lets only one call changePlan.
+  // Holds no userId; a claim older than the TTL in billing.ts is reclaimable.
+  proBusinessUpgradeClaims: defineTable({
+    dodoSubscriptionId: v.string(),
+    claimedAt: v.number(),
+  }).index("by_dodoSubscriptionId", ["dodoSubscriptionId"]),
+
   intelHistoryAppendLocks: defineTable({
     lockKey: v.string(),
     lastTouchedAt: v.number(),
@@ -1924,6 +2145,13 @@ export default defineSchema({
     runId: v.string(),
     dedupeKey: v.string(),
     embedding: v.array(v.float64()),
+    // Which model@dimensions produced `embedding` (#5742). Stamped by `append`
+    // from INTEL_HISTORY_EMBED_MODEL, so a row embedded under a different
+    // model is detectable (`embeddingModelInventory`) and `search` drops it
+    // instead of ranking it on a similarity scale that no longer applies.
+    // Optional only for rows written before the stamp existed; those were all
+    // produced by the one model ever used and read as current.
+    embeddingModel: v.optional(v.string()),
   })
     .index("by_dedupeKey", ["dedupeKey"])
     .index("by_ingestedAt", ["ingestedAt"])

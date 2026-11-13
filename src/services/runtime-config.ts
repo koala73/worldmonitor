@@ -51,7 +51,7 @@ export type RuntimeFeatureId =
   | 'aiOllama'
   | 'wtoTrade'
   | 'supplyChain'
-  | 'newsPerFeedFallback'
+  | 'newsOutageFallback'
   | 'aviationStack'
   | 'ucdpConflicts'
   | 'icaoNotams';
@@ -101,7 +101,7 @@ const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   aiOllama: true,
   wtoTrade: true,
   supplyChain: true,
-  newsPerFeedFallback: false,
+  newsOutageFallback: true,
   aviationStack: true,
   icaoNotams: true,
 };
@@ -267,11 +267,11 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     fallback: 'Chokepoints and minerals always available; shipping requires FRED key.',
   },
   {
-    id: 'newsPerFeedFallback',
-    name: 'News per-feed fallback',
-    description: 'If digest aggregation is unavailable, use stale headlines first and optionally fetch a limited feed subset.',
+    id: 'newsOutageFallback',
+    name: 'News outage fallback',
+    description: 'If the news digest is unavailable and a panel has no headlines, fetch a few of its feeds directly (desktop only).',
     requiredSecrets: [],
-    fallback: 'Stale headlines remain available; limited per-feed fallback is disabled.',
+    fallback: 'Panels keep their last headlines; with none, they stay empty until the digest returns.',
   },
   {
     id: 'aviationStack',

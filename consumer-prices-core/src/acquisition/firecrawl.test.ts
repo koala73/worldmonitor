@@ -13,6 +13,21 @@ const schema = {
 };
 
 describe('FirecrawlProvider.extract', () => {
+  it('preserves the retailer HTTP status inside a successful provider response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      data: {
+        extract: { productName: 'Full Fat Fresh Milk 1L', price: null },
+        metadata: { statusCode: 403 },
+        markdown: '# 403 Forbidden',
+      },
+    }), { status: 200 })));
+
+    const result = await new FirecrawlProvider('test-key').extract('https://retailer.example/p/milk', schema);
+
+    expect(result).toMatchObject({ sourceStatusCode: 403, data: { price: null } });
+  });
+
   it('treats an unsuccessful HTTP-200 response as a provider error', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ success: false, error: 'extract quota exhausted' }), { status: 200 }),
@@ -104,6 +119,32 @@ describe('FirecrawlProvider.extract', () => {
 
     const result = await new FirecrawlProvider('test-key').extract('https://retailer.example/p/bread', schema);
     expect(result.pageContent).toBeUndefined();
+  });
+
+  it.each([
+    [{ 'og:title': 'Fresh White Bread 400G', 'twitter:title': 'ignored' }, 'Fresh White Bread 400G'],
+    [{ ogTitle: 'Fresh White Bread 400G' }, 'Fresh White Bread 400G'],
+    [{ 'twitter:title': 'Feinkristallzucker IP Suisse' }, 'Feinkristallzucker IP Suisse'],
+  ])('returns the page-declared product title from metadata %o', async (metadata, expected) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { extract: { price: 4.6 }, metadata } }), { status: 200 })),
+    );
+
+    const result = await new FirecrawlProvider('test-key').extract('https://retailer.example/p/bread', schema);
+    expect(result.pageTitle).toBe(expected);
+  });
+
+  it('omits pageTitle when the page declares only a document title', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ success: true, data: { extract: { price: 4.6 }, metadata: { title: 'Fresh Milk' } } }), { status: 200 }),
+      ),
+    );
+
+    const result = await new FirecrawlProvider('test-key').extract('https://retailer.example/dairy/fresh-milk', schema);
+    expect(result.pageTitle).toBeUndefined();
   });
 
   // renderWaitMs (#6182): late-hydrating storefronts capture as a breadcrumb

@@ -11,7 +11,7 @@ const conflictStart = source.indexOf('const conflictsTask = (async () => {');
 const conflictEnd = source.indexOf('tasks.push(conflictsTask.then(() => undefined));', conflictStart)
   + 'tasks.push(conflictsTask.then(() => undefined));'.length;
 const run = new Function('tasks', 'fetchConflictEvents', 'ingestConflictsForCountryData', 'fetchUcdpEvents', 'hydratedUcdp', 'dataFreshness',
-  source.slice(conflictStart, conflictEnd) + '\n' + closure);
+  'let ucdpReceived, ucdpFromCache;\n' + source.slice(conflictStart, conflictEnd) + '\n' + closure);
 const dateMs = Date.parse('2026-09-16T00:00:00Z');
 const type = 'UCDP_VIOLENCE_TYPE_STATE_BASED';
 

@@ -187,7 +187,10 @@ describe('api/md-twin.ts', () => {
     );
 
     assert.equal(response.status, 200);
-    assert.deepEqual(seen.map((hop) => hop.url.pathname), ['/countries', '/countries/']);
+    // The third fetch is the canonical lookup: the twin asks the page's HTML
+    // which canonical it declares rather than guessing from the path.
+    assert.deepEqual(seen.map((hop) => hop.url.pathname), ['/countries', '/countries/', '/countries/']);
+    assert.equal(new Headers(seen[2].init?.headers).get('accept'), 'text/html');
     for (const hop of seen) {
       assert.equal(
         new Headers(hop.init?.headers).get(MD_TWIN_LOOP_HEADER),
@@ -323,9 +326,11 @@ describe('api/md-twin.ts', () => {
 
     // A fresh AbortSignal.timeout per hop multiplies the budget by the hop
     // count, and four hops at 8s each overruns the edge execution ceiling.
-    assert.equal(signals.length, 2);
+    // Two redirect hops plus the canonical lookup, all on the same deadline.
+    assert.equal(signals.length, 3);
     assert.ok(signals[0], 'every hop must carry a deadline');
     assert.equal(signals[0], signals[1], 'all hops must share one deadline');
+    assert.equal(signals[0], signals[2], 'the canonical lookup must share the deadline too');
   });
 
   it('serves a document larger than the retired 80 KB cap', async () => {
@@ -556,7 +561,8 @@ describe('api/md-twin.ts', () => {
       fetchImpl,
     );
 
-    assert.deepEqual(seen.map((hop) => hop.init?.method), ['HEAD', 'HEAD']);
+    // HEAD hops follow the redirect; the trailing GET is the canonical lookup.
+    assert.deepEqual(seen.map((hop) => hop.init?.method), ['HEAD', 'HEAD', 'GET']);
     assert.equal(response.status, 200);
     assert.equal(await response.text(), '');
     assert.match(

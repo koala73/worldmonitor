@@ -46,8 +46,8 @@ a key added or rotated later needs a **new deploy on both platforms** — presen
 in the store is not enough. Both halves of #8208 were this: a Convex variable
 written after the last `convex deploy` reads as `undefined` inside deployed
 functions until the next push, and a Vercel variable set after the build never
-reaches the running build because a same-commit redeploy is cancelled by the
-ignored-build step (#8216). The acceptance signal is `/api/health`: its
+reaches the running build until production is redeployed. A same-commit
+redeploy on `main` builds; the ignored-build step used to cancel it (#8216). The acceptance signal is `/api/health`: its
 `relayGatewayGate` entry sends one credentialed, body-less
 `POST /relay/create-checkout` per verdict snapshot and reports
 `RELAY_GATE_MISCONFIGURED` (Vercel build cannot see the secret) or

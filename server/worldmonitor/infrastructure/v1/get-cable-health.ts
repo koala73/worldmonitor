@@ -9,7 +9,7 @@ import type {
 
 import { cachedFetchJson, getCachedJson, runRedisPipeline, setCachedJson, setCachedJsonIfAbsent } from '../../../_shared/redis';
 import { CABLE_HEALTH_REPAIR_SCRIPT } from '../../../../shared/cable-health-repair-script.mjs';
-import { parseNgaBroadcastWarnings, type NgaBroadcastWarning } from '../../../_shared/nga-broadcast-warnings';
+import { fetchNgaBroadcastWarnings, type NgaBroadcastWarning } from '../../../_shared/nga-broadcast-warnings';
 import { UPSTREAM_TIMEOUT_MS } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 import { extractCableShipName, isCableRelatedNotice, isFreshNotice } from '../../../../shared/nga-cable-notices';
@@ -158,17 +158,8 @@ interface Signal {
 // ========================================================================
 
 async function fetchNgaWarnings(): Promise<NgaWarning[] | null> {
-  try {
-    const res = await fetch(
-      'https://msi.nga.mil/api/publications/broadcast-warn?output=json&status=A',
-      { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
-    );
-    if (!res.ok) return null; // fetch failed — don't cache, let sentinel TTL govern retry
-    const data = await res.json();
-    return parseNgaBroadcastWarnings(data);
-  } catch {
-    return null; // network error — don't poison NGA cache with empty data
-  }
+  // Null on failure: don't poison the NGA cache with empty data.
+  return fetchNgaBroadcastWarnings({ userAgent: CHROME_UA, timeoutMs: UPSTREAM_TIMEOUT_MS });
 }
 
 // ========================================================================

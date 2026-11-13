@@ -33,12 +33,16 @@ analytics-collector-operations.md
 api-plan-enforcement-runbook.md
 as-of-convention.md
 climate-variant-full.md
+cyber-network-information.md
 desktop-parity-matrix.md
 fear-greed-index-2.0-brief.md
+food-price-sources.md
 harness-engineering-roadmap.md
 health-variant-full.md
 local-backend-audit.md
 market-data-cadence-audit.md
+methodology/cii-change-brief.md
+methodology/cii-input-register.md
 methodology/cohort-sanity-release-gate.md
 methodology/country-resilience-index/golden-baseline.md
 methodology/country-resilience-index/reference-edition/2026/README.md
@@ -46,8 +50,12 @@ methodology/education-flag-flip-runbook.md
 methodology/energy-v2-flag-flip-runbook.md
 methodology/financial-system-exposure-flag-flip-runbook.md
 railway-seed-consolidation-runbook.md
+regional-energy-feeds.md
 relay-credentials.md
 tradingview-screener-integration.md
 user-requests.md
 zh/.glossary.md
 zh/.translation-spec.md
+
+# Engineering audit receipt; not product documentation.
+outbound-resilience-audit.md

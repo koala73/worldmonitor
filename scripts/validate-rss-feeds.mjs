@@ -8,11 +8,9 @@ import { isAllowedDomain } from '../api/_rss-allowed-domain-match.js';
 import { RSS_BROWSER_UA, RSS_ACCEPT } from '../api/_rss-fetch-headers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const FEEDS_PATH = join(__dirname, '..', 'src', 'config', 'feeds.ts');
-// #4920: the SERVER digest catalog is a separate universe from the client
-// config — buildDigest ingests from _feeds.ts, so completeness must be
-// measured against it too, not just the client list.
-const SERVER_FEEDS_PATH = join(__dirname, '..', 'server', 'worldmonitor', 'news', 'v1', '_feeds.ts');
+// #4920: completeness is measured against both the browser and the server
+// (digest) views of the one catalog.
+const CATALOG_PATH = join(__dirname, '..', 'shared', 'news-catalog.json');
 
 // Same seeder-convention browser UA the live RSS proxy sends (#6624).
 const CHROME_UA = RSS_BROWSER_UA;
@@ -34,7 +32,7 @@ const CONFIG_DRIFT_REASONS = Object.freeze({
 
 // --ci flag hardens the validator for trusted-context CI runs (push-to-main
 // + schedule workflow). NOT enabled in PR CI — PR CI never runs this script
-// because PR contributors can rewrite feeds.ts to make GitHub runners hit
+// because PR contributors can rewrite the feed catalog to make GitHub runners hit
 // arbitrary URLs (SSRF surface). In CI mode:
 //   1. Reject non-https schemes (no plaintext, no file:// etc.)
 //   2. Require the RSS host allowlist or the exact fixed-source MIIT adapter URL.
@@ -43,105 +41,41 @@ const CONFIG_DRIFT_REASONS = Object.freeze({
 //      hop with allowlist re-check)
 const CI_MODE = process.argv.includes('--ci');
 
-export function extractFeeds() {
-  const src = readFileSync(FEEDS_PATH, 'utf8');
+// Feeds are declared once in shared/news-catalog.json (see shared/news-catalog.ts).
+// This script reads the JSON directly so it never executes app code.
+function loadCatalog() {
+  return JSON.parse(readFileSync(CATALOG_PATH, 'utf8'));
+}
+
+const placedFor = (feed, orderKey) => feed.placements.some((p) => p[orderKey] !== undefined);
+
+/** Browser catalog view: every URL the dashboard can request, per-language URLs labelled `Name [lang]`. */
+export function extractFeeds(catalog = loadCatalog()) {
   const feeds = [];
   const seen = new Set();
-
-  // Match rss('url') or railwayRss('url') — capture raw URL
-  const rssUrlRe = /(?:rss|railwayRss)\(\s*'([^']+)'\s*\)/g;
-  // Match name: 'X' or name: "X" — handles escaped apostrophes (L\'Orient-Le Jour)
-  const nameRe = /name:\s*(?:'((?:[^'\\]|\\.)*)'|"([^"]+)")/;
-  // Match lang key like `en: rss(`, `fr: rss(` — find all on a line with positions
-  const langKeyAllRe = /(?:^|[\s{,])([a-z]{2}):\s*(?:rss|railwayRss)\(/g;
-
-  const lines = src.split('\n');
-  let currentName = null;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    const nameMatch = line.match(nameRe);
-    if (nameMatch) currentName = nameMatch[1] || nameMatch[2];
-
-    // Build position→lang map for this line
-    const langMap = [];
-    let lm;
-    langKeyAllRe.lastIndex = 0;
-    while ((lm = langKeyAllRe.exec(line)) !== null) {
-      langMap.push({ pos: lm.index, lang: lm[1] });
-    }
-
-    let m;
-    rssUrlRe.lastIndex = 0;
-    while ((m = rssUrlRe.exec(line)) !== null) {
-      const rawUrl = m[1];
-      const rssPos = m.index;
-
-      // Find the closest preceding lang key for this rss() call
-      let lang = null;
-      for (let k = langMap.length - 1; k >= 0; k--) {
-        if (langMap[k].pos < rssPos) { lang = langMap[k].lang; break; }
-      }
-
-      const label = lang ? `${currentName} [${lang}]` : currentName;
-      const key = `${label}|${rawUrl}`;
-
-      if (!seen.has(key)) {
-        seen.add(key);
-        feeds.push({ name: label || 'Unknown', url: rawUrl });
-      }
-    }
+  const push = (name, url) => {
+    const key = `${name}|${url}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    feeds.push(url.startsWith('/') ? { name, url, isLocal: true } : { name, url });
+  };
+  for (const feed of catalog.feeds) {
+    if (!placedFor(feed, 'browserOrder')) continue;
+    const url = feed.browser?.url ?? feed.url;
+    if (typeof url === 'string') push(feed.name, url);
+    else for (const [lang, href] of Object.entries(url)) push(`${feed.name} [${lang}]`, href);
   }
-
-  // Also pick up non-rss() URLs like '/api/fwdstart'
-  const directUrlRe = /name:\s*'([^']+)'[^}]*url:\s*'(\/[^']+)'/g;
-  let dm;
-  while ((dm = directUrlRe.exec(src)) !== null) {
-    const key = `${dm[1]}|${dm[2]}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      feeds.push({ name: dm[1], url: dm[2], isLocal: true });
-    }
-  }
-
   return feeds;
 }
 
-/**
- * #4920: text-extract the SERVER digest catalog (_feeds.ts). Entries are
- * `{ name: '…', url: '…' | gn('…') | gnLocale('…', hl, gl, ceid) }` — the
- * gn()/gnLocale() helpers are replicated here so extracted URLs match what
- * the digest fetches at runtime. Same no-import text-extraction pattern as
- * extractFeeds() above (this script must not execute app code).
- */
-export function extractServerFeeds() {
-  let src;
-  try {
-    src = readFileSync(SERVER_FEEDS_PATH, 'utf8');
-  } catch {
-    return [];
-  }
-  const gn = (q) =>
-    `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
-  const gnLocale = (q, hl, gl, ceid) =>
-    `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=${hl}&gl=${gl}&ceid=${ceid}`;
-
+/** #4920: server catalog view — the URLs the digest actually fetches. */
+export function extractServerFeeds(catalog = loadCatalog()) {
   const feeds = [];
   const seen = new Set();
-  // Names may be single- OR double-quoted ("Tom's Hardware").
-  const entryRe = /name:\s*(?:'((?:[^'\\]|\\.)*)'|"([^"]+)")\s*,\s*url:\s*(?:'([^']+)'|gn\(\s*'((?:[^'\\]|\\.)*)'\s*\)|gnLocale\(\s*'((?:[^'\\]|\\.)*)'\s*,\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*'([^']+)'\s*\))/g;
-  let m;
-  while ((m = entryRe.exec(src)) !== null) {
-    const name = (m[1] ?? m[2]).replace(/\\'/g, "'");
-    let url;
-    if (m[3]) url = m[3];
-    else if (m[4] !== undefined) url = gn(m[4].replace(/\\'/g, "'"));
-    else url = gnLocale(m[5].replace(/\\'/g, "'"), m[6], m[7], m[8]);
-    if (!seen.has(url)) {
-      seen.add(url);
-      feeds.push({ name, url, catalog: 'server' });
-    }
+  for (const feed of catalog.feeds) {
+    if (!placedFor(feed, 'serverOrder') || typeof feed.url !== 'string' || seen.has(feed.url)) continue;
+    seen.add(feed.url);
+    feeds.push({ name: feed.name, url: feed.url, catalog: 'server' });
   }
   return feeds;
 }
@@ -389,7 +323,7 @@ async function main() {
   if (configDrift.length) {
     console.error(
       `\nFAIL: ${configDrift.length} feed(s) violate the CI guardrails ` +
-      `(allowlist drift or plaintext URL). Fix src/config/feeds.ts and/or the 4 ` +
+      `(allowlist drift or plaintext URL). Fix shared/news-catalog.json and/or the 4 ` +
       `allowlist mirrors (shared/rss-allowed-domains.json, .cjs, ` +
       `scripts/shared/rss-allowed-domains.json, ` +
       `api/_rss-allowed-domains.js). vite.config.ts now imports isAllowedDomain ` +
@@ -412,7 +346,7 @@ async function main() {
     console.warn(
       `\nWARN: ${thirdPartyDead.length} third-party dead, ${stale.length} stale, ` +
       `${empty.length} empty. Third-party state — not a build failure. ` +
-      `Groom src/config/feeds.ts when the count crosses a threshold worth a PR.`
+      `Groom shared/news-catalog.json when the count crosses a threshold worth a PR.`
     );
   }
 }

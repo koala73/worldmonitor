@@ -71,6 +71,7 @@ export const REFRESH_INTERVALS = {
   energyCrisis: 6 * 60 * 60 * 1000, // 6h — policy data updates infrequently
   pipelineStatus: 24 * 60 * 60 * 1000, // curated registry reseeds weekly; daily poll keeps long-lived sessions fresh
   storageFacilityMap: 24 * 60 * 60 * 1000, // curated registry reseeds weekly; daily poll keeps long-lived sessions fresh
+  reservoirLevels: 6 * 60 * 60 * 1000, // seeded daily; NASA publishes each pass 50-70 days after the overpass
   fuelShortages: 60 * 60 * 1000, // active shortage alerts can change intra-day
   energyDisruptions: 60 * 60 * 1000, // disruption log is low-volume but needs intra-day freshness
   energyRiskOverview: 15 * 60 * 1000, // mixed market + supply-chain overview; refresh more often than the underlying weekly registries
@@ -122,12 +123,6 @@ export const STORAGE_KEYS = {
   //       re-recovered on subsequent loads (otherwise user-explicit
   //       full-category disabling would be silently undone forever).
   disabledFeedsSchema: 'worldmonitor-disabled-feeds-schema',
-  // `{ [customCategoryKey]: rotationCycle }`. A custom news category is never
-  // in the per-variant server digest, so its capped per-feed fetch rotates
-  // through its sources a window at a time (#5873). The cycle has to survive a
-  // reload or short sessions would replay window 0 forever and the rotation
-  // would never reach sources 4..N — the exact defect it exists to fix.
-  newsFeedRotation: 'worldmonitor-news-feed-rotation',
   liveChannels: 'worldmonitor-live-channels',
   mapMode: 'worldmonitor-map-mode',          // 'flat' | 'globe'
   activeChannel: 'worldmonitor-active-channel',

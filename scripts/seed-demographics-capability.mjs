@@ -38,6 +38,7 @@ export async function recordDemographicsCapabilityCompletedRun(
   writeMetadataFn = writeFreshnessMetadataSafely,
   now = Date.now(),
 ) {
+  if (demographicsStageCoverageMeta(snapshot).status !== 'complete') return;
   await writeMetadataFn(
     'demographics',
     DEMOGRAPHICS_CAPABILITY_COMPLETION_RESOURCE,
@@ -48,15 +49,8 @@ export async function recordDemographicsCapabilityCompletedRun(
   );
 }
 
-export async function demographicsCapabilityAfterPublish(
-  data,
-  writeMetadataFn = writeFreshnessMetadataSafely,
-  now = Date.now(),
-) {
+export async function demographicsCapabilityAfterPublish(data) {
   const coverage = demographicsStageCoverageMeta(data);
-  if (coverage.status === 'complete') {
-    await recordDemographicsCapabilityCompletedRun(data, writeMetadataFn, now);
-  }
   return {
     completionState: coverage.status === 'complete' ? 'OK' : 'DEGRADED',
     freshnessMetaPatch: { coverage },
@@ -122,21 +116,24 @@ export async function fetchDemographicsCapability({
   return buildDemographicsPayload(settled, previous, { generatedAt: now.toISOString() });
 }
 
+export const DEMOGRAPHICS_CAPABILITY_SEED_OPTIONS = {
+  validateFn: validateDemographicsPayload,
+  ttlSeconds: DEMOGRAPHICS_CAPABILITY_TTL_SECONDS,
+  sourceVersion: DEMOGRAPHICS_CAPABILITY_SOURCE_VERSION,
+  schemaVersion: 1,
+  declareRecords,
+  maxStaleMin: DEMOGRAPHICS_CAPABILITY_MAX_STALE_MIN,
+  contentMeta: demographicsContentMeta,
+  maxContentAgeMin: DEMOGRAPHICS_CAPABILITY_MAX_CONTENT_AGE_MIN,
+  afterPublish: (data) => demographicsCapabilityAfterPublish(data),
+  afterFreshness: (data) => recordDemographicsCapabilityCompletedRun(data),
+  emptyDataIsFailure: true,
+  fetchPhaseTimeoutMs: 55_000,
+  lockTtlMs: 70_000,
+};
+
 if (process.argv[1]?.endsWith('seed-demographics-capability.mjs')) {
-  runSeed('demographics', 'capability', DEMOGRAPHICS_CAPABILITY_KEY, fetchDemographicsCapability, {
-    validateFn: validateDemographicsPayload,
-    ttlSeconds: DEMOGRAPHICS_CAPABILITY_TTL_SECONDS,
-    sourceVersion: DEMOGRAPHICS_CAPABILITY_SOURCE_VERSION,
-    schemaVersion: 1,
-    declareRecords,
-    maxStaleMin: DEMOGRAPHICS_CAPABILITY_MAX_STALE_MIN,
-    contentMeta: demographicsContentMeta,
-    maxContentAgeMin: DEMOGRAPHICS_CAPABILITY_MAX_CONTENT_AGE_MIN,
-    afterPublish: (data) => demographicsCapabilityAfterPublish(data),
-    emptyDataIsFailure: true,
-    fetchPhaseTimeoutMs: 55_000,
-    lockTtlMs: 70_000,
-  }).catch((error) => {
+  runSeed('demographics', 'capability', DEMOGRAPHICS_CAPABILITY_KEY, fetchDemographicsCapability, DEMOGRAPHICS_CAPABILITY_SEED_OPTIONS).catch((error) => {
     console.error('FATAL:', error?.message || error);
     process.exit(1);
   });

@@ -87,7 +87,11 @@ export const IMD_PRODUCTS = Object.freeze({
     areaFields: COASTAL_AREA_FIELDS,
     pages: Object.freeze([
       Object.freeze({ key: 'west-bengal-andaman-nicobar', url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php` }),
-      Object.freeze({ key: 'kerala-karnataka-lakshadweep', url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php?id=2` }),
+      Object.freeze({
+        key: 'kerala-karnataka-lakshadweep',
+        url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php?id=2`,
+        fallbackUrl: 'https://mausam.imd.gov.in/thiruvananthapuram/mcdata/coastal%20bulletin.pdf',
+      }),
       Object.freeze({ key: 'gujarat', url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php?id=3` }),
       Object.freeze({ key: 'maharashtra-goa', url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php?id=4` }),
       Object.freeze({ key: 'odisha', url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php?id=5` }),
@@ -229,30 +233,59 @@ function asciiLower(text) {
   return text.replace(/[A-Z]/g, (char) => char.toLowerCase());
 }
 
-function firstNonContentBlock(lower, from) {
+function nextBlockOpen(lower, block, from) {
+  let at = lower.indexOf(block.open, from);
+  while (at !== -1 && block.tag && /\w/.test(lower[at + block.open.length] ?? '')) {
+    at = lower.indexOf(block.open, at + 1);
+  }
+  return at;
+}
+
+function firstNonContentBlock(lower, from, nextOpen = null) {
   let first = null;
   for (const block of NON_CONTENT_BLOCKS) {
-    let at = lower.indexOf(block.open, from);
-    while (at !== -1 && block.tag && /\w/.test(lower[at + block.open.length] ?? '')) {
-      at = lower.indexOf(block.open, at + 1);
+    // A cached position stays valid while it is still ahead of `from`.
+    let at = nextOpen?.get(block);
+    if (at === undefined || (at !== -1 && at < from)) {
+      at = nextBlockOpen(lower, block, from);
+      nextOpen?.set(block, at);
     }
     if (at !== -1 && (!first || at < first.at)) first = { at, block };
   }
   return first;
 }
 
+// One pass: kept text is appended once and each block's next opener is only
+// searched forward, so a page made of tiny blocks stays linear.
 export function stripNonContentBlocks(html) {
-  let text = String(html || '');
-  let from = 0;
+  const text = String(html || '');
+  const lower = asciiLower(text);
+  const kept = [];
+  // The last kept characters. A cut can join them with the text after it into
+  // a new opener (`<scr<script></script>ipt>`), so they are checked first.
+  let seam = '';
+  let at = 0;
+  const nextOpen = new Map();
   for (;;) {
-    const lower = asciiLower(text);
-    const hit = firstNonContentBlock(lower, from);
-    if (!hit) return text;
-    const closeAt = lower.indexOf(hit.block.close, hit.at + hit.block.open.length);
-    const end = closeAt === -1 ? text.length : closeAt + hit.block.close.length;
-    text = text.slice(0, hit.at) + text.slice(end);
-    // Only an opener that straddles the cut can be new; rescan from just before it.
-    from = Math.max(0, hit.at - LONGEST_BLOCK_OPEN);
+    let hit = firstNonContentBlock(asciiLower(seam) + lower.slice(at, at + LONGEST_BLOCK_OPEN + 1), 0);
+    let openEnd;
+    if (hit && hit.at < seam.length) {
+      openEnd = at + hit.at + hit.block.open.length - seam.length;
+      seam = seam.slice(0, hit.at);
+    } else {
+      hit = firstNonContentBlock(lower, at, nextOpen);
+      if (!hit) {
+        kept.push(seam, text.slice(at));
+        return kept.join('');
+      }
+      const run = seam + text.slice(at, hit.at);
+      const split = Math.max(0, run.length - LONGEST_BLOCK_OPEN);
+      kept.push(run.slice(0, split));
+      seam = run.slice(split);
+      openEnd = hit.at + hit.block.open.length;
+    }
+    const closeAt = lower.indexOf(hit.block.close, openEnd);
+    at = closeAt === -1 ? text.length : closeAt + hit.block.close.length;
   }
 }
 
@@ -333,8 +366,12 @@ function tableRows(tableHtml) {
  * Parse one public IMD sea-area or coastal bulletin page. Throws an error whose
  * `code` names the first structural check that failed, so a changed layout
  * fails closed instead of publishing partial fields.
+ *
+ * `allowEmptySynoptic` accepts a synoptic row that is present but blank (IMD
+ * sometimes issues a bulletin without the narrative) and returns
+ * `synopticSituation: null`. A missing row is still a layout change and fails.
  */
-export function parseImdBulletinHtml(html, productId) {
+export function parseImdBulletinHtml(html, productId, { allowEmptySynoptic = false } = {}) {
   const spec = IMD_PRODUCTS[productId];
   if (!spec?.pages) throw new Error(`UNKNOWN_IMD_BULLETIN_PRODUCT:${productId}`);
   const body = stripNonContentBlocks(html);
@@ -360,7 +397,10 @@ export function parseImdBulletinHtml(html, productId) {
       continue;
     }
     for (const [label, value] of rows) {
-      if (BULLETIN_LABELS[label]) bulletin[BULLETIN_LABELS[label]] = value;
+      const key = BULLETIN_LABELS[label];
+      // A later blank row must not erase an earlier non-blank value; a
+      // blank-only row still records the key as present-but-empty.
+      if (key && (value || !bulletin[key])) bulletin[key] = value;
     }
   }
 
@@ -369,7 +409,9 @@ export function parseImdBulletinHtml(html, productId) {
     if (!area.name || spec.areaFields.some((field) => !area[field])) fail('BULLETIN_AREA_INCOMPLETE');
   }
   if (spec.requiresStormWarning && !bulletin.stormWarning) fail('BULLETIN_STORM_WARNING_MISSING');
-  if (!bulletin.synopticSituation) fail('BULLETIN_SYNOPTIC_MISSING');
+  if (!bulletin.synopticSituation && !(allowEmptySynoptic && Object.hasOwn(bulletin, 'synopticSituation'))) {
+    fail('BULLETIN_SYNOPTIC_MISSING');
+  }
   if (!office) fail('BULLETIN_OFFICE_MISSING');
   const issuedAt = parseIssueTime(bulletin.timeOfIssue || '');
 
@@ -378,9 +420,74 @@ export function parseImdBulletinHtml(html, productId) {
     issuedAt,
     ...validity,
     stormWarning: bulletin.stormWarning || '',
-    synopticSituation: bulletin.synopticSituation,
+    synopticSituation: bulletin.synopticSituation || null,
     areas,
   };
+}
+
+const KERALA_COASTAL_AREAS = Object.freeze([
+  'Karnataka coast', 'North Kerala coast', 'South Kerala coast', 'Lakshadweep area',
+]);
+
+function escapeHtml(value) {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+export function parseImdKeralaPdfText(text) {
+  if (text.length > 64_000) fail('BULLETIN_RESPONSE_TOO_LARGE');
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const firstArea = lines.indexOf(KERALA_COASTAL_AREAS[0]);
+  if (firstArea < 0) fail('BULLETIN_AREAS_MISSING');
+  const header = lines.slice(0, firstArea).join(' ');
+  if (!/\bCWC THIRUVANANTHAPURAM\s*\//.test(header)) fail('BULLETIN_OFFICE_MISSING');
+  const synoptic = header.match(/\bSynoptic Situation\s*(.*)$/i)?.[1] || '';
+  const issueIndex = lines.findIndex((line, index) => index > firstArea && /^Time of Issue\b/i.test(line));
+  if (issueIndex < 0) fail('BULLETIN_ISSUE_TIME_MISSING');
+  const issue = lines.slice(issueIndex).join(' ').replace(/^Time of Issue\s*/i, '');
+  const tables = [];
+  let cursor = firstArea;
+  for (const area of KERALA_COASTAL_AREAS) {
+    if (lines[cursor] !== area) fail('BULLETIN_AREAS_MISSING');
+    cursor++;
+    const fields = new Map();
+    let label;
+    while (cursor < issueIndex && !KERALA_COASTAL_AREAS.includes(lines[cursor])) {
+      const line = lines[cursor++];
+      if (/^[A-Za-z -]+(?: coast| area)$/i.test(line)) fail('BULLETIN_AREAS_MISSING');
+      const field = line.match(/^(Storm Surge\/Tidal Warning|Sea Condition|Port Signal|Visibility|Weather|Wind)(?:\s+|$)(.*)$/i);
+      if (field) {
+        label = normalizeLabel(field[1]);
+        if (fields.has(label)) fail('BULLETIN_AREA_INCOMPLETE');
+        fields.set(label, field[2]);
+      } else {
+        if (!label) fail('BULLETIN_AREA_INCOMPLETE');
+        fields.set(label, `${fields.get(label)} ${line}`);
+      }
+    }
+    tables.push(`<table><caption>${escapeHtml(area)}</caption>${[...fields].map(([key, value]) =>
+      `<tr><td>${escapeHtml(key)}</td><td>${escapeHtml(value)}</td></tr>`).join('')}</table>`);
+  }
+  if (cursor !== issueIndex) fail('BULLETIN_AREAS_MISSING');
+  const metadata = `<table><tr><td>Synoptic Situation</td><td>${escapeHtml(synoptic)}</td></tr>`
+    + `<tr><td>Time of Issue</td><td>${escapeHtml(issue)}</td></tr></table>`;
+  return parseImdBulletinHtml(`<div>${escapeHtml(header)}</div>${metadata}${tables.join('')}`, 'coastalBulletin');
+}
+
+async function parseImdKeralaPdf(bytes, evidence) {
+  if (bytes.subarray(0, 5).toString() !== '%PDF-') fail('BULLETIN_PDF_INVALID');
+  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const task = getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, useSystemFonts: false, verbosity: 0 });
+  try {
+    const doc = await task.promise;
+    if (doc.numPages !== 1) fail('BULLETIN_PDF_PAGE_COUNT');
+    const page = await doc.getPage(1);
+    const content = await page.getTextContent();
+    const text = content.items.map((item) => `${item.str || ''}${item.hasEOL ? '\n' : ' '}`).join('');
+    if (evidence && text.length <= 64_000) evidence.extractedText = text;
+    return parseImdKeralaPdfText(text);
+  } finally {
+    await task.destroy();
+  }
 }
 
 function compactUtcHour(ms) {
@@ -454,18 +561,28 @@ function evaluatePage(productId, page, result, previousRecords, now) {
   if (!failure) {
     const { bulletin } = result;
     const timing = { issuedAt: bulletin.issuedAt, validFrom: bulletin.validFrom, validUntil: bulletin.validUntil };
+    const source = result.fallbackUsed
+      ? { fallbackUsed: true, primaryFailure: result.primaryFailure, sourceUrl: result.sourceUrl }
+      : result.synopticOmitted
+        ? { synopticOmitted: true, primaryFailure: result.primaryFailure, ...(result.fallbackFailure ? { fallbackFailure: result.fallbackFailure } : {}) }
+        : {};
     if (bulletin.validUntil <= now) {
-      return { health: { status: 'expired', reason: null, ...timing }, records: [], carried: false };
+      return { health: { status: 'expired', reason: null, ...timing, ...source }, records: [], carried: false };
     }
     return {
-      health: { status: 'ok', reason: null, ...timing },
-      records: dropExpiredRecords(bulletinRecords(bulletin, productId, page), now),
+      health: { status: 'ok', reason: null, ...timing, ...source },
+      records: dropExpiredRecords(bulletinRecords(bulletin, productId, { ...page, url: result.sourceUrl || page.url }), now),
       carried: false,
     };
   }
   const carried = dropExpiredRecords(previousRecords.filter((record) => record?.page === page.key), now);
   return {
-    health: { status: 'failed', reason: failure },
+    health: {
+      status: 'failed',
+      reason: failure,
+      ...(result?.fallbackFailure ? { fallbackFailure: result.fallbackFailure } : {}),
+      ...(result?.retryFailure ? { retryFailure: result.retryFailure } : {}),
+    },
     records: carried,
     carried: carried.length > 0,
   };
@@ -512,8 +629,11 @@ export function assembleImdSnapshot({ pageResults = {}, previous = null, now = D
     const pages = {};
     const records = [];
     let carried = false;
+    let requestCount = spec.pages.length;
     for (const page of spec.pages) {
-      const evaluated = evaluatePage(id, page, pageResults[id]?.[page.key], previousRecords, now);
+      const result = pageResults[id]?.[page.key];
+      if (result?.fallbackUsed || result?.fallbackFailure) requestCount++;
+      const evaluated = evaluatePage(id, page, result, previousRecords, now);
       pages[page.key] = evaluated.health;
       records.push(...evaluated.records);
       carried ||= evaluated.carried;
@@ -527,7 +647,7 @@ export function assembleImdSnapshot({ pageResults = {}, previous = null, now = D
       recordCount: records.length,
       warningCount: records.filter(isWarningRecord).length,
       carried,
-      requestCount: spec.pages.length,
+      requestCount,
       emptyMeans: status === 'ok' && records.length === 0 ? 'no-current-bulletin' : null,
       pages,
     };
@@ -565,13 +685,14 @@ export function assembleImdSnapshot({ pageResults = {}, previous = null, now = D
   };
 }
 
-async function readBoundedText(response, maxBytes) {
+async function readBoundedBytes(response, maxBytes) {
   const declared = Number(response.headers?.get?.('content-length'));
   if (Number.isFinite(declared) && declared > maxBytes) fail('BULLETIN_RESPONSE_TOO_LARGE');
   if (!response.body || typeof response.body.getReader !== 'function') {
-    const text = await response.text();
-    if (Buffer.byteLength(text, 'utf8') > maxBytes) fail('BULLETIN_RESPONSE_TOO_LARGE');
-    return text;
+    const bytes = typeof response.arrayBuffer === 'function'
+      ? Buffer.from(await response.arrayBuffer()) : Buffer.from(await response.text());
+    if (bytes.length > maxBytes) fail('BULLETIN_RESPONSE_TOO_LARGE');
+    return bytes;
   }
   const reader = response.body.getReader();
   const chunks = [];
@@ -586,7 +707,7 @@ async function readBoundedText(response, maxBytes) {
     }
     chunks.push(Buffer.from(value));
   }
-  return new TextDecoder('utf-8').decode(Buffer.concat(chunks));
+  return Buffer.concat(chunks);
 }
 
 function pageFailureReason(err) {
@@ -601,19 +722,63 @@ export async function fetchImdBulletinPage(productId, page, {
   userAgent = CHROME_UA,
   maxBytes = IMD_MAX_BYTES,
   timeoutMs = IMD_TIMEOUT_MS,
+  delayMs = IMD_PAGE_DELAY_MS,
+  sleep = defaultSleep,
+  evidence,
 } = {}) {
   if (!isAllowedImdUrl(page.url)) return { status: 'failed', reason: 'UNTRUSTED_SOURCE_HOST' };
+  async function acquire(url, accept) {
+    const attempt = { url, status: null, contentType: null, bodyBase64: null };
+    evidence?.push(attempt);
+    try {
+      const response = await fetchFn(url, {
+        headers: { Accept: accept, 'User-Agent': userAgent },
+        redirect: 'error',
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      attempt.status = response.status;
+      attempt.contentType = (response.headers?.get?.('content-type') || '').slice(0, 256);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (accept === 'application/pdf' && !/^application\/pdf(?:;|$)/i.test(attempt.contentType)) fail('BULLETIN_PDF_INVALID');
+      const bytes = await readBoundedBytes(response, maxBytes);
+      if (evidence) attempt.bodyBase64 = bytes.toString('base64');
+      return { bytes, attempt };
+    } catch (err) {
+      attempt.failure = pageFailureReason(err);
+      throw err;
+    }
+  }
+  let primaryHtml = null;
   try {
-    const response = await fetchFn(page.url, {
-      headers: { Accept: 'text/html', 'User-Agent': userAgent },
-      redirect: 'error',
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const html = await readBoundedText(response, maxBytes);
-    return { status: 'parsed', bulletin: parseImdBulletinHtml(html, productId) };
+    const { bytes } = await acquire(page.url, 'text/html');
+    primaryHtml = new TextDecoder('utf-8').decode(bytes);
+    return { status: 'parsed', bulletin: parseImdBulletinHtml(primaryHtml, productId) };
   } catch (err) {
-    return { status: 'failed', reason: pageFailureReason(err) };
+    const primary = { status: 'failed', reason: pageFailureReason(err) };
+    // A blank synoptic row with complete areas is still an official bulletin.
+    // Prefer a source that has the narrative; otherwise publish the areas without it.
+    const withoutSynoptic = (extra = {}) => {
+      if (primary.reason !== 'BULLETIN_SYNOPTIC_MISSING' || primaryHtml == null) return { ...primary, ...extra };
+      try {
+        const bulletin = parseImdBulletinHtml(primaryHtml, productId, { allowEmptySynoptic: true });
+        return { status: 'parsed', bulletin, synopticOmitted: true, primaryFailure: primary.reason, ...extra };
+      } catch (retryError) {
+        // The blank-synoptic reparse can fail on a later check the primary
+        // parse never reached; keep that cause visible in page health.
+        const retryFailure = pageFailureReason(retryError);
+        return { ...primary, ...extra, ...(retryFailure !== primary.reason ? { retryFailure } : {}) };
+      }
+    };
+    const registered = IMD_PRODUCTS[productId]?.pages?.find((entry) => entry.key === page.key && entry.url === page.url);
+    if (!registered?.fallbackUrl || !isAllowedImdUrl(registered.fallbackUrl)) return withoutSynoptic();
+    try {
+      await sleep(delayMs);
+      const { bytes, attempt } = await acquire(registered.fallbackUrl, 'application/pdf');
+      const bulletin = await parseImdKeralaPdf(bytes, evidence ? attempt : undefined);
+      return { status: 'parsed', bulletin, sourceUrl: registered.fallbackUrl, fallbackUsed: true, primaryFailure: primary.reason };
+    } catch (fallbackError) {
+      return withoutSynoptic({ fallbackFailure: pageFailureReason(fallbackError) });
+    }
   }
 }
 
@@ -626,6 +791,7 @@ export async function fetchImdCycloneMarine({
   userAgent = CHROME_UA,
   delayMs = IMD_PAGE_DELAY_MS,
   sleep = defaultSleep,
+  captureFailure,
 } = {}) {
   const pageResults = {};
   let first = true;
@@ -634,7 +800,17 @@ export async function fetchImdCycloneMarine({
     for (const page of IMD_PRODUCTS[id].pages) {
       if (!first) await sleep(delayMs);
       first = false;
-      pageResults[id][page.key] = await fetchImdBulletinPage(id, page, { fetchFn, userAgent });
+      const attempts = captureFailure ? [] : undefined;
+      const result = await fetchImdBulletinPage(id, page, { fetchFn, userAgent, delayMs, sleep, evidence: attempts });
+      pageResults[id][page.key] = result;
+      if (captureFailure && (result.status === 'failed' || result.primaryFailure
+        || (result.status === 'parsed' && isFutureDated(result.bulletin, now)))) {
+        try {
+          await captureFailure({ schemaVersion: 1, productId: id, pageKey: page.key, now, previous, attempts, result });
+        } catch {
+          console.warn('imd-cyclone-marine: failure evidence unavailable');
+        }
+      }
     }
   }
   return assembleImdSnapshot({ pageResults, previous, now });

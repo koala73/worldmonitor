@@ -27,6 +27,7 @@ const guardedPaths = [
   '/api/internal-revoke-pro-mcp-token',
   '/relay/create-checkout',
   '/relay/customer-portal',
+  '/relay/pro-business-upgrade',
   '/relay/bulk-suppress-emails',
 ];
 

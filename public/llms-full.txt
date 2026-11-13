@@ -3,9 +3,9 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-> Version: 2.11.2 · Last updated: 2026-10-20
+> Version: 2.11.8 · Last updated: 2026-11-04
 
-World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux. It is live in 190+ countries, with structural resilience ranked for 170 of 196 countries.
+World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux. It is live in 190+ countries, with structural resilience ranked for 169 of 196 countries.
 
 A single codebase produces specialized variants — geopolitical, technology, finance, commodity, happy, and energy — each with distinct feeds, panels, map layers, and branding. The multi-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar. Each variant tree-shakes unused data files so audience-specific builds can omit unrelated panels, feeds, and map registries.
 
@@ -52,6 +52,7 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 - [Transit Anomaly](#corpus-transit-anomaly)
 - [Country Exposure](#corpus-country-exposure)
 - [Provenance](#corpus-provenance)
+- [Open data](#corpus-open-data)
 - [Known Limits](#corpus-known-limits)
 - [Corrections](#corpus-corrections)
 - [Chokepoint explainers](#corpus-chokepoint-explainers)
@@ -126,7 +127,7 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 
 - **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json · Registry entries: `app.worldmonitor/mcp` in the official MCP registry (registry.modelcontextprotocol.io) · https://smithery.ai/servers/worldmonitor/wm-mcp · https://mcp.so/server/world-monitor
 - **REST API.** Base `https://api.worldmonitor.app`. API key required. Send the `X-WorldMonitor-Key` header. Use `https://www.worldmonitor.app/sandbox/index.json` for key-free examples. The OpenAPI spec is at https://www.worldmonitor.app/openapi.yaml.
-- **CLI:** `npx worldmonitor tools` lists every tool (public, no key); `npm install -g worldmonitor` installs the `worldmonitor` command. A zero-dependency, MCP-first client for the tools and REST API above — `worldmonitor call get_sources` needs no key; pass `--api-key` for every other data tool. https://www.npmjs.com/package/worldmonitor
+- **CLI:** `npx worldmonitor tools` lists every tool (public, no key); `npm install -g worldmonitor` installs the `worldmonitor` command; `brew install worldmonitor` installs it with Homebrew (https://formulae.brew.sh/formula/worldmonitor). A zero-dependency, MCP-first client for the tools and REST API above — `worldmonitor call get_sources` needs no key; pass `--api-key` for every other data tool. https://www.npmjs.com/package/worldmonitor
 - **Agent Skills:** discovery manifest at https://worldmonitor.app/.well-known/agent-skills/index.json · install via `npx skills add koala73/worldmonitor` (https://skills.sh/koala73/worldmonitor)
 - **Agent Plugin metadata.** https://www.worldmonitor.app/plugin.json describes the Agent Plugins 1.0.0 repository package.
 - **Keys, plans & limits:** https://www.worldmonitor.app/pricing.md (markdown) · live JSON catalog `GET https://www.worldmonitor.app/api/product-catalog` (public, no key) · auth matrix https://www.worldmonitor.app/docs/usage-auth · rate limits https://www.worldmonitor.app/docs/usage-rate-limits.md · issue a key at https://www.worldmonitor.app/pro
@@ -302,7 +303,7 @@ Unique layers: stock exchanges, financial centers, and central-bank and supranat
 <a id="corpus-data-sources"></a>
 ## Data Sources
 
-The live inventory currently covers 578+ observed upstream hosts. The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) maps coverage by domain, and the [source attribution ledger](https://www.worldmonitor.app/docs/source-attribution) records each host's observed surface, license posture, required attribution, and review status.
+The live inventory currently covers 855 attributed providers across 878 observed source hosts. The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) maps coverage by domain, and the [source attribution page](https://www.worldmonitor.app/docs/source-attribution) lists hosts and observed surfaces. The [committed attribution manifest](https://github.com/koala73/worldmonitor/blob/main/shared/source-attribution-manifest.json) records license posture, required attribution, and review status, including terms-review entries.
 
 - ACLED (Armed Conflict Location & Event Data), self-hosted deployments with ACLED credentials only: Protests, riots, conflicts — 30-day window, tokenized API
 - GDELT (Global Database of Events, Language, and Tone): Geo-events, protest keywords, topic feeds
@@ -433,9 +434,9 @@ The sections below are produced by `npm run build:llms-full` from the source cat
 <a id="corpus-source-provider-directory"></a>
 ## Source provider directory
 
-World Monitor publishes 773 named providers across 18 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
+World Monitor publishes 855 named providers across 18 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
 
-- [Geopolitics & Conflict](https://www.worldmonitor.app/sources/geopolitics/): 40 providers.
+- [Geopolitics & Conflict](https://www.worldmonitor.app/sources/geopolitics/): 46 providers.
 - [Military & Strategic](https://www.worldmonitor.app/sources/military/): 22 providers.
 - [News & OSINT](https://www.worldmonitor.app/sources/news/): 60 providers.
 - [News & OSINT — page 2](https://www.worldmonitor.app/sources/news/page/2/): 60 providers.
@@ -444,15 +445,15 @@ World Monitor publishes 773 named providers across 18 source catalog pages. Each
 - [News & OSINT — page 5](https://www.worldmonitor.app/sources/news/page/5/): 60 providers.
 - [News & OSINT — page 6](https://www.worldmonitor.app/sources/news/page/6/): 60 providers.
 - [News & OSINT — page 7](https://www.worldmonitor.app/sources/news/page/7/): 60 providers.
-- [News & OSINT — page 8](https://www.worldmonitor.app/sources/news/page/8/): 52 providers.
+- [News & OSINT — page 8](https://www.worldmonitor.app/sources/news/page/8/): 54 providers.
 - [Finance & Economics](https://www.worldmonitor.app/sources/finance/): 60 providers.
-- [Finance & Economics — page 2](https://www.worldmonitor.app/sources/finance/page/2/): 6 providers.
-- [Energy & Commodities](https://www.worldmonitor.app/sources/energy/): 23 providers.
-- [Infrastructure & Cyber](https://www.worldmonitor.app/sources/infrastructure/): 52 providers.
-- [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 46 providers.
-- [Aviation & Airspace](https://www.worldmonitor.app/sources/aviation/): 14 providers.
-- [China Coverage](https://www.worldmonitor.app/sources/china/): 12 providers.
-- [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 26 providers.
+- [Finance & Economics — page 2](https://www.worldmonitor.app/sources/finance/page/2/): 39 providers.
+- [Energy & Commodities](https://www.worldmonitor.app/sources/energy/): 49 providers.
+- [Infrastructure & Cyber](https://www.worldmonitor.app/sources/infrastructure/): 55 providers.
+- [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 50 providers.
+- [Aviation & Airspace](https://www.worldmonitor.app/sources/aviation/): 15 providers.
+- [China Coverage](https://www.worldmonitor.app/sources/china/): 14 providers.
+- [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 31 providers.
 
 <a id="corpus-comparisons"></a>
 ## Comparisons
@@ -488,7 +489,7 @@ Tier-1 membership is curated rather than algorithmic: a country is included when
 <a id="corpus-country-resilience-index-cri"></a>
 ### Country Resilience Index (CRI)
 
-The Country Resilience Index (CRI) is a 0–100 score from 72 indicators across 21 active dimensions, refreshed every six hours, ranking 170 of 196 countries.
+The Country Resilience Index (CRI) is a 0–100 score from 72 indicators across 21 active dimensions, refreshed every six hours, ranking 169 of 196 countries.
 
 The Country Resilience Index (CRI) is a composite 0–100 score of a country’s structural ability to absorb and recover from shocks. Where the CII measures short-term instability, the CRI measures durable capacity — economic, infrastructure, energy, social-governance, health-and-food, and recovery strength — refreshed every six hours from official sources with full coverage and imputation provenance.
 
@@ -820,13 +821,14 @@ tier, but `flowEstimate` is absent until a baseline-backed flow model is added.
 <a id="corpus-live-transit-counts-and-coverage"></a>
 ## Live transit counts and coverage
 
-The live transit counter uses AIS entry and exit reports for the same vessel.
-The vessel must remain inside the monitored area for at least five minutes.
-A crossing is recorded at the first report outside the area that arrives
-within six hours of the vessel's last report inside it. Reports often arrive in
-bursts, so a vessel can be silent for most of that time.
-Counts cover the preceding 24 hours. They are observed crossings, not a census
-of all traffic. Missing entry or exit reports prevent a measurement.
+The live transit counter uses two gate areas for each chokepoint, one on each
+side of the narrows. The gates cover the shipping lanes and keep clear of the
+nearby ports and anchorages. A crossing is recorded when a vessel reported in
+one gate is next reported in the opposite gate within 18 hours. Traffic that
+stays on one side, including port calls, anchorage moves and ferries, is not
+counted. Reports often arrive in bursts, so a vessel can be silent for most of
+that time. Counts cover the preceding 24 hours. They are observed crossings, not
+a census of all traffic. A vessel not reported in both gates is not counted.
 PortWatch history and week-over-week movement are separate inputs and do not
 fill a missing live count.
 
@@ -841,10 +843,12 @@ is absent. An absent count does not establish zero traffic or a closed strait.
 There is no claim that AIS coverage is permanently unavailable there.
 
 The `chokepointTransits` health check counts canonical waterways with observed
-crossings, out of 13. Its floor is five, the coverage in the September 9, 2026
-published pulse. Fewer than five produces `COVERAGE_PARTIAL`; zero produces
-`EMPTY_DATA`. The existing Seed Freshness Monitor checks every 15 minutes and
-reports incident transitions. A fresh write of 13 empty rows cannot satisfy
+crossings, out of 13. AIS positions currently reach the transit gates of three
+waterways: Dover, Gibraltar and the Cape of Good Hope. The check requires those
+three by name. Fewer than three covered waterways, or any one of the three
+missing, produces `COVERAGE_PARTIAL`; zero produces `EMPTY_DATA`. Either status appears in `checks.chokepointTransits.status` (and
+the compact `problems` entry), turns the top-level `dataStatus` to `DEGRADED`
+or `CRITICAL`, and opens one Sentry incident when it first appears. A fresh write of 13 empty rows cannot satisfy
 this coverage check. The raw cache and seed metadata include the missing ids.
 
 <a id="corpus-live-flow"></a>
@@ -876,6 +880,12 @@ reported as zero flow.
 
 The `disrupted` boolean is separate from the color badge: it is true when each
 of the latest three individual days is below 85% of the same `baseline90d`.
+
+`latestDate` is the last PortWatch day the 7-day window covers. PortWatch
+publishes with a lag of several days (8-9 days in November 2026) and not every
+day, so `flowRatio` can stay the same across several days of requests. Read
+`latestDate` to see how current the ratio is. It is an empty string on an
+estimate cached before the field existed.
 
 Each published flow estimate may also include live hazard context from
 `portwatch:disruptions:active:v1`. The seeder looks for the nearest active
@@ -1025,6 +1035,25 @@ Refresh cadence:
 - `supply_chain:chokepoints:v4`: status warm-ping every 6 minutes.
 - `supply_chain:transit-summaries:v1`: AIS relay compact transit summary.
 
+<a id="corpus-open-data"></a>
+## Open data
+
+The daily status of every tracked chokepoint is published as an open dataset under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). It needs no key or
+signup.
+
+- [Latest snapshot, JSON](https://www.worldmonitor.app/data/v1/chokepoints/latest.json)
+- [Latest snapshot, CSV](https://www.worldmonitor.app/data/v1/chokepoints/latest.csv)
+- [Available dates](https://www.worldmonitor.app/data/v1/chokepoints/index.json)
+- [Datasheet](https://www.worldmonitor.app/data/v1/chokepoints/README.md): columns, withheld fields, licence and limits
+- [JSON Schema](https://www.worldmonitor.app/data/v1/chokepoints/schema.json)
+
+One snapshot is published a day, at about 06:23 UTC, from the public
+`GetChokepointStatus` response this page describes. Each day also keeps a dated
+file (`YYYY-MM-DD.json` and `.csv`), and an earlier day is never rewritten.
+Third-party figures such as the EIA baselines and raw PortWatch counts are not
+in the dataset. The datasheet lists every withheld field and the reason.
+
 <a id="corpus-known-limits"></a>
 ## Known Limits
 
@@ -1057,7 +1086,7 @@ A maritime chokepoint is a narrow passage where a large share of global trade, e
 
 Chokepoints matter because rerouting is expensive, slow, or sometimes impossible. When a canal, strait, or sea lane is disrupted, the effects can move from vessel schedules to freight rates, commodity prices, insurance costs, factory inventories, and national security planning.
 
-The familiar examples are the Strait of Hormuz, Suez Canal, Panama Canal, Bab el-Mandeb, Strait of Malacca, Bosporus, and Taiwan Strait. But the operational question is not just "is this place famous?" It is:
+The familiar examples are the Strait of Hormuz, Suez Canal, Panama Canal, Bab el-Mandeb, Strait of Malacca, Bosporus, and [Taiwan Strait](https://www.worldmonitor.app/crises/taiwan-strait-tensions/). But the operational question is not just "is this place famous?" It is:
 
 > Is the passage strategically concentrated, exposed to disruption, and connected to a trade or energy flow that matters?
 
@@ -1153,7 +1182,7 @@ For operational follow-through, connect this explainer to the [supply-chain scen
 
 WorldMonitor's chokepoint status combines Redis-backed transit summaries, flow estimates, navigational warnings, AIS disruption matching, and a static threat taxonomy. Upstream gaps are surfaced as unavailable data rather than silently turned into calm conditions.
 
-The model has known limits. AIS coverage can degrade near conflict zones or regions with jamming. Only the seven energy-baseline waterways have live oil/gas flow estimates today. Baseline values are used to convert observed ratios into flow estimates; they are not a promise that live observations perfectly capture every vessel.
+The model has known limits. AIS coverage can degrade near [conflict zones](/blog/posts/track-global-conflicts-in-real-time/) or regions with jamming. Only the seven energy-baseline waterways have live oil/gas flow estimates today. Baseline values are used to convert observed ratios into flow estimates; they are not a promise that live observations perfectly capture every vessel.
 
 For independently published baselines and current definitions, see the U.S. Energy Information Administration's [World Oil Transit Chokepoints analysis](https://www.eia.gov/international/content/analysis/special_topics/World_Oil_Transit_Chokepoints/).
 
@@ -1205,7 +1234,7 @@ The chart tells the story: tanker and cargo traffic that had been steady at 40-7
 <a id="corpus-thirteen-maritime-chokepoints-monitored-in-real-time"></a>
 ## Thirteen Maritime Chokepoints Monitored in Real Time
 
-The Hormuz crisis was the most severe in this snapshot, but it was not the only corridor under pressure. World Monitor tracks 13 critical maritime chokepoints, each scored by disruption level, vessel traffic, and [conflict intensity](/blog/posts/track-global-conflicts-in-real-time/):
+The Hormuz crisis was the most severe in this snapshot, but it was not the only corridor under pressure. World Monitor tracks 13 critical [maritime chokepoints](https://www.worldmonitor.app/chokepoints/), each scored by disruption level, vessel traffic, and [conflict intensity](/blog/posts/track-global-conflicts-in-real-time/):
 
 The following table highlights eight of the 13 monitored corridors as of mid-March 2026. Open a corridor name to check its latest published observations; the table remains a dated case study:
 
@@ -1274,7 +1303,7 @@ When the Strait of Hormuz closes, the trade policy data shows the second-order e
 <a id="corpus-critical-minerals-concentration-risk"></a>
 ## Critical Minerals: Concentration Risk
 
-Some supply chains cannot be rerouted because the supply itself is concentrated in a handful of countries. The Critical Minerals tab tracks this concentration risk using the HHI (Herfindahl-Hirschman Index), where anything above 2,500 indicates high concentration:
+Some supply chains cannot be rerouted because the supply itself is concentrated in a handful of countries. The Critical Minerals tab tracks this concentration risk using the [HHI](/blog/posts/critical-minerals-hhi-supply-risk-explained/) (Herfindahl-Hirschman Index), where anything above 2,500 indicates high concentration:
 
 | Mineral | Top Producer | Share | HHI Score | Risk |
 |---------|-------------|-------|-----------|------|
@@ -1314,6 +1343,8 @@ Transparency matters. Here is where the data comes from:
 
 All sources are public. No proprietary data feeds. No paywall.
 
+For vessel-level research, read [how to assess AIS tracking accuracy](/blog/posts/ais-vessel-tracking-accuracy/) before treating a position, destination field or transmission gap as evidence of a port visit.
+
 <a id="corpus-frequently-asked-questions-track-trade-routes-chokepoints-and-freight-costs"></a>
 ## Frequently Asked Questions (Track Trade Routes, Chokepoints, and Freight Costs)
 
@@ -1336,13 +1367,13 @@ World Monitor monitors its canonical waterway registry, including Hormuz, Malacc
 <a id="corpus-blog-site-src-content-blog-energy-shock-monitoring-chokepoints-worldmonitor-md"></a>
 ### blog-site/src/content/blog/energy-shock-monitoring-chokepoints-worldmonitor.md
 
-An energy shock rarely starts as a chart. It starts as a closure rumor, a tanker reroute, a fuel shortage, a policy announcement, a port delay, a pipeline disruption, or a military signal near a chokepoint. By the time the price chart explains it, the operational window has already narrowed.
+An energy shock rarely starts as a chart. It starts as a closure rumor, a tanker reroute, a fuel shortage, a policy announcement, a port delay, a pipeline disruption, or a military signal near a [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/). By the time the price chart explains it, the operational window has already narrowed.
 
-WorldMonitor helps energy analysts watch the chain before it becomes one number on a terminal: maritime chokepoints, fuel shortages, energy disruptions, commodity prices, country risk, news intelligence, and policy response. For the route side of the problem, start with the guide to [tracking chokepoints and freight costs](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/); for the market side, pair it with [real-time market intelligence for traders](/blog/posts/real-time-market-intelligence-for-traders-and-analysts/).
+WorldMonitor helps energy analysts watch the chain before it becomes one number on a terminal: [maritime chokepoints](https://www.worldmonitor.app/chokepoints/), fuel shortages, energy disruptions, commodity prices, country risk, news intelligence, and policy response. For the route side of the problem, start with the guide to [tracking chokepoints and freight costs](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/); for the market side, pair it with [real-time market intelligence for traders](/blog/posts/real-time-market-intelligence-for-traders-and-analysts/).
 
 This is a practical workflow for monitoring energy-shock risk.
 
-For a worked example, open the [Strait of Hormuz tracker](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) to inspect its latest published transit and disruption readings. The [historical Strait of Hormuz Transit Report for July 2026](https://www.worldmonitor.app/research/strait-of-hormuz-transit-report-2026-07/) provides a dated comparison with Suez, Bab el-Mandeb, and the Cape of Good Hope. Its figures describe that report's observation period, not current traffic.
+For a worked example, open the [Strait of Hormuz tracker](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) to inspect its latest published transit and disruption readings. The [historical Strait of Hormuz Transit Report for July 2026](https://www.worldmonitor.app/research/strait-of-hormuz-transit-report-2026-07/) provides a dated comparison with Suez, [Bab el-Mandeb](https://www.worldmonitor.app/chokepoints/bab-el-mandeb/), and the [Cape of Good Hope](https://www.worldmonitor.app/chokepoints/cape-of-good-hope/). Its figures describe that report's observation period, not current traffic.
 
 For country context, open the [Iran](https://www.worldmonitor.app/countries/iran/) and [Oman](https://www.worldmonitor.app/countries/oman/) profiles. The [Gulf security tracker](https://www.worldmonitor.app/crises/hormuz-gulf-security/) summarizes conflict data for its stated regional coverage. The separate [Iran–Israel escalation tracker](https://www.worldmonitor.app/crises/iran-israel-escalation/) covers those two countries only.
 
@@ -2937,180 +2968,179 @@ callout with the last update time.
 <a id="corpus-published-country-resilience-ranking"></a>
 ## Published country resilience ranking
 
-Snapshot `docs/snapshots/resilience-ranking-2026-08-29.json` captured 2026-08-29. This 2026-08-29 snapshot applies domain design weights inside pillar aggregation. Earlier published CRI numbers used coverage-only member aggregation and are not directly comparable.
+Snapshot `docs/snapshots/resilience-ranking-2026-11-01.json` captured 2026-11-01. This 2026-11-01 snapshot applies domain design weights inside pillar aggregation. Earlier published CRI numbers used coverage-only member aggregation and are not directly comparable.
 
 | Rank | Country | Code | Score | Coverage |
 | ---: | --- | --- | ---: | ---: |
-| 1 | Switzerland | CH | 76.8 | 76% |
-| 2 | Norway | NO | 75.4 | 76% |
-| 3 | Iceland | IS | 74.6 | 76% |
-| 4 | Denmark | DK | 72.5 | 77% |
-| 5 | Japan | JP | 71.3 | 75% |
-| 6 | New Zealand | NZ | 68.8 | 75% |
-| 7 | Czechia | CZ | 68.8 | 77% |
-| 8 | Samoa | WS | 67.4 | 76% |
-| 9 | Luxembourg | LU | 67.1 | 76% |
-| 10 | Sweden | SE | 66.9 | 77% |
-| 11 | United Arab Emirates | AE | 66.5 | 74% |
-| 12 | Finland | FI | 65.6 | 77% |
-| 13 | Uruguay | UY | 65.3 | 75% |
-| 14 | Italy | IT | 64.9 | 77% |
-| 15 | Kuwait | KW | 64.6 | 74% |
-| 16 | Bulgaria | BG | 64.3 | 81% |
-| 17 | Albania | AL | 64.3 | 81% |
-| 18 | Spain | ES | 64.2 | 77% |
-| 19 | Slovenia | SI | 64.1 | 76% |
-| 20 | Austria | AT | 64.0 | 76% |
-| 21 | Portugal | PT | 63.9 | 77% |
-| 22 | Ireland | IE | 63.5 | 76% |
-| 23 | Netherlands | NL | 63.4 | 77% |
-| 24 | Germany | DE | 63.2 | 77% |
-| 25 | Latvia | LV | 62.8 | 76% |
-| 26 | Lithuania | LT | 62.6 | 76% |
-| 27 | France | FR | 62.5 | 77% |
-| 28 | Montenegro | ME | 62.3 | 77% |
-| 29 | Cyprus | CY | 61.9 | 76% |
-| 30 | Qatar | QA | 61.7 | 75% |
-| 31 | Serbia | RS | 61.7 | 79% |
-| 32 | Saudi Arabia | SA | 61.6 | 76% |
-| 33 | United Kingdom | GB | 61.6 | 76% |
-| 34 | Slovakia | SK | 61.6 | 76% |
-| 35 | Barbados | BB | 61.2 | 66% |
-| 36 | Poland | PL | 61.2 | 76% |
-| 37 | Hungary | HU | 61.2 | 77% |
-| 38 | Croatia | HR | 60.6 | 76% |
-| 39 | Uzbekistan | UZ | 60.6 | 81% |
-| 40 | Greece | GR | 60.5 | 77% |
-| 41 | Estonia | EE | 60.4 | 76% |
-| 42 | Peru | PE | 60.4 | 81% |
-| 43 | Australia | AU | 60.3 | 77% |
-| 44 | United States | US | 60.0 | 76% |
-| 45 | Belgium | BE | 59.6 | 77% |
-| 46 | Brunei | BN | 59.5 | 75% |
-| 47 | Canada | CA | 59.4 | 77% |
-| 48 | Tajikistan | TJ | 59.2 | 79% |
-| 49 | Romania | RO | 58.9 | 76% |
-| 50 | Azerbaijan | AZ | 58.8 | 79% |
-| 51 | Chile | CL | 58.7 | 75% |
-| 52 | Solomon Islands | SB | 58.3 | 71% |
-| 53 | Israel | IL | 57.7 | 76% |
-| 54 | Kazakhstan | KZ | 57.5 | 78% |
-| 55 | Mongolia | MN | 57.4 | 81% |
-| 56 | Brazil | BR | 57.4 | 81% |
-| 57 | Singapore | SG | 57.4 | 73% |
-| 58 | South Korea | KR | 57.3 | 77% |
-| 59 | Georgia | GE | 56.8 | 81% |
-| 60 | Paraguay | PY | 56.7 | 81% |
-| 61 | Malaysia | MY | 56.6 | 76% |
-| 62 | Belize | BZ | 56.6 | 77% |
-| 63 | Oman | OM | 56.5 | 76% |
-| 64 | Malta | MT | 56.4 | 76% |
-| 65 | Bosnia & Herzegovina | BA | 56.2 | 81% |
-| 66 | Fiji | FJ | 55.9 | 77% |
-| 67 | Mauritius | MU | 55.9 | 85% |
-| 68 | Nicaragua | NI | 55.8 | 79% |
-| 69 | Suriname | SR | 55.6 | 79% |
-| 70 | China | CN | 55.3 | 81% |
-| 71 | Moldova | MD | 55.3 | 81% |
-| 72 | Belarus | BY | 55.2 | 77% |
-| 73 | Timor-Leste | TL | 55.2 | 81% |
-| 74 | Jamaica | JM | 55.2 | 81% |
-| 75 | Philippines | PH | 54.6 | 81% |
-| 76 | Panama | PA | 54.5 | 75% |
-| 77 | Bhutan | BT | 54.5 | 74% |
-| 78 | Hong Kong | HK | 54.2 | 70% |
-| 79 | Armenia | AM | 54.1 | 81% |
-| 80 | Trinidad & Tobago | TT | 54.1 | 75% |
-| 81 | Vanuatu | VU | 54.1 | 73% |
-| 82 | El Salvador | SV | 54.0 | 81% |
-| 83 | Cape Verde | CV | 54.0 | 84% |
-| 84 | North Macedonia | MK | 53.9 | 79% |
-| 85 | São Tomé & Príncipe | ST | 53.7 | 76% |
-| 86 | Guyana | GY | 53.5 | 77% |
-| 87 | Kyrgyzstan | KG | 53.5 | 75% |
-| 88 | Jordan | JO | 52.9 | 81% |
-| 89 | Ecuador | EC | 52.6 | 81% |
-| 90 | Vietnam | VN | 52.6 | 81% |
-| 91 | Thailand | TH | 52.3 | 81% |
-| 92 | Costa Rica | CR | 52.0 | 75% |
-| 93 | Colombia | CO | 51.9 | 81% |
-| 94 | Algeria | DZ | 51.9 | 83% |
-| 95 | Dominican Republic | DO | 51.9 | 81% |
-| 96 | Indonesia | ID | 51.7 | 81% |
-| 97 | Maldives | MV | 51.7 | 73% |
-| 98 | Papua New Guinea | PG | 51.6 | 79% |
-| 99 | Russia | RU | 51.5 | 78% |
-| 100 | Laos | LA | 50.8 | 80% |
-| 101 | Lesotho | LS | 50.8 | 84% |
-| 102 | Morocco | MA | 50.7 | 84% |
-| 103 | Argentina | AR | 50.7 | 79% |
-| 104 | Guatemala | GT | 50.6 | 81% |
-| 105 | Cambodia | KH | 50.5 | 80% |
-| 106 | India | IN | 50.0 | 81% |
-| 107 | Nepal | NP | 49.9 | 80% |
-| 108 | Honduras | HN | 49.7 | 81% |
-| 109 | Turkmenistan | TM | 49.6 | 66% |
-| 110 | Ghana | GH | 48.9 | 85% |
-| 111 | Sri Lanka | LK | 48.8 | 81% |
-| 112 | Egypt | EG | 48.7 | 83% |
-| 113 | Namibia | NA | 48.4 | 79% |
-| 114 | South Africa | ZA | 48.2 | 85% |
-| 115 | Bahamas | BS | 48.2 | 73% |
-| 116 | Comoros | KM | 47.7 | 73% |
-| 117 | Zambia | ZM | 47.5 | 83% |
-| 118 | Gambia | GM | 47.1 | 83% |
-| 119 | Gabon | GA | 46.8 | 77% |
-| 120 | Mexico | MX | 46.6 | 81% |
-| 121 | Liberia | LR | 46.5 | 79% |
-| 122 | Bahrain | BH | 46.3 | 77% |
-| 123 | Mauritania | MR | 46.2 | 82% |
-| 124 | Bolivia | BO | 46.0 | 79% |
-| 125 | Turkey | TR | 45.1 | 79% |
-| 126 | Libya | LY | 45.0 | 68% |
-| 127 | Lebanon | LB | 45.0 | 77% |
-| 128 | Ukraine | UA | 44.9 | 81% |
-| 129 | Botswana | BW | 44.6 | 84% |
-| 130 | Rwanda | RW | 44.4 | 84% |
-| 131 | Sierra Leone | SL | 44.2 | 79% |
-| 132 | Djibouti | DJ | 43.6 | 83% |
-| 133 | Tunisia | TN | 43.5 | 85% |
-| 134 | Côte d’Ivoire | CI | 43.5 | 78% |
-| 135 | Congo - Brazzaville | CG | 43.3 | 82% |
-| 136 | Madagascar | MG | 43.0 | 85% |
-| 137 | Angola | AO | 42.9 | 83% |
-| 138 | Togo | TG | 42.6 | 78% |
-| 139 | Senegal | SN | 42.5 | 78% |
-| 140 | Myanmar | MM | 42.2 | 74% |
-| 141 | Tanzania | TZ | 42.1 | 78% |
-| 142 | Malawi | MW | 42.0 | 73% |
-| 143 | Uganda | UG | 41.9 | 85% |
-| 144 | Kenya | KE | 41.2 | 85% |
-| 145 | Guinea | GN | 41.1 | 79% |
-| 146 | Eswatini | SZ | 41.0 | 85% |
-| 147 | Pakistan | PK | 40.8 | 81% |
-| 148 | Bangladesh | BD | 40.8 | 77% |
-| 149 | Burundi | BI | 40.7 | 81% |
-| 150 | Haiti | HT | 40.5 | 72% |
-| 151 | Guinea-Bissau | GW | 40.1 | 73% |
-| 152 | Nigeria | NG | 39.9 | 83% |
-| 153 | Benin | BJ | 39.5 | 78% |
-| 154 | Mozambique | MZ | 39.2 | 85% |
-| 155 | Cameroon | CM | 39.0 | 84% |
-| 156 | Zimbabwe | ZW | 38.3 | 83% |
-| 157 | Congo - Kinshasa | CD | 38.2 | 83% |
-| 158 | Central African Republic | CF | 37.8 | 78% |
-| 159 | Ethiopia | ET | 37.2 | 82% |
-| 160 | Burkina Faso | BF | 36.5 | 78% |
-| 161 | Chad | TD | 35.7 | 75% |
-| 162 | Iran | IR | 34.5 | 71% |
-| 163 | Afghanistan | AF | 34.0 | 69% |
-| 164 | Niger | NE | 33.8 | 76% |
-| 165 | Venezuela | VE | 33.7 | 65% |
-| 166 | Mali | ML | 32.0 | 75% |
-| 167 | Yemen | YE | 29.6 | 69% |
-| 168 | South Sudan | SS | 28.5 | 71% |
-| 169 | Somalia | SO | 21.1 | 69% |
-| 170 | Sudan | SD | 19.7 | 71% |
+| 1 | Switzerland | CH | 76.4 | 78% |
+| 2 | Norway | NO | 75.3 | 75% |
+| 3 | Iceland | IS | 74.4 | 77% |
+| 4 | Denmark | DK | 74.0 | 78% |
+| 5 | Japan | JP | 71.4 | 79% |
+| 6 | New Zealand | NZ | 68.7 | 76% |
+| 7 | Czechia | CZ | 68.0 | 78% |
+| 8 | Sweden | SE | 67.6 | 78% |
+| 9 | Finland | FI | 67.5 | 78% |
+| 10 | Luxembourg | LU | 66.9 | 77% |
+| 11 | Samoa | WS | 66.8 | 78% |
+| 12 | Portugal | PT | 65.9 | 80% |
+| 13 | Italy | IT | 65.3 | 80% |
+| 14 | Spain | ES | 65.0 | 78% |
+| 15 | Slovenia | SI | 64.9 | 77% |
+| 16 | Lithuania | LT | 64.7 | 77% |
+| 17 | Germany | DE | 64.5 | 78% |
+| 18 | Uruguay | UY | 64.4 | 77% |
+| 19 | United Arab Emirates | AE | 64.2 | 78% |
+| 20 | Austria | AT | 64.1 | 78% |
+| 21 | Albania | AL | 64.1 | 84% |
+| 22 | Bulgaria | BG | 63.9 | 83% |
+| 23 | Netherlands | NL | 63.8 | 78% |
+| 24 | Ireland | IE | 63.5 | 77% |
+| 25 | Kuwait | KW | 62.8 | 74% |
+| 26 | Latvia | LV | 62.7 | 78% |
+| 27 | Cyprus | CY | 62.7 | 77% |
+| 28 | France | FR | 62.5 | 80% |
+| 29 | Montenegro | ME | 62.2 | 79% |
+| 30 | Qatar | QA | 62.0 | 76% |
+| 31 | Serbia | RS | 61.8 | 81% |
+| 32 | United Kingdom | GB | 61.5 | 79% |
+| 33 | Greece | GR | 61.5 | 79% |
+| 34 | Estonia | EE | 61.3 | 77% |
+| 35 | Slovakia | SK | 61.2 | 78% |
+| 36 | Barbados | BB | 61.2 | 66% |
+| 37 | Peru | PE | 61.1 | 82% |
+| 38 | Poland | PL | 61.1 | 79% |
+| 39 | Uzbekistan | UZ | 60.6 | 82% |
+| 40 | Croatia | HR | 60.6 | 77% |
+| 41 | Tajikistan | TJ | 60.4 | 80% |
+| 42 | Belgium | BE | 60.2 | 78% |
+| 43 | South Korea | KR | 59.5 | 80% |
+| 44 | Canada | CA | 59.4 | 80% |
+| 45 | Australia | AU | 59.3 | 79% |
+| 46 | Hungary | HU | 58.9 | 78% |
+| 47 | Azerbaijan | AZ | 58.4 | 81% |
+| 48 | Romania | RO | 58.4 | 77% |
+| 49 | Chile | CL | 58.4 | 77% |
+| 50 | Georgia | GE | 58.2 | 82% |
+| 51 | Brunei | BN | 58.1 | 76% |
+| 52 | United States | US | 58.0 | 80% |
+| 53 | Kazakhstan | KZ | 57.8 | 79% |
+| 54 | Solomon Islands | SB | 57.8 | 71% |
+| 55 | Israel | IL | 57.5 | 79% |
+| 56 | Singapore | SG | 57.4 | 76% |
+| 57 | Brazil | BR | 57.3 | 83% |
+| 58 | Malta | MT | 57.3 | 77% |
+| 59 | Oman | OM | 57.1 | 78% |
+| 60 | Saudi Arabia | SA | 56.7 | 77% |
+| 61 | Vanuatu | VU | 56.7 | 73% |
+| 62 | Malaysia | MY | 56.7 | 77% |
+| 63 | Fiji | FJ | 56.4 | 79% |
+| 64 | Belize | BZ | 56.1 | 77% |
+| 65 | Suriname | SR | 55.8 | 80% |
+| 66 | Jamaica | JM | 55.7 | 82% |
+| 67 | Bosnia & Herzegovina | BA | 55.7 | 82% |
+| 68 | Nicaragua | NI | 55.4 | 80% |
+| 69 | Paraguay | PY | 55.4 | 82% |
+| 70 | Mongolia | MN | 55.4 | 80% |
+| 71 | Belarus | BY | 55.3 | 79% |
+| 72 | Moldova | MD | 55.2 | 82% |
+| 73 | China | CN | 55.0 | 85% |
+| 74 | Mauritius | MU | 55.0 | 86% |
+| 75 | Bhutan | BT | 54.9 | 76% |
+| 76 | Timor-Leste | TL | 54.8 | 82% |
+| 77 | Kyrgyzstan | KG | 54.7 | 77% |
+| 78 | Hong Kong | HK | 54.7 | 72% |
+| 79 | Armenia | AM | 54.5 | 82% |
+| 80 | Maldives | MV | 54.1 | 78% |
+| 81 | Philippines | PH | 53.8 | 82% |
+| 82 | El Salvador | SV | 53.6 | 83% |
+| 83 | Cape Verde | CV | 53.4 | 86% |
+| 84 | North Macedonia | MK | 53.3 | 79% |
+| 85 | Panama | PA | 53.3 | 78% |
+| 86 | Trinidad & Tobago | TT | 53.1 | 77% |
+| 87 | Jordan | JO | 53.0 | 82% |
+| 88 | Laos | LA | 53.0 | 81% |
+| 89 | Dominican Republic | DO | 52.9 | 83% |
+| 90 | Vietnam | VN | 52.4 | 82% |
+| 91 | Guyana | GY | 52.3 | 78% |
+| 92 | Thailand | TH | 52.1 | 82% |
+| 93 | São Tomé & Príncipe | ST | 52.1 | 74% |
+| 94 | Indonesia | ID | 51.9 | 84% |
+| 95 | Algeria | DZ | 51.4 | 84% |
+| 96 | Costa Rica | CR | 51.3 | 77% |
+| 97 | Nepal | NP | 51.1 | 81% |
+| 98 | Russia | RU | 50.8 | 81% |
+| 99 | Argentina | AR | 50.7 | 80% |
+| 100 | Colombia | CO | 50.6 | 82% |
+| 101 | Papua New Guinea | PG | 50.5 | 80% |
+| 102 | Cambodia | KH | 50.4 | 81% |
+| 103 | India | IN | 50.4 | 85% |
+| 104 | Lesotho | LS | 50.4 | 85% |
+| 105 | Morocco | MA | 50.3 | 85% |
+| 106 | Guatemala | GT | 49.7 | 82% |
+| 107 | Ghana | GH | 49.6 | 86% |
+| 108 | Honduras | HN | 49.4 | 83% |
+| 109 | Sri Lanka | LK | 49.4 | 82% |
+| 110 | Turkmenistan | TM | 49.2 | 68% |
+| 111 | Comoros | KM | 48.6 | 79% |
+| 112 | Egypt | EG | 48.6 | 84% |
+| 113 | Bahamas | BS | 48.3 | 73% |
+| 114 | Namibia | NA | 48.3 | 81% |
+| 115 | Ecuador | EC | 48.2 | 83% |
+| 116 | Ukraine | UA | 47.9 | 83% |
+| 117 | South Africa | ZA | 47.5 | 86% |
+| 118 | Zambia | ZM | 47.3 | 86% |
+| 119 | Bolivia | BO | 47.2 | 80% |
+| 120 | Gabon | GA | 46.8 | 78% |
+| 121 | Botswana | BW | 46.6 | 85% |
+| 122 | Gambia | GM | 46.4 | 84% |
+| 123 | Liberia | LR | 46.3 | 81% |
+| 124 | Bahrain | BH | 46.2 | 79% |
+| 125 | Mexico | MX | 45.9 | 82% |
+| 126 | Mauritania | MR | 45.5 | 83% |
+| 127 | Turkey | TR | 45.2 | 81% |
+| 128 | Congo - Brazzaville | CG | 44.0 | 83% |
+| 129 | Libya | LY | 43.7 | 71% |
+| 130 | Rwanda | RW | 43.3 | 84% |
+| 131 | Senegal | SN | 43.2 | 80% |
+| 132 | Togo | TG | 43.1 | 79% |
+| 133 | Angola | AO | 43.1 | 85% |
+| 134 | Lebanon | LB | 43.0 | 79% |
+| 135 | Djibouti | DJ | 42.9 | 84% |
+| 136 | Côte d’Ivoire | CI | 42.7 | 79% |
+| 137 | Madagascar | MG | 42.7 | 86% |
+| 138 | Malawi | MW | 42.7 | 74% |
+| 139 | Kenya | KE | 42.4 | 88% |
+| 140 | Tunisia | TN | 42.3 | 86% |
+| 141 | Tanzania | TZ | 42.1 | 79% |
+| 142 | Sierra Leone | SL | 41.8 | 79% |
+| 143 | Uganda | UG | 41.7 | 86% |
+| 144 | Myanmar | MM | 41.4 | 75% |
+| 145 | Eswatini | SZ | 41.2 | 86% |
+| 146 | Pakistan | PK | 41.1 | 84% |
+| 147 | Bangladesh | BD | 40.6 | 79% |
+| 148 | Nigeria | NG | 40.5 | 86% |
+| 149 | Haiti | HT | 40.5 | 74% |
+| 150 | Burundi | BI | 40.4 | 83% |
+| 151 | Guinea | GN | 40.1 | 81% |
+| 152 | Mozambique | MZ | 39.8 | 86% |
+| 153 | Guinea-Bissau | GW | 39.6 | 75% |
+| 154 | Zimbabwe | ZW | 39.4 | 84% |
+| 155 | Benin | BJ | 38.9 | 79% |
+| 156 | Congo - Kinshasa | CD | 38.5 | 86% |
+| 157 | Cameroon | CM | 38.5 | 85% |
+| 158 | Central African Republic | CF | 37.2 | 80% |
+| 159 | Burkina Faso | BF | 36.9 | 79% |
+| 160 | Ethiopia | ET | 36.3 | 83% |
+| 161 | Chad | TD | 34.6 | 77% |
+| 162 | Afghanistan | AF | 34.2 | 73% |
+| 163 | Iran | IR | 33.7 | 74% |
+| 164 | Niger | NE | 32.9 | 78% |
+| 165 | Mali | ML | 31.5 | 77% |
+| 166 | Yemen | YE | 31.2 | 71% |
+| 167 | South Sudan | SS | 28.4 | 72% |
+| 168 | Somalia | SO | 21.0 | 71% |
+| 169 | Sudan | SD | 19.8 | 73% |
 
 Unranked (greyed-out) countries in the same capture:
 
@@ -3140,3 +3170,4 @@ Unranked (greyed-out) countries in the same capture:
 - Tuvalu (TV)
 - Taiwan (TW)
 - St. Vincent & Grenadines (VC)
+- Venezuela (VE)

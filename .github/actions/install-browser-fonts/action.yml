@@ -39,9 +39,25 @@ runs:
         fi
     - name: Install browser font packages
       shell: bash
-      # Local .deb paths: apt resolves dependencies but downloads nothing that
-      # the image already has.
-      run: sudo apt-get install -y --no-install-recommends ~/.cache/wm-browser-fonts/*.deb
+      # dpkg reads the cached files. `apt-get install` with the same paths
+      # downloads each package again when the mirror has the same version, so a
+      # cache hit still waited on the mirror (3m04s at 41.5 kB/s in run
+      # 39839159870). The image ships every dependency these packages need; if
+      # an image change drops one, apt fetches only the missing dependency.
+      # apt-get -f can also repair the state by removing the font packages and
+      # exit 0, so the fallback checks each one is still installed.
+      run: |
+        debs=(~/.cache/wm-browser-fonts/*.deb)
+        if ! sudo dpkg -i "${debs[@]}"; then
+          sudo apt-get install -y -f --no-install-recommends
+          for deb in "${debs[@]}"; do
+            pkg=$(dpkg-deb -f "$deb" Package)
+            if [ "$(dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null)" != 'install ok installed' ]; then
+              echo "::error::$pkg is not installed after apt-get -f"
+              exit 1
+            fi
+          done
+        fi
     - name: Save browser font packages
       if: steps.font-debs.outputs.cache-hit != 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6

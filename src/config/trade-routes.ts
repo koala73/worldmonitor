@@ -228,6 +228,30 @@ export const TRADE_ROUTES: TradeRoute[] = [
     volumeDesc: '14K+ transits/year',
     waypoints: ['panama'],
   },
+  // US-Northeast Asia, both coasts (#7990). West Coast container services run
+  // direct to Japan and Korea (ONE 2026 transpacific service listing); Gulf
+  // Coast LPG to East Asia typically transits Panama (EIA Today in Energy
+  // 61443). Supplier risk unions the two, so a US-Japan pair keeps Panama.
+  {
+    id: 'us-west-northeast-asia',
+    name: 'US West Coast → Japan / Korea',
+    from: 'los_angeles',
+    to: 'yokohama',
+    category: 'container',
+    status: 'active',
+    volumeDesc: 'Transpacific container services',
+    waypoints: [],
+  },
+  {
+    id: 'us-gulf-asia-panama',
+    name: 'US Gulf Coast → Northeast Asia (Panama)',
+    from: 'houston',
+    to: 'yokohama',
+    category: 'energy',
+    status: 'active',
+    volumeDesc: 'LPG, LNG and chemicals',
+    waypoints: ['panama'],
+  },
   {
     id: 'transatlantic',
     name: 'TransAtlantic',

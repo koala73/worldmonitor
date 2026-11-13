@@ -83,7 +83,7 @@ describe('cross-Strait activity production registration (#5575)', () => {
   it('pins the resilient Japan MOD source-version marker used by publication health', () => {
     assert.match(
       read('scripts/seed-cross-strait-activity.mjs'),
-      /sourceVersion:\s*'taiwan-mnd-html\+japan-joint-staff-homepage-v3'/,
+      /sourceVersion:\s*'taiwan-mnd-html\+japan-joint-staff-x-v4'/,
     );
   });
 

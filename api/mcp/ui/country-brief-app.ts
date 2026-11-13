@@ -28,6 +28,10 @@ const STYLES = `
   .grounding-notice { margin: 12px 0 0; padding: 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
   .brief { margin: 14px 0 4px; }
   .brief .para { margin: 0 0 10px; font-size: 14px; line-height: 1.6; }
+  .brief .brief-head { margin: 14px 0 6px; font-size: 13px; font-weight: 650; color: var(--fg); }
+  .brief .brief-head:first-child { margin-top: 0; }
+  .brief .para b { font-weight: 600; }
+  .src-num { color: var(--muted); font-weight: 400; margin-right: 6px; font-variant-numeric: tabular-nums; }
   .section { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
   .sec-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 8px; }
   .src-row { display: flex; flex-direction: column; gap: 1px; padding: 6px 0; border-bottom: 1px solid var(--border); }
@@ -75,31 +79,26 @@ const RENDER = `
     var coverage = data.digestCoverage;
     if (coverage && typeof coverage === "object" && !Array.isArray(coverage) &&
         (coverage.servedStale === true || coverage.state === "stale")) {
-      var notice = "The news digest is retained, not live. Current news grounding is not confirmed.";
       var age = coverage.staleAgeSeconds;
+      var howOld = "";
       if (typeof age === "number" && Number.isFinite(age) && age > 0) {
         var amount = age < 60 ? Math.max(1, Math.round(age)) : Math.round(age / 60);
         var unit = age < 60 ? "second" : "minute";
-        notice += " Reported snapshot age: " + amount + " " + unit + (amount === 1 ? "" : "s") + ".";
-      } else {
-        notice += " Snapshot age is unknown.";
+        howOld = amount + " " + unit + (amount === 1 ? "" : "s") + " old";
       }
-      var attempt = typeof coverage.attemptedAt === "string" ? coverage.attemptedAt.slice(0, 80) : "";
-      var attemptDate = attempt ? new Date(attempt) : null;
-      if (attemptDate && !isNaN(attemptDate.getTime())) {
-        var utcAttempt = attemptDate.toISOString();
-        if (attempt === utcAttempt || attempt === utcAttempt.replace(".000Z", "Z")) {
-          notice += " Last refresh attempt: " + utcAttempt + ".";
-        }
-      }
-      var reason = typeof coverage.staleReason === "string" ? coverage.staleReason.slice(0, 240) : "";
-      if (reason) notice += " Reason: " + reason;
+      // digestCoverage describes the news digest, not the brief: the brief may
+      // come from cache or drop stale news, so the age is never tied to it.
+      // Known reason codes become a plain cause; anything else is not shown.
+      var reasons = { "empty-rebuild": "The latest news update returned no stories", "build-error": "The latest news update failed", "gate-held": "The latest news update was held back by quality checks" };
+      var reason = typeof coverage.staleReason === "string" && Object.prototype.hasOwnProperty.call(reasons, coverage.staleReason)
+        ? reasons[coverage.staleReason] : "The latest news update could not be confirmed";
+      var notice = reason + (howOld ? "; the most recent news on hand is " + howOld : "") + ". This brief may not reflect current news.";
       groundingNotice.textContent = notice;
       groundingNotice.style.display = "block";
     }
 
-    var name = collapseWs(data.countryName) || countryName(data.countryCode || data.country_code);
-    setText("title", name ? name + " Brief" : "Country Brief");
+    var titleName = collapseWs(data.countryName) || countryName(data.countryCode || data.country_code);
+    setText("title", titleName ? titleName + " Brief" : "Country Brief");
 
     // GetCountryIntelBriefResponse has no framework field — it is an INPUT
     // only, so this lens pill could never appear. The shared shell drops
@@ -119,58 +118,97 @@ const RENDER = `
       evById[ev.id] = ev;
       evList.push(ev);
     }
-    function evAsOf(ev) { return typeof ev.asOf === "string" ? collapseWs(ev.asOf).slice(0, 10) : ""; }
+    var srcs = Array.isArray(data.sources) ? data.sources : [];
+    var linkOriginalCitations = renderContext && renderContext.kind === "ordinary-structured";
+    function evAsOf(ev) {
+      if (typeof ev.asOf !== "string") return "";
+      var day = collapseWs(ev.asOf).slice(0, 10);
+      // Only a full YYYY-MM-DD date is reformatted; "2026 Q2" or "2026-09"
+      // stay as written rather than gaining a day they never had.
+      var full = day.length === 10 && day.charAt(4) === "-" && day.charAt(7) === "-";
+      var parsed = full ? utcTime(day + "T00:00:00Z") : "";
+      return parsed ? parsed.slice(0, parsed.indexOf(",")) : day;
+    }
     function evText(ev) { return (collapseWs(ev.label) || ev.id) + ": " + collapseWs(ev.value); }
     function evHttps(u) { var h = httpUrl(u); return h.indexOf("https:") === 0 ? h : ""; }
-    // Appends paragraph text to node, turning each known "[E<digits>]" marker
-    // into a superscript reference. Unknown ids stay as literal text.
+    function isDigits(value) { return value.length > 0 && value.length <= 2 && String(Number(value)) === value; }
+    // Appends claim text to node. A known "[E<n>]" marker becomes a superscript
+    // reference to World Monitor data; a "[<n>]" marker links the numbered
+    // source row. Unknown markers stay literal text.
     function appendWithRefs(node, text) {
-      var pos = 0;
+      var pos = 0, cursor = 0;
       while (pos < text.length) {
-        var open = text.indexOf("[E", pos);
+        var open = text.indexOf("[", pos);
         if (open < 0) break;
-        var close = text.indexOf("]", open + 2);
-        var id = close > open + 2 ? text.slice(open + 1, close) : "";
-        var digits = id.slice(1);
-        var isNum = digits.length > 0 && digits.length <= 2 && String(Number(digits)) === digits;
-        var item = isNum && Object.prototype.hasOwnProperty.call(evById, id) ? evById[id] : null;
-        if (!item) {
-          node.appendChild(document.createTextNode(text.slice(pos, open + 2)));
-          pos = open + 2;
-          continue;
-        }
-        var before = text.slice(pos, open);
+        var close = text.indexOf("]", open + 1);
+        var id = close > open + 1 ? text.slice(open + 1, close) : "";
+        var evidence = id.charAt(0) === "E" && isDigits(id.slice(1)) && Object.prototype.hasOwnProperty.call(evById, id) ? evById[id] : null;
+        var sourceIndex = isDigits(id) ? Number(id) - 1 : -1;
+        var source = sourceIndex >= 0 && sourceIndex < Math.min(12, srcs.length) && srcs[sourceIndex] && typeof srcs[sourceIndex] === "object" ? srcs[sourceIndex] : null;
+        var sourceUrl = source && linkOriginalCitations ? httpUrl(source.url) : "";
+        if (!evidence && !sourceUrl) { pos = open + 1; continue; }
+        var before = text.slice(cursor, open);
         if (before.charAt(before.length - 1) === " ") before = before.slice(0, -1);
         node.appendChild(document.createTextNode(before));
-        var asOf = evAsOf(item);
-        var sup = el("sup", "ev-ref", id);
-        sup.title = evText(item) + (asOf ? " (as of " + asOf + ")" : "");
-        node.appendChild(sup);
-        pos = close + 1;
+        if (evidence) {
+          var asOf = evAsOf(evidence);
+          var sup = el("sup", "ev-ref", id);
+          sup.title = evText(evidence) + (asOf ? " (as of " + asOf + ")" : "");
+          node.appendChild(sup);
+        } else {
+          var link = el("a", null, "[" + id + "]");
+          link.href = sourceUrl; link.target = "_blank"; link.rel = "noopener noreferrer";
+          node.appendChild(link);
+        }
+        pos = cursor = close + 1;
       }
-      node.appendChild(document.createTextNode(text.slice(pos)));
+      node.appendChild(document.createTextNode(text.slice(cursor)));
+    }
+    var displayName = collapseWs(data.countryName) || countryName(data.countryCode || data.country_code);
+    // Section headings arrive as whole upper-case lines ("SITUATION NOW",
+    // "WHAT THIS MEANS FOR IRAN"); show them in sentence case.
+    function headingText(line) {
+      var heading = collapseWs(line);
+      if (heading.charAt(heading.length - 1) === ":") heading = heading.slice(0, -1);
+      if (!heading || heading.length > 80 || heading !== heading.toUpperCase() || heading === heading.toLowerCase()) return "";
+      // A cited or labelled line is a claim even when written in capitals.
+      if (heading.indexOf("[") >= 0 || heading.indexOf(":") >= 0) return "";
+      var prefix = "WHAT THIS MEANS FOR ";
+      if (heading.indexOf(prefix) === 0 && displayName) return "What this means for " + displayName;
+      return heading.charAt(0) + heading.slice(1).toLowerCase();
     }
 
     var brief = typeof data.brief === "string" ? data.brief
       : (typeof data.summary === "string" ? data.summary : "");
     var briefEl = q("brief");
     briefEl.textContent = "";
-    var paras = paragraphs(brief);
-    for (var i = 0; i < paras.length; i++) {
+    // Each line of the brief is its own claim or heading.
+    var lines = brief.split("\\n").map(collapseWs).filter(Boolean);
+    for (var l = 0; l < lines.length; l++) {
+      var heading = headingText(lines[l]);
+      if (heading) { briefEl.appendChild(el("div", "brief-head", heading)); continue; }
       var p = el("p", "para");
-      appendWithRefs(p, paras[i]);
+      var colon = lines[l].indexOf(":");
+      var label = lines[l].indexOf("NEXT ") === 0 && colon > 0 && colon < 20 ? lines[l].slice(0, colon) : "";
+      if (label) {
+        p.appendChild(el("b", null, "Next " + label.slice(5).toLowerCase() + ": "));
+        appendWithRefs(p, collapseWs(lines[l].slice(colon + 1)));
+      } else appendWithRefs(p, lines[l]);
       briefEl.appendChild(p);
     }
     if (!briefEl.childNodes.length) briefEl.appendChild(el("div", "empty", "No brief text available."));
 
-    var srcs = Array.isArray(data.sources) ? data.sources : [];
     var srcHost = q("sources");
     srcHost.textContent = "";
-    for (var k = 0; k < srcs.length && srcHost.childNodes.length < 8; k++) {
+    // Rows keep their list position so a claim's [n] marker names row n.
+    for (var k = 0; k < srcs.length && k < 12; k++) {
       var s = srcs[k];
       if (!s || typeof s !== "object") continue;
       var row = el("div", "src-row");
-      row.appendChild(el("span", "src-name", collapseWs(s.source) || "source"));
+      var srcName = el("span", "src-name");
+      srcName.appendChild(el("span", "src-num", String(k + 1)));
+      srcName.appendChild(document.createTextNode(collapseWs(s.source) || "Source"));
+      row.appendChild(srcName);
       var url = httpUrl(s.url);
       if (s.title) {
         var titleText = collapseWs(s.title);
@@ -217,7 +255,7 @@ const RENDER = `
     var genMs = Number(data.generatedAt);
     var genAt = isFinite(genMs) && genMs > 0 ? new Date(genMs) : null;
     var gen = genAt && !isNaN(genAt.getTime())
-      ? "Generated " + genAt.toISOString()
+      ? "Generated " + utcTime(genMs)
       : (data.generatedAt != null ? "Generated " + collapseWs(data.generatedAt) : "");
     q("foot").textContent = gen;
 `;

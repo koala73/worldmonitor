@@ -179,11 +179,24 @@ function getAfterSignOutUrl(): string {
 // is absent (mirrors stale-bundle-check.ts's __BUILD_HASH__ handling).
 const CLERK_JS_VERSION = typeof __CLERK_JS_VERSION__ !== 'undefined' ? __CLERK_JS_VERSION__ : '';
 
-// @clerk/ui major paired with @clerk/clerk-js v6. The UI controller ships in a
-// SEPARATE package from the (headless) SDK and is loaded from the same Frontend
-// API; its UMD bundle exposes `window.__internal_ClerkUICtor`, which we pass to
-// `clerk.load()`. Bump this alongside any @clerk/clerk-js MAJOR upgrade.
-const CLERK_UI_VERSION = '1';
+// @clerk/ui version paired with @clerk/clerk-js v6. The UI controller ships in
+// a SEPARATE package from the (headless) SDK and is loaded from the same
+// Frontend API; its UMD bundle exposes `window.__internal_ClerkUICtor`, which
+// we pass to `clerk.load()`.
+//
+// Pinned EXACTLY (#7352): a bare major resolved at request time, so Clerk
+// could change or remove parts of the prebuilt SignIn/UserProfile surfaces —
+// including passkey management — with no repo change, no PR, and no CI
+// signal. Upgrades are now deliberate: bump this constant (and the
+// @clerk/clerk-js pin in package.json) together, then re-verify the auth
+// smoke against the SERVED bundles, not node_modules.
+//
+// The initial pins (clerk-js 6.13.0 + ui 1.42.4) are the pair production was
+// already serving when the bare range and bare major were removed, so pinning
+// changed no behavior. The two version lines do not move in lockstep here
+// (clerk-js 6.13.x, ui 1.42.x), and that pair is the one that has run in
+// production; do not assume matching minors are required or safe.
+const CLERK_UI_VERSION = '1.42.4';
 
 // The SDK UMD bundle, loaded with a `data-clerk-publishable-key` attribute,
 // auto-creates a (not-yet-loaded) Clerk instance on `window.Clerk` — it exposes
@@ -528,7 +541,9 @@ export function runClerkSurfaceOpen(
 }
 
 function openLoadedClerkSignIn(): void {
-  clerkInstance?.openSignIn({ appearance: getAppearance() });
+  // withSignUp folds Create account into the Sign In modal so the header can
+  // keep a single account action (#10464) without losing the sign-up path.
+  clerkInstance?.openSignIn({ appearance: getAppearance(), withSignUp: true });
 }
 
 function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
@@ -545,7 +560,12 @@ function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
   const openClerk = (): void => runClerkSurfaceOpen(open, onFail('ui-components-not-ready'));
   // The resume hook needs the loaded client, so it runs after the force-load too.
   const openSurface = (): void => {
-    if (action === 'open-sign-up' && signUpResumeHook?.(openClerk)) return;
+    // Header Sign In now owns create-account via withSignUp (#10464), so a
+    // mid-signup click still resumes. The hook treats Sign In conservatively
+    // (live, undismissed code only, never a resend) so it cannot trap a
+    // returning user away from Clerk's sign-in form.
+    const intent = action === 'open-sign-in' ? 'sign-in' : 'sign-up';
+    if (signUpResumeHook?.(openClerk, intent)) return;
     openClerk();
   };
   // Desktop: passkeys and Google cannot run in the WebView, so sign-in and
@@ -785,11 +805,11 @@ export function openSignUp(): void {
 }
 
 /**
- * Consulted by `openSignUp()` once Clerk is loaded. Returning true means the
- * resume surface took the click; `openClerkSignUp` is the fallback it may call
- * later if resuming fails.
+ * Consulted by `openSignIn()` / `openSignUp()` once Clerk is loaded. Returning
+ * true means the resume surface took the click; the open callback is the
+ * fallback it may call later if resuming fails.
  */
-export type SignUpResumeHook = (openClerkSignUp: () => void) => boolean;
+export type SignUpResumeHook = (openClerkSignUp: () => void, intent: 'sign-in' | 'sign-up') => boolean;
 
 let signUpResumeHook: SignUpResumeHook | null = null;
 
@@ -853,6 +873,7 @@ export function clearClerkTokenCache(): void {
   _cachedSession = null;
   _tokenInflight = null;
   _tokenGen++;
+  _lastRejectedToken = null;
   _clerkClockState = { kind: 'uncalibrated' };
 }
 
@@ -873,6 +894,11 @@ let _cachedTokenAt = 0;
 let _cachedSession: ClerkSession | null = null;
 let _tokenInflight: Promise<string | null> | null = null;
 let _tokenGen = 0;
+// Bumped by each new edge rejection. A fetch that started under an older epoch
+// still returns to its own callers but may no longer write the cache or the
+// clock state, so it cannot restore what the rejection invalidated.
+let _tokenEpoch = 0;
+let _lastRejectedToken: string | null = null;
 // Positive means the client clock is behind the issuer clock. This is measured
 // from a token fetched with skipCache so a stale Clerk token cannot masquerade
 // as a clock offset. Keep the modes explicit: a trusted zero skew is different
@@ -912,20 +938,28 @@ function canCacheClerkToken(state: ClerkClockState): boolean {
 
 type ClerkTokenClaimsMs = { exp: number | null; iat: number | null };
 
-function clerkTokenClaimsMs(token: string | null): ClerkTokenClaimsMs {
+function clerkTokenClaims(token: string | null): Record<string, unknown> | null {
   const payload = token?.split('.')[1];
-  if (!payload) return { exp: null, iat: null };
+  if (!payload) return null;
   try {
     const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const claims = JSON.parse(
-      atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)),
-    ) as Record<string, unknown>;
-    const toEpochMs = (value: unknown): number | null =>
-      typeof value === 'number' && Number.isFinite(value) ? value * 1_000 : null;
-    return { exp: toEpochMs(claims.exp), iat: toEpochMs(claims.iat) };
+    const claims: unknown = JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)));
+    return claims && typeof claims === 'object' ? claims as Record<string, unknown> : null;
   } catch {
-    return { exp: null, iat: null };
+    return null;
   }
+}
+
+function clerkTokenClaimsMs(token: string | null): ClerkTokenClaimsMs {
+  const claims = clerkTokenClaims(token);
+  const toEpochMs = (value: unknown): number | null =>
+    typeof value === 'number' && Number.isFinite(value) ? value * 1_000 : null;
+  return { exp: toEpochMs(claims?.exp), iat: toEpochMs(claims?.iat) };
+}
+
+function clerkTokenSubject(token: string | null): string | null {
+  const sub = clerkTokenClaims(token)?.sub;
+  return typeof sub === 'string' && sub !== '' ? sub : null;
 }
 
 /**
@@ -1007,6 +1041,31 @@ async function fetchClerkToken(session: ClerkSession, skipCache = false): Promis
   }
 }
 
+/**
+ * Clerk's standard session token, uncached and with no JWT template.
+ *
+ * Only the session token carries `sid`; a JWT-template token (the `convex`
+ * one `getClerkToken()` prefers) gets just `azp, exp, iat, iss, jti, nbf,
+ * sub`. The routes that trade a bearer for a credential outliving it (desktop
+ * sign-in, the Pro MCP grant) confirm that `sid` is still live at Clerk, so
+ * they must be sent this token. Null when nobody is signed in.
+ */
+export async function getClerkSessionToken(): Promise<string | null> {
+  const session = clerkInstance?.session;
+  if (!session) return null;
+  const myGen = _tokenGen;
+  try {
+    // A fresh token: Clerk's cache may hand back one with seconds left, and the
+    // route this feeds still has Clerk calls of its own to make before it
+    // reads the claims. These are one-shot user clicks, not a hot path.
+    const token = await session.getToken({ skipCache: true });
+    if (myGen !== _tokenGen || clerkInstance?.session !== session) return null;
+    return token;
+  } catch {
+    return null;
+  }
+}
+
 export async function getClerkToken(): Promise<string | null> {
   const now = Date.now();
   const clockState = _clerkClockState;
@@ -1027,6 +1086,7 @@ export async function getClerkToken(): Promise<string | null> {
   if (_tokenInflight) return _tokenInflight;
 
   const myGen = _tokenGen;
+  const myEpoch = _tokenEpoch;
   const promise: Promise<string | null> = (async () => {
     if (!clerkInstance && PUBLISHABLE_KEY) {
       try { await initClerk(); } catch { /* Clerk load failed, proceed with null */ }
@@ -1114,12 +1174,14 @@ export async function getClerkToken(): Promise<string | null> {
       // flight, this JWT belongs to the previous user. Drop it on the
       // floor — do not cache, do not return.
       if (myGen !== _tokenGen || clerkInstance?.session !== session) return null;
-      if (token === null && nextClockState.kind === 'retry-after') {
+      // An edge rejection since this fetch began owns the cache and clock now.
+      const mayCommit = myEpoch === _tokenEpoch;
+      if (mayCommit && token === null && nextClockState.kind === 'retry-after') {
         _cachedToken = null;
         _cachedTokenAt = 0;
         _cachedSession = null;
       }
-      _clerkClockState = nextClockState;
+      if (mayCommit) _clerkClockState = nextClockState;
       const fetchedAt = Date.now();
       if (shouldReuseCachedClerkTokenWithExpiry({
         token,
@@ -1129,7 +1191,7 @@ export async function getClerkToken(): Promise<string | null> {
       }, tokenClaims.exp)) {
         // Cache only after a trusted clock sample exists, or after the opaque
         // token path has explicitly opted back into the legacy flat TTL.
-        if (canCacheClerkToken(nextClockState)) {
+        if (mayCommit && canCacheClerkToken(nextClockState)) {
           _cachedToken = token;
           _cachedTokenAt = fetchedAt;
           _cachedSession = session;
@@ -1151,11 +1213,49 @@ export async function getClerkToken(): Promise<string | null> {
       // If clearClerkTokenCache() fired during our await it has already
       // nulled _tokenInflight AND bumped _tokenGen; a newer caller may
       // have assigned a fresh promise that we must not clobber.
-      if (myGen === _tokenGen) _tokenInflight = null;
+      // A rejection detaches the in-flight fetch the same way, by epoch.
+      if (myGen === _tokenGen && myEpoch === _tokenEpoch) _tokenInflight = null;
     }
   })();
   _tokenInflight = promise;
   return promise;
+}
+
+/**
+ * A replacement for a token the edge just refused with 401, or null when Clerk
+ * has nothing different to offer.
+ *
+ * The client judged `rejected` unexpired, so either its clock sample is off or
+ * the request sat between signing and the wire (a frozen tab resumed). The
+ * first rejection of a token drops it from the cache, resets the clock state so
+ * `getClerkToken()` forces a fresh, uncached token and re-samples the skew, and
+ * bumps the epoch so a fetch already in flight (which may hold the same token
+ * or a stale clock sample) is neither joined nor allowed to write back.
+ *
+ * No generation bump: a burst of sibling requests all 401 on the same token,
+ * and the generation is the sign-out signal that makes in-flight callers get
+ * null. Later rejections of the same token join the first one's refresh.
+ *
+ * The replacement must belong to the same Clerk user as `rejected`. A 401 that
+ * lands after an account switch must not replay the first user's request with
+ * the second user's token; an unreadable subject fails closed.
+ */
+export async function refreshClerkTokenAfterRejection(rejected: string): Promise<string | null> {
+  if (rejected !== _lastRejectedToken) {
+    _lastRejectedToken = rejected;
+    _tokenEpoch++;
+    _tokenInflight = null;
+    if (_cachedToken === rejected) {
+      _cachedToken = null;
+      _cachedTokenAt = 0;
+      _cachedSession = null;
+    }
+    _clerkClockState = { kind: 'uncalibrated' };
+  }
+  const next = await getClerkToken();
+  if (!next || next === rejected) return null;
+  const subject = clerkTokenSubject(rejected);
+  return subject !== null && clerkTokenSubject(next) === subject ? next : null;
 }
 
 export function __setClerkInstanceForTests(instance: ClerkInstance | null): void {

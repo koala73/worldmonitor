@@ -80,6 +80,18 @@ export function parseFredCsv(csv) {
   return out;
 }
 
+/** Parse a keyed FRED API `series/observations` JSON body; FRED marks a missing month as ".". */
+export function parseFredObservations(body) {
+  const out = [];
+  for (const row of Array.isArray(body?.observations) ? body.observations : []) {
+    const date = normalizeDateLabel(row?.date ?? '');
+    const value = parseYieldNumber(row?.value);
+    if (!date || value == null) continue;
+    out.push({ date, value });
+  }
+  return out;
+}
+
 /** Parse the ECB IRS `csvdata` export into FRED-shaped month-start points per market. */
 export function parseEcbIrsCsv(csv) {
   const lines = String(csv ?? '').split(/\r?\n/);

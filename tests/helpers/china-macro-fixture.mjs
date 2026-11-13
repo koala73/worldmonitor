@@ -144,7 +144,7 @@ export async function buildOfficialChinaMacroFixture(now) {
       ) {
         return new Response('not found', { status: 404 });
       }
-      if (url === 'https://www.pbc.gov.cn/robots.txt') {
+      if (url === 'https://www.pbc.gov.cn/robots.txt' || url === 'https://jrj.sh.gov.cn/robots.txt') {
         return new Response('User-agent: *\nDisallow: /\n');
       }
       if (url === 'https://english.customs.gov.cn/robots.txt') {

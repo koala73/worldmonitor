@@ -1,7 +1,10 @@
 /**
  * The one list of URL params that must never reach a telemetry vendor:
- * checkout/provisioning secrets, the Business Pro invite, referral codes,
- * Clerk handshake/ticket material, and checkout-funnel codes. Vercel
+ * checkout/provisioning secrets, the Business Pro invite, referral and
+ * discount codes (including the /pro `wm_checkout_ref`/`wm_checkout_discount`
+ * return-URL pair),
+ * Clerk handshake/ticket material, checkout-funnel codes, and the desktop
+ * checkout handoff's account fingerprint (a pseudonymous account id). Vercel
  * Analytics (secondary-startup.ts) and Umami (analytics.ts) redact these per
  * event. DebugBear RUM reads `location` directly and has no redaction hook,
  * so it waits until none of them is left in the live URL (debugbear-rum.ts).
@@ -11,7 +14,7 @@
  * stripped from the live URL at boot. STRIPPABLE_AT_BOOT_RE is the subset
  * nobody reads.
  */
-export const SENSITIVE_URL_PARAM_RE = /^(token|access_token|id_token|refresh_token|auth_token|invite_token|accept-business-invite|email|user_email|customer_email|license_key|licensekey|subscription_id|payment_id|ref|wm_referral|checkoutproduct|checkoutreferral|checkoutdiscount|checkout_product|checkout_referral|checkout_discount|__clerk[a-z_]*|affonso_referral|discount|coupon|promo|voucher)$/i;
+export const SENSITIVE_URL_PARAM_RE = /^(token|access_token|id_token|refresh_token|auth_token|invite_token|accept-business-invite|email|user_email|customer_email|license_key|licensekey|subscription_id|payment_id|ref|wm_referral|checkoutproduct|checkoutreferral|checkoutdiscount|checkout_product|checkout_referral|checkout_discount|wm_checkout_account|wm_checkout_ref|wm_checkout_discount|__clerk[a-z_]*|affonso_referral|discount|coupon|promo|voucher)$/i;
 
 /**
  * Params safe to strip from the live URL at boot: read by nobody.
@@ -138,4 +141,67 @@ export function whenUrlFreeOfSensitiveParams(
     setTimeout(check, SENSITIVE_URL_RECHECK_MS);
   };
   check();
+}
+
+/**
+ * Sentry events keep user identity, IP and page state so we can reach the
+ * people who hit an error. Credentials stay out: params on the shared
+ * SENSITIVE_URL_PARAM_RE list (invite and checkout tokens, Clerk tickets,
+ * license keys) are removed from every URL, and credential-named fields are
+ * dropped. Scrubs in place so beforeSend callers keep event identity.
+ */
+const CREDENTIAL_FIELD = /^(?:(?:proxy-)?authorization|(?:set-)?cookie|passw(?:or)?d|secret|client[_-]?secret|private[_-]?key|(?:access|refresh|id|auth|invite|csrf)?[_-]?token|(?:x[_-]?)?api[_-]?key)$/i;
+/** Keys whose value is a bare query string or fragment, not a URL around one. */
+const QUERY_FIELD = /^(?:query_string|(?:url|http)\.query)$/i;
+const FRAGMENT_FIELD = /^(?:url|http)\.fragment$/i;
+const ABSOLUTE_URL = /(?:https?|wss?):\/\/[^\s<>"']+/gi;
+const RELATIVE_URL = /(^|[\s"'(=])(\/[^\s<>"']*[?#][^\s<>"']*)/g;
+const RELATIVE_BASE = 'https://telemetry.invalid';
+const MAX_DEPTH = 12;
+
+function scrubQuery(value: string): string {
+  const prefix = value.startsWith('?') ? '?' : '';
+  const params = new URLSearchParams(value.slice(prefix.length));
+  return scrubParams(params, SENSITIVE_URL_PARAM_RE) ? prefix + params.toString() : value;
+}
+
+function scrubFragment(value: string): string {
+  const prefix = value.startsWith('#') ? '#' : '';
+  const scrubbed = scrubHashFragment(value.slice(prefix.length), SENSITIVE_URL_PARAM_RE);
+  return scrubbed === null ? value : prefix + scrubbed;
+}
+
+function scrubText(value: string, key: string): string {
+  if (QUERY_FIELD.test(key)) return scrubQuery(value);
+  if (FRAGMENT_FIELD.test(key)) return scrubFragment(value);
+  if (!value.includes('?') && !value.includes('#')) return value;
+  return value
+    .replace(ABSOLUTE_URL, (url) => redactSensitiveUrl(url))
+    .replace(RELATIVE_URL, (_, lead: string, url: string) => lead + redactSensitiveUrl(url, RELATIVE_BASE));
+}
+
+export function scrubSentryCredentials<T>(value: T): T {
+  const seen = new WeakSet<object>();
+  function visit(node: object, depth: number): void {
+    if (seen.has(node) || depth > MAX_DEPTH) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      node.forEach((item, i) => {
+        if (typeof item === 'string') node[i] = scrubText(item, '');
+        else if (item && typeof item === 'object') visit(item, depth + 1);
+      });
+      return;
+    }
+    const record = node as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      const item = record[key];
+      if (CREDENTIAL_FIELD.test(key)) delete record[key];
+      else if (typeof item === 'string') record[key] = scrubText(item, key);
+      else if (Array.isArray(item) && QUERY_FIELD.test(key)) {
+        record[key] = item.filter((pair) => !(Array.isArray(pair) && SENSITIVE_URL_PARAM_RE.test(String(pair[0]))));
+      } else if (item && typeof item === 'object') visit(item, depth + 1);
+    }
+  }
+  if (value && typeof value === 'object') visit(value, 0);
+  return value;
 }

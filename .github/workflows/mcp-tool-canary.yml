@@ -1,0 +1,78 @@
+name: MCP Tool Canary
+
+# Authenticated tool-level canary for the PRODUCTION MCP server. An MCP server
+# can answer 200 while its tools are broken; mcp-live-smoke.yml (every 15 min)
+# walks only the anonymous protocol surface and stops at the tools/call auth
+# wall. This workflow calls every read-only tool with a real credential and
+# checks the answer: HTTP 200, no JSON-RPC error, no isError, and
+# structuredContent that validates against the tool's own outputSchema.
+# Modelled on MCP Canary (github.com/xakpc-dev-labs/canary): deterministic
+# arguments, assertions on the result, and no tool without readOnlyHint.
+#
+# Findings go to one tracking issue ("MCP tool canary: production tool
+# failures") that is updated on repeat failures and closed on recovery; the run
+# itself also fails, so the schedule owner gets GitHub's failure email.
+#
+# Cadence: four times a day. A full pass is ~100 tools.
+# Calls are paced at <= 40/min to stay under the per-credential MCP limit.
+#
+# Credential: MCP_CANARY_KEY, a user-bound wm_ key owned by the dedicated
+# mcp-canary@worldmonitor.app account (comped api_business so the plan-gated
+# prepare_travel_risk_assessment tool runs, #10451; limits are at least the old
+# api_starter 1000 requests/day, 60/min). It exercises the customer path: Convex
+# key validation, entitlement and the daily allowance. One pass spends ~160 allowance units, so four runs
+# leave ~350/day of headroom for retries. The report records the credential
+# kind (user or operator) that ran.
+
+on:
+  schedule:
+    - cron: '41 1,7,13,19 * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/mcp-tool-canary.mjs'
+      - '.github/workflows/mcp-tool-canary.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: mcp-tool-canary
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  canary:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
+    runs-on: ubuntu-latest
+    # Nominal runs finish in about three minutes. In a full outage the script
+    # stops starting calls after its 20-minute run budget, reports the tools it
+    # did not reach as findings, and still writes the report and updates the
+    # issue (worst case ~24 min including npm ci), inside this limit.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      # ajv validates each answer against the tool's advertised outputSchema.
+      - run: npm ci --ignore-scripts
+
+      - name: Call every read-only production MCP tool
+        env:
+          MCP_CANARY_KEY: ${{ secrets.MCP_CANARY_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/mcp-tool-canary.mjs --report "$RUNNER_TEMP/mcp-tool-canary-report.json" --publish-issue
+
+      - name: Upload canary report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: mcp-tool-canary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mcp-tool-canary-report.json
+          if-no-files-found: warn
+          retention-days: 14

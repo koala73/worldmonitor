@@ -42,6 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
 
       - name: Require matching release target
@@ -125,6 +126,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
 
       - name: Start job timer
@@ -137,14 +139,14 @@ jobs:
           node-version: '24'
           cache: 'npm'
 
-      - name: Install Rust stable
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7
         with:
-          toolchain: stable
+          toolchain: 1.99.1
           targets: ${{ contains(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || (matrix.label == 'Linux-ARM64' && 'aarch64-unknown-linux-gnu' || '') }}
 
       - name: Rust cache
-        uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           workspaces: './src-tauri -> target'
           cache-on-failure: true
@@ -219,7 +221,6 @@ jobs:
       - name: Bundle Node.js runtime
         shell: bash
         env:
-          NODE_VERSION: '22.14.0'
           NODE_TARGET: ${{ matrix.node_target }}
         run: bash scripts/download-node.sh --target "$NODE_TARGET"
 
@@ -292,6 +293,27 @@ jobs:
             echo "::warning::No Developer ID certificate found in keychain — building unsigned"
             echo "SKIP_SIGNING=true" >> $GITHUB_ENV
           fi
+
+      # The bundler downloads its AppImage tools from GitHub with no retry, so
+      # one 504 fails the leg (Desktop Canary run 42567226797). Restore them
+      # from cache and fetch any missing one with retries before building; the
+      # bundler skips tools that already exist. The key rotates monthly so the
+      # tools served from moving `master`/`continuous` URLs are refreshed.
+      - name: AppImage tool cache month
+        id: appimage-tools-month
+        if: contains(matrix.platform, 'ubuntu')
+        run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Tauri AppImage tools
+        if: contains(matrix.platform, 'ubuntu')
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/tauri
+          key: tauri-appimage-tools-${{ matrix.label == 'Linux-ARM64' && 'aarch64' || 'x86_64' }}-${{ steps.appimage-tools-month.outputs.month }}-${{ hashFiles('scripts/prefetch-appimage-tools.sh') }}
+
+      - name: Prefetch Tauri AppImage tools
+        if: contains(matrix.platform, 'ubuntu')
+        run: bash scripts/prefetch-appimage-tools.sh ${{ matrix.label == 'Linux-ARM64' && 'aarch64' || 'x86_64' }}
 
       # ── Build with tauri-action ──
       # Signed builds: only when Apple signing secrets are valid and imported
@@ -496,6 +518,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
           fetch-depth: 0
 
@@ -608,3 +631,18 @@ jobs:
           set -euo pipefail
           gh workflow run docker-publish.yml --ref "$TAG"
           echo "Dispatched docker-publish.yml on $TAG"
+
+      - name: Publish the self-hosted Docker images
+        # Same GITHUB_TOKEN rule as above, for the images docker-compose.yml
+        # pulls (worldmonitor-selfhosted, -ais-relay, -redis-rest).
+        # !cancelled() so a failed docker-publish.yml dispatch above does not
+        # skip this one through the implicit success() check.
+        if: ${{ !cancelled() && steps.publish.outputs.published == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.publish.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run docker-publish-self-hosted.yml --ref "$TAG"
+          echo "Dispatched docker-publish-self-hosted.yml on $TAG"

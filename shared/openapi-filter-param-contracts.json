@@ -124,12 +124,9 @@
       "name": "MERVAL"
     },
     "RU": {
-      "symbol": "IMOEX.ME",
-      "name": "MOEX",
-      "unavailable": {
-        "checked": "2026-09-13",
-        "reason": "Yahoo Finance stopped serving MOEX data after 2022; the chart returns no daily closes"
-      }
+      "symbol": "IMOEX",
+      "name": "MOEX Russia Index",
+      "source": "moex-iss"
     },
     "ZA": {
       "symbol": "^J203.JO",

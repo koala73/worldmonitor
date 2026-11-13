@@ -91,6 +91,14 @@ export function runGit(args, options = {}) {
 // turns one unresponsive API call into a cancelled monitor.
 export const RAILWAY_CALL_TIMEOUT_MS = 60_000;
 
+// `railway service list` returns the whole project (~90 services, ~78 KB) in
+// one call, and Railway's latency on it swings far more than on a per-service
+// read: on 2026-10-22 the same call took 2 s to 72 s, and three Deploy Drift
+// runs died at the per-call ceiling above with valid credentials. Every slow
+// call completed, so a longer bound fixes it where a retry would not. Callers
+// with a run deadline still cap this by their remaining budget.
+export const RAILWAY_INVENTORY_TIMEOUT_MS = 3 * 60_000;
+
 // One `railway deployment list` per service, run serially, took over ten
 // minutes against the 77-service production fleet — longer than the interval
 // these checks run on. The calls are independent read-only round trips, so they
@@ -148,7 +156,11 @@ export function isRepositoryService(service) {
 /** Every service in the environment, unfiltered. */
 export function readServices(
   environment,
-  { projectId = process.env.RAILWAY_PROJECT_ID } = {},
+  {
+    projectId = process.env.RAILWAY_PROJECT_ID,
+    timeoutMs = RAILWAY_INVENTORY_TIMEOUT_MS,
+    spawnImpl,
+  } = {},
 ) {
   const services = JSON.parse(runRailway([
     'service',
@@ -157,7 +169,7 @@ export function readServices(
     '--environment',
     environment,
     '--json',
-  ]));
+  ], { timeout: timeoutMs }, spawnImpl));
   if (!Array.isArray(services)) throw new Error('railway service list must return an array');
   return services;
 }

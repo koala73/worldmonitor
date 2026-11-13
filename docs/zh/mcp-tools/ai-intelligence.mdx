@@ -1,0 +1,179 @@
+---
+title: "MCP 工具：AI 情报"
+sidebarTitle: "AI 情报"
+description: "World Monitor MCP 工具参考：世界简报、态势分析与预测。逐一列出每个工具的输入参数与类型、数据新鲜度窗口、对应的后端 REST API 端点，以及可直接复制使用的示例调用负载，帮助开发者构建情报智能体、工作流自动化与自定义 MCP 客户端集成。"
+---
+
+本页属于 [MCP 工具参考](/zh/mcp-tools-reference)，该索引列出全部工具。连接、认证、套餐与错误见 [MCP Server 概览](/zh/mcp-overview)。
+
+`curl` 示例假设已执行 `export WM_KEY="wm_…"`；使用 OAuth 时，请将 `-H "X-WorldMonitor-Key: $WM_KEY"` 替换为 `-H "Authorization: Bearer $TOKEN"`。
+
+### `get_world_brief`
+
+来自仪表板使用的预计算 `news:insights:v1` 快照的有引用依据的世界情报简报。洞察种子程序在发布前应用交叉印证、引用和幻觉检查；该工具读取已接受的结果，不会在请求时调用 LLM。可选的 `geo_context` 字段为兼容客户端保留，不会改变种子快照。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `geo_context` | string | 否 | 已弃用的兼容字段；预计算的全球快照不会按请求重新生成或聚焦。 |
+| `refresh` | boolean | 否 | Paid MCP panel only. Explicit refresh starts one new request allocation; requires request_id. |
+| `request_id` | string | 否 | UUID for a paid explicit refresh. Retrying the same UUID reuses its allocation. |
+| `panel_request` | string | 否 | Signed paid World Brief receipt for loaded reads. Do not combine with refresh. |
+
+- **API 端点：** `GET /api/infrastructure/v1/get-bootstrap-data?keys=insights` —— 通过已认证网关读取仪表板使用的同一 `news:insights:v1` payload。
+- **类型：** 缓存支撑的 RPC。付费打开消耗一个世界简报面板额度；有效期内的健康重复读取和 JMESPath 视图复用已接受的原始快照。有效且不足三小时的最近可用内容仍可返回，并显示过期提示，但过期内容允许重试，不会作为新鲜快照缓存。缺失、损坏或超过期限的内容不可用。不在请求时调用 LLM。API 保持普通逐工具计费，免费账户保持订阅拒绝行为。
+- **来源：** 按生产者顺序返回种子 payload 发布的有界 `worldBriefSources` 数组。URL 从显式来源记录复制，而不是在 MCP 执行时生成；保留空 URL 回退项，避免引用编号错位。
+- **交叉印证：** `headlines` 中的每一项在 `topStories` 中都有一个按下标对齐的条目（`topStories[i]` 描述 `headlines[i]`），包含 `sourceCount`、`uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`，以及 `sources` 中参与报道的媒体名称（上限 12 个）。这些全部由洞察种子程序发布，因此不在请求时计算。注意这里每个故事的 `sources` 是媒体名称列表，与该工具顶层的 `sources`（承载引用记录）不同。`memberTitles` 在此处刻意不返回 —— 它可在输出预算更大的 `get_news_intelligence` 上获取。
+- **来源溯源：** 每个 `topStories[i]` 还带有 `sourceProvenance`，与其 `sources` 按下标对齐（`sourceProvenance[j]` 描述 `sources[j]`）。每一项给出该媒体声明的 `tier`（1–4，未登记时为 `null`）、`risk`、`type`，以及它们是否已声明和已审核（`riskDeclared`、`typeDeclared`、`riskReviewed`、`typeReviewed`）；登记了关联方时给出 `stateAffiliated`，另有 `knownBiases`（人工整理的立场标签；空数组表示尚未记录标签，并不代表该媒体中立）和可选的 `note`。这与 `get_news_clusters` 返回的逐媒体记录相同，只是没有 `summary`；它能显示同一故事同时引用一级通讯社和高风险或国家关联媒体的情况，而仅看 `sourceTier` 看不出这一点。没有媒体列表的故事不带溯源。若响应会超出输出预算，先删除所有 `note`，仍不够时才删除所有 `sourceProvenance` 列表；此时 `transportCoverage` 会标明被裁剪的字段，`omission_reason` 为 `"output_budget"`。媒体名称和 `sourceTier` 始终返回。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_world_brief","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `analyze_situation`
+
+AI 地缘政治局势分析（DeductionPanel）。提供查询和可选的地缘政治上下文；返回带置信度和支持信号的 LLM 驱动的分析推演。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `query` | string | **是** | 要分析的问题或局势，例如 "What are the implications of the Taiwan strait escalation for semiconductor supply chains?" |
+| `context` | string | 否 | 可选的额外地缘政治上下文，纳入分析 |
+| `framework` | string | 否 | 可选的分析框架指令，用于塑造分析视角（例如 Ray Dalio 债务周期、PMESII-PT、Porter's Five Forces） |
+
+- **API 端点：** `POST /api/intelligence/v1/deduct-situation`
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**25.0s**。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"analyze_situation","arguments":{"query":"What are the implications of the Taiwan strait escalation for semiconductor supply chains?"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_forecast_predictions`
+
+来自 WorldMonitor 预测模型的 AI 生成地缘政治和经济预测。涵盖即将到来的风险事件和概率评估。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `domain` | string | 筛选为一个预测领域（精确、不区分大小写 — 例如 "shipping"、"energy"、"macro"）。 |
+| `region` | string | 筛选为一个地区/战区（不区分大小写的子串）。 |
+| `limit` | number | 付费面板接受 1–30 的整数。普通 API 调用保留现有的上限规则。 |
+| `include_history` | boolean | 附加最近 30 天的概率轨迹，每项最多 120 个点，列表最多 10 项。交互面板不返回轨迹。 |
+| `refresh` | boolean | 付费面板打开请求：设为 `true` 时启动新的准入，需要新的 `request_id`。 |
+| `request_id` | string | 可选 UUID，用于复用显式的付费面板打开请求。 |
+| `panel_request` | string | 签名的预测准入凭证，用于有界的已加载列表重放。 |
+
+每项还包含 `firstSeenAt`（ISO 时间）、`firstSeenProbability`、`change24h` 和 `change7d`（概率绝对变化）。轨迹缺失或不足时返回 null。地区变化会开始新片段；首次写入只回填仍保留的历史，因此 firstSeenAt 可能晚于最初发布时间。历史点为 `[isoTime, probability]`，采样可能有空档。
+
+- **API 端点：** `GET /api/forecast/v1/get-forecasts`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **1.5 小时**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_forecast_predictions","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_forecast_case`
+
+读取指定 ID 和列表 generation 对应的原始预测案例，保留案例内容。专用 MCP 套餐需要有效的付费预测面板准入：现有的 64 次读取额度包含此读取，不会额外扣减每日面板配额。API 套餐无法持有面板，无需 `panel_request` 即可读取，按工具的常规单次权重计费。generation 已更改时返回 `generation_changed` 且不含案例。缺少数据源、ID 不存在、generation 已更改或单个案例超出大小限制时，都会明确报告。数据源恢复后可重试失败的案例；成功的案例会被复用。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `forecast_id` | string | 已加载列表中的精确原始预测 ID。 |
+| `generated_at` | string | 已加载列表中的精确 `String(generatedAt)` 值。 |
+| `panel_request` | string | 签名的预测面板凭证。专用 MCP 套餐必填；API 套餐不接受。 |
+
+- **API 端点：** `GET /api/forecast/v1/get-forecasts`
+- **访问权限：** `subscription`。专用 MCP 套餐需要通过所有者、范围、有效期和权益检查的有效付费预测面板准入；API 套餐按次计费。
+- **类型：** 读取固定规范预测数据集的缓存；不会访问任意缓存键，也不会运行模型生成。
+- **输出上限：** 单个完整原始案例为 128 KB；不会静默截断案例内容。
+- **新鲜度预算：** 1.5 小时；原始案例的数据源通知与打开面板时的快照分开处理。
+
+### `get_forecast_theaters`
+
+读取最新原始模拟战区摘要。专用 MCP 套餐需要有效的付费预测准入；API 套餐无需 `panel_request`，按工具的常规单次权重计费。保留原始路径、参与者及可选角色、反应、稳定因素、失效条件、独立来源运行 ID 和时间以及完成计数。来源时间不能证明新鲜度；部分和未知覆盖不会被视为完整覆盖或空结果。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `panel_request` | string | `get_forecast_predictions` 返回的签名预测凭证。专用 MCP 套餐必填；API 套餐不接受。不接受其他参数。 |
+
+- **API 端点：** `GET /api/forecast/v1/get-simulation-outcome`，只读取最新摘要。
+- **访问权限：** `subscription`，检查所有者、范围、有效期和权益。
+- **配额：** 专用 MCP 套餐共享打开面板时的每日分配和 64 次未缓存读取上限；API 套餐每次调用按工具权重计费。完整且通过验证的快照及明确无符合条件的空快照可以复用；部分、失败、缺失、处理中及未知结果可以手动重试。
+- **输出上限：** 原始证据为 128 KB。无效或过大的来源报告不可用，不会静默截断，不支持任意运行选择、模拟触发或私有产物读取。
+
+### `get_forecast_scorecard`
+
+预测结算记分卡，含校准、Brier/对数分数、领域和生成来源细分，以及待判/已判结算计数。
+
+**参数（工具专用）：**
+
+| 名称 | 类型 | 说明 |
+|------|------|------|
+| `view` | string | `summary`（默认，输出不变）或 `archive`（180 天内已结算的公开预测）。 |
+| `domain` | string | 精确筛选归档领域。 |
+| `outcome` | string | 筛选 YES、NO 或 VOID。 |
+| `forecast_id` | string | 精确的预测族 ID，附加结算时保存的轨迹，最多 30 个点。 |
+| `before` | number or string | 排除该 resolvedAt 时间戳（毫秒）及之后的记录，或传入上一页的 `nextBefore`。续页时保留相同筛选条件。 |
+| `limit` | integer | 归档每页最多 1–50 项，默认 25；响应预算可能缩短页面。 |
+
+归档返回当前评分卡的 `underAudit`、归档 seed-meta 的 `archive.stale`（36 小时预算）以及 `nextBefore`（末页为 null）。摘要形状保持不变。仅指定 `forecast_id` 时返回轨迹，不会借用其他地区的轨迹。归档使用公开凭证字段白名单，不含原始账本、评审理由、新闻归档内容或内部指标路径。历史结算可能大多为 VOID；归档本身不能证明预测能力。
+
+- **API 端点：** `GET /api/forecast/v1/get-forecast-scorecard`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **36 小时**（每日结算器节奏，含漏跑 cron 容差）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_forecast_scorecard","arguments":{}}
+  }'
+```
+
+</CodeGroup>

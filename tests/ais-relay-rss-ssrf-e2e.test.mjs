@@ -1,7 +1,8 @@
 // Drives the real relay process: an allowlisted feed host whose DNS flips to a
 // private address after a good body was cached, concurrent followers, the
-// negative cache, a mixed public/private answer set, the body cap, and every
-// redirect hop shape. The relay is spawned with a transport shim
+// negative cache, a mixed public/private answer set, the body cap, every
+// redirect hop shape, and the request headers an edge requires before it
+// answers. The relay is spawned with a transport shim
 // (tests/_lib/ais-relay-rss-ssrf-preload.cjs) so no real DNS or network is used.
 
 import assert from 'node:assert/strict';
@@ -13,6 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import zlib from 'node:zlib';
 
 const relayScript = fileURLToPath(new URL('../scripts/ais-relay.cjs', import.meta.url));
 const preload = fileURLToPath(new URL('./_lib/ais-relay-rss-ssrf-preload.cjs', import.meta.url));
@@ -185,4 +187,35 @@ test('relay /rss: redirect hops are gated and a malformed Location cannot exit t
   assert.equal(child.exitCode, null, 'a malformed Location must not exit the relay');
   assert.equal(health.status, 200);
   assert.ok(!/Invalid URL|uncaught/i.test(log.text));
+});
+
+// Smartraveller's Akamai edge completes TLS and then never answers a request
+// that carries no Accept-Encoding header (measured 2026-10-23: 100 s with no
+// response; any Accept-Encoding value answers in under a second). The relay's
+// Railway logs showed `read ETIMEDOUT` about 11 s after every Smartraveller
+// miss, and the advisory seed stored no Australian item from at least
+// 2026-09-23. This upstream reproduces that edge.
+test('relay /rss: an edge that stalls without Accept-Encoding gets one and the gzip body is decoded', async (t) => {
+  const ctl = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rss-ssrf-')), 'mode');
+  fs.writeFileSync(ctl, 'reroute');
+  const fixture = fs.readFileSync(new URL('./fixtures/smartraveller-advisories-2026-10-23.rss', import.meta.url));
+  const seen = [];
+  const stalled = new Set();
+  const upstream = http.createServer((req, res) => {
+    seen.push(req.headers['accept-encoding']);
+    if (!req.headers['accept-encoding']) { stalled.add(res); return; }
+    res.writeHead(200, { 'Content-Type': 'application/rss+xml', 'Content-Encoding': 'gzip', Connection: 'close' });
+    res.end(zlib.gzipSync(fixture));
+  });
+  const upstreamPort = await listen(upstream);
+  t.after(() => new Promise((resolve) => {
+    for (const res of stalled) res.destroy();
+    upstream.close(resolve);
+  }));
+  const { port } = await startRelay(t, upstreamPort, ctl);
+
+  const res = await get(port, feed('/countries/documents/index.rss'));
+  assert.match(String(seen[0]), /\bgzip\b/, 'the relay must send Accept-Encoding upstream');
+  assert.equal(res.status, 200);
+  assert.equal(res.body, fixture.toString('utf8'), 'the relay serves the decoded feed');
 });

@@ -147,6 +147,7 @@ async function queryWikidata(sparql: string): Promise<WikidataBinding[]> {
   const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
 
   for (let attempt = 0; attempt < WIKIDATA_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) await new Promise(resolve => setTimeout(resolve, Math.min(1_000, 250 * 2 ** (attempt - 1)) * (0.5 + Math.random() * 0.5)));
     let response: Response;
     try {
       response = await fetch(url, {
@@ -159,7 +160,10 @@ async function queryWikidata(sparql: string): Promise<WikidataBinding[]> {
     }
     if (!response.ok) {
       const retryable = response.status === 429 || response.status >= 500;
-      if (retryable && attempt < WIKIDATA_ATTEMPTS - 1) continue;
+      if (retryable && attempt < WIKIDATA_ATTEMPTS - 1) {
+        await response.body?.cancel().catch(() => {});
+        continue;
+      }
       throw new Error(`Wikidata request failed with status ${response.status}`);
     }
 

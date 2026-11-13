@@ -3,10 +3,31 @@
   "schema_version": 1,
   "exceptions": [
     {
+      "path": "api/mcp/registry/media-perspective-tool.ts",
+      "category": "external-protocol",
+      "reason": "MCP media-perspective tool definition. It forwards to the generated news RPC with the verified caller's credential and exports no HTTP route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/travel-risk-tool.ts",
+      "category": "external-protocol",
+      "reason": "MCP travel-risk-assessment tool definition. It reads cached seed keys server-side for a plan-gated caller and exports no HTTP route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/country-history-tool.ts",
       "category": "external-protocol",
       "reason": "MCP country-history tool definition. It forwards to the generated intelligence RPC with the verified caller's credential and exports no HTTP route.",
       "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/open-data-chokepoints.js",
+      "category": "non-json",
+      "reason": "Serves the CC BY 4.0 chokepoint status open dataset at /data/v1/chokepoints/ as byte-exact dated JSON and CSV files from the Redis archive the daily open-data workflow publishes. The file contract is a published static-file layout, not an RPC envelope.",
+      "owner": "@koala73",
       "removal_issue": null
     },
     {
@@ -136,6 +157,20 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/spoken.ts",
+      "category": "internal-helper",
+      "reason": "response_mode \"spoken\" mechanism for MCP tools (#9722): the response_mode input schema, the sentence-and-citations envelope builder and the speech helpers narrators share. Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/spoken-narrators.ts",
+      "category": "internal-helper",
+      "reason": "Per-tool spoken narrators (#9722): deterministic sentence templates over each analytical tool's documented payload, declared as _spoken on the registry entries. Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/source-unavailable.ts",
       "category": "internal-helper",
       "reason": "Typed analysis-source outage propagation for MCP composite tools: preserves bounded cache-key diagnostics in JSON-RPC error.data without exposing source payloads. Pure helper module for the external-protocol MCP handler family above — exports no route.",
@@ -241,6 +276,20 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/registry/webcam-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP webcam tool definitions and fixed WebcamService dispatch. Exports no standalone JSON data route.",
+      "owner": "@FayezBast",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/feedback-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP report_issue tool definition. It adapts the shared agent feedback write path (server/_shared/agent-feedback.ts) to MCP and exports no standalone JSON data route; the REST twin is the FeedbackService sebuf RPC.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/index.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY merge + buildPublicTool + SUMMARY_SCHEMA + TOOL_LIST_RESPONSE precompute + collision guard. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
@@ -279,6 +328,13 @@
       "path": "api/mcp/checkout.ts",
       "category": "external-protocol",
       "reason": "MCP start_upgrade tool (#9144): plan mapping and the server-side relay to the existing Convex create-checkout action, with its JSON-RPC refusal mapping. Part of the streamable-HTTP MCP surface — not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/host-policy.ts",
+      "category": "external-protocol",
+      "reason": "Per-host commerce policy for the MCP surface: ChatGPT requests get no start_upgrade tool and inform-only denial copy, per ChatGPT's app submission guidelines. Part of the streamable-HTTP MCP surface — not a JSON data API.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -335,6 +391,20 @@
       "path": "api/mcp/rpc.ts",
       "category": "external-protocol",
       "reason": "MCP JSON-RPC 2.0 envelope helpers (rpcOk + rpcError). Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/request-id.ts",
+      "category": "external-protocol",
+      "reason": "Stamps error.data.requestId on MCP JSON-RPC error envelopes at the handler's single exit (#8721 phase 5). Pure helper for the external-protocol MCP handler family; exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/modern.ts",
+      "category": "external-protocol",
+      "reason": "MCP 2026-07-28 (modern era) envelope detection and per-request _meta/header validation for the /mcp handler. Part of the same external-protocol transport, not a JSON data API.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -570,6 +640,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/travel-risk-assessment.ts",
+      "category": "non-json",
+      "reason": "Serves the plan-gated travel risk assessment draft as a downloadable file: text/markdown or text/html with Content-Disposition: attachment. The body is a document, not an RPC envelope. Errors are small JSON bodies; success is never JSON.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/download.js",
       "category": "non-json",
       "reason": "Binary file download (zip/csv/xlsx). Content-Type is not application/json.",
@@ -745,13 +822,6 @@
       "removal_issue": null
     },
     {
-      "path": "api/fwdstart.js",
-      "category": "non-json",
-      "reason": "Scrapes the fwdstart.me newsletter archive for the dashboard feed panel and serves an RSS/XML response with HTTP Content-Type application/xml, not JSON.",
-      "owner": "@SebastienMelki",
-      "removal_issue": null
-    },
-    {
       "path": "api/notify.ts",
       "category": "internal-helper",
       "reason": "Authenticated PRO event-publish endpoint that validates Clerk bearer auth, rejects relay-internal control events, and enqueues accepted events outside sebuf because it is queue plumbing rather than a typed domain RPC.",
@@ -829,6 +899,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/desktop-key/status.ts",
+      "category": "internal-helper",
+      "reason": "Desktop-key verdict for self-hosted installs (plan 2026-11-04-001 U2). A self-hosted sidecar sends a browser's desktop key in X-WorldMonitor-Key and gets back whether it currently grants desktop scope (active, invalid, not_desktop_key, over_cap, lapsed) or a retryable 503. Not a product data API and not premium-gated: the key being checked may be lapsed or revoked, and it must not spend the owner's desktop-key daily meter the way probing a premium RPC would. Body carries only the verdict and a coarse plan family, no owner identity; always no-store.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/embed/map-frame.ts",
       "category": "internal-helper",
       "reason": "The single composed read the partner /embed map frame polls, replacing four separate anonymous RPC calls. Not a product data API: it accepts one parameter (`layers`) and returns the verbatim payloads of handlers already published as sebuf RPCs — no bbox, page size, or time window, because every knob is a knob a stolen embed credential could turn. Deliberately NOT a sebuf RPC of its own: the free and keyed tiers need different Cache-Control on one path, and CACHE_TIER_BY_PATH in the domain gateway is per-path, so routing it there would let a keyless response be cached and served to a keyed caller. Shareability is decided from the URL alone, before any credential is read (a CDN hit answers before the origin sees a header — #5386): only the exact raw query `layers=<canonical free subset>&public=1` is shared-cacheable, bounding the CDN key space to the free tier's seven non-empty subsets. Every other shape, credentialed or not, is served `private, no-store`, so a near-miss degrades to correct-but-uncached rather than to a shared entry that could answer the wrong caller. Builder and validator are one module (shared/embed-map-frame.ts) so an emitted URL and a cacheable URL cannot drift.",
@@ -854,6 +931,20 @@
       "category": "internal-helper",
       "reason": "Settings-UI revoke action for Pro MCP tokens (plan 2026-05-10-001 U9). Clerk-authenticated; forwards the verified-from-JWT userId to Convex /api/internal-revoke-pro-mcp-token (in-mutation tenancy gate validates `row.userId === userId`), then writes the `pro-mcp-token-neg:<tokenId>` sentinel so any in-flight bearer is invalidated within the 60s neg-cache window. Calls the internal HTTP route rather than the public mutation to (a) avoid ConvexHttpClient's no-default-timeout foot-gun (memory `convex-httpclient-no-default-timeout-bypasses-typed-503`) and (b) atomically pair with the cache-invalidation step. Plain `{tokenId}` request / `{ok:true}` response — modeling as a sebuf RPC would over-engineer a single-button settings action.",
       "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/user-api-keys.ts",
+      "category": "internal-helper",
+      "reason": "First-party API and desktop key issuance. Requires a locally verified Clerk session, a fail-closed per-user limiter, and a live session check before the gateway-only Convex relay can create a key.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
+      "path": "api/user-embed-keys.ts",
+      "category": "internal-helper",
+      "reason": "First-party embed key issuance. Requires a locally verified Clerk session, a fail-closed per-user limiter, a live session check, and a server-side Clerk role lookup before the gateway-only Convex relay can create a key.",
+      "owner": "@koala73",
       "removal_issue": null
     },
     {
@@ -930,6 +1021,13 @@
       "path": "api/customer-portal.ts",
       "category": "deferred",
       "reason": "Issues a Dodo customer-portal redirect URL. Paired with create-checkout.ts; migrate together.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/pro-business-upgrade.ts",
+      "category": "deferred",
+      "reason": "Previews or applies the in-place Pro to Pro Business Dodo plan change for /pro. Paired with create-checkout.ts and customer-portal.ts; migrate together.",
       "owner": "@SebastienMelki",
       "removal_issue": "TBD"
     },

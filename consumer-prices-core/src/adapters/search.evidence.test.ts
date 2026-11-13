@@ -71,6 +71,28 @@ const goodExtract = {
 };
 
 describe('price-evidence gate', () => {
+  it.each([null, 4.6])('reports a blocked source before interpreting price %s and does not open provider cooldown', async (price) => {
+    const exa = { search: vi.fn().mockResolvedValue([{ url: PRODUCT_URL }]) } as unknown as ExaProvider;
+    const firecrawl = {
+      extract: vi.fn().mockResolvedValue({
+        sourceStatusCode: 403,
+        data: { ...goodExtract, price },
+        pageContent: '# 403 Forbidden\n4.60',
+      }),
+    } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+    const context = makeContext(makeConfig());
+
+    for (let i = 0; i < 3; i++) {
+      const error = await adapter.fetchTarget(context, makeTarget()).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(SearchTargetError);
+      expect((error as SearchTargetError).failures).toEqual([
+        { provider: 'firecrawl', reason: 'source-http-error', detail: 'HTTP 403' },
+      ]);
+    }
+    expect(firecrawl.extract).toHaveBeenCalledTimes(3);
+  });
+
   it('rejects a price whose digits are absent from the rendered page', async () => {
     const exa = {
       search: vi.fn().mockResolvedValue([{ url: PRODUCT_URL }]),
@@ -178,7 +200,7 @@ describe('price-evidence gate', () => {
     expect((err as SearchTargetError).rejectedCount).toBe(0);
   });
 
-  it('escalates to the Exa fallback when Firecrawl fails the evidence check', async () => {
+  it.each([undefined, 403])('uses the configured fallback after a source failure or missing price evidence (status %s)', async (sourceStatusCode) => {
     const exa = {
       search: vi.fn().mockResolvedValue([{ url: PRODUCT_URL }]),
       extract: vi.fn().mockResolvedValue({
@@ -189,7 +211,8 @@ describe('price-evidence gate', () => {
     const firecrawl = {
       extract: vi.fn().mockResolvedValue({
         data: goodExtract,
-        pageContent: 'unrelated shell content',
+        sourceStatusCode,
+        pageContent: sourceStatusCode ? '# 403 Forbidden\n4.60' : 'unrelated shell content',
       }),
     } as unknown as FirecrawlProvider;
 
@@ -394,5 +417,68 @@ describe('renderWaitMs plumbing', () => {
     await adapter.fetchTarget(context, makeTarget());
 
     expect((firecrawl.extract as ReturnType<typeof vi.fn>).mock.calls[0]?.[2]).toMatchObject({ waitFor: 8000 });
+  });
+});
+
+// Live 2026-10-29: Naivas category pages (`/dairy/fresh-milk`) and a Coop
+// cervelas page carrying an egg carousel both passed every gate above, because
+// the price was on the page and the carousel product fit the basket item.
+// Product identity is (retailer, source URL), so a category page would later
+// price whichever product it lists first under the same identity.
+describe('page identity gate', () => {
+  async function extractWith(pageTitle: string | undefined, overrides: Partial<RetailerConfig['searchConfig']> = {}) {
+    const exa = { search: vi.fn().mockResolvedValue([{ url: PRODUCT_URL }]) } as unknown as ExaProvider;
+    const firecrawl = {
+      extract: vi.fn().mockResolvedValue({
+        data: goodExtract,
+        pageContent: 'Meadows White Sandwich Bread 400g\n\n$4.60',
+        ...(pageTitle ? { pageTitle } : {}),
+      }),
+    } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+    const context = makeContext(makeConfig({ requirePageTitleMatch: true, ...overrides }));
+    return adapter.fetchTarget(context, makeTarget()).then(
+      async (result) => ({ products: await adapter.parseListing(context, result), err: null }),
+      (err: unknown) => ({ products: [], err: err as SearchTargetError }),
+    );
+  }
+
+  it('accepts the product the page declares itself to be', async () => {
+    const { products } = await extractWith('Meadows White Sandwich Bread 400g');
+    expect(products[0]?.price).toBe(4.6);
+  });
+
+  it('rejects a carousel product priced on another product page', async () => {
+    const { err } = await extractWith('Cervelas Sausages 75% Less Fat');
+    expect(err).toBeInstanceOf(SearchTargetError);
+    expect(err?.failures).toContainEqual({
+      provider: 'firecrawl',
+      reason: 'title-mismatch',
+      detail: 'page: Cervelas Sausages 75% Less Fat',
+    });
+  });
+
+  it('rejects a page that declares no product, such as a category listing', async () => {
+    const { err } = await extractWith(undefined);
+    expect(err?.failures).toContainEqual({ provider: 'firecrawl', reason: 'title-mismatch', detail: 'page: none' });
+  });
+
+  it('rejects a carousel variant of the same product in another size', async () => {
+    const { err } = await extractWith('Meadows White Sandwich Bread 600g');
+    expect(err?.failures).toContainEqual({
+      provider: 'firecrawl',
+      reason: 'title-mismatch',
+      detail: 'page: Meadows White Sandwich Bread 600g',
+    });
+  });
+
+  it('accepts when only one side states a size', async () => {
+    const { products } = await extractWith('Meadows White Sandwich Bread');
+    expect(products[0]?.price).toBe(4.6);
+  });
+
+  it('leaves retailers that do not opt in unchanged', async () => {
+    const { products } = await extractWith(undefined, { requirePageTitleMatch: false });
+    expect(products[0]?.price).toBe(4.6);
   });
 });

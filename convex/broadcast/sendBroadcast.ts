@@ -90,6 +90,8 @@ export const createProLaunchBroadcast = internalAction({
         : `PRO Launch — ${new Date().toISOString().slice(0, 10)}`;
 
     const res = await fetch(`${RESEND_API_BASE}/broadcasts`, {
+
+      signal: AbortSignal.timeout(10_000),
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -159,6 +161,7 @@ export const sendProLaunchBroadcast = internalAction({
     const res = await fetch(
       `${RESEND_API_BASE}/broadcasts/${encodeURIComponent(broadcastId)}/send`,
       {
+        signal: AbortSignal.timeout(10_000),
         method: "POST",
         headers: {
           "Content-Type": "application/json",

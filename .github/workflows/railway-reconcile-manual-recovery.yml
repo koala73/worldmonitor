@@ -78,7 +78,7 @@ jobs:
           node-version: '24'
       - name: Install pinned Railway Viewer CLI
         if: inputs.decision != 'resolve_pre_mutation_hold'
-        run: npm install --global @railway/cli@5.30.1
+        run: node scripts/install-railway-cli.mjs
       - name: Prove exact green main, inactive old work, and read-only Railway state
         id: proof
         env:
@@ -133,7 +133,7 @@ jobs:
           node-version: '24'
       - name: Install pinned Railway Viewer CLI
         if: inputs.decision != 'resolve_pre_mutation_hold'
-        run: npm install --global @railway/cli@5.30.1
+        run: node scripts/install-railway-cli.mjs
       - name: Record immutable operator resolution
         id: resolve
         env:

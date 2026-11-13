@@ -34,6 +34,7 @@ function createHarness() {
   const cancelable = () => Object.assign(() => {}, { cancel() {} });
   let zoom = 5;
   Object.assign(instance, {
+    controlDisclosureCleanups: [],
     aircraftFetchSeq: 0,
     aircraftFetchTimer: null,
     aircraftPositions: [],
@@ -61,6 +62,7 @@ function createHarness() {
     debouncedFetchAircraft: cancelable(),
     rafUpdateLayers: cancelable(),
     heavyGate: cancelable(),
+    deckFrameProvider: { wake() {}, dispose() {} },
   });
   for (const name of ['settleViewportMovement', 'stopTradeAnimation', 'stopPulseAnimation',
     'stopDayNightTimer', 'stopWeatherRadar', 'stopLiveTankersLoop', 'detachMapLibreInteractionHandlers']) {

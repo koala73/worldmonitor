@@ -9,7 +9,8 @@
 import {
   chokepointCoverageMetrics,
   chokepointEvidenceNarrative,
-  withheldTransitCountSentence,
+  chokepointOfficialMetrics,
+  portwatchLagNote,
 } from './crawlable-live-tools.mjs';
 
 export const CHOKEPOINT_LIVE_START = '<!--wm-live:chokepoint-->';
@@ -116,6 +117,8 @@ export function publishableChokepointDescription(value) {
 
 // chokepointStatusViewModel output → the record the page renders. The weekly
 // freeze stores this record; the middleware builds it from the same view.
+// The official* and baseline* fields are IMF PortWatch figures; records frozen
+// before they existed carry none of them and render with the figures withheld.
 export function chokepointPulseRecord(view) {
   return {
     disruptionScore: view.disruptionScore,
@@ -126,16 +129,25 @@ export function chokepointPulseRecord(view) {
     aisDisruptions: view.aisDisruptions,
     aisSnapshotAvailable: view.aisDisruptions !== null,
     description: publishableChokepointDescription(view.description),
-    todayTransits: view.todayTransits,
-    todayCountsAvailable: view.todayCountsAvailable,
+    officialLatestDate: view.officialLatestDate ?? null,
+    officialLatestTotal: view.officialLatestTotal ?? null,
+    officialAvg7d: view.officialAvg7d ?? null,
+    baselineAvgDaily: view.baselineAvgDaily ?? null,
+    baselineFrom: view.baselineFrom ?? null,
+    baselineTo: view.baselineTo ?? null,
     weekMovement: view.weekMovement,
     partial: view.partial === true,
     asOf: new Date(view.fetchedAt).toISOString(),
   };
 }
 
+function officialMetricCells(official) {
+  return `          <div class="metric"><span>Latest daily transits (IMF PortWatch)</span><strong><span data-chokepoint-official-transits>${escapeHtml(official.latestTransits ?? '—')}</span><small data-chokepoint-official-date>${escapeHtml(official.latestDate ?? '')}</small></strong></div>
+          <div class="metric"><span>7-day average vs year-earlier</span><strong data-chokepoint-official-average>${escapeHtml(official.average ?? '—')}</strong></div>`;
+}
+
 /**
- * @param {{ chokepoint: { id: string, displayName: string, transitMeasurementNote?: string },
+ * @param {{ chokepoint: { id: string, displayName: string },
  *           pulse: object | null, live?: boolean }} input
  *   `live` marks a reading taken at request time; otherwise the pulse is the
  *   frozen weekly capture and is labelled as published.
@@ -143,8 +155,6 @@ export function chokepointPulseRecord(view) {
 export function renderChokepointLiveSection({ chokepoint, pulse, live = false }) {
   const hasPulse = hasObservedValue(pulse?.disruptionScore, { coverage: pulse != null });
   const coverageMetrics = chokepointCoverageMetrics({
-    todayTransits: pulse?.todayTransits,
-    todayCountsAvailable: pulse?.todayCountsAvailable,
     navigationalWarnings: pulse?.navigationalWarnings,
     navigationalWarningsAvailable: pulse?.navigationalWarningsAvailable === true,
     aisDisruptions: pulse?.aisDisruptions,
@@ -152,10 +162,19 @@ export function renderChokepointLiveSection({ chokepoint, pulse, live = false })
     congestionLevel: pulse?.congestion,
     weekMovement: pulse?.weekMovement ?? null,
   });
-  const transitsLabel = coverageMetrics.todayTransits;
-  const transitsWithheld = hasPulse && transitsLabel == null;
+  // A legacy record (pre-PortWatch headline) has no official fields: every
+  // label here is null and the figures are withheld, never zero-filled.
+  const official = chokepointOfficialMetrics({
+    officialLatestDate: pulse?.officialLatestDate,
+    officialLatestTotal: pulse?.officialLatestTotal,
+    officialAvg7d: pulse?.officialAvg7d,
+    baselineAvgDaily: pulse?.baselineAvgDaily,
+    baselineFrom: pulse?.baselineFrom,
+    baselineTo: pulse?.baselineTo,
+  });
+  const officialWithheld = hasPulse && official.latestTransits === null;
   const pulsePartial = pulse?.partial === true
-    || transitsWithheld
+    || officialWithheld
     || coverageMetrics.navigationalWarnings === null
     || coverageMetrics.aisDisruptions === null;
   const liveState = hasPulse ? (pulsePartial ? 'partial' : 'ready') : 'loading';
@@ -166,9 +185,6 @@ export function renderChokepointLiveSection({ chokepoint, pulse, live = false })
   const liveStatus = hasPulse
     ? (pulsePartial ? statusLabels.partial : statusLabels.full)
     : 'Waiting for live enhancement';
-  const transitsNote = transitsWithheld
-    ? `        <p data-chokepoint-transits-note>${escapeHtml(withheldTransitCountSentence(chokepoint.displayName, chokepoint.transitMeasurementNote))}</p>`
-    : '        <p data-chokepoint-transits-note hidden></p>';
   const narrative = hasPulse
     ? chokepointEvidenceNarrative({
       displayName: chokepoint.displayName,
@@ -176,18 +192,26 @@ export function renderChokepointLiveSection({ chokepoint, pulse, live = false })
       bandLabel: pulse.status,
       description: pulse.description,
       asOfText: formatStaticDateTime(pulse.asOf),
+      asOf: pulse.asOf,
       partial: pulsePartial,
       warningsLabel: coverageMetrics.navigationalWarnings,
       congestionLabel: coverageMetrics.congestion,
       aisEventCountLabel: coverageMetrics.aisDisruptions,
-      todayTransits: transitsLabel,
+      officialLatestDate: pulse.officialLatestDate,
+      officialLatestTotal: pulse.officialLatestTotal,
+      officialAvg7d: pulse.officialAvg7d,
+      baselineAvgDaily: pulse.baselineAvgDaily,
+      baselineFrom: pulse.baselineFrom,
+      baselineTo: pulse.baselineTo,
     })
     : null;
   const openStatusHtml = narrative !== null
     ? escapeHtml(narrative.passage)
     : `World Monitor has not published current passage evidence for ${escapeHtml(chokepoint.displayName)} yet.`;
-  const openStatusSection = `        <h2>Is ${escapeHtml(chokepoint.displayName)} open right now?</h2>
-        <p data-chokepoint-open-status>${openStatusHtml}</p>
+  // The answer sits outside the tool, directly under the page's H1, but inside
+  // the marked region so the middleware's per-request render replaces it.
+  const answerParagraph = `      <p class="lede answer" data-chokepoint-open-status>${openStatusHtml}</p>`;
+  const openStatusSection = `        <h2>Is the ${escapeHtml(chokepoint.displayName)} open right now?</h2>
 ${narrative !== null
     ? `        <p data-chokepoint-score-driver>${escapeHtml(narrative.scoreDriver)}</p>`
     : '        <p data-chokepoint-score-driver hidden></p>'}`;
@@ -197,25 +221,27 @@ ${narrative !== null
 ${optionalChokepointMetric('Navigational warnings', 'data-chokepoint-warnings', coverageMetrics.navigationalWarnings, coverageMetrics.navigationalWarnings !== null)}
 ${optionalChokepointMetric('AIS disruptions', 'data-chokepoint-ais-disruptions', coverageMetrics.aisDisruptions, coverageMetrics.aisDisruptions !== null)}
 ${optionalChokepointMetric('AIS congestion', 'data-chokepoint-congestion', coverageMetrics.congestion, coverageMetrics.congestion !== null)}
-          <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits>${escapeHtml(transitsLabel ?? '—')}</strong></div>
-          <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement>${escapeHtml(coverageMetrics.weekMovement ?? (transitsWithheld ? '—' : 'Unavailable'))}</strong></div>
+${officialMetricCells(official)}
+          <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement>${escapeHtml(coverageMetrics.weekMovement ?? (officialWithheld ? '—' : 'Unavailable'))}</strong></div>
         </div>
-${chokepointDescriptionParagraph(pulse.description)}
-${transitsNote}`
+${chokepointDescriptionParagraph(pulse.description)}`
     : `        <p class="tool-note" data-live-fallback>Current disruption metrics load after page enhancement. The static waterway and route context below remains the dated crawlable reference.</p>
         <div class="grid" data-live-grid hidden aria-label="Current chokepoint status" aria-busy="true">
           <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score></span><small data-chokepoint-band></small></strong></div>
 ${optionalChokepointMetric('Navigational warnings', 'data-chokepoint-warnings', '', false)}
 ${optionalChokepointMetric('AIS disruptions', 'data-chokepoint-ais-disruptions', '', false)}
 ${optionalChokepointMetric('AIS congestion', 'data-chokepoint-congestion', '', false)}
-          <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits></strong></div>
+          <div class="metric"><span>Latest daily transits (IMF PortWatch)</span><strong><span data-chokepoint-official-transits></span><small data-chokepoint-official-date></small></strong></div>
+          <div class="metric"><span>7-day average vs year-earlier</span><strong data-chokepoint-official-average></strong></div>
           <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement></strong></div>
         </div>
-        <p data-chokepoint-description hidden></p>
-        <p data-chokepoint-transits-note hidden></p>`;
+        <p data-chokepoint-description hidden></p>`;
+
+  const lagNote = portwatchLagNote(hasPulse ? pulse.officialLatestDate : null, hasPulse ? pulse.asOf : null);
 
   return `${CHOKEPOINT_LIVE_START}
-      <section class="live-tool" data-live-chokepoint data-chokepoint-id="${escapeHtml(chokepoint.id)}" data-chokepoint-name="${escapeHtml(chokepoint.displayName)}" data-transit-measurement-note="${escapeHtml(chokepoint.transitMeasurementNote || '')}" data-state="${liveState}"${hasPulse ? ' data-published-pulse' : ''}${live && hasPulse ? ' data-live-at-request' : ''}>
+${answerParagraph}
+      <section class="live-tool" data-live-chokepoint data-chokepoint-id="${escapeHtml(chokepoint.id)}" data-chokepoint-name="${escapeHtml(chokepoint.displayName)}" data-state="${liveState}"${hasPulse ? ' data-published-pulse' : ''}${live && hasPulse ? ' data-live-at-request' : ''}>
 ${openStatusSection}
         <div class="tool-head">
           <div>
@@ -224,7 +250,7 @@ ${openStatusSection}
           </div>
           <span class="live-status" data-live-status role="status" aria-live="polite">${escapeHtml(liveStatus)}</span>
         </div>
-        <p class="tool-note">Transit counts require observed AIS crossings in the preceding 24 hours. Missing counts do not mean zero traffic.</p>
+        <p class="tool-note">Daily transit counts are official IMF PortWatch figures, <span data-chokepoint-lag-note>${escapeHtml(lagNote)}</span>. A missing count does not mean zero traffic.</p>
 ${liveGrid}
         <div class="tool-meta">
           ${liveUpdatedMarkup({

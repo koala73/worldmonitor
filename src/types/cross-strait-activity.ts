@@ -37,7 +37,7 @@ interface CrossStraitActivityObservationBase {
   originalLanguage: string;
   translation: { state: string; targetLanguage?: string };
   revision: { sequence: number; state: string; vintageId: string };
-  history: unknown[];
+  history?: unknown[];
   provenance: unknown;
 }
 
@@ -133,6 +133,7 @@ export type CrossStraitBlockedReason = typeof CROSS_STRAIT_BLOCKED_SOURCE_REASON
 
 export const CROSS_STRAIT_TRANSPORT_MODES = [
   'japanese_homepage_candidate_discovery',
+  'official_joint_staff_x_review_candidates',
 ] as const;
 
 export type CrossStraitTransportMode = typeof CROSS_STRAIT_TRANSPORT_MODES[number];
@@ -150,7 +151,7 @@ export interface CrossStraitActivitySourceHealth {
   claimSemantics: string;
   transportStatus: 'fresh' | 'error';
   requestCount: number;
-  transportPath?: 'direct' | 'proxy';
+  transportPath?: 'direct' | 'proxy' | 'x_api';
   blockedReason?: CrossStraitBlockedReason;
   fallbackReason?: string;
   proxyFailureReason?: string;

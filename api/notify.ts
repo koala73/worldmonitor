@@ -94,7 +94,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   if (req.method !== 'POST') {
-    return jsonResponse({ error: 'Method not allowed' }, 405, cors);
+    return jsonResponse({ error: 'Method not allowed' }, 405, { ...cors, Allow: 'POST, OPTIONS' });
   }
 
   const authHeader = req.headers.get('Authorization') ?? '';
@@ -165,7 +165,7 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: 'Invalid JSON' }, 400, cors);
   }
 
-  if (typeof body.eventType !== 'string' || !body.eventType || body.eventType.length > 64) {
+  if (typeof body.eventType !== 'string' || !body.eventType || body.eventType.length > 64 || /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/.test(body.eventType)) {
     return jsonResponse({ error: 'eventType required (string, max 64 chars)' }, 400, cors);
   }
 
@@ -300,10 +300,29 @@ export default async function handler(req: Request): Promise<Response> {
     userId: session.userId,
   });
 
-  const res = await fetch(
-    `${upstashUrl}/lpush/wm:events:queue/${encodeURIComponent(msg)}`,
-    { method: 'POST', headers: { Authorization: `Bearer ${upstashToken}`, 'User-Agent': 'worldmonitor-edge/1.0' } },
-  );
+  let res: Response;
+  try {
+    res = await fetch(
+      `${upstashUrl}/lpush/wm:events:queue/${encodeURIComponent(msg)}`,
+      {
+        signal: AbortSignal.timeout(10_000),
+        method: 'POST',
+        headers: { Authorization: `Bearer ${upstashToken}`, 'User-Agent': 'worldmonitor-edge/1.0' },
+      },
+    );
+  } catch {
+    // The push may have committed. Keep its processing marker instead of
+    // releasing it via a cached retryable response and replaying immediately.
+    // Retry-After matches the marker's 180 s TTL in api/_idempotency.js.
+    return jsonResponse(
+      {
+        error: 'publish_outcome_unknown',
+        message: 'The event may already have been published. Retry only if a duplicate event is acceptable.',
+      },
+      503,
+      { ...cors, 'Retry-After': '180' },
+    );
+  }
 
   if (!res.ok) {
     return completeStandaloneIdempotency(idempotency, jsonResponse({ error: 'Publish failed' }, 502, cors));

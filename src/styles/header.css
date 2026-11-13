@@ -22,6 +22,11 @@ html.wm-pro-banner-reserved .pro-banner-slot {
   --header-auth-slot-width: 200px;
   --header-findings-slot-width: 72px;
 
+  /* Grow into leftover header space; min-width:0 lets the auth slot shrink
+     before Sign In clips the viewport on tablet widths (#10464). */
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  min-width: 0;
   padding-left: calc(var(--header-findings-slot-width) + 12px);
   position: relative;
 }
@@ -42,12 +47,12 @@ html.wm-pro-banner-reserved .pro-banner-slot {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 auto;
 }
 
 #missionPresetMount,
 #unifiedSettingsMount {
   contain: layout;
+  flex: 0 0 auto;
 }
 
 #missionPresetMount {
@@ -60,13 +65,21 @@ html.wm-pro-banner-reserved .pro-banner-slot {
   min-height: 28px;
 }
 
+/* Prefer the 200px Sign In + free-reason cluster, but shrink before the
+   rightmost control clips the viewport on tablet widths (#10464). */
 #authWidgetMount {
-  min-width: var(--header-auth-slot-width);
+  container-type: inline-size;
+  flex: 0 1 var(--header-auth-slot-width);
+  max-width: var(--header-auth-slot-width);
+  min-width: 72px;
   min-height: 32px;
 }
 
 .auth-header-widget-pending {
-  width: var(--header-auth-slot-width);
+  width: 100%;
+  max-width: var(--header-auth-slot-width);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .auth-header-skeleton {
@@ -88,8 +101,35 @@ html.wm-pro-banner-reserved .pro-banner-slot {
   flex: 0 0 72px;
 }
 
-.auth-header-skeleton-signup {
-  flex: 0 0 120px;
+/* Prefer ~120px, but shrink inside a compressed auth slot so the pending
+   placeholders cannot spill past #authWidgetMount during Clerk load. */
+.auth-header-skeleton-reason {
+  flex: 1 1 0;
+  max-width: 120px;
+  min-width: 0;
+}
+
+/* Sign In skeleton is 72px + 8px gap. Below ~160px there is not enough room
+   for a useful reason placeholder — collapse it (and its flex gap). */
+@container (max-width: 160px) {
+  .auth-header-skeleton-reason {
+    display: none;
+  }
+}
+
+/* When left-side chrome returns (variant switcher at >980px) and before the
+   header is wide enough again, the free-reason ellipsis collapses to an empty
+   gap. Hide it and keep the single Sign In action fully on screen. */
+@media (min-width: 981px) and (max-width: 1199px) {
+  #authWidgetMount {
+    flex-basis: 80px;
+    max-width: 90px;
+  }
+
+  #authWidgetMount .auth-free-reason,
+  #authWidgetMount .auth-header-skeleton-reason {
+    display: none;
+  }
 }
 
 #missionPresetMount:empty,

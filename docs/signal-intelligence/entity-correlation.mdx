@@ -1,0 +1,180 @@
+---
+title: "Entity Correlation and Extraction"
+sidebarTitle: "Entities"
+description: "How World Monitor matches entities across news and market data: the entity knowledge base, entity types, registry architecture, extraction, confidence scoring and market correlation."
+---
+
+Part of the [Signal Intelligence](/signal-intelligence) guide, which indexes every topic.
+
+---
+
+## Entity-Aware Correlation
+
+The signal engine uses a **registry-backed entity knowledge base** to intelligently correlate market movements with news coverage. Rather than simple keyword matching, the system understands that "AVGO" (the ticker) relates to "Broadcom" (the company), "AI chips" (the sector), and entities like "Nvidia" (a competitor).
+
+### Entity Knowledge Base
+
+Each entity in the registry contains:
+
+| Field | Purpose | Example |
+|-------|---------|---------|
+| **ID** | Canonical identifier | `broadcom` |
+| **Name** | Display name | `Broadcom Inc.` |
+| **Type** | Category | `company`, `commodity`, `crypto`, `country`, `person` |
+| **Aliases** | Alternative names | `AVGO`, `Broadcom`, `Broadcom Inc` |
+| **Keywords** | Related topics | `AI chips`, `semiconductors`, `VMware` |
+| **Sector** | Industry classification | `semiconductors` |
+| **Related** | Linked entities | `nvidia`, `intel`, `amd` |
+
+### Entity Types
+
+| Type | Count | Examples |
+|------|-------|----------|
+| **Companies** | 38 | Nvidia, Apple, Tesla, Broadcom, Boeing, Lockheed Martin, TSMC, Rheinmetall |
+| **Indices** | 3 | S&P 500, Dow Jones, NASDAQ |
+| **Sectors** | 5 | Technology (XLK), Finance (XLF), Energy (XLE), Healthcare (XLV), Semiconductors (SMH) |
+| **Commodities** | 6 | Oil (WTI), Gold, Natural Gas, Copper, Silver, VIX |
+| **Crypto** | 3 | Bitcoin, Ethereum, Solana |
+| **Countries** | 11 | China, Russia, Iran, Israel, Ukraine, Taiwan, Saudi Arabia, UAE, Qatar, Turkey, Egypt |
+
+### How Entity Matching Works
+
+When a market moves significantly (≥2%), the system:
+
+1. **Looks up the ticker** in the entity registry (e.g., `AVGO` → `broadcom`)
+2. **Gathers all identifiers**: aliases, keywords, sector peers, related entities
+3. **Scans all news clusters** for matches against any identifier
+4. **Scores confidence** based on match type:
+   - Alias match (exact name): 95%
+   - Keyword match (topic): 70%
+   - Related entity match: 60%
+
+If correlated news is found → **"Market Move Explained"** signal with the news headline.
+If no correlation after exhaustive search → **"Silent Divergence"** signal.
+
+### Example: Broadcom +2.5%
+
+```
+1. Ticker AVGO detected with +2.5% move
+2. Entity lookup: broadcom
+3. Search terms: ["Broadcom", "AVGO", "AI chips", "semiconductors", "VMware", "nvidia", "intel", "amd"]
+4. News scan finds: "Broadcom AI Revenue Beats Estimates"
+5. Result: "✓ Market Move Explained: Broadcom AI Revenue Beats Estimates"
+```
+
+Without this system, the same move would generate a generic "Silent Divergence: AVGO +2.5%" signal.
+
+### Sector Coverage
+
+The entity registry spans strategically significant sectors:
+
+| Sector | Examples | Keywords Tracked |
+|--------|----------|------------------|
+| **Technology** | Apple, Microsoft, Nvidia, Google, Meta, TSMC | AI, cloud, chips, datacenter, streaming |
+| **Defense & Aerospace** | Lockheed Martin, Raytheon, Northrop Grumman, Boeing, Rheinmetall, Airbus | F-35, missiles, drones, tanks, defense contracts |
+| **Semiconductors** | ASML, Samsung, AMD, Intel, Broadcom | Lithography, EUV, foundry, fab, wafer |
+| **Critical Minerals** | Albemarle, SQM, MP Materials, Freeport-McMoRan | Lithium, rare earth, cobalt, copper |
+| **Finance** | JPMorgan, Berkshire Hathaway, Visa, Mastercard | Banking, credit, investment, interest rates |
+| **Healthcare** | Eli Lilly, Novo Nordisk, UnitedHealth, J&J | Pharma, drugs, GLP-1, obesity, diabetes |
+| **Energy** | Exxon, Chevron, ConocoPhillips | Oil, gas, drilling, refinery, LNG |
+| **Consumer** | Tesla, Walmart, Costco, Home Depot | EV, retail, grocery, housing |
+
+This broad coverage enables correlation detection across diverse geopolitical and market events.
+
+## Entity Registry Architecture
+
+The entity registry is a knowledge base with rich metadata for intelligent correlation:
+
+```typescript
+{
+  id: 'NVDA',           // Unique identifier
+  name: 'Nvidia',       // Display name
+  type: 'company',      // company | country | index | commodity | currency
+  sector: 'semiconductors',
+  searchTerms: ['Nvidia', 'NVDA', 'Jensen Huang', 'H100', 'CUDA'],
+  aliases: ['nvidia', 'nvda'],
+  competitors: ['AMD', 'INTC'],
+  related: ['AVGO', 'TSM', 'ASML'],  // Related entities
+  country: 'US',        // Headquarters/origin
+}
+```
+
+**Entity Types**:
+
+| Type | Count | Use Case |
+|------|-------|----------|
+| `company` | 38 | Market-news correlation, sector analysis |
+| `country` | 11 | Focal point detection, CII scoring |
+| `index` | 3 | Market overview, regional tracking |
+| `commodity` | 6 | Energy and mineral correlation |
+| `sector` | 5 | Sector cascade analysis |
+| `crypto` | 3 | Cryptocurrency correlation |
+
+**Lookup Indexes**:
+
+The registry provides multiple lookup paths for fast entity resolution:
+
+| Index | Query Example | Use Case |
+|-------|---------------|----------|
+| `byId` | `'NVDA'` → Nvidia entity | Direct lookup from ticker |
+| `byAlias` | `'nvidia'` → Nvidia entity | Case-insensitive name match |
+| `byKeyword` | `'AI chips'` → [Nvidia, AMD, Intel] | News keyword extraction |
+| `bySector` | `'semiconductors'` → all chip companies | Sector cascade analysis |
+| `byCountry` | `'US'` → all US entities | Country-level aggregation |
+
+---
+
+## Entity Extraction System
+
+The dashboard extracts **named entities** (companies, countries, leaders, organizations) from news headlines to enable news-to-market correlation and entity-based filtering.
+
+### How It Works
+
+Headlines are scanned against a curated entity index containing:
+
+| Entity Type | Examples | Purpose |
+|-------------|----------|---------|
+| **Companies** | Apple, Tesla, NVIDIA, Boeing | Market symbol correlation |
+| **Countries** | Russia, China, Iran, Ukraine | Geopolitical attribution |
+| **Leaders** | Putin, Xi Jinping, Khamenei | Political event tracking |
+| **Organizations** | NATO, OPEC, Fed, SEC | Institutional news filtering |
+| **Commodities** | Oil, Gold, Bitcoin | Commodity news correlation |
+
+### Entity Matching
+
+Each entity has multiple match patterns for comprehensive detection:
+
+```
+Entity: NVIDIA (NVDA)
+  Aliases: nvidia, nvda, jensen huang
+  Keywords: gpu, h100, a100, cuda, ai chip
+  Match Types:
+    - Name match: "NVIDIA announces..." → 95% confidence
+    - Alias match: "Jensen Huang says..." → 90% confidence
+    - Keyword match: "H100 shortage..." → 70% confidence
+```
+
+### Confidence Scoring
+
+Entity extraction produces confidence scores based on match quality:
+
+| Match Type | Confidence | Example |
+|------------|------------|---------|
+| **Direct name** | 95% | "Apple reports earnings" |
+| **Alias** | 90% | "Tim Cook announces..." |
+| **Keyword** | 70% | "iPhone sales decline" |
+| **Related cluster** | 63% | Secondary headline mention (90% × 0.7) |
+
+### Market Correlation
+
+When a market symbol moves significantly, the system searches news clusters for related entities:
+
+1. **Symbol lookup** - Find entity by market symbol (e.g., `AAPL` → Apple)
+2. **News search** - Find clusters mentioning the entity or related entities
+3. **Confidence ranking** - Sort by extraction confidence
+4. **Result** - "Market Move Explained" or "Silent Divergence" signal
+
+This enables signals like:
+
+- **Explained**: "AVGO +5.2% — Broadcom mentioned across news clusters (AI chip demand)"
+- **Silent**: "AVGO +5.2% — No correlated news after entity search"

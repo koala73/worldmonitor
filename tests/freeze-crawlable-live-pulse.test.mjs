@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 
 import {
   authedGet,
@@ -33,6 +33,27 @@ import { GDELT_COUNTRY_INDEX_WINDOW_MS } from '../scripts/_gdelt-bulk-materializ
 import { briefGroundingGap, COUNTRY_INDEX_ORIGIN, developmentsHasDatedItem } from '../scripts/crawlable-developments.mjs';
 import { SCORECARD_DECLARED_FIELDS, classifyAccuracyState } from '../scripts/build-accuracy-page.mjs';
 import { MCP_CANONICAL_ENDPOINT, isMcpAliasRequest } from '../shared/mcp-host-policy.ts';
+
+// The freeze sleeps requestGapMs after every upstream request. The suites pass
+// requestGapMs: 0, but Node runs setTimeout(fn, 0) after at least 1ms, and a
+// keyed freeze makes about 560 requests, so the file's 82 freeze runs spent
+// about 58s waiting on that minimum. Zero-delay timers run on setImmediate
+// instead: each sleep still yields to the event loop, without the 1ms.
+// Nonzero delays, such as the 20s HTTP timeout, keep the real setTimeout.
+const immediateTimers = new WeakSet();
+beforeEach(() => {
+  const { setTimeout: realSetTimeout, clearTimeout: realClearTimeout } = globalThis;
+  mock.method(globalThis, 'setTimeout', (callback, ms, ...args) => {
+    if (ms > 0) return realSetTimeout(callback, ms, ...args);
+    const handle = setImmediate(callback, ...args);
+    immediateTimers.add(handle);
+    return handle;
+  });
+  mock.method(globalThis, 'clearTimeout', (handle) => (
+    immediateTimers.has(handle) ? clearImmediate(handle) : realClearTimeout(handle)
+  ));
+});
+afterEach(() => mock.restoreAll());
 
 describe('freeze crawlable live pulse API base routing', () => {
   const originalFetch = globalThis.fetch;
@@ -96,6 +117,23 @@ function jsonResponse(body) {
   return { ok: true, status: 200, text: async () => JSON.stringify(body) };
 }
 
+// Last month's state-based fighting: 40 deaths in Ukraine, 12 in Mali.
+function ucdpPayload(candidateVersion = '26.0.9') {
+  const now = new Date();
+  const lastMonth = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 10);
+  const event = (id, country, deathsBest) => ({
+    id,
+    dateStart: lastMonth,
+    dateEnd: lastMonth,
+    country,
+    sideA: 'Government of Russia (Soviet Union)',
+    sideB: 'Government of Ukraine',
+    deathsBest,
+    violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED',
+  });
+  return { events: [event('1', 'Ukraine', 30), event('2', 'Ukraine', 10), event('3', 'Mali', 12)], candidateVersion };
+}
+
 function countryPayload() {
   return {
     upstreamUnavailable: false,
@@ -125,6 +163,12 @@ function countryPayload() {
           todayTotal: 0,
           todayCountsAvailable: true,
           wowChangePct: 0,
+          officialLatestDate: '2026-10-18',
+          officialLatestTotal: 0,
+          officialAvg7d: 0,
+          baselineAvgDaily: 87.4,
+          baselineFrom: '2024-10-22',
+          baselineTo: '2025-10-21',
         },
       })),
     };
@@ -325,6 +369,8 @@ function countryPayload() {
     // MCP horizon grades (#9057): 'ok' | 'fail' | 'tool-error'.
     horizonGradesStatus = 'ok',
     horizonGradesGeneratedAt = SCORECARD_GENERATED_AT,
+    // 'ok' | 'empty' (the handler's answer on a Redis miss) | 'partial' | 'fail'.
+    ucdpStatus = 'ok',
     scorecardGeneratedAt = SCORECARD_GENERATED_AT,
     onRequest = null,
     marketSymbols = ['^GSPC', '^IXIC', '^VIX'],
@@ -353,6 +399,11 @@ function countryPayload() {
           ],
           chokepointDescriptions,
         ));
+      }
+      if (href.includes('list-ucdp-events')) {
+        if (ucdpStatus === 'fail') return { ok: false, status: 503, text: async () => '{}' };
+        if (ucdpStatus === 'empty') return jsonResponse({ events: [], candidateVersion: '' });
+        return jsonResponse(ucdpPayload(ucdpStatus === 'partial' ? '26.0.9+partial' : '26.0.9'));
       }
       if (href.includes('get-humanitarian-summary')) {
         return jsonResponse(humanitarianPayload(new URL(href).searchParams.get('country_code')));
@@ -558,14 +609,65 @@ describe('freeze crawlable live pulse coverage gates', () => {
     );
   });
 
-  it('preserves explicit transit-count availability in the frozen snapshot', async () => {
+  it('captures the latest-month war list for the crises hub', async () => {
+    stubFetch();
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.activeWars.countryCount, 1, 'Mali (12 deaths) is below the threshold');
+    assert.equal(snapshot.activeWars.belowThresholdCount, 1);
+    assert.deepEqual(
+      { ...snapshot.activeWars.conflicts[0] },
+      { name: 'Ukraine', code: 'UA', deaths: 40, events: 2, sideA: 'Government of Russia', sideB: 'Government of Ukraine' },
+    );
+    assert.equal(snapshot.activeWars.candidateVersion, '26.0.9');
+    assert.equal(snapshot.coverage.activeWarsCaptured, true);
+    assert.deepEqual(snapshot.errors.activeWars, []);
+  });
+
+  for (const [ucdpStatus, reason, message] of [
+    ['empty', 'the handler empty answer', /release absent is not complete/],
+    ['partial', 'a release with failed pages', /release 26\.0\.9\+partial is not complete/],
+  ]) {
+    it(`never publishes a count from ${reason}, and carries the last reading`, async () => {
+      const rootDir = await scratchRoot();
+      stubFetch();
+      const good = await freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0, rootDir });
+      await writeFile(
+        join(rootDir, 'docs', 'snapshots', 'crawlable-live-pulse-2026-01-15.json'),
+        JSON.stringify({ ...good.snapshot, capturedAt: '2026-01-15' }),
+      );
+      await rm(good.outPath);
+
+      stubFetch({ ucdpStatus });
+      const { snapshot } = await freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0, rootDir });
+      assert.deepEqual(snapshot.activeWars, good.snapshot.activeWars);
+      assert.equal(snapshot.coverage.activeWarsCaptured, false);
+      assert.equal(snapshot.coverage.activeWarsRetained, true);
+      assert.match(snapshot.errors.activeWars[0].message, message);
+    });
+  }
+
+  it('publishes no war list, rather than failing the freeze, when nothing can be carried', async () => {
+    stubFetch({ ucdpStatus: 'fail' });
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.activeWars, null);
+    assert.equal(snapshot.coverage.activeWarsRetained, false);
+    assert.equal(snapshot.errors.activeWars.length, 1);
+  });
+
+  it('freezes the official IMF PortWatch figures, including a measured zero, and no relay transit count', async () => {
     stubFetch();
     const { snapshot } = await runFreeze();
     assert.ok(Object.values(snapshot.chokepoints).length > 0);
     assert.ok(
       Object.values(snapshot.chokepoints).every((pulse) => (
-        pulse.todayTransits === '0'
-        && pulse.todayCountsAvailable === true
+        pulse.officialLatestDate === '2026-10-18'
+        && pulse.officialLatestTotal === 0
+        && pulse.officialAvg7d === 0
+        && pulse.baselineAvgDaily === 87.4
+        && pulse.baselineFrom === '2024-10-22'
+        && pulse.baselineTo === '2025-10-21'
+        && !('todayTransits' in pulse)
+        && !('todayCountsAvailable' in pulse)
         && pulse.navigationalWarnings === '0 warnings'
         && pulse.navigationalWarningsAvailable === true
         && pulse.aisDisruptions === '0 AIS disruptions'

@@ -22,7 +22,8 @@
  * api/mcp/auth.ts byte-for-byte so both surfaces present one identical challenge.
  */
 
-import { authSkillUrl, resolveMetadataOrigin } from './_agent-metadata';
+import { wwwAuthHeader } from './_www-authenticate';
+import { AUTH_SKILL_URL, resolveMetadataOrigin } from './_agent-metadata';
 
 export const config = { runtime: 'edge' };
 
@@ -49,7 +50,7 @@ export default function handler(req: Request): Response {
       'Authentication required. Discover the authorization server via the protected-resource metadata, then obtain a bearer token (OAuth 2.1 + PKCE) — or pass an API key via the X-WorldMonitor-Key header.',
     resource_metadata: resourceMetadataUrl,
     authorization_server: `${origin}/.well-known/oauth-authorization-server`,
-    skill: authSkillUrl(origin),
+    skill: AUTH_SKILL_URL,
   });
 
   return new Response(body, {
@@ -57,7 +58,7 @@ export default function handler(req: Request): Response {
     headers: {
       ...cors,
       'Content-Type': 'application/json',
-      'WWW-Authenticate': `Bearer realm="worldmonitor", resource_metadata="${resourceMetadataUrl}"`,
+      'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl),
       'Cache-Control': 'no-store',
       // Body varies by Host (resource_metadata derived from it). Belt-and-braces
       // against a downstream cache keying on path alone.

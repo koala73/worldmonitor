@@ -3,7 +3,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const SITE_ORIGIN = 'https://www.worldmonitor.app';
-export const CONTENT_CORPUS_PREFIXES = ['country-instability-index', 'countries', 'chokepoints', 'compare', 'crises', 'tools', 'research', 'reference', 'changelog', 'sources', 'use-cases', 'accuracy'];
+export const CONTENT_CORPUS_PREFIXES = ['country-instability-index', 'countries', 'chokepoints', 'compare', 'crises', 'tools', 'research', 'reference', 'changelog', 'sources', 'use-cases', 'accuracy', 'monitor-the-situation'];
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -208,7 +208,7 @@ export function discoverContentCorpusPages({ publicDir = join(REPO_ROOT, 'public
     }
   }
 
-  pages.sort((a, b) => a.loc.localeCompare(b.loc));
+  pages.sort((a, b) => a.loc.localeCompare(b.loc, 'en-US'));
   validateChangelogPagination([
     ...pages.filter((page) => changelogPageNumber(page) != null),
     ...changelogPagesForValidation,

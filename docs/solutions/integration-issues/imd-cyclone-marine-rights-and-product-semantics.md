@@ -65,6 +65,44 @@ healthy reply. Cyclone track, wind radii, and cone stay disabled as API-only
 and stay disabled. The RTI non-commercial rights record applies to the public
 pages too.
 
+## Kerala regional PDF fallback, October 21
+
+The Kerala public HTML page can contain an empty synoptic field while its
+issuing office still publishes a complete, valid coastal PDF at
+`https://mausam.imd.gov.in/thiruvananthapuram/mcdata/coastal%20bulletin.pdf`.
+The regional IMD homepage links that bulletin. The captured October 21 PDF
+contains four areas and expires at 22:00 UTC. The fixture preserves the original
+07:34 UTC issue time and 10:00 to 22:00 UTC validity window.
+
+Only that coastal page can use the PDF fallback, and only after its primary
+request fails. The adapter uses the existing PDF dependency, enforces byte and
+page limits, verifies the issuing office and all four areas, then applies the
+same strict field and time checks as HTML. Records link the PDF as their source.
+Page health preserves `fallbackUsed`, `primaryFailure`, and `sourceUrl`.
+If the fallback also fails, health preserves its bounded `fallbackFailure`.
+An expired PDF supplies no records. Fetch time never extends its source clocks.
+
+Fixtures `coastalBulletin-kerala-20261021.pdf` and
+`coastalBulletin-kerala-missing-synoptic.html` were captured from the official
+regional PDF and public HTML page on October 21. They reproduce the missing
+coverage and the complete alternative without accepting an incomplete bulletin.
+The HTML fixture trims trailing whitespace. The PDF bytes are unchanged.
+
+## Blank synoptic row, November 6
+
+By November 6 the regional PDF had become a browser print of the same HTML page
+(its header reads `mausam.imd.gov.in/Forecast/coastal_bulletin_new.php?id=2`),
+so both copies carried an empty synoptic row and the fallback failed with the
+same `BULLETIN_SYNOPTIC_MISSING`. The page published nothing for four coastal
+areas whose wind, weather, visibility, sea, port-signal and surge fields were
+complete, and health reported `SEED_ERROR` / `IMD_PRODUCT_PARTIAL`.
+
+A synoptic row that is present but blank now publishes the HTML areas with
+`synopticSituation: null`, after the PDF has had its chance to supply the
+narrative. Page health records `synopticOmitted`, `primaryFailure`, and any
+`fallbackFailure`. A page with no synoptic row at all is still a changed layout
+and fails closed.
+
 ## Related Issues
 
 - Fixes #7005.

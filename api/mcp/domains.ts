@@ -46,6 +46,8 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   // Markets & economy
   get_market_data: 'markets-economy',
   get_economic_data: 'markets-economy',
+  get_fred_series: 'markets-economy',
+  get_no2_activity: 'markets-economy',
   get_procurement_opportunities: 'markets-economy',
   get_company_intelligence: 'markets-economy',
   get_country_macro: 'markets-economy',
@@ -75,6 +77,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   // Geopolitical & security
   get_conflict_events: 'geopolitical-security',
   get_country_risk: 'geopolitical-security',
+  prepare_travel_risk_assessment: 'geopolitical-security',
   get_country_history: 'geopolitical-security',
   get_country_coverage: 'geopolitical-security',
   list_x_feed: 'geopolitical-security',
@@ -83,6 +86,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_country_brief_section: 'geopolitical-security',
   get_country_brief: 'geopolitical-security',
   get_news_intelligence: 'geopolitical-security',
+  get_media_perspective: 'geopolitical-security',
   get_cyber_threats: 'geopolitical-security',
   get_sanctions_data: 'geopolitical-security',
   get_social_velocity: 'geopolitical-security',
@@ -92,6 +96,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_focal_points: 'geopolitical-security',
   simulate_infrastructure_cascade: 'geopolitical-security',
   get_military_surge: 'geopolitical-security',
+  get_global_air_activity: 'geopolitical-security',
   get_population_exposure: 'geopolitical-security',
   get_alert_digest: 'geopolitical-security',
   get_hotspot_escalation: 'geopolitical-security',
@@ -102,6 +107,8 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_chokepoint_dependencies: 'geopolitical-security',
   get_positive_events: 'geopolitical-security',
   // Movement & infrastructure
+  find_webcams: 'movement-infrastructure',
+  get_webcam_media: 'movement-infrastructure',
   get_aviation_status: 'movement-infrastructure',
   get_airspace: 'movement-infrastructure',
   get_maritime_activity: 'movement-infrastructure',
@@ -110,6 +117,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   search_flights: 'movement-infrastructure',
   // Environment & science
   get_climate_data: 'environment-science',
+  get_reservoir_levels: 'environment-science',
   get_imd_cyclone_marine: 'environment-science',
   get_natural_disasters: 'environment-science',
   get_radiation_data: 'environment-science',
@@ -134,6 +142,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_mcp_allowance: 'meta',
   start_upgrade: 'meta',
   describe_tool: 'meta',
+  report_issue: 'meta',
   open_news_dashboard: 'meta',
   analyze_news_headlines: 'meta',
   classify_event: 'meta',

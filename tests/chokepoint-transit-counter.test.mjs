@@ -45,11 +45,10 @@ describe('classifyVesselType', () => {
   });
 });
 
-// The transit counter's timing constants and its 15-chokepoint geofence table
-// still live inside the relay, which boots a live server on import. These read
-// the declarations directly — the constants are the contract (a cooldown
-// shorter than the dwell window would double-count a single transit), and
-// there is no importable surface to exercise instead.
+// The transit counter's timing constants still live inside the relay, which
+// boots a live server on import. These read the declarations directly — the
+// constants are the contract, and there is no importable surface to exercise
+// instead.
 describe('chokepoint transit counter timing constants', () => {
   const evalConst = (name) => {
     const m = relaySrc.match(new RegExp(`const ${name} = ([^;]+);`));
@@ -57,8 +56,8 @@ describe('chokepoint transit counter timing constants', () => {
     return Number(new Function(`return (${m[1]})`)());
   };
 
-  it('requires a longer cooldown than the dwell it counts, or one transit counts twice', () => {
-    assert.ok(evalConst('TRANSIT_COOLDOWN_MS') > evalConst('MIN_DWELL_MS'));
+  it('pairs gate sightings no further apart than the counting window', () => {
+    assert.ok(evalConst('TRANSIT_MAX_GATE_GAP_MS') <= evalConst('TRANSIT_WINDOW_MS'));
   });
 
   it('keeps the counting window well above a single cooldown', () => {

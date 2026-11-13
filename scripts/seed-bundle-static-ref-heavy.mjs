@@ -68,6 +68,10 @@ const DAILY_SECTIONS = [
     // priority bounds a heavy-member deferral inside the two-day health budget.
     timeoutMs: 160_000,
   },
+  // Annual pinned source, refreshed monthly. This cadence class leads every
+  // second daily tick, so even a permanently due heavy member cannot starve
+  // the prior. Keep Supply-Vulnerability first to preserve its two-day budget.
+  { label: 'CII-Structural-Prior', script: 'seed-cii-structural-prior.mjs', seedMetaKey: 'intelligence:cii-structural-prior', canonicalKey: 'intelligence:cii-structural-prior:v1', intervalMs: 30 * DAY, timeoutMs: 90_000 },
 ];
 
 // The Redis turn advances once per actual invocation. Calendar parity is not a

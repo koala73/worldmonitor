@@ -56,6 +56,7 @@ export type CoverageFailureReason = ExtractionFailureReason | NonExtractionFailu
 const EXTRACTION_STAGE_ORDER: readonly ExtractionFailureReason[] = [
   'provider-cooldown',
   'provider-error',
+  'source-http-error',
   'missing-price',
   // A price was extracted but its digits were absent from the rendered page —
   // the deterministic anti-fabrication gate (#6182). Further along than

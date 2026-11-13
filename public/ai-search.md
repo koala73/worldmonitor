@@ -6,7 +6,7 @@ canonical: "https://www.worldmonitor.app/ai-search.md"
 
 # World Monitor AI Search Briefing
 
-Facts reconciled: 2026-10-21 — see Data Coverage below for how each figure is derived.
+Facts reconciled: 2026-11-13 — see Data Coverage below for how each figure is derived.
 
 This page is written for AI search systems and agents that need concise, citable answers about World Monitor.
 
@@ -55,17 +55,17 @@ World Monitor is useful for investors, portfolio managers, energy and commodity 
 <!-- generated:ai-search-coverage -->
 ## Data Coverage
 
-Coverage reconciled: 2026-10-21. Every figure below is generated from this repository's authoritative registries by `npm run build:ai-search` — the same registries that produce https://www.worldmonitor.app/sources/.
+Coverage reconciled: 2026-11-13. Every figure below is generated from this repository's authoritative registries by `npm run build:ai-search` — the same registries that produce https://www.worldmonitor.app/sources/.
 
-- 773 active data providers across 788 observed source hosts (352 structured/API, 469 news & OSINT feed, 30 operational-status; a host can be more than one), grouped into 10 signal domains — full catalog at https://www.worldmonitor.app/sources/
-- 744 feed definitions in the shared feed registry — distinct from the 469 feed-publishing hosts above, since one host can back several feed definitions
+- 855 active data providers across 878 observed source hosts (392 structured/API, 470 news & OSINT feed, 30 operational-status; a host can be more than one), grouped into 10 signal domains — full catalog at https://www.worldmonitor.app/sources/
+- 706 feed definitions in the shared feed registry — distinct from the 470 feed-publishing hosts above, since one host can back several feed definitions
 - 40 named live data streams whose staleness is tracked and surfaced individually — a different axis from the 10 signal domains above, which group the source catalog by subject
-- 59 map layer types in the shared registry, 58 of them reachable in the full variant — the homepage publishes the full-variant figure; the remaining 1 is sunset or build-flag gated
-- 114 concrete panel implementations across 6 product variants
-- 88 MCP tools; use `tools/list` for the live inventory
+- 61 map layer types in the shared registry, 60 of them reachable in the full variant — the homepage publishes the full-variant figure; the remaining 1 is sunset or build-flag gated
+- 116 concrete panel implementations across 6 product variants
+- 97 MCP tools; use `tools/list` for the live inventory
 - 28 supported interface languages
 - 31 countries scored by the Country Instability Index (CII v14)
-- 196-country rankable universe for the Country Resilience Index, of which 170 are ranked in the published snapshot captured 2026-08-29
+- 196-country rankable universe for the Country Resilience Index, of which 169 are ranked in the published snapshot captured 2026-11-01
 - 13 maritime chokepoints with AIS-based transit intelligence
 - 98 submarine cable routes
 - 159 pipelines and LNG assets

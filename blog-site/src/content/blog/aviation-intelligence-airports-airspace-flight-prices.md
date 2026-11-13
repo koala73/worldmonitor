@@ -32,7 +32,7 @@ Around the panel, the map adds the **flights layer** for delay conditions, the *
 
 The `get_airspace` MCP tool answers "what is flying over this country right now" — civilian traffic from OpenSky plus identified military aircraft. Its sibling `get_aviation_status` returns airport delays, NOTAM-based closure context, and tracked military aircraft in one call.
 
-That combination matters because absence is a signal too. Civilian traffic thinning out over a region while military tracks persist is one of the classic OSINT tells — the pattern that made "flight-tracker Twitter" famous, available as a structured query instead of a screenshot. The [breaking-news verification workflow](/blog/posts/verify-breaking-news-osint-workflow-journalists/) uses exactly this check.
+That combination matters because absence is a signal too. Civilian traffic thinning out over a region while military tracks persist is one of the classic [OSINT](/blog/posts/osint-for-everyone-open-source-intelligence-democratized/) tells — the pattern that made "flight-tracker Twitter" famous, available as a structured query instead of a screenshot. The [breaking-news verification workflow](/blog/posts/verify-breaking-news-osint-workflow-journalists/) uses exactly this check.
 
 ## Flight prices are a sensor
 

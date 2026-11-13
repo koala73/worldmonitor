@@ -84,6 +84,9 @@ const HTTP_METHODS = new Set([
 // -----------------------------------------------------------------------------
 
 const EXCLUDED_FROM_MCP_PARITY = new Map([
+  ['GET /api/economic/v1/get-food-prices', 'deferred-to-future-tool: source-specific food prices and dated food-security context are served to the dashboard (#9841)'],
+  ['GET /api/safety/v1/get-toronto-safety', 'deferred-to-future-tool: city-level Toronto Police data serves the Toronto Safety panel; the MCP tools were removed in 1.54.0 and a country-level safety tool replaces them once more countries are covered'],
+  ['GET /api/maritime/v1/list-ukmto-incidents', 'deferred-to-future-tool: UKMTO publisher reports await activation and source-aware MCP composition (#9831)'],
 
   // === mutating (20) ===
   ["GET /api/aviation/v1/list-airport-delays",
@@ -95,8 +98,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["GET /api/resilience/v1/get-resilience-ranking",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["GET /api/v2/shipping/webhooks",
-    "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
-  ["GET /api/webcam/v1/list-webcams",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["POST /api/infrastructure/v1/record-baseline-snapshot",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
@@ -111,6 +112,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "mutating: writes to Convex (not server/_shared/redis) — lead registration write"],
   ["POST /api/leads/v1/submit-contact",
     "mutating: writes to Convex (not server/_shared/redis) — contact form write"],
+  ["POST /api/feedback/v1/submit-report",
+    "mutating: agent feedback written to Convex; MCP exposure is report_issue, which calls the shared admitFeedbackReport path rather than this route (#8721)"],
   ["POST /api/news/v1/submit-error-report",
     "mutating: reader error report written to the #9093 review queue via runRedisPipeline"],
   ["POST /api/news/v1/review-error-report",
@@ -132,10 +135,12 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   // 24h per-title cache, so per-call LLM cost is bounded. Metering differs by
   // credential class — OAuth/dashboard-key callers consume the 50/UTC-day MCP
   // reservation; env-key (`wm_`) callers are bounded by the 60/min/key limiter
-  // only (see docs/mcp-tools-reference.mdx). Do not restate this as "the daily
+  // only (see docs/mcp-tools/signals.mdx). Do not restate this as "the daily
   // quota bounds it" without qualifying the env-key path.
 
-  // === fetch-on-miss (28) ===
+  // === fetch-on-miss (29) ===
+  ['GET /api/cyber/v1/get-network-info',
+    'fetch-on-miss: high-cardinality-input — arbitrary public IP enrichment; provider authorization, privacy disclosure and source attribution are handled by the Cyber Threat popup'],
   ["GET /api/intelligence/v1/get-risk-scores",
     "fetch-on-miss: paid-upstream — cachedFetchJsonWithMeta + ACLED API on cache miss. Cross-domain composite spans conflict plus auxiliary infra outages, climate anomalies, cyber threats, wildfires, GPS jamming, OREF history, advisories, displacement, news insights/threats, aviation, earthquakes, sanctions, temporal anomalies, and military CII; intended for a future expanded_risk_scores composite tool because the current shape doesn't fit any single existing tool."],
   ["GET /api/aviation/v1/get-carrier-ops",
@@ -179,8 +184,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["GET /api/supply-chain/v1/get-route-explorer-lane",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["GET /api/supply-chain/v1/get-route-impact",
-    "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
-  ["GET /api/webcam/v1/get-webcam-image",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["POST /api/conflict/v1/get-humanitarian-summary-batch",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
@@ -230,8 +233,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["GET /api/scenario/v1/list-scenario-templates",
     "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
-  ["POST /api/economic/v1/get-fred-series-batch",
-    "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
 
   // === deferred-to-future-tool (56) ===
   ["GET /api/safety/v1/get-toronto-safety",
@@ -242,6 +243,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "deferred-to-future-tool: country snapshot capture reads existing full RSS caches; a future country_headlines tool can expose this uncapped country pool"],
   ["GET /api/news/v1/list-error-reports",
     "deferred-to-future-tool: operator review queue (#9093) is secret-gated and holds private reader contacts; no MCP surface by design"],
+  ["GET /api/news/v1/list-source-items",
+    "deferred-to-future-tool: cached rows for a dashboard panel's enabled sources below the digest category cap (#9796); agents read whole categories through list-news-pool"],
   ["GET /api/news/v1/list-label-changes",
     "deferred-to-future-tool: label history (#9093) is read by the /trust page; a future trust tool can expose recent label changes"],
   ["GET /api/consumer-prices/v1/get-consumer-price-basket-series",

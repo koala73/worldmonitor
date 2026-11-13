@@ -4,6 +4,9 @@ import { COUNTRY_ACTIVITY_BOUNDS, isCountryActivityCoordinate, projectCountryMil
 import { CountryBriefController, projectChinaCountrySummary } from '@/components/CountryBriefController';
 import { createWebsiteCountryBriefSource } from '@/services/country-brief-source';
 import { hasTemporalBaselineSnapshot } from '@/services/temporal-baseline';
+import { isBriefAviationDisruption } from '@/services/country-aviation-context';
+import type { AirportDelayAlert } from '@/services/aviation';
+import { withTimeout } from '@/utils/with-timeout';
 import type { AppContext, AppModule, CountryBriefSignals } from '@/app/app-context';
 import type { CountrySignalCounts } from '@/types';
 import { getSignalAggregator } from '@/app/lazy-services';
@@ -144,11 +147,14 @@ type CountryPresentation = {
   signalDetailsPending: boolean;
 };
 
+const AVIATION_SIGNAL_TIMEOUT_MS = 2500;
+
 export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
   private briefRequestToken = 0;
   private pendingBriefRequest: PendingCountryBriefRequest | null = null;
   private visibleBriefOwner: PendingCountryBriefRequest['owner'] | null = null;
+  private briefStateListener: ((state: { visible: boolean; maximized: boolean }) => void) | null = null;
   private frameworkUnsubscribe: (() => void) | null = null;
   private _fwDebounce: ReturnType<typeof setTimeout> | null = null;
   // Re-fire PRO-gated country sections on false→true entitlement transition.
@@ -244,7 +250,6 @@ export class CountryIntelManager implements AppModule {
 
   private handleCountryBriefOpenError(err: unknown): void {
     console.error('[CountryBrief] Failed to open country brief:', err);
-    this.ctx.map?.setRenderPaused(false);
     this.showToast('Country brief failed to open. Please try again.');
   }
 
@@ -337,6 +342,15 @@ export class CountryIntelManager implements AppModule {
     return this.countryController;
   }
 
+  /**
+   * Listen to the brief's open/close/maximize state. The page is a lazy chunk
+   * created on first open, so the listener is held here and attached then.
+   */
+  onBriefStateChange(cb: (state: { visible: boolean; maximized: boolean }) => void): void {
+    this.briefStateListener = cb;
+    this.ctx.countryBriefPage?.onStateChange?.(cb);
+  }
+
   private async ensureCountryBriefPage(): Promise<boolean> {
     if (this.ctx.countryBriefPage) return true;
     if (!this.ctx.map || this.ctx.isDestroyed) return false;
@@ -355,6 +369,7 @@ export class CountryIntelManager implements AppModule {
     if (this.ctx.isDestroyed || !this.ctx.map) return false;
     this.ctx.countryBriefPage = new CountryDeepDivePanel(this.ctx.map);
     this.getCountryController(this.ctx.countryBriefPage);
+    if (this.briefStateListener) this.ctx.countryBriefPage.onStateChange?.(this.briefStateListener);
 
     this.ctx.countryBriefPage.onClose(() => {
       this.currentCountryPresentation = null;
@@ -363,7 +378,6 @@ export class CountryIntelManager implements AppModule {
       // Keep the controller for the next open to cancel; closing must not
       // interrupt WebKit body reads.
       this.ctx.map?.clearCountryHighlight();
-      this.ctx.map?.setRenderPaused(false);
       this.ctx.countryTimeline?.destroy();
       this.ctx.countryTimeline = null;
     });
@@ -379,7 +393,6 @@ export class CountryIntelManager implements AppModule {
       const page = this.ctx.countryBriefPage;
       if (!page) return;
       page.showLoading();
-      this.ctx.map?.setRenderPaused(true);
 
       const localGeo = getCountryAtCoordinates(lat, lon);
       if (localGeo) {
@@ -392,7 +405,6 @@ export class CountryIntelManager implements AppModule {
       if (!this.isCurrentBriefRequest(request)) return;
       if (!geo) {
         page.hide();
-        this.ctx.map?.setRenderPaused(false);
         return;
       }
 
@@ -408,6 +420,9 @@ export class CountryIntelManager implements AppModule {
     opts?: CountryBriefOpenOptions,
   ): Promise<void> {
     throwIfWebMcpAborted(opts?.signal);
+    // Reject a code with no country before claiming, so it cannot supersede a
+    // pending valid open and strand its loading shell.
+    if (!canonicalizeCountryCode(code)) return;
     const requestOwner = opts?.owner ?? (opts?.signal ? 'agent' : 'human');
     const request = this.claimBriefRequest(requestOwner);
     if (!request) return;
@@ -424,6 +439,7 @@ export class CountryIntelManager implements AppModule {
     const token = request.token;
     let pageShown = false;
     let showedLoading = loadingAlreadyShown;
+    let presentationStarted = false;
 
     try {
       throwIfWebMcpAborted(opts?.signal);
@@ -434,6 +450,10 @@ export class CountryIntelManager implements AppModule {
       if (!page) return;
       // Map GeoJSON can still stamp Taiwan as CN-TW; APIs require ISO alpha-2.
       code = canonicalizeCountryCode(code);
+      if (!code) {
+        if (showedLoading) page.hide();
+        return;
+      }
       const hasVisibleBrief = this.hasVisibleRealCountryBrief();
       // An agent open must not replace visible state while it works. Ownership
       // is explicit because shipping WebMCP browsers omit the target signal.
@@ -442,7 +462,6 @@ export class CountryIntelManager implements AppModule {
         if (!showedLoading) page.showLoading();
         showedLoading = true;
       }
-      if (!loadingAlreadyShown) this.ctx.map?.setRenderPaused(true);
       if (opts?.trackAnalytics !== false) trackCountryBriefOpened(code);
 
       const canonicalName = TIER1_COUNTRIES[code] || CountryIntelManager.resolveCountryName(code);
@@ -461,14 +480,15 @@ export class CountryIntelManager implements AppModule {
       this.qualifiedMilitary = null;
       this.qualifiedMilitarySummary = null;
       signals = { ...signals, ...this.getQualifiedMilitaryCounts(code) };
+      presentationStarted = true;
       page.show(country, code, score, signals);
+      pageShown = true;
       const presentation: CountryPresentation = {
         page, code, score, stock: null, imf: null, refreshGeneration: 0, signalDetailsPending: true,
       };
       this.currentCountryPresentation = presentation;
       const signalGeneration = presentation.refreshGeneration;
       this.currentCoverageEvents = [];
-      pageShown = true;
       this.visibleBriefOwner = request.owner;
       this.clearBriefRequest(request);
       // Agent selection needs to acknowledge the visible UI transition, not
@@ -757,15 +777,17 @@ export class CountryIntelManager implements AppModule {
       if (!pageShown) {
         const activePage = this.ctx.countryBriefPage;
         const activeCode = activePage?.getCode();
-        if (showedLoading && activePage?.isVisible() && (activeCode === '__loading__' || activeCode === '__error__')) activePage.hide();
-        if (!this.hasVisibleRealCountryBrief()) this.ctx.map?.setRenderPaused(false);
+        // show() can throw after it replaces the loading shell, including a
+        // same-country reopen that never set __loading__ or __error__ (#9710).
+        const failedPresentation = presentationStarted && !!activePage?.isVisible();
+        const failedLoadingShell = showedLoading
+          && !!activePage?.isVisible()
+          && (activeCode === '__loading__' || activeCode === '__error__');
+        if (failedPresentation || failedLoadingShell) activePage?.hide();
         this.showToast('Country brief failed to open. Please try again.');
       }
     } finally {
       this.clearBriefRequest(request);
-      if (!pageShown && token === this.briefRequestToken && !this.hasVisibleRealCountryBrief()) {
-        this.ctx.map?.setRenderPaused(false);
-      }
     }
   }
 
@@ -1183,6 +1205,9 @@ export class CountryIntelManager implements AppModule {
     // than aborting the whole open. Only the cluster-derived counts degrade.
     let clusters: CountrySignalCluster[] = [];
     let clustersAvailable = false;
+    // The aviation read never rejects and does not need the aggregator, so it
+    // starts now instead of waiting behind the aggregator chunk.
+    const aviationDisruptionsPending = this.countryAviationDisruptions(code, country);
     try {
       clusters = (await getSignalAggregator()).getCountryClusters();
       clustersAvailable = true;
@@ -1240,13 +1265,7 @@ export class CountryIntelManager implements AppModule {
 
     const activeStrikes = this.getCountryStrikes(code, hasGeoShape).length;
 
-    let aviationDisruptions = 0;
-    if (this.ctx.intelligenceCache.flightDelays) {
-      aviationDisruptions = this.ctx.intelligenceCache.flightDelays.filter(d =>
-        (d.severity === 'major' || d.severity === 'severe' || d.delayType === 'closure') &&
-        (hasGeoShape ? this.isInCountry(d.lat, d.lon, code) : d.country?.toLowerCase() === countryLower)
-      ).length;
-    }
+    const aviationDisruptions = (await aviationDisruptionsPending).length;
 
     const ciiData = getCountryData(code);
     const isTier1 = !!TIER1_COUNTRIES[code];
@@ -1319,6 +1338,30 @@ export class CountryIntelManager implements AppModule {
       sanctionsDesignations,
       sanctionsNewDesignations,
     };
+  }
+
+  /**
+   * Airport closures and severe or major disruptions in this country. The
+   * flight-delay cache is filled only while the Aviation map layer is on, so a
+   * brief opened with the layer off reads the same bootstrap snapshot through
+   * the aviation service instead of reporting zero. The read is bounded: the
+   * brief waits on these signals before it shows.
+   */
+  private async countryAviationDisruptions(code: string, country: string): Promise<AirportDelayAlert[]> {
+    let delays = this.ctx.intelligenceCache.flightDelays;
+    if (!delays) {
+      try {
+        const { fetchFlightDelays } = await import('@/services/aviation');
+        delays = await withTimeout(fetchFlightDelays(), AVIATION_SIGNAL_TIMEOUT_MS, 'country-aviation-disruptions');
+      } catch (err) {
+        console.warn('[CountryBrief] airport disruptions unavailable:', err);
+        return [];
+      }
+    }
+    const countryLower = country.toLowerCase();
+    const hasGeoShape = hasCountryGeometry(code) || !!CountryIntelManager.COUNTRY_BOUNDS[code];
+    return delays.filter(d => isBriefAviationDisruption(d)
+      && (hasGeoShape ? this.isInCountry(d.lat, d.lon, code) : d.country?.toLowerCase() === countryLower));
   }
 
   private newsSeverityRank(item: NewsItem): number {
@@ -1514,8 +1557,13 @@ export class CountryIntelManager implements AppModule {
     }
     const posturePanel = this.ctx.panels['strategic-posture'] as StrategicPosturePanel | undefined;
     const postures = posturePanel?.getPostures() || [];
-    const aggregator = await getSignalAggregator();
-    const signals = { ...await this.getCountrySignals(code, name), ...this.selectCountryMilitary(code, name).signalCounts };
+    // getCountrySignals waits on the aggregator chunk too, but it also starts
+    // the aviation read; awaiting both together lets that read overlap.
+    const [aggregator, countrySignals] = await Promise.all([
+      getSignalAggregator(),
+      this.getCountrySignals(code, name),
+    ]);
+    const signals = { ...countrySignals, ...this.selectCountryMilitary(code, name).signalCounts };
     const cluster = aggregator.getCountryClusters().find(c => c.country === code);
     const regional = aggregator.getRegionalConvergence().filter(r => r.countries.includes(code));
     const convergence = cluster ? {

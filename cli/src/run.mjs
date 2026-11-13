@@ -54,6 +54,23 @@ async function withTimeout(timeoutOpt, fn) {
   }
 }
 
+// The default spec URL redirects (apex -> www), so spec fetches follow
+// redirects by hand: the key (a self-hosted spec may be protected) is kept only
+// while the redirect stays on the original origin.
+async function fetchSpec(fetchImpl, specUrl, headers, signal) {
+  const origin = new URL(specUrl).origin;
+  let url = specUrl;
+  for (let hops = 0; ; hops++) {
+    const hopHeaders = { ...headers };
+    if (new URL(url).origin !== origin) delete hopHeaders[API_KEY_HEADER];
+    const res = await fetchImpl(url, { headers: hopHeaders, redirect: 'manual', signal });
+    const location = res.status >= 300 && res.status < 400 && res.headers.get('location');
+    if (!location || hops === 5) return res;
+    await res.body?.cancel();
+    url = new URL(location, url).toString();
+  }
+}
+
 export async function run(argv, io = {}) {
   const fetchImpl = io.fetch || globalThis.fetch;
   const env = io.env || (typeof process !== 'undefined' ? process.env : {});
@@ -119,10 +136,10 @@ export async function run(argv, io = {}) {
       const headers = { 'user-agent': USER_AGENT, accept: 'application/json' };
       const apiKey = options.apiKey || config.apiKey;
       if (apiKey) headers[API_KEY_HEADER] = apiKey;
-      const res = await withTimeout(options.timeout, (signal) =>
-        fetchImpl(specUrl, { headers, signal }),
-      );
-      const spec = parseBody(await res.text(), res.headers);
+      const { res, spec } = await withTimeout(options.timeout, async (signal) => {
+        const res = await fetchSpec(fetchImpl, specUrl, headers, signal);
+        return { res, spec: parseBody(await res.text(), res.headers) };
+      });
       if (!res.ok) {
         stderr(`${formatOutput(spec, options)}\n`);
         if (res.status === 401) stderr(`${AUTH_HINT}\n`);
@@ -132,10 +149,12 @@ export async function run(argv, io = {}) {
       return 0;
     }
 
-    const res = await withTimeout(options.timeout, (signal) =>
-      fetchImpl(plan.url, { method: plan.method, headers: plan.headers, body: plan.body, signal }),
-    );
-    const value = parseBody(await res.text(), res.headers);
+    const { res, value } = await withTimeout(options.timeout, async (signal) => {
+      // redirect: 'manual' — fetch forwards X-WorldMonitor-Key to a redirect
+      // target on any host. The 3xx is reported as a failed request instead.
+      const res = await fetchImpl(plan.url, { method: plan.method, headers: plan.headers, body: plan.body, redirect: 'manual', signal });
+      return { res, value: parseBody(await res.text(), res.headers) };
+    });
 
     if (plan.kind === 'mcp') {
       if (value && typeof value === 'object' && value.error && typeof value.error === 'object') {

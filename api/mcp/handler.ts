@@ -8,22 +8,27 @@ import {
   MCP_DEFAULT_BURST_PER_MINUTE,
   PRODUCTION_DEPS,
   resolveAuthContext,
+  mcpAnonymousRefusalResponse,
   runContextPreChecks,
   validateProMcpAuthorization,
   wwwAuthHeader,
 } from './auth';
 import { readBoundedRequestBody, RequestBodyTooLargeError } from './bounded-body';
 import {
+  allSupportedProtocolVersionsNewestFirst,
+  CHATGPT_MODERN_SERVER_INSTRUCTIONS,
+  CHATGPT_SERVER_INSTRUCTIONS,
   MAX_JSON_RPC_BODY_BYTES,
   MCP_LOG_LEVELS,
+  MODERN_SERVER_INSTRUCTIONS,
   negotiateProtocolVersion,
   SERVER_INSTRUCTIONS,
-  SERVER_NAME,
-  SERVER_VERSION,
+  SERVER_INFO,
 } from './constants';
 import { dispatchToolsCall } from './dispatch';
 import { buildPromptResponse, PROMPT_LIST_RESPONSE } from './prompts/index';
-import { FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE } from './registry/index';
+import { CHATGPT_TOOL_LIST_RESPONSE, FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE, TRAVEL_RISK_TOOL_NAMES } from './registry/index';
+import { applyChatGptCommercePolicy, applyViewDomainPolicy, declaredClientName, isChatGptHost, mintSessionId } from './host-policy';
 import {
   ACCOUNT_RESOURCE_LIST_RESPONSE,
   buildAccountAllowanceResourceResponse,
@@ -36,6 +41,13 @@ import {
 } from './resources/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import {
+  MODERN_ONLY_METHODS,
+  modernListenResponse,
+  modernMethodNotFound,
+  shapeModernResponse,
+  validateModernRequest,
+} from './modern';
+import {
   buildSkillResourceRead,
   buildSkillsGetResponse,
   buildSkillsListResponse,
@@ -46,8 +58,17 @@ import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from 
 import { emitTelemetry, principalIdForLog } from './telemetry';
 import { classifyAgentClientHints, sanitizeClientName } from '../../shared/agent-client-source';
 import { hashKeySync } from '../../server/_shared/usage-identity';
-import { createMcpUsage, emitMcpRequestEvent, setUsageContext, setUsageRpc, type McpUsage } from './usage';
-import { safeJsonRpcId, utf8ByteLength } from './utils';
+import { deriveRequestId } from '../../server/_shared/usage';
+import { attachRequestIdToErrors } from './request-id';
+import {
+  createMcpUsage,
+  emitMcpRequestEvent,
+  setUsageContext,
+  setUsageProtocolVersion,
+  setUsageRpc,
+  type McpUsage,
+} from './usage';
+import { clientAcceptsSse, safeJsonRpcId, utf8ByteLength } from './utils';
 import {
   isMcpAliasRequest,
   MCP_CANONICAL_ENDPOINT_ERROR_CODE,
@@ -115,6 +136,16 @@ const PUBLIC_MCP_METHODS: ReadonlySet<string> = new Set([
   'logging/setLevel',
 ]);
 
+// MCP 2026-07-28: `server/discover` and `subscriptions/listen` take the
+// `initialize` path. Public, so a credentialed call gets identity validation
+// and the protocol bucket but no entitlement pre-check or data burst, and an
+// anonymous alias call stays behind applyAnonDiscoveryLimit. Public on modern
+// requests only: to a legacy request they are unknown methods, answered
+// exactly as before the modern era existed.
+function isPublicMcpMethod(method: string, modernEra: boolean): boolean {
+  return PUBLIC_MCP_METHODS.has(method) || (modernEra && MODERN_ONLY_METHODS.has(method));
+}
+
 // Mirror of resolveAuthContext's credential-header contract: does the request
 // PRESENT any credential? A public method with NO credentials is served
 // anonymously; a public method carrying a credential still has it validated
@@ -124,6 +155,22 @@ function hasCredentials(req: Request): boolean {
   return (req.headers.get('X-WorldMonitor-Key') ?? '') !== '';
 }
 
+// Default User-Agents of HTTP libraries, which scripts and self-built agents
+// send unchanged. Production, 2026-10-17 to 10-24: after the connect-time 401,
+// python-httpx signed in from 1 of 254 IPs, node 2 of 195, Go-http-client 0 of
+// 102, undici 3 of 45. They retried the handshake instead (about 245,000 401s).
+// Connectors and CLIs name themselves and do sign in, so they keep the
+// challenge; these clients reach the 401 at their first paid tool call, which
+// the Python and TypeScript SDK auth providers answer the same way.
+// The whole value must be the default form: the library name, an optional
+// `/version` and an optional `(comment)`. A named product after it, such as
+// `node Cursor/1.0`, is a connector and keeps the challenge.
+const GENERIC_HTTP_CLIENT_UA = /^(?:python-httpx2?|python-requests|python-urllib|node|undici|go-http-client|hermes-agent)(?:\/[\w.+-]+)?(?:\s+\([^()]*\))?$/i;
+
+function isGenericHttpClient(req: Request): boolean {
+  return GENERIC_HTTP_CLIENT_UA.test(req.headers.get('User-Agent') ?? '');
+}
+
 type JsonRpcRequest = {
   jsonrpc?: string;
   id?: unknown;
@@ -131,9 +178,22 @@ type JsonRpcRequest = {
   params?: unknown;
 };
 
-function validJsonRpcId(id: unknown): id is string | number | null | undefined {
-  if (id === null || id === undefined) return true;
+function validJsonRpcId(id: unknown): id is string | number | undefined {
+  if (id === undefined) return true;
   return safeJsonRpcId(id) !== null;
+}
+
+// A well-formed `initialize` that names its own protocol version: the only body
+// an unsupported MCP-Protocol-Version header does not refuse, because that body
+// negotiates the version itself.
+function isInitializeRequest(parsed: unknown): boolean {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+  const { jsonrpc, id, method, params } = parsed as JsonRpcRequest;
+  return jsonrpc === '2.0'
+    && method === 'initialize'
+    && id !== undefined && validJsonRpcId(id)
+    && !!params && typeof params === 'object' && !Array.isArray(params)
+    && typeof (params as { protocolVersion?: unknown }).protocolVersion === 'string';
 }
 
 function isAllowedMcpOrigin(origin: string | null): boolean {
@@ -161,6 +221,43 @@ function authRequiredResponse(id: unknown, resourceMetadataUrl: string, corsHead
     JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32001, message: 'Authentication required.' } }),
     { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl), ...corsHeaders }) },
   );
+}
+
+// `prompts.listChanged: false` and `resources.listChanged: false`
+// are the spec-correct values for our transport — the stateless
+// edge route cannot push `notifications/prompts/list_changed` or
+// `notifications/resources/list_changed`, so advertising `true`
+// would be a wire lie. `resources.subscribe: false` because
+// resources/subscribe is not implemented.
+//
+// `extensions['io.modelcontextprotocol/ui']` declares MCP Apps support
+// (spec 2026-01-26). This is the extension's negotiation signal: a host
+// (or agent-readiness scanner) reads it off `initialize.capabilities`
+// to classify the server as an MCP-App surface — the ui:// app-shell
+// resource + the tool `_meta.ui.resourceUri` are the content, this key
+// is the handshake. Declared unconditionally: our ui:// shells
+// and tool `_meta` are static and always present, so there is nothing
+// to gate on the client advertising the extension. Value is an empty
+// object per spec (extension carries no negotiation parameters here).
+//
+// `initialize` advertises this object as is; `server/discover` advertises it
+// minus `logging`, which the modern era does not serve.
+function serverCapabilities() {
+  return {
+    tools: {},
+    logging: {},
+    prompts: { listChanged: false },
+    resources: { subscribe: false, listChanged: false },
+    extensions: {
+      'io.modelcontextprotocol/ui': {},
+      'io.modelcontextprotocol/skills': {},
+    },
+  };
+}
+
+function modernServerCapabilities() {
+  const { logging: _logging, ...capabilities } = serverCapabilities();
+  return capabilities;
 }
 
 type StoredSseEvent = {
@@ -214,18 +311,6 @@ function getMcpCorsHeaders(methods = 'POST, GET, HEAD, OPTIONS'): Record<string,
     ...getPublicCorsHeaders(methods),
     'Cache-Control': MCP_CACHE_CONTROL,
   };
-}
-
-function clientAcceptsSse(req: Request): boolean {
-  const accept = req.headers.get('accept') ?? '';
-  return accept.split(',').some((entry) => {
-    const [type, ...params] = entry.split(';').map((part) => part.trim().toLowerCase());
-    if (type !== 'text/event-stream') return false;
-    const qParam = params.find((part) => part.startsWith('q='));
-    if (!qParam) return true;
-    const q = Number(qParam.slice(2));
-    return Number.isFinite(q) && q > 0;
-  });
 }
 
 function formatSseEvent(event: StoredSseEvent): string {
@@ -484,7 +569,9 @@ async function maybeStreamJsonRpcResponse(req: Request, owner: string | null, re
   if (!sessionId) return response;
 
   const streamId = crypto.randomUUID();
-  const responseBody = await response.text();
+  // Framed here, before mcpHandler's exit step can see JSON, so the error
+  // request id is stamped now for the live stream and the replay buffer.
+  const responseBody = await (await attachRequestIdToErrors(response, deriveRequestId(req))).text();
   // A single `message` event carrying the fully-computed JSON-RPC response. The
   // body is already resolved (`await response.text()` above) before the stream
   // is constructed, so there is no slow-result window a separate priming event
@@ -588,7 +675,9 @@ async function handleAuthenticatedSseReplay(
   // No `id` argument on purpose (#7818): the SSE replay channel is a GET with
   // no JSON-RPC body, so there is no request id to echo and the denial keeps
   // the spec's null. Every POST caller below passes the parsed `body.id`.
-  const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders, getPreCheck.burstPerMinute);
+  // A replay serves no data, so an Enterprise contract member stays on the
+  // per-user limiter rather than spending the account's REST-shared burst.
+  const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders, getPreCheck.burstPerMinute, null);
   if (getLimited) {
     usage.phase = 'limit';
     return getLimited;
@@ -614,7 +703,8 @@ async function handleAuthenticatedSseReplay(
 //
 // A plain GET to `/mcp` itself is NOT an MCP protocol handshake (that stays
 // POST); it is a human or a crawler opening the endpoint in a browser. They
-// get the human-readable server guide (`/mcp-server.md`) instead of the
+// get HTML setup instructions when explicitly accepting HTML, otherwise the
+// server guide (`/mcp-server.md`), instead of the
 // spec-correct 405 that Google Search Console reports as "cannot access".
 // SSE-flavored GETs and GETs with Last-Event-ID still fall through to the
 // normal 405 / replay paths so Streamable HTTP transport semantics are
@@ -660,9 +750,10 @@ const DISCOVERY_VARY = 'Accept, Last-Event-ID, Origin, MCP-Protocol-Version';
 const STATIC_ASSET_FETCH_TIMEOUT_MS = 5_000;
 const STATIC_ASSET_USER_AGENT = 'WorldMonitor-MCP/1.0 (+https://worldmonitor.app)';
 
-// Module-scope caches: both documents are static assets, immutable per deployment.
+// Module-scope caches: discovery documents are static assets, immutable per deployment.
 let serverCardCache: string | null = null;
 let mcpGuideCache: string | null = null;
+let mcpSetupCache: string | null = null;
 
 // Self-fetch a static asset off our own deployment. Redirects are followed:
 // `/mcp-server.md` is NOT in the Cloudflare apex→www exemption list
@@ -725,6 +816,36 @@ async function serveServerCard(req: Request, corsHeaders: Record<string, string>
 // depend on that. The cost is one function invocation per crawler GET — the
 // cacheable copy of this document still lives at `/mcp-server.md`.
 async function serveMcpGuide(req: Request, corsHeaders: Record<string, string>, headOnly = false): Promise<Response> {
+  // Require an explicit HTML media type: wildcard and machine discovery
+  // requests retain their Markdown representation. SSE/replay/auth probes
+  // are handled before reaching this helper.
+  const wantsHtml = (req.headers.get('accept') ?? '').split(',').some((entry) => {
+    const [type, ...params] = entry.split(';').map((part) => part.trim().toLowerCase());
+    if (type !== 'text/html') return false;
+    const quality = params.find((part) => part.startsWith('q='));
+    return !quality || (Number.isFinite(Number(quality.slice(2))) && Number(quality.slice(2)) > 0);
+  });
+  if (wantsHtml) {
+    if (mcpSetupCache === null) mcpSetupCache = await fetchStaticAsset(req, '/mcp-setup.html');
+    if (mcpSetupCache === null) {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          ...corsHeaders,
+          Location: 'https://www.worldmonitor.app/docs/mcp-quickstart',
+          Vary: DISCOVERY_VARY,
+        },
+      });
+    }
+    return new Response(headOnly ? null : mcpSetupCache, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/html; charset=utf-8',
+        Vary: DISCOVERY_VARY,
+        Link: MCP_CANONICAL_LINK,
+      },
+    });
+  }
   if (mcpGuideCache === null) {
     const text = await fetchStaticAsset(req, '/mcp-server.md');
     if (text === null) {
@@ -759,6 +880,11 @@ async function serveMcpGuide(req: Request, corsHeaders: Record<string, string>, 
 // uncaught throw from the inner handler (the raw-500 class hardened in #4860)
 // still emits — with status 500 — before re-throwing, so platform 500s are
 // visible in Axiom even though they bypass every structured error path.
+//
+// MCP 2026-07-28: a response to a modern request is shaped here, on the
+// single return, so every early return (auth, limits, pre-checks, validation)
+// carries the modern result and error contract. A legacy response never passes
+// through the shaping step.
 export async function mcpHandler(
   req: Request,
   deps: McpHandlerDeps,
@@ -766,9 +892,20 @@ export async function mcpHandler(
 ): Promise<Response> {
   const t0 = Date.now();
   const usage = createMcpUsage();
+  const exchange: McpExchange = { method: null };
   let res: Response;
   try {
-    res = await mcpHandlerInner(req, deps, usage, ctx);
+    res = await mcpHandlerInner(req, deps, usage, exchange, ctx);
+    // Before modern shaping, which may re-frame a JSON body as SSE.
+    res = await attachRequestIdToErrors(res, deriveRequestId(req));
+    // Before modern shaping too: it reads the legacy denial envelope.
+    if (isChatGptHost(req)) res = await applyChatGptCommercePolicy(res);
+    if (usage.era === 'modern') {
+      res = await shapeModernResponse(res, {
+        method: exchange.method,
+        acceptsSse: clientAcceptsSse(req),
+      });
+    }
   } catch (err) {
     emitMcpRequestEvent(req, new Response(null, { status: 500 }), usage, Date.now() - t0, ctx);
     throw err;
@@ -777,10 +914,16 @@ export async function mcpHandler(
   return res;
 }
 
+// The parsed JSON-RPC method, recorded for the modern shaping step, which picks
+// cache hints by method. `usage.rpcMethod` is bounded for telemetry, so it is
+// not the source.
+type McpExchange = { method: string | null };
+
 async function mcpHandlerInner(
   req: Request,
   deps: McpHandlerDeps,
   usage: McpUsage,
+  exchange: McpExchange,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<Response> {
   const corsHeaders = getMcpCorsHeaders();
@@ -795,11 +938,36 @@ async function mcpHandlerInner(
   }
 
   const protocolVersion = req.headers.get('MCP-Protocol-Version');
-  if (protocolVersion !== null && negotiateProtocolVersion(protocolVersion) !== protocolVersion) {
-    usage.phase = 'transport';
+  setUsageProtocolVersion(usage, protocolVersion);
+  const unsupportedProtocolVersion = protocolVersion !== null
+    && negotiateProtocolVersion(protocolVersion) !== protocolVersion;
+  const rejectProtocolVersion = (): Response => {
+    usage.phase = 'protocol_version';
     const response = rpcError(null, -32600, 'Unsupported MCP-Protocol-Version', corsHeaders, undefined, 400);
     return req.method === 'HEAD' ? new Response(null, response) : response;
-  }
+  };
+  const requestUrl = new URL(req.url);
+  const requestPathname = requestUrl.pathname;
+  const aliasRequest = isMcpAliasRequest(requestUrl.hostname, requestPathname)
+    || isMcpAliasRequest(req.headers.get('host') ?? '', requestPathname);
+  // An anonymous plain GET on the transport that names an MCP version is an
+  // OAuth discovery probe, not a stream open: rmcp (Codex) sends it with a
+  // fixed `2024-11-05` header and reads the 401's `resource_metadata` pointer
+  // (RFC 9728 §5.1). Browsers and crawlers never send the header, so they keep
+  // the guide. Aliases are excluded: their 308 is cross-origin from `www`,
+  // which rmcp's discovery treats as fatal, while the old 400 lets it continue.
+  const anonymousAuthProbe = req.method === 'GET'
+    && protocolVersion !== null
+    && !aliasRequest
+    && !WELL_KNOWN_MCP_PATHS.has(requestPathname)
+    && !hasCredentials(req)
+    && !req.headers.get('last-event-id')
+    && !clientAcceptsSse(req);
+  // A POST is held until its body is read: `initialize` negotiates the version
+  // from params.protocolVersion, and no version is agreed before it answers, so
+  // clients that send their newest version in the header while negotiating
+  // must still reach negotiation. Every other request is refused here.
+  if (unsupportedProtocolVersion && req.method !== 'POST' && !anonymousAuthProbe) return rejectProtocolVersion();
 
   if (req.method === 'OPTIONS') {
     usage.skip = true;
@@ -817,13 +985,9 @@ async function mcpHandlerInner(
   // by the request's own path — never by a query parameter, which the caller
   // controls. `/mcp` and the well-known aliases are rewritten to `/api/mcp`,
   // and this function still observes the original path: the dual-role branches
-  // below serve markdown at `/mcp` and the JSON card at `/.well-known/mcp` by
+  // below serve the guide at `/mcp` and the JSON card at `/.well-known/mcp` by
   // reading that pathname. The aliases sit under neither transport path, so
   // they take the origin-wide document, which covers every path on the host.
-  const requestUrl = new URL(req.url);
-  const requestPathname = requestUrl.pathname;
-  const aliasRequest = isMcpAliasRequest(requestUrl.hostname, requestPathname)
-    || isMcpAliasRequest(req.headers.get('host') ?? '', requestPathname);
 
   // The middleware catches ordinary browser discovery, but rewritten and
   // dotted well-known requests can bypass it. Keep the enforcement boundary
@@ -861,6 +1025,11 @@ async function mcpHandlerInner(
     : requestPathname.startsWith('/api/mcp') ? '/api/mcp' : '/mcp';
   const resourceMetadataUrl = `${resolveMetadataOrigin(req)}/.well-known/oauth-protected-resource${transportSuffix}`;
 
+  if (anonymousAuthProbe) {
+    usage.phase = 'auth';
+    return mcpAnonymousRefusalResponse(req, resourceMetadataUrl, corsHeaders, null, { handshake: true });
+  }
+
   if (req.method === 'HEAD') {
     // HEAD is GET without a response body. Preserve transport-shaped GET
     // semantics before serving the plain discovery representation metadata.
@@ -879,11 +1048,10 @@ async function mcpHandlerInner(
     // HEAD is the matching GET with the body suppressed. Reuse the discovery
     // helpers so cache policy, canonical Link, and static-asset fallback status
     // cannot drift between the two methods.
-    const pathname = new URL(req.url).pathname;
-    if (WELL_KNOWN_MCP_PATHS.has(pathname)) {
+    if (WELL_KNOWN_MCP_PATHS.has(requestPathname)) {
       return serveServerCard(req, corsHeaders, true);
     }
-    if (pathname === MCP_TRANSPORT_PATH) {
+    if (requestPathname === MCP_TRANSPORT_PATH) {
       return serveMcpGuide(req, corsHeaders, true);
     }
     return new Response(null, {
@@ -895,7 +1063,7 @@ async function mcpHandlerInner(
   // Discovery GETs. A GET with no `Last-Event-ID` and no `text/event-stream`
   // Accept is not a transport operation: on the well-known aliases it is a
   // manifest fetch (JSON server card), and on `/mcp` itself it is a human or
-  // crawler opening the endpoint (the markdown server guide). Both are
+  // crawler opening the endpoint (HTML setup or the Markdown server guide). Both are
   // answered BEFORE the transport GET branch, so the standalone-stream 405 and
   // the authenticated replay path below are untouched.
   if (
@@ -903,12 +1071,11 @@ async function mcpHandlerInner(
     !req.headers.get('last-event-id') &&
     !clientAcceptsSse(req)
   ) {
-    const pathname = new URL(req.url).pathname;
-    if (WELL_KNOWN_MCP_PATHS.has(pathname)) {
+    if (WELL_KNOWN_MCP_PATHS.has(requestPathname)) {
       usage.skip = true;
       return serveServerCard(req, corsHeaders);
     }
-    if (pathname === MCP_TRANSPORT_PATH) {
+    if (requestPathname === MCP_TRANSPORT_PATH) {
       usage.skip = true;
       return serveMcpGuide(req, corsHeaders);
     }
@@ -921,8 +1088,8 @@ async function mcpHandlerInner(
 
   // GET has three roles on the MCP endpoint:
   //   1. A plain GET (no `text/event-stream` Accept, no `Last-Event-ID`) is a
-  //      discovery read and has already been answered above — the markdown
-  //      server guide at `/mcp`, the JSON server card at the well-known
+  //      discovery read and has already been answered above — the HTML setup
+  //      or Markdown server guide at `/mcp`, the JSON server card at the well-known
   //      aliases. The MCP handshake itself remains POST-only.
   //   2. A GET asking for `text/event-stream` or carrying `Last-Event-ID` is
   //      either a client opening the OPTIONAL server->client SSE stream of the
@@ -953,15 +1120,27 @@ async function mcpHandlerInner(
   // JSON.parse so an oversized body never reaches method dispatch — matching
   // api/docs-mcp.ts (HTTP 413 + JSON-RPC -32600).
   let body: JsonRpcRequest;
+  let modernEra = false;
   try {
     const bodyBytes = await readBoundedRequestBody(req, MAX_JSON_RPC_BODY_BYTES);
     const parsed: unknown = JSON.parse(new TextDecoder().decode(bodyBytes));
+    // MCP 2026-07-28: while MCP_PROTOCOL_2026_07_28 is on, an enveloped body is
+    // validated before the #9563 header pre-check, so its -32022/-32020/-32602
+    // answers are reachable whatever the header says. Off, or without the
+    // envelope, this is `legacy` and nothing below changes.
+    const modern = validateModernRequest(req, parsed, usage, corsHeaders);
+    if (modern.era === 'modern' && modern.response) return modern.response;
+    modernEra = modern.era === 'modern';
+    if (unsupportedProtocolVersion && !modernEra && !isInitializeRequest(parsed)) {
+      return rejectProtocolVersion();
+    }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       usage.phase = 'malformed';
       return rpcError(null, -32600, 'Invalid request: expected object', corsHeaders);
     }
     body = parsed as JsonRpcRequest;
   } catch (err) {
+    if (unsupportedProtocolVersion) return rejectProtocolVersion();
     usage.phase = 'malformed';
     if (err instanceof RequestBodyTooLargeError) {
       // Structured `data` so an agent can self-correct without parsing the
@@ -997,7 +1176,13 @@ async function mcpHandlerInner(
     return rpcError(body.id ?? null, -32600, 'Invalid request: missing method', corsHeaders);
   }
 
+  if (body.params !== undefined && (body.params === null || typeof body.params !== 'object' || Array.isArray(body.params))) {
+    usage.phase = 'malformed';
+    return rpcError(body.id ?? null, -32600, 'Invalid request: params must be an object', corsHeaders, undefined, body.id === undefined ? 400 : 200);
+  }
+
   const { id, method } = body;
+  exchange.method = method;
 
   // #8403 — attribute JSON-RPC method (and registry-bounded tool name) before
   // any auth/limit return so Axiom can tell initialize / tools/list /
@@ -1006,6 +1191,7 @@ async function mcpHandlerInner(
     ? ((body.params as { name?: unknown } | null)?.name)
     : undefined;
   setUsageRpc(usage, method, toolCallName);
+  usage.clientName = declaredClientName(body);
 
   if (aliasRequest) {
     usage.phase = 'migration';
@@ -1016,28 +1202,23 @@ async function mcpHandlerInner(
       : mcpAliasRpcError(id, corsHeaders);
   }
 
-  // Connect-time challenge. An unauthenticated `initialize` on the transport is
-  // refused with the same structured 401 + `WWW-Authenticate` an unauthenticated
-  // tool call gets. `initialize` is the handshake every interactive MCP client
-  // must open with, and hosted connectors (Cursor's agent backend,
-  // grok-connectors-manager) decide whether a server needs sign-in from how it
-  // is answered: a 200 recorded "connected, nothing to authenticate", and the
-  // 401 a paid call later returned had no authorization server behind it, so
-  // their sign-in control never worked. The JSON-RPC id is echoed so an SDK
-  // transport correlates the refusal instead of waiting out its timeout.
-  //
-  // Only the handshake is challenged. Stateless callers never send it — the
-  // published `worldmonitor` CLI and the SDKs POST `tools/list` and
-  // `tools/call get_sources` directly, with no key — so keyless catalog reads
-  // and the free tool keep working for every version already installed. A full
-  // anonymous handshake remains available on the machine-discovery aliases,
-  // which is where agent-readiness scanners POST theirs.
-  if (method === 'initialize' && !hasCredentials(req) && !WELL_KNOWN_MCP_PATHS.has(requestPathname)) {
-    const denied = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders, id);
-    if (!denied.ok) {
-      usage.phase = 'auth';
-      return denied.response;
+  // A modern request naming a removed or unknown method is answered 404
+  // -32601 here, ahead of the notification 202 and the auth gate below.
+  if (modernEra) {
+    const notFound = modernMethodNotFound(method, id, corsHeaders);
+    if (notFound) {
+      usage.phase = 'method_not_found';
+      return notFound;
     }
+  }
+
+  if (id === undefined) {
+    const limited = await applyAnonDiscoveryLimit(req, corsHeaders);
+    if (limited) {
+      usage.phase = 'limit';
+      return new Response(null, { status: 429, headers: limited.headers });
+    }
+    return new Response(null, { status: 202, headers: withMcpNoStore(corsHeaders) });
   }
 
   // Anonymous-servable resources/read promotions. Two kinds of resource carry
@@ -1074,6 +1255,41 @@ async function mcpHandlerInner(
   const isFreeTierToolCall = typeof toolCallName === 'string'
     && FREE_TIER_TOOL_NAMES.has(toolCallName);
 
+  // Connect-time challenge. An unauthenticated `initialize` on the transport is
+  // refused with the same structured 401 + `WWW-Authenticate` an unauthenticated
+  // tool call gets. `initialize` is the handshake every interactive MCP client
+  // must open with, and hosted connectors (Cursor's agent backend,
+  // grok-connectors-manager) decide whether a server needs sign-in from how it
+  // is answered: a 200 recorded "connected, nothing to authenticate", and the
+  // 401 a paid call later returned had no authorization server behind it, so
+  // their sign-in control never worked. The JSON-RPC id is echoed so an SDK
+  // transport correlates the refusal instead of waiting out its timeout.
+  //
+  // On a legacy request only the handshake is challenged. Stateless callers
+  // never send it — the published `worldmonitor` CLI and the SDKs POST
+  // `tools/list` and `tools/call get_sources` directly, with no key — so keyless catalog reads
+  // and the free tool keep working for every version already installed. A full
+  // anonymous handshake remains available on the machine-discovery aliases,
+  // which is where agent-readiness scanners POST theirs.
+  //
+  // A modern request is challenged for every method, not only
+  // the handshake: 2026-07-28 has no `initialize`, so `server/discover` is the
+  // probe a hosted connector reads sign-in from, and a modern client may open
+  // with `tools/list` instead. The modern era has no shipped keyless clients.
+  // Two exemptions keep their anonymous promise: the free-tier `get_sources`
+  // call and a static `ui://` app-shell read. The aliases stay anonymous.
+  const challengeAnonymous = (method === 'initialize' && (modernEra || !isGenericHttpClient(req)))
+    || (modernEra && !isFreeTierToolCall && uiResourceReadUri === null);
+  if (challengeAnonymous && !hasCredentials(req) && !WELL_KNOWN_MCP_PATHS.has(requestPathname)) {
+    const denied = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders, id, {
+      handshake: method === 'initialize',
+    });
+    if (!denied.ok) {
+      usage.phase = 'auth';
+      return denied.response;
+    }
+  }
+
   // Auth gate. `context` is null only on the anonymous discovery path; every
   // data/quota method below runs the full protected path and always sets it.
   let context: McpAuthContext | null = null;
@@ -1083,7 +1299,8 @@ async function mcpHandlerInner(
   let burstPerMinute: number | undefined;
   let freeAccountAllowance = false;
   let planKey: string | undefined;
-  if (PUBLIC_MCP_METHODS.has(method) || isAnonResourceRead || isFreeTierToolCall) {
+  let travelRiskAssessment = false;
+  if (isPublicMcpMethod(method, modernEra) || isAnonResourceRead || isFreeTierToolCall) {
     if (hasCredentials(req)) {
       // Credentials presented on a public method are still validated so a
       // present-but-invalid key surfaces a 401 instead of a silent anon
@@ -1146,7 +1363,14 @@ async function mcpHandlerInner(
     }
     context = auth.context;
     setUsageContext(usage, context);
-    const preCheck = await runContextPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx, id);
+    // A cached entitlement written before the flag existed would read as "not
+    // included" for up to its TTL, so only a call to the tool that needs the
+    // flag pays for a refetch of such an entry.
+    const requireTravelRiskShape = typeof toolCallName === 'string' && TRAVEL_RISK_TOOL_NAMES.has(toolCallName);
+    const preCheck = await runContextPreChecks(
+      context, deps, resourceMetadataUrl, corsHeaders, ctx, id,
+      requireTravelRiskShape ? { requireTravelRiskShape } : {},
+    );
     if (!preCheck.ok) {
       usage.phase = preCheck.response.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
       return preCheck.response;
@@ -1155,7 +1379,13 @@ async function mcpHandlerInner(
     burstPerMinute = preCheck.burstPerMinute;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
     planKey = preCheck.planKey;
-    const limited = method === 'tools/call' ? null : await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute, id);
+    travelRiskAssessment = preCheck.travelRiskAssessment === true;
+    // Only a data-bearing resources/read spends an Enterprise contract
+    // account's burst (shared with its REST requests); the account status
+    // read and unsupported methods stay on the per-user limiter. tools/call
+    // takes its burst in dispatchToolsCall.
+    const dataResourceRead = method === 'resources/read' && !isAccountResourceRead;
+    const limited = method === 'tools/call' ? null : await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute, id, undefined, dataResourceRead ? budget?.account : undefined);
     if (limited) {
       usage.phase = 'limit';
       return limited;
@@ -1166,11 +1396,47 @@ async function mcpHandlerInner(
   // SSE replay buffer this request stores is bound to the principal that
   // actually passed the gates above.
   const sseOwner = sseReplayOwner(context);
+  // A modern request has no session: it ignores a client Mcp-Session-Id,
+  // so its answer is never framed as a replayable SSE stream or stored for
+  // Last-Event-ID replay. It goes out as the plain JSON response, which
+  // mcpHandler shapes and, for tools/call, frames as session-free SSE.
+  // A travel-plan draft is streamed live but never kept for Last-Event-ID
+  // replay: the server holds no copy of a trip (#10451).
+  const noReplay = method === 'tools/call'
+    && TRAVEL_RISK_TOOL_NAMES.has((body.params as { name?: unknown } | undefined)?.name as string);
+  const respond = async (response: Response): Promise<Response> => {
+    const shaped = await applyViewDomainPolicy(req, method, response, body);
+    return modernEra ? shaped : maybeStreamJsonRpcResponse(req, noReplay ? null : sseOwner, shaped);
+  };
+
+  if (['tools/list', 'prompts/list', 'resources/list', 'resources/templates/list'].includes(method)) {
+    const cursor = (body.params as { cursor?: unknown } | undefined)?.cursor;
+    if (cursor !== undefined && typeof cursor !== 'string') {
+      return respond(rpcError(id, -32602, 'Invalid params: cursor must be a string', corsHeaders));
+    }
+  }
+
+  // MCP 2026-07-28 `server/discover`: the modern era's handshake-free view of
+  // what `initialize` returns. Modern requests only; a legacy one reaches the
+  // switch's unknown-method default exactly as before. serverInfo, resultType
+  // and the cache hint are stamped by shapeModernResponse in mcpHandler.
+  if (modernEra && method === 'server/discover') {
+    return respond(rpcOk(id, {
+      supportedVersions: allSupportedProtocolVersionsNewestFirst(),
+      capabilities: modernServerCapabilities(),
+      instructions: isChatGptHost(req) ? CHATGPT_MODERN_SERVER_INSTRUCTIONS : MODERN_SERVER_INSTRUCTIONS,
+    }, corsHeaders));
+  }
+  if (modernEra && method === 'subscriptions/listen') {
+    const listen = modernListenResponse(req, id, body.params, corsHeaders);
+    if (listen.status !== 200) usage.phase = 'transport';
+    return listen;
+  }
 
   // Dispatch
   switch (method) {
     case 'initialize': {
-      const sessionId = crypto.randomUUID();
+      const sessionId = mintSessionId((body.params as { clientInfo?: unknown } | null | undefined)?.clientInfo);
       // Bind the server-minted session before content negotiation can return a
       // JSON response. Otherwise a different principal that learns the session
       // id can make the first SSE write and claim the replay bucket.
@@ -1194,44 +1460,19 @@ async function mcpHandlerInner(
         client_name: clientName,
         client_source: classifyAgentClientHints([clientName, clientUserAgent]),
       });
-      return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, {
+      return respond(rpcOk(id, {
         protocolVersion: negotiatedVersion,
-        // `prompts.listChanged: false` and `resources.listChanged: false`
-        // are the spec-correct values for our transport — the stateless
-        // edge route cannot push `notifications/prompts/list_changed` or
-        // `notifications/resources/list_changed`, so advertising `true`
-        // would be a wire lie. `resources.subscribe: false` because
-        // resources/subscribe is not implemented.
-        //
-        // `extensions['io.modelcontextprotocol/ui']` declares MCP Apps support
-        // (spec 2026-01-26). This is the extension's negotiation signal: a host
-        // (or agent-readiness scanner) reads it off `initialize.capabilities`
-        // to classify the server as an MCP-App surface — the ui:// app-shell
-        // resource + the tool `_meta.ui.resourceUri` are the content, this key
-        // is the handshake. Declared unconditionally: our ui:// shells
-        // and tool `_meta` are static and always present, so there is nothing
-        // to gate on the client advertising the extension. Value is an empty
-        // object per spec (extension carries no negotiation parameters here).
-        capabilities: {
-          tools: {},
-          logging: {},
-          prompts: { listChanged: false },
-          resources: { subscribe: false, listChanged: false },
-          extensions: {
-            'io.modelcontextprotocol/ui': {},
-            'io.modelcontextprotocol/skills': {},
-          },
-        },
-        serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-        instructions: SERVER_INSTRUCTIONS,
+        capabilities: serverCapabilities(),
+        serverInfo: SERVER_INFO,
+        instructions: isChatGptHost(req) ? CHATGPT_SERVER_INSTRUCTIONS : SERVER_INSTRUCTIONS,
       }, { 'Mcp-Session-Id': sessionId, ...corsHeaders }));
     }
     case 'notifications/initialized':
       return new Response(null, { status: 202, headers: withMcpNoStore(corsHeaders) });
     case 'ping':
-      return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, {}, corsHeaders));
+      return respond(rpcOk(id, {}, corsHeaders));
     case 'tools/list':
-      return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, { tools: TOOL_LIST_RESPONSE }, corsHeaders));
+      return respond(rpcOk(id, { tools: isChatGptHost(req) ? CHATGPT_TOOL_LIST_RESPONSE : TOOL_LIST_RESPONSE }, corsHeaders));
     case 'tools/call': {
       // context is always set here. tools/call is never a PUBLIC_MCP_METHOD, and
       // since U7 a free-tier call takes the anon branch above but still sets an
@@ -1254,9 +1495,12 @@ async function mcpHandlerInner(
         burstPerMinute ?? MCP_DEFAULT_BURST_PER_MINUTE,
         planKey,
         usage,
+        // Supported versions are YYYY-MM-DD, so string order is date order.
+        protocolVersion !== null && protocolVersion >= '2025-11-25',
+        travelRiskAssessment,
       );
       classifyDispatchedUsage(usage, dispatched);
-      return maybeStreamJsonRpcResponse(req, sseOwner, dispatched);
+      return respond(dispatched);
     }
     // Prompts are metadata-class — they ship a workflow template, not data.
     // Symmetric posture with `describe_tool`: quota-exempt (counting template
@@ -1264,20 +1508,20 @@ async function mcpHandlerInner(
     // defeats the prompt-discovery point), but the per-minute rate limit
     // applied above still gates abusive loops.
     case 'prompts/list':
-      return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, { prompts: PROMPT_LIST_RESPONSE }, corsHeaders));
+      return respond(rpcOk(id, { prompts: PROMPT_LIST_RESPONSE }, corsHeaders));
     case 'prompts/get': {
-      const params = body.params as { name?: unknown; arguments?: Record<string, unknown> } | null;
+      const params = body.params as { name?: unknown; arguments?: unknown } | null;
       if (!params || typeof params.name !== 'string') {
-        return maybeStreamJsonRpcResponse(req, sseOwner, rpcError(id, -32602, 'Invalid params: missing prompt name', corsHeaders));
+        return respond(rpcError(id, -32602, 'Invalid params: missing prompt name', corsHeaders));
       }
       const built = buildPromptResponse(params.name, params.arguments);
-      if (!built.ok) return maybeStreamJsonRpcResponse(req, sseOwner, rpcError(id, built.code, built.message, corsHeaders));
-      return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, { description: built.description, messages: built.messages }, corsHeaders));
+      if (!built.ok) return respond(rpcError(id, built.code, built.message, corsHeaders));
+      return respond(rpcOk(id, { description: built.description, messages: built.messages }, corsHeaders));
     }
     case 'skills/list':
-      return maybeStreamJsonRpcResponse(req, sseOwner, buildSkillsListResponse(id, body.params, corsHeaders));
+      return respond(buildSkillsListResponse(id, body.params, corsHeaders));
     case 'skills/get':
-      return maybeStreamJsonRpcResponse(req, sseOwner, buildSkillsGetResponse(id, body.params, corsHeaders));
+      return respond(buildSkillsGetResponse(id, body.params, corsHeaders));
     // Resources split by data sensitivity. resources/list + the new
     // resources/templates/list are metadata-class — public catalog-enumeration
     // methods (in PUBLIC_MCP_METHODS, quota-exempt, anon-rate-limited) that
@@ -1294,7 +1538,7 @@ async function mcpHandlerInner(
       // data-bearing URI templates are surfaced separately via
       // resources/templates/list (a literal `{iso2}` URI can't resolve, so it
       // must not appear in a list an anonymous validator reads back).
-      return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, {
+      return respond(rpcOk(id, {
         resources: [
           ...RESOURCE_LIST_RESPONSE,
           ...UI_RESOURCE_LIST_RESPONSE,
@@ -1304,30 +1548,30 @@ async function mcpHandlerInner(
         ],
       }, corsHeaders));
     case 'resources/templates/list':
-      return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, { resourceTemplates: RESOURCE_TEMPLATE_LIST_RESPONSE }, corsHeaders));
+      return respond(rpcOk(id, { resourceTemplates: RESOURCE_TEMPLATE_LIST_RESPONSE }, corsHeaders));
     case 'resources/read':
       if (isSkillResourceRead) {
         if (!skillResourceReadUri) {
-          return maybeStreamJsonRpcResponse(req, sseOwner, rpcError(
+          return respond(rpcError(
             id,
             -32602,
             `Unknown skill resource uri "${resourceReadUri}".`,
             corsHeaders,
           ));
         }
-        return maybeStreamJsonRpcResponse(req, sseOwner, buildSkillResourceRead(id, skillResourceReadUri, corsHeaders));
+        return respond(buildSkillResourceRead(id, skillResourceReadUri, corsHeaders));
       }
       // MCP Apps `ui://` read: a static, data-free HTML app shell served on the
       // public path (no context, no quota, no dispatch). Resolved above into
       // `uiResourceReadUri`.
       if (uiResourceReadUri) {
-        return maybeStreamJsonRpcResponse(req, sseOwner, await buildUiResourceRead(id, uiResourceReadUri, corsHeaders));
+        return respond(await buildUiResourceRead(id, uiResourceReadUri, corsHeaders));
       }
       // A PUBLIC data resource read (concrete, metadata-only freshness/health
       // probe) is likewise served anonymously + quota-exempt via its direct
       // reader — no data, no dispatchToolsCall, no Pro reservation.
       if (isPublicResourceRead) {
-        return maybeStreamJsonRpcResponse(req, sseOwner, await buildPublicResourceResponse(body, corsHeaders));
+        return respond(await buildPublicResourceResponse(body, corsHeaders));
       }
       // Account allowance status is authenticated but quota-exempt. The gated
       // branch above already resolved identity, durable token validity, and the
@@ -1339,7 +1583,7 @@ async function mcpHandlerInner(
           usage.phase = 'auth';
           return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
         }
-        return maybeStreamJsonRpcResponse(req, sseOwner, await buildAccountAllowanceResourceResponse(
+        return respond(await buildAccountAllowanceResourceResponse(
           context,
           deps,
           body,
@@ -1375,23 +1619,23 @@ async function mcpHandlerInner(
           usage,
         );
         classifyDispatchedUsage(usage, resourceRes);
-        return maybeStreamJsonRpcResponse(req, sseOwner, resourceRes);
+        return respond(resourceRes);
       }
     case 'logging/setLevel': {
       const level = (body.params as { level?: string } | null)?.level;
       if (typeof level !== 'string' || !MCP_LOG_LEVELS.has(level)) {
-        return maybeStreamJsonRpcResponse(req, sseOwner, rpcError(id, -32602,
+        return respond(rpcError(id, -32602,
           `Invalid params: level must be one of ${[...MCP_LOG_LEVELS].join(', ')}`,
           corsHeaders,
         ));
       }
-      return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, {}, corsHeaders));
+      return respond(rpcOk(id, {}, corsHeaders));
     }
     default:
       // Cap the echoed method name — an arbitrarily long one would otherwise
       // be reflected verbatim into the pre-auth error body (bandwidth
       // amplification). Mirrors the a2a.ts cap (Greptile #4824).
-      return maybeStreamJsonRpcResponse(req, sseOwner, rpcError(id, -32601, `Method not found: ${method.slice(0, 100)}`, corsHeaders));
+      return respond(rpcError(id, -32601, `Method not found: ${method.slice(0, 100)}`, corsHeaders));
   }
 }
 

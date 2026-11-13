@@ -166,6 +166,21 @@ export interface GdeltTensionPair {
   trend: TrendDirection;
   changePercent: number;
   region: string;
+  evidence: TensionEvidence[];
+}
+
+export interface TensionEvidence {
+  channel: string;
+  value: number;
+  baseline?: number;
+  countries: string[];
+  airports: TensionEvidenceAirport[];
+  observedAt: number;
+}
+
+export interface TensionEvidenceAirport {
+  name: string;
+  status: string;
 }
 
 export interface ClassifyEventRequest {
@@ -705,6 +720,8 @@ export interface ListSecurityAdvisoriesRequest {
 export interface ListSecurityAdvisoriesResponse {
   advisories: SecurityAdvisoryItem[];
   byCountry: Record<string, string>;
+  registerLevels: SecurityAdvisoryItem[];
+  fetchedAt: number;
 }
 
 export interface SecurityAdvisoryItem {
@@ -889,6 +906,29 @@ export interface GetCountryEnergyProfileResponse {
   importShareAvailable: boolean;
   importShareYear: number;
   importShareSource: string;
+  regionalEnergyFeeds: RegionalEnergyFeed[];
+}
+
+export interface RegionalEnergyFeed {
+  sourceId: string;
+  name: string;
+  sourceUrl: string;
+  licence: string;
+  status: string;
+  fetchedAt: number;
+  observedAt: number;
+  dataUrls: string[];
+  observations: RegionalEnergyObservation[];
+  error: string;
+}
+
+export interface RegionalEnergyObservation {
+  metric: string;
+  period: string;
+  value: number;
+  unit: string;
+  area: string;
+  stale: boolean;
 }
 
 export interface ComputeEnergyShockScenarioRequest {
@@ -920,6 +960,11 @@ export interface ComputeEnergyShockScenarioResponse {
   /** @deprecated */
   gasImpact?: GasImpact;
   gasSensitivity?: GasSensitivity;
+  preCrisisBaseline?: CrudeShareBaseline;
+  currentFlows?: CrudeShareBaseline;
+  /** @deprecated */
+  reserveEstimate?: ReserveEstimate;
+  reportedStocks?: ReportedStocks;
 }
 
 export interface ProductImpact {
@@ -962,6 +1007,8 @@ export interface GasSensitivity {
   dataSource: string;
   dataMonth: string;
   modelBasis: string;
+  preCrisisBaseline?: LngShareBaseline;
+  currentFlows?: LngShareBaseline;
 }
 
 export interface GasStorageObservation {
@@ -972,6 +1019,45 @@ export interface GasStorageObservation {
   scope: string;
 }
 
+export interface LngShareBaseline {
+  basis: string;
+  fromMonth: string;
+  toMonth: string;
+  monthsCovered: number;
+  hormuzLngShare: number;
+  lngDisruptionTj: number;
+}
+
+export interface CrudeShareBaseline {
+  basis: string;
+  fromMonth: string;
+  toMonth: string;
+  monthsCovered: number;
+  gulfCrudeShare: number;
+  crudeLossKbd: number;
+  crudeLossAfterBypassKbd?: number;
+}
+
+export interface ReserveEstimate {
+  scope: string;
+  asOf: string;
+  credibility: string;
+  lowMb: number;
+  centralMb: number;
+  highMb: number;
+  coverDaysLow?: number;
+  coverDaysHigh?: number;
+}
+
+export interface ReportedStocks {
+  source: string;
+  month: string;
+  crudeMb: number;
+  productsMb: number;
+  totalMb: number;
+  stockDays?: number;
+}
+
 export interface GetCountryPortActivityRequest {
   countryCode: string;
 }
@@ -980,6 +1066,7 @@ export interface CountryPortActivityResponse {
   ports: PortActivityEntry[];
   fetchedAt: string;
   available: boolean;
+  stale: boolean;
 }
 
 export interface PortActivityEntry {

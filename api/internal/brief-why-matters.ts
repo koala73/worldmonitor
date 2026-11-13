@@ -363,7 +363,10 @@ interface EdgeContext {
 
 export default async function handler(req: Request, ctx?: EdgeContext): Promise<Response> {
   if (req.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, 405);
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', Allow: 'POST' },
+    });
   }
 
   // Auth.

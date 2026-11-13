@@ -130,9 +130,10 @@ const KIND_RULES = Object.freeze([
  * construction: a path has exactly one first segment, so at most one entry can
  * match. `docs` is handled separately because it splits on the locale.
  *
- * `/country-instability-index/` is the hub for the country score surface and
- * `/accuracy/` is a published methodology record, so they join the families
- * that already own those surfaces rather than each becoming a family of one.
+ * `/country-instability-index/` is the hub for the country score surface,
+ * `/accuracy/` is a published methodology record and `/monitor-the-situation/`
+ * is a live board over the crisis trackers, so they join the families that
+ * already own those surfaces rather than each becoming a family of one.
  */
 const SEGMENT_FAMILIES = Object.freeze({
   // Indexable welcome landings are the homepage family at a locale prefix.
@@ -150,6 +151,7 @@ const SEGMENT_FAMILIES = Object.freeze({
   'country-instability-index': 'country_pages',
   chokepoints: 'chokepoints',
   crises: 'crises',
+  'monitor-the-situation': 'crises',
   tools: 'tools',
   sources: 'sources',
   compare: 'compare',

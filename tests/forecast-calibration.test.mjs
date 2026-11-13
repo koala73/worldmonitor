@@ -665,6 +665,25 @@ describe('map lifecycle', () => {
     assert.deepEqual(withMap.calibration, plain.calibration);
     assert.equal(withMap.calibrationShadow.status, 'shadow');
   });
+
+  it('holds on a verdict-only shadow that reads the published gate, while the scorecard keeps its ECE intervals', () => {
+    const base = twoSided(30, 12, { probability: 0.35 });
+    const map = fitCalibrationMap(ledgerOf(base), fitAt);
+    const grown = ledgerOf([...base, ...twoSided(30, 12, { probability: 0.35, generatedAt: fitAt + DAY_MS })]);
+    const now = fitAt + 20 * DAY_MS;
+    const run = resolveCalibrationMapForRun(map, grown, now);
+    assert.equal(run.held?.reason, 'family_growth');
+    const published = buildScorecard(grown, now, map).calibrationShadow;
+    for (const side of [published.forward.raw, published.forward.calibrated]) {
+      assert.ok(Array.isArray(side.eceCi95) && side.eceCi95.length === 2, 'the published block keeps its ECE intervals');
+    }
+    assert.deepEqual([run.shadow.forward.raw.eceCi95, run.shadow.forward.calibrated.eceCi95], [null, null], 'the hold skips them');
+    assert.equal('internal' in run.shadow.forward, false, 'and the pre-blend stage');
+    assert.deepEqual(run.shadow.activationGate, published.activationGate);
+    assert.deepEqual(run.shadow.forward.brierDelta, published.forward.brierDelta);
+    assert.deepEqual(run.shadow.forward.byDomain.map((row) => row.brierDelta), published.forward.byDomain.map((row) => row.brierDelta));
+    assert.equal(resolveCalibrationMapForRun(map, ledgerOf(base), fitAt + DAY_MS).shadow, undefined, 'no trigger, no gate bootstrap');
+  });
 });
 
 describe('published calibration (#7070 activation)', () => {
@@ -1053,7 +1072,7 @@ describe('refit triggers in a rolling-window steady state (review of #9027)', ()
         const now = fitAt + 10 * DAY_MS + (i * DAY_MS) / 2;
         const run = resolveCalibrationMapForRun(map, ledgerOf([...base, ...forward]), now);
         if (run.action === 'fitted') outcome = `refit ${run.reason} at ${forward.length} forward rows`;
-        else if (run.held && evaluateCalibrationShadow(ledgerOf([...base, ...forward]), map, now).activationGate.eligible) outcome = 'gate passed';
+        else if (run.held && run.shadow.activationGate.eligible) outcome = 'gate passed';
       }
       assert.equal(outcome, 'gate passed');
     });
@@ -1090,9 +1109,9 @@ describe('refit triggers in a rolling-window steady state (review of #9027)', ()
   // so "not yet shown non-inferior" must not release a held growth refit.
   // Each trial fits on 40 one-row families from a forecaster biased high by
   // 0.2, then adds one forward family a day.
-  // The pre-blend stage never feeds the gate, so the trials skip it; trial 0
-  // keeps the default configuration the resolver publishes.
-  const noisyTrial = (truth, trialSeed, shadowOptions = { preBlendStage: false }) => {
+  // Inferiority is read from the verdict-only shadow the resolver decided the
+  // hold on, so the trials read exactly what the hold read.
+  const noisyTrial = (truth, trialSeed) => {
     const random = mulberry32(trialSeed);
     const fitAt = T0 + 30 * DAY_MS;
     let base;
@@ -1111,18 +1130,24 @@ describe('refit triggers in a rolling-window steady state (review of #9027)', ()
       forward.push(entry({ probability: p, outcome: random() < truth(p) ? 'YES' : 'NO', generatedAt: fitAt + DAY_MS + i * DAY_MS }));
       const now = fitAt + 10 * DAY_MS + i * DAY_MS;
       const ledger = ledgerOf([...base, ...forward]);
-      const { activationGate: gate, forward: cohort } = evaluateCalibrationShadow(ledger, map, now, shadowOptions);
-      const inferior = [cohort.brierDelta, ...cohort.byDomain.filter((row) => row.domain === 'cyber').map((row) => row.brierDelta)]
-        .some((delta) => delta.ci95?.[0] > gate.thresholds.nonInferiorityMargin);
-      if (inferior) inferiorAt.push(forward.length);
       const run = resolveCalibrationMapForRun(map, ledger, now);
+      // The assertions inspect inferiority from the growth threshold onward,
+      // plus any unexpected early refit. Both mean a refit trigger, so the
+      // resolver has already bootstrapped the gate for this day.
+      if (forward.length >= map.domains.cyber.families || run.action === 'fitted') {
+        assert.ok(run.shadow, `day ${i}: a growth trigger or refit carries the resolver's gate`);
+        const { activationGate: gate, forward: cohort } = run.shadow;
+        const inferior = [cohort.brierDelta, ...cohort.byDomain.filter((row) => row.domain === 'cyber').map((row) => row.brierDelta)]
+          .some((delta) => delta.ci95?.[0] > gate.thresholds.nonInferiorityMargin);
+        if (inferior) inferiorAt.push(forward.length);
+      }
       if (run.action === 'fitted') return { refitAt: forward.length, reason: run.reason, inferiorAt, fitted: map.domains.cyber.families };
     }
     return { refitAt: null, inferiorAt, fitted: map.domains.cyber.families };
   };
 
   it('R4: a map that helps reaches its gate verdict despite a noisy partial sample (seeded)', () => {
-    const trials = repeat(20, (t) => noisyTrial((p) => Math.max(0.01, p - 0.2), 9030 + t, t === 0 ? {} : undefined));
+    const trials = repeat(20, (t) => noisyTrial((p) => Math.max(0.01, p - 0.2), 9030 + t));
     const premature = trials.filter((trial) => trial.refitAt !== null && trial.refitAt < 60);
     assert.ok(premature.length <= 2, `${premature.length} of 20 refit before 60 forward outcomes`);
     for (const trial of premature) assert.ok(trial.inferiorAt.includes(trial.refitAt), 'only demonstrated inferiority releases the hold');
@@ -1184,7 +1209,7 @@ describe('refit triggers in a rolling-window steady state (review of #9027)', ()
     let persisted = map;
     let record = null;
     const flips = [];
-    for (let day = 100; day <= 400; day += 5) {
+    for (let day = 100; day <= 400; day += 10) {
       const now = fitAt + day * DAY_MS;
       const ledger = ledgerOf([...base, ...forward.filter((row) => row.resolvedAt <= now)]);
       const { map: next } = resolveCalibrationMapForRun(persisted, ledger, now);

@@ -424,10 +424,12 @@ The ASEAN preset includes Timor-Leste and the BRICS preset uses the official
 
 ### Access
 
-All three scorecard RPCs — `GetFiveFactorScorecard`, `GetBlocScorecard`, and
-`ListFiveFactorScorecards` — require a Pro subscription (tier 1), as do the MCP
-tool `get_five_factor_scorecard`, which serves all three (no selector is the list). See
-[Pro Intelligence Suite](/pro-intelligence-suite) for request shapes.
+All three scorecard REST endpoints — `GetFiveFactorScorecard`, `GetBlocScorecard`,
+and `ListFiveFactorScorecards` — are free, including for anonymous callers; no
+API key or subscription is required. The MCP tool `get_five_factor_scorecard`, which serves all three modes, still requires a WorldMonitor subscription, since
+MCP tool calls are authenticated separately from the REST API. See
+[Pro Intelligence Suite](/pro-intelligence-suite) for request shapes and the
+other derived-analytics endpoints that remain Pro-gated.
 
 ### Reading the API response
 

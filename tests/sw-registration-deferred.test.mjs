@@ -10,6 +10,14 @@ import { describe, it } from 'node:test';
 const mainSource = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
 
 describe('service worker registration timing', () => {
+  it('makes the welcome page discoverable and wires production registration', () => {
+    const welcomeHtml = readFileSync(new URL('../pro-test/welcome.html', import.meta.url), 'utf8');
+    const welcomeMain = readFileSync(new URL('../pro-test/src/welcome-main.tsx', import.meta.url), 'utf8');
+    assert.match(welcomeHtml, /<link rel="manifest" href="\/manifest.webmanifest"\s*\/>/);
+    assert.match(welcomeHtml, /<meta name="theme-color" content="#0a0f0a"\s*\/>/);
+    assert.match(welcomeMain, /if \(import\.meta\.env\.PROD\) \{\s*registerWelcomeServiceWorker\(\);\s*\}/);
+  });
+
   it('registers through scheduleAfterFirstPaint, not at module evaluation', () => {
     assert.match(mainSource, /import \{ scheduleAfterFirstPaint \} from '@\/utils\/after-paint';/);
     assert.match(mainSource, /const registerServiceWorker = \(\): void => \{[\s\S]*?navigator\.serviceWorker\.register\('\/sw\.js', \{ scope: '\/' \}\)/);

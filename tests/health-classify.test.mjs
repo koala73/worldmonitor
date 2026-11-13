@@ -17,7 +17,9 @@ import { readFileSync } from 'node:fs';
 
 import { __testing__ } from '../api/health.js';
 import { BUNDLE_HEARTBEAT_TTL_SECONDS, bundleHeartbeatKey } from '../scripts/_bundle-runner.mjs';
-import { isOnDemandProblem, findOperationalProblems } from '../scripts/check-seed-freshness.mjs';
+
+// The actionable data-problem set health alerts on and reports as `dataStatus`.
+const dataProblems = (checks) => __testing__.collectFailureLogProblems(checks, NOW).sigKeys;
 import { BOOTSTRAP_KEY as AVIATION_BOOTSTRAP_KEY, BOOTSTRAP_META_KEY as AVIATION_BOOTSTRAP_META_KEY } from '../scripts/seed-aviation.mjs';
 
 const {
@@ -67,6 +69,16 @@ test('country archive health activates once and detects a stopped daily cron', (
   }
 });
 
+test('CII prior health is pending only before its first publication', () => {
+  const name = 'ciiStructuralPrior', key = STANDALONE_KEYS[name];
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({ activationStates: { [name]: false } })).status, 'EMPTY_ON_DEMAND');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({ activationStates: { [name]: true } })).status, 'EMPTY');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({
+    activationStates: { [name]: true }, strens: { [key]: 256 },
+    metaValues: { [SEED_META[name].key]: seedMeta({ fetchedAt: NOW - 50401 * ONE_MIN_MS, recordCount: 208 }) },
+  })).status, 'STALE_SEED');
+});
+
 test('daily CII health is pending only before its first confirmed publication', () => {
   const name = 'riskScoresHistory';
   const key = STANDALONE_KEYS[name];
@@ -80,20 +92,35 @@ test('daily CII health is pending only before its first confirmed publication', 
   })).status, 'STALE_SEED');
 });
 
-test('transit coverage alerts below five measured canonical waterways despite a fresh payload', () => {
+// AISStream only reaches Dover, Gibraltar and Cape (2026-10-31 probe), so
+// losing any one of the three is the coverage fault.
+test('transit coverage alerts below the three AIS-measurable waterways despite a fresh payload', () => {
   const key = STANDALONE_KEYS.chokepointTransits;
-  for (const [recordCount, status] of [[0, 'EMPTY_DATA'], [3, 'COVERAGE_PARTIAL'], [4, 'COVERAGE_PARTIAL'], [5, 'OK'], [13, 'OK']]) {
+  for (const [recordCount, status] of [[0, 'EMPTY_DATA'], [1, 'COVERAGE_PARTIAL'], [2, 'COVERAGE_PARTIAL'], [3, 'OK'], [13, 'OK']]) {
     const result = classifyKey('chokepointTransits', key, { allowOnDemand: false }, makeCtx({
       strens: { [key]: 2000 },
       metaValues: { [SEED_META.chokepointTransits.key]: { fetchedAt: NOW, recordCount } },
     }));
     assert.equal(result.status, status, `${recordCount}/13 measured waterways`);
-    const problems = findOperationalProblems({
-      status: status === 'OK' ? 'HEALTHY' : 'UNHEALTHY',
-      problems: status === 'OK' ? {} : { chokepointTransits: result },
-    });
-    assert.equal(problems.length, recordCount < 5 ? 1 : 0, 'the scheduled monitor must report the coverage fault');
+    assert.equal(dataProblems({ chokepointTransits: result }).length, recordCount < 3 ? 1 : 0, 'health must report the coverage fault');
   }
+});
+
+// Greptile on #9902: a count of three would accept Taiwan standing in for a
+// dark Gibraltar. The three measurable straits are named, not counted.
+test('transit coverage requires Dover, Gibraltar and Cape by name', () => {
+  const { composeChokepointTransitsCoverage } = __testing__;
+  const ok = { status: 'OK', records: 3 };
+  const meta = (missing) => JSON.stringify({ fetchedAt: NOW, recordCount: 13 - missing.length, transitCoverage: { covered: 13 - missing.length, total: 13, missing } });
+  const dark = ['suez', 'malacca_strait', 'hormuz_strait', 'bab_el_mandeb', 'panama', 'bosphorus', 'korea_strait', 'kerch_strait', 'lombok_strait'];
+  assert.equal(composeChokepointTransitsCoverage(ok, meta([...dark, 'taiwan_strait'])).status, 'OK');
+  const swapped = composeChokepointTransitsCoverage(ok, meta([...dark, 'gibraltar']));
+  assert.equal(swapped.status, 'COVERAGE_PARTIAL', 'Taiwan cannot stand in for Gibraltar');
+  assert.deepEqual(swapped.missingMeasurable, ['gibraltar']);
+  assert.equal(composeChokepointTransitsCoverage(ok, JSON.stringify({ fetchedAt: NOW, recordCount: 3 })).status, 'COVERAGE_PARTIAL',
+    'coverage that cannot be read cannot prove the three');
+  const stale = { status: 'STALE_SEED', records: 3 };
+  assert.equal(composeChokepointTransitsCoverage(stale, meta([...dark, 'gibraltar'])).status, 'STALE_SEED', 'a worse verdict stands');
 });
 
 test('MND first-failure pending requires fresh last-good and expires without another poll', () => {
@@ -157,7 +184,8 @@ test('NHC first-failure pending is bounded by its original complete snapshot', (
     lastSourceFailureCode: 'NHC_POINT_REQUEST_FAILED',
     firstSourceFailureAt: NOW,
     lastSourceAttemptAt: NOW,
-    lastSourceSuccessAt: NOW - 539 * ONE_MIN_MS,
+    // One minute inside the key's stale budget, so that budget is the binding bound.
+    lastSourceSuccessAt: NOW - (SEED_META[name].maxStaleMin - 1) * ONE_MIN_MS,
   };
   const classify = (over = {}, now = NOW) => classifyKey(name, key, { allowOnDemand: false }, {
     ...makeCtx({ strens: { [key]: 1024 }, metaValues: { [SEED_META[name].key]: { ...meta, ...over } } }),
@@ -180,6 +208,25 @@ test('NHC first-failure pending is bounded by its original complete snapshot', (
     assert.equal(failed.sourceFailurePendingUntil, undefined, JSON.stringify(over));
     assert.notEqual(__testing__.healthStatusBucket(failed, NOW), 'ok', JSON.stringify(over));
   }
+});
+
+test('security advisories published without a travel register warn and name the missing register', () => {
+  const name = 'securityAdvisories';
+  const key = BOOTSTRAP_KEYS[name];
+  const classify = (over) => classifyKey(name, key, { allowOnDemand: false }, makeCtx({
+    strens: { [key]: 4096 },
+    metaValues: { [SEED_META[name].key]: { fetchedAt: NOW - ONE_MIN_MS, recordCount: 228, sourceVersion: 'rss-feeds', ...over } },
+  }));
+  const degraded = classify({
+    sourceState: 'degraded',
+    errorCode: 'ADVISORY_REGISTER_MISSING_AU',
+    failedSources: ['AU'],
+    emptyFeeds: ['Australia DFAT Smartraveller'],
+  });
+  assert.equal(degraded.status, 'SEED_ERROR', 'a US-only level index must not read as healthy');
+  assert.equal(degraded.errorCode, 'ADVISORY_REGISTER_MISSING_AU');
+  assert.equal(__testing__.healthStatusBucket(degraded, NOW), 'warn');
+  assert.equal(classify({ sourceState: 'ok', emptyFeeds: [] }).status, 'OK');
 });
 
 test('natural events accepts a published complete empty aggregate but not a missing key', () => {
@@ -213,6 +260,28 @@ function makeCtx({ strens = {}, errors = {}, metaValues = {}, metaErrors = {}, a
 }
 
 const seedMeta = (over = {}) => JSON.stringify({ fetchedAt: NOW - ONE_MIN_MS, recordCount: 5, ...over });
+
+test('NO2 publication evidence revokes activation grace and zero eligible regions remains valid', () => {
+  const name = 'no2Activity';
+  const key = STANDALONE_KEYS[name];
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({
+    activationStates: { [name]: false },
+    metaValues: { [SEED_META[name].key]: seedMeta() },
+  })).status, 'EMPTY');
+  for (const [age, status] of [[0, 'OK'], [4321, 'STALE_SEED']]) {
+    assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({
+      activationStates: { [name]: true },
+      strens: { [key]: 1024 },
+      metaValues: { [SEED_META[name].key]: seedMeta({ fetchedAt: NOW - age * ONE_MIN_MS, recordCount: 0 }) },
+    })).status, status);
+  }
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({
+    activationStates: { [name]: false },
+  })).status, 'EMPTY_ON_DEMAND');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({
+    activationStates: { [name]: true },
+  })).status, 'EMPTY');
+});
 const classifyNewsInsights = (over = {}) => classifyKey(
   'newsInsights',
   BOOTSTRAP_KEYS.newsInsights,
@@ -675,6 +744,7 @@ test('classifyKey: consumer-price coverage relays bounded failure reasons and dr
           rejectedCount: 3,
           failureReasons: {
             'missing-price': 2,
+            'source-http-error': 1,
             'validator-rejected': 1,
             'not-a-real-reason': 9,
             'provider-error': -4,
@@ -688,7 +758,7 @@ test('classifyKey: consumer-price coverage relays bounded failure reasons and dr
             failedPages: 2,
             rejectedCount: 1,
             completionRatio: 0,
-            failureReasons: { 'missing-price': 2, 'bogus-code': 1 },
+            failureReasons: { 'source-http-error': 2, 'bogus-code': 1 },
           }],
         },
       }),
@@ -697,9 +767,10 @@ test('classifyKey: consumer-price coverage relays bounded failure reasons and dr
 
   assert.deepEqual(entry.coverage.failureReasons, {
     'missing-price': 2,
+    'source-http-error': 1,
     'validator-rejected': 1,
   });
-  assert.deepEqual(entry.coverage.retailers[0].failureReasons, { 'missing-price': 2 });
+  assert.deepEqual(entry.coverage.retailers[0].failureReasons, { 'source-http-error': 2 });
 });
 
 test('classifyKey: consumer-price coverage without failure reasons reports an empty map', () => {
@@ -2396,6 +2467,24 @@ test('containment has no source-specific denylist', () => {
   }
 });
 
+test('invalid prior coverage removes stale containment before overall health is computed', () => {
+  const name = 'ciiStructuralPrior';
+  const { entry, evidence } = classifyContainment(name, {
+    fetchedAt: NOW - 50401 * ONE_MIN_MS, recordCount: 208,
+  });
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.equal(isContainedHealthWarning(entry, evidence, NOW), true);
+  const proofs = new Map([[name, evidence]]);
+  const checked = __testing__.composeCiiStructuralPriorHealth(entry, JSON.stringify({
+    indicator: 'GOV_WGI_PV.EST', year: SEED_META[name].year,
+    countries: Object.fromEntries(SEED_META[name].requiredCountries.filter((c) => c !== 'US')
+      .map((c) => [c, { pv: 0, year: SEED_META[name].year, source: 'https://api.worldbank.org/' }])),
+  }), false, proofs);
+  const containedWarn = Number(isContainedHealthWarning(checked, proofs.get(name), NOW));
+  assert.equal(computeOverallStatus({ warn: 1, onDemandWarn: 0, containedWarn, crit: 0 }, 417).overall, 'WARNING');
+  assert.deepEqual(checked.missingCountries, ['US']);
+});
+
 test('containment rejects missing proof even when an earlier diagnostic wins', () => {
   const cases = [
     ['earthquakes', { fetchedAt: undefined }, 'STALE_SEED'],
@@ -2804,8 +2893,8 @@ test('classifyKey: an unobserved on-demand adapter reads EMPTY_ON_DEMAND, not ST
   );
   assert.equal(entry.status, 'EMPTY_ON_DEMAND');
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
-  assert.ok(isOnDemandProblem({ status: entry.status, onDemand: true }),
-    'the freshness monitor must excuse it — that is the point of the change');
+  assert.deepEqual(dataProblems({ imdCycloneMarine: entry }), [],
+    'health must not alert on it — that is the point of the change');
 });
 
 test('classifyKey: marker absence does not excuse an absent payload with stale seed metadata', () => {
@@ -2821,7 +2910,7 @@ test('classifyKey: marker absence does not excuse an absent payload with stale s
     }),
   );
   assert.equal(entry.status, 'STALE_SEED');
-  assert.ok(!isOnDemandProblem({ status: entry.status, onDemand: true }));
+  assert.equal(dataProblems({ imdCycloneMarine: entry }).length, 1);
 });
 
 test('classifyKey: marker absence preserves normal fresh and stale zero-record outcomes', () => {
@@ -2850,9 +2939,10 @@ test('classifyKey: once ACTIVATED, the same adapter is strict again', () => {
     makeCtx({ activationStates: { imdCycloneMarine: true } }),
   );
   assert.equal(entry.status, 'STALE_SEED', 'an activated adapter that goes absent is stale, as before');
-  assert.ok(
-    !isOnDemandProblem({ status: entry.status, onDemand: true }),
-    'and the freshness monitor must NOT excuse it — that is the outage this change must not hide',
+  assert.equal(
+    dataProblems({ imdCycloneMarine: entry }).length,
+    1,
+    'and health must alert on it — that is the outage this change must not hide',
   );
 });
 
@@ -2925,7 +3015,7 @@ test('calibration map uses its declared activation marker before the first resol
   assert.equal(entry.status, 'EMPTY_ON_DEMAND');
   assert.equal(__testing__.ACTIVATION_MARKERS[name], SEED_META[name].activationKey);
   assert.ok(ON_DEMAND_KEYS.has(name));
-  assert.equal(findOperationalProblems({ problems: { [name]: entry } }).length, 0);
+  assert.equal(dataProblems({ [name]: entry }).length, 0);
 });
 
 test('calibration activation does not hide missing data, stale publications, errors, or unknown markers', () => {
@@ -2948,7 +3038,7 @@ test('calibration activation does not hide missing data, stale publications, err
   for (const [state, status] of cases) {
     const entry = classifyKey(name, key, { allowOnDemand: true }, makeCtx(state));
     assert.equal(entry.status, status);
-    assert.equal(findOperationalProblems({ problems: { [name]: entry } }).length, 1);
+    assert.equal(dataProblems({ [name]: entry }).length, 1);
   }
   const fresh = classifyKey(name, key, { allowOnDemand: true }, makeCtx({
     activationStates: { [name]: true }, strens: { [key]: 128 },

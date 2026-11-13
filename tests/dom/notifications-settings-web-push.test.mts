@@ -6,6 +6,7 @@ import { IncompatibleDeliveryError } from '@/services/notification-channels';
 import { initTestI18n, tt } from './helpers/i18n.mts';
 
 const pushState = vi.hoisted(() => ({
+  configured: true,
   supported: true,
   permission: 'default' as 'default' | 'granted' | 'denied' | 'unsupported',
   subscribeToPush: vi.fn<() => Promise<unknown>>(),
@@ -19,6 +20,8 @@ const channelMocks = vi.hoisted(() => ({
   startSlackOAuth: vi.fn(),
   startDiscordOAuth: vi.fn(),
 }));
+
+vi.mock('@/config/push', () => ({ isWebPushConfigured: () => pushState.configured }));
 
 vi.mock('@/services/push-notifications', () => ({
   isWebPushSupported: () => pushState.supported,
@@ -111,6 +114,7 @@ beforeEach(() => {
   while (cleanups.length) cleanups.pop()?.();
   document.body.replaceChildren();
   pushState.supported = true;
+  pushState.configured = true;
   pushState.permission = 'default';
   pushState.subscribeToPush.mockReset();
   pushState.subscribeToPush.mockResolvedValue({
@@ -241,6 +245,97 @@ describe('notification Settings browser push', () => {
     expect(row.textContent).toContain('Not supported');
     expect(pushState.subscribeToPush).not.toHaveBeenCalled();
     expect(channelMocks.saveAlertRules).not.toHaveBeenCalled();
+  });
+
+  it('does not promise alerts after installation when push is unconfigured', async () => {
+    pushState.configured = false;
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'iPhone AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
+    );
+    for (const data of [EMPTY_DATA, CONNECTED_WEB_PUSH]) {
+      const container = await mount(data);
+      const row = webPushRow(container);
+      expect(row.textContent).toContain('does not support web push notifications');
+      expect(row.querySelector('[data-ios-install]')).toBeNull();
+      expect(row.querySelector('#usConnectWebPush')).toBeNull();
+      if (data === CONNECTED_WEB_PUSH) expect(row.querySelector('.us-notif-disconnect')).not.toBeNull();
+      container.remove();
+    }
+    expect(pushState.subscribeToPush).not.toHaveBeenCalled();
+  });
+
+  it.each(['15.4', '16.3'])('does not promise installation enables alerts on iOS %s', async version => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      `iPhone AppleWebKit/605.1.15 Version/${version} Mobile/15E148 Safari/604.1`,
+    );
+    for (const data of [EMPTY_DATA, CONNECTED_WEB_PUSH]) {
+      const container = await mount(data);
+      const row = webPushRow(container);
+      expect(row.textContent).toContain('does not support web push notifications');
+      expect(row.textContent).not.toContain(tt('pwaInstall.alertsHint'));
+      expect(row.querySelector('[data-ios-install]')).toBeNull();
+      expect(row.querySelector('#usConnectWebPush')).toBeNull();
+      if (data === CONNECTED_WEB_PUSH) expect(row.querySelector('.us-notif-disconnect')).not.toBeNull();
+      container.remove();
+    }
+    expect(pushState.subscribeToPush).not.toHaveBeenCalled();
+  });
+
+  it.each(['16.4', '18.0'])('links iPhone Safari %s alerts to the shared install sheet', async version => {
+    pushState.supported = false;
+    pushState.permission = 'unsupported';
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      `iPhone AppleWebKit/605.1.15 Version/${version} Mobile/15E148 Safari/604.1`,
+    );
+    const container = await mount();
+    const row = webPushRow(container);
+    expect(row.textContent).toContain(tt('pwaInstall.alertsHint'));
+    expect(row.textContent).not.toContain('Not supported');
+    expect(row.querySelector('.us-notif-ch-badge')).toBeNull();
+    expect(row.querySelector('#usConnectWebPush')).toBeNull();
+    row.querySelector<HTMLButtonElement>('[data-ios-install]')!.click();
+    expect(document.querySelector('#pwa-install-sheet')?.textContent).toContain(tt('pwaInstall.share'));
+    document.querySelector<HTMLButtonElement>('#pwa-install-sheet button')!.click();
+    expect(document.querySelector('#pwa-install-sheet')).toBeNull();
+    expect(pushState.subscribeToPush).not.toHaveBeenCalled();
+  });
+
+  it('keeps connected account alerts and offers iPhone installation guidance', async () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'iPhone AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
+    );
+    const container = await mount(CONNECTED_WEB_PUSH);
+    const row = webPushRow(container);
+    expect(row.classList.contains('us-notif-ch-on')).toBe(true);
+    expect(row.querySelector('.us-notif-ch-badge')?.textContent).toBe('Connected');
+    expect(row.querySelector('.us-notif-disconnect')).not.toBeNull();
+    expect(row.textContent).toContain('Chrome');
+    expect(row.textContent).toContain(tt('pwaInstall.alertsHint'));
+    row.querySelector<HTMLButtonElement>('[data-ios-install]')!.click();
+    expect(document.querySelector('#pwa-install-sheet')).not.toBeNull();
+    document.querySelector<HTMLButtonElement>('#pwa-install-sheet button')!.click();
+
+    const sensitivity = container.querySelector<HTMLSelectElement>('#usNotifSensitivity')!;
+    sensitivity.value = 'high';
+    sensitivity.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalledOnce(), { timeout: 4000 });
+    expect(channelMocks.saveAlertRules.mock.calls[0]?.[0]?.channels).toContain('web_push');
+    expect(pushState.subscribeToPush).not.toHaveBeenCalled();
+  });
+
+  it('keeps installed iPhone apps on the supported subscription path', async () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'iPhone AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
+    );
+    Object.defineProperty(navigator, 'standalone', { configurable: true, value: true });
+    try {
+      const container = await mount();
+      expect(container.querySelector('[data-ios-install]')).toBeNull();
+      container.querySelector<HTMLButtonElement>('#usConnectWebPush')!.click();
+      await vi.waitFor(() => expect(pushState.subscribeToPush).toHaveBeenCalledOnce());
+    } finally {
+      delete (navigator as Navigator & { standalone?: boolean }).standalone;
+    }
   });
 
   it('becomes non-actionable if support disappears before the click', async () => {

@@ -177,6 +177,32 @@ message GdeltTensionPair {
   double change_percent = 6;
   // Geographic region.
   string region = 7;
+  // Non-news signals for this pair that are above their usual level.
+  repeated TensionEvidence evidence = 8;
+}
+
+// TensionEvidence is one non-news signal for a tension pair.
+message TensionEvidence {
+  // strikes, airports, military_aircraft, pla_aircraft, pla_ships or sanctions.
+  string channel = 1;
+  // Current count over the channel's window.
+  double value = 2;
+  // Usual count over the same window, when there is enough history.
+  optional double baseline = 3;
+  // ISO 3166-1 alpha-2 codes the signal names.
+  repeated string countries = 4;
+  // Disrupted airports.
+  repeated TensionEvidenceAirport airports = 5;
+  // Source update time, as Unix epoch milliseconds.
+  int64 observed_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// TensionEvidenceAirport is one disrupted airport.
+message TensionEvidenceAirport {
+  // Airport city.
+  string name = 1;
+  // closed, halted or restricted.
+  string status = 2;
 }
 
 // EventClassification represents an AI-generated classification of a real-world event.

@@ -16,7 +16,7 @@ const MAX_JSON_RPC_ID_BYTES = 256;
 
 /** Normalize a caller-controlled JSON-RPC id to the bounded echo-safe shape. */
 export function safeJsonRpcId(value: unknown): string | number | null {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'number') return Number.isInteger(value) ? value : null;
   if (typeof value !== 'string' || value.length > MAX_JSON_RPC_ID_BYTES) return null;
   return utf8ByteLength(value) <= MAX_JSON_RPC_ID_BYTES ? value : null;
 }
@@ -66,4 +66,21 @@ export function compressDescription(text: string, maxBytes: number): string {
     used += chBytes;
   }
   return out;
+}
+
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** True when the request's Accept lists text/event-stream with a non-zero q. */
+export function clientAcceptsSse(req: Request): boolean {
+  const accept = req.headers.get('accept') ?? '';
+  return accept.split(',').some((entry) => {
+    const [type, ...params] = entry.split(';').map((part) => part.trim().toLowerCase());
+    if (type !== 'text/event-stream') return false;
+    const qParam = params.find((part) => part.startsWith('q='));
+    if (!qParam) return true;
+    const q = Number(qParam.slice(2));
+    return Number.isFinite(q) && q > 0;
+  });
 }

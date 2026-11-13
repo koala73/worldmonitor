@@ -15,8 +15,8 @@ import {
 import { isDebugBearRumScriptFrame } from '../src/bootstrap/debugbear-rum.ts';
 import { isIosLikeUserAgent } from '../src/bootstrap/platform-ua.ts';
 import { isolateNonProductionSentryEvent } from '../shared/sentry-build-metadata.ts';
-import { sanitizeSentryTelemetry } from '../shared/sentry-privacy.ts';
 import { buildCheckoutReportTags } from '../src/services/checkout-sentry-policy.ts';
+import { scrubSentryCredentials } from '../shared/sensitive-url-params.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -55,7 +55,7 @@ assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/boot
 // eslint-disable-next-line no-new-func
 const rawBeforeSend = new Function(
   'event', 'isDebugBearRumScriptFrame', 'isIosLikeUserAgent', 'navigator',
-  'isolateNonProductionSentryEvent', 'environment', 'sanitizeSentryTelemetry',
+  'isolateNonProductionSentryEvent', 'environment', 'scrubSentryCredentials', 'isPageUnloading',
   `${tpMatch[0]}\n${fnBody}`,
 );
 
@@ -81,8 +81,8 @@ const IOS_NAVIGATOR = { userAgent: IOS_GOOGLE_APP_UA, maxTouchPoints: 5 };
 /** iPadOS 13+ desktop mode: Macintosh UA, but touch-capable. */
 const IPADOS_NAVIGATOR = { userAgent: MAC_DESKTOP_UA, maxTouchPoints: 5 };
 
-function beforeSend(event, navigatorStub = DESKTOP_NAVIGATOR, environment = 'production') {
-  return rawBeforeSend(event, isDebugBearRumScriptFrame, isIosLikeUserAgent, navigatorStub, isolateNonProductionSentryEvent, environment, sanitizeSentryTelemetry);
+function beforeSend(event, navigatorStub = DESKTOP_NAVIGATOR, environment = 'production', unloading = false) {
+  return rawBeforeSend(event, isDebugBearRumScriptFrame, isIosLikeUserAgent, navigatorStub, isolateNonProductionSentryEvent, environment, scrubSentryCredentials, () => unloading);
 }
 
 // Extract the `ignoreErrors` array literal so tests can assert which messages
@@ -150,6 +150,12 @@ function walkTsFiles(dir) {
 }
 
 // ─── ignoreErrors message matches ────────────────────────────────────────
+
+describe('default PII collection', () => {
+  it('collects IP and default PII only on production hosts', () => {
+    assert.match(mainSrc, /sendDefaultPii: environment === 'production',/);
+  });
+});
 
 describe('ignoreErrors filters', () => {
   it('suppresses Clerk SDK UI chunk load failure', () => {
@@ -240,7 +246,7 @@ describe('first-party file detection', () => {
     const child = spawnSync(process.execPath, ['--input-type=module', '-e', `
       const filter = ${rawBeforeSend.toString()};
       const run = event => filter(event, () => false, () => false,
-        ${JSON.stringify(DESKTOP_NAVIGATOR)}, event => event, 'production', event => event);
+        ${JSON.stringify(DESKTOP_NAVIGATOR)}, event => event, 'production', event => event, () => false);
       process.stdout.write(JSON.stringify({
         malformed: run(${JSON.stringify(malformed)}),
         wellFormed: run(${JSON.stringify(wellFormed)}),
@@ -781,7 +787,7 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       assert.equal(event.exception.values[0].stacktrace?.frames?.length ?? 0, 0);
       event.tags = { kind: 'panel_call_rejected', panel: 'insights', method: 'updateInsights', dispatch };
       assert.equal(isIgnored('signal timed out'), false);
-      assert.deepEqual(beforeSend(event), event);
+      assert.equal(beforeSend(event), event);
     });
   }
 
@@ -834,7 +840,7 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       assert.equal(event.exception.values[0].stacktrace?.frames?.length ?? 0, 0);
       event.tags = { kind };
       assert.equal(isIgnored('signal timed out'), false);
-      assert.deepEqual(beforeSend(event), event);
+      assert.equal(beforeSend(event), event);
     });
   }
 
@@ -867,7 +873,7 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       );
       const event = makeEvent(message, name, []);
       event.tags = { ...CHECKOUT_REPORT_TAGS };
-      assert.deepEqual(beforeSend(event), event);
+      assert.equal(beforeSend(event), event);
     });
 
     it(`still suppresses ${label} with no first-party report`, () => {
@@ -1037,6 +1043,18 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     // mapped .ts frame or an owned hashed-chunk URL (handled above).
     ["Unexpected token 'else'", 'SyntaxError'],
     ["Unexpected token 'for'", 'SyntaxError'],
+    // V8's identifier phrasing via window.onerror with stacktrace: null
+    // (Sentry WORLDMONITOR-19G: Chrome 155 / Windows, /dashboard). A parse
+    // failure in one of our hashed chunks keeps that chunk's URL as its frame,
+    // so a frameless one is an injected script. Any identifier, not a census.
+    ["Unexpected identifier 'd'", 'SyntaxError'],
+    ["SyntaxError: Unexpected identifier 'queueMicrotask'", 'SyntaxError'],
+    // The identifiers that used to sit in frame-blind ignoreErrors entries
+    // (WORLDMONITOR-NT `'m'`, plus `'https'` and `'does'`), including
+    // WebKit's trailing `. Expected ...` clause.
+    ["Unexpected identifier 'm'", 'SyntaxError'],
+    ["Unexpected identifier 'https'. Expected ';' after variable declaration.", 'SyntaxError'],
+    ["Unexpected identifier 'does'", 'SyntaxError'],
     ['SyntaxError: Unexpected token \'else\'', 'SyntaxError'],
     ['SyntaxError: Unexpected token \'for\'', 'SyntaxError'],
     // Firefox's wording for a failed `fetch()` (WORLDMONITOR-RK) — the
@@ -1107,6 +1125,20 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       [{ filename: '<anonymous>', lineno: 1 }, { filename: '<anonymous>', lineno: 1 }],
     );
     assert.equal(beforeSend(event), null);
+  });
+
+  it("suppresses an injected script's Unexpected identifier with only <anonymous> frames", () => {
+    const event = makeEvent("Unexpected identifier 'm'", 'SyntaxError',
+      [{ filename: '<anonymous>', lineno: 1 }]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('keeps Unexpected identifier when ignoreErrors runs first (no frame-blind entry)', () => {
+    // ignoreErrors cannot see frames, so any entry there would drop the
+    // first-party case before beforeSend could preserve it.
+    for (const msg of ["Unexpected identifier 'm'", "Unexpected identifier 'https'", "Unexpected identifier 'does'"]) {
+      assert.equal(isIgnored(msg, 'SyntaxError'), false, msg);
+    }
   });
 
   it('keeps a pending-request message that is not the whole browser sentence', () => {
@@ -1245,6 +1277,24 @@ describe('existing beforeSend filters', () => {
       { filename: '/assets/panels-wF5GXf0N.js', lineno: 24, function: 'window.fetch' },
     ]);
     assert.equal(beforeSend(event), null, 'MapLibre tile AJAX failure should be suppressed');
+  });
+
+  it('suppresses CARTO vector-tile failures from tiles.basemaps.cartocdn.com (WORLDMONITOR-1BF)', () => {
+    // The CARTO style.json lives on basemaps.cartocdn.com, but its vector tiles
+    // are served from the tiles. subdomain. The allowlist matches hosts exactly,
+    // so the tile host needs its own entry. Frames are the real 1BF stack.
+    const event = makeEvent('Failed to fetch (tiles.basemaps.cartocdn.com)', 'TypeError', [
+      { filename: '../../src/services/fetch-failure-attribution.ts', lineno: 182, function: 'wrapped' },
+      { filename: '../../src/services/runtime.ts', lineno: 610, function: 'dispatch' },
+      { filename: '../../src/services/billing-retry.ts', lineno: 208, function: '<anonymous>' },
+      { filename: 'chrome-extension://hoklmmgfnpapgjgcpechhaamimifchmp/frame_ant/frame_ant.js', lineno: 2, function: 'window.fetch' },
+      { filename: '../../src/services/wm-session.ts', lineno: 1022, function: 'window.fetch' },
+    ]);
+    assert.equal(beforeSend(event), null, 'CARTO tile host failure should be suppressed');
+    const lookalike = makeEvent('Failed to fetch (tiles.basemaps.cartocdn.com.evil.example)', 'TypeError', [
+      { filename: '../../src/services/wm-session.ts', lineno: 1022, function: 'window.fetch' },
+    ]);
+    assert.ok(beforeSend(lookalike) !== null, 'A lookalike host must not ride the CARTO entry');
   });
 
   it('suppresses MapLibre AJAXError for allowlisted host even with an all-maplibre stack', () => {
@@ -2206,7 +2256,7 @@ describe('bare "Failed to fetch" is decided by host, not stack shape (WORLDMONIT
     // Owned: the one verdict that changed.
     const owned = makeEvent('Load failed (api.worldmonitor.app)', 'TypeError', []);
     owned.tags = { ...CHECKOUT_REPORT_TAGS };
-    assert.deepEqual(beforeSend(owned), owned);
+    assert.equal(beforeSend(owned), owned);
   });
 
   // ── The shape that hid a P0 ────────────────────────────────────────────────
@@ -2891,3 +2941,191 @@ describe('document-URL-only explicit Error (WORLDMONITOR-134)', () => {
       'an inline HTML script now throws — a document-attributed Error may be ours; re-derive the WORLDMONITOR-134 gate');
   });
 });
+
+// ─── WORLDMONITOR-161 / -1CQ: Firefox CSP eval refusal from an injected script ─
+//
+// Firefox 156 and 159 on Windows, `EvalError: call to eval() blocked by CSP`
+// via onerror, at `/dashboard` and `/`. Both frames are the document URL:
+// `init` at 47:304021 (later 47:309244) and `interval<` at 42:17. Line 47 of
+// the served index.html is a 61-character meta tag, so the code is a ~300 KB
+// one-line script injected into the page's main world (its column grows
+// between versions). The dashboard already drops Chrome's wording of the same
+// refusal outright in ignoreErrors; Firefox words it differently. This is
+// gated on the document-frame invariant instead: an eval from our bundle rides
+// an `/assets/*.js` frame, and no inline script in an HTML entry evaluates a
+// string (pinned below).
+describe('document-URL-only CSP EvalError (WORLDMONITOR-161)', () => {
+  const MSG = 'call to eval() blocked by CSP';
+  const documentFrames = [
+    { filename: 'https://www.worldmonitor.app/dashboard', lineno: 47, colno: 309244, function: 'init' },
+    { filename: 'https://www.worldmonitor.app/dashboard', lineno: 42, colno: 17, function: 'interval<' },
+  ];
+
+  it('suppresses an EvalError whose only source frames are the page document', () => {
+    assert.equal(beforeSend(makeEvent(MSG, 'EvalError', documentFrames)), null);
+  });
+
+  it('suppresses the same shape on the relative document path', () => {
+    const relative = documentFrames.map((f) => ({ ...f, filename: '/dashboard' }));
+    assert.equal(beforeSend(makeEvent(MSG, 'EvalError', relative)), null);
+  });
+
+  it('keeps the EvalError when a first-party bundle frame is on the stack', () => {
+    const event = makeEvent(MSG, 'EvalError', [...documentFrames, firstPartyFrame()]);
+    assert.ok(beforeSend(event) !== null);
+  });
+
+  it('keeps an EvalError whose single document frame is the SDK onerror synthesis', () => {
+    const synthesized = { filename: 'https://www.worldmonitor.app/dashboard', lineno: 0, colno: 0, function: '?' };
+    assert.ok(beforeSend(makeEvent(MSG, 'EvalError', [synthesized])) !== null);
+  });
+
+  it('keeps an EvalError with an empty stack', () => {
+    assert.ok(beforeSend(makeEvent(MSG, 'EvalError', [])) !== null);
+  });
+
+  // Calling Function without `new` builds a function from a string just as `new Function` does.
+  const STRING_EVAL = /\beval\s*\(|\bnew\s+Function\b|\bFunction\s*\(|\bset(?:Timeout|Interval)\s*\(\s*['"`]/;
+
+  it('recognises every string-evaluating call the licence pin guards', () => {
+    for (const body of ['eval("x")', 'new Function("x")', 'Function("return 1")()', 'window.Function("x")', 'setTimeout("x()", 1)']) {
+      assert.ok(STRING_EVAL.test(body), body);
+    }
+    for (const body of ['isFunction(x)', 'setTimeout(run, 1)', 'typeof Function']) {
+      assert.ok(!STRING_EVAL.test(body), body);
+    }
+  });
+
+  it('pins the licence: no inline script in an HTML entry evaluates a string', () => {
+    const root = resolve(__dirname, '..');
+    const offenders = readdirSync(root)
+      .filter((name) => name.endsWith('.html'))
+      .flatMap((name) => {
+        const html = readFileSync(join(root, name), 'utf-8');
+        return [...html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
+          .filter(([, body]) => STRING_EVAL.test(body))
+          .map(() => name);
+      });
+    assert.deepEqual(offenders, [],
+      'an inline HTML script now evaluates a string — a document-attributed EvalError may be ours; re-derive the WORLDMONITOR-161 gate');
+  });
+});
+
+// #9653: DeckGLMap reports a deck.gl render-loop stop only after confirming the
+// map froze. Those errors come from deck/maplibre frames, which the vendor-stack
+// rules drop, so the report claims itself with a kind tag.
+describe('confirmed deck.gl loop-stop reports', () => {
+  const shapes = [
+    ['TypeError with only map-chunk frames', makeEvent("Cannot read properties of undefined (reading 'getViewport')", 'TypeError', [
+      { filename: '/assets/deck-stack-x1y2z3.js', lineno: 1, function: 'Deck._onRenderFrame' },
+      { filename: '/assets/maplibre-AbC123.js', lineno: 2, function: 'Map._render' },
+    ])],
+    ['interleaved null-id race', makeEvent("Cannot read properties of null (reading 'id')", 'TypeError', [
+      { filename: '/assets/deck-stack-x1y2z3.js', lineno: 1, function: 'drawLayer' },
+    ])],
+  ];
+  for (const [label, event] of shapes) {
+    it(`drops an unclaimed ${label}`, () => {
+      assert.equal(beforeSend(structuredClone(event)), null);
+    });
+    it(`delivers a claimed ${label}`, () => {
+      const claimed = { ...structuredClone(event), tags: { kind: 'deck_loop_stopped', component: 'deckgl-loop' } };
+      assert.notEqual(beforeSend(claimed), null);
+    });
+  }
+});
+
+// ─── WORLDMONITOR-1A2: ReferenceError from an anonymous-only stack ─────────
+//
+// `Clerk is not defined` (Chrome 156 / macOS, onunhandledrejection) carried
+// two `<anonymous>:1` frames and nothing else: an injected script or a DevTools
+// console snippet naming a bare `Clerk` global. Our code reaches Clerk only as
+// `window.Clerk` (a property read, never a ReferenceError), and nothing in
+// src/ or shared/ evaluates code at runtime (no eval / new Function), so every
+// ReferenceError our bundle can raise carries a bundle or page-URL frame. The
+// gate is the stack invariant, not the identifier, so the next injected global
+// does not need its own ignoreErrors entry.
+describe('beforeSend — ReferenceError with only <anonymous> frames (WORLDMONITOR-1A2)', () => {
+  const anon = () => ({ filename: '<anonymous>', lineno: 1, function: '?' });
+
+  it('suppresses the production "Clerk is not defined" shape', () => {
+    assert.equal(
+      beforeSend(makeEvent('Clerk is not defined', 'ReferenceError', [anon(), anon()])),
+      null,
+    );
+  });
+
+  it('keeps a ReferenceError raised from a first-party bundle frame', () => {
+    assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError', [anon(), firstPartyFrame()])));
+  });
+
+  it('keeps a ReferenceError from an inline page script (document URL frame)', () => {
+    assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError',
+      [{ filename: 'https://www.worldmonitor.app/', lineno: 12, function: '?' }])));
+  });
+
+  // The TypeError gate above also accepts blob: and filename-less frames; this
+  // gate must not, so copying that wider condition here goes red.
+  it('keeps a ReferenceError with a blob: frame beside an <anonymous> one', () => {
+    assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError',
+      [anon(), { filename: 'blob:https://www.worldmonitor.app/3f2a', lineno: 1, function: '?' }])));
+  });
+
+  it('keeps a ReferenceError with a filename-less frame beside an <anonymous> one', () => {
+    assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError',
+      [anon(), { lineno: 1, function: '?' }])));
+  });
+
+  it('keeps a ReferenceError with no frames at all', () => {
+    assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError', [])));
+  });
+
+  it('keeps an anonymous-only Error that is not a ReferenceError', () => {
+    assert.ok(beforeSend(makeEvent('Clerk failed to load', 'Error', [anon()])));
+  });
+});
+
+describe('fetch failures while the page unloads (WORLDMONITOR-1AY)', () => {
+  // Production shape: a first-party claimed capture from
+  // CountryDeepDivePanel, frames inside fetch-failure-attribution, fired in
+  // the same millisecond the update toast reloaded the page.
+  function claimedLoadFailure(value = 'Load failed (api.worldmonitor.app)', type = 'TypeError') {
+    return {
+      ...makeEvent(value, type, [
+        firstPartyFrame('../../src/services/fetch-failure-attribution.ts', 'annotateFetchFailure'),
+        firstPartyFrame('../../src/services/fetch-failure-attribution.ts', 'wrapped'),
+      ]),
+      tags: { kind: 'country_deep_dive_load_failed', surface: 'country-deep-dive', widget: 'five-factor-scorecard' },
+    };
+  }
+
+  it('drops a claimed WebKit fetch failure while the page unloads', () => {
+    assert.equal(beforeSend(claimedLoadFailure(), DESKTOP_NAVIGATOR, 'production', true), null);
+  });
+
+  it('drops the Chromium and Firefox spellings while the page unloads', () => {
+    for (const value of [
+      'Failed to fetch (api.worldmonitor.app)',
+      'Failed to fetch',
+      'NetworkError when attempting to fetch resource.',
+    ]) {
+      assert.equal(beforeSend(claimedLoadFailure(value), DESKTOP_NAVIGATOR, 'production', true), null, value);
+    }
+  });
+
+  it('keeps the same claimed failure when the page is not unloading', () => {
+    // Preservation control: the claim exists so a real outage on this widget
+    // reaches Sentry (WORLDMONITOR-Q4). Outside the unload window it must.
+    assert.ok(beforeSend(claimedLoadFailure(), DESKTOP_NAVIGATOR, 'production', false));
+  });
+
+  it('keeps a first-party TypeError that is not a fetch failure, even while unloading', () => {
+    const event = claimedLoadFailure("Cannot read properties of undefined (reading 'pillars')");
+    assert.ok(beforeSend(event, DESKTOP_NAVIGATOR, 'production', true));
+  });
+
+  it('keeps a non-TypeError carrying fetch-failure wording while unloading', () => {
+    assert.ok(beforeSend(claimedLoadFailure('Load failed (api.worldmonitor.app)', 'Error'), DESKTOP_NAVIGATOR, 'production', true));
+  });
+});
+
