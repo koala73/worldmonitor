@@ -656,6 +656,19 @@ describe('authorizeProHandler — client + redirect_uri', () => {
     const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
     assert.equal(res.status, 400);
   });
+
+  it('a registered redirect_uri later removed from the allowlist → HTML error, no code or token', async () => {
+    const removed = 'https://old-vendor.example/callback';
+    const grant = await makeGrantToken();
+    const { deps, grantRedis, setExCalls, issueCalls } = await makeDeps();
+    grantRedis.set(`oauth:nonce:${NONCE}`, { ...BASE_NONCE_REDIS, redirect_uri: removed });
+    grantRedis.set(`oauth:client:${CLIENT_ID}`, { ...BASE_CLIENT_REDIS, redirect_uris: [removed] });
+    const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
+    assert.equal(res.status, 400);
+    assert.match(await res.text(), /Redirect URI Mismatch/);
+    assert.deepEqual(setExCalls, []);
+    assert.deepEqual(issueCalls, []);
+  });
 });
 
 // ===========================================================================
