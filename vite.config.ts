@@ -1501,6 +1501,8 @@ export default defineConfig(({ mode }) => {
           '**/test-results/**',
           '**/playwright-report/**',
           '**/.playwright-mcp/**',
+          // Cargo output; watching it on Windows fails with EBUSY during `tauri dev` builds.
+          '**/src-tauri/target/**',
         ],
       },
       proxy: {
