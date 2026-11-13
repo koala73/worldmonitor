@@ -197,7 +197,7 @@ export class CountryIntelManager implements AppModule {
       }, 400);
     });
 
-    this.orbitalRouteUnsubscribe = watchOrbitalRoute();
+    this.orbitalRouteUnsubscribe = watchOrbitalRoute(() => this.ctx.map);
     this.lastHadPremium = hasPremiumAccess(getAuthState());
     const syncPremiumAccess = () => this.handlePremiumAccessTransition(hasPremiumAccess(getAuthState()));
     this.authUnsubscribe = subscribeAuthState(syncPremiumAccess);

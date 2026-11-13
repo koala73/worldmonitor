@@ -1,4 +1,5 @@
 import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
+import type { OrbitalTrackSurface } from '@/app/orbital-watch';
 
 export type OrbitalRouteView = 'sheet' | 'full';
 
@@ -23,21 +24,21 @@ export function formatOrbitalRoute(point: GeoPoint, view: OrbitalRouteView): str
   return `#orbital=${point.lat.toFixed(4)},${point.lon.toFixed(4)}${view === 'full' ? '&view=full' : ''}`;
 }
 
-function applyRoute(): void {
+function applyRoute(map: () => OrbitalTrackSurface | null): void {
   const route = parseOrbitalRoute(window.location.hash);
   void import('@/app/orbital-watch').then(({ openOrbitalWatch, leaveOrbitalFullView }) => {
-    if (route) openOrbitalWatch(route.point, document.getElementById('mapContainer'), route.view);
+    if (route) openOrbitalWatch(route.point, document.getElementById('mapContainer'), route.view, map());
     else leaveOrbitalFullView();
   });
 }
 
 /** Opens the lookup when the page loads or navigates to an orbital route. */
-export function watchOrbitalRoute(): () => void {
-  if (parseOrbitalRoute(window.location.hash)) applyRoute();
+export function watchOrbitalRoute(map: () => OrbitalTrackSurface | null = () => null): () => void {
+  if (parseOrbitalRoute(window.location.hash)) applyRoute(map);
   let routed = parseOrbitalRoute(window.location.hash) !== null;
   const onHashChange = () => {
     const next = parseOrbitalRoute(window.location.hash) !== null;
-    if (next || routed) applyRoute();
+    if (next || routed) applyRoute(map);
     routed = next;
   };
   window.addEventListener('hashchange', onHashChange);
