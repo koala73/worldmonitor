@@ -250,6 +250,7 @@ const MEMORY_CLEANUP_THRESHOLD_GB = (() => {
   return Number.isFinite(n) && n > 0 ? n : 2.0;
 })();
 const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET || '';
+const CF_EDGE_PROOF_SECRET = (process.env.CF_EDGE_PROOF_SECRET || '').trim();
 const RELAY_AUTH_HEADER = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
 // Auth bypass: new canonical name + legacy alias. The new name's verbose
 // wording is intentional — it should be hard to set in production by accident.
@@ -9234,10 +9235,13 @@ function brotliSyncBuffer(body) {
 
 function getClientIp(req, isPublic = false) {
   if (isPublic) {
-    // Public routes: only trust CF-Connecting-IP (set by Cloudflare, not spoofable).
-    // x-real-ip is excluded — client-spoofable on unauthenticated endpoints.
+    // The Railway origin is public: forwarded IP headers are caller-controlled
+    // unless our Cloudflare transform rule proves the request passed the edge.
     const cfIp = req.headers['cf-connecting-ip'];
-    if (typeof cfIp === 'string' && cfIp.trim()) return cfIp.trim();
+    const edgeProof = req.headers['x-wm-edge-proof'];
+    if (CF_EDGE_PROOF_SECRET && typeof edgeProof === 'string'
+      && safeTokenEquals(edgeProof.trim(), CF_EDGE_PROOF_SECRET)
+      && typeof cfIp === 'string' && cfIp.trim()) return cfIp.trim();
     return req.socket?.remoteAddress || 'unknown';
   }
   // Authenticated routes: x-real-ip is safe because auth token validates the caller
