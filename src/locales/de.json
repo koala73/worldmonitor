@@ -5202,7 +5202,11 @@
         "could": "Hätte hierher zielen können",
         "couldDef": "Ein schwenkbarer oder kommerzieller Sensor war in Reichweite; der Betreiber sagt nicht, ob er hinsah.",
         "overhead": "Überflogen",
-        "overheadDef": "Hat den Himmel hier gekreuzt, ohne Bildnachweis."
+        "overheadDef": "Hat den Himmel hier gekreuzt, ohne Bildnachweis.",
+        "watchedShort": "Bild in einem öffentlichen Archiv",
+        "likelyShort": "Erfasst, noch kein Bild",
+        "couldShort": "Schwenkbarer Sensor in Reichweite",
+        "overheadShort": "Überflogen, kein Bild"
       },
       "group": {
         "watched": "beobachtet",
@@ -5241,7 +5245,12 @@
         "window": "7-Tage-Fenster · {{start}} → {{end}}",
         "failed": "Fehlgeschlagen",
         "note": "Planetary Computer und NASA GIBS erzeugen Bilder auf Abruf, daher kann dieser Schritt einige Sekunden dauern."
-      }
+      },
+      "privacyLine": "Der Punkt bleibt in Ihrem Browser",
+      "privacyHow": "Wie",
+      "sources": "Quellen",
+      "archiveScene": "Archivszene",
+      "archiveOnly": "Kein berechneter Überflug passt zu diesen Bildern, daher werden sie als Archivszenen gezeigt."
     }
   }
 }

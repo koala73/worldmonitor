@@ -5202,7 +5202,11 @@
         "could": "Kunde ha riktats hit",
         "couldDef": "En styrbar eller kommersiell sensor var inom räckhåll; operatören säger inte om den tittade.",
         "overhead": "Passerade över",
-        "overheadDef": "Korsade himlen här, utan bildbevis."
+        "overheadDef": "Korsade himlen här, utan bildbevis.",
+        "watchedShort": "Bild i ett offentligt arkiv",
+        "likelyShort": "Täckt, ingen bild än",
+        "couldShort": "Riktbar sensor inom räckhåll",
+        "overheadShort": "Överflygning, ingen bild"
       },
       "group": {
         "watched": "bevakade",
@@ -5241,7 +5245,12 @@
         "window": "7-dagarsfönster · {{start}} → {{end}}",
         "failed": "Misslyckades",
         "note": "Planetary Computer och NASA GIBS skapar bilder på begäran, så steget kan ta några sekunder."
-      }
+      },
+      "privacyLine": "Punkten stannar i din webbläsare",
+      "privacyHow": "Hur",
+      "sources": "Källor",
+      "archiveScene": "Arkivscen",
+      "archiveOnly": "Ingen beräknad överflygning matchar dessa bilder, så de visas som arkivscener."
     }
   }
 }

@@ -12,6 +12,7 @@ import '../styles/reservoir-levels.css';
 import type { ReservoirLevel } from '@/services/climate';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import type { FocusFitBounds } from '@/utils/focus-map';
+import { mercatorCenterForOffset, type ScreenOffset } from '@/utils/map-point-offset';
 import {
   isLayerToggleAllowed,
   isLayerEntitled,
@@ -206,6 +207,7 @@ export class MapContainer {
   private deckGLMap: DeckGLMap | null = null;
   private svgMap: MapComponent | null = null;
   private globeMap: GlobeMap | null = null;
+  private autoRotateHeld = false;
   private supplyChainPanel: import('@/components/SupplyChainPanel').SupplyChainPanel | null = null;
   private initialState: MapContainerState;
   private useDeckGL: boolean;
@@ -694,6 +696,7 @@ export class MapContainer {
         onInitError: (error) => this.handleGlobeInitFailure(globeToken, error),
         chrome: this.chrome,
       });
+      this.globeMap.holdAutoRotate(this.autoRotateHeld);
       this.rehydrateActiveMap();
       void this.globeMap.whenReady().then(() => {
         if (!this.isCurrentRendererInit(rendererToken) || !this.useGlobe) return;
@@ -1113,6 +1116,36 @@ export class MapContainer {
       this.svgMap?.setCenter(lat, lon);
       if (zoom != null) this.svgMap?.setZoom(zoom);
     }
+  }
+
+  /**
+   * Centres the map so (lat, lon) is drawn `offset` pixels from the container centre, e.g. in the part a sheet leaves visible.
+   * Returns null before the renderer is ready, because the offset can only be resolved against a live camera.
+   */
+  public setCenterAt(lat: number, lon: number, zoom: number, offset: ScreenOffset): number | null {
+    if (!this.isViewportRendererReady()) return null;
+    const centre = this.useGlobe
+      ? this.globeMap?.centerForOffset(lat, lon, zoom, offset) ?? { lat, lon }
+      : this.useDeckGL ? mercatorCenterForOffset(lat, lon, zoom, offset) : { lat, lon };
+    return this.setCenter(centre.lat, centre.lon, zoom);
+  }
+
+  /** Keeps the globe from spinning away while a point is held in view. */
+  public holdAutoRotate(held: boolean): void {
+    this.autoRotateHeld = held;
+    this.globeMap?.holdAutoRotate(held);
+  }
+
+  /** Where (lat, lon) is drawn in client coordinates, or null when the renderer cannot say or it faces away. */
+  public projectToClient(lat: number, lon: number): { x: number; y: number } | null {
+    if (this.useGlobe) return this.globeMap?.projectToClient(lat, lon) ?? null;
+    if (this.useDeckGL) return this.deckGLMap?.projectToClient(lat, lon) ?? null;
+    return null;
+  }
+
+  /** Where the map draws, in client coordinates; the globe keeps drawing at its old size until a resize settles. */
+  public getViewportRect(): DOMRect {
+    return (this.useGlobe ? this.globeMap?.getDrawingRect() : null) ?? this.container.getBoundingClientRect();
   }
 
   public getCenter(): { lat: number; lon: number } | null {

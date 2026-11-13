@@ -62,7 +62,9 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.ok(radar.length >= 2, 'radar acquisitions stay listed');
     for (const acquisition of radar) {
       assert.equal(acquisition.pass, null);
-      assert.ok(acquisition.imageUrl, 'and keep their image');
+      const crop = new URL(acquisition.imageUrl!);
+      assert.equal(crop.hostname, 'planetarycomputer.microsoft.com', 'and keep a crop of their image at the point');
+      assert.deepEqual([crop.searchParams.get('collection'), crop.searchParams.get('assets'), crop.searchParams.get('colormap_name')], ['sentinel-1-grd', 'vv', 'gray']);
     }
   });
 

@@ -7,6 +7,7 @@ export const IMAGE_CREDIT = {
   usgs: 'Landsat imagery courtesy of the U.S. Geological Survey',
   eumetsat: 'Contains EUMETSAT Meteosat imagery',
   gibs: 'NASA GIBS / EOSDIS',
+  gibsAcknowledgement: "We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).",
   celestrak: 'Orbit elements from CelesTrak',
 } as const;
 

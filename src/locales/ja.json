@@ -5174,7 +5174,11 @@
         "could": "ここを向けた可能性",
         "couldDef": "指向可能または商用のセンサーが届く範囲にいましたが、運用者は観測したかを公表していません。",
         "overhead": "上空を通過",
-        "overheadDef": "撮影の証拠なしにこの上空を通過しました。"
+        "overheadDef": "撮影の証拠なしにこの上空を通過しました。",
+        "watchedShort": "公開アーカイブに画像あり",
+        "likelyShort": "観測済み、画像はまだなし",
+        "couldShort": "指向可能なセンサーが圏内",
+        "overheadShort": "上空通過、画像なし"
       },
       "group": {
         "watched": "撮影済み",
@@ -5213,7 +5217,12 @@
         "window": "7日間の範囲 · {{start}} → {{end}}",
         "failed": "失敗",
         "note": "Planetary ComputerとNASA GIBSは画像を要求時に生成するため、この手順には数秒かかることがあります。"
-      }
+      },
+      "privacyLine": "地点はブラウザ内にとどまります",
+      "privacyHow": "仕組み",
+      "sources": "出典",
+      "archiveScene": "アーカイブシーン",
+      "archiveOnly": "計算された通過と一致しない画像のため、アーカイブシーンとして表示しています。"
     }
   }
 }

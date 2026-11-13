@@ -40,9 +40,15 @@ export default async function ({ page, base, shot, log, expectVisible }) {
 
   let holdArchives = null;
   const failing = new Set();
+  let emptyArchives = false;
   await page.route((url) => ARCHIVE_HOSTS.includes(url.hostname), async (route) => {
     if (holdArchives) await holdArchives;
-    if (failing.has(new URL(route.request().url()).hostname)) return route.fulfill({ status: 503, body: 'unavailable' });
+    const url = new URL(route.request().url());
+    if (failing.has(url.hostname)) return route.fulfill({ status: 503, body: 'unavailable' });
+    if (emptyArchives && url.pathname.endsWith('/search')) return route.fulfill({ json: { type: 'FeatureCollection', features: [] } });
+    if (emptyArchives && url.hostname === 'gibs.earthdata.nasa.gov' && url.pathname.endsWith('.xml')) {
+      return route.fulfill({ contentType: 'text/xml', body: '<Domains><Domain></Domain></Domains>' });
+    }
     return route.continue();
   });
 
@@ -65,10 +71,14 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     if (!keepOpen) await sources.locator('summary').click();
     return credits;
   };
-  let aim = { dx: 0, dy: 0 };
-  const open = async ({ dx, dy } = aim) => {
-    const box = await page.locator('#mapContainer canvas').first().boundingBox();
-    await page.mouse.click(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, { button: 'right' });
+  // Opening a lookup flies the map so the point sits in the middle of what the sheet leaves visible, so aim at
+  // client positions, not offsets from the canvas centre.
+  const open = async (at = null) => {
+    if (!at) {
+      const box = await page.locator('#mapContainer canvas').first().boundingBox();
+      at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    }
+    await page.mouse.click(at.x, at.y, { button: 'right' });
     await page.getByRole('menuitem', { name: 'Satellite passes here' }).or(page.getByText('Satellite passes here', { exact: true })).first().click();
     await expectVisible('.orbital-watch-sheet');
   };
@@ -91,63 +101,68 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     log('tile states', await sheet.locator('.ow-tile').evaluateAll((tiles) => tiles.map((t) => t.dataset.state).join('')));
   };
   const privacy = async () => {
-    if (!(await sheet.locator('.ow-privacy').isVisible())) throw new Error('privacy notice missing');
+    const line = sheet.locator('.ow-privacy-line');
+    if (!(await line.isVisible())) throw new Error('privacy line missing');
+    const box = await line.boundingBox();
+    if (box.height > 30) throw new Error(`privacy line is ${box.height}px tall`);
   };
 
+  // Where the reticle sits once the map has stopped flying, and that it sits mid-way across the map the panels leave visible.
+  const markAt = async () => {
+    let prev = null;
+    for (let tries = 0; tries < 60; tries++) {
+      const now = await page.evaluate(() => {
+        const mark = document.querySelector('.ow-mapmark');
+        if (!mark || mark.hidden) return null;
+        const ring = mark.querySelector('.ow-mapmark-ring').getBoundingClientRect();
+        const m = document.getElementById('mapContainer').getBoundingClientRect();
+        let area = { left: m.left, top: m.top, right: m.right, bottom: m.bottom };
+        const size = (r) => Math.max(0, r.right - r.left) * Math.max(0, r.bottom - r.top);
+        for (const sel of ['.ow-panel', '.ow-dock', '.ow-statusbar']) {
+          const c = document.querySelector(`.orbital-watch-sheet ${sel}`)?.getBoundingClientRect();
+          if (!c || !c.width || !c.height || c.right <= area.left || c.left >= area.right || c.bottom <= area.top || c.top >= area.bottom) continue;
+          area = [{ ...area, right: Math.min(area.right, c.left) }, { ...area, left: Math.max(area.left, c.right) },
+            { ...area, bottom: Math.min(area.bottom, c.top) }, { ...area, top: Math.max(area.top, c.bottom) }]
+            .reduce((best, side) => (size(side) > size(best) ? side : best));
+        }
+        return { x: Math.round(ring.left + ring.width / 2), y: Math.round(ring.top + ring.height / 2),
+          cx: Math.round((area.left + area.right) / 2), cy: Math.round((area.top + area.bottom) / 2),
+          left: Math.round(area.left), top: Math.round(area.top) };
+      });
+      if (now && prev && now.x === prev.x && now.y === prev.y) {
+        if (Math.abs(now.x - now.cx) > 40 || Math.abs(now.y - now.cy) > 40) {
+          throw new Error(`reticle at ${now.x},${now.y}, not centred in the visible map at ${now.cx},${now.cy}`);
+        }
+        return now;
+      }
+      prev = now;
+      await page.waitForTimeout(250);
+    }
+    throw new Error(`reticle never settled on the map: ${JSON.stringify(prev)}`);
+  };
   const pickedAt = async (at) => {
     await open(at);
     const [lat, ns, lon, ew] = (await sheet.locator('.ow-place').innerText()).match(/([\d.]+)°([NS]) ([\d.]+)°([EW])/).slice(1);
+    const mark = await markAt();
     await close();
-    return { lat: ns === 'N' ? +lat : -lat, lon: ew === 'E' ? +lon : -lon };
+    return { lat: ns === 'N' ? +lat : -lat, lon: ew === 'E' ? +lon : -lon, mark };
   };
-  const settled = async () => {
-    let prev = await pickedAt(aim);
-    for (let tries = 0; tries < 12; tries++) {
-      await page.waitForTimeout(1500);
-      const now = await pickedAt(aim);
-      if (Math.abs(now.lat - prev.lat) < 0.001 && Math.abs(now.lon - prev.lon) < 0.001) return now;
-      prev = now;
-    }
-    return prev;
-  };
-  const clamp = (v, max) => Math.max(-max, Math.min(max, v));
   const assertAtPlace = (text) => {
     const [lat, lon] = text.match(/[\d.]+/g).map(Number);
     if (Math.abs(lat - PLACE.lat) > 0.005 || Math.abs(lon - PLACE.lon) > 0.005) throw new Error(`picked ${text}, not ${PLACE.name}`);
   };
-  const openAtPlace = async (retry = true) => {
-    await open();
-    try {
-      assertAtPlace(await sheet.locator('.ow-place').innerText());
-    } catch (error) {
-      if (!retry) throw error;
-      await close();
-      await calibrate();
-      await openAtPlace(false);
-    }
+  // The context menu opens a lookup wherever the globe is pointed; the shared point itself is opened through its route,
+  // the same link a shared lookup gives, so every state is shot at exactly the point.
+  const openAtPlace = async () => {
+    await page.evaluate(({ lat, lon }) => {
+      history.replaceState(history.state, '', location.pathname + location.search);
+      location.hash = `orbital=${lat.toFixed(4)},${lon.toFixed(4)}`;
+    }, PLACE);
+    await expectVisible('.orbital-watch-sheet');
   };
   const calibrate = async () => {
-    for (let round = 0; round < 8; round++) {
-      const here = await settled();
-      if (Math.abs(here.lat - PLACE.lat) < 0.0005 && Math.abs(here.lon - PLACE.lon) < 0.0005) break;
-      const right = await pickedAt({ dx: aim.dx + 40, dy: aim.dy });
-      const down = await pickedAt({ dx: aim.dx, dy: aim.dy + 40 });
-      const [a, b, c, d] = [(right.lat - here.lat) / 40, (down.lat - here.lat) / 40, (right.lon - here.lon) / 40, (down.lon - here.lon) / 40];
-      const [dLat, dLon] = [PLACE.lat - here.lat, PLACE.lon - here.lon];
-      const det = a * d - b * c;
-      aim = { dx: aim.dx + (dLat * d - b * dLon) / det, dy: aim.dy + (a * dLon - c * dLat) / det };
-      log('aim', JSON.stringify({ here, aim }));
-      const box = await page.locator('#mapContainer canvas').first().boundingBox();
-      if (Math.abs(aim.dx) > box.width * 0.35 || Math.abs(aim.dy) > box.height * 0.35) {
-        const [cx, cy] = [box.x + box.width / 2, box.y + box.height / 2];
-        const [mx, my] = [clamp(aim.dx, box.width * 0.3), clamp(aim.dy, box.height * 0.3)];
-        await page.mouse.move(cx, cy);
-        await page.mouse.down();
-        await page.mouse.move(cx - mx, cy - my, { steps: 25 });
-        await page.mouse.up();
-        aim = { dx: 0, dy: 0 };
-      }
-    }
+    const picked = await pickedAt(null);
+    log('context menu pick', JSON.stringify(picked));
   };
   await calibrate();
 
@@ -161,6 +176,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await privacy();
   if (await sheet.locator('.ow-headline').count()) throw new Error('results shown while archives pending');
   log('steps', (await sheet.locator('.ow-step').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ')));
+  log('loading map mark', JSON.stringify(await markAt()));
   await shot('loading-compute-steps');
   holdArchives = null;
   release();
@@ -177,6 +193,17 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('hero credit', heroCredit);
   if (!/COPERNICUS SENTINEL DATA|LANDSAT/i.test(heroCredit)) throw new Error(`closest look has no image credit: ${heroCredit}`);
   if (await sheet.locator('.orbital-watch-sheet, .ow-panel').first().evaluate((el) => el.textContent.includes('We acknowledge'))) throw new Error('acknowledgement paragraph in the sheet');
+  const heroFits = await page.evaluate(() => {
+    const card = document.querySelector('.orbital-watch-sheet .ow-card');
+    const floor = Math.min(...[...document.querySelectorAll('.orbital-watch-sheet .ow-privacy, .mobile-tab-bar')]
+      .map((el) => el.getBoundingClientRect()).filter((r) => r.height > 0).map((r) => r.top), window.innerHeight);
+    const r = card.getBoundingClientRect();
+    const tile = card.querySelector('.ow-tile').getBoundingClientRect();
+    return { top: Math.round(r.top), bottom: Math.round(r.bottom), image: Math.round(tile.height), floor: Math.round(floor) };
+  });
+  log('hero box', JSON.stringify(heroFits));
+  if (heroFits.bottom > heroFits.floor) throw new Error(`hero and caption run under the bottom edge: ${JSON.stringify(heroFits)}`);
+  log('sheet map mark', JSON.stringify(await markAt()));
   await hero.locator('.ow-image-credit').evaluate((el) => el.scrollIntoView({ block: 'nearest' }));
   await shot('sheet-closest-look');
   const credits = await sourceCredits(true);
@@ -200,6 +227,22 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await settleImagesInView();
   log('groups', (await sheet.locator('.ow-group-toggle').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ')));
   log('status bar', await sheet.locator('.ow-statusbar').innerText());
+  log('full view map mark', JSON.stringify(await markAt()));
+  if (!mobile) {
+    log('map mark', await sheet.locator('.ow-mapmark-label').innerText());
+    if (!(await sheet.locator('.ow-mapmark-ring').isVisible())) throw new Error('point not marked on the map');
+    const chrome = await page.evaluate(() => {
+      // The full view lets pointer input through to the map around its panels, so the map is the only other thing allowed here.
+      const owners = [document.querySelector('.orbital-watch-sheet'), document.getElementById('mapContainer')];
+      const hits = [[1440 - 30, 8], [1440 - 120, 8], [1440 - 220, 8], [80, 8], [300, 300]].map(([x, y]) => document.elementFromPoint(x, y));
+      return hits.filter((el) => el && !owners.some((owner) => owner?.contains(el))).map((el) => el.className || el.tagName);
+    });
+    if (chrome.length) throw new Error(`app chrome shows through the full view: ${chrome.join(', ')}`);
+    const mapTakesInput = await page.evaluate(() => !!document.getElementById('mapContainer')?.contains(document.elementFromPoint(300, 300)));
+    if (!mapTakesInput) throw new Error('the full view blocks pointer input to the map around its panels');
+  }
+  const wrapped = await sheet.locator('.ow-row-meta, .ow-row-credit').evaluateAll((els) => els.filter((el) => el.scrollHeight > 18).length);
+  if (wrapped) throw new Error(`${wrapped} pass row lines wrap`);
   await shot('full-view-passes');
   const weatherTab = sheet.locator('.ow-tab[data-tab="weather"]');
   if (await weatherTab.count()) {
@@ -265,10 +308,12 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     await settleImagesInView();
     await privacy();
     log('stale banner', await sheet.locator('.ow-banner-stale').innerText());
-    await shot('stale-orbit-data');
+    log('stale map mark', JSON.stringify(await markAt()));
+  await shot('stale-orbit-data');
     await close();
 
     catalog = { ...fixture, satellites: fixture.satellites.filter((s) => s.profileId === 'himawari') };
+    emptyArchives = true;
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForBoot(page, { data: true });
     await waitForMap(page);
@@ -278,10 +323,15 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     await settleImagesInView();
     await privacy();
     log('empty state', await sheet.locator('.ow-empty').innerText());
+    log('empty headline', await sheet.locator('.ow-headline-row').innerText());
+    if (await sheet.locator('.ow-card, [data-action="retry"]').count()) throw new Error('empty state is not empty');
+    if (await sheet.locator('.ow-card img, .ow-row img').count()) throw new Error('empty state shows images');
+    log('empty map mark', JSON.stringify(await markAt()));
     const emptyCredits = await sourceCredits();
     log('empty state sources', emptyCredits);
     if (emptyCredits.some((c) => c.startsWith('CelesTrak'))) throw new Error('CelesTrak credited with no passes listed');
     await shot('empty-no-passes');
+    emptyArchives = false;
     await close();
   }
 
@@ -297,5 +347,16 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   }), ARCHIVE_HOSTS);
   log('lcp urls', timeline.lcp, 'archive resource entries', timeline.archiveResources);
   if (timeline.lcp.some((url) => ARCHIVE_HOSTS.includes(new URL(url).hostname))) throw new Error('archive crop became the LCP element');
+
+  // A shared link opens with no click on the globe, so nothing else stops its idle spin carrying the point away.
+  await page.goto(`${base}/dashboard?view=global#orbital=${PLACE.lat.toFixed(4)},${PLACE.lon.toFixed(4)}&view=full`, { waitUntil: 'domcontentloaded' });
+  await waitForBoot(page, { data: true });
+  await waitForMap(page);
+  await expectVisible('.orbital-watch-sheet');
+  const landed = await markAt();
+  await page.waitForTimeout(5_000);
+  const later = await markAt();
+  log('shared link map mark', JSON.stringify(landed), 'after 5 s', JSON.stringify(later));
+  if (Math.abs(later.x - landed.x) > 4 || Math.abs(later.y - landed.y) > 4) throw new Error('the map drifted off a shared point');
   return { mobile, pointText, needles, leaks: leaks.length, lcp: timeline.lcp };
 }

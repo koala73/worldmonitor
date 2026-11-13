@@ -9,7 +9,7 @@ Right-click or long-press any point on the map, land or ocean, and choose **Sate
 - `tiers` gives every row its tier as text: checking archive, confirmed image, likely imaged, upcoming pass, in daily mosaic, weather frame, within reach, passed overhead, capability overhead, unavailable.
 - `credits` puts each source credit under its image, and ends the result with a credit line for only the sources it holds: CelesTrak orbit elements, Copernicus Sentinel, USGS Landsat, the NASA GIBS acknowledgement and EUMETSAT.
 - `partial` names the archive that failed and offers Retry. `stale` shows the orbit-data age. `empty` explains the searched window.
-- `privacy` keeps the disclosure visible in every state.
+- `privacy` keeps a one-line "Point stays in your browser · How ›" disclosure in every state.
 
 ## How to get to it (user POV)
 
@@ -20,7 +20,7 @@ Right-click or long-press any point on the map, land or ocean, and choose **Sate
 
 Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/orbital-watch.mjs --name orbital-watch`. Set `WM_VERIFY_ORBITAL_VIEWPORT=mobile` for the 390px bottom sheet. The step stores the globe map mode, because headless Chromium has only software GL and `MapContainer` keeps deck.gl off it. Use `WM_VERIFY_HEADED=1` on a machine with a GPU to drive the flat map.
 
-The step serves `/api/orbital/v1/list-imaging-satellites` from `tests/fixtures/orbital/celestrak-gp-2026-11-13.json` and lets archive requests reach the real archives. It holds them to capture the checking state, fails Earth Search for the partial state, marks the catalog stale, and keeps only Himawari for the empty state. Set `WM_VERIFY_ORBITAL_CATALOG=live` to read the local API instead. Fixture orbits drift with time, so far from 2026-11-13 the pass list shrinks.
+The step serves `/api/orbital/v1/list-imaging-satellites` from `tests/fixtures/orbital/celestrak-gp-2026-11-13.json` and lets archive requests reach the real archives. It holds them to capture the checking state, fails Earth Search for the partial state, marks the catalog stale, and for the empty state serves an empty catalog and empty archive answers (no scenes, empty GIBS time domains). Set `WM_VERIFY_ORBITAL_CATALOG=live` to read the local API instead. Fixture orbits drift with time, so far from 2026-11-13 the pass list shrinks.
 
 It fails if any request to a non-archive host carries the picked point, and if an archive image becomes the largest contentful paint.
 

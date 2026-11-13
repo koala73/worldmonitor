@@ -5174,7 +5174,11 @@
         "could": "Có thể đã hướng về đây",
         "couldDef": "Một cảm biến xoay được hoặc thương mại nằm trong tầm; nhà vận hành không cho biết có nhìn hay không.",
         "overhead": "Đã bay qua",
-        "overheadDef": "Đã băng qua bầu trời nơi đây, không có bằng chứng chụp ảnh."
+        "overheadDef": "Đã băng qua bầu trời nơi đây, không có bằng chứng chụp ảnh.",
+        "watchedShort": "Có ảnh trong kho lưu trữ công khai",
+        "likelyShort": "Đã phủ, chưa có ảnh",
+        "couldShort": "Cảm biến điều hướng trong tầm",
+        "overheadShort": "Bay qua, không có ảnh"
       },
       "group": {
         "watched": "đã chụp",
@@ -5213,7 +5217,12 @@
         "window": "Khung 7 ngày · {{start}} → {{end}}",
         "failed": "Thất bại",
         "note": "Planetary Computer và NASA GIBS tạo ảnh theo yêu cầu, nên bước này có thể mất vài giây."
-      }
+      },
+      "privacyLine": "Điểm này chỉ ở trong trình duyệt của bạn",
+      "privacyHow": "Cách thức",
+      "sources": "Nguồn",
+      "archiveScene": "Cảnh lưu trữ",
+      "archiveOnly": "Không có lượt bay qua tính toán nào khớp với các ảnh này, nên chúng được hiển thị là cảnh lưu trữ."
     }
   }
 }

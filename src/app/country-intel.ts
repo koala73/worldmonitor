@@ -83,6 +83,7 @@ import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-sig
 import { showToast as showGlobalToast } from '@/utils/toast';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
 import { watchOrbitalRoute } from '@/app/orbital-route';
+import { setOrbitalMapView } from '@/app/orbital-map-focus';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: no strikes in the
 // country deep-dive or the AI brief. Set VITE_ENABLE_IRAN_ATTACKS=true to restore.
@@ -149,6 +150,8 @@ type CountryPresentation = {
 };
 
 const AVIATION_SIGNAL_TIMEOUT_MS = 2500;
+/** Close enough to read a city block or a port around a satellite pass lookup's point. */
+const ORBITAL_FOCUS_ZOOM = 11;
 
 export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
@@ -166,6 +169,7 @@ export class CountryIntelManager implements AppModule {
   // don't re-hammer fetchProSections.
   private authUnsubscribe: (() => void) | null = null;
   private orbitalRouteUnsubscribe: (() => void) | null = null;
+  private orbitalMapFocusUnsubscribe: (() => void) | null = null;
   private entitlementUnsubscribe: (() => void) | null = null;
   private lastHadPremium = false;
   private currentCountryPresentation: CountryPresentation | null = null;
@@ -197,6 +201,12 @@ export class CountryIntelManager implements AppModule {
       }, 400);
     });
 
+    this.orbitalMapFocusUnsubscribe = setOrbitalMapView({
+      rect: () => this.ctx.map?.getViewportRect() ?? null,
+      center: (point, offset) => (this.ctx.map?.setCenterAt(point.lat, point.lon, ORBITAL_FOCUS_ZOOM, offset) ?? null) !== null,
+      project: (point) => this.ctx.map?.projectToClient(point.lat, point.lon) ?? null,
+      hold: (held) => this.ctx.map?.holdAutoRotate(held),
+    });
     this.orbitalRouteUnsubscribe = watchOrbitalRoute();
     this.lastHadPremium = hasPremiumAccess(getAuthState());
     const syncPremiumAccess = () => this.handlePremiumAccessTransition(hasPremiumAccess(getAuthState()));
@@ -207,6 +217,8 @@ export class CountryIntelManager implements AppModule {
   destroy(): void {
     this.orbitalRouteUnsubscribe?.();
     this.orbitalRouteUnsubscribe = null;
+    this.orbitalMapFocusUnsubscribe?.();
+    this.orbitalMapFocusUnsubscribe = null;
     this.currentCountryPresentation = null;
     this.briefRequestToken++;
     this.countryController?.dispose();
