@@ -400,6 +400,6 @@
 .ow-detail-sensor { margin: 0 0 var(--ow-space-4); color: var(--ow-dim); }
 .ow-detail-actions { display: grid; grid-template-columns: auto 1fr auto auto; gap: var(--ow-space-2); align-items: stretch; }
 .ow-detail-actions .ow-primary { width: auto; }
-.ow-detail-step { padding: 0 var(--ow-space-2); border: 1px solid var(--ow-line); background: none; color: var(--ow-text) !important; cursor: pointer; }
+.ow-detail-step { min-width: 40px; padding: 0 var(--ow-space-3); font-size: 16px; border: 1px solid var(--ow-line); background: none; color: var(--ow-text) !important; cursor: pointer; }
 .ow-detail-step[disabled] { color: var(--ow-faint) !important; cursor: default; }
 .ow-reticle, .ow-scale, .ow-north, .ow-card-tag, .ow-thumb-dot { pointer-events: none; }

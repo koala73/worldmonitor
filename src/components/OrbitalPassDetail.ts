@@ -80,8 +80,8 @@ export function renderPassDetail(input: PassDetailInput): HTMLElement {
     input.swathKm ? t('orbitalWatch.passDetail.swathLine', { km: input.swathKm }) : null,
   ].filter(Boolean).join(' · ');
   const step = (delta: -1 | 1, label: string, enabled: boolean): DomChild =>
-    h('button', { type: 'button', className: 'ow-detail-step ow-label', dataset: { action: 'detail-step', step: String(delta) }, disabled: !enabled },
-      delta < 0 ? `‹ ${label}` : `${label} ›`);
+    h('button', { type: 'button', className: 'ow-detail-step ow-label', dataset: { action: 'detail-step', step: String(delta) }, 'aria-label': label, title: label, disabled: !enabled },
+      delta < 0 ? '‹' : '›');
   return h('section', { className: 'ow-detail', 'aria-label': pass.name },
     h('button', { type: 'button', className: 'ow-detail-back ow-label', dataset: { action: 'detail-back' } },
       `← ${t('orbitalWatch.passDetail.back')} `, h('kbd', null, 'ESC')),
