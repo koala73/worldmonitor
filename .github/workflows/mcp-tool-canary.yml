@@ -66,7 +66,7 @@ jobs:
         env:
           MCP_CANARY_KEY: ${{ secrets.MCP_CANARY_KEY }}
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/mcp-tool-canary.mjs --report "$RUNNER_TEMP/mcp-tool-canary-report.json" --publish-issue
+        run: node scripts/mcp-tool-canary.mjs --wait-for-catalog --report "$RUNNER_TEMP/mcp-tool-canary-report.json" --publish-issue
 
       - name: Upload canary report
         if: ${{ always() }}
