@@ -40,6 +40,7 @@ import type { PredictionPanel } from '@/components/PredictionPanel';
 import {
   buildMapUrl,
   withUrlFragment,
+  withoutVariantScopedUrlState,
   debounce,
   loadFromStorage,
   saveToStorage,
@@ -2074,6 +2075,11 @@ export class EventHandlerManager implements AppModule {
 
     if (this.ctx.isDesktopApp || options.isLocalDev) {
       if (stageVariantSelection(SITE_VARIANT, variant, writeStorageValue)) {
+        window.history.replaceState(
+          window.history.state,
+          '',
+          withoutVariantScopedUrlState(window.location.href),
+        );
         window.location.reload();
         return 'reload';
       }
