@@ -281,6 +281,7 @@
 .ow-row-main { flex: 1; min-width: 0; }
 .ow-row-name { font-size: 15px; line-height: 20px; color: var(--ow-text); font-weight: 500; }
 .ow-row-meta { overflow-wrap: anywhere; }
+.ow-row-credit { color: var(--ow-faint); font-size: 10px; line-height: 13px; }
 .ow-badges { display: flex; flex-direction: column; align-items: flex-end; gap: var(--ow-space-1); flex: none; max-width: 40%; }
 .ow-badge { padding: 1px 6px; border: 1px solid var(--ow-line); color: var(--ow-dim); white-space: nowrap; }
 .ow-badge[data-tone="cloud"] { border-color: var(--ow-cloud); color: var(--ow-cloud); }
@@ -338,9 +339,8 @@
 @media (max-width: 768px) {
   .orbital-watch-sheet,
   .orbital-watch-sheet[data-view="full"] {
-    inset: 38vh 0 0 0;
+    inset: 38vh 0 var(--ow-mobile-tab-bar, 64px) 0;
     width: auto;
-    z-index: 10005;
   }
   .orbital-watch-sheet .ow-panel,
   .orbital-watch-sheet[data-view="full"] .ow-panel {

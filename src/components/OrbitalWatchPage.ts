@@ -380,12 +380,13 @@ function badge(text: string, tone: 'cloud' | 'radar' | 'neutral' = 'neutral'): H
   return h('span', { className: 'ow-badge ow-label', dataset: { tone } }, text);
 }
 
-function rowShell(key: string, tier: string, thumb: HTMLElement, name: string, tierLabel: string, lines: string[], badges: DomChild[]): HTMLElement {
+function rowShell(key: string, tier: string, thumb: HTMLElement, name: string, tierLabel: string, lines: string[], badges: DomChild[], credit: string | null = null): HTMLElement {
   return h('li', { className: 'ow-row', tabindex: '0', dataset: { tier, key } },
     thumb,
     h('div', { className: 'ow-row-main' },
       h('div', { className: 'ow-row-name' }, name, h('span', { className: 'ow-tier-label ow-sr' }, tierLabel)),
-      ...lines.map((line) => h('div', { className: 'ow-row-meta ow-label' }, line))),
+      ...lines.map((line) => h('div', { className: 'ow-row-meta ow-label' }, line)),
+      credit ? h('div', { className: 'ow-row-credit ow-label' }, credit) : null),
     h('div', { className: 'ow-badges' }, ...badges));
 }
 
@@ -416,7 +417,8 @@ function passRow(pass: PointPass, nowMs: number, acquisition: MatchedAcquisition
     repeats > 1 ? h('span', { className: 'ow-repeat ow-label', title: t('orbitalWatch.ui.row.repeats', { count: repeats }) }, `×${repeats}`) : null,
   ];
   return rowShell(`pass:${passKey(pass)}`, pass.tier.kind, thumb, name, t(TIER_LABEL_KEY[pass.tier.kind]),
-    [`${formatWhen(pass.timeMs)} · ${formatRelative(pass.timeMs, nowMs)}`, geometry.join(' · ')], badges);
+    [`${formatWhen(pass.timeMs)} · ${formatRelative(pass.timeMs, nowMs)}`, geometry.join(' · ')], badges,
+    acquisition && !military ? acquisitionCredit(acquisition) : null);
 }
 
 function unmatchedRow(acquisition: MatchedAcquisition, nowMs: number): HTMLElement {
@@ -425,7 +427,7 @@ function unmatchedRow(acquisition: MatchedAcquisition, nowMs: number): HTMLEleme
   const meta = [`${acquisition.resolutionM} M`];
   if (acquisition.cloudCoverPct != null && acquisition.profileId !== 'sentinel-1') meta.push(t('orbitalWatch.ui.row.cloud', { pct: Math.round(acquisition.cloudCoverPct) }));
   return rowShell(`image:${acquisition.key}`, 'confirmed-image', thumb, name, t('orbitalWatch.tier.unmatchedImage'),
-    [`${formatWhen(acquisition.startMs)} · ${formatRelative(acquisition.startMs, nowMs)}`, meta.join(' · ')], acquisitionBadges(acquisition));
+    [`${formatWhen(acquisition.startMs)} · ${formatRelative(acquisition.startMs, nowMs)}`, meta.join(' · ')], acquisitionBadges(acquisition), acquisitionCredit(acquisition));
 }
 
 function mosaicRow(mosaic: DailyMosaicRow, day: { date: string; imageUrl: string | null }): HTMLElement {
@@ -434,7 +436,7 @@ function mosaicRow(mosaic: DailyMosaicRow, day: { date: string; imageUrl: string
   const thumb = imageTile(day.imageUrl, t('orbitalWatch.row.imageAlt', { name: mosaic.source, time: formatDay(ms) }), mosaic.source.toUpperCase(), 'thumb');
   return rowShell(`source:${mosaic.source}`, 'daily-mosaic', thumb, mosaic.source, t('orbitalWatch.tier.dailyMosaic'),
     [formatDay(ms), [t('orbitalWatch.ui.caption.dailyMosaic'), resolution ? `${resolution} M` : null, t('orbitalWatch.ui.row.days', { count: mosaic.days.length })].filter(Boolean).join(' · ')],
-    [badge('NASA')]);
+    [badge('NASA')], IMAGE_CREDIT.gibs);
 }
 
 function frameRow(frame: GeostationaryRow, latest: { time: string; imageUrl: string | null }): HTMLElement {
@@ -442,7 +444,7 @@ function frameRow(frame: GeostationaryRow, latest: { time: string; imageUrl: str
   const thumb = imageTile(latest.imageUrl, t('orbitalWatch.row.imageAlt', { name: frame.source, time: formatWhen(ms) }), frame.source.toUpperCase(), 'thumb');
   return rowShell(`source:${frame.source}`, 'weather-frame', thumb, frame.source, t('orbitalWatch.tier.weatherFrame'),
     [formatWhen(ms), frame.cadenceMinutes === null ? t('orbitalWatch.ui.caption.geostationary') : t('orbitalWatch.ui.caption.geostationaryCadence', { minutes: frame.cadenceMinutes })],
-    [badge(frame.archive === 'eumetsat' ? 'EUMETSAT' : 'NASA')]);
+    [badge(frame.archive === 'eumetsat' ? 'EUMETSAT' : 'NASA')], frameCredit(frame.archive));
 }
 
 function groupPasses(lookup: PointPassLookup, evidence: OrbitalEvidence): Map<GroupId, Group> {
@@ -831,7 +833,7 @@ export class OrbitalWatchPage {
   private passList(lookup: PointPassLookup, evidence: OrbitalEvidence): HTMLElement {
     const groups = groupPasses(lookup, evidence);
     const shown = GROUPS.map(({ id }) => groups.get(id)!).filter((group) => group.count > 0 && (!this.filter || group.spec.id === this.filter));
-    const missing = evidence.mosaics.filter((mosaic) => mosaic.days.length === 0).map((mosaic) => mosaic.source);
+    const missing = [...evidence.mosaics.filter((mosaic) => mosaic.days.length === 0), ...evidence.frames.filter((frame) => !frame.latest)].map((row) => row.source);
     return h('section', { className: 'ow-section ow-passes' },
       this.sectionHead('02', t('orbitalWatch.ui.section.passes')),
       this.filter
