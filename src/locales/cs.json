@@ -5209,6 +5209,32 @@
       "sourceUnavailable": "Archiv pro tyto dny neobsahuje žádné snímky z tohoto zdroje."
     },
     "dailyMosaics": "denní mozaiky",
-    "weatherFrames": "meteorologické snímky"
+    "weatherFrames": "meteorologické snímky",
+    "viewer": {
+      "open": "Otevřít prohlížeč snímků: {{image}}",
+      "bestView": "Otevřít nejlepší pohled: {{name}}, {{time}}",
+      "imageAlt": "Snímek {{name}}, {{time}}",
+      "close": "Zavřít prohlížeč snímků",
+      "northUp": "Sever je nahoře",
+      "unreferenced": "Orientace podle archivu; sever není vyznačen",
+      "compare": "Porovnat s jiným datem",
+      "compareDates": "Další data této kolekce",
+      "compareNone": "Žádný jiný snímek této kolekce k porovnání.",
+      "divider": "Oddělovač před/po",
+      "searching": "Hledání snímků tohoto místa za posledních {{days}} dní",
+      "historyFailed": "{{archive}} neodpověděl, proto chybí dřívější snímky.",
+      "historyTimeout": "{{archive}} neodpověděl včas, proto chybí dřívější snímky.",
+      "cloud": "{{pct}} % oblačnosti",
+      "timelapse": "Časosběr",
+      "play": "Přehrát časosběr {{count}} jasných snímků",
+      "loading": "Načítání snímků: {{loaded}} z {{total}}",
+      "notEnough": "Nedostatek jasných snímků pro časosběr: {{count}} z {{min}} potřebných za posledních {{days}} dní.",
+      "tooFewLoaded": "Načteno jen {{count}} snímků; časosběr potřebuje {{min}}.",
+      "frame": "Snímek {{index}} z {{total}}, {{date}}",
+      "pause": "Pozastavit",
+      "resume": "Přehrát",
+      "previous": "Předchozí snímek",
+      "next": "Další snímek"
+    }
   }
 }

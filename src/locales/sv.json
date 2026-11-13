@@ -5153,6 +5153,32 @@
       "sourceUnavailable": "Arkivet har inga bilder från den här källan för dessa dagar."
     },
     "dailyMosaics": "dagliga mosaiker",
-    "weatherFrames": "väderbilder"
+    "weatherFrames": "väderbilder",
+    "viewer": {
+      "open": "Öppna bildvisaren: {{image}}",
+      "bestView": "Öppna bästa vyn: {{name}}, {{time}}",
+      "imageAlt": "Bild av {{name}}, {{time}}",
+      "close": "Stäng bildvisaren",
+      "northUp": "Norr är uppåt",
+      "unreferenced": "Orientering som arkivet levererar den; norr är inte markerat",
+      "compare": "Jämför med ett annat datum",
+      "compareDates": "Andra datum i denna samling",
+      "compareNone": "Ingen annan scen i denna samling att jämföra med.",
+      "divider": "Avdelare före/efter",
+      "searching": "Söker scener av platsen från de senaste {{days}} dagarna",
+      "historyFailed": "{{archive}} svarade inte, så tidigare scener saknas.",
+      "historyTimeout": "{{archive}} svarade inte i tid, så tidigare scener saknas.",
+      "cloud": "{{pct}} % moln",
+      "timelapse": "Tidsförlopp",
+      "play": "Spela tidsförlopp med {{count}} klara scener",
+      "loading": "Läser in bilder: {{loaded}} av {{total}}",
+      "notEnough": "För få klara scener för ett tidsförlopp: {{count}} av {{min}} som krävs från de senaste {{days}} dagarna.",
+      "tooFewLoaded": "Bara {{count}} bilder lästes in; ett tidsförlopp kräver {{min}}.",
+      "frame": "Bild {{index}} av {{total}}, {{date}}",
+      "pause": "Pausa",
+      "resume": "Spela",
+      "previous": "Föregående bild",
+      "next": "Nästa bild"
+    }
   }
 }

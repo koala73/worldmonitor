@@ -5125,6 +5125,32 @@
       "sourceUnavailable": "存档中没有该来源在这些日期的图像。"
     },
     "dailyMosaics": "每日镶嵌图",
-    "weatherFrames": "气象图像"
+    "weatherFrames": "气象图像",
+    "viewer": {
+      "open": "打开图像查看器：{{image}}",
+      "bestView": "打开最佳视图：{{name}}，{{time}}",
+      "imageAlt": "{{name}} 的图像，{{time}}",
+      "close": "关闭图像查看器",
+      "northUp": "上方为北",
+      "unreferenced": "方向为档案原始方向，未标注北向",
+      "compare": "与其他日期比较",
+      "compareDates": "此数据集的其他日期",
+      "compareNone": "此数据集没有其他可比较的影像。",
+      "divider": "前后对比分隔线",
+      "searching": "正在查找此地点过去 {{days}} 天的影像",
+      "historyFailed": "{{archive}} 未响应，因此缺少较早的影像。",
+      "historyTimeout": "{{archive}} 未及时响应，因此缺少较早的影像。",
+      "cloud": "云量 {{pct}}%",
+      "timelapse": "延时动画",
+      "play": "播放 {{count}} 幅晴空影像的延时动画",
+      "loading": "正在加载帧：{{loaded}} / {{total}}",
+      "notEnough": "晴空影像不足，无法生成延时动画：过去 {{days}} 天内仅 {{count}} 幅，需要 {{min}} 幅。",
+      "tooFewLoaded": "仅加载了 {{count}} 帧；延时动画需要 {{min}} 帧。",
+      "frame": "第 {{index}} 帧，共 {{total}} 帧，{{date}}",
+      "pause": "暂停",
+      "resume": "播放",
+      "previous": "上一帧",
+      "next": "下一帧"
+    }
   }
 }

@@ -9,6 +9,7 @@ import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
+import type { ViewableImage } from './OrbitalImageViewer';
 import '../styles/orbital-watch.css';
 
 export type ArchiveState =
@@ -75,7 +76,7 @@ const TIER_LABEL_KEY: Record<PassTier['kind'], string> = {
   'passed-overhead': 'orbitalWatch.tier.passedOverhead',
 };
 
-const ARCHIVE_NAME: Record<ArchiveId, string> = {
+export const ARCHIVE_NAME: Record<ArchiveId, string> = {
   'earth-search': 'Earth Search',
   'planetary-computer': 'Microsoft Planetary Computer',
   'nasa-gibs': 'NASA GIBS',
@@ -161,15 +162,21 @@ function groupPasses(lookup: PointPassLookup, archives: ArchiveState): Map<Group
   return groups;
 }
 
-function imageFigure(url: string | null, alt: string, captions: ReadonlyArray<string | null>): DomChild {
+function imageFigure(url: string | null, alt: string, captions: ReadonlyArray<string | null>, view: ViewableImage): DomChild {
   if (!url || !isAllowedPreviewUrl(url)) return null;
   return h('figure', { className: 'ow-row-image' },
-    h('img', { src: url, alt, loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' }),
+    h('button', { type: 'button', className: 'ow-view-image', 'aria-label': t('orbitalWatch.viewer.open', { image: alt }), dataset: { action: 'view-image', imageKind: view.kind, imageKey: view.key } },
+      h('img', { src: url, alt, loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' })),
     ...captions.filter((caption): caption is string => caption !== null).map((caption) => h('figcaption', null, caption)));
 }
 
 function imageSlot(acquisition: MatchedAcquisition | null, alt: string): DomChild {
-  return acquisition ? imageFigure(acquisition.imageUrl, alt, [describePointCondition(acquisition), acquisitionCredit(acquisition)]) : null;
+  return acquisition ? imageFigure(acquisition.imageUrl, alt, [describePointCondition(acquisition), acquisitionCredit(acquisition)], { kind: 'acquisition', key: acquisition.key }) : null;
+}
+
+function bestViewButton(acquisition: MatchedAcquisition): HTMLElement {
+  return h('button', { type: 'button', className: 'ow-retry ow-best-view', dataset: { action: 'view-image', imageKind: 'acquisition', imageKey: acquisition.key } },
+    t('orbitalWatch.viewer.bestView', { name: acquisition.platform.toUpperCase(), time: formatUtc(acquisition.startMs) }));
 }
 
 function sourceRow(tier: string, name: string, tierLabel: string, time: string | null, detail: string | null, image: DomChild): HTMLElement {
@@ -186,7 +193,7 @@ function mosaicRow(mosaic: DailyMosaicRow): HTMLElement {
   const latest = mosaic.days[0];
   if (!latest) return sourceRow('unavailable', mosaic.source, t('orbitalWatch.tier.unavailable'), null, t('orbitalWatch.row.sourceUnavailable'), null);
   return sourceRow('daily-mosaic', mosaic.source, t('orbitalWatch.tier.dailyMosaic'), latest.date, t('orbitalWatch.row.mosaicDays', { count: mosaic.days.length }),
-    imageFigure(latest.imageUrl, t('orbitalWatch.row.imageAlt', { name: mosaic.source, time: latest.date }), [IMAGE_CREDIT.gibs]));
+    imageFigure(latest.imageUrl, t('orbitalWatch.row.imageAlt', { name: mosaic.source, time: latest.date }), [IMAGE_CREDIT.gibs], { kind: 'mosaic', key: mosaic.layer }));
 }
 
 function frameRow(frame: GeostationaryRow): HTMLElement {
@@ -194,7 +201,7 @@ function frameRow(frame: GeostationaryRow): HTMLElement {
   const time = formatUtc(Date.parse(frame.latest.time));
   return sourceRow('weather-frame', frame.source, t('orbitalWatch.tier.weatherFrame'), time,
     frame.cadenceMinutes === null ? null : t('orbitalWatch.row.cadence', { minutes: frame.cadenceMinutes }),
-    imageFigure(frame.latest.imageUrl, t('orbitalWatch.row.imageAlt', { name: frame.source, time }), [frameCredit(frame.archive)]));
+    imageFigure(frame.latest.imageUrl, t('orbitalWatch.row.imageAlt', { name: frame.source, time }), [frameCredit(frame.archive)], { kind: 'frame', key: frame.layer }));
 }
 
 function passRow(pass: PointPass, checking: boolean, acquisition: MatchedAcquisition | null): HTMLElement {
@@ -334,6 +341,7 @@ export class OrbitalWatchPage {
         t('orbitalWatch.counts.frames', { count: evidence.frames.filter((f) => f.latest).length }),
         t('orbitalWatch.counts.inRange', { count: inRange }),
       ].join(' · ')),
+      evidence.bestView ? bestViewButton(evidence.bestView) : null,
       failedNames.length > 0
         ? h('div', { className: 'ow-banner ow-banner-partial', role: 'note' },
           h('p', null, t('orbitalWatch.partial', { sources: failedNames.join(', ') })),
@@ -363,6 +371,11 @@ export class OrbitalWatchPage {
       this.callbacks.onRetry();
       return;
     }
+    const view = target.closest<HTMLElement>('[data-action="view-image"]');
+    if (view) {
+      this.openImageViewer(view);
+      return;
+    }
     const toggle = target.closest<HTMLElement>('.ow-group-toggle');
     const id = toggle?.dataset.group as GroupId | undefined;
     if (!id || !this.state) return;
@@ -371,6 +384,20 @@ export class OrbitalWatchPage {
     this.render(this.state);
     this.body.querySelector<HTMLElement>(`.ow-group-toggle[data-group="${id}"]`)?.focus();
   };
+
+  /** The viewer is its own lazy chunk, fetched the first time someone opens an image. */
+  private openImageViewer(trigger: HTMLElement): void {
+    if (this.state?.kind !== 'passes') return;
+    const { lookup, archives } = this.state;
+    const evidence = archives.kind === 'answered' ? archives.evidence : archives.progress?.evidence;
+    const image = { kind: trigger.dataset.imageKind, key: trigger.dataset.imageKey } as ViewableImage;
+    const returnFocusTo = trigger.closest<HTMLElement>('.ow-row') ?? trigger;
+    if (!evidence) return;
+    void import('./OrbitalImageViewer').then(({ openOrbitalImageViewer, subjectForImage }) => {
+      const subject = subjectForImage(evidence, image, lookup);
+      if (subject && this.isOpen) openOrbitalImageViewer(subject, returnFocusTo);
+    });
+  }
 
   private readonly onSheetKeydown = (event: KeyboardEvent): void => {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;

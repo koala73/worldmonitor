@@ -5153,6 +5153,32 @@
       "sourceUnavailable": "Arşivde bu günler için bu kaynaktan görüntü yok."
     },
     "dailyMosaics": "günlük mozaikler",
-    "weatherFrames": "hava durumu görüntüleri"
+    "weatherFrames": "hava durumu görüntüleri",
+    "viewer": {
+      "open": "Görüntü görüntüleyiciyi aç: {{image}}",
+      "bestView": "En iyi görüntüyü aç: {{name}}, {{time}}",
+      "imageAlt": "{{name}} görüntüsü, {{time}}",
+      "close": "Görüntü görüntüleyiciyi kapat",
+      "northUp": "Kuzey yukarıda",
+      "unreferenced": "Yön arşivin verdiği gibi; kuzey işaretli değil",
+      "compare": "Başka bir tarihle karşılaştır",
+      "compareDates": "Bu koleksiyonun diğer tarihleri",
+      "compareNone": "Karşılaştırılacak bu koleksiyona ait başka sahne yok.",
+      "divider": "Önce/sonra ayırıcı",
+      "searching": "Bu yerin son {{days}} gündeki sahneleri aranıyor",
+      "historyFailed": "{{archive}} yanıt vermedi, bu yüzden önceki sahneler eksik.",
+      "historyTimeout": "{{archive}} zamanında yanıt vermedi, bu yüzden önceki sahneler eksik.",
+      "cloud": "%{{pct}} bulut",
+      "timelapse": "Zaman atlamalı",
+      "play": "{{count}} açık sahneden zaman atlamalı oynat",
+      "loading": "Kareler yükleniyor: {{loaded}} / {{total}}",
+      "notEnough": "Zaman atlamalı için yeterli açık sahne yok: son {{days}} günde gereken {{min}} sahnenin {{count}} tanesi var.",
+      "tooFewLoaded": "Yalnızca {{count}} kare yüklendi; zaman atlamalı için {{min}} gerekir.",
+      "frame": "Kare {{index}} / {{total}}, {{date}}",
+      "pause": "Duraklat",
+      "resume": "Oynat",
+      "previous": "Önceki kare",
+      "next": "Sonraki kare"
+    }
   }
 }

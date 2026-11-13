@@ -5153,6 +5153,32 @@
       "sourceUnavailable": "Hifadhi haina picha kutoka chanzo hiki kwa siku hizi."
     },
     "dailyMosaics": "picha mseto za kila siku",
-    "weatherFrames": "picha za hali ya hewa"
+    "weatherFrames": "picha za hali ya hewa",
+    "viewer": {
+      "open": "Fungua kitazamaji picha: {{image}}",
+      "bestView": "Fungua mwonekano bora: {{name}}, {{time}}",
+      "imageAlt": "Picha ya {{name}}, {{time}}",
+      "close": "Funga kitazamaji picha",
+      "northUp": "Kaskazini iko juu",
+      "unreferenced": "Mwelekeo kama ulivyotolewa na hifadhi; kaskazini haijawekwa alama",
+      "compare": "Linganisha na tarehe nyingine",
+      "compareDates": "Tarehe nyingine za mkusanyiko huu",
+      "compareNone": "Hakuna picha nyingine ya mkusanyiko huu ya kulinganisha.",
+      "divider": "Kigawanyo cha kabla na baada",
+      "searching": "Inatafuta picha za mahali hapa za siku {{days}} zilizopita",
+      "historyFailed": "{{archive}} haikujibu, kwa hiyo picha za awali hazipo.",
+      "historyTimeout": "{{archive}} haikujibu kwa wakati, kwa hiyo picha za awali hazipo.",
+      "cloud": "Mawingu {{pct}}%",
+      "timelapse": "Mfuatano wa muda",
+      "play": "Cheza mfuatano wa picha {{count}} zisizo na mawingu",
+      "loading": "Inapakia fremu: {{loaded}} kati ya {{total}}",
+      "notEnough": "Picha zisizo na mawingu hazitoshi kwa mfuatano: {{count}} kati ya {{min}} zinazohitajika za siku {{days}} zilizopita.",
+      "tooFewLoaded": "Fremu {{count}} tu zimepakiwa; mfuatano unahitaji {{min}}.",
+      "frame": "Fremu {{index}} kati ya {{total}}, {{date}}",
+      "pause": "Sitisha",
+      "resume": "Cheza",
+      "previous": "Fremu iliyotangulia",
+      "next": "Fremu inayofuata"
+    }
   }
 }

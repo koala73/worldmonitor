@@ -5153,6 +5153,32 @@
       "sourceUnavailable": "Het archief bevat voor deze dagen geen beelden van deze bron."
     },
     "dailyMosaics": "dagmozaïeken",
-    "weatherFrames": "weerbeelden"
+    "weatherFrames": "weerbeelden",
+    "viewer": {
+      "open": "Afbeeldingsviewer openen: {{image}}",
+      "bestView": "Beste opname openen: {{name}}, {{time}}",
+      "imageAlt": "Opname van {{name}}, {{time}}",
+      "close": "Afbeeldingsviewer sluiten",
+      "northUp": "Noorden is boven",
+      "unreferenced": "Oriëntatie zoals geleverd door het archief; noorden is niet gemarkeerd",
+      "compare": "Vergelijken met een andere datum",
+      "compareDates": "Andere datums van deze collectie",
+      "compareNone": "Geen andere opname van deze collectie om mee te vergelijken.",
+      "divider": "Voor/na-scheiding",
+      "searching": "Zoeken naar opnamen van deze plek uit de laatste {{days}} dagen",
+      "historyFailed": "{{archive}} antwoordde niet, dus eerdere opnamen ontbreken.",
+      "historyTimeout": "{{archive}} antwoordde niet op tijd, dus eerdere opnamen ontbreken.",
+      "cloud": "{{pct}}% bewolking",
+      "timelapse": "Timelapse",
+      "play": "Timelapse van {{count}} heldere opnamen afspelen",
+      "loading": "Frames laden: {{loaded}} van {{total}}",
+      "notEnough": "Te weinig heldere opnamen voor een timelapse: {{count}} van {{min}} nodig uit de laatste {{days}} dagen.",
+      "tooFewLoaded": "Slechts {{count}} frames geladen; een timelapse heeft er {{min}} nodig.",
+      "frame": "Frame {{index}} van {{total}}, {{date}}",
+      "pause": "Pauzeren",
+      "resume": "Afspelen",
+      "previous": "Vorig frame",
+      "next": "Volgend frame"
+    }
   }
 }

@@ -5209,6 +5209,32 @@
       "sourceUnavailable": "Archiwum nie ma zdjęć z tego źródła dla tych dni."
     },
     "dailyMosaics": "dzienne mozaiki",
-    "weatherFrames": "zdjęcia pogodowe"
+    "weatherFrames": "zdjęcia pogodowe",
+    "viewer": {
+      "open": "Otwórz przeglądarkę obrazów: {{image}}",
+      "bestView": "Otwórz najlepszy widok: {{name}}, {{time}}",
+      "imageAlt": "Zdjęcie {{name}}, {{time}}",
+      "close": "Zamknij przeglądarkę obrazów",
+      "northUp": "Północ jest u góry",
+      "unreferenced": "Orientacja zgodna z archiwum; północ nie jest oznaczona",
+      "compare": "Porównaj z inną datą",
+      "compareDates": "Inne daty tej kolekcji",
+      "compareNone": "Brak innej sceny tej kolekcji do porównania.",
+      "divider": "Rozdzielacz przed/po",
+      "searching": "Szukanie scen tego miejsca z ostatnich {{days}} dni",
+      "historyFailed": "{{archive}} nie odpowiedziało, więc brakuje wcześniejszych scen.",
+      "historyTimeout": "{{archive}} nie odpowiedziało na czas, więc brakuje wcześniejszych scen.",
+      "cloud": "{{pct}}% chmur",
+      "timelapse": "Poklatkowo",
+      "play": "Odtwórz animację {{count}} bezchmurnych scen",
+      "loading": "Ładowanie klatek: {{loaded}} z {{total}}",
+      "notEnough": "Za mało bezchmurnych scen na animację: {{count}} z {{min}} wymaganych z ostatnich {{days}} dni.",
+      "tooFewLoaded": "Załadowano tylko {{count}} klatek; animacja wymaga {{min}}.",
+      "frame": "Klatka {{index}} z {{total}}, {{date}}",
+      "pause": "Pauza",
+      "resume": "Odtwórz",
+      "previous": "Poprzednia klatka",
+      "next": "Następna klatka"
+    }
   }
 }

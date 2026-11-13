@@ -5181,6 +5181,32 @@
       "sourceUnavailable": "El archivo no tiene imágenes de esta fuente para estos días."
     },
     "dailyMosaics": "mosaicos diarios",
-    "weatherFrames": "imágenes meteorológicas"
+    "weatherFrames": "imágenes meteorológicas",
+    "viewer": {
+      "open": "Abrir visor de imágenes: {{image}}",
+      "bestView": "Abrir la mejor vista: {{name}}, {{time}}",
+      "imageAlt": "Imagen de {{name}}, {{time}}",
+      "close": "Cerrar visor de imágenes",
+      "northUp": "El norte está arriba",
+      "unreferenced": "Orientación tal como la entrega el archivo; el norte no está marcado",
+      "compare": "Comparar con otra fecha",
+      "compareDates": "Otras fechas de esta colección",
+      "compareNone": "No hay otra escena de esta colección para comparar.",
+      "divider": "Divisor antes/después",
+      "searching": "Buscando escenas de este lugar de los últimos {{days}} días",
+      "historyFailed": "{{archive}} no respondió, así que faltan escenas anteriores.",
+      "historyTimeout": "{{archive}} no respondió a tiempo, así que faltan escenas anteriores.",
+      "cloud": "{{pct}} % de nubes",
+      "timelapse": "Secuencia temporal",
+      "play": "Reproducir secuencia de {{count}} escenas despejadas",
+      "loading": "Cargando fotogramas: {{loaded}} de {{total}}",
+      "notEnough": "No hay suficientes escenas despejadas para una secuencia: {{count}} de {{min}} necesarias de los últimos {{days}} días.",
+      "tooFewLoaded": "Solo se cargaron {{count}} fotogramas; una secuencia necesita {{min}}.",
+      "frame": "Fotograma {{index}} de {{total}}, {{date}}",
+      "pause": "Pausa",
+      "resume": "Reproducir",
+      "previous": "Fotograma anterior",
+      "next": "Fotograma siguiente"
+    }
   }
 }

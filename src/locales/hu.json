@@ -5153,6 +5153,32 @@
       "sourceUnavailable": "Az archívum ezekre a napokra nem tartalmaz felvételt ebből a forrásból."
     },
     "dailyMosaics": "napi mozaikok",
-    "weatherFrames": "időjárási felvételek"
+    "weatherFrames": "időjárási felvételek",
+    "viewer": {
+      "open": "Képnézegető megnyitása: {{image}}",
+      "bestView": "Legjobb nézet megnyitása: {{name}}, {{time}}",
+      "imageAlt": "{{name}} felvétele, {{time}}",
+      "close": "Képnézegető bezárása",
+      "northUp": "Észak felül van",
+      "unreferenced": "Tájolás az archívum szerint; észak nincs jelölve",
+      "compare": "Összehasonlítás másik dátummal",
+      "compareDates": "A gyűjtemény további dátumai",
+      "compareNone": "Nincs másik felvétel ebből a gyűjteményből az összehasonlításhoz.",
+      "divider": "Előtte/utána elválasztó",
+      "searching": "A hely felvételeinek keresése az elmúlt {{days}} napból",
+      "historyFailed": "A(z) {{archive}} nem válaszolt, ezért a korábbi felvételek hiányoznak.",
+      "historyTimeout": "A(z) {{archive}} nem válaszolt időben, ezért a korábbi felvételek hiányoznak.",
+      "cloud": "{{pct}}% felhő",
+      "timelapse": "Időköz",
+      "play": "Időköz lejátszása {{count}} tiszta felvételből",
+      "loading": "Képkockák betöltése: {{loaded}} / {{total}}",
+      "notEnough": "Kevés a tiszta felvétel az időközhöz: {{count}} a szükséges {{min}}-ből az elmúlt {{days}} napból.",
+      "tooFewLoaded": "Csak {{count}} képkocka töltődött be; az időközhöz {{min}} kell.",
+      "frame": "{{index}}. képkocka / {{total}}, {{date}}",
+      "pause": "Szünet",
+      "resume": "Lejátszás",
+      "previous": "Előző képkocka",
+      "next": "Következő képkocka"
+    }
   }
 }

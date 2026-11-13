@@ -5192,6 +5192,32 @@
       "sourceUnavailable": "Arhiva nema snimaka iz ovog izvora za te dane."
     },
     "dailyMosaics": "dnevni mozaici",
-    "weatherFrames": "meteorološke snimke"
+    "weatherFrames": "meteorološke snimke",
+    "viewer": {
+      "open": "Otvori preglednik slika: {{image}}",
+      "bestView": "Otvori najbolji prikaz: {{name}}, {{time}}",
+      "imageAlt": "Snimka {{name}}, {{time}}",
+      "close": "Zatvori preglednik slika",
+      "northUp": "Sjever je gore",
+      "unreferenced": "Orijentacija kako ju isporučuje arhiv; sjever nije označen",
+      "compare": "Usporedi s drugim datumom",
+      "compareDates": "Ostali datumi ove zbirke",
+      "compareNone": "Nema druge snimke ove zbirke za usporedbu.",
+      "divider": "Razdjelnik prije/poslije",
+      "searching": "Traženje snimki ovog mjesta iz zadnjih {{days}} dana",
+      "historyFailed": "{{archive}} nije odgovorio, pa nedostaju ranije snimke.",
+      "historyTimeout": "{{archive}} nije odgovorio na vrijeme, pa nedostaju ranije snimke.",
+      "cloud": "{{pct}} % oblaka",
+      "timelapse": "Ubrzani prikaz",
+      "play": "Pokreni ubrzani prikaz {{count}} vedrih snimki",
+      "loading": "Učitavanje okvira: {{loaded}} od {{total}}",
+      "notEnough": "Premalo vedrih snimki za ubrzani prikaz: {{count}} od potrebnih {{min}} iz zadnjih {{days}} dana.",
+      "tooFewLoaded": "Učitano samo {{count}} okvira; ubrzani prikaz treba {{min}}.",
+      "frame": "Okvir {{index}} od {{total}}, {{date}}",
+      "pause": "Pauza",
+      "resume": "Pokreni",
+      "previous": "Prethodni okvir",
+      "next": "Sljedeći okvir"
+    }
   }
 }

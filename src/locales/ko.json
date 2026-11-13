@@ -5125,6 +5125,32 @@
       "sourceUnavailable": "아카이브에 이 기간 동안 이 출처의 영상이 없습니다."
     },
     "dailyMosaics": "일일 모자이크",
-    "weatherFrames": "기상 영상"
+    "weatherFrames": "기상 영상",
+    "viewer": {
+      "open": "이미지 뷰어 열기: {{image}}",
+      "bestView": "최적 이미지 열기: {{name}}, {{time}}",
+      "imageAlt": "{{name}} 이미지, {{time}}",
+      "close": "이미지 뷰어 닫기",
+      "northUp": "위쪽이 북쪽",
+      "unreferenced": "아카이브가 제공한 방향 그대로이며 북쪽은 표시되지 않음",
+      "compare": "다른 날짜와 비교",
+      "compareDates": "이 컬렉션의 다른 날짜",
+      "compareNone": "비교할 같은 컬렉션의 다른 장면이 없습니다.",
+      "divider": "전후 비교 구분선",
+      "searching": "지난 {{days}}일간 이 장소의 장면을 찾는 중",
+      "historyFailed": "{{archive}}이(가) 응답하지 않아 이전 장면이 없습니다.",
+      "historyTimeout": "{{archive}}이(가) 제때 응답하지 않아 이전 장면이 없습니다.",
+      "cloud": "구름 {{pct}}%",
+      "timelapse": "타임랩스",
+      "play": "맑은 장면 {{count}}개로 타임랩스 재생",
+      "loading": "프레임 불러오는 중: {{loaded}} / {{total}}",
+      "notEnough": "타임랩스에 필요한 맑은 장면이 부족합니다: 지난 {{days}}일간 {{min}}개 중 {{count}}개.",
+      "tooFewLoaded": "프레임 {{count}}개만 불러왔습니다. 타임랩스에는 {{min}}개가 필요합니다.",
+      "frame": "프레임 {{index}} / {{total}}, {{date}}",
+      "pause": "일시정지",
+      "resume": "재생",
+      "previous": "이전 프레임",
+      "next": "다음 프레임"
+    }
   }
 }

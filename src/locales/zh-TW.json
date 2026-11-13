@@ -5125,6 +5125,32 @@
       "sourceUnavailable": "存檔中沒有該來源在這些日期的影象。"
     },
     "dailyMosaics": "每日鑲嵌圖",
-    "weatherFrames": "氣象影象"
+    "weatherFrames": "氣象影象",
+    "viewer": {
+      "open": "開啟影象檢視器：{{image}}",
+      "bestView": "開啟最佳檢視：{{name}}，{{time}}",
+      "imageAlt": "{{name}} 的影象，{{time}}",
+      "close": "關閉影象檢視器",
+      "northUp": "上方為北",
+      "unreferenced": "方向為檔案原始方向，未標註北向",
+      "compare": "與其他日期比較",
+      "compareDates": "此資料集的其他日期",
+      "compareNone": "此資料集沒有其他可比較的影像。",
+      "divider": "前後對比分隔線",
+      "searching": "正在查詢此地點過去 {{days}} 天的影像",
+      "historyFailed": "{{archive}} 未響應，因此缺少較早的影像。",
+      "historyTimeout": "{{archive}} 未及時響應，因此缺少較早的影像。",
+      "cloud": "雲量 {{pct}}%",
+      "timelapse": "延時動畫",
+      "play": "播放 {{count}} 幅晴空影像的延時動畫",
+      "loading": "正在載入幀：{{loaded}} / {{total}}",
+      "notEnough": "晴空影像不足，無法生成延時動畫：過去 {{days}} 天內僅 {{count}} 幅，需要 {{min}} 幅。",
+      "tooFewLoaded": "僅載入了 {{count}} 幀；延時動畫需要 {{min}} 幀。",
+      "frame": "第 {{index}} 幀，共 {{total}} 幀，{{date}}",
+      "pause": "暫停",
+      "resume": "播放",
+      "previous": "上一幀",
+      "next": "下一幀"
+    }
   }
 }

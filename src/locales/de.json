@@ -5153,6 +5153,32 @@
       "sourceUnavailable": "Das Archiv führt für diese Tage keine Bilder dieser Quelle."
     },
     "dailyMosaics": "Tagesmosaike",
-    "weatherFrames": "Wetterbilder"
+    "weatherFrames": "Wetterbilder",
+    "viewer": {
+      "open": "Bildbetrachter öffnen: {{image}}",
+      "bestView": "Beste Ansicht öffnen: {{name}}, {{time}}",
+      "imageAlt": "Aufnahme von {{name}}, {{time}}",
+      "close": "Bildbetrachter schließen",
+      "northUp": "Norden ist oben",
+      "unreferenced": "Ausrichtung wie vom Archiv geliefert; Norden ist nicht markiert",
+      "compare": "Mit einem anderen Datum vergleichen",
+      "compareDates": "Weitere Daten dieser Sammlung",
+      "compareNone": "Keine weitere Aufnahme dieser Sammlung zum Vergleich.",
+      "divider": "Vorher-Nachher-Trenner",
+      "searching": "Suche nach Aufnahmen dieses Ortes aus den letzten {{days}} Tagen",
+      "historyFailed": "{{archive}} hat nicht geantwortet, daher fehlen frühere Aufnahmen.",
+      "historyTimeout": "{{archive}} hat nicht rechtzeitig geantwortet, daher fehlen frühere Aufnahmen.",
+      "cloud": "{{pct}} % Wolken",
+      "timelapse": "Zeitraffer",
+      "play": "Zeitraffer mit {{count}} klaren Aufnahmen abspielen",
+      "loading": "Bilder werden geladen: {{loaded}} von {{total}}",
+      "notEnough": "Nicht genug klare Aufnahmen für einen Zeitraffer: {{count}} von {{min}} nötigen aus den letzten {{days}} Tagen.",
+      "tooFewLoaded": "Nur {{count}} Bilder geladen; ein Zeitraffer braucht {{min}}.",
+      "frame": "Bild {{index}} von {{total}}, {{date}}",
+      "pause": "Pause",
+      "resume": "Abspielen",
+      "previous": "Vorheriges Bild",
+      "next": "Nächstes Bild"
+    }
   }
 }

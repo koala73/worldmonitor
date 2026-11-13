@@ -5181,6 +5181,32 @@
       "sourceUnavailable": "Arhiva nu are imagini de la această sursă pentru aceste zile."
     },
     "dailyMosaics": "mozaicuri zilnice",
-    "weatherFrames": "imagini meteo"
+    "weatherFrames": "imagini meteo",
+    "viewer": {
+      "open": "Deschide vizualizatorul de imagini: {{image}}",
+      "bestView": "Deschide cea mai bună vedere: {{name}}, {{time}}",
+      "imageAlt": "Imagine {{name}}, {{time}}",
+      "close": "Închide vizualizatorul de imagini",
+      "northUp": "Nordul este sus",
+      "unreferenced": "Orientare așa cum o livrează arhiva; nordul nu este marcat",
+      "compare": "Compară cu altă dată",
+      "compareDates": "Alte date din această colecție",
+      "compareNone": "Nicio altă scenă din această colecție pentru comparație.",
+      "divider": "Separator înainte/după",
+      "searching": "Se caută scene ale acestui loc din ultimele {{days}} zile",
+      "historyFailed": "{{archive}} nu a răspuns, deci lipsesc scenele anterioare.",
+      "historyTimeout": "{{archive}} nu a răspuns la timp, deci lipsesc scenele anterioare.",
+      "cloud": "{{pct}}% nori",
+      "timelapse": "Timelapse",
+      "play": "Redă timelapse din {{count}} scene senine",
+      "loading": "Se încarcă cadrele: {{loaded}} din {{total}}",
+      "notEnough": "Prea puține scene senine pentru un timelapse: {{count}} din {{min}} necesare din ultimele {{days}} zile.",
+      "tooFewLoaded": "Doar {{count}} cadre încărcate; un timelapse necesită {{min}}.",
+      "frame": "Cadrul {{index}} din {{total}}, {{date}}",
+      "pause": "Pauză",
+      "resume": "Redă",
+      "previous": "Cadrul anterior",
+      "next": "Cadrul următor"
+    }
   }
 }

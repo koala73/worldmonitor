@@ -5125,6 +5125,32 @@
       "sourceUnavailable": "Kho lưu trữ không có ảnh từ nguồn này cho những ngày này."
     },
     "dailyMosaics": "ảnh ghép hằng ngày",
-    "weatherFrames": "ảnh thời tiết"
+    "weatherFrames": "ảnh thời tiết",
+    "viewer": {
+      "open": "Mở trình xem ảnh: {{image}}",
+      "bestView": "Mở góc nhìn tốt nhất: {{name}}, {{time}}",
+      "imageAlt": "Ảnh của {{name}}, {{time}}",
+      "close": "Đóng trình xem ảnh",
+      "northUp": "Phía bắc ở trên",
+      "unreferenced": "Hướng như kho lưu trữ cung cấp; phía bắc không được đánh dấu",
+      "compare": "So sánh với ngày khác",
+      "compareDates": "Các ngày khác của bộ sưu tập này",
+      "compareNone": "Không có cảnh nào khác của bộ sưu tập này để so sánh.",
+      "divider": "Vạch chia trước/sau",
+      "searching": "Đang tìm cảnh của nơi này trong {{days}} ngày qua",
+      "historyFailed": "{{archive}} không phản hồi nên thiếu các cảnh trước đó.",
+      "historyTimeout": "{{archive}} không phản hồi kịp nên thiếu các cảnh trước đó.",
+      "cloud": "Mây {{pct}}%",
+      "timelapse": "Tua nhanh thời gian",
+      "play": "Phát tua nhanh {{count}} cảnh quang mây",
+      "loading": "Đang tải khung hình: {{loaded}} / {{total}}",
+      "notEnough": "Không đủ cảnh quang mây để tua nhanh: có {{count}} trên {{min}} cảnh cần trong {{days}} ngày qua.",
+      "tooFewLoaded": "Chỉ tải được {{count}} khung hình; tua nhanh cần {{min}}.",
+      "frame": "Khung {{index}} / {{total}}, {{date}}",
+      "pause": "Tạm dừng",
+      "resume": "Phát",
+      "previous": "Khung trước",
+      "next": "Khung sau"
+    }
   }
 }
