@@ -36,14 +36,17 @@ const PANELS = {
 
 let settings: Settings;
 
+let sourceNames: string[];
+let disabledSources: Set<string>;
+
 function createSettings(): Settings {
   return new UnifiedSettings({
     getPanelSettings: () => structuredClone(PANELS),
     savePanelSettings: () => {},
-    getDisabledSources: () => new Set<string>(),
+    getDisabledSources: () => disabledSources,
     toggleSource: () => {},
     setSourcesEnabled: () => {},
-    getAllSourceNames: () => [],
+    getAllSourceNames: () => sourceNames,
     getLocalizedPanelName: (_key: string, fallback: string) => fallback,
     resetLayout: () => {},
     isDesktopApp: false,
@@ -66,6 +69,8 @@ beforeEach(() => {
   openSignIn.mockClear();
   notificationsMount.attached = 0;
   notificationsMount.detached = 0;
+  sourceNames = [];
+  disabledSources = new Set<string>();
   settings = createSettings();
 });
 
@@ -96,6 +101,24 @@ describe('Settings home list', () => {
 
     expect(document.querySelector('#unifiedSettingsModal.active')).toBeNull();
     return vi.waitFor(() => expect(openSignIn).toHaveBeenCalledTimes(1));
+  });
+
+  it('starts sign-in only once unsaved panel changes are discarded', async () => {
+    settings.open('panels');
+    page('panels')!.querySelector<HTMLButtonElement>('.panel-toggle-item.active')!.click();
+    back().click();
+
+    $<HTMLButtonElement>('[data-settings-signin]')!.click();
+    const dialog = await vi.waitFor(() => $('.confirm-dialog-overlay')!);
+    dialog.querySelector<HTMLButtonElement>('.confirm-dialog-cancel')!.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect($('#unifiedSettingsModal.active')).not.toBeNull();
+    expect(openSignIn).not.toHaveBeenCalled();
+
+    $<HTMLButtonElement>('[data-settings-signin]')!.click();
+    (await vi.waitFor(() => $('.confirm-dialog-overlay .confirm-dialog-confirm')!)).click();
+    await vi.waitFor(() => expect(openSignIn).toHaveBeenCalledTimes(1));
+    expect($('#unifiedSettingsModal.active')).toBeNull();
   });
 
   it('drills into a page and returns focus to its row on back', () => {
@@ -176,5 +199,27 @@ describe('Settings row summaries', () => {
     back().click();
 
     expect(summary('display')).toBe('Dark');
+  });
+
+  it('counts only listed sources as on, ignoring saved choices for sources no longer listed', () => {
+    sourceNames = ['Reuters', 'AP'];
+    disabledSources = new Set(['AP', 'Retired feed']);
+    settings.open();
+
+    expect(summary('sources')).toBe('1');
+  });
+});
+
+describe('Settings pages after a revisit', () => {
+  it('lists sources added while the Sources page was out of view', () => {
+    sourceNames = ['Reuters'];
+    settings.open('sources');
+    back().click();
+
+    sourceNames = ['Reuters', 'AP'];
+    row('sources')!.click();
+
+    const listed = [...page('sources')!.querySelectorAll<HTMLElement>('.source-toggle-item')].map((el) => el.dataset.source);
+    expect(listed).toEqual(['Reuters', 'AP']);
   });
 });

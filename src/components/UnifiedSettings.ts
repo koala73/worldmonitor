@@ -205,6 +205,8 @@ export class UnifiedSettings {
   private panelsJustSaved = false;
   private savedTimeout: ReturnType<typeof setTimeout> | null = null;
   private confirmingClose = false;
+  /** Runs once Settings has actually closed; dropped when the user keeps it open. */
+  private afterTeardown: (() => void) | null = null;
   private historyRegistered = false;
   /**
    * `sourceSelectionSignature()` as of the last open(), or null while closed.
@@ -388,8 +390,8 @@ export class UnifiedSettings {
       }
 
       if (target.closest('[data-settings-signin]')) {
+        this.afterTeardown = () => { import('@/services/clerk').then(m => m.openSignIn()).catch(() => {}); };
         this.close();
-        import('@/services/clerk').then(m => m.openSignIn()).catch(() => {});
         return;
       }
 
@@ -830,6 +832,7 @@ export class UnifiedSettings {
     // after the flag is cleared above, because that is what makes the
     // re-registration condition reachable.
     if (this.deletionBusy) {
+      this.afterTeardown = null;
       if (origin === 'history' && !this.historyRegistered) {
         this.historyRegistered = true;
         overlayHistory.open('settings', (nextOrigin) => this.close(nextOrigin));
@@ -849,6 +852,7 @@ export class UnifiedSettings {
       void confirmDialog({ message: t('header.unsavedChanges') }).then((discard) => {
         this.confirmingClose = false;
         if (discard) this.teardownSettings('control');
+        else this.afterTeardown = null;
       });
       return;
     }
@@ -881,6 +885,9 @@ export class UnifiedSettings {
     // Last: the host reloads data in response, and the overlay covering the
     // dashboard has to be gone before that lands for the user to see it.
     this.notifySourceSelectionChanged();
+    const afterTeardown = this.afterTeardown;
+    this.afterTeardown = null;
+    afterTeardown?.();
   }
 
   /**
@@ -994,7 +1001,10 @@ export class UnifiedSettings {
       embedAccess: hasEmbedAccessForAccount(user?.role),
       account: user ? { plan: this.accountPlanLabel(), email: user.email } : null,
       panels: this.panelCounts(),
-      sourcesOn: this.config.getAllSourceNames().length - this.config.getDisabledSources().size,
+      sourcesOn: (() => {
+        const disabled = this.config.getDisabledSources();
+        return this.config.getAllSourceNames().filter((name) => !disabled.has(name)).length;
+      })(),
       theme: getThemePreference(),
     };
   }
@@ -1269,10 +1279,14 @@ export class UnifiedSettings {
           <button class="sources-select-none">${t('common.selectNone')}</button>
         </div>
       `, 'sources page; preset labels and filter value escaped'));
-      this.renderRegionPills();
-      this.renderSourcesGrid();
-      this.updateSourcesCounter();
-      return { dispose: () => {} };
+      const refresh = () => {
+        this.renderRegionPills();
+        this.renderSourcesGrid();
+        this.updateSourcesCounter();
+      };
+      refresh();
+      // A Panels save can add or remove news categories, which changes the source list.
+      return { enter: refresh, dispose: () => {} };
     },
     // Mounting on first entry keeps the getChannelsData() fetch off every
     // modal open for users who never visit this page.
@@ -2201,7 +2215,7 @@ export class UnifiedSettings {
 
   private attachApiKeysHandlers(): void {
     // Enter to submit (only exists when entitled user sees full UI)
-    const apiKeyInput = this.overlay.querySelector<HTMLInputElement>('.api-keys-name-input');
+    const apiKeyInput = this.overlay.querySelector<HTMLInputElement>('[data-api-keys-host] .api-keys-name-input');
     if (apiKeyInput) {
       apiKeyInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') void this.handleCreateApiKey();
@@ -2476,7 +2490,7 @@ export class UnifiedSettings {
   private syncDesktopKeyLimit(): void {
     if (this.keysMode() !== 'desktop') return;
     const countEl = this.overlay.querySelector<HTMLElement>('[data-desktop-keys-count]');
-    const input = this.overlay.querySelector<HTMLInputElement>('.api-keys-name-input');
+    const input = this.overlay.querySelector<HTMLInputElement>('[data-api-keys-host] .api-keys-name-input');
     const btn = this.overlay.querySelector<HTMLButtonElement>('.api-keys-create-btn');
     if (!countEl) return;
     if (this.apiKeysLoading && this.apiKeys.length === 0) {
@@ -2571,7 +2585,7 @@ export class UnifiedSettings {
   }
 
   private async handleCreateApiKey(): Promise<void> {
-    const input = this.overlay.querySelector<HTMLInputElement>('.api-keys-name-input');
+    const input = this.overlay.querySelector<HTMLInputElement>('[data-api-keys-host] .api-keys-name-input');
     const btn = this.overlay.querySelector<HTMLButtonElement>('.api-keys-create-btn');
     const name = input?.value.trim();
     if (!name || !input || !btn) return;

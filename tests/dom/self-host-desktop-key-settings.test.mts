@@ -15,6 +15,7 @@ import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AuthSession } from '@/services/auth-state';
 
 const session: AuthSession = { user: null, isPending: false };
+const features = new Set<string>();
 
 const storageValues = new Map<string, string>();
 const storage: Storage = {
@@ -34,7 +35,7 @@ vi.mock('@/services/auth-state', async (importOriginal) => ({
 vi.mock('@/services/entitlements', () => ({
   getEntitlementState: () => null,
   getEntitlementVerificationStatus: () => 'ready',
-  hasFeature: () => false,
+  hasFeature: (flag: string) => features.has(flag),
   hasEmbedAccessForAccount: () => false,
   isEntitled: () => false,
   onEntitlementChange: () => () => {},
@@ -177,6 +178,8 @@ beforeEach(() => {
   onDelete = () => verdict('none', { verifiedAt: null });
   setSecureContext(true);
   installRoute();
+  session.user = null;
+  features.clear();
 });
 
 afterEach(() => {
@@ -384,5 +387,18 @@ describe('Settings -> Desktop key on a self-hosted install', () => {
     await enterAndSave(KEY);
     expect(section()!.querySelector('[data-selfhost-key-message]')!.textContent).toContain('40 seconds');
     expect(status()!.dataset.state).toBe('none');
+  });
+
+  it('the account key form reads its own name field, not the desktop key field above it', async () => {
+    const { createApiKey } = await import('@/services/api-keys');
+    session.user = { id: 'A', name: 'User A', email: 'a@example.com', role: 'pro' };
+    features.add('apiAccess');
+    await mount();
+    input()!.value = KEY;
+    const keys = overlay.querySelector('[data-api-keys-host]')!;
+    keys.querySelector<HTMLInputElement>('.api-keys-name-input')!.value = 'CI pipeline';
+    keys.querySelector<HTMLButtonElement>('.api-keys-create-btn')!.click();
+    await settle();
+    expect(createApiKey).toHaveBeenCalledWith('CI pipeline');
   });
 });
