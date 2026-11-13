@@ -18,6 +18,8 @@ let lookup: PointPassLookup | null = null;
 let run: AbortController | null = null;
 let raisedMap = false;
 let linkedPass: OrbitalSharePass | null = null;
+/** The pass last selected in the sheet, so a shared link opens on it too. */
+let selectedPass: { noradId: number; timeMs: number } | null = null;
 let returnFocus: HTMLElement | null = null;
 
 const MAP_FULLSCREEN_CLASS = 'live-news-fullscreen-active';
@@ -70,10 +72,7 @@ function applyLinkedPass(found: PointPassLookup): void {
   const match = inWindow
     ? found.passes.find((pass) => pass.noradId === wanted.noradId && Math.abs(pass.timeMs - wanted.minuteMs) <= LINKED_PASS_TOLERANCE_MS)
     : undefined;
-  if (match) {
-    page?.select(`${match.noradId}:${match.timeMs}`);
-    return;
-  }
+  if (match && page?.select(`${match.noradId}:${match.timeMs}`)) return;
   tools!.showNote(t(inWindow ? 'orbitalWatch.share.passNotFound' : 'orbitalWatch.share.passOutsideWindow'));
   showSearchRow(true);
 }
@@ -129,7 +128,7 @@ function shareLink(): string | null {
   if (!point) return null;
   // The desktop WebView origin is local, so its links point at the public dashboard.
   const base = isDesktopRuntime() ? `${DASHBOARD_SITE_ORIGIN}/dashboard` : `${location.origin}${location.pathname}`;
-  return `${base}#${buildOrbitalShareFragment(point, null, page?.currentView ?? 'sheet')}`;
+  return `${base}#${buildOrbitalShareFragment(point, selectedPass, page?.currentView ?? 'sheet')}`;
 }
 
 let shareReset: ReturnType<typeof setTimeout> | null = null;
@@ -160,6 +159,7 @@ function ensurePage(): OrbitalWatchPage {
         lookup = null;
         point = null;
         linkedPass = null;
+        selectedPass = null;
         returnFocus = null;
         tools!.reset();
         showSearchRow(false);
@@ -174,6 +174,10 @@ function ensurePage(): OrbitalWatchPage {
       onShare: (button) => void share(button),
     });
     page.slot('search').append(tools.element);
+    document.addEventListener('orbital-watch:select', (event) => {
+      const { noradId, timeMs } = (event as CustomEvent<{ noradId: number; timeMs: number }>).detail;
+      selectedPass = { noradId, timeMs };
+    });
   }
   return page;
 }
@@ -191,6 +195,7 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, view }: { recentr
     return;
   }
   point = at;
+  selectedPass = null;
   lookup = null;
   const wasFull = sheet.isOpen && sheet.currentView === 'full';
   sheet.open(at, returnFocus, view);
