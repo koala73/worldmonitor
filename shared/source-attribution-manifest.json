@@ -8021,6 +8021,20 @@
       ]
     },
     {
+      "host": "planetarycomputer.microsoft.com",
+      "provider": "planetarycomputer.microsoft.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "STAC metadata search; each collection keeps its own license (Copernicus Sentinel data policy for Sentinel-1 and Sentinel-2, USGS public domain for Landsat)",
+      "attribution": "Contains modified Copernicus Sentinel data [year]; Landsat imagery courtesy of the U.S. Geological Survey; catalog search via Microsoft Planetary Computer.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_orbital-sites.mjs"
+        }
+      ]
+    },
+    {
       "host": "pncp.gov.br",
       "provider": "pncp.gov.br",
       "kind": "structured",
