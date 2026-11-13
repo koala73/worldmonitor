@@ -169,6 +169,11 @@ function formatPoint({ lat, lon }: GeoPoint, decimals = 3): string {
   return `${Math.abs(lat).toFixed(decimals)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lon).toFixed(decimals)}°${lon >= 0 ? 'E' : 'W'}`;
 }
 
+/** The first two parts of a searched name ("Palm Jumeirah, Dubai"), which fit the header; the full name is its tooltip. */
+function shortPlaceName(name: string): string {
+  return name.split(',').slice(0, 2).map((part) => part.trim()).join(', ');
+}
+
 /** The zone every displayed time uses, so the whole sheet can switch to the point's local time at once. */
 let displayZone = { timeZone: 'UTC', label: 'UTC' };
 
@@ -591,7 +596,8 @@ export class OrbitalWatchPage {
 
   /** Names the open point after the searched place, or null for its rounded coordinates. */
   setPlaceName(name: string | null): void {
-    this.placeName = name;
+    this.placeName = name && shortPlaceName(name);
+    this.place.title = name ?? '';
     this.place.textContent = this.placeLabel();
     if (this.state) this.render(this.state);
   }
@@ -616,6 +622,7 @@ export class OrbitalWatchPage {
     this.returnFocusTo = returnFocusTo;
     this.point = point;
     this.placeName = null;
+    this.place.title = '';
     this.toggled.clear();
     this.tab = 'all';
     this.cardIndex = 0;

@@ -215,9 +215,10 @@ describe('the search row', () => {
     button('.ow-search-result').click();
     expect(sheet()!.querySelector<HTMLElement>('.ow-search-slot')!.hidden).toBe(true);
     expect(setCenter).toHaveBeenCalledWith(51.9, 4.5, expect.any(Number));
-    expect(sheet()!.querySelector('.ow-place')!.textContent).toBe('Rotterdam, South Holland, Netherlands');
+    expect(sheet()!.querySelector('.ow-place')!.textContent).toBe('Rotterdam, South Holland');
+    expect(sheet()!.querySelector<HTMLElement>('.ow-place')!.title).toBe('Rotterdam, South Holland, Netherlands');
     expect(sheet()!.querySelector('.ow-zone')!.textContent).toBe('EUROPE/AMSTERDAM · UTC+1');
-    await vi.waitFor(() => expect(sheet()!.querySelector('.ow-headline')?.textContent).toContain('Rotterdam, South Holland, Netherlands'));
+    await vi.waitFor(() => expect(sheet()!.querySelector('.ow-headline')?.textContent).toContain('Rotterdam, South Holland.'));
   });
 
   it('shows pass times in the place\'s zone, and switches them to UTC', async () => {
