@@ -5209,6 +5209,34 @@
       "sourceUnavailable": "В архиве нет снимков из этого источника за эти дни."
     },
     "dailyMosaics": "ежедневные мозаики",
-    "weatherFrames": "метеоснимки"
+    "weatherFrames": "метеоснимки",
+    "timeline": {
+      "title": "Хронология, последние 7 дней и следующие 72 часа (UTC)",
+      "asList": "Хронология списком",
+      "now": "сейчас",
+      "nowAt": "Сейчас: {{time}}",
+      "images": "Снимки",
+      "density": "Пролёты {{label}}, с {{start}} до {{end}}: {{count}}",
+      "daylight": "Светлое время в точке с {{start}} до {{end}}",
+      "loading": "загрузка",
+      "unavailable": "недоступно",
+      "notRetained": "не хранится",
+      "notRetainedSpan": "{{label}}: не хранится с {{start}} до {{end}}",
+      "countryWide": "по всей стране",
+      "source": {
+        "conflict": "Конфликты",
+        "fires": "Пожары",
+        "unrest": "Беспорядки",
+        "outages": "Сбои интернета"
+      },
+      "nowTitle": "Сейчас, только в реальном времени",
+      "live": {
+        "vessels": "Суда",
+        "militaryFlights": "Военные рейсы",
+        "gpsJamming": "Подавление GPS"
+      },
+      "liveNone": "нет в радиусе {{km}} км",
+      "liveCount": "в радиусе {{km}} км: {{count}}, ближайшее {{nearest}}"
+    }
   }
 }

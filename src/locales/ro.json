@@ -5181,6 +5181,34 @@
       "sourceUnavailable": "Arhiva nu are imagini de la această sursă pentru aceste zile."
     },
     "dailyMosaics": "mozaicuri zilnice",
-    "weatherFrames": "imagini meteo"
+    "weatherFrames": "imagini meteo",
+    "timeline": {
+      "title": "Cronologie, ultimele 7 zile și următoarele 72 de ore (UTC)",
+      "asList": "Cronologie ca listă",
+      "now": "acum",
+      "nowAt": "Acum: {{time}}",
+      "images": "Imagini",
+      "density": "Treceri {{label}}, de la {{start}} la {{end}}: {{count}}",
+      "daylight": "Lumină de zi în punct de la {{start}} la {{end}}",
+      "loading": "se încarcă",
+      "unavailable": "indisponibil",
+      "notRetained": "nepăstrat",
+      "notRetainedSpan": "{{label}}: nepăstrat de la {{start}} la {{end}}",
+      "countryWide": "la nivel național",
+      "source": {
+        "conflict": "Conflicte",
+        "fires": "Incendii",
+        "unrest": "Tulburări",
+        "outages": "Întreruperi de internet"
+      },
+      "nowTitle": "Acum, doar în direct",
+      "live": {
+        "vessels": "Nave",
+        "militaryFlights": "Zboruri militare",
+        "gpsJamming": "Bruiaj GPS"
+      },
+      "liveNone": "niciunul în {{km}} km",
+      "liveCount": "în {{km}} km: {{count}}, cel mai apropiat {{nearest}}"
+    }
   }
 }

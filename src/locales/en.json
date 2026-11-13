@@ -4612,6 +4612,34 @@
       "mosaicDays": "Days in the archive: {{count}}",
       "cadence": "new frame every {{minutes}} min",
       "sourceUnavailable": "The archive lists no imagery from this source for these days."
+    },
+    "timeline": {
+      "title": "Timeline, last 7 days and next 72 hours (UTC)",
+      "asList": "Timeline as a list",
+      "now": "now",
+      "nowAt": "Now: {{time}}",
+      "images": "Images",
+      "density": "{{label}} passes, {{start}} to {{end}}: {{count}}",
+      "daylight": "Daylight at the point from {{start}} to {{end}}",
+      "loading": "loading",
+      "unavailable": "unavailable",
+      "notRetained": "not retained",
+      "notRetainedSpan": "{{label}}: not retained from {{start}} to {{end}}",
+      "countryWide": "country-wide",
+      "source": {
+        "conflict": "Conflict",
+        "fires": "Fires",
+        "unrest": "Unrest",
+        "outages": "Internet outages"
+      },
+      "nowTitle": "Now, live only",
+      "live": {
+        "vessels": "Vessels",
+        "militaryFlights": "Military flights",
+        "gpsJamming": "GPS jamming"
+      },
+      "liveNone": "none within {{km}} km",
+      "liveCount": "within {{km}} km: {{count}}, nearest {{nearest}}"
     }
   },
   "contextMenu": {

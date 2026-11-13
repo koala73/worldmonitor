@@ -5125,6 +5125,34 @@
       "sourceUnavailable": "アーカイブには、この期間のこのソースの画像がありません。"
     },
     "dailyMosaics": "日次モザイク",
-    "weatherFrames": "気象画像"
+    "weatherFrames": "気象画像",
+    "timeline": {
+      "title": "タイムライン、過去7日間と今後72時間 (UTC)",
+      "asList": "リスト形式のタイムライン",
+      "now": "現在",
+      "nowAt": "現在: {{time}}",
+      "images": "画像",
+      "density": "{{label}}の通過、{{start}}～{{end}}: {{count}}",
+      "daylight": "地点の日照 {{start}}～{{end}}",
+      "loading": "読み込み中",
+      "unavailable": "利用不可",
+      "notRetained": "保持されていません",
+      "notRetainedSpan": "{{label}}: {{start}}～{{end}} は保持されていません",
+      "countryWide": "国全体",
+      "source": {
+        "conflict": "紛争",
+        "fires": "火災",
+        "unrest": "騒乱",
+        "outages": "インターネット障害"
+      },
+      "nowTitle": "現在、ライブのみ",
+      "live": {
+        "vessels": "船舶",
+        "militaryFlights": "軍用機",
+        "gpsJamming": "GPS妨害"
+      },
+      "liveNone": "{{km}} km以内になし",
+      "liveCount": "{{km}} km以内: {{count}}、最寄り {{nearest}}"
+    }
   }
 }

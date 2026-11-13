@@ -29,7 +29,7 @@ const satellites: CatalogSatellite[] = records.flatMap((record) => {
 });
 
 export async function fixtureLookup(point: { lat: number; lon: number }): Promise<PointPassLookup> {
-  const { passes, satellites: outcomes } = await runPassJob({ point, window: FIXTURE_WINDOW, nowMs: FIXTURE_NOW, satellites });
+  const { passes, satellites: outcomes, daylight } = await runPassJob({ point, window: FIXTURE_WINDOW, nowMs: FIXTURE_NOW, satellites });
   return {
     point,
     window: FIXTURE_WINDOW,
@@ -37,6 +37,7 @@ export async function fixtureLookup(point: { lat: number; lon: number }): Promis
     catalog: { status: 'fresh', fetchedAt: FIXTURE_NOW, inventoryVersion: 'fixture' } as PointPassLookup['catalog'],
     passes,
     satellites: outcomes,
+    daylight,
     computedOn: 'main-thread',
   };
 }

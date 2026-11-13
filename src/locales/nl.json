@@ -5153,6 +5153,34 @@
       "sourceUnavailable": "Het archief bevat voor deze dagen geen beelden van deze bron."
     },
     "dailyMosaics": "dagmozaïeken",
-    "weatherFrames": "weerbeelden"
+    "weatherFrames": "weerbeelden",
+    "timeline": {
+      "title": "Tijdlijn, afgelopen 7 dagen en komende 72 uur (UTC)",
+      "asList": "Tijdlijn als lijst",
+      "now": "nu",
+      "nowAt": "Nu: {{time}}",
+      "images": "Beelden",
+      "density": "Overkomsten {{label}}, {{start}} tot {{end}}: {{count}}",
+      "daylight": "Daglicht op het punt van {{start}} tot {{end}}",
+      "loading": "laden",
+      "unavailable": "niet beschikbaar",
+      "notRetained": "niet bewaard",
+      "notRetainedSpan": "{{label}}: niet bewaard van {{start}} tot {{end}}",
+      "countryWide": "landelijk",
+      "source": {
+        "conflict": "Conflicten",
+        "fires": "Branden",
+        "unrest": "Onrust",
+        "outages": "Internetstoringen"
+      },
+      "nowTitle": "Nu, alleen live",
+      "live": {
+        "vessels": "Schepen",
+        "militaryFlights": "Militaire vluchten",
+        "gpsJamming": "GPS-storing"
+      },
+      "liveNone": "geen binnen {{km}} km",
+      "liveCount": "binnen {{km}} km: {{count}}, dichtstbij {{nearest}}"
+    }
   }
 }

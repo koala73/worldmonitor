@@ -5153,6 +5153,34 @@
       "sourceUnavailable": "Arkivet har inga bilder från den här källan för dessa dagar."
     },
     "dailyMosaics": "dagliga mosaiker",
-    "weatherFrames": "väderbilder"
+    "weatherFrames": "väderbilder",
+    "timeline": {
+      "title": "Tidslinje, senaste 7 dagarna och kommande 72 timmarna (UTC)",
+      "asList": "Tidslinje som lista",
+      "now": "nu",
+      "nowAt": "Nu: {{time}}",
+      "images": "Bilder",
+      "density": "Överflygningar {{label}}, {{start}} till {{end}}: {{count}}",
+      "daylight": "Dagsljus vid punkten från {{start}} till {{end}}",
+      "loading": "läser in",
+      "unavailable": "ej tillgänglig",
+      "notRetained": "sparas inte",
+      "notRetainedSpan": "{{label}}: sparas inte från {{start}} till {{end}}",
+      "countryWide": "hela landet",
+      "source": {
+        "conflict": "Konflikter",
+        "fires": "Bränder",
+        "unrest": "Oroligheter",
+        "outages": "Internetavbrott"
+      },
+      "nowTitle": "Nu, endast live",
+      "live": {
+        "vessels": "Fartyg",
+        "militaryFlights": "Militära flygningar",
+        "gpsJamming": "GPS-störning"
+      },
+      "liveNone": "inga inom {{km}} km",
+      "liveCount": "inom {{km}} km: {{count}}, närmast {{nearest}}"
+    }
   }
 }

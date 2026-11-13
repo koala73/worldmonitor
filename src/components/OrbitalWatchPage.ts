@@ -9,6 +9,7 @@ import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
+import { OrbitalTimeline, passKey, type PointContextState } from './OrbitalTimeline';
 import '../styles/orbital-watch.css';
 
 export type ArchiveState =
@@ -23,6 +24,8 @@ export type OrbitalWatchState =
 export interface OrbitalWatchPageCallbacks {
   onClose: () => void;
   onRetry: () => void;
+  /** A pass picked on the timeline or in the list, so the map can draw its track. */
+  onSelectPass?: (pass: PointPass) => void;
 }
 
 type GroupId = 'confirmed' | 'likely' | 'checking' | 'upcoming' | 'mosaic' | 'frames' | 'inRange' | 'passed';
@@ -100,8 +103,6 @@ const frameCredit = (archive: ArchiveId) => (archive === 'eumetsat' ? IMAGE_CRED
 const EARTH_RADIUS_KM = 6371;
 const DAY_MS = 86_400_000;
 
-const passKey = (pass: { noradId: number; timeMs: number }) => `${pass.noradId}:${pass.timeMs}`;
-
 /** Angle off straight down at which the satellite sees the point. */
 function offNadirDeg(pass: PointPass): number {
   const ratio = (EARTH_RADIUS_KM / (EARTH_RADIUS_KM + pass.altitudeKm)) * Math.cos((pass.elevationDeg * Math.PI) / 180);
@@ -123,6 +124,7 @@ function formatAgeDays(days: number): string {
 
 interface Row {
   sortMs: number;
+  passKey?: string;
   render: () => HTMLElement;
 }
 
@@ -146,7 +148,7 @@ function groupPasses(lookup: PointPassLookup, archives: ArchiveState): Map<Group
   for (const pass of evidence?.passes ?? lookup.passes) {
     const checking = pendingProfiles.has(pass.profileId) && candidates.has(passKey(pass)) && pass.tier.kind !== 'confirmed-image';
     const group = checking ? 'checking' : GROUP_OF_TIER[pass.tier.kind];
-    groups.get(group)!.rows.push({ sortMs: pass.timeMs, render: () => passRow(pass, checking, acquisitionByPass.get(passKey(pass)) ?? null) });
+    groups.get(group)!.rows.push({ sortMs: pass.timeMs, passKey: passKey(pass), render: () => passRow(pass, checking, acquisitionByPass.get(passKey(pass)) ?? null) });
   }
   for (const acquisition of evidence?.acquisitions ?? []) {
     if (!acquisition.pass) groups.get('confirmed')!.rows.push({ sortMs: acquisition.startMs, render: () => unmatchedImageRow(acquisition) });
@@ -209,7 +211,7 @@ function passRow(pass: PointPass, checking: boolean, acquisition: MatchedAcquisi
     pass.edgeOfSwath ? t('orbitalWatch.row.edgeOfSwath') : null,
     pass.tier.kind === 'passed-overhead' && pass.tier.note === 'not-in-archive' ? t('orbitalWatch.row.notInArchive') : null,
   ].filter((note): note is string => note !== null);
-  return h('li', { className: 'ow-row', tabindex: '0', dataset: { tier: checking ? 'checking' : pass.tier.kind } },
+  return h('li', { className: 'ow-row', tabindex: '0', dataset: { tier: checking ? 'checking' : pass.tier.kind, pass: passKey(pass) } },
     h('div', { className: 'ow-row-head' },
       h('span', { className: 'ow-row-name' }, pass.name),
       h('span', { className: 'ow-tier-label' }, tierLabel)),
@@ -229,6 +231,10 @@ function unmatchedImageRow(acquisition: MatchedAcquisition): HTMLElement {
     imageSlot(acquisition, t('orbitalWatch.row.imageAlt', { name, time: formatUtc(acquisition.startMs) })));
 }
 
+function groupsHolding(body: HTMLElement, id: GroupId, key: string): boolean {
+  return body.querySelector(`.ow-group[data-group="${id}"] .ow-row[data-pass="${key}"]`) !== null;
+}
+
 /** The lookup sheet: docked beside the map on desktop, rising from the bottom on narrow screens. */
 export class OrbitalWatchPage {
   private readonly sheet: HTMLElement;
@@ -238,6 +244,9 @@ export class OrbitalWatchPage {
   /** Groups the user opened or closed, against their default. */
   private readonly toggled = new Set<GroupId>();
   private state: OrbitalWatchState | null = null;
+  private context: PointContextState = { kind: 'loading' };
+  private selectedKey: string | null = null;
+  private readonly timeline = new OrbitalTimeline((key) => this.selectPass(key));
 
   constructor(private readonly callbacks: OrbitalWatchPageCallbacks) {
     const titleId = 'orbital-watch-title';
@@ -284,9 +293,31 @@ export class OrbitalWatchPage {
   }
 
   render(state: OrbitalWatchState): void {
+    if (state.kind !== 'passes') this.selectedKey = null;
     this.state = state;
     const content = this.renderState(state);
     replaceChildren(this.body, ...content);
+    if (this.selectedKey) {
+      const row = this.body.querySelector<HTMLElement>(`.ow-row[data-pass="${this.selectedKey}"]`);
+      row?.classList.add('is-selected');
+      row?.setAttribute('aria-current', 'true');
+    }
+  }
+
+  setPointContext(context: PointContextState): void {
+    this.context = context;
+    if (this.state?.kind === 'passes') this.render(this.state);
+  }
+
+  private selectPass(key: string): void {
+    if (this.state?.kind !== 'passes') return;
+    const { archives, lookup } = this.state;
+    const pass = ((archives.kind === 'answered' ? archives.evidence.passes : null) ?? lookup.passes).find((candidate) => passKey(candidate) === key);
+    if (!pass) return;
+    this.selectedKey = key;
+    this.render(this.state);
+    this.body.querySelector<HTMLElement>(`.ow-row[data-pass="${key}"]`)?.scrollIntoView?.({ block: 'nearest' });
+    this.callbacks.onSelectPass?.(pass);
   }
 
   private renderState(state: OrbitalWatchState): DomChild[] {
@@ -314,7 +345,14 @@ export class OrbitalWatchPage {
     const list = GROUPS.map(({ id }) => groups.get(id)!).filter((group) => group.rows.length > 0).map((group) => this.renderGroup(group));
     const usesGibs = evidence?.mosaics.some((m) => m.days.length > 0) || evidence?.frames.some((f) => f.latest && f.archive === 'nasa-gibs');
     const acknowledgement = usesGibs ? h('p', { className: 'ow-credit' }, IMAGE_CREDIT.gibsAcknowledgement) : null;
-    return [stale, this.renderSummary(archives, groups, evidence), empty, ...list, acknowledgement];
+    this.timeline.update({
+      lookup,
+      passes: evidence?.passes ?? lookup.passes,
+      acquisitions: evidence?.acquisitions ?? [],
+      context: this.context,
+      selectedKey: this.selectedKey,
+    });
+    return [stale, this.renderSummary(archives, groups, evidence), empty, this.timeline.element, ...list, acknowledgement];
   }
 
   private renderSummary(archives: ArchiveState, groups: Map<GroupId, Group>, evidence: OrbitalEvidence | null): HTMLElement {
@@ -343,7 +381,8 @@ export class OrbitalWatchPage {
 
   private renderGroup(group: Group): HTMLElement {
     const { id } = group.spec;
-    const expanded = group.spec.expanded !== this.toggled.has(id);
+    const holdsSelection = this.selectedKey !== null && group.rows.some((row) => row.passKey === this.selectedKey);
+    const expanded = holdsSelection || group.spec.expanded !== this.toggled.has(id);
     const listId = `orbital-watch-group-${id}`;
     const toggle = h('button', { type: 'button', className: 'ow-group-toggle', 'aria-expanded': String(expanded), 'aria-controls': listId, dataset: { group: id } },
       h('span', null, t(GROUP_LABEL_KEY[id])),
@@ -363,9 +402,15 @@ export class OrbitalWatchPage {
       this.callbacks.onRetry();
       return;
     }
+    const row = target.closest<HTMLElement>('.ow-row[data-pass]');
+    if (row && !target.closest('a, button')) {
+      this.selectPass(row.dataset.pass!);
+      return;
+    }
     const toggle = target.closest<HTMLElement>('.ow-group-toggle');
     const id = toggle?.dataset.group as GroupId | undefined;
     if (!id || !this.state) return;
+    if (this.selectedKey && groupsHolding(this.body, id, this.selectedKey)) this.selectedKey = null;
     if (this.toggled.has(id)) this.toggled.delete(id);
     else this.toggled.add(id);
     this.render(this.state);
@@ -373,9 +418,15 @@ export class OrbitalWatchPage {
   };
 
   private readonly onSheetKeydown = (event: KeyboardEvent): void => {
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    const row = (event.target as HTMLElement).closest('.ow-row');
+    const row = (event.target as HTMLElement).closest<HTMLElement>('.ow-row');
     if (!row) return;
+    if ((event.key === 'Enter' || event.key === ' ') && event.target === row && row.dataset.pass) {
+      event.preventDefault();
+      this.selectPass(row.dataset.pass);
+      this.body.querySelector<HTMLElement>(`.ow-row[data-pass="${row.dataset.pass}"]`)?.focus();
+      return;
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     const rows = [...this.sheet.querySelectorAll<HTMLElement>('.ow-row')];
     const next = rows[rows.indexOf(row as HTMLElement) + (event.key === 'ArrowDown' ? 1 : -1)];
     if (!next) return;

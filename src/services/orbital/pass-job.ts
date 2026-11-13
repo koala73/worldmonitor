@@ -8,6 +8,7 @@ import {
   type OrbitElements,
   type Pass,
 } from '../../../shared/orbital/pass-geometry.js';
+import { sunElevationDeg } from '../../../shared/orbital/sun.js';
 import { decidePassTier, type PassTier } from '../../../shared/orbital/tiers.js';
 import { assertPassQuery, profileFor, type PassWindow } from './pass-query';
 
@@ -15,6 +16,7 @@ export type { PassWindow };
 
 const DAY_MS = 86_400_000;
 const DUPLICATE_PASS_MS = 60_000;
+const DAYLIGHT_STEP_MS = 10 * 60_000;
 
 export interface CatalogSatellite {
   noradId: number;
@@ -42,9 +44,16 @@ export type SatelliteOutcome =
   | { noradId: number; name: string; profileId: string; status: 'ok' | 'too-old' | 'invalid-elements' }
   | { noradId: number; name: string; profileId: string; status: 'geostationary'; visibility: GeostationaryVisibility };
 
+export interface DaylightSpan {
+  startMs: number;
+  endMs: number;
+}
+
 export interface PassJobResult {
   passes: PointPass[];
   satellites: SatelliteOutcome[];
+  /** Stretches of the window when the sun is above the horizon at the point, in time order. */
+  daylight: DaylightSpan[];
 }
 
 export interface PassJobHooks {
@@ -138,7 +147,26 @@ export async function runPassJob(input: PassJobInput, hooks: PassJobHooks = {}):
   }
   if (hooks.isCancelled?.()) return null;
   passes.sort((a, b) => a.timeMs - b.timeMs);
-  return { passes, satellites };
+  return { passes, satellites, daylight: daylightSpans(input.point, input.window) };
+}
+
+/** Samples sun elevation across the window and merges consecutive sunlit samples into spans. */
+export function daylightSpans(point: GeoPoint, window: PassWindow, stepMs = DAYLIGHT_STEP_MS): DaylightSpan[] {
+  const spans: DaylightSpan[] = [];
+  let open: DaylightSpan | null = null;
+  for (let step = window.startMs; ; step += stepMs) {
+    const t = Math.min(step, window.endMs);
+    if (sunElevationDeg(new Date(t), point.lat, point.lon) > 0) {
+      open ??= { startMs: t, endMs: t };
+      open.endMs = t;
+    } else if (open) {
+      spans.push(open);
+      open = null;
+    }
+    if (t === window.endMs) break;
+  }
+  if (open) spans.push(open);
+  return spans;
 }
 
 export type PassJobRequest =

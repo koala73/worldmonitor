@@ -5209,6 +5209,34 @@
       "sourceUnavailable": "Archiv pro tyto dny neobsahuje žádné snímky z tohoto zdroje."
     },
     "dailyMosaics": "denní mozaiky",
-    "weatherFrames": "meteorologické snímky"
+    "weatherFrames": "meteorologické snímky",
+    "timeline": {
+      "title": "Časová osa, posledních 7 dní a příštích 72 hodin (UTC)",
+      "asList": "Časová osa jako seznam",
+      "now": "teď",
+      "nowAt": "Teď: {{time}}",
+      "images": "Snímky",
+      "density": "Přelety {{label}}, od {{start}} do {{end}}: {{count}}",
+      "daylight": "Denní světlo v bodě od {{start}} do {{end}}",
+      "loading": "načítání",
+      "unavailable": "nedostupné",
+      "notRetained": "neuchováno",
+      "notRetainedSpan": "{{label}}: neuchováno od {{start}} do {{end}}",
+      "countryWide": "celostátní",
+      "source": {
+        "conflict": "Konflikty",
+        "fires": "Požáry",
+        "unrest": "Nepokoje",
+        "outages": "Výpadky internetu"
+      },
+      "nowTitle": "Teď, jen živě",
+      "live": {
+        "vessels": "Plavidla",
+        "militaryFlights": "Vojenské lety",
+        "gpsJamming": "Rušení GPS"
+      },
+      "liveNone": "žádné do {{km}} km",
+      "liveCount": "do {{km}} km: {{count}}, nejblíže {{nearest}}"
+    }
   }
 }

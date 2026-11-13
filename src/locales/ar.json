@@ -5265,6 +5265,34 @@
       "sourceUnavailable": "لا يحتوي الأرشيف على صور من هذا المصدر لهذه الأيام."
     },
     "dailyMosaics": "فسيفساء يومية",
-    "weatherFrames": "صور الطقس"
+    "weatherFrames": "صور الطقس",
+    "timeline": {
+      "title": "الخط الزمني، آخر 7 أيام والـ 72 ساعة القادمة (UTC)",
+      "asList": "الخط الزمني كقائمة",
+      "now": "الآن",
+      "nowAt": "الآن: {{time}}",
+      "images": "الصور",
+      "density": "مرورات {{label}}، من {{start}} إلى {{end}}: {{count}}",
+      "daylight": "ضوء النهار عند النقطة من {{start}} إلى {{end}}",
+      "loading": "جارٍ التحميل",
+      "unavailable": "غير متاح",
+      "notRetained": "غير محفوظ",
+      "notRetainedSpan": "{{label}}: غير محفوظ من {{start}} إلى {{end}}",
+      "countryWide": "على مستوى البلد",
+      "source": {
+        "conflict": "النزاعات",
+        "fires": "الحرائق",
+        "unrest": "الاضطرابات",
+        "outages": "انقطاعات الإنترنت"
+      },
+      "nowTitle": "الآن، مباشر فقط",
+      "live": {
+        "vessels": "السفن",
+        "militaryFlights": "الرحلات العسكرية",
+        "gpsJamming": "تشويش GPS"
+      },
+      "liveNone": "لا شيء ضمن {{km}} كم",
+      "liveCount": "ضمن {{km}} كم: {{count}}، الأقرب {{nearest}}"
+    }
   }
 }

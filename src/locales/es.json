@@ -5181,6 +5181,34 @@
       "sourceUnavailable": "El archivo no tiene imágenes de esta fuente para estos días."
     },
     "dailyMosaics": "mosaicos diarios",
-    "weatherFrames": "imágenes meteorológicas"
+    "weatherFrames": "imágenes meteorológicas",
+    "timeline": {
+      "title": "Cronología, últimos 7 días y próximas 72 horas (UTC)",
+      "asList": "Cronología como lista",
+      "now": "ahora",
+      "nowAt": "Ahora: {{time}}",
+      "images": "Imágenes",
+      "density": "Pasadas {{label}}, de {{start}} a {{end}}: {{count}}",
+      "daylight": "Luz diurna en el punto de {{start}} a {{end}}",
+      "loading": "cargando",
+      "unavailable": "no disponible",
+      "notRetained": "no conservado",
+      "notRetainedSpan": "{{label}}: no conservado de {{start}} a {{end}}",
+      "countryWide": "en todo el país",
+      "source": {
+        "conflict": "Conflictos",
+        "fires": "Incendios",
+        "unrest": "Disturbios",
+        "outages": "Cortes de internet"
+      },
+      "nowTitle": "Ahora, solo en vivo",
+      "live": {
+        "vessels": "Buques",
+        "militaryFlights": "Vuelos militares",
+        "gpsJamming": "Interferencia GPS"
+      },
+      "liveNone": "ninguno a menos de {{km}} km",
+      "liveCount": "a menos de {{km}} km: {{count}}, el más cercano {{nearest}}"
+    }
   }
 }

@@ -66,3 +66,197 @@
     border-bottom: 0;
   }
 }
+
+.ow-timeline {
+  margin: 8px 0 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.ow-tl-title,
+.ow-now-title {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim, var(--text));
+}
+
+.ow-tl-chart {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 0 6px;
+  font-size: 11px;
+}
+
+.ow-tl-labels {
+  display: flex;
+  flex-direction: column;
+  padding-top: 14px;
+}
+
+.ow-tl-label,
+.ow-tl-track {
+  height: 14px;
+  line-height: 14px;
+}
+
+.ow-tl-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-dim, var(--text));
+}
+
+.ow-tl-tracks {
+  position: relative;
+  padding-top: 14px;
+}
+
+.ow-tl-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ow-tl-daylight {
+  position: absolute;
+  top: 14px;
+  bottom: 0;
+  background: rgba(255, 214, 102, 0.14);
+}
+
+.ow-tl-day {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--border);
+  padding-left: 2px;
+  font-size: 10px;
+  line-height: 12px;
+  color: var(--text-dim, var(--text));
+}
+
+.ow-tl-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 2px solid var(--accent, #4da3ff);
+  padding-left: 2px;
+  font-size: 10px;
+  line-height: 12px;
+  color: var(--accent, #4da3ff);
+}
+
+.ow-tl-track {
+  position: relative;
+  border-bottom: 1px dashed var(--border);
+}
+
+.ow-tl-mark,
+.ow-tl-event {
+  position: absolute;
+  top: 2px;
+  width: 4px;
+  height: 10px;
+  margin-left: -2px;
+  border-radius: 1px;
+  background: var(--accent, #4da3ff);
+}
+
+.ow-tl-mark {
+  cursor: pointer;
+}
+
+.ow-tl-mark[data-tier='confirmed-image'],
+.ow-tl-image {
+  background: #44c767;
+}
+
+.ow-tl-mark.is-opportunity {
+  background: transparent;
+  border: 1px dashed var(--accent, #4da3ff);
+}
+
+.ow-tl-mark.is-selected {
+  outline: 2px solid var(--text);
+  z-index: 1;
+}
+
+.ow-tl-event {
+  background: #ff7a45;
+}
+
+.ow-tl-bin {
+  position: absolute;
+  top: 3px;
+  height: 8px;
+  min-width: 2px;
+  background: var(--text-dim, #999);
+}
+
+.ow-tl-not-retained {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  background: repeating-linear-gradient(135deg, transparent 0 3px, var(--border) 3px 4px);
+}
+
+.ow-tl-lane-note {
+  position: absolute;
+  inset: 0;
+  padding-left: 4px;
+  font-size: 10px;
+  color: var(--text-dim, var(--text));
+  background: repeating-linear-gradient(135deg, transparent 0 3px, var(--border) 3px 4px);
+}
+
+.ow-tl-list-wrap {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.ow-tl-list {
+  max-height: 180px;
+  overflow-y: auto;
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.ow-tl-select {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.ow-tl-select[aria-pressed='true'] {
+  font-weight: 600;
+}
+
+.ow-now-strip {
+  margin-top: 8px;
+}
+
+.ow-now-strip ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.ow-now-label {
+  font-weight: 600;
+}
+
+.ow-row.is-selected {
+  outline: 2px solid var(--accent, #4da3ff);
+  outline-offset: -2px;
+}
+
+.ow-row[data-pass] {
+  cursor: pointer;
+}

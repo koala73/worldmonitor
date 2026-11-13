@@ -5153,6 +5153,34 @@
       "sourceUnavailable": "Az archívum ezekre a napokra nem tartalmaz felvételt ebből a forrásból."
     },
     "dailyMosaics": "napi mozaikok",
-    "weatherFrames": "időjárási felvételek"
+    "weatherFrames": "időjárási felvételek",
+    "timeline": {
+      "title": "Idővonal, az elmúlt 7 nap és a következő 72 óra (UTC)",
+      "asList": "Idővonal listaként",
+      "now": "most",
+      "nowAt": "Most: {{time}}",
+      "images": "Képek",
+      "density": "{{label}} áthaladások, {{start}} és {{end}} között: {{count}}",
+      "daylight": "Nappali fény a pontban {{start}} és {{end}} között",
+      "loading": "betöltés",
+      "unavailable": "nem elérhető",
+      "notRetained": "nincs megőrizve",
+      "notRetainedSpan": "{{label}}: nincs megőrizve {{start}} és {{end}} között",
+      "countryWide": "országos",
+      "source": {
+        "conflict": "Konfliktusok",
+        "fires": "Tüzek",
+        "unrest": "Zavargások",
+        "outages": "Internetkimaradások"
+      },
+      "nowTitle": "Most, csak élő",
+      "live": {
+        "vessels": "Hajók",
+        "militaryFlights": "Katonai repülések",
+        "gpsJamming": "GPS-zavarás"
+      },
+      "liveNone": "nincs {{km}} km-en belül",
+      "liveCount": "{{km}} km-en belül: {{count}}, legközelebbi {{nearest}}"
+    }
   }
 }

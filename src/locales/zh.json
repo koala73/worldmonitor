@@ -5125,6 +5125,34 @@
       "sourceUnavailable": "存档中没有该来源在这些日期的图像。"
     },
     "dailyMosaics": "每日镶嵌图",
-    "weatherFrames": "气象图像"
+    "weatherFrames": "气象图像",
+    "timeline": {
+      "title": "时间线，过去 7 天和未来 72 小时 (UTC)",
+      "asList": "以列表显示时间线",
+      "now": "现在",
+      "nowAt": "现在：{{time}}",
+      "images": "影像",
+      "density": "{{label}}过境，{{start}} 至 {{end}}：{{count}}",
+      "daylight": "该点的白昼时段 {{start}} 至 {{end}}",
+      "loading": "加载中",
+      "unavailable": "不可用",
+      "notRetained": "未保留",
+      "notRetainedSpan": "{{label}}：{{start}} 至 {{end}} 未保留",
+      "countryWide": "全国范围",
+      "source": {
+        "conflict": "冲突",
+        "fires": "火灾",
+        "unrest": "动乱",
+        "outages": "互联网中断"
+      },
+      "nowTitle": "现在，仅实时",
+      "live": {
+        "vessels": "船舶",
+        "militaryFlights": "军用航班",
+        "gpsJamming": "GPS 干扰"
+      },
+      "liveNone": "{{km}} 公里内无",
+      "liveCount": "{{km}} 公里内：{{count}}，最近 {{nearest}}"
+    }
   }
 }

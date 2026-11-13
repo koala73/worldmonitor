@@ -5209,6 +5209,34 @@
       "sourceUnavailable": "Archiwum nie ma zdjęć z tego źródła dla tych dni."
     },
     "dailyMosaics": "dzienne mozaiki",
-    "weatherFrames": "zdjęcia pogodowe"
+    "weatherFrames": "zdjęcia pogodowe",
+    "timeline": {
+      "title": "Oś czasu, ostatnie 7 dni i następne 72 godziny (UTC)",
+      "asList": "Oś czasu jako lista",
+      "now": "teraz",
+      "nowAt": "Teraz: {{time}}",
+      "images": "Zdjęcia",
+      "density": "Przeloty {{label}}, od {{start}} do {{end}}: {{count}}",
+      "daylight": "Światło dzienne w punkcie od {{start}} do {{end}}",
+      "loading": "ładowanie",
+      "unavailable": "niedostępne",
+      "notRetained": "nie przechowywane",
+      "notRetainedSpan": "{{label}}: nie przechowywane od {{start}} do {{end}}",
+      "countryWide": "w całym kraju",
+      "source": {
+        "conflict": "Konflikty",
+        "fires": "Pożary",
+        "unrest": "Niepokoje",
+        "outages": "Awarie internetu"
+      },
+      "nowTitle": "Teraz, tylko na żywo",
+      "live": {
+        "vessels": "Statki",
+        "militaryFlights": "Loty wojskowe",
+        "gpsJamming": "Zakłócanie GPS"
+      },
+      "liveNone": "brak w promieniu {{km}} km",
+      "liveCount": "w promieniu {{km}} km: {{count}}, najbliżej {{nearest}}"
+    }
   }
 }

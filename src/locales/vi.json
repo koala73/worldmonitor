@@ -5125,6 +5125,34 @@
       "sourceUnavailable": "Kho lưu trữ không có ảnh từ nguồn này cho những ngày này."
     },
     "dailyMosaics": "ảnh ghép hằng ngày",
-    "weatherFrames": "ảnh thời tiết"
+    "weatherFrames": "ảnh thời tiết",
+    "timeline": {
+      "title": "Dòng thời gian, 7 ngày qua và 72 giờ tới (UTC)",
+      "asList": "Dòng thời gian dạng danh sách",
+      "now": "bây giờ",
+      "nowAt": "Bây giờ: {{time}}",
+      "images": "Hình ảnh",
+      "density": "Lượt bay qua {{label}}, từ {{start}} đến {{end}}: {{count}}",
+      "daylight": "Ánh sáng ban ngày tại điểm từ {{start}} đến {{end}}",
+      "loading": "đang tải",
+      "unavailable": "không khả dụng",
+      "notRetained": "không được lưu",
+      "notRetainedSpan": "{{label}}: không được lưu từ {{start}} đến {{end}}",
+      "countryWide": "toàn quốc",
+      "source": {
+        "conflict": "Xung đột",
+        "fires": "Cháy",
+        "unrest": "Bất ổn",
+        "outages": "Sự cố internet"
+      },
+      "nowTitle": "Bây giờ, chỉ trực tiếp",
+      "live": {
+        "vessels": "Tàu thuyền",
+        "militaryFlights": "Chuyến bay quân sự",
+        "gpsJamming": "Gây nhiễu GPS"
+      },
+      "liveNone": "không có trong {{km}} km",
+      "liveCount": "trong {{km}} km: {{count}}, gần nhất {{nearest}}"
+    }
   }
 }

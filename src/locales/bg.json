@@ -5153,6 +5153,34 @@
       "sourceUnavailable": "Архивът няма изображения от този източник за тези дни."
     },
     "dailyMosaics": "дневни мозайки",
-    "weatherFrames": "метеорологични изображения"
+    "weatherFrames": "метеорологични изображения",
+    "timeline": {
+      "title": "Хронология, последните 7 дни и следващите 72 часа (UTC)",
+      "asList": "Хронология като списък",
+      "now": "сега",
+      "nowAt": "Сега: {{time}}",
+      "images": "Изображения",
+      "density": "Преминавания {{label}}, от {{start}} до {{end}}: {{count}}",
+      "daylight": "Дневна светлина в точката от {{start}} до {{end}}",
+      "loading": "зареждане",
+      "unavailable": "недостъпно",
+      "notRetained": "не се съхранява",
+      "notRetainedSpan": "{{label}}: не се съхранява от {{start}} до {{end}}",
+      "countryWide": "за цялата страна",
+      "source": {
+        "conflict": "Конфликти",
+        "fires": "Пожари",
+        "unrest": "Безредици",
+        "outages": "Прекъсвания на интернет"
+      },
+      "nowTitle": "Сега, само на живо",
+      "live": {
+        "vessels": "Плавателни съдове",
+        "militaryFlights": "Военни полети",
+        "gpsJamming": "Заглушаване на GPS"
+      },
+      "liveNone": "няма в радиус {{km}} км",
+      "liveCount": "в радиус {{km}} км: {{count}}, най-близо {{nearest}}"
+    }
   }
 }

@@ -5153,6 +5153,34 @@
       "sourceUnavailable": "Hifadhi haina picha kutoka chanzo hiki kwa siku hizi."
     },
     "dailyMosaics": "picha mseto za kila siku",
-    "weatherFrames": "picha za hali ya hewa"
+    "weatherFrames": "picha za hali ya hewa",
+    "timeline": {
+      "title": "Ratiba ya matukio, siku 7 zilizopita na saa 72 zijazo (UTC)",
+      "asList": "Ratiba ya matukio kama orodha",
+      "now": "sasa",
+      "nowAt": "Sasa: {{time}}",
+      "images": "Picha",
+      "density": "Mapito ya {{label}}, kuanzia {{start}} hadi {{end}}: {{count}}",
+      "daylight": "Mchana kwenye eneo kuanzia {{start}} hadi {{end}}",
+      "loading": "inapakia",
+      "unavailable": "haipatikani",
+      "notRetained": "haihifadhiwi",
+      "notRetainedSpan": "{{label}}: haihifadhiwi kuanzia {{start}} hadi {{end}}",
+      "countryWide": "nchi nzima",
+      "source": {
+        "conflict": "Migogoro",
+        "fires": "Moto",
+        "unrest": "Machafuko",
+        "outages": "Kukatika kwa intaneti"
+      },
+      "nowTitle": "Sasa, moja kwa moja tu",
+      "live": {
+        "vessels": "Meli",
+        "militaryFlights": "Safari za ndege za kijeshi",
+        "gpsJamming": "Uzuiaji wa GPS"
+      },
+      "liveNone": "hakuna ndani ya km {{km}}",
+      "liveCount": "ndani ya km {{km}}: {{count}}, karibu zaidi {{nearest}}"
+    }
   }
 }

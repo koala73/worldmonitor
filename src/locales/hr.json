@@ -5192,6 +5192,34 @@
       "sourceUnavailable": "Arhiva nema snimaka iz ovog izvora za te dane."
     },
     "dailyMosaics": "dnevni mozaici",
-    "weatherFrames": "meteorološke snimke"
+    "weatherFrames": "meteorološke snimke",
+    "timeline": {
+      "title": "Vremenska crta, zadnjih 7 dana i sljedeća 72 sata (UTC)",
+      "asList": "Vremenska crta kao popis",
+      "now": "sada",
+      "nowAt": "Sada: {{time}}",
+      "images": "Snimke",
+      "density": "Preleti {{label}}, od {{start}} do {{end}}: {{count}}",
+      "daylight": "Dnevno svjetlo u točki od {{start}} do {{end}}",
+      "loading": "učitavanje",
+      "unavailable": "nedostupno",
+      "notRetained": "nije sačuvano",
+      "notRetainedSpan": "{{label}}: nije sačuvano od {{start}} do {{end}}",
+      "countryWide": "na razini države",
+      "source": {
+        "conflict": "Sukobi",
+        "fires": "Požari",
+        "unrest": "Nemiri",
+        "outages": "Prekidi interneta"
+      },
+      "nowTitle": "Sada, samo uživo",
+      "live": {
+        "vessels": "Plovila",
+        "militaryFlights": "Vojni letovi",
+        "gpsJamming": "Ometanje GPS-a"
+      },
+      "liveNone": "nema unutar {{km}} km",
+      "liveCount": "unutar {{km}} km: {{count}}, najbliže {{nearest}}"
+    }
   }
 }

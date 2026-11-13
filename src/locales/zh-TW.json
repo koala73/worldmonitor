@@ -5125,6 +5125,34 @@
       "sourceUnavailable": "存檔中沒有該來源在這些日期的影象。"
     },
     "dailyMosaics": "每日鑲嵌圖",
-    "weatherFrames": "氣象影象"
+    "weatherFrames": "氣象影象",
+    "timeline": {
+      "title": "時間線，過去 7 天和未來 72 小時 (UTC)",
+      "asList": "以列表顯示時間線",
+      "now": "現在",
+      "nowAt": "現在：{{time}}",
+      "images": "影像",
+      "density": "{{label}}過境，{{start}} 至 {{end}}：{{count}}",
+      "daylight": "該點的白晝時段 {{start}} 至 {{end}}",
+      "loading": "載入中",
+      "unavailable": "不可用",
+      "notRetained": "未保留",
+      "notRetainedSpan": "{{label}}：{{start}} 至 {{end}} 未保留",
+      "countryWide": "全國範圍",
+      "source": {
+        "conflict": "衝突",
+        "fires": "火災",
+        "unrest": "動亂",
+        "outages": "網際網路中斷"
+      },
+      "nowTitle": "現在，僅即時",
+      "live": {
+        "vessels": "船舶",
+        "militaryFlights": "軍用航班",
+        "gpsJamming": "GPS 干擾"
+      },
+      "liveNone": "{{km}} 公里內無",
+      "liveCount": "{{km}} 公里內：{{count}}，最近 {{nearest}}"
+    }
   }
 }

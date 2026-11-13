@@ -5125,6 +5125,34 @@
       "sourceUnavailable": "아카이브에 이 기간 동안 이 출처의 영상이 없습니다."
     },
     "dailyMosaics": "일일 모자이크",
-    "weatherFrames": "기상 영상"
+    "weatherFrames": "기상 영상",
+    "timeline": {
+      "title": "타임라인, 지난 7일과 앞으로 72시간 (UTC)",
+      "asList": "목록으로 보는 타임라인",
+      "now": "현재",
+      "nowAt": "현재: {{time}}",
+      "images": "이미지",
+      "density": "{{label}} 통과, {{start}}~{{end}}: {{count}}",
+      "daylight": "지점의 낮 시간 {{start}}~{{end}}",
+      "loading": "로드 중",
+      "unavailable": "사용 불가",
+      "notRetained": "보관되지 않음",
+      "notRetainedSpan": "{{label}}: {{start}}~{{end}} 보관되지 않음",
+      "countryWide": "전국",
+      "source": {
+        "conflict": "분쟁",
+        "fires": "화재",
+        "unrest": "소요",
+        "outages": "인터넷 장애"
+      },
+      "nowTitle": "현재, 실시간만",
+      "live": {
+        "vessels": "선박",
+        "militaryFlights": "군용기",
+        "gpsJamming": "GPS 교란"
+      },
+      "liveNone": "{{km}}km 이내 없음",
+      "liveCount": "{{km}}km 이내: {{count}}, 가장 가까운 {{nearest}}"
+    }
   }
 }

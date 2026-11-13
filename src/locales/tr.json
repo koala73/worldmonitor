@@ -5153,6 +5153,34 @@
       "sourceUnavailable": "Arşivde bu günler için bu kaynaktan görüntü yok."
     },
     "dailyMosaics": "günlük mozaikler",
-    "weatherFrames": "hava durumu görüntüleri"
+    "weatherFrames": "hava durumu görüntüleri",
+    "timeline": {
+      "title": "Zaman çizelgesi, son 7 gün ve sonraki 72 saat (UTC)",
+      "asList": "Liste olarak zaman çizelgesi",
+      "now": "şimdi",
+      "nowAt": "Şimdi: {{time}}",
+      "images": "Görüntüler",
+      "density": "{{label}} geçişleri, {{start}} ile {{end}} arası: {{count}}",
+      "daylight": "Noktada gün ışığı {{start}} ile {{end}} arası",
+      "loading": "yükleniyor",
+      "unavailable": "kullanılamıyor",
+      "notRetained": "saklanmıyor",
+      "notRetainedSpan": "{{label}}: {{start}} ile {{end}} arası saklanmıyor",
+      "countryWide": "ülke genelinde",
+      "source": {
+        "conflict": "Çatışmalar",
+        "fires": "Yangınlar",
+        "unrest": "Huzursuzluk",
+        "outages": "İnternet kesintileri"
+      },
+      "nowTitle": "Şimdi, yalnızca canlı",
+      "live": {
+        "vessels": "Gemiler",
+        "militaryFlights": "Askerî uçuşlar",
+        "gpsJamming": "GPS karıştırma"
+      },
+      "liveNone": "{{km}} km içinde yok",
+      "liveCount": "{{km}} km içinde: {{count}}, en yakın {{nearest}}"
+    }
   }
 }

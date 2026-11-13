@@ -1,6 +1,7 @@
 import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import { getOrbitalPassClient, type PointPassLookup } from '@/services/orbital/pass-client';
 import { ARCHIVE_SEARCHES, findArchiveEvidence } from '@/services/orbital/match';
+import { loadPointContext } from '@/services/orbital/point-context';
 import { OrbitalWatchPage } from '@/components/OrbitalWatchPage';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 
@@ -49,6 +50,10 @@ async function start(): Promise<void> {
       }
       lookup = found;
     }
+    page!.setPointContext({ kind: 'loading' });
+    void loadPointContext(lookup.point, lookup.window, lookup.nowMs).then((context) => {
+      if (!signal.aborted) page!.setPointContext({ kind: 'loaded', context });
+    });
     await checkArchives(lookup, signal);
   } catch (error) {
     if (!isAbort(error) && !signal.aborted) page!.render({ kind: 'unavailable' });

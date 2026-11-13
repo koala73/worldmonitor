@@ -5125,6 +5125,34 @@
       "sourceUnavailable": "คลังข้อมูลไม่มีภาพจากแหล่งนี้สำหรับวันดังกล่าว"
     },
     "dailyMosaics": "ภาพโมเสกรายวัน",
-    "weatherFrames": "ภาพสภาพอากาศ"
+    "weatherFrames": "ภาพสภาพอากาศ",
+    "timeline": {
+      "title": "ไทม์ไลน์ 7 วันที่ผ่านมาและ 72 ชั่วโมงข้างหน้า (UTC)",
+      "asList": "ไทม์ไลน์แบบรายการ",
+      "now": "ตอนนี้",
+      "nowAt": "ตอนนี้: {{time}}",
+      "images": "ภาพ",
+      "density": "การผ่านของ {{label}} ตั้งแต่ {{start}} ถึง {{end}}: {{count}}",
+      "daylight": "แสงกลางวันที่จุดนี้ตั้งแต่ {{start}} ถึง {{end}}",
+      "loading": "กำลังโหลด",
+      "unavailable": "ไม่พร้อมใช้งาน",
+      "notRetained": "ไม่ได้เก็บไว้",
+      "notRetainedSpan": "{{label}}: ไม่ได้เก็บไว้ตั้งแต่ {{start}} ถึง {{end}}",
+      "countryWide": "ทั่วประเทศ",
+      "source": {
+        "conflict": "ความขัดแย้ง",
+        "fires": "ไฟไหม้",
+        "unrest": "ความไม่สงบ",
+        "outages": "อินเทอร์เน็ตขัดข้อง"
+      },
+      "nowTitle": "ตอนนี้ เฉพาะสด",
+      "live": {
+        "vessels": "เรือ",
+        "militaryFlights": "เที่ยวบินทหาร",
+        "gpsJamming": "การรบกวน GPS"
+      },
+      "liveNone": "ไม่มีในรัศมี {{km}} กม.",
+      "liveCount": "ในรัศมี {{km}} กม.: {{count}} ใกล้ที่สุด {{nearest}}"
+    }
   }
 }
