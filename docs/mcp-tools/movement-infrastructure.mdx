@@ -103,7 +103,12 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `search_flights`
 
-Live Google Flights itineraries between two airports on one date, read from the Google Flights results page. Each itinerary has its total USD price for all passengers, stops, duration, and per-leg airline, flight number, airports, and local departure and arrival times. With return_date the price covers the round trip and the legs are the outbound journey. degraded with an error means the provider failed; an empty list without degraded means no itineraries were found. Airports are IATA codes (e.g. "JFK", "LHR", "DXB").
+Live Google Flights search between two airports, read from the Google Flights results page. It runs in one of two modes, chosen by the date arguments:
+
+- **One date** (`departure_date`): the itineraries on that date, each with its total USD price for all passengers, stops, duration, and per-leg airline, flight number, airports, and local departure and arrival times. With `return_date` the price covers the round trip and the legs are the outbound journey. Returns `flights`.
+- **Date range** (`start_date` and `end_date`, at most 31 days): the cheapest fare per departure date, one results-page search per date, so a long range is slow. `trip_duration` makes it a round trip and sets each row's `returnDate`; `sort_by: "price"` sorts by fare instead of date. A date with no itineraries is omitted. Returns `dates`.
+
+Each mode rejects the other mode's arguments (`return_date` and `max_stops` apply to one date; `trip_duration` to a range) with Invalid params before any allowance is spent. `degraded` with an `error` means the provider failed; in a range, the list holds only the dates that answered. An empty list without `degraded` means nothing was found. Prices change minute to minute. Airports are IATA codes (e.g. "JFK", "LHR", "DXB").
 
 **Parameters:**
 
@@ -111,20 +116,23 @@ Live Google Flights itineraries between two airports on one date, read from the 
 |------|------|---------:|-------------|
 | `origin` | string | **yes** | IATA code for the departure airport, e.g. "JFK" |
 | `destination` | string | **yes** | IATA code for the arrival airport, e.g. "LHR" |
-| `departure_date` | string | **yes** | Outbound travel date, YYYY-MM-DD. |
-| `return_date` | string | no | Return travel date, YYYY-MM-DD, on or after departure_date. Set it to price a round trip; omit for one-way. |
-| `cabin_class` | string | no | Cabin to price: "economy", "premium_economy", "business" or "first"; economy when omitted. |
-| `max_stops` | string | no | Most stops allowed: "0" or "non_stop" for nonstop only, "1" or "one_stop" for at most one stop. Omit to allow any number. |
-| `passengers` | number | no | Travellers priced together; prices are totals for all of them. Clamped to 1-9; 1 when omitted. |
-| `sort_by` | string | no | Ordering: "price" (cheapest first), "duration", "departure" or "arrival" time. Omit for the provider's default order. |
+| `departure_date` | string | one date | Departure date in YYYY-MM-DD format for an itinerary search. Omit when searching a date range. |
+| `return_date` | string | no | Return date in YYYY-MM-DD format for a round-trip itinerary search (optional) |
+| `start_date` | string | date range | Start of a date range in YYYY-MM-DD format, for the cheapest fare per date. Requires end_date; omit departure_date. |
+| `end_date` | string | date range | End of the date range in YYYY-MM-DD format, at most 30 days after start_date |
+| `trip_duration` | integer | no | Trip length in whole days for a round-trip date range, e.g. 7 for a one-week trip (optional) |
+| `cabin_class` | string | no | Cabin class: "economy", "premium_economy", "business", or "first" (optional, default economy) |
+| `max_stops` | string | no | Itinerary search only. Max stops: "0" or "non_stop" for nonstop, "1" or "one_stop" for max one stop, or omit for any (optional) |
+| `passengers` | number | no | Number of passengers (1-9, default 1) |
+| `sort_by` | string | no | Sort order: "price" (cheapest), "duration", "departure", or "arrival" (optional). A date range accepts only "price"; it is sorted by date otherwise. |
 
-- **API endpoints:** `GET /api/aviation/v1/search-google-flights`
+- **API endpoints:** `GET /api/aviation/v1/search-google-flights`, `GET /api/aviation/v1/search-google-dates`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **25.0s**.
 
 <CodeGroup>
 
-```bash curl
+```bash One date
 curl -s https://worldmonitor.app/mcp \
   -H "X-WorldMonitor-Key: $WM_KEY" \
   -H 'Content-Type: application/json' \
@@ -135,44 +143,22 @@ curl -s https://worldmonitor.app/mcp \
   }'
 ```
 
-</CodeGroup>
-
-### `search_flight_prices_by_date`
-
-Return the cheapest Google Flights fare for each departure date between two airports across a range of at most 31 days (one results-page search per date, so a long range is slow). Each row has the date, the return date for round trips (departure plus trip_duration) and the lowest total USD price for all passengers; a date with no itineraries is omitted. degraded with an error means some or all dates failed and the list holds only the dates that answered. Prices change minute to minute. Requires a paid plan; one live search request, weight 2 on API plans, up to 25 s. Airports are IATA codes; is_round_trip needs trip_duration; passengers is 1-9. Read-only.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|------|------|---------:|-------------|
-| `origin` | string | **yes** | IATA code for the departure airport, e.g. "JFK" |
-| `destination` | string | **yes** | IATA code for the arrival airport, e.g. "LHR" |
-| `start_date` | string | **yes** | First departure date to price, YYYY-MM-DD. |
-| `end_date` | string | **yes** | Last departure date to price, YYYY-MM-DD, inclusive; at most 30 days after start_date. |
-| `is_round_trip` | boolean | no | Whether to search round-trip prices (default false). Requires trip_duration when true. |
-| `trip_duration` | number | no | Trip duration in days — required when is_round_trip is true (e.g. 7 for a one-week trip) |
-| `cabin_class` | string | no | Cabin to price: "economy", "premium_economy", "business" or "first"; economy when omitted. |
-| `passengers` | number | no | Travellers priced together; prices are totals for all of them. Clamped to 1-9; 1 when omitted. |
-| `sort_by_price` | boolean | no | Sort results by price ascending (default false, sorts by date) |
-
-- **API endpoints:** `GET /api/aviation/v1/search-google-dates`
-- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
-- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **25.0s**.
-
-<CodeGroup>
-
-```bash curl
+```bash Date range
 curl -s https://worldmonitor.app/mcp \
   -H "X-WorldMonitor-Key: $WM_KEY" \
   -H 'Content-Type: application/json' \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"search_flight_prices_by_date","arguments":{"origin":"JFK","destination":"LHR","start_date":"2026-08-01","end_date":"2026-08-31"}}
+    "params":{"name":"search_flights","arguments":{"origin":"JFK","destination":"LHR","start_date":"2026-08-01","end_date":"2026-08-31","trip_duration":7,"sort_by":"price"}}
   }'
 ```
 
 </CodeGroup>
+
+### `search_flight_prices_by_date`
+
+Retired. The cheapest fare per date is the date-range mode of [`search_flights`](#search_flights): pass `start_date` and `end_date`. Calls to the old name still work: `is_round_trip: true` with `trip_duration` becomes a round-trip range, `sort_by_price: true` becomes `sort_by: "price"`, and the response carries a `deprecation` notice that names the replacement.
 
 ### `find_webcams`
 

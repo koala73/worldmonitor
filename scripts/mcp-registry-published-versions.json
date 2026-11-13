@@ -152,6 +152,10 @@
     "1.54.0": {
       "tools": 102,
       "manifestSha256": "2e09aa40b9eb4dd0ffa10d6ba532def325a3ff72fdf30727da47f5480e6ba956"
+    },
+    "1.55.0": {
+      "tools": 97,
+      "manifestSha256": "d3d2bbe95543d5b95976320e90aba8ce10b6960c289b3e87b5f7b290a7f2d302"
     }
   }
 }
