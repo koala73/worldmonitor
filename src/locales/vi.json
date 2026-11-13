@@ -5228,8 +5228,8 @@
       "density": "Lượt bay qua {{label}}, từ {{start}} đến {{end}}: {{count}}",
       "daylight": "Ánh sáng ban ngày tại điểm từ {{start}} đến {{end}}",
       "unavailable": "không khả dụng",
-      "notRetained": "không được lưu",
-      "notRetainedSpan": "{{label}}: không được lưu từ {{start}} đến {{end}}",
+      "notRetained": "không có dữ liệu tuần này",
+      "notRetainedSpan": "{{label}}: không có dữ liệu từ {{start}} đến {{end}}",
       "countryWide": "toàn quốc",
       "source": {
         "conflict": "Xung đột",
@@ -5253,6 +5253,7 @@
         "overhead": "Bay qua"
       },
       "retained": "{{start}} đến {{end}}",
+      "retainedDay": "chỉ {{day}}",
       "geoLine": "Vệ tinh địa tĩnh trong tầm nhìn: {{names}}",
       "away": "cách {{km}} km"
     }

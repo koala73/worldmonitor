@@ -5261,8 +5261,8 @@
       "density": "Mapito ya {{label}}, kuanzia {{start}} hadi {{end}}: {{count}}",
       "daylight": "Mchana kwenye eneo kuanzia {{start}} hadi {{end}}",
       "unavailable": "haipatikani",
-      "notRetained": "haihifadhiwi",
-      "notRetainedSpan": "{{label}}: haihifadhiwi kuanzia {{start}} hadi {{end}}",
+      "notRetained": "hakuna data wiki hii",
+      "notRetainedSpan": "{{label}}: hakuna data kuanzia {{start}} hadi {{end}}",
       "countryWide": "nchi nzima",
       "source": {
         "conflict": "Migogoro",
@@ -5286,6 +5286,7 @@
         "overhead": "Kupita"
       },
       "retained": "{{start}} hadi {{end}}",
+      "retainedDay": "{{day}} pekee",
       "geoLine": "Satelaiti tuli zinazoonekana: {{names}}",
       "away": "km {{km}} mbali"
     }

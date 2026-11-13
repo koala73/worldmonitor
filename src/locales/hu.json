@@ -5261,8 +5261,8 @@
       "density": "{{label}} áthaladások, {{start}} és {{end}} között: {{count}}",
       "daylight": "Nappali fény a pontban {{start}} és {{end}} között",
       "unavailable": "nem elérhető",
-      "notRetained": "nincs megőrizve",
-      "notRetainedSpan": "{{label}}: nincs megőrizve {{start}} és {{end}} között",
+      "notRetained": "ezen a héten nincs adat",
+      "notRetainedSpan": "{{label}}: nincs adat {{start}} és {{end}} között",
       "countryWide": "országos",
       "source": {
         "conflict": "Konfliktusok",
@@ -5286,6 +5286,7 @@
         "overhead": "Áthaladt"
       },
       "retained": "{{start}} – {{end}}",
+      "retainedDay": "csak {{day}}",
       "geoLine": "Látható geostacionárius: {{names}}",
       "away": "{{km}} km-re"
     }

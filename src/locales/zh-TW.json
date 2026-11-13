@@ -5228,8 +5228,8 @@
       "density": "{{label}}過境，{{start}} 至 {{end}}：{{count}}",
       "daylight": "該點的白晝時段 {{start}} 至 {{end}}",
       "unavailable": "不可用",
-      "notRetained": "未保留",
-      "notRetainedSpan": "{{label}}：{{start}} 至 {{end}} 未保留",
+      "notRetained": "本週無資料",
+      "notRetainedSpan": "{{label}}：{{start}} 至 {{end}} 無資料",
       "countryWide": "全國範圍",
       "source": {
         "conflict": "衝突",
@@ -5253,6 +5253,7 @@
         "overhead": "過頂"
       },
       "retained": "{{start}} 至 {{end}}",
+      "retainedDay": "僅 {{day}}",
       "geoLine": "視野內的靜止衛星：{{names}}",
       "away": "{{km}} 公里外"
     }

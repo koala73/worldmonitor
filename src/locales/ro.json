@@ -5294,8 +5294,8 @@
       "density": "Treceri {{label}}, de la {{start}} la {{end}}: {{count}}",
       "daylight": "Lumină de zi în punct de la {{start}} la {{end}}",
       "unavailable": "indisponibil",
-      "notRetained": "nepăstrat",
-      "notRetainedSpan": "{{label}}: nepăstrat de la {{start}} la {{end}}",
+      "notRetained": "fără date săptămâna aceasta",
+      "notRetainedSpan": "{{label}}: fără date de la {{start}} la {{end}}",
       "countryWide": "la nivel național",
       "source": {
         "conflict": "Conflicte",
@@ -5319,6 +5319,7 @@
         "overhead": "Trecere"
       },
       "retained": "{{start}} – {{end}}",
+      "retainedDay": "doar {{day}}",
       "geoLine": "Geostaționari în vizor: {{names}}",
       "away": "la {{km}} km"
     }

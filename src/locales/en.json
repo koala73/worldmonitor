@@ -4720,8 +4720,8 @@
       "density": "{{label}} passes, {{start}} to {{end}}: {{count}}",
       "daylight": "Daylight at the point from {{start}} to {{end}}",
       "unavailable": "unavailable",
-      "notRetained": "not retained",
-      "notRetainedSpan": "{{label}}: not retained from {{start}} to {{end}}",
+      "notRetained": "no data this week",
+      "notRetainedSpan": "{{label}}: no data from {{start}} to {{end}}",
       "countryWide": "country-wide",
       "source": {
         "conflict": "Conflict",
@@ -4745,6 +4745,7 @@
         "overhead": "Overhead"
       },
       "retained": "{{start}} to {{end}}",
+      "retainedDay": "{{day}} only",
       "geoLine": "Geostationary in view: {{names}}",
       "away": "{{km}} km away"
     }

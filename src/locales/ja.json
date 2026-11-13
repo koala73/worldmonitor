@@ -5228,8 +5228,8 @@
       "density": "{{label}}の通過、{{start}}～{{end}}: {{count}}",
       "daylight": "地点の日照 {{start}}～{{end}}",
       "unavailable": "利用不可",
-      "notRetained": "保持されていません",
-      "notRetainedSpan": "{{label}}: {{start}}～{{end}} は保持されていません",
+      "notRetained": "今週のデータなし",
+      "notRetainedSpan": "{{label}}: {{start}}～{{end}} のデータなし",
       "countryWide": "国全体",
       "source": {
         "conflict": "紛争",
@@ -5253,6 +5253,7 @@
         "overhead": "通過"
       },
       "retained": "{{start}}〜{{end}}",
+      "retainedDay": "{{day}} のみ",
       "geoLine": "視野内の静止衛星: {{names}}",
       "away": "{{km}} km先"
     }

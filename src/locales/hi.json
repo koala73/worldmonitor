@@ -5261,8 +5261,8 @@
       "density": "{{label}} गुज़रने, {{start}} से {{end}} तक: {{count}}",
       "daylight": "बिंदु पर {{start}} से {{end}} तक दिन का प्रकाश",
       "unavailable": "उपलब्ध नहीं",
-      "notRetained": "संग्रहीत नहीं",
-      "notRetainedSpan": "{{label}}: {{start}} से {{end}} तक संग्रहीत नहीं",
+      "notRetained": "इस सप्ताह कोई डेटा नहीं",
+      "notRetainedSpan": "{{label}}: {{start}} से {{end}} तक कोई डेटा नहीं",
       "countryWide": "देशव्यापी",
       "source": {
         "conflict": "संघर्ष",
@@ -5286,6 +5286,7 @@
         "overhead": "गुज़रा"
       },
       "retained": "{{start}} से {{end}}",
+      "retainedDay": "केवल {{day}}",
       "geoLine": "दृश्य में भूस्थिर: {{names}}",
       "away": "{{km}} किमी दूर"
     }

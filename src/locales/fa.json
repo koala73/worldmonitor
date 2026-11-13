@@ -5261,8 +5261,8 @@
       "density": "عبورهای {{label}}، از {{start}} تا {{end}}: {{count}}",
       "daylight": "روشنایی روز در نقطه از {{start}} تا {{end}}",
       "unavailable": "در دسترس نیست",
-      "notRetained": "نگهداری نشده",
-      "notRetainedSpan": "{{label}}: از {{start}} تا {{end}} نگهداری نشده",
+      "notRetained": "این هفته داده‌ای نیست",
+      "notRetainedSpan": "{{label}}: از {{start}} تا {{end}} داده‌ای نیست",
       "countryWide": "در سطح کشور",
       "source": {
         "conflict": "درگیری‌ها",
@@ -5286,6 +5286,7 @@
         "overhead": "عبور"
       },
       "retained": "{{start}} تا {{end}}",
+      "retainedDay": "فقط {{day}}",
       "geoLine": "زمین‌ثابت‌های در دید: {{names}}",
       "away": "{{km}} کیلومتر دورتر"
     }

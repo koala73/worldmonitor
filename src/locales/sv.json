@@ -5261,8 +5261,8 @@
       "density": "Överflygningar {{label}}, {{start}} till {{end}}: {{count}}",
       "daylight": "Dagsljus vid punkten från {{start}} till {{end}}",
       "unavailable": "ej tillgänglig",
-      "notRetained": "sparas inte",
-      "notRetainedSpan": "{{label}}: sparas inte från {{start}} till {{end}}",
+      "notRetained": "inga data denna vecka",
+      "notRetainedSpan": "{{label}}: inga data från {{start}} till {{end}}",
       "countryWide": "hela landet",
       "source": {
         "conflict": "Konflikter",
@@ -5286,6 +5286,7 @@
         "overhead": "Överflygning"
       },
       "retained": "{{start}} till {{end}}",
+      "retainedDay": "endast {{day}}",
       "geoLine": "Geostationära i sikte: {{names}}",
       "away": "{{km}} km bort"
     }

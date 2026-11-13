@@ -5305,8 +5305,8 @@
       "density": "Preleti {{label}}, od {{start}} do {{end}}: {{count}}",
       "daylight": "Dnevno svjetlo u točki od {{start}} do {{end}}",
       "unavailable": "nedostupno",
-      "notRetained": "nije sačuvano",
-      "notRetainedSpan": "{{label}}: nije sačuvano od {{start}} do {{end}}",
+      "notRetained": "ovaj tjedan nema podataka",
+      "notRetainedSpan": "{{label}}: nema podataka od {{start}} do {{end}}",
       "countryWide": "na razini države",
       "source": {
         "conflict": "Sukobi",
@@ -5330,6 +5330,7 @@
         "overhead": "Prelet"
       },
       "retained": "{{start}} do {{end}}",
+      "retainedDay": "samo {{day}}",
       "geoLine": "Geostacionarni u vidokrugu: {{names}}",
       "away": "{{km}} km dalje"
     }

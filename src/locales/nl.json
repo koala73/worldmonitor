@@ -5261,8 +5261,8 @@
       "density": "Overkomsten {{label}}, {{start}} tot {{end}}: {{count}}",
       "daylight": "Daglicht op het punt van {{start}} tot {{end}}",
       "unavailable": "niet beschikbaar",
-      "notRetained": "niet bewaard",
-      "notRetainedSpan": "{{label}}: niet bewaard van {{start}} tot {{end}}",
+      "notRetained": "deze week geen gegevens",
+      "notRetainedSpan": "{{label}}: geen gegevens van {{start}} tot {{end}}",
       "countryWide": "landelijk",
       "source": {
         "conflict": "Conflicten",
@@ -5286,6 +5286,7 @@
         "overhead": "Overvlucht"
       },
       "retained": "{{start}} tot {{end}}",
+      "retainedDay": "alleen {{day}}",
       "geoLine": "Geostationair in zicht: {{names}}",
       "away": "{{km}} km verderop"
     }

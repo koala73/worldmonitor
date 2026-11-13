@@ -5261,8 +5261,8 @@
       "density": "Διελεύσεις {{label}}, από {{start}} έως {{end}}: {{count}}",
       "daylight": "Φως ημέρας στο σημείο από {{start}} έως {{end}}",
       "unavailable": "μη διαθέσιμο",
-      "notRetained": "δεν διατηρείται",
-      "notRetainedSpan": "{{label}}: δεν διατηρείται από {{start}} έως {{end}}",
+      "notRetained": "χωρίς δεδομένα αυτή την εβδομάδα",
+      "notRetainedSpan": "{{label}}: χωρίς δεδομένα από {{start}} έως {{end}}",
       "countryWide": "σε όλη τη χώρα",
       "source": {
         "conflict": "Συγκρούσεις",
@@ -5286,6 +5286,7 @@
         "overhead": "Διέλευση"
       },
       "retained": "{{start}} έως {{end}}",
+      "retainedDay": "μόνο {{day}}",
       "geoLine": "Γεωστατικοί σε ορατότητα: {{names}}",
       "away": "σε {{km}} χλμ."
     }

@@ -191,6 +191,47 @@ describe('orbital timeline dock', () => {
     expect(parseFloat(tip.style.getPropertyValue('--ow-tip-arrow'))).toBeGreaterThan(100);
   });
 
+  it('flips an event tooltip below the strip so it never covers the dock header', () => {
+    const at = NOW - 2 * DAY;
+    mounted([], context({ events: { conflict: ok([{ id: 'c1', timeMs: at, label: 'A – B', distanceKm: 2 }], { startMs: at, endMs: NOW }) } }));
+    const rect = (top: number, bottom: number, left = 0, right = 640) => (() => ({ left, right, top, bottom, width: right - left, height: bottom - top }) as DOMRect);
+    const dock = timeline();
+    dock.getBoundingClientRect = rect(0, 270);
+    dock.parentElement!.getBoundingClientRect = rect(0, 270);
+    dock.querySelector<HTMLElement>('.ow-tl-head')!.getBoundingClientRect = rect(0, 24);
+    dock.querySelector<HTMLElement>('.ow-tl-plot')!.getBoundingClientRect = rect(30, 160, 130, 630);
+    const mark = dock.querySelector<HTMLElement>('.ow-tl-strip .ow-tl-event')!;
+    mark.getBoundingClientRect = rect(60, 68, 330, 338);
+    const tip = dock.querySelector<HTMLElement>('.ow-tl-tip')!;
+    Object.defineProperty(tip, 'offsetWidth', { value: 480 });
+    Object.defineProperty(tip, 'offsetHeight', { value: 40 });
+    mark.dispatchEvent(new Event('pointerover', { bubbles: true }));
+    expect(tip.dataset.place).toBe('below');
+    // .ow-tl-tip sits 6px below its anchor when placed below.
+    const tipTop = parseFloat(tip.style.top) + 6;
+    expect(tipTop).toBeGreaterThanOrEqual(24);
+    expect(tipTop).toBeGreaterThanOrEqual(68);
+  });
+
+  it('keeps a tooltip above a lower glyph when it clears the header', () => {
+    mounted([pass('SENTINEL-2B', -30, { kind: 'confirmed-image' })], null);
+    const rect = (top: number, bottom: number, left = 0, right = 640) => (() => ({ left, right, top, bottom, width: right - left, height: bottom - top }) as DOMRect);
+    const dock = timeline();
+    dock.getBoundingClientRect = rect(0, 270);
+    dock.parentElement!.getBoundingClientRect = rect(0, 270);
+    dock.querySelector<HTMLElement>('.ow-tl-head')!.getBoundingClientRect = rect(0, 24);
+    dock.querySelector<HTMLElement>('.ow-tl-plot')!.getBoundingClientRect = rect(30, 160, 130, 630);
+    const mark = dock.querySelector<HTMLElement>('.ow-tl-row[data-row="photo"] .ow-tl-mark')!;
+    mark.getBoundingClientRect = rect(90, 100, 330, 340);
+    const tip = dock.querySelector<HTMLElement>('.ow-tl-tip')!;
+    Object.defineProperty(tip, 'offsetWidth', { value: 300 });
+    Object.defineProperty(tip, 'offsetHeight', { value: 20 });
+    mark.dispatchEvent(new Event('pointerover', { bubbles: true }));
+    expect(tip.dataset.place).toBe('above');
+    // .ow-tl-tip sits 6px above its anchor when placed above.
+    expect(parseFloat(tip.style.top) - 6 - 20).toBeGreaterThanOrEqual(24);
+  });
+
   it('opens a dock narrower than the timeline scrolled so NOW sits about 70% across', async () => {
     const dock = document.createElement('div');
     Object.defineProperty(dock, 'scrollWidth', { value: 1000 });
@@ -238,19 +279,26 @@ describe('orbital timeline dock', () => {
     mounted([], context({ events: { fires: ok([], { startMs: Date.UTC(2026, 10, 12), endMs: NOW }) } }));
     expect(eventKey('fires').querySelector('.ow-tl-retained')!.textContent).toBe(' · Thu, Nov 12 to Fri, Nov 13');
     expect(timeline().querySelector('.ow-tl-not-retained')).toBeNull();
-    expect(listText()).toContain('Fires: not retained from 2026-11-06 12:00 UTC to 2026-11-12 00:00 UTC');
+    expect(listText()).toContain('Fires: no data from 2026-11-06 12:00 UTC to 2026-11-12 00:00 UTC');
   });
 
-  it('marks conflict history after its newest event as not retained up to now', () => {
+  it('marks conflict history after its newest event as having no data up to now', () => {
     mounted([], context({ events: { conflict: ok([], { startMs: NOW - 400 * DAY, endMs: NOW - 3 * DAY }) } }));
     expect(eventKey('conflict').querySelector('.ow-tl-retained')!.textContent).toBe(' · Fri, Nov 6 to Tue, Nov 10');
-    expect(listText()).toContain('Conflict: not retained from 2026-11-10 12:00 UTC to 2026-11-13 12:00 UTC');
+    expect(listText()).toContain('Conflict: no data from 2026-11-10 12:00 UTC to 2026-11-13 12:00 UTC');
   });
 
-  it('marks the whole history as not retained when the conflict feed ends before the window starts', () => {
+  it('says the week has no data when the conflict feed ends before the window starts', () => {
     mounted([], context({ events: { conflict: ok([], { startMs: NOW - 400 * DAY, endMs: NOW - 30 * DAY }) } }));
-    expect(eventKey('conflict').querySelector('.ow-tl-retained')!.textContent).toBe(' · not retained');
-    expect(listText()).toContain('Conflict: not retained from 2026-11-06 12:00 UTC to 2026-11-13 12:00 UTC');
+    expect(eventKey('conflict').querySelector('.ow-tl-retained')!.textContent).toBe(' · no data this week');
+    expect(listText()).toContain('Conflict: no data from 2026-11-06 12:00 UTC to 2026-11-13 12:00 UTC');
+  });
+
+  it('never says "no data" beside a counted event when the feed holds that one event', () => {
+    const at = NOW - 2 * DAY;
+    mounted([], context({ events: { conflict: ok([{ id: 'c1', timeMs: at, label: 'A – B', distanceKm: 2 }], { startMs: at, endMs: at }) } }));
+    expect(eventKey('conflict').textContent).toBe('Conflict 1 · Wed, Nov 11 only');
+    expect(eventKey('conflict').textContent).not.toMatch(/no data/);
   });
 
   it('keeps a failed source quiet in the legend and still draws the passes', () => {

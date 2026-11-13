@@ -5327,8 +5327,8 @@
       "density": "Przeloty {{label}}, od {{start}} do {{end}}: {{count}}",
       "daylight": "Światło dzienne w punkcie od {{start}} do {{end}}",
       "unavailable": "niedostępne",
-      "notRetained": "nie przechowywane",
-      "notRetainedSpan": "{{label}}: nie przechowywane od {{start}} do {{end}}",
+      "notRetained": "brak danych w tym tygodniu",
+      "notRetainedSpan": "{{label}}: brak danych od {{start}} do {{end}}",
       "countryWide": "w całym kraju",
       "source": {
         "conflict": "Konflikty",
@@ -5352,6 +5352,7 @@
         "overhead": "Przelot"
       },
       "retained": "{{start}} do {{end}}",
+      "retainedDay": "tylko {{day}}",
       "geoLine": "Geostacjonarne w zasięgu: {{names}}",
       "away": "{{km}} km stąd"
     }

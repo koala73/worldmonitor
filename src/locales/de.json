@@ -5261,8 +5261,8 @@
       "density": "Überflüge {{label}}, {{start}} bis {{end}}: {{count}}",
       "daylight": "Tageslicht am Punkt von {{start}} bis {{end}}",
       "unavailable": "nicht verfügbar",
-      "notRetained": "nicht gespeichert",
-      "notRetainedSpan": "{{label}}: nicht gespeichert von {{start}} bis {{end}}",
+      "notRetained": "diese Woche keine Daten",
+      "notRetainedSpan": "{{label}}: keine Daten von {{start}} bis {{end}}",
       "countryWide": "landesweit",
       "source": {
         "conflict": "Konflikte",
@@ -5286,6 +5286,7 @@
         "overhead": "Überflug"
       },
       "retained": "{{start}} bis {{end}}",
+      "retainedDay": "nur {{day}}",
       "geoLine": "Geostationär in Sicht: {{names}}",
       "away": "{{km}} km entfernt"
     }

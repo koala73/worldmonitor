@@ -5261,8 +5261,8 @@
       "density": "{{label}} geçişleri, {{start}} ile {{end}} arası: {{count}}",
       "daylight": "Noktada gün ışığı {{start}} ile {{end}} arası",
       "unavailable": "kullanılamıyor",
-      "notRetained": "saklanmıyor",
-      "notRetainedSpan": "{{label}}: {{start}} ile {{end}} arası saklanmıyor",
+      "notRetained": "bu hafta veri yok",
+      "notRetainedSpan": "{{label}}: {{start}} ile {{end}} arasında veri yok",
       "countryWide": "ülke genelinde",
       "source": {
         "conflict": "Çatışmalar",
@@ -5286,6 +5286,7 @@
         "overhead": "Geçiş"
       },
       "retained": "{{start}} – {{end}}",
+      "retainedDay": "yalnızca {{day}}",
       "geoLine": "Görüş alanındaki yerdurağanlar: {{names}}",
       "away": "{{km}} km uzakta"
     }

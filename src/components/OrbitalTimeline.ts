@@ -25,6 +25,8 @@ const MIN_DAY_PCT = 4;
 const NOW_AT = 0.7;
 /** A tooltip squeezed into a narrow visible plot still keeps this much width before it wraps. */
 const MIN_TIP_PX = 160;
+/** Matches the 6px offset in .ow-tl-tip plus a 2px margin. */
+const TIP_GAP_PX = 8;
 const TIP_NAMES = 4;
 
 export const passKey = (pass: { noradId: number; timeMs: number }) => `${pass.noradId}:${pass.timeMs}`;
@@ -93,9 +95,11 @@ function hourlyBins(passes: PointPass[]): Array<{ startMs: number; count: number
 
 /** Where a source's kept history leaves part of the past window uncovered. */
 function uncovered(retained: { startMs: number; endMs: number } | null, startMs: number, nowMs: number): Array<[number, number]> {
-  const coveredStart = retained ? Math.max(startMs, retained.startMs) : nowMs;
-  const coveredEnd = retained ? Math.min(nowMs, retained.endMs) : nowMs;
-  if (coveredEnd <= coveredStart) return [[startMs, nowMs]];
+  if (!retained) return [[startMs, nowMs]];
+  const coveredStart = Math.max(startMs, retained.startMs);
+  const coveredEnd = Math.min(nowMs, retained.endMs);
+  // A feed holding a single event still covers that instant.
+  if (coveredEnd < coveredStart) return [[startMs, nowMs]];
   const gaps: Array<[number, number]> = [];
   if (coveredStart > startMs) gaps.push([startMs, coveredStart]);
   if (coveredEnd < nowMs) gaps.push([coveredEnd, nowMs]);
@@ -195,10 +199,12 @@ export class OrbitalTimeline {
         entries.push({ timeMs: startMs, text: t('orbitalWatch.timeline.notRetainedSpan', { label, start: formatUtc(startMs), end: formatUtc(endMs) }) });
       }
       const whole = gaps.length === 1 && gaps[0]![0] === window.startMs && gaps[0]![1] === nowMs;
+      const keptStart = lane.retained && formatOrbitalTime(Math.max(window.startMs, lane.retained.startMs), 'day');
+      const keptEnd = lane.retained && formatOrbitalTime(Math.min(nowMs, lane.retained.endMs), 'day');
       const kept = whole
         ? t('orbitalWatch.timeline.notRetained')
-        : gaps.length > 0 && lane.retained
-          ? t('orbitalWatch.timeline.retained', { start: formatOrbitalTime(Math.max(window.startMs, lane.retained.startMs), 'day'), end: formatOrbitalTime(Math.min(nowMs, lane.retained.endMs), 'day') })
+        : gaps.length > 0 && keptStart && keptEnd
+          ? keptStart === keptEnd ? t('orbitalWatch.timeline.retainedDay', { day: keptStart }) : t('orbitalWatch.timeline.retained', { start: keptStart, end: keptEnd })
           : null;
       return h('li', { className: 'ow-tl-event-key', dataset: { source: id, state: 'ok' } },
         h('span', { className: 'ow-tl-dot' }), label, ' ', h('span', { className: 'ow-tl-count' }, count(lane.events.length)),
@@ -305,10 +311,14 @@ export class OrbitalTimeline {
       ? [lo + half, hi - half]
       : [Math.max(0, view.left - frame.left) + half, Math.max(half, Math.min(frame.width, view.right - frame.left) - half)];
     const left = Math.min(Math.max(x, min), max);
-    const above = box.top - frame.top >= this.tip.offsetHeight + 8;
+    // Never cover the dock header: flip below the glyph when there is no room above it.
+    const tall = this.tip.offsetHeight + TIP_GAP_PX;
+    const ceiling = this.head.getBoundingClientRect().bottom;
+    const above = box.top - tall >= ceiling;
+    const top = above ? box.top : Math.max(ceiling, Math.min(box.bottom, view.bottom - tall));
     this.tip.dataset.place = above ? 'above' : 'below';
     this.tip.style.left = `${left}px`;
-    this.tip.style.top = `${(above ? box.top : box.bottom) - frame.top}px`;
+    this.tip.style.top = `${top - frame.top}px`;
     this.tip.style.setProperty('--ow-tip-arrow', `${x - left + half}px`);
   };
 

@@ -5327,8 +5327,8 @@
       "density": "Přelety {{label}}, od {{start}} do {{end}}: {{count}}",
       "daylight": "Denní světlo v bodě od {{start}} do {{end}}",
       "unavailable": "nedostupné",
-      "notRetained": "neuchováno",
-      "notRetainedSpan": "{{label}}: neuchováno od {{start}} do {{end}}",
+      "notRetained": "tento týden žádná data",
+      "notRetainedSpan": "{{label}}: žádná data od {{start}} do {{end}}",
       "countryWide": "celostátní",
       "source": {
         "conflict": "Konflikty",
@@ -5352,6 +5352,7 @@
         "overhead": "Přelet"
       },
       "retained": "{{start}} až {{end}}",
+      "retainedDay": "jen {{day}}",
       "geoLine": "Geostacionární v dohledu: {{names}}",
       "away": "{{km}} km odtud"
     }

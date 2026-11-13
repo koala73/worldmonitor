@@ -5327,8 +5327,8 @@
       "density": "Прольоти {{label}}, з {{start}} до {{end}}: {{count}}",
       "daylight": "Світлий час у точці з {{start}} до {{end}}",
       "unavailable": "недоступно",
-      "notRetained": "не зберігається",
-      "notRetainedSpan": "{{label}}: не зберігається з {{start}} до {{end}}",
+      "notRetained": "немає даних цього тижня",
+      "notRetainedSpan": "{{label}}: немає даних з {{start}} до {{end}}",
       "countryWide": "по всій країні",
       "source": {
         "conflict": "Конфлікти",
@@ -5352,6 +5352,7 @@
         "overhead": "Проліт"
       },
       "retained": "з {{start}} до {{end}}",
+      "retainedDay": "лише {{day}}",
       "geoLine": "Геостаціонарні в зоні видимості: {{names}}",
       "away": "за {{km}} км"
     }

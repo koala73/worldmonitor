@@ -5327,8 +5327,8 @@
       "density": "Пролёты {{label}}, с {{start}} до {{end}}: {{count}}",
       "daylight": "Светлое время в точке с {{start}} до {{end}}",
       "unavailable": "недоступно",
-      "notRetained": "не хранится",
-      "notRetainedSpan": "{{label}}: не хранится с {{start}} до {{end}}",
+      "notRetained": "нет данных за эту неделю",
+      "notRetainedSpan": "{{label}}: нет данных с {{start}} до {{end}}",
       "countryWide": "по всей стране",
       "source": {
         "conflict": "Конфликты",
@@ -5352,6 +5352,7 @@
         "overhead": "Пролёт"
       },
       "retained": "с {{start}} по {{end}}",
+      "retainedDay": "только {{day}}",
       "geoLine": "Геостационарные в зоне видимости: {{names}}",
       "away": "в {{km}} км"
     }

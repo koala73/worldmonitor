@@ -5294,8 +5294,8 @@
       "density": "Passaggi {{label}}, da {{start}} a {{end}}: {{count}}",
       "daylight": "Luce diurna nel punto da {{start}} a {{end}}",
       "unavailable": "non disponibile",
-      "notRetained": "non conservato",
-      "notRetainedSpan": "{{label}}: non conservato da {{start}} a {{end}}",
+      "notRetained": "nessun dato questa settimana",
+      "notRetainedSpan": "{{label}}: nessun dato da {{start}} a {{end}}",
       "countryWide": "a livello nazionale",
       "source": {
         "conflict": "Conflitti",
@@ -5319,6 +5319,7 @@
         "overhead": "Passaggio"
       },
       "retained": "dal {{start}} al {{end}}",
+      "retainedDay": "solo {{day}}",
       "geoLine": "Geostazionari in vista: {{names}}",
       "away": "a {{km}} km"
     }

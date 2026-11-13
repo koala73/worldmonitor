@@ -5228,8 +5228,8 @@
       "density": "การผ่านของ {{label}} ตั้งแต่ {{start}} ถึง {{end}}: {{count}}",
       "daylight": "แสงกลางวันที่จุดนี้ตั้งแต่ {{start}} ถึง {{end}}",
       "unavailable": "ไม่พร้อมใช้งาน",
-      "notRetained": "ไม่ได้เก็บไว้",
-      "notRetainedSpan": "{{label}}: ไม่ได้เก็บไว้ตั้งแต่ {{start}} ถึง {{end}}",
+      "notRetained": "ไม่มีข้อมูลสัปดาห์นี้",
+      "notRetainedSpan": "{{label}}: ไม่มีข้อมูลตั้งแต่ {{start}} ถึง {{end}}",
       "countryWide": "ทั่วประเทศ",
       "source": {
         "conflict": "ความขัดแย้ง",
@@ -5253,6 +5253,7 @@
         "overhead": "ผ่าน"
       },
       "retained": "{{start}} ถึง {{end}}",
+      "retainedDay": "เฉพาะ {{day}}",
       "geoLine": "ดาวเทียมค้างฟ้าที่มองเห็น: {{names}}",
       "away": "ห่าง {{km}} กม."
     }

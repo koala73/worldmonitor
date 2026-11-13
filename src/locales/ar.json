@@ -5393,8 +5393,8 @@
       "density": "مرورات {{label}}، من {{start}} إلى {{end}}: {{count}}",
       "daylight": "ضوء النهار عند النقطة من {{start}} إلى {{end}}",
       "unavailable": "غير متاح",
-      "notRetained": "غير محفوظ",
-      "notRetainedSpan": "{{label}}: غير محفوظ من {{start}} إلى {{end}}",
+      "notRetained": "لا بيانات هذا الأسبوع",
+      "notRetainedSpan": "{{label}}: لا بيانات من {{start}} إلى {{end}}",
       "countryWide": "على مستوى البلد",
       "source": {
         "conflict": "النزاعات",
@@ -5418,6 +5418,7 @@
         "overhead": "عبور"
       },
       "retained": "من {{start}} إلى {{end}}",
+      "retainedDay": "{{day}} فقط",
       "geoLine": "أقمار ثابتة بالنسبة للأرض في المجال: {{names}}",
       "away": "على بعد {{km}} كم"
     }

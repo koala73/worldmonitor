@@ -5228,8 +5228,8 @@
       "density": "{{label}} 통과, {{start}}~{{end}}: {{count}}",
       "daylight": "지점의 낮 시간 {{start}}~{{end}}",
       "unavailable": "사용 불가",
-      "notRetained": "보관되지 않음",
-      "notRetainedSpan": "{{label}}: {{start}}~{{end}} 보관되지 않음",
+      "notRetained": "이번 주 데이터 없음",
+      "notRetainedSpan": "{{label}}: {{start}}~{{end}} 데이터 없음",
       "countryWide": "전국",
       "source": {
         "conflict": "분쟁",
@@ -5253,6 +5253,7 @@
         "overhead": "통과"
       },
       "retained": "{{start}}~{{end}}",
+      "retainedDay": "{{day}}만",
       "geoLine": "시야 내 정지궤도: {{names}}",
       "away": "{{km}}km 거리"
     }

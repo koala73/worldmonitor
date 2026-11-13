@@ -5294,8 +5294,8 @@
       "density": "Pasadas {{label}}, de {{start}} a {{end}}: {{count}}",
       "daylight": "Luz diurna en el punto de {{start}} a {{end}}",
       "unavailable": "no disponible",
-      "notRetained": "no conservado",
-      "notRetainedSpan": "{{label}}: no conservado de {{start}} a {{end}}",
+      "notRetained": "sin datos esta semana",
+      "notRetainedSpan": "{{label}}: sin datos de {{start}} a {{end}}",
       "countryWide": "en todo el país",
       "source": {
         "conflict": "Conflictos",
@@ -5319,6 +5319,7 @@
         "overhead": "Paso"
       },
       "retained": "{{start}} a {{end}}",
+      "retainedDay": "solo {{day}}",
       "geoLine": "Geoestacionarios a la vista: {{names}}",
       "away": "a {{km}} km"
     }

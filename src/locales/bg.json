@@ -5261,8 +5261,8 @@
       "density": "Преминавания {{label}}, от {{start}} до {{end}}: {{count}}",
       "daylight": "Дневна светлина в точката от {{start}} до {{end}}",
       "unavailable": "недостъпно",
-      "notRetained": "не се съхранява",
-      "notRetainedSpan": "{{label}}: не се съхранява от {{start}} до {{end}}",
+      "notRetained": "няма данни тази седмица",
+      "notRetainedSpan": "{{label}}: няма данни от {{start}} до {{end}}",
       "countryWide": "за цялата страна",
       "source": {
         "conflict": "Конфликти",
@@ -5286,6 +5286,7 @@
         "overhead": "Преминал"
       },
       "retained": "{{start}} до {{end}}",
+      "retainedDay": "само {{day}}",
       "geoLine": "Геостационарни във видимост: {{names}}",
       "away": "на {{km}} км"
     }

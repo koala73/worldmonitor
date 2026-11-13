@@ -5228,8 +5228,8 @@
       "density": "{{label}}过境，{{start}} 至 {{end}}：{{count}}",
       "daylight": "该点的白昼时段 {{start}} 至 {{end}}",
       "unavailable": "不可用",
-      "notRetained": "未保留",
-      "notRetainedSpan": "{{label}}：{{start}} 至 {{end}} 未保留",
+      "notRetained": "本周无数据",
+      "notRetainedSpan": "{{label}}：{{start}} 至 {{end}} 无数据",
       "countryWide": "全国范围",
       "source": {
         "conflict": "冲突",
@@ -5253,6 +5253,7 @@
         "overhead": "过顶"
       },
       "retained": "{{start}} 至 {{end}}",
+      "retainedDay": "仅 {{day}}",
       "geoLine": "视野内的静止卫星：{{names}}",
       "away": "{{km}} 公里外"
     }
