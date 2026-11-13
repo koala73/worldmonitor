@@ -5125,6 +5125,32 @@
       "sourceUnavailable": "存档中没有该来源在这些日期的图像。"
     },
     "dailyMosaics": "每日镶嵌图",
-    "weatherFrames": "气象图像"
+    "weatherFrames": "气象图像",
+    "search": {
+      "label": "地名或坐标",
+      "placeholder": "地名或 48.8584, 2.2945",
+      "submit": "搜索",
+      "locate": "使用我的位置",
+      "hint": "坐标和你的位置只保留在此浏览器中。你搜索的地名会发送给 WorldMonitor 和 OpenStreetMap 的 Nominatim。",
+      "results": "匹配的地点",
+      "searching": "正在搜索…",
+      "tooShort": "请输入至少两个字符，或类似 48.8584, 2.2945 的坐标。",
+      "invalidCoordinates": "这些坐标超出了地球范围。纬度范围为 -90 到 90，经度范围为 -180 到 180。",
+      "failed": "地名搜索暂时不可用。坐标和地图仍可使用。",
+      "noResults": "没有与该名称匹配的地点。",
+      "locating": "正在获取你的位置…",
+      "locationDenied": "位置权限被拒绝。请搜索地点或在地图上右键单击。",
+      "locationUnavailable": "无法获取你的位置。请搜索地点或在地图上右键单击。",
+      "idle": "按名称或坐标搜索地点、使用你的位置，或在地图上右键单击，查看哪些卫星经过了该地上空。"
+    },
+    "share": {
+      "copy": "复制分享链接",
+      "copied": "链接已复制",
+      "copyManually": "请复制下方链接",
+      "link": "分享链接",
+      "dismiss": "关闭",
+      "passOutsideWindow": "链接中的过境不在当前时间窗口内，因此未选中任何过境。",
+      "passNotFound": "在重新计算的过境中未找到链接中的过境，因此未选中任何过境。"
+    }
   }
 }

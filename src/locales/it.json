@@ -5181,6 +5181,32 @@
       "sourceUnavailable": "L’archivio non contiene immagini di questa fonte per questi giorni."
     },
     "dailyMosaics": "mosaici giornalieri",
-    "weatherFrames": "immagini meteo"
+    "weatherFrames": "immagini meteo",
+    "search": {
+      "label": "Nome del luogo o coordinate",
+      "placeholder": "Nome del luogo o 48.8584, 2.2945",
+      "submit": "Cerca",
+      "locate": "Usa la mia posizione",
+      "hint": "Le coordinate e la tua posizione restano in questo browser. Il nome di un luogo che cerchi viene inviato a WorldMonitor e a Nominatim di OpenStreetMap.",
+      "results": "Luoghi corrispondenti",
+      "searching": "Ricerca in corso…",
+      "tooShort": "Digita almeno due caratteri, o coordinate come 48.8584, 2.2945.",
+      "invalidCoordinates": "Queste coordinate sono fuori dal globo. La latitudine va da -90 a 90 e la longitudine da -180 a 180.",
+      "failed": "La ricerca dei luoghi non è disponibile al momento. Le coordinate e la mappa funzionano ancora.",
+      "noResults": "Nessun luogo corrisponde a quel nome.",
+      "locating": "Ricerca della posizione…",
+      "locationDenied": "L'autorizzazione alla posizione è stata negata. Cerca un luogo o fai clic destro sulla mappa.",
+      "locationUnavailable": "Impossibile trovare la tua posizione. Cerca un luogo o fai clic destro sulla mappa.",
+      "idle": "Cerca un luogo per nome o coordinate, usa la tua posizione o fai clic destro sulla mappa per vedere quali satelliti vi sono passati sopra."
+    },
+    "share": {
+      "copy": "Copia link di condivisione",
+      "copied": "Link copiato",
+      "copyManually": "Copia il link qui sotto",
+      "link": "Link di condivisione",
+      "dismiss": "Chiudi",
+      "passOutsideWindow": "Il passaggio collegato è fuori dalla finestra attuale, quindi nessun passaggio è selezionato.",
+      "passNotFound": "Il passaggio collegato non è stato trovato tra i passaggi ricalcolati, quindi nessun passaggio è selezionato."
+    }
   }
 }

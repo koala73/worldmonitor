@@ -5153,6 +5153,32 @@
       "sourceUnavailable": "Arkivet har inga bilder från den här källan för dessa dagar."
     },
     "dailyMosaics": "dagliga mosaiker",
-    "weatherFrames": "väderbilder"
+    "weatherFrames": "väderbilder",
+    "search": {
+      "label": "Platsnamn eller koordinater",
+      "placeholder": "Platsnamn eller 48.8584, 2.2945",
+      "submit": "Sök",
+      "locate": "Använd min plats",
+      "hint": "Koordinater och din plats stannar i den här webbläsaren. Ett platsnamn du söker skickas till WorldMonitor och till OpenStreetMaps Nominatim.",
+      "results": "Matchande platser",
+      "searching": "Söker…",
+      "tooShort": "Skriv minst två tecken, eller koordinater som 48.8584, 2.2945.",
+      "invalidCoordinates": "De koordinaterna ligger utanför jordklotet. Latitud går från -90 till 90 och longitud från -180 till 180.",
+      "failed": "Platssökningen är inte tillgänglig just nu. Koordinater och kartan fungerar fortfarande.",
+      "noResults": "Ingen plats matchade det namnet.",
+      "locating": "Hämtar din plats…",
+      "locationDenied": "Platsbehörigheten nekades. Sök efter en plats eller högerklicka på kartan i stället.",
+      "locationUnavailable": "Din plats kunde inte hittas. Sök efter en plats eller högerklicka på kartan i stället.",
+      "idle": "Sök efter en plats med namn eller koordinater, använd din plats, eller högerklicka på kartan för att se vilka satelliter som passerat över den."
+    },
+    "share": {
+      "copy": "Kopiera delningslänk",
+      "copied": "Länken kopierad",
+      "copyManually": "Kopiera länken nedan",
+      "link": "Delningslänk",
+      "dismiss": "Stäng",
+      "passOutsideWindow": "Den länkade passagen ligger utanför det aktuella fönstret, så ingen passage är vald.",
+      "passNotFound": "Den länkade passagen hittades inte bland de omräknade passagerna, så ingen passage är vald."
+    }
   }
 }

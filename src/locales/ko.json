@@ -5125,6 +5125,32 @@
       "sourceUnavailable": "아카이브에 이 기간 동안 이 출처의 영상이 없습니다."
     },
     "dailyMosaics": "일일 모자이크",
-    "weatherFrames": "기상 영상"
+    "weatherFrames": "기상 영상",
+    "search": {
+      "label": "장소 이름 또는 좌표",
+      "placeholder": "장소 이름 또는 48.8584, 2.2945",
+      "submit": "검색",
+      "locate": "내 위치 사용",
+      "hint": "좌표와 내 위치는 이 브라우저에만 남습니다. 검색한 장소 이름은 WorldMonitor와 OpenStreetMap의 Nominatim으로 전송됩니다.",
+      "results": "일치하는 장소",
+      "searching": "검색 중…",
+      "tooShort": "두 글자 이상 또는 48.8584, 2.2945 같은 좌표를 입력하세요.",
+      "invalidCoordinates": "이 좌표는 지구 범위를 벗어났습니다. 위도는 -90에서 90, 경도는 -180에서 180 사이입니다.",
+      "failed": "지금은 장소 검색을 사용할 수 없습니다. 좌표와 지도는 계속 작동합니다.",
+      "noResults": "이 이름과 일치하는 장소가 없습니다.",
+      "locating": "위치를 찾는 중…",
+      "locationDenied": "위치 권한이 거부되었습니다. 장소를 검색하거나 지도를 마우스 오른쪽 버튼으로 클릭하세요.",
+      "locationUnavailable": "위치를 찾을 수 없습니다. 장소를 검색하거나 지도를 마우스 오른쪽 버튼으로 클릭하세요.",
+      "idle": "이름이나 좌표로 장소를 검색하거나, 내 위치를 사용하거나, 지도를 마우스 오른쪽 버튼으로 클릭해 그 위를 지나간 위성을 확인하세요."
+    },
+    "share": {
+      "copy": "공유 링크 복사",
+      "copied": "링크가 복사되었습니다",
+      "copyManually": "아래 링크를 복사하세요",
+      "link": "공유 링크",
+      "dismiss": "닫기",
+      "passOutsideWindow": "링크된 통과가 현재 기간을 벗어나 선택된 통과가 없습니다.",
+      "passNotFound": "링크된 통과를 다시 계산한 통과 중에서 찾지 못해 선택된 통과가 없습니다."
+    }
   }
 }

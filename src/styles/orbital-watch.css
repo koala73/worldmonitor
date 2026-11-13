@@ -66,3 +66,25 @@
     border-bottom: 0;
   }
 }
+
+.ow-tools { padding: 8px 14px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+.ow-search { display: flex; gap: 6px; flex-wrap: wrap; }
+.ow-search-input { flex: 1 1 160px; min-width: 0; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px; font: inherit; }
+.ow-search-input:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.ow-search-submit, .ow-locate, .ow-share { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; font: inherit; cursor: pointer; }
+.ow-share:disabled { opacity: 0.5; cursor: default; }
+.ow-search-hint { margin: 0; color: var(--text-dim); font-size: 11px; line-height: 1.4; }
+.ow-search-status { margin: 0; color: var(--text-dim); }
+.ow-search-status:empty, .ow-search-results:empty { display: none; }
+.ow-search-results { list-style: none; margin: 0; padding: 0; max-height: 160px; overflow-y: auto; }
+.ow-search-result { display: flex; width: 100%; justify-content: space-between; gap: 8px; background: none; border: 0; border-bottom: 1px solid var(--border); color: var(--text); padding: 6px 0; font: inherit; text-align: left; cursor: pointer; }
+.ow-search-result:hover, .ow-search-result:focus-visible { background: var(--surface); }
+.ow-search-result-kind { color: var(--text-dim); white-space: nowrap; }
+.ow-share-row { display: flex; align-items: center; gap: 8px; }
+.ow-share-status { color: var(--text-dim); }
+.ow-share-link { width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; font: inherit; }
+.ow-note { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 6px 8px; border: 1px solid var(--semantic-elevated); border-radius: 6px; background: var(--surface); }
+.ow-note[hidden] { display: none; }
+.ow-note-dismiss { background: none; border: 0; color: var(--text-dim); font-size: 16px; line-height: 1; cursor: pointer; }
+.ow-row[data-pass] { cursor: pointer; }
+.ow-row[aria-current="true"] { background: var(--surface); border-left-color: var(--accent); }

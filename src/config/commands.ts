@@ -294,6 +294,7 @@ export const COMMANDS: Command[] = [
   { id: 'view:route-explorer', keywords: ['route', 'explorer', 'ship', 'shipping', 'freight', 'cargo', 'lane', 'hs code', 'hs2', 'import', 'export', 'plan a shipment'], label: 'Route Explorer \u2014 plan a shipment', icon: '\u{1F6A2}', category: 'view' },
 
   // Time range
+  { id: 'orbital:search', keywords: ['satellite passes', 'satellite imagery', 'which satellites', 'imaged here', 'orbital watch', 'satellite lookup'], label: 'Satellite passes: find a place', icon: '\u{1F6F0}\uFE0F', category: 'actions' },
   { id: 'time:1h', keywords: ['1h', 'last hour', '1 hour'], label: 'Show events from last hour', icon: '\u{1F550}', category: 'actions' },
   { id: 'time:6h', keywords: ['6h', 'last 6 hours', '6 hours'], label: 'Show events from last 6 hours', icon: '\u{1F555}', category: 'actions' },
   { id: 'time:24h', keywords: ['24h', 'last 24 hours', 'today'], label: 'Show events from last 24 hours', icon: '\u{1F55B}', category: 'actions' },

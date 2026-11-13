@@ -5192,6 +5192,32 @@
       "sourceUnavailable": "Arhiva nema snimaka iz ovog izvora za te dane."
     },
     "dailyMosaics": "dnevni mozaici",
-    "weatherFrames": "meteorološke snimke"
+    "weatherFrames": "meteorološke snimke",
+    "search": {
+      "label": "Naziv mjesta ili koordinate",
+      "placeholder": "Naziv mjesta ili 48.8584, 2.2945",
+      "submit": "Traži",
+      "locate": "Koristi moju lokaciju",
+      "hint": "Koordinate i vaša lokacija ostaju u ovom pregledniku. Naziv mjesta koji tražite šalje se WorldMonitoru i OpenStreetMapovom Nominatimu.",
+      "results": "Odgovarajuća mjesta",
+      "searching": "Traženje…",
+      "tooShort": "Upišite barem dva znaka ili koordinate poput 48.8584, 2.2945.",
+      "invalidCoordinates": "Te su koordinate izvan zemaljske kugle. Geografska širina ide od -90 do 90, a dužina od -180 do 180.",
+      "failed": "Traženje mjesta trenutačno nije dostupno. Koordinate i karta i dalje rade.",
+      "noResults": "Nijedno mjesto ne odgovara tom nazivu.",
+      "locating": "Određivanje lokacije…",
+      "locationDenied": "Dopuštenje za lokaciju je odbijeno. Potražite mjesto ili desnom tipkom kliknite kartu.",
+      "locationUnavailable": "Vašu lokaciju nije moguće odrediti. Potražite mjesto ili desnom tipkom kliknite kartu.",
+      "idle": "Potražite mjesto po nazivu ili koordinatama, upotrijebite svoju lokaciju ili desnom tipkom kliknite kartu da vidite koji su sateliti prošli iznad njega."
+    },
+    "share": {
+      "copy": "Kopiraj poveznicu za dijeljenje",
+      "copied": "Poveznica kopirana",
+      "copyManually": "Kopirajte poveznicu ispod",
+      "link": "Poveznica za dijeljenje",
+      "dismiss": "Zatvori",
+      "passOutsideWindow": "Povezani prelet izvan je trenutačnog prozora, pa nijedan prelet nije odabran.",
+      "passNotFound": "Povezani prelet nije pronađen među ponovno izračunatim preletima, pa nijedan prelet nije odabran."
+    }
   }
 }

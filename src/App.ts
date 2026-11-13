@@ -69,6 +69,9 @@ import {
   showToast,
 } from '@/utils';
 import { clearPanelSpans, invalidatePanelStorageCacheForKeys } from '@/utils/panel-storage';
+import type { OrbitalShareLink } from '@/utils/urlState';
+import { scheduleOrbitalShareLink, takeOrbitalShareLink } from '@/app/orbital-share-link';
+import { connectOrbitalLookupMap } from '@/services/orbital/lookup-host';
 import { overlayHistory, type OverlayId } from '@/utils/overlay-history';
 import type { ParsedMapUrlState } from '@/utils';
 import { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
@@ -331,6 +334,8 @@ export class App {
   private pendingDeepLinkStoryCode: string | null = null;
   private pendingDeepLinkChokepoint: string | null = null;
   private pendingDeepLinkSearchQuery: string | null = null;
+  private pendingOrbitalShareLink: OrbitalShareLink | null = null;
+  private cancelOrbitalShareLink: (() => void) | null = null;
   private chokepointDeepLinkTimer: number | null = null;
   private stockDeepLinkTimer: number | null = null;
   // At most one automatic precise mobile recenter per startup (#7778). Set
@@ -3100,6 +3105,8 @@ export class App {
     }
     this.pendingDeepLinkStoryCode = earlyParams.get('c') ?? null;
     this.pendingDeepLinkSearchQuery = readDashboardSearchQuery(window.location.search);
+    this.pendingOrbitalShareLink = takeOrbitalShareLink();
+    connectOrbitalLookupMap(() => this.state.map);
     this.eventHandlers.setupUrlStateSync();
     if (import.meta.env.VITE_E2E === '1') {
       document.documentElement.dataset.wmEventHandlersReady = 'true';
@@ -3707,6 +3714,8 @@ export class App {
       window.cancelAnimationFrame(this.visiblePanelPrimeRaf);
       this.visiblePanelPrimeRaf = null;
     }
+    this.cancelOrbitalShareLink?.();
+    this.cancelOrbitalShareLink = null;
     if (this.chokepointDeepLinkTimer !== null) {
       window.clearTimeout(this.chokepointDeepLinkTimer);
       this.chokepointDeepLinkTimer = null;
@@ -3897,6 +3906,13 @@ export class App {
   private handleDeepLinks(): void {
     const url = new URL(window.location.href);
     const DEEP_LINK_INITIAL_DELAY_MS = 1500;
+
+    // A satellite pass share link lives in the fragment and opens beside any other deep link.
+    const orbitalShareLink = this.pendingOrbitalShareLink;
+    this.pendingOrbitalShareLink = null;
+    if (orbitalShareLink) {
+      this.cancelOrbitalShareLink = scheduleOrbitalShareLink(orbitalShareLink, DEEP_LINK_INITIAL_DELAY_MS, () => this.state.isDestroyed);
+    }
 
     // SearchAction lands on /dashboard?q=… after URL sync has already rewritten
     // the address bar. Consume the captured term through the same lazy path as

@@ -16,6 +16,7 @@ export type ArchiveState =
   | { kind: 'answered'; evidence: OrbitalEvidence };
 
 export type OrbitalWatchState =
+  | { kind: 'idle' }
   | { kind: 'computing'; done: number; total: number }
   | { kind: 'unavailable' }
   | { kind: 'passes'; lookup: PointPassLookup; archives: ArchiveState };
@@ -23,6 +24,17 @@ export type OrbitalWatchState =
 export interface OrbitalWatchPageCallbacks {
   onClose: () => void;
   onRetry: () => void;
+}
+
+export interface OrbitalWatchPageExtensions {
+  /** Controls docked under the sheet header, such as place search and sharing. */
+  tools?: HTMLElement;
+}
+
+/** The pass a share link points at: its satellite and closest-approach time. */
+export interface SelectedPass {
+  noradId: number;
+  timeMs: number;
 }
 
 type GroupId = 'confirmed' | 'likely' | 'checking' | 'upcoming' | 'mosaic' | 'frames' | 'inRange' | 'passed';
@@ -123,6 +135,7 @@ function formatAgeDays(days: number): string {
 
 interface Row {
   sortMs: number;
+  passKey?: string;
   render: () => HTMLElement;
 }
 
@@ -146,7 +159,7 @@ function groupPasses(lookup: PointPassLookup, archives: ArchiveState): Map<Group
   for (const pass of evidence?.passes ?? lookup.passes) {
     const checking = pendingProfiles.has(pass.profileId) && candidates.has(passKey(pass)) && pass.tier.kind !== 'confirmed-image';
     const group = checking ? 'checking' : GROUP_OF_TIER[pass.tier.kind];
-    groups.get(group)!.rows.push({ sortMs: pass.timeMs, render: () => passRow(pass, checking, acquisitionByPass.get(passKey(pass)) ?? null) });
+    groups.get(group)!.rows.push({ sortMs: pass.timeMs, passKey: passKey(pass), render: () => passRow(pass, checking, acquisitionByPass.get(passKey(pass)) ?? null) });
   }
   for (const acquisition of evidence?.acquisitions ?? []) {
     if (!acquisition.pass) groups.get('confirmed')!.rows.push({ sortMs: acquisition.startMs, render: () => unmatchedImageRow(acquisition) });
@@ -209,7 +222,7 @@ function passRow(pass: PointPass, checking: boolean, acquisition: MatchedAcquisi
     pass.edgeOfSwath ? t('orbitalWatch.row.edgeOfSwath') : null,
     pass.tier.kind === 'passed-overhead' && pass.tier.note === 'not-in-archive' ? t('orbitalWatch.row.notInArchive') : null,
   ].filter((note): note is string => note !== null);
-  return h('li', { className: 'ow-row', tabindex: '0', dataset: { tier: checking ? 'checking' : pass.tier.kind } },
+  return h('li', { className: 'ow-row', tabindex: '0', dataset: { tier: checking ? 'checking' : pass.tier.kind, pass: passKey(pass) } },
     h('div', { className: 'ow-row-head' },
       h('span', { className: 'ow-row-name' }, pass.name),
       h('span', { className: 'ow-tier-label' }, tierLabel)),
@@ -238,14 +251,17 @@ export class OrbitalWatchPage {
   /** Groups the user opened or closed, against their default. */
   private readonly toggled = new Set<GroupId>();
   private state: OrbitalWatchState | null = null;
+  private selectedKey: string | null = null;
+  private revealSelected = false;
 
-  constructor(private readonly callbacks: OrbitalWatchPageCallbacks) {
+  constructor(private readonly callbacks: OrbitalWatchPageCallbacks, extensions: OrbitalWatchPageExtensions = {}) {
     const titleId = 'orbital-watch-title';
     this.pointLabel = h('p', { className: 'ow-point' });
     this.body = h('div', { className: 'ow-body' });
     const close = h('button', { type: 'button', className: 'ow-close', 'aria-label': t('countryBrief.closeBtn'), onClick: () => this.close() }, '×');
     this.sheet = h('section', { className: 'orbital-watch-sheet', role: 'dialog', 'aria-labelledby': titleId, tabindex: '-1' },
       h('header', { className: 'ow-header' }, h('div', null, h('h2', { id: titleId }, t('contextMenu.satellitePasses')), this.pointLabel), close),
+      extensions.tools ?? null,
       this.body,
       h('p', { className: 'ow-privacy' }, t('orbitalWatch.privacy')));
     declareOverlay(this.sheet, { reload: 'safe' });
@@ -257,11 +273,13 @@ export class OrbitalWatchPage {
     return this.sheet.isConnected;
   }
 
-  open(point: GeoPoint, returnFocusTo: HTMLElement | null): void {
+  /** Opens on a point, or with no point yet so the reader can search for one. */
+  open(point: GeoPoint | null, returnFocusTo: HTMLElement | null): void {
     this.returnFocusTo = returnFocusTo;
     this.toggled.clear();
-    this.pointLabel.textContent = formatPoint(point);
-    this.render({ kind: 'computing', done: 0, total: 0 });
+    this.selectedKey = null;
+    this.pointLabel.textContent = point ? formatPoint(point) : '';
+    this.render(point ? { kind: 'computing', done: 0, total: 0 } : { kind: 'idle' });
     if (!this.isOpen) {
       document.body.appendChild(this.sheet);
       document.addEventListener('keydown', this.onDocumentKeydown);
@@ -274,6 +292,7 @@ export class OrbitalWatchPage {
     document.removeEventListener('keydown', this.onDocumentKeydown);
     this.sheet.remove();
     this.state = null;
+    this.selectedKey = null;
     this.callbacks.onClose();
     const target = this.returnFocusTo;
     this.returnFocusTo = null;
@@ -287,10 +306,35 @@ export class OrbitalWatchPage {
     this.state = state;
     const content = this.renderState(state);
     replaceChildren(this.body, ...content);
+    this.markSelected();
+  }
+
+  get selectedPass(): SelectedPass | null {
+    if (!this.selectedKey) return null;
+    const [noradId, timeMs] = this.selectedKey.split(':').map(Number);
+    return { noradId: noradId!, timeMs: timeMs! };
+  }
+
+  /** Selects a pass, opening its group and bringing it into view. */
+  selectPass(pass: SelectedPass | null): void {
+    this.selectedKey = pass ? passKey(pass) : null;
+    this.revealSelected = pass !== null;
+    if (this.state) this.render(this.state);
+  }
+
+  private markSelected(): void {
+    const row = this.selectedKey ? this.body.querySelector<HTMLElement>(`.ow-row[data-pass="${this.selectedKey}"]`) : null;
+    row?.setAttribute('aria-current', 'true');
+    if (row && this.revealSelected) {
+      this.revealSelected = false;
+      row.scrollIntoView?.({ block: 'nearest' });
+    }
   }
 
   private renderState(state: OrbitalWatchState): DomChild[] {
     switch (state.kind) {
+      case 'idle':
+        return [h('p', { className: 'ow-empty' }, t('orbitalWatch.search.idle'))];
       case 'computing':
         return [h('p', { className: 'ow-status', role: 'status' }, state.total > 0
           ? t('orbitalWatch.computingProgress', { done: state.done, total: state.total })
@@ -343,7 +387,8 @@ export class OrbitalWatchPage {
 
   private renderGroup(group: Group): HTMLElement {
     const { id } = group.spec;
-    const expanded = group.spec.expanded !== this.toggled.has(id);
+    const holdsSelected = this.selectedKey !== null && group.rows.some((row) => row.passKey === this.selectedKey);
+    const expanded = (group.spec.expanded || holdsSelected) !== this.toggled.has(id);
     const listId = `orbital-watch-group-${id}`;
     const toggle = h('button', { type: 'button', className: 'ow-group-toggle', 'aria-expanded': String(expanded), 'aria-controls': listId, dataset: { group: id } },
       h('span', null, t(GROUP_LABEL_KEY[id])),
@@ -363,6 +408,11 @@ export class OrbitalWatchPage {
       this.callbacks.onRetry();
       return;
     }
+    const row = target.closest<HTMLElement>('.ow-row[data-pass]');
+    if (row && !target.closest('a')) {
+      this.togglePassSelection(row);
+      return;
+    }
     const toggle = target.closest<HTMLElement>('.ow-group-toggle');
     const id = toggle?.dataset.group as GroupId | undefined;
     if (!id || !this.state) return;
@@ -372,7 +422,20 @@ export class OrbitalWatchPage {
     this.body.querySelector<HTMLElement>(`.ow-group-toggle[data-group="${id}"]`)?.focus();
   };
 
+  private togglePassSelection(row: HTMLElement): void {
+    const key = row.dataset.pass!;
+    this.selectedKey = this.selectedKey === key ? null : key;
+    if (this.state) this.render(this.state);
+    this.body.querySelector<HTMLElement>(`.ow-row[data-pass="${key}"]`)?.focus();
+  }
+
   private readonly onSheetKeydown = (event: KeyboardEvent): void => {
+    const passRowTarget = (event.target as HTMLElement).closest<HTMLElement>('.ow-row[data-pass]');
+    if (passRowTarget && (event.key === 'Enter' || event.key === ' ') && event.target === passRowTarget) {
+      event.preventDefault();
+      this.togglePassSelection(passRowTarget);
+      return;
+    }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     const row = (event.target as HTMLElement).closest('.ow-row');
     if (!row) return;
