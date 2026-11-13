@@ -5225,14 +5225,14 @@
         "passes": "गुज़र"
       },
       "status": {
-        "objects": "{{count}} वस्तुएँ · CelesTrak GP",
+        "objects": "{{count}} इमेजिंग उपग्रह · CelesTrak GP",
         "fetched": "प्राप्त {{time}} · {{ago}}",
         "sun": "सूर्य {{point}} · उपसौर बिंदु"
       },
       "step": {
         "computing": "गणना",
         "catalogLoading": "कैटलॉग · लोड हो रहा है",
-        "catalog": "कैटलॉग · {{count}} वस्तुएँ",
+        "catalog": "कैटलॉग · {{count}} इमेजिंग उपग्रह",
         "propagating": "कक्षाओं की गणना · {{done}} / {{total}}",
         "archives": "संग्रह · {{done}} / {{total}} ने उत्तर दिया",
         "matching": "दृश्यों को {{passes}} गुज़रों से मिलाया जा रहा है",
