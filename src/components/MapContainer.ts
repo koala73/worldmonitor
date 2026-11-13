@@ -1126,7 +1126,7 @@ export class MapContainer {
     if (!this.isViewportRendererReady()) return null;
     const centre = this.useGlobe
       ? this.globeMap?.centerForOffset(lat, lon, zoom, offset) ?? { lat, lon }
-      : this.useDeckGL ? mercatorCenterForOffset(lat, lon, zoom, offset) : { lat, lon };
+      : this.useDeckGL ? mercatorCenterForOffset(lat, lon, zoom, offset) : this.svgMap?.centerForOffset(lat, lon, zoom, offset) ?? { lat, lon };
     return this.setCenter(centre.lat, centre.lon, zoom);
   }
 
@@ -1140,7 +1140,7 @@ export class MapContainer {
   public projectToClient(lat: number, lon: number): { x: number; y: number } | null {
     if (this.useGlobe) return this.globeMap?.projectToClient(lat, lon) ?? null;
     if (this.useDeckGL) return this.deckGLMap?.projectToClient(lat, lon) ?? null;
-    return null;
+    return this.svgMap?.projectToClient(lat, lon) ?? null;
   }
 
   /** Where the map draws, in client coordinates; the globe keeps drawing at its old size until a resize settles. */
