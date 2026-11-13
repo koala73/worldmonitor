@@ -17,7 +17,9 @@ import { h, replaceChildren } from '@/utils/dom-utils';
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 /** Passes closer than this share of the width draw as one glyph, so a busy row stays readable. */
-const CLUSTER_PCT = 0.4;
+const CLUSTER_PCT = 1;
+/** Day labels run right of their midnight, so they give way to NOW and to the right edge. */
+const DAY_LABEL_PCT = 6;
 const TIP_NAMES = 4;
 
 export const passKey = (pass: { noradId: number; timeMs: number }) => `${pass.noradId}:${pass.timeMs}`;
@@ -202,7 +204,7 @@ export class OrbitalTimeline {
       h('div', { className: 'ow-tl-strip' }, ...eventMarks),
       ...rows,
       h('div', { className: 'ow-tl-axis' },
-        ...midnights.filter((ms) => Math.abs(pct(ms) - nowPct) > 4).map((ms) => this.dayLabel(clock, ms, at(ms))),
+        ...midnights.filter((ms) => !(pct(ms) > nowPct - DAY_LABEL_PCT && pct(ms) < nowPct + 3) && pct(ms) < 100 - DAY_LABEL_PCT / 2).map((ms) => this.dayLabel(clock, ms, at(ms))),
         h('span', { className: 'ow-tl-now-label', style: at(nowMs) }, t('orbitalWatch.timeline.now'))));
     this.hideTip();
 
@@ -262,7 +264,10 @@ export class OrbitalTimeline {
 
   private readonly onPointerOver = (event: PointerEvent): void => {
     const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tip]');
-    if (!target) return this.hideTip();
+    if (!target) {
+      this.hideTip();
+      return;
+    }
     const frame = this.element.getBoundingClientRect();
     const box = target.getBoundingClientRect();
     this.tip.textContent = target.dataset.tip ?? '';
