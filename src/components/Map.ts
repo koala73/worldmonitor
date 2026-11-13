@@ -163,6 +163,8 @@ const RENDERABLE_AI_DATA_CENTERS = AI_DATA_CENTERS.filter(
  */
 const SVG_FOCUS_MAX_ZOOM = 6;
 
+type OrbitalLabelSide = 'right' | 'left' | 'below';
+
 export interface FocusFitInset {
   width: number;
   height: number;
@@ -5181,12 +5183,12 @@ export class MapComponent {
     if (lines.length === 0) return;
     const frame = this.container.getBoundingClientRect();
     const right = Math.min(frame.right, document.documentElement.clientWidth) - 48;
-    // The tag sits right of the reticle; on a narrow map it moves left, then wraps at its ' · ' breaks.
-    const attempts: Array<[string[], boolean]> = [[lines, false], [lines, true]];
+    // The tag sits right of the reticle; on a narrow map it moves left, then under it, then wraps at its ' · ' breaks.
+    const attempts: Array<[string[], OrbitalLabelSide]> = [[lines, 'right'], [lines, 'left'], [lines, 'below']];
     const wrapped = MapComponent.wrapOrbitalLines(lines);
-    if (wrapped.length > lines.length) attempts.push([wrapped, false], [wrapped, true]);
-    for (const [i, [rows, left]] of attempts.entries()) {
-      const label = MapComponent.drawOrbitalLabel(reticle, rows, left);
+    if (wrapped.length > lines.length) attempts.push([wrapped, 'right'], [wrapped, 'left']);
+    for (const [i, [rows, side]] of attempts.entries()) {
+      const label = MapComponent.drawOrbitalLabel(reticle, rows, side);
       const box = label.node()?.getBoundingClientRect();
       const fits = !box || box.width <= 0 || (box.left >= frame.left + 4 && box.right <= right);
       if (fits || i === attempts.length - 1) return;
@@ -5197,11 +5199,12 @@ export class MapComponent {
   private static drawOrbitalLabel(
     reticle: d3.Selection<SVGGElement, unknown, null, undefined>,
     lines: string[],
-    left: boolean,
+    side: OrbitalLabelSide,
   ): d3.Selection<SVGGElement, unknown, null, undefined> {
     const width = 10 + 7 * Math.max(...lines.map((line) => line.length));
-    const x = left ? -20 - width : 20;
+    const x = side === 'left' ? -20 - width : side === 'below' ? -width / 2 : 20;
     const label = reticle.append('g');
+    if (side === 'below') label.attr('transform', `translate(0,${20 + 9 * lines.length + 3})`);
     label.append('rect').attr('x', x).attr('y', -9 * lines.length - 3).attr('height', 18 * lines.length + 6)
       .attr('width', width).attr('fill', 'rgba(11,12,14,0.88)');
     const text = label.append('text').attr('fill', '#ecebe7')

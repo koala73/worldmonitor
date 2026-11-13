@@ -50,11 +50,20 @@ describe('orbital target tag on the SVG map', () => {
     expect(tspans(reticle)).toEqual(LINES);
   });
 
-  it('wraps at its breaks and moves left of the reticle on a phone-width map', () => {
+  it('keeps its two lines and moves under the reticle on a phone-width map', () => {
     stubLayout(390);
     const reticle = renderTarget(LINES);
     expect(reticle.querySelectorAll('rect')).toHaveLength(1);
-    expect(Number(reticle.querySelector('rect')?.getAttribute('x'))).toBeLessThan(0);
+    const rect = reticle.querySelector('rect')!;
+    expect(Number(rect.getAttribute('x')) + Number(rect.getAttribute('width')) / 2, 'centred on the reticle').toBe(0);
+    expect(reticle.querySelector('g')?.getAttribute('transform')).toMatch(/^translate\(0,\d+\)$/);
+    expect(tspans(reticle)).toEqual(LINES);
+  });
+
+  it('wraps at its breaks only when even the tag under the reticle does not fit', () => {
+    stubLayout(300);
+    const reticle = renderTarget(LINES);
+    expect(reticle.querySelectorAll('rect')).toHaveLength(1);
     expect(tspans(reticle)).toEqual(['25.1120°N 55.1390°E', 'ACQUIRED Sun, 8 Nov', '07:01 UTC · 10 M']);
   });
 });
