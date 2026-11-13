@@ -144,6 +144,24 @@ describe('orbital pass client', () => {
     assert.equal(workers.length, 2);
   });
 
+  it('terminates a worker that finishes starting after the client was disposed', async () => {
+    const workers: InProcessWorker[] = [];
+    const client = createOrbitalPassClient({
+      createWorker: () => {
+        const worker = new InProcessWorker();
+        workers.push(worker);
+        queueMicrotask(() => client.dispose());
+        return worker;
+      },
+      loadCatalog: async () => catalog,
+      now: () => NOW,
+    });
+    await assert.rejects(client.lookup(lookupQuery()), { name: 'AbortError' });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(workers.length, 1);
+    assert.equal(workers[0]!.terminated, true);
+  });
+
   it('rejects with a RangeError for non-finite, reversed or longer than ten day windows and invalid points', async () => {
     const client = createOrbitalPassClient({ createWorker: () => new InProcessWorker(), loadCatalog: async () => catalog, now: () => NOW });
     await assert.rejects(client.lookup({ point: PARIS, pastDays: Number.NaN }), RangeError);

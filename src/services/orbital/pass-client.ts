@@ -141,15 +141,20 @@ export function createOrbitalPassClient(deps: PassClientDeps = {}): OrbitalPassC
     if (state.kind === 'starting') return state.ready;
     const ready = establishWorker().then(
       (worker) => {
+        if (state !== starting) {
+          worker?.terminate();
+          return null;
+        }
         state = worker ? { kind: 'ready', worker } : { kind: 'unavailable' };
         return worker;
       },
       (error: unknown) => {
-        state = { kind: 'idle' };
+        if (state === starting) state = { kind: 'idle' };
         throw error;
       },
     );
-    state = { kind: 'starting', ready };
+    const starting: WorkerState = { kind: 'starting', ready };
+    state = starting;
     return ready;
   }
 
