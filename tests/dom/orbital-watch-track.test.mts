@@ -21,6 +21,7 @@ import type { MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/mat
 import type { OrbitalTarget, PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
 import { openOrbitalWatch, type OrbitalTrackSurface } from '@/app/orbital-watch';
 import { watchOrbitalRoute } from '@/app/orbital-route';
+import { formatOrbitalTime, setOrbitalDisplayZone } from '@/components/OrbitalWatchPage';
 import fixture from '../fixtures/orbital/celestrak-gp-2026-11-13.json';
 
 const records = fixture.records as OmmRecord[];
@@ -163,7 +164,19 @@ describe('replayed pass ground track', () => {
     replay(sentinel);
     await vi.waitFor(() => expect(drawn()).toHaveLength(1));
     expect(lastPin()?.lines[0]).toBe('48.8500\u00b0N 2.3500\u00b0E');
-    expect(lastPin()?.lines[1]).toMatch(/^ACQUIRED .+ · 10 m$/i);
+    expect(lastPin()?.lines[1]).toBe(`ACQUIRED ${formatOrbitalTime(sentinel.timeMs, 'when')} · 10 M`);
+  });
+
+  it('stamps the acquisition in the zone the sheet displays', async () => {
+    setOrbitalDisplayZone('Asia/Dubai', 'GST');
+    try {
+      await openWithPasses();
+      replay(sentinel);
+      await vi.waitFor(() => expect(drawn()).toHaveLength(1));
+      expect(lastPin()?.lines[1]).toMatch(/ GST · 10 M$/);
+    } finally {
+      setOrbitalDisplayZone('UTC', 'UTC');
+    }
   });
 
   it('pins the looked-up point while the sheet is open and removes the pin on close', async () => {
