@@ -20,7 +20,7 @@ import type { PassTier } from '../../shared/orbital/tiers.js';
 import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { OrbitalEvidence } from '@/services/orbital/match';
-import { openOrbitalWatch, openOrbitalWatchSearch } from '@/app/orbital-watch';
+import { openOrbitalShareLink, openOrbitalWatch, openOrbitalWatchSearch } from '@/app/orbital-watch';
 import { scheduleOrbitalShareLink, takeOrbitalShareLink } from '@/app/orbital-share-link';
 import { EventHandlerManager } from '@/app/event-handlers';
 import { SearchSelectionDispatcher } from '@/app/search-selection-dispatcher';
@@ -221,6 +221,17 @@ describe('satellite pass share link', () => {
     } finally {
       desktop.value = false;
     }
+  });
+
+  it('lets the reader collapse the group a linked pass opened', async () => {
+    openOrbitalShareLink({ point: { lat: 48.86, lon: 2.29 }, pass: { noradId: 48917, minuteMs: NOW - 60 * HOUR } }, null);
+    const toggle = () => sheet()!.querySelector<HTMLButtonElement>('.ow-group-toggle[data-group="passed"]')!;
+    await vi.waitFor(() => expect(sheet()?.querySelector('.ow-row[aria-current="true"]')).not.toBeNull());
+    expect(toggle().getAttribute('aria-expanded')).toBe('true');
+    toggle().click();
+    expect(toggle().getAttribute('aria-expanded')).toBe('false');
+    toggle().click();
+    expect(toggle().getAttribute('aria-expanded')).toBe('true');
   });
 
   it('keeps a group the reader opened open when they select a pass in it', async () => {

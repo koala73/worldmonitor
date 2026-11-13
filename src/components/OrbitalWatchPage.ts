@@ -251,8 +251,8 @@ export class OrbitalWatchPage {
   private readonly closeButton: HTMLElement;
   private readonly privacy: HTMLElement;
   private returnFocusTo: HTMLElement | null = null;
-  /** Groups the user opened or closed, against their default. */
-  private readonly toggled = new Set<GroupId>();
+  /** Open state of groups the user toggled, which overrides the default. */
+  private readonly toggled = new Map<GroupId, boolean>();
   private state: OrbitalWatchState | null = null;
   private selectedKey: string | null = null;
   private revealSelected = false;
@@ -401,7 +401,7 @@ export class OrbitalWatchPage {
   private renderGroup(group: Group): HTMLElement {
     const { id } = group.spec;
     const holdsSelected = this.selectedKey !== null && group.rows.some((row) => row.passKey === this.selectedKey);
-    const expanded = this.toggled.has(id) ? !group.spec.expanded : group.spec.expanded || holdsSelected;
+    const expanded = this.toggled.get(id) ?? (group.spec.expanded || holdsSelected);
     const listId = `orbital-watch-group-${id}`;
     const toggle = h('button', { type: 'button', className: 'ow-group-toggle', 'aria-expanded': String(expanded), 'aria-controls': listId, dataset: { group: id } },
       h('span', null, t(GROUP_LABEL_KEY[id])),
@@ -429,8 +429,7 @@ export class OrbitalWatchPage {
     const toggle = target.closest<HTMLElement>('.ow-group-toggle');
     const id = toggle?.dataset.group as GroupId | undefined;
     if (!id || !this.state) return;
-    if (this.toggled.has(id)) this.toggled.delete(id);
-    else this.toggled.add(id);
+    this.toggled.set(id, toggle!.getAttribute('aria-expanded') !== 'true');
     toggle!.focus();
     this.render(this.state);
   };
