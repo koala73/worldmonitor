@@ -5146,6 +5146,7 @@
       "orbitAge": "{{age}} régi pályaadatok",
       "edgeOfSwath": "A sáv széle",
       "notInArchive": "Nincs felvétel az archívumban",
+      "archiveUnanswered": "Az archívum nem válaszolt",
       "imageAlt": "{{name}} felvétel, {{time}}",
       "mosaicDays": "Napok az archívumban: {{count}}",
       "cadence": "új felvétel {{minutes}} percenként",
@@ -5205,6 +5206,8 @@
         "overheadDef": "Átszelte itt az eget, képi bizonyíték nélkül.",
         "watchedShort": "Kép nyilvános archívumban",
         "likelyShort": "Lefedve, még nincs kép",
+        "likelyUnansweredDef": "Egy rögzített sávszélességű érzékelő lefedte; egy archívum nem válaszolt, így lehet, hogy van kép.",
+        "likelyUnansweredShort": "Lefedve, az archívum nem válaszolt",
         "couldShort": "Elforgatható érzékelő hatótávon belül",
         "overheadShort": "Áthaladt, kép nélkül"
       },

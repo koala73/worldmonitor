@@ -5118,6 +5118,7 @@
       "orbitAge": "dữ liệu quỹ đạo đã {{age}}",
       "edgeOfSwath": "Mép dải quét",
       "notInArchive": "Không có ảnh trong kho",
+      "archiveUnanswered": "Kho lưu trữ không phản hồi",
       "imageAlt": "Ảnh {{name}}, {{time}}",
       "mosaicDays": "Số ngày trong kho lưu trữ: {{count}}",
       "cadence": "ảnh mới mỗi {{minutes}} phút",
@@ -5174,6 +5175,8 @@
         "overheadDef": "Đã băng qua bầu trời nơi đây, không có bằng chứng chụp ảnh.",
         "watchedShort": "Có ảnh trong kho lưu trữ công khai",
         "likelyShort": "Đã phủ, chưa có ảnh",
+        "likelyUnansweredDef": "Một cảm biến dải quét cố định đã bao phủ điểm này; một kho lưu trữ không phản hồi, nên có thể có ảnh.",
+        "likelyUnansweredShort": "Đã bao phủ, kho lưu trữ không phản hồi",
         "couldShort": "Cảm biến điều hướng trong tầm",
         "overheadShort": "Bay qua, không có ảnh"
       },

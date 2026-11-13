@@ -5118,6 +5118,7 @@
       "orbitAge": "軌道データ {{age}} 前",
       "edgeOfSwath": "観測幅の端",
       "notInArchive": "アーカイブに画像なし",
+      "archiveUnanswered": "アーカイブが応答しませんでした",
       "imageAlt": "{{name}} の画像、{{time}}",
       "mosaicDays": "アーカイブ内の日数：{{count}}",
       "cadence": "{{minutes}} 分ごとに新しい画像",
@@ -5174,6 +5175,8 @@
         "overheadDef": "撮影の証拠なしにこの上空を通過しました。",
         "watchedShort": "公開アーカイブに画像あり",
         "likelyShort": "観測済み、画像はまだなし",
+        "likelyUnansweredDef": "固定幅センサーが撮影範囲に収めましたが、アーカイブが応答しなかったため、画像が存在する可能性があります。",
+        "likelyUnansweredShort": "撮影範囲内、アーカイブ応答なし",
         "couldShort": "指向可能なセンサーが圏内",
         "overheadShort": "上空通過、画像なし"
       },

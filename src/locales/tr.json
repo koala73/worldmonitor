@@ -5146,6 +5146,7 @@
       "orbitAge": "yörünge verileri {{age}} önce",
       "edgeOfSwath": "Tarama şeridinin kenarı",
       "notInArchive": "Arşivde görüntü yok",
+      "archiveUnanswered": "Arşiv yanıt vermedi",
       "imageAlt": "{{name}} görüntüsü, {{time}}",
       "mosaicDays": "Arşivdeki gün sayısı: {{count}}",
       "cadence": "her {{minutes}} dakikada yeni görüntü",
@@ -5205,6 +5206,8 @@
         "overheadDef": "Görüntüleme kanıtı olmadan burada gökyüzünü geçti.",
         "watchedShort": "Herkese açık arşivde görüntü",
         "likelyShort": "Kapsandı, henüz görüntü yok",
+        "likelyUnansweredDef": "Sabit şeritli bir sensör burayı kapsadı; bir arşiv yanıt vermedi, bu yüzden görüntü olabilir.",
+        "likelyUnansweredShort": "Kapsandı, arşiv yanıt vermedi",
         "couldShort": "Yönlendirilebilir sensör menzilde",
         "overheadShort": "Üstünden geçti, görüntü yok"
       },
