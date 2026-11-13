@@ -5129,6 +5129,90 @@
     },
     "dailyMosaics": "每日鑲嵌圖",
     "weatherFrames": "氣象影象",
+    "ui": {
+      "change": "更改",
+      "share": "分享",
+      "shareCopied": "連結已複製",
+      "headline": "過去 {{days}} 天裡，{{satellites}}從{{place}}上空經過。",
+      "satellites": "{{count}} 顆衛星",
+      "subline": "已公開 {{count}} 張影象。",
+      "closestLook": "最近的視角",
+      "replay": "回放",
+      "openFull": "開啟完整檢視",
+      "previous": "上一張影象",
+      "next": "下一張影象",
+      "passes": "次過境",
+      "showAll": "顯示全部過境",
+      "noRecentDays": "存檔中沒有近期日期：{{sources}}",
+      "tab": {
+        "all": "全部",
+        "detailed": "詳細",
+        "weather": "天氣"
+      },
+      "caption": {
+        "clear": "晴朗",
+        "clouded": "有云 · {{pct}}%",
+        "cloudShadow": "雲影",
+        "spotNotChecked": "該點未檢查雲量",
+        "sceneCloud": "場景雲量 {{pct}}% · 該點未檢查",
+        "radar": "雷達",
+        "dailyMosaic": "每日鑲嵌圖",
+        "geostationary": "靜止衛星全圓盤",
+        "geostationaryCadence": "靜止衛星 · 每 {{minutes}} 分鐘"
+      },
+      "tile": {
+        "failed": "影象不可用 · {{archive}}",
+        "noPreview": "存檔中尚無此場景的預覽"
+      },
+      "grid": {
+        "watched": "已拍攝",
+        "watchedDef": "公開存檔中有此點的影象。",
+        "likely": "可能已拍攝",
+        "likelyDef": "固定幅寬感測器覆蓋了此處；尚未釋出影象。",
+        "could": "可能對準過這裡",
+        "couldDef": "可轉向或商業感測器在可達範圍內；運營方未說明是否觀測。",
+        "overhead": "上空經過",
+        "overheadDef": "從這裡的天空經過，沒有成像證據。"
+      },
+      "group": {
+        "watched": "已拍攝",
+        "likely": "可能已拍攝",
+        "upcoming": "即將到來",
+        "could": "可能對準過這裡",
+        "overhead": "上空經過",
+        "weather": "天氣來源"
+      },
+      "order": {
+        "closest": "最近的視角，然後最新",
+        "newest": "最新優先",
+        "soonest": "最早優先"
+      },
+      "row": {
+        "cloud": "雲量 {{pct}}%",
+        "days": "{{count}} 天",
+        "repeats": "該衛星在本組中的 {{count}} 次過境"
+      },
+      "section": {
+        "summary": "摘要",
+        "passes": "過境"
+      },
+      "status": {
+        "objects": "{{count}} 個目標 · CelesTrak GP",
+        "fetched": "獲取於 {{time}} · {{ago}}",
+        "sun": "太陽 {{point}} · 太陽直射點"
+      },
+      "step": {
+        "computing": "計算中",
+        "catalogLoading": "目錄 · 載入中",
+        "catalog": "目錄 · {{count}} 個目標",
+        "propagating": "正在推算軌道 · {{done}} / {{total}}",
+        "archives": "存檔 · {{done}} / {{total}} 已響應",
+        "matching": "正在將場景與 {{passes}} 次過境匹配",
+        "window": "7 天視窗 · {{start}} → {{end}}",
+        "failed": "失敗",
+        "note": "Planetary Computer 和 NASA GIBS 按需生成影象，因此此步驟可能需要幾秒鐘。"
+      }
+    },
     "search": {
       "label": "地名或座標",
       "placeholder": "地名或 48.8584, 2.2945",

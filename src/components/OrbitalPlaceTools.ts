@@ -5,18 +5,18 @@ import { requestDevicePosition } from '@/utils/user-location';
 import { h, replaceChildren } from '@/utils/dom-utils';
 
 export interface OrbitalPlaceToolsCallbacks {
-  onPick: (point: GeoPoint) => void;
+  /** `name` is the searched place, or null for coordinates and the device location. */
+  onPick: (point: GeoPoint, name: string | null) => void;
   /** The link for the open lookup, or null when no place is open. */
   shareLink: () => string | null;
 }
 
-/** Place search, locate and share controls for the satellite pass lookup sheet. */
+/** Place search and locate controls for the lookup sheet's search row, and the share copy fallback. */
 export class OrbitalPlaceTools {
   readonly element: HTMLElement;
   private readonly input: HTMLInputElement;
   private readonly status: HTMLElement;
   private readonly results: HTMLElement;
-  private readonly shareButton: HTMLButtonElement;
   private readonly shareStatus: HTMLElement;
   private readonly shareField: HTMLInputElement;
   private readonly note: HTMLElement;
@@ -35,7 +35,6 @@ export class OrbitalPlaceTools {
       h('button', { type: 'button', className: 'ow-locate', onClick: () => void this.locate() }, t('orbitalWatch.search.locate')));
     this.status = h('p', { className: 'ow-search-status', role: 'status' });
     this.results = h('ul', { className: 'ow-search-results', 'aria-label': t('orbitalWatch.search.results') });
-    this.shareButton = h('button', { type: 'button', className: 'ow-share', disabled: true, onClick: () => void this.share() }, t('orbitalWatch.share.copy')) as HTMLButtonElement;
     this.shareStatus = h('span', { className: 'ow-share-status', role: 'status' });
     this.shareField = h('input', { type: 'text', className: 'ow-share-link', readonly: true, hidden: true, 'aria-label': t('orbitalWatch.share.link') }) as HTMLInputElement;
     this.noteText = h('span');
@@ -47,7 +46,7 @@ export class OrbitalPlaceTools {
       h('p', { className: 'ow-search-hint', id: hintId }, t('orbitalWatch.search.hint')),
       this.status,
       this.results,
-      h('div', { className: 'ow-share-row' }, this.shareButton, this.shareStatus),
+      this.shareStatus,
       this.shareField,
       this.note);
   }
@@ -56,8 +55,7 @@ export class OrbitalPlaceTools {
     this.input.focus();
   }
 
-  setPlaceOpen(open: boolean): void {
-    this.shareButton.disabled = !open;
+  clearShare(): void {
     this.shareStatus.textContent = '';
     this.shareField.hidden = true;
   }
@@ -79,15 +77,15 @@ export class OrbitalPlaceTools {
     this.status.textContent = '';
     replaceChildren(this.results);
     this.clearNote();
-    this.setPlaceOpen(false);
+    this.clearShare();
   }
 
-  private pick(point: GeoPoint): void {
+  private pick(point: GeoPoint, name: string | null = null): void {
     this.search?.abort();
     this.search = null;
     replaceChildren(this.results);
     this.status.textContent = '';
-    this.callbacks.onPick(point);
+    this.callbacks.onPick(point, name);
   }
 
   private async submit(): Promise<void> {
@@ -129,7 +127,7 @@ export class OrbitalPlaceTools {
   private showResults(results: PlaceResult[]): void {
     this.status.textContent = results.length === 0 ? t('orbitalWatch.search.noResults') : '';
     replaceChildren(this.results, ...results.map((result) => h('li', null,
-      h('button', { type: 'button', className: 'ow-search-result', onClick: () => this.pick(result.point) },
+      h('button', { type: 'button', className: 'ow-search-result', onClick: () => this.pick(result.point, result.kind === 'coordinates' ? null : result.name) },
         h('span', { className: 'ow-search-result-name' }, result.name),
         result.kind ? h('span', { className: 'ow-search-result-kind' }, result.kind) : null))));
   }
@@ -150,18 +148,21 @@ export class OrbitalPlaceTools {
     this.status.textContent = t(position.reason === 'denied' ? 'orbitalWatch.search.locationDenied' : 'orbitalWatch.search.locationUnavailable');
   }
 
-  private async share(): Promise<void> {
+  /** Copies the share link, and shows it to copy by hand when the clipboard refuses. Resolves to whether it was copied. */
+  async share(): Promise<boolean> {
     const link = this.callbacks.shareLink();
-    if (!link) return;
+    if (!link) return false;
     try {
       await navigator.clipboard.writeText(link);
       this.shareField.hidden = true;
       this.shareStatus.textContent = t('orbitalWatch.share.copied');
+      return true;
     } catch {
       this.shareField.value = link;
       this.shareField.hidden = false;
       this.shareField.select();
       this.shareStatus.textContent = t('orbitalWatch.share.copyManually');
+      return false;
     }
   }
 }

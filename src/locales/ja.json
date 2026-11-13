@@ -5129,6 +5129,90 @@
     },
     "dailyMosaics": "日次モザイク",
     "weatherFrames": "気象画像",
+    "ui": {
+      "change": "変更",
+      "share": "共有",
+      "shareCopied": "リンクをコピーしました",
+      "headline": "過去{{days}}日間に{{satellites}}が{{place}}の上空を通過しました。",
+      "satellites": "{{count}}基の衛星",
+      "subline": "{{count}}枚の画像が公開されました。",
+      "closestLook": "最も近い撮影",
+      "replay": "再生",
+      "openFull": "全画面表示を開く",
+      "previous": "前の画像",
+      "next": "次の画像",
+      "passes": "回の通過",
+      "showAll": "すべての通過を表示",
+      "noRecentDays": "アーカイブに最近の日がありません: {{sources}}",
+      "tab": {
+        "all": "すべて",
+        "detailed": "詳細",
+        "weather": "気象"
+      },
+      "caption": {
+        "clear": "晴れ",
+        "clouded": "曇り · {{pct}}%",
+        "cloudShadow": "雲の影",
+        "spotNotChecked": "地点の雲は未確認",
+        "sceneCloud": "シーンの雲量 {{pct}}% · 地点は未確認",
+        "radar": "レーダー",
+        "dailyMosaic": "日次モザイク",
+        "geostationary": "静止衛星フルディスク",
+        "geostationaryCadence": "静止衛星 · {{minutes}}分ごと"
+      },
+      "tile": {
+        "failed": "画像を利用できません · {{archive}}",
+        "noPreview": "アーカイブにはまだこのシーンのプレビューがありません"
+      },
+      "grid": {
+        "watched": "撮影済み",
+        "watchedDef": "公開アーカイブにこの地点の画像があります。",
+        "likely": "撮影の可能性大",
+        "likelyDef": "固定観測幅のセンサーが範囲に含めましたが、画像はまだ公開されていません。",
+        "could": "ここを向けた可能性",
+        "couldDef": "指向可能または商用のセンサーが届く範囲にいましたが、運用者は観測したかを公表していません。",
+        "overhead": "上空を通過",
+        "overheadDef": "撮影の証拠なしにこの上空を通過しました。"
+      },
+      "group": {
+        "watched": "撮影済み",
+        "likely": "撮影の可能性大",
+        "upcoming": "今後",
+        "could": "ここを向けた可能性",
+        "overhead": "上空を通過",
+        "weather": "気象ソース"
+      },
+      "order": {
+        "closest": "最も近い撮影、次に新しい順",
+        "newest": "新しい順",
+        "soonest": "早い順"
+      },
+      "row": {
+        "cloud": "雲 {{pct}}%",
+        "days": "{{count}}日",
+        "repeats": "このグループでのこの衛星の通過 {{count}}回"
+      },
+      "section": {
+        "summary": "概要",
+        "passes": "通過"
+      },
+      "status": {
+        "objects": "{{count}}個の物体 · CelesTrak GP",
+        "fetched": "取得 {{time}} · {{ago}}",
+        "sun": "太陽 {{point}} · 太陽直下点"
+      },
+      "step": {
+        "computing": "計算中",
+        "catalogLoading": "カタログ · 読み込み中",
+        "catalog": "カタログ · {{count}}個の物体",
+        "propagating": "軌道を計算中 · {{done}} / {{total}}",
+        "archives": "アーカイブ · {{done}} / {{total}} が応答",
+        "matching": "シーンを{{passes}}回の通過と照合中",
+        "window": "7日間の範囲 · {{start}} → {{end}}",
+        "failed": "失敗",
+        "note": "Planetary ComputerとNASA GIBSは画像を要求時に生成するため、この手順には数秒かかることがあります。"
+      }
+    },
     "search": {
       "label": "地名または座標",
       "placeholder": "地名または 48.8584, 2.2945",

@@ -5129,6 +5129,90 @@
     },
     "dailyMosaics": "ảnh ghép hằng ngày",
     "weatherFrames": "ảnh thời tiết",
+    "ui": {
+      "change": "Đổi",
+      "share": "Chia sẻ",
+      "shareCopied": "Đã sao chép liên kết",
+      "headline": "Trong {{days}} ngày qua, {{satellites}} đã bay qua {{place}}.",
+      "satellites": "{{count}} vệ tinh",
+      "subline": "Đã công bố {{count}} ảnh.",
+      "closestLook": "Góc nhìn gần nhất",
+      "replay": "Phát lại",
+      "openFull": "Mở chế độ xem đầy đủ",
+      "previous": "Ảnh trước",
+      "next": "Ảnh tiếp theo",
+      "passes": "lượt bay qua",
+      "showAll": "Hiện tất cả lượt bay qua",
+      "noRecentDays": "Không có ngày gần đây trong kho lưu trữ: {{sources}}",
+      "tab": {
+        "all": "Tất cả",
+        "detailed": "Chi tiết",
+        "weather": "Thời tiết"
+      },
+      "caption": {
+        "clear": "Quang đãng",
+        "clouded": "Có mây · {{pct}}%",
+        "cloudShadow": "Bóng mây",
+        "spotNotChecked": "Chưa kiểm tra mây tại điểm này",
+        "sceneCloud": "Mây toàn cảnh {{pct}}% · chưa kiểm tra điểm này",
+        "radar": "Ra-đa",
+        "dailyMosaic": "Ảnh ghép hằng ngày",
+        "geostationary": "Toàn đĩa địa tĩnh",
+        "geostationaryCadence": "Địa tĩnh · mỗi {{minutes}} phút"
+      },
+      "tile": {
+        "failed": "Không có ảnh · {{archive}}",
+        "noPreview": "Kho lưu trữ chưa có ảnh xem trước của cảnh này"
+      },
+      "grid": {
+        "watched": "Đã chụp",
+        "watchedDef": "Một kho lưu trữ công khai có ảnh của điểm này.",
+        "likely": "Có thể đã chụp",
+        "likelyDef": "Cảm biến dải quét cố định đã bao phủ; chưa có ảnh được công bố.",
+        "could": "Có thể đã hướng về đây",
+        "couldDef": "Một cảm biến xoay được hoặc thương mại nằm trong tầm; nhà vận hành không cho biết có nhìn hay không.",
+        "overhead": "Đã bay qua",
+        "overheadDef": "Đã băng qua bầu trời nơi đây, không có bằng chứng chụp ảnh."
+      },
+      "group": {
+        "watched": "đã chụp",
+        "likely": "có thể đã chụp",
+        "upcoming": "sắp tới",
+        "could": "có thể đã hướng về đây",
+        "overhead": "đã bay qua",
+        "weather": "nguồn thời tiết"
+      },
+      "order": {
+        "closest": "Gần nhất, sau đó mới nhất",
+        "newest": "Mới nhất trước",
+        "soonest": "Sớm nhất trước"
+      },
+      "row": {
+        "cloud": "Mây {{pct}}%",
+        "days": "{{count}} ngày",
+        "repeats": "{{count}} lượt của vệ tinh này trong nhóm"
+      },
+      "section": {
+        "summary": "Tóm tắt",
+        "passes": "Lượt bay qua"
+      },
+      "status": {
+        "objects": "{{count}} vật thể · CelesTrak GP",
+        "fetched": "Lấy lúc {{time}} · {{ago}}",
+        "sun": "Mặt Trời {{point}} · điểm cận nhật"
+      },
+      "step": {
+        "computing": "Đang tính",
+        "catalogLoading": "Danh mục · đang tải",
+        "catalog": "Danh mục · {{count}} vật thể",
+        "propagating": "Đang tính quỹ đạo · {{done}} / {{total}}",
+        "archives": "Kho lưu trữ · {{done}} / {{total}} đã phản hồi",
+        "matching": "Đang khớp cảnh với {{passes}} lượt bay qua",
+        "window": "Khung 7 ngày · {{start}} → {{end}}",
+        "failed": "Thất bại",
+        "note": "Planetary Computer và NASA GIBS tạo ảnh theo yêu cầu, nên bước này có thể mất vài giây."
+      }
+    },
     "search": {
       "label": "Tên địa điểm hoặc tọa độ",
       "placeholder": "Tên địa điểm hoặc 48.8584, 2.2945",
