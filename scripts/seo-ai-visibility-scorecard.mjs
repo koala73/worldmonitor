@@ -135,6 +135,12 @@ export const REFERRAL_METRICS = Object.freeze([
   'apiActions',
   'mcpActions',
 ]);
+/**
+ * #5667 started the registry at 20-30 reviewed queries. The bound was raised
+ * when short searches Search Console actually reports joined the long decision
+ * queries (seo-ai-visibility-v2).
+ */
+export const REVIEWED_QUERY_LIMITS = Object.freeze({ min: 20, max: 40 });
 export const BING_AI_METRICS = Object.freeze([
   'totalCitations',
   'averageCitedPages',
@@ -556,9 +562,9 @@ export function validateQuerySet(querySet) {
   assertIsoCalendarDate(querySet.reviewedAt, 'reviewedAt');
   invariant(
     Array.isArray(querySet.queries)
-      && querySet.queries.length >= 20
-      && querySet.queries.length <= 30,
-    'queries must contain 20-30 reviewed entries',
+      && querySet.queries.length >= REVIEWED_QUERY_LIMITS.min
+      && querySet.queries.length <= REVIEWED_QUERY_LIMITS.max,
+    `queries must contain ${REVIEWED_QUERY_LIMITS.min}-${REVIEWED_QUERY_LIMITS.max} reviewed entries`,
   );
 
   const ids = new Set();
@@ -1442,6 +1448,17 @@ function markdownLink(url) {
   return `[link](${target})`;
 }
 
+function formatSeriesStart(seriesStart, querySetId) {
+  return [
+    '## Monthly comparison',
+    '',
+    `Not compared with \`${seriesStart.previousBaselineId}\`: it was measured with query set`,
+    `\`${seriesStart.previousQuerySetId}\` and this baseline with \`${querySetId}\`. A changed query set`,
+    'starts a new comparison series, so the next run compares with this baseline.',
+    '',
+  ];
+}
+
 function formatComparison(comparison) {
   if (!comparison) {
     return [
@@ -1654,7 +1671,9 @@ export function formatScorecardMarkdown(scorecard) {
       ))
       : ['- No mixed or inaccurate answers recorded.']),
     '',
-    ...formatComparison(scorecard.comparison),
+    ...(scorecard.seriesStart
+      ? formatSeriesStart(scorecard.seriesStart, scorecard.querySetId)
+      : formatComparison(scorecard.comparison)),
     '## Top five opportunities',
     '',
     ...scorecard.opportunities.flatMap((opportunity) => [
