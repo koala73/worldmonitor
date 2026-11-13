@@ -7,7 +7,10 @@ on:
   pull_request:
     paths:
       - 'scripts/status-page-smoke.mjs'
+      - 'scripts/status-page-smoke.d.mts'
       - 'e2e/status-page-monitor.spec.ts'
+      - 'tests/status-page-smoke.test.mjs'
+      - 'tests/status-page-monitor-workflow.test.mjs'
       - 'public/security/**'
       - '.github/workflows/status-page-monitor.yml'
   push:
@@ -37,6 +40,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium
       - run: npm run inventory:facts
+      - run: node --test tests/status-page-smoke.test.mjs tests/status-page-monitor-workflow.test.mjs
       - run: npx playwright test e2e/status-page-monitor.spec.ts --project=chromium
 
   monitor:
@@ -53,7 +57,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Verify rendered status page and all four uptime windows
         run: node scripts/status-page-smoke.mjs
-      - name: Preserve rendered evidence
+      - name: Preserve every attempt and diagnostic report
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
