@@ -577,6 +577,7 @@ export class OrbitalWatchPage {
   private filter: GroupId | null = null;
   /** Groups the user opened or closed, against their default. */
   private readonly toggled = new Set<GroupId>();
+  private selectedKey: string | null = null;
   private state: OrbitalWatchState | null = null;
   private steps: StepTimes = { startedAt: 0, catalogAt: null, propagatedAt: null, archivesAt: null, total: 0 };
   private clock: ReturnType<typeof setInterval> | null = null;
@@ -661,6 +662,7 @@ export class OrbitalWatchPage {
     this.placeName = null;
     this.place.title = '';
     this.toggled.clear();
+    this.selectedKey = null;
     this.tab = 'all';
     this.cardIndex = 0;
     this.filter = null;
@@ -693,6 +695,7 @@ export class OrbitalWatchPage {
     this.sheet.dataset.view = 'sheet';
     document.body.classList.remove(FULL_VIEW_BODY_CLASS);
     if (wasFull) this.callbacks.onViewChange?.('sheet');
+    this.selectedKey = null;
     this.callbacks.onClose();
     const target = this.returnFocusTo;
     this.returnFocusTo = null;
@@ -713,12 +716,11 @@ export class OrbitalWatchPage {
     if (!spec.expanded) this.toggled.add(id);
     else this.toggled.delete(id);
     this.filter = null;
+    this.selectedKey = `pass:${key}`;
     if (this.view === 'full') this.render(state);
     else this.setView('full');
-    const row = this.body.querySelector<HTMLElement>(`.ow-row[data-key="pass:${CSS.escape(key)}"]`);
+    const row = this.body.querySelector<HTMLElement>(`.ow-row[aria-current]`);
     if (!row) return false;
-    for (const other of this.body.querySelectorAll('.ow-row[aria-current]')) other.removeAttribute('aria-current');
-    row.setAttribute('aria-current', 'true');
     row.scrollIntoView?.({ block: 'center' });
     row.focus();
     this.sheet.dispatchEvent(new CustomEvent('orbital-watch:select', { bubbles: true, detail: { noradId: pass.noradId, timeMs: pass.timeMs } }));
@@ -774,6 +776,7 @@ export class OrbitalWatchPage {
       : focused?.dataset.group ? `.ow-group-toggle[data-group="${focused.dataset.group}"]`
       : null;
     replaceChildren(this.body, ...this.renderState(state));
+    if (this.selectedKey) this.body.querySelector(`.ow-row[data-key="${CSS.escape(this.selectedKey)}"]`)?.setAttribute('aria-current', 'true');
     this.renderStatusBar();
     if (focused) ((selector ? this.body.querySelector<HTMLElement>(selector) : null) ?? this.sheet).focus();
   }
