@@ -5109,7 +5109,9 @@
       "withinReach": "覆盖范围内",
       "capabilityOverhead": "能力过顶",
       "passedOverhead": "已过顶",
-      "unmatchedImage": "影像无计算过境"
+      "unmatchedImage": "影像无计算过境",
+      "weatherFrame": "气象图像",
+      "unavailable": "不可用"
     },
     "row": {
       "offNadir": "偏离星下点 {{deg}}°",
@@ -5117,7 +5119,12 @@
       "orbitAge": "轨道数据已有 {{age}}",
       "edgeOfSwath": "幅宽边缘",
       "notInArchive": "档案库中无影像",
-      "imageAlt": "{{name}} 影像，{{time}}"
-    }
+      "imageAlt": "{{name}} 影像，{{time}}",
+      "mosaicDays": "存档中的天数：{{count}}",
+      "cadence": "每 {{minutes}} 分钟一帧新图像",
+      "sourceUnavailable": "存档中没有该来源在这些日期的图像。"
+    },
+    "dailyMosaics": "每日镶嵌图",
+    "weatherFrames": "气象图像"
   }
 }

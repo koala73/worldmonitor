@@ -5137,7 +5137,9 @@
       "withinReach": "в обхват",
       "capabilityOverhead": "възможност над точката",
       "passedOverhead": "премина отгоре",
-      "unmatchedImage": "изображение без изчислено преминаване"
+      "unmatchedImage": "изображение без изчислено преминаване",
+      "weatherFrame": "метеорологично изображение",
+      "unavailable": "недостъпно"
     },
     "row": {
       "offNadir": "{{deg}}° от надира",
@@ -5145,7 +5147,12 @@
       "orbitAge": "орбитални данни на {{age}}",
       "edgeOfSwath": "Ръб на ивицата",
       "notInArchive": "Няма изображение в архива",
-      "imageAlt": "Изображение от {{name}}, {{time}}"
-    }
+      "imageAlt": "Изображение от {{name}}, {{time}}",
+      "mosaicDays": "Дни в архива: {{count}}",
+      "cadence": "ново изображение на всеки {{minutes}} мин",
+      "sourceUnavailable": "Архивът няма изображения от този източник за тези дни."
+    },
+    "dailyMosaics": "дневни мозайки",
+    "weatherFrames": "метеорологични изображения"
   }
 }

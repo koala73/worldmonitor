@@ -5109,7 +5109,9 @@
       "withinReach": "trong tầm",
       "capabilityOverhead": "năng lực trên không",
       "passedOverhead": "đã bay qua",
-      "unmatchedImage": "ảnh không có lượt bay tính toán"
+      "unmatchedImage": "ảnh không có lượt bay tính toán",
+      "weatherFrame": "ảnh thời tiết",
+      "unavailable": "không khả dụng"
     },
     "row": {
       "offNadir": "lệch thiên đế {{deg}}°",
@@ -5117,7 +5119,12 @@
       "orbitAge": "dữ liệu quỹ đạo đã {{age}}",
       "edgeOfSwath": "Mép dải quét",
       "notInArchive": "Không có ảnh trong kho",
-      "imageAlt": "Ảnh {{name}}, {{time}}"
-    }
+      "imageAlt": "Ảnh {{name}}, {{time}}",
+      "mosaicDays": "Số ngày trong kho lưu trữ: {{count}}",
+      "cadence": "ảnh mới mỗi {{minutes}} phút",
+      "sourceUnavailable": "Kho lưu trữ không có ảnh từ nguồn này cho những ngày này."
+    },
+    "dailyMosaics": "ảnh ghép hằng ngày",
+    "weatherFrames": "ảnh thời tiết"
   }
 }

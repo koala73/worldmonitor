@@ -5109,7 +5109,9 @@
       "withinReach": "覆蓋範圍內",
       "capabilityOverhead": "能力過頂",
       "passedOverhead": "已過頂",
-      "unmatchedImage": "影像無計算過境"
+      "unmatchedImage": "影像無計算過境",
+      "weatherFrame": "氣象影象",
+      "unavailable": "不可用"
     },
     "row": {
       "offNadir": "偏離星下點 {{deg}}°",
@@ -5117,7 +5119,12 @@
       "orbitAge": "軌道資料已有 {{age}}",
       "edgeOfSwath": "幅寬邊緣",
       "notInArchive": "檔案庫中無影像",
-      "imageAlt": "{{name}} 影像，{{time}}"
-    }
+      "imageAlt": "{{name}} 影像，{{time}}",
+      "mosaicDays": "存檔中的天數：{{count}}",
+      "cadence": "每 {{minutes}} 分鐘一幀新影象",
+      "sourceUnavailable": "存檔中沒有該來源在這些日期的影象。"
+    },
+    "dailyMosaics": "每日鑲嵌圖",
+    "weatherFrames": "氣象影象"
   }
 }

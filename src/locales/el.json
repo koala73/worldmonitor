@@ -5137,7 +5137,9 @@
       "withinReach": "εντός εμβέλειας",
       "capabilityOverhead": "δυνατότητα από πάνω",
       "passedOverhead": "πέρασε από πάνω",
-      "unmatchedImage": "εικόνα χωρίς υπολογισμένη διέλευση"
+      "unmatchedImage": "εικόνα χωρίς υπολογισμένη διέλευση",
+      "weatherFrame": "μετεωρολογική εικόνα",
+      "unavailable": "μη διαθέσιμο"
     },
     "row": {
       "offNadir": "{{deg}}° εκτός ναδίρ",
@@ -5145,7 +5147,12 @@
       "orbitAge": "τροχιακά δεδομένα {{age}}",
       "edgeOfSwath": "Άκρο της λωρίδας",
       "notInArchive": "Καμία εικόνα στο αρχείο",
-      "imageAlt": "Εικόνα {{name}}, {{time}}"
-    }
+      "imageAlt": "Εικόνα {{name}}, {{time}}",
+      "mosaicDays": "Ημέρες στο αρχείο: {{count}}",
+      "cadence": "νέα εικόνα κάθε {{minutes}} λεπτά",
+      "sourceUnavailable": "Το αρχείο δεν έχει εικόνες από αυτή την πηγή για αυτές τις ημέρες."
+    },
+    "dailyMosaics": "ημερήσια μωσαϊκά",
+    "weatherFrames": "μετεωρολογικές εικόνες"
   }
 }

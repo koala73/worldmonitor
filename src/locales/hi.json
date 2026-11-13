@@ -5137,7 +5137,9 @@
       "withinReach": "दायरे में",
       "capabilityOverhead": "क्षमता ऊपर से",
       "passedOverhead": "ऊपर से गुज़रा",
-      "unmatchedImage": "गणना किए गए पास के बिना चित्र"
+      "unmatchedImage": "गणना किए गए पास के बिना चित्र",
+      "weatherFrame": "मौसम चित्र",
+      "unavailable": "अनुपलब्ध"
     },
     "row": {
       "offNadir": "नादिर से {{deg}}°",
@@ -5145,7 +5147,12 @@
       "orbitAge": "कक्षा डेटा {{age}} पुराना",
       "edgeOfSwath": "पट्टी का किनारा",
       "notInArchive": "अभिलेखागार में कोई चित्र नहीं",
-      "imageAlt": "{{name}} चित्र, {{time}}"
-    }
+      "imageAlt": "{{name}} चित्र, {{time}}",
+      "mosaicDays": "संग्रह में दिन: {{count}}",
+      "cadence": "हर {{minutes}} मिनट में नया चित्र",
+      "sourceUnavailable": "संग्रह में इन दिनों के लिए इस स्रोत की कोई छवि नहीं है।"
+    },
+    "dailyMosaics": "दैनिक मोज़ेक",
+    "weatherFrames": "मौसम चित्र"
   }
 }

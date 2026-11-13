@@ -5165,7 +5165,9 @@
       "withinReach": "în rază",
       "capabilityOverhead": "capacitate deasupra",
       "passedOverhead": "a trecut deasupra",
-      "unmatchedImage": "imagine fără trecere calculată"
+      "unmatchedImage": "imagine fără trecere calculată",
+      "weatherFrame": "imagine meteo",
+      "unavailable": "indisponibil"
     },
     "row": {
       "offNadir": "{{deg}}° față de nadir",
@@ -5173,7 +5175,12 @@
       "orbitAge": "date orbitale vechi de {{age}}",
       "edgeOfSwath": "Marginea benzii",
       "notInArchive": "Nicio imagine în arhivă",
-      "imageAlt": "Imagine {{name}}, {{time}}"
-    }
+      "imageAlt": "Imagine {{name}}, {{time}}",
+      "mosaicDays": "Zile în arhivă: {{count}}",
+      "cadence": "imagine nouă la fiecare {{minutes}} min",
+      "sourceUnavailable": "Arhiva nu are imagini de la această sursă pentru aceste zile."
+    },
+    "dailyMosaics": "mozaicuri zilnice",
+    "weatherFrames": "imagini meteo"
   }
 }

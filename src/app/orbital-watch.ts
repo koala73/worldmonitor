@@ -2,6 +2,7 @@ import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import { getOrbitalPassClient, type PointPassLookup } from '@/services/orbital/pass-client';
 import { ARCHIVE_SEARCHES, findArchiveEvidence } from '@/services/orbital/match';
 import { OrbitalWatchPage } from '@/components/OrbitalWatchPage';
+import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 
 let page: OrbitalWatchPage | null = null;
 let point: GeoPoint | null = null;
@@ -17,6 +18,7 @@ function cancel(): void {
 
 async function checkArchives(found: PointPassLookup, signal: AbortSignal): Promise<void> {
   page!.render({ kind: 'passes', lookup: found, archives: { kind: 'checking', total: ARCHIVE_SEARCHES.length, progress: null } });
+  await afterDebugBearRequestWindow(signal);
   const evidence = await findArchiveEvidence(found, {
     signal,
     onProgress: (progress) => {

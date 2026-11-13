@@ -5137,7 +5137,9 @@
       "withinReach": "inom räckvidd",
       "capabilityOverhead": "förmåga överhead",
       "passedOverhead": "passerade över",
-      "unmatchedImage": "bild utan beräknad passage"
+      "unmatchedImage": "bild utan beräknad passage",
+      "weatherFrame": "väderbild",
+      "unavailable": "inte tillgänglig"
     },
     "row": {
       "offNadir": "{{deg}}° från nadir",
@@ -5145,7 +5147,12 @@
       "orbitAge": "banddata {{age}} gamla",
       "edgeOfSwath": "Kanten av svepet",
       "notInArchive": "Ingen bild i arkivet",
-      "imageAlt": "Bild från {{name}}, {{time}}"
-    }
+      "imageAlt": "Bild från {{name}}, {{time}}",
+      "mosaicDays": "Dagar i arkivet: {{count}}",
+      "cadence": "ny bild var {{minutes}}:e minut",
+      "sourceUnavailable": "Arkivet har inga bilder från den här källan för dessa dagar."
+    },
+    "dailyMosaics": "dagliga mosaiker",
+    "weatherFrames": "väderbilder"
   }
 }

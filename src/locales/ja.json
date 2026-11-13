@@ -5109,7 +5109,9 @@
       "withinReach": "範囲内",
       "capabilityOverhead": "能力上空通過",
       "passedOverhead": "上空通過",
-      "unmatchedImage": "計算済み通過のない画像"
+      "unmatchedImage": "計算済み通過のない画像",
+      "weatherFrame": "気象画像",
+      "unavailable": "利用不可"
     },
     "row": {
       "offNadir": "天底から {{deg}}°",
@@ -5117,7 +5119,12 @@
       "orbitAge": "軌道データ {{age}} 前",
       "edgeOfSwath": "観測幅の端",
       "notInArchive": "アーカイブに画像なし",
-      "imageAlt": "{{name}} の画像、{{time}}"
-    }
+      "imageAlt": "{{name}} の画像、{{time}}",
+      "mosaicDays": "アーカイブ内の日数：{{count}}",
+      "cadence": "{{minutes}} 分ごとに新しい画像",
+      "sourceUnavailable": "アーカイブには、この期間のこのソースの画像がありません。"
+    },
+    "dailyMosaics": "日次モザイク",
+    "weatherFrames": "気象画像"
   }
 }

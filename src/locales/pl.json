@@ -5193,7 +5193,9 @@
       "withinReach": "w zasięgu",
       "capabilityOverhead": "zdolność nad punktem",
       "passedOverhead": "przeleciał nad",
-      "unmatchedImage": "zdjęcie bez obliczonego przelotu"
+      "unmatchedImage": "zdjęcie bez obliczonego przelotu",
+      "weatherFrame": "zdjęcie pogodowe",
+      "unavailable": "niedostępne"
     },
     "row": {
       "offNadir": "{{deg}}° od nadiru",
@@ -5201,7 +5203,12 @@
       "orbitAge": "dane orbitalne sprzed {{age}}",
       "edgeOfSwath": "Krawędź pasa zobrazowania",
       "notInArchive": "Brak zdjęcia w archiwum",
-      "imageAlt": "Zdjęcie {{name}}, {{time}}"
-    }
+      "imageAlt": "Zdjęcie {{name}}, {{time}}",
+      "mosaicDays": "Dni w archiwum: {{count}}",
+      "cadence": "nowe zdjęcie co {{minutes}} min",
+      "sourceUnavailable": "Archiwum nie ma zdjęć z tego źródła dla tych dni."
+    },
+    "dailyMosaics": "dzienne mozaiki",
+    "weatherFrames": "zdjęcia pogodowe"
   }
 }

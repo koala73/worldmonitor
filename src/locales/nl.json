@@ -5137,7 +5137,9 @@
       "withinReach": "binnen bereik",
       "capabilityOverhead": "capaciteit boven",
       "passedOverhead": "overgevlogen",
-      "unmatchedImage": "beeld zonder berekende passage"
+      "unmatchedImage": "beeld zonder berekende passage",
+      "weatherFrame": "weerbeeld",
+      "unavailable": "niet beschikbaar"
     },
     "row": {
       "offNadir": "{{deg}}° buiten nadir",
@@ -5145,7 +5147,12 @@
       "orbitAge": "baangegevens {{age}} oud",
       "edgeOfSwath": "Rand van de opnamestrook",
       "notInArchive": "Geen beeld in het archief",
-      "imageAlt": "Beeld van {{name}}, {{time}}"
-    }
+      "imageAlt": "Beeld van {{name}}, {{time}}",
+      "mosaicDays": "Dagen in het archief: {{count}}",
+      "cadence": "nieuw beeld elke {{minutes}} min",
+      "sourceUnavailable": "Het archief bevat voor deze dagen geen beelden van deze bron."
+    },
+    "dailyMosaics": "dagmozaïeken",
+    "weatherFrames": "weerbeelden"
   }
 }

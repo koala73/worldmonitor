@@ -5109,7 +5109,9 @@
       "withinReach": "ในระยะ",
       "capabilityOverhead": "ขีดความสามารถเหนือศีรษะ",
       "passedOverhead": "โคจรผ่านเหนือศีรษะ",
-      "unmatchedImage": "ภาพที่ไม่มีการโคจรผ่านที่คำนวณไว้"
+      "unmatchedImage": "ภาพที่ไม่มีการโคจรผ่านที่คำนวณไว้",
+      "weatherFrame": "ภาพสภาพอากาศ",
+      "unavailable": "ไม่พร้อมใช้งาน"
     },
     "row": {
       "offNadir": "ห่างจากจุดต่ำสุด {{deg}}°",
@@ -5117,7 +5119,12 @@
       "orbitAge": "ข้อมูลวงโคจรอายุ {{age}}",
       "edgeOfSwath": "ขอบแนวถ่ายภาพ",
       "notInArchive": "ไม่มีภาพในคลัง",
-      "imageAlt": "ภาพจาก {{name}}, {{time}}"
-    }
+      "imageAlt": "ภาพจาก {{name}}, {{time}}",
+      "mosaicDays": "จำนวนวันในคลังข้อมูล: {{count}}",
+      "cadence": "ภาพใหม่ทุก {{minutes}} นาที",
+      "sourceUnavailable": "คลังข้อมูลไม่มีภาพจากแหล่งนี้สำหรับวันดังกล่าว"
+    },
+    "dailyMosaics": "ภาพโมเสกรายวัน",
+    "weatherFrames": "ภาพสภาพอากาศ"
   }
 }

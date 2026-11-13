@@ -5249,7 +5249,9 @@
       "withinReach": "ضمن النطاق",
       "capabilityOverhead": "قدرة فوق النقطة",
       "passedOverhead": "مرّ فوق النقطة",
-      "unmatchedImage": "صورة بلا مرور محسوب"
+      "unmatchedImage": "صورة بلا مرور محسوب",
+      "weatherFrame": "صورة طقس",
+      "unavailable": "غير متاح"
     },
     "row": {
       "offNadir": "{{deg}}° عن النظير",
@@ -5257,7 +5259,12 @@
       "orbitAge": "بيانات مدار عمرها {{age}}",
       "edgeOfSwath": "حافة الشريط",
       "notInArchive": "لا توجد صورة في الأرشيف",
-      "imageAlt": "صورة {{name}}، {{time}}"
-    }
+      "imageAlt": "صورة {{name}}، {{time}}",
+      "mosaicDays": "الأيام في الأرشيف: {{count}}",
+      "cadence": "صورة جديدة كل {{minutes}} دقيقة",
+      "sourceUnavailable": "لا يحتوي الأرشيف على صور من هذا المصدر لهذه الأيام."
+    },
+    "dailyMosaics": "فسيفساء يومية",
+    "weatherFrames": "صور الطقس"
   }
 }

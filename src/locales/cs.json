@@ -5193,7 +5193,9 @@
       "withinReach": "v dosahu",
       "capabilityOverhead": "schopnost nad místem",
       "passedOverhead": "přeletěl nad",
-      "unmatchedImage": "snímek bez vypočteného přeletu"
+      "unmatchedImage": "snímek bez vypočteného přeletu",
+      "weatherFrame": "meteorologický snímek",
+      "unavailable": "nedostupné"
     },
     "row": {
       "offNadir": "{{deg}}° od nadiru",
@@ -5201,7 +5203,12 @@
       "orbitAge": "orbitální data stará {{age}}",
       "edgeOfSwath": "Okraj záběru",
       "notInArchive": "Žádný snímek v archivu",
-      "imageAlt": "Snímek {{name}}, {{time}}"
-    }
+      "imageAlt": "Snímek {{name}}, {{time}}",
+      "mosaicDays": "Dní v archivu: {{count}}",
+      "cadence": "nový snímek každých {{minutes}} min",
+      "sourceUnavailable": "Archiv pro tyto dny neobsahuje žádné snímky z tohoto zdroje."
+    },
+    "dailyMosaics": "denní mozaiky",
+    "weatherFrames": "meteorologické snímky"
   }
 }

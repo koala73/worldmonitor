@@ -5193,7 +5193,9 @@
       "withinReach": "в зоне досягаемости",
       "capabilityOverhead": "возможности над точкой",
       "passedOverhead": "пролетел над точкой",
-      "unmatchedImage": "снимок без рассчитанного пролёта"
+      "unmatchedImage": "снимок без рассчитанного пролёта",
+      "weatherFrame": "метеоснимок",
+      "unavailable": "недоступно"
     },
     "row": {
       "offNadir": "{{deg}}° от надира",
@@ -5201,7 +5203,12 @@
       "orbitAge": "орбитальным данным {{age}}",
       "edgeOfSwath": "Край полосы съёмки",
       "notInArchive": "Нет снимка в архиве",
-      "imageAlt": "Снимок {{name}}, {{time}}"
-    }
+      "imageAlt": "Снимок {{name}}, {{time}}",
+      "mosaicDays": "Дней в архиве: {{count}}",
+      "cadence": "новый снимок каждые {{minutes}} мин",
+      "sourceUnavailable": "В архиве нет снимков из этого источника за эти дни."
+    },
+    "dailyMosaics": "ежедневные мозаики",
+    "weatherFrames": "метеоснимки"
   }
 }

@@ -5109,7 +5109,9 @@
       "withinReach": "범위 내",
       "capabilityOverhead": "능력 상공 통과",
       "passedOverhead": "상공 통과",
-      "unmatchedImage": "계산된 통과 없는 영상"
+      "unmatchedImage": "계산된 통과 없는 영상",
+      "weatherFrame": "기상 영상",
+      "unavailable": "사용할 수 없음"
     },
     "row": {
       "offNadir": "천저에서 {{deg}}°",
@@ -5117,7 +5119,12 @@
       "orbitAge": "궤도 데이터 {{age}} 전",
       "edgeOfSwath": "관측폭 가장자리",
       "notInArchive": "아카이브에 영상 없음",
-      "imageAlt": "{{name}} 영상, {{time}}"
-    }
+      "imageAlt": "{{name}} 영상, {{time}}",
+      "mosaicDays": "아카이브의 일수: {{count}}",
+      "cadence": "{{minutes}}분마다 새 영상",
+      "sourceUnavailable": "아카이브에 이 기간 동안 이 출처의 영상이 없습니다."
+    },
+    "dailyMosaics": "일일 모자이크",
+    "weatherFrames": "기상 영상"
   }
 }

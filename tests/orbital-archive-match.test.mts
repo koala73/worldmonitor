@@ -97,6 +97,20 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.equal(describePointCondition(clear.acquisitions.find((a) => a.platform === 'sentinel-2b')!), 'clear at this spot');
   });
 
+  it('keeps a mosaic source with an empty time domain as a row with no days', async () => {
+    const lookup = await fixtureLookup(dubai);
+    const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { emptyLayers: ['VIIRS_SNPP'] }).fetch });
+    const viirs = evidence.mosaics.find((row) => row.source === 'VIIRS Suomi NPP');
+    assert.ok(viirs, 'VIIRS Suomi NPP row kept');
+    assert.deepEqual(viirs.days, []);
+    assert.ok(evidence.mosaics.find((row) => row.source === 'MODIS Terra')!.days.length > 0);
+  });
+
+  it('says a scene-wide cloud read did not check the spot', () => {
+    assert.equal(describePointCondition({ condition: 'unknown', cloudCoverPct: 12.4 }), '12% cloud across the scene, this spot not checked');
+    assert.equal(describePointCondition({ condition: 'unknown', cloudCoverPct: null }), 'this spot not checked for cloud');
+  });
+
   it('shows daily mosaics in their own row and upgrades no pass to a confirmed image with them', async () => {
     const lookup = await fixtureLookup(dubai);
     const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai).fetch });

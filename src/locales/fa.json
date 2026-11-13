@@ -5137,7 +5137,9 @@
       "withinReach": "در محدوده",
       "capabilityOverhead": "توانایی بر فراز",
       "passedOverhead": "از بالا گذشت",
-      "unmatchedImage": "تصویر بدون گذر محاسبه‌شده"
+      "unmatchedImage": "تصویر بدون گذر محاسبه‌شده",
+      "weatherFrame": "تصویر هواشناسی",
+      "unavailable": "در دسترس نیست"
     },
     "row": {
       "offNadir": "{{deg}}° از نادیر",
@@ -5145,7 +5147,12 @@
       "orbitAge": "داده‌های مداری با قدمت {{age}}",
       "edgeOfSwath": "لبهٔ نوار تصویربرداری",
       "notInArchive": "تصویری در بایگانی نیست",
-      "imageAlt": "تصویر {{name}}، {{time}}"
-    }
+      "imageAlt": "تصویر {{name}}، {{time}}",
+      "mosaicDays": "روزهای موجود در بایگانی: {{count}}",
+      "cadence": "تصویر جدید هر {{minutes}} دقیقه",
+      "sourceUnavailable": "بایگانی برای این روزها تصویری از این منبع ندارد."
+    },
+    "dailyMosaics": "موزاییک‌های روزانه",
+    "weatherFrames": "تصاویر هواشناسی"
   }
 }

@@ -147,7 +147,7 @@ export function describePointCondition(acquisition: Pick<MatchedAcquisition, 'co
     case 'cloud': return 'cloud at this spot';
     case 'cloud-shadow': return 'cloud shadow at this spot';
     case 'not-applicable': return null;
-    case 'unknown': return acquisition.cloudCoverPct === null ? null : `${Math.round(acquisition.cloudCoverPct)}% cloud in scene`;
+    case 'unknown': return acquisition.cloudCoverPct === null ? 'this spot not checked for cloud' : `${Math.round(acquisition.cloudCoverPct)}% cloud across the scene, this spot not checked`;
   }
 }
 

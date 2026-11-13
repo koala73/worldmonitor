@@ -5137,7 +5137,9 @@
       "withinReach": "erişimde",
       "capabilityOverhead": "kabiliyet üzerinde",
       "passedOverhead": "üzerinden geçti",
-      "unmatchedImage": "hesaplanmış geçişi olmayan görüntü"
+      "unmatchedImage": "hesaplanmış geçişi olmayan görüntü",
+      "weatherFrame": "hava durumu görüntüsü",
+      "unavailable": "kullanılamıyor"
     },
     "row": {
       "offNadir": "nadirden {{deg}}°",
@@ -5145,7 +5147,12 @@
       "orbitAge": "yörünge verileri {{age}} önce",
       "edgeOfSwath": "Tarama şeridinin kenarı",
       "notInArchive": "Arşivde görüntü yok",
-      "imageAlt": "{{name}} görüntüsü, {{time}}"
-    }
+      "imageAlt": "{{name}} görüntüsü, {{time}}",
+      "mosaicDays": "Arşivdeki gün sayısı: {{count}}",
+      "cadence": "her {{minutes}} dakikada yeni görüntü",
+      "sourceUnavailable": "Arşivde bu günler için bu kaynaktan görüntü yok."
+    },
+    "dailyMosaics": "günlük mozaikler",
+    "weatherFrames": "hava durumu görüntüleri"
   }
 }

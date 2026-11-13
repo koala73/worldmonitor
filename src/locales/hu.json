@@ -5137,7 +5137,9 @@
       "withinReach": "hatótávon belül",
       "capabilityOverhead": "képesség a pont felett",
       "passedOverhead": "elhaladt felette",
-      "unmatchedImage": "felvétel számított áthaladás nélkül"
+      "unmatchedImage": "felvétel számított áthaladás nélkül",
+      "weatherFrame": "időjárási felvétel",
+      "unavailable": "nem érhető el"
     },
     "row": {
       "offNadir": "{{deg}}° a nadírtól",
@@ -5145,7 +5147,12 @@
       "orbitAge": "{{age}} régi pályaadatok",
       "edgeOfSwath": "A sáv széle",
       "notInArchive": "Nincs felvétel az archívumban",
-      "imageAlt": "{{name}} felvétel, {{time}}"
-    }
+      "imageAlt": "{{name}} felvétel, {{time}}",
+      "mosaicDays": "Napok az archívumban: {{count}}",
+      "cadence": "új felvétel {{minutes}} percenként",
+      "sourceUnavailable": "Az archívum ezekre a napokra nem tartalmaz felvételt ebből a forrásból."
+    },
+    "dailyMosaics": "napi mozaikok",
+    "weatherFrames": "időjárási felvételek"
   }
 }

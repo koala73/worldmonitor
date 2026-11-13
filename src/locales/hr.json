@@ -5176,7 +5176,9 @@
       "withinReach": "u dometu",
       "capabilityOverhead": "sposobnost iznad",
       "passedOverhead": "preletio iznad",
-      "unmatchedImage": "snimka bez izračunatog preleta"
+      "unmatchedImage": "snimka bez izračunatog preleta",
+      "weatherFrame": "meteorološka snimka",
+      "unavailable": "nedostupno"
     },
     "row": {
       "offNadir": "{{deg}}° od nadira",
@@ -5184,7 +5186,12 @@
       "orbitAge": "orbitalni podaci stari {{age}}",
       "edgeOfSwath": "Rub pojasa snimanja",
       "notInArchive": "Nema snimke u arhivi",
-      "imageAlt": "Snimka {{name}}, {{time}}"
-    }
+      "imageAlt": "Snimka {{name}}, {{time}}",
+      "mosaicDays": "Dana u arhivi: {{count}}",
+      "cadence": "nova snimka svakih {{minutes}} min",
+      "sourceUnavailable": "Arhiva nema snimaka iz ovog izvora za te dane."
+    },
+    "dailyMosaics": "dnevni mozaici",
+    "weatherFrames": "meteorološke snimke"
   }
 }

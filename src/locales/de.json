@@ -5137,7 +5137,9 @@
       "withinReach": "in Reichweite",
       "capabilityOverhead": "Fähigkeit überfliegend",
       "passedOverhead": "überflogen",
-      "unmatchedImage": "Aufnahme ohne berechneten Überflug"
+      "unmatchedImage": "Aufnahme ohne berechneten Überflug",
+      "weatherFrame": "Wetterbild",
+      "unavailable": "nicht verfügbar"
     },
     "row": {
       "offNadir": "{{deg}}° außerhalb des Nadirs",
@@ -5145,7 +5147,12 @@
       "orbitAge": "Bahndaten {{age}} alt",
       "edgeOfSwath": "Rand des Aufnahmestreifens",
       "notInArchive": "Keine Aufnahme im Archiv",
-      "imageAlt": "Aufnahme von {{name}}, {{time}}"
-    }
+      "imageAlt": "Aufnahme von {{name}}, {{time}}",
+      "mosaicDays": "Tage im Archiv: {{count}}",
+      "cadence": "neues Bild alle {{minutes}} Min.",
+      "sourceUnavailable": "Das Archiv führt für diese Tage keine Bilder dieser Quelle."
+    },
+    "dailyMosaics": "Tagesmosaike",
+    "weatherFrames": "Wetterbilder"
   }
 }

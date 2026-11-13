@@ -15,7 +15,8 @@ import type { PassTier } from '../../shared/orbital/tiers.js';
 import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
-import { OrbitalWatchPage, type OrbitalWatchState } from '@/components/OrbitalWatchPage';
+import { IMAGE_CREDIT, OrbitalWatchPage, type OrbitalWatchState } from '@/components/OrbitalWatchPage';
+import manifest from '../../shared/source-attribution-manifest.json';
 import { openOrbitalWatch } from '@/app/orbital-watch';
 
 const NOW = Date.UTC(2026, 10, 13, 12);
@@ -156,6 +157,41 @@ describe('satellite pass lookup sheet', () => {
     expect(rowNames('confirmed')).toHaveLength(2);
     expect(rowNames('likely')).toHaveLength(30);
     expect(group('inRange')!.querySelectorAll('.ow-row')).toHaveLength(0);
+  });
+
+  it('credits every image, labels a scene-wide cloud read, and lists empty sources as unavailable', () => {
+    const { all, confirmedNew, confirmedOld } = tiered();
+    const acquisitions = [
+      { platform: 'sentinel-2c', profileId: 'sentinel-2', startMs: confirmedNew.timeMs, pass: { noradId: confirmedNew.noradId, timeMs: confirmedNew.timeMs }, imageUrl: 'https://earth-search.aws.element84.com/a.jpg', condition: 'unknown', cloudCoverPct: 12 },
+      { platform: 'landsat-9', profileId: 'landsat', startMs: confirmedOld.timeMs, pass: { noradId: confirmedOld.noradId, timeMs: confirmedOld.timeMs }, imageUrl: 'https://planetarycomputer.microsoft.com/api/data/v1/b.png', condition: 'clear', cloudCoverPct: 40 },
+    ] as unknown as MatchedAcquisition[];
+    const mosaics = [
+      { kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'MODIS Terra', layer: 'm', noradId: 25994, days: [{ date: '2026-11-12', imageUrl: 'https://gibs.earthdata.nasa.gov/m.jpg' }] },
+      { kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'VIIRS Suomi NPP', layer: 'v', noradId: 37849, days: [] },
+    ] as OrbitalEvidence['mosaics'];
+    const frames = [{ kind: 'geostationary', archive: 'eumetsat', source: 'Meteosat-10', layer: 'x', noradId: 38552, cadenceMinutes: 15, latest: { time: '2026-11-13T11:45:00Z', imageUrl: 'https://view.eumetsat.int/x.png' } }] as OrbitalEvidence['frames'];
+    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all, { acquisitions, mosaics, frames }) } });
+
+    const figure = (name: string) => [...sheet().querySelectorAll('.ow-row')].find((r) => r.textContent?.includes(name))!.querySelector('figure')!.textContent;
+    expect(figure(confirmedNew.name)).toContain('12% cloud across the scene, this spot not checked');
+    expect(figure(confirmedNew.name)).toContain('Contains modified Copernicus Sentinel data 2026');
+    expect(figure(confirmedOld.name)).toContain('Landsat imagery courtesy of the U.S. Geological Survey');
+    expect(text()).toContain('Daily mosaics: 1 · Weather frames: 1');
+
+    for (const id of ['mosaic', 'frames']) group(id)!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
+    expect(figure('MODIS Terra')).toContain('NASA GIBS');
+    expect(figure('Meteosat-10')).toContain('Contains EUMETSAT Meteosat imagery');
+    const viirs = [...group('mosaic')!.querySelectorAll<HTMLElement>('.ow-row')].find((r) => r.textContent?.includes('VIIRS Suomi NPP'))!;
+    expect(viirs.querySelector('.ow-tier-label')?.textContent).toBe('unavailable');
+    expect(viirs.querySelector('img')).toBeNull();
+    expect(text()).toContain("We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS)");
+  });
+
+  it('words its credits as the source attribution manifest does', () => {
+    const attributions = (manifest as { entries: Array<{ attribution?: string }> }).entries.map((e) => e.attribution ?? '').join('\n');
+    for (const credit of [IMAGE_CREDIT.copernicus(2026).replace(' 2026', ''), IMAGE_CREDIT.usgs, IMAGE_CREDIT.eumetsat, IMAGE_CREDIT.gibsAcknowledgement]) {
+      expect(attributions).toContain(credit);
+    }
   });
 
   it('says an aged-out open-mission pass is not in the archive only once the archives answered', () => {

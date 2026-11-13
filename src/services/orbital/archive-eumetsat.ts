@@ -39,20 +39,19 @@ export async function searchEumetsatGeostationary(query: FrameQuery & { visibleN
   const answers = await Promise.all(layers.map((layer) => layerTimes(layer, query.nowMs - GEOSTATIONARY_LOOKBACK_MS, query.nowMs, query)));
   const allFailed = allFailedOf(answers);
   if (allFailed) return failed(allFailed);
-  const items = layers.flatMap((layer, i): GeostationaryRow[] => {
+  const items = layers.map((layer, i): GeostationaryRow => {
     const answer = answers[i]!;
-    if (!answer.ok) return [];
-    const latestMs = answer.times[answer.times.length - 1];
+    const latestMs = answer.ok ? answer.times[answer.times.length - 1] : undefined;
     const wmsLayer = `${layer.workspace}:${layer.layer}`;
-    return [{
+    return {
       kind: 'geostationary',
       archive: 'eumetsat',
       source: layer.source,
       layer: wmsLayer,
       noradId: layer.noradId,
-      cadenceMinutes: answer.stepMs === null ? null : answer.stepMs / 60_000,
+      cadenceMinutes: !answer.ok || answer.stepMs === null ? null : answer.stepMs / 60_000,
       latest: latestMs === undefined ? null : { time: isoSecond(latestMs), imageUrl: eumetsatSnapshotUrl(wmsLayer, isoSecond(latestMs), box) },
-    }];
+    };
   });
   return { status: 'ok', archive: 'eumetsat', items };
 }

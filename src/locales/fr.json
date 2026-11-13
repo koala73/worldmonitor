@@ -5165,7 +5165,9 @@
       "withinReach": "à portée",
       "capabilityOverhead": "capacité au-dessus",
       "passedOverhead": "passé au-dessus",
-      "unmatchedImage": "image sans passage calculé"
+      "unmatchedImage": "image sans passage calculé",
+      "weatherFrame": "image météo",
+      "unavailable": "indisponible"
     },
     "row": {
       "offNadir": "{{deg}}° hors nadir",
@@ -5173,7 +5175,12 @@
       "orbitAge": "données orbitales datant de {{age}}",
       "edgeOfSwath": "Bord de la fauchée",
       "notInArchive": "Aucune image dans l’archive",
-      "imageAlt": "Image de {{name}}, {{time}}"
-    }
+      "imageAlt": "Image de {{name}}, {{time}}",
+      "mosaicDays": "Jours dans l’archive : {{count}}",
+      "cadence": "nouvelle image toutes les {{minutes}} min",
+      "sourceUnavailable": "L’archive ne contient aucune image de cette source pour ces jours."
+    },
+    "dailyMosaics": "mosaïques quotidiennes",
+    "weatherFrames": "images météo"
   }
 }

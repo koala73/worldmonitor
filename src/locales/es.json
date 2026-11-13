@@ -5165,7 +5165,9 @@
       "withinReach": "al alcance",
       "capabilityOverhead": "capacidad en vuelo",
       "passedOverhead": "pasó por encima",
-      "unmatchedImage": "imagen sin paso calculado"
+      "unmatchedImage": "imagen sin paso calculado",
+      "weatherFrame": "imagen meteorológica",
+      "unavailable": "no disponible"
     },
     "row": {
       "offNadir": "{{deg}}° fuera del nadir",
@@ -5173,7 +5175,12 @@
       "orbitAge": "datos orbitales de hace {{age}}",
       "edgeOfSwath": "Borde de la franja",
       "notInArchive": "Sin imagen en el archivo",
-      "imageAlt": "Imagen de {{name}}, {{time}}"
-    }
+      "imageAlt": "Imagen de {{name}}, {{time}}",
+      "mosaicDays": "Días en el archivo: {{count}}",
+      "cadence": "nueva imagen cada {{minutes}} min",
+      "sourceUnavailable": "El archivo no tiene imágenes de esta fuente para estos días."
+    },
+    "dailyMosaics": "mosaicos diarios",
+    "weatherFrames": "imágenes meteorológicas"
   }
 }

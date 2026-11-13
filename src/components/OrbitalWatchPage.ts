@@ -4,6 +4,7 @@ import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import { describePointCondition, type EvidenceProgress, type MatchedAcquisition, type OrbitalEvidence } from '@/services/orbital/match';
 import type { ArchiveId } from '@/services/orbital/archive-result';
+import type { DailyMosaicRow, GeostationaryRow } from '@/services/orbital/archive-gibs';
 import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
@@ -24,7 +25,7 @@ export interface OrbitalWatchPageCallbacks {
   onRetry: () => void;
 }
 
-type GroupId = 'confirmed' | 'likely' | 'checking' | 'upcoming' | 'mosaic' | 'inRange' | 'passed';
+type GroupId = 'confirmed' | 'likely' | 'checking' | 'upcoming' | 'mosaic' | 'frames' | 'inRange' | 'passed';
 
 interface GroupSpec {
   id: GroupId;
@@ -38,6 +39,7 @@ const GROUPS: readonly GroupSpec[] = [
   { id: 'likely', expanded: true, order: 'newest' },
   { id: 'upcoming', expanded: true, order: 'soonest' },
   { id: 'mosaic', expanded: false, order: 'newest' },
+  { id: 'frames', expanded: false, order: 'newest' },
   { id: 'inRange', expanded: false, order: 'newest' },
   { id: 'passed', expanded: false, order: 'newest' },
 ];
@@ -57,7 +59,8 @@ const GROUP_LABEL_KEY: Record<GroupId, string> = {
   confirmed: 'orbitalWatch.tier.confirmed',
   likely: 'orbitalWatch.tier.likely',
   upcoming: 'orbitalWatch.tier.opportunity',
-  mosaic: 'orbitalWatch.tier.dailyMosaic',
+  mosaic: 'orbitalWatch.dailyMosaics',
+  frames: 'orbitalWatch.weatherFrames',
   inRange: 'orbitalWatch.inRange',
   passed: 'orbitalWatch.tier.passedOverhead',
 };
@@ -78,6 +81,21 @@ const ARCHIVE_NAME: Record<ArchiveId, string> = {
   'nasa-gibs': 'NASA GIBS',
   eumetsat: 'EUMETSAT',
 };
+
+/** Credit lines the archives ask for, worded as in the source attribution manifest. */
+export const IMAGE_CREDIT = {
+  copernicus: (year: number) => `Contains modified Copernicus Sentinel data ${year}`,
+  usgs: 'Landsat imagery courtesy of the U.S. Geological Survey',
+  eumetsat: 'Contains EUMETSAT Meteosat imagery',
+  gibs: 'NASA GIBS',
+  gibsAcknowledgement: "We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).",
+} as const;
+
+function acquisitionCredit(acquisition: MatchedAcquisition): string {
+  return acquisition.profileId === 'landsat' ? IMAGE_CREDIT.usgs : IMAGE_CREDIT.copernicus(new Date(acquisition.startMs).getUTCFullYear());
+}
+
+const frameCredit = (archive: ArchiveId) => (archive === 'eumetsat' ? IMAGE_CREDIT.eumetsat : IMAGE_CREDIT.gibs);
 
 const EARTH_RADIUS_KM = 6371;
 const DAY_MS = 86_400_000;
@@ -133,16 +151,50 @@ function groupPasses(lookup: PointPassLookup, archives: ArchiveState): Map<Group
   for (const acquisition of evidence?.acquisitions ?? []) {
     if (!acquisition.pass) groups.get('confirmed')!.rows.push({ sortMs: acquisition.startMs, render: () => unmatchedImageRow(acquisition) });
   }
+  for (const mosaic of evidence?.mosaics ?? []) {
+    groups.get('mosaic')!.rows.push({ sortMs: mosaic.days[0] ? Date.parse(mosaic.days[0].date) : 0, render: () => mosaicRow(mosaic) });
+  }
+  for (const frame of evidence?.frames ?? []) {
+    groups.get('frames')!.rows.push({ sortMs: frame.latest ? Date.parse(frame.latest.time) : 0, render: () => frameRow(frame) });
+  }
   for (const group of groups.values()) group.rows.sort((a, b) => (group.spec.order === 'newest' ? b.sortMs - a.sortMs : a.sortMs - b.sortMs));
   return groups;
 }
 
-function imageSlot(acquisition: MatchedAcquisition | null, label: string): DomChild {
-  if (!acquisition?.imageUrl || !isAllowedPreviewUrl(acquisition.imageUrl)) return null;
-  const condition = describePointCondition(acquisition);
+function imageFigure(url: string | null, alt: string, captions: ReadonlyArray<string | null>): DomChild {
+  if (!url || !isAllowedPreviewUrl(url)) return null;
   return h('figure', { className: 'ow-row-image' },
-    h('img', { src: acquisition.imageUrl, alt: label, loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' }),
-    condition ? h('figcaption', null, condition) : null);
+    h('img', { src: url, alt, loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' }),
+    ...captions.filter((caption): caption is string => caption !== null).map((caption) => h('figcaption', null, caption)));
+}
+
+function imageSlot(acquisition: MatchedAcquisition | null, alt: string): DomChild {
+  return acquisition ? imageFigure(acquisition.imageUrl, alt, [describePointCondition(acquisition), acquisitionCredit(acquisition)]) : null;
+}
+
+function sourceRow(tier: string, name: string, tierLabel: string, time: string | null, detail: string | null, image: DomChild): HTMLElement {
+  return h('li', { className: 'ow-row', tabindex: '0', dataset: { tier } },
+    h('div', { className: 'ow-row-head' },
+      h('span', { className: 'ow-row-name' }, name),
+      h('span', { className: 'ow-tier-label' }, tierLabel)),
+    time ? h('div', { className: 'ow-row-time' }, time) : null,
+    detail ? h('div', { className: 'ow-row-detail' }, detail) : null,
+    image);
+}
+
+function mosaicRow(mosaic: DailyMosaicRow): HTMLElement {
+  const latest = mosaic.days[0];
+  if (!latest) return sourceRow('unavailable', mosaic.source, t('orbitalWatch.tier.unavailable'), null, t('orbitalWatch.row.sourceUnavailable'), null);
+  return sourceRow('daily-mosaic', mosaic.source, t('orbitalWatch.tier.dailyMosaic'), latest.date, t('orbitalWatch.row.mosaicDays', { count: mosaic.days.length }),
+    imageFigure(latest.imageUrl, t('orbitalWatch.row.imageAlt', { name: mosaic.source, time: latest.date }), [IMAGE_CREDIT.gibs]));
+}
+
+function frameRow(frame: GeostationaryRow): HTMLElement {
+  if (!frame.latest) return sourceRow('unavailable', frame.source, t('orbitalWatch.tier.unavailable'), null, t('orbitalWatch.row.sourceUnavailable'), null);
+  const time = formatUtc(Date.parse(frame.latest.time));
+  return sourceRow('weather-frame', frame.source, t('orbitalWatch.tier.weatherFrame'), time,
+    frame.cadenceMinutes === null ? null : t('orbitalWatch.row.cadence', { minutes: frame.cadenceMinutes }),
+    imageFigure(frame.latest.imageUrl, t('orbitalWatch.row.imageAlt', { name: frame.source, time }), [frameCredit(frame.archive)]));
 }
 
 function passRow(pass: PointPass, checking: boolean, acquisition: MatchedAcquisition | null): HTMLElement {
@@ -260,7 +312,9 @@ export class OrbitalWatchPage {
       ? h('p', { className: 'ow-empty' }, t('orbitalWatch.empty', { pastDays: Math.round((lookup.nowMs - lookup.window.startMs) / DAY_MS), futureHours: Math.round((lookup.window.endMs - lookup.nowMs) / 3_600_000) }))
       : null;
     const list = GROUPS.map(({ id }) => groups.get(id)!).filter((group) => group.rows.length > 0).map((group) => this.renderGroup(group));
-    return [stale, this.renderSummary(archives, groups, evidence), empty, ...list];
+    const usesGibs = evidence?.mosaics.some((m) => m.days.length > 0) || evidence?.frames.some((f) => f.latest && f.archive === 'nasa-gibs');
+    const acknowledgement = usesGibs ? h('p', { className: 'ow-credit' }, IMAGE_CREDIT.gibsAcknowledgement) : null;
+    return [stale, this.renderSummary(archives, groups, evidence), empty, ...list, acknowledgement];
   }
 
   private renderSummary(archives: ArchiveState, groups: Map<GroupId, Group>, evidence: OrbitalEvidence | null): HTMLElement {
@@ -276,8 +330,8 @@ export class OrbitalWatchPage {
     return h('div', { className: 'ow-summary' },
       h('p', { className: 'ow-headline', role: 'status' }, t('orbitalWatch.confirmedCount', { count: evidence.acquisitions.length })),
       h('p', { className: 'ow-counts' }, [
-        t('orbitalWatch.counts.mosaics', { count: evidence.mosaics.length }),
-        t('orbitalWatch.counts.frames', { count: evidence.frames.length }),
+        t('orbitalWatch.counts.mosaics', { count: evidence.mosaics.filter((m) => m.days.length > 0).length }),
+        t('orbitalWatch.counts.frames', { count: evidence.frames.filter((f) => f.latest).length }),
         t('orbitalWatch.counts.inRange', { count: inRange }),
       ].join(' · ')),
       failedNames.length > 0

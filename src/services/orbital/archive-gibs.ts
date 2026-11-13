@@ -16,7 +16,7 @@ export interface TimeRange {
   stepMs: number;
 }
 
-/** One image-per-day global layer, shown in its own row and never counted as a pass's image. */
+/** One image-per-day global layer, shown in its own row and never counted as a pass's image. No days means the source is unavailable. */
 export interface DailyMosaicRow {
   kind: 'daily-mosaic';
   archive: ArchiveId;
@@ -109,7 +109,7 @@ async function layerTimes(layer: GibsLayer, fromMs: number, toMs: number, daily:
   }
 }
 
-/** The first failure when every layer failed; a layer that alone fails is left out of the rows. */
+/** The first failure when every layer failed; a layer that alone fails stays in the rows as unavailable. */
 export function allFailedOf(answers: LayerTimes[]): ArchiveFailure | null {
   if (answers.length === 0 || answers.some((answer) => answer.ok)) return null;
   const first = answers[0]!;
@@ -129,11 +129,10 @@ export async function searchGibsDailyMosaics(query: FrameQuery): Promise<Archive
   const answers = await Promise.all(GIBS_DAILY_MOSAICS.map((layer) => layerTimes(layer, query.window.startMs, toMs, true, query)));
   const allFailed = allFailedOf(answers);
   if (allFailed) return failed(allFailed);
-  const items = GIBS_DAILY_MOSAICS.flatMap((layer, i): DailyMosaicRow[] => {
+  const items = GIBS_DAILY_MOSAICS.map((layer, i): DailyMosaicRow => {
     const answer = answers[i]!;
-    if (!answer.ok || answer.times.length === 0) return [];
-    const days = answer.times.map((t) => isoDate(t)).reverse().map((date) => ({ date, imageUrl: gibsSnapshotUrl(layer.layer, date, box) }));
-    return [{ kind: 'daily-mosaic', archive: 'nasa-gibs', source: layer.source, layer: layer.layer, noradId: layer.noradId, days }];
+    const days = (answer.ok ? answer.times : []).map((t) => isoDate(t)).reverse().map((date) => ({ date, imageUrl: gibsSnapshotUrl(layer.layer, date, box) }));
+    return { kind: 'daily-mosaic', archive: 'nasa-gibs', source: layer.source, layer: layer.layer, noradId: layer.noradId, days };
   });
   return { status: 'ok', archive: 'nasa-gibs', items };
 }
@@ -146,20 +145,19 @@ export async function searchGibsGeostationary(query: FrameQuery & { visibleNorad
   const answers = await Promise.all(layers.map((layer) => layerTimes(layer, fromMs, query.nowMs, false, query)));
   const allFailed = allFailedOf(answers);
   if (allFailed) return failed(allFailed);
-  const items = layers.flatMap((layer, i): GeostationaryRow[] => {
+  const items = layers.map((layer, i): GeostationaryRow => {
     const answer = answers[i]!;
-    if (!answer.ok) return [];
-    const latestMs = answer.times[answer.times.length - 1];
+    const latestMs = answer.ok ? answer.times[answer.times.length - 1] : undefined;
     const time = latestMs === undefined ? null : isoSecond(latestMs);
-    return [{
+    return {
       kind: 'geostationary',
       archive: 'nasa-gibs',
       source: layer.source,
       layer: layer.layer,
       noradId: layer.noradId,
-      cadenceMinutes: answer.stepMs === null ? null : answer.stepMs / 60_000,
+      cadenceMinutes: !answer.ok || answer.stepMs === null ? null : answer.stepMs / 60_000,
       latest: time ? { time, imageUrl: gibsSnapshotUrl(layer.layer, time, box) } : null,
-    }];
+    };
   });
   return { status: 'ok', archive: 'nasa-gibs', items };
 }
