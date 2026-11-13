@@ -612,6 +612,29 @@ export class OrbitalWatchPage {
     }
   }
 
+  /** Opens the full view on a pass's row, expanding its group, and announces it for the pass detail. */
+  select(key: string): boolean {
+    const state = this.state;
+    if (!this.isOpen || state?.kind !== 'passes' || state.archives.kind !== 'answered') return false;
+    const pass = state.archives.evidence.passes.find((p) => passKey(p) === key);
+    if (!pass || pass.tier.kind === 'daily-mosaic') return false;
+    const id = GROUP_OF_TIER[pass.tier.kind];
+    const spec = GROUPS.find((g) => g.id === id)!;
+    if (!spec.expanded) this.toggled.add(id);
+    else this.toggled.delete(id);
+    this.filter = null;
+    if (this.view === 'full') this.render(state);
+    else this.setView('full');
+    const row = this.body.querySelector<HTMLElement>(`.ow-row[data-key="pass:${CSS.escape(key)}"]`);
+    if (!row) return false;
+    for (const other of this.body.querySelectorAll('.ow-row[aria-current]')) other.removeAttribute('aria-current');
+    row.setAttribute('aria-current', 'true');
+    row.scrollIntoView?.({ block: 'center' });
+    row.focus();
+    this.sheet.dispatchEvent(new CustomEvent('orbital-watch:select', { bubbles: true, detail: { noradId: pass.noradId, timeMs: pass.timeMs } }));
+    return true;
+  }
+
   setView(view: OrbitalView): void {
     if (view === this.view || !this.isOpen) return;
     this.applyView(view);
