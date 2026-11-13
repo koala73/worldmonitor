@@ -414,7 +414,7 @@ export const DOCS_PAGE_DATES: Record<string, { datePublished: string; dateModifi
   "pricing": {"datePublished":"2026-07-05","dateModified":"2026-11-12"},
   "privacy": {"datePublished":"2026-07-10","dateModified":"2026-11-02"},
   "pro-intelligence-suite": {"datePublished":"2026-08-31","dateModified":"2026-10-30"},
-  "relay-parameters": {"datePublished":"2026-03-11","dateModified":"2026-11-04"},
+  "relay-parameters": {"datePublished":"2026-03-11","dateModified":"2026-11-13"},
   "release-packaging": {"datePublished":"2026-03-11","dateModified":"2026-11-03"},
   "releasing-cli": {"datePublished":"2026-07-04","dateModified":"2026-10-25"},
   "route-explorer": {"datePublished":"2026-04-19","dateModified":"2026-09-22"},

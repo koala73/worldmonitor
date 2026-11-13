@@ -9233,14 +9233,47 @@ function brotliSyncBuffer(body) {
   }
 }
 
+// Keep IPv6 /64 grouping aligned with api/_client-ip.js. IPv4-mapped IPv6
+// resolves to the same bucket as its IPv4 spelling.
+function rateLimitKeyForIp(ip) {
+  if (typeof ip !== 'string' || !ip.includes(':')) return ip;
+  let addr = ip.split('%')[0].toLowerCase();
+  const v4Tail = addr.match(/^(.*:)(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (v4Tail) {
+    const octets = v4Tail[2].split('.').map(Number);
+    if (octets.some((n) => n > 255)) return ip;
+    const [a, b, c, d] = octets;
+    addr = `${v4Tail[1]}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const halves = addr.split('::');
+  if (halves.length > 2) return ip;
+  const head = halves[0] ? halves[0].split(':') : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const missing = 8 - head.length - tail.length;
+  if (halves.length === 1 ? missing !== 0 : missing < 1) return ip;
+  const groups = [...head, ...new Array(halves.length === 2 ? missing : 0).fill('0'), ...tail];
+  if (!groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return ip;
+  const nums = groups.map((g) => parseInt(g, 16));
+  if (nums.slice(0, 5).every((n) => n === 0) && nums[5] === 0xffff) {
+    const hi = nums[6];
+    const lo = nums[7];
+    return `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`;
+  }
+  return `${groups.slice(0, 4).map((g) => parseInt(g, 16).toString(16)).join(':')}::/64`;
+}
+
+function hasRelayEdgeProof(req) {
+  const proof = req.headers['x-wm-edge-proof'];
+  return Boolean(CF_EDGE_PROOF_SECRET && typeof proof === 'string'
+    && safeTokenEquals(proof.trim(), CF_EDGE_PROOF_SECRET));
+}
+
 function getClientIp(req, isPublic = false) {
   if (isPublic) {
     // The Railway origin is public: forwarded IP headers are caller-controlled
     // unless our Cloudflare transform rule proves the request passed the edge.
     const cfIp = req.headers['cf-connecting-ip'];
-    const edgeProof = req.headers['x-wm-edge-proof'];
-    if (CF_EDGE_PROOF_SECRET && typeof edgeProof === 'string'
-      && safeTokenEquals(edgeProof.trim(), CF_EDGE_PROOF_SECRET)
+    if (hasRelayEdgeProof(req)
       && typeof cfIp === 'string' && cfIp.trim()) return cfIp.trim();
     return req.socket?.remoteAddress || 'unknown';
   }
@@ -9315,11 +9348,16 @@ function getRateLimitForPath(pathname) {
 }
 
 function consumeRateLimit(req, pathname, isPublic = false) {
+  // Reject unproven CF identities before touching shared peer buckets. A
+  // missing transform rule must not let spoofed requests exhaust that budget.
+  if (isPublic && CF_EDGE_PROOF_SECRET && req.headers['cf-connecting-ip']
+    && !hasRelayEdgeProof(req)) return { unproven: true };
   const maxRequests = getRateLimitForPath(pathname);
   if (!Number.isFinite(maxRequests) || maxRequests <= 0) return { limited: false, limit: 0, remaining: 0, resetInMs: 0 };
 
   const now = Date.now();
-  const ip = getClientIp(req, isPublic);
+  const clientIp = getClientIp(req, isPublic);
+  const ip = isPublic ? rateLimitKeyForIp(clientIp) : clientIp;
   const key = `${getRouteGroup(pathname)}:${ip}`;
   const existing = requestRateBuckets.get(key);
   if (!existing || now >= existing.resetAt) {
@@ -12834,6 +12872,10 @@ async function handleRelayRequest(req, res) {
   // Rate limiting applies to all non-health routes (including public /rss)
   if (pathname !== '/health' && pathname !== '/') {
     const rl = consumeRateLimit(req, pathname, isPublicRoute);
+    if (rl.unproven) {
+      return safeEnd(res, 403, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+        JSON.stringify({ error: 'Valid edge proof required' }));
+    }
     if (rl.limited) {
       const routeGroup = getRouteGroup(pathname);
       if (routeGroup === 'opensky') {

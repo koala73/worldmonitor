@@ -17,10 +17,11 @@
  *
  * Rules → Transform Rules → Modify Request Header → custom filter expression:
  *
- *   (http.request.uri.path matches "^/(api|mcp|ask|oauth|a2a|docs/mcp)(/|$)")
+ *   Run this script to print the current expression, including relay routes.
  *
  * Set static header `x-wm-edge-proof` to the same secret stored in Vercel as
- * `CF_EDGE_PROOF_SECRET`. Confirm Preview and Production both have the secret.
+ * `CF_EDGE_PROOF_SECRET`. Configure the same secret on Railway for relay routes.
+ * Confirm Preview and Production both have the secret.
  *
  * Live zone confirmation still requires Cloudflare dashboard / API access;
  * `--check` only proves the in-repo expression covers every declared
@@ -48,7 +49,8 @@ export const EDGE_PROOF_PATH_ALTERNATIVES = Object.freeze([
 ]);
 
 /** Regex source pasted into Cloudflare's `matches` operator (anchors included). */
-export const EDGE_PROOF_PATH_MATCHER_SOURCE = `^/(${EDGE_PROOF_PATH_ALTERNATIVES.join('|')})(/|$)`;
+export const RELAY_PUBLIC_RATE_LIMIT_PREFIXES = Object.freeze(['/rss', '/widget-agent']);
+export const EDGE_PROOF_PATH_MATCHER_SOURCE = `^/(${EDGE_PROOF_PATH_ALTERNATIVES.join('|')})(/|$)|^(${RELAY_PUBLIC_RATE_LIMIT_PREFIXES.join('|')})`;
 
 /** Same matcher Cloudflare evaluates against `http.request.uri.path`. */
 export const EDGE_PROOF_PATH_MATCHER = new RegExp(EDGE_PROOF_PATH_MATCHER_SOURCE);
@@ -65,6 +67,7 @@ export const EDGE_PROOF_PATH_PREFIXES = Object.freeze([
   '/oauth/',
   '/a2a',
   '/docs/mcp',
+  ...RELAY_PUBLIC_RATE_LIMIT_PREFIXES,
 ]);
 
 /** True when pathname would match the published Transform Rule expression. */

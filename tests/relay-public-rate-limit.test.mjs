@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 // Execute the production helpers without starting the relay's background workers.
 const source = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
-const start = source.indexOf('function getClientIp(');
+const start = source.indexOf('function rateLimitKeyForIp(');
 const end = source.indexOf('function logThrottled(', start);
 assert.ok(start >= 0 && end > start);
 const helpers = source.slice(start, end);
@@ -34,7 +34,7 @@ function request(headers = {}, peer = '192.0.2.10') {
 
 for (const proof of [undefined, '', 'wrong-secret', ['edge-secret']]) {
   test(`rotated public IP headers cannot bypass RSS limits with proof ${JSON.stringify(proof)}`, () => {
-    const { consumeRateLimit, buckets } = limiter();
+    const { consumeRateLimit, buckets } = limiter('');
     for (let i = 1; i <= 301; i++) {
       const req = request({
         'cf-connecting-ip': `198.18.${Math.floor(i / 256)}.${i % 256}`,
@@ -69,6 +69,50 @@ test('valid edge proof preserves separate public client buckets', () => {
     }
   }
   assert.equal(buckets.size, 2);
+});
+
+test('configured proof rejects spoofed CF identities without consuming any bucket', () => {
+  const { consumeRateLimit, buckets } = limiter();
+  for (const proof of [undefined, '', 'wrong-secret', ['edge-secret']]) {
+    for (let i = 0; i < 400; i++) {
+      assert.equal(consumeRateLimit(request({
+        'cf-connecting-ip': `198.18.0.${i % 256}`, 'x-wm-edge-proof': proof,
+      }), '/rss', true).unproven, true);
+    }
+  }
+  assert.equal(buckets.size, 0);
+  assert.equal(consumeRateLimit(request(), '/rss', true).remaining, 299);
+});
+
+test('IPv6 rotation within a /64 cannot create fresh public buckets', () => {
+  for (const proven of [false, true]) {
+    const { consumeRateLimit, buckets } = limiter();
+    for (let i = 1; i <= 301; i++) {
+      const ip = `2001:db8:abcd:1234::${i.toString(16)}`;
+      const req = proven
+        ? request({ 'cf-connecting-ip': ip, 'x-wm-edge-proof': 'edge-secret' })
+        : request({}, ip);
+      assert.equal(consumeRateLimit(req, '/rss', true).limited, i > 300);
+    }
+    assert.equal(buckets.size, 1);
+    const headers = { 'cf-connecting-ip': '2001:db8:abcd:1235::1', 'x-wm-edge-proof': 'edge-secret' };
+    assert.equal(consumeRateLimit(request(headers), '/rss', true).remaining, 299);
+  }
+});
+
+test('equivalent IPv6 spellings and mapped IPv4 share public buckets', () => {
+  const { consumeRateLimit } = limiter();
+  for (const [a, b] of [
+    ['2001:db8::1', '2001:0DB8:0000:0000:0000:0000:0000:0002'],
+    ['::ffff:192.0.2.1', '192.0.2.1'],
+    ['::ffff:c000:201', '192.0.2.1'],
+  ]) {
+    const fresh = limiter();
+    assert.equal(fresh.consumeRateLimit(request({}, a), '/rss', true).remaining, 299);
+    assert.equal(fresh.consumeRateLimit(request({}, b), '/rss', true).remaining, 298);
+  }
+  assert.equal(consumeRateLimit(request({}, '2001:db8::1%eth0'), '/rss', true).remaining, 299);
+  assert.equal(consumeRateLimit(request({}, '2001:db8::2'), '/rss', true).remaining, 298);
 });
 
 test('missing, blank or duplicate CF IP headers fall back even with valid proof', () => {

@@ -121,12 +121,16 @@ route has not been deployed.
 | `RELAY_LOG_THROTTLE_MS` | Railway | `10000` | No | Minimum interval between repeated log events per key. |
 | `RELAY_METRICS_WINDOW_SECONDS` | Railway | `60` (min `10`) | No | Rolling window used by `/metrics`. |
 
-Public routes (including `/rss`) otherwise rate-limit by the socket peer address,
-ignoring all forwarded IP headers. Direct Railway requests cannot create fresh
-buckets by changing those headers. Without a valid edge proof, users behind the
-same ingress proxy share its rate-limit bucket. Configure the secret and the
-Cloudflare overwrite rule together to retain per-client limits through Cloudflare;
-keep the secret out of browser requests and upstream publisher requests.
+Public routes (including `/rss`) reject requests presenting `cf-connecting-ip`
+without valid proof when the secret is configured, before consuming any bucket.
+Other unproven requests rate-limit by the socket peer address, ignoring all
+forwarded IP headers. IPv6 identities share a `/64` bucket; IPv4-mapped addresses
+share the corresponding IPv4 bucket. Users behind the same ingress proxy share
+its bucket unless they have a proven client IP. Configure the secret and the
+Cloudflare overwrite rule together, using the expression printed by
+`node scripts/cloudflare-edge-proof-rule.mjs`, which includes `/rss*` and
+`/widget-agent*`. Apply it on the Cloudflare zone serving the relay hostname.
+Keep the secret out of browser requests and upstream publisher requests.
 
 ## Platform-Managed Variables (Do Not Manually Set)
 

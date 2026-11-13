@@ -208,7 +208,7 @@ describe('Cloudflare edge-proof Transform Rule coverage (#8402)', () => {
       `(http.request.uri.path matches "${EDGE_PROOF_PATH_MATCHER_SOURCE}")`,
     );
     assert.deepEqual([...EDGE_PROOF_PATH_ALTERNATIVES], ['api', 'mcp', 'ask', 'oauth', 'a2a', 'docs/mcp']);
-    assert.deepEqual(EDGE_PROOF_PATH_PREFIXES, ['/api/', '/mcp', '/ask', '/oauth/', '/a2a', '/docs/mcp']);
+    assert.deepEqual(EDGE_PROOF_PATH_PREFIXES, ['/api/', '/mcp', '/ask', '/oauth/', '/a2a', '/docs/mcp', '/rss', '/widget-agent']);
   });
 
   it('covers every ENDPOINT_RATE_POLICIES path with the published expression', () => {
@@ -219,7 +219,8 @@ describe('Cloudflare edge-proof Transform Rule coverage (#8402)', () => {
     assert.equal(embedded, EDGE_PROOF_PATH_MATCHER_SOURCE);
     const fromExpression = new RegExp(embedded!);
     assert.equal(fromExpression.source, EDGE_PROOF_PATH_MATCHER.source);
-    for (const pathname of [...Object.keys(ENDPOINT_RATE_POLICIES), ...EDGE_PROOF_PATH_PREFIXES]) {
+    for (const pathname of [...Object.keys(ENDPOINT_RATE_POLICIES), ...EDGE_PROOF_PATH_PREFIXES,
+      '/rss/feed', '/rss-sibling', '/widget-agent/stream', '/widget-agent-sibling']) {
       const matched = fromExpression.test(pathname);
       assert.ok(
         matched,
