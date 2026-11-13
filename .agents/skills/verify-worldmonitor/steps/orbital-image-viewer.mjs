@@ -24,7 +24,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const requests = [];
   page.on('request', (req) => requests.push({ url: req.url(), body: req.postData() ?? '' }));
 
-  await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': '"globe"' } });
+  await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': '"flat"' } });
   await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
   log('renderer', await waitForMap(page));
