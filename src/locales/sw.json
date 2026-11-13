@@ -5151,6 +5151,9 @@
       "about": "Kiungo cha tovuti, masharti na faragha"
     },
     "signOut": "Toka nje",
-    "signOutFailed": "Haiwezi kutoka. Jaribu tena."
+    "signOutFailed": "Haiwezi kutoka. Jaribu tena.",
+    "search": {
+      "empty": "Hakuna mipangilio inayolingana"
+    }
   }
 }

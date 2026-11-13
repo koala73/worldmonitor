@@ -5179,6 +5179,9 @@
       "about": "Legături site, termeni și confidențialitate"
     },
     "signOut": "Deconectare",
-    "signOutFailed": "Nu s-a putut deconecta. Încercați din nou."
+    "signOutFailed": "Nu s-a putut deconecta. Încercați din nou.",
+    "search": {
+      "empty": "Nicio setare nu corespunde"
+    }
   }
 }

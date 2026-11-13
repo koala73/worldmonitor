@@ -5207,6 +5207,9 @@
       "about": "Linki, warunki i prywatność"
     },
     "signOut": "Wyloguj się",
-    "signOutFailed": "Nie udało się wylogować. Spróbuj ponownie."
+    "signOutFailed": "Nie udało się wylogować. Spróbuj ponownie.",
+    "search": {
+      "empty": "Brak pasujących ustawień"
+    }
   }
 }

@@ -5207,6 +5207,9 @@
       "about": "Odkazy webu, podmínky a ochrana soukromí"
     },
     "signOut": "Odhlásit se",
-    "signOutFailed": "Nepodařilo se odhlásit. Zkuste to znovu."
+    "signOutFailed": "Nepodařilo se odhlásit. Zkuste to znovu.",
+    "search": {
+      "empty": "Žádné nastavení neodpovídá"
+    }
   }
 }

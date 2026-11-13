@@ -5179,6 +5179,9 @@
       "about": "Enlaces del sitio, términos y privacidad"
     },
     "signOut": "Cerrar sesión",
-    "signOutFailed": "No se pudo cerrar sesión. Intenta de nuevo."
+    "signOutFailed": "No se pudo cerrar sesión. Intenta de nuevo.",
+    "search": {
+      "empty": "Ningún ajuste coincide"
+    }
   }
 }

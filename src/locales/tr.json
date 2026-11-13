@@ -5151,6 +5151,9 @@
       "about": "Site bağlantıları, şartlar ve gizlilik"
     },
     "signOut": "Çıkış yap",
-    "signOutFailed": "Oturum kapatılamadı. Lütfen tekrar deneyin."
+    "signOutFailed": "Oturum kapatılamadı. Lütfen tekrar deneyin.",
+    "search": {
+      "empty": "Eşleşen ayar yok"
+    }
   }
 }

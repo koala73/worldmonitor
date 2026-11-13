@@ -10,6 +10,7 @@ import {
   isPreferenceSection,
   pageEntryEffect,
   reduceNav,
+  searchNav,
   type NavGroup,
   type NavLayout,
   type NavState,
@@ -305,5 +306,62 @@ describe('settings navigation in the two-pane modal', () => {
     assert.equal(relayout(map, 'modal', 'about'), map);
     const home = at(null);
     assert.equal(relayout(home, 'sheet', 'about'), home);
+  });
+});
+
+describe('settings sidebar search', () => {
+  const text = (key: string) => ({
+    'settings.sections.about': 'About',
+    'settings.descriptions.about': 'Site links, terms and privacy',
+    'preferences.display': 'Display',
+    'settings.descriptions.display': 'Theme, font and language',
+    'settings.descriptions.map': 'Provider, theme and globe',
+  } as Record<string, string>)[key] ?? key;
+
+  const ids = (groups: readonly NavGroup[]) =>
+    groups.flatMap((group) => group.rows.map((row) => (row.kind === 'section' ? row.id : 'sign-in')));
+
+  it('keeps every row for an empty or blank query', () => {
+    const all = buildNav(facts());
+    assert.deepEqual(ids(searchNav(all, '', text).groups), [...SETTINGS_SECTION_IDS]);
+    assert.deepEqual(ids(searchNav(all, '   ', text).groups), [...SETTINGS_SECTION_IDS]);
+  });
+
+  it('matches the translated label and description, ignoring case', () => {
+    assert.deepEqual(ids(searchNav(buildNav(facts()), 'PRIVACY', text).groups), ['account', 'about']);
+    assert.deepEqual(ids(searchNav(buildNav(facts()), 'theme', text).groups), ['account', 'display', 'map']);
+  });
+
+  it('matches registry keywords and needs every word of the query', () => {
+    const search = (q: string) => ids(searchNav(buildNav(facts()), q, text).groups);
+    assert.deepEqual(search('ollama'), ['account', 'ai']);
+    assert.deepEqual(search('text size'), ['account', 'panels', 'display']);
+    assert.deepEqual(search('desktop key'), ['account', 'api-keys']);
+    assert.deepEqual(search('telegram'), ['account', 'notifications']);
+    assert.deepEqual(search('backup'), ['account', 'sync']);
+    assert.deepEqual(search('claude'), ['account', 'mcp-clients']);
+    assert.deepEqual(search('globe tiles'), ['account', 'map']);
+    assert.deepEqual(search('stream autoplay'), ['account', 'video']);
+  });
+
+  it('drops groups left empty and keeps their headings in order', () => {
+    const result = searchNav(buildNav(facts()), 'privacy', text);
+    assert.deepEqual(result.groups.map((group) => group.id), ['account', 'app']);
+  });
+
+  it('counts hits so the view can say nothing matched, while the account card stays', () => {
+    assert.equal(searchNav(buildNav(facts()), 'zzz', text).hits, 0);
+    assert.deepEqual(ids(searchNav(buildNav(facts()), 'zzz', text).groups), ['account']);
+    assert.deepEqual(ids(searchNav(buildNav(signedOut), 'zzz', text).groups), ['sign-in']);
+    assert.equal(searchNav(buildNav(facts()), 'privacy', text).hits, 1);
+    assert.equal(searchNav(buildNav(facts()), 'billing', text).hits, 1);
+  });
+
+  it('gives every section at least one keyword', () => {
+    for (const group of buildNav(facts())) {
+      for (const row of group.rows) {
+        if (row.kind === 'section') assert.ok(row.keywords.length > 0, `${row.id} has keywords`);
+      }
+    }
   });
 });

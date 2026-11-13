@@ -21371,8 +21371,43 @@ button.popup-link {
   display: none;
 }
 
-.us-install-slot:empty {
+.us-install-slot:empty,
+.us-search-empty:empty {
   display: none;
+}
+
+/* Search belongs to the wide layout's sidebar; the phone list has none. */
+.us-search {
+  display: none;
+}
+
+.us-search-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.us-search-input::placeholder {
+  color: var(--text-dim);
+}
+
+.us-search-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.us-search-empty {
+  margin: 0;
+  padding: 4px 10px;
+  color: var(--text-dim);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
 .us-install-slot .pwa-install-entry {
@@ -27984,8 +28019,8 @@ body.map-width-resizing {
 }
 
 /* Wider screens: a two-pane sheet over the dimmed dashboard, so a theme or
-   panel change shows behind it. The sidebar holds the section list; the page
-   pane scrolls on its own under a pinned page title. */
+   panel change shows behind it. The sidebar holds the section list and its
+   search; the page pane scrolls on its own under a pinned page title. */
 @media (min-width: 769px) {
   #unifiedSettingsModal {
     padding: 16px;
@@ -28026,10 +28061,20 @@ body.map-width-resizing {
     flex-direction: column;
     gap: 12px;
     min-height: 0;
-    padding: 12px 10px 16px;
+    padding: 0 10px 16px;
     overflow-y: auto;
     overscroll-behavior: contain;
     border-inline-end: 1px solid var(--border);
+    background: var(--bg-secondary);
+  }
+
+  #unifiedSettingsModal .us-search {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: block;
+    margin: 0 -10px;
+    padding: 12px 10px 4px;
     background: var(--bg-secondary);
   }
 

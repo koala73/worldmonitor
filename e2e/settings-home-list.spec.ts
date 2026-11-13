@@ -4,7 +4,7 @@ import { devices, expect, test, type Page } from '@playwright/test';
 // Settings is one grouped list of sections. On a phone it opens on that list,
 // each row opens one page, and the header's back button returns to the list;
 // every row must fit the sheet without sideways scrolling, in left-to-right
-// and Arabic layouts. Wider screens show the list as a sidebar
+// and Arabic layouts. Wider screens show the list as a searchable sidebar
 // beside the selected page, over the dimmed dashboard.
 
 const { defaultBrowserType, ...pixel } = devices['Pixel 7'];
@@ -104,6 +104,7 @@ async function openSettingsFromGear(page: Page, query = ''): Promise<void> {
 }
 
 const currentRow = (page: Page) => page.locator('#unifiedSettingsModal [aria-current="page"]');
+const sidebarRows = (page: Page) => page.locator('[data-settings-rows] [data-settings-nav], [data-settings-rows] [data-settings-signin]');
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768 }]) {
   test.describe(`settings sidebar at ${viewport.width}×${viewport.height}`, () => {
@@ -135,6 +136,32 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768
       await page.keyboard.press('Escape');
       await page.locator('#unifiedSettingsBtn').click();
       await expect(page.locator('#us-page-about'), 'a reopen returns to the page selected last').toBeVisible();
+    });
+
+    test('searches the sidebar, says when nothing matches, and Escape clears before it closes', async ({ page }) => {
+      await seed(page);
+      await openSettingsFromGear(page);
+      const search = page.locator('[data-settings-search]');
+      const empty = page.locator('[data-settings-empty]');
+
+      await search.fill('privacy');
+      await expect(sidebarRows(page)).toHaveCount(2);
+      await expect(page.locator('[data-settings-rows] [data-settings-signin]')).toBeVisible();
+      await expect(page.locator('[data-settings-nav="about"]')).toBeVisible();
+      await expect(empty).toBeHidden();
+
+      await search.fill('zzz');
+      await expect(sidebarRows(page)).toHaveCount(1);
+      await expect(empty).toHaveText('No settings match');
+
+      await search.press('Escape');
+      await expect(search).toHaveValue('');
+      await expect(page.locator('[data-settings-nav="about"]')).toBeVisible();
+      await expect(empty).toBeHidden();
+      await expect(page.locator('#unifiedSettingsModal')).toHaveClass(/active/);
+
+      await search.press('Escape');
+      await expect(page.locator('#unifiedSettingsModal')).not.toHaveClass(/active/);
     });
 
     test('a deep link selects its page in the sidebar', async ({ page }) => {
@@ -185,6 +212,7 @@ test.describe('settings across the phone breakpoint', () => {
     await page.setViewportSize({ width: 393, height: 852 });
     await expect(page.locator('#us-page-map')).toBeVisible();
     await expect(page.locator('[data-settings-home]')).toBeHidden();
+    await expect(page.locator('[data-settings-search]')).toBeHidden();
 
     await page.locator('[data-settings-back]').click();
     await expect(page.locator('[data-settings-home]')).toBeVisible();

@@ -5179,6 +5179,9 @@
       "about": "Liens du site, conditions et confidentialité"
     },
     "signOut": "Se déconnecter",
-    "signOutFailed": "Impossible de se déconnecter. Réessayez."
+    "signOutFailed": "Impossible de se déconnecter. Réessayez.",
+    "search": {
+      "empty": "Aucun paramètre ne correspond"
+    }
   }
 }

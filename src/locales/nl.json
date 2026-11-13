@@ -5151,6 +5151,9 @@
       "about": "Sitelinks, voorwaarden en privacy"
     },
     "signOut": "Afmelden",
-    "signOutFailed": "Afmelden mislukt. Probeer opnieuw."
+    "signOutFailed": "Afmelden mislukt. Probeer opnieuw.",
+    "search": {
+      "empty": "Geen instellingen gevonden"
+    }
   }
 }

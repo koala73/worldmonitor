@@ -29,6 +29,7 @@ import {
   isSettingsSectionId,
   pageEntryEffect,
   reduceNav,
+  searchNav,
   sectionLabelKey,
   type MountedSection,
   type NavEvent,
@@ -200,6 +201,8 @@ export class UnifiedSettings {
   private readonly scrollOffsets = new Map<SettingsSectionId | 'home', number>();
   /** The last page shown while this shell has lived, open or closed. The modal reopens on it. */
   private recentPage: SettingsSectionId | null = null;
+  /** The sidebar search text. The sheet has no search, so it is empty there. */
+  private navQuery = '';
   private installCleanup: (() => void) | null = null;
   private legalLinkHandoffAttached = false;
   private activeSourceRegion = 'all';
@@ -644,7 +647,10 @@ export class UnifiedSettings {
 
     this.overlay.addEventListener('input', (e) => {
       const target = e.target as HTMLInputElement;
-      if (target.closest('.panels-search')) {
+      if (target.matches('[data-settings-search]')) {
+        this.navQuery = target.value;
+        this.renderHome();
+      } else if (target.closest('.panels-search')) {
         this.panelFilter = target.value;
         this.renderPanelsTab();
       } else if (target.closest('.sources-search')) {
@@ -652,6 +658,15 @@ export class UnifiedSettings {
         this.renderSourcesGrid();
         this.updateSourcesCounter();
       }
+    });
+
+    // Escape in a non-empty sidebar search clears it; the next Escape reaches
+    // escapeHandler on the document and closes Settings.
+    this.overlay.addEventListener('keydown', (e) => {
+      const target = e.target as HTMLInputElement;
+      if (e.key !== 'Escape' || !target.matches('[data-settings-search]') || target.value === '') return;
+      e.stopPropagation();
+      this.clearSearch();
     });
 
     this.renderFrame();
@@ -993,8 +1008,13 @@ export class UnifiedSettings {
           <button class="modal-close unified-settings-close" aria-label="Close">×</button>
         </div>
         <nav class="us-home" data-settings-home aria-label="${escapeHtml(t('header.tabSettings'))}">
+          <div class="us-search">
+            <input type="search" class="us-search-input" data-settings-search autocomplete="off" spellcheck="false"
+              placeholder="${escapeHtml(t('modals.settingsWindow.shellSearchPlaceholder'))}" aria-label="${escapeHtml(t('modals.settingsWindow.shellSearchPlaceholder'))}" aria-controls="us-home-rows">
+          </div>
           ${this.config.isDesktopApp ? '' : '<div class="us-install-slot" data-pwa-install-entry></div>'}
-          <div class="us-home-rows" data-settings-rows></div>
+          <div class="us-home-rows" id="us-home-rows" data-settings-rows></div>
+          <p class="us-search-empty" data-settings-empty aria-live="polite"></p>
         </nav>
         <div class="us-pages" data-settings-pages></div>
       </div>
@@ -1004,7 +1024,7 @@ export class UnifiedSettings {
   private startSession(): void {
     this.endSession();
     this.scrollOffsets.clear();
-    this.renderHome();
+    this.clearSearch();
     this.attachLegalLinkHandoff();
     const installHost = this.overlay.querySelector<HTMLElement>('[data-pwa-install-entry]');
     if (installHost) this.installCleanup = mountInstallEntry(installHost);
@@ -1066,14 +1086,17 @@ export class UnifiedSettings {
     }
   }
 
-  /** Renders the home list, which the modal shows as its sidebar. */
+  /** Renders the home rows, or on the modal the sidebar rows that match its search. */
   private renderHome(): void {
     const rows = this.overlay.querySelector<HTMLElement>('[data-settings-rows]');
     if (!rows) return;
+    const { groups, hits } = searchNav(buildNav(this.readFacts()), this.navQuery, (key) => t(key));
     setTrustedHtml(rows, trustedHtml(
-      buildNav(this.readFacts()).map((group) => this.renderNavGroup(group)).join(''),
+      groups.map((group) => this.renderNavGroup(group)).join(''),
       'settings home rows; every interpolated value escaped',
     ));
+    const empty = this.overlay.querySelector<HTMLElement>('[data-settings-empty]');
+    if (empty) empty.textContent = this.navQuery.trim() !== '' && hits === 0 ? t('settings.search.empty') : '';
     this.markCurrentRow();
   }
 
@@ -1169,6 +1192,8 @@ export class UnifiedSettings {
     if (next.page !== null) this.recentPage = next.page;
     if (fx.leave) this.pages.get(fx.leave)?.mounted.leave?.();
     const entered = fx.enter ? this.ensurePage(fx.enter) : null;
+    // Search belongs to the modal's sidebar; the sheet lists every row.
+    if (next.layout === 'sheet' && this.navQuery !== '') this.clearSearch();
     this.reflectNav();
     // The phone sheet is a drill-in stack, so a page opens at its top there.
     // The home list, and every page in the modal, return to where they were left.
@@ -1209,6 +1234,14 @@ export class UnifiedSettings {
   private scroller(nav: NavState): HTMLElement {
     const selector = nav.layout === 'modal' ? '[data-settings-pages]' : '.unified-settings-modal';
     return this.overlay.querySelector<HTMLElement>(selector)!;
+  }
+
+  /** Empties the sidebar search and lists every row again. */
+  private clearSearch(): void {
+    this.navQuery = '';
+    const search = this.overlay.querySelector<HTMLInputElement>('[data-settings-search]');
+    if (search) search.value = '';
+    this.renderHome();
   }
 
   /** Holds or releases the open page's history entry to match the page and layout. Idempotent. */

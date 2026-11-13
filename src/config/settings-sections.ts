@@ -40,6 +40,8 @@ interface SectionDef {
   /** What the home list shows while the section is unavailable. Default 'hide'. */
   readonly whenUnavailable?: 'hide' | 'sign-in-row';
   readonly summary?: (f: SettingsFacts) => RowSummary | null;
+  /** Extra words the sidebar search matches, besides the translated label and description. */
+  readonly keywords?: readonly string[];
 }
 
 interface GroupDef {
@@ -61,6 +63,7 @@ export const SETTINGS_GROUPS = [
       {
         id: 'account', labelKey: 'settings.sections.account', owner: 'shell',
         available: (f) => f.signedIn, whenUnavailable: 'sign-in-row',
+        keywords: ['plan', 'billing', 'subscription', 'invoice', 'seats', 'sign out', 'delete account'],
         summary: (f) => (f.account ? { kind: 'account', plan: f.account.plan, email: f.account.email } : null),
       },
     ],
@@ -69,14 +72,17 @@ export const SETTINGS_GROUPS = [
     id: 'dashboard', labelKey: 'settings.groups.dashboard', sections: [
       {
         id: 'panels', labelKey: 'header.tabPanels', descKey: 'settings.descriptions.panels', owner: 'shell',
+        keywords: ['layout', 'widgets', 'text size', 'reset layout'],
         summary: (f) => ({ kind: 'count', on: f.panels.on, total: f.panels.total }),
       },
       {
         id: 'sources', labelKey: 'header.tabSources', descKey: 'settings.descriptions.sources', owner: 'shell',
+        keywords: ['news', 'feeds', 'rss', 'regions', 'coverage'],
         summary: (f) => ({ kind: 'total', count: f.sourcesOn }),
       },
       {
         id: 'notifications', labelKey: 'header.tabNotifications', descKey: 'settings.descriptions.notifications', owner: 'shell',
+        keywords: ['alerts', 'telegram', 'slack', 'email', 'discord', 'webhook', 'push'],
         available: (f) => !f.isDesktopApp,
       },
     ],
@@ -85,27 +91,47 @@ export const SETTINGS_GROUPS = [
     id: 'preferences', labelKey: 'settings.groups.preferences', sections: [
       {
         id: 'display', labelKey: 'preferences.display', descKey: 'settings.descriptions.display', owner: 'preferences',
+        keywords: ['theme', 'dark', 'light', 'font', 'language', 'text size'],
         summary: (f) => ({ kind: 'text', key: THEME_SUMMARY_KEY[f.theme] }),
       },
-      { id: 'map', labelKey: 'settings.sections.map', descKey: 'settings.descriptions.map', owner: 'preferences' },
-      { id: 'ai', labelKey: 'settings.sections.ai', descKey: 'settings.descriptions.ai', owner: 'preferences' },
-      { id: 'video', labelKey: 'settings.sections.video', descKey: 'settings.descriptions.video', owner: 'preferences' },
+      {
+        id: 'map', labelKey: 'settings.sections.map', descKey: 'settings.descriptions.map', owner: 'preferences',
+        keywords: ['globe', 'provider', 'tiles', 'basemap'],
+      },
+      {
+        id: 'ai', labelKey: 'settings.sections.ai', descKey: 'settings.descriptions.ai', owner: 'preferences',
+        keywords: ['llm', 'ollama', 'frameworks', 'headline memory', 'browser model'],
+      },
+      {
+        id: 'video', labelKey: 'settings.sections.video', descKey: 'settings.descriptions.video', owner: 'preferences',
+        keywords: ['stream', 'autoplay', 'quality', 'live'],
+      },
     ],
   },
   {
     id: 'developer', labelKey: 'settings.groups.developer', sections: [
-      { id: 'api-keys', labelKey: 'settings.sections.apiKeys', descKey: 'settings.descriptions.apiKeys', owner: 'shell', badge: 'pro' },
+      {
+        id: 'api-keys', labelKey: 'settings.sections.apiKeys', descKey: 'settings.descriptions.apiKeys', owner: 'shell', badge: 'pro',
+        keywords: ['key', 'token', 'desktop key'],
+      },
       {
         id: 'embeds', labelKey: 'settings.sections.embeds', descKey: 'settings.descriptions.embeds', owner: 'shell', badge: 'pro',
         available: (f) => f.embedAccess,
+        keywords: ['widget', 'iframe', 'embed key'],
       },
-      { id: 'mcp-clients', labelKey: 'settings.sections.aiAgents', descKey: 'settings.descriptions.aiAgents', owner: 'shell' },
+      {
+        id: 'mcp-clients', labelKey: 'settings.sections.aiAgents', descKey: 'settings.descriptions.aiAgents', owner: 'shell',
+        keywords: ['mcp', 'claude', 'agents', 'chatgpt', 'clients'],
+      },
     ],
   },
   {
     id: 'app', labelKey: 'settings.groups.app', sections: [
-      { id: 'sync', labelKey: 'settings.sections.sync', owner: 'preferences' },
-      { id: 'about', labelKey: 'settings.sections.about', descKey: 'settings.descriptions.about', owner: 'shell' },
+      { id: 'sync', labelKey: 'settings.sections.sync', owner: 'preferences', keywords: ['import', 'export', 'backup', 'cloud'] },
+      {
+        id: 'about', labelKey: 'settings.sections.about', descKey: 'settings.descriptions.about', owner: 'shell',
+        keywords: ['terms', 'privacy', 'license', 'legal'],
+      },
     ],
   },
 ] as const satisfies readonly GroupDef[];
@@ -150,6 +176,7 @@ export type NavRow =
     readonly descKey: string | null;
     readonly badge: 'pro' | null;
     readonly summary: RowSummary | null;
+    readonly keywords: readonly string[];
   }
   | { readonly kind: 'sign-in' };
 
@@ -174,6 +201,7 @@ export function buildNav(f: SettingsFacts): readonly NavGroup[] {
           descKey: def.descKey ?? null,
           badge: def.badge ?? null,
           summary: def.summary?.(f) ?? null,
+          keywords: def.keywords ?? [],
         });
       } else if (def.whenUnavailable === 'sign-in-row') {
         rows.push({ kind: 'sign-in' });
@@ -182,6 +210,36 @@ export function buildNav(f: SettingsFacts): readonly NavGroup[] {
     if (rows.length > 0) groups.push({ id: group.id, labelKey: group.labelKey, rows });
   }
   return groups;
+}
+
+/** The sidebar's search result. `hits` counts the sections that matched. */
+export interface NavSearch {
+  readonly groups: readonly NavGroup[];
+  readonly hits: number;
+}
+
+/**
+ * Keeps the rows whose translated label, description or keywords contain every
+ * word of `query`, case-insensitively. Groups left empty are dropped. The
+ * account card and the sign-in row always stay, so search never hides who is
+ * signed in.
+ */
+export function searchNav(groups: readonly NavGroup[], query: string, text: (key: string) => string): NavSearch {
+  const words = query.toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  let hits = 0;
+  const kept: NavGroup[] = [];
+  for (const group of groups) {
+    const rows = group.rows.filter((row) => {
+      if (row.kind === 'sign-in') return true;
+      const haystack = [text(row.labelKey), row.descKey ? text(row.descKey) : '', ...row.keywords]
+        .join('\n').toLocaleLowerCase();
+      const matched = words.every((word) => haystack.includes(word));
+      if (matched) hits += 1;
+      return matched || row.id === 'account';
+    });
+    if (rows.length > 0) kept.push({ ...group, rows });
+  }
+  return { groups: kept, hits };
 }
 
 declare const resolved: unique symbol;

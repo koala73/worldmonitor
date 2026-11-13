@@ -2,8 +2,9 @@
  * On a phone Settings opens on a home list of sections. Each row drills into
  * one page, the header's back button returns to the list, and the list's
  * summaries follow what changed on the pages. Wider screens show the same list
- * as a sidebar beside the open page. These drive the real component the way
- * a user does: clicking rows, the back button and the controls on a page.
+ * as a sidebar beside the open page, with a search over it. These drive the
+ * real component the way a user does: clicking rows, the back button, the
+ * search field and the controls on a page.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -60,6 +61,8 @@ const page = (id: string) => $(`[data-settings-page="${id}"]`);
 const summary = (id: string) => row(id)?.querySelector('[data-settings-summary]')?.textContent ?? null;
 const home = () => $('[data-settings-home]')!;
 const back = () => $<HTMLButtonElement>('[data-settings-back]')!;
+const search = () => $<HTMLInputElement>('[data-settings-search]')!;
+const isOpen = () => $('#unifiedSettingsModal.active') !== null;
 const current = () => [...document.querySelectorAll<HTMLElement>('[aria-current="page"]')].map((el) => el.dataset.settingsNav);
 const visibleRows = () => [...document.querySelectorAll<HTMLElement>('[data-settings-rows] [data-settings-nav], [data-settings-rows] [data-settings-signin]')]
   .map((el) => el.dataset.settingsNav ?? 'sign-in');
@@ -74,6 +77,15 @@ function chooseTheme(value: string): void {
   const radio = page('display')!.querySelector<HTMLInputElement>(`input[name="us-theme"][value="${value}"]`)!;
   radio.checked = true;
   radio.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function typeSearch(text: string): void {
+  search().value = text;
+  search().dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function pressEscape(target: HTMLElement): void {
+  target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 }
 
 beforeAll(async () => {
@@ -299,9 +311,66 @@ describe('Settings two-pane modal', () => {
     expect(summary('display')).toBe('Light');
   });
 
+  it('filters rows by label, description and keywords, keeping the sign-in row', () => {
+    settings.open();
+
+    typeSearch('privacy');
+    expect(visibleRows()).toEqual(['sign-in', 'about']);
+    expect([...document.querySelectorAll('.us-group-label')].map((h) => h.textContent)).toEqual(['App']);
+    expect($('[data-settings-empty]')!.textContent).toBe('');
+
+    typeSearch('ollama');
+    expect(visibleRows()).toEqual(['sign-in', 'ai']);
+  });
+
+  it('says nothing matches, then restores every row when cleared', () => {
+    settings.open();
+    const all = visibleRows();
+
+    typeSearch('zzz');
+    expect(visibleRows()).toEqual(['sign-in']);
+    expect($('[data-settings-empty]')!.textContent).toBe('No settings match');
+
+    typeSearch('');
+    expect(visibleRows()).toEqual(all);
+    expect($('[data-settings-empty]')!.textContent).toBe('');
+  });
+
+  it('keeps the current row marked when a search leaves it in the list', () => {
+    settings.open();
+    row('ai')!.click();
+    typeSearch('llm');
+
+    expect(current()).toEqual(['ai']);
+  });
+
+  it('clears the search on the first Escape and closes Settings on the second', () => {
+    settings.open();
+    typeSearch('map');
+
+    pressEscape(search());
+    expect(search().value).toBe('');
+    expect(visibleRows()).toContain('about');
+    expect(isOpen()).toBe(true);
+
+    pressEscape(search());
+    expect(isOpen()).toBe(false);
+  });
+
+  it('starts each session with an empty search', () => {
+    settings.open();
+    typeSearch('zzz');
+    settings.close();
+
+    settings.open();
+    expect(search().value).toBe('');
+    expect(visibleRows()).toContain('about');
+  });
+
   it('shows the open page on the phone sheet when the window narrows, and Back goes home', () => {
     settings.open();
     row('map')!.click();
+    typeSearch('map');
 
     setWidth(393);
 
@@ -309,6 +378,7 @@ describe('Settings two-pane modal', () => {
     expect(home().hidden).toBe(true);
     expect(back().hidden).toBe(false);
     expect(current()).toEqual([]);
+    expect(search().value).toBe('');
 
     back().click();
     expect(home().hidden).toBe(false);

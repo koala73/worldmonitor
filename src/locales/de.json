@@ -5151,6 +5151,9 @@
       "about": "Website-Links, Bedingungen und Datenschutz"
     },
     "signOut": "Abmelden",
-    "signOutFailed": "Abmeldung fehlgeschlagen. Bitte versuchen Sie es erneut."
+    "signOutFailed": "Abmeldung fehlgeschlagen. Bitte versuchen Sie es erneut.",
+    "search": {
+      "empty": "Keine passenden Einstellungen"
+    }
   }
 }

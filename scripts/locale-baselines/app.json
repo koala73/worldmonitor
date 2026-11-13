@@ -3912,6 +3912,7 @@
   "settings.groups.dashboard": "Dashboard",
   "settings.groups.developer": "Developer",
   "settings.groups.preferences": "Preferences",
+  "settings.search.empty": "No settings match",
   "settings.sections.about": "About",
   "settings.sections.account": "Account",
   "settings.sections.ai": "AI & analysis",

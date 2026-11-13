@@ -5151,6 +5151,9 @@
       "about": "Webbplatslinks, villkor och sekretess"
     },
     "signOut": "Logga ut",
-    "signOutFailed": "Det gick inte att logga ut. Försök igen."
+    "signOutFailed": "Det gick inte att logga ut. Försök igen.",
+    "search": {
+      "empty": "Inga inställningar matchar"
+    }
   }
 }

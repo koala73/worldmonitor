@@ -5179,6 +5179,9 @@
       "about": "Link del sito, termini e privacy"
     },
     "signOut": "Esci",
-    "signOutFailed": "Impossibile disconnettersi. Riprovare."
+    "signOutFailed": "Impossibile disconnettersi. Riprovare.",
+    "search": {
+      "empty": "Nessuna impostazione corrispondente"
+    }
   }
 }

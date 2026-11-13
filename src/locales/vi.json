@@ -5123,6 +5123,9 @@
       "about": "Liên kết trang web, điều khoản và quyền riêng tư"
     },
     "signOut": "Đăng xuất",
-    "signOutFailed": "Không thể đăng xuất. Vui lòng thử lại."
+    "signOutFailed": "Không thể đăng xuất. Vui lòng thử lại.",
+    "search": {
+      "empty": "Không có cài đặt phù hợp"
+    }
   }
 }

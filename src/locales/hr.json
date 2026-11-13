@@ -5190,6 +5190,9 @@
       "about": "Veze stranica, uvjeti korištenja i privatnost"
     },
     "signOut": "Odjava",
-    "signOutFailed": "Odjava nije uspjela. Pokušajte ponovno."
+    "signOutFailed": "Odjava nije uspjela. Pokušajte ponovno.",
+    "search": {
+      "empty": "Nema odgovarajućih postavki"
+    }
   }
 }

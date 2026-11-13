@@ -5179,6 +5179,9 @@
       "about": "Links do site, termos e privacidade"
     },
     "signOut": "Sair",
-    "signOutFailed": "Não foi possível fazer logout. Tente novamente."
+    "signOutFailed": "Não foi possível fazer logout. Tente novamente.",
+    "search": {
+      "empty": "Nenhuma configuração corresponde"
+    }
   }
 }

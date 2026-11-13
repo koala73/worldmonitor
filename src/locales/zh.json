@@ -5123,6 +5123,9 @@
       "about": "网站链接、条款和隐私"
     },
     "signOut": "退出登录",
-    "signOutFailed": "无法退出登录。请重试。"
+    "signOutFailed": "无法退出登录。请重试。",
+    "search": {
+      "empty": "没有匹配的设置"
+    }
   }
 }
