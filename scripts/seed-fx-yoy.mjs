@@ -26,7 +26,9 @@
  *       { countryCode: "AR", currency: "ARS",
  *         currentRate, yearAgoRate, yoyChange,
  *         drawdown24m, peakRate, peakDate, troughRate, troughDate,
- *         asOf, yearAgo },
+ *         asOf, yearAgo,
+ *         daily90?: { asOf, latest, anchor: { date, value }, sessions,
+ *                     noiseShare, reliable } },
  *       ...
  *     ],
  *     fetchedAt: "<iso>",
@@ -88,20 +90,103 @@ async function fetchYahooHistory(currency) {
     throw new Error('Yahoo chart payload missing timestamp/close arrays');
   }
   const series = [];
-  const monthFormat = new Intl.DateTimeFormat('en-CA', {
-    timeZone: result.meta?.exchangeTimezoneName || 'UTC', year: 'numeric', month: '2-digit',
-  });
   for (let i = 0; i < timestamps.length; i++) {
     const close = closes[i];
     if (typeof close === 'number' && Number.isFinite(close) && close > 0) {
-      const t = timestamps[i] * 1000;
-      const parts = monthFormat.formatToParts(new Date(t));
-      const period = `${parts.find(p => p.type === 'year').value}-${parts.find(p => p.type === 'month').value}`;
-      series.push({ t, close, period });
+      series.push({ t: timestamps[i] * 1000, close });
     }
   }
   if (series.length < 13) throw new Error(`Insufficient bars (${series.length})`);
   return series;
+}
+
+// Daily closes for the CII currency member. Yahoo's cross rates carry quote
+// noise that a monthly close cannot be cleaned of: QARUSD=X flips between the
+// 3.64 peg and a level 3.6% away on about four days in ten, and SARUSD=X
+// prints isolated 3% spikes. cleanDailyQuotes removes what a median can and
+// flags the rest, so no reader mistakes a bad print for a devaluation.
+async function fetchYahooDaily(currency) {
+  const symbol = `${currency}USD=X`;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=6mo&interval=1d`;
+  const data = await fetchYahooJson(url, { label: `${symbol} fx-daily`, timeoutMs: FETCH_TIMEOUT_MS });
+  const result = data?.chart?.result?.[0];
+  const timestamps = result?.timestamp;
+  const closes = result?.indicators?.quote?.[0]?.close;
+  if (!Array.isArray(timestamps) || !Array.isArray(closes)) {
+    throw new Error('Yahoo chart payload missing timestamp/close arrays');
+  }
+  return {
+    timeZone: result.meta?.exchangeTimezoneName || 'UTC',
+    points: timestamps.map((ts, i) => ({ t: ts * 1000, close: closes[i] })),
+  };
+}
+
+const DAY_MS = 86_400_000;
+export const FX_DAILY_WINDOW_DAYS = 90;
+export const FX_DAILY_MEDIAN_POINTS = 5;
+// A move of more than 1% that is undone within three sessions is a quote
+// error, not a price. Measured 2026-11-13 over 133 sessions: QAR 0.43, BHD
+// 0.37, PKR 0.14, SAR 0.06, every other currency at or below 0.04; EGP had 16
+// moves above 1% and none reverted. 0.10 sits in the gap.
+export const FX_NOISE_MOVE = 0.01;
+export const FX_NOISE_RETURN = 0.003;
+export const FX_NOISE_LOOKAHEAD = 3;
+export const FX_MAX_NOISE_SHARE = 0.10;
+const FX_DAILY_MIN_POINTS = 70;
+const FX_ANCHOR_MAX_GAP_DAYS = 7;
+
+const median = (values) => {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+
+/**
+ * Clean a daily close series and derive the 90-day change inputs.
+ * Returns null when the series cannot support a 90-day comparison.
+ * `reliable: false` means the quotes are too noisy to compare at all; the
+ * reader must treat the currency as unmeasured, never as unchanged.
+ */
+export function cleanDailyQuotes(points, timeZone = 'UTC') {
+  const series = (Array.isArray(points) ? points : [])
+    .filter((p) => Number.isFinite(p?.t) && typeof p.close === 'number' && Number.isFinite(p.close) && p.close > 0)
+    .sort((a, b) => a.t - b.t);
+  if (series.length < FX_DAILY_MIN_POINTS) return null;
+  const closes = series.map((p) => p.close);
+  const last = series.length - 1;
+  const half = FX_DAILY_MEDIAN_POINTS >> 1;
+  let anchorIdx = -1;
+  for (let i = last; i >= 0; i--) {
+    if (series[i].t <= series[last].t - FX_DAILY_WINDOW_DAYS * DAY_MS) { anchorIdx = i; break; }
+  }
+  if (anchorIdx < half) return null;
+  if (series[last].t - FX_DAILY_WINDOW_DAYS * DAY_MS - series[anchorIdx].t > FX_ANCHOR_MAX_GAP_DAYS * DAY_MS) return null;
+
+  let reverted = 0;
+  for (let i = 1; i < closes.length; i++) {
+    if (Math.abs(closes[i] / closes[i - 1] - 1) <= FX_NOISE_MOVE) continue;
+    for (let j = i + 1; j <= Math.min(last, i + FX_NOISE_LOOKAHEAD); j++) {
+      if (Math.abs(closes[j] / closes[i - 1] - 1) < FX_NOISE_RETURN) { reverted += 1; break; }
+    }
+  }
+  const noiseShare = Math.round((reverted / closes.length) * 1000) / 1000;
+  let dayFormat;
+  try {
+    dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  } catch {
+    dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' });
+  }
+  return {
+    asOf: dayFormat.format(new Date(series[last].t)),
+    latest: median(closes.slice(-FX_DAILY_MEDIAN_POINTS)),
+    anchor: {
+      date: dayFormat.format(new Date(series[anchorIdx].t)),
+      value: median(closes.slice(anchorIdx - half, anchorIdx + half + 1)),
+    },
+    sessions: closes.length,
+    noiseShare,
+    reliable: noiseShare <= FX_MAX_NOISE_SHARE,
+  };
 }
 
 function computeYoy(series) {
@@ -140,13 +225,6 @@ function computeYoy(series) {
   const trough = troughAtWorst;
 
   return {
-    // Yahoo labels a monthly close by its opening month in exchange-local time.
-    // Do not let that label turn an August close into an early-August anchor.
-    monthlyBars: series.map((bar) => {
-      const period = bar.period ?? new Date(bar.t).toISOString().slice(0, 7);
-      const end = Date.UTC(Number(period.slice(0, 4)), Number(period.slice(5, 7)), 0);
-      return { date: new Date(Math.min(end, latest.t)).toISOString().slice(0, 10), value: bar.close };
-    }),
     currentRate: latest.close,
     yearAgoRate: yearAgo.close,
     yoyChange: Math.round(yoyChange * 10) / 10,
@@ -163,17 +241,34 @@ function computeYoy(series) {
 async function fetchFxYoy() {
   const rates = [];
   const failures = [];
+  const dailyFailures = [];
   for (const [currency, countryCode] of Object.entries(CURRENCY_COUNTRY)) {
     try {
       const series = await fetchYahooHistory(currency);
       const yoy = computeYoy(series);
-      rates.push({ countryCode, currency, ...yoy });
+      await new Promise((r) => setTimeout(r, PER_CURRENCY_DELAY_MS));
+      // A failed or thin daily series costs the CII member only; the YoY row
+      // the resilience score reads is still published.
+      let daily90 = null;
+      try {
+        const daily = await fetchYahooDaily(currency);
+        daily90 = cleanDailyQuotes(daily.points, daily.timeZone);
+        if (!daily90) dailyFailures.push({ currency, error: 'insufficient daily history' });
+      } catch (err) {
+        dailyFailures.push({ currency, error: err instanceof Error ? err.message : String(err) });
+      }
+      rates.push({ countryCode, currency, ...yoy, ...(daily90 ? { daily90 } : {}) });
     } catch (err) {
       failures.push({ currency, error: err instanceof Error ? err.message : String(err) });
     }
     await new Promise((r) => setTimeout(r, PER_CURRENCY_DELAY_MS));
   }
   console.log(`  FX YoY: ${rates.length}/${Object.keys(CURRENCY_COUNTRY).length} currencies`);
+  const noisy = rates.filter((r) => r.daily90 && !r.daily90.reliable).map((r) => `${r.currency}(${r.daily90.noiseShare})`);
+  console.log(`  FX daily: ${rates.filter((r) => r.daily90).length} cleaned, unreliable quotes: ${noisy.join(', ') || 'none'}`);
+  if (dailyFailures.length > 0) {
+    console.log(`  Daily failures: ${dailyFailures.map((f) => `${f.currency}(${f.error})`).join(', ')}`);
+  }
   if (failures.length > 0) {
     console.log(`  Failures: ${failures.map((f) => `${f.currency}(${f.error})`).join(', ')}`);
   }
