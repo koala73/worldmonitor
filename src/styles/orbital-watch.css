@@ -80,3 +80,49 @@
     border-bottom: 0;
   }
 }
+
+.ow-timelapse-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px;
+  background: none;
+  border: 1px solid var(--ow-line, var(--border));
+  color: var(--ow-dim, var(--text-dim));
+  cursor: pointer;
+  text-align: left;
+}
+
+.ow-timelapse-entry:hover {
+  border-color: var(--ow-dim, var(--text-dim));
+}
+
+.ow-timelapse-glyph {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.ow-timelapse-glyph i {
+  width: 4px;
+  height: 14px;
+  border: 1px solid var(--ow-dim, var(--text-dim));
+}
+
+.ow-timelapse-glyph i:last-child {
+  background: var(--ow-accent, #f5a524);
+  border-color: var(--ow-accent, #f5a524);
+}
+
+.ow-timelapse-title {
+  color: var(--ow-text, var(--text));
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ow-timelapse-text {
+  flex: 1;
+}

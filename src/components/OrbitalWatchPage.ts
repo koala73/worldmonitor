@@ -190,6 +190,14 @@ function imageSlot(acquisition: MatchedAcquisition | null, alt: string): DomChil
     ?? h('p', { className: 'ow-row-note' }, t('orbitalWatch.row.noPreview'));
 }
 
+function timelapseEntry(): HTMLElement {
+  return h('button', { type: 'button', className: 'ow-timelapse-entry', 'aria-label': t('orbitalWatch.timelapse.open'), dataset: { action: 'timelapse' } },
+    h('span', { className: 'ow-timelapse-glyph', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'), h('i'), h('i')),
+    h('span', { className: 'ow-timelapse-title' }, t('orbitalWatch.timelapse.title')),
+    h('span', { className: 'ow-timelapse-text' }, t('orbitalWatch.timelapse.entry')),
+    h('span', { 'aria-hidden': 'true' }, '→'));
+}
+
 function bestViewButton(acquisition: MatchedAcquisition): HTMLElement {
   return h('button', { type: 'button', className: 'ow-retry ow-best-view', dataset: { action: 'view-image', imageKind: 'acquisition', imageKey: acquisition.key } },
     t('orbitalWatch.viewer.bestView', { name: acquisition.platform.toUpperCase(), time: formatUtc(acquisition.startMs) }));
@@ -368,6 +376,7 @@ export class OrbitalWatchPage {
         t('orbitalWatch.counts.inRange', { count: inRange }),
       ].join(' · ')),
       evidence.bestView ? bestViewButton(evidence.bestView) : null,
+      timelapseEntry(),
       failedNames.length > 0
         ? h('div', { className: 'ow-banner ow-banner-partial', role: 'note' },
           h('p', null, t('orbitalWatch.partial', { sources: failedNames.join(', ') })),
@@ -395,6 +404,14 @@ export class OrbitalWatchPage {
     const target = event.target as HTMLElement;
     if (target.closest('[data-action="retry"]')) {
       this.callbacks.onRetry();
+      return;
+    }
+    const timelapse = target.closest<HTMLElement>('[data-action="timelapse"]');
+    if (timelapse && this.state?.kind === 'passes') {
+      const { point, nowMs } = this.state.lookup;
+      void import('./OrbitalTimelapse').then(({ openOrbitalTimelapse, formatPoint }) => {
+        if (this.isOpen) openOrbitalTimelapse({ point, nowMs, place: formatPoint(point) }, timelapse);
+      });
       return;
     }
     const view = target.closest<HTMLElement>('[data-action="view-image"]');
