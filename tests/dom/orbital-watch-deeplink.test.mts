@@ -20,7 +20,7 @@ import type { PassTier } from '../../shared/orbital/tiers.js';
 import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { OrbitalEvidence } from '@/services/orbital/match';
-import { openOrbitalShareLink, openOrbitalWatch, openOrbitalWatchSearch } from '@/app/orbital-watch';
+import { openOrbitalWatch, openOrbitalWatchSearch } from '@/app/orbital-watch';
 import { scheduleOrbitalShareLink, takeOrbitalShareLink } from '@/app/orbital-share-link';
 import { EventHandlerManager } from '@/app/event-handlers';
 import { SearchSelectionDispatcher } from '@/app/search-selection-dispatcher';
@@ -132,7 +132,7 @@ describe('place search in the satellite pass lookup', () => {
     await vi.waitFor(() => expect(lookupMock).toHaveBeenCalledTimes(1));
     expect(lookupMock.mock.calls[0]![0]).toEqual({ point: { lat: 48.8584, lon: 2.2945 } });
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(text()).toContain('48.858°N, 2.295°E');
+    expect(text()).toContain('48.858°N 2.295°E');
   });
 
   it('keeps coordinates outside the globe out of the name search', async () => {
@@ -201,10 +201,39 @@ describe('place search in the satellite pass lookup', () => {
   });
 });
 
+describe('the search row', () => {
+  it('opens from CHANGE, and a picked place recentres the map and names the completed results', async () => {
+    openOrbitalWatch(EXACT, null);
+    await vi.waitFor(() => expect(sheet()!.querySelector('.ow-headline')).not.toBeNull());
+    expect(sheet()!.querySelector<HTMLElement>('.ow-search-slot')!.hidden).toBe(true);
+    expect(sheet()!.querySelector('.ow-zone')!.textContent).toBe('EUROPE/PARIS · UTC+1');
+    button('.ow-change').click();
+    expect(sheet()!.querySelector<HTMLElement>('.ow-search-slot')!.hidden).toBe(false);
+    expect(document.activeElement).toBe(input());
+    submitSearch('Rotterdam');
+    await vi.waitFor(() => expect(sheet()!.querySelectorAll('.ow-search-result')).toHaveLength(1));
+    button('.ow-search-result').click();
+    expect(sheet()!.querySelector<HTMLElement>('.ow-search-slot')!.hidden).toBe(true);
+    expect(setCenter).toHaveBeenCalledWith(51.9, 4.5, expect.any(Number));
+    expect(sheet()!.querySelector('.ow-place')!.textContent).toBe('Rotterdam, South Holland, Netherlands');
+    expect(sheet()!.querySelector('.ow-zone')!.textContent).toBe('EUROPE/AMSTERDAM · UTC+1');
+    await vi.waitFor(() => expect(sheet()!.querySelector('.ow-headline')?.textContent).toContain('Rotterdam, South Holland, Netherlands'));
+  });
+
+  it('keeps the full view when a place is picked from it', async () => {
+    openOrbitalWatch(EXACT, null, 'full');
+    button('.ow-change').click();
+    submitSearch('10, 20');
+    await vi.waitFor(() => expect(lookupMock).toHaveBeenCalledWith({ point: { lat: 10, lon: 20 } }, expect.anything()));
+    expect(sheet()!.dataset.view).toBe('full');
+    expect(sheet()!.querySelector('.ow-place')!.textContent).toBe('10.000°N 20.000°E');
+  });
+});
+
 describe('satellite pass share link', () => {
   it('copies a link with the point at 0.01-degree precision in the fragment', async () => {
     openOrbitalWatch(EXACT, null);
-    await vi.waitFor(() => expect(sheet()!.querySelector('.ow-row[data-pass]')).not.toBeNull());
+    await vi.waitFor(() => expect(sheet()!.querySelector('.ow-headline')).not.toBeNull());
     button('.ow-share').click();
     await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     const link = new URL(writeText.mock.calls[0]![0]);
@@ -213,21 +242,29 @@ describe('satellite pass share link', () => {
     expect(text()).toContain('Link copied');
   });
 
-  it('includes the selected pass, to the minute', async () => {
-    openOrbitalWatch(EXACT, null);
-    await vi.waitFor(() => expect(sheet()!.querySelector('.ow-row[data-pass]')).not.toBeNull());
-    sheet()!.querySelector<HTMLElement>(`.ow-row[data-pass^="40697:"]`)!.click();
-    expect(sheet()!.querySelector('.ow-row[aria-current="true"]')?.textContent).toContain('SAT 40697');
+  it('keeps the full view in the link copied from it', async () => {
+    openOrbitalWatch(EXACT, null, 'full');
+    await vi.waitFor(() => expect(sheet()!.querySelector('.ow-headline')).not.toBeNull());
     button('.ow-share').click();
     await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    expect(new URL(writeText.mock.calls[0]![0]).hash).toBe('#orbital=48.86,2.29;40697-202611120600');
+    expect(new URL(writeText.mock.calls[0]![0]).hash).toBe('#orbital=48.86,2.29&view=full');
+  });
+
+  it('shows the link to copy by hand when the clipboard refuses', async () => {
+    writeText.mockRejectedValueOnce(new Error('denied'));
+    openOrbitalWatch(EXACT, null);
+    await vi.waitFor(() => expect(sheet()!.querySelector('.ow-headline')).not.toBeNull());
+    button('.ow-share').click();
+    await vi.waitFor(() => expect(sheet()!.querySelector<HTMLInputElement>('.ow-share-link')!.hidden).toBe(false));
+    expect(sheet()!.querySelector<HTMLInputElement>('.ow-share-link')!.value).toMatch(/#orbital=48\.86,2\.29$/);
+    expect(sheet()!.querySelector<HTMLElement>('.ow-search-slot')!.hidden).toBe(false);
   });
 
   it('points a desktop share link at the public dashboard, not the local WebView origin', async () => {
     desktop.value = true;
     try {
       openOrbitalWatch(EXACT, null);
-      await vi.waitFor(() => expect(sheet()!.querySelector('.ow-row[data-pass]')).not.toBeNull());
+      await vi.waitFor(() => expect(sheet()!.querySelector('.ow-headline')).not.toBeNull());
       button('.ow-share').click();
       await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
       expect(writeText.mock.calls[0]![0]).toBe('https://www.worldmonitor.app/dashboard#orbital=48.86,2.29');
@@ -236,30 +273,17 @@ describe('satellite pass share link', () => {
     }
   });
 
-  it('lets the reader collapse the group a linked pass opened', async () => {
-    openOrbitalShareLink({ point: { lat: 48.86, lon: 2.29 }, pass: { noradId: 48917, minuteMs: NOW - 60 * HOUR } }, null);
-    const toggle = () => sheet()!.querySelector<HTMLButtonElement>('.ow-group-toggle[data-group="passed"]')!;
-    await vi.waitFor(() => expect(sheet()?.querySelector('.ow-row[aria-current="true"]')).not.toBeNull());
-    expect(toggle().getAttribute('aria-expanded')).toBe('true');
-    toggle().click();
-    expect(toggle().getAttribute('aria-expanded')).toBe('false');
-    toggle().click();
-    expect(toggle().getAttribute('aria-expanded')).toBe('true');
+  it('opens the full view from a view=full link', async () => {
+    history.replaceState(null, '', '/dashboard#orbital=48.86,2.29&view=full');
+    scheduleOrbitalShareLink(takeOrbitalShareLink()!, 0, () => false);
+    await vi.waitFor(() => expect(sheet()?.dataset.view).toBe('full'));
+    expect(lookupMock).toHaveBeenCalledWith({ point: { lat: 48.86, lon: 2.29 } }, expect.anything());
   });
 
-  it('keeps a group the reader opened open when they select a pass in it', async () => {
-    openOrbitalWatch(EXACT, null);
-    const toggle = () => sheet()!.querySelector<HTMLButtonElement>('.ow-group-toggle[data-group="passed"]')!;
-    await vi.waitFor(() => expect(toggle()).not.toBeNull());
-    toggle().click();
-    expect(toggle().getAttribute('aria-expanded')).toBe('true');
-    sheet()!.querySelector<HTMLElement>('.ow-row[data-pass^="48917:"]')!.click();
-    expect(toggle().getAttribute('aria-expanded')).toBe('true');
-    expect(sheet()!.querySelector('.ow-row[aria-current="true"]')?.textContent).toContain('SAT 48917');
-  });
-
-  it('opens a valid link after the map has had time to render, at the rounded point with its pass selected', async () => {
+  it('opens a valid link after the map has had time to render, at the rounded point, and hands its pass to the pass detail', async () => {
     vi.useFakeTimers();
+    const linked = vi.fn();
+    document.addEventListener('orbital-watch:linked-pass', (event) => linked((event as CustomEvent).detail), { once: true });
     history.replaceState(null, '', '/dashboard?view=eu#orbital=48.86,2.29;40697-202611120600');
     const link = takeOrbitalShareLink();
     expect(location.hash).toBe('');
@@ -269,9 +293,9 @@ describe('satellite pass share link', () => {
     expect(sheet()).toBeNull();
     await vi.advanceTimersByTimeAsync(600);
     vi.useRealTimers();
-    await vi.waitFor(() => expect(sheet()!.querySelector('.ow-row[aria-current="true"]')).not.toBeNull());
+    await vi.waitFor(() => expect(linked).toHaveBeenCalledTimes(1));
     expect(lookupMock).toHaveBeenCalledWith({ point: { lat: 48.86, lon: 2.29 } }, expect.anything());
-    expect(sheet()!.querySelector('.ow-row[aria-current="true"]')!.textContent).toContain('SAT 40697');
+    expect(linked.mock.calls[0]![0]).toEqual({ noradId: 40697, timeMs: PASSES[0]!.timeMs });
     expect(setCenter).toHaveBeenCalledWith(48.9, 2.3, expect.any(Number));
   });
 
@@ -294,8 +318,7 @@ describe('satellite pass share link', () => {
     history.replaceState(null, '', '/dashboard#orbital=48.86,2.29;40697-202610010600');
     scheduleOrbitalShareLink(takeOrbitalShareLink()!, 0, () => false);
     await vi.waitFor(() => expect(text()).toContain('The linked pass is outside the current window'));
-    await vi.waitFor(() => expect(sheet()!.querySelector('.ow-row[data-pass]')).not.toBeNull());
-    expect(sheet()!.querySelector('.ow-row[aria-current="true"]')).toBeNull();
+    await vi.waitFor(() => expect(sheet()!.querySelector('.ow-headline')).not.toBeNull());
     sheet()!.querySelector<HTMLButtonElement>('.ow-note-dismiss')!.click();
     expect(sheet()!.querySelector<HTMLElement>('.ow-note')!.hidden).toBe(true);
   });
