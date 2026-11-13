@@ -226,6 +226,14 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await openAtPlace();
   await sheet.locator('.ow-banner-partial').waitFor({ timeout: 90_000 });
   await settleImagesInView();
+  for (let step = 0; step < 8; step++) {
+    const index = Number((await sheet.locator('.ow-pager-count').innerText()).split('/')[0]) - 1;
+    if ((await sheet.locator('.ow-track .ow-card').nth(index).locator('.ow-tile').getAttribute('data-state')) === 'loaded') break;
+    const next = sheet.locator('.ow-pager-btn[data-action="next"]');
+    if (await next.isDisabled()) break;
+    await next.click();
+    await settleImagesInView();
+  }
   const withoutScenes = await sourceCredits(true);
   log('sources with both scene archives down', withoutScenes);
   if (withoutScenes.some((c) => /Copernicus|Landsat/.test(c))) throw new Error(`credit for an absent source: ${withoutScenes.join(' | ')}`);
