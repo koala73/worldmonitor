@@ -198,11 +198,14 @@ export class OrbitalTimeline {
       if (state) entries.push({ timeMs: window.startMs, node: h('li', { dataset: { lane: id } }, `${label}: ${text}`) });
       return;
     }
-    const retainedStart = state.retained ? Math.max(window.startMs, state.retained.startMs) : nowMs;
-    const retainedEnd = state.retained ? Math.min(nowMs, state.retained.endMs) : nowMs;
+    const coveredStart = state.retained ? Math.max(window.startMs, state.retained.startMs) : nowMs;
+    const coveredEnd = state.retained ? Math.min(nowMs, state.retained.endMs) : nowMs;
     const gaps: Array<[number, number]> = [];
-    if (retainedStart > window.startMs) gaps.push([window.startMs, Math.min(retainedStart, nowMs)]);
-    if (retainedEnd < nowMs && retainedEnd >= retainedStart) gaps.push([retainedEnd, nowMs]);
+    if (coveredEnd <= coveredStart) gaps.push([window.startMs, nowMs]);
+    else {
+      if (coveredStart > window.startMs) gaps.push([window.startMs, coveredStart]);
+      if (coveredEnd < nowMs) gaps.push([coveredEnd, nowMs]);
+    }
     const notRetained = t('orbitalWatch.timeline.notRetained');
     lane(id, label, [
       ...gaps.map(([startMs, endMs]) => h('span', { className: 'ow-tl-not-retained', style: between(startMs, endMs), title: notRetained })),

@@ -102,6 +102,15 @@ describe('orbital timeline', () => {
     expect(leftPct(gap) + Number(gap.style.width.replace('%', ''))).toBeCloseTo(nowPct(), 2);
   });
 
+  it('marks the whole history as not retained when the conflict feed ends before the window starts', () => {
+    mounted([], context({ events: { conflict: ok([], { startMs: NOW - 400 * DAY, endMs: NOW - 30 * DAY }) } }));
+    const gaps = track('conflict').querySelectorAll<HTMLElement>('.ow-tl-not-retained');
+    expect(gaps).toHaveLength(1);
+    expect(leftPct(gaps[0]!)).toBeCloseTo(0, 2);
+    expect(leftPct(gaps[0]!) + Number(gaps[0]!.style.width.replace('%', ''))).toBeCloseTo(nowPct(), 2);
+    expect(listText()).toContain('Conflict: not retained from 2026-11-06 12:00 UTC to 2026-11-13 12:00 UTC');
+  });
+
   it('selecting a timeline mark highlights the same pass in the list and hands it to the map', () => {
     const likely = pass('SENTINEL-2B', -30, { kind: 'likely-imaged' });
     const other = pass('LANDSAT 9', -60, { kind: 'likely-imaged' });
