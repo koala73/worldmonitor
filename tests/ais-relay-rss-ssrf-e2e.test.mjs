@@ -26,9 +26,9 @@ async function listen(server) {
   return server.address().port;
 }
 
-function get(port, pathname) {
+function get(port, pathname, headers = {}) {
   return new Promise((resolve, reject) => {
-    const req = http.get({ host: '127.0.0.1', port, path: pathname, timeout: 8000 }, (res) => {
+    const req = http.get({ host: '127.0.0.1', port, path: pathname, headers, timeout: 8000 }, (res) => {
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
       res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString('utf8') }));
@@ -50,7 +50,7 @@ function waitFor(predicate, description, timeoutMs = 20000) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function startRelay(t, upstreamPort, ctl) {
+async function startRelay(t, upstreamPort, ctl, envOverrides = {}) {
   const ws = http.createServer((_req, res) => { res.writeHead(429); res.end(); });
   const wsPort = await listen(ws);
   t.after(() => new Promise((resolve) => ws.close(resolve)));
@@ -68,6 +68,7 @@ async function startRelay(t, upstreamPort, ctl) {
       RSS_TEST_TARGET: TARGET,
       RSS_TEST_LOCAL_PORT: String(upstreamPort),
       RSS_TEST_CTL: ctl,
+      ...envOverrides,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -81,6 +82,43 @@ async function startRelay(t, upstreamPort, ctl) {
 }
 
 const feed = (pathname) => `/rss?url=${encodeURIComponent(`http://${TARGET}${pathname}`)}`;
+
+test('relay /rss: rotating forged IP headers cannot bypass the origin rate limit', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rss-rate-limit-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const ctl = path.join(dir, 'mode');
+  fs.writeFileSync(ctl, 'reroute');
+  let upstreamHits = 0;
+  const upstream = http.createServer((_req, res) => {
+    upstreamHits += 1;
+    res.writeHead(200, { 'Content-Type': 'application/xml', Connection: 'close' });
+    res.end('<rss/>');
+  });
+  const upstreamPort = await listen(upstream);
+  t.after(() => new Promise((resolve) => upstream.close(resolve)));
+  const { port } = await startRelay(t, upstreamPort, ctl, {
+    RELAY_RSS_RATE_LIMIT_MAX: '2',
+    RELAY_RATE_LIMIT_WINDOW_MS: '60000',
+  });
+
+  for (let i = 1; i <= 4; i++) {
+    const response = await get(port, feed(`/good?cache-bust=${i}`), {
+      'CF-Connecting-IP': `203.0.113.${i}`,
+      'X-Real-IP': `198.51.100.${i}`,
+      'X-Forwarded-For': `192.0.2.${i}`,
+    });
+    assert.equal(response.status, i <= 2 ? 200 : 429, `request ${i}`);
+    if (i > 2) {
+      assert.equal(response.headers['x-ratelimit-limit'], '2');
+      assert.equal(response.headers['x-ratelimit-remaining'], '0');
+      assert.ok(Number(response.headers['retry-after']) > 0);
+    }
+  }
+  assert.equal(upstreamHits, 2, 'throttled cache-busting requests never reach the publisher');
+  assert.equal((await get(port, feed('/good?no-headers'))).status, 429,
+    'removing the headers does not create another bucket');
+  assert.equal((await get(port, '/health')).status, 200, 'health stays exempt');
+});
 
 test('relay /rss: a blocked DNS answer is a terminal 403 for every caller and nothing stale leaks', async (t) => {
   const ctl = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rss-ssrf-')), 'mode');

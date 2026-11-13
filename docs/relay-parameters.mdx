@@ -111,6 +111,15 @@ route has not been deployed.
 
 ## Rate Limit / Logging / Metrics
 
+Public routes such as `/rss` use the socket peer address for rate-limit buckets.
+The relay ignores `CF-Connecting-IP`, `X-Real-IP`, and `X-Forwarded-For` on these
+routes because a caller reaching the origin directly can forge them. Behind
+Cloudflare, Railway ingress, or another reverse proxy, callers sharing a proxy
+peer also share its route limit. Enforce per-visitor limits at the trusted edge
+and restrict direct origin access when deploying behind a proxy; the relay's
+peer limit remains a shared backstop. Authenticated routes retain their existing
+forwarded-IP handling.
+
 | Variable | Set On | Default | Required | Purpose |
 | --- | --- | --- | --- | --- |
 | `RELAY_RATE_LIMIT_WINDOW_MS` | Railway | `60000` | No | Global rate-limit window. |
