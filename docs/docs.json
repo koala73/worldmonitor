@@ -676,7 +676,19 @@
                   "zh/documentation",
                   "zh/getting-started",
                   "zh/self-hosting",
-                  "zh/architecture"
+                  {
+                    "group": "架构",
+                    "pages": [
+                      "zh/architecture",
+                      "zh/architecture-topics/api-contracts-and-bootstrap",
+                      "zh/architecture-topics/seed-pipeline-and-edge",
+                      "zh/architecture-topics/caching-and-bandwidth",
+                      "zh/architecture-topics/reliability-and-health",
+                      "zh/architecture-topics/realtime-maps-and-performance",
+                      "zh/architecture-topics/analysis-and-frontend-design",
+                      "zh/architecture-topics/i18n-search-indexing"
+                    ]
+                  }
                 ]
               },
               {
@@ -759,6 +771,8 @@
                     "group": "信号与分析",
                     "pages": [
                       "zh/signal-intelligence",
+                      "zh/signal-intelligence/entity-correlation",
+                      "zh/signal-intelligence/sources-context-and-aggregation",
                       "zh/ai-intelligence",
                       "zh/geographic-convergence",
                       "zh/strategic-risk",
