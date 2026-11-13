@@ -9,7 +9,7 @@
   --oiv-stage: min(640px, calc(100vh - 220px), 100%);
   position: fixed;
   inset: 0;
-  z-index: 10004;
+  z-index: 10010;
   background: var(--oiv-bg);
   color: var(--oiv-text);
 }

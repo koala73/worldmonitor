@@ -32,7 +32,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await page.evaluate(({ lat, lon }) => import('/src/app/orbital-watch.ts').then(({ openOrbitalWatch }) => openOrbitalWatch({ lat, lon }, document.getElementById('mapContainer'))), { lat, lon });
   await expectVisible('.orbital-watch-sheet');
   const sheet = page.locator('.orbital-watch-sheet');
-  const pointText = await sheet.locator('.ow-point').innerText();
+  const pointText = await sheet.locator('.ow-place').innerText();
   log('picked point', pointText, 'target', lat, lon);
   await sheet.locator('.ow-headline').waitFor({ timeout: 90_000 });
   log('headline', await sheet.locator('.ow-headline').innerText());
