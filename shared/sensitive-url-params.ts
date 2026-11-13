@@ -73,7 +73,29 @@ export function scrubUrl(parsed: URL, pattern: RegExp): boolean {
 }
 
 /**
- * Remove every sensitive key from `raw`. Returns `raw` itself when nothing
+ * A point looked up on the globe goes only to the image archives the browser
+ * calls, and those request URLs carry it as a bounding-box parameter or as
+ * comma-separated numbers in the path (a crop box, a point read). Telemetry
+ * keeps the rest of the URL and loses those parts.
+ */
+export const COORDINATE_URL_PARAM_RE = /^(bbox|intersects)$/i;
+const COORDINATE_PATH_SEGMENT_RE = /^-?\d+(?:\.\d+)?(?:,-?\d+(?:\.\d+)?){1,3}(?:\.[a-z]+)?$/i;
+export const REDACTED_COORDINATES = 'redacted';
+
+/** Remove coordinate params and coordinate path segments from a parsed URL in place. */
+export function scrubCoordinates(parsed: URL): boolean {
+  let changed = scrubUrl(parsed, COORDINATE_URL_PARAM_RE);
+  const segments = parsed.pathname.split('/');
+  const scrubbedPath = segments.map((segment) => (COORDINATE_PATH_SEGMENT_RE.test(segment) ? REDACTED_COORDINATES : segment)).join('/');
+  if (scrubbedPath !== parsed.pathname) {
+    parsed.pathname = scrubbedPath;
+    changed = true;
+  }
+  return changed;
+}
+
+/**
+ * Remove every sensitive key and every coordinate from `raw`. Returns `raw` itself when nothing
  * matched or it cannot be parsed, so callers can test identity. A relative
  * input resolves against `base` and comes back relative, keeping the same
  * shape as an unredacted value.
@@ -87,7 +109,8 @@ export function redactSensitiveUrl(raw: string, base?: string): string {
   } catch {
     return raw;
   }
-  if (!scrubUrl(parsed, SENSITIVE_URL_PARAM_RE)) return raw;
+  const scrubbed = scrubUrl(parsed, SENSITIVE_URL_PARAM_RE);
+  if (!scrubCoordinates(parsed) && !scrubbed) return raw;
   const redacted = parsed.toString();
   if (wasAbsolute || !base) return redacted;
   const origin = parsed.origin;
@@ -147,8 +170,8 @@ export function whenUrlFreeOfSensitiveParams(
  * Sentry events keep user identity, IP and page state so we can reach the
  * people who hit an error. Credentials stay out: params on the shared
  * SENSITIVE_URL_PARAM_RE list (invite and checkout tokens, Clerk tickets,
- * license keys) are removed from every URL, and credential-named fields are
- * dropped. Scrubs in place so beforeSend callers keep event identity.
+ * license keys) are removed from every URL, as are archive coordinates
+ * (scrubCoordinates), and credential-named fields are dropped. Scrubs in place so beforeSend callers keep event identity.
  */
 const CREDENTIAL_FIELD = /^(?:(?:proxy-)?authorization|(?:set-)?cookie|passw(?:or)?d|secret|client[_-]?secret|private[_-]?key|(?:access|refresh|id|auth|invite|csrf)?[_-]?token|(?:x[_-]?)?api[_-]?key)$/i;
 /** Keys whose value is a bare query string or fragment, not a URL around one. */
@@ -162,7 +185,8 @@ const MAX_DEPTH = 12;
 function scrubQuery(value: string): string {
   const prefix = value.startsWith('?') ? '?' : '';
   const params = new URLSearchParams(value.slice(prefix.length));
-  return scrubParams(params, SENSITIVE_URL_PARAM_RE) ? prefix + params.toString() : value;
+  const scrubbed = scrubParams(params, SENSITIVE_URL_PARAM_RE);
+  return scrubParams(params, COORDINATE_URL_PARAM_RE) || scrubbed ? prefix + params.toString() : value;
 }
 
 function scrubFragment(value: string): string {
@@ -174,7 +198,7 @@ function scrubFragment(value: string): string {
 function scrubText(value: string, key: string): string {
   if (QUERY_FIELD.test(key)) return scrubQuery(value);
   if (FRAGMENT_FIELD.test(key)) return scrubFragment(value);
-  if (!value.includes('?') && !value.includes('#')) return value;
+  if (!value.includes('?') && !value.includes('#') && !value.includes(',')) return value;
   return value
     .replace(ABSOLUTE_URL, (url) => redactSensitiveUrl(url))
     .replace(RELATIVE_URL, (_, lead: string, url: string) => lead + redactSensitiveUrl(url, RELATIVE_BASE));
@@ -198,7 +222,7 @@ export function scrubSentryCredentials<T>(value: T): T {
       if (CREDENTIAL_FIELD.test(key)) delete record[key];
       else if (typeof item === 'string') record[key] = scrubText(item, key);
       else if (Array.isArray(item) && QUERY_FIELD.test(key)) {
-        record[key] = item.filter((pair) => !(Array.isArray(pair) && SENSITIVE_URL_PARAM_RE.test(String(pair[0]))));
+        record[key] = item.filter((pair) => !(Array.isArray(pair) && (SENSITIVE_URL_PARAM_RE.test(String(pair[0])) || COORDINATE_URL_PARAM_RE.test(String(pair[0])))));
       } else if (item && typeof item === 'object') visit(item, depth + 1);
     }
   }

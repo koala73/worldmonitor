@@ -897,6 +897,24 @@ const PROVIDER_OVERRIDES = {
     attribution: 'National Snow and Ice Data Center (NSIDC); link to the dataset.',
     status: 'terms-review',
   },
+  'planetarycomputer.microsoft.com': {
+    provider: 'Microsoft Planetary Computer',
+    license: 'Copernicus Sentinel data under the Copernicus open licence; Landsat data are USGS public domain; Planetary Computer terms of use apply',
+    attribution: 'Microsoft Planetary Computer; credit "Contains modified Copernicus Sentinel data" or "Landsat imagery courtesy of the U.S. Geological Survey" and link to the item.',
+    status: 'terms-review',
+  },
+  'gibs.earthdata.nasa.gov': {
+    provider: 'NASA GIBS',
+    license: 'NASA Earth science data are openly shared without restriction (CC0 unless marked); GIBS asks clients to acknowledge it',
+    attribution: 'We acknowledge the use of imagery provided by services from NASA\'s Global Imagery Browse Services (GIBS), part of NASA\'s Earth Science Data and Information System (ESDIS).',
+    status: 'terms-review',
+  },
+  'view.eumetsat.int': {
+    provider: 'EUMETSAT EUMETView',
+    license: 'EUMETSAT Data Policy: Meteosat advanced image products are Core data, free and unrestricted for any use',
+    attribution: 'Contains EUMETSAT Meteosat imagery; credit EUMETSAT and link to EUMETView.',
+    status: 'terms-review',
+  },
   'cmr.earthdata.nasa.gov': {
     provider: 'NASA Earthdata CMR',
     license: 'U.S. government public metadata; NASA Earthdata terms apply',
@@ -1146,7 +1164,11 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: 'bd2f56c7a95a3ef42fd005179d95e51237cade3102cf177dbaa27101614f7821',
+  sha256: '643f8cada01894c1371e01501e618c0705be96672e0c4ac146349b792a7a3b26',
+  // 2026-11-13: add the browser-direct satellite image archives for the point
+  // lookup (issue #10615): Microsoft Planetary Computer, NASA GIBS and
+  // EUMETSAT EUMETView. Each publishes terms that allow display in a web
+  // client with credit.
   // 2026-11-13: add the fawazahmed0 currency-api as the second exchange-rate
   // source for a currency whose Yahoo quotes are unreliable (CII economic
   // stress, issue #10577). Terms are under review; the project states CC0.
@@ -1167,7 +1189,7 @@ export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
   // stated terms of stat.uz (CC BY 4.0), SIMA Niger and Amman Central Market.
   // 2026-10-24: added Shanghai Financial Portal as a distinct official M2
   // republisher; PBOC source credit is preserved under /BQSM/index.html section 2.
-  reason: 'Group the NVD documentation and API hosts as one NVD (NIST) provider with its attribution sentence (#9385). Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050). Add the Philippine Department of Energy as one identity across doe.gov.ph and its CloudFront media host, and SONABHY as one identity across www.sonabhy.bf and the Strapi CMS its tariff page reads (#10051). Move Ember electricity data to files.ember-energy.org, where Ember now publishes its monthly release; storage.googleapis.com now serves only GDELT bulk files and joins api.gdeltproject.org as one GDELT identity (2026-11-03). Add NASA Earthdata CMR, SlideRule Earth (API and site hosts as one identity) and nsidc.org under the existing NSIDC identity for the ICESat-2 ATL13 reservoir levels (2026-11-11).',
+  reason: 'Group the NVD documentation and API hosts as one NVD (NIST) provider with its attribution sentence (#9385). Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050). Add the Philippine Department of Energy as one identity across doe.gov.ph and its CloudFront media host, and SONABHY as one identity across www.sonabhy.bf and the Strapi CMS its tariff page reads (#10051). Move Ember electricity data to files.ember-energy.org, where Ember now publishes its monthly release; storage.googleapis.com now serves only GDELT bulk files and joins api.gdeltproject.org as one GDELT identity (2026-11-03). Add NASA Earthdata CMR, SlideRule Earth (API and site hosts as one identity) and nsidc.org under the existing NSIDC identity for the ICESat-2 ATL13 reservoir levels (2026-11-11). Add Microsoft Planetary Computer, NASA GIBS and EUMETSAT EUMETView as the satellite image archives the point lookup calls from the browser (2026-11-13).',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
