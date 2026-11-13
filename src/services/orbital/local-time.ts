@@ -1,5 +1,3 @@
-import { TIMEZONE_TO_COUNTRY } from '../../utils/timezone-countries';
-
 const DAY_MS = 86_400_000;
 
 /** Minutes the zone is ahead of UTC at that instant. */
@@ -8,17 +6,6 @@ export function utcOffsetMinutes(timeZone: string, ms: number): number {
     .formatToParts(ms).find((part) => part.type === 'timeZoneName')?.value ?? 'GMT';
   const match = /GMT([+-])(\d{1,2})(?::(\d{2}))?/.exec(name);
   return match ? (match[1] === '-' ? -1 : 1) * (Number(match[2]) * 60 + Number(match[3] ?? 0)) : 0;
-}
-
-/** The country's zone whose offset best matches the point's longitude, or null when the country is unknown. */
-export function pointTimeZone(countryCode: string | null, lon: number, nowMs: number): string | null {
-  const zones = Object.entries(TIMEZONE_TO_COUNTRY).filter(([, code]) => code === countryCode).map(([zone]) => zone);
-  const solarMinutes = (lon / 15) * 60;
-  const year = new Date(nowMs).getUTCFullYear();
-  // Standard time tracks longitude; a summer offset would pull the match one zone west.
-  const standard = (zone: string) => Math.min(utcOffsetMinutes(zone, Date.UTC(year, 0, 1)), utcOffsetMinutes(zone, Date.UTC(year, 6, 1)));
-  const distance = (zone: string) => Math.abs(standard(zone) - solarMinutes);
-  return zones.reduce<string | null>((best, zone) => (best === null || distance(zone) < distance(best) ? zone : best), null);
 }
 
 /** Clock and calendar labels in one zone, so every mark on a timeline reads in the place's local time. */

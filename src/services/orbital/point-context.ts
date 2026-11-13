@@ -1,7 +1,6 @@
 import { haversineKm } from '../../../shared/geo-distance';
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
 import type { PassWindow } from './pass-query';
-import { pointTimeZone } from './local-time';
 
 const DAY_MS = 86_400_000;
 export const EVENT_RADIUS_KM = 50;
@@ -41,8 +40,6 @@ export type LiveStrip = { status: 'ok'; items: LiveItem[] } | { status: 'unavail
 export interface PointContext {
   events: Record<EventSourceId, EventLane>;
   live: Record<LiveSourceId, LiveStrip>;
-  /** IANA zone of the place, or null when its country has no known zone. */
-  timeZone: string | null;
 }
 
 /** A dated record from a global feed, before the browser filters it to the point. */
@@ -147,7 +144,6 @@ export async function loadPointContext(
   return {
     events: Object.fromEntries(events) as Record<EventSourceId, EventLane>,
     live: Object.fromEntries(live) as Record<LiveSourceId, LiveStrip>,
-    timeZone: pointTimeZone(countryCode, point.lon, nowMs),
   };
 }
 

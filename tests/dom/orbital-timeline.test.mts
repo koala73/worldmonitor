@@ -39,7 +39,6 @@ function context(over: { events?: Partial<PointContext['events']>; live?: Partia
   return {
     events: { conflict: ok(), fires: ok(), unrest: ok(), outages: ok(), ...over.events },
     live: { vessels: liveOk(), 'military-flights': liveOk(), 'gps-jamming': liveOk(), ...over.live },
-    timeZone: 'Asia/Dubai',
   };
 }
 
@@ -54,6 +53,7 @@ function mounted(passes: PointPass[], ctx: PointContext | null, options: { at?: 
     acquisitions: [],
     context: ctx ? { kind: 'loaded', context: ctx } : { kind: 'loading' },
     selectedKey: options.selectedKey ?? null,
+    timeZone: 'Asia/Dubai',
   });
   return dock;
 }
@@ -127,7 +127,7 @@ describe('orbital timeline dock', () => {
     const dock = new OrbitalTimeline(onSelect);
     document.body.append(dock.element);
     const image = { startMs: NOW - 30 * HOUR, platform: 'sentinel-2c', pass: null } as unknown as OrbitalTimelineInput['acquisitions'][number];
-    dock.update({ lookup: lookup([]), passes: [], acquisitions: [image], context: { kind: 'loaded', context: context() }, selectedKey: null });
+    dock.update({ lookup: lookup([]), passes: [], acquisitions: [image], context: { kind: 'loaded', context: context() }, selectedKey: null, timeZone: 'Asia/Dubai' });
     expect(legendKey('photo').querySelector('.ow-tl-count')!.textContent).toBe('1');
     const mark = row('photo').querySelector<HTMLElement>('.ow-tl-mark')!;
     expect(leftPct(mark)).toBeCloseTo(pctOf(image.startMs), 2);

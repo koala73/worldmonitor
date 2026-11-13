@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { EVENT_RADIUS_KM, loadPointContext, type FeedRecord, type LiveRecord, type PointContextSources } from '../src/services/orbital/point-context.ts';
 import { daylightSpans } from '../src/services/orbital/pass-job.ts';
-import { pointTimeZone, zonedClock } from '../src/services/orbital/local-time.ts';
+import { zonedClock } from '../src/services/orbital/local-time.ts';
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -107,14 +107,7 @@ describe('daylight at the point', () => {
   });
 });
 
-describe('local time of a point', () => {
-  it('picks the zone of the country that best fits the longitude', () => {
-    assert.equal(pointTimeZone('AE', 55.139, NOW), 'Asia/Dubai');
-    assert.equal(pointTimeZone('US', -73.97, NOW), 'America/New_York');
-    assert.equal(pointTimeZone('US', -118.2, NOW), 'America/Los_Angeles');
-    assert.equal(pointTimeZone(null, 0, NOW), null);
-  });
-
+describe('local time in an injected zone', () => {
   it('labels days and finds local midnights in that zone', () => {
     const clock = zonedClock('Asia/Dubai', 'en-US', NOW);
     assert.equal(clock.abbreviation, 'UTC+4');
@@ -122,13 +115,6 @@ describe('local time of a point', () => {
     assert.deepEqual(clock.midnights(Date.UTC(2026, 10, 6, 12), Date.UTC(2026, 10, 8, 12)), [Date.UTC(2026, 10, 6, 20), Date.UTC(2026, 10, 7, 20)]);
     assert.equal(zonedClock('Asia/Kolkata', 'en-US', NOW).abbreviation, 'UTC+5:30');
     assert.equal(zonedClock(null, 'en-US', NOW).abbreviation, 'UTC');
-  });
-});
-
-describe('local time across daylight saving', () => {
-  const JULY = Date.UTC(2026, 6, 1, 12);
-  it('still picks New York for Manhattan in summer', () => {
-    assert.equal(pointTimeZone('US', -73.97, JULY), 'America/New_York');
   });
 });
 
