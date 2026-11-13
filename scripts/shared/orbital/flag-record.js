@@ -71,6 +71,8 @@ function grow(track, observation, thresholds) {
   return { track: { ...track, state, baseline }, event: null };
 }
 
+const sceneOf = (observation) => ({ itemId: observation.itemId, datetime: observation.datetime, platform: observation.platform });
+
 const eventOf = (kind, observation, changes) => ({
   kind, itemId: observation.itemId, datetime: observation.datetime, platform: observation.platform, changes,
 });
@@ -92,7 +94,7 @@ const TRANSITIONS = {
       return {
         track: {
           ...track, state: 'confirmed', baseline: [track.candidate.observation, observation], candidate: null,
-          confirmedBy: { itemId: observation.itemId, datetime: observation.datetime },
+          confirmedBy: { ...sceneOf(observation), raisedBy: sceneOf(track.candidate.observation) },
         },
         event: eventOf('confirmed', observation, repeated),
       };
@@ -126,7 +128,10 @@ export function siteFlagState(tracks) {
   return state;
 }
 
-/** What a country rollup carries for a site: its state and, only when confirmed, the latest scene of a still-confirmed track. */
+/**
+ * What a country rollup carries for a site: its state and, only when confirmed, the scenes
+ * that raised and confirmed the newest still-confirmed track.
+ */
 export function projectFlag(flag) {
   if (!flag) return null;
   let confirmed = null;

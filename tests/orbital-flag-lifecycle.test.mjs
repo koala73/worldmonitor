@@ -113,8 +113,11 @@ describe('orbital change flag lifecycle', () => {
     const newer = fold(monitoringTrack(), [scene(42.5), scene(42.4), ...[42.3, 42.4, 42.6, 42.4].map((vv) => scene(vv))]);
     assert.equal(newer.track.state, 'monitoring');
     const flag = { state: 'confirmed', updatedAt: 1, tracks: { older: older.track, newer: newer.track }, events: [...older.events, ...newer.events] };
-    const confirming = older.events.at(-1);
-    assert.deepEqual(projectFlag(flag).confirmed, { geometryKey: 'older', itemId: confirming.itemId, datetime: confirming.datetime });
+    const [raising, confirming] = older.events;
+    assert.deepEqual(projectFlag(flag).confirmed, {
+      geometryKey: 'older', itemId: confirming.itemId, datetime: confirming.datetime, platform: 'Sentinel-1C',
+      raisedBy: { itemId: raising.itemId, datetime: raising.datetime, platform: 'Sentinel-1C' },
+    });
   });
 
   it('gives the site the most significant state of its tracks and projects only a confirmed scene', () => {
@@ -122,11 +125,14 @@ describe('orbital change flag lifecycle', () => {
     const confirmed = fold(monitoringTrack(), [scene(42.5), scene(42.4)]);
     assert.equal(siteFlagState({ a: monitoringTrack(), b: raised }), 'raised');
     assert.equal(siteFlagState({}), 'baseline-building');
-    const event = confirmed.events.at(-1);
+    const [raising, event] = confirmed.events;
     const flag = { state: 'confirmed', updatedAt: 1, tracks: { [event.geometryKey]: confirmed.track }, events: confirmed.events };
     assert.deepEqual(projectFlag(flag), {
       state: 'confirmed', wording: FLAG_WORDING, updatedAt: 1,
-      confirmed: { geometryKey: event.geometryKey, itemId: event.itemId, datetime: event.datetime },
+      confirmed: {
+        geometryKey: event.geometryKey, itemId: event.itemId, datetime: event.datetime, platform: event.platform,
+        raisedBy: { itemId: raising.itemId, datetime: raising.datetime, platform: raising.platform },
+      },
     });
     assert.equal(projectFlag({ state: 'raised', updatedAt: 1, tracks: { [event.geometryKey]: raised }, events: confirmed.events.slice(0, 1) }).confirmed, null);
     assert.equal(FLAG_WORDING, 'imagery statistics changed');

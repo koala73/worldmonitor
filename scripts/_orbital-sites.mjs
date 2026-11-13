@@ -6,13 +6,14 @@ import { findPasses, parseOrbitElements } from './shared/orbital/pass-geometry.j
 import { SENSOR_PROFILES } from './shared/orbital/sensor-profiles.js';
 import { decidePassTier } from './shared/orbital/tiers.js';
 import { projectFlag } from './shared/orbital/flag-record.js';
+import { ROLLUP_MAX_AGE_MS, SITES_SCHEMA } from './shared/orbital/country-rollup.js';
 import { flagShadowKey, RADAR_COLLECTION, radarGeometry, STAC_RADAR_FIELDS } from './_orbital-change.mjs';
 
 export const ORBITAL_SITES_KEY = 'orbital:sites:v1';
 export const ORBITAL_SITE_KEY_PREFIX = 'orbital:site:v1:';
 export const ORBITAL_COUNTRY_KEY_PREFIX = 'orbital:country:v1:';
 export const ORBITAL_SITES_ACTIVATION_KEY = 'seed-activated:orbital:sites';
-export const SITES_SCHEMA = 1;
+export { ROLLUP_MAX_AGE_MS, SITES_SCHEMA };
 
 export const PAST_DAYS = 6;
 export const FUTURE_HOURS = 72;
@@ -23,8 +24,6 @@ export const MAX_RECENT_PASSES = 60;
 export const MAX_NEXT_WINDOWS = 30;
 export const SITE_RECORD_MAX_BYTES = 48 * 1024;
 export const ROLLUP_MAX_BYTES = 192 * 1024;
-// Three days: the seeder runs daily and a whole registry pass can span two runs.
-export const ROLLUP_MAX_AGE_MS = 3 * 86_400_000;
 
 export const STAC_SEARCH_URL = 'https://planetarycomputer.microsoft.com/api/stac/v1/search';
 export const ARCHIVE_COLLECTION_PROFILE = Object.freeze({

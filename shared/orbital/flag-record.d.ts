@@ -31,6 +31,12 @@ export interface FlagObservation {
   values: Record<string, number>;
 }
 
+export interface FlagScene {
+  itemId: string;
+  datetime: string;
+  platform: string | null;
+}
+
 export interface ComponentChange {
   component: string;
   deltaDb: number;
@@ -43,8 +49,8 @@ export interface FlagTrack {
   baseline: FlagObservation[];
   /** The changed scene awaiting a second comparable scene. */
   candidate: { observation: FlagObservation; changes: ComponentChange[] } | null;
-  /** The scene that confirmed the track's current change. */
-  confirmedBy: { itemId: string; datetime: string } | null;
+  /** The scene that confirmed the track's current change, and the scene that raised it. */
+  confirmedBy: (FlagScene & { raisedBy: FlagScene }) | null;
   lastDatetime: string | null;
 }
 
@@ -74,7 +80,7 @@ export interface FlagProjection {
   state: TrackState;
   wording: typeof FLAG_WORDING;
   updatedAt: number;
-  confirmed: { geometryKey: string; itemId: string; datetime: string } | null;
+  confirmed: (FlagScene & { geometryKey: string; raisedBy: FlagScene }) | null;
 }
 
 export function geometryKey(geometry: RadarGeometry): string;
