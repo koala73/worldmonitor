@@ -5,7 +5,7 @@ import { UKMTO_SOURCE_URL, ukmtoIncidentLabel, type UkmtoMapIncident } from '../
 import { iso2ToUnCode } from '../../shared/country-numeric-codes';
 import { FOCUS_CENTRES, type FocusFitBounds } from '@/utils/focus-map';
 import type { ReservoirLevel } from '@/services/climate';
-import { sweptSwath, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
+import { continuousTrack, pointNear, sweptSwath, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { reservoirTone, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
 import * as topojson from 'topojson-client';
 import { escapeHtml } from '@/utils/sanitize';
@@ -223,9 +223,9 @@ export class MapComponent {
   private orbitalTrack: PassTrack | null = null;
   private orbitalTrackMarker: TrackPoint | null = null;
   private orbitalTarget: OrbitalTarget | null = null;
-  private orbitalMarkerNode: SVGCircleElement | null = null;
-  private orbitalSweptNode: SVGPathElement | null = null;
-  private orbitalEdgeNode: SVGPathElement | null = null;
+  private orbitalMarkerNodes: SVGCircleElement[] = [];
+  private orbitalSweptNodes: SVGPathElement[] = [];
+  private orbitalEdgeNodes: SVGPathElement[] = [];
   /** A focus fit requested while the map had no size (a collapsed mobile map). */
   private pendingFocusFit: { fit: FocusFitBounds; maxZoom: number; inset?: FocusFitInset } | null = null;
   private isResizing = false;
@@ -5121,11 +5121,12 @@ export class MapComponent {
   public setOrbitalTrack(track: PassTrack | null, marker: TrackPoint | null): void {
     this.orbitalTrack = track;
     this.orbitalTrackMarker = track ? marker : null;
+    this.container.classList.toggle('orbital-tracked', !!track);
     if (!track) {
       this.dynamicLayerGroup?.node()?.querySelector('.orbital-track')?.remove();
-      this.orbitalMarkerNode = null;
-      this.orbitalSweptNode = null;
-      this.orbitalEdgeNode = null;
+      this.orbitalMarkerNodes = [];
+      this.orbitalSweptNodes = [];
+      this.orbitalEdgeNodes = [];
     }
     this.render();
   }
@@ -5141,33 +5142,62 @@ export class MapComponent {
     const track = this.orbitalTrack;
     const group = this.dynamicLayerGroup;
     if (!track || !group) return;
+    const shapes = continuousTrack(track, this.orbitalAroundLon(track));
     const toPath = (positions: Array<[number, number]>, close: boolean) => MapComponent.orbitalPathData(projection, positions, close);
     const layer = group.append('g').attr('class', 'orbital-track').attr('pointer-events', 'none');
-    for (const ring of track.footprint) {
-      layer.append('path').attr('d', toPath(ring, true))
-        .attr('fill', 'rgba(245,165,36,0.07)').attr('stroke', 'rgba(245,165,36,0.5)').attr('stroke-width', 1).attr('vector-effect', 'non-scaling-stroke');
-    }
-    for (const segment of track.segments) {
-      layer.append('path').attr('d', toPath(segment.map((point): [number, number] => [point.lon, point.lat]), false))
+    this.orbitalSweptNodes = [];
+    this.orbitalEdgeNodes = [];
+    this.orbitalMarkerNodes = [];
+    for (const copy of MapComponent.orbitalWorldCopies(layer, projection)) {
+      for (const ring of shapes.footprint) {
+        copy.append('path').attr('d', toPath(ring, true))
+          .attr('fill', 'rgba(245,165,36,0.07)').attr('stroke', 'rgba(245,165,36,0.5)').attr('stroke-width', 1).attr('vector-effect', 'non-scaling-stroke');
+      }
+      copy.append('path').attr('d', toPath(shapes.path, false))
         .attr('fill', 'none').attr('stroke', 'rgba(236,235,231,0.7)').attr('stroke-width', 1.5).attr('vector-effect', 'non-scaling-stroke');
+      this.orbitalSweptNodes.push(copy.append('path').attr('class', 'orbital-swept').attr('fill', 'rgba(245,165,36,0.24)').attr('stroke', 'none').node()!);
+      this.orbitalEdgeNodes.push(copy.append('path').attr('class', 'orbital-leading-edge').attr('fill', 'none')
+        .attr('stroke', '#f5a524').attr('stroke-width', 2.6).attr('stroke-linecap', 'round').attr('vector-effect', 'non-scaling-stroke').node()!);
+      this.orbitalMarkerNodes.push(copy.append('circle').attr('r', 4).attr('fill', '#ecebe7').attr('stroke', '#0b0c0e')
+        .attr('vector-effect', 'non-scaling-stroke').node()!);
     }
-    this.orbitalSweptNode = layer.append('path').attr('class', 'orbital-swept').attr('fill', 'rgba(245,165,36,0.24)').attr('stroke', 'none').node();
-    this.orbitalEdgeNode = layer.append('path').attr('class', 'orbital-leading-edge').attr('fill', 'none')
-      .attr('stroke', '#f5a524').attr('stroke-width', 2.6).attr('stroke-linecap', 'round').attr('vector-effect', 'non-scaling-stroke').node();
-    this.orbitalMarkerNode = layer.append('circle').attr('r', 4).attr('fill', '#ecebe7').attr('stroke', '#0b0c0e')
-      .attr('vector-effect', 'non-scaling-stroke').node();
     this.placeOrbitalMarker(projection);
+  }
+
+  private orbitalAroundLon(track: PassTrack): number {
+    return this.orbitalTarget?.lon ?? track.closest.lon;
+  }
+
+  /** The map draws one world, so orbital shapes are drawn three times, a world width apart, to show past ±180. */
+  private static orbitalWorldCopies(
+    layer: d3.Selection<SVGGElement, unknown, null, undefined>,
+    projection: d3.GeoProjection,
+  ): Array<d3.Selection<SVGGElement, unknown, null, undefined>> {
+    const world = MapComponent.orbitalWorldWidth(projection);
+    return [0, -1, 1].map((turn) => layer.append('g').attr('class', 'orbital-world').attr('data-turn', turn)
+      .attr('transform', turn ? `translate(${turn * world},0)` : null));
+  }
+
+  private static orbitalWorldWidth(projection: d3.GeoProjection): number {
+    return (projection([180, 0])?.[0] ?? 0) - (projection([-180, 0])?.[0] ?? 0);
   }
 
   public setOrbitalTarget(target: OrbitalTarget | null): void {
     this.orbitalTarget = target;
     this.container.classList.toggle('orbital-pinned', !!target);
-    if (!target) this.dynamicLayerGroup?.node()?.querySelector('.orbital-target')?.remove();
+    if (!target) this.dynamicLayerGroup?.node()?.querySelectorAll('.orbital-target, .orbital-target-copy').forEach((node) => node.remove());
     this.render();
   }
 
+  /** Projects a longitude past ±180 a world width over, since the projection wraps it back into -180..180. */
+  private static orbitalProject(projection: d3.GeoProjection, [lon, lat]: [number, number]): [number, number] | null {
+    const turns = Math.round(lon / 360);
+    const xy = projection([lon - 360 * turns, lat]);
+    return xy && turns ? [xy[0] + turns * MapComponent.orbitalWorldWidth(projection), xy[1]] : xy;
+  }
+
   private static orbitalPathData(projection: d3.GeoProjection, positions: Array<[number, number]>, close: boolean): string {
-    const projected = positions.map((position) => projection(position)).filter((xy): xy is [number, number] => xy !== null);
+    const projected = positions.map((position) => MapComponent.orbitalProject(projection, position)).filter((xy): xy is [number, number] => xy !== null);
     return projected.length < 2 ? '' : `M${projected.map(([x, y]) => `${x},${y}`).join('L')}${close ? 'Z' : ''}`;
   }
 
@@ -5180,6 +5210,15 @@ export class MapComponent {
       .attr('transform', `translate(${xy[0]},${xy[1]}) scale(${unit})`);
     reticle.append('circle').attr('r', 12).attr('fill', 'none').attr('stroke', '#f5a524').attr('stroke-width', 2);
     reticle.append('circle').attr('r', 3).attr('fill', '#f5a524');
+    const world = MapComponent.orbitalWorldWidth(projection);
+    if (world > 0) {
+      for (const turn of [-1, 1]) {
+        const copy = this.dynamicLayerGroup.append('g').attr('class', 'orbital-target-copy').attr('pointer-events', 'none')
+          .attr('transform', `translate(${xy[0] + turn * world},${xy[1]}) scale(${unit})`);
+        copy.append('circle').attr('r', 12).attr('fill', 'none').attr('stroke', '#f5a524').attr('stroke-width', 2);
+        copy.append('circle').attr('r', 3).attr('fill', '#f5a524');
+      }
+    }
     const lines = target?.lines ?? [];
     if (lines.length === 0) return;
     const frame = this.container.getBoundingClientRect();
@@ -5229,22 +5268,28 @@ export class MapComponent {
   }
 
   private placeOrbitalMarker(projection: d3.GeoProjection): void {
-    const node = this.orbitalMarkerNode;
-    if (!node?.isConnected) return;
-    const marker = this.orbitalTrackMarker;
-    const swept = this.orbitalTrack && marker ? sweptSwath(this.orbitalTrack, marker.timeMs) : { rings: [], leadingEdge: [] };
-    this.orbitalSweptNode?.setAttribute('d', swept.rings.map((ring) => MapComponent.orbitalPathData(projection, ring, true)).join(''));
-    this.orbitalEdgeNode?.setAttribute('d', swept.leadingEdge.map((line) => MapComponent.orbitalPathData(projection, line, false)).join(''));
-    const xy = marker ? projection([marker.lon, marker.lat]) : null;
-    if (!xy) {
-      node.setAttribute('display', 'none');
-      return;
+    const track = this.orbitalTrack;
+    if (!track || !this.orbitalMarkerNodes[0]?.isConnected) return;
+    const aroundLon = this.orbitalAroundLon(track);
+    const marker = this.orbitalTrackMarker ? pointNear(this.orbitalTrackMarker, aroundLon) : null;
+    const swept = marker ? sweptSwath(track, marker.timeMs, aroundLon) : { rings: [], leadingEdge: [] };
+    const sweptPath = swept.rings.map((ring) => MapComponent.orbitalPathData(projection, ring, true)).join('');
+    const edgePath = swept.leadingEdge.map((line) => MapComponent.orbitalPathData(projection, line, false)).join('');
+    const xy = marker ? MapComponent.orbitalProject(projection, [marker.lon, marker.lat]) : null;
+    this.orbitalSweptNodes.forEach((node) => node.setAttribute('d', sweptPath));
+    this.orbitalEdgeNodes.forEach((node) => node.setAttribute('d', edgePath));
+    for (const node of this.orbitalMarkerNodes) {
+      if (!xy) {
+        node.setAttribute('display', 'none');
+        continue;
+      }
+      node.removeAttribute('display');
+      node.setAttribute('r', String(4 / Math.max(1, this.state.zoom)));
+      node.setAttribute('cx', String(xy[0]));
+      node.setAttribute('cy', String(xy[1]));
     }
-    node.removeAttribute('display');
-    node.setAttribute('r', String(4 / Math.max(1, this.state.zoom)));
-    node.setAttribute('cx', String(xy[0]));
-    node.setAttribute('cy', String(xy[1]));
   }
+
 
   /**
    * Outline the dashboard focus (#10453): chosen countries with a solid
