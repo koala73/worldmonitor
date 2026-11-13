@@ -5142,7 +5142,6 @@
   },
   "orbitalWatch": {
     "track": {
-      "shown": "Traço no solo e área de cobertura mostrados no mapa",
       "unavailable": "Não foi possível desenhar o traço no solo desta passagem"
     },
     "replay": {
@@ -5196,6 +5195,90 @@
       "noPreview": "O arquivo ainda não tem uma pré-visualização desta cena."
     },
     "dailyMosaics": "mosaicos diários",
-    "weatherFrames": "imagens meteorológicas"
+    "weatherFrames": "imagens meteorológicas",
+    "ui": {
+      "change": "Alterar",
+      "share": "Compartilhar",
+      "shareCopied": "Link copiado",
+      "headline": "Nos últimos {{days}} dias, {{satellites}} passaram sobre {{place}}.",
+      "satellites": "{{count}} satélites",
+      "subline": "{{count}} imagens foram publicadas.",
+      "closestLook": "Vista mais próxima",
+      "replay": "Reproduzir",
+      "openFull": "Abrir vista completa",
+      "previous": "Imagem anterior",
+      "next": "Próxima imagem",
+      "passes": "passagens",
+      "showAll": "Mostrar todas as passagens",
+      "noRecentDays": "Sem dias recentes no arquivo: {{sources}}",
+      "tab": {
+        "all": "Tudo",
+        "detailed": "Detalhado",
+        "weather": "Tempo"
+      },
+      "caption": {
+        "clear": "Limpo",
+        "clouded": "Nublado · {{pct}}%",
+        "cloudShadow": "Sombra de nuvem",
+        "spotNotChecked": "Ponto não verificado para nuvens",
+        "sceneCloud": "Nebulosidade da cena {{pct}}% · ponto não verificado",
+        "radar": "Radar",
+        "dailyMosaic": "Mosaico diário",
+        "geostationary": "Disco completo geoestacionário",
+        "geostationaryCadence": "Geoestacionário · a cada {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Imagem indisponível · {{archive}}",
+        "noPreview": "O arquivo ainda não tem prévia desta cena"
+      },
+      "grid": {
+        "watched": "Observado",
+        "watchedDef": "Um arquivo público tem uma imagem deste ponto.",
+        "likely": "Provavelmente observado",
+        "likelyDef": "Um sensor de faixa fixa o cobriu; nenhuma imagem publicada ainda.",
+        "could": "Poderia ter apontado aqui",
+        "couldDef": "Um sensor orientável ou comercial estava ao alcance; o operador não diz se olhou.",
+        "overhead": "Passou por cima",
+        "overheadDef": "Cruzou o céu aqui, sem evidência de imagem."
+      },
+      "group": {
+        "watched": "observadas",
+        "likely": "provavelmente observadas",
+        "upcoming": "a seguir",
+        "could": "que poderiam ter apontado aqui",
+        "overhead": "que passaram por cima",
+        "weather": "fontes meteorológicas"
+      },
+      "order": {
+        "closest": "Vista mais próxima, depois mais recentes",
+        "newest": "Mais recentes primeiro",
+        "soonest": "Mais próximas primeiro"
+      },
+      "row": {
+        "cloud": "Nuvens {{pct}}%",
+        "days": "{{count}} dias",
+        "repeats": "{{count}} passagens deste satélite neste grupo"
+      },
+      "section": {
+        "summary": "Resumo",
+        "passes": "Passagens"
+      },
+      "status": {
+        "objects": "{{count}} objetos · CelesTrak GP",
+        "fetched": "Obtido {{time}} · {{ago}}",
+        "sun": "Sol {{point}} · ponto subsolar"
+      },
+      "step": {
+        "computing": "Calculando",
+        "catalogLoading": "Catálogo · carregando",
+        "catalog": "Catálogo · {{count}} objetos",
+        "propagating": "Propagando órbitas · {{done}} / {{total}}",
+        "archives": "Arquivos · {{done}} / {{total}} responderam",
+        "matching": "Associando cenas a {{passes}} passagens",
+        "window": "Janela de 7 dias · {{start}} → {{end}}",
+        "failed": "Falhou",
+        "note": "Planetary Computer e NASA GIBS geram imagens sob demanda, então esta etapa pode levar alguns segundos."
+      }
+    }
   }
 }

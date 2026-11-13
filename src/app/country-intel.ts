@@ -82,6 +82,7 @@ import { getChinaDecisionSignalsData } from '@/services/china-decision-signals';
 import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-signals';
 import { showToast as showGlobalToast } from '@/utils/toast';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
+import { watchOrbitalRoute } from '@/app/orbital-route';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: no strikes in the
 // country deep-dive or the AI brief. Set VITE_ENABLE_IRAN_ATTACKS=true to restore.
@@ -164,6 +165,7 @@ export class CountryIntelManager implements AppModule {
   // entitlement so unrelated auth events (session refresh, prefs sync)
   // don't re-hammer fetchProSections.
   private authUnsubscribe: (() => void) | null = null;
+  private orbitalRouteUnsubscribe: (() => void) | null = null;
   private entitlementUnsubscribe: (() => void) | null = null;
   private lastHadPremium = false;
   private currentCountryPresentation: CountryPresentation | null = null;
@@ -195,6 +197,7 @@ export class CountryIntelManager implements AppModule {
       }, 400);
     });
 
+    this.orbitalRouteUnsubscribe = watchOrbitalRoute();
     this.lastHadPremium = hasPremiumAccess(getAuthState());
     const syncPremiumAccess = () => this.handlePremiumAccessTransition(hasPremiumAccess(getAuthState()));
     this.authUnsubscribe = subscribeAuthState(syncPremiumAccess);
@@ -202,6 +205,8 @@ export class CountryIntelManager implements AppModule {
   }
 
   destroy(): void {
+    this.orbitalRouteUnsubscribe?.();
+    this.orbitalRouteUnsubscribe = null;
     this.currentCountryPresentation = null;
     this.briefRequestToken++;
     this.countryController?.dispose();
@@ -332,7 +337,7 @@ export class CountryIntelManager implements AppModule {
         label: t('contextMenu.satellitePasses'),
         action: () => {
           void import('@/app/orbital-watch').then(({ openOrbitalWatch }) =>
-            openOrbitalWatch({ lat: payload.lat, lon: payload.lon }, document.getElementById('mapContainer'), this.ctx.map));
+            openOrbitalWatch({ lat: payload.lat, lon: payload.lon }, document.getElementById('mapContainer'), 'sheet', this.ctx.map));
         },
       });
       items.push({ label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) });

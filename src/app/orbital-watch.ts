@@ -5,18 +5,22 @@ import { profileFor } from '@/services/orbital/pass-query';
 import { loadOrbitalCatalog } from '@/services/orbital/catalog';
 import { buildPassTrack, framingBounds, type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { browserReplayDeps, createTrackReplay, type TrackReplay } from '@/services/orbital/track-replay';
-import { ARCHIVE_SEARCHES, findArchiveEvidence, type MatchedAcquisition } from '@/services/orbital/match';
-import { OrbitalWatchPage } from '@/components/OrbitalWatchPage';
+import { ARCHIVE_SEARCHES, findArchiveEvidence, type MatchedAcquisition, type OrbitalEvidence } from '@/services/orbital/match';
+import { OrbitalWatchPage, type OrbitalView } from '@/components/OrbitalWatchPage';
 import { createReplayHud } from '@/components/OrbitalReplayHud';
-import { formatTargetCoordinates, formatAcquiredLine } from '@/components/orbital-target-label';
+import { formatAcquiredLine, formatTargetCoordinates } from '@/components/orbital-target-label';
+import { t } from '@/services/i18n';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
+import { formatOrbitalRoute, parseOrbitalRoute } from '@/app/orbital-route';
 
 let page: OrbitalWatchPage | null = null;
 let point: GeoPoint | null = null;
 let lookup: PointPassLookup | null = null;
 let run: AbortController | null = null;
+let evidence: OrbitalEvidence | null = null;
+let raisedMap = false;
 
-/** The map the selected pass's ground track is drawn on. */
+/** The map the replayed pass's ground track is drawn on. */
 export interface OrbitalTrackSurface {
   setOrbitalTrack(track: PassTrack | null): void;
   setOrbitalTrackMarker(point: TrackPoint | null): void;
@@ -26,8 +30,9 @@ export interface OrbitalTrackSurface {
 
 let surface: OrbitalTrackSurface | null = null;
 let replay: TrackReplay | null = null;
-let hudOverlay: HTMLElement | null = null;
 let trackRequest = 0;
+
+const MAP_FULLSCREEN_CLASS = 'live-news-fullscreen-active';
 
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
 
@@ -36,16 +41,48 @@ function cancel(): void {
   run = null;
 }
 
+/** The full view sits over the map, so the map is raised to fill the page while it is open. */
+function syncMap(view: OrbitalView): void {
+  const button = document.getElementById('mapFullscreenBtn');
+  const active = document.body.classList.contains(MAP_FULLSCREEN_CLASS);
+  if (view === 'full' && !active && button) {
+    button.click();
+    raisedMap = true;
+  } else if (view === 'sheet' && raisedMap) {
+    if (active) button?.click();
+    raisedMap = false;
+  }
+}
+
+function writeRoute(view: OrbitalView): void {
+  const url = new URL(window.location.href);
+  if (view === 'full' && point) url.hash = formatOrbitalRoute(point, 'full');
+  else if (parseOrbitalRoute(url.hash)) url.hash = '';
+  else return;
+  try {
+    history.replaceState(history.state, '', url.toString());
+  } catch {
+    // A sandboxed or file document can refuse; the view still changes.
+  }
+}
+
+function onViewChange(view: OrbitalView): void {
+  writeRoute(view);
+  syncMap(view);
+}
+
 async function checkArchives(found: PointPassLookup, signal: AbortSignal): Promise<void> {
   page!.render({ kind: 'passes', lookup: found, archives: { kind: 'checking', total: ARCHIVE_SEARCHES.length, progress: null } });
   await afterDebugBearRequestWindow(signal);
-  const evidence = await findArchiveEvidence(found, {
+  const result = await findArchiveEvidence(found, {
     signal,
     onProgress: (progress) => {
       if (!signal.aborted) page!.render({ kind: 'passes', lookup: found, archives: { kind: 'checking', total: ARCHIVE_SEARCHES.length, progress } });
     },
   });
-  if (!signal.aborted) page!.render({ kind: 'passes', lookup: found, archives: { kind: 'answered', evidence } });
+  if (signal.aborted) return;
+  evidence = result;
+  page!.render({ kind: 'passes', lookup: found, archives: { kind: 'answered', evidence: result } });
 }
 
 async function start(): Promise<void> {
@@ -79,8 +116,7 @@ function clearTrack(): void {
   trackRequest += 1;
   replay?.stop();
   replay = null;
-  hudOverlay?.remove();
-  hudOverlay = null;
+  page?.slot('replay-hud').replaceChildren();
   surface?.setOrbitalTrack(null);
 }
 
@@ -109,26 +145,32 @@ function targetFor(at: GeoPoint, acquisition: MatchedAcquisition | null): Orbita
   return { lat: at.lat, lon: at.lon, lines: [formatTargetCoordinates(at), ...(acquisition ? [formatAcquiredLine(acquisition)] : [])] };
 }
 
-async function showTrack(pass: PointPass, acquisition: MatchedAcquisition | null): Promise<void> {
+/** Draws a pass's ground track and swath on the map and plays it into the replay HUD slot. */
+async function showTrack(noradId: number, timeMs: number): Promise<void> {
+  const pass = lookup?.passes.find((p) => p.noradId === noradId && p.timeMs === timeMs);
+  if (!pass || !point) return;
+  const acquisition = evidence?.acquisitions.find((a) => a.pass?.noradId === noradId && a.pass.timeMs === timeMs) ?? null;
   clearTrack();
   const request = trackRequest;
   const target = surface;
-  if (point) target?.setOrbitalTarget(targetFor(point, acquisition));
+  const at = point;
+  target?.setOrbitalTarget(targetFor(at, acquisition));
   const track = target ? await trackFor(pass).catch(() => null) : null;
-  if (request !== trackRequest) return;
-  page?.setTrackState(pass, target && track ? 'shown' : 'unavailable');
-  if (!target || !track || !point) return;
+  if (request !== trackRequest || !page?.isOpen) return;
+  const slot = page.slot('replay-hud');
+  if (!target || !track) {
+    slot.replaceChildren(Object.assign(document.createElement('p'), { className: 'ow-track-note ow-label', textContent: t('orbitalWatch.track.unavailable') }));
+    return;
+  }
   target.setOrbitalTrack(track);
-  target.frameOrbitalBounds?.(framingBounds(track, point));
+  target.frameOrbitalBounds?.(framingBounds(track, at));
   const deps = browserReplayDeps();
+  let playing = false;
   const hud = createReplayHud(track, deps.prefersReducedMotion(), {
     onToggle: () => (playing ? replay?.pause() : replay?.play()),
     onSeek: (progress) => replay?.seek(progress),
   });
-  let playing = false;
-  hudOverlay = hud.overlay;
-  document.body.append(hud.overlay);
-  page?.setReplayControls(pass, hud.controls);
+  slot.replaceChildren(hud.overlay, hud.controls);
   replay = createTrackReplay(track, (frame) => {
     playing = frame.playing;
     target.setOrbitalTrackMarker(frame.point);
@@ -137,8 +179,16 @@ async function showTrack(pass: PointPass, acquisition: MatchedAcquisition | null
   replay.play();
 }
 
+function onReplayRequest(event: Event): void {
+  const { noradId, timeMs } = (event as CustomEvent<{ noradId: number; timeMs: number }>).detail;
+  void showTrack(noradId, timeMs);
+}
+
+const samePoint = (a: GeoPoint | null, b: GeoPoint) => !!a && Math.abs(a.lat - b.lat) < 1e-4 && Math.abs(a.lon - b.lon) < 1e-4;
+
 /** Opens the satellite pass lookup for a point. The point stays in the browser. */
-export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null, map: OrbitalTrackSurface | null = null): void {
+export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null, view: OrbitalView = 'sheet', map?: OrbitalTrackSurface | null): void {
+  if (!page) document.addEventListener('orbital-watch:replay', onReplayRequest);
   page ??= new OrbitalWatchPage({
     onClose: () => {
       cancel();
@@ -146,18 +196,35 @@ export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null
       surface?.setOrbitalTarget(null);
       surface = null;
       lookup = null;
+      evidence = null;
       point = null;
     },
     onRetry: () => void start(),
-    onSelectPass: (pass, acquisition) => void showTrack(pass, acquisition),
+    onViewChange,
   });
+  const moved = map !== undefined && map !== surface;
+  if (moved) {
+    clearTrack();
+    surface?.setOrbitalTarget(null);
+    surface = map;
+  }
+  if (page.isOpen && samePoint(point, at)) {
+    if (moved) surface?.setOrbitalTarget(targetFor(at, null));
+    page.setView(view);
+    return;
+  }
   clearTrack();
-  if (surface !== map) surface?.setOrbitalTarget(null);
-  surface = map;
   point = at;
   surface?.setOrbitalTarget(targetFor(at, null));
   lookup = null;
-  page.open(at, returnFocusTo);
+  evidence = null;
+  const wasFull = page.isOpen && page.currentView === 'full';
+  page.open(at, returnFocusTo, view);
+  if (view === 'full' || wasFull) onViewChange(view);
   void start();
 }
 
+/** Returns from the full view to the sheet, for a route that no longer names one. */
+export function leaveOrbitalFullView(): void {
+  if (page?.isOpen && page.currentView === 'full') page.setView('sheet');
+}

@@ -17,7 +17,7 @@ import { findPasses, parseOrbitElements, type OmmRecord } from '../../shared/orb
 import { matchSensorProfile } from '../../shared/orbital/sensor-profiles.js';
 import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
-import type { OrbitalEvidence } from '@/services/orbital/match';
+import type { MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
 import type { OrbitalTarget, PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
 import { openOrbitalWatch, type OrbitalTrackSurface } from '@/app/orbital-watch';
 import fixture from '../fixtures/orbital/celestrak-gp-2026-11-13.json';
@@ -53,7 +53,16 @@ const lookup = (): PointPassLookup => ({
   point, window: { startMs: NOW - 48 * HOUR, endMs: NOW + 24 * HOUR }, nowMs: NOW,
   catalog: { status: 'fresh', fetchedAt: NOW, inventoryVersion: 'test' }, passes, satellites: [], computedOn: 'worker',
 });
-const evidence = (): OrbitalEvidence => ({ passes, acquisitions: [], mosaics: [], frames: [], bestView: null, status: 'complete', failures: [], unansweredProfiles: [] });
+function acquisition(p: PointPass): MatchedAcquisition {
+  const platform = p.name.toLowerCase().replace(' ', '-');
+  return {
+    key: `${platform}:${p.timeMs}`, platform, profileId: p.profileId as MatchedAcquisition['profileId'], orbit: null, startMs: p.timeMs, endMs: p.timeMs, items: [],
+    pass: { noradId: p.noradId, timeMs: p.timeMs }, condition: 'clear', cloudCoverPct: 2, sunElevationDeg: 50, resolutionM: 10,
+    imageUrl: `https://planetarycomputer.microsoft.com/api/data/v1/item/bbox/${platform}.png`,
+  };
+}
+
+const evidence = (): OrbitalEvidence => ({ passes, acquisitions: passes.map(acquisition), mosaics: [], frames: [], bestView: null, status: 'complete', failures: [], unansweredProfiles: [] });
 
 let tracks: Array<PassTrack | null>;
 let markers: Array<TrackPoint | null>;
@@ -63,19 +72,20 @@ let frames: Map<number, FrameRequestCallback>;
 let reducedMotion: boolean;
 
 const sheet = () => document.querySelector<HTMLElement>('[role="dialog"]')!;
-const row = (pass: PointPass) => sheet().querySelector<HTMLElement>(`.ow-row[data-pass-key="${pass.noradId}:${pass.timeMs}"]`)!;
+const replayButton = (pass: PointPass) => sheet().querySelector<HTMLButtonElement>(`.ow-replay[data-norad="${pass.noradId}"][data-time="${pass.timeMs}"]`);
+const replay = (pass: PointPass) => replayButton(pass)!.click();
+const slot = () => sheet().querySelector<HTMLElement>('[data-slot="replay-hud"]')!;
 const drawn = () => tracks.filter((track): track is PassTrack => track !== null);
 const lastTrack = () => tracks[tracks.length - 1];
 const pins = (list: Array<OrbitalTarget | null>) => list.map((target) => (target ? { lat: target.lat, lon: target.lon } : null));
 const lastPin = () => targets[targets.length - 1];
 const hud = () => document.querySelector<HTMLElement>('.ow-replay-hud');
-const toggle = () => row(sentinel).querySelector<HTMLButtonElement>('[data-action="replay-toggle"]');
-const scrub = () => row(sentinel).querySelector<HTMLInputElement>('[data-action="replay-scrub"]');
+const toggle = () => document.querySelector<HTMLButtonElement>('[data-action="replay-toggle"]');
+const scrub = () => document.querySelector<HTMLInputElement>('[data-action="replay-scrub"]');
 
 async function openWithPasses(): Promise<void> {
-  openOrbitalWatch(point, null, surface);
-  await vi.waitFor(() => expect(sheet().textContent).toContain('Confirmed images: 0'));
-  sheet().querySelector<HTMLButtonElement>('.ow-group-toggle[data-group="inRange"]')!.click();
+  openOrbitalWatch(point, null, 'sheet', surface);
+  await vi.waitFor(() => expect(replayButton(ghost)).not.toBeNull());
 }
 
 beforeAll(async () => {
@@ -109,20 +119,22 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('selected pass ground track', () => {
-  it('draws the chosen pass on the map, marks its row and offers a replay', async () => {
+describe('replayed pass ground track', () => {
+  it('draws the replayed pass on the map and mounts the HUD into the replay slot', async () => {
     await openWithPasses();
-    row(sentinel).click();
+    expect(slot().childElementCount).toBe(0);
+    replay(sentinel);
     await vi.waitFor(() => expect(drawn()).toHaveLength(1));
     const track = drawn()[0]!;
     expect(track.key).toBe(`${sentinel.noradId}:${sentinel.timeMs}`);
     expect(track.segments.flat().length).toBeGreaterThan(10);
     expect(track.footprint.length).toBeGreaterThan(0);
-    expect(row(sentinel).getAttribute('aria-current')).toBe('true');
-    expect(row(sentinel).textContent).toContain('Ground track and footprint shown on the map');
+    expect(track.swath.length).toBeGreaterThan(0);
+    expect(slot().contains(hud())).toBe(true);
+    expect(slot().contains(toggle())).toBe(true);
     expect(toggle()?.getAttribute('aria-label')).toBe('Pause replay');
     expect(scrub()?.value).toBe('0');
-    expect(row(sentinel).querySelector('.ow-hud-reduced')).toBeNull();
+    expect(slot().querySelector('.ow-hud-reduced')).toBeNull();
     expect(hud()?.querySelector('.ow-hud-label')?.textContent).toBe(`ACQUISITION · ${sentinel.name.toUpperCase()}`);
     expect(hud()?.querySelector('.ow-hud-countdown')?.textContent).toMatch(/^T\u2212\d\d:\d\d:\d\d$/);
     expect(frames.size).toBe(1);
@@ -130,7 +142,7 @@ describe('selected pass ground track', () => {
 
   it('counts down to acquisition, pauses, and seeks from the scrubber', async () => {
     await openWithPasses();
-    row(sentinel).click();
+    replay(sentinel);
     await vi.waitFor(() => expect(drawn()).toHaveLength(1));
     toggle()!.click();
     expect(frames.size).toBe(0);
@@ -139,23 +151,24 @@ describe('selected pass ground track', () => {
     scrub()!.dispatchEvent(new Event('input'));
     expect(markers[markers.length - 1]?.timeMs).toBe(sentinel.timeMs);
     expect(hud()?.querySelector('.ow-hud-countdown')?.textContent).toBe('T\u221200:00:00');
-    expect(row(sentinel).querySelector('.ow-hud-short')?.textContent).toBe('T\u221200:00');
+    expect(slot().querySelector('.ow-hud-short')?.textContent).toBe('T\u221200:00');
     toggle()!.click();
     expect(frames.size).toBe(1);
   });
 
-  it('labels the pin with the coordinates, and with the acquisition on a confirmed pass', async () => {
+  it('labels the pin with the coordinates, and adds the acquisition once a pass is replayed', async () => {
     await openWithPasses();
     expect(lastPin()?.lines).toEqual(['48.8500\u00b0N 2.3500\u00b0E']);
-    row(sentinel).click();
+    replay(sentinel);
     await vi.waitFor(() => expect(drawn()).toHaveLength(1));
-    expect(lastPin()?.lines).toEqual(['48.8500\u00b0N 2.3500\u00b0E']);
+    expect(lastPin()?.lines[0]).toBe('48.8500\u00b0N 2.3500\u00b0E');
+    expect(lastPin()?.lines[1]).toMatch(/^ACQUIRED .+ · 10 m$/i);
   });
 
   it('pins the looked-up point while the sheet is open and removes the pin on close', async () => {
     await openWithPasses();
     expect(pins(targets)).toEqual([point]);
-    row(sentinel).click();
+    replay(sentinel);
     await vi.waitFor(() => expect(drawn()).toHaveLength(1));
     expect(pins(targets).every((pin) => pin?.lat === point.lat && pin.lon === point.lon)).toBe(true);
     sheet().querySelector<HTMLButtonElement>('.ow-close')!.click();
@@ -167,47 +180,40 @@ describe('selected pass ground track', () => {
     await openWithPasses();
     const other: Array<OrbitalTarget | null> = [];
     const next = { lat: -17.7, lon: 178.5 };
-    openOrbitalWatch(next, null, { setOrbitalTrack: () => {}, setOrbitalTrackMarker: () => {}, setOrbitalTarget: (target) => other.push(target) });
+    openOrbitalWatch(next, null, 'sheet', { setOrbitalTrack: () => {}, setOrbitalTrackMarker: () => {}, setOrbitalTarget: (target) => other.push(target) });
     expect(pins(targets)).toEqual([point, null]);
     expect(pins(other)).toEqual([next]);
   });
 
-  it('replaces the first pass when a second is chosen', async () => {
+  it('replaces the first pass when a second is replayed', async () => {
     await openWithPasses();
-    row(sentinel).click();
+    replay(sentinel);
     await vi.waitFor(() => expect(drawn()).toHaveLength(1));
-    row(landsat).click();
+    replay(landsat);
     await vi.waitFor(() => expect(drawn()).toHaveLength(2));
     expect(lastTrack()?.key).toBe(`${landsat.noradId}:${landsat.timeMs}`);
     expect(tracks.slice(tracks.indexOf(drawn()[0]!) + 1)[0]).toBeNull();
-    expect(sheet().querySelectorAll('.ow-row[aria-current="true"]')).toHaveLength(1);
-    expect(row(landsat).getAttribute('aria-current')).toBe('true');
-  });
-
-  it('selects a pass from the keyboard', async () => {
-    await openWithPasses();
-    row(landsat).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    await vi.waitFor(() => expect(lastTrack()?.key).toBe(`${landsat.noradId}:${landsat.timeMs}`));
-    expect(document.activeElement).toBe(row(landsat));
+    expect(slot().querySelectorAll('.ow-replay-hud')).toHaveLength(1);
+    expect(hud()?.querySelector('.ow-hud-label')?.textContent).toBe(`ACQUISITION · ${landsat.name.toUpperCase()}`);
+    expect(frames.size).toBe(1);
   });
 
   it('removes the track and stops the replay when the sheet closes', async () => {
     await openWithPasses();
-    row(sentinel).click();
+    replay(sentinel);
     await vi.waitFor(() => expect(drawn()).toHaveLength(1));
     sheet().querySelector<HTMLButtonElement>('.ow-close')!.click();
     expect(lastTrack()).toBeNull();
     expect(frames.size).toBe(0);
+    expect(hud()).toBeNull();
   });
 
-  it('offers a replay only once the track is on the map', async () => {
+  it('offers replay controls only once the track is on the map', async () => {
     let release!: () => void;
     catalogMock.mockReturnValue(new Promise((resolve) => { release = () => resolve(catalog()); }));
     await openWithPasses();
-    row(sentinel).click();
-    expect(row(sentinel).getAttribute('aria-current')).toBe('true');
+    replay(sentinel);
     expect(toggle()).toBeNull();
-    expect(row(sentinel).textContent).not.toContain('Ground track and footprint shown on the map');
     release();
     await vi.waitFor(() => expect(toggle()).not.toBeNull());
   });
@@ -215,8 +221,8 @@ describe('selected pass ground track', () => {
   it('says the track could not be drawn when the catalog fails to load', async () => {
     catalogMock.mockRejectedValue(new Error('offline'));
     await openWithPasses();
-    row(sentinel).click();
-    await vi.waitFor(() => expect(row(sentinel).textContent).toContain("This pass's ground track couldn't be drawn"));
+    replay(sentinel);
+    await vi.waitFor(() => expect(slot().textContent).toContain("This pass's ground track couldn't be drawn"));
     expect(toggle()).toBeNull();
     expect(drawn()).toHaveLength(0);
   });
@@ -225,21 +231,21 @@ describe('selected pass ground track', () => {
     let release!: () => void;
     catalogMock.mockReturnValue(new Promise((resolve) => { release = () => resolve(catalog()); }));
     await openWithPasses();
-    row(sentinel).click();
+    replay(sentinel);
     sheet().querySelector<HTMLButtonElement>('.ow-close')!.click();
     release();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(drawn()).toHaveLength(0);
   });
 
-  it('places the marker at closest approach without animating under reduced motion, and on replay', async () => {
+  it('places the marker at closest approach without animating under reduced motion, and labels the state', async () => {
     reducedMotion = true;
     await openWithPasses();
-    row(sentinel).click();
+    replay(sentinel);
     await vi.waitFor(() => expect(markers).toHaveLength(1));
     expect(markers[0]).toEqual({ lon: sentinel.subSatellite.lon, lat: sentinel.subSatellite.lat, timeMs: sentinel.timeMs });
     expect(frames.size).toBe(0);
-    expect(row(sentinel).querySelector('.ow-hud-reduced')?.textContent).toBe('REDUCED MOTION');
+    expect(slot().querySelector('.ow-replay-controls .ow-hud-reduced')?.textContent).toBe('REDUCED MOTION');
     expect(hud()?.querySelector('.ow-hud-reduced')?.textContent).toBe('REDUCED MOTION');
     expect(hud()?.querySelector('.ow-hud-countdown')?.textContent).toBe('T\u221200:00:00');
     expect(scrub()?.value).toBe('1000');
@@ -252,12 +258,10 @@ describe('selected pass ground track', () => {
   it('draws nothing and reports no error for a pass with no orbit to trace', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     await openWithPasses();
-    row(ghost).click();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    replay(ghost);
+    await vi.waitFor(() => expect(slot().textContent).toContain("This pass's ground track couldn't be drawn"));
     expect(drawn()).toHaveLength(0);
-    expect(row(ghost).getAttribute('aria-current')).toBe('true');
-    expect(row(ghost).textContent).toContain("This pass's ground track couldn't be drawn");
-    expect(row(ghost).querySelector('[data-action="replay-toggle"]')).toBeNull();
+    expect(toggle()).toBeNull();
     expect(error).not.toHaveBeenCalled();
     error.mockRestore();
   });

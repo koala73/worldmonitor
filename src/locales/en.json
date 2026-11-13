@@ -4573,7 +4573,6 @@
   },
   "orbitalWatch": {
     "track": {
-      "shown": "Ground track and footprint shown on the map",
       "unavailable": "This pass's ground track couldn't be drawn"
     },
     "replay": {
@@ -4627,6 +4626,90 @@
       "imageLoading": "Loading image…",
       "imageFailed": "Image did not load. The archive may be slow or down.",
       "noPreview": "The archive has no preview of this scene yet."
+    },
+    "ui": {
+      "change": "Change",
+      "share": "Share",
+      "shareCopied": "Link copied",
+      "headline": "In the last {{days}} days, {{satellites}} passed over {{place}}.",
+      "satellites": "{{count}} satellites",
+      "subline": "{{count}} images were made public.",
+      "closestLook": "Closest look",
+      "replay": "Replay",
+      "openFull": "Open full view",
+      "previous": "Previous image",
+      "next": "Next image",
+      "passes": "passes",
+      "showAll": "Show all passes",
+      "noRecentDays": "No recent days in the archive: {{sources}}",
+      "tab": {
+        "all": "All",
+        "detailed": "Detailed",
+        "weather": "Weather"
+      },
+      "caption": {
+        "clear": "Clear",
+        "clouded": "Clouded · {{pct}}%",
+        "cloudShadow": "Cloud shadow",
+        "spotNotChecked": "Spot not checked for cloud",
+        "sceneCloud": "Scene cloud {{pct}}% · spot not checked",
+        "radar": "Radar",
+        "dailyMosaic": "Daily mosaic",
+        "geostationary": "Geostationary full disk",
+        "geostationaryCadence": "Geostationary · every {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Image unavailable · {{archive}}",
+        "noPreview": "The archive has no preview of this scene yet"
+      },
+      "grid": {
+        "watched": "Watched",
+        "watchedDef": "A public archive holds an image of this spot.",
+        "likely": "Likely watched",
+        "likelyDef": "A fixed-swath sensor covered it; no image published yet.",
+        "could": "Could have pointed here",
+        "couldDef": "A steerable or commercial sensor was in reach; the operator doesn't say if it looked.",
+        "overhead": "Passed overhead",
+        "overheadDef": "Crossed the sky here, with no imaging evidence."
+      },
+      "group": {
+        "watched": "watched",
+        "likely": "likely watched",
+        "upcoming": "coming up",
+        "could": "could have pointed here",
+        "overhead": "passed overhead",
+        "weather": "weather sources"
+      },
+      "order": {
+        "closest": "Closest look, then newest",
+        "newest": "Newest first",
+        "soonest": "Soonest first"
+      },
+      "row": {
+        "cloud": "Cloud {{pct}}%",
+        "days": "{{count}} days",
+        "repeats": "{{count}} passes by this satellite in this group"
+      },
+      "section": {
+        "summary": "Summary",
+        "passes": "Passes"
+      },
+      "status": {
+        "objects": "{{count}} objects · CelesTrak GP",
+        "fetched": "Fetched {{time}} · {{ago}}",
+        "sun": "Sun {{point}} · sub-solar point"
+      },
+      "step": {
+        "computing": "Computing",
+        "catalogLoading": "Catalog · loading",
+        "catalog": "Catalog · {{count}} objects",
+        "propagating": "Propagating orbits · {{done}} / {{total}}",
+        "archives": "Archives · {{done}} / {{total}} answered",
+        "matching": "Matching scenes to {{passes}} passes",
+        "window": "7-day window · {{start}} → {{end}}",
+        "failed": "Failed",
+        "note": "Planetary Computer and NASA GIBS render images on demand, so this step can take a few seconds."
+      }
     }
   },
   "contextMenu": {

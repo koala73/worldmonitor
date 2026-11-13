@@ -5114,7 +5114,6 @@
   },
   "orbitalWatch": {
     "track": {
-      "shown": "رد زمینی و پوشش حسگر روی نقشه نمایش داده شده است",
       "unavailable": "رد زمینی این عبور ترسیم نشد"
     },
     "replay": {
@@ -5168,6 +5167,90 @@
       "noPreview": "آرشیو هنوز پیش‌نمایشی از این صحنه ندارد."
     },
     "dailyMosaics": "موزاییک‌های روزانه",
-    "weatherFrames": "تصاویر هواشناسی"
+    "weatherFrames": "تصاویر هواشناسی",
+    "ui": {
+      "change": "تغییر",
+      "share": "اشتراک‌گذاری",
+      "shareCopied": "پیوند کپی شد",
+      "headline": "در {{days}} روز گذشته، {{satellites}} از فراز {{place}} گذشتند.",
+      "satellites": "{{count}} ماهواره",
+      "subline": "{{count}} تصویر منتشر شد.",
+      "closestLook": "نزدیک‌ترین نما",
+      "replay": "پخش دوباره",
+      "openFull": "باز کردن نمای کامل",
+      "previous": "تصویر قبلی",
+      "next": "تصویر بعدی",
+      "passes": "عبور",
+      "showAll": "نمایش همه عبورها",
+      "noRecentDays": "روز تازه‌ای در بایگانی نیست: {{sources}}",
+      "tab": {
+        "all": "همه",
+        "detailed": "جزئی",
+        "weather": "هوا"
+      },
+      "caption": {
+        "clear": "صاف",
+        "clouded": "ابری · {{pct}}٪",
+        "cloudShadow": "سایه ابر",
+        "spotNotChecked": "نقطه از نظر ابر بررسی نشده",
+        "sceneCloud": "ابرناکی صحنه {{pct}}٪ · نقطه بررسی نشده",
+        "radar": "رادار",
+        "dailyMosaic": "موزاییک روزانه",
+        "geostationary": "قرص کامل زمین‌ایستا",
+        "geostationaryCadence": "زمین‌ایستا · هر {{minutes}} دقیقه"
+      },
+      "tile": {
+        "failed": "تصویر در دسترس نیست · {{archive}}",
+        "noPreview": "بایگانی هنوز پیش‌نمایشی از این صحنه ندارد"
+      },
+      "grid": {
+        "watched": "رصدشده",
+        "watchedDef": "یک بایگانی عمومی تصویری از این نقطه دارد.",
+        "likely": "احتمالاً رصدشده",
+        "likelyDef": "یک حسگر با نوار ثابت آن را پوشش داد؛ هنوز تصویری منتشر نشده.",
+        "could": "می‌توانست این‌جا را نشانه بگیرد",
+        "couldDef": "یک حسگر چرخان یا تجاری در دسترس بود؛ اپراتور نمی‌گوید نگاه کرده است یا نه.",
+        "overhead": "از فراز گذشت",
+        "overheadDef": "از آسمان این‌جا گذشت، بدون شواهد تصویربرداری."
+      },
+      "group": {
+        "watched": "رصدشده",
+        "likely": "احتمالاً رصدشده",
+        "upcoming": "پیش رو",
+        "could": "که می‌توانستند این‌جا را نشانه بگیرند",
+        "overhead": "از فراز",
+        "weather": "منابع هوا"
+      },
+      "order": {
+        "closest": "نزدیک‌ترین نما، سپس جدیدترین",
+        "newest": "جدیدترین اول",
+        "soonest": "نزدیک‌ترین اول"
+      },
+      "row": {
+        "cloud": "ابر {{pct}}٪",
+        "days": "{{count}} روز",
+        "repeats": "{{count}} عبور این ماهواره در این گروه"
+      },
+      "section": {
+        "summary": "خلاصه",
+        "passes": "عبورها"
+      },
+      "status": {
+        "objects": "{{count}} شیء · CelesTrak GP",
+        "fetched": "دریافت {{time}} · {{ago}}",
+        "sun": "خورشید {{point}} · نقطه زیرخورشیدی"
+      },
+      "step": {
+        "computing": "در حال محاسبه",
+        "catalogLoading": "کاتالوگ · در حال بارگیری",
+        "catalog": "کاتالوگ · {{count}} شیء",
+        "propagating": "محاسبه مدارها · {{done}} / {{total}}",
+        "archives": "بایگانی‌ها · {{done}} / {{total}} پاسخ دادند",
+        "matching": "تطبیق صحنه‌ها با {{passes}} عبور",
+        "window": "پنجره ۷ روزه · {{start}} → {{end}}",
+        "failed": "ناموفق",
+        "note": "Planetary Computer و NASA GIBS تصاویر را هنگام درخواست می‌سازند، پس این مرحله ممکن است چند ثانیه طول بکشد."
+      }
+    }
   }
 }
