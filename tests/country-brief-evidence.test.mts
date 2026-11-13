@@ -10,6 +10,7 @@ import {
   RESILIENCE_DIMENSION_LABELS,
   chokepointTrackerSlug,
   countryAirportNotamsFrom,
+  countryImageryFlagsFrom,
   type CountryBriefEvidenceItem,
 } from '../server/worldmonitor/intelligence/v1/_country-brief-evidence.ts';
 import type { ResolvedEnergyImportDependency } from '../server/worldmonitor/intelligence/v1/_energy-import-dependency.ts';
@@ -25,6 +26,8 @@ import {
 } from '../scripts/crawlable-live-tools.mjs';
 import { CHOKEPOINT_CONTENT } from '../scripts/chokepoint-page-content.mjs';
 import { slugify } from '../scripts/build-crawlable-corpus.mjs';
+import { CONFIRMED, RAISED, flagAfter, rollupOf, shadowedRollup, siteOf } from './helpers/orbital-country-rollup.mjs';
+import { ROLLUP_MAX_AGE_MS } from '../shared/orbital/country-rollup.js';
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -594,5 +597,67 @@ describe('NOTAM airport evidence', () => {
     assert.deepEqual(countryAirportNotamsFrom(many, { fetchedAt: NOW }, 'US', NOW).map((notam) => notam.iata), ['ATL', 'JFK', 'LAX']);
     assert.deepEqual(countryAirportNotamsFrom(many, { fetchedAt: NOW }, 'IR', NOW), []);
     assert.equal(countryAirportNotamsFrom({ data: many, _seed: {} }, { fetchedAt: NOW }, 'US', NOW).length, 3);
+  });
+});
+
+describe('satellite imagery evidence', () => {
+  const ROLLUP_KEY_IR = 'orbital:country:v1:IR';
+  const natanz = siteOf('nuclear:natanz', 'Natanz Enrichment Facility');
+  const fordow = siteOf('nuclear:fordow', 'Fordow Fuel Enrichment Plant');
+  const imagery = (items: CountryBriefEvidenceItem[]) => byKind(items, 'imagery');
+
+  it('states one confirmed flag as one item naming the site, both satellites and both scene dates', async (t) => {
+    const rollup = rollupOf('IR', NOW, [{ site: natanz, flag: flagAfter(natanz.id, NOW, CONFIRMED) }]);
+    assert.deepEqual(imagery(await build(t, { [ROLLUP_KEY_IR]: rollup })).map(({ id, ...item }) => item), [{
+      kind: 'imagery',
+      label: 'Satellite imagery statistics changed',
+      value: 'Natanz Enrichment Facility',
+      factText: 'Imagery statistics changed at Natanz Enrichment Facility in Iran: a Sentinel-1A radar scene on Aug 28, 2026 raised the change and a Sentinel-1C radar scene on Sep 9, 2026 confirmed it.',
+      asOf: '2026-09-09T12:00:00.000Z',
+    }]);
+  });
+
+  it('yields nothing for sites imaged this week whose flags are not confirmed', async (t) => {
+    const rollup = rollupOf('IR', NOW, [{ site: natanz, flag: flagAfter(natanz.id, NOW, []) }, { site: fordow, flag: null }]);
+    assert.ok(rollup.sites.every((site: { lastObservation: unknown }) => site.lastObservation), 'both sites have a recent image');
+    assert.deepEqual(imagery(await build(t, { [ROLLUP_KEY_IR]: rollup })), []);
+  });
+
+  it('yields nothing and no error for a country with no watched sites', async (t) => {
+    const items = await build(t, { ...fullFixtures() });
+    assert.deepEqual(imagery(items), []);
+    assert.deepEqual(items, EXPECTED_IRAN);
+  });
+
+  it('drops a rollup past its max age, and one written for another country', async (t) => {
+    const flagged = [{ site: natanz, flag: flagAfter(natanz.id, NOW, CONFIRMED) }];
+    const stale = rollupOf('IR', NOW, flagged, { evaluatedAt: NOW - ROLLUP_MAX_AGE_MS - 1 });
+    assert.deepEqual(imagery(await build(t, { [ROLLUP_KEY_IR]: stale })), []);
+    assert.equal(countryImageryFlagsFrom(rollupOf('IR', NOW, flagged), 'IQ', NOW).length, 0);
+  });
+
+  it('leaves out a raised flag and states the same flag once it is confirmed', () => {
+    const raised = rollupOf('IR', NOW, [{ site: natanz, flag: flagAfter(natanz.id, NOW, RAISED) }]);
+    assert.equal(raised.sites[0].flag.state, 'raised');
+    assert.deepEqual(countryImageryFlagsFrom(raised, 'IR', NOW), []);
+    const confirmed = rollupOf('IR', NOW, [{ site: natanz, flag: flagAfter(natanz.id, NOW, CONFIRMED) }]);
+    assert.deepEqual(countryImageryFlagsFrom(confirmed, 'IR', NOW).map((flag) => flag.siteId), [natanz.id]);
+  });
+
+  it('shows no flag the seeder confirmed while change scoring is shadowed', async (t) => {
+    const { rollup, shadowFlags } = await shadowedRollup('IR', NOW, [natanz]);
+    assert.equal(shadowFlags?.[0]?.state, 'confirmed', 'the shadow key holds a confirmed flag');
+    assert.deepEqual(imagery(await build(t, { [ROLLUP_KEY_IR]: rollup })), []);
+  });
+
+  it('keeps the three newest confirmed flags and reads nothing more when the handler passed them', async (t) => {
+    const sites = ['a', 'b', 'c', 'd'].map((id) => siteOf(`nuclear:${id}`, `Site ${id.toUpperCase()}`));
+    const rollup = rollupOf('IR', NOW, sites.map((site) => ({ site, flag: flagAfter(site.id, NOW, CONFIRMED) })));
+    const flags = countryImageryFlagsFrom(rollup, 'IR', NOW);
+    assert.equal(flags.length, 3);
+    const reads = mockRedis(t, {});
+    const items = await buildCountryBriefEvidence('IR', { energyImportDependency: IRAN_ENERGY, nowMs: NOW, imageryFlags: flags });
+    assert.equal(imagery(items).length, 3);
+    assert.ok(!reads.includes(ROLLUP_KEY_IR));
   });
 });

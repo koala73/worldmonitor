@@ -9,13 +9,14 @@
 // delta and chokepoint exposure scores are not published, so they never appear.
 
 import { getCachedJson } from '../../../_shared/redis';
-import { CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
+import { CII_RISK_SCORE_CACHE_KEYS, ORBITAL_COUNTRY_KEY_PREFIX } from '../../../_shared/cache-keys';
 import { displayNameForIso2, normalizeCountryToIso2 } from '../../../_shared/country-normalize';
 import { CHOKEPOINT_REGISTRY } from '../../../_shared/chokepoint-registry';
 import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
 import { instabilityBand } from '../../../../shared/cii-band.js';
 import { CHOKEPOINT_COUNTRY_CODES } from '../../../../shared/chokepoint-countries.js';
 import { countryMentionTerms, mentionsCountry } from '../../../../shared/country-mention.js';
+import { confirmedSiteFlags, readCountryRollup, type ConfirmedSiteFlag } from '../../../../shared/orbital/country-rollup.js';
 import { MONITORED_AIRPORTS } from '../../../../src/config/airports';
 import { TIER1_COUNTRIES } from './_shared';
 import type { ResolvedEnergyImportDependency } from './_energy-import-dependency';
@@ -30,7 +31,8 @@ export type CountryBriefEvidenceKind =
   | 'energy'
   | 'chokepoint'
   | 'market'
-  | 'forecast';
+  | 'forecast'
+  | 'imagery';
 
 export interface CountryBriefEvidenceItem {
   id: string;
@@ -47,6 +49,7 @@ export interface CountryBriefEvidenceOptions {
   // The handler reads these first to key its cache; passing them here keeps
   // the brief and its key on one read.
   airportNotams?: CountryAirportNotam[];
+  imageryFlags?: ConfirmedSiteFlag[];
   nowMs?: number;
 }
 
@@ -105,6 +108,7 @@ const MAX_WEAKEST_DIMENSIONS = 3;
 const MAX_MARKETS = 5;
 const MAX_FORECASTS = 3;
 const MAX_AIRPORTS = 3;
+const MAX_IMAGERY_FLAGS = 3;
 const MAX_TITLE_LENGTH = 160;
 
 // Public labels from the country page (formatAdvisory in
@@ -499,6 +503,46 @@ function forecastEvidence(raw: unknown, code: string, name: string, nowMs: numbe
   return items;
 }
 
+/**
+ * The newest confirmed watched-site change flags in `countryCode`, at most three,
+ * from the country's one rollup key. Empty when the rollup is missing, malformed or
+ * stale, and while change scoring is shadowed (the rollup then carries no flag).
+ * Pure over the read, so the handler's cache key and the evidence pack agree.
+ */
+export function countryImageryFlagsFrom(raw: unknown, countryCode: string, nowMs: number): ConfirmedSiteFlag[] {
+  const read = readCountryRollup(raw, countryCode, nowMs);
+  return read.status === 'current' ? confirmedSiteFlags(read.rollup).slice(0, MAX_IMAGERY_FLAGS) : [];
+}
+
+export async function readCountryImageryFlags(countryCode: string, nowMs: number = Date.now()): Promise<ConfirmedSiteFlag[]> {
+  const code = String(countryCode ?? '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return [];
+  try {
+    return countryImageryFlagsFrom(await readKey(`${ORBITAL_COUNTRY_KEY_PREFIX}${code}`), code, nowMs);
+  } catch {
+    return [];
+  }
+}
+
+// One item per confirmed flag, naming the site, the satellites and the dates of the
+// scenes that raised and confirmed it. The wording is fixed: statistics changed, never
+// what changed or why.
+function imageryEvidence(flags: ConfirmedSiteFlag[], name: string): EvidenceDraft[] {
+  return flags.map((flag) => {
+    const site = thirdPartyTitle(flag.name);
+    const raisedAt = formatDate(Date.parse(flag.raised.datetime));
+    const confirmedAt = formatDate(Date.parse(flag.confirmed.datetime));
+    const by = (platform: string | null) => (platform ? `a ${thirdPartyTitle(platform)} radar scene` : 'a radar scene');
+    return {
+      kind: 'imagery' as const,
+      label: 'Satellite imagery statistics changed',
+      value: site,
+      factText: `Imagery statistics changed at ${site} in ${name}: ${by(flag.raised.platform)} on ${raisedAt} raised the change and ${by(flag.confirmed.platform)} on ${confirmedAt} confirmed it.`,
+      asOf: new Date(Date.parse(flag.confirmed.datetime)).toISOString(),
+    };
+  });
+}
+
 async function readKey(key: string): Promise<unknown> {
   return getCachedJson(key, true);
 }
@@ -519,6 +563,7 @@ export async function buildCountryBriefEvidence(
 
   const reads = await Promise.allSettled([
     opts.airportNotams ? Promise.resolve(opts.airportNotams) : readCountryAirportNotams(code, nowMs),
+    opts.imageryFlags ? Promise.resolve(opts.imageryFlags) : readCountryImageryFlags(code, nowMs),
     readKey(CII_RISK_SCORE_CACHE_KEYS.stale),
     readKey(ADVISORIES_KEY),
     readKey(SANCTIONS_COUNTS_KEY),
@@ -527,7 +572,7 @@ export async function buildCountryBriefEvidence(
     readKey(MARKETS_COUNTRY_INDEX_KEY),
     readKey(FORECASTS_KEY),
   ]);
-  const [airportNotams, cii, advisories, sanctions, sanctionsMeta, resilience, markets, forecasts] = reads
+  const [airportNotams, imageryFlags, cii, advisories, sanctions, sanctionsMeta, resilience, markets, forecasts] = reads
     .map((read) => (read.status === 'fulfilled' ? read.value : null));
 
   // Each builder is isolated too: one source's unexpected shape must not
@@ -542,6 +587,7 @@ export async function buildCountryBriefEvidence(
     () => chokepointEvidence(code, name, nowMs),
     () => marketEvidence(markets, code, name, nowMs),
     () => forecastEvidence(forecasts, code, name, nowMs),
+    () => imageryEvidence(Array.isArray(imageryFlags) ? imageryFlags as ConfirmedSiteFlag[] : [], name),
   ];
   const drafts = sections.flatMap((section) => {
     try {
