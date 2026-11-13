@@ -186,6 +186,19 @@ describe('place search in the satellite pass lookup', () => {
     await vi.waitFor(() => expect(lookupMock).toHaveBeenCalledWith({ point: EXACT }, expect.anything()));
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('ignores a device location that arrives after the reader closed the sheet', async () => {
+    let answer: PositionCallback | null = null;
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (ok: PositionCallback) => { answer = ok; } } });
+    openOrbitalWatchSearch(null);
+    button('.ow-locate').click();
+    await vi.waitFor(() => expect(answer).not.toBeNull());
+    sheet()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    answer!({ coords: { latitude: EXACT.lat, longitude: EXACT.lon } } as GeolocationPosition);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(lookupMock).not.toHaveBeenCalled();
+    expect(isOrbitalLookupOpen()).toBe(false);
+  });
 });
 
 describe('satellite pass share link', () => {

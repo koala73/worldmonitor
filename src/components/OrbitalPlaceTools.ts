@@ -83,6 +83,8 @@ export class OrbitalPlaceTools {
   }
 
   private pick(point: GeoPoint): void {
+    this.search?.abort();
+    this.search = null;
     replaceChildren(this.results);
     this.status.textContent = '';
     this.callbacks.onPick(point);
@@ -134,10 +136,13 @@ export class OrbitalPlaceTools {
 
   private async locate(): Promise<void> {
     this.search?.abort();
-    this.search = null;
+    const controller = new AbortController();
+    this.search = controller;
     replaceChildren(this.results);
     this.status.textContent = t('orbitalWatch.search.locating');
     const position = await requestDevicePosition();
+    if (controller.signal.aborted) return;
+    this.search = null;
     if (position.ok) {
       this.pick({ lat: position.lat, lon: position.lon });
       return;
