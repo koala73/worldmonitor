@@ -112,6 +112,14 @@ export function isAllowedRedirectUri(uri) {
   // Inspector; goose registers [::1]). WHATWG URL keeps the IPv6 brackets.
   try {
     const u = new URL(uri);
+    // RFC 6749 §3.1.2: a redirection endpoint URI MUST NOT include a fragment,
+    // and credentials have no place in a callback either. The CIMD path beside
+    // this one already refuses both (`u.username || u.password || u.hash` in
+    // api/oauth/_client-metadata.js), so without this DCR — the path open to
+    // anyone — was the laxer of the two. Query stays allowed: clients rely on
+    // path and query freedom, and authorize.js sets `code`/`state` through
+    // searchParams, which overwrites rather than appends.
+    if (u.hash || u.username || u.password) return false;
     return LOOPBACK_HOSTS.has(u.hostname) && u.protocol === 'http:';
   } catch { return false; }
 }
