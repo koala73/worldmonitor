@@ -33,7 +33,7 @@ describe('a free lookup keeps the exact point to the archives', () => {
 
   it('removes the point from every archive request before Sentry sees it', async () => {
     const { requests, evidence } = await lookupRequests();
-    const imageUrls = [...evidence.acquisitions.map((a) => a.imageUrl), ...evidence.mosaics.flatMap((m) => m.days.map((d) => d.imageUrl)), ...evidence.frames.map((f) => f.latest?.imageUrl)]
+    const imageUrls = [...evidence.acquisitions.map((a) => a.imageUrl), ...evidence.mosaics.flatMap((m) => m.days.map((d) => d.imageUrl)), ...evidence.frames.flatMap((f) => [f.latest?.imageUrl, ...(f.latest?.fallbacks ?? []).map((frame) => frame.imageUrl)])]
       .filter((url): url is string => Boolean(url));
     const urls = [...requests.map((r) => r.url), ...imageUrls];
     const event = scrubSentryCredentials({
@@ -73,14 +73,28 @@ describe('a free lookup keeps the exact point to the archives', () => {
     assert.deepEqual(scrubSentryCredentials({ request: { query_string: [['BBOX', '25.1,55.2,25.3,55.3'], ['TIME', '2026-11-12']] } }).request.query_string, [['TIME', '2026-11-12']]);
   });
 
+  it('keeps the point out of the request names a RUM collector reports', async () => {
+    const { requests, evidence } = await lookupRequests();
+    const imageUrls = [...evidence.acquisitions.map((a) => a.imageUrl), ...evidence.mosaics.flatMap((m) => m.days.map((d) => d.imageUrl)), ...evidence.frames.flatMap((f) => [f.latest?.imageUrl, ...(f.latest?.fallbacks ?? []).map((frame) => frame.imageUrl)])]
+      .filter((url): url is string => Boolean(url));
+    // DebugBear rum-1.1.2.js names a cross-origin resource by host and path, keeping only the last segment of a long path.
+    const reportedName = (url: string) => {
+      const { hostname, pathname } = new URL(url);
+      return hostname.slice(0, 25) + (pathname.length < 30 ? pathname : `/…/${pathname.split('/').pop()}`);
+    };
+    for (const url of [...requests.map((r) => r.url), ...imageUrls]) assert.deepEqual(coordinatesIn(reportedName(url)), [], reportedName(url));
+  });
+
   it('writes a point near zero in fixed decimals, and scrubs exponent-form coordinates too', async () => {
     const nearZero = { lat: 1e-7, lon: 55.2708 };
     const tile = ARCHIVE_RESPONSES.points.dubai['planetary-computer'].features.find((f) => f.assets?.SCL)!;
     const item = parseStacItem('planetary-computer', tile as never)!;
     const urls: string[] = [];
-    await readPointCondition(item, nearZero, { fetch: async (url: string) => { urls.push(url); return new Response('{"values":[4]}'); } });
+    const bodies: string[] = [];
+    await readPointCondition(item, nearZero, { fetch: async (url: string, init?: RequestInit) => { urls.push(url); bodies.push(String(init?.body)); return new Response('{"properties":{"statistics":{"b1":{"majority":4}}}}'); } });
     const box = cropBox(nearZero, 0.00001);
     urls.push(planetaryComputerCropUrl(item.collection, item.itemId, box)!, gibsSnapshotUrl('MODIS_Terra_CorrectedReflectance_TrueColor', '2026-11-12', box)!);
+    for (const body of bodies) assert.doesNotMatch(body, /\d[eE][-+]?\d/, `${body} has no exponent`);
     for (const url of urls) {
       assert.doesNotMatch(decodeURIComponent(url), /\d[eE][-+]?\d/, `${url} has no exponent`);
       const crumb = scrubSentryCredentials({ data: { url } });

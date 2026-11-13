@@ -79,8 +79,9 @@ export function fakeArchiveFetch(point: ArchiveFixturePoint, options: FakeArchiv
       const answer = point['planetary-computer'];
       return json({ ...answer, features: [...answer.features, ...(options.extraPlanetaryComputer ?? [])] });
     }
-    if (url.hostname === 'planetarycomputer.microsoft.com' && url.pathname.includes('/item/point/')) {
-      return json({ values: [url.searchParams.get('assets') === 'SCL' ? options.scl ?? 4 : options.qaPixel ?? 21824] });
+    if (url.hostname === 'planetarycomputer.microsoft.com' && url.pathname.endsWith('/item/statistics')) {
+      const value = url.searchParams.get('assets') === 'SCL' ? options.scl ?? 4 : options.qaPixel ?? 21824;
+      return json({ type: 'Feature', properties: { statistics: { b1: { majority: value, count: 1 } } } });
     }
     if (url.hostname === 'gibs.earthdata.nasa.gov') {
       const daily = url.pathname.includes('CorrectedReflectance');
