@@ -79,6 +79,7 @@ function extractOpen() {
     'isMobileDevice',
     'overlayHistory',
     'safeStorageSet',
+    'I18N_RESOURCES_LOADED_EVENT',
     `${js}\nreturn __UnifiedSettingsOpenHarness;`,
   );
 }
@@ -99,6 +100,7 @@ const Harness = extractOpen()(
   () => false,
   { open() {}, replace() {} },
   () => {},
+  'wm:i18n:resources-loaded',
 );
 
 /**

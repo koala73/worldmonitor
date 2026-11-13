@@ -7,7 +7,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import i18next from 'i18next';
+
 import { initTestI18n, restoreEnglish, useCatalogue } from './helpers/i18n.mts';
+import en from '@/locales/en.json';
+import enShell from '@/locales/en.shell.json';
 import fr from '@/locales/fr.json';
 import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AuthSession } from '@/services/auth-state';
@@ -283,6 +287,36 @@ describe('UnifiedSettings account page in French', () => {
     expect(dialog.querySelector('.account-deletion-dialog-title')?.textContent).toBe(fr.settings.account.deletion.dialogTitle);
     expect(dialog.querySelector('label')?.textContent).toBe(fr.settings.account.deletion.phraseLabel.replace('{{phrase}}', 'DELETE'));
     expect(dialog.querySelector('[data-deletion-cancel]')?.textContent).toBe(fr.common.cancel);
+  });
+});
+
+describe('UnifiedSettings opened before the full English catalogue loads', () => {
+  const RAW_KEY = /\b(?:settings|auth|components|common)\.[A-Za-z0-9_.-]+\b/g;
+  const rawKeysIn = (root: Element) => (root.textContent ?? '').match(RAW_KEY) ?? [];
+
+  beforeEach(() => {
+    i18next.removeResourceBundle('en', 'translation');
+    i18next.addResourceBundle('en', 'translation', enShell as Record<string, unknown>, true, true);
+  });
+
+  afterEach(() => {
+    i18next.addResourceBundle('en', 'translation', en as Record<string, unknown>, true, true);
+  });
+
+  it('replaces raw keys on the open Account page and the home rows once the catalogue arrives', async () => {
+    const { I18N_RESOURCES_LOADED_EVENT } = await import('@/services/i18n');
+    settings.open('account');
+    const overlay = document.querySelector<HTMLElement>('#unifiedSettingsModal')!;
+    const page = overlay.querySelector<HTMLElement>('[data-settings-page="account"]')!;
+    expect(rawKeysIn(overlay).length).toBeGreaterThan(0);
+
+    i18next.addResourceBundle('en', 'translation', en as Record<string, unknown>, true, true);
+    window.dispatchEvent(new CustomEvent(I18N_RESOURCES_LOADED_EVENT, { detail: { language: 'en' } }));
+
+    expect(rawKeysIn(overlay)).toEqual([]);
+    expect(overlay.querySelector('[data-settings-page="account"]')).toBe(page);
+    expect(page.querySelector('.billing-settings-intro h3')?.textContent?.trim()).toBe('Plan & billing');
+    expect(page.querySelector('.billing-settings-intro p')?.textContent?.trim()).toBe(en.settings.account.intro);
   });
 });
 
