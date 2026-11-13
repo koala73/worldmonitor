@@ -1,0 +1,88 @@
+import type {
+  InfrastructureServiceHandler,
+  ServerContext,
+  SearchPlaceRequest,
+  SearchPlaceResponse,
+  PlaceMatch,
+} from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
+import { ApiError } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
+import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { checkScopedRateLimit } from '../../../_shared/rate-limit';
+
+const NOMINATIM_SEARCH = 'https://nominatim.openstreetmap.org/search';
+const USER_AGENT = 'WorldMonitor/2.0 (https://worldmonitor.app)';
+const MAX_RESULTS = 5;
+const MIN_QUERY_CHARS = 2;
+const MAX_QUERY_CHARS = 200;
+const FOUND_TTL_SECONDS = 604_800;
+const NOT_FOUND_TTL_SECONDS = 86_400;
+// Nominatim's usage policy caps the whole application at one request per second, so name
+// search spends the same fail-closed bucket as reverse geocoding.
+const PROVIDER_RATE_LIMIT_SCOPE = 'reverse-geocode';
+const PROVIDER_RATE_LIMIT_IDENTIFIER = 'global';
+
+interface NominatimPlace {
+  lat?: string;
+  lon?: string;
+  display_name?: string;
+  type?: string;
+  addresstype?: string;
+}
+
+/** Case and spacing variants of one name share a cache entry. */
+export function normalizePlaceQuery(raw: string): string {
+  return raw.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+export const placeSearchCacheKey = (query: string) => `geocode:search:v1:${encodeURIComponent(query)}`;
+
+function toMatch(place: NominatimPlace): PlaceMatch | null {
+  const lat = Number(place.lat);
+  const lon = Number(place.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  const name = (place.display_name ?? '').trim();
+  if (!name) return null;
+  return { name, lat, lon, kind: place.addresstype || place.type || '' };
+}
+
+function isCachedMatches(value: unknown): value is PlaceMatch[] {
+  return Array.isArray(value) && value.every((m) => m && typeof m === 'object' && typeof m.name === 'string'
+    && typeof m.lat === 'number' && typeof m.lon === 'number' && typeof m.kind === 'string');
+}
+
+/** SearchPlace resolves a submitted place name through OpenStreetMap Nominatim, cached per normalised name. */
+export const searchPlace: InfrastructureServiceHandler['searchPlace'] = async (
+  _ctx: ServerContext,
+  req: SearchPlaceRequest,
+): Promise<SearchPlaceResponse> => {
+  const query = normalizePlaceQuery(req.q ?? '');
+  if (query.length < MIN_QUERY_CHARS || query.length > MAX_QUERY_CHARS) {
+    throw new ApiError(400, `q must be ${MIN_QUERY_CHARS} to ${MAX_QUERY_CHARS} characters`, '');
+  }
+
+  const cacheKey = placeSearchCacheKey(query);
+  const cached = await getCachedJson(cacheKey);
+  if (isCachedMatches(cached)) return { places: cached, error: '' };
+
+  const providerLimit = await checkScopedRateLimit(PROVIDER_RATE_LIMIT_SCOPE, 1, '1 s', PROVIDER_RATE_LIMIT_IDENTIFIER);
+  if (providerLimit.degraded) throw new ApiError(503, 'Rate-limit service temporarily unavailable', '');
+  if (!providerLimit.allowed) throw new ApiError(429, 'Too many requests', '');
+
+  const params = new URLSearchParams({ q: query, format: 'jsonv2', limit: String(MAX_RESULTS), 'accept-language': 'en' });
+  try {
+    const resp = await fetch(`${NOMINATIM_SEARCH}?${params}`, {
+      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) return { places: [], error: 'Place search failed' };
+    const body: unknown = await resp.json();
+    const places = (Array.isArray(body) ? body : [])
+      .map((place) => toMatch(place as NominatimPlace))
+      .filter((match): match is PlaceMatch => match !== null)
+      .slice(0, MAX_RESULTS);
+    await setCachedJson(cacheKey, places, places.length > 0 ? FOUND_TTL_SECONDS : NOT_FOUND_TTL_SECONDS);
+    return { places, error: '' };
+  } catch {
+    return { places: [], error: 'Place search failed' };
+  }
+};
