@@ -84,6 +84,26 @@ describe('orbital image viewer', () => {
     expect(viewer()!.querySelector('input[type="range"]')).not.toBeNull();
   });
 
+  it('compares and animates only point crops, never whole-scene previews with other footprints', async () => {
+    const preview = (id: string) => `https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s1-l1c/${id}/preview.jpg`;
+    const radar = (daysAgo: number) => scene(daysAgo, null, { profileId: 'sentinel-1', platform: 'sentinel-1c', key: `sentinel-1c:${daysAgo}`, imageUrl: preview(`S1C_${daysAgo}`) });
+    const searchHistory = history([radar(1), radar(13), radar(25), radar(37), radar(49)]);
+    open(radar(1), { searchHistory, loadImage: loaded }, [radar(13)]);
+    await settle();
+    expect(viewer()!.querySelector('img.oiv-image')).not.toBeNull();
+    expect(viewer()!.querySelector('.oiv-north')).toBeNull();
+    expect(viewer()!.querySelector('.oiv-slider')).toBeNull();
+    expect(viewer()!.querySelector('.oiv-timelapse')).toBeNull();
+    expect(searchHistory).not.toHaveBeenCalled();
+
+    document.querySelector<HTMLButtonElement>('.oiv-close')!.click();
+    const earthSearchOnly = scene(40, 5, { key: 'sentinel-2c:1:es', imageUrl: preview('S2C_es') });
+    open(scene(1, 5), { searchHistory: history([earthSearchOnly]) }, [earthSearchOnly]);
+    await settle();
+    expect(viewer()!.querySelector('.oiv-slider')).toBeNull();
+    expect(viewer()!.querySelector(`.oiv-date[data-key="${earthSearchOnly.key}"]`)).toBeNull();
+  });
+
   it('defaults the compare picker to the nearest low-cloud scene at least 30 days away', async () => {
     const selected = scene(1, 5);
     const nearButRecent = scene(10, 2);

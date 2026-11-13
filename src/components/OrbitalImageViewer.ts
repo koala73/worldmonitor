@@ -145,10 +145,11 @@ type TimelapseState =
   | { kind: 'ready'; frames: ViewerScene[]; index: number; playing: boolean };
 
 /** One acquisition per sensing time: the lookup's scenes and the history search can return the same acquisition. */
+/** Only crops requested for this point's box in a latitude-longitude grid line up, so only they compare or animate. */
 function mergeScenes(collection: string, ...sources: ViewerScene[][]): ViewerScene[] {
   const merged: ViewerScene[] = [];
   for (const scene of sources.flat()) {
-    if (scene.collection !== collection || !scene.imageUrl) continue;
+    if (scene.collection !== collection || !scene.imageUrl || scene.grid !== 'north-up') continue;
     if (merged.some((seen) => seen.key === scene.key || (seen.name === scene.name && Math.abs(seen.timeMs - scene.timeMs) < 10 * 60_000))) continue;
     merged.push(scene);
   }
@@ -169,6 +170,7 @@ export class OrbitalImageViewer {
   private readonly dialog: HTMLElement;
   private readonly body: HTMLElement;
   private readonly controller = new AbortController();
+  private readonly historyProfile: ImagingProfileId | null;
   private history: HistoryState;
   private scenes: ViewerScene[];
   private pickedCompareKey: string | null = null;
@@ -184,7 +186,8 @@ export class OrbitalImageViewer {
       prefersReducedMotion: deps.prefersReducedMotion ?? (() => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches),
     };
     this.scenes = mergeScenes(subject.selected.collection, [subject.selected], subject.scenes);
-    this.history = subject.historyProfile ? { kind: 'searching' } : { kind: 'none' };
+    this.historyProfile = subject.selected.grid === 'north-up' ? subject.historyProfile : null;
+    this.history = this.historyProfile ? { kind: 'searching' } : { kind: 'none' };
     const titleId = 'orbital-image-viewer-title';
     this.body = h('div', { className: 'oiv-body' });
     this.dialog = h('section', { className: 'oiv-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, tabindex: '-1' },
@@ -203,7 +206,7 @@ export class OrbitalImageViewer {
     document.body.appendChild(this.root);
     this.render();
     this.dialog.focus();
-    if (this.subject.historyProfile) void this.loadHistory(this.subject.historyProfile);
+    if (this.historyProfile) void this.loadHistory(this.historyProfile);
   }
 
   get isOpen(): boolean {
@@ -290,6 +293,7 @@ export class OrbitalImageViewer {
   }
 
   private renderCompare(): DomChild {
+    if (this.subject.selected.grid !== 'north-up') return null;
     const others = this.scenes.filter((scene) => scene.key !== this.subject.selected.key);
     if (others.length === 0) {
       return this.history.kind === 'searching' || this.history.kind === 'failed' ? null : h('p', { className: 'oiv-note' }, t('orbitalWatch.viewer.compareNone'));
@@ -315,7 +319,7 @@ export class OrbitalImageViewer {
   }
 
   private renderTimelapse(): DomChild {
-    if (!this.subject.historyProfile || this.history.kind !== 'answered') return null;
+    if (!this.historyProfile || this.history.kind !== 'answered') return null;
     const candidates = timelapseFrames(this.scenes, this.subject.nowMs);
     const heading = h('h3', null, t('orbitalWatch.viewer.timelapse'));
     const section = (...children: DomChild[]) => h('section', { className: 'oiv-section oiv-timelapse', 'aria-label': t('orbitalWatch.viewer.timelapse') }, heading, ...children);
@@ -396,7 +400,7 @@ export class OrbitalImageViewer {
         this.close();
         return;
       case 'retry-history':
-        if (this.subject.historyProfile) void this.loadHistory(this.subject.historyProfile);
+        if (this.historyProfile) void this.loadHistory(this.historyProfile);
         return;
       case 'compare-date':
         this.pickedCompareKey = action.dataset.key ?? null;
