@@ -1922,11 +1922,21 @@ describe('marketingBeforeSend — ReferenceError with only <anonymous> frames (W
   // Code evaluated from a string is what produces an `<anonymous>` frame.
   const STRING_EVAL_SOURCE = /(?<![\w$.])eval\s*\(|\bnew\s+Function\s*\(|\bset(?:Timeout|Interval)\s*\(\s*['"`]/;
 
-  it('the source scan catches every string-evaluation spelling', () => {
-    for (const src of ['eval(code)', 'eval (x)', 'new Function("a", body)', "setTimeout('run()', 10)", 'setInterval(`tick()`, 5)']) {
+  it('the source scan catches common string-evaluation spellings', () => {
+    for (const src of [
+      'eval(code)', 'eval (x)', 'new Function("a", body)',
+      'Function(body)', 'Function ("a", body)',
+      'window.eval(code)', 'globalThis.eval(code)',
+      'window . eval (code)', 'globalThis\n. eval(code)',
+      "setTimeout('run()', 10)", 'setInterval(`tick()`, 5)',
+    ]) {
       assert.ok(STRING_EVAL_SOURCE.test(src), src);
     }
-    for (const src of ['setTimeout(run, 10)', 'evaluate(x)', 'retrieval(x)', 'node.eval(x)', 'typeof Function']) {
+    for (const src of [
+      'setTimeout(run, 10)', 'evaluate(x)', 'retrieval(x)', 'node.eval(x)', 'typeof Function',
+      'node.Function(body)', 'makeFunction(body)', '$Function(body)',
+      'mywindow.eval(code)', 'object.window.eval(code)', '$globalThis.eval(code)',
+    ]) {
       assert.ok(!STRING_EVAL_SOURCE.test(src), src);
     }
   });
