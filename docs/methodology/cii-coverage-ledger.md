@@ -40,10 +40,23 @@ The proposed OQ11 rule would qualify 81 countries before its optional economic l
 condition, with 72 also economically measured. The report gives all clause
 counts and per-country evidence. These counts are not an admission ruling.
 
-C0 remains active. Append C1 to the baseline only after the owner merges and
-deploys U23 and GET-only reads confirm natural global publication. Do not promote
-a local candidate count to a production floor. No scored country or formula
-changes in U23.
+C0 remains active. No scored country or formula changes in U23.
+
+## The alarm covers scored countries only
+
+Owner ruling, 13 November 2026: a family's expected list may name only countries
+in that step's scored set. Health alarms by name on those countries and on no
+others. Producers publish every country their sources carry, but coverage
+outside the scored set is recorded in the inventory as dated counts, not in the
+baseline. About 100 of the 149 measured economic countries rest on IMF inflation
+alone; naming them would turn one late IMF release into a hundred warnings for
+countries no score depends on. The tests reject an expected country that is not
+scored.
+
+A step is appended when the scored set grows, not when a producer widens. The
+countries a release admits join the scored set and, where measured, the expected
+lists in the same PR. Confirm U23's natural global publication with GET-only
+reads and record the result in the inventory; it does not create C1.
 
 Health requires each expected economic country to retain at least one fresh
 member. It reports `missingExpectedCountries` in operator details and strips the
