@@ -5158,14 +5158,10 @@
     "dailyMosaics": "dagliga mosaiker",
     "weatherFrames": "väderbilder",
     "timeline": {
-      "heading": "Tidslinje, senaste 7 dagarna och kommande 72 timmarna (UTC)",
-      "asList": "Tidslinje som lista",
       "now": "nu",
       "nowAt": "Nu: {{time}}",
-      "images": "Bilder",
       "density": "Överflygningar {{label}}, {{start}} till {{end}}: {{count}}",
       "daylight": "Dagsljus vid punkten från {{start}} till {{end}}",
-      "loading": "läser in",
       "unavailable": "ej tillgänglig",
       "notRetained": "sparas inte",
       "notRetainedSpan": "{{label}}: sparas inte från {{start}} till {{end}}",
@@ -5176,14 +5172,24 @@
         "unrest": "Oroligheter",
         "outages": "Internetavbrott"
       },
-      "nowTitle": "Nu, endast live",
       "live": {
         "vessels": "Fartygstrafik",
         "militaryFlights": "Militära flygningar",
         "gpsJamming": "GPS-störning"
       },
-      "liveNone": "inga inom {{km}} km",
-      "liveCount": "inom {{km}} km: {{count}}, närmast {{nearest}}"
+      "title": "Tidslinje",
+      "span": "{{days}} dagar · nästa {{hours}} h",
+      "daylightHere": "Dagsljus här",
+      "row": {
+        "geo": "Geo",
+        "photo": "Foto",
+        "likely": "Troligt",
+        "could": "Möjligt",
+        "overhead": "Överflygning"
+      },
+      "retained": "{{start}} till {{end}}",
+      "geoLine": "Geostationära i sikte: {{names}}",
+      "away": "{{km}} km bort"
     }
   }
 }

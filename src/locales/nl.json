@@ -5158,14 +5158,10 @@
     "dailyMosaics": "dagmozaïeken",
     "weatherFrames": "weerbeelden",
     "timeline": {
-      "heading": "Tijdlijn, afgelopen 7 dagen en komende 72 uur (UTC)",
-      "asList": "Tijdlijn als lijst",
       "now": "nu",
       "nowAt": "Nu: {{time}}",
-      "images": "Beelden",
       "density": "Overkomsten {{label}}, {{start}} tot {{end}}: {{count}}",
       "daylight": "Daglicht op het punt van {{start}} tot {{end}}",
-      "loading": "laden",
       "unavailable": "niet beschikbaar",
       "notRetained": "niet bewaard",
       "notRetainedSpan": "{{label}}: niet bewaard van {{start}} tot {{end}}",
@@ -5176,14 +5172,24 @@
         "unrest": "Onrust",
         "outages": "Internetstoringen"
       },
-      "nowTitle": "Nu, alleen live",
       "live": {
         "vessels": "Scheepvaartverkeer",
         "militaryFlights": "Militaire vluchten",
         "gpsJamming": "GPS-storing"
       },
-      "liveNone": "geen binnen {{km}} km",
-      "liveCount": "binnen {{km}} km: {{count}}, dichtstbij {{nearest}}"
+      "title": "Tijdlijn",
+      "span": "{{days}} dagen · komende {{hours}} u",
+      "daylightHere": "Daglicht hier",
+      "row": {
+        "geo": "Geo",
+        "photo": "Foto",
+        "likely": "Waarschijnlijk",
+        "could": "Mogelijk",
+        "overhead": "Overvlucht"
+      },
+      "retained": "{{start}} tot {{end}}",
+      "geoLine": "Geostationair in zicht: {{names}}",
+      "away": "{{km}} km verderop"
     }
   }
 }

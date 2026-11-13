@@ -5158,14 +5158,10 @@
     "dailyMosaics": "picha mseto za kila siku",
     "weatherFrames": "picha za hali ya hewa",
     "timeline": {
-      "heading": "Ratiba ya matukio, siku 7 zilizopita na saa 72 zijazo (UTC)",
-      "asList": "Ratiba ya matukio kama orodha",
       "now": "sasa",
       "nowAt": "Sasa: {{time}}",
-      "images": "Picha",
       "density": "Mapito ya {{label}}, kuanzia {{start}} hadi {{end}}: {{count}}",
       "daylight": "Mchana kwenye eneo kuanzia {{start}} hadi {{end}}",
-      "loading": "inapakia",
       "unavailable": "haipatikani",
       "notRetained": "haihifadhiwi",
       "notRetainedSpan": "{{label}}: haihifadhiwi kuanzia {{start}} hadi {{end}}",
@@ -5176,14 +5172,24 @@
         "unrest": "Machafuko",
         "outages": "Kukatika kwa intaneti"
       },
-      "nowTitle": "Sasa, moja kwa moja tu",
       "live": {
         "vessels": "Trafiki ya meli",
         "militaryFlights": "Safari za ndege za kijeshi",
         "gpsJamming": "Uzuiaji wa GPS"
       },
-      "liveNone": "hakuna ndani ya km {{km}}",
-      "liveCount": "ndani ya km {{km}}: {{count}}, karibu zaidi {{nearest}}"
+      "title": "Ratiba ya wakati",
+      "span": "Siku {{days}} · saa {{hours}} zijazo",
+      "daylightHere": "Mchana hapa",
+      "row": {
+        "geo": "Geo",
+        "photo": "Picha",
+        "likely": "Huenda",
+        "could": "Inawezekana",
+        "overhead": "Kupita"
+      },
+      "retained": "{{start}} hadi {{end}}",
+      "geoLine": "Satelaiti tuli zinazoonekana: {{names}}",
+      "away": "km {{km}} mbali"
     }
   }
 }

@@ -5158,14 +5158,10 @@
     "dailyMosaics": "дневни мозайки",
     "weatherFrames": "метеорологични изображения",
     "timeline": {
-      "heading": "Хронология, последните 7 дни и следващите 72 часа (UTC)",
-      "asList": "Хронология като списък",
       "now": "сега",
       "nowAt": "Сега: {{time}}",
-      "images": "Изображения",
       "density": "Преминавания {{label}}, от {{start}} до {{end}}: {{count}}",
       "daylight": "Дневна светлина в точката от {{start}} до {{end}}",
-      "loading": "зареждане",
       "unavailable": "недостъпно",
       "notRetained": "не се съхранява",
       "notRetainedSpan": "{{label}}: не се съхранява от {{start}} до {{end}}",
@@ -5176,14 +5172,24 @@
         "unrest": "Безредици",
         "outages": "Прекъсвания на интернет"
       },
-      "nowTitle": "Сега, само на живо",
       "live": {
         "vessels": "Корабен трафик",
         "militaryFlights": "Военни полети",
         "gpsJamming": "Заглушаване на GPS"
       },
-      "liveNone": "няма в радиус {{km}} км",
-      "liveCount": "в радиус {{km}} км: {{count}}, най-близо {{nearest}}"
+      "title": "Времева линия",
+      "span": "{{days}} дни · следващите {{hours}} ч",
+      "daylightHere": "Дневна светлина тук",
+      "row": {
+        "geo": "Гео",
+        "photo": "Снимка",
+        "likely": "Вероятно",
+        "could": "Възможно",
+        "overhead": "Преминал"
+      },
+      "retained": "{{start}} до {{end}}",
+      "geoLine": "Геостационарни във видимост: {{names}}",
+      "away": "на {{km}} км"
     }
   }
 }

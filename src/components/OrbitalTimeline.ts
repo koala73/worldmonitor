@@ -2,18 +2,17 @@ import type { PassTier } from '../../shared/orbital/tiers.js';
 import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { MatchedAcquisition } from '@/services/orbital/match';
+import { zonedClock, type ZonedClock } from '@/services/orbital/local-time';
 import {
   EVENT_SOURCES,
   LIVE_RADIUS_KM,
   LIVE_SOURCES,
-  type EventLane,
   type EventSourceId,
   type LiveSourceId,
-  type LiveStrip,
   type PointContext,
 } from '@/services/orbital/point-context';
-import { t } from '@/services/i18n';
-import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
+import { getLocale, t } from '@/services/i18n';
+import { h, replaceChildren } from '@/utils/dom-utils';
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
@@ -31,16 +30,26 @@ export interface OrbitalTimelineInput {
   selectedKey: string | null;
 }
 
-type PassLaneId = 'confirmed' | 'likely' | 'opportunity' | 'inRange' | 'passed';
+type RowId = 'geo' | 'photo' | 'likely' | 'could' | 'overhead';
 
-/** Rare, decisive passes draw as marks; the many in-range and overhead passes draw as hourly density. */
-const PASS_LANES: ReadonlyArray<{ id: PassLaneId; tiers: ReadonlyArray<PassTier['kind']>; draw: 'marks' | 'density'; labelKey: string }> = [
-  { id: 'confirmed', tiers: ['confirmed-image'], draw: 'marks', labelKey: 'orbitalWatch.tier.confirmed' },
-  { id: 'likely', tiers: ['likely-imaged'], draw: 'marks', labelKey: 'orbitalWatch.tier.likely' },
-  { id: 'opportunity', tiers: ['opportunity'], draw: 'marks', labelKey: 'orbitalWatch.tier.opportunity' },
-  { id: 'inRange', tiers: ['within-reach', 'capability-overhead', 'daily-mosaic'], draw: 'density', labelKey: 'orbitalWatch.inRange' },
-  { id: 'passed', tiers: ['passed-overhead'], draw: 'density', labelKey: 'orbitalWatch.tier.passedOverhead' },
+/** Five fixed rows, one glyph each, the same glyphs that mark these tiers everywhere else. The many "could" passes draw as ticks. */
+const ROWS: ReadonlyArray<{ id: RowId; glyph: string; tiers: ReadonlyArray<PassTier['kind']>; dense?: true }> = [
+  { id: 'geo', glyph: '○', tiers: ['daily-mosaic'] },
+  { id: 'photo', glyph: '◆', tiers: ['confirmed-image'] },
+  { id: 'likely', glyph: '◇', tiers: ['likely-imaged'] },
+  { id: 'could', glyph: '□', tiers: ['within-reach', 'capability-overhead'], dense: true },
+  { id: 'overhead', glyph: '+', tiers: ['passed-overhead', 'opportunity'] },
 ];
+
+const TIER_LABEL_KEY: Record<PassTier['kind'], string> = {
+  'confirmed-image': 'orbitalWatch.tier.confirmed',
+  'likely-imaged': 'orbitalWatch.tier.likely',
+  'within-reach': 'orbitalWatch.tier.withinReach',
+  'capability-overhead': 'orbitalWatch.tier.capabilityOverhead',
+  'daily-mosaic': 'orbitalWatch.tier.dailyMosaic',
+  'passed-overhead': 'orbitalWatch.tier.passedOverhead',
+  opportunity: 'orbitalWatch.tier.opportunity',
+};
 
 const EVENT_LABEL_KEY: Record<EventSourceId, string> = {
   conflict: 'orbitalWatch.timeline.source.conflict',
@@ -60,15 +69,10 @@ const formatHour = (ms: number) => new Date(ms).toISOString().slice(11, 16);
 
 interface ListEntry {
   timeMs: number;
-  node: HTMLElement;
+  text: string;
 }
 
-interface HourBin {
-  startMs: number;
-  count: number;
-}
-
-function hourlyBins(passes: PointPass[]): HourBin[] {
+function hourlyBins(passes: PointPass[]): Array<{ startMs: number; count: number }> {
   const bins = new Map<number, number>();
   for (const pass of passes) {
     const startMs = Math.floor(pass.timeMs / HOUR_MS) * HOUR_MS;
@@ -77,165 +81,181 @@ function hourlyBins(passes: PointPass[]): HourBin[] {
   return [...bins].map(([startMs, count]) => ({ startMs, count })).sort((a, b) => a.startMs - b.startMs);
 }
 
-/** Pass, image and event lanes over the lookup window, drawn against daylight at the point, with a list that says the same. */
+/** Where a source's kept history leaves part of the past window uncovered. */
+function uncovered(retained: { startMs: number; endMs: number } | null, startMs: number, nowMs: number): Array<[number, number]> {
+  const coveredStart = retained ? Math.max(startMs, retained.startMs) : nowMs;
+  const coveredEnd = retained ? Math.min(nowMs, retained.endMs) : nowMs;
+  if (coveredEnd <= coveredStart) return [[startMs, nowMs]];
+  const gaps: Array<[number, number]> = [];
+  if (coveredStart > startMs) gaps.push([startMs, coveredStart]);
+  if (coveredEnd < nowMs) gaps.push([coveredEnd, nowMs]);
+  return gaps;
+}
+
+/**
+ * The timeline dock: five tier rows over the lookup window in the place's local time, daylight at the point,
+ * nearby events on a strip above, and live-only context at the foot. A visually hidden list says the same in text.
+ */
 export class OrbitalTimeline {
   readonly element: HTMLElement;
-  private readonly chart: HTMLElement;
-  private readonly now: HTMLElement;
-  private readonly list: HTMLElement;
+  private readonly head = h('header', { className: 'ow-tl-head' });
+  private readonly legend = h('ul', { className: 'ow-tl-legend' });
+  private readonly plot = h('div', { className: 'ow-tl-plot', 'aria-hidden': 'true' });
+  private readonly tip = h('div', { className: 'ow-tl-tip', role: 'tooltip' });
+  private readonly foot = h('div', { className: 'ow-tl-foot' });
+  private readonly list = h('ol', { className: 'ow-tl-sr' });
 
   constructor(private readonly onSelect: (key: string) => void) {
-    this.chart = h('div', { className: 'ow-tl-chart', 'aria-hidden': 'true' });
-    this.now = h('div', { className: 'ow-now-strip' });
-    this.list = h('ol', { className: 'ow-tl-list' });
-    this.element = h('section', { className: 'ow-timeline', 'aria-label': t('orbitalWatch.timeline.heading') },
-      h('h3', { className: 'ow-tl-title' }, t('orbitalWatch.timeline.heading')),
-      this.chart,
-      h('details', { className: 'ow-tl-list-wrap' }, h('summary', null, t('orbitalWatch.timeline.asList')), this.list),
-      this.now);
+    this.tip.hidden = true;
+    this.element = h('section', { className: 'ow-timeline' },
+      this.head,
+      h('div', { className: 'ow-tl-body' }, this.legend, h('div', { className: 'ow-tl-plot-wrap' }, this.plot, this.tip)),
+      this.foot,
+      this.list);
     this.element.addEventListener('click', this.onClick);
+    this.plot.addEventListener('pointerover', this.onPointerOver);
+    this.plot.addEventListener('pointerleave', this.hideTip);
   }
 
   update(input: OrbitalTimelineInput): void {
-    const { window } = input.lookup;
+    const { window, nowMs } = input.lookup;
+    const context = input.context.kind === 'loaded' ? input.context.context : null;
+    const clock = zonedClock(context?.timeZone ?? null, getLocale(), nowMs);
+    const when = (ms: number) => `${clock.day(ms)} · ${clock.time(ms)}`;
     const pct = (ms: number) => ((Math.min(Math.max(ms, window.startMs), window.endMs) - window.startMs) / (window.endMs - window.startMs)) * 100;
     const at = (ms: number) => `left:${pct(ms).toFixed(3)}%`;
     const between = (startMs: number, endMs: number) => `left:${pct(startMs).toFixed(3)}%;width:${Math.max(0, pct(endMs) - pct(startMs)).toFixed(3)}%`;
+    const count = (n: number) => n.toLocaleString(getLocale());
     const entries: ListEntry[] = [];
-    const labels: HTMLElement[] = [];
-    const tracks: HTMLElement[] = [];
-    const lane = (id: string, label: string, marks: DomChild[], state?: string) => {
-      labels.push(h('div', { className: 'ow-tl-label', title: label, dataset: { lane: id } }, label));
-      tracks.push(h('div', { className: 'ow-tl-track', dataset: { lane: id, ...(state ? { state } : {}) } }, ...marks));
-    };
 
-    for (const spec of PASS_LANES) {
-      const passes = input.passes.filter((pass) => spec.tiers.includes(pass.tier.kind));
-      const label = t(spec.labelKey);
-      if (spec.draw === 'marks') {
-        lane(spec.id, label, passes.map((pass) => this.passMark(pass, input.selectedKey, at(pass.timeMs))));
-        for (const pass of passes) entries.push({ timeMs: pass.timeMs, node: this.passEntry(pass, label, input.selectedKey) });
-        continue;
+    const span = `${t('orbitalWatch.timeline.span', { days: Math.round((nowMs - window.startMs) / DAY_MS), hours: Math.round((window.endMs - nowMs) / HOUR_MS) })} · ${clock.timeZone} · ${clock.abbreviation}`;
+    this.element.setAttribute('aria-label', `${t('orbitalWatch.timeline.title')}, ${span}`);
+    replaceChildren(this.head,
+      h('h3', { className: 'ow-tl-title' }, h('span', { className: 'ow-tl-num' }, '03 / '), t('orbitalWatch.timeline.title')),
+      h('span', { className: 'ow-tl-span' }, span),
+      h('span', { className: 'ow-tl-daylight-key' }, h('span', { className: 'ow-tl-swatch' }), t('orbitalWatch.timeline.daylightHere')));
+
+    const geostationary = input.lookup.satellites.filter((s) => s.status === 'geostationary' && s.visibility.visible);
+    const keys: HTMLElement[] = [h('li', { className: 'ow-tl-key-spacer', 'aria-hidden': 'true' })];
+    const rows: HTMLElement[] = [];
+    for (const row of ROWS) {
+      const passes = input.passes.filter((pass) => row.tiers.includes(pass.tier.kind));
+      const label = t(`orbitalWatch.timeline.row.${row.id}`);
+      const geoLine = row.id === 'geo' && geostationary.length > 0
+        ? h('span', { className: 'ow-tl-geo-line', style: between(window.startMs, window.endMs), dataset: { tip: t('orbitalWatch.timeline.geoLine', { names: geostationary.map((s) => s.name).join(', ') }) } })
+        : null;
+      keys.push(h('li', { className: 'ow-tl-key', dataset: { row: row.id } },
+        h('span', { className: 'ow-tl-glyph', 'aria-hidden': 'true' }, row.glyph),
+        h('span', { className: 'ow-tl-key-label' }, label),
+        h('span', { className: 'ow-tl-count' }, count(passes.length + (row.id === 'geo' ? geostationary.length : 0)))));
+      rows.push(h('div', { className: 'ow-tl-row', dataset: { row: row.id } }, geoLine, ...passes.map((pass) => this.mark(pass, row, input.selectedKey, at(pass.timeMs), when))));
+      if (row.dense) {
+        for (const bin of hourlyBins(passes)) {
+          entries.push({ timeMs: bin.startMs, text: t('orbitalWatch.timeline.density', { label, count: bin.count, start: formatUtc(bin.startMs), end: formatHour(bin.startMs + HOUR_MS) }) });
+        }
+      } else {
+        for (const pass of passes) entries.push({ timeMs: pass.timeMs, text: `${t(TIER_LABEL_KEY[pass.tier.kind])}: ${pass.name}, ${formatUtc(pass.timeMs)}` });
       }
-      const bins = hourlyBins(passes);
-      const peak = Math.max(1, ...bins.map((bin) => bin.count));
-      lane(spec.id, label, bins.map((bin) => h('span', {
-        className: 'ow-tl-bin',
-        style: `${between(bin.startMs, bin.startMs + HOUR_MS)};opacity:${(0.25 + 0.75 * (bin.count / peak)).toFixed(2)}`,
-        dataset: { count: String(bin.count) },
-      })));
-      for (const bin of bins) {
-        entries.push({ timeMs: bin.startMs, node: h('li', { dataset: { lane: spec.id } },
-          t('orbitalWatch.timeline.density', { label, count: bin.count, start: formatUtc(bin.startMs), end: formatHour(bin.startMs + HOUR_MS) })) });
+    }
+    replaceChildren(this.legend, ...keys);
+
+    const eventMarks: HTMLElement[] = [];
+    const eventKeys = EVENT_SOURCES.map((id) => {
+      const label = t(EVENT_LABEL_KEY[id]);
+      const lane = context?.events[id];
+      if (!lane || lane.status === 'unavailable') {
+        if (lane) entries.push({ timeMs: window.startMs, text: `${label}: ${t('orbitalWatch.timeline.unavailable')}` });
+        return h('li', { className: 'ow-tl-event-key', dataset: { source: id, state: lane ? 'unavailable' : 'loading' } },
+          h('span', { className: 'ow-tl-dot' }), label, ' ', h('span', { className: 'ow-tl-count' }, lane ? '–' : '…'));
       }
-    }
+      for (const event of lane.events) {
+        const where = event.distanceKm === null ? t('orbitalWatch.timeline.countryWide') : t('orbitalWatch.timeline.away', { km: Math.round(event.distanceKm) });
+        eventMarks.push(h('span', { className: 'ow-tl-event', style: at(event.timeMs), dataset: { source: id, tip: `${label} · ${event.label} · ${where} · ${when(event.timeMs)}` } }));
+        entries.push({ timeMs: event.timeMs, text: `${label}: ${event.label}, ${formatUtc(event.timeMs)}, ${where}` });
+      }
+      const gaps = uncovered(lane.retained, window.startMs, nowMs);
+      for (const [startMs, endMs] of gaps) {
+        entries.push({ timeMs: startMs, text: t('orbitalWatch.timeline.notRetainedSpan', { label, start: formatUtc(startMs), end: formatUtc(endMs) }) });
+      }
+      const whole = gaps.length === 1 && gaps[0]![0] === window.startMs && gaps[0]![1] === nowMs;
+      const kept = whole
+        ? t('orbitalWatch.timeline.notRetained')
+        : gaps.length > 0 && lane.retained
+          ? t('orbitalWatch.timeline.retained', { start: clock.day(Math.max(window.startMs, lane.retained.startMs)), end: clock.day(Math.min(nowMs, lane.retained.endMs)) })
+          : null;
+      return h('li', { className: 'ow-tl-event-key', dataset: { source: id, state: 'ok' } },
+        h('span', { className: 'ow-tl-dot' }), label, ' ', h('span', { className: 'ow-tl-count' }, count(lane.events.length)),
+        kept ? h('span', { className: 'ow-tl-retained' }, ` · ${kept}`) : null);
+    });
 
-    const images = input.acquisitions;
-    const imageLabel = t('orbitalWatch.timeline.images');
-    lane('images', imageLabel, images.map((acquisition) => {
-      const key = acquisition.pass ? passKey(acquisition.pass) : null;
-      return h('span', { className: `ow-tl-mark ow-tl-image${key && key === input.selectedKey ? ' is-selected' : ''}`, style: at(acquisition.startMs), dataset: key ? { pass: key } : {} });
-    }));
-    for (const acquisition of images) {
-      entries.push({ timeMs: acquisition.startMs, node: h('li', { dataset: { lane: 'images' } }, `${imageLabel}: ${acquisition.platform.toUpperCase()}, ${formatUtc(acquisition.startMs)}`) });
-    }
+    const midnights = clock.midnights(window.startMs, window.endMs);
+    const nowPct = pct(nowMs);
+    replaceChildren(this.plot,
+      h('div', { className: 'ow-tl-backdrop' },
+        ...input.lookup.daylight.map((band) => h('span', { className: 'ow-tl-daylight', style: between(band.startMs, band.endMs) })),
+        ...midnights.map((ms) => h('span', { className: 'ow-tl-midnight', style: at(ms) })),
+        h('span', { className: 'ow-tl-now', style: at(nowMs) })),
+      h('div', { className: 'ow-tl-strip' }, ...eventMarks),
+      ...rows,
+      h('div', { className: 'ow-tl-axis' },
+        ...midnights.filter((ms) => Math.abs(pct(ms) - nowPct) > 4).map((ms) => this.dayLabel(clock, ms, at(ms))),
+        h('span', { className: 'ow-tl-now-label', style: at(nowMs) }, t('orbitalWatch.timeline.now'))));
+    this.hideTip();
 
-    for (const id of EVENT_SOURCES) this.eventLane(id, input, lane, entries, between, at);
-
-    const { nowMs } = input.lookup;
-    const daylight = input.lookup.daylight.map((span) => h('span', { className: 'ow-tl-daylight', style: between(span.startMs, span.endMs) }));
-    for (const span of input.lookup.daylight) {
-      entries.push({ timeMs: span.startMs, node: h('li', { dataset: { lane: 'daylight' } }, t('orbitalWatch.timeline.daylight', { start: formatUtc(span.startMs), end: formatUtc(span.endMs) })) });
+    for (const band of input.lookup.daylight) {
+      entries.push({ timeMs: band.startMs, text: t('orbitalWatch.timeline.daylight', { start: formatUtc(band.startMs), end: formatUtc(band.endMs) }) });
     }
-    const days: HTMLElement[] = [];
-    for (let day = Math.ceil(window.startMs / DAY_MS) * DAY_MS; day < window.endMs; day += DAY_MS) {
-      days.push(h('span', { className: 'ow-tl-day', style: at(day) }, new Date(day).toISOString().slice(8, 10)));
-    }
-    replaceChildren(this.chart,
-      h('div', { className: 'ow-tl-labels' }, ...labels),
-      h('div', { className: 'ow-tl-tracks' },
-        h('div', { className: 'ow-tl-backdrop' }, ...daylight, ...days, h('span', { className: 'ow-tl-now', style: at(nowMs) }, t('orbitalWatch.timeline.now'))),
-        ...tracks));
-
-    entries.push({ timeMs: nowMs, node: h('li', { className: 'ow-tl-list-now', dataset: { lane: 'now' } }, t('orbitalWatch.timeline.nowAt', { time: formatUtc(nowMs) })) });
+    entries.push({ timeMs: nowMs, text: t('orbitalWatch.timeline.nowAt', { time: formatUtc(nowMs) }) });
     entries.sort((a, b) => a.timeMs - b.timeMs);
-    replaceChildren(this.list, ...entries.map((entry) => entry.node));
-    this.renderNow(input.context);
+    replaceChildren(this.list, ...entries.map((entry) => h('li', null, entry.text)));
+
+    replaceChildren(this.foot, h('ul', { className: 'ow-tl-event-keys' }, ...eventKeys), this.renderLive(context));
   }
 
-  private passMark(pass: PointPass, selectedKey: string | null, style: string): HTMLElement {
+  private mark(pass: PointPass, row: (typeof ROWS)[number], selectedKey: string | null, style: string, when: (ms: number) => string): HTMLElement {
     const key = passKey(pass);
-    const future = pass.tier.kind === 'opportunity';
+    const classes = ['ow-tl-mark', row.dense ? 'is-tick' : '', pass.tier.kind === 'opportunity' ? 'is-opportunity' : '', key === selectedKey ? 'is-selected' : ''];
     return h('span', {
-      className: `ow-tl-mark${future ? ' is-opportunity' : ''}${key === selectedKey ? ' is-selected' : ''}`,
+      className: classes.filter(Boolean).join(' '),
       style,
-      title: `${pass.name} ${formatUtc(pass.timeMs)}`,
-      dataset: { pass: key, tier: pass.tier.kind },
-    });
+      dataset: { pass: key, tier: pass.tier.kind, tip: `${pass.name} · ${when(pass.timeMs)} · ${t(TIER_LABEL_KEY[pass.tier.kind])}` },
+    }, row.dense ? '' : row.glyph);
   }
 
-  private passEntry(pass: PointPass, label: string, selectedKey: string | null): HTMLElement {
-    const key = passKey(pass);
-    return h('li', { dataset: { lane: pass.tier.kind } },
-      h('button', { type: 'button', className: 'ow-tl-select', 'aria-pressed': String(key === selectedKey), dataset: { pass: key } },
-        `${label}: ${pass.name}, ${formatUtc(pass.timeMs)}`));
+  private dayLabel(clock: ZonedClock, ms: number, style: string): HTMLElement {
+    const { weekday, day, month } = clock.dayParts(ms);
+    return h('span', { className: 'ow-tl-day', style },
+      h('span', { className: 'ow-tl-weekday' }, weekday), ' ', day, h('span', { className: 'ow-tl-month' }, ` ${month}`));
   }
 
-  private eventLane(
-    id: EventSourceId,
-    input: OrbitalTimelineInput,
-    lane: (id: string, label: string, marks: DomChild[], state?: string) => void,
-    entries: ListEntry[],
-    between: (startMs: number, endMs: number) => string,
-    at: (ms: number) => string,
-  ): void {
-    const label = t(EVENT_LABEL_KEY[id]);
-    const { window, nowMs } = input.lookup;
-    const state: EventLane | null = input.context.kind === 'loaded' ? input.context.context.events[id] : null;
-    if (!state || state.status === 'unavailable') {
-      const text = state ? t('orbitalWatch.timeline.unavailable') : t('orbitalWatch.timeline.loading');
-      lane(id, label, [h('span', { className: 'ow-tl-lane-note' }, text)], state ? 'unavailable' : 'loading');
-      if (state) entries.push({ timeMs: window.startMs, node: h('li', { dataset: { lane: id } }, `${label}: ${text}`) });
-      return;
-    }
-    const coveredStart = state.retained ? Math.max(window.startMs, state.retained.startMs) : nowMs;
-    const coveredEnd = state.retained ? Math.min(nowMs, state.retained.endMs) : nowMs;
-    const gaps: Array<[number, number]> = [];
-    if (coveredEnd <= coveredStart) gaps.push([window.startMs, nowMs]);
-    else {
-      if (coveredStart > window.startMs) gaps.push([window.startMs, coveredStart]);
-      if (coveredEnd < nowMs) gaps.push([coveredEnd, nowMs]);
-    }
-    const notRetained = t('orbitalWatch.timeline.notRetained');
-    lane(id, label, [
-      ...gaps.map(([startMs, endMs]) => h('span', { className: 'ow-tl-not-retained', style: between(startMs, endMs), title: notRetained })),
-      ...state.events.map((event) => h('span', { className: 'ow-tl-event', style: at(event.timeMs), title: event.label })),
-    ]);
-    for (const [startMs, endMs] of gaps) {
-      entries.push({ timeMs: startMs, node: h('li', { className: 'ow-tl-list-gap', dataset: { lane: id } },
-        t('orbitalWatch.timeline.notRetainedSpan', { label, start: formatUtc(startMs), end: formatUtc(endMs) })) });
-    }
-    for (const event of state.events) {
-      const where = event.distanceKm === null ? t('orbitalWatch.timeline.countryWide') : t('orbitalWatch.row.distance', { km: Math.round(event.distanceKm) });
-      entries.push({ timeMs: event.timeMs, node: h('li', { dataset: { lane: id } }, `${label}: ${event.label}, ${formatUtc(event.timeMs)}, ${where}`) });
-    }
+  private renderLive(context: PointContext | null): HTMLElement | null {
+    const items = context ? LIVE_SOURCES.flatMap((id) => {
+      const strip = context.live[id];
+      if (strip.status !== 'ok') return [];
+      const nearest = strip.items[0];
+      return [h('li', { dataset: { live: id }, title: nearest ? `${nearest.label} · ${t('orbitalWatch.timeline.away', { km: Math.round(nearest.distanceKm) })}` : '' },
+        `${t(LIVE_LABEL_KEY[id])} ${strip.items.length}`)];
+    }) : [];
+    if (items.length === 0) return null;
+    return h('ul', { className: 'ow-now-strip', 'aria-label': `${t('orbitalWatch.timeline.now')}, ${LIVE_RADIUS_KM} km` },
+      h('li', { className: 'ow-now-title' }, `${t('orbitalWatch.timeline.now')} · ${LIVE_RADIUS_KM} km`), ...items);
   }
 
-  private renderNow(context: PointContextState): void {
-    const rows = LIVE_SOURCES.map((id) => {
-      const strip: LiveStrip | null = context.kind === 'loaded' ? context.context.live[id] : null;
-      const text = !strip
-        ? t('orbitalWatch.timeline.loading')
-        : strip.status === 'unavailable'
-          ? t('orbitalWatch.timeline.unavailable')
-          : strip.items.length === 0
-            ? t('orbitalWatch.timeline.liveNone', { km: LIVE_RADIUS_KM })
-            : t('orbitalWatch.timeline.liveCount', { count: strip.items.length, km: LIVE_RADIUS_KM, nearest: strip.items[0]!.label });
-      return h('li', { dataset: { live: id, state: strip ? strip.status : 'loading' } },
-        h('span', { className: 'ow-now-label' }, t(LIVE_LABEL_KEY[id])), ' ', h('span', null, text));
-    });
-    replaceChildren(this.now, h('h4', { className: 'ow-now-title' }, t('orbitalWatch.timeline.nowTitle')), h('ul', null, ...rows));
-  }
+  private readonly onPointerOver = (event: PointerEvent): void => {
+    const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tip]');
+    if (!target) return this.hideTip();
+    const frame = this.plot.getBoundingClientRect();
+    const box = target.getBoundingClientRect();
+    this.tip.textContent = target.dataset.tip ?? '';
+    this.tip.hidden = false;
+    const x = target.classList.contains('ow-tl-geo-line') ? event.clientX : box.left + box.width / 2;
+    this.tip.style.left = `${Math.min(Math.max(x - frame.left, 0), frame.width)}px`;
+    this.tip.style.top = `${box.top - frame.top}px`;
+  };
+
+  private readonly hideTip = (): void => {
+    this.tip.hidden = true;
+  };
 
   private readonly onClick = (event: MouseEvent): void => {
     const key = (event.target as HTMLElement).closest<HTMLElement>('[data-pass]')?.dataset.pass;

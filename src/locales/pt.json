@@ -5186,14 +5186,10 @@
     "dailyMosaics": "mosaicos diários",
     "weatherFrames": "imagens meteorológicas",
     "timeline": {
-      "heading": "Linha do tempo, últimos 7 dias e próximas 72 horas (UTC)",
-      "asList": "Linha do tempo como lista",
       "now": "agora",
       "nowAt": "Agora: {{time}}",
-      "images": "Imagens",
       "density": "Passagens {{label}}, de {{start}} a {{end}}: {{count}}",
       "daylight": "Luz do dia no ponto de {{start}} a {{end}}",
-      "loading": "carregando",
       "unavailable": "indisponível",
       "notRetained": "não guardado",
       "notRetainedSpan": "{{label}}: não guardado de {{start}} a {{end}}",
@@ -5204,14 +5200,24 @@
         "unrest": "Distúrbios",
         "outages": "Quedas de internet"
       },
-      "nowTitle": "Agora, só ao vivo",
       "live": {
         "vessels": "Tráfego marítimo",
         "militaryFlights": "Voos militares",
         "gpsJamming": "Interferência de GPS"
       },
-      "liveNone": "nenhum a menos de {{km}} km",
-      "liveCount": "a menos de {{km}} km: {{count}}, mais próximo {{nearest}}"
+      "title": "Linha do tempo",
+      "span": "{{days}} dias · próximas {{hours}} h",
+      "daylightHere": "Luz do dia aqui",
+      "row": {
+        "geo": "Geo",
+        "photo": "Foto",
+        "likely": "Provável",
+        "could": "Possível",
+        "overhead": "Passagem"
+      },
+      "retained": "{{start}} a {{end}}",
+      "geoLine": "Geoestacionários à vista: {{names}}",
+      "away": "a {{km}} km"
     }
   }
 }

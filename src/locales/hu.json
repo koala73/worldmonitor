@@ -5158,14 +5158,10 @@
     "dailyMosaics": "napi mozaikok",
     "weatherFrames": "időjárási felvételek",
     "timeline": {
-      "heading": "Idővonal, az elmúlt 7 nap és a következő 72 óra (UTC)",
-      "asList": "Idővonal listaként",
       "now": "most",
       "nowAt": "Most: {{time}}",
-      "images": "Képek",
       "density": "{{label}} áthaladások, {{start}} és {{end}} között: {{count}}",
       "daylight": "Nappali fény a pontban {{start}} és {{end}} között",
-      "loading": "betöltés",
       "unavailable": "nem elérhető",
       "notRetained": "nincs megőrizve",
       "notRetainedSpan": "{{label}}: nincs megőrizve {{start}} és {{end}} között",
@@ -5176,14 +5172,24 @@
         "unrest": "Zavargások",
         "outages": "Internetkimaradások"
       },
-      "nowTitle": "Most, csak élő",
       "live": {
         "vessels": "Hajóforgalom",
         "militaryFlights": "Katonai repülések",
         "gpsJamming": "GPS-zavarás"
       },
-      "liveNone": "nincs {{km}} km-en belül",
-      "liveCount": "{{km}} km-en belül: {{count}}, legközelebbi {{nearest}}"
+      "title": "Idővonal",
+      "span": "{{days}} nap · következő {{hours}} óra",
+      "daylightHere": "Nappal itt",
+      "row": {
+        "geo": "Geo",
+        "photo": "Kép",
+        "likely": "Valószínű",
+        "could": "Lehetséges",
+        "overhead": "Áthaladt"
+      },
+      "retained": "{{start}} – {{end}}",
+      "geoLine": "Látható geostacionárius: {{names}}",
+      "away": "{{km}} km-re"
     }
   }
 }

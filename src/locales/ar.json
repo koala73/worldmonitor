@@ -5270,14 +5270,10 @@
     "dailyMosaics": "فسيفساء يومية",
     "weatherFrames": "صور الطقس",
     "timeline": {
-      "heading": "الخط الزمني، آخر 7 أيام والـ 72 ساعة القادمة (UTC)",
-      "asList": "الخط الزمني كقائمة",
       "now": "الآن",
       "nowAt": "الآن: {{time}}",
-      "images": "الصور",
       "density": "مرورات {{label}}، من {{start}} إلى {{end}}: {{count}}",
       "daylight": "ضوء النهار عند النقطة من {{start}} إلى {{end}}",
-      "loading": "جارٍ التحميل",
       "unavailable": "غير متاح",
       "notRetained": "غير محفوظ",
       "notRetainedSpan": "{{label}}: غير محفوظ من {{start}} إلى {{end}}",
@@ -5288,14 +5284,24 @@
         "unrest": "الاضطرابات",
         "outages": "انقطاعات الإنترنت"
       },
-      "nowTitle": "الآن، مباشر فقط",
       "live": {
         "vessels": "حركة الملاحة",
         "militaryFlights": "الرحلات العسكرية",
         "gpsJamming": "تشويش GPS"
       },
-      "liveNone": "لا شيء ضمن {{km}} كم",
-      "liveCount": "ضمن {{km}} كم: {{count}}، الأقرب {{nearest}}"
+      "title": "الخط الزمني",
+      "span": "{{days}} أيام · الساعات {{hours}} القادمة",
+      "daylightHere": "ضوء النهار هنا",
+      "row": {
+        "geo": "ثابت",
+        "photo": "صورة",
+        "likely": "مرجّح",
+        "could": "ممكن",
+        "overhead": "عبور"
+      },
+      "retained": "من {{start}} إلى {{end}}",
+      "geoLine": "أقمار ثابتة بالنسبة للأرض في المجال: {{names}}",
+      "away": "على بعد {{km}} كم"
     }
   }
 }

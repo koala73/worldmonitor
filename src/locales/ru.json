@@ -5214,14 +5214,10 @@
     "dailyMosaics": "ежедневные мозаики",
     "weatherFrames": "метеоснимки",
     "timeline": {
-      "heading": "Хронология, последние 7 дней и следующие 72 часа (UTC)",
-      "asList": "Хронология списком",
       "now": "сейчас",
       "nowAt": "Сейчас: {{time}}",
-      "images": "Снимки",
       "density": "Пролёты {{label}}, с {{start}} до {{end}}: {{count}}",
       "daylight": "Светлое время в точке с {{start}} до {{end}}",
-      "loading": "загрузка",
       "unavailable": "недоступно",
       "notRetained": "не хранится",
       "notRetainedSpan": "{{label}}: не хранится с {{start}} до {{end}}",
@@ -5232,14 +5228,24 @@
         "unrest": "Беспорядки",
         "outages": "Сбои интернета"
       },
-      "nowTitle": "Сейчас, только в реальном времени",
       "live": {
         "vessels": "Судоходство",
         "militaryFlights": "Военные рейсы",
         "gpsJamming": "Подавление GPS"
       },
-      "liveNone": "нет в радиусе {{km}} км",
-      "liveCount": "в радиусе {{km}} км: {{count}}, ближайшее {{nearest}}"
+      "title": "Хронология",
+      "span": "{{days}} дней · следующие {{hours}} ч",
+      "daylightHere": "Светлое время здесь",
+      "row": {
+        "geo": "Гео",
+        "photo": "Снимок",
+        "likely": "Вероятно",
+        "could": "Возможно",
+        "overhead": "Пролёт"
+      },
+      "retained": "с {{start}} по {{end}}",
+      "geoLine": "Геостационарные в зоне видимости: {{names}}",
+      "away": "в {{km}} км"
     }
   }
 }

@@ -5186,14 +5186,10 @@
     "dailyMosaics": "mosaïques quotidiennes",
     "weatherFrames": "images météo",
     "timeline": {
-      "heading": "Chronologie, 7 derniers jours et 72 prochaines heures (UTC)",
-      "asList": "Chronologie sous forme de liste",
       "now": "maintenant",
       "nowAt": "Maintenant : {{time}}",
-      "images": "Images",
       "density": "Passages {{label}}, de {{start}} à {{end}} : {{count}}",
       "daylight": "Lumière du jour au point de {{start}} à {{end}}",
-      "loading": "chargement",
       "unavailable": "indisponible",
       "notRetained": "non conservé",
       "notRetainedSpan": "{{label}} : non conservé de {{start}} à {{end}}",
@@ -5204,14 +5200,24 @@
         "unrest": "Troubles",
         "outages": "Coupures d'internet"
       },
-      "nowTitle": "Maintenant, en direct uniquement",
       "live": {
         "vessels": "Trafic maritime",
         "militaryFlights": "Vols militaires",
         "gpsJamming": "Brouillage GPS"
       },
-      "liveNone": "aucun à moins de {{km}} km",
-      "liveCount": "à moins de {{km}} km : {{count}}, le plus proche {{nearest}}"
+      "title": "Chronologie",
+      "span": "{{days}} jours · {{hours}} h à venir",
+      "daylightHere": "Lumière du jour ici",
+      "row": {
+        "geo": "Géo",
+        "photo": "Photo",
+        "likely": "Probable",
+        "could": "Possible",
+        "overhead": "Passage"
+      },
+      "retained": "{{start}} au {{end}}",
+      "geoLine": "Géostationnaires en vue : {{names}}",
+      "away": "à {{km}} km"
     }
   }
 }

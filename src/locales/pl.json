@@ -5214,14 +5214,10 @@
     "dailyMosaics": "dzienne mozaiki",
     "weatherFrames": "zdjęcia pogodowe",
     "timeline": {
-      "heading": "Oś czasu, ostatnie 7 dni i następne 72 godziny (UTC)",
-      "asList": "Oś czasu jako lista",
       "now": "teraz",
       "nowAt": "Teraz: {{time}}",
-      "images": "Zdjęcia",
       "density": "Przeloty {{label}}, od {{start}} do {{end}}: {{count}}",
       "daylight": "Światło dzienne w punkcie od {{start}} do {{end}}",
-      "loading": "ładowanie",
       "unavailable": "niedostępne",
       "notRetained": "nie przechowywane",
       "notRetainedSpan": "{{label}}: nie przechowywane od {{start}} do {{end}}",
@@ -5232,14 +5228,24 @@
         "unrest": "Niepokoje",
         "outages": "Awarie internetu"
       },
-      "nowTitle": "Teraz, tylko na żywo",
       "live": {
         "vessels": "Ruch statków",
         "militaryFlights": "Loty wojskowe",
         "gpsJamming": "Zakłócanie GPS"
       },
-      "liveNone": "brak w promieniu {{km}} km",
-      "liveCount": "w promieniu {{km}} km: {{count}}, najbliżej {{nearest}}"
+      "title": "Oś czasu",
+      "span": "{{days}} dni · następne {{hours}} h",
+      "daylightHere": "Światło dzienne tutaj",
+      "row": {
+        "geo": "Geo",
+        "photo": "Zdjęcie",
+        "likely": "Prawdop.",
+        "could": "Możliwe",
+        "overhead": "Przelot"
+      },
+      "retained": "{{start}} do {{end}}",
+      "geoLine": "Geostacjonarne w zasięgu: {{names}}",
+      "away": "{{km}} km stąd"
     }
   }
 }

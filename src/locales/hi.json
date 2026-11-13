@@ -5158,14 +5158,10 @@
     "dailyMosaics": "दैनिक मोज़ेक",
     "weatherFrames": "मौसम चित्र",
     "timeline": {
-      "heading": "टाइमलाइन, पिछले 7 दिन और अगले 72 घंटे (UTC)",
-      "asList": "सूची के रूप में टाइमलाइन",
       "now": "अभी",
       "nowAt": "अभी: {{time}}",
-      "images": "चित्र",
       "density": "{{label}} गुज़रने, {{start}} से {{end}} तक: {{count}}",
       "daylight": "बिंदु पर {{start}} से {{end}} तक दिन का प्रकाश",
-      "loading": "लोड हो रहा है",
       "unavailable": "उपलब्ध नहीं",
       "notRetained": "संग्रहीत नहीं",
       "notRetainedSpan": "{{label}}: {{start}} से {{end}} तक संग्रहीत नहीं",
@@ -5176,14 +5172,24 @@
         "unrest": "अशांति",
         "outages": "इंटरनेट बाधाएँ"
       },
-      "nowTitle": "अभी, केवल लाइव",
       "live": {
         "vessels": "जहाज़ यातायात",
         "militaryFlights": "सैन्य उड़ानें",
         "gpsJamming": "GPS जैमिंग"
       },
-      "liveNone": "{{km}} किमी के भीतर कोई नहीं",
-      "liveCount": "{{km}} किमी के भीतर: {{count}}, सबसे निकट {{nearest}}"
+      "title": "समयरेखा",
+      "span": "{{days}} दिन · अगले {{hours}} घंटे",
+      "daylightHere": "यहाँ दिन का उजाला",
+      "row": {
+        "geo": "भूस्थिर",
+        "photo": "चित्र",
+        "likely": "संभावित",
+        "could": "शायद",
+        "overhead": "गुज़रा"
+      },
+      "retained": "{{start}} से {{end}}",
+      "geoLine": "दृश्य में भूस्थिर: {{names}}",
+      "away": "{{km}} किमी दूर"
     }
   }
 }

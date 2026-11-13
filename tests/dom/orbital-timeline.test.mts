@@ -43,6 +43,7 @@ function context(over: { events?: Partial<PointContext['events']>; live?: Partia
   return {
     events: { conflict: ok(), fires: ok(), unrest: ok(), outages: ok(), ...over.events },
     live: { vessels: liveOk(), 'military-flights': liveOk(), 'gps-jamming': liveOk(), ...over.live },
+    timeZone: 'Asia/Dubai',
   };
 }
 
@@ -59,11 +60,20 @@ function mounted(passes: PointPass[], ctx: PointContext | null, at = point): Orb
 }
 
 const timeline = () => document.querySelector<HTMLElement>('.ow-timeline')!;
-const track = (lane: string) => timeline().querySelector<HTMLElement>(`.ow-tl-track[data-lane="${lane}"]`)!;
+const row = (id: string) => timeline().querySelector<HTMLElement>(`.ow-tl-row[data-row="${id}"]`)!;
+const legendKey = (id: string) => timeline().querySelector<HTMLElement>(`.ow-tl-key[data-row="${id}"]`)!;
+const eventKey = (id: string) => timeline().querySelector<HTMLElement>(`.ow-tl-event-key[data-source="${id}"]`)!;
 const leftPct = (el: Element) => Number((el as HTMLElement).style.left.replace('%', ''));
 const pctOf = (ms: number) => ((ms - WINDOW.startMs) / (WINDOW.endMs - WINDOW.startMs)) * 100;
 const nowPct = () => leftPct(timeline().querySelector('.ow-tl-now')!);
-const listText = () => timeline().querySelector('.ow-tl-list')!.textContent ?? '';
+const listText = () => timeline().querySelector('.ow-tl-sr')!.textContent ?? '';
+/** What a sighted user reads: everything but the visually hidden list. */
+const visibleText = () => {
+  const copy = timeline().cloneNode(true) as HTMLElement;
+  copy.querySelector('.ow-tl-sr')!.remove();
+  return copy.textContent ?? '';
+};
+const keyOf = (p: PointPass) => `${p.noradId}:${p.timeMs}`;
 
 beforeAll(async () => {
   await initTestI18n();
@@ -76,131 +86,158 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('orbital timeline', () => {
-  it('draws a fire 3 km from the point yesterday in the fire lane at that time, and lists it', () => {
-    const at = NOW - 20 * HOUR;
-    mounted([], context({ events: { fires: ok([{ id: 'f1', timeMs: at, label: '41 MW', distanceKm: 3 }], { startMs: Date.UTC(2026, 10, 12), endMs: NOW }) } }));
-    const mark = track('fires').querySelector('.ow-tl-event')!;
-    expect(leftPct(mark)).toBeCloseTo(pctOf(at), 2);
-    expect(listText()).toContain('Fires: 41 MW, 2026-11-12 16:00 UTC, 3 km from ground track');
+describe('orbital timeline dock', () => {
+  it('always shows the five tier rows with a glyph, a whole label and a count, zero included', () => {
+    mounted([pass('SENTINEL-2B', -30, { kind: 'confirmed-image' })], context());
+    const keys = [...timeline().querySelectorAll<HTMLElement>('.ow-tl-key')].map((key) => [
+      key.querySelector('.ow-tl-glyph')!.textContent, key.querySelector('.ow-tl-key-label')!.textContent, key.querySelector('.ow-tl-count')!.textContent]);
+    expect(keys).toEqual([['○', 'Geo', '0'], ['◆', 'Photo', '1'], ['◇', 'Likely', '0'], ['□', 'Could', '0'], ['+', 'Overhead', '0']]);
+    expect(timeline().querySelectorAll('.ow-tl-row')).toHaveLength(5);
   });
 
-  it('marks the days beyond the fire feed as not retained instead of drawing an empty lane', () => {
-    mounted([], context({ events: { fires: ok([], { startMs: Date.UTC(2026, 10, 12), endMs: NOW }) } }));
-    const gap = track('fires').querySelector<HTMLElement>('.ow-tl-not-retained')!;
-    expect(gap.title).toBe('not retained');
-    expect(leftPct(gap)).toBe(0);
-    expect(Number(gap.style.width.replace('%', ''))).toBeCloseTo(pctOf(Date.UTC(2026, 10, 12)), 2);
-    expect(listText()).toContain('Fires: not retained from 2026-11-06 12:00 UTC to 2026-11-12 00:00 UTC');
+  it('reads in the place\'s local time: zone in the header, local day labels and a NOW marker', () => {
+    mounted([], context());
+    expect(timeline().querySelector('.ow-tl-head')!.textContent).toContain('7 days · next 72 h · Asia/Dubai · UTC+4');
+    const firstDay = timeline().querySelector<HTMLElement>('.ow-tl-day')!;
+    expect(firstDay.textContent).toBe('Sat 7 Nov');
+    expect(leftPct(firstDay)).toBeCloseTo(pctOf(Date.UTC(2026, 10, 6, 20)), 2);
+    expect(timeline().querySelector('.ow-tl-now-label')!.textContent).toBe('now');
+    expect(nowPct()).toBeCloseTo(pctOf(NOW), 2);
   });
 
-  it('marks conflict history after its newest event as not retained up to now', () => {
-    const newest = NOW - 3 * DAY;
-    mounted([], context({ events: { conflict: ok([], { startMs: NOW - 400 * DAY, endMs: newest }) } }));
-    const gap = track('conflict').querySelector<HTMLElement>('.ow-tl-not-retained')!;
-    expect(leftPct(gap)).toBeCloseTo(pctOf(newest), 2);
-    expect(leftPct(gap) + Number(gap.style.width.replace('%', ''))).toBeCloseTo(nowPct(), 2);
+  it('draws one glyph per pass at its time, and the many "could" passes as ticks', () => {
+    const could = [pass('A', -10.2, { kind: 'within-reach' }), pass('B', -10.6, { kind: 'capability-overhead' }), pass('C', -40, { kind: 'within-reach' })];
+    const photo = pass('SENTINEL-2B', -30, { kind: 'confirmed-image' });
+    mounted([...could, photo], context());
+    const mark = row('photo').querySelector<HTMLElement>('.ow-tl-mark')!;
+    expect(mark.textContent).toBe('◆');
+    expect(leftPct(mark)).toBeCloseTo(pctOf(photo.timeMs), 2);
+    expect(row('could').querySelectorAll('.ow-tl-mark.is-tick')).toHaveLength(3);
+    expect(listText()).toContain('Could passes, 2026-11-13 01:00 UTC to 02:00: 2');
+    expect(listText()).toContain('confirmed image: SENTINEL-2B, 2026-11-12 06:00 UTC');
   });
 
-  it('marks the whole history as not retained when the conflict feed ends before the window starts', () => {
-    mounted([], context({ events: { conflict: ok([], { startMs: NOW - 400 * DAY, endMs: NOW - 30 * DAY }) } }));
-    const gaps = track('conflict').querySelectorAll<HTMLElement>('.ow-tl-not-retained');
-    expect(gaps).toHaveLength(1);
-    expect(leftPct(gaps[0]!)).toBeCloseTo(0, 2);
-    expect(leftPct(gaps[0]!) + Number(gaps[0]!.style.width.replace('%', ''))).toBeCloseTo(nowPct(), 2);
-    expect(listText()).toContain('Conflict: not retained from 2026-11-06 12:00 UTC to 2026-11-13 12:00 UTC');
+  it('counts geostationary satellites in view on the Geo row', () => {
+    const page = new OrbitalWatchPage({ onClose: vi.fn(), onRetry: vi.fn() });
+    pages.push(page);
+    page.open(point, null);
+    const geo = { noradId: 1, name: 'METEOSAT-9', profileId: 'seviri', status: 'geostationary', visibility: { visible: true } } as unknown as PointPassLookup['satellites'][number];
+    const terra = pass('TERRA', -20, { kind: 'daily-mosaic' });
+    page.render({ kind: 'passes', lookup: { ...lookup([terra]), satellites: [geo] }, archives: { kind: 'answered', evidence: evidence([terra]) } });
+    expect(legendKey('geo').querySelector('.ow-tl-count')!.textContent).toBe('2');
+    expect(row('geo').querySelector<HTMLElement>('.ow-tl-geo-line')!.dataset.tip).toBe('Geostationary in view: METEOSAT-9');
   });
 
-  it('selecting a timeline mark highlights the same pass in the list and hands it to the map', () => {
+  it('shows satellite, local time and tier in a tooltip on hover', () => {
+    mounted([pass('SENTINEL-2B', -30, { kind: 'confirmed-image' })], context());
+    const tip = timeline().querySelector<HTMLElement>('.ow-tl-tip')!;
+    expect(tip.hidden).toBe(true);
+    row('photo').querySelector('.ow-tl-mark')!.dispatchEvent(new Event('pointerover', { bubbles: true }));
+    expect(tip.hidden).toBe(false);
+    expect(tip.textContent).toBe('SENTINEL-2B · Thu 12 Nov · 10:00 · confirmed image');
+  });
+
+  it('clicking a glyph selects the same pass in the sheet and hands it to the pass detail', () => {
     const likely = pass('SENTINEL-2B', -30, { kind: 'likely-imaged' });
     const other = pass('LANDSAT 9', -60, { kind: 'likely-imaged' });
     mounted([likely, other], context());
-    track('likely').querySelector<HTMLElement>(`[data-pass="${likely.noradId}:${likely.timeMs}"]`)!.click();
-    const row = document.querySelector<HTMLElement>('.ow-row.is-selected')!;
-    expect(row.querySelector('.ow-row-name')!.textContent).toBe('SENTINEL-2B');
-    expect(row.getAttribute('aria-current')).toBe('true');
-    expect(track('likely').querySelector('.is-selected')!.getAttribute('data-pass')).toBe(`${likely.noradId}:${likely.timeMs}`);
+    row('likely').querySelector<HTMLElement>(`[data-pass="${keyOf(likely)}"]`)!.click();
+    const sheetRow = document.querySelector<HTMLElement>('.ow-row.is-selected')!;
+    expect(sheetRow.querySelector('.ow-row-name')!.textContent).toBe('SENTINEL-2B');
+    expect(row('likely').querySelector('.is-selected')!.getAttribute('data-pass')).toBe(keyOf(likely));
     expect(onSelectPass).toHaveBeenCalledWith(likely);
   });
 
-  it('selecting a pass in the list selects it on the timeline, and the list equivalent selects by keyboard', () => {
+  it('selecting a pass in the sheet by keyboard selects its glyph', () => {
     const likely = pass('SENTINEL-2B', -30, { kind: 'likely-imaged' });
     mounted([likely], context());
-    const key = `${likely.noradId}:${likely.timeMs}`;
-    const row = document.querySelector<HTMLElement>(`.ow-row[data-pass="${key}"]`)!;
-    row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    expect(track('likely').querySelector(`[data-pass="${key}"]`)!.classList.contains('is-selected')).toBe(true);
-    expect(document.activeElement?.getAttribute('data-pass')).toBe(key);
-    const button = timeline().querySelector<HTMLButtonElement>(`.ow-tl-list button[data-pass="${key}"]`)!;
-    expect(button.getAttribute('aria-pressed')).toBe('true');
-    expect(button.textContent).toBe('likely imaged: SENTINEL-2B, 2026-11-12 06:00 UTC');
+    document.querySelector<HTMLElement>(`.ow-row[data-pass="${keyOf(likely)}"]`)!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(row('likely').querySelector(`[data-pass="${keyOf(likely)}"]`)!.classList.contains('is-selected')).toBe(true);
   });
 
-  it('keeps focus on the timeline list button that selected a pass', () => {
+  it('shows a pass as a photo as soon as one archive confirms it, like its sheet row', () => {
     const likely = pass('SENTINEL-2B', -30, { kind: 'likely-imaged' });
-    mounted([likely], context());
-    const key = `${likely.noradId}:${likely.timeMs}`;
-    const button = timeline().querySelector<HTMLButtonElement>(`.ow-tl-list button[data-pass="${key}"]`)!;
-    button.focus();
-    button.click();
-    expect(document.activeElement?.matches(`.ow-tl-list button[data-pass="${key}"]`)).toBe(true);
-    expect(document.activeElement?.getAttribute('aria-pressed')).toBe('true');
-  });
-
-  it('shows a pass as confirmed on the timeline as soon as one archive confirms it, like its sheet row', () => {
-    const likely = pass('SENTINEL-2B', -30, { kind: 'likely-imaged' });
-    const confirmed: PointPass = { ...likely, tier: { kind: 'confirmed-image' } };
     const page = new OrbitalWatchPage({ onClose: vi.fn(), onRetry: vi.fn(), onSelectPass });
     pages.push(page);
     page.open(point, null);
     page.render({ kind: 'passes', lookup: lookup([likely]), archives: { kind: 'checking', total: 3,
-      progress: { evidence: evidence([confirmed]), settled: ['earth-search'] as never, pendingProfiles: [] } } });
-    const key = `${likely.noradId}:${likely.timeMs}`;
-    expect(track('confirmed').querySelector(`[data-pass="${key}"]`)).not.toBeNull();
-    expect(track('likely').querySelector(`[data-pass="${key}"]`)).toBeNull();
+      progress: { evidence: evidence([{ ...likely, tier: { kind: 'confirmed-image' } }]), settled: ['earth-search'] as never, pendingProfiles: [] } } });
+    expect(row('photo').querySelector(`[data-pass="${keyOf(likely)}"]`)).not.toBeNull();
+    expect(row('likely').querySelector(`[data-pass="${keyOf(likely)}"]`)).toBeNull();
   });
 
-  it('draws an upcoming pass right of the now marker as an opportunity', () => {
+  it('draws an upcoming pass right of NOW on the overhead row, styled as an opportunity', () => {
     const soon = pass('SENTINEL-1C', 5, { kind: 'opportunity' });
     mounted([soon], context());
-    const mark = track('opportunity').querySelector<HTMLElement>('.ow-tl-mark')!;
+    const mark = row('overhead').querySelector<HTMLElement>('.ow-tl-mark')!;
     expect(mark.classList.contains('is-opportunity')).toBe(true);
     expect(leftPct(mark)).toBeGreaterThan(nowPct());
   });
 
-  it('draws in-range and passed-overhead passes as hourly density with a list equivalent', () => {
-    const inRange = [pass('A', -10.2, { kind: 'within-reach' }), pass('B', -10.6, { kind: 'capability-overhead' }), pass('C', -40, { kind: 'within-reach' })];
-    const passed = [pass('D', -70, { kind: 'passed-overhead' })];
-    mounted([...inRange, ...passed], context());
-    expect(track('inRange').querySelectorAll('.ow-tl-mark')).toHaveLength(0);
-    expect([...track('inRange').querySelectorAll<HTMLElement>('.ow-tl-bin')].map((bin) => bin.dataset.count)).toEqual(['1', '2']);
-    expect(track('passed').querySelectorAll('.ow-tl-bin')).toHaveLength(1);
-    expect(listText()).toContain('in range passes, 2026-11-13 01:00 UTC to 02:00: 2');
-    expect(timeline().querySelector('.ow-tl-chart')!.getAttribute('aria-hidden')).toBe('true');
+  it('puts a fire 3 km away yesterday on the event strip at its time, with its category legend', () => {
+    const at = NOW - 20 * HOUR;
+    mounted([], context({ events: { fires: ok([{ id: 'f1', timeMs: at, label: '41 MW', distanceKm: 3 }], { startMs: WINDOW.startMs, endMs: NOW }) } }));
+    const mark = timeline().querySelector<HTMLElement>('.ow-tl-strip .ow-tl-event[data-source="fires"]')!;
+    expect(leftPct(mark)).toBeCloseTo(pctOf(at), 2);
+    expect(mark.dataset.tip).toBe('Fires · 41 MW · 3 km away · Thu 12 Nov · 20:00');
+    expect(eventKey('fires').textContent).toBe('Fires 1');
+    expect(listText()).toContain('Fires: 41 MW, 2026-11-12 16:00 UTC, 3 km away');
   });
 
-  it('shows a failed source as unavailable and still draws the passes', () => {
-    const likely = pass('SENTINEL-2B', -30, { kind: 'likely-imaged' });
-    mounted([likely], context({ events: { unrest: { status: 'unavailable' } }, live: { 'gps-jamming': { status: 'unavailable' } } }));
-    expect(track('unrest').dataset.state).toBe('unavailable');
-    expect(track('unrest').textContent).toBe('unavailable');
-    expect(track('likely').querySelectorAll('.ow-tl-mark')).toHaveLength(1);
-    expect(timeline().querySelector('[data-live="gps-jamming"]')!.textContent).toContain('unavailable');
+  it('says how far back a feed keeps history instead of drawing hatched gaps', () => {
+    mounted([], context({ events: { fires: ok([], { startMs: Date.UTC(2026, 10, 12), endMs: NOW }) } }));
+    expect(eventKey('fires').querySelector('.ow-tl-retained')!.textContent).toBe(' · Thu 12 Nov to Fri 13 Nov');
+    expect(timeline().querySelector('.ow-tl-not-retained')).toBeNull();
+    expect(listText()).toContain('Fires: not retained from 2026-11-06 12:00 UTC to 2026-11-12 00:00 UTC');
   });
 
-  it('shows the event lanes as loading until the context arrives', () => {
+  it('marks conflict history after its newest event as not retained up to now', () => {
+    mounted([], context({ events: { conflict: ok([], { startMs: NOW - 400 * DAY, endMs: NOW - 3 * DAY }) } }));
+    expect(eventKey('conflict').querySelector('.ow-tl-retained')!.textContent).toBe(' · Fri 6 Nov to Tue 10 Nov');
+    expect(listText()).toContain('Conflict: not retained from 2026-11-10 12:00 UTC to 2026-11-13 12:00 UTC');
+  });
+
+  it('marks the whole history as not retained when the conflict feed ends before the window starts', () => {
+    mounted([], context({ events: { conflict: ok([], { startMs: NOW - 400 * DAY, endMs: NOW - 30 * DAY }) } }));
+    expect(eventKey('conflict').querySelector('.ow-tl-retained')!.textContent).toBe(' · not retained');
+    expect(listText()).toContain('Conflict: not retained from 2026-11-06 12:00 UTC to 2026-11-13 12:00 UTC');
+  });
+
+  it('keeps a failed source quiet in the legend and still draws the passes', () => {
+    mounted([pass('SENTINEL-2B', -30, { kind: 'likely-imaged' })], context({ events: { unrest: { status: 'unavailable' } }, live: { 'gps-jamming': { status: 'unavailable' } } }));
+    expect(eventKey('unrest').dataset.state).toBe('unavailable');
+    expect(eventKey('unrest').querySelector('.ow-tl-count')!.textContent).toBe('–');
+    expect(visibleText()).not.toMatch(/unavailable/i);
+    expect(listText()).toContain('Unrest: unavailable');
+    expect(row('likely').querySelectorAll('.ow-tl-mark')).toHaveLength(1);
+    expect(timeline().querySelector('[data-live="gps-jamming"]')).toBeNull();
+  });
+
+  it('shows the event legend as loading until the context arrives, with passes already drawn', () => {
     mounted([pass('SENTINEL-2B', -30, { kind: 'likely-imaged' })], null);
-    expect(track('fires').dataset.state).toBe('loading');
-    expect(track('likely').querySelectorAll('.ow-tl-mark')).toHaveLength(1);
+    expect(eventKey('fires').dataset.state).toBe('loading');
+    expect(eventKey('fires').querySelector('.ow-tl-count')!.textContent).toBe('…');
+    expect(row('likely').querySelectorAll('.ow-tl-mark')).toHaveLength(1);
   });
 
-  it('shows vessel and GPS-jamming context only in the now strip', () => {
+  it('shows shipping and GPS-jamming context only in the now strip', () => {
     mounted([], context({ live: { vessels: liveOk(['Strait of Hormuz']), 'gps-jamming': liveOk(['38%']) } }));
     const strip = timeline().querySelector('.ow-now-strip')!;
-    expect(strip.querySelector('[data-live="vessels"]')!.textContent).toBe('Shipping traffic within 100 km: 1, nearest Strait of Hormuz');
-    expect(strip.querySelector('[data-live="gps-jamming"]')!.textContent).toContain('nearest 38%');
-    expect(timeline().querySelector('.ow-tl-chart')!.textContent).not.toMatch(/EVER GIVEN|38%/);
-    expect(listText()).not.toMatch(/EVER GIVEN|38%/);
+    const vessels = strip.querySelector<HTMLElement>('[data-live="vessels"]')!;
+    expect(vessels.textContent).toBe('Shipping traffic 1');
+    expect(vessels.title).toBe('Strait of Hormuz · 10 km away');
+    expect(strip.querySelector('[data-live="gps-jamming"]')!.textContent).toBe('GPS jamming 1');
+    expect(timeline().querySelector('.ow-tl-plot')!.textContent).not.toMatch(/Hormuz|38%/);
+    expect(listText()).not.toMatch(/Hormuz|38%/);
+  });
+
+  it('has no visible raw list of passes, and says everything in a hidden list for screen readers', () => {
+    mounted([pass('SENTINEL-2B', -30, { kind: 'likely-imaged' })], context());
+    expect(timeline().querySelector('details, .ow-tl-list')).toBeNull();
+    expect(timeline().querySelector('.ow-tl-plot')!.getAttribute('aria-hidden')).toBe('true');
+    expect(listText()).toContain('likely imaged: SENTINEL-2B, 2026-11-12 06:00 UTC');
+    expect(listText()).toContain('Now: 2026-11-13 12:00 UTC');
   });
 
   it('draws one unbroken daylight band for a polar point in continuous daylight', () => {

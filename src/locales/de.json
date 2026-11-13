@@ -5158,14 +5158,10 @@
     "dailyMosaics": "Tagesmosaike",
     "weatherFrames": "Wetterbilder",
     "timeline": {
-      "heading": "Zeitachse, letzte 7 Tage und nächste 72 Stunden (UTC)",
-      "asList": "Zeitachse als Liste",
       "now": "jetzt",
       "nowAt": "Jetzt: {{time}}",
-      "images": "Bilder",
       "density": "Überflüge {{label}}, {{start}} bis {{end}}: {{count}}",
       "daylight": "Tageslicht am Punkt von {{start}} bis {{end}}",
-      "loading": "wird geladen",
       "unavailable": "nicht verfügbar",
       "notRetained": "nicht gespeichert",
       "notRetainedSpan": "{{label}}: nicht gespeichert von {{start}} bis {{end}}",
@@ -5176,14 +5172,24 @@
         "unrest": "Unruhen",
         "outages": "Internetausfälle"
       },
-      "nowTitle": "Jetzt, nur live",
       "live": {
         "vessels": "Schiffsverkehr",
         "militaryFlights": "Militärflüge",
         "gpsJamming": "GPS-Störungen"
       },
-      "liveNone": "keine im Umkreis von {{km}} km",
-      "liveCount": "im Umkreis von {{km}} km: {{count}}, am nächsten {{nearest}}"
+      "title": "Zeitachse",
+      "span": "{{days}} Tage · nächste {{hours}} Std.",
+      "daylightHere": "Tageslicht hier",
+      "row": {
+        "geo": "Geo",
+        "photo": "Foto",
+        "likely": "Wahrsch.",
+        "could": "Möglich",
+        "overhead": "Überflug"
+      },
+      "retained": "{{start}} bis {{end}}",
+      "geoLine": "Geostationär in Sicht: {{names}}",
+      "away": "{{km}} km entfernt"
     }
   }
 }

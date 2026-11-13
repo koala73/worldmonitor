@@ -5214,14 +5214,10 @@
     "dailyMosaics": "щоденні мозаїки",
     "weatherFrames": "метеознімки",
     "timeline": {
-      "heading": "Хронологія, останні 7 днів і наступні 72 години (UTC)",
-      "asList": "Хронологія списком",
       "now": "зараз",
       "nowAt": "Зараз: {{time}}",
-      "images": "Знімки",
       "density": "Прольоти {{label}}, з {{start}} до {{end}}: {{count}}",
       "daylight": "Світлий час у точці з {{start}} до {{end}}",
-      "loading": "завантаження",
       "unavailable": "недоступно",
       "notRetained": "не зберігається",
       "notRetainedSpan": "{{label}}: не зберігається з {{start}} до {{end}}",
@@ -5232,14 +5228,24 @@
         "unrest": "Заворушення",
         "outages": "Збої інтернету"
       },
-      "nowTitle": "Зараз, лише в реальному часі",
       "live": {
         "vessels": "Судноплавство",
         "militaryFlights": "Військові рейси",
         "gpsJamming": "Глушіння GPS"
       },
-      "liveNone": "немає в радіусі {{km}} км",
-      "liveCount": "у радіусі {{km}} км: {{count}}, найближче {{nearest}}"
+      "title": "Хронологія",
+      "span": "{{days}} днів · наступні {{hours}} год",
+      "daylightHere": "Світловий день тут",
+      "row": {
+        "geo": "Гео",
+        "photo": "Знімок",
+        "likely": "Ймовірно",
+        "could": "Можливо",
+        "overhead": "Проліт"
+      },
+      "retained": "з {{start}} до {{end}}",
+      "geoLine": "Геостаціонарні в зоні видимості: {{names}}",
+      "away": "за {{km}} км"
     }
   }
 }

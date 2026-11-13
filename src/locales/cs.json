@@ -5214,14 +5214,10 @@
     "dailyMosaics": "denní mozaiky",
     "weatherFrames": "meteorologické snímky",
     "timeline": {
-      "heading": "Časová osa, posledních 7 dní a příštích 72 hodin (UTC)",
-      "asList": "Časová osa jako seznam",
       "now": "teď",
       "nowAt": "Teď: {{time}}",
-      "images": "Snímky",
       "density": "Přelety {{label}}, od {{start}} do {{end}}: {{count}}",
       "daylight": "Denní světlo v bodě od {{start}} do {{end}}",
-      "loading": "načítání",
       "unavailable": "nedostupné",
       "notRetained": "neuchováno",
       "notRetainedSpan": "{{label}}: neuchováno od {{start}} do {{end}}",
@@ -5232,14 +5228,24 @@
         "unrest": "Nepokoje",
         "outages": "Výpadky internetu"
       },
-      "nowTitle": "Teď, jen živě",
       "live": {
         "vessels": "Lodní doprava",
         "militaryFlights": "Vojenské lety",
         "gpsJamming": "Rušení GPS"
       },
-      "liveNone": "žádné do {{km}} km",
-      "liveCount": "do {{km}} km: {{count}}, nejblíže {{nearest}}"
+      "title": "Časová osa",
+      "span": "{{days}} dní · dalších {{hours}} h",
+      "daylightHere": "Denní světlo zde",
+      "row": {
+        "geo": "Geo",
+        "photo": "Snímek",
+        "likely": "Pravděp.",
+        "could": "Možná",
+        "overhead": "Přelet"
+      },
+      "retained": "{{start}} až {{end}}",
+      "geoLine": "Geostacionární v dohledu: {{names}}",
+      "away": "{{km}} km odtud"
     }
   }
 }

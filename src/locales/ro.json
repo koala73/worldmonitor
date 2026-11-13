@@ -5186,14 +5186,10 @@
     "dailyMosaics": "mozaicuri zilnice",
     "weatherFrames": "imagini meteo",
     "timeline": {
-      "heading": "Cronologie, ultimele 7 zile și următoarele 72 de ore (UTC)",
-      "asList": "Cronologie ca listă",
       "now": "acum",
       "nowAt": "Acum: {{time}}",
-      "images": "Imagini",
       "density": "Treceri {{label}}, de la {{start}} la {{end}}: {{count}}",
       "daylight": "Lumină de zi în punct de la {{start}} la {{end}}",
-      "loading": "se încarcă",
       "unavailable": "indisponibil",
       "notRetained": "nepăstrat",
       "notRetainedSpan": "{{label}}: nepăstrat de la {{start}} la {{end}}",
@@ -5204,14 +5200,24 @@
         "unrest": "Tulburări",
         "outages": "Întreruperi de internet"
       },
-      "nowTitle": "Acum, doar în direct",
       "live": {
         "vessels": "Trafic maritim",
         "militaryFlights": "Zboruri militare",
         "gpsJamming": "Bruiaj GPS"
       },
-      "liveNone": "niciunul în {{km}} km",
-      "liveCount": "în {{km}} km: {{count}}, cel mai apropiat {{nearest}}"
+      "title": "Cronologie",
+      "span": "{{days}} zile · următoarele {{hours}} h",
+      "daylightHere": "Lumină de zi aici",
+      "row": {
+        "geo": "Geo",
+        "photo": "Imagine",
+        "likely": "Probabil",
+        "could": "Posibil",
+        "overhead": "Trecere"
+      },
+      "retained": "{{start}} – {{end}}",
+      "geoLine": "Geostaționari în vizor: {{names}}",
+      "away": "la {{km}} km"
     }
   }
 }

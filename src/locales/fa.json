@@ -5158,14 +5158,10 @@
     "dailyMosaics": "موزاییک‌های روزانه",
     "weatherFrames": "تصاویر هواشناسی",
     "timeline": {
-      "heading": "خط زمانی، ۷ روز گذشته و ۷۲ ساعت آینده (UTC)",
-      "asList": "خط زمانی به‌صورت فهرست",
       "now": "اکنون",
       "nowAt": "اکنون: {{time}}",
-      "images": "تصاویر",
       "density": "عبورهای {{label}}، از {{start}} تا {{end}}: {{count}}",
       "daylight": "روشنایی روز در نقطه از {{start}} تا {{end}}",
-      "loading": "در حال بارگذاری",
       "unavailable": "در دسترس نیست",
       "notRetained": "نگهداری نشده",
       "notRetainedSpan": "{{label}}: از {{start}} تا {{end}} نگهداری نشده",
@@ -5176,14 +5172,24 @@
         "unrest": "ناآرامی‌ها",
         "outages": "قطعی‌های اینترنت"
       },
-      "nowTitle": "اکنون، فقط زنده",
       "live": {
         "vessels": "ترافیک دریایی",
         "militaryFlights": "پروازهای نظامی",
         "gpsJamming": "پارازیت GPS"
       },
-      "liveNone": "هیچ موردی در {{km}} کیلومتری نیست",
-      "liveCount": "در {{km}} کیلومتری: {{count}}، نزدیک‌ترین {{nearest}}"
+      "title": "خط زمانی",
+      "span": "{{days}} روز · {{hours}} ساعت آینده",
+      "daylightHere": "روشنایی روز در اینجا",
+      "row": {
+        "geo": "زمین‌ثابت",
+        "photo": "تصویر",
+        "likely": "محتمل",
+        "could": "ممکن",
+        "overhead": "عبور"
+      },
+      "retained": "{{start}} تا {{end}}",
+      "geoLine": "زمین‌ثابت‌های در دید: {{names}}",
+      "away": "{{km}} کیلومتر دورتر"
     }
   }
 }

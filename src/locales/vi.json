@@ -5130,14 +5130,10 @@
     "dailyMosaics": "ảnh ghép hằng ngày",
     "weatherFrames": "ảnh thời tiết",
     "timeline": {
-      "heading": "Dòng thời gian, 7 ngày qua và 72 giờ tới (UTC)",
-      "asList": "Dòng thời gian dạng danh sách",
       "now": "bây giờ",
       "nowAt": "Bây giờ: {{time}}",
-      "images": "Hình ảnh",
       "density": "Lượt bay qua {{label}}, từ {{start}} đến {{end}}: {{count}}",
       "daylight": "Ánh sáng ban ngày tại điểm từ {{start}} đến {{end}}",
-      "loading": "đang tải",
       "unavailable": "không khả dụng",
       "notRetained": "không được lưu",
       "notRetainedSpan": "{{label}}: không được lưu từ {{start}} đến {{end}}",
@@ -5148,14 +5144,24 @@
         "unrest": "Bất ổn",
         "outages": "Sự cố internet"
       },
-      "nowTitle": "Bây giờ, chỉ trực tiếp",
       "live": {
         "vessels": "Giao thông hàng hải",
         "militaryFlights": "Chuyến bay quân sự",
         "gpsJamming": "Gây nhiễu GPS"
       },
-      "liveNone": "không có trong {{km}} km",
-      "liveCount": "trong {{km}} km: {{count}}, gần nhất {{nearest}}"
+      "title": "Dòng thời gian",
+      "span": "{{days}} ngày · {{hours}} giờ tới",
+      "daylightHere": "Ban ngày tại đây",
+      "row": {
+        "geo": "Địa tĩnh",
+        "photo": "Ảnh",
+        "likely": "Có thể",
+        "could": "Khả dĩ",
+        "overhead": "Bay qua"
+      },
+      "retained": "{{start}} đến {{end}}",
+      "geoLine": "Vệ tinh địa tĩnh trong tầm nhìn: {{names}}",
+      "away": "cách {{km}} km"
     }
   }
 }

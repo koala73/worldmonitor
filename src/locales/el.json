@@ -5158,14 +5158,10 @@
     "dailyMosaics": "ημερήσια μωσαϊκά",
     "weatherFrames": "μετεωρολογικές εικόνες",
     "timeline": {
-      "heading": "Χρονολόγιο, τελευταίες 7 ημέρες και επόμενες 72 ώρες (UTC)",
-      "asList": "Χρονολόγιο ως λίστα",
       "now": "τώρα",
       "nowAt": "Τώρα: {{time}}",
-      "images": "Εικόνες",
       "density": "Διελεύσεις {{label}}, από {{start}} έως {{end}}: {{count}}",
       "daylight": "Φως ημέρας στο σημείο από {{start}} έως {{end}}",
-      "loading": "φόρτωση",
       "unavailable": "μη διαθέσιμο",
       "notRetained": "δεν διατηρείται",
       "notRetainedSpan": "{{label}}: δεν διατηρείται από {{start}} έως {{end}}",
@@ -5176,14 +5172,24 @@
         "unrest": "Αναταραχές",
         "outages": "Διακοπές διαδικτύου"
       },
-      "nowTitle": "Τώρα, μόνο ζωντανά",
       "live": {
         "vessels": "Ναυτιλιακή κίνηση",
         "militaryFlights": "Στρατιωτικές πτήσεις",
         "gpsJamming": "Παρεμβολές GPS"
       },
-      "liveNone": "κανένα εντός {{km}} km",
-      "liveCount": "εντός {{km}} km: {{count}}, πλησιέστερο {{nearest}}"
+      "title": "Χρονολόγιο",
+      "span": "{{days}} ημέρες · επόμενες {{hours}} ώρες",
+      "daylightHere": "Φως ημέρας εδώ",
+      "row": {
+        "geo": "Γεω",
+        "photo": "Εικόνα",
+        "likely": "Πιθανό",
+        "could": "Ενδεχ.",
+        "overhead": "Διέλευση"
+      },
+      "retained": "{{start}} έως {{end}}",
+      "geoLine": "Γεωστατικοί σε ορατότητα: {{names}}",
+      "away": "σε {{km}} χλμ."
     }
   }
 }

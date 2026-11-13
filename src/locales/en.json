@@ -4617,14 +4617,10 @@
       "noPreview": "The archive has no preview of this scene yet."
     },
     "timeline": {
-      "heading": "Timeline, last 7 days and next 72 hours (UTC)",
-      "asList": "Timeline as a list",
       "now": "now",
       "nowAt": "Now: {{time}}",
-      "images": "Images",
       "density": "{{label}} passes, {{start}} to {{end}}: {{count}}",
       "daylight": "Daylight at the point from {{start}} to {{end}}",
-      "loading": "loading",
       "unavailable": "unavailable",
       "notRetained": "not retained",
       "notRetainedSpan": "{{label}}: not retained from {{start}} to {{end}}",
@@ -4635,14 +4631,24 @@
         "unrest": "Unrest",
         "outages": "Internet outages"
       },
-      "nowTitle": "Now, live only",
       "live": {
         "vessels": "Shipping traffic",
         "militaryFlights": "Military flights",
         "gpsJamming": "GPS jamming"
       },
-      "liveNone": "none within {{km}} km",
-      "liveCount": "within {{km}} km: {{count}}, nearest {{nearest}}"
+      "title": "Timeline",
+      "span": "{{days}} days · next {{hours}} h",
+      "daylightHere": "Daylight here",
+      "row": {
+        "geo": "Geo",
+        "photo": "Photo",
+        "likely": "Likely",
+        "could": "Could",
+        "overhead": "Overhead"
+      },
+      "retained": "{{start}} to {{end}}",
+      "geoLine": "Geostationary in view: {{names}}",
+      "away": "{{km}} km away"
     }
   },
   "contextMenu": {

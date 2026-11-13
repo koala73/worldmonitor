@@ -5158,14 +5158,10 @@
     "dailyMosaics": "günlük mozaikler",
     "weatherFrames": "hava durumu görüntüleri",
     "timeline": {
-      "heading": "Zaman çizelgesi, son 7 gün ve sonraki 72 saat (UTC)",
-      "asList": "Liste olarak zaman çizelgesi",
       "now": "şimdi",
       "nowAt": "Şimdi: {{time}}",
-      "images": "Görüntüler",
       "density": "{{label}} geçişleri, {{start}} ile {{end}} arası: {{count}}",
       "daylight": "Noktada gün ışığı {{start}} ile {{end}} arası",
-      "loading": "yükleniyor",
       "unavailable": "kullanılamıyor",
       "notRetained": "saklanmıyor",
       "notRetainedSpan": "{{label}}: {{start}} ile {{end}} arası saklanmıyor",
@@ -5176,14 +5172,24 @@
         "unrest": "Huzursuzluk",
         "outages": "İnternet kesintileri"
       },
-      "nowTitle": "Şimdi, yalnızca canlı",
       "live": {
         "vessels": "Gemi trafiği",
         "militaryFlights": "Askerî uçuşlar",
         "gpsJamming": "GPS karıştırma"
       },
-      "liveNone": "{{km}} km içinde yok",
-      "liveCount": "{{km}} km içinde: {{count}}, en yakın {{nearest}}"
+      "title": "Zaman çizelgesi",
+      "span": "{{days}} gün · sonraki {{hours}} sa",
+      "daylightHere": "Burada gün ışığı",
+      "row": {
+        "geo": "Yerdurağan",
+        "photo": "Görüntü",
+        "likely": "Olası",
+        "could": "Mümkün",
+        "overhead": "Geçiş"
+      },
+      "retained": "{{start}} – {{end}}",
+      "geoLine": "Görüş alanındaki yerdurağanlar: {{names}}",
+      "away": "{{km}} km uzakta"
     }
   }
 }

@@ -5130,14 +5130,10 @@
     "dailyMosaics": "日次モザイク",
     "weatherFrames": "気象画像",
     "timeline": {
-      "heading": "タイムライン、過去7日間と今後72時間 (UTC)",
-      "asList": "リスト形式のタイムライン",
       "now": "現在",
       "nowAt": "現在: {{time}}",
-      "images": "画像",
       "density": "{{label}}の通過、{{start}}～{{end}}: {{count}}",
       "daylight": "地点の日照 {{start}}～{{end}}",
-      "loading": "読み込み中",
       "unavailable": "利用不可",
       "notRetained": "保持されていません",
       "notRetainedSpan": "{{label}}: {{start}}～{{end}} は保持されていません",
@@ -5148,14 +5144,24 @@
         "unrest": "騒乱",
         "outages": "インターネット障害"
       },
-      "nowTitle": "現在、ライブのみ",
       "live": {
         "vessels": "船舶交通",
         "militaryFlights": "軍用機",
         "gpsJamming": "GPS妨害"
       },
-      "liveNone": "{{km}} km以内になし",
-      "liveCount": "{{km}} km以内: {{count}}、最寄り {{nearest}}"
+      "title": "タイムライン",
+      "span": "{{days}}日間 · 今後{{hours}}時間",
+      "daylightHere": "この地点の日中",
+      "row": {
+        "geo": "静止",
+        "photo": "撮影",
+        "likely": "可能性高",
+        "could": "可能",
+        "overhead": "通過"
+      },
+      "retained": "{{start}}〜{{end}}",
+      "geoLine": "視野内の静止衛星: {{names}}",
+      "away": "{{km}} km先"
     }
   }
 }
