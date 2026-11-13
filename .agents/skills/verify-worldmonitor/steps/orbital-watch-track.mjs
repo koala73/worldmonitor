@@ -67,10 +67,11 @@ export default async function ({ page, base, shot: capture, log, expectVisible }
     await replays.nth(index).scrollIntoViewIfNeeded();
     await replays.nth(index).click();
     await hud.waitFor();
-    return hud.locator('.ow-hud-label').innerText();
+    return hud.locator('.ow-hud-label').textContent();
   };
   const firstName = await play(firstIndex);
   log('replaying', firstName, 'crop', cards[firstIndex]?.src);
+  await sheet.locator('.ow-card img').first().evaluate((img) => img.complete || new Promise((done) => { img.onload = img.onerror = done; }));
   await page.waitForTimeout(2_500);
   await shot('replay-in-progress');
   await page.waitForTimeout(7_000);

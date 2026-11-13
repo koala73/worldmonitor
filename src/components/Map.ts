@@ -5171,13 +5171,49 @@ export class MapComponent {
     reticle.append('circle').attr('r', 3).attr('fill', '#f5a524');
     const lines = target?.lines ?? [];
     if (lines.length === 0) return;
-    reticle.append('rect').attr('x', 20).attr('y', -9 * lines.length - 3).attr('height', 18 * lines.length + 6)
-      .attr('width', 10 + 7 * Math.max(...lines.map((line) => line.length))).attr('fill', 'rgba(11,12,14,0.88)');
-    const text = reticle.append('text').attr('x', 25).attr('fill', '#ecebe7')
+    const frame = this.container.getBoundingClientRect();
+    const right = Math.min(frame.right, document.documentElement.clientWidth) - 48;
+    // The tag sits right of the reticle; on a narrow map it moves left, then wraps at its ' · ' breaks.
+    const attempts: Array<[string[], boolean]> = [[lines, false], [lines, true]];
+    const wrapped = MapComponent.wrapOrbitalLines(lines);
+    if (wrapped.length > lines.length) attempts.push([wrapped, false], [wrapped, true]);
+    for (const [i, [rows, left]] of attempts.entries()) {
+      const label = MapComponent.drawOrbitalLabel(reticle, rows, left);
+      const box = label.node()?.getBoundingClientRect();
+      const fits = !box || box.width <= 0 || (box.left >= frame.left + 4 && box.right <= right);
+      if (fits || i === attempts.length - 1) return;
+      label.remove();
+    }
+  }
+
+  private static drawOrbitalLabel(
+    reticle: d3.Selection<SVGGElement, unknown, null, undefined>,
+    lines: string[],
+    left: boolean,
+  ): d3.Selection<SVGGElement, unknown, null, undefined> {
+    const width = 10 + 7 * Math.max(...lines.map((line) => line.length));
+    const x = left ? -20 - width : 20;
+    const label = reticle.append('g');
+    label.append('rect').attr('x', x).attr('y', -9 * lines.length - 3).attr('height', 18 * lines.length + 6)
+      .attr('width', width).attr('fill', 'rgba(11,12,14,0.88)');
+    const text = label.append('text').attr('fill', '#ecebe7')
       .attr('font-family', 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace').attr('font-size', 11).attr('letter-spacing', '0.06em');
     lines.forEach((line, i) => {
-      text.append('tspan').attr('x', 25).attr('y', (i - (lines.length - 1) / 2) * 18 + 4).text(line);
+      text.append('tspan').attr('x', x + 5).attr('y', (i - (lines.length - 1) / 2) * 18 + 4).text(line);
     });
+    return label;
+  }
+
+  /** Splits each line at its ' · ' breaks, packing parts back together up to the widest unbreakable part. */
+  private static wrapOrbitalLines(lines: string[]): string[] {
+    const parts = lines.map((line) => line.split(' \u00b7 '));
+    const limit = Math.max(...parts.flat().map((part) => part.length));
+    return parts.flatMap((pieces) => pieces.reduce<string[]>((rows, piece) => {
+      const last = rows[rows.length - 1];
+      if (last !== undefined && last.length + 3 + piece.length <= limit) rows[rows.length - 1] = `${last} \u00b7 ${piece}`;
+      else rows.push(piece);
+      return rows;
+    }, []));
   }
 
   private placeOrbitalMarker(projection: d3.GeoProjection): void {
