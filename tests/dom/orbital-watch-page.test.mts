@@ -232,6 +232,8 @@ describe('satellite pass lookup sheet', () => {
     expect(rowNames('upcoming').map((n) => n?.replace(/upcoming pass$/, ''))).toEqual([soon.name, later.name]);
     expect(rowOf(confirmedNew.name).querySelector('.ow-tile-thumb')).not.toBeNull();
     expect(rowOf(confirmedOld.name).querySelector('.ow-glyph-tile')).not.toBeNull();
+    expect(rowOf(confirmedNew.name).querySelector('.ow-image-credit')!.textContent).toBe(IMAGE_CREDIT.copernicus(2026));
+    expect(rowOf(confirmedOld.name).querySelector('.ow-image-credit')).toBeNull();
     for (const row of sheet().querySelectorAll('.ow-row')) expect(row.querySelector('.ow-tier-label')?.textContent?.trim()).not.toBe('');
     for (const slot of ['timeline', 'pass-detail', 'replay-hud', 'timelapse']) {
       expect(page().slot(slot as 'timeline').dataset.slot).toBe(slot);
