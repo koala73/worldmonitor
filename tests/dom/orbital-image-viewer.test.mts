@@ -70,13 +70,14 @@ describe('orbital image viewer', () => {
     expect(viewer()!.querySelector('[data-action="timelapse"]')).toBeNull();
   });
 
-  it('keeps the earlier frames a weather frame carries, so one the archive has not served yet can be skipped', () => {
+  it('opens a weather frame on the frame its thumbnail fell back to, keeping the earlier frames as other dates', () => {
     const earlier = { time: new Date(NOW - 1_200_000).toISOString(), imageUrl: `${meteosat.latest!.imageUrl}&TIME=earlier` };
     const frame: GeostationaryRow = { ...meteosat, latest: { ...meteosat.latest!, fallbacks: [earlier] } };
     const evidence: OrbitalEvidence = { passes: [], acquisitions: [], mosaics: [], frames: [frame], bestView: null, status: 'complete', failures: [], unansweredProfiles: [] };
     const subject = subjectForImage(evidence, { kind: 'frame', key: frame.layer }, { point, nowMs: NOW })!;
     expect(subject.selected.imageUrl).toBe(meteosat.latest!.imageUrl);
     expect(subject.scenes.map((scene) => scene.imageUrl)).toEqual([meteosat.latest!.imageUrl, earlier.imageUrl]);
+    expect(subjectForImage(evidence, { kind: 'frame', key: frame.layer }, { point, nowMs: NOW }, earlier.imageUrl)!.selected.imageUrl).toBe(earlier.imageUrl);
     expect(subjectForImage({ ...evidence, frames: [meteosat] }, { kind: 'frame', key: frame.layer }, { point, nowMs: NOW })!.scenes).toEqual([]);
   });
 

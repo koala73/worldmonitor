@@ -1155,7 +1155,7 @@ export class OrbitalWatchPage {
     const returnFocusTo = trigger.closest<HTMLElement>('.ow-row') ?? trigger;
     const seq = this.openSeq;
     void import('./OrbitalImageViewer').then(({ openOrbitalImageViewer, subjectForImage }) => {
-      const subject = subjectForImage(evidence, image, lookup);
+      const subject = subjectForImage(evidence, image, lookup, trigger.closest('.ow-tile')?.querySelector('img')?.getAttribute('src') ?? null);
       if (subject && this.isOpen && seq === this.openSeq) openOrbitalImageViewer(subject, returnFocusTo);
     });
   }
