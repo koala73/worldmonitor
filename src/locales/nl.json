@@ -5156,7 +5156,10 @@
       "imageAlt": "Beeld van {{name}}, {{time}}",
       "mosaicDays": "Dagen in het archief: {{count}}",
       "cadence": "nieuw beeld elke {{minutes}} min",
-      "sourceUnavailable": "Het archief bevat voor deze dagen geen beelden van deze bron."
+      "sourceUnavailable": "Het archief bevat voor deze dagen geen beelden van deze bron.",
+      "imageLoading": "Afbeelding laden…",
+      "imageFailed": "Afbeelding is niet geladen. Het archief is mogelijk traag of onbereikbaar.",
+      "noPreview": "Het archief heeft nog geen voorbeeld van deze opname."
     },
     "dailyMosaics": "dagmozaïeken",
     "weatherFrames": "weerbeelden"

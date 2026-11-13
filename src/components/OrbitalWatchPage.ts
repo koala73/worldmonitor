@@ -91,7 +91,6 @@ export const IMAGE_CREDIT = {
   copernicus: (year: number) => `Contains modified Copernicus Sentinel data ${year}`,
   usgs: 'Landsat imagery courtesy of the U.S. Geological Survey',
   eumetsat: 'Contains EUMETSAT Meteosat imagery',
-  gibs: 'NASA GIBS',
   gibsAcknowledgement: "We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).",
 } as const;
 
@@ -99,7 +98,7 @@ function acquisitionCredit(acquisition: MatchedAcquisition): string {
   return acquisition.profileId === 'landsat' ? IMAGE_CREDIT.usgs : IMAGE_CREDIT.copernicus(new Date(acquisition.startMs).getUTCFullYear());
 }
 
-const frameCredit = (archive: ArchiveId) => (archive === 'eumetsat' ? IMAGE_CREDIT.eumetsat : IMAGE_CREDIT.gibs);
+const frameCredit = (archive: ArchiveId) => (archive === 'eumetsat' ? IMAGE_CREDIT.eumetsat : IMAGE_CREDIT.gibsAcknowledgement);
 
 const EARTH_RADIUS_KM = 6371;
 const DAY_MS = 86_400_000;
@@ -165,15 +164,32 @@ function groupPasses(lookup: PointPassLookup, archives: ArchiveState, selected: 
   return groups;
 }
 
-function imageFigure(url: string | null, alt: string, captions: ReadonlyArray<string | null>): DomChild {
+function imageFigure(url: string | null, alt: string, condition: string | null, credit: string): DomChild {
   if (!url || !isAllowedPreviewUrl(url)) return null;
+  const status = h('span', { className: 'ow-image-status' }, t('orbitalWatch.row.imageLoading'));
+  const frame = h('div', { className: 'ow-image-frame', dataset: { state: 'loading' } },
+    h('img', {
+      src: url,
+      alt,
+      loading: 'lazy',
+      decoding: 'async',
+      referrerpolicy: 'no-referrer',
+      onLoad: () => { frame.dataset.state = 'loaded'; },
+      onError: () => {
+        frame.dataset.state = 'failed';
+        status.textContent = t('orbitalWatch.row.imageFailed');
+      },
+    }),
+    status);
   return h('figure', { className: 'ow-row-image' },
-    h('img', { src: url, alt, loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' }),
-    ...captions.filter((caption): caption is string => caption !== null).map((caption) => h('figcaption', null, caption)));
+    frame,
+    h('figcaption', null, condition ? h('span', { className: 'ow-image-condition' }, condition) : null, h('span', { className: 'ow-image-credit' }, credit)));
 }
 
 function imageSlot(acquisition: MatchedAcquisition | null, alt: string): DomChild {
-  return acquisition ? imageFigure(acquisition.imageUrl, alt, [describePointCondition(acquisition), acquisitionCredit(acquisition)]) : null;
+  if (!acquisition) return null;
+  return imageFigure(acquisition.imageUrl, alt, describePointCondition(acquisition), acquisitionCredit(acquisition))
+    ?? h('p', { className: 'ow-row-note' }, t('orbitalWatch.row.noPreview'));
 }
 
 function sourceRow(tier: string, name: string, tierLabel: string, time: string | null, detail: string | null, image: DomChild): HTMLElement {
@@ -190,7 +206,7 @@ function mosaicRow(mosaic: DailyMosaicRow): HTMLElement {
   const latest = mosaic.days[0];
   if (!latest) return sourceRow('unavailable', mosaic.source, t('orbitalWatch.tier.unavailable'), null, t('orbitalWatch.row.sourceUnavailable'), null);
   return sourceRow('daily-mosaic', mosaic.source, t('orbitalWatch.tier.dailyMosaic'), latest.date, t('orbitalWatch.row.mosaicDays', { count: mosaic.days.length }),
-    imageFigure(latest.imageUrl, t('orbitalWatch.row.imageAlt', { name: mosaic.source, time: latest.date }), [IMAGE_CREDIT.gibs]));
+    imageFigure(latest.imageUrl, t('orbitalWatch.row.imageAlt', { name: mosaic.source, time: latest.date }), null, IMAGE_CREDIT.gibsAcknowledgement));
 }
 
 function frameRow(frame: GeostationaryRow): HTMLElement {
@@ -198,7 +214,7 @@ function frameRow(frame: GeostationaryRow): HTMLElement {
   const time = formatUtc(Date.parse(frame.latest.time));
   return sourceRow('weather-frame', frame.source, t('orbitalWatch.tier.weatherFrame'), time,
     frame.cadenceMinutes === null ? null : t('orbitalWatch.row.cadence', { minutes: frame.cadenceMinutes }),
-    imageFigure(frame.latest.imageUrl, t('orbitalWatch.row.imageAlt', { name: frame.source, time }), [frameCredit(frame.archive)]));
+    imageFigure(frame.latest.imageUrl, t('orbitalWatch.row.imageAlt', { name: frame.source, time }), null, frameCredit(frame.archive)));
 }
 
 /** Whether the selected pass's ground track is still loading, on the map, or could not be drawn. */
@@ -353,10 +369,7 @@ export class OrbitalWatchPage {
       ? h('p', { className: 'ow-empty' }, t('orbitalWatch.empty', { pastDays: Math.round((lookup.nowMs - lookup.window.startMs) / DAY_MS), futureHours: Math.round((lookup.window.endMs - lookup.nowMs) / 3_600_000) }))
       : null;
     const list = GROUPS.map(({ id }) => groups.get(id)!).filter((group) => group.rows.length > 0).map((group) => this.renderGroup(group));
-    const shown = evidence ?? (archives.kind === 'checking' ? archives.progress?.evidence ?? null : null);
-    const usesGibs = shown?.mosaics.some((m) => m.days.length > 0) || shown?.frames.some((f) => f.latest && f.archive === 'nasa-gibs');
-    const acknowledgement = usesGibs ? h('p', { className: 'ow-credit' }, IMAGE_CREDIT.gibsAcknowledgement) : null;
-    return [stale, this.renderSummary(archives, groups, evidence), empty, ...list, acknowledgement];
+    return [stale, this.renderSummary(archives, groups, evidence), empty, ...list];
   }
 
   private renderSummary(archives: ArchiveState, groups: Map<GroupId, Group>, evidence: OrbitalEvidence | null): HTMLElement {

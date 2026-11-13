@@ -43,24 +43,31 @@ export function cropBox(point: GeoPoint, halfSizeKm = DEFAULT_CROP_HALF_SIZE_KM)
 
 const allowed = (url: string): string | null => (isAllowedPreviewUrl(url) ? url : null);
 
+const PLANETARY_COMPUTER_CROP_URL = 'https://planetarycomputer.microsoft.com/api/data/v1/item/bbox';
+
 /**
- * Crops a Planetary Computer item to the box, keeping the rendering the
- * archive itself publishes in the item's rendered preview link.
+ * The "Natural color" render options Planetary Computer publishes per
+ * collection at /api/data/v1/mosaic/info?collection=<id> (read 2026-11-13).
+ * The items' own rendered previews use the visual (TCI) asset, which clips
+ * bright ground such as desert, snow and cloud to flat white or yellow.
  */
-export function planetaryComputerCropUrl(renderedPreviewHref: string, box: CropBox, pixels = DEFAULT_CROP_PIXELS): string | null {
-  let preview: URL;
-  try {
-    preview = new URL(renderedPreviewHref);
-  } catch {
-    return null;
-  }
-  if (!preview.pathname.endsWith('/item/preview.png')) return null;
-  preview.pathname = preview.pathname.replace(
-    /\/item\/preview\.png$/,
-    `/item/bbox/${boxText(box.west, box.south, box.east, box.north)}/${pixels}x${pixels}.png`,
-  );
-  preview.searchParams.delete('format');
-  return allowed(preview.toString());
+export const PLANETARY_COMPUTER_NATURAL_COLOUR: Readonly<Record<string, ReadonlyArray<readonly [string, string]>>> = {
+  'sentinel-2-l2a': [
+    ['assets', 'B04'], ['assets', 'B03'], ['assets', 'B02'], ['nodata', '0'],
+    ['color_formula', 'Gamma RGB 3.2 Saturation 0.8 Sigmoidal RGB 25 0.35'],
+  ],
+  'landsat-c2-l2': [
+    ['assets', 'red'], ['assets', 'green'], ['assets', 'blue'], ['nodata', '0'],
+    ['color_formula', 'gamma RGB 2.7, saturation 1.5, sigmoidal RGB 15 0.55'],
+  ],
+};
+
+/** Crops a Planetary Computer item to the box in the archive's natural-colour rendering. */
+export function planetaryComputerCropUrl(collection: string, itemId: string, box: CropBox, pixels = DEFAULT_CROP_PIXELS): string | null {
+  const render = PLANETARY_COMPUTER_NATURAL_COLOUR[collection];
+  if (!render) return null;
+  const params = new URLSearchParams([['collection', collection], ['item', itemId], ...render.map(([key, value]): [string, string] => [key, value])]);
+  return allowed(`${PLANETARY_COMPUTER_CROP_URL}/${boxText(box.west, box.south, box.east, box.north)}/${pixels}x${pixels}.png?${params}`);
 }
 
 /** A WMS 1.3.0 GetMap in EPSG:4326, whose axis order is latitude first. */

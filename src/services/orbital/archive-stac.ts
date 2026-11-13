@@ -1,7 +1,7 @@
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
 import { isAllowedPreviewUrl } from '../../utils/imagery-preview';
 import { formatCoordinate } from './crop-url';
-import { failed, requestArchive, type ArchiveReply, type ArchiveRequestOptions, type ArchiveResult } from './archive-result';
+import { failed, requestArchive, type ArchiveFailure, type ArchiveReply, type ArchiveRequestOptions, type ArchiveResult } from './archive-result';
 import type { PassWindow } from './pass-query';
 
 export type StacArchiveId = 'earth-search' | 'planetary-computer';
@@ -56,6 +56,10 @@ const MINUTE_MS = 60_000;
 const SENTINEL_2_STRIP_REACH_MS = 20 * MINUTE_MS;
 const LANDSAT_SCENE_HALF_MS = 15_000;
 const NATIVE_RESOLUTION_M: Record<ImagingProfileId, number> = { 'sentinel-2': 10, 'sentinel-1': 10, landsat: 30 };
+
+/** These previews render the visual (TCI) asset, which clips bright ground to flat white or yellow. */
+const CLIPPED_PREVIEW = (_archive: StacArchiveId, profileId: ImagingProfileId) =>
+  profileId === 'sentinel-2';
 
 export const normalisePlatform = (name: string) => name.trim().toLowerCase().replace(/[\s_]+/g, '-');
 
@@ -144,7 +148,7 @@ export function parseStacItem(archive: StacArchiveId, feature: StacFeature): Arc
     cloudCoverPct: num(p['eo:cloud_cover']),
     sunElevationDeg: num(p['view:sun_elevation']) ?? (zenith === null ? null : 90 - zenith),
     resolutionM: num(p.gsd) ?? NATIVE_RESOLUTION_M[profileId],
-    previewUrl: thumbnail && isAllowedPreviewUrl(thumbnail) ? thumbnail : null,
+    previewUrl: thumbnail && isAllowedPreviewUrl(thumbnail) && !CLIPPED_PREVIEW(archive, profileId) ? thumbnail : null,
     renderedPreviewHref,
     classification,
   };
@@ -241,13 +245,20 @@ export function decodePointCondition(scheme: 'sentinel-2-scl' | 'landsat-qa-pixe
 }
 
 /** Reads the archive's classification pixel at the point. Only Planetary Computer serves this. */
-export async function readPointCondition(item: ArchiveItem, point: GeoPoint, options: ArchiveRequestOptions = {}): Promise<PointCondition> {
-  if (!item.classification) return 'unknown';
+export interface PointConditionReading {
+  condition: PointCondition;
+  failure?: ArchiveFailure;
+}
+
+export async function readPointCondition(item: ArchiveItem, point: GeoPoint, options: ArchiveRequestOptions = {}): Promise<PointConditionReading> {
+  if (!item.classification) return { condition: 'unknown' };
   const params = new URLSearchParams({ collection: item.collection, item: item.itemId, assets: item.classification.asset });
   const url = `${PLANETARY_COMPUTER_POINT_URL}/${formatCoordinate(point.lon)},${formatCoordinate(point.lat)}?${params}`;
   const reply = await requestArchive('planetary-computer', url, {}, options, async (response) => {
     const { values } = (await response.json()) as { values?: unknown };
     return Array.isArray(values) ? num(values[0]) : null;
   });
-  return reply.ok ? decodePointCondition(item.classification.scheme, reply.value) : 'unknown';
+  return reply.ok
+    ? { condition: decodePointCondition(item.classification.scheme, reply.value) }
+    : { condition: 'unknown', failure: reply.failure };
 }
