@@ -197,6 +197,8 @@ export async function callerFingerprint(req: Request, resolvedCredential?: strin
 export interface WebhookRecord {
   subscriberId: string;
   ownerTag: string;
+  /** Server-derived account quota identity; legacy records use ownerTag. */
+  quotaTag?: string;
   callbackUrl: string;
   chokepointIds: string[];
   alertThreshold: number;
