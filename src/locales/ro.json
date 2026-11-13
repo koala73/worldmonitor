@@ -5189,14 +5189,20 @@
       "share": "Distribuie",
       "shareCopied": "Link copiat",
       "headline": "În ultimele {{days}} zile, {{satellites}} au trecut peste {{place}}.",
-      "satellites": "{{count}} sateliți",
-      "subline": "Au fost publicate {{count}} imagini.",
+      "satellites_one": "{{count}} satelit",
+      "satellites_few": "{{count}} sateliți",
+      "satellites_other": "{{count}} de sateliți",
+      "subline_one": "A fost publicată {{count}} imagine.",
+      "subline_few": "Au fost publicate {{count}} imagini.",
+      "subline_other": "Au fost publicate {{count}} de imagini.",
       "closestLook": "Cea mai apropiată vedere",
       "replay": "Redă",
       "openFull": "Deschide vizualizarea completă",
       "previous": "Imaginea anterioară",
       "next": "Imaginea următoare",
-      "passes": "treceri",
+      "passes_one": "trecere",
+      "passes_few": "treceri",
+      "passes_other": "de treceri",
       "showAll": "Arată toate trecerile",
       "noRecentDays": "Nicio zi recentă în arhivă: {{sources}}",
       "tab": {
@@ -5239,7 +5245,9 @@
         "upcoming": "următoare",
         "could": "care ar fi putut ținti aici",
         "overhead": "trecute deasupra",
-        "weather": "surse meteo"
+        "weather_one": "sursă meteo",
+        "weather_few": "surse meteo",
+        "weather_other": "de surse meteo"
       },
       "order": {
         "closest": "Cea mai apropiată vedere, apoi cele mai noi",
@@ -5248,7 +5256,9 @@
       },
       "row": {
         "cloud": "Nori {{pct}}%",
-        "days": "{{count}} zile",
+        "days_one": "{{count}} zi",
+        "days_few": "{{count}} zile",
+        "days_other": "{{count}} de zile",
         "repeats": "{{count}} treceri ale acestui satelit în grup"
       },
       "section": {

@@ -5161,14 +5161,17 @@
       "share": "Delen",
       "shareCopied": "Link gekopieerd",
       "headline": "In de afgelopen {{days}} dagen kwamen {{satellites}} over {{place}}.",
-      "satellites": "{{count}} satellieten",
-      "subline": "Er zijn {{count}} beelden openbaar gemaakt.",
+      "satellites_one": "{{count}} satelliet",
+      "satellites_other": "{{count}} satellieten",
+      "subline_one": "Er is {{count}} beeld openbaar gemaakt.",
+      "subline_other": "Er zijn {{count}} beelden openbaar gemaakt.",
       "closestLook": "Dichtstbijzijnde blik",
       "replay": "Afspelen",
       "openFull": "Volledige weergave openen",
       "previous": "Vorige afbeelding",
       "next": "Volgende afbeelding",
-      "passes": "overkomsten",
+      "passes_one": "overkomst",
+      "passes_other": "overkomsten",
       "showAll": "Alle overkomsten tonen",
       "noRecentDays": "Geen recente dagen in het archief: {{sources}}",
       "tab": {
@@ -5211,7 +5214,8 @@
         "upcoming": "binnenkort",
         "could": "die hierop hadden kunnen richten",
         "overhead": "overgevlogen",
-        "weather": "weerbronnen"
+        "weather_one": "weerbron",
+        "weather_other": "weerbronnen"
       },
       "order": {
         "closest": "Dichtstbijzijnde blik, dan nieuwste",
@@ -5220,7 +5224,8 @@
       },
       "row": {
         "cloud": "Bewolking {{pct}}%",
-        "days": "{{count}} dagen",
+        "days_one": "{{count}} dag",
+        "days_other": "{{count}} dagen",
         "repeats": "{{count}} overkomsten van deze satelliet in deze groep"
       },
       "section": {

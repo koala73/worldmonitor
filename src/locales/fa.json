@@ -5161,14 +5161,17 @@
       "share": "اشتراک‌گذاری",
       "shareCopied": "پیوند کپی شد",
       "headline": "در {{days}} روز گذشته، {{satellites}} از فراز {{place}} گذشتند.",
-      "satellites": "{{count}} ماهواره",
-      "subline": "{{count}} تصویر منتشر شد.",
+      "satellites_one": "{{count}} ماهواره",
+      "satellites_other": "{{count}} ماهواره",
+      "subline_one": "{{count}} تصویر منتشر شد.",
+      "subline_other": "{{count}} تصویر منتشر شد.",
       "closestLook": "نزدیک‌ترین نما",
       "replay": "پخش دوباره",
       "openFull": "باز کردن نمای کامل",
       "previous": "تصویر قبلی",
       "next": "تصویر بعدی",
-      "passes": "عبور",
+      "passes_one": "عبور",
+      "passes_other": "عبور",
       "showAll": "نمایش همه عبورها",
       "noRecentDays": "روز تازه‌ای در بایگانی نیست: {{sources}}",
       "tab": {
@@ -5211,7 +5214,8 @@
         "upcoming": "پیش رو",
         "could": "که می‌توانستند این‌جا را نشانه بگیرند",
         "overhead": "از فراز",
-        "weather": "منابع هوا"
+        "weather_one": "منابع هوا",
+        "weather_other": "منابع هوا"
       },
       "order": {
         "closest": "نزدیک‌ترین نما، سپس جدیدترین",
@@ -5220,7 +5224,8 @@
       },
       "row": {
         "cloud": "ابر {{pct}}٪",
-        "days": "{{count}} روز",
+        "days_one": "{{count}} روز",
+        "days_other": "{{count}} روز",
         "repeats": "{{count}} عبور این ماهواره در این گروه"
       },
       "section": {

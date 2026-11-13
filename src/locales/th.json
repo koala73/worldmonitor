@@ -5133,14 +5133,14 @@
       "share": "แชร์",
       "shareCopied": "คัดลอกลิงก์แล้ว",
       "headline": "ในช่วง {{days}} วันที่ผ่านมา {{satellites}} ผ่านเหนือ {{place}}",
-      "satellites": "ดาวเทียม {{count}} ดวง",
-      "subline": "มีภาพเผยแพร่ {{count}} ภาพ",
+      "satellites_other": "ดาวเทียม {{count}} ดวง",
+      "subline_other": "มีภาพเผยแพร่ {{count}} ภาพ",
       "closestLook": "มุมมองใกล้ที่สุด",
       "replay": "เล่นซ้ำ",
       "openFull": "เปิดมุมมองเต็ม",
       "previous": "ภาพก่อนหน้า",
       "next": "ภาพถัดไป",
-      "passes": "ครั้งที่ผ่าน",
+      "passes_other": "ครั้งที่ผ่าน",
       "showAll": "แสดงการผ่านทั้งหมด",
       "noRecentDays": "ไม่มีวันล่าสุดในคลัง: {{sources}}",
       "tab": {
@@ -5183,7 +5183,7 @@
         "upcoming": "ที่กำลังจะมา",
         "could": "ที่อาจหันมาที่นี่",
         "overhead": "ที่ผ่านเหนือศีรษะ",
-        "weather": "แหล่งข้อมูลสภาพอากาศ"
+        "weather_other": "แหล่งข้อมูลสภาพอากาศ"
       },
       "order": {
         "closest": "ใกล้ที่สุด แล้วใหม่ที่สุด",
@@ -5192,7 +5192,7 @@
       },
       "row": {
         "cloud": "เมฆ {{pct}}%",
-        "days": "{{count}} วัน",
+        "days_other": "{{count}} วัน",
         "repeats": "ดาวเทียมนี้ผ่าน {{count}} ครั้งในกลุ่มนี้"
       },
       "section": {

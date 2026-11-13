@@ -5217,14 +5217,23 @@
       "share": "Sdílet",
       "shareCopied": "Odkaz zkopírován",
       "headline": "Za posledních {{days}} dní nad {{place}} přeletělo: {{satellites}}.",
-      "satellites": "{{count}} satelitů",
-      "subline": "Zveřejněno snímků: {{count}}.",
+      "satellites_one": "{{count}} satelit",
+      "satellites_few": "{{count}} satelity",
+      "satellites_many": "{{count}} satelitu",
+      "satellites_other": "{{count}} satelitů",
+      "subline_one": "Zveřejněno snímků: {{count}}.",
+      "subline_few": "Zveřejněno snímků: {{count}}.",
+      "subline_many": "Zveřejněno snímků: {{count}}.",
+      "subline_other": "Zveřejněno snímků: {{count}}.",
       "closestLook": "Nejbližší pohled",
       "replay": "Přehrát",
       "openFull": "Otevřít celé zobrazení",
       "previous": "Předchozí snímek",
       "next": "Další snímek",
-      "passes": "přeletů",
+      "passes_one": "přelet",
+      "passes_few": "přelety",
+      "passes_many": "přeletu",
+      "passes_other": "přeletů",
       "showAll": "Zobrazit všechny přelety",
       "noRecentDays": "V archivu nejsou nedávné dny: {{sources}}",
       "tab": {
@@ -5267,7 +5276,10 @@
         "upcoming": "nadcházejících",
         "could": "které sem mohly mířit",
         "overhead": "nad místem",
-        "weather": "zdroje počasí"
+        "weather_one": "zdroj počasí",
+        "weather_few": "zdroje počasí",
+        "weather_many": "zdroje počasí",
+        "weather_other": "zdrojů počasí"
       },
       "order": {
         "closest": "Nejbližší pohled, pak nejnovější",
@@ -5276,7 +5288,10 @@
       },
       "row": {
         "cloud": "Oblačnost {{pct}} %",
-        "days": "Dní: {{count}}",
+        "days_one": "Dní: {{count}}",
+        "days_few": "Dní: {{count}}",
+        "days_many": "Dní: {{count}}",
+        "days_other": "Dní: {{count}}",
         "repeats": "Přelety tohoto satelitu ve skupině: {{count}}"
       },
       "section": {

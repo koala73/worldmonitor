@@ -5217,14 +5217,23 @@
       "share": "Поделиться",
       "shareCopied": "Ссылка скопирована",
       "headline": "За последние {{days}} дн. над {{place}} пролетели: {{satellites}}.",
-      "satellites": "спутников: {{count}}",
-      "subline": "Опубликовано снимков: {{count}}.",
+      "satellites_one": "спутников: {{count}}",
+      "satellites_few": "спутников: {{count}}",
+      "satellites_many": "спутников: {{count}}",
+      "satellites_other": "спутников: {{count}}",
+      "subline_one": "Опубликовано снимков: {{count}}.",
+      "subline_few": "Опубликовано снимков: {{count}}.",
+      "subline_many": "Опубликовано снимков: {{count}}.",
+      "subline_other": "Опубликовано снимков: {{count}}.",
       "closestLook": "Самый близкий снимок",
       "replay": "Повтор",
       "openFull": "Открыть полный вид",
       "previous": "Предыдущий снимок",
       "next": "Следующий снимок",
-      "passes": "пролётов",
+      "passes_one": "пролёт",
+      "passes_few": "пролёта",
+      "passes_many": "пролётов",
+      "passes_other": "пролёта",
       "showAll": "Показать все пролёты",
       "noRecentDays": "Нет свежих дней в архиве: {{sources}}",
       "tab": {
@@ -5267,7 +5276,10 @@
         "upcoming": "предстоящих",
         "could": "могли навестись сюда",
         "overhead": "над точкой",
-        "weather": "источники погоды"
+        "weather_one": "источник погоды",
+        "weather_few": "источника погоды",
+        "weather_many": "источников погоды",
+        "weather_other": "источника погоды"
       },
       "order": {
         "closest": "Самый близкий, затем новые",
@@ -5276,7 +5288,10 @@
       },
       "row": {
         "cloud": "Облачность {{pct}}%",
-        "days": "дней: {{count}}",
+        "days_one": "дней: {{count}}",
+        "days_few": "дней: {{count}}",
+        "days_many": "дней: {{count}}",
+        "days_other": "дней: {{count}}",
         "repeats": "пролётов этого спутника в группе: {{count}}"
       },
       "section": {

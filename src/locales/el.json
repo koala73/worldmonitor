@@ -5161,14 +5161,17 @@
       "share": "Κοινοποίηση",
       "shareCopied": "Ο σύνδεσμος αντιγράφηκε",
       "headline": "Τις τελευταίες {{days}} ημέρες, {{satellites}} πέρασαν πάνω από {{place}}.",
-      "satellites": "{{count}} δορυφόροι",
-      "subline": "Δημοσιεύτηκαν {{count}} εικόνες.",
+      "satellites_one": "{{count}} δορυφόρος",
+      "satellites_other": "{{count}} δορυφόροι",
+      "subline_one": "Δημοσιεύτηκε {{count}} εικόνα.",
+      "subline_other": "Δημοσιεύτηκαν {{count}} εικόνες.",
       "closestLook": "Πιο κοντινή λήψη",
       "replay": "Επανάληψη",
       "openFull": "Άνοιγμα πλήρους προβολής",
       "previous": "Προηγούμενη εικόνα",
       "next": "Επόμενη εικόνα",
-      "passes": "διελεύσεις",
+      "passes_one": "διέλευση",
+      "passes_other": "διελεύσεις",
       "showAll": "Εμφάνιση όλων των διελεύσεων",
       "noRecentDays": "Καμία πρόσφατη ημέρα στο αρχείο: {{sources}}",
       "tab": {
@@ -5211,7 +5214,8 @@
         "upcoming": "επερχόμενες",
         "could": "που θα μπορούσαν να στοχεύσουν εδώ",
         "overhead": "από πάνω",
-        "weather": "πηγές καιρού"
+        "weather_one": "πηγή καιρού",
+        "weather_other": "πηγές καιρού"
       },
       "order": {
         "closest": "Πιο κοντινή λήψη, μετά νεότερες",
@@ -5220,7 +5224,8 @@
       },
       "row": {
         "cloud": "Σύννεφα {{pct}}%",
-        "days": "{{count}} ημέρες",
+        "days_one": "{{count}} ημέρα",
+        "days_other": "{{count}} ημέρες",
         "repeats": "{{count}} διελεύσεις αυτού του δορυφόρου στην ομάδα"
       },
       "section": {

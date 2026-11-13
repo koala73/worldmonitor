@@ -5161,14 +5161,17 @@
       "share": "साझा करें",
       "shareCopied": "लिंक कॉपी हुआ",
       "headline": "पिछले {{days}} दिनों में {{satellites}} {{place}} के ऊपर से गुज़रे।",
-      "satellites": "{{count}} उपग्रह",
-      "subline": "{{count}} चित्र सार्वजनिक किए गए।",
+      "satellites_one": "{{count}} उपग्रह",
+      "satellites_other": "{{count}} उपग्रह",
+      "subline_one": "{{count}} चित्र सार्वजनिक किए गए।",
+      "subline_other": "{{count}} चित्र सार्वजनिक किए गए।",
       "closestLook": "सबसे नज़दीकी दृश्य",
       "replay": "दोबारा चलाएँ",
       "openFull": "पूर्ण दृश्य खोलें",
       "previous": "पिछला चित्र",
       "next": "अगला चित्र",
-      "passes": "गुज़र",
+      "passes_one": "गुज़र",
+      "passes_other": "गुज़र",
       "showAll": "सभी गुज़र दिखाएँ",
       "noRecentDays": "संग्रह में हाल के दिन नहीं: {{sources}}",
       "tab": {
@@ -5211,7 +5214,8 @@
         "upcoming": "आगामी",
         "could": "जो यहाँ लक्ष्य कर सकते थे",
         "overhead": "ऊपर से गुज़रे",
-        "weather": "मौसम स्रोत"
+        "weather_one": "मौसम स्रोत",
+        "weather_other": "मौसम स्रोत"
       },
       "order": {
         "closest": "सबसे नज़दीकी, फिर नवीनतम",
@@ -5220,7 +5224,8 @@
       },
       "row": {
         "cloud": "बादल {{pct}}%",
-        "days": "{{count}} दिन",
+        "days_one": "{{count}} दिन",
+        "days_other": "{{count}} दिन",
         "repeats": "इस समूह में इस उपग्रह के {{count}} गुज़र"
       },
       "section": {

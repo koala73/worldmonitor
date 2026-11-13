@@ -5133,14 +5133,14 @@
       "share": "分享",
       "shareCopied": "链接已复制",
       "headline": "过去 {{days}} 天里，{{satellites}}从{{place}}上空经过。",
-      "satellites": "{{count}} 颗卫星",
-      "subline": "已公开 {{count}} 张图像。",
+      "satellites_other": "{{count}} 颗卫星",
+      "subline_other": "已公开 {{count}} 张图像。",
       "closestLook": "最近的视角",
       "replay": "回放",
       "openFull": "打开完整视图",
       "previous": "上一张图像",
       "next": "下一张图像",
-      "passes": "次过境",
+      "passes_other": "次过境",
       "showAll": "显示全部过境",
       "noRecentDays": "存档中没有近期日期：{{sources}}",
       "tab": {
@@ -5183,7 +5183,7 @@
         "upcoming": "即将到来",
         "could": "可能对准过这里",
         "overhead": "上空经过",
-        "weather": "天气来源"
+        "weather_other": "天气来源"
       },
       "order": {
         "closest": "最近的视角，然后最新",
@@ -5192,7 +5192,7 @@
       },
       "row": {
         "cloud": "云量 {{pct}}%",
-        "days": "{{count}} 天",
+        "days_other": "{{count}} 天",
         "repeats": "该卫星在本组中的 {{count}} 次过境"
       },
       "section": {

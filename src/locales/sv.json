@@ -5161,14 +5161,17 @@
       "share": "Dela",
       "shareCopied": "Länk kopierad",
       "headline": "Under de senaste {{days}} dagarna passerade {{satellites}} över {{place}}.",
-      "satellites": "{{count}} satelliter",
-      "subline": "{{count}} bilder publicerades.",
+      "satellites_one": "{{count}} satellit",
+      "satellites_other": "{{count}} satelliter",
+      "subline_one": "{{count}} bild publicerades.",
+      "subline_other": "{{count}} bilder publicerades.",
       "closestLook": "Närmaste blick",
       "replay": "Spela upp",
       "openFull": "Öppna helvy",
       "previous": "Föregående bild",
       "next": "Nästa bild",
-      "passes": "passager",
+      "passes_one": "passage",
+      "passes_other": "passager",
       "showAll": "Visa alla passager",
       "noRecentDays": "Inga färska dagar i arkivet: {{sources}}",
       "tab": {
@@ -5211,7 +5214,8 @@
         "upcoming": "kommande",
         "could": "som kunde ha riktats hit",
         "overhead": "som passerade över",
-        "weather": "väderkällor"
+        "weather_one": "väderkälla",
+        "weather_other": "väderkällor"
       },
       "order": {
         "closest": "Närmaste blick, sedan nyaste",
@@ -5220,7 +5224,8 @@
       },
       "row": {
         "cloud": "Moln {{pct}} %",
-        "days": "{{count}} dagar",
+        "days_one": "{{count}} dag",
+        "days_other": "{{count}} dagar",
         "repeats": "{{count}} passager av satelliten i gruppen"
       },
       "section": {

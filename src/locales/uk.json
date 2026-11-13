@@ -5217,14 +5217,23 @@
       "share": "Поділитися",
       "shareCopied": "Посилання скопійовано",
       "headline": "За останні {{days}} дн. над {{place}} пролетіли: {{satellites}}.",
-      "satellites": "супутників: {{count}}",
-      "subline": "Опубліковано знімків: {{count}}.",
+      "satellites_one": "супутників: {{count}}",
+      "satellites_few": "супутників: {{count}}",
+      "satellites_many": "супутників: {{count}}",
+      "satellites_other": "супутників: {{count}}",
+      "subline_one": "Опубліковано знімків: {{count}}.",
+      "subline_few": "Опубліковано знімків: {{count}}.",
+      "subline_many": "Опубліковано знімків: {{count}}.",
+      "subline_other": "Опубліковано знімків: {{count}}.",
       "closestLook": "Найближчий знімок",
       "replay": "Повтор",
       "openFull": "Відкрити повний вигляд",
       "previous": "Попередній знімок",
       "next": "Наступний знімок",
-      "passes": "прольотів",
+      "passes_one": "проліт",
+      "passes_few": "прольоти",
+      "passes_many": "прольотів",
+      "passes_other": "прольоту",
       "showAll": "Показати всі прольоти",
       "noRecentDays": "Немає свіжих днів в архіві: {{sources}}",
       "tab": {
@@ -5267,7 +5276,10 @@
         "upcoming": "майбутніх",
         "could": "могли навестися сюди",
         "overhead": "над точкою",
-        "weather": "джерела погоди"
+        "weather_one": "джерело погоди",
+        "weather_few": "джерела погоди",
+        "weather_many": "джерел погоди",
+        "weather_other": "джерела погоди"
       },
       "order": {
         "closest": "Найближчий, потім нові",
@@ -5276,7 +5288,10 @@
       },
       "row": {
         "cloud": "Хмарність {{pct}}%",
-        "days": "днів: {{count}}",
+        "days_one": "днів: {{count}}",
+        "days_few": "днів: {{count}}",
+        "days_many": "днів: {{count}}",
+        "days_other": "днів: {{count}}",
         "repeats": "прольотів цього супутника в групі: {{count}}"
       },
       "section": {

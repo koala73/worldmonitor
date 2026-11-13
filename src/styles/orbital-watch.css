@@ -413,6 +413,11 @@ body.orbital-full-view #mapSection > .panel-header { display: none !important; }
   .ow-carousel { margin-bottom: var(--ow-space-3); }
   .ow-track { align-items: flex-start; }
   .ow-card { flex-basis: min(78%, 184px); }
+  /* A banner takes the room the square hero needs to keep its caption above the tab bar. */
+  .ow-body:has(.ow-banner) .ow-tile-hero { aspect-ratio: 4 / 3; }
+  .ow-banner { margin-bottom: 6px; padding: 6px 10px; font-size: 12px; line-height: 16px; }
+  .ow-banner-partial { display: flex; align-items: center; gap: var(--ow-space-2); }
+  .ow-banner-partial p { flex: 1; margin: 0; }
   .ow-caption { margin-top: 3px; line-height: 15px; }
   .ow-caption .ow-label { line-height: 15px; }
   .ow-caption-row { display: block; }
