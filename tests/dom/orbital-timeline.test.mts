@@ -122,7 +122,7 @@ describe('orbital timeline dock', () => {
     expect(leftPct(mark)).toBeCloseTo(pctOf(photo.timeMs), 2);
     const coulds = [...row('could').querySelectorAll<HTMLElement>('.ow-tl-mark')];
     expect(coulds.map((m) => [m.textContent, m.dataset.count, m.dataset.tier])).toEqual([['□', '1', 'within-reach'], ['□', '2', 'within-reach'], ['□', '1', 'capability-overhead']]);
-    expect(coulds[1]!.dataset.tip!.split('\n')[0]).toBe('×2 · could have pointed here');
+    expect(coulds[1]!.dataset.tip!.split('\n')[0]).toBe('×2 · within reach');
     expect(listText()).toContain('Could passes, 2026-11-13 01:00 UTC to 02:00: 3');
     expect(listText()).toContain('confirmed image: SENTINEL-2B, 2026-11-12 06:00 UTC');
   });

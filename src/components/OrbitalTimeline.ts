@@ -232,12 +232,16 @@ export class OrbitalTimeline {
   }
 
   private marks(passes: PointPass[], row: (typeof ROWS)[number], selectedKey: string | null, pct: (ms: number) => number, when: (ms: number) => string): HTMLElement[] {
+    // A merged glyph keeps one tier, so each tier clusters on its own.
     const groups: PointPass[][] = [];
+    const latest = new Map<PassTier['kind'], PointPass[]>();
     for (const pass of [...passes].sort((a, b) => a.timeMs - b.timeMs)) {
-      const last = groups[groups.length - 1];
-      const joins = last && pct(pass.timeMs) - pct(last[0]!.timeMs) < CLUSTER_PCT && pass.tier.kind === last[0]!.tier.kind;
-      if (joins) last.push(pass);
-      else groups.push([pass]);
+      const last = latest.get(pass.tier.kind);
+      if (last && pct(pass.timeMs) - pct(last[0]!.timeMs) < CLUSTER_PCT) last.push(pass);
+      else {
+        groups.push([pass]);
+        latest.set(pass.tier.kind, groups[groups.length - 1]!);
+      }
     }
     return groups.map((group) => {
       const first = group[0]!;
