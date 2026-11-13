@@ -112,6 +112,14 @@ describe("alertRules.orbitalSites", () => {
     expect((await readRow(t, ALICE))?.orbitalSites).toEqual(atBound);
   });
 
+  test("accepts every id the watched-site registry publishes", async () => {
+    const t = convexTest(schema, modules);
+    await seedPro(t, ALICE);
+    const nbsp = "military-base:british_gurkha\u00a0dharan";
+    await t.mutation(internal.alertRules.setAlertRulesForUser, { userId: ALICE, ...base, orbitalSites: [nbsp] });
+    expect((await readRow(t, ALICE))?.orbitalSites).toEqual([nbsp]);
+  });
+
   test("one account cannot read or change another account's rule", async () => {
     const t = convexTest(schema, modules);
     await seedPro(t, ALICE);

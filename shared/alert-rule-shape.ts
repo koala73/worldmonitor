@@ -31,8 +31,11 @@ const EVENT_TYPE_FORBIDDEN_CHARS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200
 export const ORBITAL_SITE_ALERT_EVENT_TYPES = ['orbital_imaging_window', 'orbital_site_change'] as const;
 /** A rule watches at most this many sites; each one can page on every seed run. */
 export const ORBITAL_ALERT_SITES_MAX = 25;
-/** Watched-site ids are `<list>:<slug>` (shared/watched-sites.ts). */
-const ORBITAL_SITE_ID_PATTERN = /^[a-z][a-z0-9-]{0,31}:[a-z0-9_.-]{1,96}$/;
+/**
+ * Watched-site ids are `<list>:<slug>` (shared/watched-sites.ts). Slugs come from
+ * upstream names and can hold any printable character, a non-breaking space included.
+ */
+const ORBITAL_SITE_ID_PATTERN = /^[a-z][a-z0-9-]{0,31}:[^\u0000-\u0020\u007f-\u009f]{1,96}$/;
 
 export type AlertRuleShapeCode =
   | 'VARIANT_INVALID'
