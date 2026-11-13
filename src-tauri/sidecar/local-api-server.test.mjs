@@ -3737,6 +3737,191 @@ test('rss-proxy escapes control characters from the blocked url before logging i
   }
 });
 
+// Stubs DNS and https.request for rss-proxy tests. `respond(res, req)` drives
+// the fake upstream response; every outbound request is recorded.
+function stubRssUpstream(respond) {
+  const originalResolve4 = dns.resolve4;
+  const originalResolve6 = dns.resolve6;
+  const originalHttpsRequest = https.request;
+  const outbound = [];
+  dns.resolve4 = async () => ['93.184.216.34'];
+  dns.resolve6 = async () => {
+    const error = new Error('No AAAA records');
+    error.code = 'ENODATA';
+    throw error;
+  };
+  https.request = (options, onResponse) => {
+    const req = new EventEmitter();
+    req.destroyed = false;
+    req.setTimeout = () => {};
+    req.write = () => {};
+    req.destroy = (error) => {
+      req.destroyed = true;
+      if (error) req.emit('error', error);
+    };
+    req.end = () => {
+      queueMicrotask(() => {
+        const res = new EventEmitter();
+        res.statusCode = 200;
+        res.statusMessage = 'OK';
+        res.headers = { 'content-type': 'application/rss+xml' };
+        onResponse(res);
+        respond(res, req);
+      });
+    };
+    outbound.push({ options, req });
+    return req;
+  };
+  return {
+    outbound,
+    restore() {
+      dns.resolve4 = originalResolve4;
+      dns.resolve6 = originalResolve6;
+      https.request = originalHttpsRequest;
+    },
+  };
+}
+
+test('docker-mode rss-proxy refuses hosts outside the feed allowlist and non-default ports', async () => {
+  const localApi = await setupApiDir({});
+  const upstream = stubRssUpstream((res) => {
+    res.emit('data', Buffer.from('<rss />'));
+    res.emit('end');
+  });
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    mode: 'docker',
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const proxy = (feedUrl) => authFetch(
+    `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`,
+  );
+
+  try {
+    for (const feedUrl of [
+      'https://unlisted.example/',
+      'https://news.google.com:8443/rss',
+      'http://news.google.com:8080/rss',
+      'https://news.google.com.attacker.example/rss',
+    ]) {
+      const response = await proxy(feedUrl);
+      assert.equal(response.status, 403, feedUrl);
+      assert.equal((await response.json()).error, 'Domain not allowed', feedUrl);
+    }
+    assert.equal(upstream.outbound.length, 0);
+
+    const allowed = await proxy('https://news.google.com/rss?hl=en');
+    assert.equal(allowed.status, 200);
+    assert.equal(await allowed.text(), '<rss />');
+    assert.equal(upstream.outbound.length, 1);
+    assert.equal(upstream.outbound[0].options.hostname, 'news.google.com');
+  } finally {
+    upstream.restore();
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('docker-mode rss-proxy rate-limits each client IP', async () => {
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    mode: 'docker',
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const proxy = (clientIp) => authFetch(
+    `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent('https://unlisted.example/')}`,
+    { headers: { 'X-Real-IP': clientIp } },
+  );
+
+  try {
+    for (let i = 0; i < 300; i += 1) {
+      const response = await proxy('203.0.113.7');
+      assert.equal(response.status, 403);
+      await response.body?.cancel();
+    }
+    const limited = await proxy('203.0.113.7');
+    assert.equal(limited.status, 429);
+    assert.ok(Number(limited.headers.get('retry-after')) >= 1);
+    assert.equal((await proxy('203.0.113.8')).status, 403);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('rss-proxy stops reading a feed body past the size cap', async () => {
+  const localApi = await setupApiDir({});
+  const chunk = Buffer.alloc(1024 * 1024, 0x61);
+  let emitted = 0;
+  const upstream = stubRssUpstream((res, req) => {
+    // A hostile upstream that would stream 64 MiB if the proxy kept reading.
+    for (let i = 0; i < 64 && !req.destroyed; i += 1) {
+      emitted += 1;
+      res.emit('data', chunk);
+    }
+    if (!req.destroyed) res.emit('end');
+  });
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(
+      `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent('https://huge.example/feed.xml')}`,
+    );
+    assert.equal(response.status, 502);
+    assert.equal((await response.json()).error, 'Feed too large');
+    assert.equal(upstream.outbound[0].req.destroyed, true);
+    assert.equal(emitted, 6);
+  } finally {
+    upstream.restore();
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('rss-proxy rejects a declared Content-Length over the size cap before reading', async () => {
+  const localApi = await setupApiDir({});
+  let dataListeners = null;
+  const upstream = stubRssUpstream((res) => {
+    dataListeners = res.listenerCount('data');
+  });
+  const originalRequest = https.request;
+  https.request = (options, onResponse) => originalRequest(options, (res) => {
+    res.headers['content-length'] = String(50 * 1024 * 1024);
+    onResponse(res);
+  });
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(
+      `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent('https://huge.example/feed.xml')}`,
+    );
+    assert.equal(response.status, 502);
+    assert.equal((await response.json()).error, 'Feed too large');
+    assert.equal(dataListeners, 0);
+    assert.equal(upstream.outbound[0].req.destroyed, true);
+  } finally {
+    https.request = originalRequest;
+    upstream.restore();
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('a malformed request-target gets a 400 and the sidecar keeps serving', async () => {
   const localApi = await setupApiDir({
     'ping.js': `
