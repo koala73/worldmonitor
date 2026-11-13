@@ -131,4 +131,17 @@ describe('SVG map centers requested while hidden', () => {
     expect(at.x).toBeCloseTo(10 + size.width / 2 + offset.x, 6);
     expect(at.y).toBeCloseTo(20 + size.height / 2 + offset.y, 6);
   });
+
+  it('keeps a place by the antimeridian on screen when the offset would wrap the centre', () => {
+    const { map, size, reveal } = createMap();
+    reveal();
+    map.container.getBoundingClientRect = () => new DOMRect(0, 0, size.width, size.height);
+    const centre = map.centerForOffset(-18.1, 179.9, 11, { x: -120, y: 0 });
+    expect(centre.lon).toBeCloseTo(179.9, 6);
+    map.setCenter(centre.lat, centre.lon);
+    map.setZoom(11);
+    const at = map.projectToClient(-18.1, 179.9)!;
+    expect(at.x).toBeGreaterThanOrEqual(0);
+    expect(at.x).toBeLessThanOrEqual(size.width);
+  });
 });

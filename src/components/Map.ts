@@ -5298,7 +5298,9 @@ export class MapComponent {
     const pos = projection([lon, lat]);
     const scale = Math.max(1, Math.min(10, zoom));
     const centre = pos && projection.invert?.([pos[0] - offset.x / scale, pos[1] - offset.y / scale]);
-    return centre ? { lat: centre[1], lon: centre[0] } : { lat, lon };
+    if (!centre) return { lat, lon };
+    // The SVG map does not repeat, so a centre wrapped across the antimeridian would pan the place off screen.
+    return { lat: centre[1], lon: Math.abs(centre[0] - lon) > 180 ? lon : centre[0] };
   }
 
   /** Where (lat, lon) is drawn in client coordinates, through the same translate and scale applyTransform() sets. */
