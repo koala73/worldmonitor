@@ -5056,12 +5056,16 @@
       "emptyFuelShortages": "Keine Treibstoffknappheit für diese Länder",
       "emptyEnergyDisruptions": "Keine Energieunterbrechungen für diese Länder",
       "emptyDisplacement": "Keine Fluchtlingsdaten für diese Länder",
-      "emptyCorrelation": "Keine Signale für diese Länder"
+      "emptyCorrelation": "Keine Signale für diese Länder",
+      "emptyExposure": "Keine Orte mit Bevölkerungsexposition für diese Länder",
+      "emptyExposurePartial": "Die verfügbaren Daten enthalten keine Expositionsorte für diese Länder. Die vollständige UCDP-Abdeckung steht noch aus.",
+      "partialExposureLoading": "Alle UCDP-Orte werden vor der Filterung der Exposition geladen. Die Abdeckungszahlen enthalten nur Unruhen.",
+      "partialExposure": "Die vollständigen UCDP-Orte konnten nicht geladen werden. Die Expositionsdaten sind unvollständig; die Abdeckungszahlen enthalten nur Unruhen."
     },
-    "draftAssessment": "Entwurf einer Bewertung",
+    "draftAssessment": "Reisebewertung",
     "draftAssessmentAria": "Reisebewertung öffnen, vorgefüllt mit diesem Focus",
     "draftCopied": "Anfrage kopiert. Füge sie in deinen KI-Assistenten ein.",
-    "draftCopiedPartial": "Anfrage für die ersten {{count}} Länder kopiert. Eine Bewertung umfasst höchstens {{max}} Länder.",
+    "draftCopiedPartial": "Anfrage für die ersten {{count}} Länder kopiert. Eine Bewertung umfasst höchstens {{max}} Länder. Ausgelassen: {{omitted}}.",
     "draftCopyFailed": "Die Anfrage konnte nicht kopiert werden."
   },
   "tripAssessment": {

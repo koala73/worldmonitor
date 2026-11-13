@@ -22,6 +22,8 @@ const REFRESH_HINT =
   'ANTHROPIC_API_KEY=... node scripts/translate-locales.mjs && npm run locales:zh-tw';
 
 const NEW_TRANSLATED_KEYS = [
+  ...['emptyExposure', 'emptyExposurePartial', 'partialExposureLoading', 'partialExposure']
+    .map(key => `focus.filter.${key}`),
   ...['upcomingForecast', 'currentForecast', 'expiredForecast', 'validFrom', 'validUntil']
     .map(key => `popups.${key}`),
   'countryBrief.chips.normalPrecautions',

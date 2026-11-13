@@ -6485,13 +6485,13 @@ body.playback-mode .status-dot {
    presentation attributes; the fill is left alone so sanctions shading stays.
    The map wrapper is CSS-scaled by the zoom, so the width is divided by it
    (--marker-scale is 1 / zoom) to stay 2px and 1px on screen. */
-.map-base .country.country-focus-neighbour {
+.map-base .country-focus-neighbour {
   stroke: var(--green);
   stroke-opacity: 0.5;
   stroke-width: calc(1px * var(--marker-scale, 1));
 }
 
-.map-base .country.country-focus-chosen {
+.map-base .country-focus-chosen {
   stroke: var(--green);
   stroke-opacity: 1;
   stroke-width: calc(2px * var(--marker-scale, 1));
@@ -6500,15 +6500,19 @@ body.playback-mode .status-dot {
 /* The light map fill leaves --green at about 2.7:1, and a faint 1px neighbour
    line reads as an ordinary border. Darken both strokes and dash the
    neighbour so the two states differ by more than weight. */
-[data-theme="light"] .map-base .country.country-focus-chosen {
+[data-theme="light"] .map-base .country-focus-chosen {
   stroke: var(--green-text, var(--green));
 }
 
-[data-theme="light"] .map-base .country.country-focus-neighbour {
+[data-theme="light"] .map-base .country-focus-neighbour {
   stroke: var(--green-text, var(--green));
   stroke-opacity: 0.85;
   stroke-width: calc(1.5px * var(--marker-scale, 1));
   stroke-dasharray: calc(4px * var(--marker-scale, 1)) calc(2px * var(--marker-scale, 1));
+}
+
+.map-base .focus-centre-ring {
+  r: calc(5px * var(--marker-scale, 1));
 }
 
 /* Cable paths */
@@ -25072,6 +25076,11 @@ body.map-width-resizing {
   overflow: hidden;
 }
 
+/* The canvas is positioned above the default polygon tooltip in globe.gl. */
+.globe-mode .float-tooltip-kap {
+  z-index: 10;
+}
+
 @keyframes globe-pulse {
   0%   { transform: scale(1); opacity: 0.6; }
   70%  { transform: scale(2.5); opacity: 0; }
@@ -30030,6 +30039,11 @@ body.map-width-resizing {
   width: min(640px, calc(100vw - 32px));
   max-width: none;
   overflow-y: auto;
+}
+
+/* Copy feedback is body-level; keep it above this dialog's overlay (10020). */
+.focus-editor-overlay:has(> .trip-assessment) ~ .toast-notification {
+  z-index: 10021;
 }
 
 /* The messages and the actions stay in view while a long trip scrolls. The

@@ -5084,12 +5084,16 @@
       "emptyFuelShortages": "Nicio lipsă de combustibil pentru aceste țări",
       "emptyEnergyDisruptions": "Nicio întrerupere de energie pentru aceste țări",
       "emptyDisplacement": "Niciun date de deplasare pentru aceste țări",
-      "emptyCorrelation": "Niciun semnal pentru aceste țări"
+      "emptyCorrelation": "Niciun semnal pentru aceste țări",
+      "emptyExposure": "Nu există locații de expunere a populației pentru aceste țări",
+      "emptyExposurePartial": "Datele disponibile nu conțin locații de expunere pentru aceste țări. Acoperirea completă UCDP este în așteptare.",
+      "partialExposureLoading": "Se încarcă toate locațiile UCDP înainte de filtrarea expunerii. Numărătorile de acoperire includ doar tulburările.",
+      "partialExposure": "Nu s-au putut încărca toate locațiile UCDP. Datele de expunere sunt incomplete; numărătorile de acoperire includ doar tulburările."
     },
-    "draftAssessment": "Ciornă de evaluare",
+    "draftAssessment": "Evaluare călătorie",
     "draftAssessmentAria": "Deschideți evaluarea călătoriei, completată dinainte cu acest focus",
     "draftCopied": "Cerere copiată. Lipește-o în asistentul tău AI.",
-    "draftCopiedPartial": "Cererea a fost copiată pentru primele {{count}} țări. O evaluare acoperă cel mult {{max}} țări.",
+    "draftCopiedPartial": "Cererea a fost copiată pentru primele {{count}} țări. O evaluare acoperă cel mult {{max}} țări. Țări omise: {{omitted}}.",
     "draftCopyFailed": "Nu s-a putut copia cererea."
   },
   "tripAssessment": {

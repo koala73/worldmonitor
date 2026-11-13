@@ -5056,12 +5056,16 @@
       "emptyFuelShortages": "Bu ülkeler için yakıt kıtlığı yok",
       "emptyEnergyDisruptions": "Bu ülkeler için enerji kesintisi yok",
       "emptyDisplacement": "Bu ülkeler için yer değiştirme verisi yok",
-      "emptyCorrelation": "Bu ülkeler için sinyal yok"
+      "emptyCorrelation": "Bu ülkeler için sinyal yok",
+      "emptyExposure": "Bu ülkeler için nüfus maruziyeti konumu yok",
+      "emptyExposurePartial": "Mevcut verilerde bu ülkeler için maruziyet konumu yok. Tam UCDP kapsamı bekleniyor.",
+      "partialExposureLoading": "Maruziyet filtrelenmeden önce tüm UCDP konumları yükleniyor. Kapsam sayıları yalnızca huzursuzluk olaylarını içerir.",
+      "partialExposure": "Tüm UCDP konumları yüklenemedi. Maruziyet verileri eksik; kapsam sayıları yalnızca huzursuzluk olaylarını içerir."
     },
-    "draftAssessment": "Taslak değerlendirme",
+    "draftAssessment": "Seyahat değerlendirmesi",
     "draftAssessmentAria": "Seyahat değerlendirmesini açın, bu odak noktasıyla önceden doldurulmuş",
     "draftCopied": "İstem kopyalandı. AI asistanınıza yapıştırın.",
-    "draftCopiedPartial": "İlk {{count}} ülke için istek kopyalandı. Bir değerlendirme en fazla {{max}} ülkeyi kapsar.",
+    "draftCopiedPartial": "İlk {{count}} ülke için istek kopyalandı. Bir değerlendirme en fazla {{max}} ülkeyi kapsar. Dışarıda bırakılan ülkeler: {{omitted}}.",
     "draftCopyFailed": "İstem kopyalanamadı."
   },
   "tripAssessment": {

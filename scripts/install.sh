@@ -13,7 +13,9 @@ BRANCH="${WM_BRANCH:-main}"
 TARGET_DIR="${WM_DIR:-worldmonitor}"
 PORT="${WM_PORT:-}"
 SEED=1
-BUILD=1
+# pull: pull the published images, build only if the pull fails (default)
+# build: build from source   none: start whatever is local
+BUILD=pull
 
 # Help text lives here, not in a comment read from "$0": under
 # `curl ... | bash -s -- --help` there is no script file to read.
@@ -32,7 +34,8 @@ What it does (idempotent, safe to re-run):
   2. Adds the four REQUIRED secrets to .env when they are missing
      (RELAY_SHARED_SECRET, REDIS_PASSWORD, REDIS_TOKEN, WM_SESSION_SECRET).
      Existing values are never overwritten. .env is kept at mode 600.
-  3. Starts the stack with Docker/Podman Compose.
+  3. Pulls the published images and starts the stack with Docker/Podman
+     Compose (builds from source if the pull fails).
   4. With Node.js 22.19+ on the host: runs npm ci when node_modules is
      missing, waits for the Redis REST proxy, and seeds public data.
 
@@ -42,7 +45,9 @@ Options:
   --port PORT   host port for the dashboard, saved as WM_PORT in .env
                 (default: the saved value, else 3000). Env: WM_PORT
   --no-seed     skip npm ci and ./scripts/run-seeders.sh
-  --no-build    skip --build on compose up (faster re-runs)
+  --build       build the images from source instead of pulling them
+  --no-build    skip the explicit pull and build; compose still fetches or
+                builds an image that is missing locally
   -h, --help    show this help
 
 Env overrides: WM_REPO, WM_BRANCH, WM_DIR, WM_PORT.
@@ -67,7 +72,8 @@ while [ "$#" -gt 0 ]; do
       shift 2
       ;;
     --no-seed) SEED=0; shift ;;
-    --no-build) BUILD=0; shift ;;
+    --build) BUILD=build; shift ;;
+    --no-build) BUILD=none; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown argument: $1 (try --help)" ;;
   esac
@@ -237,7 +243,14 @@ fi
 export WM_PORT="$PORT"
 
 log "Starting World Monitor (compose: $COMPOSE)..."
-if [ "$BUILD" -eq 1 ]; then
+if [ "$BUILD" = "pull" ]; then
+  # shellcheck disable=SC2086
+  if ! $COMPOSE pull; then
+    warn "pulling the published images failed, building from source instead"
+    BUILD=build
+  fi
+fi
+if [ "$BUILD" = "build" ]; then
   # shellcheck disable=SC2086
   $COMPOSE up -d --build || die "compose up failed (see ${COMPOSE} logs)"
 else

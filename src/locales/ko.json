@@ -5028,12 +5028,16 @@
       "emptyFuelShortages": "이 국가들에 대한 연료 부족 기록이 없습니다",
       "emptyEnergyDisruptions": "이 국가들에 대한 에너지 중단 기록이 없습니다",
       "emptyDisplacement": "이 국가들에 대한 난민 데이터가 없습니다",
-      "emptyCorrelation": "이 국가들에 대한 신호가 없습니다"
+      "emptyCorrelation": "이 국가들에 대한 신호가 없습니다",
+      "emptyExposure": "이 국가들의 인구 노출 위치가 없습니다",
+      "emptyExposurePartial": "사용 가능한 데이터에 이 국가들의 노출 위치가 없습니다. 전체 UCDP 범위는 대기 중입니다.",
+      "partialExposureLoading": "노출을 필터링하기 전에 전체 UCDP 위치를 불러오는 중입니다. 범위 집계에는 소요 사태만 포함됩니다.",
+      "partialExposure": "전체 UCDP 위치를 불러오지 못했습니다. 노출 데이터가 불완전하며 범위 집계에는 소요 사태만 포함됩니다."
     },
-    "draftAssessment": "초안 평가",
+    "draftAssessment": "여행 위험 평가",
     "draftAssessmentAria": "이 포커스로 미리 채워진 여행 위험 평가 열기",
     "draftCopied": "요청이 복사되었습니다. AI 어시스턴트에 붙여넣으세요.",
-    "draftCopiedPartial": "첫 {{count}}개 국가에 대한 요청이 복사되었습니다. 평가는 최대 {{max}}개 국가를 포함할 수 있습니다.",
+    "draftCopiedPartial": "첫 {{count}}개 국가에 대한 요청이 복사되었습니다. 평가는 최대 {{max}}개 국가를 포함할 수 있습니다. 제외된 국가: {{omitted}}.",
     "draftCopyFailed": "요청을 복사할 수 없습니다."
   },
   "tripAssessment": {

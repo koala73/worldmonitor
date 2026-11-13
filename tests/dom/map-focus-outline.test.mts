@@ -184,6 +184,29 @@ describe('SVG focus outline', () => {
     expect(map.state.zoom).toBeLessThan(2);
   });
 
+  it('rings missing small-country boundaries at their projected centres and clears them', async () => {
+    const d3 = await import('d3');
+    const { group } = svgHost(['764', '458']);
+    const map = Object.assign(Object.create(MapComponent.prototype), {
+      baseLayerGroup: d3.select(group), focusOutline: null,
+      readContainerSize: () => ({ width: 390, height: 300 }),
+    });
+    map.setFocusOutline({ chosen: ['SG', 'BH', 'MT', 'TH'], neighbours: ['AD'] });
+    const rings = [...group.querySelectorAll<SVGCircleElement>('.focus-centre-ring')];
+    expect(rings.map(el => el.dataset.id).sort()).toEqual(['020', '048', '470', '702']);
+    const singapore = group.querySelector<SVGCircleElement>('[data-id="702"]')!;
+    expect(singapore.classList.contains('country-focus-chosen')).toBe(true);
+    const [x, y] = map.getProjection(390, 300)([103.82, 1.36]);
+    expect(Number(singapore.getAttribute('cx'))).toBeCloseTo(x);
+    expect(Number(singapore.getAttribute('cy'))).toBeCloseTo(y);
+    expect(singapore.getAttribute('pointer-events')).toBe('none');
+    map.setFocusOutline({ chosen: ['AD'], neighbours: [] });
+    expect(group.querySelectorAll('.focus-centre-ring')).toHaveLength(1);
+    expect(group.querySelector('.focus-centre-ring.country-focus-chosen')).toBeTruthy();
+    map.setFocusOutline(null);
+    expect(group.querySelectorAll('.focus-centre-ring')).toHaveLength(0);
+  });
+
   function hiddenSvg() {
     let size = { width: 0, height: 0 };
     const map = Object.assign(Object.create(MapComponent.prototype), {
@@ -256,6 +279,24 @@ describe('Globe focus outline', () => {
     expect(polygonsData.mock.lastCall![0]).toEqual([]);
   });
 
+  it('uses the same globe ring winding for CII fills and focus outlines without mutating the boundary', () => {
+    const boundary = feature('TH');
+    const original = structuredClone(boundary.geometry.coordinates);
+    const polygonsData = vi.fn();
+    const map = Object.assign(Object.create(GlobeMap.prototype), {
+      globe: { polygonsData }, initialized: true, destroyed: false, webglLost: false,
+      layers: { ciiChoropleth: true }, scenarioPolygons: [], focusOutline: null,
+      reversedRingCache: new Map(), ciiScoresMap: new Map(), wakeGlobe: vi.fn(),
+      countriesGeoData: { type: 'FeatureCollection', features: [boundary] },
+    });
+    map.setCIIScores([{ code: 'TH', score: 73, level: 'high' }]);
+    map.setFocusOutline({ chosen: ['TH'], neighbours: [] });
+    const polys = polygonsData.mock.lastCall![0];
+    expect(polys.find((p: { _kind: string }) => p._kind === 'cii').coords)
+      .toEqual(polys.find((p: { _kind: string }) => p._kind === 'focusChosen').coords);
+    expect(boundary.geometry.coordinates).toEqual(original);
+  });
+
   it('builds the outline once countries load after the focus was set', () => {
     const polygonsData = vi.fn();
     const map = Object.assign(Object.create(GlobeMap.prototype), {
@@ -279,6 +320,8 @@ describe('MapContainer focus scope', () => {
       setCenter: vi.fn(),
       setView: vi.fn(),
       setZoom: vi.fn(),
+      openReservoir: vi.fn(),
+      openChokepoint: vi.fn(),
     };
   }
 
@@ -352,6 +395,62 @@ describe('MapContainer focus scope', () => {
     map.setFocusScope(null, { fit: false });
     await vi.dynamicImportSettled();
     expect(deck.fitFocusBounds).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('drops an older fit when an outline-only update changes countries (ready=%s)', async (ready) => {
+    const { map, deck } = container({ ready });
+    map.setFocusScope({ chosen: ['TH'], neighbours: [] }, { fit: true });
+    if (!ready) await vi.dynamicImportSettled();
+    map.setFocusScope({ chosen: ['FJ'], neighbours: [] }, { fit: false });
+    await vi.dynamicImportSettled();
+    if (!ready) map.markRendererReady(1);
+    expect(deck.fitFocusBounds).not.toHaveBeenCalled();
+    expect(deck.setFocusOutline).toHaveBeenLastCalledWith({ chosen: ['FJ'], neighbours: [] });
+  });
+
+  it('keeps a pending fit for the same chosen set when only neighbours or order change', async () => {
+    const { map, deck } = container();
+    map.setFocusScope(OUTLINE, { fit: true });
+    map.setFocusScope({ chosen: ['ID', 'TH', 'VN'], neighbours: [] }, { fit: false });
+    await vi.dynamicImportSettled();
+    expect(deck.fitFocusBounds).toHaveBeenCalledOnce();
+  });
+
+  it.each(['deck', 'svg', 'globe'] as const)('direct navigation supersedes a loading focus fit on %s', async (kind) => {
+    for (const destination of ['reservoir', 'chokepoint']) {
+      const host = container({ renderer: kind });
+      const active = host[kind];
+      host.map.setFocusScope(OUTLINE, { fit: true });
+      if (destination === 'reservoir') host.map.openReservoir({ id: 'test' });
+      else host.map.openChokepoint('hormuz');
+      await vi.dynamicImportSettled();
+      expect(active.fitFocusBounds).not.toHaveBeenCalled();
+      expect(destination === 'reservoir' ? active.openReservoir : active.openChokepoint).toHaveBeenCalledOnce();
+    }
+  });
+
+  it.each(['reservoir', 'chokepoint'])('direct %s navigation supersedes a queued focus fit before renderer readiness', async (destination) => {
+    const { map, deck } = container({ ready: false });
+    map.setFocusScope(OUTLINE, { fit: true });
+    await vi.dynamicImportSettled();
+    if (destination === 'reservoir') map.openReservoir({ id: 'test' });
+    else map.openChokepoint('hormuz');
+    map.markRendererReady(1);
+    expect(deck.fitFocusBounds).not.toHaveBeenCalled();
+    expect(destination === 'reservoir' ? deck.openReservoir : deck.openChokepoint).toHaveBeenCalledOnce();
+  });
+
+  it.each(['reservoir', 'chokepoint'])('replaying an older %s open preserves a newer loading focus fit', async (destination) => {
+    const { map, deck } = container({ ready: false });
+    if (destination === 'reservoir') map.openReservoir({ id: 'test' });
+    else map.openChokepoint('hormuz');
+    map.setFocusScope(OUTLINE, { fit: true });
+    map.markRendererReady(1);
+    const open = destination === 'reservoir' ? deck.openReservoir : deck.openChokepoint;
+    expect(open).toHaveBeenCalledOnce();
+    await vi.dynamicImportSettled();
+    expect(deck.fitFocusBounds).toHaveBeenCalledWith(focusFitBounds(OUTLINE.chosen), 6);
+    expect(open.mock.invocationCallOrder[0]).toBeLessThan(deck.fitFocusBounds.mock.invocationCallOrder[0]!);
   });
 
   it('a team dashboard\'s stored view, applied after the focus, wins over the fit', async () => {

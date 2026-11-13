@@ -5112,12 +5112,16 @@
       "emptyFuelShortages": "Brak niedoborów paliwa dla tych krajów",
       "emptyEnergyDisruptions": "Brak zakłóceń w dostawach energii dla tych krajów",
       "emptyDisplacement": "Brak danych o przesiedleniach dla tych krajów",
-      "emptyCorrelation": "Brak sygnałów dla tych krajów"
+      "emptyCorrelation": "Brak sygnałów dla tych krajów",
+      "emptyExposure": "Brak lokalizacji narażenia ludności dla tych krajów",
+      "emptyExposurePartial": "Dostępne dane nie zawierają lokalizacji narażenia dla tych krajów. Pełne pokrycie UCDP jest w toku.",
+      "partialExposureLoading": "Wczytywanie wszystkich lokalizacji UCDP przed filtrowaniem narażenia. Statystyki pokrycia obejmują tylko niepokoje.",
+      "partialExposure": "Nie udało się wczytać wszystkich lokalizacji UCDP. Dane o narażeniu są niepełne; statystyki pokrycia obejmują tylko niepokoje."
     },
-    "draftAssessment": "Szkic oceny",
+    "draftAssessment": "Ocena podróży",
     "draftAssessmentAria": "Otwórz ocenę podróży, wstępnie wypełnioną tym fokusem",
     "draftCopied": "Prośba skopiowana. Wklej ją do swojego asystenta AI.",
-    "draftCopiedPartial": "Żądanie skopiowano dla pierwszych {{count}} krajów. Ocena obejmuje co najwyżej {{max}} krajów.",
+    "draftCopiedPartial": "Żądanie skopiowano dla pierwszych {{count}} krajów. Ocena obejmuje co najwyżej {{max}} krajów. Pominięte kraje: {{omitted}}.",
     "draftCopyFailed": "Nie udało się skopiować prośby."
   },
   "tripAssessment": {

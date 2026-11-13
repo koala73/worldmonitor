@@ -48,6 +48,29 @@ describe('protected-resource metadata — path-scoped /mcp document', () => {
     assert.equal(json.resource, 'https://worldmonitor.app');
   });
 
+  for (const path of ['/.well-known/oauth-protected-resource/api', '/api/oauth-protected-resource?resource=api']) {
+    it(`${path} describes API-key access without advertising the MCP authorization server`, async () => {
+      const res = await get(prmHandler, 'api.worldmonitor.app', path);
+      assert.equal(res.status, 200);
+      assert.equal(res.headers.get('vary'), 'Host');
+      const json = await res.json();
+      assert.equal(json.resource, 'https://api.worldmonitor.app/api');
+      assert.deepEqual(json.authorization_servers, []);
+      assert.deepEqual(json.scopes_supported, []);
+      assert.equal(json.api_key_header, 'X-WorldMonitor-Key');
+    });
+  }
+
+  it('a spoofed Host cannot redirect REST API-key setup', async () => {
+    const res = await prmHandler(new Request('https://worldmonitor.app/.well-known/oauth-protected-resource/api', {
+      headers: { host: 'evil.example' },
+    }));
+    assert.equal(res.status, 200);
+    const json = await res.json();
+    assert.equal(json.resource, 'https://worldmonitor.app/api');
+    assert.equal(json.api_key_registration_uri, 'https://www.worldmonitor.app/pro');
+  });
+
   it('a spoofed Host is not reflected into the path-scoped resource', async () => {
     const res = await prmHandler(new Request('https://worldmonitor.app/.well-known/oauth-protected-resource/mcp', {
       headers: { host: 'evil.example' },

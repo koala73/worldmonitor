@@ -138,3 +138,62 @@ test('Water Levels markers follow the layer toggle and open a popup in each rend
     expect(r.popupTitle, r.path).toContain('Lake Mead');
   }
 });
+
+for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+  test(`Water Levels follows the focus editor at ${viewport.width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.route('**/api/**', route => route.fulfill({ json: {} }));
+    await page.goto('/tests/map-harness.html');
+    // Component integration surface: real editor, resolver, panels and styles;
+    // controlled reservoir snapshot, no account entitlement or deployed API proof.
+    await page.evaluate(async (fixture) => {
+      const paths = ['/src/components/ReservoirLevelsPanel.ts', '/src/services/climate/reservoir-levels.ts',
+        '/src/components/FocusEditor.ts', '/shared/tab-scope-resolve.ts', '/src/services/i18n.ts',
+        '/src/components/ClimateAnomalyPanel.ts', '/src/components/PopulationExposurePanel.ts',
+        '/src/components/panel-scope-notice.ts', '/src/config/panel-scope.ts'];
+      const [water, data, editor, resolver, i18n, climate, population, notice, registry] = await Promise.all(paths.map(p => import(/* @vite-ignore */ p)));
+      await i18n.initI18n();
+      const panel = new water.ReservoirLevelsPanel();
+      document.body.replaceChildren();
+      document.body.style.cssText = 'margin:0;padding:12px;background:var(--bg);box-sizing:border-box';
+      const host = document.createElement('main');
+      host.style.cssText = 'width:100%;max-width:620px;margin:auto';
+      document.body.append(host);
+      const focusButton = document.createElement('button');
+      focusButton.textContent = 'Set country focus';
+      host.append(focusButton);
+      const panels = [panel, new climate.ClimateAnomalyPanel(), new population.PopulationExposurePanel()];
+      for (const p of panels) {
+        p.getElement().style.cssText = 'height:430px;width:100%;margin-top:12px';
+        host.append(p.getElement());
+      }
+      panel.setResult({ ok: true, snapshot: { reservoirs: fixture.reservoirs.map(data.toDisplayReservoirLevel), fetchedAt: null, methodology: '', sourceName: '' } });
+      focusButton.onclick = () => editor.openFocusEditor({ initial: null, onClear: () => {}, onSave: (scope: { countries: string[]; neighbours: boolean }) => {
+        const resolved = { scope, ...resolver.resolveScope(scope) };
+        for (const p of panels) {
+          p.applyScope(resolved);
+          p.setScopeNotice(notice.scopeNoticeFor(registry.getPanelScopeBehaviour(p.getElement().dataset.panel), p, resolved));
+        }
+      } });
+    }, FIXTURE);
+    const panel = page.locator('.panel[data-panel="reservoir-levels"]');
+    await expect(panel.locator('.wl-row')).toHaveCount(48);
+    await page.getByRole('button', { name: 'Set country focus' }).click();
+    await page.locator('.focus-editor-search').fill('Egypt');
+    await page.locator('.focus-editor-result').filter({ hasText: 'Egypt' }).click();
+    await page.locator('.focus-editor-neighbours').uncheck();
+    await page.locator('.focus-editor-save').click();
+    await expect(panel.locator('[data-reservoir-id="gerd"]')).toBeVisible();
+    await expect(panel.locator('[data-reservoir-id="mead"]')).toHaveCount(0);
+    await expect(panel.locator('.panel-scope-strip')).toContainText('Showing Egypt');
+    await expect(panel.locator('.panel-scope-chip')).toHaveCount(0);
+    for (const key of ['climate', 'population-exposure']) {
+      await expect(page.locator(`.panel[data-panel="${key}"] .panel-scope-chip`)).toHaveText('Not filtered');
+    }
+    await panel.screenshot({ path: testInfo.outputPath(`focus-egypt-${viewport.width}.png`) });
+    await panel.locator('[data-scope-action="show-all"]').click();
+    await expect(panel.locator('.wl-row')).toHaveCount(48);
+    await panel.locator('[data-scope-action="apply"]').click();
+    await expect(panel.locator('[data-reservoir-id="mead"]')).toHaveCount(0);
+  });
+}

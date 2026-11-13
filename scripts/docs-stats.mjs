@@ -1362,7 +1362,7 @@ export function validateVolatileInventoryClaims() {
     { path: 'docs/data-sources.mdx', text: /25 feed categories would have generated 25,000 edge invocations/ },
     { path: 'docs/tradingview-screener-integration.md', text: /41\/41 operations/ },
     { path: 'docs/api-versioning.mdx', text: /version 1 operation/ },
-    { path: 'docs/architecture.mdx', text: /protoc-gen-openapiv3.*OpenAPI 3\.1\.0 specs/ },
+    { path: 'docs/architecture-topics/api-contracts-and-bootstrap.mdx', text: /protoc-gen-openapiv3.*OpenAPI 3\.1\.0 specs/ },
     { path: 'docs/PRESS_KIT.md', text: /72 indicators, 21 active dimensions, 6 domains/ },
     { path: 'docs/documentation.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
     { path: 'docs/features.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },

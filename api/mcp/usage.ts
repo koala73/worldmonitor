@@ -122,6 +122,8 @@ export interface McpUsage {
   protocolVersion: string | null;
   /** 'modern' once a request takes the 2026-07-28 per-request path (api/mcp/modern.ts). */
   era: McpEra;
+  /** clientInfo.name the request declares, bounded by declaredClientName; null when it names none. */
+  clientName: string | null;
   /** Enterprise contract account a tools/call charged; set by dispatch. */
   accountId?: string | null;
   /** That charge fell past the contract allowance (overage); set by dispatch. */
@@ -159,6 +161,7 @@ export function createMcpUsage(): McpUsage {
     toolOutcome: null,
     protocolVersion: null,
     era: 'legacy',
+    clientName: null,
   };
 }
 
@@ -358,6 +361,8 @@ export function emitMcpRequestEvent(
       toolJmespath: usage.toolOutcome?.jmespathUsed ?? null,
       mcpProtocolVersion: usage.protocolVersion,
       mcpEra: usage.era,
+      // Same cardinality rule as requested_tool: client-chosen, so only for callers that authenticated.
+      mcpClientName: usage.authKind === 'anon' ? null : usage.clientName,
       accountId: usage.accountId ?? null,
       overage: usage.overage ?? null,
     });

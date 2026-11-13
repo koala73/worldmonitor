@@ -5112,12 +5112,16 @@
       "emptyFuelShortages": "Žádné nedostatky paliva pro tyto země",
       "emptyEnergyDisruptions": "Žádné přerušení energetiky pro tyto země",
       "emptyDisplacement": "Žádné údaje o vysídlení pro tyto země",
-      "emptyCorrelation": "Žádné signály pro tyto země"
+      "emptyCorrelation": "Žádné signály pro tyto země",
+      "emptyExposure": "Pro tyto země nejsou k dispozici místa ohrožení obyvatelstva",
+      "emptyExposurePartial": "V dostupných datech nejsou místa ohrožení pro tyto země. Čeká se na úplné pokrytí UCDP.",
+      "partialExposureLoading": "Před filtrováním ohrožení se načítají všechna místa UCDP. Počty pokrytí zahrnují pouze nepokoje.",
+      "partialExposure": "Všechna místa UCDP se nepodařilo načíst. Údaje o ohrožení jsou neúplné; počty pokrytí zahrnují pouze nepokoje."
     },
-    "draftAssessment": "Návrh posouzení",
+    "draftAssessment": "Posouzení cesty",
     "draftAssessmentAria": "Otevřít posouzení cesty, předvyplněné touto zaměřením",
     "draftCopied": "Požadavek zkopírován. Vložte jej do vašeho AI asistenta.",
-    "draftCopiedPartial": "Požadavek zkopírován pro prvních {{count}} zemí. Posouzení zahrnuje maximálně {{max}} zemí.",
+    "draftCopiedPartial": "Požadavek zkopírován pro prvních {{count}} zemí. Posouzení zahrnuje maximálně {{max}} zemí. Vynecháno: {{omitted}}.",
     "draftCopyFailed": "Nepodařilo se zkopírovat požadavek."
   },
   "tripAssessment": {

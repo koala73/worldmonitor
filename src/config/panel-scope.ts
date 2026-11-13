@@ -102,14 +102,11 @@ export const PANEL_SCOPE_BEHAVIOUR: Readonly<Record<string, PanelScopeBehaviour>
   map: 'unsupported', // Global Map
   // Climate anomalies are regional zones ("Europe", "Sahel", "Coral
   // Triangle"), not countries: a zone centroid would attribute "Europe" to
-  // Germany. Weather alerts and natural events have no panel; they are map
+  // Germany. Weather alerts, natural events and unrest have no panel; they are map
   // layers.
   climate: 'unsupported', // Climate Anomalies
-  'reservoir-levels': 'unsupported', // Strategic Water Levels
-  // Exposure keeps the 10 largest events per source worldwide before it
-  // reaches the panel, so filtering that slice would call a focused country
-  // quiet when its events were simply cut. Needs filtering before the cut.
-  'population-exposure': 'unsupported', // Population Exposure
+  'reservoir-levels': 'filters', // Host or listed riparian country; neighbours optional
+  'population-exposure': 'filters', // Source events filtered before location limits
   'positive-feed': 'unsupported', // Good News Feed
   spotlight: 'unsupported', // Today's Hero
   breakthroughs: 'unsupported', // Breakthroughs
@@ -228,7 +225,6 @@ export const PANEL_SCOPE_REASONS: Readonly<Record<string, string>> = Object.free
   'live-webcams': 'Feeds belong to five regions, some to none ("Space"); the region pill travels with the tab instead.',
   'windy-webcams': 'At most 4 pinned cameras the user chose: filtering them hides the user\'s own pins.',
   'cross-source-signals': 'Signals name a theatre, not a country.',
-  'reservoir-levels': 'Added to main after the focus work started. A reservoir carries a country name and a list of riparian states, not ISO codes; needs a name match and a rule for whether a riparian counts as the focused country.',
   'strategic-risk': 'A composite overview already cut to the top 5 countries and zones.',
   cascade: 'Driven by the infrastructure node the user picks, not by country.',
   'gdelt-intel': 'Fetched per topic; a country filter would need a new query.',
@@ -236,8 +232,7 @@ export const PANEL_SCOPE_REASONS: Readonly<Record<string, string>> = Object.free
   'x-intel': 'Posts name a country only in free text.',
   monitors: 'Matches keywords the user chose to watch: a focus must not hide what the user asked for.',
   'live-news': 'Video channels have no subject country; geoAvailability says where a channel can be watched, not what it covers.',
-  climate: 'Anomalies are regional zones, not countries.',
-  'population-exposure': 'Keeps the 10 largest events per source worldwide before the panel; needs filtering before that cut.',
+  climate: 'Anomalies are regional zones, not countries; a zone-to-country rule is needed before filtering. A zone centroid does not represent every affected country.',
 });
 
 /** A panel's declared behaviour; 'unsupported' for dynamic and unknown keys. */

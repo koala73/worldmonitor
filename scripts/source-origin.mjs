@@ -377,6 +377,7 @@ const HOST_ORIGINS = Object.freeze({
   'qevdnlpgjxpwusesmtpx.supabase.co': 'US',
   'query.wikidata.org': null,
   'query1.finance.yahoo.com': 'US',
+  'currency-api.pages.dev': null,
   'railway.instatus.com': 'US',
   'raw.githubusercontent.com': null,
   'reasonstobecheerful.world': 'US',

@@ -33,7 +33,8 @@ const DATE = '2026-11-02';
 // recording is keyed by window, so it is collected as of the same instant.
 const OBSERVED_AT = '2026-11-02T06:00:00Z';
 const REVISION = 'fixture-revision';
-const querySet = readJson('docs/research/seo-ai-visibility/query-set.json');
+// The fixtures and the 2026-07-27 baseline were measured with seo-ai-visibility-v1.
+const querySet = readJson('docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json');
 const previous = readJson('docs/research/seo-ai-visibility/baselines/2026-07-27.json');
 const reviewed = (id) => querySet.queries.find((query) => query.id === id).query;
 
@@ -433,5 +434,62 @@ describe('weekly baseline: AI surfaces and context', () => {
     assert.match(baseline.collectionContext.limitations[0], /no export was supplied by hand/);
     assert.deepEqual(baseline.referrals.classification, previous.referrals.classification);
     assert.deepEqual(baseline.opportunities, previous.opportunities);
+  });
+});
+
+describe('weekly baseline: the committed template', () => {
+  const directory = repoPath('docs/research/seo-ai-visibility');
+  const currentQuerySet = readJson('docs/research/seo-ai-visibility/query-set.json');
+  const template = JSON.parse(readFileSync(findPreviousBaseline(join(directory, 'baselines'), '2026-11-17'), 'utf8'));
+
+  async function weekOf(date, previousBaseline) {
+    const observedAt = `${date}T05:30:00Z`;
+    const transport = createGscFixtureTransport(repoPath('tests/fixtures/gsc/'));
+    const gsc = await collectGscSnapshot({
+      transport,
+      documents: transport.sitemaps(),
+      observedAt,
+      windows: deriveWindows(observedAt),
+      propertyKind: transport.manifest.propertyKind,
+      reportedTotals: transport.manifest.reportedTotals,
+      querySet: currentQuerySet,
+      revision: REVISION,
+    });
+    return buildWeeklyBaseline({
+      date,
+      snapshots: { gsc },
+      querySet: currentQuerySet,
+      previous: previousBaseline,
+      repositoryRevision: REVISION,
+    });
+  }
+
+  it('starts a new series, instead of failing, when query-set.json has moved past the template', async () => {
+    assert.notEqual(template.querySetId, currentQuerySet.querySetId);
+    const { baseline, markdown, compared } = await weekOf('2026-11-17', template);
+    assert.equal(compared, false);
+    assert.equal(baseline.querySetId, currentQuerySet.querySetId);
+    assert.match(markdown, new RegExp(`Not compared with \`${template.baselineId}\`: it was measured with query set`));
+    assert.doesNotMatch(markdown, /First recorded period/);
+  });
+
+  it('carries the site-wide context and the reviewed queue forward, without the template edit note', async () => {
+    const { baseline } = await weekOf('2026-11-17', template);
+    for (const field of ['geography', 'locale', 'device']) {
+      assert.match(baseline.collectionContext[field], /site-wide aggregates/);
+      assert.equal(baseline.collectionContext[field], template.collectionContext[field]);
+    }
+    assert.deepEqual(baseline.collectionContext.signedInStates, template.collectionContext.signedInStates);
+    assert.deepEqual(baseline.opportunities, template.opportunities);
+    assert.equal(baseline.collectionContext.limitations.some((line) => line.startsWith('Edited on')), false);
+    assert.doesNotMatch(baseline.collectionContext.limitations.join(' '), /France|panel context carried/);
+  });
+
+  it('compares the following week within the new series', async () => {
+    const first = await weekOf('2026-11-17', template);
+    const { markdown, compared } = await weekOf('2026-11-24', first.baseline);
+    assert.equal(compared, true);
+    assert.match(markdown, /Compared `2026-11-17` with `2026-11-24`\./);
+    assert.match(markdown, /Geography: All countries \(site-wide aggregates\)/);
   });
 });

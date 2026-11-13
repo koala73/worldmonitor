@@ -43,6 +43,13 @@ type HostCall = { name: string; arguments: Record<string, unknown> };
 type HostRequestIdentity = { requestId: number; name: string; section?: string; countryCode: string };
 type RecoveryFixture = { coverage: 'empty' | 'unavailable'; shortages: 'populated' | 'empty' | 'empty-registry' | 'upstream-unavailable' | 'unavailable' | 'locked'; suppliers: boolean; };
 type FactorsTimingFixture = { unavailable?: boolean; missing?: boolean };
+// The controlled host answers the factors section after this timer. A Node timer can resolve a little before the
+// requested delay when measured with Date.now() (the timer starts from the event loop's cached time: about 3% of
+// setTimeout(1730) calls measured 1729 ms in Node 24, and CI hit exactly that). The assertions below prove the delay
+// happened, not its exact millisecond, so they allow TIMER_JITTER_MS of slack.
+const FACTORS_RESPONSE_DELAY_MS = 1_730;
+const BLOCKED_SECTION_DELAY_MS = 11_000;
+const TIMER_JITTER_MS = 100;
 // Extra hostContext fields the controlled host reports from ui/initialize (display-mode tests).
 let displayHostContext: Record<string, unknown> | undefined;
 // A view tool call the host sends the moment the view reports initialized, while translations still load.
@@ -168,10 +175,10 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
       if (section !== 'factors' && blocked < 3) {
         blocked++;
         if (blocked === 3) releaseFactorsModule();
-        await new Promise(resolve => setTimeout(resolve, 11_000));
+        await new Promise(resolve => setTimeout(resolve, BLOCKED_SECTION_DELAY_MS));
       } else if (section === 'factors') {
         if (factorsTiming.missing) await new Promise(() => {});
-        await new Promise(resolve => setTimeout(resolve, 1_730));
+        await new Promise(resolve => setTimeout(resolve, FACTORS_RESPONSE_DELAY_MS));
       }
       factorTrace.push({ event: 'response', requestId: id, section, countryCode: code, at: Date.now() });
     }
@@ -341,8 +348,8 @@ test('native queued Norway factors render retained pillars after the website dea
   const dispatch = host.factorTrace.find(event => event.section === 'factors' && event.event === 'dispatch')!;
   const response = host.factorTrace.find(event => event.section === 'factors' && event.event === 'response')!;
   const first = host.factorTrace[0]!;
-  expect(dispatch.at - first.at).toBeGreaterThanOrEqual(11_000);
-  expect(response.at - dispatch.at).toBeGreaterThanOrEqual(1_730);
+  expect(dispatch.at - first.at).toBeGreaterThanOrEqual(BLOCKED_SECTION_DELAY_MS - TIMER_JITTER_MS);
+  expect(response.at - dispatch.at).toBeGreaterThanOrEqual(FACTORS_RESPONSE_DELAY_MS - TIMER_JITTER_MS);
   expect(response.at - first.at).toBeGreaterThan(12_000);
   for (const label of ['Food', 'Energy', 'Technology', 'Defense']) expect(text).toContain(label);
   await expect(factors.locator('.cdp-scorecard-score')).toHaveText(norwayFactors.scorecard.pillars.map(pillar => `${pillar.score}/5`));
@@ -379,7 +386,7 @@ test('native queued Norway factors retain the actual dispatched host timeout', a
   await expect.poll(() => host.factorTrace.find(event => event.section === 'factors' && event.event === 'dispatch')).toBeTruthy();
   const dispatchedAt = host.factorTrace.find(event => event.section === 'factors' && event.event === 'dispatch')!.at;
   await expect(factors).toHaveAttribute('data-load-state', 'unavailable', { timeout: 35_000 });
-  expect(Date.now() - dispatchedAt).toBeGreaterThanOrEqual(30_000);
+  expect(Date.now() - dispatchedAt).toBeGreaterThanOrEqual(30_000 - TIMER_JITTER_MS);
   expect(warnings.some(message => message.includes('WorldMonitor host request timed out.'))).toBe(true);
   await expect(factors.locator('.cdp-scorecard-pillar')).toHaveCount(0);
   await factors.scrollIntoViewIfNeeded();

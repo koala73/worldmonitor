@@ -2806,14 +2806,14 @@ describe('homepage WebMCP source registration', () => {
 
   it('returns native values and routes launch requests safely', async () => {
     const finance = runHomepage(collectingHomepageProvider);
-    const launch = finance.registered.find((tool) => tool.name === 'openDashboard');
+    const launch = finance.registered.find((tool) => tool.name === 'open_dashboard');
     const launchResult = await launch.execute({ monitor: 'finance' });
     assert.equal(launchResult, 'Opening the finance monitor: https://finance.worldmonitor.app/dashboard');
     assert.equal(finance.navigatedTo, 'https://finance.worldmonitor.app/dashboard');
 
     for (const bad of ['xyz', 'constructor', '__proto__', 'toString', 'valueOf']) {
       const fallback = runHomepage(collectingHomepageProvider);
-      await fallback.registered.find((tool) => tool.name === 'openDashboard').execute({ monitor: bad });
+      await fallback.registered.find((tool) => tool.name === 'open_dashboard').execute({ monitor: bad });
       assert.equal(fallback.navigatedTo, 'https://www.worldmonitor.app/dashboard');
     }
 

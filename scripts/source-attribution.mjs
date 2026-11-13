@@ -98,6 +98,12 @@ const publisherMetadataFeed = (provider) => ({
  * become a provider rename or regroup.
  */
 export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
+  'world-bank-open-data': Object.freeze({
+    provider: 'World Bank Open Data',
+    memberHosts: Object.freeze(['api.worldbank.org', 'datacatalogfiles.worldbank.org']),
+    reason: 'The indicator API and official WGI bulk download publish World Bank data; Taiwan is available through the bulk release.',
+    reviewReference: 'CII structural prior, issue #10577',
+  }),
   nsidc: Object.freeze({
     provider: 'NSIDC',
     memberHosts: Object.freeze(['noaadata.apps.nsidc.org', 'nsidc.org']),
@@ -256,6 +262,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Credit Statistics Norway (SSB), table 09654, monthly average pump prices in NOK per litre; identify FX conversion as a derived value and link the CC BY 4.0 licence.',
     status: 'reviewed',
   },
+  'currency-api.pages.dev': {
+    provider: 'fawazahmed0 currency-api',
+    license: 'CC0-1.0 per the project repository (github.com/fawazahmed0/exchange-api); aggregated daily exchange rates, upstream sources not itemised by the project',
+    attribution: 'Credit the fawazahmed0 currency-api; used only as the second source for a currency whose Yahoo quotes are unreliable.',
+    status: 'terms-review',
+  },
   'www2.moeaea.gov.tw': {
     provider: 'www2.moeaea.gov.tw',
     license: 'Public Taiwan MOEA Energy Administration oil111 survey; reuse licence unconfirmed',
@@ -349,8 +361,16 @@ const PROVIDER_OVERRIDES = {
   },
   'api.worldbank.org': {
     provider: 'World Bank Open Data',
+    identityGroup: 'world-bank-open-data',
     license: 'World Development Indicators are licensed under CC BY 4.0. UNESCO UIS indicators mirrored through WDI also require the UIS attribution stated in the public source documentation.',
     attribution: 'World Bank Open Data. For education indicators: UNESCO Institute for Statistics via World Bank WDI; include the UIS source URL and extraction date.',
+    status: 'reviewed',
+  },
+  'datacatalogfiles.worldbank.org': {
+    provider: 'World Bank Open Data',
+    identityGroup: 'world-bank-open-data',
+    license: 'Worldwide Governance Indicators: Creative Commons Attribution 4.0 (CC BY 4.0).',
+    attribution: 'World Bank Worldwide Governance Indicators, 2026 release, data year 2025. Link the original bulk release recorded in each prior payload.',
     status: 'reviewed',
   },
   'api.x.com': { provider: 'X API' },
@@ -1126,7 +1146,12 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '8bbd8027eebe0f1f329f0c5e2e9d6a8d166f673ca627e6d6e3d5435f18d8105d',
+  sha256: 'bd2f56c7a95a3ef42fd005179d95e51237cade3102cf177dbaa27101614f7821',
+  // 2026-11-13: add the fawazahmed0 currency-api as the second exchange-rate
+  // source for a currency whose Yahoo quotes are unreliable (CII economic
+  // stress, issue #10577). Terms are under review; the project states CC0.
+  // 2026-11-12: identify the official WGI bulk release used for Taiwan's
+  // pinned CII prior, grouped with the World Bank indicator API.
   // 2026-11-11: add the ICESat-2 ATL13 chain for Strategic Water Levels.
   // NASA Earthdata CMR lists granules, SlideRule Earth subsets them, and
   // NSIDC publishes the dataset; nsidc.org joins the existing NSIDC host.

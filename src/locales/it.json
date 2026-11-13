@@ -5084,12 +5084,16 @@
       "emptyFuelShortages": "Nessuna carenza di carburante per questi paesi",
       "emptyEnergyDisruptions": "Nessuna interruzione energetica per questi paesi",
       "emptyDisplacement": "Nessun dato di sfollamento per questi paesi",
-      "emptyCorrelation": "Nessun segnale per questi paesi"
+      "emptyCorrelation": "Nessun segnale per questi paesi",
+      "emptyExposure": "Nessuna località di esposizione della popolazione per questi paesi",
+      "emptyExposurePartial": "I dati disponibili non contengono località di esposizione per questi paesi. La copertura completa UCDP è in attesa.",
+      "partialExposureLoading": "Caricamento di tutte le località UCDP prima di filtrare l’esposizione. I conteggi di copertura includono solo i disordini.",
+      "partialExposure": "Impossibile caricare tutte le località UCDP. I dati di esposizione sono incompleti; i conteggi di copertura includono solo i disordini."
     },
-    "draftAssessment": "Bozza di valutazione",
+    "draftAssessment": "Valutazione del viaggio",
     "draftAssessmentAria": "Apri la valutazione del viaggio, precompilata con questo focus",
     "draftCopied": "Richiesta copiata. Incollala nel tuo assistente AI.",
-    "draftCopiedPartial": "Richiesta copiata per i primi {{count}} paesi. Una valutazione copre al massimo {{max}} paesi.",
+    "draftCopiedPartial": "Richiesta copiata per i primi {{count}} paesi. Una valutazione copre al massimo {{max}} paesi. Paesi esclusi: {{omitted}}.",
     "draftCopyFailed": "Impossibile copiare la richiesta."
   },
   "tripAssessment": {

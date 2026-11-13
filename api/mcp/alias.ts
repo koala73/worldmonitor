@@ -98,7 +98,16 @@ const PRODUCTION_FAMILIES: readonly AliasFamily[] = [
   },
 ];
 
-const PRODUCTION_OPT_OUTS: readonly AliasOptOut[] = [];
+const PRODUCTION_OPT_OUTS: readonly AliasOptOut[] = [
+  {
+    name: 'get_toronto_reported_occurrences',
+    reason: 'Removed in 1.54.0: a single-city tool does not belong in the global list. The data still serves GET /api/safety/v1/get-toronto-safety; country-level road and safety tools return as more countries are covered.',
+  },
+  {
+    name: 'get_toronto_calls_attended',
+    reason: 'Removed in 1.54.0 with get_toronto_reported_occurrences; the data still serves GET /api/safety/v1/get-toronto-safety.',
+  },
+];
 
 type Translation =
   | {
