@@ -21520,7 +21520,7 @@ button.popup-link {
   height: 36px;
   border-radius: 50%;
   background: color-mix(in srgb, var(--green) 14%, transparent);
-  color: var(--green);
+  color: var(--green-text, var(--green));
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
   letter-spacing: 0.5px;
