@@ -90,6 +90,9 @@ The browser import direction is `types -> config -> services -> components -> ap
 
 - For browser behavior, load [verify-worldmonitor](.agents/skills/verify-worldmonitor/SKILL.md). Start with an existing strict feature test. Use manual driving for the interaction being changed.
 - For Sentry events, load [sentry-triage](.agents/skills/sentry-triage/SKILL.md). Its default is read-only triage.
+- For a new or changed news feed, load [add-rss-feed](.agents/skills/add-rss-feed/SKILL.md). For a JSON API endpoint, load [add-rpc-endpoint](.agents/skills/add-rpc-endpoint/SKILL.md). For a new dataset, seeder, or map layer, load [add-data-source](.agents/skills/add-data-source/SKILL.md).
+- For a code review or a self-review before a PR, load [review-worldmonitor-change](.agents/skills/review-worldmonitor-change/SKILL.md). A standalone review stays read-only.
+- Folder rules live in `src/components/AGENTS.md`, `scripts/AGENTS.md`, and `server/AGENTS.md`. Read the one for the folder you edit.
 - `.agents/skills/` contains repository engineering skills. `skills/` contains published product recipes for API and MCP consumers. They serve different users.
 - Read [documented solutions](docs/solutions/) when the affected area has a prior fix — organized by category directory (`security-issues/`, `logic-errors/`, `conventions/`, …) with YAML frontmatter (`module`, `component`, `problem_type`, `tags`) to grep. Use [CONCEPTS.md](CONCEPTS.md) for shared terms and [design philosophy](docs/architecture.mdx) for design decisions.
 

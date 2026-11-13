@@ -1742,7 +1742,17 @@ async function handleLocalServiceStatus(context) {
   });
 }
 
+function startCloudRequestLog() {
+  const startedAt = Date.now();
+  const load = `upstream ${_activeUpstream}/${MAX_CONCURRENT_UPSTREAM} active, ${_upstreamQueue.length} queued`;
+  return {
+    prefix: `[local-api] ${new Date(startedAt).toISOString()}`,
+    timing: () => `in ${Date.now() - startedAt}ms (${load})`,
+  };
+}
+
 async function tryCloudFallback(requestUrl, req, context, reason) {
+  const { prefix, timing } = startCloudRequestLog();
   if (reason) {
     const route = requestUrl.pathname;
     const count = (fallbackCounts.get(route) || 0) + 1;
@@ -1751,15 +1761,15 @@ async function tryCloudFallback(requestUrl, req, context, reason) {
       const brief = reason instanceof Error
         ? (reason.code === 'ERR_MODULE_NOT_FOUND' ? 'missing npm dependency' : reason.message)
         : reason;
-      context.logger.warn(`[local-api] ${route} → cloud (${brief})`);
+      context.logger.warn(`${prefix} ${route} → cloud (${brief})`);
     } else if (count === 5 || count % 100 === 0) {
-      context.logger.warn(`[local-api] ${route} → cloud x${count}`);
+      context.logger.warn(`${prefix} ${route} → cloud x${count}`);
     }
   }
   try {
     const resp = await proxyToCloud(requestUrl, req, context);
     if (!resp.ok) {
-      context.logger.warn(`[local-api] cloud returned ${resp.status} for ${requestUrl.pathname}`);
+      context.logger.warn(`${prefix} cloud returned ${resp.status} for ${requestUrl.pathname} ${timing()}`);
     }
     return resp;
   } catch (error) {
@@ -1772,7 +1782,7 @@ async function tryCloudFallback(requestUrl, req, context, reason) {
         'If remoteBase intentionally points at a private/loopback host, pass allowPrivateRemoteBase=true programmatically.'
       );
     } else {
-      context.logger.error('[local-api] cloud fallback failed', requestUrl.pathname, error);
+      context.logger.error(`${prefix} cloud fallback failed for ${requestUrl.pathname} ${timing()}`, error);
     }
     return null;
   }
@@ -2426,14 +2436,15 @@ async function dispatch(requestUrl, req, routes, context) {
     if (!convexUrl) {
       const cloudUrl = new URL(requestUrl);
       cloudUrl.pathname = '/api/leads/v1/register-interest';
+      const { prefix, timing } = startCloudRequestLog();
       try {
         const cloudResponse = await proxyRegisterInterestToCloud(cloudUrl, req, context);
         if (!cloudResponse.ok) {
-          context.logger.warn(`[local-api] cloud returned ${cloudResponse.status} for ${cloudUrl.pathname}`);
+          context.logger.warn(`${prefix} cloud returned ${cloudResponse.status} for ${cloudUrl.pathname} ${timing()}`);
         }
         return cloudResponse;
       } catch (error) {
-        context.logger.error('[local-api] register-interest cloud fallback failed', error);
+        context.logger.error(`${prefix} register-interest cloud fallback failed ${timing()}`, error);
       }
       return json({ error: 'Registration service unavailable' }, 503);
     }
