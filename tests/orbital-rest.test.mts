@@ -91,6 +91,7 @@ describe('point passes over REST', () => {
       const rest = await computePointPasses({ lat: fixture.lat, lon: fixture.lon }, storedCatalog, FIXTURE_NOW, { fetch });
       const hosts = new Set(requests.map(({ url }) => new URL(url).hostname));
       assert.deepEqual([...hosts].sort(), ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com']);
+      assert.ok(requests.every(({ url }) => !new URL(url).pathname.includes('/item/point')), 'no request puts the point in a Planetary Computer path');
       assert.deepEqual(Object.keys(rest).sort(), [
         'acquisitions', 'archiveStatus', 'catalogFetchedAt', 'computedAt', 'failedSources', 'inventoryVersion',
         'outOfFootprintPasses', 'passes', 'point', 'stale', 'unansweredProfiles', 'windowEndMs', 'windowStartMs',
