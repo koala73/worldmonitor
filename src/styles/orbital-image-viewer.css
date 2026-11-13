@@ -1,4 +1,4 @@
-.oiv-backdrop { position: fixed; inset: 0; z-index: 9100; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.6); }
+.oiv-backdrop { position: fixed; inset: 0; z-index: 10004; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.6); }
 .oiv-dialog { display: flex; flex-direction: column; width: min(720px, calc(100vw - 24px)); max-height: calc(100vh - 24px); background: var(--panel-bg, var(--bg)); color: var(--text); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); font-size: 13px; outline: none; }
 .oiv-dialog:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .oiv-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; padding: 12px 14px 8px; border-bottom: 1px solid var(--border); }
@@ -23,7 +23,7 @@
 .oiv-slider-label-before { left: 6px; }
 .oiv-slider-label-after { right: 6px; }
 .oiv-divider { display: block; width: 100%; margin: 8px 0; accent-color: var(--accent); }
-.oiv-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+.oiv-strip { position: relative; display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
 .oiv-date { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; font: inherit; font-variant-numeric: tabular-nums; cursor: pointer; }
 .oiv-date[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .oiv-date-cloud { color: var(--text-dim); font-size: 11px; }
@@ -32,6 +32,6 @@
 
 @media (max-width: 768px) {
   .oiv-backdrop { align-items: flex-end; }
-  .oiv-dialog { width: 100%; max-height: 92vh; border-radius: 12px 12px 0 0; border-bottom: 0; }
+  .oiv-dialog { width: 100%; max-height: 92vh; border-radius: 12px 12px 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
   .oiv-image { max-height: 40vh; }
 }

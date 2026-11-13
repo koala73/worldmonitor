@@ -1,17 +1,21 @@
 /**
  * Satellite passes here, then open an archive image: read the viewer, the
  * same-collection compare slider and the time-lapse, and close back to the
- * pass row. Archive requests reach the real archives, so scenes vary by day.
+ * pass row. The satellite catalog comes from the orbital fixture; archive
+ * requests reach the real archives, so scenes vary by day.
  *
  * WM_VERIFY_ORBITAL_VIEWPORT=mobile drives a phone-sized viewport.
  */
 import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
+import { fixtureCatalog } from './orbital-watch.mjs';
 
 const ARCHIVE_HOSTS = ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com', 'gibs.earthdata.nasa.gov', 'view.eumetsat.int', 'sentinel-cogs.s3.us-west-2.amazonaws.com', 'sentinel-s1-l1c.s3.amazonaws.com'];
 
 export default async function ({ page, base, shot, log, expectVisible }) {
   const mobile = process.env.WM_VERIFY_ORBITAL_VIEWPORT === 'mobile';
   if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+  const catalog = fixtureCatalog();
+  await page.route('**/api/orbital/v1/list-imaging-satellites*', (route) => route.fulfill({ json: catalog }));
   const requests = [];
   page.on('request', (req) => requests.push({ url: req.url(), body: req.postData() ?? '' }));
 
@@ -40,6 +44,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('orientation', await viewer.locator('.oiv-north, .oiv-orientation').first().getAttribute('aria-label').catch(() => 'none'));
   await shot('viewer');
 
+  await viewer.locator('.oiv-status').waitFor({ state: 'detached', timeout: 90_000 });
+  log('history', await viewer.locator('.ow-banner').innerText().catch(() => 'answered'));
   await viewer.locator('.oiv-slider, .oiv-compare, .oiv-note, .ow-banner').first().waitFor({ timeout: 60_000 });
   const slider = viewer.locator('input[type="range"]');
   if (await slider.count()) {

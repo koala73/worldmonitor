@@ -242,6 +242,8 @@ describe('overlay reload-contract gate', () => {
       'src/components/AboutYouCard.ts :: root',
       'src/components/IntelligenceGapBadge.ts :: overlay',
       'src/components/MobileWarningModal.ts :: this.element',
+      // Read-only archive imagery for a looked-up point; a reload only closes the viewer.
+      'src/components/OrbitalImageViewer.ts :: this.root',
       // Read-only satellite pass results; a reload only drops the lookup.
       'src/components/OrbitalWatchPage.ts :: this.sheet',
       'src/components/RouteExplorer/KeyboardHelp.ts :: this.element',

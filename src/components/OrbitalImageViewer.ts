@@ -171,7 +171,7 @@ export class OrbitalImageViewer {
   private readonly controller = new AbortController();
   private history: HistoryState;
   private scenes: ViewerScene[];
-  private compareKey: string | null = null;
+  private pickedCompareKey: string | null = null;
   private dividerPct = 50;
   private timelapse: TimelapseState = { kind: 'idle' };
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -201,7 +201,6 @@ export class OrbitalImageViewer {
 
   open(): void {
     document.body.appendChild(this.root);
-    this.compareKey = defaultCompareScene(this.subject.selected, this.scenes)?.key ?? null;
     this.render();
     this.dialog.focus();
     if (this.subject.historyProfile) void this.loadHistory(this.subject.historyProfile);
@@ -237,12 +236,16 @@ export class OrbitalImageViewer {
     } else {
       this.history = { kind: 'answered' };
       this.scenes = mergeScenes(this.subject.selected.collection, this.scenes, result.scenes.map(sceneFromAcquisition));
-      if (!this.compareKey) this.compareKey = defaultCompareScene(this.subject.selected, this.scenes)?.key ?? null;
     }
     this.render();
   }
 
+  private get compareKey(): string | null {
+    return this.pickedCompareKey ?? defaultCompareScene(this.subject.selected, this.scenes)?.key ?? null;
+  }
+
   private render(): void {
+    const hadFocus = this.dialog.contains(document.activeElement);
     const focusedAction = (document.activeElement as HTMLElement | null)?.dataset?.action;
     const { selected } = this.subject;
     replaceChildren(this.body,
@@ -253,6 +256,10 @@ export class OrbitalImageViewer {
       this.renderCompare(),
       this.renderTimelapse());
     if (focusedAction) this.body.querySelector<HTMLElement>(`[data-action="${focusedAction}"]`)?.focus();
+    if (hadFocus && !this.dialog.contains(document.activeElement)) this.dialog.focus({ preventScroll: true });
+    const strip = this.body.querySelector<HTMLElement>('.oiv-strip');
+    const picked = strip?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (strip && picked) strip.scrollLeft = picked.offsetLeft - (strip.clientWidth - picked.offsetWidth) / 2;
   }
 
   private renderImage(scene: ViewerScene): HTMLElement {
@@ -392,7 +399,7 @@ export class OrbitalImageViewer {
         if (this.subject.historyProfile) void this.loadHistory(this.subject.historyProfile);
         return;
       case 'compare-date':
-        this.compareKey = action.dataset.key ?? null;
+        this.pickedCompareKey = action.dataset.key ?? null;
         this.render();
         this.body.querySelector<HTMLElement>(`[data-action="compare-date"][data-key="${CSS.escape(this.compareKey ?? '')}"]`)?.focus();
         return;

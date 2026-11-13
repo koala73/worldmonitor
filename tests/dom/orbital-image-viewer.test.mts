@@ -100,6 +100,36 @@ describe('orbital image viewer', () => {
     expect(viewer()!.querySelector('.oiv-before')!.getAttribute('src')).toBe(nearButRecent.imageUrl);
   });
 
+  it('moves the compare default to a clear scene from history once it arrives, unless a date was picked', async () => {
+    const selected = scene(1, 5);
+    const recentCloudy = scene(4, 50);
+    const clearMonthAgo = scene(35, 3);
+    open(selected, { searchHistory: history([selected, recentCloudy, clearMonthAgo]) }, [recentCloudy]);
+    expect(viewer()!.querySelector('.oiv-before')!.getAttribute('src')).toBe(recentCloudy.imageUrl);
+    await settle();
+    expect(viewer()!.querySelector('.oiv-before')!.getAttribute('src')).toBe(clearMonthAgo.imageUrl);
+
+    document.body.replaceChildren();
+    open(selected, { searchHistory: history([selected, recentCloudy, clearMonthAgo]) }, [recentCloudy]);
+    viewer()!.querySelector<HTMLButtonElement>(`.oiv-date[data-key="${recentCloudy.key}"]`)!.click();
+    await settle();
+    expect(viewer()!.querySelector('.oiv-before')!.getAttribute('src')).toBe(recentCloudy.imageUrl);
+  });
+
+  it('keeps Escape working after the focused time-lapse control is replaced', async () => {
+    const frames = [scene(50, 2), scene(40, 3), scene(30, 4), scene(20, 5)];
+    open(frames[3]!, { searchHistory: history(frames), prefersReducedMotion: () => false, loadImage: loaded });
+    await settle();
+    const start = viewer()!.querySelector<HTMLButtonElement>('[data-action="timelapse-start"]')!;
+    start.focus();
+    start.click();
+    await settle();
+    expect(viewer()!.querySelector('[data-timelapse="autoplay"]')).not.toBeNull();
+    expect(viewer()!.contains(document.activeElement)).toBe(true);
+    document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(viewer()).toBeNull();
+  });
+
   it('skips a frame that fails to load and plays the rest', async () => {
     vi.useFakeTimers();
     const frames = [scene(50, 2), scene(40, 3), scene(30, 4), scene(20, 5), scene(10, 6)];
