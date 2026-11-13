@@ -3,7 +3,8 @@
  * share it, and open a view=full link, proving the point reaches no WorldMonitor host.
  * The point is Palm Jumeirah, Dubai, whose fronds make a crop easy to check by eye.
  *
- * WM_VERIFY_ORBITAL_VIEWPORT=mobile drives a phone-sized viewport.
+ * WM_VERIFY_ORBITAL_VIEWPORT=mobile drives a phone-sized viewport. The flat map is deck.gl on desktop
+ * and the SVG map on a phone.
  */
 import { fixtureCatalog } from './orbital-watch.mjs';
 import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
@@ -20,6 +21,24 @@ async function settled(page) {
   await page.waitForFunction(() => [...document.querySelectorAll('.orbital-watch-sheet img')].every((img) => img.complete), null, { timeout: 60_000 });
 }
 
+const BASEMAP_RE = /pmtiles|\.pbf|\.mvt|tiles|cartocdn|protomaps|openfreemap|maps\.worldmonitor/;
+
+/** Tracks basemap tile requests, so a shot waits for the map to finish drawing at its new view. */
+function trackBasemap(page) {
+  const inFlight = new Set();
+  let lastChange = Date.now();
+  const done = (req) => { if (inFlight.delete(req)) lastChange = Date.now(); };
+  page.on('request', (req) => { if (BASEMAP_RE.test(req.url())) { inFlight.add(req); lastChange = Date.now(); } });
+  page.on('requestfinished', done);
+  page.on('requestfailed', done);
+  return async () => {
+    const deadline = Date.now() + 20_000;
+    await page.waitForTimeout(800);
+    while (Date.now() < deadline && (inFlight.size > 0 || Date.now() - lastChange < 1_500)) await page.waitForTimeout(200);
+    await page.waitForTimeout(500);
+  };
+}
+
 export default async function ({ page, base, shot, log, expectVisible }) {
   const mobile = process.env.WM_VERIFY_ORBITAL_VIEWPORT === 'mobile';
   await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
@@ -31,9 +50,20 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   });
   const requests = [];
   page.on('request', (req) => requests.push(req.url()));
+  const basemapDrawn = trackBasemap(page);
 
   page.on('pageerror', (err) => log('pageerror stack', String(err.stack ?? err).slice(0, 600)));
   const sheet = page.locator('.orbital-watch-sheet');
+  if (!mobile) {
+    // The flat map on desktop is deck.gl, which MapContainer refuses on a software GL renderer such as this VM's SwiftShader.
+    await page.addInitScript(() => {
+      const UNMASKED_RENDERER = 0x9246;
+      const original = WebGL2RenderingContext.prototype.getParameter;
+      WebGL2RenderingContext.prototype.getParameter = function (parameter) {
+        return parameter === UNMASKED_RENDERER ? 'verify renderer' : original.call(this, parameter);
+      };
+    });
+  }
   await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': '"flat"' } });
 
   // Before and after a pick from the dashboard's own view, so the map visibly moves to the place.
@@ -51,6 +81,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await sheet.locator('.ow-search-input').press('Enter');
   await expectVisible('.ow-search-result');
   log('url before pick', await page.evaluate(() => location.href));
+  await basemapDrawn();
   await shot('before-pick-dashboard-view');
   await sheet.locator('.ow-search-result').first().click();
   await page.waitForFunction(() => document.querySelector('.ow-place')?.textContent?.includes('Palm Jumeirah, Dubai'));
@@ -60,6 +91,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const wanted = renderer === 'svg' ? 10 : 11;
   log('zoom after pick', zoom, 'wanted', wanted);
   if (Math.abs(zoom - wanted) > 0.5) throw new Error(`the map did not zoom to the place: ${zoom}, wanted ${wanted}`);
+  await basemapDrawn();
   await shot('after-pick-recentred-on-place');
   await sheet.locator('.ow-close').click();
   searches.length = 0;
@@ -77,6 +109,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   if (hash.includes('orbital=')) throw new Error(`share key left in the live URL: ${hash}`);
   await settled(page);
   log('zone', await sheet.locator('.ow-zone').textContent());
+  await basemapDrawn();
   await shot('sheet-from-share-link');
   const hero = sheet.locator('.ow-carousel img').first();
   if (await hero.count()) log('hero', await hero.evaluate((img) => `${img.naturalWidth}x${img.naturalHeight} ${img.src.slice(0, 200)}`));
@@ -87,6 +120,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await sheet.locator('.ow-search-input').press('Enter');
   await expectVisible('.ow-search-result');
   if (searches.length !== 1) throw new Error(`expected one place search request, saw ${searches.length}`);
+  await basemapDrawn();
   await shot('change-search-results');
   await sheet.locator('.ow-search-result').first().click();
   await page.waitForFunction(() => document.querySelector('.ow-place')?.textContent?.includes('Palm Jumeirah, Dubai'));
@@ -115,6 +149,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await waitForBoot(page, { data: true });
   await page.waitForFunction(() => document.querySelector('.orbital-watch-sheet')?.getAttribute('data-view') === 'full', null, { timeout: 60_000 });
   await settled(page);
+  await basemapDrawn();
   await shot('full-view-from-view-full-link');
 
   const leaks = requests.filter((url) => !ARCHIVE_HOSTS.includes(new URL(url).hostname) && /25\.11[0-9]|55\.1[34][0-9]/.test(url));
