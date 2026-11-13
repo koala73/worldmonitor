@@ -162,5 +162,9 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const leaks = requests.filter(({ url, body }) => !ARCHIVE_HOSTS.includes(new URL(url).hostname) && needles.every((n) => `${url} ${body}`.includes(n)));
   log('requests', requests.length, 'leaks', leaks.length);
   if (leaks.length) throw new Error(`picked point left the browser: ${leaks.map((l) => l.url).join(', ')}`);
+  // RUM collectors name a resource by host and its last path segment, so the point may not end any path.
+  const pathLeaks = requests.filter(({ url }) => needles.some((n) => new URL(url).pathname.split('/').pop().includes(n)));
+  log('requests ending their path with the point', pathLeaks.length);
+  if (pathLeaks.length) throw new Error(`picked point ends a URL path: ${pathLeaks.map((l) => l.url).join(', ')}`);
   return { mobile, pointText, leaks: leaks.length };
 }

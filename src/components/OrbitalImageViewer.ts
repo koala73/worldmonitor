@@ -121,26 +121,29 @@ export function scenesFromMosaic(mosaic: DailyMosaicRow): ViewerScene[] {
   });
 }
 
-export function sceneFromFrame(frame: GeostationaryRow): ViewerScene | null {
-  if (!frame.latest) return null;
-  const url = viewable(frame.latest.imageUrl);
-  const timeMs = Date.parse(frame.latest.time);
+/** The newest frame first, then the earlier ones the archive keeps in case it advertised the newest before serving it. */
+export function scenesFromFrame(frame: GeostationaryRow): ViewerScene[] {
+  if (!frame.latest) return [];
   const eumetsat = frame.archive === 'eumetsat';
-  return {
-    key: `${frame.layer}:${frame.latest.time}`,
-    collection: frame.layer,
-    name: frame.source,
-    timeMs,
-    dateLabel: formatUtc(timeMs),
-    imageUrl: url,
-    cloudCoverPct: null,
-    cloudApplies: false,
-    credit: eumetsat ? IMAGE_CREDIT.eumetsat : IMAGE_CREDIT.gibs,
-    conditionText: null,
-    grid: url ? imageGrid(url) : 'unreferenced',
-    resolutionM: null,
-    sunElevationDeg: null,
-  };
+  return [frame.latest, ...frame.latest.fallbacks].map(({ time, imageUrl }) => {
+    const url = viewable(imageUrl);
+    const timeMs = Date.parse(time);
+    return {
+      key: `${frame.layer}:${time}`,
+      collection: frame.layer,
+      name: frame.source,
+      timeMs,
+      dateLabel: formatUtc(timeMs),
+      imageUrl: url,
+      cloudCoverPct: null,
+      cloudApplies: false,
+      credit: eumetsat ? IMAGE_CREDIT.eumetsat : IMAGE_CREDIT.gibs,
+      conditionText: null,
+      grid: url ? imageGrid(url) : 'unreferenced',
+      resolutionM: null,
+      sunElevationDeg: null,
+    };
+  });
 }
 
 type HistoryState =
@@ -538,8 +541,8 @@ export function subjectForImage(evidence: OrbitalEvidence, image: ViewableImage,
     }
     case 'frame': {
       const frame = evidence.frames.find((candidate) => candidate.layer === image.key);
-      const scene = frame ? sceneFromFrame(frame) : null;
-      return scene ? { ...base, selected: scene, scenes: [], historyProfile: null } : null;
+      const scenes = frame ? scenesFromFrame(frame) : [];
+      return scenes[0] ? { ...base, selected: scenes[0], scenes: scenes.length > 1 ? scenes : [], historyProfile: null } : null;
     }
   }
 }

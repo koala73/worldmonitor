@@ -4,7 +4,7 @@ import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
 import type { ArchiveId } from '@/services/orbital/archive-result';
-import { GIBS_DAILY_MOSAICS, type DailyMosaicRow, type GeostationaryRow } from '@/services/orbital/archive-gibs';
+import { GIBS_DAILY_MOSAICS, type DailyMosaicRow, type GeostationaryFrame, type GeostationaryRow } from '@/services/orbital/archive-gibs';
 import { DEFAULT_CROP_HALF_SIZE_KM } from '@/services/orbital/crop-url';
 import { normalisePlatform } from '@/services/orbital/archive-stac';
 import { getCurrentLanguageTag, t } from '@/services/i18n';
@@ -264,13 +264,31 @@ function conditionLabel(acquisition: MatchedAcquisition): string {
 type TileSize = 'hero' | 'thumb';
 
 /** An image with a visible state at every moment: a labelled skeleton, the image, or a failure tile with retry. */
-function imageTile(url: string | null, alt: string, sensor: string, size: TileSize, overlays: DomChild[] = []): HTMLElement {
+/** Earlier frames to load, in order, when the image fails; `show` is told which frame is displayed (0 is `url`). */
+interface TileFallbacks {
+  urls: readonly string[];
+  show: (index: number) => void;
+}
+
+const tileRetries = new WeakMap<HTMLElement, () => void>();
+
+function imageTile(url: string | null, alt: string, sensor: string, size: TileSize, overlays: DomChild[] = [], fallbacks: TileFallbacks | null = null): HTMLElement {
   const archive = archiveOfUrl(url);
   if (!url || !isAllowedPreviewUrl(url)) {
     return h('div', { className: `ow-tile ow-tile-${size}`, dataset: { state: 'none' } },
       h('span', { className: 'ow-tile-status ow-label' }, size === 'hero' ? t('orbitalWatch.ui.tile.noPreview') : TIER_GLYPH_CHAR.watched));
   }
+  const frames = [url, ...(fallbacks?.urls ?? []).filter(isAllowedPreviewUrl)];
+  let frame = 0;
   const status = h('span', { className: 'ow-tile-status ow-label' }, size === 'hero' ? sensor : '');
+  const load = (index: number) => {
+    if (index !== frame) fallbacks?.show(index);
+    frame = index;
+    tile.dataset.state = 'loading';
+    replaceChildren(status, size === 'hero' ? sensor : '');
+    img.removeAttribute('src');
+    img.setAttribute('src', frames[index]!);
+  };
   const img = h('img', {
     src: url,
     alt,
@@ -279,6 +297,7 @@ function imageTile(url: string | null, alt: string, sensor: string, size: TileSi
     referrerpolicy: 'no-referrer',
     onLoad: () => { tile.dataset.state = 'loaded'; },
     onError: () => {
+      if (frame < frames.length - 1) { load(frame + 1); return; }
       tile.dataset.state = 'failed';
       replaceChildren(status,
         size === 'hero' ? t('orbitalWatch.ui.tile.failed', { archive: archive.toUpperCase() }) : '!',
@@ -286,6 +305,7 @@ function imageTile(url: string | null, alt: string, sensor: string, size: TileSi
     },
   }) as HTMLImageElement;
   const tile = h('div', { className: `ow-tile ow-tile-${size}`, dataset: { state: 'loading', sensor } }, img, status, ...overlays);
+  tileRetries.set(tile, () => load(0));
   return tile;
 }
 
@@ -323,6 +343,8 @@ interface ImageCard {
   credit: RowCredit;
   pass: { noradId: number; timeMs: number } | null;
   view: ViewableImage;
+  /** Earlier frames of the same source, newest first, with the caption line each one shows. */
+  fallbacks?: Array<{ url: string; top: string }>;
 }
 
 type Tab = 'all' | ImageCard['tab'];
@@ -373,13 +395,15 @@ function weatherCards(evidence: OrbitalEvidence): ImageCard[] {
   for (const frame of evidence.frames) {
     if (!frame.latest?.imageUrl) continue;
     const ms = Date.parse(frame.latest.time);
+    const frameTop = (time: string) => `${frame.source.toUpperCase()} · ${formatWhen(Date.parse(time))}`;
     cards.push({
       key: `frame:${frame.source}`,
       tab: 'weather',
       sensor: frame.source.toUpperCase(),
       url: frame.latest.imageUrl,
       sortMs: ms,
-      top: `${frame.source.toUpperCase()} · ${formatWhen(ms)}`,
+      top: frameTop(frame.latest.time),
+      fallbacks: frame.latest.fallbacks.map((earlier) => ({ url: earlier.imageUrl, top: frameTop(earlier.time) })),
       bottom: frame.cadenceMinutes === null ? t('orbitalWatch.ui.caption.geostationary') : t('orbitalWatch.ui.caption.geostationaryCadence', { minutes: frame.cadenceMinutes }),
       credit: frame.archive === 'eumetsat' ? frameCredit(frame.archive) : { short: IMAGE_CREDIT.gibs, full: IMAGE_CREDIT.gibs },
       pass: null,
@@ -496,14 +520,22 @@ function mosaicRow(mosaic: DailyMosaicRow, day: { date: string; imageUrl: string
     [badge('NASA')], { short: IMAGE_CREDIT.gibs, full: IMAGE_CREDIT.gibsAcknowledgement });
 }
 
-function frameRow(frame: GeostationaryRow, latest: { time: string; imageUrl: string | null }): HTMLElement {
-  const ms = Date.parse(latest.time);
-  const alt = t('orbitalWatch.row.imageAlt', { name: frame.source, time: formatWhen(ms) });
-  const thumb = imageTile(latest.imageUrl, alt, frame.source.toUpperCase(), 'thumb', [viewButton({ kind: 'frame', key: frame.layer }, alt)]);
-  return rowShell(`source:${frame.source}`, 'weather-frame', thumb, frame.source, t('orbitalWatch.tier.weatherFrame'),
-    [formatWhen(ms), frame.cadenceMinutes === null ? t('orbitalWatch.ui.caption.geostationary') : t('orbitalWatch.ui.caption.geostationaryCadence', { minutes: frame.cadenceMinutes })],
+function frameRow(frame: GeostationaryRow, latest: GeostationaryFrame): HTMLElement {
+  const times = [latest.time, ...latest.fallbacks.map((earlier) => earlier.time)].map((time) => formatWhen(Date.parse(time)));
+  const alt = (index: number) => t('orbitalWatch.row.imageAlt', { name: frame.source, time: times[index]! });
+  const thumb = imageTile(latest.imageUrl, alt(0), frame.source.toUpperCase(), 'thumb', [viewButton({ kind: 'frame', key: frame.layer }, alt(0))], {
+    urls: latest.fallbacks.map((earlier) => earlier.imageUrl),
+    show: (index) => {
+      const when = row.querySelector<HTMLElement>('.ow-row-meta');
+      if (when) { when.textContent = times[index]!; when.title = times[index]!; }
+      thumb.querySelector('img')?.setAttribute('alt', alt(index));
+    },
+  });
+  const row = rowShell(`source:${frame.source}`, 'weather-frame', thumb, frame.source, t('orbitalWatch.tier.weatherFrame'),
+    [times[0]!, frame.cadenceMinutes === null ? t('orbitalWatch.ui.caption.geostationary') : t('orbitalWatch.ui.caption.geostationaryCadence', { minutes: frame.cadenceMinutes })],
     [badge(frame.archive === 'eumetsat' ? 'EUMETSAT' : 'NASA')],
     frameCredit(frame.archive));
+  return row;
 }
 
 function groupPasses(lookup: PointPassLookup, evidence: OrbitalEvidence): Map<GroupId, Group> {
@@ -911,18 +943,23 @@ export class OrbitalWatchPage {
   }
 
   private heroCard(card: ImageCard, closest: boolean, index: number): HTMLElement {
-    const alt = t('orbitalWatch.row.imageAlt', { name: card.sensor, time: card.top });
-    const tile = imageTile(card.url, alt, card.sensor, 'hero', [
-      viewButton(card.view, alt),
+    const tops = [card.top, ...(card.fallbacks ?? []).map((earlier) => earlier.top)];
+    const alt = (i: number) => t('orbitalWatch.row.imageAlt', { name: card.sensor, time: tops[i]! });
+    const top = h('span', null, card.top);
+    const tile = imageTile(card.url, alt(0), card.sensor, 'hero', [
+      viewButton(card.view, alt(0)),
       ...heroOverlays(),
       h('span', { className: 'ow-card-tag ow-label' }, closest ? t('orbitalWatch.ui.closestLook') : card.sensor),
       h('button', { type: 'button', className: 'ow-expand', dataset: { action: 'open-full' }, 'aria-label': t('orbitalWatch.ui.openFull') }, '⤢'),
-    ]);
+    ], card.fallbacks?.length ? {
+      urls: card.fallbacks.map((earlier) => earlier.url),
+      show: (i) => { top.textContent = tops[i]!; tile.querySelector('img')?.setAttribute('alt', alt(i)); },
+    } : null);
     return h('figure', { className: 'ow-card', dataset: { key: card.key, tab: card.tab, index: String(index) } },
       tile,
       h('figcaption', { className: 'ow-caption' },
         h('div', { className: 'ow-caption-row' },
-          h('div', { className: 'ow-caption-lines ow-label' }, h('span', null, card.top), h('span', null, card.bottom)),
+          h('div', { className: 'ow-caption-lines ow-label' }, top, h('span', null, card.bottom)),
           card.pass
             ? h('button', { type: 'button', className: 'ow-replay ow-label', dataset: { action: 'replay', norad: String(card.pass.noradId), time: String(card.pass.timeMs) } }, `▸ ${t('orbitalWatch.ui.replay')}`)
             : null),
@@ -1045,13 +1082,7 @@ export class OrbitalWatchPage {
       case 'share': this.share(actionEl!); return;
       case 'retry-image': {
         const tile = actionEl!.closest<HTMLElement>('.ow-tile');
-        const img = tile?.querySelector('img');
-        if (!tile || !img) return;
-        const src = img.getAttribute('src')!;
-        tile.dataset.state = 'loading';
-        replaceChildren(tile.querySelector('.ow-tile-status')!, tile.dataset.sensor ?? '');
-        img.removeAttribute('src');
-        img.setAttribute('src', src);
+        if (tile) tileRetries.get(tile)?.();
         return;
       }
       case 'replay':

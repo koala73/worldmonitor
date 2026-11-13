@@ -6,7 +6,8 @@ import { redactSensitiveUrl, scrubSentryCredentials } from '../shared/sensitive-
 import { findArchiveEvidence } from '../src/services/orbital/match.ts';
 import { parseStacItem, readPointCondition } from '../src/services/orbital/archive-stac.ts';
 import { cropBox, gibsSnapshotUrl, planetaryComputerCropUrl } from '../src/services/orbital/crop-url.ts';
-import { ARCHIVE_RESPONSES, fakeArchiveFetch, fixtureLookup } from './helpers/orbital-archive-fetch.mts';
+import { searchSceneHistory, searchYearlyLooks } from '../src/services/orbital/timelapse.ts';
+import { ARCHIVE_RESPONSES, FIXTURE_NOW, fakeArchiveFetch, fixtureLookup } from './helpers/orbital-archive-fetch.mts';
 
 const ARCHIVE_HOSTS = new Set(['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com', 'gibs.earthdata.nasa.gov', 'view.eumetsat.int']);
 const EXACT_POINT = { lat: 25.2049, lon: 55.2708 };
@@ -14,6 +15,12 @@ const EXACT_POINT = { lat: 25.2049, lon: 55.2708 };
 /** Numbers within a degree of the point that carry it at better than 0.1 degree. */
 function coordinatesIn(text: string): string[] {
   return (text.match(/-?\d+\.\d{2,}/g) ?? []).filter((n) => Math.abs(Number(n) - EXACT_POINT.lat) < 1 || Math.abs(Number(n) - EXACT_POINT.lon) < 1);
+}
+
+/** DebugBear rum-1.1.2.js names a cross-origin resource by host and path, keeping only the last segment of a long path. */
+function reportedName(url: string): string {
+  const { hostname, pathname } = new URL(url);
+  return hostname.slice(0, 25) + (pathname.length < 30 ? pathname : `/…/${pathname.split('/').pop()}`);
 }
 
 async function lookupRequests() {
@@ -33,7 +40,7 @@ describe('a free lookup keeps the exact point to the archives', () => {
 
   it('removes the point from every archive request before Sentry sees it', async () => {
     const { requests, evidence } = await lookupRequests();
-    const imageUrls = [...evidence.acquisitions.map((a) => a.imageUrl), ...evidence.mosaics.flatMap((m) => m.days.map((d) => d.imageUrl)), ...evidence.frames.map((f) => f.latest?.imageUrl)]
+    const imageUrls = [...evidence.acquisitions.map((a) => a.imageUrl), ...evidence.mosaics.flatMap((m) => m.days.map((d) => d.imageUrl)), ...evidence.frames.flatMap((f) => [f.latest?.imageUrl, ...(f.latest?.fallbacks ?? []).map((frame) => frame.imageUrl)])]
       .filter((url): url is string => Boolean(url));
     const urls = [...requests.map((r) => r.url), ...imageUrls];
     const event = scrubSentryCredentials({
@@ -73,14 +80,34 @@ describe('a free lookup keeps the exact point to the archives', () => {
     assert.deepEqual(scrubSentryCredentials({ request: { query_string: [['BBOX', '25.1,55.2,25.3,55.3'], ['TIME', '2026-11-12']] } }).request.query_string, [['TIME', '2026-11-12']]);
   });
 
+  it('keeps the point out of the request names a RUM collector reports', async () => {
+    const { requests, evidence } = await lookupRequests();
+    const imageUrls = [...evidence.acquisitions.map((a) => a.imageUrl), ...evidence.mosaics.flatMap((m) => m.days.map((d) => d.imageUrl)), ...evidence.frames.flatMap((f) => [f.latest?.imageUrl, ...(f.latest?.fallbacks ?? []).map((frame) => frame.imageUrl)])]
+      .filter((url): url is string => Boolean(url));
+    for (const url of [...requests.map((r) => r.url), ...imageUrls]) assert.deepEqual(coordinatesIn(reportedName(url)), [], reportedName(url));
+  });
+
+  it('keeps the point out of the request names of the compare history and the yearly time-lapse', async () => {
+    const point = { ...ARCHIVE_RESPONSES.points.dubai, ...EXACT_POINT };
+    const { fetch, requests } = fakeArchiveFetch(point);
+    const history = await searchSceneHistory(EXACT_POINT, 'sentinel-2', FIXTURE_NOW, { fetch });
+    const yearly = await searchYearlyLooks(EXACT_POINT, FIXTURE_NOW, { fetch });
+    const imageUrls = [...(history.status === 'ok' ? history.scenes.map((s) => s.imageUrl) : []), ...yearly.looks.map((look) => look.imageUrl)]
+      .filter((url): url is string => Boolean(url));
+    assert.ok(requests.length > 0);
+    for (const url of [...requests.map((r) => r.url), ...imageUrls]) assert.deepEqual(coordinatesIn(reportedName(url)), [], reportedName(url));
+  });
+
   it('writes a point near zero in fixed decimals, and scrubs exponent-form coordinates too', async () => {
     const nearZero = { lat: 1e-7, lon: 55.2708 };
     const tile = ARCHIVE_RESPONSES.points.dubai['planetary-computer'].features.find((f) => f.assets?.SCL)!;
     const item = parseStacItem('planetary-computer', tile as never)!;
     const urls: string[] = [];
-    await readPointCondition(item, nearZero, { fetch: async (url: string) => { urls.push(url); return new Response('{"values":[4]}'); } });
+    const bodies: string[] = [];
+    await readPointCondition(item, nearZero, { fetch: async (url: string, init?: RequestInit) => { urls.push(url); bodies.push(String(init?.body)); return new Response('{"properties":{"statistics":{"b1":{"majority":4}}}}'); } });
     const box = cropBox(nearZero, 0.00001);
     urls.push(planetaryComputerCropUrl(item.collection, item.itemId, box)!, gibsSnapshotUrl('MODIS_Terra_CorrectedReflectance_TrueColor', '2026-11-12', box)!);
+    for (const body of bodies) assert.doesNotMatch(body, /\d[eE][-+]?\d/, `${body} has no exponent`);
     for (const url of urls) {
       assert.doesNotMatch(decodeURIComponent(url), /\d[eE][-+]?\d/, `${url} has no exponent`);
       const crumb = scrubSentryCredentials({ data: { url } });

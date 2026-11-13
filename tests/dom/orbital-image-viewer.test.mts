@@ -9,7 +9,7 @@ import { IMAGE_CREDIT, OrbitalWatchPage } from '@/components/OrbitalWatchPage';
 import {
   openOrbitalImageViewer,
   sceneFromAcquisition,
-  sceneFromFrame,
+  scenesFromFrame,
   subjectForImage,
   type ViewerDependencies,
 } from '@/components/OrbitalImageViewer';
@@ -29,7 +29,7 @@ function scene(daysAgo: number, cloudCoverPct: number | null, over: Partial<Matc
 
 const meteosat: GeostationaryRow = {
   kind: 'geostationary', archive: 'eumetsat', source: 'Meteosat-12', layer: 'mtg_fd:rgb_geocolour', noradId: 54_743, cadenceMinutes: 10,
-  latest: { time: new Date(NOW - 600_000).toISOString(), imageUrl: 'https://view.eumetsat.int/geoserver/wms?SERVICE=WMS&REQUEST=GetMap&LAYERS=mtg_fd%3Argb_geocolour&CRS=EPSG%3A4326&BBOX=25.1,55.1,25.3,55.4' },
+  latest: { time: new Date(NOW - 600_000).toISOString(), imageUrl: 'https://view.eumetsat.int/geoserver/wms?SERVICE=WMS&REQUEST=GetMap&LAYERS=mtg_fd%3Argb_geocolour&CRS=EPSG%3A4326&BBOX=25.1,55.1,25.3,55.4', fallbacks: [] },
 };
 
 const history = (scenes: MatchedAcquisition[]): ViewerDependencies['searchHistory'] => vi.fn(async (): Promise<SceneHistory> => ({ status: 'ok', scenes }));
@@ -64,10 +64,20 @@ describe('orbital image viewer', () => {
   });
 
   it('credits EUMETSAT on a Meteosat frame and offers no time-lapse for a single frame', () => {
-    openOrbitalImageViewer({ point, nowMs: NOW, selected: sceneFromFrame(meteosat)!, scenes: [], historyProfile: null }, null, {});
+    openOrbitalImageViewer({ point, nowMs: NOW, selected: scenesFromFrame(meteosat)[0]!, scenes: [], historyProfile: null }, null, {});
     expect(viewerText()).toContain(IMAGE_CREDIT.eumetsat);
     expect(viewerText()).not.toContain(IMAGE_CREDIT.gibsAcknowledgement);
     expect(viewer()!.querySelector('[data-action="timelapse"]')).toBeNull();
+  });
+
+  it('keeps the earlier frames a weather frame carries, so one the archive has not served yet can be skipped', () => {
+    const earlier = { time: new Date(NOW - 1_200_000).toISOString(), imageUrl: `${meteosat.latest!.imageUrl}&TIME=earlier` };
+    const frame: GeostationaryRow = { ...meteosat, latest: { ...meteosat.latest!, fallbacks: [earlier] } };
+    const evidence: OrbitalEvidence = { passes: [], acquisitions: [], mosaics: [], frames: [frame], bestView: null, status: 'complete', failures: [], unansweredProfiles: [] };
+    const subject = subjectForImage(evidence, { kind: 'frame', key: frame.layer }, { point, nowMs: NOW })!;
+    expect(subject.selected.imageUrl).toBe(meteosat.latest!.imageUrl);
+    expect(subject.scenes.map((scene) => scene.imageUrl)).toEqual([meteosat.latest!.imageUrl, earlier.imageUrl]);
+    expect(subjectForImage({ ...evidence, frames: [meteosat] }, { kind: 'frame', key: frame.layer }, { point, nowMs: NOW })!.scenes).toEqual([]);
   });
 
   it('offers compare only when a second scene of the same collection exists', async () => {
