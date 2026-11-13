@@ -373,10 +373,13 @@
     --ow-tl-axis: 14px;
     display: grid;
     grid-template-columns: minmax(600px, 1fr) max-content;
-    grid-template-rows: auto auto;
+    grid-template-rows: min-content minmax(0, 1fr);
+    box-sizing: border-box;
     width: max-content;
     min-width: 100%;
+    height: 100%;
     padding: 4px 10px;
+    line-height: 12px;
     font-size: 10px;
   }
   .ow-dock .ow-tl-head { flex-wrap: nowrap; white-space: nowrap; padding-bottom: 3px; margin-bottom: 3px; }
@@ -385,17 +388,18 @@
   .ow-dock .ow-tl-foot {
     grid-column: 2;
     grid-row: 1 / span 2;
-    flex-direction: column;
+    flex-direction: row;
     flex-wrap: nowrap;
     justify-content: flex-start;
-    gap: 3px;
+    align-items: flex-start;
+    gap: 0 16px;
     margin: 0 0 0 12px;
     padding: 0 0 0 12px;
     border-top: 0;
     border-left: 1px solid var(--ow-line-soft, #1a1c20);
   }
   .ow-dock .ow-tl-event-keys,
-  .ow-dock .ow-now-strip { flex-direction: column; flex-wrap: nowrap; gap: 3px; }
+  .ow-dock .ow-now-strip { flex-direction: column; flex-wrap: nowrap; gap: 2px; }
 }
 
 .ow-timeline {
