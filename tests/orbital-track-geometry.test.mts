@@ -6,7 +6,7 @@ import { findPasses, parseOrbitElements } from '../shared/orbital/pass-geometry.
 import type { GeoPoint, OmmRecord, OrbitElements, Pass } from '../shared/orbital/pass-geometry.js';
 import { matchSensorProfile } from '../shared/orbital/sensor-profiles.js';
 import type { SensorProfile } from '../shared/orbital/sensor-profiles.js';
-import { buildPassTrack, trackPositionAt, type FootprintRing, type PassTrack } from '../src/services/orbital/track-geometry.ts';
+import { buildPassTrack, sweptSwath, trackPositionAt, type FootprintRing, type PassTrack } from '../src/services/orbital/track-geometry.ts';
 import { createTrackReplay } from '../src/services/orbital/track-replay.ts';
 
 const { records } = JSON.parse(readFileSync(new URL('./fixtures/orbital/celestrak-gp-2026-11-13.json', import.meta.url), 'utf8')) as { records: OmmRecord[] };
@@ -110,6 +110,54 @@ describe('pass ground track', () => {
         }
         const span = Math.max(...ring.map(([lon]) => lon)) - Math.min(...ring.map(([lon]) => lon));
         assert.ok(span < 360, 'a ring never wraps the whole map');
+      }
+    }
+  });
+
+  it('sweeps the swath along the pass, with its leading edge across the track at the replay moment', () => {
+    const { elements, profile, passes: found } = passes('SENTINEL-2B', { lat: 25.112, lon: 55.139 });
+    const track = buildPassTrack(elements, profile.footprint, found[0]!);
+    assert.ok(track);
+    const [side] = track.swath;
+    assert.ok(side);
+    assert.deepEqual(sweptSwath(track, side.timesMs[0]! - 1), { rings: [], leadingEdge: [] });
+    const half = sweptSwath(track, track.closest.timeMs);
+    assert.equal(half.leadingEdge.length, 1);
+    const [inner, outer] = half.leadingEdge[0]! as [[number, number], [number, number]];
+    const mid = { lon: (inner[0] + outer[0]) / 2, lat: (inner[1] + outer[1]) / 2 };
+    assert.ok(Math.hypot(mid.lon - track.closest.lon, mid.lat - track.closest.lat) < 0.2, 'a nadir swath edge is centred on the satellite');
+    const area = (rings: FootprintRing[]) => rings.reduce((sum, ring) => sum + Math.abs(signedArea(ring)), 0);
+    const whole = sweptSwath(track, side.timesMs[side.timesMs.length - 1]! + 1);
+    assert.ok(area(half.rings) > 0.3 * area(whole.rings) && area(half.rings) < 0.7 * area(whole.rings), 'half the pass sweeps about half the swath');
+    assert.ok(Math.abs(area(whole.rings) - area(track.footprint)) < 1e-6, 'the whole pass sweeps the whole footprint');
+  });
+
+  it('puts a right-looking radar leading edge off the track to the right of travel', () => {
+    const { elements, profile, passes: found } = passes('SENTINEL-1C', { lat: 25.112, lon: 55.139 }, 240);
+    const track = buildPassTrack(elements, profile.footprint, found[0]!);
+    assert.ok(track);
+    const { leadingEdge } = sweptSwath(track, track.closest.timeMs);
+    assert.equal(leadingEdge.length, 1);
+    const before = trackPositionAt(track, track.closest.timeMs - 20_000);
+    const heading = [track.closest.lon - before.lon, track.closest.lat - before.lat];
+    for (const [lon, lat] of leadingEdge[0]!) {
+      const offset = [lon - track.closest.lon, lat - track.closest.lat];
+      assert.ok(heading[0]! * offset[1]! - heading[1]! * offset[0]! < 0, 'every edge point lies right of the direction of travel');
+    }
+  });
+
+  it('keeps the swept swath and its leading edge inside the map across the antimeridian', () => {
+    const { elements, profile, passes: found } = passes('SENTINEL-2A', { lat: -17.7, lon: 178.5 });
+    const crossing = found
+      .map((pass) => buildPassTrack(elements, profile.footprint, pass))
+      .find((track) => track !== null && track.footprint.length > 1);
+    assert.ok(crossing, 'a Fiji footprint is split at the antimeridian');
+    const times = crossing.swath[0]!.timesMs;
+    for (const time of times) {
+      const { rings, leadingEdge } = sweptSwath(crossing, time + 1);
+      for (const [lon] of [...rings.flat(), ...leadingEdge.flat()]) assert.ok(lon >= -180 && lon <= 180);
+      for (const line of leadingEdge) {
+        for (let i = 1; i < line.length; i += 1) assert.ok(Math.abs(line[i]![0] - line[i - 1]![0]) <= 180, 'no edge jumps across the map');
       }
     }
   });

@@ -25,6 +25,21 @@ export interface PassTrack {
   /** One path per side of the antimeridian, each ending on it so no line crosses the map. */
   segments: TrackPoint[][];
   footprint: FootprintRing[];
+  /** The footprint's edges sample by sample, so a replay can draw the ground swept so far. */
+  swath: SwathSide[];
+}
+
+/** One band of a footprint: its two edges, sampled at the same moments, with longitudes continuous along the track. */
+export interface SwathSide {
+  timesMs: number[];
+  inner: Array<[number, number]>;
+  outer: Array<[number, number]>;
+}
+
+/** The ground a sensor had swept by a moment of its pass, and the line it was imaging then. */
+export interface SweptSwath {
+  rings: FootprintRing[];
+  leadingEdge: Array<Array<[number, number]>>;
 }
 
 export type TrackPass = Pick<Pass, 'noradId' | 'name' | 'timeMs' | 'altitudeKm' | 'subSatellite'>;
@@ -149,15 +164,62 @@ function splitAtAntimeridian(ring: Array<[number, number]>): FootprintRing[] {
   return pieces;
 }
 
-function footprintRings(run: TrackPoint[], footprint: Footprint, altitudeKm: number): FootprintRing[] {
+function swathSides(run: TrackPoint[], footprint: Footprint, altitudeKm: number): SwathSide[] {
   if (run.length < 2) return [];
   const reach = footprintBand(footprint, altitudeKm);
   if (reach.sides.length === 0 || !(reach.farKm > reach.nearKm)) return [];
   const heading = headings(run);
-  const rings = reach.nearKm === 0 && reach.sides.length === 2
-    ? [band(edge(run, heading, 'left', reach.farKm), edge(run, heading, 'right', reach.farKm))]
-    : reach.sides.map((side) => band(edge(run, heading, side, reach.farKm), edge(run, heading, side, reach.nearKm)));
-  return rings.filter((ring): ring is Array<[number, number]> => ring !== null).flatMap(splitAtAntimeridian);
+  const timesMs = run.map((point) => point.timeMs);
+  const pairs = reach.nearKm === 0 && reach.sides.length === 2
+    ? [[edge(run, heading, 'left', reach.farKm), edge(run, heading, 'right', reach.farKm)]]
+    : reach.sides.map((side) => [edge(run, heading, side, reach.nearKm), edge(run, heading, side, reach.farKm)]);
+  return pairs.flatMap(([inner, outer]) => (inner && outer ? [{ timesMs, inner, outer }] : []));
+}
+
+const sideRings = (side: SwathSide): FootprintRing[] => splitAtAntimeridian(band([...side.inner], [...side.outer])!);
+
+/** Cuts a line with continuous longitudes into pieces that each sit inside -180..180. */
+function splitLine(line: Array<[number, number]>): Array<Array<[number, number]>> {
+  const pieces: Array<Array<[number, number]>> = [];
+  let piece: Array<[number, number]> = [];
+  let shift = Math.floor((line[0]![0] + 180) / 360);
+  for (const [lon, lat] of line) {
+    const k = Math.floor((lon + 180) / 360);
+    if (k !== shift && piece.length > 0) {
+      const last = piece[piece.length - 1]!;
+      const bound = k > shift ? 180 : -180;
+      const local = lon - 360 * shift;
+      const f = (bound - last[0]) / (local - last[0]);
+      const crossLat = last[1] + (lat - last[1]) * f;
+      piece.push([bound, crossLat]);
+      pieces.push(piece);
+      piece = [[-bound, crossLat]];
+      shift = k;
+    }
+    piece.push([lon - 360 * shift, lat]);
+  }
+  if (piece.length > 1) pieces.push(piece);
+  return pieces;
+}
+
+const lerp = (a: [number, number], b: [number, number], f: number): [number, number] => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+
+/** The part of each footprint band swept by a moment of the pass, and the cross-track line at that moment. */
+export function sweptSwath(track: Pick<PassTrack, 'swath'>, timeMs: number): SweptSwath {
+  const rings: FootprintRing[] = [];
+  const leadingEdge: Array<Array<[number, number]>> = [];
+  for (const side of track.swath) {
+    const { timesMs, inner, outer } = side;
+    if (timesMs.length < 2 || timeMs <= timesMs[0]!) continue;
+    let k = timesMs.findIndex((t) => t >= timeMs);
+    if (k < 0) k = timesMs.length - 1;
+    const f = timesMs[k] === timesMs[k - 1] ? 1 : Math.min(1, (timeMs - timesMs[k - 1]!) / (timesMs[k]! - timesMs[k - 1]!));
+    const innerAt = lerp(inner[k - 1]!, inner[k]!, f);
+    const outerAt = lerp(outer[k - 1]!, outer[k]!, f);
+    rings.push(...splitAtAntimeridian(band([...inner.slice(0, k), innerAt], [...outer.slice(0, k), outerAt])!));
+    leadingEdge.push(...splitLine([innerAt, outerAt]));
+  }
+  return { rings, leadingEdge };
 }
 
 function trackSegments(elements: OrbitElements, startMs: number, endMs: number, stepSeconds: number): TrackPoint[][] {
@@ -179,6 +241,7 @@ export function buildPassTrack(elements: OrbitElements, footprint: Footprint, pa
   const segments = trackSegments(elements, startMs, endMs, stepSeconds);
   if (segments.flat().length < 2) return null;
   const near = trackSegments(elements, pass.timeMs - footprintHalfMinutes * MINUTE_MS, pass.timeMs + footprintHalfMinutes * MINUTE_MS, stepSeconds);
+  const swath = swathSides(unwrap(near), footprint, pass.altitudeKm);
   return {
     key: passTrackKey(pass),
     name: pass.name,
@@ -186,7 +249,8 @@ export function buildPassTrack(elements: OrbitElements, footprint: Footprint, pa
     endMs,
     closest: { lon: pass.subSatellite.lon, lat: pass.subSatellite.lat, timeMs: pass.timeMs },
     segments: closeAtAntimeridian(segments),
-    footprint: footprintRings(unwrap(near), footprint, pass.altitudeKm),
+    footprint: swath.flatMap(sideRings),
+    swath,
   };
 }
 
