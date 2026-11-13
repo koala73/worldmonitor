@@ -1182,9 +1182,12 @@ any red check anywhere strands this service's builds.
 | **Note** | Cross-Strait Activity is the only direct external-source member; it uses bounded MND/Japan MOD requests and a 3h freshness gate. China Decision Signals validates and republishes the bounded public composition after reading its domain lanes. Other members are Redis-derived. The bundle enforces a 570s wall-time admission budget so a non-fitting due section defers before Railway's 10-minute container limit. |
 
 CII Economic Stress reads six existing Redis inputs within a 30s section budget.
-Deploy the FX monthly-bar retention first and verify fresh source observations
-for the intended 25/31 countries before enabling this producer. Its pre-retention
-GET-only dry run measures only 22 because TW, AE and QA need currency history.
+The currency member needs the cleaned `daily90` block from `seed-fx-yoy`, which
+runs once a day. After a change to that block, run the FX seeder once before
+judging coverage: until it runs, every currency reads `insufficient-history`
+and the producer measures 22. The expected count is 25 of 31; it is 24 when
+the second exchange-rate source is unavailable, because Qatar then has no
+usable member.
 Apply the registry's producer and Upstash-helper watch paths to this service.
 No extra upstream credentials or direct provider fetches are introduced.
 

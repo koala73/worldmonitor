@@ -65,13 +65,30 @@ This register has one row per input the CII reads. Under `docs/methodology/cii-c
 ## Pending v15 economic input (OQ9, owner ruling 13 November 2026)
 
 The producer-only key `intelligence:cii-economic-stress:v1` is not read by v14.
-It contains three possible country members: currency depreciation against the
-last monthly close on or before 90 days earlier (at most 35 days of anchor lag),
+It contains three possible country members: currency depreciation over 90 days,
 year-on-year CPI inflation minus the preceding year's year-on-year inflation,
 and monthly 10-year government yield minus its preceding 12-month mean.
-Completed FX bars use the end of their exchange-local month; the current bar
-uses the latest observation date. Thus the monthly anchor is at least 90 days
-old, with its actual date exposed, rather than an exact daily 90-day return.
+
+The currency member is cleaned where it is fetched, in `seed-fx-yoy.mjs`, from
+six months of daily closes. The latest value is the median of the last five
+sessions, and the anchor is the median of the five sessions centred on the
+last session at least 90 days earlier (at most seven days of extra lag), so an
+isolated bad print moves neither end. A real move therefore shows in full
+about three sessions after it happens. A series in which more than 10% of
+sessions hold a move above 1% that is undone within three sessions is
+not compared. For such a currency the seeder reads a second source, the
+fawazahmed0 currency-api (dated daily tables of every currency against the
+dollar), and takes the same two five-day medians from it; the member records
+which source it came from and the Yahoo noise share. The second source is also
+read when the Yahoo series is missing or its newest session is more than seven
+days old. The member is absent with the reason `unreliable-quotes` only when
+the second source cannot supply usable data either, whether because it lacks
+the currency, has too few days, or is unreachable on that run. On 13 November 2026 the Yahoo flag applied to the Qatari riyal
+(0.43), the Bahraini dinar (0.37) and the Pakistani rupee (0.14); the next
+highest was the Saudi riyal at 0.06, whose isolated spikes the medians remove.
+The second source read both pegs as flat and agreed with Yahoo on the Egyptian
+pound (6.30% against 6.27%). Its terms are under review in the attribution ledger.
+The noise share and the anchor date are published with each member.
 Values retain their units, source key, observation date and reference method.
 U18 must evaluate the scoring transformation and member-count fairness; these
 producer measurements do not select score constants or weights.
@@ -79,8 +96,8 @@ producer measurements do not select score constants or weights.
 CPI mirrors supply one member, selected from the freshest usable history.
 Monthly/quarterly reference periods are dated at their end. Limits are 4 months
 for monthly CPI, 7 months for quarterly CPI, 7 days for currency and 3 months for
-monthly yields. US, DE and FR have no currency member. A held peg is a measured
-zero move. Stale or insufficient-history members retain their absence reason and
+monthly yields. US, DE and FR have no currency member. A held peg with clean
+quotes is a measured zero move; a peg with unreliable quotes is not measured. Stale or insufficient-history members retain their absence reason and
 last observation date, with no numeric scoring value. Countries with no fresh
 member are published as not measured. The source country list is the released
 31; the dry run separately reports PH, TH, ID, VN, MY and KH.

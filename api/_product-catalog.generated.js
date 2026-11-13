@@ -177,13 +177,13 @@ export const PUBLIC_PRODUCT_FACTS = {
   "heroProofStats": {
     "mapLayers": 60,
     "feeds": 470,
-    "providers": 854,
+    "providers": 855,
     "alertOrigins": 5
   },
   "depthProofStats": {
     "mapLayers": 60,
     "feeds": 470,
-    "providers": 854,
+    "providers": 855,
     "alertOrigins": 5,
     "chokepoints": 13,
     "instabilityCountries": 31,

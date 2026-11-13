@@ -1108,9 +1108,12 @@ currency, CPI and monthly government-yield caches; it changes no CII score.
 
 Coverage is checked from the payload, not from metadata counts. Fewer than 23 of
 the 31 released countries with a still-fresh member gives `COVERAGE_PARTIAL`.
-The owner's 13 November follow-up allows two countries of headroom below the
-25-country baseline: Russia, Iran, Venezuela and Iraq rely on inflation alone.
-Initial deployment acceptance still requires 25 measured countries. Expected
+The owner's 13 November follow-up set that line two below the 25 countries
+measured at the time: Russia, Iran, Venezuela and Iraq rely on inflation alone.
+The currency member now reads cleaned daily quotes, with a second source for
+a currency whose Yahoo quotes are unreliable, so the expected count stays 25.
+If that second source is down, Qatar reads `unreliable-quotes` and the count
+is 24. Expected
 unmeasured countries do not alarm. Member expiry is checked at health-read
 time, so an old payload cannot keep a country measured after its last member
 expires. A Redis read failure gives `REDIS_PARTIAL`. Coverage defects also remove
@@ -1120,5 +1123,9 @@ OQ9 (owner, 13 November 2026) permits partial coverage. A country without a fres
 member is published as `measured: false` with the label “economic stress not
 measured”; missing data is never a zero stress observation. India losing its
 July CPI observation alone does not reduce measured coverage while its currency
-observation remains fresh. The producer must deploy after the FX seeder retains
-its monthly bars; older FX summaries cannot supply a 90-day change.
+observation remains fresh. The currency member needs the `daily90` block that
+`seed-fx-yoy.mjs` publishes; an FX payload written before that block existed
+gives `insufficient-history` for every currency until the seeder next runs.
+A currency whose daily quotes keep reverting, and which the second source
+cannot supply either, is published as `unreliable-quotes`, which is an
+absence, not a zero move.

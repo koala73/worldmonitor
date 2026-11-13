@@ -2059,6 +2059,7 @@
     "service": "seed-fx-yoy",
     "watchPatterns": [
       "scripts/_content-age-helpers.mjs",
+      "scripts/_currency-api.mjs",
       "scripts/_env-file.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
