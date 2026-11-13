@@ -93,7 +93,7 @@ const answered = (passes: PointPass[], over: Partial<OrbitalEvidence> = {}, stat
 
 const modis = { kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'MODIS Terra', layer: 'MODIS_Terra_CorrectedReflectance_TrueColor', noradId: 25994, days: [{ date: '2026-11-12', imageUrl: 'https://gibs.earthdata.nasa.gov/m.jpg' }] } as OrbitalEvidence['mosaics'][number];
 const viirs = { kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'VIIRS Suomi NPP', layer: 'v', noradId: 37849, days: [] } as OrbitalEvidence['mosaics'][number];
-const meteosat = { kind: 'geostationary', archive: 'eumetsat', source: 'Meteosat-10', layer: 'x', noradId: 38552, cadenceMinutes: 15, latest: { time: '2026-11-13T11:45:00Z', imageUrl: 'https://view.eumetsat.int/x.png' } } as OrbitalEvidence['frames'][number];
+const meteosat = { kind: 'geostationary', archive: 'eumetsat', source: 'Meteosat-10', layer: 'x', noradId: 38552, cadenceMinutes: 15, latest: { time: '2026-11-13T11:45:00Z', imageUrl: 'https://view.eumetsat.int/x.png', fallbacks: [] } } as OrbitalEvidence['frames'][number];
 
 const cards = () => [...sheet().querySelectorAll<HTMLElement>('.ow-card')];
 const rowOf = (name: string) => [...sheet().querySelectorAll<HTMLElement>('.ow-row')].find((r) => r.querySelector('.ow-row-name')?.firstChild?.textContent === name)!;
@@ -445,6 +445,38 @@ describe('satellite pass lookup sheet', () => {
     expect(cards()[0]!.querySelector('.ow-image-credit')!.textContent).toBe('© EUMETSAT');
     expect(cards()[0]!.querySelector<HTMLElement>('.ow-image-credit')!.title).toBe('Contains EUMETSAT Meteosat imagery');
     expect(cards()[0]!.querySelector('.ow-caption-lines')!.textContent).toContain('Geostationary · every 15 min');
+  });
+
+  it('steps a failed weather frame back through its earlier frames, then offers retry', () => {
+    const { all } = tiered();
+    const frame = { ...meteosat, latest: { ...meteosat.latest!, fallbacks: [
+      { time: '2026-11-13T11:30:00Z', imageUrl: 'https://view.eumetsat.int/x-1130.png' },
+      { time: '2026-11-13T11:15:00Z', imageUrl: 'https://view.eumetsat.int/x-1115.png' },
+    ] } };
+    const page = mounted(answered(all, { frames: [frame] }));
+    const check = (tile: () => HTMLElement, when: () => string, steps: Array<[string, string]>) => {
+      const img = () => tile().querySelector('img')!;
+      for (const [src, time] of steps) {
+        expect(img().getAttribute('src')).toBe(src);
+        expect(when()).toContain(time);
+        expect(img().alt).toContain(time);
+        expect(tile().dataset.state).toBe('loading');
+        img().dispatchEvent(new Event('error'));
+      }
+      expect(tile().dataset.state).toBe('failed');
+    };
+    const steps: Array<[string, string]> = [['https://view.eumetsat.int/x.png', '11:45'], ['https://view.eumetsat.int/x-1130.png', '11:30'], ['https://view.eumetsat.int/x-1115.png', '11:15']];
+    const hero = () => cards()[0]!.querySelector<HTMLElement>('.ow-tile')!;
+    check(hero, () => cards()[0]!.querySelector('.ow-caption-lines span')!.textContent!, steps);
+    expect(hero().querySelector('.ow-tile-status')!.textContent).toContain('Image unavailable · EUMETSAT');
+    hero().querySelector<HTMLButtonElement>('[data-action="retry-image"]')!.click();
+    expect(hero().dataset.state).toBe('loading');
+    expect(hero().querySelector('img')!.getAttribute('src')).toBe(steps[0]![0]);
+    expect(cards()[0]!.querySelector('.ow-caption-lines span')!.textContent).toContain('11:45');
+    page.setView('full');
+    group('weather')!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
+    const row = () => rowOf('Meteosat-10');
+    check(() => row().querySelector<HTMLElement>('.ow-tile')!, () => row().querySelector('.ow-row-meta')!.textContent!, steps);
   });
 
   it('names the archives that failed and retries on request', () => {

@@ -22,7 +22,7 @@ Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/orbital-watch.m
 
 The step serves `/api/orbital/v1/list-imaging-satellites` from `tests/fixtures/orbital/celestrak-gp-2026-11-13.json` and lets archive requests reach the real archives. It holds them to capture the checking state, fails Earth Search for the partial state, marks the catalog stale, and for the empty state serves an empty catalog and empty archive answers (no scenes, empty GIBS time domains). Set `WM_VERIFY_ORBITAL_CATALOG=live` to read the local API instead. Fixture orbits drift with time, so far from 2026-11-13 the pass list shrinks.
 
-It fails if any request to a non-archive host carries the picked point, and if an archive image becomes the largest contentful paint.
+It fails if any request to a non-archive host carries the picked point, if an archive request carries it in its URL path rather than its query or body, and if an archive image becomes the largest contentful paint.
 
 ## Proof limits
 

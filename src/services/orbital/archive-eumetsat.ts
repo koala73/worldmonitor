@@ -1,5 +1,5 @@
 import { requestArchive, type ArchiveRequestOptions, type ArchiveResult } from './archive-result';
-import { layerFailures, GEOSTATIONARY_LOOKBACK_MS, parseTimeDomain, timesWithin, type FrameQuery, type GeostationaryRow, type LayerTimes } from './archive-gibs';
+import { latestFrame, layerFailures, GEOSTATIONARY_LOOKBACK_MS, parseTimeDomain, timesWithin, type FrameQuery, type GeostationaryRow, type LayerTimes } from './archive-gibs';
 import { cropBox, eumetsatSnapshotUrl } from './crop-url';
 
 const EUMETSAT_GEOSERVER = 'https://view.eumetsat.int/geoserver';
@@ -14,8 +14,6 @@ interface EumetsatLayer {
 export const EUMETSAT_GEOSTATIONARY: readonly EumetsatLayer[] = [
   { source: 'Meteosat-12', workspace: 'mtg_fd', layer: 'rgb_geocolour', noradId: 54743 },
 ];
-
-const isoSecond = (ms: number) => `${new Date(ms).toISOString().slice(0, 19)}Z`;
 
 /** Reads the layer's time extent from its own capabilities document, which carries no point. */
 async function layerTimes(layer: EumetsatLayer, fromMs: number, toMs: number, options: ArchiveRequestOptions): Promise<LayerTimes> {
@@ -37,7 +35,6 @@ export async function searchEumetsatGeostationary(query: FrameQuery & { visibleN
   const failures = layerFailures(answers);
   const items = layers.map((layer, i): GeostationaryRow => {
     const answer = answers[i]!;
-    const latestMs = answer.ok ? answer.times[answer.times.length - 1] : undefined;
     const wmsLayer = `${layer.workspace}:${layer.layer}`;
     return {
       kind: 'geostationary',
@@ -46,7 +43,7 @@ export async function searchEumetsatGeostationary(query: FrameQuery & { visibleN
       layer: wmsLayer,
       noradId: layer.noradId,
       cadenceMinutes: !answer.ok || answer.stepMs === null ? null : answer.stepMs / 60_000,
-      latest: latestMs === undefined ? null : { time: isoSecond(latestMs), imageUrl: eumetsatSnapshotUrl(wmsLayer, isoSecond(latestMs), box) },
+      latest: answer.ok ? latestFrame(answer.times, (time) => eumetsatSnapshotUrl(wmsLayer, time, box)) : null,
     };
   });
   return { status: 'ok', archive: 'eumetsat', items, failures };
