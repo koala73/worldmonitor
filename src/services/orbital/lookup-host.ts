@@ -12,18 +12,18 @@ export function connectOrbitalLookupMap(access: () => LookupMapHandle | null): v
   mapAccess = access;
 }
 
-const sameCentre = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) =>
-  Math.abs(a.lat - b.lat) < 1e-6 && Math.abs(a.lon - b.lon) < 1e-6;
+/** Globe spin and a sideways pan turn only the longitude, so the map still carries the looked-up latitude. */
+const sameLatitude = (a: { lat: number }, b: { lat: number }) => Math.abs(a.lat - b.lat) < 1e-6;
 
 /**
- * While the lookup is open, and after it closes until the map moves, the map URL sync leaves the map centre out,
+ * While the lookup is open, and after it closes until the map leaves that latitude, the map URL sync leaves the map centre out,
  * so a looked-up place stays out of the query string.
  */
 export function isOrbitalLookupOpen(): boolean {
   if (lookupOpen) return true;
   if (!leftAt) return false;
   const centre = mapAccess()?.getCenter();
-  if (centre && sameCentre(centre, leftAt)) return true;
+  if (centre && sameLatitude(centre, leftAt)) return true;
   leftAt = null;
   return false;
 }

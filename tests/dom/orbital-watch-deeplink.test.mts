@@ -406,6 +406,8 @@ describe('satellite pass share link', () => {
     button('.ow-close').click();
     expect(isOrbitalLookupOpen(), 'the map still sits on the typed point after closing').toBe(true);
     expect(new URL(manager.getShareUrl()!).searchParams.has('lat')).toBe(false);
+    mapCentre = { lat: 48.8584, lon: 40 };
+    expect(isOrbitalLookupOpen(), 'a globe spinning on after closing still carries the typed latitude').toBe(true);
     mapCentre = { lat: 50, lon: 3 };
     expect(isOrbitalLookupOpen(), 'a map moved after closing writes its centre again').toBe(false);
   });
