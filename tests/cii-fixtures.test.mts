@@ -18,6 +18,7 @@ import {
   recordExpectedTable,
   scoreCiiFixture,
   trimCiiRawInputs,
+  validateCiiCalibrationInputs,
 } from '../scripts/lib/cii-fixtures.mts';
 import { computeCiiScoreTable } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
 import { CII_FORMULA_VERSION } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
@@ -42,20 +43,38 @@ describe('CII fixtures', () => {
     }
   });
 
-  it('stay small: under 1 MB in total', () => {
-    const bytes = readdirSync(CII_FIXTURE_DIR).reduce((sum, name) => sum + statSync(join(CII_FIXTURE_DIR, name)).size, 0);
-    assert.ok(bytes < 1024 * 1024, `fixtures total ${bytes} bytes`);
+  it('keep regression snapshots under 1 MB total and calibration captures under 2 MB each', () => {
+    const legacy = FIXTURES.filter(f => !f.calibration);
+    const bytes = legacy.reduce((sum, f) => sum + statSync(join(CII_FIXTURE_DIR, `${f.label}.json`)).size, 0);
+    assert.ok(bytes < 1024 * 1024, `legacy fixtures total ${bytes} bytes`);
+    for (const f of FIXTURES.filter(f => f.calibration)) {
+      assert.ok(statSync(join(CII_FIXTURE_DIR, `${f.label}.json`)).size < 2 * 1024 * 1024, `${f.label} exceeds 2 MB`);
+    }
   });
 
   it('are already trimmed, and keep no strike-feed text or headline other than a country name', () => {
     for (const f of FIXTURES) {
-      assert.deepEqual(trimCiiRawInputs(f.inputs), f.inputs, `${f.label} holds untrimmed inputs`);
+      assert.deepEqual(trimCiiRawInputs(f.inputs, f.captureTargets, f.calibration), f.inputs, `${f.label} holds untrimmed inputs`);
       for (const event of (f.inputs.iranEvents as { events?: object[] } | null)?.events ?? []) {
         assert.deepEqual(Object.keys(event).sort(), ['countryCode', 'severity', 'timestamp'], `${f.label} strike event keeps extra fields`);
       }
       for (const story of (f.inputs.newsInsights as { topStories?: Array<{ primaryTitle: string }> } | null)?.topStories ?? []) {
         assert.ok(story.primaryTitle === '' || TIER1_NAMES.has(story.primaryTitle), `${f.label} keeps a headline`);
       }
+    }
+  });
+
+  it('validate complete calibration inputs and keep every retained source field', () => {
+    const captures = FIXTURES.filter(f => f.calibration);
+    assert.ok(captures.length > 0);
+    for (const f of captures) {
+      validateCiiCalibrationInputs(f.inputs, f.captureTargets!);
+      const trimmed = trimCiiRawInputs(f.inputs, f.captureTargets, true);
+      for (const key of ['ucdp', 'structuralPrior', 'economicStress'] as const) {
+        assert.deepEqual(trimmed[key], f.inputs[key], `${f.label}: ${key} was trimmed`);
+      }
+      assert.equal(f.captureTargets!.length, 37);
+      assert.throws(() => validateCiiCalibrationInputs({ ...f.inputs, economicStress: null }, f.captureTargets!), /economic key/);
     }
   });
 
