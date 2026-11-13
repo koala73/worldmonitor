@@ -13,7 +13,7 @@ const ARCHIVE_HOSTS = ['earth-search.aws.element84.com', 'planetarycomputer.micr
 const CATALOG_PATH = '/api/orbital/v1/list-imaging-satellites';
 const HOUR = 3_600_000;
 
-function fixtureCatalog() {
+export function fixtureCatalog() {
   const { records } = JSON.parse(readFileSync(new URL('../../../../tests/fixtures/orbital/celestrak-gp-2026-11-13.json', import.meta.url), 'utf8'));
   const satellites = records.flatMap((r) => {
     const profile = matchSensorProfile(r.NORAD_CAT_ID, r.OBJECT_NAME);

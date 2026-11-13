@@ -10,6 +10,7 @@ Right-click or long-press any point on the map, land or ocean, and choose **Sate
 - `credits` puts each source credit under its image, plus the NASA GIBS acknowledgement when a GIBS image is shown.
 - `partial` names the archive that failed and offers Retry. `stale` shows the orbit-data age. `empty` explains the searched window.
 - `privacy` keeps the disclosure visible in every state.
+- `track` draws a chosen pass's ground track, sensor footprint and replay marker on the deck.gl map, the phone SVG map and the globe. Reduced motion places the marker at closest approach without animating. Choosing another pass replaces the drawing, and closing the sheet removes it.
 
 ## How to get to it (user POV)
 
@@ -24,10 +25,12 @@ The step serves `/api/orbital/v1/list-imaging-satellites` from `tests/fixtures/o
 
 It fails if any request to a non-archive host carries the picked point, and if an archive image becomes the largest contentful paint.
 
+Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/orbital-watch-track.mjs --name orbital-track` for the `track` sub-feature. `WM_VERIFY_ORBITAL_MAP=flat` drives the flat map: on desktop it hides the software renderer name so `MapContainer` picks deck.gl, and with `WM_VERIFY_ORBITAL_VIEWPORT=mobile` it opens the lookup from the globe and switches to the 2D SVG map, which has no context menu. `npx playwright test e2e/orbital-watch-track.spec.ts` checks the deck.gl layers through the map harness.
+
 ## Proof limits
 
 - The point check covers requests the page makes. Sentry breadcrumb scrubbing is covered by `tests/orbital-privacy.test.mts`, because the dev server does not start Sentry.
 - DebugBear RUM loads only on production hosts. Its request-window wait is covered by `tests/debugbear-rum.test.mts`. Crops cannot become the LCP element because the sheet opens only after a user input, which ends LCP.
 - Live imagery varies. The fixture proves the states, not a specific scene.
 
-Handles: `.orbital-watch-sheet`, `.ow-headline`, `.ow-group-toggle[aria-expanded]`, `.ow-row`, `.ow-tier-label`, `.ow-row-image figcaption`, `.ow-banner-partial`, `.ow-banner-stale`, `.ow-empty`, `.ow-privacy`, `.ow-retry`.
+Handles: `.ow-row[data-pass-key]`, `.ow-row[aria-current="true"]`, `.ow-replay`, `.orbital-watch-sheet`, `.ow-headline`, `.ow-group-toggle[aria-expanded]`, `.ow-row`, `.ow-tier-label`, `.ow-row-image figcaption`, `.ow-banner-partial`, `.ow-banner-stale`, `.ow-empty`, `.ow-privacy`, `.ow-retry`.

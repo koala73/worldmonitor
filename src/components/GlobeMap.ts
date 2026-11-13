@@ -936,9 +936,11 @@ export class GlobeMap {
       .pathPoints((d: GlobePath) => d?.points ?? [])
       .pathPointLat((p: number[]) => p[1])
       .pathPointLng((p: number[]) => p[0])
-      .pathPointAlt((p: number[], _idx: number, path: object) =>
-        (path as GlobePath)?.pathType === 'orbit' && p.length > 2 ? (p[2] ?? 0) / 6371 : 0
-      )
+      .pathPointAlt((p: number[], _idx: number, path: object) => {
+        const pathType = (path as GlobePath)?.pathType;
+        if (pathType === 'orbitalTrack') return 0.007;
+        return pathType === 'orbit' && p.length > 2 ? (p[2] ?? 0) / 6371 : 0;
+      })
       .pathColor((d: GlobePath) => {
         if (!d) return 'rgba(180,160,255,0.6)';
         if (d.pathType === 'orbit') {
@@ -1003,7 +1005,7 @@ export class GlobeMap {
       .pointLng((d: TrackPoint) => d.lon)
       .pointColor(() => 'rgba(255,214,10,1)')
       .pointAltitude(0.01)
-      .pointRadius(0.6);
+      .pointRadius(1.1);
 
     // Polygon accessors — set once
     (globe as any)
@@ -2591,8 +2593,9 @@ export class GlobeMap {
         status: 'active',
       }))
       : [];
+    // The globe fills clockwise rings, like the reversed country rings above.
     this.orbitalFootprintPolygons = track
-      ? track.footprint.map((ring) => ({ coords: [ring], name: track.name, _kind: 'orbitalFootprint' as const }))
+      ? track.footprint.map((ring) => ({ coords: [[...ring].reverse()], name: track.name, _kind: 'orbitalFootprint' as const }))
       : [];
     this.orbitalTrackMarker = track ? marker : null;
     this.flushPaths();

@@ -5,6 +5,7 @@ import { UKMTO_SOURCE_URL, ukmtoIncidentLabel, type UkmtoMapIncident } from '../
 import { iso2ToUnCode } from '../../shared/country-numeric-codes';
 import { FOCUS_CENTRES, type FocusFitBounds } from '@/utils/focus-map';
 import type { ReservoirLevel } from '@/services/climate';
+import type { PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
 import { reservoirTone, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
 import * as topojson from 'topojson-client';
 import { escapeHtml } from '@/utils/sanitize';
@@ -209,6 +210,9 @@ export class MapComponent {
    * keys its country features by M49, not ISO2.
    */
   private focusOutline: { chosen: Set<string>; neighbours: Set<string> } | null = null;
+  private orbitalTrack: PassTrack | null = null;
+  private orbitalTrackMarker: TrackPoint | null = null;
+  private orbitalMarkerNode: SVGCircleElement | null = null;
   /** A focus fit requested while the map had no size (a collapsed mobile map). */
   private pendingFocusFit: FocusFitBounds | null = null;
   private isResizing = false;
@@ -1573,6 +1577,7 @@ export class MapComponent {
     if (this.state.layers.ais) steps.push(() => this.renderAisDensity(projection));
     steps.push(() => this.renderClusterLayer(projection));
     steps.push(() => this.renderOverlays(projection));
+    if (this.orbitalTrack) steps.push(() => this.renderOrbitalTrack(projection));
 
     for (let i = 0; i < steps.length; i++) {
       if (chunk && (this.destroyed || token !== this.dynamicRenderToken)) return;
@@ -5097,6 +5102,59 @@ export class MapComponent {
 
   public setOnCountryClick(cb: (country: CountryClickPayload) => void): void {
     this.onCountryClick = cb;
+  }
+
+  public setOrbitalTrack(track: PassTrack | null, marker: TrackPoint | null): void {
+    this.orbitalTrack = track;
+    this.orbitalTrackMarker = track ? marker : null;
+    if (!track) {
+      this.dynamicLayerGroup?.node()?.querySelector('.orbital-track')?.remove();
+      this.orbitalMarkerNode = null;
+    }
+    this.render();
+  }
+
+  public setOrbitalTrackMarker(point: TrackPoint | null): void {
+    if (!this.orbitalTrack) return;
+    this.orbitalTrackMarker = point;
+    const { width, height } = this.getKnownContainerSize();
+    if (width > 0 && height > 0) this.placeOrbitalMarker(this.getProjection(width, height));
+  }
+
+  private renderOrbitalTrack(projection: d3.GeoProjection): void {
+    const track = this.orbitalTrack;
+    const group = this.dynamicLayerGroup;
+    if (!track || !group) return;
+    const toPath = (positions: Array<[number, number]>, close: boolean): string => {
+      const projected = positions.map((position) => projection(position)).filter((xy): xy is [number, number] => xy !== null);
+      return projected.length < 2 ? '' : `M${projected.map(([x, y]) => `${x},${y}`).join('L')}${close ? 'Z' : ''}`;
+    };
+    const layer = group.append('g').attr('class', 'orbital-track').attr('pointer-events', 'none');
+    for (const ring of track.footprint) {
+      layer.append('path').attr('d', toPath(ring, true))
+        .attr('fill', 'rgba(0,180,255,0.18)').attr('stroke', 'rgba(0,180,255,0.9)').attr('stroke-width', 1).attr('vector-effect', 'non-scaling-stroke');
+    }
+    for (const segment of track.segments) {
+      layer.append('path').attr('d', toPath(segment.map((point): [number, number] => [point.lon, point.lat]), false))
+        .attr('fill', 'none').attr('stroke', 'rgb(255,214,10)').attr('stroke-width', 2).attr('vector-effect', 'non-scaling-stroke');
+    }
+    this.orbitalMarkerNode = layer.append('circle').attr('r', 4).attr('fill', 'rgb(255,214,10)').attr('stroke', '#111')
+      .attr('vector-effect', 'non-scaling-stroke').node();
+    this.placeOrbitalMarker(projection);
+  }
+
+  private placeOrbitalMarker(projection: d3.GeoProjection): void {
+    const node = this.orbitalMarkerNode;
+    if (!node?.isConnected) return;
+    const marker = this.orbitalTrackMarker;
+    const xy = marker ? projection([marker.lon, marker.lat]) : null;
+    if (!xy) {
+      node.setAttribute('display', 'none');
+      return;
+    }
+    node.removeAttribute('display');
+    node.setAttribute('cx', String(xy[0]));
+    node.setAttribute('cy', String(xy[1]));
   }
 
   /**

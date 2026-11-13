@@ -1970,7 +1970,7 @@ export class MapContainer {
     else this.svgMap?.fitFocusBounds(action.flatFit);
   }
 
-  /** Draws a satellite pass's ground track and sensor footprint; null removes it. The flat SVG fallback draws nothing. */
+  /** Draws a satellite pass's ground track and sensor footprint; null removes it. */
   public setOrbitalTrack(track: PassTrack | null): void {
     this.orbitalTrack = track;
     this.orbitalTrackMarker = null;
@@ -1982,11 +1982,13 @@ export class MapContainer {
     if (!this.orbitalTrack) return;
     this.orbitalTrackMarker = point;
     this.deckGLMap?.setOrbitalTrackMarker(point);
+    this.svgMap?.setOrbitalTrackMarker(point);
     this.globeMap?.setOrbitalTrackMarker(point);
   }
 
   private applyOrbitalTrack(): void {
     this.deckGLMap?.setOrbitalTrack(this.orbitalTrack, this.orbitalTrackMarker);
+    this.svgMap?.setOrbitalTrack(this.orbitalTrack, this.orbitalTrackMarker);
     this.globeMap?.setOrbitalTrack(this.orbitalTrack, this.orbitalTrackMarker);
   }
 
