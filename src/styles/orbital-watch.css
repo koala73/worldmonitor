@@ -386,6 +386,11 @@
   .orbital-watch-sheet[data-view="full"] .ow-statusbar { display: none; }
   .orbital-watch-sheet .ow-hud:not(:empty),
   .orbital-watch-sheet[data-view="full"] .ow-hud:not(:empty) { display: flex; pointer-events: auto; position: absolute; top: auto; bottom: calc(100% + 8px); left: 12px; right: 12px; width: auto; }
-  .ow-replay-hud { align-self: flex-end; padding: 8px 12px 10px; }
-  .ow-hud-countdown { font-size: 26px; line-height: 30px; }
+  .orbital-watch-sheet .ow-hud:not(:empty) { gap: var(--ow-space-1); }
+  .ow-replay-hud { align-self: flex-end; display: flex; align-items: baseline; gap: var(--ow-space-2); padding: 4px 8px; }
+  .ow-replay-hud .ow-hud-reduced { display: none; }
+  .ow-hud-countdown { margin-top: 0; font-size: 15px; line-height: 18px; }
+  .ow-replay-controls,
+  .ow-replay-controls[data-reduced-motion="true"] { flex-wrap: nowrap; min-height: 0; padding: 2px var(--ow-space-2); }
+  .ow-hud-toggle { width: 28px; height: 28px; }
 }
