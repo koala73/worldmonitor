@@ -139,7 +139,7 @@ describe('orbital time-lapse page', () => {
   it('says how few looks there are instead of animating fewer than four', async () => {
     open({ searchLooks: looks(years(2024, 2026)) });
     await vi.waitFor(() => expect(page()!.querySelector('[data-timelapse="insufficient"]')).not.toBeNull());
-    expect(text()).toContain('Only 3 clear yearly looks of this place; a time-lapse needs 4.');
+    expect(text()).toContain('Clear yearly looks of this place: 3. A time-lapse needs 4.');
   });
 
   it('names the archive that timed out and retries', async () => {
@@ -149,7 +149,7 @@ describe('orbital time-lapse page', () => {
     searchLooks.mockResolvedValueOnce({ looks: years(2015, 2020), failures: [{ archive: 'planetary-computer', reason: 'timeout' }] });
     page()!.querySelector<HTMLButtonElement>('[data-action="retry"]')!.click();
     await vi.waitFor(() => expect(page()!.querySelector('.otl-year-number')).not.toBeNull());
-    expect(text()).toContain('1 years are missing because Microsoft Planetary Computer did not answer.');
+    expect(text()).toContain('Missing years because Microsoft Planetary Computer did not answer: 1.');
   });
 
   it('never renders a look from a host outside the archive allowlist', async () => {

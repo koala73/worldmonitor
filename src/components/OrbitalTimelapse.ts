@@ -74,7 +74,7 @@ export class OrbitalTimelapsePage {
     this.body = h('div', { className: 'oiv-main' });
     this.dialog = h('section', { className: 'oiv-page otl-page', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, tabindex: '-1' },
       h('header', { className: 'oiv-bar' },
-        h('h2', { id: titleId, className: 'oiv-crumb' }, h('span', null, t('orbitalWatch.timelapse.title')), ' / ', h('span', { className: 'oiv-crumb-place' }, subject.place)),
+        h('h2', { id: titleId, className: 'oiv-crumb' }, h('span', null, t('orbitalWatch.timelapse.heading')), ' / ', h('span', { className: 'oiv-crumb-place' }, subject.place)),
         closeButton()),
       this.body);
     this.root = h('div', { className: 'oiv-backdrop' }, this.dialog);
@@ -275,7 +275,7 @@ export class OrbitalTimelapsePage {
 
   private async share(): Promise<void> {
     const url = location.href;
-    const title = `${t('orbitalWatch.timelapse.title')} / ${this.subject.place}`;
+    const title = `${t('orbitalWatch.timelapse.heading')} / ${this.subject.place}`;
     try {
       if (typeof navigator.share === 'function') await navigator.share({ title, url });
       else await navigator.clipboard?.writeText(url);

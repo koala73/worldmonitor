@@ -193,7 +193,7 @@ function imageSlot(acquisition: MatchedAcquisition | null, alt: string): DomChil
 function timelapseEntry(): HTMLElement {
   return h('button', { type: 'button', className: 'ow-timelapse-entry', 'aria-label': t('orbitalWatch.timelapse.open'), dataset: { action: 'timelapse' } },
     h('span', { className: 'ow-timelapse-glyph', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'), h('i'), h('i')),
-    h('span', { className: 'ow-timelapse-title' }, t('orbitalWatch.timelapse.title')),
+    h('span', { className: 'ow-timelapse-title' }, t('orbitalWatch.timelapse.heading')),
     h('span', { className: 'ow-timelapse-text' }, t('orbitalWatch.timelapse.entry')),
     h('span', { 'aria-hidden': 'true' }, '→'));
 }

@@ -417,7 +417,7 @@ export class OrbitalImageViewer {
       ? h('div', { className: 'oiv-tabs', role: 'tablist' }, tab('image', t('orbitalWatch.viewer.tabImage')), tab('change', t('orbitalWatch.viewer.tabChange')))
       : null;
     const timelapse = this.historyProfile === 'sentinel-2' || this.historyProfile === 'landsat'
-      ? h('button', { type: 'button', className: 'oiv-button', dataset: { action: 'timelapse' } }, '▸ ', t('orbitalWatch.timelapse.title'))
+      ? h('button', { type: 'button', className: 'oiv-button', dataset: { action: 'timelapse' } }, '▸ ', t('orbitalWatch.timelapse.heading'))
       : null;
     return h('aside', { className: 'oiv-side' },
       tabs,
