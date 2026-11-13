@@ -33,7 +33,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
 
   await (await expectVisible('#unifiedSettingsBtn')).click();
   await (await expectVisible('[data-settings-nav="panels"]')).click();
-  await shot('settings-panels-tab');
+  await shot('settings-panels-page');
 
   const toggle = page.locator(`#usPanelToggles .panel-toggle-item[data-panel="${PANEL_KEY}"]`);
   await toggle.waitFor({ state: 'visible', timeout: 30_000 });

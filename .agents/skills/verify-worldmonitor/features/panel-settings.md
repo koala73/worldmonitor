@@ -5,16 +5,16 @@ The Settings overlay is where a user chooses which panels the dashboard shows. E
 ## Sub-features
 
 - `settings-open` opens the overlay from the header gear (`#unifiedSettingsBtn`) or the mobile button (`#mobileSettingsBtn`).
-- `settings-tabs` switches between Settings, Panels, Sources, API Keys, and (when signed in) Plan & billing.
-- `panels-toggle` turns a panel on or off in the Panels tab grid.
+- `settings-home` opens on a home list of section rows; each row opens its page and the header back button returns to the list. Signed in, the account card opens Plan & billing.
+- `panels-toggle` turns a panel on or off on the Panels page.
 - `panels-save` applies the pending toggles to the live dashboard.
 - `panels-persist` stores the choice under `worldmonitor-panels`.
 - `panels-cap` refuses a toggle that would exceed the free-tier panel cap.
 
 ## How to get to it (user POV)
 
-- Choose the gear button in the header, then the `Panels` tab.
-- On mobile, choose `#mobileSettingsBtn`, then the `Panels` tab.
+- Choose the gear button in the header, then the `Panels` row on the Settings home list.
+- On mobile, choose `#mobileSettingsBtn`, then the `Panels` row.
 - Open the standalone settings window (`settings.html`) in the desktop app.
 
 ## Driving it with wm-verify
@@ -32,7 +32,7 @@ Preconditions:
 - **Save.** Choose `Save layout`. `.panels-save-layout` click, then `.unified-settings-close`. No reload after this point.
 - **Live apply.** `#panelsGrid .panel[data-panel="threat-timeline"]` becomes visible within 30 s.
 - **Side effect.** `localStorage['worldmonitor-panels']['threat-timeline'].enabled === true`.
-- **Proof.** `01-dashboard-without-panel.png`, `02-settings-panels-tab.png`, `03-panel-live-on-dashboard.png` — the before state, the action, and the result.
+- **Proof.** `01-dashboard-without-panel.png`, `02-settings-panels-page.png`, `03-panel-live-on-dashboard.png` — the before state, the action, and the result.
 
 ## Gotchas
 
