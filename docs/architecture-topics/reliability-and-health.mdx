@@ -1,0 +1,254 @@
+---
+title: "Reliability, Health and Freshness"
+sidebarTitle: "Reliability & health"
+description: "Error tracking, circuit breakers, graceful degradation, system health indicators, data freshness levels and service status monitoring in World Monitor."
+---
+
+Part of the [Architecture and Design Philosophy](/architecture) guide, which indexes every topic. For deployment topology, directory layout and CI/CD, see [`ARCHITECTURE.md`](https://github.com/koala73/worldmonitor/blob/main/ARCHITECTURE.md).
+
+---
+
+## Error Tracking
+
+### Sentry Error Noise Filtering
+
+The Sentry SDK initialization includes a `beforeSend` hook and `ignoreErrors` list that suppress known unactionable error sources — Three.js WebGL traversal crashes occurring entirely in minified code with no source-mapped frames, cross-origin Web Worker construction failures from browser extensions, iOS media element crashes, and jQuery `$` injection by extensions. The Three.js filter specifically avoids blanket suppression: it only drops events where *all* stack frames are anonymous or from the minified bundle. If even one frame has a source-mapped `.ts` filename, the event is kept for investigation.
+
+### Error Tracking & Production Hardening
+
+Sentry captures unhandled exceptions and promise rejections in production, with environment-aware routing (production on `worldmonitor.app`, preview on `*.vercel.app`, disabled on localhost and Tauri desktop).
+
+The configuration includes 30+ `ignoreErrors` patterns that suppress noise from:
+
+- **Third-party WebView injections** — Twitter, Facebook, and Instagram in-app browsers inject scripts that reference undefined variables (`CONFIG`, `currentInset`)
+- **Browser extensions** — Chrome/Firefox extensions that fail `importScripts` or violate CSP policies
+- **WebGL context loss** — transient GPU crashes in MapLibre/deck.gl that self-recover
+- **iOS Safari quirks** — IndexedDB connection drops on background tab kills, `NotAllowedError` from autoplay policies
+- **Network transients** — `TypeError: Failed to fetch`, `TypeError: Load failed`, `TypeError: cancelled`
+- **MapLibre internal crashes** — null-access in style layers, light, and placement that originate from the map chunk
+
+A custom `beforeSend` hook provides second-stage filtering: it suppresses single-character error messages (minification artifacts), `Importing a module script failed` errors from browser extensions (identified by `chrome-extension:` or `moz-extension:` in the stack trace), and MapLibre internal null-access crashes when the stack trace originates from map chunk files.
+
+**Chunk reload guard** — after deployments, users with stale browser tabs may encounter `vite:preloadError` events when dynamically imported chunks have new content-hash filenames. The guard listens for this event and reloads the page at most once per build, recording the spent reload in `sessionStorage` (or `localStorage` where `sessionStorage` is unavailable). The record is not cleared after a successful boot, so a chunk that fails on every load, such as one blocked by an ad blocker, costs one reload instead of a reload loop. When no storage can keep the record, the guard does not reload at all. The deferred Sentry loader claims failures of its own chunk with `preventDefault()`, so a blocked Sentry chunk never reloads the page. Long-lived tabs that outlast a later deploy are handled by the stale-bundle check.
+
+**Storage quota management** — when a device's localStorage or IndexedDB quota is exhausted (common on mobile Safari with its 5MB limit), a global `_storageQuotaExceeded` flag disables all further write attempts across both the persistent cache (IndexedDB + localStorage fallback) and the utility `saveToStorage()` function. The flag is set on the first `DOMException` with `name === 'QuotaExceededError'` or `code === 22`, and prevents cascading errors from repeated failed writes. Read operations continue normally — cached data remains accessible, only new writes are suppressed.
+
+Transactions are sampled at 10% to balance observability with cost. Release tracking (`worldmonitor@{version}`) enables regression detection across deployments.
+
+---
+
+## Fault Tolerance
+
+External APIs are unreliable. Rate limits, outages, and network errors are inevitable. The system implements **circuit breaker** patterns to maintain availability.
+
+### Circuit Breaker Pattern
+
+Each external service is wrapped in a circuit breaker that tracks failures:
+
+```
+Normal → Failure #1 → Failure #2 → OPEN (cooldown)
+                                      ↓
+                              5 minutes pass
+                                      ↓
+                                   CLOSED
+```
+
+**Behavior during cooldown:**
+
+- New requests return cached data (if available)
+- UI shows "temporarily unavailable" status
+- No API calls are made (prevents hammering)
+
+### Protected Services
+
+| Service | Cooldown | Cache TTL |
+|---------|----------|-----------|
+| Yahoo Finance | 5 min | 10 min |
+| Polymarket | 5 min | 10 min |
+| USGS Earthquakes | 5 min | 10 min |
+| NWS Weather | 5 min | 10 min |
+| FRED Economic | 5 min | 10 min |
+| Cloudflare Radar | 5 min | 10 min |
+| ACLED | 5 min | 10 min |
+| GDELT | 5 min | 10 min |
+| FAA Status | 5 min | 5 min |
+| RSS Feeds | 5 min per feed | 10 min |
+
+RSS feeds use per-feed circuit breakers—one failing feed doesn't affect others.
+
+### Graceful Degradation
+
+When a service enters cooldown:
+
+1. Cached data continues to display (stale but available)
+2. Status panel shows service health
+3. Automatic recovery when cooldown expires
+4. No user intervention required
+
+---
+
+## System Health Monitoring
+
+The status panel (accessed via the health indicator in the header) provides real-time visibility into data source status and system health.
+
+### Health Indicator
+
+The header displays a system health badge:
+
+| State | Visual | Meaning |
+|-------|--------|---------|
+| **Healthy** | Green dot | All data sources operational |
+| **Degraded** | Yellow dot | Some sources in cooldown |
+| **Unhealthy** | Red dot | Multiple sources failing |
+
+Click the indicator to expand the full status panel.
+
+### Data Source Status
+
+The status panel lists all data feeds with their current state:
+
+| Status | Icon | Description |
+|--------|------|-------------|
+| **Active** | ● Green | Fetching data normally |
+| **Cooldown** | ● Yellow | Temporarily paused (circuit breaker) |
+| **Disabled** | ○ Gray | Layer not enabled |
+| **Error** | ● Red | Persistent failure |
+
+### Per-Feed Information
+
+Each feed entry shows:
+
+- **Source name** - The data provider
+- **Last update** - Time since last successful fetch
+- **Next refresh** - Countdown to next scheduled fetch
+- **Cooldown remaining** - Time until circuit breaker resets (if in cooldown)
+
+### Why This Matters
+
+External APIs are unreliable. The status panel helps you understand:
+
+- **Data freshness** - Is the news feed current or stale?
+- **Coverage gaps** - Which sources are currently unavailable?
+- **Recovery timeline** - When will failed sources retry?
+
+This transparency enables informed interpretation of the dashboard data.
+
+---
+
+## Data Freshness Tracking
+
+Beyond simple "online/offline" status, the system tracks fine-grained freshness for each data source to indicate data reliability and staleness.
+
+### Freshness Levels
+
+| Status | Color | Criteria | Meaning |
+|--------|-------|----------|---------|
+| **Fresh** | Green | Updated within expected interval | Data is current |
+| **Aging** | Yellow | 1-2× expected interval elapsed | Data may be slightly stale |
+| **Stale** | Orange | 2-4× expected interval elapsed | Data is outdated |
+| **Critical** | Red | >4× expected interval elapsed | Data unreliable |
+| **Disabled** | Gray | Layer toggled off | Not fetching |
+
+### Source-Specific Thresholds
+
+Each data source has calibrated freshness expectations:
+
+| Source | Expected Interval | "Fresh" Threshold |
+|--------|------------------|-------------------|
+| News feeds | 5 minutes | &lt;10 minutes |
+| Stock quotes | 1 minute | &lt;5 minutes |
+| Earthquakes | 5 minutes | &lt;15 minutes |
+| Weather | 10 minutes | &lt;30 minutes |
+| Flight delays | 10 minutes | &lt;20 minutes |
+| AIS vessels | Real-time | &lt;1 minute |
+
+### Visual Indicators
+
+The status panel displays freshness for each source:
+
+- **Colored dot** indicates freshness level
+- **Time since update** shows exact staleness
+- **Next refresh countdown** shows when data will update
+
+### Why This Matters
+
+Understanding data freshness is critical for decision-making:
+
+- A "fresh" earthquake feed means recent events are displayed
+- A "stale" news feed means you may be missing breaking stories
+- A "critical" AIS stream means vessel positions are unreliable
+
+This visibility enables appropriate confidence calibration when interpreting the dashboard.
+
+### Core vs. Optional Sources
+
+Data sources are classified by their importance to risk assessment:
+
+| Classification | Sources | Impact |
+|----------------|---------|--------|
+| **Core** | GDELT, RSS feeds | Required for meaningful risk scores |
+| **Optional** | ACLED, Military, AIS, Weather, Economic | Enhance but not required |
+
+The Strategic Risk Overview panel adapts its display based on core source availability:
+
+| Status | Display Mode | Behavior |
+|--------|--------------|----------|
+| **Sufficient** | Full data view | All metrics shown with confidence |
+| **Limited** | Limited data view | Shows "Limited Data" warning banner |
+| **Insufficient** | Insufficient data view | "Insufficient Data" message, no risk score |
+
+### Freshness-Aware Risk Assessment
+
+The composite risk score is adjusted based on data freshness:
+
+```
+If core sources fresh:
+  → Full confidence in risk score
+  → "All data sources active" indicator
+
+If core sources stale:
+  → Display warning: "Limited Data - [active sources]"
+  → Score shown but flagged as potentially unreliable
+
+If core sources unavailable:
+  → "Insufficient data for risk assessment"
+  → No score displayed
+```
+
+This prevents false "all clear" signals when the system actually lacks data to make that determination.
+
+---
+
+## Service Status Monitoring
+
+The Service Status panel tracks the operational health of external services that WorldMonitor users may depend on.
+
+### Monitored Services
+
+| Service | Status Endpoint | Parser |
+|---------|-----------------|--------|
+| Anthropic (Claude) | status.claude.com | Statuspage.io |
+| OpenAI | status.openai.com | Statuspage.io |
+| Vercel | vercel-status.com | Statuspage.io |
+| Cloudflare | cloudflarestatus.com | Statuspage.io |
+| AWS | health.aws.amazon.com | Custom |
+| GitHub | githubstatus.com | Statuspage.io |
+
+### Status Levels
+
+| Status | Color | Meaning |
+|--------|-------|---------|
+| **Operational** | Green | All systems functioning normally |
+| **Degraded** | Yellow | Partial outage or performance issues |
+| **Partial Outage** | Orange | Some components unavailable |
+| **Major Outage** | Red | Significant service disruption |
+
+### Why This Matters
+
+External service outages can affect:
+
+- AI summarization (OpenRouter outages)
+- Deployment pipelines (Vercel, GitHub outages)
+- API availability (Cloudflare, AWS outages)
+
+Monitoring these services provides context when dashboard features behave unexpectedly.

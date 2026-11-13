@@ -78,7 +78,19 @@
                   "documentation",
                   "getting-started",
                   "self-hosting",
-                  "architecture"
+                  {
+                    "group": "Architecture",
+                    "pages": [
+                      "architecture",
+                      "architecture-topics/api-contracts-and-bootstrap",
+                      "architecture-topics/seed-pipeline-and-edge",
+                      "architecture-topics/caching-and-bandwidth",
+                      "architecture-topics/reliability-and-health",
+                      "architecture-topics/realtime-maps-and-performance",
+                      "architecture-topics/analysis-and-frontend-design",
+                      "architecture-topics/i18n-search-indexing"
+                    ]
+                  }
                 ]
               },
               {
@@ -161,6 +173,8 @@
                     "group": "Signals & analysis",
                     "pages": [
                       "signal-intelligence",
+                      "signal-intelligence/entity-correlation",
+                      "signal-intelligence/sources-context-and-aggregation",
                       "ai-intelligence",
                       "geographic-convergence",
                       "strategic-risk",
