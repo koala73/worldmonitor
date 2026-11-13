@@ -443,6 +443,8 @@ function dayBeforePurchase(day: string, purchasedAt: number): string {
   return `${day} (${days} day${days === 1 ? "" : "s"} before purchase)`;
 }
 
+const OWN_DOMAIN = "worldmonitor.app";
+
 // Stored utm_source tokens are dash-normalized (`chatgpt.com` → `chatgpt-com`).
 const AI_ASSISTANT_SOURCES: ReadonlyMap<string, string> = new Map([
   ["chatgpt-com", "ChatGPT"],
@@ -484,13 +486,29 @@ function conversionRowsHtml(conversion: ConversionContext): string {
     // tagged first touch records "direct" even though the link named its source.
     // "direct" also covers a referrer that failed host validation, hence "recorded".
     const taggedWithoutReferrer = acquisition.referrer === "direct" && Boolean(acquisition.source);
-    rows.push(adminRow("Referrer", taggedWithoutReferrer ? "none recorded (source from utm tag)" : acquisition.referrer));
+    // Our own host as the referrer means the record was written on a second
+    // page view; the page the visitor entered on was never captured.
+    const internal = acquisition.referrer === OWN_DOMAIN || acquisition.referrer.endsWith(`.${OWN_DOMAIN}`);
+    rows.push(adminRow(
+      "Referrer",
+      taggedWithoutReferrer
+        ? "none recorded (source from utm tag)"
+        : internal ? `${acquisition.referrer} (internal link; the entry page was not recorded)` : acquisition.referrer,
+    ));
   }
   const landingPage = acquisition?.path && acquisition.landing
     ? `${acquisition.path} (${acquisition.landing})`
     : acquisition?.path ?? acquisition?.landing;
   if (landingPage) rows.push(adminRow("Landing Page", landingPage));
-  if (acquisition?.firstSeen) rows.push(adminRow("First Visit", dayBeforePurchase(acquisition.firstSeen, purchasedAt)));
+  if (acquisition?.firstSeen) {
+    // The first-touch record is a per-browser cookie (90-day TTL, captured
+    // since 2026-10-24), so an account can predate it by months. Say so rather
+    // than print a "first visit" later than the account's first sighting.
+    const accountIsOlder = typeof conversion.accountFirstSeenAt === "number"
+      && utcDay(conversion.accountFirstSeenAt) < acquisition.firstSeen;
+    const firstVisit = dayBeforePurchase(acquisition.firstSeen, purchasedAt);
+    rows.push(adminRow("First Visit", accountIsOlder ? `${firstVisit} in this browser; the account is older` : firstVisit));
+  }
   if (conversion.mcpAttribution) rows.push(adminRow("MCP Funnel", conversion.mcpAttribution));
   if (conversion.referralCode) {
     rows.push(adminRow(
