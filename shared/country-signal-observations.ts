@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { resolveCountryCode } from './country-code-resolve';
 import { countryActivityQueries } from './country-activity-query';
 import { COUNTRY_SIGNAL_BYTES, COUNTRY_SIGNAL_FAMILIES, COUNTRY_SIGNAL_WIRE_FAMILIES, type CountrySignalFamily } from './country-signal-contract';
+import { confirmedSiteFlags, readCountryRollup, scoredSiteCount } from './orbital/country-rollup.js';
 export { COUNTRY_SIGNAL_PATH, COUNTRY_SIGNAL_BYTES, COUNTRY_SIGNAL_FAMILIES, COUNTRY_SIGNAL_WIRE_FAMILIES, type CountrySignalFamily } from './country-signal-contract';
 const countryFlightSchema = z.object({
   id: z.string().min(1).max(200), source: z.string().min(1).max(500),
@@ -87,8 +88,8 @@ export function projectQualifiedCountrySignalContext(value: QualifiedCountrySign
       ...row, description: text(row.description, 512), source: text(row.source, 256),
     })) },
     families: value.families.map(({ observations, ...coverage }) => ({
-      ...coverage, scope: text(coverage.scope, 256), attribution: text(coverage.attribution, 256),
-      reason: coverage.reason === null ? null : text(coverage.reason, 256), includedObservations: observations.length,
+      ...coverage, scope: text(coverage.scope, 192), attribution: text(coverage.attribution, 192),
+      reason: coverage.reason === null ? null : text(coverage.reason, 192), includedObservations: observations.length,
     })),
   };
 }
@@ -98,7 +99,39 @@ export function sourceClock(value: unknown): string | null {
   return Number.isFinite(millis) && millis > 0 && millis <= 8.64e15 ? new Date(millis).toISOString() : null;
 }
 
+const IMAGERY_ATTRIBUTION = 'Copernicus Sentinel-1 via Microsoft Planetary Computer; World Monitor change scoring';
+const IMAGERY_UNAVAILABLE = {
+  missing: 'No current watched-site evidence for this country.',
+  malformed: 'Watched-site evidence is unreadable.',
+  stale: 'Watched-site evidence is older than its freshness limit.',
+} as const;
+
+/**
+ * Confirmed imagery statistics changes from the country's watched-site rollup. A rollup
+ * whose sites carry no published change scoring (scoring still shadowed) is unavailable,
+ * not "no change"; a raised flag is never an observation.
+ */
+export function projectImagerySignalFamily(countryCode: string, body: unknown, nowMs = Date.now()): CountrySignalOutcome {
+  const read = readCountryRollup(body, countryCode, nowMs);
+  if (read.status !== 'current') return unavailableCountrySignal(countryCode, 'imagery', IMAGERY_UNAVAILABLE[read.status]);
+  const scored = scoredSiteCount(read.rollup);
+  if (scored === 0) return unavailableCountrySignal(countryCode, 'imagery', 'Change scoring is not yet published for this country\'s watched sites.');
+  const day = (iso: string) => iso.slice(0, 10);
+  const observations = confirmedSiteFlags(read.rollup).map((flag): QualifiedCountryObservation => ({
+    id: flag.siteId.slice(0, 200), family: 'imagery', type: 'imagery_statistics_changed', severity: 'low',
+    title: `Imagery statistics changed at ${flag.name}: raised by ${flag.raised.platform ?? 'a radar'} scene ${day(flag.raised.datetime)}, confirmed by ${flag.confirmed.platform ?? 'a radar'} scene ${day(flag.confirmed.datetime)}`.slice(0, 512),
+    source: IMAGERY_ATTRIBUTION, eventAt: sourceClock(flag.confirmed.datetime), snapshotAt: sourceClock(read.rollup.asOf), timeBasis: 'event',
+  }));
+  return boundCountrySignalFamily({
+    ...unavailableCountrySignal(countryCode, 'imagery', ''), state: 'observed', reason: null, partial: scored < read.rollup.sites.length,
+    observations, snapshotAt: sourceClock(read.rollup.asOf), attribution: IMAGERY_ATTRIBUTION,
+    scope: `Confirmed radar statistics changes at ${scored} of ${read.rollup.sites.length} watched sites with published change scoring`,
+    matchedRows: observations.length, sampledRows: Math.min(observations.length, 100), omittedRows: Math.max(0, observations.length - 100),
+  });
+}
+
 export function projectCountrySignalFamily(countryCode: string, family: CountrySignalFamily, body: unknown): CountrySignalOutcome {
+  if (family === 'imagery') return projectImagerySignalFamily(countryCode, body);
   const object = z.record(z.string(), z.unknown()).parse(body);
   const outcome: CountrySignalOutcome = { ...unavailableCountrySignal(countryCode, family, ''), state: 'observed', reason: null, partial: false, scope: 'Country-coded observations in the existing source profile', attribution: '', snapshotAt: sourceClock(object.fetchedAt ?? object.scrapedAt), sampleBeforeCountryFilter: family === 'fires' || family === 'radiation' };
   const keys = { outages: 'outages', unrest: 'events', fires: 'fireDetections', radiation: 'observations', sanctions: 'countries', conflict: 'events', posture: 'theaters' } as const;
