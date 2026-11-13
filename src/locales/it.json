@@ -5192,14 +5192,20 @@
       "share": "Condividi",
       "shareCopied": "Link copiato",
       "headline": "Negli ultimi {{days}} giorni, {{satellites}} sono passati sopra {{place}}.",
-      "satellites": "{{count}} satelliti",
-      "subline": "Sono state pubblicate {{count}} immagini.",
+      "satellites_one": "{{count}} satellite",
+      "satellites_many": "{{count}} satelliti",
+      "satellites_other": "{{count}} satelliti",
+      "subline_one": "È stata pubblicata {{count}} immagine.",
+      "subline_many": "Sono state pubblicate {{count}} immagini.",
+      "subline_other": "Sono state pubblicate {{count}} immagini.",
       "closestLook": "Vista più ravvicinata",
       "replay": "Riproduci",
       "openFull": "Apri vista completa",
       "previous": "Immagine precedente",
       "next": "Immagine successiva",
-      "passes": "passaggi",
+      "passes_one": "passaggio",
+      "passes_many": "passaggi",
+      "passes_other": "passaggi",
       "showAll": "Mostra tutti i passaggi",
       "noRecentDays": "Nessun giorno recente nell’archivio: {{sources}}",
       "tab": {
@@ -5242,7 +5248,9 @@
         "upcoming": "in arrivo",
         "could": "che avrebbero potuto puntare qui",
         "overhead": "passati sopra",
-        "weather": "fonti meteo"
+        "weather_one": "fonte meteo",
+        "weather_many": "fonti meteo",
+        "weather_other": "fonti meteo"
       },
       "order": {
         "closest": "Vista più ravvicinata, poi più recenti",
@@ -5251,7 +5259,9 @@
       },
       "row": {
         "cloud": "Nubi {{pct}}%",
-        "days": "{{count}} giorni",
+        "days_one": "{{count}} giorno",
+        "days_many": "{{count}} giorni",
+        "days_other": "{{count}} giorni",
         "repeats": "{{count}} passaggi di questo satellite nel gruppo"
       },
       "section": {

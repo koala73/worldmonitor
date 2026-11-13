@@ -5136,14 +5136,14 @@
       "share": "공유",
       "shareCopied": "링크 복사됨",
       "headline": "지난 {{days}}일 동안 {{satellites}}이 {{place}} 위를 지나갔습니다.",
-      "satellites": "위성 {{count}}기",
-      "subline": "이미지 {{count}}장이 공개되었습니다.",
+      "satellites_other": "위성 {{count}}기",
+      "subline_other": "이미지 {{count}}장이 공개되었습니다.",
       "closestLook": "가장 가까운 촬영",
       "replay": "재생",
       "openFull": "전체 보기 열기",
       "previous": "이전 이미지",
       "next": "다음 이미지",
-      "passes": "회 통과",
+      "passes_other": "회 통과",
       "showAll": "모든 통과 보기",
       "noRecentDays": "아카이브에 최근 날짜 없음: {{sources}}",
       "tab": {
@@ -5186,7 +5186,7 @@
         "upcoming": "예정",
         "could": "이곳을 겨눌 수 있었음",
         "overhead": "상공 통과",
-        "weather": "기상 소스"
+        "weather_other": "기상 소스"
       },
       "order": {
         "closest": "가장 가까운 촬영, 이후 최신순",
@@ -5195,7 +5195,7 @@
       },
       "row": {
         "cloud": "구름 {{pct}}%",
-        "days": "{{count}}일",
+        "days_other": "{{count}}일",
         "repeats": "이 그룹에서 이 위성의 통과 {{count}}회"
       },
       "section": {
