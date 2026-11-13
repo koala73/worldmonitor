@@ -8,6 +8,7 @@
 
 import { describe, it, before } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 
 import {
   buildFixtures,
@@ -335,6 +336,13 @@ describe('fixture coverage against the in-repo tool registry', () => {
   it('every read-only tool whose input rejects {} has a canary fixture', () => {
     assert.deepEqual(findUncoveredTools(tools, buildFixtures()), [],
       'add a fixture to buildFixtures() in scripts/mcp-tool-canary.mjs');
+  });
+
+  it('uses the current registry catalog as the workflow deployment barrier', () => {
+    const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
+    assert.deepEqual(card.tools.map((t) => t.name).sort(), tools.map((t) => t.name).sort());
+    const workflow = readFileSync(new URL('../.github/workflows/mcp-tool-canary.yml', import.meta.url), 'utf8');
+    assert.match(workflow, /node scripts\/mcp-tool-canary\.mjs --wait-for-catalog /);
   });
 
   it('every fixture names a registered read-only tool', () => {
