@@ -1878,3 +1878,66 @@ describe('marketingBeforeSend — Firefox bare-primitive throw (WORLDMONITOR-1CH
     assert.deepEqual(offenders, [], 'a first-party bare-primitive throw — re-derive the WORLDMONITOR-1CH rule');
   });
 });
+
+describe('marketingBeforeSend — ReferenceError with only <anonymous> frames (WORLDMONITOR-1E7, -1E8)', () => {
+  // The production shape: an `onerror` capture whose only frame is the
+  // `<anonymous>:1:1` slot an engine gives code evaluated from a string.
+  const anon = () => ({ filename: '<anonymous>', lineno: 1, colno: 1, function: '?' });
+  const refError = (frames: Record<string, unknown>[], type = 'ReferenceError'): PolicyEvent => ({
+    exception: { values: [{ type, value: 'injectedGlobal is not defined', stacktrace: { frames } }] },
+  });
+
+  it('drops the single <anonymous> frame shape', () => {
+    assert.equal(marketingBeforeSend(refError([anon()])), null);
+  });
+
+  it('drops several <anonymous> frames', () => {
+    assert.equal(marketingBeforeSend(refError([anon(), anon()])), null);
+  });
+
+  it('keeps a ReferenceError raised beside a first-party asset frame', () => {
+    assert.notEqual(marketingBeforeSend(refError([anon(), { filename: 'https://www.worldmonitor.app/pro/assets/index-a1b2c3.js', lineno: 1 }])), null);
+  });
+
+  it('keeps a ReferenceError from an inline document script', () => {
+    assert.notEqual(marketingBeforeSend(refError([{ filename: 'https://www.worldmonitor.app/', lineno: 12 }])), null);
+  });
+
+  it('keeps a ReferenceError with a blob: frame beside an <anonymous> one', () => {
+    assert.notEqual(marketingBeforeSend(refError([anon(), { filename: 'blob:https://www.worldmonitor.app/3f2a', lineno: 1 }])), null);
+  });
+
+  it('keeps a ReferenceError with a filename-less frame beside an <anonymous> one', () => {
+    assert.notEqual(marketingBeforeSend(refError([anon(), { lineno: 1 }])), null);
+  });
+
+  it('keeps a ReferenceError with no frames at all', () => {
+    assert.notEqual(marketingBeforeSend(refError([])), null);
+  });
+
+  it('keeps an anonymous-only error that is not a ReferenceError', () => {
+    assert.notEqual(marketingBeforeSend(refError([anon()], 'Error')), null);
+  });
+
+  // Code evaluated from a string is what produces an `<anonymous>` frame.
+  const STRING_EVAL_SOURCE = /(?<![\w$.])eval\s*\(|\bnew\s+Function\s*\(|\bset(?:Timeout|Interval)\s*\(\s*['"`]/;
+
+  it('the source scan catches every string-evaluation spelling', () => {
+    for (const src of ['eval(code)', 'eval (x)', 'new Function("a", body)', "setTimeout('run()', 10)", 'setInterval(`tick()`, 5)']) {
+      assert.ok(STRING_EVAL_SOURCE.test(src), src);
+    }
+    for (const src of ['setTimeout(run, 10)', 'evaluate(x)', 'retrieval(x)', 'node.eval(x)', 'typeof Function']) {
+      assert.ok(!STRING_EVAL_SOURCE.test(src), src);
+    }
+  });
+
+  it('pins the marketing surface free of string evaluation, which is what licenses the rule', () => {
+    const stripComments = (src: string) => src
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^[ \t]*\/\/.*$/gm, '');
+    const offenders = marketingFirstPartySources()
+      .filter((f) => STRING_EVAL_SOURCE.test(stripComments(f.code)))
+      .map((f) => f.rel);
+    assert.deepEqual(offenders, [], 'first-party string evaluation — re-derive the WORLDMONITOR-1E7 rule');
+  });
+});
