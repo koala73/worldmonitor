@@ -16,7 +16,9 @@ If you discover a security vulnerability in World Monitor, please report it resp
 
 1. **GitHub Private Vulnerability Reporting**: Use [GitHub's private vulnerability reporting](https://github.com/koala73/worldmonitor/security/advisories/new) to submit your report directly through the repository.
 
-2. **Direct Contact**: Alternatively, reach out to the repository owner [@koala73](https://github.com/koala73) directly through GitHub.
+2. **Email**: Send your report to the security contact at [elie@worldmonitor.app](mailto:elie@worldmonitor.app). This is the same address published as `Contact:` in [security.txt](https://worldmonitor.app/.well-known/security.txt).
+
+3. **Direct Contact**: Alternatively, reach out to the repository owner [@koala73](https://github.com/koala73) directly through GitHub.
 
 ### What to Include
 
