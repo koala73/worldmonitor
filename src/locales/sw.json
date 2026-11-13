@@ -5173,14 +5173,17 @@
       "share": "Shiriki",
       "shareCopied": "Kiungo kimenakiliwa",
       "headline": "Katika siku {{days}} zilizopita, {{satellites}} zilipita juu ya {{place}}.",
-      "satellites": "setilaiti {{count}}",
-      "subline": "Picha {{count}} zilitolewa hadharani.",
+      "satellites_one": "setilaiti {{count}}",
+      "satellites_other": "setilaiti {{count}}",
+      "subline_one": "Picha {{count}} ilitolewa hadharani.",
+      "subline_other": "Picha {{count}} zilitolewa hadharani.",
       "closestLook": "Mtazamo wa karibu zaidi",
       "replay": "Rudia",
       "openFull": "Fungua mwonekano kamili",
       "previous": "Picha iliyotangulia",
       "next": "Picha inayofuata",
-      "passes": "mapito",
+      "passes_one": "pito",
+      "passes_other": "mapito",
       "showAll": "Onyesha mapito yote",
       "noRecentDays": "Hakuna siku za karibuni kwenye hifadhi: {{sources}}",
       "tab": {
@@ -5223,7 +5226,8 @@
         "upcoming": "zijazo",
         "could": "zingeweza kulenga hapa",
         "overhead": "zilizopita juu",
-        "weather": "vyanzo vya hali ya hewa"
+        "weather_one": "chanzo cha hali ya hewa",
+        "weather_other": "vyanzo vya hali ya hewa"
       },
       "order": {
         "closest": "Mtazamo wa karibu, kisha mpya zaidi",
@@ -5232,7 +5236,8 @@
       },
       "row": {
         "cloud": "Mawingu {{pct}}%",
-        "days": "siku {{count}}",
+        "days_one": "siku {{count}}",
+        "days_other": "siku {{count}}",
         "repeats": "mapito {{count}} ya setilaiti hii kwenye kundi"
       },
       "section": {

@@ -5145,14 +5145,14 @@
       "share": "分享",
       "shareCopied": "連結已複製",
       "headline": "過去 {{days}} 天裡，{{satellites}}從{{place}}上空經過。",
-      "satellites": "{{count}} 顆衛星",
-      "subline": "已公開 {{count}} 張影象。",
+      "satellites_other": "{{count}} 顆衛星",
+      "subline_other": "已公開 {{count}} 張影象。",
       "closestLook": "最近的視角",
       "replay": "回放",
       "openFull": "開啟完整檢視",
       "previous": "上一張影象",
       "next": "下一張影象",
-      "passes": "次過境",
+      "passes_other": "次過境",
       "showAll": "顯示全部過境",
       "noRecentDays": "存檔中沒有近期日期：{{sources}}",
       "tab": {
@@ -5195,7 +5195,7 @@
         "upcoming": "即將到來",
         "could": "可能對準過這裡",
         "overhead": "上空經過",
-        "weather": "天氣來源"
+        "weather_other": "天氣來源"
       },
       "order": {
         "closest": "最近的視角，然後最新",
@@ -5204,7 +5204,7 @@
       },
       "row": {
         "cloud": "雲量 {{pct}}%",
-        "days": "{{count}} 天",
+        "days_other": "{{count}} 天",
         "repeats": "該衛星在本組中的 {{count}} 次過境"
       },
       "section": {

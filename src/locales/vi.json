@@ -5145,14 +5145,14 @@
       "share": "Chia sẻ",
       "shareCopied": "Đã sao chép liên kết",
       "headline": "Trong {{days}} ngày qua, {{satellites}} đã bay qua {{place}}.",
-      "satellites": "{{count}} vệ tinh",
-      "subline": "Đã công bố {{count}} ảnh.",
+      "satellites_other": "{{count}} vệ tinh",
+      "subline_other": "Đã công bố {{count}} ảnh.",
       "closestLook": "Góc nhìn gần nhất",
       "replay": "Phát lại",
       "openFull": "Mở chế độ xem đầy đủ",
       "previous": "Ảnh trước",
       "next": "Ảnh tiếp theo",
-      "passes": "lượt bay qua",
+      "passes_other": "lượt bay qua",
       "showAll": "Hiện tất cả lượt bay qua",
       "noRecentDays": "Không có ngày gần đây trong kho lưu trữ: {{sources}}",
       "tab": {
@@ -5195,7 +5195,7 @@
         "upcoming": "sắp tới",
         "could": "có thể đã hướng về đây",
         "overhead": "đã bay qua",
-        "weather": "nguồn thời tiết"
+        "weather_other": "nguồn thời tiết"
       },
       "order": {
         "closest": "Gần nhất, sau đó mới nhất",
@@ -5204,7 +5204,7 @@
       },
       "row": {
         "cloud": "Mây {{pct}}%",
-        "days": "{{count}} ngày",
+        "days_other": "{{count}} ngày",
         "repeats": "{{count}} lượt của vệ tinh này trong nhóm"
       },
       "section": {

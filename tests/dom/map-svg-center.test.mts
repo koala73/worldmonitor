@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MapComponent } from '@/components/Map';
 
 type CenterMap = {
+  container: HTMLDivElement;
   pendingCenter: { lat: number; lon: number } | null;
   wrapper: HTMLDivElement;
   boundVisibilityHandler: () => void;
@@ -13,6 +14,9 @@ type CenterMap = {
   setIsResizing: (value: boolean) => void;
   resize: () => void;
   setCenter: (lat: number, lon: number) => void;
+  setZoom: (zoom: number) => void;
+  centerForOffset: (lat: number, lon: number, zoom: number, offset: { x: number; y: number }) => { lat: number; lon: number };
+  projectToClient: (lat: number, lon: number) => { x: number; y: number } | null;
   getCenter: () => { lat: number; lon: number } | null;
   setView: (view: 'global') => void;
 };
@@ -113,5 +117,18 @@ describe('SVG map centers requested while hidden', () => {
     map.resize();
     expect(map.pendingCenter).toBeNull();
     expect(map.state.pan).toEqual({ x: 0, y: 0 });
+  });
+
+  it('draws a point at a screen offset from the centre, where the reticle projects it', () => {
+    const { map, size, reveal } = createMap();
+    reveal();
+    map.container.getBoundingClientRect = () => new DOMRect(10, 20, size.width, size.height);
+    const offset = { x: -120, y: -60 };
+    const centre = map.centerForOffset(25.112, 55.139, 11, offset);
+    map.setCenter(centre.lat, centre.lon);
+    map.setZoom(11);
+    const at = map.projectToClient(25.112, 55.139)!;
+    expect(at.x).toBeCloseTo(10 + size.width / 2 + offset.x, 6);
+    expect(at.y).toBeCloseTo(20 + size.height / 2 + offset.y, 6);
   });
 });

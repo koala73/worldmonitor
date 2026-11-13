@@ -4632,14 +4632,17 @@
       "share": "Share",
       "shareCopied": "Link copied",
       "headline": "In the last {{days}} days, {{satellites}} passed over {{place}}.",
-      "satellites": "{{count}} satellites",
-      "subline": "{{count}} images were made public.",
+      "satellites_one": "{{count}} satellite",
+      "satellites_other": "{{count}} satellites",
+      "subline_one": "{{count}} image was made public.",
+      "subline_other": "{{count}} images were made public.",
       "closestLook": "Closest look",
       "replay": "Replay",
       "openFull": "Open full view",
       "previous": "Previous image",
       "next": "Next image",
-      "passes": "passes",
+      "passes_one": "pass",
+      "passes_other": "passes",
       "showAll": "Show all passes",
       "noRecentDays": "No recent days in the archive: {{sources}}",
       "tab": {
@@ -4682,7 +4685,8 @@
         "upcoming": "coming up",
         "could": "could have pointed here",
         "overhead": "passed overhead",
-        "weather": "weather sources"
+        "weather_one": "weather source",
+        "weather_other": "weather sources"
       },
       "order": {
         "closest": "Closest look, then newest",
@@ -4691,7 +4695,8 @@
       },
       "row": {
         "cloud": "Cloud {{pct}}%",
-        "days": "{{count}} days",
+        "days_one": "{{count}} day",
+        "days_other": "{{count}} days",
         "repeats": "{{count}} passes by this satellite in this group"
       },
       "section": {

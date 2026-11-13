@@ -5212,14 +5212,20 @@
       "share": "Podijeli",
       "shareCopied": "Poveznica kopirana",
       "headline": "U posljednjih {{days}} dana iznad {{place}} prošlo je: {{satellites}}.",
-      "satellites": "{{count}} satelita",
-      "subline": "Objavljeno snimaka: {{count}}.",
+      "satellites_one": "{{count}} satelit",
+      "satellites_few": "{{count}} satelita",
+      "satellites_other": "{{count}} satelita",
+      "subline_one": "Objavljeno snimaka: {{count}}.",
+      "subline_few": "Objavljeno snimaka: {{count}}.",
+      "subline_other": "Objavljeno snimaka: {{count}}.",
       "closestLook": "Najbliži pogled",
       "replay": "Reproduciraj",
       "openFull": "Otvori puni prikaz",
       "previous": "Prethodna snimka",
       "next": "Sljedeća snimka",
-      "passes": "prelazaka",
+      "passes_one": "prelazak",
+      "passes_few": "prelaska",
+      "passes_other": "prelazaka",
       "showAll": "Prikaži sve prelaske",
       "noRecentDays": "Nema nedavnih dana u arhivi: {{sources}}",
       "tab": {
@@ -5262,7 +5268,9 @@
         "upcoming": "nadolazećih",
         "could": "koji su mogli ciljati ovamo",
         "overhead": "iznad mjesta",
-        "weather": "izvori vremena"
+        "weather_one": "izvor vremena",
+        "weather_few": "izvora vremena",
+        "weather_other": "izvora vremena"
       },
       "order": {
         "closest": "Najbliži pogled, zatim najnoviji",
@@ -5271,7 +5279,9 @@
       },
       "row": {
         "cloud": "Oblaci {{pct}} %",
-        "days": "Dana: {{count}}",
+        "days_one": "Dana: {{count}}",
+        "days_few": "Dana: {{count}}",
+        "days_other": "Dana: {{count}}",
         "repeats": "Prelasci ovog satelita u skupini: {{count}}"
       },
       "section": {
