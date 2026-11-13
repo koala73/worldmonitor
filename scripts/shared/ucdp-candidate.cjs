@@ -114,19 +114,19 @@ async function fetchCandidatePages(fetchPage, candidate) {
 
 // Preserve candidate releases as a whole because period-start rows can contain
 // monthly death aggregates. The annual floor must not displace those rows.
-function capWithAnnualFloor(sortedNewestFirst, isCandidate, maxEvents, annualFloor = CANDIDATE_ANNUAL_FLOOR) {
+function capWithAnnualFloor(sortedNewestFirst, isCandidate, maxEvents, annualFloor = CANDIDATE_ANNUAL_FLOOR, isAnnual = (event) => !isCandidate(event)) {
   if (sortedNewestFirst.length <= maxEvents) return sortedNewestFirst;
   const candidateEvents = [];
   const annualEvents = [];
+  const otherEvents = [];
   for (const event of sortedNewestFirst) {
-    (isCandidate(event) ? candidateEvents : annualEvents).push(event);
+    (isCandidate(event) ? candidateEvents : isAnnual(event) ? annualEvents : otherEvents).push(event);
   }
   const annualReserved = Math.min(annualEvents.length, annualFloor);
   const capacity = Math.max(maxEvents, candidateEvents.length + annualReserved);
-  const picked = [
-    ...candidateEvents,
-    ...annualEvents.slice(0, capacity - candidateEvents.length),
-  ];
+  const reserved = annualEvents.slice(0, annualReserved);
+  const remainder = [...annualEvents.slice(annualReserved), ...otherEvents].sort((a, b) => b.dateStart - a.dateStart);
+  const picked = [...candidateEvents, ...reserved, ...remainder.slice(0, capacity - candidateEvents.length - reserved.length)];
   return picked.sort((a, b) => b.dateStart - a.dateStart);
 }
 
@@ -143,6 +143,336 @@ function candidateContentMeta(cappedNewestFirst) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// The trailing window (CII v15, Stage B6)
+//
+// Each GED Candidate release holds ONE month: 26.0.9 is September 2026 (plus a
+// few late revisions of earlier months), 26.0.8 is August, and so on. Until
+// 2026-10 both writers merged only the newest release on top of the newest six
+// pages of the annual release, whose pages are not in date order. The cache
+// therefore held the newest month and a scatter of annual rows: on 2026-10-23,
+// 79% of its rows were from September 2026 and January-August 2026 were missing,
+// while the CII read it as a trailing year. The writers now fetch the window:
+//  - the annual release by date (the API's StartDate/EndDate filters) from
+//    ANNUAL_LOOKBACK_MS before now to the end of the year it covers, every page;
+//  - every monthly candidate release after that year, up to the newest.
+// Rows are deduplicated by event id, later releases winning.
+// ---------------------------------------------------------------------------
+
+const DAY_MS = 86_400_000;
+// The window is anchored at the newest event, which lags now by up to the
+// content-age budget (90 days); the lookback covers a year plus that lag.
+const ANNUAL_LOOKBACK_MS = (365 + 120) * DAY_MS;
+// About 26,000 annual events a year (2025: 25,770): a 16-month slice is under 40 pages.
+const ANNUAL_WINDOW_MAX_PAGES = 50;
+const WINDOW_FETCH_CONCURRENCY = 4;
+// A first month with less than this much of itself inside the window can be
+// legitimately empty; any other empty month followed by data is a gap.
+const WINDOW_MIN_MONTH_OVERLAP_DAYS = 7;
+// UCDP GED records about 1,800 events a month worldwide; a month at under a
+// quarter of the median month is a missing release, not a quiet month. The
+// CII's read-time check uses the same share (CII_UCDP_MIN_MONTH_SHARE).
+const WINDOW_MIN_MONTH_SHARE = 0.25;
+
+/** Last instant of the year an annual release ('26.1' covers 1989-2025) covers; NaN when unparseable. */
+function annualReleaseEndMs(version) {
+  const major = Number(String(version).split('.')[0]);
+  return Number.isInteger(major) && major > 0 ? Date.UTC(2000 + major, 0, 1) - 1 : NaN;
+}
+
+/** { year, month } of a monthly candidate release ('26.0.9' -> 2026, 9), else null. */
+function parseCandidateVersion(version) {
+  const m = /^(\d{2})\.0\.(\d{1,2})$/.exec(String(version));
+  if (!m) return null;
+  const month = Number(m[2]);
+  return month >= 1 && month <= 12 ? { year: 2000 + Number(m[1]), month } : null;
+}
+
+/** Monthly candidate versions from the month containing fromMs through newestVersion, oldest first. */
+function candidateVersionsSince(fromMs, newestVersion) {
+  const newest = parseCandidateVersion(newestVersion);
+  if (!newest || !Number.isFinite(fromMs)) return newest ? [newestVersion] : [];
+  const from = new Date(fromMs);
+  const out = [];
+  let year = from.getUTCFullYear();
+  let month = from.getUTCMonth() + 1;
+  while (year < newest.year || (year === newest.year && month <= newest.month)) {
+    out.push(`${year - 2000}.0.${month}`);
+    month += 1;
+    if (month > 12) { month = 1; year += 1; }
+  }
+  return out.length ? out : [newestVersion];
+}
+
+/** The monthly candidate release for the month containing nowMs ('26.0.10' in October 2026). */
+function currentCandidateVersion(nowMs = Date.now()) {
+  const d = new Date(nowMs);
+  return `${d.getUTCFullYear() - 2000}.0.${d.getUTCMonth() + 1}`;
+}
+
+function isoDate(ms) {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+// One budget for discovery and all pages, leaving a minute of the backup
+// bundle's 300s section for last-good preservation and Redis publication.
+function withUcdpFetchDeadline(fetchPage, { budgetMs = 240_000, now = Date.now } = {}) {
+  const deadline = now() + budgetMs;
+  const expired = () => Object.assign(new Error('UCDP fetch deadline exhausted'), { code: 'UCDP_FETCH_DEADLINE' });
+  return async (version, page, timeoutMs = 90_000, query = {}) => {
+    const remaining = deadline - now();
+    if (remaining <= 0) throw expired();
+    try {
+      return await fetchPage(version, page, Math.min(timeoutMs, remaining), query);
+    } catch (error) {
+      if (now() >= deadline) throw expired();
+      throw error;
+    }
+  };
+}
+
+/**
+ * The annual release's part of the window, by date. `fetchPage(version, page,
+ * timeoutMs, query)` passes `query` as URL parameters. A first page that fails
+ * counts as every page failed, so the caller's preserve-last-good guard sees it.
+ */
+async function fetchAnnualWindow(fetchPage, version, { nowMs = Date.now() } = {}) {
+  const endMs = annualReleaseEndMs(version);
+  const startMs = nowMs - ANNUAL_LOOKBACK_MS;
+  if (!Number.isFinite(endMs) || startMs > endMs) {
+    return { events: [], failedPages: 0, totalPages: 0, truncated: false, startDate: isoDate(startMs), endDate: null };
+  }
+  const query = { StartDate: isoDate(startMs), EndDate: isoDate(endMs) };
+  let first;
+  try {
+    first = await fetchPage(version, 0, undefined, query);
+  } catch {
+    return { events: [], failedPages: 1, totalPages: 1, truncated: false, startDate: query.StartDate, endDate: query.EndDate };
+  }
+  const totalPages = Math.max(1, Number(first?.TotalPages) || 1);
+  const wanted = Math.min(totalPages, ANNUAL_WINDOW_MAX_PAGES);
+  const FAILED = Symbol('failed');
+  const rest = await mapWithConcurrency(
+    Array.from({ length: wanted - 1 }, (_unused, i) => i + 1),
+    WINDOW_FETCH_CONCURRENCY,
+    (page) => fetchPage(version, page, undefined, query).catch(() => FAILED),
+  );
+  const events = Array.isArray(first?.Result) ? [...first.Result] : [];
+  let failedPages = Array.isArray(first?.Result) ? 0 : 1;
+  for (const page of rest) {
+    if (page === FAILED || !Array.isArray(page?.Result)) { failedPages++; continue; }
+    events.push(...page.Result);
+  }
+  return { events, failedPages, totalPages, truncated: totalPages > ANNUAL_WINDOW_MAX_PAGES, startDate: query.StartDate, endDate: query.EndDate };
+}
+
+// The API answers a version it has not published with HTTP 400 (checked
+// 2026-10-23 on 26.0.10); a 404 would mean the same. But a quota, an outage or a
+// bad request can answer 400 too, so a 400 proves "unpublished" only for a
+// release newer than the newest one that returned data (UCDP publishes the
+// monthly releases in order). Anywhere else it is our fetch failing.
+const UNPUBLISHED_STATUSES = new Set([400, 404]);
+
+function candidateMonth(version) {
+  const parsed = parseCandidateVersion(version);
+  return parsed ? `${parsed.year}-${String(parsed.month).padStart(2, '0')}` : null;
+}
+
+function candidateRank(version) {
+  const parsed = parseCandidateVersion(version);
+  return parsed ? parsed.year * 12 + parsed.month : NaN;
+}
+
+/**
+ * Every monthly candidate release from the month containing fromMs through
+ * `throughVersion` (the writers pass the current month's release), oldest
+ * first. `newest` is the newest release discovery found with data, its first
+ * page in hand. Discovery probes under a short timeout, so a later release can
+ * still answer here; the newest release with data is whichever is newest of
+ * the two, returned as `newestVersion`.
+ * - A release up to the newest with data that answers 400/404, an empty first
+ *   page, a timeout, a network error or a 5xx is a failed fetch:
+ *   missingReleases, and the window is incomplete (P9 reads short_window). UCDP
+ *   has published it, since it published a later one.
+ * - A release after the newest with data that answers 400/404 or no rows is one
+ *   UCDP has not published yet: unpublishedReleases/unpublishedMonths, the
+ *   frontier, not a gap. Any other failure there is still a failed fetch.
+ * - `releases` holds the releases up to the newest with data, oldest first, so
+ *   the last is always the newest with data.
+ * - Rows dated before fromMs are dropped. fromMs starts after the annual
+ *   release's last year, and a candidate's late revision of an event in that
+ *   year can carry a different id from the annual's record of it (14-19% of
+ *   candidate ids did not survive into annual 26.1 for Nov-Dec 2025), so the
+ *   annual release alone counts those dates.
+ */
+async function fetchCandidateWindow(fetchPage, newest, { fromMs, throughVersion = newest.version }) {
+  const through = candidateRank(throughVersion) > candidateRank(newest.version) ? throughVersion : newest.version;
+  const versions = candidateVersionsSince(fromMs, through).filter((v) => v !== newest.version);
+  const noData = (version, probe) => ({ version, probe, events: [], complete: false, truncated: false, failedPages: 0 });
+  const probed = await mapWithConcurrency(versions, WINDOW_FETCH_CONCURRENCY, async (version) => {
+    try {
+      const first = await fetchPage(version, 0, CANDIDATE_DISCOVER_TIMEOUT_MS);
+      if (!hasResults(first)) return noData(version, 'no-release');
+      return { version, probe: 'data', ...(await fetchCandidatePages(fetchPage, { version, first })) };
+    } catch (err) {
+      return noData(version, UNPUBLISHED_STATUSES.has(Number(err?.status)) ? 'no-release' : 'failed');
+    }
+  });
+  const fetched = [...probed, { version: newest.version, probe: 'data', ...(await fetchCandidatePages(fetchPage, newest)) }];
+  // Only now is the frontier known: a release is past it when it is newer than
+  // every release that answered with data, including any discovery missed.
+  const newestRank = Math.max(...fetched.filter((r) => r.probe === 'data').map((r) => candidateRank(r.version)));
+  const inWindow = (event) => {
+    const ms = Date.parse(String(event?.date_start || ''));
+    return !Number.isFinite(fromMs) || !Number.isFinite(ms) || ms >= fromMs;
+  };
+  const all = fetched
+    .sort((a, b) => candidateRank(a.version) - candidateRank(b.version))
+    .map((r) => {
+      const frontier = candidateRank(r.version) > newestRank;
+      const isUnpublished = frontier && r.probe === 'no-release';
+      return { ...r, frontier, unpublished: isUnpublished, missing: r.probe !== 'data' && !isUnpublished, events: r.events.filter(inWindow) };
+    });
+  const unpublished = all.filter((r) => r.unpublished);
+  const releases = all.filter((r) => !r.frontier);
+  return {
+    releases,
+    newestVersion: releases.at(-1).version,
+    complete: all.every((r) => r.unpublished || (!r.missing && r.complete && !r.truncated)),
+    missingReleases: all.filter((r) => r.missing).map((r) => r.version),
+    unpublishedReleases: unpublished.map((r) => r.version),
+    unpublishedMonths: unpublished.map((r) => candidateMonth(r.version)).filter(Boolean),
+  };
+}
+
+/**
+ * Whether a run must leave the cached payload in place rather than publish its
+ * own window. A run whose candidate releases failed is annual-only or partial:
+ * its newest event can be months behind the cached one, and publishing it
+ * anchors the CII's window there, collapsing every UCDP term until the next
+ * good run. A partial run ending on the cached window's date would only punch
+ * holes in it. An incomplete run still publishes when the cache holds nothing
+ * better (no window, an incomplete one, or one ending earlier).
+ *
+ * `readExisting` resolves the cached payload, unwrapped, or null, and rejects
+ * when Redis could not answer: an unknown cache is kept, since one skipped
+ * write costs a tick and a blind overwrite costs the window. Even a complete
+ * run can regress when an ambiguous probe hides a published release.
+ */
+async function keepLastGoodUcdpWindow(readExisting, runWindow) {
+  if (!Number.isFinite(runWindow.endMs)) return true;
+  let existing;
+  try {
+    existing = await readExisting();
+  } catch {
+    return true;
+  }
+  const cached = existing?.window;
+  return cached?.complete === true && Number.isFinite(cached.endMs)
+    && (cached.endMs > runWindow.endMs || (runWindow.complete !== true && cached.endMs === runWindow.endMs));
+}
+
+// An event scores the place it happens (owner ruling, 2026-10-23). UCDP GED
+// codes events by the state in conflict, so Gaza and West Bank events carry
+// country "Israel" (country_id 666); UCDP's own admin-1 field says where they
+// happened. The aggregates the CII reads attribute those rows by that field.
+// Palestine is not a CII Tier-1 country, so they feed no scored row.
+const UCDP_ADM1_TERRITORIES = Object.freeze({ 'gaza strip': 'Palestine', 'west bank': 'Palestine' });
+
+/** The country an event happened in: UCDP's country, unless its admin-1 unit is a territory listed above. */
+function ucdpLocatedCountry(event) {
+  const adm1 = String(event?.adm_1 || '').trim().toLowerCase();
+  return Object.hasOwn(UCDP_ADM1_TERRITORIES, adm1) ? UCDP_ADM1_TERRITORIES[adm1] : (event?.country || '');
+}
+
+function utcMonth(ms) {
+  return new Date(ms).toISOString().slice(0, 7);
+}
+
+/**
+ * What the CII reads (server/worldmonitor/intelligence/v1/get-risk-scores.ts,
+ * parseUcdpCache), from every mapped event of the window rather than the
+ * capped `events` slice:
+ *  - countryDays: per UCDP country name, [UTC day index, events, deaths] rows,
+ *    each event counting at least one death (UCDP records an event only when it
+ *    killed someone);
+ *  - dailyTotals: [UTC day index, events] across every country;
+ *  - months and gapMonths: events per calendar month of the window, and the
+ *    months that are empty or nearly so (WINDOW_MIN_MONTH_SHARE) while a later
+ *    month has rows: a missing release. A first month with under
+ *    WINDOW_MIN_MONTH_OVERLAP_DAYS inside the window is not checked. No month
+ *    inside the window is exempt: a release UCDP has not published can only
+ *    be after the newest one with data, past the window's end.
+ */
+function summarizeUcdpWindow(mappedEvents, { startMs, endMs }) {
+  const byCountry = new Map();
+  const daily = new Map();
+  const months = {};
+  if (Number.isFinite(startMs) && Number.isFinite(endMs)) {
+    for (let ms = Date.UTC(new Date(startMs).getUTCFullYear(), new Date(startMs).getUTCMonth(), 1); ms <= endMs;) {
+      const d = new Date(ms);
+      months[utcMonth(ms)] = 0;
+      ms = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+    }
+  }
+  for (const event of mappedEvents) {
+    const ms = Number(event?.dateStart);
+    if (!Number.isFinite(ms) || ms <= 0 || ms < startMs || ms > endMs) continue;
+    const day = Math.floor(ms / DAY_MS);
+    const name = String(event.country || '');
+    const deaths = Math.max(1, Number(event.deathsBest) || 0);
+    daily.set(day, (daily.get(day) ?? 0) + 1);
+    const month = utcMonth(ms);
+    if (month in months) months[month] += 1;
+    if (!name) continue;
+    if (!byCountry.has(name)) byCountry.set(name, new Map());
+    const days = byCountry.get(name);
+    const row = days.get(day) ?? [day, 0, 0];
+    row[1] += 1;
+    row[2] += deaths;
+    days.set(day, row);
+  }
+  // Events per day of each month's overlap with the window; a month under
+  // WINDOW_MIN_MONTH_SHARE of the median non-empty month is a gap when a later
+  // month has rows. Zero alone is not the test: the next release carries a few
+  // late revisions into the month a missing release should have filled.
+  const monthKeys = Object.keys(months).sort();
+  const overlapDays = (month) => {
+    const from = Math.max(startMs, Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1));
+    const to = Math.min(endMs, Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1) - 1);
+    return Math.max(1, Math.ceil((to - from) / DAY_MS));
+  };
+  const rates = Object.fromEntries(monthKeys.map((month) => [month, months[month] / overlapDays(month)]));
+  const nonEmpty = monthKeys.map((month) => rates[month]).filter((rate) => rate > 0).sort((a, b) => a - b);
+  const median = nonEmpty.length ? nonEmpty[Math.floor(nonEmpty.length / 2)] : 0;
+  const gapMonths = monthKeys.filter((month, i) => rates[month] < WINDOW_MIN_MONTH_SHARE * median
+    && monthKeys.slice(i + 1).some((later) => months[later] > 0)
+    && !(i === 0 && overlapDays(month) < WINDOW_MIN_MONTH_OVERLAP_DAYS));
+  const countryDays = {};
+  for (const [name, days] of [...byCountry.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    countryDays[name] = [...days.values()].sort((a, b) => a[0] - b[0]);
+  }
+  return {
+    countryDays,
+    dailyTotals: [...daily.entries()].sort((a, b) => a[0] - b[0]),
+    months,
+    gapMonths,
+  };
+}
+
 function hasPreciseUcdpLocation(event) {
   return Number(event.where_prec) === 1 && [event.latitude, event.longitude].every(
     (coordinate) => (typeof coordinate === 'number' || (typeof coordinate === 'string' && coordinate.trim() !== ''))
@@ -151,14 +481,25 @@ function hasPreciseUcdpLocation(event) {
 }
 
 module.exports = {
+  withUcdpFetchDeadline,
   CANDIDATE_MAX_PAGES,
   CANDIDATE_DISCOVER_TIMEOUT_MS,
   CANDIDATE_ANNUAL_FLOOR,
   UCDP_MAX_CONTENT_AGE_MIN,
+  ANNUAL_LOOKBACK_MS,
+  ANNUAL_WINDOW_MAX_PAGES,
   buildCandidateVersions,
   discoverCandidateVersion,
   fetchCandidatePages,
   capWithAnnualFloor,
   candidateContentMeta,
+  annualReleaseEndMs,
+  candidateVersionsSince,
+  currentCandidateVersion,
+  fetchAnnualWindow,
+  fetchCandidateWindow,
+  keepLastGoodUcdpWindow,
+  summarizeUcdpWindow,
+  ucdpLocatedCountry,
   hasPreciseUcdpLocation,
 };

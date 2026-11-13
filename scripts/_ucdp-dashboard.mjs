@@ -197,9 +197,11 @@ export function compactUcdpDashboardPayload(payload, nowMs = Date.now(), rowsPer
   if (!payload || typeof payload !== 'object' || !Array.isArray(payload.events)) return payload;
 
   const events = payload.events;
+  // countryDays and dailyTotals (about 85 KB) feed the CII, not the panel.
+  const { countryDays: _countryDays, dailyTotals: _dailyTotals, ...panelPayload } = payload;
   const exposure = selectUcdpExposureRows(events);
   return {
-    ...payload,
+    ...panelPayload,
     events: selectUcdpPanelRows(events, rowsPerTab),
     exposureEvents: exposure.rows,
     exposureCoverage: exposure.coverage,
