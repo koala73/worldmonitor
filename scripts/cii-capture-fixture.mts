@@ -10,7 +10,8 @@
 // reproduces production; see docs/methodology/cii-change-brief.md.
 //
 //   WM_SEED_ENV_FILE=/path/to/.env.local node --import tsx scripts/cii-capture-fixture.mts [--iran-events-enabled=false]
-import { writeFileSync } from 'node:fs';
+// For U21: add --calibration --target-set=37 --wait-for-rebuild after verifying production prerequisites.
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
@@ -28,11 +29,16 @@ const { values } = parseArgs({
     // Inputs keep moving after a build, so a stored table minutes old no longer
     // matches them. Wait (GET-polling) for production's next rebuild first.
     'wait-for-rebuild': { type: 'boolean', default: false },
+    calibration: { type: 'boolean', default: false },
     'target-set': { type: 'string', default: 'published' },
   },
 });
 const iranEventsEnabled = values['iran-events-enabled'] !== 'false';
 if (!['published', 'released', '37'].includes(values['target-set']!)) throw new Error('--target-set must be published, released or 37');
+
+const claim = JSON.parse(readFileSync(new URL('../docs/methodology/cii-next.json', import.meta.url), 'utf8'));
+if (claim.inProgress === true) throw new Error('Capture requires a released main checkout, not an in-progress integration line');
+if (values.calibration && values['target-set'] === 'released') throw new Error('--calibration requires --target-set=37 or published');
 
 loadEnvFile(import.meta.url);
 const { url, token } = getRedisCredentials();
@@ -105,6 +111,7 @@ const stored = after?.ciiScores?.length ? after : null;
 if (stored && before?.ciiScores?.[0]?.computedAt !== stored.ciiScores![0]!.computedAt) {
   throw new Error(`${scoreKey} was rebuilt while the inputs were read; capture again`);
 }
+if (values.calibration && !stored) throw new Error('Calibration capture requires a stored production table');
 const nowMs = stored ? stored.ciiScores![0]!.computedAt : capturedAt;
 const label = `${new Date(nowMs).toISOString().slice(0, 16).replace(':', '')}Z`;
 const fixture = buildCiiFixture({
@@ -114,6 +121,7 @@ const fixture = buildCiiFixture({
   ...(economicStress != null ? { economicStress } : {}),
 }, {
   targetCodes,
+  calibration: values.calibration,
   label,
   capturedAt: new Date(capturedAt).toISOString(),
   nowMs,
@@ -127,6 +135,7 @@ const fixture = buildCiiFixture({
       .map((id) => `${id} was missing from Redis.`),
     'ACLED unconfigured.',
     ...partyNotes,
+    ...(values.calibration ? [`UCDP rows: ${(ucdp as any)?.events?.length ?? 0} recent events; ${Object.values((ucdp as any)?.countryDays ?? {}).reduce<number>((n, rows: any) => n + rows.length, 0)} country-day rows; ${(ucdp as any)?.dailyTotals?.length ?? 0} daily totals; ${partyMonths?.length ?? 0} party-month rows. Full window and both calibration keys retained without trimming.`] : []),
     ...(targetCodes ? [`Capture target: ${targetCodes.length} ${values['target-set']} countries; the released table still scores ${CII_COUNTRY_CODES.length}.`] : []),
   ],
   production: stored ? {
