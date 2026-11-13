@@ -62,7 +62,9 @@ export function createReplayHud(track: PassTrack, reducedMotion: boolean, callba
   });
   scrub.addEventListener('input', () => callbacks.onSeek(Number(scrub.value) / SCRUB_STEPS));
   scrub.addEventListener('click', (event) => event.stopPropagation());
-  scrub.addEventListener('keydown', (event) => event.stopPropagation());
+  scrub.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') event.stopPropagation();
+  });
   const setPlaying = (playing: boolean) => {
     toggle.dataset.playing = String(playing);
     toggle.textContent = playing ? '\u275a\u275a' : '\u25b6';
