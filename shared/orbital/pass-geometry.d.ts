@@ -87,5 +87,5 @@ export function findPasses(input: {
   now: Date | number;
 }): PassSearchResult;
 
-/** The sub-satellite track, split wherever it crosses the antimeridian. */
+/** The sub-satellite track, split wherever it crosses the antimeridian. A step under 1 second throws a RangeError. */
 export function groundTrack(elements: OrbitElements, window: TimeWindow, stepSeconds?: number): GroundTrackPoint[][];
