@@ -4183,7 +4183,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
           americasRequest,
           policy,
         ),
-        /snapshot unavailable/,
+        { name: 'SeedUnavailableError', statusCode: 503 },
       );
     } finally {
       cleanup();
