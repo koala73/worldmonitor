@@ -514,11 +514,16 @@ export function countryImageryFlagsFrom(raw: unknown, countryCode: string, nowMs
   return read.status === 'current' ? confirmedSiteFlags(read.rollup).slice(0, MAX_IMAGERY_FLAGS) : [];
 }
 
+/** The raw watched-site rollup the site seeder publishes for one country, or null. */
+export function readCountryWatchedSiteRollup(countryCode: string): Promise<unknown> {
+  return readKey(`${ORBITAL_COUNTRY_KEY_PREFIX}${countryCode}`);
+}
+
 export async function readCountryImageryFlags(countryCode: string, nowMs: number = Date.now()): Promise<ConfirmedSiteFlag[]> {
   const code = String(countryCode ?? '').trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(code)) return [];
   try {
-    return countryImageryFlagsFrom(await readKey(`${ORBITAL_COUNTRY_KEY_PREFIX}${code}`), code, nowMs);
+    return countryImageryFlagsFrom(await readCountryWatchedSiteRollup(code), code, nowMs);
   } catch {
     return [];
   }

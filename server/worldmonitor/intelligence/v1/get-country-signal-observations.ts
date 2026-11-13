@@ -12,8 +12,7 @@ import { listIranEvents } from '../../conflict/v1/list-iran-events';
 import { readTheaterPostureSnapshot } from '../../military/v1/get-theater-posture';
 import { readMilitaryFlights } from '../../military/v1/list-military-flights';
 import { drainResponseHeaders, setResponseHeader } from '../../../_shared/response-headers';
-import { getCachedJson } from '../../../_shared/redis';
-import { ORBITAL_COUNTRY_KEY_PREFIX } from '../../../_shared/cache-keys';
+import { readCountryWatchedSiteRollup } from './_country-brief-evidence';
 
 export const getCountrySignalObservations: IntelligenceServiceHandler['getCountrySignalObservations'] = async (ctx, req) => {
   setResponseHeader(ctx.request, 'Cache-Control', 'no-store');
@@ -50,7 +49,7 @@ export const getCountrySignalObservations: IntelligenceServiceHandler['getCountr
       sanctions: () => listSanctionsPressure(ctx, { maxItems: 60 }),
       conflict: () => listIranEvents(ctx, {}),
       posture: () => readTheaterPostureSnapshot(ctx, { redistributableOnly: true }),
-      imagery: () => getCachedJson(`${ORBITAL_COUNTRY_KEY_PREFIX}${req.countryCode}`, true),
+      imagery: () => readCountryWatchedSiteRollup(req.countryCode),
     }[selected];
     const body = await withinDeadline<unknown>(read());
     deadline.throwIfAborted();
