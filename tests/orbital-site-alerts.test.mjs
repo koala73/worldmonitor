@@ -139,6 +139,23 @@ describe('imaging-window alerts', () => {
     assert.deepEqual(h.published[1].payload.windows.map((w) => w.noradId), [2], 'the first window is not repeated');
   });
 
+  it('drops a pending event once its passes have ended and alerts for the new ones', async () => {
+    let fail = true;
+    const h = harness({ publishResult: () => !fail });
+    await h.run([site('site-a', { nextWindows: [window(1, HOUR)] })]);
+    fail = false;
+    const nextDay = NOW + 24 * HOUR;
+    await h.run([site('site-a', { nextWindows: [{ ...window(2, 0), time: iso(nextDay + 2 * HOUR) }] })], { now: nextDay });
+    assert.equal(h.published.length, 2);
+    assert.deepEqual(h.published[1].payload.windows.map((w) => w.noradId), [2], 'the ended pass is not sent as upcoming');
+  });
+
+  it('asks the queue publisher to hold its dedup for the producer window', async () => {
+    const h = harness();
+    await h.run([site('site-a', { nextWindows: [window(1, HOUR)], flag: flagWith(confirmed('scene-2')) })]);
+    for (const event of h.published) assert.equal(event.cooldownSeconds, 7 * 24 * 60 * 60, event.eventType);
+  });
+
   it('keeps each site separate', async () => {
     const h = harness();
     await h.run([site('site-a', { nextWindows: [window(1, HOUR)] }), site('site-b', { nextWindows: [window(1, HOUR)] })]);

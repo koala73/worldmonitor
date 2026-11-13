@@ -57,9 +57,15 @@ function latestConfirmation(flag) {
  */
 function advanceWindows(previous, record, nowMs) {
   const seen = (previous?.seen ?? []).filter((key) => Date.parse(key.slice(key.indexOf('@') + 1)) >= nowMs);
-  if (previous?.pending) return { next: { ...previous, seen }, owed: previous.pending };
+  // A pending event keeps only passes still ahead; once all have ended, this refresh's windows replace it.
+  const stillAhead = (previous?.pending?.windows ?? []).filter((window) => Date.parse(window.time) >= nowMs);
+  if (stillAhead.length > 0) {
+    const pending = { ...previous.pending, windows: stillAhead };
+    return { next: { ...previous, seen, pending }, owed: pending };
+  }
   const fresh = openWindowsAhead(record, nowMs).filter((window) => !seen.includes(windowKey(window)));
-  const base = previous ? { ...previous, seen } : null;
+  const { pending: _expired, ...kept } = previous ?? {};
+  const base = previous ? { ...kept, seen } : null;
   if (fresh.length === 0) return { next: base, owed: null };
   if (Number.isFinite(previous?.firedAt) && nowMs - previous.firedAt < WINDOW_COOLDOWN_MS) return { next: base, owed: null };
   const windows = fresh.slice(0, MAX_WINDOWS_PER_EVENT).map((window) => ({
@@ -96,7 +102,7 @@ function buildImagingWindowEvent(record, pending) {
     eventType: IMAGING_WINDOW_EVENT_TYPE,
     // Realtime rules deliver critical events only; the per-site opt-in is the filter.
     severity: 'critical',
-    dedupTtl: DEDUP_TTL_SECONDS,
+    cooldownSeconds: DEDUP_TTL_SECONDS,
     payload: {
       title: `${siteName(record)}: ${first.name} imaging window at ${first.time}${more}`,
       // Not a first-party name: sanitizeNotificationSource rewrites those to "Community alert".
@@ -114,7 +120,7 @@ function buildSiteChangeEvent(record, pending) {
   return {
     eventType: SITE_CHANGE_EVENT_TYPE,
     severity: 'critical',
-    dedupTtl: DEDUP_TTL_SECONDS,
+    cooldownSeconds: DEDUP_TTL_SECONDS,
     payload: {
       title: `${siteName(record)}: radar imagery statistics changed (confirmed)`,
       source: 'Orbital Watch',
