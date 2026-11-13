@@ -395,7 +395,7 @@ export function validateCiiCalibrationInputs(raw: CiiCaptureInputs, targets: rea
   const u = raw.ucdp as Obj | null;
   const w = u?.window;
   if (!w || w.complete !== true || !Array.isArray(w.gapMonths) || w.gapMonths.length || !Array.isArray(w.missingReleases) || w.missingReleases.length
-      || !Number.isFinite(w.startMs) || !Number.isFinite(w.endMs) || w.endMs - w.startMs < 330 * 86400000 || w.endMs - w.startMs > 366 * 86400000) fail('full UCDP window required');
+      || !Number.isFinite(w.startMs) || !Number.isFinite(w.endMs) || w.endMs - w.startMs !== 365 * 86400000) fail('full 365-day UCDP window required');
   const parties = parsePartyMonths(u?.partyMonths);
   if (!parties?.length) fail('UCDP party facts missing or malformed');
   if (!isObj(u?.countryDays) || !Object.keys(u.countryDays).length || !Array.isArray(u.dailyTotals) || !u.dailyTotals.length) fail('UCDP daily window missing');

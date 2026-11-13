@@ -194,5 +194,11 @@ it('calibration captures retain both maps and the entire UCDP payload', () => {
   assert.throws(() => validateCiiCalibrationInputs({ ...raw, ucdp: { ...raw.ucdp, window: { ...raw.ucdp.window, complete: false } } }, CII_EXPANDED_CAPTURE_TARGETS), /window/);
   assert.throws(() => validateCiiCalibrationInputs({ ...raw, ucdp: { ...raw.ucdp, dailyTotals: raw.ucdp.dailyTotals.slice(-60) } }, CII_EXPANDED_CAPTURE_TARGETS), /truncated/);
   assert.throws(() => validateCiiCalibrationInputs({ ...raw, ucdp: { ...raw.ucdp, countryDays: { Philippines: [[20362, 1, 1]] } } }, CII_EXPANDED_CAPTURE_TARGETS), /counts/);
+  const shortStartMs = raw.ucdp.window.endMs - 340 * 86400000;
+  const shortEvents = raw.ucdp.events.filter(e => e.dateStart >= shortStartMs);
+  const shortSummary = summarizeUcdpWindow(shortEvents, { startMs: shortStartMs, endMs: raw.ucdp.window.endMs });
+  const shortWindow = { ...raw, ucdp: { events: shortEvents, ...shortSummary,
+    window: { ...raw.ucdp.window, startMs: shortStartMs, months: shortSummary.months, gapMonths: shortSummary.gapMonths } } };
+  assert.throws(() => validateCiiCalibrationInputs(shortWindow, CII_EXPANDED_CAPTURE_TARGETS), /365-day/);
   assert.throws(() => validateCiiCalibrationInputs(raw, Object.keys(TIER1_COUNTRIES)), /37/);
 });
