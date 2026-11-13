@@ -57,7 +57,9 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     url: req.url(), body: req.postData() ?? '', harnessNavigation: req.isNavigationRequest() && req.frame() === page.mainFrame(),
   }));
 
-  await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': '"globe"' } });
+  // WM_VERIFY_ORBITAL_MAP=flat shoots on the 2D map; the globe stays the default.
+  const mapMode = process.env.WM_VERIFY_ORBITAL_MAP === 'flat' ? 'flat' : 'globe';
+  await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': JSON.stringify(mapMode) } });
   await page.goto(`${base}/dashboard?view=global&lat=${PLACE.lat}&lon=${PLACE.lon}&zoom=${PLACE.zoom}`, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
   log('renderer', await waitForMap(page));
