@@ -78,22 +78,26 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_five_factor_scorecard`
 
-Return the frozen v1 scorecard for exactly one country or bloc. Choose one of a country code, an official bloc preset, or a custom member list. The response comes from one atomic seeded snapshot, so its country and bloc evidence share the same cohort and methodology version.
+Return the frozen v1 scorecard. Pass one of a country code, an official bloc preset, or a custom member list for that country or bloc with its full evidence; pass none of them for the compact list of every scored country. The response comes from one atomic seeded snapshot, so its country, bloc and list evidence share the same cohort and methodology version.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
-| `country_code` | string | one selector | ISO alpha-2 or alpha-3 code, or a country name in any supported dashboard locale (e.g. `"Egypt"`, `"مصر"`). |
-| `preset` | string | one selector | `USMCA`, `EU27`, `BRICS`, `GCC`, `ASEAN`, or `NATO`. |
-| `members` | string[] | one selector | Custom bloc of 2–30 unique member countries, each a code or name in the same forms as `country_code`. |
+| `country_code` | string | at most one selector | ISO alpha-2 or alpha-3 code, or a country name in any supported dashboard locale. Case-insensitive. |
+| `preset` | string | at most one selector | `USMCA`, `EU27`, `BRICS`, `GCC`, `ASEAN`, or `NATO`. |
+| `members` | string[] | at most one selector | Custom bloc of 2–30 unique member countries, each a code or name in the same forms as `country_code`. |
 
-- **API endpoints:** `GET /api/scorecard/v1/get-five-factor-scorecard`, `GET /api/scorecard/v1/get-bloc-scorecard` — free for anonymous REST callers, unlike this MCP tool.
+Two selectors in one call return Invalid params before any allowance is spent.
+
+- **API endpoints:** `GET /api/scorecard/v1/get-five-factor-scorecard`, `GET /api/scorecard/v1/get-bloc-scorecard`, `GET /api/scorecard/v1/list-five-factor-scorecards` — free for anonymous REST callers.
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument; use `jmespath` to trim evidence.
 - **Kind:** canonical RPC proxy over `scorecard:five-factor:v1`; it does not fetch source datasets at request time.
 - **Freshness:** daily seed with a 36-hour freshness budget. Read `computedAt`, `methodologyVersion`, and the seed health metadata separately when operational freshness matters.
 
 Read `hasScore` before every pillar `score` and `subScore`. A false flag means the proto3 zero is a placeholder, not a resilience score. Read each input's `available` and `hasValue` before its numeric `value`. `insufficientReasons` and `unavailableReason` explain missing coverage, including the source-policy case `redistribution-blocked`.
+
+The list (no selector) keeps each country's pillar score, band, input coverage and insufficient-data reasons, but omits raw inputs and source observations so the complete country set stays within the output budget. Use a selector when you need input provenance, raw observations, or bloc aggregation.
 
 Food and energy blocs aggregate physical production and consumption before scoring. Demographics, technology, and defense continuous sub-scores use population weighting. This means a bloc score is deliberately not an average of member bands. See the [Five-Factor Scorecard methodology](/methodology/five-factor-scorecard).
 
@@ -121,30 +125,22 @@ curl -s https://worldmonitor.app/mcp \
   }'
 ```
 
-</CodeGroup>
-
-### `list_five_factor_scorecards`
-
-List a compact summary for every country in the frozen scorecard cohort. Each row keeps the pillar score, band, input coverage, and insufficient-data reasons, but omits raw inputs and source observations so the complete country set stays within the MCP output budget.
-
-- **Parameters:** none
-- **API endpoint:** `GET /api/scorecard/v1/list-five-factor-scorecards` — free for anonymous REST callers, unlike this MCP tool.
-- **Access:** `subscription` — requires a Pro subscription.
-- **Kind:** compact projection of the same atomic `scorecard:five-factor:v1` snapshot.
-
-Use `get_five_factor_scorecard` when you need input provenance, raw observations, or bloc aggregation.
-Always read `hasScore` before `score` or `subScore`. When `hasScore` is false, both numeric zeros are protobuf placeholders for insufficient data, not measured zero resilience.
-
-```bash
+```bash Every country
 curl -s https://worldmonitor.app/mcp \
   -H "X-WorldMonitor-Key: $WM_KEY" \
   -H 'Content-Type: application/json' \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"list_five_factor_scorecards","arguments":{}}
+    "params":{"name":"get_five_factor_scorecard","arguments":{}}
   }'
 ```
+
+</CodeGroup>
+
+### `list_five_factor_scorecards`
+
+Retired. The compact list of every scored country is [`get_five_factor_scorecard`](#get_five_factor_scorecard) called with no `country_code`, `preset` or `members`. Calls to the old name still work: they run that list call and return a `deprecation` notice that names the replacement.
 
 ### `get_resilience_indicators`
 
