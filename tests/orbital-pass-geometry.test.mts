@@ -122,7 +122,7 @@ describe('pass geometry rules', () => {
     assert.deepEqual(groundTrack(elements, { start: epochMs, end: epochMs + HOUR }), []);
   });
 
-  it('rejects a window that is unbounded, outside the Date range, reversed or longer than the search limit', () => {
+  it('rejects a window that is unbounded, outside the Date range, reversed or longer than the search limit, and a sub-second track step', () => {
     const { elements, profile } = satellite('SENTINEL-2B');
     const search = (start: number, end: number) => () => findPasses({ elements, profile, point: paris, window: { start, end }, now: FIXTURE_NOW });
     assert.throws(search(FIXTURE_NOW, Infinity), RangeError);
@@ -135,6 +135,8 @@ describe('pass geometry rules', () => {
     assert.throws(() => groundTrack(elements, { start: FIXTURE_NOW, end: Infinity }), RangeError);
     assert.throws(() => groundTrack(elements, { start: 2 ** 68, end: 2 ** 68 + HOUR }), RangeError);
     assert.throws(() => groundTrack(elements, { start: FIXTURE_NOW, end: FIXTURE_NOW + HOUR }, 0), RangeError);
+    assert.throws(() => groundTrack(elements, { start: FIXTURE_NOW, end: FIXTURE_NOW + HOUR }, 1e-7), RangeError);
+    assert.throws(() => groundTrack(elements, { start: FIXTURE_NOW, end: FIXTURE_NOW + HOUR }, Number.NaN), RangeError);
   });
 
   it('gives Sentinel-1 no likely-imaged pass on the side it does not look', () => {

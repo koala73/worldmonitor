@@ -558,7 +558,6 @@ function sebufApiPlugin(): Plugin {
       leadsServerMod, leadsHandlerMod,
       scenarioServerMod, scenarioHandlerMod,
       shippingV2ServerMod, shippingV2HandlerMod,
-      orbitalServerMod, orbitalHandlerMod,
       batchServerMod, batchHandlerMod,
       consumerPricesServerMod, consumerPricesHandlerMod,
       feedbackServerMod, feedbackHandlerMod,
@@ -571,6 +570,7 @@ function sebufApiPlugin(): Plugin {
       scorecardServerMod, scorecardHandlerMod,
       thermalServerMod, thermalHandlerMod,
       webcamServerMod, webcamHandlerMod,
+      orbitalServerMod, orbitalHandlerMod,
     ] = await Promise.all([
         import('./server/router'),
         import('./server/cors'),
@@ -627,8 +627,6 @@ function sebufApiPlugin(): Plugin {
         import('./server/worldmonitor/scenario/v1/handler'),
         import('./src/generated/server/worldmonitor/shipping/v2/service_server'),
         import('./server/worldmonitor/shipping/v2/handler'),
-        import('./src/generated/server/worldmonitor/orbital/v1/service_server'),
-        import('./server/worldmonitor/orbital/v1/handler'),
         import('./src/generated/server/worldmonitor/batch/v1/service_server'),
         import('./server/worldmonitor/batch/v1/handler'),
         import('./src/generated/server/worldmonitor/consumer_prices/v1/service_server'),
@@ -653,6 +651,8 @@ function sebufApiPlugin(): Plugin {
         import('./server/worldmonitor/thermal/v1/handler'),
         import('./src/generated/server/worldmonitor/webcam/v1/service_server'),
         import('./server/worldmonitor/webcam/v1/handler'),
+        import('./src/generated/server/worldmonitor/orbital/v1/service_server'),
+        import('./server/worldmonitor/orbital/v1/handler'),
       ]);
 
     const serverOptions = {
@@ -686,7 +686,6 @@ function sebufApiPlugin(): Plugin {
       ...leadsServerMod.createLeadsServiceRoutes(leadsHandlerMod.leadsHandler, serverOptions),
       ...scenarioServerMod.createScenarioServiceRoutes(scenarioHandlerMod.scenarioHandler, serverOptions),
       ...shippingV2ServerMod.createShippingV2ServiceRoutes(shippingV2HandlerMod.shippingV2Handler, serverOptions),
-      ...orbitalServerMod.createOrbitalServiceRoutes(orbitalHandlerMod.orbitalHandler, serverOptions),
       ...batchServerMod.createBatchServiceRoutes(batchHandlerMod.batchHandler, serverOptions),
       ...consumerPricesServerMod.createConsumerPricesServiceRoutes(consumerPricesHandlerMod.consumerPricesHandler, serverOptions),
       ...feedbackServerMod.createFeedbackServiceRoutes(feedbackHandlerMod.feedbackHandler, serverOptions),
@@ -699,6 +698,7 @@ function sebufApiPlugin(): Plugin {
       ...scorecardServerMod.createScorecardServiceRoutes(scorecardHandlerMod.scorecardHandler, serverOptions),
       ...thermalServerMod.createThermalServiceRoutes(thermalHandlerMod.thermalHandler, serverOptions),
       ...webcamServerMod.createWebcamServiceRoutes(webcamHandlerMod.webcamHandler, serverOptions),
+      ...orbitalServerMod.createOrbitalServiceRoutes(orbitalHandlerMod.orbitalHandler, serverOptions),
     ];
     cachedCorsMod = corsMod;
     return routerMod.createRouter(allRoutes);
