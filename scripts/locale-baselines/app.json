@@ -4248,5 +4248,14 @@
   "widgets.saveFailed": "Widget could not be saved. Please try again.",
   "widgets.send": "Send",
   "widgets.serverError": "Server error: {{status}}",
-  "widgets.unknownError": "Unknown error"
+  "widgets.unknownError": "Unknown error",
+  "orbitalWatch.ui.archiveOnly": "No computed pass matches these images, so they are shown as archive scenes.",
+  "orbitalWatch.ui.archiveScene": "Archive scene",
+  "orbitalWatch.ui.grid.couldShort": "Steerable sensor in reach",
+  "orbitalWatch.ui.grid.likelyShort": "Covered, no image yet",
+  "orbitalWatch.ui.grid.overheadShort": "Overhead, no image",
+  "orbitalWatch.ui.grid.watchedShort": "Image in a public archive",
+  "orbitalWatch.ui.privacyHow": "How",
+  "orbitalWatch.ui.privacyLine": "Point stays in your browser",
+  "orbitalWatch.ui.sources": "Sources"
 }
