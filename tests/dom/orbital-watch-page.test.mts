@@ -211,6 +211,20 @@ describe('satellite pass lookup sheet', () => {
     expect(callbacks.onRetry).toHaveBeenCalledTimes(1);
   });
 
+  it('names a layer that timed out while its archive answered other layers', () => {
+    const { all } = tiered();
+    const partial = evidence(all, {
+      status: 'partial',
+      failures: [
+        { archive: 'earth-search', reason: 'timeout' },
+        { archive: 'nasa-gibs', reason: 'timeout', source: 'GOES-West' },
+      ],
+    });
+    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: partial } });
+    expect(text()).toContain('Earth Search, NASA GIBS (GOES-West) did not answer');
+    expect(sheet().querySelector('[data-action="retry"]')).not.toBeNull();
+  });
+
   it('warns about stale orbit data with its age', () => {
     const { all } = tiered();
     mounted({ kind: 'passes', lookup: lookup(all, 'stale'), archives: { kind: 'answered', evidence: evidence(all) } });

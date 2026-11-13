@@ -326,7 +326,7 @@ export class OrbitalWatchPage {
         h('p', { className: 'ow-headline', role: 'status' }, t('orbitalWatch.checkingArchives', { done: settled, total })),
         h('p', { className: 'ow-counts' }, t('orbitalWatch.counts.inRange', { count: inRange })));
     }
-    const failedNames = [...new Set(evidence.failures.map((failure) => ARCHIVE_NAME[failure.archive]))];
+    const failedNames = [...new Set(evidence.failures.map((failure) => (failure.source ? `${ARCHIVE_NAME[failure.archive]} (${failure.source})` : ARCHIVE_NAME[failure.archive])))];
     return h('div', { className: 'ow-summary' },
       h('p', { className: 'ow-headline', role: 'status' }, t('orbitalWatch.confirmedCount', { count: evidence.acquisitions.length })),
       h('p', { className: 'ow-counts' }, [
