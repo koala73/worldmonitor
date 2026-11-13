@@ -4,10 +4,10 @@
  *
  * WM_VERIFY_ORBITAL_CATALOG=live skips the catalog fixture and uses the local
  * API. WM_VERIFY_ORBITAL_VIEWPORT=mobile drives a phone-sized viewport.
- * Desktop drives the flat map, whose coastlines and labels show where the
- * reticle sits. A phone's flat map is the SVG world map, which cannot place
- * the reticle, so mobile drives the globe. WM_VERIFY_ORBITAL_MAP=globe|flat
- * overrides either.
+ * The drive uses the flat map, whose coastlines and labels show where the
+ * reticle sits: deck.gl on desktop, the SVG map on a phone. The SVG map has
+ * no context menu, so there every lookup opens through its route.
+ * WM_VERIFY_ORBITAL_MAP=globe drives the 3D globe instead.
  */
 import { readFileSync } from 'node:fs';
 import { matchSensorProfile } from '../../../../shared/orbital/sensor-profiles.js';
@@ -61,7 +61,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     url: req.url(), body: req.postData() ?? '', harnessNavigation: req.isNavigationRequest() && req.frame() === page.mainFrame(),
   }));
 
-  const mapMode = ['globe', 'flat'].includes(process.env.WM_VERIFY_ORBITAL_MAP) ? process.env.WM_VERIFY_ORBITAL_MAP : mobile ? 'globe' : 'flat';
+  const mapMode = process.env.WM_VERIFY_ORBITAL_MAP === 'globe' ? 'globe' : 'flat';
   if (mapMode === 'flat') {
     // MapContainer refuses deck.gl on a software GL renderer, and this VM only has SwiftShader.
     await page.addInitScript(() => {
@@ -75,7 +75,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': JSON.stringify(mapMode) } });
   await page.goto(`${base}/dashboard?view=global&layers=none&lat=${PLACE.lat}&lon=${PLACE.lon}&zoom=${PLACE.zoom}`, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
-  log('renderer', await waitForMap(page));
+  const renderer = await waitForMap(page);
+  log('renderer', renderer);
 
   const sheet = page.locator('.orbital-watch-sheet');
   // Opening a lookup flies the map so the point sits in the middle of what the sheet leaves visible, so aim at
@@ -95,7 +96,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     const focused = await page.evaluate(() => document.activeElement?.id);
     if (focused !== 'mapContainer') throw new Error(`focus after close went to ${focused}`);
   };
-  // A banner pushes the hero down; scroll just far enough that its caption and credit clear the privacy line.
+  // A banner pushes the hero down; both it and the hero's caption and credit must show above the privacy line.
   const showHeroCredit = async () => {
     const clipped = await page.evaluate(() => {
       const credit = document.querySelector('.orbital-watch-sheet .ow-card .ow-image-credit');
@@ -104,7 +105,10 @@ export default async function ({ page, base, shot, log, expectVisible }) {
         .map((el) => el.getBoundingClientRect()).filter((r) => r.height > 0).map((r) => r.top), window.innerHeight);
       const over = credit.getBoundingClientRect().bottom + 4 - floor();
       if (over > 0) document.querySelector('.orbital-watch-sheet .ow-body')?.scrollBy(0, over);
-      return credit.getBoundingClientRect().bottom > floor() ? 'hero credit under the privacy line' : null;
+      if (credit.getBoundingClientRect().bottom > floor()) return 'hero credit under the privacy line';
+      const banner = document.querySelector('.orbital-watch-sheet .ow-banner')?.getBoundingClientRect();
+      const top = document.querySelector('.orbital-watch-sheet .ow-body')?.getBoundingClientRect().top ?? 0;
+      return banner && banner.top < top - 1 ? 'banner scrolled out of the sheet' : null;
     });
     if (clipped) throw new Error(clipped);
   };
@@ -181,6 +185,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     await expectVisible('.orbital-watch-sheet');
   };
   const calibrate = async () => {
+    if (renderer === 'svg') return;
     const picked = await pickedAt(null);
     log('context menu pick', JSON.stringify(picked));
   };
