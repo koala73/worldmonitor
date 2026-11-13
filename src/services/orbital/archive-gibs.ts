@@ -34,7 +34,30 @@ export interface GeostationaryRow {
   layer: string;
   noradId: number;
   cadenceMinutes: number | null;
-  latest: { time: string; imageUrl: string | null } | null;
+  latest: GeostationaryFrame | null;
+}
+
+export interface GeostationaryFrame {
+  time: string;
+  imageUrl: string | null;
+  /** Earlier advertised frames, newest first, for when the archive cannot yet serve `imageUrl`. */
+  fallbacks: Array<{ time: string; imageUrl: string }>;
+}
+
+const isoSecond = (ms: number) => `${new Date(ms).toISOString().slice(0, 19)}Z`;
+
+/** Archives can advertise a frame before they serve it, so the newest frame carries earlier ones as fallbacks. */
+export const FRAME_FALLBACKS = 2;
+
+export function latestFrame(times: readonly number[], imageUrl: (time: string) => string | null): GeostationaryFrame | null {
+  const latestMs = times[times.length - 1];
+  if (latestMs === undefined) return null;
+  const fallbacks = times.slice(-1 - FRAME_FALLBACKS, -1).reverse().flatMap((ms) => {
+    const time = isoSecond(ms);
+    const url = imageUrl(time);
+    return url ? [{ time, imageUrl: url }] : [];
+  });
+  return { time: isoSecond(latestMs), imageUrl: imageUrl(isoSecond(latestMs)), fallbacks };
 }
 
 interface GibsLayer {
@@ -87,7 +110,6 @@ export function timesWithin(ranges: TimeRange[], fromMs: number, toMs: number): 
 
 const startOfUtcDay = (ms: number) => Math.floor(ms / DAY_MS) * DAY_MS;
 const isoDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-const isoSecond = (ms: number) => `${new Date(ms).toISOString().slice(0, 19)}Z`;
 
 /** Asks GIBS which times a layer has, for the whole globe, so the request carries no point. */
 export type LayerTimes =
@@ -141,8 +163,6 @@ export async function searchGibsGeostationary(query: FrameQuery & { visibleNorad
   const failures = layerFailures(answers);
   const items = layers.map((layer, i): GeostationaryRow => {
     const answer = answers[i]!;
-    const latestMs = answer.ok ? answer.times[answer.times.length - 1] : undefined;
-    const time = latestMs === undefined ? null : isoSecond(latestMs);
     return {
       kind: 'geostationary',
       archive: 'nasa-gibs',
@@ -150,7 +170,7 @@ export async function searchGibsGeostationary(query: FrameQuery & { visibleNorad
       layer: layer.layer,
       noradId: layer.noradId,
       cadenceMinutes: !answer.ok || answer.stepMs === null ? null : answer.stepMs / 60_000,
-      latest: time ? { time, imageUrl: gibsSnapshotUrl(layer.layer, time, box) } : null,
+      latest: answer.ok ? latestFrame(answer.times, (time) => gibsSnapshotUrl(layer.layer, time, box)) : null,
     };
   });
   return { status: 'ok', archive: 'nasa-gibs', items, failures };
