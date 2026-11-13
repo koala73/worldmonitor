@@ -154,31 +154,68 @@ export interface StacSearchQuery extends ArchiveRequestOptions {
   window: PassWindow;
 }
 
+const SEARCH_HEADERS = { 'Content-Type': 'application/json', Accept: 'application/geo+json' };
+/** Pages followed before a search counts as unanswered rather than silently cut short. */
+const MAX_SEARCH_PAGES = 10;
+/** Planetary Computer stamps Sentinel-2 items with the datatake start, up to half an hour before the point is sensed. */
+const SEARCH_LEAD_MS = 60 * MINUTE_MS;
+
+interface StacLink {
+  rel?: unknown;
+  href?: unknown;
+  method?: unknown;
+  body?: unknown;
+  merge?: unknown;
+}
+
+type NextRequest = { url: string; init: RequestInit } | null;
+
+function nextRequest(links: unknown, searchUrl: string, body: Record<string, unknown>): NextRequest {
+  const next = Array.isArray(links) ? (links as StacLink[]).find((link) => link?.rel === 'next') : undefined;
+  const href = str(next?.href);
+  let url: URL;
+  try {
+    url = new URL(href ?? '', searchUrl);
+  } catch {
+    return null;
+  }
+  if (!next || !href || url.origin !== new URL(searchUrl).origin) return null;
+  if (String(next.method ?? 'GET').toUpperCase() !== 'POST') return { url: url.toString(), init: { method: 'GET' } };
+  const nextBody = next.body && typeof next.body === 'object' ? next.body as Record<string, unknown> : {};
+  return {
+    url: url.toString(),
+    init: { method: 'POST', headers: SEARCH_HEADERS, body: JSON.stringify(next.merge === true ? { ...body, ...nextBody } : nextBody) },
+  };
+}
+
 /** One search per archive, sent straight from the browser to the archive. */
 export async function searchStacArchive(archive: StacArchiveId, query: StacSearchQuery): Promise<ArchiveResult<ArchiveItem>> {
   const config = STAC_ARCHIVES[archive];
-  const body = JSON.stringify({
+  const body = {
     collections: Object.keys(config.collections),
     intersects: { type: 'Point', coordinates: [query.point.lon, query.point.lat] },
-    datetime: `${new Date(query.window.startMs).toISOString()}/${new Date(query.window.endMs).toISOString()}`,
+    datetime: `${new Date(query.window.startMs - SEARCH_LEAD_MS).toISOString()}/${new Date(query.window.endMs).toISOString()}`,
     limit: SEARCH_LIMIT,
-  });
-  const reply = await requestArchive(archive, config.searchUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/geo+json' },
-    body,
-  }, query);
-  if (!reply.ok) return failed(reply.failure);
-  let features: unknown;
-  try {
-    features = ((await reply.response.json()) as { features?: unknown }).features;
-  } catch {
-    return failed({ archive, reason: 'invalid-response' });
+  };
+  const features: unknown[] = [];
+  let request: NextRequest = { url: config.searchUrl, init: { method: 'POST', headers: SEARCH_HEADERS, body: JSON.stringify(body) } };
+  for (let page = 0; request; page++) {
+    if (page === MAX_SEARCH_PAGES) return failed({ archive, reason: 'invalid-response' });
+    const reply = await requestArchive(archive, request.url, request.init, query);
+    if (!reply.ok) return failed(reply.failure);
+    let parsed: { features?: unknown; links?: unknown };
+    try {
+      parsed = (await reply.response.json()) as typeof parsed;
+    } catch {
+      return failed({ archive, reason: 'invalid-response' });
+    }
+    if (!Array.isArray(parsed.features)) return failed({ archive, reason: 'invalid-response' });
+    features.push(...parsed.features);
+    request = parsed.features.length > 0 ? nextRequest(parsed.links, config.searchUrl, body) : null;
   }
-  if (!Array.isArray(features)) return failed({ archive, reason: 'invalid-response' });
   const items = features.flatMap((feature) => {
     const item = feature && typeof feature === 'object' ? parseStacItem(archive, feature as StacFeature) : null;
-    return item ? [item] : [];
+    return item && item.endMs >= query.window.startMs && item.startMs <= query.window.endMs ? [item] : [];
   });
   return { status: 'ok', archive, items };
 }

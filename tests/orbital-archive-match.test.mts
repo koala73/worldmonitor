@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { assembleEvidence, compareBestView, describePointCondition, findArchiveEvidence, groupAcquisitions, type MatchedAcquisition } from '../src/services/orbital/match.ts';
-import { parseStacItem } from '../src/services/orbital/archive-stac.ts';
+import { parseStacItem, searchStacArchive } from '../src/services/orbital/archive-stac.ts';
 import { ARCHIVE_RESPONSES, fakeArchiveFetch, fixtureLookup } from './helpers/orbital-archive-fetch.mts';
 
 const { denver, dubai } = ARCHIVE_RESPONSES.points;
@@ -117,6 +117,54 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.deepEqual(evidence.frames.map((f) => f.source).sort(), ['GOES-East', 'GOES-West']);
     for (const frame of evidence.frames) assert.equal(frame.latest?.time, '2026-11-13T11:50:00Z');
     assert.ok(evidence.acquisitions.every((a) => ['sentinel-2', 'sentinel-1', 'landsat'].includes(a.profileId)));
+  });
+});
+
+describe('archive searches', () => {
+  const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+
+  it('follows next-page links so a long answer is not cut short', async () => {
+    const features = denver['earth-search'].features;
+    const bodies: Array<Record<string, unknown>> = [];
+    const fetch = async (_url: string, init: RequestInit = {}) => {
+      const body = JSON.parse(String(init.body));
+      bodies.push(body);
+      if (body.next) return json({ features: features.slice(10), links: [] });
+      return json({ features: features.slice(0, 10), links: [{ rel: 'next', method: 'POST', href: 'https://earth-search.aws.element84.com/v1/search', body: { ...body, next: 'page-2' } }] });
+    };
+    const result = await searchStacArchive('earth-search', { point: denver, window: { startMs: Date.parse('2026-11-03T00:00:00Z'), endMs: Date.parse('2026-11-13T12:00:00Z') }, fetch });
+    assert.equal(result.status, 'ok');
+    assert.equal(bodies.length, 2);
+    assert.equal(result.status === 'ok' && result.items.length, features.length);
+  });
+
+  it('does not follow a next-page link to another host', async () => {
+    let calls = 0;
+    const fetch = async () => {
+      calls++;
+      return json({ features: denver['earth-search'].features.slice(0, 1), links: [{ rel: 'next', method: 'GET', href: 'https://elsewhere.example.com/search?page=2' }] });
+    };
+    const result = await searchStacArchive('earth-search', { point: denver, window: { startMs: 0, endMs: Date.parse('2026-11-13T12:00:00Z') }, fetch });
+    assert.equal(calls, 1);
+    assert.equal(result.status === 'ok' && result.items.length, 1);
+  });
+
+  it('keeps a Sentinel-2 datatake that starts before the window but senses the point inside it', async () => {
+    const tile = dubai['planetary-computer'].features.find((f) => f.id === 'S2B_MSIL2A_20261108T065109_R020_T40RCN_20261108T103534')!;
+    const item = parseStacItem('planetary-computer', tile as never)!;
+    const datatakeStart = Date.parse(tile.properties.datetime);
+    const window = { startMs: datatakeStart + 5 * 60_000, endMs: datatakeStart + 2 * 86_400_000 };
+    assert.ok(item.endMs > window.startMs, 'the strip reaches the point after the window opens');
+    let requested = '';
+    const fetch = async (_url: string, init: RequestInit = {}) => {
+      requested = JSON.parse(String(init.body)).datetime;
+      return json({ features: [tile], links: [] });
+    };
+    const result = await searchStacArchive('planetary-computer', { point: dubai, window, fetch });
+    assert.ok(Date.parse(requested.split('/')[0]!) <= datatakeStart, `the search reaches back to the datatake start (${requested})`);
+    assert.equal(result.status === 'ok' && result.items.length, 1);
+    const later = await searchStacArchive('planetary-computer', { point: dubai, window: { startMs: item.endMs + 1, endMs: item.endMs + 86_400_000 }, fetch });
+    assert.equal(later.status === 'ok' && later.items.length, 0, 'an item sensed before the window is left out');
   });
 });
 
