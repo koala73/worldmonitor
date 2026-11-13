@@ -4486,8 +4486,7 @@
     "signIn": "로그인",
     "createAccount": "계정 만들기",
     "freeReason": "무료: 레이아웃 저장, 국가 팔로우, 알림",
-    "settings": "설정",
-    "passkeyOffer": {}
+    "settings": "설정"
   },
   "mcp": {
     "connectPanel": "MCP 연결",
@@ -5100,8 +5099,6 @@
     "empty": "지난 {{pastDays}}일 동안 이 지점 위를 지난 등록된 영상 위성이 없으며 향후 {{futureHours}}시간 동안에도 지나지 않습니다.",
     "privacy": "이 지점은 브라우저에만 남습니다. 브라우저가 직접 호출하는 공개 아카이브인 Earth Search, Microsoft Planetary Computer, NASA GIBS, EUMETSAT에만 전송됩니다. 유일한 예외는 지명 검색으로, 입력한 이름은 지명 검색 서비스로 전송됩니다.",
     "inRange": "범위 내",
-    "dailyMosaics": "일일 모자이크",
-    "weatherFrames": "기상 영상",
     "tier": {
       "checking": "아카이브 확인 중",
       "confirmed": "확인된 영상",
@@ -5128,6 +5125,92 @@
       "imageLoading": "이미지 불러오는 중…",
       "imageFailed": "이미지를 불러오지 못했습니다. 아카이브가 느리거나 중단되었을 수 있습니다.",
       "noPreview": "아카이브에 아직 이 장면의 미리보기가 없습니다."
+    },
+    "dailyMosaics": "일일 모자이크",
+    "weatherFrames": "기상 영상",
+    "ui": {
+      "change": "변경",
+      "share": "공유",
+      "shareCopied": "링크 복사됨",
+      "headline": "지난 {{days}}일 동안 {{satellites}}이 {{place}} 위를 지나갔습니다.",
+      "satellites": "위성 {{count}}기",
+      "subline": "이미지 {{count}}장이 공개되었습니다.",
+      "closestLook": "가장 가까운 촬영",
+      "replay": "재생",
+      "openFull": "전체 보기 열기",
+      "previous": "이전 이미지",
+      "next": "다음 이미지",
+      "passes": "회 통과",
+      "showAll": "모든 통과 보기",
+      "noRecentDays": "아카이브에 최근 날짜 없음: {{sources}}",
+      "tab": {
+        "all": "전체",
+        "detailed": "상세",
+        "weather": "기상"
+      },
+      "caption": {
+        "clear": "맑음",
+        "clouded": "흐림 · {{pct}}%",
+        "cloudShadow": "구름 그림자",
+        "spotNotChecked": "지점 구름 미확인",
+        "sceneCloud": "장면 구름 {{pct}}% · 지점 미확인",
+        "radar": "레이더",
+        "dailyMosaic": "일일 모자이크",
+        "geostationary": "정지궤도 전체 디스크",
+        "geostationaryCadence": "정지궤도 · {{minutes}}분마다"
+      },
+      "tile": {
+        "failed": "이미지 없음 · {{archive}}",
+        "noPreview": "아카이브에 아직 이 장면의 미리보기가 없습니다"
+      },
+      "grid": {
+        "watched": "촬영됨",
+        "watchedDef": "공개 아카이브에 이 지점의 이미지가 있습니다.",
+        "likely": "촬영 가능성 높음",
+        "likelyDef": "고정 관측폭 센서가 포함했지만 아직 공개된 이미지가 없습니다.",
+        "could": "이곳을 겨눌 수 있었음",
+        "couldDef": "지향 가능하거나 상업용 센서가 범위 안에 있었으나 운영자는 관측 여부를 밝히지 않습니다.",
+        "overhead": "상공 통과",
+        "overheadDef": "촬영 증거 없이 이곳 하늘을 지나갔습니다."
+      },
+      "group": {
+        "watched": "촬영됨",
+        "likely": "촬영 가능성 높음",
+        "upcoming": "예정",
+        "could": "이곳을 겨눌 수 있었음",
+        "overhead": "상공 통과",
+        "weather": "기상 소스"
+      },
+      "order": {
+        "closest": "가장 가까운 촬영, 이후 최신순",
+        "newest": "최신순",
+        "soonest": "빠른 순"
+      },
+      "row": {
+        "cloud": "구름 {{pct}}%",
+        "days": "{{count}}일",
+        "repeats": "이 그룹에서 이 위성의 통과 {{count}}회"
+      },
+      "section": {
+        "summary": "요약",
+        "passes": "통과"
+      },
+      "status": {
+        "objects": "물체 {{count}}개 · CelesTrak GP",
+        "fetched": "가져옴 {{time}} · {{ago}}",
+        "sun": "태양 {{point}} · 태양 직하점"
+      },
+      "step": {
+        "computing": "계산 중",
+        "catalogLoading": "카탈로그 · 불러오는 중",
+        "catalog": "카탈로그 · 물체 {{count}}개",
+        "propagating": "궤도 계산 중 · {{done}} / {{total}}",
+        "archives": "아카이브 · {{done}} / {{total}} 응답",
+        "matching": "장면을 통과 {{passes}}회와 대조 중",
+        "window": "7일 범위 · {{start}} → {{end}}",
+        "failed": "실패",
+        "note": "Planetary Computer와 NASA GIBS는 요청 시 이미지를 생성하므로 이 단계는 몇 초 걸릴 수 있습니다."
+      }
     },
     "viewer": {
       "open": "이미지 뷰어 열기: {{image}}",
@@ -5176,6 +5259,29 @@
       "years": "연도",
       "share": "공유",
       "method": "각 프레임은 Sentinel-2의 같은 6km 정사각형을 자연색으로 보여 줍니다. 해마다 다른 계절을 찾아 구름이 가장 적은 장면을 쓰며, 구름 30% 미만 장면이 없는 해는 뺍니다."
+    },
+    "passDetail": {
+      "back": "모든 통과",
+      "altitude": "고도",
+      "offNadir": "오프나디르",
+      "crossed": "{{name}}은(는) 고도 {{altitude}}km에서 이 지점의 {{direction}} {{distance}}km 지점을 {{time}} UTC에 지상 속도 {{speed}}km/s로 지나갔습니다.",
+      "looking": "바로 아래에서 {{deg}}° 기울여 보고 있었습니다.",
+      "sceneCloud": "장면 구름량: {{pct}}%.",
+      "pixelLine": "{{m}}m 픽셀",
+      "swathLine": "{{km}}km 관측 폭",
+      "clearestLook": "가장 맑은 이미지",
+      "previous": "이전 통과",
+      "next": "다음 통과",
+      "dir": {
+        "n": "북쪽",
+        "ne": "북동쪽",
+        "e": "동쪽",
+        "se": "남동쪽",
+        "s": "남쪽",
+        "sw": "남서쪽",
+        "w": "서쪽",
+        "nw": "북서쪽"
+      }
     }
   }
 }

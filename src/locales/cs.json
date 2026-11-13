@@ -4552,8 +4552,7 @@
     "signIn": "Přihlášení",
     "createAccount": "Vytvořit účet",
     "freeReason": "Zdarma: ulož rozložení, sleduj země, upozornění",
-    "settings": "Nastavení",
-    "passkeyOffer": {}
+    "settings": "Nastavení"
   },
   "mcp": {
     "connectPanel": "Připojit MCP",
@@ -5184,8 +5183,6 @@
     "empty": "Žádný evidovaný snímkovací satelit nad tímto bodem za posledních {{pastDays}} dní nepřeletěl a během příštích {{futureHours}} hodin nepřeletí.",
     "privacy": "Tento bod zůstává ve vašem prohlížeči. Odesílá se pouze veřejným archivům, které prohlížeč volá přímo: Earth Search, Microsoft Planetary Computer, NASA GIBS a EUMETSAT. Jedinou výjimkou je hledání podle názvu místa: zadaný název jde do služby vyhledávání míst.",
     "inRange": "v dosahu",
-    "dailyMosaics": "denní mozaiky",
-    "weatherFrames": "meteorologické snímky",
     "tier": {
       "checking": "kontrola archivu",
       "confirmed": "potvrzený snímek",
@@ -5212,6 +5209,92 @@
       "imageLoading": "Načítání snímku…",
       "imageFailed": "Snímek se nenačetl. Archiv může být pomalý nebo nedostupný.",
       "noPreview": "Archiv zatím nemá náhled této scény."
+    },
+    "dailyMosaics": "denní mozaiky",
+    "weatherFrames": "meteorologické snímky",
+    "ui": {
+      "change": "Změnit",
+      "share": "Sdílet",
+      "shareCopied": "Odkaz zkopírován",
+      "headline": "Za posledních {{days}} dní nad {{place}} přeletělo: {{satellites}}.",
+      "satellites": "{{count}} satelitů",
+      "subline": "Zveřejněno snímků: {{count}}.",
+      "closestLook": "Nejbližší pohled",
+      "replay": "Přehrát",
+      "openFull": "Otevřít celé zobrazení",
+      "previous": "Předchozí snímek",
+      "next": "Další snímek",
+      "passes": "přeletů",
+      "showAll": "Zobrazit všechny přelety",
+      "noRecentDays": "V archivu nejsou nedávné dny: {{sources}}",
+      "tab": {
+        "all": "Vše",
+        "detailed": "Podrobné",
+        "weather": "Počasí"
+      },
+      "caption": {
+        "clear": "Jasno",
+        "clouded": "Oblačno · {{pct}} %",
+        "cloudShadow": "Stín mraku",
+        "spotNotChecked": "Místo nezkontrolováno na oblačnost",
+        "sceneCloud": "Oblačnost scény {{pct}} % · místo nezkontrolováno",
+        "radar": "Radar",
+        "dailyMosaic": "Denní mozaika",
+        "geostationary": "Geostacionární celý disk",
+        "geostationaryCadence": "Geostacionární · každých {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Snímek nedostupný · {{archive}}",
+        "noPreview": "Archiv zatím nemá náhled této scény"
+      },
+      "grid": {
+        "watched": "Sledováno",
+        "watchedDef": "Veřejný archiv má snímek tohoto místa.",
+        "likely": "Pravděpodobně sledováno",
+        "likelyDef": "Senzor s pevným pásem ho pokryl; snímek zatím nezveřejněn.",
+        "could": "Mohl sem mířit",
+        "couldDef": "Natáčitelný nebo komerční senzor byl v dosahu; provozovatel neuvádí, zda se díval.",
+        "overhead": "Přeletěl nad",
+        "overheadDef": "Přešel zde oblohu, bez důkazu snímkování."
+      },
+      "group": {
+        "watched": "sledovaných",
+        "likely": "pravděpodobně sledovaných",
+        "upcoming": "nadcházejících",
+        "could": "které sem mohly mířit",
+        "overhead": "nad místem",
+        "weather": "zdroje počasí"
+      },
+      "order": {
+        "closest": "Nejbližší pohled, pak nejnovější",
+        "newest": "Nejnovější první",
+        "soonest": "Nejbližší první"
+      },
+      "row": {
+        "cloud": "Oblačnost {{pct}} %",
+        "days": "Dní: {{count}}",
+        "repeats": "Přelety tohoto satelitu ve skupině: {{count}}"
+      },
+      "section": {
+        "summary": "Souhrn",
+        "passes": "Přelety"
+      },
+      "status": {
+        "objects": "Objekty: {{count}} · CelesTrak GP",
+        "fetched": "Načteno {{time}} · {{ago}}",
+        "sun": "Slunce {{point}} · subsolární bod"
+      },
+      "step": {
+        "computing": "Výpočet",
+        "catalogLoading": "Katalog · načítání",
+        "catalog": "Katalog · objekty: {{count}}",
+        "propagating": "Výpočet drah · {{done}} / {{total}}",
+        "archives": "Archivy · odpovědělo {{done}} / {{total}}",
+        "matching": "Párování scén s přelety: {{passes}}",
+        "window": "7denní okno · {{start}} → {{end}}",
+        "failed": "Selhalo",
+        "note": "Planetary Computer a NASA GIBS vytvářejí snímky na vyžádání, proto tento krok může trvat několik sekund."
+      }
     },
     "viewer": {
       "open": "Otevřít prohlížeč snímků: {{image}}",
@@ -5260,6 +5343,29 @@
       "years": "Roky",
       "share": "Sdílet",
       "method": "Každý snímek je stejný čtverec 6 km ze Sentinelu-2 v přirozených barvách. Každý rok se hledá v jiném ročním období a ponechá se nejméně oblačná scéna; rok bez scény pod 30 % oblačnosti se vynechá."
+    },
+    "passDetail": {
+      "back": "Všechny přelety",
+      "altitude": "Výška",
+      "offNadir": "Odklon od nadiru",
+      "crossed": "{{name}} přeletěl ve výšce {{altitude}} km, {{distance}} km {{direction}}, v {{time}} UTC, rychlostí {{speed}} km/s nad zemí.",
+      "looking": "Díval se {{deg}}° od svislice.",
+      "sceneCloud": "Oblačnost scény: {{pct}} %.",
+      "pixelLine": "Pixel {{m}} m",
+      "swathLine": "Záběr {{km}} km",
+      "clearestLook": "Nejjasnější pohled",
+      "previous": "Předchozí přelet",
+      "next": "Další přelet",
+      "dir": {
+        "n": "na sever",
+        "ne": "na severovýchod",
+        "e": "na východ",
+        "se": "na jihovýchod",
+        "s": "na jih",
+        "sw": "na jihozápad",
+        "w": "na západ",
+        "nw": "na severozápad"
+      }
     }
   }
 }

@@ -4508,8 +4508,7 @@
     "signIn": "Anmelden",
     "createAccount": "Konto erstellen",
     "freeReason": "Gratis: Layout speichern, Ländern folgen, Alarme",
-    "settings": "Einstellungen",
-    "passkeyOffer": {}
+    "settings": "Einstellungen"
   },
   "mcp": {
     "connectPanel": "MCP verbinden",
@@ -5128,8 +5127,6 @@
     "empty": "Kein erfasster Erdbeobachtungssatellit hat diesen Punkt in den letzten {{pastDays}} Tagen überflogen oder wird es in den nächsten {{futureHours}} Stunden tun.",
     "privacy": "Dieser Punkt bleibt in Ihrem Browser. Er wird nur an die öffentlichen Archive gesendet, die Ihr Browser direkt abfragt: Earth Search, Microsoft Planetary Computer, NASA GIBS und EUMETSAT. Die einzige Ausnahme ist die Suche nach Ortsnamen: Der eingegebene Name geht an den Ortsnamen-Suchdienst.",
     "inRange": "in Reichweite",
-    "dailyMosaics": "Tagesmosaike",
-    "weatherFrames": "Wetterbilder",
     "tier": {
       "checking": "Archiv wird geprüft",
       "confirmed": "bestätigte Aufnahme",
@@ -5156,6 +5153,92 @@
       "imageLoading": "Bild wird geladen…",
       "imageFailed": "Bild wurde nicht geladen. Das Archiv ist möglicherweise langsam oder nicht erreichbar.",
       "noPreview": "Das Archiv hat noch keine Vorschau dieser Szene."
+    },
+    "dailyMosaics": "Tagesmosaike",
+    "weatherFrames": "Wetterbilder",
+    "ui": {
+      "change": "Ändern",
+      "share": "Teilen",
+      "shareCopied": "Link kopiert",
+      "headline": "In den letzten {{days}} Tagen haben {{satellites}} {{place}} überflogen.",
+      "satellites": "{{count}} Satelliten",
+      "subline": "{{count}} Bilder wurden veröffentlicht.",
+      "closestLook": "Nächster Blick",
+      "replay": "Wiedergabe",
+      "openFull": "Vollansicht öffnen",
+      "previous": "Vorheriges Bild",
+      "next": "Nächstes Bild",
+      "passes": "Überflüge",
+      "showAll": "Alle Überflüge zeigen",
+      "noRecentDays": "Keine aktuellen Tage im Archiv: {{sources}}",
+      "tab": {
+        "all": "Alle",
+        "detailed": "Detailliert",
+        "weather": "Wetter"
+      },
+      "caption": {
+        "clear": "Klar",
+        "clouded": "Bewölkt · {{pct}} %",
+        "cloudShadow": "Wolkenschatten",
+        "spotNotChecked": "Stelle nicht auf Wolken geprüft",
+        "sceneCloud": "Szenenbewölkung {{pct}} % · Stelle nicht geprüft",
+        "radar": "Radar",
+        "dailyMosaic": "Tägliches Mosaik",
+        "geostationary": "Geostationäre Vollscheibe",
+        "geostationaryCadence": "Geostationär · alle {{minutes}} Min."
+      },
+      "tile": {
+        "failed": "Bild nicht verfügbar · {{archive}}",
+        "noPreview": "Das Archiv hat noch keine Vorschau dieser Szene"
+      },
+      "grid": {
+        "watched": "Beobachtet",
+        "watchedDef": "Ein öffentliches Archiv hält ein Bild dieser Stelle.",
+        "likely": "Wahrscheinlich beobachtet",
+        "likelyDef": "Ein Sensor mit festem Streifen hat sie erfasst; noch kein Bild veröffentlicht.",
+        "could": "Hätte hierher zielen können",
+        "couldDef": "Ein schwenkbarer oder kommerzieller Sensor war in Reichweite; der Betreiber sagt nicht, ob er hinsah.",
+        "overhead": "Überflogen",
+        "overheadDef": "Hat den Himmel hier gekreuzt, ohne Bildnachweis."
+      },
+      "group": {
+        "watched": "beobachtet",
+        "likely": "wahrscheinlich beobachtet",
+        "upcoming": "demnächst",
+        "could": "hätte hierher zielen können",
+        "overhead": "überflogen",
+        "weather": "Wetterquellen"
+      },
+      "order": {
+        "closest": "Nächster Blick, dann neueste",
+        "newest": "Neueste zuerst",
+        "soonest": "Früheste zuerst"
+      },
+      "row": {
+        "cloud": "Wolken {{pct}} %",
+        "days": "{{count}} Tage",
+        "repeats": "{{count}} Überflüge dieses Satelliten in dieser Gruppe"
+      },
+      "section": {
+        "summary": "Übersicht",
+        "passes": "Überflüge"
+      },
+      "status": {
+        "objects": "{{count}} Objekte · CelesTrak GP",
+        "fetched": "Abgerufen {{time}} · {{ago}}",
+        "sun": "Sonne {{point}} · Subsolarpunkt"
+      },
+      "step": {
+        "computing": "Berechnung",
+        "catalogLoading": "Katalog · wird geladen",
+        "catalog": "Katalog · {{count}} Objekte",
+        "propagating": "Bahnen werden berechnet · {{done}} / {{total}}",
+        "archives": "Archive · {{done}} / {{total}} geantwortet",
+        "matching": "Szenen werden {{passes}} Überflügen zugeordnet",
+        "window": "7-Tage-Fenster · {{start}} → {{end}}",
+        "failed": "Fehlgeschlagen",
+        "note": "Planetary Computer und NASA GIBS erzeugen Bilder auf Abruf, daher kann dieser Schritt einige Sekunden dauern."
+      }
     },
     "viewer": {
       "open": "Bildbetrachter öffnen: {{image}}",
@@ -5204,6 +5287,29 @@
       "years": "Jahre",
       "share": "Teilen",
       "method": "Jedes Bild ist dasselbe 6-km-Quadrat von Sentinel-2 in natürlichen Farben. Jedes Jahr wird eine andere Jahreszeit durchsucht und die wolkenärmste Szene behalten; ein Jahr ohne Szene unter 30 % Wolken entfällt."
+    },
+    "passDetail": {
+      "back": "Alle Überflüge",
+      "altitude": "Höhe",
+      "offNadir": "Off-Nadir",
+      "crossed": "{{name}} überflog den Ort in {{altitude}} km Höhe, {{distance}} km {{direction}}, um {{time}} UTC, mit {{speed}} km/s über Grund.",
+      "looking": "Es blickte {{deg}}° neben die Senkrechte.",
+      "sceneCloud": "Wolkenbedeckung der Szene: {{pct}} %.",
+      "pixelLine": "{{m}} m Pixel",
+      "swathLine": "{{km}} km Schwad",
+      "clearestLook": "Klarste Ansicht",
+      "previous": "Vorheriger Überflug",
+      "next": "Nächster Überflug",
+      "dir": {
+        "n": "nördlich",
+        "ne": "nordöstlich",
+        "e": "östlich",
+        "se": "südöstlich",
+        "s": "südlich",
+        "sw": "südwestlich",
+        "w": "westlich",
+        "nw": "nordwestlich"
+      }
     }
   }
 }

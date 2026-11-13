@@ -16,9 +16,10 @@ import type { PassTier } from '../../shared/orbital/tiers.js';
 import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
-import { IMAGE_CREDIT, OrbitalWatchPage, type OrbitalWatchState } from '@/components/OrbitalWatchPage';
+import { IMAGE_CREDIT, OrbitalWatchPage, subSolarPoint, type OrbitalWatchState } from '@/components/OrbitalWatchPage';
 import manifest from '../../shared/source-attribution-manifest.json';
 import { openOrbitalWatch } from '@/app/orbital-watch';
+import { formatOrbitalRoute, parseOrbitalRoute } from '@/app/orbital-route';
 
 const NOW = Date.UTC(2026, 10, 13, 12);
 const HOUR = 3_600_000;
@@ -59,12 +60,12 @@ const tiered = () => {
 };
 
 const pages: OrbitalWatchPage[] = [];
-const callbacks = { onClose: vi.fn(), onRetry: vi.fn() };
+const callbacks = { onClose: vi.fn(), onRetry: vi.fn(), onViewChange: vi.fn() };
 
-function mounted(state?: OrbitalWatchState, returnFocusTo: HTMLElement | null = null): OrbitalWatchPage {
+function mounted(state?: OrbitalWatchState, returnFocusTo: HTMLElement | null = null, view: 'sheet' | 'full' = 'sheet'): OrbitalWatchPage {
   const page = new OrbitalWatchPage(callbacks);
   pages.push(page);
-  page.open(point, returnFocusTo);
+  page.open(point, returnFocusTo, view);
   if (state) page.render(state);
   return page;
 }
@@ -74,6 +75,26 @@ const sheet = () => document.querySelector<HTMLElement>('[role="dialog"]')!;
 const text = () => sheet().textContent ?? '';
 const group = (id: string) => sheet().querySelector<HTMLElement>(`.ow-group[data-group="${id}"]`);
 const rowNames = (id: string) => [...group(id)!.querySelectorAll('.ow-row-name')].map((n) => n.textContent);
+function acquisition(p: PointPass, over: Record<string, unknown> = {}): MatchedAcquisition {
+  const platform = p.name.toLowerCase().replace(' ', '-');
+  return {
+    key: `${platform}:${p.timeMs}`, platform, profileId: p.profileId, orbit: null, startMs: p.timeMs, endMs: p.timeMs, items: [],
+    pass: { noradId: p.noradId, timeMs: p.timeMs }, condition: 'clear', cloudCoverPct: 2, sunElevationDeg: 50, resolutionM: 10,
+    imageUrl: `https://planetarycomputer.microsoft.com/api/data/v1/item/bbox/${platform}.png`, ...over,
+  } as MatchedAcquisition;
+}
+
+const answered = (passes: PointPass[], over: Partial<OrbitalEvidence> = {}, status: PointPassLookup['catalog']['status'] = 'fresh'): OrbitalWatchState =>
+  ({ kind: 'passes', lookup: lookup(passes, status), archives: { kind: 'answered', evidence: evidence(passes, over) } });
+
+const modis = { kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'MODIS Terra', layer: 'MODIS_Terra_CorrectedReflectance_TrueColor', noradId: 25994, days: [{ date: '2026-11-12', imageUrl: 'https://gibs.earthdata.nasa.gov/m.jpg' }] } as OrbitalEvidence['mosaics'][number];
+const viirs = { kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'VIIRS Suomi NPP', layer: 'v', noradId: 37849, days: [] } as OrbitalEvidence['mosaics'][number];
+const meteosat = { kind: 'geostationary', archive: 'eumetsat', source: 'Meteosat-10', layer: 'x', noradId: 38552, cadenceMinutes: 15, latest: { time: '2026-11-13T11:45:00Z', imageUrl: 'https://view.eumetsat.int/x.png' } } as OrbitalEvidence['frames'][number];
+
+const cards = () => [...sheet().querySelectorAll<HTMLElement>('.ow-card')];
+const rowOf = (name: string) => [...sheet().querySelectorAll<HTMLElement>('.ow-row')].find((r) => r.querySelector('.ow-row-name')?.firstChild?.textContent === name)!;
+const click = (selector: string) => sheet().querySelector<HTMLElement>(selector)!.click();
+
 const progress = (settled: EvidenceProgress['settled'], pendingProfiles: EvidenceProgress['pendingProfiles'], passes: PointPass[]): EvidenceProgress =>
   ({ settled, pendingProfiles, evidence: evidence(passes, { status: 'partial' }) });
 
@@ -88,190 +109,225 @@ afterEach(() => {
 });
 
 describe('satellite pass lookup sheet', () => {
-  it('opens as a focused, labelled dialog that states where the point goes', () => {
+  it('opens as a focused, labelled dialog that shows its compute steps and where the point goes', () => {
     mounted();
     expect(document.activeElement).toBe(sheet());
-    expect(document.getElementById(sheet().getAttribute('aria-labelledby')!)?.textContent).toBe('Satellite passes here');
-    expect(text()).toContain('25.205°N, 55.271°E');
-    expect(text()).toContain('Loading the satellite catalog');
+    expect(sheet().getAttribute('aria-label')).toBe('Satellite passes here');
+    expect(document.getElementById(sheet().getAttribute('aria-labelledby')!)?.textContent).toBe('25.205°N 55.271°E');
+    expect(sheet().querySelectorAll('.ow-step')).toHaveLength(4);
+    expect(text()).toContain('Catalog · loading');
+    expect(text()).not.toContain('Checking archives');
     expect(text()).toContain('This point stays in your browser');
     for (const archive of ['Earth Search', 'Microsoft Planetary Computer', 'NASA GIBS', 'EUMETSAT']) expect(text()).toContain(archive);
     expect(text()).toContain('Searching by place name is the one exception');
   });
 
-  it('shows pass computation progress', () => {
+  it('steps through the catalog, orbit propagation and archive answers before showing results', () => {
     mounted({ kind: 'computing', done: 12, total: 48 });
-    expect(text()).toContain('Computing passes: 12 of 48 satellites');
-  });
-
-  it('never states a confirmed-image count or "no image" while archives are still answering', () => {
-    const { all, likely } = tiered();
-    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'checking', total: 5, progress: progress(['gibs-daily-mosaics', 'eumetsat'], ['sentinel-2', 'landsat'], all) } });
-    expect(text()).toContain('Checking archives: 2 of 5 answered');
-    expect(text()).not.toContain('Confirmed images');
-    expect(rowNames('checking')).toContain(likely.name);
-    const likelyRow = [...group('checking')!.querySelectorAll('.ow-row')].find((r) => r.textContent?.includes(likely.name))!;
-    expect(likelyRow.querySelector('.ow-tier-label')?.textContent).toBe('checking archive');
-    expect(likelyRow.textContent).not.toContain('No image');
-  });
-
-  it('keeps the confirmed headline back while a matched image is already listed', () => {
-    const { all, confirmedNew } = tiered();
-    const early = evidence(all, { status: 'partial', acquisitions: [{ platform: 'sentinel-2c', profileId: 'sentinel-2', startMs: confirmedNew.timeMs, pass: { noradId: confirmedNew.noradId, timeMs: confirmedNew.timeMs }, imageUrl: 'https://earth-search.aws.element84.com/a.jpg', condition: 'clear', cloudCoverPct: 2 }] as unknown as MatchedAcquisition[] });
-    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'checking', total: 5, progress: { settled: ['earth-search'], pendingProfiles: ['landsat'], evidence: early } } });
-    expect(sheet().querySelector('.ow-headline')?.textContent).toBe('Checking archives: 1 of 5 answered');
-    expect(text()).not.toContain('Confirmed images:');
-    expect(rowNames('confirmed')).toContain(confirmedNew.name);
-  });
-
-  it('does not say "no image in the archive" for a pass another archive has yet to answer', () => {
-    const likely = pass('LANDSAT 9', 'landsat', -30, { kind: 'likely-imaged' });
-    const answeredOne = { ...likely, tier: { kind: 'passed-overhead', note: 'not-in-archive' } as PassTier };
-    mounted({ kind: 'passes', lookup: lookup([likely]), archives: { kind: 'checking', total: 5, progress: progress(['earth-search'], ['landsat'], [answeredOne]) } });
-    expect(rowNames('checking')).toEqual([likely.name]);
-    expect(group('checking')!.textContent).not.toContain('No image in the archive');
-  });
-
-  it('acknowledges NASA GIBS beside its mosaics as soon as an early answer brings them', () => {
+    const status = (n: number) => sheet().querySelectorAll<HTMLElement>('.ow-step')[n]!.dataset.status;
+    expect(text()).toContain('Catalog · 48 objects');
+    expect(text()).toContain('Propagating orbits · 12 / 48');
+    expect([status(0), status(1), status(2)]).toEqual(['ok', 'running', 'pending']);
     const { all } = tiered();
-    const mosaics = [{ kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'MODIS Terra', layer: 'm', noradId: 25994, days: [{ date: '2026-11-12', imageUrl: 'https://gibs.earthdata.nasa.gov/m.jpg' }] }] as OrbitalEvidence['mosaics'];
-    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'checking', total: 5, progress: { settled: ['gibs-daily-mosaics'], pendingProfiles: ['sentinel-2', 'landsat'], evidence: evidence(all, { status: 'partial', mosaics }) } } });
-    group('mosaic')!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
-    const modis = [...group('mosaic')!.querySelectorAll('.ow-row')].find((r) => r.textContent?.includes('MODIS Terra'))!;
-    expect(modis.querySelector('figure .ow-image-credit')?.textContent).toBe(IMAGE_CREDIT.gibsAcknowledgement);
+    page().render({ kind: 'passes', lookup: lookup(all), archives: { kind: 'checking', total: 5, progress: progress(['gibs-daily-mosaics', 'eumetsat'], ['sentinel-2'], all) } });
+    expect(text()).toContain('Archives · 2 / 5 answered');
+    expect(text()).toContain(`Matching scenes to ${all.length} passes`);
+    expect(status(1)).toBe('ok');
+    expect(sheet().querySelector('.ow-headline')).toBeNull();
+    expect(sheet().querySelector('.ow-row')).toBeNull();
+    expect(Number(sheet().querySelector('.ow-progress')!.getAttribute('aria-valuenow'))).toBeGreaterThan(60);
   });
 
-  it('shows each image loading, then the image or a visible failure', () => {
-    const { all, confirmedNew, confirmedOld } = tiered();
-    const acquisitions = [
-      { platform: 'sentinel-2c', profileId: 'sentinel-2', startMs: confirmedNew.timeMs, pass: { noradId: confirmedNew.noradId, timeMs: confirmedNew.timeMs }, imageUrl: 'https://earth-search.aws.element84.com/a.jpg', condition: 'clear', cloudCoverPct: 2 },
-      { platform: 'landsat-9', profileId: 'landsat', startMs: confirmedOld.timeMs, pass: { noradId: confirmedOld.noradId, timeMs: confirmedOld.timeMs }, imageUrl: 'https://planetarycomputer.microsoft.com/api/data/v1/b.png', condition: 'clear', cloudCoverPct: 4 },
-    ] as unknown as MatchedAcquisition[];
-    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all, { acquisitions }) } });
-    const frame = (name: string) => [...sheet().querySelectorAll('.ow-row')].find((r) => r.textContent?.includes(name))!.querySelector<HTMLElement>('.ow-image-frame')!;
-
-    for (const name of [confirmedNew.name, confirmedOld.name]) {
-      expect(frame(name).dataset.state).toBe('loading');
-      expect(frame(name).textContent).toBe('Loading image…');
-    }
-    frame(confirmedNew.name).querySelector('img')!.dispatchEvent(new Event('load'));
-    frame(confirmedOld.name).querySelector('img')!.dispatchEvent(new Event('error'));
-    expect(frame(confirmedNew.name).dataset.state).toBe('loaded');
-    expect(frame(confirmedOld.name).dataset.state).toBe('failed');
-    expect(frame(confirmedOld.name).textContent).toBe('Image did not load. The archive may be slow or down.');
-  });
-
-  it('says when a confirmed scene has no preview yet instead of leaving the image area blank', () => {
+  it('headlines how many satellites passed, how many images went public, and the four tier counts', () => {
     const { all, confirmedNew } = tiered();
-    const acquisitions = [
-      { platform: 'sentinel-2c', profileId: 'sentinel-2', startMs: confirmedNew.timeMs, pass: { noradId: confirmedNew.noradId, timeMs: confirmedNew.timeMs }, imageUrl: null, condition: 'unknown', cloudCoverPct: 2 },
-    ] as unknown as MatchedAcquisition[];
-    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all, { acquisitions }) } });
-    const row = [...sheet().querySelectorAll('.ow-row')].find((r) => r.textContent?.includes(confirmedNew.name))!;
-    expect(row.querySelector('.ow-image-frame')).toBeNull();
-    expect(row.querySelector('.ow-row-note')?.textContent).toBe('The archive has no preview of this scene yet.');
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew)], mosaics: [modis], frames: [meteosat] }));
+    expect(sheet().querySelector('.ow-headline')!.textContent).toBe('In the last 30 days, 6 satellites passed over 25.205°N 55.271°E.');
+    expect(sheet().querySelector('.ow-headline strong')!.textContent).toBe('6 satellites');
+    expect(sheet().querySelector('.ow-subline')!.textContent).toBe('3 images were made public.');
+    const cell = (id: string) => sheet().querySelector<HTMLElement>(`.ow-tier-cell[data-group="${id}"]`)!;
+    expect(cell('watched').querySelector('.ow-tier-number')!.textContent).toBe('2');
+    expect(cell('likely').querySelector('.ow-tier-number')!.textContent).toBe('1');
+    expect(cell('could').querySelector('.ow-tier-number')!.textContent).toBe('2');
+    expect(cell('overhead').querySelector('.ow-tier-number')!.textContent).toBe('1');
+    expect(cell('watched').textContent).toContain('A public archive holds an image of this spot.');
+    expect(cell('could').textContent).toContain("the operator doesn't say if it looked");
   });
 
-  it('keeps keyboard focus on the same row while archives keep answering', () => {
-    const { all, soon } = tiered();
-    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'checking', total: 5, progress: progress(['eumetsat'], ['sentinel-2', 'landsat'], all) } });
-    const focusedRow = () => [...sheet().querySelectorAll<HTMLElement>('.ow-row')].find((r) => r.textContent?.includes(soon.name))!;
-    focusedRow().focus();
-    page().render({ kind: 'passes', lookup: lookup(all), archives: { kind: 'checking', total: 5, progress: progress(['eumetsat', 'earth-search'], ['landsat'], all) } });
-    expect(document.activeElement).toBe(focusedRow());
-    group('upcoming')!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.focus();
-    page().render({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all) } });
-    expect(document.activeElement).toBe(group('upcoming')!.querySelector('.ow-group-toggle'));
+  it('leads the hero carousel with the closest look and pages through the rest', () => {
+    const { all, confirmedNew, confirmedOld } = tiered();
+    const best = acquisition(confirmedOld, { condition: 'cloud', cloudCoverPct: 69 });
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew), best], bestView: best, mosaics: [modis] }));
+    expect(cards().map((c) => c.querySelector('.ow-card-tag')!.textContent)).toEqual(['Closest look', 'SENTINEL-2C', 'MODIS TERRA']);
+    const [first] = cards();
+    const lines = [...first!.querySelectorAll('.ow-caption-lines span')].map((l) => l.textContent);
+    expect(lines[0]).toMatch(/^LANDSAT 9 · .* UTC$/);
+    expect(lines[1]).toBe('10 M · 8 days ago · Clouded · 69%');
+    expect(first!.querySelector('.ow-image-credit')!.textContent).toBe(IMAGE_CREDIT.usgs);
+    for (const overlay of ['.ow-reticle', '.ow-scale', '.ow-north', '.ow-expand']) expect(first!.querySelector(overlay)).not.toBeNull();
+    expect(first!.querySelector('.ow-scale')!.textContent).toBe('2 KM');
+    expect(cards()[2]!.querySelector('.ow-caption-lines')!.textContent).toContain('Daily mosaic · 250 M');
+    expect(cards()[2]!.querySelector('.ow-image-credit')!.textContent).toBe('NASA GIBS / EOSDIS');
+    expect(sheet().querySelector('.ow-pager-count')!.textContent).toBe('1 / 3');
+    click('.ow-pager-btn[data-action="next"]');
+    expect(sheet().querySelector('.ow-pager-count')!.textContent).toBe('2 / 3');
+    click('.ow-tab[data-tab="weather"]');
+    expect(cards().map((c) => c.dataset.tab)).toEqual(['weather']);
+    expect([...sheet().querySelectorAll('.ow-tab')].map((tab) => tab.textContent)).toEqual(['All', 'Detailed', 'Weather']);
+  });
+
+  it('says what kind of cloud read a scene had and labels radar as radar', () => {
+    const { all, confirmedNew, soon } = tiered();
+    const radarPass = { ...soon, timeMs: NOW - 5 * HOUR, tier: { kind: 'confirmed-image' } as PassTier };
+    mounted(answered([...all, radarPass], { acquisitions: [acquisition(confirmedNew, { condition: 'unknown', cloudCoverPct: 12 }), acquisition(radarPass, { profileId: 'sentinel-1', condition: 'not-applicable', cloudCoverPct: null, imageUrl: null })] }));
+    const bottom = (i: number) => cards()[i]!.querySelectorAll('.ow-caption-lines span')[1]!.textContent;
+    expect(bottom(0)).toContain('Radar · VV · 10 M');
+    expect(bottom(1)).toContain('Scene cloud 12% · spot not checked');
+    expect(cards()[1]!.querySelector('.ow-image-credit')!.textContent).toBe('Contains modified Copernicus Sentinel data 2026');
+  });
+
+  it('shows every image as a labelled skeleton, then the image or a failure tile with retry', () => {
+    const { all, confirmedNew } = tiered();
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew)] }));
+    const tile = () => cards()[0]!.querySelector<HTMLElement>('.ow-tile')!;
+    expect(tile().dataset.state).toBe('loading');
+    expect(tile().querySelector('.ow-tile-status')!.textContent).toBe('SENTINEL-2C');
+    tile().querySelector('img')!.dispatchEvent(new Event('error'));
+    expect(tile().dataset.state).toBe('failed');
+    expect(tile().querySelector('.ow-tile-status')!.textContent).toContain('Image unavailable · PLANETARY COMPUTER');
+    tile().querySelector<HTMLButtonElement>('[data-action="retry-image"]')!.click();
+    expect(tile().dataset.state).toBe('loading');
+    tile().querySelector('img')!.dispatchEvent(new Event('load'));
+    expect(tile().dataset.state).toBe('loaded');
+  });
+
+  it('never leaves a blank box for a scene without a preview', () => {
+    const { all, confirmedNew } = tiered();
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew, { imageUrl: null })] }));
+    const tile = cards()[0]!.querySelector<HTMLElement>('.ow-tile')!;
+    expect(tile.dataset.state).toBe('none');
+    expect(tile.textContent).toBe('The archive has no preview of this scene yet');
+  });
+
+  it('opens a pass detail from a pass row in the full view and steps between passes', () => {
+    const { all, confirmedNew, confirmedOld } = tiered();
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew, { cloudCoverPct: 12, condition: 'clear' })] }), null, 'full');
+    rowOf(confirmedNew.name).click();
+    const detail = page().slot('pass-detail');
+    expect(sheet().querySelector('.ow-panel')!.getAttribute('data-detail')).toBe('open');
+    expect(detail.querySelector('[data-action="detail-back"]')!.textContent).toBe('← All passes ESC');
+    expect(document.activeElement).toBe(detail.querySelector('[data-action="detail-back"]'));
+    expect(detail.querySelector('.ow-detail-title strong')!.textContent).toBe('SENTINEL-2C');
+    expect([...detail.querySelectorAll('.ow-detail-cell')].map((c) => c.textContent)).toEqual(['Altitude700 KM', expect.stringMatching(/^Off-nadir\d+\.\d°$/), 'Pixel10 M', 'Cloud at spotClear']);
+    expect(detail.querySelector('.ow-detail-sentence')!.textContent).toMatch(/^SENTINEL-2C crossed 700 km up, 42 km to the north, at \d\d:\d\d UTC, moving at 6\.\d\d km\/s over the ground\. It was looking \d+\.\d° off straight down\. Scene cloud cover: 12%\.$/);
+    expect(detail.querySelector('.ow-detail-sensor')!.textContent).toContain('10 m pixel');
+    expect(detail.querySelector<HTMLButtonElement>('[data-action="clearest-look"]')!.disabled).toBe(false);
+
+    detail.querySelector<HTMLButtonElement>('[data-action="detail-step"][data-step="1"]')!.click();
+    expect(detail.querySelector('.ow-detail-title strong')!.textContent).toBe(confirmedOld.name);
+    expect(detail.querySelector('.ow-detail-cell:nth-child(3)')!.textContent).toBe('Pixel—');
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(detail.childElementCount).toBe(0);
+    expect(sheet().dataset.view).toBe('full');
+    expect(document.activeElement).toBe(rowOf(confirmedOld.name));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(sheet().dataset.view).toBe('sheet');
+  });
+
+  it('asks the globe to replay a pass that has one', () => {
+    const { all, confirmedNew } = tiered();
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew)] }));
+    const replay = vi.fn();
+    document.addEventListener('orbital-watch:replay', replay);
+    click('.ow-replay');
+    document.removeEventListener('orbital-watch:replay', replay);
+    expect((replay.mock.calls[0]![0] as CustomEvent).detail).toEqual({ noradId: confirmedNew.noradId, timeMs: confirmedNew.timeMs });
+  });
+
+  it('opens the full view with the pass list, the status bar and empty slots for the dock, detail and replay HUD', () => {
+    const { all, confirmedNew, confirmedOld, soon, later } = tiered();
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew)] }));
+    expect(sheet().querySelector('.ow-passes')).toBeNull();
+    click('[data-action="open-full"]');
+    expect(sheet().dataset.view).toBe('full');
+    expect(callbacks.onViewChange).toHaveBeenCalledWith('full');
+    expect(sheet().querySelector('.ow-passes .ow-section-head')!.textContent).toBe('02 / Passes');
+    expect(group('watched')!.querySelector('.ow-group-toggle')!.textContent).toBe('◆2passes watched· Closest look, then newest');
+    expect(rowNames('watched').map((n) => n?.replace(/confirmed image$/, ''))).toEqual([confirmedNew.name, confirmedOld.name]);
+    expect(rowNames('upcoming').map((n) => n?.replace(/upcoming pass$/, ''))).toEqual([soon.name, later.name]);
+    expect(rowOf(confirmedNew.name).querySelector('.ow-tile-thumb')).not.toBeNull();
+    expect(rowOf(confirmedOld.name).querySelector('.ow-glyph-tile')).not.toBeNull();
+    for (const row of sheet().querySelectorAll('.ow-row')) expect(row.querySelector('.ow-tier-label')?.textContent?.trim()).not.toBe('');
+    for (const slot of ['timeline', 'pass-detail', 'replay-hud', 'timelapse']) expect(page().slot(slot as 'timeline').dataset.slot).toBe(slot);
+    for (const slot of ['timeline', 'pass-detail', 'replay-hud']) expect(page().slot(slot as 'timeline').childElementCount).toBe(0);
+    expect(page().slot('timelapse').querySelector('[data-action="timelapse"]')!.textContent).toContain('This place, year by year');
+    expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/^0 objects · CelesTrak GP · Fetched \d{4}-\d\d-\d\d \d\d:\d\dZ · 3 days ago/);
+    expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/Sun \d+\.\d°[NS] \d+\.\d°[EW] · sub-solar point · \d\d:\d\d:\d\d UTC$/);
+    expect(sheet().querySelector('[data-action="open-full"].ow-primary')).toBeNull();
+  });
+
+  it('keeps could-have-pointed, passed-overhead and weather groups collapsed and unrendered until opened', () => {
+    const { all, military, commercial } = tiered();
+    mounted(answered(all, { mosaics: [modis, viirs] }), null, 'full');
+    for (const id of ['could', 'overhead', 'weather']) {
+      expect(group(id)!.querySelector('.ow-group-toggle')!.getAttribute('aria-expanded')).toBe('false');
+      expect(group(id)!.querySelectorAll('.ow-row')).toHaveLength(0);
+    }
+    group('could')!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
+    expect(group('could')!.querySelectorAll('.ow-row')).toHaveLength(2);
+    const militaryRow = rowOf(military.name);
+    expect(militaryRow.querySelector('.ow-tier-label')?.textContent).toBe('capability overhead');
+    expect(militaryRow.querySelector('.ow-badges')!.textContent).toContain('capability overhead');
+    expect(militaryRow.querySelector('img')).toBeNull();
+    expect(rowOf(commercial.name).textContent).toContain('42 KM');
+    group('weather')!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
+    expect(group('weather')!.querySelectorAll('.ow-row')).toHaveLength(1);
+    expect(group('weather')!.textContent).toContain('No recent days in the archive: VIIRS Suomi NPP');
+  });
+
+  it('leaves 900 in-range rows unrendered in the full view', () => {
+    const passes = [
+      ...Array.from({ length: 30 }, (_, i) => pass(`LIKELY ${i}`, 'sentinel-2', -20 - i, { kind: 'likely-imaged' })),
+      ...Array.from({ length: 900 }, (_, i) => pass(`REACH ${i}`, 'worldview', -1 - i / 10, { kind: 'within-reach' })),
+    ];
+    mounted(answered(passes), null, 'full');
+    expect(group('could')!.querySelector('.ow-group-count')!.textContent).toBe('900');
+    expect(sheet().querySelectorAll('.ow-row')).toHaveLength(30);
+  });
+
+  it('filters the full list to a tier from the count grid', () => {
+    const { all, notInArchive } = tiered();
+    mounted(answered(all));
+    click('.ow-tier-cell[data-group="overhead"]');
+    expect(sheet().dataset.view).toBe('full');
+    expect([...sheet().querySelectorAll('.ow-group')].map((g) => (g as HTMLElement).dataset.group)).toEqual(['overhead']);
+    expect(rowOf(notInArchive.name).textContent).toContain('No image in the archive');
+    click('[data-action="clear-filter"]');
+    expect(sheet().querySelectorAll('.ow-group').length).toBeGreaterThan(1);
+  });
+
+  it('marks a satellite that passed more than once in a group', () => {
+    const first = pass('SENTINEL-2B', 'sentinel-2', -30, { kind: 'likely-imaged' });
+    const second = { ...pass('SENTINEL-2B', 'sentinel-2', -130, { kind: 'likely-imaged' }), noradId: first.noradId };
+    mounted(answered([first, second]), null, 'full');
+    expect([...group('likely')!.querySelectorAll('.ow-repeat')].map((r) => r.textContent)).toEqual(['×2', '×2']);
   });
 
   it('shows its fixed labels in the language chosen since it was last opened', async () => {
-    i18next.addResourceBundle('de', 'translation', { contextMenu: { satellitePasses: 'Satellitenüberflüge hier' }, countryBrief: { closeBtn: 'Schließen' }, orbitalWatch: { privacy: 'Dieser Punkt bleibt in Ihrem Browser.' } }, true, true);
+    i18next.addResourceBundle('de', 'translation', { contextMenu: { satellitePasses: 'Satellitenüberflüge hier' }, countryBrief: { closeBtn: 'Schließen' }, orbitalWatch: { privacy: 'Dieser Punkt bleibt in Ihrem Browser.', ui: { change: 'Ändern' } } }, true, true);
     const reused = mounted();
     reused.close();
     await i18next.changeLanguage('de');
     try {
       reused.open(point, null);
       pages.push(reused);
-      expect(document.getElementById(sheet().getAttribute('aria-labelledby')!)?.textContent).toBe('Satellitenüberflüge hier');
+      expect(sheet().getAttribute('aria-label')).toBe('Satellitenüberflüge hier');
       expect(sheet().querySelector('.ow-close')?.getAttribute('aria-label')).toBe('Schließen');
+      expect(sheet().querySelector('.ow-change')?.textContent).toBe('Ändern');
       expect(text()).toContain('Dieser Punkt bleibt in Ihrem Browser.');
     } finally {
       await i18next.changeLanguage('en');
     }
-  });
-
-  it('groups answered passes by tier with text labels, newest images first and soonest opportunities first', () => {
-    const { all, confirmedNew, confirmedOld, soon, later } = tiered();
-    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all) } });
-    expect(text()).toContain('Confirmed images: 0');
-    expect(text()).toContain('Daily mosaics: 0 · Weather frames: 0 · Passes in range: 2');
-    expect(rowNames('confirmed')).toEqual([confirmedNew.name, confirmedOld.name]);
-    expect(rowNames('upcoming')).toEqual([soon.name, later.name]);
-    for (const row of sheet().querySelectorAll('.ow-row')) expect(row.querySelector('.ow-tier-label')?.textContent?.trim()).not.toBe('');
-  });
-
-  it('keeps in-range and passed-overhead groups collapsed and unrendered until opened', () => {
-    const { all, military, commercial } = tiered();
-    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all) } });
-    for (const id of ['inRange', 'passed']) {
-      const toggle = group(id)!.querySelector<HTMLButtonElement>('.ow-group-toggle')!;
-      expect(toggle.getAttribute('aria-expanded')).toBe('false');
-      expect(group(id)!.querySelectorAll('.ow-row')).toHaveLength(0);
-    }
-    group('inRange')!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
-    expect(group('inRange')!.querySelector('.ow-group-toggle')!.getAttribute('aria-expanded')).toBe('true');
-    expect(rowNames('inRange')).toEqual([military.name, commercial.name]);
-    const militaryRow = group('inRange')!.querySelector<HTMLElement>(`.ow-row[data-tier="capability-overhead"]`)!;
-    expect(militaryRow.querySelector('.ow-tier-label')?.textContent).toBe('capability overhead');
-    expect(militaryRow.querySelector('img')).toBeNull();
-  });
-
-  it('headlines the confirmed count of a large result and leaves 900 in-range rows unrendered', () => {
-    const passes = [
-      ...Array.from({ length: 2 }, (_, i) => pass(`CONFIRMED ${i}`, 'sentinel-2', -10 - i, { kind: 'confirmed-image' })),
-      ...Array.from({ length: 30 }, (_, i) => pass(`LIKELY ${i}`, 'sentinel-2', -20 - i, { kind: 'likely-imaged' })),
-      ...Array.from({ length: 900 }, (_, i) => pass(`REACH ${i}`, 'worldview', -1 - i / 10, { kind: 'within-reach' })),
-    ];
-    mounted({ kind: 'passes', lookup: lookup(passes), archives: { kind: 'checking', total: 5, progress: progress(['earth-search', 'planetary-computer', 'gibs-daily-mosaics', 'gibs-geostationary'], [], passes) } });
-    expect(text()).toContain('Checking archives: 4 of 5 answered');
-    expect(text()).not.toMatch(/Confirmed images: \d/);
-
-    const acquisitions = passes.slice(0, 2).map((p) => ({ platform: p.name, startMs: p.timeMs, pass: { noradId: p.noradId, timeMs: p.timeMs }, imageUrl: null }) as unknown as MatchedAcquisition);
-    page().render({ kind: 'passes', lookup: lookup(passes), archives: { kind: 'answered', evidence: evidence(passes, { acquisitions }) } });
-    expect(text()).toContain('Confirmed images: 2');
-    expect(text()).toContain('Passes in range: 900');
-    expect(rowNames('confirmed')).toHaveLength(2);
-    expect(rowNames('likely')).toHaveLength(30);
-    expect(group('inRange')!.querySelectorAll('.ow-row')).toHaveLength(0);
-  });
-
-  it('credits every image, labels a scene-wide cloud read, and lists empty sources as unavailable', () => {
-    const { all, confirmedNew, confirmedOld } = tiered();
-    const acquisitions = [
-      { platform: 'sentinel-2c', profileId: 'sentinel-2', startMs: confirmedNew.timeMs, pass: { noradId: confirmedNew.noradId, timeMs: confirmedNew.timeMs }, imageUrl: 'https://earth-search.aws.element84.com/a.jpg', condition: 'unknown', cloudCoverPct: 12 },
-      { platform: 'landsat-9', profileId: 'landsat', startMs: confirmedOld.timeMs, pass: { noradId: confirmedOld.noradId, timeMs: confirmedOld.timeMs }, imageUrl: 'https://planetarycomputer.microsoft.com/api/data/v1/b.png', condition: 'clear', cloudCoverPct: 40 },
-    ] as unknown as MatchedAcquisition[];
-    const mosaics = [
-      { kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'MODIS Terra', layer: 'm', noradId: 25994, days: [{ date: '2026-11-12', imageUrl: 'https://gibs.earthdata.nasa.gov/m.jpg' }] },
-      { kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'VIIRS Suomi NPP', layer: 'v', noradId: 37849, days: [] },
-    ] as OrbitalEvidence['mosaics'];
-    const frames = [{ kind: 'geostationary', archive: 'eumetsat', source: 'Meteosat-10', layer: 'x', noradId: 38552, cadenceMinutes: 15, latest: { time: '2026-11-13T11:45:00Z', imageUrl: 'https://view.eumetsat.int/x.png' } }] as OrbitalEvidence['frames'];
-    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all, { acquisitions, mosaics, frames }) } });
-
-    const figure = (name: string) => [...sheet().querySelectorAll('.ow-row')].find((r) => r.textContent?.includes(name))!.querySelector('figure')!.textContent;
-    expect(figure(confirmedNew.name)).toContain('12% cloud across the scene, this spot not checked');
-    expect(figure(confirmedNew.name)).toContain('Contains modified Copernicus Sentinel data 2026');
-    expect(figure(confirmedOld.name)).toContain('Landsat imagery courtesy of the U.S. Geological Survey');
-    expect(text()).toContain('Daily mosaics: 1 · Weather frames: 1');
-
-    for (const id of ['mosaic', 'frames']) group(id)!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
-    expect(figure('MODIS Terra')).toContain(IMAGE_CREDIT.gibsAcknowledgement);
-    expect(figure('Meteosat-10')).toContain('Contains EUMETSAT Meteosat imagery');
-    const viirs = [...group('mosaic')!.querySelectorAll<HTMLElement>('.ow-row')].find((r) => r.textContent?.includes('VIIRS Suomi NPP'))!;
-    expect(viirs.querySelector('.ow-tier-label')?.textContent).toBe('unavailable');
-    expect(viirs.querySelector('img')).toBeNull();
-    expect(figure('Meteosat-10')).not.toContain('NASA');
-    expect(text().split(IMAGE_CREDIT.gibsAcknowledgement)).toHaveLength(2);
   });
 
   it('words its credits as the source attribution manifest does', () => {
@@ -281,70 +337,87 @@ describe('satellite pass lookup sheet', () => {
     }
   });
 
-  it('says an aged-out open-mission pass is not in the archive only once the archives answered', () => {
-    const { all, notInArchive } = tiered();
-    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all) } });
-    group('passed')!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
-    expect(rowNames('passed')).toEqual([notInArchive.name]);
-    expect(group('passed')!.textContent).toContain('No image in the archive');
+  it('credits weather frames by their archive', () => {
+    const { all } = tiered();
+    mounted(answered(all, { frames: [meteosat] }));
+    expect(cards()[0]!.querySelector('.ow-image-credit')!.textContent).toBe('Contains EUMETSAT Meteosat imagery');
+    expect(cards()[0]!.querySelector('.ow-caption-lines')!.textContent).toContain('Geostationary · every 15 min');
   });
 
   it('names the archives that failed and retries on request', () => {
     const { all } = tiered();
-    const partial = evidence(all, { status: 'partial', failures: [{ archive: 'planetary-computer', reason: 'http-status', httpStatus: 503 }], unansweredProfiles: ['landsat'] });
-    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: partial } });
+    mounted(answered(all, { status: 'partial', failures: [{ archive: 'planetary-computer', reason: 'http-status', httpStatus: 503 }], unansweredProfiles: ['landsat'] }));
     expect(text()).toContain('Microsoft Planetary Computer did not answer');
-    sheet().querySelector<HTMLButtonElement>('[data-action="retry"]')!.click();
+    click('[data-action="retry"]');
     expect(callbacks.onRetry).toHaveBeenCalledTimes(1);
   });
 
   it('names a layer that timed out while its archive answered other layers', () => {
     const { all } = tiered();
-    const partial = evidence(all, {
-      status: 'partial',
-      failures: [
-        { archive: 'earth-search', reason: 'timeout' },
-        { archive: 'nasa-gibs', reason: 'timeout', source: 'GOES-West' },
-      ],
-    });
-    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: partial } });
+    mounted(answered(all, { status: 'partial', failures: [{ archive: 'earth-search', reason: 'timeout' }, { archive: 'nasa-gibs', reason: 'timeout', source: 'GOES-West' }] }));
     expect(text()).toContain('Earth Search, NASA GIBS (GOES-West) did not answer');
     expect(sheet().querySelector('[data-action="retry"]')).not.toBeNull();
   });
 
-  it('warns about stale orbit data with its age', () => {
+  it('warns about stale orbit data with its age, while computing and after', () => {
     const { all } = tiered();
-    mounted({ kind: 'passes', lookup: lookup(all, 'stale'), archives: { kind: 'answered', evidence: evidence(all) } });
+    mounted({ kind: 'passes', lookup: lookup(all, 'stale'), archives: { kind: 'checking', total: 5, progress: null } });
+    expect(text()).toContain('Orbit data is stale. The satellite catalog is 3 days old');
+    page().render(answered(all, {}, 'stale'));
     expect(text()).toContain('Orbit data is stale. The satellite catalog is 3 days old');
   });
 
   it('explains an empty result', () => {
-    mounted({ kind: 'passes', lookup: lookup([]), archives: { kind: 'answered', evidence: evidence([]) } });
+    mounted(answered([]));
+    expect(text()).toContain('In the last 30 days, 0 satellites passed over');
     expect(text()).toContain('No profiled imaging satellite passed over this point in the last 30 days or will in the next 48 hours.');
     expect(text()).toContain('This point stays in your browser');
   });
 
-  it('walks pass rows with the arrow keys', () => {
+  it('walks pass rows with the arrow keys and keeps focus on a row across renders', () => {
     const { all } = tiered();
-    mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'answered', evidence: evidence(all) } });
+    mounted(answered(all), null, 'full');
     const rows = [...sheet().querySelectorAll<HTMLElement>('.ow-row')];
     rows[0]!.focus();
     rows[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
     expect(document.activeElement).toBe(rows[1]);
     rows[1]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
     expect(document.activeElement).toBe(rows[0]);
+    const key = rows[0]!.dataset.key;
+    page().render(answered(all));
+    expect((document.activeElement as HTMLElement).dataset.key).toBe(key);
   });
 
-  it('closes on Escape and hands focus back to the map', () => {
+  it('steps back from the full view on Escape, then closes and hands focus back to the map', () => {
     const map = document.createElement('div');
     document.body.append(map);
-    mounted(undefined, map);
+    mounted(undefined, map, 'full');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(sheet().dataset.view).toBe('sheet');
+    expect(callbacks.onViewChange).toHaveBeenLastCalledWith('sheet');
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(callbacks.onClose).toHaveBeenCalledTimes(1);
     expect(document.activeElement).toBe(map);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(callbacks.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('puts the sun over the tropics, moving west through the day', () => {
+    const noon = subSolarPoint(Date.UTC(2026, 5, 21, 12));
+    expect(noon.lat).toBeCloseTo(23.4, 0);
+    expect(Math.abs(noon.lon)).toBeLessThan(3);
+    expect(subSolarPoint(Date.UTC(2026, 5, 21, 18)).lon).toBeCloseTo(noon.lon - 90, 0);
+  });
+});
+
+describe('the orbital route', () => {
+  it('reads and writes #orbital=<lat>,<lon>&view=full', () => {
+    expect(parseOrbitalRoute('#orbital=25.112,55.139&view=full')).toEqual({ point: { lat: 25.112, lon: 55.139 }, view: 'full' });
+    expect(parseOrbitalRoute('#orbital=-33.9,151.2')).toEqual({ point: { lat: -33.9, lon: 151.2 }, view: 'sheet' });
+    expect(parseOrbitalRoute('#orbital=95,10')).toBeNull();
+    expect(parseOrbitalRoute('#view=full')).toBeNull();
+    expect(formatOrbitalRoute({ lat: 25.112, lon: 55.139 }, 'full')).toBe('#orbital=25.1120,55.1390&view=full');
   });
 });
 
@@ -355,6 +428,8 @@ describe('opening the lookup for a point', () => {
   });
   afterEach(() => {
     document.querySelector<HTMLButtonElement>('.ow-close')?.click();
+    document.querySelector<HTMLButtonElement>('.ow-close')?.click();
+    history.replaceState(null, '', '/');
   });
 
   it('computes passes, then reports archive progress, then the answer', async () => {
@@ -362,7 +437,7 @@ describe('opening the lookup for a point', () => {
     const found = lookup(all);
     lookupMock.mockImplementation(async (_query, options) => {
       options.onProgress(3, 9);
-      expect(text()).toContain('Computing passes: 3 of 9 satellites');
+      expect(text()).toContain('Propagating orbits · 3 / 9');
       return found;
     });
     let finish!: (value: OrbitalEvidence) => void;
@@ -371,10 +446,19 @@ describe('opening the lookup for a point', () => {
       return new Promise((resolve) => { finish = resolve; });
     });
     openOrbitalWatch(point, null);
-    await vi.waitFor(() => expect(text()).toContain('Checking archives: 1 of 5 answered'));
+    await vi.waitFor(() => expect(text()).toContain('Archives · 1 / 5 answered'));
     expect(lookupMock).toHaveBeenCalledWith({ point }, expect.anything());
     finish(evidence(all));
-    await vi.waitFor(() => expect(text()).toContain('Confirmed images: 0'));
+    await vi.waitFor(() => expect(text()).toContain('In the last 30 days, 6 satellites passed over'));
+  });
+
+  it('writes the full-view route while it is open and clears it on the way back', async () => {
+    lookupMock.mockReturnValue(new Promise(() => {}));
+    openOrbitalWatch(point, null, 'full');
+    expect(location.hash).toBe('#orbital=25.2048,55.2708&view=full');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(location.hash).toBe('');
+    expect(sheet().dataset.view).toBe('sheet');
   });
 
   it('cancels in-flight work when the sheet closes', async () => {
@@ -394,10 +478,11 @@ describe('opening the lookup for a point', () => {
     lookupMock.mockResolvedValueOnce(lookup([], 'empty'));
     openOrbitalWatch(point, null);
     await vi.waitFor(() => expect(text()).toContain('The satellite catalog could not be loaded'));
+    expect(sheet().querySelector('.ow-step')!.getAttribute('data-status')).toBe('failed');
     expect(evidenceMock).not.toHaveBeenCalled();
     lookupMock.mockResolvedValueOnce(lookup([]));
     evidenceMock.mockResolvedValueOnce(evidence([]));
-    sheet().querySelector<HTMLButtonElement>('[data-action="retry"]')!.click();
+    click('[data-action="retry"]');
     await vi.waitFor(() => expect(text()).toContain('No profiled imaging satellite passed over this point'));
   });
 });

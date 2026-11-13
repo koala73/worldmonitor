@@ -4530,8 +4530,7 @@
     "signIn": "Iniciar Sesión",
     "createAccount": "Crear cuenta",
     "freeReason": "Gratis: guarda tu diseño, sigue países, alertas",
-    "settings": "Configuración",
-    "passkeyOffer": {}
+    "settings": "Configuración"
   },
   "mcp": {
     "connectPanel": "Conectar MCP",
@@ -5156,8 +5155,6 @@
     "empty": "Ningún satélite de imágenes catalogado pasó sobre este punto en los últimos {{pastDays}} días ni lo hará en las próximas {{futureHours}} horas.",
     "privacy": "Este punto permanece en tu navegador. Solo se envía a los archivos públicos que tu navegador consulta directamente: Earth Search, Microsoft Planetary Computer, NASA GIBS y EUMETSAT. La búsqueda por nombre de lugar es la única excepción: el nombre que escribes se envía al servicio de búsqueda de lugares.",
     "inRange": "al alcance",
-    "dailyMosaics": "mosaicos diarios",
-    "weatherFrames": "imágenes meteorológicas",
     "tier": {
       "checking": "consultando archivo",
       "confirmed": "imagen confirmada",
@@ -5184,6 +5181,92 @@
       "imageLoading": "Cargando imagen…",
       "imageFailed": "La imagen no se cargó. El archivo puede estar lento o caído.",
       "noPreview": "El archivo aún no tiene una vista previa de esta escena."
+    },
+    "dailyMosaics": "mosaicos diarios",
+    "weatherFrames": "imágenes meteorológicas",
+    "ui": {
+      "change": "Cambiar",
+      "share": "Compartir",
+      "shareCopied": "Enlace copiado",
+      "headline": "En los últimos {{days}} días, {{satellites}} pasaron sobre {{place}}.",
+      "satellites": "{{count}} satélites",
+      "subline": "Se publicaron {{count}} imágenes.",
+      "closestLook": "Vista más cercana",
+      "replay": "Reproducir",
+      "openFull": "Abrir vista completa",
+      "previous": "Imagen anterior",
+      "next": "Imagen siguiente",
+      "passes": "pasos",
+      "showAll": "Mostrar todos los pasos",
+      "noRecentDays": "Sin días recientes en el archivo: {{sources}}",
+      "tab": {
+        "all": "Todo",
+        "detailed": "Detallado",
+        "weather": "Clima"
+      },
+      "caption": {
+        "clear": "Despejado",
+        "clouded": "Nublado · {{pct}} %",
+        "cloudShadow": "Sombra de nube",
+        "spotNotChecked": "Punto sin comprobar nubes",
+        "sceneCloud": "Nubosidad de la escena {{pct}} % · punto sin comprobar",
+        "radar": "Radar",
+        "dailyMosaic": "Mosaico diario",
+        "geostationary": "Disco completo geoestacionario",
+        "geostationaryCadence": "Geoestacionario · cada {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Imagen no disponible · {{archive}}",
+        "noPreview": "El archivo aún no tiene vista previa de esta escena"
+      },
+      "grid": {
+        "watched": "Observado",
+        "watchedDef": "Un archivo público tiene una imagen de este punto.",
+        "likely": "Probablemente observado",
+        "likelyDef": "Un sensor de franja fija lo cubrió; aún no hay imagen publicada.",
+        "could": "Pudo apuntar aquí",
+        "couldDef": "Un sensor orientable o comercial estaba al alcance; el operador no dice si miró.",
+        "overhead": "Pasó por encima",
+        "overheadDef": "Cruzó el cielo aquí, sin evidencia de imagen."
+      },
+      "group": {
+        "watched": "observados",
+        "likely": "probablemente observados",
+        "upcoming": "próximos",
+        "could": "que pudieron apuntar aquí",
+        "overhead": "que pasaron por encima",
+        "weather": "fuentes meteorológicas"
+      },
+      "order": {
+        "closest": "Vista más cercana, luego más recientes",
+        "newest": "Más recientes primero",
+        "soonest": "Más próximos primero"
+      },
+      "row": {
+        "cloud": "Nubes {{pct}} %",
+        "days": "{{count}} días",
+        "repeats": "{{count}} pasos de este satélite en este grupo"
+      },
+      "section": {
+        "summary": "Resumen",
+        "passes": "Pasos"
+      },
+      "status": {
+        "objects": "{{count}} objetos · CelesTrak GP",
+        "fetched": "Obtenido {{time}} · {{ago}}",
+        "sun": "Sol {{point}} · punto subsolar"
+      },
+      "step": {
+        "computing": "Calculando",
+        "catalogLoading": "Catálogo · cargando",
+        "catalog": "Catálogo · {{count}} objetos",
+        "propagating": "Propagando órbitas · {{done}} / {{total}}",
+        "archives": "Archivos · {{done}} / {{total}} respondieron",
+        "matching": "Asociando escenas a {{passes}} pasos",
+        "window": "Ventana de 7 días · {{start}} → {{end}}",
+        "failed": "Error",
+        "note": "Planetary Computer y NASA GIBS generan las imágenes bajo demanda, así que este paso puede tardar unos segundos."
+      }
     },
     "viewer": {
       "open": "Abrir visor de imágenes: {{image}}",
@@ -5232,6 +5315,29 @@
       "years": "Años",
       "share": "Compartir",
       "method": "Cada fotograma es el mismo cuadrado de 6 km de Sentinel-2 en color natural. Cada año busca en una estación distinta y conserva su escena menos nublada; un año sin escena por debajo del 30 % de nubes se omite."
+    },
+    "passDetail": {
+      "back": "Todos los pasos",
+      "altitude": "Altitud",
+      "offNadir": "Fuera del nadir",
+      "crossed": "{{name}} pasó a {{altitude}} km de altura, {{distance}} km {{direction}}, a las {{time}} UTC, a {{speed}} km/s sobre el suelo.",
+      "looking": "Miraba a {{deg}}° de la vertical.",
+      "sceneCloud": "Nubosidad de la escena: {{pct}} %.",
+      "pixelLine": "Píxel de {{m}} m",
+      "swathLine": "Franja de {{km}} km",
+      "clearestLook": "Vista más despejada",
+      "previous": "Paso anterior",
+      "next": "Paso siguiente",
+      "dir": {
+        "n": "al norte",
+        "ne": "al noreste",
+        "e": "al este",
+        "se": "al sureste",
+        "s": "al sur",
+        "sw": "al suroeste",
+        "w": "al oeste",
+        "nw": "al noroeste"
+      }
     }
   }
 }

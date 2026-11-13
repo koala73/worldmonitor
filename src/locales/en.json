@@ -4616,6 +4616,90 @@
       "imageFailed": "Image did not load. The archive may be slow or down.",
       "noPreview": "The archive has no preview of this scene yet."
     },
+    "ui": {
+      "change": "Change",
+      "share": "Share",
+      "shareCopied": "Link copied",
+      "headline": "In the last {{days}} days, {{satellites}} passed over {{place}}.",
+      "satellites": "{{count}} satellites",
+      "subline": "{{count}} images were made public.",
+      "closestLook": "Closest look",
+      "replay": "Replay",
+      "openFull": "Open full view",
+      "previous": "Previous image",
+      "next": "Next image",
+      "passes": "passes",
+      "showAll": "Show all passes",
+      "noRecentDays": "No recent days in the archive: {{sources}}",
+      "tab": {
+        "all": "All",
+        "detailed": "Detailed",
+        "weather": "Weather"
+      },
+      "caption": {
+        "clear": "Clear",
+        "clouded": "Clouded · {{pct}}%",
+        "cloudShadow": "Cloud shadow",
+        "spotNotChecked": "Spot not checked for cloud",
+        "sceneCloud": "Scene cloud {{pct}}% · spot not checked",
+        "radar": "Radar",
+        "dailyMosaic": "Daily mosaic",
+        "geostationary": "Geostationary full disk",
+        "geostationaryCadence": "Geostationary · every {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Image unavailable · {{archive}}",
+        "noPreview": "The archive has no preview of this scene yet"
+      },
+      "grid": {
+        "watched": "Watched",
+        "watchedDef": "A public archive holds an image of this spot.",
+        "likely": "Likely watched",
+        "likelyDef": "A fixed-swath sensor covered it; no image published yet.",
+        "could": "Could have pointed here",
+        "couldDef": "A steerable or commercial sensor was in reach; the operator doesn't say if it looked.",
+        "overhead": "Passed overhead",
+        "overheadDef": "Crossed the sky here, with no imaging evidence."
+      },
+      "group": {
+        "watched": "watched",
+        "likely": "likely watched",
+        "upcoming": "coming up",
+        "could": "could have pointed here",
+        "overhead": "passed overhead",
+        "weather": "weather sources"
+      },
+      "order": {
+        "closest": "Closest look, then newest",
+        "newest": "Newest first",
+        "soonest": "Soonest first"
+      },
+      "row": {
+        "cloud": "Cloud {{pct}}%",
+        "days": "{{count}} days",
+        "repeats": "{{count}} passes by this satellite in this group"
+      },
+      "section": {
+        "summary": "Summary",
+        "passes": "Passes"
+      },
+      "status": {
+        "objects": "{{count}} objects · CelesTrak GP",
+        "fetched": "Fetched {{time}} · {{ago}}",
+        "sun": "Sun {{point}} · sub-solar point"
+      },
+      "step": {
+        "computing": "Computing",
+        "catalogLoading": "Catalog · loading",
+        "catalog": "Catalog · {{count}} objects",
+        "propagating": "Propagating orbits · {{done}} / {{total}}",
+        "archives": "Archives · {{done}} / {{total}} answered",
+        "matching": "Matching scenes to {{passes}} passes",
+        "window": "7-day window · {{start}} → {{end}}",
+        "failed": "Failed",
+        "note": "Planetary Computer and NASA GIBS render images on demand, so this step can take a few seconds."
+      }
+    },
     "viewer": {
       "open": "Open image viewer: {{image}}",
       "bestView": "Open best view: {{name}}, {{time}}",
@@ -4663,6 +4747,29 @@
       "years": "Years",
       "share": "Share",
       "method": "Each frame is the same 6 km square from Sentinel-2, in natural colour. Each year searches a different season and keeps its least cloudy scene; a year with no scene under 30% cloud is left out."
+    },
+    "passDetail": {
+      "back": "All passes",
+      "altitude": "Altitude",
+      "offNadir": "Off-nadir",
+      "crossed": "{{name}} crossed {{altitude}} km up, {{distance}} km {{direction}}, at {{time}} UTC, moving at {{speed}} km/s over the ground.",
+      "looking": "It was looking {{deg}}° off straight down.",
+      "sceneCloud": "Scene cloud cover: {{pct}}%.",
+      "pixelLine": "{{m}} m pixel",
+      "swathLine": "{{km}} km swath",
+      "clearestLook": "Clearest look",
+      "previous": "Previous pass",
+      "next": "Next pass",
+      "dir": {
+        "n": "to the north",
+        "ne": "to the north-east",
+        "e": "to the east",
+        "se": "to the south-east",
+        "s": "to the south",
+        "sw": "to the south-west",
+        "w": "to the west",
+        "nw": "to the north-west"
+      }
     }
   },
   "contextMenu": {

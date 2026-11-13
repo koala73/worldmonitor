@@ -242,7 +242,7 @@ describe('opening the viewer from the lookup sheet', () => {
     const acquisition = scene(2, 5);
     const evidence: OrbitalEvidence = { passes: [], acquisitions: [acquisition], mosaics: [], frames: [], bestView: acquisition, status: 'complete', failures: [], unansweredProfiles: [] };
     const page = new OrbitalWatchPage({ onClose: vi.fn(), onRetry: vi.fn() });
-    page.open(point, null);
+    page.open(point, null, 'full');
     page.render({ kind: 'passes', lookup: { point, window: { startMs: NOW - 30 * DAY, endMs: NOW + 2 * DAY }, nowMs: NOW, catalog: { status: 'fresh', fetchedAt: NOW, inventoryVersion: 't' }, passes: [], satellites: [], computedOn: 'worker' }, archives: { kind: 'answered', evidence } });
     expect(subjectForImage(evidence, { kind: 'acquisition', key: acquisition.key }, { point, nowMs: NOW })!.selected.imageUrl).toBe(acquisition.imageUrl);
 
@@ -259,13 +259,13 @@ describe('opening the viewer from the lookup sheet', () => {
     page.close();
   });
 
-  it('opens the best view from the sheet summary', async () => {
+  it('opens the hero image from the sheet summary', async () => {
     const acquisition = scene(2, 5);
     const evidence: OrbitalEvidence = { passes: [], acquisitions: [acquisition], mosaics: [], frames: [], bestView: acquisition, status: 'complete', failures: [], unansweredProfiles: [] };
     const page = new OrbitalWatchPage({ onClose: vi.fn(), onRetry: vi.fn() });
     page.open(point, null);
     page.render({ kind: 'passes', lookup: { point, window: { startMs: NOW - 30 * DAY, endMs: NOW + 2 * DAY }, nowMs: NOW, catalog: { status: 'fresh', fetchedAt: NOW, inventoryVersion: 't' }, passes: [], satellites: [], computedOn: 'worker' }, archives: { kind: 'answered', evidence } });
-    document.querySelector<HTMLButtonElement>('.ow-best-view')!.click();
+    document.querySelector<HTMLButtonElement>('.ow-card [data-action="view-image"]')!.click();
     await vi.waitFor(() => expect(viewer()).not.toBeNull());
     expect(viewer()!.querySelector('img.oiv-image')!.getAttribute('src')).toBe(acquisition.imageUrl);
     page.close();

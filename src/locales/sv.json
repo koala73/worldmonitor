@@ -4508,8 +4508,7 @@
     "signIn": "Logga in",
     "createAccount": "Skapa konto",
     "freeReason": "Gratis: spara layout, följ länder, aviseringar",
-    "settings": "Inställningar",
-    "passkeyOffer": {}
+    "settings": "Inställningar"
   },
   "mcp": {
     "connectPanel": "Anslut MCP",
@@ -5128,8 +5127,6 @@
     "empty": "Ingen registrerad avbildningssatellit har passerat över den här punkten under de senaste {{pastDays}} dagarna eller gör det inom de närmaste {{futureHours}} timmarna.",
     "privacy": "Den här punkten stannar i din webbläsare. Den skickas bara till de offentliga arkiv som webbläsaren anropar direkt: Earth Search, Microsoft Planetary Computer, NASA GIBS och EUMETSAT. Sökning på ortnamn är det enda undantaget: namnet du skriver skickas till ortnamnssöktjänsten.",
     "inRange": "inom räckvidd",
-    "dailyMosaics": "dagliga mosaiker",
-    "weatherFrames": "väderbilder",
     "tier": {
       "checking": "kontrollerar arkiv",
       "confirmed": "bekräftad bild",
@@ -5156,6 +5153,92 @@
       "imageLoading": "Läser in bild…",
       "imageFailed": "Bilden lästes inte in. Arkivet kan vara långsamt eller nere.",
       "noPreview": "Arkivet har ännu ingen förhandsvisning av den här scenen."
+    },
+    "dailyMosaics": "dagliga mosaiker",
+    "weatherFrames": "väderbilder",
+    "ui": {
+      "change": "Ändra",
+      "share": "Dela",
+      "shareCopied": "Länk kopierad",
+      "headline": "Under de senaste {{days}} dagarna passerade {{satellites}} över {{place}}.",
+      "satellites": "{{count}} satelliter",
+      "subline": "{{count}} bilder publicerades.",
+      "closestLook": "Närmaste blick",
+      "replay": "Spela upp",
+      "openFull": "Öppna helvy",
+      "previous": "Föregående bild",
+      "next": "Nästa bild",
+      "passes": "passager",
+      "showAll": "Visa alla passager",
+      "noRecentDays": "Inga färska dagar i arkivet: {{sources}}",
+      "tab": {
+        "all": "Alla",
+        "detailed": "Detaljerat",
+        "weather": "Väder"
+      },
+      "caption": {
+        "clear": "Klart",
+        "clouded": "Molnigt · {{pct}} %",
+        "cloudShadow": "Molnskugga",
+        "spotNotChecked": "Platsen ej kontrollerad för moln",
+        "sceneCloud": "Scenens molnighet {{pct}} % · platsen ej kontrollerad",
+        "radar": "Radarbild",
+        "dailyMosaic": "Dagligt mosaik",
+        "geostationary": "Geostationär helskiva",
+        "geostationaryCadence": "Geostationär · var {{minutes}}:e min"
+      },
+      "tile": {
+        "failed": "Bild ej tillgänglig · {{archive}}",
+        "noPreview": "Arkivet har ännu ingen förhandsvisning av scenen"
+      },
+      "grid": {
+        "watched": "Bevakad",
+        "watchedDef": "Ett offentligt arkiv har en bild av platsen.",
+        "likely": "Troligen bevakad",
+        "likelyDef": "En sensor med fast stråk täckte den; ingen bild publicerad ännu.",
+        "could": "Kunde ha riktats hit",
+        "couldDef": "En styrbar eller kommersiell sensor var inom räckhåll; operatören säger inte om den tittade.",
+        "overhead": "Passerade över",
+        "overheadDef": "Korsade himlen här, utan bildbevis."
+      },
+      "group": {
+        "watched": "bevakade",
+        "likely": "troligen bevakade",
+        "upcoming": "kommande",
+        "could": "som kunde ha riktats hit",
+        "overhead": "som passerade över",
+        "weather": "väderkällor"
+      },
+      "order": {
+        "closest": "Närmaste blick, sedan nyaste",
+        "newest": "Nyaste först",
+        "soonest": "Närmast i tid först"
+      },
+      "row": {
+        "cloud": "Moln {{pct}} %",
+        "days": "{{count}} dagar",
+        "repeats": "{{count}} passager av satelliten i gruppen"
+      },
+      "section": {
+        "summary": "Sammanfattning",
+        "passes": "Passager"
+      },
+      "status": {
+        "objects": "{{count}} objekt · CelesTrak GP",
+        "fetched": "Hämtad {{time}} · {{ago}}",
+        "sun": "Sol {{point}} · subsolär punkt"
+      },
+      "step": {
+        "computing": "Beräknar",
+        "catalogLoading": "Katalog · laddar",
+        "catalog": "Katalog · {{count}} objekt",
+        "propagating": "Beräknar banor · {{done}} / {{total}}",
+        "archives": "Arkiv · {{done}} / {{total}} svarade",
+        "matching": "Matchar scener mot {{passes}} passager",
+        "window": "7-dagarsfönster · {{start}} → {{end}}",
+        "failed": "Misslyckades",
+        "note": "Planetary Computer och NASA GIBS skapar bilder på begäran, så steget kan ta några sekunder."
+      }
     },
     "viewer": {
       "open": "Öppna bildvisaren: {{image}}",
@@ -5204,6 +5287,29 @@
       "years": "År",
       "share": "Dela",
       "method": "Varje bild är samma 6 km-ruta från Sentinel-2 i naturliga färger. Varje år söks en annan årstid och den minst molniga scenen behålls; ett år utan scen under 30 % moln utelämnas."
+    },
+    "passDetail": {
+      "back": "Alla passager",
+      "altitude": "Höjd",
+      "offNadir": "Från nadir",
+      "crossed": "{{name}} passerade på {{altitude}} km höjd, {{distance}} km {{direction}}, kl. {{time}} UTC, med {{speed}} km/s över marken.",
+      "looking": "Den tittade {{deg}}° från rakt ned.",
+      "sceneCloud": "Molntäcke i scenen: {{pct}} %.",
+      "pixelLine": "{{m}} m pixel",
+      "swathLine": "{{km}} km stråk",
+      "clearestLook": "Klaraste bilden",
+      "previous": "Föregående passage",
+      "next": "Nästa passage",
+      "dir": {
+        "n": "norrut",
+        "ne": "åt nordost",
+        "e": "österut",
+        "se": "åt sydost",
+        "s": "söderut",
+        "sw": "åt sydväst",
+        "w": "västerut",
+        "nw": "åt nordväst"
+      }
     }
   }
 }

@@ -4508,8 +4508,7 @@
     "signIn": "Oturum Aç",
     "createAccount": "Hesap oluştur",
     "freeReason": "Ücretsiz: düzeni kaydet, ülkeleri takip et, uyarılar",
-    "settings": "Ayarlar",
-    "passkeyOffer": {}
+    "settings": "Ayarlar"
   },
   "mcp": {
     "connectPanel": "MCP'yi Bağla",
@@ -5128,8 +5127,6 @@
     "empty": "Kayıtlı hiçbir görüntüleme uydusu son {{pastDays}} gün içinde bu noktanın üzerinden geçmedi ve önümüzdeki {{futureHours}} saat içinde geçmeyecek.",
     "privacy": "Bu nokta tarayıcınızda kalır. Yalnızca tarayıcınızın doğrudan çağırdığı herkese açık arşivlere gönderilir: Earth Search, Microsoft Planetary Computer, NASA GIBS ve EUMETSAT. Tek istisna yer adıyla aramadır: yazdığınız ad yer adı arama hizmetine gider.",
     "inRange": "erişimde",
-    "dailyMosaics": "günlük mozaikler",
-    "weatherFrames": "hava durumu görüntüleri",
     "tier": {
       "checking": "arşiv kontrol ediliyor",
       "confirmed": "doğrulanmış görüntü",
@@ -5156,6 +5153,92 @@
       "imageLoading": "Görüntü yükleniyor…",
       "imageFailed": "Görüntü yüklenmedi. Arşiv yavaş ya da erişilemez olabilir.",
       "noPreview": "Arşivde bu sahnenin henüz bir önizlemesi yok."
+    },
+    "dailyMosaics": "günlük mozaikler",
+    "weatherFrames": "hava durumu görüntüleri",
+    "ui": {
+      "change": "Değiştir",
+      "share": "Paylaş",
+      "shareCopied": "Bağlantı kopyalandı",
+      "headline": "Son {{days}} günde {{satellites}} {{place}} üzerinden geçti.",
+      "satellites": "{{count}} uydu",
+      "subline": "{{count}} görüntü yayımlandı.",
+      "closestLook": "En yakın bakış",
+      "replay": "Tekrar oynat",
+      "openFull": "Tam görünümü aç",
+      "previous": "Önceki görüntü",
+      "next": "Sonraki görüntü",
+      "passes": "geçiş",
+      "showAll": "Tüm geçişleri göster",
+      "noRecentDays": "Arşivde yakın tarihli gün yok: {{sources}}",
+      "tab": {
+        "all": "Tümü",
+        "detailed": "Ayrıntılı",
+        "weather": "Hava"
+      },
+      "caption": {
+        "clear": "Açık",
+        "clouded": "Bulutlu · %{{pct}}",
+        "cloudShadow": "Bulut gölgesi",
+        "spotNotChecked": "Nokta bulut için denetlenmedi",
+        "sceneCloud": "Sahne bulutluluğu %{{pct}} · nokta denetlenmedi",
+        "radar": "Radar",
+        "dailyMosaic": "Günlük mozaik",
+        "geostationary": "Yer eşzamanlı tam disk",
+        "geostationaryCadence": "Yer eşzamanlı · her {{minutes}} dk"
+      },
+      "tile": {
+        "failed": "Görüntü yok · {{archive}}",
+        "noPreview": "Arşivde bu sahnenin önizlemesi henüz yok"
+      },
+      "grid": {
+        "watched": "İzlendi",
+        "watchedDef": "Bir kamu arşivinde bu noktanın görüntüsü var.",
+        "likely": "Muhtemelen izlendi",
+        "likelyDef": "Sabit şeritli bir algılayıcı kapsadı; henüz görüntü yayımlanmadı.",
+        "could": "Buraya yönelebilirdi",
+        "couldDef": "Yönlendirilebilir ya da ticari bir algılayıcı menzildeydi; işletmeci bakıp bakmadığını söylemiyor.",
+        "overhead": "Üzerinden geçti",
+        "overheadDef": "Görüntüleme kanıtı olmadan burada gökyüzünü geçti."
+      },
+      "group": {
+        "watched": "izlendi",
+        "likely": "muhtemelen izlendi",
+        "upcoming": "yaklaşan",
+        "could": "buraya yönelebilirdi",
+        "overhead": "üzerinden geçti",
+        "weather": "hava kaynakları"
+      },
+      "order": {
+        "closest": "En yakın bakış, sonra en yeni",
+        "newest": "Önce en yeni",
+        "soonest": "Önce en yakın"
+      },
+      "row": {
+        "cloud": "Bulut %{{pct}}",
+        "days": "{{count}} gün",
+        "repeats": "Bu uydunun grupta {{count}} geçişi"
+      },
+      "section": {
+        "summary": "Özet",
+        "passes": "Geçişler"
+      },
+      "status": {
+        "objects": "{{count}} nesne · CelesTrak GP",
+        "fetched": "Alındı {{time}} · {{ago}}",
+        "sun": "Güneş {{point}} · güneş altı noktası"
+      },
+      "step": {
+        "computing": "Hesaplanıyor",
+        "catalogLoading": "Katalog · yükleniyor",
+        "catalog": "Katalog · {{count}} nesne",
+        "propagating": "Yörüngeler hesaplanıyor · {{done}} / {{total}}",
+        "archives": "Arşivler · {{done}} / {{total}} yanıtladı",
+        "matching": "Sahneler {{passes}} geçişle eşleştiriliyor",
+        "window": "7 günlük pencere · {{start}} → {{end}}",
+        "failed": "Başarısız",
+        "note": "Planetary Computer ve NASA GIBS görüntüleri istek üzerine oluşturur, bu adım birkaç saniye sürebilir."
+      }
     },
     "viewer": {
       "open": "Görüntü görüntüleyiciyi aç: {{image}}",
@@ -5204,6 +5287,29 @@
       "years": "Yıllar",
       "share": "Paylaş",
       "method": "Her kare, Sentinel-2'den doğal renkte aynı 6 km'lik karedir. Her yıl farklı bir mevsimde arar ve en az bulutlu sahneyi tutar; %30 bulutun altında sahnesi olmayan yıl atlanır."
+    },
+    "passDetail": {
+      "back": "Tüm geçişler",
+      "altitude": "İrtifa",
+      "offNadir": "Nadirden sapma",
+      "crossed": "{{name}}, {{altitude}} km yükseklikte, {{distance}} km {{direction}}, {{time}} UTC'de, yerde {{speed}} km/sn hızla geçti.",
+      "looking": "Dikeyden {{deg}}° sapmış bakıyordu.",
+      "sceneCloud": "Sahne bulut örtüsü: %{{pct}}.",
+      "pixelLine": "{{m}} m piksel",
+      "swathLine": "{{km}} km şerit",
+      "clearestLook": "En açık görüntü",
+      "previous": "Önceki geçiş",
+      "next": "Sonraki geçiş",
+      "dir": {
+        "n": "kuzeyde",
+        "ne": "kuzeydoğuda",
+        "e": "doğuda",
+        "se": "güneydoğuda",
+        "s": "güneyde",
+        "sw": "güneybatıda",
+        "w": "batıda",
+        "nw": "kuzeybatıda"
+      }
     }
   }
 }
