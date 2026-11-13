@@ -47,7 +47,7 @@ const HOMEPAGE_TOOL_NAMES = [
   'getCountryScorecard',
   'getWorldMonitorMcpEndpoint',
   'listCountryScorecards',
-  'openDashboard',
+  'open_dashboard',
 ];
 const PRODUCTION_DASHBOARDS = [
   { origin: 'https://www.worldmonitor.app', variant: 'full' },
