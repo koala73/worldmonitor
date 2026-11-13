@@ -15563,6 +15563,9 @@
           "path": "api/not-found.ts"
         },
         {
+          "path": "api/oauth-protected-resource.ts"
+        },
+        {
           "path": "api/story.js"
         },
         {
