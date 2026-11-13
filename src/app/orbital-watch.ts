@@ -103,9 +103,10 @@ async function showTrack(pass: PointPass): Promise<void> {
   clearTrack();
   const request = trackRequest;
   const target = surface;
-  if (!target) return;
-  const track = await trackFor(pass).catch(() => null);
-  if (request !== trackRequest || !track) return;
+  const track = target ? await trackFor(pass).catch(() => null) : null;
+  if (request !== trackRequest) return;
+  page?.setTrackState(pass, target && track ? 'shown' : 'unavailable');
+  if (!target || !track) return;
   target.setOrbitalTrack(track);
   replay = createTrackReplay(track, (point) => target.setOrbitalTrackMarker(point), browserReplayDeps());
   replay.play();

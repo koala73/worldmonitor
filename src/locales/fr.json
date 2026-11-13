@@ -5144,7 +5144,8 @@
     "track": {
       "shown": "Trace au sol et empreinte affichées sur la carte",
       "replay": "Rejouer le passage",
-      "reducedMotion": "Mouvement réduit activé : le repère reste au point le plus proche"
+      "reducedMotion": "Mouvement réduit activé : le repère reste au point le plus proche",
+      "unavailable": "La trace au sol de ce passage n'a pas pu être dessinée"
     },
     "computing": "Chargement du catalogue de satellites…",
     "computingProgress": "Calcul des passages : {{done}} sur {{total}} satellites",

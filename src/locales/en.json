@@ -4575,7 +4575,8 @@
     "track": {
       "shown": "Ground track and footprint shown on the map",
       "replay": "Replay pass",
-      "reducedMotion": "Reduced motion is on: the marker stays at closest approach"
+      "reducedMotion": "Reduced motion is on: the marker stays at closest approach",
+      "unavailable": "This pass's ground track couldn't be drawn"
     },
     "computing": "Loading the satellite catalog…",
     "computingProgress": "Computing passes: {{done}} of {{total}} satellites",

@@ -5172,7 +5172,8 @@
     "track": {
       "shown": "Ślad naziemny i obszar obserwacji pokazane na mapie",
       "replay": "Odtwórz przelot",
-      "reducedMotion": "Ograniczenie ruchu jest włączone: znacznik pozostaje w punkcie największego zbliżenia"
+      "reducedMotion": "Ograniczenie ruchu jest włączone: znacznik pozostaje w punkcie największego zbliżenia",
+      "unavailable": "Nie udało się narysować śladu naziemnego tego przelotu"
     },
     "computing": "Wczytywanie katalogu satelitów…",
     "computingProgress": "Obliczanie przelotów: {{done}} z {{total}} satelitów",

@@ -5116,7 +5116,8 @@
     "track": {
       "shown": "Njia ya ardhini na eneo la sensa vimeonyeshwa kwenye ramani",
       "replay": "Rudia kupita",
-      "reducedMotion": "Mwendo uliopunguzwa umewashwa: alama inabaki kwenye sehemu ya karibu zaidi"
+      "reducedMotion": "Mwendo uliopunguzwa umewashwa: alama inabaki kwenye sehemu ya karibu zaidi",
+      "unavailable": "Njia ya ardhini ya kupita huku haikuweza kuchorwa"
     },
     "computing": "Inapakia orodha ya satelaiti…",
     "computingProgress": "Inakokotoa mapito: {{done}} kati ya satelaiti {{total}}",

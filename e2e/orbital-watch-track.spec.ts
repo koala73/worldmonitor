@@ -13,6 +13,7 @@ type HarnessWindow = Window & {
     getDeckLayerSnapshot: () => { id: string; dataCount: number }[];
     setOrbitalTrack: (track: PassTrack | null, marker?: TrackPoint | null) => void;
     setOrbitalTarget: (point: GeoPoint | null) => void;
+    moveOrbitalMarkerCountingRenders: (points: TrackPoint[]) => { renders: number; marker: unknown };
   };
 };
 
@@ -50,6 +51,8 @@ test('draws a selected pass track and footprint on the flat map, moves its marke
   await page.evaluate((t) => (window as HarnessWindow).__mapHarness!.setOrbitalTrack(t, t.closest), track);
   await expect.poll(() => orbitalLayers(page)).toContain('orbital-track-marker-layer:1');
   await page.screenshot({ path: '.claude/verify-evidence/orbital-track-flat.png' });
+  const moved = await page.evaluate((points) => (window as HarnessWindow).__mapHarness!.moveOrbitalMarkerCountingRenders(points), track.segments.flat().slice(0, 5));
+  expect(moved).toEqual({ renders: 0, marker: track.segments.flat()[4] });
   await page.evaluate(() => (window as HarnessWindow).__mapHarness!.setOrbitalTrack(null));
   await expect.poll(() => orbitalLayers(page)).toEqual([]);
 });

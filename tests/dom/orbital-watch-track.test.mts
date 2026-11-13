@@ -167,6 +167,27 @@ describe('selected pass ground track', () => {
     expect(frames.size).toBe(0);
   });
 
+  it('offers a replay only once the track is on the map', async () => {
+    let release!: () => void;
+    catalogMock.mockReturnValue(new Promise((resolve) => { release = () => resolve(catalog()); }));
+    await openWithPasses();
+    row(sentinel).click();
+    expect(row(sentinel).getAttribute('aria-current')).toBe('true');
+    expect(row(sentinel).querySelector('[data-action="replay"]')).toBeNull();
+    expect(row(sentinel).textContent).not.toContain('Ground track and footprint shown on the map');
+    release();
+    await vi.waitFor(() => expect(row(sentinel).querySelector('[data-action="replay"]')).not.toBeNull());
+  });
+
+  it('says the track could not be drawn when the catalog fails to load', async () => {
+    catalogMock.mockRejectedValue(new Error('offline'));
+    await openWithPasses();
+    row(sentinel).click();
+    await vi.waitFor(() => expect(row(sentinel).textContent).toContain("This pass's ground track couldn't be drawn"));
+    expect(row(sentinel).querySelector('[data-action="replay"]')).toBeNull();
+    expect(drawn()).toHaveLength(0);
+  });
+
   it('drops a track that finishes loading after the sheet closed', async () => {
     let release!: () => void;
     catalogMock.mockReturnValue(new Promise((resolve) => { release = () => resolve(catalog()); }));
@@ -198,6 +219,9 @@ describe('selected pass ground track', () => {
     row(ghost).click();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(drawn()).toHaveLength(0);
+    expect(row(ghost).getAttribute('aria-current')).toBe('true');
+    expect(row(ghost).textContent).toContain("This pass's ground track couldn't be drawn");
+    expect(row(ghost).querySelector('[data-action="replay"]')).toBeNull();
     expect(error).not.toHaveBeenCalled();
     error.mockRestore();
   });

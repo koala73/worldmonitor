@@ -5144,7 +5144,8 @@
     "track": {
       "shown": "Traza terrestre y huella mostradas en el mapa",
       "replay": "Reproducir paso",
-      "reducedMotion": "Movimiento reducido activado: el marcador se queda en el punto de máxima aproximación"
+      "reducedMotion": "Movimiento reducido activado: el marcador se queda en el punto de máxima aproximación",
+      "unavailable": "No se pudo dibujar la traza terrestre de este paso"
     },
     "computing": "Cargando el catálogo de satélites…",
     "computingProgress": "Calculando pasos: {{done}} de {{total}} satélites",

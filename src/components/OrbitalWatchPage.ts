@@ -139,7 +139,7 @@ interface Group {
  * A pass is still checking while an archive its mission uses has not answered and the pass
  * could have been imaged, so it never reads "no image" before the archives have spoken.
  */
-function groupPasses(lookup: PointPassLookup, archives: ArchiveState, selectedKey: string | null): Map<GroupId, Group> {
+function groupPasses(lookup: PointPassLookup, archives: ArchiveState, selected: SelectedPass | null): Map<GroupId, Group> {
   const evidence = archives.kind === 'answered' ? archives.evidence : archives.progress?.evidence ?? null;
   const pendingProfiles = new Set(archives.kind === 'answered' ? [] : archives.progress?.pendingProfiles ?? lookup.passes.map((p) => p.profileId));
   const candidates = new Set(lookup.passes.filter((p) => p.tier.kind === 'likely-imaged').map(passKey));
@@ -150,7 +150,7 @@ function groupPasses(lookup: PointPassLookup, archives: ArchiveState, selectedKe
   for (const pass of evidence?.passes ?? lookup.passes) {
     const checking = pendingProfiles.has(pass.profileId) && candidates.has(passKey(pass)) && pass.tier.kind !== 'confirmed-image';
     const group = checking ? 'checking' : GROUP_OF_TIER[pass.tier.kind];
-    groups.get(group)!.rows.push({ sortMs: pass.timeMs, render: () => passRow(pass, checking, acquisitionByPass.get(passKey(pass)) ?? null, passKey(pass) === selectedKey) });
+    groups.get(group)!.rows.push({ sortMs: pass.timeMs, render: () => passRow(pass, checking, acquisitionByPass.get(passKey(pass)) ?? null, passKey(pass) === selected?.key ? selected.track : null) });
   }
   for (const acquisition of evidence?.acquisitions ?? []) {
     if (!acquisition.pass) groups.get('confirmed')!.rows.push({ sortMs: acquisition.startMs, render: () => unmatchedImageRow(acquisition) });
@@ -201,7 +201,15 @@ function frameRow(frame: GeostationaryRow): HTMLElement {
     imageFigure(frame.latest.imageUrl, t('orbitalWatch.row.imageAlt', { name: frame.source, time }), [frameCredit(frame.archive)]));
 }
 
-function passRow(pass: PointPass, checking: boolean, acquisition: MatchedAcquisition | null, selected: boolean): HTMLElement {
+/** Whether the selected pass's ground track is still loading, on the map, or could not be drawn. */
+export type TrackState = 'drawing' | 'shown' | 'unavailable';
+
+interface SelectedPass {
+  key: string;
+  track: TrackState;
+}
+
+function passRow(pass: PointPass, checking: boolean, acquisition: MatchedAcquisition | null, track: TrackState | null): HTMLElement {
   const tierLabel = checking ? t('orbitalWatch.tier.checking') : t(TIER_LABEL_KEY[pass.tier.kind]);
   const military = pass.tier.kind === 'capability-overhead';
   const details = [
@@ -213,14 +221,16 @@ function passRow(pass: PointPass, checking: boolean, acquisition: MatchedAcquisi
     pass.edgeOfSwath ? t('orbitalWatch.row.edgeOfSwath') : null,
     !checking && pass.tier.kind === 'passed-overhead' && pass.tier.note === 'not-in-archive' ? t('orbitalWatch.row.notInArchive') : null,
   ].filter((note): note is string => note !== null);
-  return h('li', { className: 'ow-row', tabindex: '0', 'aria-current': selected ? 'true' : null, dataset: { tier: checking ? 'checking' : pass.tier.kind, key: `pass:${passKey(pass)}`, passKey: passKey(pass) } },
+  return h('li', { className: 'ow-row', tabindex: '0', 'aria-current': track ? 'true' : null, dataset: { tier: checking ? 'checking' : pass.tier.kind, key: `pass:${passKey(pass)}`, passKey: passKey(pass) } },
     h('div', { className: 'ow-row-head' },
       h('span', { className: 'ow-row-name' }, pass.name),
       h('span', { className: 'ow-tier-label' }, tierLabel)),
     h('div', { className: 'ow-row-time' }, formatUtc(pass.timeMs)),
     h('div', { className: 'ow-row-detail' }, details.join(' · ')),
     ...notes.map((note) => h('div', { className: 'ow-row-note' }, note)),
-    selected ? trackControls() : null,
+    track === 'shown' ? trackControls()
+      : track === 'unavailable' ? h('div', { className: 'ow-track ow-track-note' }, t('orbitalWatch.track.unavailable'))
+      : null,
     military ? null : imageSlot(acquisition, t('orbitalWatch.row.imageAlt', { name: pass.name, time: formatUtc(pass.timeMs) })));
 }
 
@@ -254,7 +264,7 @@ export class OrbitalWatchPage {
   /** Groups the user opened or closed, against their default. */
   private readonly toggled = new Set<GroupId>();
   private state: OrbitalWatchState | null = null;
-  private selectedPassKey: string | null = null;
+  private selected: SelectedPass | null = null;
   private passesByKey = new Map<string, PointPass>();
 
   constructor(private readonly callbacks: OrbitalWatchPageCallbacks) {
@@ -280,7 +290,7 @@ export class OrbitalWatchPage {
   open(point: GeoPoint, returnFocusTo: HTMLElement | null): void {
     this.returnFocusTo = returnFocusTo;
     this.toggled.clear();
-    this.selectedPassKey = null;
+    this.selected = null;
     this.title.textContent = t('contextMenu.satellitePasses');
     this.closeButton.setAttribute('aria-label', t('countryBrief.closeBtn'));
     this.privacy.textContent = t('orbitalWatch.privacy');
@@ -298,7 +308,7 @@ export class OrbitalWatchPage {
     document.removeEventListener('keydown', this.onDocumentKeydown);
     this.sheet.remove();
     this.state = null;
-    this.selectedPassKey = null;
+    this.selected = null;
     this.callbacks.onClose();
     const target = this.returnFocusTo;
     this.returnFocusTo = null;
@@ -335,7 +345,7 @@ export class OrbitalWatchPage {
     const evidence = archives.kind === 'answered' ? archives.evidence : null;
     const passes = evidence?.passes ?? lookup.passes;
     this.passesByKey = new Map(passes.map((pass) => [passKey(pass), pass]));
-    const groups = groupPasses(lookup, archives, this.selectedPassKey);
+    const groups = groupPasses(lookup, archives, this.selected);
     const stale = lookup.catalog.status === 'stale'
       ? h('p', { className: 'ow-banner ow-banner-stale', role: 'note' }, t('orbitalWatch.stale', { age: formatAgeDays((lookup.nowMs - lookup.catalog.fetchedAt) / DAY_MS) }))
       : null;
@@ -413,10 +423,17 @@ export class OrbitalWatchPage {
     this.render(this.state);
   };
 
+  /** Reports how drawing the selected pass went; ignored once another pass is selected. */
+  setTrackState(pass: PointPass, track: TrackState): void {
+    if (this.selected?.key !== passKey(pass) || !this.state) return;
+    this.selected = { key: this.selected.key, track };
+    this.render(this.state);
+  }
+
   private selectPass(key: string): void {
     const pass = this.passesByKey.get(key);
     if (!pass || !this.state) return;
-    this.selectedPassKey = key;
+    this.selected = { key, track: 'drawing' };
     this.render(this.state);
     this.body.querySelector<HTMLElement>(`.ow-row[data-pass-key="${key}"]`)?.focus();
     this.callbacks.onSelectPass?.(pass);

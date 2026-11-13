@@ -5172,7 +5172,8 @@
     "track": {
       "shown": "Pozemní stopa a záběr jsou zobrazeny na mapě",
       "replay": "Přehrát přelet",
-      "reducedMotion": "Omezení pohybu je zapnuté: značka zůstává v bodě největšího přiblížení"
+      "reducedMotion": "Omezení pohybu je zapnuté: značka zůstává v bodě největšího přiblížení",
+      "unavailable": "Pozemní stopu tohoto přeletu nelze vykreslit"
     },
     "computing": "Načítání katalogu satelitů…",
     "computingProgress": "Výpočet přeletů: {{done}} z {{total}} satelitů",

@@ -586,6 +586,12 @@ function positionAlongPath(path: [number, number][], progress: number): [number,
   return [lon, latA + (latB - latA) * fraction];
 }
 
+const ORBITAL_TRACK_MARKER_LAYER_ID = 'orbital-track-marker-layer';
+
+function deckLayerId(layer: LayersList[number]): string | null {
+  return layer && !Array.isArray(layer) && typeof layer === 'object' ? (layer as Layer).id : null;
+}
+
 const PREFERS_REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 const TRADE_ANIMATION_CYCLE = 1000;
 const TRADE_ANIMATION_SPEED = 0.3;
@@ -774,6 +780,8 @@ export class DeckGLMap {
   private orbitalTrack: PassTrack | null = null;
   private orbitalTrackMarker: TrackPoint | null = null;
   private orbitalTarget: GeoPoint | null = null;
+  /** The layer list last handed to deck.gl, so the replay marker can move without a full rebuild. */
+  private committedLayers: LayersList | null = null;
   private scenarioState: ScenarioVisualState | null = null;
   private selectedChinaCorridorOverlay: ChinaCorridorOverlayProjection | null = null;
   private affectedIso2Set: Set<string> = new Set();
@@ -6807,6 +6815,7 @@ export class DeckGLMap {
       jsBuild = performance.now() - buildStart;
       layerCount = built.length;
       this.deckFrameProvider.wake();
+      this.committedLayers = built;
       this.deckOverlay?.setProps({ layers: built });
     } catch { /* map may be mid-teardown (null.getProjection) */ }
     if (import.meta.env.DEV) {
@@ -8164,7 +8173,34 @@ export class DeckGLMap {
   public setOrbitalTrackMarker(point: TrackPoint | null): void {
     if (!this.orbitalTrack) return;
     this.orbitalTrackMarker = point;
-    this.render();
+    const layers = this.committedLayers?.filter((layer) => deckLayerId(layer) !== ORBITAL_TRACK_MARKER_LAYER_ID);
+    const at = layers?.findIndex((layer) => deckLayerId(layer) === 'orbital-track-layer') ?? -1;
+    if (!layers || at < 0 || this.renderRafId !== null || this.renderPaused || this.webglLost || !this.maplibreMap) {
+      this.render();
+      return;
+    }
+    layers.splice(at + 1, 0, ...this.createOrbitalTrackMarkerLayer());
+    this.committedLayers = layers;
+    this.deckFrameProvider.wake();
+    this.deckOverlay?.setProps({ layers });
+    this.maplibreMap.triggerRepaint();
+  }
+
+  private createOrbitalTrackMarkerLayer(): Layer[] {
+    const marker = this.orbitalTrackMarker;
+    if (!marker) return [];
+    return [new ScatterplotLayer<TrackPoint>({
+      id: ORBITAL_TRACK_MARKER_LAYER_ID,
+      data: [marker],
+      getPosition: (point) => [point.lon, point.lat],
+      getRadius: 6,
+      radiusUnits: 'pixels',
+      getFillColor: [255, 214, 10, 255],
+      getLineColor: [10, 10, 10, 220],
+      stroked: true,
+      lineWidthMinPixels: 1.5,
+      pickable: false,
+    })];
   }
 
   public setOrbitalTarget(point: GeoPoint | null): void {
@@ -8212,22 +8248,7 @@ export class DeckGLMap {
         pickable: false,
       }),
     ];
-    const marker = this.orbitalTrackMarker;
-    if (marker) {
-      layers.push(new ScatterplotLayer<TrackPoint>({
-        id: 'orbital-track-marker-layer',
-        data: [marker],
-        getPosition: (point) => [point.lon, point.lat],
-        getRadius: 6,
-        radiusUnits: 'pixels',
-        getFillColor: [255, 214, 10, 255],
-        getLineColor: [10, 10, 10, 220],
-        stroked: true,
-        lineWidthMinPixels: 1.5,
-        pickable: false,
-      }));
-    }
-    return [...layers, ...this.createOrbitalTargetLayer()];
+    return [...layers, ...this.createOrbitalTrackMarkerLayer(), ...this.createOrbitalTargetLayer()];
   }
 
   public clearBypassRoutes(): void {

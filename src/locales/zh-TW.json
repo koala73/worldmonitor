@@ -5088,7 +5088,8 @@
     "track": {
       "shown": "地面軌跡和覆蓋範圍已顯示在地圖上",
       "replay": "回放過境",
-      "reducedMotion": "已開啟減少動態效果：標記停留在最近點"
+      "reducedMotion": "已開啟減少動態效果：標記停留在最近點",
+      "unavailable": "無法繪製此次過境的地面軌跡"
     },
     "computing": "正在載入衛星目錄…",
     "computingProgress": "正在計算過境：{{done}} / {{total}} 顆衛星",

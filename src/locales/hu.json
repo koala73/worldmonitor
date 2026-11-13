@@ -5116,7 +5116,8 @@
     "track": {
       "shown": "A földi nyomvonal és a lefedettség a térképen látható",
       "replay": "Áthaladás visszajátszása",
-      "reducedMotion": "A csökkentett mozgás be van kapcsolva: a jelölő a legközelebbi ponton marad"
+      "reducedMotion": "A csökkentett mozgás be van kapcsolva: a jelölő a legközelebbi ponton marad",
+      "unavailable": "Ennek az áthaladásnak a földi nyomvonalát nem sikerült megrajzolni"
     },
     "computing": "Műholdkatalógus betöltése…",
     "computingProgress": "Áthaladások számítása: {{done}} / {{total}} műhold",

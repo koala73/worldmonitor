@@ -5144,7 +5144,8 @@
     "track": {
       "shown": "Urma la sol și amprenta sunt afișate pe hartă",
       "replay": "Redă trecerea",
-      "reducedMotion": "Mișcarea redusă este activă: marcajul rămâne la punctul de apropiere maximă"
+      "reducedMotion": "Mișcarea redusă este activă: marcajul rămâne la punctul de apropiere maximă",
+      "unavailable": "Urma la sol a acestei treceri nu a putut fi desenată"
     },
     "computing": "Se încarcă catalogul de sateliți…",
     "computingProgress": "Se calculează trecerile: {{done}} din {{total}} sateliți",

@@ -5144,7 +5144,8 @@
     "track": {
       "shown": "Traccia al suolo e impronta mostrate sulla mappa",
       "replay": "Riproduci passaggio",
-      "reducedMotion": "Movimento ridotto attivo: il segnaposto resta nel punto di massimo avvicinamento"
+      "reducedMotion": "Movimento ridotto attivo: il segnaposto resta nel punto di massimo avvicinamento",
+      "unavailable": "Impossibile disegnare la traccia al suolo di questo passaggio"
     },
     "computing": "Caricamento del catalogo satellitare…",
     "computingProgress": "Calcolo dei passaggi: {{done}} di {{total}} satelliti",

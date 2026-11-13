@@ -2934,6 +2934,7 @@
   "orbitalWatch.track.reducedMotion": "Reduced motion is on: the marker stays at closest approach",
   "orbitalWatch.track.replay": "Replay pass",
   "orbitalWatch.track.shown": "Ground track and footprint shown on the map",
+  "orbitalWatch.track.unavailable": "This pass's ground track couldn't be drawn",
   "orbitalWatch.unavailable": "The satellite catalog could not be loaded, so no passes were computed for this point.",
   "orbitalWatch.weatherFrames": "weather frames",
   "panelVariants.commodity.insights": "AI Commodity Insights",

@@ -5144,7 +5144,8 @@
     "track": {
       "shown": "Traço no solo e área de cobertura mostrados no mapa",
       "replay": "Reproduzir passagem",
-      "reducedMotion": "Movimento reduzido ativado: o marcador fica no ponto de maior aproximação"
+      "reducedMotion": "Movimento reduzido ativado: o marcador fica no ponto de maior aproximação",
+      "unavailable": "Não foi possível desenhar o traço no solo desta passagem"
     },
     "computing": "Carregando o catálogo de satélites…",
     "computingProgress": "Calculando passagens: {{done}} de {{total}} satélites",

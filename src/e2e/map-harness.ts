@@ -202,6 +202,7 @@ type MapHarness = {
   getCyberTooltipHtml: (indicator: string) => string;
   setOrbitalTrack: (track: PassTrack | null, marker?: TrackPoint | null) => void;
   setOrbitalTarget: (point: { lat: number; lon: number } | null) => void;
+  moveOrbitalMarkerCountingRenders: (points: TrackPoint[]) => { renders: number; marker: unknown };
   showChinaCorridor: (index?: number) => void;
   runTradeAnimationProfile: (
     options?: TradeAnimationProfileOptions,
@@ -2003,6 +2004,19 @@ window.__mapHarness = {
   },
   setOrbitalTarget: (point: { lat: number; lon: number } | null): void => {
     map.setOrbitalTarget(point);
+  },
+  moveOrbitalMarkerCountingRenders: (points: TrackPoint[]): { renders: number; marker: unknown } => {
+    const target = map as unknown as { render: () => void; committedLayers?: Array<{ id: string; props?: { data?: unknown } }> | null };
+    const render = target.render;
+    let renders = 0;
+    target.render = () => { renders += 1; render.call(target); };
+    try {
+      for (const point of points) map.setOrbitalTrackMarker(point);
+    } finally {
+      target.render = render;
+    }
+    const data = target.committedLayers?.find((layer) => layer.id === 'orbital-track-marker-layer')?.props?.data;
+    return { renders, marker: Array.isArray(data) ? data[0] : null };
   },
   showChinaCorridor: (index = 0): void => {
     const definition = CHINA_LOGISTICS_CORRIDORS[index] ?? CHINA_LOGISTICS_CORRIDORS[0]!;
