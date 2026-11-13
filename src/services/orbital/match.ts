@@ -132,7 +132,7 @@ const maxOf = (values: Array<number | null>) => {
 
 function acquisitionImage(acquisition: Acquisition, box: CropBox): string | null {
   for (const item of acquisition.items) {
-    const crop = item.renderedPreviewHref ? planetaryComputerCropUrl(item.renderedPreviewHref, box) : null;
+    const crop = item.archive === 'planetary-computer' ? planetaryComputerCropUrl(item.collection, item.itemId, box) : null;
     if (crop) return crop;
   }
   return acquisition.items.find((item) => item.previewUrl)?.previewUrl ?? null;
@@ -165,6 +165,7 @@ export interface EvidenceInput {
   frames?: ReadonlyArray<ArchiveResult<GeostationaryRow>>;
   /** Classification read at the point, by acquisition key. */
   conditions?: ReadonlyMap<string, PointCondition>;
+  conditionFailures?: readonly ArchiveFailure[];
   box?: CropBox;
 }
 
@@ -191,8 +192,9 @@ export function assembleEvidence(input: EvidenceInput): OrbitalEvidence {
     };
   }).sort((a, b) => b.endMs - a.endMs);
 
+  // Mirrors ingest at different speeds, so "no image" needs every archive for the mission to have answered.
   const unansweredProfiles = (Object.keys(PROFILE_ARCHIVES) as ImagingProfileId[])
-    .filter((profileId) => !PROFILE_ARCHIVES[profileId].some((archive) => answered.has(archive)));
+    .filter((profileId) => !PROFILE_ARCHIVES[profileId].every((archive) => answered.has(archive)));
   const passes = lookup.passes.map((pass): PointPass => {
     const profile = profileFor(pass.profileId);
     const archives = PROFILE_ARCHIVES[pass.profileId as ImagingProfileId];
@@ -205,7 +207,8 @@ export function assembleEvidence(input: EvidenceInput): OrbitalEvidence {
   });
 
   const failures = [...input.stac, ...(input.mosaics ? [input.mosaics] : []), ...(input.frames ?? [])]
-    .flatMap((r) => (r.status === 'failed' ? [r.failure] : r.failures ?? []));
+    .flatMap((r) => (r.status === 'failed' ? [r.failure] : r.failures ?? []))
+    .concat(input.conditionFailures ?? []);
   const viewable = acquisitions.filter((a) => a.imageUrl);
   return {
     passes,
@@ -236,9 +239,13 @@ export async function findArchiveEvidence(lookup: PointPassLookup, options: Arch
   const stac = [earthSearch, planetaryComputer];
   const items = stac.flatMap((r) => (r.status === 'ok' ? r.items : []));
   const conditions = new Map<string, PointCondition>();
+  const conditionFailures: ArchiveFailure[] = [];
   await Promise.all(groupAcquisitions(items).map(async (acquisition) => {
     const classified = acquisition.items.find((item) => item.classification);
-    if (classified) conditions.set(acquisition.key, await readPointCondition(classified, point, options));
+    if (!classified) return;
+    const reading = await readPointCondition(classified, point, options);
+    conditions.set(acquisition.key, reading.condition);
+    if (reading.failure) conditionFailures.push(reading.failure);
   }));
-  return assembleEvidence({ lookup, stac, mosaics, frames: [gibsFrames, eumetsatFrames], conditions, box });
+  return assembleEvidence({ lookup, stac, mosaics, frames: [gibsFrames, eumetsatFrames], conditions, conditionFailures, box });
 }

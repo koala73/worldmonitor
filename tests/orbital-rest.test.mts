@@ -8,6 +8,7 @@ import { toCatalogResponse } from '../server/worldmonitor/orbital/v1/list-imagin
 import { orbitalHandler } from '../server/worldmonitor/orbital/v1/handler.ts';
 import { createOrbitalServiceRoutes } from '../src/generated/server/worldmonitor/orbital/v1/service_server.ts';
 import { toOrbitalCatalog } from '../src/services/orbital/catalog-shape.ts';
+import { PLANETARY_COMPUTER_NATURAL_COLOUR } from '../src/services/orbital/crop-url.ts';
 import { findArchiveEvidence } from '../src/services/orbital/match.ts';
 import { runPassJob } from '../src/services/orbital/pass-job.ts';
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
@@ -65,6 +66,22 @@ describe('point passes over REST', () => {
       assert.equal(acquisition!.passNoradId, pass.noradId);
       assert.match(acquisition!.imageUrl, /^https:\/\//);
       assert.ok(acquisition!.itemIds.length > 0);
+    }
+  });
+
+  it('serves Planetary Computer images in the archive\'s natural-colour rendering, not the visual asset', async () => {
+    const urls: URL[] = [];
+    for (const fixture of POINTS) {
+      const rest = await computePointPasses({ lat: fixture.lat, lon: fixture.lon }, storedCatalog, FIXTURE_NOW, { fetch: fakeArchiveFetch(fixture).fetch });
+      urls.push(...rest.acquisitions.map((a) => new URL(a.imageUrl)).filter((url) => url.hostname === 'planetarycomputer.microsoft.com'));
+    }
+    assert.ok(urls.length > 0, 'the fixtures return Planetary Computer acquisitions');
+    for (const url of urls) {
+      const render = PLANETARY_COMPUTER_NATURAL_COLOUR[url.searchParams.get('collection') ?? ''];
+      assert.ok(render, `${url.searchParams.get('collection')} has a natural-colour rendering`);
+      assert.deepEqual(url.searchParams.getAll('assets'), render.filter(([key]) => key === 'assets').map(([, value]) => value));
+      assert.equal(url.searchParams.get('color_formula'), render.find(([key]) => key === 'color_formula')?.[1]);
+      assert.ok(!url.searchParams.getAll('assets').includes('visual'), 'not the clipped visual asset');
     }
   });
 
