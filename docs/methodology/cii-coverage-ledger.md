@@ -37,7 +37,8 @@ any score.
 No removal is approved today. For an exception, add an entry to the JSON block
 below with `from`, `to`, `family`, `country`, `ruling` (the owner's dated decision)
 and `url` (the recorded ruling). Use the same step for `from` and `to` when
-amending an existing step. An exception permits only the named family removal;
+amending an existing step; that ruling also permits the transition into the
+amended step. An exception permits only the named family removal;
 it never permits removal from the scored set. Do not record an upstream outage
 as an exception. Supply a replacement source in the same PR or stop for the owner.
 

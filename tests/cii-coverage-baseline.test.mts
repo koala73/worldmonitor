@@ -44,7 +44,7 @@ function transition(before: Release, after: Release, approvals: Exception[]) {
     assert.ok(Object.hasOwn(after.families, family), `Recorded family removed: ${family}`);
     for (const code of countries) {
       if (after.families[family].includes(code)) continue;
-      assert.ok(approvals.some(a => a.from === before.step && a.to === after.step && a.family === family && a.country === code
+      assert.ok(approvals.some(a => (a.from === before.step || a.from === after.step) && a.to === after.step && a.family === family && a.country === code
         && a.ruling.trim().length > 0 && /^https:\/\/github\.com\/koala73\/worldmonitor\/(issues|pull)\/\d+/.test(a.url)),
       `Expected ${family} country removed without owner ruling: ${code}`);
     }
@@ -98,6 +98,13 @@ test('editing a previously recorded expansion cannot silently lower its floor', 
   previous.families.economicStress.push('KP');
   const changed = { ...structuredClone(original), step: 'C1' };
   assert.throws(() => validate([original, changed], [], [original, previous]), /without owner ruling: KP/);
+});
+test('a same-step amendment ruling also permits the transition into that recorded step', () => {
+  const previous = { ...structuredClone(original), step: 'C1' };
+  const changed = structuredClone(previous);
+  changed.families.economicStress = changed.families.economicStress.filter(c => c !== 'QA');
+  const approval = { from: 'C1', to: 'C1', family: 'economicStress', country: 'QA', ruling: 'Synthetic owner amendment; test only', url: 'https://github.com/koala73/worldmonitor/issues/10577' };
+  assert.doesNotThrow(() => validate([original, changed], [approval], [original, previous]));
 });
 test('the active scored baseline matches the released country list', async () => {
   const { CII_COUNTRY_CODES } = await import('../shared/cii-weights.ts');
