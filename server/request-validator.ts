@@ -53,6 +53,7 @@ const hasOwn = (value: object, key: string): boolean => Object.prototype.hasOwnP
 // platform body limit (~4.5MB on Vercel Edge). Fields that legitimately need
 // more must declare an explicit max_bytes in proto. (#8402)
 export const DEFAULT_STRING_MAX_BYTES = 64 * 1024;
+const MAX_REQUEST_VIOLATIONS = 100;
 
 function exceedsUtf8ByteLimit(value: string, limit: number): boolean {
   if (value.length > limit) return true;
@@ -71,7 +72,9 @@ function addViolation(
   field: string,
   description: string,
 ): void {
-  violations.push({ field, description });
+  if (violations.length < MAX_REQUEST_VIOLATIONS) {
+    violations.push({ field, description });
+  }
 }
 
 function isRequiredValueMissing(value: unknown): boolean {
@@ -322,13 +325,14 @@ function validateField(
     }
     if (rule.repeatedMaxItems != null && repeatedValue.length > rule.repeatedMaxItems) {
       addViolation(violations, path, `array must contain at most ${rule.repeatedMaxItems} item(s)`);
+      return;
     }
     if (rule.repeatedUnique && new Set(repeatedValue.map((item) => JSON.stringify(item))).size !== repeatedValue.length) {
       addViolation(violations, path, 'array items must be unique');
     }
-    repeatedValue.forEach((item, index) => {
-      validateSingleValue(rule, item, `${path}[${index}]`, violations, ancestors);
-    });
+    for (let index = 0; index < repeatedValue.length && violations.length < MAX_REQUEST_VIOLATIONS; index += 1) {
+      validateSingleValue(rule, repeatedValue[index], `${path}[${index}]`, violations, ancestors);
+    }
     return;
   }
 
@@ -358,6 +362,7 @@ function validateMessage(
 
   ancestors.add(body);
   for (const [fieldName, rule] of Object.entries(schema.fields)) {
+    if (violations.length >= MAX_REQUEST_VIOLATIONS) break;
     const path = parentPath ? `${parentPath}.${fieldName}` : fieldName;
     validateField(rule, body[fieldName], hasOwn(body, fieldName), path, violations, ancestors);
   }
