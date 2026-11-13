@@ -1,17 +1,28 @@
 import { easternWallTime, eiaReleaseFor } from '../shared/oil-release-calendar.ts';
 
 const DAY = 86_400_000;
-const ROW = /<th[^>]*scope="row"[^>]*>\s*([A-Z][a-z]+ \d{1,2}, \d{4})\s*<\/th>\s*<td>\s*([A-Z][a-z]+ \d{1,2}, \d{4})\s*<\/td>\s*<td>[^<]*<\/td>\s*<td>\s*(\d{1,2}):(\d{2}) ([ap])\.m\.\s*<\/td>/g;
+const DATE = /^[A-Z][a-z]+ \d{1,2}, \d{4}$/;
+const TIME = /^(\d{1,2}):(\d{2}) ([ap])\.m\.$/;
 
 const utcDay = (text: string) => Date.parse(`${text} UTC`);
 
 export interface PublishedEiaShift { weekEnding: number; release: number }
 
+const cellText = (cell: string) => cell.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+
+// Throws on any row it cannot read, so a markup change cannot shrink the checked range.
 export function parseEiaSchedule(html: string): PublishedEiaShift[] {
-  return [...html.matchAll(ROW)].map(([, week, release, hour, minute, meridiem]) => ({
-    weekEnding: utcDay(week),
-    release: easternWallTime(utcDay(release), (Number(hour) % 12 + (meridiem === 'p' ? 12 : 0)) * 60 + Number(minute)),
-  }));
+  return (html.match(/<tr[\s>][\s\S]*?<\/tr>/g) ?? []).filter(row => /<th[^>]*scope="row"/.test(row)).map(row => {
+    const cells = [...row.matchAll(/<(?:th|td)[^>]*>([\s\S]*?)<\/(?:th|td)>/g)].map(match => cellText(match[1]));
+    const time = TIME.exec(cells[3] ?? '');
+    if (cells.length < 4 || !DATE.test(cells[0]) || !DATE.test(cells[1]) || !time) {
+      throw new Error(`Unreadable EIA schedule row: ${cellText(row).slice(0, 120)}`);
+    }
+    return {
+      weekEnding: utcDay(cells[0]),
+      release: easternWallTime(utcDay(cells[1]), (Number(time[1]) % 12 + (time[3] === 'p' ? 12 : 0)) * 60 + Number(time[2])),
+    };
+  });
 }
 
 // Every Friday from the first to the last published row must release at the

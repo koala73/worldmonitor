@@ -29,8 +29,14 @@ if (!replay) {
     console.log(`::warning::EIA schedule fetch failed (${(error as Error).message}); publisher conformance not checked.`);
   }
   if (html !== undefined) {
-    const rows = parseEiaSchedule(html);
-    if (rows.length === 0) {
+    let rows: ReturnType<typeof parseEiaSchedule> = [];
+    try {
+      rows = parseEiaSchedule(html);
+    } catch (error) {
+      console.log(`::error::${(error as Error).message}. The EIA page layout changed; update scripts/_eia-schedule.mts.`);
+      process.exitCode = 1;
+    }
+    if (rows.length === 0 && process.exitCode !== 1) {
       console.log('::error::EIA schedule page has no parseable rows. The page layout changed; update scripts/_eia-schedule.mts.');
       process.exitCode = 1;
     }

@@ -82,6 +82,12 @@ it('publisher schedule parser and diff agree with the rule and flag a departure'
     + FIXTURE('July 24, 2026', 'July 30, 2026', '12:00 p.m.'));
   assert.match(diffEiaSchedule(extra).join('\n'), /week ending 2026-07-24/);
   assert.deepEqual(parseEiaSchedule('<html>layout changed</html>'), []);
+  const marked = FIXTURE('May 22, 2026', 'May 28, 2026', '12:00 p.m.')
+    + FIXTURE('July 24, 2026', 'July 30, 2026', '<span>12:00</span> p.m.');
+  assert.equal(parseEiaSchedule(marked).length, 2);
+  const malformed = FIXTURE('May 22, 2026', 'May 28, 2026', '12:00 p.m.')
+    + FIXTURE('July 24, 2026', 'July 30, 2026', 'noon');
+  assert.throws(() => parseEiaSchedule(malformed), /Unreadable EIA schedule row.*July 24, 2026/);
 });
 
 it('calendar warning runs daily in CI without suppressing failure', () => {
