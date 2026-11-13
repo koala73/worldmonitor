@@ -79,7 +79,8 @@ export function scrubUrl(parsed: URL, pattern: RegExp): boolean {
  * keeps the rest of the URL and loses those parts.
  */
 export const COORDINATE_URL_PARAM_RE = /^(bbox|intersects)$/i;
-const COORDINATE_PATH_SEGMENT_RE = /^-?\d+(?:\.\d+)?(?:,-?\d+(?:\.\d+)?){1,3}(?:\.[a-z]+)?$/i;
+const COORDINATE_NUMBER = String.raw`[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?`;
+const COORDINATE_PATH_SEGMENT_RE = new RegExp(`^${COORDINATE_NUMBER}(?:,${COORDINATE_NUMBER}){1,3}(?:\\.[a-z]+)?$`, 'i');
 export const REDACTED_COORDINATES = 'redacted';
 
 /** Remove coordinate params and coordinate path segments from a parsed URL in place. */

@@ -46,6 +46,10 @@ export interface FakeArchiveOptions {
   emptyLayers?: string[];
   /** Hostnames that answer 503. */
   failing?: string[];
+  /** URL substrings that answer 503. */
+  failingPaths?: string[];
+  /** Hostnames whose requests never settle. */
+  stalled?: string[];
   /** Hostnames whose requests reject as a network error whose message carries the URL. */
   unreachable?: string[];
   /** Sentinel-2 scene classification value at the point. */
@@ -66,7 +70,10 @@ export function fakeArchiveFetch(point: ArchiveFixturePoint, options: FakeArchiv
     const url = new URL(input);
     requests.push({ url: input, method: init.method ?? 'GET', body: typeof init.body === 'string' ? init.body : undefined });
     if (options.unreachable?.includes(url.hostname)) throw new TypeError(`Failed to fetch ${input}`);
-    if (options.failing?.includes(url.hostname)) return new Response('unavailable', { status: 503 });
+    if (options.stalled?.includes(url.hostname)) return new Promise<Response>(() => {});
+    if (options.failing?.includes(url.hostname) || options.failingPaths?.some((part) => input.includes(part))) {
+      return new Response('unavailable', { status: 503 });
+    }
     if (url.hostname === 'earth-search.aws.element84.com') return json(point['earth-search']);
     if (url.hostname === 'planetarycomputer.microsoft.com' && url.pathname.endsWith('/search')) {
       const answer = point['planetary-computer'];

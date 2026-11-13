@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 
 import { assembleEvidence, compareBestView, describePointCondition, findArchiveEvidence, groupAcquisitions, type MatchedAcquisition } from '../src/services/orbital/match.ts';
 import { parseStacItem, searchStacArchive } from '../src/services/orbital/archive-stac.ts';
+import { searchGibsDailyMosaics } from '../src/services/orbital/archive-gibs.ts';
+import { requestArchive } from '../src/services/orbital/archive-result.ts';
 import { ARCHIVE_RESPONSES, fakeArchiveFetch, fixtureLookup } from './helpers/orbital-archive-fetch.mts';
 
 const { denver, dubai } = ARCHIVE_RESPONSES.points;
@@ -84,6 +86,76 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.deepEqual(evidence.failures, [{ archive: 'earth-search', reason: 'network' }]);
     assert.deepEqual(evidence.unansweredProfiles, ['sentinel-1']);
     assert.ok(evidence.acquisitions.some((a) => a.profileId === 'sentinel-2'), 'Planetary Computer still answers for Sentinel-2');
+  });
+
+  it('returns the other archives when one stalls, with the stalled missions unanswered', async () => {
+    const lookup = await fixtureLookup(dubai);
+    const started = Date.now();
+    const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { stalled: ['earth-search.aws.element84.com'] }).fetch, timeoutMs: 50 });
+    assert.ok(Date.now() - started < 2_000, 'the lookup does not wait on the stalled archive');
+    assert.equal(evidence.status, 'partial');
+    assert.deepEqual(evidence.failures, [{ archive: 'earth-search', reason: 'timeout' }]);
+    assert.deepEqual(evidence.unansweredProfiles, ['sentinel-1']);
+    assert.ok(evidence.acquisitions.some((a) => a.profileId === 'sentinel-2' && a.items.every((i) => i.archive === 'planetary-computer')));
+    assert.ok(evidence.mosaics.length > 0 && evidence.frames.length > 0);
+  });
+
+  it('names a caller cancellation as aborted, not as a timeout', async () => {
+    const controller = new AbortController();
+    const reply = requestArchive('eumetsat', 'https://view.eumetsat.int/geoserver/wms', {}, {
+      fetch: () => new Promise<Response>(() => {}),
+      signal: controller.signal,
+      timeoutMs: 5_000,
+    }, async (response) => response.text());
+    controller.abort();
+    assert.deepEqual(await reply, { ok: false, failure: { archive: 'eumetsat', reason: 'aborted' } });
+  });
+
+  it('leaves no listener on the caller signal after a request completes, without AbortSignal.any', async () => {
+    const any = AbortSignal.any;
+    (AbortSignal as { any?: unknown }).any = undefined;
+    try {
+      const controller = new AbortController();
+      let listeners = 0;
+      const add = controller.signal.addEventListener.bind(controller.signal);
+      const remove = controller.signal.removeEventListener.bind(controller.signal);
+      controller.signal.addEventListener = ((...args: Parameters<typeof add>) => { listeners++; add(...args); }) as typeof add;
+      controller.signal.removeEventListener = ((...args: Parameters<typeof remove>) => { listeners--; remove(...args); }) as typeof remove;
+      for (let i = 0; i < 3; i++) {
+        const reply = await requestArchive('eumetsat', 'https://view.eumetsat.int/x', {}, { fetch: async () => new Response('ok'), signal: controller.signal }, async (r) => r.text());
+        assert.equal(reply.ok, true);
+      }
+      assert.equal(listeners, 0);
+    } finally {
+      AbortSignal.any = any;
+    }
+  });
+
+  it('times out an archive that sends headers but never finishes the body', async () => {
+    const stalledBody = new Response(new ReadableStream({ start() {} }), { status: 200 });
+    const reply = await requestArchive('nasa-gibs', 'https://gibs.earthdata.nasa.gov/x.xml', {}, { fetch: async () => stalledBody, timeoutMs: 50 }, async (response) => response.text());
+    assert.deepEqual(reply, { ok: false, failure: { archive: 'nasa-gibs', reason: 'timeout' } });
+  });
+
+  it('keeps answering layers and marks the lookup partial when one layer fails', async () => {
+    const lookup = await fixtureLookup(denver);
+    const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(denver, { failingPaths: ['GOES-West'] }).fetch });
+    assert.deepEqual(evidence.frames.map((f) => [f.source, f.latest !== null]), [['GOES-East', true], ['GOES-West', false]]);
+    assert.equal(evidence.status, 'partial');
+    assert.deepEqual(evidence.failures, [{ archive: 'nasa-gibs', reason: 'http-status', httpStatus: 503, source: 'GOES-West' }]);
+  });
+
+  it('keeps the first day of a window that opens after midnight', async () => {
+    const nowMs = Date.parse('2026-11-13T12:00:00Z');
+    const result = await searchGibsDailyMosaics({
+      point: dubai,
+      window: { startMs: Date.parse('2026-11-13T06:00:00Z'), endMs: nowMs },
+      nowMs,
+      fetch: fakeArchiveFetch(dubai).fetch,
+    });
+    assert.equal(result.status, 'ok');
+    const terra = result.status === 'ok' ? result.items.find((row) => row.source === 'MODIS Terra') : undefined;
+    assert.deepEqual(terra?.days.map((d) => d.date), ['2026-11-13']);
   });
 
   it('reads "cloud at this spot" for a cloudy point in a mostly clear scene', async () => {

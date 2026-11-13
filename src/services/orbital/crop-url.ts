@@ -16,6 +16,14 @@ export const DEFAULT_CROP_PIXELS = 512;
 
 const round = (value: number) => Number(value.toFixed(COORDINATE_DECIMALS));
 
+/** Fixed-decimal text for a coordinate in a URL; never exponent form, so telemetry scrubbing always recognises it. */
+export function formatCoordinate(value: number, decimals = 6): string {
+  const text = value.toFixed(decimals).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+  return text === '-0' ? '0' : text;
+}
+
+const boxText = (...values: number[]) => values.map((value) => formatCoordinate(value)).join(',');
+
 /** A span of `2 * half` degrees centred on `centre`, slid rather than wrapped so it stays inside [min, max]. */
 function slide(centre: number, half: number, min: number, max: number): [number, number] {
   if (2 * half >= max - min) return [min, max];
@@ -49,7 +57,7 @@ export function planetaryComputerCropUrl(renderedPreviewHref: string, box: CropB
   if (!preview.pathname.endsWith('/item/preview.png')) return null;
   preview.pathname = preview.pathname.replace(
     /\/item\/preview\.png$/,
-    `/item/bbox/${box.west},${box.south},${box.east},${box.north}/${pixels}x${pixels}.png`,
+    `/item/bbox/${boxText(box.west, box.south, box.east, box.north)}/${pixels}x${pixels}.png`,
   );
   preview.searchParams.delete('format');
   return allowed(preview.toString());
@@ -64,7 +72,7 @@ function wmsGetMapUrl(endpoint: string, layer: string, time: string, box: CropBo
     LAYERS: layer,
     STYLES: '',
     CRS: 'EPSG:4326',
-    BBOX: `${box.south},${box.west},${box.north},${box.east}`,
+    BBOX: boxText(box.south, box.west, box.north, box.east),
     WIDTH: String(pixels),
     HEIGHT: String(pixels),
     FORMAT: format,

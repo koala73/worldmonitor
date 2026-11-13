@@ -1,6 +1,7 @@
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
 import { isAllowedPreviewUrl } from '../../utils/imagery-preview';
-import { failed, requestArchive, type ArchiveRequestOptions, type ArchiveResult } from './archive-result';
+import { formatCoordinate } from './crop-url';
+import { failed, requestArchive, type ArchiveReply, type ArchiveRequestOptions, type ArchiveResult } from './archive-result';
 import type { PassWindow } from './pass-query';
 
 export type StacArchiveId = 'earth-search' | 'planetary-computer';
@@ -188,6 +189,17 @@ function nextRequest(links: unknown, searchUrl: string, body: Record<string, unk
   };
 }
 
+interface StacSearchPage {
+  features: unknown[];
+  links?: unknown;
+}
+
+async function readSearchPage(response: Response): Promise<StacSearchPage> {
+  const page = (await response.json()) as { features?: unknown; links?: unknown };
+  if (!Array.isArray(page.features)) throw new TypeError('no features');
+  return { features: page.features, links: page.links };
+}
+
 /** One search per archive, sent straight from the browser to the archive. */
 export async function searchStacArchive(archive: StacArchiveId, query: StacSearchQuery): Promise<ArchiveResult<ArchiveItem>> {
   const config = STAC_ARCHIVES[archive];
@@ -201,15 +213,9 @@ export async function searchStacArchive(archive: StacArchiveId, query: StacSearc
   let request: NextRequest = { url: config.searchUrl, init: { method: 'POST', headers: SEARCH_HEADERS, body: JSON.stringify(body) } };
   for (let page = 0; request; page++) {
     if (page === MAX_SEARCH_PAGES) return failed({ archive, reason: 'invalid-response' });
-    const reply = await requestArchive(archive, request.url, request.init, query);
+    const reply: ArchiveReply<StacSearchPage> = await requestArchive(archive, request.url, request.init, query, readSearchPage);
     if (!reply.ok) return failed(reply.failure);
-    let parsed: { features?: unknown; links?: unknown };
-    try {
-      parsed = (await reply.response.json()) as typeof parsed;
-    } catch {
-      return failed({ archive, reason: 'invalid-response' });
-    }
-    if (!Array.isArray(parsed.features)) return failed({ archive, reason: 'invalid-response' });
+    const parsed: StacSearchPage = reply.value;
     features.push(...parsed.features);
     request = parsed.features.length > 0 ? nextRequest(parsed.links, config.searchUrl, body) : null;
   }
@@ -238,12 +244,10 @@ export function decodePointCondition(scheme: 'sentinel-2-scl' | 'landsat-qa-pixe
 export async function readPointCondition(item: ArchiveItem, point: GeoPoint, options: ArchiveRequestOptions = {}): Promise<PointCondition> {
   if (!item.classification) return 'unknown';
   const params = new URLSearchParams({ collection: item.collection, item: item.itemId, assets: item.classification.asset });
-  const reply = await requestArchive('planetary-computer', `${PLANETARY_COMPUTER_POINT_URL}/${point.lon},${point.lat}?${params}`, {}, options);
-  if (!reply.ok) return 'unknown';
-  try {
-    const { values } = (await reply.response.json()) as { values?: unknown };
-    return decodePointCondition(item.classification.scheme, Array.isArray(values) ? num(values[0]) : null);
-  } catch {
-    return 'unknown';
-  }
+  const url = `${PLANETARY_COMPUTER_POINT_URL}/${formatCoordinate(point.lon)},${formatCoordinate(point.lat)}?${params}`;
+  const reply = await requestArchive('planetary-computer', url, {}, options, async (response) => {
+    const { values } = (await response.json()) as { values?: unknown };
+    return Array.isArray(values) ? num(values[0]) : null;
+  });
+  return reply.ok ? decodePointCondition(item.classification.scheme, reply.value) : 'unknown';
 }
