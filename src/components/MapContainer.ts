@@ -12,7 +12,7 @@ import '../styles/reservoir-levels.css';
 import type { ReservoirLevel } from '@/services/climate';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import type { FocusFitBounds } from '@/utils/focus-map';
-import type { FrameBounds, OrbitalTarget, PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
+import { oneWorldBounds, type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import {
   isLayerToggleAllowed,
   isLayerEntitled,
@@ -2003,7 +2003,7 @@ export class MapContainer {
     const westLon = (((west + 540) % 360) - 180);
     const fit: FocusFitBounds = { south, north, west: westLon, east: westLon + lonSpan, lonSpan, latSpan, center: { lat: (south + north) / 2, lon: centerLon } };
     if (this.useGlobe) this.globeMap?.fitFocusBounds(fit, Math.min(2.5, Math.max(0.12, Math.max(lonSpan, latSpan) * Math.PI / 180 * 2.4)));
-    else if (this.useDeckGL) this.deckGLMap?.frameOrbitalBounds([[fit.west, south], [fit.east, north]]);
+    else if (this.useDeckGL) this.deckGLMap?.frameOrbitalBounds(oneWorldBounds(bounds));
     else this.svgMap?.fitFocusBounds(fit);
   }
 

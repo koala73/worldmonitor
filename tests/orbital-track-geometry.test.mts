@@ -6,7 +6,7 @@ import { findPasses, parseOrbitElements } from '../shared/orbital/pass-geometry.
 import type { GeoPoint, OmmRecord, OrbitElements, Pass } from '../shared/orbital/pass-geometry.js';
 import { matchSensorProfile } from '../shared/orbital/sensor-profiles.js';
 import type { SensorProfile } from '../shared/orbital/sensor-profiles.js';
-import { buildPassTrack, framingBounds, sweptSwath, trackPositionAt, type FootprintRing, type PassTrack } from '../src/services/orbital/track-geometry.ts';
+import { buildPassTrack, framingBounds, oneWorldBounds, sweptSwath, trackPositionAt, type FootprintRing, type PassTrack } from '../src/services/orbital/track-geometry.ts';
 import { createTrackReplay, replayWindow, type ReplayFrame } from '../src/services/orbital/track-replay.ts';
 
 const { records } = JSON.parse(readFileSync(new URL('./fixtures/orbital/celestrak-gp-2026-11-13.json', import.meta.url), 'utf8')) as { records: OmmRecord[] };
@@ -167,6 +167,18 @@ describe('pass ground track', () => {
       const track = buildPassTrack(elements, profile.footprint, pass)!;
       const [[west], [east]] = framingBounds(track, point);
       assert.ok(east - west < 30, 'the box stays local to the point');
+    }
+  });
+
+  it('keeps the side of the point in an antimeridian frame for a map with no world copies', () => {
+    assert.deepEqual(oneWorldBounds([[176, -20], [185, -15]]), [[176, -20], [180, -15]]);
+    assert.deepEqual(oneWorldBounds([[-186, -20], [-178, -15]]), [[-180, -20], [-178, -15]]);
+    assert.deepEqual(oneWorldBounds([[50, 20], [60, 30]]), [[50, 20], [60, 30]]);
+    const point = { lat: -17.7, lon: 179.9 };
+    const { elements, profile, passes: found } = passes('SENTINEL-2A', point);
+    for (const pass of found) {
+      const [[west], [east]] = oneWorldBounds(framingBounds(buildPassTrack(elements, profile.footprint, pass)!, point));
+      assert.ok(west <= point.lon && point.lon <= east && west >= -180 && east <= 180);
     }
   });
 

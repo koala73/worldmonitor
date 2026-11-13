@@ -288,3 +288,12 @@ export function framingBounds(track: PassTrack, target: { lat: number; lon: numb
   const lats = positions.map(([, lat]) => lat);
   return [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]];
 }
+
+/**
+ * Clamps target-relative bounds to one world for a map that draws no world
+ * copies: across the antimeridian the target's side stays framed at its own
+ * zoom instead of a fit that the camera clamp then pushes off-centre.
+ */
+export function oneWorldBounds([[west, south], [east, north]]: FrameBounds): FrameBounds {
+  return [[Math.max(west, -180), south], [Math.min(east, 180), north]];
+}
