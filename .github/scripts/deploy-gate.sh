@@ -616,30 +616,46 @@ if [ -n "$failed" ]; then
   return 0
 fi
 
-local pr_targets base
+local pr_targets base merged_head=false
+# Commit associations can omit open PRs once a commit is on the default branch.
 if ! pr_targets=$(gh_api_with_rate_limit_retry core \
-  "repos/$REPO/commits/$SHA/pulls?per_page=100" --paginate --slurp |
+  "repos/$REPO/pulls?state=open&per_page=100" --paginate --slurp |
   jq -ce --arg sha "$SHA" --arg repo "$REPO" '
     if type == "array" and length > 0 and all(.[];
-      type == "array" and all(.[];
-        (.head.sha | type) == "string" and
-        (.state == "open" or .state == "closed") and
-        (.merged_at == null or (.merged_at | type) == "string")))
-    then [.[][] | select(.head.sha == $sha)] as $prs |
-      [$prs[] | select(.state == "open")] as $open |
+      type == "array" and all(.[]; .state == "open" and (.head.sha | type) == "string"))
+    then [.[][] | select(.head.sha == $sha)] as $open |
       if all($open[];
         (.base.ref | type) == "string" and (.base.ref | length) > 0 and
         .base.repo.full_name == $repo)
-      then {bases: (if ($open | length) > 0 then [$open[].base.ref] | unique else ["main"] end),
-        merged: (any($prs[]; .state == "closed" and .merged_at != null) and ($open | length) == 0)}
+      then [$open[].base.ref] | unique
       else error("Incomplete PR target metadata") end
-    else error("Incomplete associated pull-request response") end'); then
-  post_gate_status "pending" "Deploy Gate could not read associated PRs; retry scheduled"
+    else error("Incomplete open pull-request response") end'); then
+  post_gate_status "pending" "Deploy Gate could not read open PR targets; retry scheduled"
   active_sha=""
   return 0
 fi
 
-if [ "$(printf '%s\n' "$pr_targets" | jq -r '.merged')" = "true" ]; then
+if [ "$pr_targets" = "[]" ]; then
+  pr_targets='["main"]'
+  if ! merged_head=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/commits/$SHA/pulls?per_page=100" --paginate --slurp |
+    jq -r --arg sha "$SHA" '
+      if type == "array" and length > 0 and all(.[];
+        type == "array" and all(.[];
+          (.head.sha | type) == "string" and
+          (.state == "open" or .state == "closed") and
+          (.merged_at == null or (.merged_at | type) == "string")))
+      then [.[][] | select(.head.sha == $sha)] as $prs |
+        (any($prs[]; .state == "closed" and .merged_at != null) and
+         (any($prs[]; .state == "open") | not))
+      else error("Incomplete associated pull-request response") end'); then
+    post_gate_status "pending" "Deploy Gate could not read associated PRs; retry scheduled"
+    active_sha=""
+    return 0
+  fi
+fi
+
+if [ "$merged_head" = "true" ]; then
   echo "Skipping base drift for merged PR head $SHA"
 else
   while IFS= read -r base; do
@@ -653,7 +669,7 @@ else
       active_sha=""
       return 0
     fi
-  done < <(printf '%s\n' "$pr_targets" | jq -r '.bases[]')
+  done < <(printf '%s\n' "$pr_targets" | jq -r '.[]')
 fi
 
 post_gate_status "success" "All required PR gates passed"

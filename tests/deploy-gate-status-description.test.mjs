@@ -180,6 +180,7 @@ function runGate(conclusions, {
   sweepStatuses,
   drift,
   associatedPulls = [[]],
+  openPulls,
   gatedRuns,
   gatedRunsReadFails = false,
   triggerRunId = '',
@@ -203,6 +204,8 @@ function runGate(conclusions, {
   const summaryFile = join(tempDir, 'summary');
   const driftHeadFilesFile = join(tempDir, 'drift-head-files');
   const driftMainFilesFile = join(tempDir, 'drift-main-files');
+  const driftTargetFilesFile = join(tempDir, 'drift-target-files');
+  const driftActiveFilesFile = join(tempDir, 'drift-active-files');
 
   try {
     mkdirSync(fakeBin);
@@ -227,6 +230,7 @@ function runGate(conclusions, {
     };
     writeFileSync(driftHeadFilesFile, `${drifting.headFiles.join('\n')}\n`);
     writeFileSync(driftMainFilesFile, `${drifting.mainFiles.join('\n')}\n`);
+    writeFileSync(driftTargetFilesFile, `${(drifting.targetFiles ?? drifting.mainFiles).join('\n')}\n`);
     writeFileSync(statusReadFailuresFile, String(statusReadFailures));
     writeFileSync(currentStatusesFile, JSON.stringify(Object.fromEntries(
       (sweepStatuses ?? [{ sha: SHA, status: previousStatus ?? sweepStatus }])
@@ -368,6 +372,12 @@ function runGate(conclusions, {
         '  exit 0',
         'fi',
         'case "$*" in',
+        '  *"/pulls?state=open&per_page=100"*)',
+        '    echo "open-pulls" >> "$FAKE_CALLS"',
+        '    [ "$FAKE_OPEN_PULLS" = "unavailable" ] && exit 1',
+        '    printf \'%s\\n\' "$FAKE_OPEN_PULLS"',
+        '    exit 0',
+        '    ;;',
         '  *"/pulls?per_page=100"*)',
         '    echo "associated-pulls" >> "$FAKE_CALLS"',
         '    [ "$FAKE_ASSOCIATED_PULLS" = "unavailable" ] && exit 1',
@@ -544,6 +554,10 @@ function runGate(conclusions, {
       '    echo "git-fetch" >> "$FAKE_CALLS"',
       '    echo "$*" >> "$FAKE_FETCHES"',
       '    [ "$FAKE_GIT_FETCH_FAILS" = "1" ] && { echo "fatal: forced fetch failure" >&2; exit 128; }',
+      '    case "$*" in',
+      '      *"+refs/heads/main:"*) cp "$FAKE_GIT_MAIN_FILES" "$FAKE_GIT_ACTIVE_FILES" ;;',
+      '      *) cp "$FAKE_GIT_TARGET_FILES" "$FAKE_GIT_ACTIVE_FILES" ;;',
+      '    esac',
       '    exit 0',
       '    ;;',
       'esac',
@@ -565,7 +579,7 @@ function runGate(conclusions, {
       '  diff)',
       '    case "$*" in',
       '      *head*) cat "$FAKE_GIT_HEAD_FILES" ;;',
-      '      *) cat "$FAKE_GIT_MAIN_FILES" ;;',
+      '      *) cat "$FAKE_GIT_ACTIVE_FILES" ;;',
       '    esac',
       '    exit 0',
       '    ;;',
@@ -600,6 +614,7 @@ function runGate(conclusions, {
           ...process.env,
           FAKE_CALLS: callsFile,
           FAKE_FETCHES: fetchesFile,
+          FAKE_OPEN_PULLS: typeof openPulls === 'string' ? openPulls : JSON.stringify(openPulls ?? (Array.isArray(associatedPulls) && associatedPulls.every(Array.isArray) ? associatedPulls.map(page => page.filter(pr => pr.state === 'open')) : [[]])),
           FAKE_ASSOCIATED_PULLS: typeof associatedPulls === 'string' ? associatedPulls : JSON.stringify(associatedPulls),
           FAKE_CURRENT_STATUSES: currentStatusesFile,
           FAKE_STATUS_READ_FAILURES: statusReadFailuresFile,
@@ -610,6 +625,8 @@ function runGate(conclusions, {
           FAKE_GIT_HEAD_FILES: driftHeadFilesFile,
           FAKE_GIT_HEAD_TIP: drifting.headTip,
           FAKE_GIT_MAIN_FILES: driftMainFilesFile,
+          FAKE_GIT_TARGET_FILES: driftTargetFilesFile,
+          FAKE_GIT_ACTIVE_FILES: driftActiveFilesFile,
           FAKE_GIT_MAIN_TIP: drifting.mainTip,
           FAKE_GIT_MERGE_BASE: drifting.mergeBase,
           FAKE_GIT_MERGE_BASE_FAILS: drifting.mergeBaseFails ? '1' : '0',
@@ -1044,7 +1061,7 @@ describe('deploy gate commit-status description', () => {
       { state: 'success', description: stamped('All required PR gates passed') },
     ]);
     assert.deepEqual(result.calls, [
-      'graphql-check-page', 'graphql-check-page', 'associated-pulls', 'git-fetch', 'git-merge-base', 'status:success',
+      'graphql-check-page', 'graphql-check-page', 'open-pulls', 'associated-pulls', 'git-fetch', 'git-merge-base', 'status:success',
     ]);
   });
 
@@ -1068,6 +1085,7 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(result.calls, [
       'graphql-check-page',
       'rest-check-runs-page',
+      'open-pulls',
       'associated-pulls',
       'git-fetch',
       'git-merge-base',
@@ -1140,12 +1158,14 @@ describe('deploy gate commit-status description', () => {
       'status:pending',
       'graphql-check-page',
       'graphql-check-page',
+      'open-pulls',
       'associated-pulls',
       'git-fetch',
       'git-merge-base',
       'status:success',
       'graphql-check-page',
       'graphql-check-page',
+      'open-pulls',
       'associated-pulls',
       'git-fetch',
       'git-merge-base',
@@ -1281,6 +1301,7 @@ describe('deploy gate commit-status description', () => {
       'sleep:15',
       'graphql-check-page',
       'graphql-check-page',
+      'open-pulls',
       'associated-pulls',
       'git-fetch',
       'git-merge-base',
@@ -1334,6 +1355,7 @@ describe('deploy gate commit-status description', () => {
       'graphql-check-page',
       'rate-limit:graphql',
       'rest-check-runs-page',
+      'open-pulls',
       'associated-pulls',
       'git-fetch',
       'git-merge-base',
@@ -1351,6 +1373,7 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(result.calls, [
       'graphql-check-page',
       'graphql-check-page',
+      'open-pulls',
       'associated-pulls',
       'git-fetch',
       'git-merge-base',
@@ -1372,6 +1395,7 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(result.calls, [
       'graphql-check-page',
       'graphql-check-page',
+      'open-pulls',
       'associated-pulls',
       'git-fetch',
       'git-merge-base',
@@ -1503,6 +1527,37 @@ describe('deploy gate stale-base drift', () => {
     assert.equal(result.fetches.length, 2);
     assert.match(result.fetches[0], /\+refs\/heads\/cii-v15:/);
     assert.match(result.fetches[1], /\+refs\/heads\/main:/);
+  });
+
+  it('blocks drift on a later target after the first target passes', () => {
+    const result = runGate(conclusionsFor('success'), {
+      associatedPulls: [[openPull('cii-v15')], [openPull('main')]],
+      drift: { ...overlap, targetFiles: [] },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.fetches.length, 2);
+    assert.equal(result.posted.at(-1).state, 'failure');
+    assert.match(result.posted.at(-1).description, /^Stale base: main changed 1 file/);
+  });
+
+  it('checks an open integration target even when commit associations report only a merged PR', () => {
+    const result = runGate(conclusionsFor('success'), {
+      openPulls: [[], [openPull('cii-v15')]],
+      associatedPulls: [[mergedPull]],
+      drift: overlap,
+    });
+    assert.equal(result.posted.at(-1).state, 'failure');
+    assert.match(result.posted.at(-1).description, /^Stale base: cii-v15 changed/);
+    assert.ok(!result.calls.includes('associated-pulls'));
+  });
+
+  it('leaves unreadable or incomplete open PR inventories pending', () => {
+    for (const openPulls of ['unavailable', [], [{ message: 'incomplete' }], [[{ state: 'open' }]]]) {
+      const result = runGate(conclusionsFor('success'), { openPulls });
+      assert.equal(result.posted.at(-1).state, 'pending');
+      assert.match(result.posted.at(-1).description, /could not read open PR targets/);
+      assert.equal(result.fetches.length, 0);
+    }
   });
 
   it('does not approve a head with missing or foreign target metadata', () => {
