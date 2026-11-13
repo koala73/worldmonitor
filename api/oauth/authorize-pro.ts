@@ -90,6 +90,7 @@ import { captureSilentError } from '../_sentry-edge.js';
 import { mcpGrantName } from '../../shared/agent-client-source';
 // @ts-expect-error — JS module, no declaration file
 import { clientAllowsRedirectUri, describeClientFailure, isClientMetadataDocumentId, resolveOAuthClient } from './_client-metadata.js';
+import { isAllowedRedirectUri } from './_redirect-uri.js';
 
 /** OAuth authorization-code TTL — matches `api/oauth/authorize.js:10`. */
 const CODE_TTL_SECONDS = 600;
@@ -469,7 +470,10 @@ export async function authorizeProHandler(req: Request, deps: AuthorizeProDeps):
   const clientData = resolved.client as ClientData;
 
   // ----- 6. Defense-in-depth: redirect_uri re-check -----
-  if (!clientAllowsRedirectUri(clientData, redirect_uri)) {
+  // A DCR registration keeps the URIs it was created with, so re-check the
+  // current allowlist (as mcp-grant-mint.ts does) to honour a removal.
+  if (!clientAllowsRedirectUri(clientData, redirect_uri)
+    || (!clientData.cimd && !isAllowedRedirectUri(redirect_uri))) {
     return htmlError(
       'Redirect URI Mismatch',
       'The redirect_uri does not match any registered redirect URI for this client.',
