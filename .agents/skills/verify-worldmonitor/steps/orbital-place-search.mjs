@@ -41,9 +41,11 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await waitForBoot(page, { data: true });
   const renderer = await waitForMap(page);
   log('renderer', renderer);
-  await (await expectVisible('#searchBtn')).click();
-  await (await expectVisible('.search-modal .search-input')).pressSequentially('satellite passes', { delay: 25 });
-  await page.locator('.search-modal .search-result-item[data-index]').first().click();
+  // Phones hide the header search button behind the bottom bar's Search tab.
+  await page.locator('#searchBtn:visible, #mobileSearchBtn:visible, button:visible:has-text("Search")').first().click();
+  await (await expectVisible('.search-overlay .search-input')).pressSequentially('satellite passes', { delay: 25 });
+  await page.locator('.search-overlay .search-result-item[data-command="orbital:search"]').click();
+  await page.locator('.search-overlay').waitFor({ state: 'hidden' });
   await expectVisible('.ow-search-input');
   await sheet.locator('.ow-search-input').fill('Palm Jumeirah');
   await sheet.locator('.ow-search-input').press('Enter');
