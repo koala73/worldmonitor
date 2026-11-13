@@ -71,7 +71,7 @@ describe('archive acquisitions attached to computed passes', () => {
     const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { failing: ['planetarycomputer.microsoft.com'] }).fetch });
     assert.equal(evidence.status, 'partial');
     assert.deepEqual(evidence.failures, [{ archive: 'planetary-computer', reason: 'http-status', httpStatus: 503 }]);
-    assert.deepEqual(evidence.unansweredProfiles, ['landsat']);
+    assert.deepEqual(evidence.unansweredProfiles, ['sentinel-2', 'landsat']);
     assert.ok(evidence.acquisitions.some((a) => a.profileId === 'sentinel-2'));
     assert.ok(evidence.acquisitions.some((a) => a.profileId === 'sentinel-1'));
     assert.equal(evidence.acquisitions.filter((a) => a.profileId === 'landsat').length, 0);
@@ -84,8 +84,11 @@ describe('archive acquisitions attached to computed passes', () => {
     const lookup = await fixtureLookup(dubai);
     const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { unreachable: ['earth-search.aws.element84.com'] }).fetch });
     assert.deepEqual(evidence.failures, [{ archive: 'earth-search', reason: 'network' }]);
-    assert.deepEqual(evidence.unansweredProfiles, ['sentinel-1']);
+    assert.deepEqual(evidence.unansweredProfiles, ['sentinel-2', 'sentinel-1']);
     assert.ok(evidence.acquisitions.some((a) => a.profileId === 'sentinel-2'), 'Planetary Computer still answers for Sentinel-2');
+    const s2Passes = evidence.passes.filter((p) => p.profileId === 'sentinel-2' && p.timeMs <= lookup.nowMs);
+    assert.ok(s2Passes.length > 0);
+    for (const pass of s2Passes) assert.notEqual(pass.tier.kind, 'not-in-archive', 'one mirror answering cannot rule out an image the other may hold');
   });
 
   it('returns the other archives when one stalls, with the stalled missions unanswered', async () => {
@@ -95,7 +98,7 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.ok(Date.now() - started < 2_000, 'the lookup does not wait on the stalled archive');
     assert.equal(evidence.status, 'partial');
     assert.deepEqual(evidence.failures, [{ archive: 'earth-search', reason: 'timeout' }]);
-    assert.deepEqual(evidence.unansweredProfiles, ['sentinel-1']);
+    assert.deepEqual(evidence.unansweredProfiles, ['sentinel-2', 'sentinel-1']);
     assert.ok(evidence.acquisitions.some((a) => a.profileId === 'sentinel-2' && a.items.every((i) => i.archive === 'planetary-computer')));
     assert.ok(evidence.mosaics.length > 0 && evidence.frames.length > 0);
   });
@@ -198,6 +201,14 @@ describe('archive acquisitions attached to computed passes', () => {
   it('says a scene-wide cloud read did not check the spot', () => {
     assert.equal(describePointCondition({ condition: 'unknown', cloudCoverPct: 12.4 }), '12% cloud across the scene, this spot not checked');
     assert.equal(describePointCondition({ condition: 'unknown', cloudCoverPct: null }), 'this spot not checked for cloud');
+  });
+
+  it('marks the lookup partial when the point classification read fails', async () => {
+    const lookup = await fixtureLookup(dubai);
+    const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { scl: 9, failingPaths: ['/item/point/'] }).fetch });
+    assert.equal(evidence.acquisitions.find((a) => a.platform === 'sentinel-2b')!.condition, 'unknown');
+    assert.equal(evidence.status, 'partial');
+    assert.ok(evidence.failures.length > 0 && evidence.failures.every((f) => f.archive === 'planetary-computer' && f.reason === 'http-status'));
   });
 
   it('shows daily mosaics in their own row and upgrades no pass to a confirmed image with them', async () => {

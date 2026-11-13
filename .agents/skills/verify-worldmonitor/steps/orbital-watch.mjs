@@ -12,6 +12,7 @@ import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
 const ARCHIVE_HOSTS = ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com', 'gibs.earthdata.nasa.gov', 'view.eumetsat.int'];
 const CATALOG_PATH = '/api/orbital/v1/list-imaging-satellites';
 const HOUR = 3_600_000;
+const PLACE = { name: 'Palm Jumeirah, Dubai', lat: 25.112, lon: 55.139, zoom: 9 };
 
 function fixtureCatalog() {
   const { records } = JSON.parse(readFileSync(new URL('../../../../tests/fixtures/orbital/celestrak-gp-2026-11-13.json', import.meta.url), 'utf8'));
@@ -46,15 +47,18 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   });
 
   const requests = [];
-  page.on('request', (req) => requests.push({ url: req.url(), body: req.postData() ?? '' }));
+  page.on('request', (req) => requests.push({
+    url: req.url(), body: req.postData() ?? '', harnessNavigation: req.isNavigationRequest() && req.frame() === page.mainFrame(),
+  }));
 
   await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': '"globe"' } });
-  await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${base}/dashboard?view=global&lat=${PLACE.lat}&lon=${PLACE.lon}&zoom=${PLACE.zoom}`, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
   log('renderer', await waitForMap(page));
 
   const sheet = page.locator('.orbital-watch-sheet');
-  const open = async (dx = 0, dy = 0) => {
+  let aim = { dx: 0, dy: 0 };
+  const open = async ({ dx, dy } = aim) => {
     const box = await page.locator('#mapContainer canvas').first().boundingBox();
     await page.mouse.click(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, { button: 'right' });
     await page.getByRole('menuitem', { name: 'Satellite passes here' }).or(page.getByText('Satellite passes here', { exact: true })).first().click();
@@ -66,15 +70,78 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     const focused = await page.evaluate(() => document.activeElement?.id);
     if (focused !== 'mapContainer') throw new Error(`focus after close went to ${focused}`);
   };
+  const settleImagesInView = async () => {
+    await page.waitForFunction(() => {
+      const body = document.querySelector('.orbital-watch-sheet .ow-body')?.getBoundingClientRect();
+      if (!body) return false;
+      return [...document.querySelectorAll('.orbital-watch-sheet .ow-image-frame')].every((frame) => {
+        const r = frame.getBoundingClientRect();
+        return r.bottom < body.top || r.top > body.bottom || frame.dataset.state !== 'loading';
+      });
+    }, null, { timeout: 90_000 });
+    const states = await sheet.locator('.ow-image-frame').evaluateAll((frames) => frames.map((f) => f.dataset.state));
+    log('image states', states);
+  };
   const privacy = async () => {
     if (!(await sheet.locator('.ow-privacy').isVisible())) throw new Error('privacy notice missing');
   };
+
+  const pickedAt = async (at) => {
+    await open(at);
+    const [lat, ns, lon, ew] = (await sheet.locator('.ow-point').innerText()).match(/([\d.]+)°([NS]), ([\d.]+)°([EW])/).slice(1);
+    await close();
+    return { lat: ns === 'N' ? +lat : -lat, lon: ew === 'E' ? +lon : -lon };
+  };
+  const settled = async () => {
+    let prev = await pickedAt(aim);
+    for (let tries = 0; tries < 12; tries++) {
+      await page.waitForTimeout(1500);
+      const now = await pickedAt(aim);
+      if (Math.abs(now.lat - prev.lat) < 0.001 && Math.abs(now.lon - prev.lon) < 0.001) return now;
+      prev = now;
+    }
+    return prev;
+  };
+  const clamp = (v, max) => Math.max(-max, Math.min(max, v));
+  const assertAtPlace = (text) => {
+    const [lat, lon] = text.match(/[\d.]+/g).map(Number);
+    if (Math.abs(lat - PLACE.lat) > 0.005 || Math.abs(lon - PLACE.lon) > 0.005) throw new Error(`picked ${text}, not ${PLACE.name}`);
+  };
+  const openAtPlace = async () => {
+    await open();
+    assertAtPlace(await sheet.locator('.ow-point').innerText());
+  };
+  const calibrate = async () => {
+    for (let round = 0; round < 8; round++) {
+      const here = await settled();
+      if (Math.abs(here.lat - PLACE.lat) < 0.003 && Math.abs(here.lon - PLACE.lon) < 0.003) break;
+      const right = await pickedAt({ dx: aim.dx + 40, dy: aim.dy });
+      const down = await pickedAt({ dx: aim.dx, dy: aim.dy + 40 });
+      const [a, b, c, d] = [(right.lat - here.lat) / 40, (down.lat - here.lat) / 40, (right.lon - here.lon) / 40, (down.lon - here.lon) / 40];
+      const [dLat, dLon] = [PLACE.lat - here.lat, PLACE.lon - here.lon];
+      const det = a * d - b * c;
+      aim = { dx: aim.dx + (dLat * d - b * dLon) / det, dy: aim.dy + (a * dLon - c * dLat) / det };
+      log('aim', JSON.stringify({ here, aim }));
+      const box = await page.locator('#mapContainer canvas').first().boundingBox();
+      if (Math.abs(aim.dx) > box.width * 0.35 || Math.abs(aim.dy) > box.height * 0.35) {
+        const [cx, cy] = [box.x + box.width / 2, box.y + box.height / 2];
+        const [mx, my] = [clamp(aim.dx, box.width * 0.3), clamp(aim.dy, box.height * 0.3)];
+        await page.mouse.move(cx, cy);
+        await page.mouse.down();
+        await page.mouse.move(cx - mx, cy - my, { steps: 25 });
+        await page.mouse.up();
+        aim = { dx: 0, dy: 0 };
+      }
+    }
+  };
+  await calibrate();
 
   let release;
   holdArchives = new Promise((resolve) => { release = resolve; });
   await open();
   const pointText = await sheet.locator('.ow-point').innerText();
-  log('picked point', pointText);
+  log('picked point', pointText, 'target', PLACE.name);
+  assertAtPlace(pointText);
   await sheet.locator('.ow-headline').filter({ hasText: /Checking archives|Computing/ }).first().waitFor();
   await privacy();
   await shot('loading-checking-archives');
@@ -86,19 +153,29 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await privacy();
   const tiers = await sheet.locator('.ow-tier-label').allInnerTexts();
   log('tier labels', [...new Set(tiers)]);
+  log('confirmed images', await sheet.locator('.ow-row[data-tier="confirmed-image"] .ow-row-image img').evaluateAll((imgs) => imgs.map((i) => new URL(i.src).pathname.split('/').slice(0, 6).join('/'))));
+  const confirmedImage = sheet.locator('.ow-row[data-tier="confirmed-image"] .ow-row-image').filter({ has: page.locator('img[src*="/item/bbox/"]') }).first();
+  if (!(await confirmedImage.count())) throw new Error(`no confirmed crop of ${PLACE.name}`);
+  await confirmedImage.evaluate((el) => el.closest('.ow-row').scrollIntoView({ block: 'center' }));
+  await settleImagesInView();
   await shot('tiered-results');
   const collapsed = sheet.locator('.ow-group-toggle[aria-expanded="false"]');
   while (await collapsed.count()) await collapsed.first().click();
-  await sheet.locator('.ow-body').evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  const gibsImage = sheet.locator('.ow-group[data-group="mosaic"] .ow-row-image').first();
+  await gibsImage.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await settleImagesInView();
+  const gibsCredit = gibsImage.locator('.ow-image-credit');
+  if (!(await gibsCredit.isVisible()) || !/Global Imagery Browse Services/.test(await gibsCredit.innerText())) throw new Error('NASA GIBS credit missing beside its mosaic image');
   await shot('tiered-results-expanded-credits');
-  log('image captions', [...new Set(await sheet.locator('.ow-row-image figcaption, .ow-credit').allInnerTexts())]);
+  log('image captions', [...new Set(await sheet.locator('.ow-image-credit').allInnerTexts())]);
   await close();
 
   failing.add('earth-search.aws.element84.com');
-  await open();
+  await openAtPlace();
   await sheet.locator('.ow-banner-partial').waitFor({ timeout: 90_000 });
   await privacy();
   log('partial banner', await sheet.locator('.ow-banner-partial').innerText());
+  await settleImagesInView();
   await shot('partial-archive-failure');
   failing.clear();
   await close();
@@ -108,7 +185,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForBoot(page, { data: true });
     await waitForMap(page);
-    await open();
+    await calibrate();
+    await openAtPlace();
     await sheet.locator('.ow-banner-stale').waitFor({ timeout: 90_000 });
     await privacy();
     log('stale banner', await sheet.locator('.ow-banner-stale').innerText());
@@ -119,7 +197,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForBoot(page, { data: true });
     await waitForMap(page);
-    await open();
+    await calibrate();
+    await openAtPlace();
     await sheet.locator('.ow-empty').waitFor({ timeout: 90_000 });
     await privacy();
     log('empty state', await sheet.locator('.ow-empty').innerText());
@@ -128,7 +207,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   }
 
   const needles = pointText.match(/\d+\.\d\d/g);
-  const leaks = requests.filter(({ url, body }) => !ARCHIVE_HOSTS.includes(new URL(url).hostname)
+  // The harness's own page loads carry the map centre in the query string; the app never navigates the page.
+  const leaks = requests.filter(({ url, body, harnessNavigation }) => !harnessNavigation && !ARCHIVE_HOSTS.includes(new URL(url).hostname)
     && needles.every((n) => `${url} ${body}`.includes(n)));
   log('requests', requests.length, 'archive requests', requests.filter(({ url }) => ARCHIVE_HOSTS.includes(new URL(url).hostname)).length);
   if (leaks.length) throw new Error(`picked point left the browser: ${leaks.map((l) => l.url).join(', ')}`);

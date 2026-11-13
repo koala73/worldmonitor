@@ -5178,7 +5178,10 @@
       "imageAlt": "Image de {{name}}, {{time}}",
       "mosaicDays": "Jours dans l’archive : {{count}}",
       "cadence": "nouvelle image toutes les {{minutes}} min",
-      "sourceUnavailable": "L’archive ne contient aucune image de cette source pour ces jours."
+      "sourceUnavailable": "L’archive ne contient aucune image de cette source pour ces jours.",
+      "imageLoading": "Chargement de l’image…",
+      "imageFailed": "L’image ne s’est pas chargée. L’archive est peut-être lente ou indisponible.",
+      "noPreview": "L'archive n'a pas encore d'aperçu de cette scène."
     },
     "dailyMosaics": "mosaïques quotidiennes",
     "weatherFrames": "images météo",

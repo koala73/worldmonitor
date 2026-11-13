@@ -5150,7 +5150,10 @@
       "imageAlt": "{{name}} felvétel, {{time}}",
       "mosaicDays": "Napok az archívumban: {{count}}",
       "cadence": "új felvétel {{minutes}} percenként",
-      "sourceUnavailable": "Az archívum ezekre a napokra nem tartalmaz felvételt ebből a forrásból."
+      "sourceUnavailable": "Az archívum ezekre a napokra nem tartalmaz felvételt ebből a forrásból.",
+      "imageLoading": "Kép betöltése…",
+      "imageFailed": "A kép nem töltődött be. Az archívum lassú vagy nem érhető el.",
+      "noPreview": "Az archívumban még nincs előnézet erről a jelenetről."
     },
     "dailyMosaics": "napi mozaikok",
     "weatherFrames": "időjárási felvételek",
