@@ -6,6 +6,7 @@ import {
   readDashboardSearchQuery,
   DASHBOARD_SEARCH_QUERY_MAX_CHARS,
   withUrlFragment,
+  withoutVariantScopedUrlState,
 } from '../src/utils/urlState.ts';
 import { LAYER_REGISTRY } from '../src/config/map-layer-definitions.ts';
 
@@ -260,5 +261,18 @@ describe('withUrlFragment', () => {
 
   it('replaces a fragment already on the synced url', () => {
     assert.equal(withUrlFragment(`${synced}#old`, '#new'), `${synced}#new`);
+  });
+});
+
+describe('withoutVariantScopedUrlState', () => {
+  it('drops the previous variant layer set and keeps the camera and fragment', () => {
+    const next = new URL(withoutVariantScopedUrlState(
+      'http://localhost:5173/?lat=8.0000&lon=0.0000&zoom=1.00&view=global&timeRange=7d&layers=outages%2Cnatural#signup',
+    ));
+    assert.equal(next.searchParams.has('layers'), false);
+    assert.equal(next.searchParams.get('lat'), '8.0000');
+    assert.equal(next.searchParams.get('view'), 'global');
+    assert.equal(next.searchParams.get('timeRange'), '7d');
+    assert.equal(next.hash, '#signup');
   });
 });
