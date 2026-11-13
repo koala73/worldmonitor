@@ -136,6 +136,30 @@ describe('orbital timeline', () => {
     expect(button.textContent).toBe('likely imaged: SENTINEL-2B, 2026-11-12 06:00 UTC');
   });
 
+  it('keeps focus on the timeline list button that selected a pass', () => {
+    const likely = pass('SENTINEL-2B', -30, { kind: 'likely-imaged' });
+    mounted([likely], context());
+    const key = `${likely.noradId}:${likely.timeMs}`;
+    const button = timeline().querySelector<HTMLButtonElement>(`.ow-tl-list button[data-pass="${key}"]`)!;
+    button.focus();
+    button.click();
+    expect(document.activeElement?.matches(`.ow-tl-list button[data-pass="${key}"]`)).toBe(true);
+    expect(document.activeElement?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('shows a pass as confirmed on the timeline as soon as one archive confirms it, like its sheet row', () => {
+    const likely = pass('SENTINEL-2B', -30, { kind: 'likely-imaged' });
+    const confirmed: PointPass = { ...likely, tier: { kind: 'confirmed-image' } };
+    const page = new OrbitalWatchPage({ onClose: vi.fn(), onRetry: vi.fn(), onSelectPass });
+    pages.push(page);
+    page.open(point, null);
+    page.render({ kind: 'passes', lookup: lookup([likely]), archives: { kind: 'checking', total: 3,
+      progress: { evidence: evidence([confirmed]), settled: ['earth-search'] as never, pendingProfiles: [] } } });
+    const key = `${likely.noradId}:${likely.timeMs}`;
+    expect(track('confirmed').querySelector(`[data-pass="${key}"]`)).not.toBeNull();
+    expect(track('likely').querySelector(`[data-pass="${key}"]`)).toBeNull();
+  });
+
   it('draws an upcoming pass right of the now marker as an opportunity', () => {
     const soon = pass('SENTINEL-1C', 5, { kind: 'opportunity' });
     mounted([soon], context());

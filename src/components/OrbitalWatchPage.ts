@@ -306,6 +306,7 @@ export class OrbitalWatchPage {
     const focused = document.activeElement instanceof HTMLElement && this.body.contains(document.activeElement) ? document.activeElement : null;
     const selector = focused?.dataset.key ? `.ow-row[data-key="${CSS.escape(focused.dataset.key)}"]`
       : focused?.dataset.group ? `.ow-group-toggle[data-group="${focused.dataset.group}"]`
+      : focused?.dataset.pass && focused.closest('.ow-timeline') ? `.ow-timeline .${focused.classList[0]}[data-pass="${CSS.escape(focused.dataset.pass)}"]`
       : null;
     replaceChildren(this.body, ...this.renderState(state));
     if (focused) ((selector ? this.body.querySelector<HTMLElement>(selector) : null) ?? this.sheet).focus();
@@ -360,8 +361,8 @@ export class OrbitalWatchPage {
     const acknowledgement = usesGibs ? h('p', { className: 'ow-credit' }, IMAGE_CREDIT.gibsAcknowledgement) : null;
     this.timeline.update({
       lookup,
-      passes: evidence?.passes ?? lookup.passes,
-      acquisitions: evidence?.acquisitions ?? [],
+      passes: shown?.passes ?? lookup.passes,
+      acquisitions: shown?.acquisitions ?? [],
       context: this.context,
       selectedKey: this.selectedKey,
     });
