@@ -2,6 +2,7 @@ import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import { searchPlaces, type PlaceResult } from '@/services/orbital/place-search';
 import { t } from '@/services/i18n';
 import { requestDevicePosition } from '@/utils/user-location';
+import { roundShareCoordinate } from '@/utils/urlState';
 import { h, replaceChildren } from '@/utils/dom-utils';
 
 export interface OrbitalPlaceToolsCallbacks {
@@ -142,7 +143,8 @@ export class OrbitalPlaceTools {
     if (controller.signal.aborted) return;
     this.search = null;
     if (position.ok) {
-      this.pick({ lat: position.lat, lon: position.lon });
+      // The full-view route keeps the point in the address bar, so a device fix is cut to the share grid first.
+      this.pick({ lat: roundShareCoordinate(position.lat), lon: roundShareCoordinate(position.lon) });
       return;
     }
     this.status.textContent = t(position.reason === 'denied' ? 'orbitalWatch.search.locationDenied' : 'orbitalWatch.search.locationUnavailable');

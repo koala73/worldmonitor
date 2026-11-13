@@ -177,13 +177,13 @@ describe('place search in the satellite pass lookup', () => {
     await vi.waitFor(() => expect(lookupMock).toHaveBeenCalledWith({ point: { lat: 10, lon: 20 } }, expect.anything()));
   });
 
-  it('opens the device location only after the click, and sends it nowhere', async () => {
+  it('opens the device location only after the click, rounds it to the share grid, and sends it nowhere', async () => {
     const getCurrentPosition = vi.fn((ok: PositionCallback) => ok({ coords: { latitude: EXACT.lat, longitude: EXACT.lon } } as GeolocationPosition));
     Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition } });
     openOrbitalWatchSearch(null);
     expect(getCurrentPosition).not.toHaveBeenCalled();
     button('.ow-locate').click();
-    await vi.waitFor(() => expect(lookupMock).toHaveBeenCalledWith({ point: EXACT }, expect.anything()));
+    await vi.waitFor(() => expect(lookupMock).toHaveBeenCalledWith({ point: { lat: 48.86, lon: 2.29 } }, expect.anything()));
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
