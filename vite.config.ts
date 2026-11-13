@@ -1501,6 +1501,7 @@ export default defineConfig(({ mode }) => {
           '**/test-results/**',
           '**/playwright-report/**',
           '**/.playwright-mcp/**',
+          '**/src-tauri/target/**',
         ],
       },
       proxy: {
