@@ -144,7 +144,11 @@ export class OrbitalTimelapsePage {
   private render(): void {
     const focusedAction = (document.activeElement as HTMLElement | null)?.dataset?.action;
     const focusedIndex = (document.activeElement as HTMLElement | null)?.dataset?.index;
+    const shown = this.body.querySelector<HTMLImageElement>('.oiv-stage .oiv-image:not(.oiv-pending)');
     replaceChildren(this.body, ...this.renderState());
+    const fresh = this.body.querySelector<HTMLImageElement>('.oiv-stage .oiv-image');
+    // A re-render (pause, resume) keeps the decoded frame rather than making the browser fetch it again.
+    if (shown && fresh && fresh.src === shown.src) fresh.replaceWith(shown);
     const selector = focusedIndex !== undefined ? `[data-action="${focusedAction}"][data-index="${focusedIndex}"]` : `[data-action="${focusedAction}"]`;
     if (focusedAction) this.body.querySelector<HTMLElement>(selector)?.focus();
     if (!this.dialog.contains(document.activeElement)) this.dialog.focus({ preventScroll: true });

@@ -144,6 +144,19 @@ describe('orbital time-lapse page', () => {
     expect(page()!.querySelector<HTMLImageElement>('.oiv-image')!.getAttribute('src')).toBe(crop('S2_2016'));
   });
 
+  it('keeps the decoded frame on screen when playback pauses', async () => {
+    open({ searchLooks: looks(years(2015, 2026)) });
+    await vi.waitFor(() => expect(page()!.querySelector('[data-action="toggle"]')).not.toBeNull());
+    const before = page()!.querySelector<HTMLImageElement>('.oiv-stage .oiv-image')!;
+    page()!.querySelector<HTMLButtonElement>('[data-action="toggle"]')!.click();
+    await settle();
+    expect(page()!.querySelector('[data-action="toggle"]')!.getAttribute('aria-pressed')).toBe('false');
+    const after = page()!.querySelectorAll<HTMLImageElement>('.oiv-stage .oiv-image');
+    expect(after).toHaveLength(1);
+    expect(after[0]).toBe(before);
+    expect(after[0]!.classList.contains('oiv-pending')).toBe(false);
+  });
+
   it('gives reduced-motion users a stepper and leaves out looks that fail to load', async () => {
     const failing = crop('S2_2017');
     open({ searchLooks: looks(years(2015, 2020)), prefersReducedMotion: () => true, loadImage: async (url) => { if (url === failing) throw new Error('x'); } });
