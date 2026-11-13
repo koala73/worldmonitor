@@ -23,7 +23,7 @@ Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/orbital-watch.m
 
 The step serves `/api/orbital/v1/list-imaging-satellites` from `tests/fixtures/orbital/celestrak-gp-2026-11-13.json` and lets archive requests reach the real archives. It holds them to capture the checking state, fails Earth Search for the partial state, marks the catalog stale, and for the empty state serves an empty catalog and empty archive answers (no scenes, empty GIBS time domains). Set `WM_VERIFY_ORBITAL_CATALOG=live` to read the local API instead. Fixture orbits drift with time, so far from 2026-11-13 the pass list shrinks.
 
-It fails if any request to a non-archive host carries the picked point, and if an archive image becomes the largest contentful paint.
+It fails if any request to a non-archive host carries the picked point, if an archive request carries it in its URL path rather than its query or body, and if an archive image becomes the largest contentful paint.
 
 Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/orbital-watch-track.mjs --name orbital-track` for the `track` sub-feature. `WM_VERIFY_ORBITAL_MAP=flat` drives the flat map: on desktop it hides the software renderer name so `MapContainer` picks deck.gl, and with `WM_VERIFY_ORBITAL_VIEWPORT=mobile` it opens the lookup from the globe and switches to the 2D SVG map, which has no context menu. `npx playwright test e2e/orbital-watch-track.spec.ts` checks the deck.gl layers through the map harness.
 
