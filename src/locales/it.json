@@ -5252,14 +5252,14 @@
         "passes": "Passaggi"
       },
       "status": {
-        "objects": "{{count}} oggetti · CelesTrak GP",
+        "objects": "{{count}} satelliti per immagini · CelesTrak GP",
         "fetched": "Recuperato {{time}} · {{ago}}",
         "sun": "Sole {{point}} · punto subsolare"
       },
       "step": {
         "computing": "Calcolo",
         "catalogLoading": "Catalogo · caricamento",
-        "catalog": "Catalogo · {{count}} oggetti",
+        "catalog": "Catalogo · {{count}} satelliti per immagini",
         "propagating": "Propagazione orbite · {{done}} / {{total}}",
         "archives": "Archivi · {{done}} / {{total}} hanno risposto",
         "matching": "Abbinamento scene a {{passes}} passaggi",
@@ -5320,8 +5320,8 @@
       "back": "Tutti i passaggi",
       "altitude": "Quota",
       "offNadir": "Fuori nadir",
-      "crossed": "{{name}} è passato a {{altitude}} km di quota, {{distance}} km {{direction}}, alle {{time}} UTC, a {{speed}} km/s al suolo.",
-      "crossedHeading": "{{name}} è passato a {{altitude}} km di quota, {{distance}} km {{direction}}, alle {{time}} UTC, diretto a {{heading}} a {{speed}} km/s al suolo.",
+      "crossed": "{{name}} è passato a {{altitude}} km di quota, {{distance}} km {{direction}}, alle {{time}}, a {{speed}} km/s al suolo.",
+      "crossedHeading": "{{name}} è passato a {{altitude}} km di quota, {{distance}} km {{direction}}, alle {{time}}, diretto a {{heading}} a {{speed}} km/s al suolo.",
       "looking": "Guardava a {{deg}}° dalla verticale.",
       "sceneCloud": "Copertura nuvolosa della scena: {{pct}}%.",
       "pixelLine": "Pixel di {{m}} m",

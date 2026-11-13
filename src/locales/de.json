@@ -5224,14 +5224,14 @@
         "passes": "Überflüge"
       },
       "status": {
-        "objects": "{{count}} Objekte · CelesTrak GP",
+        "objects": "{{count}} Bildgebungssatelliten · CelesTrak GP",
         "fetched": "Abgerufen {{time}} · {{ago}}",
         "sun": "Sonne {{point}} · Subsolarpunkt"
       },
       "step": {
         "computing": "Berechnung",
         "catalogLoading": "Katalog · wird geladen",
-        "catalog": "Katalog · {{count}} Objekte",
+        "catalog": "Katalog · {{count}} Bildgebungssatelliten",
         "propagating": "Bahnen werden berechnet · {{done}} / {{total}}",
         "archives": "Archive · {{done}} / {{total}} geantwortet",
         "matching": "Szenen werden {{passes}} Überflügen zugeordnet",
@@ -5292,8 +5292,8 @@
       "back": "Alle Überflüge",
       "altitude": "Höhe",
       "offNadir": "Off-Nadir",
-      "crossed": "{{name}} überflog den Ort in {{altitude}} km Höhe, {{distance}} km {{direction}}, um {{time}} UTC, mit {{speed}} km/s über Grund.",
-      "crossedHeading": "{{name}} überflog den Ort in {{altitude}} km Höhe, {{distance}} km {{direction}}, um {{time}} UTC, Richtung {{heading}} mit {{speed}} km/s über Grund.",
+      "crossed": "{{name}} überflog den Ort in {{altitude}} km Höhe, {{distance}} km {{direction}}, um {{time}}, mit {{speed}} km/s über Grund.",
+      "crossedHeading": "{{name}} überflog den Ort in {{altitude}} km Höhe, {{distance}} km {{direction}}, um {{time}}, Richtung {{heading}} mit {{speed}} km/s über Grund.",
       "looking": "Es blickte {{deg}}° neben die Senkrechte.",
       "sceneCloud": "Wolkenbedeckung der Szene: {{pct}} %.",
       "pixelLine": "{{m}} m Pixel",

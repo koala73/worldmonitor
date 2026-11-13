@@ -5196,14 +5196,14 @@
         "passes": "過境"
       },
       "status": {
-        "objects": "{{count}} 個目標 · CelesTrak GP",
+        "objects": "{{count}}顆成像衛星 · CelesTrak GP",
         "fetched": "獲取於 {{time}} · {{ago}}",
         "sun": "太陽 {{point}} · 太陽直射點"
       },
       "step": {
         "computing": "計算中",
         "catalogLoading": "目錄 · 載入中",
-        "catalog": "目錄 · {{count}} 個目標",
+        "catalog": "目錄 · {{count}}顆成像衛星",
         "propagating": "正在推算軌道 · {{done}} / {{total}}",
         "archives": "存檔 · {{done}} / {{total}} 已響應",
         "matching": "正在將場景與 {{passes}} 次過境匹配",
@@ -5264,8 +5264,8 @@
       "back": "全部過境",
       "altitude": "高度",
       "offNadir": "偏離天底角",
-      "crossed": "{{name}} 於 {{time}} UTC 在 {{altitude}} 公里高空經過，位於此地{{direction}} {{distance}} 公里處，地面速度 {{speed}} 公里/秒。",
-      "crossedHeading": "{{name}} 於 {{time}} UTC 在 {{altitude}} 公里高空經過，位於此地{{direction}} {{distance}} 公里處，向{{heading}}移動，地面速度 {{speed}} 公里/秒。",
+      "crossed": "{{name}} 於 {{time}} 在 {{altitude}} 公里高空經過，位於此地{{direction}} {{distance}} 公里處，地面速度 {{speed}} 公里/秒。",
+      "crossedHeading": "{{name}} 於 {{time}} 在 {{altitude}} 公里高空經過，位於此地{{direction}} {{distance}} 公里處，向{{heading}}移動，地面速度 {{speed}} 公里/秒。",
       "looking": "其觀測方向偏離垂直向下 {{deg}}°。",
       "sceneCloud": "場景雲量：{{pct}}%。",
       "pixelLine": "{{m}} 米畫素",

@@ -5224,14 +5224,14 @@
         "passes": "Преминавания"
       },
       "status": {
-        "objects": "{{count}} обекта · CelesTrak GP",
+        "objects": "{{count}} спътника за изображения · CelesTrak GP",
         "fetched": "Изтеглено {{time}} · {{ago}}",
         "sun": "Слънце {{point}} · подслънчева точка"
       },
       "step": {
         "computing": "Изчисляване",
         "catalogLoading": "Каталог · зареждане",
-        "catalog": "Каталог · {{count}} обекта",
+        "catalog": "Каталог · {{count}} спътника за изображения",
         "propagating": "Изчисляване на орбити · {{done}} / {{total}}",
         "archives": "Архиви · отговориха {{done}} / {{total}}",
         "matching": "Съпоставяне на сцени с {{passes}} преминавания",
@@ -5292,8 +5292,8 @@
       "back": "Всички преминавания",
       "altitude": "Височина",
       "offNadir": "Отклонение от надира",
-      "crossed": "{{name}} премина на {{altitude}} км височина, на {{distance}} км {{direction}}, в {{time}} UTC, със скорост {{speed}} км/с над земята.",
-      "crossedHeading": "{{name}} премина на {{altitude}} км височина, на {{distance}} км {{direction}}, в {{time}} UTC, движейки се на {{heading}} със скорост {{speed}} км/с над земята.",
+      "crossed": "{{name}} премина на {{altitude}} км височина, на {{distance}} км {{direction}}, в {{time}}, със скорост {{speed}} км/с над земята.",
+      "crossedHeading": "{{name}} премина на {{altitude}} км височина, на {{distance}} км {{direction}}, в {{time}}, движейки се на {{heading}} със скорост {{speed}} км/с над земята.",
       "looking": "Гледаше на {{deg}}° от вертикалата.",
       "sceneCloud": "Облачност на сцената: {{pct}}%.",
       "pixelLine": "Пиксел {{m}} м",

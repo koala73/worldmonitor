@@ -5280,14 +5280,14 @@
         "passes": "Przeloty"
       },
       "status": {
-        "objects": "Obiekty: {{count}} · CelesTrak GP",
+        "objects": "Satelity obrazujące: {{count}} · CelesTrak GP",
         "fetched": "Pobrano {{time}} · {{ago}}",
         "sun": "Słońce {{point}} · punkt podsłoneczny"
       },
       "step": {
         "computing": "Obliczanie",
         "catalogLoading": "Katalog · wczytywanie",
-        "catalog": "Katalog · obiekty: {{count}}",
+        "catalog": "Katalog · Satelity obrazujące: {{count}}",
         "propagating": "Propagacja orbit · {{done}} / {{total}}",
         "archives": "Archiwa · odpowiedziało {{done}} / {{total}}",
         "matching": "Dopasowywanie scen do przelotów: {{passes}}",
@@ -5348,8 +5348,8 @@
       "back": "Wszystkie przeloty",
       "altitude": "Wysokość",
       "offNadir": "Odchylenie od nadiru",
-      "crossed": "{{name}} przeleciał na wysokości {{altitude}} km, {{distance}} km {{direction}}, o {{time}} UTC, z prędkością {{speed}} km/s nad ziemią.",
-      "crossedHeading": "{{name}} przeleciał na wysokości {{altitude}} km, {{distance}} km {{direction}}, o {{time}} UTC, lecąc na {{heading}} z prędkością {{speed}} km/s nad ziemią.",
+      "crossed": "{{name}} przeleciał na wysokości {{altitude}} km, {{distance}} km {{direction}}, o {{time}}, z prędkością {{speed}} km/s nad ziemią.",
+      "crossedHeading": "{{name}} przeleciał na wysokości {{altitude}} km, {{distance}} km {{direction}}, o {{time}}, lecąc na {{heading}} z prędkością {{speed}} km/s nad ziemią.",
       "looking": "Patrzył {{deg}}° od pionu.",
       "sceneCloud": "Zachmurzenie sceny: {{pct}}%.",
       "pixelLine": "Piksel {{m}} m",

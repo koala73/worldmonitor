@@ -5336,14 +5336,14 @@
         "passes": "المرورات"
       },
       "status": {
-        "objects": "{{count}} جسمًا · CelesTrak GP",
+        "objects": "{{count}} قمرًا للتصوير · CelesTrak GP",
         "fetched": "جُلب {{time}} · {{ago}}",
         "sun": "الشمس {{point}} · النقطة تحت الشمسية"
       },
       "step": {
         "computing": "جارٍ الحساب",
         "catalogLoading": "الكتالوج · جارٍ التحميل",
-        "catalog": "الكتالوج · {{count}} جسمًا",
+        "catalog": "الكتالوج · {{count}} قمرًا للتصوير",
         "propagating": "حساب المدارات · {{done}} / {{total}}",
         "archives": "الأرشيفات · أجاب {{done}} / {{total}}",
         "matching": "مطابقة المشاهد مع {{passes}} مرورًا",
@@ -5404,8 +5404,8 @@
       "back": "كل العبورات",
       "altitude": "الارتفاع",
       "offNadir": "الانحراف عن النظير",
-      "crossed": "عبر {{name}} على ارتفاع {{altitude}} كم، على بعد {{distance}} كم {{direction}}، في {{time}} UTC، بسرعة {{speed}} كم/ث فوق الأرض.",
-      "crossedHeading": "عبر {{name}} على ارتفاع {{altitude}} كم، على بعد {{distance}} كم {{direction}}، في {{time}} UTC، متجهًا نحو {{heading}} بسرعة {{speed}} كم/ث فوق الأرض.",
+      "crossed": "عبر {{name}} على ارتفاع {{altitude}} كم، على بعد {{distance}} كم {{direction}}، في {{time}}، بسرعة {{speed}} كم/ث فوق الأرض.",
+      "crossedHeading": "عبر {{name}} على ارتفاع {{altitude}} كم، على بعد {{distance}} كم {{direction}}، في {{time}}، متجهًا نحو {{heading}} بسرعة {{speed}} كم/ث فوق الأرض.",
       "looking": "كان ينظر بزاوية {{deg}}° عن الاتجاه العمودي.",
       "sceneCloud": "الغطاء السحابي للمشهد: {{pct}}%.",
       "pixelLine": "بكسل {{m}} م",

@@ -5224,14 +5224,14 @@
         "passes": "Geçişler"
       },
       "status": {
-        "objects": "{{count}} nesne · CelesTrak GP",
+        "objects": "{{count}} görüntüleme uydusu · CelesTrak GP",
         "fetched": "Alındı {{time}} · {{ago}}",
         "sun": "Güneş {{point}} · güneş altı noktası"
       },
       "step": {
         "computing": "Hesaplanıyor",
         "catalogLoading": "Katalog · yükleniyor",
-        "catalog": "Katalog · {{count}} nesne",
+        "catalog": "Katalog · {{count}} görüntüleme uydusu",
         "propagating": "Yörüngeler hesaplanıyor · {{done}} / {{total}}",
         "archives": "Arşivler · {{done}} / {{total}} yanıtladı",
         "matching": "Sahneler {{passes}} geçişle eşleştiriliyor",
@@ -5292,8 +5292,8 @@
       "back": "Tüm geçişler",
       "altitude": "İrtifa",
       "offNadir": "Nadirden sapma",
-      "crossed": "{{name}}, {{altitude}} km yükseklikte, {{distance}} km {{direction}}, {{time}} UTC'de, yerde {{speed}} km/sn hızla geçti.",
-      "crossedHeading": "{{name}}, {{altitude}} km yükseklikte, {{distance}} km {{direction}}, {{time}} UTC'de, {{heading}} yönünde yerde {{speed}} km/sn hızla geçti.",
+      "crossed": "{{name}}, {{altitude}} km yükseklikte, {{distance}} km {{direction}}, {{time}}'de, yerde {{speed}} km/sn hızla geçti.",
+      "crossedHeading": "{{name}}, {{altitude}} km yükseklikte, {{distance}} km {{direction}}, {{time}}'de, {{heading}} yönünde yerde {{speed}} km/sn hızla geçti.",
       "looking": "Dikeyden {{deg}}° sapmış bakıyordu.",
       "sceneCloud": "Sahne bulut örtüsü: %{{pct}}.",
       "pixelLine": "{{m}} m piksel",

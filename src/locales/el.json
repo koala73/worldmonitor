@@ -5224,14 +5224,14 @@
         "passes": "Διελεύσεις"
       },
       "status": {
-        "objects": "{{count}} αντικείμενα · CelesTrak GP",
+        "objects": "{{count}} δορυφόροι απεικόνισης · CelesTrak GP",
         "fetched": "Λήψη {{time}} · {{ago}}",
         "sun": "Ήλιος {{point}} · υποηλιακό σημείο"
       },
       "step": {
         "computing": "Υπολογισμός",
         "catalogLoading": "Κατάλογος · φόρτωση",
-        "catalog": "Κατάλογος · {{count}} αντικείμενα",
+        "catalog": "Κατάλογος · {{count}} δορυφόροι απεικόνισης",
         "propagating": "Υπολογισμός τροχιών · {{done}} / {{total}}",
         "archives": "Αρχεία · απάντησαν {{done}} / {{total}}",
         "matching": "Αντιστοίχιση σκηνών σε {{passes}} διελεύσεις",
@@ -5292,8 +5292,8 @@
       "back": "Όλες οι διελεύσεις",
       "altitude": "Υψόμετρο",
       "offNadir": "Απόκλιση από ναδίρ",
-      "crossed": "Ο {{name}} πέρασε σε ύψος {{altitude}} km, {{distance}} km {{direction}}, στις {{time}} UTC, με {{speed}} km/s πάνω από το έδαφος.",
-      "crossedHeading": "Ο {{name}} πέρασε σε ύψος {{altitude}} km, {{distance}} km {{direction}}, στις {{time}} UTC, κινούμενος προς τα {{heading}} με {{speed}} km/s πάνω από το έδαφος.",
+      "crossed": "Ο {{name}} πέρασε σε ύψος {{altitude}} km, {{distance}} km {{direction}}, στις {{time}}, με {{speed}} km/s πάνω από το έδαφος.",
+      "crossedHeading": "Ο {{name}} πέρασε σε ύψος {{altitude}} km, {{distance}} km {{direction}}, στις {{time}}, κινούμενος προς τα {{heading}} με {{speed}} km/s πάνω από το έδαφος.",
       "looking": "Κοιτούσε {{deg}}° από την κατακόρυφο.",
       "sceneCloud": "Νεφοκάλυψη σκηνής: {{pct}}%.",
       "pixelLine": "Εικονοστοιχείο {{m}} m",

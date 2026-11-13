@@ -278,9 +278,11 @@
   outline: none;
 }
 .ow-row:hover { background: rgba(255, 255, 255, 0.02); }
+.ow-row[aria-current="true"] { box-shadow: inset 2px 0 0 var(--ow-accent); background: rgba(245, 165, 36, 0.05); }
 .ow-row-main { flex: 1; min-width: 0; }
 .ow-row-name { font-size: 15px; line-height: 20px; color: var(--ow-text); font-weight: 500; }
 .ow-row-meta { overflow-wrap: anywhere; }
+.ow-row-credit { color: var(--ow-faint); font-size: 10px; line-height: 13px; }
 .ow-badges { display: flex; flex-direction: column; align-items: flex-end; gap: var(--ow-space-1); flex: none; max-width: 40%; }
 .ow-badge { padding: 1px 6px; border: 1px solid var(--ow-line); color: var(--ow-dim); white-space: nowrap; }
 .ow-badge[data-tone="cloud"] { border-color: var(--ow-cloud); color: var(--ow-cloud); }
@@ -338,9 +340,8 @@
 @media (max-width: 768px) {
   .orbital-watch-sheet,
   .orbital-watch-sheet[data-view="full"] {
-    inset: 38vh 0 0 0;
+    inset: 38vh 0 calc(58px + env(safe-area-inset-bottom, 0px)) 0;
     width: auto;
-    z-index: 10005;
   }
   .orbital-watch-sheet .ow-panel,
   .orbital-watch-sheet[data-view="full"] .ow-panel {
@@ -352,7 +353,18 @@
   .ow-header { min-height: 48px; }
   .ow-card { flex-basis: 86%; }
   .ow-tier-def { display: none; }
-  .orbital-watch-sheet[data-view="full"] .ow-dock,
+  .orbital-watch-sheet[data-view="full"] .ow-dock {
+    left: 0;
+    right: 0;
+    top: -110px;
+    bottom: auto;
+    width: auto;
+    height: 110px;
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-width: 1px 0 0;
+  }
   .orbital-watch-sheet[data-view="full"] .ow-hud,
   .orbital-watch-sheet[data-view="full"] .ow-statusbar { display: none; }
 }

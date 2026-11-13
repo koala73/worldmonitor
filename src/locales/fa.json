@@ -5224,14 +5224,14 @@
         "passes": "عبورها"
       },
       "status": {
-        "objects": "{{count}} شیء · CelesTrak GP",
+        "objects": "{{count}} ماهواره تصویربرداری · CelesTrak GP",
         "fetched": "دریافت {{time}} · {{ago}}",
         "sun": "خورشید {{point}} · نقطه زیرخورشیدی"
       },
       "step": {
         "computing": "در حال محاسبه",
         "catalogLoading": "کاتالوگ · در حال بارگیری",
-        "catalog": "کاتالوگ · {{count}} شیء",
+        "catalog": "کاتالوگ · {{count}} ماهواره تصویربرداری",
         "propagating": "محاسبه مدارها · {{done}} / {{total}}",
         "archives": "بایگانی‌ها · {{done}} / {{total}} پاسخ دادند",
         "matching": "تطبیق صحنه‌ها با {{passes}} عبور",
@@ -5292,8 +5292,8 @@
       "back": "همهٔ عبورها",
       "altitude": "ارتفاع",
       "offNadir": "انحراف از نادیر",
-      "crossed": "{{name}} در ارتفاع {{altitude}} کیلومتری، {{distance}} کیلومتر {{direction}}، در ساعت {{time}} UTC با سرعت {{speed}} کیلومتر بر ثانیه روی زمین عبور کرد.",
-      "crossedHeading": "{{name}} در ارتفاع {{altitude}} کیلومتری، {{distance}} کیلومتر {{direction}}، در ساعت {{time}} UTC به سمت {{heading}} با سرعت {{speed}} کیلومتر بر ثانیه روی زمین عبور کرد.",
+      "crossed": "{{name}} در ارتفاع {{altitude}} کیلومتری، {{distance}} کیلومتر {{direction}}، در ساعت {{time}} با سرعت {{speed}} کیلومتر بر ثانیه روی زمین عبور کرد.",
+      "crossedHeading": "{{name}} در ارتفاع {{altitude}} کیلومتری، {{distance}} کیلومتر {{direction}}، در ساعت {{time}} به سمت {{heading}} با سرعت {{speed}} کیلومتر بر ثانیه روی زمین عبور کرد.",
       "looking": "با زاویهٔ {{deg}}° از راستای عمود نگاه می‌کرد.",
       "sceneCloud": "پوشش ابر صحنه: {{pct}}٪.",
       "pixelLine": "پیکسل {{m}} متری",

@@ -5252,14 +5252,14 @@
         "passes": "Passagens"
       },
       "status": {
-        "objects": "{{count}} objetos · CelesTrak GP",
+        "objects": "{{count}} satélites de imagem · CelesTrak GP",
         "fetched": "Obtido {{time}} · {{ago}}",
         "sun": "Sol {{point}} · ponto subsolar"
       },
       "step": {
         "computing": "Calculando",
         "catalogLoading": "Catálogo · carregando",
-        "catalog": "Catálogo · {{count}} objetos",
+        "catalog": "Catálogo · {{count}} satélites de imagem",
         "propagating": "Propagando órbitas · {{done}} / {{total}}",
         "archives": "Arquivos · {{done}} / {{total}} responderam",
         "matching": "Associando cenas a {{passes}} passagens",
@@ -5320,8 +5320,8 @@
       "back": "Todas as passagens",
       "altitude": "Altitude",
       "offNadir": "Fora do nadir",
-      "crossed": "{{name}} passou a {{altitude}} km de altura, {{distance}} km {{direction}}, às {{time}} UTC, a {{speed}} km/s sobre o solo.",
-      "crossedHeading": "{{name}} passou a {{altitude}} km de altura, {{distance}} km {{direction}}, às {{time}} UTC, rumo ao {{heading}} a {{speed}} km/s sobre o solo.",
+      "crossed": "{{name}} passou a {{altitude}} km de altura, {{distance}} km {{direction}}, às {{time}}, a {{speed}} km/s sobre o solo.",
+      "crossedHeading": "{{name}} passou a {{altitude}} km de altura, {{distance}} km {{direction}}, às {{time}}, rumo ao {{heading}} a {{speed}} km/s sobre o solo.",
       "looking": "Olhava a {{deg}}° da vertical.",
       "sceneCloud": "Nebulosidade da cena: {{pct}}%.",
       "pixelLine": "Pixel de {{m}} m",

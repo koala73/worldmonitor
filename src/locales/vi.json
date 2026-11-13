@@ -5196,14 +5196,14 @@
         "passes": "Lượt bay qua"
       },
       "status": {
-        "objects": "{{count}} vật thể · CelesTrak GP",
+        "objects": "{{count}} vệ tinh chụp ảnh · CelesTrak GP",
         "fetched": "Lấy lúc {{time}} · {{ago}}",
         "sun": "Mặt Trời {{point}} · điểm cận nhật"
       },
       "step": {
         "computing": "Đang tính",
         "catalogLoading": "Danh mục · đang tải",
-        "catalog": "Danh mục · {{count}} vật thể",
+        "catalog": "Danh mục · {{count}} vệ tinh chụp ảnh",
         "propagating": "Đang tính quỹ đạo · {{done}} / {{total}}",
         "archives": "Kho lưu trữ · {{done}} / {{total}} đã phản hồi",
         "matching": "Đang khớp cảnh với {{passes}} lượt bay qua",
@@ -5264,8 +5264,8 @@
       "back": "Tất cả lượt bay qua",
       "altitude": "Độ cao",
       "offNadir": "Lệch thiên đế",
-      "crossed": "{{name}} bay qua ở độ cao {{altitude}} km, cách {{distance}} km {{direction}}, lúc {{time}} UTC, với tốc độ mặt đất {{speed}} km/s.",
-      "crossedHeading": "{{name}} bay qua ở độ cao {{altitude}} km, cách {{distance}} km {{direction}}, lúc {{time}} UTC, đi về phía {{heading}} với tốc độ mặt đất {{speed}} km/s.",
+      "crossed": "{{name}} bay qua ở độ cao {{altitude}} km, cách {{distance}} km {{direction}}, lúc {{time}}, với tốc độ mặt đất {{speed}} km/s.",
+      "crossedHeading": "{{name}} bay qua ở độ cao {{altitude}} km, cách {{distance}} km {{direction}}, lúc {{time}}, đi về phía {{heading}} với tốc độ mặt đất {{speed}} km/s.",
       "looking": "Nó nhìn lệch {{deg}}° so với phương thẳng đứng.",
       "sceneCloud": "Độ che phủ mây của cảnh: {{pct}}%.",
       "pixelLine": "Điểm ảnh {{m}} m",

@@ -5224,14 +5224,14 @@
         "passes": "Áthaladások"
       },
       "status": {
-        "objects": "{{count}} objektum · CelesTrak GP",
+        "objects": "{{count}} képalkotó műhold · CelesTrak GP",
         "fetched": "Lekérve {{time}} · {{ago}}",
         "sun": "Nap {{point}} · napalatti pont"
       },
       "step": {
         "computing": "Számítás",
         "catalogLoading": "Katalógus · betöltés",
-        "catalog": "Katalógus · {{count}} objektum",
+        "catalog": "Katalógus · {{count}} képalkotó műhold",
         "propagating": "Pályák számítása · {{done}} / {{total}}",
         "archives": "Archívumok · {{done}} / {{total}} válaszolt",
         "matching": "Jelenetek párosítása {{passes}} áthaladáshoz",
@@ -5292,8 +5292,8 @@
       "back": "Minden áthaladás",
       "altitude": "Magasság",
       "offNadir": "Nadírtól való eltérés",
-      "crossed": "A(z) {{name}} {{altitude}} km magasan haladt el, {{distance}} km-re {{direction}}, {{time}} UTC-kor, {{speed}} km/s talajsebességgel.",
-      "crossedHeading": "A(z) {{name}} {{altitude}} km magasan haladt el, {{distance}} km-re {{direction}}, {{time}} UTC-kor, {{heading}} felé, {{speed}} km/s talajsebességgel.",
+      "crossed": "A(z) {{name}} {{altitude}} km magasan haladt el, {{distance}} km-re {{direction}}, {{time}}-kor, {{speed}} km/s talajsebességgel.",
+      "crossedHeading": "A(z) {{name}} {{altitude}} km magasan haladt el, {{distance}} km-re {{direction}}, {{time}}-kor, {{heading}} felé, {{speed}} km/s talajsebességgel.",
       "looking": "{{deg}}°-kal nézett el a függőlegestől.",
       "sceneCloud": "A jelenet felhőzete: {{pct}}%.",
       "pixelLine": "{{m}} m-es pixel",

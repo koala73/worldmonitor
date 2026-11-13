@@ -5252,14 +5252,14 @@
         "passes": "Prelasci"
       },
       "status": {
-        "objects": "Objekti: {{count}} · CelesTrak GP",
+        "objects": "Satelita za snimanje: {{count}} · CelesTrak GP",
         "fetched": "Dohvaćeno {{time}} · {{ago}}",
         "sun": "Sunce {{point}} · podsolarna točka"
       },
       "step": {
         "computing": "Izračun",
         "catalogLoading": "Katalog · učitavanje",
-        "catalog": "Katalog · objekti: {{count}}",
+        "catalog": "Katalog · Satelita za snimanje: {{count}}",
         "propagating": "Propagacija orbita · {{done}} / {{total}}",
         "archives": "Arhive · odgovorilo {{done}} / {{total}}",
         "matching": "Uparivanje scena s prelascima: {{passes}}",
@@ -5320,8 +5320,8 @@
       "back": "Svi preleti",
       "altitude": "Visina",
       "offNadir": "Odmak od nadira",
-      "crossed": "{{name}} je preletio na {{altitude}} km visine, {{distance}} km {{direction}}, u {{time}} UTC, brzinom {{speed}} km/s iznad tla.",
-      "crossedHeading": "{{name}} je preletio na {{altitude}} km visine, {{distance}} km {{direction}}, u {{time}} UTC, krećući se prema {{heading}} brzinom {{speed}} km/s iznad tla.",
+      "crossed": "{{name}} je preletio na {{altitude}} km visine, {{distance}} km {{direction}}, u {{time}}, brzinom {{speed}} km/s iznad tla.",
+      "crossedHeading": "{{name}} je preletio na {{altitude}} km visine, {{distance}} km {{direction}}, u {{time}}, krećući se prema {{heading}} brzinom {{speed}} km/s iznad tla.",
       "looking": "Gledao je {{deg}}° od okomice.",
       "sceneCloud": "Naoblaka scene: {{pct}} %.",
       "pixelLine": "Piksel {{m}} m",

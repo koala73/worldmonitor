@@ -5280,14 +5280,14 @@
         "passes": "Прольоти"
       },
       "status": {
-        "objects": "об’єктів: {{count}} · CelesTrak GP",
+        "objects": "{{count}} знімальних супутників · CelesTrak GP",
         "fetched": "Отримано {{time}} · {{ago}}",
         "sun": "Сонце {{point}} · підсонячна точка"
       },
       "step": {
         "computing": "Розрахунок",
         "catalogLoading": "Каталог · завантаження",
-        "catalog": "Каталог · об’єктів: {{count}}",
+        "catalog": "Каталог · {{count}} знімальних супутників",
         "propagating": "Розрахунок орбіт · {{done}} / {{total}}",
         "archives": "Архіви · відповіли {{done}} / {{total}}",
         "matching": "Зіставлення сцен із прольотами: {{passes}}",
@@ -5348,8 +5348,8 @@
       "back": "Усі прольоти",
       "altitude": "Висота",
       "offNadir": "Відхилення від надиру",
-      "crossed": "{{name}} пролетів на висоті {{altitude}} км, за {{distance}} км {{direction}}, о {{time}} UTC, зі швидкістю {{speed}} км/с над землею.",
-      "crossedHeading": "{{name}} пролетів на висоті {{altitude}} км, за {{distance}} км {{direction}}, о {{time}} UTC, рухаючись на {{heading}} зі швидкістю {{speed}} км/с над землею.",
+      "crossed": "{{name}} пролетів на висоті {{altitude}} км, за {{distance}} км {{direction}}, о {{time}}, зі швидкістю {{speed}} км/с над землею.",
+      "crossedHeading": "{{name}} пролетів на висоті {{altitude}} км, за {{distance}} км {{direction}}, о {{time}}, рухаючись на {{heading}} зі швидкістю {{speed}} км/с над землею.",
       "looking": "Він дивився під кутом {{deg}}° від вертикалі.",
       "sceneCloud": "Хмарність сцени: {{pct}}%.",
       "pixelLine": "Піксель {{m}} м",

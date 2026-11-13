@@ -5280,14 +5280,14 @@
         "passes": "Přelety"
       },
       "status": {
-        "objects": "Objekty: {{count}} · CelesTrak GP",
+        "objects": "Zobrazovací satelity: {{count}} · CelesTrak GP",
         "fetched": "Načteno {{time}} · {{ago}}",
         "sun": "Slunce {{point}} · subsolární bod"
       },
       "step": {
         "computing": "Výpočet",
         "catalogLoading": "Katalog · načítání",
-        "catalog": "Katalog · objekty: {{count}}",
+        "catalog": "Katalog · Zobrazovací satelity: {{count}}",
         "propagating": "Výpočet drah · {{done}} / {{total}}",
         "archives": "Archivy · odpovědělo {{done}} / {{total}}",
         "matching": "Párování scén s přelety: {{passes}}",
@@ -5348,8 +5348,8 @@
       "back": "Všechny přelety",
       "altitude": "Výška",
       "offNadir": "Odklon od nadiru",
-      "crossed": "{{name}} přeletěl ve výšce {{altitude}} km, {{distance}} km {{direction}}, v {{time}} UTC, rychlostí {{speed}} km/s nad zemí.",
-      "crossedHeading": "{{name}} přeletěl ve výšce {{altitude}} km, {{distance}} km {{direction}}, v {{time}} UTC, směrem na {{heading}} rychlostí {{speed}} km/s nad zemí.",
+      "crossed": "{{name}} přeletěl ve výšce {{altitude}} km, {{distance}} km {{direction}}, v {{time}}, rychlostí {{speed}} km/s nad zemí.",
+      "crossedHeading": "{{name}} přeletěl ve výšce {{altitude}} km, {{distance}} km {{direction}}, v {{time}}, směrem na {{heading}} rychlostí {{speed}} km/s nad zemí.",
       "looking": "Díval se {{deg}}° od svislice.",
       "sceneCloud": "Oblačnost scény: {{pct}} %.",
       "pixelLine": "Pixel {{m}} m",

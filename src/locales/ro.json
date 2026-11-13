@@ -5252,14 +5252,14 @@
         "passes": "Treceri"
       },
       "status": {
-        "objects": "{{count}} obiecte · CelesTrak GP",
+        "objects": "{{count}} sateliți de imagistică · CelesTrak GP",
         "fetched": "Preluat {{time}} · {{ago}}",
         "sun": "Soare {{point}} · punct subsolar"
       },
       "step": {
         "computing": "Calcul",
         "catalogLoading": "Catalog · se încarcă",
-        "catalog": "Catalog · {{count}} obiecte",
+        "catalog": "Catalog · {{count}} sateliți de imagistică",
         "propagating": "Propagarea orbitelor · {{done}} / {{total}}",
         "archives": "Arhive · {{done}} / {{total}} au răspuns",
         "matching": "Potrivirea scenelor cu {{passes}} treceri",
@@ -5320,8 +5320,8 @@
       "back": "Toate trecerile",
       "altitude": "Altitudine",
       "offNadir": "Abatere de la nadir",
-      "crossed": "{{name}} a trecut la {{altitude}} km altitudine, la {{distance}} km {{direction}}, la {{time}} UTC, cu {{speed}} km/s deasupra solului.",
-      "crossedHeading": "{{name}} a trecut la {{altitude}} km altitudine, la {{distance}} km {{direction}}, la {{time}} UTC, deplasându-se spre {{heading}} cu {{speed}} km/s deasupra solului.",
+      "crossed": "{{name}} a trecut la {{altitude}} km altitudine, la {{distance}} km {{direction}}, la {{time}}, cu {{speed}} km/s deasupra solului.",
+      "crossedHeading": "{{name}} a trecut la {{altitude}} km altitudine, la {{distance}} km {{direction}}, la {{time}}, deplasându-se spre {{heading}} cu {{speed}} km/s deasupra solului.",
       "looking": "Privea la {{deg}}° de verticală.",
       "sceneCloud": "Acoperirea cu nori a scenei: {{pct}}%.",
       "pixelLine": "Pixel de {{m}} m",

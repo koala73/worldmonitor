@@ -5224,14 +5224,14 @@
         "passes": "Mapito"
       },
       "status": {
-        "objects": "vitu {{count}} · CelesTrak GP",
+        "objects": "{{count}} setilaiti za upigaji picha · CelesTrak GP",
         "fetched": "Imepakuliwa {{time}} · {{ago}}",
         "sun": "Jua {{point}} · nukta chini ya jua"
       },
       "step": {
         "computing": "Inakokotoa",
         "catalogLoading": "Katalogi · inapakia",
-        "catalog": "Katalogi · vitu {{count}}",
+        "catalog": "Katalogi · {{count}} setilaiti za upigaji picha",
         "propagating": "Inakokotoa mizunguko · {{done}} / {{total}}",
         "archives": "Hifadhi · {{done}} / {{total}} zimejibu",
         "matching": "Inalinganisha matukio na mapito {{passes}}",
@@ -5292,8 +5292,8 @@
       "back": "Mapito yote",
       "altitude": "Mwinuko",
       "offNadir": "Mkengeuko kutoka nadiri",
-      "crossed": "{{name}} ilipita kilomita {{altitude}} juu, kilomita {{distance}} {{direction}}, saa {{time}} UTC, kwa kasi ya km/s {{speed}} juu ya ardhi.",
-      "crossedHeading": "{{name}} ilipita kilomita {{altitude}} juu, kilomita {{distance}} {{direction}}, saa {{time}} UTC, ikielekea {{heading}} kwa kasi ya km/s {{speed}} juu ya ardhi.",
+      "crossed": "{{name}} ilipita kilomita {{altitude}} juu, kilomita {{distance}} {{direction}}, saa {{time}}, kwa kasi ya km/s {{speed}} juu ya ardhi.",
+      "crossedHeading": "{{name}} ilipita kilomita {{altitude}} juu, kilomita {{distance}} {{direction}}, saa {{time}}, ikielekea {{heading}} kwa kasi ya km/s {{speed}} juu ya ardhi.",
       "looking": "Ilikuwa ikitazama {{deg}}° mbali na wima.",
       "sceneCloud": "Mawingu ya picha: {{pct}}%.",
       "pixelLine": "Pikseli ya m {{m}}",

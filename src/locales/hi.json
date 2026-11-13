@@ -5224,14 +5224,14 @@
         "passes": "गुज़र"
       },
       "status": {
-        "objects": "{{count}} वस्तुएँ · CelesTrak GP",
+        "objects": "{{count}} इमेजिंग उपग्रह · CelesTrak GP",
         "fetched": "प्राप्त {{time}} · {{ago}}",
         "sun": "सूर्य {{point}} · उपसौर बिंदु"
       },
       "step": {
         "computing": "गणना",
         "catalogLoading": "कैटलॉग · लोड हो रहा है",
-        "catalog": "कैटलॉग · {{count}} वस्तुएँ",
+        "catalog": "कैटलॉग · {{count}} इमेजिंग उपग्रह",
         "propagating": "कक्षाओं की गणना · {{done}} / {{total}}",
         "archives": "संग्रह · {{done}} / {{total}} ने उत्तर दिया",
         "matching": "दृश्यों को {{passes}} गुज़रों से मिलाया जा रहा है",
@@ -5292,8 +5292,8 @@
       "back": "सभी गुज़रें",
       "altitude": "ऊँचाई",
       "offNadir": "नादिर से विचलन",
-      "crossed": "{{name}} {{altitude}} किमी ऊपर, {{distance}} किमी {{direction}}, {{time}} UTC पर, ज़मीन पर {{speed}} किमी/से की गति से गुज़रा।",
-      "crossedHeading": "{{name}} {{altitude}} किमी ऊपर, {{distance}} किमी {{direction}}, {{time}} UTC पर, {{heading}} की ओर ज़मीन पर {{speed}} किमी/से की गति से गुज़रा।",
+      "crossed": "{{name}} {{altitude}} किमी ऊपर, {{distance}} किमी {{direction}}, {{time}} पर, ज़मीन पर {{speed}} किमी/से की गति से गुज़रा।",
+      "crossedHeading": "{{name}} {{altitude}} किमी ऊपर, {{distance}} किमी {{direction}}, {{time}} पर, {{heading}} की ओर ज़मीन पर {{speed}} किमी/से की गति से गुज़रा।",
       "looking": "यह सीधे नीचे से {{deg}}° हटकर देख रहा था।",
       "sceneCloud": "दृश्य में बादल: {{pct}}%।",
       "pixelLine": "{{m}} मी पिक्सेल",

@@ -5224,14 +5224,14 @@
         "passes": "Overkomsten"
       },
       "status": {
-        "objects": "{{count}} objecten · CelesTrak GP",
+        "objects": "{{count}} beeldvormende satellieten · CelesTrak GP",
         "fetched": "Opgehaald {{time}} · {{ago}}",
         "sun": "Zon {{point}} · subsolair punt"
       },
       "step": {
         "computing": "Berekenen",
         "catalogLoading": "Catalogus · laden",
-        "catalog": "Catalogus · {{count}} objecten",
+        "catalog": "Catalogus · {{count}} beeldvormende satellieten",
         "propagating": "Banen doorrekenen · {{done}} / {{total}}",
         "archives": "Archieven · {{done}} / {{total}} beantwoord",
         "matching": "Scènes koppelen aan {{passes}} overkomsten",
@@ -5292,8 +5292,8 @@
       "back": "Alle overkomsten",
       "altitude": "Hoogte",
       "offNadir": "Buiten nadir",
-      "crossed": "{{name}} kwam over op {{altitude}} km hoogte, {{distance}} km {{direction}}, om {{time}} UTC, met {{speed}} km/s over de grond.",
-      "crossedHeading": "{{name}} kwam over op {{altitude}} km hoogte, {{distance}} km {{direction}}, om {{time}} UTC, richting {{heading}} met {{speed}} km/s over de grond.",
+      "crossed": "{{name}} kwam over op {{altitude}} km hoogte, {{distance}} km {{direction}}, om {{time}}, met {{speed}} km/s over de grond.",
+      "crossedHeading": "{{name}} kwam over op {{altitude}} km hoogte, {{distance}} km {{direction}}, om {{time}}, richting {{heading}} met {{speed}} km/s over de grond.",
       "looking": "Het keek {{deg}}° naast loodrecht omlaag.",
       "sceneCloud": "Bewolking van de scène: {{pct}}%.",
       "pixelLine": "Pixel van {{m}} m",

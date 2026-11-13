@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import i18next from 'i18next';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -125,7 +128,7 @@ describe('satellite pass lookup sheet', () => {
   it('steps through the catalog, orbit propagation and archive answers before showing results', () => {
     mounted({ kind: 'computing', done: 12, total: 48 });
     const status = (n: number) => sheet().querySelectorAll<HTMLElement>('.ow-step')[n]!.dataset.status;
-    expect(text()).toContain('Catalog · 48 objects');
+    expect(text()).toContain('Catalog · 48 imaging satellites');
     expect(text()).toContain('Propagating orbits · 12 / 48');
     expect([status(0), status(1), status(2)]).toEqual(['ok', 'running', 'pending']);
     const { all } = tiered();
@@ -208,7 +211,7 @@ describe('satellite pass lookup sheet', () => {
     expect(tile.textContent).toBe('The archive has no preview of this scene yet');
   });
 
-  it('opens a pass detail from a pass row in the full view and steps between passes', () => {
+  it('opens a pass detail from a pass row in the full view and steps between passes', async () => {
     const { all, confirmedNew, confirmedOld } = tiered();
     confirmedOld.motion = { heading: 'south', groundSpeedKmS: 6.71 };
     mounted(answered(all, { acquisitions: [acquisition(confirmedNew, { cloudCoverPct: 12, condition: 'clear' })] }), null, 'full');
@@ -216,6 +219,7 @@ describe('satellite pass lookup sheet', () => {
     const detail = page().slot('pass-detail');
     expect(sheet().querySelector('.ow-panel')!.getAttribute('data-detail')).toBe('open');
     expect(detail.querySelector('[data-action="detail-back"]')!.textContent).toBe('← All passes ESC');
+    await Promise.resolve();
     expect(document.activeElement).toBe(detail.querySelector('[data-action="detail-back"]'));
     expect(detail.querySelector('.ow-detail-title strong')!.textContent).toBe('SENTINEL-2C');
     expect([...detail.querySelectorAll('.ow-detail-cell')].map((c) => c.textContent)).toEqual(['Altitude700 KM', expect.stringMatching(/^Off-nadir\d+\.\d°$/), 'Pixel10 M', 'Cloud at spotClear']);
@@ -263,7 +267,7 @@ describe('satellite pass lookup sheet', () => {
     for (const slot of ['timeline', 'pass-detail', 'replay-hud', 'timelapse']) expect(page().slot(slot as 'timeline').dataset.slot).toBe(slot);
     for (const slot of ['timeline', 'pass-detail', 'replay-hud']) expect(page().slot(slot as 'timeline').childElementCount).toBe(0);
     expect(page().slot('timelapse').querySelector('[data-action="timelapse"]')!.textContent).toContain('This place, year by year');
-    expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/^0 objects · CelesTrak GP · Fetched \d{4}-\d\d-\d\d \d\d:\d\dZ · 3 days ago/);
+    expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/^0 imaging satellites · CelesTrak GP · Fetched \d{4}-\d\d-\d\d \d\d:\d\dZ · 3 days ago/);
     expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/Sun \d+\.\d°[NS] \d+\.\d°[EW] · sub-solar point · \d\d:\d\d:\d\d UTC$/);
     expect(sheet().querySelector('[data-action="open-full"].ow-primary')).toBeNull();
   });
@@ -295,6 +299,39 @@ describe('satellite pass lookup sheet', () => {
     mounted(answered(passes), null, 'full');
     expect(group('could')!.querySelector('.ow-group-count')!.textContent).toBe('900');
     expect(sheet().querySelectorAll('.ow-row')).toHaveLength(30);
+  });
+
+  it('selects a pass by key: opens the full view, expands its group, marks and focuses its row and announces it', () => {
+    const { all, commercial } = tiered();
+    mounted(answered(all));
+    const announced = vi.fn();
+    sheet().addEventListener('orbital-watch:select', (event) => announced((event as CustomEvent).detail));
+    expect(page().select(`${commercial.noradId}:${commercial.timeMs}`)).toBe(true);
+    expect(sheet().dataset.view).toBe('full');
+    expect(callbacks.onViewChange).toHaveBeenCalledWith('full');
+    expect(group('could')!.querySelector('.ow-group-toggle')!.getAttribute('aria-expanded')).toBe('true');
+    const row = rowOf(commercial.name);
+    expect(row.getAttribute('aria-current')).toBe('true');
+    expect(document.activeElement).toBe(row);
+    expect(announced).toHaveBeenCalledWith({ noradId: commercial.noradId, timeMs: commercial.timeMs });
+    expect(page().select('0:0')).toBe(false);
+  });
+
+  it('keeps the timeline dock on phones as a full-width, horizontally scrolling strip above the panel', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/styles/orbital-watch.css'), 'utf8');
+    const mobile = css.slice(css.indexOf('@media (max-width: 768px)'));
+    const dock = mobile.slice(mobile.indexOf('[data-view="full"] .ow-dock {'));
+    const rule = dock.slice(0, dock.indexOf('}'));
+    expect(rule).toMatch(/left: 0;/);
+    expect(rule).toMatch(/right: 0;/);
+    expect(rule).toMatch(/top: -\d+px;/);
+    expect(rule).toMatch(/overflow-x: auto;/);
+    expect(mobile).not.toMatch(/\.ow-dock[^{]*\{[^}]*display: none/);
+    mounted(answered(tiered().all), null, 'full');
+    page().slot('timeline').append(document.createElement('canvas'));
+    const slot = sheet().querySelector<HTMLElement>('.ow-dock[data-slot="timeline"]')!;
+    expect(slot.parentElement).toBe(sheet());
+    expect(slot.querySelector('canvas')).not.toBeNull();
   });
 
   it('filters the full list to a tier from the count grid', () => {

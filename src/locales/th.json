@@ -5196,14 +5196,14 @@
         "passes": "การผ่าน"
       },
       "status": {
-        "objects": "วัตถุ {{count}} ชิ้น · CelesTrak GP",
+        "objects": "{{count}}ดวงดาวเทียมถ่ายภาพ · CelesTrak GP",
         "fetched": "ดึงข้อมูล {{time}} · {{ago}}",
         "sun": "ดวงอาทิตย์ {{point}} · จุดใต้ดวงอาทิตย์"
       },
       "step": {
         "computing": "กำลังคำนวณ",
         "catalogLoading": "แคตตาล็อก · กำลังโหลด",
-        "catalog": "แคตตาล็อก · วัตถุ {{count}} ชิ้น",
+        "catalog": "แคตตาล็อก · {{count}}ดวงดาวเทียมถ่ายภาพ",
         "propagating": "กำลังคำนวณวงโคจร · {{done}} / {{total}}",
         "archives": "คลังภาพ · ตอบแล้ว {{done}} / {{total}}",
         "matching": "กำลังจับคู่ฉากกับการผ่าน {{passes}} ครั้ง",
@@ -5264,8 +5264,8 @@
       "back": "การโคจรผ่านทั้งหมด",
       "altitude": "ระดับความสูง",
       "offNadir": "มุมเบี่ยงจากแนวดิ่ง",
-      "crossed": "{{name}} โคจรผ่านที่ความสูง {{altitude}} กม. ห่าง {{distance}} กม. {{direction}} เวลา {{time}} UTC ด้วยความเร็วภาคพื้น {{speed}} กม./วินาที",
-      "crossedHeading": "{{name}} โคจรผ่านที่ความสูง {{altitude}} กม. ห่าง {{distance}} กม. {{direction}} เวลา {{time}} UTC มุ่งไปทาง{{heading}} ด้วยความเร็วภาคพื้น {{speed}} กม./วินาที",
+      "crossed": "{{name}} โคจรผ่านที่ความสูง {{altitude}} กม. ห่าง {{distance}} กม. {{direction}} เวลา {{time}} ด้วยความเร็วภาคพื้น {{speed}} กม./วินาที",
+      "crossedHeading": "{{name}} โคจรผ่านที่ความสูง {{altitude}} กม. ห่าง {{distance}} กม. {{direction}} เวลา {{time}} มุ่งไปทาง{{heading}} ด้วยความเร็วภาคพื้น {{speed}} กม./วินาที",
       "looking": "มองเอียงจากแนวดิ่ง {{deg}}°",
       "sceneCloud": "เมฆปกคลุมฉาก: {{pct}}%",
       "pixelLine": "พิกเซล {{m}} ม.",

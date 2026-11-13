@@ -5196,14 +5196,14 @@
         "passes": "通過"
       },
       "status": {
-        "objects": "{{count}}個の物体 · CelesTrak GP",
+        "objects": "{{count}}基の撮像衛星 · CelesTrak GP",
         "fetched": "取得 {{time}} · {{ago}}",
         "sun": "太陽 {{point}} · 太陽直下点"
       },
       "step": {
         "computing": "計算中",
         "catalogLoading": "カタログ · 読み込み中",
-        "catalog": "カタログ · {{count}}個の物体",
+        "catalog": "カタログ · {{count}}基の撮像衛星",
         "propagating": "軌道を計算中 · {{done}} / {{total}}",
         "archives": "アーカイブ · {{done}} / {{total}} が応答",
         "matching": "シーンを{{passes}}回の通過と照合中",
@@ -5264,8 +5264,8 @@
       "back": "すべての通過",
       "altitude": "高度",
       "offNadir": "オフナディア角",
-      "crossed": "{{name}} は高度 {{altitude}} km、この地点の{{direction}} {{distance}} km を {{time}} UTC に地表速度 {{speed}} km/s で通過しました。",
-      "crossedHeading": "{{name}} は高度 {{altitude}} km、この地点の{{direction}} {{distance}} km を {{time}} UTC に{{heading}}へ地表速度 {{speed}} km/s で通過しました。",
+      "crossed": "{{name}} は高度 {{altitude}} km、この地点の{{direction}} {{distance}} km を {{time}} に地表速度 {{speed}} km/s で通過しました。",
+      "crossedHeading": "{{name}} は高度 {{altitude}} km、この地点の{{direction}} {{distance}} km を {{time}} に{{heading}}へ地表速度 {{speed}} km/s で通過しました。",
       "looking": "真下から {{deg}}° 傾けて観測していました。",
       "sceneCloud": "シーンの雲量: {{pct}}%。",
       "pixelLine": "{{m}} m ピクセル",

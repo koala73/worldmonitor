@@ -168,19 +168,34 @@ function formatPoint({ lat, lon }: GeoPoint, decimals = 3): string {
   return `${Math.abs(lat).toFixed(decimals)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lon).toFixed(decimals)}°${lon >= 0 ? 'E' : 'W'}`;
 }
 
-function formatDay(ms: number): string {
-  return new Intl.DateTimeFormat(lang(), { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(ms);
+/** The zone every displayed time uses, so the whole sheet can switch to the point's local time at once. */
+let displayZone = { timeZone: 'UTC', label: 'UTC' };
+
+/** Sets the IANA zone and its short label that every displayed time uses. */
+export function setOrbitalDisplayZone(timeZone: string, label: string): void {
+  displayZone = { timeZone, label };
 }
 
-function formatShortDate(ms: number): string {
-  return new Intl.DateTimeFormat(lang(), { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(ms);
+/** Formats a time in the display zone: weekday and date, date, clock, both with the zone label, or date and clock. */
+export function formatOrbitalTime(ms: number, style: 'day' | 'date' | 'clock' | 'when' | 'stamp'): string {
+  const { timeZone, label } = displayZone;
+  const day = () => new Intl.DateTimeFormat(lang(), { weekday: 'short', day: 'numeric', month: 'short', timeZone }).format(ms);
+  const clock = () => new Intl.DateTimeFormat(lang(), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone }).format(ms);
+  switch (style) {
+    case 'day': return day();
+    case 'date': return new Intl.DateTimeFormat(lang(), { day: 'numeric', month: 'short', timeZone }).format(ms);
+    case 'clock': return clock();
+    case 'when': return `${day()} · ${clock()} ${label}`;
+    case 'stamp': return `${formatOrbitalTime(ms, 'date')} ${clock()}`;
+  }
 }
 
-function formatClock(ms: number, seconds = false): string {
-  return new Intl.DateTimeFormat(lang(), { hour: '2-digit', minute: '2-digit', ...(seconds ? { second: '2-digit' } : {}), hourCycle: 'h23', timeZone: 'UTC' }).format(ms);
-}
+const formatDay = (ms: number) => formatOrbitalTime(ms, 'day');
+const formatWhen = (ms: number) => formatOrbitalTime(ms, 'when');
 
-const formatWhen = (ms: number) => `${formatDay(ms)} · ${formatClock(ms)} UTC`;
+function formatUtcClock(ms: number): string {
+  return new Intl.DateTimeFormat(lang(), { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZone: 'UTC' }).format(ms);
+}
 
 function formatRelative(ms: number, nowMs: number): string {
   const diff = ms - nowMs;
@@ -387,12 +402,13 @@ function badge(text: string, tone: 'cloud' | 'radar' | 'neutral' = 'neutral'): H
   return h('span', { className: 'ow-badge ow-label', dataset: { tone } }, text);
 }
 
-function rowShell(key: string, tier: string, thumb: HTMLElement, name: string, tierLabel: string, lines: string[], badges: DomChild[]): HTMLElement {
+function rowShell(key: string, tier: string, thumb: HTMLElement, name: string, tierLabel: string, lines: string[], badges: DomChild[], credit: string | null = null): HTMLElement {
   return h('li', { className: 'ow-row', tabindex: '0', dataset: { tier, key } },
     thumb,
     h('div', { className: 'ow-row-main' },
       h('div', { className: 'ow-row-name' }, name, h('span', { className: 'ow-tier-label ow-sr' }, tierLabel)),
-      ...lines.map((line) => h('div', { className: 'ow-row-meta ow-label' }, line))),
+      ...lines.map((line) => h('div', { className: 'ow-row-meta ow-label' }, line)),
+      credit ? h('div', { className: 'ow-row-credit ow-label' }, credit) : null),
     h('div', { className: 'ow-badges' }, ...badges));
 }
 
@@ -424,7 +440,8 @@ function passRow(pass: PointPass, nowMs: number, acquisition: MatchedAcquisition
     repeats > 1 ? h('span', { className: 'ow-repeat ow-label', title: t('orbitalWatch.ui.row.repeats', { count: repeats }) }, `×${repeats}`) : null,
   ];
   return rowShell(`pass:${passKey(pass)}`, pass.tier.kind, thumb, name, t(TIER_LABEL_KEY[pass.tier.kind]),
-    [`${formatWhen(pass.timeMs)} · ${formatRelative(pass.timeMs, nowMs)}`, geometry.join(' · ')], badges);
+    [`${formatWhen(pass.timeMs)} · ${formatRelative(pass.timeMs, nowMs)}`, geometry.join(' · ')], badges,
+    acquisition && !military ? acquisitionCredit(acquisition) : null);
 }
 
 function unmatchedRow(acquisition: MatchedAcquisition, nowMs: number): HTMLElement {
@@ -434,7 +451,7 @@ function unmatchedRow(acquisition: MatchedAcquisition, nowMs: number): HTMLEleme
   const meta = [`${acquisition.resolutionM} M`];
   if (acquisition.cloudCoverPct != null && acquisition.profileId !== 'sentinel-1') meta.push(t('orbitalWatch.ui.row.cloud', { pct: Math.round(acquisition.cloudCoverPct) }));
   return rowShell(`image:${acquisition.key}`, 'confirmed-image', thumb, name, t('orbitalWatch.tier.unmatchedImage'),
-    [`${formatWhen(acquisition.startMs)} · ${formatRelative(acquisition.startMs, nowMs)}`, meta.join(' · ')], acquisitionBadges(acquisition));
+    [`${formatWhen(acquisition.startMs)} · ${formatRelative(acquisition.startMs, nowMs)}`, meta.join(' · ')], acquisitionBadges(acquisition), acquisitionCredit(acquisition));
 }
 
 function mosaicRow(mosaic: DailyMosaicRow, day: { date: string; imageUrl: string | null }): HTMLElement {
@@ -444,7 +461,7 @@ function mosaicRow(mosaic: DailyMosaicRow, day: { date: string; imageUrl: string
   const thumb = imageTile(day.imageUrl, alt, mosaic.source.toUpperCase(), 'thumb', [viewButton({ kind: 'mosaic', key: mosaic.layer }, alt)]);
   return rowShell(`source:${mosaic.source}`, 'daily-mosaic', thumb, mosaic.source, t('orbitalWatch.tier.dailyMosaic'),
     [formatDay(ms), [t('orbitalWatch.ui.caption.dailyMosaic'), resolution ? `${resolution} M` : null, t('orbitalWatch.ui.row.days', { count: mosaic.days.length })].filter(Boolean).join(' · ')],
-    [badge('NASA')]);
+    [badge('NASA')], IMAGE_CREDIT.gibs);
 }
 
 function frameRow(frame: GeostationaryRow, latest: { time: string; imageUrl: string | null }): HTMLElement {
@@ -453,7 +470,7 @@ function frameRow(frame: GeostationaryRow, latest: { time: string; imageUrl: str
   const thumb = imageTile(latest.imageUrl, alt, frame.source.toUpperCase(), 'thumb', [viewButton({ kind: 'frame', key: frame.layer }, alt)]);
   return rowShell(`source:${frame.source}`, 'weather-frame', thumb, frame.source, t('orbitalWatch.tier.weatherFrame'),
     [formatWhen(ms), frame.cadenceMinutes === null ? t('orbitalWatch.ui.caption.geostationary') : t('orbitalWatch.ui.caption.geostationaryCadence', { minutes: frame.cadenceMinutes })],
-    [badge(frame.archive === 'eumetsat' ? 'EUMETSAT' : 'NASA')]);
+    [badge(frame.archive === 'eumetsat' ? 'EUMETSAT' : 'NASA')], frameCredit(frame.archive));
 }
 
 function groupPasses(lookup: PointPassLookup, evidence: OrbitalEvidence): Map<GroupId, Group> {
@@ -568,6 +585,10 @@ export class OrbitalWatchPage {
     declareOverlay(this.sheet, { reload: 'safe' });
     this.sheet.addEventListener('keydown', this.onSheetKeydown);
     this.sheet.addEventListener('click', this.onSheetClick);
+    this.sheet.addEventListener('orbital-watch:select', (event) => {
+      const { noradId, timeMs } = (event as CustomEvent<{ noradId: number; timeMs: number }>).detail;
+      this.openPassDetail(`${noradId}:${timeMs}`);
+    });
   }
 
   get isOpen(): boolean {
@@ -622,6 +643,29 @@ export class OrbitalWatchPage {
       if (!target.hasAttribute('tabindex')) target.tabIndex = -1;
       target.focus({ preventScroll: true });
     }
+  }
+
+  /** Opens the full view on a pass's row, expanding its group, and announces it for the pass detail. */
+  select(key: string): boolean {
+    const state = this.state;
+    if (!this.isOpen || state?.kind !== 'passes' || state.archives.kind !== 'answered') return false;
+    const pass = state.archives.evidence.passes.find((p) => passKey(p) === key);
+    if (!pass || pass.tier.kind === 'daily-mosaic') return false;
+    const id = GROUP_OF_TIER[pass.tier.kind];
+    const spec = GROUPS.find((g) => g.id === id)!;
+    if (!spec.expanded) this.toggled.add(id);
+    else this.toggled.delete(id);
+    this.filter = null;
+    if (this.view === 'full') this.render(state);
+    else this.setView('full');
+    const row = this.body.querySelector<HTMLElement>(`.ow-row[data-key="pass:${CSS.escape(key)}"]`);
+    if (!row) return false;
+    for (const other of this.body.querySelectorAll('.ow-row[aria-current]')) other.removeAttribute('aria-current');
+    row.setAttribute('aria-current', 'true');
+    row.scrollIntoView?.({ block: 'center' });
+    row.focus();
+    this.sheet.dispatchEvent(new CustomEvent('orbital-watch:select', { bubbles: true, detail: { noradId: pass.noradId, timeMs: pass.timeMs } }));
+    return true;
   }
 
   setView(view: OrbitalView): void {
@@ -723,7 +767,7 @@ export class OrbitalWatchPage {
       h('div', { className: 'ow-progress', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(pct)) },
         h('span', { className: 'ow-progress-fill', style: `width: ${pct.toFixed(1)}%` })),
       h('div', { className: 'ow-steps-foot ow-label' },
-        h('span', null, t('orbitalWatch.ui.step.window', { start: `${formatShortDate(windowStart)} ${formatClock(windowStart)}`, end: `${formatShortDate(nowMs)} ${formatClock(nowMs)} UTC` })),
+        h('span', null, t('orbitalWatch.ui.step.window', { start: formatOrbitalTime(windowStart, 'stamp'), end: `${formatOrbitalTime(nowMs, 'stamp')} ${displayZone.label}` })),
         h('span', { className: 'ow-steps-pct' }, `${Math.round(pct)}%`)),
       archives ? h('p', { className: 'ow-steps-note' }, t('orbitalWatch.ui.step.note')) : null);
   }
@@ -852,7 +896,7 @@ export class OrbitalWatchPage {
   private passList(lookup: PointPassLookup, evidence: OrbitalEvidence): HTMLElement {
     const groups = groupPasses(lookup, evidence);
     const shown = GROUPS.map(({ id }) => groups.get(id)!).filter((group) => group.count > 0 && (!this.filter || group.spec.id === this.filter));
-    const missing = evidence.mosaics.filter((mosaic) => mosaic.days.length === 0).map((mosaic) => mosaic.source);
+    const missing = [...evidence.mosaics.filter((mosaic) => mosaic.days.length === 0), ...evidence.frames.filter((frame) => !frame.latest)].map((row) => row.source);
     return h('section', { className: 'ow-section ow-passes' },
       this.sectionHead('02', t('orbitalWatch.ui.section.passes')),
       this.filter
@@ -891,7 +935,7 @@ export class OrbitalWatchPage {
     replaceChildren(this.statusBar,
       h('span', { className: 'ow-status-left' },
         lookup ? `${t('orbitalWatch.ui.status.objects', { count: formatInt(lookup.satellites.length) })} · ${t('orbitalWatch.ui.status.fetched', { time: fetched, ago: formatRelative(lookup.catalog.fetchedAt, nowMs) })}` : ''),
-      h('span', { className: 'ow-status-right' }, `${t('orbitalWatch.ui.status.sun', { point: formatPoint(sun, 1) })} · ${formatClock(nowMs, true)} UTC`));
+      h('span', { className: 'ow-status-right' }, `${t('orbitalWatch.ui.status.sun', { point: formatPoint(sun, 1) })} · ${formatUtcClock(nowMs)} UTC`));
   }
 
   private startClock(): void {
@@ -985,7 +1029,7 @@ export class OrbitalWatchPage {
     }
     const passRow = target.closest<HTMLElement>('.ow-row[data-key^="pass:"]');
     if (passRow && this.view === 'full') {
-      this.openPassDetail(passRow.dataset.key!);
+      this.select(passRow.dataset.key!.replace(/^pass:/, ''));
       return;
     }
     const toggle = target.closest<HTMLElement>('.ow-group-toggle');
@@ -1029,7 +1073,8 @@ export class OrbitalWatchPage {
   private openPassDetail(rowKey: string): void {
     this.detailKey = rowKey.replace(/^pass:/, '');
     this.renderPassDetail();
-    this.slots['pass-detail'].querySelector<HTMLElement>('[data-action="detail-back"]')?.focus();
+    // select() focuses the row first; the list hides under the detail, so focus moves to the detail once that settles.
+    queueMicrotask(() => this.slots['pass-detail'].querySelector<HTMLElement>('[data-action="detail-back"]')?.focus());
   }
 
   private renderPassDetail(): void {
@@ -1050,7 +1095,7 @@ export class OrbitalWatchPage {
       point: this.state.lookup.point,
       glyph: TIER_GLYPH_CHAR[GLYPH_OF_TIER[pass.tier.kind]],
       when: formatWhen(pass.timeMs),
-      clock: formatClock(pass.timeMs),
+      clock: formatOrbitalTime(pass.timeMs, 'when').split(' · ').pop()!,
       offNadirDeg: offNadirDeg(pass),
       family: profile?.family ?? null,
       swathKm: profile?.footprint.kind === 'nadir-swath' ? profile.footprint.swathKm : null,
@@ -1103,7 +1148,7 @@ export class OrbitalWatchPage {
       const row = (event.target as HTMLElement).closest<HTMLElement>('.ow-row[data-key^="pass:"]');
       if (row && event.target === row) {
         event.preventDefault();
-        this.openPassDetail(row.dataset.key!);
+        this.select(row.dataset.key!.replace(/^pass:/, ''));
         return;
       }
     }
