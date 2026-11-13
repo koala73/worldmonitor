@@ -5,6 +5,7 @@ import { __testing__ as health } from '../api/health.js';
 import { buildEconomicStress, economicCountry, seedEconomicStress, ECONOMIC_COUNTRIES, ECONOMIC_KEY, ECONOMIC_META_KEY, ECONOMIC_ACTIVATION_KEY, INPUT_KEYS } from '../scripts/seed-cii-economic-stress.mjs';
 import { readFileSync } from 'node:fs';
 import { computeYoy, cleanDailyQuotes, FX_MAX_NOISE_SHARE } from '../scripts/seed-fx-yoy.mjs';
+import { fallbackDailyQuotes, fetchFallbackWindows } from '../scripts/_currency-api.mjs';
 const RECORDED = JSON.parse(readFileSync(new URL('./fixtures/fx-daily-quotes-2026-11-13.json', import.meta.url), 'utf8')).series;
 const recorded = (ccy) => cleanDailyQuotes(RECORDED[ccy].timestamps.map((ts, i) => ({ t: ts * 1000, close: RECORDED[ccy].closes[i] })), RECORDED[ccy].timeZone);
 const NOW = Date.UTC(2026, 10, 13);
@@ -65,6 +66,35 @@ test('unreliable quotes leave the currency unmeasured, never zero, and thin seri
   const holed = flatDaily().filter(p => p.t > Date.UTC(2026, 7, 20) || p.t < Date.UTC(2026, 6, 20));
   assert.equal(cleanDailyQuotes(holed), null, 'a month-long hole at the anchor is not bridged');
   assert.equal(cleanDailyQuotes([...flatDaily(), { t: NaN, close: 1 }, { t: Date.UTC(2026, 10, 12), close: null }]).sessions, 133);
+});
+test('a second source keeps a country measured when Yahoo quotes are unreliable', async () => {
+  const asked = [];
+  // 3.64 riyals per dollar on every day; today's snapshot is not published yet.
+  const fetchSnapshot = async (date) => {
+    asked.push(date);
+    if (date === '2026-11-13') throw new Error('not published');
+    return { date, usd: { qar: 3.64, egp: date < '2026-09-01' ? 50 : 53.5 } };
+  };
+  const windows = await fetchFallbackWindows(NOW, { fetchSnapshot });
+  assert.deepEqual(windows.late.map(s => s.date), ['2026-11-12', '2026-11-11', '2026-11-10', '2026-11-09', '2026-11-08']);
+  assert.equal(windows.anchorDate, '2026-08-14');
+  assert.equal(asked.length, 11);
+  const qar = fallbackDailyQuotes('QAR', windows);
+  assert.equal(qar.source, 'currency-api');
+  assert.equal(qar.asOf, '2026-11-12');
+  assert.ok(Math.abs(qar.latest - 1 / 3.64) < 1e-12);
+  // The producer reads the fallback like any other block: a held peg is a measured zero.
+  const raw = inputs();
+  raw.currency.rates = [{ countryCode: 'QA', daily90: { ...qar, yahooNoiseShare: recorded('QAR').noiseShare } }, { countryCode: 'EG', daily90: fallbackDailyQuotes('EGP', windows) }];
+  const member = economicCountry(raw, 'QA', NOW).members.currency;
+  assert.equal(member.value, 0);
+  assert.equal(member.reference.quoteSource, 'currency-api');
+  assert.ok(member.reference.noiseShare > 0.3);
+  assert.ok(Math.abs(economicCountry(raw, 'EG', NOW).members.currency.value - 100 * (1 - 50 / 53.5)) < 1e-9);
+  // No table, a currency the table lacks, or too few days: no block, so the member stays absent.
+  assert.equal(fallbackDailyQuotes('QAR', null), null);
+  assert.equal(fallbackDailyQuotes('XXX', windows), null);
+  assert.equal(await fetchFallbackWindows(NOW, { fetchSnapshot: async (date) => { if (date > '2026-11-09') throw new Error('down'); return { date, usd: { qar: 3.64 } }; } }), null);
 });
 test('country, canonical key, metadata and activation contracts agree', () => {
   assert.deepEqual([...ECONOMIC_COUNTRIES].sort(), [...CII_COUNTRY_CODES].sort());

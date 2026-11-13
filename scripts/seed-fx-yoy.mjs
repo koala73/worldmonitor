@@ -28,7 +28,7 @@
  *         drawdown24m, peakRate, peakDate, troughRate, troughDate,
  *         asOf, yearAgo,
  *         daily90?: { asOf, latest, anchor: { date, value }, sessions,
- *                     noiseShare, reliable } },
+ *                     noiseShare, reliable, source, yahooNoiseShare? } },
  *       ...
  *     ],
  *     fetchedAt: "<iso>",
@@ -39,6 +39,7 @@
  */
 
 import { loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { fetchFallbackWindows, fallbackDailyQuotes } from './_currency-api.mjs';
 import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 
@@ -186,6 +187,7 @@ export function cleanDailyQuotes(points, timeZone = 'UTC') {
     sessions: closes.length,
     noiseShare,
     reliable: noiseShare <= FX_MAX_NOISE_SHARE,
+    source: 'yahoo',
   };
 }
 
@@ -266,6 +268,25 @@ async function fetchFxYoy() {
   console.log(`  FX YoY: ${rates.length}/${Object.keys(CURRENCY_COUNTRY).length} currencies`);
   const noisy = rates.filter((r) => r.daily90 && !r.daily90.reliable).map((r) => `${r.currency}(${r.daily90.noiseShare})`);
   console.log(`  FX daily: ${rates.filter((r) => r.daily90).length} cleaned, unreliable quotes: ${noisy.join(', ') || 'none'}`);
+  // Never let a noisy or missing Yahoo series cost a country its currency
+  // member while a clean second source has it.
+  const needFallback = rates.filter((r) => !r.daily90?.reliable);
+  if (needFallback.length > 0) {
+    let windows = null;
+    try {
+      windows = await fetchFallbackWindows(Date.now(), { windowDays: FX_DAILY_WINDOW_DAYS, points: FX_DAILY_MEDIAN_POINTS });
+    } catch (err) {
+      console.log(`  FX fallback failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    const recovered = [];
+    for (const row of needFallback) {
+      const fallback = fallbackDailyQuotes(row.currency, windows);
+      if (!fallback) continue;
+      row.daily90 = { ...fallback, ...(row.daily90 ? { yahooNoiseShare: row.daily90.noiseShare } : {}) };
+      recovered.push(row.currency);
+    }
+    console.log(`  FX fallback (currency-api): recovered ${recovered.join(', ') || 'none'} of ${needFallback.map((r) => r.currency).join(', ')}`);
+  }
   if (dailyFailures.length > 0) {
     console.log(`  Daily failures: ${dailyFailures.map((f) => `${f.currency}(${f.error})`).join(', ')}`);
   }

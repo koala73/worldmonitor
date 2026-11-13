@@ -56,7 +56,7 @@ function currencyMember(raw, code, nowMs) {
   if (nowMs - observedMs > 7 * DAY) return absent('stale', daily.asOf);
   if (daily.reliable !== true) return absent('unreliable-quotes', daily.asOf);
   return observation(100 * (1 - daily.latest / daily.anchor.value), observedMs, observedMs + 7 * DAY, INPUT_KEYS.currency, 'percent', nowMs,
-    { date: daily.anchor.date, value: daily.anchor.value, method: 'median-of-5-sessions-depreciation-vs-90-day-anchor', noiseShare: daily.noiseShare });
+    { date: daily.anchor.date, value: daily.anchor.value, method: 'median-of-5-sessions-depreciation-vs-90-day-anchor', quoteSource: daily.source ?? 'yahoo', noiseShare: daily.noiseShare ?? daily.yahooNoiseShare ?? null });
 }
 
 function inflationMember(inputs, code, nowMs) {

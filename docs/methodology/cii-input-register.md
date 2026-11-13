@@ -76,10 +76,16 @@ last session at least 90 days earlier (at most seven days of extra lag), so an
 isolated bad print moves neither end. A real move therefore shows in full
 about three sessions after it happens. A series in which more than 10% of
 sessions hold a move above 1% that is undone within three sessions is
-published with `reliable: false`, and the member is absent with the reason
-`unreliable-quotes`. On 13 November 2026 that applied to the Qatari riyal
+not compared. For such a currency the seeder reads a second source, the
+fawazahmed0 currency-api (dated daily tables of every currency against the
+dollar), and takes the same two five-day medians from it; the member records
+which source it came from and the Yahoo noise share. Only when the second
+source also lacks the currency is the member absent with the reason
+`unreliable-quotes`. On 13 November 2026 the Yahoo flag applied to the Qatari riyal
 (0.43), the Bahraini dinar (0.37) and the Pakistani rupee (0.14); the next
 highest was the Saudi riyal at 0.06, whose isolated spikes the medians remove.
+The second source read both pegs as flat and agreed with Yahoo on the Egyptian
+pound (6.30% against 6.27%). Its terms are under review in the attribution ledger.
 The noise share and the anchor date are published with each member.
 Values retain their units, source key, observation date and reference method.
 U18 must evaluate the scoring transformation and member-count fairness; these

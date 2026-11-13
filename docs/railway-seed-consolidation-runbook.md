@@ -1185,8 +1185,9 @@ CII Economic Stress reads six existing Redis inputs within a 30s section budget.
 The currency member needs the cleaned `daily90` block from `seed-fx-yoy`, which
 runs once a day. After a change to that block, run the FX seeder once before
 judging coverage: until it runs, every currency reads `insufficient-history`
-and the producer measures 22. With cleaned quotes the expected count is 24 of
-31 (Qatar's quotes are flagged unreliable and its inflation series is stale).
+and the producer measures 22. The expected count is 25 of 31; it is 24 when
+the second exchange-rate source is unavailable, because Qatar then has no
+usable member.
 Apply the registry's producer and Upstash-helper watch paths to this service.
 No extra upstream credentials or direct provider fetches are introduced.
 

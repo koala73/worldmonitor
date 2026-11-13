@@ -2910,6 +2910,20 @@
       ]
     },
     {
+      "host": "currency-api.pages.dev",
+      "provider": "fawazahmed0 currency-api",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC0-1.0 per the project repository (github.com/fawazahmed0/exchange-api); aggregated daily exchange rates, upstream sources not itemised by the project",
+      "attribution": "Credit the fawazahmed0 currency-api; used only as the second source for a currency whose Yahoo quotes are unreliable.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_currency-api.mjs"
+        }
+      ]
+    },
+    {
       "host": "cursor.com",
       "provider": "cursor.com",
       "kind": "structured",
