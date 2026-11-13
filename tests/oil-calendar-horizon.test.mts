@@ -111,3 +111,21 @@ it('market documentation and tool description acknowledge modeled CME holidays',
   const source = readFileSync(new URL('../api/mcp/registry/cache-tools.ts', import.meta.url), 'utf8');
   assert.match(source, /futures NYMEX breaks and CME energy holidays \(2026–2027\) plus 30m restart grace/);
 });
+
+it('easternWallTime returns the requested Eastern wall time on the requested day, including early morning', () => {
+  const clock = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit', hourCycle: 'h23',
+  });
+  for (let day = Date.UTC(2026, 0, 1); day < Date.UTC(2031, 0, 1); day += DAY) {
+    const date = new Date(day).toISOString().slice(0, 10);
+    for (let minutes = 0; minutes < 1440; minutes += 15) {
+      // 02:00 to 02:59 does not exist on the spring-forward Sunday.
+      const out = calendar.easternWallTime(day, minutes);
+      const parts = Object.fromEntries(clock.formatToParts(out).map(part => [part.type, part.value]));
+      const exists = !(new Date(day).getUTCDay() === 0 && minutes >= 120 && minutes < 180 && Number(parts.hour) !== Math.floor(minutes / 60));
+      if (!exists) continue;
+      assert.equal(`${parts.year}-${parts.month}-${parts.day}`, date, `${date} ${minutes}`);
+      assert.equal(Number(parts.hour) * 60 + Number(parts.minute), minutes, `${date} ${minutes}`);
+    }
+  }
+});

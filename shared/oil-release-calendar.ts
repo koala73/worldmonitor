@@ -37,14 +37,22 @@ export function usFederalHolidays(year: number): ReadonlySet<number> {
 }
 
 const easternClock = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', hourCycle: 'h23',
+  timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: 'numeric', minute: '2-digit', hourCycle: 'h23',
 });
 
-// Convert an Eastern wall-clock time on a UTC calendar day to an instant, across DST.
+// Eastern offset from UTC at an instant, in ms (negative), from the full wall-clock date.
+function easternOffset(time: number): number {
+  const parts = Object.fromEntries(easternClock.formatToParts(time).map(part => [part.type, part.value]));
+  const wall = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute));
+  return wall - Math.floor(time / 60_000) * 60_000;
+}
+
+// Convert an Eastern wall-clock time on a calendar day (a UTC midnight) to an instant.
+// The second pass reads the offset at the first estimate, which is correct on both sides of DST.
 export function easternWallTime(day: number, minutes: number): number {
-  const candidate = day + minutes * 60_000;
-  const parts = Object.fromEntries(easternClock.formatToParts(candidate).map(part => [part.type, part.value]));
-  return candidate + (minutes - (Number(parts.hour) * 60 + Number(parts.minute))) * 60_000;
+  const wall = day + minutes * 60_000;
+  return wall - easternOffset(wall - easternOffset(wall));
 }
 
 // First EIA release for a week ending on or after `weekEnding` (UTC midnight).
