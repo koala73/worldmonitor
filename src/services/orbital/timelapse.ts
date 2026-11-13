@@ -66,8 +66,25 @@ export type LoadImage = (url: string, signal: AbortSignal) => Promise<void>;
 /** How long one archive image may take before it counts as failed. */
 export const IMAGE_LOAD_TIMEOUT_MS = 30_000;
 
-export const loadImageElement: LoadImage = (url, signal) => new Promise((resolve, reject) => {
+/** False when a decoded image is fully transparent: the archive's nodata, a crop that fell outside the scene's pixels. */
+export function imageHasData(image: CanvasImageSource, canvas: HTMLCanvasElement = document.createElement('canvas')): boolean {
+  canvas.width = canvas.height = 32;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) return true;
+  try {
+    context.drawImage(image, 0, 0, 32, 32);
+    const { data } = context.getImageData(0, 0, 32, 32);
+    for (let i = 3; i < data.length; i += 4) if (data[i]! > 0) return true;
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/** Loads an image and resolves once it has decoded. `requireData` loads it CORS-readable and rejects one with no pixels. */
+export const loadImageElement = (url: string, signal: AbortSignal, options: { requireData?: boolean } = {}): Promise<void> => new Promise((resolve, reject) => {
   const image = new Image();
+  if (options.requireData) image.crossOrigin = 'anonymous';
   image.referrerPolicy = 'no-referrer';
   image.decoding = 'async';
   const finish = (error: Error | null) => {
@@ -86,18 +103,23 @@ export const loadImageElement: LoadImage = (url, signal) => new Promise((resolve
   const deadline = setTimeout(() => finish(new Error('image load timed out')), IMAGE_LOAD_TIMEOUT_MS);
   signal.addEventListener('abort', abort, { once: true });
   image.onload = () => {
-    void image.decode().catch(() => undefined).then(() => finish(null));
+    void image.decode().catch(() => undefined).then(() => finish(
+      options.requireData && !imageHasData(image) ? new Error('image has no data at this spot') : null,
+    ));
   };
   image.onerror = () => finish(new Error('image failed to load'));
   image.src = url;
 });
+
+/** Loads a time-lapse frame, rejecting a crop with no pixels so playback never shows an empty square. */
+export const loadLookImage: LoadImage = (url, signal) => loadImageElement(url, signal, { requireData: true });
 
 /** Loads every frame before playback; a frame that fails is dropped and the rest keep their order. */
 export async function preloadFrames<T extends { imageUrl: string | null }>(
   frames: readonly T[],
   signal: AbortSignal,
   onProgress: (loaded: number, total: number) => void = () => {},
-  loadImage: LoadImage = loadImageElement,
+  loadImage: LoadImage = loadLookImage,
 ): Promise<T[]> {
   let settled = 0;
   const outcomes = await Promise.all(frames.map(async (frame) => {

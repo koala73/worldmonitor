@@ -9,7 +9,7 @@ import { openOrbitalTimelapse, type TimelapseDependencies } from '@/components/O
 const stac = vi.hoisted(() => ({ search: vi.fn() }));
 vi.mock('@/services/orbital/archive-stac', async (original) => ({ ...(await original<object>()), searchStacArchive: stac.search }));
 
-const { CLEAR_LOOK_CLOUD_PCT, IMAGE_LOAD_TIMEOUT_MS, loadImageElement, preloadFrames, searchYearlyLooks, seasonWindow } = await import('@/services/orbital/timelapse');
+const { CLEAR_LOOK_CLOUD_PCT, IMAGE_LOAD_TIMEOUT_MS, imageHasData, loadImageElement, preloadFrames, searchYearlyLooks, seasonWindow } = await import('@/services/orbital/timelapse');
 
 const NOW = Date.UTC(2026, 10, 13, 12);
 const point = { lat: 25.003, lon: 54.99 };
@@ -53,6 +53,19 @@ afterEach(() => {
 });
 
 describe('yearly looks', () => {
+  it('tells a crop with no pixels at the spot from one with ground in it', () => {
+    const canvasWith = (alpha: number) => ({
+      width: 0,
+      height: 0,
+      getContext: () => ({ drawImage: () => {}, getImageData: () => ({ data: new Uint8ClampedArray(32 * 32 * 4).map((_, i) => (i % 4 === 3 ? alpha : 0)) }) }),
+    }) as unknown as HTMLCanvasElement;
+    const image = new Image();
+    expect(imageHasData(image, canvasWith(0))).toBe(false);
+    expect(imageHasData(image, canvasWith(255))).toBe(true);
+    const unreadable = { width: 0, height: 0, getContext: () => ({ drawImage: () => {}, getImageData: () => { throw new DOMException('tainted', 'SecurityError'); } }) } as unknown as HTMLCanvasElement;
+    expect(imageHasData(image, unreadable)).toBe(true);
+  });
+
   it('drops a look whose image never answers instead of stalling the rest', async () => {
     vi.useFakeTimers();
     try {

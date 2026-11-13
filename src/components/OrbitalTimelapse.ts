@@ -67,7 +67,7 @@ export class OrbitalTimelapsePage {
   constructor(private readonly subject: TimelapseSubject, private readonly returnFocusTo: HTMLElement | null, deps: TimelapseDependencies = {}) {
     this.deps = {
       searchLooks: deps.searchLooks ?? searchYearlyLooks,
-      loadImage: deps.loadImage ?? ((url, signal) => import('@/services/orbital/timelapse').then((m) => m.loadImageElement(url, signal))),
+      loadImage: deps.loadImage ?? ((url, signal) => import('@/services/orbital/timelapse').then((m) => m.loadLookImage(url, signal))),
       prefersReducedMotion: deps.prefersReducedMotion ?? (() => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches),
     };
     const titleId = 'orbital-timelapse-title';
@@ -379,6 +379,7 @@ function frameImage(look: YearlyLook): DomChild {
     alt: t('orbitalWatch.viewer.imageAlt', { name: platformName(look), time: `${dayMonth(look.timeMs)} ${look.year}` }),
     decoding: 'async',
     referrerpolicy: 'no-referrer',
+    crossorigin: 'anonymous',
     draggable: 'false',
   }) as HTMLImageElement;
   if (!image.complete) {
