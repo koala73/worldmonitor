@@ -4984,7 +4984,7 @@
     "neighboursHint": "風險跨越邊界。相鄰國家已標記，不計入 {{max}} 的限制中。",
     "startLabel": "從（可選）",
     "endLabel": "至（可選）",
-    "datesHint": "用於行程或任務。當時間視窗結束時，聚焦保持不變且狀態列會顯示。",
+    "datesHint": "用於行程或任務。時間視窗結束後，聚焦保持不變，聚焦欄會註明視窗已結束。",
     "errorNoCountries": "至少選擇一個國家。",
     "errorTooMany": "聚焦最多可容納 {{max}} 個國家。",
     "errorDates": "結束日期早於開始日期。",
@@ -5013,7 +5013,7 @@
       "emptyAirports": "您監控的機場中沒有位於這些國家的機場",
       "emptyFlights": "此面板中沒有往返這些國家的航班",
       "emptyAviationNews": "最近 24 小時內這些國家沒有航空新聞",
-      "tabNotFiltered": "此選項卡未按國家篩選",
+      "tabNotFiltered": "此標籤頁未按國家篩選",
       "hidden_other": "聚焦隱藏了 {{count}} 項",
       "showAllAria_other": "顯示此面板中的全部內容，包括聚焦範圍外的 {{count}} 項",
       "unattributed_other": "{{count}} 項無國家標記",
@@ -5035,7 +5035,7 @@
       "partialExposure": "無法載入所有 UCDP 地點。暴露資料不完整；覆蓋統計僅包含騷亂事件。"
     },
     "draftAssessment": "行程評估",
-    "draftAssessmentAria": "開啟行程評估，使用此焦點預填充",
+    "draftAssessmentAria": "開啟行程評估，並以此聚焦預先填好",
     "draftCopied": "請求已複製。將其貼上到您的AI助手中。",
     "draftCopiedPartial": "已為前 {{count}} 個國家複製請求。一份評估最多涵蓋 {{max}} 個國家。未包含的國家：{{omitted}}。",
     "draftCopyFailed": "無法複製請求。"

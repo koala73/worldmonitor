@@ -4984,7 +4984,7 @@
     "neighboursHint": "风险跨越边界。相邻国家已标记，不计入 {{max}} 的限制中。",
     "startLabel": "从（可选）",
     "endLabel": "至（可选）",
-    "datesHint": "用于行程或任务。当时间窗口结束时，聚焦保持不变且状态栏会显示。",
+    "datesHint": "用于行程或任务。时间窗口结束后，聚焦保持不变，聚焦栏会注明窗口已结束。",
     "errorNoCountries": "至少选择一个国家。",
     "errorTooMany": "聚焦最多可容纳 {{max}} 个国家。",
     "errorDates": "结束日期早于开始日期。",
@@ -5013,7 +5013,7 @@
       "emptyAirports": "您监控的机场中没有位于这些国家的机场",
       "emptyFlights": "此面板中没有往返这些国家的航班",
       "emptyAviationNews": "最近 24 小时内这些国家没有航空新闻",
-      "tabNotFiltered": "此选项卡未按国家筛选",
+      "tabNotFiltered": "此标签页未按国家筛选",
       "hidden_other": "聚焦隐藏了 {{count}} 项",
       "showAllAria_other": "显示此面板中的全部内容，包括聚焦范围外的 {{count}} 项",
       "unattributed_other": "{{count}} 项无国家标记",
@@ -5035,7 +5035,7 @@
       "partialExposure": "无法加载所有 UCDP 地点。暴露数据不完整；覆盖统计仅包含骚乱事件。"
     },
     "draftAssessment": "行程评估",
-    "draftAssessmentAria": "打开行程评估，使用此焦点预填充",
+    "draftAssessmentAria": "打开行程评估，并以此聚焦预先填好",
     "draftCopied": "请求已复制。将其粘贴到您的AI助手中。",
     "draftCopiedPartial": "已为前 {{count}} 个国家复制请求。一份评估最多涵盖 {{max}} 个国家。未包含的国家：{{omitted}}。",
     "draftCopyFailed": "无法复制请求。"
