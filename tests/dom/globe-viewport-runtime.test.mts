@@ -57,6 +57,16 @@ describe('Globe viewport runtime', () => {
     if (method === 'fitCountry') expect(map.getCenter()).toEqual({ lat: 30, lon: 20 });
   });
 
+  it('keeps a looked-up point framed instead of resuming the idle spin after the move', async () => {
+    const { map, controls, pov } = camera();
+    map.flushMarkers = vi.fn();
+    map.setOrbitalTarget({ lat: 25.112, lon: 55.139, lines: [] });
+    map.fitFocusBounds({ south: 24, north: 26, west: 54, east: 56, lonSpan: 2, latSpan: 2, center: { lat: 25.112, lon: 55.139 } }, 0.4);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(pov()).toMatchObject({ lat: 25.112, lng: 55.139 });
+    expect(controls.autoRotate).toBe(false);
+  });
+
   it('interrupts a superseded move without restoring rotation during its replacement', async () => {
     const { map, controls } = camera();
     map.setCenter(10, 20, 4);

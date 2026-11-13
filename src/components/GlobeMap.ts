@@ -869,7 +869,7 @@ export class GlobeMap {
       if (this.renderPaused) return;
       if (this.autoRotateTimer) clearTimeout(this.autoRotateTimer);
       this.autoRotateTimer = setTimeout(() => {
-        if (this.renderPaused) return;
+        if (this.renderPaused || this.orbitalTarget) return;
         if (this.viewportAutoRotateBeforeMove !== null) {
           this.viewportAutoRotateBeforeMove = !desktop;
         } else {
@@ -2636,7 +2636,16 @@ export class GlobeMap {
 
   public setOrbitalTarget(target: OrbitalTarget | null): void {
     this.orbitalTarget = target ? { _kind: 'orbitalTarget', _lat: target.lat, _lng: target.lon, lines: target.lines } : null;
+    if (target) this.holdRotation();
     this.flushMarkers();
+  }
+
+  /** Stops the idle spin so a looked-up point stays where the camera framed it. */
+  private holdRotation(): void {
+    if (this.autoRotateTimer) { clearTimeout(this.autoRotateTimer); this.autoRotateTimer = null; }
+    if (this.viewportAutoRotateBeforeMove !== null) this.viewportAutoRotateBeforeMove = false;
+    if (this.controlsAutoRotateBeforePause !== null) this.controlsAutoRotateBeforePause = false;
+    if (this.controls) this.controls.autoRotate = false;
   }
 
   // The globe fills clockwise rings, like the reversed country rings.
