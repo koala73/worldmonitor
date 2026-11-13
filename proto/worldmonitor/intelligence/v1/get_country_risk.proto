@@ -36,24 +36,20 @@ message GetCountryRiskResponse {
   int64 fetched_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // True when all upstream Redis keys were unavailable. Signals CDN cache bypass.
   bool upstream_unavailable = 8;
-  // Satellite context shown beside the score and never used to compute it. Absent when the country has no watched sites or its site summary is missing or stale.
+  // Imagery change flags, shown beside the score, never scored.
   ImageryChangeContext imagery_change = 9;
 }
 
-// Watched sites in a country whose radar imagery statistics changed, confirmed by the next comparable scene.
+// Watched sites with a confirmed imagery change.
 message ImageryChangeContext {
-  // Number of watched sites attributed to the country.
   int32 watched_site_count = 1;
-  // Sites with a confirmed change flag, by site id.
   repeated ImageryChangeSite confirmed_sites = 2;
 }
 
-// One watched site with a confirmed change flag.
+// A watched site with a confirmed change.
 message ImageryChangeSite {
-  // Watched-site id, e.g. "nuclear-facility:natanz".
   string site_id = 1;
-  // Site name.
   string name = 2;
-  // Time of the scene that confirmed the change, ISO 8601.
+  // ISO 8601 time of the confirming scene.
   string confirmed_at = 3;
 }

@@ -8055,25 +8055,22 @@ components:
                 watchedSiteCount:
                     type: integer
                     format: int32
-                    description: Number of watched sites attributed to the country.
                 confirmedSites:
                     type: array
                     items:
                         $ref: '#/components/schemas/ImageryChangeSite'
-            description: Watched sites in a country whose radar imagery statistics changed, confirmed by the next comparable scene.
+            description: Watched sites with a confirmed imagery change.
         ImageryChangeSite:
             type: object
             properties:
                 siteId:
                     type: string
-                    description: Watched-site id, e.g. "nuclear-facility:natanz".
                 name:
                     type: string
-                    description: Site name.
                 confirmedAt:
                     type: string
-                    description: Time of the scene that confirmed the change, ISO 8601.
-            description: One watched site with a confirmed change flag.
+                    description: ISO 8601 time of the confirming scene.
+            description: A watched site with a confirmed change.
         GetCountryIntelBriefRequest:
             type: object
             properties:
