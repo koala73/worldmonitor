@@ -48,6 +48,29 @@ function ringPoints(ring, arcs) {
   });
 }
 
+// Longitudes are made continuous across the antimeridian, so a ring that
+// crosses it fills the short way round. A ring that circles a pole (its
+// unwrapped longitude ends a full turn from where it began) is closed along
+// that pole, which is how Antarctica becomes land.
+function unwrapRing(ring) {
+  const points = [ring[0]];
+  for (let i = 1; i < ring.length; i++) {
+    const [lon, lat] = ring[i];
+    const previousLon = points[i - 1][0];
+    points.push([lon + 360 * Math.round((previousLon - lon) / 360), lat]);
+  }
+  const turn = points.at(-1)[0] - points[0][0];
+  if (Math.abs(turn) < 180) return points;
+  const meanLat = points.reduce((sum, [, lat]) => sum + lat, 0) / points.length;
+  const pole = meanLat < 0 ? -90 : 90;
+  return [...points, [points.at(-1)[0], pole], [points[0][0], pole], points[0]];
+}
+
+function alignRing(ring, referenceLon) {
+  const shift = 360 * Math.round((referenceLon - ring[0][0]) / 360);
+  return shift ? ring.map(([lon, lat]) => [lon + shift, lat]) : ring;
+}
+
 export function buildMask(topology) {
   const arcs = decodeArcs(topology);
   const width = Math.round(360 / CELL_DEG);
@@ -59,7 +82,8 @@ export function buildMask(topology) {
   for (const geometry of topology.objects.countries.geometries) {
     const polygons = geometry.type === 'Polygon' ? [geometry.arcs] : geometry.type === 'MultiPolygon' ? geometry.arcs : [];
     for (const polygon of polygons) {
-      const rings = polygon.map((ring) => ringPoints(ring, arcs));
+      const [outer, ...holes] = polygon.map((ring) => unwrapRing(ringPoints(ring, arcs)));
+      const rings = [outer, ...holes.map((hole) => alignRing(hole, outer[0][0]))];
       for (const ring of rings) {
         for (const [lon, lat] of ring) mark(Math.floor((90 - lat) / CELL_DEG), Math.floor((lon + 180) / CELL_DEG));
       }
