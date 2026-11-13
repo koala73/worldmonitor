@@ -86,17 +86,56 @@ export function connectInstruction(req: Request): string | null {
  * review connects that way. Such a session id gets a fixed prefix, so the
  * marker travels with the client's own header and needs no server state.
  */
-const VIEW_DOMAIN_CLIENT_NAMES: ReadonlySet<string> = new Set(['Manufact Cloud', 'mcp-use-probe', 'mcp-use']);
+/**
+ * Manufact runs more than one client behind its checks ("Manufact Cloud",
+ * "mcp-use-probe", "mcp-use"), and the one that reads the views has not stayed
+ * on a name we could list ahead of time. Match the family instead: a name that
+ * starts with "manufact" or "mcp-use", or a `websiteUrl` on one of its sites.
+ */
+const VIEW_DOMAIN_NAME_PATTERN = /^(manufact|mcp-use)/i;
+const VIEW_DOMAIN_SITE_HOSTS: ReadonlySet<string> = new Set(['mcp-use.com', 'www.mcp-use.com', 'manufact.com', 'www.manufact.com']);
 const CLIENT_INFO_META_KEY = 'io.modelcontextprotocol/clientInfo';
 const VIEW_DOMAIN_SESSION_PREFIX = 'wmvd-';
 
-const isViewDomainClientName = (name: unknown): boolean =>
-  typeof name === 'string' && VIEW_DOMAIN_CLIENT_NAMES.has(name);
+function siteHost(url: unknown): string | null {
+  if (typeof url !== 'string') return null;
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/** True for a `clientInfo` object that names itself as one of Manufact's clients. */
+function isViewDomainClientInfo(info: unknown): boolean {
+  if (!info || typeof info !== 'object') return false;
+  const { name, websiteUrl } = info as { name?: unknown; websiteUrl?: unknown };
+  if (typeof name === 'string' && VIEW_DOMAIN_NAME_PATTERN.test(name)) return true;
+  const host = siteHost(websiteUrl);
+  return host !== null && VIEW_DOMAIN_SITE_HOSTS.has(host);
+}
 
 /** Session id for an `initialize` request: prefixed when the client is one that keeps the view domain. */
-export function mintSessionId(clientName: unknown): string {
+export function mintSessionId(clientInfo: unknown): string {
   const id = crypto.randomUUID();
-  return isViewDomainClientName(clientName) ? `${VIEW_DOMAIN_SESSION_PREFIX}${id}` : id;
+  return isViewDomainClientInfo(clientInfo) ? `${VIEW_DOMAIN_SESSION_PREFIX}${id}` : id;
+}
+
+/**
+ * The `clientInfo.name` a request declares, for usage telemetry: the 2026-07-28
+ * per-request `_meta` form, or `initialize`'s `params.clientInfo`. Bounded to a
+ * short printable token (anything else is "other") so the Axiom dimension
+ * cannot be minted at will; null when the request names no client.
+ */
+export function declaredClientName(body: unknown): string | null {
+  const params = body && typeof body === 'object' ? (body as { params?: unknown }).params : undefined;
+  if (!params || typeof params !== 'object') return null;
+  const meta = (params as { _meta?: unknown })._meta;
+  const info = (meta && typeof meta === 'object' ? (meta as Record<string, unknown>)[CLIENT_INFO_META_KEY] : undefined)
+    ?? (params as { clientInfo?: unknown }).clientInfo;
+  const name = info && typeof info === 'object' ? (info as { name?: unknown }).name : undefined;
+  if (typeof name !== 'string' || name === '') return null;
+  return /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$/.test(name) ? name : 'other';
 }
 
 function wantsViewDomain(req: Request, body: unknown): boolean {
@@ -105,8 +144,7 @@ function wantsViewDomain(req: Request, body: unknown): boolean {
   const params = body && typeof body === 'object' ? (body as { params?: unknown }).params : undefined;
   const meta = params && typeof params === 'object' ? (params as { _meta?: unknown })._meta : undefined;
   const info = meta && typeof meta === 'object' ? (meta as Record<string, unknown>)[CLIENT_INFO_META_KEY] : undefined;
-  const name = info && typeof info === 'object' ? (info as { name?: unknown }).name : undefined;
-  return isViewDomainClientName(name);
+  return isViewDomainClientInfo(info);
 }
 
 const VIEW_DOMAIN_METHODS: ReadonlySet<string> = new Set(['resources/list', 'resources/templates/list', 'resources/read']);
