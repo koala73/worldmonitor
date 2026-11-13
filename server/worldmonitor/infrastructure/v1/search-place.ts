@@ -5,7 +5,7 @@ import type {
   SearchPlaceResponse,
   PlaceMatch,
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
-import { ApiError } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
+import { ApiError, ValidationError } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
 import { checkScopedRateLimit } from '../../../_shared/rate-limit';
 
@@ -57,7 +57,7 @@ export const searchPlace: InfrastructureServiceHandler['searchPlace'] = async (
 ): Promise<SearchPlaceResponse> => {
   const query = normalizePlaceQuery(req.q ?? '');
   if (query.length < MIN_QUERY_CHARS || query.length > MAX_QUERY_CHARS) {
-    throw new ApiError(400, `q must be ${MIN_QUERY_CHARS} to ${MAX_QUERY_CHARS} characters`, '');
+    throw new ValidationError([{ field: 'q', description: `must be ${MIN_QUERY_CHARS} to ${MAX_QUERY_CHARS} characters` }]);
   }
 
   const cacheKey = placeSearchCacheKey(query);

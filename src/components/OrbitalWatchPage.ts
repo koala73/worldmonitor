@@ -264,7 +264,7 @@ export class OrbitalWatchPage {
       extensions.tools ?? null,
       this.body,
       h('p', { className: 'ow-privacy' }, t('orbitalWatch.privacy')));
-    declareOverlay(this.sheet, { reload: 'safe' });
+    declareOverlay(this.sheet, { reload: 'blocking' });
     this.sheet.addEventListener('keydown', this.onSheetKeydown);
     this.sheet.addEventListener('click', this.onSheetClick);
   }

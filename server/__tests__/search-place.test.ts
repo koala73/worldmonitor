@@ -62,7 +62,7 @@ describe('place-name search', () => {
   });
 
   it('rejects a one-character name before any lookup', async () => {
-    await expect(searchPlace(ctx, { q: ' x ' })).rejects.toMatchObject({ statusCode: 400 });
+    await expect(searchPlace(ctx, { q: ' x ' })).rejects.toMatchObject({ name: 'ValidationError', violations: [{ field: 'q' }] });
     expect(limiter).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
