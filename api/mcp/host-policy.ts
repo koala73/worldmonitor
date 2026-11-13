@@ -24,13 +24,14 @@ import { INFORM_ONLY_MESSAGES, informOnlyNextStep, type McpDenialReason } from '
 
 /**
  * ChatGPT sends `openai-mcp/<version>` on every MCP request, plain or followed
- * by ` (ChatGPT)`. The Codex CLI sends the same product token followed by
- * ` (Codex)`; it is not a ChatGPT app surface, so it keeps the default.
- * Observed in wm_api_usage over 2026-10-03..2026-11-02.
+ * by ` (ChatGPT)`. The same product token followed by ` (Codex)` (the Codex
+ * CLI) or ` (Responses API)` (a developer's MCP tool on OpenAI's API) is not a
+ * ChatGPT app surface, so it keeps the default.
+ * Observed in wm_api_usage over 2026-07-01..2026-11-13.
  */
 export function isChatGptHost(req: Request): boolean {
   const userAgent = req.headers.get('User-Agent') ?? '';
-  return /^openai-mcp\//i.test(userAgent) && !/\(codex\)/i.test(userAgent);
+  return /^openai-mcp\//i.test(userAgent) && !/\((?:codex|responses api)\)/i.test(userAgent);
 }
 
 /**
