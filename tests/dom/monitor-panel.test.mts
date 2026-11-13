@@ -106,6 +106,14 @@ describe('monitor keyword matching', () => {
     expect(matchedTitles(['g7'], ['G7サミットが開幕'])).toEqual(['G7サミットが開幕']);
   });
 
+  it('keeps word boundaries at each spaced-script end of mixed-script keywords', () => {
+    expect(matchedTitles(['中国 AI'], ['中国 airline expands', '中国 AI summit'])).toEqual(['中国 AI summit']);
+    expect(matchedTitles(['AI 中国'], ['Thai 中国 agreement', 'AI 中国 summit'])).toEqual(['AI 中国 summit']);
+    expect(matchedTitles(['AI中国AI'], ['Thai中国airline', 'AI中国AI summit'])).toEqual(['AI中国AI summit']);
+    expect(matchedTitles(['中国AI'], ['中国airline', '中国AIサミット'])).toEqual(['中国AIサミット']);
+    expect(matchedTitles(['AI中国'], ['Thai中国', 'サミットAI中国'])).toEqual(['サミットAI中国']);
+  });
+
   it('still rejects a keyword that is only part of a longer word', () => {
     expect(matchedTitles(['ai'], ['Train strike ends'])).toEqual([]);
     expect(matchedTitles(['мир'], ['Мирный договор подписан'])).toEqual([]);

@@ -7,8 +7,8 @@ import { validateUrl } from '@/utils/sanitize';
 import { h, replaceChildren } from '@/utils/dom-utils';
 
 // These scripts do not separate words with spaces (Korean attaches particles
-// to nouns), so a keyword in them matches anywhere in the text, and their
-// characters never block a match ("G7" in "G7サミット").
+// to nouns), so keyword endpoints in them do not require word boundaries.
+// Their characters never block a match ("G7" in "G7サミット").
 const UNSPACED_SCRIPTS = '\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}\\p{Script=Thai}\\p{Script=Lao}\\p{Script=Khmer}\\p{Script=Myanmar}';
 const UNSPACED_SCRIPT = new RegExp(`[${UNSPACED_SCRIPTS}]`, 'u');
 // `\b` only knows ASCII word characters, so the boundary is spelled out to
@@ -18,9 +18,10 @@ const REGEX_SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
 
 function keywordPattern(keyword: string): RegExp {
   const escaped = keyword.replace(REGEX_SPECIAL_CHARS, '\\$&');
-  return UNSPACED_SCRIPT.test(keyword)
-    ? new RegExp(escaped, 'iu')
-    : new RegExp(`(?<!${WORD_CHAR})${escaped}(?!${WORD_CHAR})`, 'iu');
+  const characters = Array.from(keyword);
+  const start = UNSPACED_SCRIPT.test(characters[0] ?? '') ? '' : `(?<!${WORD_CHAR})`;
+  const end = UNSPACED_SCRIPT.test(characters[characters.length - 1] ?? '') ? '' : `(?!${WORD_CHAR})`;
+  return new RegExp(`${start}${escaped}${end}`, 'iu');
 }
 
 export class MonitorPanel extends Panel {
