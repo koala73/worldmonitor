@@ -339,7 +339,7 @@
 @media (max-width: 768px) {
   .orbital-watch-sheet,
   .orbital-watch-sheet[data-view="full"] {
-    inset: 38vh 0 var(--ow-mobile-tab-bar, 64px) 0;
+    inset: 38vh 0 calc(58px + env(safe-area-inset-bottom, 0px)) 0;
     width: auto;
   }
   .orbital-watch-sheet .ow-panel,
