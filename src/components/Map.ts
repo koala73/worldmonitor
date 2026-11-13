@@ -5451,7 +5451,12 @@ export class MapComponent {
     const projection = this.getProjection(width, height);
     const pos = projection([lon, lat]);
     const scale = Math.max(1, Math.min(10, zoom));
-    const centre = pos && projection.invert?.([pos[0] - offset.x / scale, pos[1] - offset.y / scale]);
+    if (!pos) return { lat, lon };
+    // One world is drawn, so a centre past the antimeridian would wrap to the far edge.
+    const west = projection([-180, 0])?.[0] ?? -Infinity;
+    const east = projection([180, 0])?.[0] ?? Infinity;
+    const x = Math.min(east - 1e-6, Math.max(west + 1e-6, pos[0] - offset.x / scale));
+    const centre = projection.invert?.([x, pos[1] - offset.y / scale]);
     return centre ? { lat: centre[1], lon: centre[0] } : { lat, lon };
   }
 
