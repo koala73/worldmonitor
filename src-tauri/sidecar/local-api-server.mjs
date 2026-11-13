@@ -1535,6 +1535,7 @@ const cloudPreferredSeedOnlyPrefixes = [
   '/api/consumer-prices/v1/',
   '/api/health/v1/',
   '/api/natural/v1/',
+  '/api/orbital/v1/',
   '/api/positive-events/v1/',
   '/api/prediction/v1/',
   '/api/radiation/v1/',

@@ -682,6 +682,8 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // Live lookups can fan out to position, schedule and photo providers.
   '/api/military/v1/get-wingbits-live-flight': { limit: 30, window: '60 s' },
   '/api/imagery/v1/search-imagery': { limit: 30, window: '60 s' },
+  // One catalog read per point lookup; the seeded key is never refreshed from here.
+  '/api/orbital/v1/list-imaging-satellites': { limit: 60, window: '60 s' },
   // Generic batch fan-out: one request re-dispatches up to 20 gateway GETs, so
   // cap the multiplier at the same 30/min budget as the other batch routes.
   '/api/batch/v1/execute': { limit: 30, window: '60 s' },
