@@ -10,6 +10,7 @@ const DAY_MS = 86_400_000;
 export const ORBIT_ELEMENTS_MAX_AGE_DAYS = 7;
 export const PASS_MIN_ELEVATION_DEG = 10;
 export const EDGE_OF_SWATH_KM = 5;
+export const PASS_WINDOW_MAX_DAYS = 10;
 
 const SCAN_STEP_S = 20;
 const SCAN_MARGIN_KM = 100;
@@ -37,6 +38,15 @@ function groundDistanceKm(lat1, lon1, lat2, lon2) {
   const dLon = (lon2 - lon1) * DEG;
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * DEG) * Math.cos(lat2 * DEG) * Math.sin(dLon / 2) ** 2;
   return 2 * EARTH_RADIUS_KM * Math.atan2(Math.sqrt(Math.min(1, a)), Math.sqrt(Math.max(0, 1 - a)));
+}
+
+function windowBounds(window) {
+  const startMs = toMs(window.start);
+  const endMs = toMs(window.end);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs || endMs - startMs > PASS_WINDOW_MAX_DAYS * DAY_MS) {
+    throw new RangeError(`window must be finite, ordered and at most ${PASS_WINDOW_MAX_DAYS} days long`);
+  }
+  return { startMs, endMs };
 }
 
 function stateAt(elements, timeMs) {
@@ -182,8 +192,7 @@ function isGeostationary(elements) {
 
 export function findPasses({ elements, profile, point, window, now }) {
   const nowMs = toMs(now);
-  const startMs = toMs(window.start);
-  const endMs = toMs(window.end);
+  const { startMs, endMs } = windowBounds(window);
   const ageDays = (nowMs - elements.epochMs) / DAY_MS;
   if (ageDays > ORBIT_ELEMENTS_MAX_AGE_DAYS) return { status: 'too-old', ageDays, passes: [] };
 
@@ -246,9 +255,11 @@ export function findPasses({ elements, profile, point, window, now }) {
 }
 
 export function groundTrack(elements, window, stepSeconds = 60) {
+  const { startMs, endMs } = windowBounds(window);
+  if (!(stepSeconds > 0)) throw new RangeError('stepSeconds must be positive');
   const segments = [];
   let segment = [];
-  for (let t = toMs(window.start); t <= toMs(window.end); t += stepSeconds * 1000) {
+  for (let t = startMs; t <= endMs; t += stepSeconds * 1000) {
     const state = stateAt(elements, t);
     if (!state) continue;
     const previous = segment.at(-1);

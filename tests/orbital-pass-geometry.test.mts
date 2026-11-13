@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
-import { findPasses, groundTrack, parseOrbitElements } from '../shared/orbital/pass-geometry.js';
+import { PASS_WINDOW_MAX_DAYS, findPasses, groundTrack, parseOrbitElements } from '../shared/orbital/pass-geometry.js';
 import type { GeoPoint, OmmRecord, OrbitElements, Pass } from '../shared/orbital/pass-geometry.js';
 import { isLandOrCoast } from '../shared/orbital/coverage.js';
 import { matchSensorProfile } from '../shared/orbital/sensor-profiles.js';
@@ -120,6 +120,18 @@ describe('pass geometry rules', () => {
     const result = findPasses({ elements, profile, point: paris, window: { start: epochMs, end: epochMs + DAY }, now: epochMs });
     assert.deepEqual(result.passes, []);
     assert.deepEqual(groundTrack(elements, { start: epochMs, end: epochMs + HOUR }), []);
+  });
+
+  it('rejects a window that is unbounded, reversed or longer than the search limit', () => {
+    const { elements, profile } = satellite('SENTINEL-2B');
+    const search = (start: number, end: number) => () => findPasses({ elements, profile, point: paris, window: { start, end }, now: FIXTURE_NOW });
+    assert.throws(search(FIXTURE_NOW, Infinity), RangeError);
+    assert.throws(search(FIXTURE_NOW, Number.NaN), RangeError);
+    assert.throws(search(FIXTURE_NOW, FIXTURE_NOW - HOUR), RangeError);
+    assert.throws(search(FIXTURE_NOW - 7 * DAY, FIXTURE_NOW + 365 * DAY), RangeError);
+    assert.doesNotThrow(search(FIXTURE_NOW - 7 * DAY, FIXTURE_NOW - 7 * DAY + PASS_WINDOW_MAX_DAYS * DAY));
+    assert.throws(() => groundTrack(elements, { start: FIXTURE_NOW, end: Infinity }), RangeError);
+    assert.throws(() => groundTrack(elements, { start: FIXTURE_NOW, end: FIXTURE_NOW + HOUR }, 0), RangeError);
   });
 
   it('gives Sentinel-1 no likely-imaged pass on the side it does not look', () => {
@@ -294,9 +306,28 @@ describe('land and coast coverage', () => {
     assert.equal(isLandOrCoast(35.9, 14.4), true, 'Malta');
     assert.equal(isLandOrCoast(-17.7, 178.0), true, 'Fiji near the antimeridian');
     assert.equal(isLandOrCoast(30, -40), false, 'mid-Atlantic');
+    assert.equal(isLandOrCoast(71.125, 0), false, 'Norwegian Sea');
+    assert.equal(isLandOrCoast(75, 0), false, 'Greenland Sea');
+    assert.equal(isLandOrCoast(72, -5), false, 'Greenland Sea west of Jan Mayen');
+    assert.equal(isLandOrCoast(85, 0), false, 'Arctic Ocean');
     assert.equal(isLandOrCoast(-30, -140), false, 'South Pacific');
+    assert.equal(isLandOrCoast(60, 100), true, 'central Siberia');
+    assert.equal(isLandOrCoast(68, -178), true, 'Chukotka east of the antimeridian');
+    assert.equal(isLandOrCoast(67, 179), true, 'Chukotka west of the antimeridian');
+    assert.equal(isLandOrCoast(-18.2, -178.8), true, 'Lakeba, Fiji, east of the antimeridian');
+    assert.equal(isLandOrCoast(-80, 0), true, 'Antarctic plateau');
+    assert.equal(isLandOrCoast(-75, -100), true, 'West Antarctica');
+    assert.equal(isLandOrCoast(-89.9, 10), true, 'South Pole');
     assert.doesNotThrow(() => isLandOrCoast(90, 180));
     assert.doesNotThrow(() => isLandOrCoast(-90, -180));
+  });
+
+  it('leaves open water in every row north of the Southern Ocean', () => {
+    for (let lat = 89.875; lat > -60; lat -= 0.25) {
+      let land = 0;
+      for (let lon = -179.875; lon < 180; lon += 0.25) if (isLandOrCoast(lat, lon)) land++;
+      assert.ok(land / 1440 < 0.9, `row at ${lat} is ${((100 * land) / 1440).toFixed(1)}% land`);
+    }
   });
 
   it('is reproducible from the committed Natural Earth source', () => {
