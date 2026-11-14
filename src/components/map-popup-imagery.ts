@@ -93,7 +93,7 @@ export function renderImageryDetails(imagery: ObjectImagery, nowMs: number): str
   const stale = Number.isFinite(latestMs) && nowMs - latestMs > IMAGE_STALE_MS;
   const latest = imagery.latest && Number.isFinite(latestMs)
     ? `${escapeHtml(formatUtc(latestMs))}<span class="popup-imagery-source">${escapeHtml(profileName(imagery.latest.profileId))}</span>`
-    : label('noImage');
+    : label(imagery.imageSearchFailed ? 'unavailable' : 'noImage');
   const next = imagery.nextPass
     ? `${escapeHtml(formatUtc(imagery.nextPass.timeMs))}<span class="popup-imagery-source">${escapeHtml(imagery.nextPass.satellite)}</span>`
     : label('noPass');

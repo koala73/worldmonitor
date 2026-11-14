@@ -18,7 +18,7 @@ import type { ArchiveId } from './archive-result';
 import { searchStacArchive } from './archive-stac';
 import { cropBox, planetaryComputerCropUrl } from './crop-url';
 import { assembleEvidence } from './match';
-import { createOrbitalPassClient, type OrbitalPassClient } from './pass-client';
+import { createOrbitalPassClient, type OrbitalPassClient, type PointPassLookup } from './pass-client';
 
 export type ImageryTarget =
   | { kind: 'site'; origin: WatchedSiteOrigin; point: GeoPoint }
@@ -32,9 +32,13 @@ export interface ObjectImage {
   candidates: string[];
 }
 
+export interface ObjectPass { satellite: string; profileId: string; timeMs: number }
+
 export interface ObjectImagery {
   latest: ObjectImage | null;
-  nextPass: { satellite: string; profileId: string; timeMs: number } | null;
+  /** True when `latest` is null because an archive did not answer, not because it has no image. */
+  imageSearchFailed?: boolean;
+  nextPass: ObjectPass | null;
 }
 
 const getOrbitalClient = createLazyClient(() => new OrbitalServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) }));
@@ -70,24 +74,27 @@ const archiveOf = (url: string): ArchiveId =>
   new URL(url).hostname === 'planetarycomputer.microsoft.com' ? 'planetary-computer' : 'earth-search';
 
 let passClient: OrbitalPassClient | null = null;
+const lookupPasses = (point: GeoPoint, signal?: AbortSignal) => (passClient ??= createOrbitalPassClient()).lookup({ point }, { signal });
+
+function nextPassOf(passes: PointPassLookup['passes'], nowMs: number): ObjectPass | null {
+  const next = passes.filter((p) => p.inFootprint && p.timeMs > nowMs).sort((a, b) => a.timeMs - b.timeMs)[0];
+  return next ? { satellite: next.name, profileId: next.profileId, timeMs: next.timeMs } : null;
+}
 
 /** Answered entirely in the browser: the point goes to the pass worker and the public archives only. */
 export async function lookupPointImagery(point: GeoPoint, signal?: AbortSignal): Promise<ObjectImagery> {
-  passClient ??= createOrbitalPassClient();
-  const lookup = await passClient.lookup({ point }, { signal });
+  const lookup = await lookupPasses(point, signal);
   const window = { startMs: lookup.window.startMs, endMs: Math.min(lookup.window.endMs, lookup.nowMs) };
   const stac = await Promise.all((['earth-search', 'planetary-computer'] as const)
     .map((archive) => searchStacArchive(archive, { point, window, signal })));
   const evidence = assembleEvidence({ lookup, stac });
   const newest = evidence.acquisitions.find((a) => a.imageUrl);
-  // "No recent image" is only true when every archive answered.
-  if (!newest && evidence.failures.length) throw new Error('archive search failed');
-  const next = lookup.passes.filter((p) => p.inFootprint && p.timeMs > lookup.nowMs).sort((a, b) => a.timeMs - b.timeMs)[0];
   return {
     latest: newest?.imageUrl
       ? { datetime: new Date(newest.startMs).toISOString(), profileId: newest.profileId, archive: archiveOf(newest.imageUrl), candidates: [newest.imageUrl] }
       : null,
-    nextPass: next ? { satellite: next.name, profileId: next.profileId, timeMs: next.timeMs } : null,
+    imageSearchFailed: !newest && evidence.failures.length > 0,
+    nextPass: nextPassOf(lookup.passes, Date.now()),
   };
 }
 
@@ -97,6 +104,11 @@ export async function loadObjectImagery(target: ImageryTarget, signal?: AbortSig
     if (siteId) {
       const record = await getOrbitalClient().getWatchedSiteImagery({ siteId }, { signal }).catch(() => null);
       const imagery = record ? fromSiteRecord(record, Date.now()) : null;
+      // A CDN-cached record can name a pass that has since happened; the pass worker finds the next one locally.
+      if (imagery && !imagery.nextPass) {
+        const lookup = await lookupPasses(target.point, signal).catch(() => null);
+        return { ...imagery, nextPass: lookup ? nextPassOf(lookup.passes, Date.now()) : null };
+      }
       if (imagery) return imagery;
     }
   }
