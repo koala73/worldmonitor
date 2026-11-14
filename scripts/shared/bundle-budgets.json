@@ -1,5 +1,5 @@
 {
-  "comment": "Initial /dashboard bundle-size budgets (#7111). Gated on raw bytes: per chunk ±max(2048 B, 2%), total ±max(16384 B, 0.25%). The \"deferred\" section gates the application graph the entry imports on every visit with the same tolerances. Tolerance fields here are informational — the gate enforces its own constants and rejects a snapshot that disagrees. Regenerate after \"npm run build:pro && VITE_VARIANT=full ./node_modules/.bin/vite build\" with: npm run bundle:budgets",
+  "comment": "Initial /dashboard bundle-size budgets (#7111). Gated on raw bytes: per chunk \u00b1max(2048 B, 2%), total \u00b1max(16384 B, 0.25%). The \"deferred\" section gates the application graph the entry imports on every visit with the same tolerances. Tolerance fields here are informational \u2014 the gate enforces its own constants and rejects a snapshot that disagrees. Regenerate after \"npm run build:pro && VITE_VARIANT=full ./node_modules/.bin/vite build\" with: npm run bundle:budgets",
   "surface": "dashboard",
   "variant": "full",
   "tolerancePct": 2,
@@ -105,7 +105,7 @@
   },
   "deferred": {
     "total": {
-      "raw": 1574603
+      "raw": 1582507
     },
     "chunks": {
       "App": {
@@ -146,6 +146,10 @@
       },
       "corroboration": {
         "raw": 14431,
+        "files": 1
+      },
+      "country-names": {
+        "raw": 5498,
         "files": 1
       },
       "cross-domain-storage": {
@@ -210,6 +214,10 @@
       },
       "sanitize": {
         "raw": 1280,
+        "files": 1
+      },
+      "satellites": {
+        "raw": 2406,
         "files": 1
       },
       "select": {
