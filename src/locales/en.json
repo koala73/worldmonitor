@@ -4636,7 +4636,7 @@
       "confirmedCount_one": "{{count}} confirmed image",
       "confirmedCount_other": "{{count}} confirmed images",
       "newest": "newest {{when}}",
-      "newestNoPreview": "The newest image, {{when}}, has no preview; this is the newest one with a preview.",
+      "newestNoPreview": "Latest acquisition {{when}} lacks a preview; older scene shown.",
       "noneConfirmed": "Zero confirmed images this period",
       "noneYet": "Archives still answering",
       "latest": "Latest image",
