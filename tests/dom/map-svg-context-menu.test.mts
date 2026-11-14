@@ -55,6 +55,15 @@ describe('SVG flat map point lookup entry', () => {
     expect([menus[0]!.lat, menus[0]!.lon]).toEqual([25, 55]);
   });
 
+  it('leaves a long-press on a map control to the control', () => {
+    vi.useFakeTimers();
+    const { container, menus } = createMap();
+    container.innerHTML = '<div class="map-controls"><button>Zoom</button></div>';
+    container.querySelector('button')!.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'touch', pointerId: 1, clientX: 650, clientY: 300, bubbles: true }));
+    vi.advanceTimersByTime(700);
+    expect(menus).toHaveLength(0);
+  });
+
   it('leaves a right-click on a map control to the browser', () => {
     const { container, menus } = createMap();
     container.innerHTML = '<div class="map-controls"><button>Zoom</button></div>';

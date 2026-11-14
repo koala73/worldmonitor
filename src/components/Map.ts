@@ -1345,7 +1345,7 @@ export class MapComponent {
       const hit = getCountryAtCoordinates(point.lat, point.lon);
       this.onMapContextMenu({ ...point, screenX: e.clientX, screenY: e.clientY, countryCode: hit?.code, countryName: hit?.name });
     }, { signal });
-    const removeLongPress = installLongPressContextMenu(this.container);
+    const removeLongPress = installLongPressContextMenu(this.container, { ignore: shouldIgnoreInteractionStart });
     signal.addEventListener('abort', removeLongPress, { once: true });
 
     this.container.style.cursor = 'grab';

@@ -5,7 +5,7 @@ const SLOP_PX = 10;
  * Turns a stationary one-finger touch hold into a `contextmenu` event on the target, for touch
  * browsers (iOS Safari) that never fire one. Holds where the browser fires its own are left alone.
  */
-export function installLongPressContextMenu(target: HTMLElement): () => void {
+export function installLongPressContextMenu(target: HTMLElement, options: { ignore?: (start: EventTarget | null) => boolean } = {}): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let start: { id: number; x: number; y: number } | null = null;
   /** The click some browsers send when the held finger lifts would dismiss the menu it opened. */
@@ -17,7 +17,7 @@ export function installLongPressContextMenu(target: HTMLElement): () => void {
   };
   const onDown = (e: PointerEvent) => {
     swallowReleaseClick = false;
-    if (e.pointerType !== 'touch' || start) return cancel();
+    if (e.pointerType !== 'touch' || start || options.ignore?.(e.target)) return cancel();
     start = { id: e.pointerId, x: e.clientX, y: e.clientY };
     timer = setTimeout(() => {
       const at = start;
