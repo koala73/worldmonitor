@@ -122,7 +122,7 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   ChokepointStrip: 'panels-energy', EnergyComplex: 'panels-energy',
   EnergyCrisis: 'panels-energy', EnergyDisruptions: 'panels-energy',
   EnergyRiskOverview: 'panels-energy', FuelPrices: 'panels-energy',
-  FuelShortage: 'panels-energy', Hormuz: 'panels-energy',
+  FuelShortage: 'panels-energy', GridDisruptionClock: 'panels-energy', Hormuz: 'panels-energy',
   OilInventories: 'panels-energy', PipelineStatus: 'panels-energy',
   StorageFacilityMap: 'panels-energy', RenewableEnergy: 'panels-energy',
   // Defense / military / aviation
@@ -319,6 +319,10 @@ function htmlVariantPlugin(activeMeta: VariantMeta, activeVariant: string, isDes
       // Web builds use 'full' favicons in HTML; runtime JS swaps them per hostname.
       if (activeVariant !== 'full') {
         result = result
+          .replace(
+            /<link rel="icon" type="image\/png" sizes="96x96" href="\/favico\/android-chrome-96x96\.png" \/>/g,
+            `<link rel="icon" type="image/png" sizes="192x192" href="/favico/${activeVariant}/android-chrome-192x192.png" />`
+          )
           .replace(/\/favico\/favicon/g, `/favico/${activeVariant}/favicon`)
           .replace(/\/favico\/apple-touch-icon/g, `/favico/${activeVariant}/apple-touch-icon`)
           .replace(/\/favico\/android-chrome/g, `/favico/${activeVariant}/android-chrome`)
@@ -570,6 +574,7 @@ function sebufApiPlugin(): Plugin {
       scorecardServerMod, scorecardHandlerMod,
       thermalServerMod, thermalHandlerMod,
       webcamServerMod, webcamHandlerMod,
+      orbitalServerMod, orbitalHandlerMod,
     ] = await Promise.all([
         import('./server/router'),
         import('./server/cors'),
@@ -650,6 +655,8 @@ function sebufApiPlugin(): Plugin {
         import('./server/worldmonitor/thermal/v1/handler'),
         import('./src/generated/server/worldmonitor/webcam/v1/service_server'),
         import('./server/worldmonitor/webcam/v1/handler'),
+        import('./src/generated/server/worldmonitor/orbital/v1/service_server'),
+        import('./server/worldmonitor/orbital/v1/handler'),
       ]);
 
     const serverOptions = {
@@ -695,6 +702,7 @@ function sebufApiPlugin(): Plugin {
       ...scorecardServerMod.createScorecardServiceRoutes(scorecardHandlerMod.scorecardHandler, serverOptions),
       ...thermalServerMod.createThermalServiceRoutes(thermalHandlerMod.thermalHandler, serverOptions),
       ...webcamServerMod.createWebcamServiceRoutes(webcamHandlerMod.webcamHandler, serverOptions),
+      ...orbitalServerMod.createOrbitalServiceRoutes(orbitalHandlerMod.orbitalHandler, serverOptions),
     ];
     cachedCorsMod = corsMod;
     return routerMod.createRouter(allRoutes);

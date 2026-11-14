@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.orbital.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/orbital/v1/list_imaging_satellites.proto";
+
+// OrbitalService serves the orbit data behind the point lookup of which satellites imaged a place.
+service OrbitalService {
+  option (sebuf.http.service_config) = {base_path: "/api/orbital/v1"};
+
+  // ListImagingSatellites returns the published sensor-profile inventory, current orbit elements for every profiled imaging satellite, and a daily ring of prior elements for computing past passes.
+  rpc ListImagingSatellites(ListImagingSatellitesRequest) returns (ListImagingSatellitesResponse) {
+    option (sebuf.http.config) = {path: "/list-imaging-satellites", method: HTTP_METHOD_GET};
+  }
+}

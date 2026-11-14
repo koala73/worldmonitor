@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 
 import {
+  afterDebugBearRequestWindow,
+  debugBearRequestWindowEndMs,
   DEBUGBEAR_RUM_SAMPLE_RATE,
   DEBUGBEAR_RUM_SCRIPT_INTEGRITY,
   DEBUGBEAR_RUM_SCRIPT_SRC,
@@ -323,6 +325,37 @@ describe('DebugBear RUM loader', () => {
       assert.equal(h.appendedScripts.length, 0);
       assert.equal(h.win.dbbRum, undefined);
       assert.equal(h.listeners.size, 0);
+    } finally {
+      h.restore();
+    }
+  });
+});
+
+describe('DebugBear RUM request window', () => {
+  it('ends after the pinned collector stops summarising page requests', () => {
+    assert.equal(DEBUGBEAR_RUM_SCRIPT_SRC, 'https://cdn.debugbear.com/rum-1.1.2.js', 're-derive the request window from the new collector');
+    assert.equal(debugBearRequestWindowEndMs(400), 11_000);
+    assert.equal(debugBearRequestWindowEndMs(9_000), 13_000);
+  });
+
+  it('lets point-bearing requests start at once when the collector is not loaded', async () => {
+    let settled = false;
+    await afterDebugBearRequestWindow(new AbortController().signal).then(() => { settled = true; });
+    assert.equal(settled, true);
+  });
+
+  it('holds point-bearing requests while a sampled collector would still report them, until aborted', async () => {
+    const h = installDebugBearHarness('worldmonitor.app', null, () => 0);
+    try {
+      initDebugBearRum();
+      const controller = new AbortController();
+      let outcome = 'pending';
+      const waiting = afterDebugBearRequestWindow(controller.signal).then(() => { outcome = 'resolved'; }, (error: unknown) => { outcome = (error as Error).name; });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      assert.equal(outcome, 'pending');
+      controller.abort();
+      await waiting;
+      assert.equal(outcome, 'AbortError');
     } finally {
       h.restore();
     }

@@ -499,7 +499,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/energy-table-values-whole.spec.ts',
   'e2e/panel-text-unclipped.spec.ts',
   'e2e/regional-intelligence-region-select.spec.ts',
-  'e2e/settings-tabs-all-visible.spec.ts',
+  'e2e/settings-home-list.spec.ts',
   'e2e/panel-grid-column-clamp.spec.ts',
   'e2e/narrow-panel-overflow.spec.ts',
   'e2e/hormuz-chart-width.spec.ts',

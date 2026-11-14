@@ -650,6 +650,7 @@ if (SITE_VARIANT && SITE_VARIANT !== 'full') {
   // Swap favicons to variant-specific versions before browser finishes fetching defaults
   document.querySelectorAll<HTMLLinkElement>('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(link => {
     link.href = link.href
+      .replace(/\/favico\/android-chrome-96x96\.png$/, `/favico/${SITE_VARIANT}/android-chrome-192x192.png`)
       .replace(/\/favico\/favicon/g, `/favico/${SITE_VARIANT}/favicon`)
       .replace(/\/favico\/apple-touch-icon/g, `/favico/${SITE_VARIANT}/apple-touch-icon`);
   });

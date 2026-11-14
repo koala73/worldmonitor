@@ -3,14 +3,15 @@ import type {
   AppContext,
   AppModule,
   UnifiedSettingsController,
-  UnifiedSettingsTabId,
 } from '@/app/app-context';
+import type { SettingsSectionId } from '@/config/settings-sections';
 import { applyVisibleMapDimension } from '@/app/map-dimension-control';
 import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AirlineIntelPanel } from '@/components/AirlineIntelPanel';
 import type { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
 import { deleteWidget, getWidget, saveWidget, isProUser, isProTierResolved } from '@/services/widget-store';
 import { hasPremiumAccess } from '@/services/panel-gating';
+import { isOrbitalLookupOpen } from '@/services/orbital/lookup-host';
 import {
   sanitizeLockedLayers,
   shouldSanitizeLockedLayers,
@@ -39,6 +40,7 @@ import { LlmStatusIndicator } from '@/components/LlmStatusIndicator';
 import type { PredictionPanel } from '@/components/PredictionPanel';
 import {
   buildMapUrl,
+  withMapCentreOf,
   withUrlFragment,
   withoutVariantScopedUrlState,
   debounce,
@@ -161,6 +163,7 @@ import {
   type ResponsiveZoneListener,
 } from '@/app/responsive-zone-listener';
 import { stageVariantSelection } from '@/services/variant-panel-ownership';
+import { isMapUrlCentreClaimed } from '@/app/orbital-map-focus';
 import { transferSourceGateOwnershipToUser as releaseSourceGateOwnership } from '@/services/source-cap';
 
 /** Bound on each wait before the About-you card abstains for this load. */
@@ -230,7 +233,7 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
   }
 
   open(
-    tab?: UnifiedSettingsTabId,
+    section?: SettingsSectionId,
     replaceOverlayId?: OverlayId,
     historyPending = false,
   ): Promise<boolean> {
@@ -242,7 +245,7 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
     return this.load().then((settings) => {
       if (this.destroyed || this.openEpoch !== epoch) return false;
       if (pendingGate && !pendingGate.isCurrent()) return false;
-      settings.open(tab, pendingGate ? pendingId : replaceOverlayId);
+      settings.open(section, pendingGate ? pendingId : replaceOverlayId);
       return true;
     }).catch((error) => {
       // A rejection because the controller was torn down mid-load is a
@@ -399,7 +402,9 @@ export class EventHandlerManager implements AppModule {
     if (!shareUrl) return;
     // Preserve the shared mobile-overlay marker while syncing map URL state;
     // replacing it with null makes Android Back skip the open sheet.
-    try { history.replaceState(history.state, '', withUrlFragment(shareUrl, window.location.hash)); } catch { }
+    // A satellite lookup centres the map on a picked point that must not reach the URL analytics read.
+    const url = isMapUrlCentreClaimed() ? withMapCentreOf(shareUrl, window.location.href) : shareUrl;
+    try { history.replaceState(history.state, '', withUrlFragment(url, window.location.hash)); } catch { }
   };
   private readonly debouncedUrlSync = debounce(this.writeUrlState, 250);
 
@@ -1702,7 +1707,7 @@ export class EventHandlerManager implements AppModule {
     return buildMapUrl(baseUrl, {
       view: state.view,
       zoom: state.zoom,
-      center,
+      center: isOrbitalLookupOpen() ? null : center,
       timeRange: state.timeRange,
       layers: state.layers,
       country: isCountryVisible ? code : pending?.code,
@@ -2481,8 +2486,8 @@ export class EventHandlerManager implements AppModule {
     // avatar menu, keeping account and subscription actions in one place.
     const widget = new AuthHeaderWidget(
       () => modal.open(),
-      () => this.ctx.unifiedSettings?.open('settings'),
-      () => this.ctx.unifiedSettings?.open('billing'),
+      () => this.ctx.unifiedSettings?.open(),
+      () => this.ctx.unifiedSettings?.open('account'),
     );
     this.ctx.authHeaderWidget = widget;
     const mount = document.getElementById('authWidgetMount');
@@ -3136,7 +3141,8 @@ export class EventHandlerManager implements AppModule {
       if (isFullscreen) toggle();
     };
     this.boundMapFullscreenEscHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isFullscreen) toggle();
+      // The orbital full view raises the map and owns Escape while it is open; it lowers the map itself on leaving.
+      if (e.key === 'Escape' && isFullscreen && !document.body.classList.contains('orbital-full-view')) toggle();
     };
     document.addEventListener('keydown', this.boundMapFullscreenEscHandler);
   }
