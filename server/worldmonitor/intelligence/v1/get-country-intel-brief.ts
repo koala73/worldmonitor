@@ -411,7 +411,7 @@ export async function getCountryIntelBrief(
   const energyYear = typeof energyMixData?.year === 'number' ? String(energyMixData.year) : '';
   const airportNotams = await readCountryAirportNotams(req.countryCode.toUpperCase());
   const airportTag = airportNotams.map((notam) => `${notam.icao}:${notam.status}`).join(',');
-  const imageryFlags = await readCountryImageryFlags(req.countryCode.toUpperCase());
+  const imageryFlags = lang === 'en' ? await readCountryImageryFlags(req.countryCode.toUpperCase()) : [];
   const energyImportYear = importDependency.available ? String(importDependency.year) : '';
 
   let cacheContext = '';
