@@ -67,6 +67,16 @@ describe('Globe viewport runtime', () => {
     expect(controls.autoRotate).toBe(false);
   });
 
+  it('jumps with no animation frame when the move has no duration', async () => {
+    const { map, pov } = camera();
+    map.setCenter(25.112, 55.139, 11);
+    await vi.advanceTimersByTimeAsync(16);
+    expect(pov().lat, 'an animated move is still on its way').not.toBe(0);
+    map.setCenter(10, 20, 4, 0);
+    expect({ lat: pov().lat, lng: pov().lng }, 'no frame sits between the two centres').toEqual({ lat: 10, lng: 20 });
+    await expect(map.whenViewportSettled()).resolves.toBe(true);
+  });
+
   it('interrupts a superseded move without restoring rotation during its replacement', async () => {
     const { map, controls } = camera();
     map.setCenter(10, 20, 4);
