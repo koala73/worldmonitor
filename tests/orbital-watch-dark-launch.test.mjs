@@ -17,6 +17,8 @@ test('the map context menu and the #orbital= route open the lookup only behind t
 });
 
 test('the command palette entry and a shared #orbital link open the lookup only behind the flag', () => {
-  assert.match(read('src/config/commands.ts'), /\.\.\.\(ORBITAL_WATCH_ENABLED \? \[\{ id: 'orbital:search'/);
+  const commands = read('src/config/commands.ts');
+  assert.match(commands, /const ORBITAL_COMMANDS: Command\[\] = ORBITAL_WATCH_ENABLED\s*\? \[\{ id: 'orbital:search'/);
+  assert.equal(commands.match(/'orbital:search'/g)?.length, 1);
   assert.match(read('src/App.ts'), /this\.pendingOrbitalShareLink = ORBITAL_WATCH_ENABLED \? takeOrbitalShareLink\(\) : null;/);
 });
