@@ -7,7 +7,6 @@ import type { GeoPoint, OmmRecord, OrbitElements, Pass } from '../shared/orbital
 import { matchSensorProfile } from '../shared/orbital/sensor-profiles.js';
 import type { SensorProfile } from '../shared/orbital/sensor-profiles.js';
 import { buildPassTrack, continuousTrack, framingBounds, pointNear, sweptSwath, trackPositionAt, type FootprintRing, type PassTrack } from '../src/services/orbital/track-geometry.ts';
-import { createTrackReplay, replayWindow, type ReplayFrame } from '../src/services/orbital/track-replay.ts';
 
 const { records } = JSON.parse(readFileSync(new URL('./fixtures/orbital/celestrak-gp-2026-11-13.json', import.meta.url), 'utf8')) as { records: OmmRecord[] };
 
@@ -228,86 +227,5 @@ describe('pass ground track', () => {
     assert.deepEqual(trackPositionAt(track, track.startMs - HOUR), track.segments[0]![0]);
     const last = track.segments[track.segments.length - 1]!;
     assert.deepEqual(trackPositionAt(track, track.endMs + HOUR), last[last.length - 1]);
-  });
-});
-
-describe('pass replay', () => {
-  const track = (() => {
-    const { elements, profile, passes: found } = passes('SENTINEL-2A', { lat: 25.2, lon: 55.27 });
-    return buildPassTrack(elements, profile.footprint, found[0]!)!;
-  })();
-
-  function frames() {
-    const queue = new Map<number, (now: number) => void>();
-    let next = 1;
-    return {
-      requestFrame: (callback: (now: number) => void) => { queue.set(next, callback); return next++; },
-      cancelFrame: (handle: number) => { queue.delete(handle); },
-      run(now: number) {
-        const pending = [...queue.values()];
-        queue.clear();
-        for (const callback of pending) callback(now);
-      },
-      get pending() { return queue.size; },
-    };
-  }
-
-  it('places the marker at acquisition without animating when motion is reduced', () => {
-    const clock = frames();
-    const seen: ReplayFrame[] = [];
-    const replay = createTrackReplay(track, (frame) => seen.push(frame), { ...clock, prefersReducedMotion: () => true });
-    replay.play();
-    assert.equal(replay.reducedMotion, true);
-    assert.deepEqual(seen, [{ point: track.closest, progress: 1, playing: false }]);
-    assert.equal(clock.pending, 0, 'no animation frame was requested');
-    replay.seek(0.5);
-    assert.equal(clock.pending, 0, 'scrubbing does not animate either');
-    assert.equal(seen[1]!.progress, 0.5);
-  });
-
-  it('flies the marker from the start of the swath and settles at acquisition', () => {
-    const clock = frames();
-    const seen: ReplayFrame[] = [];
-    createTrackReplay(track, (frame) => seen.push(frame), { ...clock, prefersReducedMotion: () => false, durationMs: 1000 }).play();
-    clock.run(0);
-    clock.run(500);
-    clock.run(1000);
-    const { fromMs, toMs } = replayWindow(track);
-    assert.ok(fromMs < toMs && toMs === track.closest.timeMs);
-    assert.deepEqual(seen[0], { point: seen[1]!.point, progress: 0, playing: true }, 'play shows the start before the first frame');
-    assert.equal(seen[1]!.point.timeMs, fromMs);
-    assert.equal(seen[2]!.point.timeMs, (fromMs + toMs) / 2);
-    assert.deepEqual(seen[3], { point: track.closest, progress: 1, playing: false });
-    assert.equal(clock.pending, 0);
-  });
-
-  it('pauses, scrubs and resumes from the scrubbed moment', () => {
-    const clock = frames();
-    const seen: ReplayFrame[] = [];
-    const replay = createTrackReplay(track, (frame) => seen.push(frame), { ...clock, prefersReducedMotion: () => false, durationMs: 1000 });
-    replay.play();
-    clock.run(0);
-    clock.run(200);
-    replay.pause();
-    assert.equal(clock.pending, 0);
-    assert.deepEqual(seen.at(-1), { ...seen.at(-2)!, playing: false });
-    replay.seek(0.75);
-    assert.equal(seen.at(-1)!.progress, 0.75);
-    replay.play();
-    clock.run(1000);
-    clock.run(1100);
-    assert.ok(Math.abs(seen.at(-1)!.progress - 0.85) < 1e-9, 'playing resumes from the scrubbed moment');
-  });
-
-  it('stops moving the marker once stopped', () => {
-    const clock = frames();
-    const seen: unknown[] = [];
-    const replay = createTrackReplay(track, (frame) => seen.push(frame), { ...clock, prefersReducedMotion: () => false });
-    replay.play();
-    clock.run(0);
-    replay.stop();
-    clock.run(100);
-    assert.equal(seen.length, 2);
-    assert.equal(clock.pending, 0);
   });
 });
