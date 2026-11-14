@@ -356,7 +356,7 @@ export class CountryIntelManager implements AppModule {
         label: t('contextMenu.satellitePasses'),
         action: () => {
           void import('@/app/orbital-watch').then(({ openOrbitalWatch }) =>
-            openOrbitalWatch({ lat: payload.lat, lon: payload.lon }, document.getElementById('mapContainer'), 'sheet', this.ctx.map));
+            openOrbitalWatch({ lat: payload.lat, lon: payload.lon }, document.getElementById('mapContainer'), this.ctx.map));
         },
       });
       items.push({ label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) });

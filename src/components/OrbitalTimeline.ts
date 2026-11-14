@@ -42,25 +42,32 @@ export interface OrbitalTimelineInput {
   selectedKey: string | null;
 }
 
-type RowId = 'geo' | 'photo' | 'likely' | 'could' | 'overhead';
+type RowId = 'images' | 'passes';
 
-/** Five fixed rows, one glyph each, the same glyphs that mark these tiers everywhere else. Dense rows list hourly counts for screen readers. */
-const ROWS: ReadonlyArray<{ id: RowId; glyph: string; tiers: ReadonlyArray<PassTier['kind']>; dense?: true }> = [
-  { id: 'geo', glyph: '○', tiers: ['daily-mosaic'] },
-  { id: 'photo', glyph: '◆', tiers: ['confirmed-image'] },
-  { id: 'likely', glyph: '◇', tiers: ['likely-imaged'] },
-  { id: 'could', glyph: '□', tiers: ['within-reach', 'capability-overhead'], dense: true },
-  { id: 'overhead', glyph: '+', tiers: ['passed-overhead', 'opportunity'] },
+/** Images and passes are the two pass lanes; events draw on their own strip between them. Dense tiers draw as hourly bars. */
+const ROWS: ReadonlyArray<{ id: RowId; tiers: ReadonlyArray<PassTier['kind']>; dense: ReadonlyArray<PassTier['kind']> }> = [
+  { id: 'images', tiers: ['confirmed-image', 'daily-mosaic'], dense: [] },
+  { id: 'passes', tiers: ['likely-imaged', 'within-reach', 'capability-overhead', 'passed-overhead', 'opportunity'], dense: ['within-reach', 'capability-overhead', 'passed-overhead'] },
 ];
+
+const TIER_GLYPH: Record<PassTier['kind'], string> = {
+  'confirmed-image': '◆',
+  'daily-mosaic': '○',
+  'likely-imaged': '◇',
+  'within-reach': '□',
+  'capability-overhead': '□',
+  'passed-overhead': '+',
+  opportunity: '+',
+};
 
 const TIER_LABEL_KEY: Record<PassTier['kind'], string> = {
   'confirmed-image': 'orbitalWatch.tier.confirmed',
   'likely-imaged': 'orbitalWatch.tier.likely',
-  'within-reach': 'orbitalWatch.tier.withinReach',
-  'capability-overhead': 'orbitalWatch.tier.capabilityOverhead',
-  'daily-mosaic': 'orbitalWatch.tier.dailyMosaic',
-  'passed-overhead': 'orbitalWatch.tier.passedOverhead',
-  opportunity: 'orbitalWatch.tier.opportunity',
+  'within-reach': 'orbitalWatch.tier.inReach',
+  'capability-overhead': 'orbitalWatch.tier.capability',
+  'daily-mosaic': 'orbitalWatch.tier.mosaic',
+  'passed-overhead': 'orbitalWatch.tier.inRange',
+  opportunity: 'orbitalWatch.tier.upcoming',
 };
 
 const EVENT_LABEL_KEY: Record<EventSourceId, string> = {
@@ -114,7 +121,7 @@ export class OrbitalTimeline {
   readonly element: HTMLElement;
   private readonly head = h('header', { className: 'ow-tl-head' });
   private readonly legend = h('ul', { className: 'ow-tl-legend' });
-  private readonly plot = h('div', { className: 'ow-tl-plot', 'aria-hidden': 'true' });
+  private readonly plot = h('div', { className: 'ow-tl-plot' });
   private readonly tip = h('div', { className: 'ow-tl-tip', role: 'tooltip' });
   private readonly foot = h('div', { className: 'ow-tl-foot' });
   private readonly list = h('ol', { className: 'ow-tl-sr' });
@@ -130,6 +137,9 @@ export class OrbitalTimeline {
       this.tip,
       this.list);
     this.element.addEventListener('click', this.onClick);
+    this.element.addEventListener('keydown', this.onKeydown);
+    this.plot.addEventListener('focusin', this.onPointerOver);
+    this.plot.addEventListener('focusout', this.hideTip);
     this.plot.addEventListener('pointerover', this.onPointerOver);
     this.plot.addEventListener('pointerleave', this.hideTip);
   }
@@ -148,7 +158,7 @@ export class OrbitalTimeline {
     const span = `${t('orbitalWatch.timeline.span', { days: Math.round((nowMs - window.startMs) / DAY_MS), hours: Math.round((window.endMs - nowMs) / HOUR_MS) })} · ${[...new Set([clock.timeZone, clock.abbreviation])].join(' · ')}`;
     this.element.setAttribute('aria-label', `${t('orbitalWatch.timeline.name')}, ${span}`);
     replaceChildren(this.head,
-      h('h3', { className: 'ow-tl-title' }, h('span', { className: 'ow-tl-num' }, '03 / '), t('orbitalWatch.timeline.name')),
+      h('h3', { className: 'ow-tl-title' }, t('orbitalWatch.timeline.name')),
       h('span', { className: 'ow-tl-span' }, span),
       h('span', { className: 'ow-tl-daylight-key' }, h('span', { className: 'ow-tl-swatch' }), t('orbitalWatch.timeline.daylightHere')));
 
@@ -158,25 +168,25 @@ export class OrbitalTimeline {
     for (const row of ROWS) {
       const passes = input.passes.filter((pass) => row.tiers.includes(pass.tier.kind));
       const label = t(`orbitalWatch.timeline.row.${row.id}`);
-      const unmatched = row.id === 'photo' ? input.acquisitions.filter((acquisition) => !acquisition.pass) : [];
+      const unmatched = row.id === 'images' ? input.acquisitions.filter((acquisition) => !acquisition.pass) : [];
       const unmatchedLabel = t('orbitalWatch.tier.unmatchedImage');
       for (const image of unmatched) entries.push({ timeMs: image.startMs, text: `${unmatchedLabel}: ${image.platform.toUpperCase()}, ${formatUtc(image.startMs)}` });
-      const geoLine = row.id === 'geo' && geostationary.length > 0
+      const geoLine = row.id === 'images' && geostationary.length > 0
         ? h('span', { className: 'ow-tl-geo-line', style: between(window.startMs, window.endMs), dataset: { tip: t('orbitalWatch.timeline.geoLine', { names: geostationary.map((s) => s.name).join(', ') }) } })
         : null;
       keys.push(h('li', { className: 'ow-tl-key', dataset: { row: row.id } },
-        h('span', { className: 'ow-tl-glyph', 'aria-hidden': 'true' }, row.glyph),
         h('span', { className: 'ow-tl-key-label' }, label),
-        h('span', { className: 'ow-tl-count' }, count(passes.length + unmatched.length + (row.id === 'geo' ? geostationary.length : 0)))));
-      rows.push(h('div', { className: 'ow-tl-row', dataset: { row: row.id } }, geoLine, ...this.marks(passes, row, input.selectedKey, pct, when),
-        ...unmatched.map((image) => h('span', { className: 'ow-tl-mark', style: at(image.startMs), dataset: { tier: 'confirmed-image', tip: `${image.platform.toUpperCase()} · ${when(image.startMs)} · ${unmatchedLabel}` } }, row.glyph))));
-      if (row.dense) {
-        for (const bin of hourlyBins(passes)) {
-          entries.push({ timeMs: bin.startMs, text: t('orbitalWatch.timeline.density', { label, count: bin.count, start: formatUtc(bin.startMs), end: formatHour(bin.startMs + HOUR_MS) }) });
-        }
-      } else {
-        for (const pass of passes) entries.push({ timeMs: pass.timeMs, text: `${t(TIER_LABEL_KEY[pass.tier.kind])}: ${pass.name}, ${formatUtc(pass.timeMs)}` });
+        h('span', { className: 'ow-tl-count' }, count(passes.length + unmatched.length + (row.id === 'images' ? geostationary.length : 0)))));
+      const sparse = passes.filter((pass) => !row.dense.includes(pass.tier.kind));
+      const dense = passes.filter((pass) => row.dense.includes(pass.tier.kind));
+      rows.push(h('div', { className: 'ow-tl-row', dataset: { row: row.id } }, geoLine,
+        ...this.density(dense, input.selectedKey, pct, (ms) => formatUtc(ms)),
+        ...this.marks(sparse, input.selectedKey, pct, when),
+        ...unmatched.map((image) => h('span', { className: 'ow-tl-mark', style: at(image.startMs), dataset: { tier: 'confirmed-image', tip: `${image.platform.toUpperCase()} · ${when(image.startMs)} · ${unmatchedLabel}` } }, TIER_GLYPH['confirmed-image']))));
+      for (const bin of hourlyBins(dense)) {
+        entries.push({ timeMs: bin.startMs, text: t('orbitalWatch.timeline.density', { label, count: bin.count, start: formatUtc(bin.startMs), end: formatHour(bin.startMs + HOUR_MS) }) });
       }
+      for (const pass of sparse) entries.push({ timeMs: pass.timeMs, text: `${t(TIER_LABEL_KEY[pass.tier.kind])}: ${pass.name}, ${formatUtc(pass.timeMs)}` });
     }
     replaceChildren(this.legend, ...keys);
 
@@ -194,11 +204,12 @@ export class OrbitalTimeline {
         eventMarks.push(h('span', { className: 'ow-tl-event', style: at(event.timeMs), dataset: { source: id, tip: `${label} · ${event.label} · ${where} · ${when(event.timeMs)}` } }));
         entries.push({ timeMs: event.timeMs, text: `${label}: ${event.label}, ${formatUtc(event.timeMs)}, ${where}` });
       }
-      const gaps = uncovered(lane.retained, window.startMs, nowMs);
+      // A feed that answered with nothing here kept nothing to cover, so it reads as zero, not as a gap.
+      const gaps = lane.retained ? uncovered(lane.retained, window.startMs, nowMs) : [];
       for (const [startMs, endMs] of gaps) {
         entries.push({ timeMs: startMs, text: t('orbitalWatch.timeline.notRetainedSpan', { label, start: formatUtc(startMs), end: formatUtc(endMs) }) });
       }
-      const whole = gaps.length === 1 && gaps[0]![0] === window.startMs && gaps[0]![1] === nowMs;
+      const whole = lane.retained !== null && gaps.length === 1 && gaps[0]![0] === window.startMs && gaps[0]![1] === nowMs;
       const keptStart = lane.retained && formatOrbitalTime(Math.max(window.startMs, lane.retained.startMs), 'day');
       const keptEnd = lane.retained && formatOrbitalTime(Math.min(nowMs, lane.retained.endMs), 'day');
       const kept = whole
@@ -218,14 +229,14 @@ export class OrbitalTimeline {
       return pct(endMs) - pct(startMs) < MIN_DAY_PCT ? [] : [this.dayLabel(clock, startMs, `left:${((pct(startMs) + pct(endMs)) / 2).toFixed(3)}%`)];
     });
     replaceChildren(this.plot,
-      h('div', { className: 'ow-tl-backdrop' },
+      h('div', { className: 'ow-tl-backdrop', 'aria-hidden': 'true' },
         ...input.lookup.daylight.map((band) => h('span', { className: 'ow-tl-daylight', style: between(band.startMs, band.endMs) })),
         ...midnights.map((ms) => h('span', { className: 'ow-tl-midnight', style: at(ms) })),
         h('span', { className: 'ow-tl-now', style: at(nowMs) })),
-      h('div', { className: 'ow-tl-flags' }, h('span', { className: 'ow-tl-now-label', style: at(nowMs) }, t('orbitalWatch.timeline.now'))),
+      h('div', { className: 'ow-tl-flags', 'aria-hidden': 'true' }, h('span', { className: 'ow-tl-now-label', style: at(nowMs) }, t('orbitalWatch.timeline.now'))),
       h('div', { className: 'ow-tl-strip' }, ...eventMarks),
       ...rows,
-      h('div', { className: 'ow-tl-axis' }, ...days));
+      h('div', { className: 'ow-tl-axis', 'aria-hidden': 'true' }, ...days));
     this.hideTip();
     requestAnimationFrame(() => this.revealNow(`${window.startMs}:${window.endMs}`));
 
@@ -239,7 +250,28 @@ export class OrbitalTimeline {
     replaceChildren(this.foot, h('ul', { className: 'ow-tl-event-keys' }, ...eventKeys), this.renderLive(context));
   }
 
-  private marks(passes: PointPass[], row: (typeof ROWS)[number], selectedKey: string | null, pct: (ms: number) => number, when: (ms: number) => string): HTMLElement[] {
+  /** One bar per hour with any pass; its height grows with the count, and it selects the hour's first pass. */
+  private density(passes: PointPass[], selectedKey: string | null, pct: (ms: number) => number, utc: (ms: number) => string): HTMLElement[] {
+    const bins = new Map<number, PointPass[]>();
+    for (const pass of [...passes].sort((a, b) => a.timeMs - b.timeMs)) {
+      const hour = Math.floor(pass.timeMs / HOUR_MS) * HOUR_MS;
+      bins.set(hour, [...(bins.get(hour) ?? []), pass]);
+    }
+    const peak = Math.max(1, ...[...bins.values()].map((group) => group.length));
+    return [...bins].map(([startMs, group]) => {
+      const tip = t('orbitalWatch.timeline.densityTip', { count: group.length, start: utc(startMs), names: group.slice(0, TIP_NAMES).map((pass) => pass.name).join(', ') });
+      return h('span', {
+        className: ['ow-tl-bar', group.some((pass) => passKey(pass) === selectedKey) ? 'is-selected' : ''].filter(Boolean).join(' '),
+        style: `left:${pct(startMs).toFixed(3)}%;width:${Math.max(0.4, pct(startMs + HOUR_MS) - pct(startMs)).toFixed(3)}%;height:${(30 + 70 * group.length / peak).toFixed(0)}%`,
+        role: 'button',
+        tabIndex: 0,
+        'aria-label': tip,
+        dataset: { pass: passKey(group[0]!), tier: group[0]!.tier.kind, count: String(group.length), tip },
+      });
+    });
+  }
+
+  private marks(passes: PointPass[], selectedKey: string | null, pct: (ms: number) => number, when: (ms: number) => string): HTMLElement[] {
     // A merged glyph keeps one tier, so each tier clusters on its own.
     const groups: PointPass[][] = [];
     const latest = new Map<PassTier['kind'], PointPass[]>();
@@ -262,8 +294,11 @@ export class OrbitalTimeline {
       return h('span', {
         className: classes.filter(Boolean).join(' '),
         style: `left:${pct(first.timeMs).toFixed(3)}%`,
+        role: 'button',
+        tabIndex: 0,
+        'aria-label': tip,
         dataset: { pass: passKey(first), tier: first.tier.kind, count: String(group.length), tip },
-      }, row.glyph);
+      }, TIER_GLYPH[first.tier.kind]);
     });
   }
 
@@ -286,7 +321,7 @@ export class OrbitalTimeline {
       h('li', { className: 'ow-now-title' }, `${t('orbitalWatch.timeline.now')} · ${LIVE_RADIUS_KM} km`), ...items);
   }
 
-  private readonly onPointerOver = (event: PointerEvent): void => {
+  private readonly onPointerOver = (event: Event): void => {
     const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tip]');
     if (!target) {
       this.hideTip();
@@ -306,7 +341,7 @@ export class OrbitalTimeline {
     this.tip.textContent = target.dataset.tip ?? '';
     this.tip.hidden = false;
     const half = this.tip.offsetWidth / 2;
-    const x = (target.classList.contains('ow-tl-geo-line') ? event.clientX : box.left + box.width / 2) - frame.left;
+    const x = (target.classList.contains('ow-tl-geo-line') && event instanceof PointerEvent ? event.clientX : box.left + box.width / 2) - frame.left;
     const [min, max] = half * 2 <= hi - lo
       ? [lo + half, hi - half]
       : [Math.max(0, view.left - frame.left) + half, Math.max(half, Math.min(frame.width, view.right - frame.left) - half)];
@@ -319,7 +354,7 @@ export class OrbitalTimeline {
     this.tip.dataset.place = above ? 'above' : 'below';
     this.tip.style.left = `${left}px`;
     this.tip.style.top = `${top - frame.top}px`;
-    this.tip.style.setProperty('--ow-tip-arrow', `${x - left + half}px`);
+    this.tip.style.setProperty('--tip-arrow', `${x - left + half}px`);
   };
 
   private readonly hideTip = (): void => {
@@ -337,6 +372,14 @@ export class OrbitalTimeline {
     const x = now.getBoundingClientRect().left - scroller.getBoundingClientRect().left + scroller.scrollLeft;
     scroller.scrollLeft = Math.max(0, x - scroller.clientWidth * NOW_AT);
   }
+
+  private readonly onKeydown = (event: KeyboardEvent): void => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const key = (event.target as HTMLElement).closest<HTMLElement>('[data-pass]')?.dataset.pass;
+    if (!key) return;
+    event.preventDefault();
+    this.onSelect(key);
+  };
 
   private readonly onClick = (event: MouseEvent): void => {
     const key = (event.target as HTMLElement).closest<HTMLElement>('[data-pass]')?.dataset.pass;

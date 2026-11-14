@@ -22,7 +22,7 @@ import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
 import { IMAGE_CREDIT } from '@/services/orbital/credits';
 import { ARCHIVE_NAME, archiveHost, loadLookupImage } from './OrbitalWatchPage';
-import { closeButton, formatPoint, reticle, trapTab } from './OrbitalTimelapse';
+import { closeButton, formatPoint, reticle, trapTab } from './orbital-dialog';
 import '../styles/orbital-image-viewer.css';
 
 /** How the image's pixels sit against the ground: a geographic grid is north-up; a raw quick-look is not georeferenced. */
@@ -343,9 +343,16 @@ export class OrbitalImageViewer {
     }
   }
 
+  /** Compare is offered only once a second scene of the collection exists, clear or hidden as cloudy. */
   private get canCompare(): boolean {
     const { selected } = this.subject;
-    return selected.grid === 'north-up' && !this.failedUrls.has(selected.imageUrl!);
+    return selected.grid === 'north-up' && !this.failedUrls.has(selected.imageUrl!)
+      && (this.compareCandidates.length > 0 || this.hiddenCloudyCount > 0);
+  }
+
+  startCompare(key: string): void {
+    this.pickedCompareKey = key;
+    this.mode = 'change';
   }
 
   private render(): void {
@@ -392,13 +399,13 @@ export class OrbitalImageViewer {
 
   private imageStage(scene: ViewerScene): HTMLElement {
     const url = viewable(scene.imageUrl);
-    if (!url) return h('div', { className: 'oiv-stage oiv-stage-empty' }, h('span', { className: 'oiv-label' }, t('orbitalWatch.ui.tile.noPreview')));
+    if (!url) return h('div', { className: 'oiv-stage oiv-stage-empty' }, h('span', { className: 'oiv-label' }, t('orbitalWatch.tile.noPreview')));
     this.ensureLoaded([url]);
     const paint = this.painted.get(url);
     if (paint) return h('div', { className: 'oiv-stage' }, sceneImage(scene, 'oiv-image', paint), ...this.overlays(scene));
     if (this.failedUrls.has(url)) {
       return h('div', { className: 'oiv-stage oiv-stage-empty', role: 'alert' },
-        h('span', { className: 'oiv-label' }, t('orbitalWatch.ui.tile.failed', { archive: archiveHost(url).name.toUpperCase() })),
+        h('span', { className: 'oiv-label' }, t('orbitalWatch.tile.failed', { archive: archiveHost(url).name.toUpperCase() })),
         h('button', { type: 'button', className: 'oiv-button', dataset: { action: 'retry-image', url } }, t('countryBrief.retryBtn')));
     }
     return h('div', { className: 'oiv-stage oiv-skeleton', role: 'status' }, h('span', { className: 'oiv-label' }, t('orbitalWatch.row.imageLoading')));
@@ -455,14 +462,10 @@ export class OrbitalImageViewer {
     const tabs = this.canCompare
       ? h('div', { className: 'oiv-tabs', role: 'tablist' }, tab('image', t('orbitalWatch.viewer.tabImage')), tab('change', t('orbitalWatch.viewer.tabChange')))
       : null;
-    const timelapse = this.historyProfile === 'sentinel-2' || this.historyProfile === 'landsat'
-      ? h('button', { type: 'button', className: 'oiv-button', dataset: { action: 'timelapse' } }, '▸ ', t('orbitalWatch.timelapse.heading'))
-      : null;
     return h('aside', { className: 'oiv-side' },
       tabs,
       ...(this.mode === 'change' ? this.renderDates() : [this.renderMeta(scene)]),
-      this.renderHistoryNote(),
-      timelapse ? h('div', { className: 'oiv-actions' }, timelapse) : null);
+      this.renderHistoryNote());
   }
 
   private renderMeta(scene: ViewerScene): HTMLElement {
@@ -495,14 +498,6 @@ export class OrbitalImageViewer {
     ];
   }
 
-  private openTimelapse(): void {
-    const { point, nowMs } = this.subject;
-    const place = this.place;
-    const returnFocusTo = this.returnFocusTo;
-    this.close(false);
-    void import('./OrbitalTimelapse').then(({ openOrbitalTimelapse }) => openOrbitalTimelapse({ point, nowMs, place }, returnFocusTo));
-  }
-
   private readonly onClick = (event: MouseEvent): void => {
     const action = (event.target as HTMLElement).closest<HTMLElement>('[data-action]');
     switch (action?.dataset.action) {
@@ -528,8 +523,6 @@ export class OrbitalImageViewer {
         this.pickedCompareKey = action.dataset.key ?? null;
         this.render();
         return;
-      case 'timelapse':
-        this.openTimelapse();
         return;
     }
   };
@@ -555,9 +548,15 @@ export class OrbitalImageViewer {
 let current: OrbitalImageViewer | null = null;
 
 /** Opens the viewer, replacing any viewer already open. */
-export function openOrbitalImageViewer(subject: ImageViewerSubject, returnFocusTo: HTMLElement | null, deps?: ViewerDependencies): OrbitalImageViewer {
+export interface ViewerOpenOptions {
+  /** Opens on the before/after compare against this scene of the same collection. */
+  compareKey?: string | null;
+}
+
+export function openOrbitalImageViewer(subject: ImageViewerSubject, returnFocusTo: HTMLElement | null, deps?: ViewerDependencies, options: ViewerOpenOptions = {}): OrbitalImageViewer {
   current?.close();
   current = new OrbitalImageViewer(subject, returnFocusTo, deps);
+  if (options.compareKey) current.startCompare(options.compareKey);
   current.open();
   return current;
 }

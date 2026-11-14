@@ -95,9 +95,11 @@ function nearbyEvents(records: FeedRecord[], point: GeoPoint, countryCode: strin
   const events: PointEvent[] = [];
   for (const record of records) {
     if (record.timeMs < window.startMs || record.timeMs > window.endMs) continue;
-    if (record.countryCode) {
-      if (record.countryCode.toUpperCase() !== countryCode) continue;
-      events.push({ id: record.id, timeMs: record.timeMs, label: record.label, distanceKm: null });
+    // A record with a location (an outage included) matches by distance; only one without falls back to its country.
+    if (!Number.isFinite(record.lat) || !Number.isFinite(record.lon)) {
+      if (record.countryCode && record.countryCode.toUpperCase() === countryCode) {
+        events.push({ id: record.id, timeMs: record.timeMs, label: record.label, distanceKm: null });
+      }
       continue;
     }
     const distanceKm = haversineKm(point.lat, point.lon, record.lat, record.lon);
