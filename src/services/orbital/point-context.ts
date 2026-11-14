@@ -192,14 +192,18 @@ const defaultSources: PointContextSources = {
       const outages = await fetchInternetOutages();
       // A failed outage request also comes back as an empty list, so only the breaker tells failure from a quiet week.
       if (outages.length === 0 && getOutagesDataState().mode === 'unavailable') throw new Error('outage feed unavailable');
-      return outages.map((outage) => ({
+      return outages.map((outage) => {
+        // The outage client fills a missing location with 0,0, so treat that as no location.
+        const placed = outage.lat !== 0 || outage.lon !== 0;
+        return {
         id: outage.id,
-        lat: outage.lat,
-        lon: outage.lon,
+        lat: placed ? outage.lat : Number.NaN,
+        lon: placed ? outage.lon : Number.NaN,
         timeMs: effectivePubDateMs(outage),
         label: outage.title,
         countryCode: nameToCountryCode(outage.country) ?? outage.country,
-      }));
+        };
+      });
     },
   },
   live: {

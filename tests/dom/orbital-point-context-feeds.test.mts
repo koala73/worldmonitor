@@ -43,6 +43,12 @@ describe('outage feed around a picked point', () => {
     expect(events.outages.status === 'ok' && events.outages.events.map((e) => e.id)).toEqual(['ae']);
   });
 
+  it('matches an outage the feed gives no location (0,0) by its country', async () => {
+    outageFeed.outages = [outage('ae-unplaced', 'United Arab Emirates', 0, 0), outage('ir-unplaced', 'Iran', 0, 0)];
+    const { events } = await loadPointContext(palmJumeirah, WINDOW, NOW);
+    expect(events.outages.status === 'ok' && events.outages.events.map((e) => [e.id, e.distanceKm])).toEqual([['ae-unplaced', null]]);
+  });
+
   it('shows a failed outage feed as unavailable rather than as missing history', async () => {
     outageFeed.mode = 'unavailable';
     const { events } = await loadPointContext(palmJumeirah, WINDOW, NOW);
