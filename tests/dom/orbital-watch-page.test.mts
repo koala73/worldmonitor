@@ -33,7 +33,7 @@ let nextNorad = 40_000;
 function pass(name: string, profileId: string, hoursFromNow: number, tier: PassTier): PointPass {
   return {
     noradId: nextNorad++, name, profileId, category: 'open-optical', time: new Date(NOW + hoursFromNow * HOUR).toISOString(),
-    timeMs: NOW + hoursFromNow * HOUR, opportunity: hoursFromNow > 0, groundDistanceKm: 42, side: 'left', elevationDeg: 80,
+    timeMs: NOW + hoursFromNow * HOUR, opportunity: hoursFromNow > 0, groundDistanceKm: 42, side: 'left', direction: 'ascending', elevationDeg: 80,
     azimuthDeg: 90, incidenceDeg: 10, sunElevationDeg: 40, altitudeKm: 700, subSatellite: point, inFootprint: true,
     edgeOfSwath: false, coverage: true, tier, elementsEpochMs: NOW - 2 * HOUR, orbitAgeDays: 0.5,
   };
