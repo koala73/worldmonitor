@@ -237,6 +237,20 @@ describe('orbital pass job', () => {
     assert.deepEqual(summary(withStale!.passes), summary(currentOnly!.passes));
   });
 
+  it('reports geostationary visibility from the newest element set at the current time', async () => {
+    const geo = satellites.find((satellite) => satellite.name === 'GOES 19')!;
+    const current = geo.elementSets[0]!;
+    const older = { ...current, EPOCH: new Date(Date.parse(`${current.EPOCH}Z`) - 4 * DAY).toISOString().replace('Z', ''), MEAN_ANOMALY: (Number(current.MEAN_ANOMALY) + 90) % 360 };
+    const window = { startMs: NOW - 7 * DAY, endMs: NOW + DAY };
+    const result = await runPassJob({ point: NAIROBI, window, nowMs: NOW, satellites: [{ ...geo, elementSets: [older, current] }] });
+    const profile = matchSensorProfile(geo.noradId, geo.name)!;
+    const expected = findPasses({ elements: parseOrbitElements(current), profile, point: NAIROBI, window: { start: window.startMs, end: window.endMs }, now: NOW });
+    assert.equal(expected.status, 'geostationary');
+    const outcome = result!.satellites[0]!;
+    assert.equal(outcome.status, 'geostationary');
+    assert.deepEqual(outcome.status === 'geostationary' && outcome.visibility, expected.status === 'geostationary' && expected.visibility);
+  });
+
   it('reports a satellite with unusable elements without failing the lookup', async () => {
     const broken = { ...satellites[0]!, elementSets: [{ ...satellites[0]!.elementSets[0]!, MEAN_MOTION: 'not a number', EPOCH: 'garbage' }] };
     const result = await runPassJob({ point: PARIS, window: lookupWindow, nowMs: NOW, satellites: [broken, satellites[1]!] });
