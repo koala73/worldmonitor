@@ -661,6 +661,7 @@
       "scripts/seed-co2-monitoring.mjs",
       "scripts/seed-reservoir-levels.mjs",
       "scripts/_reservoir-levels.mjs",
+      "scripts/shared/reservoir-seasonal.mjs",
       "scripts/seed-orbital-catalog.mjs",
       "scripts/_orbital-catalog.mjs",
       "scripts/seed-orbital-sites.mjs",
