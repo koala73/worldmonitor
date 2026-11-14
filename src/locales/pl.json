@@ -4551,7 +4551,8 @@
     "createAccount": "Utwórz konto",
     "freeReason": "Za darmo: zapisz układ, obserwuj kraje, alerty",
     "settings": "Ustawienia",
-    "passkeyOffer": {}
+    "passkeyOffer": {},
+    "planBilling": "Plan i rozliczenia"
   },
   "mcp": {
     "connectPanel": "Połącz MCP",
@@ -5210,6 +5211,207 @@
     "signOutFailed": "Nie udało się wylogować. Spróbuj ponownie.",
     "search": {
       "empty": "Brak pasujących ustawień"
+    },
+    "account": {
+      "intro": "Sprawdź bieżący plan i zarządzaj szczegółami płatności, fakturami lub anulowaniem.",
+      "planFree": "Bezpłatny",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Dostęp Premium",
+        "desc": "Ten dostęp nie jest rozliczany przez konto WorldMonitor. Brak dostępnych metod płatności ani faktur."
+      },
+      "checking": {
+        "heading": "Sprawdzanie planu…",
+        "desc": "To zwykle zajmuje tylko chwilę."
+      },
+      "status": {
+        "cancelScheduled": "Anulowanie zaplanowane — dostęp do {{date}}",
+        "renews": "Odnowienie: {{date}}",
+        "onHold": "Wstrzymane — zaktualizuj metodę płatności",
+        "cancelled": "Anulowano — dostęp do {{date}}",
+        "expired": "Wygasło",
+        "unknown": "Szczegóły bieżącego planu znajdziesz w sekcji Zarządzaj rozliczeniami.",
+        "ownerManaged": "Rozliczeniami zarządza właściciel Twojego planu."
+      },
+      "upgradeToBusiness": "Uaktualnij do Business",
+      "unavailable": {
+        "heading": "Status planu niedostępny",
+        "desc": "Nie mogliśmy zweryfikować bieżącego planu. Spróbuj ponownie lub wyświetl plany w nowej karcie."
+      },
+      "free": {
+        "heading": "WorldMonitor Bezpłatny",
+        "desc": "Twój obecny plan to Bezpłatny. Uaktualnij, aby uzyskać dostęp do wszystkich paneli, analizy AI i priorytetowego odświeżania danych."
+      },
+      "portal": {
+        "openFailed": "Nie udało się otworzyć portalu rozliczeń. Zezwól na wyskakujące okienka i spróbuj ponownie.",
+        "unavailable": "Portal rozliczeń niedostępny. Wyślij wiadomość na support@worldmonitor.app, aby uzyskać pomoc."
+      },
+      "deletion": {
+        "heading": "Usuń konto",
+        "desc": "Trwale usuń to konto World Monitor. Subskrypcje są anulowane natychmiast, bez zwrotu środków za pozostały opłacony z góry okres. Klucze API, klucze osadzania i tokeny MCP przestają działać. Dokumentacja rozliczeniowa potrzebna do celów księgowych, sporów i żądań wynikających z przepisów prawa jest przechowywana wraz z zawartymi w niej danymi kontaktowymi klienta; nie wskazuje już Twojego konta logowania, choć dzienniki webhooków dostawcy płatności zapisane przed usunięciem zachowują identyfikatory, z którymi zostały dostarczone. Preferencje pulpitu nawigacyjnego i sekrety aplikacji desktopowej w systemowym pęku kluczy (Keychain) na tym urządzeniu nie są usuwane zdalnie.",
+        "dialogTitle": "Usunąć to konto?",
+        "dialogCopy": "Tej operacji nie można cofnąć. Subskrypcje zostaną anulowane, klucze natychmiast przestaną działać, a dokumentacja rozliczeniowa zostanie zachowana do celów księgowych, sporów i żądań wynikających z przepisów prawa — wraz z zawartymi w niej danymi kontaktowymi. Następnie wyloguj się na innych urządzeniach i wyczyść dane witryny na tym urządzeniu — serwer nie ma do nich dostępu.",
+        "phraseLabel": "Wpisz {{phrase}}, aby potwierdzić",
+        "deleted": "Konto usunięte. Wyloguj się na innych urządzeniach i wyczyść dane witryny tego urządzenia.",
+        "failed": "Usunięcie konta nie powiodło się. Spróbuj ponownie."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} użytych",
+        "invite": "Zaproś",
+        "inviting": "Zapraszanie...",
+        "remove": "Usuń",
+        "removing": "Usuwanie...",
+        "inviteSent": "Zaproszenie wysłane",
+        "alreadyInvited": "Już zaproszony"
+      },
+      "businessSeats": {
+        "heading": "Miejsca Business",
+        "statusAccepted": "Zaakceptowano",
+        "statusExpired": "Wygasło",
+        "statusPending": "Oczekujące",
+        "expires": "Wygasa {{date}}",
+        "hintCorporate": "Zaproś kolegów z dowolnej domeny poczty firmowej.",
+        "hintPersonal": "Dodaj firmowy adres e-mail, aby zaprosić kolegów.",
+        "personalDomain": "Domeny bezpłatne lub jednorazowe nie mogą zapraszać kolegów. Dodaj firmowy adres e-mail, aby korzystać z tej funkcji.",
+        "empty": "Nikt nie został jeszcze zaproszony.",
+        "confirmRemove": "Usunąć to miejsce? Osoba zaproszona natychmiast straci dostęp Pro.",
+        "removed": "Miejsce usunięte",
+        "alreadyInactive": "Miejsce było już nieaktywne",
+        "loadFailed": "Nie udało się załadować miejsc",
+        "inviteFailed": "Nie udało się wysłać zaproszenia",
+        "removeFailed": "Nie udało się usunąć miejsca",
+        "errors": {
+          "seatCap": "Wszystkie 4 miejsca są używane. Najpierw usuń miejsce.",
+          "ownerDomain": "Adres e-mail Twojego konta musi być z domeny firmowej, aby zapraszać kolegów.",
+          "self": "Nie możesz zaprosić siebie.",
+          "inviteeDomain": "Adres e-mail osoby zaproszonej musi być z domeny firmowej."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "Miejsca Enterprise {{account}}",
+        "memberHint": "Administrator Twojego konta dodaje i usuwa osoby z tego konta.",
+        "hintFull": "Wszystkie miejsca są w użyciu. Usuń kogoś lub wycofaj zaproszenie, aby zwolnić miejsce.",
+        "hintOpen": "Zapraszaj osoby przez firmowy adres e-mail. Otrzymają link ważny przez 14 dni i będą korzystać ze wspólnego limitu tego konta.",
+        "emailLabel": "Adres e-mail do zaproszenia",
+        "statusActive": "Aktywne",
+        "statusExpired": "Zaproszenie wygasło",
+        "statusInvited": "Zaproszono",
+        "emailFailed": "Nie udało się wysłać e-maila z zaproszeniem. Sprawdź adres, a następnie wycofaj i zaproś ponownie.",
+        "inviteExpires": "Zaproszenie wygasa {{date}}",
+        "roleAdmin": "Administrator",
+        "you": "Ty",
+        "withdraw": "Wycofaj",
+        "unknownEmail": "Nieznany adres e-mail",
+        "alreadyMember": "Już jest członkiem",
+        "confirmRemove": "Usunąć {{email}}? Ta osoba natychmiast straci dostęp Enterprise.",
+        "confirmRemoveUnknown": "Usunąć tę osobę? Natychmiast straci dostęp Enterprise.",
+        "confirmWithdraw": "Wycofać zaproszenie dla {{email}}?",
+        "confirmWithdrawUnknown": "Wycofać zaproszenie na ten adres?",
+        "removed": "Członek usunięty",
+        "withdrawn": "Zaproszenie wycofane",
+        "loadFailed": "Nie udało się załadować miejsc. Spróbuj ponownie.",
+        "inviteFailed": "Nie udało się wysłać zaproszenia. Spróbuj ponownie.",
+        "removeFailed": "Nie udało się usunąć. Spróbuj ponownie.",
+        "errors": {
+          "seatCap": "Wszystkie miejsca są w użyciu. Usuń kogoś lub wycofaj zaproszenie.",
+          "inviteeDomain": "Podaj firmowy adres e-mail. Bezpłatne i jednorazowe domeny e-mail nie są akceptowane.",
+          "self": "Masz już przydzielone miejsce.",
+          "contractEnded": "Twoja umowa Enterprise wygasła. Skontaktuj się z pomocą techniczną, aby ją odnowić.",
+          "notAdmin": "Tylko administrator konta może zarządzać miejscami.",
+          "removeSelf": "Nie możesz usunąć własnego miejsca. Skontaktuj się z pomocą techniczną, aby zmienić administratora.",
+          "tooMany": "Zaproś maksymalnie 10 osób jednocześnie.",
+          "rateLimited": "Osiągnięto dzienny limit wysłanych zaproszeń. Spróbuj ponownie jutro."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "układ",
+        "1": "widgety",
+        "2": "rozmiar tekstu",
+        "3": "resetuj układ"
+      },
+      "sources": {
+        "0": "wiadomości",
+        "1": "kanały",
+        "2": "źródła",
+        "3": "regiony",
+        "4": "zasięg"
+      },
+      "notifications": {
+        "0": "alerty",
+        "1": "telegram",
+        "2": "slack",
+        "3": "e-mail",
+        "4": "discord",
+        "5": "webhook",
+        "6": "powiadomienia push"
+      },
+      "display": {
+        "0": "motyw",
+        "1": "ciemny",
+        "2": "jasny",
+        "3": "czcionka",
+        "4": "język",
+        "5": "rozmiar tekstu"
+      },
+      "map": {
+        "0": "globus",
+        "1": "dostawca",
+        "2": "kafelki",
+        "3": "mapa bazowa"
+      },
+      "ai": {
+        "0": "AI",
+        "1": "przeglądarka",
+        "2": "frameworki",
+        "3": "pamięć nagłówków",
+        "4": "model przeglądarki"
+      },
+      "video": {
+        "0": "strumień",
+        "1": "odtwarzanie automatyczne",
+        "2": "jakość",
+        "3": "na żywo, transmisja"
+      },
+      "apiKeys": {
+        "0": "klucz",
+        "1": "token",
+        "2": "klucz desktopowy"
+      },
+      "embeds": {
+        "0": "osadzanie",
+        "1": "iframe",
+        "2": "klucz embeda"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "agenty",
+        "3": "ChatGPT",
+        "4": "klienty"
+      },
+      "sync": {
+        "0": "import",
+        "1": "eksport",
+        "2": "kopia zapasowa",
+        "3": "chmura"
+      },
+      "about": {
+        "0": "warunki",
+        "1": "prywatność",
+        "2": "licencja",
+        "3": "informacje prawne"
+      },
+      "account": {
+        "0": "płatności",
+        "1": "rozliczenia",
+        "2": "subskrypcja",
+        "3": "faktura",
+        "4": "miejsca",
+        "5": "wyloguj się",
+        "6": "usuń konto"
+      }
     }
   }
 }

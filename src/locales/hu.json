@@ -4507,7 +4507,8 @@
     "createAccount": "Fiók létrehozása",
     "freeReason": "Ingyenes: elrendezés mentése, országok követése, riasztások",
     "settings": "Beállítások",
-    "passkeyOffer": {}
+    "passkeyOffer": {},
+    "planBilling": "Csomag és számlázás"
   },
   "mcp": {
     "connectPanel": "MCP csatlakoztatása",
@@ -5154,6 +5155,207 @@
     "signOutFailed": "Nem sikerült kijelentkezni. Próbálja újra.",
     "search": {
       "empty": "Nincs egyező beállítás"
+    },
+    "account": {
+      "intro": "Tekintse meg aktuális csomagját, és kezelje fizetési módját, számláit vagy a lemondást.",
+      "planFree": "Ingyenes",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Premium hozzáférés",
+        "desc": "Ez a hozzáférés nem a WorldMonitor-fiókjának számlázásán keresztül működik. Itt nem érhetők el fizetési módok vagy számlák."
+      },
+      "checking": {
+        "heading": "Csomag ellenőrzése…",
+        "desc": "Ez általában csak egy pillanat."
+      },
+      "status": {
+        "cancelScheduled": "Lemondás ütemezve – hozzáférés eddig: {{date}}",
+        "renews": "Megújítás: {{date}}",
+        "onHold": "Szüneteltetett – frissítse fizetési módját",
+        "cancelled": "Lemondva – hozzáférés eddig: {{date}}",
+        "expired": "Lejárt",
+        "unknown": "Aktuális csomagja részleteit a Számlázás kezelése menüpontban találja.",
+        "ownerManaged": "A számlázást a csomag tulajdonosa kezeli."
+      },
+      "upgradeToBusiness": "Váltás Business csomagra",
+      "unavailable": {
+        "heading": "Csomag státusza nem érhető el",
+        "desc": "Nem sikerült ellenőrizni aktuális csomagját. Próbálja újra, vagy tekintse meg a csomagokat új lapon."
+      },
+      "free": {
+        "heading": "WorldMonitor Ingyenes",
+        "desc": "Jelenlegi csomagja: Ingyenes. Váltson nagyobb csomagra az összes panelért, az AI-elemzésért és az elsőbbségi adatfrissítésért."
+      },
+      "portal": {
+        "openFailed": "Nem sikerült megnyitni a számlázási portált. Engedélyezze az előugró ablakokat és próbálja újra.",
+        "unavailable": "A számlázási portál nem érhető el. Támogatásért írjon a support@worldmonitor.app címre."
+      },
+      "deletion": {
+        "heading": "Fiók törlése",
+        "desc": "A World Monitor-fiók végleges törlése. Az előfizetések azonnal megszűnnek, a hátralévő előre kifizetett időszakért nincs visszatérítés. Az API-kulcsok, a beágyazási kulcsok és az MCP-tokenek nem működnek tovább. A számvitelhez, vitarendezéshez és jogszerű megkeresésekhez szükséges számlázási nyilvántartásokat megőrizzük a bennük szereplő ügyfél-kapcsolattartási adatokkal együtt; ezek a továbbiakban nem nevezik meg a bejelentkezési fiókját, a fizetési szolgáltató törlés előtt rögzített webhook-naplói azonban megtartják azokat az azonosítókat, amelyekkel kézbesítették őket. Az irányítópult-beállításokat és az asztali alkalmazás rendszerkulcstartójában (Keychain) tárolt titkokat ezen az eszközön nem töröljük távolról.",
+        "dialogTitle": "Törli ezt a fiókot?",
+        "dialogCopy": "Ez a művelet nem vonható vissza. Az előfizetések megszűnnek, a kulcsok azonnal leállnak, a számlázási nyilvántartásokat pedig megőrizzük számviteli, vitarendezési és jogszerű megkeresési célokra – a bennük szereplő kapcsolattartási adatokkal együtt. Ezután jelentkezzen ki a többi eszközön, és törölje a webhelyadatokat ezen az eszközön – ezeket a szerver nem éri el.",
+        "phraseLabel": "A megerősítéshez írja be: {{phrase}}",
+        "deleted": "Fiók törölve. Jelentkezzen ki más eszközökön, és törölje ennek az eszköznek a webhelyhez kapcsolódó adatait.",
+        "failed": "A fiók törlése sikertelen. Próbálja újra."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} használt",
+        "invite": "Meghívás",
+        "inviting": "Meghívás küldése...",
+        "remove": "Eltávolítás",
+        "removing": "Eltávolítás...",
+        "inviteSent": "Meghívás elküldve",
+        "alreadyInvited": "Már meghívva"
+      },
+      "businessSeats": {
+        "heading": "Business-helyek",
+        "statusAccepted": "Elfogadva",
+        "statusExpired": "Lejárt",
+        "statusPending": "Függőben",
+        "expires": "Lejár: {{date}}",
+        "hintCorporate": "Hívjon meg munkatársakat bármilyen vállalati e-mail tartományból.",
+        "hintPersonal": "Adjon hozzá egy vállalati e-mail címet munkatársak meghívásához.",
+        "personalDomain": "Ingyenes vagy eldobható e-mail-tartományból nem lehet munkatársakat meghívni. A funkció használatához adjon hozzá egy vállalati e-mail-címet.",
+        "empty": "Még nem hívott meg senkit.",
+        "confirmRemove": "Eltávolítja ezt a helyet? A meghívott azonnal elveszíti a Pro hozzáférést.",
+        "removed": "Hely eltávolítva",
+        "alreadyInactive": "A hely már inaktív volt",
+        "loadFailed": "Nem sikerült betölteni a helyeket",
+        "inviteFailed": "Nem sikerült elküldeni a meghívást",
+        "removeFailed": "Nem sikerült eltávolítani a helyet",
+        "errors": {
+          "seatCap": "Mind a 4 hely használatban van. Előbb távolítson el egy helyet.",
+          "ownerDomain": "Munkatársak meghívásához a fiókja e-mail-címének vállalati tartományból kell származnia.",
+          "self": "Nem hívhatja meg saját magát.",
+          "inviteeDomain": "A meghívott személy e-mail-címének vállalati tartományból kell származnia."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "{{account}} Enterprise helyek",
+        "memberHint": "A fiók rendszergazdája adja hozzá és távolítja el az embereket ebből a fiókból.",
+        "hintFull": "Minden hely foglalt. Egy hely felszabadításához távolítson el valakit, vagy vonjon vissza egy meghívást.",
+        "hintOpen": "Hívjon meg embereket vállalati e-mail-címmel. 14 napig érvényes linket kapnak, és közösen használják ennek a fióknak a keretét.",
+        "emailLabel": "Meghívandó e-mail cím",
+        "statusActive": "Aktív",
+        "statusExpired": "Meghívás lejárt",
+        "statusInvited": "Meghívva",
+        "emailFailed": "A meghívó e-mail nem küldhető el. Ellenőrizze a címet, majd vonja vissza és hívja meg újra.",
+        "inviteExpires": "Meghívás lejár: {{date}}",
+        "roleAdmin": "Rendszergazda",
+        "you": "Ön",
+        "withdraw": "Visszavonás",
+        "unknownEmail": "Ismeretlen e-mail",
+        "alreadyMember": "Már tag",
+        "confirmRemove": "Eltávolítja: {{email}}? Azonnal elveszíti az Enterprise-hozzáférést.",
+        "confirmRemoveUnknown": "Eltávolítja ezt a személyt? Azonnal elveszíti az Enterprise hozzáférést.",
+        "confirmWithdraw": "Visszavonja a meghívást {{email}} számára?",
+        "confirmWithdrawUnknown": "Visszavonja a meghívást erre a címre?",
+        "removed": "Tag eltávolítva",
+        "withdrawn": "Meghívás visszavonva",
+        "loadFailed": "Nem sikerült betölteni a helyeket. Próbálja újra.",
+        "inviteFailed": "Nem sikerült elküldeni a meghívást. Próbálja újra.",
+        "removeFailed": "Nem sikerült eltávolítani. Próbálja újra.",
+        "errors": {
+          "seatCap": "Minden hely foglalt. Előbb távolítson el valakit vagy vonjon vissza egy meghívást.",
+          "inviteeDomain": "Vállalati e-mail-címet adjon meg. Ingyenes és eldobható e-mail-tartományok nem fogadhatók el.",
+          "self": "Már van egy helye.",
+          "contractEnded": "Az Enterprise szerződés lejárt. Forduljon az ügyfélszolgálathoz a megújításhoz.",
+          "notAdmin": "Csak a fiók rendszergazdája kezelheti a helyeket.",
+          "removeSelf": "Nem távolíthatja el a saját helyét. Forduljon az ügyfélszolgálathoz a rendszergazda megváltoztatásához.",
+          "tooMany": "Egyszerre legfeljebb 10 személyt hívhat meg.",
+          "rateLimited": "Elérte a napi meghívások maximális számát. Próbálja újra holnap."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "elrendezés",
+        "1": "widgetek",
+        "2": "szövegméret",
+        "3": "elrendezés visszaállítása"
+      },
+      "sources": {
+        "0": "hírek",
+        "1": "feedek",
+        "2": "források",
+        "3": "régiók",
+        "4": "lefedettség"
+      },
+      "notifications": {
+        "0": "riasztások",
+        "1": "értesítések",
+        "2": "slack",
+        "3": "e-mail",
+        "4": "discord",
+        "5": "webhook",
+        "6": "push"
+      },
+      "display": {
+        "0": "téma",
+        "1": "sötét",
+        "2": "világos",
+        "3": "betűtípus",
+        "4": "nyelv",
+        "5": "szövegméret"
+      },
+      "map": {
+        "0": "földgömb",
+        "1": "szolgáltató",
+        "2": "csempék",
+        "3": "alaptérkép"
+      },
+      "ai": {
+        "0": "MI",
+        "1": "ollama",
+        "2": "keretrendszerek",
+        "3": "címsor-memória",
+        "4": "böngésző modell"
+      },
+      "video": {
+        "0": "videó",
+        "1": "automatikus lejátszás",
+        "2": "minőség",
+        "3": "élő"
+      },
+      "apiKeys": {
+        "0": "kulcs",
+        "1": "token",
+        "2": "asztali kulcs"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "beágyazási kulcs"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "claude",
+        "2": "ügynökök",
+        "3": "chatgpt",
+        "4": "kliensek"
+      },
+      "sync": {
+        "0": "importálás",
+        "1": "exportálás",
+        "2": "biztonsági mentés",
+        "3": "felhő"
+      },
+      "about": {
+        "0": "feltételek",
+        "1": "adatvédelem",
+        "2": "licenc",
+        "3": "jogi"
+      },
+      "account": {
+        "0": "csomag",
+        "1": "számlázás",
+        "2": "előfizetés",
+        "3": "számla",
+        "4": "helyek",
+        "5": "kijelentkezés",
+        "6": "fiók törlése"
+      }
     }
   }
 }

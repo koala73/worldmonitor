@@ -99,9 +99,11 @@ export class AuthHeaderWidget {
     const userBtnEl = document.createElement('div');
     userBtnEl.className = 'auth-clerk-user-button';
     this.container.appendChild(userBtnEl);
+    const billing = this.onBillingClick;
+    const settings = this.onSettingsClick;
     this.unmountUserButton = mountUserButton(userBtnEl, {
-      onBillingClick: this.onBillingClick,
-      onSettingsClick: this.onSettingsClick,
+      billing: billing && { label: t('auth.planBilling'), onClick: billing },
+      settings: settings && { label: t('auth.settings'), onClick: settings },
     });
   }
 }

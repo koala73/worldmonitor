@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   SETTINGS_GROUPS,
@@ -11,12 +12,16 @@ import {
   pageEntryEffect,
   reduceNav,
   searchNav,
+  searchTerms,
   type NavGroup,
   type NavLayout,
   type NavState,
   type SettingsFacts,
   type SettingsSectionId,
+  type Translate,
 } from '../src/config/settings-sections.ts';
+
+const EN: unknown = JSON.parse(readFileSync(new URL('../src/locales/en.json', import.meta.url), 'utf8'));
 
 const facts = (overrides: Partial<SettingsFacts> = {}): SettingsFacts => ({
   signedIn: true,
@@ -310,13 +315,12 @@ describe('settings navigation in the two-pane modal', () => {
 });
 
 describe('settings sidebar search', () => {
-  const text = (key: string) => ({
-    'settings.sections.about': 'About',
-    'settings.descriptions.about': 'Site links, terms and privacy',
-    'preferences.display': 'Display',
-    'settings.descriptions.display': 'Theme, font and language',
-    'settings.descriptions.map': 'Provider, theme and globe',
-  } as Record<string, string>)[key] ?? key;
+  const lookup = (dict: unknown, key: string): unknown =>
+    key.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], dict);
+
+  /** i18next's t over real catalogues: `ui` is the UI language, English answers lng 'en'. */
+  const translate = (ui: unknown): Translate => (key, { lng }) => lookup(lng === 'en' ? EN : ui, key) ?? key;
+  const text = searchTerms(translate(EN));
 
   const ids = (groups: readonly NavGroup[]) =>
     groups.flatMap((group) => group.rows.map((row) => (row.kind === 'section' ? row.id : 'sign-in')));
@@ -357,11 +361,31 @@ describe('settings sidebar search', () => {
     assert.equal(searchNav(buildNav(facts()), 'billing', text).hits, 1);
   });
 
-  it('gives every section at least one keyword', () => {
+  it('gives every section a non-empty keyword list in the English catalogue', () => {
     for (const group of buildNav(facts())) {
       for (const row of group.rows) {
-        if (row.kind === 'section') assert.ok(row.keywords.length > 0, `${row.id} has keywords`);
+        if (row.kind !== 'section') continue;
+        const keywords = lookup(EN, row.keywordsKey);
+        assert.ok(keywords !== null && typeof keywords === 'object', `${row.id} has keywords at ${row.keywordsKey}`);
+        const words = Object.values(keywords as object);
+        assert.ok(words.length > 0 && words.every((word) => typeof word === 'string' && word.trim() !== ''), `${row.id} keywords are words`);
       }
     }
+  });
+
+  it('gives every rendering of a key: the UI language, then English, lists flattened', () => {
+    const fr = { settings: { keywords: { about: { 0: 'mentions légales', 1: 'confidentialité' } }, sections: { about: 'À propos' } } };
+    const terms = searchTerms(translate(fr));
+    assert.deepEqual(terms('settings.keywords.about'), ['mentions légales', 'confidentialité', 'terms', 'privacy', 'license', 'legal']);
+    assert.deepEqual(terms('settings.sections.about'), ['À propos', 'About']);
+    assert.deepEqual(terms('settings.missing'), []);
+  });
+
+  it('finds a row in another language by its translated keyword and by the English original', () => {
+    const fr = { settings: { keywords: { about: { 0: 'mentions légales', 1: 'confidentialité' } } } };
+    const search = (q: string) => searchNav(buildNav(facts()), q, searchTerms(translate(fr)));
+    assert.deepEqual(ids(search('MENTIONS légales').groups), ['account', 'about']);
+    assert.deepEqual(ids(search('legal').groups), ['account', 'about']);
+    assert.equal(search('mentions').hits, 1);
   });
 });

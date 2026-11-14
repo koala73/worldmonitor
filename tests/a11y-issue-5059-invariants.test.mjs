@@ -78,11 +78,6 @@ describe('settings navigation', () => {
     assert.match(settings, /<button type="button" class="us-row" data-settings-nav=/);
     assert.match(settings, /<button type="button" class="us-back" data-settings-back hidden aria-label=/);
   });
-
-  it('renders Plan & billing on the account page', () => {
-    assert.match(settings, /<div class="billing-settings-intro">\s*<h3>Plan &amp; billing<\/h3>/);
-    assert.match(settings, /See your current plan and manage payment details, invoices, or cancellation\./);
-  });
 });
 
 describe('keyboard — toggle focus continuity', () => {
