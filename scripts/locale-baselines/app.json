@@ -984,7 +984,7 @@
   "components.gridDisruptionClock.phase.unknown": "Impact unknown",
   "components.gridDisruptionClock.phase.watch": "Watch",
   "components.gridDisruptionClock.priorNotice": "Previously reported warning",
-  "components.gridDisruptionClock.recovery": "Recovery",
+  "components.gridDisruptionClock.recovery": "Reported changes",
   "components.gridDisruptionClock.region": "Select state",
   "components.gridDisruptionClock.retained": "Refresh failed. Showing the last received report.",
   "components.gridDisruptionClock.since": "since",
