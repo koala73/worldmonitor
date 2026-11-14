@@ -320,6 +320,10 @@
 }
 
 .ow-tl-legend {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--panel-bg);
   display: grid;
   grid-auto-rows: var(--tl-row);
   margin: 0;
@@ -329,7 +333,7 @@
 
 .ow-tl-key {
   display: grid;
-  grid-template-columns: 12px auto minmax(4ch, auto);
+  grid-template-columns: auto minmax(4ch, auto);
   gap: 6px;
   align-items: center;
   color: var(--text-dim);
@@ -340,8 +344,6 @@
   text-align: right;
   color: var(--text);
 }
-
-.ow-tl-key[data-row='photo'] .ow-tl-glyph { color: var(--green-text, var(--green)); }
 
 .ow-tl-key[data-row='photo'] .ow-tl-key-label { color: var(--green-text, var(--green)); }
 
