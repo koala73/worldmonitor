@@ -584,7 +584,8 @@
     "climateNews": "Climate News",
     "fx": "Foreign exchange rates",
     "ukmtoIncidents": "UKMTO Incidents",
-    "reservoirLevels": "Strategic Water Levels"
+    "reservoirLevels": "Strategic Water Levels",
+    "gridDisruptionClock": "US States Grid Disruption Clock"
   },
   "panelVariants": {
     "finance": {
@@ -978,6 +979,57 @@
     }
   },
   "components": {
+    "gridDisruptionClock": {
+      "region": "Select state",
+      "unknown": "Unknown",
+      "customers": "Customers reported without power",
+      "lastCustomers": "Customers out at last report",
+      "denominatorUnknown": "Tracked customer total unknown",
+      "tracked": "{{amount}} customers tracked",
+      "dataAge": "Since report",
+      "warningAge": "Since first active warning",
+      "minutes": "{{amount}} min",
+      "hours": "{{amount}} h",
+      "days": "{{amount}} d",
+      "warnings": "Warnings",
+      "recovery": "Reported changes",
+      "decreased": "{{amount}} fewer reported out",
+      "increased": "{{amount}} more reported out",
+      "unchanged": "Reported count unchanged",
+      "since": "since",
+      "peakLoad": "{{percent}}% of normal peak load restored",
+      "noComparison": "Comparable outage counts unavailable.",
+      "history": "Recent outage counts ({{total}})",
+      "priorNotice": "Previously reported warning",
+      "sources": "Warning source coverage",
+      "operatorLink": "For grid notices, check",
+      "issued": "Issued",
+      "until": "expires",
+      "noActive": "No active warning in monitored sources.",
+      "unknownWarnings": "Current warning coverage is incomplete.",
+      "noObservation": "Current count and coverage unavailable.",
+      "loadError": "Grid disruption clock data is unavailable.",
+      "retained": "Refresh failed. Showing the last received report.",
+      "phase": {
+        "unknown": "Impact unknown",
+        "monitoring": "Monitoring",
+        "watch": "Watch",
+        "disrupted": "Outages reported",
+        "recovering": "Recovery reported",
+        "restored": "Restoration reported"
+      },
+      "kind": {
+        "grid": "Grid notice",
+        "weather": "Weather alert",
+        "space-weather": "Space weather"
+      },
+      "checks": {
+        "available": "Checked",
+        "unavailable": "Unavailable",
+        "not_monitored": "Check operator directly",
+        "stale": "Last check is stale"
+      }
+    },
     "webcams": {
       "paused": "Webcams paused",
       "play": "Watch live",
@@ -4500,7 +4552,6 @@
     "dataAndCommunity": "Data & Community",
     "theme": "Theme",
     "themeDesc": "Auto follows your system preference.",
-    "themeAuto": "Auto (follow system)",
     "themeDark": "Dark",
     "themeLight": "Light",
     "mapProvider": "Map Tile Provider",
@@ -4730,7 +4781,8 @@
     "signIn": "Sign In",
     "createAccount": "Create account",
     "freeReason": "Free: save your layout, follow countries, get alerts",
-    "settings": "Settings"
+    "settings": "Settings",
+    "planBilling": "Plan & billing"
   },
   "mcp": {
     "connectPanel": "Connect MCP",
@@ -5260,5 +5312,252 @@
     "close": "Close",
     "alertsHint": "Install World Monitor to your Home Screen to get alerts on this iPhone or iPad.",
     "how": "How to install"
+  },
+  "settings": {
+    "back": "Back to settings",
+    "signOut": "Sign out",
+    "signOutFailed": "Could not sign out. Try again.",
+    "signIn": {
+      "label": "Sign in",
+      "desc": "Sync settings and manage your plan"
+    },
+    "summary": {
+      "themeAuto": "Auto",
+      "count": "{{on}} of {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Preferences",
+      "developer": "Developer",
+      "app": "App"
+    },
+    "sections": {
+      "account": "Account",
+      "map": "Map",
+      "ai": "AI & analysis",
+      "video": "Video & streams",
+      "apiKeys": "API keys",
+      "embeds": "Embeds",
+      "aiAgents": "AI agents (MCP)",
+      "sync": "Sync, import & export",
+      "about": "About"
+    },
+    "descriptions": {
+      "panels": "Show, hide and reorder",
+      "sources": "Regions and feeds",
+      "notifications": "Channels and alert rules",
+      "display": "Theme, font and language",
+      "map": "Provider, theme and globe",
+      "ai": "Models, memory and frameworks",
+      "video": "Quality and autoplay",
+      "apiKeys": "Keys for the World Monitor API",
+      "embeds": "Widgets for your own site",
+      "aiAgents": "Connected MCP clients",
+      "about": "Site links, terms and privacy"
+    },
+    "search": {
+      "empty": "No settings match"
+    },
+    "account": {
+      "intro": "See your current plan and manage payment details, invoices, or cancellation.",
+      "planFree": "Free",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Premium access",
+        "desc": "This access is not billed through your WorldMonitor account. No payment method or invoices are available here."
+      },
+      "checking": {
+        "heading": "Checking your plan…",
+        "desc": "This usually takes only a moment."
+      },
+      "status": {
+        "cancelScheduled": "Cancellation scheduled -- access until {{date}}",
+        "renews": "Renews: {{date}}",
+        "onHold": "On hold -- please update payment method",
+        "cancelled": "Cancelled -- access until {{date}}",
+        "expired": "Expired",
+        "unknown": "See Manage Billing for your current plan details.",
+        "ownerManaged": "Billing is managed by your plan owner."
+      },
+      "upgradeToBusiness": "Upgrade to Business",
+      "unavailable": {
+        "heading": "Plan status unavailable",
+        "desc": "We could not verify your current plan. Try again or view plans in a new tab."
+      },
+      "free": {
+        "heading": "WorldMonitor Free",
+        "desc": "Your current plan is Free. Upgrade for all panels, AI analysis, and priority data refresh."
+      },
+      "portal": {
+        "openFailed": "Could not open the billing portal. Please allow pop-ups and try again.",
+        "unavailable": "Billing portal unavailable. Email support@worldmonitor.app for help."
+      },
+      "deletion": {
+        "heading": "Delete account",
+        "desc": "Permanently delete this World Monitor account. Subscriptions cancel immediately with no refund of remaining prepaid time. API keys, embed keys, and MCP tokens stop working. Billing records needed for accounting, disputes, and lawful requests are kept with the customer contact details they carry; they stop naming your login account, though payment-provider webhook logs written before deletion keep the identifiers they were delivered with. Dashboard preferences and desktop keychain secrets on this device are not wiped remotely.",
+        "dialogTitle": "Delete this account?",
+        "dialogCopy": "This cannot be undone. Subscriptions cancel, keys stop working immediately, and billing records are kept for accounting, disputes, and lawful requests — including the contact details they carry. Sign out on other devices and clear this device's site data afterwards — those are out of server reach.",
+        "phraseLabel": "Type {{phrase}} to confirm",
+        "deleted": "Account deleted. Sign out on other devices and clear this device's site data.",
+        "failed": "Account deletion failed. Try again."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} used",
+        "invite": "Invite",
+        "inviting": "Inviting...",
+        "remove": "Remove",
+        "removing": "Removing...",
+        "inviteSent": "Invite sent",
+        "alreadyInvited": "Already invited"
+      },
+      "businessSeats": {
+        "heading": "Business Seats",
+        "statusAccepted": "Accepted",
+        "statusExpired": "Expired",
+        "statusPending": "Pending",
+        "expires": "Expires {{date}}",
+        "hintCorporate": "Invite teammates at any corporate email domain.",
+        "hintPersonal": "Add a company email to invite teammates.",
+        "personalDomain": "Free or disposable email domains cannot invite teammates. Add a company email to use this feature.",
+        "empty": "No seats invited yet.",
+        "confirmRemove": "Remove this seat? The invitee will lose Pro access immediately.",
+        "removed": "Seat removed",
+        "alreadyInactive": "Seat was already inactive",
+        "loadFailed": "Failed to load seats",
+        "inviteFailed": "Failed to send invite",
+        "removeFailed": "Failed to remove seat",
+        "errors": {
+          "seatCap": "All 4 seats are used. Remove a seat first.",
+          "ownerDomain": "Your account email must be a company domain to invite teammates.",
+          "self": "You cannot invite yourself.",
+          "inviteeDomain": "The invitee email must be a company domain."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "{{account}} Enterprise seats",
+        "memberHint": "Your account admin adds and removes people on this account.",
+        "hintFull": "All seats are in use. Remove someone or withdraw an invite to free a seat.",
+        "hintOpen": "Invite people by company email. They get a link that is valid for 14 days and share this account's allowance.",
+        "emailLabel": "Email address to invite",
+        "statusActive": "Active",
+        "statusExpired": "Invite expired",
+        "statusInvited": "Invited",
+        "emailFailed": "The invite email could not be sent. Check the address, then withdraw and invite again.",
+        "inviteExpires": "Invite expires {{date}}",
+        "roleAdmin": "Admin",
+        "you": "You",
+        "withdraw": "Withdraw",
+        "unknownEmail": "Unknown email",
+        "alreadyMember": "Already a member",
+        "confirmRemove": "Remove {{email}}? They lose Enterprise access immediately.",
+        "confirmRemoveUnknown": "Remove this person? They lose Enterprise access immediately.",
+        "confirmWithdraw": "Withdraw the invite to {{email}}?",
+        "confirmWithdrawUnknown": "Withdraw the invite to this address?",
+        "removed": "Member removed",
+        "withdrawn": "Invite withdrawn",
+        "loadFailed": "Could not load seats. Try again.",
+        "inviteFailed": "Could not send the invite. Try again.",
+        "removeFailed": "Could not remove. Try again.",
+        "errors": {
+          "seatCap": "All seats are in use. Remove someone or withdraw an invite first.",
+          "inviteeDomain": "Invite a company email address. Free and disposable email domains are not accepted.",
+          "self": "You already have a seat.",
+          "contractEnded": "Your Enterprise contract has ended. Contact support to renew.",
+          "notAdmin": "Only the account admin can manage seats.",
+          "removeSelf": "You cannot remove your own seat. Contact support to change the admin.",
+          "tooMany": "Invite up to 10 people at a time.",
+          "rateLimited": "You have sent the most invites allowed in a day. Try again tomorrow."
+        }
+      }
+    },
+    "keywords": {
+      "account": {
+        "0": "plan",
+        "1": "billing",
+        "2": "subscription",
+        "3": "invoice",
+        "4": "seats",
+        "5": "sign out",
+        "6": "delete account"
+      },
+      "panels": {
+        "0": "layout",
+        "1": "widgets",
+        "2": "text size",
+        "3": "reset layout"
+      },
+      "sources": {
+        "0": "news",
+        "1": "feeds",
+        "2": "rss",
+        "3": "regions",
+        "4": "coverage"
+      },
+      "notifications": {
+        "0": "alerts",
+        "1": "telegram",
+        "2": "slack",
+        "3": "email",
+        "4": "discord",
+        "5": "webhook",
+        "6": "push"
+      },
+      "display": {
+        "0": "theme",
+        "1": "dark",
+        "2": "light",
+        "3": "font",
+        "4": "language",
+        "5": "text size"
+      },
+      "map": {
+        "0": "globe",
+        "1": "provider",
+        "2": "tiles",
+        "3": "basemap"
+      },
+      "ai": {
+        "0": "llm",
+        "1": "ollama",
+        "2": "frameworks",
+        "3": "headline memory",
+        "4": "browser model"
+      },
+      "video": {
+        "0": "stream",
+        "1": "autoplay",
+        "2": "quality",
+        "3": "live"
+      },
+      "apiKeys": {
+        "0": "key",
+        "1": "token",
+        "2": "desktop key"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "embed key"
+      },
+      "aiAgents": {
+        "0": "mcp",
+        "1": "claude",
+        "2": "agents",
+        "3": "chatgpt",
+        "4": "clients"
+      },
+      "sync": {
+        "0": "import",
+        "1": "export",
+        "2": "backup",
+        "3": "cloud"
+      },
+      "about": {
+        "0": "terms",
+        "1": "privacy",
+        "2": "license",
+        "3": "legal"
+      }
+    }
   }
 }

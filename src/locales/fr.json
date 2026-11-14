@@ -495,7 +495,8 @@
     "climateNews": "Actualités climatiques",
     "fx": "Taux de change",
     "ukmtoIncidents": "Incidents UKMTO",
-    "reservoirLevels": "Niveaux d’eau stratégiques"
+    "reservoirLevels": "Niveaux d’eau stratégiques",
+    "gridDisruptionClock": "Horloge des coupures de courant dans les États américains"
   },
   "commands": {
     "prefixes": {
@@ -3207,6 +3208,57 @@
         "measured": "Mesuré",
         "sparkline": "Niveau d’eau sur 36 mois"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Sélectionner un État",
+      "unknown": "Inconnu",
+      "customers": "Clients privés de courant selon les relevés",
+      "lastCustomers": "Clients privés de courant au dernier relevé",
+      "denominatorUnknown": "Nombre total de clients suivis inconnu",
+      "tracked": "Nombre de clients suivis : {{amount}}",
+      "dataAge": "Depuis le relevé",
+      "minutes": "{{amount}} min",
+      "hours": "{{amount}} h",
+      "warnings": "Alertes",
+      "recovery": "Changements signalés",
+      "decreased": "Selon le relevé, {{amount}} clients de moins sont privés de courant",
+      "increased": "Selon le relevé, {{amount}} clients de plus sont privés de courant",
+      "unchanged": "Nombre de clients signalés sans courant inchangé",
+      "since": "depuis",
+      "peakLoad": "{{percent}} % de la charge de pointe habituelle rétablie",
+      "noComparison": "Aucun chiffre comparable sur les clients privés de courant.",
+      "history": "Relevés récents des clients privés de courant ({{total}})",
+      "priorNotice": "Alerte signalée précédemment",
+      "sources": "Couverture des sources d’alerte",
+      "operatorLink": "Pour les avis concernant le réseau, consulter",
+      "issued": "Émise le",
+      "until": "expire le",
+      "noActive": "Aucune alerte en vigueur dans les sources suivies.",
+      "unknownWarnings": "La couverture actuelle des alertes est partielle.",
+      "noObservation": "Le nombre actuel et la couverture sont inconnus.",
+      "loadError": "Les données de l’horloge des coupures de courant sont indisponibles.",
+      "retained": "Échec de l’actualisation. Le dernier relevé reçu est affiché.",
+      "phase": {
+        "unknown": "Impact inconnu",
+        "monitoring": "Surveillance",
+        "watch": "Préalerte",
+        "disrupted": "Coupures signalées",
+        "recovering": "Rétablissement en cours signalé",
+        "restored": "Retour du courant signalé"
+      },
+      "kind": {
+        "grid": "Avis concernant le réseau",
+        "weather": "Alerte météo",
+        "space-weather": "Météo spatiale"
+      },
+      "checks": {
+        "available": "Vérifiée",
+        "unavailable": "Indisponible",
+        "not_monitored": "Consulter directement le gestionnaire du réseau",
+        "stale": "La dernière vérification est trop ancienne"
+      },
+      "warningAge": "Depuis la première alerte encore en vigueur",
+      "days": "{{amount}} j"
     }
   },
   "popups": {
@@ -4531,7 +4583,8 @@
     "createAccount": "Créer un compte",
     "freeReason": "Gratuit : enregistrer la mise en page, suivre des pays, alertes",
     "settings": "Paramètres",
-    "passkeyOffer": {}
+    "passkeyOffer": {},
+    "planBilling": "Plan et facturation"
   },
   "mcp": {
     "connectPanel": "Connecter MCP",
@@ -5293,6 +5346,253 @@
       "sources": "Sources",
       "archiveScene": "Scène d'archive",
       "archiveOnly": "Aucun passage calculé ne correspond à ces images ; elles sont donc présentées comme des scènes d'archive."
+    }
+  },
+  "settings": {
+    "back": "Retour aux paramètres",
+    "signIn": {
+      "label": "Se connecter",
+      "desc": "Synchroniser les paramètres et gérer votre plan"
+    },
+    "summary": {
+      "themeAuto": "Automatique",
+      "count": "{{on}} sur {{total}}"
+    },
+    "groups": {
+      "dashboard": "Tableau de bord",
+      "preferences": "Préférences",
+      "developer": "Développeur",
+      "app": "Application"
+    },
+    "sections": {
+      "account": "Compte",
+      "map": "Carte",
+      "ai": "IA et analyse",
+      "video": "Vidéo et flux",
+      "apiKeys": "Clés API",
+      "embeds": "Widgets intégrés",
+      "aiAgents": "Agents IA (MCP)",
+      "sync": "Synchronisation, import et export",
+      "about": "À propos"
+    },
+    "descriptions": {
+      "panels": "Afficher, masquer et réorganiser",
+      "sources": "Régions et flux",
+      "notifications": "Canaux et règles d'alerte",
+      "display": "Thème, police et langue",
+      "map": "Fournisseur, thème et globe",
+      "ai": "Modèles, mémoire et frameworks",
+      "video": "Qualité et lecture automatique",
+      "apiKeys": "Clés pour l'API World Monitor",
+      "embeds": "Widgets pour votre site",
+      "aiAgents": "Clients MCP connectés",
+      "about": "Liens du site, conditions et confidentialité"
+    },
+    "signOut": "Se déconnecter",
+    "signOutFailed": "Impossible de se déconnecter. Réessayez.",
+    "search": {
+      "empty": "Aucun paramètre ne correspond"
+    },
+    "account": {
+      "intro": "Consultez votre plan actuel et gérez vos données de paiement, factures ou annulation.",
+      "planFree": "Gratuit",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Accès Premium",
+        "desc": "Cet accès n'est pas facturé via votre compte WorldMonitor. Aucun mode de paiement ni factures ne sont disponibles ici."
+      },
+      "checking": {
+        "heading": "Vérification de votre plan…",
+        "desc": "Cela prend généralement quelques instants."
+      },
+      "status": {
+        "cancelScheduled": "Annulation programmée -- accès jusqu'au {{date}}",
+        "renews": "Renouvellement : {{date}}",
+        "onHold": "En attente -- veuillez mettre à jour votre mode de paiement",
+        "cancelled": "Annulé -- accès jusqu'au {{date}}",
+        "expired": "Expiré",
+        "unknown": "Consultez Gérer la facturation pour connaître les détails de votre plan actuel.",
+        "ownerManaged": "La facturation est gérée par le propriétaire de votre plan."
+      },
+      "upgradeToBusiness": "Passer à Business",
+      "unavailable": {
+        "heading": "Statut du plan indisponible",
+        "desc": "Nous n'avons pas pu vérifier votre plan actuel. Réessayez ou consultez les plans dans un nouvel onglet."
+      },
+      "free": {
+        "heading": "WorldMonitor Gratuit",
+        "desc": "Votre plan actuel est Gratuit. Passez à la version supérieure pour accéder à tous les panneaux, à l'analyse par IA et à l'actualisation prioritaire des données."
+      },
+      "portal": {
+        "openFailed": "Impossible d'ouvrir le portail de facturation. Veuillez autoriser les pop-ups et réessayer.",
+        "unavailable": "Portail de facturation indisponible. Envoyez un e-mail à support@worldmonitor.app pour obtenir de l'aide."
+      },
+      "deletion": {
+        "heading": "Supprimer le compte",
+        "desc": "Supprimez définitivement ce compte World Monitor. Les abonnements sont annulés immédiatement, sans remboursement de la période prépayée restante. Les clés API, les clés d'intégration et les jetons MCP cessent de fonctionner. Les dossiers de facturation nécessaires à la comptabilité, aux litiges et aux demandes légales sont conservés avec les coordonnées du client qu'ils contiennent ; ils cessent d'identifier votre compte de connexion, mais les journaux webhook du prestataire de paiement écrits avant la suppression conservent les identifiants avec lesquels ils ont été transmis. Les préférences du tableau de bord et les secrets de l'application de bureau stockés dans le trousseau de cet appareil ne sont pas effacés à distance.",
+        "dialogTitle": "Supprimer ce compte ?",
+        "dialogCopy": "Cette action ne peut pas être annulée. Les abonnements sont annulés, les clés cessent de fonctionner immédiatement, et les dossiers de facturation sont conservés pour la comptabilité, les litiges et les demandes légales -- y compris les coordonnées qu'ils contiennent. Déconnectez-vous sur les autres appareils et effacez les données du site sur cet appareil ensuite -- celles-ci sont hors de portée du serveur.",
+        "phraseLabel": "Tapez {{phrase}} pour confirmer",
+        "deleted": "Compte supprimé. Déconnectez-vous sur les autres appareils et effacez les données du site sur cet appareil.",
+        "failed": "La suppression du compte a échoué. Réessayez."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} utilisés",
+        "invite": "Inviter",
+        "inviting": "Invitation en cours...",
+        "remove": "Supprimer",
+        "removing": "Suppression en cours...",
+        "inviteSent": "Invitation envoyée",
+        "alreadyInvited": "Déjà invité"
+      },
+      "businessSeats": {
+        "heading": "Sièges Business",
+        "statusAccepted": "Accepté",
+        "statusExpired": "Expiré",
+        "statusPending": "En attente",
+        "expires": "Expire le {{date}}",
+        "hintCorporate": "Invitez des collègues à partir de n'importe quel domaine de messagerie d'entreprise.",
+        "hintPersonal": "Ajoutez une adresse e-mail professionnelle pour inviter des collègues.",
+        "personalDomain": "Les domaines de messagerie gratuits ou jetables ne peuvent pas inviter de collègues. Ajoutez une adresse e-mail professionnelle pour utiliser cette fonctionnalité.",
+        "empty": "Aucune invitation envoyée pour le moment.",
+        "confirmRemove": "Supprimer ce siège ? La personne invitée perdra immédiatement l'accès Pro.",
+        "removed": "Siège supprimé",
+        "alreadyInactive": "Le siège était déjà inactif",
+        "loadFailed": "Échec du chargement des sièges",
+        "inviteFailed": "Échec de l'envoi de l'invitation",
+        "removeFailed": "Échec de la suppression du siège",
+        "errors": {
+          "seatCap": "Les 4 sièges sont utilisés. Supprimez d'abord un siège.",
+          "ownerDomain": "L'adresse e-mail de votre compte doit être un domaine professionnel pour inviter des collègues.",
+          "self": "Vous ne pouvez pas vous inviter vous-même.",
+          "inviteeDomain": "L'adresse e-mail de l'invité doit être un domaine professionnel."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "Sièges Enterprise de {{account}}",
+        "memberHint": "L'administrateur de votre compte ajoute et supprime les personnes sur ce compte.",
+        "hintFull": "Tous les sièges sont utilisés. Supprimez quelqu'un ou retirez une invitation pour libérer un siège.",
+        "hintOpen": "Invitez des personnes par adresse e-mail professionnelle. Elles reçoivent un lien valide pendant 14 jours et partagent l'allocation de ce compte.",
+        "emailLabel": "Adresse e-mail à inviter",
+        "statusActive": "Actif",
+        "statusExpired": "Invitation expirée",
+        "statusInvited": "Invité",
+        "emailFailed": "L'e-mail d'invitation n'a pas pu être envoyé. Vérifiez l'adresse, puis retirez l'invitation et invitez à nouveau.",
+        "inviteExpires": "L'invitation expire le {{date}}",
+        "roleAdmin": "Administrateur",
+        "you": "Vous",
+        "withdraw": "Retirer",
+        "unknownEmail": "Adresse e-mail inconnue",
+        "alreadyMember": "Déjà membre",
+        "confirmRemove": "Supprimer {{email}} ? Cette personne perdra immédiatement l'accès Enterprise.",
+        "confirmRemoveUnknown": "Supprimer cette personne ? Elle perdra immédiatement l'accès Enterprise.",
+        "confirmWithdraw": "Retirer l'invitation à {{email}} ?",
+        "confirmWithdrawUnknown": "Retirer l'invitation à cette adresse ?",
+        "removed": "Membre supprimé",
+        "withdrawn": "Invitation retirée",
+        "loadFailed": "Impossible de charger les sièges. Réessayez.",
+        "inviteFailed": "Impossible d'envoyer l'invitation. Réessayez.",
+        "removeFailed": "Impossible de supprimer. Réessayez.",
+        "errors": {
+          "seatCap": "Tous les sièges sont utilisés. Supprimez quelqu'un ou retirez une invitation d'abord.",
+          "inviteeDomain": "Invitez une adresse e-mail professionnelle. Les domaines de messagerie gratuits et jetables ne sont pas acceptés.",
+          "self": "Vous avez déjà un siège.",
+          "contractEnded": "Votre contrat Enterprise a expiré. Contactez le support pour le renouveler.",
+          "notAdmin": "Seul l'administrateur du compte peut gérer les sièges.",
+          "removeSelf": "Vous ne pouvez pas supprimer votre propre siège. Contactez le support pour changer l'administrateur.",
+          "tooMany": "Invitez jusqu'à 10 personnes à la fois.",
+          "rateLimited": "Vous avez envoyé le maximum d'invitations autorisées par jour. Réessayez demain."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "mise en page",
+        "1": "widgets",
+        "2": "taille du texte",
+        "3": "réinitialiser la mise en page"
+      },
+      "sources": {
+        "0": "actualités",
+        "1": "flux",
+        "2": "RSS",
+        "3": "régions",
+        "4": "couverture"
+      },
+      "notifications": {
+        "0": "alertes",
+        "1": "Telegram",
+        "2": "Slack",
+        "3": "e-mail",
+        "4": "Discord",
+        "5": "webhook",
+        "6": "notifications push"
+      },
+      "display": {
+        "0": "thème",
+        "1": "sombre",
+        "2": "clair",
+        "3": "police",
+        "4": "langue",
+        "5": "taille du texte"
+      },
+      "map": {
+        "0": "globe",
+        "1": "fournisseur",
+        "2": "tuiles",
+        "3": "fond de carte"
+      },
+      "ai": {
+        "0": "IA",
+        "1": "Ollama",
+        "2": "frameworks",
+        "3": "mémoire des titres",
+        "4": "modèle navigateur"
+      },
+      "video": {
+        "0": "flux",
+        "1": "lecture automatique",
+        "2": "qualité",
+        "3": "direct"
+      },
+      "apiKeys": {
+        "0": "clé",
+        "1": "jeton",
+        "2": "clé bureau"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "clé d'intégration"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "agents",
+        "3": "ChatGPT",
+        "4": "clients"
+      },
+      "sync": {
+        "0": "importer",
+        "1": "exporter",
+        "2": "sauvegarde",
+        "3": "cloud"
+      },
+      "about": {
+        "0": "conditions",
+        "1": "confidentialité",
+        "2": "licence",
+        "3": "mentions légales"
+      },
+      "account": {
+        "0": "forfait",
+        "1": "facturation",
+        "2": "abonnement",
+        "3": "facture",
+        "4": "sièges",
+        "5": "se déconnecter",
+        "6": "supprimer le compte, plan"
+      }
     }
   }
 }

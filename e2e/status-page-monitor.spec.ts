@@ -6,7 +6,10 @@ import { checkStatusPage, monitorStatusPage } from '../scripts/status-page-smoke
 const markup = `<section id="overall-uptime">${['Last 24 hours', 'Last 7 days', 'Last 30 days', 'Last 90 days'].map((label) => `<div><h3>99.123%</h3><div>${label}</div></div>`).join('')}</section>`;
 
 test('status probe waits for asynchronously rendered uptime', async ({ page }) => {
-  await page.setContent(`<main></main><script>setTimeout(() => document.querySelector('main').innerHTML = ${JSON.stringify(markup)}, 100)</script>`);
+  await page.setContent('<main></main>');
+  await page.locator('main').evaluate((node, html) => {
+    setTimeout(() => { node.innerHTML = html; }, 100);
+  }, markup);
   expect((await checkStatusPage(page))['Last 90 days']).toBe('99.123%');
 });
 

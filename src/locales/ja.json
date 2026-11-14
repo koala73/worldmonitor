@@ -491,7 +491,8 @@
     "climateNews": "気候ニュース",
     "fx": "外国為替レート",
     "ukmtoIncidents": "UKMTO事案",
-    "reservoirLevels": "戦略的水位"
+    "reservoirLevels": "戦略的水位",
+    "gridDisruptionClock": "米国各州の停電時計"
   },
   "commands": {
     "prefixes": {
@@ -3165,6 +3166,57 @@
         "measured": "測定日",
         "sparkline": "36か月の水位"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "州を選択",
+      "unknown": "不明",
+      "customers": "停電が報告された契約件数",
+      "lastCustomers": "前回報告時の停電契約件数",
+      "denominatorUnknown": "集計対象の総契約件数は不明",
+      "tracked": "集計対象の契約件数：{{amount}} 件",
+      "dataAge": "報告からの経過時間",
+      "minutes": "{{amount}} 分",
+      "hours": "{{amount}} 時間",
+      "warnings": "警報",
+      "recovery": "報告された変化",
+      "decreased": "報告された停電契約件数が {{amount}} 件減少",
+      "increased": "報告された停電契約件数が {{amount}} 件増加",
+      "unchanged": "報告された件数に変動なし",
+      "since": "比較時点",
+      "peakLoad": "通常のピーク負荷の {{percent}}% まで復旧",
+      "noComparison": "比較可能な停電件数はありません。",
+      "history": "直近の停電件数（記録数：{{total}}）",
+      "priorNotice": "以前に報告された警報",
+      "sources": "警報の情報源と確認状況",
+      "operatorLink": "電力網のお知らせはこちら：",
+      "issued": "発表",
+      "until": "有効期限",
+      "noActive": "確認対象の情報源に有効な警報はありません。",
+      "unknownWarnings": "現在、一部の警報情報を確認できていません。",
+      "noObservation": "現在の件数と集計範囲は不明です。",
+      "loadError": "停電時計のデータを取得できません。",
+      "retained": "更新できませんでした。最後に受信した報告を表示しています。",
+      "phase": {
+        "unknown": "影響不明",
+        "monitoring": "監視中",
+        "watch": "警戒",
+        "disrupted": "停電の報告あり",
+        "recovering": "復旧作業中との報告",
+        "restored": "復旧の報告あり"
+      },
+      "kind": {
+        "grid": "電力網のお知らせ",
+        "weather": "気象警報",
+        "space-weather": "宇宙天気"
+      },
+      "checks": {
+        "available": "確認済み",
+        "unavailable": "利用不可",
+        "not_monitored": "事業者の発表を直接確認",
+        "stale": "最終確認から時間が経過"
+      },
+      "warningAge": "現在有効な最初の警報からの経過時間",
+      "days": "{{amount}} 日"
     }
   },
   "popups": {
@@ -4487,7 +4539,8 @@
     "createAccount": "アカウントを作成",
     "freeReason": "無料: レイアウト保存、国のフォロー、アラート",
     "settings": "設定",
-    "passkeyOffer": {}
+    "passkeyOffer": {},
+    "planBilling": "プラン・課金"
   },
   "mcp": {
     "connectPanel": "MCPを接続",
@@ -5227,6 +5280,253 @@
       "sources": "出典",
       "archiveScene": "アーカイブシーン",
       "archiveOnly": "計算された通過と一致しない画像のため、アーカイブシーンとして表示しています。"
+    }
+  },
+  "settings": {
+    "back": "設定に戻る",
+    "signIn": {
+      "label": "サインイン",
+      "desc": "設定を同期してプランを管理"
+    },
+    "summary": {
+      "themeAuto": "自動",
+      "count": "{{total}}中{{on}}"
+    },
+    "groups": {
+      "dashboard": "ダッシュボード",
+      "preferences": "プリファレンス",
+      "developer": "デベロッパー",
+      "app": "アプリ"
+    },
+    "sections": {
+      "account": "アカウント",
+      "map": "マップ",
+      "ai": "AI & 分析",
+      "video": "ビデオ & ストリーム",
+      "apiKeys": "APIキー",
+      "embeds": "Embeds",
+      "aiAgents": "AIエージェント(MCP)",
+      "sync": "同期、インポート & エクスポート",
+      "about": "概要"
+    },
+    "descriptions": {
+      "panels": "表示、非表示、並び替え",
+      "sources": "地域とフィード",
+      "notifications": "チャネルとアラートルール",
+      "display": "テーマ、フォント、言語",
+      "map": "プロバイダー、テーマ、グローブ",
+      "ai": "モデル、メモリ、フレームワーク",
+      "video": "品質と自動再生",
+      "apiKeys": "World Monitor APIのキー",
+      "embeds": "自分のサイト用widget",
+      "aiAgents": "接続されたMCPクライアント",
+      "about": "サイトリンク、利用規約、プライバシー"
+    },
+    "signOut": "ログアウト",
+    "signOutFailed": "ログアウトできませんでした。もう一度お試しください。",
+    "search": {
+      "empty": "一致する設定はありません"
+    },
+    "account": {
+      "intro": "現在のプランを確認し、お支払い方法、請求書、またはキャンセルを管理できます。",
+      "planFree": "無料",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Premium アクセス",
+        "desc": "このアクセスは WorldMonitor アカウントを通じて課金されません。お支払い方法および請求書はここでは利用できません。"
+      },
+      "checking": {
+        "heading": "プランを確認中…",
+        "desc": "通常は数秒で完了します。"
+      },
+      "status": {
+        "cancelScheduled": "キャンセル予定 -- {{date}} までアクセス可能",
+        "renews": "更新日: {{date}}",
+        "onHold": "保留中 -- お支払い方法を更新してください",
+        "cancelled": "キャンセル済み -- {{date}} までアクセス可能",
+        "expired": "期限切れ",
+        "unknown": "プランの詳細については「課金管理」をご覧ください。",
+        "ownerManaged": "課金はプランの所有者が管理します。"
+      },
+      "upgradeToBusiness": "Business にアップグレード",
+      "unavailable": {
+        "heading": "プランステータスが利用できません",
+        "desc": "現在のプランを確認できませんでした。もう一度お試しになるか、新しいタブでプランを表示してください。"
+      },
+      "free": {
+        "heading": "WorldMonitor 無料プラン",
+        "desc": "現在のプランは無料プランです。アップグレードすると、すべてのパネル、AI 分析、優先データ更新をご利用いただけます。"
+      },
+      "portal": {
+        "openFailed": "課金ポータルを開くことができませんでした。ポップアップを許可して、もう一度お試しください。",
+        "unavailable": "課金ポータルが利用できません。support@worldmonitor.app にメールでお問い合わせください。"
+      },
+      "deletion": {
+        "heading": "アカウントの削除",
+        "desc": "この World Monitor アカウントを完全に削除します。サブスクリプションは直ちにキャンセルされ、残りの前払い期間の返金はありません。API キー、埋め込みキー、MCP トークンは機能しなくなります。会計、紛争対応、法的な要請に必要な請求記録は、そこに含まれる顧客の連絡先情報とともに保持されます。これらの記録はあなたのログインアカウントと紐付かなくなりますが、削除前に書き込まれた決済プロバイダーの Webhook ログには、配信時の識別子が残ります。このデバイス上のダッシュボード設定と、デスクトップのキーチェーン（OS の認証情報ストア）に保存されたシークレットは、リモートでは消去されません。",
+        "dialogTitle": "このアカウントを削除しますか?",
+        "dialogCopy": "この操作は取り消せません。サブスクリプションはキャンセルされ、キーは直ちに機能しなくなります。請求記録は、そこに含まれる連絡先情報も含め、会計、紛争対応、法的な要請のために保持されます。削除後、他のデバイスでサインアウトし、このデバイスのサイトデータを消去してください。これらはサーバー側からは操作できません。",
+        "phraseLabel": "{{phrase}} と入力して確認",
+        "deleted": "アカウントが削除されました。他のデバイスでサインアウトし、このデバイスのサイトデータをクリアしてください。",
+        "failed": "アカウント削除に失敗しました。もう一度お試しください。"
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} 使用中",
+        "invite": "招待",
+        "inviting": "招待中...",
+        "remove": "削除",
+        "removing": "削除中...",
+        "inviteSent": "招待を送信しました",
+        "alreadyInvited": "既に招待済み"
+      },
+      "businessSeats": {
+        "heading": "Business シート",
+        "statusAccepted": "承諾済み",
+        "statusExpired": "期限切れ",
+        "statusPending": "承諾待ち",
+        "expires": "{{date}}に期限切れ",
+        "hintCorporate": "任意の企業メールドメインのチームメンバーを招待できます。",
+        "hintPersonal": "チームメンバーを招待するには企業メールアドレスを追加してください。",
+        "personalDomain": "フリーメールまたは使い捨てメールドメインではチームメンバーを招待できません。この機能を使用するには企業メールを追加してください。",
+        "empty": "まだシートが招待されていません。",
+        "confirmRemove": "このシートを削除しますか？招待されたユーザーは直ちに Pro へのアクセスを失います。",
+        "removed": "シートを削除しました",
+        "alreadyInactive": "シートは既に無効です",
+        "loadFailed": "シートの読み込みに失敗しました",
+        "inviteFailed": "招待の送信に失敗しました",
+        "removeFailed": "シートの削除に失敗しました",
+        "errors": {
+          "seatCap": "4つのシートがすべて使用されています。まず1つのシートを削除してください。",
+          "ownerDomain": "チームメンバーを招待するには、アカウントメールが企業ドメインである必要があります。",
+          "self": "自分自身を招待することはできません。",
+          "inviteeDomain": "招待先メールは企業ドメインである必要があります。"
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "{{account}} Enterprise シート",
+        "memberHint": "このアカウントのメンバー追加・削除はアカウント管理者が行います。",
+        "hintFull": "すべてのシートが使用中です。誰かを削除するか招待を取り下げてシートを解放してください。",
+        "hintOpen": "企業メールでユーザーを招待できます。招待された人には14日間有効なリンクが届き、このアカウントの利用枠を共有します。",
+        "emailLabel": "招待するメールアドレス",
+        "statusActive": "アクティブ",
+        "statusExpired": "招待期限切れ",
+        "statusInvited": "招待済み",
+        "emailFailed": "招待メールを送信できませんでした。アドレスを確認してから、招待を取り下げて再度招待してください。",
+        "inviteExpires": "招待は{{date}}に期限切れ",
+        "roleAdmin": "管理者",
+        "you": "あなた",
+        "withdraw": "取り下げ",
+        "unknownEmail": "不明なメール",
+        "alreadyMember": "既にメンバー",
+        "confirmRemove": "{{email}}を削除しますか？このユーザーは直ちに Enterprise へのアクセスを失います。",
+        "confirmRemoveUnknown": "このユーザーを削除しますか？直ちに Enterprise へのアクセスを失います。",
+        "confirmWithdraw": "{{email}}への招待を取り下げますか？",
+        "confirmWithdrawUnknown": "このアドレスへの招待を取り下げますか？",
+        "removed": "メンバーを削除しました",
+        "withdrawn": "招待を取り下げました",
+        "loadFailed": "シートを読み込めませんでした。もう一度お試しください。",
+        "inviteFailed": "招待を送信できませんでした。もう一度お試しください。",
+        "removeFailed": "削除できませんでした。もう一度お試しください。",
+        "errors": {
+          "seatCap": "すべてのシートが使用中です。誰かを削除するか、招待を取り下げてください。",
+          "inviteeDomain": "会社のメールアドレスを招待してください。フリーメールおよび使い捨てメールドメインは対応していません。",
+          "self": "既にシートがあります。",
+          "contractEnded": "Enterprise 契約が終了しています。更新するにはサポートにお問い合わせください。",
+          "notAdmin": "アカウント管理者のみがシートを管理できます。",
+          "removeSelf": "自分のシートは削除できません。管理者を変更するにはサポートに連絡してください。",
+          "tooMany": "1度に最大10人まで招待できます。",
+          "rateLimited": "1日の招待数上限に達しました。明日もう一度お試しください。"
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "レイアウト",
+        "1": "ウィジェット",
+        "2": "テキストサイズ",
+        "3": "レイアウトをリセット"
+      },
+      "sources": {
+        "0": "ニュース",
+        "1": "フィード",
+        "2": "RSS",
+        "3": "地域",
+        "4": "ニュース報道"
+      },
+      "notifications": {
+        "0": "アラート",
+        "1": "Telegram",
+        "2": "Slack",
+        "3": "メール",
+        "4": "Discord",
+        "5": "Webhook",
+        "6": "プッシュ"
+      },
+      "display": {
+        "0": "テーマ",
+        "1": "ダーク",
+        "2": "ライト",
+        "3": "フォント",
+        "4": "言語",
+        "5": "テキストサイズ"
+      },
+      "map": {
+        "0": "グローブ",
+        "1": "プロバイダ",
+        "2": "タイル",
+        "3": "ベースマップ"
+      },
+      "ai": {
+        "0": "LLM",
+        "1": "Ollama",
+        "2": "フレームワーク",
+        "3": "ヘッドラインメモリ",
+        "4": "ブラウザモデル"
+      },
+      "video": {
+        "0": "ストリーム",
+        "1": "自動再生",
+        "2": "品質",
+        "3": "ライブ"
+      },
+      "apiKeys": {
+        "0": "キー",
+        "1": "トークン",
+        "2": "デスクトップキー"
+      },
+      "embeds": {
+        "0": "ウィジェット",
+        "1": "iframe",
+        "2": "埋め込みキー"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "エージェント",
+        "3": "ChatGPT",
+        "4": "クライアント"
+      },
+      "sync": {
+        "0": "インポート",
+        "1": "エクスポート",
+        "2": "バックアップ",
+        "3": "クラウド"
+      },
+      "about": {
+        "0": "利用規約",
+        "1": "プライバシー",
+        "2": "ライセンス",
+        "3": "法務"
+      },
+      "account": {
+        "0": "プラン",
+        "1": "課金",
+        "2": "サブスクリプション",
+        "3": "請求書",
+        "4": "シート",
+        "5": "サインアウト",
+        "6": "アカウント削除"
+      }
     }
   }
 }
