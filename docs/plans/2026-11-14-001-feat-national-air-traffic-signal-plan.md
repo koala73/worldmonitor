@@ -59,7 +59,7 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 
 - [ ] `git fetch origin <head-branch> && git checkout <head SHA>`.
 - [ ] Run `npm run worktree:bootstrap`.
-- [ ] Start the fixture Redis with `node --test --test-name-pattern=<lane> scripts/ais-relay-air-traffic.test.cjs`. The harness serves Upstash REST on `127.0.0.1` and spawns the relay with `UPSTASH_ALLOW_INSECURE_HTTP=true`, `NODE_OPTIONS=--require=./scripts/ais-relay-test-preload.cjs`, `RELAY_TEST_OPENSKY_STATES_FILE`, and `RELAY_TEST_CLOCK_START_MS`, as `scripts/ais-relay-opensky-shared-cooldown.test.cjs` does. Wait for the log line `[AirTraffic] loop starting`.
+- [ ] Start the fixture Redis with `node --test --test-name-pattern=<lane> scripts/ais-relay-air-traffic.test.cjs`. The harness serves Upstash REST on `127.0.0.1` and spawns the relay with `UPSTASH_ALLOW_INSECURE_HTTP=true`, `NODE_OPTIONS=--require=./scripts/ais-relay-test-preload.cjs`, `RELAY_TEST_OPENSKY_STATES_FILE`, and `RELAY_TEST_CLOCK_START_MS`, as `scripts/ais-relay-opensky-shared-cooldown.test.cjs` does. Wait for the log line `[Relay] WebSocket relay on port`, which trunk also prints. At a head that has the loop, also wait for `[AirTraffic] loop starting`.
 - [ ] Deliver input only through fixture OpenSky responses and fixture clock offsets. Read state only through fixture Redis dumps and relay stdout.
 - [ ] Save every artifact to `/tmp/swarm-<pr-id>/worker-<n>/<slug>` and return the paths with the report.
 
@@ -82,7 +82,7 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 **Build.**
 
 - [ ] Open the owner issue for the new health probe before the first push. `scripts/check-health-probe-cutovers.mts` rejects a new `SEED_META` entry without `cutover.issue`.
-- [ ] Define the point shape in `air-traffic-aggregate.cjs`. A point is `{ t, status, usAirborne, usLowClimbing, euAirborne, hubs }`. `t` is the 5-minute bin start. `status` is `ok` or `gap`. `usLowClimbing` counts airborne CONUS states below 3,000 m with a positive vertical rate. `hubs` maps each IATA to `{ air, ground }` within 48 km.
+- [ ] Define the point shape in `air-traffic-aggregate.cjs`. A point is `{ t, status, usSeen, usAirborne, usLowClimbing, euAirborne, hubs }`. `t` is the 5-minute bin start. `status` is `ok` or `gap` and describes the fetch only. `usSeen` counts every CONUS state with a position, on the ground or airborne, and measures US receiver coverage. `usLowClimbing` counts airborne CONUS states below 3,000 m with a positive vertical rate. `hubs` maps each IATA to `{ air, ground }` within 48 km.
 - [ ] Add one relay loop with `startBootSeedLoop` at a 300,000 ms interval. Each tick requests the bare global `/states/all` through the existing `/opensky` proxy, so the account cooldown and cache stay in one place.
 - [ ] On an OpenSky failure, write a point with `status` set to `gap` and no counts. Never write zeros for a failed fetch.
 - [ ] Store points in one hash per UTC day, `aviation:traffic:history:v1:<YYYY-MM-DD>`, field `t`, with `EXPIREAT` at day end plus 35 days. Follow `scripts/shared/pizzint-history.cjs`, which does the same in one Lua call.
@@ -147,7 +147,7 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 
 - [ ] Model the detector as a state machine with states `normal`, `collapsed`, and `insufficient-baseline`. Persist the state in `aviation:traffic:detector:v1`.
 - [ ] Baseline each bin as the median `usLowClimbing` at the same UTC bin on the last four same weekdays with `ok` points. Fewer than two such days puts the detector in `insufficient-baseline`, and it never alerts.
-- [ ] Enter `collapsed` when two consecutive `ok` points read below 30% of baseline while `euAirborne` is at least 80% of its own baseline. Leave it when two consecutive points read above 70%.
+- [ ] Enter `collapsed` when two consecutive `ok` points read below 30% of baseline while `euAirborne` is at least 80% of its own baseline and `usSeen` is at least 50% of its own baseline. Grounded aircraft stay visible at the hubs during a ground stop, so `usSeen` separates a traffic collapse from a US receiver outage. Leave it when two consecutive points read above 70%.
 - [ ] On entry, publish `aviation_traffic_collapse` with severity `critical`. On exit, publish the same type with severity `high` and a recovery title. Both payloads carry `countryCode` `US`, the ratio, and the onset bin.
 - [ ] Cover the new type in the payload audit and the country-scope test.
 
@@ -158,7 +158,7 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] `tests/air-traffic-detector.test.mjs` gains cases for each transition, a `gap` point inside the window, a Europe-control drop that blocks the alert, and fewer than two baseline days. Run `node --test tests/air-traffic-detector.test.mjs`.
+- [ ] `tests/air-traffic-detector.test.mjs` gains cases for each transition, a `gap` point inside the window, a Europe-control drop that blocks the alert, a `usSeen` drop that blocks the alert, and fewer than two baseline days. Run `node --test tests/air-traffic-detector.test.mjs`.
 - [ ] `tests/air-traffic-detector-replay.test.mjs` replays committed 5-minute series derived from the adsb.lol archives for 2026-11-13 and 2026-11-06. Run `node --test tests/air-traffic-detector-replay.test.mjs`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `opus` at the PR head, per the boot recipe.
@@ -171,7 +171,7 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 - [ ] Lane 6. Replay with three `gap` points at 20:40Z to 20:50Z. Save `lane6-gaps.json`. Pass when the detector waits for two `ok` points before it enters `collapsed`.
 - [ ] Lane 7. Restart the relay at 20:45Z mid-replay. Save `lane7-restart.json`. Pass when exactly one critical event is queued across the restart.
 - [ ] Lane 8. Run the notification relay against the queued event with a US-scoped rule and a Europe-scoped rule. Save `lane8-delivery.json`. Pass when only the US-scoped rule matches.
-- [ ] Lane 9. Replay a holiday-shaped day at 60% of baseline. Save `lane9-holiday.json`. Pass when nothing is queued.
+- [ ] Lane 9. Replay 2026-11-06 with every US state removed for 30 minutes and Europe unchanged. Save `lane9-us-receiver-loss.json`. Pass when nothing is queued and the log names the US coverage block.
 - [ ] Lane 10. Replay a single-bin dip to 10% that recovers in the next bin. Save `lane10-blip.json`. Pass when nothing is queued.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
@@ -202,7 +202,7 @@ The adsb.lol archive analysis on 2026-11-14 is the evidence for the signal. It r
 - Airline departures over CONUS fell from 106 to 20 per 5 minutes at 20:40Z on 2026-11-13. The previous Friday held between 102 and 136 for the same bins. The official ground stop started at 20:54Z.
 - Airline aircraft airborne over CONUS fell to 0.14 of the previous Friday by 23:45Z, while the Europe control region stayed between 0.85 and 1.0.
 
-Two questions stay unproven. First, whether the stateless `usLowClimbing` count from 5-minute snapshots tracks true departures as sharply as the trace-based count. PR A lane 2 answers it. Second, how OpenSky coverage compares with adsb.lol coverage. The archive counted 1,314 aircraft airborne over CONUS at 23:30Z, and a public OpenSky count near that time was 1,083.
+Three questions stay unproven. Third, whether `usSeen` holds at least 50% of baseline during a ground stop, which requires OpenSky to keep reporting grounded aircraft. PR A lane 2 records `usSeen` for the 2026-11-13 onset replay, and PR B adjusts the threshold from that record before it ships. First, whether the stateless `usLowClimbing` count from 5-minute snapshots tracks true departures as sharply as the trace-based count. PR A lane 2 answers it. Second, how OpenSky coverage compares with adsb.lol coverage. The archive counted 1,314 aircraft airborne over CONUS at 23:30Z, and a public OpenSky count near that time was 1,083.
 
 ## Appendix B. Alternatives rejected
 
