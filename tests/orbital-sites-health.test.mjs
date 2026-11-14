@@ -1,6 +1,7 @@
 // The watched-site evidence probe is new: /api/health and /api/seed-health must not read it as
 // missing between the Vercel deploy and the climate bundle's first site publication, and must
-// enforce it once the seeder's activation marker exists.
+// enforce it once the seeder's activation marker exists. These cases cover the launched contract
+// (ORBITAL_WATCH_ENABLED=true); tests/orbital-sites-dark-launch-health.test.mjs covers the dark one.
 import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -9,7 +10,9 @@ const originalEnv = {
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
   WORLDMONITOR_VALID_KEYS: process.env.WORLDMONITOR_VALID_KEYS,
+  ORBITAL_WATCH_ENABLED: process.env.ORBITAL_WATCH_ENABLED,
 };
+process.env.ORBITAL_WATCH_ENABLED = 'true';
 process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
 process.env.WORLDMONITOR_VALID_KEYS = 'test-key';
