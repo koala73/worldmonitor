@@ -80,6 +80,8 @@ export async function lookupPointImagery(point: GeoPoint, signal?: AbortSignal):
     .map((archive) => searchStacArchive(archive, { point, window, signal })));
   const evidence = assembleEvidence({ lookup, stac });
   const newest = evidence.acquisitions.find((a) => a.imageUrl);
+  // "No recent image" is only true when every archive answered.
+  if (!newest && evidence.failures.length) throw new Error('archive search failed');
   const next = lookup.passes.filter((p) => p.inFootprint && p.timeMs > lookup.nowMs).sort((a, b) => a.timeMs - b.timeMs)[0];
   return {
     latest: newest?.imageUrl
