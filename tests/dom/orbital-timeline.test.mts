@@ -164,6 +164,16 @@ describe('orbital timeline dock', () => {
     expect(row('images').querySelector<HTMLElement>('.ow-tl-geo-line')!.dataset.tip).toBe('Geostationary view: METEOSAT-9');
   });
 
+  it('keeps keyboard focus on a mark when the timeline updates', () => {
+    const p = pass('SENTINEL-2A', -20, { kind: 'likely-imaged' });
+    const dock = mounted([p], context());
+    const mark = timeline().querySelector<HTMLElement>(`[data-pass="${keyOf(p)}"]`)!;
+    mark.focus();
+    dock.update({ lookup: lookup([p]), passes: [p], acquisitions: [], context: { kind: 'loaded', context: context() }, selectedKey: null });
+    expect(document.activeElement).not.toBe(mark);
+    expect((document.activeElement as HTMLElement).dataset.pass).toBe(keyOf(p));
+  });
+
   it('puts an archive image with no computed pass on the images lane and counts it', () => {
     const dock = new OrbitalTimeline(onSelect);
     document.body.append(dock.element);

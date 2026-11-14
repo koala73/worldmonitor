@@ -241,6 +241,8 @@ export class OrbitalTimeline {
       const endMs = dayStarts[i + 1] ?? window.endMs;
       return pct(endMs) - pct(startMs) < MIN_DAY_PCT ? [] : [this.dayLabel(clock, startMs, `left:${((pct(startMs) + pct(endMs)) / 2).toFixed(3)}%`)];
     });
+    const focused = this.plot.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
+    const refocus = focused?.dataset.pass ? `[data-pass="${CSS.escape(focused.dataset.pass)}"]` : focused?.dataset.tip ? `[data-tip="${CSS.escape(focused.dataset.tip)}"]` : null;
     replaceChildren(this.plot,
       h('div', { className: 'ow-tl-backdrop', 'aria-hidden': 'true' },
         ...input.lookup.daylight.map((band) => h('span', { className: 'ow-tl-daylight', style: between(band.startMs, band.endMs) })),
@@ -251,6 +253,7 @@ export class OrbitalTimeline {
       h('div', { className: 'ow-tl-row ow-tl-strip', dataset: { row: 'events' } }, ...eventMarks),
       rows[1]!,
       h('div', { className: 'ow-tl-axis', 'aria-hidden': 'true' }, ...days));
+    if (refocus) this.plot.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
     this.hideTip();
     requestAnimationFrame(() => this.revealNow(`${window.startMs}:${window.endMs}`));
 
