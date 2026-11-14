@@ -218,6 +218,27 @@ test.describe('settings across the phone breakpoint', () => {
     await expect(page.locator('#us-page-map')).toBeHidden();
   });
 
+  test('rotating across the breakpoint keeps the reader in place on a long page', async ({ page }) => {
+    await seed(page);
+    await openSettingsFromGear(page);
+    await page.locator('[data-settings-nav="panels"]').click();
+    const pane = page.locator('[data-settings-pages]');
+    await pane.evaluate((el) => { el.scrollTop = 300; });
+    await expect.poll(() => pane.evaluate((el) => el.scrollTop)).toBe(300);
+    await page.locator('[data-settings-search]').focus();
+
+    await page.setViewportSize({ width: 393, height: 852 });
+    const sheet = page.locator('.unified-settings-modal');
+    await expect(page.locator('[data-settings-home]')).toBeHidden();
+    await expect.poll(() => sheet.evaluate((el) => el.scrollTop)).toBe(300);
+    await expect(page.locator('#us-page-panels .us-page-title'), 'focus leaves the hidden search').toBeFocused();
+
+    await sheet.evaluate((el) => { el.scrollTop = 420; });
+    await page.waitForTimeout(100);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect.poll(() => pane.evaluate((el) => el.scrollTop)).toBe(420);
+  });
+
   test('the phone home list widens into the sidebar on Display', async ({ page }) => {
     await page.setViewportSize({ width: 393, height: 852 });
     await seed(page);

@@ -662,6 +662,14 @@ export class UnifiedSettings {
       }
     });
 
+    // Kept as the reader scrolls: by the time a breakpoint crossing reaches
+    // onResize, the old layout's scroller has already lost its offset.
+    this.overlay.addEventListener('scroll', (e) => {
+      if (this.nav && e.target === this.scroller(this.nav)) {
+        this.scrollOffsets.set(this.nav.page ?? 'home', this.scroller(this.nav).scrollTop);
+      }
+    }, { capture: true, passive: true });
+
     // Escape in a non-empty sidebar search clears it; the next Escape reaches
     // escapeHandler on the document and closes Settings.
     this.overlay.addEventListener('keydown', (e) => {
@@ -1188,7 +1196,8 @@ export class UnifiedSettings {
     }
     const fx = diffNav(prev, next);
     // A relayout keeps the page, and the old layout's scroller no longer
-    // holds its offset, so only a page change records one.
+    // holds its offset, so only a page change records one here. The scroll
+    // listener has the offset from before the crossing.
     const pageChanged = prev === null || fx.enter !== null || fx.leave !== null;
     if (prev && pageChanged) this.scrollOffsets.set(prev.page ?? 'home', this.scroller(prev).scrollTop);
     this.nav = next;
@@ -1203,12 +1212,20 @@ export class UnifiedSettings {
     if (pageChanged) {
       const drillIn = next.layout === 'sheet' && next.page !== null;
       this.scroller(next).scrollTop = drillIn ? 0 : this.scrollOffsets.get(next.page ?? 'home') ?? 0;
+    } else if (ev.type === 'relayout') {
+      this.scroller(next).scrollTop = this.scrollOffsets.get(next.page ?? 'home') ?? 0;
     }
     entered?.mounted.enter?.();
     // The sidebar keeps focus on the row a user picked; elsewhere the page heading takes it.
     const focusHeading = ev.type === 'open' || (ev.type === 'select' && next.layout === 'sheet');
+    // A relayout can hide the focused control: the sidebar search, or the sheet's Back.
+    const focused = document.activeElement;
+    const focusLost = ev.type === 'relayout' && focused instanceof HTMLElement
+      && this.overlay.contains(focused) && focused.closest('[hidden]') !== null;
     if (entered && focusHeading) {
       entered.el.querySelector<HTMLElement>('.us-page-title')?.focus({ preventScroll: true });
+    } else if (focusLost && next.page !== null) {
+      this.pages.get(next.page)?.el.querySelector<HTMLElement>('.us-page-title')?.focus({ preventScroll: true });
     } else if (fx.leave && next.page === null) {
       this.overlay.querySelector<HTMLElement>(`[data-settings-nav="${fx.leave}"]`)?.focus({ preventScroll: true });
     }

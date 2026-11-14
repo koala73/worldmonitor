@@ -385,6 +385,53 @@ describe('Settings two-pane modal', () => {
     expect(visibleRows()).toContain('about');
   });
 
+  it('moves focus to the page heading when narrowing hides the focused search', () => {
+    settings.open();
+    search().focus();
+
+    setWidth(393);
+
+    expect(document.activeElement).toBe(page('display')!.querySelector('.us-page-title'));
+  });
+
+  it('moves focus to the page heading when widening hides the focused Back button', () => {
+    setWidth(393);
+    settings.open();
+    row('map')!.click();
+    back().focus();
+
+    setWidth(1280);
+
+    expect(document.activeElement).toBe(page('map')!.querySelector('.us-page-title'));
+  });
+
+  it('keeps focus on a control that stays visible across a relayout', () => {
+    settings.open();
+    row('map')!.click();
+    const theme = page('map')!.querySelector<HTMLElement>('input, select, button')!;
+    theme.focus();
+
+    setWidth(393);
+
+    expect(document.activeElement).toBe(theme);
+  });
+
+  it('keeps the reader in place on the open page across a breakpoint crossing', () => {
+    settings.open();
+    row('panels')!.click();
+    const pane = $('[data-settings-pages]')!;
+    pane.scrollTop = 240;
+    pane.dispatchEvent(new Event('scroll'));
+
+    setWidth(393);
+    expect($('.unified-settings-modal')!.scrollTop).toBe(240);
+
+    $('.unified-settings-modal')!.scrollTop = 310;
+    $('.unified-settings-modal')!.dispatchEvent(new Event('scroll'));
+    setWidth(1280);
+    expect(pane.scrollTop).toBe(310);
+  });
+
   it('selects the recent page when the phone home list widens into the modal', () => {
     setWidth(393);
     settings.open();
