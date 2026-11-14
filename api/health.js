@@ -290,6 +290,13 @@ function fenceHealthMutations(commands, token) {
 // (server/worldmonitor/resilience/v1/_shared.ts).
 const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
 
+// Orbital Watch ships dark (#10710). Same switch and parse as the seeder
+// (scripts/seed-orbital-sites.mjs) and the orbital RPCs
+// (server/worldmonitor/orbital/v1/dark-launch.ts). While it is off the seeder
+// writes nothing, so these keys read NOT_CONFIGURED and claim no rollout deadline.
+const ORBITAL_WATCH_ENABLED = (process.env.ORBITAL_WATCH_ENABLED ?? '').trim().toLowerCase() === 'true';
+const DARK_LAUNCHED_KEYS = new Set(ORBITAL_WATCH_ENABLED ? [] : ['orbitalSites']);
+
 const BOOTSTRAP_KEYS = {
   earthquakes:       'seismology:earthquakes:v1',
   outages:           'infra:outages:v1',
@@ -983,7 +990,10 @@ const SEED_META = {
   // Daily climate bundle member; 4320 = 3 missed days. One run evaluates the sites its budget
   // allows and the index keeps every site evaluated so far, so the count reaches the 655-site
   // registry within two runs; minRecordCount allows for the first run's partial pass.
+  // NOT_CONFIGURED while Orbital Watch is dark (DARK_LAUNCHED_KEYS). The deadline key is
+  // separate from the one claimed on 2026-11-14 while dark, so launch starts a fresh window.
   orbitalSites:     { key: 'seed-meta:orbital:sites', maxStaleMin: 4320, minRecordCount: 300, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:orbital:sites',
+    rolloutDeadlineKey: 'health:rollout-deadline:orbital:sites:v1:launch',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10615, activationKey: 'seed-activated:orbital:sites' } },
   unrestEvents:     { key: 'seed-meta:unrest:events',           maxStaleMin: 120 }, // 45min cron; 120 = 2h grace (was 75 = 30min buffer, too tight)
   cyberThreats:     { key: 'seed-meta:cyber:threats',           maxStaleMin: 240 }, // 2h interval; 240min = 2x interval
@@ -3282,12 +3292,12 @@ function fredRatesRolloutCommands(now, vercelEnv = process.env.VERCEL_ENV) {
 }
 
 const REGIONAL_ENERGY_ROLLOUT_NAMES = Object.keys(SEED_META)
-  .filter(name => SEED_META[name].firstPublicationMaxWaitMin != null);
+  .filter(name => SEED_META[name].firstPublicationMaxWaitMin != null && !DARK_LAUNCHED_KEYS.has(name));
 
 function regionalEnergyRolloutCommands(now, vercelEnv = process.env.VERCEL_ENV) {
   if (vercelEnv !== 'production') return [];
   return REGIONAL_ENERGY_ROLLOUT_NAMES.flatMap(name => {
-    const deadlineKey = `health:rollout-deadline:${STANDALONE_KEYS[name]}`;
+    const deadlineKey = SEED_META[name].rolloutDeadlineKey ?? `health:rollout-deadline:${STANDALONE_KEYS[name]}`;
     return [
       ['SET', deadlineKey, String(now + SEED_META[name].firstPublicationMaxWaitMin * 60_000), 'NX'],
       ['GET', deadlineKey],
@@ -4423,8 +4433,10 @@ function classifyKey(name, redisKey, opts, ctx) {
   //
   // Skipped entirely for an unconfigured adapter, which by the NOT_CONFIGURED
   // rule below has nothing to be degraded ABOUT — so it also publishes no cause.
+  // A dark-launched feature (DARK_LAUNCHED_KEYS) is unconfigured in the same sense.
+  const notConfigured = sourceUnavailable || DARK_LAUNCHED_KEYS.has(name);
   let fault = null;
-  if (!sourceUnavailable) {
+  if (!notConfigured) {
     if (sourceBlocked && name !== 'crossStraitActivityJapanMod') {
       // Keep the fleet-wide escape hatch narrow: only the Japan MOD adapter has
       // a reviewed-data contract and explicit two-path proof for this state.
@@ -4443,7 +4455,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   // key each run (recordCount 0) so operators can see the adapter is dormant, and
   // the moment the credential lands the next run reports sourceState 'ok' and this
   // flips to OK on its own — no health-config change needed.
-  if (sourceUnavailable) status = 'NOT_CONFIGURED';
+  if (notConfigured) status = 'NOT_CONFIGURED';
   else if (!hasData) {
     // The absence verdict, decided on its own merits and independently of any
     // fault above. Note the two live SIDE BY SIDE here: seed-meta outlives its
