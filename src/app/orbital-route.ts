@@ -46,7 +46,7 @@ export function watchOrbitalRoute(map: () => OrbitalTrackSurface | null = () => 
       const link = takeOrbitalShareLink();
       if (!link) return;
       routed = link.view === 'full';
-      void import('@/app/orbital-watch').then(({ openOrbitalShareLink }) => openOrbitalShareLink(link, document.getElementById('mapContainer')));
+      void import('@/app/orbital-watch').then(({ openOrbitalShareLink }) => openOrbitalShareLink(link, document.getElementById('mapContainer'), map()));
       return;
     }
     const next = parseOrbitalRoute(window.location.hash) !== null;
