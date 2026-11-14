@@ -1641,7 +1641,8 @@ export const GENERATED_MESSAGE_RULES = {
           "COUNTRY_SIGNAL_FAMILY_SANCTIONS",
           "COUNTRY_SIGNAL_FAMILY_CONFLICT",
           "COUNTRY_SIGNAL_FAMILY_POSTURE",
-          "COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE"
+          "COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE",
+          "COUNTRY_SIGNAL_FAMILY_IMAGERY"
         ],
         "required": true,
         "enumDefinedOnly": true,

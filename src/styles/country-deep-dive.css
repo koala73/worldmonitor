@@ -2404,3 +2404,24 @@
 .cdp-imagery-summary { color: var(--text); font-size: 12px; line-height: 1.5; margin: 0; }
 .cdp-imagery-exclusion { color: var(--text-muted); font-size: 11px; line-height: 1.5; margin: 4px 0 0; }
 .cdp-imagery-exclusion a { color: inherit; text-decoration: underline; }
+
+.cdp-imagery-evidence {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.cdp-imagery-item {
+  display: grid;
+  gap: 2px;
+}
+
+.cdp-imagery-title {
+  color: var(--text-secondary);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

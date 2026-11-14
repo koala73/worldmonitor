@@ -2419,6 +2419,8 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         'energy:spine:v1:FI', 'resilience:static:FI', 'energy:mix:v1:FI',
         // NOTAM airport status keys the cache like the energy years do.
         'aviation:notam:closures:v2', 'seed-meta:aviation:notam',
+        // So does the country's watched-site rollup, for confirmed imagery changes.
+        'orbital:country:v1:FI',
       ], 'a hit keeps only the cache-key reads, with no new grounding or evidence reads');
       assert.doesNotMatch(userPrompts[0], /invented port|protests=3/);
       const irrelevant = 'Source [2]: ' + JSON.stringify({ title: 'Finland wins football final', source: 'Sports', url: 'https://example.com/sport' });
