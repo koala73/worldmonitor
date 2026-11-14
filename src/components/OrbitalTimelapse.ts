@@ -16,7 +16,8 @@ import { t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
-import { ARCHIVE_NAME, IMAGE_CREDIT, loadLookupImage } from './OrbitalWatchPage';
+import { IMAGE_CREDIT } from '@/services/orbital/credits';
+import { ARCHIVE_NAME, loadLookupImage } from './OrbitalWatchPage';
 import '../styles/orbital-image-viewer.css';
 
 export interface TimelapseSubject {

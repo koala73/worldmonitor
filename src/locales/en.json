@@ -4647,6 +4647,8 @@
     "partial": "{{sources}} did not answer, so some passes may be missing their images.",
     "stale": "Orbit data is stale. The satellite catalog is {{age}} old, so pass times may be off.",
     "empty": "No profiled imaging satellite passed over this point in the last {{pastDays}} days or will in the next {{futureHours}} hours.",
+    "sources": "Sources · {{count}}",
+    "sourcesDocs": "How these sources are used",
     "privacy": "This point stays in your browser. It is sent only to the public archives your browser calls directly: Earth Search, Microsoft Planetary Computer, NASA GIBS and EUMETSAT. Searching by place name is the one exception: the name you type goes to the place-name search service.",
     "inRange": "in range",
     "dailyMosaics": "daily mosaics",
@@ -4883,6 +4885,41 @@
       "dismiss": "Dismiss",
       "passOutsideWindow": "The linked pass is outside the current window, so no pass is selected.",
       "passNotFound": "The linked pass was not found in the recomputed passes, so no pass is selected."
+    },
+    "timeline": {
+      "now": "now",
+      "nowAt": "Now: {{time}}",
+      "density": "{{label}} passes, {{start}} to {{end}}: {{count}}",
+      "daylight": "Daylight at the point from {{start}} to {{end}}",
+      "unavailable": "unavailable",
+      "notRetained": "no data this week",
+      "notRetainedSpan": "{{label}}: no data from {{start}} to {{end}}",
+      "countryWide": "country-wide",
+      "source": {
+        "conflict": "Conflict",
+        "fires": "Fires",
+        "unrest": "Unrest",
+        "outages": "Internet outages"
+      },
+      "live": {
+        "vessels": "Shipping traffic",
+        "militaryFlights": "Military flights",
+        "gpsJamming": "GPS jamming"
+      },
+      "name": "Timeline",
+      "span": "{{days}} days · next {{hours}} h",
+      "daylightHere": "Daylight here",
+      "row": {
+        "geo": "Geo",
+        "photo": "Photo",
+        "likely": "Likely",
+        "could": "Could",
+        "overhead": "Overhead"
+      },
+      "retained": "{{start}} to {{end}}",
+      "retainedDay": "{{day}} only",
+      "geoLine": "Geostationary in view: {{names}}",
+      "away": "{{km}} km away"
     }
   },
   "contextMenu": {
