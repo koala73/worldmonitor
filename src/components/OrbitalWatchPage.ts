@@ -93,6 +93,11 @@ const GROUP_OF_TIER: Record<PassTier['kind'], GroupId> = {
   'daily-mosaic': 'weather',
 };
 
+/** A future pass is upcoming whatever its tier, so a military pass ahead is not filed under what could have happened. */
+function groupOf(pass: PointPass, nowMs: number): GroupId {
+  return pass.timeMs > nowMs && pass.tier.kind !== 'daily-mosaic' ? 'upcoming' : GROUP_OF_TIER[pass.tier.kind];
+}
+
 const TIER_LABEL_KEY: Record<PassTier['kind'], string> = {
   'confirmed-image': 'orbitalWatch.tier.confirmed',
   'likely-imaged': 'orbitalWatch.tier.likely',
@@ -612,7 +617,7 @@ interface Summary {
 function summarize(lookup: PointPassLookup, evidence: OrbitalEvidence): Summary {
   const names = new Map(evidence.passes.map((pass) => [passKey(pass), pass.name]));
   const counts: Record<GroupId, number> = { watched: 0, likely: 0, upcoming: 0, could: 0, overhead: 0, weather: 0 };
-  for (const pass of evidence.passes) counts[GROUP_OF_TIER[pass.tier.kind]]++;
+  for (const pass of evidence.passes) counts[groupOf(pass, lookup.nowMs)]++;
   counts.watched += evidence.acquisitions.filter((acquisition) => !acquisition.pass).length;
   const past = evidence.passes.filter((pass) => pass.timeMs <= lookup.nowMs);
   const closest = evidence.bestView;
@@ -662,6 +667,7 @@ const glyphTile = (glyph: TierGlyph) =>
 function noImageReason(pass: PointPass, unanswered: boolean): string | null {
   if (pass.tier.kind === 'likely-imaged') return t(unanswered ? 'orbitalWatch.ui.grid.likelyUnansweredShort' : 'orbitalWatch.ui.grid.likelyShort');
   if (pass.tier.kind === 'passed-overhead') return t('orbitalWatch.ui.grid.overheadShort');
+  if (pass.tier.kind === 'confirmed-image') return t('orbitalWatch.ui.grid.watchedNoPreviewShort');
   return null;
 }
 
@@ -715,6 +721,7 @@ function passRow(pass: PointPass, nowMs: number, acquisition: MatchedAcquisition
     military ? badge(t('orbitalWatch.tier.capabilityOverhead')) : null,
     pass.edgeOfSwath ? badge(t('orbitalWatch.row.edgeOfSwath')) : null,
     pass.tier.kind === 'passed-overhead' && pass.tier.note === 'not-in-archive' ? badge(t('orbitalWatch.row.notInArchive')) : null,
+    pass.tier.kind === 'confirmed-image' && pass.tier.note === 'geometry-disagreed' ? badge(t('orbitalWatch.row.geometryDisagreed')) : null,
     unanswered ? badge(t('orbitalWatch.row.archiveUnanswered')) : null,
     repeats > 1 ? h('span', { className: 'ow-repeat ow-label', title: t('orbitalWatch.ui.row.repeats', { count: repeats }) }, `×${repeats}`) : null,
   ];
@@ -780,13 +787,13 @@ function groupPasses(lookup: PointPassLookup, evidence: OrbitalEvidence): Map<Gr
   const groups = new Map<GroupId, Group>(GROUPS.map((spec) => [spec.id, { spec, rows: [], count: 0 }]));
   const repeats = new Map<string, number>();
   for (const pass of evidence.passes) {
-    const id = `${GROUP_OF_TIER[pass.tier.kind]}:${pass.noradId}`;
+    const id = `${groupOf(pass, lookup.nowMs)}:${pass.noradId}`;
     repeats.set(id, (repeats.get(id) ?? 0) + 1);
   }
   const closestFirst = (key: string, ms: number) => (key === closest ? Number.MAX_SAFE_INTEGER : ms);
   for (const pass of evidence.passes) {
     if (pass.tier.kind === 'daily-mosaic') continue;
-    const id = GROUP_OF_TIER[pass.tier.kind];
+    const id = groupOf(pass, lookup.nowMs);
     const key = passKey(pass);
     const group = groups.get(id)!;
     group.count++;
@@ -1001,7 +1008,7 @@ export class OrbitalWatchPage {
     if (!this.isOpen || state?.kind !== 'passes' || state.archives.kind !== 'answered') return false;
     const pass = state.archives.evidence.passes.find((p) => passKey(p) === key);
     if (!pass || pass.tier.kind === 'daily-mosaic') return false;
-    const id = GROUP_OF_TIER[pass.tier.kind];
+    const id = groupOf(pass, state.lookup.nowMs);
     const spec = GROUPS.find((g) => g.id === id)!;
     if (!spec.expanded) this.toggled.add(id);
     else this.toggled.delete(id);

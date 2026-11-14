@@ -5,7 +5,7 @@ import { describe, it } from 'node:test';
 
 import { ORBIT_ELEMENTS_MAX_AGE_DAYS, PASS_WINDOW_MAX_DAYS, findPasses, groundTrack, parseOrbitElements } from '../shared/orbital/pass-geometry.js';
 import type { GeoPoint, OmmRecord, OrbitElements, Pass } from '../shared/orbital/pass-geometry.js';
-import { isLandOrCoast } from '../shared/orbital/coverage.js';
+import { acquiresAt, isLandOrCoast } from '../shared/orbital/coverage.js';
 import { matchSensorProfile } from '../shared/orbital/sensor-profiles.js';
 import type { SensorProfile } from '../shared/orbital/sensor-profiles.js';
 import { sunElevationDeg } from '../shared/orbital/sun.js';
@@ -179,6 +179,19 @@ describe('pass geometry rules', () => {
     assert.ok(pass.incidenceDeg < 29.1, `incidence ${pass.incidenceDeg.toFixed(1)} is below the band`);
     assert.equal(pass.inFootprint, false);
     assert.notEqual(decidePassTier(pass, profile, { status: 'unanswered' }, FIXTURE_NOW).kind, 'likely-imaged');
+    assert.deepEqual(
+      decidePassTier(pass, profile, { status: 'match', itemId: 'S1C_IW_GRDH' }, FIXTURE_NOW),
+      { kind: 'confirmed-image', note: 'geometry-disagreed' },
+      'the archive holding the scene outranks the modelled incidence band',
+    );
+  });
+
+  it('confirms a matched pass without a note when the model agrees', () => {
+    const acquiredMs = Date.parse(paris.acquiredAt);
+    const { result, profile } = passesNear('SENTINEL-2B', paris, acquiredMs, 30 * 60_000);
+    const pass = closestTo(result.passes, acquiredMs);
+    assert.equal(pass.inFootprint && pass.coverage, true);
+    assert.deepEqual(decidePassTier(pass, profile, { status: 'match', itemId: 'x' }, FIXTURE_NOW), { kind: 'confirmed-image' });
   });
 
   it('excludes an open-ocean point from Sentinel-2 coverage', () => {
@@ -251,6 +264,16 @@ describe('pass geometry rules', () => {
     }
   });
 
+  it('labels a future military pass capability overhead, and one outside its reach an opportunity', () => {
+    const { result, profile } = passesNear('YAOGAN-50 03', { lat: 25.03, lon: 121.56 }, FIXTURE_NOW + 36 * HOUR, 36 * HOUR);
+    const inReach = result.passes.find((pass) => pass.inFootprint);
+    const outOfReach = result.passes.find((pass) => !pass.inFootprint);
+    assert.ok(inReach && outOfReach, 'future Yaogan passes inside and outside the assumed reach');
+    assert.equal(inReach.opportunity, true);
+    assert.deepEqual(decidePassTier(inReach, profile, null, FIXTURE_NOW), { kind: 'capability-overhead' });
+    assert.deepEqual(decidePassTier(outOfReach, profile, null, FIXTURE_NOW), { kind: 'opportunity' });
+  });
+
   it('notes "not in archive" once the archive answered with no match after the publication delay', () => {
     const acquiredMs = Date.parse(paris.acquiredAt);
     const { result, profile } = passesNear('SENTINEL-2B', paris, acquiredMs, 30 * 60_000);
@@ -261,17 +284,33 @@ describe('pass geometry rules', () => {
     assert.deepEqual(decidePassTier(pass, profile, { status: 'no-match' }, afterDelay), { kind: 'passed-overhead', note: 'not-in-archive' });
   });
 
-  it('marks a point 3 km inside the footprint edge, and not one 20 km inside', () => {
+  it('marks a point within 5 km of the footprint edge on either side, and not one 20 km away', () => {
     const acquiredMs = Date.parse(paris.acquiredAt);
     const imaged = closestTo(passesNear('SENTINEL-2B', paris, acquiredMs, 30 * 60_000).result.passes, acquiredMs);
     const { elements } = satellite('SENTINEL-2B');
     const { subSatellite, headingDeg } = trackBearingAt(elements, imaged.timeMs);
     const halfSwathKm = 290 / 2;
-    for (const [insideKm, expected] of [[3, true], [20, false]] as const) {
+    for (const [insideKm, inFootprint, expected] of [[3, true, true], [20, true, false], [-3, false, true], [-20, false, false]] as const) {
       const point = destination(subSatellite, headingDeg + 90, halfSwathKm - insideKm);
       const pass = closestTo(passesNear('SENTINEL-2B', point, acquiredMs, 30 * 60_000).result.passes, imaged.timeMs);
-      assert.equal(pass.inFootprint, true);
+      assert.equal(pass.inFootprint, inFootprint, `${insideKm} km inside the edge`);
       assert.equal(pass.edgeOfSwath, expected, `${insideKm} km inside the edge`);
+    }
+  });
+
+  it('marks a point either side of the near and far edges of a side-looking radar swath', () => {
+    const acquiredMs = Date.parse(berlin.acquiredAt);
+    const imaged = closestTo(passesNear('SENTINEL-1C', berlin, acquiredMs, 30 * 60_000).result.passes, acquiredMs);
+    const { subSatellite, headingDeg } = trackBearingAt(satellite('SENTINEL-1C').elements, imaged.timeMs);
+    const look = imaged.side === 'right' ? 90 : -90;
+    const at = (km: number) => closestTo(passesNear('SENTINEL-1C', destination(subSatellite, headingDeg + look, km), acquiredMs, 30 * 60_000).result.passes, imaged.timeMs);
+    const mid = at(imaged.groundDistanceKm);
+    assert.equal(mid.inFootprint, true);
+    const edges = [...Array(800).keys()].map((km) => at(km)).filter((pass, km, all) => km > 0 && pass.inFootprint !== all[km - 1].inFootprint);
+    assert.equal(edges.length, 2, 'one near and one far edge');
+    for (const edge of edges) {
+      for (const offsetKm of [-3, 3]) assert.equal(at(edge.groundDistanceKm + offsetKm).edgeOfSwath, true, `${offsetKm} km from the edge at ${edge.groundDistanceKm.toFixed(0)} km`);
+      for (const offsetKm of [-20, 20]) assert.equal(at(edge.groundDistanceKm + offsetKm).edgeOfSwath, false);
     }
   });
 });
@@ -361,5 +400,53 @@ describe('land and coast coverage', () => {
       encoding: 'utf8',
     });
     assert.equal(run.status, 0, run.stderr || run.stdout);
+  });
+});
+
+describe('per-mission coverage', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../docs/audits/orbital-live-check-2026-11-14.json', import.meta.url), 'utf8')) as {
+    coverage: { probes: Record<string, { lat: number; lon: number; 'sentinel-2': { archiveScenes: number }; 'sentinel-1': { archiveDirections: string[] } }> };
+  };
+
+  it('acquires over enclosed seas the land and coast mask leaves out', () => {
+    for (const [name, lat, lon] of [['central Mediterranean', 35, 18], ['Caspian', 42, 50.8], ['Black Sea', 43.5, 34], ['Persian Gulf', 27, 51.5], ['Red Sea', 20, 38.8]] as const) {
+      assert.equal(isLandOrCoast(lat, lon), false, `${name} is outside the shared mask`);
+      assert.equal(acquiresAt('sentinel-2', { lat, lon }), true, `Sentinel-2 acquires the ${name}`);
+      assert.equal(acquiresAt('sentinel-1', { lat, lon }), true, `Sentinel-1 acquires the ${name}`);
+    }
+  });
+
+  it('keeps Sentinel-1 off the Antarctic plateau and both missions off the open ocean', () => {
+    assert.equal(acquiresAt('sentinel-2', { lat: -80, lon: 0 }), true);
+    assert.equal(acquiresAt('sentinel-1', { lat: -80, lon: 0 }), false);
+    for (const point of [{ lat: 30, lon: -40 }, { lat: 15, lon: 88 }]) {
+      assert.equal(acquiresAt('sentinel-2', point), false);
+      assert.equal(acquiresAt('sentinel-1', point), false);
+    }
+  });
+
+  it('follows the Sentinel-1 plan by pass direction', () => {
+    assert.equal(acquiresAt('sentinel-1', { lat: 79, lon: 0 }, 'descending'), true, 'Fram Strait sea ice');
+    assert.equal(acquiresAt('sentinel-1', { lat: 79, lon: 0 }, 'ascending'), false);
+    assert.equal(acquiresAt('sentinel-1', { lat: 79, lon: 0 }), true, 'either direction when none is given');
+  });
+
+  it('covers every probe where the recorded live check found an archive scene', () => {
+    // The grid also holds the summer-only polar acquisitions, so a probe with no
+    // scene in a November cycle may still be covered.
+    const probes = Object.entries(recorded.coverage.probes);
+    assert.ok(probes.length >= 10);
+    for (const [name, probe] of probes) {
+      if (probe['sentinel-2'].archiveScenes > 0) assert.equal(acquiresAt('sentinel-2', probe), true, `Sentinel-2 at ${name}`);
+      for (const direction of probe['sentinel-1'].archiveDirections as Array<'ascending' | 'descending'>) {
+        assert.equal(acquiresAt('sentinel-1', probe, direction), true, `Sentinel-1 ${direction} at ${name}`);
+      }
+    }
+  });
+
+  it('is reproducible from its generator', () => {
+    const source = readFileSync(new URL('../shared/orbital/mission-coverage.data.js', import.meta.url), 'utf8');
+    assert.equal(readFileSync(new URL('../scripts/shared/orbital/mission-coverage.data.js', import.meta.url), 'utf8'), source);
+    assert.match(source, /generate-orbital-mission-coverage\.mjs/);
   });
 });

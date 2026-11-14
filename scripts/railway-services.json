@@ -674,6 +674,7 @@
       "scripts/shared/orbital/coverage.js",
       "scripts/shared/orbital/flag-record.js",
       "scripts/shared/orbital/land-coast-mask.data.js",
+      "scripts/shared/orbital/mission-coverage.data.js",
       "scripts/shared/orbital/pass-geometry.js",
       "scripts/shared/orbital/sensor-profiles.js",
       "scripts/shared/orbital/sun.js",

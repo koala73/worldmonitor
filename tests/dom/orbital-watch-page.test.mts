@@ -33,7 +33,7 @@ let nextNorad = 40_000;
 function pass(name: string, profileId: string, hoursFromNow: number, tier: PassTier): PointPass {
   return {
     noradId: nextNorad++, name, profileId, category: 'open-optical', time: new Date(NOW + hoursFromNow * HOUR).toISOString(),
-    timeMs: NOW + hoursFromNow * HOUR, opportunity: hoursFromNow > 0, groundDistanceKm: 42, side: 'left', elevationDeg: 80,
+    timeMs: NOW + hoursFromNow * HOUR, opportunity: hoursFromNow > 0, groundDistanceKm: 42, side: 'left', direction: 'ascending', elevationDeg: 80,
     azimuthDeg: 90, incidenceDeg: 10, sunElevationDeg: 40, altitudeKm: 700, subSatellite: point, inFootprint: true,
     edgeOfSwath: false, coverage: true, tier, elementsEpochMs: NOW - 2 * HOUR, orbitAgeDays: 0.5,
   };
@@ -339,6 +339,7 @@ describe('satellite pass lookup sheet', () => {
     expect(detail.querySelector('.ow-detail-media img')).toBeNull();
     expect(detail.querySelector('.ow-detail-glyph .ow-glyph')!.textContent).toBe(TIER_GLYPH_CHAR.watched);
     expect(detail.querySelector('.ow-detail-glyph .ow-label')!.textContent).toBe('confirmed image');
+    expect(detail.querySelector('.ow-detail-glyph .ow-detail-reason')!.textContent).toBe('In an archive, no public preview');
     expect(detail.querySelector('.ow-detail-title strong')!.textContent).toBe(confirmedOld.name);
     expect(detail.querySelector('.ow-detail-cell:nth-child(3)')!.textContent).toBe('Pixel30 M');
     expect(detail.querySelector('.ow-detail-cell:nth-child(4)')!.textContent).toBe('Cloud at spot—');
@@ -442,6 +443,16 @@ describe('satellite pass lookup sheet', () => {
     expect(sheet().querySelector('[data-action="open-full"].ow-primary')).toBeNull();
   });
 
+  it('lists a future military pass as upcoming, still marked capability overhead', () => {
+    const ahead = { ...pass('YAOGAN-42 01', 'yaogan', 5, { kind: 'capability-overhead' }), category: 'military' as const };
+    mounted(answered([ahead]), null, 'full');
+    expect(rowNames('upcoming')).toHaveLength(1);
+    expect(group('could')).toBeNull();
+    const row = rowOf(ahead.name);
+    expect(row.querySelector('.ow-badges')!.textContent).toContain('capability overhead');
+    expect(row.querySelector('img')).toBeNull();
+  });
+
   it('keeps could-have-pointed, passed-overhead and weather groups collapsed and unrendered until opened', () => {
     const { all, military, commercial } = tiered();
     mounted(answered(all, { mosaics: [modis, viirs] }), null, 'full');
@@ -539,6 +550,15 @@ describe('satellite pass lookup sheet', () => {
     expect(rowOf(notInArchive.name).textContent).toContain('No image in the archive');
     click('[data-action="clear-filter"]');
     expect(sheet().querySelectorAll('.ow-group').length).toBeGreaterThan(1);
+  });
+
+  it('notes a matched image the modelled geometry disagreed with', () => {
+    const disagreed = pass('SENTINEL-1C', 'sentinel-1', -40, { kind: 'confirmed-image', note: 'geometry-disagreed' });
+    const agreed = pass('SENTINEL-2C', 'sentinel-2', -50, { kind: 'confirmed-image' });
+    mounted(answered([disagreed, agreed]));
+    click('.ow-tier-cell[data-group="watched"]');
+    expect(rowOf(disagreed.name).textContent).toContain('Off modelled swath');
+    expect(rowOf(agreed.name).textContent).not.toContain('Off modelled swath');
   });
 
   it('marks a satellite that passed more than once in a group', () => {
