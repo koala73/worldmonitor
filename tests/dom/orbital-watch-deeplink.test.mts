@@ -201,10 +201,12 @@ describe('place search in the satellite pass lookup', () => {
     openOrbitalWatchSearch(null);
     button('.ow-locate').click();
     await vi.waitFor(() => expect(answer).not.toBeNull());
+    mapCentre = { lat: 20, lon: 10 };
     sheet()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     answer!({ coords: { latitude: EXACT.lat, longitude: EXACT.lon } } as GeolocationPosition);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(lookupMock).not.toHaveBeenCalled();
+    mapCentre = { lat: 21, lon: 10 };
     expect(isOrbitalLookupOpen()).toBe(false);
   });
 });
@@ -410,5 +412,25 @@ describe('satellite pass share link', () => {
     expect(isOrbitalLookupOpen(), 'a globe spinning on after closing still carries the typed latitude').toBe(true);
     mapCentre = { lat: 50, lon: 3 };
     expect(isOrbitalLookupOpen(), 'a map moved after closing writes its centre again').toBe(false);
+  });
+
+  it('anchors the closed-lookup URL guard where a camera still flying to the point stops, and holds it while the camera cannot say', async () => {
+    let settle!: () => void;
+    connectOrbitalLookupMap(() => ({ getCenter: () => mapCentre, whenViewportSettled: () => new Promise<void>((resolve) => { settle = resolve; }) }));
+    openOrbitalWatchSearch(null);
+    submitSearch('48.8584, 2.2945');
+    await vi.waitFor(() => expect(centredOn()).toContain('48.86,2.29'));
+    mapCentre = { lat: 30, lon: 2 };
+    button('.ow-close').click();
+    mapCentre = { lat: 48.8584, lon: 2.2945 };
+    expect(isOrbitalLookupOpen(), 'the camera is still in flight').toBe(true);
+    settle();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(isOrbitalLookupOpen(), 'anchored on the settled point, not the mid-flight latitude').toBe(true);
+    mapCentre = null;
+    expect(isOrbitalLookupOpen(), 'a camera that cannot report its centre keeps the guard').toBe(true);
+    mapCentre = { lat: 50, lon: 3 };
+    expect(isOrbitalLookupOpen()).toBe(false);
   });
 });

@@ -8,6 +8,8 @@ import type {
 import { ApiError, ValidationError } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { checkScopedRateLimit } from '../../../_shared/rate-limit';
+import { getClientRateLimitKey } from '../../../_shared/client-ip';
+import { sha256Hex } from '../../../_shared/hash';
 
 const NOMINATIM_SEARCH = 'https://nominatim.openstreetmap.org/search';
 const USER_AGENT = 'WorldMonitor/2.0 (https://worldmonitor.app)';
@@ -20,6 +22,9 @@ const NOT_FOUND_TTL_SECONDS = 86_400;
 // search spends the same fail-closed bucket as reverse geocoding.
 const PROVIDER_RATE_LIMIT_SCOPE = 'reverse-geocode';
 const PROVIDER_RATE_LIMIT_IDENTIFIER = 'global';
+// A never-searched name always misses the cache, so one caller may spend only a small share of that bucket.
+const CALLER_MISS_SCOPE = 'search-place-provider:caller';
+const CALLER_MISS_LIMIT = 6;
 
 interface NominatimPlace {
   lat?: string;
@@ -34,7 +39,8 @@ export function normalizePlaceQuery(raw: string): string {
   return raw.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
-export const placeSearchCacheKey = (query: string) => `geocode:search:v1:${encodeURIComponent(query)}`;
+/** The name is caller text, so the key carries a fixed-width digest of it. */
+export const placeSearchCacheKey = async (query: string) => `geocode:search:v2:${await sha256Hex(query)}`;
 
 function toMatch(place: NominatimPlace): PlaceMatch | null {
   const lat = Number(place.lat);
@@ -45,7 +51,10 @@ function toMatch(place: NominatimPlace): PlaceMatch | null {
   return { name, lat, lon, kind: place.addresstype || place.type || '' };
 }
 
-async function fetchPlaces(query: string): Promise<PlaceMatch[] | null> {
+async function fetchPlaces(query: string, caller: string): Promise<PlaceMatch[] | null> {
+  const callerLimit = await checkScopedRateLimit(CALLER_MISS_SCOPE, CALLER_MISS_LIMIT, '60 s', caller);
+  if (callerLimit.degraded) throw new ApiError(503, 'Rate-limit service temporarily unavailable', '');
+  if (!callerLimit.allowed) throw new ApiError(429, 'Too many requests', '');
   const providerLimit = await checkScopedRateLimit(PROVIDER_RATE_LIMIT_SCOPE, 1, '1 s', PROVIDER_RATE_LIMIT_IDENTIFIER);
   if (providerLimit.degraded) throw new ApiError(503, 'Rate-limit service temporarily unavailable', '');
   if (!providerLimit.allowed) throw new ApiError(429, 'Too many requests', '');
@@ -66,7 +75,7 @@ async function fetchPlaces(query: string): Promise<PlaceMatch[] | null> {
 
 /** SearchPlace resolves a submitted place name through OpenStreetMap Nominatim, cached per normalised name. */
 export const searchPlace: InfrastructureServiceHandler['searchPlace'] = async (
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: SearchPlaceRequest,
 ): Promise<SearchPlaceResponse> => {
   const query = normalizePlaceQuery(req.q ?? '');
@@ -74,7 +83,8 @@ export const searchPlace: InfrastructureServiceHandler['searchPlace'] = async (
     throw new ValidationError([{ field: 'q', description: `must be ${MIN_QUERY_CHARS} to ${MAX_QUERY_CHARS} characters` }]);
   }
   try {
-    const places = await cachedFetchJson(placeSearchCacheKey(query), FOUND_TTL_SECONDS, () => fetchPlaces(query),
+    const places = await cachedFetchJson(await placeSearchCacheKey(query), FOUND_TTL_SECONDS,
+      () => fetchPlaces(query, getClientRateLimitKey(ctx.request)),
       NOT_FOUND_TTL_SECONDS, { cacheFetcherErrors: false });
     return { places: places ?? [], error: '' };
   } catch (error) {

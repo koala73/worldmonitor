@@ -52,28 +52,44 @@ describe('place-name search', () => {
     const again = await searchPlace(ctx, { q: 'ROTTERDAM   ' });
     expect(again.places).toHaveLength(1);
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(cache.has(placeSearchCacheKey(normalizePlaceQuery('rotterdam')))).toBe(true);
+    expect(cache.has(await placeSearchCacheKey(normalizePlaceQuery('rotterdam')))).toBe(true);
   });
 
   it('shares one Nominatim call between concurrent searches for the same name', async () => {
-    limiter.mockResolvedValueOnce({ allowed: true, degraded: false }).mockResolvedValue({ allowed: false, degraded: false });
     const [first, second] = await Promise.all([searchPlace(ctx, { q: 'Rotterdam' }), searchPlace(ctx, { q: 'rotterdam' })]);
     expect(first.places).toHaveLength(1);
     expect(second).toEqual(first);
     expect(fetch).toHaveBeenCalledTimes(1);
+    // One caller check and one provider token for the single miss.
+    expect(limiter).toHaveBeenCalledTimes(2);
   });
 
   it('keeps a name with no match for a day and a found name for a week', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(Response.json([]));
     expect(await searchPlace(ctx, { q: 'Nowhereville' })).toEqual({ places: [], error: '' });
     await searchPlace(ctx, { q: 'Rotterdam' });
-    expect(cache.get(placeSearchCacheKey('nowhereville'))).toMatchObject({ ttl: 86_400 });
-    expect(cache.get(placeSearchCacheKey('rotterdam'))).toMatchObject({ ttl: 604_800 });
+    expect(cache.get(await placeSearchCacheKey('nowhereville'))).toMatchObject({ ttl: 86_400 });
+    expect(cache.get(await placeSearchCacheKey('rotterdam'))).toMatchObject({ ttl: 604_800 });
   });
 
   it('spends the shared one-per-second Nominatim bucket on a cache miss', async () => {
     await searchPlace(ctx, { q: 'Rotterdam' });
     expect(limiter).toHaveBeenCalledWith('reverse-geocode', 1, '1 s', 'global');
+  });
+
+  it('keys the cache by a fixed-width digest, never the caller text', async () => {
+    const key = await placeSearchCacheKey(normalizePlaceQuery('x'.repeat(200)));
+    expect(key).toMatch(/^geocode:search:v2:[0-9a-f]{64}$/);
+    await searchPlace(ctx, { q: 'Rotterdam' });
+    expect([...cache.keys()].some((k) => k.includes('rotterdam'))).toBe(false);
+  });
+
+  it('caps one caller\'s share of the provider bucket before spending a provider token', async () => {
+    limiter.mockImplementation(async (scope) => ({ allowed: scope !== 'search-place-provider:caller', degraded: false }));
+    await expect(searchPlace(ctx, { q: 'Rotterdam' })).rejects.toMatchObject({ statusCode: 429 });
+    expect(limiter).toHaveBeenCalledWith('search-place-provider:caller', 6, '60 s', expect.any(String));
+    expect(limiter).not.toHaveBeenCalledWith('reverse-geocode', 1, '1 s', 'global');
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('fails closed without calling Nominatim when the rate limiter is degraded or exhausted', async () => {
