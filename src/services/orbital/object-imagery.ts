@@ -74,7 +74,11 @@ const archiveOf = (url: string): ArchiveId =>
   new URL(url).hostname === 'planetarycomputer.microsoft.com' ? 'planetary-computer' : 'earth-search';
 
 let passClient: OrbitalPassClient | null = null;
-const lookupPasses = (point: GeoPoint, signal?: AbortSignal) => (passClient ??= createOrbitalPassClient()).lookup({ point }, { signal });
+// The client is shared, and a new lookup cancels the running one, so a closed popup must not start one.
+const lookupPasses = async (point: GeoPoint, signal?: AbortSignal) => {
+  signal?.throwIfAborted();
+  return (passClient ??= createOrbitalPassClient()).lookup({ point }, { signal });
+};
 
 function nextPassOf(passes: PointPassLookup['passes'], nowMs: number): ObjectPass | null {
   const next = passes.filter((p) => p.inFootprint && p.timeMs > nowMs).sort((a, b) => a.timeMs - b.timeMs)[0];
