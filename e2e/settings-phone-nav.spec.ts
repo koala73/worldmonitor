@@ -100,6 +100,8 @@ test('a page opens at its top and Back returns the list to where it was', async 
   await boot(page);
   await openSettings(page);
   await sheet(page).evaluate((el) => { el.scrollTop = 80; });
+  // A click scrolls an off-screen row into view first, which would move the baseline.
+  await page.locator('[data-settings-nav="about"]').scrollIntoViewIfNeeded();
   const listOffset = await scrollTop(page);
   expect(listOffset).toBeGreaterThan(0);
 

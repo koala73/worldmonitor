@@ -5113,6 +5113,7 @@
   "settings": {
     "back": "Back to settings",
     "signOut": "Sign out",
+    "signOutFailed": "Could not sign out. Try again.",
     "signIn": {
       "label": "Sign in",
       "desc": "Sync settings and manage your plan"

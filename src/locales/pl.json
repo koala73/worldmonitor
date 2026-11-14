@@ -5207,6 +5207,7 @@
       "aiAgents": "Połączeni klienci MCP",
       "about": "Linki, warunki i prywatność"
     },
-    "signOut": "Wyloguj się"
+    "signOut": "Wyloguj się",
+    "signOutFailed": "Nie udało się wylogować. Spróbuj ponownie."
   }
 }

@@ -5151,6 +5151,7 @@
       "aiAgents": "Bağlı MCP istemcileri",
       "about": "Site bağlantıları, şartlar ve gizlilik"
     },
-    "signOut": "Çıkış yap"
+    "signOut": "Çıkış yap",
+    "signOutFailed": "Oturum kapatılamadı. Lütfen tekrar deneyin."
   }
 }

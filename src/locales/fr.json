@@ -5179,6 +5179,7 @@
       "aiAgents": "Clients MCP connectés",
       "about": "Liens du site, conditions et confidentialité"
     },
-    "signOut": "Se déconnecter"
+    "signOut": "Se déconnecter",
+    "signOutFailed": "Impossible de se déconnecter. Réessayez."
   }
 }

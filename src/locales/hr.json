@@ -5190,6 +5190,7 @@
       "aiAgents": "Povezani MCP klijenti",
       "about": "Veze stranica, uvjeti korištenja i privatnost"
     },
-    "signOut": "Odjava"
+    "signOut": "Odjava",
+    "signOutFailed": "Odjava nije uspjela. Pokušajte ponovno."
   }
 }

@@ -5151,6 +5151,7 @@
       "aiAgents": "Verbundene MCP-Clients",
       "about": "Website-Links, Bedingungen und Datenschutz"
     },
-    "signOut": "Abmelden"
+    "signOut": "Abmelden",
+    "signOutFailed": "Abmeldung fehlgeschlagen. Bitte versuchen Sie es erneut."
   }
 }

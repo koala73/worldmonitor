@@ -5151,6 +5151,7 @@
       "aiAgents": "Verbonden MCP-clients",
       "about": "Sitelinks, voorwaarden en privacy"
     },
-    "signOut": "Afmelden"
+    "signOut": "Afmelden",
+    "signOutFailed": "Afmelden mislukt. Probeer opnieuw."
   }
 }

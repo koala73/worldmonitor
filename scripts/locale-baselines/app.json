@@ -3925,6 +3925,7 @@
   "settings.signIn.desc": "Sync settings and manage your plan",
   "settings.signIn.label": "Sign in",
   "settings.signOut": "Sign out",
+  "settings.signOutFailed": "Could not sign out. Try again.",
   "settings.summary.count": "{{on}} of {{total}}",
   "settings.summary.themeAuto": "Auto",
   "shell.documentTitle": "World Monitor — Real-Time Global Intelligence Dashboard",

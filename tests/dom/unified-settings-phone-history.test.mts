@@ -244,6 +244,22 @@ describe('device Back on the phone sheet', () => {
     expect(home().hidden).toBe(false);
   });
 
+  it('gives Settings opened wide a Back stack once the window narrows to the phone layout', () => {
+    setWidth(1280);
+    settings.open('display');
+    expect(browser.depth()).toBe(0);
+
+    setWidth(393);
+    expect(browser.depth()).toBe(2);
+
+    browser.deviceBack();
+    expect(isOpen()).toBe(true);
+    expect(home().hidden).toBe(false);
+    browser.deviceBack();
+    expect(isOpen()).toBe(false);
+    expect(browser.depth()).toBe(0);
+  });
+
   it('keeps history untouched in the desktop modal', () => {
     setWidth(1280);
     settings.open('display');

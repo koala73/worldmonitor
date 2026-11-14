@@ -5179,6 +5179,7 @@
       "aiAgents": "Client MCP collegati",
       "about": "Link del sito, termini e privacy"
     },
-    "signOut": "Esci"
+    "signOut": "Esci",
+    "signOutFailed": "Impossibile disconnettersi. Riprovare."
   }
 }

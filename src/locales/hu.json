@@ -5151,6 +5151,7 @@
       "aiAgents": "Csatlakoztatott MCP-kliensek",
       "about": "Webhely-hivatkozások, feltételek és adatvédelem"
     },
-    "signOut": "Kijelentkezés"
+    "signOut": "Kijelentkezés",
+    "signOutFailed": "Nem sikerült kijelentkezni. Próbálja újra."
   }
 }

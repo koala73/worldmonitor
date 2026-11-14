@@ -5123,6 +5123,7 @@
       "aiAgents": "已連線的 MCP 客戶端",
       "about": "網站連結、條款和隱私"
     },
-    "signOut": "退出登入"
+    "signOut": "退出登入",
+    "signOutFailed": "無法退出登入。請重試。"
   }
 }

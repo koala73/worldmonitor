@@ -401,7 +401,7 @@ export class UnifiedSettings {
         signOutButton.disabled = true;
         signOut().catch(() => {
           signOutButton.disabled = false;
-          showToast(t('common.error'));
+          showToast(t('settings.signOutFailed'));
         });
         return;
       }
@@ -737,7 +737,7 @@ export class UnifiedSettings {
     this.dispatch({ type: 'open', target: section });
     safeStorageSet('wm-settings-open', '1');
     document.addEventListener('keydown', this.escapeHandler);
-    window.addEventListener('resize', this.syncPageEntry);
+    window.addEventListener('resize', this.onResize);
     track('settings-open', { tab: section ?? 'default' });
 
     // Rebuild account-scoped pages when entitlements arrive (cold-load race:
@@ -903,7 +903,7 @@ export class UnifiedSettings {
     this.resetPanelDraft();
     safeStorageRemove('wm-settings-open');
     document.removeEventListener('keydown', this.escapeHandler);
-    window.removeEventListener('resize', this.syncPageEntry);
+    window.removeEventListener('resize', this.onResize);
     // Last: the host reloads data in response, and the overlay covering the
     // dashboard has to be gone before that lands for the user to see it.
     this.notifySourceSelectionChanged();
@@ -970,7 +970,7 @@ export class UnifiedSettings {
     this.stopMcpQuotaPolling();
     this.closeDeletionDialog();
     document.removeEventListener('keydown', this.escapeHandler);
-    window.removeEventListener('resize', this.syncPageEntry);
+    window.removeEventListener('resize', this.onResize);
     // Teardown, not a user-initiated close: release the trap's document
     // listener without handing focus back to a trigger that is also going away.
     this.focusTrap.deactivate({ restoreFocus: false });
@@ -1171,6 +1171,15 @@ export class UnifiedSettings {
   private navLayout(): NavLayout {
     return isMobileDevice() ? 'sheet' : 'modal';
   }
+
+  /** Settings opened in the desktop modal has no history entry, so a window narrowed to the phone sheet registers it. */
+  private readonly onResize = (): void => {
+    if (!this.historyRegistered && this.navLayout() === 'sheet') {
+      this.historyRegistered = true;
+      overlayHistory.open('settings', (origin) => this.close(origin));
+    }
+    this.syncPageEntry();
+  };
 
   /** Holds or releases the open page's history entry to match the page and layout. Idempotent. */
   private readonly syncPageEntry = (): void => {

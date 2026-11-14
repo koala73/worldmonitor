@@ -5151,6 +5151,7 @@
       "aiAgents": "Wateja wa MCP waliounganishwa",
       "about": "Kiungo cha tovuti, masharti na faragha"
     },
-    "signOut": "Toka nje"
+    "signOut": "Toka nje",
+    "signOutFailed": "Haiwezi kutoka. Jaribu tena."
   }
 }

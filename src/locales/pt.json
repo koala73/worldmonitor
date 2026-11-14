@@ -5179,6 +5179,7 @@
       "aiAgents": "Clientes MCP conectados",
       "about": "Links do site, termos e privacidade"
     },
-    "signOut": "Sair"
+    "signOut": "Sair",
+    "signOutFailed": "Não foi possível fazer logout. Tente novamente."
   }
 }

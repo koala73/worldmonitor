@@ -281,6 +281,7 @@ describe('UnifiedSettings sign out', () => {
     signOutRow()!.click();
 
     await vi.waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
+    expect(toastMock).toHaveBeenCalledWith('Could not sign out. Try again.');
     expect(signOutRow()!.disabled).toBe(false);
   });
 });
