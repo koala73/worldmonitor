@@ -139,7 +139,12 @@ test('the smoke CLI does not report unstarted probes after the run budget expire
 // take over the keyless `tools/list` on /mcp, the check that broke on a
 // connection cut mid-body in production (run 39392466642). `skillFor` and
 // `onAuthMd` override the advertised agent_auth.skill and the /auth.md answer.
-function createHealthyFixtureServer({ setupHtml = '<!doctype html><title>Connect to World Monitor MCP</title>', onTransportList, skillFor = (origin) => `${origin}/auth.md`, onAuthMd } = {}) {
+// The default setup page is the committed public/mcp-setup.html, so a copy edit
+// to that page that the live smoke would reject fails here first (#10697
+// renamed the <title> and only the scheduled smoke noticed, run 43566558475).
+const COMMITTED_SETUP_HTML = readFileSync('public/mcp-setup.html', 'utf8');
+
+function createHealthyFixtureServer({ setupHtml = COMMITTED_SETUP_HTML, onTransportList, skillFor = (origin) => `${origin}/auth.md`, onAuthMd } = {}) {
   return createServer(async (req, res) => {
     const origin = `http://${req.headers.host}`;
     const body = req.method === 'POST' ? await readRequestBody(req) : '';

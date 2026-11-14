@@ -86,7 +86,7 @@ vi.mock('@/services/widget-store', () => ({
 }));
 
 vi.mock('@/services/preferences-content', () => ({
-  renderPreferences: () => ({
+  renderPreferenceSection: () => ({
     html: '',
     attach: () => () => {},
   }),

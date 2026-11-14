@@ -109,7 +109,8 @@
     "climateNews": "Notícias Climáticas",
     "fx": "Taxas de câmbio",
     "ukmtoIncidents": "Incidentes UKMTO",
-    "reservoirLevels": "Níveis de água estratégicos"
+    "reservoirLevels": "Níveis de água estratégicos",
+    "gridDisruptionClock": "Relógio de interrupções de energia"
   },
   "commands": {
     "prefixes": {
@@ -2821,6 +2822,57 @@
         "measured": "Medido",
         "sparkline": "Nível da água em 36 meses"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Selecionar estado",
+      "unknown": "Desconhecido",
+      "customers": "Clientes sem energia segundo os informes",
+      "lastCustomers": "Clientes sem energia no último informe",
+      "denominatorUnknown": "Total de clientes monitorados desconhecido",
+      "tracked": "{{amount}} clientes monitorados",
+      "dataAge": "Tempo desde o informe",
+      "minutes": "{{amount}} min",
+      "hours": "{{amount}} h",
+      "warnings": "Alertas",
+      "recovery": "Alterações reportadas",
+      "decreased": "{{amount}} clientes a menos sem energia, segundo os informes",
+      "increased": "{{amount}} clientes a mais sem energia, segundo os informes",
+      "unchanged": "Número informado sem alteração",
+      "since": "desde",
+      "peakLoad": "{{percent}}% da carga de pico habitual restabelecida",
+      "noComparison": "Não há contagens comparáveis de clientes sem energia.",
+      "history": "Contagens recentes de clientes sem energia ({{total}})",
+      "priorNotice": "Alerta informado anteriormente",
+      "sources": "Fontes de alerta monitoradas",
+      "operatorLink": "Para avisos sobre a rede, consulte",
+      "issued": "Emitido em",
+      "until": "expira em",
+      "noActive": "Nenhum alerta ativo nas fontes monitoradas.",
+      "unknownWarnings": "Algumas fontes de alerta estão indisponíveis.",
+      "noObservation": "Contagem e cobertura atuais indisponíveis.",
+      "loadError": "Dados sobre interrupções de energia indisponíveis.",
+      "retained": "Falha na atualização. Exibindo o último informe recebido.",
+      "phase": {
+        "unknown": "Impacto desconhecido",
+        "monitoring": "Em monitoramento",
+        "watch": "Em atenção",
+        "disrupted": "Interrupções informadas",
+        "recovering": "Restabelecimento em curso segundo os informes",
+        "restored": "Fornecimento restabelecido segundo os informes"
+      },
+      "kind": {
+        "grid": "Aviso sobre a rede elétrica",
+        "weather": "Alerta meteorológico",
+        "space-weather": "Clima espacial"
+      },
+      "checks": {
+        "available": "Verificado",
+        "unavailable": "Indisponível",
+        "not_monitored": "Consulte a operadora diretamente",
+        "stale": "Última verificação desatualizada"
+      },
+      "warningAge": "Tempo desde o primeiro alerta ainda em vigor",
+      "days": "{{amount}} d"
     }
   },
   "popups": {
@@ -4374,7 +4426,6 @@
     "dataAndCommunity": "Dados e Comunidade",
     "theme": "Tema",
     "themeDesc": "Automático segue a preferência do sistema.",
-    "themeAuto": "Automático (seguir sistema)",
     "themeDark": "Escuro",
     "themeLight": "Claro",
     "mapProvider": "Provedor de tiles do mapa",
@@ -4530,7 +4581,8 @@
     "createAccount": "Criar conta",
     "freeReason": "Grátis: salve o layout, siga países, alertas",
     "settings": "Configurações",
-    "passkeyOffer": {}
+    "passkeyOffer": {},
+    "planBilling": "Plano e faturamento"
   },
   "mcp": {
     "connectPanel": "Conectar MCP",
@@ -5138,5 +5190,252 @@
     "errGeneric": "O rascunho não pôde ser construído. Tente novamente.",
     "errDownload": "O arquivo não pôde ser baixado aqui. Use Imprimir ou salve como PDF em vez disso.",
     "errLoad": "Não foi possível abrir a avaliação da viagem. Recarregue a página e tente novamente."
+  },
+  "settings": {
+    "back": "Voltar às configurações",
+    "signIn": {
+      "label": "Entrar",
+      "desc": "Sincronize configurações e gerencie seu plano"
+    },
+    "summary": {
+      "themeAuto": "Automático",
+      "count": "{{on}} de {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Preferências",
+      "developer": "Desenvolvedor",
+      "app": "App"
+    },
+    "sections": {
+      "account": "Conta",
+      "map": "Mapa",
+      "ai": "IA e análise",
+      "video": "Vídeo e transmissões",
+      "apiKeys": "Chaves de API",
+      "embeds": "Embeds",
+      "aiAgents": "Agentes de IA (MCP)",
+      "sync": "Sincronização, importação e exportação",
+      "about": "Sobre"
+    },
+    "descriptions": {
+      "panels": "Mostrar, ocultar e reorganizar",
+      "sources": "Regiões e feeds",
+      "notifications": "Canais e regras de alertas",
+      "display": "Tema, fonte e idioma",
+      "map": "Provedor, tema e globo",
+      "ai": "Modelos, memória e frameworks",
+      "video": "Qualidade e reprodução automática",
+      "apiKeys": "Chaves para a API do World Monitor",
+      "embeds": "Widgets para seu próprio site",
+      "aiAgents": "Clientes MCP conectados",
+      "about": "Links do site, termos e privacidade"
+    },
+    "signOut": "Sair",
+    "signOutFailed": "Não foi possível fazer logout. Tente novamente.",
+    "search": {
+      "empty": "Nenhuma configuração corresponde"
+    },
+    "account": {
+      "intro": "Veja seu plano atual e gerencie detalhes de pagamento, faturas ou cancelamento.",
+      "planFree": "Gratuito",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Acesso Premium",
+        "desc": "Este acesso não é cobrado através de sua conta WorldMonitor. Nenhum método de pagamento ou fatura está disponível aqui."
+      },
+      "checking": {
+        "heading": "Verificando seu plano…",
+        "desc": "Isso normalmente leva apenas um momento."
+      },
+      "status": {
+        "cancelScheduled": "Cancelamento agendado -- acesso até {{date}}",
+        "renews": "Renovação: {{date}}",
+        "onHold": "Suspenso -- atualize o método de pagamento",
+        "cancelled": "Cancelado -- acesso até {{date}}",
+        "expired": "Expirado",
+        "unknown": "Consulte Gerenciar Faturamento para detalhes do seu plano atual.",
+        "ownerManaged": "O faturamento é gerenciado pelo proprietário do plano."
+      },
+      "upgradeToBusiness": "Atualizar para Business",
+      "unavailable": {
+        "heading": "Status do plano indisponível",
+        "desc": "Não foi possível verificar seu plano atual. Tente novamente ou visualize os planos em uma nova aba."
+      },
+      "free": {
+        "heading": "WorldMonitor Gratuito",
+        "desc": "Seu plano atual é Gratuito. Atualize para acessar todos os painéis, análise com IA e atualização de dados prioritária."
+      },
+      "portal": {
+        "openFailed": "Não foi possível abrir o portal de faturamento. Permita pop-ups e tente novamente.",
+        "unavailable": "Portal de faturamento indisponível. Envie um email para support@worldmonitor.app para obter ajuda."
+      },
+      "deletion": {
+        "heading": "Excluir conta",
+        "desc": "Excluir permanentemente esta conta World Monitor. As assinaturas são canceladas imediatamente, sem reembolso do tempo pré-pago restante. Chaves de API, chaves de incorporação e tokens MCP deixam de funcionar. Os registros de faturamento necessários para contabilidade, disputas e solicitações legais são mantidos com os dados de contato do cliente que contêm; eles deixam de identificar sua conta de login, embora os logs de webhook do provedor de pagamento gravados antes da exclusão mantenham os identificadores com que foram entregues. As preferências do dashboard e os segredos do app para desktop guardados no chaveiro do sistema deste dispositivo não são apagados remotamente.",
+        "dialogTitle": "Excluir esta conta?",
+        "dialogCopy": "Isto não pode ser desfeito. As assinaturas são canceladas, as chaves deixam de funcionar imediatamente e os registros de faturamento são mantidos para contabilidade, disputas e solicitações legais -- incluindo os dados de contato que contêm. Depois, saia da conta nos outros dispositivos e limpe os dados do site deste dispositivo -- isso está fora do alcance do servidor.",
+        "phraseLabel": "Digite {{phrase}} para confirmar",
+        "deleted": "Conta excluída. Saia da conta nos outros dispositivos e limpe os dados do site deste dispositivo.",
+        "failed": "Falha ao excluir a conta. Tente novamente."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} em uso",
+        "invite": "Convidar",
+        "inviting": "Convidando...",
+        "remove": "Remover",
+        "removing": "Removendo...",
+        "inviteSent": "Convite enviado",
+        "alreadyInvited": "Já convidado"
+      },
+      "businessSeats": {
+        "heading": "Assentos Business",
+        "statusAccepted": "Aceito",
+        "statusExpired": "Expirado",
+        "statusPending": "Pendente",
+        "expires": "Expira em {{date}}",
+        "hintCorporate": "Convide colegas de qualquer domínio de email corporativo.",
+        "hintPersonal": "Adicione um email corporativo para convidar colegas.",
+        "personalDomain": "Domínios de email gratuitos ou descartáveis não podem convidar colegas. Adicione um email corporativo para usar este recurso.",
+        "empty": "Nenhum convite enviado ainda.",
+        "confirmRemove": "Remover este assento? O convidado perderá acesso Pro imediatamente.",
+        "removed": "Assento removido",
+        "alreadyInactive": "O assento já estava inativo",
+        "loadFailed": "Falha ao carregar assentos",
+        "inviteFailed": "Falha ao enviar convite",
+        "removeFailed": "Falha ao remover assento",
+        "errors": {
+          "seatCap": "Todos os 4 assentos estão em uso. Remova um assento primeiro.",
+          "ownerDomain": "O email da sua conta deve ser um domínio corporativo para convidar colegas.",
+          "self": "Você não pode convidar a si mesmo.",
+          "inviteeDomain": "O email do convidado deve ser um domínio corporativo."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "Assentos Enterprise de {{account}}",
+        "memberHint": "O administrador da sua conta adiciona e remove pessoas nesta conta.",
+        "hintFull": "Todos os assentos estão em uso. Remova alguém ou retire um convite para liberar um assento.",
+        "hintOpen": "Convide pessoas por email corporativo. Eles recebem um link válido por 14 dias e compartilham a cota desta conta.",
+        "emailLabel": "Endereço de email para convidar",
+        "statusActive": "Ativo",
+        "statusExpired": "Convite expirado",
+        "statusInvited": "Convidado",
+        "emailFailed": "O email de convite não pôde ser enviado. Verifique o endereço e retire o convite para convidar novamente.",
+        "inviteExpires": "Convite expira em {{date}}",
+        "roleAdmin": "Administrador",
+        "you": "Você",
+        "withdraw": "Retirar",
+        "unknownEmail": "Email desconhecido",
+        "alreadyMember": "Já é membro",
+        "confirmRemove": "Remover {{email}}? Perderá acesso Enterprise imediatamente.",
+        "confirmRemoveUnknown": "Remover esta pessoa? Perderá acesso Enterprise imediatamente.",
+        "confirmWithdraw": "Retirar o convite para {{email}}?",
+        "confirmWithdrawUnknown": "Retirar o convite para este endereço?",
+        "removed": "Membro removido",
+        "withdrawn": "Convite retirado",
+        "loadFailed": "Não foi possível carregar os assentos. Tente novamente.",
+        "inviteFailed": "Não foi possível enviar o convite. Tente novamente.",
+        "removeFailed": "Não foi possível remover. Tente novamente.",
+        "errors": {
+          "seatCap": "Todos os assentos estão em uso. Remova alguém ou retire um convite primeiro.",
+          "inviteeDomain": "Convide um endereço de email corporativo. Domínios de email gratuitos e descartáveis não são aceitos.",
+          "self": "Você já possui um assento.",
+          "contractEnded": "Seu contrato Enterprise expirou. Entre em contato com o suporte para renovar.",
+          "notAdmin": "Apenas o administrador da conta pode gerenciar assentos.",
+          "removeSelf": "Você não pode remover seu próprio assento. Entre em contato com o suporte para alterar o administrador.",
+          "tooMany": "Convide até 10 pessoas por vez.",
+          "rateLimited": "Você enviou o máximo de convites permitidos por dia. Tente novamente amanhã."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "layout",
+        "1": "widgets",
+        "2": "tamanho do texto",
+        "3": "redefinir layout"
+      },
+      "sources": {
+        "0": "notícias",
+        "1": "feeds",
+        "2": "RSS",
+        "3": "regiões",
+        "4": "cobertura"
+      },
+      "notifications": {
+        "0": "alertas",
+        "1": "Telegram",
+        "2": "Slack",
+        "3": "email",
+        "4": "Discord",
+        "5": "webhook",
+        "6": "push"
+      },
+      "display": {
+        "0": "tema",
+        "1": "escuro",
+        "2": "claro",
+        "3": "fonte",
+        "4": "idioma",
+        "5": "tamanho do texto"
+      },
+      "map": {
+        "0": "globo",
+        "1": "provedor",
+        "2": "tiles",
+        "3": "mapa base"
+      },
+      "ai": {
+        "0": "LLM",
+        "1": "Ollama",
+        "2": "frameworks",
+        "3": "memória de manchetes",
+        "4": "modelo do navegador"
+      },
+      "video": {
+        "0": "stream",
+        "1": "reprodução automática",
+        "2": "qualidade",
+        "3": "ao vivo"
+      },
+      "apiKeys": {
+        "0": "chave",
+        "1": "token",
+        "2": "chave da área de trabalho"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "chave de incorporação"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "agentes",
+        "3": "ChatGPT",
+        "4": "clientes"
+      },
+      "sync": {
+        "0": "importar",
+        "1": "exportar",
+        "2": "backup",
+        "3": "nuvem"
+      },
+      "about": {
+        "0": "termos",
+        "1": "privacidade",
+        "2": "licença",
+        "3": "legal"
+      },
+      "account": {
+        "0": "plano",
+        "1": "cobrança",
+        "2": "assinatura",
+        "3": "fatura",
+        "4": "assentos",
+        "5": "sair",
+        "6": "deletar conta, excluir conta, faturamento"
+      }
+    }
   }
 }

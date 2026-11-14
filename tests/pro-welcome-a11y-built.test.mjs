@@ -62,7 +62,7 @@ describe('welcome page a11y (#7382), built output', { skip }, () => {
     assert.equal(lockups.length, 1, 'exactly one lockup anchor in the nav');
     const [lockup] = lockups;
     assert.doesNotMatch(lockup.full, /aria-label(?:ledby)?=/, 'neither the lockup nor its descendants may override the visible name');
-    assert.match(lockup.attrs, /href="https:\/\/worldmonitor\.app"/);
+    assert.match(lockup.attrs, /href="\/"/);
     const glyphWrapper = lockup.inner.match(/<span\b[^>]*>/);
     assert.ok(glyphWrapper && /aria-hidden="true"/.test(glyphWrapper[0]), 'the glyph wrapper is decorative');
     assert.doesNotMatch(lockup.inner, /<a\b/i, 'no nested anchor inside the lockup');

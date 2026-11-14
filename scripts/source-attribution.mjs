@@ -242,6 +242,16 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 });
 
 const PROVIDER_OVERRIDES = {
+  'massoutage.com': {
+    license: 'MassOutage API and compilations CC BY 4.0. Upstream terms continue to apply.',
+    attribution: 'Credit MassOutage (massoutage.com), link to the source and license, and identify the calculated change in state totals.',
+    status: 'reviewed',
+  },
+  'wwwmobile.caiso.com': {
+    license: 'California ISO public website terms. Use factual emergency notice types and times.',
+    attribution: 'Credit California ISO and link to its emergency notifications.',
+    status: 'terms-review',
+  },
   'nvd.nist.gov': {
     provider: 'NVD (NIST)', identityGroup: 'nvd',
     license: 'Public domain (US Federal Government work)',

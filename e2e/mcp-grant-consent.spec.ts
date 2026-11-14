@@ -955,6 +955,30 @@ test.describe('MCP grant consent page (#5654)', () => {
     await expect(page.locator('#authorizeBtn')).toBeEnabled();
   });
 
+  // OpenAI rejected 2.10.1 for offering subscriptions inside ChatGPT, and its
+  // reviewer signs in on this page.
+  for (const [surface, offersPro] of [['chatgpt', false], ['', true]] as const) {
+    test(`sign-in ${offersPro ? 'mentions' : 'does not mention'} Pro ${surface ? 'for ChatGPT' : 'for other clients'}`, async ({ page }, testInfo) => {
+      await stubClerkModule(page, { signedOut: true });
+      await stubContextSuccess(page);
+
+      await page.goto(surface ? `${GRANT_PAGE}&surface=${surface}` : GRANT_PAGE);
+      await dismissClerkSignIn(page);
+
+      await expect(page.locator('#signInView')).toBeVisible();
+      const visibleText = await page.locator('body').innerText();
+      const proLinks = page.locator('a[href*="/pro"]:visible');
+      if (offersPro) {
+        expect(visibleText).toContain('Pro unlocks the full toolset and allowance.');
+        await expect(proLinks).toHaveCount(1);
+      } else {
+        expect(visibleText).not.toMatch(/\bPro\b/);
+        await expect(proLinks).toHaveCount(0);
+      }
+      await page.screenshot({ path: testInfo.outputPath(`grant-sign-in-${surface || 'default'}.png`) });
+    });
+  }
+
   // Observed 2026-10-19: a passkey prompt was interrupted, the Clerk modal
   // closed with the sign-in attempt at needs_first_factor and no session, and
   // the page sat on "Loading authorization request…" forever. A dismissed modal

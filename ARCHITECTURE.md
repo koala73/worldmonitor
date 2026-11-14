@@ -46,7 +46,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
         │ CoinGeck│ │  FRED   │ │ FIRMS   │
         │   ...   │ │   ...   │ │   ...   │
         └─────────┘ └─────────┘ └─────────┘
-           879 observed source hosts
+           882 observed source hosts
 ```
 
 **Source files**: `package.json`, `vercel.json`
@@ -432,7 +432,7 @@ Runs before every `git push`:
 | `issue-ui-evidence.yml` | Issue opened or edited | The bug report form refuses an empty screenshot field but cannot check that it holds an image, so this catches the rest: an issue from outside the maintainer set whose title or body says `UI` and carries no screenshot, recording or image link gets the `needs-screenshot` label and one comment asking for the image. The label clears on the edit that attaches one. Never closes or reopens an issue. Maintainer, collaborator and bot issues are exempt. The decision reads the issue's current state from the API, not the webhook snapshot; issue text reaches the script only through the payload file and that read |
 | `stacked-merge-guard.yml` | PR (including base edits), push to main | Required pre-merge check (#7006): fails when a PR's base is not `main` and that base branch's own PR is already merged, which is how a stacked child can show MERGED while `main` never receives the commits |
 | `orphaned-stacked-merge-monitor.yml` | PR closed and merged | Post-merge safety net for #7006: retargets open children of a merged parent, flags children GitHub closed when the parent branch was deleted and strands their open children, then fails when the merge commit is not an ancestor of `main`, opens an issue, and comments on the purple PR |
-| `deploy-gate.yml` | After Test/Typecheck/Lint Code/Security Audit/Stacked Merge Guard/Proto Generation Check complete | Aggregates required smoke-gate statuses onto the head SHA for branch protection. A non-passing read is re-polled once after 60s for stale check results (#5479), except when every non-passing check is pending and one of the workflows in `GATED_WORKFLOWS` is still running for that head: its completion evaluates again, so the pending status is published at once. Evaluations check out one commit and only `.github/scripts`; the stale-base drift phase unshallows the clone when it runs |
+| `deploy-gate.yml` | After Test/Typecheck/Lint Code/Security Audit/Stacked Merge Guard/Proto Generation Check complete | Aggregates required smoke-gate statuses onto the head SHA for branch protection. Drift is checked against every open PR target whose exact head belongs to this repository, including integration branches; fork-only heads and heads without an open PR use `main`. Missing ownership or target metadata leaves the gate pending. A non-passing read is re-polled once after 60s for stale check results (#5479), except when every non-passing check is pending and one of the workflows in `GATED_WORKFLOWS` is still running for that head: its completion evaluates again, so the pending status is published at once. Evaluations check out one commit and only `.github/scripts`; the stale-base drift phase unshallows the clone when it runs |
 | `bot-pr-deploy-gate.yml` | Called by the workflows that open review PRs (crawlable pulse, SEO weekly, resilience snapshot, GitHub stars) | A PR opened with `github.token` fires no `workflow_run` event for its CI, so `deploy-gate.yml` reached it only on its 30-minute sweep (#10090). Waits for the PR's `pull_request` runs to finish, then dispatches `deploy-gate.yml` for the PR head (`.github/scripts/dispatch-bot-pr-gate.sh`). Skips PRs opened with a user or app token |
 | `indexnow-submit.yml` | Successful Production deployment, manual | Submits deployment-relevant canonical URLs to IndexNow only after their host-specific ownership keys are directly reachable |
 | `convex-deploy.yml` | Push to main (change detection), manual | Type-checks `convex/` with TypeScript 7, then deploys Convex backend functions. Change detection includes `convex/` and its imported dependencies, including `shared/tab-focus-access.ts`, `shared/tab-scope.ts`, other listed `shared/` files, the company-monitoring classifier, and country codes; see the workflow's pathspec for the full list |
@@ -477,8 +477,7 @@ gates.
 ├── cli/                    Official `worldmonitor` npm CLI (zero-dep ESM, MCP-first; published via cli-v* tag)
 ├── consumer-prices-core/   Consumer-price collection service (Playwright scrapers, per-country baskets; Railway/Docker)
 ├── convex/                 Convex backend (billing/entitlements, user state, broadcast, forms, intel history)
-├── data/                   Static data (telegram channels, OREF threat translations, gamma irradiators)
-├── deploy/                 Deployment configs (nginx)
+├── data/                   Static data (telegram channels, X accounts, OREF threat translations, forecast cohorts)
 ├── docker/                 Dockerfile + nginx config for Railway
 ├── docs/                   Mintlify documentation site
 ├── e2e/                    Playwright E2E specs
