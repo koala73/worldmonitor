@@ -41,6 +41,7 @@ const EXCLUDED_FROM_MCP = new Map([
   ['intelligence:cii-structural-prior:v1',
     'internal-reference: pinned WGI prior for the future CII scorer (#10577 U3); producer-only and not yet consumed by a released score or MCP tool.'],
   ['cyber:cve-reference:v1', 'deferred: standalone CISA KEV reference store; advisory/CVE lookup consumer and bounded MCP query are follow-ups to #6229.'],
+  ['infra:grid-disruption-clock:v1', 'Panel-owned outage observations with reporting coverage, source times and warning checks. See the Grid disruption clock.'],
   ['maritime:ukmto-incidents:v1', 'UKMTO publisher reports await activation and source-aware MCP composition (#9831)'],
   ['risk:scores:history:index',
     'operational: string index for daily CII health; MCP country history and weekly movers read the per-country sorted sets directly.'],

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { renderPreferences } from '@/services/preferences-content';
+import { renderPreferenceSection } from '@/services/preferences-content';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -7,7 +7,7 @@ describe('AgentSkills import URL validation', () => {
   it('rejects lookalike URLs before sending an import request', async () => {
     const fetch = vi.fn(async () => new Response('{}', { status: 400 }));
     vi.stubGlobal('fetch', fetch);
-    const preferences = renderPreferences({ isDesktopApp: false });
+    const preferences = renderPreferenceSection('ai', { isDesktopApp: false });
     const container = document.createElement('div');
     container.innerHTML = '<input id="fwAgentskillsUrl"><button id="fwFetchBtn">Fetch</button><div id="fwAgentskillsError"></div>';
     const detach = preferences.attach(container);

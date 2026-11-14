@@ -71,7 +71,7 @@ vi.mock('@/services/widget-store', () => ({
 }));
 
 vi.mock('@/services/preferences-content', () => ({
-  renderPreferences: () => ({ html: '', attach: () => () => {} }),
+  renderPreferenceSection: () => ({ html: '', attach: () => () => {} }),
 }));
 
 vi.mock('@/services/notifications-settings', () => ({
@@ -196,7 +196,7 @@ afterEach(() => {
 describe('UnifiedSettings billing status colour (#7315)', () => {
   it('shows neutral support guidance when Manage Billing has no safe portal', async () => {
     mockSubscription = subscription();
-    settings.open('billing');
+    settings.open('account');
     const button = document.querySelector<HTMLButtonElement>('.manage-billing-btn');
     expect(button).not.toBeNull();
     button!.click();

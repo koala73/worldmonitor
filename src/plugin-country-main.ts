@@ -31,6 +31,7 @@ import { createHostCountryDownload, hostSupportsCountryDownload, CountryDownload
 import type { CountryIntelData } from '@/components/CountryBriefPanel';
 import { hostContextFromInitialize, layoutFlags, mergeHostContext, type PluginHostContext } from './plugin-host-context';
 import { applyHostLayout, createExpandButton, EXPAND_REFUSED } from './plugin-display-mode';
+import { loaderHostChannel } from './plugin-host-channel';
 
 const CHINA_MODEL_CONTEXT_BYTES = 32768;
 const chinaContextTitles = ['Macro Signals', 'Policy & Enforcement', 'Cross-Strait Activity', 'Corporate Disclosures', 'Corridor Conditions', 'Activity Nowcast'];
@@ -783,7 +784,8 @@ async function mountPlugin(): Promise<void> {
     return snapshot();
   }
 
-  window.addEventListener('message', event => {
+  const channel = loaderHostChannel();
+  const onHostMessage = (event: MessageEvent) => {
     if (event.source !== window.parent || !event.data || event.data.jsonrpc !== '2.0') return;
     const message = event.data;
     if (typeof message.id === 'number' && pending.has(message.id)) {
@@ -833,7 +835,8 @@ async function mountPlugin(): Promise<void> {
       host = mergeHostContext(host, message.params);
       relayout();
     }
-  });
+  };
+  if (!channel) window.addEventListener('message', onHostMessage);
 
   const openSelectedCountry = () => { void open({ country_code: input.value }).catch(error => { status.textContent = error.message; }); };
   document.getElementById('openCountry')!.addEventListener('click', openSelectedCountry);
@@ -883,10 +886,11 @@ async function mountPlugin(): Promise<void> {
   async function start(): Promise<void> {
     form.appendChild(expandButton);
     // Handshake before translations and section data: Claude drops views that report initialized late.
-    const initialized = await request('ui/initialize', { appInfo: { name: 'WorldMonitor country brief', version: '1.0.0' }, appCapabilities: { tools: {}, availableDisplayModes: ['inline', 'fullscreen'] }, protocolVersion: '2026-01-26' }) as { hostCapabilities?: { serverTools?: object; openLinks?: object; updateModelContext?: object } };
-    send({ method: 'ui/notifications/initialized' });
+    const initialized = await (channel?.initialized ?? request('ui/initialize', { appInfo: { name: 'WorldMonitor country brief', version: '1.0.0' }, appCapabilities: { tools: {}, availableDisplayModes: ['inline', 'fullscreen'] }, protocolVersion: '2026-01-26' })) as { hostCapabilities?: { serverTools?: object; openLinks?: object; updateModelContext?: object } };
+    if (!channel) send({ method: 'ui/notifications/initialized' });
     host = hostContextFromInitialize(initialized);
     relayout();
+    channel?.adopt(onHostMessage);
     await initI18n({ waitForFullTranslation: true });
     document.getElementById('deep-dive-close')!.setAttribute('aria-label', 'Close country brief');
     initialization = initialized;

@@ -541,12 +541,18 @@ export function runClerkSurfaceOpen(
 }
 
 function openLoadedClerkSignIn(): void {
-  // withSignUp folds Create account into the Sign In modal so the header can
-  // keep a single account action (#10464) without losing the sign-up path.
-  clerkInstance?.openSignIn({ appearance: getAppearance(), withSignUp: true });
+  // Never pass withSignUp here. Under strict enumeration protection the served
+  // Clerk UI turns an unknown email into a "no account found" notice instead of a
+  // sign-up, and hides the footer Sign up link that new visitors need.
+  clerkInstance?.openSignIn({ appearance: getAppearance() });
 }
 
 function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
+  // With no key and nothing loaded, Clerk will never load.
+  if (!clerkInstance && !PUBLISHABLE_KEY) {
+    if (typeof document !== 'undefined') showToast('Sign-in is not available in this build.', 6000);
+    return;
+  }
   const open = action === 'open-sign-in'
     ? openLoadedClerkSignIn
     : () => clerkInstance?.openSignUp({ appearance: getAppearance() });
@@ -560,8 +566,8 @@ function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
   const openClerk = (): void => runClerkSurfaceOpen(open, onFail('ui-components-not-ready'));
   // The resume hook needs the loaded client, so it runs after the force-load too.
   const openSurface = (): void => {
-    // Header Sign In now owns create-account via withSignUp (#10464), so a
-    // mid-signup click still resumes. The hook treats Sign In conservatively
+    // Header Sign In is the only account action (#10464), so a mid-signup
+    // click on it still resumes. The hook treats Sign In conservatively
     // (live, undismissed code only, never a resend) so it cannot trap a
     // returning user away from Clerk's sign-in form.
     const intent = action === 'open-sign-in' ? 'sign-in' : 'sign-up';
@@ -1308,9 +1314,15 @@ export function subscribeClerk(callback: () => void): () => void {
  * Mount Clerk's UserButton component into a DOM element.
  * Returns an unmount function.
  */
+/** A custom avatar-menu entry. The caller translates the label, so this module stays i18n-free. */
+export interface AccountMenuEntry {
+  readonly label: string;
+  readonly onClick: () => void;
+}
+
 export interface UserButtonMenuActions {
-  onBillingClick?: () => void;
-  onSettingsClick?: () => void;
+  readonly billing?: AccountMenuEntry;
+  readonly settings?: AccountMenuEntry;
 }
 
 type UserButtonProps = NonNullable<Parameters<ClerkInstance['mountUserButton']>[1]>;
@@ -1349,18 +1361,18 @@ function mountMenuIcon(el: HTMLDivElement, kind: MenuIconKind): void {
 
 export function createAccountMenuItems(actions: UserButtonMenuActions): CustomMenuItem[] {
   const items: CustomMenuItem[] = [];
-  if (actions.onBillingClick) {
+  if (actions.billing) {
     items.push({
-      label: 'Plan & billing',
-      onClick: actions.onBillingClick,
+      label: actions.billing.label,
+      onClick: actions.billing.onClick,
       mountIcon: (el) => mountMenuIcon(el, 'billing'),
       unmountIcon: (el) => el?.replaceChildren(),
     });
   }
-  if (actions.onSettingsClick) {
+  if (actions.settings) {
     items.push({
-      label: 'Settings',
-      onClick: actions.onSettingsClick,
+      label: actions.settings.label,
+      onClick: actions.settings.onClick,
       mountIcon: (el) => mountMenuIcon(el, 'settings'),
       unmountIcon: (el) => el?.replaceChildren(),
     });

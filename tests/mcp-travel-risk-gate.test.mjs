@@ -306,7 +306,7 @@ describe('prepare_travel_risk_assessment plan gate through mcpHandler', () => {
     assert.equal(pipe.count, 0);
   });
 
-  it('on ChatGPT the refusal keeps the factual message and drops the upgrade offer', async () => {
+  it('on ChatGPT the refusal keeps the factual message and drops the upgrade offer and plans link', async () => {
     const { deps } = makeProDeps({ getEntitlements: async () => catalogEntitlement('pro_monthly') });
     const { response, body } = await call(mcpHandler, proReq('POST', callBody(TOOL, TRIP), { 'User-Agent': 'openai-mcp/1.0.0' }), deps);
     assertPlanFeatureRefusal(response, body, 'chatgpt');
@@ -314,7 +314,8 @@ describe('prepare_travel_risk_assessment plan gate through mcpHandler', () => {
     assert.doesNotMatch(body.error.data.nextStep, /\bUpgrade to\b/);
     assert.equal(body.error.data.recommendedPlan, undefined);
     assert.equal(body.error.data.checkoutTool, undefined);
-    assert.equal(body.error.data.upgradeUrl, `${MCP_UPGRADE_URL}#plan-proBusiness`);
+    // OpenAI's 2026-11-13 review: ChatGPT gets no plans page link.
+    assert.equal('upgradeUrl' in body.error.data, false);
   });
 });
 
