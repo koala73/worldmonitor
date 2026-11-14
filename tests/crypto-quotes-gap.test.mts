@@ -5,6 +5,7 @@ import { listCryptoQuotes } from '../server/worldmonitor/market/v1/list-crypto-q
 import { createMarketServiceRoutes, type MarketServiceHandler } from '../src/generated/server/worldmonitor/market/v1/service_server';
 import { fetchCoinGeckoMarkets } from '../server/worldmonitor/market/v1/_shared';
 import { GENERATED_MESSAGE_RULES } from '../src/generated/server/request_validation';
+import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
 
 const SEED = {
   quotes: [
@@ -19,12 +20,15 @@ const ORIGINAL_ENV = {
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
   LOCAL_API_MODE: process.env.LOCAL_API_MODE,
   WS_RELAY_URL: process.env.WS_RELAY_URL,
+  VERCEL_ENV: process.env.VERCEL_ENV,
 };
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_WARN = console.warn;
 const ORIGINAL_ERROR = console.error;
 
 function configureRemoteRedis(): void {
+  delete process.env.VERCEL_ENV;
+  __resetKeyPrefixCacheForTests();
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
   delete process.env.LOCAL_API_MODE;
@@ -44,6 +48,8 @@ afterEach(() => {
   restoreEnv('UPSTASH_REDIS_REST_TOKEN');
   restoreEnv('LOCAL_API_MODE');
   restoreEnv('WS_RELAY_URL');
+  restoreEnv('VERCEL_ENV');
+  __resetKeyPrefixCacheForTests();
 });
 
 /**

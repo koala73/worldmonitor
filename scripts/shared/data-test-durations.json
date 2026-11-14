@@ -544,6 +544,7 @@
   "tests/decision-signal-provenance.test.mts": 87,
   "tests/deckgl-aircraft-fetch-state.test.mjs": 68,
   "tests/deckgl-deferred-commit.test.mts": 52,
+  "tests/deckgl-facility-highlight-triggers.test.mjs": 25,
   "tests/deckgl-interleaved-race-filter.test.mjs": 23,
   "tests/deckgl-render-timing.test.mts": 43,
   "tests/deckgl-vessel-tooltip-provenance.test.mts": 47,
