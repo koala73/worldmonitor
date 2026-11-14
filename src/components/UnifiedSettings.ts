@@ -110,6 +110,7 @@ import { isMobileDevice } from '@/utils';
 import {
   FONT_SCALE_STEPS,
   fontScaleLabel,
+  panelFontScaleSummary,
   parseFontScale,
 } from '@/services/font-scale-settings';
 import { showToast } from '@/utils/toast';
@@ -634,12 +635,11 @@ export class UnifiedSettings {
         panel.fontScale = scale;
       }
 
-      const scaleSummary = select.closest('.panel-font-scale-details')?.querySelector('[data-panel-scale-summary]');
-      if (scaleSummary) scaleSummary.textContent = panel.fontScale === undefined
-        ? t('preferences.followGlobalFontScale', { defaultValue: 'Use global' })
-        : fontScaleLabel(panel.fontScale);
+      const row = select.closest('.panel-settings-item');
+      const scaleSummary = row?.querySelector('[data-panel-scale-summary]');
+      if (scaleSummary) scaleSummary.textContent = panelFontScaleSummary(panel.fontScale);
       this.panelsJustSaved = false;
-      select.closest('.panel-settings-item')
+      row
         ?.querySelector('.panel-toggle-item')
         ?.classList.toggle(
           'changed',
@@ -1965,22 +1965,21 @@ export class UnifiedSettings {
       const a11yState = getPanelToggleA11yState(locked, panel.enabled, displayName);
       // Sandboxed MCP iframes cannot inherit the host panel's CSS scale.
       const supportsPanelFontScale = key !== 'map' && !key.startsWith('mcp-');
+      const on = panel.enabled && !locked;
       return `
-        <div class="panel-settings-item">
-          <button type="button" class="panel-toggle-item ${panel.enabled && !locked ? 'active' : ''}${changed ? ' changed' : ''}${locked ? ' pro-locked' : ''}" data-panel="${escapeHtml(key)}" ${a11yState.ariaPressed === null ? '' : `aria-pressed="${a11yState.ariaPressed}"`} ${a11yState.ariaLabel === null ? '' : `aria-label="${escapeHtml(a11yState.ariaLabel)}"`} ${locked ? 'data-pro-locked="1"' : ''}>
-            <div class="panel-toggle-checkbox" aria-hidden="true">${panel.enabled && !locked ? '\u2713' : ''}${locked ? '\uD83D\uDD12' : ''}</div>
+        <div class="panel-settings-item${supportsPanelFontScale ? ' has-font-scale' : ''}">
+          <button type="button" class="panel-toggle-item ${on ? 'active' : ''}${changed ? ' changed' : ''}${locked ? ' pro-locked' : ''}" data-panel="${escapeHtml(key)}" ${a11yState.ariaPressed === null ? '' : `aria-pressed="${a11yState.ariaPressed}"`} ${a11yState.ariaLabel === null ? '' : `aria-label="${escapeHtml(a11yState.ariaLabel)}"`} ${locked ? 'data-pro-locked="1"' : ''}>
             <span class="panel-toggle-label">${escapeHtml(displayName)}</span>
             ${(locked || resolvedPanel.premium) ? '<span class="panel-toggle-pro-badge" aria-hidden="true">PRO</span>' : ''}
+            <span class="panel-toggle-switch" aria-hidden="true"></span>
           </button>
-          ${supportsPanelFontScale ? `<details class="panel-font-scale-details"${panel.fontScale === undefined ? '' : ' open'}>
-            <summary><span>${escapeHtml(panelFontScaleLabel)}</span><span data-panel-scale-summary>${escapeHtml(panel.fontScale === undefined ? followGlobalFontScaleLabel : fontScaleLabel(panel.fontScale))}</span></summary>
-            <label class="panel-font-scale-control">
-            <span>${escapeHtml(panelFontScaleLabel)}</span>
+          ${supportsPanelFontScale ? `<label class="panel-font-scale-control">
+            <span class="panel-font-scale-value" data-panel-scale-summary aria-hidden="true">${escapeHtml(panelFontScaleSummary(panel.fontScale))}</span>
             <select data-panel-font-scale="${escapeHtml(key)}" aria-label="${escapeHtml(`${displayName}: ${panelFontScaleLabel}`)}"${locked ? ' disabled' : ''}>
               <option value="global"${panel.fontScale === undefined ? ' selected' : ''}>${escapeHtml(followGlobalFontScaleLabel)}</option>
               ${FONT_SCALE_STEPS.map(scale => `<option value="${scale}"${panel.fontScale === scale ? ' selected' : ''}>${fontScaleLabel(scale)}</option>`).join('')}
             </select>
-          </label></details>` : ''}
+          </label>` : ''}
         </div>
       `;
     }).join(''), "legacy direct innerHTML migration"));

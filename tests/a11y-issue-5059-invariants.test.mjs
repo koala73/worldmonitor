@@ -154,8 +154,8 @@ describe('CSS — focus-visible for preference controls', () => {
 });
 
 describe('decorative children are aria-hidden', () => {
-  it('panel-toggle-checkbox has aria-hidden="true"', () => {
-    assert.match(settings, /panel-toggle-checkbox[\s\S]*?aria-hidden="true"/);
+  it('panel-toggle-switch has aria-hidden="true"', () => {
+    assert.match(settings, /class="panel-toggle-switch" aria-hidden="true"/);
   });
 
   it('source-toggle-checkbox has aria-hidden="true"', () => {
