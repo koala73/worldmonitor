@@ -37,7 +37,7 @@
 }
 
 .osat-sites-note[data-tone="stale"] {
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
 }
 
 .osat-sites-list {
