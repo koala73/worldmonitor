@@ -105,7 +105,7 @@ describe('cursor skill: sentry-triage', () => {
     assert.match(ignoredAudit, /non-overlapping.*time windows/is);
     assert.match(
       ignoredAudit,
-      /search_sentry_tools.*pagination-capable full ignored-issue inventory.*input schema/is,
+      /tool list.*pagination-capable full ignored-issue inventory.*input schema/is,
     );
     assert.match(ignoredAudit, /no supported tool.*capability (?:as )?unavailable/is);
     assert.match(ignoredAudit, /observed cohort|coverage window/i);
@@ -118,7 +118,7 @@ describe('cursor skill: sentry-triage', () => {
     assert.match(markdown, /archived_until_condition_met/);
     assertTokensInOrder(ignoredAudit, [
       "substatus` is `archived_forever`",
-      "execute_sentry_tool(name='get_issue_activity'",
+      "get_issue_activity({ organizationSlug",
       'lacks a recorded forever decision',
     ]);
     assert.match(ignoredAudit, /includeComments: true[^}]*limit: 100/s);
