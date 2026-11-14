@@ -50719,7 +50719,32 @@ components:
                 upstreamUnavailable:
                     type: boolean
                     description: True when all upstream Redis keys were unavailable. Signals CDN cache bypass.
+                imageryChange:
+                    $ref: '#/components/schemas/worldmonitor_intelligence_v1_ImageryChangeContext'
             description: GetCountryRiskResponse contains composite risk intelligence for a specific country.
+        worldmonitor_intelligence_v1_ImageryChangeContext:
+            type: object
+            properties:
+                watchedSiteCount:
+                    type: integer
+                    format: int32
+                confirmedSites:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_intelligence_v1_ImageryChangeSite'
+            description: Watched sites with a confirmed imagery change.
+        worldmonitor_intelligence_v1_ImageryChangeSite:
+            type: object
+            properties:
+                siteId:
+                    type: string
+                name:
+                    type: string
+                confirmedAt:
+                    type: integer
+                    format: int64
+                    description: 'Time of the confirming scene, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: A watched site with a confirmed change.
         worldmonitor_intelligence_v1_GetCountryIntelBriefRequest:
             type: object
             properties:

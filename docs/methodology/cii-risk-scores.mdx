@@ -85,6 +85,30 @@ The countries covered are a **curated monitoring universe**, not every sovereign
 state — see [the Tier-1 criteria](#2-per-country-baselinerisk-and-eventmultiplier).
 CRI covers the broader 196-country universe.
 
+### Context shown beside the score
+
+Some country signals are shown next to the score and never enter it. The
+[input register](https://github.com/koala73/worldmonitor/blob/main/docs/methodology/cii-input-register.md)
+gives each such signal the **context** verdict.
+
+Satellite imagery change flags are one of them. When the radar imagery
+statistics at a watched site change and the next comparable scene confirms it,
+the country view names the site, the confirming scene's date, and the number of
+watched sites in that country, with this note:
+
+> Satellite context only. It is not part of the instability score.
+
+The flag says the statistics changed. It does
+not say what happened, and a country's watched-site total reflects which lists
+WorldMonitor watches, not how unstable it is. Adding or removing these flags
+leaves every CII score byte-identical.
+
+`GET /api/intelligence/v1/get-country-risk` returns them in `imageryChange`
+(`watchedSiteCount` and `confirmedSites`), beside the `cii` score, the same way
+it returns advisories and sanctions counts. The field is absent when the
+country has no watched sites or its site summary is missing or more than three
+days old. Flags still under review are never included.
+
 <Note>
 **For developers.** CII and the Strategic Risk roll-up are served from
 `GET /api/intelligence/v1/get-risk-scores` (proto

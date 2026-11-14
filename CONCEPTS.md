@@ -1097,7 +1097,7 @@ An input must be published with enough precision to identify the metric behind i
 
 ### Context Metric
 
-A value a chokepoint page displays that never enters the Disruption Score — event counts, observed transit counts, and period-over-period movement. Publishing the exclusion is as load-bearing as publishing the inputs, since a number rendered next to a score reads as a cause of it by default.
+A value displayed beside a score that never enters it: on a chokepoint page, event counts, observed transit counts, and period-over-period movement beside the Disruption Score; beside the Country Instability Index, advisories and confirmed satellite imagery change flags, which carry the input register's **context** verdict. Publishing the exclusion is as load-bearing as publishing the inputs, since a number rendered next to a score reads as a cause of it by default.
 
 One upstream feed can supply both a Score Input and a Context Metric, so the split is per-metric and never per-source: the same provider's daily series can drive an input while its summarised movement figure stays presentational. Excluding a source wholesale is therefore the easy way to publish a false exclusion. See also: Score Input, Transit Anomaly.
 
