@@ -7,6 +7,7 @@ import { ARCHIVE_REQUEST_TIMEOUT_MS, type ArchiveId } from '@/services/orbital/a
 import { ArchiveImageError, loadArchiveImage, type ArchiveImageResult, type LoadedArchiveImage } from '@/services/orbital/archive-image';
 import { hasNoDataAtPoint, MOSAIC_FALLBACK_DAYS, type CropPosition, type DailyMosaicRow } from '@/services/orbital/archive-gibs';
 import { DEFAULT_CROP_HALF_SIZE_KM } from '@/services/orbital/crop-url';
+import { imageGrid, isClearScene } from '@/services/orbital/scene-history';
 import { acquisitionCredit, ORBITAL_WATCH_DOCS_URL, resultCredits, type ResultCredit } from '@/services/orbital/credits';
 import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
@@ -905,7 +906,11 @@ export class OrbitalWatchPage {
     const sensor = sensorName(latest.platform);
     const alt = t('orbitalWatch.sheet.imageAlt', { sensor, time: formatStamp(latest.startMs) });
     const view: ViewableImage = { kind: 'acquisition', key: latest.key };
-    const others = confirmed.filter((acquisition) => acquisition !== latest && acquisition.imageUrl && acquisition.profileId === latest.profileId);
+    // Only what the viewer can line up: a point-box crop of the same sensor, clear at the point.
+    const others = imageGrid(latest.imageUrl ?? '') === 'north-up'
+      ? confirmed.filter((acquisition) => acquisition !== latest && acquisition.profileId === latest.profileId
+        && acquisition.imageUrl && imageGrid(acquisition.imageUrl) === 'north-up' && isClearScene({ ...acquisition, timeMs: acquisition.startMs, cloudApplies: !isRadar(acquisition) }))
+      : [];
     if (!others.some((acquisition) => acquisition.key === this.compareKey)) this.compareKey = others[0]?.key ?? null;
     const credit = acquisitionRowCredit(latest);
     const compare = others.length > 0

@@ -225,6 +225,12 @@ describe('imagery evidence sheet', () => {
     page.render(answered(all, { acquisitions: [acquisition(confirmedNew), acquisition(earlier, { key: 'sentinel-2c:earlier', startMs: earlier.timeMs })] }));
     expect(sectionOf('latest').querySelector('[data-action="compare"]')).not.toBeNull();
     expect(sectionOf('latest').querySelectorAll('select option')).toHaveLength(1);
+    const cloudy = acquisition(earlier, { key: 'sentinel-2c:cloudy', startMs: earlier.timeMs, cloudCoverPct: 80 });
+    page.render(answered(all, { acquisitions: [acquisition(confirmedNew), cloudy] }));
+    expect(sectionOf('latest').querySelector('[data-action="compare"]'), 'a cloudy scene would only compare cloud').toBeNull();
+    const unreferenced = acquisition(earlier, { key: 'sentinel-2c:unreferenced', startMs: earlier.timeMs, imageUrl: 'https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png' });
+    page.render(answered(all, { acquisitions: [acquisition(confirmedNew), unreferenced] }));
+    expect(sectionOf('latest').querySelector('[data-action="compare"]'), 'a whole-scene preview does not line up').toBeNull();
   });
 
   it('says the archives found no scene instead of showing an empty image', () => {

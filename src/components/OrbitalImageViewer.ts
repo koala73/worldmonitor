@@ -3,7 +3,7 @@ import type { LoadedArchiveImage } from '@/services/orbital/archive-image';
 import type { ArchiveFailure } from '@/services/orbital/archive-result';
 import type { ImagingProfileId } from '@/services/orbital/archive-stac';
 import type { DailyMosaicRow, GeostationaryRow } from '@/services/orbital/archive-gibs';
-import { DEFAULT_CROP_HALF_SIZE_KM, EUMETSAT_WMS_ENDPOINT, GIBS_WMS_ENDPOINT } from '@/services/orbital/crop-url';
+import { DEFAULT_CROP_HALF_SIZE_KM } from '@/services/orbital/crop-url';
 import { describePointCondition, type MatchedAcquisition, type OrbitalEvidence } from '@/services/orbital/match';
 import {
   CLEAR_LOOK_CLOUD_PCT,
@@ -14,6 +14,8 @@ import {
   type DatedScene,
   type LoadImage,
   type SceneHistory,
+  imageGrid,
+  type ImageGrid,
 } from '@/services/orbital/scene-history';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 import { t } from '@/services/i18n';
@@ -26,7 +28,6 @@ import { closeButton, formatPoint, reticle, trapTab } from './orbital-dialog';
 import '../styles/orbital-image-viewer.css';
 
 /** How the image's pixels sit against the ground: a geographic grid is north-up; a raw quick-look is not georeferenced. */
-export type ImageGrid = 'north-up' | 'unreferenced';
 
 export interface ViewerScene extends DatedScene {
   /** Scenes compare only within one collection: a mission, or one mosaic or frame layer. */
@@ -64,22 +65,9 @@ const CROP_WIDTH_KM = 2 * DEFAULT_CROP_HALF_SIZE_KM;
 const SCALE_BAR_KM = 2;
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-const PLANETARY_COMPUTER_CROP_PATH = '/api/data/v1/item/bbox/';
 
 const formatUtc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
 
-/** Crops this lookup builds are all requested in a latitude-longitude grid, so north is up. */
-export function imageGrid(url: string): ImageGrid {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname === 'planetarycomputer.microsoft.com' && parsed.pathname.startsWith(PLANETARY_COMPUTER_CROP_PATH)) return 'north-up';
-    const base = `${parsed.origin}${parsed.pathname}`;
-    if ((base === GIBS_WMS_ENDPOINT || base === EUMETSAT_WMS_ENDPOINT) && parsed.searchParams.get('CRS') === 'EPSG:4326') return 'north-up';
-  } catch {
-    return 'unreferenced';
-  }
-  return 'unreferenced';
-}
 
 const viewable = (url: string | null): string | null => (url && isAllowedPreviewUrl(url) ? url : null);
 

@@ -2,7 +2,7 @@ import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
 import { ArchiveImageError, loadArchiveImage, type LoadedArchiveImage } from './archive-image';
 import type { ArchiveFailure, ArchiveId, ArchiveRequestOptions } from './archive-result';
 import { searchStacArchive, type ImagingProfileId, type StacArchiveId } from './archive-stac';
-import { cropBox } from './crop-url';
+import { cropBox, EUMETSAT_WMS_ENDPOINT, GIBS_WMS_ENDPOINT } from './crop-url';
 import { assembleEvidence, type MatchedAcquisition } from './match';
 
 const DAY_MS = 86_400_000;
@@ -12,6 +12,23 @@ export const HISTORY_DAYS = 60;
 export const CLEAR_LOOK_CLOUD_PCT = 30;
 /** The compare picker prefers a scene at least this far from the one being viewed. */
 export const COMPARE_MIN_GAP_DAYS = 30;
+
+export type ImageGrid = 'north-up' | 'unreferenced';
+
+const PLANETARY_COMPUTER_CROP_PATH = '/api/data/v1/item/bbox/';
+
+/** Crops this lookup builds are all requested in a latitude-longitude grid, so north is up. */
+export function imageGrid(url: string): ImageGrid {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'planetarycomputer.microsoft.com' && parsed.pathname.startsWith(PLANETARY_COMPUTER_CROP_PATH)) return 'north-up';
+    const base = `${parsed.origin}${parsed.pathname}`;
+    if ((base === GIBS_WMS_ENDPOINT || base === EUMETSAT_WMS_ENDPOINT) && parsed.searchParams.get('CRS') === 'EPSG:4326') return 'north-up';
+  } catch {
+    return 'unreferenced';
+  }
+  return 'unreferenced';
+}
 
 /** The archive whose items render a crop around the point, so frames line up. */
 export const HISTORY_ARCHIVE: Record<ImagingProfileId, StacArchiveId> = {
