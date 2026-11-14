@@ -329,7 +329,8 @@ interface ImageCard {
   url: string | null;
   sortMs: number;
   top: string;
-  bottom: string;
+  /** Caption parts joined with " · "; phones drop the age, as the line above gives the date. */
+  bottom: ReadonlyArray<string | { ago: string }>;
   credit: RowCredit;
   pass: { noradId: number; timeMs: number } | null;
   /** Earlier frames of the same source, newest first, with the caption line each one shows. */
@@ -351,13 +352,20 @@ function acquisitionCard(acquisition: MatchedAcquisition, nowMs: number, names: 
     sortMs: acquisition.startMs,
     top: `${sensor} · ${formatWhen(acquisition.startMs)}`,
     bottom: [
-      acquisition.pass ? null : t('orbitalWatch.ui.archiveScene'),
-      ...(radar ? [t('orbitalWatch.ui.caption.radar'), 'VV', resolution, formatRelative(acquisition.startMs, nowMs, 'narrow')]
-        : [resolution, formatRelative(acquisition.startMs, nowMs, 'narrow'), conditionLabel(acquisition)]),
-    ].filter(Boolean).join(' · '),
+      ...(acquisition.pass ? [] : [t('orbitalWatch.ui.archiveScene')]),
+      ...(radar ? [t('orbitalWatch.ui.caption.radar'), 'VV', resolution, { ago: formatRelative(acquisition.startMs, nowMs, 'narrow') }]
+        : [resolution, { ago: formatRelative(acquisition.startMs, nowMs, 'narrow') }, conditionLabel(acquisition)]),
+    ],
     credit: acquisitionRowCredit(acquisition),
     pass: acquisition.pass,
   };
+}
+
+function captionParts(parts: ImageCard['bottom']): DomChild[] {
+  return parts.map((part, i) => {
+    const sep = i === 0 ? '' : ' · ';
+    return typeof part === 'string' ? `${sep}${part}` : h('span', { className: 'ow-caption-ago' }, `${sep}${part.ago}`);
+  });
 }
 
 function weatherCards(evidence: OrbitalEvidence): ImageCard[] {
@@ -374,7 +382,7 @@ function weatherCards(evidence: OrbitalEvidence): ImageCard[] {
       url: latest.imageUrl,
       sortMs: ms,
       top: `${mosaic.source.toUpperCase()} · ${formatDay(ms)}`,
-      bottom: [t('orbitalWatch.ui.caption.dailyMosaic'), resolution ? `${resolution} M` : null].filter(Boolean).join(' · '),
+      bottom: [t('orbitalWatch.ui.caption.dailyMosaic'), ...(resolution ? [`${resolution} M`] : [])],
       credit: { short: IMAGE_CREDIT.gibs, full: IMAGE_CREDIT.gibs },
       pass: null,
     });
@@ -391,7 +399,7 @@ function weatherCards(evidence: OrbitalEvidence): ImageCard[] {
       sortMs: ms,
       top: frameTop(frame.latest.time),
       fallbacks: frame.latest.fallbacks.map((earlier) => ({ url: earlier.imageUrl, top: frameTop(earlier.time) })),
-      bottom: frame.cadenceMinutes === null ? t('orbitalWatch.ui.caption.geostationary') : t('orbitalWatch.ui.caption.geostationaryCadence', { minutes: frame.cadenceMinutes }),
+      bottom: [frame.cadenceMinutes === null ? t('orbitalWatch.ui.caption.geostationary') : t('orbitalWatch.ui.caption.geostationaryCadence', { minutes: frame.cadenceMinutes })],
       credit: frame.archive === 'eumetsat' ? frameCredit(frame.archive) : { short: IMAGE_CREDIT.gibs, full: IMAGE_CREDIT.gibs },
       pass: null,
     });
@@ -942,7 +950,7 @@ export class OrbitalWatchPage {
       tile,
       h('figcaption', { className: 'ow-caption' },
         h('div', { className: 'ow-caption-row' },
-          h('div', { className: 'ow-caption-lines ow-label' }, top, h('span', null, card.bottom)),
+          h('div', { className: 'ow-caption-lines ow-label' }, top, h('span', null, ...captionParts(card.bottom))),
           card.pass
             ? h('button', { type: 'button', className: 'ow-replay ow-label', dataset: { action: 'replay', norad: String(card.pass.noradId), time: String(card.pass.timeMs) } }, `▸ ${t('orbitalWatch.ui.replay')}`)
             : null),
