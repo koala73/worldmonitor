@@ -254,7 +254,7 @@ emit('pro-test/src/generated/depth-stats.json', json(facts.depthProofStats));
 const proMonthlyPrice = plans.find((plan) => plan.planKey === 'pro_monthly')?.price;
 if (typeof proMonthlyPrice !== 'number' || proMonthlyPrice <= 0) throw new Error(`pro_monthly price must be a positive number, got ${proMonthlyPrice}`);
 emit('pro-test/src/generated/copy-stats.json', json({
-  ...defaultOnLayerStats(read('src/config/variants/full.ts'), getCompleteLayerCatalogKeys('full')),
+  ...defaultOnLayerStats(read('src/config/panels.ts'), getCompleteLayerCatalogKeys('full')),
   proMonthlyPrice,
   resilienceUniverse: resilience.universe,
   resilienceRankedPct: Math.round((resilience.ranked / resilience.universe) * 100),
