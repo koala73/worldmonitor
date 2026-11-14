@@ -11,6 +11,8 @@
 /** A plain snapshot the shell reads before every navigation event. */
 export interface SettingsFacts {
   readonly signedIn: boolean;
+  /** isClerkAuthEnabled(). A build without a Clerk key offers no sign-in row. */
+  readonly canSignIn: boolean;
   readonly isDesktopApp: boolean;
   /** hasEmbedAccessForAccount(role). */
   readonly embedAccess: boolean;
@@ -203,7 +205,7 @@ export function buildNav(f: SettingsFacts): readonly NavGroup[] {
           summary: def.summary?.(f) ?? null,
           keywordsKey: def.keywordsKey,
         });
-      } else if (def.whenUnavailable === 'sign-in-row') {
+      } else if (def.whenUnavailable === 'sign-in-row' && f.canSignIn) {
         rows.push({ kind: 'sign-in' });
       }
     }

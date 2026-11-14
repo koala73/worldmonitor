@@ -103,7 +103,9 @@ async function openSettingsFromGear(page: Page, query = ''): Promise<void> {
 }
 
 const currentRow = (page: Page) => page.locator('#unifiedSettingsModal [aria-current="page"]');
-const sidebarRows = (page: Page) => page.locator('[data-settings-rows] [data-settings-nav], [data-settings-rows] [data-settings-signin]');
+// Section rows only. The sign-in row depends on whether the build has a Clerk
+// key, which CI's build lacks; tests/dom/unified-settings-navigation covers it.
+const sidebarRows = (page: Page) => page.locator('[data-settings-rows] [data-settings-nav]');
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768 }]) {
   test.describe(`settings sidebar at ${viewport.width}×${viewport.height}`, () => {
@@ -144,13 +146,12 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768
       const empty = page.locator('[data-settings-empty]');
 
       await search.fill('privacy');
-      await expect(sidebarRows(page)).toHaveCount(2);
-      await expect(page.locator('[data-settings-rows] [data-settings-signin]')).toBeVisible();
+      await expect(sidebarRows(page)).toHaveCount(1);
       await expect(page.locator('[data-settings-nav="about"]')).toBeVisible();
       await expect(empty).toBeHidden();
 
       await search.fill('zzz');
-      await expect(sidebarRows(page)).toHaveCount(1);
+      await expect(sidebarRows(page)).toHaveCount(0);
       await expect(empty).toHaveText('No settings match');
 
       await search.press('Escape');

@@ -14,6 +14,7 @@ import fr from '@/locales/fr.json';
 const openSignIn = vi.hoisted(() => vi.fn());
 vi.mock('@/services/clerk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/clerk')>()),
+  isClerkAuthEnabled: () => true,
   openSignIn,
 }));
 

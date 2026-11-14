@@ -25,6 +25,7 @@ const EN: unknown = JSON.parse(readFileSync(new URL('../src/locales/en.json', im
 
 const facts = (overrides: Partial<SettingsFacts> = {}): SettingsFacts => ({
   signedIn: true,
+  canSignIn: true,
   isDesktopApp: false,
   embedAccess: true,
   account: { plan: 'Pro', email: 'a@example.com' },
@@ -90,6 +91,13 @@ describe('settings sections registry', () => {
     assert.equal(rowIds(facts())[0], 'account');
     assert.equal(rowIds(signedOut)[0], 'sign-in');
     assert.ok(!rowIds(signedOut).includes('account'));
+  });
+
+  it('offers no sign-in row when this build cannot sign in', () => {
+    const keyless = rowIds({ ...signedOut, canSignIn: false });
+    assert.ok(!keyless.includes('sign-in'));
+    assert.ok(!keyless.includes('account'));
+    assert.equal(keyless[0], 'panels');
   });
 
   it('hides unavailable sections from the home list and keeps registry order', () => {
