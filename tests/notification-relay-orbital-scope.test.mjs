@@ -107,6 +107,19 @@ describe('watched-site alert rule matching', () => {
     });
   }
 
+  for (const sensitivity of ['critical', 'all']) {
+    it(`a realtime ${sensitivity} rule, coerced to critical-only, gets non-critical site alerts only for sites it opted into`, async () => {
+      for (const eventType of ['orbital_site_change', 'orbital_imaging_window']) {
+        assert.notEqual(siteEvent('hotspot:a', eventType).severity, 'critical');
+        const optIn = { digestMode: 'realtime', sensitivity, eventTypes: [eventType] };
+        assert.deepEqual(await deliveries([rule('user-1', { ...optIn, orbitalSites: [] })], siteEvent('hotspot:a', eventType)), [], 'no opted-in sites');
+        assert.deepEqual(await deliveries([rule('user-1', optIn)], siteEvent('hotspot:a', eventType)), [], 'no site list');
+        assert.deepEqual(await deliveries([rule('user-1', { ...optIn, orbitalSites: ['hotspot:b'] })], siteEvent('hotspot:a', eventType)), [], 'a different site');
+        assert.deepEqual(await deliveries([rule('user-1', { ...optIn, orbitalSites: ['hotspot:a'] })], siteEvent('hotspot:a', eventType)), ['chat-user-1'], 'the opted-in site');
+      }
+    });
+  }
+
   it('a rule scoped to site A receives nothing for site B', async () => {
     const rules = [rule('user-1', { eventTypes: ['orbital_site_change'], orbitalSites: ['hotspot:a'] })];
     assert.deepEqual(await deliveries(rules, siteEvent('hotspot:b')), []);

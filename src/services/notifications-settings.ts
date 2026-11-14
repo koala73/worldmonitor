@@ -679,6 +679,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             </div>
             <div id="usOrbitalScope"${orbitalWindowsOn || orbitalChangesOn ? '' : ' hidden'}>
               <div class="ai-flow-toggle-desc" style="margin-bottom:6px">Your watched sites, up to ${ORBITAL_ALERT_SITES_MAX}. Alerts cover only the sites listed here.</div>
+              <div class="ai-flow-toggle-desc" id="usOrbitalCriticalNote" style="margin-bottom:6px">Alerts for these sites arrive even when realtime alerts are critical-only. Quiet hours still hold them.</div>
               <div class="us-notif-country-chips" id="usOrbitalSiteChips">${orbitalSites.map((id) =>
                 `<button type="button" class="us-notif-country-chip us-notif-country-chip-on" data-orbital-site-id="${escapeHtml(id)}" aria-label="Remove ${escapeHtml(id)}">${escapeHtml(id)} ×</button>`).join('')}</div>
               <input type="search" id="usOrbitalSiteSearch" class="us-notif-country-add-input" list="usOrbitalSiteOptions" placeholder="Add a site by name" aria-label="Add a watched site" autocomplete="off" style="margin-top:6px;width:100%;box-sizing:border-box"${orbitalSites.length >= ORBITAL_ALERT_SITES_MAX ? ' disabled' : ''}>
