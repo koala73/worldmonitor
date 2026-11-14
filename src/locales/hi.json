@@ -5182,7 +5182,8 @@
         "weather": "मौसम"
       },
       "caption": {
-        "clear": "साफ़",
+        "clear": "स्थान पर साफ़",
+        "clearSceneCloud": "स्थान पर साफ़ · दृश्य में बादल {{pct}}%",
         "clouded": "बादल · {{pct}}%",
         "cloudShadow": "बादल की छाया",
         "spotNotChecked": "स्थान पर बादल की जाँच नहीं हुई",

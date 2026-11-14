@@ -5213,7 +5213,8 @@
         "weather": "Meteo"
       },
       "caption": {
-        "clear": "Sereno",
+        "clear": "Sereno sul punto",
+        "clearSceneCloud": "Sereno sul punto · nuvolosità della scena {{pct}}%",
         "clouded": "Nuvoloso · {{pct}}%",
         "cloudShadow": "Ombra di nube",
         "spotNotChecked": "Punto non verificato per le nubi",

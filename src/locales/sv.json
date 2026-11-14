@@ -5182,7 +5182,8 @@
         "weather": "Väder"
       },
       "caption": {
-        "clear": "Klart",
+        "clear": "Klart vid punkten",
+        "clearSceneCloud": "Klart vid punkten · scenens molnighet {{pct}} %",
         "clouded": "Molnigt · {{pct}} %",
         "cloudShadow": "Molnskugga",
         "spotNotChecked": "Platsen ej kontrollerad för moln",

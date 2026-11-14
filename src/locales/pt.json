@@ -5213,7 +5213,8 @@
         "weather": "Tempo"
       },
       "caption": {
-        "clear": "Limpo",
+        "clear": "Limpo no ponto",
+        "clearSceneCloud": "Limpo no ponto · nebulosidade da cena {{pct}}%",
         "clouded": "Nublado · {{pct}}%",
         "cloudShadow": "Sombra de nuvem",
         "spotNotChecked": "Ponto não verificado para nuvens",

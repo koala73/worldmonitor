@@ -5182,7 +5182,8 @@
         "weather": "Wetter"
       },
       "caption": {
-        "clear": "Klar",
+        "clear": "Klar am Punkt",
+        "clearSceneCloud": "Klar am Punkt · Szenenbewölkung {{pct}} %",
         "clouded": "Bewölkt · {{pct}} %",
         "cloudShadow": "Wolkenschatten",
         "spotNotChecked": "Stelle nicht auf Wolken geprüft",

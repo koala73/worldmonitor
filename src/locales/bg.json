@@ -5182,7 +5182,8 @@
         "weather": "Време"
       },
       "caption": {
-        "clear": "Ясно",
+        "clear": "Ясно в точката",
+        "clearSceneCloud": "Ясно в точката · облачност на сцената {{pct}}%",
         "clouded": "Облачно · {{pct}}%",
         "cloudShadow": "Сянка от облак",
         "spotNotChecked": "Мястото не е проверено за облаци",
