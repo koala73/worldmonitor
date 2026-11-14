@@ -374,6 +374,21 @@ describe('satellite pass share link', () => {
     expect(linked.mock.calls[0]![0]).toEqual({ noradId: 40697, timeMs: PASSES[0]!.timeMs });
   });
 
+  it('selects a second linked pass for the point that is already open', async () => {
+    const selected = vi.fn();
+    document.addEventListener('orbital-watch:select', (event) => selected((event as CustomEvent).detail));
+    onTestFinished(() => document.removeEventListener('orbital-watch:select', selected));
+    history.replaceState(null, '', '/dashboard#orbital=48.86,2.29;40697-202611120600');
+    scheduleOrbitalShareLink(takeOrbitalShareLink()!, 0, () => false);
+    await vi.waitFor(() => expect(selected).toHaveBeenCalledTimes(1));
+    const minute = new Date(PASSES[1]!.timeMs).toISOString().slice(0, 16).replace(/[-T:]/g, '');
+    history.replaceState(null, '', `/dashboard#orbital=48.86,2.29;48917-${minute}`);
+    scheduleOrbitalShareLink(takeOrbitalShareLink()!, 0, () => false);
+    await vi.waitFor(() => expect(selected).toHaveBeenCalledTimes(2));
+    expect(selected.mock.calls[1]![0]).toEqual({ noradId: 48917, timeMs: PASSES[1]!.timeMs });
+    expect(lookupMock).toHaveBeenCalledTimes(1);
+  });
+
   it('notes a linked pass the sheet cannot select instead of failing silently', async () => {
     const mosaic = { kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'MODIS', layer: 'MODIS_Terra', noradId: 40697, days: [] } as unknown as PassTier;
     evidenceMock.mockImplementationOnce(async (found: PointPassLookup) =>
