@@ -8,7 +8,7 @@ export function defaultOnLayerKeys(source) {
     throw new Error('default-map-layer-count: could not isolate FULL_MAP_LAYERS in src/config/panels.ts');
   }
   const code = source.slice(start, end).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-  const keys = [...code.matchAll(/^\s*['"]?(\w+)['"]?\s*:\s*(?:true|!_desktop)\b/gm)].map((m) => m[1]);
+  const keys = [...code.matchAll(/^\s*['"]?(\w+)['"]?\s*:\s*(?:true|!_desktop)\b(?=\s*[,}])/gm)].map((m) => m[1]);
   const trueValues = (code.match(/:\s*true\b/g) || []).length;
   const webOnValues = (code.match(/:\s*!_desktop\b/g) || []).length;
   if (keys.length !== trueValues + webOnValues) {

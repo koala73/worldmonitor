@@ -26,6 +26,12 @@ test('fails closed on a layout the parser cannot read', () => {
   assert.throws(() => defaultOnLayerKeys(source), /2 on values but 1 parsed keys/);
 });
 
+test('fails closed instead of counting an expression that starts with an on value', () => {
+  for (const value of ['!_desktop && false', '!_desktop ? false : true', 'true && false']) {
+    assert.throws(() => defaultOnLayerKeys(wrap(`  bases: ${value},`)), /on values but 0 parsed keys/);
+  }
+});
+
 test('fails closed when the FULL_MAP_LAYERS block is missing', () => {
   assert.throws(() => defaultOnLayerKeys('export const OTHER = {};'), /could not isolate FULL_MAP_LAYERS/);
 });
