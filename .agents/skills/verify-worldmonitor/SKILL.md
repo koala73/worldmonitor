@@ -83,6 +83,7 @@ Ready-made steps, one per mapped feature:
 | `steps/global-search.mjs` | [Global search](features/global-search.md) |
 | `steps/map-layers.mjs` | [Map layers](features/map-layers.md) |
 | `steps/orbital-watch.mjs` | [Satellite passes here](features/orbital-watch.md) |
+| `steps/orbital-map-popups.mjs` | [Imagery row in map popups](features/orbital-watch.md) |
 | `steps/_inspect.mjs` | not a feature — dumps live panel keys, layer handles, header ids, and the map renderer when a handle in the map has drifted |
 
 Environment switches: `WM_VERIFY_HEADED=1` (real window, real GPU — the only way to get the deck.gl map), `WM_VERIFY_SOFTWARE_GL=1` (reproduce the repo's playwright GL flags), `WM_VERIFY_PANEL`, `WM_VERIFY_LAYER`, `WM_VERIFY_COUNTRY`, `WM_VERIFY_SEARCH`.

@@ -82,10 +82,9 @@ import { getChinaDecisionSignalsData } from '@/services/china-decision-signals';
 import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-signals';
 import { showToast as showGlobalToast } from '@/utils/toast';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
-import { watchOrbitalRoute } from '@/app/orbital-route';
+import { watchOrbitalEvidence, watchOrbitalRoute } from '@/app/orbital-route';
 import { setOrbitalMapView } from '@/app/orbital-map-focus';
 import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
-import { ORBITAL_EVIDENCE_EVENT } from '@/services/orbital/object-imagery';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: no strikes in the
 // country deep-dive or the AI brief. Set VITE_ENABLE_IRAN_ATTACKS=true to restore.
@@ -171,12 +170,7 @@ export class CountryIntelManager implements AppModule {
   // don't re-hammer fetchProSections.
   private authUnsubscribe: (() => void) | null = null;
   private orbitalRouteUnsubscribe: (() => void) | null = null;
-  private readonly openOrbitalEvidence = (event: Event): void => {
-    const point = (event as CustomEvent<{ lat: number; lon: number }>).detail;
-    if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lon)) return;
-    void import('@/app/orbital-watch').then(({ openOrbitalWatch }) =>
-      openOrbitalWatch({ lat: point.lat, lon: point.lon }, document.getElementById('mapContainer'), 'sheet', this.ctx.map));
-  };
+  private orbitalEvidenceUnsubscribe: (() => void) | null = null;
   private orbitalMapFocusUnsubscribe: (() => void) | null = null;
   private entitlementUnsubscribe: (() => void) | null = null;
   private lastHadPremium = false;
@@ -223,7 +217,7 @@ export class CountryIntelManager implements AppModule {
     });
     if (ORBITAL_WATCH_ENABLED) {
       this.orbitalRouteUnsubscribe = watchOrbitalRoute(() => this.ctx.map);
-      window.addEventListener(ORBITAL_EVIDENCE_EVENT, this.openOrbitalEvidence);
+      this.orbitalEvidenceUnsubscribe = watchOrbitalEvidence(() => this.ctx.map);
     }
     this.lastHadPremium = hasPremiumAccess(getAuthState());
     const syncPremiumAccess = () => this.handlePremiumAccessTransition(hasPremiumAccess(getAuthState()));
@@ -234,7 +228,8 @@ export class CountryIntelManager implements AppModule {
   destroy(): void {
     this.orbitalRouteUnsubscribe?.();
     this.orbitalRouteUnsubscribe = null;
-    window.removeEventListener(ORBITAL_EVIDENCE_EVENT, this.openOrbitalEvidence);
+    this.orbitalEvidenceUnsubscribe?.();
+    this.orbitalEvidenceUnsubscribe = null;
     this.orbitalMapFocusUnsubscribe?.();
     this.orbitalMapFocusUnsubscribe = null;
     this.currentCountryPresentation = null;

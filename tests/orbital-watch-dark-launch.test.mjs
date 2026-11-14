@@ -11,8 +11,8 @@ test('Orbital Watch stays off unless the build sets VITE_ENABLE_ORBITAL_WATCH=tr
 test('the map context menu and the #orbital= route open the lookup only behind the flag', () => {
   const source = read('src/app/country-intel.ts');
   assert.match(source, /if \(ORBITAL_WATCH_ENABLED\) items\.push\(\{\s*label: t\('contextMenu\.satellitePasses'\)/);
-  assert.match(source, /if \(ORBITAL_WATCH_ENABLED\) \{\s*this\.orbitalRouteUnsubscribe = watchOrbitalRoute\([^;]*\);\s*window\.addEventListener\(ORBITAL_EVIDENCE_EVENT, this\.openOrbitalEvidence\);\s*\}/);
-  assert.equal(source.match(/addEventListener\(ORBITAL_EVIDENCE_EVENT/g)?.length, 1);
+  assert.match(source, /if \(ORBITAL_WATCH_ENABLED\) \{\s*this\.orbitalRouteUnsubscribe = watchOrbitalRoute\([^;]*\);\s*this\.orbitalEvidenceUnsubscribe = watchOrbitalEvidence\([^;]*\);\s*\}/);
+  assert.equal(source.match(/watchOrbitalEvidence\(/g)?.length, 1);
   assert.equal(source.match(/watchOrbitalRoute\(/g)?.length, 1);
   assert.equal(source.match(/contextMenu\.satellitePasses/g)?.length, 1);
 });

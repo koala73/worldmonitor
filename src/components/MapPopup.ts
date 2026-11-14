@@ -16,7 +16,7 @@ import { assessCorroboration, corroborationLabelHtml, evidenceFromItem } from '@
 import { isMobileDevice, getCSSColor } from '@/utils';
 import { TransitChart } from '@/utils/transit-chart';
 import { hasImageryRow, imageryTargetFor, mountImageryRow, renderImageryRow } from './map-popup-imagery';
-import { ORBITAL_EVIDENCE_EVENT } from '@/services/orbital/object-imagery';
+import { ORBITAL_EVIDENCE_EVENT } from '@/services/orbital/evidence-event';
 import { HS2RingChart } from '@/utils/hs2-ring-chart';
 import type { GetChokepointStatusResponse, TransitDayCount } from '@/services/supply-chain';
 import { fetchChokepointHistory } from '@/services/supply-chain';

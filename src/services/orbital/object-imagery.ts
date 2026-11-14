@@ -20,9 +20,6 @@ import { cropBox, planetaryComputerCropUrl } from './crop-url';
 import { assembleEvidence } from './match';
 import { createOrbitalPassClient, type OrbitalPassClient } from './pass-client';
 
-/** Window event a popup's "Open evidence" raises with the object's map position; the app opens the lookup. */
-export const ORBITAL_EVIDENCE_EVENT = 'wm:orbital-open-evidence';
-
 export type ImageryTarget =
   | { kind: 'site'; origin: WatchedSiteOrigin; point: GeoPoint }
   | { kind: 'point'; point: GeoPoint };
