@@ -80,7 +80,7 @@ export async function lookupPointImagery(point: GeoPoint, signal?: AbortSignal):
     .map((archive) => searchStacArchive(archive, { point, window, signal })));
   const evidence = assembleEvidence({ lookup, stac });
   const newest = evidence.acquisitions.find((a) => a.imageUrl);
-  const next = lookup.passes.filter((p) => p.timeMs > lookup.nowMs).sort((a, b) => a.timeMs - b.timeMs)[0];
+  const next = lookup.passes.filter((p) => p.inFootprint && p.timeMs > lookup.nowMs).sort((a, b) => a.timeMs - b.timeMs)[0];
   return {
     latest: newest?.imageUrl
       ? { datetime: new Date(newest.endMs).toISOString(), profileId: newest.profileId, archive: archiveOf(newest.imageUrl), candidates: [newest.imageUrl] }
