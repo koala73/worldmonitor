@@ -5244,7 +5244,8 @@
         "weather": "Погода"
       },
       "caption": {
-        "clear": "Ясно",
+        "clear": "Ясно в точке",
+        "clearSceneCloud": "Ясно в точке · облачность сцены {{pct}}%",
         "clouded": "Облачно · {{pct}}%",
         "cloudShadow": "Тень облака",
         "spotNotChecked": "Облачность в точке не проверена",

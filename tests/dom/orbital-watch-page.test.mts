@@ -238,6 +238,15 @@ describe('satellite pass lookup sheet', () => {
     expect(cards()[1]!.querySelector<HTMLElement>('.ow-image-credit')!.title).toBe('Contains modified Copernicus Sentinel data 2026');
   });
 
+  it('says a clear read is about the point, and gives the scene cloud when the scene is cloudy', () => {
+    const { all, confirmedNew, confirmedOld } = tiered();
+    const cloudyScene = acquisition(confirmedOld, { condition: 'clear', cloudCoverPct: 64.4 });
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew, { condition: 'clear', cloudCoverPct: 9.6 }), cloudyScene], bestView: cloudyScene }));
+    const bottom = (i: number) => cards()[i]!.querySelectorAll('.ow-caption-lines span')[1]!.textContent;
+    expect(bottom(0)).toMatch(/ · Clear at point · 64% scene cloud$/);
+    expect(bottom(1), 'a scene under 10% cloud needs no scene figure').toMatch(/ · Clear at point$/);
+  });
+
   it('shows every image as a labelled skeleton, then the image or a failure tile with retry', () => {
     const { all, confirmedNew } = tiered();
     mounted(answered(all, { acquisitions: [acquisition(confirmedNew)] }));
