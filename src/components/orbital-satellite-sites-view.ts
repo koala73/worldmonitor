@@ -87,7 +87,7 @@ export async function renderSatelliteSites(host: HTMLElement, noradId: string, n
   const loaded = getTrackedSatelliteTle(noradId);
   const tle: TrackedSatelliteTle | null = loaded ? { noradId, name: loaded.name || name, line1: loaded.line1, line2: loaded.line2 } : null;
   if (!tle) {
-    host.replaceChildren(host.firstChild!, note('Reopen this satellite after the layer refreshes; its orbit elements are not loaded.'));
+    host.replaceChildren(host.firstChild!, note('Click the satellite again; its orbit elements are not loaded.'));
     return null;
   }
   const nowMs = Date.now();

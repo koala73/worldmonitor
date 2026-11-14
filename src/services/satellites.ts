@@ -119,9 +119,8 @@ export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
   }
 }
 
-/** The element set the layer last loaded for a tracked satellite, while it is still current. */
+/** The element set the layer last drew a tracked satellite from; coverage reports its age. */
 export function getTrackedSatelliteTle(noradId: string): SatelliteTLE | null {
-  if (!cachedData || Date.now() - cachedAt >= STALE_MAX) return null;
   return tleByNorad.get(noradId) ?? null;
 }
 
