@@ -1,23 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { cache, inflight, limiter } = vi.hoisted(() => ({
+const { cache, inflight, backoff, limiter } = vi.hoisted(() => ({
   cache: new Map<string, unknown>(),
+  backoff: new Set<string>(),
   inflight: new Map<string, Promise<unknown>>(),
   limiter: vi.fn(async (_scope: string, _limit: number, _window: string, _identifier: string) => ({ allowed: true, degraded: false })),
 }));
 vi.mock('../_shared/rate-limit', () => ({ checkScopedRateLimit: limiter }));
 vi.mock('../_shared/redis', () => ({
-  cachedFetchJson: vi.fn(async (key: string, ttl: number, fetcher: () => Promise<unknown>, negativeTtl: number) => {
-    if (cache.has(key)) return (cache.get(key) as { value: unknown }).value;
+  // Mirrors redis.ts: a fetcher error arms a per-key backoff unless the caller marks it caller-local.
+  cachedFetchJsonWithMeta: vi.fn(async (key: string, ttl: number, fetcher: () => Promise<unknown>, negativeTtl: number,
+    opts?: { isCallerLocalError?: (error: unknown) => boolean }) => {
+    if (cache.has(key)) return { data: (cache.get(key) as { value: unknown }).value, source: 'cache', leader: false };
+    if (backoff.has(key)) throw new Error(`unavailable backoff active for "${key}"`);
     const pending = inflight.get(key) ?? fetcher()
       .then((value) => { cache.set(key, { value, ttl: value === null ? negativeTtl : ttl }); return value; })
+      .catch((error: unknown) => { if (!opts?.isCallerLocalError?.(error)) backoff.add(key); throw error; })
       .finally(() => inflight.delete(key));
     inflight.set(key, pending);
-    return pending;
+    return { data: await pending, source: 'fresh', leader: true };
   }),
 }));
 
-import { normalizePlaceQuery, placeSearchCacheKey, searchPlace } from '../worldmonitor/infrastructure/v1/search-place';
+import { cachedFetchJsonWithMeta } from '../_shared/redis';
+import { isCallerBudgetRefusal, normalizePlaceQuery, placeSearchCacheKey, searchPlace } from '../worldmonitor/infrastructure/v1/search-place';
 
 const ctx = { request: new Request('https://worldmonitor.test') } as Parameters<typeof searchPlace>[0];
 const rotterdam = [
@@ -29,6 +35,7 @@ const rotterdam = [
 beforeEach(() => {
   cache.clear();
   inflight.clear();
+  backoff.clear();
   limiter.mockResolvedValue({ allowed: true, degraded: false });
   vi.stubGlobal('fetch', vi.fn(async () => Response.json(rotterdam)));
 });
@@ -90,6 +97,28 @@ describe('place-name search', () => {
     expect(limiter).toHaveBeenCalledWith('search-place-provider:caller', 6, '60 s', expect.any(String));
     expect(limiter).not.toHaveBeenCalledWith('reverse-geocode', 1, '1 s', 'global');
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not block caller B on a name after caller A's own budget refusal for it", async () => {
+    const callerA = { request: new Request('https://worldmonitor.test', { headers: { 'x-real-ip': '198.51.100.1' } }) } as Parameters<typeof searchPlace>[0];
+    const callerB = { request: new Request('https://worldmonitor.test', { headers: { 'x-real-ip': '198.51.100.2' } }) } as Parameters<typeof searchPlace>[0];
+    limiter.mockImplementation(async (scope, _limit, _window, identifier) =>
+      ({ allowed: !(scope === 'search-place-provider:caller' && identifier === '198.51.100.1'), degraded: false }));
+    await expect(searchPlace(callerA, { q: 'Rotterdam' })).rejects.toMatchObject({ statusCode: 429 });
+    expect(await searchPlace(callerB, { q: 'Rotterdam' })).toMatchObject({ places: [{ name: 'Rotterdam, South Holland, Netherlands' }], error: '' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks only a caller budget refusal as caller-local, so it never arms the shared per-name backoff', async () => {
+    limiter.mockImplementation(async (scope) => ({ allowed: scope !== 'search-place-provider:caller', degraded: false }));
+    const callerRefusal = await searchPlace(ctx, { q: 'Rotterdam' }).catch((error: unknown) => error);
+    const opts = vi.mocked(cachedFetchJsonWithMeta).mock.calls[0]![4]!;
+    expect(opts.isCallerLocalError).toBe(isCallerBudgetRefusal);
+    expect(isCallerBudgetRefusal(callerRefusal)).toBe(true);
+    limiter.mockImplementation(async (scope) => ({ allowed: scope !== 'reverse-geocode', degraded: false }));
+    const providerRefusal = await searchPlace(ctx, { q: 'Delft' }).catch((error: unknown) => error);
+    expect(providerRefusal).toMatchObject({ statusCode: 429 });
+    expect(isCallerBudgetRefusal(providerRefusal)).toBe(false);
   });
 
   it('fails closed without calling Nominatim when the rate limiter is degraded or exhausted', async () => {

@@ -6,7 +6,7 @@ import type {
   PlaceMatch,
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 import { ApiError, ValidationError } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
 import { checkScopedRateLimit } from '../../../_shared/rate-limit';
 import { getClientRateLimitKey } from '../../../_shared/client-ip';
 import { sha256Hex } from '../../../_shared/hash';
@@ -25,6 +25,16 @@ const PROVIDER_RATE_LIMIT_IDENTIFIER = 'global';
 // A never-searched name always misses the cache, so one caller may spend only a small share of that bucket.
 const CALLER_MISS_SCOPE = 'search-place-provider:caller';
 const CALLER_MISS_LIMIT = 6;
+
+/** A refusal of one caller's own budget: it must not arm the shared per-name backoff or reach callers coalesced behind it. */
+class CallerBudgetRefusal extends ApiError {
+  constructor(statusCode: number, message: string) {
+    super(statusCode, message, '');
+    this.name = 'CallerBudgetRefusal';
+  }
+}
+
+export const isCallerBudgetRefusal = (error: unknown): boolean => error instanceof CallerBudgetRefusal;
 
 interface NominatimPlace {
   lat?: string;
@@ -53,8 +63,8 @@ function toMatch(place: NominatimPlace): PlaceMatch | null {
 
 async function fetchPlaces(query: string, caller: string): Promise<PlaceMatch[] | null> {
   const callerLimit = await checkScopedRateLimit(CALLER_MISS_SCOPE, CALLER_MISS_LIMIT, '60 s', caller);
-  if (callerLimit.degraded) throw new ApiError(503, 'Rate-limit service temporarily unavailable', '');
-  if (!callerLimit.allowed) throw new ApiError(429, 'Too many requests', '');
+  if (callerLimit.degraded) throw new CallerBudgetRefusal(503, 'Rate-limit service temporarily unavailable');
+  if (!callerLimit.allowed) throw new CallerBudgetRefusal(429, 'Too many requests');
   const providerLimit = await checkScopedRateLimit(PROVIDER_RATE_LIMIT_SCOPE, 1, '1 s', PROVIDER_RATE_LIMIT_IDENTIFIER);
   if (providerLimit.degraded) throw new ApiError(503, 'Rate-limit service temporarily unavailable', '');
   if (!providerLimit.allowed) throw new ApiError(429, 'Too many requests', '');
@@ -83,9 +93,9 @@ export const searchPlace: InfrastructureServiceHandler['searchPlace'] = async (
     throw new ValidationError([{ field: 'q', description: `must be ${MIN_QUERY_CHARS} to ${MAX_QUERY_CHARS} characters` }]);
   }
   try {
-    const places = await cachedFetchJson(await placeSearchCacheKey(query), FOUND_TTL_SECONDS,
+    const { data: places } = await cachedFetchJsonWithMeta<PlaceMatch[]>(await placeSearchCacheKey(query), FOUND_TTL_SECONDS,
       () => fetchPlaces(query, getClientRateLimitKey(ctx.request)),
-      NOT_FOUND_TTL_SECONDS, { cacheFetcherErrors: false });
+      NOT_FOUND_TTL_SECONDS, { cacheFetcherErrors: false, isCallerLocalError: isCallerBudgetRefusal });
     return { places: places ?? [], error: '' };
   } catch (error) {
     if (error instanceof ApiError) throw error;
