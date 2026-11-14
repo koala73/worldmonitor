@@ -35,7 +35,11 @@ const command = ([verb, key, value, ...args]) => {
   }
   if (verb === 'EXPIRE') return values.has(key) ? 1 : 0;
   if (verb === 'EVAL') { values.delete(args[0]); return 1; }
-  if (verb === 'LPUSH') { pushes.push(JSON.parse(value)); return 1; }
+  if (verb === 'LPUSH') {
+    if (process.env.TEST_LPUSH_FAIL === '1') return 0;
+    pushes.push(JSON.parse(value));
+    return 1;
+  }
   if (verb === 'DEL') { values.delete(key); return 1; }
   throw new Error('Unexpected Redis command ' + verb);
 };
@@ -72,7 +76,7 @@ function makeRunner() {
   writeFileSync(preloadPath, preload);
   writeFileSync(statePath, '[]');
   writeFileSync(envFile, '');
-  const run = (feed) => {
+  const run = (feed, extraEnv = {}) => {
     const result = spawnSync(process.execPath, ['--import', preloadPath, 'seed-aviation.mjs'], {
       cwd: join(root, 'scripts'),
       env: {
@@ -87,6 +91,7 @@ function makeRunner() {
         WM_SEED_ENV_FILE: envFile,
         TEST_STATE_PATH: statePath,
         TEST_FAA_XML: faaXml(feed),
+        ...extraEnv,
       },
       encoding: 'utf8',
       timeout: 30_000,
@@ -123,6 +128,8 @@ test('an FAA ground stop and a full closure each queue an aviation_closure notif
     assert.match(titles.find(t => t.startsWith('MCO')) ?? '', /closure/i);
     const jfk = pushes.find(p => p.payload.title.startsWith('JFK'));
     assert.equal(jfk.payload.source, 'FAA');
+    // notification-relay delivers only critical events to realtime rules.
+    assert.equal(jfk.severity, 'critical', 'a ground stop must be deliverable');
     assert.equal(jfk.payload.countryCode, 'US');
     assert.equal(typeof jfk.payload.lat, 'number');
   } finally {
@@ -152,6 +159,17 @@ test('an airport closed only to diverted aircraft is not reported or notified as
     ] });
     assert.deepEqual(pushes.faaAlerts.map(a => a.iata), [], 'the dashboard must not show these airports as closed');
     assert.deepEqual(closureTitles(pushes), []);
+  } finally {
+    cleanup();
+  }
+});
+
+test('a ground stop whose queue push failed is retried on the next tick', () => {
+  const { run, cleanup } = makeRunner();
+  try {
+    const feed = { stops: ['JFK'] };
+    assert.deepEqual(closureTitles(run(feed, { TEST_LPUSH_FAIL: '1' })), []);
+    assert.equal(closureTitles(run(feed)).length, 1, 'the failed notification is not recorded as sent');
   } finally {
     cleanup();
   }
