@@ -224,6 +224,7 @@ export function createOrbitalPassClient(deps: PassClientDeps = {}): OrbitalPassC
       };
       assertPassQuery(query.point, window);
       const catalog = await Promise.race([loadCatalog(), cancelled]);
+      if (isCancelled) throw abortError();
       const base = {
         point: query.point,
         window,
