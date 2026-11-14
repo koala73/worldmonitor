@@ -35,6 +35,8 @@ Sensors whose profile needs daylight reach an imaging tier only when the sun is 
 
 The inventory covers 33 profiles. A satellite matches by NORAD catalog number first, then by a family name pattern. Military families such as Yaogan list their imaging satellites by NORAD number, because their names do not separate imaging satellites from signals satellites, and the name patterns never match debris. Where an operator publishes no figure, the profile marks its footprint as assumed and leaves resolution empty.
 
+ICESat-2's footprint is the 6.6 km envelope of its six laser beams, not a continuous swath. The beams sample 11 m spots along three pairs of tracks, so a point inside the envelope can fall between tracks. Its passes say when the beam array next crosses a place, which suits reservoir-sized targets. They do not promise a measurement at an exact point, because orbit elements from CelesTrak carry kilometre-scale cross-track error.
+
 ### Lookup cost
 
 Measured on 2026-11-14 against a CelesTrak active list recorded that day (16,896 objects), on an 8-core Intel Xeon VM with Node.js 24:
