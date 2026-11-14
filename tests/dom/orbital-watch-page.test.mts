@@ -19,7 +19,7 @@ import type { PassTier } from '../../shared/orbital/tiers.js';
 import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
-import { OrbitalWatchPage, type OrbitalWatchState } from '@/components/OrbitalWatchPage';
+import { formatOrbitalTime, OrbitalWatchPage, setOrbitalDisplayZone, type OrbitalWatchState } from '@/components/OrbitalWatchPage';
 import { IMAGE_CREDIT, ORBITAL_WATCH_DOCS_URL } from '@/services/orbital/credits';
 import manifest from '../../shared/source-attribution-manifest.json';
 import { openOrbitalWatch } from '@/app/orbital-watch';
@@ -284,6 +284,15 @@ describe('imagery evidence sheet', () => {
     page.render(state);
     page.render(state);
     expect(live.size, 'one watch per thumbnail on screen').toBe(3);
+  });
+
+  it('dates the evidence line by the newest image even when only an older one has a preview', () => {
+    const { all, confirmedNew, likely } = tiered();
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew), acquisition(likely, { imageUrl: null })] }));
+    const newest = formatOrbitalTime(likely.timeMs, 'stamp');
+    expect(evidenceLine()).toContain(newest);
+    expect(sectionOf('latest').querySelector('.ies-note')!.textContent).toContain(newest);
+    expect(sectionOf('latest').querySelector('.ies-caption')!.textContent).toContain(formatOrbitalTime(confirmedNew.timeMs, 'stamp'));
   });
 
   it('paints point-bearing images only from blob: URLs and releases them when the lookup ends', async () => {

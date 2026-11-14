@@ -446,6 +446,9 @@ const SHEET_HEIGHTS: readonly SheetHeight[] = ['collapsed', 'half', 'full'];
 interface Tally {
   /** Confirmed acquisitions, newest first. */
   confirmed: MatchedAcquisition[];
+  /** The newest confirmed acquisition, with or without a preview. */
+  newest: MatchedAcquisition | null;
+  /** The newest one with a preview, which the sheet shows. */
   latest: MatchedAcquisition | null;
   counts: Record<CountTier, number>;
   inRange: number;
@@ -475,6 +478,7 @@ function tally(lookup: PointPassLookup, passes: readonly PointPass[], evidence: 
   }
   return {
     confirmed,
+    newest: confirmed[0] ?? null,
     latest: confirmed.find((acquisition) => acquisition.imageUrl) ?? confirmed[0] ?? null,
     counts,
     inRange,
@@ -876,12 +880,12 @@ export class OrbitalWatchPage {
   }
 
   private evidenceBlock(lookup: PointPassLookup, archives: ArchiveState, summary: Tally, evidence: OrbitalEvidence | null): HTMLElement {
-    const { latest, counts } = summary;
+    const { newest, counts } = summary;
     const parts: string[] = [];
-    if (counts.confirmed > 0 && latest) {
+    if (counts.confirmed > 0 && newest) {
       parts.push(t('orbitalWatch.sheet.confirmedCount', { count: counts.confirmed }));
-      parts.push(t('orbitalWatch.sheet.newest', { when: formatStamp(latest.startMs) }));
-      parts.push(conditionLabel(latest));
+      parts.push(t('orbitalWatch.sheet.newest', { when: formatStamp(newest.startMs) }));
+      parts.push(conditionLabel(newest));
     } else {
       parts.push(t(archives.kind === 'answered' ? 'orbitalWatch.sheet.noneConfirmed' : 'orbitalWatch.sheet.noneYet'));
     }
@@ -911,7 +915,7 @@ export class OrbitalWatchPage {
   }
 
   private latestImage(summary: Tally, evidence: OrbitalEvidence | null, archives: ArchiveState): HTMLElement {
-    const { latest, confirmed } = summary;
+    const { latest, newest, confirmed } = summary;
     if (!latest) {
       return section('latest', t('orbitalWatch.sheet.latest'),
         h('p', { className: 'ies-empty' }, t(archives.kind === 'answered' ? 'orbitalWatch.sheet.latestNone' : 'orbitalWatch.sheet.latestChecking')),
@@ -935,7 +939,11 @@ export class OrbitalWatchPage {
       : null;
     const hero = imageTile(latest.imageUrl, alt, sensor, 'hero', [...imageOverlays(), viewButton(view, alt)]);
     hero.classList.toggle('is-radar', isRadar(latest));
+    const newerWithoutPreview = newest && newest !== latest
+      ? h('p', { className: 'ies-note' }, t('orbitalWatch.sheet.newestNoPreview', { when: formatStamp(newest.startMs) }))
+      : null;
     return section('latest', t('orbitalWatch.sheet.latest'),
+      newerWithoutPreview,
       h('figure', { className: 'ies-figure' },
         hero,
         h('figcaption', { className: 'ies-caption' },
