@@ -5,7 +5,7 @@ const { Resend } = require('resend');
 const { appendUnsubscribeText, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
 const { sendResendEmail } = require('./lib/resend-send.cjs');
 const { decrypt } = require('./lib/crypto.cjs');
-const { freeTierAllowsEvent, freeTierAllowsChannel, freeTierCountryScope } = require('./lib/free-tier-delivery.cjs');
+const { freeTierAllowsEvent, freeTierAllowsEventType, freeTierAllowsChannel, freeTierCountryScope } = require('./lib/free-tier-delivery.cjs');
 const {
   assertNotificationWebhookDeliveryUrlSafe,
   postJsonWithPinnedAddress,
@@ -489,6 +489,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
   const events = [];
   for (const ev of parsedEvents) {
     if (!freeTierAllowsEvent(drainTier, ev.severity ?? 'high')) continue;
+    if (!freeTierAllowsEventType(drainTier, ev.eventType)) continue;
     if (drainTier < 1 && (!drainScope.ok || !eventMatchesCountryScope(ev, { countries: drainScope.countries }))) continue;
     if ((await suppressedLinksFor(ev, 1, 'stage=quiet-hours-drain')).length === 0) events.push(ev);
   }
@@ -1981,6 +1982,7 @@ async function processEvent(event) {
   const subject = formatSubject(event);
   const eventSeverity = event.severity ?? 'high';
   let freeSeverityDrops = 0;
+  let freeEventTypeDrops = 0;
   let freeScopeDrops = 0;
   let channelsFailedUsers = 0;
   let channelsFetchError = null;
@@ -1989,6 +1991,14 @@ async function processEvent(event) {
     const userTier = tierByUser.get(rule.userId) ?? 0;
     if (!freeTierAllowsEvent(userTier, eventSeverity)) {
       freeSeverityDrops += 1;
+      continue;
+    }
+    // Orbital watched-site alerts are Pro-only outright, whatever the ladder
+    // admits (convex/alertRules.ts assertOrbitalAlertEntitlement). That gate
+    // runs only at write time, so delivery re-applies it here or a
+    // downgraded account keeps the paid stream on its leftover rule.
+    if (!freeTierAllowsEventType(userTier, event.eventType)) {
+      freeEventTypeDrops += 1;
       continue;
     }
     // Free rules must carry an explicit country scope; a legacy worldwide
@@ -2138,6 +2148,7 @@ async function processEvent(event) {
   }
 
   if (freeSeverityDrops > 0) console.log(`[relay] Free-ladder severity clamp: dropped ${freeSeverityDrops} rule(s) for non-critical event (severity=${eventSeverity})`);
+  if (freeEventTypeDrops > 0) console.log(`[relay] Free-ladder event-type clamp: dropped ${freeEventTypeDrops} rule(s) for Pro-only event type (${String(event.eventType ?? 'unknown').replace(/[\r\n]/g, ' ').slice(0, 80)})`);
   if (freeScopeDrops > 0) console.log(`[relay] Free-ladder country-scope clamp: dropped ${freeScopeDrops} rule(s) without a matching explicit country scope`);
   if (channelsFailedUsers > 0) await requeueAfterChannelsFailure(event, channelsFetchError, channelsFailedUsers);
 }

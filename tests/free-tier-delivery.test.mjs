@@ -3,9 +3,12 @@ import { describe, it } from 'node:test';
 import {
   FREE_DELIVERY_CHANNELS,
   FREE_DELIVERY_SEVERITIES,
+  FREE_EXCLUDED_EVENT_TYPES,
   freeTierAllowsChannel,
   freeTierAllowsEvent,
+  freeTierAllowsEventType,
 } from '../scripts/lib/free-tier-delivery.cjs';
+import { ORBITAL_SITE_ALERT_EVENT_TYPES } from '../shared/alert-rule-shape.ts';
 
 // Delivery-time clamp for the free alert ladder (#4273). These constants
 // mirror shared/alert-capabilities.ts (the relay is CJS); the sets below are
@@ -32,10 +35,25 @@ describe('free-tier delivery clamp (#4273)', () => {
     }
   });
 
+  it('free tier never receives Pro-only orbital event types (Strix 3e984e61)', () => {
+    // Orbital events are stamped critical and carry no country attribution,
+    // so this rung is the only thing between a downgraded account's leftover
+    // rule and the paid stream.
+    assert.deepEqual([...FREE_EXCLUDED_EVENT_TYPES].sort(), [...ORBITAL_SITE_ALERT_EVENT_TYPES].sort());
+    for (const type of ORBITAL_SITE_ALERT_EVENT_TYPES) {
+      assert.equal(freeTierAllowsEventType(0, type), false, type);
+    }
+    assert.equal(freeTierAllowsEventType(0, 'military_conflict'), true);
+    assert.equal(freeTierAllowsEventType(0, undefined), true);
+  });
+
   it('paid tiers are never clamped', () => {
     for (const tier of [1, 2, 3]) {
       assert.equal(freeTierAllowsEvent(tier, 'low'), true);
       assert.equal(freeTierAllowsChannel(tier, 'webhook'), true);
+      for (const type of ORBITAL_SITE_ALERT_EVENT_TYPES) {
+        assert.equal(freeTierAllowsEventType(tier, type), true, `${tier}:${type}`);
+      }
     }
   });
 });
