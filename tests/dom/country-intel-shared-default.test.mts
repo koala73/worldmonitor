@@ -5,6 +5,7 @@ const harness = vi.hoisted(() => ({
   entries: new Map<string, unknown>(),
   premium: true,
   writeAvailable: true,
+  imageryFlags: [] as unknown[],
   context: vi.fn(),
   llm: vi.fn(),
 }));
@@ -28,7 +29,7 @@ vi.mock('../../server/_shared/redis', () => ({
 }));
 vi.mock('../../server/_shared/premium-check', () => ({ isCallerPremium: async () => harness.premium }));
 vi.mock('../../server/_shared/llm', () => ({ callLlm: (...args: unknown[]) => harness.llm(...args) }));
-vi.mock('../../server/worldmonitor/intelligence/v1/_country-brief-evidence', () => ({ buildCountryBriefEvidence: async () => [], readCountryAirportNotams: async () => [] }));
+vi.mock('../../server/worldmonitor/intelligence/v1/_country-brief-evidence', () => ({ buildCountryBriefEvidence: async () => [], readCountryAirportNotams: async () => [], readCountryImageryFlags: async () => harness.imageryFlags }));
 vi.mock('../../server/worldmonitor/intelligence/v1/_country-brief-context', async importOriginal => ({
   ...await importOriginal<object>(),
   fetchSharedCountryContext: (...args: unknown[]) => harness.context(...args),
@@ -54,6 +55,7 @@ describe('shared default accepted country assessment', () => {
     harness.entries.clear();
     harness.premium = true;
     harness.writeAvailable = true;
+    harness.imageryFlags = [];
     harness.context.mockReset().mockResolvedValue({ contextSnapshot: 'Shared server context', sources: [source] });
     harness.llm.mockReset().mockResolvedValue({ content: completion, model: 'test-model' });
   });
@@ -69,6 +71,15 @@ describe('shared default accepted country assessment', () => {
     expect(second).toEqual(first);
     expect(harness.llm).toHaveBeenCalledTimes(1);
     expect(harness.context).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([['en', 2], ['fr', 1]])('regenerates a default %s brief after an imagery change only when the brief can carry imagery evidence', async (lang, generations) => {
+    if (lang !== 'en') harness.llm.mockResolvedValue({ content: 'France announces new energy policy [1].', model: 'test-model' });
+    await request(lang);
+    const scene = (itemId: string) => ({ itemId, datetime: '2026-11-01T05:00:00Z', platform: 'sentinel-1a' });
+    harness.imageryFlags = [{ siteId: 'fr-site', name: 'Test Site', geometryKey: 'g', raised: scene('s1'), confirmed: scene('s2') }];
+    await request(lang);
+    expect(harness.llm).toHaveBeenCalledTimes(generations);
   });
 
   it('does not generate an ungrounded non-English default when shared context is unavailable', async () => {

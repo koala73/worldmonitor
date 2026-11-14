@@ -150,6 +150,7 @@ export class CountryBriefController {
     void this.read('sanctions', signal => this.source.intelligence.getCountryRisk({ countryCode: code }, { signal }), response => {
       if (response.upstreamUnavailable) throw new Error('Sanctions unavailable');
       this.panel.updateSanctionsPressure?.({ entryCount: response.sanctionsCount, sanctionsActive: response.sanctionsActive });
+      this.panel.updateImageryChange?.(response.imageryChange ?? null);
     }, true);
     const reporterCode = iso2ToComtradeReporterCode(code);
     const reportingCountry = iso2ToUnCode(code);

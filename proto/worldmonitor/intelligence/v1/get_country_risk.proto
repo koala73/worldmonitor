@@ -36,4 +36,20 @@ message GetCountryRiskResponse {
   int64 fetched_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // True when all upstream Redis keys were unavailable. Signals CDN cache bypass.
   bool upstream_unavailable = 8;
+  // Imagery change flags, shown beside the score, never scored.
+  ImageryChangeContext imagery_change = 9;
+}
+
+// Watched sites with a confirmed imagery change.
+message ImageryChangeContext {
+  int32 watched_site_count = 1;
+  repeated ImageryChangeSite confirmed_sites = 2;
+}
+
+// A watched site with a confirmed change.
+message ImageryChangeSite {
+  string site_id = 1;
+  string name = 2;
+  // Time of the confirming scene, as Unix epoch milliseconds.
+  int64 confirmed_at = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }

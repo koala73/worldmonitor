@@ -16,3 +16,9 @@ export function energyEvidenceGrounded(
   headlineCount: number,
   evidence: ReadonlyArray<{ kind: string; factText: string }>,
 ): boolean;
+
+export function imageryEvidenceGrounded(
+  text: string,
+  headlineCount: number,
+  evidence: ReadonlyArray<{ kind: string; factText: string }>,
+): boolean;

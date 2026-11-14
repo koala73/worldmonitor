@@ -118,6 +118,9 @@ const NOTAM_META_KEY = 'seed-meta:aviation:notam';
 
 // Notification dedup state (persisted so cron runs don't spam on every tick)
 const AVIATION_PREV_ALERTED_KEY = 'notifications:dedup:aviation:prev-alerted:v1';
+// Separate from the AviationStack key: each source overwrites its prev-state
+// with only its own alerts, so a shared key would re-alert the other source.
+const FAA_PREV_ALERTED_KEY      = 'notifications:dedup:aviation:faa:prev-alerted:v1';
 const NOTAM_PREV_CLOSED_KEY     = 'notam:prev-closed-state:v1';
 const PREV_STATE_TTL            = 86_400; // 24h — longer than any realistic cron cadence
 
@@ -405,7 +408,9 @@ async function upstashDel(key) {
 // ─── Notification publishing ─────────────────────────────────────────────────
 // Mirrors ais-relay.cjs::publishNotificationEvent: LPUSH the event onto
 // wm:events:queue, guarded by a SETNX dedup key (TTL = dedupTtl). On LPUSH
-// failure, rollback the dedup key so the next run can retry.
+// failure, rollback the dedup key so the next run can retry. Returns true only
+// when this call queued the event. A dedup hit returns false: a failed rollback
+// can leave the key with no event behind it, so the caller retries after expiry.
 
 function notifyHash(str) {
   let h = 0;
@@ -428,20 +433,22 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
       emitTelemetry: ({ line }) => console.warn(line),
     });
     if (!dedupDecision.shouldPublish) {
-      if (!dedupDecision.isDuplicate) return;
+      if (!dedupDecision.isDuplicate) return false;
       console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
-      return;
+      return false;
     }
     const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt: Date.now() });
     const ok = await upstashLpush('wm:events:queue', msg);
     if (ok) {
       console.log(`[Notify] Queued ${dedupDecision.severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
-    } else {
-      console.warn(`[Notify] LPUSH failed for ${eventType} — rolling back dedup key`);
-      await upstashDel(dedupKey);
+      return true;
     }
+    console.warn(`[Notify] LPUSH failed for ${eventType} — rolling back dedup key`);
+    await upstashDel(dedupKey);
+    return false;
   } catch (e) {
     console.warn(`[Notify] publishNotificationEvent error (${eventType}):`, e?.message || e);
+    return false;
   }
 }
 
@@ -992,11 +999,29 @@ export async function seedAviationNews() {
 
 // ─── Section 5: Notification dispatch ────────────────────────────────────────
 // Aviation: new entries into severe/major state trigger an aviation_closure notification.
+// FAA reasons are terse ("equipment / outage"), so the title names the program.
+const FAA_DELAY_TYPE_LABEL = {
+  FLIGHT_DELAY_TYPE_GROUND_STOP: 'Ground stop',
+  FLIGHT_DELAY_TYPE_GROUND_DELAY: 'Ground delay program',
+};
+function faaNotifyReason(a) {
+  const label = FAA_DELAY_TYPE_LABEL[a.delayType];
+  if (!label || /clos/i.test(a.reason)) return a.reason;
+  return `${label}: ${a.reason}`;
+}
+const severeBand = a => (a.severity === 'FLIGHT_DELAY_SEVERITY_SEVERE' ? 'critical' : 'high');
+// notification-relay delivers only critical events to realtime rules, and a
+// ground stop halts every departure, so it is critical whatever its delay band.
+const faaBand = a => (a.delayType === 'FLIGHT_DELAY_TYPE_GROUND_STOP' ? 'critical' : severeBand(a));
+const AVIATION_NOTIFY_SOURCES = {
+  intl: { prevKey: AVIATION_PREV_ALERTED_KEY, source: 'AviationStack', reason: a => a.reason, band: severeBand },
+  faa: { prevKey: FAA_PREV_ALERTED_KEY, source: 'FAA', reason: faaNotifyReason, band: faaBand },
+};
 // NOTAM:    new ICAOs in the closed-set trigger a notam_closure notification.
 // Both sources persist their prev-state to Redis so short-lived cron runs don't
 // spam on every tick.
 
-async function dispatchAviationNotifications(alerts) {
+async function dispatchAviationNotifications(alerts, notifySource) {
   const severeAlerts = alerts.filter(a =>
     a.severity === 'FLIGHT_DELAY_SEVERITY_SEVERE' || a.severity === 'FLIGHT_DELAY_SEVERITY_MAJOR',
   );
@@ -1004,17 +1029,14 @@ async function dispatchAviationNotifications(alerts) {
   // Diffing by airport alone would filter a MAJOR->SEVERE escalation for an
   // already-alerted airport out HERE — before the severity-aware coalesce key is
   // ever reached — so the escalation would never publish (PR #4985 review P1).
-  const aviationSeverityBand = a => (a.severity === 'FLIGHT_DELAY_SEVERITY_SEVERE' ? 'critical' : 'high');
+  const aviationSeverityBand = notifySource.band;
   const aviationAlertKey = a => `${a.iata}:${aviationSeverityBand(a)}`;
   const currentKeys = new Set(severeAlerts.filter(a => a.iata).map(aviationAlertKey));
-  const prev = await upstashGet(AVIATION_PREV_ALERTED_KEY);
+  const prev = await upstashGet(notifySource.prevKey);
   const prevSet = new Set(Array.isArray(prev) ? prev : []);
   const newAlerts = severeAlerts.filter(a => a.iata && !prevSet.has(aviationAlertKey(a)));
 
   // Persist current set for next tick's diff (24h TTL guards restarts).
-  // Keyed by airport+severity so a later band change is seen as a new state.
-  await upstashSet(AVIATION_PREV_ALERTED_KEY, [...currentKeys], PREV_STATE_TTL);
-
   for (const a of newAlerts.slice(0, 3)) {
     const severity = aviationSeverityBand(a);
     // Alert rows carry the registry's country NAME ('Brazil', 'China');
@@ -1031,11 +1053,11 @@ async function dispatchAviationNotifications(alerts) {
     // read as a data-quality bug in cron logs rather than silent non-matching.
     const site = airportNotifyLocation(a);
     if (site.lat === undefined) console.warn(`[Notify] aviation_closure ${a.iata}: no coordinates on the alert row — publishing unlocated (invisible to proximity rules)`);
-    await publishNotificationEvent({
+    const queued = await publishNotificationEvent({
       eventType: 'aviation_closure',
       payload: {
-        title: `${a.iata}${a.city ? ` (${a.city})` : ''}: ${a.reason || 'Airport disruption'}`,
-        source: 'AviationStack',
+        title: `${a.iata}${a.city ? ` (${a.city})` : ''}: ${notifySource.reason(a) || 'Airport disruption'}`,
+        source: notifySource.source,
         ...(countryCode ? { countryCode } : {}),
         ...site,
         // Coalesce by airport + severity band: repeated same-band disruptions
@@ -1049,7 +1071,11 @@ async function dispatchAviationNotifications(alerts) {
       variant: undefined,
       dedupTtl: 14_400, // 4h
     });
+    if (!queued) currentKeys.delete(aviationAlertKey(a));
   }
+  // Keyed by airport+severity so a later band change is seen as a new state.
+  // A failed publish stays out of the set so the next tick retries it.
+  await upstashSet(notifySource.prevKey, [...currentKeys], PREV_STATE_TTL);
 }
 
 async function dispatchNotamNotifications(closedIcaos, reasons, sourceByIcao = {}) {
@@ -1406,6 +1432,8 @@ async function runFaaSideCar() {
       if (faa?.alerts) {
         await writeExtraKeyWithMeta(FAA_KEY, faa, FAA_TTL, faa.alerts.length, FAA_META_KEY);
         console.log(`[FAA] wrote ${faa.alerts.length} alerts to ${FAA_KEY}`);
+        try { await dispatchAviationNotifications(faa.alerts, AVIATION_NOTIFY_SOURCES.faa); }
+        catch (e) { console.warn(`[FAA] notify error: ${e?.message || e}`); }
       }
     } catch (err) {
       console.warn(`[FAA] fetch/write error: ${err?.message || err} — extending TTL`);
@@ -1714,7 +1742,7 @@ async function afterPublishIntl(data) {
   // publishTransform()'d shape. fetchIntl returns seedIntlDelays' output
   // ({ alerts, coverage, healthy, skipped, ... }). Keep the bootstrap's intl
   // envelope in lockstep with INTL_KEY so provider omissions stay observable.
-  try { await dispatchAviationNotifications(data.alerts); }
+  try { await dispatchAviationNotifications(data.alerts, AVIATION_NOTIFY_SOURCES.intl); }
   catch (e) { console.warn(`[Intl] notify error: ${e?.message || e}`); }
   // Refresh the page-load bootstrap with this-tick intl. The pre-runSeed call
   // in main() already wrote a bootstrap using last-good intl; this overwrite

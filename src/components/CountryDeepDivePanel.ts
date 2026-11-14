@@ -95,7 +95,8 @@ const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
   DEPENDENCY_FLAG_DIVERSIFIABLE:            { text: 'Diversifiable',   cls: 'cdp-dep-ok' },
 };
 import { toApiUrl } from '@/services/runtime';
-import type { ComputeEnergyShockScenarioResponse, CrudeShareBaseline, ProductImpact, RegionalEnergyFeed } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import type { ComputeEnergyShockScenarioResponse, CrudeShareBaseline, ImageryChangeContext, ProductImpact, RegionalEnergyFeed } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { IMAGERY_CONTEXT_EXCLUSION, IMAGERY_CONTEXT_METHODOLOGY_HREF, imageryChangeSummary } from './_risk-imagery-context';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { overlayHistory, type OverlayCloseOrigin } from '@/utils/overlay-history';
 import type { GetDefenseIndustrialBaseResponse } from '@/generated/client/worldmonitor/military/v1/service_client';
@@ -212,6 +213,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private commodityVulnerabilityBody: HTMLElement | null = null;
   private debtBody: HTMLElement | null = null;
   private sanctionsBody: HTMLElement | null = null;
+  private readonly imageryContext = this.el('div', 'cdp-imagery-context');
   private no2ActivityBody: HTMLElement | null = null;
   private comtradeBody: HTMLElement | null = null;
   private tariffBody: HTMLElement | null = null;
@@ -530,6 +532,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.signalBreakdownBody?.replaceChildren(this.makeEmpty('Qualified country observations are unavailable.'));
     this.signalRecentBody?.replaceChildren();
     this.signalsBody?.querySelector('.cdp-qualified-coverage')?.remove();
+    this.signalsBody?.querySelector('.cdp-imagery-evidence')?.remove();
   }
 
   public updateQualifiedCountrySignals(value: import('../../shared/country-signal-observations').QualifiedCountrySignals): void {
@@ -549,7 +552,25 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       notes.append(this.el('p', 'cdp-economic-source', `${family.family}: ${family.state}${family.partial ? ' (partial)' : ''}. ${family.scope}. ${family.attribution}. Source time: ${family.snapshotAt ?? 'unknown'}.${family.observationWindow ? ` ${family.observationWindow}.` : ''}${sampling}${upstream} ${family.reason ?? ''}`));
     }
     this.signalsBody?.querySelector('.cdp-qualified-coverage')?.remove();
+    this.signalsBody?.querySelector('.cdp-imagery-evidence')?.remove();
+    const imagery = this.buildImageryEvidence(value.families.find(family => family.family === 'imagery'));
+    if (imagery) this.signalsBody?.append(imagery);
     this.signalsBody?.append(notes);
+  }
+
+  private buildImageryEvidence(family: import('../../shared/country-signal-observations').CountrySignalOutcome | undefined): HTMLElement | null {
+    if (family?.state !== 'observed') return null;
+    const block = this.el('div', 'cdp-imagery-evidence');
+    block.append(this.el('div', 'cdp-imagery-title', 'Satellite imagery'));
+    if (family.observations.length === 0) block.append(this.makeEmpty('No confirmed imagery statistics changes at this country\'s watched sites.'));
+    for (const row of family.observations) {
+      const item = this.el('div', 'cdp-imagery-item');
+      item.append(this.el('div', 'cdp-signal-desc', row.title));
+      if (row.eventAt) item.append(this.el('div', 'cdp-signal-time', `Confirmed ${row.eventAt.slice(0, 10)}`));
+      block.append(item);
+    }
+    block.append(this.el('p', 'cdp-economic-source', `${family.attribution}. Radar statistics changed at the site; this does not say what changed. Not an input to the Country Instability Index.`));
+    return block;
   }
 
   public updateNews(headlines: NewsItem[]): void {
@@ -3260,6 +3281,23 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     } else {
       this.scoreCard.append(this.makeEmpty(t('countryBrief.ciiUnavailable')));
     }
+    this.scoreCard.append(this.imageryContext);
+  }
+
+  public updateImageryChange(context: ImageryChangeContext | null): void {
+    const summary = imageryChangeSummary(context);
+    if (!summary) {
+      this.imageryContext.replaceChildren();
+      return;
+    }
+    const link = this.el('a', '', 'Methodology');
+    link.setAttribute('href', IMAGERY_CONTEXT_METHODOLOGY_HREF);
+    link.setAttribute('target', '_blank');
+    link.setAttribute('rel', 'noopener noreferrer');
+    const exclusion = this.el('p', 'cdp-imagery-exclusion', `${IMAGERY_CONTEXT_EXCLUSION} `);
+    exclusion.append(link);
+    this.imageryContext.replaceChildren(this.el('p', 'cdp-imagery-summary', summary), exclusion);
+    if (this.scoreCard && !this.imageryContext.isConnected) this.scoreCard.append(this.imageryContext);
   }
 
   public updateStock(data: StockIndexData): void {
@@ -4124,6 +4162,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.cachedSectors = [];
     this.map?.clearHighlightedRoute();
     this.scoreCard = null;
+    this.imageryContext.replaceChildren();
     this.currentMilitarySummary = null;
     this.defenseIndustrialFailure = null;
     this.currentDefenseIndustrial = null;

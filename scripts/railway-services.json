@@ -667,6 +667,7 @@
       "scripts/regional-snapshot/alert-emitter.mjs",
       "scripts/shared/notification-dedup.cjs",
       "scripts/shared/orbital-watched-sites.generated.mjs",
+      "scripts/shared/orbital/country-rollup.js",
       "scripts/shared/orbital/coverage.js",
       "scripts/shared/orbital/flag-record.js",
       "scripts/shared/orbital/land-coast-mask.data.js",
