@@ -414,6 +414,9 @@ const STANDALONE_KEYS = {
   // Imaging-satellite orbit elements and their daily ring (scripts/seed-orbital-catalog.mjs).
   // No dashboard consumer yet; the orbital lookup reads it through its own RPC.
   orbitalCatalog: 'orbital:catalog:v1',
+  // Watched-site satellite evidence index (scripts/seed-orbital-sites.mjs); per-site and
+  // per-country records sit beside it. Read by the orbital RPCs, not the dashboard.
+  orbitalSites: 'orbital:sites:v1',
   // Public chokepoint status open dataset index (/data/v1/chokepoints/), published
   // daily by .github/workflows/open-data-chokepoints.yml. Read only by
   // api/open-data-chokepoints.js, never by the dashboard.
@@ -973,6 +976,11 @@ const SEED_META = {
   // minRecordCount sits below the 17 profiled satellites CelesTrak carried on 2026-11-13.
   orbitalCatalog:   { key: 'seed-meta:orbital:catalog', maxStaleMin: 540, minRecordCount: 15, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:orbital:catalog',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10615, activationKey: 'seed-activated:orbital:catalog' } },
+  // Daily climate bundle member; 4320 = 3 missed days. One run evaluates the sites its budget
+  // allows and the index keeps every site evaluated so far, so the count reaches the 655-site
+  // registry within two runs; minRecordCount allows for the first run's partial pass.
+  orbitalSites:     { key: 'seed-meta:orbital:sites', maxStaleMin: 4320, minRecordCount: 300, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:orbital:sites',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10615, activationKey: 'seed-activated:orbital:sites' } },
   unrestEvents:     { key: 'seed-meta:unrest:events',           maxStaleMin: 120 }, // 45min cron; 120 = 2h grace (was 75 = 30min buffer, too tight)
   cyberThreats:     { key: 'seed-meta:cyber:threats',           maxStaleMin: 240 }, // 2h interval; 240min = 2x interval
   cveReference: {
@@ -2826,6 +2834,7 @@ const ON_DEMAND_KEYS = new Set([
   'reservoirLevels',
   // New imaging catalog: absent before the climate bundle's first run after deploy.
   'orbitalCatalog',
+  'orbitalSites',
 
   'globalTendersColombiaSecop',
   'globalTendersKenyaPpip',
@@ -3055,6 +3064,7 @@ const ACTIVATION_MARKERS = {
   regionalEnergyUrsea: SEED_META.regionalEnergyUrsea.activationKey,
   reservoirLevels: SEED_META.reservoirLevels.activationKey,
   orbitalCatalog: SEED_META.orbitalCatalog.activationKey,
+  orbitalSites: SEED_META.orbitalSites.activationKey,
 
   globalTendersColombiaSecop: SEED_META.globalTendersColombiaSecop.activationKey,
   globalTendersKenyaPpip: SEED_META.globalTendersKenyaPpip.activationKey,

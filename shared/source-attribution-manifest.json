@@ -8064,6 +8064,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/_orbital-sites.mjs"
+        },
+        {
           "path": "src/services/orbital/archive-stac.ts"
         },
         {
