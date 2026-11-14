@@ -17,7 +17,7 @@ import { getCountryCentroid, ME_STRIKE_BOUNDS } from '@/services/country-geometr
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import type { CountryScore } from '@/services/country-instability';
-import { getLocale, t } from '@/services/i18n';
+import { t } from '@/services/i18n';
 import type { ReservoirLevel } from '@/services/climate';
 import { reservoirLevelContext } from './reservoir-levels-view';
 import { CountryHistory } from './CountryHistory';
@@ -1470,7 +1470,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!context || context.code !== this.currentCode || context.reservoirs.length === 0 || !this.energyBody) { this.reservoirContextEl?.remove(); return; }
     const el = this.reservoirContextEl ??= this.el('div', 'cdp-reservoir-context');
     el.replaceChildren();
-    const ctx = { t, locale: getLocale(), nowMs: Date.now() };
+    const ctx = { t, locale: document.documentElement.lang || 'en', nowMs: Date.now() };
     const hydro = this.pendingResilienceEnergyMix?.mixAvailable ? this.pendingResilienceEnergyMix.hydroShare : null;
     const head = this.el('div', 'cdp-reservoir-context-head');
     head.append(this.el('span', 'cdp-imagery-title', t('components.reservoirLevels.energyContext.title')));
