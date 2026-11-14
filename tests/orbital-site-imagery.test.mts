@@ -120,6 +120,13 @@ describe('analyst watched-site imagery', () => {
     for (const url of seen) assert.doesNotMatch(decodeURIComponent(url), /imaged|lately|Bandar/i);
   });
 
+  it('ranks a site the question names after its eighth content word first', async () => {
+    process.env.ORBITAL_WATCH_ENABLED = 'true';
+    redisFixture({ 'orbital:sites:v1': INDEX, 'orbital:country:v1:IR': IR_ROLLUP });
+    const ctx = await assembleAnalystContext('IR', 'geo', 'Tell me everything recent about imagery coverage across southern coastal areas including Chabahar');
+    assert.match((ctx.watchedSiteImagery ?? '').split('\n')[1], /^- Chabahar:/);
+  });
+
   it('stays out of the analyst context while Orbital Watch is dark', async () => {
     delete process.env.ORBITAL_WATCH_ENABLED;
     const seen = redisFixture({ 'orbital:sites:v1': INDEX, 'orbital:country:v1:IR': IR_ROLLUP });

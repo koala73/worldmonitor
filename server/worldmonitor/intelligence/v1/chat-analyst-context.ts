@@ -1186,7 +1186,7 @@ export async function assembleAnalystContext(
     needsGasFlows ? buildGasFlows(iso2!) : Promise.resolve(undefined),
     needsOilStocksCover ? buildOilStocksCover(iso2!) : Promise.resolve(undefined),
     needsElectricityMix ? buildElectricityMix(iso2!) : Promise.resolve(undefined),
-    needsSiteImagery ? buildWatchedSiteImagery(iso2, userQuery ?? '', keywords) : Promise.resolve(undefined),
+    needsSiteImagery ? buildWatchedSiteImagery(iso2, userQuery ?? '', instrumentTerms) : Promise.resolve(undefined),
   ]);
 
   const get = (r: PromiseSettledResult<unknown>) =>
