@@ -16,6 +16,9 @@
 const IMAGING_WINDOW_EVENT_TYPE = 'orbital_imaging_window';
 const SITE_CHANGE_EVENT_TYPE = 'orbital_site_change';
 const ORBITAL_SITE_EVENT_TYPES = Object.freeze([IMAGING_WINDOW_EVENT_TYPE, SITE_CHANGE_EVENT_TYPE]);
+// Neither event is critical: a confirmed statistics change is notable, a pass is routine.
+const IMAGING_WINDOW_SEVERITY = 'medium';
+const SITE_CHANGE_SEVERITY = 'high';
 
 // Only open archives publish the image a window produces.
 const OPEN_IMAGING_CATEGORIES = new Set(['open-optical', 'open-radar']);
@@ -39,7 +42,9 @@ function openWindowsAhead(record, nowMs) {
   return windows.filter((window) => {
     const timeMs = Date.parse(window?.time);
     const lit = window?.category !== 'open-optical' || window.sunElevationDeg >= OPTICAL_MIN_SUN_ELEVATION_DEG;
-    return OPEN_IMAGING_CATEGORIES.has(window?.category) && lit && timeMs >= nowMs && timeMs - nowMs <= WINDOW_LEAD_MS;
+    // A sensor that does not acquire over this surface (e.g. Landsat at open sea) produces no image.
+    return OPEN_IMAGING_CATEGORIES.has(window?.category) && window.coverage === true && lit
+      && timeMs >= nowMs && timeMs - nowMs <= WINDOW_LEAD_MS;
   });
 }
 
@@ -89,8 +94,9 @@ function advanceChange(stored, record, nowMs) {
   if (!confirmation || (previous?.datetime && confirmation.datetime <= previous.datetime)) return { next: previous, owed: null };
   const answered = { ...previous, datetime: confirmation.datetime, itemId: confirmation.itemId };
   const ageMs = nowMs - Date.parse(confirmation.datetime);
-  const cooling = Number.isFinite(previous?.firedAt) && nowMs - previous.firedAt < CHANGE_COOLDOWN_MS;
-  if (!(ageMs <= CHANGE_MAX_AGE_MS) || cooling) return { next: answered, owed: null };
+  if (!(ageMs <= CHANGE_MAX_AGE_MS)) return { next: answered, owed: null };
+  // Inside the cooldown the confirmation stays unanswered, so the first run after it fires.
+  if (Number.isFinite(previous?.firedAt) && nowMs - previous.firedAt < CHANGE_COOLDOWN_MS) return { next: previous, owed: null };
   const pending = {
     coalesceKey: `${SITE_CHANGE_EVENT_TYPE}:${record.siteId}:${confirmation.itemId}`,
     itemId: confirmation.itemId,
@@ -107,8 +113,8 @@ function buildImagingWindowEvent(record, pending) {
   const more = pending.windows.length > 1 ? ` (+${pending.windows.length - 1} more)` : '';
   return {
     eventType: IMAGING_WINDOW_EVENT_TYPE,
-    // Realtime rules deliver critical events only; the per-site opt-in is the filter.
-    severity: 'critical',
+    // A routine pass: never breaks through quiet hours. The per-site opt-in is the delivery filter.
+    severity: IMAGING_WINDOW_SEVERITY,
     cooldownSeconds: DEDUP_TTL_SECONDS,
     payload: {
       title: `${siteName(record)}: ${first.name} imaging window at ${first.time}${more}`,
@@ -126,7 +132,7 @@ function buildImagingWindowEvent(record, pending) {
 function buildSiteChangeEvent(record, pending) {
   return {
     eventType: SITE_CHANGE_EVENT_TYPE,
-    severity: 'critical',
+    severity: SITE_CHANGE_SEVERITY,
     cooldownSeconds: DEDUP_TTL_SECONDS,
     payload: {
       title: `${siteName(record)}: radar imagery statistics changed (confirmed)`,
@@ -197,6 +203,8 @@ module.exports = {
   IMAGING_WINDOW_EVENT_TYPE,
   SITE_CHANGE_EVENT_TYPE,
   ORBITAL_SITE_EVENT_TYPES,
+  IMAGING_WINDOW_SEVERITY,
+  SITE_CHANGE_SEVERITY,
   OPEN_IMAGING_CATEGORIES,
   OPTICAL_MIN_SUN_ELEVATION_DEG,
   WINDOW_LEAD_MS,

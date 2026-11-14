@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { computePointPasses, parsePoint, pointPassesCacheKey } from '../server/worldmonitor/orbital/v1/get-point-passes.ts';
-import { ORBITAL_ROLLUP_MAX_AGE_MS, ORBITAL_SITES_SCHEMA, toCountryEvidence } from '../server/worldmonitor/orbital/v1/get-country-imagery-evidence.ts';
+import { toCountryEvidence } from '../server/worldmonitor/orbital/v1/get-country-imagery-evidence.ts';
 import { toCatalogResponse } from '../server/worldmonitor/orbital/v1/list-imaging-satellites.ts';
 import { orbitalHandler } from '../server/worldmonitor/orbital/v1/handler.ts';
 import { createOrbitalServiceRoutes } from '../src/generated/server/worldmonitor/orbital/v1/service_server.ts';
@@ -13,7 +13,7 @@ import { findArchiveEvidence } from '../src/services/orbital/match.ts';
 import { runPassJob } from '../src/services/orbital/pass-job.ts';
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
 import { getRequiredTier } from '../server/_shared/entitlement-check.ts';
-import { ROLLUP_MAX_AGE_MS, SITES_SCHEMA, evaluateSites, planPublication } from '../scripts/_orbital-sites.mjs';
+import { ROLLUP_MAX_AGE_MS, evaluateSites, planPublication } from '../scripts/_orbital-sites.mjs';
 import { WATCHED_SITES } from '../scripts/shared/orbital-watched-sites.generated.mjs';
 import { ARCHIVE_RESPONSES, fakeArchiveFetch, FIXTURE_NOW } from './helpers/orbital-archive-fetch.mts';
 
@@ -128,7 +128,7 @@ describe('point passes over REST', () => {
   });
 
   it('computes and caches on the 0.01-degree cell and names the point used', async () => {
-    assert.deepEqual(parsePoint(new Request('https://api.worldmonitor.app/api/orbital/v1/get-point-passes?lon=31.2')), { lat: 0, lon: 31.2 }, 'the generated client omits a zero latitude');
+    assert.deepEqual(parsePoint(new Request('https://api.worldmonitor.app/api/orbital/v1/get-point-passes?lat=0&lon=31.2')), { lat: 0, lon: 31.2 }, 'an explicit zero is the equator');
     const a = parsePoint(new Request('https://api.worldmonitor.app/api/orbital/v1/get-point-passes?lat=39.7392&lon=-104.9903'));
     const b = parsePoint(new Request('https://api.worldmonitor.app/api/orbital/v1/get-point-passes?lat=39.7449&lon=-104.9851'));
     assert.deepEqual(a, { lat: 39.74, lon: -104.99 });
@@ -149,7 +149,7 @@ describe('point passes over REST', () => {
 
   it('answers invalid caller input with 400, never 500', async () => {
     const handler = route('/api/orbital/v1/get-point-passes');
-    for (const query of ['lat=91&lon=0', 'lat=-90.5&lon=0', 'lat=0&lon=180.01', 'lat=abc&lon=0', 'lat=&lon=0', 'lat=Infinity&lon=0']) {
+    for (const query of ['lon=31.2', 'lat=12', '', 'lat=91&lon=0', 'lat=-90.5&lon=0', 'lat=0&lon=180.01', 'lat=abc&lon=0', 'lat=&lon=0', 'lat=Infinity&lon=0']) {
       const res = await handler(new Request(`https://api.worldmonitor.app/api/orbital/v1/get-point-passes?${query}`));
       assert.equal(res.status, 400, query);
       assert.ok(Array.isArray((await res.json()).violations), query);
@@ -203,11 +203,6 @@ async function publish(shadow: boolean, state = 'confirmed') {
 }
 
 describe('country imagery evidence over REST', () => {
-  it('reads the rollup with the seeder schema and freshness limit', () => {
-    assert.equal(ORBITAL_SITES_SCHEMA, SITES_SCHEMA);
-    assert.equal(ORBITAL_ROLLUP_MAX_AGE_MS, ROLLUP_MAX_AGE_MS);
-  });
-
   it('returns a confirmed flag with its confirming scene', async () => {
     const plan = await publish(false);
     const evidence = toCountryEvidence(site.countryCode, plan.index, plan.rollupWrites[0], NOW);

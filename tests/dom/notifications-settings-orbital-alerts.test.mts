@@ -134,6 +134,7 @@ describe('notification settings watched-site alerts', () => {
     const container = await mount(rule());
     toggle(container, 'usOrbitalWindowAlerts', true);
     expect(container.querySelector<HTMLElement>('#usOrbitalScope')?.hidden).toBe(false);
+    expect(container.querySelector('#usOrbitalCriticalNote')?.textContent).toContain('arrive even when realtime alerts are critical-only');
     await vi.waitFor(() => {
       expect(container.querySelectorAll('#usOrbitalSiteOptions option').length).toBeGreaterThan(100);
     });

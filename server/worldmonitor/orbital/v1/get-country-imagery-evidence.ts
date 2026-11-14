@@ -14,10 +14,7 @@ import { ValidationError } from '../../../../src/generated/server/worldmonitor/o
 import { ORBITAL_COUNTRY_KEY_PREFIX, ORBITAL_SITES_KEY } from '../../../_shared/cache-keys';
 import { getCachedJson } from '../../../_shared/redis';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
-
-/** Must equal scripts/_orbital-sites.mjs SITES_SCHEMA and ROLLUP_MAX_AGE_MS; pinned by tests. */
-export const ORBITAL_SITES_SCHEMA = 1;
-export const ORBITAL_ROLLUP_MAX_AGE_MS = 3 * 86_400_000;
+import { readCountryRollup, SITES_SCHEMA } from '../../../../shared/orbital/country-rollup.js';
 
 const COUNTRY_CODE = /^[A-Z]{2}$/;
 
@@ -60,23 +57,18 @@ function unavailable(countryCode: string, siteCount = 0): GetCountryImageryEvide
 
 /** A rollup is served only when it is the one the index names and its oldest site is fresh enough. */
 export function toCountryEvidence(countryCode: string, index: unknown, rollup: unknown, nowMs: number): GetCountryImageryEvidenceResponse {
-  if (!isRecord(index) || index.schema !== ORBITAL_SITES_SCHEMA || !isRecord(index.countries)) return unavailable(countryCode);
+  if (!isRecord(index) || index.schema !== SITES_SCHEMA || !isRecord(index.countries)) return unavailable(countryCode);
   const entry = index.countries[countryCode];
   if (!isRecord(entry)) {
     const watched = !Array.isArray(index.registryCountries) || index.registryCountries.includes(countryCode);
     return watched ? unavailable(countryCode) : { countryCode, asOf: 0, stale: false, siteCount: 0, confirmedFlagCount: 0, sites: [] };
   }
-  const current = isRecord(rollup) &&
-    rollup.schema === ORBITAL_SITES_SCHEMA &&
-    rollup.countryCode === countryCode &&
-    rollup.revision === entry.revision &&
-    Array.isArray(rollup.sites) &&
-    nowMs - num(rollup.asOf) <= ORBITAL_ROLLUP_MAX_AGE_MS;
-  if (!current) return unavailable(countryCode, num(entry.siteCount));
-  const sites = (rollup.sites as unknown[]).filter(isRecord).map(toSite);
+  const read = readCountryRollup(rollup, index, countryCode, nowMs);
+  if (read.status !== 'current') return unavailable(countryCode, num(entry.siteCount));
+  const sites = (read.rollup.sites as unknown[]).filter(isRecord).map(toSite);
   return {
     countryCode,
-    asOf: num(rollup.asOf),
+    asOf: read.rollup.asOf,
     stale: false,
     siteCount: sites.length,
     confirmedFlagCount: sites.filter((site) => site.confirmedFlag).length,

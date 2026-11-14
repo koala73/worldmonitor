@@ -26,7 +26,7 @@ import {
 } from '../scripts/crawlable-live-tools.mjs';
 import { CHOKEPOINT_CONTENT } from '../scripts/chokepoint-page-content.mjs';
 import { slugify } from '../scripts/build-crawlable-corpus.mjs';
-import { CONFIRMED, RAISED, flagAfter, rollupOf, shadowedRollup, siteOf } from './helpers/orbital-country-rollup.mjs';
+import { CONFIRMED, RAISED, flagAfter, rollupOf, shadowedRollup, siteOf, watchedKeys, watchedRead } from './helpers/orbital-country-rollup.mjs';
 import { ROLLUP_MAX_AGE_MS } from '../shared/orbital/country-rollup.js';
 
 const HOUR = 60 * 60 * 1000;
@@ -608,7 +608,7 @@ describe('satellite imagery evidence', () => {
 
   it('states one confirmed flag as one item naming the site, both satellites and both scene dates', async (t) => {
     const rollup = rollupOf('IR', NOW, [{ site: natanz, flag: flagAfter(natanz.id, NOW, CONFIRMED) }]);
-    assert.deepEqual(imagery(await build(t, { [ROLLUP_KEY_IR]: rollup })).map(({ id, ...item }) => item), [{
+    assert.deepEqual(imagery(await build(t, watchedKeys(rollup))).map(({ id, ...item }) => item), [{
       kind: 'imagery',
       label: 'Satellite imagery statistics changed',
       value: 'Natanz Enrichment Facility',
@@ -620,7 +620,7 @@ describe('satellite imagery evidence', () => {
   it('yields nothing for sites imaged this week whose flags are not confirmed', async (t) => {
     const rollup = rollupOf('IR', NOW, [{ site: natanz, flag: flagAfter(natanz.id, NOW, []) }, { site: fordow, flag: null }]);
     assert.ok(rollup.sites.every((site: { lastObservation: unknown }) => site.lastObservation), 'both sites have a recent image');
-    assert.deepEqual(imagery(await build(t, { [ROLLUP_KEY_IR]: rollup })), []);
+    assert.deepEqual(imagery(await build(t, watchedKeys(rollup))), []);
   });
 
   it('yields nothing and no error for a country with no watched sites', async (t) => {
@@ -632,28 +632,28 @@ describe('satellite imagery evidence', () => {
   it('drops a rollup past its max age, and one written for another country', async (t) => {
     const flagged = [{ site: natanz, flag: flagAfter(natanz.id, NOW, CONFIRMED) }];
     const stale = rollupOf('IR', NOW, flagged, { evaluatedAt: NOW - ROLLUP_MAX_AGE_MS - 1 });
-    assert.deepEqual(imagery(await build(t, { [ROLLUP_KEY_IR]: stale })), []);
-    assert.equal(countryImageryFlagsFrom(rollupOf('IR', NOW, flagged), 'IQ', NOW).length, 0);
+    assert.deepEqual(imagery(await build(t, watchedKeys(stale))), []);
+    assert.equal(countryImageryFlagsFrom(watchedRead(rollupOf('IR', NOW, flagged)), 'IQ', NOW).length, 0);
   });
 
   it('leaves out a raised flag and states the same flag once it is confirmed', () => {
     const raised = rollupOf('IR', NOW, [{ site: natanz, flag: flagAfter(natanz.id, NOW, RAISED) }]);
     assert.equal(raised.sites[0].flag.state, 'raised');
-    assert.deepEqual(countryImageryFlagsFrom(raised, 'IR', NOW), []);
+    assert.deepEqual(countryImageryFlagsFrom(watchedRead(raised), 'IR', NOW), []);
     const confirmed = rollupOf('IR', NOW, [{ site: natanz, flag: flagAfter(natanz.id, NOW, CONFIRMED) }]);
-    assert.deepEqual(countryImageryFlagsFrom(confirmed, 'IR', NOW).map((flag) => flag.siteId), [natanz.id]);
+    assert.deepEqual(countryImageryFlagsFrom(watchedRead(confirmed), 'IR', NOW).map((flag) => flag.siteId), [natanz.id]);
   });
 
   it('shows no flag the seeder confirmed while change scoring is shadowed', async (t) => {
     const { rollup, shadowFlags } = await shadowedRollup('IR', NOW, [natanz]);
     assert.equal(shadowFlags?.[0]?.state, 'confirmed', 'the shadow key holds a confirmed flag');
-    assert.deepEqual(imagery(await build(t, { [ROLLUP_KEY_IR]: rollup })), []);
+    assert.deepEqual(imagery(await build(t, watchedKeys(rollup))), []);
   });
 
   it('keeps the three newest confirmed flags and reads nothing more when the handler passed them', async (t) => {
     const sites = ['a', 'b', 'c', 'd'].map((id) => siteOf(`nuclear:${id}`, `Site ${id.toUpperCase()}`));
     const rollup = rollupOf('IR', NOW, sites.map((site) => ({ site, flag: flagAfter(site.id, NOW, CONFIRMED) })));
-    const flags = countryImageryFlagsFrom(rollup, 'IR', NOW);
+    const flags = countryImageryFlagsFrom(watchedRead(rollup), 'IR', NOW);
     assert.equal(flags.length, 3);
     const reads = mockRedis(t, {});
     const items = await buildCountryBriefEvidence('IR', { energyImportDependency: IRAN_ENERGY, nowMs: NOW, imageryFlags: flags });
