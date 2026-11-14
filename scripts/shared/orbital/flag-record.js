@@ -102,8 +102,8 @@ const TRANSITIONS = {
     if (changes.length > 0) {
       return { track: { ...track, candidate: { observation, changes } }, event: eventOf('raised', observation, changes) };
     }
-    // A scene that did not measure a raised statistic can neither confirm nor retract it.
-    if (!track.candidate.changes.some((raised) => Number.isFinite(observation.values[raised.component]))) {
+    // Only a scene that measured every raised statistic can retract the change.
+    if (!track.candidate.changes.every((raised) => Number.isFinite(observation.values[raised.component]))) {
       return { track, event: null };
     }
     const retracted = grow({ ...track, state: 'monitoring', candidate: null }, observation, thresholds);
