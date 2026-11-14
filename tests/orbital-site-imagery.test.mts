@@ -136,11 +136,12 @@ describe('analyst watched-site imagery', () => {
 });
 
 describe('get_watched_site_imagery MCP tool', () => {
-  it('is absent from the registry and tools/list while dark, and listed only when enabled', () => {
+  it('is absent from the registry and tools/list while dark, and listed only when published and enabled', () => {
     assert.equal(TOOL_REGISTRY.some((tool) => tool.name === WATCHED_SITE_IMAGERY_TOOL.name), false);
-    assert.deepEqual(orbitalSiteImageryTools({}), []);
-    assert.deepEqual(orbitalSiteImageryTools({ ORBITAL_WATCH_ENABLED: 'false' }), []);
-    assert.deepEqual(orbitalSiteImageryTools({ ORBITAL_WATCH_ENABLED: 'true' }), [WATCHED_SITE_IMAGERY_TOOL]);
+    assert.deepEqual(orbitalSiteImageryTools({ ORBITAL_WATCH_ENABLED: 'true' }), [], 'unpublished with the other orbital tools');
+    assert.deepEqual(orbitalSiteImageryTools({}, true), []);
+    assert.deepEqual(orbitalSiteImageryTools({ ORBITAL_WATCH_ENABLED: 'false' }, true), []);
+    assert.deepEqual(orbitalSiteImageryTools({ ORBITAL_WATCH_ENABLED: 'true' }, true), [WATCHED_SITE_IMAGERY_TOOL]);
   });
 
   it('is a paid-plan tool over the Pro-tier country evidence endpoint', () => {

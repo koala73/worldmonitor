@@ -4,7 +4,7 @@ import type { GetCountryImageryEvidenceResponse } from '../../../src/generated/s
 import { requireCountryCode } from '../_country-args';
 import { RpcValidationError } from '../billing-denial';
 import type { ToolDef } from '../types';
-import { COUNTRY_EVIDENCE_PATH, readOrbital } from './_orbital';
+import { COUNTRY_EVIDENCE_PATH, ORBITAL_MCP_TOOLS_PUBLISHED, readOrbital } from './_orbital';
 
 const TOOL = 'get-watched-site-imagery';
 const MAX_SITE_QUERY = 80;
@@ -91,7 +91,13 @@ export const WATCHED_SITE_IMAGERY_TOOL: ToolDef = {
   _apiPaths: [`GET ${COUNTRY_EVIDENCE_PATH}`],
 };
 
-/** Listed only while Orbital Watch is enabled; dark, the tool is absent from tools/list and cannot be called. */
-export function orbitalSiteImageryTools(env: Record<string, string | undefined> = process.env): ToolDef[] {
-  return isOrbitalWatchEnabled(env) ? [WATCHED_SITE_IMAGERY_TOOL] : [];
+/**
+ * Listed with the other orbital tools once they are published (#10729), and only while
+ * ORBITAL_WATCH_ENABLED=true. Dark, the tool is absent from tools/list and cannot be called.
+ */
+export function orbitalSiteImageryTools(
+  env: Record<string, string | undefined> = process.env,
+  published: boolean = ORBITAL_MCP_TOOLS_PUBLISHED,
+): ToolDef[] {
+  return published && isOrbitalWatchEnabled(env) ? [WATCHED_SITE_IMAGERY_TOOL] : [];
 }
