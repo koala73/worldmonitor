@@ -50,6 +50,7 @@ export interface MatchedAcquisition extends Acquisition {
   cloudCoverPct: number | null;
   sunElevationDeg: number | null;
   resolutionM: number;
+  /** May carry the point: paint it through `loadArchiveImage`, never straight into `img.src`. */
   imageUrl: string | null;
 }
 
