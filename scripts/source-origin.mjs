@@ -619,7 +619,6 @@ const HOST_ORIGINS = Object.freeze({
   'nsidc.org': 'US',
   'cmr.earthdata.nasa.gov': 'US',
   'gibs.earthdata.nasa.gov': 'US',
-  'planetarycomputer.microsoft.com': 'US',
   'view.eumetsat.int': 'DE',
   'sliderule.slideruleearth.io': 'US',
   'slideruleearth.io': 'US',
