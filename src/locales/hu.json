@@ -5466,15 +5466,15 @@
       "away": "{{km}} km-re"
     },
     "popup": {
-      "title": "Satellite imagery",
-      "loading": "Checking satellite archives…",
-      "latest": "Latest image",
-      "nextPass": "Next pass",
-      "noImage": "No recent image found",
-      "noPass": "No pass due within 72 hours",
-      "openEvidence": "Open evidence",
-      "imageAlt": "Satellite view from {{source}}",
-      "unavailable": "Satellite imagery did not load."
+      "title": "Műholdképek",
+      "loading": "Műholdas archívumok ellenőrzése…",
+      "latest": "Legutóbbi felvétel",
+      "nextPass": "Következő áthaladás",
+      "noImage": "Nincs friss felvétel",
+      "noPass": "72 órán belül nincs áthaladás",
+      "openEvidence": "Bizonyítékok megnyitása",
+      "imageAlt": "Műholdas nézet innen: {{source}}",
+      "unavailable": "A műholdképek nem töltődtek be."
     }
   },
   "settings": {

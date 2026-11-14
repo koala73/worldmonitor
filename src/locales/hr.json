@@ -5509,15 +5509,15 @@
       "away": "{{km}} km dalje"
     },
     "popup": {
-      "title": "Satellite imagery",
-      "loading": "Checking satellite archives…",
-      "latest": "Latest image",
-      "nextPass": "Next pass",
-      "noImage": "No recent image found",
-      "noPass": "No pass due within 72 hours",
-      "openEvidence": "Open evidence",
-      "imageAlt": "Satellite view from {{source}}",
-      "unavailable": "Satellite imagery did not load."
+      "title": "Satelitske snimke",
+      "loading": "Provjera satelitskih arhiva…",
+      "latest": "Najnovija snimka",
+      "nextPass": "Sljedeći prelet",
+      "noImage": "Nije pronađena nedavna snimka",
+      "noPass": "Nema preleta u sljedeća 72 sata",
+      "openEvidence": "Otvori dokaze",
+      "imageAlt": "Satelitski prikaz iz {{source}}",
+      "unavailable": "Satelitske snimke nisu se učitale."
     }
   },
   "settings": {

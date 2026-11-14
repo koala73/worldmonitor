@@ -5499,15 +5499,15 @@
       "away": "la {{km}} km"
     },
     "popup": {
-      "title": "Satellite imagery",
-      "loading": "Checking satellite archives…",
-      "latest": "Latest image",
-      "nextPass": "Next pass",
-      "noImage": "No recent image found",
-      "noPass": "No pass due within 72 hours",
-      "openEvidence": "Open evidence",
-      "imageAlt": "Satellite view from {{source}}",
-      "unavailable": "Satellite imagery did not load."
+      "title": "Imagini din satelit",
+      "loading": "Se verifică arhivele satelitare…",
+      "latest": "Cea mai recentă imagine",
+      "nextPass": "Următoarea trecere",
+      "noImage": "Nu s-a găsit nicio imagine recentă",
+      "noPass": "Nicio trecere în următoarele 72 de ore",
+      "openEvidence": "Deschide dovezile",
+      "imageAlt": "Vedere din satelit de la {{source}}",
+      "unavailable": "Imaginile din satelit nu s-au încărcat."
     }
   },
   "settings": {

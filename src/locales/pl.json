@@ -5532,15 +5532,15 @@
       "away": "{{km}} km stąd"
     },
     "popup": {
-      "title": "Satellite imagery",
-      "loading": "Checking satellite archives…",
-      "latest": "Latest image",
-      "nextPass": "Next pass",
-      "noImage": "No recent image found",
-      "noPass": "No pass due within 72 hours",
-      "openEvidence": "Open evidence",
-      "imageAlt": "Satellite view from {{source}}",
-      "unavailable": "Satellite imagery did not load."
+      "title": "Zdjęcia satelitarne",
+      "loading": "Sprawdzanie archiwów satelitarnych…",
+      "latest": "Najnowsze zdjęcie",
+      "nextPass": "Następny przelot",
+      "noImage": "Nie znaleziono niedawnego zdjęcia",
+      "noPass": "Brak przelotu w ciągu 72 godzin",
+      "openEvidence": "Otwórz dowody",
+      "imageAlt": "Widok satelitarny z {{source}}",
+      "unavailable": "Nie udało się wczytać zdjęć satelitarnych."
     }
   },
   "settings": {

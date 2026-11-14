@@ -5466,15 +5466,15 @@
       "away": "km {{km}} mbali"
     },
     "popup": {
-      "title": "Satellite imagery",
-      "loading": "Checking satellite archives…",
-      "latest": "Latest image",
-      "nextPass": "Next pass",
-      "noImage": "No recent image found",
-      "noPass": "No pass due within 72 hours",
-      "openEvidence": "Open evidence",
-      "imageAlt": "Satellite view from {{source}}",
-      "unavailable": "Satellite imagery did not load."
+      "title": "Picha za setilaiti",
+      "loading": "Inakagua kumbukumbu za setilaiti…",
+      "latest": "Picha ya hivi karibuni",
+      "nextPass": "Mpito unaofuata",
+      "noImage": "Hakuna picha ya hivi karibuni",
+      "noPass": "Hakuna mpito ndani ya saa 72",
+      "openEvidence": "Fungua ushahidi",
+      "imageAlt": "Mwonekano wa setilaiti kutoka {{source}}",
+      "unavailable": "Picha za setilaiti hazikupakia."
     }
   },
   "settings": {

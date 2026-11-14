@@ -5598,15 +5598,15 @@
       "away": "على بعد {{km}} كم"
     },
     "popup": {
-      "title": "Satellite imagery",
-      "loading": "Checking satellite archives…",
-      "latest": "Latest image",
-      "nextPass": "Next pass",
-      "noImage": "No recent image found",
-      "noPass": "No pass due within 72 hours",
-      "openEvidence": "Open evidence",
-      "imageAlt": "Satellite view from {{source}}",
-      "unavailable": "Satellite imagery did not load."
+      "title": "صور الأقمار الصناعية",
+      "loading": "جارٍ فحص أرشيفات الأقمار الصناعية…",
+      "latest": "أحدث صورة",
+      "nextPass": "المرور التالي",
+      "noImage": "لم يُعثر على صورة حديثة",
+      "noPass": "لا مرور متوقع خلال 72 ساعة",
+      "openEvidence": "فتح الأدلة",
+      "imageAlt": "منظر فضائي من {{source}}",
+      "unavailable": "تعذّر تحميل صور الأقمار الصناعية."
     }
   },
   "settings": {

@@ -5433,15 +5433,15 @@
       "away": "ห่าง {{km}} กม."
     },
     "popup": {
-      "title": "Satellite imagery",
-      "loading": "Checking satellite archives…",
-      "latest": "Latest image",
-      "nextPass": "Next pass",
-      "noImage": "No recent image found",
-      "noPass": "No pass due within 72 hours",
-      "openEvidence": "Open evidence",
-      "imageAlt": "Satellite view from {{source}}",
-      "unavailable": "Satellite imagery did not load."
+      "title": "ภาพถ่ายดาวเทียม",
+      "loading": "กำลังตรวจสอบคลังภาพดาวเทียม…",
+      "latest": "ภาพล่าสุด",
+      "nextPass": "การโคจรผ่านครั้งถัดไป",
+      "noImage": "ไม่พบภาพล่าสุด",
+      "noPass": "ไม่มีการโคจรผ่านภายใน 72 ชั่วโมง",
+      "openEvidence": "เปิดหลักฐาน",
+      "imageAlt": "ภาพจากดาวเทียม {{source}}",
+      "unavailable": "โหลดภาพถ่ายดาวเทียมไม่สำเร็จ"
     }
   },
   "settings": {

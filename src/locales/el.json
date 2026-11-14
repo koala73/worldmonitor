@@ -5466,15 +5466,15 @@
       "away": "σε {{km}} χλμ."
     },
     "popup": {
-      "title": "Satellite imagery",
-      "loading": "Checking satellite archives…",
-      "latest": "Latest image",
-      "nextPass": "Next pass",
-      "noImage": "No recent image found",
-      "noPass": "No pass due within 72 hours",
-      "openEvidence": "Open evidence",
-      "imageAlt": "Satellite view from {{source}}",
-      "unavailable": "Satellite imagery did not load."
+      "title": "Δορυφορικές εικόνες",
+      "loading": "Έλεγχος δορυφορικών αρχείων…",
+      "latest": "Πιο πρόσφατη εικόνα",
+      "nextPass": "Επόμενη διέλευση",
+      "noImage": "Δεν βρέθηκε πρόσφατη εικόνα",
+      "noPass": "Καμία διέλευση εντός 72 ωρών",
+      "openEvidence": "Άνοιγμα τεκμηρίων",
+      "imageAlt": "Δορυφορική όψη από {{source}}",
+      "unavailable": "Οι δορυφορικές εικόνες δεν φορτώθηκαν."
     }
   },
   "settings": {

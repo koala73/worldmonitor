@@ -5466,15 +5466,15 @@
       "away": "{{km}} km uzakta"
     },
     "popup": {
-      "title": "Satellite imagery",
-      "loading": "Checking satellite archives…",
-      "latest": "Latest image",
-      "nextPass": "Next pass",
-      "noImage": "No recent image found",
-      "noPass": "No pass due within 72 hours",
-      "openEvidence": "Open evidence",
-      "imageAlt": "Satellite view from {{source}}",
-      "unavailable": "Satellite imagery did not load."
+      "title": "Uydu görüntüleri",
+      "loading": "Uydu arşivleri kontrol ediliyor…",
+      "latest": "En son görüntü",
+      "nextPass": "Sonraki geçiş",
+      "noImage": "Yakın tarihli görüntü bulunamadı",
+      "noPass": "72 saat içinde geçiş yok",
+      "openEvidence": "Kanıtları aç",
+      "imageAlt": "{{source}} uydu görünümü",
+      "unavailable": "Uydu görüntüleri yüklenemedi."
     }
   },
   "settings": {

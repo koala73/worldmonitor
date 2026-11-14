@@ -5499,15 +5499,15 @@
       "away": "à {{km}} km"
     },
     "popup": {
-      "title": "Satellite imagery",
-      "loading": "Checking satellite archives…",
-      "latest": "Latest image",
-      "nextPass": "Next pass",
-      "noImage": "No recent image found",
-      "noPass": "No pass due within 72 hours",
-      "openEvidence": "Open evidence",
-      "imageAlt": "Satellite view from {{source}}",
-      "unavailable": "Satellite imagery did not load."
+      "title": "Imagerie satellite",
+      "loading": "Vérification des archives satellite…",
+      "latest": "Dernière image",
+      "nextPass": "Prochain passage",
+      "noImage": "Aucune image récente",
+      "noPass": "Aucun passage prévu sous 72 heures",
+      "openEvidence": "Ouvrir les preuves",
+      "imageAlt": "Vue satellite de {{source}}",
+      "unavailable": "L’imagerie satellite n’a pas pu être chargée."
     }
   },
   "settings": {

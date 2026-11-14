@@ -5532,15 +5532,15 @@
       "away": "{{km}} km odtud"
     },
     "popup": {
-      "title": "Satellite imagery",
-      "loading": "Checking satellite archives…",
-      "latest": "Latest image",
-      "nextPass": "Next pass",
-      "noImage": "No recent image found",
-      "noPass": "No pass due within 72 hours",
-      "openEvidence": "Open evidence",
-      "imageAlt": "Satellite view from {{source}}",
-      "unavailable": "Satellite imagery did not load."
+      "title": "Satelitní snímky",
+      "loading": "Prohledávání satelitních archivů…",
+      "latest": "Nejnovější snímek",
+      "nextPass": "Další přelet",
+      "noImage": "Žádný nedávný snímek nenalezen",
+      "noPass": "Během 72 hodin není plánován žádný přelet",
+      "openEvidence": "Otevřít důkazy",
+      "imageAlt": "Satelitní pohled z {{source}}",
+      "unavailable": "Satelitní snímky se nepodařilo načíst."
     }
   },
   "settings": {

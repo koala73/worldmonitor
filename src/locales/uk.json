@@ -5532,15 +5532,15 @@
       "away": "за {{km}} км"
     },
     "popup": {
-      "title": "Satellite imagery",
-      "loading": "Checking satellite archives…",
-      "latest": "Latest image",
-      "nextPass": "Next pass",
-      "noImage": "No recent image found",
-      "noPass": "No pass due within 72 hours",
-      "openEvidence": "Open evidence",
-      "imageAlt": "Satellite view from {{source}}",
-      "unavailable": "Satellite imagery did not load."
+      "title": "Супутникові знімки",
+      "loading": "Перевірка супутникових архівів…",
+      "latest": "Останній знімок",
+      "nextPass": "Наступний проліт",
+      "noImage": "Нещодавніх знімків не знайдено",
+      "noPass": "Прольотів у найближчі 72 години немає",
+      "openEvidence": "Відкрити докази",
+      "imageAlt": "Супутниковий вигляд від {{source}}",
+      "unavailable": "Не вдалося завантажити супутникові знімки."
     }
   },
   "settings": {
