@@ -17,7 +17,9 @@ import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 const SEED_CACHE_KEY = 'economic:global-tenders:v1';
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
-const STALE_AFTER_MS = 180 * 60_000;
+// The seeder runs once a day; health marks the snapshot stale after three missed
+// runs (api/health.js globalTenders), and so does this reader.
+export const STALE_AFTER_MS = 3 * 24 * 60 * 60_000;
 
 type SeedSnapshot = {
   fetchedAt?: number | string;

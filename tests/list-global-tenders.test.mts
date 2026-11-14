@@ -129,7 +129,7 @@ test('marks retained snapshots and source statuses stale after the freshness bud
     availability: 'available',
     tenders: [tender('a')],
     sourceStatuses: [{ source: 'sam', state: 'ok', recordCount: 1, fetchedAt: '2026-07-13T08:00:00Z', lastSuccessfulAt: '2026-07-13T08:00:00Z', stale: false }],
-  }, Date.parse('2026-07-13T12:00:00Z'));
+  }, Date.parse('2026-07-16T09:00:00Z'));
 
   assert.equal(snapshot.availability, 'stale');
   assert.equal(snapshot.dataAvailable, true);
@@ -163,7 +163,7 @@ test('new provider records pass through the canonical snapshot and existing coun
   assert.equal(snapshot.availability, 'available');
   const status = snapshot.sourceStatuses.find((source: { source: string }) => source.source === 'brazil-pncp');
   assert.equal(sourceHealthMeta(status).fetchedAt, now);
-  const failed = await fetchGlobalTenders({ now: now + 24 * 60 * 60_000, previousSnapshot: snapshot,
+  const failed = await fetchGlobalTenders({ now: now + 3 * 24 * 60 * 60_000, previousSnapshot: snapshot,
     adapters: [['brazil-pncp', async () => { throw new Error('HTTP 503'); }]] });
   assert.equal(failed.tenders.length, 0);
   assert.equal(sourceHealthMeta(failed.sourceStatuses[0]).fetchedAt, now);
