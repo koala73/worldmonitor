@@ -8,11 +8,13 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { initTestI18n } from './helpers/i18n.mts';
+import { initTestI18n, restoreEnglish, useCatalogue } from './helpers/i18n.mts';
+import fr from '@/locales/fr.json';
 
 const openSignIn = vi.hoisted(() => vi.fn());
 vi.mock('@/services/clerk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/clerk')>()),
+  isClerkAuthEnabled: () => true,
   openSignIn,
 }));
 
@@ -442,5 +444,31 @@ describe('Settings two-pane modal', () => {
 
     expect(page('video')!.hidden).toBe(false);
     expect(current()).toEqual(['video']);
+  });
+});
+
+describe('Settings sidebar search in French', () => {
+  beforeEach(async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 });
+    await useCatalogue('fr', fr);
+  });
+
+  afterEach(async () => {
+    await restoreEnglish();
+  });
+
+  it('finds a section by its French keyword and by the English original', () => {
+    expect(Object.values(fr.settings.keywords.sync)).toContain('sauvegarde');
+    settings.open();
+
+    typeSearch('sauvegarde');
+    expect(visibleRows()).toEqual(['sign-in', 'sync']);
+    expect([...document.querySelectorAll('.us-group-label')].map((h) => h.textContent)).toEqual([fr.settings.groups.app]);
+
+    typeSearch('backup');
+    expect(visibleRows()).toEqual(['sign-in', 'sync']);
+
+    typeSearch('zzz');
+    expect($('[data-settings-empty]')!.textContent).toBe(fr.settings.search.empty);
   });
 });

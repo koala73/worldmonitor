@@ -1,7 +1,7 @@
 ---
 title: "Best geopolitical monitoring tools for energy analysts"
-description: "Which geopolitical monitoring tools suit energy analysts tracking Hormuz, the Red Sea and other oil and gas chokepoints? World Monitor for live transit counts and EIA-baselined flow, Dataminr for facility disruption, Recorded Future for threats near assets."
-metaTitle: "Best geopolitical monitoring tools for energy analysts (2026) | World Monitor"
+description: "Compare geopolitical tools for energy analysts: World Monitor for live Hormuz and Red Sea chokepoint traffic, Dataminr for site alerts, and Recorded Future."
+metaTitle: "Best geopolitical monitoring tools for energy analysts"
 keywords: "Energy analysts, best geopolitical monitoring tools for energy analysts, Strait of Hormuz monitoring, oil chokepoints, energy security dashboard, global intelligence tools"
 audience: "Energy analysts"
 pubDate: "2026-10-02"
@@ -47,7 +47,7 @@ Confirm units, reporting period and original energy data. Do not combine stock, 
 
 **Best for chokepoint traffic and energy-security context.**
 
-World Monitor's [chokepoints page](https://www.worldmonitor.app/chokepoints) shows live ship transit counts at 13 maritime chokepoints. Seven are also measured against an EIA flow baseline, so you can compare current traffic with a published reference level; the other six show transit counts only, and you should not read a flow estimate into them. The same map shows conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets, so an incident near Hormuz or in the Red Sea sits beside the traffic and the price moves around it. The core map is free with no account at [worldmonitor.app/dashboard](https://www.worldmonitor.app/dashboard).
+World Monitor's [chokepoints page](https://www.worldmonitor.app/chokepoints/) shows live ship transit counts at 13 maritime chokepoints. Seven are also measured against an EIA flow baseline, so you can compare current traffic with a published reference level; the other six show transit counts only, and you should not read a flow estimate into them. The same map shows conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets, so an incident near Hormuz or in the Red Sea sits beside the traffic and the price moves around it. The core map is free with no account at [worldmonitor.app/dashboard](https://www.worldmonitor.app/dashboard).
 
 On the paid Pro plan, alert rules filter by event type, severity and country and deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push or an HMAC-SHA256 signed webhook. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)). Rules can also opt in to [chokepoint disruption alerts](https://www.worldmonitor.app/docs/api-notifications#chokepoint-disruption-alerts) for Hormuz, Bab el-Mandeb or any other chokepoint: one fires when navigational warnings, AIS disruption or a transit drop push the chokepoint into the red band at least 15 points above its standing threat level, so a war-zone strait alerts on new activity, at most once every 12 hours. For models, the REST API (a separate API plan), Python, Go and Ruby SDKs, and an MCP server for AI clients expose the data. It is not a substitute for proprietary cargo-tracking or commodity datasets.
 

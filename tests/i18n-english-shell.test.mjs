@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { replaceRawI18nKeyPlaceholders } from '../src/app/i18n-raw-key-healer.ts';
+import { replaceRawI18nKeyPlaceholders } from '../src/utils/i18n-raw-key-healer.ts';
 
 const I18N_SOURCE = 'src/services/i18n.ts';
 const APP_SOURCE = 'src/App.ts';

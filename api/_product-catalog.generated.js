@@ -276,7 +276,7 @@ export const TIER_CONFIG = {
     "maxDashboards": 3,
     "dataExport": false,
     "cta": "Get Started",
-    "href": "https://worldmonitor.app/dashboard",
+    "href": "https://www.worldmonitor.app/dashboard",
     "highlighted": false
   },
   "pro": {

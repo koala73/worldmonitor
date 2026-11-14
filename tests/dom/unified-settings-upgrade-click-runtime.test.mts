@@ -49,6 +49,11 @@ vi.mock('@/services/desktop-runtime', async (importOriginal) => ({
   isDesktopRuntime: () => desktopRuntime,
 }));
 
+vi.mock('@/services/clerk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/clerk')>()),
+  isClerkAuthEnabled: () => true,
+}));
+
 vi.mock('@/services/auth-state', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/auth-state')>()),
   getAuthState: () => signedIn ? session : { ...session, user: null },

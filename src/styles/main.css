@@ -9633,13 +9633,6 @@ a.prediction-link:hover {
   gap: 8px;
 }
 
-.panel-settings-item {
-  display: flex;
-  flex-direction: column;
-  align-self: start;
-  min-width: 0;
-}
-
 .panel-toggle-item {
   display: flex;
   align-items: center;
@@ -9658,41 +9651,155 @@ a.prediction-link:hover {
   min-width: 0;
 }
 
-.panel-font-scale-control {
-  display: flex;
-  flex-wrap: wrap;
+.unified-settings-modal .panel-toggle-grid {
+  display: block;
+  columns: 2 240px;
+  column-gap: 16px;
+}
+
+.panel-settings-item {
+  --panel-row-pad: 10px;
+  --panel-switch-w: 30px;
+  --panel-scale-w: calc(46px * var(--wm-panel-effective-scale, 1));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
   min-width: 0;
-  padding: 6px 8px;
   border: 1px solid var(--border);
-  border-top: 0;
   background: var(--bg);
+  break-inside: avoid;
+}
+
+.panel-settings-item + .panel-settings-item {
+  margin-top: -1px;
+}
+
+.panel-settings-item > * {
+  grid-area: 1 / 1;
+}
+
+.unified-settings-modal .panel-toggle-item {
+  min-height: 40px;
+  padding: 0 var(--panel-row-pad);
+  gap: 8px;
+  border: 0;
+  background: transparent;
+}
+
+.unified-settings-modal .panel-toggle-item:hover {
+  background: var(--surface-hover);
+}
+
+.unified-settings-modal .panel-toggle-item.changed {
+  background: rgba(68, 255, 136, 0.06);
+}
+
+.unified-settings-modal .panel-toggle-item:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+
+.unified-settings-modal .panel-toggle-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  letter-spacing: 0.02em;
+}
+
+.unified-settings-modal .panel-toggle-pro-badge {
+  margin-left: 0;
+}
+
+.panel-toggle-switch {
+  position: relative;
+  flex: none;
+  width: var(--panel-switch-w);
+  height: 16px;
+  border-radius: 999px;
+  background: var(--border);
+  transition: background 0.15s;
+}
+
+.panel-toggle-switch::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: transform 0.15s, background 0.15s;
+}
+
+.panel-toggle-item.active .panel-toggle-switch {
+  background: var(--green);
+}
+
+.panel-toggle-item.active .panel-toggle-switch::before {
+  transform: translateX(14px);
+  background: var(--bg);
+}
+
+.panel-settings-item.has-font-scale .panel-toggle-switch {
+  margin-inline-start: calc(var(--panel-scale-w) + 8px);
+}
+
+.panel-font-scale-control {
+  position: relative;
+  z-index: 1;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--panel-scale-w);
+  height: 24px;
+  margin-inline-end: calc(var(--panel-row-pad) + var(--panel-switch-w) + 8px);
+  border: 1px solid var(--border);
   color: var(--text-dim);
-  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
-  text-transform: uppercase;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
 }
 
 .panel-font-scale-control select {
-  min-width: 84px;
-  max-width: 120px;
-  padding: 3px 4px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
   font: inherit;
-  text-transform: none;
 }
 
-.panel-font-scale-control select:focus-visible {
-  outline: 2px solid var(--accent);
+.panel-font-scale-control:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.panel-font-scale-control:has(option:checked:not([value="global"])) {
+  color: var(--green-text, var(--green));
+  border-color: currentColor;
+}
+
+.panel-font-scale-control:has(select:focus-visible) {
+  outline: 2px solid var(--text);
   outline-offset: 1px;
 }
 
-.panel-font-scale-control select:disabled {
+.panel-font-scale-control:has(select:disabled) {
+  opacity: 0.45;
   cursor: not-allowed;
-  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-toggle-switch,
+  .panel-toggle-switch::before {
+    transition: none;
+  }
 }
 
 .panel-toggle-item:hover {
@@ -21814,7 +21921,6 @@ button.popup-link {
 /* Responsive grids */
 @media (max-width: 500px) {
 
-  .unified-settings-modal .panel-toggle-grid,
   .unified-settings-modal .sources-toggle-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -31628,36 +31734,6 @@ body.map-width-resizing {
   .unified-settings-region-bar::-webkit-scrollbar { display: block; height: 6px; }
 }
 
-.panel-font-scale-details {
-  border: 1px solid var(--border);
-  border-top: 0;
-  color: var(--text-dim);
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-}
-.panel-font-scale-details > summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 32px;
-  padding: 6px 8px;
-  cursor: pointer;
-  list-style: none;
-}
-.panel-font-scale-details > summary::-webkit-details-marker { display: none; }
-.panel-font-scale-details > summary::after { content: '+'; }
-.panel-font-scale-details[open] > summary::after { content: '\2212'; }
-.panel-font-scale-details [data-panel-scale-summary] { margin-inline-start: auto; }
-.panel-font-scale-details:has(option:checked:not([value="global"])) > summary { color: var(--text); }
-.panel-font-scale-details .panel-font-scale-control {
-  border: 0;
-  border-top: 1px solid var(--border-subtle);
-  font-size: inherit;
-  text-transform: none;
-}
-.panel-font-scale-control select { min-height: 32px; }
-.panel-font-scale-details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-
 .settings-access-gate {
   align-items: flex-start;
   justify-content: flex-start;
@@ -31677,9 +31753,8 @@ body.map-width-resizing {
 .search-launch-grid .tip-item { border-left: 0; }
 .search-sheet-header .search-input { padding: 8px 0; }
 @media (max-width: 768px) {
-  .unified-settings-modal .panel-toggle-grid { grid-template-columns: minmax(0, 1fr); }
-  .panel-font-scale-details > summary,
-  .panel-font-scale-control select { min-height: 44px; }
+  .unified-settings-modal .panel-toggle-item { min-height: 44px; }
+  .panel-font-scale-control select { inset: -10px -4px; width: auto; height: auto; }
   .search-overlay.search-mobile .search-scope-rail { scrollbar-width: thin; }
   .search-overlay.search-mobile .search-scope { min-height: 44px; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); }
   .search-chip { min-height: 44px; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
