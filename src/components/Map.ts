@@ -5138,8 +5138,7 @@ export class MapComponent {
   private clientToLatLon(clientX: number, clientY: number): { lat: number; lon: number } | null {
     const rect = this.container.getBoundingClientRect();
     const zoom = this.state.zoom;
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.readContainerSize();
     const tx = (width / 2) * (1 - zoom) + this.state.pan.x * zoom;
     const ty = (height / 2) * (1 - zoom) + this.state.pan.y * zoom;
     const coords = this.getProjection(width, height).invert?.([(clientX - rect.left - tx) / zoom, (clientY - rect.top - ty) / zoom]);
