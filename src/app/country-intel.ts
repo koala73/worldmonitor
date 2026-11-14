@@ -207,6 +207,11 @@ export class CountryIntelManager implements AppModule {
       project: (point) => this.ctx.map?.projectToClient(point.lat, point.lon) ?? null,
       hold: (held) => this.ctx.map?.holdAutoRotate(held),
       suppressLayers: (suppressed) => this.ctx.map?.suppressDataLayers(suppressed),
+      camera: () => {
+        const centre = this.ctx.map?.getCenter();
+        return centre && this.ctx.map ? { ...centre, zoom: this.ctx.map.getState().zoom } : null;
+      },
+      restore: ({ lat, lon, zoom }) => void this.ctx.map?.setCenter(lat, lon, zoom),
     });
     this.orbitalRouteUnsubscribe = watchOrbitalRoute(() => this.ctx.map);
     this.lastHadPremium = hasPremiumAccess(getAuthState());

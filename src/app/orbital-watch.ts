@@ -12,7 +12,7 @@ import { formatAcquiredLine, formatTargetCoordinates } from '@/components/orbita
 import { t } from '@/services/i18n';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 import { formatOrbitalRoute, parseOrbitalRoute } from '@/app/orbital-route';
-import { claimMapUrlCentre, getOrbitalMapView, releaseMapUrlCentreOnUserMove } from '@/app/orbital-map-focus';
+import { claimMapUrlCentre, getOrbitalMapView, releaseMapUrlCentreOnUserMove, type MapCamera } from '@/app/orbital-map-focus';
 import { visibleMapArea, type ScreenArea } from '@/utils/map-point-offset';
 
 let page: OrbitalWatchPage | null = null;
@@ -23,6 +23,8 @@ let evidence: OrbitalEvidence | null = null;
 let raisedMap = false;
 let markFrame: number | null = null;
 let centredFor: string | null = null;
+/** Where the map was before the lookup first moved it; closing puts it back, so the point never becomes the map centre. */
+let homeCamera: MapCamera | null = null;
 const RETRY = 'retry';
 
 /** The map the replayed pass's ground track is drawn on. */
@@ -66,6 +68,7 @@ function centreMap(): void {
     x: (area.left + area.right - map.left - map.right) / 2,
     y: (area.top + area.bottom - map.top - map.bottom) / 2,
   };
+  homeCamera ??= view.camera();
   // A map still booting cannot move yet; RETRY never matches a layout, so the next frame tries again.
   centredFor = view.center(point, offset) ? layoutKey(box) : RETRY;
 }
@@ -259,6 +262,8 @@ export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null
     onClose: () => {
       getOrbitalMapView()?.hold(false);
       getOrbitalMapView()?.suppressLayers(false);
+      if (homeCamera) getOrbitalMapView()?.restore(homeCamera);
+      homeCamera = null;
       releaseMapUrlCentreOnUserMove(document.getElementById('mapContainer'));
       cancel();
       clearTrack();

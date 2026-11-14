@@ -197,6 +197,10 @@ interface TechEventMarker {
 type FireMarker = { lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string };
 type CIIScore = { code: string; score: number; level: string };
 
+function noLayers(layers: MapLayers): MapLayers {
+  return Object.fromEntries(Object.keys(layers).map((key) => [key, false])) as unknown as MapLayers;
+}
+
 /**
  * Unified map interface that delegates to either DeckGLMap or MapComponent
  * based on device capabilities
@@ -960,6 +964,8 @@ export class MapContainer {
     if (this.orbitalTrack) this.applyOrbitalTrack();
     if (this.orbitalTarget) this.applyOrbitalTarget();
     for (const layer of this.hiddenLayerToggles) this.hideLayerToggle(layer);
+    // A renderer built while the layers are hidden starts from the real toggles.
+    if (this.suppressedLayers) this.drawLayers(noLayers(this.suppressedLayers));
   }
 
   private currentRendererSwitchResult(requested: 'globe' | 'flat'): MapRendererSwitchResult {
@@ -1217,7 +1223,7 @@ export class MapContainer {
     if (suppressed) {
       const layers = this.getState().layers;
       this.suppressedLayers = layers;
-      this.drawLayers(Object.fromEntries(Object.keys(layers).map((key) => [key, false])) as unknown as MapLayers);
+      this.drawLayers(noLayers(layers));
       return;
     }
     const layers = this.suppressedLayers!;
@@ -1722,6 +1728,14 @@ export class MapContainer {
   public setOnLayerChange(callback: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void): void {
     this.cachedOnLayerChange = callback;
     const notify = (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic'): void => {
+      if (this.suppressedLayers) {
+        this.suppressedLayers = { ...this.suppressedLayers, [layer]: enabled };
+        this.initialState = { ...this.initialState, layers: { ...this.initialState.layers, [layer]: enabled } };
+        // The renderer drew the toggled layer; hide it again until the layers come back.
+        if (enabled) this.drawLayers(noLayers(this.suppressedLayers));
+        callback(layer, enabled, source);
+        return;
+      }
       if (layer === 'ais') this.renderUkmtoStatus(enabled);
       if (layer === 'aircraftEmergencies') this.emergencyLayer.setEnabled(!this.useGlobe && enabled);
       if (layer === 'flights') this.notamAirspaceLayer.setEnabled(this.useDeckGL && enabled);
@@ -1831,7 +1845,13 @@ export class MapContainer {
       ...this.initialState,
       layers: { ...this.initialState.layers, [layer]: true },
     };
-    if (this.suppressedLayers) this.suppressedLayers = { ...this.suppressedLayers, [layer]: true };
+    if (this.suppressedLayers) {
+      // Saved now and drawn when the layers come back.
+      if (this.suppressedLayers[layer]) return;
+      this.suppressedLayers = { ...this.suppressedLayers, [layer]: true };
+      this.cachedOnLayerChange?.(layer, true, 'programmatic');
+      return;
+    }
     if (!this.hasActiveRenderer()) return;
     if (this.useGlobe) { this.globeMap?.enableLayer(layer); return; }
     if (this.useDeckGL) {

@@ -36,7 +36,7 @@ describe('orbital watch map focus', () => {
     const project = vi.fn(() => ({ x: 494, y: 450 }));
     let mapRect = rect(0, 0, 1440, 900);
     const hold = vi.fn();
-    const release = setOrbitalMapView({ rect: () => mapRect, center, project, hold, suppressLayers: vi.fn() });
+    const release = setOrbitalMapView({ rect: () => mapRect, center, project, hold, suppressLayers: vi.fn(), camera: () => null, restore: vi.fn() });
     try {
       openOrbitalWatch(PALM, null);
       await frames(40);
@@ -78,7 +78,7 @@ describe('orbital watch map focus', () => {
   it('keeps trying to centre until a booting map can move', async () => {
     let ready = false;
     const center = vi.fn(() => ready);
-    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center, project: () => null, hold: vi.fn(), suppressLayers: vi.fn() });
+    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center, project: () => null, hold: vi.fn(), suppressLayers: vi.fn(), camera: () => null, restore: vi.fn() });
     try {
       openOrbitalWatch(PALM, null);
       await frames();
@@ -124,7 +124,7 @@ describe('orbital watch map focus', () => {
 
   it('hides the dashboard layers only while the full view owns the map', () => {
     const suppressLayers = vi.fn();
-    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center: () => true, project: () => null, hold: vi.fn(), suppressLayers });
+    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center: () => true, project: () => null, hold: vi.fn(), suppressLayers, camera: () => null, restore: vi.fn() });
     try {
       openOrbitalWatch(PALM, null);
       expect(suppressLayers, 'the sheet leaves the dashboard layers alone').not.toHaveBeenCalledWith(true);
@@ -138,6 +138,32 @@ describe('orbital watch map focus', () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
       expect(document.querySelector('.orbital-watch-sheet')).toBeNull();
       expect(suppressLayers, 'closing from the full view brings the layers back').toHaveBeenLastCalledWith(false);
+    } finally {
+      release();
+    }
+  });
+
+  it('puts the map back where it was when the lookup closes, so the point never becomes the map centre', async () => {
+    const home = { lat: -15, lon: 80, zoom: 4 };
+    let camera = home;
+    const restore = vi.fn();
+    const release = setOrbitalMapView({
+      rect: () => rect(0, 0, 1440, 900),
+      center: (point) => { camera = { ...point, zoom: 11 }; return true; },
+      project: () => null,
+      hold: vi.fn(),
+      suppressLayers: vi.fn(),
+      camera: () => camera,
+      restore,
+    });
+    try {
+      openOrbitalWatch(PALM, null);
+      await frames(40);
+      openOrbitalWatch({ lat: 25.2, lon: 55.27 }, null);
+      await frames(40);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(document.querySelector('.orbital-watch-sheet')).toBeNull();
+      expect(restore, 'a second point keeps the camera from before the first').toHaveBeenCalledExactlyOnceWith(home);
     } finally {
       release();
     }
