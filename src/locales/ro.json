@@ -5193,6 +5193,17 @@
     "errLoad": "Evaluarea călătoriei nu a putut fi deschisă. Reîncărcați pagina și încercați din nou."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "Urma la sol a acestei treceri nu a putut fi desenată"
+    },
+    "replay": {
+      "acquisition": "ACHIZIȚIE · {{name}}",
+      "acquired": "ACHIZIȚIONAT {{time}} · {{resolution}}",
+      "play": "Redă reluarea",
+      "pause": "Întrerupe reluarea",
+      "scrub": "Poziția reluării",
+      "reducedMotion": "MIȘCARE REDUSĂ"
+    },
     "computing": "Se încarcă catalogul de sateliți…",
     "computingProgress": "Se calculează trecerile: {{done}} din {{total}} sateliți",
     "unavailable": "Catalogul de sateliți nu a putut fi încărcat, așa că nu s-au calculat treceri pentru acest punct.",

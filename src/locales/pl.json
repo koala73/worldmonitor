@@ -5221,6 +5221,17 @@
     "errLoad": "Nie można było otworzyć oceny podróży. Odśwież stronę i spróbuj ponownie."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "Nie udało się narysować śladu naziemnego tego przelotu"
+    },
+    "replay": {
+      "acquisition": "AKWIZYCJA · {{name}}",
+      "acquired": "ZAREJESTROWANO {{time}} · {{resolution}}",
+      "play": "Odtwórz powtórkę",
+      "pause": "Wstrzymaj powtórkę",
+      "scrub": "Pozycja powtórki",
+      "reducedMotion": "OGRANICZONY RUCH"
+    },
     "computing": "Wczytywanie katalogu satelitów…",
     "computingProgress": "Obliczanie przelotów: {{done}} z {{total}} satelitów",
     "unavailable": "Nie udało się wczytać katalogu satelitów, więc dla tego punktu nie obliczono przelotów.",

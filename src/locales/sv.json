@@ -5165,6 +5165,17 @@
     "errLoad": "Resebedömningen kunde inte öppnas. Ladda om sidan och försök igen."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "Markspåret för den här passagen kunde inte ritas"
+    },
+    "replay": {
+      "acquisition": "UPPTAGNING · {{name}}",
+      "acquired": "TAGEN {{time}} · {{resolution}}",
+      "play": "Spela upp",
+      "pause": "Pausa uppspelning",
+      "scrub": "Uppspelningsposition",
+      "reducedMotion": "REDUCERAD RÖRELSE"
+    },
     "computing": "Läser in satellitkatalogen…",
     "computingProgress": "Beräknar passager: {{done}} av {{total}} satelliter",
     "unavailable": "Satellitkatalogen kunde inte läsas in, så inga passager beräknades för den här punkten.",

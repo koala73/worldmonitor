@@ -5221,6 +5221,17 @@
     "errLoad": "Posouzení cesty se nepodařilo otevřít. Znovu načtěte stránku a zkuste to znovu."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "Pozemní stopu tohoto přeletu nelze vykreslit"
+    },
+    "replay": {
+      "acquisition": "SNÍMKOVÁNÍ · {{name}}",
+      "acquired": "POŘÍZENO {{time}} · {{resolution}}",
+      "play": "Přehrát záznam",
+      "pause": "Pozastavit záznam",
+      "scrub": "Pozice záznamu",
+      "reducedMotion": "OMEZENÝ POHYB"
+    },
     "computing": "Načítání katalogu satelitů…",
     "computingProgress": "Výpočet přeletů: {{done}} z {{total}} satelitů",
     "unavailable": "Katalog satelitů se nepodařilo načíst, proto pro tento bod nebyly vypočteny žádné přelety.",

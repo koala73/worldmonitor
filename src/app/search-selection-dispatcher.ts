@@ -614,7 +614,7 @@ export class SearchSelectionDispatcher {
         break;
       case 'orbital':
         void import('@/app/orbital-watch').then(({ openOrbitalWatchSearch }) =>
-          openOrbitalWatchSearch(document.getElementById('mapContainer')));
+          openOrbitalWatchSearch(document.getElementById('mapContainer'), ctx.map));
         break;
       case 'country': {
         const name = TIER1_COUNTRIES[action]

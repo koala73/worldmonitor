@@ -398,7 +398,32 @@ body.orbital-full-view #mapContainer .layer-toggles { display: none !important; 
 }
 .ow-status-right { text-align: right; }
 
+.ow-hud:not(:empty) { display: flex; flex-direction: column; align-items: stretch; gap: var(--ow-space-2); }
+.orbital-watch-sheet[data-view="sheet"] .ow-hud { pointer-events: auto; position: absolute; top: 0; right: calc(100% + 12px); width: 280px; }
+.orbital-watch-sheet[data-view="full"] .ow-hud { width: 300px; }
+.ow-track-note { margin: 0; color: var(--ow-dim); }
+.ow-replay-hud { padding: 10px 14px 12px; background: var(--ow-panel); border: 1px solid var(--ow-line); color: var(--ow-text); text-align: right; font-variant-numeric: tabular-nums; }
+.ow-hud-label { font-family: var(--ow-font-mono); font-size: var(--ow-label-size); letter-spacing: var(--ow-label-tracking); text-transform: uppercase; color: var(--ow-dim); white-space: nowrap; }
+.ow-hud-countdown { margin-top: 2px; font-size: 32px; line-height: 36px; font-weight: 600; letter-spacing: 0.01em; color: var(--ow-text); }
+.ow-replay-hud .ow-hud-reduced { display: inline-block; margin-top: var(--ow-space-2); }
+.ow-replay-controls { display: flex; align-items: center; gap: var(--ow-space-3); min-height: 32px; padding: var(--ow-space-2) var(--ow-space-3); background: var(--ow-panel); border: 1px solid var(--ow-line); font-family: var(--ow-font-mono); font-size: var(--ow-label-size); letter-spacing: var(--ow-label-tracking); color: var(--ow-text); font-variant-numeric: tabular-nums; }
+.ow-replay-controls[data-reduced-motion="true"] { flex-wrap: wrap; }
+/* Desktop names the reduced-motion state once, under the countdown; the phone HUD shows it in the control row. */
+.ow-replay-controls .ow-hud-reduced { order: -1; display: none; }
+.ow-hud-toggle { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--ow-line); background: var(--ow-bg); color: var(--ow-active-text) !important; font-size: 11px; line-height: 1; }
+.ow-hud-scrub { flex: 1; min-width: 0; height: 4px; accent-color: var(--ow-active); cursor: pointer; }
+.ow-hud-scrub:focus-visible { outline: 1px solid var(--ow-emphasis); outline-offset: 2px; }
+.ow-hud-short { flex: none; color: var(--ow-dim); }
+.ow-hud-reduced { flex: none; padding: 1px 6px; border: 1px solid var(--ow-line-strong); color: var(--ow-text); font-family: var(--ow-font-mono); font-size: 10px; line-height: 14px; letter-spacing: var(--ow-label-tracking); text-transform: uppercase; white-space: nowrap; }
+
+/* The SVG map draws one world; a pass's world copies past ±180 draw outside its box. */
+.orbital-tracked .map-svg,
+.orbital-pinned .map-svg { overflow: visible; }
+
 @media (max-width: 768px) {
+  /* The phone map strip is short: while a point is pinned, its time chips and zoom buttons give way to the pass. */
+  .orbital-pinned .time-slider,
+  .orbital-pinned .map-controls { display: none; }
   .ow-detail-media .ow-tile-hero { aspect-ratio: 2 / 1; }
   .orbital-watch-sheet,
   .orbital-watch-sheet[data-view="full"] {
@@ -458,6 +483,18 @@ body.orbital-full-view #mapContainer .layer-toggles { display: none !important; 
   }
   .orbital-watch-sheet[data-view="full"] .ow-hud,
   .orbital-watch-sheet[data-view="full"] .ow-statusbar { display: none; }
+  .orbital-watch-sheet .ow-hud:not(:empty),
+  .orbital-watch-sheet[data-view="full"] .ow-hud:not(:empty) { display: flex; pointer-events: auto; position: absolute; top: auto; bottom: calc(100% + 8px); left: 12px; right: 12px; width: auto; }
+  .orbital-watch-sheet .ow-hud:not(:empty) { flex-direction: row; gap: var(--ow-space-1); }
+  .ow-replay-hud { display: flex; align-items: center; padding: 2px 8px; }
+  .ow-replay-hud .ow-hud-label,
+  .ow-replay-hud .ow-hud-reduced,
+  .ow-replay-controls .ow-hud-short { display: none; }
+  .ow-replay-controls .ow-hud-reduced { display: inline-block; }
+  .ow-hud-countdown { margin-top: 0; font-size: 15px; line-height: 18px; }
+  .ow-replay-controls,
+  .ow-replay-controls[data-reduced-motion="true"] { flex: 1; min-width: 0; flex-wrap: nowrap; min-height: 0; padding: 2px var(--ow-space-2); }
+  .ow-hud-toggle { width: 28px; height: 28px; }
 }
 
 .ow-view-image { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }

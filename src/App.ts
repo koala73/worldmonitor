@@ -3917,7 +3917,7 @@ export class App {
     const orbitalShareLink = this.pendingOrbitalShareLink;
     this.pendingOrbitalShareLink = null;
     if (orbitalShareLink) {
-      this.cancelOrbitalShareLink = scheduleOrbitalShareLink(orbitalShareLink, DEEP_LINK_INITIAL_DELAY_MS, () => this.state.isDestroyed);
+      this.cancelOrbitalShareLink = scheduleOrbitalShareLink(orbitalShareLink, DEEP_LINK_INITIAL_DELAY_MS, () => this.state.isDestroyed, () => this.state.map);
     }
 
     // SearchAction lands on /dashboard?q=… after URL sync has already rewritten

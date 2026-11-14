@@ -5165,6 +5165,17 @@
     "errLoad": "Die Reisebewertung konnte nicht geöffnet werden. Laden Sie die Seite neu und versuchen Sie es erneut."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "Die Bodenspur dieses Überflugs konnte nicht gezeichnet werden"
+    },
+    "replay": {
+      "acquisition": "AUFNAHME · {{name}}",
+      "acquired": "AUFGENOMMEN {{time}} · {{resolution}}",
+      "play": "Wiedergabe starten",
+      "pause": "Wiedergabe anhalten",
+      "scrub": "Wiedergabeposition",
+      "reducedMotion": "REDUZIERTE BEWEGUNG"
+    },
     "computing": "Satellitenkatalog wird geladen…",
     "computingProgress": "Überflüge werden berechnet: {{done}} von {{total}} Satelliten",
     "unavailable": "Der Satellitenkatalog konnte nicht geladen werden, daher wurden für diesen Punkt keine Überflüge berechnet.",

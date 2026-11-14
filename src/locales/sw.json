@@ -5165,6 +5165,17 @@
     "errLoad": "Tathmini ya safari haikuweza kufunguliwa. Pakia upya ukurasa kisha ujaribu tena."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "Njia ya ardhini ya kupita huku haikuweza kuchorwa"
+    },
+    "replay": {
+      "acquisition": "UPIGAJI · {{name}}",
+      "acquired": "IMEPIGWA {{time}} · {{resolution}}",
+      "play": "Cheza marudio",
+      "pause": "Sitisha marudio",
+      "scrub": "Nafasi ya marudio",
+      "reducedMotion": "MWENDO ULIOPUNGUZWA"
+    },
     "computing": "Inapakia orodha ya satelaiti…",
     "computingProgress": "Inakokotoa mapito: {{done}} kati ya satelaiti {{total}}",
     "unavailable": "Orodha ya satelaiti haikuweza kupakiwa, kwa hivyo hakuna mapito yaliyokokotolewa kwa sehemu hii.",

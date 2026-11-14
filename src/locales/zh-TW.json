@@ -5137,6 +5137,17 @@
     "errLoad": "無法開啟行程評估。請重新整理頁面後重試。"
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "無法繪製此次過境的地面軌跡"
+    },
+    "replay": {
+      "acquisition": "採集 · {{name}}",
+      "acquired": "已採集 {{time}} · {{resolution}}",
+      "play": "播放回放",
+      "pause": "暫停回放",
+      "scrub": "回放位置",
+      "reducedMotion": "減弱動態效果"
+    },
     "computing": "正在載入衛星目錄…",
     "computingProgress": "正在計算過境：{{done}} / {{total}} 顆衛星",
     "unavailable": "無法載入衛星目錄，因此未計算此地點的過境。",

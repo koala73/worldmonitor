@@ -5193,6 +5193,17 @@
     "errLoad": "Não foi possível abrir a avaliação da viagem. Recarregue a página e tente novamente."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "Não foi possível desenhar o traço no solo desta passagem"
+    },
+    "replay": {
+      "acquisition": "AQUISIÇÃO · {{name}}",
+      "acquired": "ADQUIRIDA {{time}} · {{resolution}}",
+      "play": "Reproduzir",
+      "pause": "Pausar reprodução",
+      "scrub": "Posição da reprodução",
+      "reducedMotion": "MOVIMENTO REDUZIDO"
+    },
     "computing": "Carregando o catálogo de satélites…",
     "computingProgress": "Calculando passagens: {{done}} de {{total}} satélites",
     "unavailable": "Não foi possível carregar o catálogo de satélites, então nenhuma passagem foi calculada para este ponto.",

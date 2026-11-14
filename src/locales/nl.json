@@ -5165,6 +5165,17 @@
     "errLoad": "De reisbeoordeling kon niet worden geopend. Laad de pagina opnieuw en probeer het opnieuw."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "Het grondspoor van deze overkomst kon niet worden getekend"
+    },
+    "replay": {
+      "acquisition": "OPNAME · {{name}}",
+      "acquired": "OPGENOMEN {{time}} · {{resolution}}",
+      "play": "Herhaling afspelen",
+      "pause": "Herhaling pauzeren",
+      "scrub": "Positie van de herhaling",
+      "reducedMotion": "MINDER BEWEGING"
+    },
     "computing": "Satellietcatalogus laden…",
     "computingProgress": "Passages berekenen: {{done}} van {{total}} satellieten",
     "unavailable": "De satellietcatalogus kon niet worden geladen, dus er zijn geen passages voor dit punt berekend.",

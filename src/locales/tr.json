@@ -5165,6 +5165,17 @@
     "errLoad": "Seyahat değerlendirmesi açılamadı. Sayfayı yeniden yükleyin ve tekrar deneyin."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "Bu geçişin yer izi çizilemedi"
+    },
+    "replay": {
+      "acquisition": "ÇEKİM · {{name}}",
+      "acquired": "ÇEKİLDİ {{time}} · {{resolution}}",
+      "play": "Tekrarı oynat",
+      "pause": "Tekrarı duraklat",
+      "scrub": "Tekrar konumu",
+      "reducedMotion": "AZALTILMIŞ HAREKET"
+    },
     "computing": "Uydu kataloğu yükleniyor…",
     "computingProgress": "Geçişler hesaplanıyor: {{total}} uydudan {{done}}",
     "unavailable": "Uydu kataloğu yüklenemedi, bu nedenle bu nokta için geçiş hesaplanmadı.",
