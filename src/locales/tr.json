@@ -5150,6 +5150,8 @@
       "embeds": "Kendi siteniz için widget'lar",
       "aiAgents": "Bağlı MCP istemcileri",
       "about": "Site bağlantıları, şartlar ve gizlilik"
-    }
+    },
+    "signOut": "Çıkış yap",
+    "signOutFailed": "Oturum kapatılamadı. Lütfen tekrar deneyin."
   }
 }

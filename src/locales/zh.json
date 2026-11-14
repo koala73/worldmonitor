@@ -5122,6 +5122,8 @@
       "embeds": "用于您网站的 widget",
       "aiAgents": "已连接的 MCP 客户端",
       "about": "网站链接、条款和隐私"
-    }
+    },
+    "signOut": "退出登录",
+    "signOutFailed": "无法退出登录。请重试。"
   }
 }

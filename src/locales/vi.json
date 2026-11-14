@@ -5122,6 +5122,8 @@
       "embeds": "Widget cho trang web của bạn",
       "aiAgents": "Máy khách MCP được kết nối",
       "about": "Liên kết trang web, điều khoản và quyền riêng tư"
-    }
+    },
+    "signOut": "Đăng xuất",
+    "signOutFailed": "Không thể đăng xuất. Vui lòng thử lại."
   }
 }

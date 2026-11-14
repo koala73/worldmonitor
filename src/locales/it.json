@@ -5178,6 +5178,8 @@
       "embeds": "Widget per il tuo sito",
       "aiAgents": "Client MCP collegati",
       "about": "Link del sito, termini e privacy"
-    }
+    },
+    "signOut": "Esci",
+    "signOutFailed": "Impossibile disconnettersi. Riprovare."
   }
 }

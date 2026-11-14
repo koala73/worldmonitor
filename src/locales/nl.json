@@ -5150,6 +5150,8 @@
       "embeds": "Widgets voor je eigen site",
       "aiAgents": "Verbonden MCP-clients",
       "about": "Sitelinks, voorwaarden en privacy"
-    }
+    },
+    "signOut": "Afmelden",
+    "signOutFailed": "Afmelden mislukt. Probeer opnieuw."
   }
 }

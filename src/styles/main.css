@@ -27773,6 +27773,14 @@ body.map-width-resizing {
 
 .upgrade-pro-cta:hover { opacity: 0.85; }
 
+.us-signout {
+  margin-top: 24px;
+}
+
+.us-signout + .account-deletion-zone {
+  margin-top: 16px;
+}
+
 .account-deletion-zone {
   margin-top: 24px;
   padding: 16px;
@@ -27897,13 +27905,38 @@ body.map-width-resizing {
   }
 }
 
-@media (max-height: 650px) and (max-width: 768px) {
+/* Phones: Settings is a full-height sheet from the top safe area down to the
+   mobile tab bar, which stays visible above it. The header stays put while the
+   sheet scrolls under it. */
+@media (max-width: 768px) {
   #unifiedSettingsModal {
-    bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+    /* The tab bar renders 59px tall: 50px tabs, 8px padding, 1px top border. */
+    bottom: calc(59px + env(safe-area-inset-bottom, 0px));
+    align-items: stretch;
   }
 
-  .unified-settings-modal {
-    max-height: calc(100dvh - 74px - env(safe-area-inset-bottom, 0px));
+  #unifiedSettingsModal .unified-settings-modal {
+    --us-sheet-left: max(16px, env(safe-area-inset-left, 0px));
+    --us-sheet-right: max(16px, env(safe-area-inset-right, 0px));
+    width: 100%;
+    max-width: none;
+    height: auto;
+    max-height: none;
+    padding: 0 var(--us-sheet-right) 24px var(--us-sheet-left);
+    border: none;
+    border-radius: 0;
+    overscroll-behavior: contain;
+  }
+
+  #unifiedSettingsModal .modal-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    min-height: calc(52px + env(safe-area-inset-top, 0px));
+    margin: 0 calc(-1 * var(--us-sheet-right)) 16px calc(-1 * var(--us-sheet-left));
+    padding: env(safe-area-inset-top, 0px) calc(var(--us-sheet-right) - 6px) 0 var(--us-sheet-left);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
   }
 }
 

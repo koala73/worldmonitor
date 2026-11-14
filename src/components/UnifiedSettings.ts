@@ -27,11 +27,13 @@ import {
   diffNav,
   isPreferenceSection,
   isSettingsSectionId,
+  pageEntryEffect,
   reduceNav,
   sectionLabelKey,
   type MountedSection,
   type NavEvent,
   type NavGroup,
+  type NavLayout,
   type NavState,
   type PreferenceSectionId,
   type RowSummary,
@@ -99,6 +101,7 @@ import {
   overlayHistory,
   type OverlayCloseOrigin,
   type OverlayId,
+  type OverlayOpenHandle,
 } from '@/utils/overlay-history';
 import { isMobileDevice } from '@/utils';
 import {
@@ -193,7 +196,8 @@ export class UnifiedSettings {
   private nav: NavState | null = null;
   /** Pages mounted this session. Each mounts on first visit and stays until close. */
   private readonly pages = new Map<SettingsSectionId, { el: HTMLElement; mounted: MountedSection }>();
-  private readonly scrollPositions = new Map<SettingsSectionId | 'home', number>();
+  /** Where the home list and each page were last scrolled this session. */
+  private readonly scrollOffsets = new Map<SettingsSectionId | 'home', number>();
   private installCleanup: (() => void) | null = null;
   private legalLinkHandoffAttached = false;
   private activeSourceRegion = 'all';
@@ -208,6 +212,8 @@ export class UnifiedSettings {
   /** Runs once Settings has actually closed; dropped when the user keeps it open. */
   private afterTeardown: (() => void) | null = null;
   private historyRegistered = false;
+  /** The open page's history entry on the phone sheet, from request until it closes. */
+  private pageEntry: OverlayOpenHandle | null = null;
   /**
    * `sourceSelectionSignature()` as of the last open(), or null while closed.
    *
@@ -386,6 +392,17 @@ export class UnifiedSettings {
 
       if (target.closest('[data-settings-back]')) {
         this.dispatch({ type: 'back' });
+        return;
+      }
+
+      const signOutButton = target.closest<HTMLButtonElement>('[data-settings-signout]');
+      if (signOutButton) {
+        // The auth subscription rebuilds Settings for the signed-out state.
+        signOutButton.disabled = true;
+        signOut().catch(() => {
+          signOutButton.disabled = false;
+          showToast(t('settings.signOutFailed'));
+        });
         return;
       }
 
@@ -709,15 +726,18 @@ export class UnifiedSettings {
     }
     this.overlay.classList.add('active');
     this.focusTrap.activate();
-    this.dispatch({ type: 'open', target: section });
     if (isMobileDevice()) {
       this.historyRegistered = true;
       const close = (origin: OverlayCloseOrigin) => this.close(origin);
       if (replaceOverlayId) overlayHistory.replace(replaceOverlayId, 'settings', close);
       else overlayHistory.open('settings', close);
     }
+    // After the Settings entry: a page opened directly stacks its entry above
+    // it, so Back from that page lands on the home list.
+    this.dispatch({ type: 'open', target: section });
     safeStorageSet('wm-settings-open', '1');
     document.addEventListener('keydown', this.escapeHandler);
+    window.addEventListener('resize', this.onResize);
     track('settings-open', { tab: section ?? 'default' });
 
     // Rebuild account-scoped pages when entitlements arrive (cold-load race:
@@ -864,6 +884,7 @@ export class UnifiedSettings {
   }
 
   private teardownSettings(origin: OverlayCloseOrigin = 'control'): void {
+    this.releasePageEntry();
     if (origin === 'control' && this.historyRegistered) {
       overlayHistory.close('settings');
     }
@@ -882,6 +903,7 @@ export class UnifiedSettings {
     this.resetPanelDraft();
     safeStorageRemove('wm-settings-open');
     document.removeEventListener('keydown', this.escapeHandler);
+    window.removeEventListener('resize', this.onResize);
     // Last: the host reloads data in response, and the overlay covering the
     // dashboard has to be gone before that lands for the user to see it.
     this.notifySourceSelectionChanged();
@@ -930,6 +952,7 @@ export class UnifiedSettings {
   }
 
   public destroy(): void {
+    this.releasePageEntry();
     if (this.historyRegistered) overlayHistory.close('settings');
     this.historyRegistered = false;
     if (this.savedTimeout) clearTimeout(this.savedTimeout);
@@ -947,6 +970,7 @@ export class UnifiedSettings {
     this.stopMcpQuotaPolling();
     this.closeDeletionDialog();
     document.removeEventListener('keydown', this.escapeHandler);
+    window.removeEventListener('resize', this.onResize);
     // Teardown, not a user-initiated close: release the trap's document
     // listener without handing focus back to a trigger that is also going away.
     this.focusTrap.deactivate({ restoreFocus: false });
@@ -977,7 +1001,7 @@ export class UnifiedSettings {
 
   private startSession(): void {
     this.endSession();
-    this.scrollPositions.clear();
+    this.scrollOffsets.clear();
     this.renderHome();
     this.attachLegalLinkHandoff();
     const installHost = this.overlay.querySelector<HTMLElement>('[data-pwa-install-entry]');
@@ -1122,22 +1146,70 @@ export class UnifiedSettings {
     const fx = diffNav(prev, next);
     if (fx.leave === null && fx.enter === null && prev !== null) {
       this.nav = next;
+      this.syncPageEntry();
       return;
     }
     const modal = this.overlay.querySelector<HTMLElement>('.unified-settings-modal');
-    if (modal && prev) this.scrollPositions.set(prev.page ?? 'home', modal.scrollTop);
+    if (modal && prev) this.scrollOffsets.set(prev.page ?? 'home', modal.scrollTop);
     this.nav = next;
     if (fx.leave) this.pages.get(fx.leave)?.mounted.leave?.();
     const entered = fx.enter ? this.ensurePage(fx.enter) : null;
     this.reflectNav();
-    if (modal) modal.scrollTop = this.scrollPositions.get(next.page ?? 'home') ?? 0;
+    // The phone sheet is a drill-in stack, so a page opens at its top there.
+    // The desktop modal returns every page to where it was left.
+    const drillIn = next.page !== null && this.navLayout() === 'sheet';
+    if (modal) modal.scrollTop = drillIn ? 0 : this.scrollOffsets.get(next.page ?? 'home') ?? 0;
     entered?.mounted.enter?.();
     if (entered) {
       entered.el.querySelector<HTMLElement>('.us-page-title')?.focus({ preventScroll: true });
     } else if (fx.leave && next.page === null) {
       this.overlay.querySelector<HTMLElement>(`[data-settings-nav="${fx.leave}"]`)?.focus({ preventScroll: true });
     }
+    this.syncPageEntry();
   }
+
+  private navLayout(): NavLayout {
+    return isMobileDevice() ? 'sheet' : 'modal';
+  }
+
+  /** Settings opened in the desktop modal has no history entry, so a window narrowed to the phone sheet registers it. */
+  private readonly onResize = (): void => {
+    if (!this.historyRegistered && this.navLayout() === 'sheet') {
+      this.historyRegistered = true;
+      overlayHistory.open('settings', (origin) => this.close(origin));
+    }
+    this.syncPageEntry();
+  };
+
+  /** Holds or releases the open page's history entry to match the page and layout. Idempotent. */
+  private readonly syncPageEntry = (): void => {
+    if (pageEntryEffect(this.nav, this.navLayout(), this.historyRegistered) === 'hold') {
+      this.pageEntry ??= overlayHistory.openCancelable('settings-section', this.onPageEntryClosed);
+    } else {
+      this.releasePageEntry();
+    }
+  };
+
+  private releasePageEntry(): void {
+    this.pageEntry?.cancel();
+    this.pageEntry = null;
+    overlayHistory.close('settings-section');
+  }
+
+  /** The manager removed the page entry: device Back, or the tab bar replacing Settings. */
+  private readonly onPageEntryClosed = (origin: OverlayCloseOrigin): void => {
+    this.pageEntry = null;
+    // A replacement is the tab bar dismissing or replacing Settings next.
+    if (origin !== 'history') return;
+    // Back with the deletion dialog up acts like Escape: it closes the dialog
+    // (never mid-deletion) and keeps the Account page.
+    if (this.deletionDialog) {
+      if (!this.deletionBusy) this.closeDeletionDialog();
+      this.syncPageEntry();
+      return;
+    }
+    this.dispatch({ type: 'back' });
+  };
 
   /**
    * Account or entitlement change: every page may render differently, so
@@ -1145,17 +1217,24 @@ export class UnifiedSettings {
    */
   private rebuild(runEnter: boolean): void {
     const focusWasInside = this.overlay.contains(document.activeElement);
+    const modal = this.overlay.querySelector<HTMLElement>('.unified-settings-modal');
+    const before = this.nav?.page ?? null;
+    const offset = modal?.scrollTop ?? 0;
     this.disposePages();
     this.nav = reduceNav(this.nav, { type: 'facts-changed' }, this.readFacts());
     this.renderHome();
     const page = this.nav.page ? this.ensurePage(this.nav.page) : null;
     this.reflectNav();
+    // Removing the old page can clamp the scroller's offset. A reader who
+    // stays on the same page keeps their place.
+    if (modal) modal.scrollTop = this.nav.page === before ? offset : this.scrollOffsets.get('home') ?? 0;
     if (runEnter) page?.mounted.enter?.();
     if (focusWasInside && !this.overlay.contains(document.activeElement)) {
       const target = page?.el.querySelector<HTMLElement>('.us-page-title')
         ?? this.overlay.querySelector<HTMLElement>('[data-settings-nav], [data-settings-signin]');
       target?.focus({ preventScroll: true });
     }
+    this.syncPageEntry();
   }
 
   private reflectNav(): void {
@@ -1232,6 +1311,9 @@ export class UnifiedSettings {
         </div>
         ${this.renderUpgradeSection()}
         <div id="usEnterpriseSeats">${this.enterpriseSeatsSection.renderContent()}</div>
+        <ul class="us-list us-signout" role="list">
+          <li><button type="button" class="us-row" data-settings-signout><span class="us-row-text"><span class="us-row-title">${escapeHtml(t('settings.signOut'))}</span></span></button></li>
+        </ul>
         ${this.renderAccountDeletionSection()}
       `, 'account page; billing and seat sections escape their values'));
       return { enter: () => this.loadAccountSeats(), dispose: () => {} };

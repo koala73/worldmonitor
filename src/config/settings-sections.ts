@@ -244,6 +244,21 @@ export function diffNav(prev: NavState | null, next: NavState): NavEffects {
   return { leave: from, enter: next.page };
 }
 
+/** Where Settings is drawn: the full-height phone 'sheet', or the centred 'modal'. */
+export type NavLayout = 'sheet' | 'modal';
+
+/** What the shell does with the open page's history entry. Both are idempotent. */
+export type PageEntryEffect = 'hold' | 'release';
+
+/**
+ * On the sheet an open page holds a history entry above Settings' own, so
+ * device Back returns to the home list before it closes Settings. Without a
+ * Settings entry beneath it, Back would pop the page and then leave the app.
+ */
+export function pageEntryEffect(nav: NavState | null, layout: NavLayout, settingsEntry: boolean): PageEntryEffect {
+  return layout === 'sheet' && settingsEntry && nav?.page != null ? 'hold' : 'release';
+}
+
 /** A mounted page. The shell calls enter on every activation and dispose on close or eviction. */
 export interface MountedSection {
   enter?(): void;

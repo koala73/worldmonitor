@@ -5206,6 +5206,8 @@
       "embeds": "Widgety pro tvůj web",
       "aiAgents": "Připojení MCP klienti",
       "about": "Odkazy webu, podmínky a ochrana soukromí"
-    }
+    },
+    "signOut": "Odhlásit se",
+    "signOutFailed": "Nepodařilo se odhlásit. Zkuste to znovu."
   }
 }

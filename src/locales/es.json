@@ -5178,6 +5178,8 @@
       "embeds": "Widgets para tu sitio",
       "aiAgents": "Clientes MCP conectados",
       "about": "Enlaces del sitio, términos y privacidad"
-    }
+    },
+    "signOut": "Cerrar sesión",
+    "signOutFailed": "No se pudo cerrar sesión. Intenta de nuevo."
   }
 }
