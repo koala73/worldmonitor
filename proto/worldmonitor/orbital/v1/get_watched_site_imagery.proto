@@ -7,7 +7,7 @@ import "sebuf/http/annotations.proto";
 // GetWatchedSiteImageryRequest names one watched site by its registry id.
 message GetWatchedSiteImageryRequest {
   // Watched-site id from the registry, "<list>:<entry id>", e.g. "port:jebel_ali". Never a coordinate.
-  string site_id = 1 [(sebuf.http.query) = {name: "site_id"}];
+  string site_id = 1 [(sebuf.http.query) = {name: "site_id", required: true}];
 }
 
 // SiteImage is the newest archive scene of a watched site.

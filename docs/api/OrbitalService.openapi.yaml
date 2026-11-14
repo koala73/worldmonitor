@@ -431,7 +431,7 @@ paths:
                 - name: site_id
                   in: query
                   description: Watched-site id from the registry, "<list>:<entry id>", e.g. "port:jebel_ali". Never a coordinate.
-                  required: false
+                  required: true
                   example: "example-id"
                   schema:
                     type: string
@@ -1162,6 +1162,8 @@ components:
                 siteId:
                     type: string
                     description: Watched-site id from the registry, "<list>:<entry id>", e.g. "port:jebel_ali". Never a coordinate.
+            required:
+                - siteId
             description: GetWatchedSiteImageryRequest names one watched site by its registry id.
         GetWatchedSiteImageryResponse:
             type: object
