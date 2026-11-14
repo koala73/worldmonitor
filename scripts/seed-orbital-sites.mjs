@@ -27,6 +27,7 @@ import {
   checkStatistics,
   flagShadowKey,
   makeChangeStage,
+  ScoringHalt,
   ScoringRefusal,
   shadowExitStatus,
   statisticsUrl,
@@ -102,11 +103,12 @@ export function makeArchiveSearch({ fetchImpl = (...args) => globalThis.fetch(..
     }
     return response.json();
   }
-  // Follows the search's `next` link (a POST body with a token) so a busy site is not cut at one page.
-  async function search(body) {
+  // Follows the search's `next` link (a POST body with a token) so a busy site is not cut at one
+  // page, but reads no further page once the caller's deadline has passed.
+  async function search(body, deadlineMs = Infinity) {
     const features = [];
     let next = body;
-    for (let pages = 0; next && pages < MAX_SEARCH_PAGES; pages += 1) {
+    for (let pages = 0; next && pages < MAX_SEARCH_PAGES && (pages === 0 || clock() < deadlineMs); pages += 1) {
       const json = await page(next);
       if (Array.isArray(json?.features)) features.push(...json.features);
       const link = Array.isArray(json?.links) ? json.links.find((l) => l?.rel === 'next' && l.body?.token) : null;
@@ -114,8 +116,8 @@ export function makeArchiveSearch({ fetchImpl = (...args) => globalThis.fetch(..
     }
     return acquisitionsFromStac(features);
   }
-  const searchArchive = (site, nowMs) => search(stacSearchBody(site, nowMs));
-  searchArchive.backfill = (site, nowMs) => search(backfillSearchBody(site, nowMs, ARCHIVE_LOOKBACK_DAYS)).catch((error) => {
+  const searchArchive = (site, nowMs, deadlineMs) => search(stacSearchBody(site, nowMs), deadlineMs);
+  searchArchive.backfill = (site, nowMs, deadlineMs) => search(backfillSearchBody(site, nowMs, ARCHIVE_LOOKBACK_DAYS), deadlineMs).catch((error) => {
     throw error instanceof ArchiveRefusal ? new ScoringRefusal(error.message) : error;
   });
   return searchArchive;
@@ -124,8 +126,10 @@ export function makeArchiveSearch({ fetchImpl = (...args) => globalThis.fetch(..
 /** Radar statistics of one scene over a footprint; a response without the requested bands fails loudly (UnexpectedStatistics). */
 export function makeStatisticsFetch({ fetchImpl = (...args) => globalThis.fetch(...args), minIntervalMs = ARCHIVE_MIN_INTERVAL_MS, clock = Date.now, wait = sleep } = {}) {
   const throttle = makeThrottle({ minIntervalMs, clock, wait });
-  return async function fetchStatistics(scene, feature) {
+  return async function fetchStatistics(scene, feature, { stopRequested } = {}) {
     await throttle();
+    // The stage may have halted while this request waited for its slot.
+    if (stopRequested?.()) throw new ScoringHalt('scoring halted');
     const response = await fetchImpl(statisticsUrl(scene), {
       method: 'POST',
       headers: { 'User-Agent': USER_AGENT, 'Content-Type': 'application/json', Accept: 'application/json' },

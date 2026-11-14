@@ -255,7 +255,7 @@ export async function evaluateSites({ sites, catalog, previousRecords, cursor, s
     const previous = previousRecords.get(site.id) ?? null;
     let acquisitions;
     try {
-      acquisitions = await searchArchive(site, nowMs);
+      acquisitions = await searchArchive(site, nowMs, deadlineMs);
     } catch (error) {
       if (error instanceof ArchiveRefusal) {
         refused = error.message;

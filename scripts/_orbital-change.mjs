@@ -189,12 +189,19 @@ export async function scoreSiteChange({
   let scenes = radarScenes(acquisitions);
   let stopped = null;
   let halted = null;
-  const haltKindOf = (error) => (error instanceof ScoringRefusal ? 'refusal' : 'unexpected-response');
+  const haltKindOf = (error) => {
+    if (error instanceof ScoringRefusal) return 'refusal';
+    return error instanceof UnexpectedStatistics ? 'unexpected-response' : 'halted';
+  };
   let haltKind = null;
   let backfilling = flag.backfilledAt === null && searchBackfill !== null;
+  if (backfilling && (clock() >= deadlineMs || stopRequested())) {
+    backfilling = false;
+    stopped = clock() >= deadlineMs ? 'deadline' : 'scoring halted';
+  }
   if (backfilling) {
     try {
-      const archived = await searchBackfill(site, nowMs);
+      const archived = await searchBackfill(site, nowMs, deadlineMs);
       scenes = [...radarScenes(archived, (thresholds ?? CHANGE_THRESHOLDS).minBaselineScenes), ...scenes];
     } catch (error) {
       backfilling = false;
@@ -225,7 +232,7 @@ export async function scoreSiteChange({
     let statistics;
     try {
       requests += 1;
-      statistics = await fetchStatistics(scene, feature);
+      statistics = await fetchStatistics(scene, feature, { stopRequested });
     } catch (error) {
       stopped = errorText(error);
       if (error instanceof ScoringHalt) {
