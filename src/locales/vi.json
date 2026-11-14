@@ -491,7 +491,8 @@
     "climateNews": "Tin tức về Khí hậu",
     "fx": "Tỷ giá ngoại hối",
     "ukmtoIncidents": "Sự cố UKMTO",
-    "reservoirLevels": "Mực nước chiến lược"
+    "reservoirLevels": "Mực nước chiến lược",
+    "gridDisruptionClock": "Đồng hồ theo dõi mất điện tại các bang Hoa Kỳ"
   },
   "commands": {
     "prefixes": {
@@ -3165,6 +3166,57 @@
         "measured": "Ngày đo",
         "sparkline": "Mực nước trong 36 tháng"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Chọn tiểu bang",
+      "unknown": "Chưa rõ",
+      "customers": "Số khách hàng mất điện theo báo cáo",
+      "lastCustomers": "Số khách hàng mất điện trong báo cáo gần nhất",
+      "denominatorUnknown": "Chưa rõ tổng số khách hàng được theo dõi",
+      "tracked": "Đang theo dõi {{amount}} khách hàng",
+      "dataAge": "Thời gian từ khi có báo cáo",
+      "minutes": "{{amount}} phút",
+      "hours": "{{amount}} giờ",
+      "warnings": "Cảnh báo",
+      "recovery": "Thay đổi được báo cáo",
+      "decreased": "Số khách hàng mất điện theo báo cáo giảm {{amount}}",
+      "increased": "Số khách hàng mất điện theo báo cáo tăng {{amount}}",
+      "unchanged": "Số liệu báo cáo không đổi",
+      "since": "kể từ",
+      "peakLoad": "Đã khôi phục {{percent}}% phụ tải đỉnh thông thường",
+      "noComparison": "Chưa có số liệu mất điện để so sánh.",
+      "history": "Các báo cáo gần đây về số khách hàng mất điện ({{total}})",
+      "priorNotice": "Cảnh báo đã công bố trước đó",
+      "sources": "Các nguồn cảnh báo được theo dõi",
+      "operatorLink": "Xem thông báo về lưới điện tại",
+      "issued": "Ban hành lúc",
+      "until": "hết hiệu lực lúc",
+      "noActive": "Không có cảnh báo nào còn hiệu lực từ các nguồn đang theo dõi.",
+      "unknownWarnings": "Hiện chưa thể kiểm tra đầy đủ các nguồn cảnh báo.",
+      "noObservation": "Chưa có số liệu hiện tại và thông tin về phạm vi theo dõi.",
+      "loadError": "Không có dữ liệu theo dõi mất điện.",
+      "retained": "Không thể cập nhật. Đang hiển thị báo cáo nhận được gần nhất.",
+      "phase": {
+        "unknown": "Chưa rõ tác động",
+        "monitoring": "Đang theo dõi",
+        "watch": "Đề phòng",
+        "disrupted": "Đã ghi nhận mất điện",
+        "recovering": "Có báo cáo đang khôi phục cấp điện",
+        "restored": "Có báo cáo đã cấp điện trở lại"
+      },
+      "kind": {
+        "grid": "Thông báo về lưới điện",
+        "weather": "Cảnh báo thời tiết",
+        "space-weather": "Thời tiết không gian"
+      },
+      "checks": {
+        "available": "Đã kiểm tra",
+        "unavailable": "Không khả dụng",
+        "not_monitored": "Kiểm tra trực tiếp với đơn vị vận hành",
+        "stale": "Lần kiểm tra gần nhất đã quá lâu"
+      },
+      "warningAge": "Thời gian từ cảnh báo đầu tiên còn hiệu lực",
+      "days": "{{amount}} ngày"
     }
   },
   "popups": {
@@ -4330,7 +4382,6 @@
     "dataAndCommunity": "Dữ liệu & Cộng đồng",
     "theme": "Giao diện",
     "themeDesc": "Tự động theo cài đặt hệ thống.",
-    "themeAuto": "Tự động (theo hệ thống)",
     "themeDark": "Tối",
     "themeLight": "Sáng",
     "mapProvider": "Nhà cung cấp bản đồ",
@@ -4389,7 +4440,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Mở tổng quan quốc gia",
-    "copyCoordinates": "Sao chép tọa độ"
+    "copyCoordinates": "Sao chép tọa độ",
+    "satellitePasses": "Vệ tinh bay qua đây"
   },
   "shell": {
     "documentTitle": "World Monitor — Bảng điều khiển tình báo toàn cầu theo thời gian thực",
@@ -4486,6 +4538,7 @@
     "createAccount": "Tạo tài khoản",
     "freeReason": "Miễn phí: lưu bố cục, theo dõi quốc gia, cảnh báo",
     "settings": "Cài đặt",
+    "planBilling": "Gói & thanh toán",
     "passkeyOffer": {}
   },
   "mcp": {
@@ -5082,5 +5135,510 @@
     "errGeneric": "Không thể xây dựng dự thảo. Thử lại.",
     "errDownload": "Không thể tải xuống tệp tại đây. Hãy sử dụng In hoặc lưu dưới dạng PDF.",
     "errLoad": "Không thể mở đánh giá chuyến đi. Tải lại trang và thử lại."
+  },
+  "orbitalWatch": {
+    "track": {
+      "unavailable": "Không thể vẽ vệt mặt đất của lượt bay qua này"
+    },
+    "replay": {
+      "acquisition": "THU NHẬN · {{name}}",
+      "acquired": "ĐÃ CHỤP {{time}} · {{resolution}}",
+      "play": "Phát lại",
+      "pause": "Tạm dừng phát lại",
+      "scrub": "Vị trí phát lại",
+      "reducedMotion": "GIẢM CHUYỂN ĐỘNG"
+    },
+    "computing": "Đang tải danh mục vệ tinh…",
+    "computingProgress": "Đang tính các lượt bay: {{done}} trên {{total}} vệ tinh",
+    "unavailable": "Không thể tải danh mục vệ tinh nên chưa tính được lượt bay nào cho điểm này.",
+    "checkingArchives": "Đang kiểm tra kho lưu trữ: {{done}} trên {{total}} đã phản hồi",
+    "confirmedCount": "Ảnh đã xác nhận: {{count}}",
+    "counts": {
+      "mosaics": "Ảnh ghép hằng ngày: {{count}}",
+      "frames": "Khung ảnh thời tiết: {{count}}",
+      "inRange": "Lượt bay trong tầm: {{count}}"
+    },
+    "partial": "{{sources}} không phản hồi nên một số lượt bay có thể thiếu ảnh.",
+    "stale": "Dữ liệu quỹ đạo đã cũ. Danh mục vệ tinh đã {{age}} nên thời gian bay qua có thể sai lệch.",
+    "empty": "Không có vệ tinh chụp ảnh nào trong danh mục bay qua điểm này trong {{pastDays}} ngày qua hoặc sẽ bay qua trong {{futureHours}} giờ tới.",
+    "privacy": "Điểm này được giữ trong trình duyệt của bạn. Điểm chỉ được gửi tới các kho lưu trữ công khai mà trình duyệt gọi trực tiếp: Earth Search, Microsoft Planetary Computer, NASA GIBS và EUMETSAT. Ngoại lệ duy nhất là tìm kiếm theo tên địa điểm: tên bạn nhập được gửi tới dịch vụ tìm kiếm địa điểm.",
+    "inRange": "trong tầm",
+    "tier": {
+      "checking": "đang kiểm tra kho",
+      "confirmed": "ảnh đã xác nhận",
+      "likely": "có thể đã chụp",
+      "opportunity": "lượt bay sắp tới",
+      "dailyMosaic": "trong ảnh ghép hằng ngày",
+      "withinReach": "trong tầm",
+      "capabilityOverhead": "năng lực trên không",
+      "passedOverhead": "đã bay qua",
+      "unmatchedImage": "ảnh không có lượt bay tính toán",
+      "weatherFrame": "ảnh thời tiết",
+      "unavailable": "không khả dụng"
+    },
+    "row": {
+      "offNadir": "lệch thiên đế {{deg}}°",
+      "distance": "cách vết mặt đất {{km}} km",
+      "orbitAge": "dữ liệu quỹ đạo đã {{age}}",
+      "edgeOfSwath": "Mép dải quét",
+      "notInArchive": "Không có ảnh trong kho",
+      "archiveUnanswered": "Kho lưu trữ không phản hồi",
+      "imageAlt": "Ảnh {{name}}, {{time}}",
+      "mosaicDays": "Số ngày trong kho lưu trữ: {{count}}",
+      "cadence": "ảnh mới mỗi {{minutes}} phút",
+      "sourceUnavailable": "Kho lưu trữ không có ảnh từ nguồn này cho những ngày này.",
+      "imageLoading": "Đang tải ảnh…",
+      "imageFailed": "Ảnh không tải được. Kho lưu trữ có thể chậm hoặc ngừng hoạt động.",
+      "noPreview": "Kho lưu trữ chưa có bản xem trước của cảnh này."
+    },
+    "dailyMosaics": "ảnh ghép hằng ngày",
+    "weatherFrames": "ảnh thời tiết",
+    "ui": {
+      "change": "Đổi",
+      "share": "Chia sẻ",
+      "shareCopied": "Đã sao chép liên kết",
+      "headline": "Trong {{days}} ngày qua, {{satellites}} đã bay qua {{place}}.",
+      "satellites_other": "{{count}} vệ tinh",
+      "subline_other": "Đã công bố {{count}} ảnh.",
+      "closestLook": "Góc nhìn gần nhất",
+      "replay": "Phát lại",
+      "openFull": "Mở chế độ xem đầy đủ",
+      "previous": "Ảnh trước",
+      "next": "Ảnh tiếp theo",
+      "passes_other": "lượt bay qua",
+      "showAll": "Hiện tất cả lượt bay qua",
+      "noRecentDays": "Không có ngày gần đây trong kho lưu trữ: {{sources}}",
+      "tab": {
+        "all": "Tất cả",
+        "detailed": "Chi tiết",
+        "weather": "Thời tiết"
+      },
+      "caption": {
+        "clear": "Quang đãng tại điểm",
+        "clearSceneCloud": "Quang đãng tại điểm · mây toàn cảnh {{pct}}%",
+        "clouded": "Có mây · {{pct}}%",
+        "cloudShadow": "Bóng mây",
+        "spotNotChecked": "Chưa kiểm tra mây tại điểm này",
+        "sceneCloud": "Mây toàn cảnh {{pct}}% · chưa kiểm tra điểm này",
+        "radar": "Ra-đa",
+        "dailyMosaic": "Ảnh ghép hằng ngày",
+        "geostationary": "Toàn đĩa địa tĩnh",
+        "geostationaryCadence": "Địa tĩnh · mỗi {{minutes}} phút"
+      },
+      "tile": {
+        "failed": "Không có ảnh · {{archive}}",
+        "noPreview": "Kho lưu trữ chưa có ảnh xem trước của cảnh này"
+      },
+      "grid": {
+        "watched": "Đã chụp",
+        "watchedDef": "Một kho lưu trữ công khai có ảnh của điểm này.",
+        "likely": "Có thể đã chụp",
+        "likelyDef": "Cảm biến dải quét cố định đã bao phủ; chưa có ảnh được công bố.",
+        "could": "Có thể đã hướng về đây",
+        "couldDef": "Một cảm biến xoay được hoặc thương mại nằm trong tầm; nhà vận hành không cho biết có nhìn hay không.",
+        "overhead": "Đã bay qua",
+        "overheadDef": "Đã băng qua bầu trời nơi đây, không có bằng chứng chụp ảnh.",
+        "watchedShort": "Có ảnh trong kho lưu trữ công khai",
+        "likelyShort": "Đã phủ, chưa có ảnh",
+        "likelyUnansweredDef": "Một cảm biến dải quét cố định đã bao phủ điểm này; một kho lưu trữ không phản hồi, nên có thể có ảnh.",
+        "likelyUnansweredShort": "Đã bao phủ, kho lưu trữ không phản hồi",
+        "couldShort": "Cảm biến điều hướng trong tầm",
+        "overheadShort": "Bay qua, không có ảnh"
+      },
+      "group": {
+        "watched": "đã chụp",
+        "likely": "có thể đã chụp",
+        "upcoming": "sắp tới",
+        "could": "có thể đã hướng về đây",
+        "overhead": "đã bay qua",
+        "weather_other": "nguồn thời tiết"
+      },
+      "order": {
+        "closest": "Gần nhất, sau đó mới nhất",
+        "newest": "Mới nhất trước",
+        "soonest": "Sớm nhất trước"
+      },
+      "row": {
+        "cloud": "Mây {{pct}}%",
+        "days_other": "{{count}} ngày",
+        "repeats": "{{count}} lượt của vệ tinh này trong nhóm"
+      },
+      "section": {
+        "summary": "Tóm tắt",
+        "passes": "Lượt bay qua"
+      },
+      "status": {
+        "objects": "{{count}} vệ tinh chụp ảnh · CelesTrak GP",
+        "fetched": "Lấy lúc {{time}} · {{ago}}",
+        "sun": "Mặt Trời {{point}} · điểm cận nhật"
+      },
+      "step": {
+        "computing": "Đang tính",
+        "catalogLoading": "Danh mục · đang tải",
+        "catalog": "Danh mục · {{count}} vệ tinh chụp ảnh",
+        "propagating": "Đang tính quỹ đạo · {{done}} / {{total}}",
+        "archives": "Kho lưu trữ · {{done}} / {{total}} đã phản hồi",
+        "matching": "Đang khớp cảnh với {{passes}} lượt bay qua",
+        "window": "Khung 7 ngày · {{start}} → {{end}}",
+        "failed": "Thất bại",
+        "note": "Planetary Computer và NASA GIBS tạo ảnh theo yêu cầu, nên bước này có thể mất vài giây."
+      },
+      "privacyLine": "Điểm này chỉ ở trong trình duyệt của bạn",
+      "privacyHow": "Cách thức",
+      "sources": "Nguồn",
+      "archiveScene": "Cảnh lưu trữ",
+      "archiveOnly": "Không có lượt bay qua tính toán nào khớp với các ảnh này, nên chúng được hiển thị là cảnh lưu trữ.",
+      "zoneShowUtc": "Hiển thị thời gian theo UTC",
+      "zoneShowLocal": "Hiển thị thời gian theo giờ địa phương của nơi này"
+    },
+    "viewer": {
+      "open": "Mở trình xem ảnh: {{image}}",
+      "bestView": "Mở góc nhìn tốt nhất: {{name}}, {{time}}",
+      "imageAlt": "Ảnh của {{name}}, {{time}}",
+      "close": "Đóng trình xem ảnh",
+      "northUp": "Phía bắc ở trên",
+      "unreferenced": "Hướng như kho lưu trữ cung cấp; phía bắc không được đánh dấu",
+      "compareDates": "Các ngày khác của bộ sưu tập này",
+      "compareNone": "Không có cảnh nào khác của bộ sưu tập này để so sánh.",
+      "divider": "Vạch chia trước/sau",
+      "searching": "Đang tìm cảnh của nơi này trong {{days}} ngày qua",
+      "historyFailed": "{{archive}} không phản hồi nên thiếu các cảnh trước đó.",
+      "historyTimeout": "{{archive}} không phản hồi kịp nên thiếu các cảnh trước đó.",
+      "loading": "Đang tải khung hình: {{loaded}} / {{total}}",
+      "pause": "Tạm dừng",
+      "resume": "Phát",
+      "next": "Khung sau",
+      "closeLabel": "Đóng",
+      "agoNow": "Vừa xong",
+      "agoHours": "{{count}} giờ trước",
+      "agoDays": "{{count}} ngày trước",
+      "clear": "Quang",
+      "clouded": "Có mây · {{pct}}%",
+      "tabImage": "Ảnh",
+      "tabChange": "Thay đổi",
+      "metaAcquired": "Chụp lúc",
+      "metaDate": "Ngày",
+      "metaPixel": "Điểm ảnh",
+      "metaSpot": "Mây tại điểm",
+      "metaScene": "Mây của cảnh",
+      "metaSun": "Độ cao mặt trời",
+      "showCloudy": "Hiện ngày nhiều mây ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Tua nhanh thời gian",
+      "entry": "Nơi này, qua từng năm",
+      "open": "Mở chuỗi tua nhanh theo năm của nơi này",
+      "searching": "Đang tìm mỗi năm một ảnh quang mây từ 2015 · {{archive}}",
+      "loading": "Đang tải ảnh · {{loaded}} / {{total}}",
+      "failed": "{{archive}} không phản hồi nên thiếu ảnh theo năm.",
+      "timeout": "{{archive}} không phản hồi kịp nên thiếu ảnh theo năm.",
+      "partial": "Số năm bị thiếu vì {{archive}} không phản hồi: {{count}}.",
+      "tooFew": "Ảnh quang mây theo năm của nơi này: {{count}}. Tua nhanh cần {{min}}.",
+      "total": "Ảnh quang mây: {{count}} · mỗi năm một ảnh",
+      "years": "Năm",
+      "share": "Chia sẻ",
+      "method": "Mỗi khung là cùng một ô vuông 6 km từ Sentinel-2, màu tự nhiên. Mỗi năm tìm ở một mùa khác và giữ cảnh ít mây nhất; năm không có cảnh dưới 30% mây sẽ bị bỏ qua."
+    },
+    "passDetail": {
+      "back": "Tất cả lượt bay qua",
+      "altitude": "Độ cao",
+      "offNadir": "Lệch thiên đế",
+      "crossed": "{{name}} bay qua ở độ cao {{altitude}} km, cách {{distance}} km {{direction}}, lúc {{time}}, với tốc độ mặt đất {{speed}} km/s.",
+      "crossedHeading": "{{name}} bay qua ở độ cao {{altitude}} km, cách {{distance}} km {{direction}}, lúc {{time}}, đi về phía {{heading}} với tốc độ mặt đất {{speed}} km/s.",
+      "looking": "Nó nhìn lệch {{deg}}° so với phương thẳng đứng.",
+      "sceneCloud": "Độ che phủ mây của cảnh: {{pct}}%.",
+      "pixelLine": "Điểm ảnh {{m}} m",
+      "swathLine": "Dải quét {{km}} km",
+      "clearestLook": "Ảnh trong nhất",
+      "previous": "Lượt bay trước",
+      "next": "Lượt bay sau",
+      "dir": {
+        "n": "về phía bắc",
+        "ne": "về phía đông bắc",
+        "e": "về phía đông",
+        "se": "về phía đông nam",
+        "s": "về phía nam",
+        "sw": "về phía tây nam",
+        "w": "về phía tây",
+        "nw": "về phía tây bắc"
+      },
+      "heading": {
+        "north": "bắc",
+        "south": "nam"
+      }
+    },
+    "search": {
+      "label": "Tên địa điểm hoặc tọa độ",
+      "placeholder": "Tên địa điểm hoặc 48.8584, 2.2945",
+      "submit": "Tìm",
+      "locate": "Dùng vị trí của tôi",
+      "hint": "Tọa độ và vị trí của bạn chỉ ở trong trình duyệt này. Tên địa điểm bạn tìm được gửi tới WorldMonitor và Nominatim của OpenStreetMap.",
+      "results": "Địa điểm phù hợp",
+      "searching": "Đang tìm…",
+      "tooShort": "Nhập ít nhất hai ký tự, hoặc tọa độ như 48.8584, 2.2945.",
+      "invalidCoordinates": "Tọa độ này nằm ngoài địa cầu. Vĩ độ từ -90 đến 90 và kinh độ từ -180 đến 180.",
+      "failed": "Tìm địa điểm hiện không khả dụng. Tọa độ và bản đồ vẫn hoạt động.",
+      "noResults": "Không có địa điểm nào khớp với tên đó.",
+      "locating": "Đang xác định vị trí của bạn…",
+      "locationDenied": "Quyền truy cập vị trí đã bị từ chối. Hãy tìm một địa điểm hoặc nhấp chuột phải vào bản đồ.",
+      "locationUnavailable": "Không tìm thấy vị trí của bạn. Hãy tìm một địa điểm hoặc nhấp chuột phải vào bản đồ.",
+      "idle": "Tìm địa điểm theo tên hoặc tọa độ, dùng vị trí của bạn, hoặc nhấp chuột phải vào bản đồ để xem vệ tinh nào đã bay qua đó."
+    },
+    "share": {
+      "copy": "Sao chép liên kết chia sẻ",
+      "copied": "Đã sao chép liên kết",
+      "copyManually": "Sao chép liên kết bên dưới",
+      "link": "Liên kết chia sẻ",
+      "dismiss": "Đóng",
+      "passOutsideWindow": "Lượt bay qua trong liên kết nằm ngoài khoảng thời gian hiện tại, nên không có lượt nào được chọn.",
+      "passNotFound": "Không tìm thấy lượt bay qua trong liên kết giữa các lượt đã tính lại, nên không có lượt nào được chọn."
+    }
+  },
+  "settings": {
+    "back": "Quay lại cài đặt",
+    "signIn": {
+      "label": "Đăng nhập",
+      "desc": "Đồng bộ cài đặt và quản lý gói của bạn"
+    },
+    "summary": {
+      "themeAuto": "Tự động",
+      "count": "{{on}} / {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Tùy chọn",
+      "developer": "Nhà phát triển",
+      "app": "Ứng dụng"
+    },
+    "sections": {
+      "account": "Tài khoản",
+      "map": "Bản đồ",
+      "ai": "AI & phân tích",
+      "video": "Video & luồng",
+      "apiKeys": "Khóa API",
+      "embeds": "Nhúng",
+      "aiAgents": "Tác nhân AI (MCP)",
+      "sync": "Đồng bộ, nhập & xuất",
+      "about": "Giới thiệu"
+    },
+    "descriptions": {
+      "panels": "Hiển thị, ẩn và sắp xếp lại",
+      "sources": "Vùng và luồng",
+      "notifications": "Kênh và quy tắc cảnh báo",
+      "display": "Chủ đề, phông chữ và ngôn ngữ",
+      "map": "Nhà cung cấp, chủ đề và quả cầu",
+      "ai": "Mô hình, bộ nhớ và khung",
+      "video": "Chất lượng và tự động phát",
+      "apiKeys": "Khóa cho API World Monitor",
+      "embeds": "Widget cho trang web của bạn",
+      "aiAgents": "Máy khách MCP được kết nối",
+      "about": "Liên kết trang web, điều khoản và quyền riêng tư"
+    },
+    "signOut": "Đăng xuất",
+    "signOutFailed": "Không thể đăng xuất. Vui lòng thử lại.",
+    "search": {
+      "empty": "Không có cài đặt phù hợp"
+    },
+    "account": {
+      "intro": "Xem gói hiện tại của bạn và quản lý chi tiết thanh toán, hóa đơn hoặc hủy.",
+      "planFree": "Miễn phí",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Truy cập Premium",
+        "desc": "Truy cập này không được tính phí qua tài khoản WorldMonitor của bạn. Không có phương thức thanh toán hoặc hóa đơn nào có sẵn tại đây."
+      },
+      "checking": {
+        "heading": "Đang kiểm tra gói của bạn…",
+        "desc": "Điều này thường chỉ mất một lát."
+      },
+      "status": {
+        "cancelScheduled": "Đã lên lịch hủy -- truy cập đến {{date}}",
+        "renews": "Gia hạn: {{date}}",
+        "onHold": "Tạm ngưng -- vui lòng cập nhật phương thức thanh toán",
+        "cancelled": "Đã hủy -- truy cập cho đến {{date}}",
+        "expired": "Hết hạn",
+        "unknown": "Xem Quản lý Thanh toán để biết chi tiết gói hiện tại của bạn.",
+        "ownerManaged": "Thanh toán được quản lý bởi chủ sở hữu gói của bạn."
+      },
+      "upgradeToBusiness": "Nâng cấp lên Business",
+      "unavailable": {
+        "heading": "Trạng thái gói không có sẵn",
+        "desc": "Chúng tôi không thể xác minh gói hiện tại của bạn. Thử lại hoặc xem các gói trong tab mới."
+      },
+      "free": {
+        "heading": "WorldMonitor Miễn phí",
+        "desc": "Gói hiện tại của bạn là Miễn phí. Nâng cấp để có tất cả các panel, phân tích AI và làm mới dữ liệu ưu tiên."
+      },
+      "portal": {
+        "openFailed": "Không thể mở cổng thông tin thanh toán. Vui lòng cho phép cửa sổ bật lên và thử lại.",
+        "unavailable": "Cổng thông tin thanh toán không có sẵn. Gửi email đến support@worldmonitor.app để được trợ giúp."
+      },
+      "deletion": {
+        "heading": "Xóa tài khoản",
+        "desc": "Xóa vĩnh viễn tài khoản World Monitor này. Các gói đăng ký bị hủy ngay lập tức và không hoàn tiền cho thời gian còn lại đã trả trước. Khóa API, khóa nhúng và token MCP sẽ ngừng hoạt động. Hồ sơ thanh toán cần cho kế toán, tranh chấp và yêu cầu theo pháp luật được lưu giữ cùng thông tin liên hệ khách hàng có trong đó; các hồ sơ này không còn gắn với tài khoản đăng nhập của bạn, tuy nhiên nhật ký webhook của nhà cung cấp thanh toán được ghi trước khi xóa vẫn giữ các mã định danh đi kèm lúc được gửi. Tùy chọn dashboard và các bí mật lưu trong keychain của hệ điều hành máy tính trên thiết bị này sẽ không bị xóa từ xa.",
+        "dialogTitle": "Xóa tài khoản này?",
+        "dialogCopy": "Không thể hoàn tác thao tác này. Các gói đăng ký bị hủy, khóa ngừng hoạt động ngay lập tức và hồ sơ thanh toán được lưu giữ cho kế toán, tranh chấp và yêu cầu theo pháp luật — bao gồm cả thông tin liên hệ có trong đó. Sau đó, hãy đăng xuất trên các thiết bị khác và xóa dữ liệu trang web trên thiết bị này — máy chủ không thể làm những việc đó.",
+        "phraseLabel": "Nhập {{phrase}} để xác nhận",
+        "deleted": "Tài khoản đã bị xóa. Đăng xuất trên các thiết bị khác và xóa dữ liệu trang web trên thiết bị này.",
+        "failed": "Xóa tài khoản không thành công. Thử lại."
+      },
+      "seats": {
+        "used": "Đã dùng {{used}} / {{cap}}",
+        "invite": "Mời",
+        "inviting": "Đang mời...",
+        "remove": "Xóa",
+        "removing": "Đang xóa...",
+        "inviteSent": "Đã gửi lời mời",
+        "alreadyInvited": "Đã mời rồi"
+      },
+      "businessSeats": {
+        "heading": "Chỗ Business",
+        "statusAccepted": "Đã chấp nhận",
+        "statusExpired": "Đã hết hạn",
+        "statusPending": "Đang chờ",
+        "expires": "Hết hạn {{date}}",
+        "hintCorporate": "Mời đồng nghiệp ở bất kỳ miền email doanh nghiệp nào.",
+        "hintPersonal": "Thêm email công ty để mời đồng nghiệp.",
+        "personalDomain": "Các miền email miễn phí hoặc dùng một lần không thể mời đồng nghiệp. Thêm email công ty để sử dụng tính năng này.",
+        "empty": "Chưa mời ai.",
+        "confirmRemove": "Xóa chỗ này? Người được mời sẽ mất quyền truy cập Pro ngay lập tức.",
+        "removed": "Đã xóa chỗ",
+        "alreadyInactive": "Chỗ này đã ngừng hoạt động từ trước",
+        "loadFailed": "Không thể tải danh sách chỗ",
+        "inviteFailed": "Không thể gửi lời mời",
+        "removeFailed": "Không thể xóa chỗ",
+        "errors": {
+          "seatCap": "Cả 4 chỗ đã được dùng. Hãy xóa một chỗ trước.",
+          "ownerDomain": "Email tài khoản của bạn phải là miền công ty để mời đồng nghiệp.",
+          "self": "Bạn không thể mời chính mình.",
+          "inviteeDomain": "Email của người được mời phải là miền công ty."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "Chỗ Enterprise của {{account}}",
+        "memberHint": "Quản trị viên tài khoản của bạn thêm và xóa những người trên tài khoản này.",
+        "hintFull": "Tất cả chỗ đều đang được dùng. Xóa ai đó hoặc rút lại một lời mời để giải phóng chỗ.",
+        "hintOpen": "Mời mọi người bằng email công ty. Họ nhận được liên kết có hiệu lực trong 14 ngày và dùng chung hạn mức của tài khoản này.",
+        "emailLabel": "Địa chỉ email để mời",
+        "statusActive": "Đang hoạt động",
+        "statusExpired": "Lời mời đã hết hạn",
+        "statusInvited": "Đã mời",
+        "emailFailed": "Không thể gửi email mời. Kiểm tra địa chỉ, sau đó rút lại và mời lại.",
+        "inviteExpires": "Lời mời hết hạn {{date}}",
+        "roleAdmin": "Quản trị viên",
+        "you": "Bạn",
+        "withdraw": "Rút lại",
+        "unknownEmail": "Email không xác định",
+        "alreadyMember": "Đã là thành viên",
+        "confirmRemove": "Xóa {{email}}? Họ sẽ mất quyền truy cập Enterprise ngay lập tức.",
+        "confirmRemoveUnknown": "Xóa người này? Họ sẽ mất quyền truy cập Enterprise ngay lập tức.",
+        "confirmWithdraw": "Rút lại lời mời cho {{email}}?",
+        "confirmWithdrawUnknown": "Rút lại lời mời cho địa chỉ này?",
+        "removed": "Thành viên đã bị xóa",
+        "withdrawn": "Lời mời đã được rút lại",
+        "loadFailed": "Không thể tải danh sách chỗ. Thử lại.",
+        "inviteFailed": "Không thể gửi lời mời. Thử lại.",
+        "removeFailed": "Không thể xóa. Thử lại.",
+        "errors": {
+          "seatCap": "Tất cả chỗ đều đang được dùng. Hãy xóa ai đó hoặc rút lại lời mời trước.",
+          "inviteeDomain": "Hãy mời một địa chỉ email công ty. Không chấp nhận các miền email miễn phí và dùng một lần.",
+          "self": "Bạn đã có một chỗ.",
+          "contractEnded": "Hợp đồng Enterprise của bạn đã kết thúc. Liên hệ hỗ trợ để gia hạn.",
+          "notAdmin": "Chỉ quản trị viên tài khoản mới có thể quản lý chỗ.",
+          "removeSelf": "Bạn không thể xóa chỗ của chính mình. Liên hệ hỗ trợ để thay đổi quản trị viên.",
+          "tooMany": "Mời tối đa 10 người cùng một lúc.",
+          "rateLimited": "Bạn đã gửi số lượng lời mời tối đa trong một ngày. Hãy thử lại vào ngày mai."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "bố cục",
+        "1": "tiện ích",
+        "2": "kích thước chữ",
+        "3": "đặt lại bố cục"
+      },
+      "sources": {
+        "0": "tin tức",
+        "1": "nguồn cấp dữ liệu",
+        "2": "phạm vi",
+        "3": "khu vực",
+        "4": "coverage"
+      },
+      "notifications": {
+        "0": "cảnh báo",
+        "1": "thông báo đẩy",
+        "2": "Slack",
+        "3": "email",
+        "4": "Discord",
+        "5": "webhook",
+        "6": "thông báo"
+      },
+      "display": {
+        "0": "chủ đề",
+        "1": "tối",
+        "2": "sáng",
+        "3": "phông chữ",
+        "4": "ngôn ngữ",
+        "5": "kích cỡ văn bản"
+      },
+      "map": {
+        "0": "quả địa cầu",
+        "1": "nhà cung cấp",
+        "2": "ô bản đồ",
+        "3": "bản đồ nền"
+      },
+      "ai": {
+        "0": "khung",
+        "1": "ghi nhớ tiêu đề",
+        "2": "mô hình trình duyệt",
+        "3": "trí tuệ nhân tạo",
+        "4": "browser model"
+      },
+      "video": {
+        "0": "phát trực tuyến",
+        "1": "tự động phát",
+        "2": "chất lượng",
+        "3": "trực tiếp"
+      },
+      "apiKeys": {
+        "0": "khóa",
+        "1": "khóa máy tính",
+        "2": "khóa desktop"
+      },
+      "embeds": {
+        "0": "khóa nhúng",
+        "1": "iframe",
+        "2": "embed key"
+      },
+      "aiAgents": {
+        "0": "tác tử",
+        "1": "ứng dụng khách",
+        "2": "agents",
+        "3": "ChatGPT",
+        "4": "clients"
+      },
+      "sync": {
+        "0": "nhập",
+        "1": "xuất",
+        "2": "sao lưu",
+        "3": "đám mây"
+      },
+      "about": {
+        "0": "điều khoản",
+        "1": "quyền riêng tư",
+        "2": "giấy phép",
+        "3": "pháp lý"
+      },
+      "account": {
+        "0": "gói",
+        "1": "thanh toán",
+        "2": "đăng ký",
+        "3": "hóa đơn",
+        "4": "chỗ",
+        "5": "đăng xuất",
+        "6": "xóa tài khoản"
+      }
+    }
   }
 }

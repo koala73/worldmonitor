@@ -339,6 +339,20 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/chatgpt-copy.ts",
+      "category": "external-protocol",
+      "reason": "Rewrites MCP tool copy for ChatGPT to drop API-plan billing wording, per OpenAI's app review. Part of the streamable-HTTP MCP surface — not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/chatgpt-news.ts",
+      "category": "external-protocol",
+      "reason": "Reduces MCP news results for ChatGPT to headline pointers, per OpenAI's app review. Part of the streamable-HTTP MCP surface — not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/upgrade-constants.ts",
       "category": "external-protocol",
       "reason": "MCP free-account allowance numeric constants (#6716). Supporting module for the MCP transport; listed so the sebuf contract script accepts the api/mcp/ tree.",

@@ -412,6 +412,34 @@ test('loaded marker and search interactions retain original identity without dat
   await writeFile(info.outputPath('latest-news-interaction-receipts.json'), JSON.stringify({ contexts: host.contexts, calls: host.calls, units: host.units }, null, 2));
 });
 
+test('a host without headline analysis gets no summarize or translate controls', async ({ page }, info) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await useSvgNewsMap(page);
+  const host = await installNewsHost(page);
+  const frame = page.frameLocator('iframe');
+  const summarize = frame.locator('.panel-summarize-btn');
+  const usage = frame.getByText(/requests remaining/);
+  await expect(frame.getByText('Controlled earthquake report in Japan').first()).toBeVisible();
+  await expect(summarize.first()).toBeVisible();
+  await expect(usage).toContainText('AI summaries and translations are separate requests');
+  await page.screenshot({ path: info.outputPath('headline-analysis-on.png') });
+  const post = (structuredContent: Record<string, unknown>) => page.evaluate(content => {
+    document.querySelector('iframe')!.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { structuredContent: content } }, '*');
+  }, structuredContent);
+  // ChatGPT's open_news_dashboard result carries headlineAnalysis: false.
+  await post({ ...host.snapshot, headlineAnalysis: false });
+  await expect(summarize).toHaveCount(await summarize.count());
+  for (const button of await summarize.all()) await expect(button).toBeHidden();
+  await expect(frame.locator('.item-translate-btn:visible')).toHaveCount(0);
+  await expect(usage).not.toContainText('AI summaries');
+  await expect(frame.getByText('Controlled earthquake report in Japan').first()).toBeVisible();
+  await page.screenshot({ path: info.outputPath('headline-analysis-off.png') });
+  // A later result without the flag restores them.
+  await post({ ...host.snapshot });
+  await expect(summarize.first()).toBeVisible();
+  expect(host.calls.map(call => call.name)).not.toContain('analyze_news_headlines');
+});
+
 test('loaded marker clicks need no server or model-context capability', async ({ page }, info) => {
   await page.setViewportSize({ width: 430, height: 1500 });
   await useSvgNewsMap(page);

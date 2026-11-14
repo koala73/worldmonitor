@@ -97,6 +97,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'fuel-shortages': { name: 'Global Fuel Shortage Registry', enabled: true, priority: 2 },
   'energy-disruptions': { name: 'Energy Disruptions Log', enabled: true, priority: 2 },
   'energy-risk-overview': { name: 'Global Energy Risk Overview', enabled: false, priority: 2 },
+  'grid-disruption-clock': { name: 'US States Grid Disruption Clock', enabled: false, priority: 2 },
   'gulf-economies': { name: 'Gulf Economies', enabled: false, priority: 2 },
   'consumer-prices': { name: 'Consumer Prices', enabled: false, priority: 2 },
   'grocery-basket': { name: 'Grocery Index', enabled: false, priority: 2 },
@@ -161,9 +162,6 @@ const FULL_MAP_LAYERS: MapLayers = {
   radiationWatch: false,
   sanctions: true,
   weather: true,
-  // Opt-in — see DEFAULT_MAP_LAYERS in src/config/variants/full.ts. Its four
-  // sources are on-demand bootstrap keys (~2.7 MB), so shipping the layer on
-  // put that on every visitor (#6763).
   canadaRoads: false,
   canadaAlerts: true,
   economic: true,
@@ -182,6 +180,8 @@ const FULL_MAP_LAYERS: MapLayers = {
   ucdpEvents: false,
   displacement: false,
   climate: false,
+  reservoirLevels: false,
+  no2Activity: false,
   // Tech layers (disabled in full variant)
   startupHubs: false,
   cloudRegions: false,
@@ -250,6 +250,8 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   ucdpEvents: false,
   displacement: false,
   climate: false,
+  reservoirLevels: false,
+  no2Activity: false,
   // Tech layers (disabled in full variant)
   startupHubs: false,
   cloudRegions: false,
@@ -992,6 +994,7 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
 const ENERGY_PANELS: Record<string, PanelConfig> = {
   map: { name: 'Energy Atlas Map', enabled: true, priority: 1 },
   'energy-risk-overview': { name: 'Global Energy Risk Overview', enabled: true, priority: 1 },
+  'grid-disruption-clock': { name: 'US States Grid Disruption Clock', enabled: false, priority: 2 },
   'chokepoint-strip': { name: 'Chokepoint Status', enabled: true, priority: 1 },
   'pipeline-status': { name: 'Oil & Gas Pipeline Status', enabled: true, priority: 1 },
   'storage-facility-map': { name: 'Strategic Storage Atlas', enabled: true, priority: 1 },
@@ -1091,6 +1094,7 @@ const ENERGY_MAP_LAYERS: MapLayers = {
   storageFacilities: true, // UGS / SPR / LNG / crude hubs (Day 9-10 registry)
   fuelShortages: true,     // Global fuel shortage alerts (Day 11-12 registry)
   liveTankers: true,       // AIS ship type 80-89 inside chokepoint bboxes (parity-push PR 3)
+  reservoirLevels: false,
 };
 
 const ENERGY_MOBILE_MAP_LAYERS: MapLayers = {
@@ -1151,6 +1155,7 @@ const ENERGY_MOBILE_MAP_LAYERS: MapLayers = {
   storageFacilities: true,
   fuelShortages: true,
   liveTankers: true,
+  reservoirLevels: false,
 };
 
 // ============================================
@@ -1545,7 +1550,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   dataTracking: {
     labelKey: 'header.panelCatDataTracking',
-    panelKeys: ['monitors', 'ukmto-incidents', 'satellite-fires', 'ucdp-events', 'displacement', 'climate', 'reservoir-levels', 'climate-news', 'population-exposure', 'security-advisories', 'toronto-safety', 'radiation-watch', 'oref-sirens', 'world-clock', 'tech-readiness', 'disease-outbreaks', 'fao-food-price-index', 'grocery-basket', 'defense-patents'],
+    panelKeys: ['monitors', 'ukmto-incidents', 'satellite-fires', 'ucdp-events', 'displacement', 'climate', 'reservoir-levels', 'climate-news', 'population-exposure', 'security-advisories', 'toronto-safety', 'radiation-watch', 'grid-disruption-clock', 'oref-sirens', 'world-clock', 'tech-readiness', 'disease-outbreaks', 'fao-food-price-index', 'grocery-basket', 'defense-patents'],
     variants: ['full', 'energy'],
   },
 

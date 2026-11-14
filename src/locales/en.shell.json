@@ -196,7 +196,8 @@
     "marketBreadth": "Market Breadth",
     "climateNews": "Climate News",
     "ukmtoIncidents": "UKMTO Incidents",
-    "reservoirLevels": "Strategic Water Levels"
+    "reservoirLevels": "Strategic Water Levels",
+    "gridDisruptionClock": "US States Grid Disruption Clock"
   },
   "common": {
     "dismiss": "Dismiss",
@@ -282,7 +283,8 @@
     "signIn": "Sign In",
     "createAccount": "Create account",
     "freeReason": "Free: save your layout, follow countries, get alerts",
-    "settings": "Settings"
+    "settings": "Settings",
+    "planBilling": "Plan & billing"
   },
   "mcp": {
     "connectPanel": "Connect MCP",
@@ -463,7 +465,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Open Country Brief",
-    "copyCoordinates": "Copy Coordinates"
+    "copyCoordinates": "Copy Coordinates",
+    "satellitePasses": "Satellite passes here"
   },
   "components": {
     "breakingNews": {

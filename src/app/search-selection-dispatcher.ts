@@ -612,6 +612,10 @@ export class SearchSelectionDispatcher {
       case 'time':
         ctx.map?.setTimeRange(action as TimeRange);
         break;
+      case 'orbital':
+        void import('@/app/orbital-watch').then(({ openOrbitalWatchSearch }) =>
+          openOrbitalWatchSearch(document.getElementById('mapContainer'), ctx.map));
+        break;
       case 'country': {
         const name = TIER1_COUNTRIES[action]
           || CURATED_COUNTRIES[action]?.name

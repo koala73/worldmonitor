@@ -14,7 +14,7 @@ import {
   listDashboardPanelCatalog,
   DASHBOARD_PANEL_ID_PATTERN,
 } from '../src/services/webmcp-panel-catalog.ts';
-import { getInitialPanelSettingsForVariant } from '../src/config/panels.ts';
+import { VARIANT_DEFAULTS, getInitialPanelSettingsForVariant } from '../src/config/panels.ts';
 import {
   WEBMCP_HOMEPAGE_TOOL_NAMES,
   WEBMCP_SPA_TOOL_NAMES,
@@ -1423,7 +1423,7 @@ describe('webmcp.ts: current API contract', () => {
 
     const page = await tool.execute({ variant: 'full', limit: 4 });
     assert.equal(page.variant, 'full');
-    assert.equal(page.total, 113);
+    assert.equal(page.total, VARIANT_DEFAULTS.full.length);
     assert.equal(page.hasMore, true);
     assert.equal(typeof page.nextCursor, 'string');
     assert.equal(page.panels.length, 4);

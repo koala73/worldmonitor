@@ -64,6 +64,7 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
       generatedAt: { type: 'string', description: 'When the digest was built, ISO 8601.' },
       coverage: { type: 'object', description: 'Counts of feeds and items served and of the latest build attempt.' },
       requestedView: { type: 'object', description: 'The view arguments as requested, not the state an already-open dashboard applied.' },
+      headlineAnalysis: { type: 'boolean', description: 'False when this host has no headline summary or translation; the view then hides those controls. Absent otherwise.' },
       panelRequest: describedPanelReceipt(newsPanelAdmissionSchema, 'Dedicated paid plans only: the paid dashboard request this open admitted or reused.'),
     },
     required: ['categories'],

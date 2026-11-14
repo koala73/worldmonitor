@@ -52,7 +52,7 @@ The codebase produces app variants from the same source, each targeting a differ
 | `happy` | `npm run dev:happy` | Positive news and constructive signals |
 | `energy` | `npm run dev:energy` | Energy security, chokepoints, oil/gas |
 
-Variants share all code but differ in default panels, map layers, and RSS feeds. Variant configs live in `src/config/variants/`.
+Variants share all code but differ in default panels, map layers, and RSS feeds. Default panels and map layers live in `src/config/panels.ts`; feeds come from `shared/news-catalog.json` via `src/config/feeds.ts`.
 
 ### Directory Structure
 

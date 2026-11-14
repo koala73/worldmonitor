@@ -205,6 +205,7 @@ const RPCS = [
 
 // Every other registry key and GET route, with the reason the widget does not use it.
 const EXCLUDED_BOOTSTRAP_KEYS = {
+  gridDisruptionClock: 'Regional outage reports require source times and coverage for comparison. See the Grid disruption clock.',
   ukmtoIncidents: 'Publisher claims requiring source attribution and freshness; use the UKMTO panel',
   iranEvents: "Disabled in production (IRAN_EVENTS_ENABLED off); returns nothing",
   liveVideoResolved: "Internal: live-video channel to video-ID map",
@@ -285,6 +286,7 @@ const EXCLUDED_RPC_ROUTES = {
   "/api/health/v1/list-air-quality-alerts": "Same data as /api/climate/v1/list-air-quality-data",
   "/api/health/v1/list-disease-outbreaks": "Same data as bootstrap key diseaseOutbreaks",
   "/api/imagery/v1/search-imagery": "Map satellite-imagery search; needs a bbox, returns scene metadata",
+  "/api/orbital/v1/list-imaging-satellites": "Orbit elements for the point lookup; raw OMM records, not displayable values",
   "/api/infrastructure/v1/get-bootstrap-data": "Internal duplicate of /api/bootstrap",
   "/api/infrastructure/v1/get-cable-health": "Returned empty (cables {}) in production",
   "/api/infrastructure/v1/get-ip-geo": "Blocked by relay widget endpoint policy",
@@ -295,6 +297,7 @@ const EXCLUDED_RPC_ROUTES = {
   "/api/infrastructure/v1/list-service-statuses": "Same data as bootstrap key serviceStatuses",
   "/api/infrastructure/v1/list-temporal-anomalies": "Same data as internal temporalAnomalies key; usually empty",
   "/api/infrastructure/v1/reverse-geocode": "Utility: lat/lon to country lookup",
+  "/api/infrastructure/v1/search-place": "Utility: place name to coordinates lookup for the satellite pass search",
   "/api/intelligence/v1/classify-event": "Pro-only (401 for the anonymous widget session)",
   "/api/intelligence/v1/get-china-decision-signals": "Same data as bootstrap key chinaDecisionSignals",
   "/api/intelligence/v1/get-country-coverage": "Pro-only (401 for the anonymous widget session)",

@@ -1,17 +1,7 @@
-// A strict MCP client (the official SDK, and hosts built on it such as Grok
-// Bot's) enforces two rules on every `tools/call` whose tool advertised an
-// `outputSchema` (#8328):
-//
-//   1. the result MUST carry `structuredContent` unless `isError` is set, else
-//      it throws -32600 "has an output schema but did not return structured
-//      content";
-//   2. that `structuredContent` MUST validate against the advertised schema,
-//      else it throws -32602.
-//
-// Rule 2 is why the payload cannot simply be copied in: a JMESPath projection
-// and the two soft envelopes are not the tool's documented shape. So the
-// ADVERTISED schema is `anyOf [documented shape, the non-documented shapes]`,
-// and this file checks every response kind against the schema as advertised.
+// A strict client rejects a tools/call that advertises an outputSchema but
+// omits structuredContent, and rejects structuredContent that fails that
+// schema (#8328). Projections and the soft-fail envelopes are not the
+// documented shape, so the advertised schema is an anyOf of those shapes.
 import { strict as assert } from 'node:assert';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 

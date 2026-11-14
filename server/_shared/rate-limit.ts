@@ -682,6 +682,8 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // Live lookups can fan out to position, schedule and photo providers.
   '/api/military/v1/get-wingbits-live-flight': { limit: 30, window: '60 s' },
   '/api/imagery/v1/search-imagery': { limit: 30, window: '60 s' },
+  // One catalog read per point lookup; the seeded key is never refreshed from here.
+  '/api/orbital/v1/list-imaging-satellites': { limit: 60, window: '60 s' },
   // Generic batch fan-out: one request re-dispatches up to 20 gateway GETs, so
   // cap the multiplier at the same 30/min budget as the other batch routes.
   '/api/batch/v1/execute': { limit: 30, window: '60 s' },
@@ -865,6 +867,9 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // before Nominatim. Redis outage therefore 503s instead of inheriting a
   // fail-open path that could expose the provider to unbounded aggregate load.
   '/api/infrastructure/v1/reverse-geocode': { limit: 60, window: '60 s' },
+  // Place-name search for the satellite pass lookup: submit-only, so 30/min per IP is
+  // generous. Cache misses spend the same fail-closed Nominatim bucket as reverse geocoding.
+  '/api/infrastructure/v1/search-place': { limit: 30, window: '60 s' },
   // Partner embed entitlement (#6599): keyed panels look up wm_ keys in Convex.
   // Cap per-IP so a stolen snippet cannot amplify validation traffic.
   '/api/embed/entitlement': { limit: 60, window: '60 s' },
@@ -1058,6 +1063,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/infrastructure/v1/reverse-geocode': {
     reason: 'Proxies Nominatim (egress-IP ban enforcement), same provider and egress IPs as the legacy edge route. Must fail closed on a Redis outage rather than inherit the fail-open 600/min fallback.',
+  },
+  '/api/infrastructure/v1/search-place': {
+    reason: 'Proxies Nominatim search on the same egress IPs and provider bucket as reverse geocoding; fail closed so a Redis outage cannot lift the per-IP budget.',
   },
   '/api/embed/entitlement': {
     reason: 'Keyed-panel entitlement lookups amplify into Convex user-key validation; fail closed so a Redis outage cannot lift the per-IP budget.',

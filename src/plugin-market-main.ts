@@ -4,6 +4,7 @@ import './styles/plugin-market.css';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { terminalChart } from '@/utils/terminal-chart';
 import { miniSparkline } from '@/utils/sparkline';
+import { loaderHostChannel } from './plugin-host-channel';
 
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): RecordValue =>
@@ -247,7 +248,7 @@ function mount(): void {
         groups.some(group => omittedByBudget(group.key, group.list)) ? 'Quotes omitted to fit the response budget.' : 'No market quotes available in this response.';
   };
 
-  window.addEventListener('message', event => {
+  const onHostMessage = (event: MessageEvent): void => {
     if (event.source !== window.parent) return;
     const message = record(event.data);
     if (message.jsonrpc !== '2.0') return;
@@ -261,12 +262,21 @@ function mount(): void {
     } else if (message.method === 'ui/notifications/host-context-changed') {
       theme(record(message.params).hostContext ?? message.params);
     }
-  });
+  };
   const resize = new ResizeObserver(() => send({
     method: 'ui/notifications/size-changed', params: { height: document.documentElement.scrollHeight },
   }));
   resize.observe(document.body);
   window.addEventListener('pagehide', () => resize.disconnect(), { once: true });
+  const channel = loaderHostChannel();
+  if (channel) {
+    channel.initialized.then(result => {
+      theme(record(result).hostContext);
+      channel.adopt(onHostMessage);
+    }, () => { status.textContent = 'The host connection is unavailable. Reload to retry.'; });
+    return;
+  }
+  window.addEventListener('message', onHostMessage);
   send({ id: 1, method: 'ui/initialize', params: {
     protocolVersion: '2026-01-26', appInfo: { name: 'worldmonitor-market-radar', version: '2.0.0' }, appCapabilities: {},
   } });

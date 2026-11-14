@@ -4,7 +4,8 @@
  * discount codes (including the /pro `wm_checkout_ref`/`wm_checkout_discount`
  * return-URL pair),
  * Clerk handshake/ticket material, checkout-funnel codes, and the desktop
- * checkout handoff's account fingerprint (a pseudonymous account id). Vercel
+ * checkout handoff's account fingerprint (a pseudonymous account id), and the
+ * satellite pass share link (`orbital`, a place on the globe). Vercel
  * Analytics (secondary-startup.ts) and Umami (analytics.ts) redact these per
  * event. DebugBear RUM reads `location` directly and has no redaction hook,
  * so it waits until none of them is left in the live URL (debugbear-rum.ts).
@@ -14,7 +15,7 @@
  * stripped from the live URL at boot. STRIPPABLE_AT_BOOT_RE is the subset
  * nobody reads.
  */
-export const SENSITIVE_URL_PARAM_RE = /^(token|access_token|id_token|refresh_token|auth_token|invite_token|accept-business-invite|email|user_email|customer_email|license_key|licensekey|subscription_id|payment_id|ref|wm_referral|checkoutproduct|checkoutreferral|checkoutdiscount|checkout_product|checkout_referral|checkout_discount|wm_checkout_account|wm_checkout_ref|wm_checkout_discount|__clerk[a-z_]*|affonso_referral|discount|coupon|promo|voucher)$/i;
+export const SENSITIVE_URL_PARAM_RE = /^(token|access_token|id_token|refresh_token|auth_token|invite_token|accept-business-invite|email|user_email|customer_email|license_key|licensekey|subscription_id|payment_id|ref|wm_referral|checkoutproduct|checkoutreferral|checkoutdiscount|checkout_product|checkout_referral|checkout_discount|wm_checkout_account|wm_checkout_ref|wm_checkout_discount|__clerk[a-z_]*|affonso_referral|discount|coupon|promo|voucher|orbital)$/i;
 
 /**
  * Params safe to strip from the live URL at boot: read by nobody.
@@ -73,7 +74,31 @@ export function scrubUrl(parsed: URL, pattern: RegExp): boolean {
 }
 
 /**
- * Remove every sensitive key from `raw`. Returns `raw` itself when nothing
+ * A point looked up on the globe goes only to the image archives the browser
+ * calls, and those request URLs carry it as a bounding-box parameter or as
+ * comma-separated numbers in the path (a crop box, a point read). The page's
+ * own `#orbital=<lat>,<lon>` route carries it in the fragment. Telemetry keeps
+ * the rest of the URL and loses those parts.
+ */
+export const COORDINATE_URL_PARAM_RE = /^(bbox|intersects|orbital)$/i;
+const COORDINATE_NUMBER = String.raw`[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?`;
+const COORDINATE_PATH_SEGMENT_RE = new RegExp(`^${COORDINATE_NUMBER}(?:,${COORDINATE_NUMBER}){1,3}(?:\\.[a-z]+)?$`, 'i');
+export const REDACTED_COORDINATES = 'redacted';
+
+/** Remove coordinate params and coordinate path segments from a parsed URL in place. */
+export function scrubCoordinates(parsed: URL): boolean {
+  let changed = scrubUrl(parsed, COORDINATE_URL_PARAM_RE);
+  const segments = parsed.pathname.split('/');
+  const scrubbedPath = segments.map((segment) => (COORDINATE_PATH_SEGMENT_RE.test(segment) ? REDACTED_COORDINATES : segment)).join('/');
+  if (scrubbedPath !== parsed.pathname) {
+    parsed.pathname = scrubbedPath;
+    changed = true;
+  }
+  return changed;
+}
+
+/**
+ * Remove every sensitive key and every coordinate from `raw`. Returns `raw` itself when nothing
  * matched or it cannot be parsed, so callers can test identity. A relative
  * input resolves against `base` and comes back relative, keeping the same
  * shape as an unredacted value.
@@ -87,7 +112,8 @@ export function redactSensitiveUrl(raw: string, base?: string): string {
   } catch {
     return raw;
   }
-  if (!scrubUrl(parsed, SENSITIVE_URL_PARAM_RE)) return raw;
+  const scrubbed = scrubUrl(parsed, SENSITIVE_URL_PARAM_RE);
+  if (!scrubCoordinates(parsed) && !scrubbed) return raw;
   const redacted = parsed.toString();
   if (wasAbsolute || !base) return redacted;
   const origin = parsed.origin;
@@ -105,9 +131,11 @@ export function urlCarriesSensitiveParams(href: unknown): boolean {
     return false;
   }
   for (const key of parsed.searchParams.keys()) {
-    if (SENSITIVE_URL_PARAM_RE.test(key)) return true;
+    if (SENSITIVE_URL_PARAM_RE.test(key) || COORDINATE_URL_PARAM_RE.test(key)) return true;
   }
-  return parsed.hash.length > 1 && scrubHashFragment(parsed.hash.slice(1), SENSITIVE_URL_PARAM_RE) !== null;
+  const fragment = parsed.hash.slice(1);
+  return fragment.length > 0
+    && (scrubHashFragment(fragment, SENSITIVE_URL_PARAM_RE) !== null || scrubHashFragment(fragment, COORDINATE_URL_PARAM_RE) !== null);
 }
 
 /** How often and how long a URL-reading vendor waits for the deferred
@@ -147,8 +175,8 @@ export function whenUrlFreeOfSensitiveParams(
  * Sentry events keep user identity, IP and page state so we can reach the
  * people who hit an error. Credentials stay out: params on the shared
  * SENSITIVE_URL_PARAM_RE list (invite and checkout tokens, Clerk tickets,
- * license keys) are removed from every URL, and credential-named fields are
- * dropped. Scrubs in place so beforeSend callers keep event identity.
+ * license keys) are removed from every URL, as are archive coordinates
+ * (scrubCoordinates), and credential-named fields are dropped. Scrubs in place so beforeSend callers keep event identity.
  */
 const CREDENTIAL_FIELD = /^(?:(?:proxy-)?authorization|(?:set-)?cookie|passw(?:or)?d|secret|client[_-]?secret|private[_-]?key|(?:access|refresh|id|auth|invite|csrf)?[_-]?token|(?:x[_-]?)?api[_-]?key)$/i;
 /** Keys whose value is a bare query string or fragment, not a URL around one. */
@@ -162,19 +190,23 @@ const MAX_DEPTH = 12;
 function scrubQuery(value: string): string {
   const prefix = value.startsWith('?') ? '?' : '';
   const params = new URLSearchParams(value.slice(prefix.length));
-  return scrubParams(params, SENSITIVE_URL_PARAM_RE) ? prefix + params.toString() : value;
+  const scrubbed = scrubParams(params, SENSITIVE_URL_PARAM_RE);
+  return scrubParams(params, COORDINATE_URL_PARAM_RE) || scrubbed ? prefix + params.toString() : value;
 }
 
 function scrubFragment(value: string): string {
   const prefix = value.startsWith('#') ? '#' : '';
-  const scrubbed = scrubHashFragment(value.slice(prefix.length), SENSITIVE_URL_PARAM_RE);
-  return scrubbed === null ? value : prefix + scrubbed;
+  const sensitive = scrubHashFragment(value.slice(prefix.length), SENSITIVE_URL_PARAM_RE);
+  const rest = sensitive ?? value.slice(prefix.length);
+  const coordinates = scrubHashFragment(rest, COORDINATE_URL_PARAM_RE);
+  if (sensitive === null && coordinates === null) return value;
+  return prefix + (coordinates ?? rest);
 }
 
 function scrubText(value: string, key: string): string {
   if (QUERY_FIELD.test(key)) return scrubQuery(value);
   if (FRAGMENT_FIELD.test(key)) return scrubFragment(value);
-  if (!value.includes('?') && !value.includes('#')) return value;
+  if (!value.includes('?') && !value.includes('#') && !value.includes(',')) return value;
   return value
     .replace(ABSOLUTE_URL, (url) => redactSensitiveUrl(url))
     .replace(RELATIVE_URL, (_, lead: string, url: string) => lead + redactSensitiveUrl(url, RELATIVE_BASE));
@@ -198,7 +230,7 @@ export function scrubSentryCredentials<T>(value: T): T {
       if (CREDENTIAL_FIELD.test(key)) delete record[key];
       else if (typeof item === 'string') record[key] = scrubText(item, key);
       else if (Array.isArray(item) && QUERY_FIELD.test(key)) {
-        record[key] = item.filter((pair) => !(Array.isArray(pair) && SENSITIVE_URL_PARAM_RE.test(String(pair[0]))));
+        record[key] = item.filter((pair) => !(Array.isArray(pair) && (SENSITIVE_URL_PARAM_RE.test(String(pair[0])) || COORDINATE_URL_PARAM_RE.test(String(pair[0])))));
       } else if (item && typeof item === 'object') visit(item, depth + 1);
     }
   }

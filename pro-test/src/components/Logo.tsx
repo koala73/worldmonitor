@@ -30,7 +30,7 @@ interface LogoProps {
  * too, so unwrapping without forwarding the handler changes where the logo
  * goes.
  */
-export const Logo = ({ href = 'https://worldmonitor.app', onClick, compactOnNarrow = false }: LogoProps = {}) => (
+export const Logo = ({ href = '/', onClick, compactOnNarrow = false }: LogoProps = {}) => (
   <a
     href={href}
     onClick={onClick}
