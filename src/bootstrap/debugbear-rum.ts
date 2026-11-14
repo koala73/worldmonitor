@@ -129,6 +129,37 @@ export function isDebugBearRumActive(): boolean {
   return debugBearRumStarted;
 }
 
+// The pinned collector reports the URLs of resources that start within
+// max(10 s, TTFB + 3 s) of navigation, query strings included, and its
+// beforeSend hook cannot edit them. Re-derive this before bumping the version.
+const COLLECTOR_REQUEST_WINDOW_MS = 10_000;
+const COLLECTOR_REQUEST_WINDOW_AFTER_TTFB_MS = 3_000;
+const COLLECTOR_REQUEST_WINDOW_MARGIN_MS = 1_000;
+
+/** When a request started now falls outside what the collector reports, in page time. */
+export function debugBearRequestWindowEndMs(responseStartMs: number): number {
+  return Math.max(COLLECTOR_REQUEST_WINDOW_MS, responseStartMs + COLLECTOR_REQUEST_WINDOW_AFTER_TTFB_MS) + COLLECTOR_REQUEST_WINDOW_MARGIN_MS;
+}
+
+/** Resolves once a request URL that names a user-picked place would stay out of the RUM payload. */
+export function afterDebugBearRequestWindow(signal: AbortSignal): Promise<void> {
+  if (!debugBearRumStarted) return Promise.resolve();
+  const navigation = performance.getEntriesByType?.('navigation')[0] as PerformanceNavigationTiming | undefined;
+  const waitMs = debugBearRequestWindowEndMs(navigation?.responseStart ?? 0) - performance.now();
+  if (waitMs <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, waitMs);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 /**
  * Page-level bootstrap transfer fields. One tier is selected per page so a
  * later tier cannot overwrite the same DebugBear custom slots. The payload

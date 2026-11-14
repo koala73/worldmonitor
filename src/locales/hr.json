@@ -4585,7 +4585,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Otvori Sažetak Zemlje",
-    "copyCoordinates": "Kopiraj Koordinate"
+    "copyCoordinates": "Kopiraj Koordinate",
+    "satellitePasses": "Preleti satelita ovdje"
   },
   "auth": {
     "signIn": "Prijava",
@@ -5201,6 +5202,159 @@
     "errGeneric": "Nacrt se ne može izraditi. Pokušajte ponovno.",
     "errDownload": "Datoteka se ne može preuzeti odavdje. Umjesto toga koristite Ispis ili spremi kao PDF.",
     "errLoad": "Procjena putovanja nije mogla biti otvorena. Ponovno učitajte stranicu i pokušajte ponovno."
+  },
+  "orbitalWatch": {
+    "computing": "Učitavanje kataloga satelita…",
+    "computingProgress": "Izračun preleta: {{done}} od {{total}} satelita",
+    "unavailable": "Katalog satelita nije se mogao učitati pa za ovu točku nisu izračunati preleti.",
+    "checkingArchives": "Provjera arhiva: {{done}} od {{total}} odgovorilo",
+    "confirmedCount": "Potvrđene snimke: {{count}}",
+    "counts": {
+      "mosaics": "Dnevni mozaici: {{count}}",
+      "frames": "Meteorološke snimke: {{count}}",
+      "inRange": "Preleti u dometu: {{count}}"
+    },
+    "partial": "{{sources}} nije odgovorio pa nekim preletima možda nedostaju snimke.",
+    "stale": "Orbitalni podaci su zastarjeli. Katalog satelita star je {{age}} pa vremena preleta mogu odstupati.",
+    "empty": "Nijedan evidentirani satelit za snimanje nije preletio ovu točku u posljednjih {{pastDays}} dana niti će u sljedećih {{futureHours}} sati.",
+    "privacy": "Ova točka ostaje u vašem pregledniku. Šalje se samo javnim arhivima koje preglednik izravno poziva: Earth Search, Microsoft Planetary Computer, NASA GIBS i EUMETSAT. Jedina iznimka je pretraživanje po nazivu mjesta: upisani naziv šalje se usluzi pretraživanja mjesta.",
+    "inRange": "u dometu",
+    "tier": {
+      "checking": "provjera arhiva",
+      "confirmed": "potvrđena snimka",
+      "likely": "vjerojatno snimljeno",
+      "opportunity": "nadolazeći prelet",
+      "dailyMosaic": "u dnevnom mozaiku",
+      "withinReach": "u dometu",
+      "capabilityOverhead": "sposobnost iznad",
+      "passedOverhead": "preletio iznad",
+      "unmatchedImage": "snimka bez izračunatog preleta",
+      "weatherFrame": "meteorološka snimka",
+      "unavailable": "nedostupno"
+    },
+    "row": {
+      "offNadir": "{{deg}}° od nadira",
+      "distance": "{{km}} km od traga na tlu",
+      "orbitAge": "orbitalni podaci stari {{age}}",
+      "edgeOfSwath": "Rub pojasa snimanja",
+      "notInArchive": "Nema snimke u arhivi",
+      "archiveUnanswered": "Arhiv nije odgovorio",
+      "imageAlt": "Snimka {{name}}, {{time}}",
+      "mosaicDays": "Dana u arhivi: {{count}}",
+      "cadence": "nova snimka svakih {{minutes}} min",
+      "sourceUnavailable": "Arhiva nema snimaka iz ovog izvora za te dane.",
+      "imageLoading": "Učitavanje slike…",
+      "imageFailed": "Slika se nije učitala. Arhiva je možda spora ili nedostupna.",
+      "noPreview": "Arhiv još nema pregled ove scene."
+    },
+    "dailyMosaics": "dnevni mozaici",
+    "weatherFrames": "meteorološke snimke",
+    "ui": {
+      "change": "Promijeni",
+      "share": "Podijeli",
+      "shareCopied": "Poveznica kopirana",
+      "headline": "U posljednjih {{days}} dana iznad {{place}} prošlo je: {{satellites}}.",
+      "satellites_one": "{{count}} satelit",
+      "satellites_few": "{{count}} satelita",
+      "satellites_other": "{{count}} satelita",
+      "subline_one": "Objavljeno snimaka: {{count}}.",
+      "subline_few": "Objavljeno snimaka: {{count}}.",
+      "subline_other": "Objavljeno snimaka: {{count}}.",
+      "closestLook": "Najbliži pogled",
+      "replay": "Reproduciraj",
+      "openFull": "Otvori puni prikaz",
+      "previous": "Prethodna snimka",
+      "next": "Sljedeća snimka",
+      "passes_one": "prelazak",
+      "passes_few": "prelaska",
+      "passes_other": "prelazaka",
+      "showAll": "Prikaži sve prelaske",
+      "noRecentDays": "Nema nedavnih dana u arhivi: {{sources}}",
+      "tab": {
+        "all": "Sve",
+        "detailed": "Detaljno",
+        "weather": "Vrijeme"
+      },
+      "caption": {
+        "clear": "Vedro na točki",
+        "clearSceneCloud": "Vedro na točki · naoblaka scene {{pct}} %",
+        "clouded": "Oblačno · {{pct}} %",
+        "cloudShadow": "Sjena oblaka",
+        "spotNotChecked": "Mjesto nije provjereno za oblake",
+        "sceneCloud": "Naoblaka scene {{pct}} % · mjesto nije provjereno",
+        "radar": "Radarska snimka",
+        "dailyMosaic": "Dnevni mozaik",
+        "geostationary": "Geostacionarni puni disk",
+        "geostationaryCadence": "Geostacionarni · svakih {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Snimka nedostupna · {{archive}}",
+        "noPreview": "Arhiva još nema pregled ove scene"
+      },
+      "grid": {
+        "watched": "Promatrano",
+        "watchedDef": "Javna arhiva ima snimku ovog mjesta.",
+        "likely": "Vjerojatno promatrano",
+        "likelyDef": "Senzor fiksnog pojasa ga je pokrio; snimka još nije objavljena.",
+        "could": "Mogao je ciljati ovamo",
+        "couldDef": "Usmjerivi ili komercijalni senzor bio je u dometu; operater ne kaže je li gledao.",
+        "overhead": "Prošao iznad",
+        "overheadDef": "Prešao je nebo ovdje, bez dokaza snimanja.",
+        "watchedShort": "Snimka u javnom arhivu",
+        "likelyShort": "Pokriveno, još nema snimke",
+        "likelyUnansweredDef": "Pokrio ga je senzor fiksnog pojasa; arhiv nije odgovorio, pa snimka možda postoji.",
+        "likelyUnansweredShort": "Pokriveno, arhiv nije odgovorio",
+        "couldShort": "Usmjerivi senzor u dometu",
+        "overheadShort": "Iznad točke, bez snimke"
+      },
+      "group": {
+        "watched": "promatranih",
+        "likely": "vjerojatno promatranih",
+        "upcoming": "nadolazećih",
+        "could": "koji su mogli ciljati ovamo",
+        "overhead": "iznad mjesta",
+        "weather_one": "izvor vremena",
+        "weather_few": "izvora vremena",
+        "weather_other": "izvora vremena"
+      },
+      "order": {
+        "closest": "Najbliži pogled, zatim najnoviji",
+        "newest": "Najnoviji prvo",
+        "soonest": "Najbliži prvo"
+      },
+      "row": {
+        "cloud": "Oblaci {{pct}} %",
+        "days_one": "Dana: {{count}}",
+        "days_few": "Dana: {{count}}",
+        "days_other": "Dana: {{count}}",
+        "repeats": "Prelasci ovog satelita u skupini: {{count}}"
+      },
+      "section": {
+        "summary": "Sažetak",
+        "passes": "Prelasci"
+      },
+      "status": {
+        "objects": "Satelita za snimanje: {{count}} · CelesTrak GP",
+        "fetched": "Dohvaćeno {{time}} · {{ago}}",
+        "sun": "Sunce {{point}} · podsolarna točka"
+      },
+      "step": {
+        "computing": "Izračun",
+        "catalogLoading": "Katalog · učitavanje",
+        "catalog": "Katalog · Satelita za snimanje: {{count}}",
+        "propagating": "Propagacija orbita · {{done}} / {{total}}",
+        "archives": "Arhive · odgovorilo {{done}} / {{total}}",
+        "matching": "Uparivanje scena s prelascima: {{passes}}",
+        "window": "7-dnevni prozor · {{start}} → {{end}}",
+        "failed": "Neuspjelo",
+        "note": "Planetary Computer i NASA GIBS izrađuju snimke na zahtjev, pa ovaj korak može potrajati nekoliko sekundi."
+      },
+      "privacyLine": "Točka ostaje u vašem pregledniku",
+      "privacyHow": "Kako",
+      "sources": "Izvori",
+      "archiveScene": "Arhivska scena",
+      "archiveOnly": "Nijedan izračunati prelet ne odgovara ovim snimkama, pa su prikazane kao arhivske scene."
+    }
   },
   "settings": {
     "back": "Natrag na postavke",

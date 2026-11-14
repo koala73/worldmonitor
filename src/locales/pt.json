@@ -4484,7 +4484,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Abrir resumo do país",
-    "copyCoordinates": "Copiar coordenadas"
+    "copyCoordinates": "Copiar coordenadas",
+    "satellitePasses": "Passagens de satélites aqui"
   },
   "shell": {
     "documentTitle": "World Monitor — Painel de Inteligência Global em Tempo Real",
@@ -5190,6 +5191,159 @@
     "errGeneric": "O rascunho não pôde ser construído. Tente novamente.",
     "errDownload": "O arquivo não pôde ser baixado aqui. Use Imprimir ou salve como PDF em vez disso.",
     "errLoad": "Não foi possível abrir a avaliação da viagem. Recarregue a página e tente novamente."
+  },
+  "orbitalWatch": {
+    "computing": "Carregando o catálogo de satélites…",
+    "computingProgress": "Calculando passagens: {{done}} de {{total}} satélites",
+    "unavailable": "Não foi possível carregar o catálogo de satélites, então nenhuma passagem foi calculada para este ponto.",
+    "checkingArchives": "Consultando arquivos: {{done}} de {{total}} responderam",
+    "confirmedCount": "Imagens confirmadas: {{count}}",
+    "counts": {
+      "mosaics": "Mosaicos diários: {{count}}",
+      "frames": "Imagens meteorológicas: {{count}}",
+      "inRange": "Passagens ao alcance: {{count}}"
+    },
+    "partial": "{{sources}} não respondeu, então algumas passagens podem estar sem imagens.",
+    "stale": "Os dados orbitais estão desatualizados. O catálogo de satélites tem {{age}}, então os horários das passagens podem variar.",
+    "empty": "Nenhum satélite de imageamento catalogado passou sobre este ponto nos últimos {{pastDays}} dias nem passará nas próximas {{futureHours}} horas.",
+    "privacy": "Este ponto fica no seu navegador. Ele é enviado apenas aos arquivos públicos que seu navegador consulta diretamente: Earth Search, Microsoft Planetary Computer, NASA GIBS e EUMETSAT. A busca por nome de lugar é a única exceção: o nome digitado vai para o serviço de busca de lugares.",
+    "inRange": "ao alcance",
+    "tier": {
+      "checking": "consultando arquivo",
+      "confirmed": "imagem confirmada",
+      "likely": "provavelmente imageado",
+      "opportunity": "próxima passagem",
+      "dailyMosaic": "no mosaico diário",
+      "withinReach": "ao alcance",
+      "capabilityOverhead": "capacidade sobrevoando",
+      "passedOverhead": "passou por cima",
+      "unmatchedImage": "imagem sem passagem calculada",
+      "weatherFrame": "imagem meteorológica",
+      "unavailable": "indisponível"
+    },
+    "row": {
+      "offNadir": "{{deg}}° fora do nadir",
+      "distance": "a {{km}} km do traço no solo",
+      "orbitAge": "dados orbitais de {{age}} atrás",
+      "edgeOfSwath": "Borda da faixa",
+      "notInArchive": "Nenhuma imagem no arquivo",
+      "archiveUnanswered": "O arquivo não respondeu",
+      "imageAlt": "Imagem de {{name}}, {{time}}",
+      "mosaicDays": "Dias no arquivo: {{count}}",
+      "cadence": "nova imagem a cada {{minutes}} min",
+      "sourceUnavailable": "O arquivo não lista imagens desta fonte para estes dias.",
+      "imageLoading": "Carregando imagem…",
+      "imageFailed": "A imagem não carregou. O arquivo pode estar lento ou fora do ar.",
+      "noPreview": "O arquivo ainda não tem uma pré-visualização desta cena."
+    },
+    "dailyMosaics": "mosaicos diários",
+    "weatherFrames": "imagens meteorológicas",
+    "ui": {
+      "change": "Alterar",
+      "share": "Compartilhar",
+      "shareCopied": "Link copiado",
+      "headline": "Nos últimos {{days}} dias, {{satellites}} passaram sobre {{place}}.",
+      "satellites_one": "{{count}} satélite",
+      "satellites_many": "{{count}} satélites",
+      "satellites_other": "{{count}} satélites",
+      "subline_one": "{{count}} imagem foi publicada.",
+      "subline_many": "{{count}} imagens foram publicadas.",
+      "subline_other": "{{count}} imagens foram publicadas.",
+      "closestLook": "Vista mais próxima",
+      "replay": "Reproduzir",
+      "openFull": "Abrir vista completa",
+      "previous": "Imagem anterior",
+      "next": "Próxima imagem",
+      "passes_one": "passagem",
+      "passes_many": "passagens",
+      "passes_other": "passagens",
+      "showAll": "Mostrar todas as passagens",
+      "noRecentDays": "Sem dias recentes no arquivo: {{sources}}",
+      "tab": {
+        "all": "Tudo",
+        "detailed": "Detalhado",
+        "weather": "Tempo"
+      },
+      "caption": {
+        "clear": "Limpo no ponto",
+        "clearSceneCloud": "Limpo no ponto · nebulosidade da cena {{pct}}%",
+        "clouded": "Nublado · {{pct}}%",
+        "cloudShadow": "Sombra de nuvem",
+        "spotNotChecked": "Ponto não verificado para nuvens",
+        "sceneCloud": "Nebulosidade da cena {{pct}}% · ponto não verificado",
+        "radar": "Radar",
+        "dailyMosaic": "Mosaico diário",
+        "geostationary": "Disco completo geoestacionário",
+        "geostationaryCadence": "Geoestacionário · a cada {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Imagem indisponível · {{archive}}",
+        "noPreview": "O arquivo ainda não tem prévia desta cena"
+      },
+      "grid": {
+        "watched": "Observado",
+        "watchedDef": "Um arquivo público tem uma imagem deste ponto.",
+        "likely": "Provavelmente observado",
+        "likelyDef": "Um sensor de faixa fixa o cobriu; nenhuma imagem publicada ainda.",
+        "could": "Poderia ter apontado aqui",
+        "couldDef": "Um sensor orientável ou comercial estava ao alcance; o operador não diz se olhou.",
+        "overhead": "Passou por cima",
+        "overheadDef": "Cruzou o céu aqui, sem evidência de imagem.",
+        "watchedShort": "Imagem num arquivo público",
+        "likelyShort": "Coberto, ainda sem imagem",
+        "likelyUnansweredDef": "Um sensor de faixa fixa o cobriu; um arquivo não respondeu, então pode existir uma imagem.",
+        "likelyUnansweredShort": "Coberto, o arquivo não respondeu",
+        "couldShort": "Sensor orientável ao alcance",
+        "overheadShort": "Passou por cima, sem imagem"
+      },
+      "group": {
+        "watched": "observadas",
+        "likely": "provavelmente observadas",
+        "upcoming": "a seguir",
+        "could": "que poderiam ter apontado aqui",
+        "overhead": "que passaram por cima",
+        "weather_one": "fonte meteorológica",
+        "weather_many": "fontes meteorológicas",
+        "weather_other": "fontes meteorológicas"
+      },
+      "order": {
+        "closest": "Vista mais próxima, depois mais recentes",
+        "newest": "Mais recentes primeiro",
+        "soonest": "Mais próximas primeiro"
+      },
+      "row": {
+        "cloud": "Nuvens {{pct}}%",
+        "days_one": "{{count}} dia",
+        "days_many": "{{count}} dias",
+        "days_other": "{{count}} dias",
+        "repeats": "{{count}} passagens deste satélite neste grupo"
+      },
+      "section": {
+        "summary": "Resumo",
+        "passes": "Passagens"
+      },
+      "status": {
+        "objects": "{{count}} satélites de imagem · CelesTrak GP",
+        "fetched": "Obtido {{time}} · {{ago}}",
+        "sun": "Sol {{point}} · ponto subsolar"
+      },
+      "step": {
+        "computing": "Calculando",
+        "catalogLoading": "Catálogo · carregando",
+        "catalog": "Catálogo · {{count}} satélites de imagem",
+        "propagating": "Propagando órbitas · {{done}} / {{total}}",
+        "archives": "Arquivos · {{done}} / {{total}} responderam",
+        "matching": "Associando cenas a {{passes}} passagens",
+        "window": "Janela de 7 dias · {{start}} → {{end}}",
+        "failed": "Falhou",
+        "note": "Planetary Computer e NASA GIBS geram imagens sob demanda, então esta etapa pode levar alguns segundos."
+      },
+      "privacyLine": "O ponto fica no seu navegador",
+      "privacyHow": "Como",
+      "sources": "Fontes",
+      "archiveScene": "Cena de arquivo",
+      "archiveOnly": "Nenhuma passagem calculada corresponde a estas imagens, por isso são mostradas como cenas de arquivo."
+    }
   },
   "settings": {
     "back": "Voltar às configurações",

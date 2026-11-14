@@ -25,6 +25,7 @@ import { getThreatColor } from '@/services/threat-classifier';
 import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/smart-poll-loop';
 import { scheduleAfterFirstPaint, yieldToMain } from '@/utils/after-paint';
 import { measure, mutate } from '@/utils/layout-batch';
+import type { ScreenOffset } from '@/utils/map-point-offset';
 import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import {
   INTEL_HOTSPOTS,
@@ -5261,7 +5262,6 @@ export class MapComponent {
   }
 
   public setCenter(lat: number, lon: number): void {
-    console.log('[Map] setCenter called:', { lat, lon });
     // Any centre command, including the one a focus fit ends with, ends a
     // fit still waiting for the map to have a size.
     this.pendingFocusFit = null;
@@ -5273,7 +5273,6 @@ export class MapComponent {
     this.pendingCenter = null;
     const projection = this.getProjection(width, height);
     const pos = projection([lon, lat]);
-    console.log('[Map] projected pos:', pos, 'container:', { width, height }, 'zoom:', this.state.zoom);
     if (!pos) return;
     // Pan formula: after applyTransform() computes tx = centerOffset + pan*zoom,
     // and transform is translate(tx,ty) scale(zoom), to center on pos:
@@ -5287,6 +5286,36 @@ export class MapComponent {
     this.applyTransform();
     // Ensure base layer is intact after pan
     this.ensureBaseLayerIntact();
+  }
+
+  /** The centre that draws (lat, lon) `offset` pixels from the container centre at `zoom`, clamped as setZoom clamps it. */
+  public centerForOffset(lat: number, lon: number, zoom: number, offset: ScreenOffset): { lat: number; lon: number } {
+    const { width, height } = this.readContainerSize();
+    if (width === 0 || height === 0) return { lat, lon };
+    const projection = this.getProjection(width, height);
+    const pos = projection([lon, lat]);
+    const scale = Math.max(1, Math.min(10, zoom));
+    if (!pos) return { lat, lon };
+    // One world is drawn, so a centre past the antimeridian would wrap to the far edge.
+    const west = projection([-180, 0])?.[0] ?? -Infinity;
+    const east = projection([180, 0])?.[0] ?? Infinity;
+    const x = Math.min(east - 1e-6, Math.max(west + 1e-6, pos[0] - offset.x / scale));
+    const centre = projection.invert?.([x, pos[1] - offset.y / scale]);
+    return centre ? { lat: centre[1], lon: centre[0] } : { lat, lon };
+  }
+
+  /** Where (lat, lon) is drawn in client coordinates, through the same translate and scale applyTransform() sets. */
+  public projectToClient(lat: number, lon: number): { x: number; y: number } | null {
+    const { width, height } = this.readContainerSize();
+    if (width === 0 || height === 0) return null;
+    const pos = this.getProjection(width, height)([lon, lat]);
+    if (!pos) return null;
+    const { zoom, pan } = this.state;
+    const rect = this.container.getBoundingClientRect();
+    return {
+      x: rect.left + (width / 2) * (1 - zoom) + (pan.x + pos[0]) * zoom,
+      y: rect.top + (height / 2) * (1 - zoom) + (pan.y + pos[1]) * zoom,
+    };
   }
 
   public setLayers(layers: MapLayers): void {

@@ -4440,7 +4440,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "国の概要を開く",
-    "copyCoordinates": "座標をコピー"
+    "copyCoordinates": "座標をコピー",
+    "satellitePasses": "この地点を通過した衛星"
   },
   "shell": {
     "documentTitle": "ワールドモニター — リアルタイム グローバルインテリジェンスダッシュボード",
@@ -5134,6 +5135,149 @@
     "errGeneric": "初版を作成できませんでした。再度お試しください。",
     "errDownload": "ファイルをここからダウンロードできません。代わりに印刷または PDF として保存を使用してください。",
     "errLoad": "旅行リスク評価を開くことができませんでした。ページを再度読み込んでもう一度お試しください。"
+  },
+  "orbitalWatch": {
+    "computing": "衛星カタログを読み込み中…",
+    "computingProgress": "通過を計算中：{{total}} 機中 {{done}} 機",
+    "unavailable": "衛星カタログを読み込めなかったため、この地点の通過は計算されていません。",
+    "checkingArchives": "アーカイブを確認中：{{total}} 件中 {{done}} 件が応答",
+    "confirmedCount": "確認済み画像：{{count}}",
+    "counts": {
+      "mosaics": "日次モザイク：{{count}}",
+      "frames": "気象画像：{{count}}",
+      "inRange": "範囲内の通過：{{count}}"
+    },
+    "partial": "{{sources}} が応答しなかったため、一部の通過で画像が欠けている可能性があります。",
+    "stale": "軌道データが古くなっています。衛星カタログは {{age}} 前のもので、通過時刻がずれる可能性があります。",
+    "empty": "過去 {{pastDays}} 日間に、登録済みの撮像衛星はこの地点の上空を通過しておらず、今後 {{futureHours}} 時間も通過しません。",
+    "privacy": "この地点はブラウザー内にとどまります。送信先は、ブラウザーが直接呼び出す公開アーカイブ（Earth Search、Microsoft Planetary Computer、NASA GIBS、EUMETSAT）のみです。唯一の例外は地名検索で、入力した地名は地名検索サービスに送られます。",
+    "inRange": "範囲内",
+    "tier": {
+      "checking": "アーカイブ確認中",
+      "confirmed": "確認済み画像",
+      "likely": "撮像の可能性が高い",
+      "opportunity": "今後の通過",
+      "dailyMosaic": "日次モザイク内",
+      "withinReach": "範囲内",
+      "capabilityOverhead": "能力上空通過",
+      "passedOverhead": "上空通過",
+      "unmatchedImage": "計算済み通過のない画像",
+      "weatherFrame": "気象画像",
+      "unavailable": "利用不可"
+    },
+    "row": {
+      "offNadir": "天底から {{deg}}°",
+      "distance": "地上軌跡から {{km}} km",
+      "orbitAge": "軌道データ {{age}} 前",
+      "edgeOfSwath": "観測幅の端",
+      "notInArchive": "アーカイブに画像なし",
+      "archiveUnanswered": "アーカイブが応答しませんでした",
+      "imageAlt": "{{name}} の画像、{{time}}",
+      "mosaicDays": "アーカイブ内の日数：{{count}}",
+      "cadence": "{{minutes}} 分ごとに新しい画像",
+      "sourceUnavailable": "アーカイブには、この期間のこのソースの画像がありません。",
+      "imageLoading": "画像を読み込み中…",
+      "imageFailed": "画像を読み込めませんでした。アーカイブが遅いか停止している可能性があります。",
+      "noPreview": "アーカイブにはまだこのシーンのプレビューがありません。"
+    },
+    "dailyMosaics": "日次モザイク",
+    "weatherFrames": "気象画像",
+    "ui": {
+      "change": "変更",
+      "share": "共有",
+      "shareCopied": "リンクをコピーしました",
+      "headline": "過去{{days}}日間に{{satellites}}が{{place}}の上空を通過しました。",
+      "satellites_other": "{{count}}基の衛星",
+      "subline_other": "{{count}}枚の画像が公開されました。",
+      "closestLook": "最も近い撮影",
+      "replay": "再生",
+      "openFull": "全画面表示を開く",
+      "previous": "前の画像",
+      "next": "次の画像",
+      "passes_other": "回の通過",
+      "showAll": "すべての通過を表示",
+      "noRecentDays": "アーカイブに最近の日がありません: {{sources}}",
+      "tab": {
+        "all": "すべて",
+        "detailed": "詳細",
+        "weather": "気象"
+      },
+      "caption": {
+        "clear": "地点は晴れ",
+        "clearSceneCloud": "地点は晴れ · シーンの雲量 {{pct}}%",
+        "clouded": "曇り · {{pct}}%",
+        "cloudShadow": "雲の影",
+        "spotNotChecked": "地点の雲は未確認",
+        "sceneCloud": "シーンの雲量 {{pct}}% · 地点は未確認",
+        "radar": "レーダー",
+        "dailyMosaic": "日次モザイク",
+        "geostationary": "静止衛星フルディスク",
+        "geostationaryCadence": "静止衛星 · {{minutes}}分ごと"
+      },
+      "tile": {
+        "failed": "画像を利用できません · {{archive}}",
+        "noPreview": "アーカイブにはまだこのシーンのプレビューがありません"
+      },
+      "grid": {
+        "watched": "撮影済み",
+        "watchedDef": "公開アーカイブにこの地点の画像があります。",
+        "likely": "撮影の可能性大",
+        "likelyDef": "固定観測幅のセンサーが範囲に含めましたが、画像はまだ公開されていません。",
+        "could": "ここを向けた可能性",
+        "couldDef": "指向可能または商用のセンサーが届く範囲にいましたが、運用者は観測したかを公表していません。",
+        "overhead": "上空を通過",
+        "overheadDef": "撮影の証拠なしにこの上空を通過しました。",
+        "watchedShort": "公開アーカイブに画像あり",
+        "likelyShort": "観測済み、画像はまだなし",
+        "likelyUnansweredDef": "固定幅センサーが撮影範囲に収めましたが、アーカイブが応答しなかったため、画像が存在する可能性があります。",
+        "likelyUnansweredShort": "撮影範囲内、アーカイブ応答なし",
+        "couldShort": "指向可能なセンサーが圏内",
+        "overheadShort": "上空通過、画像なし"
+      },
+      "group": {
+        "watched": "撮影済み",
+        "likely": "撮影の可能性大",
+        "upcoming": "今後",
+        "could": "ここを向けた可能性",
+        "overhead": "上空を通過",
+        "weather_other": "気象ソース"
+      },
+      "order": {
+        "closest": "最も近い撮影、次に新しい順",
+        "newest": "新しい順",
+        "soonest": "早い順"
+      },
+      "row": {
+        "cloud": "雲 {{pct}}%",
+        "days_other": "{{count}}日",
+        "repeats": "このグループでのこの衛星の通過 {{count}}回"
+      },
+      "section": {
+        "summary": "概要",
+        "passes": "通過"
+      },
+      "status": {
+        "objects": "{{count}}基の撮像衛星 · CelesTrak GP",
+        "fetched": "取得 {{time}} · {{ago}}",
+        "sun": "太陽 {{point}} · 太陽直下点"
+      },
+      "step": {
+        "computing": "計算中",
+        "catalogLoading": "カタログ · 読み込み中",
+        "catalog": "カタログ · {{count}}基の撮像衛星",
+        "propagating": "軌道を計算中 · {{done}} / {{total}}",
+        "archives": "アーカイブ · {{done}} / {{total}} が応答",
+        "matching": "シーンを{{passes}}回の通過と照合中",
+        "window": "7日間の範囲 · {{start}} → {{end}}",
+        "failed": "失敗",
+        "note": "Planetary ComputerとNASA GIBSは画像を要求時に生成するため、この手順には数秒かかることがあります。"
+      },
+      "privacyLine": "地点はブラウザ内にとどまります",
+      "privacyHow": "仕組み",
+      "sources": "出典",
+      "archiveScene": "アーカイブシーン",
+      "archiveOnly": "計算された通過と一致しない画像のため、アーカイブシーンとして表示しています。"
+    }
   },
   "settings": {
     "back": "設定に戻る",

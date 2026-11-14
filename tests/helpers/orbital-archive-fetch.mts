@@ -42,6 +42,8 @@ export async function fixtureLookup(point: { lat: number; lon: number }): Promis
 }
 
 export interface FakeArchiveOptions {
+  /** GIBS layer identifiers whose time domain comes back empty. */
+  emptyLayers?: string[];
   /** Hostnames that answer 503. */
   failing?: string[];
   /** URL substrings that answer 503. */
@@ -83,6 +85,9 @@ export function fakeArchiveFetch(point: ArchiveFixturePoint, options: FakeArchiv
     }
     if (url.hostname === 'gibs.earthdata.nasa.gov') {
       const daily = url.pathname.includes('CorrectedReflectance');
+      if (options.emptyLayers?.some((layer) => url.pathname.includes(layer))) {
+        return xml('<Domains><DimensionDomain><ows:Identifier>time</ows:Identifier><Domain></Domain></DimensionDomain></Domains>');
+      }
       return xml(`<Domains><DimensionDomain><ows:Identifier>time</ows:Identifier><Domain>${daily ? '2026-11-03/2026-11-13/P1D' : '2026-11-13T06:00:00Z/2026-11-13T11:50:00Z/PT10M'}</Domain></DimensionDomain></Domains>`);
     }
     if (url.hostname === 'view.eumetsat.int') {

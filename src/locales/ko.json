@@ -4440,7 +4440,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "국가 개요 열기",
-    "copyCoordinates": "좌표 복사"
+    "copyCoordinates": "좌표 복사",
+    "satellitePasses": "이 지점을 지나는 위성"
   },
   "shell": {
     "documentTitle": "World Monitor — 실시간 글로벌 인텔리전스 대시보드",
@@ -5134,6 +5135,149 @@
     "errGeneric": "초안을 작성할 수 없습니다. 다시 시도하세요.",
     "errDownload": "파일을 여기서 다운로드할 수 없습니다. 대신 인쇄 또는 PDF 저장을 사용하세요.",
     "errLoad": "여행 위험 평가를 열 수 없습니다. 페이지를 새로고침하고 다시 시도하세요."
+  },
+  "orbitalWatch": {
+    "computing": "위성 카탈로그를 불러오는 중…",
+    "computingProgress": "통과 계산 중: 위성 {{total}}개 중 {{done}}개",
+    "unavailable": "위성 카탈로그를 불러오지 못해 이 지점의 통과를 계산하지 않았습니다.",
+    "checkingArchives": "아카이브 확인 중: {{total}}곳 중 {{done}}곳 응답",
+    "confirmedCount": "확인된 영상: {{count}}",
+    "counts": {
+      "mosaics": "일일 모자이크: {{count}}",
+      "frames": "기상 영상: {{count}}",
+      "inRange": "범위 내 통과: {{count}}"
+    },
+    "partial": "{{sources}}이(가) 응답하지 않아 일부 통과에 영상이 없을 수 있습니다.",
+    "stale": "궤도 데이터가 오래되었습니다. 위성 카탈로그가 {{age}} 전 것이므로 통과 시간이 다를 수 있습니다.",
+    "empty": "지난 {{pastDays}}일 동안 이 지점 위를 지난 등록된 영상 위성이 없으며 향후 {{futureHours}}시간 동안에도 지나지 않습니다.",
+    "privacy": "이 지점은 브라우저에만 남습니다. 브라우저가 직접 호출하는 공개 아카이브인 Earth Search, Microsoft Planetary Computer, NASA GIBS, EUMETSAT에만 전송됩니다. 유일한 예외는 지명 검색으로, 입력한 이름은 지명 검색 서비스로 전송됩니다.",
+    "inRange": "범위 내",
+    "tier": {
+      "checking": "아카이브 확인 중",
+      "confirmed": "확인된 영상",
+      "likely": "촬영 가능성 높음",
+      "opportunity": "예정된 통과",
+      "dailyMosaic": "일일 모자이크에 포함",
+      "withinReach": "범위 내",
+      "capabilityOverhead": "능력 상공 통과",
+      "passedOverhead": "상공 통과",
+      "unmatchedImage": "계산된 통과 없는 영상",
+      "weatherFrame": "기상 영상",
+      "unavailable": "사용할 수 없음"
+    },
+    "row": {
+      "offNadir": "천저에서 {{deg}}°",
+      "distance": "지상 궤적에서 {{km}}km",
+      "orbitAge": "궤도 데이터 {{age}} 전",
+      "edgeOfSwath": "관측폭 가장자리",
+      "notInArchive": "아카이브에 영상 없음",
+      "archiveUnanswered": "아카이브가 응답하지 않음",
+      "imageAlt": "{{name}} 영상, {{time}}",
+      "mosaicDays": "아카이브의 일수: {{count}}",
+      "cadence": "{{minutes}}분마다 새 영상",
+      "sourceUnavailable": "아카이브에 이 기간 동안 이 출처의 영상이 없습니다.",
+      "imageLoading": "이미지 불러오는 중…",
+      "imageFailed": "이미지를 불러오지 못했습니다. 아카이브가 느리거나 중단되었을 수 있습니다.",
+      "noPreview": "아카이브에 아직 이 장면의 미리보기가 없습니다."
+    },
+    "dailyMosaics": "일일 모자이크",
+    "weatherFrames": "기상 영상",
+    "ui": {
+      "change": "변경",
+      "share": "공유",
+      "shareCopied": "링크 복사됨",
+      "headline": "지난 {{days}}일 동안 {{satellites}}이 {{place}} 위를 지나갔습니다.",
+      "satellites_other": "위성 {{count}}기",
+      "subline_other": "이미지 {{count}}장이 공개되었습니다.",
+      "closestLook": "가장 가까운 촬영",
+      "replay": "재생",
+      "openFull": "전체 보기 열기",
+      "previous": "이전 이미지",
+      "next": "다음 이미지",
+      "passes_other": "회 통과",
+      "showAll": "모든 통과 보기",
+      "noRecentDays": "아카이브에 최근 날짜 없음: {{sources}}",
+      "tab": {
+        "all": "전체",
+        "detailed": "상세",
+        "weather": "기상"
+      },
+      "caption": {
+        "clear": "지점 맑음",
+        "clearSceneCloud": "지점 맑음 · 장면 구름 {{pct}}%",
+        "clouded": "흐림 · {{pct}}%",
+        "cloudShadow": "구름 그림자",
+        "spotNotChecked": "지점 구름 미확인",
+        "sceneCloud": "장면 구름 {{pct}}% · 지점 미확인",
+        "radar": "레이더",
+        "dailyMosaic": "일일 모자이크",
+        "geostationary": "정지궤도 전체 디스크",
+        "geostationaryCadence": "정지궤도 · {{minutes}}분마다"
+      },
+      "tile": {
+        "failed": "이미지 없음 · {{archive}}",
+        "noPreview": "아카이브에 아직 이 장면의 미리보기가 없습니다"
+      },
+      "grid": {
+        "watched": "촬영됨",
+        "watchedDef": "공개 아카이브에 이 지점의 이미지가 있습니다.",
+        "likely": "촬영 가능성 높음",
+        "likelyDef": "고정 관측폭 센서가 포함했지만 아직 공개된 이미지가 없습니다.",
+        "could": "이곳을 겨눌 수 있었음",
+        "couldDef": "지향 가능하거나 상업용 센서가 범위 안에 있었으나 운영자는 관측 여부를 밝히지 않습니다.",
+        "overhead": "상공 통과",
+        "overheadDef": "촬영 증거 없이 이곳 하늘을 지나갔습니다.",
+        "watchedShort": "공개 아카이브에 영상 있음",
+        "likelyShort": "관측됨, 아직 영상 없음",
+        "likelyUnansweredDef": "고정 관측폭 센서가 이곳을 지났지만 아카이브가 응답하지 않아 이미지가 있을 수 있습니다.",
+        "likelyUnansweredShort": "관측됨, 아카이브 응답 없음",
+        "couldShort": "지향형 센서가 범위 내",
+        "overheadShort": "상공 통과, 영상 없음"
+      },
+      "group": {
+        "watched": "촬영됨",
+        "likely": "촬영 가능성 높음",
+        "upcoming": "예정",
+        "could": "이곳을 겨눌 수 있었음",
+        "overhead": "상공 통과",
+        "weather_other": "기상 소스"
+      },
+      "order": {
+        "closest": "가장 가까운 촬영, 이후 최신순",
+        "newest": "최신순",
+        "soonest": "빠른 순"
+      },
+      "row": {
+        "cloud": "구름 {{pct}}%",
+        "days_other": "{{count}}일",
+        "repeats": "이 그룹에서 이 위성의 통과 {{count}}회"
+      },
+      "section": {
+        "summary": "요약",
+        "passes": "통과"
+      },
+      "status": {
+        "objects": "{{count}}기의 영상 위성 · CelesTrak GP",
+        "fetched": "가져옴 {{time}} · {{ago}}",
+        "sun": "태양 {{point}} · 태양 직하점"
+      },
+      "step": {
+        "computing": "계산 중",
+        "catalogLoading": "카탈로그 · 불러오는 중",
+        "catalog": "카탈로그 · {{count}}기의 영상 위성",
+        "propagating": "궤도 계산 중 · {{done}} / {{total}}",
+        "archives": "아카이브 · {{done}} / {{total}} 응답",
+        "matching": "장면을 통과 {{passes}}회와 대조 중",
+        "window": "7일 범위 · {{start}} → {{end}}",
+        "failed": "실패",
+        "note": "Planetary Computer와 NASA GIBS는 요청 시 이미지를 생성하므로 이 단계는 몇 초 걸릴 수 있습니다."
+      },
+      "privacyLine": "지점은 브라우저에만 남습니다",
+      "privacyHow": "방법",
+      "sources": "출처",
+      "archiveScene": "아카이브 장면",
+      "archiveOnly": "계산된 통과와 일치하지 않는 영상이므로 아카이브 장면으로 표시합니다."
+    }
   },
   "settings": {
     "back": "설정으로 돌아가기",

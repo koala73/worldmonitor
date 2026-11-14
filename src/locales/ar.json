@@ -4550,7 +4550,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "فتح ملخص البلد",
-    "copyCoordinates": "نسخ الإحداثيات"
+    "copyCoordinates": "نسخ الإحداثيات",
+    "satellitePasses": "الأقمار الصناعية التي مرت هنا"
   },
   "shell": {
     "documentTitle": "لوحة مراقبة الذكاء العالمي في الوقت الفعلي — World Monitor",
@@ -5274,6 +5275,174 @@
     "errGeneric": "تعذر بناء المسودة. حاول مرة أخرى.",
     "errDownload": "تعذر تنزيل الملف هنا. استخدم الطباعة أو حفظ باسم PDF بدلاً من ذلك.",
     "errLoad": "لا يمكن فتح تقييم الرحلة. أعد تحميل الصفحة وحاول مرة أخرى."
+  },
+  "orbitalWatch": {
+    "computing": "جارٍ تحميل فهرس الأقمار الصناعية…",
+    "computingProgress": "جارٍ حساب المرورات: {{done}} من {{total}} قمرًا صناعيًا",
+    "unavailable": "تعذّر تحميل فهرس الأقمار الصناعية، لذا لم تُحسب أي مرورات لهذه النقطة.",
+    "checkingArchives": "جارٍ فحص الأرشيفات: استجاب {{done}} من {{total}}",
+    "confirmedCount": "الصور المؤكدة: {{count}}",
+    "counts": {
+      "mosaics": "الفسيفساء اليومية: {{count}}",
+      "frames": "لقطات الطقس: {{count}}",
+      "inRange": "المرورات ضمن النطاق: {{count}}"
+    },
+    "partial": "لم يستجب {{sources}}، لذا قد تفتقد بعض المرورات صورها.",
+    "stale": "بيانات المدار قديمة. عمر فهرس الأقمار الصناعية {{age}}، لذا قد تنحرف أوقات المرور.",
+    "empty": "لم يمر أي قمر تصوير مُدرج فوق هذه النقطة خلال آخر {{pastDays}} يومًا، ولن يمر خلال الساعات الـ{{futureHours}} القادمة.",
+    "privacy": "تبقى هذه النقطة في متصفحك. تُرسل فقط إلى الأرشيفات العامة التي يستدعيها متصفحك مباشرة: Earth Search وMicrosoft Planetary Computer وNASA GIBS وEUMETSAT. الاستثناء الوحيد هو البحث باسم المكان: يُرسل الاسم الذي تكتبه إلى خدمة البحث عن الأماكن.",
+    "inRange": "ضمن النطاق",
+    "tier": {
+      "checking": "جارٍ فحص الأرشيف",
+      "confirmed": "صورة مؤكدة",
+      "likely": "مُصوَّر على الأرجح",
+      "opportunity": "مرور قادم",
+      "dailyMosaic": "في الفسيفساء اليومية",
+      "withinReach": "ضمن النطاق",
+      "capabilityOverhead": "قدرة فوق النقطة",
+      "passedOverhead": "مرّ فوق النقطة",
+      "unmatchedImage": "صورة بلا مرور محسوب",
+      "weatherFrame": "صورة طقس",
+      "unavailable": "غير متاح"
+    },
+    "row": {
+      "offNadir": "{{deg}}° عن النظير",
+      "distance": "{{km}} كم من المسار الأرضي",
+      "orbitAge": "بيانات مدار عمرها {{age}}",
+      "edgeOfSwath": "حافة الشريط",
+      "notInArchive": "لا توجد صورة في الأرشيف",
+      "archiveUnanswered": "لم يستجب الأرشيف",
+      "imageAlt": "صورة {{name}}، {{time}}",
+      "mosaicDays": "الأيام في الأرشيف: {{count}}",
+      "cadence": "صورة جديدة كل {{minutes}} دقيقة",
+      "sourceUnavailable": "لا يحتوي الأرشيف على صور من هذا المصدر لهذه الأيام.",
+      "imageLoading": "جارٍ تحميل الصورة…",
+      "imageFailed": "تعذّر تحميل الصورة. قد يكون الأرشيف بطيئًا أو متوقفًا.",
+      "noPreview": "لا يملك الأرشيف معاينة لهذا المشهد بعد."
+    },
+    "dailyMosaics": "فسيفساء يومية",
+    "weatherFrames": "صور الطقس",
+    "ui": {
+      "change": "تغيير",
+      "share": "مشاركة",
+      "shareCopied": "تم نسخ الرابط",
+      "headline": "خلال آخر {{days}} أيام، مرّ {{satellites}} فوق {{place}}.",
+      "satellites_zero": "{{count}} قمر صناعي",
+      "satellites_one": "قمر صناعي واحد",
+      "satellites_two": "قمران صناعيان",
+      "satellites_few": "{{count}} أقمار صناعية",
+      "satellites_many": "{{count}} قمرًا صناعيًا",
+      "satellites_other": "{{count}} قمر صناعي",
+      "subline_zero": "نُشرت {{count}} صورة.",
+      "subline_one": "نُشرت صورة واحدة.",
+      "subline_two": "نُشرت صورتان.",
+      "subline_few": "نُشرت {{count}} صور.",
+      "subline_many": "نُشرت {{count}} صورة.",
+      "subline_other": "نُشرت {{count}} صورة.",
+      "closestLook": "أقرب لقطة",
+      "replay": "إعادة العرض",
+      "openFull": "فتح العرض الكامل",
+      "previous": "الصورة السابقة",
+      "next": "الصورة التالية",
+      "passes_zero": "مرور",
+      "passes_one": "مرور",
+      "passes_two": "مروران",
+      "passes_few": "مرورات",
+      "passes_many": "مرورًا",
+      "passes_other": "مرور",
+      "showAll": "عرض كل المرورات",
+      "noRecentDays": "لا أيام حديثة في الأرشيف: {{sources}}",
+      "tab": {
+        "all": "الكل",
+        "detailed": "مفصّل",
+        "weather": "الطقس"
+      },
+      "caption": {
+        "clear": "صافٍ عند النقطة",
+        "clearSceneCloud": "صافٍ عند النقطة · غيوم المشهد {{pct}}٪",
+        "clouded": "غائم · {{pct}}٪",
+        "cloudShadow": "ظل سحابة",
+        "spotNotChecked": "لم تُفحص النقطة بحثًا عن السحب",
+        "sceneCloud": "غيوم المشهد {{pct}}٪ · لم تُفحص النقطة",
+        "radar": "رادار",
+        "dailyMosaic": "فسيفساء يومية",
+        "geostationary": "قرص كامل ثابت بالنسبة للأرض",
+        "geostationaryCadence": "ثابت بالنسبة للأرض · كل {{minutes}} دقيقة"
+      },
+      "tile": {
+        "failed": "الصورة غير متاحة · {{archive}}",
+        "noPreview": "لا يملك الأرشيف معاينة لهذا المشهد بعد"
+      },
+      "grid": {
+        "watched": "مرصود",
+        "watchedDef": "يحتفظ أرشيف عام بصورة لهذه النقطة.",
+        "likely": "مرصود على الأرجح",
+        "likelyDef": "غطّاها مستشعر بشريط ثابت؛ لم تُنشر صورة بعد.",
+        "could": "كان يمكن أن يوجَّه هنا",
+        "couldDef": "كان مستشعر قابل للتوجيه أو تجاري في المدى؛ لا يذكر المشغّل إن كان قد نظر.",
+        "overhead": "مرّ فوقها",
+        "overheadDef": "عبر السماء هنا دون دليل على التصوير.",
+        "watchedShort": "صورة في أرشيف عام",
+        "likelyShort": "مُغطّى، لا صورة بعد",
+        "likelyUnansweredDef": "غطّاه مستشعر ذو نطاق ثابت؛ لم يستجب أحد الأرشيفات، لذا قد توجد صورة.",
+        "likelyUnansweredShort": "مغطّى، لم يستجب الأرشيف",
+        "couldShort": "مستشعر موجَّه في المدى",
+        "overheadShort": "فوق النقطة، بلا صورة"
+      },
+      "group": {
+        "watched": "مرصودة",
+        "likely": "مرصودة على الأرجح",
+        "upcoming": "قادمة",
+        "could": "كان يمكن توجيهها هنا",
+        "overhead": "مرّت فوقها",
+        "weather_zero": "مصادر الطقس",
+        "weather_one": "مصدر طقس",
+        "weather_two": "مصدرا طقس",
+        "weather_few": "مصادر طقس",
+        "weather_many": "مصدر طقس",
+        "weather_other": "مصدر طقس"
+      },
+      "order": {
+        "closest": "أقرب لقطة ثم الأحدث",
+        "newest": "الأحدث أولًا",
+        "soonest": "الأقرب أولًا"
+      },
+      "row": {
+        "cloud": "غيوم {{pct}}٪",
+        "days_zero": "{{count}} يوم",
+        "days_one": "يوم واحد",
+        "days_two": "يومان",
+        "days_few": "{{count}} أيام",
+        "days_many": "{{count}} يومًا",
+        "days_other": "{{count}} يوم",
+        "repeats": "{{count}} مرورًا لهذا القمر في هذه المجموعة"
+      },
+      "section": {
+        "summary": "الملخص",
+        "passes": "المرورات"
+      },
+      "status": {
+        "objects": "{{count}} قمرًا للتصوير · CelesTrak GP",
+        "fetched": "جُلب {{time}} · {{ago}}",
+        "sun": "الشمس {{point}} · النقطة تحت الشمسية"
+      },
+      "step": {
+        "computing": "جارٍ الحساب",
+        "catalogLoading": "الكتالوج · جارٍ التحميل",
+        "catalog": "الكتالوج · {{count}} قمرًا للتصوير",
+        "propagating": "حساب المدارات · {{done}} / {{total}}",
+        "archives": "الأرشيفات · أجاب {{done}} / {{total}}",
+        "matching": "مطابقة المشاهد مع {{passes}} مرورًا",
+        "window": "نافذة 7 أيام · {{start}} → {{end}}",
+        "failed": "فشل",
+        "note": "يولّد Planetary Computer وNASA GIBS الصور عند الطلب، لذا قد تستغرق هذه الخطوة بضع ثوانٍ."
+      },
+      "privacyLine": "تبقى النقطة في متصفحك",
+      "privacyHow": "كيف",
+      "sources": "المصادر",
+      "archiveScene": "مشهد أرشيفي",
+      "archiveOnly": "لا يطابق أي مرور محسوب هذه الصور، لذا تُعرض كمشاهد أرشيفية."
+    }
   },
   "settings": {
     "back": "العودة إلى الإعدادات",

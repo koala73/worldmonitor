@@ -82,6 +82,9 @@ import { getChinaDecisionSignalsData } from '@/services/china-decision-signals';
 import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-signals';
 import { showToast as showGlobalToast } from '@/utils/toast';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
+import { watchOrbitalRoute } from '@/app/orbital-route';
+import { setOrbitalMapView } from '@/app/orbital-map-focus';
+import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: no strikes in the
 // country deep-dive or the AI brief. Set VITE_ENABLE_IRAN_ATTACKS=true to restore.
@@ -148,6 +151,8 @@ type CountryPresentation = {
 };
 
 const AVIATION_SIGNAL_TIMEOUT_MS = 2500;
+/** Close enough to read a city block or a port around a satellite pass lookup's point. */
+const ORBITAL_FOCUS_ZOOM = 11;
 
 export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
@@ -164,6 +169,8 @@ export class CountryIntelManager implements AppModule {
   // entitlement so unrelated auth events (session refresh, prefs sync)
   // don't re-hammer fetchProSections.
   private authUnsubscribe: (() => void) | null = null;
+  private orbitalRouteUnsubscribe: (() => void) | null = null;
+  private orbitalMapFocusUnsubscribe: (() => void) | null = null;
   private entitlementUnsubscribe: (() => void) | null = null;
   private lastHadPremium = false;
   private currentCountryPresentation: CountryPresentation | null = null;
@@ -195,6 +202,19 @@ export class CountryIntelManager implements AppModule {
       }, 400);
     });
 
+    this.orbitalMapFocusUnsubscribe = setOrbitalMapView({
+      rect: () => this.ctx.map?.getViewportRect() ?? null,
+      center: (point, offset) => (this.ctx.map?.setCenterAt(point.lat, point.lon, ORBITAL_FOCUS_ZOOM, offset) ?? null) !== null,
+      project: (point) => this.ctx.map?.projectToClient(point.lat, point.lon) ?? null,
+      hold: (held) => this.ctx.map?.holdAutoRotate(held),
+      suppressLayers: (suppressed) => this.ctx.map?.suppressDataLayers(suppressed),
+      camera: () => {
+        const centre = this.ctx.map?.getCenter();
+        return centre && this.ctx.map ? { ...centre, zoom: this.ctx.map.getState().zoom } : null;
+      },
+      restore: ({ lat, lon, zoom }) => void this.ctx.map?.setCenter(lat, lon, zoom, { instant: true }),
+    });
+    if (ORBITAL_WATCH_ENABLED) this.orbitalRouteUnsubscribe = watchOrbitalRoute();
     this.lastHadPremium = hasPremiumAccess(getAuthState());
     const syncPremiumAccess = () => this.handlePremiumAccessTransition(hasPremiumAccess(getAuthState()));
     this.authUnsubscribe = subscribeAuthState(syncPremiumAccess);
@@ -202,6 +222,10 @@ export class CountryIntelManager implements AppModule {
   }
 
   destroy(): void {
+    this.orbitalRouteUnsubscribe?.();
+    this.orbitalRouteUnsubscribe = null;
+    this.orbitalMapFocusUnsubscribe?.();
+    this.orbitalMapFocusUnsubscribe = null;
     this.currentCountryPresentation = null;
     this.briefRequestToken++;
     this.countryController?.dispose();
@@ -328,6 +352,13 @@ export class CountryIntelManager implements AppModule {
           },
         });
       }
+      if (ORBITAL_WATCH_ENABLED) items.push({
+        label: t('contextMenu.satellitePasses'),
+        action: () => {
+          void import('@/app/orbital-watch').then(({ openOrbitalWatch }) =>
+            openOrbitalWatch({ lat: payload.lat, lon: payload.lon }, document.getElementById('mapContainer')));
+        },
+      });
       items.push({ label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) });
       showMapContextMenu(payload.screenX, payload.screenY, items);
     });

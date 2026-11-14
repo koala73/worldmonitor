@@ -4552,7 +4552,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Országbeszámoló megnyitása",
-    "copyCoordinates": "Koordináták másolása"
+    "copyCoordinates": "Koordináták másolása",
+    "satellitePasses": "Műholdas áthaladások itt"
   },
   "auth": {
     "signIn": "Bejelentkezés",
@@ -5162,6 +5163,154 @@
     "errGeneric": "Az első változat nem állítható össze. Próbálja újra.",
     "errDownload": "A fájl innen nem tölthető le. Használja a Nyomtatást vagy a PDF-ként mentést helyette.",
     "errLoad": "Az utazási értékelés nem nyitható meg. Töltse be újra az oldalt, és próbálja újra."
+  },
+  "orbitalWatch": {
+    "computing": "Műholdkatalógus betöltése…",
+    "computingProgress": "Áthaladások számítása: {{done}} / {{total}} műhold",
+    "unavailable": "A műholdkatalógust nem sikerült betölteni, ezért ehhez a ponthoz nem készült áthaladás-számítás.",
+    "checkingArchives": "Archívumok ellenőrzése: {{done}} / {{total}} válaszolt",
+    "confirmedCount": "Megerősített felvételek: {{count}}",
+    "counts": {
+      "mosaics": "Napi mozaikok: {{count}}",
+      "frames": "Időjárási képek: {{count}}",
+      "inRange": "Hatótávon belüli áthaladások: {{count}}"
+    },
+    "partial": "{{sources}} nem válaszolt, ezért egyes áthaladásokhoz hiányozhatnak a felvételek.",
+    "stale": "A pályaadatok elavultak. A műholdkatalógus {{age}} régi, ezért az áthaladási idők eltérhetnek.",
+    "empty": "Egyetlen nyilvántartott képalkotó műhold sem haladt el e pont felett az elmúlt {{pastDays}} napban, és a következő {{futureHours}} órában sem fog.",
+    "privacy": "Ez a pont a böngészőjében marad. Csak azokhoz a nyilvános archívumokhoz kerül, amelyeket a böngésző közvetlenül hív: Earth Search, Microsoft Planetary Computer, NASA GIBS és EUMETSAT. Az egyetlen kivétel a helynév szerinti keresés: a beírt név a helynévkereső szolgáltatáshoz kerül.",
+    "inRange": "hatótávon belül",
+    "tier": {
+      "checking": "archívum ellenőrzése",
+      "confirmed": "megerősített felvétel",
+      "likely": "valószínűleg lefényképezve",
+      "opportunity": "közelgő áthaladás",
+      "dailyMosaic": "napi mozaikban",
+      "withinReach": "hatótávon belül",
+      "capabilityOverhead": "képesség a pont felett",
+      "passedOverhead": "elhaladt felette",
+      "unmatchedImage": "felvétel számított áthaladás nélkül",
+      "weatherFrame": "időjárási felvétel",
+      "unavailable": "nem érhető el"
+    },
+    "row": {
+      "offNadir": "{{deg}}° a nadírtól",
+      "distance": "{{km}} km a talajnyomtól",
+      "orbitAge": "{{age}} régi pályaadatok",
+      "edgeOfSwath": "A sáv széle",
+      "notInArchive": "Nincs felvétel az archívumban",
+      "archiveUnanswered": "Az archívum nem válaszolt",
+      "imageAlt": "{{name}} felvétel, {{time}}",
+      "mosaicDays": "Napok az archívumban: {{count}}",
+      "cadence": "új felvétel {{minutes}} percenként",
+      "sourceUnavailable": "Az archívum ezekre a napokra nem tartalmaz felvételt ebből a forrásból.",
+      "imageLoading": "Kép betöltése…",
+      "imageFailed": "A kép nem töltődött be. Az archívum lassú vagy nem érhető el.",
+      "noPreview": "Az archívumban még nincs előnézet erről a jelenetről."
+    },
+    "dailyMosaics": "napi mozaikok",
+    "weatherFrames": "időjárási felvételek",
+    "ui": {
+      "change": "Módosítás",
+      "share": "Megosztás",
+      "shareCopied": "Link másolva",
+      "headline": "Az elmúlt {{days}} napban {{satellites}} haladt el {{place}} felett.",
+      "satellites_one": "{{count}} műhold",
+      "satellites_other": "{{count}} műhold",
+      "subline_one": "{{count}} kép vált nyilvánossá.",
+      "subline_other": "{{count}} kép vált nyilvánossá.",
+      "closestLook": "Legközelebbi nézet",
+      "replay": "Lejátszás",
+      "openFull": "Teljes nézet megnyitása",
+      "previous": "Előző kép",
+      "next": "Következő kép",
+      "passes_one": "áthaladás",
+      "passes_other": "áthaladás",
+      "showAll": "Összes áthaladás",
+      "noRecentDays": "Nincs friss nap az archívumban: {{sources}}",
+      "tab": {
+        "all": "Mind",
+        "detailed": "Részletes",
+        "weather": "Időjárás"
+      },
+      "caption": {
+        "clear": "Derült a ponton",
+        "clearSceneCloud": "Derült a ponton · jelenet felhőzete {{pct}}%",
+        "clouded": "Felhős · {{pct}}%",
+        "cloudShadow": "Felhőárnyék",
+        "spotNotChecked": "A hely felhőzetét nem ellenőrizték",
+        "sceneCloud": "Jelenet felhőzete {{pct}}% · a helyet nem ellenőrizték",
+        "radar": "Radarkép",
+        "dailyMosaic": "Napi mozaik",
+        "geostationary": "Geostacionárius teljes korong",
+        "geostationaryCadence": "Geostacionárius · {{minutes}} percenként"
+      },
+      "tile": {
+        "failed": "A kép nem érhető el · {{archive}}",
+        "noPreview": "Az archívumban még nincs előnézet erről a jelenetről"
+      },
+      "grid": {
+        "watched": "Megfigyelt",
+        "watchedDef": "Egy nyilvános archívum képet őriz erről a helyről.",
+        "likely": "Valószínűleg megfigyelt",
+        "likelyDef": "Egy rögzített sávú érzékelő lefedte; még nincs közzétett kép.",
+        "could": "Ide célozhatott",
+        "couldDef": "Egy irányítható vagy kereskedelmi érzékelő hatótávon belül volt; az üzemeltető nem mondja meg, nézett-e.",
+        "overhead": "Elhaladt felette",
+        "overheadDef": "Átszelte itt az eget, képi bizonyíték nélkül.",
+        "watchedShort": "Kép nyilvános archívumban",
+        "likelyShort": "Lefedve, még nincs kép",
+        "likelyUnansweredDef": "Egy rögzített sávszélességű érzékelő lefedte; egy archívum nem válaszolt, így lehet, hogy van kép.",
+        "likelyUnansweredShort": "Lefedve, az archívum nem válaszolt",
+        "couldShort": "Elforgatható érzékelő hatótávon belül",
+        "overheadShort": "Áthaladt, kép nélkül"
+      },
+      "group": {
+        "watched": "megfigyelt",
+        "likely": "valószínűleg megfigyelt",
+        "upcoming": "közelgő",
+        "could": "amely ide célozhatott",
+        "overhead": "felette elhaladt",
+        "weather_one": "időjárási forrás",
+        "weather_other": "időjárási forrás"
+      },
+      "order": {
+        "closest": "Legközelebbi nézet, aztán legújabb",
+        "newest": "Legújabb elöl",
+        "soonest": "Legközelebbi elöl"
+      },
+      "row": {
+        "cloud": "Felhő {{pct}}%",
+        "days_one": "{{count}} nap",
+        "days_other": "{{count}} nap",
+        "repeats": "E műhold {{count}} áthaladása ebben a csoportban"
+      },
+      "section": {
+        "summary": "Összegzés",
+        "passes": "Áthaladások"
+      },
+      "status": {
+        "objects": "{{count}} képalkotó műhold · CelesTrak GP",
+        "fetched": "Lekérve {{time}} · {{ago}}",
+        "sun": "Nap {{point}} · napalatti pont"
+      },
+      "step": {
+        "computing": "Számítás",
+        "catalogLoading": "Katalógus · betöltés",
+        "catalog": "Katalógus · {{count}} képalkotó műhold",
+        "propagating": "Pályák számítása · {{done}} / {{total}}",
+        "archives": "Archívumok · {{done}} / {{total}} válaszolt",
+        "matching": "Jelenetek párosítása {{passes}} áthaladáshoz",
+        "window": "7 napos ablak · {{start}} → {{end}}",
+        "failed": "Sikertelen",
+        "note": "A Planetary Computer és a NASA GIBS igény szerint készíti a képeket, ezért ez a lépés néhány másodpercig tarthat."
+      },
+      "privacyLine": "A pont a böngészőjében marad",
+      "privacyHow": "Hogyan",
+      "sources": "Források",
+      "archiveScene": "Archív jelenet",
+      "archiveOnly": "Egyik számított áthaladás sem egyezik ezekkel a képekkel, ezért archív jelenetként jelennek meg."
+    }
   },
   "settings": {
     "back": "Vissza a beállításokhoz",

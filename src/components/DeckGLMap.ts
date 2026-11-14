@@ -70,6 +70,7 @@ import type { CanadaRoadRecord } from '@/services/canada-roads';
 import { isReportableCanadaRoad } from '@/services/canada-road-report';
 import type { CanadaAlert } from '@/services/canada-alerts';
 import { escapeHtml } from '@/utils/sanitize';
+import { installLongPressContextMenu } from '@/utils/long-press';
 import { corroborationLabelHtml } from '@/utils/corroboration-flag';
 import {
   derivePipelinePublicBadge,
@@ -850,6 +851,7 @@ export class DeckGLMap {
     if (!this.maplibreMap) return;
     const canvas = this.maplibreMap.getCanvas();
     canvas.addEventListener('contextmenu', this.handleContextMenu);
+    this.removeLongPress = installLongPressContextMenu(canvas);
     canvas.addEventListener('pointerdown', this.handleCountryClickPointerDown);
     canvas.addEventListener('pointermove', this.handleCountryClickPointerMove);
     canvas.addEventListener('pointerup', this.handleCountryClickPointerEnd);
@@ -863,11 +865,14 @@ export class DeckGLMap {
     this.maplibreMap.off('dragstart', this.markCountryDragGesture);
     this.maplibreMap.off('dragend', this.refreshCountryDragSuppression);
     canvas.removeEventListener('contextmenu', this.handleContextMenu);
+    this.removeLongPress?.();
+    this.removeLongPress = null;
     canvas.removeEventListener('pointerdown', this.handleCountryClickPointerDown);
     canvas.removeEventListener('pointermove', this.handleCountryClickPointerMove);
     canvas.removeEventListener('pointerup', this.handleCountryClickPointerEnd);
     canvas.removeEventListener('pointercancel', this.handleCountryClickPointerEnd);
   }
+  private removeLongPress: (() => void) | null = null;
   private readonly handleContextMenu = (e: MouseEvent): void => {
     e.preventDefault();
     if (!this.onMapContextMenu || !this.maplibreMap) return;
@@ -6943,7 +6948,7 @@ export class DeckGLMap {
     }
   }
 
-  public setCenter(lat: number, lon: number, zoom?: number): void {
+  public setCenter(lat: number, lon: number, zoom?: number, durationMs = 500): void {
     // Publish the requested destination immediately, matching setView(). This
     // keeps URL/context reads truthful even if flyTo is interrupted or its
     // moveend arrives after a programmatic caller's bounded settlement wait.
@@ -6958,7 +6963,7 @@ export class DeckGLMap {
       this.maplibreMap.flyTo({
         center: [lon, lat],
         ...(zoom != null && { zoom }),
-        duration: 500,
+        duration: durationMs,
       }, { [VIEWPORT_MOVEMENT_EVENT_KEY]: viewportMovementGeneration });
     }
     this.onStateChange?.(this.getState());
@@ -6973,6 +6978,14 @@ export class DeckGLMap {
       duration: 800,
       maxZoom: 8,
     });
+  }
+
+  /** Where (lat, lon) is drawn in client coordinates. */
+  public projectToClient(lat: number, lon: number): { x: number; y: number } | null {
+    const point = this.projectToScreen(lat, lon);
+    if (!point || !this.maplibreMap) return null;
+    const rect = this.maplibreMap.getContainer().getBoundingClientRect();
+    return { x: rect.left + point.x, y: rect.top + point.y };
   }
 
   public getCenter(): { lat: number; lon: number } | null {
