@@ -10,6 +10,17 @@ const HEARTBEAT_KEY = 'seed-meta:aviation:traffic-history';
 const HEARTBEAT_TTL_SECONDS = 7 * 86400;
 const ACTIVATION_KEY = 'seed-activated:aviation:traffic-history';
 
+// Each source keeps its own day hashes, heartbeat and activation marker, so the
+// series never mix and a ratio is only ever taken within one source.
+const SERIES = Object.freeze({
+  opensky: Object.freeze({ prefix: PREFIX, heartbeatKey: HEARTBEAT_KEY, activationKey: ACTIVATION_KEY }),
+  adsblol: Object.freeze({
+    prefix: 'aviation:traffic:history:adsblol:v1',
+    heartbeatKey: 'seed-meta:aviation:traffic-history-adsblol',
+    activationKey: 'seed-activated:aviation:traffic-history-adsblol',
+  }),
+});
+
 const COUNT_FIELDS = ['usSeen', 'usAirborne', 'usLowClimbing', 'euAirborne', 'statesTotal'];
 const isCount = (v) => Number.isInteger(v) && v >= 0;
 
@@ -26,11 +37,11 @@ function validPoint(point) {
 // point replaces a gap. A gap uses HSETNX, so it never overwrites anything. Two
 // relay replicas writing the same bin therefore leave one point, and a failed
 // fetch on one replica cannot erase another replica's data.
-function buildTrafficPointWrite(point, fetchedAt = point?.t) {
+function buildTrafficPointWrite(point, fetchedAt = point?.t, series = SERIES.opensky) {
   if (!validPoint(point)) throw new TypeError('invalid traffic point');
   if (!Number.isFinite(fetchedAt)) throw new TypeError('fetchedAt must be a finite epoch ms');
   const day = new Date(point.t).toISOString().slice(0, 10);
-  const key = `${PREFIX}:${day}`;
+  const key = `${series.prefix}:${day}`;
   const expireAt = Math.floor(Date.parse(`${day}T00:00:00.000Z`) / 1000) + 86400 + RETENTION_DAYS * 86400;
   const stored = point.status === 'gap'
     ? { t: point.t, status: 'gap' }
@@ -41,8 +52,8 @@ function buildTrafficPointWrite(point, fetchedAt = point?.t) {
   ];
   const metaCommands = point.status === 'ok'
     ? [
-      ['SET', HEARTBEAT_KEY, JSON.stringify({ fetchedAt, recordCount: point.statesTotal }), 'EX', String(HEARTBEAT_TTL_SECONDS)],
-      ['SET', ACTIVATION_KEY, '1'],
+      ['SET', series.heartbeatKey, JSON.stringify({ fetchedAt, recordCount: point.statesTotal }), 'EX', String(HEARTBEAT_TTL_SECONDS)],
+      ['SET', series.activationKey, '1'],
     ]
     : [];
   return { key, field: String(point.t), expireAt, commands, metaCommands };
@@ -60,9 +71,9 @@ async function runPipeline(pipeline, commands) {
 // series from the last real fetch rather than from the bin start. A pipeline
 // runs every command even after one fails, so the heartbeat goes in a second
 // pipeline that runs only once the point and its expiry are stored.
-async function recordTrafficPoint(point, pipeline, fetchedAt = point?.t) {
+async function recordTrafficPoint(point, pipeline, fetchedAt = point?.t, series = SERIES.opensky) {
   if (typeof pipeline !== 'function') throw new TypeError('pipeline must be a function');
-  const write = buildTrafficPointWrite(point, fetchedAt);
+  const write = buildTrafficPointWrite(point, fetchedAt, series);
   await runPipeline(pipeline, write.commands);
   if (write.metaCommands.length > 0) await runPipeline(pipeline, write.metaCommands);
   return { key: write.key, field: write.field };
@@ -74,11 +85,11 @@ function isOkPointValue(value) {
   try { return JSON.parse(value)?.status === 'ok'; } catch { return false; }
 }
 
-function dayKeyFor(t) {
-  return `${PREFIX}:${new Date(t).toISOString().slice(0, 10)}`;
+function dayKeyFor(t, series = SERIES.opensky) {
+  return `${series.prefix}:${new Date(t).toISOString().slice(0, 10)}`;
 }
 
 module.exports = {
-  PREFIX, RETENTION_DAYS, HEARTBEAT_KEY, HEARTBEAT_TTL_SECONDS, ACTIVATION_KEY,
+  PREFIX, RETENTION_DAYS, HEARTBEAT_KEY, HEARTBEAT_TTL_SECONDS, ACTIVATION_KEY, SERIES,
   buildTrafficPointWrite, recordTrafficPoint, isOkPointValue, dayKeyFor,
 };

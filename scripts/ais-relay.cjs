@@ -120,7 +120,9 @@ const {
 const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps } = require('./shared/closed-market-equity-maintenance.cjs');
 const { recordPizzintHistory } = require('./shared/pizzint-history.cjs');
 const { aggregateStates: aggregateAirTrafficStates, gapPoint: airTrafficGapPoint, binStart: airTrafficBinStart, BIN_MS: AIR_TRAFFIC_BIN_MS } = require('./shared/air-traffic-aggregate.cjs');
-const { recordTrafficPoint, isOkPointValue: isOkAirTrafficPoint, dayKeyFor: airTrafficDayKey } = require('./shared/air-traffic-history.cjs');
+const { recordTrafficPoint, isOkPointValue: isOkAirTrafficPoint, dayKeyFor: airTrafficDayKey, SERIES: AIR_TRAFFIC_SERIES } = require('./shared/air-traffic-history.cjs');
+const { ADSBLOL_CIRCLES, ADSBLOL_RADIUS_NM } = require('./shared/air-traffic-regions.cjs');
+const { mergeSweep: mergeAdsbLolSweep } = require('./shared/adsblol-traffic.cjs');
 const { pizzintVenuePoint } = require('./shared/pizzint-location.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = require('./shared/market-quote-refresh.cjs');
@@ -6796,11 +6798,11 @@ function sleepUntilAirTrafficTime(targetMs) {
   });
 }
 
-async function runAirTrafficLoop() {
+async function runAirTrafficLoop(seedFn, label) {
   // The first tick fills the current bin at once (it skips a bin already
   // recorded); every later tick starts at the same offset into its own bin.
   for (;;) {
-    seedAirTrafficPoint().catch((e) => console.warn('[AirTraffic] Tick error:', e?.message || e));
+    seedFn().catch((e) => console.warn(`[${label}] Tick error:`, e?.message || e));
     await sleepUntilAirTrafficTime(airTrafficBinStart(Date.now()) + AIR_TRAFFIC_BIN_MS + AIR_TRAFFIC_BIN_OFFSET_MS);
   }
 }
@@ -6813,7 +6815,103 @@ function startAirTrafficLoop() {
   console.log(`[AirTraffic] loop starting (one tick ${AIR_TRAFFIC_BIN_OFFSET_MS / 1000}s into each 5-minute bin, up to ${AIR_TRAFFIC_MAX_ATTEMPTS} attempts, first tick in ${AIR_TRAFFIC_START_DELAY_MS / 1000}s)`);
   // Same startup delay as the theater loop, so the /opensky proxy is serving.
   setTimeout(() => {
-    runAirTrafficLoop().catch((e) => console.warn('[AirTraffic] Loop stopped:', e?.message || e));
+    runAirTrafficLoop(seedAirTrafficPoint, 'AirTraffic').catch((e) => console.warn('[AirTraffic] Loop stopped:', e?.message || e));
+  }, AIR_TRAFFIC_START_DELAY_MS).unref?.();
+}
+
+// A second, independent series from adsb.lol receivers, kept in its own keys.
+// It never fills an OpenSky gap: the two networks see different aircraft, so a
+// ratio across them is meaningless. Read side by side, a drop in both is a real
+// event and a drop in one is that feed.
+// adsb.lol rate-limits a burst after about 10 requests; one request every 5s
+// held in a measured run. 12 circles take about a minute.
+// A keyless IP gets 500 requests a day (adsb.lol open-data API page),
+// and this loop needs 3,456 plus retries, while the theater loop already spends
+// 144 a day of the relay IP's quota on /v2/mil. The loop runs only with a key
+// whose quota covers it (a feeder key gives 7,200 a day).
+const ADSBLOL_API_KEY = process.env.ADSBLOL_API_KEY || '';
+// A 200 whose snapshot is older than this describes an earlier moment.
+const ADSBLOL_MAX_SNAPSHOT_AGE_MS = 60_000;
+const ADSBLOL_TRAFFIC_SPACING_MS = Number.isFinite(Number(process.env.ADSBLOL_TRAFFIC_SPACING_MS))
+  ? Math.max(0, Number(process.env.ADSBLOL_TRAFFIC_SPACING_MS)) : 5_000;
+const ADSBLOL_TRAFFIC_ATTEMPTS_PER_CIRCLE = 2;
+const ADSBLOL_TRAFFIC_ENABLED = process.env.ADSBLOL_TRAFFIC_ENABLED !== 'false';
+
+async function fetchAdsbLolCircle({ lat, lon }) {
+  try {
+    const resp = await fetch(`https://api.adsb.lol/v2/point/${lat}/${lon}/${ADSBLOL_RADIUS_NM}`, {
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, 'x-api-key': ADSBLOL_API_KEY },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!resp.ok) return { gap: `http ${resp.status}` };
+    let data;
+    try { data = await resp.json(); } catch { data = null; }
+    if (!Array.isArray(data?.ac) || !Number.isFinite(data.now)) return { gap: 'malformed' };
+    if (Math.abs(Date.now() - data.now) > ADSBLOL_MAX_SNAPSHOT_AGE_MS) return { gap: 'stale' };
+    return { data };
+  } catch (e) {
+    return { gap: e?.name === 'TimeoutError' ? 'timeout' : (e?.message || String(e)) };
+  }
+}
+
+// Every circle must answer, or the point would undercount and read as a drop.
+async function sweepAdsbLol(t) {
+  const responses = [];
+  for (const [index, circle] of ADSBLOL_CIRCLES.entries()) {
+    let result = null;
+    for (let attempt = 1; attempt <= ADSBLOL_TRAFFIC_ATTEMPTS_PER_CIRCLE; attempt += 1) {
+      if (airTrafficBinStart(Date.now()) !== t) return { gap: 'bin ended' };
+      result = await fetchAdsbLolCircle(circle);
+      // A response that lands after the bin ends belongs to no attempt of t.
+      if (airTrafficBinStart(Date.now()) !== t) return { gap: 'bin ended' };
+      if (result.data) break;
+      await new Promise((resolve) => setTimeout(resolve, ADSBLOL_TRAFFIC_SPACING_MS * 2));
+    }
+    if (!result.data) return { gap: `circle ${index + 1} ${result.gap}` };
+    responses.push(result.data);
+    if (index < ADSBLOL_CIRCLES.length - 1) await new Promise((resolve) => setTimeout(resolve, ADSBLOL_TRAFFIC_SPACING_MS));
+  }
+  return { responses };
+}
+
+async function seedAdsbLolTrafficPoint() {
+  const series = AIR_TRAFFIC_SERIES.adsblol;
+  const t = airTrafficBinStart(Date.now());
+  const bin = new Date(t).toISOString();
+  const existing = await upstashPipeline([['HGET', airTrafficDayKey(t, series), String(t)]]);
+  if (isOkAirTrafficPoint(existing?.[0]?.result)) {
+    console.log(`[AirTrafficAdsbLol] t=${bin} already recorded; skipping fetch`);
+    return;
+  }
+  const fetchedAt = Date.now();
+  const sweep = await sweepAdsbLol(t);
+  let point = null;
+  let gapReason = sweep.gap || null;
+  if (sweep.responses) {
+    point = aggregateAirTrafficStates(mergeAdsbLolSweep(sweep.responses), fetchedAt);
+    if (point.statesTotal === 0) { point = null; gapReason = 'empty'; }
+  }
+  if (!point) point = airTrafficGapPoint(t);
+  await recordTrafficPoint(point, upstashPipeline, point.status === 'ok' ? fetchedAt : t, series);
+  if (point.status === 'ok') {
+    console.log(`[AirTrafficAdsbLol] t=${bin} status=ok us=${point.usSeen} usAirborne=${point.usAirborne} usLowClimbing=${point.usLowClimbing} eu=${point.euAirborne} hubs=${Object.keys(point.hubs).length}`);
+  } else {
+    console.log(`[AirTrafficAdsbLol] t=${bin} status=gap reason=${gapReason}`);
+  }
+}
+
+function startAdsbLolTrafficLoop() {
+  if (!UPSTASH_ENABLED || !ADSBLOL_TRAFFIC_ENABLED) {
+    console.log('[AirTrafficAdsbLol] Disabled');
+    return;
+  }
+  if (!ADSBLOL_API_KEY) {
+    console.log('[AirTrafficAdsbLol] Disabled (ADSBLOL_API_KEY not set; the keyless 500 requests a day cannot cover 3,456)');
+    return;
+  }
+  console.log(`[AirTrafficAdsbLol] loop starting (${ADSBLOL_CIRCLES.length} circles, ${ADSBLOL_TRAFFIC_SPACING_MS / 1000}s apart)`);
+  setTimeout(() => {
+    runAirTrafficLoop(seedAdsbLolTrafficPoint, 'AirTrafficAdsbLol').catch((e) => console.warn('[AirTrafficAdsbLol] Loop stopped:', e?.message || e));
   }, AIR_TRAFFIC_START_DELAY_MS).unref?.();
 }
 
@@ -15931,6 +16029,7 @@ server.listen(PORT, RELAY_BIND_HOST, () => {
     }
     // Same opt-in seam for scripts/ais-relay-air-traffic.test.cjs.
     if (process.env.RELAY_TEST_AIR_TRAFFIC_LOOP === 'true') startAirTrafficLoop();
+    if (process.env.RELAY_TEST_ADSBLOL_TRAFFIC_LOOP === 'true') startAdsbLolTrafficLoop();
     console.log('[Relay] Test mode enabled — background seed loops are disabled');
     return;
   }
@@ -15958,6 +16057,7 @@ server.listen(PORT, RELAY_BIND_HOST, () => {
   startServiceStatusesSeedLoop();
   startTheaterPostureSeedLoop();
   startAirTrafficLoop();
+  startAdsbLolTrafficLoop();
 
   startWeatherSeedLoop();
   startSpendingSeedLoop();
