@@ -21,6 +21,7 @@ async function newestScene() {
   const res = await fetch('https://planetarycomputer.microsoft.com/api/stac/v1/search', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
+    signal: AbortSignal.timeout(20_000),
     body: JSON.stringify({
       collections: ['sentinel-2-l2a'], intersects: { type: 'Point', coordinates: [BASE.lon, BASE.lat] },
       limit: 1, sortby: [{ field: 'datetime', direction: 'desc' }], query: { 'eo:cloud_cover': { lt: 20 } },
