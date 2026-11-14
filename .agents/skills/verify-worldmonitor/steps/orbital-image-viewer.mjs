@@ -14,7 +14,20 @@
 import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
 import { fixtureCatalog } from './orbital-watch.mjs';
 
+// The archives whose image URLs carry the box around the point; viewer, compare and time-lapse paint those from blob: URLs.
+const POINT_IMAGE_HOSTS = ['planetarycomputer.microsoft.com', 'gibs.earthdata.nasa.gov', 'view.eumetsat.int'];
 const ARCHIVE_HOSTS = ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com', 'gibs.earthdata.nasa.gov', 'view.eumetsat.int', 'sentinel-cogs.s3.us-west-2.amazonaws.com', 'sentinel-s1-l1c.s3.amazonaws.com'];
+
+// An image's srcs that are neither a blob: nor a scene-wide archive preview; any is a point-bearing or off-allowlist URL.
+const unsafeSrcs = (srcs) => srcs.filter((src) => !src.startsWith('blob:') && (POINT_IMAGE_HOSTS.includes(new URL(src).hostname) || !ARCHIVE_HOSTS.includes(new URL(src).hostname)));
+
+// A small pixel signature, so two blob: URLs of one crop can be told to be the same image.
+const signature = (img) => {
+  const canvas = Object.assign(document.createElement('canvas'), { width: 8, height: 8 });
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, 8, 8);
+  return `${img.naturalWidth}x${img.naturalHeight}:${[...ctx.getImageData(0, 0, 8, 8).data].join(',')}`;
+};
 
 // Scroll the pass-detail stats into view and require every row to sit clear of the pinned action bar.
 async function statsClearOfActions(page) {
@@ -36,6 +49,17 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await page.route('**/api/orbital/v1/list-imaging-satellites*', (route) => route.fulfill({ json: catalog }));
   const requests = [];
   page.on('request', (req) => requests.push({ url: req.url(), body: req.postData() ?? '' }));
+  // Every src a viewer, compare or time-lapse <img> is ever given, so a point-bearing URL painted for a moment is still caught.
+  const overlaySrcs = [];
+  await page.exposeFunction('__wmRecordOverlaySrc', (src) => { overlaySrcs.push(src); });
+  await page.addInitScript(() => {
+    new MutationObserver((records) => {
+      for (const record of records) {
+        const nodes = record.type === 'attributes' ? [record.target] : [...record.addedNodes].flatMap((n) => (n.nodeType === 1 ? [n, ...n.querySelectorAll('img')] : []));
+        for (const node of nodes) if (node.tagName === 'IMG' && node.closest('.oiv-page') && node.getAttribute('src')) window.__wmRecordOverlaySrc(node.getAttribute('src'));
+      }
+    }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] });
+  });
 
   if (process.env.WM_VERIFY_FORCE_DECK === '1') {
     // With WM_VERIFY_SOFTWARE_GL=1 on a machine with no GPU, name the software renderer as a GPU so the desktop map runs on deck.gl.
@@ -108,8 +132,9 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await trigger.click();
   const viewer = page.locator('.oiv-dialog');
   await expectVisible('.oiv-dialog');
+  await viewer.locator('img.oiv-image').first().waitFor({ timeout: 60_000 });
   await viewer.locator('img.oiv-image').first().evaluate((img) => img.complete || new Promise((r) => { img.onload = img.onerror = r; }));
-  log('image', await viewer.locator('img.oiv-image').first().getAttribute('src'));
+  log('image', (await viewer.locator('img.oiv-image').first().getAttribute('src')).slice(0, 5));
   log('credit', await viewer.locator('.oiv-credit').allInnerTexts());
   log('orientation', await viewer.locator('.oiv-north, .oiv-orientation').first().getAttribute('aria-label').catch(() => 'none'));
   await shot('viewer');
@@ -123,7 +148,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const slider = viewer.locator('input[type="range"]');
   if (await slider.count()) {
     await slider.fill('50');
-    const sides = await viewer.locator('.oiv-slider img').evaluateAll((imgs) => imgs.map((i) => ({ src: i.src, complete: i.complete, w: i.naturalWidth, h: i.naturalHeight, box: [Math.round(i.getBoundingClientRect().width), Math.round(i.getBoundingClientRect().height)] })));
+    const sides = await viewer.locator('.oiv-slider img').evaluateAll((imgs) => imgs.map((i) => ({ src: i.src.slice(0, 5), complete: i.complete, w: i.naturalWidth, h: i.naturalHeight, box: [Math.round(i.getBoundingClientRect().width), Math.round(i.getBoundingClientRect().height)] })));
     log('compare sides', JSON.stringify(sides));
     if (!sides.every((side) => side.complete && side.w > 0) || sides[0].box.join() !== sides[1].box.join()) throw new Error('compare sides are not both loaded at one size');
     log('compare chips', await viewer.locator('.oiv-chip').allInnerTexts(), 'dates', await viewer.locator('.oiv-date').count(), 'cloudy toggle', await viewer.locator('[data-action="show-cloudy"]').innerText().catch(() => 'none'));
@@ -132,8 +157,9 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     log('compare state', await viewer.locator('.oiv-compare').innerText().catch(() => 'no change tab'));
     await shot('compare-unavailable');
   }
-  const offAllowlist = await page.locator('.oiv-dialog img').evaluateAll((imgs, hosts) => imgs.map((i) => i.src).filter((s) => !hosts.includes(new URL(s).hostname)), ARCHIVE_HOSTS);
-  if (offAllowlist.length) throw new Error(`viewer rendered non-archive images: ${offAllowlist.join(', ')}`);
+  const viewerUnsafe = unsafeSrcs(overlaySrcs);
+  log('viewer and compare img srcs', overlaySrcs.length, 'blob:', overlaySrcs.filter((src) => src.startsWith('blob:')).length, 'unsafe', viewerUnsafe.length);
+  if (viewerUnsafe.length) throw new Error(`viewer or compare img src is a point-bearing or non-archive URL: ${viewerUnsafe.join(', ')}`);
 
   await page.keyboard.press('Escape');
   await viewer.waitFor({ state: 'detached' });
@@ -150,11 +176,12 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     await timelapse.locator('[data-action="toggle"]').click();
   }
   await timelapse.locator('img.oiv-image').evaluate((img) => img.complete || new Promise((r) => { img.onload = img.onerror = r; })).catch(() => {});
-  const frame = await timelapse.locator('img.oiv-image').evaluate((i) => ({ src: i.src, complete: i.complete, w: i.naturalWidth, box: [Math.round(i.getBoundingClientRect().width), Math.round(i.getBoundingClientRect().height)] })).catch(() => null);
+  const frame = await timelapse.locator('img.oiv-image').evaluate((i) => ({ src: i.src.slice(0, 5), complete: i.complete, w: i.naturalWidth, box: [Math.round(i.getBoundingClientRect().width), Math.round(i.getBoundingClientRect().height)] })).catch(() => null);
   log('timelapse', await timelapse.locator('.oiv-counter, .otl-year-detail, .otl-total').allInnerTexts(), 'years', await timelapse.locator('.otl-row-year').allInnerTexts(), JSON.stringify(frame));
   if (frame && (!frame.complete || frame.w === 0 || frame.box[0] !== frame.box[1] || frame.box[1] < 300)) throw new Error(`time-lapse frame is not a full square: ${JSON.stringify(frame)}`);
-  const offAllowlistFrames = await timelapse.locator('img').evaluateAll((imgs, hosts) => imgs.map((i) => i.src).filter((s) => !hosts.includes(new URL(s).hostname)), ARCHIVE_HOSTS);
-  if (offAllowlistFrames.length) throw new Error(`time-lapse rendered non-archive images: ${offAllowlistFrames.join(', ')}`);
+  const timelapseUnsafe = unsafeSrcs(overlaySrcs);
+  log('viewer, compare and time-lapse img srcs', overlaySrcs.length, 'blob:', overlaySrcs.filter((src) => src.startsWith('blob:')).length, 'unsafe', timelapseUnsafe.length);
+  if (timelapseUnsafe.length) throw new Error(`time-lapse img src is a point-bearing or non-archive URL: ${timelapseUnsafe.join(', ')}`);
   await shot('timelapse');
   await page.keyboard.press('Escape');
   await timelapse.waitFor({ state: 'detached' });
@@ -169,13 +196,13 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   // A pass that made an image opens on its own crop, decoded, with the reticle and credit, and the crop opens the viewer.
   const crop = detail.locator('.ow-detail-media[data-media="image"] .ow-tile-hero[data-state="loaded"]');
   await crop.waitFor({ timeout: 60_000 });
-  const cropInfo = await crop.evaluate((tile) => {
+  const cropInfo = await crop.evaluate((tile, sign) => {
     const img = tile.querySelector('img');
     const box = tile.getBoundingClientRect();
-    return { src: img.src, natural: [img.naturalWidth, img.naturalHeight], box: [Math.round(box.width), Math.round(box.height)], reticle: Boolean(tile.querySelector('.ow-reticle')), credit: tile.closest('.ow-detail-media').querySelector('.ow-detail-credit')?.textContent };
-  });
-  log('pass detail crop', JSON.stringify(cropInfo));
-  if (!ARCHIVE_HOSTS.includes(new URL(cropInfo.src).hostname) || !cropInfo.natural[0] || !cropInfo.reticle || !cropInfo.credit) throw new Error(`pass detail crop incomplete: ${JSON.stringify(cropInfo)}`);
+    return { src: img.src.slice(0, 5), signature: new Function(`return (${sign})`)()(img), natural: [img.naturalWidth, img.naturalHeight], box: [Math.round(box.width), Math.round(box.height)], reticle: Boolean(tile.querySelector('.ow-reticle')), credit: tile.closest('.ow-detail-media').querySelector('.ow-detail-credit')?.textContent };
+  }, signature.toString());
+  log('pass detail crop', JSON.stringify({ ...cropInfo, signature: cropInfo.signature.slice(0, 24) }));
+  if (cropInfo.src !== 'blob:' || !cropInfo.natural[0] || !cropInfo.reticle || !cropInfo.credit) throw new Error(`pass detail crop incomplete: ${JSON.stringify(cropInfo)}`);
   log('pass detail', (await detail.innerText()).replace(/\s+/g, ' '));
   log('pass detail map mark', JSON.stringify(await markAt()));
   log('pass detail stats clear of the action bar', JSON.stringify(await statsClearOfActions(page)));
@@ -183,9 +210,12 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await crop.locator('[data-action="view-image"]').click();
   const cropViewer = page.locator('.oiv-dialog');
   await cropViewer.waitFor();
-  const viewerSrc = await cropViewer.locator('img.oiv-image').first().getAttribute('src');
-  log('pass detail crop opens the viewer on', viewerSrc === cropInfo.src ? 'the same crop' : viewerSrc);
-  if (viewerSrc !== cropInfo.src) throw new Error('the pass detail crop opened the viewer on another image');
+  const viewerImage = cropViewer.locator('img.oiv-image').first();
+  await viewerImage.waitFor({ timeout: 60_000 });
+  await viewerImage.evaluate((img) => img.complete || new Promise((r) => { img.onload = img.onerror = r; }));
+  const viewerSignature = await viewerImage.evaluate((img, sign) => new Function(`return (${sign})`)()(img), signature.toString());
+  log('pass detail crop opens the viewer on', viewerSignature === cropInfo.signature ? 'the same crop' : 'another image');
+  if (viewerSignature !== cropInfo.signature) throw new Error('the pass detail crop opened the viewer on another image');
   await page.keyboard.press('Escape');
   await cropViewer.waitFor({ state: 'detached' });
   const afterViewer = await page.evaluate(() => ({ view: document.querySelector('.orbital-watch-sheet')?.dataset.view, detail: Boolean(document.querySelector('.ow-detail')), focus: document.activeElement?.className }));
@@ -220,5 +250,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const pathLeaks = requests.filter(({ url }) => needles.some((n) => new URL(url).pathname.split('/').pop().includes(n)));
   log('requests ending their path with the point', pathLeaks.length);
   if (pathLeaks.length) throw new Error(`picked point ends a URL path: ${pathLeaks.map((l) => l.url).join(', ')}`);
+  const overlayUnsafe = unsafeSrcs(overlaySrcs);
+  log('all viewer, compare and time-lapse img srcs', overlaySrcs.length, 'unsafe', overlayUnsafe.length);
+  if (overlayUnsafe.length) throw new Error(`an overlay img src is a point-bearing or non-archive URL: ${overlayUnsafe.join(', ')}`);
   return { mobile, pointText, leaks: leaks.length };
 }
