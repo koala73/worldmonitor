@@ -6,7 +6,6 @@ const TASKABLE = ['commercial-optical', 'commercial-radar', 'government-optical'
 // archive state the row requires ('any' when it does not look).
 const TIER_TABLE = [
   { categories: ['military'], needs: ['inFootprint'], archive: 'any', tier: { kind: 'capability-overhead' } },
-  { categories: OPEN, needs: ['inFootprint', 'daylight', 'coverage'], archive: 'match', tier: { kind: 'confirmed-image' } },
   { categories: OPEN, needs: ['inFootprint', 'daylight', 'coverage'], archive: 'not-in-archive', tier: { kind: 'passed-overhead', note: 'not-in-archive' } },
   { categories: OPEN, needs: ['inFootprint', 'daylight', 'coverage'], archive: 'pending', tier: { kind: 'likely-imaged' } },
   { categories: ['weather-polar'], needs: ['inFootprint', 'dailyMosaic'], archive: 'any', tier: { kind: 'daily-mosaic' } },
@@ -40,6 +39,12 @@ export function decidePassTier(pass, profile, archive, now) {
     return profile.category === 'military' && facts.inFootprint ? { kind: 'capability-overhead' } : { kind: 'opportunity' };
   }
   const state = archiveState(pass, profile, archive, nowMs);
+  // The archive holding the scene outranks the modelled geometry: a match is an
+  // image, and a disagreeing model is noted rather than allowed to hide it.
+  if (state === 'match' && OPEN.includes(profile.category)) {
+    const agreed = facts.inFootprint && facts.daylight && facts.coverage;
+    return agreed ? { kind: 'confirmed-image' } : { kind: 'confirmed-image', note: 'geometry-disagreed' };
+  }
   const row = TIER_TABLE.find((candidate) =>
     candidate.categories.includes(profile.category) &&
     candidate.needs.every((fact) => facts[fact]) &&

@@ -3,7 +3,7 @@
 // satellites are imaging payloads; their reach is marked `assumed` because no
 // operator publishes it, and `resolutionM` is null where no source states it.
 // Bump SENSOR_INVENTORY_VERSION whenever a row is added, removed or changed.
-export const SENSOR_INVENTORY_VERSION = '2026-11-14.1';
+export const SENSOR_INVENTORY_VERSION = '2026-11-14.2';
 
 export const SENSOR_CATEGORIES = Object.freeze([
   'open-optical',
@@ -31,7 +31,7 @@ export const SENSOR_PROFILES = Object.freeze([
     resolutionM: 10,
     daylight: true,
     archive: 'sentinel-2-l2a',
-    coverage: 'land-coast',
+    coverage: 'sentinel-2',
     archiveWaitHours: 24,
     sources: ['https://sentiwiki.copernicus.eu/web/s2-mission'],
   },
@@ -46,7 +46,7 @@ export const SENSOR_PROFILES = Object.freeze([
     resolutionM: 5,
     daylight: false,
     archive: 'sentinel-1-grd',
-    coverage: 'land-coast',
+    coverage: 'sentinel-1',
     archiveWaitHours: 24,
     sources: [
       'https://sentiwiki.copernicus.eu/web/s1-mission',
@@ -65,7 +65,9 @@ export const SENSOR_PROFILES = Object.freeze([
     daylight: true,
     archive: 'landsat-c2-l2',
     coverage: 'land-coast',
-    archiveWaitHours: 72,
+    // Earth Search, the quicker Landsat archive, published 95% of scenes within
+    // 235 hours (docs/audits/orbital-live-check-2026-11-14.json).
+    archiveWaitHours: 235,
     sources: [
       'https://www.usgs.gov/landsat-missions/landsat-8',
       'https://www.usgs.gov/landsat-missions/landsat-9',

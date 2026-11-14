@@ -74,7 +74,9 @@ function checkAuth(req) {
 // Blocks dangerous operations like FLUSHALL, CONFIG SET, EVAL, DEBUG, SLAVEOF.
 const ALLOWED_COMMANDS = new Set([
   'GET', 'GETDEL', 'SET', 'DEL', 'MGET', 'MSET', 'SCAN',
-  'TTL', 'EXPIRE', 'PEXPIRE', 'EXISTS', 'TYPE',
+  // EXPIREAT sets the same TTL EXPIRE does, from an absolute time. The air
+  // traffic series pins each day hash to day end plus its retention.
+  'TTL', 'EXPIRE', 'EXPIREAT', 'PEXPIRE', 'EXISTS', 'TYPE',
   'HGET', 'HSET', 'HSETNX', 'HINCRBY', 'HDEL', 'HGETALL', 'HMGET', 'HMSET', 'HKEYS', 'HVALS', 'HEXISTS', 'HLEN',
   'LPUSH', 'RPUSH', 'LPOP', 'RPOP', 'LRANGE', 'LLEN', 'LTRIM', 'LREM',
   'SADD', 'SREM', 'SMEMBERS', 'SISMEMBER', 'SCARD',

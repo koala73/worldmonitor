@@ -74,6 +74,19 @@ describe('sensor profile inventory', () => {
     assert.deepEqual(icesat?.noradIds, [43613]);
     assert.deepEqual(SENSOR_PROFILES.find((profile) => profile.id === 'viirs')?.noradIds, [37849, 43013]);
   });
+
+  it('waits at least the measured 95th-percentile publication lag of the quickest archive', () => {
+    const { publicationLag } = JSON.parse(readFileSync(new URL('../docs/audits/orbital-live-check-2026-11-14.json', import.meta.url), 'utf8')) as {
+      publicationLag: Record<string, { waitHours: number | null }>;
+    };
+    for (const id of ['sentinel-2', 'sentinel-1', 'landsat']) {
+      const measured = publicationLag[id]?.waitHours;
+      assert.ok(typeof measured === 'number' && measured > 0, `${id} lag was measured`);
+      const profile = SENSOR_PROFILES.find((p) => p.id === id)!;
+      assert.ok(profile.archiveWaitHours! >= measured, `${id} waits ${profile.archiveWaitHours} h, measured ${measured} h`);
+    }
+    assert.equal(SENSOR_PROFILES.find((p) => p.id === 'landsat')!.archiveWaitHours, publicationLag.landsat!.waitHours, 'Landsat is set from the measurement');
+  });
 });
 
 describe('recorded CelesTrak names', () => {

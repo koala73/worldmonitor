@@ -708,6 +708,10 @@ const STANDALONE_KEYS = {
   // UTC date and split by provider, so watching one of those would read EMPTY at
   // every midnight and STALE whenever the BestTime fallback took over.
   pizzintHistory:           'seed-meta:intelligence:pizzint:history:v1',
+  // National civil air traffic series (scripts/shared/air-traffic-history.cjs).
+  // No dashboard consumer yet. Points live in one hash per UTC day, which health
+  // cannot STRLEN, so the stable heartbeat each ok point advances is watched.
+  airTrafficHistory:        'seed-meta:aviation:traffic-history',
   resilienceStaticIndex:    'resilience:static:index:v1',
   resilienceStaticFao:      'resilience:static:fao',
   // USDA PSD food stocks + FAOSTAT production fill (#6440). RPC/MCP only —
@@ -2423,6 +2427,21 @@ const SEED_META = {
       activationKey: 'seed-activated:intelligence:pizzint-history',
     },
   },
+  // Relay loop every 5min; the heartbeat is the last ok fetch time. 20 = three
+  // missed ticks plus margin. Gap points (an OpenSky
+  // failure or cooldown) never advance the heartbeat, so a run of gaps goes
+  // stale here while the loop itself is alive.
+  airTrafficHistory: {
+    key: 'seed-meta:aviation:traffic-history',
+    maxStaleMin: 20,
+    activationKey: 'seed-activated:aviation:traffic-history',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 10719,
+      activationKey: 'seed-activated:aviation:traffic-history',
+    },
+  },
   productCatalog:    { key: 'seed-meta:product-catalog',               maxStaleMin: 1080 }, // relay loop every 6h; 1080 = 18h = 3x interval
   vpdTrackerRealtime:   { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // daily seed (0 2 * * *); 2880min = 48h = 2x interval
   vpdTrackerHistorical: { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // shares seed-meta key with vpdTrackerRealtime (same run)
@@ -3003,6 +3022,7 @@ const ON_DEMAND_KEYS = new Set([
   // archive is, and that still reports STALE_SEED because on-demand softening
   // never covers a key that has data behind it (see classifyKey).
   'pizzintHistory',
+  'airTrafficHistory', // empty until the relay's first ok point after deploy
   'riskScoresHistory', // first fresh leader build atomically activates daily history
   'ciiEconomicStress', // pending until the first economic publication
   'ciiStructuralPrior', // pending until the first complete prior publication
@@ -3087,6 +3107,8 @@ const ACTIVATION_MARKERS = {
   chinaCoverage: 'seed-activated:health:china-coverage',
   // Written by the PizzINT archive's Lua (scripts/shared/pizzint-history.cjs).
   pizzintHistory: SEED_META.pizzintHistory.activationKey,
+  // Written with the first ok point (scripts/shared/air-traffic-history.cjs).
+  airTrafficHistory: SEED_META.airTrafficHistory.activationKey,
   riskScoresHistory: SEED_META.riskScoresHistory.activationKey,
   ciiStructuralPrior: SEED_META.ciiStructuralPrior.activationKey,
   ciiEconomicStress: SEED_META.ciiEconomicStress.activationKey,

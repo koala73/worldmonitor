@@ -76,7 +76,7 @@ describe('archive acquisitions attached to computed passes', () => {
     const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { failing: ['planetarycomputer.microsoft.com'] }).fetch });
     assert.equal(evidence.status, 'partial');
     assert.deepEqual(evidence.failures, [{ archive: 'planetary-computer', reason: 'http-status', httpStatus: 503 }]);
-    assert.deepEqual(evidence.unansweredProfiles, ['sentinel-2', 'landsat']);
+    assert.deepEqual(evidence.unansweredProfiles, ['sentinel-2', 'sentinel-1', 'landsat']);
     assert.ok(evidence.acquisitions.some((a) => a.profileId === 'sentinel-2'));
     assert.ok(evidence.acquisitions.some((a) => a.profileId === 'sentinel-1'));
     assert.equal(evidence.acquisitions.filter((a) => a.profileId === 'landsat').length, 0);
@@ -85,11 +85,41 @@ describe('archive acquisitions attached to computed passes', () => {
     for (const pass of landsatImaging) assert.equal(pass.tier.kind, 'likely-imaged', 'silence from a failed archive is not "not in archive"');
   });
 
+  it('searches Landsat on Earth Search and Sentinel-1 on Planetary Computer as well', async () => {
+    const lookup = await fixtureLookup(dubai);
+    const archive = fakeArchiveFetch(dubai);
+    await findArchiveEvidence(lookup, { fetch: archive.fetch });
+    const collectionsAt = (host: string) => archive.requests
+      .filter((r) => new URL(r.url).hostname === host && r.body)
+      .flatMap((r) => JSON.parse(r.body!).collections ?? []);
+    assert.ok(collectionsAt('earth-search.aws.element84.com').includes('landsat-c2-l2'));
+    assert.ok(collectionsAt('planetarycomputer.microsoft.com').includes('sentinel-1-grd'));
+  });
+
+  it('reads an Earth Search Landsat scene and groups it with the Planetary Computer copy', () => {
+    const feature = (archive: string) => ({
+      type: 'Feature',
+      id: 'LC09_L2SP_199026_20261104_02_T1',
+      collection: 'landsat-c2-l2',
+      properties: { platform: 'landsat-9', datetime: '2026-11-04T10:40:56.922516Z', 'landsat:wrs_path': '199', 'eo:cloud_cover': 84.07, gsd: 30 },
+      assets: { thumbnail: { href: archive === 'earth-search'
+        ? 's3://usgs-landsat/collection02/level-2/standard/oli-tirs/2026/199/026/LC09_L2SP_199026_20261104_20261106_02_T1/LC09_L2SP_199026_20261104_20261106_02_T1_thumb_small.jpeg'
+        : 'https://landsateuwest.blob.core.windows.net/thumb.jpeg' } },
+    });
+    const earthSearch = parseStacItem('earth-search', feature('earth-search') as never);
+    assert.ok(earthSearch);
+    assert.equal(earthSearch.profileId, 'landsat');
+    assert.equal(earthSearch.orbit, 199);
+    assert.equal(earthSearch.previewUrl, null, 'the USGS requester-pays thumbnail is not a preview host');
+    const copy = parseStacItem('planetary-computer', feature('planetary-computer') as never)!;
+    assert.equal(groupAcquisitions([earthSearch, copy]).length, 1);
+  });
+
   it('names a network failure without the request URL', async () => {
     const lookup = await fixtureLookup(dubai);
     const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { unreachable: ['earth-search.aws.element84.com'] }).fetch });
     assert.deepEqual(evidence.failures, [{ archive: 'earth-search', reason: 'network' }]);
-    assert.deepEqual(evidence.unansweredProfiles, ['sentinel-2', 'sentinel-1']);
+    assert.deepEqual(evidence.unansweredProfiles, ['sentinel-2', 'sentinel-1', 'landsat']);
     assert.ok(evidence.acquisitions.some((a) => a.profileId === 'sentinel-2'), 'Planetary Computer still answers for Sentinel-2');
     const s2Passes = evidence.passes.filter((p) => p.profileId === 'sentinel-2' && p.timeMs <= lookup.nowMs);
     assert.ok(s2Passes.length > 0);
@@ -103,7 +133,7 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.ok(Date.now() - started < 2_000, 'the lookup does not wait on the stalled archive');
     assert.equal(evidence.status, 'partial');
     assert.deepEqual(evidence.failures, [{ archive: 'earth-search', reason: 'timeout' }]);
-    assert.deepEqual(evidence.unansweredProfiles, ['sentinel-2', 'sentinel-1']);
+    assert.deepEqual(evidence.unansweredProfiles, ['sentinel-2', 'sentinel-1', 'landsat']);
     assert.ok(evidence.acquisitions.some((a) => a.profileId === 'sentinel-2' && a.items.every((i) => i.archive === 'planetary-computer')));
     assert.ok(evidence.mosaics.length > 0 && evidence.frames.length > 0);
   });
