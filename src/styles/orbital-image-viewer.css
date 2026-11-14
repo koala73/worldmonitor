@@ -99,5 +99,5 @@
   color: #0a0a0a;
   font-weight: bold;
 }
-:is(.oiv-date[aria-pressed="true"] { color: inherit; }
+.oiv-date[aria-pressed="true"] .oiv-date-cloud { color: inherit; }
 .oiv-side-label { margin: 0 0 8px; color: var(--oiv-dim); }

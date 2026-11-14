@@ -523,7 +523,6 @@ export class OrbitalImageViewer {
         this.pickedCompareKey = action.dataset.key ?? null;
         this.render();
         return;
-        return;
     }
   };
 
