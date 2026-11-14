@@ -248,7 +248,7 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     const settings = page.locator('#unifiedSettingsModal');
     await expect(settings).toHaveClass(/active/);
 
-    await page.locator('#us-tab-panels').click();
+    await page.locator('[data-settings-nav="panels"]').click();
     await page.locator('.panel-toggle-item:not(.pro-locked)').first().click();
     await page.evaluate(() => history.back());
 
@@ -270,7 +270,7 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await page.locator('#mobileMenuSettings').click();
     const settings = page.locator('#unifiedSettingsModal');
     await expect(settings).toHaveClass(/active/);
-    await page.locator('#us-tab-panels').click();
+    await page.locator('[data-settings-nav="panels"]').click();
     await page.locator('.panel-toggle-item:not(.pro-locked)').first().click();
 
     await page.locator('[data-mobile-tab="search"]').click();

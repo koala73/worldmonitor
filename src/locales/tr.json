@@ -5110,5 +5110,46 @@
     "errGeneric": "Taslak oluşturulamadı. Yeniden deneyin.",
     "errDownload": "Dosya buraya indirilemedi. Bunun yerine Yazdır seçeneğini kullanın veya PDF olarak kaydedin.",
     "errLoad": "Seyahat değerlendirmesi açılamadı. Sayfayı yeniden yükleyin ve tekrar deneyin."
+  },
+  "settings": {
+    "back": "Ayarlara dön",
+    "signIn": {
+      "label": "Oturum aç",
+      "desc": "Ayarları senkronize et ve planını yönet"
+    },
+    "summary": {
+      "themeAuto": "Otomatik",
+      "count": "{{on}} / {{total}}"
+    },
+    "groups": {
+      "dashboard": "Pano",
+      "preferences": "Tercihler",
+      "developer": "Geliştirici",
+      "app": "Uygulama"
+    },
+    "sections": {
+      "account": "Hesap",
+      "map": "Harita",
+      "ai": "YZ ve analiz",
+      "video": "Video ve akışlar",
+      "apiKeys": "API anahtarları",
+      "embeds": "Gömüler",
+      "aiAgents": "YZ ajanları (MCP)",
+      "sync": "Senkronizasyon, içe aktarma ve dışa aktarma",
+      "about": "Hakkında"
+    },
+    "descriptions": {
+      "panels": "Göster, gizle ve yeniden düzenle",
+      "sources": "Bölgeler ve akışlar",
+      "notifications": "Kanallar ve uyarı kuralları",
+      "display": "Tema, yazı tipi ve dil",
+      "map": "Sağlayıcı, tema ve küre",
+      "ai": "Modeller, bellek ve çerçeveler",
+      "video": "Kalite ve otomatik oynatma",
+      "apiKeys": "World Monitor API anahtarları",
+      "embeds": "Kendi siteniz için widget'lar",
+      "aiAgents": "Bağlı MCP istemcileri",
+      "about": "Site bağlantıları, şartlar ve gizlilik"
+    }
   }
 }

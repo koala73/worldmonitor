@@ -5082,5 +5082,46 @@
     "errGeneric": "初稿生成失败。请重试。",
     "errDownload": "无法在此处下载文件。请改用打印或另存为 PDF。",
     "errLoad": "无法打开行程评估。请刷新页面后重试。"
+  },
+  "settings": {
+    "back": "返回设置",
+    "signIn": {
+      "label": "登录",
+      "desc": "同步设置并管理您的方案"
+    },
+    "summary": {
+      "themeAuto": "自动",
+      "count": "{{on}}/{{total}}"
+    },
+    "groups": {
+      "dashboard": "仪表板",
+      "preferences": "偏好设置",
+      "developer": "开发者",
+      "app": "应用"
+    },
+    "sections": {
+      "account": "账户",
+      "map": "地图",
+      "ai": "AI 与分析",
+      "video": "视频与流媒体",
+      "apiKeys": "API 密钥",
+      "embeds": "嵌入",
+      "aiAgents": "AI 代理 (MCP)",
+      "sync": "同步、导入与导出",
+      "about": "关于"
+    },
+    "descriptions": {
+      "panels": "显示、隐藏和重新排序",
+      "sources": "地区和数据源",
+      "notifications": "频道和警报规则",
+      "display": "主题、字体和语言",
+      "map": "提供商、主题和地球仪",
+      "ai": "模型、记忆和框架",
+      "video": "质量和自动播放",
+      "apiKeys": "World Monitor API 密钥",
+      "embeds": "用于您网站的 widget",
+      "aiAgents": "已连接的 MCP 客户端",
+      "about": "网站链接、条款和隐私"
+    }
   }
 }

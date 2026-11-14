@@ -5138,5 +5138,46 @@
     "errGeneric": "O rascunho não pôde ser construído. Tente novamente.",
     "errDownload": "O arquivo não pôde ser baixado aqui. Use Imprimir ou salve como PDF em vez disso.",
     "errLoad": "Não foi possível abrir a avaliação da viagem. Recarregue a página e tente novamente."
+  },
+  "settings": {
+    "back": "Voltar às configurações",
+    "signIn": {
+      "label": "Entrar",
+      "desc": "Sincronize configurações e gerencie seu plano"
+    },
+    "summary": {
+      "themeAuto": "Automático",
+      "count": "{{on}} de {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Preferências",
+      "developer": "Desenvolvedor",
+      "app": "App"
+    },
+    "sections": {
+      "account": "Conta",
+      "map": "Mapa",
+      "ai": "IA e análise",
+      "video": "Vídeo e transmissões",
+      "apiKeys": "Chaves de API",
+      "embeds": "Embeds",
+      "aiAgents": "Agentes de IA (MCP)",
+      "sync": "Sincronização, importação e exportação",
+      "about": "Sobre"
+    },
+    "descriptions": {
+      "panels": "Mostrar, ocultar e reorganizar",
+      "sources": "Regiões e feeds",
+      "notifications": "Canais e regras de alertas",
+      "display": "Tema, fonte e idioma",
+      "map": "Provedor, tema e globo",
+      "ai": "Modelos, memória e frameworks",
+      "video": "Qualidade e reprodução automática",
+      "apiKeys": "Chaves para a API do World Monitor",
+      "embeds": "Widgets para seu próprio site",
+      "aiAgents": "Clientes MCP conectados",
+      "about": "Links do site, termos e privacidade"
+    }
   }
 }

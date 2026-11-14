@@ -23,6 +23,13 @@ async function openSettings(page: Page, mobile: boolean): Promise<void> {
   await page.locator(mobile ? '#mobileMenuSettings' : '#unifiedSettingsBtn').click();
 }
 
+/** Reach a Settings page through its home row, going back to the list first. */
+async function openSettingsPage(page: Page, id: string): Promise<void> {
+  const back = page.locator('[data-settings-back]');
+  if (await back.isVisible()) await back.click();
+  await page.locator(`[data-settings-nav="${id}"]`).click();
+}
+
 for (const theme of ['light', 'dark']) {
   for (const width of [320, 393, 1440]) {
     test(`${theme} controls fit at ${width}px`, async ({ page }) => {
@@ -45,26 +52,25 @@ for (const theme of ['light', 'dark']) {
       await expect(page.locator('button[data-search-scope="actions"]')).toHaveAttribute('aria-pressed', 'true');
       await page.keyboard.press('Escape');
       await openSettings(page, mobile);
-      await page.locator('#us-tab-sources').click();
+      await openSettingsPage(page, 'sources');
       const sources = page.locator('.sources-toggle-grid');
       await expect.poll(() => sources.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
       if (mobile) {
         expect((await page.locator('.source-toggle-item').first().boundingBox())!.height).toBeGreaterThanOrEqual(44);
         expect((await page.locator('.unified-settings-close').boundingBox())!.width).toBeGreaterThanOrEqual(44);
       }
-      await page.locator('#us-tab-panels').click();
+      await openSettingsPage(page, 'panels');
       const disclosure = page.locator('.panel-font-scale-details').first();
       await expect(disclosure.locator('select')).not.toBeVisible();
       await disclosure.locator('summary').focus();
       await page.keyboard.press('Enter');
       await expect(disclosure.locator('select')).toBeVisible();
       await expect(page.locator('[data-panel="map"] + details')).toHaveCount(0);
-      await page.locator('#us-tab-notifications').click();
+      await openSettingsPage(page, 'notifications');
       await expect(page.locator('#usNotifUpgradeBtn')).toHaveText('Sign In');
-      await page.locator('#us-tab-api-keys').click();
-      await expect(page.locator('#us-tab-panel-api-keys .settings-access-gate h3')).toHaveText('API and desktop keys');
-      await page.locator('#us-tab-settings').click();
-      await page.locator('summary').filter({ hasText: 'Analysis Frameworks' }).click();
+      await openSettingsPage(page, 'api-keys');
+      await expect(page.locator('#us-page-api-keys .settings-access-gate h3')).toHaveText('API and desktop keys');
+      await openSettingsPage(page, 'ai');
       await page.locator('#fwImportBtn').click();
       const field = page.getByLabel('agentskills.io URL or ID', { exact: true });
       await expect(field).toBeVisible();
@@ -103,10 +109,11 @@ for (const theme of ['light', 'dark']) {
     await page.setViewportSize({ width: 320, height: 900 });
     await boot(page, theme);
     await openSettings(page, true);
+    await openSettingsPage(page, 'display');
     await page.locator('#us-font-scale').selectOption('2');
-    await page.locator('#us-tab-sources').click();
+    await openSettingsPage(page, 'sources');
     await expect.poll(() => page.locator('.sources-toggle-grid').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
-    await page.locator('#us-tab-panels').click();
+    await openSettingsPage(page, 'panels');
     await page.locator('.panel-font-scale-details > summary').first().click();
     const panel = page.locator('.panel-font-scale-details').first();
     await expect.poll(() => panel.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);

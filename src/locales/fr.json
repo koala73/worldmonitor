@@ -5138,5 +5138,46 @@
     "errGeneric": "Le brouillon n'a pas pu être généré. Réessayez.",
     "errDownload": "Le fichier n'a pas pu être téléchargé ici. Utilisez l'impression ou enregistrez en PDF à la place.",
     "errLoad": "L'évaluation de voyage n'a pas pu être ouverte. Rechargez la page et réessayez."
+  },
+  "settings": {
+    "back": "Retour aux paramètres",
+    "signIn": {
+      "label": "Se connecter",
+      "desc": "Synchroniser les paramètres et gérer votre plan"
+    },
+    "summary": {
+      "themeAuto": "Automatique",
+      "count": "{{on}} sur {{total}}"
+    },
+    "groups": {
+      "dashboard": "Tableau de bord",
+      "preferences": "Préférences",
+      "developer": "Développeur",
+      "app": "Application"
+    },
+    "sections": {
+      "account": "Compte",
+      "map": "Carte",
+      "ai": "IA et analyse",
+      "video": "Vidéo et flux",
+      "apiKeys": "Clés API",
+      "embeds": "Widgets intégrés",
+      "aiAgents": "Agents IA (MCP)",
+      "sync": "Synchronisation, import et export",
+      "about": "À propos"
+    },
+    "descriptions": {
+      "panels": "Afficher, masquer et réorganiser",
+      "sources": "Régions et flux",
+      "notifications": "Canaux et règles d'alerte",
+      "display": "Thème, police et langue",
+      "map": "Fournisseur, thème et globe",
+      "ai": "Modèles, mémoire et frameworks",
+      "video": "Qualité et lecture automatique",
+      "apiKeys": "Clés pour l'API World Monitor",
+      "embeds": "Widgets pour votre site",
+      "aiAgents": "Clients MCP connectés",
+      "about": "Liens du site, conditions et confidentialité"
+    }
   }
 }
