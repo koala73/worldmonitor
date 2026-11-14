@@ -21,6 +21,11 @@ export type ReservoirNextPass =
   | { status: 'pass'; timeMs: number; windowEndMs: number; elementsEpochMs: number }
   | { status: 'none'; windowEndMs: number; elementsEpochMs: number };
 
+/** When a prediction stops being the next one: its crossing time, or the end of a no-crossing window. */
+export function reservoirNextPassExpiresAt(pass: ReservoirNextPass): number {
+  return pass.status === 'pass' ? pass.timeMs : pass.windowEndMs;
+}
+
 function crossesExtent(a: { lat: number; lon: number }, b: { lat: number; lon: number }, [w, s, e, n]: ReservoirExtent): number | null {
   // Liang-Barsky clip of the straight segment a->b against the box; returns the entry fraction.
   let t0 = 0;

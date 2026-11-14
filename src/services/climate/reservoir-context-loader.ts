@@ -1,6 +1,6 @@
 import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 import { loadOrbitalCatalog } from '@/services/orbital/catalog';
-import { computeReservoirNextPasses, type ReservoirNextPass, type ReservoirPassSite } from '@/services/orbital/reservoir-next-pass';
+import { computeReservoirNextPasses, reservoirNextPassExpiresAt, type ReservoirNextPass, type ReservoirPassSite } from '@/services/orbital/reservoir-next-pass';
 import type { ReservoirLevel } from './reservoir-levels';
 import { fetchReservoirLevels } from './index';
 
@@ -15,16 +15,22 @@ export function loadReservoirLevelsById(): Promise<Map<string, ReservoirLevel>> 
 }
 
 const NEXT_PASS_REUSE_MS = 60 * 60 * 1000;
-let pending: { at: number; passes: Promise<Map<string, ReservoirNextPass> | null> } | null = null;
+let pending: { until: number; passes: Promise<Map<string, ReservoirNextPass> | null> } | null = null;
 
 /** Orbital pass geometry, so dark unless Orbital Watch is enabled. Null when dark or unavailable. */
 export function loadReservoirNextPasses(sites: readonly ReservoirPassSite[]): Promise<Map<string, ReservoirNextPass> | null> {
   if (!ORBITAL_WATCH_ENABLED) return Promise.resolve(null);
-  if (pending && Date.now() - pending.at < NEXT_PASS_REUSE_MS) return pending.passes;
-  const entry = { at: Date.now(), passes: Promise.resolve<Map<string, ReservoirNextPass> | null>(null) };
+  if (pending && Date.now() < pending.until) return pending.passes;
+  const entry = { until: Date.now() + NEXT_PASS_REUSE_MS, passes: Promise.resolve<Map<string, ReservoirNextPass> | null>(null) };
   const forget = () => { if (pending === entry) pending = null; return null; };
   entry.passes = loadOrbitalCatalog()
-    .then(catalog => computeReservoirNextPasses(catalog, sites) ?? forget())
+    .then(catalog => {
+      const passes = computeReservoirNextPasses(catalog, sites);
+      if (!passes) return forget();
+      // Recompute once the earliest prediction has elapsed, so a past crossing is never shown as next.
+      for (const pass of passes.values()) entry.until = Math.min(entry.until, reservoirNextPassExpiresAt(pass));
+      return passes;
+    })
     .catch(forget);
   pending = entry;
   return entry.passes;

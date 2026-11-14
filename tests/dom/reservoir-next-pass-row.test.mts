@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import english from '@/locales/en.json';
 
 const orbital = vi.hoisted(() => ({ passes: null as Map<string, unknown> | null, calls: 0 }));
@@ -23,7 +23,11 @@ vi.mock('@/services/i18n', () => ({
 import { ReservoirLevelsPanel } from '@/components/ReservoirLevelsPanel';
 import type { ReservoirLevel } from '@/services/climate';
 
-afterEach(() => { document.body.replaceChildren(); orbital.passes = null; orbital.calls = 0; });
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-14T12:00:00Z'));
+});
+afterEach(() => { vi.useRealTimers(); document.body.replaceChildren(); orbital.passes = null; orbital.calls = 0; });
 
 const reservoir = (id: string): ReservoirLevel => ({
   id, name: id, country: 'ET', riparians: ['ET'], river: 'Blue Nile', lat: 11, lon: 35, tags: [], why: '',
@@ -52,6 +56,21 @@ it('shows a predicted crossing or the normal no-crossing answer, each with the o
   panel.setResult(ok([reservoir('gerd')]));
   await vi.waitFor(() => expect(nextLine('gerd')).toContain('No measurement in this window'));
   expect(orbital.calls).toBe(2);
+});
+
+it('drops a prediction once its crossing or window has passed', async () => {
+  const epoch = Date.parse('2026-11-07T18:00:00Z');
+  orbital.passes = new Map([
+    ['gerd', { status: 'pass', timeMs: Date.parse('2026-11-14T03:12:00Z'), windowEndMs: Date.parse('2026-11-15T00:00:00Z'), elementsEpochMs: epoch }],
+    ['aswan', { status: 'none', windowEndMs: Date.parse('2026-11-14T06:00:00Z'), elementsEpochMs: epoch }],
+  ]);
+  const panel = new ReservoirLevelsPanel();
+  panel.setResult(ok([reservoir('gerd'), reservoir('aswan')]));
+  await vi.waitFor(() => expect(orbital.calls).toBe(1));
+  await Promise.resolve();
+  expect(document.querySelector('[data-reservoir-id="gerd"]')).not.toBeNull();
+  expect(nextLine('gerd')).toBeUndefined();
+  expect(nextLine('aswan')).toBeUndefined();
 });
 
 it('adds no row when orbit data is unavailable', async () => {

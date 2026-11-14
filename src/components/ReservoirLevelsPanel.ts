@@ -21,7 +21,7 @@ import {
 } from './reservoir-levels-view';
 import type { ResolvedScope } from '@/services/tab-focus';
 import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
-import type { ReservoirNextPass } from '@/services/orbital/reservoir-next-pass';
+import { reservoirNextPassExpiresAt, type ReservoirNextPass } from '@/services/orbital/reservoir-next-pass';
 import { loadReservoirNextPasses } from '@/services/climate/reservoir-context-loader';
 import { STRATEGIC_RESERVOIR_SITES } from '@/services/climate/reservoir-context';
 import { countryCodeFromName } from '@/services/scope-attribution';
@@ -197,7 +197,7 @@ export class ReservoirLevelsPanel extends Panel {
 
   private nextPassLine(r: ReservoirLevel, ctx: ReservoirFormatContext): SafeHtml {
     const pass = this.nextPasses?.get(r.id);
-    if (!pass) return safeHtml``;
+    if (!pass || reservoirNextPassExpiresAt(pass) <= Date.now()) return safeHtml``;
     return safeHtml`<span class="wl-next"><span class="wl-next-label">${t('components.reservoirLevels.nextPass.label')}:</span> ${reservoirNextPassText(pass, t, ctx.locale)}</span>`;
   }
 
