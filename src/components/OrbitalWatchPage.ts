@@ -398,7 +398,7 @@ interface Summary {
   /** Scenes of this spot a user can open; weather mosaics and frames have their own group. */
   images: number;
   counts: Record<GroupId, number>;
-  /** Some likely-watched passes are waiting on an archive that did not answer. */
+  /** Every likely-watched pass is waiting on an archive that did not answer; a mix keeps the default copy and per-row badges. */
   likelyUnanswered: boolean;
   cards: ImageCard[];
   closestKey: string | null;
@@ -418,7 +418,7 @@ function summarize(lookup: PointPassLookup, evidence: OrbitalEvidence): Summary 
     satellites: platforms.size,
     images: evidence.acquisitions.length,
     counts,
-    likelyUnanswered: past.some((pass) => isUnanswered(pass, evidence)),
+    likelyUnanswered: likelyAllUnanswered(evidence),
     cards: [...acquisitions.map((acquisition) => acquisitionCard(acquisition, lookup.nowMs, names)), ...weatherCards(evidence)],
     closestKey: closest ? `image:${closest.key}` : null,
   };
@@ -460,6 +460,11 @@ function acquisitionBadges(acquisition: MatchedAcquisition | null): HTMLElement[
 }
 
 /** Likely watched only because an archive for its mission did not reply, not because no image exists. */
+function likelyAllUnanswered(evidence: OrbitalEvidence): boolean {
+  const likely = evidence.passes.filter((pass) => pass.tier.kind === 'likely-imaged');
+  return likely.length > 0 && likely.every((pass) => isUnanswered(pass, evidence));
+}
+
 function isUnanswered(pass: PointPass, evidence: OrbitalEvidence): boolean {
   return pass.tier.kind === 'likely-imaged' && (evidence.unansweredProfiles as readonly string[]).includes(pass.profileId);
 }

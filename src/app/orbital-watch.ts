@@ -4,7 +4,7 @@ import { ARCHIVE_SEARCHES, findArchiveEvidence } from '@/services/orbital/match'
 import { OrbitalWatchPage, type OrbitalView } from '@/components/OrbitalWatchPage';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 import { formatOrbitalRoute, parseOrbitalRoute } from '@/app/orbital-route';
-import { getOrbitalMapView } from '@/app/orbital-map-focus';
+import { claimMapUrlCentre, getOrbitalMapView, releaseMapUrlCentreOnUserMove } from '@/app/orbital-map-focus';
 import { visibleMapArea, type ScreenArea } from '@/utils/map-point-offset';
 
 let page: OrbitalWatchPage | null = null;
@@ -81,6 +81,8 @@ function syncMap(view: OrbitalView): void {
     if (active) button?.click();
     raisedMap = false;
   }
+  // The full view is the lookup's own map; the sheet leaves the dashboard as it is.
+  getOrbitalMapView()?.suppressLayers(view === 'full');
   focusMap();
 }
 
@@ -147,6 +149,8 @@ export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null
   page ??= new OrbitalWatchPage({
     onClose: () => {
       getOrbitalMapView()?.hold(false);
+      getOrbitalMapView()?.suppressLayers(false);
+      releaseMapUrlCentreOnUserMove(document.getElementById('mapContainer'));
       cancel();
       lookup = null;
       point = null;
@@ -160,6 +164,7 @@ export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null
   }
   point = at;
   lookup = null;
+  claimMapUrlCentre();
   const wasFull = page.isOpen && page.currentView === 'full';
   page.open(at, returnFocusTo, view);
   if (view === 'full' || wasFull) onViewChange(view);

@@ -17,6 +17,8 @@ const ARCHIVE_HOSTS = ['earth-search.aws.element84.com', 'planetarycomputer.micr
 const CATALOG_PATH = '/api/orbital/v1/list-imaging-satellites';
 const HOUR = 3_600_000;
 const PLACE = { name: 'Palm Jumeirah, Dubai', lat: 25.112, lon: 55.139, zoom: 9 };
+// Open ocean, so the calibrating right-click at the map centre opens no country.
+const START = { lat: -15, lon: 80, zoom: 4 };
 
 function fixtureCatalog() {
   const { records } = JSON.parse(readFileSync(new URL('../../../../tests/fixtures/orbital/celestrak-gp-2026-11-13.json', import.meta.url), 'utf8'));
@@ -33,6 +35,22 @@ function fixtureCatalog() {
     return [{ noradId: Number(r.NORAD_CAT_ID), name: r.OBJECT_NAME, profileId: profile.id, elements }];
   });
   return { inventoryVersion: 'verify-fixture', profiles: [], ring: [], fetchedAt: Date.now() - 2 * HOUR, source: 'fixture', stale: false, satellites };
+}
+
+
+const VENDOR_URL = /sentry|umami|\/_vercel\/insights|debugbear|dbbrum/i;
+
+/** Where the page URL puts the map centre and the orbital route, with each one's distance from the picked point in degrees. */
+function pageUrlPlaces(href) {
+  const url = new URL(href);
+  const off = (lat, lon) => Math.max(Math.abs(lat - PLACE.lat), Math.abs(lon - PLACE.lon));
+  const lat = Number(url.searchParams.get('lat'));
+  const lon = Number(url.searchParams.get('lon'));
+  const route = /orbital=([-\d.]+),([-\d.]+)/.exec(url.hash);
+  return {
+    centre: url.searchParams.has('lat') ? { lat, lon, off: off(lat, lon) } : null,
+    route: route ? { off: off(Number(route[1]), Number(route[2])) } : null,
+  };
 }
 
 export default async function ({ page, base, shot, log, expectVisible }) {
@@ -61,6 +79,12 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     url: req.url(), body: req.postData() ?? '', harnessNavigation: req.isNavigationRequest() && req.frame() === page.mainFrame(),
   }));
 
+  // DebugBear (and Sentry's history breadcrumbs) record each same-document navigation's URL, so record what they would see.
+  await page.addInitScript(() => {
+    window.__wmNavigations = [];
+    window.navigation?.addEventListener('navigate', (event) => window.__wmNavigations.push(event.destination.url));
+  });
+
   const mapMode = process.env.WM_VERIFY_ORBITAL_MAP === 'globe' ? 'globe' : 'flat';
   if (mapMode === 'flat') {
     // MapContainer refuses deck.gl on a software GL renderer, and this VM only has SwiftShader.
@@ -73,10 +97,16 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     });
   }
   await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': JSON.stringify(mapMode) } });
-  await page.goto(`${base}/dashboard?view=global&layers=none&lat=${PLACE.lat}&lon=${PLACE.lon}&zoom=${PLACE.zoom}`, { waitUntil: 'domcontentloaded' });
+  // WM_VERIFY_ORBITAL_LAYERS=conflicts boots with a dashboard layer over the point, to prove the full view hides it.
+  const bootLayers = process.env.WM_VERIFY_ORBITAL_LAYERS || 'none';
+  // Boot far from the point, so a centre in the page URL near it could only have come from the lookup.
+  await page.goto(`${base}/dashboard?view=global&layers=${bootLayers}&lat=${START.lat}&lon=${START.lon}&zoom=${START.zoom}`, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
   const renderer = await waitForMap(page);
   log('renderer', renderer);
+  await page.waitForTimeout(600);
+  const bootCentre = pageUrlPlaces(await page.evaluate(() => location.href)).centre;
+  log('page url centre at boot', JSON.stringify(bootCentre));
 
   const sheet = page.locator('.orbital-watch-sheet');
   // Opening a lookup flies the map so the point sits in the middle of what the sheet leaves visible, so aim at
@@ -165,7 +195,12 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     throw new Error(`reticle never settled on the map: ${JSON.stringify(prev)}`);
   };
   const pickedAt = async (at) => {
+    const before = await page.evaluate(() => location.hash);
     await open(at);
+    // A lookup opened from the map writes no route; only the full view (a shareable link) does.
+    const opened = await page.evaluate(() => location.hash);
+    log('page url hash (sheet opened from the map)', opened || 'none');
+    if (opened !== before && /orbital=/.test(opened)) throw new Error(`a lookup opened from the map wrote its point into the hash: ${opened}`);
     const [lat, ns, lon, ew] = (await sheet.locator('.ow-place').innerText()).match(/([\d.]+)°([NS]) ([\d.]+)°([EW])/).slice(1);
     const mark = await markAt();
     await close();
@@ -226,15 +261,40 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   if (heroFits.bottom > heroFits.floor) throw new Error(`hero and caption run under the bottom edge: ${JSON.stringify(heroFits)}`);
   log('sheet map mark', JSON.stringify(await markAt()));
   await shot('sheet-closest-look');
+  // A lookup centres the map on the point; the map's URL sync (debounced 250 ms) must keep the pre-lookup centre.
+  const checkPageUrl = async (stage, { route = false } = {}) => {
+    await page.waitForTimeout(600);
+    const { centre, route: inRoute } = pageUrlPlaces(await page.evaluate(() => location.href));
+    log(`page url (${stage})`, 'centre', JSON.stringify(centre), 'orbital route', inRoute ? `${inRoute.off.toFixed(4)}° from the point` : 'none');
+    if (centre && centre.off < 1) throw new Error(`page URL centre is ${centre.off.toFixed(4)}° from the picked point (${stage})`);
+    if (JSON.stringify(centre) !== JSON.stringify(bootCentre)) throw new Error(`page URL centre moved during the lookup (${stage})`);
+    if (inRoute && !route) throw new Error(`orbital route left in the page URL (${stage})`);
+  };
+  await checkPageUrl('sheet', { route: true });
   await sheet.locator('.ow-tier-grid').evaluate((el) => el.scrollIntoView({ block: 'end' }));
   log('tier grid', (await sheet.locator('.ow-tier-cell').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ')));
   await settleImagesInView();
   await shot('sheet-tier-grid');
+  // The full view hides the dashboard's data layers; the share URL and the saved toggles keep them.
+  const layerState = () => page.evaluate(() => ({
+    url: new URL(location.href).searchParams.get('layers'),
+    saved: localStorage.getItem('worldmonitor-layers'),
+    svgZones: document.querySelectorAll('#mapContainer .conflict-zone').length,
+  }));
+  const layersBefore = await layerState();
+  if (bootLayers !== 'none') await shot('layers-in-sheet');
   await sheet.locator('.ow-primary').click();
   await page.locator('.orbital-watch-sheet[data-view="full"]').waitFor();
+  await page.waitForTimeout(800);
+  const layersFull = await layerState();
+  log('layers (sheet → full view)', JSON.stringify({ ...layersBefore, saved: !!layersBefore.saved }), '→', JSON.stringify({ ...layersFull, saved: !!layersFull.saved }));
+  if (layersFull.url !== layersBefore.url || layersFull.saved !== layersBefore.saved) throw new Error('the full view changed the layer state the dashboard shares or saves');
+  if (layersFull.svgZones) throw new Error(`${layersFull.svgZones} conflict zones still drawn over the full view`);
+  if (bootLayers !== 'none') await shot('layers-hidden-in-full-view');
   const hash = await page.evaluate(() => location.hash);
   log('full view route', hash.replace(/[\d.]+,[\d.]+/, '<point>'));
   if (!hash.startsWith('#orbital=') || !hash.endsWith('&view=full')) throw new Error(`full view route ${hash}`);
+  await checkPageUrl('full view', { route: true });
   await sheet.locator('.ow-passes').evaluate((el) => el.scrollIntoView({ block: 'start' }));
   await settleImagesInView();
   log('groups', (await sheet.locator('.ow-group-toggle').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ')));
@@ -267,7 +327,13 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await page.keyboard.press('Escape');
   await page.locator('.orbital-watch-sheet[data-view="sheet"]').waitFor();
   if (await page.evaluate(() => location.hash)) throw new Error('route left behind after leaving the full view');
+  await page.waitForTimeout(800);
+  const layersBack = await layerState();
+  log('layers (back to the sheet)', JSON.stringify({ ...layersBack, saved: !!layersBack.saved }));
+  if (JSON.stringify(layersBack) !== JSON.stringify(layersBefore)) throw new Error('leaving the full view did not restore the dashboard layers exactly');
+  if (bootLayers !== 'none') await shot('layers-back-in-sheet');
   await close();
+  await checkPageUrl('after close');
 
   failing.add('earth-search.aws.element84.com');
   await openAtPlace();
@@ -334,6 +400,15 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     archiveResources: performance.getEntriesByType('resource').filter((e) => hosts.includes(new URL(e.name).hostname)).length,
   }), ARCHIVE_HOSTS);
   log('lcp urls', timeline.lcp, 'archive resource entries', timeline.archiveResources);
+  const vendor = requests.filter(({ url }) => VENDOR_URL.test(url));
+  const vendorLeaks = vendor.filter(({ url, body }) => needles.every((n) => decodeURIComponent(`${url} ${body}`).includes(n)));
+  log('telemetry vendor requests', vendor.length, 'at', [...new Set(vendor.map(({ url }) => { const u = new URL(url); return u.host + u.pathname; }))], 'carrying the point', vendorLeaks.length);
+  if (vendorLeaks.length) throw new Error(`picked point in a telemetry payload: ${vendorLeaks.map((l) => l.url).join(', ')}`);
+  const navigations = (await page.evaluate(() => window.__wmNavigations)).map(pageUrlPlaces);
+  const centresNearPoint = navigations.filter(({ centre }) => centre && centre.off < 0.01).length;
+  log('same-document navigations', navigations.length, 'with a map centre within 0.01° of the point', centresNearPoint,
+    'with the orbital route', navigations.filter(({ route }) => route).length);
+  if (centresNearPoint) throw new Error('a same-document navigation put the picked point in the page query');
   if (timeline.lcp.some((url) => ARCHIVE_HOSTS.includes(new URL(url).hostname))) throw new Error('archive crop became the LCP element');
 
   // A shared link opens with no click on the globe, so nothing else stops its idle spin carrying the point away.

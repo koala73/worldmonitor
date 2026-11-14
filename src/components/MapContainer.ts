@@ -210,6 +210,7 @@ export class MapContainer {
   private autoRotateHeld = false;
   private supplyChainPanel: import('@/components/SupplyChainPanel').SupplyChainPanel | null = null;
   private initialState: MapContainerState;
+  private suppressedLayers: MapLayers | null = null;
   private useDeckGL: boolean;
   private useGlobe: boolean;
   private readonly chrome: boolean;
@@ -1182,14 +1183,45 @@ export class MapContainer {
       sanitized = sanitizeLockedLayers(sanitized, false);
     }
     this.initialState = { ...this.initialState, layers: sanitized };
-    this.renderUkmtoStatus(sanitized.ais);
-    this.emergencyLayer.setEnabled(!this.useGlobe && sanitized.aircraftEmergencies === true);
-    this.notamAirspaceLayer.setEnabled(this.useDeckGL && sanitized.flights === true);
-    if (this.useGlobe) { this.globeMap?.setLayers(sanitized); return; }
-    if (this.useDeckGL) { this.deckGLMap?.setLayers(sanitized); } else { this.svgMap?.setLayers(sanitized); }
+    if (this.suppressedLayers) {
+      this.suppressedLayers = sanitized;
+      return;
+    }
+    this.drawLayers(sanitized);
+  }
+
+  private drawLayers(layers: MapLayers): void {
+    this.renderUkmtoStatus(layers.ais);
+    this.emergencyLayer.setEnabled(!this.useGlobe && layers.aircraftEmergencies === true);
+    this.notamAirspaceLayer.setEnabled(this.useDeckGL && layers.flights === true);
+    if (this.useGlobe) { this.globeMap?.setLayers(layers); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setLayers(layers); } else { this.svgMap?.setLayers(layers); }
+  }
+
+  /**
+   * Draws no data layer while `suppressed`, then draws the layers as they were.
+   * getState() keeps reporting the real layers, so the share URL and the saved
+   * toggles never see the hidden state.
+   */
+  public suppressDataLayers(suppressed: boolean): void {
+    if (suppressed === (this.suppressedLayers !== null)) return;
+    if (suppressed) {
+      const layers = this.getState().layers;
+      this.suppressedLayers = layers;
+      this.drawLayers(Object.fromEntries(Object.keys(layers).map((key) => [key, false])) as unknown as MapLayers);
+      return;
+    }
+    const layers = this.suppressedLayers!;
+    this.suppressedLayers = null;
+    this.drawLayers(layers);
   }
 
   public getState(): MapContainerState {
+    const state = this.rendererState();
+    return this.suppressedLayers ? { ...state, layers: this.suppressedLayers } : state;
+  }
+
+  private rendererState(): MapContainerState {
     if (this.useGlobe) return this.globeMap?.getState() ?? this.initialState;
     if (this.useDeckGL) {
       const state = this.deckGLMap?.getState();
@@ -1790,6 +1822,7 @@ export class MapContainer {
       ...this.initialState,
       layers: { ...this.initialState.layers, [layer]: true },
     };
+    if (this.suppressedLayers) this.suppressedLayers = { ...this.suppressedLayers, [layer]: true };
     if (!this.hasActiveRenderer()) return;
     if (this.useGlobe) { this.globeMap?.enableLayer(layer); return; }
     if (this.useDeckGL) {
