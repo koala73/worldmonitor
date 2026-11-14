@@ -597,3 +597,36 @@ describe('airport evidence in the grounded country brief', () => {
     assert.equal(result.withheld, 1);
   });
 });
+
+describe('country assessment imagery grounding', () => {
+  const sources = [{ title: 'Iran says enrichment talks will resume - Reuters', source: 'Reuters', url: 'https://example.com/talks', publishedAt: '' }];
+  const situation = 'Iran says enrichment talks will resume.';
+  const imagery = { id: 'E3', kind: 'imagery', label: 'Satellite imagery statistics changed', value: 'Natanz Enrichment Facility',
+    factText: 'Imagery statistics changed at Natanz Enrichment Facility in Iran: a Sentinel-1A radar scene on Aug 28, 2026 raised the change and a Sentinel-1C radar scene on Sep 9, 2026 confirmed it.',
+    asOf: '2026-09-09T12:00:00.000Z' };
+  const cii = { id: 'E1', kind: 'cii', label: 'Country Instability Index', value: '72.5 of 100 (High)',
+    factText: 'Iran has a Country Instability Index score of 72.5 of 100, in the High band, as of Sep 21, 2026.', asOf: '2026-09-21T11:30:00.000Z' };
+  const claim = (text, sources = [], evidence = []) => ({ text, sources, evidence });
+  const render = (risks, evidence = [imagery, cii]) => renderEvidenceGroundedCountryBrief(JSON.stringify({
+    situation: [claim(situation, [1])], implications: [], risks, outlook: [], watch: [],
+  }), sources, evidence, 'Iran');
+
+  it('accepts only the exact imagery fact text, cited alone', () => {
+    const accepted = render([claim(imagery.factText, [], ['E3'])]);
+    assert.equal(accepted.withheld, 0);
+    assert.equal(accepted.sections.at(-1).claims[0].text, imagery.factText);
+    assert.equal(briefCitationGroundingGap({ ...accepted, sources }, { countryCode: 'IR', countryName: 'Iran' }), null);
+  });
+
+  it('withholds an imagery claim that adds a cause, joins a headline or another data point, or paraphrases', () => {
+    for (const bad of [
+      claim('Imagery statistics changed at Natanz Enrichment Facility in Iran, indicating new construction activity.', [], ['E3']),
+      claim(imagery.factText, [1], ['E3']),
+      claim(imagery.factText, [], ['E3', 'E1']),
+      claim(imagery.factText.replace('Sep 9, 2026', 'Sep 10, 2026'), [], ['E3']),
+      claim('Natanz Enrichment Facility in Iran saw imagery statistics change on Sep 9, 2026.', [], ['E3']),
+    ]) {
+      assert.equal(render([bad]).withheld, 1, bad.text);
+    }
+  });
+});

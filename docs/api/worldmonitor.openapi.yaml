@@ -15697,6 +15697,7 @@ paths:
                         - 'COUNTRY_SIGNAL_FAMILY_CONFLICT'
                         - 'COUNTRY_SIGNAL_FAMILY_POSTURE'
                         - 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE'
+                        - 'COUNTRY_SIGNAL_FAMILY_IMAGERY'
                 - name: window_index
                   in: query
                   description: Country-derived flight viewport index, 0 or 1. Other families require 0.
@@ -49907,6 +49908,7 @@ components:
                         - COUNTRY_SIGNAL_FAMILY_CONFLICT
                         - COUNTRY_SIGNAL_FAMILY_POSTURE
                         - COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE
+                        - COUNTRY_SIGNAL_FAMILY_IMAGERY
                     description: Fixed country observation profiles; callers cannot select sources or viewports.
                 windowIndex:
                     type: integer
@@ -49938,6 +49940,7 @@ components:
                         - COUNTRY_SIGNAL_FAMILY_CONFLICT
                         - COUNTRY_SIGNAL_FAMILY_POSTURE
                         - COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE
+                        - COUNTRY_SIGNAL_FAMILY_IMAGERY
                     description: Fixed country observation profiles; callers cannot select sources or viewports.
                 outcomeJson:
                     type: string

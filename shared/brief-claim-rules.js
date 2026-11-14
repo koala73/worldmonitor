@@ -6,21 +6,21 @@
 
 import { extractNumericFacts } from './brief-llm-core.js';
 
-export function sanctionsEvidenceGrounded(text, headlineCount, evidence) {
-  const sanctions = evidence.filter(item => item.kind === 'sanctions');
-  if (sanctions.length === 0) return true;
+// A claim citing one of these kinds must be that item's exact fact text, cited
+// alone without a headline or another data point.
+const exactFactGrounded = (kind) => (text, headlineCount, evidence) => {
+  const matching = evidence.filter(item => item.kind === kind);
+  if (matching.length === 0) return true;
   const normalize = value => value.replace(/\s+/g, ' ').trim();
   return headlineCount === 0 && evidence.length === 1
-    && normalize(text) === normalize(sanctions[0].factText);
-}
+    && normalize(text) === normalize(matching[0].factText);
+};
 
-export function energyEvidenceGrounded(text, headlineCount, evidence) {
-  const energy = evidence.filter(item => item.kind === 'energy');
-  if (energy.length === 0) return true;
-  const normalize = value => value.replace(/\s+/g, ' ').trim();
-  return headlineCount === 0 && evidence.length === 1
-    && normalize(text) === normalize(energy[0].factText);
-}
+export const sanctionsEvidenceGrounded = exactFactGrounded('sanctions');
+export const energyEvidenceGrounded = exactFactGrounded('energy');
+// A satellite imagery change states only that statistics changed at a named site
+// on the named dates; any paraphrase could add a cause the data does not carry.
+export const imageryEvidenceGrounded = exactFactGrounded('imagery');
 
 // The date forms evidence fact texts use ("Sep 23, 2026", "Aug 29, 2026")
 // plus ISO dates. Blanked before numbers are read, so a date's day or year
@@ -48,6 +48,7 @@ export function evidenceNumbersGrounded(claim, cited) {
   // The complete energy atom also binds its provenance year, which is not
   // the metric value. Exact matching cannot license a spliced number.
   if (cited.some(item => item.kind === 'energy')) return energyEvidenceGrounded(claim, 0, cited);
+  if (cited.some(item => item.kind === 'imagery')) return imageryEvidenceGrounded(claim, 0, cited);
   const citedDates = new Set(cited.flatMap((item) => dateFacts(item.factText)));
   const claimDates = (claim.match(DATE_TEXT_RE) || []).flatMap((date) => dateFacts(date));
   if (claimDates.some((fact) => !citedDates.has(fact))) return false;
