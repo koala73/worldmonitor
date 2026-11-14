@@ -187,7 +187,7 @@ describe('imagery evidence sheet', () => {
     expect(sheet().dataset.state).toBe('checking');
     expect(rowOf(likely.name).querySelector('.ies-tier')!.textContent).toBe('checking archive');
     expect(rowOf(confirmedNew.name).dataset.tier).toBe('pending');
-    expect(rowOf(military.name).querySelector('.ies-tier')!.textContent, 'geometry tiers need no archive').toBe('capability');
+    expect(rowOf(military.name).querySelector('.ies-tier')!.textContent, 'geometry tiers need no archive').toBe('could image');
     expect(evidenceLine()).toContain('Archives answered: 0 of 5');
     page.render({ kind: 'passes', lookup: lookup(all), archives: { kind: 'checking', total: 5, progress: progress(['planetary-computer'], ['landsat'], all) } });
     expect(rowOf(likely.name).querySelector('.ies-tier')!.textContent, 'a Sentinel-2 pass leaves pending once its archive answered').toBe('likely');
@@ -203,19 +203,19 @@ describe('imagery evidence sheet', () => {
     const line = sheet().querySelector<HTMLElement>('.ies-evidence-line')!;
     expect(line.tagName).toBe('P');
     expect(line.textContent, 'two acquisitions of one platform count twice').toMatch(/^2 confirmed images · newest /);
-    expect(line.textContent).toMatch(/clear/i);
+    expect(line.textContent).toMatch(/no cloud over the point/i);
     expect(sheet().querySelector('h1, .ow-headline')).toBeNull();
   });
 
   it('shows the four tier counts and keeps mosaics, weather frames and in-range passes apart', () => {
     const { all, confirmedNew } = tiered();
     mounted(answered(all, { acquisitions: [acquisition(confirmedNew)], mosaics: [modis, viirs], frames: [meteosat] }));
-    expect([...sheet().querySelectorAll('.ies-count dt')].map((dt) => dt.textContent)).toEqual(['confirmed', 'likely', 'in reach', 'capability']);
+    expect([...sheet().querySelectorAll('.ies-count dt')].map((dt) => dt.textContent)).toEqual(['confirmed', 'likely', 'in reach', 'could image']);
     expect([countOf('confirmed'), countOf('likely'), countOf('inReach'), countOf('capability')]).toEqual(['1', '1', '1', '1']);
     const note = sectionOf('evidence').querySelector('.ies-note')!.textContent!;
     expect(note).toContain('1 daily mosaic');
     expect(note, 'VIIRS has no day with an image').not.toContain('2 daily mosaics');
-    expect(note).toContain('1 weather frame');
+    expect(note).toContain('1 weather-satellite frame');
     expect(note).toContain('1 pass in range');
   });
 
@@ -397,7 +397,7 @@ describe('orbitalWatch copy', () => {
     const entries = flat(en);
     expect(entries.length).toBeGreaterThan(100);
     expect(entries.filter(([, v]) => /\bwatch(ed|es|ing)?\b/i.test(v)).map(([k]) => k)).toEqual([]);
-    expect(en.tier).toMatchObject({ confirmed: 'confirmed', likely: 'likely', inReach: 'in reach', capability: 'capability' });
+    expect(en.tier).toMatchObject({ confirmed: 'confirmed', likely: 'likely', inReach: 'in reach', capability: 'could image' });
   });
 });
 
