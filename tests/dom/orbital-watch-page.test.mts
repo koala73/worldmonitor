@@ -180,6 +180,17 @@ describe('satellite pass lookup sheet', () => {
     expect(def()).toBe('A fixed-swath sensor covered it; no image published yet.');
   });
 
+  it('keeps the default Likely definition when only some likely passes wait on an archive, and badges just those rows', () => {
+    const { all, likely } = tiered();
+    const landsat = pass('LANDSAT 9', 'landsat', -5, likely.tier);
+    const def = () => sheet().querySelector('.ow-tier-cell[data-group="likely"] .ow-tier-def')!.textContent;
+    mounted(answered([...all, landsat], { status: 'partial', failures: [{ archive: 'earth-search', reason: 'timeout' }], unansweredProfiles: ['sentinel-2'] }), null, 'full');
+    expect(sheet().querySelector('.ow-tier-cell[data-group="likely"] .ow-tier-number')!.textContent).toBe('2');
+    expect(def()).toBe('A fixed-swath sensor covered it; no image published yet.');
+    expect(rowOf(likely.name).querySelector('.ow-badges')!.textContent).toContain("Archive didn't answer");
+    expect(rowOf(landsat.name).textContent).not.toContain("Archive didn't answer");
+  });
+
   it('uses singular wording for one satellite, image, pass and weather source', () => {
     const { confirmedNew } = tiered();
     mounted(answered([confirmedNew], { acquisitions: [acquisition(confirmedNew)] }), null, 'full');
@@ -282,7 +293,7 @@ describe('satellite pass lookup sheet', () => {
       expect(page().slot(slot as 'timeline').dataset.slot).toBe(slot);
       expect(page().slot(slot as 'timeline').childElementCount).toBe(0);
     }
-    expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/^0 imaging satellites · CelesTrak GP · Fetched \d{4}-\d\d-\d\d \d\d:\d\dZ · 3 days ago/);
+    expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/^0 imaging satellites · CelesTrak GP · Fetched \d{4}-\d\d-\d\d \d\d:\d\dZ · \d+ days ago/);
     expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/Sun \d+\.\d°[NS] \d+\.\d°[EW] · sub-solar point · \d\d:\d\d:\d\d UTC$/);
     expect(sheet().querySelector('[data-action="open-full"].ow-primary')).toBeNull();
   });

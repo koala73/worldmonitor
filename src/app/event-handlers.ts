@@ -40,6 +40,7 @@ import { LlmStatusIndicator } from '@/components/LlmStatusIndicator';
 import type { PredictionPanel } from '@/components/PredictionPanel';
 import {
   buildMapUrl,
+  withMapCentreOf,
   withUrlFragment,
   withoutVariantScopedUrlState,
   debounce,
@@ -162,6 +163,7 @@ import {
   type ResponsiveZoneListener,
 } from '@/app/responsive-zone-listener';
 import { stageVariantSelection } from '@/services/variant-panel-ownership';
+import { isMapUrlCentreClaimed } from '@/app/orbital-map-focus';
 import { transferSourceGateOwnershipToUser as releaseSourceGateOwnership } from '@/services/source-cap';
 
 /** Bound on each wait before the About-you card abstains for this load. */
@@ -400,7 +402,9 @@ export class EventHandlerManager implements AppModule {
     if (!shareUrl) return;
     // Preserve the shared mobile-overlay marker while syncing map URL state;
     // replacing it with null makes Android Back skip the open sheet.
-    try { history.replaceState(history.state, '', withUrlFragment(shareUrl, window.location.hash)); } catch { }
+    // A satellite lookup centres the map on a picked point that must not reach the URL analytics read.
+    const url = isMapUrlCentreClaimed() ? withMapCentreOf(shareUrl, window.location.href) : shareUrl;
+    try { history.replaceState(history.state, '', withUrlFragment(url, window.location.hash)); } catch { }
   };
   private readonly debouncedUrlSync = debounce(this.writeUrlState, 250);
 

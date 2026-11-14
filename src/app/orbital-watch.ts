@@ -10,7 +10,7 @@ import { formatOrbitalRoute, parseOrbitalRoute } from '@/app/orbital-route';
 import { DASHBOARD_SITE_ORIGIN } from '@/config/dashboard-reference-links';
 import { isDesktopRuntime } from '@/config/desktop-runtime';
 import { buildOrbitalShareFragment, type OrbitalShareLink, type OrbitalSharePass } from '@/utils/urlState';
-import { getOrbitalMapView } from '@/app/orbital-map-focus';
+import { claimMapUrlCentre, getOrbitalMapView, releaseMapUrlCentreOnUserMove } from '@/app/orbital-map-focus';
 import { visibleMapArea, type ScreenArea } from '@/utils/map-point-offset';
 
 let page: OrbitalWatchPage | null = null;
@@ -96,6 +96,8 @@ function syncMap(view: OrbitalView): void {
     if (active) button?.click();
     raisedMap = false;
   }
+  // The full view is the lookup's own map; the sheet leaves the dashboard as it is.
+  getOrbitalMapView()?.suppressLayers(view === 'full');
   focusMap();
 }
 
@@ -204,6 +206,8 @@ function ensurePage(): OrbitalWatchPage {
     page = new OrbitalWatchPage({
       onClose: () => {
         getOrbitalMapView()?.hold(false);
+        getOrbitalMapView()?.suppressLayers(false);
+        releaseMapUrlCentreOnUserMove(document.getElementById('mapContainer'));
         cancel();
         lookup = null;
         point = null;
@@ -246,6 +250,7 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, view }: { recentr
   point = at;
   selectedPass = null;
   lookup = null;
+  claimMapUrlCentre();
   const wasFull = sheet.isOpen && sheet.currentView === 'full';
   sheet.open(at, returnFocus, view);
   sheet.setPlaceName(name);

@@ -173,4 +173,13 @@ describe('the orbital lookup route', () => {
     const fragmentField = scrubSentryCredentials({ 'url.fragment': '#orbital=25.1120,55.1390' });
     assert.equal(JSON.stringify(fragmentField).includes('25.112'), false);
   });
+
+  it('drops the point from the Umami page and referrer URLs', () => {
+    // Umami's beforeSend hook passes url and referrer through redactSensitiveUrl.
+    for (const raw of [href, '/?lat=20&lon=50#orbital=25.1120,55.1390&view=full']) {
+      const redacted = redactSensitiveUrl(raw, 'https://www.worldmonitor.app');
+      assert.equal(/25\.11|55\.13/.test(redacted), false, redacted);
+    }
+    assert.match(read('src/services/analytics.ts'), /for \(const field of \['url', 'referrer'\] as const\)[\s\S]*?redactSensitiveUrl\(raw, window\.location\?\.origin\)/);
+  });
 });

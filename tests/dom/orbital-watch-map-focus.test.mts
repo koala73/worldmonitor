@@ -6,8 +6,8 @@ vi.mock('@/services/orbital/pass-client', () => ({
   getOrbitalPassClient: () => ({ lookup: () => new Promise(() => {}) }),
 }));
 
-import { setOrbitalMapView } from '@/app/orbital-map-focus';
-import { openOrbitalWatch } from '@/app/orbital-watch';
+import { isMapUrlCentreClaimed, setOrbitalMapView } from '@/app/orbital-map-focus';
+import { leaveOrbitalFullView, openOrbitalWatch } from '@/app/orbital-watch';
 
 const PALM = { lat: 25.112, lon: 55.139 };
 const rect = (left: number, top: number, width: number, height: number) => new DOMRect(left, top, width, height);
@@ -36,7 +36,7 @@ describe('orbital watch map focus', () => {
     const project = vi.fn(() => ({ x: 494, y: 450 }));
     let mapRect = rect(0, 0, 1440, 900);
     const hold = vi.fn();
-    const release = setOrbitalMapView({ rect: () => mapRect, center, project, hold });
+    const release = setOrbitalMapView({ rect: () => mapRect, center, project, hold, suppressLayers: vi.fn() });
     try {
       openOrbitalWatch(PALM, null);
       await frames(40);
@@ -65,7 +65,7 @@ describe('orbital watch map focus', () => {
   it('keeps trying to centre until a booting map can move', async () => {
     let ready = false;
     const center = vi.fn(() => ready);
-    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center, project: () => null, hold: vi.fn() });
+    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center, project: () => null, hold: vi.fn(), suppressLayers: vi.fn() });
     try {
       openOrbitalWatch(PALM, null);
       await frames();
@@ -76,6 +76,55 @@ describe('orbital watch map focus', () => {
       const settled = center.mock.calls.length;
       await frames();
       expect(center, 'a landed centre is not repeated').toHaveBeenCalledTimes(settled);
+    } finally {
+      release();
+    }
+  });
+
+  it('keeps the picked point out of the page URL until the user moves the map', () => {
+    const map = document.createElement('div');
+    map.id = 'mapContainer';
+    const outside = document.createElement('button');
+    document.body.append(map, outside);
+    expect(isMapUrlCentreClaimed()).toBe(false);
+    openOrbitalWatch(PALM, null);
+    expect(isMapUrlCentreClaimed()).toBe(true);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(document.querySelector('.orbital-watch-sheet')).toBeNull();
+    expect(isMapUrlCentreClaimed()).toBe(true);
+    outside.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    expect(isMapUrlCentreClaimed()).toBe(true);
+    map.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
+    expect(isMapUrlCentreClaimed()).toBe(false);
+  });
+
+  it('claims the URL centre again when a new lookup opens before the user moves the map', () => {
+    const map = document.createElement('div');
+    map.id = 'mapContainer';
+    document.body.append(map);
+    openOrbitalWatch(PALM, null);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    openOrbitalWatch({ lat: 25.003, lon: 54.99 }, null);
+    map.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    expect(isMapUrlCentreClaimed()).toBe(true);
+  });
+
+  it('hides the dashboard layers only while the full view owns the map', () => {
+    const suppressLayers = vi.fn();
+    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center: () => true, project: () => null, hold: vi.fn(), suppressLayers });
+    try {
+      openOrbitalWatch(PALM, null);
+      expect(suppressLayers, 'the sheet leaves the dashboard layers alone').not.toHaveBeenCalledWith(true);
+      openOrbitalWatch(PALM, null, 'full');
+      expect(suppressLayers).toHaveBeenLastCalledWith(true);
+      leaveOrbitalFullView();
+      expect(suppressLayers).toHaveBeenLastCalledWith(false);
+      openOrbitalWatch(PALM, null, 'full');
+      expect(suppressLayers).toHaveBeenLastCalledWith(true);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(document.querySelector('.orbital-watch-sheet')).toBeNull();
+      expect(suppressLayers, 'closing from the full view brings the layers back').toHaveBeenLastCalledWith(false);
     } finally {
       release();
     }
