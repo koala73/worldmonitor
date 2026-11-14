@@ -7,7 +7,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 import { ApiError, ValidationError } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
-import { checkScopedRateLimit } from '../../../_shared/rate-limit';
+import { checkScopedRateLimit, readTrustedRateLimitPrincipal } from '../../../_shared/rate-limit';
 import { getClientRateLimitKey } from '../../../_shared/client-ip';
 import { sha256Hex } from '../../../_shared/hash';
 
@@ -61,6 +61,16 @@ function toMatch(place: NominatimPlace): PlaceMatch | null {
   return { name, lat, lon, kind: place.addresstype || place.type || '' };
 }
 
+/**
+ * The per-caller miss budget must name the caller. A batched sub-request re-derives its IP from the
+ * platform egress, so the gateway-stamped principal (client copies are stripped) is preferred.
+ */
+export function placeSearchCallerKey(request: Request): string {
+  const principal = readTrustedRateLimitPrincipal(request.headers);
+  if (principal.principalUserId) return `principal:${principal.principalScope ?? 'session'}:${principal.principalUserId}`;
+  return `ip:${getClientRateLimitKey(request)}`;
+}
+
 async function fetchPlaces(query: string, caller: string): Promise<PlaceMatch[] | null> {
   const callerLimit = await checkScopedRateLimit(CALLER_MISS_SCOPE, CALLER_MISS_LIMIT, '60 s', caller);
   if (callerLimit.degraded) throw new CallerBudgetRefusal(503, 'Rate-limit service temporarily unavailable');
@@ -94,7 +104,7 @@ export const searchPlace: InfrastructureServiceHandler['searchPlace'] = async (
   }
   try {
     const { data: places } = await cachedFetchJsonWithMeta<PlaceMatch[]>(await placeSearchCacheKey(query), FOUND_TTL_SECONDS,
-      () => fetchPlaces(query, getClientRateLimitKey(ctx.request)),
+      () => fetchPlaces(query, placeSearchCallerKey(ctx.request)),
       NOT_FOUND_TTL_SECONDS, { cacheFetcherErrors: false, isCallerLocalError: isCallerBudgetRefusal });
     return { places: places ?? [], error: '' };
   } catch (error) {

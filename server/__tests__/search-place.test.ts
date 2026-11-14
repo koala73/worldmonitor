@@ -6,7 +6,13 @@ const { cache, inflight, backoff, limiter } = vi.hoisted(() => ({
   inflight: new Map<string, Promise<unknown>>(),
   limiter: vi.fn(async (_scope: string, _limit: number, _window: string, _identifier: string) => ({ allowed: true, degraded: false })),
 }));
-vi.mock('../_shared/rate-limit', () => ({ checkScopedRateLimit: limiter }));
+vi.mock('../_shared/rate-limit', () => ({
+  checkScopedRateLimit: limiter,
+  readTrustedRateLimitPrincipal: (headers: Headers) => {
+    const [scope, id] = (headers.get('x-wm-rl-principal') ?? '').split(':');
+    return id ? { principalScope: scope, principalUserId: id } : {};
+  },
+}));
 vi.mock('../_shared/redis', () => ({
   // Mirrors redis.ts: a fetcher error arms a per-key backoff unless the caller marks it caller-local.
   cachedFetchJsonWithMeta: vi.fn(async (key: string, ttl: number, fetcher: () => Promise<unknown>, negativeTtl: number,
@@ -23,7 +29,7 @@ vi.mock('../_shared/redis', () => ({
 }));
 
 import { cachedFetchJsonWithMeta } from '../_shared/redis';
-import { isCallerBudgetRefusal, normalizePlaceQuery, placeSearchCacheKey, searchPlace } from '../worldmonitor/infrastructure/v1/search-place';
+import { isCallerBudgetRefusal, normalizePlaceQuery, placeSearchCacheKey, placeSearchCallerKey, searchPlace } from '../worldmonitor/infrastructure/v1/search-place';
 
 const ctx = { request: new Request('https://worldmonitor.test') } as Parameters<typeof searchPlace>[0];
 const rotterdam = [
@@ -103,10 +109,17 @@ describe('place-name search', () => {
     const callerA = { request: new Request('https://worldmonitor.test', { headers: { 'x-real-ip': '198.51.100.1' } }) } as Parameters<typeof searchPlace>[0];
     const callerB = { request: new Request('https://worldmonitor.test', { headers: { 'x-real-ip': '198.51.100.2' } }) } as Parameters<typeof searchPlace>[0];
     limiter.mockImplementation(async (scope, _limit, _window, identifier) =>
-      ({ allowed: !(scope === 'search-place-provider:caller' && identifier === '198.51.100.1'), degraded: false }));
+      ({ allowed: !(scope === 'search-place-provider:caller' && identifier === 'ip:198.51.100.1'), degraded: false }));
     await expect(searchPlace(callerA, { q: 'Rotterdam' })).rejects.toMatchObject({ statusCode: 429 });
     expect(await searchPlace(callerB, { q: 'Rotterdam' })).toMatchObject({ places: [{ name: 'Rotterdam, South Holland, Netherlands' }], error: '' });
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('charges batched callers that share the egress IP to their own principal, not to the IP', () => {
+    const batched = (principal: string) => new Request('https://worldmonitor.test', { headers: { 'x-real-ip': '203.0.113.9', 'x-wm-rl-principal': principal } });
+    expect(placeSearchCallerKey(batched('api_key:a'))).toBe('principal:api_key:a');
+    expect(placeSearchCallerKey(batched('api_key:b'))).toBe('principal:api_key:b');
+    expect(placeSearchCallerKey(new Request('https://worldmonitor.test', { headers: { 'x-real-ip': '203.0.113.9' } }))).toBe('ip:203.0.113.9');
   });
 
   it('marks only a caller budget refusal as caller-local, so it never arms the shared per-name backoff', async () => {
