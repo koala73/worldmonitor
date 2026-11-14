@@ -530,8 +530,8 @@ interface GlobeControlsLike {
 // lockstep with the animation.
 const SET_CENTER_ROTATION_MS = 1200;
 
-/** A WM colour token at an alpha, read per call so a theme switch repaints the orbital overlay. */
-function orbitalColor(token: '--green' | '--text', alpha: number): string {
+/** An Orbital Watch colour token at an alpha, read per call so a theme switch repaints the orbital overlay. */
+function orbitalColor(token: '--ow-mark' | '--ow-text' | '--ow-dim', alpha: number): string {
   const m = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(getCSSColor(token));
   return m ? `rgba(${parseInt(m[1]!, 16)},${parseInt(m[2]!, 16)},${parseInt(m[3]!, 16)},${alpha})` : getCSSColor(token);
 }
@@ -977,9 +977,9 @@ export class GlobeMap {
         if (d.pathType === 'oil')   return 'rgba(255,140,0,0.6)';
         if (d.pathType === 'gas')   return 'rgba(80,220,120,0.6)';
         if (d.pathType === 'stormTrack') return 'rgba(255,100,100,0.8)';
-        if (d.pathType === 'orbitalTrack') return orbitalColor('--text', 0.7);
-        if (d.pathType === 'orbitalEdge') return orbitalColor('--green', 1);
-        if (d.pathType === 'orbitalOutline') return orbitalColor('--green', 0.55);
+        if (d.pathType === 'orbitalTrack') return orbitalColor('--ow-dim', 0.9);
+        if (d.pathType === 'orbitalEdge') return orbitalColor('--ow-mark', 1);
+        if (d.pathType === 'orbitalOutline') return orbitalColor('--ow-mark', 0.55);
         if (d.pathType === 'stormHistory') {
           const w = d.windKt || 0;
           if (w >= 137) return 'rgba(255,96,96,0.8)';
@@ -1029,7 +1029,7 @@ export class GlobeMap {
       .pointsData([])
       .pointLat((d: TrackPoint) => d.lat)
       .pointLng((d: TrackPoint) => d.lon)
-      .pointColor(() => orbitalColor('--text', 1))
+      .pointColor(() => orbitalColor('--ow-text', 1))
       .pointAltitude(() => 0.01)
       .pointRadius(() => 0.5);
 
@@ -1041,8 +1041,8 @@ export class GlobeMap {
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_CAP[d.intensity!] ?? GlobeMap.CONFLICT_CAP.low;
         if (d._kind === 'imageryFootprint') return 'rgba(0,0,0,0)';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.2)';
-        if (d._kind === 'orbitalFootprint') return orbitalColor('--green', 0.07);
-        if (d._kind === 'orbitalSwept') return orbitalColor('--green', 0.24);
+        if (d._kind === 'orbitalFootprint') return orbitalColor('--ow-mark', 0.07);
+        if (d._kind === 'orbitalSwept') return orbitalColor('--ow-mark', 0.24);
         if (d._kind === 'scenario') return 'rgba(220,60,40,0.3)';
         if (d._kind === 'focusChosen' || d._kind === 'focusNeighbour') return '';
         return 'rgba(255,60,60,0.15)';
@@ -2695,11 +2695,11 @@ export class GlobeMap {
     root.className = 'orbital-reticle';
     root.style.cssText = 'position:relative;width:0;height:0;';
     const ring = document.createElement('div');
-    ring.style.cssText = 'position:absolute;left:-14px;top:-14px;width:24px;height:24px;border:2px solid var(--green);border-radius:50%;';
+    ring.style.cssText = 'position:absolute;left:-14px;top:-14px;width:24px;height:24px;border:2px solid var(--ow-mark);border-radius:50%;';
     const dot = document.createElement('div');
-    dot.style.cssText = 'position:absolute;left:-3px;top:-3px;width:6px;height:6px;background:var(--green);border-radius:50%;';
+    dot.style.cssText = 'position:absolute;left:-3px;top:-3px;width:6px;height:6px;background:var(--ow-mark);border-radius:50%;';
     const label = document.createElement('div');
-    label.style.cssText = 'position:absolute;left:22px;top:0;transform:translateY(-50%);padding:4px 7px;background:color-mix(in srgb,var(--panel-bg) 88%,transparent);color:var(--text);font:500 11px/16px var(--font-mono);letter-spacing:.06em;white-space:nowrap;font-variant-numeric:tabular-nums;';
+    label.style.cssText = 'position:absolute;left:22px;top:0;transform:translateY(-50%);padding:4px 7px;background:color-mix(in srgb,var(--ow-panel) 88%,transparent);color:var(--ow-text);font:500 11px/16px var(--ow-font-mono);letter-spacing:.06em;white-space:nowrap;font-variant-numeric:tabular-nums;';
     for (const line of lines) {
       const row = document.createElement('div');
       row.textContent = line;

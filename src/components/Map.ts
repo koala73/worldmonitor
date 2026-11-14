@@ -5148,19 +5148,19 @@ export class MapComponent {
     this.orbitalSweptNodes = [];
     this.orbitalEdgeNodes = [];
     this.orbitalMarkerNodes = [];
-    const accent = getCSSColor('--green');
-    const text = getCSSColor('--text');
+    const accent = getCSSColor('--ow-mark');
+    const text = getCSSColor('--ow-text');
     for (const copy of MapComponent.orbitalWorldCopies(layer, projection)) {
       for (const ring of shapes.footprint) {
         copy.append('path').attr('d', toPath(ring, true))
           .attr('fill', accent).attr('fill-opacity', 0.07).attr('stroke', accent).attr('stroke-opacity', 0.5).attr('stroke-width', 1).attr('vector-effect', 'non-scaling-stroke');
       }
       copy.append('path').attr('d', toPath(shapes.path, false))
-        .attr('fill', 'none').attr('stroke', text).attr('stroke-opacity', 0.7).attr('stroke-width', 1.5).attr('vector-effect', 'non-scaling-stroke');
+        .attr('fill', 'none').attr('stroke', getCSSColor('--ow-dim')).attr('stroke-width', 1.5).attr('vector-effect', 'non-scaling-stroke');
       this.orbitalSweptNodes.push(copy.append('path').attr('class', 'orbital-swept').attr('fill', accent).attr('fill-opacity', 0.24).attr('stroke', 'none').node()!);
       this.orbitalEdgeNodes.push(copy.append('path').attr('class', 'orbital-leading-edge').attr('fill', 'none')
         .attr('stroke', accent).attr('stroke-width', 2.6).attr('stroke-linecap', 'round').attr('vector-effect', 'non-scaling-stroke').node()!);
-      this.orbitalMarkerNodes.push(copy.append('circle').attr('r', 4).attr('fill', text).attr('stroke', getCSSColor('--panel-bg'))
+      this.orbitalMarkerNodes.push(copy.append('circle').attr('r', 4).attr('fill', text).attr('stroke', getCSSColor('--ow-panel'))
         .attr('vector-effect', 'non-scaling-stroke').node()!);
     }
     this.placeOrbitalMarker(projection);
@@ -5208,7 +5208,7 @@ export class MapComponent {
     const xy = target ? projection([target.lon, target.lat]) : null;
     if (!xy || !this.dynamicLayerGroup) return;
     const unit = 1 / Math.max(1, this.state.zoom);
-    const accent = getCSSColor('--green');
+    const accent = getCSSColor('--ow-mark');
     const reticle = this.dynamicLayerGroup.append('g').attr('class', 'orbital-target').attr('pointer-events', 'none')
       .attr('transform', `translate(${xy[0]},${xy[1]}) scale(${unit})`);
     reticle.append('circle').attr('r', 12).attr('fill', 'none').attr('stroke', accent).attr('stroke-width', 2);
@@ -5249,9 +5249,9 @@ export class MapComponent {
     const label = reticle.append('g');
     if (side === 'below') label.attr('transform', `translate(0,${20 + 9 * lines.length + 3})`);
     label.append('rect').attr('x', x).attr('y', -9 * lines.length - 3).attr('height', 18 * lines.length + 6)
-      .attr('width', width).attr('fill', getCSSColor('--panel-bg')).attr('fill-opacity', 0.88);
-    const text = label.append('text').attr('fill', getCSSColor('--text'))
-      .attr('font-family', getCSSColor('--font-mono')).attr('font-size', 11).attr('letter-spacing', '0.06em');
+      .attr('width', width).attr('fill', getCSSColor('--ow-panel')).attr('fill-opacity', 0.88);
+    const text = label.append('text').attr('fill', getCSSColor('--ow-text'))
+      .attr('font-family', getCSSColor('--ow-font-mono')).attr('font-size', 11).attr('letter-spacing', '0.06em');
     lines.forEach((line, i) => {
       text.append('tspan').attr('x', x + 5).attr('y', (i - (lines.length - 1) / 2) * 18 + 4).text(line);
     });

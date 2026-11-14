@@ -59,4 +59,12 @@ describe('Orbital Watch design tokens', () => {
   it('keeps the amber palette out', () => {
     for (const sheet of sheets) assert.doesNotMatch(read(sheet), /f5a524|245,\s*165,\s*36|--ow-accent/i, sheet);
   });
+
+  it('draws the map overlay (track, swath, reticle, label) in Orbital Watch tokens on every renderer', () => {
+    for (const file of ['DeckGLMap.ts', 'GlobeMap.ts', 'Map.ts']) {
+      const source = readFileSync(new URL(`../src/components/${file}`, import.meta.url), 'utf8');
+      assert.doesNotMatch(source, /f5a524|245,\s*165,\s*36|ecebe7|236,\s*235,\s*231|0b0c0e|11,\s*12,\s*14|--ow-accent/i, file);
+      assert.match(source, /--ow-mark/, `${file} draws the overlay in --ow-mark`);
+    }
+  });
 });

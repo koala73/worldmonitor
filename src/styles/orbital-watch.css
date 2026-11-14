@@ -410,11 +410,11 @@ body.orbital-full-view #mapContainer .layer-toggles { display: none !important; 
 .ow-replay-controls[data-reduced-motion="true"] { flex-wrap: wrap; }
 /* Desktop names the reduced-motion state once, under the countdown; the phone HUD shows it in the control row. */
 .ow-replay-controls .ow-hud-reduced { order: -1; display: none; }
-.ow-hud-toggle { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--ow-line); background: var(--ow-bg); color: var(--ow-accent) !important; font-size: 11px; line-height: 1; }
-.ow-hud-scrub { flex: 1; min-width: 0; height: 4px; accent-color: var(--ow-accent); cursor: pointer; }
-.ow-hud-scrub:focus-visible { outline: 1px solid var(--ow-accent); outline-offset: 2px; }
+.ow-hud-toggle { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--ow-line); background: var(--ow-bg); color: var(--ow-active-text) !important; font-size: 11px; line-height: 1; }
+.ow-hud-scrub { flex: 1; min-width: 0; height: 4px; accent-color: var(--ow-active); cursor: pointer; }
+.ow-hud-scrub:focus-visible { outline: 1px solid var(--ow-emphasis); outline-offset: 2px; }
 .ow-hud-short { flex: none; color: var(--ow-dim); }
-.ow-hud-reduced { flex: none; padding: 1px 6px; border: 1px solid var(--ow-accent); color: var(--ow-accent); font-family: var(--ow-font-mono); font-size: 10px; line-height: 14px; letter-spacing: var(--ow-label-tracking); text-transform: uppercase; white-space: nowrap; }
+.ow-hud-reduced { flex: none; padding: 1px 6px; border: 1px solid var(--ow-line-strong); color: var(--ow-text); font-family: var(--ow-font-mono); font-size: 10px; line-height: 14px; letter-spacing: var(--ow-label-tracking); text-transform: uppercase; white-space: nowrap; }
 
 /* The SVG map draws one world; a pass's world copies past ±180 draw outside its box. */
 .orbital-tracked .map-svg,

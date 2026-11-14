@@ -9,6 +9,7 @@
  * on the exact point on every renderer.
  * WM_VERIFY_ORBITAL_VIEWPORT=mobile drives a phone-sized viewport.
  * WM_VERIFY_ORBITAL_POINT=fiji looks up a point by the antimeridian instead of Palm Jumeirah.
+ * WM_VERIFY_ORBITAL_THEME=light drives the light theme.
  */
 import { fixtureCatalog } from './orbital-watch.mjs';
 import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
@@ -39,7 +40,8 @@ export default async function ({ page, base, shot: capture, log, expectVisible }
 
   const fiji = process.env.WM_VERIFY_ORBITAL_POINT === 'fiji';
   const at = fiji ? { lat: -16.85, lon: 179.95 } : { lat: 25.112, lon: 55.139 };
-  await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': flat ? '"flat"' : '"globe"' } });
+  const theme = process.env.WM_VERIFY_ORBITAL_THEME === 'light' ? 'light' : 'dark';
+  await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': flat ? '"flat"' : '"globe"', 'worldmonitor-theme': theme } });
   const startUrl = `${base}/dashboard?lat=${at.lat}&lon=${at.lon}&zoom=${flat ? 7 : 4}&layers=none#orbital=${at.lat},${at.lon}`;
   await page.goto(startUrl, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
