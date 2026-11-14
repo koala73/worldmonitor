@@ -35,7 +35,7 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 - [ ] Follow this dependency graph. Start dependent work only after its parent merges, or base it on the parent branch when the execution playbook stacks.
   - [ ] PR A is first. It branches from `main`.
   - [ ] PR B after PR A. It branches from the PR A branch.
-- [ ] Hold the file boundaries. PR A touches only `scripts/shared/air-traffic-*.cjs`, `scripts/ais-relay.cjs`, `Dockerfile.relay`, `api/health.js`, `package.json`, and `tests/air-traffic-*`. PR B touches only `scripts/shared/air-traffic-detector.cjs`, `scripts/ais-relay.cjs`, and `tests/air-traffic-detector*`.
+- [ ] Hold the file boundaries. PR A touches only `scripts/shared/air-traffic-*.cjs`, `scripts/ais-relay.cjs`, `scripts/ais-relay-test-preload.cjs`, `scripts/ais-relay-air-traffic.test.cjs`, `Dockerfile.relay`, `api/health.js`, `package.json`, and `tests/air-traffic-*`. PR B touches only `scripts/shared/air-traffic-detector.cjs`, `scripts/ais-relay.cjs`, `scripts/ais-relay-test-preload.cjs`, `Dockerfile.relay`, `tests/air-traffic-detector*`, `tests/notification-relay-payload-audit.test.mjs`, and `tests/notification-relay-country-scope-5359.test.mjs`.
 - [ ] Hold the review gate. Neither PR changes an interaction. The operator still lands both.
 
 ### PR mechanics, for every PR
@@ -58,7 +58,8 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 Each live lane runs in its own worktree at the PR head. The relay has no control skill, so each lane drives the real relay process through `node` with the fixture preload and reads the fixture Redis.
 
 - [ ] `git fetch origin <head-branch> && git checkout <head SHA>`.
-- [ ] Run `npm run worktree:bootstrap`. Start the relay with `NODE_OPTIONS=--require=./scripts/ais-relay-test-preload.cjs node scripts/ais-relay.cjs` and the lane's OpenSky fixture. Wait for the log line `[AirTraffic] loop starting`.
+- [ ] Run `npm run worktree:bootstrap`.
+- [ ] Start the fixture Redis with `node --test --test-name-pattern=<lane> scripts/ais-relay-air-traffic.test.cjs`. The harness serves Upstash REST on `127.0.0.1` and spawns the relay with `UPSTASH_ALLOW_INSECURE_HTTP=true`, `NODE_OPTIONS=--require=./scripts/ais-relay-test-preload.cjs`, `RELAY_TEST_OPENSKY_STATES_FILE`, and `RELAY_TEST_CLOCK_START_MS`, as `scripts/ais-relay-opensky-shared-cooldown.test.cjs` does. Wait for the log line `[AirTraffic] loop starting`.
 - [ ] Deliver input only through fixture OpenSky responses and fixture clock offsets. Read state only through fixture Redis dumps and relay stdout.
 - [ ] Save every artifact to `/tmp/swarm-<pr-id>/worker-<n>/<slug>` and return the paths with the report.
 
@@ -72,6 +73,8 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 - [ ] Create `scripts/shared/air-traffic-aggregate.cjs` with `aggregateStates(states, fetchedAt)`.
 - [ ] Create `scripts/shared/air-traffic-history.cjs` with `recordTrafficPoint(point, upstashEval)`.
 - [ ] Edit `scripts/ais-relay.cjs` to add the `[AirTraffic]` loop.
+- [ ] Edit `scripts/ais-relay-test-preload.cjs` to serve OpenSky states from `RELAY_TEST_OPENSKY_STATES_FILE` and to start the clock at `RELAY_TEST_CLOCK_START_MS`.
+- [ ] Create `scripts/ais-relay-air-traffic.test.cjs` as the live-lane harness and add it to the `test:sidecar` list in `package.json`.
 - [ ] Edit `Dockerfile.relay` to COPY the three shared files.
 - [ ] Edit `api/health.js` to register `airTrafficHistory`.
 - [ ] Create `tests/air-traffic-aggregate.test.mjs` and `tests/air-traffic-history-redis.test.mjs`.
@@ -84,7 +87,7 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 - [ ] On an OpenSky failure, write a point with `status` set to `gap` and no counts. Never write zeros for a failed fetch.
 - [ ] Store points in one hash per UTC day, `aviation:traffic:history:v1:<YYYY-MM-DD>`, field `t`, with `EXPIREAT` at day end plus 35 days. Follow `scripts/shared/pizzint-history.cjs`, which does the same in one Lua call.
 - [ ] Write `seed-meta:aviation:traffic-history` and `seed-activated:aviation:traffic-history` in the same Lua call.
-- [ ] Register the data key in `STANDALONE_KEYS`, `SEED_META` with `maxStaleMin` 20 and an activation-marker cutover, `ON_DEMAND_KEYS`, and `ACTIVATION_MARKERS` in `api/health.js`.
+- [ ] Register `airTrafficHistory` in `api/health.js` the way `pizzintHistory` is registered. The `STANDALONE_KEYS` entry is the stable heartbeat `seed-meta:aviation:traffic-history`, never a day hash, because health reads data keys with `STRLEN`. Add `SEED_META` with `maxStaleMin` 20 and an activation-marker cutover, `ON_DEMAND_KEYS`, and `ACTIVATION_MARKERS`.
 - [ ] Add the new tests to `test:data` discovery. They live in `tests/`, so no `package.json` list change is needed. Record that check.
 
 **You see.**
@@ -136,6 +139,8 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 
 - [ ] Create `scripts/shared/air-traffic-detector.cjs` with `evaluateCollapse(points, baselines)`.
 - [ ] Edit `scripts/ais-relay.cjs` to call the detector after each recorded point.
+- [ ] Edit `Dockerfile.relay` to COPY `scripts/shared/air-traffic-detector.cjs`. `tests/dockerfile-relay-imports.test.mjs` fails without it.
+- [ ] Edit `tests/notification-relay-payload-audit.test.mjs` and `tests/notification-relay-country-scope-5359.test.mjs` for the new event type.
 - [ ] Create `tests/air-traffic-detector.test.mjs` and `tests/air-traffic-detector-replay.test.mjs`.
 
 **Build.**
@@ -144,7 +149,7 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 - [ ] Baseline each bin as the median `usLowClimbing` at the same UTC bin on the last four same weekdays with `ok` points. Fewer than two such days puts the detector in `insufficient-baseline`, and it never alerts.
 - [ ] Enter `collapsed` when two consecutive `ok` points read below 30% of baseline while `euAirborne` is at least 80% of its own baseline. Leave it when two consecutive points read above 70%.
 - [ ] On entry, publish `aviation_traffic_collapse` with severity `critical`. On exit, publish the same type with severity `high` and a recovery title. Both payloads carry `countryCode` `US`, the ratio, and the onset bin.
-- [ ] Add the new type to the payload audit in `tests/notification-relay-payload-audit.test.mjs` and the country-scope test in `tests/notification-relay-country-scope-5359.test.mjs`.
+- [ ] Cover the new type in the payload audit and the country-scope test.
 
 **You see.**
 
