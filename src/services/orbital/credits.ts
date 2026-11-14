@@ -1,14 +1,15 @@
 import type { MatchedAcquisition, OrbitalEvidence } from './match';
 import type { PointPassLookup } from './pass-client';
+import { CELESTRAK_CREDIT, COPERNICUS_CREDIT, USGS_LANDSAT_CREDIT } from '../../../shared/orbital/image-credit.js';
 
 /** Credit lines the sources ask for, worded as in the source attribution manifest. */
 export const IMAGE_CREDIT = {
-  copernicus: (years: string | number) => `Contains modified Copernicus Sentinel data ${years}`,
-  usgs: 'Landsat imagery courtesy of the U.S. Geological Survey',
+  copernicus: COPERNICUS_CREDIT,
+  usgs: USGS_LANDSAT_CREDIT,
   eumetsat: 'Contains EUMETSAT Meteosat imagery',
   gibs: 'NASA GIBS / EOSDIS',
   gibsAcknowledgement: "We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).",
-  celestrak: 'Orbit elements from CelesTrak',
+  celestrak: CELESTRAK_CREDIT,
 } as const;
 
 export function acquisitionCredit(acquisition: MatchedAcquisition): string {
