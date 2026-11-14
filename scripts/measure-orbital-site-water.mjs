@@ -26,10 +26,16 @@ export function worldCoverItem({ lat, lon }) {
   return `ESA_WorldCover_10m_2021_v200_${ns}${ew}`;
 }
 
-/** Percent of the footprint's valid pixels that are permanent water, from a categorical histogram. */
+/**
+ * Percent of the footprint's valid pixels that are permanent water, from a categorical
+ * histogram. A footprint with no valid pixel has no land data and counts as open water; a
+ * response without the band or its histogram is unreadable and throws, so it is retried.
+ */
 export function waterPercent(band) {
   const [counts, values] = band?.histogram ?? [];
-  if (!Array.isArray(counts) || !Array.isArray(values) || !(band.valid_pixels > 0)) return null;
+  if (!band || !Number.isFinite(band.valid_pixels)) throw new Error('statistics have no map_b1 band');
+  if (band.valid_pixels === 0) return 100;
+  if (!Array.isArray(counts) || !Array.isArray(values)) throw new Error('map_b1 has no histogram');
   const water = values.reduce((sum, value, i) => (value === WATER_CLASS ? sum + counts[i] : sum), 0);
   return Math.round((1000 * water) / band.valid_pixels) / 10;
 }
@@ -42,7 +48,7 @@ async function measure(site) {
     body: JSON.stringify(footprintFeature(site)),
     signal: AbortSignal.timeout(30_000),
   });
-  if (response.status === 404) return null; // open ocean: WorldCover has no tile
+  if (response.status === 404) return null; // outside WorldCover's coverage (e.g. Antarctica): not measured
   if (!response.ok) throw new Error(`HTTP ${response.status} for ${site.id}`);
   return waterPercent((await response.json())?.properties?.statistics?.map_b1);
 }
@@ -57,13 +63,13 @@ async function main() {
         await new Promise((resolve) => setTimeout(resolve, 2_000 * (attempt + 1)));
       }
     }
-    water[site.id] = percent ?? 100;
+    water[site.id] = percent;
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   const lines = Object.entries(water).sort(([a], [b]) => a.localeCompare(b)).map(([id, pct]) => `  ${JSON.stringify(id)}: ${pct},`);
   writeFileSync(join(ROOT, SITE_WATER_OUTPUT), `// Measured by scripts/measure-orbital-site-water.mjs from ESA WorldCover 2021 (class 80,
 // permanent water) over each land site's change-scoring footprint. Do not edit by hand.
-// A site with no WorldCover tile (open ocean) counts as 100.
+// null: no WorldCover tile covers the site (e.g. Antarctica), so it is not measured and is scored as land.
 
 /** Percent of each watched land site's change-scoring footprint that is permanent water. */
 export const SITE_WATER_PERCENT = Object.freeze({

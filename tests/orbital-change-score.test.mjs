@@ -27,6 +27,7 @@ import { ArchiveRefusal, acquisitionsFromStac, countryKey, evaluateSites, ORBITA
 import { makeArchiveSearch, makeFetchSites, makeStatisticsFetch, MAX_SEARCH_PAGES, publicationCommands } from '../scripts/seed-orbital-sites.mjs';
 import { replayKnownChanges, replaySample, TARGETS } from '../scripts/replay-orbital-change.mjs';
 import { SITE_WATER_PERCENT } from '../scripts/shared/orbital-site-water.mjs';
+import { waterPercent } from '../scripts/measure-orbital-site-water.mjs';
 import { WATCHED_SITES } from '../scripts/shared/orbital-watched-sites.generated.mjs';
 import { advanceTrack, geometryKey, newTrack } from '../scripts/shared/orbital/flag-record.js';
 import orbitalSiteAlerts from '../scripts/lib/orbital-site-alerts.cjs';
@@ -290,6 +291,14 @@ describe('orbital change scoring exclusions', () => {
     assert.deepEqual(Object.fromEntries(excluded), { w: 'water', a: 'duplicate of b', c: 'duplicate of b' });
   });
 
+  it('reads WorldCover water share from a categorical histogram, and refuses an unreadable one', () => {
+    assert.equal(waterPercent({ valid_pixels: 4, histogram: [[3, 1], [80, 50]] }), 75);
+    assert.equal(waterPercent({ valid_pixels: 0, histogram: [[], []] }), 100, 'no land data is open water');
+    assert.throws(() => waterPercent(undefined), /no map_b1/);
+    assert.throws(() => waterPercent({ valid_pixels: 4 }), /no histogram/);
+    assert.equal(changeScoringExclusions([{ id: 'x', lat: 0, lon: 0, surface: 'land' }], { x: null }).size, 0, 'an unmeasured site is scored');
+  });
+
   it('measures water for every registry land site, and leaves out the registry water points the review named', () => {
     const land = WATCHED_SITES.filter((site) => site.surface === 'land');
     assert.deepEqual(land.filter((site) => !(site.id in SITE_WATER_PERCENT)).map((site) => site.id), [], 'run scripts/measure-orbital-site-water.mjs after a registry change');
@@ -530,6 +539,36 @@ describe('orbital change stage in the site seeder', () => {
     assert.equal(bodies.length, MAX_SEARCH_PAGES);
     assert.equal(acquisitions.length, MAX_SEARCH_PAGES);
     assert.equal(bodies[1].token, 'next:1');
+  });
+
+  it('reads no further search page once the deadline has passed', async () => {
+    let now = NOW;
+    let pages = 0;
+    const searchArchive = makeArchiveSearch({
+      minIntervalMs: 0,
+      clock: () => now,
+      fetchImpl: async (_url, init) => {
+        pages += 1;
+        now += 60_000;
+        return Response.json({ features: [], links: [{ rel: 'next', method: 'POST', body: { ...JSON.parse(init.body), token: `next:${pages}` } }] });
+      },
+    });
+    await searchArchive(LAND, NOW, NOW + 90_000);
+    assert.equal(pages, 2, 'the first page always, then pages only while time is left');
+  });
+
+  it('starts no statistics request that waited for its slot after the stage halted', async () => {
+    const fetchStatistics = makeStatisticsFetch({ minIntervalMs: 0, fetchImpl: async () => assert.fail('no request after a halt') });
+    await assert.rejects(fetchStatistics(radarScene(40), {}, { stopRequested: () => true }), /scoring halted/);
+  });
+
+  it('does not start a backfill search after the deadline', async () => {
+    const { flag, stopped } = await scoreSiteChange({
+      site: LAND, acquisitions: [radarScene(40)], previous: null, fetchStatistics: async () => assert.fail('nothing is scored'),
+      searchBackfill: async () => assert.fail('no backfill after the deadline'), nowMs: NOW, deadlineMs: NOW, clock: () => NOW,
+    });
+    assert.equal(stopped, 'deadline');
+    assert.equal(flag.backfilledAt, null);
   });
 
   it('spaces concurrent statistics requests by the throttle interval', async () => {

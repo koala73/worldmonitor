@@ -1,6 +1,6 @@
 // Measured by scripts/measure-orbital-site-water.mjs from ESA WorldCover 2021 (class 80,
 // permanent water) over each land site's change-scoring footprint. Do not edit by hand.
-// A site with no WorldCover tile (open ocean) counts as 100.
+// null: no WorldCover tile covers the site (e.g. Antarctica), so it is not measured and is scored as land.
 
 /** Percent of each watched land site's change-scoring footprint that is permanent water. */
 export const SITE_WATER_PERCENT = Object.freeze({
@@ -181,7 +181,7 @@ export const SITE_WATER_PERCENT = Object.freeze({
   "military-base:rayak_air_base": 0,
   "military-base:ream_naval_base": 64.9,
   "military-base:robertson_barracks": 0,
-  "military-base:rothera_research_station": 100,
+  "military-base:rothera_research_station": null,
   "military-base:royal_air_force_alconbury": 0,
   "military-base:royal_air_force_croughton": 1.2,
   "military-base:royal_montserrat_defence_force_headquart": 51.3,
