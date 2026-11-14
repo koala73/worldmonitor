@@ -73,7 +73,7 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 - [ ] Create `scripts/shared/air-traffic-aggregate.cjs` with `aggregateStates(states, fetchedAt)`.
 - [ ] Create `scripts/shared/air-traffic-history.cjs` with `recordTrafficPoint(point, upstashEval)`.
 - [ ] Edit `scripts/ais-relay.cjs` to add the `[AirTraffic]` loop.
-- [ ] Edit `scripts/ais-relay-test-preload.cjs` to serve OpenSky states from `RELAY_TEST_OPENSKY_STATES_FILE` and to start the clock at `RELAY_TEST_CLOCK_START_MS`.
+- [ ] Edit `scripts/ais-relay-test-preload.cjs` to serve OpenSky states from `RELAY_TEST_OPENSKY_STATES_FILE` and to start the clock at `RELAY_TEST_CLOCK_START_MS`. Add `RELAY_TEST_OPENSKY_TIMEOUT_SEQUENCE`, a comma list read one entry per OpenSky request, such as `1,1,1,0`. Today `req.setTimeout` is a no-op and the response delay is fixed for the process. For a `1` entry, the preload records the duration and callback passed to `req.setTimeout`, never responds, and fires the timeout after that duration. A `0` entry, or an exhausted list, responds normally.
 - [ ] Create `scripts/ais-relay-air-traffic.test.cjs` as the live-lane harness and add it to the `test:sidecar` list in `package.json`.
 - [ ] Edit `Dockerfile.relay` to COPY the three shared files.
 - [ ] Edit `api/health.js` to register `airTrafficHistory`.
@@ -107,7 +107,7 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 - [ ] Lane 1. Regression lane against trunk. Run the relay at trunk and head with the same 10,000-state global fixture. Trunk lacks the feature, so record that and gate the head writing one `ok` point with the fixture's counts. Save `lane1-trunk-vs-head.txt`. Pass when trunk writes no traffic key and head writes exactly one point that matches the fixture's hand-counted totals.
 - [ ] Lane 2. Replay six snapshots sampled from the adsb.lol archive for 2026-11-13 between 20:30Z and 21:00Z. Save `lane2-onset.json`. Pass when `usLowClimbing` falls by more than half between the 20:30Z and 20:50Z points.
 - [ ] Lane 3. Fixture OpenSky answers HTTP 429. Save `lane3-gap.json`. Pass when the stored point has `status` set to `gap` and no count fields.
-- [ ] Lane 4. Fixture OpenSky times out for three ticks, then recovers. Save `lane4-recovery.json`. Pass when three `gap` points are followed by an `ok` point and the relay keeps serving other routes.
+- [ ] Lane 4. Set `RELAY_TEST_OPENSKY_TIMEOUT_SEQUENCE=1,1,1,0` so fixture OpenSky times out for three ticks, then recovers. Save `lane4-recovery.json`. Pass when three `gap` points are followed by an `ok` point and the relay keeps serving other routes.
 - [ ] Lane 5. Advance the fixture clock across 23:55Z to 00:05Z. Save `lane5-day-roll.json`. Pass when the two points land in two day hashes with the correct `EXPIREAT`.
 - [ ] Lane 6. Run two relay replicas against one fixture Redis for three ticks. Save `lane6-replicas.json`. Pass when each bin holds one point and no bin is double counted.
 - [ ] Lane 7. Request `/opensky` with no bbox from a client while the loop runs. Save `lane7-cache.txt`. Pass when the client and the loop share one upstream fetch per cache window.
