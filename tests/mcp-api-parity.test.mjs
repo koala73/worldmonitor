@@ -274,6 +274,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   // category is fetch-on-miss.
   ["GET /api/aviation/v1/get-airport-ops-summary",
     "deferred-to-future-tool: pure-read but no MCP tool exposes aviation:delays:intl:v3 yet — bundle into a future expanded-domain tool"],
+  ["GET /api/orbital/v1/list-imaging-satellites",
+    "deferred-to-future-tool: pure-read raw orbit elements; the subscription point-lookup tool computes passes from orbital:catalog:v1 instead of exposing the catalog"],
   ["GET /api/cyber/v1/list-cyber-threats",
     "deferred-to-future-tool: pure-read but no MCP tool exposes cyber:threats:v2 yet — bundle into a future expanded-domain tool"],
   ["GET /api/economic/v1/get-bis-credit",
