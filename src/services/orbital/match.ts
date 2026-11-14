@@ -13,9 +13,16 @@ import {
   type StacArchiveId,
 } from './archive-stac';
 import { cropBox, planetaryComputerCropUrl, type CropBox } from './crop-url';
-import type { PointPassLookup } from './pass-client';
-import type { PointPass } from './pass-job';
+import type { PassJobResult, PointPass } from './pass-job';
+import type { PassWindow } from './pass-query';
 import { profileFor } from './pass-query';
+
+/** The parts of a point lookup evidence needs; pass-client is not imported so server bundles stay clear of the browser catalog loader. */
+export interface PointPassLookup extends PassJobResult {
+  point: GeoPoint;
+  window: PassWindow;
+  nowMs: number;
+}
 
 const MINUTE_MS = 60_000;
 /** Items of one platform and orbit this close together are tiles or processing levels of one acquisition. */

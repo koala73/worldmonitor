@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package worldmonitor.orbital.v1;
+
+import "sebuf/http/annotations.proto";
+
+// GetCountryImageryEvidenceRequest names one country.
+message GetCountryImageryEvidenceRequest {
+  // ISO 3166-1 alpha-2 country code, upper case, e.g. "UA".
+  string country_code = 1 [(sebuf.http.query) = {name: "country_code"}];
+}
+
+// SiteObservation is the newest archive scene of a watched site.
+message SiteObservation {
+  string item_id = 1;
+  // Sensor profile: sentinel-2, sentinel-1 or landsat.
+  string profile_id = 2;
+  // Scene time, ISO 8601 UTC.
+  string datetime = 3;
+}
+
+// SiteImagingWindow is the next pass expected to image a watched site.
+message SiteImagingWindow {
+  string profile_id = 1;
+  // Pass time, ISO 8601 UTC.
+  string time = 2;
+}
+
+// ConfirmedChangeFlag is a change in radar statistics at a site that a second comparable scene confirmed.
+message ConfirmedChangeFlag {
+  // Always "imagery statistics changed": the flag reports that statistics changed, not what changed.
+  string wording = 1;
+  // Archive item of the scene that confirmed the change.
+  string item_id = 2;
+  // Time of that scene, ISO 8601 UTC.
+  string datetime = 3;
+  // Acquisition geometry the baseline is specific to: constellation, relative orbit, direction and mode.
+  string geometry_key = 4;
+  // When the flag record last changed, as Unix epoch milliseconds.
+  int64 updated_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// WatchedSiteEvidence is the satellite evidence for one watched site.
+message WatchedSiteEvidence {
+  string site_id = 1;
+  string name = 2;
+  double lat = 3;
+  double lon = 4;
+  // "land" or "maritime".
+  string surface = 5;
+  // Registry lists the site comes from.
+  repeated string origin_lists = 6;
+  // When the site was last evaluated, as Unix epoch milliseconds.
+  int64 evaluated_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Newest archive scene of the site; absent when none was found.
+  SiteObservation last_observation = 8;
+  // Next expected imaging pass; absent when none falls in the next 72 hours.
+  SiteImagingWindow next_window = 9;
+  // Operators whose satellites passed over the site in the evaluation window.
+  repeated string operators = 10;
+  // Present only for a confirmed change; a raised or retracted change is never returned.
+  ConfirmedChangeFlag confirmed_flag = 11;
+}
+
+// GetCountryImageryEvidenceResponse is a country's watched-site satellite evidence.
+message GetCountryImageryEvidenceResponse {
+  string country_code = 1;
+  // Evaluation time of the country's least recently evaluated site, as Unix epoch milliseconds; 0 when nothing is served.
+  int64 as_of = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // True when the evidence is missing or older than its freshness limit; sites is then empty.
+  bool stale = 3;
+  // Watched sites in the country; 0 for a country with none.
+  int32 site_count = 4;
+  // Sites with a confirmed change flag.
+  int32 confirmed_flag_count = 5;
+  repeated WatchedSiteEvidence sites = 6;
+}

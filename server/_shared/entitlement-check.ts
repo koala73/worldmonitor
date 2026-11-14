@@ -209,6 +209,10 @@ export interface EntitlementCheckOptions {
  * 403'd real Pro subscribers calling via Clerk session (no tester key).
  */
 const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
+  // Orbital Watch REST: passes and images for any point, and per-country
+  // watched-site evidence. The in-app lookup stays free; the API is Pro.
+  '/api/orbital/v1/get-point-passes': 1,
+  '/api/orbital/v1/get-country-imagery-evidence': 1,
   '/api/forecast/v1/trigger-simulation': 1,
   '/api/intelligence/v1/classify-event': 1,
   // deduct-situation is a Pro panel (DeductionPanel premium: 'locked') and in

@@ -103,7 +103,9 @@ export const MCP_SUPPORTED_CLIENT_MATRIX: Record<string, string> = {
 };
 
 export const SERVER_NAME = 'worldmonitor';
-export const SERVER_VERSION = '1.55.0';
+// Bumped 1.55.0 → 1.56.0 for get_point_satellite_passes and
+// get_country_imagery_evidence (Orbital Watch, #10615).
+export const SERVER_VERSION = '1.56.0';
 
 // MCP `Implementation` (initialize serverInfo, and the modern-era
 // _meta["io.modelcontextprotocol/serverInfo"]). `title`, `description`,

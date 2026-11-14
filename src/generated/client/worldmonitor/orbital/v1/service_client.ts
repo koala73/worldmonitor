@@ -56,6 +56,120 @@ export interface CatalogDay {
   elements: OmmElements[];
 }
 
+export interface GetPointPassesRequest {
+  lat: number;
+  lon: number;
+}
+
+export interface GetPointPassesResponse {
+  point?: OrbitalPoint;
+  windowStartMs: number;
+  windowEndMs: number;
+  computedAt: number;
+  inventoryVersion: string;
+  catalogFetchedAt: number;
+  stale: boolean;
+  passes: PointPass[];
+  outOfFootprintPasses: number;
+  acquisitions: ImageAcquisition[];
+  archiveStatus: string;
+  failedSources: ArchiveSourceFailure[];
+  unansweredProfiles: string[];
+}
+
+export interface OrbitalPoint {
+  lat: number;
+  lon: number;
+}
+
+export interface PointPass {
+  noradId: number;
+  name: string;
+  profileId: string;
+  category: string;
+  timeMs: number;
+  opportunity: boolean;
+  groundDistanceKm: number;
+  side: string;
+  elevationDeg: number;
+  incidenceDeg: number;
+  sunElevationDeg: number;
+  edgeOfSwath: boolean;
+  coverage: boolean;
+  tier: string;
+  tierNote: string;
+  orbitAgeDays: number;
+  acquisitionKey: string;
+}
+
+export interface ImageAcquisition {
+  key: string;
+  profileId: string;
+  platform: string;
+  orbit: number;
+  startMs: number;
+  endMs: number;
+  itemIds: string[];
+  archives: string[];
+  cloudCoverPct?: number;
+  resolutionM: number;
+  imageUrl: string;
+  passNoradId: number;
+  passTimeMs: number;
+}
+
+export interface ArchiveSourceFailure {
+  archive: string;
+  reason: string;
+  httpStatus: number;
+}
+
+export interface GetCountryImageryEvidenceRequest {
+  countryCode: string;
+}
+
+export interface GetCountryImageryEvidenceResponse {
+  countryCode: string;
+  asOf: number;
+  stale: boolean;
+  siteCount: number;
+  confirmedFlagCount: number;
+  sites: WatchedSiteEvidence[];
+}
+
+export interface WatchedSiteEvidence {
+  siteId: string;
+  name: string;
+  lat: number;
+  lon: number;
+  surface: string;
+  originLists: string[];
+  evaluatedAt: number;
+  lastObservation?: SiteObservation;
+  nextWindow?: SiteImagingWindow;
+  operators: string[];
+  confirmedFlag?: ConfirmedChangeFlag;
+}
+
+export interface SiteObservation {
+  itemId: string;
+  profileId: string;
+  datetime: string;
+}
+
+export interface SiteImagingWindow {
+  profileId: string;
+  time: string;
+}
+
+export interface ConfirmedChangeFlag {
+  wording: string;
+  itemId: string;
+  datetime: string;
+  geometryKey: string;
+  updatedAt: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -125,6 +239,57 @@ export class OrbitalServiceClient {
     }
 
     return await resp.json() as ListImagingSatellitesResponse;
+  }
+
+  async getPointPasses(req: GetPointPassesRequest, options?: OrbitalServiceCallOptions): Promise<GetPointPassesResponse> {
+    let path = "/api/orbital/v1/get-point-passes";
+    const params = new URLSearchParams();
+    if (req.lat != null && req.lat !== 0) params.set("lat", String(req.lat));
+    if (req.lon != null && req.lon !== 0) params.set("lon", String(req.lon));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetPointPassesResponse;
+  }
+
+  async getCountryImageryEvidence(req: GetCountryImageryEvidenceRequest, options?: OrbitalServiceCallOptions): Promise<GetCountryImageryEvidenceResponse> {
+    let path = "/api/orbital/v1/get-country-imagery-evidence";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCountryImageryEvidenceResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

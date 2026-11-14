@@ -1027,7 +1027,8 @@ describe('public OpenAPI dedupe (real bundle)', () => {
     // feedback submit-report, which carries the same 2 headers.
     assert.deepEqual(headerStats, { hoisted: 4, replacedRefs: 43 });
     // 54: list-security-advisories fetchedAt (travel advisory map) shares it.
-    assert.equal(int64Stats.replacedRefs, 54);
+    // 56: the orbital point-passes and country-evidence operations add two more.
+    assert.equal(int64Stats.replacedRefs, 56);
     // Described int64 fields (own comment + generated warning) keep their
     // comment beside the shared $ref; a regression to zero would silently give
     // back ~4 KB of the scanner budget.

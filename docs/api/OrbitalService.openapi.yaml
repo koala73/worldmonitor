@@ -142,6 +142,284 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/orbital/v1/get-point-passes:
+        get:
+            tags:
+                - OrbitalService
+            summary: GetPointPasses
+            description: GetPointPasses returns every imaging pass whose footprint covers a point over the last 7 days and the next 72 hours, each with one tier, and the archive images matched to them. The point is rounded to 0.01 degrees and the response names the point used. PRO-gated. Requires entitlement tier >= 1.
+            operationId: GetPointPasses
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: lat
+                  in: query
+                  description: Latitude in decimal degrees, -90 to 90.
+                  required: false
+                  example: 40.7128
+                  schema:
+                    type: number
+                    format: double
+                - name: lon
+                  in: query
+                  description: Longitude in decimal degrees, -180 to 180.
+                  required: false
+                  example: -74.006
+                  schema:
+                    type: number
+                    format: double
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "acquisitions":
+                                    - "archives":
+                                        - "example"
+                                      "cloudCoverPct": 1.5
+                                      "endMs": 1
+                                      "imageUrl": "https://example.com/worldmonitor"
+                                      "itemIds":
+                                          - "example"
+                                "archiveStatus": "example"
+                                "catalogFetchedAt": 1717200000000
+                                "computedAt": 1717200000000
+                                "failedSources":
+                                    - "archive": "example"
+                                      "httpStatus": 1
+                                      "reason": "example"
+                            schema:
+                                $ref: '#/components/schemas/GetPointPassesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/orbital/v1/get-country-imagery-evidence:
+        get:
+            tags:
+                - OrbitalService
+            summary: GetCountryImageryEvidence
+            description: GetCountryImageryEvidence returns a country's watched sites with their newest scene, next imaging window and any confirmed change flag. PRO-gated. Requires entitlement tier >= 1.
+            operationId: GetCountryImageryEvidence
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: country_code
+                  in: query
+                  description: ISO 3166-1 alpha-2 country code, upper case, e.g. "UA".
+                  required: false
+                  example: "US"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "asOf": 1
+                                "confirmedFlagCount": 1
+                                "countryCode": "US"
+                                "siteCount": 1
+                                "sites":
+                                    - "confirmedFlag":
+                                        "datetime": "2026-01-15"
+                                        "geometryKey": "example"
+                                        "itemId": "example-id"
+                                        "updatedAt": 1717200000000
+                                        "wording": "example"
+                                      "evaluatedAt": 1717200000000
+                                      "lastObservation":
+                                          "datetime": "2026-01-15"
+                                          "itemId": "example-id"
+                                          "profileId": "example-id"
+                                      "lat": 40.7128
+                                      "lon": -74.006
+                            schema:
+                                $ref: '#/components/schemas/GetCountryImageryEvidenceResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
     securitySchemes:
         WorldMonitorKey:
@@ -154,6 +432,10 @@ components:
             in: header
             name: X-Api-Key
             description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
+        BearerAuth:
+            type: http
+            scheme: bearer
+            description: 'Bearer token: a Clerk-issued JWT for browser session flows, passed as Authorization: Bearer <token>.'
     schemas:
         JmespathProjectionError:
             description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
@@ -434,3 +716,319 @@ components:
                     items:
                         $ref: '#/components/schemas/OmmElements'
             description: CatalogDay holds the elements fetched on one UTC day; past passes use the day nearest each pass.
+        GetPointPassesRequest:
+            type: object
+            properties:
+                lat:
+                    type: number
+                    maximum: 90
+                    minimum: -90
+                    format: double
+                    description: Latitude in decimal degrees, -90 to 90.
+                lon:
+                    type: number
+                    maximum: 180
+                    minimum: -180
+                    format: double
+                    description: Longitude in decimal degrees, -180 to 180.
+            description: GetPointPassesRequest names a point on Earth. Coordinates are rounded to 0.01 degrees before anything is computed; an omitted coordinate is 0.
+        GetPointPassesResponse:
+            type: object
+            properties:
+                point:
+                    $ref: '#/components/schemas/OrbitalPoint'
+                windowStartMs:
+                    type: integer
+                    format: int64
+                    description: 'Search window, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                windowEndMs:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                computedAt:
+                    type: integer
+                    format: int64
+                    description: 'When the passes were computed, as Unix epoch milliseconds; past and future are judged against it.. Warning: Values > 2^53 may lose precision in JavaScript'
+                inventoryVersion:
+                    type: string
+                    description: Version of the sensor-profile inventory used.
+                catalogFetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'When the orbit elements were fetched, as Unix epoch milliseconds; 0 with no catalog.. Warning: Values > 2^53 may lose precision in JavaScript'
+                stale:
+                    type: boolean
+                    description: True when the orbit catalog is missing or older than its freshness limit.
+                passes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PointPass'
+                outOfFootprintPasses:
+                    type: integer
+                    format: int32
+                    description: Passes in range whose footprint misses the point; they are counted, not listed.
+                acquisitions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ImageAcquisition'
+                archiveStatus:
+                    type: string
+                    description: '"complete" when every archive answered, "partial" when one failed and the passes it serves keep geometry tiers.'
+                failedSources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ArchiveSourceFailure'
+                unansweredProfiles:
+                    type: array
+                    items:
+                        type: string
+                        description: Missions whose every archive failed, so their passes could not be confirmed or ruled out.
+            description: GetPointPassesResponse lists imaging passes over the rounded point for the last 7 days and the next 72 hours, with the archive images matched to them.
+        OrbitalPoint:
+            type: object
+            properties:
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+            description: OrbitalPoint is a point in decimal degrees.
+        PointPass:
+            type: object
+            properties:
+                noradId:
+                    type: integer
+                    format: int32
+                name:
+                    type: string
+                    description: Satellite name as published, e.g. "SENTINEL-2C".
+                profileId:
+                    type: string
+                    description: Id of the sensor profile the satellite belongs to.
+                category:
+                    type: string
+                    description: Sensor category, e.g. open-optical, open-radar, weather-polar, commercial-radar, military, crewed-station.
+                timeMs:
+                    type: integer
+                    format: int64
+                    description: 'Time of closest approach, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                opportunity:
+                    type: boolean
+                    description: 'True for a future pass: a chance to image, never an image.'
+                groundDistanceKm:
+                    type: number
+                    format: double
+                    description: Ground distance from the sub-satellite point to the point, km.
+                side:
+                    type: string
+                    description: 'Side of the ground track the point lies on, facing the direction of travel: "left" or "right".'
+                elevationDeg:
+                    type: number
+                    format: double
+                    description: Elevation of the satellite seen from the point, degrees.
+                incidenceDeg:
+                    type: number
+                    format: double
+                    description: Incidence angle at the point, degrees from vertical.
+                sunElevationDeg:
+                    type: number
+                    format: double
+                    description: Sun elevation at the point at pass time, degrees.
+                edgeOfSwath:
+                    type: boolean
+                    description: True when the point is within 5 km of the footprint edge, so whether it was imaged is uncertain.
+                coverage:
+                    type: boolean
+                    description: True when the mission acquires over this point at all (land and coasts for the open missions).
+                tier:
+                    type: string
+                    description: One of confirmed-image, likely-imaged, within-reach, capability-overhead, daily-mosaic, passed-overhead, opportunity.
+                tierNote:
+                    type: string
+                    description: '"not-in-archive" when the archive answered without this pass after its publication delay; empty otherwise.'
+                orbitAgeDays:
+                    type: number
+                    format: double
+                    description: Days between the pass and the epoch of the orbit elements it was computed from.
+                acquisitionKey:
+                    type: string
+                    description: Key of the archive acquisition this pass produced; empty when none matched.
+            description: PointPass is one pass of a profiled imaging satellite whose footprint covers the point.
+        ImageAcquisition:
+            type: object
+            properties:
+                key:
+                    type: string
+                profileId:
+                    type: string
+                    description: 'Sensor profile: sentinel-2, sentinel-1 or landsat.'
+                platform:
+                    type: string
+                    description: Platform, e.g. "sentinel-2c" or "landsat-9".
+                orbit:
+                    type: integer
+                    format: int32
+                    description: Relative orbit, or the Landsat WRS path; 0 when unknown.
+                startMs:
+                    type: integer
+                    format: int64
+                    description: 'Sensing span, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                endMs:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                itemIds:
+                    type: array
+                    items:
+                        type: string
+                        description: Archive item ids that make up the acquisition.
+                archives:
+                    type: array
+                    items:
+                        type: string
+                        description: 'Archives holding it: earth-search, planetary-computer.'
+                cloudCoverPct:
+                    type: number
+                    format: double
+                    description: Scene cloud cover in percent, for optical acquisitions that report it.
+                resolutionM:
+                    type: number
+                    format: double
+                    description: Native resolution, metres.
+                imageUrl:
+                    type: string
+                    description: 'Public image of the acquisition: a crop around the point when the archive can render one, else a whole-scene preview; empty when neither exists.'
+                passNoradId:
+                    type: integer
+                    format: int32
+                    description: NORAD id of the pass that produced it; 0 for an image no computed pass explains.
+                passTimeMs:
+                    type: integer
+                    format: int64
+                    description: 'Time of that pass, as Unix epoch milliseconds; 0 when unmatched.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: ImageAcquisition is one archive acquisition at the point. Overlapping tiles and copies of one acquisition count once.
+        ArchiveSourceFailure:
+            type: object
+            properties:
+                archive:
+                    type: string
+                    description: earth-search or planetary-computer.
+                reason:
+                    type: string
+                    description: network, http-status, invalid-response or aborted.
+                httpStatus:
+                    type: integer
+                    format: int32
+                    description: Upstream HTTP status for http-status failures; 0 otherwise.
+            description: ArchiveSourceFailure names an archive that gave no answer. It carries no URL.
+        GetCountryImageryEvidenceRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code, upper case, e.g. "UA".
+            description: GetCountryImageryEvidenceRequest names one country.
+        GetCountryImageryEvidenceResponse:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                asOf:
+                    type: integer
+                    format: int64
+                    description: 'Evaluation time of the country''s least recently evaluated site, as Unix epoch milliseconds; 0 when nothing is served.. Warning: Values > 2^53 may lose precision in JavaScript'
+                stale:
+                    type: boolean
+                    description: True when the evidence is missing or older than its freshness limit; sites is then empty.
+                siteCount:
+                    type: integer
+                    format: int32
+                    description: Watched sites in the country; 0 for a country with none.
+                confirmedFlagCount:
+                    type: integer
+                    format: int32
+                    description: Sites with a confirmed change flag.
+                sites:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/WatchedSiteEvidence'
+            description: GetCountryImageryEvidenceResponse is a country's watched-site satellite evidence.
+        WatchedSiteEvidence:
+            type: object
+            properties:
+                siteId:
+                    type: string
+                name:
+                    type: string
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+                surface:
+                    type: string
+                    description: '"land" or "maritime".'
+                originLists:
+                    type: array
+                    items:
+                        type: string
+                        description: Registry lists the site comes from.
+                evaluatedAt:
+                    type: integer
+                    format: int64
+                    description: 'When the site was last evaluated, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                lastObservation:
+                    $ref: '#/components/schemas/SiteObservation'
+                nextWindow:
+                    $ref: '#/components/schemas/SiteImagingWindow'
+                operators:
+                    type: array
+                    items:
+                        type: string
+                        description: Operators whose satellites passed over the site in the evaluation window.
+                confirmedFlag:
+                    $ref: '#/components/schemas/ConfirmedChangeFlag'
+            description: WatchedSiteEvidence is the satellite evidence for one watched site.
+        SiteObservation:
+            type: object
+            properties:
+                itemId:
+                    type: string
+                profileId:
+                    type: string
+                    description: 'Sensor profile: sentinel-2, sentinel-1 or landsat.'
+                datetime:
+                    type: string
+                    description: Scene time, ISO 8601 UTC.
+            description: SiteObservation is the newest archive scene of a watched site.
+        SiteImagingWindow:
+            type: object
+            properties:
+                profileId:
+                    type: string
+                time:
+                    type: string
+                    description: Pass time, ISO 8601 UTC.
+            description: SiteImagingWindow is the next pass expected to image a watched site.
+        ConfirmedChangeFlag:
+            type: object
+            properties:
+                wording:
+                    type: string
+                    description: 'Always "imagery statistics changed": the flag reports that statistics changed, not what changed.'
+                itemId:
+                    type: string
+                    description: Archive item of the scene that confirmed the change.
+                datetime:
+                    type: string
+                    description: Time of that scene, ISO 8601 UTC.
+                geometryKey:
+                    type: string
+                    description: 'Acquisition geometry the baseline is specific to: constellation, relative orbit, direction and mode.'
+                updatedAt:
+                    type: integer
+                    format: int64
+                    description: 'When the flag record last changed, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: ConfirmedChangeFlag is a change in radar statistics at a site that a second comparable scene confirmed.

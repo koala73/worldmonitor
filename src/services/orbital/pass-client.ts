@@ -1,5 +1,5 @@
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
-import type { CatalogStatus, OrbitalCatalog } from './catalog';
+import type { CatalogStatus, OrbitalCatalog } from './catalog-shape';
 import type { DaylightSpan, PassJobInput, PassJobReply, PassJobRequest, PassJobResult, PointPass, SatelliteOutcome } from './pass-job';
 import { assertPassQuery, type PassWindow } from './pass-query';
 

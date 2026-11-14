@@ -684,6 +684,8 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/imagery/v1/search-imagery': { limit: 30, window: '60 s' },
   // One catalog read per point lookup; the seeded key is never refreshed from here.
   '/api/orbital/v1/list-imaging-satellites': { limit: 60, window: '60 s' },
+  '/api/orbital/v1/get-point-passes': { limit: 20, window: '60 s' },
+  '/api/orbital/v1/get-country-imagery-evidence': { limit: 60, window: '60 s' },
   // Generic batch fan-out: one request re-dispatches up to 20 gateway GETs, so
   // cap the multiplier at the same 30/min budget as the other batch routes.
   '/api/batch/v1/execute': { limit: 30, window: '60 s' },
@@ -949,6 +951,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/conflict/v1/get-humanitarian-summary-batch': {
     reason: 'Batch summary fans out to the external HAPI (humdata) provider on cache miss.',
+  },
+  '/api/orbital/v1/get-point-passes': {
+    reason: 'Each uncached point propagates the imaging catalog and searches two public image archives.',
   },
   '/api/intelligence/v1/get-country-coverage': {
     reason: 'Country coverage fans out to two Google News feeds and the live military-flights path on cache miss.',

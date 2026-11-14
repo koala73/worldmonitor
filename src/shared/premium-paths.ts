@@ -39,6 +39,10 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   // pairs with the next opening quote and silently eats a path out of the
   // published security contract.
   '/api/intelligence/v1/get-country-coverage',
+  // Orbital Watch: the in-app point lookup is free and runs in the browser;
+  // the per-point API and the per-country satellite evidence API are Pro.
+  '/api/orbital/v1/get-point-passes',
+  '/api/orbital/v1/get-country-imagery-evidence',
   '/api/intelligence/v1/list-market-implications',
   '/api/intelligence/v1/list-wsb-tickers',
   '/api/intelligence/v1/get-regional-snapshot',

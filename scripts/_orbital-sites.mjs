@@ -333,6 +333,8 @@ export function planPublication({ sites, registryVersion, previousIndex, previou
     evaluated: evaluation.evaluated,
     failed: evaluation.failed,
     ...(evaluation.change && { change: evaluation.change }),
+    // Countries the registry watches, so a reader can tell one not yet evaluated from one with no sites.
+    registryCountries: [...new Set(sites.map((site) => site.countryCode))].sort(),
     sites: Object.fromEntries([...records.entries()].sort(([a], [b]) => a.localeCompare(b))
       .map(([id, record]) => [id, { countryCode: record.countryCode, revision: record.revision, evaluatedAt: record.evaluatedAt }])),
     countries: Object.fromEntries([...rollups.entries()]

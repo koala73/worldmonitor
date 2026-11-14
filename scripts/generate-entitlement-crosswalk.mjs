@@ -174,6 +174,9 @@ const MAP = [
   [/:\/api\/supply-chain\/v1\/get-mineral-production$/,                            { cap: 'supplychain.minerals' }],
   [/:\/api\/supply-chain\/v1\/(get-country-vulnerabilities|get-chokepoint-dependencies|list-vulnerability-rankings)$/, { cap: 'supplychain.vulnerability' }],
   [/:\/api\/market\/v1\/(get-physical-premiums|get-physical-divergence-index)$/,   { cap: 'markets.physical_metals' }],
+  // Orbital Watch REST: the point lookup is free in the app; the per-point
+  // API and per-country watched-site evidence are the paid satellite capability.
+  [/:\/api\/orbital\/v1\/(get-point-passes|get-country-imagery-evidence)$/, { cap: 'orbital.imagery' }],
   [/:\/api\/military\/v1\/get-defense-industrial-base$/,                           { cap: 'military.industrial_base' }],
   [/:\/api\/trade\/v1\//,                                 { cap: 'trade.flows' }],
   [/:\/api\/economic\/v1\/get-national-debt$/,            { cap: 'economic.debt' }],
