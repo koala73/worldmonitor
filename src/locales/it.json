@@ -4426,7 +4426,6 @@
     "dataAndCommunity": "Dati e comunità",
     "theme": "Tema",
     "themeDesc": "Automatico segue le preferenze di sistema.",
-    "themeAuto": "Automatico (segui sistema)",
     "themeDark": "Scuro",
     "themeLight": "Chiaro",
     "mapProvider": "Provider tile mappa",
