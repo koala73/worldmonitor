@@ -10,7 +10,10 @@ import {
   VARIANT_SEO_PARAGRAPHS,
   variantSeoWordCount,
 } from '../src/config/variant-seo-summaries';
-import { WEB_DASHBOARD_VARIANTS } from '../src/config/variant-dashboard-html';
+import {
+  WEB_DASHBOARD_VARIANTS,
+  renderVariantDashboardHtml,
+} from '../src/config/variant-dashboard-html';
 import { INDEXABLE_ROBOTS_CONTENT as SHARED_ROBOTS } from '../shared/seo-robots.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -30,10 +33,48 @@ describe('SEO crawl-directive hygiene (#7380)', () => {
     assert.match(read('index.html'), robotsRe);
     assert.match(read('pro-test/welcome.html'), robotsRe);
     assert.match(read('pro-test/index.html'), robotsRe);
+    assert.match(read('public/agent/index.html'), robotsRe);
+    assert.match(read('public/security/index.html'), robotsRe);
+    assert.match(read('public/trust/index.html'), robotsRe);
+    assert.match(read('public/mcp-setup.html'), robotsRe);
     assert.match(
       read('scripts/build-crawlable-corpus.mjs'),
       /robots = INDEXABLE_ROBOTS_CONTENT/,
     );
+  });
+
+  it('declares >=48x48 square favicons, Open Graph, and X cards across static templates', () => {
+    for (const path of [
+      'index.html',
+      'pro-test/welcome.html',
+      'pro-test/index.html',
+      'blog-site/src/layouts/Base.astro',
+      'scripts/build-crawlable-corpus.mjs',
+      'public/agent/index.html',
+      'public/security/index.html',
+      'public/trust/index.html',
+      'public/mcp-setup.html',
+    ]) {
+      const html = read(path);
+      assert.match(
+        html,
+        /<link\s+[^>]*rel="icon"[^>]*sizes="(?:96x96|192x192)"[^>]*href="[^"]*android-chrome-(?:96x96|192x192)\.png"/,
+        `${path} must declare a >=48x48 square PNG favicon for search results`,
+      );
+      assert.match(html, /property="og:title"/, `${path} must declare og:title`);
+      assert.match(html, /property="og:image"/, `${path} must declare og:image`);
+      assert.match(html, /name="twitter:card"\s+content="summary_large_image"/, `${path} must declare summary_large_image X card`);
+    }
+
+    const fullHtml = read('index.html');
+    for (const variant of WEB_DASHBOARD_VARIANTS) {
+      const variantHtml = renderVariantDashboardHtml(fullHtml, variant);
+      assert.match(
+        variantHtml,
+        new RegExp(`<link rel="icon" type="image/png" sizes="192x192" href="https://${variant}\\.worldmonitor\\.app/favico/${variant}/android-chrome-192x192\\.png" />`),
+        `${variant} dashboard HTML must declare its own 192x192 square favicon`,
+      );
+    }
   });
 
   it('keeps each dashboard variant summary in the 300–500 word differentiation band', () => {
