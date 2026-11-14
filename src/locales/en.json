@@ -4756,8 +4756,8 @@
       "vessels": "ship positions"
     },
     "caption": {
-      "clear": "Point cloud-free",
-      "clearSceneCloud": "Point cloud-free · scene {{pct}}% cloud",
+      "clear": "No cloud over the point",
+      "clearSceneCloud": "No cloud over the point · scene {{pct}}% cloud",
       "clouded": "Cloud at point · {{pct}}%",
       "cloudShadow": "Shadow at point",
       "spotNotChecked": "Point cloud unknown",

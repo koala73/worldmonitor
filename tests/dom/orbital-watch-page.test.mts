@@ -201,7 +201,7 @@ describe('imagery evidence sheet', () => {
     const line = sheet().querySelector<HTMLElement>('.ies-evidence-line')!;
     expect(line.tagName).toBe('P');
     expect(line.textContent, 'two acquisitions of one platform count twice').toMatch(/^2 confirmed images · newest /);
-    expect(line.textContent).toMatch(/point cloud-free/i);
+    expect(line.textContent).toMatch(/no cloud over the point/i);
     expect(sheet().querySelector('h1, .ow-headline')).toBeNull();
   });
 
