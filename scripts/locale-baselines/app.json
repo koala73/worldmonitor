@@ -2985,7 +2985,6 @@
   "orbitalWatch.ui.grid.couldDef": "A steerable or commercial sensor was in reach; the operator doesn't say if it looked.",
   "orbitalWatch.ui.grid.likely": "Likely watched",
   "orbitalWatch.ui.grid.likelyDef": "A fixed-swath sensor covered it; no image published yet.",
-  "orbitalWatch.ui.grid.likelyShort": "Covered, no image yet",
   "orbitalWatch.ui.grid.likelyUnansweredDef": "A fixed-swath sensor covered it; an archive didn't answer, so an image may exist.",
   "orbitalWatch.ui.grid.likelyUnansweredShort": "Covered, archive didn't answer",
   "orbitalWatch.ui.grid.overhead": "Passed overhead",
