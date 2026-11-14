@@ -112,7 +112,14 @@ const PRODUCTION_FAMILIES: readonly AliasFamily[] = [
   { kind: 'rename', name: 'search_flight_prices_by_date', target: 'search_flights', translate: translateFlightDateSearch },
 ];
 
-const PRODUCTION_OPT_OUTS: readonly AliasOptOut[] = [];
+// Orbital Watch is dark (#10710, #10721): these tools leave the catalog until
+// ORBITAL_MCP_TOOLS_PUBLISHED is true. Delete both entries in that change;
+// sealAliases refuses an opt-out that names a listed tool.
+const ORBITAL_DARK_REASON = 'Orbital Watch is not launched; the tool returns when it is.';
+const PRODUCTION_OPT_OUTS: readonly AliasOptOut[] = [
+  { name: 'get_point_satellite_passes', reason: ORBITAL_DARK_REASON },
+  { name: 'get_country_imagery_evidence', reason: ORBITAL_DARK_REASON },
+];
 
 type Translation =
   | {
