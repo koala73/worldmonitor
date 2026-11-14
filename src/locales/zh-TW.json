@@ -5161,6 +5161,8 @@
     "partial": "{{sources}} 未響應，因此部分過境可能缺少影像。",
     "stale": "軌道資料已過時。衛星目錄已有 {{age}}，過境時間可能有偏差。",
     "empty": "過去 {{pastDays}} 天內沒有已收錄的成像衛星經過此地點，未來 {{futureHours}} 小時內也不會經過。",
+    "sources": "來源 · {{count}}",
+    "sourcesDocs": "這些來源的使用方式",
     "privacy": "此地點僅保留在你的瀏覽器中。它只會傳送給瀏覽器直接呼叫的公共檔案庫：Earth Search、Microsoft Planetary Computer、NASA GIBS 和 EUMETSAT。按地名搜尋是唯一的例外：你輸入的地名會傳送給地名搜尋服務。",
     "inRange": "覆蓋範圍內",
     "tier": {
@@ -5392,6 +5394,41 @@
       "dismiss": "關閉",
       "passOutsideWindow": "連結中的過境不在當前時間視窗內，因此未選中任何過境。",
       "passNotFound": "在重新計算的過境中未找到連結中的過境，因此未選中任何過境。"
+    },
+    "timeline": {
+      "now": "現在",
+      "nowAt": "現在：{{time}}",
+      "density": "{{label}}過境，{{start}} 至 {{end}}：{{count}}",
+      "daylight": "該點的白晝時段 {{start}} 至 {{end}}",
+      "unavailable": "不可用",
+      "notRetained": "本週無資料",
+      "notRetainedSpan": "{{label}}：{{start}} 至 {{end}} 無資料",
+      "countryWide": "全國範圍",
+      "source": {
+        "conflict": "衝突",
+        "fires": "火災",
+        "unrest": "動亂",
+        "outages": "網際網路中斷"
+      },
+      "live": {
+        "vessels": "船舶交通",
+        "militaryFlights": "軍用航班",
+        "gpsJamming": "GPS 干擾"
+      },
+      "name": "時間線",
+      "span": "{{days}} 天 · 未來 {{hours}} 小時",
+      "daylightHere": "此地白晝",
+      "row": {
+        "geo": "靜止",
+        "photo": "影像",
+        "likely": "可能",
+        "could": "或可",
+        "overhead": "過頂"
+      },
+      "retained": "{{start}} 至 {{end}}",
+      "retainedDay": "僅 {{day}}",
+      "geoLine": "視野內的靜止衛星：{{names}}",
+      "away": "{{km}} 公里外"
     }
   },
   "settings": {

@@ -6,6 +6,11 @@ const lookupMock = vi.hoisted(() => vi.fn());
 const evidenceMock = vi.hoisted(() => vi.fn());
 const catalogMock = vi.hoisted(() => vi.fn());
 
+// The timeline's point context reads global feeds; the replay assertions need none of them.
+vi.mock('@/services/orbital/point-context', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/orbital/point-context')>()),
+  loadPointContext: () => new Promise(() => {}),
+}));
 vi.mock('@/services/orbital/pass-client', () => ({ getOrbitalPassClient: () => ({ lookup: lookupMock, dispose: () => {} }) }));
 vi.mock('@/services/orbital/match', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/orbital/match')>()),
@@ -53,7 +58,7 @@ const catalog = () => ({
 
 const lookup = (): PointPassLookup => ({
   point, window: { startMs: NOW - 48 * HOUR, endMs: NOW + 24 * HOUR }, nowMs: NOW,
-  catalog: { status: 'fresh', fetchedAt: NOW, inventoryVersion: 'test' }, passes, satellites: [], computedOn: 'worker',
+  catalog: { status: 'fresh', fetchedAt: NOW, inventoryVersion: 'test' }, passes, satellites: [], daylight: [], computedOn: 'worker',
 });
 function acquisition(p: PointPass): MatchedAcquisition {
   const platform = p.name.toLowerCase().replace(' ', '-');
@@ -106,10 +111,10 @@ beforeEach(() => {
   frames = new Map();
   let nextFrame = 1;
   reducedMotion = false;
-  // Only the replay's frames are kept; the lookup's map focus also asks for frames to follow the point.
-  const forMapFocus = (callback: FrameRequestCallback) => callback.name === 'trackMark' || String(callback).includes('centreMap');
+  // Only the replay's frames are kept; the lookup's map focus and the timeline's scroll to now also ask for frames.
+  const notReplay = (callback: FrameRequestCallback) => callback.name === 'trackMark' || /centreMap|revealNow/.test(String(callback));
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
-    if (!forMapFocus(callback)) frames.set(nextFrame, callback);
+    if (!notReplay(callback)) frames.set(nextFrame, callback);
     return nextFrame++;
   });
   vi.stubGlobal('cancelAnimationFrame', (handle: number) => { frames.delete(handle); });

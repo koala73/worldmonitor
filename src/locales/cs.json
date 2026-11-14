@@ -5245,6 +5245,8 @@
     "partial": "{{sources}} neodpověděl, proto u některých přeletů mohou chybět snímky.",
     "stale": "Orbitální data jsou zastaralá. Katalog satelitů je starý {{age}}, proto se časy přeletů mohou lišit.",
     "empty": "Žádný evidovaný snímkovací satelit nad tímto bodem za posledních {{pastDays}} dní nepřeletěl a během příštích {{futureHours}} hodin nepřeletí.",
+    "sources": "Zdroje · {{count}}",
+    "sourcesDocs": "Jak se tyto zdroje používají",
     "privacy": "Tento bod zůstává ve vašem prohlížeči. Odesílá se pouze veřejným archivům, které prohlížeč volá přímo: Earth Search, Microsoft Planetary Computer, NASA GIBS a EUMETSAT. Jedinou výjimkou je hledání podle názvu místa: zadaný název jde do služby vyhledávání míst.",
     "inRange": "v dosahu",
     "tier": {
@@ -5491,6 +5493,41 @@
       "dismiss": "Zavřít",
       "passOutsideWindow": "Odkazovaný přelet je mimo aktuální okno, proto není vybrán žádný přelet.",
       "passNotFound": "Odkazovaný přelet nebyl mezi přepočtenými přelety nalezen, proto není vybrán žádný přelet."
+    },
+    "timeline": {
+      "now": "teď",
+      "nowAt": "Teď: {{time}}",
+      "density": "Přelety {{label}}, od {{start}} do {{end}}: {{count}}",
+      "daylight": "Denní světlo v bodě od {{start}} do {{end}}",
+      "unavailable": "nedostupné",
+      "notRetained": "tento týden žádná data",
+      "notRetainedSpan": "{{label}}: žádná data od {{start}} do {{end}}",
+      "countryWide": "celostátní",
+      "source": {
+        "conflict": "Konflikty",
+        "fires": "Požáry",
+        "unrest": "Nepokoje",
+        "outages": "Výpadky internetu"
+      },
+      "live": {
+        "vessels": "Lodní doprava",
+        "militaryFlights": "Vojenské lety",
+        "gpsJamming": "Rušení GPS"
+      },
+      "name": "Časová osa",
+      "span": "{{days}} dní · dalších {{hours}} h",
+      "daylightHere": "Denní světlo zde",
+      "row": {
+        "geo": "Geo",
+        "photo": "Snímek",
+        "likely": "Pravděp.",
+        "could": "Možná",
+        "overhead": "Přelet"
+      },
+      "retained": "{{start}} až {{end}}",
+      "retainedDay": "jen {{day}}",
+      "geoLine": "Geostacionární v dohledu: {{names}}",
+      "away": "{{km}} km odtud"
     }
   },
   "settings": {
