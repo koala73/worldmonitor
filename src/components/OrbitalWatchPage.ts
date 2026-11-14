@@ -1,5 +1,5 @@
 import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
-import type { PassTier } from '../../shared/orbital/tiers.js';
+import { OPTICAL_MIN_SUN_ELEVATION_DEG, type PassTier } from '../../shared/orbital/tiers.js';
 import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
@@ -496,6 +496,13 @@ function mosaicDays(mosaic: DailyMosaicRow): Array<{ date: string; imageUrl: str
 
 function cell(label: string, value: DomChild, className = ''): HTMLElement {
   return h('span', { className: `ies-cell ${className}`.trim(), dataset: { label } }, value);
+}
+
+/** An open pass that can image the point: in its footprint, over ground the mission covers, and in daylight for optical. */
+function canCollect(pass: PointPass): boolean {
+  if (pass.category !== 'open-optical' && pass.category !== 'open-radar') return false;
+  if (!pass.inFootprint || !pass.coverage) return false;
+  return pass.category === 'open-radar' || pass.sunElevationDeg >= OPTICAL_MIN_SUN_ELEVATION_DEG;
 }
 
 function orbitAgeCell(pass: PointPass): HTMLElement {
@@ -1046,7 +1053,7 @@ export class OrbitalWatchPage {
   private windowsSection(lookup: PointPassLookup, passes: PointPass[]): HTMLElement {
     const toMs = lookup.nowMs + SHEET_FUTURE_HOURS * HOUR_MS;
     const next = passes
-      .filter((pass) => pass.timeMs > lookup.nowMs && pass.timeMs <= toMs && (pass.category === 'open-optical' || pass.category === 'open-radar'))
+      .filter((pass) => pass.timeMs > lookup.nowMs && pass.timeMs <= toMs && canCollect(pass))
       .sort((a, b) => a.timeMs - b.timeMs)
       .slice(0, NEXT_WINDOW_ROWS);
     return section('windows', t('orbitalWatch.windows.heading'),

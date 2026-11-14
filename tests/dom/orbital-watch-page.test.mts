@@ -322,10 +322,16 @@ describe('imagery evidence sheet', () => {
     expect(group('open')!.querySelector('.ies-group-title')!.textContent).toMatch(/^Open data · \d+$/);
   });
 
-  it('lists the next open optical and radar windows soonest first', () => {
+  it('lists the next open optical and radar windows soonest first, leaving out passes that cannot image the point', () => {
     const { all, soon, later } = tiered();
-    const radar = { ...soon, category: 'open-radar' as const };
-    mounted(answered(all.map((p) => (p === soon ? radar : p))));
+    const radar = { ...soon, category: 'open-radar' as const, sunElevationDeg: -30 };
+    const at = (hours: number, name: string, over: Partial<PointPass>) => ({ ...later, noradId: nextNorad++, name, timeMs: soon.timeMs + hours * HOUR, ...over });
+    const unusable = [
+      at(1, 'NIGHT OPTICAL', { sunElevationDeg: -20 }),
+      at(2, 'OFF FOOTPRINT', { inFootprint: false }),
+      at(3, 'NOT COVERED', { coverage: false }),
+    ];
+    mounted(answered([...all.map((p) => (p === soon ? radar : p)), ...unusable]));
     const rows = [...sectionOf('windows').querySelectorAll<HTMLElement>('.ies-row')];
     expect(rows.map((r) => r.querySelector('.ies-name')!.textContent)).toEqual([soon.name, later.name]);
     expect(rows[0]!.textContent).toContain('Open radar');
