@@ -174,6 +174,8 @@ describe('orbital timeline dock', () => {
     const mark = row('images').querySelector<HTMLElement>('.ow-tl-mark')!;
     expect(leftPct(mark)).toBeCloseTo(pctOf(image.startMs), 2);
     expect(mark.dataset.tip).toBe('SENTINEL-2C · Thu, Nov 12 · 10:00 · image without computed pass');
+    expect(mark.tabIndex, 'reachable by keyboard like every other mark').toBe(0);
+    expect(mark.getAttribute('aria-label')).toBe(mark.dataset.tip);
     expect(listText()).toContain('image without computed pass: SENTINEL-2C, 2026-11-12 06:00 UTC');
   });
 

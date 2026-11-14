@@ -182,7 +182,10 @@ export class OrbitalTimeline {
       rows.push(h('div', { className: 'ow-tl-row', dataset: { row: row.id } }, geoLine,
         ...this.density(dense, input.selectedKey, pct, (ms) => formatUtc(ms)),
         ...this.marks(sparse, input.selectedKey, pct, when),
-        ...unmatched.map((image) => h('span', { className: 'ow-tl-mark', style: at(image.startMs), dataset: { tier: 'confirmed-image', tip: `${image.platform.toUpperCase()} · ${when(image.startMs)} · ${unmatchedLabel}` } }, TIER_GLYPH['confirmed-image']))));
+        ...unmatched.map((image) => {
+          const tip = `${image.platform.toUpperCase()} · ${when(image.startMs)} · ${unmatchedLabel}`;
+          return h('span', { className: 'ow-tl-mark', style: at(image.startMs), tabIndex: 0, 'aria-label': tip, dataset: { tier: 'confirmed-image', tip } }, TIER_GLYPH['confirmed-image']);
+        })));
       for (const bin of hourlyBins(dense)) {
         entries.push({ timeMs: bin.startMs, text: t('orbitalWatch.timeline.density', { label, count: bin.count, start: formatUtc(bin.startMs), end: formatHour(bin.startMs + HOUR_MS) }) });
       }
