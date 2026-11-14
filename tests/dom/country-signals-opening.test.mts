@@ -72,5 +72,6 @@ it.each(['IR', 'CN'])('measures %s panel and controller opening reads with ten s
     expect(deferred).toHaveLength(4);
     expect(deferred.slice(-2)).toEqual(['imagery', 'water']);
     expect(qualified.details).not.toBeNull();
+    expect(calls.filter(call => call.section === 'reservoirs')).toHaveLength(0);
   } finally { controller.dispose(); panel.hide(); }
 });

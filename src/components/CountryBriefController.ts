@@ -101,16 +101,8 @@ export class CountryBriefController {
     }, bundle => { this.panel.updateEconomicIndicators?.(buildImfEconomicIndicators(bundle)); this.panel.setSectionCoverage?.('economic', bundle.missing ?? []); if (latestStock) this.panel.updateStock(latestStock); updated?.imf?.(bundle); });
     void this.read('facts', signal => this.source.intelligence.getCountryFacts({ countryCode: code }, { signal }), facts => this.panel.updateCountryFacts?.({ ...facts, population: Number(facts.population) }));
     void this.read('energy', signal => this.source.intelligence.getCountryEnergyProfile({ countryCode: code }, { signal }), energy => this.panel.updateEnergyProfile?.(energy));
-    // Strategic Water Levels context beside the energy mix. Context only, so a failed read
-    // leaves the section as it was instead of marking it failed.
-    const revision = this.snapshot.revision;
-    void Promise.resolve().then(() => this.source.climate.listReservoirLevels({}, { signal: this.request.signal }))
-      .then(response => {
-        if (revision !== this.snapshot.revision || this.panel.getCode() !== code) return;
-        const reservoirs = toReservoirLevelsSnapshot(response)?.reservoirs ?? [];
-        this.panel.updateReservoirContext?.(code, reservoirs.filter(r => r.country.toUpperCase() === code));
-      })
-      .catch(() => {});
+    // The hosted brief reads reservoirs after its country signal families, so context never takes their read budget.
+    if (this.source.mode === 'website') this.readReservoirContext(code);
     void this.read('maritime', signal => this.source.intelligence.getCountryPortActivity({ countryCode: code }, { signal }), maritime => this.panel.updateMaritimeActivity?.(maritime));
     void this.read('activity', async signal => {
       const snapshot = projectNo2ActivitySnapshot(await this.source.economic.getNo2Activity({ countryCode: code, regionId: '', kind: 'NO2_REGION_KIND_COUNTRY' }, { signal }));
@@ -136,6 +128,19 @@ export class CountryBriefController {
     }, housing => { this.panel.updateHousingCycle?.(housing); this.panel.setSectionCoverage?.('housing', housing.missing); });
     this.refreshPremium();
     return { stockPromise, imfPromise };
+  }
+
+  // Strategic Water Levels context beside the energy mix. Context only, so a failed read
+  // leaves the section as it was instead of marking it failed.
+  readReservoirContext(code: string): void {
+    const revision = this.snapshot.revision;
+    void Promise.resolve().then(() => this.source.reservoirLevels(code, this.request.signal))
+      .then(response => {
+        if (revision !== this.snapshot.revision || this.panel.getCode() !== code) return;
+        const reservoirs = toReservoirLevelsSnapshot(response)?.reservoirs ?? [];
+        this.panel.updateReservoirContext?.(code, reservoirs.filter(r => r.country.toUpperCase() === code));
+      })
+      .catch(() => {});
   }
 
   refreshPremium(): void {

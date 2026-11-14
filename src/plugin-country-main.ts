@@ -711,7 +711,7 @@ async function mountPlugin(): Promise<void> {
       if (!current()) return;
       panel.updateQualifiedCountrySignals(value);
       scheduleContext();
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => { if (current()) controller.readReservoirContext(code); });
     void militaryPromise.then(summary => {
       if (!current()) return;
       panel.updateMilitaryActivity(summary);

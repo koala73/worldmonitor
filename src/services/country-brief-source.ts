@@ -86,6 +86,13 @@ function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void; 
         },
       };
     },
+    // Hosted reads go through the country-scoped reservoirs reader, which needs the country.
+    reservoirLevels: (code: string, signal: AbortSignal) => new ClimateServiceClient(base, { fetch: (input, init) => {
+      if (mode === 'website') return fetcher(input, { ...init, signal });
+      const url = new URL(input instanceof Request ? input.url : String(input), base);
+      url.searchParams.set('country_code', code);
+      return fetcher(url, { ...init, signal });
+    } }).listReservoirLevels({}, { signal }),
     food: async (code: string, signal: AbortSignal) => mode === 'website' ? (await import('@/services/resilience')).getFoodStocks({ countryCode: code, signal }) : resilience.getFoodStocks({ countryCode: code, commodity: '' }, { signal }),
     demographics: async (code: string, signal: AbortSignal) => mode === 'website' ? (await import('@/services/resilience')).getDemographicsCapability({ countryCode: code, signal }) : resilience.getDemographicsCapability({ countryCode: code }, { signal }),
     factors: async (code: string, signal: AbortSignal) => mode === 'website' ? (await import('@/services/scorecard')).getFiveFactorScorecard(code, signal) : scorecard.getFiveFactorScorecard({ countryCode: code }, { signal }),

@@ -63,3 +63,20 @@ describe('strategic reservoirs beside the energy mix', () => {
     expect(context()).toBeNull();
   });
 });
+
+describe('hosted reservoir reads', () => {
+  it('reads the country-scoped reservoirs section and keeps each pass date', async () => {
+    const { createHostCountryBriefSource } = await import('@/services/country-brief-source');
+    const calls: unknown[] = [];
+    const source = await createHostCountryBriefSource(async (_name, args) => {
+      calls.push(args);
+      return { section: 'reservoirs', state: 'ready', retrievedAt: new Date().toISOString(), value: {
+        countryCode: 'UA', dataAvailable: true, fetchedAt: 1794700000000, methodology: '',
+        reservoirs: [{ id: 'kremenchuk', name: 'Kremenchuk Reservoir', country: 'UA', lat: 49.2, lon: 32.6, latest: { date: '2026-09-06', levelM: 79.1, madM: 0.1, segmentCount: 4, ageDays: 69 }, status: 'low', series: [] }],
+      } };
+    });
+    const response = await source.reservoirLevels('UA', new AbortController().signal);
+    expect(calls).toEqual([{ section: 'reservoirs', arguments: { country_code: 'UA' } }]);
+    expect(response.reservoirs.map(r => [r.id, r.latest?.date])).toEqual([['kremenchuk', '2026-09-06']]);
+  });
+});
