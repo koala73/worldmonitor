@@ -4330,7 +4330,6 @@
     "dataAndCommunity": "데이터 및 커뮤니티",
     "theme": "테마",
     "themeDesc": "자동으로 시스템 설정을 따릅니다.",
-    "themeAuto": "자동 (시스템 따르기)",
     "themeDark": "다크",
     "themeLight": "라이트",
     "mapProvider": "지도 타일 제공자",
@@ -5082,5 +5081,51 @@
     "errGeneric": "초안을 작성할 수 없습니다. 다시 시도하세요.",
     "errDownload": "파일을 여기서 다운로드할 수 없습니다. 대신 인쇄 또는 PDF 저장을 사용하세요.",
     "errLoad": "여행 위험 평가를 열 수 없습니다. 페이지를 새로고침하고 다시 시도하세요."
+  },
+  "settings": {
+    "back": "설정으로 돌아가기",
+    "signIn": {
+      "label": "로그인",
+      "desc": "설정 동기화 및 플랜 관리"
+    },
+    "summary": {
+      "themeAuto": "자동",
+      "count": "{{total}}개 중 {{on}}개"
+    },
+    "groups": {
+      "dashboard": "대시보드",
+      "preferences": "선호도",
+      "developer": "개발자",
+      "app": "앱"
+    },
+    "sections": {
+      "account": "계정",
+      "map": "지도",
+      "ai": "AI 및 분석",
+      "video": "영상 및 스트림",
+      "apiKeys": "API 키",
+      "embeds": "임베드",
+      "aiAgents": "AI 에이전트(MCP)",
+      "sync": "동기화, 가져오기 및 내보내기",
+      "about": "정보"
+    },
+    "descriptions": {
+      "panels": "표시, 숨기기 및 순서 변경",
+      "sources": "지역 및 피드",
+      "notifications": "채널 및 경보 규칙",
+      "display": "테마, 글꼴 및 언어",
+      "map": "제공자, 테마 및 글로브",
+      "ai": "모델, 메모리 및 프레임워크",
+      "video": "품질 및 자동 재생",
+      "apiKeys": "World Monitor API 키",
+      "embeds": "자신의 사이트용 위젯",
+      "aiAgents": "연결된 MCP 클라이언트",
+      "about": "사이트 링크, 약관 및 개인정보보호정책"
+    },
+    "signOut": "로그아웃",
+    "signOutFailed": "로그아웃할 수 없습니다. 다시 시도하세요.",
+    "search": {
+      "empty": "일치하는 설정이 없습니다"
+    }
   }
 }

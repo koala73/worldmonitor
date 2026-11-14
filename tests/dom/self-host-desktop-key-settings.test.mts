@@ -15,6 +15,7 @@ import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AuthSession } from '@/services/auth-state';
 
 const session: AuthSession = { user: null, isPending: false };
+const features = new Set<string>();
 
 const storageValues = new Map<string, string>();
 const storage: Storage = {
@@ -34,7 +35,7 @@ vi.mock('@/services/auth-state', async (importOriginal) => ({
 vi.mock('@/services/entitlements', () => ({
   getEntitlementState: () => null,
   getEntitlementVerificationStatus: () => 'ready',
-  hasFeature: () => false,
+  hasFeature: (flag: string) => features.has(flag),
   hasEmbedAccessForAccount: () => false,
   isEntitled: () => false,
   onEntitlementChange: () => () => {},
@@ -43,7 +44,7 @@ vi.mock('@/services/entitlements', () => ({
 vi.mock('@/services/panel-gating', () => ({ hasPremiumAccess: () => false }));
 vi.mock('@/services/widget-store', () => ({ isProUser: () => false }));
 vi.mock('@/services/preferences-content', () => ({
-  renderPreferences: () => ({ html: '<div data-prefs-stub></div>', attach: () => () => {} }),
+  renderPreferenceSection: () => ({ html: '<div data-prefs-stub></div>', attach: () => () => {} }),
 }));
 vi.mock('@/services/notifications-settings', () => ({
   renderNotificationsSettings: () => ({ html: '', attach: () => () => {} }),
@@ -137,7 +138,7 @@ async function mount(): Promise<void> {
     isDesktopApp: false,
   } satisfies UnifiedSettingsConfig);
   overlay = (settings as unknown as { overlay: HTMLElement }).overlay;
-  settings.open('settings');
+  settings.open('api-keys');
   await settle();
 }
 
@@ -177,6 +178,8 @@ beforeEach(() => {
   onDelete = () => verdict('none', { verifiedAt: null });
   setSecureContext(true);
   installRoute();
+  session.user = null;
+  features.clear();
 });
 
 afterEach(() => {
@@ -190,6 +193,9 @@ describe('Settings -> Desktop key on a self-hosted install', () => {
   it('renders on a self-hosted install with the relay and trust copy', async () => {
     await mount();
     expect(section()).not.toBeNull();
+    // The key block leads the API keys page, above the account's own keys.
+    const keys = overlay.querySelector('[data-api-keys-host]')!;
+    expect(section()!.compareDocumentPosition(keys) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const text = section()!.textContent ?? '';
     expect(text).toContain('Desktop key');
     expect(text).toContain("this install's server");
@@ -209,7 +215,7 @@ describe('Settings -> Desktop key on a self-hosted install', () => {
     onGet = () => new Response('{}', { status: 404 });
     await mount();
     expect(section()).toBeNull();
-    expect(overlay.querySelector('[data-prefs-stub]')).not.toBeNull();
+    expect(overlay.querySelector('[data-api-keys-host]')).not.toBeNull();
   });
 
   it('appears when the verdict arrives after Settings opened', async () => {
@@ -241,7 +247,7 @@ describe('Settings -> Desktop key on a self-hosted install', () => {
 
   it('a full re-render resets the section cache so the next refresh is not skipped', async () => {
     await mount();
-    const internals = settings as unknown as { render(): void; selfHostKeyMessage: string; refreshSelfHostKeySection(): void };
+    const internals = settings as unknown as { rebuild(runEnter: boolean): void; selfHostKeyMessage: string; refreshSelfHostKeySection(): void };
     await enterAndSave('   ');
     const message = () => section()!.querySelector<HTMLElement>('[data-selfhost-key-message]')!;
     expect(message().hidden).toBe(false);
@@ -250,7 +256,7 @@ describe('Settings -> Desktop key on a self-hosted install', () => {
     // A full render draws the section without the message; the refresh cache
     // still holds the with-message markup.
     internals.selfHostKeyMessage = '';
-    internals.render();
+    internals.rebuild(false);
     expect(message().hidden).toBe(true);
 
     // State returns to the cached markup: the refresh must still redraw.
@@ -381,5 +387,18 @@ describe('Settings -> Desktop key on a self-hosted install', () => {
     await enterAndSave(KEY);
     expect(section()!.querySelector('[data-selfhost-key-message]')!.textContent).toContain('40 seconds');
     expect(status()!.dataset.state).toBe('none');
+  });
+
+  it('the account key form reads its own name field, not the desktop key field above it', async () => {
+    const { createApiKey } = await import('@/services/api-keys');
+    session.user = { id: 'A', name: 'User A', email: 'a@example.com', role: 'pro' };
+    features.add('apiAccess');
+    await mount();
+    input()!.value = KEY;
+    const keys = overlay.querySelector('[data-api-keys-host]')!;
+    keys.querySelector<HTMLInputElement>('.api-keys-name-input')!.value = 'CI pipeline';
+    keys.querySelector<HTMLButtonElement>('.api-keys-create-btn')!.click();
+    await settle();
+    expect(createApiKey).toHaveBeenCalledWith('CI pipeline');
   });
 });

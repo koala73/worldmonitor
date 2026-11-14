@@ -4330,7 +4330,6 @@
     "dataAndCommunity": "Dữ liệu & Cộng đồng",
     "theme": "Giao diện",
     "themeDesc": "Tự động theo cài đặt hệ thống.",
-    "themeAuto": "Tự động (theo hệ thống)",
     "themeDark": "Tối",
     "themeLight": "Sáng",
     "mapProvider": "Nhà cung cấp bản đồ",
@@ -5082,5 +5081,51 @@
     "errGeneric": "Không thể xây dựng dự thảo. Thử lại.",
     "errDownload": "Không thể tải xuống tệp tại đây. Hãy sử dụng In hoặc lưu dưới dạng PDF.",
     "errLoad": "Không thể mở đánh giá chuyến đi. Tải lại trang và thử lại."
+  },
+  "settings": {
+    "back": "Quay lại cài đặt",
+    "signIn": {
+      "label": "Đăng nhập",
+      "desc": "Đồng bộ cài đặt và quản lý gói của bạn"
+    },
+    "summary": {
+      "themeAuto": "Tự động",
+      "count": "{{on}} / {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Tùy chọn",
+      "developer": "Nhà phát triển",
+      "app": "Ứng dụng"
+    },
+    "sections": {
+      "account": "Tài khoản",
+      "map": "Bản đồ",
+      "ai": "AI & phân tích",
+      "video": "Video & luồng",
+      "apiKeys": "Khóa API",
+      "embeds": "Nhúng",
+      "aiAgents": "Tác nhân AI (MCP)",
+      "sync": "Đồng bộ, nhập & xuất",
+      "about": "Giới thiệu"
+    },
+    "descriptions": {
+      "panels": "Hiển thị, ẩn và sắp xếp lại",
+      "sources": "Vùng và luồng",
+      "notifications": "Kênh và quy tắc cảnh báo",
+      "display": "Chủ đề, phông chữ và ngôn ngữ",
+      "map": "Nhà cung cấp, chủ đề và quả cầu",
+      "ai": "Mô hình, bộ nhớ và khung",
+      "video": "Chất lượng và tự động phát",
+      "apiKeys": "Khóa cho API World Monitor",
+      "embeds": "Widget cho trang web của bạn",
+      "aiAgents": "Máy khách MCP được kết nối",
+      "about": "Liên kết trang web, điều khoản và quyền riêng tư"
+    },
+    "signOut": "Đăng xuất",
+    "signOutFailed": "Không thể đăng xuất. Vui lòng thử lại.",
+    "search": {
+      "empty": "Không có cài đặt phù hợp"
+    }
   }
 }

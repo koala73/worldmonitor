@@ -4352,7 +4352,6 @@
     "dataAndCommunity": "Daten & Community",
     "theme": "Design",
     "themeDesc": "Automatisch folgt Ihrer Systemeinstellung.",
-    "themeAuto": "Automatisch (System folgen)",
     "themeDark": "Dunkel",
     "themeLight": "Hell",
     "mapProvider": "Karten-Tile-Anbieter",
@@ -5110,5 +5109,51 @@
     "errGeneric": "Der Entwurf konnte nicht erstellt werden. Versuchen Sie es erneut.",
     "errDownload": "Die Datei konnte hier nicht heruntergeladen werden. Verwenden Sie stattdessen „Drucken\" oder „Als PDF speichern\".",
     "errLoad": "Die Reisebewertung konnte nicht geöffnet werden. Laden Sie die Seite neu und versuchen Sie es erneut."
+  },
+  "settings": {
+    "back": "Zurück zu Einstellungen",
+    "signIn": {
+      "label": "Anmelden",
+      "desc": "Einstellungen synchronisieren und Plan verwalten"
+    },
+    "summary": {
+      "themeAuto": "Automatisch",
+      "count": "{{on}} von {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Präferenzen",
+      "developer": "Entwickler",
+      "app": "App"
+    },
+    "sections": {
+      "account": "Konto",
+      "map": "Karte",
+      "ai": "KI & Analyse",
+      "video": "Video & Streams",
+      "apiKeys": "API-Schlüssel",
+      "embeds": "Einbettungen",
+      "aiAgents": "KI-Agenten (MCP)",
+      "sync": "Synchronisierung, Import & Export",
+      "about": "Über"
+    },
+    "descriptions": {
+      "panels": "Anzeigen, ausblenden und neu anordnen",
+      "sources": "Regionen und Feeds",
+      "notifications": "Kanäle und Benachrichtigungsregeln",
+      "display": "Design, Schriftart und Sprache",
+      "map": "Anbieter, Design und Globus",
+      "ai": "Modelle, Speicher und Frameworks",
+      "video": "Qualität und automatische Wiedergabe",
+      "apiKeys": "Schlüssel für die World Monitor API",
+      "embeds": "Widgets für deine Website",
+      "aiAgents": "Verbundene MCP-Clients",
+      "about": "Website-Links, Bedingungen und Datenschutz"
+    },
+    "signOut": "Abmelden",
+    "signOutFailed": "Abmeldung fehlgeschlagen. Bitte versuchen Sie es erneut.",
+    "search": {
+      "empty": "Keine passenden Einstellungen"
+    }
   }
 }

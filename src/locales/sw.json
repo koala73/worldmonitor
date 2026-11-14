@@ -4426,7 +4426,6 @@
     "dataAndCommunity": "Data na Jumuiya",
     "theme": "Mandhari",
     "themeDesc": "Kiotomatiki hufuata mapendeleo yako ya mfumo.",
-    "themeAuto": "Otomatiki (fuata mfumo)",
     "themeDark": "Giza",
     "themeLight": "Mwanga",
     "mapProvider": "Mtoa Kigae cha Ramani",
@@ -5110,5 +5109,51 @@
     "errGeneric": "Rasimu haikuweza kujenguliwa. Jaribu tena.",
     "errDownload": "Faili haikuweza kupakuliwa hapa. Tumia Chapisha au hifadhi kama PDF badala yake.",
     "errLoad": "Tathmini ya safari haikuweza kufunguliwa. Pakia upya ukurasa kisha ujaribu tena."
+  },
+  "settings": {
+    "back": "Rudi kwenye mipangilio",
+    "signIn": {
+      "label": "Ingia",
+      "desc": "Sawazisha mipangilio na simamia mpango wako"
+    },
+    "summary": {
+      "themeAuto": "Kiotomatiki",
+      "count": "{{on}} kati ya {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Mapendeleo",
+      "developer": "Msanidi programu",
+      "app": "Programu"
+    },
+    "sections": {
+      "account": "Akaunti",
+      "map": "Ramani",
+      "ai": "AI & uchambuzi",
+      "video": "Video & mtiririko",
+      "apiKeys": "Funguo za API",
+      "embeds": "Vipengele vya kupachika",
+      "aiAgents": "Mawakala wa AI (MCP)",
+      "sync": "Usawazishaji, kuingiza na kuhamisha",
+      "about": "Kuhusu"
+    },
+    "descriptions": {
+      "panels": "Onyesha, ficha na kupanga upya",
+      "sources": "Mikoa na mtiririko",
+      "notifications": "Njia na sheria za onyo",
+      "display": "Mandhari, fonti na lugha",
+      "map": "Mtoa huduma, mandhari na ulimwengu",
+      "ai": "Mifumo, kumbukumbu na muundo",
+      "video": "Ubora na kucheza kiotomatiki",
+      "apiKeys": "Funguo za API ya World Monitor",
+      "embeds": "Vipengele vya kurasa yako mwenyewe",
+      "aiAgents": "Wateja wa MCP waliounganishwa",
+      "about": "Kiungo cha tovuti, masharti na faragha"
+    },
+    "signOut": "Toka nje",
+    "signOutFailed": "Haiwezi kutoka. Jaribu tena.",
+    "search": {
+      "empty": "Hakuna mipangilio inayolingana"
+    }
   }
 }

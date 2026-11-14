@@ -4459,7 +4459,6 @@
     "dataAndCommunity": "Podaci i zajednica",
     "theme": "Tema",
     "themeDesc": "Automatski slijedi vašu sistemsku postavku.",
-    "themeAuto": "Automatski (pratiti sustav)",
     "themeDark": "Tamna",
     "themeLight": "Svijetla",
     "mapProvider": "Davatelj karata",
@@ -5149,5 +5148,51 @@
     "errGeneric": "Nacrt se ne može izraditi. Pokušajte ponovno.",
     "errDownload": "Datoteka se ne može preuzeti odavdje. Umjesto toga koristite Ispis ili spremi kao PDF.",
     "errLoad": "Procjena putovanja nije mogla biti otvorena. Ponovno učitajte stranicu i pokušajte ponovno."
+  },
+  "settings": {
+    "back": "Natrag na postavke",
+    "signIn": {
+      "label": "Prijava",
+      "desc": "Sinhronizacija postavki i upravljanje planom"
+    },
+    "summary": {
+      "themeAuto": "Automatski",
+      "count": "{{on}} od {{total}}"
+    },
+    "groups": {
+      "dashboard": "Nadzorna ploča",
+      "preferences": "Postavke",
+      "developer": "Razvojni programeri",
+      "app": "Aplikacija"
+    },
+    "sections": {
+      "account": "Račun",
+      "map": "Karta",
+      "ai": "AI i analiza",
+      "video": "Video i tokovi",
+      "apiKeys": "API ključevi",
+      "embeds": "Ugrađeni elementi",
+      "aiAgents": "AI agenti (MCP)",
+      "sync": "Sinhronizacija, uvoz i izvoz",
+      "about": "O aplikaciji"
+    },
+    "descriptions": {
+      "panels": "Prikaži, sakrij i preuredi",
+      "sources": "Regije i izvori",
+      "notifications": "Kanali i pravila upozorenja",
+      "display": "Tema, font i jezik",
+      "map": "Davatelj, tema i globus",
+      "ai": "Modeli, memorija i okviri",
+      "video": "Kvaliteta i automatska reprodukcija",
+      "apiKeys": "Ključevi za World Monitor API",
+      "embeds": "Widgeti za vašu stranicu",
+      "aiAgents": "Povezani MCP klijenti",
+      "about": "Veze stranica, uvjeti korištenja i privatnost"
+    },
+    "signOut": "Odjava",
+    "signOutFailed": "Odjava nije uspjela. Pokušajte ponovno.",
+    "search": {
+      "empty": "Nema odgovarajućih postavki"
+    }
   }
 }
