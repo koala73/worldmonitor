@@ -295,6 +295,16 @@ describe('imagery evidence sheet', () => {
     expect(sectionOf('latest').querySelector('.ies-caption')!.textContent).toContain(formatOrbitalTime(confirmedNew.timeMs, 'stamp'));
   });
 
+  it('keeps focus in collection windows when a pass listed there is chosen', () => {
+    const { all, soon } = tiered();
+    mounted(answered(all));
+    const key = `pass:${soon.noradId}:${soon.timeMs}`;
+    expect(sheet().querySelectorAll(`.ies-row[data-key="${key}"]`).length, 'listed under capability and windows').toBeGreaterThan(1);
+    sectionOf('windows').querySelector<HTMLElement>(`.ies-row[data-key="${key}"]`)!.click();
+    expect(sectionOf('windows').contains(document.activeElement)).toBe(true);
+    expect((document.activeElement as HTMLElement).dataset.key).toBe(key);
+  });
+
   it('paints point-bearing images only from blob: URLs and releases them when the lookup ends', async () => {
     const { all, confirmedNew, likely } = tiered();
     const state = answered(all, { acquisitions: [acquisition(confirmedNew), acquisition(likely)], mosaics: [modis], frames: [meteosat] });

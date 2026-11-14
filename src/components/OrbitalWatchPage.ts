@@ -509,6 +509,10 @@ function canCollect(pass: PointPass): boolean {
   return pass.category === 'open-radar' || pass.sunElevationDeg >= OPTICAL_MIN_SUN_ELEVATION_DEG;
 }
 
+function sectionOf(el: HTMLElement): string | undefined {
+  return el.closest<HTMLElement>('[data-section]')?.dataset.section;
+}
+
 function orbitAgeCell(pass: PointPass): HTMLElement {
   const stale = pass.orbitAgeDays > STALE_ORBIT_DAYS;
   return cell(t('orbitalWatch.row.orbitAge'), t('orbitalWatch.row.orbitAgeValue', { age: formatAge(pass.orbitAgeDays) }), stale ? 'ies-stale' : '');
@@ -760,7 +764,7 @@ export class OrbitalWatchPage {
    * Selects a pass in the list and announces it, so the timeline, the map and the globe select it too.
    * Returns false when the sheet holds no such pass.
    */
-  select(key: string, { announce = true, focus = true }: { announce?: boolean; focus?: boolean } = {}): boolean {
+  select(key: string, { announce = true, focus = true, from }: { announce?: boolean; focus?: boolean; from?: string } = {}): boolean {
     const state = this.state;
     if (!this.isOpen || state?.kind !== 'passes') return false;
     const pass = this.passes(state).find((p) => passKey(p) === key);
@@ -769,7 +773,10 @@ export class OrbitalWatchPage {
     const group = OPERATING_GROUP[pass.category];
     this.expanded.add(group);
     this.render(state);
-    const row = this.body.querySelector<HTMLElement>(`.ies-row[data-key="pass:${key}"]`);
+    // A pass can be listed twice (capability and collection windows); stay in the list it was chosen from.
+    const rowSelector = `.ies-row[data-key="pass:${CSS.escape(key)}"]`;
+    const row = (from ? this.body.querySelector<HTMLElement>(`[data-section="${CSS.escape(from)}"] ${rowSelector}`) : null)
+      ?? this.body.querySelector<HTMLElement>(rowSelector);
     if (row && focus) {
       row.scrollIntoView?.({ block: 'nearest' });
       row.focus({ preventScroll: true });
@@ -1145,7 +1152,7 @@ export class OrbitalWatchPage {
       }
     }
     const row = target.closest<HTMLElement>('.ies-row[data-key^="pass:"]');
-    if (row) this.select(row.dataset.key!.slice('pass:'.length));
+    if (row) this.select(row.dataset.key!.slice('pass:'.length), { from: sectionOf(row) });
   };
 
   /** The viewer is its own lazy chunk, fetched the first time someone opens an image. */
@@ -1169,7 +1176,7 @@ export class OrbitalWatchPage {
     if (!row) return;
     if ((event.key === 'Enter' || event.key === ' ') && event.target === row) {
       event.preventDefault();
-      this.select(row.dataset.key!.slice('pass:'.length));
+      this.select(row.dataset.key!.slice('pass:'.length), { from: sectionOf(row) });
       return;
     }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
