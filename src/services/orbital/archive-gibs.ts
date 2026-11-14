@@ -23,6 +23,7 @@ export interface DailyMosaicRow {
   source: string;
   layer: string;
   noradId: number;
+  /** Image URLs carry the point: paint them through `loadArchiveImage`, never straight into `img.src`. */
   days: Array<{ date: string; imageUrl: string | null }>;
 }
 
@@ -39,6 +40,7 @@ export interface GeostationaryRow {
 
 export interface GeostationaryFrame {
   time: string;
+  /** Carries the point: paint it through `loadArchiveImage`, never straight into `img.src`. */
   imageUrl: string | null;
   /** Earlier advertised frames, newest first, for when the archive cannot yet serve `imageUrl`. */
   fallbacks: Array<{ time: string; imageUrl: string }>;
