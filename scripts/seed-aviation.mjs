@@ -408,8 +408,9 @@ async function upstashDel(key) {
 // ─── Notification publishing ─────────────────────────────────────────────────
 // Mirrors ais-relay.cjs::publishNotificationEvent: LPUSH the event onto
 // wm:events:queue, guarded by a SETNX dedup key (TTL = dedupTtl). On LPUSH
-// failure, rollback the dedup key so the next run can retry. Returns true when
-// the event is on the queue, including a dedup hit for one already queued.
+// failure, rollback the dedup key so the next run can retry. Returns true only
+// when this call queued the event. A dedup hit returns false: a failed rollback
+// can leave the key with no event behind it, so the caller retries after expiry.
 
 function notifyHash(str) {
   let h = 0;
@@ -434,7 +435,7 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
     if (!dedupDecision.shouldPublish) {
       if (!dedupDecision.isDuplicate) return false;
       console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
-      return true;
+      return false;
     }
     const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt: Date.now() });
     const ok = await upstashLpush('wm:events:queue', msg);
