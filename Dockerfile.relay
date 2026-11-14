@@ -143,6 +143,9 @@ COPY scripts/shared/market-seed-universe.cjs ./scripts/shared/market-seed-univer
 COPY scripts/shared/closed-market-equity-maintenance.cjs ./scripts/shared/closed-market-equity-maintenance.cjs
 COPY scripts/shared/pizzint-history.cjs ./scripts/shared/pizzint-history.cjs
 COPY scripts/shared/pizzint-location.cjs ./scripts/shared/pizzint-location.cjs
+COPY scripts/shared/air-traffic-regions.cjs ./scripts/shared/air-traffic-regions.cjs
+COPY scripts/shared/air-traffic-aggregate.cjs ./scripts/shared/air-traffic-aggregate.cjs
+COPY scripts/shared/air-traffic-history.cjs ./scripts/shared/air-traffic-history.cjs
 # ucdp-candidate.cjs carries the GED Candidate discovery/merge shared with
 # scripts/seed-ucdp-events.mjs. Missing it = ERR_MODULE_NOT_FOUND at relay
 # startup (the require is top-level in the UCDP section).

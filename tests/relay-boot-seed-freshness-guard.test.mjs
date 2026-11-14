@@ -193,6 +193,7 @@ const SEEDERS = [
   ['Chokepoints', "'seed-meta:supply_chain:chokepoints'", 'CHOKEPOINT_WARM_PING_INTERVAL_MS', 'seedChokepointWarmPing'],
   ['CableHealth', "'seed-meta:cable-health'", 'CABLE_HEALTH_WARM_PING_INTERVAL_MS', 'seedCableHealthWarmPing'],
   ['TheaterPosture', "'seed-meta:theater-posture'", 'THEATER_POSTURE_SEED_INTERVAL_MS', 'seedTheaterPosture'],
+  ['AirTraffic', 'AIR_TRAFFIC_HEARTBEAT_KEY', 'AIR_TRAFFIC_INTERVAL_MS', 'seedAirTrafficPoint'],
   ['Weather', "'seed-meta:weather:alerts'", 'WEATHER_SEED_INTERVAL_MS', 'seedWeatherAlerts'],
   ['Spending', "'seed-meta:economic:spending'", 'SPENDING_SEED_INTERVAL_MS', 'seedUsaSpending'],
   ['GSCPI', "'seed-meta:economic:gscpi'", 'GSCPI_SEED_INTERVAL_MS', 'seedGscpi'],
