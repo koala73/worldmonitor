@@ -114,6 +114,12 @@ beforeEach(() => {
   });
   vi.stubGlobal('cancelAnimationFrame', (handle: number) => { frames.delete(handle); });
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: reducedMotion && query.includes('reduce'), media: query, addEventListener() {}, removeEventListener() {} }));
+  // The page paints archive images from blob: URLs it fetches; serve each a decodable image.
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(new Blob([new Uint8Array(8)], { type: 'image/png' }))));
+  vi.stubGlobal('createImageBitmap', async () => ({ close: () => {} }));
+  let nextBlob = 0;
+  vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:orbital/${nextBlob++}`);
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   lookupMock.mockResolvedValue(lookup());
   evidenceMock.mockResolvedValue(evidence());
   catalogMock.mockResolvedValue(catalog());
@@ -123,6 +129,8 @@ afterEach(() => {
   document.querySelector<HTMLButtonElement>('.ow-close')?.click();
   document.body.replaceChildren();
   vi.unstubAllGlobals();
+  vi.mocked(URL.createObjectURL).mockRestore();
+  vi.mocked(URL.revokeObjectURL).mockRestore();
   vi.clearAllMocks();
 });
 
