@@ -22,6 +22,7 @@ import {
   ROLLUP_MAX_AGE_MS,
   ROLLUP_MAX_BYTES,
   siteKey,
+  withSiteFlag,
 } from '../scripts/_orbital-sites.mjs';
 import { freshSiteCount, makeFetchSites, publicationCommands } from '../scripts/seed-orbital-sites.mjs';
 import { PUBLISH_BLOCKED_EXIT_CODE } from '../scripts/_seed-utils.mjs';
@@ -86,6 +87,14 @@ describe('orbital site records', () => {
     assert.deepEqual(base.recentPasses.filter((pass) => pass.itemId === scene.itemId).map((pass) => pass.name), ['SENTINEL-1D']);
     const relabelled = buildSiteRecord({ site: SITES[0], catalog, acquisitions: [{ ...scene, platform: 'sentinel-1c' }], previous: null, nowMs: NOW });
     assert.equal(relabelled.recentPasses.some((pass) => pass.itemId === scene.itemId), false);
+  });
+
+  it('gives a record built without a flag the same revision as one built with it', () => {
+    const flag = { state: 'monitoring', wording: 'imagery statistics changed', updatedAt: NOW, tracks: {}, events: [] };
+    const direct = buildSiteRecord({ site: SITES[0], catalog, acquisitions: [], previous: null, nowMs: NOW, flag });
+    const later = withSiteFlag(buildSiteRecord({ site: SITES[0], catalog, acquisitions: [], previous: null, nowMs: NOW, flag: null }), flag);
+    assert.deepEqual(later, direct);
+    assert.equal(JSON.stringify(later), JSON.stringify(direct));
   });
 
   it('keeps last week of passes when the stored elements are older than the age limit today', () => {
