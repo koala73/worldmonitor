@@ -6950,7 +6950,7 @@ export class DeckGLMap {
     }
   }
 
-  public setCenter(lat: number, lon: number, zoom?: number): void {
+  public setCenter(lat: number, lon: number, zoom?: number, durationMs = 500): void {
     // Publish the requested destination immediately, matching setView(). This
     // keeps URL/context reads truthful even if flyTo is interrupted or its
     // moveend arrives after a programmatic caller's bounded settlement wait.
@@ -6965,7 +6965,7 @@ export class DeckGLMap {
       this.maplibreMap.flyTo({
         center: [lon, lat],
         ...(zoom != null && { zoom }),
-        duration: 500,
+        duration: durationMs,
       }, { [VIEWPORT_MOVEMENT_EVENT_KEY]: viewportMovementGeneration });
     }
     this.onStateChange?.(this.getState());
