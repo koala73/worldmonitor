@@ -251,6 +251,18 @@ describe('orbital pass job', () => {
     assert.deepEqual(outcome.status === 'geostationary' && outcome.visibility, expected.status === 'geostationary' && expected.visibility);
   });
 
+  it('skips element sets the orbit model cannot initialise, so they neither hide passes nor count as usable', async () => {
+    const [sentinel] = satellites;
+    const current = sentinel!.elementSets[0]!;
+    const broken = { ...current, EPOCH: new Date(Date.parse(`${current.EPOCH}Z`) + DAY).toISOString().replace('Z', ''), ECCENTRICITY: 0.99 };
+    const window = { startMs: NOW - 2 * DAY, endMs: NOW + DAY };
+    const withBroken = await runPassJob({ point: PARIS, window, nowMs: NOW, satellites: [{ ...sentinel!, elementSets: [current, broken] }] });
+    const currentOnly = await runPassJob({ point: PARIS, window, nowMs: NOW, satellites: [{ ...sentinel!, elementSets: [current] }] });
+    const brokenOnly = await runPassJob({ point: PARIS, window, nowMs: NOW, satellites: [{ ...sentinel!, elementSets: [broken] }] });
+    assert.deepEqual(summary(withBroken!.passes), summary(currentOnly!.passes));
+    assert.equal(brokenOnly!.satellites[0]!.status, 'invalid-elements');
+  });
+
   it('reports a satellite with unusable elements without failing the lookup', async () => {
     const broken = { ...satellites[0]!, elementSets: [{ ...satellites[0]!.elementSets[0]!, MEAN_MOTION: 'not a number', EPOCH: 'garbage' }] };
     const result = await runPassJob({ point: PARIS, window: lookupWindow, nowMs: NOW, satellites: [broken, satellites[1]!] });

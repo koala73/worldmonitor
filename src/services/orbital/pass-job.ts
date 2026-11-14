@@ -58,7 +58,7 @@ function parseSets(records: OmmRecord[]): OrbitElements[] {
   for (const record of records) {
     try {
       const elements = parseOrbitElements(record);
-      if (Number.isFinite(elements.epochMs) && Number.isFinite(elements.meanMotionRevPerDay) && elements.meanMotionRevPerDay > 0) parsed.push(elements);
+      if (elements.satrec.error === 0 && Number.isFinite(elements.epochMs) && Number.isFinite(elements.meanMotionRevPerDay) && elements.meanMotionRevPerDay > 0) parsed.push(elements);
     } catch {
       // A malformed element set is skipped; the satellite falls back to its other sets.
     }
