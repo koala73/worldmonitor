@@ -518,8 +518,13 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       // free alert ladder (critical-only, 3 countries, web push + email) is
       // written through the same relay, and the Convex capability gates
       // (convex/lib/alertCapabilities.ts) answer anything past the ladder
-      // with a structured 402. Only unverifiable billing states (handled
-      // above) and the per-action prechecks below still deny early.
+      // with a structured 402. Three cases still deny early: unverifiable
+      // billing states (the retryable 503s handled above), the terminal
+      // `subscription_lapsed` 403 — a deliberate carve-out from the ladder so
+      // a lapsed subscriber sees "your subscription ended", never a free-tier
+      // surface that silently shrank their channels (pinned by
+      // tests/notification-channels-billing-denial.test.mts) — and the
+      // per-action prechecks below.
     }
     const callerIsFree = !hasCurrentEntitlementCoverage(ent) || ent.features.tier < 1;
 

@@ -447,6 +447,60 @@ describe("enforceEntitlement flag on the relay-path mutations", () => {
       }),
     ).rejects.toThrow(/ALERT_COUNTRIES_UPGRADE_REQUIRED/);
   });
+
+  // The worldwide-scope rung on the two side paths (CodeRabbit review,
+  // 2026-11-14): a countries write of `[]` on an enabled row must trip
+  // ALERT_COUNTRY_SCOPE_REQUIRED here exactly as it does on the combined
+  // mutations — otherwise these paths persist an enabled worldwide-shaped
+  // free row the relay then has to drop.
+  test("setQuietHoursForUser (flagged) denies emptying the scope of an enabled rule", async () => {
+    const t = convexTest(schema, modules);
+    await expect(
+      t.mutation(internal.alertRules.setQuietHoursForUser, {
+        userId: USER.subject,
+        variant: VARIANT,
+        quietHoursEnabled: false,
+        countries: [],
+        enforceEntitlement: true,
+      }),
+    ).rejects.toThrow(/ALERT_COUNTRY_SCOPE_REQUIRED/);
+  });
+
+  test("setDigestSettingsForUser (flagged) denies emptying the scope of an enabled rule", async () => {
+    const t = convexTest(schema, modules);
+    await expect(
+      t.mutation(internal.alertRules.setDigestSettingsForUser, {
+        userId: USER.subject,
+        variant: VARIANT,
+        digestMode: "realtime",
+        countries: [],
+        enforceEntitlement: true,
+      }),
+    ).rejects.toThrow(/ALERT_COUNTRY_SCOPE_REQUIRED/);
+  });
+
+  test("setDigestSettingsForUser (flagged) still allows emptying the scope of a DISABLED rule", async () => {
+    const t = convexTest(schema, modules);
+    // Operator path stages a disabled row with a stored scope.
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      enabled: false,
+      eventTypes: [],
+      sensitivity: "critical",
+      channels: ["web_push"],
+      countries: ["UA"],
+    });
+    // Clearing the scope of the paused row stays allowed (paused empty scope
+    // is the free ladder's documented staging state).
+    await t.mutation(internal.alertRules.setDigestSettingsForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      digestMode: "realtime",
+      countries: [],
+      enforceEntitlement: true,
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -505,10 +505,19 @@ export const setDigestSettingsForUser = internalMutation({
       : undefined;
     if (enforceEntitlement) {
       // `digestMode` is a required arg here, so it is always judged;
-      // countries only when sent — see setNotificationConfigForUser.
+      // countries only when sent — see setNotificationConfigForUser. A
+      // countries write also carries the effective enabled state so the
+      // worldwide-scope rung fires for `[]` on an enabled row, exactly as the
+      // sibling mutations judge it (CodeRabbit review, 2026-11-14).
       await assertAlertCapabilitiesFor(ctx, userId, {
         digestMode: pair.digestMode,
-        ...(normalizedCountries !== undefined ? { countriesCount: normalizedCountries.length } : {}),
+        ...(normalizedCountries !== undefined
+          ? {
+              countriesCount: normalizedCountries.length,
+              enabled: existing?.enabled ?? true,
+              effectiveCountriesCount: normalizedCountries.length,
+            }
+          : {}),
       }, normalizedCountries !== undefined
         ? { variant, countries: normalizedCountries }
         : undefined);
@@ -570,9 +579,14 @@ export const setQuietHoursForUser = internalMutation({
       : undefined;
     if (enforceEntitlement && normalizedCountries !== undefined) {
       // Quiet-hours edits touch no capability-gated field except an optional
-      // countries update, so that is all this path validates.
+      // countries update, so that is all this path validates. The write
+      // carries the effective enabled state so the worldwide-scope rung
+      // fires for `[]` on an enabled row, like the sibling mutations
+      // (CodeRabbit review, 2026-11-14).
       await assertAlertCapabilitiesFor(ctx, userId, {
         countriesCount: normalizedCountries.length,
+        enabled: existing?.enabled ?? true,
+        effectiveCountriesCount: normalizedCountries.length,
       }, { variant: rest.variant, countries: normalizedCountries });
     }
     const patch = {
