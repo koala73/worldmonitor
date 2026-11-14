@@ -12,8 +12,9 @@ import { build } from 'esbuild';
 for (const [entry, budget] of [
   ['api/mcp.ts', 1024 * 1000],
   ['api/displacement/v1/[rpc].ts', 300 * 1024],
-  // Orbital Watch point and country RPCs: about 134 KiB at #10709; the budget leaves room for one more sensor profile.
-  ['api/orbital/v1/[rpc].ts', 160 * 1024],
+  // Orbital Watch point and country RPCs: about 166 KiB after #10725 added per-mission coverage grids (85 KB minified);
+  // the budget leaves room for one more mission grid.
+  ['api/orbital/v1/[rpc].ts', 192 * 1024],
 ]) {
   test(`${entry} stays within its compressed function budget`, async (t) => {
     const result = await build({
