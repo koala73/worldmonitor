@@ -13,6 +13,9 @@ import { countrySiteImagery, imageryCredits, type CountrySiteImagery, type SiteI
 export const MAX_IMAGERY_COUNTRIES = 2;
 export const MAX_IMAGERY_SITES = 8;
 
+// Scene ids and sensor names come from third-party archives: only id characters reach the prompt.
+const token = (value: string) => value.replace(/[^A-Za-z0-9_.:-]/g, '').slice(0, 96);
+const label = (value: string) => value.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 120);
 const day = (iso: string) => iso.slice(0, 10);
 const minute = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
 
@@ -31,12 +34,12 @@ export function imageryCountries(index: unknown, focus: string | null, query: st
 
 function siteLine(site: SiteImagery): string {
   const image = site.latestImage
-    ? `latest image ${day(site.latestImage.datetime)} (${site.latestImage.profileId}, scene ${site.latestImage.itemId})`
+    ? `latest image ${day(site.latestImage.datetime)} (${token(site.latestImage.profileId)}, scene ${token(site.latestImage.itemId)})`
     : 'no archive image on record';
   const pass = site.nextPass
-    ? `next imaging pass ${minute(site.nextPass.time)} (${site.nextPass.profileId})`
+    ? `next imaging pass ${minute(site.nextPass.time)} (${token(site.nextPass.profileId)})`
     : 'no imaging pass expected in the next 72 hours';
-  return `- ${site.name}: ${image}; ${pass}`;
+  return `- ${label(site.name)}: ${image}; ${pass}`;
 }
 
 /** Sites the question names come first; the rest keep newest-image order. */
