@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { redactSensitiveUrl, scrubSentryCredentials } from '../shared/sensitive-url-params.ts';
 import { findArchiveEvidence } from '../src/services/orbital/match.ts';
 import { parseStacItem, readPointCondition } from '../src/services/orbital/archive-stac.ts';
+import { loadArchiveImage } from '../src/services/orbital/archive-image.ts';
 import { cropBox, gibsSnapshotUrl, planetaryComputerCropUrl } from '../src/services/orbital/crop-url.ts';
 import { ARCHIVE_RESPONSES, fakeArchiveFetch, fixtureLookup } from './helpers/orbital-archive-fetch.mts';
 
@@ -73,16 +74,44 @@ describe('a free lookup keeps the exact point to the archives', () => {
     assert.deepEqual(scrubSentryCredentials({ request: { query_string: [['BBOX', '25.1,55.2,25.3,55.3'], ['TIME', '2026-11-12']] } }).request.query_string, [['TIME', '2026-11-12']]);
   });
 
-  it('keeps the point out of the request names a RUM collector reports', async () => {
+  it('keeps the point out of what a RUM collector reports, the largest paint included', async () => {
     const { requests, evidence } = await lookupRequests();
-    const imageUrls = [...evidence.acquisitions.map((a) => a.imageUrl), ...evidence.mosaics.flatMap((m) => m.days.map((d) => d.imageUrl)), ...evidence.frames.flatMap((f) => [f.latest?.imageUrl, ...(f.latest?.fallbacks ?? []).map((frame) => frame.imageUrl)])]
-      .filter((url): url is string => Boolean(url));
-    // DebugBear rum-1.1.2.js names a cross-origin resource by host and path, keeping only the last segment of a long path.
-    const reportedName = (url: string) => {
+    const images = [
+      ...evidence.acquisitions.map((a) => ({ archive: a.imageUrl?.includes('planetarycomputer') ? 'planetary-computer' as const : 'earth-search' as const, urls: [a.imageUrl] })),
+      ...evidence.mosaics.flatMap((m) => m.days.map((d) => ({ archive: m.archive, urls: [d.imageUrl] }))),
+      ...evidence.frames.map((f) => ({ archive: f.archive, urls: [f.latest?.imageUrl, ...(f.latest?.fallbacks ?? []).map((frame) => frame.imageUrl)] })),
+    ].map(({ archive, urls }) => ({ archive, urls: urls.filter((url): url is string => Boolean(url)) })).filter(({ urls }) => urls.length > 0);
+    // DebugBear rum-1.1.2.js reports the largest-contentful-paint URL with its whole path and, unless the
+    // project turns query params off, its query; data: URLs are cut to 20 characters.
+    const lcpReport = (url: string) => {
+      if (url.startsWith('data:')) return url.slice(0, 20);
+      const [path, query] = url.split('?');
+      return `${path}${query ? `?${query}` : ''}`.slice(0, 200);
+    };
+    // Other cross-origin resources are named by host and path, keeping only the last segment of a long path,
+    // except the resource whose URL is the largest paint's, which is reported like the paint.
+    const resourceName = (url: string, lcpUrl: string) => {
+      if (url === lcpUrl) return lcpReport(url);
       const { hostname, pathname } = new URL(url);
       return hostname.slice(0, 25) + (pathname.length < 30 ? pathname : `/…/${pathname.split('/').pop()}`);
     };
-    for (const url of [...requests.map((r) => r.url), ...imageUrls]) assert.deepEqual(coordinatesIn(reportedName(url)), [], reportedName(url));
+    for (const { url } of requests) assert.deepEqual(coordinatesIn(resourceName(url, '')), [], url);
+    const leaking = new Set<string>();
+    for (const { archive, urls } of images) {
+      const carriesPoint = coordinatesIn(lcpReport(urls[0]!)).length > 0;
+      if (carriesPoint) leaking.add(archive);
+      const fetched: string[] = [];
+      const loaded = await loadArchiveImage(archive, urls, { fetch: async (url: string) => { fetched.push(url); return new Response(new Blob([new Uint8Array(8)], { type: 'image/png' })); } });
+      assert.equal(loaded.status, 'ok');
+      if (loaded.status !== 'ok') continue;
+      const { objectUrl } = loaded.image;
+      if (carriesPoint) assert.match(objectUrl, /^blob:/, `${urls[0]} is painted from a blob: URL`);
+      else assert.equal(objectUrl, urls[0], 'a scene-wide preview is painted as is');
+      assert.deepEqual(coordinatesIn(lcpReport(objectUrl)), [], objectUrl);
+      for (const url of fetched) assert.deepEqual(coordinatesIn(resourceName(url, objectUrl)), [], url);
+      loaded.image.release();
+    }
+    assert.deepEqual([...leaking].sort(), ['eumetsat', 'nasa-gibs', 'planetary-computer'], 'every point image URL would leak as the largest paint unloaded');
   });
 
   it('writes a point near zero in fixed decimals, and scrubs exponent-form coordinates too', async () => {
