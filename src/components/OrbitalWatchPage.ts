@@ -566,6 +566,9 @@ export class OrbitalWatchPage {
   private readonly zone: HTMLElement;
   private readonly shareButton: HTMLElement;
   private readonly handle: HTMLElement;
+  private readonly kicker: HTMLElement;
+  private readonly changeButton: HTMLElement;
+  private readonly closeButton: HTMLElement;
   private readonly sources: HTMLDetailsElement;
   private readonly privacy: HTMLElement;
   private readonly mapMark: HTMLElement;
@@ -591,6 +594,9 @@ export class OrbitalWatchPage {
     this.zone = h('button', { type: 'button', className: 'ies-chip', dataset: { action: 'zone' } });
     this.shareButton = h('button', { type: 'button', className: 'ies-chip', dataset: { action: 'share' } });
     this.handle = h('button', { type: 'button', className: 'ies-handle', dataset: { action: 'height' } });
+    this.kicker = h('span', { className: 'ies-kicker' });
+    this.changeButton = h('button', { type: 'button', className: 'ies-chip', dataset: { action: 'change' } });
+    this.closeButton = h('button', { type: 'button', className: 'ies-close cdp-close', dataset: { action: 'close' } }, '×');
     this.body = h('div', { className: 'ies-body' });
     this.sources = h('details', { className: 'ies-sources', hidden: true }) as HTMLDetailsElement;
     this.privacy = h('div', { className: 'ies-privacy' });
@@ -605,14 +611,14 @@ export class OrbitalWatchPage {
       this.handle,
       h('header', { className: 'ies-header cdp-header' },
         h('div', { className: 'ies-place-block' },
-          h('span', { className: 'ies-kicker' }, t('orbitalWatch.sheet.title')),
+          this.kicker,
           this.place,
           h('div', { className: 'ies-subline cdp-country-subtitle' }, this.coords)),
         h('div', { className: 'ies-actions' },
           this.zone,
           this.shareButton,
-          h('button', { type: 'button', className: 'ies-chip', dataset: { action: 'change' } }, t('orbitalWatch.sheet.change')),
-          h('button', { type: 'button', className: 'ies-close cdp-close', dataset: { action: 'close' }, 'aria-label': t('countryBrief.closeBtn') }, '×'))),
+          this.changeButton,
+          this.closeButton)),
       this.slots.search,
       this.body,
       h('footer', { className: 'ies-footer' }, this.privacy, this.sources));
@@ -684,7 +690,11 @@ export class OrbitalWatchPage {
     this.applyZone();
     this.shareButton.hidden = !this.callbacks.onShare || !point;
     this.shareButton.textContent = t('orbitalWatch.sheet.share');
+    // Fixed labels are set on every open, so a language chosen since the last one shows.
     this.sheet.setAttribute('aria-label', t('orbitalWatch.sheet.title'));
+    this.kicker.textContent = t('orbitalWatch.sheet.title');
+    this.changeButton.textContent = t('orbitalWatch.sheet.change');
+    this.closeButton.setAttribute('aria-label', t('countryBrief.closeBtn'));
     this.mapMark.lastElementChild!.textContent = point ? formatCoords(point) : '';
     this.setHeight('half');
     this.renderPrivacy();
@@ -932,7 +942,7 @@ export class OrbitalWatchPage {
             cell(t('orbitalWatch.row.time'), row.timeMs === null ? h('span', { className: 'ies-now' }, t('orbitalWatch.events.now')) : formatStamp(row.timeMs)),
             cell(t('orbitalWatch.events.kindLabel'), t(`orbitalWatch.events.kind.${row.source}`)),
             cell(t('orbitalWatch.events.detail'), row.label, 'ies-grow'),
-            cell(t('orbitalWatch.row.distance'), row.distanceKm === null ? '—' : `${Math.round(row.distanceKm)} km`)))),
+            cell('', row.distanceKm === null ? '—' : `${Math.round(row.distanceKm)} km`)))),
       unavailable.length > 0 ? h('p', { className: 'ies-note' }, t('orbitalWatch.events.unavailable', { sources: formatList(unavailable) })) : null);
   }
 
@@ -949,7 +959,7 @@ export class OrbitalWatchPage {
     cell(t('orbitalWatch.row.tier'), tier, 'ies-tier'),
     cell(t('orbitalWatch.row.time'), formatStamp(pass.timeMs)),
     cell(t('orbitalWatch.row.elevation'), `${Math.round(pass.elevationDeg)}°`),
-    cell(t('orbitalWatch.row.offNadir'), `${offNadirDeg(pass).toFixed(1)}°`),
+    cell('', t('orbitalWatch.row.offNadir', { deg: offNadirDeg(pass).toFixed(1) })),
     orbitAgeCell(pass));
   }
 
@@ -997,7 +1007,8 @@ export class OrbitalWatchPage {
             cell(t('orbitalWatch.row.in'), formatRelative(pass.timeMs, lookup.nowMs, 'narrow')),
             cell(t('orbitalWatch.row.satellite'), pass.name, 'ies-grow ies-name'),
             cell(t('orbitalWatch.row.sensor'), t(pass.category === 'open-radar' ? 'orbitalWatch.windows.radar' : 'orbitalWatch.windows.optical')),
-            cell(t('orbitalWatch.row.elevation'), `${Math.round(pass.elevationDeg)}°`));
+            cell(t('orbitalWatch.row.elevation'), `${Math.round(pass.elevationDeg)}°`),
+            orbitAgeCell(pass));
         })));
   }
 
