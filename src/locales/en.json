@@ -4626,11 +4626,11 @@
     "sheet": {
       "heading": "Imagery evidence",
       "window": "Last {{days}} days, next {{hours}} h",
-      "apart": "Counted separately:",
+      "apart": "Not counted:",
       "apartMosaics_one": "{{count}} daily mosaic",
       "apartMosaics_other": "{{count}} daily mosaics",
-      "apartFrames_one": "{{count}} weather frame",
-      "apartFrames_other": "{{count}} weather frames",
+      "apartFrames_one": "{{count}} weather-satellite frame",
+      "apartFrames_other": "{{count}} weather-satellite frames",
       "apartInRange_one": "{{count}} pass in range",
       "apartInRange_other": "{{count}} passes in range",
       "confirmedCount_one": "{{count}} confirmed image",
@@ -4652,7 +4652,7 @@
       "shareCopied": "Link copied",
       "showUtc": "UTC",
       "showLocal": "Local time",
-      "alert": "Get an alert when a new image of this point is published.",
+      "alert": "Get an alert before an open satellite passes over this point, and when a new clear image of it is published.",
       "alertCta": "Set alert · Pro",
       "height": {
         "collapsed": "Sheet collapsed. Expand to half height",
@@ -4664,7 +4664,7 @@
       "confirmed": "confirmed",
       "likely": "likely",
       "inReach": "in reach",
-      "capability": "capability",
+      "capability": "could image",
       "inRange": "in range",
       "mosaic": "mosaic",
       "upcoming": "upcoming",
@@ -4752,8 +4752,8 @@
       "docs": "Method and coverage"
     },
     "caption": {
-      "clear": "Clear at point",
-      "clearSceneCloud": "Clear at point · scene {{pct}}% cloud",
+      "clear": "No cloud over the point",
+      "clearSceneCloud": "No cloud over the point · scene {{pct}}% cloud",
       "clouded": "Cloud at point · {{pct}}%",
       "cloudShadow": "Shadow at point",
       "spotNotChecked": "Point cloud unknown",
