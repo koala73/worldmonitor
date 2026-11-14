@@ -94,7 +94,7 @@ vi.mock('@/services/widget-store', () => ({
 }));
 
 vi.mock('@/services/preferences-content', () => ({
-  renderPreferences: () => ({ html: '', attach: () => () => {} }),
+  renderPreferenceSection: () => ({ html: '', attach: () => () => {} }),
 }));
 
 vi.mock('@/services/notifications-settings', () => ({
@@ -234,9 +234,61 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
+describe('UnifiedSettings account card', () => {
+  it('leads the home list with the plan and email, and opens the account page', () => {
+    settings.open();
+    const card = document.querySelector<HTMLButtonElement>('[data-settings-nav="account"]')!;
+    expect(card.querySelector('.us-avatar')?.textContent).toBe('UU');
+    expect(card.querySelector('[data-settings-summary]')?.textContent).toBe('Pro · user_self@example.com');
+    expect(document.querySelector('[data-account-deletion]')).toBeNull();
+
+    card.click();
+
+    const page = document.querySelector<HTMLElement>('[data-settings-page="account"]')!;
+    expect(page.hidden).toBe(false);
+    expect(page.querySelector('.billing-settings-intro h3')?.textContent).toBe('Plan & billing');
+    expect(page.querySelector('[data-account-deletion]')).not.toBeNull();
+  });
+});
+
+describe('UnifiedSettings sign out', () => {
+  const signOutRow = () => document.querySelector<HTMLButtonElement>('[data-settings-signout]');
+
+  it('offers Sign out at the foot of the Account page, above Delete account', () => {
+    settings.open('account');
+    const row = signOutRow()!;
+    const deletion = document.querySelector('[data-account-deletion]')!;
+    expect(row.textContent?.trim()).toBe('Sign out');
+    expect(row.compareDocumentPosition(deletion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('signs out once, then shows the signed-out home list', () => {
+    settings.open('account');
+    signOutRow()!.click();
+    signOutRow()!.click();
+    expect(signOutMock).toHaveBeenCalledTimes(1);
+
+    switchAccountTo(anonymous());
+
+    expect(document.querySelector('[data-settings-page="account"]')).toBeNull();
+    expect(document.querySelector<HTMLElement>('[data-settings-home]')!.hidden).toBe(false);
+    expect(document.querySelector('[data-settings-signin]')).not.toBeNull();
+  });
+
+  it('reports a failed sign-out and lets the user try again', async () => {
+    signOutMock.mockRejectedValueOnce(new Error('network'));
+    settings.open('account');
+    signOutRow()!.click();
+
+    await vi.waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
+    expect(toastMock).toHaveBeenCalledWith('Could not sign out. Try again.');
+    expect(signOutRow()!.disabled).toBe(false);
+  });
+});
+
 describe('UnifiedSettings account deletion', () => {
   it('shows the danger zone when signed in and hides it when anonymous', () => {
-    settings.open('billing');
+    settings.open('account');
     expect(document.querySelector('[data-account-deletion]')).not.toBeNull();
     settings.destroy();
 
@@ -245,7 +297,8 @@ describe('UnifiedSettings account deletion', () => {
     mockSubscription = null;
     settings = new UnifiedSettings(config());
     settings.open();
-    expect(document.querySelector('#us-tab-billing')).toBeNull();
+    expect(document.querySelector('[data-settings-nav="account"]')).toBeNull();
+    expect(document.querySelector('[data-settings-signin]')).not.toBeNull();
     expect(document.querySelector('[data-account-deletion]')).toBeNull();
   });
 
@@ -253,13 +306,13 @@ describe('UnifiedSettings account deletion', () => {
     mockSubscription = null;
     subscriptionLoaded = true;
     entitled = true;
-    settings.open('billing');
+    settings.open('account');
     expect(document.querySelector('.manage-billing-btn')).toBeNull();
     expect(document.querySelector('[data-delete-account]')).not.toBeNull();
   });
 
   it('keeps confirm disabled for empty and wrong phrases', () => {
-    settings.open('billing');
+    settings.open('account');
     document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
     const confirm = document.querySelector<HTMLButtonElement>('[data-deletion-confirm]');
     expect(confirm?.disabled).toBe(true);
@@ -273,7 +326,7 @@ describe('UnifiedSettings account deletion', () => {
   });
 
   it('signs out after a successful typed confirmation', async () => {
-    settings.open('billing');
+    settings.open('account');
     document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
     typePhrase('DELETE');
     const confirm = document.querySelector<HTMLButtonElement>('[data-deletion-confirm]');
@@ -292,7 +345,7 @@ describe('UnifiedSettings account deletion', () => {
   it('keeps the dialog busy after Escape until the deletion request settles', async () => {
     let resolveRequest!: (value: { status: string; userIdHash: string }) => void;
     deletionMocks.request.mockReturnValue(new Promise((resolve) => { resolveRequest = resolve; }));
-    settings.open('billing');
+    settings.open('account');
     document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
     typePhrase('DELETE');
     const confirm = document.querySelector<HTMLButtonElement>('[data-deletion-confirm]')!;
@@ -316,7 +369,7 @@ describe('UnifiedSettings account deletion', () => {
     deletionMocks.request.mockRejectedValue(
       new Error('Account changed while deleting the account. Try again.'),
     );
-    settings.open('billing');
+    settings.open('account');
     document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
     typePhrase('DELETE');
     document.querySelector<HTMLButtonElement>('[data-deletion-confirm]')!.click();
@@ -339,7 +392,7 @@ describe('UnifiedSettings account deletion', () => {
   });
 
   it('keeps confirm disabled for same-length near-miss phrases', () => {
-    settings.open('billing');
+    settings.open('account');
     document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
     const confirm = document.querySelector<HTMLButtonElement>('[data-deletion-confirm]');
     // The gate is a strict equality on the trimmed value. A future change to
@@ -355,7 +408,7 @@ describe('UnifiedSettings account deletion', () => {
   });
 
   it('traps focus inside the dialog and restores it on close', () => {
-    settings.open('billing');
+    settings.open('account');
     const trigger = document.querySelector<HTMLButtonElement>('[data-delete-account]')!;
     trigger.focus();
     trigger.click();
@@ -372,7 +425,7 @@ describe('UnifiedSettings account deletion', () => {
   it('survives a back gesture mid-deletion without clearing the busy latch', async () => {
     let resolveRequest!: (value: { status: string; userIdHash: string }) => void;
     deletionMocks.request.mockReturnValue(new Promise((resolve) => { resolveRequest = resolve; }));
-    settings.open('billing');
+    settings.open('account');
     document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
     typePhrase('DELETE');
     const confirm = document.querySelector<HTMLButtonElement>('[data-deletion-confirm]')!;
@@ -397,7 +450,7 @@ describe('UnifiedSettings account deletion', () => {
   });
 
   it('closes the dialog when the signed-in account changes underneath it', () => {
-    settings.open('billing');
+    settings.open('account');
     document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
     expect(document.querySelector('.account-deletion-dialog-overlay')).not.toBeNull();
 
@@ -413,7 +466,7 @@ describe('UnifiedSettings account deletion', () => {
     deletionMocks.request.mockReturnValue(new Promise((_resolve, reject) => {
       rejectRequest = reject;
     }));
-    settings.open('billing');
+    settings.open('account');
     document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
     typePhrase('DELETE');
     document.querySelector<HTMLButtonElement>('[data-deletion-confirm]')!.click();
@@ -435,7 +488,7 @@ describe('UnifiedSettings account deletion', () => {
     deletionMocks.request.mockRejectedValue(
       new Error('Account deletion is still running. Reload in a moment to check.'),
     );
-    settings.open('billing');
+    settings.open('account');
     document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
     typePhrase('DELETE');
     document.querySelector<HTMLButtonElement>('[data-deletion-confirm]')!.click();
@@ -460,7 +513,7 @@ describe('UnifiedSettings account deletion', () => {
     deletionMocks.request.mockReturnValue(new Promise((_resolve, reject) => {
       rejectRequest = reject;
     }));
-    settings.open('billing');
+    settings.open('account');
     document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
     typePhrase('DELETE');
     document.querySelector<HTMLButtonElement>('[data-deletion-confirm]')!.click();
@@ -483,7 +536,7 @@ describe('UnifiedSettings account deletion', () => {
 
   it('shows a retryable error and keeps the session on failure', async () => {
     deletionMocks.request.mockRejectedValue(new Error('Convex unavailable'));
-    settings.open('billing');
+    settings.open('account');
     document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
     typePhrase('DELETE');
     document.querySelector<HTMLButtonElement>('[data-deletion-confirm]')!.click();

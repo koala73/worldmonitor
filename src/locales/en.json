@@ -4500,7 +4500,6 @@
     "dataAndCommunity": "Data & Community",
     "theme": "Theme",
     "themeDesc": "Auto follows your system preference.",
-    "themeAuto": "Auto (follow system)",
     "themeDark": "Dark",
     "themeLight": "Light",
     "mapProvider": "Map Tile Provider",
@@ -5109,5 +5108,51 @@
     "close": "Close",
     "alertsHint": "Install World Monitor to your Home Screen to get alerts on this iPhone or iPad.",
     "how": "How to install"
+  },
+  "settings": {
+    "back": "Back to settings",
+    "signOut": "Sign out",
+    "signOutFailed": "Could not sign out. Try again.",
+    "signIn": {
+      "label": "Sign in",
+      "desc": "Sync settings and manage your plan"
+    },
+    "summary": {
+      "themeAuto": "Auto",
+      "count": "{{on}} of {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Preferences",
+      "developer": "Developer",
+      "app": "App"
+    },
+    "sections": {
+      "account": "Account",
+      "map": "Map",
+      "ai": "AI & analysis",
+      "video": "Video & streams",
+      "apiKeys": "API keys",
+      "embeds": "Embeds",
+      "aiAgents": "AI agents (MCP)",
+      "sync": "Sync, import & export",
+      "about": "About"
+    },
+    "descriptions": {
+      "panels": "Show, hide and reorder",
+      "sources": "Regions and feeds",
+      "notifications": "Channels and alert rules",
+      "display": "Theme, font and language",
+      "map": "Provider, theme and globe",
+      "ai": "Models, memory and frameworks",
+      "video": "Quality and autoplay",
+      "apiKeys": "Keys for the World Monitor API",
+      "embeds": "Widgets for your own site",
+      "aiAgents": "Connected MCP clients",
+      "about": "Site links, terms and privacy"
+    },
+    "search": {
+      "empty": "No settings match"
+    }
   }
 }

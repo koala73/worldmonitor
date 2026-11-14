@@ -4396,7 +4396,6 @@
     "dataAndCommunity": "Data a komunita",
     "theme": "Motiv",
     "themeDesc": "Automaticky sleduje nastavení systému.",
-    "themeAuto": "Automaticky (podle systému)",
     "themeDark": "Tmavý",
     "themeLight": "Světlý",
     "mapProvider": "Poskytovatel dlaždic mapy",
@@ -5166,5 +5165,51 @@
     "errGeneric": "Návrh nemohl být vytvořen. Zkuste to znovu.",
     "errDownload": "Soubor nelze stáhnout zde. Místo toho použijte Tisk nebo Uložit jako PDF.",
     "errLoad": "Posouzení cesty se nepodařilo otevřít. Znovu načtěte stránku a zkuste to znovu."
+  },
+  "settings": {
+    "back": "Zpět na nastavení",
+    "signIn": {
+      "label": "Přihlásit se",
+      "desc": "Synchronizuj nastavení a spravuj svůj plán"
+    },
+    "summary": {
+      "themeAuto": "Automaticky",
+      "count": "{{on}} z {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Preference",
+      "developer": "Vývojář",
+      "app": "Aplikace"
+    },
+    "sections": {
+      "account": "Účet",
+      "map": "Mapa",
+      "ai": "AI a analýza",
+      "video": "Video a streamy",
+      "apiKeys": "API klíče",
+      "embeds": "Vložené widgety",
+      "aiAgents": "AI agenti (MCP)",
+      "sync": "Synchronizace, import a export",
+      "about": "O aplikaci"
+    },
+    "descriptions": {
+      "panels": "Zobrazit, skrýt a změnit pořadí",
+      "sources": "Regiony a zdroje",
+      "notifications": "Kanály a pravidla výstrah",
+      "display": "Vzhled, písmo a jazyk",
+      "map": "Poskytovatel, vzhled a glóbus",
+      "ai": "Modely, paměť a rámce",
+      "video": "Kvalita a automatické přehrávání",
+      "apiKeys": "Klíče pro World Monitor API",
+      "embeds": "Widgety pro tvůj web",
+      "aiAgents": "Připojení MCP klienti",
+      "about": "Odkazy webu, podmínky a ochrana soukromí"
+    },
+    "signOut": "Odhlásit se",
+    "signOutFailed": "Nepodařilo se odhlásit. Zkuste to znovu.",
+    "search": {
+      "empty": "Žádné nastavení neodpovídá"
+    }
   }
 }

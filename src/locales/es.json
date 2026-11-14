@@ -4374,7 +4374,6 @@
     "dataAndCommunity": "Datos y comunidad",
     "theme": "Tema",
     "themeDesc": "Automático sigue las preferencias del sistema.",
-    "themeAuto": "Automático (seguir sistema)",
     "themeDark": "Oscuro",
     "themeLight": "Claro",
     "mapProvider": "Proveedor de mosaicos",
@@ -5138,5 +5137,51 @@
     "errGeneric": "No se pudo generar el borrador. Intenta de nuevo.",
     "errDownload": "El archivo no se pudo descargar aquí. Usa Imprimir o guarda como PDF en su lugar.",
     "errLoad": "No se pudo abrir la evaluación del viaje. Recarga la página e intenta de nuevo."
+  },
+  "settings": {
+    "back": "Volver a ajustes",
+    "signIn": {
+      "label": "Iniciar sesión",
+      "desc": "Sincroniza tus ajustes y gestiona tu plan"
+    },
+    "summary": {
+      "themeAuto": "Automático",
+      "count": "{{on}} de {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Preferencias",
+      "developer": "Desarrollador",
+      "app": "Aplicación"
+    },
+    "sections": {
+      "account": "Cuenta",
+      "map": "Mapa",
+      "ai": "IA y análisis",
+      "video": "Video y transmisiones",
+      "apiKeys": "Claves API",
+      "embeds": "Widgets incrustados",
+      "aiAgents": "Agentes IA (MCP)",
+      "sync": "Sincronización, importación y exportación",
+      "about": "Acerca de"
+    },
+    "descriptions": {
+      "panels": "Mostrar, ocultar y reordenar",
+      "sources": "Regiones y feeds",
+      "notifications": "Canales y reglas de alerta",
+      "display": "Tema, fuente e idioma",
+      "map": "Proveedor, tema y globo",
+      "ai": "Modelos, memoria y marcos",
+      "video": "Calidad y reproducción automática",
+      "apiKeys": "Claves para la API de World Monitor",
+      "embeds": "Widgets para tu sitio",
+      "aiAgents": "Clientes MCP conectados",
+      "about": "Enlaces del sitio, términos y privacidad"
+    },
+    "signOut": "Cerrar sesión",
+    "signOutFailed": "No se pudo cerrar sesión. Intenta de nuevo.",
+    "search": {
+      "empty": "Ningún ajuste coincide"
+    }
   }
 }

@@ -4426,7 +4426,6 @@
     "dataAndCommunity": "Adatok és közösség",
     "theme": "Téma",
     "themeDesc": "Automatikusan követi a rendszer beállítását.",
-    "themeAuto": "Automatikus (rendszerbeállítás követése)",
     "themeDark": "Sötét",
     "themeLight": "Világos",
     "mapProvider": "Térképcsempe-szolgáltató",
@@ -5110,5 +5109,51 @@
     "errGeneric": "Az első változat nem állítható össze. Próbálja újra.",
     "errDownload": "A fájl innen nem tölthető le. Használja a Nyomtatást vagy a PDF-ként mentést helyette.",
     "errLoad": "Az utazási értékelés nem nyitható meg. Töltse be újra az oldalt, és próbálja újra."
+  },
+  "settings": {
+    "back": "Vissza a beállításokhoz",
+    "signIn": {
+      "label": "Bejelentkezés",
+      "desc": "Beállítások szinkronizálása és csomag kezelése"
+    },
+    "summary": {
+      "themeAuto": "Automatikus",
+      "count": "{{on}} / {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Preferenciák",
+      "developer": "Fejlesztő",
+      "app": "Alkalmazás"
+    },
+    "sections": {
+      "account": "Fiók",
+      "map": "Térkép",
+      "ai": "Mesterséges intelligencia és elemzés",
+      "video": "Videó és streamek",
+      "apiKeys": "API-kulcsok",
+      "embeds": "Beágyazások",
+      "aiAgents": "Mesterséges intelligencia ügynökök (MCP)",
+      "sync": "Szinkronizálás, import és export",
+      "about": "Rólunk"
+    },
+    "descriptions": {
+      "panels": "Megjelenítés, elrejtés és átrendezés",
+      "sources": "Régiók és feedek",
+      "notifications": "Csatornák és riasztási szabályok",
+      "display": "Téma, betűkészlet és nyelv",
+      "map": "Szolgáltató, téma és földgömb",
+      "ai": "Modellek, memória és keretrendszerek",
+      "video": "Minőség és automatikus lejátszás",
+      "apiKeys": "World Monitor API-kulcsok",
+      "embeds": "Widgetek saját webhelyhez",
+      "aiAgents": "Csatlakoztatott MCP-kliensek",
+      "about": "Webhely-hivatkozások, feltételek és adatvédelem"
+    },
+    "signOut": "Kijelentkezés",
+    "signOutFailed": "Nem sikerült kijelentkezni. Próbálja újra.",
+    "search": {
+      "empty": "Nincs egyező beállítás"
+    }
   }
 }

@@ -1032,14 +1032,14 @@ describe('WebMCP live dashboard bindings', () => {
     assert.equal(settings.destination, 'settings');
     assert.equal(settings.overlay, 'open');
     assert.equal(settings.tab, 'settings');
-    assert.deepEqual(calls, ['settings']);
+    assert.deepEqual(calls, ['default']);
 
     const alerts = await applyWebMcpOpenAlerts(ctx, 'full');
     assert.equal(alerts.ok, true);
     assert.equal(alerts.destination, 'alerts');
     assert.equal(alerts.overlay, 'open');
     assert.equal(alerts.tab, 'notifications');
-    assert.deepEqual(calls, ['settings', 'notifications']);
+    assert.deepEqual(calls, ['default', 'notifications']);
   });
 
   it('denies settings when the overlay fails to open', async () => {
@@ -1080,7 +1080,7 @@ describe('WebMCP live dashboard bindings', () => {
     assert.equal(settings.ok, true);
     assert.equal(settings.context.variant, 'full');
     assert.deepEqual(settings.context.map.enabledLayers, []);
-    assert.deepEqual(settingsCalls, ['settings']);
+    assert.deepEqual(settingsCalls, ['default']);
 
     let navigated = false;
     const destroyed = await applyWebMcpSwitchMonitor(
