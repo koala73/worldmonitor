@@ -408,7 +408,8 @@ async function upstashDel(key) {
 // ─── Notification publishing ─────────────────────────────────────────────────
 // Mirrors ais-relay.cjs::publishNotificationEvent: LPUSH the event onto
 // wm:events:queue, guarded by a SETNX dedup key (TTL = dedupTtl). On LPUSH
-// failure, rollback the dedup key so the next run can retry.
+// failure, rollback the dedup key so the next run can retry. Returns true when
+// the event is on the queue, including a dedup hit for one already queued.
 
 function notifyHash(str) {
   let h = 0;
@@ -431,20 +432,22 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
       emitTelemetry: ({ line }) => console.warn(line),
     });
     if (!dedupDecision.shouldPublish) {
-      if (!dedupDecision.isDuplicate) return;
+      if (!dedupDecision.isDuplicate) return false;
       console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
-      return;
+      return true;
     }
     const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt: Date.now() });
     const ok = await upstashLpush('wm:events:queue', msg);
     if (ok) {
       console.log(`[Notify] Queued ${dedupDecision.severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
-    } else {
-      console.warn(`[Notify] LPUSH failed for ${eventType} — rolling back dedup key`);
-      await upstashDel(dedupKey);
+      return true;
     }
+    console.warn(`[Notify] LPUSH failed for ${eventType} — rolling back dedup key`);
+    await upstashDel(dedupKey);
+    return false;
   } catch (e) {
     console.warn(`[Notify] publishNotificationEvent error (${eventType}):`, e?.message || e);
+    return false;
   }
 }
 
@@ -1005,9 +1008,13 @@ function faaNotifyReason(a) {
   if (!label || /clos/i.test(a.reason)) return a.reason;
   return `${label}: ${a.reason}`;
 }
+const severeBand = a => (a.severity === 'FLIGHT_DELAY_SEVERITY_SEVERE' ? 'critical' : 'high');
+// notification-relay delivers only critical events to realtime rules, and a
+// ground stop halts every departure, so it is critical whatever its delay band.
+const faaBand = a => (a.delayType === 'FLIGHT_DELAY_TYPE_GROUND_STOP' ? 'critical' : severeBand(a));
 const AVIATION_NOTIFY_SOURCES = {
-  intl: { prevKey: AVIATION_PREV_ALERTED_KEY, source: 'AviationStack', reason: a => a.reason },
-  faa: { prevKey: FAA_PREV_ALERTED_KEY, source: 'FAA', reason: faaNotifyReason },
+  intl: { prevKey: AVIATION_PREV_ALERTED_KEY, source: 'AviationStack', reason: a => a.reason, band: severeBand },
+  faa: { prevKey: FAA_PREV_ALERTED_KEY, source: 'FAA', reason: faaNotifyReason, band: faaBand },
 };
 // NOTAM:    new ICAOs in the closed-set trigger a notam_closure notification.
 // Both sources persist their prev-state to Redis so short-lived cron runs don't
@@ -1021,7 +1028,7 @@ async function dispatchAviationNotifications(alerts, notifySource) {
   // Diffing by airport alone would filter a MAJOR->SEVERE escalation for an
   // already-alerted airport out HERE — before the severity-aware coalesce key is
   // ever reached — so the escalation would never publish (PR #4985 review P1).
-  const aviationSeverityBand = a => (a.severity === 'FLIGHT_DELAY_SEVERITY_SEVERE' ? 'critical' : 'high');
+  const aviationSeverityBand = notifySource.band;
   const aviationAlertKey = a => `${a.iata}:${aviationSeverityBand(a)}`;
   const currentKeys = new Set(severeAlerts.filter(a => a.iata).map(aviationAlertKey));
   const prev = await upstashGet(notifySource.prevKey);
@@ -1029,9 +1036,6 @@ async function dispatchAviationNotifications(alerts, notifySource) {
   const newAlerts = severeAlerts.filter(a => a.iata && !prevSet.has(aviationAlertKey(a)));
 
   // Persist current set for next tick's diff (24h TTL guards restarts).
-  // Keyed by airport+severity so a later band change is seen as a new state.
-  await upstashSet(notifySource.prevKey, [...currentKeys], PREV_STATE_TTL);
-
   for (const a of newAlerts.slice(0, 3)) {
     const severity = aviationSeverityBand(a);
     // Alert rows carry the registry's country NAME ('Brazil', 'China');
@@ -1048,7 +1052,7 @@ async function dispatchAviationNotifications(alerts, notifySource) {
     // read as a data-quality bug in cron logs rather than silent non-matching.
     const site = airportNotifyLocation(a);
     if (site.lat === undefined) console.warn(`[Notify] aviation_closure ${a.iata}: no coordinates on the alert row — publishing unlocated (invisible to proximity rules)`);
-    await publishNotificationEvent({
+    const queued = await publishNotificationEvent({
       eventType: 'aviation_closure',
       payload: {
         title: `${a.iata}${a.city ? ` (${a.city})` : ''}: ${notifySource.reason(a) || 'Airport disruption'}`,
@@ -1066,7 +1070,11 @@ async function dispatchAviationNotifications(alerts, notifySource) {
       variant: undefined,
       dedupTtl: 14_400, // 4h
     });
+    if (!queued) currentKeys.delete(aviationAlertKey(a));
   }
+  // Keyed by airport+severity so a later band change is seen as a new state.
+  // A failed publish stays out of the set so the next tick retries it.
+  await upstashSet(notifySource.prevKey, [...currentKeys], PREV_STATE_TTL);
 }
 
 async function dispatchNotamNotifications(closedIcaos, reasons, sourceByIcao = {}) {
