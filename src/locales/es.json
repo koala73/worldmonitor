@@ -4374,7 +4374,6 @@
     "dataAndCommunity": "Datos y comunidad",
     "theme": "Tema",
     "themeDesc": "Automático sigue las preferencias del sistema.",
-    "themeAuto": "Automático (seguir sistema)",
     "themeDark": "Oscuro",
     "themeLight": "Claro",
     "mapProvider": "Proveedor de mosaicos",
@@ -5180,6 +5179,9 @@
       "about": "Enlaces del sitio, términos y privacidad"
     },
     "signOut": "Cerrar sesión",
-    "signOutFailed": "No se pudo cerrar sesión. Intenta de nuevo."
+    "signOutFailed": "No se pudo cerrar sesión. Intenta de nuevo.",
+    "search": {
+      "empty": "Ningún ajuste coincide"
+    }
   }
 }

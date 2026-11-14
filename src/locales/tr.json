@@ -4352,7 +4352,6 @@
     "dataAndCommunity": "Veri ve Topluluk",
     "theme": "Tema",
     "themeDesc": "Otomatik olarak sistem tercihlerini takip eder.",
-    "themeAuto": "Otomatik (sistemi takip et)",
     "themeDark": "Koyu",
     "themeLight": "Açık",
     "mapProvider": "Harita döşeme sağlayıcısı",
@@ -5152,6 +5151,9 @@
       "about": "Site bağlantıları, şartlar ve gizlilik"
     },
     "signOut": "Çıkış yap",
-    "signOutFailed": "Oturum kapatılamadı. Lütfen tekrar deneyin."
+    "signOutFailed": "Oturum kapatılamadı. Lütfen tekrar deneyin.",
+    "search": {
+      "empty": "Eşleşen ayar yok"
+    }
   }
 }

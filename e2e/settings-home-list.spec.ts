@@ -1,12 +1,14 @@
+import AxeBuilder from '@axe-core/playwright';
 import { devices, expect, test, type Page } from '@playwright/test';
 
-// Settings opens on a grouped list of sections. Each row opens one page and
-// the header's back button returns to the list. On a phone every row must fit
-// the sheet without sideways scrolling, in left-to-right and Arabic layouts.
+// Settings is one grouped list of sections. On a phone it opens on that list,
+// each row opens one page, and the header's back button returns to the list;
+// every row must fit the sheet without sideways scrolling, in left-to-right
+// and Arabic layouts. Wider screens show the list as a searchable sidebar
+// beside the selected page, over the dimmed dashboard.
 
 const { defaultBrowserType, ...pixel } = devices['Pixel 7'];
 void defaultBrowserType;
-const DESKTOP = { viewport: { width: 1440, height: 900 } };
 
 async function seed(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -93,21 +95,201 @@ test.describe('settings navigation on a phone', () => {
   });
 });
 
-test.describe('settings navigation on a desktop', () => {
-  test.use(DESKTOP);
+async function openSettingsFromGear(page: Page, query = ''): Promise<void> {
+  await page.goto(`/dashboard${query}`, { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true', { timeout: 60_000 });
+  if (!query) await page.locator('#unifiedSettingsBtn').click();
+  await expect(page.locator('#unifiedSettingsModal')).toHaveClass(/active/);
+}
 
-  test('a theme change on Display shows in the Display row', async ({ page }) => {
+const currentRow = (page: Page) => page.locator('#unifiedSettingsModal [aria-current="page"]');
+const sidebarRows = (page: Page) => page.locator('[data-settings-rows] [data-settings-nav], [data-settings-rows] [data-settings-signin]');
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768 }]) {
+  test.describe(`settings sidebar at ${viewport.width}×${viewport.height}`, () => {
+    test.use({ viewport });
+
+    test('opens on Display and moves between pages from the sidebar', async ({ page }, testInfo) => {
+      await seed(page);
+      await openSettingsFromGear(page);
+      const sheet = page.locator('.unified-settings-modal');
+
+      await expect(page.locator('#us-page-display')).toBeVisible();
+      await expect(currentRow(page)).toHaveAttribute('data-settings-nav', 'display');
+      await expect(page.locator('[data-settings-home]')).toBeVisible();
+      await expect(page.locator('[data-settings-back]')).toBeHidden();
+      const box = (await sheet.boundingBox())!;
+      expect(box.width, 'the sheet is 960px wide or the viewport less its gutters').toBe(Math.min(960, viewport.width - 32));
+      await sheet.screenshot({ path: testInfo.outputPath(`settings-sidebar-${viewport.width}.png`) });
+
+      for (const id of ['panels', 'sources', 'api-keys', 'about']) {
+        await page.locator(`[data-settings-nav="${id}"]`).click();
+        await expect(page.locator(`#us-page-${id}`)).toBeVisible();
+        await expect(currentRow(page)).toHaveAttribute('data-settings-nav', id);
+        await expect(page.locator(`[data-settings-nav="${id}"]`)).toBeFocused();
+      }
+      await expect(page.locator('#us-page-display')).toBeHidden();
+      expect(await rowsOutsideModal(page), 'rows cut off by the sheet edge').toEqual([]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), 'nothing scrolls sideways').toBe(0);
+
+      await page.keyboard.press('Escape');
+      await page.locator('#unifiedSettingsBtn').click();
+      await expect(page.locator('#us-page-about'), 'a reopen returns to the page selected last').toBeVisible();
+    });
+
+    test('searches the sidebar, says when nothing matches, and Escape clears before it closes', async ({ page }) => {
+      await seed(page);
+      await openSettingsFromGear(page);
+      const search = page.locator('[data-settings-search]');
+      const empty = page.locator('[data-settings-empty]');
+
+      await search.fill('privacy');
+      await expect(sidebarRows(page)).toHaveCount(2);
+      await expect(page.locator('[data-settings-rows] [data-settings-signin]')).toBeVisible();
+      await expect(page.locator('[data-settings-nav="about"]')).toBeVisible();
+      await expect(empty).toBeHidden();
+
+      await search.fill('zzz');
+      await expect(sidebarRows(page)).toHaveCount(1);
+      await expect(empty).toHaveText('No settings match');
+
+      await search.press('Escape');
+      await expect(search).toHaveValue('');
+      await expect(page.locator('[data-settings-nav="about"]')).toBeVisible();
+      await expect(empty).toBeHidden();
+      await expect(page.locator('#unifiedSettingsModal')).toHaveClass(/active/);
+
+      await search.press('Escape');
+      await expect(page.locator('#unifiedSettingsModal')).not.toHaveClass(/active/);
+    });
+
+    test('a deep link selects its page in the sidebar', async ({ page }) => {
+      await seed(page);
+      await openSettingsFromGear(page, '?settings=notifications');
+      await expect(page.locator('#us-page-notifications')).toBeVisible({ timeout: 60_000 });
+      await expect(currentRow(page)).toHaveAttribute('data-settings-nav', 'notifications');
+      await expect(page.locator('[data-settings-home]')).toBeVisible();
+    });
+
+    test('shows the dashboard dimmed behind the sheet', async ({ page }) => {
+      await seed(page);
+      await openSettingsFromGear(page);
+      const scrim = await page.locator('#unifiedSettingsModal').evaluate((el) => {
+        const match = getComputedStyle(el).backgroundColor.match(/rgba?\(([^)]+)\)/)!;
+        const parts = match[1]!.split(',').map((part) => Number.parseFloat(part));
+        return parts.length === 4 ? parts[3]! : 1;
+      });
+      expect(scrim, 'the backdrop is translucent').toBeGreaterThan(0.2);
+      expect(scrim, 'the backdrop is translucent').toBeLessThan(0.7);
+      const hit = await page.evaluate(() => document.elementFromPoint(8, window.innerHeight / 2)?.id);
+      expect(hit, 'the scrim still catches clicks beside the sheet').toBe('unifiedSettingsModal');
+    });
+
+    test('the open sheet passes axe', async ({ page }) => {
+      test.setTimeout(180_000);
+      await seed(page);
+      await openSettingsFromGear(page);
+      await expect(page.locator('#us-page-display')).toBeVisible();
+      const results = await new AxeBuilder({ page })
+        .include('#unifiedSettingsModal')
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+        .analyze();
+      expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
+    });
+  });
+}
+
+test.describe('settings across the phone breakpoint', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test('a page open in the sidebar stays open on the phone sheet, and Back goes home', async ({ page }) => {
     await seed(page);
-    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#unifiedSettingsBtn')).toBeVisible({ timeout: 60_000 });
-    await page.locator('#unifiedSettingsBtn').click();
+    await openSettingsFromGear(page);
+    await page.locator('[data-settings-nav="map"]').click();
+    await expect(page.locator('#us-page-map')).toBeVisible();
+
+    await page.setViewportSize({ width: 393, height: 852 });
+    await expect(page.locator('#us-page-map')).toBeVisible();
+    await expect(page.locator('[data-settings-home]')).toBeHidden();
+    await expect(page.locator('[data-settings-search]')).toBeHidden();
+
+    await page.locator('[data-settings-back]').click();
+    await expect(page.locator('[data-settings-home]')).toBeVisible();
+    await expect(page.locator('#us-page-map')).toBeHidden();
+  });
+
+  test('rotating across the breakpoint keeps the reader in place on a long page', async ({ page }) => {
+    await seed(page);
+    await openSettingsFromGear(page);
+    await page.locator('[data-settings-nav="panels"]').click();
+    const pane = page.locator('[data-settings-pages]');
+    await pane.evaluate((el) => { el.scrollTop = 300; });
+    await expect.poll(() => pane.evaluate((el) => el.scrollTop)).toBe(300);
+    await page.locator('[data-settings-search]').focus();
+
+    await page.setViewportSize({ width: 393, height: 852 });
+    const sheet = page.locator('.unified-settings-modal');
+    await expect(page.locator('[data-settings-home]')).toBeHidden();
+    await expect.poll(() => sheet.evaluate((el) => el.scrollTop)).toBe(300);
+    await expect(page.locator('#us-page-panels .us-page-title'), 'focus leaves the hidden search').toBeFocused();
+
+    await sheet.evaluate((el) => { el.scrollTop = 420; });
+    await page.waitForTimeout(100);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect.poll(() => pane.evaluate((el) => el.scrollTop)).toBe(420);
+  });
+
+  test('the phone home list widens into the sidebar on Display', async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 852 });
+    await seed(page);
+    await openSettingsFromMore(page);
     await expect(page.locator('[data-settings-home]')).toBeVisible();
 
-    await page.locator('[data-settings-nav="display"]').click();
-    await page.locator('#us-page-display #us-theme').selectOption('light');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(page.locator('#us-page-display')).toBeVisible();
+    await expect(currentRow(page)).toHaveAttribute('data-settings-nav', 'display');
+  });
+
+  test('at 800px the sheet fits the window without sideways scrolling', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 700 });
+    await seed(page);
+    await openSettingsFromGear(page);
+    await page.locator('[data-settings-nav="sources"]').click();
+    const overflow = await page.evaluate(() => {
+      const sheet = document.querySelector<HTMLElement>('.unified-settings-modal')!;
+      const pane = document.querySelector<HTMLElement>('[data-settings-pages]')!;
+      return {
+        page: document.documentElement.scrollWidth - window.innerWidth,
+        sheet: sheet.scrollWidth - sheet.clientWidth,
+        pane: pane.scrollWidth - pane.clientWidth,
+      };
+    });
+    expect(overflow).toEqual({ page: 0, sheet: 0, pane: 0 });
+    expect(await rowsOutsideModal(page)).toEqual([]);
+  });
+});
+
+test.describe('Display segmented controls', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test('arrow keys move the theme, and the sidebar row follows at once', async ({ page }) => {
+    await seed(page);
+    await openSettingsFromGear(page);
+    const auto = page.locator('#us-theme input[value="auto"]');
+    await expect(auto).toBeChecked();
+
+    await auto.focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect(page.locator('#us-theme input[value="dark"]')).toBeChecked();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await page.keyboard.press('ArrowLeft');
+    await expect(page.locator('#us-theme input[value="light"]')).toBeChecked();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-    await page.locator('[data-settings-back]').click();
     await expect(page.locator('[data-settings-nav="display"] [data-settings-summary]')).toHaveText('Light');
+
+    await page.locator('#us-font-family label', { hasText: 'System Default' }).click();
+    await expect(page.locator('#us-font-family input[value="system"]')).toBeChecked();
+    expect(await page.evaluate(() => localStorage.getItem('wm-font-family'))).toBe('system');
   });
 });
 

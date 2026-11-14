@@ -4426,7 +4426,6 @@
     "dataAndCommunity": "Adatok és közösség",
     "theme": "Téma",
     "themeDesc": "Automatikusan követi a rendszer beállítását.",
-    "themeAuto": "Automatikus (rendszerbeállítás követése)",
     "themeDark": "Sötét",
     "themeLight": "Világos",
     "mapProvider": "Térképcsempe-szolgáltató",
@@ -5152,6 +5151,9 @@
       "about": "Webhely-hivatkozások, feltételek és adatvédelem"
     },
     "signOut": "Kijelentkezés",
-    "signOutFailed": "Nem sikerült kijelentkezni. Próbálja újra."
+    "signOutFailed": "Nem sikerült kijelentkezni. Próbálja újra.",
+    "search": {
+      "empty": "Nincs egyező beállítás"
+    }
   }
 }

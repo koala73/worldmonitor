@@ -29,6 +29,7 @@ import {
   isSettingsSectionId,
   pageEntryEffect,
   reduceNav,
+  searchNav,
   sectionLabelKey,
   type MountedSection,
   type NavEvent,
@@ -198,6 +199,12 @@ export class UnifiedSettings {
   private readonly pages = new Map<SettingsSectionId, { el: HTMLElement; mounted: MountedSection }>();
   /** Where the home list and each page were last scrolled this session. */
   private readonly scrollOffsets = new Map<SettingsSectionId | 'home', number>();
+  /** The last page shown while this shell has lived, open or closed. The modal reopens on it. */
+  private recentPage: SettingsSectionId | null = null;
+  /** The sidebar search text. The sheet has no search, so it is empty there. */
+  private navQuery = '';
+  /** Embed access the home rows were last built for. Search can hide the row, so the DOM cannot answer this. */
+  private renderedEmbedAccess = false;
   private installCleanup: (() => void) | null = null;
   private legalLinkHandoffAttached = false;
   private activeSourceRegion = 'all';
@@ -642,7 +649,10 @@ export class UnifiedSettings {
 
     this.overlay.addEventListener('input', (e) => {
       const target = e.target as HTMLInputElement;
-      if (target.closest('.panels-search')) {
+      if (target.matches('[data-settings-search]')) {
+        this.navQuery = target.value;
+        this.renderHome();
+      } else if (target.closest('.panels-search')) {
         this.panelFilter = target.value;
         this.renderPanelsTab();
       } else if (target.closest('.sources-search')) {
@@ -650,6 +660,23 @@ export class UnifiedSettings {
         this.renderSourcesGrid();
         this.updateSourcesCounter();
       }
+    });
+
+    // Kept as the reader scrolls: by the time a breakpoint crossing reaches
+    // onResize, the old layout's scroller has already lost its offset.
+    this.overlay.addEventListener('scroll', (e) => {
+      if (this.nav && e.target === this.scroller(this.nav)) {
+        this.scrollOffsets.set(this.nav.page ?? 'home', this.scroller(this.nav).scrollTop);
+      }
+    }, { capture: true, passive: true });
+
+    // Escape in a non-empty sidebar search clears it; the next Escape reaches
+    // escapeHandler on the document and closes Settings.
+    this.overlay.addEventListener('keydown', (e) => {
+      const target = e.target as HTMLInputElement;
+      if (e.key !== 'Escape' || !target.matches('[data-settings-search]') || target.value === '') return;
+      e.stopPropagation();
+      this.clearSearch();
     });
 
     this.renderFrame();
@@ -734,7 +761,7 @@ export class UnifiedSettings {
     }
     // After the Settings entry: a page opened directly stacks its entry above
     // it, so Back from that page lands on the home list.
-    this.dispatch({ type: 'open', target: section });
+    this.dispatch({ type: 'open', target: section, layout: isMobileDevice() ? 'sheet' : 'modal', recent: this.recentPage });
     safeStorageSet('wm-settings-open', '1');
     document.addEventListener('keydown', this.escapeHandler);
     window.addEventListener('resize', this.onResize);
@@ -757,8 +784,7 @@ export class UnifiedSettings {
 
       const mcpPageStale = this.pages.has('mcp-clients')
         && (this.overlay.querySelector('[data-mcp-manage]') !== null) !== this.canManageMcpClients();
-      const embedsRowStale = (this.overlay.querySelector('[data-settings-nav="embeds"]') !== null)
-        !== hasEmbedAccessForAccount(getAuthState().user?.role);
+      const embedsRowStale = this.renderedEmbedAccess !== hasEmbedAccessForAccount(getAuthState().user?.role);
       if (mcpPageStale || embedsRowStale) {
         // Entitlements can legitimately progress from a free/default snapshot
         // to Pro after the account handoff's first non-null emission. Rebuild
@@ -991,8 +1017,13 @@ export class UnifiedSettings {
           <button class="modal-close unified-settings-close" aria-label="Close">×</button>
         </div>
         <nav class="us-home" data-settings-home aria-label="${escapeHtml(t('header.tabSettings'))}">
+          <div class="us-search">
+            <input type="search" class="us-search-input" data-settings-search autocomplete="off" spellcheck="false"
+              placeholder="${escapeHtml(t('modals.settingsWindow.shellSearchPlaceholder'))}" aria-label="${escapeHtml(t('modals.settingsWindow.shellSearchPlaceholder'))}" aria-controls="us-home-rows">
+          </div>
           ${this.config.isDesktopApp ? '' : '<div class="us-install-slot" data-pwa-install-entry></div>'}
-          <div class="us-home-rows" data-settings-rows></div>
+          <div class="us-home-rows" id="us-home-rows" data-settings-rows></div>
+          <p class="us-search-empty" data-settings-empty aria-live="polite"></p>
         </nav>
         <div class="us-pages" data-settings-pages></div>
       </div>
@@ -1002,7 +1033,7 @@ export class UnifiedSettings {
   private startSession(): void {
     this.endSession();
     this.scrollOffsets.clear();
-    this.renderHome();
+    this.clearSearch();
     this.attachLegalLinkHandoff();
     const installHost = this.overlay.querySelector<HTMLElement>('[data-pwa-install-entry]');
     if (installHost) this.installCleanup = mountInstallEntry(installHost);
@@ -1064,13 +1095,29 @@ export class UnifiedSettings {
     }
   }
 
+  /** Renders the home rows, or on the modal the sidebar rows that match its search. */
   private renderHome(): void {
     const rows = this.overlay.querySelector<HTMLElement>('[data-settings-rows]');
     if (!rows) return;
+    const facts = this.readFacts();
+    this.renderedEmbedAccess = facts.embedAccess;
+    const { groups, hits } = searchNav(buildNav(facts), this.navQuery, (key) => t(key));
     setTrustedHtml(rows, trustedHtml(
-      buildNav(this.readFacts()).map((group) => this.renderNavGroup(group)).join(''),
+      groups.map((group) => this.renderNavGroup(group)).join(''),
       'settings home rows; every interpolated value escaped',
     ));
+    const empty = this.overlay.querySelector<HTMLElement>('[data-settings-empty]');
+    if (empty) empty.textContent = this.navQuery.trim() !== '' && hits === 0 ? t('settings.search.empty') : '';
+    this.markCurrentRow();
+  }
+
+  /** The modal's sidebar marks the open page's row; the sheet's list is never beside a page. */
+  private markCurrentRow(): void {
+    const current = this.nav?.layout === 'modal' ? this.nav.page : null;
+    for (const row of this.overlay.querySelectorAll<HTMLElement>('[data-settings-nav]')) {
+      if (row.dataset.settingsNav === current) row.setAttribute('aria-current', 'page');
+      else row.removeAttribute('aria-current');
+    }
   }
 
   private renderNavGroup(group: NavGroup): string {
@@ -1143,52 +1190,88 @@ export class UnifiedSettings {
   private dispatch(ev: NavEvent): void {
     const prev = this.nav;
     const next = reduceNav(prev, ev, this.readFacts());
-    const fx = diffNav(prev, next);
-    if (fx.leave === null && fx.enter === null && prev !== null) {
-      this.nav = next;
+    if (next === prev) {
       this.syncPageEntry();
       return;
     }
-    const modal = this.overlay.querySelector<HTMLElement>('.unified-settings-modal');
-    if (modal && prev) this.scrollOffsets.set(prev.page ?? 'home', modal.scrollTop);
+    const fx = diffNav(prev, next);
+    // A relayout keeps the page, and the old layout's scroller no longer
+    // holds its offset, so only a page change records one here. The scroll
+    // listener has the offset from before the crossing.
+    const pageChanged = prev === null || fx.enter !== null || fx.leave !== null;
+    if (prev && pageChanged) this.scrollOffsets.set(prev.page ?? 'home', this.scroller(prev).scrollTop);
     this.nav = next;
+    if (next.page !== null) this.recentPage = next.page;
     if (fx.leave) this.pages.get(fx.leave)?.mounted.leave?.();
     const entered = fx.enter ? this.ensurePage(fx.enter) : null;
+    // Search belongs to the modal's sidebar; the sheet lists every row.
+    if (next.layout === 'sheet' && this.navQuery !== '') this.clearSearch();
     this.reflectNav();
     // The phone sheet is a drill-in stack, so a page opens at its top there.
-    // The desktop modal returns every page to where it was left.
-    const drillIn = next.page !== null && this.navLayout() === 'sheet';
-    if (modal) modal.scrollTop = drillIn ? 0 : this.scrollOffsets.get(next.page ?? 'home') ?? 0;
+    // The home list, and every page in the modal, return to where they were left.
+    if (pageChanged) {
+      const drillIn = next.layout === 'sheet' && next.page !== null;
+      this.scroller(next).scrollTop = drillIn ? 0 : this.scrollOffsets.get(next.page ?? 'home') ?? 0;
+    } else if (ev.type === 'relayout') {
+      this.scroller(next).scrollTop = this.scrollOffsets.get(next.page ?? 'home') ?? 0;
+    }
     entered?.mounted.enter?.();
-    if (entered) {
+    // The sidebar keeps focus on the row a user picked; elsewhere the page heading takes it.
+    const focusHeading = ev.type === 'open' || (ev.type === 'select' && next.layout === 'sheet');
+    // A relayout can hide the focused control: the sidebar search, or the sheet's Back.
+    const focused = document.activeElement;
+    const focusLost = ev.type === 'relayout' && focused instanceof HTMLElement
+      && this.overlay.contains(focused) && focused.closest('[hidden]') !== null;
+    if (entered && focusHeading) {
       entered.el.querySelector<HTMLElement>('.us-page-title')?.focus({ preventScroll: true });
+    } else if (focusLost && next.page !== null) {
+      this.pages.get(next.page)?.el.querySelector<HTMLElement>('.us-page-title')?.focus({ preventScroll: true });
     } else if (fx.leave && next.page === null) {
       this.overlay.querySelector<HTMLElement>(`[data-settings-nav="${fx.leave}"]`)?.focus({ preventScroll: true });
     }
     this.syncPageEntry();
   }
 
+  /** The layout the viewport calls for. Settings follows it on open and on resize. */
   private navLayout(): NavLayout {
     return isMobileDevice() ? 'sheet' : 'modal';
   }
 
-  /** Settings opened in the desktop modal has no history entry, so a window narrowed to the phone sheet registers it. */
+  /**
+   * Crossing the phone breakpoint redraws Settings in the other layout on the
+   * same page. Settings opened in the desktop modal has no history entry, so a
+   * window narrowed to the phone sheet registers it first.
+   */
   private readonly onResize = (): void => {
     if (!this.historyRegistered && this.navLayout() === 'sheet') {
       this.historyRegistered = true;
       overlayHistory.open('settings', (origin) => this.close(origin));
     }
-    this.syncPageEntry();
+    this.dispatch({ type: 'relayout', layout: this.navLayout(), recent: this.recentPage });
   };
 
+  /** The sheet scrolls as a whole; the modal scrolls its page pane beside a fixed sidebar. */
+  private scroller(nav: NavState): HTMLElement {
+    const selector = nav.layout === 'modal' ? '[data-settings-pages]' : '.unified-settings-modal';
+    return this.overlay.querySelector<HTMLElement>(selector)!;
+  }
+
+  /** Empties the sidebar search and lists every row again. */
+  private clearSearch(): void {
+    this.navQuery = '';
+    const search = this.overlay.querySelector<HTMLInputElement>('[data-settings-search]');
+    if (search) search.value = '';
+    this.renderHome();
+  }
+
   /** Holds or releases the open page's history entry to match the page and layout. Idempotent. */
-  private readonly syncPageEntry = (): void => {
-    if (pageEntryEffect(this.nav, this.navLayout(), this.historyRegistered) === 'hold') {
+  private syncPageEntry(): void {
+    if (pageEntryEffect(this.nav, this.historyRegistered) === 'hold') {
       this.pageEntry ??= overlayHistory.openCancelable('settings-section', this.onPageEntryClosed);
     } else {
       this.releasePageEntry();
     }
-  };
+  }
 
   private releasePageEntry(): void {
     this.pageEntry?.cancel();
@@ -1217,17 +1300,17 @@ export class UnifiedSettings {
    */
   private rebuild(runEnter: boolean): void {
     const focusWasInside = this.overlay.contains(document.activeElement);
-    const modal = this.overlay.querySelector<HTMLElement>('.unified-settings-modal');
     const before = this.nav?.page ?? null;
-    const offset = modal?.scrollTop ?? 0;
+    const offset = this.nav ? this.scroller(this.nav).scrollTop : 0;
     this.disposePages();
     this.nav = reduceNav(this.nav, { type: 'facts-changed' }, this.readFacts());
+    if (this.nav.page !== null) this.recentPage = this.nav.page;
     this.renderHome();
     const page = this.nav.page ? this.ensurePage(this.nav.page) : null;
     this.reflectNav();
     // Removing the old page can clamp the scroller's offset. A reader who
     // stays on the same page keeps their place.
-    if (modal) modal.scrollTop = this.nav.page === before ? offset : this.scrollOffsets.get('home') ?? 0;
+    this.scroller(this.nav).scrollTop = this.nav.page === before ? offset : this.scrollOffsets.get(this.nav.page ?? 'home') ?? 0;
     if (runEnter) page?.mounted.enter?.();
     if (focusWasInside && !this.overlay.contains(document.activeElement)) {
       const target = page?.el.querySelector<HTMLElement>('.us-page-title')
@@ -1237,18 +1320,25 @@ export class UnifiedSettings {
     this.syncPageEntry();
   }
 
+  /**
+   * Shows what the state says. The sheet shows the home list or one page
+   * under a back button; the modal shows its sidebar beside the page.
+   */
   private reflectNav(): void {
     const page = this.nav?.page ?? null;
+    const sidebar = this.nav?.layout === 'modal';
+    const homeShown = sidebar || page === null;
     const home = this.overlay.querySelector<HTMLElement>('[data-settings-home]');
-    if (home) home.hidden = page !== null;
+    if (home) home.hidden = !homeShown;
     for (const [id, mounted] of this.pages) mounted.el.hidden = id !== page;
     const back = this.overlay.querySelector<HTMLElement>('[data-settings-back]');
-    if (back) back.hidden = page === null;
+    if (back) back.hidden = sidebar || page === null;
     const title = this.overlay.querySelector<HTMLElement>('[data-settings-title]');
     if (title) title.hidden = page !== null;
     const modal = this.overlay.querySelector<HTMLElement>('.unified-settings-modal');
     if (modal) modal.dataset.settingsDepth = page === null ? 'home' : 'page';
-    if (page === null) this.refreshSummaries();
+    this.markCurrentRow();
+    if (homeShown) this.refreshSummaries();
   }
 
   private ensurePage(id: SettingsSectionId): { el: HTMLElement; mounted: MountedSection } {
@@ -1293,7 +1383,11 @@ export class UnifiedSettings {
       const section = renderPreferenceSection(id, {
         isDesktopApp: this.config.isDesktopApp,
         onMapProviderChange: this.config.onMapProviderChange,
-        onSettingSaved: () => showToast(t('modals.settingsWindow.saved')),
+        onSettingSaved: () => {
+          showToast(t('modals.settingsWindow.saved'));
+          // The modal's sidebar stays in view, so its summaries follow at once.
+          this.refreshSummaries();
+        },
         isSignedIn: getAuthState().user !== null,
       });
       setTrustedHtml(body, trustedHtml(section.html, 'preference section; the renderer escapes every value'));

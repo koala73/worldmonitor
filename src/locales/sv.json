@@ -4352,7 +4352,6 @@
     "dataAndCommunity": "Data & Gemenskap",
     "theme": "Tema",
     "themeDesc": "Automatiskt följer systeminställningar.",
-    "themeAuto": "Automatisk (följ systemet)",
     "themeDark": "Mörk",
     "themeLight": "Ljus",
     "mapProvider": "Kartpanel-leverantör",
@@ -5152,6 +5151,9 @@
       "about": "Webbplatslinks, villkor och sekretess"
     },
     "signOut": "Logga ut",
-    "signOutFailed": "Det gick inte att logga ut. Försök igen."
+    "signOutFailed": "Det gick inte att logga ut. Försök igen.",
+    "search": {
+      "empty": "Inga inställningar matchar"
+    }
   }
 }

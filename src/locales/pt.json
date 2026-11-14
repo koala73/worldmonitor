@@ -4374,7 +4374,6 @@
     "dataAndCommunity": "Dados e Comunidade",
     "theme": "Tema",
     "themeDesc": "Automático segue a preferência do sistema.",
-    "themeAuto": "Automático (seguir sistema)",
     "themeDark": "Escuro",
     "themeLight": "Claro",
     "mapProvider": "Provedor de tiles do mapa",
@@ -5180,6 +5179,9 @@
       "about": "Links do site, termos e privacidade"
     },
     "signOut": "Sair",
-    "signOutFailed": "Não foi possível fazer logout. Tente novamente."
+    "signOutFailed": "Não foi possível fazer logout. Tente novamente.",
+    "search": {
+      "empty": "Nenhuma configuração corresponde"
+    }
   }
 }

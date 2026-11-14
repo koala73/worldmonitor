@@ -4459,7 +4459,6 @@
     "dataAndCommunity": "Podaci i zajednica",
     "theme": "Tema",
     "themeDesc": "Automatski slijedi vašu sistemsku postavku.",
-    "themeAuto": "Automatski (pratiti sustav)",
     "themeDark": "Tamna",
     "themeLight": "Svijetla",
     "mapProvider": "Davatelj karata",
@@ -5191,6 +5190,9 @@
       "about": "Veze stranica, uvjeti korištenja i privatnost"
     },
     "signOut": "Odjava",
-    "signOutFailed": "Odjava nije uspjela. Pokušajte ponovno."
+    "signOutFailed": "Odjava nije uspjela. Pokušajte ponovno.",
+    "search": {
+      "empty": "Nema odgovarajućih postavki"
+    }
   }
 }

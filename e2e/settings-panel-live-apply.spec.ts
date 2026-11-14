@@ -46,7 +46,7 @@ test('email preference link opens Notifications directly', async ({ page }) => {
   await seedDashboard(page);
   await page.goto('/dashboard?settings=notifications', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#us-page-notifications')).toBeVisible({ timeout: 60_000 });
-  await expect(page.locator('[data-settings-home]')).toBeHidden();
+  await expect(page.locator('#unifiedSettingsModal [aria-current="page"]')).toHaveAttribute('data-settings-nav', 'notifications');
 });
 
 test('enabling a panel in Settings shows it on the dashboard without a reload', async ({ page }) => {

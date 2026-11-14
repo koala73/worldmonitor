@@ -119,6 +119,7 @@ function makeInstance() {
   // Mirrors the real field initializer. open() snapshots only from null, so a
   // harness left at undefined would model a state the class never has.
   instance.sourceSelectionBaseline = null;
+  instance.recentPage = null;
   instance.startSession = () => instance.calls.push('startSession');
   instance.renderPanelsTab = () => instance.calls.push('renderPanelsTab');
   instance.dispatch = (event) => instance.calls.push(event);
@@ -169,15 +170,16 @@ describe('UnifiedSettings.open', () => {
 
     instance.open('embeds');
 
-    assert.deepEqual(instance.calls, ['startSession', { type: 'open', target: 'embeds' }]);
+    assert.deepEqual(instance.calls, ['startSession', { type: 'open', target: 'embeds', layout: 'modal', recent: null }]);
   });
 
-  it('opens on the home list when no target is given', () => {
+  it('passes no target, and the page selected last, when none is given', () => {
     const instance = makeInstance();
+    instance.recentPage = 'map';
 
     instance.open();
 
-    assert.deepEqual(instance.calls.at(-1), { type: 'open', target: undefined });
+    assert.deepEqual(instance.calls.at(-1), { type: 'open', target: undefined, layout: 'modal', recent: 'map' });
   });
 
   // Re-entry (the deep-dive "Notify me" jump) must keep pages mounted this
@@ -189,7 +191,7 @@ describe('UnifiedSettings.open', () => {
 
     instance.open('notifications');
 
-    assert.deepEqual(instance.calls, ['renderPanelsTab', { type: 'open', target: 'notifications' }]);
+    assert.deepEqual(instance.calls, ['renderPanelsTab', { type: 'open', target: 'notifications', layout: 'modal', recent: null }]);
   });
 
   // Sources apply on click with no Save step, and teardownSettings decides
