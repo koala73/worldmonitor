@@ -84,7 +84,7 @@ function parseSets(records: OmmRecord[]): OrbitElements[] {
   for (const record of records) {
     try {
       const elements = parseOrbitElements(record);
-      if (Number.isFinite(elements.epochMs) && Number.isFinite(elements.meanMotionRevPerDay) && elements.meanMotionRevPerDay > 0) parsed.push(elements);
+      if (elements.satrec.error === 0 && Number.isFinite(elements.epochMs) && Number.isFinite(elements.meanMotionRevPerDay) && elements.meanMotionRevPerDay > 0) parsed.push(elements);
     } catch {
       // A malformed element set is skipped; the satellite falls back to its other sets.
     }
@@ -126,7 +126,9 @@ function satellitePasses(satellite: CatalogSatellite, input: PassJobInput): { ou
       now: input.nowMs,
     });
     if (search.status === 'geostationary') {
-      return { outcome: { ...identity, status: 'geostationary', visibility: search.visibility }, passes: [] };
+      const latest = findPasses({ elements: segments[segments.length - 1]!.elements, profile, point: input.point, window: { start: input.window.startMs, end: input.window.endMs }, now: input.nowMs });
+      const visibility = latest.status === 'geostationary' ? latest.visibility : search.visibility;
+      return { outcome: { ...identity, status: 'geostationary', visibility }, passes: [] };
     }
     if (search.status === 'too-old') continue;
     anyFresh = true;
