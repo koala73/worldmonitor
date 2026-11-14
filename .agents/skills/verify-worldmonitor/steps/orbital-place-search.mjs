@@ -4,7 +4,7 @@
  * The point is Palm Jumeirah, Dubai, whose fronds make a crop easy to check by eye.
  *
  * WM_VERIFY_ORBITAL_VIEWPORT=mobile drives a phone-sized viewport. The flat map is deck.gl on desktop
- * and the SVG map on a phone.
+ * and the SVG map on a phone. WM_VERIFY_THEME=light boots the dashboard in its light theme.
  */
 import { fixtureCatalog } from './orbital-watch.mjs';
 import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
@@ -64,7 +64,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
       };
     });
   }
-  await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': '"flat"' } });
+  const theme = process.env.WM_VERIFY_THEME === 'light' ? 'light' : 'dark';
+  await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': '"flat"', 'worldmonitor-theme': theme } });
 
   // Before and after a pick from the dashboard's own view, so the map visibly moves to the place.
   await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
