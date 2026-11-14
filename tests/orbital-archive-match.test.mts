@@ -7,6 +7,7 @@ import { hasNoDataAtPoint, pointInCrop, searchGibsDailyMosaics } from '../src/se
 import { cropBox } from '../src/services/orbital/crop-url.ts';
 import { searchEumetsatGeostationary } from '../src/services/orbital/archive-eumetsat.ts';
 import { requestArchive } from '../src/services/orbital/archive-result.ts';
+import { loadArchiveImage } from '../src/services/orbital/archive-image.ts';
 import { ARCHIVE_RESPONSES, FIXTURE_NOW, FIXTURE_WINDOW, fakeArchiveFetch, fixtureLookup } from './helpers/orbital-archive-fetch.mts';
 
 const { denver, dubai } = ARCHIVE_RESPONSES.points;
@@ -259,6 +260,25 @@ describe('archive acquisitions attached to computed passes', () => {
         assert.equal(url.host, new URL(latest.imageUrl!).host);
       }
     }
+  });
+
+  it('loads the first weather frame that serves and decodes, inside one deadline', async () => {
+    const png = () => new Response(new Blob([new Uint8Array(8)], { type: 'image/png' }));
+    const urls = ['https://view.eumetsat.int/a', 'https://view.eumetsat.int/b', 'https://view.eumetsat.int/c'];
+    const replies: Record<string, () => Response> = { [urls[0]!]: () => new Response('busy', { status: 500 }), [urls[1]!]: () => new Response('<xml/>', { headers: { 'Content-Type': 'text/xml' } }), [urls[2]!]: png };
+    const loaded = await loadArchiveImage('eumetsat', urls, { fetch: async (url: string) => replies[url]!() });
+    assert.equal(loaded.status, 'ok');
+    if (loaded.status === 'ok') {
+      assert.equal(loaded.image.index, 2);
+      assert.match(loaded.image.objectUrl, /^blob:/);
+      loaded.image.release();
+    }
+    const allFail = await loadArchiveImage('eumetsat', urls.slice(0, 1), { fetch: async () => new Response('', { status: 503 }) });
+    assert.deepEqual(allFail, { status: 'failed', failure: { archive: 'eumetsat', reason: 'http-status', httpStatus: 503 } });
+    const tried: string[] = [];
+    const stalled = await loadArchiveImage('eumetsat', urls, { timeoutMs: 30, fetch: (url: string, init?: RequestInit) => { tried.push(url); return new Promise((_, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('aborted')))); } });
+    assert.deepEqual(stalled, { status: 'failed', failure: { archive: 'eumetsat', reason: 'timeout' } });
+    assert.deepEqual(tried, urls.slice(0, 1), 'a spent deadline is not restarted for the next frame');
   });
 
   it('lists geostationary frames separately for the satellites that see the point', async () => {

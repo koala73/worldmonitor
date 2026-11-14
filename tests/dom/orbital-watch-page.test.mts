@@ -101,13 +101,46 @@ const click = (selector: string) => sheet().querySelector<HTMLElement>(selector)
 const progress = (settled: EvidenceProgress['settled'], pendingProfiles: EvidenceProgress['pendingProfiles'], passes: PointPass[]): EvidenceProgress =>
   ({ settled, pendingProfiles, evidence: evidence(passes, { status: 'partial' }) });
 
+/** Archive image fetches: the page paints each one from a blob: URL, which `sourceOf` maps back. */
+const failing = new Set<string>();
+const fetched: string[] = [];
+const sources: string[] = [];
+const revoked = new Set<string>();
+const sourceOf = (src: string | null) => (src?.startsWith('blob:orbital/') ? sources[Number(src.slice(13))]! : src);
+const settle = async () => { for (let i = 0; i < 4; i++) await new Promise((resolve) => setTimeout(resolve, 0)); };
+
 beforeAll(async () => {
   await initTestI18n();
 });
 
+beforeEach(() => {
+  failing.clear();
+  fetched.length = 0;
+  sources.length = 0;
+  revoked.clear();
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+    const url = String(input);
+    fetched.push(url);
+    if (failing.has(url)) return new Response('', { status: 503 });
+    sources.push(url);
+    return new Response(new Blob([new Uint8Array(sources.length - 1)], { type: 'image/jpeg' }));
+  }));
+  vi.stubGlobal('createImageBitmap', async () => ({ close: () => {} }));
+  vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => `blob:orbital/${(blob as Blob).size}`);
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation((url) => { revoked.add(url); });
+  vi.stubGlobal('IntersectionObserver', class {
+    constructor(private readonly callback: IntersectionObserverCallback) {}
+    observe(target: Element) { this.callback([{ isIntersecting: true, target } as IntersectionObserverEntry], this as unknown as IntersectionObserver); }
+    disconnect() {}
+  });});
+
+
 afterEach(() => {
   for (const page of pages.splice(0)) page.close();
   document.body.replaceChildren();
+  vi.unstubAllGlobals();
+  vi.mocked(URL.createObjectURL).mockRestore();
+  vi.mocked(URL.revokeObjectURL).mockRestore();
   vi.clearAllMocks();
   vi.useRealTimers();
 });
@@ -330,7 +363,7 @@ describe('satellite pass lookup sheet', () => {
     expect(detail.querySelector('.ow-detail-title')!.nextElementSibling).toBe(media);
     expect(media.nextElementSibling!.classList.contains('ow-detail-grid')).toBe(true);
     const tile = media.querySelector<HTMLElement>('.ow-tile-hero')!;
-    expect(tile.querySelector('img')!.getAttribute('src')).toBe(image.imageUrl);
+    await vi.waitFor(() => expect(sourceOf(tile.querySelector('img')!.getAttribute('src'))).toBe(image.imageUrl));
     expect(tile.querySelector('.ow-reticle')).not.toBeNull();
     expect(media.querySelector('.ow-detail-credit')!.textContent).toBe(`confirmed image · © Copernicus Sentinel ${new Date(confirmedNew.timeMs).getUTCFullYear()}`);
     expect(detail.querySelector('.ow-detail-sentence')).not.toBeNull();
@@ -544,46 +577,50 @@ describe('satellite pass lookup sheet', () => {
     expect(cards()[0]!.querySelector('.ow-caption-lines')!.textContent).toContain('Geostationary · every 15 min');
   });
 
-  it('steps a failed weather frame back through its earlier frames, then offers retry', () => {
+  it('steps a failed weather frame back through its earlier frames, then offers retry', async () => {
     const { all } = tiered();
+    const urls = ['https://view.eumetsat.int/x.png', 'https://view.eumetsat.int/x-1130.png', 'https://view.eumetsat.int/x-1115.png'];
     const frame = { ...meteosat, latest: { ...meteosat.latest!, fallbacks: [
-      { time: '2026-11-13T11:30:00Z', imageUrl: 'https://view.eumetsat.int/x-1130.png' },
-      { time: '2026-11-13T11:15:00Z', imageUrl: 'https://view.eumetsat.int/x-1115.png' },
+      { time: '2026-11-13T11:30:00Z', imageUrl: urls[1]! },
+      { time: '2026-11-13T11:15:00Z', imageUrl: urls[2]! },
     ] } };
+    for (const url of urls) failing.add(url);
     const page = mounted(answered(all, { frames: [frame] }));
-    const check = (tile: () => HTMLElement, when: () => string, steps: Array<[string, string]>) => {
-      const img = () => tile().querySelector('img')!;
-      for (const [src, time] of steps) {
-        expect(img().getAttribute('src')).toBe(src);
-        expect(when()).toContain(time);
-        expect(img().alt).toContain(time);
-        expect(tile().dataset.state).toBe('loading');
-        img().dispatchEvent(new Event('error'));
-      }
-      expect(tile().dataset.state).toBe('failed');
-    };
-    const steps: Array<[string, string]> = [['https://view.eumetsat.int/x.png', '11:45'], ['https://view.eumetsat.int/x-1130.png', '11:30'], ['https://view.eumetsat.int/x-1115.png', '11:15']];
     const hero = () => cards()[0]!.querySelector<HTMLElement>('.ow-tile')!;
-    check(hero, () => cards()[0]!.querySelector('.ow-caption-lines span')!.textContent!, steps);
+    const when = () => cards()[0]!.querySelector('.ow-caption-lines span')!.textContent!;
+    expect(hero().dataset.state).toBe('loading');
+    await settle();
+    expect(fetched, 'every earlier frame is tried in order').toEqual(urls);
+    expect(hero().dataset.state).toBe('failed');
     expect(hero().querySelector('.ow-tile-status')!.textContent).toContain('Image unavailable · EUMETSAT');
+
+    failing.delete(urls[1]!);
     hero().querySelector<HTMLButtonElement>('[data-action="retry-image"]')!.click();
     expect(hero().dataset.state).toBe('loading');
-    expect(hero().querySelector('img')!.getAttribute('src')).toBe(steps[0]![0]);
-    expect(cards()[0]!.querySelector('.ow-caption-lines span')!.textContent).toContain('11:45');
+    await settle();
+    const img = hero().querySelector('img')!;
+    expect(sourceOf(img.getAttribute('src'))).toBe(urls[1]);
+    expect(when()).toContain('11:30');
+    expect(img.alt).toContain('11:30');
+    img.dispatchEvent(new Event('load'));
+    expect(hero().dataset.state).toBe('loaded');
+
     page.setView('full');
     group('weather')!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
     const row = () => rowOf('Meteosat-10');
-    check(() => row().querySelector<HTMLElement>('.ow-tile')!, () => row().querySelector('.ow-row-meta')!.textContent!, steps);
+    await settle();
+    expect(sourceOf(row().querySelector('.ow-tile img')!.getAttribute('src'))).toBe(urls[1]);
+    expect(row().querySelector('.ow-row-meta')!.textContent).toContain('11:30');
   });
 
-  it('steps a daily mosaic back from a day with no data at the point, and never shows a black tile', () => {
+  it('steps a daily mosaic back from a day with no data at the point, and never shows a black tile', async () => {
     const { all } = tiered();
     const blank = new Set(['https://gibs.earthdata.nasa.gov/m-14.jpg']);
     const original = HTMLCanvasElement.prototype.getContext;
     let drawn = '';
     HTMLCanvasElement.prototype.getContext = function getContext() {
       return {
-        drawImage: (img: HTMLImageElement) => { drawn = img.getAttribute('src') ?? ''; },
+        drawImage: (img: HTMLImageElement) => { drawn = sourceOf(img.getAttribute('src')) ?? ''; },
         getImageData: (_x: number, _y: number, w: number, hgt: number) => ({ data: new Uint8ClampedArray(w * hgt * 4).fill(blank.has(drawn) ? 0 : 120) }),
       };
     } as unknown as typeof original;
@@ -596,36 +633,86 @@ describe('satellite pass lookup sheet', () => {
     const hero = () => cards()[0]!.querySelector<HTMLElement>('.ow-tile')!;
     const top = () => cards()[0]!.querySelector('.ow-caption-lines span')!.textContent!;
     const img = () => hero().querySelector('img')!;
-    expect(img().crossOrigin, 'the pixels must be readable').toBe('anonymous');
-    expect(img().getAttribute('src')).toBe(days[0]!.imageUrl);
+    await settle();
+    const today = img().getAttribute('src')!;
+    expect(sourceOf(today)).toBe(days[0]!.imageUrl);
     expect(top()).toMatch(/14/);
     img().dispatchEvent(new Event('load'));
     expect(hero().dataset.state, 'a black day is never shown').toBe('loading');
-    expect(img().getAttribute('src')).toBe(days[1]!.imageUrl);
+    expect(revoked.has(today), 'the black day is released').toBe(true);
+    await settle();
+    expect(sourceOf(img().getAttribute('src'))).toBe(days[1]!.imageUrl);
     expect(top()).toMatch(/13/);
     expect(top()).not.toMatch(/14/);
     img().dispatchEvent(new Event('load'));
     expect(hero().dataset.state).toBe('loaded');
 
+    page.setView('full');
+    group('weather')!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
+    const row = () => rowOf('MODIS Terra');
+    const thumb = () => row().querySelector('.ow-tile img')!;
+    await settle();
+    expect(sourceOf(thumb().getAttribute('src')), 'the full view opens on the day already chosen').toBe(days[1]!.imageUrl);
+    expect(row().querySelector('.ow-row-meta')!.textContent).toMatch(/13/);
+    expect(fetched.filter((url) => url === days[0]!.imageUrl), 'a black day is not fetched again').toHaveLength(1);
+    thumb().dispatchEvent(new Event('load'));
+    expect(row().querySelector<HTMLElement>('.ow-tile')!.dataset.state).toBe('loaded');
+
+    page.open(point, null);
     blank.add(days[1]!.imageUrl);
     page.render(answered(all, { mosaics: [{ ...modis, days }] }));
+    await settle();
     img().dispatchEvent(new Event('load'));
+    await settle();
     img().dispatchEvent(new Event('load'));
     expect(hero().dataset.state, 'no day with data shows the no-image state').toBe('none');
     expect(hero().querySelector('img')).toBeNull();
     expect(hero().querySelector('.ow-tile-status')!.textContent).toBe('The archive has no preview of this scene yet');
     expect(top(), 'the caption goes back to the newest advertised day').toMatch(/14/);
+  });
 
+  it('paints point-bearing images only from blob: URLs and releases them when the lookup ends', async () => {
+    const { all, confirmedNew, likely } = tiered();
+    const frame = { ...meteosat, latest: { ...meteosat.latest!, fallbacks: [{ time: '2026-11-13T11:30:00Z', imageUrl: 'https://view.eumetsat.int/x-1130.png' }] } };
+    const scenePreview = 'https://sentinel-cogs.s3.us-west-2.amazonaws.com/preview.jpg';
+    const state = answered(all, {
+      acquisitions: [acquisition(confirmedNew), acquisition(likely, { imageUrl: scenePreview })],
+      mosaics: [modis],
+      frames: [frame],
+    });
+    const page = mounted(state);
+    await settle();
     page.setView('full');
     group('weather')!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
-    blank.delete(days[1]!.imageUrl);
-    const row = () => rowOf('MODIS Terra');
-    const thumb = () => row().querySelector('.ow-tile img')!;
-    thumb().dispatchEvent(new Event('load'));
-    expect(thumb().getAttribute('src')).toBe(days[1]!.imageUrl);
-    expect(row().querySelector('.ow-row-meta')!.textContent).toMatch(/13/);
-    thumb().dispatchEvent(new Event('load'));
-    expect(row().querySelector<HTMLElement>('.ow-tile')!.dataset.state).toBe('loaded');
+    await settle();
+    const pointHost = /(^|\.)(planetarycomputer\.microsoft\.com|gibs\.earthdata\.nasa\.gov|view\.eumetsat\.int)$/;
+    const srcs = [...sheet().querySelectorAll('img')].map((img) => img.getAttribute('src')).filter((src): src is string => !!src);
+    expect(srcs.length, 'hero cards and row thumbnails render').toBeGreaterThanOrEqual(6);
+    for (const src of srcs) {
+      expect(src.startsWith('blob:') || !pointHost.test(new URL(src).hostname), `no point-bearing URL in img src: ${src}`).toBe(true);
+    }
+    expect(srcs, 'a scene-wide preview is painted as is').toContain(scenePreview);
+    const blobs = new Set(srcs.filter((src) => src.startsWith('blob:')));
+    expect(blobs.size, 'the hero and the row share one fetch per image').toBe(3);
+    expect(fetched.filter((url) => url === modis.days[0]!.imageUrl)).toHaveLength(1);
+
+    page.open({ lat: 0, lon: 0 }, null);
+    expect([...blobs].every((src) => revoked.has(src)), 'a new lookup releases the last one').toBe(true);
+    revoked.clear();
+    page.render(state);
+    await settle();
+    const next = [...sheet().querySelectorAll('img')].map((img) => img.getAttribute('src')!).filter((src) => src?.startsWith('blob:'));
+    page.close();
+    expect(next.length).toBeGreaterThan(0);
+    expect(next.every((src) => revoked.has(src)), 'closing releases every blob').toBe(true);
+
+    let abandoned = false;
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => new Promise((_, reject) => init?.signal?.addEventListener('abort', () => { abandoned = true; reject(new Error('aborted')); }))));
+    const late = mounted(state);
+    late.close();
+    await settle();
+    expect(abandoned, 'closing aborts images still in flight').toBe(true);
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(sources.length);
   });
 
   it('names the archives that failed and retries on request', () => {

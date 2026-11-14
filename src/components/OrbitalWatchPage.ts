@@ -3,7 +3,8 @@ import type { PassTier } from '../../shared/orbital/tiers.js';
 import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
-import type { ArchiveId } from '@/services/orbital/archive-result';
+import { ARCHIVE_REQUEST_TIMEOUT_MS, type ArchiveId } from '@/services/orbital/archive-result';
+import { loadArchiveImage, type ArchiveImageResult, type LoadedArchiveImage } from '@/services/orbital/archive-image';
 import { GIBS_DAILY_MOSAICS, hasNoDataAtPoint, MOSAIC_FALLBACK_DAYS, type CropPosition, type DailyMosaicRow, type GeostationaryFrame, type GeostationaryRow } from '@/services/orbital/archive-gibs';
 import { DEFAULT_CROP_HALF_SIZE_KM } from '@/services/orbital/crop-url';
 import { nativeResolutionM, normalisePlatform } from '@/services/orbital/archive-stac';
@@ -111,11 +112,11 @@ export const ARCHIVE_NAME: Record<ArchiveId, string> = {
   eumetsat: 'EUMETSAT',
 };
 
-const ARCHIVE_HOST: ReadonlyArray<[RegExp, string]> = [
-  [/(^|\.)planetarycomputer\.microsoft\.com$/, 'Planetary Computer'],
-  [/(^|\.)element84\.com$|amazonaws\.com$/, 'Earth Search'],
-  [/(^|\.)gibs\.earthdata\.nasa\.gov$/, 'NASA GIBS'],
-  [/(^|\.)eumetsat\.int$/, 'EUMETSAT'],
+const ARCHIVE_HOST: ReadonlyArray<[RegExp, string, ArchiveId]> = [
+  [/(^|\.)planetarycomputer\.microsoft\.com$/, 'Planetary Computer', 'planetary-computer'],
+  [/(^|\.)element84\.com$|amazonaws\.com$/, 'Earth Search', 'earth-search'],
+  [/(^|\.)gibs\.earthdata\.nasa\.gov$/, 'NASA GIBS', 'nasa-gibs'],
+  [/(^|\.)eumetsat\.int$/, 'EUMETSAT', 'eumetsat'],
 ];
 
 /** Credit lines the archives ask for, worded as in the source attribution manifest. */
@@ -238,13 +239,14 @@ function formatAge(days: number): string {
   return new Intl.NumberFormat(lang(), { style: 'unit', unit, unitDisplay: 'long' }).format(value);
 }
 
-function archiveOfUrl(url: string | null): string {
-  if (!url) return '';
+function archiveHost(url: string | null): { name: string; id: ArchiveId } {
+  if (!url) return { name: '', id: 'earth-search' };
   try {
     const host = new URL(url).hostname;
-    return ARCHIVE_HOST.find(([pattern]) => pattern.test(host))?.[1] ?? host;
+    const match = ARCHIVE_HOST.find(([pattern]) => pattern.test(host));
+    return match ? { name: match[1], id: match[2] } : { name: host, id: 'earth-search' };
   } catch {
-    return '';
+    return { name: '', id: 'earth-search' };
   }
 }
 
@@ -291,51 +293,155 @@ function noDataAtPoint(img: HTMLImageElement, at: CropPosition): boolean {
   }
 }
 
+/**
+ * The open lookup's images, painted from `blob:` URLs: archive image URLs carry the point,
+ * and DebugBear reports the largest painted image's URL. Each image is fetched once per
+ * lookup and every blob is released when the lookup closes or a new one starts.
+ */
+class LookupImages {
+  private controller = new AbortController();
+  private readonly loaded = new Map<string, LoadedArchiveImage>();
+  private readonly pending = new Map<string, Promise<ArchiveImageResult>>();
+  private readonly empty = new Set<string>();
+
+  load(archive: ArchiveId, candidates: readonly string[], timeoutMs: number): Promise<ArchiveImageResult> {
+    const hit = this.loaded.get(candidates[0]!);
+    if (hit) return Promise.resolve({ status: 'ok', image: { ...hit, index: 0 } });
+    const key = candidates.join('\n');
+    const inFlight = this.pending.get(key);
+    if (inFlight) return inFlight;
+    const { signal } = this.controller;
+    const request = loadArchiveImage(archive, candidates, { signal, timeoutMs }).then((result): ArchiveImageResult => {
+      if (signal.aborted) {
+        if (result.status === 'ok') result.image.release();
+        return { status: 'failed', failure: { archive, reason: 'aborted' } };
+      }
+      this.pending.delete(key);
+      if (result.status !== 'ok') return result;
+      const url = candidates[result.image.index]!;
+      const kept = this.loaded.get(url);
+      if (!kept) { this.loaded.set(url, result.image); return result; }
+      result.image.release();
+      return { status: 'ok', image: { ...kept, index: result.image.index } };
+    });
+    this.pending.set(key, request);
+    return request;
+  }
+
+  /** Drops a frame with no data at the point and releases its blob. */
+  markEmpty(url: string): void {
+    this.empty.add(url);
+    this.loaded.get(url)?.release();
+    this.loaded.delete(url);
+  }
+
+  isEmpty(url: string): boolean {
+    return this.empty.has(url);
+  }
+
+  /** Ends the lookup: stops what is in flight and releases every blob. */
+  reset(): void {
+    this.controller.abort();
+    this.controller = new AbortController();
+    for (const image of this.loaded.values()) image.release();
+    this.loaded.clear();
+    this.pending.clear();
+    this.empty.clear();
+  }
+}
+
+const lookupImages = new LookupImages();
+
+/** Starts a row thumbnail's fetch once it nears the viewport, as `loading="lazy"` did for `img.src`. */
+function whenNearView(el: HTMLElement, start: () => void): void {
+  if (typeof IntersectionObserver !== 'function') { start(); return; }
+  const observer = new IntersectionObserver((entries) => {
+    if (!entries.some((entry) => entry.isIntersecting)) return;
+    observer.disconnect();
+    start();
+  }, { rootMargin: '200px' });
+  observer.observe(el);
+}
+
 const tileRetries = new WeakMap<HTMLElement, () => void>();
+/** The archive URL of the frame a tile shows; its `img` holds only a `blob:` URL. */
+const tileShownUrls = new WeakMap<HTMLElement, () => string>();
 
 function imageTile(url: string | null, alt: string, sensor: string, size: TileSize, overlays: DomChild[] = [], fallbacks: TileFallbacks | null = null): HTMLElement {
-  const archive = archiveOfUrl(url);
+  const archive = archiveHost(url);
   if (!url || !isAllowedPreviewUrl(url)) {
     return h('div', { className: `ow-tile ow-tile-${size}`, dataset: { state: 'none' } },
       h('span', { className: 'ow-tile-status ow-label' }, size === 'hero' ? t('orbitalWatch.ui.tile.noPreview') : TIER_GLYPH_CHAR.watched));
   }
   const frames = [url, ...(fallbacks?.urls ?? []).filter(isAllowedPreviewUrl)];
   let frame = 0;
+  let attempt = 0;
+  let deadline = 0;
+  let built = false;
   const status = h('span', { className: 'ow-tile-status ow-label' }, size === 'hero' ? sensor : '');
-  const load = (index: number) => {
-    if (index !== frame) fallbacks?.show(index);
+  const showFrame = (index: number) => {
+    if (index !== frame && built) fallbacks?.show(index);
     frame = index;
+  };
+  const failed = () => {
+    tile.dataset.state = 'failed';
+    replaceChildren(status,
+      size === 'hero' ? t('orbitalWatch.ui.tile.failed', { archive: archive.name.toUpperCase() }) : '!',
+      size === 'hero' ? h('button', { type: 'button', className: 'ow-tile-retry', dataset: { action: 'retry-image' } }, t('countryBrief.retryBtn')) : null);
+  };
+  const noPreview = () => {
+    showFrame(0);
+    img.remove();
+    tile.dataset.state = 'none';
+    replaceChildren(status, size === 'hero' ? t('orbitalWatch.ui.tile.noPreview') : TIER_GLYPH_CHAR.watched);
+  };
+  /** Paints the first frame from `from` on that loads, skipping frames already found empty at the point. */
+  const load = (from: number) => {
+    const token = ++attempt;
+    if (from === 0) deadline = Date.now() + ARCHIVE_REQUEST_TIMEOUT_MS;
     tile.dataset.state = 'loading';
     replaceChildren(status, size === 'hero' ? sensor : '');
     img.removeAttribute('src');
-    img.setAttribute('src', frames[index]!);
+    const indices = frames.map((_, i) => i).filter((i) => i >= from && !lookupImages.isEmpty(frames[i]!));
+    if (indices.length === 0) { noPreview(); return; }
+    showFrame(indices[0]!);
+    void lookupImages.load(archive.id, indices.map((i) => frames[i]!), Math.max(1, deadline - Date.now())).then((result) => {
+      if (token !== attempt) return;
+      if (result.status === 'failed') { if (result.failure.reason !== 'aborted') failed(); return; }
+      showFrame(indices[result.image.index]!);
+      img.setAttribute('src', result.image.objectUrl);
+    });
   };
   const img = h('img', {
     alt,
-    loading: size === 'hero' ? 'eager' : 'lazy',
     decoding: 'async',
     referrerpolicy: 'no-referrer',
     onLoad: () => {
       if (!fallbacks?.noDataAt || !noDataAtPoint(img, fallbacks.noDataAt)) { tile.dataset.state = 'loaded'; return; }
-      if (frame < frames.length - 1) { load(frame + 1); return; }
-      fallbacks.show(0);
-      img.remove();
-      tile.dataset.state = 'none';
-      replaceChildren(status, size === 'hero' ? t('orbitalWatch.ui.tile.noPreview') : TIER_GLYPH_CHAR.watched);
+      lookupImages.markEmpty(frames[frame]!);
+      if (frame < frames.length - 1) load(frame + 1);
+      else noPreview();
     },
     onError: () => {
-      if (frame < frames.length - 1) { load(frame + 1); return; }
-      tile.dataset.state = 'failed';
-      replaceChildren(status,
-        size === 'hero' ? t('orbitalWatch.ui.tile.failed', { archive: archive.toUpperCase() }) : '!',
-        size === 'hero' ? h('button', { type: 'button', className: 'ow-tile-retry', dataset: { action: 'retry-image' } }, t('countryBrief.retryBtn')) : null);
+      if (frame < frames.length - 1) load(frame + 1);
+      else failed();
     },
   }) as HTMLImageElement;
-  if (fallbacks?.noDataAt) img.crossOrigin = 'anonymous';
-  img.setAttribute('src', url);
   const tile = h('div', { className: `ow-tile ow-tile-${size}`, dataset: { state: 'loading', sensor } }, img, status, ...overlays);
   tileRetries.set(tile, () => load(0));
+  tileShownUrls.set(tile, () => frames[frame]!);
+  if (size === 'thumb') whenNearView(tile, () => load(0));
+  else load(0);
+  // A frame known to be empty is skipped before the caller holds the tile, so its caption updates once it does.
+  queueMicrotask(() => {
+    built = true;
+    if (frame !== 0) fallbacks?.show(frame);
+  });
   return tile;
+}
+
+function shownTileUrl(tile: HTMLElement | null): string | null {
+  return (tile && tileShownUrls.get(tile)?.()) ?? null;
 }
 
 function heroOverlays(): DomChild[] {
@@ -773,6 +879,7 @@ export class OrbitalWatchPage {
     this.openSeq++;
     this.returnFocusTo = returnFocusTo;
     this.point = point;
+    lookupImages.reset();
     this.toggled.clear();
     this.selectedKey = null;
     this.tab = 'all';
@@ -799,6 +906,7 @@ export class OrbitalWatchPage {
     this.stopClock();
     if (this.shareReset) clearTimeout(this.shareReset);
     this.sheet.remove();
+    lookupImages.reset();
     this.state = null;
     const wasFull = this.view === 'full';
     this.view = 'sheet';
@@ -1254,7 +1362,7 @@ export class OrbitalWatchPage {
     const returnFocusTo = trigger.closest<HTMLElement>('.ow-row') ?? trigger;
     const seq = this.openSeq;
     void import('./OrbitalImageViewer').then(({ openOrbitalImageViewer, subjectForImage }) => {
-      const subject = subjectForImage(evidence, image, lookup, trigger.closest('.ow-tile')?.querySelector('img')?.getAttribute('src') ?? null);
+      const subject = subjectForImage(evidence, image, lookup, shownTileUrl(trigger.closest<HTMLElement>('.ow-tile')));
       if (subject && this.isOpen && seq === this.openSeq) openOrbitalImageViewer(subject, returnFocusTo);
     });
   }
