@@ -4,6 +4,8 @@ import { initTestI18n } from './helpers/i18n.mts';
 
 const openOrbitalWatch = vi.hoisted(() => vi.fn());
 vi.mock('@/app/orbital-watch', () => ({ openOrbitalWatch }));
+// Orbital Watch ships dark; these tests cover the entry it adds once the build turns it on.
+vi.mock('@/config/orbital-watch-flag', () => ({ ORBITAL_WATCH_ENABLED: true }));
 
 import type { AppContext } from '@/app/app-context';
 import { CountryIntelManager } from '@/app/country-intel';
