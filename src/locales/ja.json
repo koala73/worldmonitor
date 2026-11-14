@@ -5161,6 +5161,8 @@
     "partial": "{{sources}} が応答しなかったため、一部の通過で画像が欠けている可能性があります。",
     "stale": "軌道データが古くなっています。衛星カタログは {{age}} 前のもので、通過時刻がずれる可能性があります。",
     "empty": "過去 {{pastDays}} 日間に、登録済みの撮像衛星はこの地点の上空を通過しておらず、今後 {{futureHours}} 時間も通過しません。",
+    "sources": "出典 · {{count}}",
+    "sourcesDocs": "これらの出典の使い方",
     "privacy": "この地点はブラウザー内にとどまります。送信先は、ブラウザーが直接呼び出す公開アーカイブ（Earth Search、Microsoft Planetary Computer、NASA GIBS、EUMETSAT）のみです。唯一の例外は地名検索で、入力した地名は地名検索サービスに送られます。",
     "inRange": "範囲内",
     "tier": {
@@ -5392,6 +5394,41 @@
       "dismiss": "閉じる",
       "passOutsideWindow": "リンクされた通過は現在の期間外のため、通過は選択されていません。",
       "passNotFound": "リンクされた通過は再計算された通過の中に見つからなかったため、通過は選択されていません。"
+    },
+    "timeline": {
+      "now": "現在",
+      "nowAt": "現在: {{time}}",
+      "density": "{{label}}の通過、{{start}}～{{end}}: {{count}}",
+      "daylight": "地点の日照 {{start}}～{{end}}",
+      "unavailable": "利用不可",
+      "notRetained": "今週のデータなし",
+      "notRetainedSpan": "{{label}}: {{start}}～{{end}} のデータなし",
+      "countryWide": "国全体",
+      "source": {
+        "conflict": "紛争",
+        "fires": "火災",
+        "unrest": "騒乱",
+        "outages": "インターネット障害"
+      },
+      "live": {
+        "vessels": "船舶交通",
+        "militaryFlights": "軍用機",
+        "gpsJamming": "GPS妨害"
+      },
+      "name": "タイムライン",
+      "span": "{{days}}日間 · 今後{{hours}}時間",
+      "daylightHere": "この地点の日中",
+      "row": {
+        "geo": "静止",
+        "photo": "撮影",
+        "likely": "可能性高",
+        "could": "可能",
+        "overhead": "通過"
+      },
+      "retained": "{{start}}〜{{end}}",
+      "retainedDay": "{{day}} のみ",
+      "geoLine": "視野内の静止衛星: {{names}}",
+      "away": "{{km}} km先"
     }
   },
   "settings": {

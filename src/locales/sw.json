@@ -5189,6 +5189,8 @@
     "partial": "{{sources}} haikujibu, kwa hivyo baadhi ya mapito huenda yakakosa picha.",
     "stale": "Data ya obiti imepitwa na wakati. Orodha ya satelaiti ina umri wa {{age}}, kwa hivyo nyakati za mapito zinaweza kutofautiana.",
     "empty": "Hakuna satelaiti ya upigaji picha iliyoorodheshwa iliyopita juu ya sehemu hii katika siku {{pastDays}} zilizopita wala haitapita katika saa {{futureHours}} zijazo.",
+    "sources": "Vyanzo · {{count}}",
+    "sourcesDocs": "Jinsi vyanzo hivi vinavyotumika",
     "privacy": "Sehemu hii inabaki kwenye kivinjari chako. Inatumwa tu kwa kumbukumbu za umma ambazo kivinjari chako huziita moja kwa moja: Earth Search, Microsoft Planetary Computer, NASA GIBS na EUMETSAT. Kutafuta kwa jina la mahali ndiyo tofauti pekee: jina unaloandika linakwenda kwa huduma ya kutafuta majina ya mahali.",
     "inRange": "karibu",
     "tier": {
@@ -5425,6 +5427,41 @@
       "dismiss": "Funga",
       "passOutsideWindow": "Mpito uliounganishwa uko nje ya kipindi cha sasa, kwa hivyo hakuna mpito uliochaguliwa.",
       "passNotFound": "Mpito uliounganishwa haukupatikana katika mipito iliyokokotolewa upya, kwa hivyo hakuna mpito uliochaguliwa."
+    },
+    "timeline": {
+      "now": "sasa",
+      "nowAt": "Sasa: {{time}}",
+      "density": "Mapito ya {{label}}, kuanzia {{start}} hadi {{end}}: {{count}}",
+      "daylight": "Mchana kwenye eneo kuanzia {{start}} hadi {{end}}",
+      "unavailable": "haipatikani",
+      "notRetained": "hakuna data wiki hii",
+      "notRetainedSpan": "{{label}}: hakuna data kuanzia {{start}} hadi {{end}}",
+      "countryWide": "nchi nzima",
+      "source": {
+        "conflict": "Migogoro",
+        "fires": "Moto",
+        "unrest": "Machafuko",
+        "outages": "Kukatika kwa intaneti"
+      },
+      "live": {
+        "vessels": "Trafiki ya meli",
+        "militaryFlights": "Safari za ndege za kijeshi",
+        "gpsJamming": "Uzuiaji wa GPS"
+      },
+      "name": "Ratiba ya wakati",
+      "span": "Siku {{days}} · saa {{hours}} zijazo",
+      "daylightHere": "Mchana hapa",
+      "row": {
+        "geo": "Geo",
+        "photo": "Picha",
+        "likely": "Huenda",
+        "could": "Inawezekana",
+        "overhead": "Kupita"
+      },
+      "retained": "{{start}} hadi {{end}}",
+      "retainedDay": "{{day}} pekee",
+      "geoLine": "Satelaiti tuli zinazoonekana: {{names}}",
+      "away": "km {{km}} mbali"
     }
   },
   "settings": {

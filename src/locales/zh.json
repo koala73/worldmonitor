@@ -5161,6 +5161,8 @@
     "partial": "{{sources}} 未响应，因此部分过境可能缺少影像。",
     "stale": "轨道数据已过时。卫星目录已有 {{age}}，过境时间可能有偏差。",
     "empty": "过去 {{pastDays}} 天内没有已收录的成像卫星经过此地点，未来 {{futureHours}} 小时内也不会经过。",
+    "sources": "来源 · {{count}}",
+    "sourcesDocs": "这些来源的使用方式",
     "privacy": "此地点仅保留在你的浏览器中。它只会发送给浏览器直接调用的公共档案库：Earth Search、Microsoft Planetary Computer、NASA GIBS 和 EUMETSAT。按地名搜索是唯一的例外：你输入的地名会发送给地名搜索服务。",
     "inRange": "覆盖范围内",
     "tier": {
@@ -5392,6 +5394,41 @@
       "dismiss": "关闭",
       "passOutsideWindow": "链接中的过境不在当前时间窗口内，因此未选中任何过境。",
       "passNotFound": "在重新计算的过境中未找到链接中的过境，因此未选中任何过境。"
+    },
+    "timeline": {
+      "now": "现在",
+      "nowAt": "现在：{{time}}",
+      "density": "{{label}}过境，{{start}} 至 {{end}}：{{count}}",
+      "daylight": "该点的白昼时段 {{start}} 至 {{end}}",
+      "unavailable": "不可用",
+      "notRetained": "本周无数据",
+      "notRetainedSpan": "{{label}}：{{start}} 至 {{end}} 无数据",
+      "countryWide": "全国范围",
+      "source": {
+        "conflict": "冲突",
+        "fires": "火灾",
+        "unrest": "动乱",
+        "outages": "互联网中断"
+      },
+      "live": {
+        "vessels": "船舶交通",
+        "militaryFlights": "军用航班",
+        "gpsJamming": "GPS 干扰"
+      },
+      "name": "时间线",
+      "span": "{{days}} 天 · 未来 {{hours}} 小时",
+      "daylightHere": "此地白昼",
+      "row": {
+        "geo": "静止",
+        "photo": "影像",
+        "likely": "可能",
+        "could": "或可",
+        "overhead": "过顶"
+      },
+      "retained": "{{start}} 至 {{end}}",
+      "retainedDay": "仅 {{day}}",
+      "geoLine": "视野内的静止卫星：{{names}}",
+      "away": "{{km}} 公里外"
     }
   },
   "settings": {

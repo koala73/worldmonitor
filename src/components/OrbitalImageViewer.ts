@@ -20,7 +20,8 @@ import { t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
-import { ARCHIVE_NAME, IMAGE_CREDIT, archiveHost, loadLookupImage } from './OrbitalWatchPage';
+import { IMAGE_CREDIT } from '@/services/orbital/credits';
+import { ARCHIVE_NAME, archiveHost, loadLookupImage } from './OrbitalWatchPage';
 import { closeButton, formatPoint, reticle, trapTab } from './OrbitalTimelapse';
 import '../styles/orbital-image-viewer.css';
 
