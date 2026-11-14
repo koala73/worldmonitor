@@ -108,6 +108,17 @@ describe('orbital change flag lifecycle', () => {
     assert.deepEqual(next.track.baseline, raised.baseline);
   });
 
+  it('keeps a change raised on both statistics until a scene measures both, then confirms it from the other one', () => {
+    const raised = fold(monitoringTrack(), [scene(42.5, 36.5)]).track;
+    assert.deepEqual(raised.candidate.changes.map((change) => change.component).sort(), ['vh_median', 'vv_median']);
+    const partial = advanceTrack(raised, { ...scene(40), values: { vv_median: 40 } });
+    assert.equal(partial.track.state, 'raised');
+    assert.equal(partial.event, null);
+    const confirmed = advanceTrack(partial.track, scene(40, 36.5));
+    assert.equal(confirmed.track.state, 'confirmed');
+    assert.deepEqual(confirmed.event.changes.map((change) => change.component), ['vh_median']);
+  });
+
   it('projects the confirming scene of a track that is still confirmed, not of a newer one that moved on', () => {
     const older = fold(monitoringTrack(), [scene(42.5), scene(42.4)]);
     const newer = fold(monitoringTrack(), [scene(42.5), scene(42.4), ...[42.3, 42.4, 42.6, 42.4].map((vv) => scene(vv))]);
