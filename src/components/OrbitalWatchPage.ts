@@ -7,6 +7,7 @@ import { ARCHIVE_REQUEST_TIMEOUT_MS, type ArchiveId } from '@/services/orbital/a
 import { ArchiveImageError, loadArchiveImage, type ArchiveImageResult, type LoadedArchiveImage } from '@/services/orbital/archive-image';
 import { GIBS_DAILY_MOSAICS, hasNoDataAtPoint, MOSAIC_FALLBACK_DAYS, type CropPosition, type DailyMosaicRow, type GeostationaryFrame, type GeostationaryRow } from '@/services/orbital/archive-gibs';
 import { DEFAULT_CROP_HALF_SIZE_KM } from '@/services/orbital/crop-url';
+import { acquisitionCredit, IMAGE_CREDIT, ORBITAL_WATCH_DOCS_URL, resultCredits, type ResultCredit } from '@/services/orbital/credits';
 import { nativeResolutionM, normalisePlatform } from '@/services/orbital/archive-stac';
 import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
@@ -122,18 +123,6 @@ const ARCHIVE_HOST: ReadonlyArray<[RegExp, string, ArchiveId]> = [
   [/(^|\.)gibs\.earthdata\.nasa\.gov$/, 'NASA GIBS', 'nasa-gibs'],
   [/(^|\.)eumetsat\.int$/, 'EUMETSAT', 'eumetsat'],
 ];
-
-/** Credit lines the archives ask for, worded as in the source attribution manifest. */
-export const IMAGE_CREDIT = {
-  copernicus: (year: number | string) => `Contains modified Copernicus Sentinel data ${year}`,
-  usgs: 'Landsat imagery courtesy of the U.S. Geological Survey',
-  eumetsat: 'Contains EUMETSAT Meteosat imagery',
-  gibs: 'NASA GIBS / EOSDIS',
-  gibsAcknowledgement: "We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).",
-} as const;
-
-const acquisitionCredit = (acquisition: MatchedAcquisition) =>
-  acquisition.profileId === 'landsat' ? IMAGE_CREDIT.usgs : IMAGE_CREDIT.copernicus(new Date(acquisition.startMs).getUTCFullYear());
 
 interface RowCredit {
   short: string;
@@ -583,7 +572,7 @@ function weatherCards(evidence: OrbitalEvidence): ImageCard[] {
       top: mosaicTop(latest.date),
       fallbacks: earlier.map((day) => ({ url: day.imageUrl, top: mosaicTop(day.date) })),
       noDataAt: mosaic.pointInCrop ?? CROP_CENTRE,
-      bottom: [t('orbitalWatch.ui.caption.dailyMosaic'), ...(resolution ? [`${resolution} M`] : [])],
+      bottom: [...(resolution ? [`${resolution} M`] : []), t('orbitalWatch.ui.caption.dailyMosaic')],
       credit: { short: IMAGE_CREDIT.gibs, full: IMAGE_CREDIT.gibs },
       pass: null,
       view: { kind: 'mosaic', key: mosaic.layer },
@@ -852,6 +841,7 @@ export class OrbitalWatchPage {
   private localTime = true;
   private readonly changeButton: HTMLElement;
   private readonly closeButton: HTMLElement;
+  private readonly sources: HTMLDetailsElement;
   private readonly privacy: HTMLElement;
   private readonly mapMark: HTMLElement;
   private readonly statusBar: HTMLElement;
@@ -881,6 +871,7 @@ export class OrbitalWatchPage {
     this.changeButton = h('button', { type: 'button', className: 'ow-change ow-label', dataset: { action: 'change' } });
     this.closeButton = h('button', { type: 'button', className: 'ow-close', dataset: { action: 'close' } }, '×');
     this.body = h('div', { className: 'ow-body' });
+    this.sources = h('details', { className: 'ow-sources', hidden: true }) as HTMLDetailsElement;
     this.privacy = h('details', { className: 'ow-privacy' });
     this.mapMark = h('div', { className: 'ow-mapmark', 'aria-hidden': 'true', hidden: true },
       h('span', { className: 'ow-mapmark-ring' }),
@@ -902,7 +893,7 @@ export class OrbitalWatchPage {
       this.slots.search,
       this.slots['pass-detail'],
       this.body,
-      this.privacy);
+      h('footer', { className: 'ow-footer' }, this.privacy));
     this.statusBar = h('div', { className: 'ow-statusbar ow-label' });
     this.sheet = h('section', { className: 'orbital-watch-sheet', role: 'dialog', 'aria-labelledby': titleId, tabindex: '-1', dataset: { view: 'sheet' } },
       this.mapMark, this.panel, this.slots.timeline, this.slots['replay-hud'], this.statusBar);
@@ -1049,13 +1040,10 @@ export class OrbitalWatchPage {
   }
 
   private renderPrivacy(): void {
-    const credits = [IMAGE_CREDIT.copernicus(new Date().getUTCFullYear()), IMAGE_CREDIT.usgs, IMAGE_CREDIT.eumetsat, IMAGE_CREDIT.gibsAcknowledgement];
     replaceChildren(this.privacy,
       h('summary', { className: 'ow-privacy-line ow-label' }, `${t('orbitalWatch.ui.privacyLine')} · ${t('orbitalWatch.ui.privacyHow')} ›`),
       h('div', { className: 'ow-privacy-body' },
-        h('p', null, t('orbitalWatch.privacy')),
-        h('p', { className: 'ow-sources-head ow-label' }, t('orbitalWatch.ui.sources')),
-        h('ul', { className: 'ow-sources' }, ...credits.map((credit) => h('li', null, credit)))));
+        h('p', null, t('orbitalWatch.privacy'))));
   }
 
   private applyView(view: OrbitalView): void {
@@ -1076,7 +1064,8 @@ export class OrbitalWatchPage {
       : focused?.dataset.group ? `.ow-group-toggle[data-group="${focused.dataset.group}"]`
       : null;
     stopWatchingNearView();
-    replaceChildren(this.body, ...this.renderState(state));
+    replaceChildren(this.body, ...this.renderState(state), this.sources);
+    this.renderSources(state.kind === 'passes' ? resultCredits(state.lookup, state.archives.kind === 'answered' ? state.archives.evidence : null) : []);
     if (this.detailKey) this.renderPassDetail();
     if (this.selectedKey) this.body.querySelector(`.ow-row[data-key="${CSS.escape(this.selectedKey)}"]`)?.setAttribute('aria-current', 'true');
     this.renderStatusBar();
@@ -1185,6 +1174,16 @@ export class OrbitalWatchPage {
           : null),
       this.view === 'full' ? this.passList(lookup, evidence) : null,
     ];
+  }
+
+  private renderSources(credits: ResultCredit[]): void {
+    this.sources.hidden = credits.length === 0;
+    replaceChildren(this.sources,
+      h('summary', { className: 'ow-label' }, t('orbitalWatch.sources', { count: credits.length })),
+      h('ul', null, ...credits.map(({ source, text, href }) => h('li', null,
+        h('span', { className: 'ow-source-name' }, href ? h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, source) : source),
+        ' · ', h('span', { className: 'ow-source-credit' }, text)))),
+      h('a', { className: 'ow-sources-docs', href: ORBITAL_WATCH_DOCS_URL, target: '_blank', rel: 'noopener noreferrer' }, t('orbitalWatch.sourcesDocs')));
   }
 
   private sectionHead(n: string, label: string): HTMLElement {

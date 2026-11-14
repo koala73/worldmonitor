@@ -7,10 +7,12 @@ import { buildPassTrack, framingBounds, type FrameBounds, type OrbitalTarget, ty
 import { browserReplayDeps, createTrackReplay, type TrackReplay } from '@/services/orbital/track-replay';
 import { ARCHIVE_SEARCHES, findArchiveEvidence, type MatchedAcquisition, type OrbitalEvidence } from '@/services/orbital/match';
 import { setOrbitalLookupOpen } from '@/services/orbital/lookup-host';
-import { OrbitalWatchPage, type OrbitalView } from '@/components/OrbitalWatchPage';
+import { t } from '@/services/i18n';
+import { OrbitalWatchPage, type OrbitalView, type OrbitalWatchState } from '@/components/OrbitalWatchPage';
+import { OrbitalTimeline, type OrbitalTimelineInput, type PointContextState } from '@/components/OrbitalTimeline';
 import { createReplayHud } from '@/components/OrbitalReplayHud';
 import { formatAcquiredLine, formatTargetCoordinates } from '@/components/orbital-target-label';
-import { t } from '@/services/i18n';
+import { loadPointContext } from '@/services/orbital/point-context';
 import { OrbitalPlaceTools } from '@/components/OrbitalPlaceTools';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 import { formatOrbitalRoute, parseOrbitalRoute } from '@/app/orbital-route';
@@ -33,6 +35,9 @@ let evidenceReady = false;
 /** The pass last selected in the sheet, so a shared link opens on it too. */
 let selectedPass: { noradId: number; timeMs: number } | null = null;
 let returnFocus: HTMLElement | null = null;
+let timeline: OrbitalTimeline | null = null;
+let timelinePasses: Pick<OrbitalTimelineInput, 'lookup' | 'passes' | 'acquisitions'> | null = null;
+let pointContext: PointContextState = { kind: 'loading' };
 let markFrame: number | null = null;
 let centredFor: string | null = null;
 /** Where the map was before the lookup first moved it; closing puts it back, so the point never becomes the map centre. */
@@ -153,23 +158,66 @@ function applyLinkedPass(found: PointPassLookup): void {
   showSearchRow(true);
 }
 
+const selectedKey = () => (selectedPass ? `${selectedPass.noradId}:${selectedPass.timeMs}` : null);
+
+function drawTimeline(): void {
+  const slot = page?.slot('timeline');
+  if (!slot) return;
+  if (!timelinePasses) {
+    slot.replaceChildren();
+    return;
+  }
+  timeline ??= new OrbitalTimeline(selectTimelinePass);
+  timeline.update({ ...timelinePasses, context: pointContext, selectedKey: selectedKey() });
+  if (timeline.element.parentElement !== slot) slot.replaceChildren(timeline.element);
+}
+
+/** A glyph picks its pass the same way a sheet row does, so the pass detail and the row follow. */
+function selectTimelinePass(key: string): void {
+  if (page?.select(key)) return;
+  const [noradId, timeMs] = key.split(':').map(Number);
+  selectedPass = { noradId: noradId!, timeMs: timeMs! };
+  drawTimeline();
+}
+
+/** Renders the sheet and keeps the timeline dock on the same passes, with archive tiers as soon as any archive answers. */
+function show(state: OrbitalWatchState): void {
+  page!.render(state);
+  if (state.kind !== 'passes') {
+    timelinePasses = null;
+  } else {
+    const evidence = state.archives.kind === 'answered' ? state.archives.evidence : state.archives.progress?.evidence ?? null;
+    timelinePasses = { lookup: state.lookup, passes: evidence?.passes ?? state.lookup.passes, acquisitions: evidence?.acquisitions ?? [] };
+  }
+  drawTimeline();
+}
+
+function loadContext(found: PointPassLookup, signal: AbortSignal): void {
+  pointContext = { kind: 'loading' };
+  void loadPointContext(found.point, found.window, found.nowMs).then((context) => {
+    if (signal.aborted) return;
+    pointContext = { kind: 'loaded', context };
+    drawTimeline();
+  });
+}
+
 function onViewChange(view: OrbitalView): void {
   writeRoute(view);
   syncMap(view);
 }
 
 async function checkArchives(found: PointPassLookup, signal: AbortSignal): Promise<void> {
-  page!.render({ kind: 'passes', lookup: found, archives: { kind: 'checking', total: ARCHIVE_SEARCHES.length, progress: null } });
+  show({ kind: 'passes', lookup: found, archives: { kind: 'checking', total: ARCHIVE_SEARCHES.length, progress: null } });
   await afterDebugBearRequestWindow(signal);
   const result = await findArchiveEvidence(found, {
     signal,
     onProgress: (progress) => {
-      if (!signal.aborted) page!.render({ kind: 'passes', lookup: found, archives: { kind: 'checking', total: ARCHIVE_SEARCHES.length, progress } });
+      if (!signal.aborted) show({ kind: 'passes', lookup: found, archives: { kind: 'checking', total: ARCHIVE_SEARCHES.length, progress } });
     },
   });
   if (signal.aborted) return;
   evidence = result;
-  page!.render({ kind: 'passes', lookup: found, archives: { kind: 'answered', evidence: result } });
+  show({ kind: 'passes', lookup: found, archives: { kind: 'answered', evidence: result } });
 }
 
 async function start(): Promise<void> {
@@ -180,26 +228,27 @@ async function start(): Promise<void> {
   const { signal } = controller;
   try {
     if (!lookup) {
-      page!.render({ kind: 'computing', done: 0, total: 0 });
+      show({ kind: 'computing', done: 0, total: 0 });
       const found = await getOrbitalPassClient().lookup({ point: point! }, {
         signal,
         onProgress: (done, total) => {
-          if (!signal.aborted) page!.render({ kind: 'computing', done, total });
+          if (!signal.aborted) show({ kind: 'computing', done, total });
         },
       });
       if (signal.aborted) return;
       if (found.catalog.status === 'empty') {
-        page!.render({ kind: 'unavailable' });
+        show({ kind: 'unavailable' });
         return;
       }
       lookup = found;
     }
+    loadContext(lookup, signal);
     await checkArchives(lookup, signal);
     if (signal.aborted) return;
     evidenceReady = true;
     applyLinkedPass(lookup);
   } catch (error) {
-    if (!isAbort(error) && !signal.aborted) page!.render({ kind: 'unavailable' });
+    if (!isAbort(error) && !signal.aborted) show({ kind: 'unavailable' });
   }
 }
 
@@ -335,6 +384,8 @@ function ensurePage(): OrbitalWatchPage {
         linkedPass = null;
         selectedPass = null;
         returnFocus = null;
+        timelinePasses = null;
+        drawTimeline();
         tools!.reset();
         showSearchRow(false);
         setOrbitalLookupOpen(false);
@@ -352,7 +403,9 @@ function ensurePage(): OrbitalWatchPage {
     document.addEventListener('orbital-watch:select', (event) => {
       const { noradId, timeMs } = (event as CustomEvent<{ noradId: number; timeMs: number }>).detail;
       selectedPass = { noradId, timeMs };
+      drawTimeline();
     });
+    document.addEventListener('orbital-watch:zone-change', drawTimeline);
   }
   return page;
 }

@@ -2392,11 +2392,11 @@
     },
     {
       "host": "celestrak.org",
-      "provider": "celestrak.org",
+      "provider": "CelesTrak",
       "kind": "structured",
       "observed": true,
-      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
-      "attribution": "Credit celestrak.org and link to the original upstream API/dataset.",
+      "license": "Public U.S. Space Force GP orbit elements republished by CelesTrak; CelesTrak usage terms apply and require review",
+      "attribution": "Orbit elements from CelesTrak; link to celestrak.org.",
       "status": "terms-review",
       "references": [
         {
@@ -15841,6 +15841,9 @@
         },
         {
           "path": "src/services/country-brief-source.ts"
+        },
+        {
+          "path": "src/services/orbital/credits.ts"
         }
       ]
     },
