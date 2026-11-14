@@ -19,7 +19,7 @@ import type { PassTier } from '../../shared/orbital/tiers.js';
 import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
-import { IMAGE_CREDIT, OrbitalWatchPage, subSolarPoint, TIER_GLYPH_CHAR, type OrbitalWatchState } from '@/components/OrbitalWatchPage';
+import { IMAGE_CREDIT, OrbitalWatchPage, setOrbitalDisplayZone, subSolarPoint, TIER_GLYPH_CHAR, type OrbitalWatchState } from '@/components/OrbitalWatchPage';
 import manifest from '../../shared/source-attribution-manifest.json';
 import { openOrbitalWatch } from '@/app/orbital-watch';
 import { formatOrbitalRoute, parseOrbitalRoute } from '@/app/orbital-route';
@@ -525,6 +525,18 @@ describe('satellite pass lookup sheet', () => {
     await settle();
     expect(sourceOf(row().querySelector('.ow-tile img')!.getAttribute('src'))).toBe(urls[1]);
     expect(row().querySelector('.ow-row-meta')!.textContent).toContain('15:30');
+  });
+
+  it('names a daily mosaic by its UTC day for a place west of UTC', () => {
+    const { all } = tiered();
+    const state = answered(all, { mosaics: [modis] });
+    mounted(state, null, 'full');
+    setOrbitalDisplayZone('America/Los_Angeles', 'PST');
+    onTestFinished(() => setOrbitalDisplayZone('UTC', 'UTC'));
+    page().render(state);
+    const text = sheet().textContent ?? '';
+    expect(text).toContain('MODIS TERRA · Thu, Nov 12');
+    expect(text).not.toContain('MODIS TERRA · Wed, Nov 11');
   });
 
   it('steps a daily mosaic back from a day with no data at the point, and never shows a black tile', async () => {
