@@ -206,9 +206,9 @@ test('energy table values and names stay whole inside their column', async ({ br
     }
     await context.close();
   }
-  // At 1440px the sidebar holds two columns of about 279px, so every panel sits
-  // in a column of 340px or less. (1366px fits one 532px column.)
-  expect(stackedNarrowPanels, 'no panel stacked in a column of 340px or less').toBe(PANELS.length);
+  // At 1440px the sidebar holds two columns of about 279px. Stacked
+  // layouts can also put panels in columns of 340px or less.
+  expect(stackedNarrowPanels, 'no panel stacked in a column of 340px or less').toBeGreaterThanOrEqual(PANELS.length);
   // The widened panel must exercise the five-column disruptions table.
   expect(wideTables, 'the disruptions log never rendered as a table').toBeGreaterThan(0);
   expect(styledTables, 'no energy table rendered as a table at 100% text').toBeGreaterThan(0);

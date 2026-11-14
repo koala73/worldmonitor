@@ -45,8 +45,8 @@ The top-level `status` describes user-visible platform availability, not perfect
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "dataStatus": "OK | DEGRADED | CRITICAL",
   "summary": {
-    "total": 415,
-    "ok": 414,
+    "total": 423,
+    "ok": 422,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 1,
@@ -80,6 +80,8 @@ Sanctions ingestion tracks SDN, Consolidated, and Canadian SEMA independently. A
 
 The worker can retain a complete validated source snapshot for 48 hours after its last successful fetch, so a worker that loses egress to OFAC for several 6-hour runs keeps serving the last validated lists while `OFAC_INGEST_FAILED` stays visible. Failed attempts and healthy sibling sources do not extend that deadline. The 60-entry display preview is never a retention source; initial retention requires a successful full-source fetch. Private snapshots use bounded gzip storage and do not change public payload shapes.
 
+Country attribution is checked on the OFAC records alone, because SEMA publishes no address or flag. When more than 10% of OFAC records, or more than 10% of OFAC vessels, have neither a country nor a flag or aircraft registry, the run still publishes but reports `sourceState: degraded`, `SANCTIONS_ATTRIBUTION_DEGRADED` and completion `DEGRADED`. Freshness metadata carries the counts and shares in `attribution`. A source failure takes precedence over this code.
+
 On each run, the worker excludes expired or invalid snapshots before rebuilding the pressure payload, entity index, and country counts. If no source remains usable, those outputs become empty while source errors remain visible. This is unavailable data, not a confirmed empty sanctions list. Readers do not independently remove expired source cohorts between worker runs; existing cache TTL and health checks still apply. Source publication dates remain unchanged.
 
 Snapshot reads distinguish a missing key from Redis errors. Snapshot persistence precedes canonical publication, but canonical, companion, and freshness writes are not one transaction. A later companion-write failure can leave the new canonical payload with older companion data or metadata; the run fails without a completed health patch. The empty envelope's `OK_ZERO` describes publication only: source metadata remains `error`, completion is `DEGRADED`, and the panel shows unavailable.
@@ -98,11 +100,11 @@ Cache hits migrate legacy short TTLs to the snapshot's original 90-minute deadli
 
 ### Contracts Finder refresh failures
 
-The hourly Global Tenders member runs within the half-hourly `seed-bundle-relay-backup` scheduler. Contracts Finder uses two 45-second attempts for its documented OCDS query; a valid response was observed taking 23.6 seconds to first byte, beyond the previous 20-second limit. This stays within the member's 180-second timeout.
+The daily Global Tenders member runs within the half-hourly `seed-bundle-relay-backup` scheduler. Contracts Finder uses two 45-second attempts for its documented OCDS query; a valid response was observed taking 23.6 seconds to first byte, beyond the previous 20-second limit. This stays within the member's 180-second timeout.
 
-Failed refreshes retain only validated open Contracts Finder records less than 180 minutes after that source's last success. Attempts never advance the success clock, and successful sibling sources cannot renew this limit. Malformed releases, including active notices without a usable closing date, fail validation instead of replacing last-good data with an empty success. An actual successful response, including a verified empty result, clears the failure episode. Legacy failure metadata with no count does not qualify as a first failure.
+Failed refreshes retain only validated open Contracts Finder records less than three days after that source's last success. Attempts never advance the success clock, and successful sibling sources cannot renew this limit. Malformed releases, including active notices without a usable closing date, fail validation instead of replacing last-good data with an empty success. An actual successful response, including a verified empty result, clears the failure episode. Legacy failure metadata with no count does not qualify as a first failure.
 
-`globalTendersContractsFinder` keeps `SEED_ERROR`, the warning count, source error, attempt time, success time, and consecutive failure count visible. Availability can contain the first failed refresh only after reading and checking its records in the canonical tender snapshot. `containmentUntil` is the earliest of 90 minutes after the first failure, 180 minutes after source success, or a retained tender's closing time. The second failed refresh, missing or unreadable canonical data, malformed records, inconsistent metadata, or an expired deadline cannot qualify. Full and compact verdict caches expire at the same deadline; this does not change other sources' health policy.
+`globalTendersContractsFinder` keeps `SEED_ERROR`, the warning count, source error, attempt time, success time, and consecutive failure count visible. Availability can contain the first failed refresh only after reading and checking its records in the canonical tender snapshot. `containmentUntil` is the earliest of 1,470 minutes after the first failure (one daily run plus the bundle's 30-minute tick), three days after source success, or a retained tender's closing time. The second failed refresh, missing or unreadable canonical data, malformed records, inconsistent metadata, or an expired deadline cannot qualify. Full and compact verdict caches expire at the same deadline; this does not change other sources' health policy.
 
 A failed refresh after a verified empty success can also qualify. The producer records `confirmedEmpty` only when the prior canonical envelope has an explicit zero source count, no source rows, and recent source success evidence. Health requires matching canonical and seed metadata, a fresh usable aggregate, and the same first-failure limits. Its deadline also includes aggregate freshness. Zero records without this proof, or records removed by expiry or validation, cannot qualify. The source remains `error` with `SEED_ERROR`; containment does not report a successful refresh.
 
@@ -126,7 +128,7 @@ This operational contract complements, rather than replaces, the source-quality 
 
 The relay's public `GET /health` remains HTTP 200 for Railway/process-liveness probes, but its top-level JSON `status` now mirrors the aggregate ingestion verdict and can be `degraded`; `ingestion.status` carries the same application-level result. It becomes `degraded` when aviation or RSS served coverage falls below its configured floor, or when configured AIS is disconnected, has no usable current-connection position data, or serves zero snapshots after they are requested. AIS WebSocket upgrades time out after 30 seconds by default, and position readiness expires when an open stream stops delivering accepted position reports for five minutes by default; either failure re-enters the bounded reconnect schedule, while retained vessel data remains a stale fallback. Deployments intentionally missing AIS credentials report `enabled: false` and `status: "disabled"`; that optional adapter does not degrade aggregate health.
 
-The curated X feed uses one newest-page request from a verified public List in each fixed 15-minute UTC slot. The adapter is enabled only when the AIS relay has both `X_BEARER_TOKEN` and `X_CURATED_LIST_ID`. Before activation, run `node scripts/verify-x-accounts.mjs`: it requires the List to be public, readable in one page, and an exact immutable-ID match for the 64 enabled entries in `data/x-accounts.json`. The verifier reads List and User resources only; the first natural relay slot owns the paid Post contract check. Public xFeed freshness advances only after a valid settled List page, including an explicit empty page, is committed with its seed metadata. Its freshness timestamp stays bound to the original provider success if publication replays later. The daily deletion audit is ancillary maintenance: its failure remains visible in authenticated status but does not make an accepted List page unhealthy.
+The curated X feed uses one newest-page request from a verified public List in each fixed 15-minute UTC slot. The adapter is enabled only when the AIS relay has both `X_BEARER_TOKEN` and `X_CURATED_LIST_ID`. Before activation, run `node scripts/verify-x-accounts.mjs`: it requires the List to be public, readable in one page, and an exact immutable-ID match for the 65 enabled entries in `data/x-accounts.json`. The verifier reads List and User resources only; the first natural relay slot owns the paid Post contract check. Public xFeed freshness advances only after a valid settled List page, including an explicit empty page, is committed with its seed metadata. Its freshness timestamp stays bound to the original provider success if publication replays later. The daily deletion audit is ancillary maintenance: its failure remains visible in authenticated status but does not make an accepted List page unhealthy.
 
 Failed List attempts keep the last-good feed and its original freshness clock. They refresh failure metadata with `sourceState: degraded`, a bounded `errorCode`, and the attempt time, so health reports `SEED_ERROR` with the retained record count and age instead of losing those diagnostics when metadata expires. The 45-minute freshness threshold is unchanged. One completed HTTP 408/500/502/503/504 response can retry after 1–5 seconds, using a new shared-budget admission from spare capacity; future scheduled coverage stays reserved. Longer Retry-After values, auth/credit/rate-limit failures, malformed successful payloads, and ambiguous paid transport or settlement outcomes are not retried. The relay wakes at a shared backoff deadline within the current slot, so a 30-minute backoff that ends milliseconds after a UTC boundary does not add another 15-minute delay. This path uses the official X API directly with one configured bearer and List; it has no account or proxy failover.
 
@@ -145,6 +147,26 @@ Keys are grouped into three tiers that determine alert severity:
 | **Bootstrap** | CRIT | Seeded data required at startup. Empty means the dashboard is missing critical data |
 | **Standalone** | CRIT (seeded) / WARN (on-demand) | Populated by seed loops or RPC handlers. On-demand keys are expected to be empty until first request |
 | **On-demand** | WARN | Populated lazily by RPC calls. Empty is normal if nobody has requested the data yet |
+
+The standalone `ciiStructuralPrior` check monitors
+`intelligence:cii-structural-prior:v1`, with the distinct metadata key
+`seed-meta:intelligence:cii-structural-prior`. The source is the World Bank WGI
+`GOV_WGI_PV.EST` estimate, pinned to data year 2025. Taiwan comes from the matching
+2026 WGI bulk release. The payload records each country's value, year and source URL.
+The seeder refreshes the annual data every 30 days, with a 400-day TTL; metadata
+older than 35 days is stale. Health reads the payload as well as metadata. A missing
+or invalid scored-country value reports `COVERAGE_PARTIAL` with `missingCountries`,
+even when metadata is fresh. A Redis read failure reports `REDIS_PARTIAL`.
+The durable `seed-activated:intelligence:cii-structural-prior` marker is written
+only after successful publication. Before any publication, an absent key is
+pending; after activation, missing data remains a fault even if the data TTL expires.
+
+The proposed runner is the live `seed-bundle-static-ref-heavy` service, verified
+on 2026-11-12 to run daily at 04:00 UTC from `scripts/`. Its existing cadence
+rotation admits the prior after Supply-Vulnerability on every second tick.
+Deploying this bundle and applying its new watch patterns require owner approval.
+Use `node scripts/seed-cii-structural-prior.mjs --dry-run` for a GET-only source check.
+This key has no scoring consumer until the separate CII aggregation change ships.
 
 ### Per-Key Statuses
 
@@ -702,6 +724,8 @@ Wildfire ingestion retries a transient CWFIS request once, unless the provider's
 
 The first two consecutive exhausted transient CWFIS failures are pending for at most three hours, bounded by the source's three-hour retention limit. The third failed run warns. Missing, malformed, expired, or permanently failed coverage earns no pending period. Recovery state must persist before either public wildfire payload changes. Internal snapshot rows are excluded from both public payloads. The ten-minute cron, six-hour stale threshold, and existing FIRMS partial-coverage policy are unchanged.
 
+CWFIS failure checks and their Sentry incidents include `sourceHealth.cwfis`. This object contains `lastSuccessAt`, `firstFailureAt`, and `retainedUntil` as Unix milliseconds, plus `retainedRecordCount`. These fields describe the last source attempt, not the combined publication time. The count includes prescribed burns retained in the source snapshot, so it is not a dashboard count. A zero count means the recorded snapshot has no retained rows. A missing or invalid value is `null`, including the count from producers that predate this field. The producer clears the success time and retention deadline when it can no longer reuse the snapshot. A warning after three failed runs does not mean that retention has expired.
+
 BC fire points use the internal `wildfire:bc-source:v1` snapshot to preserve validated source rows and their original success time after a failed request. A failed refresh can reuse source data younger than the existing two-hour wildfire cache lifetime at the source attempt. Repeated failures do not renew that source clock. The resulting aggregate keeps its existing two-hour publication TTL. Missing, malformed, future, or expired source snapshots supply no retained BC rows. A nonempty WFS page with invalid fire points fails validation.
 
 When a usable populated BC snapshot exists, an empty WFS result requires one uncached confirmation read before it can clear prior records. Confirmation and any following pages share the existing eight-request WFS budget and 30-second per-request timeout. A second complete empty result clears prior records; complete nonempty confirmation replaces them. Failed, malformed, or incomplete confirmation uses the same finite retention and failure metadata as a failed request. Without usable populated source data, complete empty results do not require confirmation. The `bc_fire_empty_confirmation` log event records the confirmation stage, page offset, and matched/returned counts without response prose.
@@ -739,6 +763,12 @@ and status) until Sentry accepts it; `health:incident-alerts` records accepted
 pairs, so a failed delivery is retried by the next sweep. An unchanged incident
 does not re-alert; a recovered source that breaks again does. `?history=1`
 lists the incident log.
+
+Food-price sources are government releases that often run late. Their
+`STALE_CONTENT` shows in `/api/health` and on the panel at the content limit,
+but it reaches Sentry only when the content is more than 30 days past that
+limit. A `STALE_CONTENT` with no readable content date, and every other status,
+reports at once.
 
 ### MCP preset liveness
 
@@ -1068,3 +1098,32 @@ activation marker `seed-activated:correlation:market-alerts`, which the seeder
 sets after its first publish. Before the marker exists, a missing payload reads
 as the soft on-demand state. After it exists, a missing publication reports
 `STALE_SEED` once the 30-minute gate passes.
+
+### CII economic-stress coverage
+
+`ciiEconomicStress` monitors `intelligence:cii-economic-stress:v1`, with separate
+`seed-meta:intelligence:cii-economic-stress` metadata. It is pending until its first
+successful publication activates the key. The hourly producer reads existing
+currency, CPI and monthly government-yield caches; it changes no CII score.
+
+Coverage is checked against the named economic expectations in
+`shared/cii-coverage-baseline.json`, not a bare count. An expected country without
+a still-fresh member gives `COVERAGE_PARTIAL` and appears in
+`missingExpectedCountries` in operator details. Public compact responses omit
+the country names. The U22 ledger supersedes the former 23-country threshold:
+another country's new coverage cannot hide the loss of an expected country.
+The six recorded gaps do not alarm. Member expiry is checked at health-read
+time, so an old payload cannot keep a country measured after its last member
+expires. A Redis read failure gives `REDIS_PARTIAL`. Coverage defects also remove
+stale containment evidence. Transport age above 180 minutes is stale.
+
+OQ9 (owner, 13 November 2026) permits partial coverage. A country without a fresh
+member is published as `measured: false` with the label “economic stress not
+measured”; missing data is never a zero stress observation. India losing its
+July CPI observation alone does not reduce measured coverage while its currency
+observation remains fresh. The currency member needs the `daily90` block that
+`seed-fx-yoy.mjs` publishes; an FX payload written before that block existed
+gives `insufficient-history` for every currency until the seeder next runs.
+A currency whose daily quotes keep reverting, and which the second source
+cannot supply either, is published as `unreliable-quotes`, which is an
+absence, not a zero move.

@@ -32,6 +32,7 @@ import {
   companyMonitoringXStorageStateValidator,
 } from "./companyMonitoring/validators";
 import { entitlementFeaturesValidator } from "./lib/entitlementFeaturesValidator";
+import { teamDashboardLayoutValidator } from "./lib/teamDashboardLayout";
 
 // Subscription status enum — maps Dodo statuses to our internal set
 const subscriptionStatus = v.union(
@@ -245,6 +246,9 @@ export default defineSchema({
     // shared/chokepoint-alert-ids.js. The event itself is opt-in through
     // eventTypes; empty/absent here → every chokepoint.
     chokepoints: v.optional(v.array(v.string())),
+    // Watched-site ids (shared/watched-sites.ts) for the opt-in watched-site
+    // alerts. Empty/absent → none: the list is the user's own watch list.
+    orbitalSites: v.optional(v.array(v.string())),
   })
     .index("by_user", ["userId"])
     .index("by_user_variant", ["userId", "variant"])
@@ -2002,6 +2006,20 @@ export default defineSchema({
     businessSubscriptionId: v.string(),
     lastTouchedAt: v.number(),
   }).index("by_businessSubscriptionId", ["businessSubscriptionId"]),
+
+  // Dashboard layouts a team shares with its members (convex/teamDashboards.ts).
+  // `teamKey` is `business:<dodoSubscriptionId>` or `enterprise:<accountId>`,
+  // always derived from the caller on the server. No user identifier: the
+  // dashboard belongs to the team.
+  teamDashboards: defineTable({
+    teamKey: v.string(),
+    variant: v.string(),
+    name: v.string(),
+    layout: teamDashboardLayoutValidator,
+    version: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_team_variant", ["teamKey", "variant"]),
 
   emailSuppressions: defineTable({
     normalizedEmail: v.string(),

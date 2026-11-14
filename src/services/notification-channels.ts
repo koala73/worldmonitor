@@ -52,6 +52,8 @@ export interface AlertRule {
   // Optional chokepoint-scope for the opt-in chokepoint_disruption event
   // (#9217). Empty/absent → every chokepoint.
   chokepoints?: string[];
+  // Watched-site ids for the opt-in watched-site alerts. Empty/absent → none.
+  orbitalSites?: string[];
 }
 
 export interface ChannelsData {
@@ -512,6 +514,7 @@ export async function setNotificationConfig(args: {
   countries?: string[];
   tickers?: string[];
   chokepoints?: string[];
+  orbitalSites?: string[];
 }, expectedUserId?: string, signal?: AbortSignal): Promise<void> {
   const res = await authFetch('/api/notification-channels', {
     method: 'POST',

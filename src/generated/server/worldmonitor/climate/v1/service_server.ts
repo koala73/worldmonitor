@@ -130,6 +130,66 @@ export interface AirQualityStation {
   source: string;
 }
 
+export interface ListReservoirLevelsRequest {
+}
+
+export interface ListReservoirLevelsResponse {
+  reservoirs: ReservoirLevel[];
+  fetchedAt: number;
+  dataAvailable: boolean;
+  source?: ReservoirLevelsSource;
+  methodology: string;
+}
+
+export interface ReservoirLevel {
+  id: string;
+  name: string;
+  country: string;
+  riparians: string[];
+  river: string;
+  lat: number;
+  lon: number;
+  tags: string[];
+  why: string;
+  latest?: ReservoirLatestPass;
+  prevDate: string;
+  changePrevM?: number;
+  change30dM?: number;
+  change90dM?: number;
+  change365dM?: number;
+  seasonalAnomalyM?: number;
+  seasonalZ?: number;
+  recordMinM?: number;
+  recordMaxM?: number;
+  recordStart: string;
+  percentOfRange?: number;
+  recordLow: boolean;
+  recordHigh: boolean;
+  status: string;
+  series: ReservoirLevelPoint[];
+  okPassCount: number;
+}
+
+export interface ReservoirLatestPass {
+  date: string;
+  levelM: number;
+  madM: number;
+  segmentCount: number;
+  ageDays: number;
+}
+
+export interface ReservoirLevelPoint {
+  date: string;
+  levelM: number;
+}
+
+export interface ReservoirLevelsSource {
+  name: string;
+  product: string;
+  url: string;
+  processing: string;
+}
+
 export interface ListClimateNewsRequest {
 }
 
@@ -202,6 +262,7 @@ export interface ClimateServiceHandler {
   getCo2Monitoring(ctx: ServerContext, req: GetCo2MonitoringRequest): Promise<GetCo2MonitoringResponse>;
   getOceanIceData(ctx: ServerContext, req: GetOceanIceDataRequest): Promise<GetOceanIceDataResponse>;
   listAirQualityData(ctx: ServerContext, req: ListAirQualityDataRequest): Promise<ListAirQualityDataResponse>;
+  listReservoirLevels(ctx: ServerContext, req: ListReservoirLevelsRequest): Promise<ListReservoirLevelsResponse>;
   listClimateNews(ctx: ServerContext, req: ListClimateNewsRequest): Promise<ListClimateNewsResponse>;
 }
 
@@ -397,6 +458,43 @@ export function createClimateServiceRoutes(
 
           const result = await handler.listAirQualityData(ctx, body);
           return new Response(JSON.stringify(result as ListAirQualityDataResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/climate/v1/list-reservoir-levels",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListReservoirLevelsRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listReservoirLevels(ctx, body);
+          return new Response(JSON.stringify(result as ListReservoirLevelsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

@@ -344,7 +344,7 @@ async function resolveLatestResilienceSnapshot() {
   const candidates = entries
     .map((filename) => ({ filename, match: filename.match(RESILIENCE_SNAPSHOT_RE) }))
     .filter(({ match }) => match)
-    .sort((a, b) => b.match[1].localeCompare(a.match[1]));
+    .sort((a, b) => b.match[1].localeCompare(a.match[1], 'en-US'));
   if (candidates.length === 0) {
     throw new Error('No resilience ranking snapshot found');
   }
@@ -596,7 +596,7 @@ export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
     .sort((a, b) => (
       b.importanceScore - a.importanceScore
       || b.publishedAtMs - a.publishedAtMs
-      || a.row.title.localeCompare(b.row.title)
+      || a.row.title.localeCompare(b.row.title, 'en-US')
     ));
 
   // Dedupe BEFORE the cap so a second edition of one story never occupies a
@@ -645,7 +645,7 @@ function selectCountryHeadlines(digestItems, code, limit = COUNTRY_HEADLINE_LIMI
     .sort((a, b) => (
       b.importanceScore - a.importanceScore
       || b.publishedAtMs - a.publishedAtMs
-      || a.row.title.localeCompare(b.row.title)
+      || a.row.title.localeCompare(b.row.title, 'en-US')
     ))
     .slice(0, limit)
     .map((entry) => entry.row);

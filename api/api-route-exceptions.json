@@ -10,6 +10,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/registry/travel-risk-tool.ts",
+      "category": "external-protocol",
+      "reason": "MCP travel-risk-assessment tool definition. It reads cached seed keys server-side for a plan-gated caller and exports no HTTP route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/country-history-tool.ts",
       "category": "external-protocol",
       "reason": "MCP country-history tool definition. It forwards to the generated intelligence RPC with the verified caller's credential and exports no HTTP route.",
@@ -332,6 +339,20 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/chatgpt-copy.ts",
+      "category": "external-protocol",
+      "reason": "Rewrites MCP tool copy for ChatGPT to drop API-plan billing wording, per OpenAI's app review. Part of the streamable-HTTP MCP surface — not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/chatgpt-news.ts",
+      "category": "external-protocol",
+      "reason": "Reduces MCP news results for ChatGPT to headline pointers, per OpenAI's app review. Part of the streamable-HTTP MCP surface — not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/upgrade-constants.ts",
       "category": "external-protocol",
       "reason": "MCP free-account allowance numeric constants (#6716). Supporting module for the MCP transport; listed so the sebuf contract script accepts the api/mcp/ tree.",
@@ -630,6 +651,13 @@
       "category": "external-protocol",
       "reason": "Slack OAuth initiator — 302 to Slack's authorize URL. Not a JSON API.",
       "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/travel-risk-assessment.ts",
+      "category": "non-json",
+      "reason": "Serves the plan-gated travel risk assessment draft as a downloadable file: text/markdown or text/html with Content-Disposition: attachment. The body is a document, not an RPC envelope. Errors are small JSON bodies; success is never JSON.",
+      "owner": "@koala73",
       "removal_issue": null
     },
     {

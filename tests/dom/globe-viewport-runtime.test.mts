@@ -57,6 +57,26 @@ describe('Globe viewport runtime', () => {
     if (method === 'fitCountry') expect(map.getCenter()).toEqual({ lat: 30, lon: 20 });
   });
 
+  it('keeps a looked-up point framed instead of resuming the idle spin after the move', async () => {
+    const { map, controls, pov } = camera();
+    map.flushMarkers = vi.fn();
+    map.setOrbitalTarget({ lat: 25.112, lon: 55.139, lines: [] });
+    map.fitFocusBounds({ south: 24, north: 26, west: 54, east: 56, lonSpan: 2, latSpan: 2, center: { lat: 25.112, lon: 55.139 } }, 0.4);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(pov()).toMatchObject({ lat: 25.112, lng: 55.139 });
+    expect(controls.autoRotate).toBe(false);
+  });
+
+  it('jumps with no animation frame when the move has no duration', async () => {
+    const { map, pov } = camera();
+    map.setCenter(25.112, 55.139, 11);
+    await vi.advanceTimersByTimeAsync(16);
+    expect(pov().lat, 'an animated move is still on its way').not.toBe(0);
+    map.setCenter(10, 20, 4, 0);
+    expect({ lat: pov().lat, lng: pov().lng }, 'no frame sits between the two centres').toEqual({ lat: 10, lng: 20 });
+    await expect(map.whenViewportSettled()).resolves.toBe(true);
+  });
+
   it('interrupts a superseded move without restoring rotation during its replacement', async () => {
     const { map, controls } = camera();
     map.setCenter(10, 20, 4);
@@ -91,6 +111,18 @@ describe('Globe viewport runtime', () => {
       await expect(movement).resolves.toBe(true);
       expect(controls.autoRotate).toBe(true);
     }
+  });
+
+  it('keeps a held globe from spinning after a move and spins again once released', async () => {
+    const { map, controls } = camera();
+    map.holdAutoRotate(true);
+    expect(controls.autoRotate).toBe(false);
+    map.setCenter(25.112, 55.139, 11);
+    await vi.advanceTimersByTimeAsync(1500);
+    await expect(map.whenViewportSettled()).resolves.toBe(true);
+    expect(controls.autoRotate, 'a spin would carry the held point out of view').toBe(false);
+    map.holdAutoRotate(false);
+    expect(controls.autoRotate).toBe(true);
   });
 
   it('allows a state subscriber to start a new move during settlement', async () => {

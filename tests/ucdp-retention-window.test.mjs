@@ -26,14 +26,14 @@ describe('UCDP retained window is intentionally smaller than CII classification 
     );
   });
 
-  it('guards the intentionally capped one-year Redis writer window', () => {
+  it('guards the full-window fetch and capped legacy events slice', () => {
     const standaloneSeed = readRepoFile('scripts/seed-ucdp-events.mjs');
     const relay = readRepoFile('scripts/ais-relay.cjs');
 
     assert.match(
       standaloneSeed,
-      /const MAX_PAGES = 6;/,
-      'standalone UCDP seed page cap changed; update this guard and public docs deliberately',
+      /fetchAnnualWindow\(/,
+      'standalone seed must fetch the annual window by date',
     );
     assert.match(
       standaloneSeed,
@@ -47,8 +47,8 @@ describe('UCDP retained window is intentionally smaller than CII classification 
     );
     assert.match(
       relay,
-      /const UCDP_MAX_PAGES = 6;/,
-      'relay Redis UCDP seed page cap changed; update this guard and public docs deliberately',
+      /ucdpFetchAnnualWindow\(/,
+      'relay must fetch the annual window by date',
     );
     assert.match(
       relay,
@@ -72,8 +72,9 @@ describe('UCDP retained window is intentionally smaller than CII classification 
       /const UCDP_RELAY_MAX_PAGES = 12;/,
       'public relay UCDP reader page cap changed; update docs deliberately',
     );
-    for (const doc of [methodology, changelog]) {
-      assert.match(doc, /newest six UCDP pages/);
+    assert.match(changelog, /newest six UCDP pages/); // Historical v8 release note.
+    for (const doc of [methodology]) {
+      assert.match(doc, /every monthly GED Candidate release/);
       assert.match(doc, /2,000 mapped events/);
       assert.match(doc, /365-day/);
       assert.match(doc, /12 pages/);

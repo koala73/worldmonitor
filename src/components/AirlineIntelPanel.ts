@@ -22,6 +22,9 @@ import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 import { Panel } from './Panel';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import type { ResolvedScope } from '@/services/tab-focus';
+import { airportCountry, headlineCountries, withoutOwnSourceSuffix } from '@/services/scope-attribution';
+import { PanelScopeFilter, focusedEmptyHtml, scopeTagHtml, type ScopeCountries } from './panel-scope-filter';
 
 
 // ---- Helpers ----
@@ -97,6 +100,11 @@ export class AirlineIntelPanel extends Panel {
     private refreshTimer: ReturnType<typeof setInterval> | null = null;
     private liveIndicator!: HTMLElement;
     private tabBar!: HTMLElement;
+    // Dashboard focus (#10453). Airports resolve to a country through the
+    // monitored-airport table, a flight through either end, a news item
+    // through its headline. Airlines, tracking and prices do not filter, and
+    // the strip says so on those tabs.
+    private scopeFilter!: PanelScopeFilter;
 
     constructor() {
         super({ id: 'airline-intel', title: t('panels.airlineIntel'), trackActivity: true, infoTooltip: t('components.airlineIntel.infoTooltip') });
@@ -142,6 +150,8 @@ export class AirlineIntelPanel extends Panel {
             this.tabBar.appendChild(btn);
         });
         this.element.insertBefore(this.tabBar, this.content);
+        // Below the tabs, above the list it describes.
+        this.scopeFilter = new PanelScopeFilter({ content: this.content, onChange: () => this.renderTab() });
 
         // Add styling class to inherited content div
         this.content.classList.add('airline-intel-content');
@@ -194,6 +204,32 @@ export class AirlineIntelPanel extends Panel {
     destroy(): void {
         if (this.refreshTimer) clearInterval(this.refreshTimer);
         super.destroy();
+    }
+
+    public override applyScope(scope: ResolvedScope | null): void {
+        if (!this.scopeFilter.setScope(scope)) return;
+        this.renderTab();
+    }
+
+    /** The focused countries, chosen first, for headline matching. */
+    private scopeCandidates(): string[] {
+        const resolved = this.scopeFilter.scope;
+        return resolved ? [...resolved.chosen, ...resolved.neighbours] : [];
+    }
+
+    /**
+     * Countries of a flight's endpoints. The airport list is a hub list, not a
+     * directory, so an unknown endpoint must never push a flight out of the
+     * focus: with an unknown end the flight counts as in focus only when a
+     * known end is, and otherwise has no country (counted, one click away).
+     */
+    private flightCountries(f: FlightInstance): ScopeCountries {
+        const ends = [f.origin?.iata, f.destination?.iata].map((iata) => (iata ? airportCountry(iata) : null));
+        const known = ends.filter((c): c is string => !!c);
+        if (known.length === ends.length) return known;
+        const inFocus = new Set(this.scopeCandidates());
+        const hit = known.filter((c) => inFocus.has(c));
+        return hit;
     }
 
     /** Called by the map when new aircraft positions arrive. */
@@ -386,7 +422,10 @@ export class AirlineIntelPanel extends Panel {
     }
 
     private renderTab(): void {
-        if (this.loading) { this.renderLoading(); return; }
+        if (this.loading) { this.scopeFilter.hideStrip(); this.renderLoading(); return; }
+        if (this.activeTab === 'airlines' || this.activeTab === 'tracking' || this.activeTab === 'prices') {
+            this.scopeFilter.renderStrip(null, t('focus.filter.tabNotFiltered'));
+        }
         switch (this.activeTab) {
             case 'ops': this.renderOps(); break;
             case 'flights': this.renderFlights(); break;
@@ -400,13 +439,20 @@ export class AirlineIntelPanel extends Panel {
     // ---- Ops tab ----
     private renderOps(): void {
         if (!this.opsData.length) {
+            this.scopeFilter.hideStrip();
             this.setTrustedContent(trustedHtml(`<div class="no-data">${t('components.airlineIntel.noOpsData')}</div>`, "legacy direct innerHTML migration"));
             return;
         }
-        const rows = this.opsData.map(s => `
+        const view = this.scopeFilter.view(this.opsData, s => airportCountry(s.iata));
+        this.scopeFilter.renderStrip(view);
+        if (view.emptyByFocus) {
+            this.setTrustedContent(trustedHtml(focusedEmptyHtml(t('focus.filter.emptyAirports')), 'focus empty state: escaped by focusedEmptyHtml'));
+            return;
+        }
+        const rows = view.rows.map(({ item: s, ...row }) => `
       <div class="ops-row">
         <div class="ops-iata">${escapeHtml(s.iata)}</div>
-        <div class="ops-name">${escapeHtml(s.name || s.iata)}</div>
+        <div class="ops-name">${escapeHtml(s.name || s.iata)}${scopeTagHtml(row)}</div>
         <div class="ops-severity" style="color:${SEVERITY_COLOR[s.severity] ?? '#aaa'}">${s.severity.toUpperCase()}</div>
         <div class="ops-delay">${s.avgDelayMinutes > 0 ? `+${s.avgDelayMinutes}m` : '—'}</div>
         <div class="ops-cancel">${s.cancellationRate > 0 ? `${s.cancellationRate.toFixed(1)}% cxl` : ''}</div>
@@ -419,16 +465,23 @@ export class AirlineIntelPanel extends Panel {
     // ---- Flights tab ----
     private renderFlights(): void {
         if (!this.flightsData.length) {
+            this.scopeFilter.hideStrip();
             this.setTrustedContent(trustedHtml(`<div class="no-data">${t('components.airlineIntel.noFlights')}</div>`, "legacy direct innerHTML migration"));
             return;
         }
-        const rows = this.flightsData.map(f => {
+        const view = this.scopeFilter.view(this.flightsData, f => this.flightCountries(f));
+        this.scopeFilter.renderStrip(view);
+        if (view.emptyByFocus) {
+            this.setTrustedContent(trustedHtml(focusedEmptyHtml(t('focus.filter.emptyFlights')), 'focus empty state: escaped by focusedEmptyHtml'));
+            return;
+        }
+        const rows = view.rows.map(({ item: f, ...row }) => {
             const color = STATUS_BADGE[f.status] ?? '#6b7280';
             const when = flightBoardTime(f, this.flightsAirport);
             return `
         <div class="flight-row">
           <div class="flight-num">${escapeHtml(f.flightNumber)}</div>
-          <div class="flight-route">${escapeHtml(f.origin.iata)} → ${escapeHtml(f.destination.iata)}</div>
+          <div class="flight-route">${escapeHtml(f.origin.iata)} → ${escapeHtml(f.destination.iata)}${scopeTagHtml(row)}</div>
           <div class="flight-time">${fmtTime(when)}</div>
           <div class="flight-delay" style="color:${f.delayMinutes > 0 ? '#f97316' : '#aaa'}">${f.delayMinutes > 0 ? `+${f.delayMinutes}m` : ''}</div>
           <div class="flight-status" style="color:${color}">${escapeHtml(f.status)}</div>
@@ -518,13 +571,21 @@ export class AirlineIntelPanel extends Panel {
     // ---- News tab ----
     private renderNews(): void {
         if (!this.newsData.length) {
+            this.scopeFilter.hideStrip();
             this.setTrustedContent(trustedHtml(`<div class="no-data">${t('components.airlineIntel.noNews')}</div>`, "legacy direct innerHTML migration"));
             return;
         }
-        const items = this.newsData.map(n => `
+        const candidates = this.scopeCandidates();
+        const view = this.scopeFilter.view(this.newsData, n => headlineCountries(withoutOwnSourceSuffix(n.title, n.sourceName), candidates));
+        this.scopeFilter.renderStrip(view);
+        if (view.emptyByFocus) {
+            this.setTrustedContent(trustedHtml(focusedEmptyHtml(t('focus.filter.emptyAviationNews')), 'focus empty state: escaped by focusedEmptyHtml'));
+            return;
+        }
+        const items = view.rows.map(({ item: n, ...row }) => `
       <div class="news-item" style="padding:8px 0;border-bottom:1px solid var(--border,#2a2a2a)">
         <a href="${sanitizeUrl(n.url)}" target="_blank" rel="noopener" class="news-link">${escapeHtml(n.title)}</a>
-        <div class="news-meta" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim,#888);margin-top:2px">${escapeHtml(n.sourceName)} · ${n.publishedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+        <div class="news-meta" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim,#888);margin-top:2px">${escapeHtml(n.sourceName)} · ${n.publishedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${scopeTagHtml(row)}</div>
       </div>`).join('');
         setTrustedHtml(this.content, trustedHtml(`<div class="news-list" style="padding:0 4px">${items}</div>`, "legacy direct innerHTML migration"));
     }

@@ -43,6 +43,9 @@ let callbacks: {
   onAdd: Mock<() => void>;
   onRename: Mock<(tabId: string, name: string) => void>;
   onDelete: Mock<(tabId: string) => void>;
+  hasNewTabPanels: Mock<() => boolean>;
+  onSaveNewTabPanels: Mock<() => void>;
+  onClearNewTabPanels: Mock<() => void>;
 };
 
 const addBtn = () => bar.getElement().querySelector<HTMLButtonElement>('.dashboard-tab-add')!;
@@ -59,6 +62,9 @@ beforeEach(() => {
     onAdd: vi.fn<() => void>(),
     onRename: vi.fn<(tabId: string, name: string) => void>(),
     onDelete: vi.fn<(tabId: string) => void>(),
+    hasNewTabPanels: vi.fn<() => boolean>(() => false),
+    onSaveNewTabPanels: vi.fn<() => void>(),
+    onClearNewTabPanels: vi.fn<() => void>(),
   };
   bar = new PanelTabBar(() => state, callbacks);
   document.body.appendChild(bar.getElement());

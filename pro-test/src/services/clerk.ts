@@ -4,6 +4,12 @@ import { EULA_PATH, PRIVACY_PATH } from '../../../shared/legal';
 
 export type LoadedClerk = InstanceType<typeof Clerk>;
 
+export const SITE_DATA_BLOCKED_MESSAGE = 'Your browser is blocking cookies and site data for worldmonitor.app. Allow them for this site, then try again.';
+
+export class SiteDataBlockedError extends Error {
+  override name = 'SiteDataBlockedError';
+}
+
 const MONO_FONT = "'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace";
 
 let clerk: LoadedClerk | null = null;
@@ -76,6 +82,12 @@ function publishClerkLoaded(instance: LoadedClerk): void {
 }
 
 async function loadClerk(): Promise<LoadedClerk> {
+  try {
+    // Throws SecurityError when the browser blocks site data; Clerk cannot hold a session then.
+    void window.localStorage;
+  } catch (cause) {
+    throw new SiteDataBlockedError('localStorage is not readable', { cause });
+  }
   const { Clerk: C } = await import('@clerk/clerk-js');
   const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
   if (!key) throw new Error('VITE_CLERK_PUBLISHABLE_KEY not set');

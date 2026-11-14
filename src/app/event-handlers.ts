@@ -1,15 +1,17 @@
+import { observeDashboardFirstInteraction } from '@/components/dashboard-interaction-analytics';
 import type {
   AppContext,
   AppModule,
   UnifiedSettingsController,
-  UnifiedSettingsTabId,
 } from '@/app/app-context';
+import type { SettingsSectionId } from '@/config/settings-sections';
 import { applyVisibleMapDimension } from '@/app/map-dimension-control';
 import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AirlineIntelPanel } from '@/components/AirlineIntelPanel';
 import type { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
 import { deleteWidget, getWidget, saveWidget, isProUser, isProTierResolved } from '@/services/widget-store';
 import { hasPremiumAccess } from '@/services/panel-gating';
+import { isOrbitalLookupOpen } from '@/services/orbital/lookup-host';
 import {
   sanitizeLockedLayers,
   shouldSanitizeLockedLayers,
@@ -38,7 +40,9 @@ import { LlmStatusIndicator } from '@/components/LlmStatusIndicator';
 import type { PredictionPanel } from '@/components/PredictionPanel';
 import {
   buildMapUrl,
+  withMapCentreOf,
   withUrlFragment,
+  withoutVariantScopedUrlState,
   debounce,
   loadFromStorage,
   saveToStorage,
@@ -62,6 +66,7 @@ import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-re
 import { VARIANT_META } from '@/config/variant-meta';
 import { isDesktopRuntime } from '@/services/runtime';
 import {
+  getMissionPreset,
   getMissionPresetsForVariant,
   applyMissionPresetToState,
   clearMissionPreset,
@@ -87,6 +92,7 @@ import {
   trackMissionSelected,
   trackPanelView,
   trackVariantSwitch,
+  replayPendingDashboardFirstInteraction,
   trackMapViewChange,
   trackMapLayerToggle,
   trackPanelToggled,
@@ -143,6 +149,7 @@ import { MobilePrimaryNav } from '@/app/mobile-primary-nav';
 import {
   SPLIT_LAYOUT_MIN_WIDTH,
   LEGACY_WEB_SPLIT_LAYOUT_MIN_WIDTH,
+  isSplitLayoutViewport,
   MAP_COL_DEFAULT_PERCENT,
   clampMapColWidthPercent,
   getVisualMapSide,
@@ -156,6 +163,7 @@ import {
   type ResponsiveZoneListener,
 } from '@/app/responsive-zone-listener';
 import { stageVariantSelection } from '@/services/variant-panel-ownership';
+import { isMapUrlCentreClaimed } from '@/app/orbital-map-focus';
 import { transferSourceGateOwnershipToUser as releaseSourceGateOwnership } from '@/services/source-cap';
 
 /** Bound on each wait before the About-you card abstains for this load. */
@@ -225,7 +233,7 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
   }
 
   open(
-    tab?: UnifiedSettingsTabId,
+    section?: SettingsSectionId,
     replaceOverlayId?: OverlayId,
     historyPending = false,
   ): Promise<boolean> {
@@ -237,7 +245,7 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
     return this.load().then((settings) => {
       if (this.destroyed || this.openEpoch !== epoch) return false;
       if (pendingGate && !pendingGate.isCurrent()) return false;
-      settings.open(tab, pendingGate ? pendingId : replaceOverlayId);
+      settings.open(section, pendingGate ? pendingId : replaceOverlayId);
       return true;
     }).catch((error) => {
       // A rejection because the controller was torn down mid-load is a
@@ -325,9 +333,20 @@ export interface EventHandlerCallbacks {
   mountLiveNewsIfReady?: () => void;
   isFreeTierFallbackActive?: () => boolean;
   focusStorageFacility?: (facilityId: string) => void;
+  /**
+   * Dashboard focus (#10453). `canUseFocus`: this account may set a focus.
+   * `promptForFocus`: open the focus editor on the active tab (the presets
+   * that ask for countries). `showFocusGate`: say a focus needs a plan this
+   * account does not have. All three route to PanelLayoutManager, which owns
+   * the tabs.
+   */
+  canUseFocus?: () => boolean;
+  promptForFocus?: () => void;
+  showFocusGate?: () => void;
 }
 
 export class EventHandlerManager implements AppModule {
+  private stopInteractionAnalytics: (() => void) | null = null;
   private ctx: AppContext;
   private callbacks: EventHandlerCallbacks;
 
@@ -383,7 +402,9 @@ export class EventHandlerManager implements AppModule {
     if (!shareUrl) return;
     // Preserve the shared mobile-overlay marker while syncing map URL state;
     // replacing it with null makes Android Back skip the open sheet.
-    try { history.replaceState(history.state, '', withUrlFragment(shareUrl, window.location.hash)); } catch { }
+    // A satellite lookup centres the map on a picked point that must not reach the URL analytics read.
+    const url = isMapUrlCentreClaimed() ? withMapCentreOf(shareUrl, window.location.href) : shareUrl;
+    try { history.replaceState(history.state, '', withUrlFragment(url, window.location.hash)); } catch { }
   };
   private readonly debouncedUrlSync = debounce(this.writeUrlState, 250);
 
@@ -406,6 +427,9 @@ export class EventHandlerManager implements AppModule {
   }
 
   init(): void {
+    replayPendingDashboardFirstInteraction();
+    this.stopInteractionAnalytics?.();
+    this.stopInteractionAnalytics = observeDashboardFirstInteraction(this.ctx.container);
     this.setupSearchControls();
     this.setupEventListeners();
     this.mobilePrimaryNav.init();
@@ -531,6 +555,8 @@ export class EventHandlerManager implements AppModule {
 
   destroy(): void {
     this.closeEmbedDialog();
+    this.stopInteractionAnalytics?.();
+    this.stopInteractionAnalytics = null;
     this.debouncedUrlSync.cancel();
     this.debouncedWebcamReload.cancel();
     if (this.boundFullscreenHandler) {
@@ -1348,7 +1374,16 @@ export class EventHandlerManager implements AppModule {
     return enforceFreePanelLimit(panelSettings, false);
   }
 
-  private applyMissionPreset(presetId: MissionPresetId, source: 'user' | 'agent' = 'user'): void {
+  private applyMissionPreset(presetId: MissionPresetId, source: 'user' | 'agent' = 'user'): boolean {
+    const focusPreset = getMissionPreset(presetId);
+    const canFocus = this.callbacks.canUseFocus?.() === true;
+    if (focusPreset?.requiresFocus && !canFocus) {
+      // Refused before anything changes: the layout, the stored preset and the
+      // picker stay as they were, and the gate says which plans include it.
+      this.closeMissionPresetPopover();
+      this.callbacks.showFocusGate?.();
+      return false;
+    }
     let applied: ReturnType<typeof applyMissionPresetToState>;
     try {
       applied = applyMissionPresetToState(
@@ -1359,7 +1394,7 @@ export class EventHandlerManager implements AppModule {
       );
     } catch {
       showToast('This mission is not available on this dashboard.');
-      return;
+      return false;
     }
     const mapLayers = this.filterMissionLayersForCurrentRenderer(applied.mapLayers);
     const previousMapLayers = { ...this.ctx.mapLayers };
@@ -1396,6 +1431,13 @@ export class EventHandlerManager implements AppModule {
     showToast(`Mission preset applied: ${applied.preset.label}`);
     this.renderMissionPresetControl();
     this.closeMissionPresetPopover();
+    // A mission about countries asks which ones. Never from an agent (it must
+    // not open a dialog the user did not ask for), and never for a plan that
+    // cannot set a focus: Country Watcher still applies for those.
+    if (source === 'user' && applied.preset.asksForCountries && canFocus) {
+      this.callbacks.promptForFocus?.();
+    }
+    return true;
   }
 
   /**
@@ -1425,7 +1467,10 @@ export class EventHandlerManager implements AppModule {
 
     const snapshot = this.snapshotMissionDashboardState();
     try {
-      this.applyMissionPreset(presetId, 'agent');
+      if (!this.applyMissionPreset(presetId, 'agent')) {
+        // Refused (the focus gate, or a variant that lacks it): not a no-op success.
+        throw new Error('Mission preset was not applied.');
+      }
       const nextPresetId = loadStoredMissionPreset()?.id ?? null;
       const mapState = this.ctx.map?.getState();
       const changed = snapshot.presetId !== nextPresetId
@@ -1662,7 +1707,7 @@ export class EventHandlerManager implements AppModule {
     return buildMapUrl(baseUrl, {
       view: state.view,
       zoom: state.zoom,
-      center,
+      center: isOrbitalLookupOpen() ? null : center,
       timeRange: state.timeRange,
       layers: state.layers,
       country: isCountryVisible ? code : pending?.code,
@@ -2035,6 +2080,11 @@ export class EventHandlerManager implements AppModule {
 
     if (this.ctx.isDesktopApp || options.isLocalDev) {
       if (stageVariantSelection(SITE_VARIANT, variant, writeStorageValue)) {
+        window.history.replaceState(
+          window.history.state,
+          '',
+          withoutVariantScopedUrlState(window.location.href),
+        );
         window.location.reload();
         return 'reload';
       }
@@ -2385,6 +2435,7 @@ export class EventHandlerManager implements AppModule {
         removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom');
         removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom-set');
         removeStorageValue('map-height');
+        removeStorageValue('map-height-mode');
         removeStorageValue('map-split-height');
         removeStorageValue('map-col-width');
         removeStorageValue('map-side');
@@ -2435,8 +2486,8 @@ export class EventHandlerManager implements AppModule {
     // avatar menu, keeping account and subscription actions in one place.
     const widget = new AuthHeaderWidget(
       () => modal.open(),
-      () => this.ctx.unifiedSettings?.open('settings'),
-      () => this.ctx.unifiedSettings?.open('billing'),
+      () => this.ctx.unifiedSettings?.open(),
+      () => this.ctx.unifiedSettings?.open('account'),
     );
     this.ctx.authHeaderWidget = widget;
     const mount = document.getElementById('authWidgetMount');
@@ -2606,10 +2657,15 @@ export class EventHandlerManager implements AppModule {
     const resizeHandle = document.getElementById('mapResizeHandle');
     if (!mapSection || !resizeHandle || !mapContainer) return;
 
-    const isSplit = () => window.innerWidth >= SPLIT_LAYOUT_MIN_WIDTH;
+    const isSplit = () => isSplitLayoutViewport(window);
     // Split mode sizes #mapContainer, stacked mode sizes #mapSection — two
     // different elements, so each mode keeps its own storage key (#6417).
     const getHeightKey = () => (isSplit() ? 'map-split-height' : 'map-height');
+    const saveHeight = (key: string, value: string) => {
+      // New stacked edits must never be mistaken for pre-split-key preferences.
+      if (key === 'map-height') writeStorageValue('map-height-mode', 'stacked');
+      writeStorageValue(key, value);
+    };
     const readSavedHeight = (): { value: string | null; sourceKey: string } => {
       const key = getHeightKey();
       const value = readStorageValue(key);
@@ -2618,7 +2674,8 @@ export class EventHandlerManager implements AppModule {
       // restore below completes the migration by writing the split key.
       const canUseLegacySplitHeight = this.ctx.isDesktopApp
         || window.innerWidth >= LEGACY_WEB_SPLIT_LAYOUT_MIN_WIDTH;
-      if (value === null && isSplit() && canUseLegacySplitHeight) {
+      if (value === null && isSplit() && canUseLegacySplitHeight
+        && readStorageValue('map-height-mode') !== 'stacked') {
         return { value: readStorageValue('map-height'), sourceKey: 'map-height' };
       }
       return { value, sourceKey: key };
@@ -2678,7 +2735,7 @@ export class EventHandlerManager implements AppModule {
         // legacy shared key — writing the mode key completes the migration
         // so stacked-mode edits stop steering split restores.
         if (clamped !== numeric || sourceKey !== getHeightKey()) {
-          writeStorageValue(getHeightKey(), `${clamped}px`);
+          saveHeight(getHeightKey(), `${clamped}px`);
         }
       } else {
         removeStorageValue(sourceKey);
@@ -2690,7 +2747,7 @@ export class EventHandlerManager implements AppModule {
     let isResizing = false;
     let startY = 0;
     let startHeight = 0;
-    // Captured at mousedown so a viewport crossing 900px mid-drag cannot
+    // Captured at mousedown so a viewport crossing the breakpoint mid-drag cannot
     // switch the resized element or the storage key under the drag.
     let dragTarget: HTMLElement | null = null;
     let dragKey = 'map-height';
@@ -2702,7 +2759,7 @@ export class EventHandlerManager implements AppModule {
       this.ctx.map?.resize();
       mapSection.classList.remove('resizing');
       document.body.style.cursor = '';
-      writeStorageValue(dragKey, (dragTarget ?? getTarget()).style.height);
+      saveHeight(dragKey, (dragTarget ?? getTarget()).style.height);
       dragTarget = null;
       syncHeightSeparatorAria();
     };
@@ -2759,7 +2816,7 @@ export class EventHandlerManager implements AppModule {
 
         target.classList.remove('map-section-smooth');
         target.removeEventListener('transitionend', onEnd);
-        writeStorageValue(heightKey, `${finalHeight}px`);
+        saveHeight(heightKey, `${finalHeight}px`);
         this.ctx.map?.setIsResizing(false);
         this.ctx.map?.resize();
         syncHeightSeparatorAria();
@@ -2781,7 +2838,7 @@ export class EventHandlerManager implements AppModule {
       if (isSplit()) target.style.flex = 'none';
       target.style.height = `${newHeight}px`;
       this.ctx.map?.resize();
-      writeStorageValue(getHeightKey(), `${newHeight}px`);
+      saveHeight(getHeightKey(), `${newHeight}px`);
       syncHeightSeparatorAria();
     });
 
@@ -3084,7 +3141,8 @@ export class EventHandlerManager implements AppModule {
       if (isFullscreen) toggle();
     };
     this.boundMapFullscreenEscHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isFullscreen) toggle();
+      // The orbital full view raises the map and owns Escape while it is open; it lowers the map itself on leaving.
+      if (e.key === 'Escape' && isFullscreen && !document.body.classList.contains('orbital-full-view')) toggle();
     };
     document.addEventListener('keydown', this.boundMapFullscreenEscHandler);
   }

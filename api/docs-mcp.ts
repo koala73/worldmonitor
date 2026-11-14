@@ -10,7 +10,11 @@
 //      locally instead of whatever the upstream framework emits;
 //   2. tools/call responses carrying a protocol-level code (-32601/-32602)
 //      inside an isError result are lifted into a real JSON-RPC `error`
-//      object, preserving the upstream SSE/JSON framing.
+//      object, preserving the upstream SSE/JSON framing;
+//   3. tools/list descriptions are replaced with compact versions. Mintlify's
+//      filesystem tool alone spends ~7 KB listing every mounted OpenAPI file,
+//      and the whole list cost ~770 tokens per tool (ora.ai asks for <=400).
+//      Names, schemas and annotations pass through unchanged.
 // Genuine tool-execution failures deliberately stay `isError` results — the
 // MCP spec reserves top-level errors for protocol-level failures only.
 import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp, rateLimitKeyForIp } from '../server/_shared/rate-limit';
@@ -153,12 +157,43 @@ export function liftProtocolErrorFromToolResult(rpc: unknown): Record<string, un
   return buildJsonRpcError(id, code, message);
 }
 
+// Compact descriptions for the upstream tools, keyed by name prefix (Mintlify
+// suffixes each name with the site, e.g. `search_world_monitor`). An unknown
+// tool keeps its upstream description.
+const DOCS_TOOL_DESCRIPTIONS: ReadonlyArray<readonly [prefix: string, description: string]> = [
+  ['search_', 'Search the World Monitor documentation: guides, API and MCP references, data sources and methodology. Use when you need to answer a question about World Monitor or find the page that covers a feature. Returns matching passages with page titles and links. To read a whole page, pass its path plus `.mdx` to the filesystem tool, e.g. `head -200 /some/page.mdx`.'],
+  ['query_docs_filesystem', 'Run a read-only, stateless shell query over a virtual filesystem holding only the World Monitor docs (`.mdx` pages) and OpenAPI specs; nothing runs on a real machine. Use when you need a whole page, an exact-text match or an OpenAPI spec. Returns the command output as text. Read a page with `cat` or `head` on `/<url-path>.mdx`, search exactly with `rg -il "term" /`, explore with `tree / -L 2` or `ls`. OpenAPI specs are under `/openapi/api/` (`ls /openapi/api`). Supports rg, grep, find, tree, ls, cat, head, tail, wc, sort, uniq, cut, sed, awk and jq. The working directory resets to `/` on every call; chain commands with `&&`. Never guess paths: a missing path means the guess was wrong, not that the topic is undocumented.'],
+  ['submit_feedback', 'Report a problem with a World Monitor documentation page so the docs team can fix it. Use when a page is wrong, outdated, confusing, incomplete or has a broken example. Not for product support or feedback about this tool.'],
+];
+
+export function compactDocsToolList(rpc: unknown): Record<string, unknown> | null {
+  if (rpc === null || typeof rpc !== 'object' || Array.isArray(rpc)) return null;
+  const envelope = rpc as Record<string, unknown>;
+  const result = envelope.result as Record<string, unknown> | undefined;
+  if (!result || typeof result !== 'object' || !Array.isArray(result.tools)) return null;
+  let changed = false;
+  const tools = result.tools.map((tool: unknown) => {
+    if (tool === null || typeof tool !== 'object') return tool;
+    const name = (tool as { name?: unknown }).name;
+    if (typeof name !== 'string') return tool;
+    const match = DOCS_TOOL_DESCRIPTIONS.find(([prefix]) => name.startsWith(prefix));
+    if (!match || (tool as { description?: unknown }).description === match[1]) return tool;
+    changed = true;
+    return { ...(tool as Record<string, unknown>), description: match[1] };
+  });
+  return changed ? { ...envelope, result: { ...result, tools } } : null;
+}
+
 /**
- * Normalize an upstream tools/call response body (SSE or plain JSON). Returns
- * the rewritten body when a protocol-level error was lifted, or null to pass
- * the original bytes through untouched.
+ * Apply `transform` to the single JSON-RPC response in an upstream body (SSE
+ * or plain JSON). Returns the rewritten body, or null to pass the original
+ * bytes through untouched.
  */
-export function normalizeToolCallResponseBody(bodyText: string, contentType: string): string | null {
+function rewriteSingleRpcResponseBody(
+  bodyText: string,
+  contentType: string,
+  transform: (rpc: unknown) => Record<string, unknown> | null,
+): string | null {
   if (contentType.includes('text/event-stream')) {
     const lines = bodyText.split('\n');
     const dataIndexes = lines
@@ -175,9 +210,9 @@ export function normalizeToolCallResponseBody(bodyText: string, contentType: str
     } catch {
       return null;
     }
-    const lifted = liftProtocolErrorFromToolResult(rpc);
-    if (!lifted) return null;
-    lines[dataIndex] = `data: ${JSON.stringify(lifted)}`;
+    const rewritten = transform(rpc);
+    if (!rewritten) return null;
+    lines[dataIndex] = `data: ${JSON.stringify(rewritten)}`;
     return lines.join('\n');
   }
   if (contentType.includes('application/json')) {
@@ -187,10 +222,24 @@ export function normalizeToolCallResponseBody(bodyText: string, contentType: str
     } catch {
       return null;
     }
-    const lifted = liftProtocolErrorFromToolResult(rpc);
-    return lifted ? JSON.stringify(lifted) : null;
+    const rewritten = transform(rpc);
+    return rewritten ? JSON.stringify(rewritten) : null;
   }
   return null;
+}
+
+/**
+ * Normalize an upstream tools/call response body (SSE or plain JSON). Returns
+ * the rewritten body when a protocol-level error was lifted, or null to pass
+ * the original bytes through untouched.
+ */
+export function normalizeToolCallResponseBody(bodyText: string, contentType: string): string | null {
+  return rewriteSingleRpcResponseBody(bodyText, contentType, liftProtocolErrorFromToolResult);
+}
+
+/** Rewrite an upstream tools/list body with the compact descriptions. */
+export function compactToolListResponseBody(bodyText: string, contentType: string): string | null {
+  return rewriteSingleRpcResponseBody(bodyText, contentType, compactDocsToolList);
 }
 
 function withCors(headers: Headers | Record<string, string>): Headers {
@@ -314,15 +363,20 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonRpcErrorResponse(502, classified.kind === 'single' ? classified.id : null, -32603, 'Upstream docs MCP server is unreachable');
   }
 
-  const shouldNormalize =
-    upstream.ok && classified.kind === 'single' && classified.method === 'tools/call';
-  if (!shouldNormalize) {
+  const rewrite = !upstream.ok || classified.kind !== 'single'
+    ? null
+    : classified.method === 'tools/call'
+      ? normalizeToolCallResponseBody
+      : classified.method === 'tools/list'
+        ? compactToolListResponseBody
+        : null;
+  if (!rewrite) {
     return new Response(upstream.body, { status: upstream.status, headers: upstreamResponseHeaders(upstream) });
   }
 
   const contentType = upstream.headers.get('content-type') ?? '';
   const upstreamBody = await upstream.text();
-  const normalized = normalizeToolCallResponseBody(upstreamBody, contentType);
+  const normalized = rewrite(upstreamBody, contentType);
   return new Response(normalized ?? upstreamBody, {
     status: upstream.status,
     headers: upstreamResponseHeaders(upstream),

@@ -2117,6 +2117,10 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     const unloadedCountryMap = commandMatch('country-map:US', 'country-map', 'United States').command;
     assert.equal(scenario.manager.isModalCommandVisible(unloadedCountryMap), false);
     assert.equal(scenario.manager.isCommandExecutable(unloadedCountryMap), false);
+
+    const satellitePasses = commandMatch('orbital:search', 'actions', 'Satellite passes: find a place').command;
+    assert.equal(scenario.manager.isModalCommandVisible(satellitePasses), true);
+    assert.equal(scenario.manager.isCommandExecutable(satellitePasses), false);
   });
 
   it('reports successful synchronous healing of stale locked resilience state for free users', async () => {

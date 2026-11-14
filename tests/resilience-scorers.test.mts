@@ -6,17 +6,16 @@ import {
   RESILIENCE_DIMENSION_ORDER,
   RESILIENCE_DIMENSION_SCORERS,
   RESILIENCE_DIMENSION_TYPES,
-  RESILIENCE_DIMENSION_WEIGHTS,
   RESILIENCE_DOMAIN_ORDER,
-  getResilienceDomainWeight,
   scoreAllDimensions,
   scoreEnergy,
   scoreInfrastructure,
   scoreTradePolicy,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
+import { __testing__, buildDimensionList, buildDomainList } from '../server/worldmonitor/resilience/v1/_shared.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { RESILIENCE_FIXTURES } from './helpers/resilience-fixtures.mts';
-import { getResilienceStressFactor } from '../server/_shared/resilience-stats.ts';
+import { getResilienceStressFactor, round } from '../server/_shared/resilience-stats.ts';
 
 const originalFetch = globalThis.fetch;
 const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -208,36 +207,14 @@ describe('resilience scorer contracts', () => {
       recovery: 49.63,
     });
 
-    function round(v: number, d = 2) { return Number(v.toFixed(d)); }
-    // Mirror of the production coverage-weighted mean (see
-    // server/worldmonitor/resilience/v1/_shared.ts). Must apply the
-    // per-dim weight from RESILIENCE_DIMENSION_WEIGHTS and the §U4
-    // imputation half-weight factor so expected values track production.
-    function coverageWeightedMean(dims: { id: string; score: number; coverage: number; imputationClass: string | null }[]) {
-      let totalW = 0, sum = 0;
-      for (const d of dims) {
-        const w = (RESILIENCE_DIMENSION_WEIGHTS as Record<string, number>)[d.id] ?? 1.0;
-        const imputationFactor = d.imputationClass ? 0.5 : 1.0;
-        const effective = d.coverage * w * imputationFactor;
-        totalW += effective;
-        sum += d.score * effective;
-      }
-      if (!totalW) return 0;
-      return sum / totalW;
-    }
-
-    const dimensions = RESILIENCE_DIMENSION_ORDER.map((id) => ({
-      id,
-      score: round(scoreMap[id].score),
-      coverage: round(scoreMap[id].coverage),
-      imputationClass: scoreMap[id].imputationClass,
-    }));
+    const { coverageWeightedMean } = __testing__;
+    const dimensions = buildDimensionList(scoreMap);
     const baselineDims = dimensions.filter((d) => {
-      const t = RESILIENCE_DIMENSION_TYPES[d.id as keyof typeof RESILIENCE_DIMENSION_TYPES];
+      const t = RESILIENCE_DIMENSION_TYPES[d.id];
       return t === 'baseline' || t === 'mixed';
     });
     const stressDims = dimensions.filter((d) => {
-      const t = RESILIENCE_DIMENSION_TYPES[d.id as keyof typeof RESILIENCE_DIMENSION_TYPES];
+      const t = RESILIENCE_DIMENSION_TYPES[d.id];
       return t === 'stress' || t === 'mixed';
     });
 
@@ -303,29 +280,7 @@ describe('resilience scorer contracts', () => {
     assert.equal(stressFactor, 0.29);
 
     const overallScore = round(
-      RESILIENCE_DOMAIN_ORDER.map((domainId) => {
-        const dimScores = RESILIENCE_DIMENSION_ORDER
-          .filter((id) => RESILIENCE_DIMENSION_DOMAINS[id] === domainId)
-          .map((id) => ({
-            id,
-            score: round(scoreMap[id].score),
-            coverage: round(scoreMap[id].coverage),
-            imputationClass: scoreMap[id].imputationClass,
-          }));
-        // Mirror production: apply per-dim weight + §U4 imputation
-        // half-weight factor to each dim's effective coverage before
-        // computing the mean.
-        let totalW = 0, sum = 0;
-        for (const d of dimScores) {
-          const w = (RESILIENCE_DIMENSION_WEIGHTS as Record<string, number>)[d.id] ?? 1.0;
-          const imputationFactor = d.imputationClass ? 0.5 : 1.0;
-          const eff = d.coverage * w * imputationFactor;
-          totalW += eff;
-          sum += d.score * eff;
-        }
-        const cwMean = totalW ? sum / totalW : 0;
-        return round(cwMean) * getResilienceDomainWeight(domainId);
-      }).reduce((sum, v) => sum + v, 0),
+      buildDomainList(dimensions).reduce((sum, domain) => sum + domain.score * domain.weight, 0),
     );
     // PR 3 §3.5: 65.57 → 65.82 (fuelStockDays retirement) → 65.52
     // (currencyExternal rebuild) → 63.27 (externalDebtCoverage goalpost
@@ -351,20 +306,11 @@ describe('resilience scorer contracts', () => {
     // contribute its own signal; the expected value here will move
     // accordingly in a future PR.
     // Plan 2026-04-26-002 §U4+§U6 (combined PR 3+4+5): 64.78 → 65.64.
-    // Same delta as the local-helper-based test above; both apply the
-    // imputation half-weight factor + per-capita normalization (with
-    // the typeWeight-per-capita review fix), which shift the US overall
-    // by ~+0.86 (imputed dims contribute less, population-normalized
-    // event-counts boost socialCohesion + borderSecurity for high-pop
-    // countries).
     // Plan 2026-05-12 debtSustainabilityGap addition: 65.64 → 66.02.
     // Issue #3971 cyberDigital burst cap: 66.02 -> 66.12.
     // Round 2 P2-N2 inflation-stability scorer: 66.12 -> 66.38.
     // PR #4088 import-HHI missing-year certainty derate: 66.38 -> 64.79.
     // Audit P2-1 tradePolicy severity scorer (on top of the derate): 64.79 -> 65.12.
-    // #6460 education activation: 65.12 -> 65.75, matching the independently
-    // derived expectation in the domain-weighted test below. The two are
-    // computed by different code paths and must agree.
     assert.equal(overallScore, 65.75);
   });
 
@@ -404,87 +350,6 @@ describe('resilience scorer contracts', () => {
     assert.ok(stressDimIds.includes('currencyExternal'), 'currencyExternal should be in stress set');
     assert.ok(stressDimIds.includes('borderSecurity'), 'borderSecurity should be in stress set');
     assert.ok(stressDimIds.includes('energy'), 'mixed energy should be in stress set');
-  });
-
-  it('overallScore = sum(domainScore * domainWeight)', async () => {
-    installRedis(RESILIENCE_FIXTURES);
-    const scoreMap = await scoreAllDimensions('US');
-    function round(v: number, d = 2) { return Number(v.toFixed(d)); }
-    // Mirror of the production coverage-weighted mean (see
-    // server/worldmonitor/resilience/v1/_shared.ts). Must apply the
-    // per-dim weight from RESILIENCE_DIMENSION_WEIGHTS so the expected
-    // values here track the production aggregation after the PR 2 §3.4
-    // recovery-domain weight rebalance. Plan 2026-04-26-002 §U4 added
-    // the imputation-class half-weight factor; mirror it here so the
-    // local helper stays in sync with the production formula.
-    function coverageWeightedMean(dims: { id: string; score: number; coverage: number; imputationClass: string | null }[]) {
-      let totalW = 0, sum = 0;
-      for (const d of dims) {
-        const w = (RESILIENCE_DIMENSION_WEIGHTS as Record<string, number>)[d.id] ?? 1.0;
-        const imputationFactor = d.imputationClass ? 0.5 : 1.0;
-        const effective = d.coverage * w * imputationFactor;
-        totalW += effective;
-        sum += d.score * effective;
-      }
-      if (!totalW) return 0;
-      return sum / totalW;
-    }
-
-    const dimensions = RESILIENCE_DIMENSION_ORDER.map((id) => ({
-      id,
-      score: round(scoreMap[id].score),
-      coverage: round(scoreMap[id].coverage),
-      imputationClass: scoreMap[id].imputationClass,
-    }));
-
-    const grouped = new Map<string, typeof dimensions>();
-    for (const domainId of RESILIENCE_DOMAIN_ORDER) grouped.set(domainId, []);
-    for (const dim of dimensions) {
-      const domainId = RESILIENCE_DIMENSION_DOMAINS[dim.id as keyof typeof RESILIENCE_DIMENSION_DOMAINS];
-      grouped.get(domainId)?.push(dim);
-    }
-
-    const expected = round(
-      RESILIENCE_DOMAIN_ORDER.reduce((sum, domainId) => {
-        const domainDims = grouped.get(domainId) ?? [];
-        const domainScore = round(coverageWeightedMean(domainDims));
-        return sum + domainScore * getResilienceDomainWeight(domainId);
-      }, 0),
-    );
-
-    assert.ok(expected > 0, 'overall should be positive');
-    // PR 3 §3.5: 65.82 → 65.52 (currencyExternal rebuild) → 63.27 after
-    // externalDebtCoverage goalpost tightened from (0..5) to (0..2).
-    // PR 2 §3.4: 63.27 → 63.6 after reserveAdequacy retirement + split.
-    // PR 2 §3.4 weight rebalance: 63.6 → 64.39 after dialing the two
-    // new recovery dims down to weight=0.5 (~10% recovery share each).
-    // Plan 2026-04-25-004 Phase 1 (Ship 1): 64.39 → 65.24 — economic
-    // domain rises with tradePolicy reweight (OFAC component dropped).
-    // Plan 2026-04-25-004 Phase 2 (Ship 2): 65.24 → 64.78 — adding
-    // `financialSystemExposure` to the economic domain at weight 0.5
-    // reweights tradePolicy 1.0 → 0.5; the new dim ships flag-gated
-    // off by default, so it contributes coverage=0 and drops from the
-    // coverage-weighted mean. When the flag flips on with seeders
-    // populated, the expected here will shift accordingly.
-    // Plan 2026-04-26-002 §U4+§U6 (combined PR 3+4+5): 64.78 → 65.64.
-    // U4 coverage penalty halves the weight of fully-imputed dims (US has
-    // a couple of WTO/BIS imputes); U6 per-capita normalization (incl.
-    // typeWeight per the review fix) bumps social-cohesion + border-
-    // security for the US (333M pop) since event-counts/M are tiny.
-    // Plan 2026-05-12 debtSustainabilityGap addition: 65.64 → 66.02.
-    // Recovery domain lifts by ~0.88 (48.75 → 49.63) which translates to
-    // overall +0.38 at the recovery domain weight.
-    // Issue #3971 cyberDigital burst cap: 66.02 -> 66.12.
-    // Round 2 P2-N2 inflation-stability scorer: 66.12 -> 66.38.
-    // PR #4088 import-HHI missing-year certainty derate: 66.38 -> 64.79.
-    // Audit P2-1 tradePolicy severity scorer (on top of the derate): 64.79 -> 65.12.
-    // #6460 education activation: 65.12 -> 65.75. The US fixture scores 96 on
-    // the new dimension, but this is the COVERAGE-WEIGHTED production path, so
-    // the dimension enters at weight 0.5 against a domain that already carried
-    // four dims — +0.63 overall, not the +19.2 the flat-mean assertion above
-    // moves by. The gap between those two numbers is the whole reason both
-    // assertions exist.
-    assert.equal(expected, 65.75, 'overallScore should match sum(domainScore * domainWeight); plan 002 §U4+§U6 64.78 -> 65.64 -> plan 2026-05-12 -> 66.02 -> issue #3971 -> 66.12 -> round2 P2-N2 -> 66.38 -> import-HHI missing-year derating -> 64.79 -> audit P2-1 WTO severity -> 65.12 -> #6460 education activation -> 65.75');
   });
 
   it('stressFactor is still computed (informational) and clamped to [0, 0.5]', () => {

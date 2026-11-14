@@ -10,7 +10,45 @@ export interface PanelTabBarCallbacks {
   onAdd(): void;
   onRename(tabId: string, name: string): void;
   onDelete(tabId: string): void;
+  /** Asked on every render and each time the options open. The bar never reads storage itself. */
+  hasNewTabPanels(): boolean;
+  onSaveNewTabPanels(): void;
+  onClearNewTabPanels(): void;
+  /** Team dashboards. The "Team" button shows only while `view()` is non-null. */
+  team?: TeamDashboardCallbacks;
+  /** Dashboard focus (#10453). The "Focus" button shows when this is set. */
+  focus?: FocusButtonCallbacks;
 }
+
+export interface FocusButtonCallbacks {
+  /** Asked on every render: whether the active tab has a focus. */
+  isFocused(): boolean;
+  /** Start or edit the active tab's focus. The manager decides whether the account may. */
+  onClick(): void;
+}
+
+/** What the team popover lists, computed by the layout manager. */
+export interface TeamDashboardsView {
+  dashboards: Array<{ id: string; name: string }>;
+  /** The team dashboard the active tab was opened from, if it is still shared. */
+  active: { id: string; behind: boolean } | null;
+  /** A share or stop-sharing call is in flight. */
+  busy: boolean;
+}
+
+export interface TeamDashboardCallbacks {
+  /** Asked on every render. Null hides the button: no team, or not loaded yet. */
+  view(): TeamDashboardsView | null;
+  /** The menu opened: a cue to ask the server for the current list. */
+  onOpenMenu(): void;
+  onOpen(dashboardId: string): void;
+  onShareTab(): void;
+  onUpdateTab(): void;
+  onStopSharing(dashboardId: string): void;
+}
+
+/** The bar holds one popover at a time; this says which button it belongs to. */
+type NoticeKind = 'cap' | 'options' | 'team' | 'focus';
 
 /** Locked state of the "+" control while the dashboard tab cap applies (KTD8). */
 export interface TabAddLock {
@@ -51,7 +89,8 @@ export function tabCapGateCopy(reason: PanelGateReason, cap: number): GateCopy {
  *
  * Interactions: click switches tabs, double-click renames inline,
  * the per-tab close button deletes (hidden when only one tab remains),
- * and the trailing "+" creates a new tab with the default panels.
+ * the trailing "+" creates a new tab, and the "▾" beside it chooses whether
+ * new tabs start with the default panels or with panels the user saved.
  *
  * The "+" can be CAP-LOCKED (KTD8). It stays visually unchanged at rest — a
  * one-glyph button has no room for a lock badge with copy — and only its
@@ -66,6 +105,12 @@ export class PanelTabBar {
   private addBtn: HTMLButtonElement | null = null;
   private addLock: TabAddLock | null = null;
   private notice: HTMLElement | null = null;
+  private noticeKind: NoticeKind | null = null;
+  // Built once, unlike "+", so an open popover keeps its anchor and a truthful
+  // aria-expanded across re-renders.
+  private readonly optionsBtn: HTMLButtonElement;
+  private readonly teamBtn: HTMLButtonElement;
+  private readonly focusBtn: HTMLButtonElement;
   private readonly liveRegion: HTMLElement;
   private readonly onNoticeOutsideClick: (event: MouseEvent) => void;
   private readonly onNoticeKeyDown: (event: KeyboardEvent) => void;
@@ -85,12 +130,42 @@ export class PanelTabBar {
 
     this.onNoticeOutsideClick = (event: MouseEvent) => {
       const target = event.target as Node;
-      if (this.notice?.contains(target) || target === this.addBtn) return;
-      this.closeAddLockNotice();
+      if (this.notice?.contains(target) || this.noticeAnchor()?.contains(target)) return;
+      this.closeNotice();
     };
     this.onNoticeKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') this.closeAddLockNotice(true);
+      if (event.key === 'Escape') this.closeNotice(true);
     };
+
+    this.optionsBtn = document.createElement('button');
+    this.optionsBtn.type = 'button';
+    this.optionsBtn.className = 'dashboard-tab-options';
+    this.optionsBtn.textContent = '▾';
+    this.optionsBtn.title = t('dashboardTabs.newTabOptions');
+    this.optionsBtn.setAttribute('aria-label', t('dashboardTabs.newTabOptions'));
+    this.optionsBtn.setAttribute('aria-expanded', 'false');
+    this.optionsBtn.addEventListener('click', () => this.toggleNewTabOptions());
+
+    this.teamBtn = document.createElement('button');
+    this.teamBtn.type = 'button';
+    this.teamBtn.className = 'dashboard-tab-team';
+    this.teamBtn.textContent = t('dashboardTabs.team');
+    this.teamBtn.title = t('dashboardTabs.teamDashboards');
+    this.teamBtn.setAttribute('aria-label', t('dashboardTabs.teamDashboards'));
+    this.teamBtn.setAttribute('aria-expanded', 'false');
+    this.teamBtn.addEventListener('click', () => this.toggleTeamDashboards());
+
+    this.focusBtn = document.createElement('button');
+    this.focusBtn.type = 'button';
+    this.focusBtn.className = 'dashboard-tab-focus';
+    this.focusBtn.textContent = t('focus.tabButton');
+    this.focusBtn.addEventListener('click', () => {
+      if (this.noticeKind === 'focus') {
+        this.closeNotice();
+        return;
+      }
+      this.callbacks.focus?.onClick();
+    });
 
     // ARIA: a role="tablist" may only own role="tab"/"presentation" children.
     // The trailing "+" button is an action, not a tab, so the tablist is an
@@ -132,7 +207,7 @@ export class PanelTabBar {
   }
 
   destroy(): void {
-    this.closeAddLockNotice();
+    this.closeNotice();
     this.element.remove();
   }
 
@@ -157,13 +232,13 @@ export class PanelTabBar {
     this.addLock = lock;
     this.applyAddLock();
     if (wasLocked && lock === null) {
-      this.closeAddLockNotice();
+      if (this.noticeKind === 'cap') this.closeNotice();
       this.liveRegion.textContent = t('components.tabCap.unlockedAnnouncement');
-    } else if (this.notice) {
+    } else if (this.noticeKind === 'cap') {
       // Locked → locked with different copy (e.g. anonymous → signed-in
       // free): the open notice carries the OLD reason and the OLD onAction
       // closure. Close it; the next "+" click rebuilds from the new lock.
-      this.closeAddLockNotice();
+      this.closeNotice();
     }
   }
 
@@ -174,8 +249,20 @@ export class PanelTabBar {
   showAddLockNotice(): void {
     const lock = this.addLock;
     if (!lock || !this.addBtn) return;
-    this.closeAddLockNotice();
+    this.openGateNotice('cap', lock.copy, lock.onAction);
+  }
 
+  /**
+   * The same anchored notice as a capped "+", under the Focus button: shown
+   * when an account that may not set a focus clicks it.
+   */
+  showFocusGateNotice(copy: GateCopy, onAction: () => void): void {
+    if (!this.callbacks.focus) return;
+    this.openGateNotice('focus', copy, onAction);
+  }
+
+  private openGateNotice(kind: 'cap' | 'focus', copy: GateCopy, onAction: () => void): void {
+    const lock = { copy, onAction };
     const icon = document.createElement('div');
     icon.className = 'tab-cap-notice-icon';
     setTrustedHtml(icon, trustedHtml(lock.copy.icon, 'static inline icon markup'));
@@ -190,10 +277,10 @@ export class PanelTabBar {
     cta.className = 'tab-cap-notice-cta';
     cta.textContent = lock.copy.cta;
     // The reason travels with the focused button, so a screen-reader user who
-    // clicks a locked "+" hears why before the CTA name.
+    // clicks a locked "+" or Focus hears why before the CTA name.
     cta.setAttribute('aria-describedby', desc.id);
     cta.addEventListener('click', () => {
-      this.closeAddLockNotice();
+      this.closeNotice();
       lock.onAction();
     });
 
@@ -201,27 +288,194 @@ export class PanelTabBar {
     notice.className = 'tab-cap-notice';
     notice.append(icon, desc, cta);
 
+    this.openNotice(kind, notice, cta);
+  }
+
+  private toggleNewTabOptions(): void {
+    if (this.noticeKind === 'options') {
+      this.closeNotice();
+      return;
+    }
+    const saved = this.callbacks.hasNewTabPanels();
+
+    const desc = document.createElement('p');
+    desc.className = 'tab-cap-notice-desc';
+    desc.id = 'dashboard-tab-options-desc';
+    desc.textContent = t(saved ? 'dashboardTabs.newTabStartsSaved' : 'dashboardTabs.newTabStartsDefault');
+
+    const hint = document.createElement('p');
+    hint.className = 'tab-cap-notice-desc';
+    hint.textContent = t('dashboardTabs.newTabOptionsHint');
+
+    const action = (label: string, run: () => void): HTMLButtonElement => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tab-cap-notice-action';
+      btn.textContent = label;
+      btn.setAttribute('aria-describedby', desc.id);
+      btn.addEventListener('click', () => {
+        run();
+        // After the callback: it re-renders the bar, which detaches and
+        // re-attaches the options button and would drop focus restored earlier.
+        this.closeNotice(true);
+      });
+      return btn;
+    };
+    const useTab = action(t('dashboardTabs.useThisTabPanels'), () => this.callbacks.onSaveNewTabPanels());
+
+    const popover = document.createElement('div');
+    popover.id = 'dashboard-tab-options';
+    popover.className = 'tab-cap-notice';
+    popover.setAttribute('role', 'group');
+    popover.setAttribute('aria-label', t('dashboardTabs.newTabOptions'));
+    popover.append(desc, hint, useTab);
+    if (saved) {
+      popover.append(action(t('dashboardTabs.useDefaultPanels'), () => this.callbacks.onClearNewTabPanels()));
+    }
+
+    this.openNotice('options', popover, useTab);
+  }
+
+  private toggleTeamDashboards(): void {
+    if (this.noticeKind === 'team') {
+      this.closeNotice();
+      return;
+    }
+    const popover = document.createElement('div');
+    popover.id = 'dashboard-team-dashboards';
+    popover.className = 'tab-cap-notice team-dashboards-notice';
+    popover.setAttribute('role', 'group');
+    popover.setAttribute('aria-label', t('dashboardTabs.teamDashboards'));
+    const focus = this.fillTeamDashboards(popover);
+    if (!focus) return;
+    this.openNotice('team', popover, focus);
+    this.callbacks.team?.onOpenMenu();
+  }
+
+  /**
+   * (Re)build the team popover's contents from the current view. Returns the
+   * control to focus, or null when there is no team to show.
+   */
+  private fillTeamDashboards(popover: HTMLElement): HTMLElement | null {
+    const view = this.callbacks.team?.view();
+    if (!view) return null;
+
+    const desc = document.createElement('p');
+    desc.className = 'tab-cap-notice-desc';
+    desc.id = 'dashboard-team-dashboards-desc';
+    desc.textContent = t(view.dashboards.length > 0 ? 'teamDashboards.desc' : 'teamDashboards.empty');
+
+    const list = document.createElement('ul');
+    list.className = 'team-dashboards-list';
+    for (const dashboard of view.dashboards) {
+      const isActive = view.active?.id === dashboard.id;
+      const item = document.createElement('li');
+      item.className = `team-dashboards-item${isActive ? ' active' : ''}`;
+
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'team-dashboards-open';
+      open.textContent = dashboard.name;
+      open.title = t('teamDashboards.open', { name: dashboard.name });
+      open.setAttribute('aria-label', t('teamDashboards.open', { name: dashboard.name }));
+      if (isActive) open.setAttribute('aria-current', 'true');
+      // Close first: opening can run into the tab cap, whose notice must stay.
+      open.addEventListener('click', () => {
+        this.closeNotice(true);
+        this.callbacks.team?.onOpen(dashboard.id);
+      });
+
+      const stop = document.createElement('button');
+      stop.type = 'button';
+      stop.className = 'team-dashboards-stop';
+      stop.textContent = '×';
+      stop.disabled = view.busy;
+      stop.title = t('teamDashboards.stopSharing', { name: dashboard.name });
+      stop.setAttribute('aria-label', t('teamDashboards.stopSharing', { name: dashboard.name }));
+      stop.addEventListener('click', () => this.callbacks.team?.onStopSharing(dashboard.id));
+
+      item.append(open, stop);
+      list.appendChild(item);
+    }
+
+    const action = (label: string, run: () => void): HTMLButtonElement => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tab-cap-notice-action';
+      btn.textContent = label;
+      btn.disabled = view.busy;
+      btn.addEventListener('click', run);
+      return btn;
+    };
+
+    const nodes: HTMLElement[] = [desc];
+    if (view.dashboards.length > 0) nodes.push(list);
+    if (view.active?.behind) {
+      const behind = document.createElement('p');
+      behind.className = 'tab-cap-notice-desc';
+      behind.textContent = t('teamDashboards.behind');
+      nodes.push(behind, action(t('teamDashboards.getLatest'), () => {
+        this.closeNotice(true);
+        this.callbacks.team?.onUpdateTab();
+      }));
+    }
+    const share = action(
+      t(view.active ? 'teamDashboards.shareChanges' : 'teamDashboards.shareTab'),
+      () => this.callbacks.team?.onShareTab(),
+    );
+    nodes.push(share);
+    popover.replaceChildren(...nodes);
+    return popover.querySelector<HTMLButtonElement>('button:not(:disabled)') ?? share;
+  }
+
+  private anchorFor(kind: NoticeKind): HTMLButtonElement | null {
+    if (kind === 'options') return this.optionsBtn;
+    if (kind === 'team') return this.teamBtn;
+    if (kind === 'focus') return this.focusBtn;
+    return this.addBtn;
+  }
+
+  private noticeAnchor(): HTMLButtonElement | null {
+    return this.noticeKind ? this.anchorFor(this.noticeKind) : null;
+  }
+
+  private openNotice(kind: NoticeKind, notice: HTMLElement, focus: HTMLElement): void {
+    this.closeNotice();
+    const anchor = this.anchorFor(kind);
+    if (!anchor) return;
+
     // The bar scrolls horizontally (overflow-x: auto), so an in-flow popover
     // would be clipped by it. The notice is body-anchored and positioned from
     // the button's viewport rect instead.
     document.body.appendChild(notice);
-    const rect = this.addBtn.getBoundingClientRect();
+    const rect = anchor.getBoundingClientRect();
     notice.style.top = `${rect.bottom + 6}px`;
     notice.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - notice.offsetWidth - 8))}px`;
 
     this.notice = notice;
+    this.noticeKind = kind;
+    if (kind !== 'cap' && kind !== 'focus') {
+      anchor.setAttribute('aria-expanded', 'true');
+      anchor.setAttribute('aria-controls', notice.id);
+    }
     document.addEventListener('mousedown', this.onNoticeOutsideClick);
     document.addEventListener('keydown', this.onNoticeKeyDown);
-    cta.focus();
+    focus.focus();
   }
 
-  private closeAddLockNotice(restoreFocus = false): void {
+  private closeNotice(restoreFocus = false): void {
     if (!this.notice) return;
+    const anchor = this.noticeAnchor();
     document.removeEventListener('mousedown', this.onNoticeOutsideClick);
     document.removeEventListener('keydown', this.onNoticeKeyDown);
     this.notice.remove();
     this.notice = null;
-    if (restoreFocus) this.addBtn?.focus();
+    this.noticeKind = null;
+    for (const btn of [this.optionsBtn, this.teamBtn]) {
+      btn.setAttribute('aria-expanded', 'false');
+      btn.removeAttribute('aria-controls');
+    }
+    if (restoreFocus) anchor?.focus();
   }
 
   private applyAddLock(): void {
@@ -243,15 +497,36 @@ export class PanelTabBar {
     this.updateControlledPanel(activeTabId);
     const addBtn = document.createElement('button');
     addBtn.className = 'dashboard-tab-add';
-    addBtn.title = t('dashboardTabs.addTabTitle');
+    addBtn.title = t(this.callbacks.hasNewTabPanels() ? 'dashboardTabs.addTabTitleSaved' : 'dashboardTabs.addTabTitle');
     addBtn.textContent = '+';
     // The click always reaches the manager: `addTab` is the single enforcement
     // point for the cap, so the button never decides on its own.
     addBtn.addEventListener('click', () => this.callbacks.onAdd());
     this.addBtn = addBtn;
     this.applyAddLock();
-    // The tablist owns only tabs; the add button is a sibling in the bar.
-    this.element.replaceChildren(this.tablistEl, addBtn, this.liveRegion);
+    // The tablist owns only tabs; the add, options and team buttons are siblings in the bar.
+    const hasTeam = this.callbacks.team?.view() != null;
+    const teamBtn = hasTeam ? [this.teamBtn] : [];
+    const focusBtn = this.callbacks.focus ? [this.focusBtn] : [];
+    if (this.callbacks.focus) {
+      const focusedTab = this.callbacks.focus.isFocused();
+      const label = t(focusedTab ? 'focus.tabButtonTitleActive' : 'focus.tabButtonTitle');
+      this.focusBtn.classList.toggle('active', focusedTab);
+      this.focusBtn.title = label;
+      this.focusBtn.setAttribute('aria-label', label);
+    }
+    // Re-inserting a focused button blurs it; put keyboard focus back.
+    const focused = [this.optionsBtn, this.teamBtn, this.focusBtn].find((btn) => btn === document.activeElement);
+    this.element.replaceChildren(this.tablistEl, addBtn, this.optionsBtn, ...teamBtn, ...focusBtn, this.liveRegion);
+    if (focused?.isConnected) focused.focus();
+    // An open team menu follows the list as it loads or changes; it closes if
+    // the team goes away (sign-out, seat removed).
+    if (this.noticeKind === 'team' && this.notice) {
+      const hadFocus = this.notice.contains(document.activeElement);
+      const focus = hasTeam ? this.fillTeamDashboards(this.notice) : null;
+      if (!focus) this.closeNotice();
+      else if (hadFocus && !this.notice.contains(document.activeElement)) focus.focus();
+    }
   }
 
   private renderTab(tab: PanelTab, isActive: boolean, canDelete: boolean): HTMLElement {

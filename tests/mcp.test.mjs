@@ -979,7 +979,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     // map, multi-key bundle) must now declare ≥1 filter property.
     for (const name of [
       'get_market_data', 'get_country_macro', 'get_conflict_events',
-      'get_economic_data', 'get_chokepoint_status', 'get_eu_housing_cycle',
+      'get_economic_data', 'get_chokepoint_status', 'get_energy_intelligence',
       'get_sanctions_data', 'get_forecast_predictions',
     ]) {
       const props = byName[name]?.inputSchema?.properties ?? {};
@@ -1485,6 +1485,60 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(!('stocks-bootstrap' in out.data), 'asset_class crypto → stocks slice dropped');
   });
 
+  it('get_market_data: Friday crude closes stay fresh on Saturday and undated quotes stay stale', async (t) => {
+    t.mock.method(Date, 'now', () => Date.parse('2026-11-07T15:00:00Z'));
+    const priceAt = Date.parse('2026-11-06T21:59:00Z');
+    const brent = { symbol: 'BZ=F', price: 91.60, priceBasis: 'futures', priceSource: 'Yahoo Finance', priceAt };
+    const wti = { symbol: 'CL=F', price: 85 };
+    mockCacheKeys({ 'market:commodities-bootstrap:v1': { quotes: [brent, wti] } });
+    const out = await callTool('get_market_data', { asset_class: ['commodity'] });
+    assert.deepEqual(out.data['commodities-bootstrap'].quotes, [
+      { ...brent, stale: false },
+      { ...wti, stale: true },
+    ]);
+  });
+
+  it('get_market_data: passes the captured clock to oilTapeMaxAgeMs when Date.now advances', (t) => {
+    const captured = Date.parse('2026-12-26T12:00:00Z');
+    const ambient = Date.parse('2026-12-29T16:00:00Z');
+    let clock = captured;
+    t.mock.method(Date, 'now', () => clock);
+    const quote = {
+      symbol: 'CL=F', priceAt: Date.parse('2026-12-24T18:44Z'),
+      // Advance only once the quote is read, after the filter captures its clock.
+      get priceBasis() { clock = ambient; return 'futures'; },
+    };
+    const tool = TOOL_REGISTRY.find(t => t.name === 'get_market_data');
+    const out = tool._postFilter({ 'commodities-bootstrap': { quotes: [quote] } }, {});
+    assert.deepEqual(out['commodities-bootstrap'].quotes, [{ ...quote, stale: false }]);
+    assert.equal(Date.now(), ambient, 'ambient clock differs from the captured clock');
+  });
+
+  it('get_market_data: Christmas closing quotes stay fresh until the holiday weekend ends', async (t) => {
+    t.mock.method(Date, 'now', () => Date.parse('2026-12-26T12:00:00Z'));
+    const quote = { symbol: 'CL=F', price: 85, priceBasis: 'futures', priceAt: Date.parse('2026-12-24T18:44Z') };
+    mockCacheKeys({ 'market:commodities-bootstrap:v1': { quotes: [quote] } });
+    const out = await callTool('get_market_data', { asset_class: ['commodity'] });
+    assert.deepEqual(out.data['commodities-bootstrap'].quotes, [{ ...quote, stale: false }]);
+  });
+
+  it('get_energy_intelligence: observation freshness follows the next EIA release', async (t) => {
+    for (const [date, now, stale] of [
+      ['2025-12-12', '2025-12-29T21:59Z', false],
+      ['2025-12-12', '2025-12-30T22:01Z', true],
+      ['2026-11-06', '2026-11-19T23:59Z', true],
+      ['2026-11-13', '2026-11-19T23:59Z', false],
+    ]) {
+      t.mock.method(Date, 'now', () => Date.parse(now));
+      mockCacheKeys({ 'energy:eia-petroleum:v1': { brent: { date, current: 85 } } }, {
+        'seed-meta:energy:eia-petroleum': { fetchedAt: Date.parse(now) - 60_000, recordCount: 1 },
+      });
+      const out = await callTool('get_energy_intelligence', { dataset: ['eia-petroleum'] });
+      assert.equal(out.data['eia-petroleum'].brent.stale, stale, now);
+      t.mock.restoreAll();
+    }
+  });
+
   it('get_economic_data: China v2 aliases, dataset filter, country filter, and schema stay aligned', async () => {
     // Live clock: this test asserts on the MCP projection, which re-derives
     // transport freshness against Date.now(). A pinned fixture time expires
@@ -1958,11 +2012,10 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- limit on country/EU/displacement tools ---
   //
-  // Five tools — get_country_macro, get_eu_housing_cycle,
-  // get_eu_quarterly_gov_debt, get_eu_industrial_production,
-  // get_displacement_data — return per-country payloads that can exceed the
-  // per-tool output budget on default args. The IMF/Eurostat tools cap their
-  // keyed-object country maps via `capNestedMap`; displacement caps arrays.
+  // get_country_macro (IMF and Eurostat datasets) and get_displacement_data
+  // return per-country payloads that can exceed the per-tool output budget on
+  // default args. get_country_macro caps its keyed-object country maps via
+  // `capNestedMap`; displacement caps arrays.
   // `limit: 0` is the customer-facing opt-out and always returns the full
   // payload.
 
@@ -2028,43 +2081,47 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       'limit: 0 is the customer-facing opt-out and returns the full payload');
   });
 
-  it('limit: get_eu_housing_cycle default args → cap to 30, limit:0 → full', async () => {
-    const hp = { countries: makeCountryMap('EU', 40) };
-    const meta = { 'seed-meta:economic:eurostat-house-prices': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
+  for (const [dataset, key, metaKey] of [
+    ['house-prices', 'economic:eurostat:house-prices:v1', 'seed-meta:economic:eurostat-house-prices'],
+    ['gov-debt-q', 'economic:eurostat:gov-debt-q:v1', 'seed-meta:economic:eurostat-gov-debt-q'],
+    ['industrial-production', 'economic:eurostat:industrial-production:v1', 'seed-meta:economic:eurostat-industrial-production'],
+  ]) {
+    it(`limit: get_country_macro dataset ${dataset} default args → cap to 30, limit:0 → full`, async () => {
+      const map = { countries: makeCountryMap('EU', 40) };
+      const meta = { [metaKey]: { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
 
-    mockCacheKeys({ 'economic:eurostat:house-prices:v1': hp }, meta);
-    const capped = await callTool('get_eu_housing_cycle', {});
-    assert.equal(Object.keys(capped.data['house-prices'].countries).length, 30, 'default args → cap to 30');
+      mockCacheKeys({ [key]: map }, meta);
+      const capped = await callTool('get_country_macro', { dataset: [dataset] });
+      assert.equal(Object.keys(capped.data[dataset].countries).length, 30, 'default args → cap to 30');
 
-    mockCacheKeys({ 'economic:eurostat:house-prices:v1': hp }, meta);
-    const optOut = await callTool('get_eu_housing_cycle', { limit: 0 });
-    assert.equal(Object.keys(optOut.data['house-prices'].countries).length, 40, 'limit: 0 → full payload');
+      mockCacheKeys({ [key]: map }, meta);
+      const optOut = await callTool('get_country_macro', { dataset: [dataset], limit: 0 });
+      assert.equal(Object.keys(optOut.data[dataset].countries).length, 40, 'limit: 0 → full payload');
+    });
+  }
+
+  it('get_country_macro reads and judges staleness on only the selected datasets', async () => {
+    // Only the Eurostat house-price seed exists. Reading the IMF keys too would
+    // judge the response on four seed-meta keys that are absent, so stale.
+    const meta = { 'seed-meta:economic:eurostat-house-prices': { fetchedAt: Date.now() - 60_000, recordCount: 2 } };
+    mockCacheKeys({ 'economic:eurostat:house-prices:v1': { countries: { DE: { latest: 1 }, EL: { latest: 2 } } } }, meta);
+    const scoped = await callTool('get_country_macro', { dataset: ['house-prices'] });
+    assert.deepEqual(Object.keys(scoped.data), ['house-prices']);
+    assert.equal(scoped.stale, false);
+
+    mockCacheKeys({ 'economic:eurostat:house-prices:v1': { countries: { DE: { latest: 1 } } } }, meta);
+    const everything = await callTool('get_country_macro', {});
+    assert.equal(everything.stale, true, 'the full bundle is judged on every dataset');
   });
 
-  it('limit: get_eu_quarterly_gov_debt default args → cap to 30, limit:0 → full', async () => {
-    const gd = { countries: makeCountryMap('EU', 40) };
-    const meta = { 'seed-meta:economic:eurostat-gov-debt-q': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
-
-    mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': gd }, meta);
-    const capped = await callTool('get_eu_quarterly_gov_debt', {});
-    assert.equal(Object.keys(capped.data['gov-debt-q'].countries).length, 30, 'default args → cap to 30');
-
-    mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': gd }, meta);
-    const optOut = await callTool('get_eu_quarterly_gov_debt', { limit: 0 });
-    assert.equal(Object.keys(optOut.data['gov-debt-q'].countries).length, 40, 'limit: 0 → full payload');
-  });
-
-  it('limit: get_eu_industrial_production default args → cap to 30, limit:0 → full', async () => {
-    const ip = { countries: makeCountryMap('EU', 40) };
-    const meta = { 'seed-meta:economic:eurostat-industrial-production': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
-
-    mockCacheKeys({ 'economic:eurostat:industrial-production:v1': ip }, meta);
-    const capped = await callTool('get_eu_industrial_production', {});
-    assert.equal(Object.keys(capped.data['industrial-production'].countries).length, 30, 'default args → cap to 30');
-
-    mockCacheKeys({ 'economic:eurostat:industrial-production:v1': ip }, meta);
-    const optOut = await callTool('get_eu_industrial_production', { limit: 0 });
-    assert.equal(Object.keys(optOut.data['industrial-production'].countries).length, 40, 'limit: 0 → full payload');
+  it('the retired get_eu_* names call get_country_macro for their own dataset', async () => {
+    const meta = { 'seed-meta:economic:eurostat-gov-debt-q': { fetchedAt: Date.now() - 60_000, recordCount: 1 } };
+    mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': { countries: { DE: { latest: 63.2 } } } }, meta);
+    const out = await callTool('get_eu_quarterly_gov_debt', { countries: ['Germany'] });
+    assert.deepEqual(Object.keys(out.data), ['gov-debt-q']);
+    assert.deepEqual(out.data['gov-debt-q'].countries, { DE: { latest: 63.2 } });
+    assert.equal(out.stale, false);
+    assert.equal(out.deprecation.replacement, 'get_country_macro');
   });
 
   it('limit: get_displacement_data default args → ≤30 items, limit:0 → full payload', async () => {
@@ -3085,7 +3142,12 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
 
-    const eiaPayload = { weeklySeries: [{ week: '2026-W18', stocks: 832.1 }] };
+    const latestFriday = new Date();
+    latestFriday.setUTCDate(latestFriday.getUTCDate() - ((latestFriday.getUTCDay() + 2) % 7));
+    const eiaPayload = {
+      brent: { date: latestFriday.toISOString().slice(0, 10), current: 121.17 },
+      stocks: { current: 832.1 },
+    };
     const electricityPayload = { countries: [{ iso: 'DE', priceEurMwh: 88 }] };
     const emberPayload = { regions: [{ id: 'EU', cleanShare: 0.62 }] };
     const gasStoragePayload = { countries: [{ iso: 'DE', fillPct: 71 }] };
@@ -3166,7 +3228,10 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(payload.stale, false, 'all 12 metas within their per-key budgets must yield stale=false');
     assert.equal(payload.cached_at, new Date(crisisPolicyFetchedAt).toISOString(), 'cached_at reflects oldest valid fetchedAt (crisis-policies, 30d old, within ~400d budget)');
     // Label-walk slice names per NON_LABEL=/^(v\d+|\d+|stale|sebuf)$/:
-    assert.deepEqual(payload.data['eia-petroleum'], eiaPayload);
+    assert.deepEqual(payload.data['eia-petroleum'], {
+      ...eiaPayload,
+      brent: { ...eiaPayload.brent, priceBasis: 'spot', priceSource: 'EIA', frequency: 'weekly', stale: false },
+    });
     assert.deepEqual(payload.data['index'], electricityPayload, 'energy:electricity:v1:index → "index"');
     assert.deepEqual(payload.data['_all'], emberPayload, 'energy:ember:v1:_all → "_all"');
     assert.deepEqual(payload.data['_countries'], gasStoragePayload, 'energy:gas-storage:v1:_countries → "_countries"');
@@ -4090,6 +4155,25 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.match(payload.upgradeUrl, /^https:\/\//);
   });
 
+  it('error: ChatGPT gets the locked list without the plans link', async () => {
+    const { deps } = makeProDeps({
+      getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86_400_000 }),
+    });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ result: JSON.stringify({ ok: 1 }) }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data'), { 'User-Agent': 'openai-mcp/1.0.0' }), deps);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.deepEqual(payload.locked, ['physical-premium', 'physical-divergence']);
+    assert.equal(Object.hasOwn(payload, 'upgradeUrl'), false);
+    assert.equal(Object.hasOwn(body.result.structuredContent, 'upgradeUrl'), false);
+  });
+
   it('happy: a Pro caller still reads the physical-metals datasets through get_market_data', async () => {
     const { deps } = makeProDeps();
     process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
@@ -4808,6 +4892,44 @@ describe('get_sanctions_data screening contract', () => {
     for (const key of ['seed-meta:sanctions:entities', 'seed-meta:sanctions:pressure']) {
       assert.ok(tool._freshnessChecks.some(check => check.key === key));
     }
+  });
+  it('separates legacy unattributed counts before applying country filters', () => {
+    const unattributed = { entryCount: 8, vesselCount: 3, aircraftCount: 1 };
+    const countries = [{ countryCode: 'RU', entryCount: 4 }];
+    const legacy = { entries: [], countries: [{ countryCode: 'XX', ...unattributed }, ...countries] };
+    const current = { entries: [], countries, unattributed };
+    for (const pressure of [legacy, current]) {
+      const result = tool._postFilter(structuredClone({ pressure }), { country: 'RU' });
+      assert.deepEqual(result.pressure, { ...current, regulationTargets: [] });
+    }
+  });
+  it('fills aircraft counts on flag registries from snapshots that predate them', () => {
+    const pressure = { entries: [], countries: [], flagRegistries: [{ countryCode: 'PA', countryName: 'Panama', vesselCount: 3, newVesselCount: 1 }] };
+    const result = tool._postFilter(structuredClone({ pressure }), {});
+    assert.deepEqual(result.pressure.flagRegistries, [
+      { countryCode: 'PA', countryName: 'Panama', vesselCount: 3, newVesselCount: 1, aircraftCount: 0, newAircraftCount: 0 },
+    ]);
+  });
+  it('narrows registry rows with the country filter even when no direct country rows match', () => {
+    const flagRegistries = ['PA', 'IR', 'RU'].map(countryCode => ({ countryCode, vesselCount: 2, aircraftCount: 1 }));
+    for (const [country, expected] of [['PA', ['PA']], [['PA', 'IR'], ['PA', 'IR']], ['GB', []]]) {
+      const result = tool._postFilter({ pressure: { entries: [], countries: [], flagRegistries } }, { country });
+      assert.deepEqual(result.pressure.flagRegistries.map(row => row.countryCode), expected);
+      assert.deepEqual(result.pressure.countries, []);
+    }
+  });
+  it('exposes regulation targets separately without treating a country filter as target attribution', () => {
+    const regulationTargets = [{ countryCode: 'IR', countryName: 'Iran', entryCount: 500, newEntryCount: 0, vesselCount: 0, aircraftCount: 0 }];
+    const result = tool._postFilter({ pressure: { entries: [], countries: [], regulationTargets } }, { country: 'IR' });
+    assert.deepEqual(result.pressure.regulationTargets, regulationTargets);
+    assert.deepEqual(result.pressure.countries, []);
+    assert.ok(tool.outputSchema.properties.data.properties.pressure.properties.regulationTargets);
+  });
+  it('defaults regulation targets for older snapshots and preserves cache misses', () => {
+    for (const pressure of [{ entries: [], countries: [] }, {}]) {
+      assert.deepEqual(tool._postFilter({ pressure }, {}).pressure.regulationTargets, []);
+    }
+    assert.equal(tool._postFilter({ pressure: null }, {}).pressure, null);
   });
   it('screens aliases before limiting and composes country, type and primary-name filters', () => {
     const data = { entities: index, pressure: { entries: [], countries: [] } };

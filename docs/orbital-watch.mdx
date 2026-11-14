@@ -1,0 +1,99 @@
+---
+title: "Orbital Watch"
+description: "How Orbital Watch works out which satellites passed over a point, which public images exist, what each result tier means, and where its accuracy ends."
+noindex: true
+---
+
+## Overview
+
+Orbital Watch answers one question for any point on Earth: which satellites passed over it, and did any of them leave a public image? Right-click the map (or long-press on touch screens) and choose **Satellite passes here**. A sheet opens with every pass from the last 7 days and the next 72 hours, grouped by what the evidence supports.
+
+A pass is not an image. Most satellites overhead carry no camera aimed at the point, many that do are not tasked to it, and some images are never published. Orbital Watch shows an image only when a public archive returns one.
+
+## Method
+
+### Passes from orbit elements
+
+The [CelesTrak](https://celestrak.org) catalog provides general-perturbations orbit elements for each satellite. Your browser propagates them with the SGP4 model (satellite.js) in a background worker and finds the moments each satellite's footprint covered the point. When a satellite has several published element sets, each set handles the part of the window nearest its epoch, because one set propagated across days drifts.
+
+### Sensor profiles
+
+Each satellite maps to a sensor profile that says what it can see and what to expect afterwards:
+
+| Profile field | Meaning |
+|---|---|
+| Category | Open optical (Sentinel-2, Landsat), open radar (Sentinel-1), open lidar (ICESat-2), weather polar (MODIS, VIIRS), commercial optical, commercial radar, government optical, government radar, military, crewed station, or geostationary |
+| Footprint | The ground band the instrument covers, from its swath width or look and incidence angles |
+| Resolution | The finest ground resolution the operator states, in metres, or none when it publishes no figure |
+| Daylight | Whether the sensor needs the sun: passive optical sensors do, radar and lidar do not |
+| Archive collection | The public archive that holds the sensor's products, or none |
+| Coverage | Where the mission acquires: for Sentinel-2 and Sentinel-1, a grid built from the archive's own scene footprints (Sentinel-1 separately for northbound and southbound passes); land and coast for Landsat |
+| Archive wait | How long the open archive usually takes to publish a scene: 24 hours for Sentinel-2 and Sentinel-1, 235 hours for Landsat, set from the measured publication lag of the quicker archive |
+| Daily mosaic | Whether a daily global mosaic exists for the sensor |
+
+Sensors whose profile needs daylight reach an imaging tier only when the sun is at least 5 degrees above the horizon at the point. A pass in darkness still appears in the list, as `passed-overhead`.
+
+The inventory covers 33 profiles. A satellite matches by NORAD catalog number first, then by a family name pattern. Military families such as Yaogan list their imaging satellites by NORAD number, because their names do not separate imaging satellites from signals satellites, and the name patterns never match debris. Where an operator publishes no figure, the profile marks its footprint as assumed and leaves resolution empty.
+
+ICESat-2's footprint is the 6.6 km envelope of its six laser beams, not a continuous swath. The beams sample 11 m spots along three pairs of tracks, so a point inside the envelope can fall between tracks. Its passes say when the beam array next crosses a place, which suits reservoir-sized targets. They do not promise a measurement at an exact point, because orbit elements from CelesTrak carry kilometre-scale cross-track error.
+
+### Lookup cost
+
+Measured on 2026-11-14 against a CelesTrak active list recorded that day (16,896 objects), on an 8-core Intel Xeon VM with Node.js 24:
+
+| Measure | Result |
+|---|---|
+| Profiled satellites | 297 |
+| Stored catalog with a full 8-day element ring | 1.14 MB, about 3.8 KB per satellite |
+| Catalog response | 1.09 MB before compression |
+| Default lookup (7 days back, 72 hours ahead) over every profiled satellite | 2.3 to 2.8 seconds, about 8 to 10 ms per satellite |
+
+### Matching against archives
+
+Your browser asks the public archives directly: Earth Search and Microsoft Planetary Computer for Sentinel-2, Sentinel-1 and Landsat scenes, NASA GIBS for daily mosaics and geostationary frames, and EUMETSAT for Meteosat frames. A scene belongs to a pass when its acquisition time is within 5 minutes of the computed pass. For optical scenes, Orbital Watch also reads the scene's cloud classification at the point itself, not just the scene-wide cloud percentage.
+
+## Result tiers
+
+Each pass gets exactly one tier. The tier says what the evidence supports, never more.
+
+| Tier | Meaning |
+|---|---|
+| `confirmed-image` | An open mission passed with the point in its footprint, in daylight for optical sensors, over ground the mission covers, and an archive holds a scene acquired within 5 minutes of the pass. The image is shown. A scene in the archive confirms the pass even when the modelled footprint, daylight or coverage said otherwise; the row is then marked **Off modelled swath**. |
+| `likely-imaged` | The same conditions hold, but the archive has not answered yet or the archive wait has not passed. An image is probable, not shown. |
+| `passed-overhead` with **not in archive** | The same conditions held, the archive wait has passed, and the archive has no matching scene. The mission was overhead and did not publish an image of the point. |
+| `passed-overhead` | Any other pass: a crewed station, an optical pass in darkness, or a pass over ground the mission does not cover. No image is implied. |
+| `daily-mosaic` | A weather satellite in polar orbit covered the point, and its daily global mosaic for that day is shown when NASA GIBS has it. |
+| `within-reach` | A commercial or government-operated satellite passed with the point inside what it could have imaged. Its imagery is tasked and not published openly, so nothing says an image was taken. |
+| `capability-overhead` | A military satellite passes, or passed, with the point in its footprint. Orbital Watch shows that the capability is overhead and nothing more. |
+| `opportunity` | Any other future pass. It is a chance to image, never an image. |
+
+Overhead or within reach never means an image was taken. Only `confirmed-image` and the daily mosaic and geostationary rows show imagery, and only imagery that a public archive returned.
+
+## Accuracy limits
+
+- **Orbit-element age.** SGP4 error grows with the time between a pass and the epoch of the elements it used. Each pass shows the age of its orbit data. Element sets older than 7 days are not used, so a satellite whose newest set is older gets no passes instead of a guess.
+- **Swath-edge uncertainty.** A point within 5 km of a footprint edge, inside or outside it, is marked **Edge of swath**. Small timing or attitude differences can put it inside or outside the scene.
+- **Cloud.** An optical scene can exist and still show only cloud. Each image says whether the point itself was clear, cloudy or in cloud shadow, or that only a scene-wide cloud figure is known.
+- **Archive latency.** Open archives publish scenes hours to days after acquisition. Until the archive wait for a mission has passed, a pass with no scene stays `likely-imaged` rather than `passed-overhead` with not in archive.
+
+## Change flags
+
+Change flags are planned and not computed yet. A change flag will compare a new image of a point with an earlier one. It will run in shadow mode first, with flags computed and stored for review and shown by no panel, risk score, alert, API endpoint or MCP tool. Publication will wait for at least 30 days of shadow running and at least 30 raised flags confirmed or retracted by review.
+
+## Privacy
+
+The point you pick stays in your browser. It goes only to the public archives your browser calls directly. A shared link carries the point rounded to two decimal places, about 1 km. Error reports and other telemetry have coordinate query parameters and coordinate path segments removed from every URL before they leave the browser.
+
+## Credits
+
+Each image carries a one-line credit for its source. The Sources list at the end of the sheet names only the sources present in the current result and what each one supplied, and links here. The full credit each source asks for is:
+
+| Source | Credit |
+|---|---|
+| CelesTrak | Orbit elements from CelesTrak |
+| Copernicus Sentinel (via Earth Search or Microsoft Planetary Computer) | Contains modified Copernicus Sentinel data, with the acquisition year |
+| Landsat (via Earth Search or Microsoft Planetary Computer) | Landsat imagery courtesy of the U.S. Geological Survey |
+| NASA GIBS | We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS). |
+| EUMETSAT | Contains EUMETSAT Meteosat imagery |
+
+The licence and attribution terms for every source are listed in [Source Attribution](https://www.worldmonitor.app/docs/source-attribution). For the satellite tracking layer on the globe, see [Orbital Surveillance](/orbital-surveillance).

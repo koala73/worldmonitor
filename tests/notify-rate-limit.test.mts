@@ -149,6 +149,9 @@ it('returns a defined unknown publish outcome without replaying a timed-out writ
   const response = await handler(makePost());
   assert.equal(response.status, 503);
   assert.equal(response.headers.get('Retry-After'), '180');
+  const body = await response.json();
+  assert.equal(body.error, 'publish_outcome_unknown');
+  assert.equal(typeof body.message, 'string');
   assert.equal(calls, 1);
 });
 
@@ -187,6 +190,7 @@ it('keeps the Idempotency-Key marker after a timed-out push, so a retry cannot p
   const first = await handler(makePost(undefined, headers));
   assert.equal(first.status, 503);
   assert.equal(first.headers.get('Retry-After'), '180');
+  assert.equal((await first.json()).error, 'publish_outcome_unknown');
   assert.equal(commands.includes('DEL'), false, 'an unknown outcome must not release the processing marker');
 
   const retry = await handler(makePost(undefined, headers));

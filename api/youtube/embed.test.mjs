@@ -60,13 +60,59 @@ test('accepts custom origin parameter', async () => {
   assert.equal(config.origin, 'http://127.0.0.1:46123');
 });
 
-test('allows only team-pinned Vercel preview origins', async () => {
-  const allowed = await render('?videoId=iEpJwprxDdk&origin=https://worldmonitor-git-feature-eliewm.vercel.app');
-  assert.equal(allowed.config.origin, 'https://worldmonitor-git-feature-eliewm.vercel.app');
+function withPreviewEnv(env, fn) {
+  const keys = ['VERCEL_ENV', 'VERCEL_URL', 'VERCEL_BRANCH_URL'];
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  for (const k of keys) {
+    if (env[k] === undefined) delete process.env[k];
+    else process.env[k] = env[k];
+  }
+  return fn().finally(() => {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+}
 
-  const foreign = await render('?videoId=iEpJwprxDdk&origin=https://worldmonitor-git-feature-attacker.vercel.app');
-  assert.equal(foreign.config.origin, 'https://worldmonitor.app');
-});
+test('a preview deployment trusts only its own Vercel hostnames', () => withPreviewEnv({
+  VERCEL_ENV: 'preview',
+  VERCEL_URL: 'worldmonitor-r6q9o-eliewm.vercel.app',
+  VERCEL_BRANCH_URL: 'worldmonitor-git-feature-eliewm.vercel.app',
+}, async () => {
+  for (const own of ['https://worldmonitor-r6q9o-eliewm.vercel.app', 'https://worldmonitor-git-feature-eliewm.vercel.app']) {
+    const query = new URLSearchParams({ videoId: 'iEpJwprxDdk', origin: own, parentOrigin: own });
+    const { config } = await render(`?${query}`);
+    assert.equal(config.origin, own);
+    assert.equal(config.parentOrigin, own);
+  }
+  for (const foreign of [
+    'https://worldmonitor-attacker-eliewm.vercel.app',
+    'https://worldmonitor-git-feature-attacker.vercel.app',
+  ]) {
+    const query = new URLSearchParams({ videoId: 'iEpJwprxDdk', origin: foreign, parentOrigin: foreign });
+    const { config } = await render(`?${query}`);
+    assert.equal(config.origin, 'https://worldmonitor.app', foreign);
+    assert.equal(config.parentOrigin, 'https://worldmonitor.app', foreign);
+  }
+}));
+
+test('production trusts no Vercel preview origin, eliewm-shaped or not', () => withPreviewEnv({
+  VERCEL_ENV: 'production',
+  VERCEL_URL: 'worldmonitor-r6q9o-eliewm.vercel.app',
+  VERCEL_BRANCH_URL: 'worldmonitor-git-main-eliewm.vercel.app',
+}, async () => {
+  for (const origin of [
+    'https://worldmonitor-r6q9o-eliewm.vercel.app',
+    'https://worldmonitor-git-main-eliewm.vercel.app',
+    'https://worldmonitor-attacker-eliewm.vercel.app',
+  ]) {
+    const query = new URLSearchParams({ videoId: 'iEpJwprxDdk', origin, parentOrigin: origin });
+    const { config } = await render(`?${query}`);
+    assert.equal(config.origin, 'https://worldmonitor.app', origin);
+    assert.equal(config.parentOrigin, 'https://worldmonitor.app', origin);
+  }
+}));
 
 test('uses dedicated parentOrigin for iframe postMessage target', async () => {
   const { html, config } = await render('?videoId=iEpJwprxDdk&origin=https://worldmonitor.app&parentOrigin=https://tauri.localhost');
@@ -81,10 +127,9 @@ test('does not accept wildcard parentOrigin query parameter', async () => {
   assert.equal(config.parentOrigin, 'https://worldmonitor.app');
 });
 
-test('preserves app, team preview, and local origins for the player and parent', async () => {
+test('preserves app and local origins for the player and parent', async () => {
   for (const origin of [
     ...TRUSTED_RETURN_URL_ORIGINS,
-    'https://worldmonitor-git-feature-eliewm.vercel.app',
     'http://localhost:3000', 'https://localhost',
     'http://127.0.0.1:46123', 'https://127.0.0.1', 'tauri://localhost',
   ]) {

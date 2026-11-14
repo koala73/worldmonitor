@@ -18,6 +18,7 @@ description: "Every error shape the World Monitor MCP server emits — JSON-RPC 
   - Pro daily-cap -32029 (HTTP 429)     api/mcp/dispatch.ts (reserveDailyQuotaForRequest)
   - Free-allowance -32029 (HTTP 429)    api/mcp/dispatch.ts (reserveFreeAccountAllowance rejection)
   - Free tool-scope -32002 (HTTP 403)   api/mcp/dispatch.ts (upgrade-required guard)
+  - Plan-feature -32002 (HTTP 403)      api/mcp/dispatch.ts (_planFeature guard) + api/mcp/auth.ts (travelRiskAssessment pre-check)
   - Free-account allowance meter        api/mcp/free-account-allowance.ts (reserveFreeAccountAllowance)
   - Structured denial data payload      api/mcp/upgrade.ts (buildMcpStructuredDenial, DENIAL_COPY)
   - Tool exec -32603                    api/mcp/dispatch.ts (dispatchToolsCall)
@@ -110,7 +111,16 @@ Fires from the `api/mcp/auth.ts` emission sites, always paired with HTTP **401**
 4. **OAuth token resolves but the Pro MCP token row is missing or cross-bound** — the `mcpTokenId` no longer maps to the userId. Typically a revoke from Settings → Connected MCP clients.
 **Not** in this list, deliberately: a caller whose subscription is inactive. A confirmed free account (a configured no-row result or an internally consistent tier-0 row) is admitted onto the free-account allowance (see `-32029` and `-32002` below). A provider-confirmed lapse follows the same free-account path: the shared entitlement gate treats the ended coverage as a confirmed free state. An expired or disabled paid entitlement without that lapse returns terminal `-32002` at HTTP 403 because re-authenticating cannot fix it. An entitlement lookup that fails or cannot be verified returns a retryable `-32603` at HTTP 503 — it is an availability failure, not a verdict about the caller.
 
-Every `-32001` from these auth-resolution sites carries a machine-readable `data` payload: `reason` is always `no-account`, `nextStep` is short guidance that names the free paths first, and `upgradeUrl` is where to send the user. Branch on `error.data.reason`, not on the message text. (One defensive fail-closed guard in `api/mcp/handler.ts` emits a bare `-32001` / 401 whose `data` holds only `requestId` — it should be unreachable in practice, so treat a `-32001` without `data.reason` like case 1.)
+Every `-32001` from these auth-resolution sites carries a machine-readable `data` payload: `reason` is always `no-account`, `nextStep` is short guidance that names the free paths first, and `upgradeUrl` is where to send the user. Branch on `error.data.reason`, not on the message text.
+
+Case 1 adds `setupUrl`, the setup guide for every client (`https://www.worldmonitor.app/docs/mcp-quickstart`), and its `nextStep` depends on the client and the request:
+
+- **Codex** (`codex-mcp-client/…` or `openai-mcp/… (Codex)`): run `codex mcp login worldmonitor` in a terminal, then restart Codex. Codex does not open the sign-in window from the 401 by itself.
+- **Claude Code** (`claude-code/…`): run `/mcp`, select `worldmonitor` and choose Authenticate.
+- **Any other client, refused at `initialize` or the anonymous `GET` discovery probe**: connect via OAuth to sign in with a free account. It leaves out `get_sources`, because a client refused at the handshake has no session to call it from.
+- **Any other client, refused at a gated `tools/call`**: the copy in the example below, which also names `get_sources`.
+
+The anonymous `GET` discovery probe on the transport (a plain `GET` with an `MCP-Protocol-Version` header and no credential) returns this same case-1 payload with `id: null`. (One defensive fail-closed guard in `api/mcp/handler.ts` emits a bare `-32001` / 401 whose `data` holds only `requestId` — it should be unreachable in practice, so treat a `-32001` without `data.reason` like case 1.)
 
 Example wire payload (case 1):
 
@@ -120,11 +130,12 @@ Example wire payload (case 1):
   "id": 7,
   "error": {
     "code": -32001,
-    "message": "Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.",
+    "message": "Sign-in required. Connect with OAuth (your client opens World Monitor sign-in; a free account works) or send an API key in the X-WorldMonitor-Key header.",
     "data": {
       "reason": "no-account",
       "nextStep": "Connect via OAuth (see the WWW-Authenticate header) to sign in with a free account, or call get_sources, which needs no credential. Subscribe to Pro at the upgrade URL for the full daily allowance.",
-      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel"
+      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel",
+      "setupUrl": "https://www.worldmonitor.app/docs/mcp-quickstart"
     }
   }
 }
@@ -191,6 +202,26 @@ Content-Type: application/json
 **Checkout hint.** `upgrade-required` from `api/mcp/dispatch.ts`, `allowance-exhausted` and `quota-exceeded` (both under `-32029` below) gain `recommendedPlan` and `checkoutTool` when the caller holds a user-bound credential and a self-serve plan sits one step up. `recommendedPlan` maps free → `pro_monthly`, Pro → `pro_business_monthly` and API Starter → `api_business`. `checkoutTool` is `"start_upgrade"` and appears only for a free account, because only that caller can buy the plan through a new checkout: Pro → Pro Business is a prorated in-place upgrade confirmed on the pricing page, and API Starter → API Business is a prorated change in the billing portal, so a paid caller gets `recommendedPlan` alone. Pro Business, API Business, Enterprise, operator keys and anonymous callers get neither field. `message` and `upgradeUrl` are unchanged, so clients that cannot call tools keep the static link. The `upgrade-required` from the auth pre-check carries no hint, because that caller cannot reach any tool.
 
 **ChatGPT.** ChatGPT's app guidelines do not allow an app to start a checkout or promote an upgrade, so a request whose `User-Agent` is ChatGPT's `openai-mcp/…` (Codex excluded) gets neither `recommendedPlan` nor `checkoutTool`. Its `nextStep` states what the current plan covers and that `upgradeUrl` describes the plans, and the lapse and API-plan messages drop their call to resubscribe or upgrade. `reason`, the JSON-RPC code, the HTTP status and `upgradeUrl` are the same as for every other client. `start_upgrade` is not listed to ChatGPT, and calling it returns `Unknown tool`.
+
+**Plan-feature refusal.** A tool that needs a named plan flag on top of a subscription refuses every identity-bound caller whose plan lacks the flag. The refusal comes before argument validation and before any allowance is charged. The only such flag is `travelRiskAssessment`, which `prepare_travel_risk_assessment` needs and which only the Pro Business, API Business and Enterprise plans carry. The denial is `-32002` at HTTP 403 with the same `reason: "upgrade-required"` plus `data.planFeature`, so clients that branch on `reason` keep working. `message` names the plans that include the tool. `recommendedPlan` is `pro_business_monthly` for free and Pro callers, because Pro does not include the flag, and `api_business` for API Starter callers. For a free or Pro caller, `upgradeUrl` is the plans page with `#plan-proBusiness`, so the link opens the Pro Business card. An API Starter caller keeps the plans page without that card hash, because that step up happens in the billing portal. `checkoutTool` still appears only for a free account, and ChatGPT gets an inform-only `nextStep`. Operator keys are not plan-gated.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "error": {
+    "code": -32002,
+    "message": "Travel risk assessment drafts are included in the Pro Business, API Business and Enterprise plans. The current plan does not include them.",
+    "data": {
+      "reason": "upgrade-required",
+      "nextStep": "Upgrade to Pro Business or API Business at the upgrade URL to use this tool. Every other tool the current plan includes still works.",
+      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel#plan-proBusiness",
+      "planFeature": "travelRiskAssessment",
+      "recommendedPlan": "pro_business_monthly"
+    }
+  }
+}
+```
 
 **`start_upgrade` refusals.** The tool creates no checkout session in these cases. All are `-32002` inside **HTTP 200** with `data.reason` and `data.nextStep`:
 
@@ -271,7 +302,7 @@ Example payload (per-user variant, API Business):
 
 Two further per-minute limiters surface the same code: pre-auth `wm_…`-key **validation** is capped at 60 checks / 60 s per IP (a flood of *invalid* keys gets `-32029` `Too many requests` at HTTP 429 before any account lookup), and the anonymous `get_sources` free-tier path has its own fail-closed **10 calls / minute / IP** ceiling — its rejection is `-32029` at HTTP 429 with message `Free-tier rate limit. Max 10 unauthenticated tool calls per minute per IP.` plus IETF `RateLimit`/`RateLimit-Policy` and `Retry-After` headers. Fail-closed means an unreachable limiter backend refuses the call (`-32603` / 503, `Rate-limit service temporarily unavailable. Try again.`) rather than serving it unmetered.
 
-**Downstream endpoint limits — HTTP 429.** `search_flight_prices_by_date` preserves downstream HTTP 429 as `-32029` with message `Too many requests` and the original `Retry-After` header when present. This includes the Google Dates limit of 10 calls per minute. The MCP daily reservation remains charged.
+**Downstream endpoint limits — HTTP 429.** `search_flights` with a date range preserves downstream HTTP 429 as `-32029` with message `Too many requests` and the original `Retry-After` header when present. This includes the Google Dates limit of 10 calls per minute. The MCP daily reservation remains charged.
 
 **Daily cap — HTTP 429 + `Retry-After`.** A hard daily cap is enforced by an atomic Redis reservation BEFORE the tool runs, so the exact call that crosses the boundary rejects. Only `tools/call` and `resources/read` of a data-bearing **URI-template instantiation** (the auth-symmetric resources path) count. The cap is plan-resolved and identical on both the OAuth and `wm_…` doors: **Pro 50/day** and **Pro Business 250/day** on a dedicated counter at one unit per call, while **API Starter, API Business and Enterprise** spend the same allowance as their REST requests (1,000, 10,000 and 10,000 units/day) at [a per-tool weight](/usage-rate-limits#mcp-calls-against-an-api-plan) of 1, 2, 3, or 5 (`get_airspace`). Members of an Enterprise contract account share their account's budget instead (see below). The message quotes the budget that actually rejected, so it will not always read 50. Legacy deployment-allowlisted operator keys reserve on their own per-key counter with a ceiling of 10,000 units/day. **Exempt from the daily cap:** `describe_tool`, `get_sources`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `initialize`, `notifications/initialized`, `ping`, `resources/read` of a **public** resource such as `worldmonitor://seed-meta/freshness`, and the authenticated status read `worldmonitor://account/mcp-allowance`. (These methods still count toward the authenticated per-minute limit, except anonymous `get_sources`, which uses its separate 10/minute/IP fail-closed limit.)
 
@@ -437,7 +468,7 @@ The following conditions share this code; the HTTP status (and, for billing veri
 }
 ```
 
-**Downstream service failure — HTTP 503.** `search_flight_prices_by_date` preserves downstream HTTP 503 as `-32603` with message `Service temporarily unavailable` and the original `Retry-After` header when present. This includes a failed Google Dates limiter. Raw downstream error bodies are not exposed.
+**Downstream service failure — HTTP 503.** `search_flights` with a date range preserves downstream HTTP 503 as `-32603` with message `Service temporarily unavailable` and the original `Retry-After` header when present. This includes a failed Google Dates limiter. Raw downstream error bodies are not exposed.
 
 **HTTP 503 + `Retry-After: 5` — service unavailable.** Either the OAuth resolution service threw (Convex transient blip), or `MCP_INTERNAL_HMAC_SECRET` is unset on the deploy (a misconfig — Pro tool calls cannot sign their downstream fetches without it), or the Pro daily-quota reservation Redis pipeline failed with something other than `cap-exceeded`.
 
@@ -649,7 +680,7 @@ The expression parsed and ran, but the projected output exceeded **256 KB** (`JM
 
 A handful of tools return their own application-level error envelopes inside `content[0].text` rather than via JSON-RPC `-32602`. These are documented per-tool in the [Tools Reference](/mcp-tools-reference) — the catalog calls them out so a client can recognise the pattern:
 
-- **`describe_tool`** returns `{ "error": "missing_tool_name", "hint": "..." }` or `{ "error": "unknown_tool", "requested": "...", "available": [...] }`. Quota-exempt — bad input does not consume a quota slot. See [Tools Reference → `describe_tool`](/mcp-tools-reference#describe_tool).
+- **`describe_tool`** returns `{ "error": "missing_tool_name", "hint": "..." }` or `{ "error": "unknown_tool", "requested": "...", "available": [...] }`. Quota-exempt — bad input does not consume a quota slot. See [Tools Reference → `describe_tool`](/mcp-tools/meta#describe_tool).
 
 If you build a generic envelope detector, key off the leading underscore (`_budget_exceeded`, `_jmespath_error`) for the catalog-class envelopes and off a top-level `error: string` for per-tool envelopes.
 

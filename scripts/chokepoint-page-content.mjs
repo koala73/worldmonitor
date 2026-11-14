@@ -167,12 +167,12 @@ export const CHOKEPOINT_CONTENT = {
       'There is no second strait out of the Gulf. Overland bypass pipelines can move a fraction of crude to the Red Sea or Gulf of Oman, but they do not carry the LNG that Ras Laffan loads, and they do not recreate the 21.0 million barrels a day in the EIA 2023 World Oil Transit Chokepoints Hormuz row. World Monitor therefore enables the energy shock model on this waterway and keeps a dedicated transit research report in /research/.',
     faqs: [
       {
-        question: 'Is there a sea route that avoids the Strait of Hormuz?',
-        answer: 'No. Gulf exports that leave by ship must use Hormuz. Bypass pipelines move some crude overland; they are not a second seaborne strait and they do not move Qatar’s LNG.',
+        question: 'Is the Strait of Hormuz open right now?',
+        answer: 'This page’s live reading at the top gives the current disruption score, active navigational warnings and the latest IMF PortWatch daily transit count with its publication lag. The score is a risk signal, not an official open or closed declaration.',
       },
       {
-        question: 'Does World Monitor model an energy shock for Hormuz?',
-        answer: 'Yes. Hormuz is shock-model supported. The committed EIA 2023 baseline is 21.0 million barrels a day, the largest row in that seven-waterway series.',
+        question: 'Is there a sea route that avoids the Strait of Hormuz?',
+        answer: 'No. Gulf exports that leave by ship must use Hormuz. Bypass pipelines move some crude overland; they are not a second seaborne strait and they do not move Qatar’s LNG.',
       },
     ],
   },

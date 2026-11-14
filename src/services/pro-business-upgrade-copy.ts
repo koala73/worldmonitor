@@ -14,11 +14,15 @@
 export const IN_PLACE_UPGRADE_SOURCE_PLANS: ReadonlySet<string> = new Set(['pro_monthly', 'pro_annual']);
 
 export interface ProBusinessUpgradePreview {
-  /** Amount charged now, lowest currency unit. */
+  /** Amount charged now, lowest unit of `currency` (the customer's billing currency). */
   chargeAmount: number;
   currency: string;
-  /** Recurring price of the new plan before tax, lowest currency unit. */
+  /** Recurring price of the new plan before tax, lowest unit of `renewalCurrency`. */
   renewalAmount: number | null;
+  /** Dodo charges in the customer's currency but prices the plan in its own. */
+  renewalCurrency: string | null;
+  /** First renewal on Pro Business, ISO 8601. The change restarts the billing period. */
+  renewalDate: string | null;
   billingPeriod: 'monthly' | 'annual';
 }
 
@@ -34,15 +38,26 @@ export function formatMinorAmount(amount: number, currency: string): string {
   }
 }
 
+/** Formats an ISO date as "December 7, 2026" (UTC), or null when it does not parse. */
+export function formatRenewalDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }).format(date);
+}
+
 export function buildUpgradePreviewBody(planDisplayName: string, preview: ProBusinessUpgradePreview): string {
   const charge = formatMinorAmount(preview.chargeAmount, preview.currency);
   const period = preview.billingPeriod === 'annual' ? 'year' : 'month';
-  const renewal = preview.renewalAmount === null
-    ? 'then the Pro Business price from your next renewal'
-    : `then ${formatMinorAmount(preview.renewalAmount, preview.currency)} a ${period} plus any tax from your next renewal`;
+  const date = formatRenewalDate(preview.renewalDate);
+  // The charge currency is the customer's, not the plan's: never borrow it for the renewal.
+  const price = preview.renewalAmount === null || !preview.renewalCurrency
+    ? 'the Pro Business price'
+    : `${formatMinorAmount(preview.renewalAmount, preview.renewalCurrency)} a ${period} plus any tax`;
+  const renewal = date ? `It renews at ${price} on ${date}.` : `It renews at ${price}.`;
   return (
     `Your ${planDisplayName} subscription moves to Pro Business now. ` +
-    `You pay ${charge} today for the rest of this billing period, ${renewal}. ` +
+    `You pay ${charge} today and your billing period restarts today. ${renewal} ` +
     'If the payment fails, you stay on Pro.'
   );
 }

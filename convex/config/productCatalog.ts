@@ -236,6 +236,32 @@ export type PlanFeatures = {
   alertSensitivities?: string[];
   alertDigestModes?: string[];
   aiDigestAccess?: boolean;
+  /**
+   * Dashboard focus (#10453): scoping a tab to chosen countries (plus their
+   * neighbours) and a date window, and sharing a focused team dashboard. True
+   * for Pro Business, API Business and Enterprise. `tier` cannot express this:
+   * Pro Business shares `tier: 1` with Pro, and API Starter shares `tier: 2`
+   * with API Business. `shared/tab-focus-access.ts` holds the predicate.
+   *
+   * Optional for the same reason as `embedAccess`: rows written before the
+   * field existed omit it, the read-time catalog merge supplies the plan
+   * default, and consumers treat `undefined` as false (fail-closed). Catalog
+   * entries below ALWAYS set the field explicitly.
+   */
+  tabFocus?: boolean;
+  /**
+   * Multi-country travel risk assessment drafts (#10451): the
+   * `prepare_travel_risk_assessment` MCP tool. Granted to Pro Business, API
+   * Business and Enterprise. Neither `tier` nor `dataExport` can express that
+   * split: Pro Business shares `tier: 1` with Pro, and API Starter exports
+   * but is not entitled.
+   *
+   * Optional only because rows written before the field existed omit it; the
+   * read-time merge supplies the catalog value. Unlike `dataExport`, consumers
+   * treat `undefined` as **not entitled (fail-CLOSED)** at every tier. Catalog
+   * entries below ALWAYS set the field explicitly.
+   */
+  travelRiskAssessment?: boolean;
 };
 
 export interface CatalogEntry {
@@ -326,6 +352,8 @@ const FREE_FEATURES: PlanFeatures = {
   maxDesktopKeys: 0,
   dataExport: false,
   ...FREE_ALERT_CAPABILITIES,
+  tabFocus: false,
+  travelRiskAssessment: false,
 };
 
 const PRO_FEATURES: PlanFeatures = {
@@ -352,6 +380,8 @@ const PRO_FEATURES: PlanFeatures = {
   maxDesktopKeys: 2,
   dataExport: false,
   ...PAID_ALERT_CAPABILITIES,
+  tabFocus: false,
+  travelRiskAssessment: false,
 };
 
 /**
@@ -389,6 +419,8 @@ const PRO_BUSINESS_FEATURES: PlanFeatures = {
   maxDesktopKeys: 3,
   dataExport: true,
   ...PAID_ALERT_CAPABILITIES,
+  tabFocus: true,
+  travelRiskAssessment: true,
 };
 
 const API_STARTER_FEATURES: PlanFeatures = {
@@ -415,6 +447,8 @@ const API_STARTER_FEATURES: PlanFeatures = {
   maxDesktopKeys: 0,
   dataExport: true,
   ...PAID_ALERT_CAPABILITIES,
+  tabFocus: false,
+  travelRiskAssessment: false,
 };
 
 const API_BUSINESS_FEATURES: PlanFeatures = {
@@ -442,6 +476,8 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
   maxDesktopKeys: 0,
   dataExport: true,
   ...PAID_ALERT_CAPABILITIES,
+  tabFocus: true,
+  travelRiskAssessment: true,
 };
 
 // Enterprise is sold by contract. These numbers are the contract default —
@@ -479,6 +515,8 @@ const ENTERPRISE_FEATURES: PlanFeatures = {
   maxDesktopKeys: 0,
   dataExport: true,
   ...PAID_ALERT_CAPABILITIES,
+  tabFocus: true,
+  travelRiskAssessment: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -565,6 +603,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "MCP + SDK: 250 calls/day (vs 50)",
       "Desktop key for the desktop app (3 keys)",
       "Priority support",
+      "Travel risk assessment drafts in the dashboard and over MCP",
     ],
     highlightFeatures: ["Commercial license included", "1 named user — not a shared login"],
     selfServe: true,
@@ -653,7 +692,9 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "300 requests/minute",
       "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "5 Pro licenses — invite users at any corporate email domain",
+      "Shared team dashboards",
       "Priority support",
+      "Travel risk assessment drafts in the dashboard and over MCP",
     ],
     // API Business is the paid Embed/OEM tier, so its bundled seats may go to
     // corporate addresses at any domain. The server still rejects free or
@@ -700,6 +741,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     features: ENTERPRISE_FEATURES,
     marketingFeatures: [
       "Everything in Pro + API",
+      "Shared team dashboards",
       "10,000 API requests a day, more by contract",
       "Dedicated support",
       "Custom integrations",
@@ -710,6 +752,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "SAML SSO and SCIM (by contract)",
       "Custom security and privacy settings",
       "Fully white-labeled — with or without revenue sharing",
+      "Travel risk assessment drafts in the dashboard and over MCP",
     ],
     selfServe: false,
     highlighted: false,

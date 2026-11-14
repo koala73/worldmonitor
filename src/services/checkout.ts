@@ -541,7 +541,6 @@ export async function startCheckout(
       navigate: (url) => navigateToWebSurface(buildAttributedProUrl(
         url,
         checkoutContext.origin.kind === 'mission-preview' ? checkoutContext.origin : undefined,
-        { desktopHandoff: desktopRuntime },
       )),
       persistIntent: () => savePendingCheckoutIntent(intent),
       persistAttempt: () => saveCheckoutAttempt({
@@ -1038,7 +1037,6 @@ function renderCheckoutErrorSurface(
     const proUrl = buildAttributedProUrl(
       `${WEB_APP_ORIGIN}/pro`,
       checkoutContext?.origin.kind === 'mission-preview' ? checkoutContext.origin : undefined,
-      { desktopHandoff: isDesktopRuntime() },
     );
     // Same desktop rule as every other exit from this file (#5911): the
     // pricing page is a web surface, so it leaves for the OS browser instead

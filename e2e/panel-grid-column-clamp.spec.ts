@@ -117,43 +117,63 @@ test('a drag that does not change the span keeps the saved wider span', async ({
   expect(JSON.parse(result.saved ?? '{}')['probe-saved']).toBe(3);
 });
 
-test('the plugin grid counts its single column, not the auto-fill width formula', async ({ page }) => {
-  await page.setViewportSize({ width: 820, height: 900 });
-  await page.goto('/tests/runtime-harness.html');
+for (const width of [820, 940, 1180, 1439]) {
+  test(`the stacked plugin grid stays scrollable and single-column at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 660 });
+    await page.goto('/tests/runtime-harness.html');
 
-  const result = await page.evaluate(async () => {
-    await import('/src/styles/base-layer.css');
-    await import('/src/styles/plugin.css');
-    const { initI18n } = await import('/src/services/i18n.ts');
-    await initI18n();
-    const { Panel } = await import('/src/components/Panel.ts');
+    const result = await page.evaluate(async () => {
+      await import('/src/styles/base-layer.css');
+      await import('/src/styles/plugin.css');
+      const { initI18n } = await import('/src/services/i18n.ts');
+      await initI18n();
+      const { Panel } = await import('/src/components/Panel.ts');
 
-    document.getElementById('runtime-harness')?.remove();
-    const root = document.createElement('div');
-    root.id = 'pluginRoot';
-    const grid = document.createElement('div');
-    grid.className = 'panels-grid';
-    grid.id = 'panelsGrid';
-    root.appendChild(grid);
-    document.body.appendChild(root);
-    const panels = [new Panel({ id: 'plugin-a', title: 'A' }), new Panel({ id: 'plugin-b', title: 'B' })];
-    for (const p of panels) grid.appendChild(p.getElement());
-    for (let i = 0; i < 4; i++) await new Promise((r) => requestAnimationFrame(r));
+      document.getElementById('runtime-harness')?.remove();
+      document.body.classList.add('plugin-body');
+      const root = document.createElement('div');
+      root.id = 'pluginRoot';
+      root.className = 'main-content';
+      const map = document.createElement('section');
+      map.id = 'mapSection';
+      map.className = 'map-section';
+      const mapContainer = document.createElement('div');
+      mapContainer.id = 'mapContainer';
+      map.appendChild(mapContainer);
+      root.appendChild(map);
+      const grid = document.createElement('div');
+      grid.className = 'panels-grid';
+      grid.id = 'panelsGrid';
+      root.appendChild(grid);
+      document.body.appendChild(root);
+      const panels = [new Panel({ id: 'plugin-a', title: 'A' }), new Panel({ id: 'plugin-b', title: 'B' })];
+      for (const p of panels) grid.appendChild(p.getElement());
+      for (let i = 0; i < 4; i++) await new Promise((r) => requestAnimationFrame(r));
 
-    const handle = panels[0]!.getElement().querySelector<HTMLElement>('.panel-col-resize-handle')!;
-    const colMax = handle.getAttribute('aria-valuemax');
-    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
-    for (let i = 0; i < 4; i++) await new Promise((r) => requestAnimationFrame(r));
-    return {
-      gridWidth: Math.round(grid.getBoundingClientRect().width),
-      colMax,
-      tracks: getComputedStyle(grid).gridTemplateColumns.split(/\s+/).length,
-      spanClass: panels[0]!.getElement().className.match(/col-span-\d/)?.[0] ?? null,
-    };
+      const handle = panels[0]!.getElement().querySelector<HTMLElement>('.panel-col-resize-handle')!;
+      const colMax = handle.getAttribute('aria-valuemax');
+      handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+      for (let i = 0; i < 4; i++) await new Promise((r) => requestAnimationFrame(r));
+      return {
+        gridWidth: Math.round(grid.getBoundingClientRect().width),
+        colMax,
+        tracks: getComputedStyle(grid).gridTemplateColumns.split(/\s+/).length,
+        spanClass: panels[0]!.getElement().className.match(/col-span-\d/)?.[0] ?? null,
+        overflow: getComputedStyle(root).overflow,
+        rootHeight: root.clientHeight,
+        contentHeight: root.scrollHeight,
+      };
+    });
+
+    expect(result.gridWidth, 'wide enough that the 270px formula would claim two columns').toBeGreaterThan(560);
+    expect(result.colMax).toBe('1');
+    expect(result.spanClass).toBeNull();
+    expect(result.tracks).toBe(1);
+    expect(result.overflow).toBe('visible');
+    expect(result.rootHeight).toBeGreaterThan(720);
+    expect(result.contentHeight).toBeLessThanOrEqual(result.rootHeight + 1);
+    await page.locator('[data-panel="plugin-b"]').scrollIntoViewIfNeeded();
+    await expect(page.locator('[data-panel="plugin-b"]')).toBeInViewport();
+    await page.screenshot({ path: testInfo.outputPath(`plugin-stacked-${width}.png`) });
   });
-
-  expect(result.gridWidth, 'wide enough that the 270px formula would claim two columns').toBeGreaterThan(560);
-  expect(result.colMax).toBe('1');
-  expect(result.spanClass).toBeNull();
-  expect(result.tracks).toBe(1);
-});
+}

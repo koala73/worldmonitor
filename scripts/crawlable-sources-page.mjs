@@ -99,7 +99,7 @@ const SOURCE_DOMAIN_MATCHERS = [
   ['military', /military|defen[cs]e|gpsjam|wingbits|oref|pizzint|mirta|airplanes\.live|adsb\.lol|celestrak/],
   ['aviation', /aviation|airline|airspace|airport|flight|notam|opensky|travelpayouts/],
   ['environment', /climate|natural|earthquake|wildfire|fire-detection|weather|cyclone|disaster|air-quality|radiation|disease|eonet|firms/],
-  ['energy', /energy|fuel|gas-storage|petroleum|oil-stock|electricity|gold|commodity|mineral|jodi|eia\.gov|gie\.eu|ember|low-carbon|power-reliability|fossil/],
+  ['energy', /energy|fuel|gas-storage|petroleum|oil-stock|electricity|gold|commodity|mineral|jodi|eia\.gov|gie\.eu|ember|low-carbon|power-reliability|grid-clock|fossil/],
   ['infrastructure', /infrastructure|cyber|cable|cloudflare|service-status|pipeline|internet-outage|portwatch|chokepoint|maritime|navigational-warning|abuseipdb|abuse\.ch/],
   ['finance', /econom|market|finance|stock|crypto|coin|exchange-rate|\bfx\b|yield|central-bank|trade|supply-chain|grocery|food-prices|bigmac|debt|bis-|ecb-|eurostat|world-bank|comtrade|fao-food|treasury|fiscaldata|world-cpi|oecd|e-stat|abs\.gov\.au/],
   ['technology', /research|company|github|agentskills|technology|regulatory|tender|patent|startup|product-hunt|ossinsight|exa\.ai|firecrawl/],
@@ -110,6 +110,7 @@ const SOURCE_DOMAIN_MATCHERS = [
 // Keep ambiguous structured providers explicit so a new unmatched provider
 // fails the build instead of silently becoming "geopolitics".
 const SOURCE_DOMAIN_OVERRIDES = new Map([
+  ['fawazahmed0 currency-api', 'finance'],
   ['ammancity.gov.jo', 'finance'],
   ['data.1212.mn', 'finance'],
   ['madr.gov.dz', 'finance'],
@@ -138,6 +139,9 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['SaskAlert', 'environment'],
   ['Hyperliquid', 'finance'],
   ['Barchart', 'finance'],
+  // ICESat-2 ATL13 granule search and subsetting for Strategic Water Levels.
+  ['NASA Earthdata CMR', 'environment'],
+  ['SlideRule Earth', 'environment'],
   ['TradingView', 'finance'],
   ['api.rainviewer.com', 'environment'],
   // #6229: NVD CVE reference store for the cyber surface (scripts/seed-cve-reference.mjs).
@@ -161,6 +165,7 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['open-meteo.caseyjhand.com', 'environment'],
   ['identity.dataspace.copernicus.eu', 'environment'],
   ['sh.dataspace.copernicus.eu', 'environment'],
+  ['planetarycomputer.microsoft.com', 'environment'],
   ['British Geological Survey World Mineral Statistics', 'energy'],
   ['Bank of Canada', 'finance'],
   ['bothsidesofthetable.com', 'technology'],
@@ -177,6 +182,9 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['datalab.wto.org', 'finance'],
   ['disrupt-africa.com', 'technology'],
   ['Element84 Earth Search STAC', 'environment'],
+  ['Microsoft Planetary Computer', 'environment'],
+  ['NASA GIBS', 'environment'],
+  ['EUMETSAT EUMETView', 'environment'],
   ['Earthquakes Canada (NRCan)', 'environment'],
   ['en.sge.com.cn', 'finance'],
   ['Environment and Climate Change Canada (ECCC)', 'environment'],
@@ -268,6 +276,7 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['auth.opensky-network.org', 'OpenSky Network'],
   ['budgetlab.yale.edu', 'The Budget Lab at Yale'],
   ['celestrak.org', 'CelesTrak'],
+  ['planetarycomputer.microsoft.com', 'Microsoft Planetary Computer'],
   ['comtradeapi.un.org', 'UN Comtrade'],
   ['customer-api.wingbits.com', 'Wingbits'],
   ['data-api.ecb.europa.eu', 'European Central Bank (ECB)'],
@@ -482,14 +491,20 @@ const US_EMBASSY_COUNTRIES = new Map([
   ['co', 'Colombia'],
   ['de', 'Germany'],
   ['do', 'the Dominican Republic'],
+  ['id', 'Indonesia'],
   ['in', 'India'],
   ['it', 'Italy'],
+  ['kh', 'Cambodia'],
   ['mm', 'Myanmar'],
   ['mx', 'Mexico'],
+  ['my', 'Malaysia'],
+  ['ph', 'the Philippines'],
   ['pk', 'Pakistan'],
   ['pl', 'Poland'],
+  ['sg', 'Singapore'],
   ['th', 'Thailand'],
   ['ua', 'Ukraine'],
+  ['vn', 'Vietnam'],
 ]);
 
 const BRAND_TOKEN_OVERRIDES = new Map([

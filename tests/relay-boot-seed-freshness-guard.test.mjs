@@ -223,6 +223,22 @@ for (const [label, metaKey, intervalConst, seedFn] of SEEDERS) {
   });
 }
 
+// The air traffic loop runs on bin boundaries instead (a restart must still fill
+// the current bin). Its boot guard is the per-bin skip: a tick reads the bin's
+// stored point and returns before any OpenSky fetch when the bin is already ok.
+for (const [label, seedFn, firstFetch] of [
+  ['AirTraffic', 'seedAirTrafficPoint', 'attemptAirTrafficPoint(fetchedAt)'],
+  ['AirTrafficAdsbLol', 'seedAdsbLolTrafficPoint', 'sweepAdsbLol(t)'],
+]) {
+  test(`${label} ticks skip a bin already recorded before fetching`, () => {
+    const body = relaySource.slice(relaySource.indexOf(`async function ${seedFn}()`));
+    const skip = body.indexOf('if (isOkAirTrafficPoint(existing?.[0]?.result))');
+    const fetchAttempt = body.indexOf(firstFetch);
+    assert.ok(skip > 0 && fetchAttempt > skip, 'the skip check runs before the first fetch');
+    assert.ok(relaySource.includes(`runAirTrafficLoop(${seedFn}, '${label}').catch(`), 'the loop is started on the bin scheduler');
+  });
+}
+
 test('exactly the expected number of boot seeds are scheduled (no drift)', () => {
   const count = (relaySource.match(/startBootSeedLoop\('/g) || []).length;
   assert.equal(count, SEEDERS.length, `expected ${SEEDERS.length} gated boot seeds, found ${count}`);

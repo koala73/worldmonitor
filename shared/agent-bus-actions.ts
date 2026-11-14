@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import {
   DASHBOARD_COUNTRY_CODE_PATTERN,
   DASHBOARD_MAP_MAX_LATITUDE,

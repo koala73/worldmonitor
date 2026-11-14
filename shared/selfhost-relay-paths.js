@@ -24,6 +24,8 @@ const RELAY_PATHS = new Set([
   '/api/intelligence/v1/deduct-situation',
   '/api/intelligence/v1/get-country-intel-brief',
   '/api/intelligence/v1/get-country-coverage',
+  '/api/orbital/v1/get-point-passes',
+  '/api/orbital/v1/get-country-imagery-evidence',
   '/api/intelligence/v1/list-market-implications',
   '/api/intelligence/v1/list-wsb-tickers',
   '/api/intelligence/v1/get-regional-snapshot',

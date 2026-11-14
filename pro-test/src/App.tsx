@@ -14,8 +14,8 @@ import {
   Landmark, Fuel, Compass, Bot
 } from 'lucide-react';
 import { t } from './i18n';
-import { ensureClerk, tryResumeCheckoutFromUrl } from './services/checkout';
-import { scheduleClerkLoad, subscribeClerkLoaded } from './services/clerk';
+import { ensureClerk, showCheckoutErrorToast, tryResumeCheckoutFromUrl } from './services/checkout';
+import { scheduleClerkLoad, SITE_DATA_BLOCKED_MESSAGE, SiteDataBlockedError, subscribeClerkLoaded } from './services/clerk';
 import { startClerkUserStateSync, type ClerkUserState } from './services/clerk-user-state';
 import { hasLiveClientSession } from './services/clerk-session';
 import { createTimeoutSignal, isTimeoutOrAbortError } from './services/timeout-signal';
@@ -54,10 +54,8 @@ import { readMcpAttributionFromSearch } from '../../shared/mcp-attribution';
 import { LegalFooterNav } from './components/LegalFooterNav';
 import { PressNav } from './components/PressNav';
 import { ABOUT_DOCS_PATH } from '../../shared/press';
-import {
-  isDesktopCheckoutHandoff,
-  parseMissionPreviewAttributionFromSearch,
-} from '../../shared/checkout-attribution';
+import { parseMissionPreviewAttributionFromSearch } from '../../shared/checkout-attribution';
+import { parseDesktopCheckoutHandoff } from '../../shared/desktop-checkout-handoff';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
@@ -156,6 +154,10 @@ function appendRefToUrl(url: string, refCode: string | undefined): string {
 
 function openSignIn(): void {
   ensureClerk().then(c => c.openSignIn()).catch((err) => {
+    if (err instanceof SiteDataBlockedError) {
+      showCheckoutErrorToast(SITE_DATA_BLOCKED_MESSAGE);
+      return;
+    }
     console.error('[auth] Failed to open sign in:', err);
     Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'open-sign-in' } });
   });
@@ -184,7 +186,9 @@ function useClerkUser(): ClerkUserState {
       scheduleClerkLoad,
       onLoadError(err) {
         console.error('[auth] Failed to load Clerk for nav auth state:', err);
-        Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'load-clerk-for-nav' } });
+        if (!(err instanceof SiteDataBlockedError)) {
+          Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'load-clerk-for-nav' } });
+        }
         setState({ user: null, isLoaded: true, signedIn: false });
       },
     });
@@ -1385,7 +1389,7 @@ export default function App() {
           refCode={getRefCode()}
           attributionSource={getMcpAttributionSource()}
           checkoutAttribution={parseMissionPreviewAttributionFromSearch(window.location.search) ?? undefined}
-          desktopHandoff={isDesktopCheckoutHandoff(window.location.search)}
+          desktopHandoff={parseDesktopCheckoutHandoff(window.location.search) ?? undefined}
         />
         <LazySectionBoundary><Suspense fallback={null}><PlanComparisonTable /></Suspense></LazySectionBoundary>
         <ApiSection />

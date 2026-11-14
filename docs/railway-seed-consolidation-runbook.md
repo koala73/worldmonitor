@@ -602,6 +602,11 @@ recurrence alerts again. An unreadable or corrupt record opens nothing and is
 left for the next sweep. `?history=1` keeps the incident log, deduplicated by
 its own signature (`health:failure-log-sig`).
 
+Food-price `STALE_CONTENT` waits 30 days past its content limit before it
+opens a Sentry issue, because government publishers routinely run late
+(`GOVERNMENT_RELEASE_KEYS` in `api/health.js`). It still shows in health and on
+the panel at the limit.
+
 Statuses ending in `_ON_DEMAND`, content-age pre-warnings, and entries inside a
 bounded grace window (`pending`) are not actionable and stay out of both
 `dataStatus` and incidents.
@@ -1089,10 +1094,21 @@ costs nothing. One service carries all three heavy members instead of three
 | **Start command** | `node scripts/seed-bundle-static-ref-heavy.mjs` |
 | **Cron schedule** | `0 4 * * *` (daily 04:00 UTC, staggered off leftover's 03:00) |
 | **Lifecycle** | active — service `6285c37b-1327-46f1-bfd0-7454612764fb`, provisioned 2026-08-19, first tick published `bundle:heartbeat:static-ref-heavy` at 2026-08-20T04:01:04Z |
-| **Members** | Supply-Vulnerability (160s / daily), Mineral-Production (180s / 60d), Arms-Suppliers (370s / 14d), and Military-Bases (400s / 30d), ordered by the durable turn policy below |
+| **Members** | Supply-Vulnerability (160s / daily), CII-Structural-Prior (90s / 30d, pending owner deployment), Mineral-Production (180s / 60d), Arms-Suppliers (370s / 14d), and Military-Bases (400s / 30d), ordered by the durable turn policy below |
 | **Wall-time budget** | `maxBundleMs: 570_000` |
 | **Required variable** | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `CLOUDFLARE_R2_ACCOUNT_ID` and one of `CLOUDFLARE_R2_TOKEN` / `CLOUDFLARE_API_TOKEN`. `USPTO_API_KEY` stays on leftover. The R2 pair is NOT optional here: `scripts/data/military-bases-final.json` is gitignored and the service has no volume, so without it Military-Bases falls back to the published version and exits non-zero once that is past its 30-day interval (#6845). |
 | **Heartbeat** | `bundle:heartbeat:static-ref-heavy` |
+
+The proposed CII prior section follows Supply-Vulnerability in the cadence class
+that leads every second claimed turn. Their combined reservations are 270 seconds,
+including kill grace, within the 570-second bundle budget. The heavy-member
+rotation remains unchanged. The prior is pinned to WGI data year 2025, has a
+400-day TTL, and refreshes every 30 days. Owner deployment must add
+`scripts/seed-cii-structural-prior.mjs` and `scripts/_china-exchange-transport.mjs`
+to the live watch patterns, as recorded in `scripts/railway-services.json`.
+The live service configuration was checked read-only on 2026-11-12; no live
+setting was changed. After deployment, verify the standalone `ciiStructuralPrior`
+health check, its 31-country coverage, and the distinct seed-meta record.
 
 Supply-Vulnerability is a Redis-only projection with a 170s reservation,
 including kill grace. It does not always run first: Supply-Vulnerability leads
@@ -1161,9 +1177,19 @@ any red check anywhere strands this service's builds.
 | **Watch paths** | See `scripts/railway-services.json` (exact runtime closure; run `node scripts/audit-railway-watch-paths.mjs`) |
 | **Replaces** | 2 services |
 | **Net savings** | 1 slot |
-| **Members** | Correlation (5min), Market-Alert-Ledger (5min), Cross-Source Signals (15min), Cross-Strait Activity (3h), China Decision Signals (15min), Regional Snapshots (6h) |
+| **Members** | CII Economic Stress (1h), Correlation (5min), Market-Alert-Ledger (5min), Cross-Source Signals (15min), US States Grid Disruption Clock (10min), Cross-Strait Activity (3h), China Decision Signals (15min), Regional Snapshots (6h), Tension Evidence (15min) |
 | **Required env** | `JAPAN_MOD_PROXY_URL` or `PROXY_URL` (Cross-Strait Activity's Japan MOD exit; the section declares an any-of group, so either satisfies it and only an environment with neither fails as `CONFIG_ERROR`) |
-| **Note** | Cross-Strait Activity is the only direct external-source member; it uses bounded MND/Japan MOD requests and a 3h freshness gate. China Decision Signals validates and republishes the bounded public composition after reading its domain lanes. Other members are Redis-derived. The bundle enforces a 570s wall-time admission budget so a non-fitting due section defers before Railway's 10-minute container limit. |
+| **Note** | US States Grid Disruption Clock polls public outage and warning feeds. Cross-Strait Activity uses bounded MND/Japan MOD requests and a 3h freshness gate. China Decision Signals validates and republishes the public composition from its domain lanes. The bundle enforces a 570s wall-time admission budget so a non-fitting due section defers before Railway's 10-minute container limit. |
+
+CII Economic Stress reads six existing Redis inputs within a 30s section budget.
+The currency member needs the cleaned `daily90` block from `seed-fx-yoy`, which
+runs once a day. After a change to that block, run the FX seeder once before
+judging coverage: until it runs, every currency reads `insufficient-history`
+and the producer measures 22. The expected count is 25 of 31; it is 24 when
+the second exchange-rate source is unavailable, because Qatar then has no
+usable member.
+Apply the registry's producer and Upstash-helper watch paths to this service.
+No extra upstream credentials or direct provider fetches are introduced.
 
 #### Staged correlation runtime modes
 
@@ -1284,7 +1310,7 @@ Recovery is accepted only when:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 6 services |
 | **Net savings** | 5 slots |
-| **Members** | Zone Normals (monthly, skips ~359/360), Anomalies (3h, depends on zone-normals), Disasters (6h), Ocean Ice (daily), CO2 Monitoring (3 days) |
+| **Members** | Zone Normals (monthly, skips ~359/360), Anomalies (3h, depends on zone-normals), Disasters (6h), Ocean Ice (daily), CO2 Monitoring (3 days), Orbital Catalog (2h, so every 3h tick), Orbital Sites (daily), Reservoir Levels (daily) |
 | **Note** | Zone-normals runs before anomalies (dependency ordering). Natural Events left the bundle on 2026-11-07: the standalone `seed-natural-events` service (`*/30`) is its sole producer. |
 
 ### Bundle 7: seed-bundle-energy-sources
@@ -1402,7 +1428,7 @@ last-good observations with an unavailable source status.
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 4 services |
 | **Net savings** | 3 slots |
-| **Members** | Climate News (30min), USA Spending (hourly), Global Tenders (hourly), UCDP Events (6h), WB Indicators (daily) |
+| **Members** | Climate News (30min), USA Spending (hourly), Global Tenders (daily), UCDP Events (6h), WB Indicators (daily) |
 | **Note** | Existing members are backups for ais-relay inline loops/child spawns; Global Tenders is hosted directly in this bundle. Each seed's freshness gate skips when the canonical data is already fresh. |
 
 The World Bank catalogue uses `IP.TMK.RSCT` and `IP.TMK.NRCT` for resident

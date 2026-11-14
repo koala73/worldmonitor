@@ -2,8 +2,8 @@ import type { MapLayers } from '@/types';
 import { DECK_POINT_LAYER_CATEGORY, categoryGlyphForLayer } from '@/config/map-layer-glyphs';
 
 export interface CategoryGlyphAtlas {
-  /** PNG data URL holding one badge cell per category. */
-  url: string;
+  /** Canvas holding one badge cell per category. deck.gl uploads it directly; a URL would be fetched. */
+  image: HTMLCanvasElement;
   mapping: Record<string, { x: number; y: number; width: number; height: number; anchorY: number; mask: false }>;
 }
 
@@ -54,10 +54,6 @@ export function getCategoryGlyphAtlas(): CategoryGlyphAtlas | null {
     mapping[key] = { x, y, width: CELL, height: CELL, anchorY: CELL / 2, mask: false };
   });
 
-  try {
-    cached = { url: canvas.toDataURL('image/png'), mapping };
-  } catch {
-    cached = null;
-  }
+  cached = { image: canvas, mapping };
   return cached;
 }

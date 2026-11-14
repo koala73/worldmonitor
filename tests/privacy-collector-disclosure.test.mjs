@@ -57,7 +57,7 @@ function collectorHosts() {
   const hosts = new Set();
   for (const relativePath of COLLECTOR_CALL_SITES) {
     const text = read(relativePath);
-    for (const [, host] of text.matchAll(/https:\/\/([a-z0-9.-]+)\/(?:script\.js|[A-Za-z0-9]+\.js)/g)) {
+    for (const [, host] of text.matchAll(/https:\/\/([a-z0-9.-]+)\/(?:script\.js|[A-Za-z0-9][A-Za-z0-9.-]*\.js)/g)) {
       hosts.add(host);
     }
   }

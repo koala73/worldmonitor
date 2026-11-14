@@ -65,6 +65,10 @@ export interface EnergyPrice {
   unit: string;
   change: number;
   priceAt: number;
+  priceSource?: string;
+  priceBasis?: string;
+  frequency?: string;
+  stale?: boolean;
 }
 
 export interface GetMacroSignalsRequest {

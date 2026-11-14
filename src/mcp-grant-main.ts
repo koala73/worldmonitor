@@ -1,10 +1,12 @@
+import './bootstrap/abort-signal-fallbacks';
+import './bootstrap/dom-fallbacks';
 import { createRequestTimeoutSignal } from '@/services/timeout-signal';
 /**
  * Apex `/mcp-grant` page bootstrap.
  *
  * Clerk-protected consent screen for the cross-subdomain Pro MCP flow.
  * The user lands here from the api-subdomain consent page (U4 will add
- * a "Sign in with WorldMonitor Pro" CTA on `api/oauth/authorize.js`).
+ * a "Sign in to World Monitor" CTA on `api/oauth/authorize.js`).
  *
  * Flow on this page:
  *   1. Boot Clerk; if signed-out, show the sign-in view and open the modal.
@@ -222,6 +224,13 @@ function promptSignIn(): void {
   });
   signInWatch = watch;
   openSignIn();
+}
+
+// Plan offers start hidden and stay hidden for ChatGPT: OpenAI's app review
+// rejects them there (api/oauth/authorize.js adds surface=chatgpt).
+function revealPlanOffers(): void {
+  if (new URLSearchParams(window.location.search).get('surface') === 'chatgpt') return;
+  document.querySelectorAll<HTMLElement>('[data-plan-offer]').forEach((el) => { el.hidden = false; });
 }
 
 function getNonceFromQuery(): string | null {
@@ -493,6 +502,7 @@ async function onAuthorizeClick(nonce: string): Promise<void> {
 }
 
 async function bootstrap(): Promise<void> {
+  revealPlanOffers();
   const nonce = getNonceFromQuery();
   if (!nonce) {
     showErrorView('Missing authorization parameter. Start over from your MCP client.', 'Missing authorization parameter');

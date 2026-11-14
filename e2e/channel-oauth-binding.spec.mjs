@@ -4,6 +4,9 @@ import { createChannelOAuthState, callbackMatchesBrowser } from '../server/_shar
 import bindHandler from '../api/channel-oauth-bind.ts';
 
 const api = 'https://api.worldmonitor.app';
+// Previews are trusted only as their own deployment (api/_cors.js), so run as one.
+process.env.VERCEL_ENV = 'preview';
+process.env.VERCEL_BRANCH_URL = 'worldmonitor-git-review-eliewm.vercel.app';
 for (const provider of ['slack', 'discord']) {
   for (const origin of ['https://tech.worldmonitor.app', 'https://worldmonitor-git-review-eliewm.vercel.app']) {
     test(`${provider} binds a top-level popup from ${origin}`, async ({ browser }) => {

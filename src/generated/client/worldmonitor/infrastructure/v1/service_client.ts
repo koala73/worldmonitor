@@ -107,6 +107,22 @@ export interface ReverseGeocodeResponse {
   error: string;
 }
 
+export interface SearchPlaceRequest {
+  q: string;
+}
+
+export interface SearchPlaceResponse {
+  places: PlaceMatch[];
+  error: string;
+}
+
+export interface PlaceMatch {
+  name: string;
+  lat: number;
+  lon: number;
+  kind: string;
+}
+
 export interface GetBootstrapDataRequest {
   tier: string;
   keys: string[];
@@ -403,6 +419,31 @@ export class InfrastructureServiceClient {
     }
 
     return await resp.json() as ReverseGeocodeResponse;
+  }
+
+  async searchPlace(req: SearchPlaceRequest, options?: InfrastructureServiceCallOptions): Promise<SearchPlaceResponse> {
+    let path = "/api/infrastructure/v1/search-place";
+    const params = new URLSearchParams();
+    if (req.q != null && req.q !== "") params.set("q", String(req.q));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as SearchPlaceResponse;
   }
 
   async getBootstrapData(req: GetBootstrapDataRequest, options?: InfrastructureServiceCallOptions): Promise<GetBootstrapDataResponse> {

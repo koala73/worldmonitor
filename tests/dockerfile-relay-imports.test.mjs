@@ -58,6 +58,12 @@ describe('Dockerfile.relay — transitive-import closure', () => {
     );
   });
 
+  it('copies the UCDP projection helper that ais-relay loads dynamically', () => {
+    // seedUcdpEvents() imports it inside the function, which the BFS below does
+    // not follow. A missing file fails only the projection write, after deploy.
+    assert.ok(copied.has('scripts/_ucdp-dashboard.mjs'));
+  });
+
   it('copies the PizzINT history helper required by the relay', () => {
     assert.ok(copied.has('scripts/shared/pizzint-history.cjs'));
   });

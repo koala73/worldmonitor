@@ -8,6 +8,7 @@ import {
   MCP_DEFAULT_BURST_PER_MINUTE,
   PRODUCTION_DEPS,
   resolveAuthContext,
+  mcpAnonymousRefusalResponse,
   runContextPreChecks,
   validateProMcpAuthorization,
   wwwAuthHeader,
@@ -22,13 +23,12 @@ import {
   MODERN_SERVER_INSTRUCTIONS,
   negotiateProtocolVersion,
   SERVER_INSTRUCTIONS,
-  SERVER_NAME,
-  SERVER_VERSION,
+  SERVER_INFO,
 } from './constants';
 import { dispatchToolsCall } from './dispatch';
-import { buildPromptResponse, PROMPT_LIST_RESPONSE } from './prompts/index';
-import { CHATGPT_TOOL_LIST_RESPONSE, FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE } from './registry/index';
-import { applyChatGptCommercePolicy, isChatGptHost } from './host-policy';
+import { buildPromptResponse, PROMPT_LIST_RESPONSE, WITHOUT_SUMMARY_TOOLS_PROMPT_LIST_RESPONSE } from './prompts/index';
+import { CHATGPT_TOOL_LIST_RESPONSE, FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE, TRAVEL_RISK_TOOL_NAMES } from './registry/index';
+import { applyChatGptCommercePolicy, applyViewDomainPolicy, CHATGPT_HIDDEN_TOOLS, declaredClientName, isChatGptHost, mintSessionId } from './host-policy';
 import {
   ACCOUNT_RESOURCE_LIST_RESPONSE,
   buildAccountAllowanceResourceResponse,
@@ -242,7 +242,11 @@ function authRequiredResponse(id: unknown, resourceMetadataUrl: string, corsHead
 //
 // `initialize` advertises this object as is; `server/discover` advertises it
 // minus `logging`, which the modern era does not serve.
-function serverCapabilities() {
+//
+// ChatGPT gets no skills extension. The skills are recipes for API-key and
+// agent clients: they link the plans page and name tools ChatGPT does not
+// have (host-policy.ts).
+function serverCapabilities({ skills = true }: { skills?: boolean } = {}) {
   return {
     tools: {},
     logging: {},
@@ -250,13 +254,13 @@ function serverCapabilities() {
     resources: { subscribe: false, listChanged: false },
     extensions: {
       'io.modelcontextprotocol/ui': {},
-      'io.modelcontextprotocol/skills': {},
+      ...(skills ? { 'io.modelcontextprotocol/skills': {} } : {}),
     },
   };
 }
 
-function modernServerCapabilities() {
-  const { logging: _logging, ...capabilities } = serverCapabilities();
+function modernServerCapabilities(options: { skills?: boolean } = {}) {
+  const { logging: _logging, ...capabilities } = serverCapabilities(options);
   return capabilities;
 }
 
@@ -703,7 +707,8 @@ async function handleAuthenticatedSseReplay(
 //
 // A plain GET to `/mcp` itself is NOT an MCP protocol handshake (that stays
 // POST); it is a human or a crawler opening the endpoint in a browser. They
-// get the human-readable server guide (`/mcp-server.md`) instead of the
+// get HTML setup instructions when explicitly accepting HTML, otherwise the
+// server guide (`/mcp-server.md`), instead of the
 // spec-correct 405 that Google Search Console reports as "cannot access".
 // SSE-flavored GETs and GETs with Last-Event-ID still fall through to the
 // normal 405 / replay paths so Streamable HTTP transport semantics are
@@ -749,9 +754,10 @@ const DISCOVERY_VARY = 'Accept, Last-Event-ID, Origin, MCP-Protocol-Version';
 const STATIC_ASSET_FETCH_TIMEOUT_MS = 5_000;
 const STATIC_ASSET_USER_AGENT = 'WorldMonitor-MCP/1.0 (+https://worldmonitor.app)';
 
-// Module-scope caches: both documents are static assets, immutable per deployment.
+// Module-scope caches: discovery documents are static assets, immutable per deployment.
 let serverCardCache: string | null = null;
 let mcpGuideCache: string | null = null;
+let mcpSetupCache: string | null = null;
 
 // Self-fetch a static asset off our own deployment. Redirects are followed:
 // `/mcp-server.md` is NOT in the Cloudflare apex→www exemption list
@@ -814,6 +820,36 @@ async function serveServerCard(req: Request, corsHeaders: Record<string, string>
 // depend on that. The cost is one function invocation per crawler GET — the
 // cacheable copy of this document still lives at `/mcp-server.md`.
 async function serveMcpGuide(req: Request, corsHeaders: Record<string, string>, headOnly = false): Promise<Response> {
+  // Require an explicit HTML media type: wildcard and machine discovery
+  // requests retain their Markdown representation. SSE/replay/auth probes
+  // are handled before reaching this helper.
+  const wantsHtml = (req.headers.get('accept') ?? '').split(',').some((entry) => {
+    const [type, ...params] = entry.split(';').map((part) => part.trim().toLowerCase());
+    if (type !== 'text/html') return false;
+    const quality = params.find((part) => part.startsWith('q='));
+    return !quality || (Number.isFinite(Number(quality.slice(2))) && Number(quality.slice(2)) > 0);
+  });
+  if (wantsHtml) {
+    if (mcpSetupCache === null) mcpSetupCache = await fetchStaticAsset(req, '/mcp-setup.html');
+    if (mcpSetupCache === null) {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          ...corsHeaders,
+          Location: 'https://www.worldmonitor.app/docs/mcp-quickstart',
+          Vary: DISCOVERY_VARY,
+        },
+      });
+    }
+    return new Response(headOnly ? null : mcpSetupCache, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/html; charset=utf-8',
+        Vary: DISCOVERY_VARY,
+        Link: MCP_CANONICAL_LINK,
+      },
+    });
+  }
   if (mcpGuideCache === null) {
     const text = await fetchStaticAsset(req, '/mcp-server.md');
     if (text === null) {
@@ -953,7 +989,7 @@ async function mcpHandlerInner(
   // by the request's own path — never by a query parameter, which the caller
   // controls. `/mcp` and the well-known aliases are rewritten to `/api/mcp`,
   // and this function still observes the original path: the dual-role branches
-  // below serve markdown at `/mcp` and the JSON card at `/.well-known/mcp` by
+  // below serve the guide at `/mcp` and the JSON card at `/.well-known/mcp` by
   // reading that pathname. The aliases sit under neither transport path, so
   // they take the origin-wide document, which covers every path on the host.
 
@@ -995,7 +1031,7 @@ async function mcpHandlerInner(
 
   if (anonymousAuthProbe) {
     usage.phase = 'auth';
-    return authRequiredResponse(null, resourceMetadataUrl, corsHeaders);
+    return mcpAnonymousRefusalResponse(req, resourceMetadataUrl, corsHeaders, null, { handshake: true });
   }
 
   if (req.method === 'HEAD') {
@@ -1031,7 +1067,7 @@ async function mcpHandlerInner(
   // Discovery GETs. A GET with no `Last-Event-ID` and no `text/event-stream`
   // Accept is not a transport operation: on the well-known aliases it is a
   // manifest fetch (JSON server card), and on `/mcp` itself it is a human or
-  // crawler opening the endpoint (the markdown server guide). Both are
+  // crawler opening the endpoint (HTML setup or the Markdown server guide). Both are
   // answered BEFORE the transport GET branch, so the standalone-stream 405 and
   // the authenticated replay path below are untouched.
   if (
@@ -1056,8 +1092,8 @@ async function mcpHandlerInner(
 
   // GET has three roles on the MCP endpoint:
   //   1. A plain GET (no `text/event-stream` Accept, no `Last-Event-ID`) is a
-  //      discovery read and has already been answered above — the markdown
-  //      server guide at `/mcp`, the JSON server card at the well-known
+  //      discovery read and has already been answered above — the HTML setup
+  //      or Markdown server guide at `/mcp`, the JSON server card at the well-known
   //      aliases. The MCP handshake itself remains POST-only.
   //   2. A GET asking for `text/event-stream` or carrying `Last-Event-ID` is
   //      either a client opening the OPTIONAL server->client SSE stream of the
@@ -1159,6 +1195,7 @@ async function mcpHandlerInner(
     ? ((body.params as { name?: unknown } | null)?.name)
     : undefined;
   setUsageRpc(usage, method, toolCallName);
+  usage.clientName = declaredClientName(body);
 
   if (aliasRequest) {
     usage.phase = 'migration';
@@ -1248,7 +1285,9 @@ async function mcpHandlerInner(
   const challengeAnonymous = (method === 'initialize' && (modernEra || !isGenericHttpClient(req)))
     || (modernEra && !isFreeTierToolCall && uiResourceReadUri === null);
   if (challengeAnonymous && !hasCredentials(req) && !WELL_KNOWN_MCP_PATHS.has(requestPathname)) {
-    const denied = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders, id);
+    const denied = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders, id, {
+      handshake: method === 'initialize',
+    });
     if (!denied.ok) {
       usage.phase = 'auth';
       return denied.response;
@@ -1264,6 +1303,7 @@ async function mcpHandlerInner(
   let burstPerMinute: number | undefined;
   let freeAccountAllowance = false;
   let planKey: string | undefined;
+  let travelRiskAssessment = false;
   if (isPublicMcpMethod(method, modernEra) || isAnonResourceRead || isFreeTierToolCall) {
     if (hasCredentials(req)) {
       // Credentials presented on a public method are still validated so a
@@ -1327,7 +1367,14 @@ async function mcpHandlerInner(
     }
     context = auth.context;
     setUsageContext(usage, context);
-    const preCheck = await runContextPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx, id);
+    // A cached entitlement written before the flag existed would read as "not
+    // included" for up to its TTL, so only a call to the tool that needs the
+    // flag pays for a refetch of such an entry.
+    const requireTravelRiskShape = typeof toolCallName === 'string' && TRAVEL_RISK_TOOL_NAMES.has(toolCallName);
+    const preCheck = await runContextPreChecks(
+      context, deps, resourceMetadataUrl, corsHeaders, ctx, id,
+      requireTravelRiskShape ? { requireTravelRiskShape } : {},
+    );
     if (!preCheck.ok) {
       usage.phase = preCheck.response.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
       return preCheck.response;
@@ -1336,6 +1383,7 @@ async function mcpHandlerInner(
     burstPerMinute = preCheck.burstPerMinute;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
     planKey = preCheck.planKey;
+    travelRiskAssessment = preCheck.travelRiskAssessment === true;
     // Only a data-bearing resources/read spends an Enterprise contract
     // account's burst (shared with its REST requests); the account status
     // read and unsupported methods stay on the per-user limiter. tools/call
@@ -1356,9 +1404,14 @@ async function mcpHandlerInner(
   // so its answer is never framed as a replayable SSE stream or stored for
   // Last-Event-ID replay. It goes out as the plain JSON response, which
   // mcpHandler shapes and, for tools/call, frames as session-free SSE.
-  const respond = (response: Response): Promise<Response> => modernEra
-    ? Promise.resolve(response)
-    : maybeStreamJsonRpcResponse(req, sseOwner, response);
+  // A travel-plan draft is streamed live but never kept for Last-Event-ID
+  // replay: the server holds no copy of a trip (#10451).
+  const noReplay = method === 'tools/call'
+    && TRAVEL_RISK_TOOL_NAMES.has((body.params as { name?: unknown } | undefined)?.name as string);
+  const respond = async (response: Response): Promise<Response> => {
+    const shaped = await applyViewDomainPolicy(req, method, response, body);
+    return modernEra ? shaped : maybeStreamJsonRpcResponse(req, noReplay ? null : sseOwner, shaped);
+  };
 
   if (['tools/list', 'prompts/list', 'resources/list', 'resources/templates/list'].includes(method)) {
     const cursor = (body.params as { cursor?: unknown } | undefined)?.cursor;
@@ -1374,7 +1427,7 @@ async function mcpHandlerInner(
   if (modernEra && method === 'server/discover') {
     return respond(rpcOk(id, {
       supportedVersions: allSupportedProtocolVersionsNewestFirst(),
-      capabilities: modernServerCapabilities(),
+      capabilities: modernServerCapabilities({ skills: !isChatGptHost(req) }),
       instructions: isChatGptHost(req) ? CHATGPT_MODERN_SERVER_INSTRUCTIONS : MODERN_SERVER_INSTRUCTIONS,
     }, corsHeaders));
   }
@@ -1387,7 +1440,7 @@ async function mcpHandlerInner(
   // Dispatch
   switch (method) {
     case 'initialize': {
-      const sessionId = crypto.randomUUID();
+      const sessionId = mintSessionId((body.params as { clientInfo?: unknown } | null | undefined)?.clientInfo);
       // Bind the server-minted session before content negotiation can return a
       // JSON response. Otherwise a different principal that learns the session
       // id can make the first SSE write and claim the replay bucket.
@@ -1413,8 +1466,8 @@ async function mcpHandlerInner(
       });
       return respond(rpcOk(id, {
         protocolVersion: negotiatedVersion,
-        capabilities: serverCapabilities(),
-        serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
+        capabilities: serverCapabilities({ skills: !isChatGptHost(req) }),
+        serverInfo: SERVER_INFO,
         instructions: isChatGptHost(req) ? CHATGPT_SERVER_INSTRUCTIONS : SERVER_INSTRUCTIONS,
       }, { 'Mcp-Session-Id': sessionId, ...corsHeaders }));
     }
@@ -1448,6 +1501,7 @@ async function mcpHandlerInner(
         usage,
         // Supported versions are YYYY-MM-DD, so string order is date order.
         protocolVersion !== null && protocolVersion >= '2025-11-25',
+        travelRiskAssessment,
       );
       classifyDispatchedUsage(usage, dispatched);
       return respond(dispatched);
@@ -1458,20 +1512,23 @@ async function mcpHandlerInner(
     // defeats the prompt-discovery point), but the per-minute rate limit
     // applied above still gates abusive loops.
     case 'prompts/list':
-      return respond(rpcOk(id, { prompts: PROMPT_LIST_RESPONSE }, corsHeaders));
+      return respond(rpcOk(id, { prompts: isChatGptHost(req) ? WITHOUT_SUMMARY_TOOLS_PROMPT_LIST_RESPONSE : PROMPT_LIST_RESPONSE }, corsHeaders));
     case 'prompts/get': {
       const params = body.params as { name?: unknown; arguments?: unknown } | null;
       if (!params || typeof params.name !== 'string') {
         return respond(rpcError(id, -32602, 'Invalid params: missing prompt name', corsHeaders));
       }
-      const built = buildPromptResponse(params.name, params.arguments);
+      const built = buildPromptResponse(params.name, params.arguments, isChatGptHost(req) ? { hiddenTools: CHATGPT_HIDDEN_TOOLS } : {});
       if (!built.ok) return respond(rpcError(id, built.code, built.message, corsHeaders));
       return respond(rpcOk(id, { description: built.description, messages: built.messages }, corsHeaders));
     }
     case 'skills/list':
-      return respond(buildSkillsListResponse(id, body.params, corsHeaders));
     case 'skills/get':
-      return respond(buildSkillsGetResponse(id, body.params, corsHeaders));
+      // Not offered to ChatGPT (serverCapabilities).
+      if (isChatGptHost(req)) return respond(rpcError(id, -32601, `Method not found: ${method}`, corsHeaders));
+      return respond(method === 'skills/list'
+        ? buildSkillsListResponse(id, body.params, corsHeaders)
+        : buildSkillsGetResponse(id, body.params, corsHeaders));
     // Resources split by data sensitivity. resources/list + the new
     // resources/templates/list are metadata-class — public catalog-enumeration
     // methods (in PUBLIC_MCP_METHODS, quota-exempt, anon-rate-limited) that
@@ -1501,7 +1558,7 @@ async function mcpHandlerInner(
       return respond(rpcOk(id, { resourceTemplates: RESOURCE_TEMPLATE_LIST_RESPONSE }, corsHeaders));
     case 'resources/read':
       if (isSkillResourceRead) {
-        if (!skillResourceReadUri) {
+        if (!skillResourceReadUri || isChatGptHost(req)) {
           return respond(rpcError(
             id,
             -32602,
@@ -1521,7 +1578,7 @@ async function mcpHandlerInner(
       // probe) is likewise served anonymously + quota-exempt via its direct
       // reader — no data, no dispatchToolsCall, no Pro reservation.
       if (isPublicResourceRead) {
-        return respond(await buildPublicResourceResponse(body, corsHeaders));
+        return respond(await buildPublicResourceResponse(body, corsHeaders, { informOnly: isChatGptHost(req) }));
       }
       // Account allowance status is authenticated but quota-exempt. The gated
       // branch above already resolved identity, durable token validity, and the

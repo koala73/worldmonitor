@@ -2445,7 +2445,8 @@ export function computeRecordCount({ opts = {}, data, payloadBytes = 0, topicArt
  * Precision is the ONLY safe lever here. Downsampling was measured and REJECTED: miniSparkline
  * autoscales each series to its own min/max, so dropping any extreme rescales the whole curve
  * — 96-point resampling moved the median series 3-4px and cost USDTRY=X 40% of its vertical
- * range. See tests/sparkline-precision.test.mjs.
+ * range. See tests/sparkline-precision.test.mjs. Commodity sparklines use 5-minute bars to
+ * fix their time window (scripts/shared/quote-sparkline.cjs), not to save bytes.
  */
 export const SPARKLINE_SIGNIFICANT_DIGITS = 7;
 
@@ -3186,6 +3187,19 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         await exitAfterTelemetryFlush(0);
       }
 
+      // A seeder that reached its upstream but was refused, or received nothing it may
+      // publish, declares `publishBlocked` (the reason) on that run. Last-good stays,
+      // seed-meta keeps its clock, and the bundle runner reports PUBLISH_BLOCKED, not ok.
+      if (data?.publishBlocked) {
+        console.warn(
+          `  PUBLISH BLOCKED: ${data.publishBlocked} — published nothing, `
+          + (preserved ? 'last-good TTL extended.' : 'and there is no complete last-good to preserve.'),
+        );
+        console.log(`\n=== Done (${Math.round(durationMs)}ms, PUBLISH BLOCKED) ===`);
+        await releaseLock(`${domain}:${resource}`, runId);
+        await exitAfterTelemetryFlush(PUBLISH_BLOCKED_EXIT_CODE);
+      }
+
       if (!preserved) {
         console.error(`  FAILURE: declareRecords returned 0 and last-good preservation failed — one or more keys are missing or could not be extended`);
         console.log(`\n=== Done (${Math.round(durationMs)}ms, RETRY FAILED) ===`);
@@ -3204,7 +3218,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         envelopeMeta,
         maxPayloadBytes,
         beforePublish: beforePublish
-          ? () => beforePublish(data, { canonicalKey, ttlSeconds, runId })
+          ? () => beforePublish(data, { canonicalKey, ttlSeconds, runId, lockFence })
           : undefined,
         publishAtomically: publishAtomically
           ? (publishContext) => publishAtomically(data, { ...publishContext, runId })

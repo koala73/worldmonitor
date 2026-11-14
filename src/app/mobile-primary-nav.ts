@@ -12,7 +12,7 @@ import {
   type OverlayCloseOrigin,
   type OverlayId,
 } from '@/utils/overlay-history';
-import { reconcileOverlayForTab } from '@/app/mobile-overlay-reconcile';
+import { overlayTab, reconcileOverlayForTab } from '@/app/mobile-overlay-reconcile';
 
 type MobilePrimaryNavCallbacks = {
   openSearch(options: { replaceOverlayId?: OverlayId; historyPending: true }): void;
@@ -41,8 +41,8 @@ export class MobilePrimaryNav {
     this.setupTabBar();
     this.setupMenu();
     this.unsubscribeHistory = overlayHistory.subscribe((top) => {
-      if (top === 'search' || top === 'search-pending') this.setActive('search');
-      else if (top === 'menu' || top === 'region' || top === 'settings' || top === 'settings-pending') this.setActive('more');
+      const tab = overlayTab(top);
+      if (tab) this.setActive(tab);
       else if (!top && (this.activeTab === 'search' || this.activeTab === 'more')) this.setActive('today');
     });
   }

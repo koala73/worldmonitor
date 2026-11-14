@@ -95,7 +95,7 @@ function canonicalGdeltArticleUrl(value) {
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return '';
     url.hash = '';
     const params = [...url.searchParams.entries()].sort(
-      ([keyA, valueA], [keyB, valueB]) => keyA.localeCompare(keyB) || valueA.localeCompare(valueB),
+      ([keyA, valueA], [keyB, valueB]) => keyA.localeCompare(keyB, 'en-US') || valueA.localeCompare(valueB, 'en-US'),
     );
     url.search = '';
     for (const [key, paramValue] of params) url.searchParams.append(key, paramValue);

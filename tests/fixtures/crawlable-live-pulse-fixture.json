@@ -8084,6 +8084,100 @@
           "updatedAt": "2026-01-15T03:01:30.380Z"
         }
       ]
+    },
+    "taiwan-strait-tensions": {
+      "state": "ready",
+      "eventsTotal": "66",
+      "fatalities": "0",
+      "politicalViolenceEvents": "0",
+      "referencePeriod": "2025-12-07",
+      "asOf": "2026-01-15T02:47:56.374Z",
+      "missingCountries": [],
+      "rows": [
+        {
+          "code": "TW",
+          "name": "Taiwan",
+          "events": 66,
+          "fatalities": 0,
+          "political": 0,
+          "demonstrations": 66,
+          "referencePeriod": "2025-12-07",
+          "updatedAt": "2026-01-15T02:47:56.374Z"
+        }
+      ]
+    },
+    "venezuela-crisis": {
+      "state": "ready",
+      "eventsTotal": "328",
+      "fatalities": "18",
+      "politicalViolenceEvents": "22",
+      "referencePeriod": "2025-12-07",
+      "asOf": "2026-01-15T02:47:56.374Z",
+      "missingCountries": [],
+      "rows": [
+        {
+          "code": "VE",
+          "name": "Venezuela",
+          "events": 328,
+          "fatalities": 18,
+          "political": 22,
+          "demonstrations": 306,
+          "referencePeriod": "2025-12-07",
+          "updatedAt": "2026-01-15T02:47:56.374Z"
+        }
+      ]
+    },
+    "india-pakistan-conflict": {
+      "state": "ready",
+      "eventsTotal": "3,305",
+      "fatalities": "678",
+      "politicalViolenceEvents": "686",
+      "referencePeriod": "2025-12-07",
+      "asOf": "2026-01-15T02:47:56.374Z",
+      "missingCountries": [],
+      "rows": [
+        {
+          "code": "IN",
+          "name": "India",
+          "events": 2300,
+          "fatalities": 41,
+          "political": 236,
+          "demonstrations": 2064,
+          "referencePeriod": "2025-12-07",
+          "updatedAt": "2026-01-15T02:47:56.374Z"
+        },
+        {
+          "code": "PK",
+          "name": "Pakistan",
+          "events": 1005,
+          "fatalities": 637,
+          "political": 450,
+          "demonstrations": 555,
+          "referencePeriod": "2025-12-07",
+          "updatedAt": "2026-01-15T02:47:56.374Z"
+        }
+      ]
+    },
+    "syria-conflict": {
+      "state": "ready",
+      "eventsTotal": "371",
+      "fatalities": "108",
+      "politicalViolenceEvents": "245",
+      "referencePeriod": "2025-12-07",
+      "asOf": "2026-01-15T02:47:56.374Z",
+      "missingCountries": [],
+      "rows": [
+        {
+          "code": "SY",
+          "name": "Syria",
+          "events": 371,
+          "fatalities": 108,
+          "political": 245,
+          "demonstrations": 126,
+          "referencePeriod": "2025-12-07",
+          "updatedAt": "2026-01-15T02:47:56.374Z"
+        }
+      ]
     }
   },
   "activeWars": {

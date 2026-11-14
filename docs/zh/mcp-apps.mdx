@@ -72,6 +72,18 @@ View -> Host: ui/notifications/size-changed
 
 视图本身从不获取实时的 WorldMonitor 数据。实时数据始终在正常的工具调用之后通过宿主到达应用。
 
+## 显示模式
+
+新闻与地图视图（`open_news_dashboard`，`ui://worldmonitor/news-dashboard-v4.html`）和国家视图（`open_country_brief`，`ui://worldmonitor/country-view-v4.html`）可以在对话旁边或全屏打开。其他视图只以内联方式渲染。`-v3`、`-v2` 及原始 URI 仍作为已安装元数据的私有读取别名。
+
+- 每个视图在 `ui/initialize` 中声明 `appCapabilities.availableDisplayModes: ["inline", "fullscreen"]`。
+- 它们的 `resources/read` 内容项携带 `_meta.ui.preferredDisplayMode: "fullscreen"`，因此 Claude 调用关联工具时会在侧边面板中打开它们。忽略该字段的宿主，以及窄到无法显示侧边面板的窗口，会以内联方式渲染视图。
+- 当 `hostContext.availableDisplayModes` 包含 `fullscreen` 且视图为内联时，视图显示“Expand”按钮。点击会立即发送 `mode: "fullscreen"` 的 `ui/request-display-mode`，因为宿主会拒绝不是由点击或按键触发的显示模式请求。如果宿主返回其他模式，布局保持不变，状态行显示“Claude kept this view in the conversation.”
+- Claude 将侧边面板和全屏都报告为 `displayMode: "fullscreen"`，只有 `containerDimensions` 不同。在该模式下，视图填满报告的高度并在其中滚动，将 `safeAreaInsets` 用作内边距，并停止发送 `ui/notifications/size-changed`。回到内联后，视图重新报告内容高度。布局断点来自 CSS 媒体查询，它们测量的正是宿主报告的 iframe 宽度。
+- 每个视图在加载地图或分区数据之前发送 `ui/notifications/initialized`，并暂存界面构建完成前到达的工具结果。如果 `initialized` 到达过晚，Claude 会将视图移出侧边面板或全屏。
+- Claude 会把超过约 150,000 个字符的工具结果替换为文件指针。当新闻与地图视图收到不含新闻摘要的结果时，它会使用原始视图参数自行调用一次 `open_news_dashboard`，并沿用原始计费参数，因此由原始仪表板请求提供数据。普通打开在重新加载时不带 `refresh`，复用当前时间窗口。刷新在重新加载时带上相同的 `refresh: true` 和 `request_id`，即重试该分配。未带 `request_id` 的刷新不会重新加载，因为重新加载会开启新的分配。如果视图不重新加载、该调用失败，或宿主不提供服务器工具，状态行显示“The news feed could not be loaded. Ask for the dashboard again.”
+- 这些视图注册的应用工具都带有 `title`：`apply_news_view`（“Apply news and map view”）、`focus_news_article`（“Focus a news article”）、`select_country_view`（“Change the country or topic”）和 `open_country_atlas_asset`（“Open a country energy asset”）。它们的名称、描述和输入模式保持不变，因此宿主不会要求用户再次批准。
+
 ## 原始活跃战区
 
 **Load active theaters** 操作通过宿主调用 `get_forecast_theaters`，使用同一个签名的预测 `panel_request`。它只读取最新的原始模拟摘要。战区来源的运行 ID 和时间独立于预测列表的生成版本；来源时间本身不能证明新鲜度。本地展开保留已发布的所有路径、参与者、可选角色、反应、稳定因素和失效条件。

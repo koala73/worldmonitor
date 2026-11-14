@@ -11,7 +11,8 @@ import { getCountrySignalObservations } from '../worldmonitor/intelligence/v1/ge
 import { readMilitaryFlights } from '../worldmonitor/military/v1/list-military-flights';
 import { getTheaterPosture } from '../worldmonitor/military/v1/get-theater-posture';
 import { drainResponseHeaders } from '../_shared/response-headers';
-import { countrySignalOutcomeSchema } from '../../shared/country-signal-observations';
+import { COUNTRY_SIGNAL_BYTES, countrySignalOutcomeSchema } from '../../shared/country-signal-observations';
+import { CONFIRMED, flagAfter, rollupOf, siteOf } from '../../tests/helpers/orbital-country-rollup.mjs';
 import type { GetCountrySignalObservationsRequest } from '../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 import { createIntelligenceServiceRoutes, ValidationError, type IntelligenceServiceHandler } from '../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
@@ -138,4 +139,20 @@ describe('bounded country family handler', () => {
       expect(cache.reads.mock.calls.map(call => call[0])).toEqual(['infra:outages:v1', 'seed-meta:infra:outages']);
     } finally { timer.mockRestore(); }
   });
+  it('reads only the country\'s watched-site rollup for imagery and returns it within the byte cap', async () => {
+    const now = Date.now();
+    const sites = Array.from({ length: 100 }, (_, i) => siteOf(`nuclear:site-${i}`, `Watched Site ${i}`, 'FR'));
+    cache.rows.set('orbital:country:v1:FR', rollupOf('FR', now, sites.map(site => ({ site, flag: flagAfter(site.id, now, CONFIRMED) }))));
+    const result = await getCountrySignalObservations(context(), req('COUNTRY_SIGNAL_FAMILY_IMAGERY'));
+    const outcome = countrySignalOutcomeSchema.parse(JSON.parse(result.outcomeJson));
+    expect(outcome).toMatchObject({ family: 'imagery', state: 'observed' });
+    expect(outcome.observations.length).toBeGreaterThan(0);
+    expect(new TextEncoder().encode(JSON.stringify(result)).length).toBeLessThanOrEqual(COUNTRY_SIGNAL_BYTES);
+    expect(cache.reads.mock.calls.map(call => call[0])).toEqual(['orbital:country:v1:FR']);
+  });
+  it('reports a country without watched-site evidence as unavailable, not as an error', async () => {
+    const result = await getCountrySignalObservations(context(), req('COUNTRY_SIGNAL_FAMILY_IMAGERY'));
+    expect(countrySignalOutcomeSchema.parse(JSON.parse(result.outcomeJson))).toMatchObject({ family: 'imagery', state: 'unavailable', reason: 'No current watched-site evidence for this country.' });
+  });
 });
+

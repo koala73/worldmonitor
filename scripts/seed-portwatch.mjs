@@ -158,6 +158,39 @@ export async function fetchBaselineStats(portname, { fromEpoch, toEpoch }, timeo
 }
 
 /**
+ * The layer's newest day after `afterDate` (YYYY-MM-DD), or null when it has
+ * none or the probe fails. The Hub export can stop updating while the query
+ * service keeps publishing (export ended 2026-10-25, layer 2026-11-01, on
+ * 2026-11-07); one filtered max() shows which chokepoints the export trails.
+ */
+export async function fetchLatestQueryDate(afterDate, timeoutMs = BASELINE_REQUEST_TIMEOUT_MS) {
+  const afterEpoch = Date.parse(`${afterDate}T00:00:00Z`) + DAY_MS;
+  if (!Number.isFinite(afterEpoch)) return null;
+  const params = new URLSearchParams({
+    where: `date >= ${epochToTimestamp(afterEpoch)}`,
+    outStatistics: JSON.stringify([
+      { statisticType: 'max', onStatisticField: 'date', outStatisticFieldName: 'latest_date' },
+    ]),
+    f: 'json',
+  });
+  try {
+    const resp = await fetch(`${ARCGIS_BASE}?${params}`, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const body = await resp.json();
+    if (body.error) throw new Error(body.error.message);
+    // `date` is a DateOnly field, so the max comes back as "YYYY-MM-DD".
+    const latest = Date.parse(body.features?.[0]?.attributes?.latest_date);
+    return Number.isFinite(latest) ? formatDate(latest) : null;
+  } catch (e) {
+    console.warn(`[PortWatch] latest-date probe failed: ${e?.message || e}`);
+    return null;
+  }
+}
+
+/**
  * `{ avgDaily, days, from, to }` from an outStatistics row, or null when the
  * window holds fewer than BASELINE_MIN_DAYS published days or the row is
  * malformed. Null is stored as-is: consumers withhold the comparison rather
@@ -367,12 +400,12 @@ export async function runFetchPipeline(
 }
 
 // Settles within `ms` even if the request ignores its own timeout, so the
-// baseline budget is a wall-clock bound.
-function withinMs(promise, ms) {
+// baseline and query budgets are wall-clock bounds.
+function withinMs(promise, ms, label = 'baseline budget') {
   let timer;
   return Promise.race([
     promise,
-    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`baseline budget exhausted after ${ms}ms`)), ms); }),
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} exhausted after ${ms}ms`)), ms); }),
   ]).finally(() => clearTimeout(timer));
 }
 
@@ -488,15 +521,34 @@ async function fetchFresh(sinceEpoch, window, fetchDeadlineAtMs, prior) {
     const noBaseline = Object.keys(fresh).filter(id => !fresh[id].baseline);
     console.log(`[PortWatch] source=hub-csv: ${Object.keys(fresh).length} chokepoints${noBaseline.length ? `, baseline withheld for ${noBaseline.join(', ')}` : ''}`);
     // Query what the export lacks, and what it trails: the cached export can
-    // end before history an earlier query-fallback run already published.
-    const candidates = CHOKEPOINTS.filter(cp => !fresh[cp.id] || lastHistoryDate(prior[cp.id]) > lastHistoryDate(fresh[cp.id]));
+    // end before history an earlier query-fallback run already published, or
+    // stop updating while the query service keeps publishing.
+    const csvLatest = Object.values(fresh).map(lastHistoryDate).sort().at(-1) ?? '';
+    // The probe is optional, so it never runs into the margin the CSV needs to
+    // come back before runSeed's deadline.
+    const probeTimeoutMs = Math.min(BASELINE_REQUEST_TIMEOUT_MS, baselineBudgetMs(fetchDeadlineAtMs));
+    const queryLatest = probeTimeoutMs > 0 ? await fetchLatestQueryDate(csvLatest, probeTimeoutMs) : null;
+    const candidates = CHOKEPOINTS.filter(cp => !fresh[cp.id]
+      || lastHistoryDate(prior[cp.id]) > lastHistoryDate(fresh[cp.id])
+      || (queryLatest && queryLatest > lastHistoryDate(fresh[cp.id])));
     if (candidates.length === 0 || pastDeadline()) return fresh;
     console.warn(`[PortWatch] CSV export lacks or trails ${candidates.map(cp => cp.id).join(', ')}; querying ArcGIS for them`);
-    const queried = await runFetchPipeline(candidates, sinceEpoch, fetchAllPages, 500, {
+    const pipeline = runFetchPipeline(candidates, sinceEpoch, fetchAllPages, 500, {
       fetchBaselineFn: fetchBaselineStats,
       baselineWindow: window,
       fetchDeadlineAtMs,
     });
+    // The CSV is already in hand, so slow queries must not run it past the
+    // deadline: past the margin, publish the CSV and drop what is still pending.
+    let queried;
+    try {
+      queried = Number.isFinite(fetchDeadlineAtMs)
+        ? await withinMs(pipeline, fetchDeadlineAtMs - Date.now() - BASELINE_DEADLINE_MARGIN_MS, 'query budget')
+        : await pipeline;
+    } catch (e) {
+      console.warn(`[PortWatch] ${e?.message || e}; publishing the CSV export for ${candidates.map(cp => cp.id).join(', ')}`);
+      return fresh;
+    }
     for (const [id, entry] of Object.entries(queried)) {
       if (lastHistoryDate(entry) > lastHistoryDate(fresh[id])) fresh[id] = entry;
     }

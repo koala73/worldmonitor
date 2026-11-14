@@ -52,6 +52,8 @@ export interface CountryIntelCacheKeyOpts {
   energyImportYear: string;
   /** NOTAM-closed or -restricted monitored airports, e.g. 'OEJN:closed'; '' when none. */
   airportTag?: string;
+  /** Digest of the country's confirmed watched-site change flags; '' when none. */
+  imageryTag?: string;
 }
 
 export function deriveCountryIntelCacheKey(opts: CountryIntelCacheKeyOpts): string {
@@ -62,18 +64,20 @@ export function deriveCountryIntelCacheKey(opts: CountryIntelCacheKeyOpts): stri
   // A closure that starts or ends re-keys the brief instead of waiting out
   // the 6h cache; countries with no NOTAM keep their existing key.
   const airportTag = opts.airportTag ? `:a${opts.airportTag}` : '';
+  // Likewise a newly confirmed satellite imagery change re-keys the brief.
+  const imageryTag = opts.imageryTag ? `:o${opts.imageryTag}` : '';
   const version = opts.lang === 'en' ? 'v12' : 'v9';
   if (!opts.isPremium) {
     // Anonymous tier: caller inputs must not reach the key, or the shared
     // cache degenerates back into a per-caller one (and one caller's
     // context could mint entries served to everyone).
-    return `ci-sebuf:${version}:${opts.countryCode}:${opts.lang}:shared${energyTag}${energyImportTag}${airportTag}`;
+    return `ci-sebuf:${version}:${opts.countryCode}:${opts.lang}:shared${energyTag}${energyImportTag}${airportTag}${imageryTag}`;
   }
   // Retire premium entries whose parsed sources could differ from their hashed context.
   const premiumVersion = opts.lang === 'en' ? 'v13' : 'v10';
   const fw = opts.frameworkHash ? `:${opts.frameworkHash}` : '';
   const context = opts.lang === 'en' && !opts.frameworkHash ? `sources:${opts.contextHash}` : opts.contextHash;
-  return `ci-sebuf:${premiumVersion}:${opts.countryCode}:${opts.lang}:${context}${fw}${energyTag}${energyImportTag}${airportTag}`;
+  return `ci-sebuf:${premiumVersion}:${opts.countryCode}:${opts.lang}:${context}${fw}${energyTag}${energyImportTag}${airportTag}${imageryTag}`;
 }
 
 interface DigestItemForBrief {

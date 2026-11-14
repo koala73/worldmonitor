@@ -148,6 +148,7 @@ const DOMAIN_GLOSSARY = [
   'story = a news item, not a work of fiction',
   'cancelled (flight) = the airline annulled the flight, not a customer cancelling an order',
   'staged (settings) = queued, awaiting save, never theatrical staging',
+  'seat (Business Seats, Enterprise seats) = a paid user place on a shared team subscription, as in SaaS licensing, never a chair; use one word for it in every string',
   'dismiss (a banner, alert, finding) = hide it, never reject or repudiate it',
   'default = the standard preset value, not a financial default',
   'spot, spread, long, short, hedge, perp, open interest, drawdown = finance terms; keep the established term of the target language, which is often the English one',
@@ -224,7 +225,7 @@ function canonicalPluralOrder(categories) {
   return [...categories].sort((a, b) => {
     const ia = CLDR_PLURAL_ORDER.indexOf(a);
     const ib = CLDR_PLURAL_ORDER.indexOf(b);
-    return (ia === -1 ? CLDR_PLURAL_ORDER.length : ia) - (ib === -1 ? CLDR_PLURAL_ORDER.length : ib) || a.localeCompare(b);
+    return (ia === -1 ? CLDR_PLURAL_ORDER.length : ia) - (ib === -1 ? CLDR_PLURAL_ORDER.length : ib) || a.localeCompare(b, 'en-US');
   });
 }
 export function getPluralCategories(loc) {

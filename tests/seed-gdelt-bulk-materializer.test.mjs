@@ -1513,3 +1513,74 @@ describe('dyad history repair', async () => {
       'only the cohorts through the cursor are downloaded');
   });
 });
+
+describe('one unreachable GDELT tick rides on last-good data', () => {
+  const connectTimeout = async () => {
+    throw new TypeError('fetch failed', { cause: Object.assign(new Error('connect ETIMEDOUT'), { code: 'ETIMEDOUT' }) });
+  };
+
+  it('tags a request GDELT never answered as an outage the seeder may ride out', async () => {
+    await assert.rejects(fetchGdeltBulkFiles({ fetchImpl: connectTimeout }),
+      (error) => error.preservableFetchFailure === true && /fetch failed/.test(error.message));
+  });
+
+  it('keeps an HTTP error that GDELT did answer alarming', async () => {
+    const notFound = async () => new Response('missing', { status: 404 });
+    await assert.rejects(fetchGdeltBulkFiles({ fetchImpl: notFound }),
+      (error) => error.preservableFetchFailure !== true && /HTTP 404/.test(error.message));
+  });
+
+  async function runUnreachableTick(lastGoodAgeMin) {
+    const { runSeed } = await import('../scripts/_seed-utils.mjs');
+    const { withSeedLockFence } = await import('./helpers/seed-lock-fence.mjs');
+    const originalFetch = globalThis.fetch;
+    const originalExit = process.exit;
+    const originalRetryDelay = process.env.WM_SEED_RETRY_DELAY_MS;
+    const sigtermBefore = new Set(process.rawListeners('SIGTERM'));
+    const logs = [];
+    const originalLog = console.log;
+    process.env.WM_SEED_RETRY_DELAY_MS = '0';
+    globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
+      const body = typeof opts.body === 'string' ? JSON.parse(opts.body) : null;
+      if (Array.isArray(body) && Array.isArray(body[0])) {
+        return new Response(JSON.stringify(body.map(() => ({ result: 1 }))), { status: 200 });
+      }
+      if (String(url).includes('/get/seed-meta%3Aintelligence%3Agdelt-intel')) {
+        const fetchedAt = Date.now() - lastGoodAgeMin * 60_000;
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt, recordCount: 60 }) }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+    });
+    process.exit = (code) => { throw Object.assign(new Error('__test_exit__'), { exitCode: code }); };
+    console.log = (...args) => logs.push(args.join(' '));
+    try {
+      await runSeed('intelligence', 'gdelt-intel', GDELT_INTEL_KEY,
+        () => fetchGdeltBulkFiles({ fetchImpl: connectTimeout }), RUN_SEED_OPTS);
+      return { exitCode: null, logs };
+    } catch (error) {
+      if (error.message !== '__test_exit__') throw error;
+      return { exitCode: error.exitCode, logs };
+    } finally {
+      console.log = originalLog;
+      globalThis.fetch = originalFetch;
+      process.exit = originalExit;
+      if (originalRetryDelay === undefined) delete process.env.WM_SEED_RETRY_DELAY_MS;
+      else process.env.WM_SEED_RETRY_DELAY_MS = originalRetryDelay;
+      for (const listener of process.rawListeners('SIGTERM')) {
+        if (!sigtermBefore.has(listener)) process.removeListener('SIGTERM', listener);
+      }
+    }
+  }
+
+  it('exits 0 when the last good publish is one tick old', async () => {
+    const { exitCode, logs } = await runUnreachableTick(15);
+    assert.equal(exitCode, 0, 'Railway must not mark the deployment crashed for one missed tick');
+    assert.ok(logs.some((line) => line.includes('=== Refresh failed; last-good retained')));
+  });
+
+  it('still exits 75 when GDELT has been unreachable past maxStaleMin', async () => {
+    const { exitCode, logs } = await runUnreachableTick(RUN_SEED_OPTS.maxStaleMin + 5);
+    assert.equal(exitCode, 75);
+    assert.ok(logs.some((line) => line.includes('=== Failed gracefully')));
+  });
+});

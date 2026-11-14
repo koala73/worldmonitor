@@ -10,6 +10,7 @@ import { PanelGateReason } from '@/services/panel-gating';
 import { lockSvg, upgradeSvg } from '@/components/gate-icons';
 import { dataFreshness, type PanelFreshnessSummary } from '@/services/data-freshness';
 import { formatPanelFreshnessDisplay } from '@/services/panel-freshness-display';
+import type { ResolvedScope } from '@/services/tab-focus';
 import {
   clearPanelColSpan,
   clearPanelSpan,
@@ -86,8 +87,8 @@ function getRowSpan(element: HTMLElement): number {
   const spanClass = getSpanClass(element);
   if (spanClass !== null && element.classList.contains('resized')) return spanClass;
 
-  // Otherwise the rendered span is the resize baseline the user sees. Natural
-  // wide video panels take three rows (#8276), and the CLS-pinned span-2
+  // Otherwise the rendered span is the resize baseline the user sees. The
+  // natural webcam wall takes three rows (#8276), and the CLS-pinned span-2
   // defaults take four on desktop, so their classes understate it.
   if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
     const match = /^span\s+([1-4])(?:\s|$)/.exec(window.getComputedStyle(element).gridRowStart);
@@ -143,6 +144,7 @@ export class Panel {
   private freshnessRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private severityDotEl: HTMLElement | null = null;
   private currentSeverity: PanelSeverity = 'none';
+  private scopeChipEl: HTMLElement | null = null;
   protected panelId: string;
   private abortController: AbortController = new AbortController();
   private tooltipCloseHandler: (() => void) | null = null;
@@ -227,6 +229,9 @@ export class Panel {
   private connectedCallbacks: Array<() => void> = [];
   private connectedFallbackTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
+
+  /** The built-in row span from PanelOptions, kept for applySharedSize. */
+  private readonly defaultRowSpan: number | null;
 
   constructor(options: PanelOptions) {
     this.panelId = options.id;
@@ -364,6 +369,7 @@ export class Panel {
     this.setupColResizeHandlers();
 
     // Apply default row span (before restore, so saved preferences win)
+    this.defaultRowSpan = options.defaultRowSpan && options.defaultRowSpan > 1 ? options.defaultRowSpan : null;
     if (options.defaultRowSpan && options.defaultRowSpan > 1) {
       this.element.classList.add(`span-${options.defaultRowSpan}`);
     }
@@ -1234,6 +1240,7 @@ export class Panel {
     // The CTA opens the /pro plan picker, which shows the Terms above every
     // plan button (#6976), so no assent line is needed here.
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, 'Upgrade to Pro');
+    ctaBtn.dataset.dashboardInteraction = 'upgrade';
     ctaBtn.addEventListener('click', () => {
       import('@/services/upgrade-flow').then((m) => m.openUpgradePlans()).catch(() => {
         window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
@@ -1328,6 +1335,10 @@ export class Panel {
     const descEl = h('div', { className: 'panel-locked-desc' }, entry.desc);
 
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, entry.cta);
+    if (reason === PanelGateReason.ANONYMOUS) ctaBtn.dataset.dashboardInteraction = 'signin';
+    else if (reason === PanelGateReason.FREE_TIER || reason === PanelGateReason.LAPSED) {
+      ctaBtn.dataset.dashboardInteraction = 'upgrade';
+    }
     ctaBtn.addEventListener('click', onAction);
 
     this.replaceContent(h('div', { className: 'panel-locked-state' }, iconEl, descEl, ctaBtn));
@@ -1493,6 +1504,16 @@ export class Panel {
         this.countEl.classList.add('bump');
       }
     }
+  }
+
+  /**
+   * True while the panel shows a load failure (set by showError/showRetrying,
+   * cleared by the next successful content write). A focus change must not
+   * redraw over it: that would erase the failure and make a stale panel look
+   * healthy.
+   */
+  protected get showingLoadFailure(): boolean {
+    return this.header.classList.contains('panel-header-error');
   }
 
   public setErrorState(hasError: boolean, tooltip?: string): void {
@@ -1671,6 +1692,92 @@ export class Panel {
   }
 
   /**
+   * Dashboard focus (#10453). The layout calls this with the active tab's
+   * resolved scope (null when the tab is unfocused) on every focus change and
+   * when the panel mounts. The default does nothing: a panel that filters by
+   * country overrides it and narrows in memory, without refetching. A panel
+   * that does not override it is labelled "Not filtered" while a focus is
+   * active (see `setScopeNotice`), so it never silently ignores the focus.
+   */
+  public applyScope(_scope: ResolvedScope | null): void {}
+
+  /**
+   * True when this panel's class overrides `applyScope`. Asked here rather
+   * than by comparing against `Panel.prototype` from outside, so the layout
+   * (in the App chunk) needs only a type import of Panel and the class stays
+   * in its lazily loaded chunk.
+   */
+  public filtersByScope(): boolean {
+    return this.applyScope !== Panel.prototype.applyScope;
+  }
+
+  private filterChoiceListener: ((value: string | null) => void) | null = null;
+
+  /**
+   * A panel's own filter choice (forecast region, webcam region; #10453
+   * phase 2). A panel that owns one overrides `getFilterChoice` (null while
+   * unfiltered) and `setFilterChoice`, and calls `reportFilterChoice` when
+   * the user changes it. The layout saves the value with the tab, so it
+   * reaches a teammate who opens the shared dashboard.
+   *
+   * `setFilterChoice` is how the tab or a shared dashboard hands a value in
+   * (null resets the panel to its default). It must ignore a value the panel
+   * does not recognise, and it must not call `reportFilterChoice`: only the
+   * user's own change is saved back.
+   */
+  public getFilterChoice(): string | null {
+    return null;
+  }
+
+  public setFilterChoice(_value: string | null): void {}
+
+  /** True when this panel's class owns a filter choice. */
+  public hasFilterChoice(): boolean {
+    return this.setFilterChoice !== Panel.prototype.setFilterChoice;
+  }
+
+  /** The layout's hook: called with the new choice when the user changes it. */
+  public onFilterChoiceChange(listener: ((value: string | null) => void) | null): void {
+    this.filterChoiceListener = listener;
+  }
+
+  /**
+   * Report the user's own change. `value` is what the user chose, INCLUDING the
+   * panel's "all" option (never null): a tab that chose All must be told apart
+   * from one that never chose, or a shared dashboard could not override the
+   * region saved in a teammate's browser. Null is only for a reset.
+   */
+  protected reportFilterChoice(value: string | null = this.getFilterChoice()): void {
+    this.filterChoiceListener?.(value);
+  }
+
+  /**
+   * Show or hide the header chip that says this panel is not following the
+   * tab's focus. 'global': the data has no country to filter by (markets,
+   * prices). 'unsupported': it could, but does not yet. null: no chip, either
+   * because there is no focus or because the panel filters.
+   */
+  public setScopeNotice(notice: 'global' | 'unsupported' | null): void {
+    if (!notice) {
+      this.scopeChipEl?.remove();
+      this.scopeChipEl = null;
+      return;
+    }
+    if (!this.scopeChipEl) {
+      this.scopeChipEl = document.createElement('span');
+      this.scopeChipEl.className = 'panel-scope-chip';
+      this.scopeChipEl.textContent = t('focus.notFiltered');
+      this.header.querySelector('.panel-header-left')?.appendChild(this.scopeChipEl);
+    }
+    const why = t(notice === 'global' ? 'focus.notFilteredGlobal' : 'focus.notFilteredYet');
+    this.scopeChipEl.dataset.scopeNotice = notice;
+    this.scopeChipEl.title = why;
+    // The chip text alone ("Not filtered") does not say why; screen readers get both.
+    this.scopeChipEl.setAttribute('aria-label', `${t('focus.notFiltered')}: ${why}`);
+    this.scopeChipEl.setAttribute('role', 'note');
+  }
+
+  /**
    * Update the "new items" badge
    * @param count Number of new items (0 hides badge)
    * @param pulse Whether to pulse the badge (for important updates)
@@ -1746,6 +1853,29 @@ export class Panel {
     clearColSpanClass(this.element);
     clearPanelColSpan(this.panelId);
     this.syncKeyboardColResizeAria();
+  }
+
+  /**
+   * Take the size a shared layout gives this panel: a span sets it the way a
+   * resize would, and no span puts the panel back to its built-in size.
+   */
+  public applySharedSize(rows: number | undefined, cols: number | undefined): void {
+    if (rows === undefined) {
+      this.resetHeight();
+      if (this.defaultRowSpan) this.element.classList.add(`span-${this.defaultRowSpan}`);
+      this.syncKeyboardRowResizeAria();
+    } else {
+      setSpanClass(this.element, rows);
+      savePanelSpan(this.panelId, rows);
+      this.syncKeyboardRowResizeAria();
+    }
+    if (cols === undefined) {
+      this.resetWidth();
+    } else {
+      setColSpanClass(this.element, clampColSpan(cols, MAX_PANEL_COL_SPAN));
+      savePanelColSpan(this.panelId, clampColSpan(cols, MAX_PANEL_COL_SPAN));
+      this.syncKeyboardColResizeAria();
+    }
   }
 
   protected get signal(): AbortSignal {

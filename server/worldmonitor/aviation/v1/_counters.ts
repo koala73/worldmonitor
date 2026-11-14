@@ -1,17 +1,13 @@
 /**
  * Per-provider aviation handler counters.
  *
- * In-memory counters for the NOTAM and aviation-news handlers, accumulated
+ * In-memory counters, accumulated
  * across handler invocations within the same
  * edge function instance. Values are reset on cold start; consumers that need
  * durable counters should read from the relay's rolling metrics instead.
  */
 
 export interface ProviderCounters {
-  notamSuccess: number;
-  notamTimeout: number;
-  notamAuthRejection: number;
-  notamTerminalFailure: number;
   aviationNewsSuccess: number;
   aviationNewsTimeout: number;
   aviationNewsAuthRejection: number;
@@ -20,10 +16,6 @@ export interface ProviderCounters {
 }
 
 const counters: ProviderCounters = {
-  notamSuccess: 0,
-  notamTimeout: 0,
-  notamAuthRejection: 0,
-  notamTerminalFailure: 0,
   aviationNewsSuccess: 0,
   aviationNewsTimeout: 0,
   aviationNewsAuthRejection: 0,

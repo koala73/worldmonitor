@@ -39,6 +39,23 @@ const historyWith = ({ recentTanker, recentDwt, baseTanker, baseDwt }) =>
 
 const BASELINE_MBD = 21.0;
 
+describe('computeFlowEstimate — latest PortWatch day', () => {
+  it('stamps the estimate with the last day its 7-day window covers', () => {
+    const history = makeDays(97, 60, 0, 4);
+    const lastDay = history.at(-1).date;
+    assert.equal(computeFlowEstimate(history, BASELINE_MBD).latestDate, lastDay);
+    assert.notEqual(lastDay, new Date().toISOString().slice(0, 10), 'the fixture lags today, as PortWatch does');
+  });
+
+  it('reads the last day from the dates, not from the input order', () => {
+    const history = makeDays(97, 60, 0, 4);
+    assert.equal(
+      computeFlowEstimate([...history].reverse(), BASELINE_MBD).latestDate,
+      history.at(-1).date,
+    );
+  });
+});
+
 describe('computeFlowEstimate — flow ratio', () => {
   it('reports ratio 1.0 when the recent week matches the 90-day baseline', () => {
     const estimate = computeFlowEstimate(makeDays(97, 60, 0), BASELINE_MBD);

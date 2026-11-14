@@ -65,7 +65,7 @@ Extracts people, organizations, locations, and dates from news headlines. Runs i
 
 ### Sentiment Analysis
 
-Classifies headline sentiment to detect shifts in media tone about countries, leaders, or events. This feeds into the information velocity component of the CII (Country Instability Index).
+Classifies headline sentiment to detect shifts in media tone about countries, leaders, or events. This feeds into the information velocity component of the CII (Country [Instability Index](/blog/posts/country-instability-index-methodology-explained/)).
 
 ### Semantic Search (RAG)
 
@@ -92,7 +92,7 @@ World Monitor's Tauri desktop app (available for macOS, Windows, and Linux) take
 - **Offline Map Caching:** The Progressive Web App caches up to 500 map tiles for offline viewing
 - **No Telemetry:** The desktop app sends zero analytics or usage data
 
-With Ollama installed alongside the desktop app, you have a fully air-gapped intelligence dashboard. Connect to the internet when you want fresh data, disconnect when you want to analyze in private.
+With Ollama installed alongside the desktop app, you have a fully air-gapped [intelligence dashboard](/blog/posts/osint-for-everyone-open-source-intelligence-democratized/). Connect to the internet when you want fresh data, disconnect when you want to analyze in private.
 
 ## Practical Setup: From Zero to Private Intelligence
 

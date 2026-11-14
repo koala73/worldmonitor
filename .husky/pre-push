@@ -423,7 +423,7 @@ gate_mark_green() {
 # and pro-test gates regenerate their own CHECKED outputs in place (byte-
 # identical on a green run), so those outputs are part of their keys — a
 # hand-edit to src/generated must change the key and re-run the gate.
-TYPECHECK_INPUTS=(src shared tests e2e types scripts middleware.ts index.html vite.config.ts 'tsconfig*.json' package.json package-lock.json)
+TYPECHECK_INPUTS=(src shared tests e2e types scripts middleware.ts index.html vite.config.ts vitest.dom.config.mts 'tsconfig*.json' package.json package-lock.json)
 TYPECHECK_API_INPUTS=(api server shared src/generated scripts middleware.ts 'tsconfig*.json' package.json package-lock.json)
 LINT_MD_INPUTS=(':(glob)**/*.md' '.markdownlint*' package.json)
 # `make generate` also runs every OpenAPI injector, and those injectors
@@ -574,12 +574,16 @@ if changed '^(\.github/workflows/[^/]+\.ya?ml|ARCHITECTURE\.md|scripts/docs-stat
   npm run docs:check || exit 1
 fi
 
-if changed '^(src/|tests/|e2e/|middleware|index\.html|vite\.config|scripts/|types/)'; then
+if changed '^(src/|tests/|e2e/|middleware|index\.html|vite\.config|vitest\.dom\.config|scripts/|types/)'; then
   if gate_cached typecheck "${TYPECHECK_INPUTS[@]}"; then
     echo "Type check skipped (these exact inputs already passed; rm $GATE_INPUT_CACHE/typecheck to force)."
   else
     echo "Running type check..."
     npm run typecheck || exit 1
+    # tests/dom/ is its own tsc project, which CI's dom-tests job checks. It
+    # also compiles the src/ it imports, so a src/ signature change can break it.
+    echo "Running DOM test type check..."
+    npm run typecheck:dom-tests || exit 1
     gate_mark_green typecheck "${TYPECHECK_INPUTS[@]}"
   fi
 else

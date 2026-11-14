@@ -23,12 +23,11 @@ import type { Earthquake } from '@/services/earthquakes';
 
 export type { CountryBriefSignals } from '@/types';
 
-import type { UnifiedSettingsTabId } from '@/components/settings-types';
-export type { UnifiedSettingsTabId };
+import type { SettingsSectionId } from '@/config/settings-sections';
 
 export interface UnifiedSettingsController {
   open(
-    tab?: UnifiedSettingsTabId,
+    section?: SettingsSectionId,
     replaceOverlayId?: OverlayId,
     historyPending?: boolean,
   ): void | Promise<boolean>;

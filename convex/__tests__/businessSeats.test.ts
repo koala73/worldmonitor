@@ -718,7 +718,7 @@ describe("payments businessSeats acceptBusinessInvite", () => {
     const token = await signBusinessInviteToken(grant!._id);
 
     await t
-      .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+      .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com", emailVerified: true })
       .mutation(api.payments.businessSeats.acceptBusinessInvite, {
         grantId: grant!._id,
         token,
@@ -764,7 +764,7 @@ describe("payments businessSeats acceptBusinessInvite", () => {
 
     await expect(
       t
-        .withIdentity({ subject: "user_intruder", tokenIdentifier: "clerk|user_intruder", email: "intruder@acme.com" })
+        .withIdentity({ subject: "user_intruder", tokenIdentifier: "clerk|user_intruder", email: "intruder@acme.com", emailVerified: true })
         .mutation(api.payments.businessSeats.acceptBusinessInvite, {
           grantId: grant!._id,
           token,
@@ -801,7 +801,7 @@ describe("payments businessSeats acceptBusinessInvite", () => {
 
     await expect(
       t
-        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com", emailVerified: true })
         .mutation(api.payments.businessSeats.acceptBusinessInvite, {
           grantId: grant!._id,
           token,
@@ -838,7 +838,7 @@ describe("payments businessSeats acceptBusinessInvite", () => {
 
     await expect(
       t
-        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com", emailVerified: true })
         .mutation(api.payments.businessSeats.acceptBusinessInvite, {
           grantId: grant!._id,
           token,
@@ -874,7 +874,7 @@ describe("payments businessSeats acceptBusinessInvite", () => {
 
     await expect(
       t
-        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com", emailVerified: true })
         .mutation(api.payments.businessSeats.acceptBusinessInvite, {
           grantId: grant!._id,
           token,
@@ -909,7 +909,7 @@ describe("payments businessSeats acceptBusinessInvite", () => {
 
     await expect(
       t
-        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com", emailVerified: true })
         .mutation(api.payments.businessSeats.acceptBusinessInvite, {
           grantId: grant!._id,
           token: "v1.12345.invalidsignature",
@@ -945,7 +945,7 @@ describe("payments businessSeats acceptBusinessInvite", () => {
 
     await expect(
       t
-        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com", emailVerified: true })
         .mutation(api.payments.businessSeats.acceptBusinessInvite, {
           grantId,
           token: "v1.12345.fake",
@@ -990,6 +990,47 @@ describe("payments businessSeats acceptBusinessInvite", () => {
     vi.useRealTimers();
   });
 
+  test("matching but unverified email → INVITEE_EMAIL_UNVERIFIED", async () => {
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_accept_unverified";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedPendingGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+    const grant = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .first(),
+    );
+    const token = await signBusinessInviteToken(grant!._id);
+
+    for (const emailVerified of [false, undefined]) {
+      await expect(
+        t
+          .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com", emailVerified })
+          .mutation(api.payments.businessSeats.acceptBusinessInvite, {
+            grantId: grant!._id,
+            token,
+          }),
+      ).rejects.toThrow(/INVITEE_EMAIL_UNVERIFIED/);
+    }
+    const after = await t.run(async (ctx) => ctx.db.get(grant!._id));
+    expect(after?.status).toBe("pending");
+    expect(after?.inviteeUserId).toBeUndefined();
+    vi.useRealTimers();
+  });
+
   test("invitee free-domain at accept-time → INVITEE_DOMAIN_NOT_CORPORATE", async () => {
     vi.useFakeTimers();
     process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
@@ -1019,7 +1060,7 @@ describe("payments businessSeats acceptBusinessInvite", () => {
 
     await expect(
       t
-        .withIdentity({ subject: "user_friend", tokenIdentifier: "clerk|user_friend", email: "friend@gmail.com" })
+        .withIdentity({ subject: "user_friend", tokenIdentifier: "clerk|user_friend", email: "friend@gmail.com", emailVerified: true })
         .mutation(api.payments.businessSeats.acceptBusinessInvite, {
           grantId: grant!._id,
           token,
@@ -1468,7 +1509,7 @@ describe("payments businessSeats revoke-on-lapse", () => {
 
     await expect(
       t
-        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com", emailVerified: true })
         .mutation(api.payments.businessSeats.acceptBusinessInvite, { grantId, token }),
     ).rejects.toThrow(/BUSINESS_NOT_ACTIVE/);
 
@@ -1567,7 +1608,7 @@ describe("payments businessSeats revoke-on-lapse", () => {
     // than BUSINESS_NOT_ACTIVE — either way, they must NOT be granted Pro.
     await expect(
       t
-        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com", emailVerified: true })
         .mutation(api.payments.businessSeats.acceptBusinessInvite, { grantId, token }),
     ).rejects.toThrow(/INVITE_ALREADY_USED|BUSINESS_NOT_ACTIVE/);
 
@@ -1701,7 +1742,7 @@ describe("payments businessSeats end-to-end lifecycle", () => {
 
     // 2. Accept
     await t
-      .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "client@other.com" })
+      .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "client@other.com", emailVerified: true })
       .mutation(api.payments.businessSeats.acceptBusinessInvite, {
         grantId,
         token,
@@ -1964,7 +2005,7 @@ describe("payments businessSeats end-to-end lifecycle", () => {
     );
     const token = await signBusinessInviteToken(invite.invited[0].grantId);
     await t
-      .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+      .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com", emailVerified: true })
       .mutation(api.payments.businessSeats.acceptBusinessInvite, {
         grantId: invite.invited[0].grantId,
         token,
@@ -2088,7 +2129,7 @@ describe("payments businessSeats extendBusinessInvite", () => {
 
     // Past the original expiry, inside the extension.
     vi.setSystemTime(originalExpiry + HOUR_MS);
-    const invitee = t.withIdentity({ subject: "user_troy", tokenIdentifier: "clerk|user_troy", email: "troy@acme.com" });
+    const invitee = t.withIdentity({ subject: "user_troy", tokenIdentifier: "clerk|user_troy", email: "troy@acme.com", emailVerified: true });
     await expect(
       invitee.mutation(api.payments.businessSeats.acceptBusinessInvite, { grantId, token: oldToken }),
     ).rejects.toThrow(/INVALID_INVITE_TOKEN/);

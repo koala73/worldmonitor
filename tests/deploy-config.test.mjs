@@ -84,7 +84,7 @@ const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dock
 const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 'utf-8');
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
 const variantDashboardSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|country-instability-index|countries|chokepoints|compare|crises|tools|research|reference|changelog|sources|use-cases|accuracy|monitor-the-situation|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|sitemap-main\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|desktop-sign-in\\.html|desktop-sign-in|.*\\.md$).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|plugin/assets|blog|docs|country-instability-index|countries|chokepoints|compare|crises|tools|research|reference|changelog|sources|use-cases|accuracy|monitor-the-situation|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|sitemap-main\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|desktop-sign-in\\.html|desktop-sign-in|.*\\.md$).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html|wm-widget-sandbox\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const WEBMCP_PRODUCTION_HOST_PATTERN = '^(?:www|tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$';
@@ -516,6 +516,22 @@ describe('open data under /data/v1', () => {
     assert.equal(effectiveCacheControl('/data/countries-50m.json'), 'public, max-age=31536000, immutable');
   });
 
+  it('sends the bare dataset path to the committed datasheet instead of a 404', () => {
+    const datasheet = '/data/v1/chokepoints/README.md';
+    for (const source of ['/data/v1/chokepoints', '/data/v1/chokepoints/']) {
+      const redirect = vercelConfig.redirects.find((entry) => entry.source === source);
+      assert.deepEqual(redirect, { source, destination: datasheet, permanent: false }, `${source} must redirect to the datasheet`);
+    }
+    assert.ok(readFileSync(resolve(__dirname, `../public${datasheet}`), 'utf-8').length > 0);
+    const rewrite = vercelConfig.rewrites.find((entry) => entry.destination.startsWith('/api/open-data-chokepoints?'));
+    const [prefix, pattern] = rewrite.source.split(':file');
+    assert.equal(
+      new RegExp(`^${pattern}$`).test(datasheet.slice(prefix.length)),
+      false,
+      'the datasheet must stay a static file, not a Redis read',
+    );
+  });
+
   const nginxLocation = (prefix) => {
     const match = dockerNginxSource.match(new RegExp(`^ {4}location ${prefix.replace(/\//g, '\\/')} \\{\\n([\\s\\S]*?)^ {4}\\}`, 'm'));
     assert.ok(match, `docker/nginx.conf must declare location ${prefix}`);
@@ -527,6 +543,28 @@ describe('open data under /data/v1', () => {
     assert.match(block, /add_header Cache-Control "public, max-age=3600";/);
     assert.match(block, /add_header Access-Control-Allow-Origin "\*" always;/);
     assert.match(nginxLocation('/data/'), /add_header Cache-Control "public, max-age=31536000, immutable";/);
+  });
+});
+
+describe('self-host installer at /install.sh', () => {
+  const INSTALLER_SOURCE = 'https://raw.githubusercontent.com/koala73/worldmonitor/main/scripts/install.sh';
+
+  it('serves the repo installer from www.worldmonitor.app without a redirect', () => {
+    assert.equal(firstRedirectFor({ host: 'www.worldmonitor.app', path: '/install.sh' }), null);
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/install.sh' })?.destination, INSTALLER_SOURCE);
+  });
+
+  it('proxies a script that exists, with no public/ copy shadowing the rewrite', () => {
+    assert.equal(existsSync(resolve(__dirname, '..', 'scripts/install.sh')), true);
+    assert.equal(existsSync(resolve(__dirname, '..', 'public/install.sh')), false);
+  });
+
+  it('documents the worldmonitor.app URL wherever the one-liner appears', () => {
+    for (const file of ['README.md', 'SELF_HOSTING.md', 'scripts/install.sh']) {
+      const text = readFileSync(resolve(__dirname, '..', file), 'utf8');
+      assert.match(text, /curl -fsSL https:\/\/www\.worldmonitor\.app\/install\.sh \| bash/, file);
+      assert.doesNotMatch(text, /raw\.githubusercontent\.com\/koala73\/worldmonitor\/main\/scripts\/install\.sh/, file);
+    }
   });
 });
 
@@ -730,6 +768,15 @@ describe('crawlable content corpus deployment contracts', () => {
       'scripts/country-related-links.mjs',
       'scripts/data/country-centroids.json',
       'scripts/related-reading.mjs',
+      'scripts/data/related-reading.json',
+      'scripts/chokepoint-page-content.mjs',
+      'scripts/live-pages/',
+      'scripts/build-live-topic-pages.mjs',
+      'scripts/data/crisis-editorial.json',
+      'scripts/data/search-links/',
+      'scripts/search-links.mjs',
+      'scripts/lib/search-links.mjs',
+      'scripts/lib/main-module.mjs',
     ]) {
       assert.equal(vercelIgnoreSource.split(`'${path}'`).length - 1, 2, `${path} must trigger main and preview builds`);
     }
@@ -772,6 +819,15 @@ describe('crawlable content corpus deployment contracts', () => {
         'scripts/country-related-links.mjs',
         'scripts/data/country-centroids.json',
         'scripts/related-reading.mjs',
+        'scripts/data/related-reading.json',
+        'scripts/chokepoint-page-content.mjs',
+        'scripts/live-pages/related-links.mjs',
+        'scripts/build-live-topic-pages.mjs',
+        'scripts/data/crisis-editorial.json',
+        'scripts/data/search-links/countries.json',
+        'scripts/search-links.mjs',
+        'scripts/lib/search-links.mjs',
+        'scripts/lib/main-module.mjs',
       ]) {
         const previous = git('rev-parse', 'HEAD').trim();
         mkdirSync(dirname(join(fixture, path)), { recursive: true });
@@ -1423,6 +1479,21 @@ describe('deploy/cache configuration guardrails', () => {
       effectiveCacheControl('/assets/index-abc.js'),
       'public, max-age=31536000, immutable'
     );
+  });
+
+  it('serves hashed MCP App plugin chunks immutable while the plugin documents revalidate', () => {
+    // A cold MCP App load fetched every plugin chunk again because the HTML
+    // catch-all marked /plugin/assets/* private no-cache, so the edge bypassed.
+    for (const path of ['/plugin/assets/plugin-abc123.js', '/plugin/assets/plugin-abc123.css', '/plugin/assets/boot-2/plugin-abc123.js']) {
+      assert.equal(sourceToRegExp(SPA_HTML_CACHE_SOURCE).test(path), false, `${path} must be excluded from the HTML no-cache catch-all`);
+      assert.equal(effectiveCacheControl(path), 'public, max-age=31536000, immutable', path);
+      assert.equal(effectiveHeader(path, 'Access-Control-Allow-Origin'), '*', path);
+      assert.equal(effectiveHeader(path, 'X-Robots-Tag'), 'noindex', path);
+    }
+    // The loader fetches these with no-store to pick up each deployment.
+    for (const path of ['/plugin/plugin.html', '/plugin/country.html', '/plugin/market.html']) {
+      assert.equal(effectiveCacheControl(path), 'private, no-cache, must-revalidate', path);
+    }
   });
 
   it('keeps PWA precache glob free of HTML files', () => {
@@ -2566,7 +2637,7 @@ describe('security header guardrails', () => {
       assert.equal(resolved.hasWebServer, entry.expected.hasWebServer, `${entry.name} webServer`);
       assert.equal(resolved.testMatch, entry.expected.testMatch, `${entry.name} testMatch`);
       assert.equal(
-        resolved.launchArgs.includes('--enable-features=WebMCPTesting'),
+        resolved.launchArgs.includes('--enable-features=WebMCPTesting,WebMCP'),
         entry.expected.testingFlag,
         `${entry.name} testing flag`,
       );
@@ -2698,7 +2769,9 @@ describe('security header guardrails', () => {
     assert.match(playwrightConfigSource, /process\.env\.WM_WEBMCP_CHROME_EXECUTABLE_PATH/);
     assert.match(playwrightConfigSource, /channel: webMcpChromeChannel/);
     assert.match(playwrightConfigSource, /executablePath: webMcpChromeExecutablePath/);
-    assert.match(playwrightConfigSource, /--enable-features=WebMCPTesting/);
+    // Chrome 157 dropped the WebMCPTesting name for document.modelContext; 156 still
+    // needs it. Both must stay or one runner-image major loses the native provider.
+    assert.match(playwrightConfigSource, /--enable-features=WebMCPTesting,WebMCP'/);
     assert.match(playwrightConfigSource, /requireWebMcp && !webMcpProduction/);
     assert.match(playwrightConfigSource, /https:\/\/www\.worldmonitor\.app/);
     assert.match(playwrightConfigSource, /WM_WEBMCP_DEPLOYED_SHA/);
@@ -3211,6 +3284,24 @@ describe('security header guardrails', () => {
       mainSource,
       /import '\.\/bootstrap\/zod-csp';/,
       'main.ts must apply the Zod CSP bootstrap before the app graph'
+    );
+    // Zod v4 runs its `new Function` probe when a z.object() is constructed,
+    // so any script module evaluated before zod-csp could trip the CSP.
+    // Spans lines so `import {\n  a,\n} from 'x';` counts as an import of 'x'.
+    const scriptImportsOf = (source) =>
+      [...source.matchAll(/^import\s(?:[^'";]*?\sfrom\s)?['"]([^'"]+)['"]/gm)]
+        .map((match) => match[1])
+        .filter((specifier) => !specifier.endsWith('.css'));
+    assert.deepEqual(
+      scriptImportsOf("import './a.css';\nimport {\n  one,\n  two,\n} from './early';\nimport type { T } from './t';\nimport './bootstrap/zod-csp';\n"),
+      ['./early', './t', './bootstrap/zod-csp'],
+      'the import scan must see multiline and type-only declarations'
+    );
+    const scriptImports = scriptImportsOf(mainSource);
+    assert.equal(
+      scriptImports[0],
+      './bootstrap/zod-csp',
+      'zod-csp must be the first script import in main.ts so no module graph evaluates before it'
     );
     assert.match(
       zodCspSource,
@@ -4121,12 +4212,15 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
     // After the structural split (refactor PR), the host-derivation
     // (`requestHost = req.headers.get('host') ?? ...`) lives in
     // api/mcp/handler.ts and the template-literal that emits
-    // `resource_metadata="${url}"` lives in api/mcp/auth.ts (the
-    // `wwwAuthHeader` helper). Concatenate both so the three sub-greps
+    // `resource_metadata="${url}"` lives in api/_www-authenticate.ts (the
+    // `wwwAuthHeader` helper, re-exported by api/mcp/auth.ts since #4840 so
+    // the gateway's API-key challenge lives alongside it). Concatenate all three so the sub-greps
     // below still see the same byte surface they did pre-split.
     const source = readFileSync(resolve(__dirname, '../api/mcp/handler.ts'), 'utf-8')
       + '\n'
-      + readFileSync(resolve(__dirname, '../api/mcp/auth.ts'), 'utf-8');
+      + readFileSync(resolve(__dirname, '../api/mcp/auth.ts'), 'utf-8')
+      + '\n'
+      + readFileSync(resolve(__dirname, '../api/_www-authenticate.ts'), 'utf-8');
     // Must NOT contain a hardcoded apex or api URL for resource_metadata —
     // that regressed once (PR #3351 review: apex pointer emitted from
     // api.worldmonitor.app/mcp 401s) and the grep-only test didn't catch it.
@@ -4193,9 +4287,10 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
       // WorkOS auth.md agent_auth discovery block (only `anonymous` is honest —
       // WM has no ID-JAG identity endpoint, so identity_assertion is not advertised).
       assert.ok(json.agent_auth, `agent_auth block present for ${host}`);
-      // Scanners require skill == <issuer>/auth.md. The apex serves it because
-      // /auth.md is exempt from the Cloudflare apex→www 301 (ARCHITECTURE.md §2).
-      assert.equal(json.agent_auth.skill, `https://${host}/auth.md`, `skill is the issuer's /auth.md for ${host}`);
+      // ora.ai compares skill with the /auth.md published on the scanned domain,
+      // so every host names the apex copy. The apex serves it because /auth.md
+      // is exempt from the Cloudflare apex→www 301 (ARCHITECTURE.md §2).
+      assert.equal(json.agent_auth.skill, 'https://worldmonitor.app/auth.md', `skill is the apex /auth.md for ${host}`);
       assert.equal(json.agent_auth.register_uri, `https://${host}/oauth/register`);
       // auth.md v0.2's identity_endpoint takes {"type":"anonymous"} and returns
       // an identity_assertion; /oauth/register is RFC 7591 DCR, so it must not

@@ -10,7 +10,7 @@ pubDate: "2026-10-26"
 
 AIS vessel tracking is useful evidence of reported ship positions and movement. Its value depends on the transmitted data, reception coverage, observation age and correct vessel identity. A dot on a map is not a guarantee of a vessel's present location, and a gap is not proof that the vessel deliberately went dark.
 
-WorldMonitor lets researchers compare maritime observations with chokepoint conditions and reporting. Use that combined view to decide what to investigate next, while keeping the limits of each input visible.
+WorldMonitor lets researchers compare maritime observations with [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/) conditions and reporting. Use that combined view to decide what to investigate next, while keeping the limits of each input visible.
 
 *The cover is an archive WorldMonitor maritime view. Its values are not current traffic measurements.*
 

@@ -226,7 +226,7 @@
     "q3": "Voor wie is Enterprise?",
     "a3": "Enterprise is voor teams die gedeeld gebruik, API's, integraties, deployment-opties en directe support nodig hebben.",
     "q4": "Kan ik met Pro starten en later upgraden?",
-    "a4": "Ja. Pro is voor persoonlijk gebruik. Pro Business (€49,99/mnd) voegt de commerciële licentie, gegevensexport, 25 dashboards en 250 MCP-oproepen/dag toe. API-plannen dekken programmatische toegang en Enterprise dekt aangepaste implementaties. Om van Pro naar Pro Business te gaan, kiest u Pro Business terwijl u bent ingelogd: uw abonnement stapt over met een pro-rata bedrag voor de rest van de factuurperiode.",
+    "a4": "Ja. Pro is voor persoonlijk gebruik. Pro Business (€49,99/mnd) voegt de commerciële licentie, gegevensexport, 25 dashboards en 250 MCP-oproepen/dag toe. API-plannen dekken programmatische toegang en Enterprise dekt aangepaste implementaties. Om van Pro naar Pro Business te gaan, kiest u Pro Business terwijl u bent ingelogd: uw abonnement stapt over, u ziet het bedrag van vandaag voordat u bevestigt, en de factuurperiode begint die dag opnieuw.",
     "q5": "Is dit alleen voor conflict-monitoring?",
     "a5": "Nee. World Monitor is vooral een wereldwijd intelligence platform dat aandelenmarkten, macro-economie, geopolitieke analyse, energie, infrastructuur en meer omvat. Conflict-tracking is één van vele capaciteiten — niet de focus.",
     "q6": "Waarom blijft het kernplatform gratis?",
@@ -326,6 +326,7 @@
         "description": "Aangepaste oplossingen voor organisaties",
         "features": [
           "Alles in Pro + API",
+          "Gedeelde teamdashboards",
           "10.000 API-verzoeken per dag, meer via contract",
           "Speciale ondersteuning",
           "Aangepaste integraties",
@@ -335,7 +336,8 @@
           "Factuurbetaling per inkooporder",
           "SAML SSO en SCIM (op contractbasis)",
           "Aangepaste beveiligings- en privacyinstellingen",
-          "Volledig white-label — met of zonder revenue sharing"
+          "Volledig white-label — met of zonder revenue sharing",
+          "Concepten voor reisrisicobeoordeling in het dashboard en via MCP"
         ],
         "cta": "Contact Verkoop"
       },
@@ -347,7 +349,9 @@
           "300 verzoeken/minuut",
           "10.000 verzoeken/dag inbegrepen (REST + MCP gecombineerd; een live MCP-aanroep telt als 2-3)",
           "5 Pro-licenties — nodig gebruikers uit met elk zakelijk e-maildomein",
-          "Prioritaire ondersteuning"
+          "Gedeelde teamdashboards",
+          "Prioritaire ondersteuning",
+          "Concepten voor reisrisicobeoordeling in het dashboard en via MCP"
         ],
         "highlightFeatures": [
           "Commercieel gebruik — in uw naar klanten gerichte producten"
@@ -362,7 +366,8 @@
           "25 aangepaste dashboards (tegen 10)",
           "MCP + SDK: 250 calls/dag (vs 50)",
           "Desktopsleutel voor de desktopapp (3 sleutels)",
-          "Prioriteitsondersteuning"
+          "Prioriteitsondersteuning",
+          "Concepten voor reisrisicobeoordeling in het dashboard en via MCP"
         ],
         "highlightFeatures": [
           "Commerciële licentie inbegrepen",
@@ -663,7 +668,7 @@
     "subtitle": "Nieuwe functies van de afgelopen 30 dagen — correcties en onderhoud niet inbegrepen.",
     "proTag": "PRO",
     "m1": "Mediaperspectief — hoe media uit elk land over elk land berichten, voor AI-agents en de API",
-    "m2": "/verify — een bewijskaart voor elke bewering, met gepubliceerde factchecks",
+    "m2": "Strategische waterstanden — satelliet-lidarmetingen voor 50 stuwmeren en meren, op de kaart en voor AI-agents",
     "m3": "Aantal bevestigende bronnen bij meldingen, digests en kaartpop-ups, plus een openbare /trust-pagina",
     "m4": "Automatische aanvalsregistratie — het landrisico stijgt onder aanval en herstelt zodra de aanvallen stoppen",
     "m5": "Luchtruimsluitingen uit FAA-NOTAM's en een kaartlaag met gemelde noodsituaties van vliegtuigen",

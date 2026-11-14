@@ -1,6 +1,6 @@
 ---
 title: "World Monitor vs Dataminr"
-description: "World Monitor vs Dataminr for real-time event alerts. Dataminr sells proprietary detection under an enterprise contract with an SLA. World Monitor sells self-serve alert rules, an API and MCP at published prices."
+description: "World Monitor vs Dataminr for breaking event alerts: Dataminr offers enterprise SLA detection, while World Monitor provides self-serve alert rules and API."
 metaTitle: "World Monitor vs Dataminr for event alerts | World Monitor"
 keywords: "Dataminr evaluators, world monitor vs dataminr, global intelligence tools"
 audience: "Dataminr evaluators"

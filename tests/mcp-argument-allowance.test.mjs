@@ -265,8 +265,9 @@ it('repeated invalid calls leave a free account able to make a valid call', asyn
 
 it('validates required selectors, nested defaults and unique members without changing arguments', () => {
   const scorecard = TOOL_REGISTRY.find(tool => tool.name === 'get_five_factor_scorecard');
-  for (const args of [{ country_code: 'US' }, { members: ['US', 'CA'] }]) assert.doesNotThrow(() => validateToolArgs(scorecard, args));
-  for (const args of [{}, { country_code: 'US', members: ['US', 'CA'] }, { members: ['US', 'US'] }]) {
+  // No selector is the list; two selectors are rejected before any allowance is reserved.
+  for (const args of [{}, { country_code: 'US' }, { members: ['US', 'CA'] }]) assert.doesNotThrow(() => validateToolArgs(scorecard, args));
+  for (const args of [{ country_code: 'US', members: ['US', 'CA'] }, { country_code: 'US', preset: 'NATO' }, { members: ['US', 'US'] }]) {
     assert.throws(() => validateToolArgs(scorecard, args), RpcValidationError);
   }
   const reader = TOOL_REGISTRY.find(tool => tool.name === 'get_country_brief_section');
@@ -282,7 +283,17 @@ it('country hooks reject unresolved filters while retaining aliases and Eurostat
   for (const tool of TOOL_REGISTRY.filter(tool => tool._validateArgs)) {
     const field = ['country', 'countries', 'country_code'].find(field => tool.inputSchema.properties[field]);
     if (!field) continue;
+    // get_five_factor_scorecard's country_code is a schema-pattern ISO-2 code; its hook only counts selectors.
+    if (tool.name === 'get_five_factor_scorecard') continue;
     const base = tool.name === 'get_macro_history' ? { dataset: 'world-cpi' } : {};
+    if (tool.name === 'prepare_travel_risk_assessment') {
+      // An itinerary of objects, not a country filter: alpha-2 codes only, no aliases.
+      assert.doesNotThrow(() => tool._validateArgs({ [field]: [{ country_code: 'IQ' }] }), tool.name);
+      for (const value of ['IQ', 'Atlantis', [{ country_code: 'IRQ' }], [{ country_code: 'Iraq' }]]) {
+        assert.throws(() => tool._validateArgs({ [field]: value }), RpcValidationError, tool.name);
+      }
+      continue;
+    }
     if (tool.name === 'get_conflict_events') {
       // Conflict country is a free-text name substring; this hook parses only the area and age filters.
       for (const value of ['Atlantis', 'sud', 'IQ']) assert.doesNotThrow(() => tool._validateArgs({ [field]: value }), tool.name);
@@ -300,9 +311,7 @@ it('country hooks reject unresolved filters while retaining aliases and Eurostat
       assert.doesNotThrow(() => tool._validateArgs({ ...base, [field]: value }), tool.name);
     }
   }
-  for (const name of ['get_eu_housing_cycle', 'get_eu_quarterly_gov_debt', 'get_eu_industrial_production']) {
-    assert.doesNotThrow(() => TOOL_REGISTRY.find(tool => tool.name === name)._validateArgs({ countries: ['EA20', 'EU27_2020', 'EL'] }));
-  }
+  assert.doesNotThrow(() => TOOL_REGISTRY.find(tool => tool.name === 'get_country_macro')._validateArgs({ countries: ['EA20', 'EU27_2020', 'EL'] }));
 });
 
 it('food stocks preserves omitted and empty commodities and downstream aliases', () => {

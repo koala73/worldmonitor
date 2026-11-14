@@ -38,6 +38,22 @@ test('DA parses market rows with source column identities and excludes NOT AVAIL
   assert.throws(() => parseDa([[{ text: 'Unrelated PDF', x: 0, y: 0 }]], '2026-10-29'), /format|date mismatch/);
 });
 
+test('DA reads the wider layout DA alternates with, where second label lines sit lower', () => {
+  // 2026-10-26, 10-27, 11-02 and 11-03 shipped this layout: every column further right and the
+  // "Local"/"Imported"/"Chicken" label lines 25.3 points under COMMODITY (PHP/KG).
+  const rows = parseDa(JSON.parse(fixture('da-wide.json')), '2026-11-03');
+  const price = (market, item) => rows.find(r => r.market === market && r.item === item)?.price;
+  assert.equal(price('Agora Public Market/San Juan', 'Premium Rice (Imported)'), 52);
+  assert.equal(price('Agora Public Market/San Juan', 'Ampalaya'), 100);
+  assert.equal(price('Alabang Central Market', 'Red Onion (Local)'), 100);
+  assert.equal(price('Agora Public Market/San Juan', 'Fresh Pork (Kasim, Imported)'), 260);
+  assert.equal(price('Alabang Central Market', 'Fresh Pork Liempo (Local)'), 365);
+  assert.equal(price('Agora Public Market/San Juan', 'Fresh Whole Chicken'), 200);
+  // Not available is no price, not zero.
+  assert.equal(price('Alabang Central Market', 'White Onion (Local)'), undefined);
+  assert.ok(rows.every(r => r.price > 0 && r.date === '2026-11-03'));
+});
+
 test('CBSL selects Today columns and separates retail and wholesale markets', () => {
   const rows = parseCbsl(JSON.parse(fixture('cbsl.json')), '2026-10-29');
   const beans = rows.filter(r => r.item === 'Beans');

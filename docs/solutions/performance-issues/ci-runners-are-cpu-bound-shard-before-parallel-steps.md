@@ -192,6 +192,11 @@ same blob at the same moment took 12-62s on PR #9626. The job now sets
   `variant-live-smoke` to shard 4, gives 326/317/328/326. A greedy search
   (move the one spec that most lowers the largest shard, repeat) found that
   three-move split; a hand-picked four-move split only reached 342.
+- **The rebalance is now a script:** `node scripts/balance-smoke-shards.mjs --write`.
+  It reads the shard logs of the six newest successful main runs, takes
+  per-spec medians, and repacks with that greedy search. Specs added by hand
+  had grown the total to 1607 test-seconds and the split to
+  520/231/460/396. The script moved seven specs for 405/398/399/405.
 - **Removing sleeps does not free the seconds they held on CI.** Locally the
   flag set 0.3-0.6s after the first digest. On a runner each 8s wait saved only
   1-5s; the flag time there was not logged. The spec's other tests got slower (3.9s to

@@ -6,6 +6,7 @@ module: china-policy-events-tests
 problem_type: test_failure
 component: testing_framework
 severity: medium
+last_updated: 2026-11-09
 symptoms:
   - "unit-shard fails on 'keeps its teeth: a genuinely quadratic scan still trips the gate' with a ratio just under the 12x ceiling (11.4x min/min on PR #9633)"
   - "The same test had failed the same way before (11.9x on CI) and had been fixed"
@@ -13,7 +14,7 @@ symptoms:
 root_cause: logic_error
 resolution_type: test_fix
 related_components: [development_workflow]
-tags: [flaky-test, regression, positive-control, timing-test, ratio-of-mins, median, git-log-s, china-policy]
+tags: [flaky-test, regression, positive-control, timing-test, ratio-of-mins, median, git-log-s, china-policy, size-step]
 ---
 
 # A flake fix was traded away in a later PR, and the flake came back
@@ -86,7 +87,22 @@ The synthetic-sample test fails if the control goes back to ratio-of-mins, witho
 - **It pins the aggregation choice. It does not prove the timing test cannot flake.** The median fell to 11.8x once under 16-way load. The CI shards now run `test:data` at concurrency 4, but a median control with ~14x typical headroom over a 12x gate can still fail on a slow runner.
 - **The median control proves a different predicate trips than the one the guard uses.** The guard fails on ratio-of-mins; the control now passes on the median. That is the trade #8019 reversed. A stronger control would give the quadratic more headroom (a larger base input makes the quadratic term dominate, pushing it toward 16x) so the guard's own predicate trips reliably, at the cost of a slower test.
 
+### Third recurrence: widen the size step (2026-11-09)
+
+The median control failed again: `scaled only 17.1x min/min, median attempt 11.9x` on `unit-shard (1)` (#10336). The aggregation was not the cause. At a 4x step, linear measured ~4x and quadratic ~14x, so a 12x gate left the control 1.2x of headroom. No aggregator survives that on a slow runner.
+
+PR #10347 widened the step to 8x and the gate to 24x, so the gate stays at 3x the linear ratio. Quadratic now scales ~64x in theory and ~50x measured, so the control has about 2x of headroom. Measured with the same 40 parallel copies on an 18-core Mac:
+
+| Setup | Linear guard | Quadratic control (median) |
+|---|---|---|
+| 4x step, 12x gate | 4.1-4.4x | 14.0-14.9x |
+| 8x step, 24x gate | 8.0-9.2x | 48-59x |
+
+On that PR's own GitHub run, the guard measured 8.1x and the control's median 50.7x. The control's base dropped from 2000 to 700 repeats, so the wider step made the file faster: 2.7s instead of 4.0s. The deterministic aggregation test kept its shape, rescaled for the 8x step.
+
 ## Prevention
+
+- **When a ratio gate's positive control keeps landing near the gate, widen the step before you touch the aggregation or the threshold.** Linear scales with the step and quadratic with its square, so their gap grows with the step. A narrow gap leaves nothing to tune.
 
 - **Before fixing a flake, search the test's history** for an earlier fix, and read the full squashed commit message, not just the PR title: `git log -S'<helper or constant>' -- <test file>`, or `git log --format='%h %ad %s' -- <test file>` and read the subjects. A flake that "looks new" may be an old fix that a rewrite removed.
 - **Pin the decision a flake fix makes with a deterministic test.** If the fix is "use the median here", test that function on fixed samples that pass under the median and fail under the old aggregator. A timing test alone will not catch the change being reverted.

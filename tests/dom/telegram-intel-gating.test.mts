@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { initTestI18n } from './helpers/i18n.mts';
+import { TeamDashboardsStore } from '@/services/team-dashboards-store';
 const access = vi.hoisted(() => ({ desktop: true, premium: false }));
 vi.mock('@/services/runtime', async () => ({
   ...(await vi.importActual<typeof import('@/services/runtime')>(
@@ -56,6 +57,7 @@ function layout() {
   // Object.create skips field initializers; mirror production defaults used by updatePanelGating.
   manager.gatingPrincipal = undefined;
   manager.premiumPanelsUnlocked = new Set();
+  manager.team = new TeamDashboardsStore({ load: async () => null, onChange: () => {} });
   return manager;
 }
 describe('Telegram layout gating and lazy mount', () => {

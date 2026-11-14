@@ -116,12 +116,11 @@ const DA_COLUMNS = [
   ['Eggplant', 'Tomato', 'Cabbage', 'Carrots (Local)', 'Chayote', 'Pechay Baguio', 'White Potato (Local)', 'Red Onion (Local)', 'White Onion (Local)'],
   ['Chili (Green)', 'Red Chili (Local)', 'Calamansi', 'Sugar (Refined)', 'Fresh Pork (Kasim, Local)', 'Fresh Pork (Kasim, Imported)', 'Fresh Pork Liempo (Local)', 'Fresh Pork Liempo (Imported)', 'Fresh Whole Chicken'],
 ];
-const DA_HEADER_X = [
-  [189.9, 245.4, 308.9, 364.7, 421.6, 485.9, 545.1, 588.1, 656.3, 723.6],
-  [228.1, 289, 345.8, 397.7, 468.2, 517.9, 572.6, 636, 702.6],
-  [220.7, 274.9, 342.5, 392, 446.2, 507.7, 569.1, 629.5, 698.4],
-];
 
+/**
+ * Parse the first three pages of a DA daily price PDF into retail observations for `date`.
+ * Throws when the printed date, the table frame or any column label differs from DA_COLUMNS.
+ */
 export function parseDa(pages, date) {
   const result = [];
   const [year, month, day] = date.split('-');
@@ -133,14 +132,27 @@ export function parseDa(pages, date) {
     if (!text.includes('COMMODITY (PHP/KG)') || !text.includes(columns[0]) || !text.includes('MARKET')) throw new Error('DA food PDF format changed');
     const headerY = items.find(item => item.text === 'COMMODITY (PHP/KG)').y;
     const normalize = text => text.toLowerCase().replace(/[^a-z]/g, '');
+    const priceCell = item => item.x > 180 && /^(?:\d+(?:\.\d+)?|NOT AVAILABLE)$/.test(item.text);
+    // DA alternates between two renderings of this table: the wider one sets every column further
+    // right and the second label lines 25 points under COMMODITY. So the label band runs down to
+    // the first price row, and each column starts at its first label piece, found in column order.
+    // A reordered, renamed or missing column still fails the name check.
+    const firstRowY = Math.max(...items.filter(item => item.y < headerY - 5 && priceCell(item)).map(item => item.y));
+    if (!Number.isFinite(firstRowY)) throw new Error('DA food PDF format changed');
+    const labels = items.filter(item => item.x > 180 && item.y < headerY - 5 && item.y > firstRowY + 3).sort((a, b) => a.x - b.x);
+    const starts = [];
+    for (const column of columns) {
+      const start = labels.find(item => item.x > (starts.at(-1) ?? -Infinity) && normalize(item.text) && normalize(column).startsWith(normalize(item.text)));
+      if (!start) throw new Error('DA food PDF column layout changed');
+      starts.push(start.x);
+    }
     for (const [index, column] of columns.entries()) {
-      const parts = items.filter(item => item.y >= headerY - 25 && item.y < headerY - 5
-        && item.x >= DA_HEADER_X[page][index] - 5 && item.x < (DA_HEADER_X[page][index + 1] ?? 800) - 5)
+      const parts = labels.filter(item => item.x >= starts[index] - 5 && item.x < (starts[index + 1] ?? Infinity) - 5)
         .sort((a, b) => b.y - a.y || a.x - b.x);
       if (normalize(parts.map(item => item.text).join('')) !== normalize(column)) throw new Error('DA food PDF column layout changed');
     }
     for (const row of pdfRows(items)) {
-      const cells = row.items.filter(item => item.x > 180 && /^(?:\d+(?:\.\d+)?|NOT AVAILABLE)$/.test(item.text));
+      const cells = row.items.filter(priceCell);
       const market = row.items.filter(item => item.x < 180).map(item => item.text).join('').trim();
       if (cells.length !== columns.length || !market) continue;
       for (const [i, item] of columns.entries()) {

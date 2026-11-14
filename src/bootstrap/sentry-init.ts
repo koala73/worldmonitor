@@ -208,6 +208,14 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // WKScriptMessageHandler ourselves; this is browser-native and unactionable
       // (WORLDMONITOR-KJ — 15 events / 14 users in DuckDuckGo 26.3 on macOS).
       /WKWebView API client did not respond to this postMessage/,
+      // The same host bridge failing before any reply: DuckDuckGo rejects with
+      // this exact sentence when the page-side messaging shim finds no native
+      // WKScriptMessageHandler registered. The phrase appears nowhere in src/,
+      // api/ or our dependencies, and we never register or call a script
+      // message handler; anchored so a longer first-party message still
+      // surfaces (WORLDMONITOR-1EH — DuckDuckGo 26.3 on macOS, unhandled
+      // rejection with no stack).
+      /^Script message handler is unavailable$/,
       // Apple's native WKWebView find-on-page bridge: the host app evaluates
       // `WKWebView_RemoveAllHighlights()` in the page when the user dismisses
       // the in-app find bar, and it is undefined in web content the host never

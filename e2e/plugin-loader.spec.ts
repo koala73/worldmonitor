@@ -172,3 +172,112 @@ test('host-injected about:blank document recovers without navigating away', asyn
   expect(requests.some(url => url.includes('/mcp'))).toBe(false);
   await page.screenshot({ path: info.outputPath('injected-interface-recovered.png') });
 });
+
+const PANEL_INITIALIZE = {
+  'plugin.html': { root: 'pluginRoot', params: { appInfo: { name: 'WorldMonitor', version: '1.0.0' }, appCapabilities: { tools: {}, availableDisplayModes: ['inline', 'fullscreen'] }, protocolVersion: '2026-01-26' } },
+  'country.html': { root: 'countryRoot', params: { appInfo: { name: 'WorldMonitor country brief', version: '1.0.0' }, appCapabilities: { tools: {}, availableDisplayModes: ['inline', 'fullscreen'] }, protocolVersion: '2026-01-26' } },
+  'market.html': { root: 'marketRoot', params: { appInfo: { name: 'worldmonitor-market-radar', version: '2.0.0' }, appCapabilities: {}, protocolVersion: '2026-01-26' } },
+} as const;
+
+type HostMessage = { jsonrpc?: string; id?: unknown; method?: string; params?: unknown; echo?: string | null; adopted?: string };
+
+async function mountWithHost(page: Page, shell: string, { answer = true, notify = false, reject = false } = {}) {
+  await page.setContent('<iframe title="WorldMonitor" sandbox="allow-scripts" style="width:100%;height:600px;border:0"></iframe>');
+  await page.evaluate(({ answer, notify, reject }) => {
+    const frame = document.querySelector('iframe')!;
+    const host = window as unknown as { hostMessages: unknown[]; notified: boolean; answerInitialize: () => void };
+    host.hostMessages = [];
+    host.notified = false;
+    const post = (message: object) => frame.contentWindow!.postMessage({ jsonrpc: '2.0', ...message }, '*');
+    let initializeId: unknown;
+    host.answerInitialize = () => post(reject
+      ? { id: initializeId, error: { code: -32000, message: 'Fixture initialization failed' } }
+      : { id: initializeId, result: { protocolVersion: '2026-01-26', hostCapabilities: {}, hostContext: { theme: 'light' } } });
+    window.addEventListener('message', event => {
+      if (event.source !== frame.contentWindow) return;
+      host.hostMessages.push(event.data);
+      if (event.data?.method === 'ui/initialize') {
+        initializeId = event.data.id;
+        if (answer) host.answerInitialize();
+      }
+      if (notify && event.data?.method === 'ui/notifications/initialized') {
+        post({ method: 'ui/notifications/tool-input', params: { arguments: { country: 'JP' } } });
+        post({ method: 'ui/notifications/tool-result', params: { structuredContent: { ok: true } } });
+        host.notified = true;
+      }
+    });
+  }, { answer, notify, reject });
+  await page.locator('iframe').evaluate((frame, html) => { (frame as HTMLIFrameElement).srcdoc = html; }, shell);
+  return {
+    frame: page.frameLocator('iframe'),
+    messages: () => page.evaluate(() => (window as unknown as { hostMessages: HostMessage[] }).hostMessages),
+  };
+}
+
+const adoptingModule = (root: string) => `document.addEventListener('wm-plugin-boot-'+new URL(import.meta.url).pathname.match(/boot-(\\d+)/)?.[1],async()=>{const host=window.wmPluginHost;const result=await host.initialized;host.adopt(event=>parent.postMessage({echo:event.data?.method??null},'*'));document.getElementById('${root}').textContent='Adopted '+result.hostContext.theme;parent.postMessage({adopted:'${root}'},'*');},{once:true});`;
+
+for (const [entry, { root, params }] of Object.entries(PANEL_INITIALIZE)) {
+  test(`${entry} shell initializes with the host before its panel document loads`, async ({ page }) => {
+    await page.route(`${origin}/plugin/${entry}`, () => {});
+    const host = await mountWithHost(page, buildPluginShell({ origin, entry: entry as keyof typeof PANEL_INITIALIZE, root }), { answer: false });
+    await expect.poll(async () => (await host.messages()).filter(message => message.method === 'ui/initialize').length, { timeout: 5000 }).toBe(1);
+    const initialize = (await host.messages()).find(message => message.method === 'ui/initialize')!;
+    expect(initialize.params).toEqual(params);
+    expect(typeof initialize.id).toBe('string');
+    expect((await host.messages()).some(message => message.method === 'ui/notifications/initialized')).toBe(false);
+    await page.evaluate(() => (window as unknown as { answerInitialize: () => void }).answerInitialize());
+    await expect.poll(async () => (await host.messages()).filter(message => message.method === 'ui/notifications/initialized').length, { timeout: 5000 }).toBe(1);
+    await expect(host.frame.getByRole('status')).toHaveText('Loading WorldMonitor…');
+  });
+}
+
+test('host notifications sent before the panel mounts reach the adopted panel exactly once', async ({ page }) => {
+  let release!: () => void;
+  const moduleGate = new Promise<void>(resolve => { release = resolve; });
+  await page.route(`${origin}/plugin/plugin.html`, route => route.fulfill({ headers, contentType: 'text/html', body: currentHtml('pluginRoot', 'early') }));
+  await page.route(`${origin}/plugin/assets/**`, async route => {
+    const css = route.request().url().endsWith('.css');
+    if (!css) await moduleGate;
+    await route.fulfill({ headers, contentType: css ? 'text/css' : 'application/javascript', body: css ? '' : adoptingModule('pluginRoot') });
+  });
+  const host = await mountWithHost(page, buildPluginShell({ origin, entry: 'plugin.html', root: 'pluginRoot' }), { notify: true });
+  await expect.poll(() => page.evaluate(() => (window as unknown as { notified: boolean }).notified), { timeout: 5000 }).toBe(true);
+  release();
+  await expect(host.frame.locator('main')).toHaveText('Adopted light');
+  await page.evaluate(() => document.querySelector('iframe')!.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/host-context-changed', params: { theme: 'dark' } }, '*'));
+  await expect.poll(async () => (await host.messages()).filter(message => 'echo' in message).length).toBe(3);
+  await page.waitForTimeout(250);
+  expect((await host.messages()).filter(message => 'echo' in message).map(message => message.echo)).toEqual([
+    'ui/notifications/tool-input',
+    'ui/notifications/tool-result',
+    'ui/notifications/host-context-changed',
+  ]);
+});
+
+test('retrying the interface does not initialize with the host a second time', async ({ page }) => {
+  let failed = true;
+  await page.route(`${origin}/plugin/country.html`, route => route.fulfill({ headers, status: failed ? 503 : 200, contentType: 'text/html', body: currentHtml('countryRoot', 'retry') }));
+  await page.route(`${origin}/plugin/assets/**`, route => {
+    const css = route.request().url().endsWith('.css');
+    return route.fulfill({ headers, contentType: css ? 'text/css' : 'application/javascript', body: css ? '' : adoptingModule('countryRoot') });
+  });
+  const host = await mountWithHost(page, buildPluginShell({ origin, entry: 'country.html', root: 'countryRoot' }));
+  await expect(host.frame.getByRole('status')).toContainText('could not load');
+  failed = false;
+  await host.frame.getByRole('button', { name: 'Retry interface' }).click();
+  await expect(host.frame.locator('main')).toHaveText('Adopted light');
+  const messages = await host.messages();
+  expect(messages.filter(message => message.method === 'ui/initialize')).toHaveLength(1);
+  expect(messages.filter(message => message.method === 'ui/notifications/initialized')).toHaveLength(1);
+});
+
+test('a host that rejects initialize reaches the panel as a failed handshake without an initialized notification', async ({ page }) => {
+  await page.route(`${origin}/plugin/market.html`, route => route.fulfill({ headers, contentType: 'text/html', body: currentHtml('marketRoot', 'rejected') }));
+  await page.route(`${origin}/plugin/assets/**`, route => {
+    const css = route.request().url().endsWith('.css');
+    return route.fulfill({ headers, contentType: css ? 'text/css' : 'application/javascript', body: css ? '' : "document.addEventListener('wm-plugin-boot-'+new URL(import.meta.url).pathname.match(/boot-(\\d+)/)?.[1],()=>{window.wmPluginHost.initialized.catch(error=>{document.getElementById('marketRoot').textContent='Rejected: '+error.message;});},{once:true});" });
+  });
+  const host = await mountWithHost(page, buildPluginShell({ origin, entry: 'market.html', root: 'marketRoot' }), { reject: true });
+  await expect(host.frame.locator('main')).toHaveText('Rejected: Fixture initialization failed');
+  expect((await host.messages()).map(message => message.method)).toEqual(['ui/initialize']);
+});

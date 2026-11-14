@@ -52,7 +52,7 @@ The [source catalog](https://www.worldmonitor.app/sources/) identifies the under
 
 **Strength:** shared geographic context across multiple feeds. **Limit:** aircraft and vessel observations are incomplete, and feeds have different delays. An unusual movement does not by itself establish military intent or a causal link to a headline.
 
-The public dashboard has a free offering, and the [source code](https://github.com/koala73/worldmonitor) is available. Hosted paid features are separate: check the [current plans](https://www.worldmonitor.app/pro) before assuming an AI, history, alert, or API feature is included. Self-hosting also depends on provider credentials and terms.
+The public dashboard has a free offering, and the [source code](https://github.com/koala73/worldmonitor) is available. Hosted paid features are separate: check the [current plans](https://www.worldmonitor.app/pro) before assuming an AI, history, alert, or API feature is included. [Self-hosting](/blog/posts/self-host-worldmonitor-open-source-osint-dashboard/) also depends on provider credentials and terms.
 
 ## 2. CFR Global Conflict Tracker: policy context
 
@@ -116,7 +116,7 @@ The [Uppsala Conflict Data Program's download center](https://ucdp.uu.se/downloa
 
 ## 12. WarMonit: a daily brief and a threat level
 
-[WarMonit](https://warmonit.com/), formerly War Monitor, combines a live war map, a daily brief, and a global threat level. Its [methodology](https://warmonit.com/methodology) names ACLED, UCDP, GDELT, official reporting, and tracking data such as vessel traffic and military flights, and says a language model writes the brief from a structured feed. The [about page](https://warmonit.com/about) names its founder and editor and describes its free and paid tiers. WarMonit is a separate service, not affiliated with World Monitor.
+[WarMonit](https://warmonit.com/), formerly War Monitor, combines a live war map, a daily brief, and a global threat level. Its [methodology](https://warmonit.com/methodology) names ACLED, UCDP, [GDELT](/blog/posts/free-geopolitical-data-apis-2026/), official reporting, and tracking data such as vessel traffic and military flights, and says a language model writes the brief from a structured feed. The [about page](https://warmonit.com/about) names its founder and editor and describes its free and paid tiers. WarMonit is a separate service, not affiliated with World Monitor.
 
 **Strength:** a short daily summary on top of a map. **Limit:** the site says its threat level is descriptive, not predictive, and that AI-generated summaries can contain errors. Open the linked reports before quoting a development from the brief.
 

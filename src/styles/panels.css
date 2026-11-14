@@ -802,29 +802,11 @@
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
-.popexp-summary {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.popexp-method {
   padding: 8px 10px;
-  margin-bottom: 6px;
-  background: color-mix(in srgb, var(--threat-critical) 8%, transparent);
-  border-radius: 4px;
-  border-left: 3px solid var(--threat-critical);
-}
-
-.popexp-label {
   color: var(--text-dim);
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.popexp-total {
-  color: var(--accent);
-  font-size: calc(16px * var(--wm-panel-effective-scale, 1));
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .popexp-list {
@@ -849,28 +831,19 @@
   word-break: break-word;
 }
 
-.popexp-card-meta {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
 .popexp-card-pop {
-  color: var(--threat-critical);
+  color: var(--text-muted);
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-variant-numeric: tabular-nums;
   font-weight: 500;
 }
 
-.popexp-pop-large {
-  color: var(--accent);
-  font-weight: 700;
-}
-
-.popexp-card-radius {
-  color: var(--text-muted);
+.popexp-coverage {
+  padding: 8px 10px;
+  color: var(--text-dim);
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-variant-numeric: tabular-nums;
+  line-height: 1.4;
 }
 
 /* ----------------------------------------------------------
@@ -2938,13 +2911,13 @@ body.panel-drag-active .map-bottom-grid:empty::after {
   border-top-color: var(--accent);
 }
 
-/* Hide the drop zone below the split threshold. 899px mirrors
+/* Hide the drop zone below the split threshold. 1440px mirrors
    SPLIT_LAYOUT_MIN_WIDTH (src/app/split-layout.ts), one threshold for web
    and desktop since #6417 — from that width up, ensureCorrectZones() moves
    saved bottom-set panels INTO this container, so hiding it any higher
    makes those panels vanish (#6426).
    tests/responsive-zone-listener.test.mjs pins the alignment. */
-@media (max-width: 899px) {
+@media (width < 1440px) {
   .map-bottom-grid {
     display: none !important;
   }

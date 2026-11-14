@@ -65,6 +65,8 @@ test.describe('2D basemap with enforced CSP', () => {
       catch { return route.abort(); }
     });
     const domains = NEWS_DASHBOARD_META.ui.csp;
+    // connect-src lists only the declared connectDomains, as the MCP Apps reference host builds it,
+    // so a data: fetch (deck.gl loading a data: URL icon atlas) counts as a violation.
     const csp = `default-src 'none'; script-src 'unsafe-inline' ${origin} data:; worker-src blob:; style-src 'unsafe-inline' ${origin}; font-src ${origin} data:; img-src ${origin} ${domains.resourceDomains.join(' ')}; connect-src ${origin} ${domains.connectDomains.join(' ')}; base-uri ${origin}`;
     const strictHtml = html.replace('<head>', `<head><meta http-equiv="Content-Security-Policy" content="${csp}"><script>(() => {
       const createObjectURL = URL.createObjectURL;
@@ -139,15 +141,17 @@ document.documentElement.dataset.cspViolations='0';document.addEventListener('se
     await expect(app.locator('html')).toHaveAttribute('data-csp-violations', '0');
     expect(errors).toEqual([]);
     await page.screenshot({ path: testInfo.outputPath('domain-maps-globe.png'), fullPage: true });
+    await expect(app.locator('html')).toHaveAttribute('data-worker-blob-url', /^blob:/);
+    await app.locator('html').evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));
+    await expect(app.locator('html')).toHaveAttribute('data-worker-blob-revoked', 'true');
     await page.evaluate(() => {
       (window as any).rejectInit = true;
       const frame = document.querySelector('iframe')!;
       frame.setAttribute('srcdoc', frame.srcdoc);
     });
     await expect(app.locator('#pluginStatus')).toContainText('Fixture initialization failed');
-    await expect(app.locator('html')).toHaveAttribute('data-worker-blob-url', /^blob:/);
-    await app.locator('html').evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));
-    await expect(app.locator('html')).toHaveAttribute('data-worker-blob-revoked', 'true');
+    // The handshake runs before the map is built, so a failed startup never creates the map worker.
+    await expect(app.locator('html')).not.toHaveAttribute('data-worker-blob-url', /.*/);
   });
 });
 test.afterAll(async () => { if (dist) await rm(dist, { recursive: true, force: true }); });
@@ -187,7 +191,7 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   window.addEventListener('message',e=>{if(e.source!==frame.contentWindow)return;const m=e.data;window.calls.push(m);const send=o=>frame.contentWindow.postMessage({jsonrpc:'2.0',...o},'*');
   if(m.method==='ui/initialize')send({id:m.id,result:{hostCapabilities:{serverTools:{},openLinks:{},updateModelContext:{}},hostContext:{theme:'dark'}}});
   if(m.method==='ui/notifications/initialized')window.sendResult({structuredContent:{...${JSON.stringify(payload)},requestedView:{map_layers:['natural']}}});
-  if(m.method==='tools/call')send({id:m.id,result:m.params.name==='get_natural_disasters'?(window.hazardBudgetLimit&&m.params.arguments.limit>window.hazardBudgetLimit?{structuredContent:{_budget_exceeded:true,budget_bytes:131072,actual_bytes:200000}}:window.hazards):{isError:true,content:[{type:'text',text:'Fixture access denied'}]}});
+  if(m.method==='tools/call')send({id:m.id,result:m.params.name==='get_natural_disasters'?(window.hazardBudgetLimit&&m.params.arguments.limit>window.hazardBudgetLimit?{structuredContent:{_budget_exceeded:true,budget_bytes:131072,actual_bytes:200000}}:window.hazards):m.params.name==='open_news_dashboard'&&window.dashboard?{structuredContent:window.dashboard}:{isError:true,content:[{type:'text',text:'Fixture access denied'}]}});
   if(m.method==='ui/open-link'||m.method==='ui/update-model-context')send({id:m.id,result:{}});
   });frame.srcdoc=${JSON.stringify(html).replace(/</g, '\\u003c')};</script>`);
   const app = page.frameLocator('iframe');
@@ -214,6 +218,8 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   await page.evaluate(data => (window as any).sendResult({ structuredContent: data }), payload);
   await expect(app.locator('.news-location-marker')).toHaveCount(4);
   await page.evaluate(() => document.querySelector('iframe')!.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-input', params: { arguments: { query: 'Energy', map_latitude: 52.5, map_longitude: 13.4, map_zoom: 4 } } }, '*'));
+  // Tool input only records the requested view; the tool result that follows applies it.
+  await page.evaluate(data => (window as any).sendResult({ structuredContent: data }), payload);
   await expect(app.locator('.search-input:visible')).toHaveValue('Energy');
   await expect.poll(() => page.evaluate(() => (window as any).calls.filter((call: any) => call.method === 'ui/update-model-context').at(-1)?.params?.content?.[0]?.text)).toContain('52.5');
   await app.locator('.search-input:visible').press('Escape');
@@ -224,8 +230,9 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   await expect(app.locator('.map-popup')).toContainText('Ports review shipping schedules as trade routes shift');
   await app.locator('.map-popup .popup-close').press('Enter');
   await expect(app.locator('.map-popup')).toHaveCount(0);
-  await app.locator('[data-panel="politics"] a[href=""]').first().click();
-  await expect(app.locator('#pluginStatus')).toContainText('source link is unavailable');
+  // A headline without a source link renders as plain text, not as a link.
+  await expect(app.locator('[data-panel="politics"] span.item-title', { hasText: 'Headline with no supplied source URL' })).toHaveCount(1);
+  await expect(app.locator('[data-panel="politics"] a.item-title', { hasText: 'Headline with no supplied source URL' })).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).calls.filter((call: any) => call.method === 'ui/open-link').length)).toBe(0);
   await app.locator('[data-panel="politics"] a[href="https://example.com/news"]').first().click();
   await expect.poll(() => page.evaluate(() => (window as any).calls.filter((call: any) => call.method === 'ui/open-link').length)).toBe(1);
@@ -271,7 +278,8 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   await app.locator('.time-btn[data-range="1h"]').click();
   await expect(app.locator('.news-location-marker')).toHaveCount(3);
   await app.getByRole('button', { name: 'Refresh news' }).press('Enter');
-  await expect(app.locator('#pluginStatus')).toContainText('refresh failed');
+  // A failed refresh shows the host's error text and keeps the loaded news.
+  await expect(app.locator('#pluginStatus')).toContainText('Fixture access denied');
   await expect(app.locator('[data-panel="politics"]')).toContainText('Ports review shipping');
   await expect(app.locator('.news-location-marker')).toHaveCount(3);
   await app.getByRole('button', { name: 'Clear filters' }).press('Enter');
@@ -292,6 +300,8 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   await expect(app.locator('#pluginMapLayers').getByLabel('Natural Events', { exact: true })).toBeChecked();
   await app.getByRole('button', { name: 'Clear filters' }).press('Enter');
   await expect(app.locator('#pluginMapLayers').getByLabel('Fires', { exact: true })).toBeChecked();
+  // Refreshing the map refreshes the dashboard; a new digest reloads the selected hazard layers.
+  await page.evaluate(data => { (window as any).dashboard = data; }, payload);
   await page.evaluate(() => { (window as any).hazardBudgetLimit = 20; });
   await app.getByRole('button', { name: 'Refresh map data' }).press('Enter');
   await expect(app.locator('#pluginMapStatus')).toContainText('up to 20/source');

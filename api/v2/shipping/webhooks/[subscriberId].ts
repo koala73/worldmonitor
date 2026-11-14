@@ -41,6 +41,7 @@ const DELETE_SCRIPT = [
   "redis.call('DEL', KEYS[1])",
   "redis.call('SREM', KEYS[2], ARGV[2])",
   "redis.call('SREM', KEYS[3], ARGV[2])",
+  "redis.call('SREM', KEYS[5], ARGV[2])",
   "redis.call('DEL', KEYS[4])",
   'return 1',
 ].join(' ');
@@ -144,8 +145,9 @@ export default async function handler(req: Request): Promise<Response> {
       if (!stored) return json(404, { error: 'Webhook not found' });
       if (stored.ownerTag !== ownerHash) return json(403, { error: 'Forbidden' });
       const [row] = await runRedisPipeline([[
-        'EVAL', DELETE_SCRIPT, '4',
+        'EVAL', DELETE_SCRIPT, '5',
         webhookKey(subscriberId), ownerIndexKey(stored.ownerTag), ALL_INDEX_KEY, deliveryStateKey(subscriberId),
+        ownerIndexKey(stored.quotaTag || stored.ownerTag),
         raw, subscriberId,
       ]]).catch(() => [null]);
       if (!row || row.error) return json(503, { error: 'Service temporarily unavailable' });

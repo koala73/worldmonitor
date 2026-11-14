@@ -57,7 +57,8 @@ describe('country view MCP boundary', () => {
     assert.equal(body.result.structuredContent.panelRequest.usage.remaining, 49);
     const listed = await handler(proReq('POST', { jsonrpc: '2.0', id: 1, method: 'tools/list' }), makeProDeps().deps);
     const tool = (await listed.json()).result.tools.find(tool => tool.name === 'open_country_brief');
-    assert.equal(tool._meta.ui.resourceUri, 'ui://worldmonitor/country-view-v3.html');
+    assert.equal(tool._meta.ui.resourceUri, 'ui://worldmonitor/country-view-v4.html');
+    assert.equal(tool._meta['ui/resourceUri'], 'ui://worldmonitor/country-view-v4.html');
     assert.equal(requests.length, 0);
     const invalid = await invoke('open_country_brief', { country_code: 'not-a-country' });
     assert.equal(invalid.body.error.code, -32602);
@@ -494,7 +495,8 @@ describe('country view MCP boundary', () => {
     const { UI_RESOURCE_LIST_RESPONSE } = await import('../api/mcp/ui/registry.ts');
     const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
     assert.deepEqual([...card.metadata.mcpApps.uiResources].sort(), UI_RESOURCE_LIST_RESPONSE.map(resource => resource.uri).sort());
-    assert.match(card.metadata.mcpApps.note, /open_country_brief → country-view-v3\.html/);
+    assert.match(card.metadata.mcpApps.note, /open_country_brief → country-view-v4\.html/);
+    assert.match(card.metadata.mcpApps.note, /open_news_dashboard → news-dashboard-v4\.html/);
     const { parseMcpAppsInventory } = await import('../scripts/docs-stats.mjs');
     assert.deepEqual(parseMcpAppsInventory().uiResources.sort(), UI_RESOURCE_LIST_RESPONSE.map(resource => resource.uri).sort());
   });
@@ -521,6 +523,9 @@ describe('get_country_brief_section reader count', () => {
     const tool = TOOL_REGISTRY.find((entry) => entry.name === 'get_country_brief_section');
     const count = Object.keys(COUNTRY_READERS).length;
     assert.match(tool.description, new RegExp(`\\b${count} readers selected by section\\b`));
-    assert.match(tool.inputSchema.properties.section.description, new RegExp(`\\bWhich of the ${count} fixed readers\\b`));
+    // The section field leaves the count to its enum; if it ever states one, it must be current.
+    const stated = tool.inputSchema.properties.section.description.match(/\b(\d+) (?:fixed )?readers\b/);
+    if (stated) assert.equal(Number(stated[1]), count);
+    assert.equal(tool.inputSchema.properties.section.enum.length, count);
   });
 });

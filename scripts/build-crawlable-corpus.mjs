@@ -29,6 +29,8 @@ import {
   renderContextualComparisons,
 } from './build-comparison-pages.mjs';
 import { RELATED_READING_PATH, loadRelatedReading, renderRelatedReading } from './related-reading.mjs';
+import { blogPostPathsIn, createTargetResolver, loadSearchLinks, searchLinksPath } from './search-links.mjs';
+import { placeSearchLinks } from './lib/search-links.mjs';
 import { LIVE_PAGE_LINKS_PATH, chokepointLiveLinks, countryLiveLinks, crisisLiveLinks, renderLiveDataLinks } from './live-pages/related-links.mjs';
 import {
   USE_CASE_PAGES,
@@ -204,6 +206,7 @@ export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
   CHOKEPOINT_PAGE_CONTENT_PATH,
   EIA_OIL_TRANSIT_BASELINES_PATH,
   LIVE_PAGE_LINKS_PATH,
+  searchLinksPath('chokepoints'),
 ]);
 /** Compare pages interpolate live provider and chokepoint counts (#7744). */
 export const COMPARISON_PAGE_LASTMOD_PATHS = Object.freeze([
@@ -479,7 +482,7 @@ export function resolveLatestResilienceSnapshotPath(rootDir = DEFAULT_ROOT) {
   const candidates = readdirSync(snapshotDir)
     .map((filename) => ({ filename, match: filename.match(RESILIENCE_SNAPSHOT_RE) }))
     .filter(({ match }) => match)
-    .sort((a, b) => b.match[1].localeCompare(a.match[1]));
+    .sort((a, b) => b.match[1].localeCompare(a.match[1], 'en-US'));
   if (candidates.length === 0) {
     throw new Error(`No canonical resilience ranking snapshot found in ${RESILIENCE_SNAPSHOT_DIR}`);
   }
@@ -557,7 +560,7 @@ export function resolveLatestLivePulseSnapshotPath(rootDir = DEFAULT_ROOT) {
   const candidates = readdirSync(snapshotDir)
     .map((filename) => ({ filename, match: filename.match(LIVE_PULSE_SNAPSHOT_RE) }))
     .filter(({ match }) => match)
-    .sort((a, b) => b.match[1].localeCompare(a.match[1]));
+    .sort((a, b) => b.match[1].localeCompare(a.match[1], 'en-US'));
   if (candidates.length === 0) {
     throw new Error(`No crawlable live-pulse snapshot found in ${RESILIENCE_SNAPSHOT_DIR}`);
   }
@@ -648,7 +651,7 @@ export function buildCiiRankingEntries(countries, livePulse, { now = Date.now() 
     });
   }
 
-  entries.sort((left, right) => right.score - left.score || left.country.name.localeCompare(right.country.name));
+  entries.sort((left, right) => right.score - left.score || left.country.name.localeCompare(right.country.name, 'en-US'));
   const entryCodes = new Set(entries.map((entry) => entry.code));
   const expectedCodes = new Set(CII_COUNTRY_CODES);
   const missingCodes = CII_COUNTRY_CODES.filter((code) => !entryCodes.has(code));
@@ -805,6 +808,47 @@ function dataDownload(contentUrl, encodingFormat = 'application/json') {
     '@type': 'DataDownload',
     encodingFormat,
     contentUrl,
+  };
+}
+
+// The daily archive is licensed apart from the corpus downloads (CC BY 4.0, not
+// the Terms of Service) and is served by api/open-data-chokepoints.js, so its
+// files are never written by this build. tests/crawlable-corpus.test.mjs pins
+// these values to scripts/build-open-data-chokepoints.mjs.
+export const CHOKEPOINT_OPEN_DATA = Object.freeze({
+  identifier: 'worldmonitor-chokepoint-status',
+  basePath: '/data/v1/chokepoints/',
+  licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
+});
+
+function chokepointOpenDataLd(baseUrl, chokepointCount) {
+  const file = (name) => absoluteUrl(baseUrl, `${CHOKEPOINT_OPEN_DATA.basePath}${name}`);
+  return {
+    '@context': SCHEMA_ORG_CONTEXT_URL,
+    '@type': 'Dataset',
+    '@id': `${absoluteUrl(baseUrl, '/chokepoints/')}#daily-archive`,
+    name: 'World Monitor chokepoint status daily archive',
+    description: `One snapshot per day of the ${chokepointCount} maritime chokepoints World Monitor tracks: disruption score, status, navigational warning and AIS disruption counts, AIS congestion, transit counts and flow ratio. Published as JSON and CSV with a JSON Schema and a datasheet, free to reuse with attribution, no key required.`,
+    url: file('README.md'),
+    identifier: CHOKEPOINT_OPEN_DATA.identifier,
+    keywords: ['maritime chokepoints', 'shipping disruption', 'open data', 'daily time series', 'AIS congestion'],
+    creator: { ...WORLD_MONITOR_ORG },
+    license: CHOKEPOINT_OPEN_DATA.licenseUrl,
+    spatialCoverage: 'Worldwide',
+    isAccessibleForFree: true,
+    includedInDataCatalog: includedInDataCatalog(baseUrl),
+    measurementTechnique: 'World Monitor chokepoint disruption scoring methodology',
+    variableMeasured: [
+      { '@type': 'PropertyValue', name: 'Disruption score', minValue: 0, maxValue: 100, unitText: 'index points' },
+      { '@type': 'PropertyValue', name: 'Status' },
+      { '@type': 'PropertyValue', name: 'AIS congestion' },
+      { '@type': 'PropertyValue', name: 'Flow ratio', minValue: 0, maxValue: 1.5 },
+      { '@type': 'PropertyValue', name: 'Daily transit count' },
+    ],
+    distribution: [
+      dataDownload(file('latest.json')),
+      dataDownload(file('latest.csv'), 'text/csv'),
+    ],
   };
 }
 
@@ -1397,7 +1441,7 @@ function normalizeGlossaryTerms(terms) {
       short: term.short,
     }))
     .filter((term) => term.slug && term.term)
-    .sort((a, b) => a.term.localeCompare(b.term));
+    .sort((a, b) => a.term.localeCompare(b.term, 'en-US'));
 }
 
 function normalizeChokepoints(entries) {
@@ -1414,7 +1458,7 @@ function normalizeChokepoints(entries) {
       slug: slugify(entry.displayName || entry.id),
     }))
     .filter((entry) => entry.id && entry.displayName)
-    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+    .sort((a, b) => a.displayName.localeCompare(b.displayName, 'en-US'));
 }
 
 export function buildChokepointPageLinks({ chokepoints, countries, crises, blogPostPaths = new Set(), content = CHOKEPOINT_CONTENT }) {
@@ -1539,7 +1583,7 @@ function normalizeCountries(snapshot, reverseNames) {
     ));
 
   return [...ranked, ...greyedOut].sort((a, b) => {
-    if (a.rank == null && b.rank == null) return a.name.localeCompare(b.name);
+    if (a.rank == null && b.rank == null) return a.name.localeCompare(b.name, 'en-US');
     if (a.rank == null) return 1;
     if (b.rank == null) return -1;
     return a.rank - b.rank;
@@ -1593,7 +1637,7 @@ function normalizeCountryBounds(countryBboxes, countries, reverseNames = new Map
       };
     })
     .filter(Boolean)
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => a.name.localeCompare(b.name, 'en-US'));
 }
 
 function normalizeCrises(entries) {
@@ -1793,7 +1837,7 @@ export function compareUnpublishedRankedPeers(left, right, country, regionId, re
   return regionDifference
     || scoreDistance
     || left.rank - right.rank
-    || left.name.localeCompare(right.name);
+    || left.name.localeCompare(right.name, 'en-US');
 }
 
 function addCountryContext(countries, regionsByCode, crises) {
@@ -1811,7 +1855,7 @@ function addCountryContext(countries, regionsByCode, crises) {
           - Math.abs(right.rank - country.rank);
         return distanceDifference
           || left.rank - right.rank
-          || left.name.localeCompare(right.name);
+          || left.name.localeCompare(right.name, 'en-US');
       })
       .slice(0, 4);
     const regionalPeers = (unpublished ? ranked : countries)
@@ -1824,7 +1868,7 @@ function addCountryContext(countries, regionsByCode, crises) {
         ? compareUnpublishedRankedPeers(left, right, country, regionId, regionsByCode)
         : Math.abs(left.overallScore - country.overallScore)
           - Math.abs(right.overallScore - country.overallScore)
-          || left.name.localeCompare(right.name))
+          || left.name.localeCompare(right.name, 'en-US'))
       .slice(0, 5);
     const crisisMemberships = crises.filter(
       (crisis) => crisis.coverage.some((coveredCountry) => coveredCountry.code === country.code),
@@ -2117,6 +2161,7 @@ export async function loadCorpusData({
     gitFileLastmod(rootDir, MICROSTATE_TERRITORIES_PATH),
     gitFileLastmod(rootDir, RELATED_READING_PATH),
     gitFileLastmod(rootDir, LIVE_PAGE_LINKS_PATH),
+    gitFileLastmod(rootDir, searchLinksPath('countries')),
     // Inputs of the related-country links (scripts/country-related-links.mjs).
     gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH),
     gitFileLastmod(rootDir, TENSION_PAIRS_PATH),
@@ -2135,6 +2180,7 @@ export async function loadCorpusData({
   const countryInstabilityIndexLastmod = laterDate(
     countriesLastmod,
     CII_RANKING_PAGE_CONTENT_VERSION,
+    gitFileLastmod(rootDir, searchLinksPath('country-instability-index')),
   );
   const changelogLastmod = laterDate(
     gitFileLastmod(rootDir, CHANGELOG_PATH),
@@ -2150,10 +2196,13 @@ export async function loadCorpusData({
     livePulse.capturedAt,
     CHOKEPOINT_PAGE_CONTENT_VERSION,
   );
-  const toolsLastmod = laterDate(
+  // The signal-convergence page states when its methodology was last
+  // reviewed, so a search-link edit moves the tools lastmod but not that date.
+  const toolsReviewedOn = laterDate(
     gitFileLastmod(rootDir, LIVE_TOOLS_SCRIPT_PATH),
     TOOLS_PAGE_CONTENT_VERSION,
   );
+  const toolsLastmod = laterDate(toolsReviewedOn, gitFileLastmod(rootDir, searchLinksPath('tools')));
   // The hub links every live topic page, so their code moves it too.
   const toolsIndexLastmod = laterDate(
     toolsLastmod,
@@ -2164,6 +2213,7 @@ export async function loadCorpusData({
   const liveTopicsLastmod = laterDate(
     LIVE_TOPIC_PAGES_CONTENT_VERSION,
     ...LIVE_TOPIC_PAGES_INPUT_PATHS.map((path) => gitFileLastmod(rootDir, path)),
+    gitFileLastmod(rootDir, searchLinksPath('tools')),
     livePulse.liveTopics ? livePulse.capturedAt : null,
   );
   const crisesLastmod = laterDate(
@@ -2171,6 +2221,7 @@ export async function loadCorpusData({
     gitFileLastmod(rootDir, CRISIS_EDITORIAL_PATH),
     gitFileLastmod(rootDir, RELATED_READING_PATH),
     gitFileLastmod(rootDir, LIVE_PAGE_LINKS_PATH),
+    gitFileLastmod(rootDir, searchLinksPath('crises')),
     livePulse.capturedAt,
     // The country readings table renders resilience scores and ranks, and
     // each page states when its editorial copy was last reviewed.
@@ -2186,6 +2237,7 @@ export async function loadCorpusData({
     USE_CASES_CONTENT_VERSION,
     gitFileLastmod(rootDir, 'scripts/build-use-cases.mjs'),
     gitFileLastmod(rootDir, 'scripts/data/use-case-workflows.mjs'),
+    gitFileLastmod(rootDir, searchLinksPath('use-cases')),
   );
   const coverageCatalog = await loadCoverageCatalog({
     importModule: (relativePath) => importRepoModule(rootDir, relativePath),
@@ -2208,6 +2260,7 @@ export async function loadCorpusData({
     SITUATION_CONTENT_VERSION,
     ...SITUATION_PAGE_INPUT_PATHS.map((path) => gitFileLastmod(rootDir, path)),
     gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH),
+    gitFileLastmod(rootDir, searchLinksPath('monitor-the-situation')),
     livePulse.capturedAt,
   );
   const comparisonsLastmod = comparisonPageLastmod({
@@ -2293,6 +2346,7 @@ export async function loadCorpusData({
       comparisons: comparisonsLastmod,
       sources: sourcesLastmod,
     },
+    toolsReviewedOn,
     sourceStats,
     sourceCatalog,
     coverageCatalog,
@@ -2425,6 +2479,11 @@ export function withSchemaContext(entry) {
   return { '@context': SCHEMA_ORG_CONTEXT_URL, ...rest };
 }
 
+// Source page path -> its search links for the build in progress. pageDocument
+// reads it because a dozen renderers here and every external builder's `tpl`
+// reach the template, and only the template sees the composed <main>.
+let searchLinksByPath = new Map();
+
 function pageDocument({
   baseUrl,
   path,
@@ -2476,6 +2535,8 @@ function pageDocument({
         <a href="/reference/changelog/">Changelog</a>
         <a href="/blog/glossary/">Glossary</a>`;
   const renderedFooter = footerBody || 'World Monitor reference pages. Dated snapshots are published here; live readings are labelled separately.';
+  const mainHtml = `${body}\n${renderContextualComparisons(path, escapeHtml)}`;
+  const searchLinks = placeSearchLinks(mainHtml, path, searchLinksByPath.get(path), escapeHtml);
   // The rendered half of #7980. `author` in JSON-LD is what a machine reads;
   // a quality rater and a human reader want a name on the page that publishes
   // the score. Rendered here rather than inside each body so no page family
@@ -2496,6 +2557,9 @@ function pageDocument({
     <meta name="description" content="${escapeHtml(description)}">
     <meta name="robots" content="${escapeHtml(robots)}">
     <link rel="canonical" href="${escapeHtml(canonical)}">
+    <link rel="icon" type="image/png" sizes="96x96" href="/favico/android-chrome-96x96.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favico/favicon-32x32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/favico/apple-touch-icon.png">
     <link rel="alternate" hreflang="x-default" href="${escapeHtml(canonical)}">
     <link rel="alternate" hreflang="en" href="${escapeHtml(canonical)}">
     ${lastmod ? `<meta name="lastmod" content="${escapeHtml(lastmod)}">` : []}
@@ -2603,12 +2667,12 @@ ${renderedNav}
       </nav>
     </header>
     <main>
-${body}
-${renderContextualComparisons(path, escapeHtml)}
+${mainHtml}${searchLinks ? `\n${searchLinks}` : ''}
     </main>
     <footer>${renderedByline}${renderedFooter}</footer>
     ${scriptSrcs.map((src) => `<script type="module" nonce="wm-static-bootstrap" src="${escapeHtml(src)}"></script>`).join('\n    ')}
     ${inlineScript ? `<script nonce="wm-static-bootstrap">${inlineScript}</script>` : ''}
+    ${UMAMI_SCRIPT_TAG}
   </body>
 </html>
 `;
@@ -2993,11 +3057,11 @@ function isCoverageGap(dimension) {
 }
 
 function compareDimensionsByCoverageAsc(left, right) {
-  return Number(left.coverage) - Number(right.coverage) || left.id.localeCompare(right.id);
+  return Number(left.coverage) - Number(right.coverage) || left.id.localeCompare(right.id, 'en-US');
 }
 
 function compareDimensionsByCoverageDesc(left, right) {
-  return Number(right.coverage) - Number(left.coverage) || left.id.localeCompare(right.id);
+  return Number(right.coverage) - Number(left.coverage) || left.id.localeCompare(right.id, 'en-US');
 }
 
 function dimensionSources(dimension) {
@@ -3515,10 +3579,10 @@ ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq
   })));
   const observedDimensionRows = allDimensionRows
     .filter(hasObservedDimensionScore)
-    .sort((left, right) => left.score - right.score || left.id.localeCompare(right.id));
+    .sort((left, right) => left.score - right.score || left.id.localeCompare(right.id, 'en-US'));
   const withheldDimensionRows = allDimensionRows
     .filter((dimension) => !hasObservedDimensionScore(dimension))
-    .sort((left, right) => left.domainId.localeCompare(right.domainId) || left.id.localeCompare(right.id));
+    .sort((left, right) => left.domainId.localeCompare(right.domainId, 'en-US') || left.id.localeCompare(right.id, 'en-US'));
   const dimensionRows = [...observedDimensionRows, ...withheldDimensionRows];
   const html = `      <article data-country-analysis>
         <h2>${escapeHtml(country.name)} resilience analysis</h2>
@@ -4209,8 +4273,7 @@ ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
       <p>The 0-100 index records the ${escapeHtml(prettyDate(capturedAt))} snapshot. See the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a> for dimensions, sources and confidence rules. Published revisions that affect ${escapeHtml(country.name)} are in the <a href="/docs/corrections">corrections log</a>.</p>
       <p class="snapshot-note">${escapeHtml(snapshotNote)}</p>
       <p>Use this dated reference with the live map for active alerts, conflict, market and energy signals. Neither score on this page is a forecast; where World Monitor does forecast, the graded record is on the <a href="/accuracy/">forecast accuracy scorecard</a>.</p>`}
-      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD))}">${COUNTRY_DATASET_DOWNLOAD}</a>. Source: World Monitor Country Resilience Index snapshot, ${escapeHtml(prettyDate(capturedAt))}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>
-      ${UMAMI_SCRIPT_TAG}`;
+      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD))}">${COUNTRY_DATASET_DOWNLOAD}</a>. Source: World Monitor Country Resilience Index snapshot, ${escapeHtml(prettyDate(capturedAt))}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
   const coreTitle = ciiEntry
     ? `${country.name} Instability Index & Country Risk`
     : `${country.name} Country Risk and Resilience`;
@@ -4518,15 +4581,24 @@ ${chokepointHubRows.map((row) => {
         <dd>${escapeHtml(opening || `${row.chokepoint.displayName} is a tracked maritime chokepoint in the ${row.region} corridor.`)}</dd>`;
   }).join('\n')}
       </dl>
+      <h2 id="open-data">Download the daily status archive</h2>
+      <p data-chokepoint-open-data>The status of all ${chokepointHubRows.length} waterways is also published once a day as an open dataset. It is free to reuse under <a rel="license" href="${CHOKEPOINT_OPEN_DATA.licenseUrl}">CC BY 4.0</a> with credit to World Monitor, and needs no key or signup. Each daily file keeps that day's disruption score, status, warning counts, AIS congestion, transit counts and flow ratio, and earlier days are never rewritten.</p>
+      <ul data-chokepoint-open-data-files>
+        <li><a href="${CHOKEPOINT_OPEN_DATA.basePath}latest.json">Latest snapshot (JSON)</a></li>
+        <li><a href="${CHOKEPOINT_OPEN_DATA.basePath}latest.csv">Latest snapshot (CSV)</a></li>
+        <li><a href="${CHOKEPOINT_OPEN_DATA.basePath}index.json">Available dates</a></li>
+        <li><a href="${CHOKEPOINT_OPEN_DATA.basePath}README.md">Datasheet: columns, withheld fields, licence and limits</a></li>
+        <li><a href="${CHOKEPOINT_OPEN_DATA.basePath}schema.json">JSON Schema</a></li>
+      </ul>
       <h2>How this list is scoped</h2>
       <p>The ${chokepointHubRows.length} waterways come from a committed registry, not from whatever is in the news. Each has a detail page carrying the same four-source status block, the modelled corridors that route through it, and its alternatives when it is unavailable. A waterway enters the registry because traffic there has no cheap substitute — the test is substitutability, not incident count — so the list changes rarely and changes are recorded in the corrections log.</p>
       <h2>What these pages are not</h2>
-      <p>They are not a navigation product and not an open/closed declaration. A score is a triage signal built from the sources named above; it does not authorise or discourage a transit, and it carries no view on the legality or safety of any particular voyage. Daily transit counts are IMF PortWatch figures from satellite AIS, published about four days after the day they cover, not a port authority figure, and the oil volumes above are a ${escapeHtml(String(EIA_OIL_TRANSIT_BASELINES.referenceYear))} annual-average baseline rather than current throughput.</p>
+      <p>They are not a navigation product and not an open/closed declaration. A score is a triage signal built from the sources named above; it does not authorise or discourage a transit, and it carries no view on the legality or safety of any particular voyage. Daily transit counts are IMF PortWatch figures from satellite AIS, published with a lag of several days, not a port authority figure, and the oil volumes above are a ${escapeHtml(String(EIA_OIL_TRANSIT_BASELINES.referenceYear))} annual-average baseline rather than current throughput.</p>
       <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)} ${CHOKEPOINT_REGISTRY_PATH}">Sources: World Monitor weekly pulse snapshot and World Monitor chokepoint registry. Published ${escapeHtml(prettyDate(livePulse.capturedAt))}. Methodology: <a href="/docs/methodology/chokepoints">chokepoint disruption scoring</a>. Published revisions: <a href="/docs/corrections">corrections log</a>.</p>`;
   return pageDocument({
     baseUrl,
     path,
-    title: 'Maritime Chokepoints: Live Shipping Lane Status | World Monitor',
+    title: 'Maritime Chokepoints: Live Shipping Status | World Monitor',
     description,
     lastmod,
     jsonLd: [
@@ -4575,6 +4647,7 @@ ${chokepointHubRows.map((row) => {
         itemListOrder: 'https://schema.org/ItemListUnordered',
         itemListElement,
       },
+      chokepointOpenDataLd(baseUrl, chokepointHubRows.length),
       dataCatalogLd(baseUrl),
     ],
     breadcrumbs: breadcrumbLd(baseUrl, [
@@ -4743,8 +4816,8 @@ function renderChokepointPage({
 
   const body = `      <p class="eyebrow">Chokepoint</p>
       <h1>${escapeHtml(content.heading ?? chokepoint.displayName)}</h1>
-      <p class="lede">${escapeHtml(blurb)}</p>
 ${liveSection}
+      <p class="lede">${escapeHtml(blurb)}</p>
       <a class="cta" href="${escapeHtml(mapUrl)}">Open ${escapeHtml(chokepoint.displayName)} on the live map →</a>
       <section class="grid" aria-label="Chokepoint overview">
 ${tiles}
@@ -5492,7 +5565,7 @@ function signalConvergenceDatasetMetadata(signalConvergence, baseUrl) {
   };
 }
 
-function renderSignalConvergencePage({ signalConvergence, baseUrl, lastmod, snapshotPath }) {
+function renderSignalConvergencePage({ signalConvergence, baseUrl, lastmod, reviewedOn, snapshotPath }) {
   const path = '/tools/signal-convergence/';
   const metricName = signalConvergence.metricName || 'Geographic Convergence Score';
   const datasetMetadata = signalConvergenceDatasetMetadata(signalConvergence, baseUrl);
@@ -5538,7 +5611,7 @@ ${examples}
       </div>
       <h2>Where to go next</h2>
       <p>Open the <a href="/dashboard">live dashboard</a> for map layers, or read the full methodology in <a href="/docs/geographic-convergence">geographic convergence</a>. Country pages expose related instability scores; this page is the citable correlation definition.</p>
-      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(downloadHref)}">${CONVERGENCE_DATASET_DOWNLOAD}</a>. Snapshot: World Monitor weekly pulse snapshot. Methodology reference, last reviewed ${escapeHtml(prettyDate(lastmod))}. Methodology: <a href="/docs/geographic-convergence">Geographic Convergence Detection</a>.</p>`;
+      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(downloadHref)}">${CONVERGENCE_DATASET_DOWNLOAD}</a>. Snapshot: World Monitor weekly pulse snapshot. Methodology reference, last reviewed ${escapeHtml(prettyDate(reviewedOn))}. Methodology: <a href="/docs/geographic-convergence">Geographic Convergence Detection</a>.</p>`;
   return pageDocument({
     baseUrl,
     path,
@@ -5604,7 +5677,7 @@ function signalConvergenceDatasetDownload(signalConvergence, snapshotPath) {
 
 function renderHazardPage({ countryBounds, baseUrl, lastmod }) {
   const path = '/tools/natural-hazard-pulse/';
-  const description = 'See which natural hazards are active right now — earthquakes, storms, wildfires and floods from EONET, GDACS, NHC and HKO feeds — worldwide or filtered to one country.';
+  const description = 'See active natural hazards right now — earthquakes, storms, wildfires and floods from EONET, GDACS, NHC and HKO feeds — worldwide or filtered to one country.';
   const body = `      <p class="eyebrow">Natural-hazard pulse</p>
       <h1>What natural hazards are active now?</h1>
       <p class="lede">${escapeHtml(description)}</p>
@@ -5764,7 +5837,7 @@ function renderChangelogPage({ releases, pageIndex, totalPages, baseUrl, lastmod
   const title = pageIndex === 0
     ? 'World Monitor Changelog | World Monitor'
     : `World Monitor Changelog Page ${pageIndex + 1} | World Monitor`;
-  const description = 'Paginated release notes for World Monitor — new panels, data sources, API changes and fixes.';
+  const description = 'Release notes for every World Monitor version: new dashboard panels, data sources, API changes and bug fixes, listed by release date with version numbers.';
   const body = `      <p class="eyebrow">Release notes</p>
       <h1>World Monitor changelog</h1>
       <p class="lede">${escapeHtml(description)}</p>
@@ -5932,12 +6005,33 @@ export async function buildCorpus({
   clean = true,
   livePulseSnapshotPath,
   now = Date.now(),
+  // Where scripts/data/search-links/ is read from, so a test can build the
+  // real corpus against its own ledgers.
+  searchLinksRootDir = rootDir,
 } = {}) {
   const data = await loadCorpusData({ rootDir, livePulseSnapshotPath, now });
+  const blogPostPaths = blogPostPathsIn(rootDir);
+  const changelogPages = chunk(data.changelog, CHANGELOG_PAGE_SIZE);
+  const manifest = buildManifest({
+    data,
+    baseUrl,
+    changelogPageCount: changelogPages.length,
+  });
+  searchLinksByPath = loadSearchLinks({
+    rootDir: searchLinksRootDir,
+    resolves: createTargetResolver({ rootDir, manifest, blogPostPaths }),
+  });
+  try {
+    writeCorpus({ data, rootDir, outDir, baseUrl, clean, now, blogPostPaths, changelogPages });
+  } finally {
+    searchLinksByPath = new Map();
+  }
+  writeGeneratedFile(outDir, 'crawlable-corpus.json', `${JSON.stringify(manifest, null, 2)}\n`);
+  return manifest;
+}
+
+function writeCorpus({ data, rootDir, outDir, baseUrl, clean, now, blogPostPaths, changelogPages }) {
   const countrySlugByCode = new Map(data.countries.map((country) => [country.code, country.slug]));
-  const blogPostPaths = new Set(readdirSync(join(rootDir, 'blog-site/src/content/blog'))
-    .filter((file) => file.endsWith('.md'))
-    .map((file) => `/blog/posts/${file.slice(0, -3)}/`));
   const chokepointPageLinks = buildChokepointPageLinks({ ...data, blogPostPaths });
   const relatedReading = loadRelatedReading({ rootDir, blogPostPaths });
   if (clean) {
@@ -6271,6 +6365,7 @@ export async function buildCorpus({
       signalConvergence: data.livePulse.signalConvergence,
       baseUrl,
       lastmod: data.lastmod.tools,
+      reviewedOn: data.toolsReviewedOn,
       snapshotPath: data.sources.livePulseSnapshot,
     }),
   );
@@ -6331,7 +6426,6 @@ export async function buildCorpus({
     );
   }
 
-  const changelogPages = chunk(data.changelog, CHANGELOG_PAGE_SIZE);
   changelogPages.forEach((releases, pageIndex) => {
     writeGeneratedFile(
       outDir,
@@ -6345,14 +6439,6 @@ export async function buildCorpus({
       }),
     );
   });
-
-  const manifest = buildManifest({
-    data,
-    baseUrl,
-    changelogPageCount: changelogPages.length,
-  });
-  writeGeneratedFile(outDir, 'crawlable-corpus.json', `${JSON.stringify(manifest, null, 2)}\n`);
-  return manifest;
 }
 
 function parseArgs(argv) {

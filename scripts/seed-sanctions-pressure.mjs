@@ -7,13 +7,15 @@
 import sax from 'sax';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { projectCountrySanctions } from './shared/country-sanctions-signals.mjs';
+import { aircraftRegistrationCountry } from './shared/aircraft-registration-country.mjs';
+import { countryNameToIso2, COUNTRY_NAME_TO_ISO2, normalizeCountryToken } from './shared/country-name-to-iso2.cjs';
 
 import { loadEnvFile, runSeed, verifySeedKey, readSeedSnapshot, writeExtraKeyWithMeta } from './_seed-utils.mjs';
 import { fetchOfacSourceResponse } from './_sanctions-source.mjs';
 import { buildSanctionsChanges } from './_sanctions-changes.mjs';
 import { CSL_ROW_ID, CSL_SOURCES, CSL_TIMEOUT_MS, ingestCslEntries } from './_csl-sanctions.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
-import { SANCTIONS_MAX_CONTENT_AGE_MIN, SANCTIONS_SOURCE_VERSION, SEMA_SOURCE, SEMA_TIMEOUT_MS, ingestSemaEntries, mergeSanctionEntries, ofacRegistrationToIdentifier, sanctionsListContentMeta } from './_sema-sanctions.mjs';
+import { SANCTIONS_MAX_CONTENT_AGE_MIN, SANCTIONS_SOURCE_VERSION, SEMA_SOURCE, SEMA_TIMEOUT_MS, ingestSemaEntries, mergeSanctionEntries, semaTargetCountry, ofacRegistrationToIdentifier, sanctionsListContentMeta } from './_sema-sanctions.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -55,6 +57,13 @@ const ET_CODE = {
   SANCTIONS_ENTITY_TYPE_UNSPECIFIED: 'unspecified',
 };
 const DEFAULT_RECENT_LIMIT = 60;
+// Measure OFAC country/registry attribution separately from SEMA regime targets.
+const OFAC_UNATTRIBUTED_MAX_SHARE = 0.10;
+// Missing current tails are expected upstream. Alarm on a registry-resolution
+// failure affecting 10 aircraft with current tails, independent of cohort size.
+const OFAC_AIRCRAFT_REGISTRY_FAILURE_COUNT = 10;
+const ATTRIBUTION_DEGRADED_ERROR_CODE = 'SANCTIONS_ATTRIBUTION_DEGRADED';
+const REGION_NAMES = new Intl.DisplayNames(['en'], { type: 'region' });
 const PROGRAM_CODE_RE = /^[A-Z0-9][A-Z0-9-]{1,24}$/;
 
 function validPressureClock(value) {
@@ -87,8 +96,9 @@ function validSourceRecords(source, records) {
       || !Object.hasOwn(ET_CODE, entry.entityType)
       || !Array.isArray(entry.sourceLists) || entry.sourceLists.length !== 1 || entry.sourceLists[0] !== source
       || !['countryCodes', 'countryNames', 'programs'].every(field => Array.isArray(entry[field]) && entry[field].every(v => typeof v === 'string'))
-      || !['_aliases', '_identifiers'].every(field => entry[field] === undefined || (Array.isArray(entry[field]) && entry[field].every(v => typeof v === 'string')))
-      || !['_notice', '_url'].every(field => entry[field] === undefined || typeof entry[field] === 'string')
+      || !['_aliases', '_identifiers', 'parentCountryCodes', 'parentCountryNames'].every(field => entry[field] === undefined || (Array.isArray(entry[field]) && entry[field].every(v => typeof v === 'string')))
+      || !(entry._aircraftHasCurrentTail === undefined || typeof entry._aircraftHasCurrentTail === 'boolean')
+      || !['_notice', '_url', '_flagCode', '_flagName'].every(field => entry[field] === undefined || typeof entry[field] === 'string')
       || typeof entry.effectiveAt !== 'string' || !/^\d+$/.test(entry.effectiveAt)) return false;
     ids.add(entry.id);
     return true;
@@ -173,13 +183,11 @@ function sortEntries(a, b) {
 function buildCountryPressure(entries) {
   const map = new Map();
   for (const entry of entries) {
-    const codes = entry.countryCodes.length > 0 ? entry.countryCodes : ['XX'];
-    const names = entry.countryNames.length > 0 ? entry.countryNames : ['Unknown'];
-    codes.forEach((code, index) => {
-      const key = `${code}:${names[index] || names[0] || 'Unknown'}`;
-      const current = map.get(key) || {
+    entry.countryCodes.forEach((code, index) => {
+      if (!hasCountryCode(code)) return;
+      const current = map.get(code) || {
         countryCode: code,
-        countryName: names[index] || names[0] || 'Unknown',
+        countryName: entry.countryNames[index] || code,
         entryCount: 0,
         newEntryCount: 0,
         vesselCount: 0,
@@ -189,12 +197,115 @@ function buildCountryPressure(entries) {
       if (entry.isNew) current.newEntryCount += 1;
       if (entry.entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL') current.vesselCount += 1;
       if (entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT') current.aircraftCount += 1;
-      map.set(key, current);
+      map.set(code, current);
     });
   }
   return [...map.values()]
     .sort((a, b) => b.newEntryCount - a.newEntryCount || b.entryCount - a.entryCount || a.countryName.localeCompare(b.countryName))
     .slice(0, 12);
+}
+
+function hasCountryCode(code) {
+  return Boolean(code) && code !== 'XX';
+}
+
+// Regulation targets describe a sanctions regime, never a designee's country.
+// Reuse the display ranking only; this projection must not feed risk or briefs.
+function buildRegulationTargets(entries) {
+  return buildCountryPressure(entries.map(entry => ({ ...entry,
+    countryCodes: entry._targetCountryCodes || [],
+    countryNames: entry._targetCountryNames || [],
+  })));
+}
+
+function buildFlagRegistries(entries) {
+  const map = new Map();
+  for (const entry of entries) {
+    if (!entry._flagCode) continue;
+    const current = map.get(entry._flagCode) || {
+      countryCode: entry._flagCode,
+      countryName: entry._flagName || entry._flagCode,
+      vesselCount: 0,
+      newVesselCount: 0,
+      aircraftCount: 0,
+      newAircraftCount: 0,
+    };
+    const asset = entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT' ? 'aircraftCount' : 'vesselCount';
+    current[asset] += 1;
+    if (entry.isNew) current[asset === 'aircraftCount' ? 'newAircraftCount' : 'newVesselCount'] += 1;
+    map.set(entry._flagCode, current);
+  }
+  const fresh = row => row.newVesselCount + row.newAircraftCount;
+  const total = row => row.vesselCount + row.aircraftCount;
+  return [...map.values()]
+    .sort((a, b) => fresh(b) - fresh(a) || total(b) - total(a) || a.countryName.localeCompare(b.countryName))
+    .slice(0, 12);
+}
+
+function countUnattributed(entries) {
+  const summary = { entryCount: 0, vesselCount: 0, aircraftCount: 0 };
+  for (const entry of entries) {
+    if (entry._flagCode || entry.countryCodes.some(hasCountryCode) || entry.parentCountryCodes?.some(hasCountryCode)) continue;
+    summary.entryCount += 1;
+    if (entry.entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL') summary.vesselCount += 1;
+    if (entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT') summary.aircraftCount += 1;
+  }
+  return summary;
+}
+
+function ofacAttributionHealth(entries) {
+  const vesselCount = entries.filter(entry => entry.entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL').length;
+  const aircraftCount = entries.filter(entry => entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT').length;
+  // Location evidence cannot prove that aircraft registry resolution still works.
+  const unattributedAircraftCount = entries.filter(entry => entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT' && !hasCountryCode(entry._flagCode)).length;
+  const aircraftWithTails = entries.filter(entry => entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT' && entry._aircraftHasCurrentTail);
+  const unresolvedAircraftWithTailCount = aircraftWithTails.filter(entry => !hasCountryCode(entry._flagCode)).length;
+  const unattributed = countUnattributed(entries);
+  const share = (count, total) => (total > 0 ? Math.round((count / total) * 10_000) / 10_000 : null);
+  const entryShare = share(unattributed.entryCount, entries.length);
+  const vesselShare = share(unattributed.vesselCount, vesselCount);
+  const aircraftShare = share(unattributedAircraftCount, aircraftCount);
+  return {
+    entryCount: entries.length,
+    unattributedCount: unattributed.entryCount,
+    unattributedShare: entryShare,
+    vesselCount,
+    unattributedVesselCount: unattributed.vesselCount,
+    unattributedVesselShare: vesselShare,
+    aircraftCount,
+    unattributedAircraftCount,
+    unattributedAircraftShare: aircraftShare,
+    maxShare: OFAC_UNATTRIBUTED_MAX_SHARE,
+    aircraftWithTailCount: aircraftWithTails.length,
+    unresolvedAircraftWithTailCount,
+    unresolvedAircraftWithTailShare: share(unresolvedAircraftWithTailCount, aircraftWithTails.length),
+    aircraftRegistryFailureCount: OFAC_AIRCRAFT_REGISTRY_FAILURE_COUNT,
+    degraded: unattributed.entryCount > entries.length * OFAC_UNATTRIBUTED_MAX_SHARE
+      || unattributed.vesselCount > vesselCount * OFAC_UNATTRIBUTED_MAX_SHARE
+      || unresolvedAircraftWithTailCount >= OFAC_AIRCRAFT_REGISTRY_FAILURE_COUNT,
+  };
+}
+
+function semaAttributionHealth(entries) {
+  const regimes = Object.create(null);
+  for (const entry of entries) {
+    if (entry.entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL') continue;
+    const regime = entry._regime || 'Unknown';
+    // Classify independently of semaTargetCountry: losing a known state's
+    // targets must still alarm. Unknown/thematic schedules are informational.
+    const regimeName = regime.replace(/\s*\([^)]*\)\s*$/, '');
+    const targetExpected = !/^(ukraine|moldova|jvcfor|hamas|settler)$/i.test(regimeName)
+      && Boolean(COUNTRY_NAME_TO_ISO2[normalizeCountryToken(regime)]
+        || COUNTRY_NAME_TO_ISO2[normalizeCountryToken(regimeName)]);
+    const row = Object.hasOwn(regimes, regime) ? regimes[regime] : (regimes[regime] = { entryCount: 0, unattributedCount: 0, targetExpected });
+    row.entryCount += 1;
+    if (!entry._targetCountryCodes?.some(hasCountryCode)) row.unattributedCount += 1;
+  }
+  for (const row of Object.values(regimes)) {
+    row.unattributedShare = Math.round(row.unattributedCount / row.entryCount * 10_000) / 10_000;
+    row.degraded = row.targetExpected && row.unattributedCount > row.entryCount * OFAC_UNATTRIBUTED_MAX_SHARE;
+  }
+  return { regimes, maxShare: OFAC_UNATTRIBUTED_MAX_SHARE, degraded: Object.values(regimes).some(row => row.degraded) };
 }
 
 // Full ISO2 → entryCount map across ALL entries (not truncated like buildCountryPressure).
@@ -243,7 +354,12 @@ async function fetchSource(source, { deadlineAt } = {}) {
 
     // ── Reference maps (built first, small, kept for cross-reference) ──────────
     const areaCodes   = new Map(); // ID → { code, name }
+    const countriesByName = new Map();
+    const countryNamesByCode = new Map();
     const featureTypes = new Map(); // ID → label string
+    const relationTypes = new Map();
+    const parentLinks = new Map(); // child profile ID -> direct parent profile IDs
+    const entryProfiles = [];
     const legalBasis  = new Map(); // ID → shortRef string
     const idRegDocTypes = new Map(); // ID → label string
     const idRegDocsByIdentity = new Map(); // identityId → { typeId, number }[]
@@ -260,7 +376,9 @@ async function fetchSource(source, { deadlineAt } = {}) {
     // ── Section flags ──────────────────────────────────────────────────────────
     let inDateOfIssue       = false;
     let inAreaCodeValues    = false;
+    let inCountryValues     = false;
     let inFeatureTypeValues = false;
+    let inRelationTypeValues = false;
     let inLegalBasisValues  = false;
     let inIDRegDocTypeValues = false;
     let inIDRegDocuments    = false;
@@ -274,6 +392,7 @@ async function fetchSource(source, { deadlineAt } = {}) {
 
     // AreaCode / FeatureType / LegalBasis (reference value section)
     let refId = '', refShortRef = '', refDescription = '';
+    let countryIso2 = '';
 
     // Location
     let locId = '';
@@ -288,7 +407,7 @@ async function fetchSource(source, { deadlineAt } = {}) {
     let inDocumentedName = false;
     let namePartsBuf = null;     // string[] collecting NamePartValue text
     let profileFeatures = null;  // Feature[]
-    let curFeature = null;       // { featureTypeId, locationIds[], detail }
+    let curFeature = null;       // { featureTypeId, locationIds[], detail, details[] }
 
     // SanctionsEntry
     let entryId = '', entryProfileId = '';
@@ -318,6 +437,41 @@ async function fetchSource(source, { deadlineAt } = {}) {
       return { codes: pairs.map(([c]) => c), names: pairs.map(([, n]) => n) };
     }
 
+    function countryName(code) {
+      return countryNamesByCode.get(code) ?? REGION_NAMES.of(code) ?? code;
+    }
+
+    // OFAC writes flags as names. Its own country list misses some flag states
+    // (Cook Islands, Gabon) and spellings (Antigua & Barbuda); the shared map covers them.
+    function flagCountry(flag) {
+      if (/\bfalse\b/i.test(flag)) return null;
+      // Exact aliases such as Congo (Kinshasa) are valid. Never strip an unknown
+      // qualifier such as Former or Disputed to turn it into a current registry.
+      if (/[()]/.test(flag)) {
+        const officialName = /^(Iran \(Islamic Republic of\)|Bolivia \(Plurinational State of\)|Venezuela \(Bolivarian Republic of\)|Tanzania \(United Republic of\)|Micronesia \(Federated States of\)|Moldova \(Republic of\)|Netherlands \(Kingdom of the\)|Taiwan \(Province of China\))$/i;
+        return COUNTRY_NAME_TO_ISO2[normalizeCountryToken(flag)]
+          ?? (officialName.test(flag.trim()) ? countryNameToIso2(flag) : null);
+      }
+      const code = countriesByName.get(flag.toLowerCase()) ?? countryNameToIso2(flag);
+      return hasCountryCode(code) ? code : null;
+    }
+
+    const REGISTRIES = {
+      SANCTIONS_ENTITY_TYPE_VESSEL: { feature: 'Vessel Flag', country: flagCountry },
+      SANCTIONS_ENTITY_TYPE_AIRCRAFT: { feature: 'Aircraft Tail Number', country: aircraftRegistrationCountry },
+    };
+
+    function registryCountry(entityType) {
+      const registry = REGISTRIES[entityType];
+      if (!registry) return null;
+      const codes = (profileFeatures ?? [])
+        .filter(feat => featureTypes.get(feat.featureTypeId) === registry.feature)
+        .flatMap(feat => feat.details)
+        .map(registry.country);
+      const [code] = codes;
+      return code && codes.every(other => other === code) ? code : null;
+    }
+
     function finalizeParty() {
       const primaryAlias = aliases?.find((a) => a.primary)
         || aliases?.find((a) => a.typeId === '1403')
@@ -337,9 +491,14 @@ async function fetchSource(source, { deadlineAt } = {}) {
         for (const lid of feat.locationIds) {
           const loc = locations.get(lid);
           if (!loc) continue;
-          loc.codes.forEach((code, i) => { if (code && !seen.has(code)) seen.set(code, loc.names[i] ?? ''); });
+          loc.codes.forEach((code, i) => { if (hasCountryCode(code) && !seen.has(code)) seen.set(code, loc.names[i] ?? ''); });
         }
       }
+      // A vessel's flag or an aircraft's state of registry names a registry, often
+      // of convenience, so it never joins countryCodes, which feed risk scores and
+      // country briefs as sanctions pressure.
+      const registryCode = registryCountry(entityType);
+      const flag = registryCode ? { code: registryCode, name: countryName(registryCode) } : null;
       const sorted = [...seen.entries()].sort(([a], [b]) => a.localeCompare(b));
 
       const aliasNames = uniqueSorted((aliases ?? []).map((a) => a.nameParts.join(' ')).filter((part) => part && part !== name));
@@ -356,6 +515,9 @@ async function fetchSource(source, { deadlineAt } = {}) {
         entityType,
         countryCodes: sorted.map(([c]) => c),
         countryNames: sorted.map(([, n]) => n),
+        flag,
+        aircraftHasCurrentTail: entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT' && (profileFeatures ?? []).some(feat =>
+          featureTypes.get(feat.featureTypeId) === 'Aircraft Tail Number' && feat.details.some(detail => detail.trim())),
         aliases: aliasNames,
         identifiers,
       });
@@ -383,9 +545,12 @@ async function fetchSource(source, { deadlineAt } = {}) {
         effectiveAt,
         isNew: false,
         note,
+        ...(party?.flag ? { _flagCode: party.flag.code, _flagName: party.flag.name } : {}),
+        ...(party?.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT' ? { _aircraftHasCurrentTail: party.aircraftHasCurrentTail } : {}),
         _aliases: party?.aliases ?? [],
         _identifiers: party?.identifiers ?? [],
       });
+      entryProfiles.push(entryProfileId);
     }
 
     // ── SAX event handlers ─────────────────────────────────────────────────────
@@ -399,7 +564,9 @@ async function fetchSource(source, { deadlineAt } = {}) {
         // ── Section markers ──
         case 'DateOfIssue':       inDateOfIssue = true; break;
         case 'AreaCodeValues':    inAreaCodeValues = true; break;
+        case 'CountryValues':     inCountryValues = true; break;
         case 'FeatureTypeValues': inFeatureTypeValues = true; break;
+        case 'RelationTypeValues': inRelationTypeValues = true; break;
         case 'LegalBasisValues':  inLegalBasisValues = true; break;
         case 'IDRegDocTypeValues': inIDRegDocTypeValues = true; break;
         case 'IDRegDocuments':    inIDRegDocuments = true; break;
@@ -411,9 +578,28 @@ async function fetchSource(source, { deadlineAt } = {}) {
         case 'AreaCode':
           if (inAreaCodeValues) { refId = attrs.ID || ''; refDescription = attrs.Description || ''; }
           break;
+        case 'Country':
+          if (inCountryValues) countryIso2 = attrs.ISO2 || '';
+          break;
         case 'FeatureType':
           if (inFeatureTypeValues) refId = attrs.ID || '';
           break;
+        case 'RelationType':
+          if (inRelationTypeValues) refId = attrs.ID || '';
+          break;
+        case 'ProfileRelationship': {
+          if (attrs.Former !== 'false') break;
+          const type = relationTypes.get(attrs.RelationTypeID);
+          let child = attrs['From-ProfileID'], parent = attrs['To-ProfileID'];
+          if (type === 'Owns, controls, or operates') [child, parent] = [parent, child];
+          else if (!['Owned or Controlled By', 'Acting for or on behalf of', 'Property in the interest of'].includes(type)) break;
+          if (child && parent && child !== parent) {
+            const links = parentLinks.get(child) || new Set();
+            links.add(parent);
+            parentLinks.set(child, links);
+          }
+          break;
+        }
         case 'LegalBasis':
           if (inLegalBasisValues) { refId = attrs.ID || ''; refShortRef = attrs.LegalBasisShortRef || ''; }
           break;
@@ -451,7 +637,7 @@ async function fetchSource(source, { deadlineAt } = {}) {
           if (curAlias) { inDocumentedName = true; namePartsBuf = []; }
           break;
         case 'Feature':
-          if (inDistinctParties) curFeature = { featureTypeId: attrs.FeatureTypeID || '', locationIds: [], detail: '' };
+          if (inDistinctParties) curFeature = { featureTypeId: attrs.FeatureTypeID || '', locationIds: [], detail: '', details: [] };
           break;
         case 'VersionLocation':
           if (curFeature && attrs.LocationID) curFeature.locationIds.push(attrs.LocationID);
@@ -506,7 +692,9 @@ async function fetchSource(source, { deadlineAt } = {}) {
 
         // ── Section close ──
         case 'AreaCodeValues':    inAreaCodeValues = false; break;
+        case 'CountryValues':     inCountryValues = false; break;
         case 'FeatureTypeValues': inFeatureTypeValues = false; break;
+        case 'RelationTypeValues': inRelationTypeValues = false; break;
         case 'LegalBasisValues':  inLegalBasisValues = false; break;
         case 'IDRegDocTypeValues': inIDRegDocTypeValues = false; break;
         case 'IDRegDocuments':    inIDRegDocuments = false; break;
@@ -518,8 +706,17 @@ async function fetchSource(source, { deadlineAt } = {}) {
         case 'AreaCode':
           if (inAreaCodeValues && refId) areaCodes.set(refId, { code: t, name: refDescription });
           break;
+        case 'Country':
+          if (inCountryValues && t && /^[A-Z]{2}$/.test(countryIso2) && hasCountryCode(countryIso2)) {
+            countriesByName.set(t.toLowerCase(), countryIso2);
+            countryNamesByCode.set(countryIso2, t);
+          }
+          break;
         case 'FeatureType':
           if (inFeatureTypeValues && refId) featureTypes.set(refId, t);
+          break;
+        case 'RelationType':
+          if (inRelationTypeValues && refId) relationTypes.set(refId, t);
           break;
         case 'LegalBasis':
           if (inLegalBasisValues && refId) legalBasis.set(refId, refShortRef || t);
@@ -542,7 +739,10 @@ async function fetchSource(source, { deadlineAt } = {}) {
           curDoc = null;
           break;
         case 'VersionDetail':
-          if (curFeature && t) curFeature.detail = t;
+          if (curFeature && t) {
+            curFeature.detail = t;
+            curFeature.details.push(t);
+          }
           break;
 
         // ── Locations ──
@@ -623,6 +823,20 @@ async function fetchSource(source, { deadlineAt } = {}) {
     };
 
     parser.onend = () => {
+      // Relationships can follow SanctionsEntries. Resolve once all direct
+      // addresses are known; do not recurse through missing parents or cycles.
+      entries.forEach((entry, index) => {
+        const countries = new Map();
+        if (entry.entityType === 'SANCTIONS_ENTITY_TYPE_ENTITY' && entry.countryCodes.length === 0) {
+          for (const parentId of parentLinks.get(entryProfiles[index]) || []) {
+            const parent = parties.get(parentId);
+            parent?.countryCodes.forEach((code, i) => countries.set(code, parent.countryNames[i] || code));
+          }
+        }
+        const sorted = [...countries].sort(([a], [b]) => a.localeCompare(b));
+        entry.parentCountryCodes = sorted.map(([code]) => code);
+        entry.parentCountryNames = sorted.map(([, name]) => name);
+      });
       console.log(`  ${source.label}: ${(bytesReceived / 1024).toFixed(0)}KB streamed, ${entries.length} entries parsed (${Date.now() - t0}ms)`);
       resolve({ entries, datasetDate });
     };
@@ -744,6 +958,28 @@ async function fetchSanctionsPressure() {
   const newEntryCount = hasPrevious ? entries.filter((entry) => entry.isNew).length : 0;
   const vesselCount = entries.filter((entry) => entry.entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL').length;
   const aircraftCount = entries.filter((entry) => entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT').length;
+  const unattributed = countUnattributed(entries);
+  const _ofacAttribution = ofacAttributionHealth(ofacEntries);
+  // Legacy retained snapshots predate target fields; preserve fresh parser failures
+  // and explicit empty targets. Normalize health input only, not history evidence.
+  const semaHealthEntries = _sourceHealth[SEMA_SOURCE].status === 'retained'
+    ? semaEntries.map(entry => {
+      if (Object.hasOwn(entry, '_targetCountryCodes')) return entry;
+      const target = semaTargetCountry(entry._regime || '', entry.entityType);
+      return { ...entry, _targetCountryCodes: target ? [target.code] : [] };
+    })
+    : semaEntries;
+  const _semaAttribution = semaAttributionHealth(semaHealthEntries);
+  console.log(`  Sanctions attribution: ${JSON.stringify({
+    attribution: _ofacAttribution,
+    semaRegimeCount: Object.keys(_semaAttribution.regimes).length,
+    semaUnattributedCount: Object.values(_semaAttribution.regimes).reduce((sum, row) => sum + row.unattributedCount, 0),
+    semaAttribution: _semaAttribution,
+  })}`);
+  if (_ofacAttribution.degraded) {
+    console.warn(`  ${ATTRIBUTION_DEGRADED_ERROR_CODE}: OFAC ${JSON.stringify(_ofacAttribution)}`);
+  }
+  if (_semaAttribution.degraded) console.warn(`  ${ATTRIBUTION_DEGRADED_ERROR_CODE}: SEMA ${JSON.stringify(_semaAttribution)}`);
   const semaCount = semaEntries.length;
   const sdnCount = _sourceSnapshots.SDN?.records.length ?? 0;
   const consolidatedCount = _sourceSnapshots.CONSOLIDATED?.records.length ?? 0;
@@ -798,7 +1034,10 @@ async function fetchSanctionsPressure() {
     newEntryCount,
     vesselCount,
     aircraftCount,
+    unattributed,
     countries: buildCountryPressure(entries),
+    flagRegistries: buildFlagRegistries(entries),
+    regulationTargets: buildRegulationTargets(entries),
     programs: buildProgramPressure(entries),
     entries: sortedEntries.slice(0, DEFAULT_RECENT_LIMIT),
     pressureMetadata,
@@ -806,6 +1045,8 @@ async function fetchSanctionsPressure() {
     _sourceSnapshots,
     _sourceHealth,
     _changes,
+    _ofacAttribution,
+    _semaAttribution,
     _countryCounts: buildCountryCounts(entries),
     _state: {
       observedAt: String(now),
@@ -841,10 +1082,10 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
   // Strip internal-only fields before writing the main key so the pressure payload
   // does not include the entity index (~hundreds of KB) or state snapshot.
   publishTransform: (data) => {
-    const { _entityIndex: _ei, _state: _s, _countryCounts: _cc, _sourceSnapshots, _sourceHealth, _changes, pressureMetadata, ...rest } = data;
+    const { _entityIndex: _ei, _state: _s, _countryCounts: _cc, _sourceSnapshots, _sourceHealth, _changes, _ofacAttribution, _semaAttribution, pressureMetadata, ...rest } = data;
     if (Array.isArray(rest.entries)) {
       rest.entries = rest.entries.map((entry) => {
-        const { _aliases, _identifiers, _publishedAt, _regime, ...publicEntry } = entry;
+        const { _aliases, _identifiers, _publishedAt, _regime, _flagCode, _flagName, _aircraftHasCurrentTail, _targetCountryCodes, _targetCountryNames, ...publicEntry } = entry;
         return publicEntry;
       });
     }
@@ -941,14 +1182,20 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
     delete data._entityIndex;
     delete data._countryCounts;
     const failedSources = PRESSURE_SOURCES.filter(source => sourceHealth[source].status !== 'ok');
+    const attribution = data._ofacAttribution;
+    const semaAttribution = data._semaAttribution;
+    const attributionDegraded = attribution.degraded || semaAttribution.degraded;
     return {
       freshnessMetaPatch: {
-        sourceState: failedSources.length ? 'error' : 'ok',
-        errorCode: failedSources.includes(SEMA_SOURCE) ? 'SEMA_INGEST_FAILED' : failedSources.length ? 'OFAC_INGEST_FAILED' : null,
+        sourceState: failedSources.length ? 'error' : attributionDegraded ? 'degraded' : 'ok',
+        errorCode: failedSources.includes(SEMA_SOURCE) ? 'SEMA_INGEST_FAILED' : failedSources.length ? 'OFAC_INGEST_FAILED'
+          : attributionDegraded ? ATTRIBUTION_DEGRADED_ERROR_CODE : null,
         failedSources,
         sourceHealth: Object.fromEntries(PRESSURE_SOURCES.map(source => [source, sourceHealth[source]])),
+        attribution,
+        semaAttribution,
       },
-      completionState: failedSources.length ? 'DEGRADED' : 'OK',
+      completionState: failedSources.length || attributionDegraded ? 'DEGRADED' : 'OK',
     };
   },
 

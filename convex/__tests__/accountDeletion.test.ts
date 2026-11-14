@@ -567,6 +567,15 @@ describe("account deletion — business seats", () => {
         acceptedAt: now,
         expiresAt: now + 14 * 24 * 60 * 60 * 1000,
       });
+      await ctx.db.insert("teamDashboards", {
+        teamKey: "business:sub_owner_keep",
+        variant: "full",
+        name: "Ops wall",
+        layout: { panels: [{ key: "live-news", on: true }] },
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      });
     });
 
     await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
@@ -585,6 +594,8 @@ describe("account deletion — business seats", () => {
       status: "active",
     });
     expect(await rowsForUser(t, "users", OWNER.subject)).toHaveLength(1);
+    // A seat holder leaving does not take the team's dashboards with them.
+    expect(await t.run(async (ctx) => ctx.db.query("teamDashboards").collect())).toHaveLength(1);
   });
 
   test("owner delete removes grants and retains the owner subscription evidence", async () => {
@@ -613,6 +624,17 @@ describe("account deletion — business seats", () => {
         createdAt: now,
         expiresAt: now + 14 * 24 * 60 * 60 * 1000,
       });
+      for (const teamKey of ["business:sub_owner_erase", "business:sub_someone_else"]) {
+        await ctx.db.insert("teamDashboards", {
+          teamKey,
+          variant: "full",
+          name: "Ops wall",
+          layout: { panels: [{ key: "live-news", on: true }] },
+          version: 1,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
       await ctx.db.insert("dunningEmails", {
         dodoSubscriptionId: "sub_owner_erase",
         step: "dunning_day0",
@@ -643,6 +665,10 @@ describe("account deletion — business seats", () => {
     const dunning = await t.run(async (ctx) => ctx.db.query("dunningEmails").collect());
     expect(dunning[0]?.email).toBe(OWNER.email);
     expect(await rowsForUser(t, "users", INVITEE.subject)).toHaveLength(1);
+    // The team ends with the owner's account, so its shared dashboards go too;
+    // another team's are untouched.
+    const dashboards = await t.run(async (ctx) => ctx.db.query("teamDashboards").collect());
+    expect(dashboards.map((d) => d.teamKey)).toEqual(["business:sub_someone_else"]);
   });
 });
 
@@ -1130,6 +1156,7 @@ describe("account deletion registry is enforced, not documentation", () => {
   const DEDICATED_DELETE_STEPS = new Set([
     "followedCountries",          // eraseFollows: also decrements country aggregates
     "businessProGrants",          // eraseGrants: owner vs invitee, recomputes seats
+    "teamDashboards",             // eraseOwnedTeamDashboards: the owner's business teams only
     "proActivationPresentations", // anonymizeBilling: swept alongside billing rows
     "registrations",              // eraseEmailKeyed: verified-email keyed
     "contactMessages",            // eraseEmailKeyed: verified-email keyed

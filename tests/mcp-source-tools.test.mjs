@@ -10,6 +10,7 @@
 //     would be inventing attribution for the other 533.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { SOURCE_TOOLS, outletRecord } from '../api/mcp/registry/source-tools.ts';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
@@ -22,6 +23,16 @@ const assertOutputSchema = (result) => {
   const errors = validate(tool.outputSchema, result);
   assert.deepEqual(errors, [], `response fails outputSchema:\n  ${errors.join('\n  ')}`);
 };
+
+it('ships exactly the provider fields consumed from the canonical attribution manifest', () => {
+  const read = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
+  const manifest = read('../shared/source-attribution-manifest.json');
+  const fields = ['host', 'provider', 'kind', 'status', 'license', 'observed', 'catalogActive'];
+  const expected = manifest.entries.map((entry) => Object.fromEntries(
+    fields.filter((field) => Object.hasOwn(entry, field)).map((field) => [field, entry[field]]),
+  ));
+  assert.deepEqual(read('../api/mcp/registry/_source-providers.generated.json'), expected);
+});
 
 describe('get_sources — registration', () => {
   it('is present in the merged tool registry', () => {

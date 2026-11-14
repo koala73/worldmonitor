@@ -499,10 +499,11 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/energy-table-values-whole.spec.ts',
   'e2e/panel-text-unclipped.spec.ts',
   'e2e/regional-intelligence-region-select.spec.ts',
-  'e2e/settings-tabs-all-visible.spec.ts',
+  'e2e/settings-home-list.spec.ts',
   'e2e/panel-grid-column-clamp.spec.ts',
   'e2e/narrow-panel-overflow.spec.ts',
   'e2e/hormuz-chart-width.spec.ts',
+  'e2e/population-exposure-legacy.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [
@@ -579,6 +580,8 @@ const REQUIRED_DESKTOP_CONFIG_INPUTS = [
   'src-tauri/',
   'package.json',
   'scripts/repack-linux-appimage.sh',
+  'scripts/prefetch-appimage-tools.sh',
+  'scripts/fetch-with-retry.sh',
   'scripts/sync-desktop-version.mjs',
   'scripts/check-desktop-build-env.mjs',
   'scripts/check-rust-security-floors.mjs',
@@ -1347,10 +1350,15 @@ describe('CI workflow coverage', () => {
     for (const stepName of ['Reconcile the weekly review branch', 'Open the weekly pulse PR']) {
       assert.match(
         workflowStepBlock(pulseWorkflow, stepName),
-        /GH_TOKEN: \$\{\{ secrets\.REVIEW_PR_TOKEN \|\| github\.token \}\}/,
-        `${stepName} must open the PR with a user or app token when one is configured, so the PR gets CI`,
+        /GH_TOKEN: \$\{\{ secrets\.REVIEW_PR_TOKEN \}\}/,
+        `${stepName} must open the PR with REVIEW_PR_TOKEN, so the PR gets CI`,
       );
     }
+    assert.match(
+      openPrStep,
+      /if \[ "\$VERIFY_OUTCOME" = "success" \]; then\n\s+gh pr merge --auto --squash "\$pr_url"/,
+      'auto-merge only a verified capture, never the draft',
+    );
   });
 
   it('runs the proto breaking check against the full main history (#6114)', () => {
@@ -2464,6 +2472,40 @@ describe('CI workflow coverage', () => {
     );
   });
 
+  it('prefetches the AppImage tools before every Linux Tauri build', () => {
+    // One GitHub 504 on a bundler tool download failed the canary
+    // (run 42567226797): the bundler fetches them without retry.
+    for (const [label, workflow, buildStep, arch] of [
+      ['desktop canary', desktopCanaryWorkflow, 'Build Tauri app', 'x86_64'],
+      [
+        'release workflow',
+        desktopBuildWorkflow,
+        'Build Tauri app (signed)',
+        "${{ matrix.label == 'Linux-ARM64' && 'aarch64' || 'x86_64' }}",
+      ],
+    ] as const) {
+      const restore = workflowStepBlock(workflow, 'Restore Tauri AppImage tools');
+      assert.match(restore, /^\s+path: ~\/\.cache\/tauri\s*$/m, `${label} must cache the bundler tool dir`);
+      assert.match(
+        restore,
+        /hashFiles\('scripts\/prefetch-appimage-tools\.sh'\)/,
+        `${label} must key the tool cache on the prefetch script`,
+      );
+      const prefetch = workflowStepBlock(workflow, 'Prefetch Tauri AppImage tools');
+      assert.ok(
+        prefetch.includes(`run: bash scripts/prefetch-appimage-tools.sh ${arch}\n`),
+        `${label} must prefetch the AppImage tools for its architecture`,
+      );
+      assert.doesNotMatch(prefetch, /^\s+continue-on-error:/m);
+      const prefetchAt = workflow.indexOf('\n      - name: Prefetch Tauri AppImage tools\n');
+      assert.ok(
+        workflow.indexOf('\n      - name: Restore Tauri AppImage tools\n') < prefetchAt &&
+          prefetchAt < workflow.indexOf(`\n      - name: ${buildStep}\n`),
+        `${label} must restore, then prefetch, then build`,
+      );
+    }
+  });
+
   it('runs workflow coverage when the release workflow changes', () => {
     const codeFilter = shellAwkAssignmentBlock('CODE');
     assert.doesNotMatch(
@@ -3377,16 +3419,17 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
   const steps: Array<{ name?: string; id?: string; run?: string; if?: string; parallel?: unknown[] }> = job.steps;
   const flat = steps.flatMap((step) => (step.parallel as typeof steps | undefined) ?? [step]);
 
-  it('splits the job into a webmcp part and a pro-gates part', () => {
+  it('splits the job into webmcp, pro-gates and the two MCP Apps view parts', () => {
     // webmcp first: it is the longer part, so it should take a runner first.
-    assert.deepEqual(job.strategy.matrix.part, ['webmcp', 'pro-gates']);
+    assert.deepEqual(job.strategy.matrix.part, ['webmcp', 'pro-gates', 'plugin-news', 'plugin-country']);
     assert.equal(job.strategy['fail-fast'], false, 'a red half must not cancel the other half\'s evidence');
   });
 
-  it('builds /pro in both parts and runs each suite in exactly one', () => {
+  it('builds /pro in the webmcp and pro-gates parts and runs each suite in exactly one', () => {
     const build = flat.find((step) => step.run === 'npm run build:pro');
     assert.ok(build, 'the job must build /pro');
-    assert.equal(build.if, undefined, 'both parts need /pro: the legacy WebMCP tests load /pro/welcome.html');
+    // The legacy WebMCP tests load /pro/welcome.html; the MCP Apps view parts never read /pro.
+    assert.equal(build.if, "${{ !startsWith(matrix.part, 'plugin-') }}");
     const partOf = (script: string) => {
       const step = flat.find((s) => s.run === `npm run ${script}`);
       assert.ok(step, `the job must run npm run ${script}`);
@@ -3395,6 +3438,23 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
     assert.equal(partOf('test:e2e:webmcp'), "matrix.part == 'webmcp'");
     assert.equal(partOf('test:e2e:prehydration'), "matrix.part == 'pro-gates'");
     assert.equal(partOf('test:e2e:pro-gates'), "matrix.part == 'pro-gates'");
+    const plugin = flat.find((step) => step.id === 'plugin');
+    assert.equal(plugin?.run, 'npm run test:e2e:${{ matrix.part }}');
+    assert.equal(plugin?.if, "startsWith(matrix.part, 'plugin-')");
+  });
+
+  it('runs every MCP Apps view spec in exactly one plugin part, on freshly built views', () => {
+    // No job ran these specs before, so #10494 broke 31 of them and still merged green.
+    const specs = readdirSync(resolve(root, 'e2e')).filter((name) => /^plugin-.*\.spec\.ts$/.test(name)).map((name) => `e2e/${name}`);
+    assert.ok(specs.length > 0);
+    const parts = (job.strategy.matrix.part as string[]).filter((part) => part.startsWith('plugin-'));
+    const covered = parts.flatMap((part) => {
+      const script = packageScripts[`test:e2e:${part}`];
+      assert.ok(script, `package.json must define test:e2e:${part}`);
+      assert.match(script, /^npm run build:plugin && /, `test:e2e:${part} must build dist/plugin before the specs read it`);
+      return script.match(/e2e\/plugin-[\w-]+\.spec\.ts/g) ?? [];
+    });
+    assert.deepEqual([...covered].sort(), [...specs].sort(), 'each e2e/plugin-*.spec.ts must run in exactly one plugin part');
   });
 
   it('keys setup-node\'s npm cache to the only install that reads it', () => {

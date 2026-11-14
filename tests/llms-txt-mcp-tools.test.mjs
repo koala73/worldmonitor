@@ -129,3 +129,13 @@ describe('agent readiness: llms.txt MCP tool citations', () => {
     assert.doesNotMatch(scripts['pretest:data'], /build:openapi|build:ai-search|product:facts/);
   });
 });
+
+// ora.ai grades llms.txt as a navigation index and docks it past 30,000
+// characters; long-form content belongs in llms-full.txt. The 29,000 ceiling
+// leaves room for the generated Comparisons section to grow between edits.
+describe('llms.txt stays a navigation index', () => {
+  it('is under 29,000 characters', () => {
+    const chars = [...LLMS_TEXTS.get('public/llms.txt')].length;
+    assert.ok(chars < 29_000, `public/llms.txt is ${chars} characters; move long-form sections to public/llms-full.txt`);
+  });
+});

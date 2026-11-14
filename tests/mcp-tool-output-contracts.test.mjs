@@ -1,26 +1,3 @@
-// Per-tool output-shape contract regression. For every tool in
-// `__testing__.TOOL_REGISTRY`, dispatch a `tools/call` through the public
-// handler with default-ish arguments and assert the returned `content[0].text`
-// JSON validates against that tool's declared `outputSchema`.
-//
-// Coverage scope (documented intent — see PR body):
-//   • Cache tools (no `_execute`): real dispatch pipeline. fetch is stubbed
-//     so every cache-key read returns a non-null `{}` payload, executeTool
-//     assembles the envelope, and the test validates the response. This
-//     catches envelope-shape regression (missing `cached_at` / `stale`,
-//     wrong `data` shape, executeTool stripping the envelope, etc.).
-//   • RPC tools (has `_execute`): `_execute` is monkey-patched to return a
-//     minimal-shape object derived from the declared `outputSchema`. This
-//     proves the schema declaration is internally consistent (a `required`
-//     field whose type allows no concrete value would fail) and that the
-//     dispatch pipeline preserves the response unchanged through
-//     `applyJmespath` and `rpcOk`. It does NOT exercise the real `_execute`
-//     body — field-level shape drift for RPC tools is OUT OF SCOPE and is
-//     covered indirectly by the per-fixture parity test in
-//     `mcp-output-schema-coverage.test.mjs` (3 cache tools today).
-//
-// One `it()` per tool so a failure names the offending tool.
-
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 
@@ -28,6 +5,8 @@ import Ajv2020 from 'ajv/dist/2020.js';
 
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { assembleRawSignals, failedRawSignal, RAW_SIGNAL_FAMILIES } from '../shared/country-raw-signals.ts';
+import { buildTravelRiskResult, TRAVEL_RISK_FEEDS } from '../api/mcp/registry/_travel-risk-document.ts';
+import { parseTravelRiskArgs } from '../api/mcp/registry/travel-risk-tool.ts';
 import { validate } from './helpers/json-schema-mini.mjs';
 import {
   HMAC_SECRET,
@@ -50,6 +29,8 @@ const REQUIRED_ARGS = {
   get_country_history: { country_code: 'US' },
   get_media_perspective: { subject_country: 'SA' },
   get_defense_industrial_base: { country_code: 'US' },
+  get_point_satellite_passes: { lat: 39.74, lon: -104.99 },
+  get_country_imagery_evidence: { country_code: 'UA' },
   get_country_coverage: { country_code: 'US' },
   get_food_stocks: { country_code: 'US' },
   get_demographics_capability: { country_code: 'US' },
@@ -57,6 +38,7 @@ const REQUIRED_ARGS = {
   get_five_factor_scorecard: { country_code: 'US' },
   get_supply_vulnerabilities: { country_code: 'US' },
   get_chokepoint_dependencies: { chokepoint_id: 'suez' },
+  prepare_travel_risk_assessment: { countries: [{ country_code: 'TH' }] },
   verify_claim: { claim: 'A controlled claim for verification.' },
   analyze_news_headlines: { headlines: ['Controlled headline'] },
   get_country_brief_section: { section: 'risk', arguments: { country_code: 'US' } },
@@ -122,10 +104,25 @@ const STUB_FIXTURES = {
   get_country_brief_section: assembleRawSignals('US', Object.fromEntries(RAW_SIGNAL_FAMILIES.map(family =>
     [family, failedRawSignal(family, 'unavailable', '2026-10-05T12:00:00Z', 'Controlled failure')])), '2026-10-05T12:00:00Z'),
   get_stock_research: { operation: 'analysis', data: { available: false, symbol: 'AAPL' } },
+  get_point_satellite_passes: {
+    point: { lat: 39.74, lon: -104.99 }, windowStartMs: 1, windowEndMs: 2, computedAt: 1, inventoryVersion: 'v', catalogFetchedAt: 0,
+    stale: true, passes: [], outOfFootprintPasses: 0, acquisitions: [], archiveStatus: 'complete', failedSources: [], unansweredProfiles: [],
+  },
+  get_country_imagery_evidence: { countryCode: 'UA', asOf: 0, stale: true, siteCount: 0, confirmedFlagCount: 0, sites: [] },
   get_five_factor_scorecard: { unavailable: true, unavailableReason: 'country-unavailable' },
   list_five_factor_scorecards: {
     methodologyVersion: '', computedAt: '', scorecards: [], unavailable: true, unavailableReason: 'scorecard-snapshot-unavailable',
   },
+  // The real assembler over all-unavailable sources: every block and the sources table in their degraded form.
+  prepare_travel_risk_assessment: buildTravelRiskResult(
+    parseTravelRiskArgs({ countries: [{ country_code: 'TH', cities: ['Bangkok'] }, { country_code: 'UA' }], date_from: '2026-12-01', date_to: '2026-12-10' }),
+    {
+      feeds: Object.fromEntries(TRAVEL_RISK_FEEDS.map((feed) => [feed.id, { status: 'unavailable', value: null, reason: 'Controlled failure', updatedAt: null, stale: true }])),
+      hotspots: { status: 'unavailable', value: null, reason: 'Controlled failure', updatedAt: null, stale: true },
+      cii: { UA: { status: 'ok', value: { history: { methodologyVersion: 'v', points: [{ date: '2026-11-09', combinedScore: 61.2 }], change: null, stale: false } }, reason: null, updatedAt: '2026-11-09T00:00:00.000Z', stale: false } },
+    },
+    Date.parse('2026-11-10T12:00:00Z'),
+  ),
 };
 
 // What a strict MCP client does: validate `structuredContent` against the
@@ -212,7 +209,10 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry 
       }
 
       let args = REQUIRED_ARGS[name] ?? {};
-      const { deps, pipe } = makeProDeps();
+      // A plan-feature tool is refused before dispatch unless the entitlement carries its flag.
+      const { deps, pipe } = makeProDeps(tool._planFeature ? {
+        getEntitlements: async () => ({ planKey: 'pro_business_monthly', features: { tier: 1, mcpAccess: true, [tool._planFeature]: true }, validUntil: Date.now() + 86_400_000 }),
+      } : {});
       // start_upgrade creates its checkout session in dispatch, before the
       // stubbed _execute; answer the relay so the call reaches the result path.
       if (name === 'start_upgrade') deps.createCheckout = async () => ({ kind: 'created', checkoutUrl: 'https://checkout.example/session' });

@@ -281,6 +281,7 @@
 *Could not find public function for 'payments/subscriptionEmails:reserveResendSlot'*
 *Could not find public function for 'payments/subscriptionEmails:runDunningScan'*
 *Could not find public function for 'payments/subscriptionEmails:sendDunningEmail'*
+*Could not find public function for 'payments/subscriptionEmails:sendPlanUpgradeAdminEmail'*
 *Could not find public function for 'payments/subscriptionEmails:sendReactivationEmail'*
 *Could not find public function for 'payments/subscriptionEmails:sendSubscriptionEmails'*
 *Could not find public function for 'payments/subscriptionEmails:wasDunningStepSent'*

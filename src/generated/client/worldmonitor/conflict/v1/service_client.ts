@@ -63,6 +63,8 @@ export interface UcdpViolenceEvent {
   deathsHigh: number;
   violenceType: UcdpViolenceType;
   sourceOriginal: string;
+  hasPreciseLocation?: boolean;
+  locationName?: string;
 }
 
 export interface GetHumanitarianSummaryRequest {

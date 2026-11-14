@@ -1,0 +1,116 @@
+---
+title: "MCP tools: Energy"
+sidebarTitle: "Energy"
+description: "World Monitor MCP tool reference for energy supply, prices, oil trade and supply-shock scenarios: parameters, freshness, backing API endpoints and example calls."
+---
+
+Part of the [MCP Tools Reference](/mcp-tools-reference), which indexes every tool. Connection, auth, plans and errors are in the [MCP Server overview](/mcp-overview).
+
+The `curl` examples assume `export WM_KEY="wm_…"`. With an OAuth token, replace `-H "X-WorldMonitor-Key: $WM_KEY"` with `-H "Authorization: Bearer $TOKEN"`.
+
+### `get_energy_intelligence`
+
+Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, electricity prices (Ember), national gas storage (GIE), fuel shortages, fossil & renewable shares, active energy disruptions, government crisis policies, and dated histories of EU aggregate gas storage, US natural-gas storage and US commercial crude inventories.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `dataset` | `array<string: eia-petroleum / electricity / ember / gas-storage / fuel-shortages / disruptions / crisis-policies / fossil-share / renewable / eu-gas-storage / nat-gas-storage / crude-inventories>` | Energy sub-datasets to return. eu-gas-storage and nat-gas-storage are the EU (TWh) and US (bcf) storage histories, crude-inventories the US commercial crude stocks, renewable the World Bank renewable share. Omit for the full bundle. |
+| `country` | string | Country to filter the country-keyed datasets (Ember electricity mix, gas storage, fuel shortages, energy disruptions, fossil-share) to, as an ISO 3166-1 alpha-2 or alpha-3 code or a country name. Unresolved inputs return Invalid params. |
+| `limit` | integer | Maximum items per list-bearing slice (crisis-policies, electricity regions, gas-storage countries, World Bank renewable history and regions, and the storage and inventory histories, which keep their newest points). Omitted keeps 30; 0 keeps every item. |
+
+- **API endpoints:** `GET /api/economic/v1/get-energy-crisis-policies`, `GET /api/supply-chain/v1/get-fuel-shortage-detail`, `GET /api/supply-chain/v1/list-energy-disruptions`, `GET /api/supply-chain/v1/list-fuel-shortages`, `GET /api/economic/v1/get-eu-gas-storage`, `GET /api/economic/v1/get-nat-gas-storage`, `GET /api/economic/v1/get-crude-inventories`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** per slice — most daily-seeded slices (electricity prices, Ember, gas storage, EU aggregate gas storage, fuel shortages) allow **48 h** and EIA petroleum **72 h**; weekly US gas and crude inventories allow **14 d**; slower registries (disruptions, renewable/fossil shares, crisis policies) allow 7 d to ~400 d. The single `stale` flag ORs every check, so it flips as soon as any one slice exceeds its own budget, even when `dataset` selects a subset.
+
+The storage histories keep their own units. EU gas is in TWh (`gasTwh`), US gas is in billion cubic feet (`storBcf`), and US commercial crude is in million barrels (`stocksMb`). Each history is newest first and carries its observation date. A null dataset or weekly change means the value is unavailable.
+
+Within `eia-petroleum`, Brent and WTI are weekly EIA spot averages in USD per barrel. They carry a week-ending `date`, `priceSource: "EIA"`, `priceBasis: "spot"`, `frequency: "weekly"`, and an observation-level `stale` flag. It turns on after the next week's scheduled EIA release plus a 24-hour grace for the daily cache refresh, or when the date is missing, invalid, or in the future. The regular release is Wednesday at 10:30 ET. A checked-in calendar applies EIA's published 2025–2026 holiday shifts, including December 29, 2025 at 17:00 ET. Unlisted weeks use the regular schedule; the table needs updates when EIA revises it.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_energy_intelligence","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_oil_trade_series`
+
+Monthly oil supply and export series for 24 major exporting countries over the last 24 complete months, with a comparison of the last N complete months against the N before and against the same months a year earlier. It answers questions such as "UAE oil exports, last 6 months vs the 6 before".
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country` | `array<string>` | Countries as ISO alpha-2, alpha-3 or English names (e.g. ["AE"], ["Saudi Arabia"]). Selected countries include their monthly rows. Omit for every covered country, comparison only. Unresolved inputs return Invalid params; a resolvable country outside the 24 covered returns no row. |
+| `window_months` | integer | Length N, in months, of each comparison window. Compares the last N complete months with the N before and the same N months a year earlier; omitted uses 6. |
+
+The response uses the standard `cached_at`, `stale`, and `data` envelope. Its sources are reported side by side and never blended or summed:
+
+- **production:** EIA Short-Term Energy Outlook crude oil and liquid fuels supply. Current to the last complete month; the two newest months are marked `provisional` because EIA revises them.
+- **jodi:** the country's own JODI-Oil filing of crude and total product exports. Values JODI has not assessed (assessment code 3) are reported values. The UAE has filed only placeholders since 2019, so its status is `not_reported`.
+- **mirror:** UN Comtrade imports from the country as declared by each buyer, converted at 7.33 bbl/t (crude) and 7.6 bbl/t (products). Buyers file one to four months late and some file no monthly partner data. Each country keeps its largest buyers by volume over the last 12 complete months as named `reporters`; smaller buyers are summed in `otherKbd`. Window comparisons use only named buyers that filed throughout the earlier window, and drop a recent month a buyer has not filed yet rather than the buyer. The buyers used are listed in `basis.reporters`, and in `basis.yoyReporters` for the year-ago comparison.
+- **ais:** IMF PortWatch AIS-derived tanker export tonnes across the country's ports. This index undercounts real exports and is not an export total.
+
+Each source carries `status` (`ok`, `stale`, `not_reported` or `unavailable`) and `lastObserved`, the newest month with an actual value. When a source fails on a run, it keeps the months from the previous publish with status `unavailable` and `carriedForward: true`. A month a source does not cover is null, never zero. Window averages are day-weighted over covered months; `monthsCovered` and `complete` say how much of each window a source covers. `yoyPct` compares `currentForYoy` with `yearAgo`; for mirror metrics `currentForYoy` can differ from `current` because the year-ago buyer basis can differ.
+
+- **API endpoints:** none. The seeded cache is read directly.
+- **Access:** `free-account`. Authentication and the existing daily allowance apply. Pro calls spend the daily quota. This tool only reads seeded caches and accepts the universal `summary` and `jmespath` arguments.
+- **Freshness budget:** 14 days for the weekly seed, plus a content-age check on the newest EIA month.
+
+For example, call `get_oil_trade_series` with `{"country":["AE"],"window_months":6}` to compare UAE production, buyer-declared imports and tanker loadings for the last six complete months against the six before.
+
+### `compute_energy_shock`
+
+Compute the existing country oil/gas supply-sensitivity model for a supported chokepoint. This exposes the same scenario as the `assess-energy-shock` recipe.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country` | string | Required. Country name or ISO code, normalized to ISO2. |
+| `chokepoint_id` | string | Required. One of `suez`, `hormuz_strait`, `malacca_strait`, `bab_el_mandeb`. |
+| `disruption_pct` | integer | Default 100, range 10..100 percent of flow disrupted. |
+| `fuel_mode` | string: oil / gas / both | Default oil. |
+
+The source response retains product supply/demand (thousand barrels per day), effective cover (days), gas quantities (terajoules) and observed gas storage (TWh). Read `dataAvailable`, individual coverage flags, `coverageLevel`, `limitations`, `degraded`, `chokepointConfidence` and `gasSensitivity.modelBasis` before interpreting numeric values. Oil headline figures use `preCrisisBaseline`, the Gulf crude share over the 12 months before the 2026 Hormuz crisis from at least 9 monthly filings; `currentFlows` gives the share over the latest 3 monthly filings since then and is absent when unavailable. A `basis` of `comtrade_annual` marks the annual partner-share fallback, used with fewer than 9 monthly filings (China, Taiwan); it can cover another year, so read `fromMonth`, `toMonth` and `monthsCovered`. Shares are multiplied by the chokepoint's route factor (1.0 for Hormuz). For Hormuz, the headline `crudeLossKbd` is after bypass rerouting (Saudi East-West, UAE ADCOP, Iraqi Kirkuk-Ceyhan) when `preCrisisBaseline.crudeLossAfterBypassKbd` is present; `preCrisisBaseline.crudeLossKbd` is the loss before it. Importers outside the IEA have no IEA stock data; when they report month-end crude and product stocks to JODI (India, Taiwan, Thailand, the Philippines among them), their `effectiveCoverDays` comes from `reportedStocks`, which is not IEA data. A country that reports none (China) has no cover. For Hormuz the LNG route share is the importer's measured Qatar and UAE share of LNG imports, reported as a pre-crisis baseline and a current-flows figure; other chokepoints use an assumed route share. Neither is a measured live-flow shock. EU aggregate storage is not a country's usable storage buffer.
+
+- **API endpoint:** `GET /api/intelligence/v1/compute-energy-shock`.
+- **Access:** subscription; existing metering, gateway checks, billing denial and retry/backoff apply. Derived results may be cached; no user scenario or trade is saved.
+
+For example, `compute_energy_shock` with `{"country":"Japan","chokepoint_id":"hormuz_strait","disruption_pct":50,"fuel_mode":"both"}` requests the existing partial-disruption model.
+
+### `get_supply_chain_cost_shock`
+
+Existing country energy exposure or multi-sector import-cost scenarios for a chokepoint closure. This tool uses the premium SupplyChainService models and preserves their limitations and missing-data explanations.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `mode` | string: energy / multi-sector | Required. Which model: `energy` returns the refined-product supply deficit and stock cover for one HS2 chapter; `multi-sector` returns added import costs across seeded HS2 sectors over `closure_days`. |
+| `country` | string | Required. Country name or ISO code; normalized to ISO2. |
+| `chokepoint_id` | string | Required. Canonical ID from the shared chokepoint registry. |
+| `hs2` | string | Energy mode only. Default `27` (mineral fuels); one or two digits. Other codes preserve the source unavailable explanation. |
+| `closure_days` | integer | Multi-sector mode only. Default 30, range 1..365 days. |
+
+The response is `{mode, data}` with original source fields. Energy mode retains `supplyDeficitPct`, `coverageDays`, `warRiskPremiumBps`, `hasEnergyModel` and `unavailableReason`. Multi-sector mode retains sector import values, freight and insurance estimates, added transit days, USD cost estimates for the requested window and `totalAddedCost`. An unavailable model or missing seeded imports is not a measured zero impact. Estimates are not realized losses or forecasts.
+
+- **API endpoints:** `GET /api/supply-chain/v1/get-country-cost-shock`, `GET /api/supply-chain/v1/get-multi-sector-cost-shock`.
+- **Access:** subscription; existing metering, gateway checks, billing denial and retry/backoff contracts apply. The tool reads existing seeds and computes a scenario without saving it.
+
+For example, `get_supply_chain_cost_shock` with `{"mode":"multi-sector","country":"Japan","chokepoint_id":"hormuz_strait","closure_days":90}` requests the existing closure-cost calculation.
+
+### `get_energy_storage`
+
+Retired. Its EU gas storage, US natural-gas storage and US crude inventory histories are the `eu-gas-storage`, `nat-gas-storage` and `crude-inventories` datasets of [`get_energy_intelligence`](#get_energy_intelligence), with the same fields and units. Calls to the old name still work: they run `get_energy_intelligence` with those datasets (all three when `dataset` is omitted) and return a `deprecation` notice that names the replacement. A dataset the old tool never served is rejected.

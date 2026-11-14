@@ -83,6 +83,9 @@ function pnpmLockVersions(path, name) {
 }
 
 const patchedLocks = [
+  ['fast-xml-parser', '5.12.0', npmLockVersions, '../package-lock.json'],
+  ['fast-xml-parser', '5.12.0', npmLockVersions, '../scripts/package-lock.json'],
+  ['fast-xml-parser', '5.12.0', npmLockVersions, '../blog-site/package-lock.json'],
   ['sharp', '0.35.5', npmLockVersions, '../package-lock.json'],
   ['sharp', '0.35.5', npmLockVersions, '../blog-site/package-lock.json'],
   ['sharp', '0.35.5', npmLockVersions, '../workers/railway-reconcile-control/package-lock.json'],

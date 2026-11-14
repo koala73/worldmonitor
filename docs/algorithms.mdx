@@ -90,7 +90,7 @@ compositeScore =
 
 ### Population Exposure Estimation
 
-Active events (conflicts, earthquakes, floods, wildfires) are matched to the nearest centroid in the local 20-country priority population table and then estimated from `population / area` density. This is a coarse exposure approximation, not a live WorldPop lookup. Event-specific radii reflect typical impact footprints:
+Each active event (conflicts, earthquakes, floods, wildfires) is estimated as the `population / area` density of its country times the area of a circle with the event-type radius. The country is the one the event reports, with one provider correction: an Israel-labelled event inside the Palestinian outline uses Palestine’s density. This applies to both the dashboard and MCP. A bare point, such as an earthquake or an API request, is matched to a country by its outline. Only countries in the local priority population table have a density. This is a coarse exposure approximation, not a live WorldPop lookup. Event-specific radii reflect typical impact footprints:
 
 | Event Type      | Radius | Rationale                                |
 | --------------- | ------ | ---------------------------------------- |
@@ -99,7 +99,15 @@ Active events (conflicts, earthquakes, floods, wildfires) are matched to the nea
 | **Floods**      | 100 km | Watershed and drainage basin extent      |
 | **Wildfires**   | 30 km  | Smoke and evacuation perimeter           |
 
-If an event falls outside the priority centroid table, the fallback density uses a synthetic `50,000,000 / 500,000 km2` country profile. The Population Exposure panel displays a summary header with total affected population and a per-event breakdown table.
+Country outlines use the pinned `world-atlas@2.0.2` 10m Natural Earth atlas at its original quantization, without simplifying the server's point-lookup outlines. Shared TopoJSON arcs keep this geometry compact. A point on table-country land receives that country's density. Otherwise, the nearest table-country outline within 5 km may be used only when no other country's boundary is within 5 km of the point. This guard includes foreign coastlines across water as well as shared land borders; distance alone cannot justify borrowing a neighbour's density. More distant offshore points get no estimate. The dashboard's small Palestinian provider-correction outline retains its existing 0.02° simplification and 0.001° rounding. The atlas places the northern Eilat test point (29.57, 34.96) in Jordan, so it returns no estimate; the two points (29.55, 34.95) and (29.54, 34.94) resolve to Israel.
+
+`node --import tsx scripts/check-population-density-sweep.mjs` runs a fixed 24,383-point raw-atlas comparison, also enforced in the unit tests. `node --test tests/edge-function-size.test.mjs` checks bundled gzip-9 sizes: MCP has a 1,024,000-byte budget (below 1 MiB), and displacement has a 307,200-byte growth budget. These reproducible build checks are not measurements of the deployed Vercel artifacts.
+
+**Disputed-area policy:** point lookup follows the atlas's de facto outlines; it does not establish sovereignty. Crimea and Kerch resolve to Russia (`RUS`). The Palestinian outline resolves to Palestine (`PSE`). The atlas is approximate around Jerusalem: the test points at 31.78° N, 35.20° E and 35.21° E fall inside its PS outline, although they are west of the Green Line. They therefore use PSE density, including Israel-labelled events under the provider correction. This known boundary limitation remains; these estimates must not be used to determine borders or address-level population. A precise Jerusalem boundary would need a separately sourced geometry change.
+
+MCP exposure estimates expose `country` as the ISO3 density code. `nearestCountry` remains a deprecated alias with the same value in point and event results for this published revision. Clients should migrate to `country`; the v1 REST field remains `nearestCountry`.
+
+An event outside that table gets no estimate, and so does a conflict event located only to a district or country. The Population Exposure panel displays a summary header with total affected population and a per-event breakdown table.
 
 ---
 

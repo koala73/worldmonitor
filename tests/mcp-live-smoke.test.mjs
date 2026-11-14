@@ -139,7 +139,12 @@ test('the smoke CLI does not report unstarted probes after the run budget expire
 // take over the keyless `tools/list` on /mcp, the check that broke on a
 // connection cut mid-body in production (run 39392466642). `skillFor` and
 // `onAuthMd` override the advertised agent_auth.skill and the /auth.md answer.
-function createHealthyFixtureServer({ onTransportList, skillFor = (origin) => `${origin}/auth.md`, onAuthMd } = {}) {
+// The default setup page is the committed public/mcp-setup.html, so a copy edit
+// to that page that the live smoke would reject fails here first (#10697
+// renamed the <title> and only the scheduled smoke noticed, run 43566558475).
+const COMMITTED_SETUP_HTML = readFileSync('public/mcp-setup.html', 'utf8');
+
+function createHealthyFixtureServer({ setupHtml = COMMITTED_SETUP_HTML, onTransportList, skillFor = (origin) => `${origin}/auth.md`, onAuthMd } = {}) {
   return createServer(async (req, res) => {
     const origin = `http://${req.headers.host}`;
     const body = req.method === 'POST' ? await readRequestBody(req) : '';
@@ -152,16 +157,24 @@ function createHealthyFixtureServer({ onTransportList, skillFor = (origin) => `$
       link: '<https://worldmonitor.app/mcp>; rel="canonical"',
     };
 
+    // Production negotiates on Accept (#10519): an explicit text/html gets the
+    // HTML setup page, anything else gets the markdown guide.
+    const guideHeadersFor = (accept = '') => (/text\/html/i.test(accept)
+      ? { ...commonGuideHeaders, 'content-type': 'text/html; charset=utf-8' }
+      : commonGuideHeaders);
+
     if (req.url === '/mcp' && req.method === 'GET') {
       if (req.headers.accept?.toLowerCase() === 'text/event-stream') {
         res.writeHead(405).end();
+      } else if (/text\/html/i.test(req.headers.accept ?? '')) {
+        res.writeHead(200, guideHeadersFor(req.headers.accept)).end(setupHtml);
       } else {
         res.writeHead(200, commonGuideHeaders).end('World Monitor MCP Server');
       }
       return;
     }
     if (req.url === '/mcp' && req.method === 'HEAD') {
-      res.writeHead(200, commonGuideHeaders).end();
+      res.writeHead(200, guideHeadersFor(req.headers.accept)).end();
       return;
     }
     if ((req.url === '/mcp' || req.url === '/api/mcp') && req.method === 'POST') {
@@ -332,7 +345,16 @@ test('an HTTP status failure is never retried', async () => {
   assert.match(report.failures[0].detail, /expected HTTP 200, got 503/);
 });
 
-test('fails when agent_auth.skill is not the issuer origin /auth.md', async () => {
+test('fails when the HTML representation of /mcp is not the setup page', async () => {
+  const server = createHealthyFixtureServer({ setupHtml: '<!doctype html><title>Welcome to nginx</title>' });
+  const { exitCode, report } = await runSmokeAgainst(server, 'wm-mcp-live-smoke-html-body-');
+
+  assert.equal(exitCode, 1);
+  assert.deepEqual(report.failures.map((failure) => failure.check), ['GET /mcp (browser)']);
+  assert.match(report.failures[0].detail, /body is not the HTML setup page/);
+});
+
+test('fails when agent_auth.skill is not the canonical host /auth.md', async () => {
   const server = createHealthyFixtureServer({ skillFor: () => 'https://www.worldmonitor.app/auth.md' });
   const { exitCode, report } = await runSmokeAgainst(server, 'wm-mcp-live-smoke-skill-host-');
 
@@ -341,7 +363,7 @@ test('fails when agent_auth.skill is not the issuer origin /auth.md', async () =
   assert.match(report.failures[0].detail, /expected http:\/\/127\.0\.0\.1:\d+\/auth\.md/);
 });
 
-test('fails when the issuer /auth.md redirects instead of serving markdown', async () => {
+test('fails when the canonical /auth.md redirects instead of serving markdown', async () => {
   const server = createHealthyFixtureServer({
     onAuthMd: (_req, res) => {
       res.writeHead(301, { location: 'https://www.worldmonitor.app/auth.md' }).end();

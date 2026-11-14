@@ -86,7 +86,7 @@ The three common index types answer different questions:
 | Country Resilience Index (CRI) | How well can the country absorb and recover from shocks? | Ranked for 169 of 196 countries, refreshed every six hours |
 | Fragile States Index (FSI) | Which states show long-term structural fragility? | Broad global coverage, published annually |
 
-**It does not measure structural fragility.** That is the job of the Country Resilience Index, a separate 196-country model of structural capacity across 72 indicators, 21 active dimensions, and 6 domains, refreshed every six hours. CII is the fast clock (what is burning now); resilience is the slow clock (what breaks under fire). Reading them together is the [core of a sound country-risk workflow](/blog/posts/country-risk-monitoring-workflow-for-analysts/).
+**It does not measure structural fragility.** That is the job of the Country [Resilience Index](/blog/posts/country-resilience-index-methodology-explained/), a separate 196-country model of structural capacity across 72 indicators, 21 active dimensions, and 6 domains, refreshed every six hours. CII is the fast clock (what is burning now); resilience is the slow clock (what breaks under fire). Reading them together is the [core of a sound country-risk workflow](/blog/posts/country-risk-monitoring-workflow-for-analysts/).
 
 **It does not predict.** The CII describes current pressure. For forward-looking signals, World Monitor pairs it with [prediction markets and AI forecasting](/blog/posts/prediction-markets-ai-forecasting-geopolitics/), different tools for a different question.
 

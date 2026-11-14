@@ -14,6 +14,7 @@ import "worldmonitor/infrastructure/v1/list_service_statuses.proto";
 import "worldmonitor/infrastructure/v1/list_temporal_anomalies.proto";
 import "worldmonitor/infrastructure/v1/record_baseline_snapshot.proto";
 import "worldmonitor/infrastructure/v1/reverse_geocode.proto";
+import "worldmonitor/infrastructure/v1/search_place.proto";
 
 // InfrastructureService provides APIs for internet outage monitoring from Cloudflare Radar,
 // external service status tracking, and temporal baseline anomaly detection.
@@ -56,6 +57,14 @@ service InfrastructureService {
   rpc ReverseGeocode(ReverseGeocodeRequest) returns (ReverseGeocodeResponse) {
     option (sebuf.http.config) = {
       path: "/reverse-geocode"
+      method: HTTP_METHOD_GET
+    };
+  }
+
+  // SearchPlace resolves a submitted place name to up to five matches via OpenStreetMap Nominatim search, cached for 7 days. Never call it per keystroke.
+  rpc SearchPlace(SearchPlaceRequest) returns (SearchPlaceResponse) {
+    option (sebuf.http.config) = {
+      path: "/search-place"
       method: HTTP_METHOD_GET
     };
   }

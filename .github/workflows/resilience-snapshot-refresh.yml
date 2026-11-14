@@ -30,16 +30,24 @@ jobs:
       - name: Reconcile the monthly review branch
         id: reconcile
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN }}
         run: |
           period=$(date -u +%Y-%m)
           branch="automation/resilience-snapshot-${period}"
           echo "branch=${branch}" >> "$GITHUB_OUTPUT"
-          existing_pr=$(gh pr list --state all --head "$branch" --json number --jq '.[0].number // empty')
+          # A fork PR can carry the same head branch name. Only a branch in this
+          # repository is the workflow's own, so only that PR may be skipped or armed.
+          existing_pr=$(gh pr list --state all --head "$branch" --json number,isCrossRepository \
+            --jq '[.[] | select(.isCrossRepository | not)][0].number // empty')
           if [ -n "$existing_pr" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "existing_pr=true" >> "$GITHUB_OUTPUT"
             echo "Monthly snapshot PR #${existing_pr} already exists."
+            # Re-arm auto-merge in case the run that opened the PR failed to.
+            # A merged, closed or draft PR is left alone.
+            if [ "$(gh pr view "$existing_pr" --json state,isDraft,isCrossRepository --jq '.state == "OPEN" and (.isDraft | not) and (.isCrossRepository | not)')" = "true" ]; then
+              gh pr merge --auto --squash "$existing_pr"
+            fi
             exit 0
           fi
           if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
@@ -104,7 +112,7 @@ jobs:
       - name: Commit the monthly snapshot
         if: steps.reconcile.outputs.skip != 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN }}
           BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
         run: |
           snapshot_date=$(date -u +%F)
@@ -123,7 +131,7 @@ jobs:
           git add shared/product-facts.generated.json scripts/shared/product-facts.generated.json \
             shared/product-catalog.generated.json scripts/shared/product-catalog.generated.json \
             api/_product-catalog.generated.js pro-test/src/generated/depth-stats.json \
-            index.html src/config/variant-meta.ts docs/about.mdx docs/overview.mdx \
+            index.html src/config/variant-meta.ts docs/about.mdx docs/platform-evaluation.mdx \
             docs/methodology/country-resilience-index.mdx docs/zh/methodology/country-resilience-index.mdx \
             blog-site/src/content/blog/country-instability-index-methodology-explained.md
           git commit -m "chore(resilience): refresh published snapshot ${snapshot_date}"
@@ -132,7 +140,7 @@ jobs:
         id: delivery
         if: steps.reconcile.outputs.existing_pr != 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN }}
           BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
         run: |
           git fetch --no-tags origin "$BRANCH_NAME"
@@ -144,6 +152,7 @@ jobs:
               --body "Monthly credentialed CRI snapshot refresh. Rebuilds the crawlable corpus, root sitemap, and both agent files (llms.txt and llms-full.txt)." \
               > "$RUNNER_TEMP/snapshot-pr.out" 2> "$RUNNER_TEMP/snapshot-pr.err"; then
             cat "$RUNNER_TEMP/snapshot-pr.out" >> "$GITHUB_STEP_SUMMARY"
+            gh pr merge --auto --squash "$(tail -n 1 "$RUNNER_TEMP/snapshot-pr.out")"
           elif grep -Fq 'GitHub Actions is not permitted to create or approve pull requests' "$RUNNER_TEMP/snapshot-pr.err"; then
             echo "manual=true" >> "$GITHUB_OUTPUT"
             echo "::warning title=Snapshot needs maintainer review::Repository policy blocks bot PR creation; use the retained patch or compare link."
@@ -169,8 +178,8 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-  # A PR opened with github.token fires no workflow_run event for its CI, so
-  # Deploy Gate would reach it only on its 30-minute sweep.
+  # Dispatches Deploy Gate for the new PR directly rather than waiting on the
+  # workflow_run event or the gate's 30-minute sweep.
   deploy-gate:
     needs: refresh
     if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')

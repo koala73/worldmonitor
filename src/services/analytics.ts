@@ -1,4 +1,5 @@
 import { bucketPanelKeyForAnalytics } from '@/utils/analytics-panel-key';
+import { isViewportBand, viewportAnalyticsFields, type ViewportBand } from '../../shared/analytics-viewport';
 export { bucketPanelKeyForAnalytics } from '@/utils/analytics-panel-key';
 /**
  * Analytics facade — wired to Umami.
@@ -13,6 +14,7 @@ import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
 import { DODO_PRODUCT_IDS } from '@/config/product-ids.generated';
+import type { McpAgentClientId } from '@/config/mcp-agent-clients';
 import { SITE_VARIANT, isSiteVariant } from '@/config/variant';
 import { isAgentPanelViewSuppressed } from './agent-analytics-privacy';
 import type { ActivationEventName, ActivationStepId } from './pro-activation-state';
@@ -75,16 +77,82 @@ const UMAMI_WEBSITE_ID = 'e8800335-c853-46a8-8497-c993ed2f58bc';
 // tolerate collector failures. tech/commodity stay out until #4183 ships.
 const UMAMI_DOMAINS = 'worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app,finance.worldmonitor.app';
 const UMAMI_QUEUE_LIMIT = 50;
+
+/**
+ * Whether the tracker is enabled on this host. It disables itself on any host
+ * outside UMAMI_DOMAINS, so an event sent from tech, commodity, energy or a
+ * self-hosted origin is dropped. Callers that move a signal from Sentry to
+ * analytics use this to keep Sentry on the hosts analytics cannot see.
+ */
+export function isAnalyticsHost(hostname: string = typeof location === 'undefined' ? '' : location.hostname): boolean {
+  return UMAMI_DOMAINS.split(',').includes(hostname);
+}
 const UMAMI_BEFORE_SEND_HOOK = '__wmUmamiBeforeSend';
 
-/** Umami `data-before-send` hook: strip the shared sensitive-param list from
- * the payload's url and referrer. Returns the payload itself when clean. */
-function redactUmamiPayload(_type: string, payload: unknown): unknown {
+const LANDING_UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
+const LANDING_UTM_MAX_LENGTH = 100;
+let landingUtm: Array<[string, string]> = [];
+let landingUtmPageviewConsumed = false;
+
+/** Remember the inbound utm_* values before the map URL sync rewrites the
+ * address bar. The Umami tracker loads after first paint, so its first
+ * pageview can see a URL with no campaign tags; the before-send hook
+ * re-attaches these to that one pageview. */
+export function rememberLandingUtm(search: string): void {
+  const params = new URLSearchParams(search);
+  const next: Array<[string, string]> = [];
+  for (const key of LANDING_UTM_KEYS) {
+    const value = params.get(key);
+    if (value) next.push([key, value.slice(0, LANDING_UTM_MAX_LENGTH)]);
+  }
+  landingUtm = next;
+}
+
+/** Append the remembered utm_* params to `raw`, keeping an absolute or
+ * relative URL in its original form. Returns `raw` when it cannot be parsed. */
+function withLandingUtm(raw: string): string {
+  const base = window.location?.origin;
+  const wasAbsolute = /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith('//');
+  let parsed: URL;
+  try {
+    parsed = base ? new URL(raw, base) : new URL(raw);
+  } catch {
+    return raw;
+  }
+  for (const [key, value] of landingUtm) parsed.searchParams.set(key, value);
+  const out = parsed.toString();
+  if (wasAbsolute || !base) return out;
+  return out.startsWith(parsed.origin) ? out.slice(parsed.origin.length) || '/' : out;
+}
+
+function urlHasUtmSource(raw: string): boolean {
+  const query = raw.split('#')[0]!.split('?')[1] ?? '';
+  return new URLSearchParams(query).has('utm_source');
+}
+
+/** Umami `data-before-send` hook: on the first pageview, re-attach the
+ * landing utm_* values when the payload url lost them, then strip the shared
+ * sensitive-param list from the payload's url and referrer. Pageviews arrive
+ * as `type === 'event'` with no `name`; custom events carry a name. The first
+ * pageview consumes the re-attach whether or not it needed it, so later
+ * in-app navigations do not keep claiming the campaign. Returns the payload
+ * itself when clean. */
+function redactUmamiPayload(type: string, payload: unknown): unknown {
   if (!payload || typeof payload !== 'object') return payload;
   const record = payload as Record<string, unknown>;
   let next: Record<string, unknown> | null = null;
+  if (type === 'event' && !record.name && !landingUtmPageviewConsumed) {
+    landingUtmPageviewConsumed = true;
+    const url = record.url;
+    if (landingUtm.length > 0 && typeof url === 'string' && !urlHasUtmSource(url)) {
+      const attached = withLandingUtm(url);
+      if (attached !== url) {
+        next = { ...record, url: attached };
+      }
+    }
+  }
   for (const field of ['url', 'referrer'] as const) {
-    const raw = record[field];
+    const raw = (next ?? record)[field];
     if (typeof raw !== 'string') continue;
     const redacted = redactSensitiveUrl(raw, window.location?.origin);
     if (redacted !== raw) {
@@ -100,6 +168,7 @@ const UMAMI_IDENTIFY_RETRY_LIMIT = 2;
 const UMAMI_IDENTIFY_RETRY_BASE_DELAY_MS = 1_000;
 const UMAMI_TRACK_RETRY_LIMIT = 2;
 const CRITICAL_TRACK_EVENTS = new Set<UmamiEvent>([
+  'dashboard-first-interaction',
   'checkout-start',
   'checkout-success',
   'checkout-failed',
@@ -147,6 +216,7 @@ const EVENTS = {
   // Settings
   'settings-open': true,
   'variant-switch': true,
+  'dashboard-first-interaction': true,
   'theme-changed': true,
   'language-change': true,
   'feature-toggle': true,
@@ -157,6 +227,7 @@ const EVENTS = {
   'live-media-idle-stopped': true,
   'live-media-idle-notice-action': true,
   'live-video-attempt-failed': true,
+  'live-video-tap-to-play': true,
   'live-video-signal-missing': true,
   'live-video-resolved-applied': true,
   // Webcams
@@ -217,6 +288,9 @@ const EVENTS = {
   // API outcome telemetry — closed-vocabulary key lifecycle actions only;
   // never include key names, ids, prompts, or request/user data.
   'api-action': true,
+  // Settings → AI Agents connect clicks. `client` is the closed catalog id in
+  // src/config/mcp-agent-clients.ts, `method` is link | copy.
+  'agent-connect': true,
   // Premium entitlement health — a client that believes it is Pro received a
   // server-side denial. This is trend telemetry, never an authorization signal.
   'entitlement-desync': true,
@@ -252,6 +326,11 @@ const EVENTS = {
   'passkey-offer-created': true,
   'passkey-offer-failed': true,
   'passkey-offer-dismissed': true,
+  // Ask-once GitHub star toast. `starred` means the Star button was clicked and
+  // GitHub opened; we cannot see whether the user then starred.
+  'github-star-prompt-shown': true,
+  'github-star-prompt-starred': true,
+  'github-star-prompt-dismissed': true,
   // Mission conversion funnel (ONBOARDING_STRATEGY.md, plan 2026-08-30-001).
   // Picker -> selection -> panel views -> preview -> attributed checkout.
   // `panel-viewed` is global (the funnel needs a denominator) but deduped per
@@ -271,6 +350,10 @@ const EVENTS = {
   'about-you-shown': true,
   'about-you-answered': true,
   'about-you-skipped': true,
+  // A digest request failed but news was still on screen (retained or saved
+  // copy, or a retry that recovered). Carries outcome, failure kind and
+  // variant only. A failure that left empty panels goes to Sentry instead.
+  'news-digest-degraded': true,
 } as const;
 
 export type UmamiEvent = keyof typeof EVENTS;
@@ -343,6 +426,7 @@ function handleCollectorOutcome(outcome: CollectorOutcome): void {
   if (!isDurableMarkerResolved(outcome.failure)) return;
 
   if (outcome.eventName === 'checkout-success') clearPendingCheckoutSuccessMarker();
+  if (outcome.eventName === 'dashboard-first-interaction') settleDashboardFirstInteraction();
   if (outcome.eventName === 'mission-returned-after-purchase') settleMissionReturnDelivery();
   if (outcome.eventName === 'checkout-start' && isReplayedCheckoutStart(outcome.requestBody)) {
     noteProFunnelReplayDelivered();
@@ -528,6 +612,7 @@ function scheduleTrackRetry(call: Extract<QueuedUmamiCall, { kind: 'track' }>, e
  * the /pro handoff still holds here.
  */
 function clearUnobservableCriticalMarker(call: Extract<QueuedUmamiCall, { kind: 'track' }>): void {
+  if (call.event === 'dashboard-first-interaction') settleDashboardFirstInteraction();
   if (call.event === 'checkout-success') clearPendingCheckoutSuccessMarker();
   if (call.event === 'mission-returned-after-purchase') settleMissionReturnDelivery();
   if (call.event === 'checkout-start' && call.data?.replayed === true) {
@@ -631,6 +716,12 @@ function loadUmamiScript(): void {
 
 /** Type-safe Umami wrapper. Safe to call even if the script hasn't loaded. */
 export function track(event: UmamiEvent, data?: Record<string, unknown>): void {
+  if (event === 'checkout-start' || event === 'checkout-success' || event === 'variant-switch') {
+    const viewport = data?.replayed === true && isViewportBand(data.vw)
+      ? { vw: data.vw }
+      : viewportAnalyticsFields();
+    data = { ...data, ...viewport };
+  }
   const enrichedData = withContentAttribution(data, getContentAttributionForAnalytics());
   if (!sendUmamiCall({ kind: 'track', event, data: enrichedData })) {
     queueUmamiCall({ kind: 'track', event, data: enrichedData });
@@ -919,6 +1010,10 @@ export function trackSignOut(): void {
  * Umami event to the Clerk id, so these are per-user records of a
  * security-posture change and should be treated as such.
  */
+export function trackGithubStarPrompt(outcome: 'shown' | 'starred' | 'dismissed'): void {
+  track(`github-star-prompt-${outcome}`);
+}
+
 export function trackPasskeyOfferShown(): void {
   track('passkey-offer-shown');
 }
@@ -946,6 +1041,7 @@ export function trackPasskeyOfferDismissed(): void {
  * across the shared module import in tests/secondary-startup.test.mts.
  */
 export function resetAnalyticsForTesting(): void {
+  dashboardInteractionTracked = false;
   resetCollectorTransportForTesting();
   clearScheduledIdentityRetry();
   identifyDeliveryGeneration += 1;
@@ -959,6 +1055,8 @@ export function resetAnalyticsForTesting(): void {
   latestIdentityRevision = 0;
   proFunnelReplaysAwaitingDelivery = 0;
   layoutCustomizationsSent.clear();
+  landingUtm = [];
+  landingUtmPageviewConsumed = false;
 }
 
 export function trackGateHit(feature: string): void {
@@ -1096,6 +1194,7 @@ function sanitizePendingConversionData(
   if (typeof data.panelKey === 'string') out.panelKey = bucketPanelKeyForAnalytics(data.panelKey);
   if (typeof data.variant === 'string' && isSiteVariant(data.variant)) out.variant = data.variant;
   if (data.deviceClass === 'mobile' || data.deviceClass === 'desktop') out.deviceClass = data.deviceClass;
+  if (isViewportBand(data.vw)) out.vw = data.vw;
   return out;
 }
 
@@ -1159,6 +1258,7 @@ export function trackCheckoutStart(
     });
   const data: Record<string, unknown> = {
     ...funnelFields,
+    ...viewportAnalyticsFields(),
     productId: bucketProductIdForAnalytics(productId),
     surface: context.eventSurface,
     authed,
@@ -1199,12 +1299,14 @@ function clearPendingCheckoutSuccessMarker(): void {
  * overlay session-flag path (see panel-layout.ts checkout-return wiring).
  */
 export function trackCheckoutSuccess(source: 'url-return' | 'overlay-flag'): void {
+  const viewport = viewportAnalyticsFields();
   try {
-    window.sessionStorage.setItem(CHECKOUT_SUCCESS_PENDING_KEY, source);
+    window.sessionStorage.setItem(CHECKOUT_SUCCESS_PENDING_KEY,
+      viewport.vw ? JSON.stringify({ source, ...viewport }) : source);
   } catch {
     // Storage denied — fall back to fire-and-hope, matching every other event.
   }
-  track('checkout-success', { source });
+  track('checkout-success', { source, ...viewport });
 }
 
 /**
@@ -1222,7 +1324,18 @@ export function replayPendingCheckoutSuccess(): void {
     return;
   }
   if (!source) return;
-  track('checkout-success', { source, replayed: true });
+  let vw: ViewportBand | undefined;
+  if (source !== 'url-return' && source !== 'overlay-flag') {
+    try {
+      const stored = JSON.parse(source);
+      source = stored?.source;
+      if (isViewportBand(stored?.vw)) vw = stored.vw;
+    } catch {
+      return;
+    }
+  }
+  if (source !== 'url-return' && source !== 'overlay-flag') return;
+  track('checkout-success', { source, ...(vw ? { vw } : {}), replayed: true });
 }
 
 /**
@@ -1302,7 +1415,7 @@ export function replayPendingProFunnelEvents(): void {
   }
   if (!raw) return;
 
-  const sanitized: Array<{ productId: string; surface: 'pro-page' | 'pro-resume'; authed: boolean }> = [];
+  const sanitized: Array<{ productId: string; surface: 'pro-page' | 'pro-resume'; authed: boolean; vw?: ViewportBand }> = [];
   try {
     const items: unknown = JSON.parse(raw);
     if (Array.isArray(items)) {
@@ -1315,6 +1428,7 @@ export function replayPendingProFunnelEvents(): void {
           productId: bucketProductIdForAnalytics(String(d.productId ?? '')),
           surface: d.surface === 'pro-resume' ? 'pro-resume' : 'pro-page',
           authed: Boolean(d.authed),
+          ...(isViewportBand(d.vw) ? { vw: d.vw } : {}),
         });
       }
     }
@@ -1378,6 +1492,15 @@ export type ApiActionName = (typeof API_ACTIONS)[number];
 export function trackApiAction(action: ApiActionName): void {
   if (!API_ACTIONS.includes(action)) return;
   track('api-action', { action });
+}
+
+/**
+ * Settings → AI Agents: a user started connecting an agent. `client` is a
+ * closed catalog id; the caller resolves it against the catalog so this chunk
+ * never carries the catalog itself (analytics bundle budget).
+ */
+export function trackAgentConnect(client: McpAgentClientId, method: 'link' | 'copy'): void {
+  track('agent-connect', { client, method });
 }
 
 // ---------------------------------------------------------------------------
@@ -1801,6 +1924,44 @@ export function trackLayoutCustomized(kind: LayoutCustomizationKind): void {
 
 export function trackVariantSwitch(from: string, to: string): void {
   track('variant-switch', { from, to });
+}
+
+export type DashboardInteractionTarget = 'map' | 'panel' | 'live-news' | 'switcher' | 'search' | 'signin' | 'upgrade';
+const DASHBOARD_INTERACTION_KEY = 'wm-dashboard-first-interaction';
+let dashboardInteractionTracked = false;
+
+/** Tab-session scope, matching the dashboard's other session analytics guards. */
+export function trackDashboardFirstInteraction(target: DashboardInteractionTarget): void {
+  if (dashboardInteractionTracked) return;
+  const data = { ...viewportAnalyticsFields(), target };
+  try {
+    if (window.sessionStorage.getItem(DASHBOARD_INTERACTION_KEY)) return;
+    window.sessionStorage.setItem(DASHBOARD_INTERACTION_KEY, JSON.stringify(data));
+  } catch {
+    // Denied storage still permits at most one event in this document.
+  }
+  dashboardInteractionTracked = true;
+  track('dashboard-first-interaction', data);
+}
+
+function settleDashboardFirstInteraction(): void {
+  try { window.sessionStorage.setItem(DASHBOARD_INTERACTION_KEY, '1'); } catch { /* document guard remains */ }
+}
+
+/** Replay only an actual prior touch, never create an event for an idle visit. */
+export function replayPendingDashboardFirstInteraction(): void {
+  if (dashboardInteractionTracked) return;
+  try {
+    const raw = window.sessionStorage.getItem(DASHBOARD_INTERACTION_KEY);
+    if (!raw || raw === '1') return;
+    const data = JSON.parse(raw);
+    if (!['map', 'panel', 'live-news', 'switcher', 'search', 'signin', 'upgrade'].includes(data?.target)) return;
+    dashboardInteractionTracked = true;
+    track('dashboard-first-interaction', {
+      ...(isViewportBand(data.vw) ? { vw: data.vw } : viewportAnalyticsFields()),
+      target: data.target,
+    });
+  } catch { /* unavailable or malformed storage cannot replay */ }
 }
 
 export function trackThemeChanged(theme: string): void {

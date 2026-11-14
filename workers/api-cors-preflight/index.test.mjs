@@ -68,20 +68,20 @@ test('isAllowedOrigin accepts Google Translate proxy origins of worldmonitor.app
   assert.equal(isAllowedOrigin('https://notworldmonitor-app.translate.goog'), false);
 });
 
-test('isAllowedOrigin accepts Vercel preview deploys under the eliewm team scope (mirrors api/_cors.js)', () => {
-  // The project deploys previews under the "eliewm" Vercel team scope, so URLs
-  // end in `-eliewm.vercel.app` (git-branch alias AND hash deployment forms).
-  // The Worker MUST mirror api/_cors.js exactly — if it stays narrower, eliewm
-  // preview preflights echo the canonical worldmonitor.app fallback and the
-  // browser blocks them before the request ever reaches Vercel.
-  assert.equal(isAllowedOrigin('https://worldmonitor-git-feat-x-eliewm.vercel.app'), true);
-  assert.equal(isAllowedOrigin('https://worldmonitor-r6q9o-eliewm.vercel.app'), true);
-  // Tight allowlist: a foreign team scope, a non-worldmonitor app, and the
-  // retired personal scope (worldmonitor-*-elie-<hash>, migration complete)
-  // must all stay rejected. Never a bare *.vercel.app.
-  assert.equal(isAllowedOrigin('https://worldmonitor-feat-x-attacker.vercel.app'), false);
-  assert.equal(isAllowedOrigin('https://some-other-app-eliewm.vercel.app'), false);
-  assert.equal(isAllowedOrigin('https://worldmonitor-abc-elie-habib.vercel.app'), false);
+test('isAllowedOrigin rejects every *.vercel.app origin, including eliewm-shaped names', () => {
+  // `<project>.vercel.app` goes to whichever Vercel account claims the project
+  // name, so `worldmonitor-*-eliewm.vercel.app` is registrable by anyone. Preview
+  // pages call their own deployment's /api, never api.worldmonitor.app.
+  for (const origin of [
+    'https://worldmonitor-attacker-eliewm.vercel.app',
+    'https://worldmonitor-git-feat-x-eliewm.vercel.app',
+    'https://worldmonitor-r6q9o-eliewm.vercel.app',
+    'https://worldmonitor-feat-x-attacker.vercel.app',
+    'https://some-other-app-eliewm.vercel.app',
+  ]) {
+    assert.equal(isAllowedOrigin(origin), false, origin);
+    assert.equal(buildCorsHeaders(origin)['Access-Control-Allow-Origin'], 'https://worldmonitor.app', origin);
+  }
 });
 
 test('isAllowedOrigin accepts Tauri desktop runtime origins', () => {

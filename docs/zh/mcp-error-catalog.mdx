@@ -16,6 +16,7 @@ description: "WorldMonitor MCP 服务器可能返回的每一种错误形态的�
   - Per-minute -32029 + hit telemetry   api/mcp/auth.ts (applyPerMinuteLimit, applyAnonDiscoveryLimit, emitMcpRateLimitHit)
   - Pro daily-cap -32029 (HTTP 429)     api/mcp/dispatch.ts (reserveDailyQuotaForRequest)
   - Free tool-scope -32002 (HTTP 403)   api/mcp/dispatch.ts (upgrade-required guard)
+  - Plan-feature -32002 (HTTP 403)      api/mcp/dispatch.ts (_planFeature guard) + api/mcp/auth.ts (travelRiskAssessment pre-check)
   - Tool exec -32603                    api/mcp/dispatch.ts (dispatchToolsCall)
   - Source-unavailable -32003           api/mcp/dispatch.ts (McpSourceUnavailableError re-emit)
   - SSE replay -32004 / -32600          api/mcp/handler.ts (handleSseReplay + replay cursor check)
@@ -105,6 +106,8 @@ Content-Type: application/json
 
 订阅不活跃故意不属于此列表。已确认的免费账户（配置正确但无权益行，或内部一致的 tier-0 行）使用免费账户额度。服务方已确认失效的订阅也遵循同一路径：共享权益门禁将已结束的覆盖期视为已确认的免费状态。不带该失效标记的付费权益过期或停用才会返回终止性 `-32002` / HTTP 403；无法确定或可重试的校验故障使用 `-32603` / HTTP 503。
 
+情况 1 的 `error.data` 带 `reason`（固定为 `no-account`）、`nextStep`、`upgradeUrl` 和 `setupUrl`（各客户端的接入指南）。请按 `error.data.reason` 分支，不要匹配消息文本。`nextStep` 随客户端而变：Codex（`codex-mcp-client/…` 或 `openai-mcp/… (Codex)`）提示在终端运行 `codex mcp login worldmonitor` 后重启 Codex；Claude Code（`claude-code/…`）提示运行 `/mcp`，选择 `worldmonitor` 并选 Authenticate；其他客户端在 `initialize` 或匿名 `GET` 发现探测被拒时不再提及 `get_sources`，在受限 `tools/call` 被拒时沿用下例文案。匿名 `GET` 发现探测返回同样的负载，`id` 为 `null`。
+
 示例线上负载（情况 1）：
 
 ```json
@@ -113,7 +116,13 @@ Content-Type: application/json
   "id": 7,
   "error": {
     "code": -32001,
-    "message": "Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header."
+    "message": "Sign-in required. Connect with OAuth (your client opens World Monitor sign-in; a free account works) or send an API key in the X-WorldMonitor-Key header.",
+    "data": {
+      "reason": "no-account",
+      "nextStep": "Connect via OAuth (see the WWW-Authenticate header) to sign in with a free account, or call get_sources, which needs no credential. Subscribe to Pro at the upgrade URL for the full daily allowance.",
+      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel",
+      "setupUrl": "https://www.worldmonitor.app/docs/mcp-quickstart"
+    }
   }
 }
 ```
@@ -152,6 +161,26 @@ Content-Type: application/json
 **结账提示。** 由 `api/mcp/dispatch.ts` 发出的 `upgrade-required`，以及 `-32029` 下的 `allowance-exhausted` 和 `quota-exceeded`，在调用方持有绑定用户的凭据且存在高一级的自助套餐时，会额外带上 `recommendedPlan`。`recommendedPlan` 的对应关系为：免费 → `pro_monthly`，Pro → `pro_business_monthly`，API Starter → `api_business`。`checkoutTool: "start_upgrade"` 只出现在免费账户上，因为只有它能通过新结账购买该套餐：Pro → Pro Business 是在定价页确认的按比例原地升级，API Starter → API Business 是在账单门户中按比例变更套餐，所以付费调用方只收到 `recommendedPlan`。Pro Business、API Business、Enterprise、运营方密钥和匿名调用方不带这两个字段。`message` 与 `upgradeUrl` 保持不变。
 
 **ChatGPT。** ChatGPT 的应用规范不允许应用发起结账或推广升级，因此 `User-Agent` 为 ChatGPT 的 `openai-mcp/…`（Codex 除外）的请求不会收到 `recommendedPlan` 或 `checkoutTool`。其 `nextStep` 只说明当前套餐包含什么，并指出 `upgradeUrl` 介绍各套餐；订阅失效和 API 套餐的消息也去掉了重新订阅或升级的引导。`reason`、JSON-RPC 代码、HTTP 状态和 `upgradeUrl` 与其他客户端相同。`start_upgrade` 不会出现在 ChatGPT 的工具列表中，调用它会返回 `Unknown tool`。
+
+**套餐功能拒绝。** 某些工具除订阅外还需要一个指定的套餐标志，套餐中没有该标志的已绑定身份调用方都会被拒绝。拒绝发生在参数校验和任何额度扣减之前。目前唯一的此类标志是 `travelRiskAssessment`，`prepare_travel_risk_assessment` 需要它，且只有 Pro Business、API Business 和 Enterprise 套餐带有该标志。拒绝为 HTTP 403 下的 `-32002`，`reason` 仍为 `"upgrade-required"`，并附带 `data.planFeature`，因此按 `reason` 分支的客户端无需改动。`message` 列出包含该工具的套餐。免费和 Pro 调用方的 `recommendedPlan` 为 `pro_business_monthly`（Pro 不含该标志），API Starter 调用方为 `api_business`。免费和 Pro 调用方的 `upgradeUrl` 是带 `#plan-proBusiness` 的套餐页，链接会打开 Pro Business 卡片。API Starter 调用方仍使用不带该卡片锚点的套餐页，因为这一级升级在账单门户中完成。`checkoutTool` 仍只对免费账户出现，ChatGPT 收到仅作说明的 `nextStep`。运营方密钥不受套餐限制。
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "error": {
+    "code": -32002,
+    "message": "Travel risk assessment drafts are included in the Pro Business, API Business and Enterprise plans. The current plan does not include them.",
+    "data": {
+      "reason": "upgrade-required",
+      "nextStep": "Upgrade to Pro Business or API Business at the upgrade URL to use this tool. Every other tool the current plan includes still works.",
+      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel#plan-proBusiness",
+      "planFeature": "travelRiskAssessment",
+      "recommendedPlan": "pro_business_monthly"
+    }
+  }
+}
+```
 
 **`start_upgrade` 拒绝。** 以下情况不会创建结账会话，均为 **HTTP 200** 内的 `-32002`，带 `data.reason` 和 `data.nextStep`：账户已持有同一系列套餐时为 `already-subscribed`（附 `data.subscription`）；存在待处理付款时为 `payment-in-progress`，待付款完成或失效后会自行解除，稍后可再次调用。触发结账限流时返回 HTTP 429 的 `-32029`，`data.reason` 为 `checkout-rate-limited`，并带 `Retry-After`。
 
@@ -512,7 +541,7 @@ JMESPath 引擎解析表达式时抛出 —— 语法错误、未闭合的方括
 
 少数工具在 `content[0].text` 内返回自己的应用层错误信封，而非通过 JSON-RPC `-32602`。这些在 [工具参考](/zh/mcp-tools-reference) 中按工具记录 —— 本目录列出它们以便客户端识别该模式：
 
-- **`describe_tool`** 返回 `{ "error": "missing_tool_name", "hint": "..." }` 或 `{ "error": "unknown_tool", "requested": "...", "available": [...] }`。配额豁免 —— 错误输入不消耗配额槽位。见 [工具参考 → `describe_tool`](/zh/mcp-tools-reference#describe_tool)。
+- **`describe_tool`** 返回 `{ "error": "missing_tool_name", "hint": "..." }` 或 `{ "error": "unknown_tool", "requested": "...", "available": [...] }`。配额豁免 —— 错误输入不消耗配额槽位。见 [工具参考 → `describe_tool`](/zh/mcp-tools/meta#describe_tool)。
 
 若你要构建通用信封检测器，对目录类信封以前导下划线（`_budget_exceeded`、`_jmespath_error`）为键，对每工具信封以顶层 `error: string` 为键。
 

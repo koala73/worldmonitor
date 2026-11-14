@@ -66,7 +66,7 @@ describe('desktop bundle ships its licence', () => {
   });
 
   it('the copyright in the About dialog matches LICENSE', () => {
-    const licenseYears = read('LICENSE').match(/Copyright \(C\) (\d{4}-\d{4}) Elie Habib/)?.[1];
+    const licenseYears = read('LICENSE').match(/Copyright \(C\) (\d{4}(?:-\d{4})?) Elie Habib/)?.[1];
     assert.ok(licenseYears, 'LICENSE must carry the project copyright line');
     assert.match(
       read('src-tauri/src/main.rs'),

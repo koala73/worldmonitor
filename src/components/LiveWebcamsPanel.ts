@@ -301,9 +301,27 @@ export class LiveWebcamsPanel extends Panel {
     this.element.insertBefore(this.toolbar, this.content);
   }
 
+  // The region is a tab-level choice (#10453 phase 2): the analyst's region
+  // reaches a teammate who opens the shared dashboard.
+  public override getFilterChoice(): string | null {
+    return this.regionFilter === 'all' ? null : this.regionFilter;
+  }
+
+  public override setFilterChoice(value: string | null): void {
+    const next = (value ?? 'all') as RegionFilter;
+    if (!ALL_REGIONS.includes(next)) return;
+    this.applyRegionFilter(next);
+  }
+
   private setRegionFilter(filter: RegionFilter): void {
     if (filter === this.regionFilter) return;
     trackWebcamRegionFiltered(filter);
+    this.applyRegionFilter(filter);
+    this.reportFilterChoice(filter);
+  }
+
+  private applyRegionFilter(filter: RegionFilter): void {
+    if (filter === this.regionFilter) return;
     this.regionFilter = filter;
     this.toolbar?.querySelectorAll('.webcam-region-btn').forEach(btn => {
       (btn as HTMLElement).classList.toggle('active', (btn as HTMLElement).dataset.region === filter);

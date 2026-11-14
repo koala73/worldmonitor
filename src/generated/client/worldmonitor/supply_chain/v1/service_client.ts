@@ -114,6 +114,7 @@ export interface FlowEstimate {
   source: FlowSource;
   hazardAlertLevel: string;
   hazardAlertName: string;
+  latestDate: string;
 }
 
 export interface GetChokepointHistoryRequest {

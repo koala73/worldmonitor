@@ -53,8 +53,12 @@ export function safeStorageRemove(key: string): void {
  * write's catch and reported a rejection, so on a sandboxed iframe or with
  * cookies blocked every cloud-pref write looked rejected and sign-in
  * terminated in an error state on every load (#7833 review, second round).
+ *
+ * Exported for callers that hand the store to a helper taking a `Storage`.
+ * Reading `localStorage` or `window.localStorage` directly to build that
+ * argument throws outside the helper's own try (WORLDMONITOR-1D2, -1D3).
  */
-function storageHandle(): Storage | null {
+export function safeStorageHandle(): Storage | null {
   try {
     return localStorage ?? null;
   } catch {
@@ -98,7 +102,7 @@ export function isStorageAvailable(): boolean {
  * and the large value does not.
  */
 export function safeStorageSetChecked(key: string, value: string): boolean {
-  const store = storageHandle();
+  const store = safeStorageHandle();
   if (store === null) return true;
   try {
     store.setItem(key, value);
@@ -110,7 +114,7 @@ export function safeStorageSetChecked(key: string, value: string): boolean {
 
 /** `safeStorageRemove` with the same landed/not-landed report as above. */
 export function safeStorageRemoveChecked(key: string): boolean {
-  const store = storageHandle();
+  const store = safeStorageHandle();
   if (store === null) return true;
   try {
     store.removeItem(key);
@@ -131,7 +135,7 @@ export function safeStorageRemoveChecked(key: string): boolean {
  * The raw read this replaced threw and aborted the upload (#7833 review).
  */
 export function safeStorageGetChecked(key: string): { ok: boolean; value: string | null } {
-  const store = storageHandle();
+  const store = safeStorageHandle();
   if (store === null) return { ok: false, value: null };
   try {
     return { ok: true, value: store.getItem(key) };
@@ -154,7 +158,7 @@ export function safeStorageGetChecked(key: string): { ok: boolean; value: string
  * reports failure rather than silently truncating.
  */
 export function safeStorageSnapshot(): { ok: boolean; entries: Array<[string, string]> } {
-  const store = storageHandle();
+  const store = safeStorageHandle();
   if (store === null) return { ok: false, entries: [] };
   try {
     const entries: Array<[string, string]> = [];

@@ -77,6 +77,7 @@ const DEFERRED_RPC_CLIENT_CHUNKS = [
   'rpc-client-military-v1',
   'rpc-client-natural-v1',
   'rpc-client-news-v1',
+  'rpc-client-orbital-v1',
   'rpc-client-positive-events-v1',
   'rpc-client-prediction-v1',
   'rpc-client-radiation-v1',

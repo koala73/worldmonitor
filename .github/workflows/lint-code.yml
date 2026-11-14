@@ -177,11 +177,18 @@ jobs:
         # also halves the export. No authored anchor targets them; their
         # only fragment links are absolute URLs the checker skips. Mintlify's
         # PR preview deployment still builds them. The renderer version prints
-        # even when the export fails.
+        # even when the export fails. The install retries because the npm
+        # registry 404ed an existing mint dependency tarball for two minutes on
+        # 2026-11-03, failing two PRs before any page rendered (#10338).
         env:
           NODE_OPTIONS: --import=${{ github.workspace }}/scripts/mint-export-preload.mjs
         run: |
-          npm i -g mint@4.2.866
+          for attempt in 1 2 3; do
+            npm i -g mint@4.2.866 && break
+            [ "$attempt" -lt 3 ] || exit 1
+            echo "::warning::npm i -g mint failed on attempt $attempt; retrying in $((attempt * 20))s."
+            sleep $((attempt * 20))
+          done
           trap 'echo "renderer: $(cat ~/.mintlify/previews/shared/mint/mint-version.txt 2>/dev/null || echo unknown)"' EXIT
           if ! mint export --disable-openapi --output "$RUNNER_TEMP/docs-export.zip"; then
             echo "::warning::Mint export failed once; retrying once."

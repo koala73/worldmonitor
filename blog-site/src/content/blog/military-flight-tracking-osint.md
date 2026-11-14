@@ -1,6 +1,6 @@
 ---
 title: "Military Flight Tracking for OSINT: Aircraft and Conflict Context"
-description: "Track military aircraft with conflict context in WorldMonitor. Learn how to inspect activity, assess unusual patterns, and understand coverage and history limits."
+description: "Track military aircraft with conflict context in WorldMonitor. Inspect activity, assess unusual flight patterns, and understand coverage and history limits."
 metaTitle: "Military Flight Tracking for OSINT | WorldMonitor"
 keywords: "military flight tracking, military aircraft tracker, OSINT flight tracking, military aircraft patterns, conflict zone flight data"
 audience: "OSINT researchers, journalists, geopolitical analysts"
@@ -73,7 +73,7 @@ For archival research, examine a provider's historical datasets and access terms
 
 ## What is free, and when should you use another tool?
 
-WorldMonitor's public dashboard is a free starting point for comparing aircraft observations with geographic and conflict context. Hosted analyst, integration, and other paid capabilities have separate requirements; check the [current plans](https://www.worldmonitor.app/pro#pricing). Open-source availability does not remove provider terms or credentials needed for self-hosting.
+WorldMonitor's public dashboard is a free starting point for comparing aircraft observations with geographic and conflict context. Hosted analyst, integration, and other paid capabilities have separate requirements; check the [current plans](https://www.worldmonitor.app/pro#pricing). Open-source availability does not remove provider terms or credentials needed for [self-hosting](/blog/posts/self-host-worldmonitor-open-source-osint-dashboard/).
 
 Choose WorldMonitor when you want to read aircraft activity alongside other signals. For detailed flight replay or a specialized aircraft-history query, check a dedicated provider's coverage, retention, and access terms. Neither type of tool can guarantee visibility of all military flights.
 

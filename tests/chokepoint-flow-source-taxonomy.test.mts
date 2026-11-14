@@ -135,6 +135,7 @@ describe('FlowEstimate.source is a closed taxonomy (#6101)', () => {
 interface ServedFlowEstimate {
   source: string;
   hazardAlertLevel: string;
+  latestDate: string;
 }
 
 const originalFetch = globalThis.fetch;
@@ -175,8 +176,8 @@ describe('the chokepoint handler serves only declared FlowSource values (#6101)'
 
     // One invocation, one scenario per chokepoint id.
     sidecarCacheSet('energy:chokepoint-flows:v1', {
-      suez: flow('portwatch-dwt'),
-      hormuz_strait: flow('portwatch-counts'),
+      suez: { ...flow('portwatch-dwt'), latestDate: '2026-11-05' },
+      hormuz_strait: flow('portwatch-counts'), // written before the seeder stamped latestDate
       malacca_strait: flow('portwatch-lidar'), // a value shipped after this deploy
       panama: flow(''),
       korea_strait: flow(undefined), // key absent entirely
@@ -205,6 +206,12 @@ describe('the chokepoint handler serves only declared FlowSource values (#6101)'
 
   it('collapses a value outside the taxonomy to FLOW_SOURCE_UNSPECIFIED', () => {
     assert.equal(served.get('malacca_strait')!.source, UNSPECIFIED);
+  });
+
+  it('serves the PortWatch day a flow estimate runs to, and "" when the cache has none', () => {
+    assert.equal(served.get('suez')!.latestDate, '2026-11-05');
+    assert.equal(served.get('hormuz_strait')!.latestDate, '');
+    assert.equal(flowEstimateSchema.latestDate?.type, 'string', 'the published contract must declare latestDate');
   });
 
   it('collapses empty, absent, and non-string sources to FLOW_SOURCE_UNSPECIFIED', () => {
@@ -278,6 +285,11 @@ describe('the chokepoint handler re-narrows a cached response (#6101)', () => {
       (suez.flowEstimate as unknown as ServedFlowEstimate).source,
       UNSPECIFIED,
       'a cache-warm response still served an undeclared source',
+    );
+    assert.equal(
+      (suez.flowEstimate as unknown as ServedFlowEstimate).latestDate,
+      '',
+      'a response cached before latestDate existed must serve "", not omit the field',
     );
   });
 });

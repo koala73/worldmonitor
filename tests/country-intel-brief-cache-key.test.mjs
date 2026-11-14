@@ -5,6 +5,9 @@ import {
   deriveCountryIntelCacheKey,
   buildSharedCountryContext,
 } from '../server/worldmonitor/intelligence/v1/_country-brief-context.ts';
+import { countryImageryFlagsFrom } from '../server/worldmonitor/intelligence/v1/_country-brief-evidence.ts';
+import { confirmedFlagsTag } from '../shared/orbital/country-rollup.js';
+import { CONFIRMED, RAISED, flagAfter, rollupOf, siteOf } from './helpers/orbital-country-rollup.mjs';
 
 describe('country intel brief cache key derivation', () => {
   it('anon callers share one key per country+lang regardless of client context', () => {
@@ -28,6 +31,20 @@ describe('country intel brief cache key derivation', () => {
       assert.equal(mk(premium, ''), mk(premium, undefined), 'no NOTAM keeps the existing key');
       assert.notEqual(mk(premium, ''), mk(premium, 'OEJN:closed'));
       assert.notEqual(mk(premium, 'OEJN:closed'), mk(premium, 'OEJN:restricted'));
+    }
+  });
+
+  it('re-keys a brief when a watched site\'s imagery change is confirmed', () => {
+    const mk = (isPremium, imageryTag) => deriveCountryIntelCacheKey({
+      countryCode: 'IR', lang: 'en', isPremium, contextHash: 'base', frameworkHash: '', energyYear: '2024', energyImportYear: '2023', imageryTag,
+    });
+    const now = Date.UTC(2026, 8, 21, 12);
+    const natanz = siteOf('nuclear:natanz', 'Natanz Enrichment Facility');
+    const tagOf = (tail) => confirmedFlagsTag(countryImageryFlagsFrom(rollupOf('IR', now, [{ site: natanz, flag: flagAfter(natanz.id, now, tail) }]), 'IR', now));
+    assert.equal(tagOf(RAISED), '', 'a raised flag leaves the key alone');
+    for (const premium of [false, true]) {
+      assert.equal(mk(premium, tagOf(RAISED)), mk(premium, undefined));
+      assert.notEqual(mk(premium, tagOf(CONFIRMED)), mk(premium, ''));
     }
   });
 

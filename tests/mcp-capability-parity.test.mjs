@@ -1,31 +1,3 @@
-// MCP capability-parity test — catches two structural drift modes at once:
-//
-//   1. Drift between public/.well-known/mcp/server-card.json::capabilities
-//      (what external scanners read) and initialize.result.capabilities
-//      (what the wire serves). A future PR that flips one but forgets the
-//      other ships an advertised-but-unserved capability — discovery
-//      scanners 404 on the flagged surface.
-//
-//   2. Advertised-but-empty — a capability flag is on but the matching
-//      registry is empty at runtime. The list method returns
-//      `{ <capability>: [] }`, which is spec-valid but useless to clients
-//      and indistinguishable (to a casual reader) from "capability not
-//      offered". Catches accidental truncation of PROMPT_REGISTRY,
-//      RESOURCE_REGISTRY, or TOOL_REGISTRY.
-//
-// Normalization: server-card encodes capabilities as booleans (`tools: true`);
-// initialize emits an object per capability (`tools: {}` for passive,
-// `prompts: { listChanged: false }` for config). The value shapes are not
-// commensurable — only the KEY presence is. Both sides project to
-// Set<string> of advertised capability names; the value shape is per-spec
-// opaque.
-//
-// `logging` is structurally registry-less — it's a passive-ACK capability
-// (the handler returns `{}` for `logging/setLevel` but doesn't push
-// `notifications/message`). The allowlist exempts it from the non-empty
-// check. Adding a future passive-ACK capability requires editing this file
-// deliberately — that is the discipline this test is buying.
-
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';

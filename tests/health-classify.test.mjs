@@ -69,6 +69,16 @@ test('country archive health activates once and detects a stopped daily cron', (
   }
 });
 
+test('CII prior health is pending only before its first publication', () => {
+  const name = 'ciiStructuralPrior', key = STANDALONE_KEYS[name];
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({ activationStates: { [name]: false } })).status, 'EMPTY_ON_DEMAND');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({ activationStates: { [name]: true } })).status, 'EMPTY');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({
+    activationStates: { [name]: true }, strens: { [key]: 256 },
+    metaValues: { [SEED_META[name].key]: seedMeta({ fetchedAt: NOW - 50401 * ONE_MIN_MS, recordCount: 208 }) },
+  })).status, 'STALE_SEED');
+});
+
 test('daily CII health is pending only before its first confirmed publication', () => {
   const name = 'riskScoresHistory';
   const key = STANDALONE_KEYS[name];
@@ -2455,6 +2465,24 @@ test('containment has no source-specific denylist', () => {
     assert.equal(entry.records, 1000, name);
     assert.equal(isContainedHealthWarning(entry, evidence, NOW), true, name);
   }
+});
+
+test('invalid prior coverage removes stale containment before overall health is computed', () => {
+  const name = 'ciiStructuralPrior';
+  const { entry, evidence } = classifyContainment(name, {
+    fetchedAt: NOW - 50401 * ONE_MIN_MS, recordCount: 208,
+  });
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.equal(isContainedHealthWarning(entry, evidence, NOW), true);
+  const proofs = new Map([[name, evidence]]);
+  const checked = __testing__.composeCiiStructuralPriorHealth(entry, JSON.stringify({
+    indicator: 'GOV_WGI_PV.EST', year: SEED_META[name].year,
+    countries: Object.fromEntries(SEED_META[name].requiredCountries.filter((c) => c !== 'US')
+      .map((c) => [c, { pv: 0, year: SEED_META[name].year, source: 'https://api.worldbank.org/' }])),
+  }), false, proofs);
+  const containedWarn = Number(isContainedHealthWarning(checked, proofs.get(name), NOW));
+  assert.equal(computeOverallStatus({ warn: 1, onDemandWarn: 0, containedWarn, crit: 0 }, 417).overall, 'WARNING');
+  assert.deepEqual(checked.missingCountries, ['US']);
 });
 
 test('containment rejects missing proof even when an earlier diagnostic wins', () => {

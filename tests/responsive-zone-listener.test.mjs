@@ -32,6 +32,7 @@ const mainCss = readFileSync(
   resolve(__dirname, '../src/styles/main.css'),
   'utf-8',
 );
+const pluginCss = readFileSync(resolve(__dirname, '../src/styles/plugin.css'), 'utf-8');
 
 class FakeMediaQueryList extends EventTarget {
   constructor(media) {
@@ -127,6 +128,17 @@ describe('responsive zone listener', () => {
 });
 
 describe('panel layout responsive zone wiring', () => {
+  it('keeps small laptops stacked while preserving the 1440px split layout', () => {
+    assert.equal(SPLIT_LAYOUT_MIN_WIDTH, 1440);
+  });
+  it('keeps embedded plugin overflow rules aligned with the shared layout', () => {
+    assert.match(pluginCss, new RegExp(`@media \\(min-width: ${SPLIT_LAYOUT_MIN_WIDTH}px\\)`));
+    // `width < N` and `min-width: N` are exact complements, so a fractional
+    // viewport width (browser zoom) is never in neither block.
+    assert.match(pluginCss, new RegExp(`@media \\(width < ${SPLIT_LAYOUT_MIN_WIDTH}px\\)`));
+    assert.doesNotMatch(pluginCss, /max-width: 1439px/);
+    assert.doesNotMatch(pluginCss, /(?:min-width: 900px|max-width: 899px)/);
+  });
   // Behavioral: the contract panel-layout relies on — a breakpoint cross runs
   // the zone-reconcile callback exactly once, synchronously, with no trailing
   // debounce. This replaces the former brittle source-text debounce regex with
@@ -184,7 +196,7 @@ describe('panel layout responsive zone wiring', () => {
 
     assert.match(
       panelsCss,
-      new RegExp(`@media \\(max-width: ${SPLIT_LAYOUT_MIN_WIDTH - 1}px\\)`),
+      new RegExp(`@media \\(width < ${SPLIT_LAYOUT_MIN_WIDTH}px\\)`),
       'panels.css must hide the bottom zone below the shared threshold',
     );
     assert.doesNotMatch(
@@ -218,7 +230,7 @@ describe('panel layout responsive zone wiring', () => {
     assert.doesNotMatch(
       mainCss,
       /desktop-grid/,
-      'the desktop-grid duplicate split block must stay deleted — the 900px media query covers the desktop app (Tauri min window width is above it)',
+      'the desktop-grid duplicate split block must stay deleted — web and desktop share the split threshold',
     );
   });
 

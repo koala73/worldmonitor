@@ -267,6 +267,20 @@ describe('#4580 boot skeleton <-> app footprint parity', () => {
     );
   });
 
+  it('renderLayout mounts the mobile chip nav in the shell frame, before createPanels yields', () => {
+    const body = classMethodBody(panelLayout, 'async renderLayout()');
+    const createPanels = body.indexOf('await this.createPanels()');
+    const navSetup = body.indexOf('this.setupMobilePanelNav()');
+    assert.notEqual(createPanels, -1, 'Expected renderLayout to await createPanels()');
+    assert.notEqual(navSetup, -1, 'Expected renderLayout to call setupMobilePanelNav()');
+    // createPanels() yields to the event loop, so a nav mounted after it paints one frame with
+    // #panelsGrid 49px too high and then shifts it down (field CLS ~0.03 on the 32% phone map).
+    assert.ok(
+      navSetup < createPanels,
+      'setupMobilePanelNav() must run before `await this.createPanels()` so the nav is in the first hydrated frame',
+    );
+  });
+
   it('skeleton mobile breakpoint matches the app mobile breakpoint (MOBILE_BREAKPOINT_PX)', () => {
     const breakpoint = mobileBreakpoint();
     const realMap = mediaRule(css, '\\.map-section', '100dvh');

@@ -49,8 +49,8 @@ describe('api/mcp.ts — tools/list description budget (v1.34.0)', () => {
       assert.equal(TOOL_DESCRIPTION_MAX_BYTES, 1024);
     });
 
-    it('TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES === 68 KiB and exceeds the per-tool cap times a few tools', () => {
-      assert.equal(TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES, 69632);
+    it('TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES === 70 KiB and exceeds the per-tool cap times a few tools', () => {
+      assert.equal(TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES, 71680);
       assert.ok(TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES > TOOL_DESCRIPTION_MAX_BYTES * 8);
     });
 
@@ -177,7 +177,7 @@ describe('api/mcp.ts — tools/list description budget (v1.34.0)', () => {
     });
 
     it('EVERY tool has the JMESPath schema — the projection is universal', async () => {
-      const JMESPATH_SCHEMA = { type: 'string', description: 'Optional JMESPath projection applied to the response. See initialize.instructions for grammar and examples.' };
+      const JMESPATH_SCHEMA = { type: 'string', description: 'JMESPath expression run server-side on this result to keep only the fields you select; omit for the full result. See initialize.instructions.' };
       const tools = await getRegistry();
       for (const t of tools) {
         assert.ok(t.inputSchema?.properties?.jmespath, `tool "${t.name}" missing jmespath schema`);
@@ -592,7 +592,7 @@ describe('api/mcp.ts — tools/list description budget (v1.34.0)', () => {
     });
 
     it('describe_tool result has inputSchema.properties.jmespath structurally equal to JMESPATH_SCHEMA (R7)', async () => {
-      const JMESPATH_SCHEMA = { type: 'string', description: 'Optional JMESPath projection applied to the response. See initialize.instructions for grammar and examples.' };
+      const JMESPATH_SCHEMA = { type: 'string', description: 'JMESPath expression run server-side on this result to keep only the fields you select; omit for the full result. See initialize.instructions.' };
       const full = await callDescribeTool('get_market_data');
       assert.deepEqual(full.inputSchema.properties.jmespath, JMESPATH_SCHEMA);
     });

@@ -490,7 +490,9 @@
     "marketBreadth": "Độ rộng Thị trường",
     "climateNews": "Tin tức về Khí hậu",
     "fx": "Tỷ giá ngoại hối",
-    "ukmtoIncidents": "Sự cố UKMTO"
+    "ukmtoIncidents": "Sự cố UKMTO",
+    "reservoirLevels": "Mực nước chiến lược",
+    "gridDisruptionClock": "Đồng hồ theo dõi mất điện tại các bang Hoa Kỳ"
   },
   "commands": {
     "prefixes": {
@@ -1091,7 +1093,8 @@
       "skipToStart": "Về đầu",
       "previous": "Trước",
       "next": "Tiếp",
-      "skipToEnd": "Tới cuối"
+      "skipToEnd": "Tới cuối",
+      "storageUnavailable": "Phát lại không khả dụng vì trình duyệt này đang chặn lưu trữ trang web. Cho phép dữ liệu trang web cho trang này để bắt đầu lưu ảnh chụp nhanh."
     },
     "pizzint": {
       "indexSource": "Chỉ số: World Monitor",
@@ -1306,7 +1309,8 @@
         "canadaRoads": "Đường bộ Canada",
         "canadaAlerts": "Cảnh báo Canada",
         "notamAirspace": "Hạn chế không phận NOTAM",
-        "no2Activity": "Hoạt động công nghiệp"
+        "no2Activity": "Hoạt động công nghiệp",
+        "reservoirLevels": "Mực nước"
       },
       "tooltip": {
         "earthquake": "Động đất",
@@ -1423,7 +1427,8 @@
           "canadaRoads": "Sự cố giao thông chính thức, cảnh báo, tình trạng đường, đóng đường, thi công và mối nguy tại các khu vực tài phán Canada được hỗ trợ",
           "canadaAlerts": "Cảnh báo an toàn công cộng cấp tỉnh từ Alberta Emergency Alert, B.C. Evacuation Orders and Alerts và SaskAlert",
           "notamAirspace": "Hạn chế bay tạm thời và không phận bị hạn chế, nguy hiểm và bị cấm từ NOTAM của FAA, có hiệu lực ngay bây giờ hoặc bắt đầu trong vòng 24 giờ",
-          "no2Activity": "Hướng hoạt động NO2 từ Sentinel-5P cho 167 quốc gia và 32 cụm công nghiệp: cửa sổ 56 ngày gần nhất so với cùng các ngày trong những năm trước, sau dải chết 10%. Chứa dữ liệu Copernicus Sentinel đã sửa đổi."
+          "no2Activity": "Hướng hoạt động NO2 từ Sentinel-5P cho 167 quốc gia và 32 cụm công nghiệp: cửa sổ 56 ngày gần nhất so với cùng các ngày trong những năm trước, sau dải chết 10%. Chứa dữ liệu Copernicus Sentinel đã sửa đổi.",
+          "reservoirLevels": "Mực mặt nước của các hồ chứa và hồ chiến lược từ lidar vệ tinh ICESat-2 của NASA, so với mực nước thường lệ của tháng. NASA công bố mỗi lượt quét khoảng hai tháng sau khi đo."
         },
         "notes": {
           "timeAffects": "Ảnh hưởng: Động đất, Thời tiết, Biểu tình, Gián đoạn"
@@ -1642,6 +1647,10 @@
       "infoTooltip": "<strong>Sự kiện công nghệ</strong> Các sự kiện công nghệ sắp tới và gần đây: hội nghị, ra mắt sản phẩm, phiên điều trần quản lý và cuộc gọi thu nhập. Tổng hợp từ lịch sự kiện chính thức và nguồn ngành."
     },
     "techReadiness": {
+      "ranked": "Có xếp hạng",
+      "unranked": "Không có xếp hạng",
+      "coverageRequirement": "Số chỉ số tối thiểu để xếp hạng",
+      "coverageLabel": "Chỉ số có dữ liệu",
       "internetUsers": "Người dùng Internet",
       "mobileSubscriptions": "Thuê bao Di động",
       "rdSpending": "Chi phí nghiên cứu và phát triển",
@@ -1657,10 +1666,16 @@
       "dataPreparing": "Đang làm mới dữ liệu sẵn sàng công nghệ — sẽ xuất hiện ngay."
     },
     "populationExposure": {
-      "totalAffected": "Tổng bị Ảnh hưởng",
-      "affectedCount": "{{count}} bị ảnh hưởng",
-      "radiusKm": "bán kính {{km}}km",
-      "infoTooltip": "<strong>Ước tính Dân số bị Phơi nhiễm</strong> Dân số ước tính trong bán kính tác động sự kiện. Dựa trên dữ liệu mật độ quốc gia WorldPop.<ul><li>Xung đột: bán kính 50km</li><li>Động đất: bán kính 100km</li><li>Lũ lụt: bán kính 100km</li><li>Cháy rừng: bán kính 30km</li></ul>"
+      "estimateWithin": "Khoảng {{count}} người trong bán kính {{km}} km",
+      "method": "Ước tính dựa trên mật độ dân số trung bình của quốc gia.",
+      "empty": "Không có địa điểm sự kiện đủ điều kiện",
+      "infoTooltip": "Hiển thị các sự kiện có dữ liệu mật độ dân số quốc gia. Các vị trí của sự kiện UCDP không có thông tin độ chính xác được đánh dấu đang chờ cập nhật. Các khu vực ước tính có thể chồng lấn. Các sự kiện bất ổn cần vị trí chính xác; sự kiện UCDP được đánh dấu không chính xác bị loại trừ. Một địa điểm từ hai nguồn (bất ổn và UCDP) hiển thị thành hai hàng.",
+      "eventCount_other": "{{count}} sự kiện",
+      "locationPending": "Độ chính xác vị trí đang chờ cập nhật",
+      "unrestCoverage": "Phạm vi dữ liệu bất ổn",
+      "ucdpPending": "Phạm vi dữ liệu UCDP đang chờ cập nhật",
+      "coverageShown": "Sự kiện được hiển thị: {{shown}} trên {{total}}",
+      "coverageLeftOut": "Không hiển thị: {{imprecise}} không có vị trí chính xác, {{noEstimate}} ở các quốc gia không có dữ liệu mật độ, {{otherPlaces}} sau 10 địa điểm đầu tiên của mỗi nguồn"
     },
     "securityAdvisories": {
       "loading": "Đang tải cảnh báo du lịch...",
@@ -2096,7 +2111,8 @@
       "channelUrlHint": "Dán URL kênh (youtube.com/channel/UC…) hoặc URL video trực tiếp",
       "youtubeChannel": "Kênh YouTube",
       "insecureStream": "{{name}} sử dụng luồng không an toàn (http), trình duyệt sẽ chặn. Thêm lại với URL luồng an toàn (https)",
-      "httpsStreamHint": "Trình duyệt chặn các luồng không an toàn (http). Dán URL luồng an toàn (https)"
+      "httpsStreamHint": "Trình duyệt chặn các luồng không an toàn (http). Dán URL luồng an toàn (https)",
+      "tapToPlay": "Nhấn để phát"
     },
     "map": {
       "showMap": "Hiển thị bản đồ",
@@ -2365,7 +2381,15 @@
       "noData": "Dữ liệu năng lượng tạm thời không khả dụng - sẽ thử lại",
       "liveTape": "Bản ghi trực tiếp",
       "liveTapeSource": "Báo giá thị trường",
-      "infoTooltip": "<strong>Phức hợp năng lượng</strong> Các tín hiệu năng lượng vật lý và có thể giao dịch trong một nơi:<ul><li><strong>Số liệu Cục Thông tin Năng lượng Hoa Kỳ</strong>: WTI, Brent, sản xuất Hoa Kỳ và hàng tồn kho</li><li><strong>Tape trực tiếp</strong>: Các giá năng lượng có thể giao dịch như dầu thô và khí tự nhiên</li><li><strong>Mục đích</strong>: Tách căng thẳng năng lượng vật lý khỏi các bảng điều khiển vĩ mô và hàng hóa rộng hơn</li></ul>"
+      "infoTooltip": "<strong>Phức hợp năng lượng</strong> Các tín hiệu năng lượng vật lý và có thể giao dịch trong một nơi:<ul><li><strong>Số liệu Cục Thông tin Năng lượng Hoa Kỳ</strong>: WTI, Brent, sản xuất Hoa Kỳ và hàng tồn kho</li><li><strong>Tape trực tiếp</strong>: Các giá năng lượng có thể giao dịch như dầu thô và khí tự nhiên</li><li><strong>Mục đích</strong>: Tách căng thẳng năng lượng vật lý khỏi các bảng điều khiển vĩ mô và hàng hóa rộng hơn</li></ul>",
+      "marketTape": "Báo giá thị trường",
+      "futures": "Hợp đồng tương lai",
+      "dailySpot": "Giá giao ngay hằng ngày",
+      "eiaWeeklySpot": "Giá giao ngay EIA · trung bình tuần",
+      "weekEnding": "Tuần kết thúc ngày {{date}}",
+      "unknownPriceDate": "Không có thời điểm quan sát",
+      "unknownQuoteSource": "Không có nguồn báo giá",
+      "stalePrice": "Đã cũ"
     },
     "consumerPrices": {
       "tabs": {
@@ -2689,7 +2713,7 @@
     },
     "sanctionsPressure": {
       "title": "Trừng phạt & Chỉ định",
-      "infoTooltip": "Danh sách Công dân được Chỉ định Đặc biệt và Danh sách Hợp nhất của Văn phòng Kiểm soát Tài sản Nước ngoài cộng với các chỉ định SEMA/JVCFOA của Bộ Ngoại giao Toàn cầu. Hiển thị quốc gia nào phải chịu áp lực chỉ định cao nhất, chương trình nào đang thúc đẩy điều đó và chỉ định nào được thêm mới kể từ lần cập nhật cuối cùng.",
+      "infoTooltip": "Danh sách OFAC SDN và danh sách hợp nhất cùng các chỉ định SEMA/JVCFOA của Canada. Các hàng quốc gia dùng liên hệ trực tiếp. Cờ tàu và đăng ký máy bay được đếm riêng trong mục đăng ký; số tài sản bằng không của một quốc gia không có nghĩa là không có tài sản bị trừng phạt.",
       "loading": "Đang tải dữ liệu trừng phạt...",
       "unavailable": "Dữ liệu trừng phạt không khả dụng.",
       "summary": {
@@ -2701,7 +2725,9 @@
       "sections": {
         "countries": "Quốc gia bị trừng phạt",
         "entries": "Chỉ định gần đây",
-        "programs": "Chương trình"
+        "programs": "Chương trình",
+        "flagRegistries": "Sổ đăng ký cờ tàu và tàu bay",
+        "regulationTargets": "Các quốc gia mục tiêu của quy định SEMA"
       },
       "empty": {
         "countries": "Không có quy trách nhiệm quốc gia nào.",
@@ -2723,7 +2749,8 @@
         "unattributed": "Không xác định",
         "program": "Chương trình",
         "undated": "không có ngày tháng"
-      }
+      },
+      "targetExplanation": "Các quốc gia mục tiêu của quy định không phải là bằng chứng về quốc tịch hoặc địa chỉ. Không tính vào điểm rủi ro quốc gia và các bản tin tóm tắt."
     },
     "radiationWatch": {
       "title": "Theo dõi Bức xạ",
@@ -3090,6 +3117,106 @@
           "placeholder": "Tùy chọn"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "Bạn có thích World Monitor?",
+      "body": "Một sao trên GitHub giúp những người khác tìm thấy nó.",
+      "star": "Sao trên GitHub",
+      "dismiss": "Bỏ qua và không hỏi lại"
+    },
+    "reservoirLevels": {
+      "note": "Mực mặt nước từ lidar vệ tinh ICESat-2 của NASA. NASA công bố mỗi lượt quét khoảng hai tháng sau khi đo, vì vậy dữ liệu này theo dõi thay đổi theo tuần và theo mùa, không theo ngày. Chỉ là mực nước, không phải thể tích.",
+      "source": "Nguồn:",
+      "processedWith": "xử lý bằng",
+      "empty": "Chưa có số đo",
+      "filterEmpty": "Không có vùng nước nào khớp bộ lọc này",
+      "unavailable": "Hiện không có dữ liệu mực nước",
+      "filterLabel": "Lọc vùng nước",
+      "filter": {
+        "all": "Tất cả",
+        "attention": "Cần chú ý",
+        "transboundary": "Xuyên biên giới"
+      },
+      "status": {
+        "record_low": "Thấp kỷ lục",
+        "record_high": "Cao kỷ lục",
+        "falling_fast": "Giảm nhanh",
+        "rising_fast": "Tăng nhanh",
+        "low": "Thấp so với mùa",
+        "high": "Cao so với mùa",
+        "normal": "Bình thường",
+        "insufficient_history": "Chưa đủ lịch sử",
+        "no_recent_data": "Không có lượt quét gần đây",
+        "lowInRange": "Thấp trong phạm vi",
+        "highInRange": "Cao trong phạm vi"
+      },
+      "vsUsual": "{{value}} so với thường lệ {{month}}",
+      "in12Months": "{{value}} trong 12 tháng",
+      "noComparison": "Chưa có so sánh",
+      "measured": "đo ngày {{date}} ({{age}})",
+      "noPass": "Chưa có lượt quét dùng được",
+      "popup": {
+        "level": "Mực nước",
+        "levelValue": "{{value}} trên mực nước biển (EGM2008)",
+        "anomaly": "So với thường lệ {{month}}",
+        "anomalyPlain": "So với thường lệ của tháng",
+        "changePrev": "Từ lượt quét trước",
+        "change90": "Trong 90 ngày",
+        "change365": "Trong 12 tháng",
+        "measured": "Ngày đo",
+        "sparkline": "Mực nước trong 36 tháng"
+      }
+    },
+    "gridDisruptionClock": {
+      "region": "Chọn tiểu bang",
+      "unknown": "Chưa rõ",
+      "customers": "Số khách hàng mất điện theo báo cáo",
+      "lastCustomers": "Số khách hàng mất điện trong báo cáo gần nhất",
+      "denominatorUnknown": "Chưa rõ tổng số khách hàng được theo dõi",
+      "tracked": "Đang theo dõi {{amount}} khách hàng",
+      "dataAge": "Thời gian từ khi có báo cáo",
+      "minutes": "{{amount}} phút",
+      "hours": "{{amount}} giờ",
+      "warnings": "Cảnh báo",
+      "recovery": "Thay đổi được báo cáo",
+      "decreased": "Số khách hàng mất điện theo báo cáo giảm {{amount}}",
+      "increased": "Số khách hàng mất điện theo báo cáo tăng {{amount}}",
+      "unchanged": "Số liệu báo cáo không đổi",
+      "since": "kể từ",
+      "peakLoad": "Đã khôi phục {{percent}}% phụ tải đỉnh thông thường",
+      "noComparison": "Chưa có số liệu mất điện để so sánh.",
+      "history": "Các báo cáo gần đây về số khách hàng mất điện ({{total}})",
+      "priorNotice": "Cảnh báo đã công bố trước đó",
+      "sources": "Các nguồn cảnh báo được theo dõi",
+      "operatorLink": "Xem thông báo về lưới điện tại",
+      "issued": "Ban hành lúc",
+      "until": "hết hiệu lực lúc",
+      "noActive": "Không có cảnh báo nào còn hiệu lực từ các nguồn đang theo dõi.",
+      "unknownWarnings": "Hiện chưa thể kiểm tra đầy đủ các nguồn cảnh báo.",
+      "noObservation": "Chưa có số liệu hiện tại và thông tin về phạm vi theo dõi.",
+      "loadError": "Không có dữ liệu theo dõi mất điện.",
+      "retained": "Không thể cập nhật. Đang hiển thị báo cáo nhận được gần nhất.",
+      "phase": {
+        "unknown": "Chưa rõ tác động",
+        "monitoring": "Đang theo dõi",
+        "watch": "Đề phòng",
+        "disrupted": "Đã ghi nhận mất điện",
+        "recovering": "Có báo cáo đang khôi phục cấp điện",
+        "restored": "Có báo cáo đã cấp điện trở lại"
+      },
+      "kind": {
+        "grid": "Thông báo về lưới điện",
+        "weather": "Cảnh báo thời tiết",
+        "space-weather": "Thời tiết không gian"
+      },
+      "checks": {
+        "available": "Đã kiểm tra",
+        "unavailable": "Không khả dụng",
+        "not_monitored": "Kiểm tra trực tiếp với đơn vị vận hành",
+        "stale": "Lần kiểm tra gần nhất đã quá lâu"
+      },
+      "warningAge": "Thời gian từ cảnh báo đầu tiên còn hiệu lực",
+      "days": "{{amount}} ngày"
     }
   },
   "popups": {
@@ -4255,7 +4382,6 @@
     "dataAndCommunity": "Dữ liệu & Cộng đồng",
     "theme": "Giao diện",
     "themeDesc": "Tự động theo cài đặt hệ thống.",
-    "themeAuto": "Tự động (theo hệ thống)",
     "themeDark": "Tối",
     "themeLight": "Sáng",
     "mapProvider": "Nhà cung cấp bản đồ",
@@ -4314,7 +4440,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Mở tổng quan quốc gia",
-    "copyCoordinates": "Sao chép tọa độ"
+    "copyCoordinates": "Sao chép tọa độ",
+    "satellitePasses": "Vệ tinh bay qua đây"
   },
   "shell": {
     "documentTitle": "World Monitor — Bảng điều khiển tình báo toàn cầu theo thời gian thực",
@@ -4409,7 +4536,9 @@
   "auth": {
     "signIn": "Đăng nhập",
     "createAccount": "Tạo tài khoản",
+    "freeReason": "Miễn phí: lưu bố cục, theo dõi quốc gia, cảnh báo",
     "settings": "Cài đặt",
+    "planBilling": "Gói & thanh toán",
     "passkeyOffer": {}
   },
   "mcp": {
@@ -4453,7 +4582,17 @@
     "renameHint": "{{name}} — nhấp đúp để đổi tên",
     "deleteTab": "Xóa tab",
     "deleteTabAria": "Xóa tab {{name}}",
-    "tabNameAria": "Tên tab"
+    "tabNameAria": "Tên tab",
+    "addTabTitleSaved": "Tab mới (bắt đầu với các bảng điều khiển bạn đã lưu)",
+    "newTabOptions": "Tùy chọn tab mới",
+    "newTabStartsDefault": "Tab mới bắt đầu với các bảng điều khiển mặc định.",
+    "newTabStartsSaved": "Tab mới bắt đầu với các bảng điều khiển bạn đã lưu.",
+    "newTabOptionsHint": "Các tab bạn đã có sẵn sẽ không thay đổi.",
+    "useThisTabPanels": "Sử dụng các bảng điều khiển của tab này",
+    "useDefaultPanels": "Sử dụng các bảng điều khiển mặc định",
+    "newTabPanelsNotSaved": "Không thể lưu. Trình duyệt này đang chặn lưu trữ trang web.",
+    "team": "Nhóm",
+    "teamDashboards": "Dashboard của nhóm"
   },
   "theaterPresets": {
     "label": "Gói phủ khu vực",
@@ -4546,6 +4685,21 @@
         "related": {
           "0": "Dự báo tức thời hoạt động Trung Quốc",
           "1": "Tóm tắt quốc gia"
+        }
+      },
+      "reservoirLevels": {
+        "category": "Khí hậu",
+        "purpose": "Đánh dấu các hồ chứa và hồ chiến lược theo mức chênh của mực nước so với mức thường lệ cùng thời điểm trong năm và tốc độ thay đổi.",
+        "source": "Độ cao mặt nước nội địa từ NASA ICESat-2 ATL13 qua NSIDC, được xử lý bằng SlideRule Earth và tổng hợp theo từng lượt quét vệ tinh bởi dịch vụ seed-reservoir-levels.",
+        "freshness": "Cập nhật hằng ngày. NASA công bố mỗi lượt quét 50 đến 70 ngày sau khi đo, và mỗi hồ chứa được đo lại sau vài ngày đến khoảng một tháng.",
+        "confidence": "Một lượt quét chỉ được tính khi ít nhất 5 đoạn mặt nước khớp nhau trong phạm vi 0,25 m. So sánh theo mùa cần lượt quét từ ít nhất 3 năm trước vào cùng thời điểm trong năm.",
+        "limitations": {
+          "0": "Chỉ là mực nước, không phải thể tích: cùng một mức giảm nghĩa là lượng trữ mất đi khác nhau ở mỗi hồ chứa.",
+          "1": "Vùng nước không có lượt quét trong 150 ngày được đánh dấu là không có lượt quét gần đây; số đo cuối cùng, các thay đổi và ngày đo vẫn được hiển thị."
+        },
+        "related": {
+          "0": "Bảng Mực nước chiến lược",
+          "1": "Dị thường khí hậu"
         }
       },
       "conflicts": {
@@ -4825,5 +4979,705 @@
     "close": "Đóng",
     "alertsHint": "Cài đặt World Monitor vào Màn hình chính để nhận cảnh báo trên iPhone hoặc iPad này.",
     "how": "Cách cài đặt"
+  },
+  "teamDashboards": {
+    "desc": "Dashboard mà nhóm của bạn chia sẻ. Mở một dashboard để thêm nó làm tab mới.",
+    "empty": "Nhóm của bạn chưa chia sẻ dashboard nào. Chia sẻ tab này để mọi người trong nhóm có thể xem các panel, kích thước và bản đồ của nó.",
+    "open": "Mở {{name}} làm tab mới",
+    "stopSharing": "Dừng chia sẻ {{name}}",
+    "confirmStop": "Dừng chia sẻ {{name}} với nhóm của bạn? Các tab mà mọi người đã mở từ nó sẽ giữ nguyên.",
+    "shareTab": "Chia sẻ tab này với nhóm của bạn",
+    "shareChanges": "Chia sẻ các thay đổi của tab này với nhóm của bạn",
+    "behind": "Nhóm của bạn đã thay đổi dashboard này sau khi bạn mở nó.",
+    "getLatest": "Lấy phiên bản mới nhất",
+    "opened": "Đã mở {{name}} từ nhóm của bạn.",
+    "shared": "Đã chia sẻ {{name}} với nhóm của bạn.",
+    "updated": "Tab này hiện có phiên bản mới nhất của nhóm của bạn.",
+    "stopped": "Đã dừng chia sẻ {{name}}.",
+    "failed": "Không thể kết nối tới dashboard của nhóm. Vui lòng thử lại.",
+    "limit": "Nhóm của bạn đã chia sẻ {{limit}} dashboard ở đây. Hãy dừng chia sẻ một dashboard trước.",
+    "focusNotEntitled": "Gói của bạn không bao gồm chia sẻ một dashboard tập trung. Xóa tiêu điểm của tab này để chia sẻ các panel của nó.",
+    "focusUnreadable": "{{name}} có một tiêu điểm mà phiên bản này không thể hiển thị. Tải lại để cập nhật, rồi mở lại."
+  },
+  "focus": {
+    "barLabel": "Tiêu điểm",
+    "summary": "Tập trung vào {{countries}}",
+    "neighboursOff": "Không bao gồm các nước lân cận",
+    "chosenLabel": "Đã chọn",
+    "neighboursLabel": "Nước lân cận",
+    "neighbourItem": "Nước lân cận: {{name}}",
+    "range": "{{start}} đến {{end}}",
+    "windowEnded": "Cửa sổ kết thúc {{date}}",
+    "windowStarts": "Bắt đầu {{date}}",
+    "windowUntil": "Cho đến {{date}}",
+    "windowFrom": "Từ {{date}}",
+    "edit": "Chỉnh sửa",
+    "clear": "Xóa tiêu điểm",
+    "clearAria": "Xóa tiêu điểm và hiển thị toàn bộ thế giới",
+    "clearFocus": "Xóa tiêu điểm",
+    "notFiltered": "Không được lọc",
+    "notFilteredGlobal": "Dữ liệu toàn cầu: không được lọc theo quốc gia",
+    "notFilteredYet": "Chưa được lọc theo quốc gia",
+    "gateSignedOutDesc": "Đăng nhập để tập trung một tab dashboard vào các quốc gia bạn theo dõi.",
+    "gateUpgradeDesc": "Tập trung một tab vào các quốc gia được chọn có sẵn với Pro Business, API Business và Enterprise.",
+    "gateUpgradeCta": "Nâng cấp",
+    "tabButton": "Tiêu điểm",
+    "tabButtonTitle": "Tập trung tab này vào các quốc gia được chọn",
+    "tabButtonTitleActive": "Chỉnh sửa tiêu điểm của tab này",
+    "newTitle": "Tập trung tab này",
+    "editTitle": "Chỉnh sửa tiêu điểm",
+    "intro": "Các panel có thể lọc theo quốc gia chỉ hiển thị các quốc gia này. Những panel khác sẽ nói \"Không được lọc\".",
+    "countriesLabel": "Quốc gia",
+    "count": "{{n}} của {{max}}",
+    "searchPlaceholder": "Tìm kiếm quốc gia",
+    "resultsLabel": "Quốc gia phù hợp",
+    "limitReached": "Bạn đã chọn {{max}} quốc gia, là số tối đa một tiêu điểm có thể chứa.",
+    "removeCountry": "Xóa {{name}}",
+    "includeNeighbours": "Bao gồm các nước lân cận",
+    "neighboursHint": "Rủi ro vượt qua biên giới. Các nước lân cận được đánh dấu và không tính vào {{max}}.",
+    "startLabel": "Từ (tùy chọn)",
+    "endLabel": "Đến (tùy chọn)",
+    "datesHint": "Cho một chuyến đi hoặc một nhiệm vụ. Khi cửa sổ kết thúc, tiêu điểm vẫn giữ nguyên và thanh sẽ cho biết.",
+    "errorNoCountries": "Chọn ít nhất một quốc gia.",
+    "errorTooMany": "Một tiêu điểm có thể chứa tối đa {{max}} quốc gia.",
+    "errorDates": "Ngày kết thúc trước ngày bắt đầu.",
+    "save": "Lưu",
+    "cancel": "Hủy",
+    "saved": "Tab này tập trung vào {{countries}}.",
+    "cleared": "Tiêu điểm đã xóa. Tab này hiển thị toàn bộ thế giới.",
+    "notSaved": "Không thể lưu. Trình duyệt này đang chặn lưu trữ trang web.",
+    "plusNeighbours_other": "+ {{count}} nước lân cận",
+    "filter": {
+      "showing": "Hiển thị {{countries}}",
+      "showingNeighbours": "Hiển thị {{countries}} + các nước lân cận",
+      "showAll": "Hiển thị tất cả",
+      "focusOff": "Đã tắt tiêu điểm trong bảng này: hiển thị mọi thứ",
+      "applyFocus": "Áp dụng tiêu điểm",
+      "applyFocusAria": "Lọc lại bảng này theo tiêu điểm",
+      "show": "Hiển thị",
+      "hide": "Ẩn",
+      "noCountryTag": "Không có quốc gia",
+      "emptyHint": "Mọi thứ khác được tính ở trên.",
+      "emptyNews": "Không có tin tức nào cho các quốc gia này trong các tiêu đề hiện tại",
+      "emptyAdvisories": "Không có cảnh báo du lịch nào cho các quốc gia này",
+      "emptyConflict": "Không có sự kiện xung đột UCDP nào cho các quốc gia này",
+      "emptyConflictPartial": "Không có sự kiện xung đột nào cho các quốc gia này trong các sự kiện mới nhất. Danh sách đầy đủ chưa được tải.",
+      "loadingConflict": "Đang tải tất cả các sự kiện xung đột cho các quốc gia này…",
+      "emptyAirports": "Không có sân bay theo dõi nào của bạn ở các quốc gia này",
+      "emptyFlights": "Không có chuyến bay đến hoặc từ các quốc gia này trên bảng này",
+      "emptyAviationNews": "Không có tin tức hàng không nào cho các quốc gia này trong 24 giờ qua",
+      "tabNotFiltered": "Tab này không được lọc theo quốc gia",
+      "hidden_other": "{{count}} mục bị ẩn bởi tiêu điểm",
+      "showAllAria_other": "Hiển thị mọi thứ trong bảng này, bao gồm {{count}} mục ngoài tiêu điểm",
+      "unattributed_other": "{{count}} mục không có quốc gia",
+      "showUnattributedAria_other": "Hiển thị {{count}} mục không có quốc gia",
+      "hideUnattributedAria_other": "Ẩn {{count}} mục không có quốc gia",
+      "partialConflict": "Hiển thị các sự kiện xung đột từ 150 sự kiện mới nhất. Danh sách đầy đủ không được tải.",
+      "partialConflictLoading": "Đang hiển thị các sự kiện xung đột từ 150 mới nhất trong khi danh sách đầy đủ đang tải.",
+      "emptyInstability": "Không có điểm số bất ổn định cho các quốc gia này",
+      "emptyOutbreaks": "Không có bùng phát dịch bệnh cho các quốc gia này",
+      "emptyOutages": "Không có gián đoạn internet cho các quốc gia này",
+      "emptyRadiation": "Không có số liệu phóng xạ cho các quốc gia này",
+      "emptyFuelShortages": "Không có thiếu hụt nhiên liệu cho các quốc gia này",
+      "emptyEnergyDisruptions": "Không có gián đoạn năng lượng cho các quốc gia này",
+      "emptyDisplacement": "Không có dữ liệu di cư cho các quốc gia này",
+      "emptyCorrelation": "Không có tín hiệu cho các quốc gia này",
+      "emptyExposure": "Không có vị trí dân cư chịu ảnh hưởng cho các quốc gia này",
+      "emptyExposurePartial": "Dữ liệu hiện có không có vị trí chịu ảnh hưởng cho các quốc gia này. Đang chờ phạm vi bao phủ UCDP đầy đủ.",
+      "partialExposureLoading": "Đang tải tất cả vị trí UCDP trước khi lọc mức độ ảnh hưởng. Số liệu bao phủ chỉ tính các vụ bất ổn.",
+      "partialExposure": "Không thể tải tất cả vị trí UCDP. Dữ liệu ảnh hưởng chưa đầy đủ; số liệu bao phủ chỉ tính các vụ bất ổn."
+    },
+    "draftAssessment": "Đánh giá chuyến đi",
+    "draftAssessmentAria": "Mở đánh giá chuyến đi, được điền sẵn với tiêu điểm này",
+    "draftCopied": "Đã sao chép yêu cầu. Dán nó vào trợ lý AI của bạn.",
+    "draftCopiedPartial": "Yêu cầu đã được sao chép cho {{count}} quốc gia đầu tiên. Một đánh giá bao gồm tối đa {{max}} quốc gia. Các quốc gia bị bỏ qua: {{omitted}}.",
+    "draftCopyFailed": "Không thể sao chép yêu cầu."
+  },
+  "tripAssessment": {
+    "heading": "Đánh giá chuyến đi",
+    "intro": "Dự thảo đầu tiên có nguồn gốc từ một đánh giá rủi ro du lịch, để nhà phân tích hoàn thành. Nó báo cáo những gì dữ liệu chứa đựng và không cung cấp lời khuyên.",
+    "privacy": "Chỉ quốc gia, thành phố và ngày tháng. Không nhập tên du khách, khách sạn hoặc địa chỉ đường phố. Không có gì bạn nhập được lưu trữ.",
+    "taskLabel": "Nhãn tác vụ (tùy chọn)",
+    "taskLabelPlaceholder": "Các chuyến thăm địa điểm khu vực",
+    "windowStart": "Chuyến đi bắt đầu",
+    "windowEnd": "Chuyến đi kết thúc",
+    "countriesLabel": "Quốc gia, theo thứ tự du lịch",
+    "count": "{{n}} trên {{max}}",
+    "searchPlaceholder": "Thêm một quốc gia",
+    "addCountry": "Thêm một quốc gia vào chuyến đi",
+    "limit": "Một chuyến đi bao gồm tối đa {{max}} quốc gia.",
+    "omitted": "Loại bỏ vì một chuyến đi bao gồm tối đa {{max}} quốc gia: {{names}}.",
+    "cities": "Thành phố, cách nhau bằng dấu phẩy (tối đa {{max}})",
+    "arrive": "Đến",
+    "depart": "Khởi hành",
+    "moveEarlier": "Chuyển {{name}} sớm hơn trong chuyến đi",
+    "moveLater": "Chuyển {{name}} muộn hơn trong chuyến đi",
+    "remove": "Loại bỏ {{name}} khỏi chuyến đi",
+    "downloadMarkdown": "Tải xuống Markdown",
+    "downloadWord": "Tải xuống cho Word",
+    "print": "In hoặc lưu dưới dạng PDF",
+    "copyRequest": "Sao chép yêu cầu cho trợ lý AI",
+    "close": "Đóng",
+    "building": "Xây dựng dự thảo từ dữ liệu mới nhất…",
+    "downloaded": "Đã tải xuống {{file}}. Mỗi lần tải xuống được xây dựng mới và được ghi dấu với thời gian nắm bắt riêng của nó.",
+    "printOpened": "Hộp thoại in đã mở. Chọn Lưu dưới dạng PDF để giữ một bản sao.",
+    "errNoCountries": "Thêm ít nhất một quốc gia.",
+    "errTooMany": "Một chuyến đi bao gồm tối đa {{max}} quốc gia.",
+    "errWindow": "Chuyến đi phải kết thúc vào hoặc sau ngày nó bắt đầu.",
+    "errCities": "{{name}}: liệt kê tối đa {{max}} thành phố.",
+    "errCountryDates": "{{name}}: ngày khởi hành phải là ngày đến hoặc sau đó.",
+    "errOutsideWindow": "{{name}}: ngày tháng phải nằm trong cửa sổ chuyến đi.",
+    "errInvalid": "Không thể xây dựng dự thảo từ chuyến đi này:",
+    "errAuth": "Đăng nhập lại để xây dựng dự thảo.",
+    "errUpgrade": "Đánh giá chuyến đi được bao gồm trong các kế hoạch Pro Business, API Business và Enterprise.",
+    "errBusy": "Quá nhiều yêu cầu. Thử lại trong một phút.",
+    "errUnavailable": "Dữ liệu đằng sau dự thảo hiện không khả dụng. Thử lại trong một phút.",
+    "errGeneric": "Không thể xây dựng dự thảo. Thử lại.",
+    "errDownload": "Không thể tải xuống tệp tại đây. Hãy sử dụng In hoặc lưu dưới dạng PDF.",
+    "errLoad": "Không thể mở đánh giá chuyến đi. Tải lại trang và thử lại."
+  },
+  "orbitalWatch": {
+    "track": {
+      "unavailable": "Không thể vẽ vệt mặt đất của lượt bay qua này"
+    },
+    "replay": {
+      "acquisition": "THU NHẬN · {{name}}",
+      "acquired": "ĐÃ CHỤP {{time}} · {{resolution}}",
+      "play": "Phát lại",
+      "pause": "Tạm dừng phát lại",
+      "scrub": "Vị trí phát lại",
+      "reducedMotion": "GIẢM CHUYỂN ĐỘNG"
+    },
+    "computing": "Đang tải danh mục vệ tinh…",
+    "computingProgress": "Đang tính các lượt bay: {{done}} trên {{total}} vệ tinh",
+    "unavailable": "Không thể tải danh mục vệ tinh nên chưa tính được lượt bay nào cho điểm này.",
+    "checkingArchives": "Đang kiểm tra kho lưu trữ: {{done}} trên {{total}} đã phản hồi",
+    "confirmedCount": "Ảnh đã xác nhận: {{count}}",
+    "counts": {
+      "mosaics": "Ảnh ghép hằng ngày: {{count}}",
+      "frames": "Khung ảnh thời tiết: {{count}}",
+      "inRange": "Lượt bay trong tầm: {{count}}"
+    },
+    "partial": "{{sources}} không phản hồi nên một số lượt bay có thể thiếu ảnh.",
+    "stale": "Dữ liệu quỹ đạo đã cũ. Danh mục vệ tinh đã {{age}} nên thời gian bay qua có thể sai lệch.",
+    "empty": "Không có vệ tinh chụp ảnh nào trong danh mục bay qua điểm này trong {{pastDays}} ngày qua hoặc sẽ bay qua trong {{futureHours}} giờ tới.",
+    "sources": "Nguồn · {{count}}",
+    "sourcesDocs": "Cách sử dụng các nguồn này",
+    "privacy": "Điểm này được giữ trong trình duyệt của bạn. Điểm chỉ được gửi tới các kho lưu trữ công khai mà trình duyệt gọi trực tiếp: Earth Search, Microsoft Planetary Computer, NASA GIBS và EUMETSAT. Ngoại lệ duy nhất là tìm kiếm theo tên địa điểm: tên bạn nhập được gửi tới dịch vụ tìm kiếm địa điểm.",
+    "inRange": "trong tầm",
+    "tier": {
+      "checking": "đang kiểm tra kho",
+      "confirmed": "ảnh đã xác nhận",
+      "likely": "có thể đã chụp",
+      "opportunity": "lượt bay sắp tới",
+      "dailyMosaic": "trong ảnh ghép hằng ngày",
+      "withinReach": "trong tầm",
+      "capabilityOverhead": "năng lực trên không",
+      "passedOverhead": "đã bay qua",
+      "unmatchedImage": "ảnh không có lượt bay tính toán",
+      "weatherFrame": "ảnh thời tiết",
+      "unavailable": "không khả dụng"
+    },
+    "row": {
+      "offNadir": "lệch thiên đế {{deg}}°",
+      "distance": "cách vết mặt đất {{km}} km",
+      "orbitAge": "dữ liệu quỹ đạo đã {{age}}",
+      "edgeOfSwath": "Mép dải quét",
+      "notInArchive": "Không có ảnh trong kho",
+      "geometryDisagreed": "Ngoài dải quét mô hình",
+      "archiveUnanswered": "Kho lưu trữ không phản hồi",
+      "imageAlt": "Ảnh {{name}}, {{time}}",
+      "mosaicDays": "Số ngày trong kho lưu trữ: {{count}}",
+      "cadence": "ảnh mới mỗi {{minutes}} phút",
+      "sourceUnavailable": "Kho lưu trữ không có ảnh từ nguồn này cho những ngày này.",
+      "imageLoading": "Đang tải ảnh…",
+      "imageFailed": "Ảnh không tải được. Kho lưu trữ có thể chậm hoặc ngừng hoạt động.",
+      "noPreview": "Kho lưu trữ chưa có bản xem trước của cảnh này."
+    },
+    "dailyMosaics": "ảnh ghép hằng ngày",
+    "weatherFrames": "ảnh thời tiết",
+    "ui": {
+      "change": "Đổi",
+      "share": "Chia sẻ",
+      "shareCopied": "Đã sao chép liên kết",
+      "headline": "Trong {{days}} ngày qua, {{satellites}} đã bay qua {{place}}.",
+      "satellites_other": "{{count}} vệ tinh",
+      "subline_other": "Đã công bố {{count}} ảnh.",
+      "closestLook": "Góc nhìn gần nhất",
+      "replay": "Phát lại",
+      "openFull": "Mở chế độ xem đầy đủ",
+      "previous": "Ảnh trước",
+      "next": "Ảnh tiếp theo",
+      "passes_other": "lượt bay qua",
+      "showAll": "Hiện tất cả lượt bay qua",
+      "noRecentDays": "Không có ngày gần đây trong kho lưu trữ: {{sources}}",
+      "tab": {
+        "all": "Tất cả",
+        "detailed": "Chi tiết",
+        "weather": "Thời tiết"
+      },
+      "caption": {
+        "clear": "Quang đãng tại điểm",
+        "clearSceneCloud": "Quang đãng tại điểm · mây toàn cảnh {{pct}}%",
+        "clouded": "Có mây · {{pct}}%",
+        "cloudShadow": "Bóng mây",
+        "spotNotChecked": "Chưa kiểm tra mây tại điểm này",
+        "sceneCloud": "Mây toàn cảnh {{pct}}% · chưa kiểm tra điểm này",
+        "radar": "Ra-đa",
+        "dailyMosaic": "Ảnh ghép hằng ngày",
+        "geostationary": "Toàn đĩa địa tĩnh",
+        "geostationaryCadence": "Địa tĩnh · mỗi {{minutes}} phút"
+      },
+      "tile": {
+        "failed": "Không có ảnh · {{archive}}",
+        "noPreview": "Kho lưu trữ chưa có ảnh xem trước của cảnh này"
+      },
+      "grid": {
+        "watched": "Đã chụp",
+        "watchedDef": "Một kho lưu trữ công khai có ảnh của điểm này.",
+        "likely": "Có thể đã chụp",
+        "likelyDef": "Cảm biến dải quét cố định đã bao phủ; chưa có ảnh được công bố.",
+        "could": "Có thể đã hướng về đây",
+        "couldDef": "Một cảm biến xoay được hoặc thương mại nằm trong tầm; nhà vận hành không cho biết có nhìn hay không.",
+        "overhead": "Đã bay qua",
+        "overheadDef": "Đã băng qua bầu trời nơi đây, không có bằng chứng chụp ảnh.",
+        "watchedShort": "Có ảnh trong kho lưu trữ công khai",
+        "watchedNoPreviewShort": "Có trong kho lưu trữ, không có bản xem trước công khai",
+        "likelyShort": "Đã phủ, chưa có ảnh",
+        "likelyUnansweredDef": "Một cảm biến dải quét cố định đã bao phủ điểm này; một kho lưu trữ không phản hồi, nên có thể có ảnh.",
+        "likelyUnansweredShort": "Đã bao phủ, kho lưu trữ không phản hồi",
+        "couldShort": "Cảm biến điều hướng trong tầm",
+        "overheadShort": "Bay qua, không có ảnh"
+      },
+      "group": {
+        "watched": "đã chụp",
+        "likely": "có thể đã chụp",
+        "upcoming": "sắp tới",
+        "could": "có thể đã hướng về đây",
+        "overhead": "đã bay qua",
+        "weather_other": "nguồn thời tiết"
+      },
+      "order": {
+        "closest": "Gần nhất, sau đó mới nhất",
+        "newest": "Mới nhất trước",
+        "soonest": "Sớm nhất trước"
+      },
+      "row": {
+        "cloud": "Mây {{pct}}%",
+        "days_other": "{{count}} ngày",
+        "repeats": "{{count}} lượt của vệ tinh này trong nhóm"
+      },
+      "section": {
+        "summary": "Tóm tắt",
+        "passes": "Lượt bay qua"
+      },
+      "status": {
+        "objects": "{{count}} vệ tinh chụp ảnh · CelesTrak GP",
+        "fetched": "Lấy lúc {{time}} · {{ago}}",
+        "sun": "Mặt Trời {{point}} · điểm cận nhật"
+      },
+      "step": {
+        "computing": "Đang tính",
+        "catalogLoading": "Danh mục · đang tải",
+        "catalog": "Danh mục · {{count}} vệ tinh chụp ảnh",
+        "propagating": "Đang tính quỹ đạo · {{done}} / {{total}}",
+        "archives": "Kho lưu trữ · {{done}} / {{total}} đã phản hồi",
+        "matching": "Đang khớp cảnh với {{passes}} lượt bay qua",
+        "window": "Khung 7 ngày · {{start}} → {{end}}",
+        "failed": "Thất bại",
+        "note": "Planetary Computer và NASA GIBS tạo ảnh theo yêu cầu, nên bước này có thể mất vài giây."
+      },
+      "privacyLine": "Điểm này chỉ ở trong trình duyệt của bạn",
+      "privacyHow": "Cách thức",
+      "sources": "Nguồn",
+      "archiveScene": "Cảnh lưu trữ",
+      "archiveOnly": "Không có lượt bay qua tính toán nào khớp với các ảnh này, nên chúng được hiển thị là cảnh lưu trữ.",
+      "zoneShowUtc": "Hiển thị thời gian theo UTC",
+      "zoneShowLocal": "Hiển thị thời gian theo giờ địa phương của nơi này"
+    },
+    "viewer": {
+      "open": "Mở trình xem ảnh: {{image}}",
+      "bestView": "Mở góc nhìn tốt nhất: {{name}}, {{time}}",
+      "imageAlt": "Ảnh của {{name}}, {{time}}",
+      "close": "Đóng trình xem ảnh",
+      "northUp": "Phía bắc ở trên",
+      "unreferenced": "Hướng như kho lưu trữ cung cấp; phía bắc không được đánh dấu",
+      "compareDates": "Các ngày khác của bộ sưu tập này",
+      "compareNone": "Không có cảnh nào khác của bộ sưu tập này để so sánh.",
+      "divider": "Vạch chia trước/sau",
+      "searching": "Đang tìm cảnh của nơi này trong {{days}} ngày qua",
+      "historyFailed": "{{archive}} không phản hồi nên thiếu các cảnh trước đó.",
+      "historyTimeout": "{{archive}} không phản hồi kịp nên thiếu các cảnh trước đó.",
+      "loading": "Đang tải khung hình: {{loaded}} / {{total}}",
+      "pause": "Tạm dừng",
+      "resume": "Phát",
+      "next": "Khung sau",
+      "closeLabel": "Đóng",
+      "agoNow": "Vừa xong",
+      "agoHours": "{{count}} giờ trước",
+      "agoDays": "{{count}} ngày trước",
+      "clear": "Quang",
+      "clouded": "Có mây · {{pct}}%",
+      "tabImage": "Ảnh",
+      "tabChange": "Thay đổi",
+      "metaAcquired": "Chụp lúc",
+      "metaDate": "Ngày",
+      "metaPixel": "Điểm ảnh",
+      "metaSpot": "Mây tại điểm",
+      "metaScene": "Mây của cảnh",
+      "metaSun": "Độ cao mặt trời",
+      "showCloudy": "Hiện ngày nhiều mây ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Tua nhanh thời gian",
+      "entry": "Nơi này, qua từng năm",
+      "open": "Mở chuỗi tua nhanh theo năm của nơi này",
+      "searching": "Đang tìm mỗi năm một ảnh quang mây từ 2015 · {{archive}}",
+      "loading": "Đang tải ảnh · {{loaded}} / {{total}}",
+      "failed": "{{archive}} không phản hồi nên thiếu ảnh theo năm.",
+      "timeout": "{{archive}} không phản hồi kịp nên thiếu ảnh theo năm.",
+      "partial": "Số năm bị thiếu vì {{archive}} không phản hồi: {{count}}.",
+      "tooFew": "Ảnh quang mây theo năm của nơi này: {{count}}. Tua nhanh cần {{min}}.",
+      "total": "Ảnh quang mây: {{count}} · mỗi năm một ảnh",
+      "years": "Năm",
+      "share": "Chia sẻ",
+      "method": "Mỗi khung là cùng một ô vuông 6 km từ Sentinel-2, màu tự nhiên. Mỗi năm tìm ở một mùa khác và giữ cảnh ít mây nhất; năm không có cảnh dưới 30% mây sẽ bị bỏ qua."
+    },
+    "passDetail": {
+      "back": "Tất cả lượt bay qua",
+      "altitude": "Độ cao",
+      "offNadir": "Lệch thiên đế",
+      "crossed": "{{name}} bay qua ở độ cao {{altitude}} km, cách {{distance}} km {{direction}}, lúc {{time}}, với tốc độ mặt đất {{speed}} km/s.",
+      "crossedHeading": "{{name}} bay qua ở độ cao {{altitude}} km, cách {{distance}} km {{direction}}, lúc {{time}}, đi về phía {{heading}} với tốc độ mặt đất {{speed}} km/s.",
+      "looking": "Nó nhìn lệch {{deg}}° so với phương thẳng đứng.",
+      "sceneCloud": "Độ che phủ mây của cảnh: {{pct}}%.",
+      "pixelLine": "Điểm ảnh {{m}} m",
+      "swathLine": "Dải quét {{km}} km",
+      "clearestLook": "Ảnh trong nhất",
+      "previous": "Lượt bay trước",
+      "next": "Lượt bay sau",
+      "dir": {
+        "n": "về phía bắc",
+        "ne": "về phía đông bắc",
+        "e": "về phía đông",
+        "se": "về phía đông nam",
+        "s": "về phía nam",
+        "sw": "về phía tây nam",
+        "w": "về phía tây",
+        "nw": "về phía tây bắc"
+      },
+      "heading": {
+        "north": "bắc",
+        "south": "nam"
+      }
+    },
+    "search": {
+      "label": "Tên địa điểm hoặc tọa độ",
+      "placeholder": "Tên địa điểm hoặc 48.8584, 2.2945",
+      "submit": "Tìm",
+      "locate": "Dùng vị trí của tôi",
+      "hint": "Tọa độ và vị trí của bạn chỉ ở trong trình duyệt này. Tên địa điểm bạn tìm được gửi tới WorldMonitor và Nominatim của OpenStreetMap.",
+      "results": "Địa điểm phù hợp",
+      "searching": "Đang tìm…",
+      "tooShort": "Nhập ít nhất hai ký tự, hoặc tọa độ như 48.8584, 2.2945.",
+      "invalidCoordinates": "Tọa độ này nằm ngoài địa cầu. Vĩ độ từ -90 đến 90 và kinh độ từ -180 đến 180.",
+      "failed": "Tìm địa điểm hiện không khả dụng. Tọa độ và bản đồ vẫn hoạt động.",
+      "noResults": "Không có địa điểm nào khớp với tên đó.",
+      "locating": "Đang xác định vị trí của bạn…",
+      "locationDenied": "Quyền truy cập vị trí đã bị từ chối. Hãy tìm một địa điểm hoặc nhấp chuột phải vào bản đồ.",
+      "locationUnavailable": "Không tìm thấy vị trí của bạn. Hãy tìm một địa điểm hoặc nhấp chuột phải vào bản đồ.",
+      "idle": "Tìm địa điểm theo tên hoặc tọa độ, dùng vị trí của bạn, hoặc nhấp chuột phải vào bản đồ để xem vệ tinh nào đã bay qua đó."
+    },
+    "share": {
+      "copy": "Sao chép liên kết chia sẻ",
+      "copied": "Đã sao chép liên kết",
+      "copyManually": "Sao chép liên kết bên dưới",
+      "link": "Liên kết chia sẻ",
+      "dismiss": "Đóng",
+      "passOutsideWindow": "Lượt bay qua trong liên kết nằm ngoài khoảng thời gian hiện tại, nên không có lượt nào được chọn.",
+      "passNotFound": "Không tìm thấy lượt bay qua trong liên kết giữa các lượt đã tính lại, nên không có lượt nào được chọn."
+    },
+    "timeline": {
+      "now": "bây giờ",
+      "nowAt": "Bây giờ: {{time}}",
+      "density": "Lượt bay qua {{label}}, từ {{start}} đến {{end}}: {{count}}",
+      "daylight": "Ánh sáng ban ngày tại điểm từ {{start}} đến {{end}}",
+      "unavailable": "không khả dụng",
+      "notRetained": "không có dữ liệu tuần này",
+      "notRetainedSpan": "{{label}}: không có dữ liệu từ {{start}} đến {{end}}",
+      "countryWide": "toàn quốc",
+      "source": {
+        "conflict": "Xung đột",
+        "fires": "Cháy",
+        "unrest": "Bất ổn",
+        "outages": "Sự cố internet"
+      },
+      "live": {
+        "vessels": "Giao thông hàng hải",
+        "militaryFlights": "Chuyến bay quân sự",
+        "gpsJamming": "Gây nhiễu GPS"
+      },
+      "name": "Dòng thời gian",
+      "span": "{{days}} ngày · {{hours}} giờ tới",
+      "daylightHere": "Ban ngày tại đây",
+      "row": {
+        "geo": "Địa tĩnh",
+        "photo": "Ảnh",
+        "likely": "Có thể",
+        "could": "Khả dĩ",
+        "overhead": "Bay qua"
+      },
+      "retained": "{{start}} đến {{end}}",
+      "retainedDay": "chỉ {{day}}",
+      "geoLine": "Vệ tinh địa tĩnh trong tầm nhìn: {{names}}",
+      "away": "cách {{km}} km"
+    }
+  },
+  "settings": {
+    "back": "Quay lại cài đặt",
+    "signIn": {
+      "label": "Đăng nhập",
+      "desc": "Đồng bộ cài đặt và quản lý gói của bạn"
+    },
+    "summary": {
+      "themeAuto": "Tự động",
+      "count": "{{on}} / {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Tùy chọn",
+      "developer": "Nhà phát triển",
+      "app": "Ứng dụng"
+    },
+    "sections": {
+      "account": "Tài khoản",
+      "map": "Bản đồ",
+      "ai": "AI & phân tích",
+      "video": "Video & luồng",
+      "apiKeys": "Khóa API",
+      "embeds": "Nhúng",
+      "aiAgents": "Tác nhân AI (MCP)",
+      "sync": "Đồng bộ, nhập & xuất",
+      "about": "Giới thiệu"
+    },
+    "descriptions": {
+      "panels": "Hiển thị, ẩn và sắp xếp lại",
+      "sources": "Vùng và luồng",
+      "notifications": "Kênh và quy tắc cảnh báo",
+      "display": "Chủ đề, phông chữ và ngôn ngữ",
+      "map": "Nhà cung cấp, chủ đề và quả cầu",
+      "ai": "Mô hình, bộ nhớ và khung",
+      "video": "Chất lượng và tự động phát",
+      "apiKeys": "Khóa cho API World Monitor",
+      "embeds": "Widget cho trang web của bạn",
+      "aiAgents": "Máy khách MCP được kết nối",
+      "about": "Liên kết trang web, điều khoản và quyền riêng tư"
+    },
+    "signOut": "Đăng xuất",
+    "signOutFailed": "Không thể đăng xuất. Vui lòng thử lại.",
+    "search": {
+      "empty": "Không có cài đặt phù hợp"
+    },
+    "account": {
+      "intro": "Xem gói hiện tại của bạn và quản lý chi tiết thanh toán, hóa đơn hoặc hủy.",
+      "planFree": "Miễn phí",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Truy cập Premium",
+        "desc": "Truy cập này không được tính phí qua tài khoản WorldMonitor của bạn. Không có phương thức thanh toán hoặc hóa đơn nào có sẵn tại đây."
+      },
+      "checking": {
+        "heading": "Đang kiểm tra gói của bạn…",
+        "desc": "Điều này thường chỉ mất một lát."
+      },
+      "status": {
+        "cancelScheduled": "Đã lên lịch hủy -- truy cập đến {{date}}",
+        "renews": "Gia hạn: {{date}}",
+        "onHold": "Tạm ngưng -- vui lòng cập nhật phương thức thanh toán",
+        "cancelled": "Đã hủy -- truy cập cho đến {{date}}",
+        "expired": "Hết hạn",
+        "unknown": "Xem Quản lý Thanh toán để biết chi tiết gói hiện tại của bạn.",
+        "ownerManaged": "Thanh toán được quản lý bởi chủ sở hữu gói của bạn."
+      },
+      "upgradeToBusiness": "Nâng cấp lên Business",
+      "unavailable": {
+        "heading": "Trạng thái gói không có sẵn",
+        "desc": "Chúng tôi không thể xác minh gói hiện tại của bạn. Thử lại hoặc xem các gói trong tab mới."
+      },
+      "free": {
+        "heading": "WorldMonitor Miễn phí",
+        "desc": "Gói hiện tại của bạn là Miễn phí. Nâng cấp để có tất cả các panel, phân tích AI và làm mới dữ liệu ưu tiên."
+      },
+      "portal": {
+        "openFailed": "Không thể mở cổng thông tin thanh toán. Vui lòng cho phép cửa sổ bật lên và thử lại.",
+        "unavailable": "Cổng thông tin thanh toán không có sẵn. Gửi email đến support@worldmonitor.app để được trợ giúp."
+      },
+      "deletion": {
+        "heading": "Xóa tài khoản",
+        "desc": "Xóa vĩnh viễn tài khoản World Monitor này. Các gói đăng ký bị hủy ngay lập tức và không hoàn tiền cho thời gian còn lại đã trả trước. Khóa API, khóa nhúng và token MCP sẽ ngừng hoạt động. Hồ sơ thanh toán cần cho kế toán, tranh chấp và yêu cầu theo pháp luật được lưu giữ cùng thông tin liên hệ khách hàng có trong đó; các hồ sơ này không còn gắn với tài khoản đăng nhập của bạn, tuy nhiên nhật ký webhook của nhà cung cấp thanh toán được ghi trước khi xóa vẫn giữ các mã định danh đi kèm lúc được gửi. Tùy chọn dashboard và các bí mật lưu trong keychain của hệ điều hành máy tính trên thiết bị này sẽ không bị xóa từ xa.",
+        "dialogTitle": "Xóa tài khoản này?",
+        "dialogCopy": "Không thể hoàn tác thao tác này. Các gói đăng ký bị hủy, khóa ngừng hoạt động ngay lập tức và hồ sơ thanh toán được lưu giữ cho kế toán, tranh chấp và yêu cầu theo pháp luật — bao gồm cả thông tin liên hệ có trong đó. Sau đó, hãy đăng xuất trên các thiết bị khác và xóa dữ liệu trang web trên thiết bị này — máy chủ không thể làm những việc đó.",
+        "phraseLabel": "Nhập {{phrase}} để xác nhận",
+        "deleted": "Tài khoản đã bị xóa. Đăng xuất trên các thiết bị khác và xóa dữ liệu trang web trên thiết bị này.",
+        "failed": "Xóa tài khoản không thành công. Thử lại."
+      },
+      "seats": {
+        "used": "Đã dùng {{used}} / {{cap}}",
+        "invite": "Mời",
+        "inviting": "Đang mời...",
+        "remove": "Xóa",
+        "removing": "Đang xóa...",
+        "inviteSent": "Đã gửi lời mời",
+        "alreadyInvited": "Đã mời rồi"
+      },
+      "businessSeats": {
+        "heading": "Chỗ Business",
+        "statusAccepted": "Đã chấp nhận",
+        "statusExpired": "Đã hết hạn",
+        "statusPending": "Đang chờ",
+        "expires": "Hết hạn {{date}}",
+        "hintCorporate": "Mời đồng nghiệp ở bất kỳ miền email doanh nghiệp nào.",
+        "hintPersonal": "Thêm email công ty để mời đồng nghiệp.",
+        "personalDomain": "Các miền email miễn phí hoặc dùng một lần không thể mời đồng nghiệp. Thêm email công ty để sử dụng tính năng này.",
+        "empty": "Chưa mời ai.",
+        "confirmRemove": "Xóa chỗ này? Người được mời sẽ mất quyền truy cập Pro ngay lập tức.",
+        "removed": "Đã xóa chỗ",
+        "alreadyInactive": "Chỗ này đã ngừng hoạt động từ trước",
+        "loadFailed": "Không thể tải danh sách chỗ",
+        "inviteFailed": "Không thể gửi lời mời",
+        "removeFailed": "Không thể xóa chỗ",
+        "errors": {
+          "seatCap": "Cả 4 chỗ đã được dùng. Hãy xóa một chỗ trước.",
+          "ownerDomain": "Email tài khoản của bạn phải là miền công ty để mời đồng nghiệp.",
+          "self": "Bạn không thể mời chính mình.",
+          "inviteeDomain": "Email của người được mời phải là miền công ty."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "Chỗ Enterprise của {{account}}",
+        "memberHint": "Quản trị viên tài khoản của bạn thêm và xóa những người trên tài khoản này.",
+        "hintFull": "Tất cả chỗ đều đang được dùng. Xóa ai đó hoặc rút lại một lời mời để giải phóng chỗ.",
+        "hintOpen": "Mời mọi người bằng email công ty. Họ nhận được liên kết có hiệu lực trong 14 ngày và dùng chung hạn mức của tài khoản này.",
+        "emailLabel": "Địa chỉ email để mời",
+        "statusActive": "Đang hoạt động",
+        "statusExpired": "Lời mời đã hết hạn",
+        "statusInvited": "Đã mời",
+        "emailFailed": "Không thể gửi email mời. Kiểm tra địa chỉ, sau đó rút lại và mời lại.",
+        "inviteExpires": "Lời mời hết hạn {{date}}",
+        "roleAdmin": "Quản trị viên",
+        "you": "Bạn",
+        "withdraw": "Rút lại",
+        "unknownEmail": "Email không xác định",
+        "alreadyMember": "Đã là thành viên",
+        "confirmRemove": "Xóa {{email}}? Họ sẽ mất quyền truy cập Enterprise ngay lập tức.",
+        "confirmRemoveUnknown": "Xóa người này? Họ sẽ mất quyền truy cập Enterprise ngay lập tức.",
+        "confirmWithdraw": "Rút lại lời mời cho {{email}}?",
+        "confirmWithdrawUnknown": "Rút lại lời mời cho địa chỉ này?",
+        "removed": "Thành viên đã bị xóa",
+        "withdrawn": "Lời mời đã được rút lại",
+        "loadFailed": "Không thể tải danh sách chỗ. Thử lại.",
+        "inviteFailed": "Không thể gửi lời mời. Thử lại.",
+        "removeFailed": "Không thể xóa. Thử lại.",
+        "errors": {
+          "seatCap": "Tất cả chỗ đều đang được dùng. Hãy xóa ai đó hoặc rút lại lời mời trước.",
+          "inviteeDomain": "Hãy mời một địa chỉ email công ty. Không chấp nhận các miền email miễn phí và dùng một lần.",
+          "self": "Bạn đã có một chỗ.",
+          "contractEnded": "Hợp đồng Enterprise của bạn đã kết thúc. Liên hệ hỗ trợ để gia hạn.",
+          "notAdmin": "Chỉ quản trị viên tài khoản mới có thể quản lý chỗ.",
+          "removeSelf": "Bạn không thể xóa chỗ của chính mình. Liên hệ hỗ trợ để thay đổi quản trị viên.",
+          "tooMany": "Mời tối đa 10 người cùng một lúc.",
+          "rateLimited": "Bạn đã gửi số lượng lời mời tối đa trong một ngày. Hãy thử lại vào ngày mai."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "bố cục",
+        "1": "tiện ích",
+        "2": "kích thước chữ",
+        "3": "đặt lại bố cục"
+      },
+      "sources": {
+        "0": "tin tức",
+        "1": "nguồn cấp dữ liệu",
+        "2": "phạm vi",
+        "3": "khu vực",
+        "4": "coverage"
+      },
+      "notifications": {
+        "0": "cảnh báo",
+        "1": "thông báo đẩy",
+        "2": "Slack",
+        "3": "email",
+        "4": "Discord",
+        "5": "webhook",
+        "6": "thông báo"
+      },
+      "display": {
+        "0": "chủ đề",
+        "1": "tối",
+        "2": "sáng",
+        "3": "phông chữ",
+        "4": "ngôn ngữ",
+        "5": "kích cỡ văn bản"
+      },
+      "map": {
+        "0": "quả địa cầu",
+        "1": "nhà cung cấp",
+        "2": "ô bản đồ",
+        "3": "bản đồ nền"
+      },
+      "ai": {
+        "0": "khung",
+        "1": "ghi nhớ tiêu đề",
+        "2": "mô hình trình duyệt",
+        "3": "trí tuệ nhân tạo",
+        "4": "browser model"
+      },
+      "video": {
+        "0": "phát trực tuyến",
+        "1": "tự động phát",
+        "2": "chất lượng",
+        "3": "trực tiếp"
+      },
+      "apiKeys": {
+        "0": "khóa",
+        "1": "khóa máy tính",
+        "2": "khóa desktop"
+      },
+      "embeds": {
+        "0": "khóa nhúng",
+        "1": "iframe",
+        "2": "embed key"
+      },
+      "aiAgents": {
+        "0": "tác tử",
+        "1": "ứng dụng khách",
+        "2": "agents",
+        "3": "ChatGPT",
+        "4": "clients"
+      },
+      "sync": {
+        "0": "nhập",
+        "1": "xuất",
+        "2": "sao lưu",
+        "3": "đám mây"
+      },
+      "about": {
+        "0": "điều khoản",
+        "1": "quyền riêng tư",
+        "2": "giấy phép",
+        "3": "pháp lý"
+      },
+      "account": {
+        "0": "gói",
+        "1": "thanh toán",
+        "2": "đăng ký",
+        "3": "hóa đơn",
+        "4": "chỗ",
+        "5": "đăng xuất",
+        "6": "xóa tài khoản"
+      }
+    }
   }
 }

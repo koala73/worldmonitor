@@ -93,7 +93,7 @@ test('an export without the expected header or chokepoint rows is rejected', () 
 const HUB_HOST = 'hub.arcgis.com';
 const QUERY_HOST = 'services9.arcgis.com';
 
-function stubNetwork(t, hubResponse, previous = null) {
+function stubNetwork(t, hubResponse, previous = null, queryResponse = null) {
   const env = { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN };
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
@@ -103,7 +103,9 @@ function stubNetwork(t, hubResponse, previous = null) {
     const url = String(input);
     calls.push(url);
     if (url.startsWith('https://redis.test')) return Response.json({ result: previous && JSON.stringify(previous) });
-    if (url.includes(HUB_HOST)) return hubResponse();
+    if (new URL(url).hostname === HUB_HOST) return hubResponse();
+    const answer = queryResponse?.(decodeURIComponent(url.replaceAll('+', ' ')));
+    if (answer) return answer;
     if (url.includes('outStatistics')) return Response.json({ features: [{ attributes: { avg_total: 50, day_count: 365 } }] });
     return Response.json({ features: [{ attributes: { date: '2026-10-25', n_total: 10 } }] });
   };
@@ -181,4 +183,56 @@ test('fetchAll returns a partial CSV after the fetch deadline without querying w
   assert.deepEqual([...queriedNames(calls)], []);
   assert.deepEqual(Object.keys(result).sort(), ['korea_strait', 'suez']);
   assert.equal(result.korea_strait.history.length, 174);
+});
+
+// On 2026-11-07 the Hub export still ended 2026-10-25 while the query service
+// held rows through 2026-11-01. The export trailed the layer, not the previous
+// snapshot, so every run republished 2026-10-25 as the latest day.
+test('fetchAll queries the chokepoints the CSV trails once the query service has newer days', async (t) => {
+  const calls = stubNetwork(t, () => new Response(CSV, { status: 200 }), null, (url) => {
+    if (url.includes('latest_date')) return Response.json({ features: [{ attributes: { latest_date: '2026-11-01' } }] });
+    if (url.includes("portname='Korea Strait'") && !url.includes('outStatistics')) {
+      return Response.json({ features: [{ attributes: { date: Date.parse('2026-11-01T00:00:00Z'), n_total: 140 } }] });
+    }
+    return null;
+  });
+  const result = await fetchAll();
+  assert.equal(calls.filter(u => u.includes('latest_date')).length, 1, 'one probe for the layer\'s newest day');
+  const queried = queriedNames(calls);
+  assert.equal(queried.has('Korea Strait'), true, 'the CSV entry ending 2026-10-25 is re-queried');
+  assert.equal(result.korea_strait.history.at(-1).date, '2026-11-01');
+  assert.equal(result.korea_strait.history.at(-1).total, 140);
+});
+
+for (const [label, probe] of [
+  ['has no newer day', () => Response.json({ features: [{ attributes: { latest_date: '2026-10-25' } }] })],
+  ['returns no date', () => Response.json({ features: [{ attributes: { latest_date: null } }] })],
+  ['fails the probe', () => new Response('Invalid URL', { status: 400 })],
+]) {
+  test(`fetchAll keeps the CSV when the query service ${label}`, async (t) => {
+    const calls = stubNetwork(t, () => new Response(CSV, { status: 200 }), null, url => (url.includes('latest_date') ? probe() : null));
+    const result = await fetchAll();
+    assert.equal(queriedNames(calls).has('Korea Strait'), false, 'Korea Strait came from the CSV');
+    assert.equal(result.korea_strait.history.length, 174);
+  });
+}
+
+test('fetchAll skips the latest-day probe when the fetch deadline leaves no margin for it', async (t) => {
+  const calls = stubNetwork(t, () => new Response(CSV, { status: 200 }));
+  const result = await fetchAll({ fetchDeadlineAtMs: NOW + 5_000 });
+  assert.equal(calls.filter(u => u.includes('latest_date')).length, 0, 'no probe inside the deadline margin');
+  assert.equal(result.korea_strait.history.length, 174, 'the CSV is returned');
+});
+
+test('fetchAll returns the CSV when the probe-triggered queries outlast the fetch deadline', async (t) => {
+  // 50 ms of budget after the 10 s margin; the Korea history query never answers.
+  const calls = stubNetwork(t, () => new Response(CSV, { status: 200 }), null, (url) => {
+    if (url.includes('latest_date')) return Response.json({ features: [{ attributes: { latest_date: '2026-11-01' } }] });
+    if (url.includes("portname='Korea Strait'") && !url.includes('outStatistics')) return new Promise(() => {});
+    return null;
+  });
+  const result = await fetchAll({ fetchDeadlineAtMs: NOW + 10_050 });
+  assert.equal(queriedNames(calls).has('Korea Strait'), true, 'the trailing entry was queried');
+  assert.equal(result.korea_strait.history.length, 174, 'the CSV entry is kept');
+  assert.equal(result.korea_strait.history.at(-1).date, '2026-10-25');
 });

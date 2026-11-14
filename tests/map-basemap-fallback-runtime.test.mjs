@@ -56,6 +56,7 @@ async function createHarness({ failReplacement = true, scheduleMicrotask = queue
   const Harness = new Function(...Object.keys(dependencies), `${javascript}; return Harness;`)(...Object.values(dependencies));
   const map = new Harness();
   Object.assign(map, {
+    controlDisclosureCleanups: [],
     container: { querySelector: () => null },
     state: { view: 'global', zoom: 5 },
     pendingCenter: null,

@@ -35,7 +35,7 @@ vi.mock('@/services/panel-gating', async (importOriginal) => {
 });
 
 type Handler = (event?: unknown) => void;
-type FlyToCall = { options: { center?: [number, number]; zoom?: number }; eventData?: Record<string, unknown> };
+type FlyToCall = { options: { center?: [number, number]; zoom?: number; duration?: number }; eventData?: Record<string, unknown> };
 
 const { FakeMap, fakeMaps } = vi.hoisted(() => {
   class FakeMap {
@@ -395,6 +395,14 @@ describe('DeckGLMap pendingCenter — eager center cache', () => {
     expect(map.getCenter()).toEqual({ lat: 41, lon: 29 });
     expect(map.getState().zoom).toBe(6);
     expect(fake.flyToCalls[fake.flyToCalls.length - 1]?.options.center).toEqual([29, 41]);
+  });
+
+  it('setCenter animates by default and jumps when given no duration', async () => {
+    const { map, fake } = await mapWith();
+    map.setCenter(41, 29, 6);
+    expect(fake.flyToCalls[fake.flyToCalls.length - 1]?.options.duration).toBe(500);
+    map.setCenter(25, 55, 4, 0);
+    expect(fake.flyToCalls[fake.flyToCalls.length - 1]?.options.duration).toBe(0);
   });
 
   it('a view-only initial URL leaves the preset centre available to the URL builder', async () => {

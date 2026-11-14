@@ -473,6 +473,16 @@ components:
                 semaError:
                     type: string
                     description: Present when the SEMA source failed while other sanctions data remained available.
+                unattributed:
+                    $ref: '#/components/schemas/UnattributedSanctionsPressure'
+                flagRegistries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FlagRegistrySanctionsPressure'
+                regulationTargets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CountrySanctionsPressure'
             description: ListSanctionsPressureResponse contains normalized OFAC pressure summaries and recent entries.
         SanctionsEntry:
             type: object
@@ -513,6 +523,17 @@ components:
                     type: boolean
                 note:
                     type: string
+                parentCountryCodes:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Direct linked-parent countries for addressless entities. These are not
+                             address/nationality evidence and do not feed country risk counts.
+                parentCountryNames:
+                    type: array
+                    items:
+                        type: string
             description: SanctionsEntry is a normalized OFAC sanctions designation.
         CountrySanctionsPressure:
             type: object
@@ -530,9 +551,15 @@ components:
                 vesselCount:
                     type: integer
                     format: int32
+                    description: |-
+                        Assets with a direct country association only. Zero does not mean this
+                         country has no sanctioned vessels; flag counts are in flagRegistries.
                 aircraftCount:
                     type: integer
                     format: int32
+                    description: |-
+                        Assets with a direct country association only; registry counts are in
+                         ListSanctionsPressureResponse.flagRegistries, not this field.
             description: CountrySanctionsPressure summarizes designation volume and recent additions by country.
         ProgramSanctionsPressure:
             type: object
@@ -546,6 +573,43 @@ components:
                     type: integer
                     format: int32
             description: ProgramSanctionsPressure summarizes designation volume and recent additions by OFAC program.
+        UnattributedSanctionsPressure:
+            type: object
+            properties:
+                entryCount:
+                    type: integer
+                    format: int32
+                vesselCount:
+                    type: integer
+                    format: int32
+                aircraftCount:
+                    type: integer
+                    format: int32
+        FlagRegistrySanctionsPressure:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                countryName:
+                    type: string
+                vesselCount:
+                    type: integer
+                    format: int32
+                newVesselCount:
+                    type: integer
+                    format: int32
+                aircraftCount:
+                    type: integer
+                    format: int32
+                    description: Zero in snapshots written before aircraft registries were counted.
+                newAircraftCount:
+                    type: integer
+                    format: int32
+            description: |-
+                FlagRegistrySanctionsPressure counts sanctioned vessels by flag and sanctioned aircraft
+                 by the state of registry in their tail number. The response lists at most 12 registries,
+                 ordered by new vessels and aircraft, then all vessels and aircraft, so an omitted
+                 registry may still register sanctioned assets. Older snapshots return none.
         LookupSanctionEntityRequest:
             type: object
             properties:

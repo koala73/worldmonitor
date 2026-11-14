@@ -212,6 +212,33 @@ describe('sign-up resume controller', () => {
     assert.equal(h.surface.opened, 2);
   });
 
+  // Header Sign In is the only account action (#10464). A returning user with
+  // an abandoned sign-up attempt must always be able to reach Clerk's sign-in.
+  it('Sign In click never sends an email: an expired code falls through to Clerk sign-in', () => {
+    const h = harness(pending(NOW - 1));
+    const c = createSignUpResumeController(h.ports);
+    assert.equal(c.resumeOnUserIntent(() => {}, 'sign-in'), false);
+    assert.equal(h.resends, 0);
+    assert.equal(h.surface.opened, 0);
+  });
+
+  it('Sign In click does not re-trap a user who dismissed the resume card', () => {
+    const h = harness();
+    const c = createSignUpResumeController(h.ports);
+    c.onClerkEmission(true);
+    h.surface.dismiss?.();
+    assert.equal(c.resumeOnUserIntent(() => {}, 'sign-in'), false);
+    assert.equal(h.surface.opened, 1, 'no second resume card');
+  });
+
+  it('Sign In click still resumes a live, undismissed attempt', () => {
+    const h = harness();
+    const c = createSignUpResumeController(h.ports);
+    assert.equal(c.resumeOnUserIntent(() => {}, 'sign-in'), true);
+    assert.equal(h.surface.opened, 1);
+    assert.equal(h.resends, 0);
+  });
+
   it('tracks started once per attempt id across reloads and emissions', () => {
     const h = harness();
     createSignUpResumeController(h.ports).onClerkEmission(true);

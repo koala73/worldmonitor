@@ -34,6 +34,7 @@ function createHarness() {
   const cancelable = () => Object.assign(() => {}, { cancel() {} });
   let zoom = 5;
   Object.assign(instance, {
+    controlDisclosureCleanups: [],
     aircraftFetchSeq: 0,
     aircraftFetchTimer: null,
     aircraftPositions: [],

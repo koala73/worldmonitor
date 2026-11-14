@@ -8,9 +8,10 @@ import { ValidationError } from '../../../../src/generated/server/worldmonitor/i
 
 import { isAssignedCountryCode } from '../../../../shared/country-code-resolve';
 import { countryDisplayName } from '../../../../shared/country-mention.js';
-import { getCachedJson } from '../../../_shared/redis';
+import { getCachedJson, getCachedJsonBatch } from '../../../_shared/redis';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
 import { TIER1_COUNTRIES } from './_shared';
+import { imageryChangeContext, imageryChangeKeys } from './_imagery-change-context';
 
 const RISK_SCORES_KEY = CII_RISK_SCORE_CACHE_KEYS.stale;
 const ADVISORIES_KEY = 'intelligence:advisories:v1';
@@ -40,10 +41,12 @@ export async function getCountryRisk(
     }]);
   }
 
-  const [riskRaw, advisoriesRaw, sanctionsRaw] = await Promise.all([
+  const [indexKey, rollupKey] = imageryChangeKeys(code);
+  const [riskRaw, advisoriesRaw, sanctionsRaw, orbital] = await Promise.all([
     getCachedJson(RISK_SCORES_KEY),
     getCachedJson(ADVISORIES_KEY, true),
     getCachedJson(SANCTIONS_COUNTS_KEY, true),
+    getCachedJsonBatch([indexKey, rollupKey], true),
   ]);
 
   // Missing keys or empty country coverage fail closed before CDN-caching partial
@@ -81,5 +84,6 @@ export async function getCountryRisk(
     sanctionsCount,
     fetchedAt: cii?.computedAt ?? UNKNOWN_CII_COMPUTED_AT,
     upstreamUnavailable: false,
+    imageryChange: imageryChangeContext(orbital.get(rollupKey), orbital.get(indexKey), code, Date.now()),
   };
 }

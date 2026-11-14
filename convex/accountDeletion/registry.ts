@@ -271,6 +271,7 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   { target: "productPlans", action: "skip", notes: "Global product catalog" },
   { target: "counters", action: "skip", notes: "Global counters" },
   { target: "businessSeatLocks", action: "skip", notes: "Global OCC locks" },
+  { target: "teamDashboards", action: "delete", notes: "API Business team layouts go with the owner (grants phase); Enterprise ones stay with the contract account. Rows hold no user identifier" },
   { target: "broadcastRampConfig", action: "skip", notes: "Global broadcast ramp settings" },
   { target: "broadcastEvents", action: "skip", notes: "Broadcast send log; not the account record" },
   { target: "waveRuns", action: "skip", notes: "Broadcast wave runs; not the account record" },

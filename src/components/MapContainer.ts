@@ -8,7 +8,12 @@ import { isMobileDevice } from '@/utils';
 import type { UkmtoMapIncident } from '../../shared/ukmto-incidents';
 import type { ListUkmtoIncidentsResponse } from '@/generated/client/worldmonitor/maritime/v1/service_client';
 import './ukmto-incidents.css';
+import '../styles/reservoir-levels.css';
+import type { ReservoirLevel } from '@/services/climate';
 import { markLcpDebug } from '@/utils/lcp-debug';
+import type { FocusFitBounds } from '@/utils/focus-map';
+import { type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
+import { mercatorCenterForOffset, visibleMapArea, type ScreenOffset } from '@/utils/map-point-offset';
 import {
   isLayerToggleAllowed,
   isLayerEntitled,
@@ -87,7 +92,30 @@ type PendingCenter = { lat: number; lon: number; zoom?: number; actionToken?: nu
 type PendingViewportAction =
   | { type: 'view'; view: MapView; zoom?: number; actionToken: number }
   | { type: 'zoom'; zoom: number; actionToken: number }
-  | { type: 'center'; lat: number; lon: number; zoom?: number; actionToken: number };
+  | { type: 'center'; lat: number; lon: number; zoom?: number; actionToken: number }
+  | {
+    type: 'focus';
+    /** Short arc, for the globe. */
+    fit: FocusFitBounds;
+    /** Inside [-180, 180], for the one-world flat renderers (DeckGL, SVG). */
+    flatFit: FocusFitBounds;
+    maxZoom: number;
+    altitude: number;
+    /** humanViewportInteractionToken when the fit was requested. */
+    authority: number;
+    actionToken: number;
+    /** focusFitSeq when requested: a clear or a newer fit supersedes a queued one. */
+    seq: number;
+  };
+
+/** Chosen countries (solid outline, fitted) and neighbours (lighter outline). */
+export interface MapFocusOutline {
+  chosen: readonly string[];
+  neighbours: readonly string[];
+}
+
+// The bbox table and fit math load on the first focus fit, not with the map.
+const loadFocusMap = () => import('@/utils/focus-map');
 
 let mapLibreCssPromise: Promise<unknown> | null = null;
 
@@ -169,10 +197,22 @@ interface TechEventMarker {
 type FireMarker = { lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string };
 type CIIScore = { code: string; score: number; level: string };
 
+const EXCLUSIVE_CHOROPLETHS: Partial<Record<string, keyof MapLayers>> = {
+  resilienceScore: 'ciiChoropleth',
+  ciiChoropleth: 'resilienceScore',
+};
+
+function noLayers(layers: MapLayers): MapLayers {
+  return Object.fromEntries(Object.keys(layers).map((key) => [key, false])) as unknown as MapLayers;
+}
+
 /**
  * Unified map interface that delegates to either DeckGLMap or MapComponent
  * based on device capabilities
  */
+/** A pass's swath is a few degrees wide, so the flat SVG map frames it at its deepest zoom. */
+const SVG_ORBITAL_MAX_ZOOM = 5;
+
 export class MapContainer {
   private container: HTMLElement;
   private isMobile: boolean;
@@ -180,8 +220,10 @@ export class MapContainer {
   private deckGLMap: DeckGLMap | null = null;
   private svgMap: MapComponent | null = null;
   private globeMap: GlobeMap | null = null;
+  private autoRotateHeld = false;
   private supplyChainPanel: import('@/components/SupplyChainPanel').SupplyChainPanel | null = null;
   private initialState: MapContainerState;
+  private suppressedLayers: MapLayers | null = null;
   private useDeckGL: boolean;
   private useGlobe: boolean;
   private readonly chrome: boolean;
@@ -209,7 +251,14 @@ export class MapContainer {
   private destroyed = false;
   private pendingCenter: PendingCenter | null = null;
   private pendingViewportActions: PendingViewportAction[] = [];
+  private focusOutline: MapFocusOutline | null = null;
+  private orbitalTrack: PassTrack | null = null;
+  private orbitalTrackMarker: TrackPoint | null = null;
+  private orbitalTarget: OrbitalTarget | null = null;
+  /** Bumped by fits, clears and chosen-country changes; stale fits drop themselves. */
+  private focusFitSeq = 0;
   private pendingChokepointOpen: string | null = null;
+  private pendingReservoirOpen: ReservoirLevel | null = null;
   private hiddenLayerToggles = new Set<keyof MapLayers>();
   private layerLoadingState = new Map<keyof MapLayers, boolean>();
   private layerReadyState = new Map<keyof MapLayers, boolean>();
@@ -270,6 +319,7 @@ export class MapContainer {
   private cachedCIIScores: CIIScore[] | null = null;
   private cachedResilienceRanking: ResilienceRankingItem[] | null = null;
   private cachedNo2Activity: No2ActivitySnapshot | null = null;
+  private cachedReservoirLevels: ReservoirLevel[] | null = null;
   private cachedResilienceGreyedOut: ResilienceRankingItem[] = [];
   private cachedSpeciesRecovery: SpeciesRecovery[] | null = null;
   private cachedRenewableInstallations: RenewableInstallation[] | null = null;
@@ -442,7 +492,15 @@ export class MapContainer {
     for (const action of pendingViewportActions) {
       if (action.type === 'view') this.applyView(action.view, action.zoom);
       else if (action.type === 'zoom') this.applyZoom(action.zoom);
-      else this.applyCenter(action.lat, action.lon, action.zoom);
+      else if (action.type === 'focus') {
+        // A viewport command queued after the fit supersedes it, as it does
+        // before the fit is queued (setFocusScope's token check).
+        if (
+          action.actionToken === this.viewportActionToken
+          && action.authority === this.humanViewportInteractionToken
+          && action.seq === this.focusFitSeq
+        ) this.applyFocusFit(action);
+      } else this.applyCenter(action.lat, action.lon, action.zoom);
     }
   }
 
@@ -459,6 +517,7 @@ export class MapContainer {
     // observe settlement attach to the transition that was actually started.
     this.replayPendingViewportActions();
     this.replayPendingChokepointOpen();
+    this.replayPendingReservoirOpen();
     const waiters = Array.from(this.rendererReadyWaiters);
     this.rendererReadyWaiters.clear();
     for (const waiter of waiters) waiter.resolve();
@@ -468,7 +527,14 @@ export class MapContainer {
     if (this.pendingChokepointOpen === null) return;
     const pendingChokepointOpen = this.pendingChokepointOpen;
     this.pendingChokepointOpen = null;
-    this.openChokepoint(pendingChokepointOpen);
+    this.showChokepoint(pendingChokepointOpen);
+  }
+
+  private replayPendingReservoirOpen(): void {
+    if (this.pendingReservoirOpen === null) return;
+    const pendingReservoirOpen = this.pendingReservoirOpen;
+    this.pendingReservoirOpen = null;
+    this.showReservoir(pendingReservoirOpen);
   }
 
   private startResizeObserver(): void {
@@ -647,6 +713,7 @@ export class MapContainer {
         onInitError: (error) => this.handleGlobeInitFailure(globeToken, error),
         chrome: this.chrome,
       });
+      this.globeMap.holdAutoRotate(this.autoRotateHeld);
       this.rehydrateActiveMap();
       void this.globeMap.whenReady().then(() => {
         if (!this.isCurrentRendererInit(rendererToken) || !this.useGlobe) return;
@@ -877,6 +944,7 @@ export class MapContainer {
     if (this.cachedCIIScores) this.setCIIScores(this.cachedCIIScores);
     if (this.cachedResilienceRanking) this.setResilienceRanking(this.cachedResilienceRanking, this.cachedResilienceGreyedOut);
     if (this.cachedNo2Activity) this.setNo2Activity(this.cachedNo2Activity);
+    if (this.cachedReservoirLevels) this.setReservoirLevels(this.cachedReservoirLevels);
     if (this.cachedSpeciesRecovery) this.setSpeciesRecoveryZones(this.cachedSpeciesRecovery);
     if (this.cachedRenewableInstallations) this.setRenewableInstallations(this.cachedRenewableInstallations);
     if (this.cachedHotspotActivity) this.updateHotspotActivity(this.cachedHotspotActivity);
@@ -897,7 +965,12 @@ export class MapContainer {
     for (const [layer, loading] of this.layerLoadingState) this.setLayerLoading(layer, loading);
     for (const [layer, hasData] of this.layerReadyState) this.setLayerReady(layer, hasData);
     if (this.cachedScenarioState !== undefined) this.applyScenarioState(this.cachedScenarioState);
+    if (this.focusOutline) this.applyFocusOutline();
+    if (this.orbitalTrack) this.applyOrbitalTrack();
+    if (this.orbitalTarget) this.applyOrbitalTarget();
     for (const layer of this.hiddenLayerToggles) this.hideLayerToggle(layer);
+    // A renderer built while the layers are hidden starts from the real toggles.
+    if (this.suppressedLayers) this.drawLayers(noLayers(this.suppressedLayers));
   }
 
   private currentRendererSwitchResult(requested: 'globe' | 'flat'): MapRendererSwitchResult {
@@ -1017,6 +1090,7 @@ export class MapContainer {
       : { ...this.initialState, view, zoom };
     if (!this.isViewportRendererReady()) {
       this.pendingViewportActions.push({ type: 'view', view, zoom, actionToken: viewportActionToken });
+      this.pendingReservoirOpen = null; // a newer destination; the reservoir replays last and would override it
       return viewportActionToken;
     }
     this.applyView(view, zoom);
@@ -1043,25 +1117,58 @@ export class MapContainer {
     if (this.useDeckGL) { this.deckGLMap?.setZoom(zoom); } else { this.svgMap?.setZoom(zoom); }
   }
 
-  public setCenter(lat: number, lon: number, zoom?: number): number {
+  /** `instant` jumps with no animation, so no frame between the old and new centre can be read. */
+  public setCenter(lat: number, lon: number, zoom?: number, options: { instant?: boolean } = {}): number {
     const viewportActionToken = ++this.viewportActionToken;
     if (!this.isViewportRendererReady()) {
       this.pendingCenter = { lat, lon, zoom, actionToken: viewportActionToken };
+      this.pendingReservoirOpen = null; // a newer destination; the reservoir replays last and would override it
       if (zoom != null) this.initialState = { ...this.initialState, zoom };
       return viewportActionToken;
     }
-    this.applyCenter(lat, lon, zoom);
+    this.applyCenter(lat, lon, zoom, options.instant);
     return viewportActionToken;
   }
 
-  private applyCenter(lat: number, lon: number, zoom?: number): void {
-    if (this.useGlobe) { this.globeMap?.setCenter(lat, lon, zoom); return; }
+  private applyCenter(lat: number, lon: number, zoom?: number, instant = false): void {
+    const jump = instant ? [0] as const : [];
+    if (this.useGlobe) { this.globeMap?.setCenter(lat, lon, zoom, ...jump); return; }
     if (this.useDeckGL) {
-      this.deckGLMap?.setCenter(lat, lon, zoom);
+      this.deckGLMap?.setCenter(lat, lon, zoom, ...jump);
     } else {
       this.svgMap?.setCenter(lat, lon);
       if (zoom != null) this.svgMap?.setZoom(zoom);
     }
+  }
+
+  /**
+   * Centres the map so (lat, lon) is drawn `offset` pixels from the container centre, e.g. in the part a sheet leaves visible.
+   * Returns null before the renderer is ready, because the offset can only be resolved against a live camera.
+   */
+  public setCenterAt(lat: number, lon: number, zoom: number, offset: ScreenOffset): number | null {
+    if (!this.isViewportRendererReady()) return null;
+    const centre = this.useGlobe
+      ? this.globeMap?.centerForOffset(lat, lon, zoom, offset) ?? { lat, lon }
+      : this.useDeckGL ? mercatorCenterForOffset(lat, lon, zoom, offset) : this.svgMap?.centerForOffset(lat, lon, zoom, offset) ?? { lat, lon };
+    return this.setCenter(centre.lat, centre.lon, zoom);
+  }
+
+  /** Keeps the globe from spinning away while a point is held in view. */
+  public holdAutoRotate(held: boolean): void {
+    this.autoRotateHeld = held;
+    this.globeMap?.holdAutoRotate(held);
+  }
+
+  /** Where (lat, lon) is drawn in client coordinates, or null when the renderer cannot say or it faces away. */
+  public projectToClient(lat: number, lon: number): { x: number; y: number } | null {
+    if (this.useGlobe) return this.globeMap?.projectToClient(lat, lon) ?? null;
+    if (this.useDeckGL) return this.deckGLMap?.projectToClient(lat, lon) ?? null;
+    return this.svgMap?.projectToClient(lat, lon) ?? null;
+  }
+
+  /** Where the map draws, in client coordinates; the globe keeps drawing at its old size until a resize settles. */
+  public getViewportRect(): DOMRect {
+    return (this.useGlobe ? this.globeMap?.getDrawingRect() : null) ?? this.container.getBoundingClientRect();
   }
 
   public getCenter(): { lat: number; lon: number } | null {
@@ -1098,14 +1205,45 @@ export class MapContainer {
       sanitized = sanitizeLockedLayers(sanitized, false);
     }
     this.initialState = { ...this.initialState, layers: sanitized };
-    this.renderUkmtoStatus(sanitized.ais);
-    this.emergencyLayer.setEnabled(!this.useGlobe && sanitized.aircraftEmergencies === true);
-    this.notamAirspaceLayer.setEnabled(this.useDeckGL && sanitized.flights === true);
-    if (this.useGlobe) { this.globeMap?.setLayers(sanitized); return; }
-    if (this.useDeckGL) { this.deckGLMap?.setLayers(sanitized); } else { this.svgMap?.setLayers(sanitized); }
+    if (this.suppressedLayers) {
+      this.suppressedLayers = sanitized;
+      return;
+    }
+    this.drawLayers(sanitized);
+  }
+
+  private drawLayers(layers: MapLayers): void {
+    this.renderUkmtoStatus(layers.ais);
+    this.emergencyLayer.setEnabled(!this.useGlobe && layers.aircraftEmergencies === true);
+    this.notamAirspaceLayer.setEnabled(this.useDeckGL && layers.flights === true);
+    if (this.useGlobe) { this.globeMap?.setLayers(layers); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setLayers(layers); } else { this.svgMap?.setLayers(layers); }
+  }
+
+  /**
+   * Draws no data layer while `suppressed`, then draws the layers as they were.
+   * getState() keeps reporting the real layers, so the share URL and the saved
+   * toggles never see the hidden state.
+   */
+  public suppressDataLayers(suppressed: boolean): void {
+    if (suppressed === (this.suppressedLayers !== null)) return;
+    if (suppressed) {
+      const layers = this.getState().layers;
+      this.suppressedLayers = layers;
+      this.drawLayers(noLayers(layers));
+      return;
+    }
+    const layers = this.suppressedLayers!;
+    this.suppressedLayers = null;
+    this.drawLayers(layers);
   }
 
   public getState(): MapContainerState {
+    const state = this.rendererState();
+    return this.suppressedLayers ? { ...state, layers: this.suppressedLayers } : state;
+  }
+
+  private rendererState(): MapContainerState {
     if (this.useGlobe) return this.globeMap?.getState() ?? this.initialState;
     if (this.useDeckGL) {
       const state = this.deckGLMap?.getState();
@@ -1489,6 +1627,32 @@ export class MapContainer {
     if (this.useDeckGL) { this.deckGLMap?.setCIIScores(scores); }
   }
 
+  public setReservoirLevels(reservoirs: ReservoirLevel[]): void {
+    this.cachedReservoirLevels = reservoirs;
+    if (this.useGlobe) this.globeMap?.setReservoirLevels(reservoirs);
+    else if (this.useDeckGL) this.deckGLMap?.setReservoirLevels(reservoirs);
+    else this.svgMap?.setReservoirLevels(reservoirs);
+  }
+
+  /** Centre the map on a reservoir and open its popup (Strategic Water Levels row click). */
+  public openReservoir(reservoir: ReservoirLevel): void {
+    ++this.viewportActionToken;
+    this.showReservoir(reservoir);
+  }
+
+  private showReservoir(reservoir: ReservoirLevel): void {
+    // A renderer switch clears the renderer before its async init finishes; keep the
+    // latest selection and replay it on readiness, as openChokepoint does.
+    if (!this.isChokepointRendererReady()) {
+      this.pendingReservoirOpen = reservoir;
+      return;
+    }
+    this.pendingReservoirOpen = null;
+    if (this.useGlobe) this.globeMap?.openReservoir(reservoir);
+    else if (this.useDeckGL) this.deckGLMap?.openReservoir(reservoir);
+    else this.svgMap?.openReservoir(reservoir);
+  }
+
   public setNo2Activity(snapshot: No2ActivitySnapshot | null): void {
     this.cachedNo2Activity = snapshot;
     if (this.useDeckGL) this.deckGLMap?.setNo2Activity(snapshot);
@@ -1571,6 +1735,14 @@ export class MapContainer {
   public setOnLayerChange(callback: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void): void {
     this.cachedOnLayerChange = callback;
     const notify = (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic'): void => {
+      if (this.suppressedLayers) {
+        this.suppressedLayers = { ...this.suppressedLayers, [layer]: enabled };
+        this.initialState = { ...this.initialState, layers: { ...this.initialState.layers, [layer]: enabled } };
+        // The renderer drew the toggled layer; hide it again until the layers come back.
+        if (enabled) this.drawLayers(noLayers(this.suppressedLayers));
+        callback(layer, enabled, source);
+        return;
+      }
       if (layer === 'ais') this.renderUkmtoStatus(enabled);
       if (layer === 'aircraftEmergencies') this.emergencyLayer.setEnabled(!this.useGlobe && enabled);
       if (layer === 'flights') this.notamAirspaceLayer.setEnabled(this.useDeckGL && enabled);
@@ -1680,6 +1852,20 @@ export class MapContainer {
       ...this.initialState,
       layers: { ...this.initialState.layers, [layer]: true },
     };
+    if (this.suppressedLayers) {
+      // Saved now and drawn when the layers come back.
+      if (this.suppressedLayers[layer]) return;
+      const displaced = this.useDeckGL ? EXCLUSIVE_CHOROPLETHS[layer as string] : undefined;
+      if (displaced && this.suppressedLayers[displaced]) {
+        // deck.gl draws one choropleth at a time; turn the other off as its enableLayer would.
+        this.suppressedLayers = { ...this.suppressedLayers, [displaced]: false };
+        this.initialState = { ...this.initialState, layers: { ...this.initialState.layers, [displaced]: false } };
+        this.cachedOnLayerChange?.(displaced, false, 'programmatic');
+      }
+      this.suppressedLayers = { ...this.suppressedLayers, [layer]: true };
+      this.cachedOnLayerChange?.(layer, true, 'programmatic');
+      return;
+    }
     if (!this.hasActiveRenderer()) return;
     if (this.useGlobe) { this.globeMap?.enableLayer(layer); return; }
     if (this.useDeckGL) {
@@ -1760,8 +1946,14 @@ export class MapContainer {
   // Pan/rotate to a chokepoint and open its waterway popup. Unlike the trigger*
   // clicks above, globe is a real target here (it pans the point to front-centre).
   public openChokepoint(id: string): void {
+    ++this.viewportActionToken;
+    this.showChokepoint(id);
+  }
+
+  private showChokepoint(id: string): void {
     if (!this.isChokepointRendererReady()) {
       this.pendingChokepointOpen = id;
+      this.pendingReservoirOpen = null; // a newer destination; the reservoir replays last and would override it
       return;
     }
     this.pendingChokepointOpen = null;
@@ -1808,6 +2000,139 @@ export class MapContainer {
     } else {
       this.svgMap?.fitCountry(code);
     }
+  }
+
+  /**
+   * Dashboard focus (#10453). Outlines the chosen countries solid and the
+   * neighbours lighter on whichever renderer is active (and on any renderer
+   * switched to later), and, when `fit` is set, frames the chosen countries
+   * only. Markers are never filtered. Null removes the outline and leaves
+   * the view where it is.
+   *
+   * The fit is a viewport command like setView or setCenter, ordered by the
+   * same action token. It is dropped when, before it runs, a later viewport
+   * command lands (a team dashboard's saved view, a region pick, an agent
+   * action) or the user moves the map. Before the renderer is ready it
+   * queues with the other pending viewport commands.
+   */
+  public setFocusScope(focus: MapFocusOutline | null, options: { fit: boolean }): void {
+    const previousChosen = new Set(this.focusOutline?.chosen ?? []);
+    const nextChosen = new Set(focus?.chosen ?? []);
+    const chosenChanged = previousChosen.size !== nextChosen.size
+      || [...nextChosen].some((code) => !previousChosen.has(code));
+    this.focusOutline = focus
+      ? { chosen: [...focus.chosen], neighbours: [...focus.neighbours] }
+      : null;
+    this.applyFocusOutline();
+    if (!focus) {
+      this.focusFitSeq += 1;
+      return;
+    }
+    if (!options.fit) {
+      if (chosenChanged) this.focusFitSeq += 1;
+      return;
+    }
+    const seq = ++this.focusFitSeq;
+    const actionToken = ++this.viewportActionToken;
+    const authority = this.humanViewportInteractionToken;
+    const chosen = [...focus.chosen];
+    void loadFocusMap().then(({ focusFitBounds, focusSingleWorldFitBounds, focusGlobeAltitude, FOCUS_FIT_MAX_ZOOM }) => {
+      if (this.destroyed || seq !== this.focusFitSeq) return;
+      if (actionToken !== this.viewportActionToken || authority !== this.humanViewportInteractionToken) return;
+      const fit = focusFitBounds(chosen);
+      const flatFit = focusSingleWorldFitBounds(chosen);
+      if (!fit || !flatFit) return;
+      const action: Extract<PendingViewportAction, { type: 'focus' }> = {
+        type: 'focus',
+        fit,
+        flatFit,
+        maxZoom: FOCUS_FIT_MAX_ZOOM,
+        altitude: focusGlobeAltitude(fit),
+        authority,
+        actionToken,
+        seq,
+      };
+      if (!this.isViewportRendererReady()) {
+        this.pendingViewportActions.push(action);
+        return;
+      }
+      this.applyFocusFit(action);
+    }).catch((error: unknown) => {
+      console.warn('[MapContainer] Focus fit failed to load', error);
+    });
+  }
+
+  private applyFocusOutline(): void {
+    const outline = this.focusOutline;
+    this.deckGLMap?.setFocusOutline(outline);
+    this.svgMap?.setFocusOutline(outline);
+    this.globeMap?.setFocusOutline(outline);
+  }
+
+  private applyFocusFit(action: Extract<PendingViewportAction, { type: 'focus' }>): void {
+    if (this.useGlobe) { this.globeMap?.fitFocusBounds(action.fit, action.altitude); return; }
+    if (this.useDeckGL) this.deckGLMap?.fitFocusBounds(action.flatFit, action.maxZoom);
+    else this.svgMap?.fitFocusBounds(action.flatFit);
+  }
+
+  /** Draws a satellite pass's ground track and sensor footprint; null removes it. */
+  public setOrbitalTrack(track: PassTrack | null): void {
+    this.orbitalTrack = track;
+    this.orbitalTrackMarker = null;
+    this.applyOrbitalTrack();
+  }
+
+  /** Moves the replay marker along the drawn pass; null hides it. */
+  public setOrbitalTrackMarker(point: TrackPoint | null): void {
+    if (!this.orbitalTrack) return;
+    this.orbitalTrackMarker = point;
+    this.deckGLMap?.setOrbitalTrackMarker(point);
+    this.svgMap?.setOrbitalTrackMarker(point);
+    this.globeMap?.setOrbitalTrackMarker(point);
+  }
+
+  /** Pins the point a satellite lookup is about; null removes the pin. */
+  public setOrbitalTarget(target: OrbitalTarget | null): void {
+    this.orbitalTarget = target;
+    this.applyOrbitalTarget();
+  }
+
+  /** Frames a box on the active map, longitudes continuous so a box over the antimeridian stays local. */
+  public frameOrbitalBounds(bounds: FrameBounds, occluders: DOMRect[] = []): void {
+    const [[west, south], [east, north]] = bounds;
+    const lonSpan = Math.max(east - west, 0.05);
+    const latSpan = Math.max(north - south, 0.05);
+    const centerLon = ((((west + east) / 2) + 540) % 360) - 180;
+    const westLon = (((west + 540) % 360) - 180);
+    const fit: FocusFitBounds = { south, north, west: westLon, east: westLon + lonSpan, lonSpan, latSpan, center: { lat: (south + north) / 2, lon: centerLon } };
+    if (this.useGlobe) {
+      const center = this.orbitalTarget ?? fit.center;
+      const reach = Math.max(Math.abs(west - center.lon), Math.abs(east - center.lon), Math.abs(south - center.lat), Math.abs(north - center.lat));
+      this.globeMap?.fitFocusBounds({ ...fit, center: { lat: center.lat, lon: center.lon } }, Math.min(2.5, Math.max(0.35, reach * Math.PI / 180 * 5)));
+    }
+    else if (this.useDeckGL) this.deckGLMap?.frameOrbitalBounds(bounds, occluders);
+    else {
+      const box = this.container.getBoundingClientRect();
+      const area = visibleMapArea(box, occluders);
+      this.svgMap?.fitFocusBounds(fit, SVG_ORBITAL_MAX_ZOOM, {
+        width: area.right - area.left,
+        height: area.bottom - area.top,
+        x: (area.left + area.right - box.left - box.right) / 2,
+        y: (area.top + area.bottom - box.top - box.bottom) / 2,
+      });
+    }
+  }
+
+  private applyOrbitalTarget(): void {
+    this.deckGLMap?.setOrbitalTarget(this.orbitalTarget);
+    this.svgMap?.setOrbitalTarget(this.orbitalTarget);
+    this.globeMap?.setOrbitalTarget(this.orbitalTarget);
+  }
+
+  private applyOrbitalTrack(): void {
+    this.deckGLMap?.setOrbitalTrack(this.orbitalTrack, this.orbitalTrackMarker);
+    this.svgMap?.setOrbitalTrack(this.orbitalTrack, this.orbitalTrackMarker);
+    this.globeMap?.setOrbitalTrack(this.orbitalTrack, this.orbitalTrackMarker);
   }
 
   public highlightCountry(code: string): void {
@@ -1954,6 +2279,7 @@ export class MapContainer {
     this.cachedAisDisruptions = null;
     this.cachedUkmtoIncidents = null;
     this.cachedUkmtoSnapshot = null;
+    this.cachedReservoirLevels = null;
     this.cachedAisDensity = null;
     this.cachedCableAdvisories = null;
     this.cachedRepairShips = null;
@@ -1995,6 +2321,7 @@ export class MapContainer {
     this.pendingCenter = null;
     this.pendingViewportActions = [];
     this.pendingChokepointOpen = null;
+    this.pendingReservoirOpen = null;
     this.hiddenLayerToggles.clear();
     this.layerLoadingState.clear();
     this.layerReadyState.clear();

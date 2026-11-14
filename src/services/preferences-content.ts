@@ -28,7 +28,6 @@ import {
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
-import { mountInstallEntry } from '@/services/pwa-install';
 import { getSyncState, getLastSyncAt, syncNow, isCloudSyncEnabled } from '@/utils/cloud-prefs-sync';
 import { declareOverlay } from '@/utils/open-modal';
 import { createFocusTrap } from '@/utils/focus-trap';
@@ -50,6 +49,7 @@ import {
   type AnalysisPanelId,
 } from '@/services/analysis-framework-store';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import type { PreferenceSectionId } from '@/config/settings-sections';
 
 
 const DESKTOP_RELEASES_URL = 'https://github.com/koala73/worldmonitor/releases';
@@ -134,70 +134,282 @@ function updateAiStatus(container: HTMLElement): void {
   }
 }
 
-function handlePreferenceChange(
+type ChangeHandler = (
   target: HTMLInputElement,
-  container: HTMLElement,
+  root: HTMLElement,
   host: PreferencesHost,
-): boolean | Promise<boolean> {
-  switch (target.id) {
-    case 'us-stream-quality':
-      setStreamQuality(target.value as StreamQuality);
-      return true;
-    case 'us-globe-visual-preset':
-      setGlobeVisualPreset(target.value as GlobeVisualPreset);
-      return true;
-    case 'us-theme':
+) => boolean | Promise<boolean>;
+
+interface PreferenceSectionSpec {
+  html(host: PreferencesHost): string;
+  /**
+   * Keyed by control id, or by group id for a radio group. A handler only
+   * touches ids inside `root`, its own page.
+   */
+  onChange: Readonly<Record<string, ChangeHandler>>;
+  attach?(root: HTMLElement, host: PreferencesHost, signal: AbortSignal): void;
+}
+
+function selectHtml(
+  id: string,
+  label: string,
+  desc: string,
+  options: ReadonlyArray<{ value: string; label: string }>,
+  current: string,
+): string {
+  return `<div class="ai-flow-toggle-row">
+    <div class="ai-flow-toggle-label-wrap">
+      <div class="ai-flow-toggle-label" id="${id}-label">${label}</div>
+      <div class="ai-flow-toggle-desc">${desc}</div>
+    </div>
+  </div>
+  <select class="unified-settings-select" id="${id}" aria-labelledby="${id}-label">${options
+    .map(opt => `<option value="${opt.value}"${opt.value === current ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`)
+    .join('')}</select>`;
+}
+
+/**
+ * A short choice as a row of radio buttons sharing the name `id`; the group
+ * carries the id. Arrow keys move between options, as in any radio group.
+ */
+function segmentedHtml(
+  id: string,
+  label: string,
+  desc: string,
+  options: ReadonlyArray<{ value: string; label: string }>,
+  current: string,
+): string {
+  return `<div class="ai-flow-toggle-row">
+    <div class="ai-flow-toggle-label-wrap">
+      <div class="ai-flow-toggle-label" id="${id}-label">${label}</div>
+      <div class="ai-flow-toggle-desc" id="${id}-desc">${desc}</div>
+    </div>
+  </div>
+  <div class="us-segmented" role="radiogroup" id="${id}" aria-labelledby="${id}-label" aria-describedby="${id}-desc">${options
+    .map(opt => `<label class="us-segment"><input type="radio" name="${id}" value="${opt.value}"${opt.value === current ? ' checked' : ''}><span>${escapeHtml(opt.label)}</span></label>`)
+    .join('')}</div>`;
+}
+
+function sectionHeading(label: string): string {
+  return `<h3 class="wm-pref-heading">${label}</h3>`;
+}
+
+const displaySection: PreferenceSectionSpec = {
+  html() {
+    // Compared against LANGUAGES[].code below, which carries full tags (`zh-TW`).
+    // The region-stripped accessor would mark 简体中文 selected for a Traditional reader.
+    const currentLang = getCurrentLanguageTag();
+    // The description says what Auto follows, so its segment needs only the short label.
+    let html = segmentedHtml('us-theme', t('preferences.theme'), t('preferences.themeDesc'), [
+      { value: 'light', label: t('preferences.themeLight') },
+      { value: 'dark', label: t('preferences.themeDark') },
+      { value: 'auto', label: t('settings.summary.themeAuto') },
+    ] satisfies Array<{ value: ThemePreference; label: string }>, getThemePreference());
+    html += segmentedHtml('us-font-family', t('preferences.fontFamily'), t('preferences.fontFamilyDesc'), [
+      { value: 'mono', label: t('preferences.fontMono') },
+      { value: 'system', label: t('preferences.fontSystem') },
+    ] satisfies Array<{ value: FontFamily; label: string }>, getFontFamily());
+    // Panel font scale. Fixed-geometry map chrome deliberately does not inherit
+    // this value; individual panel overrides live in Settings -> Panels.
+    html += selectHtml(
+      'us-font-scale',
+      t('preferences.fontScale', { defaultValue: 'Panel text size' }),
+      t('preferences.fontScaleDesc', { defaultValue: 'Sets panel text globally. A panel-specific value replaces this setting.' }),
+      FONT_SCALE_STEPS.map(scale => ({ value: String(scale), label: fontScaleLabel(scale) })),
+      String(getFontScale()),
+    );
+    html += `<div class="ai-flow-section-label" id="us-language-label">${t('header.languageLabel')}</div>`;
+    html += `<select class="unified-settings-lang-select" id="us-language" aria-labelledby="us-language-label">`;
+    for (const lang of LANGUAGES) {
+      const selected = lang.code === currentLang ? ' selected' : '';
+      html += `<option value="${lang.code}"${selected}>${lang.flag} ${escapeHtml(lang.label)}</option>`;
+    }
+    html += `</select>`;
+    if (currentLang === 'vi') {
+      html += `<div class="ai-flow-toggle-desc">${t('components.languageSelector.mapLabelsFallbackVi')}</div>`;
+    }
+    html += toggleRowHtml('us-badge-anim', t('components.insights.badgeAnimLabel'), t('components.insights.badgeAnimDesc'), getAiFlowSettings().badgeAnimation);
+    return html;
+  },
+  onChange: {
+    'us-theme': (target) => {
       setThemePreference(target.value as ThemePreference);
       return true;
-    case 'us-font-family':
+    },
+    'us-font-family': (target) => {
       setFontFamily(target.value as FontFamily);
       return true;
-    case 'us-font-scale': {
+    },
+    'us-font-scale': (target) => {
       const scale = parseFontScale(target.value);
       if (scale === undefined) return false;
       setFontScale(scale);
       return true;
-    }
-    case 'us-map-provider': {
+    },
+    'us-language': (target) => {
+      trackLanguageChange(target.value);
+      return changeLanguage(target.value);
+    },
+    'us-badge-anim': (target) => {
+      setAiFlowSetting('badgeAnimation', target.checked);
+      return true;
+    },
+  },
+  attach(root, _host, signal) {
+    window.addEventListener(FONT_SCALE_CHANGED_EVENT, (event) => {
+      const select = root.querySelector<HTMLSelectElement>('#us-font-scale');
+      const scale = (event as CustomEvent<FontScaleChangedDetail>).detail?.scale;
+      if (select && scale !== undefined) select.value = String(scale);
+    }, { signal });
+  },
+};
+
+const mapSection: PreferenceSectionSpec = {
+  html() {
+    const currentProvider = getMapProvider();
+    let html = selectHtml('us-map-provider', t('preferences.mapProvider'), t('preferences.mapProviderDesc'), MAP_PROVIDER_OPTIONS, currentProvider);
+    html += selectHtml('us-map-theme', t('preferences.mapTheme'), t('preferences.mapThemeDesc'), MAP_THEME_OPTIONS[currentProvider], getMapTheme(currentProvider));
+    html += toggleRowHtml('us-map-flash', t('components.insights.mapFlashLabel'), t('components.insights.mapFlashDesc'), getAiFlowSettings().mapNewsFlash);
+    html += selectHtml('us-globe-visual-preset', t('preferences.globePreset'), t('preferences.globePresetDesc'), GLOBE_VISUAL_PRESET_OPTIONS, getGlobeVisualPreset());
+    return html;
+  },
+  onChange: {
+    'us-map-provider': (target, root, host) => {
       const provider = target.value as MapProvider;
       setMapProvider(provider);
-      renderMapThemeDropdown(container, provider);
+      renderMapThemeDropdown(root, provider);
       host.onMapProviderChange?.(provider);
       window.dispatchEvent(new CustomEvent('map-theme-changed'));
       return true;
-    }
-    case 'us-map-theme':
+    },
+    'us-map-theme': (target) => {
       setMapTheme(getMapProvider(), target.value);
       window.dispatchEvent(new CustomEvent('map-theme-changed'));
       return true;
-    case 'us-live-news-autoplay':
-      setLiveNewsAutoplay(target.checked);
+    },
+    'us-map-flash': (target) => {
+      setAiFlowSetting('mapNewsFlash', target.checked);
       return true;
-    case 'us-live-streams-always-on':
-      setLiveStreamsAlwaysOn(target.checked);
+    },
+    'us-globe-visual-preset': (target) => {
+      setGlobeVisualPreset(target.value as GlobeVisualPreset);
       return true;
-    case 'us-live-media-idle-stop': {
-      const idleStop = parseLiveMediaIdleStop(target.value);
-      if (idleStop === undefined) return false;
-      setLiveMediaIdleStop(idleStop);
-      return true;
+    },
+  },
+};
+
+const ANALYSIS_PANELS: ReadonlyArray<{ id: AnalysisPanelId; label: string }> = [
+  { id: 'insights', label: 'Insights' },
+  { id: 'country-brief', label: 'Country Brief' },
+  { id: 'daily-market-brief', label: 'Market Brief' },
+  { id: 'deduction', label: 'Deduction' },
+];
+
+const aiSection: PreferenceSectionSpec = {
+  html(host) {
+    const settings = getAiFlowSettings();
+    let html = '';
+    if (!host.isDesktopApp) {
+      html += toggleRowHtml('us-cloud', t('components.insights.aiFlowCloudLabel'), t('components.insights.aiFlowCloudDesc'), settings.cloudLlm);
+      html += toggleRowHtml('us-browser', t('components.insights.aiFlowBrowserLabel'), t('components.insights.aiFlowBrowserDesc'), settings.browserModel);
+      html += `<div class="ai-flow-toggle-warn" style="display:${settings.browserModel ? 'block' : 'none'}">${t('components.insights.aiFlowBrowserWarn')}</div>`;
+      html += `
+        <div class="ai-flow-cta">
+          <div class="ai-flow-cta-title">${t('components.insights.aiFlowOllamaCta')}</div>
+          <div class="ai-flow-cta-desc">${t('components.insights.aiFlowOllamaCtaDesc')}</div>
+          <a href="${DESKTOP_RELEASES_URL}" target="_blank" rel="noopener noreferrer" class="ai-flow-cta-link">${t('components.insights.aiFlowDownloadDesktop')}</a>
+        </div>
+      `;
     }
-    case 'us-language':
-      trackLanguageChange(target.value);
-      return changeLanguage(target.value);
-    case 'us-cloud':
+
+    // Headline Memory requires Browser Local Model (it loads an embeddings
+    // model in the ML worker). Disable the toggle when the parent is off so
+    // the user sees the dependency rather than wondering why their Headline
+    // Memory toggle "did nothing."
+    const headlineDisabled = !host.isDesktopApp && !settings.browserModel;
+    html += toggleRowHtml(
+      'us-headline-memory',
+      t('components.insights.headlineMemoryLabel'),
+      t('components.insights.headlineMemoryDesc'),
+      settings.headlineMemory,
+      headlineDisabled,
+    );
+
+    html += sectionHeading(t('components.insights.analysisFrameworksLabel'));
+    html += `<div class="ai-flow-section-label">${t('components.insights.analysisFrameworksActivePerPanel')}</div>`;
+    html += `<div class="fw-panel-status-list" id="fwPanelStatusList">`;
+    for (const { id, label } of ANALYSIS_PANELS) {
+      const active = getActiveFrameworkForPanel(id);
+      html += `<div class="fw-panel-status-row">
+        <span class="fw-panel-status-name">${escapeHtml(label)}</span>
+        <span class="fw-panel-status-val">${active ? escapeHtml(active.name) : t('components.insights.analysisFrameworksDefaultNeutral')}</span>
+      </div>`;
+    }
+    html += `</div>`;
+
+    html += `<div class="ai-flow-section-label">${t('components.insights.analysisFrameworksSkillLibrary')}</div>`;
+    html += `<div class="fw-library-list" id="fwLibraryList">`;
+    html += renderFrameworkLibraryHtml();
+    html += `</div>`;
+
+    html += `<div class="fw-import-row">
+      <button type="button" class="btn btn-secondary fw-import-btn" id="fwImportBtn">${t('components.insights.analysisFrameworksImportBtn')}</button>
+    </div>`;
+
+    html += `<div class="fw-import-modal-backdrop" id="fwImportModalBackdrop" style="display:none">
+      <div class="fw-import-modal" role="dialog" aria-modal="true" aria-label="Import framework">
+        <div class="fw-import-modal-header">
+          <span class="fw-import-modal-title">${t('components.insights.analysisFrameworksImportTitle')}</span>
+          <button type="button" class="fw-import-modal-close" id="fwImportModalClose" aria-label="Close">&times;</button>
+        </div>
+        <div class="fw-import-tabs">
+          <button type="button" class="fw-import-tab active" data-fw-tab="agentskills" id="fwTabAgentskills">${t('components.insights.analysisFrameworksFromAgentskills')}</button>
+          <button type="button" class="fw-import-tab" data-fw-tab="json" id="fwTabJson">${t('components.insights.analysisFrameworksPasteJson')}</button>
+        </div>
+        <div class="fw-import-tab-panel active" id="fwTabPanelAgentskills">
+          <div class="fw-import-field">
+            <label class="fw-import-label" for="fwAgentskillsUrl">agentskills.io URL or ID</label>
+            <input type="text" class="fw-import-input" id="fwAgentskillsUrl" placeholder="https://agentskills.io/skills/..." />
+          </div>
+          <button type="button" class="btn btn-secondary" id="fwFetchBtn">Fetch</button>
+          <div class="fw-import-preview" id="fwAgentskillsPreview" style="display:none">
+            <div class="fw-import-preview-name" id="fwPreviewName"></div>
+            <div class="fw-import-preview-desc" id="fwPreviewDesc"></div>
+            <button type="button" class="btn btn-primary fw-save-btn" id="fwAgentskillsSaveBtn">${t('components.insights.analysisFrameworksSaveToLibrary')}</button>
+          </div>
+          <div class="fw-import-error" id="fwAgentskillsError" style="display:none"></div>
+        </div>
+        <div class="fw-import-tab-panel" id="fwTabPanelJson">
+          <div class="fw-import-field">
+            <label class="fw-import-label" for="fwJsonInput">${t('components.insights.analysisFrameworksPasteJson')}</label>
+            <textarea class="fw-import-textarea" id="fwJsonInput" rows="6" placeholder='{ "name": "...", "instructions": "..." }'></textarea>
+          </div>
+          <div class="fw-import-error" id="fwJsonError" style="display:none"></div>
+          <button type="button" class="btn btn-primary fw-save-btn" id="fwJsonSaveBtn">${t('components.insights.analysisFrameworksSaveToLibrary')}</button>
+        </div>
+      </div>
+    </div>`;
+
+    if (!host.isDesktopApp) {
+      html += `<div class="ai-flow-popup-footer"><span class="ai-flow-status-dot" id="usStatusDot"></span><span class="ai-flow-status-text" id="usStatusText"></span></div>`;
+    }
+    return html;
+  },
+  onChange: {
+    'us-cloud': (target, root) => {
       setAiFlowSetting('cloudLlm', target.checked);
-      updateAiStatus(container);
+      updateAiStatus(root);
       return true;
-    case 'us-browser': {
+    },
+    'us-browser': (target, root, host) => {
       setAiFlowSetting('browserModel', target.checked);
-      const warn = container.querySelector<HTMLElement>('.ai-flow-toggle-warn');
+      const warn = root.querySelector<HTMLElement>('.ai-flow-toggle-warn');
       if (warn) warn.style.display = target.checked ? 'block' : 'none';
       // Headline Memory is a child of Browser Local Model — keep its
       // toggle's enabled/disabled state in sync without re-rendering
       // the whole panel. The runtime gate (`isHeadlineMemoryEnabled`)
       // already AND-gates both flags; this just mirrors that visually.
-      const hmInput = container.querySelector<HTMLInputElement>('#us-headline-memory');
+      const hmInput = root.querySelector<HTMLInputElement>('#us-headline-memory');
       const hmRow = hmInput?.closest('.ai-flow-toggle-row');
       const hmSwitch = hmInput?.closest('.ai-flow-switch');
       if (hmInput && !host.isDesktopApp) {
@@ -205,398 +417,182 @@ function handlePreferenceChange(
         hmRow?.classList.toggle('is-disabled', !target.checked);
         hmSwitch?.classList.toggle('is-disabled', !target.checked);
       }
-      updateAiStatus(container);
+      updateAiStatus(root);
       return true;
-    }
-    case 'us-map-flash':
-      setAiFlowSetting('mapNewsFlash', target.checked);
-      return true;
-    case 'us-headline-memory':
+    },
+    'us-headline-memory': (target) => {
       setAiFlowSetting('headlineMemory', target.checked);
       return true;
-    case 'us-badge-anim':
-      setAiFlowSetting('badgeAnimation', target.checked);
+    },
+  },
+  attach(root, host, signal) {
+    attachFrameworkHandlers(root, signal);
+    if (!host.isDesktopApp) updateAiStatus(root);
+  },
+};
+
+const videoSection: PreferenceSectionSpec = {
+  html() {
+    let html = selectHtml('us-stream-quality', t('components.insights.streamQualityLabel'), t('components.insights.streamQualityDesc'), STREAM_QUALITY_OPTIONS, getStreamQuality());
+    html += toggleRowHtml(
+      'us-live-news-autoplay',
+      t('components.insights.liveNewsAutoplayLabel'),
+      t('components.insights.liveNewsAutoplayDesc'),
+      getLiveNewsAutoplay(),
+    );
+    html += toggleRowHtml(
+      'us-live-streams-always-on',
+      t('components.insights.streamAlwaysOnLabel'),
+      t('components.insights.streamAlwaysOnDesc'),
+      getLiveStreamsAlwaysOn(),
+    );
+    html += selectHtml(
+      'us-live-media-idle-stop',
+      t('components.insights.streamIdleStopLabel'),
+      t('components.insights.streamIdleStopDesc'),
+      LIVE_MEDIA_IDLE_STOP_OPTIONS.map(option => ({
+        value: String(option),
+        label: option === 'never'
+          ? t('components.insights.streamIdleStopNever')
+          : formatIdleStopMinutes(option, getCurrentLanguageTag()),
+      })),
+      String(getLiveMediaIdleStop()),
+    );
+    return html;
+  },
+  onChange: {
+    'us-stream-quality': (target) => {
+      setStreamQuality(target.value as StreamQuality);
       return true;
-    default:
-      return false;
-  }
+    },
+    'us-live-news-autoplay': (target) => {
+      setLiveNewsAutoplay(target.checked);
+      return true;
+    },
+    'us-live-streams-always-on': (target) => {
+      setLiveStreamsAlwaysOn(target.checked);
+      return true;
+    },
+    'us-live-media-idle-stop': (target) => {
+      const idleStop = parseLiveMediaIdleStop(target.value);
+      if (idleStop === undefined) return false;
+      setLiveMediaIdleStop(idleStop);
+      return true;
+    },
+  },
+};
+
+function showsCloudSync(host: PreferencesHost): boolean {
+  return !host.isDesktopApp && host.isSignedIn === true && isCloudSyncEnabled();
 }
 
-export function renderPreferences(host: PreferencesHost): PreferencesResult {
-  const settings = getAiFlowSettings();
-  // Compared against LANGUAGES[].code below, which carries full tags (`zh-TW`).
-  // The region-stripped accessor would mark 简体中文 selected for a Traditional reader.
-  const currentLang = getCurrentLanguageTag();
-  let html = '';
-  if (!host.isDesktopApp) html += '<div data-pwa-install-entry></div>';
-
-  // ── Display group ──
-  html += `<details class="wm-pref-group" open>`;
-  html += `<summary>${t('preferences.display')}</summary>`;
-  html += `<div class="wm-pref-group-content">`;
-
-  // Appearance
-  const currentThemePref = getThemePreference();
-  html += `<div class="ai-flow-toggle-row">
-    <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label" id="us-theme-label">${t('preferences.theme')}</div>
-      <div class="ai-flow-toggle-desc">${t('preferences.themeDesc')}</div>
-    </div>
-  </div>`;
-  html += `<select class="unified-settings-select" id="us-theme" aria-labelledby="us-theme-label">`;
-  for (const opt of [
-    { value: 'auto', label: t('preferences.themeAuto') },
-    { value: 'dark', label: t('preferences.themeDark') },
-    { value: 'light', label: t('preferences.themeLight') },
-  ] as { value: ThemePreference; label: string }[]) {
-    const selected = opt.value === currentThemePref ? ' selected' : '';
-    html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
-  }
-  html += `</select>`;
-
-  // Font family
-  const currentFont = getFontFamily();
-  html += `<div class="ai-flow-toggle-row">
-    <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label" id="us-font-family-label">${t('preferences.fontFamily')}</div>
-      <div class="ai-flow-toggle-desc">${t('preferences.fontFamilyDesc')}</div>
-    </div>
-  </div>`;
-  html += `<select class="unified-settings-select" id="us-font-family" aria-labelledby="us-font-family-label">`;
-  for (const opt of [
-    { value: 'mono', label: t('preferences.fontMono') },
-    { value: 'system', label: t('preferences.fontSystem') },
-  ] as { value: FontFamily; label: string }[]) {
-    const selected = opt.value === currentFont ? ' selected' : '';
-    html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
-  }
-  html += `</select>`;
-
-  // Panel font scale. Fixed-geometry map chrome deliberately does not inherit
-  // this value; individual panel overrides live in Settings -> Panels.
-  const currentFontScale = getFontScale();
-  html += `<div class="ai-flow-toggle-row">
-    <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label" id="us-font-scale-label">${t('preferences.fontScale', { defaultValue: 'Panel text size' })}</div>
-      <div class="ai-flow-toggle-desc">${t('preferences.fontScaleDesc', { defaultValue: 'Sets panel text globally. A panel-specific value replaces this setting.' })}</div>
-    </div>
-  </div>`;
-  html += `<select class="unified-settings-select" id="us-font-scale" aria-labelledby="us-font-scale-label">`;
-  for (const scale of FONT_SCALE_STEPS) {
-    const selected = scale === currentFontScale ? ' selected' : '';
-    html += `<option value="${scale}"${selected}>${fontScaleLabel(scale)}</option>`;
-  }
-  html += `</select>`;
-
-  // Map tile provider
-  const currentProvider = getMapProvider();
-  html += `<div class="ai-flow-toggle-row">
-    <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label" id="us-map-provider-label">${t('preferences.mapProvider')}</div>
-      <div class="ai-flow-toggle-desc">${t('preferences.mapProviderDesc')}</div>
-    </div>
-  </div>`;
-  html += `<select class="unified-settings-select" id="us-map-provider" aria-labelledby="us-map-provider-label">`;
-  for (const opt of MAP_PROVIDER_OPTIONS) {
-    const selected = opt.value === currentProvider ? ' selected' : '';
-    html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
-  }
-  html += `</select>`;
-
-  // Map theme
-  const currentMapTheme = getMapTheme(currentProvider);
-  html += `<div class="ai-flow-toggle-row">
-    <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label" id="us-map-theme-label">${t('preferences.mapTheme')}</div>
-      <div class="ai-flow-toggle-desc">${t('preferences.mapThemeDesc')}</div>
-    </div>
-  </div>`;
-  html += `<select class="unified-settings-select" id="us-map-theme" aria-labelledby="us-map-theme-label">`;
-  for (const opt of MAP_THEME_OPTIONS[currentProvider]) {
-    const selected = opt.value === currentMapTheme ? ' selected' : '';
-    html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
-  }
-  html += `</select>`;
-
-  html += toggleRowHtml('us-map-flash', t('components.insights.mapFlashLabel'), t('components.insights.mapFlashDesc'), settings.mapNewsFlash);
-
-  // 3D Globe Visual Preset
-  const currentPreset = getGlobeVisualPreset();
-  html += `<div class="ai-flow-toggle-row">
-    <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label" id="us-globe-visual-preset-label">${t('preferences.globePreset')}</div>
-      <div class="ai-flow-toggle-desc">${t('preferences.globePresetDesc')}</div>
-    </div>
-  </div>`;
-  html += `<select class="unified-settings-select" id="us-globe-visual-preset" aria-labelledby="us-globe-visual-preset-label">`;
-  for (const opt of GLOBE_VISUAL_PRESET_OPTIONS) {
-    const selected = opt.value === currentPreset ? ' selected' : '';
-    html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
-  }
-  html += `</select>`;
-
-  // Language
-  html += `<div class="ai-flow-section-label" id="us-language-label">${t('header.languageLabel')}</div>`;
-  html += `<select class="unified-settings-lang-select" id="us-language" aria-labelledby="us-language-label">`;
-  for (const lang of LANGUAGES) {
-    const selected = lang.code === currentLang ? ' selected' : '';
-    html += `<option value="${lang.code}"${selected}>${lang.flag} ${escapeHtml(lang.label)}</option>`;
-  }
-  html += `</select>`;
-  if (currentLang === 'vi') {
-    html += `<div class="ai-flow-toggle-desc">${t('components.languageSelector.mapLabelsFallbackVi')}</div>`;
-  }
-
-  html += `</div></details>`;
-
-  // ── Intelligence group ──
-  html += `<details class="wm-pref-group">`;
-  html += `<summary>${t('preferences.intelligence')}</summary>`;
-  html += `<div class="wm-pref-group-content">`;
-
-  if (!host.isDesktopApp) {
-    html += toggleRowHtml('us-cloud', t('components.insights.aiFlowCloudLabel'), t('components.insights.aiFlowCloudDesc'), settings.cloudLlm);
-    html += toggleRowHtml('us-browser', t('components.insights.aiFlowBrowserLabel'), t('components.insights.aiFlowBrowserDesc'), settings.browserModel);
-    html += `<div class="ai-flow-toggle-warn" style="display:${settings.browserModel ? 'block' : 'none'}">${t('components.insights.aiFlowBrowserWarn')}</div>`;
+const syncSection: PreferenceSectionSpec = {
+  html(host) {
+    let html = '';
+    if (showsCloudSync(host)) {
+      const syncState = getSyncState();
+      const lastSync = getLastSyncAt();
+      const lastSyncStr = lastSync
+        ? new Date(lastSync).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
+        : 'Never';
+      html += sectionHeading('Cloud Sync');
+      html += `<div class="wm-sync-status-row">
+        <div class="wm-sync-status-info">
+          <span class="wm-sync-status-dot" id="usSyncDot" style="background:${SYNC_STATE_COLORS[syncState] ?? SYNC_STATE_COLORS.error}"></span>
+          <span class="wm-sync-status-label" id="usSyncLabel">${SYNC_STATE_LABELS[syncState] ?? 'Unknown'}</span>
+          <span class="wm-sync-status-time" id="usSyncTime">Last synced: ${escapeHtml(lastSyncStr)}</span>
+        </div>
+        <button type="button" class="btn btn-secondary wm-sync-now-btn" id="usSyncNowBtn">Sync now</button>
+      </div>`;
+    }
+    html += sectionHeading(t('preferences.dataAndCommunity'));
     html += `
-      <div class="ai-flow-cta">
-        <div class="ai-flow-cta-title">${t('components.insights.aiFlowOllamaCta')}</div>
-        <div class="ai-flow-cta-desc">${t('components.insights.aiFlowOllamaCtaDesc')}</div>
-        <a href="${DESKTOP_RELEASES_URL}" target="_blank" rel="noopener noreferrer" class="ai-flow-cta-link">${t('components.insights.aiFlowDownloadDesktop')}</a>
+      <div class="us-data-mgmt">
+        <button type="button" class="btn btn-secondary" id="usExportBtn">${t('components.settings.exportSettings')}</button>
+        <button type="button" class="btn btn-secondary" id="usImportBtn">${t('components.settings.importSettings')}</button>
+        <input type="file" id="usImportInput" accept=".json" class="us-hidden-input" />
       </div>
+      <div class="us-data-mgmt-toast" id="usDataMgmtToast"></div>
     `;
-  }
+    return html;
+  },
+  onChange: {
+    usImportInput: (target, root) => {
+      const file = target.files?.[0];
+      if (!file) return false;
+      importSettings(file).then((result: ImportResult) => {
+        showToast(root, t('components.settings.importSuccess', { count: String(result.keysImported) }), true);
+      }).catch(() => {
+        showToast(root, t('components.settings.importFailed'), false);
+      });
+      target.value = '';
+      return false;
+    },
+  },
+  attach(root, host, signal) {
+    root.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('#usExportBtn')) {
+        try {
+          exportSettings();
+          showToast(root, t('components.settings.exportSuccess'), true);
+        } catch {
+          showToast(root, t('components.settings.exportFailed'), false);
+        }
+        return;
+      }
+      if (target.closest('#usImportBtn')) {
+        root.querySelector<HTMLInputElement>('#usImportInput')?.click();
+      }
+    }, { signal });
 
-  // Headline Memory requires Browser Local Model (it loads an embeddings
-  // model in the ML worker). Disable the toggle when the parent is off so
-  // the user sees the dependency rather than wondering why their Headline
-  // Memory toggle "did nothing."
-  const headlineDisabled = !host.isDesktopApp && !settings.browserModel;
-  html += toggleRowHtml(
-    'us-headline-memory',
-    t('components.insights.headlineMemoryLabel'),
-    t('components.insights.headlineMemoryDesc'),
-    settings.headlineMemory,
-    headlineDisabled,
-  );
+    if (!showsCloudSync(host)) return;
+    const syncBtn = root.querySelector<HTMLButtonElement>('#usSyncNowBtn');
+    syncBtn?.addEventListener('click', () => {
+      syncBtn.disabled = true;
+      syncBtn.textContent = 'Syncing…';
+      syncNow().finally(() => {
+        syncBtn.disabled = false;
+        syncBtn.textContent = 'Sync now';
+        updateSyncStatusUI(root);
+      });
+    }, { signal });
+    const syncPollId = setInterval(() => updateSyncStatusUI(root), 2000);
+    signal.addEventListener('abort', () => clearInterval(syncPollId));
+  },
+};
 
-  html += `</div></details>`;
+const SECTIONS: { readonly [K in PreferenceSectionId]: PreferenceSectionSpec } = {
+  display: displaySection,
+  map: mapSection,
+  ai: aiSection,
+  video: videoSection,
+  sync: syncSection,
+};
 
-  // ── Analysis Frameworks group ──
-  html += `<details class="wm-pref-group">`;
-  html += `<summary>${t('components.insights.analysisFrameworksLabel')}</summary>`;
-  html += `<div class="wm-pref-group-content">`;
+/** The control ids a section's change handlers own. */
+export function preferenceSectionControlIds(id: PreferenceSectionId): readonly string[] {
+  return Object.keys(SECTIONS[id].onChange);
+}
 
-  // Per-panel active framework display
-  const panelIds: Array<{ id: AnalysisPanelId; label: string }> = [
-    { id: 'insights', label: 'Insights' },
-    { id: 'country-brief', label: 'Country Brief' },
-    { id: 'daily-market-brief', label: 'Market Brief' },
-    { id: 'deduction', label: 'Deduction' },
-  ];
-  html += `<div class="ai-flow-section-label">${t('components.insights.analysisFrameworksActivePerPanel')}</div>`;
-  html += `<div class="fw-panel-status-list" id="fwPanelStatusList">`;
-  for (const { id, label } of panelIds) {
-    const active = getActiveFrameworkForPanel(id);
-    html += `<div class="fw-panel-status-row">
-      <span class="fw-panel-status-name">${escapeHtml(label)}</span>
-      <span class="fw-panel-status-val">${active ? escapeHtml(active.name) : t('components.insights.analysisFrameworksDefaultNeutral')}</span>
-    </div>`;
-  }
-  html += `</div>`;
-
-  // Skill library list
-  html += `<div class="ai-flow-section-label">${t('components.insights.analysisFrameworksSkillLibrary')}</div>`;
-  html += `<div class="fw-library-list" id="fwLibraryList">`;
-  html += renderFrameworkLibraryHtml();
-  html += `</div>`;
-
-  // Import button
-  html += `<div class="fw-import-row">
-    <button type="button" class="btn btn-secondary fw-import-btn" id="fwImportBtn">${t('components.insights.analysisFrameworksImportBtn')}</button>
-  </div>`;
-
-  // Import modal (hidden by default)
-  html += `<div class="fw-import-modal-backdrop" id="fwImportModalBackdrop" style="display:none">
-    <div class="fw-import-modal" role="dialog" aria-modal="true" aria-label="Import framework">
-      <div class="fw-import-modal-header">
-        <span class="fw-import-modal-title">${t('components.insights.analysisFrameworksImportTitle')}</span>
-        <button type="button" class="fw-import-modal-close" id="fwImportModalClose" aria-label="Close">&times;</button>
-      </div>
-      <div class="fw-import-tabs">
-        <button type="button" class="fw-import-tab active" data-fw-tab="agentskills" id="fwTabAgentskills">${t('components.insights.analysisFrameworksFromAgentskills')}</button>
-        <button type="button" class="fw-import-tab" data-fw-tab="json" id="fwTabJson">${t('components.insights.analysisFrameworksPasteJson')}</button>
-      </div>
-      <div class="fw-import-tab-panel active" id="fwTabPanelAgentskills">
-        <div class="fw-import-field">
-          <label class="fw-import-label" for="fwAgentskillsUrl">agentskills.io URL or ID</label>
-          <input type="text" class="fw-import-input" id="fwAgentskillsUrl" placeholder="https://agentskills.io/skills/..." />
-        </div>
-        <button type="button" class="btn btn-secondary" id="fwFetchBtn">Fetch</button>
-        <div class="fw-import-preview" id="fwAgentskillsPreview" style="display:none">
-          <div class="fw-import-preview-name" id="fwPreviewName"></div>
-          <div class="fw-import-preview-desc" id="fwPreviewDesc"></div>
-          <button type="button" class="btn btn-primary fw-save-btn" id="fwAgentskillsSaveBtn">${t('components.insights.analysisFrameworksSaveToLibrary')}</button>
-        </div>
-        <div class="fw-import-error" id="fwAgentskillsError" style="display:none"></div>
-      </div>
-      <div class="fw-import-tab-panel" id="fwTabPanelJson">
-        <div class="fw-import-field">
-          <label class="fw-import-label" for="fwJsonInput">${t('components.insights.analysisFrameworksPasteJson')}</label>
-          <textarea class="fw-import-textarea" id="fwJsonInput" rows="6" placeholder='{ "name": "...", "instructions": "..." }'></textarea>
-        </div>
-        <div class="fw-import-error" id="fwJsonError" style="display:none"></div>
-        <button type="button" class="btn btn-primary fw-save-btn" id="fwJsonSaveBtn">${t('components.insights.analysisFrameworksSaveToLibrary')}</button>
-      </div>
-    </div>
-  </div>`;
-
-  html += `</div></details>`;
-
-  // ── Media group ──
-  html += `<details class="wm-pref-group">`;
-  html += `<summary>${t('preferences.media')}</summary>`;
-  html += `<div class="wm-pref-group-content">`;
-
-  const currentQuality = getStreamQuality();
-  html += `<div class="ai-flow-toggle-row">
-    <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label" id="us-stream-quality-label">${t('components.insights.streamQualityLabel')}</div>
-      <div class="ai-flow-toggle-desc">${t('components.insights.streamQualityDesc')}</div>
-    </div>
-  </div>`;
-  html += `<select class="unified-settings-select" id="us-stream-quality" aria-labelledby="us-stream-quality-label">`;
-  for (const opt of STREAM_QUALITY_OPTIONS) {
-    const selected = opt.value === currentQuality ? ' selected' : '';
-    html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
-  }
-  html += `</select>`;
-
-  html += toggleRowHtml(
-    'us-live-news-autoplay',
-    t('components.insights.liveNewsAutoplayLabel'),
-    t('components.insights.liveNewsAutoplayDesc'),
-    getLiveNewsAutoplay(),
-  );
-
-  html += toggleRowHtml(
-    'us-live-streams-always-on',
-    t('components.insights.streamAlwaysOnLabel'),
-    t('components.insights.streamAlwaysOnDesc'),
-    getLiveStreamsAlwaysOn(),
-  );
-
-  const currentIdleStop = getLiveMediaIdleStop();
-  html += `<div class="ai-flow-toggle-row">
-    <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label" id="us-live-media-idle-stop-label">${t('components.insights.streamIdleStopLabel')}</div>
-      <div class="ai-flow-toggle-desc">${t('components.insights.streamIdleStopDesc')}</div>
-    </div>
-  </div>`;
-  html += `<select class="unified-settings-select" id="us-live-media-idle-stop" aria-labelledby="us-live-media-idle-stop-label">`;
-  for (const option of LIVE_MEDIA_IDLE_STOP_OPTIONS) {
-    const label = option === 'never'
-      ? t('components.insights.streamIdleStopNever')
-      : formatIdleStopMinutes(option, getCurrentLanguageTag());
-    const selected = option === currentIdleStop ? ' selected' : '';
-    html += `<option value="${option}"${selected}>${escapeHtml(label)}</option>`;
-  }
-  html += `</select>`;
-
-  html += `</div></details>`;
-
-  // ── Panels group ──
-  html += `<details class="wm-pref-group">`;
-  html += `<summary>${t('preferences.panels')}</summary>`;
-  html += `<div class="wm-pref-group-content">`;
-  html += toggleRowHtml('us-badge-anim', t('components.insights.badgeAnimLabel'), t('components.insights.badgeAnimDesc'), settings.badgeAnimation);
-  html += `</div></details>`;
-
-  // ── Cloud Sync group (web-only, signed-in, feature flag on) ──
-  if (!host.isDesktopApp && host.isSignedIn && isCloudSyncEnabled()) {
-    const syncState = getSyncState();
-    const lastSync = getLastSyncAt();
-    const lastSyncStr = lastSync
-      ? new Date(lastSync).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
-      : 'Never';
-
-    html += `<details class="wm-pref-group">`;
-    html += `<summary>Cloud Sync</summary>`;
-    html += `<div class="wm-pref-group-content">`;
-    html += `<div class="wm-sync-status-row">
-      <div class="wm-sync-status-info">
-        <span class="wm-sync-status-dot" id="usSyncDot" style="background:${SYNC_STATE_COLORS[syncState] ?? SYNC_STATE_COLORS.error}"></span>
-        <span class="wm-sync-status-label" id="usSyncLabel">${SYNC_STATE_LABELS[syncState] ?? 'Unknown'}</span>
-        <span class="wm-sync-status-time" id="usSyncTime">Last synced: ${escapeHtml(lastSyncStr)}</span>
-      </div>
-      <button type="button" class="btn btn-secondary wm-sync-now-btn" id="usSyncNowBtn">Sync now</button>
-    </div>`;
-    html += `</div></details>`;
-  }
-
-  // ── Data & Community group ──
-  html += `<details class="wm-pref-group">`;
-  html += `<summary>${t('preferences.dataAndCommunity')}</summary>`;
-  html += `<div class="wm-pref-group-content">`;
-  html += `
-    <div class="us-data-mgmt">
-      <button type="button" class="btn btn-secondary" id="usExportBtn">${t('components.settings.exportSettings')}</button>
-      <button type="button" class="btn btn-secondary" id="usImportBtn">${t('components.settings.importSettings')}</button>
-      <input type="file" id="usImportInput" accept=".json" class="us-hidden-input" />
-    </div>
-    <div class="us-data-mgmt-toast" id="usDataMgmtToast"></div>
-  `;
-  html += `</div></details>`;
-
-  // AI status footer (web-only)
-  if (!host.isDesktopApp) {
-    html += `<div class="ai-flow-popup-footer"><span class="ai-flow-status-dot" id="usStatusDot"></span><span class="ai-flow-status-text" id="usStatusText"></span></div>`;
-  }
-
+/**
+ * One settings page of preferences. `attach` wires one delegated change
+ * handler on the page root, so a control only ever reaches its own section's
+ * handlers and the ids they touch.
+ */
+export function renderPreferenceSection(id: PreferenceSectionId, host: PreferencesHost): PreferencesResult {
+  const spec = SECTIONS[id];
   return {
-    html,
-    attach(container: HTMLElement): () => void {
-      // The import modal is authored in the template above, so it declares
-      // after mount. Pasted JSON and a URL input make it blocking.
-      const importModal = container.querySelector<HTMLElement>('.fw-import-modal');
-      if (importModal) declareOverlay(importModal, { reload: 'blocking' });
-      const importBackdrop = container.querySelector<HTMLElement>('#fwImportModalBackdrop');
-      const closeFrameworkImport = (): void => {
-        if (importBackdrop) importBackdrop.style.display = 'none';
-        importFocusTrap?.deactivate();
-      };
-      const importFocusTrap = importModal ? createFocusTrap(importModal, {
-        onEscape: closeFrameworkImport,
-        initialFocus: () => container.querySelector<HTMLElement>('.fw-import-tab-panel.active input, .fw-import-tab-panel.active textarea'),
-      }) : null;
-
+    html: spec.html(host),
+    attach(root: HTMLElement): () => void {
       const ac = new AbortController();
       const { signal } = ac;
-      const installEntry = container.querySelector<HTMLElement>('[data-pwa-install-entry]');
-      if (installEntry) signal.addEventListener('abort', mountInstallEntry(installEntry), { once: true });
-
-      window.addEventListener(FONT_SCALE_CHANGED_EVENT, (event) => {
-        const select = container.querySelector<HTMLSelectElement>('#us-font-scale');
-        const scale = (event as CustomEvent<FontScaleChangedDetail>).detail?.scale;
-        if (select && scale !== undefined) select.value = String(scale);
-      }, { signal });
-
-      container.addEventListener('change', (e) => {
+      root.addEventListener('change', (e) => {
         const target = e.target as HTMLInputElement;
-
-        if (target.id === 'usImportInput') {
-          const file = target.files?.[0];
-          if (!file) return;
-          importSettings(file).then((result: ImportResult) => {
-            showToast(container, t('components.settings.importSuccess', { count: String(result.keysImported) }), true);
-          }).catch(() => {
-            showToast(container, t('components.settings.importFailed'), false);
-          });
-          target.value = '';
-          return;
-        }
-
-        const saveResult = handlePreferenceChange(target, container, host);
+        const key = target.type === 'radio' ? target.name : target.id;
+        const handler = Object.prototype.hasOwnProperty.call(spec.onChange, key) ? spec.onChange[key] : undefined;
+        if (!handler) return;
+        const saveResult = handler(target, root, host);
         if (typeof saveResult === 'boolean') {
           if (saveResult) host.onSettingSaved?.();
           return;
@@ -605,198 +601,177 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           if (saved) host.onSettingSaved?.();
         }).catch(() => undefined);
       }, { signal });
-
-      container.addEventListener('click', (e) => {
-        const target = e.target as HTMLElement;
-        if (target.closest('#usExportBtn')) {
-          try {
-            exportSettings();
-            showToast(container, t('components.settings.exportSuccess'), true);
-          } catch {
-            showToast(container, t('components.settings.exportFailed'), false);
-          }
-          return;
-        }
-        if (target.closest('#usImportBtn')) {
-          container.querySelector<HTMLInputElement>('#usImportInput')?.click();
-          return;
-        }
-
-        // ── Framework settings handlers ──
-
-        if (target.closest('#fwImportBtn')) {
-          if (importBackdrop) {
-            importBackdrop.style.display = 'flex';
-            importFocusTrap?.activate();
-          }
-          return;
-        }
-
-        if (target.closest('#fwImportModalClose') || target.id === 'fwImportModalBackdrop') {
-          closeFrameworkImport();
-          return;
-        }
-
-        const tab = target.closest<HTMLElement>('[data-fw-tab]');
-        if (tab?.dataset.fwTab) {
-          const tabId = tab.dataset.fwTab;
-          container.querySelectorAll('.fw-import-tab').forEach(el => el.classList.toggle('active', (el as HTMLElement).dataset.fwTab === tabId));
-          container.querySelectorAll('.fw-import-tab-panel').forEach(el => {
-            const panelEl = el as HTMLElement;
-            panelEl.classList.toggle('active', panelEl.id === `fwTabPanel${tabId.charAt(0).toUpperCase() + tabId.slice(1)}`);
-          });
-          return;
-        }
-
-        if (target.closest('#fwFetchBtn')) {
-          const urlInput = container.querySelector<HTMLInputElement>('#fwAgentskillsUrl');
-          const errEl = container.querySelector<HTMLElement>('#fwAgentskillsError');
-          const preview = container.querySelector<HTMLElement>('#fwAgentskillsPreview');
-          if (!urlInput) return;
-          hideImportError(errEl);
-          if (preview) preview.style.display = 'none';
-          const urlVal = urlInput.value.trim();
-          let skillHostname = '';
-          try { skillHostname = new URL(urlVal).hostname; } catch { /* rejected below */ }
-          if (!['agentskills.io', 'www.agentskills.io', 'api.agentskills.io'].includes(skillHostname)) {
-            showImportError(errEl, 'Only agentskills.io URLs are supported.');
-            return;
-          }
-          const fetchBtn = container.querySelector<HTMLButtonElement>('#fwFetchBtn');
-          if (fetchBtn) fetchBtn.disabled = true;
-          fetch('/api/skills/fetch-agentskills', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: urlVal }),
-            signal,
-          }).then(async (res) => {
-            if (res.status === 429) throw new Error('rate-limit');
-            if (!res.ok) throw new Error('network');
-            return res.json() as Promise<{ name?: string; description?: string; instructions?: string }>;
-          }).then((data) => {
-            if (!data.instructions) {
-              showImportError(errEl, 'This skill has no instructions — it may use tools only (not supported).');
-              return;
-            }
-            const nameEl = container.querySelector<HTMLElement>('#fwPreviewName');
-            const descEl = container.querySelector<HTMLElement>('#fwPreviewDesc');
-            if (nameEl) nameEl.textContent = data.name ?? 'Unnamed skill';
-            if (descEl) descEl.textContent = data.instructions.slice(0, 200) + (data.instructions.length > 200 ? '…' : '');
-            if (preview) {
-              preview.style.display = 'block';
-              (preview as HTMLElement & { _fwData?: { name: string; description: string; instructions: string } })._fwData = {
-                name: data.name ?? 'Unnamed skill',
-                description: data.description ?? '',
-                instructions: data.instructions,
-              };
-            }
-          }).catch((err: Error) => {
-            if (err.name === 'AbortError') return;
-            if (err.message === 'rate-limit') {
-              showImportError(errEl, 'Too many import requests. Try again in a minute.');
-            } else {
-              showImportError(errEl, 'Could not reach agentskills.io. Check your connection.');
-            }
-          }).finally(() => {
-            if (fetchBtn) fetchBtn.disabled = false;
-          });
-          return;
-        }
-
-        if (target.closest('#fwAgentskillsSaveBtn')) {
-          const preview = container.querySelector<HTMLElement>('#fwAgentskillsPreview');
-          const errEl = container.querySelector<HTMLElement>('#fwAgentskillsError');
-          const fwData = (preview as HTMLElement & { _fwData?: { name: string; description: string; instructions: string } } | null)?._fwData;
-          if (!fwData) return;
-          try {
-            saveImportedFramework({ id: crypto.randomUUID(), name: fwData.name, description: fwData.description, systemPromptAppend: fwData.instructions });
-            refreshFrameworkLibrary(container);
-            closeFrameworkImport();
-          } catch (err) {
-            showImportError(errEl, (err as Error).message);
-          }
-          return;
-        }
-
-        if (target.closest('#fwJsonSaveBtn')) {
-          const textarea = container.querySelector<HTMLTextAreaElement>('#fwJsonInput');
-          const errEl = container.querySelector<HTMLElement>('#fwJsonError');
-          if (!textarea) return;
-          hideImportError(errEl);
-          let parsed: { name?: string; description?: string; instructions?: string };
-          try {
-            parsed = JSON.parse(textarea.value) as typeof parsed;
-          } catch {
-            showImportError(errEl, 'Could not parse skill definition. Paste valid JSON.');
-            return;
-          }
-          if (!parsed.instructions) {
-            showImportError(errEl, 'This skill has no instructions — it may use tools only (not supported).');
-            return;
-          }
-          try {
-            saveImportedFramework({
-              id: crypto.randomUUID(),
-              name: parsed.name ?? 'Imported skill',
-              description: parsed.description ?? '',
-              systemPromptAppend: parsed.instructions,
-            });
-            textarea.value = '';
-            refreshFrameworkLibrary(container);
-            closeFrameworkImport();
-          } catch (err) {
-            showImportError(errEl, (err as Error).message);
-          }
-          return;
-        }
-
-        const deleteBtn = target.closest<HTMLElement>('.fw-delete-btn');
-        if (deleteBtn?.dataset.fwId) {
-          deleteImportedFramework(deleteBtn.dataset.fwId);
-          refreshFrameworkLibrary(container);
-          return;
-        }
-
-        const renameBtn = target.closest<HTMLElement>('.fw-rename-btn');
-        if (renameBtn?.dataset.fwId) {
-          const fwId = renameBtn.dataset.fwId;
-          const current = renameBtn.closest('.fw-library-item')?.querySelector('.fw-library-item-name');
-          const currentName = current?.childNodes[0]?.textContent?.trim() ?? '';
-          const newName = prompt('Rename framework:', currentName);
-          if (newName && newName.trim() && newName.trim() !== currentName) {
-            renameImportedFramework(fwId, newName.trim());
-            refreshFrameworkLibrary(container);
-          }
-          return;
-        }
-      }, { signal });
-
-      if (!host.isDesktopApp) updateAiStatus(container);
-
-      // ── Cloud Sync: wire "Sync now" button + live state updates ──
-      if (!host.isDesktopApp && host.isSignedIn && isCloudSyncEnabled()) {
-        const syncBtn = container.querySelector<HTMLButtonElement>('#usSyncNowBtn');
-        if (syncBtn) {
-          syncBtn.addEventListener('click', () => {
-            syncBtn.disabled = true;
-            syncBtn.textContent = 'Syncing\u2026';
-            syncNow().finally(() => {
-              syncBtn.disabled = false;
-              syncBtn.textContent = 'Sync now';
-              updateSyncStatusUI(container);
-            });
-          }, { signal });
-        }
-        const syncPollId = setInterval(() => updateSyncStatusUI(container), 2000);
-        signal.addEventListener('abort', () => clearInterval(syncPollId));
-      }
-
-      return () => {
-        importFocusTrap?.deactivate({ restoreFocus: false });
-        ac.abort();
-      };
+      spec.attach?.(root, host, signal);
+      return () => ac.abort();
     },
   };
+}
+
+function attachFrameworkHandlers(container: HTMLElement, signal: AbortSignal): void {
+  // The import modal is authored in the template above, so it declares
+  // after mount. Pasted JSON and a URL input make it blocking.
+  const importModal = container.querySelector<HTMLElement>('.fw-import-modal');
+  if (importModal) declareOverlay(importModal, { reload: 'blocking' });
+  const importBackdrop = container.querySelector<HTMLElement>('#fwImportModalBackdrop');
+  const closeFrameworkImport = (): void => {
+    if (importBackdrop) importBackdrop.style.display = 'none';
+    importFocusTrap?.deactivate();
+  };
+  const importFocusTrap = importModal ? createFocusTrap(importModal, {
+    onEscape: closeFrameworkImport,
+    initialFocus: () => container.querySelector<HTMLElement>('.fw-import-tab-panel.active input, .fw-import-tab-panel.active textarea'),
+  }) : null;
+  signal.addEventListener('abort', () => importFocusTrap?.deactivate({ restoreFocus: false }), { once: true });
+
+  container.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+
+    if (target.closest('#fwImportBtn')) {
+      if (importBackdrop) {
+        importBackdrop.style.display = 'flex';
+        importFocusTrap?.activate();
+      }
+      return;
+    }
+
+    if (target.closest('#fwImportModalClose') || target.id === 'fwImportModalBackdrop') {
+      closeFrameworkImport();
+      return;
+    }
+
+    const tab = target.closest<HTMLElement>('[data-fw-tab]');
+    if (tab?.dataset.fwTab) {
+      const tabId = tab.dataset.fwTab;
+      container.querySelectorAll('.fw-import-tab').forEach(el => el.classList.toggle('active', (el as HTMLElement).dataset.fwTab === tabId));
+      container.querySelectorAll('.fw-import-tab-panel').forEach(el => {
+        const panelEl = el as HTMLElement;
+        panelEl.classList.toggle('active', panelEl.id === `fwTabPanel${tabId.charAt(0).toUpperCase() + tabId.slice(1)}`);
+      });
+      return;
+    }
+
+    if (target.closest('#fwFetchBtn')) {
+      const urlInput = container.querySelector<HTMLInputElement>('#fwAgentskillsUrl');
+      const errEl = container.querySelector<HTMLElement>('#fwAgentskillsError');
+      const preview = container.querySelector<HTMLElement>('#fwAgentskillsPreview');
+      if (!urlInput) return;
+      hideImportError(errEl);
+      if (preview) preview.style.display = 'none';
+      const urlVal = urlInput.value.trim();
+      let skillHostname = '';
+      try { skillHostname = new URL(urlVal).hostname; } catch { /* rejected below */ }
+      if (!['agentskills.io', 'www.agentskills.io', 'api.agentskills.io'].includes(skillHostname)) {
+        showImportError(errEl, 'Only agentskills.io URLs are supported.');
+        return;
+      }
+      const fetchBtn = container.querySelector<HTMLButtonElement>('#fwFetchBtn');
+      if (fetchBtn) fetchBtn.disabled = true;
+      fetch('/api/skills/fetch-agentskills', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: urlVal }),
+        signal,
+      }).then(async (res) => {
+        if (res.status === 429) throw new Error('rate-limit');
+        if (!res.ok) throw new Error('network');
+        return res.json() as Promise<{ name?: string; description?: string; instructions?: string }>;
+      }).then((data) => {
+        if (!data.instructions) {
+          showImportError(errEl, 'This skill has no instructions — it may use tools only (not supported).');
+          return;
+        }
+        const nameEl = container.querySelector<HTMLElement>('#fwPreviewName');
+        const descEl = container.querySelector<HTMLElement>('#fwPreviewDesc');
+        if (nameEl) nameEl.textContent = data.name ?? 'Unnamed skill';
+        if (descEl) descEl.textContent = data.instructions.slice(0, 200) + (data.instructions.length > 200 ? '…' : '');
+        if (preview) {
+          preview.style.display = 'block';
+          (preview as HTMLElement & { _fwData?: { name: string; description: string; instructions: string } })._fwData = {
+            name: data.name ?? 'Unnamed skill',
+            description: data.description ?? '',
+            instructions: data.instructions,
+          };
+        }
+      }).catch((err: Error) => {
+        if (err.name === 'AbortError') return;
+        if (err.message === 'rate-limit') {
+          showImportError(errEl, 'Too many import requests. Try again in a minute.');
+        } else {
+          showImportError(errEl, 'Could not reach agentskills.io. Check your connection.');
+        }
+      }).finally(() => {
+        if (fetchBtn) fetchBtn.disabled = false;
+      });
+      return;
+    }
+
+    if (target.closest('#fwAgentskillsSaveBtn')) {
+      const preview = container.querySelector<HTMLElement>('#fwAgentskillsPreview');
+      const errEl = container.querySelector<HTMLElement>('#fwAgentskillsError');
+      const fwData = (preview as HTMLElement & { _fwData?: { name: string; description: string; instructions: string } } | null)?._fwData;
+      if (!fwData) return;
+      try {
+        saveImportedFramework({ id: crypto.randomUUID(), name: fwData.name, description: fwData.description, systemPromptAppend: fwData.instructions });
+        refreshFrameworkLibrary(container);
+        closeFrameworkImport();
+      } catch (err) {
+        showImportError(errEl, (err as Error).message);
+      }
+      return;
+    }
+
+    if (target.closest('#fwJsonSaveBtn')) {
+      const textarea = container.querySelector<HTMLTextAreaElement>('#fwJsonInput');
+      const errEl = container.querySelector<HTMLElement>('#fwJsonError');
+      if (!textarea) return;
+      hideImportError(errEl);
+      let parsed: { name?: string; description?: string; instructions?: string };
+      try {
+        parsed = JSON.parse(textarea.value) as typeof parsed;
+      } catch {
+        showImportError(errEl, 'Could not parse skill definition. Paste valid JSON.');
+        return;
+      }
+      if (!parsed.instructions) {
+        showImportError(errEl, 'This skill has no instructions — it may use tools only (not supported).');
+        return;
+      }
+      try {
+        saveImportedFramework({
+          id: crypto.randomUUID(),
+          name: parsed.name ?? 'Imported skill',
+          description: parsed.description ?? '',
+          systemPromptAppend: parsed.instructions,
+        });
+        textarea.value = '';
+        refreshFrameworkLibrary(container);
+        closeFrameworkImport();
+      } catch (err) {
+        showImportError(errEl, (err as Error).message);
+      }
+      return;
+    }
+
+    const deleteBtn = target.closest<HTMLElement>('.fw-delete-btn');
+    if (deleteBtn?.dataset.fwId) {
+      deleteImportedFramework(deleteBtn.dataset.fwId);
+      refreshFrameworkLibrary(container);
+      return;
+    }
+
+    const renameBtn = target.closest<HTMLElement>('.fw-rename-btn');
+    if (renameBtn?.dataset.fwId) {
+      const fwId = renameBtn.dataset.fwId;
+      const current = renameBtn.closest('.fw-library-item')?.querySelector('.fw-library-item-name');
+      const currentName = current?.childNodes[0]?.textContent?.trim() ?? '';
+      const newName = prompt('Rename framework:', currentName);
+      if (newName && newName.trim() && newName.trim() !== currentName) {
+        renameImportedFramework(fwId, newName.trim());
+        refreshFrameworkLibrary(container);
+      }
+      return;
+    }
+  }, { signal });
 }
 
 function renderFrameworkLibraryHtml(): string {

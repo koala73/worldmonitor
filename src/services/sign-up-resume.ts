@@ -10,8 +10,9 @@
  *
  * Two triggers, both explicit. `hydration` is the first Clerk emission after
  * load; it resumes only a live code, because a page load must never send an
- * unsolicited email to someone who abandoned. `user` is a Create-account click;
- * an expired code is resent first so the card's "code sent" subtitle is true.
+ * unsolicited email to someone who abandoned. `user` is a Sign In / create-
+ * account click; an expired code is resent first so the card's "code sent"
+ * subtitle is true. A Sign In click resumes only a live, undismissed code.
  */
 
 import type { Clerk } from '@clerk/clerk-js';
@@ -160,12 +161,20 @@ export interface SignUpResumePorts {
 export interface SignUpResumeController {
   onClerkEmission: (first: boolean) => void;
   /**
-   * Called by `openSignUp()`. True means the resume surface took the click.
-   * `fallback` opens Clerk's own modal when a resend fails after the click
-   * was taken.
+   * Called by `openSignIn()` / `openSignUp()`. True means the resume surface
+   * took the click. `fallback` opens Clerk's own modal when a resend fails
+   * after the click was taken.
    */
-  resumeOnUserIntent: (fallback: () => void) => boolean;
+  resumeOnUserIntent: (fallback: () => void, surface?: ResumeSurfaceIntent) => boolean;
 }
+
+/**
+ * Which header action was clicked. `sign-up` (default) keeps the full resume.
+ * `sign-in` is the only header account action since #10464, so it must never
+ * trap a returning user: it resumes only a live, undismissed code and never
+ * resends an email.
+ */
+export type ResumeSurfaceIntent = 'sign-in' | 'sign-up';
 
 export function createSignUpResumeController(ports: SignUpResumePorts): SignUpResumeController {
   const decide = (trigger: ResumeTrigger): ResumeDecision => {
@@ -203,9 +212,10 @@ export function createSignUpResumeController(ports: SignUpResumePorts): SignUpRe
       const decision = decide('hydration');
       if (decision.kind === 'resume' && decision.code === 'live') open(decision, 'hydration', () => {});
     },
-    resumeOnUserIntent(fallback) {
+    resumeOnUserIntent(fallback, intent = 'sign-up') {
       const decision = decide('user');
       if (decision.kind !== 'resume') return false;
+      if (intent === 'sign-in' && (decision.code !== 'live' || ports.markers.dismissed(decision.attemptId))) return false;
       open(decision, 'user', fallback);
       return true;
     },

@@ -151,4 +151,11 @@ describe('reported landing-page SEO metadata', () => {
     const fullDescription = indexHtml.match(/<meta name="description" content="([^"]+)"/)?.[1];
     assert.equal(fullDescription, VARIANT_META.full.description, 'index.html must use the full variant description');
   });
+
+  it('keeps every variant dashboard title within 60 characters and free of em dashes', () => {
+    for (const [variant, meta] of Object.entries(VARIANT_META)) {
+      assertTitle(`${variant} variant`, meta.title);
+      assert.equal(meta.title.includes('\u2014'), false, `${variant} title includes an em dash`);
+    }
+  });
 });

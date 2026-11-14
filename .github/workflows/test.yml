@@ -276,6 +276,8 @@ jobs:
             /^src-tauri\// { count++; next }
             /^package\.json$/ { count++; next }
             /^scripts\/repack-linux-appimage\.sh$/ { count++; next }
+            /^scripts\/prefetch-appimage-tools\.sh$/ { count++; next }
+            /^scripts\/fetch-with-retry\.sh$/ { count++; next }
             /^scripts\/check-desktop-build-env\.mjs$/ { count++; next }
             /^scripts\/sync-desktop-version\.mjs$/ { count++; next }
             /^scripts\/check-rust-security-floors\.mjs$/ { count++; next }
@@ -882,8 +884,11 @@ jobs:
             echo '::error::Desktop versions out of sync — run `npm run version:sync` and commit the result.'
             exit 1
           }
-      - name: Linux AppImage post-processing script parses
-        run: bash -n scripts/repack-linux-appimage.sh
+      - name: Linux AppImage build scripts parse
+        run: |
+          bash -n scripts/repack-linux-appimage.sh
+          bash -n scripts/prefetch-appimage-tools.sh
+          bash -n scripts/fetch-with-retry.sh
       - name: Desktop build env parity (#5905)
         # A VITE_ key missing from the Tauri build steps silently disables the
         # capability in every shipped build (sign-in, Pro, Cyber Threats were
@@ -1026,8 +1031,9 @@ jobs:
         # lists in package.json (test:e2e:ci-smoke:1..4) are balanced by
         # measured test-seconds (history in docs/solutions/performance-issues/
         # ci-runners-are-cpu-bound-shard-before-parallel-steps.md). Re-balance
-        # them from the per-test durations in the list reporter output when a
-        # spec grows.
+        # them with `node scripts/balance-smoke-shards.mjs --write`, which packs
+        # the specs from per-test durations in recent main runs, when a spec is
+        # added or grows.
         shard: [1, 2, 3, 4]
     timeout-minutes: 20
     needs: changes
@@ -1200,10 +1206,14 @@ jobs:
     # 40097331565), so the gates moved off its path instead. Both parts keep the
     # full setup: each builds /pro (the legacy WebMCP tests load
     # /pro/welcome.html) and a retry records video with Playwright's ffmpeg.
+    #
+    # The plugin parts run the MCP Apps view specs (news and country views) on
+    # the built views in dist/plugin. No other job ran them, so a change could
+    # break a view spec and still merge green (#10494 broke 31 metering tests).
     strategy:
       fail-fast: false
       matrix:
-        part: [webmcp, pro-gates]
+        part: [webmcp, pro-gates, plugin-news, plugin-country]
     runs-on: ubuntu-latest
     # No secrets are injected here. The smoke allows provider-level
     # unavailable/stale states and gates app-level boot, variant, 401,
@@ -1310,6 +1320,8 @@ jobs:
             # public/pro/ is built output since #6898. Keep this explicit and
             # immediately before the focused specs so the browser checks cannot
             # run against missing or stale bytes from another build.
+            # The plugin parts never load /pro.
+            if: ${{ !startsWith(matrix.part, 'plugin-') }}
             run: npm run build:pro
       - name: Run fail-closed prehydration browser checks
         id: prehydration
@@ -1366,6 +1378,21 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-webmcp-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # Each plugin script builds dist/plugin first: the specs load the built
+      # views, never the source.
+      - name: Run MCP Apps view specs
+        id: plugin
+        if: startsWith(matrix.part, 'plugin-')
+        run: npm run test:e2e:${{ matrix.part }}
+      - name: Upload MCP Apps view Playwright artifacts
+        if: ${{ !cancelled() && steps.plugin.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-${{ matrix.part }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14

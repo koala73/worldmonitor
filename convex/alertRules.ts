@@ -16,6 +16,7 @@ import {
   isAlertRuleVariant,
   listAlertRuleShapeViolations,
   type AlertRuleShapeCode,
+  ORBITAL_SITE_ALERT_EVENT_TYPES,
 } from "../shared/alert-rule-shape";
 import { mergeEntitlementFeatures } from "./lib/entitlements";
 import { assertAlertCapabilities, freeAccountCountryUnionCount, loadAlertCapabilities } from "./lib/alertCapabilities";
@@ -36,7 +37,7 @@ type Sensitivity = "all" | "high" | "critical";
  * limit and stop delivery for every tenant. Every writer below calls this
  * before touching the table.
  */
-function assertRuleShape(args: { variant: string; eventTypes?: string[]; channels?: string[] }): void {
+function assertRuleShape(args: { variant: string; eventTypes?: string[]; channels?: string[]; orbitalSites?: string[] }): void {
   const violation = getAlertRuleShapeViolation(args);
   if (violation) {
     throw new ConvexError({ code: violation.code, message: violation.message });
@@ -272,6 +273,47 @@ function normalizeChokepoints(input: string[]): string[] {
   return cleaned;
 }
 
+/**
+ * Binary Pro gate, kept ONLY for the orbital-site rung below. Every other
+ * write path validates against the caller's alert-ladder capabilities
+ * (#4273, lib/alertCapabilities.ts); orbital watched-site alerts are not on
+ * the ladder — they are Pro-only outright, whatever the free ladder admits.
+ */
+async function assertProEntitlement(
+  ctx: MutationCtx,
+  userId: string,
+): Promise<void> {
+  const entitlement = await ctx.db
+    .query("entitlements")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .first();
+  const tier =
+    entitlement && entitlement.validUntil >= Date.now()
+      ? entitlement.features.tier
+      : 0;
+  if (tier < 1) {
+    throw new ConvexError({
+      code: "PRO_REQUIRED",
+      message:
+        "Notifications are a PRO feature. Upgrade to enable real-time and digest alerts.",
+    });
+  }
+}
+
+/**
+ * Watched-site alerts are Pro-only on every writer, including the operator
+ * `*ForUser` paths left ungated above: asking for the event type or listing a
+ * site is what creates the rule, and clearing both stays open for cleanup.
+ */
+async function assertOrbitalAlertEntitlement(
+  ctx: MutationCtx,
+  userId: string,
+  args: { eventTypes?: string[]; orbitalSites?: string[] },
+): Promise<void> {
+  const wantsEvent = args.eventTypes?.some((type) => (ORBITAL_SITE_ALERT_EVENT_TYPES as readonly string[]).includes(type)) ?? false;
+  if (wantsEvent || (args.orbitalSites?.length ?? 0) > 0) await assertProEntitlement(ctx, userId);
+}
+
 export const getAlertRulesByUserId = internalQuery({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
@@ -294,6 +336,7 @@ export const setAlertRulesForUser = internalMutation({
     countries: v.optional(v.array(v.string())),
     tickers: v.optional(v.array(v.string())),
     chokepoints: v.optional(v.array(v.string())),
+    orbitalSites: v.optional(v.array(v.string())),
     // True on the user-facing relay path (convex/http.ts): enforce the
     // caller's alert-ladder capabilities (#4273). Omitted on trusted operator
     // paths (admin migration scripts, cleanup jobs), which stay ungated —
@@ -303,6 +346,7 @@ export const setAlertRulesForUser = internalMutation({
   handler: async (ctx, args) => {
     await assertAccountWritable(ctx, args.userId);
     assertRuleShape(args);
+    await assertOrbitalAlertEntitlement(ctx, args.userId, args);
     const { userId, ...rest } = args;
     const eventTypes = dedupeStrings(rest.eventTypes);
     const channels = dedupeStrings(rest.channels);
@@ -366,6 +410,7 @@ export const setAlertRulesForUser = internalMutation({
       if (normalizedCountries !== undefined) patch.countries = normalizedCountries;
       if (normalizedTickers !== undefined) patch.tickers = normalizedTickers;
       if (normalizedChokepoints !== undefined) patch.chokepoints = normalizedChokepoints;
+      if (rest.orbitalSites !== undefined) patch.orbitalSites = dedupeStrings(rest.orbitalSites);
       await ctx.db.patch(existing._id, patch);
     } else {
       await assertRuleSlotAvailable(ctx, userId);
@@ -380,6 +425,7 @@ export const setAlertRulesForUser = internalMutation({
         countries: normalizedCountries,
         tickers: normalizedTickers,
         chokepoints: normalizedChokepoints,
+        orbitalSites: rest.orbitalSites !== undefined ? dedupeStrings(rest.orbitalSites) : undefined,
         updatedAt: now,
       });
     }
@@ -579,10 +625,15 @@ export const setNotificationConfigForUser = internalMutation({
     countries: v.optional(v.array(v.string())),
     tickers: v.optional(v.array(v.string())),
     chokepoints: v.optional(v.array(v.string())),
+    orbitalSites: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     await assertAccountWritable(ctx, args.userId);
     assertRuleShape(args);
+    // Orbital watched-site alerts are Pro-only outright (not an alert-ladder
+    // rung): this path admits free callers below, so it needs the same gate
+    // the *ForUser paths carry.
+    await assertOrbitalAlertEntitlement(ctx, args.userId, args);
     const { userId, variant } = args;
     const eventTypes = args.eventTypes !== undefined ? dedupeStrings(args.eventTypes) : undefined;
     const channels = args.channels !== undefined ? dedupeStrings(args.channels) : undefined;
@@ -671,6 +722,7 @@ export const setNotificationConfigForUser = internalMutation({
       if (normalizedCountries !== undefined) patch.countries = normalizedCountries;
       if (normalizedTickers !== undefined) patch.tickers = normalizedTickers;
       if (normalizedChokepoints !== undefined) patch.chokepoints = normalizedChokepoints;
+      if (args.orbitalSites !== undefined) patch.orbitalSites = dedupeStrings(args.orbitalSites);
       await ctx.db.patch(existing._id, patch);
     } else {
       await assertRuleSlotAvailable(ctx, userId);
@@ -688,6 +740,7 @@ export const setNotificationConfigForUser = internalMutation({
         countries: normalizedCountries,
         tickers: normalizedTickers,
         chokepoints: normalizedChokepoints,
+        orbitalSites: args.orbitalSites !== undefined ? dedupeStrings(args.orbitalSites) : undefined,
         updatedAt: now,
       });
     }

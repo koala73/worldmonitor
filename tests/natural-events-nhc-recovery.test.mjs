@@ -229,6 +229,62 @@ test('response-body transport failures retry only the failed required layer', as
   assert.deepEqual(payload._nhcSnapshot.events, []);
 });
 
+// NOAA's ArcGIS service answers some queries with HTTP 200 and an error body.
+// It hits a different layer on each pass (seen live 2026-11-08), so with 15
+// required layers nearly every run met one. Sentry WORLDMONITOR-1AG.
+const arcgisErrorBody = { error: { code: 400, message: 'Unable to complete operation.', details: [] } };
+
+test('an ArcGIS error body under HTTP 200 retries only that layer', async () => {
+  const calls = new Map();
+  const payload = await runNhc({
+    previous: null,
+    nhc: async (_input, id) => {
+      const attempt = (calls.get(id) || 0) + 1;
+      calls.set(id, attempt);
+      if (id === 32 && attempt === 1) return Response.json(arcgisErrorBody);
+      return Response.json(collection());
+    },
+  });
+
+  assert.equal(calls.get(32), 2);
+  assert.equal(calls.get(6), 1);
+  assert.equal(payload._nhcSnapshot.errorCode, null);
+  assert.equal(payload._nhcSnapshot.consecutiveFailures, 0);
+});
+
+test('a persistent ArcGIS error body is a request failure, not invalid data', async () => {
+  const calls = new Map();
+  const payload = await runNhc({
+    now: NOW + MIN,
+    nhc: async (_input, id) => {
+      calls.set(id, (calls.get(id) || 0) + 1);
+      if (id === 32) return Response.json(arcgisErrorBody);
+      return Response.json(collection(id === 6 ? [currentStormPoint] : []));
+    },
+  });
+
+  assert.equal(calls.get(32), 2);
+  assert.equal(payload._nhcSnapshot.errorCode, 'NHC_POINT_REQUEST_FAILED');
+  assert.deepEqual(payload.events.filter(event => event.sourceName === 'NHC'), [retainedStorm]);
+});
+
+test('a non-transient ArcGIS error body is invalid data and is not retried', async () => {
+  const calls = new Map();
+  const payload = await runNhc({
+    now: NOW + MIN,
+    nhc: async (_input, id) => {
+      calls.set(id, (calls.get(id) || 0) + 1);
+      if (id === 32) {
+        return Response.json({ error: { code: 400, message: 'Invalid or missing input parameters.', details: [] } });
+      }
+      return Response.json(collection(id === 6 ? [currentStormPoint] : []));
+    },
+  });
+
+  assert.equal(calls.get(32), 1);
+  assert.equal(payload._nhcSnapshot.errorCode, 'NHC_POINT_RESPONSE_INVALID');
+});
+
 test('malformed required GeoJSON is actionable and cannot earn first-failure pending', async () => {
   let malformedCalls = 0;
   const payload = await runNhc({

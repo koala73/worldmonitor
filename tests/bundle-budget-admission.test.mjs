@@ -258,7 +258,7 @@ test('#6806: static-ref light fits together and heavy ordering stays starvation-
 
   assert.deepEqual(
     heavy.sections.map((s) => s.label).sort(),
-    ['Arms-Suppliers', 'Military-Bases', 'Mineral-Production', 'Supply-Vulnerability'],
+    ['Arms-Suppliers', 'CII-Structural-Prior', 'Military-Bases', 'Mineral-Production', 'Supply-Vulnerability'],
   );
 
   // THE property that makes the light half unstarvable: every member fits
@@ -306,6 +306,8 @@ test('#6806: static-ref light fits together and heavy ordering stays starvation-
   const heavySrc = readFileSync(join(SCRIPTS_DIR, 'seed-bundle-static-ref-heavy.mjs'), 'utf-8');
   const military = heavy.sections.find((section) => section.label === 'Military-Bases');
   const daily = heavy.sections.find((section) => section.label === 'Supply-Vulnerability');
+  const prior = heavy.sections.find((section) => section.label === 'CII-Structural-Prior');
+  assert.ok(prior);
   assert.ok(
     military.timeoutMs + daily.timeoutMs + (2 * KILL_GRACE_MS) > heavy.maxBundleMs,
     'the ordering proof must stay necessary: these two worst cases cannot share one tick',
@@ -317,7 +319,7 @@ test('#6806: static-ref light fits together and heavy ordering stays starvation-
   );
 
   const worstCaseAdmissions = (orderedSections, dueLabels) => {
-    let reservedMs = 0;
+    let reservedMs = ADMISSION_HEADROOM_MS;
     const admitted = [];
     for (const section of orderedSections) {
       if (!dueLabels.has(section.label)) continue;
@@ -328,12 +330,12 @@ test('#6806: static-ref light fits together and heavy ordering stays starvation-
     }
     return admitted;
   };
-  const dueLabels = new Set(['Military-Bases', 'Supply-Vulnerability']);
+  const dueLabels = new Set(['Military-Bases', 'Supply-Vulnerability', 'CII-Structural-Prior']);
   for (let firstTurn = 0; firstTurn < 6; firstTurn += 1) {
     const admissions = [firstTurn, firstTurn + 1].map((turn) => worstCaseAdmissions(
       orderStaticRefHeavySections(
-        heavy.sections.filter((section) => section.label !== 'Supply-Vulnerability'),
-        [daily],
+        heavy.sections.filter((section) => ![daily, prior].includes(section)),
+        [daily, prior],
         turn,
       ),
       dueLabels,
@@ -345,6 +347,10 @@ test('#6806: static-ref light fits together and heavy ordering stays starvation-
     assert.ok(
       admissions.some((labels) => labels.includes('Military-Bases')),
       `Military-Bases must retain a worst-case slot within two claimed turns from ${firstTurn}`,
+    );
+    assert.ok(
+      admissions.some((labels) => labels.includes('CII-Structural-Prior')),
+      `the pinned prior must be admitted within two claimed turns from ${firstTurn}`,
     );
   }
 });

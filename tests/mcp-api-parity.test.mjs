@@ -85,14 +85,17 @@ const HTTP_METHODS = new Set([
 
 const EXCLUDED_FROM_MCP_PARITY = new Map([
   ['GET /api/economic/v1/get-food-prices', 'deferred-to-future-tool: source-specific food prices and dated food-security context are served to the dashboard (#9841)'],
+  ['GET /api/safety/v1/get-toronto-safety', 'deferred-to-future-tool: city-level Toronto Police data serves the Toronto Safety panel; the MCP tools were removed in 1.54.0 and a country-level safety tool replaces them once more countries are covered'],
   ['GET /api/maritime/v1/list-ukmto-incidents', 'deferred-to-future-tool: UKMTO publisher reports await activation and source-aware MCP composition (#9831)'],
 
-  // === mutating (20) ===
+  // === mutating (21) ===
   ["GET /api/aviation/v1/list-airport-delays",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["GET /api/infrastructure/v1/list-temporal-anomalies",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["GET /api/infrastructure/v1/reverse-geocode",
+    "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
+  ["GET /api/infrastructure/v1/search-place",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["GET /api/resilience/v1/get-resilience-ranking",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
@@ -134,7 +137,7 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   // 24h per-title cache, so per-call LLM cost is bounded. Metering differs by
   // credential class — OAuth/dashboard-key callers consume the 50/UTC-day MCP
   // reservation; env-key (`wm_`) callers are bounded by the 60/min/key limiter
-  // only (see docs/mcp-tools-reference.mdx). Do not restate this as "the daily
+  // only (see docs/mcp-tools/signals.mdx). Do not restate this as "the daily
   // quota bounds it" without qualifying the env-key path.
 
   // === fetch-on-miss (29) ===
@@ -233,7 +236,9 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["GET /api/scenario/v1/list-scenario-templates",
     "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
 
-  // === deferred-to-future-tool (55) ===
+  // === deferred-to-future-tool (56) ===
+  ["GET /api/safety/v1/get-toronto-safety",
+    "deferred-to-future-tool: pure-read of the seeded Toronto Police Service extracts. The two Toronto-only tools left tools/list (both names stay callable as retired tools); a public-safety tool taking a jurisdiction receives them once a second city or province is seeded."],
   ["GET /api/aviation/v1/list-aircraft-emergencies",
     "deferred-to-future-tool: reported transponder observations belong in a future aircraft-signals tool with explicit reception and freshness limits. This change adds only the dashboard layer and details."],
   ["GET /api/news/v1/list-country-headlines",
@@ -271,6 +276,12 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   // category is fetch-on-miss.
   ["GET /api/aviation/v1/get-airport-ops-summary",
     "deferred-to-future-tool: pure-read but no MCP tool exposes aviation:delays:intl:v3 yet — bundle into a future expanded-domain tool"],
+  ["GET /api/orbital/v1/get-point-passes",
+    "deferred-to-future-tool: get_point_satellite_passes stays unlisted while Orbital Watch is dark (#10721); restore it to the tool's _apiPaths by setting ORBITAL_MCP_TOOLS_PUBLISHED"],
+  ["GET /api/orbital/v1/get-country-imagery-evidence",
+    "deferred-to-future-tool: get_country_imagery_evidence stays unlisted while Orbital Watch is dark (#10721); restore it to the tool's _apiPaths by setting ORBITAL_MCP_TOOLS_PUBLISHED"],
+  ["GET /api/orbital/v1/list-imaging-satellites",
+    "deferred-to-future-tool: pure-read raw orbit elements; the subscription point-lookup tool computes passes from orbital:catalog:v1 instead of exposing the catalog"],
   ["GET /api/cyber/v1/list-cyber-threats",
     "deferred-to-future-tool: pure-read but no MCP tool exposes cyber:threats:v2 yet — bundle into a future expanded-domain tool"],
   ["GET /api/economic/v1/get-bis-credit",

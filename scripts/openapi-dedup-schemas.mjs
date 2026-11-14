@@ -172,7 +172,7 @@ export function dedupeSharedSchemaSubtrees(spec) {
     .filter((group) => group.length >= 2)
     .map((group) => {
       const ordered = [...group].sort(
-        (a, b) => a.pointer.length - b.pointer.length || a.pointer.localeCompare(b.pointer),
+        (a, b) => a.pointer.length - b.pointer.length || a.pointer.localeCompare(b.pointer, 'en-US'),
       );
       const target = ordered[0];
       const refBytes = Buffer.byteLength(JSON.stringify({ $ref: target.pointer }), 'utf8');

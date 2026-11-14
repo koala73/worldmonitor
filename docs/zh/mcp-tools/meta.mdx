@@ -1,0 +1,100 @@
+---
+title: "MCP 工具：元工具与应用"
+sidebarTitle: "元工具与应用"
+description: "World Monitor MCP 工具参考：来源、额度、升级、工具发现、问题上报与 MCP 应用视图。逐一列出每个工具的输入参数与类型、数据新鲜度窗口、对应的后端 REST API 端点，以及可直接复制使用的示例调用负载，帮助开发者构建情报智能体、工作流自动化与自定义 MCP 客户端集成。"
+---
+
+本页属于 [MCP 工具参考](/zh/mcp-tools-reference)，该索引列出全部工具。连接、认证、套餐与错误见 [MCP Server 概览](/zh/mcp-overview)。
+
+以下工具暂仅提供英文参考：[`get_sources`](/mcp-tools/meta#get_sources)、[`open_news_dashboard`](/mcp-tools/meta#open_news_dashboard)、[`analyze_news_headlines`](/mcp-tools/meta#analyze_news_headlines)。
+
+`curl` 示例假设已执行 `export WM_KEY="wm_…"`；使用 OAuth 时，请将 `-H "X-WorldMonitor-Key: $WM_KEY"` 替换为 `-H "Authorization: Bearer $TOKEN"`。
+
+### `get_mcp_allowance`
+
+读取当前已验证账户的现有额度快照。客户端不支持 `worldmonitor://account/mcp-allowance` 资源读取时，请调用此工具。
+
+**工具专用参数：** 无。只接受通用可选的 `jmespath` 投影，在分配前拒绝账户选择器、`summary` 及 `panel_request`。
+
+**响应：** `{ access, used, limit, remaining, resetsAt, requestWindows, sharedWithRestApi }`。免费账户还获得请求窗口的使用量、上限、剩余数、空闲间隔、活动状态和到期时间。无限额度的 `limit` 与 `remaining` 为 `null`。计数器不可读取或格式错误时返回错误，而不是成功的零使用量快照。文本和 `structuredContent` 沿用普通工具的投影协议。
+
+- **访问：** `free-account`。要求已验证、绑定用户的 OAuth 或 `wm_…` 凭据，并保留现有权益检查。匿名和运营方凭据无法读取账户快照。
+- **配额：** 不预留每日额度、免费账户调用或窗口、面板分配或内部读取次数。每日额度耗尽后仍可读取；两种凭据共享账户每分钟 192 次的协议限流。
+- **API 共享：** `sharedWithRestApi` 表示计数器是否包含 REST 请求。影子模式的 API 计数器仍使用已售 API 上限。账户总数不能识别具体调用者。
+- **API 端点：** 无。工具与账户资源共用一个强制执行计数器读取器。响应为 `no-store`。
+
+### `start_upgrade`
+
+为已登录账户创建绑定该账户的付费套餐结账链接。当拒绝响应的 `error.data` 带有 `checkoutTool: "start_upgrade"` 时调用，并传入该拒绝中的 `recommendedPlan`。只有免费账户会收到 `checkoutTool`；付费调用方的拒绝只带 `recommendedPlan`，因为同一套餐系列内的升级通过账单门户完成。用户在浏览器中打开链接完成付款；此工具从不扣款，智能体也不接触付款信息。
+
+不向 ChatGPT 提供：其应用规范不允许发起结账，因此 ChatGPT 的请求在 `tools/list` 和 `describe_tool` 中看不到此工具，调用会返回 `Unknown tool`。Codex 和其他客户端仍可使用。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `plan` | string | 是 | 取值之一：`pro_monthly`、`pro_annual`、`pro_business_monthly`、`pro_business_annual`、`api_starter`、`api_starter_annual`、`api_business`、`api_business_annual`。其他值返回 `-32602`，并在 `error.data.plans` 中列出可用值。 |
+
+**响应：** `{ checkoutUrl, plan, nextStep }`。每次调用都会创建新的结账会话。此工具不接受 `jmespath` 投影（返回 `-32602`）：投影运行前结账会话已经创建，投影可能丢掉唯一一份 `checkoutUrl`。
+
+- **访问：** `free-account`。要求绑定用户的 OAuth 或 `wm_…` 凭据。匿名调用返回常规的 `-32001` `no-account` 拒绝；运营方密钥返回 `-32002`。
+- **配额：** 不消耗每日额度，也不消耗免费账户调用次数，因此额度用尽后仍可调用。每分钟限流照常适用。
+- **结账路径：** 与定价页相同，因此账户结账限流以及已有订阅、待处理付款检查都适用。账户已持有同一系列的套餐时返回 `-32002`，`error.data.reason` 为 `"already-subscribed"`；从 Pro 升级到 Pro Business 是用户在 worldmonitor.app/pro 确认的按比例原地升级，从 API Starter 升级到 API Business 则在账单门户中按比例变更。存在 15 分钟内的待处理付款时返回 `reason: "payment-in-progress"`。触发结账限流（每个账户每 10 分钟 5 个会话，与定价页共用）时返回 HTTP 429 的 `-32029`，并带 `Retry-After`。
+- **服务条款：** 创建会话时会记录该账户接受服务条款，与定价页相同。[服务条款](/zh/terms)将 MCP 请求视为接受。
+- **付款之后：** 付款 webhook 到达后，下一次 `get_mcp_allowance` 调用即报告付费套餐的额度，无需重新授权。
+- **API 端点：** 无。响应为 `no-store`。
+
+### `describe_tool`
+
+按名称返回任何其他工具的完整定义 — 与其 `tools/list` 条目相同的 `description`、`inputSchema`（每个属性的描述）、`outputSchema`、`annotations` 和 `_meta`。自 v1.34.0 起，`tools/list` 在 1,024 字节的逐工具预算内完整返回每条描述，因此这是对单个工具的重读，而不再是获取完整文本的唯一途径（v1.5.0 至 v1.33.0 期间列表被截断为第一句，≤120 字节）。
+
+| 参数 | 类型 | 必填 | 描述 |
+|-----------|------|----------|-------------|
+| `tool_name` | string | **是** | 来自 `tools/list` 的确切工具名称（例如 `"get_market_data"`）。 |
+
+**响应形状：** 与单个 `tools/list` 条目相同 — `{ name, description, inputSchema, outputSchema, annotations, _meta }` — 含相同的 `description` 和相同的 `inputSchema.properties`（包括缓存工具注入的 `summary` 和每个工具的 `jmespath`）。
+
+**软错误**（HTTP 200，在正常的 `content[0].text` 信封内返回 — 非 JSON-RPC 错误）：
+
+- `{ "error": "missing_tool_name", "hint": "Pass tool_name as a non-empty string matching a tool from tools/list." }` — `tool_name` 被省略、为空或非字符串。
+- `{ "error": "unknown_tool", "requested": "<the bad name>", "available": [...sorted list of all tool names...] }` — `tool_name` 不匹配任何已注册工具。`available` 数组让 LLM 能在额外一次调用中自我纠正。
+
+- **API 端点：** 无 — 服务器本地查询，无上游调用。
+- **类型：** 元数据查询 — 亚毫秒级，无 Redis、无 LLM。
+- **配额：** **豁免** Pro 每日配额（50/天）。每分钟速率限制（60/分钟）仍然适用。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"describe_tool","arguments":{"tool_name":"get_market_data"}}
+  }'
+```
+
+</CodeGroup>
+
+### `report_issue`
+
+为 WorldMonitor 维护者存储一份报告：缺陷、缺失的能力、错误或过期的数据，或安全问题。它是 [`POST /api/feedback/v1/submit-report`](/zh/api-platform) 的 MCP 对应工具，使用相同的校验、脱敏和限额。每份报告都由人工阅读，不会公开，不会被自动处理，也不会回复。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `kind` | string | 是 | `bug`、`missing_capability`、`data_quality` 或 `security`。 |
+| `summary` | string | 是 | 一句话，最多 300 个字符。这是报告正文，不是缓存工具通用的 `summary` 开关。 |
+| `surface` | string | 否 | 报告涉及的对象：工具名、REST 路径，或尚不存在的功能的简短标签。最多 200 个字符。 |
+| `expected` | string | 否 | 预期结果。最多 2,000 个字符。 |
+| `actual` | string | 否 | 实际结果。最多 2,000 个字符。 |
+| `requestId` | string | 否 | 失败调用的请求 ID：MCP 错误中的 `error.data.requestId`，或 REST 响应的 `x-vercel-id` 头。仅限字母、数字、`:`、`_` 和 `-`，最多 128 个字符。 |
+| `clientName` | string | 否 | 客户端或智能体名称。最多 80 个字符。 |
+
+**响应：** `{ reportId, status }`。`status` 为 `received`，安全报告为 `private`，并附带 `advisoryUrl` 和 `notice`。10 分钟内重发相同报告会返回第一次的 `reportId`，不会重复存储。
+
+- **访问：free。** 无需凭据。通过权益检查的 Pro 或 API 账户使用自己的额度；其他调用方（包括免费账户和未通过检查的密钥）均以匿名身份报告。身份始终来自请求凭据，从不来自参数。
+- **限额：** 匿名调用方每个 IP 每小时 5 份，每个账户每天 30 份，另有全站上限。超过 24 KB 的参数在任何报告限额或存储调用之前即被拒绝。此工具不消耗每日额度。
+- **脱敏：** 凭据和电子邮件地址在存储前被替换。报告中不应包含密钥或个人数据。
+- **安全报告：** `security` 报告仅用于标记存在漏洞。详细信息请通过私密的[安全公告表单](https://github.com/koala73/worldmonitor/security/advisories/new)提交。
+- **错误：** `-32602` 指出无效字段。`-32029`（HTTP 429，`Retry-After: 3600`）表示额度已用完。`-32603`（HTTP 503，`Retry-After: 60`）表示限流器或存储不可用，报告未被存储。`-32002`（HTTP 403）表示账户正在删除。被拒绝的安全报告在 `error.data` 中保留 `advisoryUrl`。
+- **API 端点：** 无。报告直接写入存储。

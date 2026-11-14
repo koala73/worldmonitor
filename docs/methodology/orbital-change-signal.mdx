@@ -1,0 +1,164 @@
+---
+title: "Orbital Change Signal Methodology"
+description: "How WorldMonitor compares radar statistics of new Sentinel-1 scenes over a watched site with earlier scenes from the same orbit, and when a change flag is raised, confirmed or retracted."
+---
+
+_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
+
+## Start here
+
+Every few days a Sentinel-1 radar satellite passes over each watched land site, day or
+night and through cloud. WorldMonitor reads summary statistics of each new radar scene over
+a small box around the site and compares them with earlier scenes taken from exactly the same
+orbit. When a scene differs from that baseline by more than its normal spread and by more
+than a fixed floor, the site's flag is raised. The next scene from the same orbit then
+either confirms the change or retracts it.
+
+A confirmed flag says only that **imagery statistics changed**. It does not say what changed
+or why. Flooding, harvest, snow, a drained reservoir, new construction and demolition can all
+move radar statistics. Read the flag as a prompt to look at the scenes, not as a finding.
+
+The flag is in a shadow period. During it, flags are computed and stored for review but are
+not shown on site evidence, country summaries or the API.
+
+## What is measured
+
+| Input | Value |
+|---|---|
+| Archive | Microsoft Planetary Computer, collection `sentinel-1-grd` (Copernicus Sentinel data, free and open) |
+| Footprint | A box of about 2 km on a side (±0.01° latitude) centred on the site |
+| Statistics | Median and 98th percentile of each polarization band (VV and VH for most of the world) |
+| Units | Decibels, 20·log10 of the ground-range amplitude |
+| Sites | Watched land sites only; ports, chokepoints and other maritime sites are never scored |
+| Left out | Water points (footprint more than 50% permanent water in ESA WorldCover 2021) and all but one site of a group whose footprints overlap |
+
+A scene with less than 90% valid pixels over the footprint is no observation. A band whose
+statistic is missing is skipped, never read as zero. Neither moves the flag. A response that
+lacks a requested band altogether, or names it differently, is not read as no observation:
+scoring stops for the run and the scene is read again later.
+
+A scene whose statistics request fails on three runs in a row is skipped and counted, so one
+scene the archive cannot serve does not hold its site back. In the replay sample below, 22 of
+881 scenes (2.5%) returned HTTP 500 on every attempt.
+
+## Comparable scenes
+
+Radar backscatter depends strongly on viewing geometry, so a scene is compared only with
+scenes that share all of:
+
+- the constellation (Sentinel-1; its spacecraft share one baseline)
+- the relative orbit
+- the pass direction (ascending or descending)
+- the acquisition mode and polarization set
+
+A change of acquisition mode starts a new baseline. A scene from another orbit can neither
+confirm nor retract a flag raised on this one. A site with no scene on an orbit for 180 days
+drops that orbit.
+
+## Baseline and change test
+
+For each band statistic the baseline holds the newest 12 comparable scenes. It needs 6 before
+any scene is scored; until then the site is **building its baseline**. The centre is the
+median and the spread is a robust standard deviation (1.4826 × median absolute deviation),
+never less than 0.25 dB.
+
+A scene changes a statistic when its difference from the median is at least 3 spreads **and**
+at least 1.5 dB.
+
+| State | Next comparable scene | Result |
+|---|---|---|
+| Building baseline | any | added to the baseline; monitoring once 6 scenes are held |
+| Monitoring | no statistic changed | added to the baseline |
+| Monitoring | a statistic changed | **raised**; the scene is held aside, not added |
+| Raised | the same statistic changed the same way | **confirmed**; the baseline restarts from the two changed scenes |
+| Raised | no statistic changed | **retracted**; the held scene is dropped and the new one added |
+| Raised | a different change | the newer change replaces the held one |
+| Confirmed | any | added to the new baseline; monitoring once 6 scenes are held |
+
+A site's state is the most significant state of its orbits: confirmed, then raised, then
+monitoring, then building its baseline.
+
+When a site is first scored, its baselines are filled from up to 6 archived scenes per orbit
+from the previous 120 days, so it starts monitoring without waiting for new passes. A site
+whose scoring did not finish is scored first on the next run, from the scenes still in the
+30-day archive window.
+
+## Capacity
+
+Each daily run has 6 minutes. The site pass leaves change scoring at least 2 minutes, and
+scoring then runs until the run ends, so it also gets whatever the site pass does not use.
+Four sites are scored at once, and statistics requests start at most four a second.
+
+| Quantity | Value |
+|---|---|
+| Sites scored | 497 of 581 land sites (68 water points and 16 overlapping duplicates left out) |
+| Orbits per site | 2.5 on average (replay sample) |
+| New scenes per site | 0.34 a day (replay sample), about 170 statistics requests a day across all sites |
+| Backfill | 6 scenes per orbit plus one search, about 16 requests per site, about 8,000 in all |
+| Scoring capacity | 480 requests a run at the 2-minute floor, about 650 when the site pass takes its usual 3.3 minutes |
+| Backfill time | about 17 days, 26 days at the floor |
+
+The backfill finishes inside the 30-day shadow period. Scoring was
+previously capped at 2 minutes of serial requests, about 160 a day, which is below the daily demand.
+
+An archive refusal (HTTP 401, 403, 429 or 451) stops the run at the refused site. Sites
+evaluated before it, and what scoring folded before it, are kept and published. The seeder then
+backs off: 15 minutes after the first refusal, doubling for each refusal in a row, at most a
+day, with no archive request in between.
+
+## Shadow period and thresholds
+
+The thresholds above were set from the spread of real scene statistics, and they will be
+revised from the shadow period's distribution. The shadow period lasts at least 30 days and
+until at least 30 raised flags have been confirmed or retracted, with fewer than one in ten of
+them retracted. Each run checks this rule over every shadow flag record and logs where it
+stands. Meeting it does not end the shadow: that is a reviewed code change. Before flags are
+shown, a replay of 90 days over 30 sites is reviewed by hand and each confirmed flag is
+labelled as environmental or not. When the shadow ends, each site continues from its shadow
+flag record, so the shadow period's baselines and history are kept.
+
+## Replay against the plan's targets
+
+`node scripts/replay-orbital-change.mjs` replays recorded archive statistics through the
+scorer. The sample is 90 days of Sentinel-1 scenes (16 August to 14 November 2026) at 30
+watched land sites taken at a fixed stride through the registry, scored with no backfill.
+24 of the 30 are still scored after water points and duplicates are left out.
+
+| Measure | Plan target | All 30 sites | 24 scored sites |
+|---|---|---|---|
+| Raised flags | | 33 | 26 |
+| Retracted share of resolved flags | under 1 in 10 | 18 of 21 | 13 of 15 |
+| Confirmed flags at a site with 5% or more water | at most 1 in 4 | 2 of 3 | 1 of 2 |
+| Known changes raised within the window after the event | at least half | 0 of 4 | 0 of 4 |
+
+The environmental column is inferred from the water share of the footprint, not from a hand
+review of the imagery. The known changes are the Kakhovka dam breach at Zaporizhzhia (30 days),
+the start of the 2023 Gaza war (45 days), and the June 2025 strikes at Natanz and Fordow (30
+days each). Zaporizhzhia raised five days before the breach and Gaza three months after the
+event, so neither counts; Natanz and Fordow raised nothing.
+
+No setting of the floor (1 to 3 dB), the spread multiplier (2 to 5) or the baseline size (6
+or 8 scenes) meets the targets on this sample: the retracted share never falls below 0.67 and
+at most one known change is raised in its window. The targets are therefore not met, and the
+thresholds are left as they are rather than fitted to the sample. The shadow-exit rule keeps
+the retraction target, so the flag stays in shadow until the scorer or the targets are revised.
+
+Observed during development, over 90 days ending 13 November 2026 on a spread sample of
+watched land sites, a typical comparable scene differed from its baseline median by a few
+tenths of a decibel. Coastal and river sites showed much wider spread from water surface
+roughness, and most of their raised flags were retracted by the next scene.
+
+## Limits
+
+- The statistic is a summary of a 2 km box. A change confined to a few buildings can leave
+  the median and the 98th percentile unchanged.
+- Seasonal change (crops, snow, soil moisture, water level) is the most common cause of a
+  confirmed flag. The flag does not attempt to remove it.
+- Sentinel-1 does not image every site on every orbit. Some sites have one orbit only, and a
+  few have none in the archive.
+
+## Sources
+
+- [ESA WorldCover 2021](https://esa-worldcover.org/en), via Planetary Computer, for the water share of each footprint (`scripts/measure-orbital-site-water.mjs`)
+- [Copernicus Sentinel-1](https://sentinels.copernicus.eu/web/sentinel/missions/sentinel-1)
+- [Microsoft Planetary Computer, Sentinel-1 GRD](https://planetarycomputer.microsoft.com/dataset/sentinel-1-grd)

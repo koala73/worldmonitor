@@ -79,7 +79,7 @@ async function fetchWithProxyPreferred(url, { timeoutMs = 20_000, accept = 'text
 }
 
 const CANONICAL_KEY = 'economic:fuel-prices:v1';
-const CACHE_TTL = 864000; // 10 days — weekly seed with 3-day cron-drift buffer
+export const CACHE_TTL = 864000; // 10 days — weekly seed with 3-day cron-drift buffer
 const MIN_COUNTRIES = 5;
 const MAX_DROP_PCT = 50;
 

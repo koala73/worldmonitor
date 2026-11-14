@@ -30,7 +30,15 @@ description: "对自托管问题的直接回答 —— AGPL 源代码给自托�
 - `src-tauri/` 下的桌面应用源码；
 - 一份把仪表盘、中继、Redis 与 Redis REST 代理一起运行的 `docker-compose.yml`。
 
-`SELF_HOSTING.md` 逐步讲解 Docker 或 Podman 快速启动。公开数据源（地震、天气、自然事件、流离失所、预测市场、加密货币、气候异常、海缆、BIS 数据、网络威胁）无需任何密钥即可工作。其他数据源需要你通过 `docker-compose.override.yml` 提供的提供方密钥。
+一条命令即可安装整个栈：
+
+```bash
+curl -fsSL https://www.worldmonitor.app/install.sh | bash
+```
+
+它会把仓库克隆到 `./worldmonitor`（或复用已有的检出目录），把四个必需密钥生成到仅所有者可读的 `.env` 中，启动栈，并在主机装有 Node.js 22.19 或更高版本时填充公开数据。可以安全地重复运行。在 `bash -s --` 之后传入 `--dir`、`--port`、`--no-seed` 或 `--no-build`。
+
+`SELF_HOSTING.md` 逐步手动讲解同样的 Docker 或 Podman 快速启动。公开数据源（地震、天气、自然事件、流离失所、预测市场、加密货币、气候异常、海缆、BIS 数据、网络威胁）无需任何密钥即可工作。其他数据源需要你通过 `docker-compose.override.yml` 提供的提供方密钥。
 
 ## 自托管不给你什么
 

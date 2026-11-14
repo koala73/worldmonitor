@@ -1,4 +1,5 @@
 import { loadToolAliases } from '../alias';
+import { stripBillingCopy } from '../chatgpt-copy';
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../constants';
 import { CHATGPT_HIDDEN_TOOLS } from '../host-policy';
 import { JMESPATH_SCHEMA } from '../jmespath';
@@ -6,7 +7,7 @@ import { RESPONSE_MODE_SCHEMA, SPOKEN_LANGUAGE_SCHEMA } from '../spoken';
 import { advertisedOutputSchema } from '../structured-content';
 import type { McpAccessClass, PublicToolShape, ToolDef } from '../types';
 import { compressDescription, utf8ByteLength } from '../utils';
-import { CACHE_TOOLS } from './cache-tools';
+import { CACHE_TOOLS, RETIRED_CACHE_TOOLS } from './cache-tools';
 import { NLP_TOOLS } from './nlp-tools';
 import { RETIRED_RPC_TOOLS, RPC_TOOLS } from './rpc-tools';
 import { COUNTRY_VIEW_TOOLS } from './country-view';
@@ -18,7 +19,26 @@ import { COST_SHOCK_TOOLS } from './cost-shock-tools';
 import { PUBLIC_DOMAIN_TOOLS } from './public-domain-tools';
 import { TARIFF_TOOLS } from './tariff-tools';
 import { WEBCAM_TOOLS } from './webcam-tools';
+
+// `openai/toolInvocation` status labels for every tool that renders a ui://
+// view. Keyed by tool name; tests/mcp-view-metadata.test.mjs fails if a tool
+// with a UI resource has no entry here.
+const TOOL_INVOCATION_LABELS: Record<string, { invoking: string; invoked: string }> = {
+  get_market_data: { invoking: 'Loading market data…', invoked: 'Loaded market data' },
+  get_conflict_events: { invoking: 'Loading conflict events…', invoked: 'Loaded conflict events' },
+  get_news_intelligence: { invoking: 'Loading news intelligence…', invoked: 'Loaded news intelligence' },
+  get_natural_disasters: { invoking: 'Loading natural disasters…', invoked: 'Loaded natural disasters' },
+  get_prediction_markets: { invoking: 'Loading prediction markets…', invoked: 'Loaded prediction markets' },
+  get_chokepoint_status: { invoking: 'Loading chokepoint status…', invoked: 'Loaded chokepoint status' },
+  get_forecast_predictions: { invoking: 'Loading forecasts…', invoked: 'Loaded forecasts' },
+  get_world_brief: { invoking: 'Loading the world brief…', invoked: 'Loaded the world brief' },
+  get_country_brief: { invoking: 'Loading the country brief…', invoked: 'Loaded the country brief' },
+  get_country_risk: { invoking: 'Loading country risk…', invoked: 'Loaded country risk' },
+  open_news_dashboard: { invoking: 'Opening the news dashboard…', invoked: 'Opened the news dashboard' },
+  open_country_brief: { invoking: 'Opening the country brief…', invoked: 'Opened the country brief' },
+};
 import { FEEDBACK_TOOLS } from './feedback-tools';
+import { TRAVEL_RISK_TOOLS } from './travel-risk-tool';
 
 // Merged tool registry — cache tools first (no `_execute`), then RPC tools
 // (with `_execute`), then the NLP utilities. Order is observable: `tools/list`
@@ -26,11 +46,16 @@ import { FEEDBACK_TOOLS } from './feedback-tools';
 // returns the available-list sorted before responding. NLP_TOOLS is appended
 // last so extracting it from rpc-tools.ts left every other tool's position
 // unchanged. SOURCE_TOOLS is appended after it for the same reason.
-export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS, ...NEWS_DASHBOARD_TOOLS, ...MACRO_TOOLS, ...STOCK_TOOLS, ...COST_SHOCK_TOOLS, ...PUBLIC_DOMAIN_TOOLS, ...COUNTRY_VIEW_TOOLS, ...TARIFF_TOOLS, ...WEBCAM_TOOLS, ...FEEDBACK_TOOLS];
-export const RETIRED_TOOLS: ToolDef[] = [...RETIRED_RPC_TOOLS];
+export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS, ...NEWS_DASHBOARD_TOOLS, ...MACRO_TOOLS, ...STOCK_TOOLS, ...COST_SHOCK_TOOLS, ...PUBLIC_DOMAIN_TOOLS, ...COUNTRY_VIEW_TOOLS, ...TARIFF_TOOLS, ...WEBCAM_TOOLS, ...FEEDBACK_TOOLS, ...TRAVEL_RISK_TOOLS];
+export const RETIRED_TOOLS: ToolDef[] = [...RETIRED_RPC_TOOLS, ...RETIRED_CACHE_TOOLS];
 
 export const FREE_TIER_TOOL_NAMES: ReadonlySet<string> = new Set(
   TOOL_REGISTRY.filter((tool) => tool._freeTier === true).map((tool) => tool.name),
+);
+
+/** Tools whose pre-check must read a current `travelRiskAssessment` flag (#10451). */
+export const TRAVEL_RISK_TOOL_NAMES: ReadonlySet<string> = new Set(
+  TOOL_REGISTRY.filter((tool) => tool._planFeature === 'travelRiskAssessment').map((tool) => tool.name),
 );
 
 /**
@@ -179,6 +204,7 @@ export function buildPublicTool(
       properties: clonedProperties,
       required: [...tool.inputSchema.required],
       ...(tool.inputSchema.oneOf ? { oneOf: structuredClone(tool.inputSchema.oneOf) } : {}),
+      ...(tool.inputSchema.additionalProperties === false ? { additionalProperties: false as const } : {}),
     },
     // Deep-clone for the same reason as inputSchema.properties — mutating the
     // returned object must not corrupt the module-level outputSchema literal.
@@ -210,6 +236,15 @@ export function buildPublicTool(
   if (tool._uiResourceUri) {
     publicTool._meta.ui = { resourceUri: tool._uiResourceUri };
     publicTool._meta['ui/resourceUri'] = tool._uiResourceUri;
+    const invocation = TOOL_INVOCATION_LABELS[tool.name];
+    if (invocation) {
+      // ChatGPT reads the two flat keys (OpenAI Apps reference, tool descriptor
+      // _meta, <= 64 chars each); the nested object is what the MCP platform
+      // scanner checks. Both carry the same strings.
+      publicTool._meta['openai/toolInvocation/invoking'] = invocation.invoking;
+      publicTool._meta['openai/toolInvocation/invoked'] = invocation.invoked;
+      publicTool._meta['openai/toolInvocation'] = { ...invocation };
+    }
     if (tool._openaiEntrypoints) {
       publicTool._meta['openai/ui'] = { entrypoints: structuredClone(tool._openaiEntrypoints) };
     }
@@ -221,36 +256,48 @@ export function buildPublicTool(
 export const TOOL_LIST_RESPONSE = TOOL_REGISTRY.map((tool) => buildPublicTool(tool, { compressDescriptions: true }));
 
 // What a ChatGPT request lists (see ../host-policy.ts): every tool except the
-// checkout tool, with output-schema copy that describes the plans page instead
-// of telling the agent to upgrade. Only get_market_data carries `locked`.
+// hidden ones, with copy that states plan facts without promoting or pricing a
+// plan. Descriptions and schema text lose their API-plan weight, allocation and
+// subscription wording (../chatgpt-copy.ts), and the call-weight metadata,
+// which only prices API-plan calls, is dropped.
 const INFORM_ONLY_SCHEMA_DESCRIPTIONS: Readonly<Record<string, string>> = {
-  locked: 'Present only for a signed-in free account: subscription datasets withheld from `data`. Their absence means locked, not empty; they are not included in the current plan.',
-  upgradeUrl: 'Present with `locked`: a page describing the plans that include the locked datasets.',
+  locked: 'Present only for a signed-in free account: datasets withheld from `data` because the current plan does not include them. Their absence means locked, not empty.',
 };
 
-// Walks every `properties` map, so a field nested under anyOf/oneOf branches
-// is rewritten too.
+// Walks the whole schema, so a field nested under anyOf/oneOf branches is
+// rewritten too. `upgradeUrl` is removed from every properties map.
 function rewriteSchemaDescriptions(node: unknown): void {
   if (Array.isArray(node)) {
-    for (const item of node) rewriteSchemaDescriptions(item);
+    for (const value of node) rewriteSchemaDescriptions(value);
     return;
   }
   if (!node || typeof node !== 'object') return;
   const record = node as Record<string, unknown>;
   const properties = record.properties as Record<string, { description?: unknown }> | undefined;
   if (properties && typeof properties === 'object') {
+    delete properties.upgradeUrl;
     for (const [field, description] of Object.entries(INFORM_ONLY_SCHEMA_DESCRIPTIONS)) {
       const property = properties[field];
       if (property && typeof property === 'object' && typeof property.description === 'string') property.description = description;
     }
   }
-  for (const value of Object.values(record)) rewriteSchemaDescriptions(value);
+  if (Array.isArray(record.required)) record.required = record.required.filter((field) => field !== 'upgradeUrl');
+  if (typeof record.description === 'string') {
+    const description = stripBillingCopy(record.description);
+    if (description) record.description = description;
+    else delete record.description;
+  }
+  for (const [key, value] of Object.entries(record)) {
+    if (key !== 'description') rewriteSchemaDescriptions(value);
+  }
 }
 
 export function informOnlyPublicTool(tool: PublicToolShape): PublicToolShape {
-  if (tool.outputSchema === undefined) return tool;
   const copy = structuredClone(tool);
-  rewriteSchemaDescriptions(copy.outputSchema);
+  copy.description = stripBillingCopy(copy.description, { keepLead: true });
+  rewriteSchemaDescriptions(copy.inputSchema);
+  if (copy.outputSchema !== undefined) rewriteSchemaDescriptions(copy.outputSchema);
+  if (copy._meta) delete (copy._meta as Record<string, unknown>)['worldmonitor/weight'];
   return copy;
 }
 

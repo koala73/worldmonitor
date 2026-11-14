@@ -138,6 +138,7 @@ export function computeFlowEstimate(rawHistory, baselineMbd) {
     flowRatio: Math.round(flowRatio * 1000) / 1000,
     disrupted,
     source: resolveFlowSource(useDwt),
+    latestDate: history.at(-1).date,
   };
 }
 

@@ -88,7 +88,6 @@ const KNOWN_VIOLATIONS = new Set([
   'seed-fsi-eu.mjs',
   'seed-fx-rates.mjs',
   'seed-fx-yoy.mjs',
-  'seed-global-tenders.mjs',
   'seed-gold-cb-reserves.mjs',
   'seed-gold-etf-flows.mjs',
   'seed-hormuz.mjs',

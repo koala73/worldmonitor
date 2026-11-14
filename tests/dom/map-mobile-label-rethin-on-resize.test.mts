@@ -20,7 +20,11 @@ type ResizeSurface = {
   mobileLabelVisibilityArmed: boolean;
   observedContainerWidth: number;
   observedContainerHeight: number;
+  baseRendered: boolean;
+  baseWidth: number;
+  baseHeight: number;
   rememberContainerSize: ReturnType<typeof vi.fn>;
+  render: ReturnType<typeof vi.fn>;
   scheduleRender: ReturnType<typeof vi.fn>;
   updateLabelVisibility: ReturnType<typeof vi.fn>;
   onContainerResized: (width: number, height: number) => void;
@@ -35,7 +39,11 @@ function createMap(isMobile: boolean): ResizeSurface {
   map.mobileLabelVisibilityArmed = !isMobile;
   map.observedContainerWidth = 0;
   map.observedContainerHeight = 0;
+  map.baseRendered = false;
+  map.baseWidth = 0;
+  map.baseHeight = 0;
   map.rememberContainerSize = vi.fn();
+  map.render = vi.fn();
   map.scheduleRender = vi.fn();
   map.updateLabelVisibility = vi.fn();
   return map;
@@ -113,5 +121,50 @@ describe('mobile label thinning re-arms on a post-paint layout change (#4547)', 
     expect(map.mobileLabelVisibilityArmed).toBe(true);
     expect(map.shouldUpdateLabelVisibility()).toBe(true);
     expect(map.scheduleRender).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('a resize of the painted map renders before the next paint', () => {
+  function paintedAt(width: number, height: number): ResizeSurface {
+    const map = createMap(true);
+    map.onContainerResized(width, height);
+    map.baseRendered = true;
+    map.baseWidth = width;
+    map.baseHeight = height;
+    map.scheduleRender.mockClear();
+    return map;
+  }
+
+  it('renders synchronously when the box no longer matches the painted map', () => {
+    const map = paintedAt(388, 171);
+    map.onContainerResized(390, 559);
+
+    expect(map.render).toHaveBeenCalledTimes(1);
+    expect(map.scheduleRender).not.toHaveBeenCalled();
+  });
+
+  it('a reveal at a new size after a hide also renders synchronously', () => {
+    const map = paintedAt(388, 171);
+    map.onContainerResized(0, 0);
+    map.onContainerResized(390, 559);
+
+    expect(map.render).toHaveBeenCalledTimes(1);
+  });
+
+  it('a reveal at the painted size keeps the scheduled render', () => {
+    const map = paintedAt(388, 171);
+    map.onContainerResized(0, 0);
+    map.onContainerResized(388, 171);
+
+    expect(map.render).not.toHaveBeenCalled();
+    expect(map.scheduleRender).toHaveBeenCalledTimes(1);
+  });
+
+  it('the first paint keeps the scheduled render', () => {
+    const map = createMap(true);
+    map.onContainerResized(388, 171);
+
+    expect(map.render).not.toHaveBeenCalled();
+    expect(map.scheduleRender).toHaveBeenCalledTimes(1);
   });
 });

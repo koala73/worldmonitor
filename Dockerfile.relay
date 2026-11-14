@@ -11,13 +11,13 @@
 # Derive inventory metrics from the immutable build context. This stage uses
 # only Node builtins; the relay's production dependency install stays intact.
 # .dockerignore excludes local environment and credential files.
-FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS inventory-builder
+FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS inventory-builder
 
 WORKDIR /workspace
 COPY . .
 RUN node scripts/generate-inventory-facts.mjs
 
-FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85
+FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5
 
 # curl required by OREF polling (Node.js JA3 fingerprint blocked by Akamai; curl passes)
 RUN apk add --no-cache curl
@@ -132,6 +132,9 @@ COPY scripts/shared/market-quote-refresh.cjs ./scripts/shared/market-quote-refre
 # yahoo-closed-session.cjs gives rolled futures quotes their last session's
 # change in the relay market loop. Missing it = startup crash.
 COPY scripts/shared/yahoo-closed-session.cjs ./scripts/shared/yahoo-closed-session.cjs
+# quote-sparkline.cjs builds the 24-hour commodity sparkline. Missing it = startup crash.
+COPY scripts/shared/quote-sparkline.cjs ./scripts/shared/quote-sparkline.cjs
+COPY scripts/shared/oil-quote-provenance.cjs ./scripts/shared/oil-quote-provenance.cjs
 # market-seed-universe.cjs is the catalog + auxiliary quote basket shared by
 # seed-market-quotes.mjs and the relay market loop. Missing it = startup crash.
 COPY scripts/shared/market-seed-universe.cjs ./scripts/shared/market-seed-universe.cjs
@@ -140,10 +143,20 @@ COPY scripts/shared/market-seed-universe.cjs ./scripts/shared/market-seed-univer
 COPY scripts/shared/closed-market-equity-maintenance.cjs ./scripts/shared/closed-market-equity-maintenance.cjs
 COPY scripts/shared/pizzint-history.cjs ./scripts/shared/pizzint-history.cjs
 COPY scripts/shared/pizzint-location.cjs ./scripts/shared/pizzint-location.cjs
+COPY scripts/shared/air-traffic-regions.cjs ./scripts/shared/air-traffic-regions.cjs
+COPY scripts/shared/air-traffic-aggregate.cjs ./scripts/shared/air-traffic-aggregate.cjs
+COPY scripts/shared/air-traffic-history.cjs ./scripts/shared/air-traffic-history.cjs
+COPY scripts/shared/adsblol-traffic.cjs ./scripts/shared/adsblol-traffic.cjs
 # ucdp-candidate.cjs carries the GED Candidate discovery/merge shared with
 # scripts/seed-ucdp-events.mjs. Missing it = ERR_MODULE_NOT_FOUND at relay
 # startup (the require is top-level in the UCDP section).
 COPY scripts/shared/ucdp-candidate.cjs ./scripts/shared/ucdp-candidate.cjs
+COPY scripts/shared/ucdp-state-parties.cjs ./scripts/shared/ucdp-state-parties.cjs
+# _ucdp-dashboard.mjs builds the compact UCDP projection the bootstrap tier
+# reads. seedUcdpEvents() imports it lazily, so a missing file fails only that
+# write (pinned in tests/dockerfile-relay-imports.test.mjs).
+COPY scripts/_ucdp-dashboard.mjs ./scripts/_ucdp-dashboard.mjs
+COPY scripts/shared/exposure-location-key.mjs ./scripts/shared/exposure-location-key.mjs
 # compare-and-delete-script.cjs is the Redis EVAL body shared by releaseLock()
 # in _seed-utils.mjs and the AIS relay. Missing it = ERR_MODULE_NOT_FOUND when
 # any COPY'd seeder loads _seed-utils.mjs (guarded by dockerfile-relay-imports).

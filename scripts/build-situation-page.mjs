@@ -91,10 +91,10 @@ ${members.map((crisis) => renderCrisisCard(crisis, livePulse?.crises?.[crisis.sl
         </section>`).join('\n');
 }
 
-const FAQ = Object.freeze([
+const faqEntries = (crisisCount) => Object.freeze([
   {
     question: 'Is there a website to monitor the situation?',
-    answer: 'Yes. World Monitor is a free live board of what is happening in the world now. The map and its panels need no account, and this page lists the current situations with the time each reading was taken: headlines, 14 crisis trackers by region, shipping chokepoint status and internet outages.',
+    answer: 'Yes. World Monitor is a free live board of what is happening in the world now. The map and its panels need no account, and this page lists the current situations with the time each reading was taken: headlines, ' + crisisCount + ' crisis trackers by region, shipping chokepoint status and internet outages.',
   },
   {
     question: 'How do I monitor the situation in the Middle East?',
@@ -122,8 +122,8 @@ function faqPageLd(faqs) {
   };
 }
 
-function renderFaq(escapeHtml) {
-  return FAQ.map((faq) => `      <h3>${escapeHtml(faq.question)}</h3>
+function renderFaq(faqs, escapeHtml) {
+  return faqs.map((faq) => `      <h3>${escapeHtml(faq.question)}</h3>
       <p>${escapeHtml(faq.answer)}</p>`).join('\n');
 }
 
@@ -144,6 +144,7 @@ const EXTRA_STYLES = `
       .routine li { margin-bottom: 8px; }`;
 
 export function renderSituationPage({ baseUrl, lastmod, tpl, crises, livePulse, hubRows, snapshotPath }) {
+  const faqs = faqEntries(crises.length);
   const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const url = absoluteUrl(baseUrl, SITUATION_PAGE_PATH);
   const sections = Object.fromEntries(SITUATION_SECTIONS.map((section) => [
@@ -170,7 +171,7 @@ ${sections.outages}
       <h2 id="meaning">What does "monitor the situation" mean?</h2>
       <p>To monitor the situation is to keep watching a developing event, usually a conflict, a disaster or a market shock, as new reports arrive. The phrase spread online as a joke about people who refresh the news constantly without being able to change anything. This page is the version with sources: every reading above names where it came from and when it was taken, and nothing on it is a forecast.</p>
       <h2 id="faq">Questions</h2>
-${renderFaq(escapeHtml)}
+${renderFaq(faqs, escapeHtml)}
       <p class="source">Published readings: ${escapeHtml(snapshotPath)}. Live readings replace them at request time from the World Monitor public API; a section whose source is unavailable keeps its published reading. Chokepoint scoring: <a href="/docs/methodology/chokepoints">methodology</a>. Crisis scope: <a href="https://github.com/koala73/worldmonitor/blob/main/shared/crawlable-crises.json">crisis registry</a>.</p>`;
   return pageDocument({
     baseUrl,
@@ -191,7 +192,7 @@ ${renderFaq(escapeHtml)}
         inLanguage: 'en-US',
         dateModified: lastmod,
       },
-      faqPageLd(FAQ),
+      faqPageLd(faqs),
     ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },

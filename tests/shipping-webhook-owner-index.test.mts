@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
-import { registerWebhook } from '../server/worldmonitor/shipping/v2/register-webhook';
+import { registerWebhook, REGISTER_WEBHOOK_SCRIPT } from '../server/worldmonitor/shipping/v2/register-webhook';
 import { listWebhooks } from '../server/worldmonitor/shipping/v2/list-webhooks';
 import { callerFingerprint, ownerIndexKey, webhookKey } from '../server/worldmonitor/shipping/v2/webhook-shared';
 
@@ -39,6 +39,13 @@ for (const action of ['list', 'register'] as const) {
         if (verb === 'SMEMBERS') { assert.equal(key, ownerIndexKey(ownerTag)); return { result: [...members] }; }
         if (verb === 'GET') return { result: records.get(key) ?? null };
         if (verb === 'EVAL') {
+          if (key === REGISTER_WEBHOOK_SCRIPT) {
+            const [, recordKey, ownerKey, , , raw, id] = args;
+            assert.equal(ownerKey, ownerIndexKey(ownerTag));
+            records.set(recordKey, raw);
+            members.add(id);
+            return { result: 1 };
+          }
           const [, ownerKey, recordKey, id] = args;
           assert.equal(ownerKey, ownerIndexKey(ownerTag));
           return { result: records.has(recordKey) ? 0 : Number(members.delete(id)) };

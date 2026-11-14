@@ -35,7 +35,7 @@ function fixture() {
   Object.assign(panel, { currentCode: 'CA', currentName: 'Canada', currentHeadlineCount: 0, outputClose: null, outputRequestSignal: null,
     content: element('div'), sections: [], infrastructureByType: new Map(), isVisible: () => true, el: element,
     makeEmpty: (message: string) => element('div', 'cdp-empty', message), open: () => {}, tearDownFiveFactorScorecard: () => {},
-    destroyResilienceWidget: () => {}, tearDownFollowButton: () => {} });
+    destroyResilienceWidget: () => {}, tearDownFollowButton: () => {}, imageryContext: element('div') });
   document.body.replaceChildren(panel.content);
   const shell = element('div', 'cdp-shell'); panel.content.append(shell);
   const assessment = element('section', 'cdp-card'); panel.briefBody = element('div', 'cdp-card-body'); assessment.append(panel.briefBody); shell.append(assessment);

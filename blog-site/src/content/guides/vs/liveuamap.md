@@ -1,6 +1,6 @@
 ---
 title: "World Monitor vs Liveuamap"
-description: "World Monitor vs Liveuamap for following conflict on a map. Liveuamap is a focused, editor-curated conflict news map with low prices. World Monitor adds shipping, aviation and markets, alert rules, an API and MCP."
+description: "World Monitor vs Liveuamap for conflict maps: Liveuamap offers low-cost regional conflict feeds, while World Monitor adds shipping, flights, alerts and API."
 metaTitle: "World Monitor vs Liveuamap for conflict maps | World Monitor"
 keywords: "Liveuamap evaluators, world monitor vs liveuamap, global intelligence tools"
 audience: "Liveuamap evaluators"
@@ -39,7 +39,7 @@ Liveuamap is a news and information service built around geolocated reports. Its
 
 ## Where World Monitor is better
 
-World Monitor is better when the map is one part of a wider job. The [free map](https://www.worldmonitor.app/dashboard) needs no account and shows conflict alongside protests, shipping, aviation, infrastructure outages, hazards, cyber and markets. The [chokepoints page](https://www.worldmonitor.app/chokepoints) shows live ship transit counts at 13 maritime chokepoints, 7 of them measured against an EIA flow baseline.
+World Monitor is better when the map is one part of a wider job. The [free map](https://www.worldmonitor.app/dashboard) needs no account and shows conflict alongside protests, shipping, aviation, infrastructure outages, hazards, cyber and markets. The [chokepoints page](https://www.worldmonitor.app/chokepoints/) shows live ship transit counts at 13 maritime chokepoints, 7 of them measured against an EIA flow baseline.
 
 On the Pro plan, alert rules filter by event type, severity (all, high or critical) and country and deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256. Delivery is real time or a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)). Developers get a REST API on a separate API plan, Python, Go and Ruby SDKs, an npm CLI, and an MCP server with Pro. Each outlet has an editorial tier and a propaganda-risk band: the News panel shows them as badges, the free `get_sources` MCP tool returns them for any outlet, and the [data sources page](https://www.worldmonitor.app/docs/data-sources) explains the scheme. The code is open source under [AGPL-3.0](https://github.com/koala73/worldmonitor).
 

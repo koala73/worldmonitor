@@ -43,7 +43,7 @@ import type { MapVariant } from '@/config/map-layer-definitions';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import { applyCanadaRoadsOptInMigration } from '@/services/canada-roads-opt-in';
 import {
-  initDB,
+  openStorageForBoot,
   cleanOldSnapshots,
   isAisConfigured,
   initAisStream,
@@ -69,6 +69,10 @@ import {
   showToast,
 } from '@/utils';
 import { clearPanelSpans, invalidatePanelStorageCacheForKeys } from '@/utils/panel-storage';
+import type { OrbitalShareLink } from '@/utils/urlState';
+import { scheduleOrbitalShareLink, takeOrbitalShareLink } from '@/app/orbital-share-link';
+import { connectOrbitalLookupMap } from '@/services/orbital/lookup-host';
+import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 import { overlayHistory, type OverlayId } from '@/utils/overlay-history';
 import type { ParsedMapUrlState } from '@/utils';
 import { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
@@ -97,6 +101,7 @@ import type { StorageFacilityMapPanel } from '@/components/StorageFacilityMapPan
 import type { FuelShortagePanel } from '@/components/FuelShortagePanel';
 import type { EnergyDisruptionsPanel } from '@/components/EnergyDisruptionsPanel';
 import type { EnergyRiskOverviewPanel } from '@/components/EnergyRiskOverviewPanel';
+import type { GridDisruptionClockPanel } from '@/components/GridDisruptionClockPanel';
 import type { ChokepointStripPanel } from '@/components/ChokepointStripPanel';
 import type { ClimateNewsPanel } from '@/components/ClimateNewsPanel';
 import type { ConsumerPricesPanel } from '@/components/ConsumerPricesPanel';
@@ -209,7 +214,7 @@ import {
   shouldRunCloudLegacyRecovery,
   sweepLegacyDisabledCustomWidgets,
 } from '@/app/free-tier-gate';
-import { replaceRawI18nKeyPlaceholders } from '@/app/i18n-raw-key-healer';
+import { replaceRawI18nKeyPlaceholders } from '@/utils/i18n-raw-key-healer';
 import { startAccountAuthHandoff } from '@/app/account-auth-handoff';
 import { TierPreferenceHandoff } from '@/app/tier-preference-handoff';
 import { initialRegionFromCache, resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinates } from '@/utils/user-location';
@@ -331,6 +336,8 @@ export class App {
   private pendingDeepLinkStoryCode: string | null = null;
   private pendingDeepLinkChokepoint: string | null = null;
   private pendingDeepLinkSearchQuery: string | null = null;
+  private pendingOrbitalShareLink: OrbitalShareLink | null = null;
+  private cancelOrbitalShareLink: (() => void) | null = null;
   private chokepointDeepLinkTimer: number | null = null;
   private stockDeepLinkTimer: number | null = null;
   // At most one automatic precise mobile recenter per startup (#7778). Set
@@ -870,6 +877,10 @@ export class App {
     if (shouldPrime('energy-risk-overview')) {
       const panel = this.state.panels['energy-risk-overview'] as EnergyRiskOverviewPanel | undefined;
       if (panel) primeTask('energy-risk-overview', () => panel.fetchData());
+    }
+    if (shouldPrime('grid-disruption-clock')) {
+      const panel = this.state.panels['grid-disruption-clock'] as GridDisruptionClockPanel | undefined;
+      if (panel) primeTask('grid-disruption-clock', () => panel.fetchData());
     }
     if (shouldPrime('chokepoint-strip')) {
       // Without this primeTask entry the panel mounts via panel-layout.ts and
@@ -1681,6 +1692,9 @@ export class App {
       stopLayerActivity: (layer) => this.dataLoader.stopLayerActivity(layer),
       mountLiveNewsIfReady: () => this.panelLayout.mountLiveNewsIfReady(),
       focusStorageFacility: (facilityId) => this.panelLayout.focusStorageFacility(facilityId),
+      canUseFocus: () => this.panelLayout.canFocus(),
+      promptForFocus: () => this.panelLayout.promptForFocus(),
+      showFocusGate: () => this.panelLayout.showFocusGateNotice(),
       updateFlightSource: (adsb, military) => this.updateFlightSourceIfReady(adsb, military),
       isFreeTierFallbackActive: () => this.freeTierGate.authSettleDeadlineExceeded,
     });
@@ -2257,6 +2271,7 @@ export class App {
         }
         return listWebMcpMissionPresets(this.state, SITE_VARIANT, query, {
           hasPremium: hasPremiumAccess(getAuthState()),
+          hasFocus: this.panelLayout.canFocus(),
           isPanelEntitled: (panelId) => {
             const config = this.state.panelSettings[panelId]
               ?? getEffectivePanelConfig(panelId, SITE_VARIANT);
@@ -2273,6 +2288,7 @@ export class App {
         }
         return applyWebMcpMissionPreset(this.state, SITE_VARIANT, presetId, {
           hasPremium: hasPremiumAccess(getAuthState()),
+          hasFocus: this.panelLayout.canFocus(),
           isPanelEntitled: (panelId) => {
             const config = this.state.panelSettings[panelId]
               ?? getEffectivePanelConfig(panelId, SITE_VARIANT);
@@ -2471,7 +2487,7 @@ export class App {
     // A failed load is still thrown below, where it is awaited.
     const i18nReady = initI18n();
     i18nReady.catch(() => {});
-    await initDB();
+    await openStorageForBoot();
     startFlightHistoryCleanup();
     // Re-arm the lazy vessel runtime (a no-op on first boot; matters on a
     // same-document re-init after a prior App.destroy() disarmed it). The
@@ -2906,6 +2922,8 @@ export class App {
               if (!isAccountStillCurrent(userId)) return;
               if (kind === 'INVITE_EMAIL_MISMATCH') {
                 showToast('This invite is for a different email address');
+              } else if (kind === 'INVITEE_EMAIL_UNVERIFIED') {
+                showToast('Verify your email address to accept this invite');
               } else if (kind === 'INVITE_EXPIRED') {
                 showToast('This invite has expired');
               } else if (kind === 'BUSINESS_NOT_ACTIVE') {
@@ -3093,6 +3111,8 @@ export class App {
     }
     this.pendingDeepLinkStoryCode = earlyParams.get('c') ?? null;
     this.pendingDeepLinkSearchQuery = readDashboardSearchQuery(window.location.search);
+    this.pendingOrbitalShareLink = ORBITAL_WATCH_ENABLED ? takeOrbitalShareLink() : null;
+    connectOrbitalLookupMap(() => this.state.map);
     this.eventHandlers.setupUrlStateSync();
     if (import.meta.env.VITE_E2E === '1') {
       document.documentElement.dataset.wmEventHandlersReady = 'true';
@@ -3700,6 +3720,8 @@ export class App {
       window.cancelAnimationFrame(this.visiblePanelPrimeRaf);
       this.visiblePanelPrimeRaf = null;
     }
+    this.cancelOrbitalShareLink?.();
+    this.cancelOrbitalShareLink = null;
     if (this.chokepointDeepLinkTimer !== null) {
       window.clearTimeout(this.chokepointDeepLinkTimer);
       this.chokepointDeepLinkTimer = null;
@@ -3891,6 +3913,13 @@ export class App {
     const url = new URL(window.location.href);
     const DEEP_LINK_INITIAL_DELAY_MS = 1500;
 
+    // A satellite pass share link lives in the fragment and opens beside any other deep link.
+    const orbitalShareLink = this.pendingOrbitalShareLink;
+    this.pendingOrbitalShareLink = null;
+    if (orbitalShareLink) {
+      this.cancelOrbitalShareLink = scheduleOrbitalShareLink(orbitalShareLink, DEEP_LINK_INITIAL_DELAY_MS, () => this.state.isDestroyed, () => this.state.map);
+    }
+
     // SearchAction lands on /dashboard?q=… after URL sync has already rewritten
     // the address bar. Consume the captured term through the same lazy path as
     // Cmd+K so the modal is created only when a query is actually present.
@@ -4011,6 +4040,13 @@ export class App {
       () => this.dataLoader.loadUkmtoIncidents(),
       60_000,
       () => (SITE_VARIANT === 'full' && this.state.mapLayers.ais) || this.state.panelSettings['ukmto-incidents']?.enabled === true,
+    );
+
+    this.refreshScheduler.scheduleRefresh(
+      'reservoirLevels',
+      () => this.dataLoader.loadReservoirLevels(),
+      REFRESH_INTERVALS.reservoirLevels,
+      () => this.state.mapLayers.reservoirLevels === true || this.state.panelSettings['reservoir-levels']?.enabled === true,
     );
 
     // Other geopolitical, financial and military refreshes exclude Happy.
@@ -4290,6 +4326,13 @@ export class App {
       () => (this.state.panels['energy-risk-overview'] as EnergyRiskOverviewPanel).fetchData(),
       REFRESH_INTERVALS.energyRiskOverview,
       () => this.isPanelNearViewport('energy-risk-overview')
+    );
+
+    this.refreshScheduler.scheduleRefresh(
+      'grid-disruption-clock',
+      () => (this.state.panels['grid-disruption-clock'] as GridDisruptionClockPanel).fetchData(),
+      REFRESH_INTERVALS.gridDisruptionClock,
+      () => this.isPanelNearViewport('grid-disruption-clock'),
     );
 
     this.refreshScheduler.scheduleRefresh(

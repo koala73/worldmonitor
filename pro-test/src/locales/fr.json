@@ -226,7 +226,7 @@
     "q3": "Pour qui est Enterprise ?",
     "a3": "Enterprise est pour les équipes qui ont besoin d'usage partagé, d'APIs, d'intégrations, d'options de déploiement et de support direct.",
     "q4": "Puis-je commencer avec Pro et monter plus tard ?",
-    "a4": "Oui. Pro est pour un usage personnel. Pro Business (49,99 $/mois) ajoute la licence commerciale, l'export de données, 25 tableaux de bord et 250 appels MCP/jour. Les plans API couvrent l'accès programmatique, et Enterprise couvre les déploiements personnalisés. Pour passer de Pro à Pro Business, choisissez Pro Business en étant connecté : votre abonnement bascule avec un paiement au prorata pour le reste de la période de facturation.",
+    "a4": "Oui. Pro est pour un usage personnel. Pro Business (49,99 $/mois) ajoute la licence commerciale, l'export de données, 25 tableaux de bord et 250 appels MCP/jour. Les plans API couvrent l'accès programmatique, et Enterprise couvre les déploiements personnalisés. Pour passer de Pro à Pro Business, choisissez Pro Business en étant connecté : votre abonnement bascule, vous voyez le montant du jour avant de confirmer, et la période de facturation redémarre ce jour-là.",
     "q5": "Est-ce uniquement pour le monitoring de conflits ?",
     "a5": "Non. World Monitor est avant tout une plateforme de renseignement global couvrant marchés boursiers, macroéconomie, analyse géopolitique, énergie, infrastructure et plus. Le suivi de conflits est une capacité parmi d'autres — pas le focus.",
     "q6": "Pourquoi garder la plateforme de base gratuite ?",
@@ -326,6 +326,7 @@
         "description": "Solutions personnalisées pour les organisations",
         "features": [
           "Tout ce qui est dans Pro + API",
+          "Tableaux de bord partagés de l'équipe",
           "10 000 requêtes API par jour, plus selon contrat",
           "Support dédié",
           "Intégrations personnalisées",
@@ -335,7 +336,8 @@
           "Facturation par bon de commande",
           "SAML SSO et SCIM (sur contrat)",
           "Paramètres de sécurité et confidentialité personnalisés",
-          "Entièrement white-label — avec ou sans partage de revenus"
+          "Entièrement white-label — avec ou sans partage de revenus",
+          "Brouillons d'évaluation du risque de voyage dans le tableau de bord et via MCP"
         ],
         "cta": "Contacter les ventes"
       },
@@ -347,7 +349,9 @@
           "300 requêtes/minute",
           "10 000 requêtes/jour incluses (REST + MCP combinés ; un appel MCP en direct compte pour 2-3)",
           "5 licences Pro — invitez des utilisateurs avec n’importe quel domaine de messagerie d’entreprise",
-          "Support prioritaire"
+          "Tableaux de bord partagés de l'équipe",
+          "Support prioritaire",
+          "Brouillons d'évaluation du risque de voyage dans le tableau de bord et via MCP"
         ],
         "highlightFeatures": [
           "Usage commercial — dans vos produits destinés aux clients"
@@ -362,7 +366,8 @@
           "25 tableaux de bord personnalisés (vs 10)",
           "MCP + SDK : 250 appels/jour (vs 50)",
           "Clé de bureau pour l'app de bureau (3 clés)",
-          "Support prioritaire"
+          "Support prioritaire",
+          "Brouillons d'évaluation du risque de voyage dans le tableau de bord et via MCP"
         ],
         "highlightFeatures": [
           "Licence commerciale incluse",
@@ -663,7 +668,7 @@
     "subtitle": "Nouvelles fonctionnalités des 30 derniers jours — correctifs et maintenance exclus.",
     "proTag": "PRO",
     "m1": "Perspective médiatique — comment les médias de chaque pays couvrent n'importe quel pays, pour les agents IA et l'API",
-    "m2": "/verify — une fiche de preuves pour toute affirmation, citant les vérifications publiées",
+    "m2": "Niveaux d'eau stratégiques — niveaux mesurés par lidar satellite pour 50 réservoirs et lacs, sur la carte et pour les agents IA",
     "m3": "Nombre de sources concordantes sur les alertes, les synthèses et les infobulles de la carte, plus une page publique /trust",
     "m4": "Suivi automatique des frappes — le risque d'un pays monte sous les attaques et retombe quand elles cessent",
     "m5": "Fermetures d'espace aérien issues des NOTAM de la FAA et une couche de carte des urgences aériennes signalées",

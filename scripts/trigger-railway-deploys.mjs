@@ -482,18 +482,59 @@ export function createGitHubCliEnv(env = process.env) {
   return selectEnvironment(env, GITHUB_CLI_ENV_KEYS);
 }
 
-export function installPinnedRailwayCli({ spawn = spawnSync, env = process.env } = {}) {
-  const result = spawn('npm', ['install', '--global', PINNED_RAILWAY_CLI], {
-    encoding: 'utf8',
-    maxBuffer: 8 * 1024 * 1024,
-    timeout: 2 * 60 * 1_000,
-    env: createRailwayCliInstallEnv(env),
-  });
-  if (result.signal) throw new Error('pinned Railway CLI installation timed out');
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(`pinned Railway CLI installation failed (${result.status})`);
+// The npm package's postinstall downloads the binary from GitHub releases,
+// which answered 502/504 for hours on 2026-11-08 and failed nine monitor runs
+// in a row. A retry rides out a short outage; a long one still fails. A
+// healthy install takes ~3 s, so a minute per attempt bounds a hung download
+// without starving the steps that run after the install.
+export const RAILWAY_CLI_INSTALL_POLICY = Object.freeze({
+  attemptTimeoutMs: 60_000,
+  retryDelaysMs: Object.freeze([10_000, 30_000]),
+});
+
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function lastOutputLine(result) {
+  // npm ends every failure with a "A complete log of this run can be found
+  // in: ..." footer; the actionable line is the thrown `Error:` above it.
+  const lines = `${result.stderr ?? ''}\n${result.stdout ?? ''}`
+    .split('\n').map((line) => line.trim()).filter(Boolean)
+    .filter((line) => !/A complete log of this run can be found/i.test(line));
+  return lines.find((line) => /\bError:/.test(line))
+    ?? lines.findLast((line) => /error/i.test(line))
+    ?? lines.at(-1)
+    ?? '';
+}
+
+export function installPinnedRailwayCli({
+  spawn = spawnSync,
+  env = process.env,
+  retryDelaysMs = RAILWAY_CLI_INSTALL_POLICY.retryDelaysMs,
+  sleep = sleepSync,
+  log = (message) => console.warn(message),
+} = {}) {
+  const attempts = retryDelaysMs.length + 1;
+  let failure;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (attempt > 1) sleep(retryDelaysMs[attempt - 2]);
+    const result = spawn('npm', ['install', '--global', PINNED_RAILWAY_CLI], {
+      encoding: 'utf8',
+      maxBuffer: 8 * 1024 * 1024,
+      timeout: RAILWAY_CLI_INSTALL_POLICY.attemptTimeoutMs,
+      env: createRailwayCliInstallEnv(env),
+    });
+    if (!result.signal && !result.error && result.status === 0) return;
+    if (result.signal) failure = new Error('pinned Railway CLI installation timed out');
+    else if (result.error) failure = result.error;
+    else {
+      const detail = lastOutputLine(result);
+      failure = new Error(`pinned Railway CLI installation failed (${result.status})${detail ? `: ${detail}` : ''}`);
+    }
+    log(`Railway CLI install attempt ${attempt}/${attempts} failed: ${failure.message}`);
   }
+  throw failure;
 }
 
 export function runGitHubApi(path, env, { spawn = spawnSync, attempts = 3 } = {}) {

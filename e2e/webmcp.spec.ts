@@ -44,8 +44,10 @@ const DASHBOARD_TOOL_NAMES = [
   'switch_monitor',
 ];
 const HOMEPAGE_TOOL_NAMES = [
+  'getCountryScorecard',
   'getWorldMonitorMcpEndpoint',
-  'launchWorldMonitor',
+  'listCountryScorecards',
+  'open_dashboard',
 ];
 const PRODUCTION_DASHBOARDS = [
   { origin: 'https://www.worldmonitor.app', variant: 'full' },
@@ -1476,7 +1478,10 @@ test.describe('top-level WebMCP dashboard contract', () => {
       tab: 'settings',
     });
     await expect(page.locator('#unifiedSettingsModal.active')).toBeVisible();
-    await expect(page.locator('#unifiedSettingsModal [data-tab="settings"][aria-selected="true"]')).toBeVisible();
+    // The `settings` wire value opens Settings without a target: on a wide
+    // screen the sidebar with Display selected.
+    await expect(page.locator('#unifiedSettingsModal [data-settings-home]')).toBeVisible();
+    await expect(page.locator('#unifiedSettingsModal #us-page-display')).toBeVisible();
 
     const alerts = await executeDashboardTool(page, 'open_alerts', {});
     expect(alerts).toMatchObject({
@@ -1486,7 +1491,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
       tab: 'notifications',
     });
     await expect(page.locator('#unifiedSettingsModal.active')).toBeVisible();
-    await expect(page.locator('#unifiedSettingsModal [data-tab="notifications"][aria-selected="true"]')).toBeVisible();
+    await expect(page.locator('#unifiedSettingsModal #us-page-notifications')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.locator('#unifiedSettingsModal.active')).toHaveCount(0);
 
@@ -1747,10 +1752,11 @@ test.describe('top-level WebMCP dashboard contract', () => {
     }
 
     // full variant lists every bundled preset except finance-only nq-day-trader
-    // (8 after country-watcher landed in #7650).
+    // (8 after country-watcher landed in #7650, 9 with the full-only
+    // protective-travel preset from #10453).
     expect(first.listOutput).toMatchObject({
       ok: true,
-      count: 8,
+      count: 9,
     });
     expect(applyOutput).toMatchObject({
       ok: true,

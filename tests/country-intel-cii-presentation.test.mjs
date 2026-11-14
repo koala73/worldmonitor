@@ -60,6 +60,7 @@ export { CountryBriefController };
       '@/services/runtime': 'export const toApiUrl = value => value;',
       '@/services/aviation': 'export const fetchFlightDelays = async () => [];',
       '@/services/country-coverage': 'export async function fetchCountryCoverage() { return {headlines: [], timelineEvents: []}; }',
+      '@/app/orbital-watch': 'export const openOrbitalWatch = () => {};',
       '@/components/CountryDeepDivePanel': 'export const CountryDeepDivePanel = class { constructor() { return globalThis.__ciiPresentationTest.makePanel(); } };',
     };
     builder.onResolve({ filter: /^@\// }, args => args.path in stubs

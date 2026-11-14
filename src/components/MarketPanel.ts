@@ -1,5 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
+import { sparklineSpanHtml } from './_sparkline-span';
 import type { MarketData, CryptoData, TokenData } from '@/types';
 import { formatPrice, formatChange, getChangeClass, getHeatmapClass } from '@/utils';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
@@ -614,9 +615,11 @@ const XAU_CURRENCY_CONFIG: Array<{ symbol: string; label: string; flag: string; 
   { symbol: 'USDTRY=X',  label: 'TRY', flag: '🇹🇷', multiply: true  },
 ];
 
+type CommodityCard = Pick<MarketData, 'display' | 'price' | 'change' | 'sparkline' | 'sparklineIntervalSeconds' | 'sparklineStartAt'> & { symbol?: string };
+
 export class CommoditiesPanel extends Panel {
   private _tab: CommoditiesTab = 'commodities';
-  private _commodityData: Array<{ display: string; price: number | null; change: number | null; sparkline?: number[]; symbol?: string }> = [];
+  private _commodityData: CommodityCard[] = [];
   private _fxRates: EcbFxRateItem[] = [];
   private _physicalPremiums: PhysicalPremium[] = [];
   private _physicalPremiumFxAsOf = '';
@@ -667,7 +670,7 @@ export class CommoditiesPanel extends Panel {
     return { ok: true, status: 'applied', effectiveTab: this._tab };
   }
 
-  public renderCommodities(data: Array<{ symbol?: string; display: string; price: number | null; change: number | null; sparkline?: number[] }>): void {
+  public renderCommodities(data: CommodityCard[]): void {
     this._commodityData = data;
     this._render();
   }
@@ -913,14 +916,17 @@ export class CommoditiesPanel extends Panel {
     }
 
     const grid = '<div class="commodities-grid">' +
-      validData.map(c => `
+      validData.map(c => {
+        const chart = miniSparkline(c.sparkline, c.change, 60, 18);
+        return `
         <div class="commodity-item">
           <div class="commodity-name">${escapeHtml(c.display)}</div>
-          ${miniSparkline(c.sparkline, c.change, 60, 18)}
+          ${chart ? chart + sparklineSpanHtml(c) : '<div class="commodity-spark-empty" aria-hidden="true"></div>'}
           <div class="commodity-price">${escapeHtml(formatPrice(c.price!))}</div>
           <div class="commodity-change ${getChangeClass(c.change!)}">${formatChange(c.change!)}</div>
         </div>
-      `).join('') + '</div>';
+      `;
+      }).join('') + '</div>';
 
     this.setSafeContent(unsafeRawHtml(tabBar + grid, 'legacy Panel.setContent() migration'), this.revealActiveTab);
   }

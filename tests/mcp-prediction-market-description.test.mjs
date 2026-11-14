@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import { readToolsReference } from './helpers/mcp-tools-reference-docs.mjs';
 
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../api/mcp/constants.ts';
 import {
@@ -11,14 +12,8 @@ import {
 const EXPECTED_CATEGORIES = ['geopolitical', 'tech', 'finance'];
 const TOOL_NAME = 'get_prediction_markets';
 
-const englishReference = readFileSync(
-  new URL('../docs/mcp-tools-reference.mdx', import.meta.url),
-  'utf8',
-);
-const chineseReference = readFileSync(
-  new URL('../docs/zh/mcp-tools-reference.mdx', import.meta.url),
-  'utf8',
-);
+const englishReference = readToolsReference('en');
+const chineseReference = readToolsReference('zh');
 const englishOverview = readFileSync(
   new URL('../docs/mcp-overview.mdx', import.meta.url),
   'utf8',

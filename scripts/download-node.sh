@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DEST_DIR="${ROOT_DIR}/src-tauri/sidecar/node"
-NODE_VERSION="${NODE_VERSION:-22.23.4}"
+NODE_VERSION="${NODE_VERSION:-22.23.5}"
 # Independent trust anchor from https://github.com/nodejs/release-keys.
 # Update the commit and digest together after reviewing release-key changes.
 NODE_RELEASE_KEYS_COMMIT="481637f813e912c4aa3622d7964ab426c97b8e8d"
@@ -24,7 +24,7 @@ Supported targets:
   - aarch64-unknown-linux-gnu
 
 Environment:
-  NODE_VERSION   Node.js version to bundle (default: 22.23.4)
+  NODE_VERSION   Node.js version to bundle (default: 22.23.5)
   NODE_TARGET    Optional target triple (same as --target)
   RUNNER_OS      Optional GitHub Actions OS hint
   RUNNER_ARCH    Optional GitHub Actions arch hint

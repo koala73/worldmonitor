@@ -1331,6 +1331,12 @@ components:
                 sourceOriginal:
                     type: string
                     description: Original source of the event report.
+                hasPreciseLocation:
+                    type: boolean
+                    description: True when UCDP identifies a specific event location (where_prec 1).
+                locationName:
+                    type: string
+                    description: Name of the location represented by the event coordinates.
             required:
                 - id
             description: UcdpViolenceEvent represents a georeferenced violence event from the UCDP dataset.

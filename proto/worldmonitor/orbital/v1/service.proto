@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package worldmonitor.orbital.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/orbital/v1/get_country_imagery_evidence.proto";
+import "worldmonitor/orbital/v1/get_point_passes.proto";
+import "worldmonitor/orbital/v1/list_imaging_satellites.proto";
+
+// OrbitalService serves the orbit data behind the point lookup of which satellites imaged a place.
+service OrbitalService {
+  option (sebuf.http.service_config) = {base_path: "/api/orbital/v1"};
+
+  // ListImagingSatellites returns the published sensor-profile inventory, current orbit elements for every profiled imaging satellite, and a daily ring of prior elements for computing past passes.
+  rpc ListImagingSatellites(ListImagingSatellitesRequest) returns (ListImagingSatellitesResponse) {
+    option (sebuf.http.config) = {path: "/list-imaging-satellites", method: HTTP_METHOD_GET};
+  }
+
+  // GetPointPasses returns every imaging pass whose footprint covers a point over the last 7 days and the next 72 hours, each with one tier, and the archive images matched to them. The point is rounded to 0.01 degrees and the response names the point used.
+  rpc GetPointPasses(GetPointPassesRequest) returns (GetPointPassesResponse) {
+    option (sebuf.http.config) = {path: "/get-point-passes", method: HTTP_METHOD_GET};
+  }
+
+  // GetCountryImageryEvidence returns a country's watched sites with their newest scene, next imaging window and any confirmed change flag.
+  rpc GetCountryImageryEvidence(GetCountryImageryEvidenceRequest) returns (GetCountryImageryEvidenceResponse) {
+    option (sebuf.http.config) = {path: "/get-country-imagery-evidence", method: HTTP_METHOD_GET};
+  }
+}

@@ -16,10 +16,18 @@ export function buildSkillsListResponse(
 ): Response {
   const cursor = (params as { cursor?: unknown } | null)?.cursor;
   if (cursor !== undefined) {
-    return rpcError(id, -32602, 'Invalid params: skills/list has no further pages', corsHeaders);
+    return rpcError(id, -32602, 'Invalid params: skills/list has no continuation cursor; omit cursor to list skills', corsHeaders);
   }
-  return rpcOk(id, { resultType: 'complete', skills: SKILL_ENTRIES }, corsHeaders);
+  return rpcOk(id, {
+    resultType: 'complete',
+    skills: SKILL_ENTRIES.slice(0, SKILLS_LIST_LIMIT),
+  }, corsHeaders);
 }
+
+// Publishing bounds the complete skills/list catalog to five unique names,
+// including every continuation page. Preserve the existing first page and keep
+// the full recipe collection accessible through skills/get and resources/read.
+const SKILLS_LIST_LIMIT = 5;
 
 export function buildSkillsGetResponse(
   id: unknown,

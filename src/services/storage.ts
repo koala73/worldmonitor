@@ -18,11 +18,22 @@ let db: IDBDatabase | null = null;
 // `ReferenceError: indexedDB is not defined` as an unhandled rejection
 // (Sentry WORLDMONITOR-7479081164). Now: probe up-front and reject with a
 // named error that `withTransaction` recognises and degrades gracefully.
+//
+// The browser can also refuse the open itself: Chrome rejects with
+// `UnknownError: The user denied permission to access the database.` when site
+// storage is blocked, and sandboxed origins throw `SecurityError`
+// synchronously (Sentry WORLDMONITOR-1D1). Those DOMExceptions mean the same
+// thing, so they surface as IndexedDBUnavailableError with the browser error
+// kept as `cause`.
 export class IndexedDBUnavailableError extends Error {
-  constructor() {
-    super('IndexedDB is not available in this environment');
+  constructor(cause?: unknown) {
+    super('IndexedDB is not available in this environment', cause === undefined ? undefined : { cause });
     this.name = 'IndexedDBUnavailableError';
   }
+}
+
+function asUnavailable(err: unknown): unknown {
+  return err instanceof DOMException ? new IndexedDBUnavailableError(err) : err;
 }
 
 export async function initDB(): Promise<IDBDatabase> {
@@ -32,9 +43,15 @@ export async function initDB(): Promise<IDBDatabase> {
   }
 
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    let request: IDBOpenDBRequest;
+    try {
+      request = indexedDB.open(DB_NAME, DB_VERSION);
+    } catch (err) {
+      reject(asUnavailable(err));
+      return;
+    }
 
-    request.onerror = () => reject(request.error);
+    request.onerror = () => reject(asUnavailable(request.error));
 
     request.onsuccess = () => {
       db = request.result;
@@ -55,6 +72,34 @@ export async function initDB(): Promise<IDBDatabase> {
       }
     };
   });
+}
+
+/**
+ * Whether the database can be opened right now. False only when the browser
+ * has no IndexedDB or refuses it; other failures still reject. A failed open
+ * is not cached, so a later call retries.
+ */
+export async function isStorageAvailable(): Promise<boolean> {
+  try {
+    await initDB();
+    return true;
+  } catch (err) {
+    if (err instanceof IndexedDBUnavailableError) return false;
+    throw err;
+  }
+}
+
+/**
+ * Open the database during dashboard boot. The database only holds baselines
+ * and playback snapshots, so a browser that refuses storage must not stop the
+ * app: report false and let reads degrade. Other failures still reject.
+ */
+export async function openStorageForBoot(): Promise<boolean> {
+  const available = await isStorageAvailable();
+  if (!available) {
+    console.warn('[Storage] IndexedDB unavailable; baselines and snapshots are disabled');
+  }
+  return available;
 }
 
 async function withTransaction<T>(

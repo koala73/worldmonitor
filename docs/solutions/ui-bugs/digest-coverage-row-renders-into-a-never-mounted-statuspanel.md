@@ -59,7 +59,7 @@ const row = document.querySelector('.digest-coverage-row');
 expect(row).not.toBeNull();                  // fails today: the node is detached
 expect(row?.isConnected).toBe(true);
 expect(row?.getAttribute('aria-live')).toBe('polite');
-expect(row?.textContent).toMatch(/^Digest coverage: (complete|partial|stale|unavailable|unknown) — /);
+expect(row?.textContent).toMatch(/^News coverage: (complete|partial|stale|unavailable|unknown) — /);
 ```
 
 Prove the test goes red against the current code before landing the mount fix. The repo already has the harness pattern for this: `src/e2e/china-activity-nowcast-panel-harness.ts:64` does `app.appendChild(panel.getElement())` to put a panel into a real document before asserting on it.

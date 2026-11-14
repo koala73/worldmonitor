@@ -40,7 +40,7 @@ it.each([401, 403])('clears prior observations through the actual MCP HTTP %i ca
   } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
 });
 describe('qualified country source to rendered view and context', () => {
-  it('shows the same populated 1/4/3/1 and top three through website and native generated adapters', async () => {
+  it('shows the same populated 1/4/3/2 and top three through website and native generated adapters', async () => {
     const outcomes = qualifiedFixtureOutcomes();
     const envelope = (family: string) => ({ countryCode: 'IR', family, windowIndex: 0, outcomeJson: JSON.stringify(outcomes.find(row => `COUNTRY_SIGNAL_FAMILY_${row.family.toUpperCase()}` === family)) });
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
@@ -53,25 +53,26 @@ describe('qualified country source to rendered view and context', () => {
     const signal = new AbortController().signal;
     const [a, b] = await Promise.all([loadQualifiedCountrySignals(website, 'IR', signal, military()), loadQualifiedCountrySignals(native, 'IR', signal, military())]);
     expect(a.details).toEqual(b.details);
-    expect(a.details).toMatchObject({ critical: 1, high: 4, medium: 3, low: 1 });
+    expect(a.details).toMatchObject({ critical: 1, high: 4, medium: 3, low: 2 });
     const context = projectQualifiedCountrySignalContext(b);
-    expect(context.details).toMatchObject({ critical: 1, high: 4, medium: 3, low: 1 });
+    expect(context.details).toMatchObject({ critical: 1, high: 4, medium: 3, low: 2 });
     expect(context.details?.recentHigh.map(row => row.description.text)).toEqual(b.details?.recentHigh.map(row => row.description));
     expect(context.families.map(row => row.includedObservations)).toEqual(b.families.map(row => row.observations.length));
     expect(new TextEncoder().encode(JSON.stringify(context)).length).toBeLessThan(16384);
-    expect(calls).toHaveLength(7);
+    expect(calls).toHaveLength(8);
     const panels = [a, b].map(value => {
       const panel = new CountryDeepDivePanel();
       Reflect.set(panel, 'currentCode', 'IR');
       const body = document.createElement('div'); Reflect.set(panel, 'signalsBody', body);
       panel.updateSignals(countrySignalsFromMilitary('IR'));
       panel.updateQualifiedCountrySignals(value);
-      expect(body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Critical1High4Moderate3Low1');
+      expect(body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Critical1High4Moderate3Low2');
       expect(body.querySelectorAll('.cdp-signal-item')).toHaveLength(3);
+      expect(body.querySelector('.cdp-imagery-evidence .cdp-imagery-item')?.textContent).toContain('Imagery statistics changed at Controlled watched site: raised by Sentinel-1A scene 2026-10-05, confirmed by Sentinel-1C scene 2026-10-17');
       expect(panel.getQualifiedCountrySignals()?.details).toEqual(value.details);
       expect(body.textContent).toContain('not a 24-hour total');
       panel.updateSignals(countrySignalsFromMilitary('IR'));
-      expect(body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Critical1High4Moderate3Low1');
+      expect(body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Critical1High4Moderate3Low2');
       return { panel, text: body.textContent };
     });
     expect(panels[0]!.text).toBe(panels[1]!.text);
@@ -89,7 +90,7 @@ describe('qualified country source to rendered view and context', () => {
     expect(value.details?.critical).toBe(0);
     signal.abort();
     await expect(loadQualifiedCountrySignals(source, 'IR', signal.signal, military())).rejects.toThrow();
-    expect(COUNTRY_SIGNAL_FAMILIES).toHaveLength(7);
+    expect(COUNTRY_SIGNAL_FAMILIES).toHaveLength(8);
   });
   it('bounds the website body before generated decoding and cancels an overflowing stream', async () => {
     let cancelled = false;
@@ -112,5 +113,37 @@ describe('qualified country source to rendered view and context', () => {
       expect(timer).toHaveBeenCalledWith(15_000);
       expect(cancelled).toBe(true);
     } finally { timer.mockRestore(); vi.unstubAllGlobals(); }
+  });
+});
+describe('satellite imagery block in the country signals section', () => {
+  const render = (imagery: ReturnType<typeof qualifiedFixtureOutcomes>[number]) => {
+    const panel = new CountryDeepDivePanel();
+    Reflect.set(panel, 'currentCode', 'IR');
+    const body = document.createElement('div'); Reflect.set(panel, 'signalsBody', body);
+    const outcomes = qualifiedFixtureOutcomes().map(row => row.family === 'imagery' ? imagery : row);
+    panel.updateQualifiedCountrySignals(projectQualifiedCountrySignals('IR', outcomes));
+    return { panel, body };
+  };
+  const confirmed = () => qualifiedFixtureOutcomes().find(row => row.family === 'imagery')!;
+
+  it('lists each confirmed change with its confirmation date and the score exclusion, and clears it', () => {
+    const { panel, body } = render(confirmed());
+    const block = body.querySelector('.cdp-imagery-evidence')!;
+    expect(block.querySelectorAll('.cdp-imagery-item')).toHaveLength(1);
+    expect(block.textContent).toContain('Confirmed 2026-10-17');
+    expect(block.textContent).toContain('Not an input to the Country Instability Index');
+    expect(block.textContent).not.toMatch(/activity|strike|build-up/i);
+    panel.clearQualifiedCountrySignals();
+    expect(body.querySelector('.cdp-imagery-evidence')).toBeNull();
+    panel.hide();
+  });
+
+  it('says no confirmed change when scoring is published, and shows no block while it is unavailable', () => {
+    const empty = render({ ...confirmed(), observations: [], matchedRows: 0, sampledRows: 0 });
+    expect(empty.body.querySelector('.cdp-imagery-evidence')?.textContent).toContain('No confirmed imagery statistics changes');
+    const unavailable = render(unavailableCountrySignal('IR', 'imagery', 'Change scoring is not yet published for this country\'s watched sites.'));
+    expect(unavailable.body.querySelector('.cdp-imagery-evidence')).toBeNull();
+    expect(unavailable.body.textContent).toContain('imagery: unavailable');
+    for (const { panel } of [empty, unavailable]) panel.hide();
   });
 });

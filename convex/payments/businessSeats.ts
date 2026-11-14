@@ -470,7 +470,7 @@ export const removeSeat = mutation({
 
 /**
  * Invitee redeems an HMAC token to accept a Business Pro seat invite. Verifies
- * the token, matches the signed-in Clerk email against the invited address,
+ * the token, matches the signed-in verified Clerk email against the invited address,
  * checks the underlying Business subscription is still covering, flips the
  * grant to `accepted`, stamps `inviteeUserId`, and recomputes the invitee's
  * entitlement. Single-use: accepted/revoked/expired tokens are rejected.
@@ -484,6 +484,9 @@ export const acceptBusinessInvite = mutation({
     const inviteeEmail = identity?.email?.trim().toLowerCase();
     if (!inviteeEmail) {
       throw new ConvexError({ kind: "INVITEE_EMAIL_UNAVAILABLE" });
+    }
+    if (identity?.emailVerified !== true) {
+      throw new ConvexError({ kind: "INVITEE_EMAIL_UNVERIFIED" });
     }
 
     const grant = await ctx.db.get(args.grantId);

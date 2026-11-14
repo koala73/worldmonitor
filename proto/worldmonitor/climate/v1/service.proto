@@ -9,6 +9,7 @@ import "worldmonitor/climate/v1/list_air_quality_data.proto";
 import "worldmonitor/climate/v1/list_climate_anomalies.proto";
 import "worldmonitor/climate/v1/list_climate_disasters.proto";
 import "worldmonitor/climate/v1/list_climate_news.proto";
+import "worldmonitor/climate/v1/list_reservoir_levels.proto";
 
 // ClimateService provides APIs for climate anomaly data sourced from Open-Meteo.
 service ClimateService {
@@ -37,6 +38,11 @@ service ClimateService {
   // ListAirQualityData returns PM2.5 station readings from the last two hours from OpenAQ, plus WAQI when configured, with a US EPA AQI and risk level each.
   rpc ListAirQualityData(ListAirQualityDataRequest) returns (ListAirQualityDataResponse) {
     option (sebuf.http.config) = {path: "/list-air-quality-data", method: HTTP_METHOD_GET};
+  }
+
+  // ListReservoirLevels returns ICESat-2 lidar levels and level changes for strategic reservoirs and lakes. Passes typically publish 50 to 70 days after overpass; see latest.ageDays.
+  rpc ListReservoirLevels(ListReservoirLevelsRequest) returns (ListReservoirLevelsResponse) {
+    option (sebuf.http.config) = {path: "/list-reservoir-levels", method: HTTP_METHOD_GET};
   }
 
   // ListClimateNews retrieves latest climate/environment intelligence headlines from seeded RSS feeds.

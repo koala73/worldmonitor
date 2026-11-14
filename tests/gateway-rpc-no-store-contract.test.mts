@@ -193,6 +193,26 @@ describe('gateway RPC no-store contract', () => {
     assert.deepEqual(body, { prices: [] });
     assertNoStore(res);
   });
+
+  it('keeps the latest cached EIA weekly spot average fresh before the next release', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+    const priceAt = Date.parse('2026-10-30');
+    const brent = { commodity: 'brent', name: 'Brent Crude Oil', price: 121.17, unit: '$/barrel', change: 0.12, priceAt };
+    const cached = { prices: [brent], legacyMetadata: 'preserved for unfiltered requests' };
+    globalThis.fetch = async () => Response.json({ result: JSON.stringify(cached) });
+    const originalNow = Date.now;
+    Date.now = () => Date.parse('2026-11-10T06:18:00Z');
+    try {
+      const req = new Request('https://worldmonitor.app/api/economic/v1/get-energy-prices');
+      const context = { request: req, pathParams: {}, headers: {} };
+      const prices = [{ ...brent, priceBasis: 'spot', priceSource: 'EIA', frequency: 'weekly', stale: false }];
+      assert.deepEqual(await getEnergyPrices(context, { commodities: ['brent'] }), { prices });
+      assert.deepEqual(await getEnergyPrices(context, { commodities: [] }), { ...cached, prices });
+    } finally {
+      Date.now = originalNow;
+    }
+  });
 });
 
 const PROTECTED_HIGH_TIER_EMPTY_HANDLERS = [

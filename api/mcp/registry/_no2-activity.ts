@@ -156,16 +156,16 @@ export const NO2_ACTIVITY_TOOL: RpcToolDef = {
     properties: {
       country_code: {
         type: 'string',
-        description: `Optional. ${COUNTRY_ARG_HINT} Returns the country region and every cluster inside it; clusters spanning several countries (gulf-states, rotterdam-antwerp) carry no code.`,
+        description: `Country to read. ${COUNTRY_ARG_HINT} Returns the country region and every cluster inside it; clusters spanning several countries (gulf-states, rotterdam-antwerp) carry no code.`,
       },
       region_id: {
         type: 'string',
-        description: 'Optional registry id, for example "country-cn" or "yangtze-river-delta". Combine with the other filters as AND.',
+        description: 'Registry id of one region, for example "country-cn" or "yangtze-river-delta" (the id field of a returned region). Combines with the other filters as AND.',
       },
       kind: {
         type: 'string',
         enum: Object.keys(KIND_ARG),
-        description: 'Optional. "country" for country polygons, "cluster" for named industrial clusters; omit for both.',
+        description: 'Region type: whole-country polygons or named industrial clusters such as yangtze-river-delta. Omitted: both types.',
       },
     },
     required: [],

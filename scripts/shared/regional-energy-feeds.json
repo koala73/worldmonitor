@@ -159,7 +159,7 @@
     "sourceUrl": "https://www.qatarenergy.qa/en/Documents/Fuel%20Prices.pdf",
     "licence": "Unconfirmed",
     "intervalMin": 720,
-    "maxContentAgeMin": 64800,
+    "maxContentAgeMin": 100800,
     "script": "seed-regional-energy-qatarenergy.mjs",
     "publishesAhead": true,
     "utcOffsetMin": 180

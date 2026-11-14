@@ -40,6 +40,9 @@ test('wide live video panels do not overlap adjacent dashboard panels (#8276)', 
     timeout: 60_000,
   });
 
+  // The webcam wall takes three rows on a tall viewport. Live News holds one
+  // 16:9 player, so it takes two rows at every height (#10458 follow-up): a
+  // third row was 111-290px of empty panel under the video.
   const cases = [
     { height: 590, span: 2, panelHeight: 404 },
     { height: 671, span: 2, panelHeight: 404 },
@@ -72,6 +75,9 @@ test('wide live video panels do not overlap adjacent dashboard panels (#8276)', 
           );
 
           if (!panel) return false;
+
+          const wantSpan = id === 'live-news' ? 2 : span;
+          const wantHeight = id === 'live-news' ? 404 : panelHeight;
 
           const rect = panel.getBoundingClientRect();
           const style = getComputedStyle(panel);
@@ -124,8 +130,8 @@ test('wide live video panels do not overlap adjacent dashboard panels (#8276)', 
           const gap = next.rect.top - rect.bottom;
 
           return (
-            style.gridRowStart === `span ${span}` &&
-            Math.abs(rect.height - panelHeight) <= 2 &&
+            style.gridRowStart === `span ${wantSpan}` &&
+            Math.abs(rect.height - wantHeight) <= 2 &&
             Math.abs(gap - 4) <= 2 &&
             webcamCellsVisible &&
             !panel.classList.contains('resized')
@@ -140,6 +146,15 @@ test('wide live video panels do not overlap adjacent dashboard panels (#8276)', 
     ).toBe(true);
   }
   await page.setViewportSize({ width: 1600, height: 866 });
+  // The player fills the panel: no empty band between the video and the
+  // panel's bottom edge, at the natural size and after a user makes it taller.
+  const deadSpaceBelowPlayer = () => news.evaluate((element) => {
+    const player = element.querySelector('.live-news-player');
+    if (!player) return null;
+    return Math.round(element.getBoundingClientRect().bottom - player.getBoundingClientRect().bottom);
+  });
+  await expect.poll(deadSpaceBelowPlayer, { message: 'natural Live News footprint' }).toBeLessThanOrEqual(16);
+  expect(await deadSpaceBelowPlayer()).toBeGreaterThanOrEqual(0);
   const footprint = (panel: typeof news) => panel.evaluate(element => ({
     span: getComputedStyle(element).gridRowStart,
     height: Math.round(element.getBoundingClientRect().height),
@@ -173,8 +188,16 @@ test('wide live video panels do not overlap adjacent dashboard panels (#8276)', 
   for (const panel of [news, webcams]) {
     await panel.locator('.panel-collapse-btn').click();
     await expect(panel).not.toHaveClass(/panel-collapsed/);
-    await expect.poll(() => footprint(panel)).toEqual({ span: 'span 3', height: 608 });
+    await expect.poll(() => footprint(panel)).toEqual(
+      panel === news ? { span: 'span 2', height: 404 } : { span: 'span 3', height: 608 },
+    );
   }
+  const newsHandle = news.locator(':scope > .panel-resize-handle');
+  await newsHandle.focus();
+  await newsHandle.press('End');
+  await expect(news).toHaveClass(/\bspan-4\b/);
+  await expect.poll(deadSpaceBelowPlayer, { message: 'four-row Live News footprint' }).toBeLessThanOrEqual(16);
+  expect(await deadSpaceBelowPlayer(), 'four-row player stays inside the panel').toBeGreaterThanOrEqual(0);
 });
 
 test('collapsing a user-resized video panel releases its grid rows (#10185)', async ({

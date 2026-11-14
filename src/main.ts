@@ -1,6 +1,8 @@
 import './styles/base-layer.css';
-import { initPwaInstall } from '@/services/pwa-install';
 import './bootstrap/zod-csp';
+import './bootstrap/abort-signal-fallbacks';
+import './bootstrap/dom-fallbacks';
+import { initPwaInstall } from '@/services/pwa-install';
 import { SITE_VARIANT } from '@/config/variant';
 import { installLcpAttributionDebug } from '@/bootstrap/lcp-attribution';
 import { markLcpDebug } from '@/utils/lcp-debug';
@@ -564,7 +566,7 @@ import { applyStoredTheme } from '@/utils/theme-manager';
 import { applyDeviceTierClass } from '@/utils/device-tier';
 import { applyFont } from '@/services/font-settings';
 import { applyFontScale, FONT_SCALE_STORAGE_KEY } from '@/services/font-scale-settings';
-import { initAnalytics, trackContentHandoff } from '@/services/analytics';
+import { initAnalytics, rememberLandingUtm, trackContentHandoff } from '@/services/analytics';
 import { installChunkReloadGuard } from '@/bootstrap/chunk-reload';
 import { initDebugBearRum } from '@/bootstrap/debugbear-rum';
 import { installStaleBundleCheck } from '@/bootstrap/stale-bundle-check';
@@ -590,6 +592,7 @@ const acquisitionVisit = {
   referrer: document.referrer,
   now: Date.now(),
 };
+rememberLandingUtm(window.location.search);
 void import('../shared/acquisition-source')
   .then((m) => { m.captureFirstTouchAcquisition(m.browserAcquisitionStorage(), acquisitionVisit); })
   .catch(() => { /* no attribution */ });
@@ -647,6 +650,7 @@ if (SITE_VARIANT && SITE_VARIANT !== 'full') {
   // Swap favicons to variant-specific versions before browser finishes fetching defaults
   document.querySelectorAll<HTMLLinkElement>('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(link => {
     link.href = link.href
+      .replace(/\/favico\/android-chrome-96x96\.png$/, `/favico/${SITE_VARIANT}/android-chrome-192x192.png`)
       .replace(/\/favico\/favicon/g, `/favico/${SITE_VARIANT}/favicon`)
       .replace(/\/favico\/apple-touch-icon/g, `/favico/${SITE_VARIANT}/apple-touch-icon`);
   });

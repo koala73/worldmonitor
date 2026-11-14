@@ -618,6 +618,8 @@ export type ProBusinessUpgradeResponse =
       chargeAmount: number;
       currency: string;
       renewalAmount: number | null;
+      renewalCurrency: string | null;
+      renewalDate: string | null;
       billingPeriod: 'monthly' | 'annual';
     }
   | { kind: 'upgraded'; fromPlanKey: string; toPlanKey: string };

@@ -67,6 +67,13 @@ const SEED_DOMAINS = {
   'climate:co2-monitoring':   { key: 'seed-meta:climate:co2-monitoring',   intervalMin: 1440 }, // daily cron; health.js maxStaleMin:4320 (3x) is intentionally higher — it's an alarm threshold, not the cron cadence
   'climate:ocean-ice':        { key: 'seed-meta:climate:ocean-ice',        intervalMin: 1440 }, // daily cron; health.js maxStaleMin:2880 (2x) tolerates one missed run
   'climate:news-intelligence': { key: 'seed-meta:climate:news-intelligence', intervalMin: 30 },
+  // Daily bundle member; health.js maxStaleMin:4320 (3x). The activation marker keeps the row
+  // pending (not degraded) until the first publication; minRecordCount matches api/health.js.
+  'climate:reservoir-levels': { key: 'seed-meta:climate:reservoir-levels', intervalMin: 1440, minRecordCount: 50, activationKey: 'seed-activated:climate:reservoir-levels' },
+  // Climate bundle member every 3h; health.js maxStaleMin:540. Pending until the first publication.
+  'orbital:catalog': { key: 'seed-meta:orbital:catalog', intervalMin: 180, minRecordCount: 250, activationKey: 'seed-activated:orbital:catalog' },
+  // Daily bundle member; health.js maxStaleMin:4320. Pending until the first publication.
+  'orbital:sites': { key: 'seed-meta:orbital:sites', intervalMin: 1440, minRecordCount: 300, activationKey: 'seed-activated:orbital:sites' },
   // #4920 completeness measurement — both run in the daily feed-validation
   // GitHub Actions workflow (00:00 UTC), not Railway. 1440-min cadence;
   // classifier stales at intervalMin*2 = one fully missed day.
@@ -226,6 +233,10 @@ const SEED_DOMAINS = {
   'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 23 }, // 15min materializer cron (#5863); intervalMin = maxStaleMin / 2 (45 / 2), matching api/health.js — was 210 against the retired 4h DOC cron.
   'gdelt:bulk:country-articles': { key: 'seed-meta:gdelt:bulk:country-articles', intervalMin: 23 }, // same materializer tick; standalone health key for the per-country index (#7748).
   'correlation:cards':        { key: 'seed-meta:correlation:cards',        intervalMin: 5 },
+  'infra:grid-disruption-clock': {
+    key: 'seed-meta:infra:grid-disruption-clock', intervalMin: 10,
+    activationKey: 'seed-activated:infra:grid-disruption-clock',
+  },
   'correlation:market-alerts': { key: 'seed-meta:correlation:market-alerts', intervalMin: 5, activationKey: 'seed-activated:correlation:market-alerts' }, // #8867 ledger tick in seed-bundle-derived-signals; its scorecard shares the run and the marker
   'correlation:market-alerts-scorecard': { key: 'seed-meta:correlation:market-alerts-scorecard', intervalMin: 5, activationKey: 'seed-activated:correlation:market-alerts' },
   'intelligence:advisories':  { key: 'seed-meta:intelligence:advisories',  intervalMin: 60 },

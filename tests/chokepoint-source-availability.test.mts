@@ -420,6 +420,9 @@ describe('chokepoint source availability', () => {
     for (const cp of expected.chokepoints) {
       cp.transitSummary.riskSummary = '';
       cp.transitSummary.riskReportAction = '';
+      // The capture predates flowEstimate.latestDate; a cached response is
+      // served with the field's empty default rather than without the field.
+      if (cp.flowEstimate) cp.flowEstimate.latestDate = '';
     }
     assert.deepEqual(response, expected);
     assert.doesNotMatch(JSON.stringify(response), /REROUTE|50-80K|Salalah/);

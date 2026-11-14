@@ -8,6 +8,7 @@ export const MISSION_PRESET_IDS = [
   'good-news-explorer',
   'nq-day-trader',
   'country-watcher',
+  'protective-travel',
 ] as const;
 
 export type MissionPresetId = (typeof MISSION_PRESET_IDS)[number];

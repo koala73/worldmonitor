@@ -119,10 +119,16 @@ const {
 } = require('./_ingestion-coverage.cjs');
 const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps } = require('./shared/closed-market-equity-maintenance.cjs');
 const { recordPizzintHistory } = require('./shared/pizzint-history.cjs');
+const { aggregateStates: aggregateAirTrafficStates, gapPoint: airTrafficGapPoint, binStart: airTrafficBinStart, BIN_MS: AIR_TRAFFIC_BIN_MS } = require('./shared/air-traffic-aggregate.cjs');
+const { recordTrafficPoint, isOkPointValue: isOkAirTrafficPoint, dayKeyFor: airTrafficDayKey, SERIES: AIR_TRAFFIC_SERIES } = require('./shared/air-traffic-history.cjs');
+const { ADSBLOL_CIRCLES, ADSBLOL_RADIUS_NM } = require('./shared/air-traffic-regions.cjs');
+const { mergeSweep: mergeAdsbLolSweep } = require('./shared/adsblol-traffic.cjs');
 const { pizzintVenuePoint } = require('./shared/pizzint-location.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = require('./shared/market-quote-refresh.cjs');
 const { PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose } = require('./shared/yahoo-closed-session.cjs');
+const { SPARKLINE_HISTORY_QUERY, SPARKLINE_HISTORY_RETRY_SECONDS, buildQuoteSparkline } = require('./shared/quote-sparkline.cjs');
+const { crudeOilQuoteProvenance } = require('./shared/oil-quote-provenance.cjs');
 // ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
 // Same implementation the RPC handler scores with — see the module header for
 // why it lives in shared/ rather than beside the other scoring helpers.
@@ -585,6 +591,41 @@ function upstashMGet(keys) {
     req.on('error', () => resolve(keys.map(() => null)));
     req.on('timeout', () => { req.destroy(); resolve(keys.map(() => null)); });
     req.end(body);
+  });
+}
+
+// Runs an Upstash /pipeline body. Resolves to the per-command result array, or
+// null when the request fails.
+function upstashPipeline(commands) {
+  return new Promise((resolve) => {
+    if (!UPSTASH_ENABLED || commands.length === 0) return resolve(null);
+    const url = new URL('/pipeline', UPSTASH_REDIS_REST_URL);
+    const req = UPSTASH_HTTP_MODULE.request(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 10000,
+    }, (resp) => {
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        resp.resume();
+        return resolve(null);
+      }
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('error', () => resolve(null));
+      resp.on('aborted', () => resolve(null));
+      resp.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          resolve(Array.isArray(parsed) ? parsed : null);
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+    req.end(JSON.stringify(commands));
   });
 }
 
@@ -2322,7 +2363,11 @@ const X_POLL_INTERVAL_MS = 15 * 60 * 1000;
 // cycle with no error anywhere. Coerce non-numeric env values to the default.
 const X_MAX_FEED_ITEMS = Math.max(50, Number(process.env.X_MAX_FEED_ITEMS) || xNewsAccounts.DEFAULT_MAX_FEED_ITEMS);
 const X_MAX_TEXT_CHARS = Math.max(200, Number(process.env.X_MAX_TEXT_CHARS) || 800);
-const X_TRACK_A_ACCOUNT_BUDGET = 64;
+// Reviewed enabled-registry ceiling. Post spend stays one List page per slot
+// (96 slots of 5 Posts) plus one 25-Post deletion audit, so member count does
+// not add Post reads. Raise this only after re-checking that math. It is not
+// the live List size: the List still has to match this registry exactly.
+const X_TRACK_A_ACCOUNT_BUDGET = 65;
 const X_FEED_CACHE_KEY = 'intelligence:x-feed:v1';
 const X_FEED_META_KEY = 'seed-meta:intelligence:x-feed:v1';
 const X_FEED_POLL_STATE_KEY = 'intelligence:x-feed:poll-state:v1';
@@ -3013,28 +3058,39 @@ async function startOrefPollLoop() {
 const UCDP_ACCESS_TOKEN = (process.env.UCDP_ACCESS_TOKEN || process.env.UC_DP_KEY || '').trim();
 const UCDP_REDIS_KEY = 'conflict:ucdp-events:v1';
 const UCDP_PAGE_SIZE = 1000;
-const UCDP_MAX_PAGES = 6;
-// GED Candidate discovery/fetch/merge is shared with scripts/seed-ucdp-events.mjs
-// so the two UCDP writers cannot drift (they already had, on discovery
-// concurrency and probe timeout).
+// The trailing-window fetch (annual release by date, then every monthly
+// candidate release) is shared with scripts/seed-ucdp-events.mjs so the two
+// UCDP writers cannot drift (they already had, on discovery concurrency and
+// probe timeout).
 const {
-  CANDIDATE_MAX_PAGES: UCDP_CANDIDATE_MAX_PAGES,
+  ANNUAL_LOOKBACK_MS: UCDP_ANNUAL_LOOKBACK_MS,
+  ANNUAL_WINDOW_MAX_PAGES: UCDP_ANNUAL_WINDOW_MAX_PAGES,
   discoverCandidateVersion: ucdpDiscoverCandidateVersion,
-  fetchCandidatePages: ucdpFetchCandidatePages,
   capWithAnnualFloor: ucdpCapWithAnnualFloor,
   candidateContentMeta: ucdpCandidateContentMeta,
+  annualReleaseEndMs: ucdpAnnualReleaseEndMs,
+  currentCandidateVersion,
+  fetchAnnualWindow: ucdpFetchAnnualWindow,
+  fetchCandidateWindow: ucdpFetchCandidateWindow,
+  keepLastGoodUcdpWindow: ucdpKeepLastGoodWindow,
+  summarizeUcdpWindow: ucdpSummarizeWindow,
+  ucdpLocatedCountry,
+  hasPreciseUcdpLocation,
 } = require('./shared/ucdp-candidate.cjs');
-const UCDP_MAX_EVENTS = 2000; // Default capacity. Complete candidate rows plus the annual floor take precedence.
-// CII accepts two years, but these newest annual pages and the candidate release
-// only cover a 365-day trailing slice. Candidate rows can exceed the default cap.
+// The capped `events` slice for the map, the RPC and MCP. The CII reads the
+// whole window from `countryDays` instead.
+const UCDP_MAX_EVENTS = 2000; // Default capacity. The newest candidate release plus the annual floor take precedence.
+// The trailing window both writers fetch and aggregate. The CII's UCDP term
+// assumes exactly this window (CII_UCDP_WINDOW_DAYS; tests pin them together).
 const UCDP_TRAILING_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 const UCDP_POLL_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const UCDP_TTL_SECONDS = 86400; // 24h safety net
 const UCDP_VIOLENCE_TYPE_MAP = { 1: 'UCDP_VIOLENCE_TYPE_STATE_BASED', 2: 'UCDP_VIOLENCE_TYPE_NON_STATE', 3: 'UCDP_VIOLENCE_TYPE_ONE_SIDED' };
 
-function ucdpFetchPage(version, page, timeoutMs = 30000) {
+function ucdpFetchPage(version, page, timeoutMs = 30000, query = {}) {
   return new Promise((resolve, reject) => {
     const pageUrl = new URL(`https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=${UCDP_PAGE_SIZE}&page=${page}`);
+    for (const [name, value] of Object.entries(query || {})) pageUrl.searchParams.set(name, String(value));
     const headers = { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' };
     if (UCDP_ACCESS_TOKEN) headers['x-ucdp-access-token'] = UCDP_ACCESS_TOKEN;
     const req = https.request(pageUrl, { signal: AbortSignal.timeout(timeoutMs), method: 'GET', headers, timeout: timeoutMs }, (resp) => {
@@ -3044,7 +3100,9 @@ function ucdpFetchPage(version, page, timeoutMs = 30000) {
       }
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         resp.resume();
-        return reject(new Error(`UCDP ${version} page ${page}: HTTP ${resp.statusCode}`));
+        // The status rides on the error: the window fetch tells an unpublished
+        // release (400/404) from a failed one.
+        return reject(Object.assign(new Error(`UCDP ${version} page ${page}: HTTP ${resp.statusCode}`), { status: resp.statusCode }));
       }
       let data = '';
       resp.on('data', (chunk) => { data += chunk; });
@@ -3116,75 +3174,80 @@ async function ucdpDiscoverVersion() {
 
 async function seedUcdpEvents() {
   try {
-    const { version, page0 } = await ucdpDiscoverVersion();
-    const totalPages = Math.max(1, Number(page0?.TotalPages) || 1);
-    const newestPage = totalPages - 1;
-    console.log(`[UCDP] Version ${version}, ${totalPages} total pages`);
+    const { version } = await ucdpDiscoverVersion();
+    const nowMs = Date.now();
+    console.log(`[UCDP] Version ${version}`);
 
-    const FAILED = Symbol('failed');
-    const fetches = [];
-    for (let offset = 0; offset < UCDP_MAX_PAGES && (newestPage - offset) >= 0; offset++) {
-      const pg = newestPage - offset;
-      fetches.push(pg === 0 ? Promise.resolve(page0) : ucdpFetchPage(version, pg).catch((err) => {
-        console.warn(`[UCDP] page ${pg}: ${err.message || err}`);
-        return FAILED;
-      }));
-    }
-    const pageResults = await Promise.all(fetches);
-
-    const allEvents = [];
+    // The annual release's part of the trailing window, by date: its pages are
+    // not in date order, so "the newest pages" never meant the newest events.
+    const fetchLogged = (v, pg, timeoutMs, query) => ucdpFetchPage(v, pg, timeoutMs, query).catch((err) => {
+      console.warn(`[UCDP] page ${pg} of ${v}: ${err.message || err}`);
+      throw err;
+    });
+    const annual = await ucdpFetchAnnualWindow(fetchLogged, version, { nowMs });
+    const annualIds = new Set(annual.events.filter((event) => event?.id != null).map((event) => String(event.id)));
+    const allEvents = [...annual.events];
+    const failedPages = annual.failedPages;
     let latestMs = NaN;
-    let failedPages = 0;
-    for (const raw of pageResults) {
-      if (raw === FAILED) { failedPages++; continue; }
-      const events = Array.isArray(raw?.Result) ? raw.Result : [];
-      allEvents.push(...events);
-      for (const e of events) {
-        const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
-        if (Number.isFinite(ms) && (!Number.isFinite(latestMs) || ms > latestMs)) latestMs = ms;
-      }
+    for (const e of annual.events) {
+      const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
+      if (Number.isFinite(ms) && (!Number.isFinite(latestMs) || ms > latestMs)) latestMs = ms;
     }
+    if (annual.truncated) console.warn(`[UCDP] annual ${version}: ${annual.totalPages} window pages exceed cap ${UCDP_ANNUAL_WINDOW_MAX_PAGES}`);
+    console.log(`[UCDP] annual ${version} ${annual.startDate}..${annual.endDate}: ${allEvents.length} events, ${failedPages} failed pages`);
 
-    // If no events from newest pages, extend existing cache TTL instead of overwriting
-    // with stale/empty data. This preserves the last known good payload.
+    // If the annual window failed entirely, extend the existing cache TTL instead
+    // of overwriting with stale/empty data. This preserves the last known good payload.
     if (allEvents.length === 0 && failedPages > 0) {
-      console.warn(`[UCDP] All ${failedPages} newest pages failed, extending existing key TTL (preserving last good data)`);
+      console.warn(`[UCDP] All ${failedPages} annual pages failed, extending existing key TTL (preserving last good data)`);
       try { await upstashExpire(UCDP_REDIS_KEY, UCDP_TTL_SECONDS); } catch {}
       // Do NOT update seed-meta: health should reflect actual data freshness, not this failed attempt
       return;
     }
 
-    // Merge the newest GED Candidate release on top of the annual base (ADD,
-    // never replace — a candidate alone is ~1.8k events vs the annual's ~418k).
-    // The annual base is already in allEvents; append candidate events and dedupe
-    // by id so a candidate's revision of an event also present in the annual
-    // release wins (it's the fresher record).
+    // Merge every GED Candidate release after the annual year on top of the
+    // annual base (ADD, never replace). Each candidate release holds one month,
+    // so every month since the annual year is fetched
+    // (scripts/shared/ucdp-candidate.cjs). Releases are appended oldest first
+    // and deduped by id below, so a later release's revision of an event wins.
     let candidateVersion = null;
     let candidateComplete = false;
+    let windowReleases = [version];
+    let missingReleases = [];
+    let unpublishedReleases = [];
+    let unpublishedMonths = [];
     const candidateIds = new Set();
     try {
       const candidate = await ucdpDiscoverCandidateVersion(ucdpFetchPage);
       if (candidate) {
-        const merged = await ucdpFetchCandidatePages(ucdpFetchPage, candidate);
-        // Only claim the candidate version once the release was fetched whole.
-        // A partial fetch published as `26.0.6` is indistinguishable from a
-        // complete one downstream, which is how a silently degraded merge would
-        // look healthy.
-        candidateComplete = merged.complete && !merged.truncated;
-        candidateVersion = candidateComplete ? candidate.version : `${candidate.version}+partial`;
-        if (merged.failedPages > 0) {
-          console.warn(`[UCDP] candidate ${candidate.version}: ${merged.failedPages} page(s) failed — publishing as partial`);
+        const fromMs = Math.max(ucdpAnnualReleaseEndMs(version) + 1, nowMs - UCDP_ANNUAL_LOOKBACK_MS);
+        const merged = await ucdpFetchCandidateWindow(fetchLogged, candidate, { fromMs, throughVersion: currentCandidateVersion(nowMs) });
+        // Only claim the candidate version once every release of the window
+        // was fetched whole. A partial window published as `26.0.6` is
+        // indistinguishable from a complete one downstream, which is how a
+        // silently degraded merge would look healthy.
+        candidateComplete = merged.complete;
+        candidateVersion = candidateComplete ? merged.newestVersion : `${merged.newestVersion}+partial`;
+        missingReleases = merged.missingReleases;
+        unpublishedReleases = merged.unpublishedReleases;
+        unpublishedMonths = merged.unpublishedMonths;
+        if (unpublishedReleases.length) console.log(`[UCDP] Not published yet: ${unpublishedReleases.join(', ')}`);
+        windowReleases = [version, ...merged.releases.map((r) => r.version)];
+        if (!candidateComplete) {
+          console.warn(`[UCDP] candidate window ${merged.releases[0].version}..${merged.newestVersion}: incomplete (missing: ${missingReleases.join(', ') || 'none'}; failed or truncated pages)`);
         }
-        if (merged.truncated) {
-          console.warn(`[UCDP] candidate ${candidate.version}: ${merged.totalPages} pages exceeds cap ${UCDP_CANDIDATE_MAX_PAGES} — ${merged.totalPages - UCDP_CANDIDATE_MAX_PAGES} page(s) dropped`);
+        for (const release of merged.releases) {
+          for (const e of release.events) {
+            const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
+            if (Number.isFinite(ms) && (!Number.isFinite(latestMs) || ms > latestMs)) latestMs = ms;
+          }
+          allEvents.push(...release.events);
         }
-        for (const e of merged.events) {
+        // The capped `events` slice keeps the newest release whole, as before.
+        for (const e of merged.releases[merged.releases.length - 1].events) {
           if (e?.id != null) candidateIds.add(String(e.id));
-          const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
-          if (Number.isFinite(ms) && (!Number.isFinite(latestMs) || ms > latestMs)) latestMs = ms;
         }
-        allEvents.push(...merged.events);
-        console.log(`[UCDP] Merged candidate ${candidateVersion}: +${merged.events.length} events`);
+        console.log(`[UCDP] Merged candidates ${merged.releases.map((r) => r.version).join(', ')}: +${merged.releases.reduce((n, r) => n + r.events.length, 0)} events`);
       }
     } catch (err) {
       console.warn(`[UCDP] Candidate merge skipped: ${err.message || err}`);
@@ -3209,6 +3272,8 @@ async function seedUcdpEvents() {
       dateEnd: Date.parse(e.date_end) || 0,
       location: { latitude: Number(e.latitude) || 0, longitude: Number(e.longitude) || 0 },
       country: e.country || '',
+      hasPreciseLocation: hasPreciseUcdpLocation(e),
+      locationName: (e.where_coordinates || '').substring(0, 200),
       sideA: (e.side_a || '').substring(0, 200),
       sideB: (e.side_b || '').substring(0, 200),
       deathsBest: Number(e.best) || 0,
@@ -3218,8 +3283,8 @@ async function seedUcdpEvents() {
       sourceOriginal: (e.source_original || '').substring(0, 300),
     })).sort((a, b) => b.dateStart - a.dateStart);
 
-    // Keep monthly candidate aggregates and the annual conflict-floor history.
-    const capped = ucdpCapWithAnnualFloor(mapped, (e) => candidateIds.has(e.id), UCDP_MAX_EVENTS);
+    // Keep the newest candidate release and the annual conflict history.
+    const capped = ucdpCapWithAnnualFloor(mapped, (e) => candidateIds.has(e.id), UCDP_MAX_EVENTS, undefined, (e) => annualIds.has(e.id));
 
     // Partial success but 0 events after filtering: extend TTL, don't overwrite
     if (capped.length === 0) {
@@ -3228,7 +3293,41 @@ async function seedUcdpEvents() {
       return;
     }
 
-    const payload = { events: capped, fetchedAt: Date.now(), version, candidateVersion, candidateComplete, annualFailedPages: failedPages, totalRaw: allEvents.length, filteredCount: capped.length };
+    // The whole window, aggregated per country and day, for the CII (the capped
+    // `events` slice is the map's, the RPC's and MCP's).
+    const windowStartMs = latestMs - UCDP_TRAILING_WINDOW_MS;
+    // Aggregated by where each event happened (ucdpLocatedCountry), not UCDP's country code.
+    const located = filtered.map((e) => ({ country: ucdpLocatedCountry(e), dateStart: Date.parse(e.date_start) || 0, deathsBest: Number(e.best) || 0, sideA: e.side_a, sideB: e.side_b }));
+    const summary = ucdpSummarizeWindow(located, { startMs: windowStartMs, endMs: latestMs });
+    if (summary.gapMonths.length) console.warn(`[UCDP] Window has empty months before later data: ${summary.gapMonths.join(', ')}`);
+    const window = {
+      startMs: windowStartMs,
+      endMs: latestMs,
+      months: summary.months,
+      gapMonths: summary.gapMonths,
+      // Months after the newest data that UCDP has not published yet: the frontier, never a gap.
+      upstreamGapMonths: unpublishedMonths,
+      complete: candidateComplete && failedPages === 0 && !annual.truncated && summary.gapMonths.length === 0,
+      releases: windowReleases,
+      missingReleases,
+      unpublishedReleases,
+    };
+
+    // Never replace a complete window with an incomplete one that reaches no further. No seed-meta
+    // write: health should reflect the age of the data actually served.
+    const keepCached = await ucdpKeepLastGoodWindow(async () => {
+      let readFailure = null;
+      const cached = await envelopeRead(UCDP_REDIS_KEY, (reason) => { readFailure = reason; });
+      if (readFailure) throw new Error(readFailure);
+      return cached;
+    }, window);
+    if (keepCached) {
+      console.warn(`[UCDP] Window refresh cannot replace the cached frontier, extending existing key TTL (preserving last good data)`);
+      try { await upstashExpire(UCDP_REDIS_KEY, UCDP_TTL_SECONDS); } catch {}
+      return;
+    }
+
+    const payload = { events: capped, fetchedAt: Date.now(), version, candidateVersion, candidateComplete, annualFailedPages: failedPages, totalRaw: allEvents.length, filteredCount: capped.length, countryDays: summary.countryDays, partyMonths: summary.partyMonths, dailyTotals: summary.dailyTotals, window };
     const ok = await envelopeWrite(UCDP_REDIS_KEY, payload, UCDP_TTL_SECONDS, { recordCount: capped.length, sourceVersion: 'ucdp' });
     // Content-age trio: api/health.js treats the presence of maxContentAgeMin as
     // the opt-in signal and reports STALE_CONTENT once the newest event outruns
@@ -3241,9 +3340,28 @@ async function seedUcdpEvents() {
       candidateVersion,
       candidateComplete,
       annualFailedPages: failedPages,
+      windowComplete: window.complete,
+      windowGapMonths: window.gapMonths,
       ...ucdpCandidateContentMeta(capped),
     }, 604800);
     console.log(`[UCDP] Seeded ${capped.length} events (raw: ${allEvents.length}, candidate: ${candidateVersion || 'none'}, failed pages: ${failedPages}, redis: ${ok ? 'OK' : 'FAIL'})`);
+    // The bootstrap tier hydrates from the compact projection, which health
+    // watches under its own seed-meta. The backup cron skips while the canonical
+    // seed-meta above is fresh, so this writer must refresh the projection too or
+    // it ages past its budget between backup runs (Sentry WORLDMONITOR-1DC).
+    // Best-effort, like the backup cron: the canonical key is already published.
+    if (ok) {
+      try {
+        const { compactUcdpDashboardPayload, UCDP_BOOTSTRAP_KEY, UCDP_BOOTSTRAP_META_KEY } = await import('./_ucdp-dashboard.mjs');
+        const compact = compactUcdpDashboardPayload(payload);
+        if (!await upstashSet(UCDP_BOOTSTRAP_KEY, compact, UCDP_TTL_SECONDS)) throw new Error('projection SET failed');
+        if (!await upstashSet(UCDP_BOOTSTRAP_META_KEY, { fetchedAt: Date.now(), recordCount: compact.events.length }, 604800)) {
+          throw new Error('projection seed-meta SET failed');
+        }
+      } catch (err) {
+        console.warn(`[UCDP] Compact projection write failed: ${err?.message || err}`);
+      }
+    }
     const newConflicts = capped.filter(e => e.deathsBest >= 10 && !ucdpPrevAlertedIds.has(e.id)).sort((a, b) => b.deathsBest - a.deathsBest);
     for (const e of newConflicts.slice(0, 2)) {
       ucdpPrevAlertedIds.add(e.id);
@@ -3524,6 +3642,33 @@ async function _withPreviousSessionChange(symbol, quote) {
   return { ...quote, change: ((quote.price - cached.close) / cached.close) * 100 };
 }
 
+// History bars before the default chart's first bar never change, so one
+// history request per symbol per session covers every 5-minute cycle. After a
+// failed request the symbol waits SPARKLINE_HISTORY_RETRY_SECONDS.
+const _sparklineHistories = new Map();
+const _sparklineHistoryFailedAt = new Map();
+
+async function _commoditySparkline(symbol, quote) {
+  const firstBarAt = quote.chart?.chart?.result?.[0]?.timestamp?.[0] ?? quote.lastTradeAt;
+  const cacheable = Number.isFinite(firstBarAt);
+  let cached = cacheable ? _sparklineHistories.get(symbol) : null;
+  if (!cached || cached.firstBarAt !== firstBarAt) {
+    const backingOff = Date.now() - (_sparklineHistoryFailedAt.get(symbol) ?? -Infinity) < SPARKLINE_HISTORY_RETRY_SECONDS * 1000;
+    let history = null;
+    if (!backingOff) {
+      await sleep(150);
+      history = await _fetchYahooChartOnce(symbol, SPARKLINE_HISTORY_QUERY);
+      if (history) _sparklineHistoryFailedAt.delete(symbol);
+      else _sparklineHistoryFailedAt.set(symbol, Date.now());
+    }
+    cached = { firstBarAt, chart: history?.chart ?? null };
+    if (history && cacheable) _sparklineHistories.set(symbol, cached);
+    if (!history) logThrottled('warn', `market-sparkline-history:${symbol}`, `[Market] ${symbol} sparkline history unavailable; publishing today's bars only`);
+  }
+  const { sparkline, ...labels } = buildQuoteSparkline(quote.chart, cached.chart);
+  return { sparkline: sparkline.map((value) => (value !== 0 ? Number(value.toPrecision(7)) : value)), ...labels };
+}
+
 function fetchYahooChartDirect(symbol, query = '') {
   return _fetchYahooChartOnce(symbol, query)
     .then((quote) => (!query && quote?.awaitingSessionOpen ? _withPreviousSessionChange(symbol, quote) : quote));
@@ -3759,10 +3904,15 @@ async function seedMarketQuotes() {
 async function seedCommodityQuotes() {
   const quotes = [];
   const missing = [];
+  const toQuote = async (symbol, meta, yahoo) => ({
+    symbol, name: meta.name, display: meta.display, price: yahoo.price, change: yahoo.change,
+    ...(await _commoditySparkline(symbol, yahoo)),
+    ...crudeOilQuoteProvenance(symbol, 'Yahoo Finance', 'futures', yahoo.lastTradeAt * 1000),
+  });
   for (const s of COMMODITY_SYMBOLS) {
     const meta = COMMODITY_META.get(s) || { name: s, display: s };
     const yahoo = await fetchYahooChartDirect(s);
-    if (yahoo) quotes.push({ symbol: s, name: meta.name, display: meta.display, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+    if (yahoo) quotes.push(await toQuote(s, meta, yahoo));
     else missing.push(s);
     await sleep(150);
   }
@@ -3772,7 +3922,7 @@ async function seedCommodityQuotes() {
     for (const s of missing) {
       const meta = COMMODITY_META.get(s);
       const yahoo = await fetchYahooChartDirect(s);
-      if (yahoo) quotes.push({ symbol: s, name: meta.name, display: meta.display, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+      if (yahoo) quotes.push(await toQuote(s, meta, yahoo));
       await sleep(200);
     }
   }
@@ -6218,7 +6368,7 @@ async function fetchTheaterFlightsFromOpenSky() {
   const seenIds = new Set();
   const allFlights = [];
   const resp = await fetch(`http://${RELAY_SELF_HOST}:${relayBoundPort}/opensky`, {
-    headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
+    headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { [RELAY_AUTH_HEADER]: RELAY_SHARED_SECRET } : {}) },
     signal: AbortSignal.timeout(20_000),
   });
   if (!resp.ok) throw new Error(`OpenSky proxy ${resp.status} for GLOBAL`);
@@ -6530,6 +6680,239 @@ async function seedTheaterPosture() {
   } finally {
     await upstashReleaseLockIfOwner(THEATER_POSTURE_LOCK_KEY, publicationId);
   }
+}
+
+// National civil air traffic series (docs/plans/2026-11-14-001-feat-national-air-traffic-signal-plan.md).
+// One global /states/all per 5-minute bin, through this relay's own /opensky
+// proxy so the account cooldown, cache and request queue stay in one place. A
+// bbox-less query costs 4 credits, so the loop adds 1,152 credits a day, plus
+// the retries of failed attempts.
+// The test preload runs Date.now this many times faster than timers. Only test
+// mode reads it, so production waits are always the real time left.
+const AIR_TRAFFIC_CLOCK_RATE = RELAY_TEST_MODE
+  ? Math.max(1, Number(process.env.RELAY_TEST_CLOCK_RATE) || 1)
+  : 1;
+const AIR_TRAFFIC_START_DELAY_MS = process.env.AIR_TRAFFIC_START_DELAY_MS !== undefined
+  ? Math.max(0, Number(process.env.AIR_TRAFFIC_START_DELAY_MS) || 0)
+  : 30_000;
+// Each tick starts this far into its bin, so every bin gets the same room for
+// retries and setInterval drift can never carry a tick past a bin boundary.
+const AIR_TRAFFIC_BIN_OFFSET_MS = Number.isFinite(Number(process.env.AIR_TRAFFIC_BIN_OFFSET_MS))
+  ? Math.min(AIR_TRAFFIC_BIN_MS - 1, Math.max(0, Number(process.env.AIR_TRAFFIC_BIN_OFFSET_MS)))
+  : 20_000;
+// Proxy failures (tunnel timeout, a body cut mid-stream) are transient; one
+// more attempt in the same bin usually succeeds. The wait outlasts the /opensky
+// negative cache (OPENSKY_NEGATIVE_CACHE_TTL_MS, declared further down) so a
+// retry reaches upstream instead of the cached failure.
+const AIR_TRAFFIC_MAX_ATTEMPTS = Math.max(1, Number(process.env.AIR_TRAFFIC_MAX_ATTEMPTS) || 3);
+const AIR_TRAFFIC_RETRY_DELAY_MS = Number.isFinite(Number(process.env.AIR_TRAFFIC_RETRY_DELAY_MS))
+  ? Math.max(0, Number(process.env.AIR_TRAFFIC_RETRY_DELAY_MS))
+  : (Number(process.env.OPENSKY_NEGATIVE_CACHE_TTL_MS) || 30_000) + 5_000;
+// Longer than the proxy's own worst case (15s tunnel plus 15s request), so the
+// loop never abandons a fetch the proxy would still have answered.
+const AIR_TRAFFIC_ATTEMPT_TIMEOUT_MS = Number(process.env.AIR_TRAFFIC_ATTEMPT_TIMEOUT_MS) || 40_000;
+// The proxy answers 200 with an empty states array when it is rate-limited or
+// serving a negative or stale cache entry. Only these X-Cache values carry a
+// fresh upstream snapshot; everything else is a gap, never a zero count.
+const AIR_TRAFFIC_FRESH_CACHE_STATES = new Set(['MISS', 'HIT', 'DEDUP']);
+// A HIT can be a snapshot another caller fetched up to a cache TTL ago. Past
+// this age it describes an earlier bin, so it is a gap, not this bin's count.
+const AIR_TRAFFIC_MAX_SNAPSHOT_AGE_MS = 180_000;
+
+async function fetchAirTrafficStates(fetchedAt) {
+  const resp = await fetch(`http://${RELAY_SELF_HOST}:${relayBoundPort}/opensky`, {
+    headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { [RELAY_AUTH_HEADER]: RELAY_SHARED_SECRET } : {}) },
+    signal: AbortSignal.timeout(AIR_TRAFFIC_ATTEMPT_TIMEOUT_MS),
+  });
+  const cacheState = resp.headers.get('x-cache') || 'NONE';
+  if (!resp.ok) return { gap: `http ${resp.status}` };
+  if (!AIR_TRAFFIC_FRESH_CACHE_STATES.has(cacheState)) return { gap: `cache ${cacheState}` };
+  let data;
+  try { data = await resp.json(); } catch { data = null; }
+  if (!Array.isArray(data?.states)) {
+    console.warn(`[AirTraffic] Malformed OpenSky body (states is ${data?.states === null ? 'null' : typeof data?.states}); recording a gap`);
+    return { gap: 'malformed' };
+  }
+  const snapshotMs = Number(data.time) * 1000;
+  if (!Number.isFinite(snapshotMs) || fetchedAt - snapshotMs > AIR_TRAFFIC_MAX_SNAPSHOT_AGE_MS) return { gap: 'stale' };
+  return { states: data.states };
+}
+
+async function attemptAirTrafficPoint(fetchedAt) {
+  try {
+    const snapshot = await fetchAirTrafficStates(fetchedAt);
+    if (snapshot.gap) return { gapReason: snapshot.gap };
+    const point = aggregateAirTrafficStates(snapshot.states, fetchedAt);
+    // A global snapshot with no positioned aircraft is a degraded feed, not a
+    // grounded world.
+    if (point.statesTotal === 0) return { gapReason: 'empty' };
+    return { point };
+  } catch (e) {
+    return { gapReason: e?.name === 'TimeoutError' ? 'timeout' : (e?.message || String(e)) };
+  }
+}
+
+async function seedAirTrafficPoint() {
+  const t = airTrafficBinStart(Date.now());
+  const bin = new Date(t).toISOString();
+  const existing = await upstashPipeline([['HGET', airTrafficDayKey(t), String(t)]]);
+  if (isOkAirTrafficPoint(existing?.[0]?.result)) {
+    console.log(`[AirTraffic] t=${bin} already recorded; skipping fetch`);
+    return;
+  }
+  let result = null;
+  let fetchedAt = Date.now();
+  let attempts = 0;
+  // Every attempt starts inside bin t, so a retry can only fill this bin.
+  while (attempts < AIR_TRAFFIC_MAX_ATTEMPTS && airTrafficBinStart(fetchedAt) === t) {
+    attempts += 1;
+    result = await attemptAirTrafficPoint(fetchedAt);
+    if (result.point) break;
+    if (attempts >= AIR_TRAFFIC_MAX_ATTEMPTS) break;
+    console.warn(`[AirTraffic] Attempt ${attempts} for t=${bin} failed (${result.gapReason}); retrying in ${Math.round(AIR_TRAFFIC_RETRY_DELAY_MS / 1000)}s`);
+    await new Promise((resolve) => setTimeout(resolve, AIR_TRAFFIC_RETRY_DELAY_MS));
+    fetchedAt = Date.now();
+  }
+  // The skip check can run past the end of the bin, leaving no attempt that
+  // could describe it. The bin is still written, as a gap, never left missing.
+  if (!result) result = { gapReason: 'bin ended' };
+  const point = result.point || airTrafficGapPoint(t);
+  await recordTrafficPoint(point, upstashPipeline, result.point ? fetchedAt : t);
+  if (point.status === 'ok') {
+    console.log(`[AirTraffic] t=${bin} status=ok us=${point.usSeen} usAirborne=${point.usAirborne} usLowClimbing=${point.usLowClimbing} eu=${point.euAirborne} hubs=${Object.keys(point.hubs).length} attempts=${attempts}`);
+  } else {
+    console.log(`[AirTraffic] t=${bin} status=gap reason=${result.gapReason} attempts=${attempts}`);
+  }
+}
+
+// Sleeps until Date.now reaches targetMs, rechecking after each timer so a
+// timer that fires early cannot start a tick in the wrong bin.
+function sleepUntilAirTrafficTime(targetMs) {
+  return new Promise((resolve) => {
+    const step = () => {
+      const remaining = targetMs - Date.now();
+      if (remaining <= 0) return resolve();
+      setTimeout(step, Math.max(1, Math.ceil(remaining / AIR_TRAFFIC_CLOCK_RATE))).unref?.();
+    };
+    step();
+  });
+}
+
+async function runAirTrafficLoop(seedFn, label) {
+  // The first tick fills the current bin at once (it skips a bin already
+  // recorded); every later tick starts at the same offset into its own bin.
+  for (;;) {
+    seedFn().catch((e) => console.warn(`[${label}] Tick error:`, e?.message || e));
+    await sleepUntilAirTrafficTime(airTrafficBinStart(Date.now()) + AIR_TRAFFIC_BIN_MS + AIR_TRAFFIC_BIN_OFFSET_MS);
+  }
+}
+
+function startAirTrafficLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[AirTraffic] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[AirTraffic] loop starting (one tick ${AIR_TRAFFIC_BIN_OFFSET_MS / 1000}s into each 5-minute bin, up to ${AIR_TRAFFIC_MAX_ATTEMPTS} attempts, first tick in ${AIR_TRAFFIC_START_DELAY_MS / 1000}s)`);
+  // Same startup delay as the theater loop, so the /opensky proxy is serving.
+  setTimeout(() => {
+    runAirTrafficLoop(seedAirTrafficPoint, 'AirTraffic').catch((e) => console.warn('[AirTraffic] Loop stopped:', e?.message || e));
+  }, AIR_TRAFFIC_START_DELAY_MS).unref?.();
+}
+
+// A second, independent series from adsb.lol receivers, kept in its own keys.
+// It never fills an OpenSky gap: the two networks see different aircraft, so a
+// ratio across them is meaningless. Read side by side, a drop in both is a real
+// event and a drop in one is that feed.
+// adsb.lol rate-limits a burst after about 10 requests; one request every 5s
+// held in a measured run. 12 circles take about a minute.
+// A keyless IP gets 500 requests a day (adsb.lol open-data API page),
+// and this loop needs 3,456 plus retries, while the theater loop already spends
+// 144 a day of the relay IP's quota on /v2/mil. The loop runs only with a key
+// whose quota covers it (a feeder key gives 7,200 a day).
+const ADSBLOL_API_KEY = process.env.ADSBLOL_API_KEY || '';
+// A 200 whose snapshot is older than this describes an earlier moment.
+const ADSBLOL_MAX_SNAPSHOT_AGE_MS = 60_000;
+const ADSBLOL_TRAFFIC_SPACING_MS = Number.isFinite(Number(process.env.ADSBLOL_TRAFFIC_SPACING_MS))
+  ? Math.max(0, Number(process.env.ADSBLOL_TRAFFIC_SPACING_MS)) : 5_000;
+const ADSBLOL_TRAFFIC_ATTEMPTS_PER_CIRCLE = 2;
+const ADSBLOL_TRAFFIC_ENABLED = process.env.ADSBLOL_TRAFFIC_ENABLED !== 'false';
+
+async function fetchAdsbLolCircle({ lat, lon }) {
+  try {
+    const resp = await fetch(`https://api.adsb.lol/v2/point/${lat}/${lon}/${ADSBLOL_RADIUS_NM}`, {
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, 'x-api-key': ADSBLOL_API_KEY },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!resp.ok) return { gap: `http ${resp.status}` };
+    let data;
+    try { data = await resp.json(); } catch { data = null; }
+    if (!Array.isArray(data?.ac) || !Number.isFinite(data.now)) return { gap: 'malformed' };
+    if (Math.abs(Date.now() - data.now) > ADSBLOL_MAX_SNAPSHOT_AGE_MS) return { gap: 'stale' };
+    return { data };
+  } catch (e) {
+    return { gap: e?.name === 'TimeoutError' ? 'timeout' : (e?.message || String(e)) };
+  }
+}
+
+// Every circle must answer, or the point would undercount and read as a drop.
+async function sweepAdsbLol(t) {
+  const responses = [];
+  for (const [index, circle] of ADSBLOL_CIRCLES.entries()) {
+    let result = null;
+    for (let attempt = 1; attempt <= ADSBLOL_TRAFFIC_ATTEMPTS_PER_CIRCLE; attempt += 1) {
+      if (airTrafficBinStart(Date.now()) !== t) return { gap: 'bin ended' };
+      result = await fetchAdsbLolCircle(circle);
+      // A response that lands after the bin ends belongs to no attempt of t.
+      if (airTrafficBinStart(Date.now()) !== t) return { gap: 'bin ended' };
+      if (result.data) break;
+      await new Promise((resolve) => setTimeout(resolve, ADSBLOL_TRAFFIC_SPACING_MS * 2));
+    }
+    if (!result.data) return { gap: `circle ${index + 1} ${result.gap}` };
+    responses.push(result.data);
+    if (index < ADSBLOL_CIRCLES.length - 1) await new Promise((resolve) => setTimeout(resolve, ADSBLOL_TRAFFIC_SPACING_MS));
+  }
+  return { responses };
+}
+
+async function seedAdsbLolTrafficPoint() {
+  const series = AIR_TRAFFIC_SERIES.adsblol;
+  const t = airTrafficBinStart(Date.now());
+  const bin = new Date(t).toISOString();
+  const existing = await upstashPipeline([['HGET', airTrafficDayKey(t, series), String(t)]]);
+  if (isOkAirTrafficPoint(existing?.[0]?.result)) {
+    console.log(`[AirTrafficAdsbLol] t=${bin} already recorded; skipping fetch`);
+    return;
+  }
+  const fetchedAt = Date.now();
+  const sweep = await sweepAdsbLol(t);
+  let point = null;
+  let gapReason = sweep.gap || null;
+  if (sweep.responses) {
+    point = aggregateAirTrafficStates(mergeAdsbLolSweep(sweep.responses), fetchedAt);
+    if (point.statesTotal === 0) { point = null; gapReason = 'empty'; }
+  }
+  if (!point) point = airTrafficGapPoint(t);
+  await recordTrafficPoint(point, upstashPipeline, point.status === 'ok' ? fetchedAt : t, series);
+  if (point.status === 'ok') {
+    console.log(`[AirTrafficAdsbLol] t=${bin} status=ok us=${point.usSeen} usAirborne=${point.usAirborne} usLowClimbing=${point.usLowClimbing} eu=${point.euAirborne} hubs=${Object.keys(point.hubs).length}`);
+  } else {
+    console.log(`[AirTrafficAdsbLol] t=${bin} status=gap reason=${gapReason}`);
+  }
+}
+
+function startAdsbLolTrafficLoop() {
+  if (!UPSTASH_ENABLED || !ADSBLOL_TRAFFIC_ENABLED) {
+    console.log('[AirTrafficAdsbLol] Disabled');
+    return;
+  }
+  if (!ADSBLOL_API_KEY) {
+    console.log('[AirTrafficAdsbLol] Disabled (ADSBLOL_API_KEY not set; the keyless 500 requests a day cannot cover 3,456)');
+    return;
+  }
+  console.log(`[AirTrafficAdsbLol] loop starting (${ADSBLOL_CIRCLES.length} circles, ${ADSBLOL_TRAFFIC_SPACING_MS / 1000}s apart)`);
+  setTimeout(() => {
+    runAirTrafficLoop(seedAdsbLolTrafficPoint, 'AirTrafficAdsbLol').catch((e) => console.warn('[AirTrafficAdsbLol] Loop stopped:', e?.message || e));
+  }, AIR_TRAFFIC_START_DELAY_MS).unref?.();
 }
 
 function startTheaterPostureSeedLoop() {
@@ -7371,10 +7754,7 @@ const WB_TTL_SECONDS = 7 * 24 * 3600; // 7 days
 const WB_BOOTSTRAP_KEY = 'economic:worldbank-techreadiness:v1';
 const WB_PROGRESS_KEY = 'economic:worldbank-progress:v1';
 const WB_RENEWABLE_KEY = 'economic:worldbank-renewable:v1';
-const { buildWorldBankTechObservations } = require('./_wb-tech-readiness-projection.cjs');
-
-const WB_WEIGHTS = { internet: 30, mobile: 15, broadband: 20, rdSpend: 35 };
-const WB_NORMALIZE_MAX = { internet: 100, mobile: 150, broadband: 50, rdSpend: 5 };
+const { computeWorldBankTechRankings: wbComputeRankings } = require('./_wb-tech-readiness-projection.cjs');
 
 const WB_INDICATORS = [
   { key: 'internet',  id: 'IT.NET.USER.ZS', dateRange: '2019:2024' },
@@ -7445,43 +7825,6 @@ async function wbFetchIndicator(indicatorId, dateRange) {
     }
   }
   return latestByCountry;
-}
-
-function wbNormalize(val, max) {
-  if (val === undefined || val === null) return null;
-  return Math.min(100, (val / max) * 100);
-}
-
-function wbComputeRankings(indicatorData) {
-  const allCountries = new Set();
-  for (const data of Object.values(indicatorData)) {
-    Object.keys(data).forEach(c => allCountries.add(c));
-  }
-  const scores = [];
-  for (const cc of allCountries) {
-    const components = {
-      internet:  wbNormalize(indicatorData.internet[cc]?.value, WB_NORMALIZE_MAX.internet),
-      mobile:    wbNormalize(indicatorData.mobile[cc]?.value, WB_NORMALIZE_MAX.mobile),
-      broadband: wbNormalize(indicatorData.broadband[cc]?.value, WB_NORMALIZE_MAX.broadband),
-      rdSpend:   wbNormalize(indicatorData.rdSpend[cc]?.value, WB_NORMALIZE_MAX.rdSpend),
-    };
-    let totalWeight = 0, weightedSum = 0;
-    for (const [key, weight] of Object.entries(WB_WEIGHTS)) {
-      if (components[key] !== null) { weightedSum += components[key] * weight; totalWeight += weight; }
-    }
-    const score = totalWeight > 0 ? weightedSum / totalWeight : 0;
-    const name = indicatorData.internet[cc]?.name || indicatorData.mobile[cc]?.name || cc;
-    const observations = buildWorldBankTechObservations({
-      internet: indicatorData.internet[cc],
-      mobile: indicatorData.mobile[cc],
-      broadband: indicatorData.broadband[cc],
-      rdSpend: indicatorData.rdSpend[cc],
-    });
-    scores.push({ country: cc, countryName: name, score: Math.round(score * 10) / 10, rank: 0, components, observations });
-  }
-  scores.sort((a, b) => b.score - a.score);
-  scores.forEach((s, i) => { s.rank = i + 1; });
-  return scores;
 }
 
 async function wbFetchProgress() {
@@ -7557,7 +7900,7 @@ async function seedWorldBank() {
       console.log(`[WB]   ${id}: ${Object.keys(indicatorData[key]).length} countries`);
     }
     const rankings = wbComputeRankings(indicatorData);
-    console.log(`[WB] Rankings: ${rankings.length} countries`);
+    console.log(`[WB] Rankings: ${rankings.filter(entry => entry.rank !== null).length}/${rankings.length} countries ranked`);
 
     console.log('[WB] Fetching progress indicators...');
     const progressData = await wbFetchProgress();
@@ -9163,10 +9506,8 @@ function brotliSyncBuffer(body) {
 
 function getClientIp(req, isPublic = false) {
   if (isPublic) {
-    // Public routes: only trust CF-Connecting-IP (set by Cloudflare, not spoofable).
-    // x-real-ip is excluded — client-spoofable on unauthenticated endpoints.
-    const cfIp = req.headers['cf-connecting-ip'];
-    if (typeof cfIp === 'string' && cfIp.trim()) return cfIp.trim();
+    // Direct-origin callers can forge forwarding headers. None is authenticated
+    // here, so public callers must share their socket peer's bucket.
     return req.socket?.remoteAddress || 'unknown';
   }
   // Authenticated routes: x-real-ip is safe because auth token validates the caller
@@ -15686,6 +16027,9 @@ server.listen(PORT, RELAY_BIND_HOST, () => {
       console.log('[Relay] Test mode: starting the Telegram poll loop on request');
       startTelegramPollLoop();
     }
+    // Same opt-in seam for scripts/ais-relay-air-traffic.test.cjs.
+    if (process.env.RELAY_TEST_AIR_TRAFFIC_LOOP === 'true') startAirTrafficLoop();
+    if (process.env.RELAY_TEST_ADSBLOL_TRAFFIC_LOOP === 'true') startAdsbLolTrafficLoop();
     console.log('[Relay] Test mode enabled — background seed loops are disabled');
     return;
   }
@@ -15712,6 +16056,8 @@ server.listen(PORT, RELAY_BIND_HOST, () => {
   startMiddleEastStrikesLoop();
   startServiceStatusesSeedLoop();
   startTheaterPostureSeedLoop();
+  startAirTrafficLoop();
+  startAdsbLolTrafficLoop();
 
   startWeatherSeedLoop();
   startSpendingSeedLoop();

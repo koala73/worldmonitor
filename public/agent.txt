@@ -42,8 +42,8 @@ across live layers, a plain LLM is cheaper and faster.
   package at https://github.com/koala73/worldmonitor (not sibling HTTP files)
 - Auth walkthrough: https://www.worldmonitor.app/auth.md (anonymous discovery and
   get_sources need no credentials; get_sources is daily-quota-free with a
-  fail-closed 10/min/IP ceiling; all other data calls take
-  X-WorldMonitor-Key: wm_<40-hex> or OAuth scope=mcp)
+  fail-closed 10/min/IP ceiling. `get_sources` needs no account. A free World Monitor account can call the cached-data tools (marked `free-account` in the server card) within a daily allowance; the remaining tools need a paid plan. Sign in with OAuth — no API key needed.
+  Paid REST API keys use X-WorldMonitor-Key: wm_<40-hex>.)
 
 Full agent guide: https://www.worldmonitor.app/agents.md
 LLM briefing: https://www.worldmonitor.app/llms.txt

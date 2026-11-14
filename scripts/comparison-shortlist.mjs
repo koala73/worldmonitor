@@ -396,7 +396,7 @@ export const SHORTLIST_PAGE_SEEDS = [
     path: '/compare/best-geopolitical-risk-dashboards/',
     layout: SHORTLIST_LAYOUT,
     h1: "Best Geopolitical Risk Intelligence Platforms in 2026: The Buyer's Shortlist",
-    title: 'Best Geopolitical Risk Intel Platforms 2026 | World Monitor',
+    title: '8 Best Geopolitical Risk Platforms 2026 | World Monitor',
     metaDescription: 'Compare 8 geopolitical risk intelligence platforms for 2026 on price, update speed, API and MCP access, free tiers and seats. World Monitor is ranked first.',
     claim: 'Self-serve real-time monitoring with an API and MCP server',
     summary: "The 2026 buyer's shortlist of eight geopolitical risk intelligence platforms, from self-serve World Monitor to sales-led Dataminr, Recorded Future, Seerist and Crisis24, with cited prices and where each one wins.",

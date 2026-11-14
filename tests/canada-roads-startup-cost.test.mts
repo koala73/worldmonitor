@@ -67,14 +67,10 @@ function layerDefault(rel: string, objectName: string, layer: string): boolean {
 test('the layer-default reader can see both booleans', () => {
   // Without this the assertions below pass by always reading false — and the
   // brace matcher must not be reading a neighbouring object's value either.
-  assert.equal(layerDefault('src/config/variants/full.ts', 'DEFAULT_MAP_LAYERS', 'conflicts'), true);
-  assert.equal(layerDefault('src/config/variants/full.ts', 'DEFAULT_MAP_LAYERS', 'satellites'), false);
   assert.equal(layerDefault('src/config/panels.ts', 'FULL_MAP_LAYERS', 'conflicts'), true);
-  // MOBILE_DEFAULT_MAP_LAYERS is declared after DEFAULT_MAP_LAYERS in the same
-  // file and disables far more; reading it correctly proves the brace matcher
-  // stops at the right closing brace.
-  assert.equal(layerDefault('src/config/variants/full.ts', 'MOBILE_DEFAULT_MAP_LAYERS', 'conflicts'), true);
-  assert.equal(layerDefault('src/config/variants/full.ts', 'MOBILE_DEFAULT_MAP_LAYERS', 'canadaRoads'), false);
+  assert.equal(layerDefault('src/config/panels.ts', 'FULL_MAP_LAYERS', 'satellites'), false);
+  assert.equal(layerDefault('src/config/panels.ts', 'FULL_MOBILE_MAP_LAYERS', 'conflicts'), true);
+  assert.equal(layerDefault('src/config/panels.ts', 'FULL_MOBILE_MAP_LAYERS', 'canadaRoads'), false);
 });
 
 test('no Canada road source rides a bootstrap tier', () => {
@@ -102,18 +98,13 @@ test('a layer whose sources are all on-demand does not ship enabled', () => {
   const pulled = CANADA_ROAD_SOURCES.filter(({ key }) => onDemand.has(key)).map(({ key }) => key);
   if (!pulled.length) return; // every source tiered: startup cost is the tier's problem
 
-  for (const [rel, name] of [
-    ['src/config/variants/full.ts', 'DEFAULT_MAP_LAYERS'],
-    ['src/config/panels.ts', 'FULL_MAP_LAYERS'],
-  ] as const) {
-    assert.equal(
-      layerDefault(rel, name, 'canadaRoads'),
-      false,
-      `${name} must not enable canadaRoads by default while it pulls the on-demand `
-      + `keys [${pulled.join(', ')}] — that fetches ~2.7 MB for every visitor, `
-      + 'including everyone who never asked for Canada (#6763)',
-    );
-  }
+  assert.equal(
+    layerDefault('src/config/panels.ts', 'FULL_MAP_LAYERS', 'canadaRoads'),
+    false,
+    'FULL_MAP_LAYERS must not enable canadaRoads by default while it pulls the on-demand '
+    + `keys [${pulled.join(', ')}] — that fetches ~2.7 MB for every visitor, `
+    + 'including everyone who never asked for Canada (#6763)',
+  );
 });
 
 test('App.ts runs the extracted opt-in helper, not an inline copy', () => {

@@ -660,6 +660,20 @@ async function nhcQuery(layerId, expectedGeometryTypes, fetchFn = globalThis.fet
         },
       );
     }
+    // ArcGIS reports a failed query as HTTP 200 with an `error` body. NOAA's
+    // "Unable to complete operation." (and any 5xx) is the server failing this
+    // one request and clears on retry (Sentry WORLDMONITOR-1AG). Any other
+    // error body, such as invalid parameters or a removed layer, stays a
+    // non-retryable invalid response so a lasting break is reported at once.
+    if (payload && typeof payload === 'object' && !('type' in payload)
+      && payload.error && typeof payload.error === 'object') {
+      const code = Number.isInteger(payload.error.code) ? payload.error.code : 'unknown';
+      const transient = (Number.isInteger(code) && code >= 500)
+        || /^unable to complete operation\.?$/i.test(String(payload.error.message ?? '').trim());
+      throw new NhcQueryError(`NHC layer ${layerId}: ArcGIS error ${code}`, transient
+        ? { code: 'NHC_POINT_REQUEST_FAILED' }
+        : { code: 'NHC_POINT_RESPONSE_INVALID', nonRetryable: true });
+    }
     return parseNhcGeoJson(payload, layerId, expectedGeometryTypes);
   }, 1, 500);
 }

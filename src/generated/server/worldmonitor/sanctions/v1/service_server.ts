@@ -19,6 +19,9 @@ export interface ListSanctionsPressureResponse {
   aircraftCount: number;
   semaCount: number;
   semaError?: string;
+  unattributed?: UnattributedSanctionsPressure;
+  flagRegistries: FlagRegistrySanctionsPressure[];
+  regulationTargets: CountrySanctionsPressure[];
 }
 
 export interface SanctionsEntry {
@@ -32,6 +35,8 @@ export interface SanctionsEntry {
   effectiveAt: string;
   isNew: boolean;
   note: string;
+  parentCountryCodes: string[];
+  parentCountryNames: string[];
 }
 
 export interface CountrySanctionsPressure {
@@ -47,6 +52,21 @@ export interface ProgramSanctionsPressure {
   program: string;
   entryCount: number;
   newEntryCount: number;
+}
+
+export interface UnattributedSanctionsPressure {
+  entryCount: number;
+  vesselCount: number;
+  aircraftCount: number;
+}
+
+export interface FlagRegistrySanctionsPressure {
+  countryCode: string;
+  countryName: string;
+  vesselCount: number;
+  newVesselCount: number;
+  aircraftCount: number;
+  newAircraftCount: number;
 }
 
 export interface LookupSanctionEntityRequest {

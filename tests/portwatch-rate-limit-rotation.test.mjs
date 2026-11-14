@@ -423,6 +423,65 @@ describe('cold-fetch priority for the expiring tail (#8501)', () => {
   });
 });
 
+// 2026-11-10T12:02Z: ArcGIS answered `Token Required` for about an hour while
+// PortWatch republished its weekly data, so the 30 countries attempted in that
+// run all failed. Their refreshAttemptedAt became the newest in the rotation,
+// so oldest-attempt-first sent them behind 144 countries attempted earlier,
+// about six runs away. A pending refresh failure is the only thing blocking
+// publication (classifyPublicationBlock: rotation_incomplete), and the 00:02Z
+// run fetched 30 countries with no errors yet still exited 76 on the 28 it
+// never retried. Seed-meta stops advancing until those countries come up.
+describe('cold-fetch priority for publication-blocking failures (2026-11-10)', () => {
+  const lead = PORTWATCH_EXPIRY_PRIORITY_LEAD_MINUTES * 60_000;
+  const HOUR = 3_600_000;
+
+  function item(iso2, { cacheWrittenAt, refreshAttemptedAt, refreshFailure }) {
+    return {
+      iso2,
+      iso3: `${iso2}X`,
+      prevPayload: { iso2, cacheWrittenAt, refreshAttemptedAt, ...(refreshFailure ? { refreshFailure } : {}) },
+    };
+  }
+  const failure = (code = 'fetch_error') => ({ code, consecutiveFailures: 1, lastAttemptAt: NOW - 12 * HOUR });
+
+  it('spends the next run on every country whose failure blocks publication', () => {
+    const cap = portwatchSeed.MAX_COLD_FETCH_PER_RUN;
+    const failed = Array.from({ length: 28 }, (_, i) => item(`F${String(i).padStart(2, '0')}`, {
+      cacheWrittenAt: NOW - 2 * DAY,
+      refreshAttemptedAt: NOW - 12 * HOUR,
+      refreshFailure: failure(),
+    }));
+    const due = Array.from({ length: 144 }, (_, i) => item(`D${String(i).padStart(3, '0')}`, {
+      cacheWrittenAt: NOW - 2 * DAY,
+      refreshAttemptedAt: NOW - (DAY + i * 60_000),
+    }));
+    const critical = ['CN', 'HK'].map((iso2) => item(iso2, { cacheWrittenAt: NOW - DAY, refreshAttemptedAt: NOW - 12 * HOUR }));
+    const selected = new Set(orderColdFetchQueue([...due, ...failed, ...critical], undefined, { now: NOW })
+      .slice(0, cap).map((entry) => entry.iso2));
+    for (const entry of failed) assert.ok(selected.has(entry.iso2), `${entry.iso2} must get a slot`);
+  });
+
+  it('keeps the expiring tier ahead of a failed but still-published country', () => {
+    // Losing a country at the cache cliff is irreversible; a failure only
+    // delays publication by a run.
+    const ordered = orderColdFetchQueue([
+      item('FA', { cacheWrittenAt: NOW - 2 * DAY, refreshAttemptedAt: NOW - 30 * DAY, refreshFailure: failure() }),
+      item('EP', { cacheWrittenAt: NOW - (PORTWATCH_MAX_CACHE_AGE_MS - lead + 1), refreshAttemptedAt: NOW }),
+    ], undefined, { now: NOW }).map((entry) => entry.iso2);
+    assert.deepEqual(ordered, ['EP', 'FA']);
+  });
+
+  it('rotates failed countries among themselves oldest-attempt-first', () => {
+    // A country that fails every run must not hold the head of the tier.
+    const ordered = orderColdFetchQueue([
+      item('F1', { cacheWrittenAt: NOW - 2 * DAY, refreshAttemptedAt: NOW - HOUR, refreshFailure: failure('invalid_query') }),
+      item('F2', { cacheWrittenAt: NOW - 2 * DAY, refreshAttemptedAt: NOW - 12 * HOUR, refreshFailure: failure() }),
+      item('OK', { cacheWrittenAt: NOW - 2 * DAY, refreshAttemptedAt: NOW - 30 * DAY }),
+    ], undefined, { now: NOW }).map((entry) => entry.iso2);
+    assert.deepEqual(ordered, ['F2', 'F1', 'OK']);
+  });
+});
+
 // ── 3. the circuit-breaker learns the rate-limit arm ─────────────────────────
 describe('batch circuit-breaker classification (#8501)', () => {
   const { classifyBatchCircuitBreak } = portwatchSeed;

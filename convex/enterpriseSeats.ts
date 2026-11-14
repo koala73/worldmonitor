@@ -278,8 +278,8 @@ export const removeMember = mutation({
 });
 
 /**
- * The invitee redeems the emailed token. The signed-in account's email must
- * match the invited address, the invite must still be pending and unexpired,
+ * The invitee redeems the emailed token. The signed-in account's verified
+ * email must match the invited address, the invite must still be pending and unexpired,
  * the contract must not have ended, and the account must not be an active
  * member of another Enterprise account.
  */
@@ -291,6 +291,7 @@ export const acceptInvite = mutation({
     const identity = await resolveUserIdentity(ctx);
     const inviteeEmail = identity?.email?.trim().toLowerCase();
     if (!inviteeEmail) throw new ConvexError({ kind: "INVITEE_EMAIL_UNAVAILABLE" });
+    if (identity?.emailVerified !== true) throw new ConvexError({ kind: "INVITEE_EMAIL_UNVERIFIED" });
 
     const row = await ctx.db.get(args.memberId);
     if (!row || !row.email) throw new ConvexError({ kind: "INVITE_NOT_FOUND" });

@@ -1,14 +1,20 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { replaceRawI18nKeyPlaceholders } from '../src/app/i18n-raw-key-healer.ts';
+import { replaceRawI18nKeyPlaceholders } from '../src/utils/i18n-raw-key-healer.ts';
 
 const I18N_SOURCE = 'src/services/i18n.ts';
 const APP_SOURCE = 'src/App.ts';
 const EN_LOCALE = 'src/locales/en.json';
 const EN_SHELL_LOCALE = 'src/locales/en.shell.json';
 const COMPONENTS_DIR = 'src/components';
-const SHELL_BUDGET_BYTES = 52 * 1024;
+// First-paint energy labels add 379 bytes to the formatted shell file, the
+// dashboard tab bar's new-tab options add 413, its team button adds 61, and
+// the team menu adds 492. Every panel title ships in the shell, so the
+// Strategic Water Levels panel title adds 49. The "US States " scope prefix
+// on the Grid Disruption Clock title adds 10 bytes. The map context menu's
+// "Satellite passes here" item adds 47.
+const SHELL_BUDGET_BYTES = 52 * 1024 + 379 + 413 + 61 + 492 + 80 + 49 + 10 + 47;
 
 function tsFilesUnder(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -242,6 +248,20 @@ describe('English i18n shell split', () => {
       // walk document.body overlays.
       'components.breakingNews.alertsRegion',
       'components.breakingNews.viewPanel',
+      // Oil data can render before the full dictionary. Several labels join
+      // these strings, so the raw-key healer cannot repair them afterward.
+      'components.energyComplex.marketTape',
+      'components.energyComplex.futures',
+      'components.energyComplex.dailySpot',
+      'components.energyComplex.eiaWeeklySpot',
+      'components.energyComplex.weekEnding',
+      'components.energyComplex.unknownPriceDate',
+      'components.energyComplex.unknownQuoteSource',
+      'components.energyComplex.stalePrice',
+      'components.energyComplex.liveTapeSource',
+      // Commodity sparkline span labels interpolate a start time, so the
+      // healer cannot repair them after first paint (#10424).
+      'components.deckgl.tooltip.sinceDate',
       ...eagerChromeKeys(),
     ];
 

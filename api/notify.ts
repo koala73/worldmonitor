@@ -35,7 +35,7 @@ import {
 } from '../server/_shared/rate-limit';
 
 const VALID_SEVERITIES = new Set(['critical', 'high', 'medium', 'low', 'info']);
-const INTERNAL_EVENT_TYPES = new Set(['flush_quiet_held', 'channel_welcome', 'watchlist_story_alert', 'chokepoint_disruption']);
+const INTERNAL_EVENT_TYPES = new Set(['flush_quiet_held', 'channel_welcome', 'watchlist_story_alert', 'chokepoint_disruption', 'orbital_imaging_window', 'orbital_site_change']);
 
 // Publishes create relay-side delivery obligations and LPUSH onto the SHARED
 // wm:events:queue, so unlike low-stakes reads this limiter must bound both
@@ -313,7 +313,15 @@ export default async function handler(req: Request): Promise<Response> {
   } catch {
     // The push may have committed. Keep its processing marker instead of
     // releasing it via a cached retryable response and replaying immediately.
-    return jsonResponse({ error: 'Publish outcome unknown' }, 503, { ...cors, 'Retry-After': '180' });
+    // Retry-After matches the marker's 180 s TTL in api/_idempotency.js.
+    return jsonResponse(
+      {
+        error: 'publish_outcome_unknown',
+        message: 'The event may already have been published. Retry only if a duplicate event is acceptable.',
+      },
+      503,
+      { ...cors, 'Retry-After': '180' },
+    );
   }
 
   if (!res.ok) {

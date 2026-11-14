@@ -268,9 +268,8 @@ export const GUARD_EXEMPT_FILES = new Set(['src/utils/safe-storage.ts']);
 export const LEGACY_RAW_LOCAL_STORAGE = [
   'src/App.ts :: localStorage.<member> x74',
   'src/app/event-handlers.ts :: localStorage.<member> x5',
-  'src/app/map-dimension-control.ts :: localStorage.<member> x1',
   'src/app/panel-layout.ts :: localStorage.<member> x9',
-  'src/app/pro-activation-controller.ts :: <global>.localStorage x8',
+  'src/app/pro-activation-controller.ts :: <global>.localStorage x7',
   'src/bootstrap/sw-update.ts :: localStorage.<member> x1',
   'src/components/AviationCommandBar.ts :: localStorage.<member> x1',
   'src/components/ChatAnalystPanel.ts :: <global>.localStorage x2',

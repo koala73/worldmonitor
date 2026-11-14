@@ -52,6 +52,16 @@ it.each(['accepted', 'dismissed'])('consumes the native prompt once and tracks %
   expect(track).toHaveBeenCalledWith('pwa-install-entry-shown', { platform: 'native' });
   expect(track).toHaveBeenCalledWith('pwa-install-clicked', { platform: 'native' });
 });
+it('keeps keyboard focus in Settings when the consumed native entry disappears', async () => {
+  const root = mount();
+  const { prompt } = offer();
+  const button = root.querySelector('button')!;
+  button.focus();
+  button.click();
+  await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
+  expect(root.querySelector('button')).toBeNull();
+  expect(document.activeElement).toBe(root);
+});
 it('clears an available prompt on appinstalled', () => {
   const root = mount();
   offer();

@@ -674,7 +674,7 @@ export class SearchManager implements AppModule {
       return this.isLayerCommandExecutable('resilienceScore');
     }
     if (category === 'country-map') return getCountryBbox(action) !== null;
-    return ['nav', 'country', 'time', 'view'].includes(category);
+    return ['nav', 'country', 'time', 'view', 'orbital'].includes(category);
   }
 
   private isCommandExecutable(

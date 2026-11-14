@@ -78,6 +78,10 @@ AIS 中断匹配、威胁分类、中断评分和战争风险等级，但在添�
 
 `disrupted` 布尔值与颜色徽章是分开的：当最近三个单独天数各自都低于相同 `baseline90d` 的 85% 时，它为 true。
 
+`latestDate` 是 7 天窗口覆盖的最后一个 PortWatch 日期。PortWatch 的发布滞后约四天，
+且并非每天更新，因此 `flowRatio` 可能连续数天保持不变。通过 `latestDate`
+可以判断该比率的时效。对于在该字段出现之前缓存的估算，它是空字符串。
+
 每个发布的流量估算还可能包含来自
 `portwatch:disruptions:active:v1` 的实时风险上下文。seeder 在受支持咽喉要道 500 公里范围内查找最近的活跃
 GDACS `RED` 或 `ORANGE` 警报，并将其作为 `hazardAlertLevel` 和 `hazardAlertName` 呈现。这只是标注：风险丰富化不会改变 `currentMbd`、`flowRatio` 或
@@ -206,6 +210,23 @@ top1 * 0.5 + top2 * 0.3 + top3 * 0.2
 - `energy:chokepoint-flows:v1`：Railway 种子循环，每 6 小时。
 - `supply_chain:chokepoints:v4`：状态热点探测，每 6 分钟。
 - `supply_chain:transit-summaries:v1`：AIS 中继紧凑通行汇总。
+
+## 开放数据
+
+所有受监测咽喉要道的每日状态以开放数据集的形式发布，采用
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 许可，无需密钥或注册。
+
+- [最新快照（JSON）](https://www.worldmonitor.app/data/v1/chokepoints/latest.json)
+- [最新快照（CSV）](https://www.worldmonitor.app/data/v1/chokepoints/latest.csv)
+- [可用日期](https://www.worldmonitor.app/data/v1/chokepoints/index.json)
+- [数据说明（英文）](https://www.worldmonitor.app/data/v1/chokepoints/README.md)：字段、未公开字段、许可和限制
+- [JSON Schema](https://www.worldmonitor.app/data/v1/chokepoints/schema.json)
+
+每天约 06:23 UTC 发布一份快照，数据来自本页所述的公开
+`GetChokepointStatus` 响应。每天还会保留一份按日期命名的文件
+（`YYYY-MM-DD.json` 和 `.csv`），较早日期的文件不会被改写。
+EIA 基线和 PortWatch 原始计数等第三方数据不包含在数据集中，
+数据说明列出了每个未公开字段及其原因。
 
 ## 已知限制
 

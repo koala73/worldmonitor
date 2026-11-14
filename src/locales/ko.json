@@ -490,7 +490,9 @@
     "marketBreadth": "시장 폭",
     "climateNews": "기후 뉴스",
     "fx": "외환 환율",
-    "ukmtoIncidents": "UKMTO 사건"
+    "ukmtoIncidents": "UKMTO 사건",
+    "reservoirLevels": "전략 수위",
+    "gridDisruptionClock": "미국 주별 전력망 정전 현황"
   },
   "commands": {
     "prefixes": {
@@ -1091,7 +1093,8 @@
       "skipToStart": "처음으로 이동",
       "previous": "이전",
       "next": "다음",
-      "skipToEnd": "끝으로 이동"
+      "skipToEnd": "끝으로 이동",
+      "storageUnavailable": "이 브라우저가 사이트 저장소를 차단하고 있어서 재생을 사용할 수 없습니다. 스냅샷 저장을 시작하려면 이 사이트에 대해 사이트 데이터를 허용하세요."
     },
     "pizzint": {
       "indexSource": "지수: World Monitor",
@@ -1306,7 +1309,8 @@
         "canadaRoads": "캐나다 도로",
         "canadaAlerts": "캐나다 경보",
         "notamAirspace": "NOTAM 공역 제한",
-        "no2Activity": "산업 활동"
+        "no2Activity": "산업 활동",
+        "reservoirLevels": "수위"
       },
       "tooltip": {
         "earthquake": "지진",
@@ -1423,7 +1427,8 @@
           "canadaRoads": "지원되는 캐나다 관할 지역의 공식 도로 사고, 경보, 노면 상태, 통행 차단, 공사 및 위험 정보",
           "canadaAlerts": "Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, SaskAlert의 주(州) 공공안전 경보",
           "notamAirspace": "FAA NOTAM에서 현재 시행 중이거나 24시간 이내에 시작되는 임시 비행 제한, 제한된 공역, 위험 및 금지 공역",
-          "no2Activity": "167개국과 32개 산업 클러스터에 대한 Sentinel-5P NO2 활동 방향: 최근 56일 창을 이전 연도의 같은 날짜와 비교하고 10% 데드밴드를 적용합니다. 수정된 Copernicus Sentinel 데이터를 포함합니다."
+          "no2Activity": "167개국과 32개 산업 클러스터에 대한 Sentinel-5P NO2 활동 방향: 최근 56일 창을 이전 연도의 같은 날짜와 비교하고 10% 데드밴드를 적용합니다. 수정된 Copernicus Sentinel 데이터를 포함합니다.",
+          "reservoirLevels": "NASA ICESat-2 위성 라이다로 측정한 전략 저수지와 호수의 수면 수위를 해당 월의 평년 수위와 비교합니다. NASA는 각 관측 패스를 측정 후 약 두 달 뒤에 공개합니다."
         },
         "notes": {
           "timeAffects": "영향 대상: 지진, 기상, 시위, 장애"
@@ -1642,6 +1647,10 @@
       "infoTooltip": "<strong>테크 이벤트</strong> 예정 및 최근 기술 이벤트: 컨퍼런스, 제품 출시, 규제 청문회, 실적 콜. 공식 이벤트 캘린더 및 업계 소스에서 집계."
     },
     "techReadiness": {
+      "ranked": "순위 포함",
+      "unranked": "순위 제외",
+      "coverageRequirement": "순위 산정에 필요한 최소 지표 수",
+      "coverageLabel": "사용 가능한 지표",
       "internetUsers": "인터넷 사용자",
       "mobileSubscriptions": "모바일 가입",
       "rdSpending": "연구개발 지출",
@@ -1657,10 +1666,16 @@
       "dataPreparing": "기술 준비도 데이터 새로고침 중 — 곧 표시됩니다."
     },
     "populationExposure": {
-      "totalAffected": "총 영향 인구",
-      "affectedCount": "{{count}}명 영향",
-      "radiusKm": "{{km}}km 반경",
-      "infoTooltip": "<strong>인구 노출 추정</strong> 사건 영향 반경 내 추정 인구. WorldPop 국가 밀도 데이터 기반.<ul><li>분쟁: 50km 반경</li><li>지진: 100km 반경</li><li>홍수: 100km 반경</li><li>산불: 30km 반경</li></ul>"
+      "estimateWithin": "반경 {{km}}km 내 약 {{count}}명",
+      "method": "추정에는 해당 국가의 평균 인구 밀도를 사용합니다.",
+      "empty": "조건에 맞는 사건 위치 없음",
+      "infoTooltip": "국가 인구 밀도 데이터가 있는 사건을 표시합니다. 정확도 정보가 없는 UCDP 사건의 위치에는 업데이트 대기 중으로 표시됩니다. 추정 지역은 겹칠 수 있습니다. 소요 사건에는 정확한 위치가 필요하며, 위치가 부정확한 UCDP 사건은 제외됩니다. 두 출처(소요 및 UCDP)가 보고한 같은 장소는 두 행으로 표시됩니다.",
+      "eventCount_other": "{{count}}개 사건",
+      "locationPending": "위치 정확도 업데이트 대기 중",
+      "unrestCoverage": "소요 사태 집계 범위",
+      "ucdpPending": "UCDP 집계 업데이트 대기 중",
+      "coverageShown": "표시된 이벤트: {{total}}건 중 {{shown}}건",
+      "coverageLeftOut": "표시 안 됨: 정확한 위치 없음 {{imprecise}}건, 인구 밀도 데이터가 없는 국가 {{noEstimate}}건, 출처별 처음 10곳 이후 {{otherPlaces}}건"
     },
     "securityAdvisories": {
       "loading": "여행 주의보 가져오는 중...",
@@ -2096,7 +2111,8 @@
       "channelOrVideoUrl": "YouTube 채널 또는 비디오 URL",
       "channelUrlHint": "채널 URL(youtube.com/channel/UC…) 또는 라이브 비디오 URL을 붙여넣으세요",
       "youtubeChannel": "YouTube 채널",
-      "httpsStreamHint": "브라우저는 안전하지 않은(http) 스트림을 차단합니다. 보안(https) 스트림 URL을 붙여넣으세요"
+      "httpsStreamHint": "브라우저는 안전하지 않은(http) 스트림을 차단합니다. 보안(https) 스트림 URL을 붙여넣으세요",
+      "tapToPlay": "탭하여 재생"
     },
     "map": {
       "showMap": "지도 표시",
@@ -2365,7 +2381,15 @@
       "noData": "에너지 데이터를 일시적으로 사용할 수 없습니다 - 재시도 예정",
       "liveTape": "실시간 테이프",
       "liveTapeSource": "시장 호가",
-      "infoTooltip": "<strong>에너지 복합</strong> 물리적 및 거래 가능한 에너지 신호를 한 곳에서 확인:<ul><li><strong>미국 에너지정보청 지표</strong>: WTI, Brent, 미국 생산, 재고</li><li><strong>라이브 시장</strong>: 원유 및 천연가스 같은 거래 가능한 에너지 가격</li><li><strong>목적</strong>: 물리적 에너지 스트레스를 광범위한 거시 및 상품 패널과 분리</li></ul>"
+      "infoTooltip": "<strong>에너지 복합</strong> 물리적 및 거래 가능한 에너지 신호를 한 곳에서 확인:<ul><li><strong>미국 에너지정보청 지표</strong>: WTI, Brent, 미국 생산, 재고</li><li><strong>라이브 시장</strong>: 원유 및 천연가스 같은 거래 가능한 에너지 가격</li><li><strong>목적</strong>: 물리적 에너지 스트레스를 광범위한 거시 및 상품 패널과 분리</li></ul>",
+      "marketTape": "시장 시세",
+      "futures": "선물",
+      "dailySpot": "일일 현물가",
+      "eiaWeeklySpot": "EIA 현물가 · 주간 평균",
+      "weekEnding": "{{date}}에 끝나는 주",
+      "unknownPriceDate": "관측 시각을 알 수 없음",
+      "unknownQuoteSource": "시세 출처를 알 수 없음",
+      "stalePrice": "갱신 지연"
     },
     "consumerPrices": {
       "tabs": {
@@ -2689,7 +2713,7 @@
     },
     "sanctionsPressure": {
       "title": "제재 및 지정",
-      "infoTooltip": "외국자산통제실 지정 국가자(SDN) 및 통합 목록 + 캐나다 글로벌 문제부 SEMA/JVCFOA 지정. 지정 압력이 가장 높은 국가, 이를 주도하는 프로그램, 마지막 업데이트 이후 새로 추가된 사항을 표시.",
+      "infoTooltip": "OFAC SDN 및 통합 목록과 캐나다 SEMA/JVCFOA 제재 지정입니다. 국가별 행은 직접적인 연관성을 사용합니다. 선박 국기와 항공기 등록은 등록 항목에서 별도로 집계되므로, 국가별 자산 수가 0이라고 해서 제재 대상 자산이 없다는 뜻은 아닙니다.",
       "loading": "제재 데이터 로드 중...",
       "unavailable": "제재 데이터를 사용할 수 없습니다.",
       "summary": {
@@ -2701,7 +2725,9 @@
       "sections": {
         "countries": "제재 대상국",
         "entries": "최근 지정",
-        "programs": "프로그램"
+        "programs": "프로그램",
+        "flagRegistries": "선박 국적 및 항공기 등록부",
+        "regulationTargets": "SEMA 규정 대상 국가"
       },
       "empty": {
         "countries": "국가 귀속 정보가 없습니다.",
@@ -2723,7 +2749,8 @@
         "unattributed": "미귀속",
         "program": "프로그램",
         "undated": "날짜 미지정"
-      }
+      },
+      "targetExplanation": "규정 대상 국가는 국적이나 주소의 증거가 아닙니다. 국가 위험 점수와 브리핑 집계에서 제외됩니다."
     },
     "radiationWatch": {
       "title": "방사선 감시",
@@ -3090,6 +3117,106 @@
           "placeholder": "선택 사항"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "World Monitor를 즐기고 있으신가요?",
+      "body": "GitHub에서 스타를 누르면 다른 사람들이 쉽게 찾을 수 있습니다.",
+      "star": "GitHub에서 스타 누르기",
+      "dismiss": "닫기 및 다시 묻지 않기"
+    },
+    "reservoirLevels": {
+      "note": "NASA ICESat-2 위성 라이다로 측정한 수면 수위입니다. NASA는 각 패스를 측정 후 약 두 달 뒤에 공개하므로, 이 데이터는 일 단위가 아니라 주와 계절 단위의 변화를 추적합니다. 수위만 다루며 저수량은 아닙니다.",
+      "source": "출처:",
+      "processedWith": "처리:",
+      "empty": "아직 측정값이 없습니다",
+      "filterEmpty": "이 필터에 맞는 수역이 없습니다",
+      "unavailable": "현재 수위 데이터를 사용할 수 없습니다",
+      "filterLabel": "수역 필터",
+      "filter": {
+        "all": "전체",
+        "attention": "주의 필요",
+        "transboundary": "국경 간"
+      },
+      "status": {
+        "record_low": "역대 최저",
+        "record_high": "역대 최고",
+        "falling_fast": "빠른 하락",
+        "rising_fast": "빠른 상승",
+        "low": "계절 대비 낮음",
+        "high": "계절 대비 높음",
+        "normal": "평년 수준",
+        "insufficient_history": "이력 부족",
+        "no_recent_data": "최근 패스 없음",
+        "lowInRange": "범위 내 낮음",
+        "highInRange": "범위 내 높음"
+      },
+      "vsUsual": "{{month}} 평년 대비 {{value}}",
+      "in12Months": "12개월간 {{value}}",
+      "noComparison": "아직 비교 없음",
+      "measured": "{{date}} 측정 ({{age}})",
+      "noPass": "아직 사용할 수 있는 패스 없음",
+      "popup": {
+        "level": "수위",
+        "levelValue": "해발 {{value}} (EGM2008)",
+        "anomaly": "{{month}} 평년 대비",
+        "anomalyPlain": "해당 월 평년 대비",
+        "changePrev": "이전 패스 이후",
+        "change90": "90일간",
+        "change365": "12개월간",
+        "measured": "측정일",
+        "sparkline": "36개월 수위"
+      }
+    },
+    "gridDisruptionClock": {
+      "region": "주 선택",
+      "unknown": "알 수 없음",
+      "customers": "정전으로 보고된 고객 수",
+      "lastCustomers": "마지막 보고 당시 정전 고객 수",
+      "denominatorUnknown": "집계 대상 전체 고객 수 미상",
+      "tracked": "집계 대상 고객 {{amount}}명",
+      "dataAge": "보고 후 경과 시간",
+      "minutes": "{{amount}}분",
+      "hours": "{{amount}}시간",
+      "warnings": "경보",
+      "recovery": "보고된 변화",
+      "decreased": "보고된 정전 고객 {{amount}}명 감소",
+      "increased": "보고된 정전 고객 {{amount}}명 증가",
+      "unchanged": "보고된 정전 고객 수 변동 없음",
+      "since": "비교 기준 시각",
+      "peakLoad": "평상시 최대 부하의 {{percent}}% 복구",
+      "noComparison": "비교할 수 있는 정전 고객 수가 없습니다.",
+      "history": "최근 정전 고객 수 ({{total}}건)",
+      "priorNotice": "이전에 발표된 경보",
+      "sources": "경보 출처 확인 현황",
+      "operatorLink": "전력망 공지 확인",
+      "issued": "발표",
+      "until": "만료",
+      "noActive": "확인한 출처에 유효한 경보가 없습니다.",
+      "unknownWarnings": "현재 일부 출처의 경보를 확인할 수 없습니다.",
+      "noObservation": "현재 정전 고객 수와 집계 범위를 확인할 수 없습니다.",
+      "loadError": "전력망 정전 현황 데이터를 불러올 수 없습니다.",
+      "retained": "새로 고침에 실패해 마지막으로 받은 보고를 표시합니다.",
+      "phase": {
+        "unknown": "영향 미상",
+        "monitoring": "관찰 중",
+        "watch": "주의 단계",
+        "disrupted": "정전 보고됨",
+        "recovering": "복구 진행 보고됨",
+        "restored": "복구 완료 보고됨"
+      },
+      "kind": {
+        "grid": "전력망 공지",
+        "weather": "기상 경보",
+        "space-weather": "우주 기상"
+      },
+      "checks": {
+        "available": "확인됨",
+        "unavailable": "확인 불가",
+        "not_monitored": "운영사에 직접 확인",
+        "stale": "마지막 확인 후 시간이 오래 지남"
+      },
+      "warningAge": "현재 유효한 첫 경보 이후",
+      "days": "{{amount}}일"
     }
   },
   "popups": {
@@ -4255,7 +4382,6 @@
     "dataAndCommunity": "데이터 및 커뮤니티",
     "theme": "테마",
     "themeDesc": "자동으로 시스템 설정을 따릅니다.",
-    "themeAuto": "자동 (시스템 따르기)",
     "themeDark": "다크",
     "themeLight": "라이트",
     "mapProvider": "지도 타일 제공자",
@@ -4314,7 +4440,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "국가 개요 열기",
-    "copyCoordinates": "좌표 복사"
+    "copyCoordinates": "좌표 복사",
+    "satellitePasses": "이 지점을 지나는 위성"
   },
   "shell": {
     "documentTitle": "World Monitor — 실시간 글로벌 인텔리전스 대시보드",
@@ -4409,7 +4536,9 @@
   "auth": {
     "signIn": "로그인",
     "createAccount": "계정 만들기",
+    "freeReason": "무료: 레이아웃 저장, 국가 팔로우, 알림",
     "settings": "설정",
+    "planBilling": "요금제 및 결제",
     "passkeyOffer": {}
   },
   "mcp": {
@@ -4453,7 +4582,17 @@
     "renameHint": "{{name}} — 더블 클릭하여 이름 변경",
     "deleteTab": "탭 삭제",
     "deleteTabAria": "탭 {{name}} 삭제",
-    "tabNameAria": "탭 이름"
+    "tabNameAria": "탭 이름",
+    "addTabTitleSaved": "새 탭 (저장한 패널로 시작)",
+    "newTabOptions": "새 탭 옵션",
+    "newTabStartsDefault": "새 탭은 기본 패널로 시작합니다.",
+    "newTabStartsSaved": "새 탭은 저장한 패널로 시작합니다.",
+    "newTabOptionsHint": "이미 있는 탭은 변경되지 않습니다.",
+    "useThisTabPanels": "이 탭의 패널 사용",
+    "useDefaultPanels": "기본 패널 사용",
+    "newTabPanelsNotSaved": "저장할 수 없습니다. 이 브라우저가 사이트 저장소를 차단하고 있습니다.",
+    "team": "팀",
+    "teamDashboards": "팀 대시보드"
   },
   "theaterPresets": {
     "label": "커버리지 프리셋",
@@ -4546,6 +4685,21 @@
         "related": {
           "0": "중국 활동 나우캐스트",
           "1": "국가 브리프"
+        }
+      },
+      "reservoirLevels": {
+        "category": "기후",
+        "purpose": "전략 저수지와 호수를 수면 수위가 같은 시기의 평년 수위와 비교해 어떤지, 얼마나 빠르게 변하는지에 따라 표시합니다.",
+        "source": "NSIDC를 통한 NASA ICESat-2 ATL13 내륙 수면 높이로, SlideRule Earth로 처리하고 seed-reservoir-levels 서비스가 위성 패스별로 집계합니다.",
+        "freshness": "매일 갱신됩니다. NASA는 각 패스를 측정 후 50~70일 뒤에 공개하며, 각 저수지는 며칠에서 약 한 달 간격으로 다시 관측됩니다.",
+        "confidence": "패스는 최소 5개의 수면 구간이 0.25 m 이내로 일치할 때만 반영됩니다. 계절 비교에는 같은 시기의 이전 3년 이상 패스가 필요합니다.",
+        "limitations": {
+          "0": "수위만 다루며 저수량은 아닙니다. 같은 하락이라도 저수지마다 줄어드는 저수량은 다릅니다.",
+          "1": "150일 동안 패스가 없는 수역은 최근 패스 없음으로 표시되지만, 마지막 값과 변화, 날짜는 계속 표시됩니다."
+        },
+        "related": {
+          "0": "전략 수위 패널",
+          "1": "기후 이상"
         }
       },
       "conflicts": {
@@ -4825,5 +4979,705 @@
     "close": "닫기",
     "alertsHint": "이 iPhone 또는 iPad에서 알림을 받으려면 World Monitor를 홈 화면에 설치하세요.",
     "how": "설치 방법"
+  },
+  "teamDashboards": {
+    "desc": "팀이 공유하는 대시보드입니다. 열어서 새 탭으로 추가하세요.",
+    "empty": "팀이 아직 대시보드를 공유하지 않았습니다. 이 탭을 공유하여 팀의 모든 사람이 패널, 크기 및 지도를 볼 수 있도록 하세요.",
+    "open": "{{name}}을(를) 새 탭으로 열기",
+    "stopSharing": "{{name}} 공유 중지",
+    "confirmStop": "{{name}}을(를) 팀과 공유하지 않으시겠습니까? 이미 열어본 탭은 그대로 유지됩니다.",
+    "shareTab": "이 탭을 팀과 공유",
+    "shareChanges": "이 탭의 변경사항을 팀과 공유",
+    "behind": "팀이 이 대시보드를 열은 후 변경했습니다.",
+    "getLatest": "최신 버전 가져오기",
+    "opened": "팀에서 {{name}}을(를) 열었습니다.",
+    "shared": "{{name}}을(를) 팀과 공유했습니다.",
+    "updated": "이 탭이 팀의 최신 버전으로 업데이트되었습니다.",
+    "stopped": "{{name}} 공유를 중지했습니다.",
+    "failed": "팀의 대시보드에 연결할 수 없습니다. 다시 시도하세요.",
+    "limit": "팀이 여기에서 이미 {{limit}}개의 대시보드를 공유 중입니다. 먼저 하나의 공유를 중지하세요.",
+    "focusNotEntitled": "현재 플랜에서는 포커스된 대시보드 공유를 지원하지 않습니다. 이 탭의 포커스를 해제한 후 패널을 공유하세요.",
+    "focusUnreadable": "{{name}}의 포커스를 이 버전에서 표시할 수 없습니다. 다시 로드한 후 다시 열어주세요."
+  },
+  "focus": {
+    "barLabel": "포커스",
+    "summary": "{{countries}}에 포커스됨",
+    "neighboursOff": "인접 국가 미포함",
+    "chosenLabel": "선택됨",
+    "neighboursLabel": "인접 국가",
+    "neighbourItem": "인접 국가: {{name}}",
+    "range": "{{start}} ~ {{end}}",
+    "windowEnded": "윈도우 종료 {{date}}",
+    "windowStarts": "시작 {{date}}",
+    "windowUntil": "{{date}}까지",
+    "windowFrom": "{{date}}부터",
+    "edit": "수정",
+    "clear": "해제",
+    "clearAria": "포커스를 해제하고 전 세계를 표시합니다",
+    "clearFocus": "포커스 해제",
+    "notFiltered": "필터링 안 됨",
+    "notFilteredGlobal": "전역 데이터: 국가별 필터링 안 됨",
+    "notFilteredYet": "국가별 필터링 아직 안 됨",
+    "gateSignedOutDesc": "로그인하여 다루는 국가에 대해 대시보드 탭을 포커스하세요.",
+    "gateUpgradeDesc": "선택한 국가에 탭을 포커스하려면 Pro Business, API Business 또는 Enterprise 플랜이 필요합니다.",
+    "gateUpgradeCta": "업그레이드",
+    "tabButton": "포커스",
+    "tabButtonTitle": "이 탭을 선택한 국가에 포커스합니다",
+    "tabButtonTitleActive": "이 탭의 포커스를 수정합니다",
+    "newTitle": "이 탭 포커스",
+    "editTitle": "포커스 수정",
+    "intro": "국가별로 필터링할 수 있는 패널은 이 국가들만 표시합니다. 나머지는 \"필터링 안 됨\"으로 표시됩니다.",
+    "countriesLabel": "국가",
+    "count": "{{n}} / {{max}}",
+    "searchPlaceholder": "국가 검색",
+    "resultsLabel": "일치하는 국가",
+    "limitReached": "{{max}}개 국가를 선택했습니다. 포커스가 보유할 수 있는 최대 개수입니다.",
+    "removeCountry": "{{name}} 제거",
+    "includeNeighbours": "인접 국가 포함",
+    "neighboursHint": "위험은 국경을 넘습니다. 인접 국가는 표시되며 {{max}} 한도에 포함되지 않습니다.",
+    "startLabel": "시작 (선택사항)",
+    "endLabel": "종료 (선택사항)",
+    "datesHint": "출장 또는 작업용입니다. 윈도우가 종료되면 포커스는 유지되고 바에 표시됩니다.",
+    "errorNoCountries": "최소 1개 국가를 선택하세요.",
+    "errorTooMany": "포커스는 최대 {{max}}개 국가를 보유할 수 있습니다.",
+    "errorDates": "종료 날짜가 시작 날짜보다 이릅니다.",
+    "save": "저장",
+    "cancel": "취소",
+    "saved": "이 탭은 {{countries}}에 포커스되어 있습니다.",
+    "cleared": "포커스가 해제되었습니다. 이 탭은 전 세계를 표시합니다.",
+    "notSaved": "저장할 수 없습니다. 이 브라우저가 사이트 저장소를 차단하고 있습니다.",
+    "plusNeighbours_other": "+ {{count}}개 인접 국가",
+    "filter": {
+      "showing": "{{countries}}을(를) 표시 중",
+      "showingNeighbours": "{{countries}} + 인접 국가 표시 중",
+      "showAll": "모두 표시",
+      "focusOff": "이 패널에서 포커스 해제: 모든 항목 표시",
+      "applyFocus": "포커스 적용",
+      "applyFocusAria": "이 패널을 포커스로 다시 필터링",
+      "show": "표시",
+      "hide": "숨기기",
+      "noCountryTag": "국가 없음",
+      "emptyHint": "나머지는 모두 위에 계산됨.",
+      "emptyNews": "현재 헤드라인에 해당 국가의 뉴스가 없음",
+      "emptyAdvisories": "해당 국가의 여행 공지가 없음",
+      "emptyConflict": "해당 국가의 UCDP 분쟁 사건이 없음",
+      "emptyConflictPartial": "최신 사건 중 해당 국가의 분쟁 사건이 없음. 전체 목록이 로드되지 않았습니다.",
+      "loadingConflict": "해당 국가의 모든 분쟁 사건을 로드 중…",
+      "emptyAirports": "감시 중인 공항이 해당 국가에 없음",
+      "emptyFlights": "이 보드에서 해당 국가로의 운항편이 없음",
+      "emptyAviationNews": "지난 24시간 동안 해당 국가의 항공 뉴스가 없음",
+      "tabNotFiltered": "이 탭은 국가별로 필터링되지 않음",
+      "hidden_other": "포커스로 {{count}}개 숨김",
+      "showAllAria_other": "포커스 외부의 {{count}}개 항목을 포함하여 이 패널의 모든 항목 표시",
+      "unattributed_other": "국가가 없는 {{count}}개 항목",
+      "showUnattributedAria_other": "국가가 없는 {{count}}개 항목 표시",
+      "hideUnattributedAria_other": "국가가 없는 {{count}}개 항목 숨기기",
+      "partialConflict": "최근 150개의 분쟁 사건만 표시됩니다. 전체 목록을 불러오지 못했습니다.",
+      "partialConflictLoading": "전체 목록이 로드되는 동안 최근 150개의 충돌 이벤트를 표시하고 있습니다.",
+      "emptyInstability": "이 국가들에 대한 불안정성 점수가 없습니다",
+      "emptyOutbreaks": "이 국가들에 대한 질병 발생 보고가 없습니다",
+      "emptyOutages": "이 국가들에 대한 인터넷 중단 기록이 없습니다",
+      "emptyRadiation": "이 국가들에 대한 방사능 수치가 없습니다",
+      "emptyFuelShortages": "이 국가들에 대한 연료 부족 기록이 없습니다",
+      "emptyEnergyDisruptions": "이 국가들에 대한 에너지 중단 기록이 없습니다",
+      "emptyDisplacement": "이 국가들에 대한 난민 데이터가 없습니다",
+      "emptyCorrelation": "이 국가들에 대한 신호가 없습니다",
+      "emptyExposure": "이 국가들의 인구 노출 위치가 없습니다",
+      "emptyExposurePartial": "사용 가능한 데이터에 이 국가들의 노출 위치가 없습니다. 전체 UCDP 범위는 대기 중입니다.",
+      "partialExposureLoading": "노출을 필터링하기 전에 전체 UCDP 위치를 불러오는 중입니다. 범위 집계에는 소요 사태만 포함됩니다.",
+      "partialExposure": "전체 UCDP 위치를 불러오지 못했습니다. 노출 데이터가 불완전하며 범위 집계에는 소요 사태만 포함됩니다."
+    },
+    "draftAssessment": "여행 위험 평가",
+    "draftAssessmentAria": "이 포커스로 미리 채워진 여행 위험 평가 열기",
+    "draftCopied": "요청이 복사되었습니다. AI 어시스턴트에 붙여넣으세요.",
+    "draftCopiedPartial": "첫 {{count}}개 국가에 대한 요청이 복사되었습니다. 평가는 최대 {{max}}개 국가를 포함할 수 있습니다. 제외된 국가: {{omitted}}.",
+    "draftCopyFailed": "요청을 복사할 수 없습니다."
+  },
+  "tripAssessment": {
+    "heading": "여행 위험 평가",
+    "intro": "분석가가 완성할 수 있도록 작성된 여행 위험 평가 초안입니다. 데이터에 포함된 내용을 보고하며 조언은 제공하지 않습니다.",
+    "privacy": "국가, 도시 및 날짜만 입력하세요. 여행자 이름, 호텔 또는 도로명 주소는 입력하지 마세요. 입력하신 내용은 저장되지 않습니다.",
+    "taskLabel": "작업 레이블 (선택)",
+    "taskLabelPlaceholder": "지역 현지 방문",
+    "windowStart": "여행 시작",
+    "windowEnd": "여행 종료",
+    "countriesLabel": "국가 (여행 순서)",
+    "count": "{{n}} / {{max}}",
+    "searchPlaceholder": "국가 추가",
+    "addCountry": "여행에 국가 추가",
+    "limit": "한 번의 여행은 최대 {{max}}개 국가를 포함할 수 있습니다.",
+    "omitted": "한 번의 여행은 최대 {{max}}개 국가를 포함할 수 있으므로 제외됨: {{names}}.",
+    "cities": "도시 (쉼표로 구분, 최대 {{max}}개)",
+    "arrive": "도착",
+    "depart": "출발",
+    "moveEarlier": "{{name}} 여행 일정 앞으로 이동",
+    "moveLater": "{{name}} 여행 일정 뒤로 이동",
+    "remove": "여행에서 {{name}} 제거",
+    "downloadMarkdown": "Markdown 다운로드",
+    "downloadWord": "Word 다운로드",
+    "print": "인쇄 또는 PDF로 저장",
+    "copyRequest": "AI 어시스턴트 요청 복사",
+    "close": "닫기",
+    "building": "최신 데이터로 초안을 작성 중…",
+    "downloaded": "{{file}}을(를) 다운로드했습니다. 각 다운로드는 새로 작성되며 고유한 캡처 시간이 기록됩니다.",
+    "printOpened": "인쇄 대화상자가 열렸습니다. 사본을 보관하려면 PDF로 저장을 선택하세요.",
+    "errNoCountries": "최소 1개 국가를 추가하세요.",
+    "errTooMany": "한 번의 여행은 최대 {{max}}개 국가를 포함할 수 있습니다.",
+    "errWindow": "여행은 시작 날짜와 같거나 그 이후에 종료되어야 합니다.",
+    "errCities": "{{name}}: 최대 {{max}}개 도시까지 나열할 수 있습니다.",
+    "errCountryDates": "{{name}}: 출발은 도착 날짜와 같거나 그 이후여야 합니다.",
+    "errOutsideWindow": "{{name}}: 날짜는 여행 기간 내에 있어야 합니다.",
+    "errInvalid": "이 여행 정보로 초안을 작성할 수 없습니다:",
+    "errAuth": "초안을 작성하려면 다시 로그인하세요.",
+    "errUpgrade": "여행 위험 평가는 Pro Business, API Business 및 Enterprise 요금제에 포함됩니다.",
+    "errBusy": "요청이 너무 많습니다. 1분 후에 다시 시도하세요.",
+    "errUnavailable": "초안의 기반이 되는 데이터를 현재 사용할 수 없습니다. 1분 후에 다시 시도하세요.",
+    "errGeneric": "초안을 작성할 수 없습니다. 다시 시도하세요.",
+    "errDownload": "파일을 여기서 다운로드할 수 없습니다. 대신 인쇄 또는 PDF 저장을 사용하세요.",
+    "errLoad": "여행 위험 평가를 열 수 없습니다. 페이지를 새로고침하고 다시 시도하세요."
+  },
+  "orbitalWatch": {
+    "track": {
+      "unavailable": "이 통과의 지상 궤적을 그릴 수 없습니다"
+    },
+    "replay": {
+      "acquisition": "촬영 · {{name}}",
+      "acquired": "촬영됨 {{time}} · {{resolution}}",
+      "play": "재생",
+      "pause": "일시정지",
+      "scrub": "재생 위치",
+      "reducedMotion": "동작 줄이기"
+    },
+    "computing": "위성 카탈로그를 불러오는 중…",
+    "computingProgress": "통과 계산 중: 위성 {{total}}개 중 {{done}}개",
+    "unavailable": "위성 카탈로그를 불러오지 못해 이 지점의 통과를 계산하지 않았습니다.",
+    "checkingArchives": "아카이브 확인 중: {{total}}곳 중 {{done}}곳 응답",
+    "confirmedCount": "확인된 영상: {{count}}",
+    "counts": {
+      "mosaics": "일일 모자이크: {{count}}",
+      "frames": "기상 영상: {{count}}",
+      "inRange": "범위 내 통과: {{count}}"
+    },
+    "partial": "{{sources}}이(가) 응답하지 않아 일부 통과에 영상이 없을 수 있습니다.",
+    "stale": "궤도 데이터가 오래되었습니다. 위성 카탈로그가 {{age}} 전 것이므로 통과 시간이 다를 수 있습니다.",
+    "empty": "지난 {{pastDays}}일 동안 이 지점 위를 지난 등록된 영상 위성이 없으며 향후 {{futureHours}}시간 동안에도 지나지 않습니다.",
+    "sources": "출처 · {{count}}",
+    "sourcesDocs": "이 출처를 사용하는 방법",
+    "privacy": "이 지점은 브라우저에만 남습니다. 브라우저가 직접 호출하는 공개 아카이브인 Earth Search, Microsoft Planetary Computer, NASA GIBS, EUMETSAT에만 전송됩니다. 유일한 예외는 지명 검색으로, 입력한 이름은 지명 검색 서비스로 전송됩니다.",
+    "inRange": "범위 내",
+    "tier": {
+      "checking": "아카이브 확인 중",
+      "confirmed": "확인된 영상",
+      "likely": "촬영 가능성 높음",
+      "opportunity": "예정된 통과",
+      "dailyMosaic": "일일 모자이크에 포함",
+      "withinReach": "범위 내",
+      "capabilityOverhead": "능력 상공 통과",
+      "passedOverhead": "상공 통과",
+      "unmatchedImage": "계산된 통과 없는 영상",
+      "weatherFrame": "기상 영상",
+      "unavailable": "사용할 수 없음"
+    },
+    "row": {
+      "offNadir": "천저에서 {{deg}}°",
+      "distance": "지상 궤적에서 {{km}}km",
+      "orbitAge": "궤도 데이터 {{age}} 전",
+      "edgeOfSwath": "관측폭 가장자리",
+      "notInArchive": "아카이브에 영상 없음",
+      "geometryDisagreed": "모델 관측 폭 밖",
+      "archiveUnanswered": "아카이브가 응답하지 않음",
+      "imageAlt": "{{name}} 영상, {{time}}",
+      "mosaicDays": "아카이브의 일수: {{count}}",
+      "cadence": "{{minutes}}분마다 새 영상",
+      "sourceUnavailable": "아카이브에 이 기간 동안 이 출처의 영상이 없습니다.",
+      "imageLoading": "이미지 불러오는 중…",
+      "imageFailed": "이미지를 불러오지 못했습니다. 아카이브가 느리거나 중단되었을 수 있습니다.",
+      "noPreview": "아카이브에 아직 이 장면의 미리보기가 없습니다."
+    },
+    "dailyMosaics": "일일 모자이크",
+    "weatherFrames": "기상 영상",
+    "ui": {
+      "change": "변경",
+      "share": "공유",
+      "shareCopied": "링크 복사됨",
+      "headline": "지난 {{days}}일 동안 {{satellites}}이 {{place}} 위를 지나갔습니다.",
+      "satellites_other": "위성 {{count}}기",
+      "subline_other": "이미지 {{count}}장이 공개되었습니다.",
+      "closestLook": "가장 가까운 촬영",
+      "replay": "재생",
+      "openFull": "전체 보기 열기",
+      "previous": "이전 이미지",
+      "next": "다음 이미지",
+      "passes_other": "회 통과",
+      "showAll": "모든 통과 보기",
+      "noRecentDays": "아카이브에 최근 날짜 없음: {{sources}}",
+      "tab": {
+        "all": "전체",
+        "detailed": "상세",
+        "weather": "기상"
+      },
+      "caption": {
+        "clear": "지점 맑음",
+        "clearSceneCloud": "지점 맑음 · 장면 구름 {{pct}}%",
+        "clouded": "흐림 · {{pct}}%",
+        "cloudShadow": "구름 그림자",
+        "spotNotChecked": "지점 구름 미확인",
+        "sceneCloud": "장면 구름 {{pct}}% · 지점 미확인",
+        "radar": "레이더",
+        "dailyMosaic": "일일 모자이크",
+        "geostationary": "정지궤도 전체 디스크",
+        "geostationaryCadence": "정지궤도 · {{minutes}}분마다"
+      },
+      "tile": {
+        "failed": "이미지 없음 · {{archive}}",
+        "noPreview": "아카이브에 아직 이 장면의 미리보기가 없습니다"
+      },
+      "grid": {
+        "watched": "촬영됨",
+        "watchedDef": "공개 아카이브에 이 지점의 이미지가 있습니다.",
+        "likely": "촬영 가능성 높음",
+        "likelyDef": "고정 관측폭 센서가 포함했지만 아직 공개된 이미지가 없습니다.",
+        "could": "이곳을 겨눌 수 있었음",
+        "couldDef": "지향 가능하거나 상업용 센서가 범위 안에 있었으나 운영자는 관측 여부를 밝히지 않습니다.",
+        "overhead": "상공 통과",
+        "overheadDef": "촬영 증거 없이 이곳 하늘을 지나갔습니다.",
+        "watchedShort": "공개 아카이브에 영상 있음",
+        "watchedNoPreviewShort": "아카이브에 있음, 공개 미리보기 없음",
+        "likelyShort": "관측됨, 아직 영상 없음",
+        "likelyUnansweredDef": "고정 관측폭 센서가 이곳을 지났지만 아카이브가 응답하지 않아 이미지가 있을 수 있습니다.",
+        "likelyUnansweredShort": "관측됨, 아카이브 응답 없음",
+        "couldShort": "지향형 센서가 범위 내",
+        "overheadShort": "상공 통과, 영상 없음"
+      },
+      "group": {
+        "watched": "촬영됨",
+        "likely": "촬영 가능성 높음",
+        "upcoming": "예정",
+        "could": "이곳을 겨눌 수 있었음",
+        "overhead": "상공 통과",
+        "weather_other": "기상 소스"
+      },
+      "order": {
+        "closest": "가장 가까운 촬영, 이후 최신순",
+        "newest": "최신순",
+        "soonest": "빠른 순"
+      },
+      "row": {
+        "cloud": "구름 {{pct}}%",
+        "days_other": "{{count}}일",
+        "repeats": "이 그룹에서 이 위성의 통과 {{count}}회"
+      },
+      "section": {
+        "summary": "요약",
+        "passes": "통과"
+      },
+      "status": {
+        "objects": "{{count}}기의 영상 위성 · CelesTrak GP",
+        "fetched": "가져옴 {{time}} · {{ago}}",
+        "sun": "태양 {{point}} · 태양 직하점"
+      },
+      "step": {
+        "computing": "계산 중",
+        "catalogLoading": "카탈로그 · 불러오는 중",
+        "catalog": "카탈로그 · {{count}}기의 영상 위성",
+        "propagating": "궤도 계산 중 · {{done}} / {{total}}",
+        "archives": "아카이브 · {{done}} / {{total}} 응답",
+        "matching": "장면을 통과 {{passes}}회와 대조 중",
+        "window": "7일 범위 · {{start}} → {{end}}",
+        "failed": "실패",
+        "note": "Planetary Computer와 NASA GIBS는 요청 시 이미지를 생성하므로 이 단계는 몇 초 걸릴 수 있습니다."
+      },
+      "privacyLine": "지점은 브라우저에만 남습니다",
+      "privacyHow": "방법",
+      "sources": "출처",
+      "archiveScene": "아카이브 장면",
+      "archiveOnly": "계산된 통과와 일치하지 않는 영상이므로 아카이브 장면으로 표시합니다.",
+      "zoneShowUtc": "시간을 UTC로 표시",
+      "zoneShowLocal": "시간을 이 장소의 현지 시간으로 표시"
+    },
+    "viewer": {
+      "open": "이미지 뷰어 열기: {{image}}",
+      "bestView": "최적 이미지 열기: {{name}}, {{time}}",
+      "imageAlt": "{{name}} 이미지, {{time}}",
+      "close": "이미지 뷰어 닫기",
+      "northUp": "위쪽이 북쪽",
+      "unreferenced": "아카이브가 제공한 방향 그대로이며 북쪽은 표시되지 않음",
+      "compareDates": "이 컬렉션의 다른 날짜",
+      "compareNone": "비교할 같은 컬렉션의 다른 장면이 없습니다.",
+      "divider": "전후 비교 구분선",
+      "searching": "지난 {{days}}일간 이 장소의 장면을 찾는 중",
+      "historyFailed": "{{archive}}이(가) 응답하지 않아 이전 장면이 없습니다.",
+      "historyTimeout": "{{archive}}이(가) 제때 응답하지 않아 이전 장면이 없습니다.",
+      "loading": "프레임 불러오는 중: {{loaded}} / {{total}}",
+      "pause": "일시정지",
+      "resume": "재생",
+      "next": "다음 프레임",
+      "closeLabel": "닫기",
+      "agoNow": "방금",
+      "agoHours": "{{count}}시간 전",
+      "agoDays": "{{count}}일 전",
+      "clear": "맑음",
+      "clouded": "구름 · {{pct}}%",
+      "tabImage": "이미지",
+      "tabChange": "변화",
+      "metaAcquired": "촬영",
+      "metaDate": "날짜",
+      "metaPixel": "픽셀",
+      "metaSpot": "지점 구름",
+      "metaScene": "장면 구름",
+      "metaSun": "태양 고도",
+      "showCloudy": "흐린 날짜 표시 ({{count}})"
+    },
+    "timelapse": {
+      "heading": "타임랩스",
+      "entry": "이곳의 연도별 변화",
+      "open": "이곳의 연도별 타임랩스 열기",
+      "searching": "2015년부터 해마다 맑은 장면 1개 찾는 중 · {{archive}}",
+      "loading": "장면 불러오는 중 · {{loaded}} / {{total}}",
+      "failed": "{{archive}}이(가) 응답하지 않아 연도별 장면이 없습니다.",
+      "timeout": "{{archive}}이(가) 제때 응답하지 않아 연도별 장면이 없습니다.",
+      "partial": "{{archive}} 무응답으로 빠진 연도: {{count}}.",
+      "tooFew": "이곳의 맑은 연도별 장면: {{count}}. 타임랩스에는 {{min}}개가 필요합니다.",
+      "total": "맑은 장면 {{count}}개 · 해마다 1개",
+      "years": "연도",
+      "share": "공유",
+      "method": "각 프레임은 Sentinel-2의 같은 6km 정사각형을 자연색으로 보여 줍니다. 해마다 다른 계절을 찾아 구름이 가장 적은 장면을 쓰며, 구름 30% 미만 장면이 없는 해는 뺍니다."
+    },
+    "passDetail": {
+      "back": "모든 통과",
+      "altitude": "고도",
+      "offNadir": "오프나디르",
+      "crossed": "{{name}}은(는) 고도 {{altitude}}km에서 이 지점의 {{direction}} {{distance}}km 지점을 {{time}}에 지상 속도 {{speed}}km/s로 지나갔습니다.",
+      "crossedHeading": "{{name}}은(는) 고도 {{altitude}}km에서 이 지점의 {{direction}} {{distance}}km 지점을 {{time}}에 {{heading}}으로 지상 속도 {{speed}}km/s로 지나갔습니다.",
+      "looking": "바로 아래에서 {{deg}}° 기울여 보고 있었습니다.",
+      "sceneCloud": "장면 구름량: {{pct}}%.",
+      "pixelLine": "{{m}}m 픽셀",
+      "swathLine": "{{km}}km 관측 폭",
+      "clearestLook": "가장 맑은 이미지",
+      "previous": "이전 통과",
+      "next": "다음 통과",
+      "dir": {
+        "n": "북쪽",
+        "ne": "북동쪽",
+        "e": "동쪽",
+        "se": "남동쪽",
+        "s": "남쪽",
+        "sw": "남서쪽",
+        "w": "서쪽",
+        "nw": "북서쪽"
+      },
+      "heading": {
+        "north": "북쪽",
+        "south": "남쪽"
+      }
+    },
+    "search": {
+      "label": "장소 이름 또는 좌표",
+      "placeholder": "장소 이름 또는 48.8584, 2.2945",
+      "submit": "검색",
+      "locate": "내 위치 사용",
+      "hint": "좌표와 내 위치는 이 브라우저에만 남습니다. 검색한 장소 이름은 WorldMonitor와 OpenStreetMap의 Nominatim으로 전송됩니다.",
+      "results": "일치하는 장소",
+      "searching": "검색 중…",
+      "tooShort": "두 글자 이상 또는 48.8584, 2.2945 같은 좌표를 입력하세요.",
+      "invalidCoordinates": "이 좌표는 지구 범위를 벗어났습니다. 위도는 -90에서 90, 경도는 -180에서 180 사이입니다.",
+      "failed": "지금은 장소 검색을 사용할 수 없습니다. 좌표와 지도는 계속 작동합니다.",
+      "noResults": "이 이름과 일치하는 장소가 없습니다.",
+      "locating": "위치를 찾는 중…",
+      "locationDenied": "위치 권한이 거부되었습니다. 장소를 검색하거나 지도를 마우스 오른쪽 버튼으로 클릭하세요.",
+      "locationUnavailable": "위치를 찾을 수 없습니다. 장소를 검색하거나 지도를 마우스 오른쪽 버튼으로 클릭하세요.",
+      "idle": "이름이나 좌표로 장소를 검색하거나, 내 위치를 사용하거나, 지도를 마우스 오른쪽 버튼으로 클릭해 그 위를 지나간 위성을 확인하세요."
+    },
+    "share": {
+      "copy": "공유 링크 복사",
+      "copied": "링크가 복사되었습니다",
+      "copyManually": "아래 링크를 복사하세요",
+      "link": "공유 링크",
+      "dismiss": "닫기",
+      "passOutsideWindow": "링크된 통과가 현재 기간을 벗어나 선택된 통과가 없습니다.",
+      "passNotFound": "링크된 통과를 다시 계산한 통과 중에서 찾지 못해 선택된 통과가 없습니다."
+    },
+    "timeline": {
+      "now": "현재",
+      "nowAt": "현재: {{time}}",
+      "density": "{{label}} 통과, {{start}}~{{end}}: {{count}}",
+      "daylight": "지점의 낮 시간 {{start}}~{{end}}",
+      "unavailable": "사용 불가",
+      "notRetained": "이번 주 데이터 없음",
+      "notRetainedSpan": "{{label}}: {{start}}~{{end}} 데이터 없음",
+      "countryWide": "전국",
+      "source": {
+        "conflict": "분쟁",
+        "fires": "화재",
+        "unrest": "소요",
+        "outages": "인터넷 장애"
+      },
+      "live": {
+        "vessels": "선박 교통",
+        "militaryFlights": "군용기",
+        "gpsJamming": "GPS 교란"
+      },
+      "name": "타임라인",
+      "span": "{{days}}일 · 향후 {{hours}}시간",
+      "daylightHere": "이곳의 낮",
+      "row": {
+        "geo": "정지",
+        "photo": "촬영",
+        "likely": "유력",
+        "could": "가능",
+        "overhead": "통과"
+      },
+      "retained": "{{start}}~{{end}}",
+      "retainedDay": "{{day}}만",
+      "geoLine": "시야 내 정지궤도: {{names}}",
+      "away": "{{km}}km 거리"
+    }
+  },
+  "settings": {
+    "back": "설정으로 돌아가기",
+    "signIn": {
+      "label": "로그인",
+      "desc": "설정 동기화 및 플랜 관리"
+    },
+    "summary": {
+      "themeAuto": "자동",
+      "count": "{{total}}개 중 {{on}}개"
+    },
+    "groups": {
+      "dashboard": "대시보드",
+      "preferences": "선호도",
+      "developer": "개발자",
+      "app": "앱"
+    },
+    "sections": {
+      "account": "계정",
+      "map": "지도",
+      "ai": "AI 및 분석",
+      "video": "영상 및 스트림",
+      "apiKeys": "API 키",
+      "embeds": "임베드",
+      "aiAgents": "AI 에이전트(MCP)",
+      "sync": "동기화, 가져오기 및 내보내기",
+      "about": "정보"
+    },
+    "descriptions": {
+      "panels": "표시, 숨기기 및 순서 변경",
+      "sources": "지역 및 피드",
+      "notifications": "채널 및 경보 규칙",
+      "display": "테마, 글꼴 및 언어",
+      "map": "제공자, 테마 및 글로브",
+      "ai": "모델, 메모리 및 프레임워크",
+      "video": "품질 및 자동 재생",
+      "apiKeys": "World Monitor API 키",
+      "embeds": "자신의 사이트용 위젯",
+      "aiAgents": "연결된 MCP 클라이언트",
+      "about": "사이트 링크, 약관 및 개인정보보호정책"
+    },
+    "signOut": "로그아웃",
+    "signOutFailed": "로그아웃할 수 없습니다. 다시 시도하세요.",
+    "search": {
+      "empty": "일치하는 설정이 없습니다"
+    },
+    "account": {
+      "intro": "현재 요금제를 확인하고 결제 수단, 청구서, 취소를 관리하세요.",
+      "planFree": "무료",
+      "planPremium": "프리미엄",
+      "external": {
+        "heading": "프리미엄 액세스",
+        "desc": "이 액세스는 WorldMonitor 계정을 통해 청구되지 않습니다. 결제 수단이나 청구서를 이용할 수 없습니다."
+      },
+      "checking": {
+        "heading": "요금제 확인 중…",
+        "desc": "일반적으로 잠시만 소요됩니다."
+      },
+      "status": {
+        "cancelScheduled": "취소 예정됨 -- {{date}}까지 액세스 가능",
+        "renews": "갱신일: {{date}}",
+        "onHold": "보류 중 -- 결제 수단을 업데이트하세요",
+        "cancelled": "취소됨 -- {{date}}까지 액세스 가능",
+        "expired": "만료됨",
+        "unknown": "결제 관리에서 현재 요금제 세부정보를 확인하세요.",
+        "ownerManaged": "요금제 소유자가 결제를 관리합니다."
+      },
+      "upgradeToBusiness": "Business로 업그레이드",
+      "unavailable": {
+        "heading": "요금제 상태를 사용할 수 없음",
+        "desc": "현재 요금제를 확인할 수 없습니다. 다시 시도하거나 새 탭에서 요금제를 확인하세요."
+      },
+      "free": {
+        "heading": "WorldMonitor 무료",
+        "desc": "현재 요금제는 무료입니다. 모든 패널, AI 분석, 우선 데이터 새로고침을 원하면 업그레이드하세요."
+      },
+      "portal": {
+        "openFailed": "결제 포털을 열 수 없습니다. 팝업을 허용하고 다시 시도하세요.",
+        "unavailable": "결제 포털을 사용할 수 없습니다. support@worldmonitor.app으로 이메일을 보내 도움을 받으세요."
+      },
+      "deletion": {
+        "heading": "계정 삭제",
+        "desc": "이 World Monitor 계정을 영구적으로 삭제합니다. 구독은 즉시 취소되며 선불로 결제한 남은 기간은 환불되지 않습니다. API 키, 임베드 키, MCP 토큰은 더 이상 작동하지 않습니다. 회계, 분쟁, 법적 요청에 필요한 청구 기록은 기록에 포함된 고객 연락처 정보와 함께 보관됩니다. 이 기록은 더 이상 로그인 계정을 가리키지 않지만, 삭제 전에 기록된 결제 대행사의 웹훅 로그에는 전달 당시의 식별자가 남습니다. 이 기기의 대시보드 설정과 데스크톱 키체인(OS 자격 증명 저장소)에 저장된 비밀 정보는 원격으로 삭제되지 않습니다.",
+        "dialogTitle": "이 계정을 삭제하시겠습니까?",
+        "dialogCopy": "이 작업은 취소할 수 없습니다. 구독이 취소되고, 키가 즉시 작동하지 않으며, 회계, 분쟁, 법적 요청을 위해 청구 기록이 보관됩니다(연락처 정보 포함). 다른 기기에서 로그아웃한 후 이 기기의 사이트 데이터를 삭제하세요. 이는 서버에서 제어할 수 없습니다.",
+        "phraseLabel": "{{phrase}}을(를) 입력하여 확인",
+        "deleted": "계정이 삭제되었습니다. 다른 기기에서 로그아웃한 후 이 기기의 사이트 데이터를 삭제하세요.",
+        "failed": "계정 삭제에 실패했습니다. 다시 시도하세요."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}}명 사용 중",
+        "invite": "초대",
+        "inviting": "초대 중...",
+        "remove": "제거",
+        "removing": "제거 중...",
+        "inviteSent": "초대 발송됨",
+        "alreadyInvited": "이미 초대됨"
+      },
+      "businessSeats": {
+        "heading": "Business 시트",
+        "statusAccepted": "수락됨",
+        "statusExpired": "만료됨",
+        "statusPending": "대기 중",
+        "expires": "{{date}}에 만료",
+        "hintCorporate": "모든 회사 이메일 도메인의 팀원을 초대할 수 있습니다.",
+        "hintPersonal": "팀원을 초대하려면 회사 이메일을 추가하세요.",
+        "personalDomain": "무료 또는 일회용 이메일 도메인으로는 팀원을 초대할 수 없습니다. 회사 이메일을 추가하여 이 기능을 사용하세요.",
+        "empty": "아직 초대된 시트가 없습니다.",
+        "confirmRemove": "이 시트를 제거하시겠습니까? 초대 대상자는 즉시 Pro 액세스를 잃게 됩니다.",
+        "removed": "시트 제거됨",
+        "alreadyInactive": "이미 비활성화된 시트입니다",
+        "loadFailed": "시트를 불러오지 못했습니다",
+        "inviteFailed": "초대 발송 실패",
+        "removeFailed": "시트를 제거하지 못했습니다",
+        "errors": {
+          "seatCap": "시트 4개를 모두 사용 중입니다. 먼저 시트를 제거하세요.",
+          "ownerDomain": "팀원을 초대하려면 계정 이메일이 회사 도메인이어야 합니다.",
+          "self": "자신을 초대할 수 없습니다.",
+          "inviteeDomain": "초대 대상 이메일은 회사 도메인이어야 합니다."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "{{account}} Enterprise 시트",
+        "memberHint": "계정 관리자가 이 계정에 사람을 추가하고 제거합니다.",
+        "hintFull": "모든 시트가 사용 중입니다. 다른 사람을 제거하거나 초대를 철회해 시트를 확보하세요.",
+        "hintOpen": "회사 이메일로 사람을 초대하세요. 초대받은 사람은 14일 동안 유효한 링크를 받으며 이 계정의 한도를 공유합니다.",
+        "emailLabel": "초대할 이메일 주소",
+        "statusActive": "활성",
+        "statusExpired": "초대 만료됨",
+        "statusInvited": "초대됨",
+        "emailFailed": "초대 이메일을 보낼 수 없습니다. 주소를 확인한 후 초대를 철회하고 다시 초대하세요.",
+        "inviteExpires": "초대 만료: {{date}}",
+        "roleAdmin": "관리자",
+        "you": "귀하",
+        "withdraw": "철회",
+        "unknownEmail": "알 수 없는 이메일",
+        "alreadyMember": "이미 멤버",
+        "confirmRemove": "{{email}}을(를) 제거하시겠습니까? 즉시 Enterprise 액세스를 잃게 됩니다.",
+        "confirmRemoveUnknown": "이 사람을 제거하시겠습니까? 즉시 Enterprise 액세스를 잃게 됩니다.",
+        "confirmWithdraw": "{{email}}에 보낸 초대를 철회하시겠습니까?",
+        "confirmWithdrawUnknown": "이 주소로 보낸 초대를 철회하시겠습니까?",
+        "removed": "멤버 제거됨",
+        "withdrawn": "초대 철회됨",
+        "loadFailed": "시트를 불러올 수 없습니다. 다시 시도하세요.",
+        "inviteFailed": "초대를 보낼 수 없습니다. 다시 시도하세요.",
+        "removeFailed": "제거할 수 없습니다. 다시 시도하세요.",
+        "errors": {
+          "seatCap": "모든 시트가 사용 중입니다. 먼저 다른 사람을 제거하거나 초대를 철회하세요.",
+          "inviteeDomain": "회사 이메일 주소로 초대하세요. 무료 및 일회용 이메일 도메인은 허용되지 않습니다.",
+          "self": "이미 시트를 보유하고 있습니다.",
+          "contractEnded": "Enterprise 계약이 만료되었습니다. 갱신하려면 지원팀에 문의하세요.",
+          "notAdmin": "계정 관리자만 시트를 관리할 수 있습니다.",
+          "removeSelf": "자신의 시트는 제거할 수 없습니다. 관리자를 변경하려면 지원팀에 문의하세요.",
+          "tooMany": "한 번에 최대 10명까지 초대할 수 있습니다.",
+          "rateLimited": "하루 최대 초대 수에 도달했습니다. 내일 다시 시도하세요."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "레이아웃",
+        "1": "위젯",
+        "2": "텍스트 크기",
+        "3": "레이아웃 재설정"
+      },
+      "sources": {
+        "0": "뉴스",
+        "1": "피드",
+        "2": "RSS",
+        "3": "지역",
+        "4": "뉴스 보도"
+      },
+      "notifications": {
+        "0": "알림",
+        "1": "텔레그램",
+        "2": "슬랙",
+        "3": "이메일",
+        "4": "디스코드",
+        "5": "웹훅",
+        "6": "푸시"
+      },
+      "display": {
+        "0": "테마",
+        "1": "어두움",
+        "2": "밝음",
+        "3": "글꼴",
+        "4": "언어",
+        "5": "텍스트 크기, 다크, 라이트"
+      },
+      "map": {
+        "0": "지구본",
+        "1": "제공업체",
+        "2": "타일",
+        "3": "베이스맵"
+      },
+      "ai": {
+        "0": "LLM",
+        "1": "Ollama",
+        "2": "프레임워크",
+        "3": "헤드라인 메모리",
+        "4": "브라우저 모델"
+      },
+      "video": {
+        "0": "스트림",
+        "1": "자동재생",
+        "2": "화질",
+        "3": "라이브"
+      },
+      "apiKeys": {
+        "0": "키",
+        "1": "토큰",
+        "2": "데스크톱 키"
+      },
+      "embeds": {
+        "0": "위젯",
+        "1": "iframe",
+        "2": "임베드 키"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "에이전트",
+        "3": "ChatGPT",
+        "4": "클라이언트"
+      },
+      "sync": {
+        "0": "가져오기",
+        "1": "내보내기",
+        "2": "백업",
+        "3": "클라우드"
+      },
+      "about": {
+        "0": "약관",
+        "1": "개인정보",
+        "2": "라이선스",
+        "3": "법적 고지"
+      },
+      "account": {
+        "0": "요금제",
+        "1": "결제",
+        "2": "구독",
+        "3": "청구서",
+        "4": "시트",
+        "5": "로그아웃",
+        "6": "계정 삭제"
+      }
+    }
   }
 }

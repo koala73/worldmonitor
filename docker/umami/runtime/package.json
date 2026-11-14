@@ -15,7 +15,8 @@
   },
   "pnpm": {
     "overrides": {
-      "hono": "4.13.13",
+      "hono": "4.13.16",
+      "@hono/node-server": "1.19.18",
       "fast-uri": "3.1.9",
       "brace-expansion@1": "1.1.21",
       "shell-quote": "1.12.0"

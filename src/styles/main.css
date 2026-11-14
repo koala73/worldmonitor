@@ -370,28 +370,6 @@ canvas,
   z-index: 600;
 }
 
-/* -- Tauri desktop: separate title bar for traffic lights -- */
-.tauri-titlebar {
-  height: 28px;
-  background: var(--bg);
-  flex-shrink: 0;
-  -webkit-app-region: drag;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.tauri-titlebar + .header {
-  border-top: none;
-  -webkit-app-region: drag;
-}
-
-.tauri-titlebar + .header button,
-.tauri-titlebar + .header a,
-.tauri-titlebar + .header input,
-.tauri-titlebar + .header select,
-.tauri-titlebar + .header .search-wrapper {
-  -webkit-app-region: no-drag;
-}
-
 .header-left {
   display: flex;
   align-items: center;
@@ -415,6 +393,7 @@ canvas,
 
 .variant-option {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 4px;
   padding: 2px 6px;
@@ -435,16 +414,7 @@ canvas,
 }
 
 .variant-option .variant-label {
-  max-width: 0;
-  overflow: hidden;
-  opacity: 0;
-  transition: max-width 0.3s ease, opacity 0.2s ease;
-}
-
-.variant-option:hover .variant-label,
-.variant-option.active .variant-label {
-  max-width: 50px;
-  opacity: 1;
+  white-space: nowrap;
 }
 
 .variant-option:hover {
@@ -480,11 +450,6 @@ canvas,
   height: 12px;
   background: var(--border);
   margin: 0 2px;
-}
-
-.variant-switcher:hover .variant-option .variant-label {
-  max-width: 50px;
-  opacity: 1;
 }
 
 .mission-preset-mount {
@@ -842,6 +807,23 @@ canvas,
   background: rgba(255, 255, 255, 0.08);
 }
 
+/* GitHub star prompt: copy gets the full width, the action sits under it. */
+.update-toast.github-star-prompt {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    "icon body close"
+    ". action action";
+  align-items: start;
+  row-gap: 10px;
+  width: min(340px, calc(100vw - 32px));
+}
+
+.github-star-prompt .update-toast-icon { grid-area: icon; }
+.github-star-prompt .update-toast-body { grid-area: body; align-self: center; }
+.github-star-prompt .update-toast-dismiss { grid-area: close; }
+.github-star-prompt .update-toast-action { grid-area: action; justify-self: start; }
+
 .beta-badge {
   display: inline-flex;
   align-items: center;
@@ -1140,36 +1122,45 @@ canvas,
 }
 
 /* Progressive header disclosure — keep the core right-side actions (Search,
-   settings, and especially the Sign In / Create account cluster) fully on
-   screen as usable width shrinks: small laptops, split-screen, OS scaling
-   (1920px @ 150% = ~1280px CSS), and browsers with a vertical tab strip.
-   The single-row header wants ~1520px; without these tiers it silently
-   overflows and clips the rightmost item (Sign In) anywhere below ~1520px.
-   Items are dropped least-essential first; each is still reachable elsewhere
-   (footer links, the mobile hamburger menu, or the map's own controls). The
-   full mobile hamburger takes over at <=768px. !important mirrors the <=768
-   block below (needed to beat the #missionPresetMount id rule in header.css). */
-@media (max-width: 1530px) {
+   settings, and especially the Sign In cluster) fully on screen as usable
+   width shrinks: small laptops, split-screen, OS scaling (1920px @ 150% =
+   ~1280px CSS), and browsers with a vertical tab strip. With dashboard
+   labels visible, the single-row header wants ~1820px; these tiers keep the
+   rightmost account actions on screen below that width. Items are dropped
+   least-essential first; each is still reachable elsewhere (footer links,
+   the mobile hamburger menu, or the map's own controls). The full mobile
+   hamburger takes over at <=768px. !important mirrors the <=768 block below
+   (needed to beat the #missionPresetMount id rule in header.css). */
+@media (max-width: 1875px) {
   /* redundant with footer/menu: X credit + GitHub icon */
   .credit-link,
   .github-link { display: none !important; }
+  .header .region-select { width: 110px; }
 }
-@media (max-width: 1420px) {
+@media (max-width: 1730px) {
   .version,
   .fullscreen-btn { display: none !important; }
 }
-@media (max-width: 1330px) {
+@media (max-width: 1630px) {
   /* Link + Embed share .copy-link-btn */
   .copy-link-btn { display: none !important; }
 }
-@media (max-width: 1200px) {
+@media (max-width: 1500px) {
   .pizzint-indicator { display: none !important; }
 }
 @media (max-width: 1075px) {
   .mission-preset-mount { display: none !important; }
 }
-@media (max-width: 980px) {
-  .variant-switcher { display: none !important; }
+@media (min-width: 981px) and (max-width: 1375px) {
+  .header { padding-inline: 8px; }
+  .header-left { gap: 6px; }
+  .header-right { gap: 6px; }
+  .header .search-btn { margin-right: 0; }
+  .header .region-select { width: 80px; }
+  .header .status-indicator,
+  .header .logo { display: none; }
+  .header .variant-option { padding: 2px 4px; letter-spacing: 0.5px; }
+  .header .variant-divider { margin: 0; }
 }
 
 .search-btn {
@@ -1711,50 +1702,41 @@ canvas,
 }
 
 .site-footer {
+  /* #10461: the dashboard shell does not scroll, so a multi-row footer ate
+     78–124px of the first screen. Keep a single 28px meta line; site links
+     live in Settings and the mobile More menu. */
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  /* The digest coverage row (#7085) joins as a full-width flex child and
-     wraps onto its own line; the brand/nav/copy children still fit one row. */
-  flex-wrap: wrap;
-  padding: 12px 20px;
+  gap: 12px;
+  height: 28px;
+  max-height: 28px;
+  padding: 0 12px;
+  overflow: hidden;
+  flex-wrap: nowrap;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
   background: var(--surface);
 }
-.site-footer-brand {
+.site-footer-meta {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-.site-footer-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-}
-.site-footer-brand-text {
-  display: flex;
-  flex-direction: column;
-}
-.site-footer-name {
+  min-width: 0;
+  flex-shrink: 0;
   font-family: var(--font-mono, monospace);
-  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: 1px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  white-space: nowrap;
 }
-.site-footer-sub {
+.site-footer-version,
+.site-footer-copy {
   font-family: var(--font-mono, monospace);
-  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  /* No opacity: 0.6 fade — it dropped --text-dim (#888) to an effective
+     #5a5a5a on the #141414 footer (2.67:1). At full strength #888 clears
+     4.5:1 (≈5.2:1) for WCAG AA, matching the footer nav links. */
   color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 2px;
-}
-.site-footer nav {
-  display: flex;
-  gap: 16px;
 }
 .site-footer a {
   color: var(--text-dim);
@@ -1765,27 +1747,25 @@ canvas,
 .site-footer a:hover {
   color: var(--accent);
 }
-.site-footer-copy {
-  font-family: var(--font-mono, monospace);
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  /* No opacity: 0.6 fade — it dropped --text-dim (#888) to an effective
-     #5a5a5a on the #141414 footer (2.67:1). At full strength #888 clears
-     4.5:1 (≈5.2:1) for WCAG AA, matching the footer nav links. */
-  color: var(--text-dim);
+.site-footer-download-link {
+  white-space: nowrap;
 }
 
-/* #7085: digest coverage status row, mounted into the site footer by
-   StatusPanel. Text-only state disclosure — same muted mono treatment as the
-   footer copy, which already clears WCAG AA on this surface. */
+/* #7085 + #10461: digest coverage mounts into the compact footer as an
+   inline status line. Ellipsis keeps the whole footer on one 28px row so the
+   coverage text cannot grow the shell the way the old wrapped row did. */
 .site-footer .status-panel-container {
-  flex-basis: 100%;
-  order: 10;
+  flex: 1 1 auto;
+  min-width: 0;
+  order: 0;
 }
 .digest-coverage-row {
   font-family: var(--font-mono, monospace);
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
-  padding-top: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Mobile application navigation is injected with the hydrated shell but stays
@@ -1797,9 +1777,12 @@ canvas,
 @media (max-width: 768px) {
   /* #7085: display:none on the whole footer removed the digest coverage row's
      live region from the mobile accessibility tree (PR #7267 review). Keep the
-     footer in flow but collapse it: brand/nav/copy stay hidden, and the
-     coverage row announces from off-screen instead of painting. */
+     footer in flow but collapse it: the compact meta line stays hidden, and the
+     coverage row announces from off-screen instead of painting. #10461 also
+     zeroes the 28px desktop height so the tab bar does not sit above a gap. */
   .site-footer {
+    height: 0;
+    max-height: 0;
     padding: 0;
     border-top: none;
   }
@@ -2013,25 +1996,48 @@ canvas,
 
 /* #8276: Reserve enough grid rows for the natural wide video panels.
    Let the panels fill their grid area without overlapping the next row.
-   Preserve user-resized spans and the mobile layout. */
+   Preserve user-resized spans and the mobile layout.
+   The webcam wall is a 2x2 grid and takes three rows. Live News is one 16:9
+   player: at the widths the panel actually gets (386-830px) a third row was
+   111-290px of empty panel under the video, so it takes two (404px). */
 @media (min-width: 769px) {
-  #panelsGrid > .panel[data-panel="live-news"].panel-wide:not(.panel-collapsed):not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4),
+  #panelsGrid > .panel[data-panel="live-news"].panel-wide:not(.panel-collapsed):not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4) {
+    grid-row: span 2;
+    height: 100%;
+  }
+
   #panelsGrid > .panel[data-panel="live-webcams"].panel-wide:not(.panel-collapsed):not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4) {
     grid-row: span 3;
     height: 100%;
   }
 }
 
-/* #8276: Keep natural video panels compact on short desktop viewports.
+/* #8276: Keep the natural webcam wall compact on short desktop viewports.
    Two 200px grid rows plus the 4px gap provide a 404px footprint.
    The breakpoint prevents the default three-row footprint from
    exceeding the webcam panel's former viewport-height limit.
    Explicit user-resized spans remain untouched. */
 @media (min-width: 769px) and (height < 672px) {
-  #panelsGrid > .panel[data-panel="live-news"].panel-wide:not(.panel-collapsed):not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4),
   #panelsGrid > .panel[data-panel="live-webcams"].panel-wide:not(.panel-collapsed):not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4) {
     grid-row: span 2;
     height: 100%;
+  }
+}
+
+/* The Live News player fills whatever height its panel has, at the natural
+   footprint and at any user-resized one; the video letterboxes inside the
+   player. A fixed 16:9 box left the rest of the panel empty. Mobile keeps the
+   16:9 box: there the panel is as tall as its content. */
+@media (min-width: 769px) {
+  .panel[data-panel="live-news"]:not(.panel-collapsed) > .panel-content {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .panel[data-panel="live-news"] .live-news-player {
+    flex: 1 1 auto;
+    min-height: 0;
+    aspect-ratio: auto;
   }
 }
 
@@ -5007,6 +5013,15 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   transform: translateX(-50%) translateY(0);
 }
 
+/* The phone tab bar (z 10003, 58px) sits over a toast at the desktop offset
+   and hides half of its message; lift the toast clear of the bar. */
+@media (max-width: 768px) {
+  .toast-notification {
+    bottom: calc(58px + 12px + env(safe-area-inset-bottom, 0px));
+    max-width: calc(100vw - 32px);
+  }
+}
+
 /* Story Modal */
 .story-modal-overlay {
   position: fixed;
@@ -5791,8 +5806,31 @@ a.item-title:hover {
   padding: 0;
 }
 
+.playback-notice {
+  margin: 0;
+  padding: 10px 12px 0;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.playback-notice[hidden] {
+  display: none;
+}
+
 .playback-slider-container {
   padding: 12px;
+}
+
+.playback-slider:disabled,
+.playback-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.playback-btn:disabled:hover {
+  background: var(--panel-border);
+  color: var(--text);
 }
 
 .playback-slider {
@@ -6420,6 +6458,41 @@ body.playback-mode .status-dot {
   }
 }
 
+/* Dashboard focus outline on the SVG map (#10453). The DeckGL and globe maps
+   draw the same two styles with their own layers. CSS beats the paths'
+   presentation attributes; the fill is left alone so sanctions shading stays.
+   The map wrapper is CSS-scaled by the zoom, so the width is divided by it
+   (--marker-scale is 1 / zoom) to stay 2px and 1px on screen. */
+.map-base .country-focus-neighbour {
+  stroke: var(--green);
+  stroke-opacity: 0.5;
+  stroke-width: calc(1px * var(--marker-scale, 1));
+}
+
+.map-base .country-focus-chosen {
+  stroke: var(--green);
+  stroke-opacity: 1;
+  stroke-width: calc(2px * var(--marker-scale, 1));
+}
+
+/* The light map fill leaves --green at about 2.7:1, and a faint 1px neighbour
+   line reads as an ordinary border. Darken both strokes and dash the
+   neighbour so the two states differ by more than weight. */
+[data-theme="light"] .map-base .country-focus-chosen {
+  stroke: var(--green-text, var(--green));
+}
+
+[data-theme="light"] .map-base .country-focus-neighbour {
+  stroke: var(--green-text, var(--green));
+  stroke-opacity: 0.85;
+  stroke-width: calc(1.5px * var(--marker-scale, 1));
+  stroke-dasharray: calc(4px * var(--marker-scale, 1)) calc(2px * var(--marker-scale, 1));
+}
+
+.map-base .focus-centre-ring {
+  r: calc(5px * var(--marker-scale, 1));
+}
+
 /* Cable paths */
 .cable-path {
   fill: none;
@@ -6957,7 +7030,7 @@ body.playback-mode .status-dot {
   stroke: var(--red);
   stroke-width: 1;
   stroke-dasharray: 4, 2;
-  animation: pulse-conflict 2s ease-in-out infinite;
+  /* No fill pulse: an SVG fill animation runs on the main thread every frame. */
   transition: opacity 0.2s ease;
 }
 
@@ -7032,18 +7105,6 @@ body.playback-mode .status-dot {
     0 0 6px var(--bg),
     0 0 12px var(--bg),
     0 0 18px var(--red);
-}
-
-@keyframes pulse-conflict {
-
-  0%,
-  100% {
-    fill: rgba(255, 68, 68, 0.15);
-  }
-
-  50% {
-    fill: rgba(255, 68, 68, 0.3);
-  }
 }
 
 /* Base markers */
@@ -8412,6 +8473,20 @@ body.playback-mode .status-dot {
   opacity: 0.8;
 }
 
+/* A quote with no chart keeps the chart and span rows' height, so its price
+   lines up with the cards beside it. */
+.commodity-spark-empty {
+  min-height: calc(23px + 9.6px * var(--wm-panel-effective-scale, 1));
+}
+
+.commodity-span {
+  margin: -1px 0 2px;
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.2;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
 /* 24/7 Positioning Panel */
 .pos-panel {
   padding: 10px 14px;
@@ -9558,13 +9633,6 @@ a.prediction-link:hover {
   gap: 8px;
 }
 
-.panel-settings-item {
-  display: flex;
-  flex-direction: column;
-  align-self: start;
-  min-width: 0;
-}
-
 .panel-toggle-item {
   display: flex;
   align-items: center;
@@ -9583,41 +9651,155 @@ a.prediction-link:hover {
   min-width: 0;
 }
 
-.panel-font-scale-control {
-  display: flex;
-  flex-wrap: wrap;
+.unified-settings-modal .panel-toggle-grid {
+  display: block;
+  columns: 2 240px;
+  column-gap: 16px;
+}
+
+.panel-settings-item {
+  --panel-row-pad: 10px;
+  --panel-switch-w: 30px;
+  --panel-scale-w: calc(46px * var(--wm-panel-effective-scale, 1));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
   min-width: 0;
-  padding: 6px 8px;
   border: 1px solid var(--border);
-  border-top: 0;
   background: var(--bg);
+  break-inside: avoid;
+}
+
+.panel-settings-item + .panel-settings-item {
+  margin-top: -1px;
+}
+
+.panel-settings-item > * {
+  grid-area: 1 / 1;
+}
+
+.unified-settings-modal .panel-toggle-item {
+  min-height: 40px;
+  padding: 0 var(--panel-row-pad);
+  gap: 8px;
+  border: 0;
+  background: transparent;
+}
+
+.unified-settings-modal .panel-toggle-item:hover {
+  background: var(--surface-hover);
+}
+
+.unified-settings-modal .panel-toggle-item.changed {
+  background: rgba(68, 255, 136, 0.06);
+}
+
+.unified-settings-modal .panel-toggle-item:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+
+.unified-settings-modal .panel-toggle-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  letter-spacing: 0.02em;
+}
+
+.unified-settings-modal .panel-toggle-pro-badge {
+  margin-left: 0;
+}
+
+.panel-toggle-switch {
+  position: relative;
+  flex: none;
+  width: var(--panel-switch-w);
+  height: 16px;
+  border-radius: 999px;
+  background: var(--border);
+  transition: background 0.15s;
+}
+
+.panel-toggle-switch::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: transform 0.15s, background 0.15s;
+}
+
+.panel-toggle-item.active .panel-toggle-switch {
+  background: var(--green);
+}
+
+.panel-toggle-item.active .panel-toggle-switch::before {
+  transform: translateX(14px);
+  background: var(--bg);
+}
+
+.panel-settings-item.has-font-scale .panel-toggle-switch {
+  margin-inline-start: calc(var(--panel-scale-w) + 8px);
+}
+
+.panel-font-scale-control {
+  position: relative;
+  z-index: 1;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--panel-scale-w);
+  height: 24px;
+  margin-inline-end: calc(var(--panel-row-pad) + var(--panel-switch-w) + 8px);
+  border: 1px solid var(--border);
   color: var(--text-dim);
-  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
-  text-transform: uppercase;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
 }
 
 .panel-font-scale-control select {
-  min-width: 84px;
-  max-width: 120px;
-  padding: 3px 4px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
   font: inherit;
-  text-transform: none;
 }
 
-.panel-font-scale-control select:focus-visible {
-  outline: 2px solid var(--accent);
+.panel-font-scale-control:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.panel-font-scale-control:has(option:checked:not([value="global"])) {
+  color: var(--green-text, var(--green));
+  border-color: currentColor;
+}
+
+.panel-font-scale-control:has(select:focus-visible) {
+  outline: 2px solid var(--text);
   outline-offset: 1px;
 }
 
-.panel-font-scale-control select:disabled {
+.panel-font-scale-control:has(select:disabled) {
+  opacity: 0.45;
   cursor: not-allowed;
-  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-toggle-switch,
+  .panel-toggle-switch::before {
+    transition: none;
+  }
 }
 
 .panel-toggle-item:hover {
@@ -14128,14 +14310,10 @@ button.popup-link {
   0%,
   100% {
     opacity: 1;
-    --vessel-color: var(--semantic-critical);
-    --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
   }
 
   50% {
     opacity: 0.7;
-    --vessel-color: var(--semantic-high);
-    --vessel-text: var(--semantic-high-text, var(--semantic-high));
   }
 }
 
@@ -15437,9 +15615,15 @@ button.popup-link {
   justify-content: flex-start;
 }
 
-.mobile-menu-account .auth-signin-btn,
-.mobile-menu-account .auth-signup-link {
+.mobile-menu-account .auth-signin-btn {
   min-height: 44px;
+}
+
+.mobile-menu-account .auth-free-reason {
+  max-width: none;
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
 }
 
 .mobile-menu-item {
@@ -15650,8 +15834,8 @@ button.popup-link {
   }
 
   .header-right > :not(#authWidgetMount),
-  #authWidgetMount .auth-signup-link,
-  #authWidgetMount .auth-header-skeleton-signup {
+  #authWidgetMount .auth-free-reason,
+  #authWidgetMount .auth-header-skeleton-reason {
     display: none !important;
   }
 
@@ -15846,12 +16030,22 @@ button.popup-link {
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Full-viewport map on mobile (Google Maps-like experience) */
+  /* Today: a short map strip (32% of the viewport) so the first content panel is on the first screen
+     (#10457). The full-viewport map is the Map tab, which opens the section
+     fullscreen (.live-news-fullscreen restates its own height below). */
   .map-section {
-    height: calc(100vh - 48px) !important;
-    height: calc(100dvh - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
-    min-height: 60vh !important;
+    height: 32vh !important;
+    height: calc(100dvh * 0.32) !important;
+    min-height: 220px !important;
     max-height: 100dvh !important;
+  }
+
+  /* The distance ruler reserves a 150px nav column and its panel needs ~180px
+     more; the strip has neither, so its Reset/Exit buttons fall outside the map
+     (narrow desktop windows use the Deck renderer that mounts it). It stays
+     available in the fullscreen Map view. */
+  .map-section:not(.live-news-fullscreen) .map-distance-control {
+    display: none;
   }
 
   /* Collapsed map on mobile — higher specificity overrides .map-section above */
@@ -16533,6 +16727,14 @@ button.popup-link {
 }
 
 /* Tech Readiness Panel */
+.readiness-coverage-summary {
+  color: var(--text-dim);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.5;
+  margin-bottom: 6px;
+  padding-inline: 8px;
+}
+
 .tech-readiness-list {
   display: flex;
   flex-direction: column;
@@ -16579,10 +16781,16 @@ button.popup-link {
 
 .readiness-components {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 2px 8px;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
   margin-top: 2px;
+}
+
+.readiness-coverage {
+  font-weight: 600;
+  color: var(--text);
 }
 
 .readiness-components span {
@@ -20215,18 +20423,6 @@ button.popup-link {
   display: none;
 }
 
-/* Map author credit badge (inside layers panel) */
-.map-author-badge {
-  padding: 6px 10px;
-  font-family: var(--font-mono, 'JetBrains Mono', monospace);
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  color: #00e5ff;
-  border-top: 1px solid rgba(0, 229, 255, 0.2);
-  pointer-events: none;
-}
-
 /* Map tile attribution */
 .map-attribution {
   position: absolute;
@@ -21236,68 +21432,296 @@ button.popup-link {
   height: 14px;
 }
 
-.unified-settings-modal {
-  max-width: 640px;
-  width: 95%;
-  max-height: 80vh;
+/* Settings is one list of sections. On phones it is a home list whose rows
+   drill into pages under a back button; wider screens show it as a sidebar
+   beside the open page. */
+.unified-settings-modal .modal-header {
+  min-height: 32px;
 }
 
-/* Tabs that do not fit wrap onto more rows instead of scrolling out of
-   sight. Each tab's shadow rules off its row; on the last row it lands on
-   the strip's border, so a single row looks unchanged. */
-.unified-settings-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 12px;
-}
-
-.unified-settings-tab {
-  flex: 1 0 auto;
-  min-height: 44px;
-  padding: 10px 8px;
-  background: none;
+.us-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  margin-inline-start: -6px;
+  padding: 4px 6px;
   border: none;
-  border-bottom: 2px solid transparent;
-  box-shadow: 0 1px var(--border);
+  border-radius: 4px;
+  background: none;
   color: var(--text-dim);
-  font-family: inherit;
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font: inherit;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   letter-spacing: 0.5px;
   text-transform: uppercase;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+}
+
+.us-back:hover {
+  color: var(--text);
+}
+
+.us-back span {
+  font-size: 1.4em;
+  line-height: 1;
+}
+
+.us-home {
+  display: grid;
+  gap: 16px;
+}
+
+.us-back[hidden],
+.us-home[hidden],
+.us-pages [hidden] {
+  display: none;
+}
+
+.us-install-slot:empty,
+.us-search-empty:empty {
+  display: none;
+}
+
+/* Search belongs to the wide layout's sidebar; the phone list has none. */
+.us-search {
+  display: none;
+}
+
+.us-search-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.us-search-input::placeholder {
+  color: var(--text-dim);
+}
+
+.us-search-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.us-search-empty {
+  margin: 0;
+  padding: 4px 10px;
+  color: var(--text-dim);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.us-install-slot .pwa-install-entry {
+  margin-block-end: 0;
+}
+
+.us-home-rows {
+  display: grid;
+  gap: 16px;
+}
+
+.us-group {
+  display: grid;
+  gap: 6px;
+}
+
+.us-group-label {
+  margin: 0;
+  padding: 0 2px;
+  color: var(--text-faint);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.us-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.us-list li + li {
+  border-top: 1px solid var(--border);
+}
+
+.us-row,
+.us-account-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  text-align: start;
+  cursor: pointer;
+}
+
+.us-row:hover,
+.us-account-card:hover {
+  background: var(--surface-hover);
+}
+
+.us-row:focus-visible,
+.us-account-card:focus-visible,
+.us-back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.us-row-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.us-row-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.us-row-desc {
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.unified-settings-tab:hover {
+.us-row-value {
+  flex: none;
+  color: var(--text-dim);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.us-row-chev {
+  flex: none;
+  color: var(--text-faint);
+  font-size: calc(16px * var(--wm-panel-effective-scale, 1));
+  line-height: 1;
+}
+
+.us-account-card {
+  min-height: 56px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.us-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+  color: var(--green-text, var(--green));
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.us-signin-row .us-avatar {
+  background: var(--surface-hover);
+  color: var(--text-dim);
+}
+
+.us-page-title {
+  margin: 0 0 12px;
   color: var(--text);
+  font-size: calc(15px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
 }
 
-.unified-settings-tab.active {
-  border-bottom-color: var(--text);
-  color: var(--text);
+.us-page-title:focus {
+  outline: none;
 }
 
-/* Forced colors paint every transparent border, which hid the selected tab. */
-@media (forced-colors: active) {
-  .unified-settings-tab {
-    border-bottom-color: Canvas;
-  }
-
-  .unified-settings-tab.active {
-    border-bottom-color: Highlight;
-  }
+.us-page-title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-.unified-settings-tab-panel {
-  display: none;
+.us-page-body {
   padding: 0 4px;
 }
 
-.unified-settings-tab-panel.active {
-  display: block;
+.wm-pref-heading {
+  margin: 20px 0 4px;
+  color: var(--text);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.us-page-body > .wm-pref-heading:first-child {
+  margin-top: 0;
+}
+
+/* About lists the site and legal links as two tappable lists. */
+.us-about {
+  display: grid;
+  gap: 16px;
+}
+
+.us-about .dashboard-site-links-row,
+.us-about .legal-links-row {
+  display: grid;
+  justify-content: normal;
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+}
+
+.us-about .dashboard-site-links-item,
+.us-about .legal-links-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 12px;
+  color: var(--text);
+}
+
+.us-about .dashboard-site-links-item + .dashboard-site-links-item,
+.us-about .legal-links-item + .legal-links-item {
+  border-top: 1px solid var(--border);
+}
+
+.us-about .dashboard-site-links-item::after,
+.us-about .legal-links-item::after {
+  content: "\2197";
+  color: var(--text-faint);
+}
+
+.us-about .dashboard-site-links-item:hover,
+.us-about .legal-links-item:hover {
+  background: var(--surface-hover);
+  text-decoration: none;
 }
 
 .billing-settings-intro {
@@ -21306,7 +21730,7 @@ button.popup-link {
   padding: 4px 0 8px;
 }
 
-.billing-settings-intro h2 {
+.billing-settings-intro h3 {
   margin: 0;
   color: var(--text);
   font-size: calc(15px * var(--wm-panel-effective-scale, 1));
@@ -21424,6 +21848,63 @@ button.popup-link {
   margin-top: 4px;
 }
 
+/* A short choice (Theme, Font) as one row of segments. Each segment is a
+   native radio, so the group keeps arrow-key movement and its form semantics. */
+.us-segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 4px 0 6px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.us-segment {
+  position: relative;
+  flex: 1 1 auto;
+}
+
+.us-segment input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.us-segment span {
+  display: block;
+  min-width: 64px;
+  padding: 6px 14px;
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  text-align: center;
+  white-space: nowrap;
+}
+
+.us-segment:hover span {
+  color: var(--text);
+}
+
+.us-segment input:checked + span {
+  background: var(--surface-hover);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.us-segment input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .unified-settings-select:focus,
 .unified-settings-lang-select:focus {
   outline: none;
@@ -21440,7 +21921,6 @@ button.popup-link {
 /* Responsive grids */
 @media (max-width: 500px) {
 
-  .unified-settings-modal .panel-toggle-grid,
   .unified-settings-modal .sources-toggle-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -22179,10 +22659,6 @@ body.has-critical-banner .panels-grid {
   flex-direction: column;
   gap: 2px;
   pointer-events: none;
-}
-
-body:has(.tauri-titlebar) .breaking-news-container {
-  top: 70px;
 }
 
 .breaking-alert {
@@ -24444,13 +24920,13 @@ body.map-width-resizing {
   display: none;
 }
 
-/* 900px mirrors SPLIT_LAYOUT_MIN_WIDTH (src/app/split-layout.ts) — one
-   threshold for web and desktop since #6417 (the Tauri window minimum width
-   keeps the desktop app above it, so this block covers both). The map track
+/* 1440px mirrors SPLIT_LAYOUT_MIN_WIDTH (src/app/split-layout.ts) — one
+   threshold for web and desktop. Below it, keep panels full-width so the
+   default map share cannot squeeze them into one column (#10458). The map track
    pins both pixel floors: 220px = MAP_COL_MIN_PX and 306px = PANELS_COL_MIN_PX
    + MAP_COL_DIVIDER_PX. tests/responsive-zone-listener.test.mjs pins the
    alignment. */
-@media (min-width: 900px) {
+@media (min-width: 1440px) {
   .main-content {
     display: grid;
     grid-template-columns: min(max(var(--map-col-width, 60%), 220px), calc(100% - 306px)) 6px 1fr;
@@ -24963,6 +25439,11 @@ body.map-width-resizing {
 .globe-mode {
   background: #000 !important;
   overflow: hidden;
+}
+
+/* The canvas is positioned above the default polygon tooltip in globe.gl. */
+.globe-mode .float-tooltip-kap {
+  z-index: 10;
 }
 
 @keyframes globe-pulse {
@@ -25602,27 +26083,25 @@ body.map-width-resizing {
   align-items: center;
   position: relative;
   gap: 8px;
+  max-width: var(--header-auth-slot-width, 200px);
+  min-width: 0;
 }
 
-.auth-signup-link {
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text);
-  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+.auth-free-reason {
+  color: var(--text-muted);
+  flex: 1 1 auto;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: border-color 0.15s, color 0.15s;
-}
-.auth-signup-link:hover {
-  border-color: var(--green);
-  color: var(--green-text, var(--green));
-}
-.auth-signup-link:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 55%, transparent);
+  line-height: 1.15;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Two lines, not one: a single line in the ~120px left of the Sign In slot
+     cut the reason to "Free: sa…". The full text is also the title tooltip. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .auth-settings-btn {
@@ -25656,6 +26135,7 @@ body.map-width-resizing {
   /* Pinned dark, not var(--bg). In light theme var(--bg) is near-white and
      falls to ~3.13:1 on var(--green), failing WCAG AA for 13px text. */
   color: #0a0a0a;
+  flex: 0 0 auto;
   font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   cursor: pointer;
@@ -27485,6 +27965,14 @@ body.map-width-resizing {
 
 .upgrade-pro-cta:hover { opacity: 0.85; }
 
+.us-signout {
+  margin-top: 24px;
+}
+
+.us-signout + .account-deletion-zone {
+  margin-top: 16px;
+}
+
 .account-deletion-zone {
   margin-top: 24px;
   padding: 16px;
@@ -27601,6 +28089,209 @@ body.map-width-resizing {
    straight to Dodo's hosted checkout, where Dodo (merchant of record) shows its
    terms and never ours. Both surfaces are built by src/utils/legal-links.ts. */
 
+/* Phones: Settings is a full-height sheet from the top safe area down to the
+   mobile tab bar, which stays visible above it. The header stays put while the
+   sheet scrolls under it. */
+@media (max-width: 768px) {
+  #unifiedSettingsModal {
+    /* The tab bar renders 59px tall: 50px tabs, 8px padding, 1px top border. */
+    bottom: calc(59px + env(safe-area-inset-bottom, 0px));
+    align-items: stretch;
+  }
+
+  #unifiedSettingsModal .unified-settings-modal {
+    --us-sheet-left: max(16px, env(safe-area-inset-left, 0px));
+    --us-sheet-right: max(16px, env(safe-area-inset-right, 0px));
+    width: 100%;
+    max-width: none;
+    height: auto;
+    max-height: none;
+    padding: 0 var(--us-sheet-right) 24px var(--us-sheet-left);
+    border: none;
+    border-radius: 0;
+    overscroll-behavior: contain;
+  }
+
+  #unifiedSettingsModal .modal-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    min-height: calc(52px + env(safe-area-inset-top, 0px));
+    margin: 0 calc(-1 * var(--us-sheet-right)) 16px calc(-1 * var(--us-sheet-left));
+    padding: env(safe-area-inset-top, 0px) calc(var(--us-sheet-right) - 6px) 0 var(--us-sheet-left);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+}
+
+/* Wider screens: a two-pane sheet over the dimmed dashboard, so a theme or
+   panel change shows behind it. The sidebar holds the section list and its
+   search; the page pane scrolls on its own under a pinned page title. The
+   query is the exact complement of the phone sheet's, so a fractional width
+   from browser zoom still gets one of the two layouts. */
+@media (width > 768px) {
+  #unifiedSettingsModal {
+    padding: 16px;
+    background: rgb(0 0 0 / 0.5);
+  }
+
+  [data-theme="light"] #unifiedSettingsModal {
+    background: rgb(0 0 0 / 0.35);
+  }
+
+  #unifiedSettingsModal .unified-settings-modal {
+    position: relative;
+    display: grid;
+    grid-template-columns: clamp(200px, 25%, 236px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    width: min(960px, 100%);
+    max-width: none;
+    height: min(760px, 88dvh);
+    max-height: none;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 8px;
+    box-shadow: 0 16px 48px rgb(0 0 0 / 0.4);
+  }
+
+  /* Only the close button shows; it sits in the page title's row. */
+  #unifiedSettingsModal .modal-header {
+    position: absolute;
+    top: 7px;
+    inset-inline-end: 8px;
+    z-index: 2;
+    min-height: 0;
+    margin: 0;
+  }
+
+  #unifiedSettingsModal .us-home {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    padding: 0 10px 16px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-inline-end: 1px solid var(--border);
+    background: var(--bg-secondary);
+  }
+
+  #unifiedSettingsModal .us-search {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: block;
+    margin: 0 -10px;
+    padding: 12px 10px 4px;
+    background: var(--bg-secondary);
+  }
+
+  #unifiedSettingsModal .us-home-rows {
+    gap: 14px;
+  }
+
+  #unifiedSettingsModal .us-group {
+    gap: 2px;
+  }
+
+  #unifiedSettingsModal .us-group-label {
+    padding: 0 10px 2px;
+    color: var(--text-dim);
+  }
+
+  #unifiedSettingsModal .us-home .us-list {
+    display: grid;
+    gap: 1px;
+    border: none;
+    border-radius: 0;
+  }
+
+  #unifiedSettingsModal .us-home .us-list li + li {
+    border-top: none;
+  }
+
+  #unifiedSettingsModal .us-home .us-row {
+    gap: 8px;
+    min-height: 32px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    color: var(--text-secondary);
+  }
+
+  #unifiedSettingsModal .us-home .us-row .us-row-title {
+    font-weight: 500;
+  }
+
+  #unifiedSettingsModal .us-home .us-row .us-row-desc,
+  #unifiedSettingsModal .us-home .us-row-chev {
+    display: none;
+  }
+
+  #unifiedSettingsModal .us-home .us-row-value {
+    font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  }
+
+  #unifiedSettingsModal .us-home .us-account-card {
+    gap: 10px;
+    min-height: 48px;
+    padding: 8px 10px;
+    background: var(--surface);
+  }
+
+  #unifiedSettingsModal .us-home .us-avatar {
+    width: 30px;
+    height: 30px;
+  }
+
+  /* The sign-in prompt is a sentence; let it wrap instead of cutting it off. */
+  #unifiedSettingsModal .us-home .us-signin-row .us-row-desc {
+    white-space: normal;
+  }
+
+  #unifiedSettingsModal .us-home .us-row:hover,
+  #unifiedSettingsModal .us-home .us-account-card:hover {
+    background: color-mix(in srgb, var(--text) 7%, transparent);
+  }
+
+  #unifiedSettingsModal .us-home [aria-current="page"],
+  #unifiedSettingsModal .us-home [aria-current="page"]:hover {
+    background: color-mix(in srgb, var(--green) 13%, transparent);
+    color: var(--green-text, var(--green));
+  }
+
+  #unifiedSettingsModal .us-home .us-row[aria-current="page"] .us-row-title {
+    font-weight: 700;
+  }
+
+  #unifiedSettingsModal .us-home [aria-current="page"] .us-row-value {
+    color: inherit;
+  }
+
+  #unifiedSettingsModal .us-pages {
+    min-height: 0;
+    padding: 0 24px 24px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* The page pane is wider than a select needs; full-width lists read as inputs. */
+  #unifiedSettingsModal .us-page-body .unified-settings-select,
+  #unifiedSettingsModal .us-page-body .unified-settings-lang-select {
+    max-width: 360px;
+  }
+
+  #unifiedSettingsModal .us-page-title {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    margin: 0 -24px 16px;
+    padding: 13px 56px 12px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+}
+
+.dashboard-site-links-row,
 .legal-links-row {
   display: flex;
   flex-wrap: wrap;
@@ -27609,22 +28300,24 @@ body.map-width-resizing {
   padding: 10px 16px 12px;
   border-top: 1px solid var(--border-color, #30363d);
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  /* Sticky to the bottom of the scrolling modal: the Settings tab is long
-     enough that a row parked at the end of the scroll would be several
-     screens down, which is not "one click from the dashboard". -20px cancels
-     .modal's own bottom padding so it pins flush to the edge. */
-  position: sticky;
-  bottom: -20px;
-  z-index: 1;
-  margin-top: 8px;
   background: var(--surface);
 }
 
+.dashboard-site-links-row {
+  padding-bottom: 8px;
+}
+
+.legal-links-row {
+  padding-top: 8px;
+}
+
+.dashboard-site-links-item,
 .legal-links-item {
   color: var(--text-dim);
   text-decoration: none;
 }
 
+.dashboard-site-links-item:hover,
 .legal-links-item:hover {
   color: var(--text);
   text-decoration: underline;
@@ -28210,31 +28903,138 @@ body.map-width-resizing {
   line-height: 1.5;
 }
 
-.mcp-clients-empty-url {
+/* ---- AI Agents connect list (Settings → AI Agents) ---- */
+
+.mcp-agents-title,
+.mcp-agents-subtitle {
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 6px;
+}
+
+.mcp-agents-subtitle {
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  margin-top: 20px;
+}
+
+.mcp-agents-url,
+.mcp-agent-command {
   display: flex;
   align-items: center;
   gap: 8px;
-  justify-content: center;
-  margin-top: 4px;
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
-  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
-  color: var(--text);
+  padding: 6px 6px 6px 10px;
   background: var(--surface);
-  padding: 6px 10px;
-  border-radius: 4px;
-  user-select: all;
-  word-break: break-all;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-width: 0;
 }
 
-.mcp-clients-copy-url-btn {
+.mcp-agents-url {
+  margin-bottom: 12px;
+}
+
+.mcp-agents-url-label {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  padding: 4px 10px;
-  color: var(--accent);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   flex-shrink: 0;
 }
 
-.mcp-clients-copy-url-btn:hover {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+.mcp-agents-url code,
+.mcp-agent-command code {
+  flex: 1;
+  min-width: 0;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text);
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+
+.mcp-agents-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.mcp-agent {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mcp-agent + .mcp-agent {
+  border-top: 1px solid var(--border);
+}
+
+.mcp-agent-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mcp-agent-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mcp-agent-name {
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text);
+}
+
+.mcp-agent-hint {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+.mcp-agent-controls {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.mcp-agent-action,
+.mcp-copy-btn {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  padding: 6px 12px;
+  white-space: nowrap;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.mcp-agents-plan-note,
+.mcp-agents-docs {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: 12px 0 0;
+}
+
+.mcp-agents-plan-note a,
+.mcp-agents-docs a {
+  color: var(--accent);
+}
+
+@media (max-width: 520px) {
+  .mcp-agent-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mcp-agent-controls {
+    flex-wrap: wrap;
+  }
 }
 
 /* ---- Energy Crisis Panel ---- */
@@ -28895,9 +29695,50 @@ body.map-width-resizing {
    Panel Tabs — named, persistent dashboard workspaces
    ========================================================================== */
 
+.dashboard-navigation-row {
+  flex-shrink: 0;
+}
+
 .dashboard-tabs-mount {
   flex-shrink: 0;
   min-height: 36px;
+}
+
+.tablet-variant-mount {
+  display: none;
+}
+
+@media (min-width: 768px) and (max-width: 980px) {
+  .dashboard-navigation-row {
+    display: flex;
+    align-items: center;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .dashboard-navigation-row .dashboard-tabs-mount {
+    min-width: 0;
+    max-width: 50%;
+    flex-shrink: 1;
+  }
+
+  .dashboard-navigation-row .dashboard-tabs-bar {
+    border-bottom: none;
+  }
+
+  .tablet-variant-mount {
+    display: block;
+    min-width: 0;
+    flex: 1;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .tablet-variant-mount .variant-switcher {
+    display: flex !important;
+    width: max-content;
+    margin: 0 6px;
+  }
 }
 
 .dashboard-tabs-bar {
@@ -28993,7 +29834,10 @@ body.map-width-resizing {
   outline: none;
 }
 
-.dashboard-tab-add {
+.dashboard-tab-add,
+.dashboard-tab-options,
+.dashboard-tab-team,
+.dashboard-tab-focus {
   background: transparent;
   border: 1px dashed var(--border);
   border-radius: 5px;
@@ -29007,9 +29851,29 @@ body.map-width-resizing {
   transition: color 0.15s, border-color 0.15s;
 }
 
-.dashboard-tab-add:hover {
+.dashboard-tab-add:hover,
+.dashboard-tab-options:hover,
+.dashboard-tab-options[aria-expanded="true"],
+.dashboard-tab-team:hover,
+.dashboard-tab-team[aria-expanded="true"],
+.dashboard-tab-focus:hover,
+.dashboard-tab-focus.active {
   color: var(--green-text, var(--green));
   border-color: var(--green);
+}
+
+.dashboard-tab-options {
+  margin-left: 2px;
+}
+
+/* A word, not a glyph: smaller type so it sits level with "+" and "▾". */
+.dashboard-tab-team,
+.dashboard-tab-focus {
+  margin-left: 2px;
+  padding: 5px 9px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-family: inherit;
+  letter-spacing: 0.04em;
 }
 
 /* Tab-cap locked notice. Body-anchored and fixed-positioned from the add
@@ -29035,6 +29899,835 @@ body.map-width-resizing {
    grouped .export-locked-* / .tab-cap-notice-* rules near .export-locked-state. */
 .tab-cap-notice-desc {
   margin: 0;
+}
+
+/* Plain choice buttons for the new tab options popover. The gold CTA stays
+   reserved for the upgrade path. */
+.tab-cap-notice-action {
+  width: 100%;
+  padding: 6px 12px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab-cap-notice-action:hover,
+.tab-cap-notice-action:focus-visible {
+  color: var(--green-text, var(--green));
+  border-color: var(--green);
+}
+
+.tab-cap-notice-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Team dashboards: a list of shared layouts above the share action. */
+.team-dashboards-notice {
+  width: 260px;
+  max-width: calc(100vw - 16px);
+  align-items: stretch;
+  text-align: left;
+}
+
+.team-dashboards-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.team-dashboards-item {
+  display: flex;
+  align-items: stretch;
+}
+
+.team-dashboards-item + .team-dashboards-item {
+  border-top: 1px solid var(--border);
+}
+
+.team-dashboards-open,
+.team-dashboards-stop {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font-family: inherit;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  cursor: pointer;
+}
+
+.team-dashboards-open {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-dashboards-item.active .team-dashboards-open {
+  color: var(--green-text, var(--green));
+}
+
+.team-dashboards-stop {
+  padding: 0 10px;
+  color: var(--text-dim);
+}
+
+.team-dashboards-open:hover,
+.team-dashboards-open:focus-visible {
+  color: var(--green-text, var(--green));
+  background: var(--surface-hover, rgba(255, 255, 255, 0.04));
+}
+
+.team-dashboards-stop:hover,
+.team-dashboards-stop:focus-visible {
+  color: var(--red, #ef4444);
+}
+
+.team-dashboards-stop:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── Dashboard focus (#10453) ──
+   The bar sits above the map and grid on a focused tab. It is always visible
+   there: a filtered dashboard must never pass for the whole world. Green ties
+   it to the active tab; an ended window turns the accent amber. */
+.dashboard-tab-focus.active {
+  border-style: solid;
+}
+
+.focus-bar {
+  --focus-accent: var(--green-text, var(--green));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid var(--green);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text);
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.focus-bar[hidden] {
+  display: none;
+}
+
+.focus-bar.ended {
+  --focus-accent: var(--yellow-text, var(--yellow));
+  border-left-color: var(--yellow);
+}
+
+.focus-bar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  min-width: 0;
+}
+
+.focus-bar-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.focus-bar-icon {
+  color: var(--focus-accent);
+}
+
+.focus-bar-summary {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.focus-bar-neighbours-toggle {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--text-dim);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.focus-bar-neighbours-toggle:hover,
+.focus-bar-neighbours-toggle:focus-visible,
+.focus-bar-neighbours-toggle[aria-expanded="true"] {
+  color: var(--focus-accent);
+}
+
+.focus-bar-neighbours-off {
+  color: var(--text-dim);
+}
+
+.focus-bar-window {
+  color: var(--text-dim);
+}
+
+.focus-bar-window::before {
+  content: '·';
+  margin-right: 8px;
+  color: var(--text-dim);
+}
+
+.focus-bar-window.ended {
+  color: var(--focus-accent);
+  font-weight: 600;
+}
+
+.focus-bar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  /* Longer labels (German "Entwurf einer Bewertung") must wrap inside the
+     row on a narrow phone instead of pushing it wider than the screen. */
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.focus-bar-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.focus-bar-btn:hover,
+.focus-bar-btn:focus-visible {
+  color: var(--focus-accent);
+  border-color: var(--focus-accent);
+}
+
+.focus-bar-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 0 2px 20px;
+  /* 12 chosen countries plus their neighbours outgrow a short phone, and the
+     bar sits outside the page's scroll area: scroll the list itself. */
+  max-height: min(45vh, 320px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.focus-bar-details[hidden] {
+  display: none;
+}
+
+.focus-bar-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.focus-bar-group-label {
+  min-width: 80px;
+  color: var(--text-dim);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.focus-bar-countries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.focus-bar-country {
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+.focus-bar-country.chosen {
+  border: 1px solid var(--green);
+  color: var(--green-text, var(--green));
+}
+
+/* Neighbours are lighter: dashed and dim, so "in the country" and "next
+   door" read apart at a glance. */
+.focus-bar-country.neighbour {
+  border: 1px dashed var(--border-strong);
+  color: var(--text-dim);
+}
+
+.focus-bar-gate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-left: 20px;
+}
+
+.focus-bar-gate-desc {
+  color: var(--text-dim);
+  flex: 1 1 200px;
+}
+
+/* Panel header chip: the panel does not follow the tab's focus. */
+.panel-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 3px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  white-space: nowrap;
+  line-height: 1.3;
+  cursor: help;
+}
+
+/* Strip above a filtered panel's list: what the focus shows, what it hides,
+   and the per-panel "Show all". Green edge ties it to the focus bar; it wraps
+   instead of scrolling so nothing is cut at phone width. */
+.panel-scope-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 14px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  border-left: 2px solid var(--green);
+  background: var(--surface);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+  color: var(--text-dim);
+  min-width: 0;
+}
+
+.panel-scope-strip[hidden] {
+  display: none;
+}
+
+.panel-scope-strip[data-state="all"] {
+  border-left-color: var(--yellow);
+}
+
+/* The label takes its own line so the counts below never start with a
+   stray separator when they wrap. */
+.panel-scope-strip-label {
+  flex: 1 0 100%;
+  color: var(--text);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.panel-scope-strip-count,
+.panel-scope-strip-note {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
+  min-width: 0;
+}
+
+.panel-scope-strip-btn {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--green-text, var(--green));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.panel-scope-strip-btn:hover {
+  color: var(--text);
+}
+
+.panel-scope-strip-btn:focus-visible {
+  outline: 1px solid var(--green);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Row markers. Chosen-country rows carry none; a neighbour is dashed like the
+   focus bar's neighbour chips; "No country" is dotted. */
+.panel-scope-tag {
+  display: inline-flex;
+  align-items: center;
+  margin-inline-start: 4px;
+  padding: 0 5px;
+  border: 1px dotted var(--border-strong);
+  border-radius: 3px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text-dim);
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+
+.panel-scope-tag-neighbour {
+  border-style: dashed;
+}
+
+/* Empty because of the focus. Neutral on purpose: a load failure is the red
+   radar error state and stale data is the header's "cached" badge. */
+.panel-scope-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 12px;
+  padding: 16px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  text-align: center;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  color: var(--text);
+}
+
+.panel-scope-empty-hint {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+}
+
+/* Focus editor dialog. */
+.focus-editor-overlay {
+  background: var(--darken-heavy);
+  /* Above .mobile-tab-bar (10003), like .embed-modal-overlay: on a short
+     phone screen the bar otherwise covers Save and Cancel and takes their taps. */
+  z-index: 10020;
+}
+
+.focus-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  box-sizing: border-box;
+  border-radius: 8px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.focus-editor .modal-header {
+  margin-bottom: 0;
+}
+
+.focus-editor .modal-title {
+  margin: 0;
+}
+
+.focus-editor-intro,
+.focus-editor-hint {
+  margin: 0;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+.focus-editor-hint {
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+.focus-editor-field-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 4px;
+}
+
+.focus-editor-label {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.focus-editor-count {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.focus-editor-count.full {
+  color: var(--yellow-text, var(--yellow));
+  font-weight: 600;
+}
+
+.focus-editor-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.focus-editor-chips[hidden] {
+  display: none;
+}
+
+.focus-editor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 2px 1px 8px;
+  border: 1px solid var(--green);
+  border-radius: 12px;
+  color: var(--green-text, var(--green));
+}
+
+.focus-editor-chip-remove {
+  min-width: 24px;
+  min-height: 24px;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  color: inherit;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
+  line-height: 1;
+  cursor: pointer;
+}
+
+.focus-editor-chip-remove:hover,
+.focus-editor-chip-remove:focus-visible {
+  background: var(--overlay-medium);
+}
+
+.focus-editor-search,
+.focus-editor-date input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+}
+
+.focus-editor-search:focus-visible,
+.focus-editor-date input:focus-visible {
+  outline: 2px solid var(--green-text, var(--green));
+  outline-offset: 1px;
+  border-color: var(--green);
+}
+
+.focus-editor-search:disabled {
+  opacity: 0.5;
+}
+
+.focus-editor-results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.focus-editor-results[hidden] {
+  display: none;
+}
+
+.focus-editor-result-item + .focus-editor-result-item {
+  border-top: 1px solid var(--border);
+}
+
+.focus-editor-result {
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.focus-editor-result:hover,
+.focus-editor-result:focus-visible {
+  color: var(--green-text, var(--green));
+  background: var(--surface-hover);
+}
+
+.focus-editor-limit {
+  margin: 0;
+  color: var(--yellow-text, var(--yellow));
+}
+
+.focus-editor-limit[hidden] {
+  display: none;
+}
+
+.focus-editor-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.focus-editor-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--green);
+}
+
+.focus-editor-dates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.focus-editor-date {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.focus-editor-error {
+  margin: 0;
+  color: var(--red-text, var(--red));
+  font-weight: 600;
+}
+
+.focus-editor-error[hidden] {
+  display: none;
+}
+
+.focus-editor-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.focus-editor-clear {
+  margin-right: auto;
+}
+
+.focus-editor-btn {
+  padding: 7px 14px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.focus-editor-btn:hover,
+.focus-editor-btn:focus-visible {
+  border-color: var(--green);
+  color: var(--green-text, var(--green));
+}
+
+.focus-editor-btn.primary {
+  background: var(--green);
+  border-color: var(--green);
+  color: #062010;
+}
+
+.focus-editor-btn.primary:hover,
+.focus-editor-btn.primary:focus-visible {
+  filter: brightness(1.1);
+  color: #062010;
+}
+
+.focus-editor-clear:hover,
+.focus-editor-clear:focus-visible {
+  border-color: var(--red);
+  color: var(--red-text, var(--red));
+}
+
+/* Trip assessment dialog (#10451, phase 2). Reuses the focus editor's
+   overlay, inputs, results and footer; only the per-country rows are new. */
+.trip-assessment {
+  width: min(640px, calc(100vw - 32px));
+  max-width: none;
+  overflow-y: auto;
+}
+
+/* Copy feedback is body-level; keep it above this dialog's overlay (10020). */
+.focus-editor-overlay:has(> .trip-assessment) ~ .toast-notification {
+  z-index: 10021;
+}
+
+/* The messages and the actions stay in view while a long trip scrolls. The
+   negative margins let the bar span the modal's padding. */
+.trip-assessment-foot {
+  position: sticky;
+  bottom: -20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px -20px -20px;
+  padding: 10px 20px 20px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.trip-assessment-foot .focus-editor-footer {
+  margin-top: 0;
+}
+
+.trip-assessment-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trip-assessment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trip-assessment-list[hidden],
+.trip-assessment-violations[hidden] {
+  display: none;
+}
+
+.trip-assessment-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.trip-assessment-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.trip-assessment-row-name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.trip-assessment-row-controls {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.trip-assessment-row-btn {
+  min-width: 28px;
+  min-height: 28px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.trip-assessment-row-btn:hover:not(:disabled),
+.trip-assessment-row-btn:focus-visible {
+  border-color: var(--green);
+  color: var(--green-text, var(--green));
+}
+
+.trip-assessment-row-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.trip-assessment-row-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.trip-assessment-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+}
+
+.trip-assessment-input:focus-visible {
+  outline: 2px solid var(--green-text, var(--green));
+  outline-offset: 1px;
+  border-color: var(--green);
+}
+
+.trip-assessment-violations {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--red-text, var(--red));
+}
+
+.trip-assessment-status {
+  min-height: 1.45em;
+}
+
+.trip-assessment-copy {
+  margin-right: auto;
+}
+
+.trip-assessment-print-frame {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  width: 0;
+  height: 0;
+  border: 0;
+}
+
+@media (max-width: 560px) {
+  .trip-assessment-row-fields {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .trip-assessment-cities-wrap {
+    grid-column: 1 / -1;
+  }
 }
 
 /* ── Notification channel cards (relocated from settings-window.css in PR #4385 follow-up) ──
@@ -29535,7 +31228,6 @@ body.map-width-resizing {
 .markers-settled .cable-advisory-marker.fault,
 .markers-settled .protest-marker.high,
 .markers-settled .outage-marker.total,
-.markers-settled .conflict-zone,
 .markers-settled .iran-event-marker,
 .markers-settled .earthquake-marker,
 .markers-settled .nuclear-marker.active,
@@ -30042,36 +31734,6 @@ body.map-width-resizing {
   .unified-settings-region-bar::-webkit-scrollbar { display: block; height: 6px; }
 }
 
-.panel-font-scale-details {
-  border: 1px solid var(--border);
-  border-top: 0;
-  color: var(--text-dim);
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-}
-.panel-font-scale-details > summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 32px;
-  padding: 6px 8px;
-  cursor: pointer;
-  list-style: none;
-}
-.panel-font-scale-details > summary::-webkit-details-marker { display: none; }
-.panel-font-scale-details > summary::after { content: '+'; }
-.panel-font-scale-details[open] > summary::after { content: '\2212'; }
-.panel-font-scale-details [data-panel-scale-summary] { margin-inline-start: auto; }
-.panel-font-scale-details:has(option:checked:not([value="global"])) > summary { color: var(--text); }
-.panel-font-scale-details .panel-font-scale-control {
-  border: 0;
-  border-top: 1px solid var(--border-subtle);
-  font-size: inherit;
-  text-transform: none;
-}
-.panel-font-scale-control select { min-height: 32px; }
-.panel-font-scale-details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-
 .settings-access-gate {
   align-items: flex-start;
   justify-content: flex-start;
@@ -30091,12 +31753,70 @@ body.map-width-resizing {
 .search-launch-grid .tip-item { border-left: 0; }
 .search-sheet-header .search-input { padding: 8px 0; }
 @media (max-width: 768px) {
-  .unified-settings-modal .panel-toggle-grid { grid-template-columns: minmax(0, 1fr); }
-  .panel-font-scale-details > summary,
-  .panel-font-scale-control select { min-height: 44px; }
+  .unified-settings-modal .panel-toggle-item { min-height: 44px; }
+  .panel-font-scale-control select { inset: -10px -4px; width: auto; height: auto; }
   .search-overlay.search-mobile .search-scope-rail { scrollbar-width: thin; }
   .search-overlay.search-mobile .search-scope { min-height: 44px; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); }
   .search-chip { min-height: 44px; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
   .fw-import-tab { min-height: 44px; }
   .fw-import-input { min-height: 44px; }
+}
+
+/* Container-size defaults are managed by map-control-disclosure. */
+.map-control-disclosure {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-dim);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  cursor: pointer;
+  white-space: nowrap;
+}
+.map-control-disclosure::after { content: ' ▾'; }
+.map-control-disclosure[aria-expanded="false"]::after { content: ' ▸'; }
+.map-control-collapsed > :not(.toggle-header):not(.map-control-disclosure):not(.no2-activity-legend) {
+  display: none !important;
+}
+
+/* Dataset attribution stays visible while its active layer's scale is folded. */
+.map-control-collapsed > .no2-activity-legend > :not(.no2-activity-credit) {
+  display: none !important;
+}
+.map-control-collapsed .toggle-header { border-bottom: 0; padding: 0; }
+.map-control-collapsed .toggle-header > :not(.map-control-disclosure) { display: none; }
+.map-legend.map-control-collapsed { padding: 0; gap: 0; }
+.map-legend.map-control-compact:not(.map-control-collapsed) {
+  bottom: 58px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  box-sizing: border-box;
+  flex-wrap: wrap;
+}
+.map-control-panel > .legend-label-title { display: none; }
+.layer-toggles:not(.deckgl-layer-toggles) > .map-control-disclosure { flex-basis: 100%; }
+.layer-toggles.map-control-collapsed { width: auto; }
+
+@media (max-width: 768px) {
+  body:not(.live-news-fullscreen-active) .layer-toggles.map-control-panel:not(.deckgl-layer-toggles) {
+    display: flex !important;
+  }
+  body:not(.live-news-fullscreen-active) .map-legend.map-control-panel:not(.deckgl-legend) {
+    display: flex;
+  }
+  .layer-toggles.map-control-panel:not(.deckgl-layer-toggles):not(.map-control-collapsed) {
+    bottom: 58px;
+  }
+}
+
+/* Keep the existing 48px touch targets; mouse users can use a compact row. */
+@media (pointer: fine) {
+  :has(> .layer-toggles.map-control-compact) > .deckgl-time-slider {
+    padding: 4px 6px;
+  }
+  :has(> .layer-toggles.map-control-compact) > .deckgl-time-slider .time-btn {
+    min-width: 40px;
+    min-height: 28px;
+  }
 }

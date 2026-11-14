@@ -1836,9 +1836,9 @@ describe('accuracy page publishing contract', () => {
       'the nav plus the country, crisis and CII page links must all be present',
     );
     assert.match(
-      read('src/app/panel-layout.ts'),
+      read('src/config/dashboard-reference-links.ts'),
       /\{ label: 'Accuracy', path: '\/accuracy\/' \}/,
-      'DASHBOARD_REFERENCE_LINKS feeds both the desktop footer and the mobile menu',
+      'DASHBOARD_REFERENCE_LINKS feeds Settings and the mobile More menu',
     );
     assert.match(
       read('docs/methodology/cii-risk-scores.mdx'),
@@ -2163,7 +2163,7 @@ describe('accuracy record under audit (#8990)', () => {
     assert.match(lineWith('Once a forecast enters the resolution ledger'), /That is the design\. The October 2026 audit \(issue #8990\) found the scorer sometimes replaced a forecast's first probability with a later one, and that is being fixed\./);
     assert.match(lineWith('demonstrated track record of its domain'), /\(while the record is under audit, do not\)/);
     const description = post.match(/^description: "([^"]*)"$/m)[1];
-    assert.equal(description, 'How WorldMonitor scores its own AI forecasts, with a July 2026 snapshot of 32 forecasts. An audit found scoring errors and withdrew those figures in October 2026.');
+    assert.equal(description, 'How WorldMonitor scores its AI forecasts, with a July 2026 snapshot of 32 forecasts. An audit found scoring errors and withdrew those figures in October 2026.');
   });
 
   // Public surfaces that describe the record. Each must be true in both states, so none may state a score

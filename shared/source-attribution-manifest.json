@@ -934,6 +934,9 @@
           "path": "api/_github-release.js"
         },
         {
+          "path": "scripts/check-review-pr-token.mjs"
+        },
+        {
           "path": "scripts/dispatch-stale-railway-reconcile.mjs"
         },
         {
@@ -1474,6 +1477,9 @@
       "references": [
         {
           "path": "scripts/_weather-alert-select.mjs"
+        },
+        {
+          "path": "scripts/lib/grid-clock-sources.mjs"
         }
       ]
     },
@@ -1523,6 +1529,9 @@
         },
         {
           "path": "scripts/seed-capital-flows.mjs"
+        },
+        {
+          "path": "scripts/seed-cii-structural-prior.mjs"
         },
         {
           "path": "scripts/seed-education-attainment.mjs"
@@ -2383,13 +2392,16 @@
     },
     {
       "host": "celestrak.org",
-      "provider": "celestrak.org",
+      "provider": "CelesTrak",
       "kind": "structured",
       "observed": true,
-      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
-      "attribution": "Credit celestrak.org and link to the original upstream API/dataset.",
+      "license": "Public U.S. Space Force GP orbit elements republished by CelesTrak; CelesTrak usage terms apply and require review",
+      "attribution": "Orbit elements from CelesTrak; link to celestrak.org.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "scripts/_orbital-catalog.mjs"
+        },
         {
           "path": "scripts/ais-relay.cjs"
         }
@@ -2518,6 +2530,9 @@
       "references": [
         {
           "path": "api/oauth/_client-metadata.js"
+        },
+        {
+          "path": "src/config/mcp-agent-clients.ts"
         }
       ]
     },
@@ -2555,6 +2570,20 @@
         },
         {
           "path": "server/worldmonitor/shipping/v2/webhook-shared.ts"
+        }
+      ]
+    },
+    {
+      "host": "cmr.earthdata.nasa.gov",
+      "provider": "NASA Earthdata CMR",
+      "kind": "structured",
+      "observed": true,
+      "license": "U.S. government public metadata; NASA Earthdata terms apply",
+      "attribution": "NASA Earthdata Common Metadata Repository (CMR); credit the dataset (NSIDC ICESat-2 ATL13 and ATL06).",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_reservoir-levels.mjs"
         }
       ]
     },
@@ -2883,6 +2912,34 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "currency-api.pages.dev",
+      "provider": "fawazahmed0 currency-api",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC0-1.0 per the project repository (github.com/fawazahmed0/exchange-api); aggregated daily exchange rates, upstream sources not itemised by the project",
+      "attribution": "Credit the fawazahmed0 currency-api; used only as the second source for a currency whose Yahoo quotes are unreliable.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_currency-api.mjs"
+        }
+      ]
+    },
+    {
+      "host": "cursor.com",
+      "provider": "cursor.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "src/config/mcp-agent-clients.ts"
         }
       ]
     },
@@ -3277,6 +3334,20 @@
       ]
     },
     {
+      "host": "datacatalogfiles.worldbank.org",
+      "provider": "World Bank Open Data",
+      "kind": "structured",
+      "observed": true,
+      "license": "Worldwide Governance Indicators: Creative Commons Attribution 4.0 (CC BY 4.0).",
+      "attribution": "World Bank Worldwide Governance Indicators, 2026 release, data year 2025. Link the original bulk release recorded in each prior payload.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-cii-structural-prior.mjs"
+        }
+      ]
+    },
+    {
       "host": "datalab.wto.org",
       "provider": "datalab.wto.org",
       "kind": "structured",
@@ -3304,9 +3375,6 @@
         },
         {
           "path": "scripts/seed-aviation.mjs"
-        },
-        {
-          "path": "server/worldmonitor/aviation/v1/_shared.ts"
         }
       ]
     },
@@ -3652,6 +3720,9 @@
       "attribution": "Element84 Earth Search; preserve the collection license and link to the item.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "scripts/generate-orbital-mission-coverage.mjs"
+        },
         {
           "path": "server/worldmonitor/imagery/v1/search-imagery.ts"
         }
@@ -4994,6 +5065,23 @@
       ]
     },
     {
+      "host": "gibs.earthdata.nasa.gov",
+      "provider": "NASA GIBS",
+      "kind": "structured",
+      "observed": true,
+      "license": "NASA Earth science data are openly shared without restriction (CC0 unless marked); GIBS asks clients to acknowledge it",
+      "attribution": "We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/services/orbital/archive-gibs.ts"
+        },
+        {
+          "path": "src/services/orbital/crop-url.ts"
+        }
+      ]
+    },
+    {
       "host": "github.blog",
       "provider": "github.blog",
       "kind": "feed",
@@ -5035,6 +5123,9 @@
           "path": "scripts/generate-airline-codes.mjs"
         },
         {
+          "path": "scripts/mcp-tool-canary.mjs"
+        },
+        {
           "path": "scripts/seed-research.mjs"
         },
         {
@@ -5045,6 +5136,9 @@
         },
         {
           "path": "src/services/analytics.ts"
+        },
+        {
+          "path": "src/services/github-star-prompt-state.ts"
         },
         {
           "path": "src/services/preferences-content.ts"
@@ -5512,6 +5606,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "id.usembassy.gov",
+      "provider": "id.usembassy.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit id.usembassy.gov and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-security-advisories.mjs"
         }
       ]
     },
@@ -5993,6 +6101,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "kh.usembassy.gov",
+      "provider": "kh.usembassy.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit kh.usembassy.gov and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-security-advisories.mjs"
         }
       ]
     },
@@ -6558,6 +6680,20 @@
       ]
     },
     {
+      "host": "massoutage.com",
+      "provider": "massoutage.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "MassOutage API and compilations CC BY 4.0. Upstream terms continue to apply.",
+      "attribution": "Credit MassOutage (massoutage.com), link to the source and license, and identify the calculated change in state totals.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/grid-clock-sources.mjs"
+        }
+      ]
+    },
+    {
       "host": "masterpl.hls.nhkworld.jp",
       "provider": "masterpl.hls.nhkworld.jp",
       "kind": "feed",
@@ -6884,6 +7020,20 @@
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit mx.usembassy.gov and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
+      "host": "my.usembassy.gov",
+      "provider": "my.usembassy.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit my.usembassy.gov and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
         {
@@ -7250,6 +7400,9 @@
         },
         {
           "path": "server/worldmonitor/infrastructure/v1/reverse-geocode.ts"
+        },
+        {
+          "path": "server/worldmonitor/infrastructure/v1/search-place.ts"
         }
       ]
     },
@@ -7306,6 +7459,23 @@
       "references": [
         {
           "path": "src/config/live-video-sources.ts"
+        }
+      ]
+    },
+    {
+      "host": "nsidc.org",
+      "provider": "NSIDC",
+      "kind": "structured",
+      "observed": true,
+      "license": "U.S. government/public dataset terms; collection-specific license applies",
+      "attribution": "National Snow and Ice Data Center (NSIDC); link to the dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-reservoir-levels.mjs"
+        },
+        {
+          "path": "src/components/reservoir-levels-view.ts"
         }
       ]
     },
@@ -7818,6 +7988,20 @@
       ]
     },
     {
+      "host": "ph.usembassy.gov",
+      "provider": "ph.usembassy.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit ph.usembassy.gov and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
       "host": "phys.org",
       "provider": "phys.org",
       "kind": "structured",
@@ -7870,6 +8054,35 @@
       "references": [
         {
           "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
+      "host": "planetarycomputer.microsoft.com",
+      "provider": "Microsoft Planetary Computer",
+      "kind": "structured",
+      "observed": true,
+      "license": "Copernicus Sentinel data under the Copernicus open licence; Landsat data are USGS public domain; Planetary Computer terms of use apply",
+      "attribution": "Microsoft Planetary Computer; credit \"Contains modified Copernicus Sentinel data\" or \"Landsat imagery courtesy of the U.S. Geological Survey\" and link to the item.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_orbital-change.mjs"
+        },
+        {
+          "path": "scripts/_orbital-sites.mjs"
+        },
+        {
+          "path": "scripts/measure-orbital-site-water.mjs"
+        },
+        {
+          "path": "scripts/replay-orbital-change.mjs"
+        },
+        {
+          "path": "src/services/orbital/archive-stac.ts"
+        },
+        {
+          "path": "src/services/orbital/crop-url.ts"
         }
       ]
     },
@@ -9180,6 +9393,20 @@
       ]
     },
     {
+      "host": "sg.usembassy.gov",
+      "provider": "sg.usembassy.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit sg.usembassy.gov and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
       "host": "sh.dataspace.copernicus.eu",
       "provider": "sh.dataspace.copernicus.eu",
       "kind": "structured",
@@ -9297,6 +9524,37 @@
         },
         {
           "path": "api/slack/oauth/start.ts"
+        }
+      ]
+    },
+    {
+      "host": "sliderule.slideruleearth.io",
+      "provider": "SlideRule Earth",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public NASA-funded processing service; output carries the source dataset terms (ICESat-2 ATL13 and ATL06, NSIDC)",
+      "attribution": "Processed with SlideRule Earth (slideruleearth.io); credit NASA ICESat-2 ATL13 and ATL06 (NSIDC).",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_reservoir-levels.mjs"
+        }
+      ]
+    },
+    {
+      "host": "slideruleearth.io",
+      "provider": "SlideRule Earth",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public NASA-funded processing service; output carries the source dataset terms (ICESat-2 ATL13 and ATL06, NSIDC)",
+      "attribution": "Processed with SlideRule Earth (slideruleearth.io); credit NASA ICESat-2 ATL13 and ATL06 (NSIDC).",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-reservoir-levels.mjs"
+        },
+        {
+          "path": "src/components/reservoir-levels-view.ts"
         }
       ]
     },
@@ -9436,9 +9694,6 @@
         },
         {
           "path": "scripts/seed-capital-flows.mjs"
-        },
-        {
-          "path": "server/worldmonitor/economic/v1/_bis-shared.ts"
         }
       ]
     },
@@ -9621,6 +9876,20 @@
       "references": [
         {
           "path": "server/worldmonitor/infrastructure/v1/list-service-statuses.ts"
+        }
+      ]
+    },
+    {
+      "host": "status.worldmonitor.app",
+      "provider": "status.worldmonitor.app",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/status-page-smoke.mjs"
         }
       ]
     },
@@ -10792,6 +11061,23 @@
       ]
     },
     {
+      "host": "view.eumetsat.int",
+      "provider": "EUMETSAT EUMETView",
+      "kind": "structured",
+      "observed": true,
+      "license": "EUMETSAT Data Policy: Meteosat advanced image products are Core data, free and unrestricted for any use",
+      "attribution": "Contains EUMETSAT Meteosat imagery; credit EUMETSAT and link to EUMETView.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/services/orbital/archive-eumetsat.ts"
+        },
+        {
+          "path": "src/services/orbital/crop-url.ts"
+        }
+      ]
+    },
+    {
       "host": "viewfromthewing.com",
       "provider": "viewfromthewing.com",
       "kind": "structured",
@@ -10805,6 +11091,20 @@
         },
         {
           "path": "server/worldmonitor/aviation/v1/list-aviation-news.ts"
+        }
+      ]
+    },
+    {
+      "host": "vn.usembassy.gov",
+      "provider": "vn.usembassy.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit vn.usembassy.gov and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-security-advisories.mjs"
         }
       ]
     },
@@ -10833,6 +11133,20 @@
       "references": [
         {
           "path": "src/config/live-video-sources.ts"
+        }
+      ]
+    },
+    {
+      "host": "vscode.dev",
+      "provider": "vscode.dev",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "src/config/mcp-agent-clients.ts"
         }
       ]
     },
@@ -11159,6 +11473,9 @@
           "path": "scripts/mcp-proxy-live-smoke.mjs"
         },
         {
+          "path": "scripts/mcp-tool-canary.mjs"
+        },
+        {
           "path": "scripts/measure-mobile-mainthread.mjs"
         },
         {
@@ -11222,7 +11539,7 @@
           "path": "src/bootstrap/web-vitals-utils.ts"
         },
         {
-          "path": "src/components/UnifiedSettings.ts"
+          "path": "src/config/mcp-agent-clients.ts"
         },
         {
           "path": "src/config/web-origin.ts"
@@ -11871,6 +12188,20 @@
       "references": [
         {
           "path": "scripts/china-policy/adapters.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.caiso.com",
+      "provider": "www.caiso.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.caiso.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/grid-clock-sources.mjs"
         }
       ]
     },
@@ -12882,6 +13213,12 @@
       "attribution": "Credit www.gdacs.org and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "api/mcp/registry/_travel-risk-document.ts"
+        },
+        {
+          "path": "scripts/build-seasonal-hazard-calendar.mjs"
+        },
         {
           "path": "scripts/seed-natural-events.mjs"
         }
@@ -15350,13 +15687,25 @@
           "path": "api/customer-portal.ts"
         },
         {
+          "path": "api/mcp/auth.ts"
+        },
+        {
+          "path": "api/mcp/handler.ts"
+        },
+        {
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
           "path": "api/mcp/ui/news-dashboard-app.ts"
         },
         {
+          "path": "api/mcp/ui/shell.ts"
+        },
+        {
           "path": "api/not-found.ts"
+        },
+        {
+          "path": "api/oauth-protected-resource.ts"
         },
         {
           "path": "api/story.js"
@@ -15398,6 +15747,9 @@
           "path": "scripts/check-live-video-sources.mjs"
         },
         {
+          "path": "scripts/check-population-exposure.mjs"
+        },
+        {
           "path": "scripts/comparison-shortlist.mjs"
         },
         {
@@ -15413,6 +15765,9 @@
           "path": "scripts/freeze-resilience-ranking.mjs"
         },
         {
+          "path": "scripts/generate-orbital-mission-coverage.mjs"
+        },
+        {
           "path": "scripts/generate-sandbox-fixtures.mjs"
         },
         {
@@ -15420,6 +15775,9 @@
         },
         {
           "path": "scripts/lib/email-unsubscribe.cjs"
+        },
+        {
+          "path": "scripts/lib/grid-clock-sources.mjs"
         },
         {
           "path": "scripts/lib/internal-links.mjs"
@@ -15440,7 +15798,13 @@
           "path": "scripts/measure-desktop-mainthread.mjs"
         },
         {
+          "path": "scripts/measure-orbital-site-water.mjs"
+        },
+        {
           "path": "scripts/notification-relay.cjs"
+        },
+        {
+          "path": "scripts/replay-orbital-change.mjs"
         },
         {
           "path": "scripts/seed-no2-activity.mjs"
@@ -15479,6 +15843,9 @@
           "path": "src/components/RuntimeConfigPanel.ts"
         },
         {
+          "path": "src/config/dashboard-reference-links.ts"
+        },
+        {
           "path": "src/config/docs-locale-seo.ts"
         },
         {
@@ -15498,6 +15865,9 @@
         },
         {
           "path": "src/services/country-brief-source.ts"
+        },
+        {
+          "path": "src/services/orbital/credits.ts"
         }
       ]
     },
@@ -15693,6 +16063,20 @@
       "references": [
         {
           "path": "scripts/seed-fuel-prices.mjs"
+        }
+      ]
+    },
+    {
+      "host": "wwwmobile.caiso.com",
+      "provider": "wwwmobile.caiso.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "California ISO public website terms. Use factual emergency notice types and times.",
+      "attribution": "Credit California ISO and link to its emergency notifications.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/grid-clock-sources.mjs"
         }
       ]
     },

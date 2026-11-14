@@ -56,11 +56,11 @@ import {
   recalcPostureWithVessels,
 } from '../../../shared/analysis-military-surge';
 import {
-  computeBoundedExposure,
-  computeExposure,
   getRadiusForEventType,
   listCountryPopulations,
+  MAX_EXPOSURE_RADIUS_KM,
 } from '../../../shared/analysis-population-exposure';
+import { estimatePointExposure } from '../../../shared/population-density-country-at';
 import { INTEL_HOTSPOTS } from '../../../shared/geo-data';
 import { applyRedisKeyPrefix, readJsonBatchFromUpstashWithStatus } from '../../_upstash-json.js';
 import { isAppOwnedRedisKey } from '../../_redis-key-ownership.js';
@@ -283,15 +283,15 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        lat: { type: 'number', minimum: -90, maximum: 90, description: 'Latitude of the area of interest; requires lon and radius_km as well.' },
-        lon: { type: 'number', minimum: -180, maximum: 180, description: 'Longitude of the area of interest; requires lat and radius_km as well.' },
-        radius_km: { type: 'number', exclusiveMinimum: 0, maximum: 20000, description: 'Positive radius in km around lat/lon to keep alerts for; requires lat and lon (maximum 20,000).' },
+        lat: { type: 'number', minimum: -90, maximum: 90, description: 'Center latitude in decimal degrees of the area to keep alerts for; pass lon and radius_km with it or the call returns an error. Omit all three for every alert worldwide.' },
+        lon: { type: 'number', minimum: -180, maximum: 180, description: 'Center longitude in decimal degrees of the area to keep alerts for; pass lat and radius_km with it.' },
+        radius_km: { type: 'number', exclusiveMinimum: 0, maximum: 20000, description: 'Great-circle distance in kilometres from lat/lon; alerts whose cell center lies farther away are dropped. Pass lat and lon with it.' },
         min_domains: {
           type: 'number',
           minimum: 2,
           maximum: 5,
           description:
-            'Distinct signal domains required per cell, 2-5 (default 3); 5 is a compatibility safety threshold that yields no alerts while four domains are ingested.',
+            'How many distinct signal domains (protests, military flights, naval vessels, earthquakes) must co-occur in one cell to raise an alert; omitted means 3. 5 yields no alerts while only these four domains are ingested.',
         },
       },
       required: [],
@@ -429,8 +429,8 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       'Focal-point detection: entities where news coverage and live map signals converge, ranked by multi-signal score. ' +
       'Runs the dashboard focal-point engine server-side: seeded news story clusters are entity-matched against the curated ' +
       'registry of countries, companies, and organizations, then cross-referenced with cross-source escalation signals mapped ' +
-      'to countries through the same entity index. Each focal point reports its urgency band, news and signal scores, a ' +
-      'correlation bonus when headlines and map signals name the same entity, supporting headlines, and a generated narrative. ' +
+      'to countries through the same entity index. Each focal point reports its urgency band, news-mention and signal counts, ' +
+      'a 0-100 focal score raised when headlines and map signals name the same entity, top headlines, and a generated narrative. ' +
       'The response also carries an application-authored ai_context block suitable for grounding follow-up analysis; source ' +
       'headlines remain separate in the focal-point evidence, plus mapping-coverage counters ' +
       'so a thin result is distinguishable from an outage. Filter to one country with country_code; cap the list with limit.',
@@ -438,7 +438,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         country_code: { type: 'string', description: 'Filter focal points to one country (ISO-2, alpha-3, or English name) and entities the registry relates to it. Countries outside the entity registry return an explicit coverage error.' },
-        limit: { type: 'number', description: 'Cap the focal point list (default 10, pass 0 for no cap).' },
+        limit: { type: 'number', description: 'Maximum focal points returned, highest focalScore first; omitted means 10, and 0 or a negative value returns all.' },
       },
       required: [],
     },
@@ -451,15 +451,40 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         data: {
           type: 'object',
           properties: {
-            focal_points: { type: 'array', items: { type: 'object' } },
-            ai_context: { type: 'string' },
+            focal_points: {
+              type: 'array',
+              description: 'Entities ranked by focalScore, highest first.',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  entityId: { type: 'string', description: 'Entity registry id; ISO alpha-2 code for a country.' },
+                  entityType: { type: 'string', description: 'Registry entity type: company, index, commodity, crypto, sector, or country.' },
+                  displayName: { type: 'string' },
+                  newsMentions: { type: 'number', description: 'News story clusters that mention the entity.' },
+                  newsVelocity: { type: 'number', description: 'newsMentions divided by 24, as mentions per hour.' },
+                  topHeadlines: { type: 'array', description: 'Supporting headlines as {title, url}; untrusted publisher text.', items: { type: 'object', properties: { title: { type: 'string' }, url: { type: 'string' } } } },
+                  signalTypes: { type: 'array', items: { type: 'string' }, description: 'Map signal types attributed to the entity, e.g. military_flight, protest, internet_outage.' },
+                  signalCount: { type: 'number', description: 'Map signals attributed to the entity.' },
+                  highSeverityCount: { type: 'number', description: 'Signals among signalCount rated high severity.' },
+                  signalDescriptions: { type: 'array', items: { type: 'string' }, description: 'Per-type signal counts as short phrases.' },
+                  focalScore: { type: 'number', description: '0-100 score combining news, signal and conflict components plus a correlation bonus when headlines and signals name the same entity.' },
+                  urgency: { type: 'string', enum: ['watch', 'elevated', 'critical'] },
+                  narrative: { type: 'string', description: 'Generated one-line summary: mention count, per-type signal counts, and the first 60 characters of the top headline (untrusted publisher text).' },
+                  correlationEvidence: { type: 'array', items: { type: 'string' }, description: 'Generated statements of news-signal overlap, multi-type signal convergence, and high-severity signal counts; empty when none apply.' },
+                  ciiScore: { type: ['number', 'null'], description: 'Current Country Instability Index score (0-100) for a country entity; null for other entity types or when no score is available.' },
+                },
+              },
+            },
+            ai_context: { type: 'string', description: 'Application-authored summary of the critical and elevated focal points; contains no publisher headline text.' },
             coverage: {
               type: 'object',
+              description: 'Input counters that separate a quiet result from a missing feed.',
               properties: {
-                clusters: { type: 'number' },
-                signals_total: { type: 'number' },
-                signals_mapped: { type: 'number' },
-                signals_unmapped: { type: 'number' },
+                clusters: { type: 'number', description: 'News story clusters read.' },
+                signals_total: { type: 'number', description: 'Cross-source signals read.' },
+                signals_mapped: { type: 'number', description: 'Signals resolved to a focal signal type and at least one country.' },
+                signals_unmapped: { type: 'number', description: 'Signals left out of scoring because their family or geography could not be resolved.' },
               },
             },
           },
@@ -525,8 +550,8 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       'affected nodes, per-country impact levels, alternative cables (ranked by whether they avoid the chokepoints the ' +
       'cut cables cross), and graph stats. Call with no arguments for the catalog of node ids. source_ids or ' +
       'cut_cables_through (a chokepoint id) model a simultaneous multi-cable cut, e.g. every cable through Hormuz. ' +
-      'countries (up to 10) compares per-country cable exposure: cable count, landing stations, chokepoints crossed, ' +
-      'and cables the cable-health monitor flags as faulted. disruption_level ranges 0.1 to 1 (default 1). Cable ' +
+      'countries compares per-country cable exposure: cable count, landing stations, chokepoints crossed, ' +
+      'and cables the cable-health monitor flags as faulted. Cable ' +
       'results are estimates (capacity shares from landing counts, redundancy assumed); see cascade.dataQuality.',
     inputSchema: {
       type: 'object',
@@ -536,19 +561,19 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
           type: 'array',
           items: { type: 'string' },
           maxItems: 50,
-          description: 'Cut several nodes at once (e.g. a list of cable ids); all ids must be known and per-country impacts add up across the cut. Ignored when source_id is given.',
+          description: 'Node ids from the no-argument catalog to cut at once, e.g. several cable ids; per-country impacts add up across the cut, and an unknown id returns an error naming it. Ignored when source_id is given.',
         },
         cut_cables_through: {
           type: 'string',
           description: 'Chokepoint id (e.g. "chokepoint:hormuz_strait"): cut every cable whose route crosses it. Ignored when source_id or source_ids is given.',
         },
-        disruption_level: { type: 'number', description: 'Initial failure severity between 0.1 and 1 (default 1).' },
+        disruption_level: { type: 'number', description: 'Severity of the initial failure, multiplying every propagated impact: 1 is a total outage, 0.5 halves downstream impacts. Clamped to 0.1-1; omitted means 1.' },
         countries: {
           type: 'array',
           items: { type: 'string' },
           minItems: 1,
           maxItems: MAX_EXPOSURE_COUNTRIES,
-          description: 'Compare subsea cable exposure for these countries (ISO alpha-2, alpha-3 or English name): cables landing there, distinct landing stations, chokepoints those cables cross and their share, and active FAULT or DEGRADED cable incidents. Returned in data.exposure; combines with the cut arguments.',
+          description: 'Countries to compare subsea cable exposure for, as ISO alpha-2, alpha-3 or English names (duplicates merged): cables landing there, distinct landing stations, chokepoints those cables cross and their share, and active FAULT or DEGRADED cable incidents. Returned in data.exposure; combines with the cut arguments.',
         },
       },
       required: [],
@@ -841,13 +866,56 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         data: {
           type: 'object',
           properties: {
-            postures: { type: 'array', items: { type: 'object' } },
-            foreign_presence: { type: 'array', items: { type: 'object' } },
-            seeded_surges: { type: 'array', items: { type: 'object' } },
-            seeded_surges_available: { type: 'boolean' },
-            history_available: { type: 'boolean' },
-            cii_available: { type: 'boolean' },
-            flight_count: { type: 'number' },
+            postures: {
+              type: 'array',
+              description: 'One summary per posture theater, computed from the flight snapshot; empty when neither flights nor theater posture were readable.',
+              items: {
+                type: 'object',
+                properties: {
+                  theaterId: { type: 'string' },
+                  theaterName: { type: 'string' },
+                  shortName: { type: 'string' },
+                  targetNation: { type: ['string', 'null'], description: 'Nation the theater watches; its CII score can raise postureLevel.' },
+                  fighters: { type: 'number' }, tankers: { type: 'number' }, awacs: { type: 'number' },
+                  reconnaissance: { type: 'number' }, transport: { type: 'number' }, bombers: { type: 'number' }, drones: { type: 'number' },
+                  totalAircraft: { type: 'number', description: 'Military aircraft currently inside the theater boundary.' },
+                  totalVessels: { type: 'number', description: 'Tracked military vessels in the theater from the posture cache; per-class vessel counts stay 0 on this server path.' },
+                  byOperator: { type: 'object', description: 'Aircraft counts keyed by operator.' },
+                  postureLevel: { type: 'string', enum: ['normal', 'elevated', 'critical'], description: 'Highest of the air, naval and target-nation CII levels against per-theater thresholds.' },
+                  strikeCapable: { type: 'boolean', description: 'True when tanker, AWACS and fighter counts all meet the theater strike-package minimums.' },
+                  trend: { type: 'string', enum: ['increasing', 'stable', 'decreasing'], description: 'Direction of changePercent; beyond plus or minus 10 percent counts as a change. Always stable without surge history.' },
+                  changePercent: { type: 'number', description: 'Percent change of the mean aircraft count over the latest 6 history runs versus the 6 before them.' },
+                  summary: { type: 'string' },
+                  headline: { type: 'string' },
+                  centerLat: { type: 'number' },
+                  centerLon: { type: 'number' },
+                },
+              },
+            },
+            foreign_presence: {
+              type: 'array',
+              description: 'Operators with at least their per-operator threshold of aircraft in a region outside their home regions.',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  operator: { type: 'string' },
+                  operatorCountry: { type: 'string' },
+                  region: { type: 'string', description: 'Region name.' },
+                  region_id: { type: 'string' },
+                  aircraftCount: { type: 'number', description: 'Operator aircraft in the region in this snapshot.' },
+                },
+              },
+            },
+            seeded_surges: {
+              type: 'array',
+              description: 'Surge alerts written by the flights seeder against its own history baselines, passed through as stored (for example theaterId, surgeType, currentCount, baselineCount, surgeMultiple, persistent).',
+              items: { type: 'object' },
+            },
+            seeded_surges_available: { type: 'boolean', description: 'False when the seeder surge record was missing or not cleared for redistribution; seeded_surges is then empty, not quiet.' },
+            history_available: { type: 'boolean', description: 'False when surge history was unreadable; every posture trend then reads stable.' },
+            cii_available: { type: 'boolean', description: 'False when CII scores were unreadable; postureLevel then ignores target-nation instability.' },
+            flight_count: { type: 'number', description: 'Military flights read from the snapshot before theater filtering.' },
           },
           required: [],
         },
@@ -949,22 +1017,22 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     title: 'Population exposed to active events',
     _outputBudgetBytes: 65536,
     description:
-      'Population exposure: estimated people within the impact radius of active earthquakes, wildfires, and conflict events. ' +
-      'Uses the same country-density approximation the dashboard ships — the nearest priority-country centroid supplies a ' +
-      'population density that is multiplied over the event-type radius disc (50 km for conflict, 100 km for earthquakes and ' +
-      'floods, 30 km for fires). Three modes: events (the default) enriches the current seeded event feeds and ranks them by ' +
-      'exposed population; point estimates exposure around an arbitrary lat/lon; countries returns the priority-country ' +
-      'population table itself. Estimates are deliberately coarse screening numbers — there is no city-level population ' +
-      'dataset behind them — so treat them as ranking signals, not casualty projections.',
+      'Estimated people within earthquake (100 km), wildfire (30 km), or conflict (50 km) radii, using country average density × circle area. ' +
+      'Only the 20 countries in the population table are supported; other points return null or are omitted in events mode. ' +
+      'Conflicts require precise points and fold into one row per location (3 decimal coordinates); eventCount counts folded events. ' +
+      'Names use Place, Country (Palestine for PSE density). limit caps locations, not underlying conflict events. ' +
+      'Unprojected events responses can exceed the 64 KB output budget; use jmespath or a limit. ' +
+      'Modes: events (default) ranks feeds by exposure; point estimates at lat/lon; countries lists the table. ' +
+      'Coarse screening estimates, not casualty projections.',
     inputSchema: {
       type: 'object',
       properties: {
-        mode: { type: 'string', enum: ['events', 'point', 'countries'], description: 'events enriches live feeds (default); point takes lat/lon; countries lists the population table.' },
-        event_source: { type: 'string', enum: ['earthquakes', 'wildfires', 'conflicts', 'all'], description: 'Which event feeds to enrich in events mode (default all).' },
+        mode: { type: 'string', enum: ['events', 'point', 'countries'], description: 'What to estimate: events ranks current earthquake, wildfire and conflict events by exposed population; point estimates one circle around lat/lon; countries returns the population table, i.e. the countries that can get an estimate. Omitted means events.' },
+        event_source: { type: 'string', enum: ['earthquakes', 'wildfires', 'conflicts', 'all'], description: 'Event feed to rank in events mode; all merges earthquakes, wildfires and conflicts into one ranking. Omitted means all; ignored in other modes.' },
         lat: { type: 'number', description: 'Latitude for point mode.' },
         lon: { type: 'number', description: 'Longitude for point mode.' },
-        radius_km: { type: 'number', description: 'Radius in km for point mode (default 50, clamped to 1000).' },
-        limit: { type: 'number', description: 'Cap the enriched event list in events mode (default 20, pass 0 for no cap).' },
+        radius_km: { type: 'number', description: 'Circle radius in kilometres for point mode, clamped to 1-1000; omitted means 50. Events mode ignores it and uses the fixed per-type radii.' },
+        limit: { type: 'number', description: 'Cap locations in events mode, after conflict events are folded by location (default 20, pass 0 for no cap). Use a limit or jmespath to stay within the 64 KB output budget.' },
       },
       required: [],
     },
@@ -977,8 +1045,28 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         data: {
           type: 'object',
           properties: {
-            events: { type: ['array', 'null'], items: { type: 'object' } },
-            exposure: { type: ['object', 'null'] },
+            events: {
+              type: ['array', 'null'],
+              description: 'Ranked exposure rows in events mode; conflicts have one row per location. Null in other modes.',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', description: 'Representative source event identifier.' },
+                  name: { type: 'string', description: 'Display name; conflicts use Place, Country or Conflict event — Country when the place is missing. PSE density locations display Palestine.' },
+                  type: { type: 'string', description: 'Event type: conflict, earthquake, or wildfire.' },
+                  lat: { type: 'number', description: 'Representative event latitude in degrees.' },
+                  lon: { type: 'number', description: 'Representative event longitude in degrees.' },
+                  reportedCountry: { type: 'string', description: 'Conflict source country label with former country names removed; may differ from the density country.' },
+                  eventCount: { type: 'integer', description: 'Number of conflict events folded into this location row; absent for other event types.' },
+                  country: { type: 'string', description: 'ISO3 country code whose density was used for the estimate.' },
+                  nearestCountry: { type: 'string', deprecated: true, description: 'Deprecated alias of country, retained for this published revision.' },
+                  exposedPopulation: { type: 'number', description: 'Estimated people within the radius using country average density, rounded to a whole person.' },
+                  exposureRadiusKm: { type: 'number', description: 'Impact radius in kilometres used for the estimate.' },
+                  densityPerKm2: { type: 'number', description: 'Country average people per square kilometre used for the estimate.' },
+                },
+              },
+            },
+            exposure: { type: ['object', 'null'], description: 'Point mode: the estimate, with country as the ISO3 code whose density was used. nearestCountry is a deprecated alias retained for this published revision in point and event estimates. Null in other modes and for a point outside the countries table.' },
             countries: { type: ['array', 'null'], items: { type: 'object' } },
           },
           required: [],
@@ -1006,9 +1094,6 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
             error: 'point mode requires numeric lat and lon.',
           };
         }
-        // Out-of-range coordinates would still resolve to a nearest centroid
-        // by Euclidean distance and return a real-looking estimate for a place
-        // that does not exist (lat 999 attributes to Mali).
         if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
           return {
             cached_at: null,
@@ -1017,11 +1102,12 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
             error: `lat must be within [-90, 90] and lon within [-180, 180] (received lat=${lat}, lon=${lon}).`,
           };
         }
-        const radiusKm = Math.max(1, Number(params.radius_km ?? 50) || 50);
+        const radiusKm = Math.min(MAX_EXPOSURE_RADIUS_KM, Math.max(1, Number(params.radius_km ?? 50) || 50));
+        const exposure = estimatePointExposure(lat, lon, radiusKm);
         return {
           cached_at: null,
           stale: false,
-          data: { events: null, exposure: computeBoundedExposure(lat, lon, radiusKm), countries: null },
+          data: { events: null, exposure: exposure ? { ...exposure, nearestCountry: exposure.country } : null, countries: null },
         };
       }
 
@@ -1067,10 +1153,9 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
 
       const enriched = reads
         .flatMap((read, i) => read.adapt(payloads[i], Number.POSITIVE_INFINITY))
-        .map((event) => {
-          const radius = getRadiusForEventType(event.type);
-          const exposure = computeExposure(event.lat, event.lon, radius);
-          return { ...event, ...exposure };
+        .flatMap((event) => {
+          const exposure = estimatePointExposure(event.lat, event.lon, getRadiusForEventType(event.type), event.reportedCountry);
+          return exposure ? [{ ...event, ...exposure, nearestCountry: exposure.country }] : [];
         })
         .sort((a, b) => b.exposedPopulation - a.exposedPopulation)
         .slice(0, limit);
@@ -1091,13 +1176,13 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       'severity vocabulary its own producer already uses; no thresholds are invented by this tool. Domains with data but no ' +
       'trips are listed as quiet, and domains whose caches are unavailable are listed separately so silence is never mistaken ' +
       'for calm. The weekly view adds direction, volatility, and anomaly flags derived from the persisted military-activity ' +
-      'history plus the current temporal-anomaly snapshot. movers_days (7-90, default 7) adds daily CII risers and fallers in weekly view. A rollup of threshold trips across domains: no news stories, ' +
+      'history plus the current temporal-anomaly snapshot, and daily CII risers and fallers. A rollup of threshold trips across domains: no news stories, ' +
       'narrative, or full per-stream anomaly lists. Requires a paid plan; weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
-        view: { type: 'string', enum: ['today', 'weekly'], description: 'today lists current threshold trips (default); weekly adds trend context.' },
-        movers_days: { type: 'integer', minimum: 7, maximum: 90, default: 7, description: 'Weekly view only. Rank CII rises and falls over this many UTC days (7-90, default 7).' },
+        view: { type: 'string', enum: ['today', 'weekly'], description: 'today returns the current threshold trips; weekly returns the same trips plus military-activity trends, current anomalies and CII movers. Omitted means today.' },
+        movers_days: { type: 'integer', minimum: 7, maximum: 90, default: 7, description: 'Valid only with view weekly. Number of UTC days back to compare each country\'s latest daily CII score against when ranking the top risers and fallers.' },
       },
       required: [],
     },
@@ -1232,8 +1317,8 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        hotspot_id: { type: 'string', description: 'Return only this curated hotspot id (see any full response for the id list).' },
-        limit: { type: 'number', description: 'Cap the ranked hotspot list (default 29, the full curated set; pass 0 for no cap).' },
+        hotspot_id: { type: 'string', description: 'Curated hotspot id to score alone: the exact, case-sensitive hotspotId of a full response, a lowercase slug such as tehran, taipei or horn_africa. An unknown id returns an error with known_ids.' },
+        limit: { type: 'number', description: 'Maximum hotspots returned, highest combinedScore first; omitted, 0 or a negative value returns all 29.' },
       },
       required: [],
     },

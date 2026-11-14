@@ -17,7 +17,9 @@ import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 const SEED_CACHE_KEY = 'economic:global-tenders:v1';
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
-const STALE_AFTER_MS = 180 * 60_000;
+// The seeder runs once a day; health marks the snapshot stale after three missed
+// runs (api/health.js globalTenders), and so does this reader.
+export const STALE_AFTER_MS = 3 * 24 * 60 * 60_000;
 
 type SeedSnapshot = {
   fetchedAt?: number | string;
@@ -33,13 +35,23 @@ function snapshotTimestamp(value: number | string | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+// The seeder only drops a notice whose deadline has passed when it next runs, a
+// day later. The reader drops it as soon as it closes. A notice without a
+// parseable deadline is kept, as the seeder keeps it.
+function isStillOpen(tender: GlobalTender, now: number): boolean {
+  const deadline = Date.parse(tender?.deadline || '');
+  return !Number.isFinite(deadline) || deadline > now;
+}
+
 export function applySnapshotFreshness(snapshot: SeedSnapshot, now = Date.now()): SeedSnapshot {
   const fetchedAt = snapshotTimestamp(snapshot.fetchedAt);
   const stale = snapshot.dataAvailable === true
     && (snapshot.availability === 'stale' || !fetchedAt || now - fetchedAt > STALE_AFTER_MS);
-  if (!stale) return snapshot;
+  const tenders = Array.isArray(snapshot.tenders) ? snapshot.tenders.filter((tender) => isStillOpen(tender, now)) : snapshot.tenders;
+  if (!stale) return { ...snapshot, tenders };
   return {
     ...snapshot,
+    tenders,
     availability: 'stale',
     sourceStatuses: (snapshot.sourceStatuses || []).map((status) => status.state === 'ok'
       ? { ...status, state: 'stale', stale: true, lastSuccessfulAt: status.lastSuccessfulAt || status.fetchedAt }

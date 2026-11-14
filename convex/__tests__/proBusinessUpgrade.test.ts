@@ -115,7 +115,7 @@ describe("upgradeToProBusiness action", () => {
     await seed(t);
     previewChangePlan.mockResolvedValue({
       immediate_charge: { summary: { total_amount: 667, currency: "USD" } },
-      new_plan: { recurring_pre_tax_amount: 4999 },
+      new_plan: { recurring_pre_tax_amount: 4999, currency: "USD", next_billing_date: "2026-12-07T11:03:06Z" },
     });
     const result = await t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { confirm: false });
     expect(result).toEqual({
@@ -125,6 +125,8 @@ describe("upgradeToProBusiness action", () => {
       chargeAmount: 667,
       currency: "USD",
       renewalAmount: 4999,
+      renewalCurrency: "USD",
+      renewalDate: "2026-12-07T11:03:06Z",
       billingPeriod: "monthly",
     });
     expect(previewChangePlan).toHaveBeenCalledWith("sub_pro_1", expect.objectContaining({

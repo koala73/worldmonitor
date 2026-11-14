@@ -1,0 +1,215 @@
+---
+title: "MCP 工具：环境、科学与健康"
+sidebarTitle: "环境、科学与健康"
+description: "World Monitor MCP 工具参考：气候、气旋、自然灾害、辐射、科研与健康信号。逐一列出每个工具的输入参数与类型、数据新鲜度窗口、对应的后端 REST API 端点，以及可直接复制使用的示例调用负载，帮助开发者构建情报智能体、工作流自动化与自定义 MCP 客户端集成。"
+---
+
+本页属于 [MCP 工具参考](/zh/mcp-tools-reference)，该索引列出全部工具。连接、认证、套餐与错误见 [MCP Server 概览](/zh/mcp-overview)。
+
+以下工具暂仅提供英文参考：[`get_imd_cyclone_marine`](/mcp-tools/environment-health#get_imd_cyclone_marine)。
+
+`curl` 示例假设已执行 `export WM_KEY="wm_…"`；使用 OAuth 时，请将 `-H "X-WorldMonitor-Key: $WM_KEY"` 替换为 `-H "Authorization: Bearer $TOKEN"`。
+
+### `get_climate_data`
+
+气候情报：温度/降水异常（对比 30 年 WMO 常态）、气候相关灾害警报（ReliefWeb/GDACS/FIRMS）、大气 CO2 趋势（NOAA Mauna Loa）、空气质量（OpenAQ/WAQI PM2.5 站点）、北极海冰范围和海洋热指标（NSIDC/NOAA）、天气警报和气候新闻。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `dataset` | `array<string: anomalies / disasters / co2-monitoring / air-quality / ocean-ice / news-intelligence / alerts>` | 将响应限制为一个或多个气候子数据集。省略则返回完整捆绑包。 |
+| `country` | string | 将按国家标记的数据集（气候灾害、空气质量站点）筛选为一个 ISO 3166-1 alpha-2 代码。 |
+| `limit` | number | 将每个列表数据集（异常、灾害、站点、新闻、警报）限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** `GET /api/climate/v1/get-co2-monitoring`, `GET /api/climate/v1/get-ocean-ice-data`, `GET /api/climate/v1/list-air-quality-data`, `GET /api/climate/v1/list-climate-anomalies`, `GET /api/climate/v1/list-climate-disasters`, `GET /api/climate/v1/list-climate-news`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 各子数据集使用与 `/api/health` 一致的播种时间预算：天气警报 **45 分钟**、气候新闻 **90 分钟**、异常 **9 小时**、灾害 **12 小时**、空气质量 **3 小时**、海洋/海冰 **48 小时**、CO2 监测 **72 小时**。异常和气候新闻还检查生产者的内容时效预算，目前分别为 **14 天**和 **7 天**。任一播种过期、刷新失败、元数据缺失或内容过期都会使整个捆绑包标记为 `stale: true`。`cached_at` 是所有来源中最早的播种时间，并非统一的过期时间。`dataset` 在捆绑包新鲜度检查后筛选返回的数据。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_climate_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_reservoir_levels`
+
+返回战略水库观察名单上 50 座水库和湖泊的 NASA ICESat-2 激光雷达水位(GERD、纳赛尔湖、阿塔图尔克、摩苏尔、塔贝拉、三峡、卡里巴、米德湖等):最新过境水位、与上一次过境相比以及 30、90、365 天的变化、季节距平与 z 分数、历史区间和状态。水位为相对 EGM2008 大地水准面的米数,来自 ATL13,ATL13 覆盖不佳的水体改用 ATL06;它们是湖面水位,不是库容。过境数据在过境后约 50-70 天发布,因此 latest.ageDays 通常较大。no_recent_data 表示过去 150 天内没有合格过境,并不表示工具过期。stale 只看种子运行(3 天)和完整的 50 座观察名单,从不看过境时间。缓存读取:API 套餐权重 1,计入已登录账户的免费额度。默认返回全部水库,不含序列。
+
+**参数(工具专用):**
+
+| 名称 | 类型 | 说明 |
+|------|------|-------------|
+| `country` | string | 保留所在国或共享水域国家列表包含该国的水库,可传 ISO 3166-1 alpha-2、alpha-3 代码或国家名称。无法解析的输入返回 Invalid params。 |
+| `status` | `string: record_low / falling_fast / low / normal / high / rising_fast / record_high / no_recent_data / insufficient_history` | 保留该状态的水库。record_low 和 record_high 表示最新过境创纪录;falling_fast 和 rising_fast 表示 90 天变化超出季节波动;low 和 high 表示季节 z 分数达到 1.5 或以上(无季节基线时看历史区间百分比);no_recent_data 表示 150 天内无合格过境;insufficient_history 表示记录太短无法判断。 |
+| `id` | string | 按观察名单 id 保留一座水库,例如 "gerd"、"mead" 或 "three-gorges"。 |
+| `include_series` | boolean | 同时返回每座水库最新过境前 36 个月的过境序列,格式为 `{date, levelM}` 点。默认 false。 |
+
+- **API 端点:** `GET /api/climate/v1/list-reservoir-levels`
+- **访问:** `free-account` — 任何已登录账户均可调用;免费账户消耗每日免费额度,Pro 调用消耗每日配额。支持通用 `summary` 参数。
+- **类型:** 缓存读取 — 来自 ICESat-2 水库快照的亚秒级响应。
+- **新鲜度预算:** 距上次种子运行最多 **72 小时**;被跟踪的观察名单水库少于 **50** 座时 `stale: true`(与 `/api/health` 中的 `seed-meta:climate:reservoir-levels` 一致)。水库带有水位且过境发现未持续失败才算被跟踪,所以即使 50 座水库仍显示上次的有效水位,`stale` 也可能为 true。过境时间从不算作过期:ICESat-2 过境数据在过境后约 50-70 天发布,所以 `latest.ageDays` 通常较大;`no_recent_data` 表示该水库 150 天内没有合格过境。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_reservoir_levels","arguments":{"country":"EG","include_series":true}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_natural_disasters`
+
+近期 M4.5+ 地震（USGS 与加拿大地震局 / NRCan）、活跃野火（NASA FIRMS）和自然灾害事件。包含震级、位置、来源和威胁严重程度。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `panel_request` | string | 服务器签发的自然灾害面板凭据，或已有新闻凭据的固定受限地图读取。普通付费打开时省略；新闻凭据不能扩大地图读取范围。 |
+| `refresh` | boolean | 仅限付费独立面板。显式开始一次新分配，省略 panel_request 并提供 UUID 格式的 request_id。 |
+| `request_id` | string | 付费独立面板的刷新标识。同一 UUID 的重试复用该分配。 |
+| `dataset` | `array<string: earthquakes / wildfires / other>` | 限制为一个或多个灾害数据集（地震 / 野火 / 其他自然事件）。省略则返回全部。 |
+| `min_magnitude` | number | 丢弃低于此震级的地震和自然事件。 |
+| `active_only` | boolean | 仅保留仍处于活跃状态（未关闭）的自然事件。 |
+| `limit` | number | 将每个灾害列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `bbox` | object | 仅保留此范围内的事件。sw_lon > ne_lon 表示跨越 180° 经线。不能与 lat/lon/radius_km 同时使用。 |
+| `lat` | number | radius_km 的中心纬度；需同时提供 lon 和 radius_km。 |
+| `lon` | number | radius_km 的中心经度；需同时提供 lat 和 radius_km。 |
+| `radius_km` | number | 仅保留距 lat/lon 大圆距离在此范围内的事件（最大 2000）。 |
+| `since_days` | integer | 仅保留最近 N 天内的事件。 |
+
+- **API 端点：** `GET /api/natural/v1/list-natural-events`, `GET /api/seismology/v1/list-earthquakes`, `GET /api/wildfire/v1/list-fire-detections`
+- **区域与时间筛选：** `bbox` 需提供 `sw_lat`、`sw_lon`、`ne_lat` 和 `ne_lon`（均为必填）。请只传 `bbox`，或同时传 `lat`、`lon` 和 `radius_km` 三者；混用或只传部分半径参数会在扣除任何额度前返回 Invalid params。筛选作用于地震、火点和自然事件（包括区域列表 `events.westernPacific.events` 与 `events.hkoWarnings.warnings`），在 `min_magnitude` 与 `active_only` 之后、`limit` 之前执行。缺少有效坐标（或在使用 `since_days` 时缺少日期）的行会被丢弃，`data.geo_filter.excluded` 按数据集统计这些行，避免把空结果误读为附近没有事件。当 `since_days` 早于某列表最早的带日期行时，`data.geo_filter.oldest_held` 给出该行的时间（epoch 毫秒），避免把宽时间窗误读为完整覆盖。不传这些参数时响应不含 `geo_filter`。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_natural_disasters","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+在 Pro 与 Pro Business 上，`get_natural_disasters` 首次打开扣一次自然灾害面板额度。重复打开及数据集、震级、活动状态和数量筛选在五分钟内复用该分配。使用返回的 `panelRequest.token` 作为 `panel_request` 进行受限读取。显式刷新需提供 `refresh: true` 和 UUID 格式的 `request_id`，且不携带读取凭据；同一 UUID 的重试复用刷新额度。API 与免费账户调用保留普通按工具计费及现有参数转换，不接受付费刷新控制。
+
+每次未缓存执行读取三个固定数据键及已存在的地震元数据键，作为 64 次读取预算中的一次工具执行。相同筛选的成功原始结果在摘要或 JMESPath 呈现之前回放，但不得超过最早可观察的来源时效或 EONET 保留期限。新筛选或不可用、格式错误、已知降级、时间未知的数据可在同一分配内重新读取。区域来源的阻止决策保持可读但不缓存，包括未发出请求的预检决策。该策略不证明所有提供方覆盖完整。已有新闻凭据仍仅允许其固定灾害数据集列表及数量 100、20 或 1，不能使用独立面板的震级或活动筛选。内部来源时间和复用期限不会添加公开元数据字段。授权读取返回已确认的当前使用量；计数未知时省略数字通知。
+
+### `get_radiation_data`
+
+来自全球监测站的辐射观测水平。标记可能表明核事件的异常读数。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `country` | string | 按名称筛选为一个国家（不区分大小写的子串）。 |
+| `anomalous_only` | boolean | 丢弃严重度为 "normal" 的观测 — 仅保留升高/峰值读数。 |
+| `limit` | number | 将观测列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** `GET /api/radiation/v1/list-radiation-observations`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_radiation_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_research_signals`
+
+技术和研究事件信号：来自精选研究源的新兴技术事件引导数据。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `type` | string: conference / earnings / ipo / other | 筛选为一种技术事件类型。 |
+| `source` | string | 筛选为一个来源源（例如 "techmeme"、"dev.events"、"curated"）。 |
+| `limit` | number | 将事件列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** `GET /api/research/v1/list-tech-events`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **8 小时**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_research_signals","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_health_signals`
+
+活跃疾病暴发（WHO/ECDC 等）和全球空气质量站点读数（OpenAQ/WAQI PM2.5）。用于健康风险筛选。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `signal_type` | `array<string: outbreaks / air-quality>` | 限制为疾病暴发、空气质量站点或两者。省略则返回两者。 |
+| `country` | string | 将疾病暴发和空气质量站点筛选为一个 ISO 3166-1 alpha-2 国家代码。 |
+| `disease` | string | 仅保留疾病名称包含此文本的暴发（不区分大小写）。 |
+| `min_aqi` | number | 丢弃低于此 AQI 值的空气质量站点。 |
+| `limit` | number | 将暴发和站点列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** `GET /api/health/v1/list-air-quality-alerts`, `GET /api/health/v1/list-disease-outbreaks`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 按切片计算——空气质量 **3 小时**、疾病暴发 **48 小时**。单一 `stale` 标志对两项检查取或，任一切片超出自身预算即翻转。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_health_signals","arguments":{}}
+  }'
+```
+
+</CodeGroup>

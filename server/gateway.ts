@@ -20,6 +20,7 @@ import { PRO_FRESH_CACHE_RPC_PATHS } from '../src/shared/pro-fresh-rpc';
 import { USER_API_KEY_GATEWAY_VALIDATION_ERROR, getHeaderApiKey, validateApiKey } from '../api/_api-key.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeEqualSecret } from '../api/_crypto.js';
+import { apiKeyChallenge } from '../api/_www-authenticate';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../api/_sentry-edge.js';
 import { mapErrorToResponse } from './error-mapper';
@@ -361,6 +362,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/climate/v1/get-ocean-ice-data': 'daily',
   '/api/climate/v1/list-air-quality-data': 'fast',
   '/api/climate/v1/list-climate-news': 'slow',
+  '/api/climate/v1/list-reservoir-levels': 'daily',
   '/api/sanctions/v1/list-sanctions-pressure': 'daily',
   '/api/sanctions/v1/lookup-sanction-entity': 'no-store',
   '/api/radiation/v1/list-radiation-observations': 'slow',
@@ -474,10 +476,15 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/news/v1/summarize-article-cache': 'slow',
 
   '/api/imagery/v1/search-imagery': 'static',
+  '/api/orbital/v1/list-imaging-satellites': 'slow',
+  // Premium-gated, so served private in practice; the tiers document intent.
+  '/api/orbital/v1/get-point-passes': 'medium',
+  '/api/orbital/v1/get-country-imagery-evidence': 'slow',
 
   '/api/infrastructure/v1/list-temporal-anomalies': 'medium',
   '/api/infrastructure/v1/get-ip-geo': 'no-store',
   '/api/infrastructure/v1/reverse-geocode': 'slow',
+  '/api/infrastructure/v1/search-place': 'slow',
   '/api/infrastructure/v1/get-bootstrap-data': 'no-store',
   '/api/webcam/v1/get-webcam-image': 'no-store',
   '/api/webcam/v1/list-webcams': 'no-store',
@@ -917,10 +924,24 @@ function normalizeAuthError(error: string | undefined): string {
   return error;
 }
 
+// Overloads make the challenge impossible to forget: a 401 must pass the
+// request, a 403 must not (it is an authenticated denial and carries none).
+function createGatewayAuthErrorResponse(
+  status: 403,
+  error: string | undefined,
+  corsHeaders: Record<string, string>,
+): Response;
+function createGatewayAuthErrorResponse(
+  status: 401,
+  error: string | undefined,
+  corsHeaders: Record<string, string>,
+  request: Request,
+): Response;
 function createGatewayAuthErrorResponse(
   status: 401 | 403,
   error: string | undefined,
   corsHeaders: Record<string, string>,
+  request?: Request,
 ): Response {
   return new Response(JSON.stringify({ error: normalizeAuthError(error) }), {
     status,
@@ -929,6 +950,9 @@ function createGatewayAuthErrorResponse(
       'Cache-Control': 'no-store',
       ...corsHeaders,
       Link: DEPRECATION_POLICY_LINK,
+      // Advertise REST API-key setup, not MCP's incompatible OAuth flow.
+      // Authenticated denials (403) carry no challenge.
+      ...(status === 401 && request ? { 'WWW-Authenticate': apiKeyChallenge(request) } : {}),
     },
   });
 }
@@ -2009,7 +2033,7 @@ export function createDomainGateway(
           const session = await validateBearerToken(authHeader.slice(7));
           if (!session.valid) {
             emitRequest(401, 'auth_401', null);
-            return createGatewayAuthErrorResponse(401, 'Invalid or expired session', corsHeaders);
+            return createGatewayAuthErrorResponse(401, 'Invalid or expired session', corsHeaders, request);
           }
           // Capture identity for telemetry — legacy bearer auth bypasses the
           // earlier resolveClerkSession() block (only runs for tier-gated routes),
@@ -2058,11 +2082,11 @@ export function createDomainGateway(
           // Valid pro session (Clerk role OR Dodo entitlement) — fall through to route handling.
         } else {
           emitRequest(401, 'auth_401', null);
-          return createGatewayAuthErrorResponse(401, keyCheck.error, corsHeaders);
+          return createGatewayAuthErrorResponse(401, keyCheck.error, corsHeaders, request);
         }
       } else {
         emitRequest(401, 'auth_401', null);
-        return createGatewayAuthErrorResponse(401, keyCheck.error, corsHeaders);
+        return createGatewayAuthErrorResponse(401, keyCheck.error, corsHeaders, request);
       }
     }
 
@@ -2635,7 +2659,7 @@ export function createDomainGateway(
       if (!quotaUserId) {
         await releaseDailyMeter();
         emitRequest(401, 'auth_401', null);
-        return createGatewayAuthErrorResponse(401, 'Pro authentication required', corsHeaders);
+        return createGatewayAuthErrorResponse(401, 'Pro authentication required', corsHeaders, request);
       }
 
       let ent: CachedEntitlements | null = null;

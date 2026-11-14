@@ -606,7 +606,7 @@ const INTELLIGENCE_GAP_MESSAGES: Record<DataSourceId, string> = {
   ucdp_events: 'UCDP event-level conflict data unavailable',
   unhcr: 'UNHCR displacement data unavailable—refugee flows unknown',
   climate: 'Climate anomaly data unavailable—extreme weather patterns undetected',
-  worldpop: 'Population exposure data unavailable—affected population unknown',
+  worldpop: 'Population exposure estimates unavailable',
   giving: 'Global giving activity data unavailable',
   bis: 'Central bank policy data may be stale—BIS feed unavailable',
   bls: 'Labor market data unavailable—BLS feed not yet seeded',

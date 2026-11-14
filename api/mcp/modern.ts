@@ -38,8 +38,7 @@ import {
   allSupportedProtocolVersionsNewestFirst,
   MCP_MODERN_PROTOCOL_VERSION,
   modernProtocolEnabled,
-  SERVER_NAME,
-  SERVER_VERSION,
+  SERVER_INFO,
 } from './constants';
 import { rpcError } from './rpc';
 import type { McpUsage } from './usage';
@@ -209,7 +208,7 @@ const SUBSCRIPTION_ID_META_KEY = 'io.modelcontextprotocol/subscriptionId';
 const ONE_HOUR_MS = 3_600_000;
 
 function serverInfoMeta(): Record<string, unknown> {
-  return { [SERVER_INFO_META_KEY]: { name: SERVER_NAME, version: SERVER_VERSION } };
+  return { [SERVER_INFO_META_KEY]: SERVER_INFO };
 }
 
 // The modern form of each legacy-range denial code.
