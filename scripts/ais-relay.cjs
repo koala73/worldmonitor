@@ -6768,6 +6768,9 @@ async function seedAirTrafficPoint() {
     await new Promise((resolve) => setTimeout(resolve, AIR_TRAFFIC_RETRY_DELAY_MS));
     fetchedAt = Date.now();
   }
+  // The skip check can run past the end of the bin, leaving no attempt that
+  // could describe it. The bin is still written, as a gap, never left missing.
+  if (!result) result = { gapReason: 'bin ended' };
   const point = result.point || airTrafficGapPoint(t);
   await recordTrafficPoint(point, upstashPipeline, result.point ? fetchedAt : t);
   if (point.status === 'ok') {

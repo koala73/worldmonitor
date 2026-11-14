@@ -29,8 +29,9 @@ const GLOBAL_SNAPSHOT = [
 const GLOBAL_TOTALS = { usSeen: 1500, usAirborne: 1200, usLowClimbing: 200, euAirborne: 2000 };
 const EUROPE_ONLY = repeat(400, () => row(50, 10));
 
-function createRedis({ abortPipelines = 0 } = {}) {
+function createRedis({ abortPipelines = 0, firstPipelineDelayMs = 0 } = {}) {
   let pipelinesToAbort = abortPipelines;
+  let pipelineDelayMs = firstPipelineDelayMs;
   const strings = new Map();
   const hashes = new Map();
   const expireAt = new Map();
@@ -72,6 +73,12 @@ function createRedis({ abortPipelines = 0 } = {}) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.write('[{"result":');
         setTimeout(() => res.socket.destroy(), 20);
+        return;
+      }
+      if (req.url === '/pipeline' && Array.isArray(body) && pipelineDelayMs > 0) {
+        const delayMs = pipelineDelayMs;
+        pipelineDelayMs = 0;
+        setTimeout(() => res.end(JSON.stringify(body.map((command) => ({ result: run(command) })))), delayMs);
         return;
       }
       if (req.url === '/pipeline' && Array.isArray(body)) {
@@ -347,4 +354,17 @@ test('lane 13: ticks after the first start at the configured offset into their b
     // Timer jitter of a few real ms is a few fixture seconds at 300x.
     assert.ok(intoBin >= 60_000 && intoBin < 75_000, `fetched ${intoBin / 1000}s into its bin`);
   });
+});
+
+test('lane 14: a skip check that runs past the end of its bin still records that bin, as a gap', async () => {
+  // The first pipeline is the skip check. At 300x, 1.2 real seconds is a full
+  // bin, so no attempt can start inside the 20:30 bin.
+  await lane([EUROPE_ONLY], {}, async ({ redis, relay }) => {
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 2, 'two points');
+    const [first] = redis.points('2026-11-13');
+    assert.deepEqual(first, { t: Date.UTC(2026, 10, 13, 20, 30), status: 'gap' });
+    // The delayed tick logs after the next bin's tick, so find its line by bin.
+    await relay.waitFor(() => relay.lines().some((line) => line.includes('t=2026-11-13T20:30:00.000Z')), 'the 20:30 log line');
+    assert.match(relay.lines().find((line) => line.includes('t=2026-11-13T20:30:00.000Z')), /status=gap reason=bin ended attempts=0$/);
+  }, { firstPipelineDelayMs: 1200 });
 });
