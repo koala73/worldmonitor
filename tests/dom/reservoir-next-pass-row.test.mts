@@ -48,8 +48,10 @@ it('shows a predicted crossing or the normal no-crossing answer, each with the o
   expect(nextLine('gerd')).toBe('Next ICESat-2 crossing: 16 Nov 2026 (predicted from orbit data of 13 Nov 2026; cloud can block the lidar)');
   expect(nextLine('aswan')).toBe('Next ICESat-2 crossing: No measurement in this window (to 21 Nov 2026); orbit data of 13 Nov 2026');
   expect(document.querySelector('[data-reservoir-id="gerd"] .wl-detail')?.textContent).toContain('measured');
+  orbital.passes = new Map([['gerd', { status: 'none', windowEndMs, elementsEpochMs: epoch }]]);
   panel.setResult(ok([reservoir('gerd')]));
-  expect(orbital.calls).toBe(1);
+  await vi.waitFor(() => expect(nextLine('gerd')).toContain('No measurement in this window'));
+  expect(orbital.calls).toBe(2);
 });
 
 it('adds no row when orbit data is unavailable', async () => {

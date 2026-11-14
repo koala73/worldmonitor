@@ -97,7 +97,8 @@ export class ReservoirLevelsPanel extends Panel {
     if (!ORBITAL_WATCH_ENABLED || this.nextPassRequested) return;
     this.nextPassRequested = true;
     void loadReservoirNextPasses(STRATEGIC_RESERVOIR_SITES).then((passes) => {
-      if (!passes) { this.nextPassRequested = false; return; }
+      this.nextPassRequested = false;
+      if (!passes) return;
       this.nextPasses = passes;
       if (this.loaded && !this.refreshing && !this.showingLoadFailure) this.render();
     });
