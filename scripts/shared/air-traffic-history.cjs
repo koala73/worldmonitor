@@ -39,25 +39,32 @@ function buildTrafficPointWrite(point, fetchedAt = point?.t) {
     [point.status === 'gap' ? 'HSETNX' : 'HSET', key, String(point.t), JSON.stringify(stored)],
     ['EXPIREAT', key, String(expireAt)],
   ];
-  if (point.status === 'ok') {
-    commands.push(
+  const metaCommands = point.status === 'ok'
+    ? [
       ['SET', HEARTBEAT_KEY, JSON.stringify({ fetchedAt, recordCount: point.statesTotal }), 'EX', String(HEARTBEAT_TTL_SECONDS)],
       ['SET', ACTIVATION_KEY, '1'],
-    );
+    ]
+    : [];
+  return { key, field: String(point.t), expireAt, commands, metaCommands };
+}
+
+async function runPipeline(pipeline, commands) {
+  const results = await pipeline(commands);
+  if (!Array.isArray(results) || results.length !== commands.length || results.some((r) => !r || r.error)) {
+    throw new Error('traffic_history_write_failed');
   }
-  return { key, field: String(point.t), expireAt, commands };
 }
 
 // `pipeline` runs an Upstash /pipeline body and resolves to its result array.
 // `fetchedAt` is the fetch time, which the heartbeat records so health ages the
-// series from the last real fetch rather than from the bin start.
+// series from the last real fetch rather than from the bin start. A pipeline
+// runs every command even after one fails, so the heartbeat goes in a second
+// pipeline that runs only once the point and its expiry are stored.
 async function recordTrafficPoint(point, pipeline, fetchedAt = point?.t) {
   if (typeof pipeline !== 'function') throw new TypeError('pipeline must be a function');
   const write = buildTrafficPointWrite(point, fetchedAt);
-  const results = await pipeline(write.commands);
-  if (!Array.isArray(results) || results.length !== write.commands.length || results.some((r) => !r || r.error)) {
-    throw new Error('traffic_history_write_failed');
-  }
+  await runPipeline(pipeline, write.commands);
+  if (write.metaCommands.length > 0) await runPipeline(pipeline, write.metaCommands);
   return { key: write.key, field: write.field };
 }
 

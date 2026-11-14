@@ -30,12 +30,24 @@ test('a gap point stores only its bin and status', () => {
   const hset = plan.commands.find(c => c[1] === plan.key);
   assert.equal(hset[0], 'HSETNX');
   assert.deepEqual(JSON.parse(hset[3]), { t: T, status: 'gap' });
-  assert.ok(!plan.commands.some(c => c[1] === history.HEARTBEAT_KEY), 'a gap never advances the heartbeat');
+  assert.deepEqual(plan.metaCommands, [], 'a gap never advances the heartbeat');
 });
 
 test('a point that is neither ok nor gap is rejected', () => {
   assert.throws(() => history.buildTrafficPointWrite({ t: T, status: 'ok', usSeen: -1 }), /invalid traffic point/);
   assert.throws(() => history.buildTrafficPointWrite({ t: T + 1, status: 'gap' }), /invalid traffic point/);
+});
+
+test('a failed history write never publishes the heartbeat or the activation marker', async () => {
+  // Upstash /pipeline is not a transaction. It runs every command and reports
+  // each result, so a failed HSET would still run any SET sent with it.
+  const sent = [];
+  const pipeline = async (commands) => {
+    sent.push(...commands);
+    return commands.map((c) => (c[0] === 'HSET' ? { error: 'WRONGTYPE Operation against a key holding the wrong kind of value' } : { result: 'OK' }));
+  };
+  await assert.rejects(history.recordTrafficPoint(okPoint(T), pipeline), /traffic_history_write_failed/);
+  assert.deepEqual(sent.filter((c) => c[1] === history.HEARTBEAT_KEY || c[1] === history.ACTIVATION_KEY), []);
 });
 
 test('real Redis keeps one point per bin, upgrades a gap, never downgrades an ok point, and sets expiry', { skip: !enabled && 'redis-server and redis-cli required' }, async () => {
@@ -48,6 +60,9 @@ test('real Redis keeps one point per bin, upgrades a gap, never downgrades an ok
     assert.equal(result.status, 0, result.stderr);
     return result.stdout.trim();
   };
+  // A live EXPIREAT in the past deletes the key at once, so this test writes
+  // to the current bin rather than the fixed date above.
+  const T = Math.floor(Date.now() / 300_000) * 300_000;
   try {
     for (let i = 0; i < 50 && spawnSync(cli, ['-s', socket, 'PING']).status !== 0; i++) await new Promise(r => setTimeout(r, 50));
     const pipeline = async (commands) => commands.map(c => ({ result: command(...c) }));

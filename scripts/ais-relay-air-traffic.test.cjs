@@ -237,10 +237,12 @@ test('lane 6: two replicas on one Redis leave one ok point per bin and skip bins
   const b = spawnRelay(redis, env);
   try {
     await Promise.all([a, b].map((r) => r.waitFor(() => r.output().includes('[AirTraffic] loop starting'), 'ready')));
+    const okLines = () => [...a.lines(), ...b.lines()].filter((line) => /status=ok/.test(line));
     await a.waitFor(() => redis.points('2026-11-13').length >= 3, 'three bins', 20_000);
     const points = redis.points('2026-11-13');
+    await a.waitFor(() => new Set(okLines().map((line) => line.match(/t=(\S+)/)[1])).size >= points.length, 'a log line for each stored bin');
     assert.ok(points.every((p) => p.status === 'ok'), JSON.stringify(points.map((p) => p.status)));
-    const written = [...a.lines(), ...b.lines()].filter((line) => /status=ok/.test(line)).map((line) => line.match(/t=(\S+)/)[1]);
+    const written = okLines().map((line) => line.match(/t=(\S+)/)[1]);
     const skipped = [...a.lines(), ...b.lines()].filter((line) => /already recorded/.test(line));
     assert.deepEqual([...new Set(written)].sort(), points.map((p) => new Date(p.t).toISOString()), 'the hash holds exactly one point for each bin a replica wrote');
     assert.ok(skipped.length >= 1, `a replica skips a bin the other already recorded\n${a.output()}\n${b.output()}`);
@@ -292,13 +294,12 @@ test('lane 9: a snapshot with no US states is an ok point with zero US counts an
 
 test('lane 10: a body whose states is null records a gap and logs one warning per malformed tick', async () => {
   await lane([null], {}, async ({ redis, relay }) => {
-    await relay.waitFor(() => redis.points('2026-11-13').length >= 1, 'gap point');
+    const gaps = () => relay.lines().filter((line) => /status=gap reason=malformed/.test(line)).length;
+    const warnings = () => relay.output().split('\n').filter((line) => line.includes('[AirTraffic] Malformed OpenSky body')).length;
+    // Warnings and gap lines arrive on separate streams, so wait for them to agree.
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 1 && gaps() >= 1 && warnings() === gaps(), 'one warning per malformed gap');
     const [point] = redis.points('2026-11-13');
     assert.deepEqual(point, { t: point.t, status: 'gap' });
-    const gaps = relay.lines().filter((line) => /status=gap reason=malformed/.test(line)).length;
-    const warnings = relay.output().split('\n').filter((line) => line.includes('[AirTraffic] Malformed OpenSky body')).length;
-    assert.ok(gaps >= 1);
-    assert.equal(warnings, gaps);
   });
 });
 
