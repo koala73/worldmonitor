@@ -24,6 +24,9 @@ const preload = `
 import { readFileSync, writeFileSync } from 'node:fs';
 const statePath = process.env.TEST_STATE_PATH;
 const values = new Map(JSON.parse(readFileSync(statePath, 'utf8')));
+if (process.env.TEST_EXPIRE_DEDUP === '1') {
+  for (const key of [...values.keys()]) if (key.startsWith('wm:notif:scan-dedup:')) values.delete(key);
+}
 const pushes = [];
 const command = ([verb, key, value, ...args]) => {
   if (verb === 'GET') return values.get(key) ?? null;
@@ -40,7 +43,11 @@ const command = ([verb, key, value, ...args]) => {
     pushes.push(JSON.parse(value));
     return 1;
   }
-  if (verb === 'DEL') { values.delete(key); return 1; }
+  if (verb === 'DEL') {
+    if (process.env.TEST_DEL_FAIL === '1') return 0;
+    values.delete(key);
+    return 1;
+  }
   throw new Error('Unexpected Redis command ' + verb);
 };
 globalThis.fetch = async (input, options = {}) => {
@@ -59,10 +66,7 @@ globalThis.fetch = async (input, options = {}) => {
   throw new Error('fixture source unavailable');
 };
 process.on('exit', () => {
-  // Notification dedup keys expire long before the next FAA tick in
-  // production, so they are not carried into the next run.
-  const kept = [...values].filter(([key]) => !key.startsWith('wm:notif:scan-dedup:'));
-  writeFileSync(statePath, JSON.stringify(kept));
+  writeFileSync(statePath, JSON.stringify([...values]));
   console.log('FIXTURE_PUSHES=' + JSON.stringify(pushes));
   console.log('FIXTURE_FAA=' + (values.get('aviation:delays:faa:v1') ?? 'null'));
 });
@@ -170,6 +174,18 @@ test('a ground stop whose queue push failed is retried on the next tick', () => 
     const feed = { stops: ['JFK'] };
     assert.deepEqual(closureTitles(run(feed, { TEST_LPUSH_FAIL: '1' })), []);
     assert.equal(closureTitles(run(feed)).length, 1, 'the failed notification is not recorded as sent');
+  } finally {
+    cleanup();
+  }
+});
+
+test('a dedup key left by a failed push and a failed rollback does not mark the airport as sent', () => {
+  const { run, cleanup } = makeRunner();
+  try {
+    const feed = { stops: ['JFK'] };
+    assert.deepEqual(closureTitles(run(feed, { TEST_LPUSH_FAIL: '1', TEST_DEL_FAIL: '1' })), []);
+    assert.deepEqual(closureTitles(run(feed)), [], 'the stale dedup key still blocks the push');
+    assert.equal(closureTitles(run(feed, { TEST_EXPIRE_DEDUP: '1' })).length, 1, 'publishes once the dedup key expires');
   } finally {
     cleanup();
   }
