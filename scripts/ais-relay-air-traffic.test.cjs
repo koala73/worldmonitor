@@ -29,8 +29,9 @@ const GLOBAL_SNAPSHOT = [
 const GLOBAL_TOTALS = { usSeen: 1500, usAirborne: 1200, usLowClimbing: 200, euAirborne: 2000 };
 const EUROPE_ONLY = repeat(400, () => row(50, 10));
 
-function createRedis({ abortPipelines = 0 } = {}) {
+function createRedis({ abortPipelines = 0, firstPipelineDelayMs = 0 } = {}) {
   let pipelinesToAbort = abortPipelines;
+  let pipelineDelayMs = firstPipelineDelayMs;
   const strings = new Map();
   const hashes = new Map();
   const expireAt = new Map();
@@ -72,6 +73,12 @@ function createRedis({ abortPipelines = 0 } = {}) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.write('[{"result":');
         setTimeout(() => res.socket.destroy(), 20);
+        return;
+      }
+      if (req.url === '/pipeline' && Array.isArray(body) && pipelineDelayMs > 0) {
+        const delayMs = pipelineDelayMs;
+        pipelineDelayMs = 0;
+        setTimeout(() => res.end(JSON.stringify(body.map((command) => ({ result: run(command) })))), delayMs);
         return;
       }
       if (req.url === '/pipeline' && Array.isArray(body)) {
@@ -121,8 +128,8 @@ function spawnRelay(redis, extraEnv) {
       OPENSKY_NEGATIVE_CACHE_TTL_MS: '1',
       OPENSKY_429_COOLDOWN_MS: '1',
       RELAY_TEST_AIR_TRAFFIC_LOOP: 'true',
-      AIR_TRAFFIC_INTERVAL_MS: '1000',
       AIR_TRAFFIC_START_DELAY_MS: '0',
+      AIR_TRAFFIC_RETRY_DELAY_MS: '20',
       RELAY_TEST_CLOCK_START_MS: String(Date.UTC(2026, 10, 13, 20, 30)),
       RELAY_TEST_CLOCK_RATE: '300',
       NODE_OPTIONS: `--require=${path.join(__dirname, 'ais-relay-test-preload.cjs')}`,
@@ -210,13 +217,25 @@ test('lane 3: an OpenSky 429 and the cooldown after it record gaps, never zero c
   });
 });
 
-test('lane 4: three timeouts record three gaps, then the next tick records an ok point while other routes keep serving', async () => {
+test('lane 4: two timeouts in a bin are retried, so the bin still records an ok point', async () => {
+  await lane([EUROPE_ONLY], { RELAY_TEST_OPENSKY_TIMEOUT_SEQUENCE: '1,1,0' }, async ({ redis, relay }) => {
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 1 && relay.lines().length >= 1, 'first point and its log line');
+    const [point] = redis.points('2026-11-13');
+    assert.equal(point.t, Date.UTC(2026, 10, 13, 20, 30));
+    assert.equal(point.status, 'ok', relay.output());
+    assert.match(relay.lines()[0], /status=ok .* attempts=3$/);
+    const retries = relay.output().split('\n').filter((line) => /\[AirTraffic\] Attempt \d for t=2026-11-13T20:30:00.000Z failed \(http 504\)/.test(line));
+    assert.equal(retries.length, 2, relay.output());
+    assert.equal((await get(relay.port(), '/health')).status, 200);
+  });
+});
+
+test('lane 4b: a bin whose every attempt times out is one gap, then the next bin records an ok point', async () => {
   await lane([EUROPE_ONLY], { RELAY_TEST_OPENSKY_TIMEOUT_SEQUENCE: '1,1,1,0' }, async ({ redis, relay }) => {
     await relay.waitFor(() => redis.points('2026-11-13').some((p) => p.status === 'ok'), 'recovery');
     const statuses = redis.points('2026-11-13').map((p) => p.status);
-    assert.deepEqual(statuses.slice(0, 4), ['gap', 'gap', 'gap', 'ok'], statuses.join(','));
-    assert.ok(relay.lines().slice(0, 3).every((line) => /status=gap reason=http 504/.test(line)), relay.lines().join('\n'));
-    assert.equal((await get(relay.port(), '/health')).status, 200);
+    assert.deepEqual(statuses.slice(0, 2), ['gap', 'ok'], statuses.join(','));
+    assert.match(relay.lines()[0], /status=gap reason=http 504 attempts=3$/);
   });
 });
 
@@ -233,8 +252,9 @@ test('lane 6: two replicas on one Redis leave one ok point per bin and skip bins
   const redis = await createRedis();
   const fixture = writeSnapshots([EUROPE_ONLY]);
   const env = { RELAY_TEST_OPENSKY_STATES_FILE: fixture.file, RELAY_TEST_CLOCK_RATE: '150' };
+  // Replica b ticks later in each bin than a, so it finds a's point.
   const a = spawnRelay(redis, env);
-  const b = spawnRelay(redis, env);
+  const b = spawnRelay(redis, { ...env, AIR_TRAFFIC_BIN_OFFSET_MS: '200000' });
   try {
     await Promise.all([a, b].map((r) => r.waitFor(() => r.output().includes('[AirTraffic] loop starting'), 'ready')));
     const loggedBins = () => new Set([...a.lines(), ...b.lines()].filter((line) => /status=ok/.test(line)).map((line) => line.match(/t=(\S+)/)[1]));
@@ -297,12 +317,12 @@ test('lane 9: a snapshot with no US states is an ok point with zero US counts an
   });
 });
 
-test('lane 10: a body whose states is null records a gap and logs one warning per malformed tick', async () => {
+test('lane 10: a body whose states is null records a gap after every attempt warns once', async () => {
   await lane([null], {}, async ({ redis, relay }) => {
-    const gaps = () => relay.lines().filter((line) => /status=gap reason=malformed/.test(line)).length;
+    const gaps = () => relay.lines().filter((line) => /status=gap reason=malformed attempts=3$/.test(line)).length;
     const warnings = () => relay.output().split('\n').filter((line) => line.includes('[AirTraffic] Malformed OpenSky body')).length;
     // Warnings and gap lines arrive on separate streams, so wait for them to agree.
-    await relay.waitFor(() => redis.points('2026-11-13').length >= 1 && gaps() >= 1 && warnings() === gaps(), 'one warning per malformed gap');
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 1 && gaps() >= 1 && warnings() >= 3 * gaps(), 'one warning per malformed attempt');
     const [point] = redis.points('2026-11-13');
     assert.deepEqual(point, { t: point.t, status: 'gap' });
   });
@@ -322,5 +342,39 @@ test('lane 12: a deployment with a custom auth header still records traffic', as
   await lane([EUROPE_ONLY], { RELAY_SHARED_SECRET: 'lane-secret', RELAY_AUTH_HEADER: 'X-Custom-Relay-Key' }, async ({ redis, relay }) => {
     await relay.waitFor(() => redis.points('2026-11-13').length >= 1 && relay.lines().length >= 1, 'first point and its log line');
     assert.equal(redis.points('2026-11-13')[0].status, 'ok', relay.lines().join('\n'));
+  });
+});
+
+test('lane 13: ticks after the first start at the configured offset into their bin', async () => {
+  await lane([EUROPE_ONLY], { AIR_TRAFFIC_BIN_OFFSET_MS: '60000' }, async ({ redis, relay }) => {
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 3, 'three bins');
+    const { fetchedAt } = JSON.parse(redis.get('seed-meta:aviation:traffic-history'));
+    const intoBin = fetchedAt % 300_000;
+    // Timer jitter of a few real ms is a few fixture seconds at 300x.
+    assert.ok(intoBin >= 60_000 && intoBin < 75_000, `fetched ${intoBin / 1000}s into its bin`);
+  });
+});
+
+test('lane 14: a skip check that runs past the end of its bin still records that bin, as a gap', async () => {
+  // The first pipeline is the skip check. At 300x, 1.2 real seconds is a full
+  // bin, so no attempt can start inside the 20:30 bin.
+  await lane([EUROPE_ONLY], {}, async ({ redis, relay }) => {
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 2, 'two points');
+    const [first] = redis.points('2026-11-13');
+    assert.deepEqual(first, { t: Date.UTC(2026, 10, 13, 20, 30), status: 'gap' });
+    // The delayed tick logs after the next bin's tick, so find its line by bin.
+    await relay.waitFor(() => relay.lines().some((line) => line.includes('t=2026-11-13T20:30:00.000Z')), 'the 20:30 log line');
+    assert.match(relay.lines().find((line) => line.includes('t=2026-11-13T20:30:00.000Z')), /status=gap reason=bin ended attempts=0$/);
+  }, { firstPipelineDelayMs: 1200 });
+});
+
+test('lane 15: a leftover interval setting cannot stretch the wait past the next bin', async () => {
+  // Twice the bin's real length at 300x. Every bin must still get a point.
+  await lane([EUROPE_ONLY], { AIR_TRAFFIC_INTERVAL_MS: '2000' }, async ({ redis }) => {
+    const deadline = Date.now() + 6_000;
+    while (Date.now() < deadline && redis.points('2026-11-13').length < 4) await new Promise((r) => setTimeout(r, 50));
+    const ts = redis.points('2026-11-13').map((p) => p.t);
+    assert.ok(ts.length >= 4, `only ${ts.length} points in 6s`);
+    for (let i = 1; i < ts.length; i += 1) assert.equal(ts[i] - ts[i - 1], 300_000, `bins are consecutive: ${ts.map((t) => new Date(t).toISOString()).join(',')}`);
   });
 });

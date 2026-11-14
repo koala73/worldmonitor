@@ -290,6 +290,13 @@ function fenceHealthMutations(commands, token) {
 // (server/worldmonitor/resilience/v1/_shared.ts).
 const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
 
+// Orbital Watch ships dark (#10710). Same switch and parse as the seeder
+// (scripts/seed-orbital-sites.mjs) and the orbital RPCs
+// (server/worldmonitor/orbital/v1/dark-launch.ts). While it is off the seeder
+// writes nothing, so these keys read NOT_CONFIGURED and claim no rollout deadline.
+const ORBITAL_WATCH_ENABLED = (process.env.ORBITAL_WATCH_ENABLED ?? '').trim().toLowerCase() === 'true';
+const DARK_LAUNCHED_KEYS = new Set(ORBITAL_WATCH_ENABLED ? [] : ['orbitalSites']);
+
 const BOOTSTRAP_KEYS = {
   earthquakes:       'seismology:earthquakes:v1',
   outages:           'infra:outages:v1',
@@ -977,13 +984,16 @@ const SEED_META = {
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10490, activationKey: 'seed-activated:climate:reservoir-levels' } },
   // Climate bundle member every 3h; 540 = 3x the cadence. New probe: ROLLOUT_PENDING for up to a
   // day after deploy, until the seeder writes its activation marker after its first publication.
-  // minRecordCount sits below the 17 profiled satellites CelesTrak carried on 2026-11-13.
-  orbitalCatalog:   { key: 'seed-meta:orbital:catalog', maxStaleMin: 540, minRecordCount: 15, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:orbital:catalog',
+  // minRecordCount sits below the 297 profiled satellites the seeder kept from a 2026-11-14 CelesTrak active list.
+  orbitalCatalog:   { key: 'seed-meta:orbital:catalog', maxStaleMin: 540, minRecordCount: 250, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:orbital:catalog',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10615, activationKey: 'seed-activated:orbital:catalog' } },
   // Daily climate bundle member; 4320 = 3 missed days. One run evaluates the sites its budget
   // allows and the index keeps every site evaluated so far, so the count reaches the 655-site
   // registry within two runs; minRecordCount allows for the first run's partial pass.
+  // NOT_CONFIGURED while Orbital Watch is dark (DARK_LAUNCHED_KEYS). The deadline key is
+  // separate from the one claimed on 2026-11-14 while dark, so launch starts a fresh window.
   orbitalSites:     { key: 'seed-meta:orbital:sites', maxStaleMin: 4320, minRecordCount: 300, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:orbital:sites',
+    rolloutDeadlineKey: 'health:rollout-deadline:orbital:sites:v1:launch',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10615, activationKey: 'seed-activated:orbital:sites' } },
   unrestEvents:     { key: 'seed-meta:unrest:events',           maxStaleMin: 120 }, // 45min cron; 120 = 2h grace (was 75 = 30min buffer, too tight)
   cyberThreats:     { key: 'seed-meta:cyber:threats',           maxStaleMin: 240 }, // 2h interval; 240min = 2x interval
@@ -1465,100 +1475,101 @@ const SEED_META = {
     },
   },
   spending:         { key: 'seed-meta:economic:spending',          maxStaleMin: 120 },
-  globalTenders:    { key: 'seed-meta:economic:global-tenders',   maxStaleMin: 180 },
+  // Daily relay-backup bundle member; 4320 = 3 missed runs (tests/global-tenders-daily-cadence.test.mts).
+  globalTenders:    { key: 'seed-meta:economic:global-tenders',   maxStaleMin: 4320 },
   // Per-source tender health: the producer keeps a failed source's last-good
-  // open tenders for 24h (TENDER_SOURCE_RETENTION_MS in scripts/_global-tenders.mjs),
+  // open tenders for 3 days (TENDER_SOURCE_RETENTION_MS in scripts/_global-tenders.mjs),
   // and seed-meta fetchedAt is the last SUCCESS, so a rate-limited, unpublished
-  // or weekend-quiet portal is OK until that success is a day old, then
+  // or weekend-quiet portal is OK until that success is three days old, then
   // STALE_SEED. sourceFailureWithinBudgetOk keeps a failed attempt from
   // reporting SEED_ERROR inside that budget only while the source still serves
   // something true: retained rows ('stale') or a verified empty result. An
   // 'error' with nothing retained still warns.
-  globalTendersSam:             { key: 'seed-meta:economic:global-tenders:sam',              maxStaleMin: 1440, sourceFailureWithinBudgetOk: true },
-  globalTendersTed:             { key: 'seed-meta:economic:global-tenders:ted',              maxStaleMin: 1440, sourceFailureWithinBudgetOk: true },
+  globalTendersSam:             { key: 'seed-meta:economic:global-tenders:sam',              maxStaleMin: 4320, sourceFailureWithinBudgetOk: true },
+  globalTendersTed:             { key: 'seed-meta:economic:global-tenders:ted',              maxStaleMin: 4320, sourceFailureWithinBudgetOk: true },
   // Contracts Finder keeps its bespoke first-failure containment instead
   // (composeContractsFinderHealth), which recounts usable canonical rows.
-  globalTendersContractsFinder: { key: 'seed-meta:economic:global-tenders:contracts-finder', maxStaleMin: 180 },
-  globalTendersCanadaBuys:      { key: 'seed-meta:economic:global-tenders:canada-buys',      maxStaleMin: 1440, sourceFailureWithinBudgetOk: true },
-  globalTendersGets:            { key: 'seed-meta:economic:global-tenders:gets',             maxStaleMin: 1440, sourceFailureWithinBudgetOk: true },
-  globalTendersWorldBank:       { key: 'seed-meta:economic:global-tenders:world-bank',       maxStaleMin: 1440, sourceFailureWithinBudgetOk: true },
+  globalTendersContractsFinder: { key: 'seed-meta:economic:global-tenders:contracts-finder', maxStaleMin: 4320 },
+  globalTendersCanadaBuys:      { key: 'seed-meta:economic:global-tenders:canada-buys',      maxStaleMin: 4320, sourceFailureWithinBudgetOk: true },
+  globalTendersGets:            { key: 'seed-meta:economic:global-tenders:gets',             maxStaleMin: 4320, sourceFailureWithinBudgetOk: true },
+  globalTendersWorldBank:       { key: 'seed-meta:economic:global-tenders:world-bank',       maxStaleMin: 4320, sourceFailureWithinBudgetOk: true },
   globalTendersColombiaSecop: {
-    key: 'seed-meta:economic:global-tenders:colombia-secop', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    key: 'seed-meta:economic:global-tenders:colombia-secop', maxStaleMin: 4320, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:colombia-secop',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:colombia-secop' },
   },
   globalTendersKenyaPpip: {
-    key: 'seed-meta:economic:global-tenders:kenya-ppip', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    key: 'seed-meta:economic:global-tenders:kenya-ppip', maxStaleMin: 4320, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:kenya-ppip',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:kenya-ppip' },
   },
   globalTendersSouthAfricaEtenders: {
-    key: 'seed-meta:economic:global-tenders:south-africa-etenders', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    key: 'seed-meta:economic:global-tenders:south-africa-etenders', maxStaleMin: 4320, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:south-africa-etenders',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:south-africa-etenders' },
   },
   globalTendersChileMercadoPublico: {
-    key: 'seed-meta:economic:global-tenders:chile-mercado-publico', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    key: 'seed-meta:economic:global-tenders:chile-mercado-publico', maxStaleMin: 4320, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:chile-mercado-publico',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:chile-mercado-publico' },
   },
   globalTendersBrazilPncp: {
-    key: 'seed-meta:economic:global-tenders:brazil-pncp', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    key: 'seed-meta:economic:global-tenders:brazil-pncp', maxStaleMin: 4320, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:brazil-pncp',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:brazil-pncp' },
   },
   globalTendersUkraineProzorro: {
-    key: 'seed-meta:economic:global-tenders:ukraine-prozorro', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    key: 'seed-meta:economic:global-tenders:ukraine-prozorro', maxStaleMin: 4320, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:ukraine-prozorro',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:ukraine-prozorro' },
   },
   globalTendersBulgariaEop: {
-    key: 'seed-meta:economic:global-tenders:bulgaria-eop', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    key: 'seed-meta:economic:global-tenders:bulgaria-eop', maxStaleMin: 4320, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:bulgaria-eop',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:bulgaria-eop' },
   },
   globalTendersLatviaIub: {
-    key: 'seed-meta:economic:global-tenders:latvia-iub', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    key: 'seed-meta:economic:global-tenders:latvia-iub', maxStaleMin: 4320, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:latvia-iub',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:latvia-iub' },
   },
   globalTendersPolandBzp: {
-    key: 'seed-meta:economic:global-tenders:poland-bzp', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    key: 'seed-meta:economic:global-tenders:poland-bzp', maxStaleMin: 4320, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:poland-bzp',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:poland-bzp' },
   },
   globalTendersPakistanPpra: {
-    key: 'seed-meta:economic:global-tenders:pakistan-ppra', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    key: 'seed-meta:economic:global-tenders:pakistan-ppra', maxStaleMin: 4320, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:pakistan-ppra',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:pakistan-ppra' },
   },
   globalTendersPakistanEpads: {
-    key: 'seed-meta:economic:global-tenders:pakistan-epads', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    key: 'seed-meta:economic:global-tenders:pakistan-epads', maxStaleMin: 4320, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:pakistan-epads',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9894, activationKey: 'seed-activated:economic:global-tenders:pakistan-epads' },
   },
   globalTendersGeorgiaSpa: {
-    key: 'seed-meta:economic:global-tenders:georgia-spa', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    key: 'seed-meta:economic:global-tenders:georgia-spa', maxStaleMin: 4320, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:georgia-spa',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9894, activationKey: 'seed-activated:economic:global-tenders:georgia-spa' },
   },
   globalTendersArmeniaArmeps: {
-    key: 'seed-meta:economic:global-tenders:armenia-armeps', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    key: 'seed-meta:economic:global-tenders:armenia-armeps', maxStaleMin: 4320, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:armenia-armeps',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9894, activationKey: 'seed-activated:economic:global-tenders:armenia-armeps' },
   },
   globalTendersAlbaniaApp: {
-    key: 'seed-meta:economic:global-tenders:albania-app', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    key: 'seed-meta:economic:global-tenders:albania-app', maxStaleMin: 4320, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:albania-app',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10052, activationKey: 'seed-activated:economic:global-tenders:albania-app' },
   },
   globalTendersDominicanRepublicDgcp: {
-    key: 'seed-meta:economic:global-tenders:dominican-republic-dgcp', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    key: 'seed-meta:economic:global-tenders:dominican-republic-dgcp', maxStaleMin: 4320, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:dominican-republic-dgcp',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10052, activationKey: 'seed-activated:economic:global-tenders:dominican-republic-dgcp' },
   },
   globalTendersMalaysiaMyprocurement: {
-    key: 'seed-meta:economic:global-tenders:malaysia-myprocurement', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    key: 'seed-meta:economic:global-tenders:malaysia-myprocurement', maxStaleMin: 4320, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:malaysia-myprocurement',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10052, activationKey: 'seed-activated:economic:global-tenders:malaysia-myprocurement' },
   },
@@ -3282,12 +3293,12 @@ function fredRatesRolloutCommands(now, vercelEnv = process.env.VERCEL_ENV) {
 }
 
 const REGIONAL_ENERGY_ROLLOUT_NAMES = Object.keys(SEED_META)
-  .filter(name => SEED_META[name].firstPublicationMaxWaitMin != null);
+  .filter(name => SEED_META[name].firstPublicationMaxWaitMin != null && !DARK_LAUNCHED_KEYS.has(name));
 
 function regionalEnergyRolloutCommands(now, vercelEnv = process.env.VERCEL_ENV) {
   if (vercelEnv !== 'production') return [];
   return REGIONAL_ENERGY_ROLLOUT_NAMES.flatMap(name => {
-    const deadlineKey = `health:rollout-deadline:${STANDALONE_KEYS[name]}`;
+    const deadlineKey = SEED_META[name].rolloutDeadlineKey ?? `health:rollout-deadline:${STANDALONE_KEYS[name]}`;
     return [
       ['SET', deadlineKey, String(now + SEED_META[name].firstPublicationMaxWaitMin * 60_000), 'NX'],
       ['GET', deadlineKey],
@@ -4423,8 +4434,10 @@ function classifyKey(name, redisKey, opts, ctx) {
   //
   // Skipped entirely for an unconfigured adapter, which by the NOT_CONFIGURED
   // rule below has nothing to be degraded ABOUT — so it also publishes no cause.
+  // A dark-launched feature (DARK_LAUNCHED_KEYS) is unconfigured in the same sense.
+  const notConfigured = sourceUnavailable || DARK_LAUNCHED_KEYS.has(name);
   let fault = null;
-  if (!sourceUnavailable) {
+  if (!notConfigured) {
     if (sourceBlocked && name !== 'crossStraitActivityJapanMod') {
       // Keep the fleet-wide escape hatch narrow: only the Japan MOD adapter has
       // a reviewed-data contract and explicit two-path proof for this state.
@@ -4443,7 +4456,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   // key each run (recordCount 0) so operators can see the adapter is dormant, and
   // the moment the credential lands the next run reports sourceState 'ok' and this
   // flips to OK on its own — no health-config change needed.
-  if (sourceUnavailable) status = 'NOT_CONFIGURED';
+  if (notConfigured) status = 'NOT_CONFIGURED';
   else if (!hasData) {
     // The absence verdict, decided on its own merits and independently of any
     // fault above. Note the two live SIDE BY SIDE here: seed-meta outlives its
@@ -4923,6 +4936,11 @@ function isUsableTender(tender) {
       && stringArray(tender.automationFit.evidence)));
 }
 
+// A first Contracts Finder failure stays contained until the next scheduled
+// attempt can retry it: one daily Global-Tenders run plus the relay-backup
+// bundle's 30-minute tick.
+const CONTRACTS_FINDER_RETRY_CONTAINMENT_MIN = 1440 + 30;
+
 function composeContractsFinderHealth(entry, meta, snapshot, readFailed, now) {
   // Source-status bytes prove a diagnostic exists, not that its tender rows
   // still exist. Replace the generic containment proof with the served data.
@@ -4969,7 +4987,7 @@ function composeContractsFinderHealth(entry, meta, snapshot, readFailed, now) {
   const validEpisode = success > 0 && success <= first && first <= attempt && attempt <= now
     && meta.fetchedAt === success && meta.consecutiveFailures === 1;
   const aggregateFresh = Number.isFinite(snapshot.fetchedAt) && snapshot.fetchedAt > 0
-    && snapshot.fetchedAt <= now && now < snapshot.fetchedAt + 180 * 60_000;
+    && snapshot.fetchedAt <= now && now < snapshot.fetchedAt + SEED_META.globalTenders.maxStaleMin * 60_000;
   const confirmedEmpty = source?.confirmedEmpty === true && meta?.confirmedEmpty === true
     && sourceRows.length === 0 && source.recordCount === 0 && meta.recordCount === 0
     && snapshot.sourceStatuses.filter((status) => status?.source === 'contracts-finder').length === 1
@@ -4983,8 +5001,8 @@ function composeContractsFinderHealth(entry, meta, snapshot, readFailed, now) {
     && source.recordCount === records.length && meta.recordCount === records.length
     && sourceRows.length === records.length && new Set(records.map((tender) => tender.id)).size === records.length;
   const deadline = validEpisode && (records.length > 0 || confirmedEmpty)
-    ? Math.min(first + 90 * 60_000, success + SEED_META.globalTendersContractsFinder.maxStaleMin * 60_000,
-      ...(confirmedEmpty ? [snapshot.fetchedAt + 180 * 60_000] : []),
+    ? Math.min(first + CONTRACTS_FINDER_RETRY_CONTAINMENT_MIN * 60_000, success + SEED_META.globalTendersContractsFinder.maxStaleMin * 60_000,
+      ...(confirmedEmpty ? [snapshot.fetchedAt + SEED_META.globalTenders.maxStaleMin * 60_000] : []),
       ...records.map((tender) => Date.parse(tender.deadline))) : NaN;
   if (entry.status === 'SEED_ERROR' && aligned && now < deadline) {
     entry.containmentUntil = new Date(deadline).toISOString();

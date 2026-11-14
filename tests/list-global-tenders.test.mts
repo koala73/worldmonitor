@@ -129,7 +129,7 @@ test('marks retained snapshots and source statuses stale after the freshness bud
     availability: 'available',
     tenders: [tender('a')],
     sourceStatuses: [{ source: 'sam', state: 'ok', recordCount: 1, fetchedAt: '2026-07-13T08:00:00Z', lastSuccessfulAt: '2026-07-13T08:00:00Z', stale: false }],
-  }, Date.parse('2026-07-13T12:00:00Z'));
+  }, Date.parse('2026-07-16T09:00:00Z'));
 
   assert.equal(snapshot.availability, 'stale');
   assert.equal(snapshot.dataAvailable, true);
@@ -163,9 +163,34 @@ test('new provider records pass through the canonical snapshot and existing coun
   assert.equal(snapshot.availability, 'available');
   const status = snapshot.sourceStatuses.find((source: { source: string }) => source.source === 'brazil-pncp');
   assert.equal(sourceHealthMeta(status).fetchedAt, now);
-  const failed = await fetchGlobalTenders({ now: now + 24 * 60 * 60_000, previousSnapshot: snapshot,
+  const failed = await fetchGlobalTenders({ now: now + 3 * 24 * 60 * 60_000, previousSnapshot: snapshot,
     adapters: [['brazil-pncp', async () => { throw new Error('HTTP 503'); }]] });
   assert.equal(failed.tenders.length, 0);
   assert.equal(sourceHealthMeta(failed.sourceStatuses[0]).fetchedAt, now);
   assert.equal(sourceHealthMeta(failed.sourceStatuses[0]).sourceState, 'error');
+});
+
+test('notices whose deadline passed since the last daily run leave the feed at read time', () => {
+  const fetchedAt = Date.parse('2026-07-13T08:00:00Z');
+  const snapshot = {
+    fetchedAt, dataAvailable: true, availability: 'available',
+    tenders: [
+      tender('closed', { deadline: '2026-07-13T10:00:00.000Z' }),
+      tender('closing-now', { deadline: '2026-07-13T12:00:00.000Z' }),
+      tender('open', { deadline: '2026-07-20T00:00:00.000Z' }),
+      tender('no-deadline', { deadline: '' }),
+    ],
+    sourceStatuses: [],
+  };
+  const now = Date.parse('2026-07-13T12:00:00Z');
+  const served = applySnapshotFreshness(snapshot, now);
+  assert.deepEqual(served.tenders?.map((item) => item.id), ['open', 'no-deadline']);
+  assert.equal(served.availability, 'available', 'dropping closed notices does not make a fresh snapshot stale');
+  assert.equal(snapshot.tenders.length, 4, 'the cached snapshot is not mutated');
+  const page = filterAndPaginateTenders(served.tenders || [], {
+    country: '', countries: [], region: '', source: '', status: '', deadlineFrom: '', deadlineTo: '', minValue: 0, maxValue: 0,
+    currency: '', category: '', query: '', pageSize: 25, cursor: '', sort: 'closing_soon', buyer: '', publishedFrom: '', publishedTo: '',
+    minAutomationScore: 0,
+  } as Parameters<typeof filterAndPaginateTenders>[1]);
+  assert.equal(page.total, 2);
 });

@@ -80,8 +80,6 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   prepare_travel_risk_assessment: 'geopolitical-security',
   get_country_history: 'geopolitical-security',
   get_country_coverage: 'geopolitical-security',
-  get_point_satellite_passes: 'geopolitical-security',
-  get_country_imagery_evidence: 'geopolitical-security',
   list_x_feed: 'geopolitical-security',
   get_defense_industrial_base: 'geopolitical-security',
   open_country_brief: 'geopolitical-security',

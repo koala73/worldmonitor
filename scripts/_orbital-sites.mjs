@@ -7,12 +7,18 @@ import { SENSOR_PROFILES } from './shared/orbital/sensor-profiles.js';
 import { decidePassTier } from './shared/orbital/tiers.js';
 import { projectFlag } from './shared/orbital/flag-record.js';
 import { readCountryRollup, ROLLUP_MAX_AGE_MS, SITES_SCHEMA } from './shared/orbital/country-rollup.js';
-import { flagShadowKey, RADAR_COLLECTION, radarGeometry, STAC_RADAR_FIELDS } from './_orbital-change.mjs';
+import { continuedFlag, flagShadowKey, RADAR_COLLECTION, radarGeometry, STAC_RADAR_FIELDS } from './_orbital-change.mjs';
 
 export const ORBITAL_SITES_KEY = 'orbital:sites:v1';
 export const ORBITAL_SITE_KEY_PREFIX = 'orbital:site:v1:';
 export const ORBITAL_COUNTRY_KEY_PREFIX = 'orbital:country:v1:';
 export const ORBITAL_SITES_ACTIVATION_KEY = 'seed-activated:orbital:sites';
+/** Archive refusal backoff, read before any archive request. */
+export const ORBITAL_SITES_BACKOFF_KEY = 'orbital:sites:backoff:v1';
+const BACKOFF_FIRST_MS = 15 * 60_000;
+const BACKOFF_MAX_MS = 24 * 3_600_000;
+/** Wait after the n-th refusal in a row: 15 minutes, doubling, at most a day. */
+export const archiveBackoffMs = (refusals) => Math.min(BACKOFF_FIRST_MS * 2 ** Math.max(0, refusals - 1), BACKOFF_MAX_MS);
 export { ROLLUP_MAX_AGE_MS, SITES_SCHEMA };
 
 export const PAST_DAYS = 6;
@@ -215,13 +221,23 @@ export function siteOrder(sites, cursor) {
   return start <= 0 ? sorted : [...sorted.slice(start), ...sorted.slice(0, start)];
 }
 
+async function inPool(items, concurrency, task) {
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) await task(items[next++]);
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, items.length)) }, worker));
+}
+
 /**
- * Evaluates sites in cursor order until the deadline. A site whose archive search fails
- * keeps its previous record; a refusal stops the run before anything is written. With a
- * change stage, records are still built inside the pass, then each evaluated site's flag is
- * scored from the same archive answer,
- * least recently scored first, so sites the stage's budget missed go first next run; a
- * shadowed flag goes to `flags` only, and the site record carries none.
+ * Evaluates sites in cursor order until the deadline. A site whose archive search fails, or
+ * whose record would exceed the size cap, keeps its previous record. A refusal stops the pass
+ * at the refused site, which the next run starts from; the sites evaluated before it are kept
+ * and nothing is scored. With a change stage, records are built inside the pass, then each
+ * evaluated site's flag is scored from the same archive answer, unfinished sites first and
+ * then least recently scored, so sites the stage's budget missed go first next run. A shadowed
+ * flag goes to `flags` only, and the site record carries none; a live flag continues from the
+ * newer of the site's live and shadow flags, so leaving shadow keeps the shadow period's state.
  */
 export async function evaluateSites({ sites, catalog, previousRecords, cursor, searchArchive, nowMs, deadlineMs, clock = Date.now, change = null }) {
   const order = siteOrder(sites, cursor);
@@ -231,6 +247,7 @@ export async function evaluateSites({ sites, catalog, previousRecords, cursor, s
   const searched = [];
   let evaluated = 0;
   let nextSiteId = null;
+  let refused = null;
   for (const site of order) {
     if (clock() >= deadlineMs) {
       nextSiteId = site.id;
@@ -239,38 +256,69 @@ export async function evaluateSites({ sites, catalog, previousRecords, cursor, s
     const previous = previousRecords.get(site.id) ?? null;
     let acquisitions;
     try {
-      acquisitions = await searchArchive(site, nowMs);
+      acquisitions = await searchArchive(site, nowMs, deadlineMs);
     } catch (error) {
-      if (error instanceof ArchiveRefusal) return { refused: error.message };
+      if (error instanceof ArchiveRefusal) {
+        refused = error.message;
+        nextSiteId = site.id;
+        break;
+      }
+      evaluated += 1;
       failed.push({ siteId: site.id, reason: error?.message || String(error) });
       continue;
-    } finally {
-      evaluated += 1;
     }
-    if (!change) {
-      records.set(site.id, buildSiteRecord({ site, catalog, acquisitions, previous, nowMs }));
+    evaluated += 1;
+    try {
+      records.set(site.id, buildSiteRecord({ site, catalog, acquisitions, previous, nowMs, ...(change && { flag: null }) }));
+    } catch (error) {
+      failed.push({ siteId: site.id, reason: error?.message || String(error) });
       continue;
     }
-    const previousFlag = change.shadow ? change.previousFlags.get(site.id) ?? null : previous?.flag ?? null;
-    records.set(site.id, buildSiteRecord({ site, catalog, acquisitions, previous, nowMs, flag: null }));
+    if (!change) continue;
+    const shadowFlag = change.previousFlags.get(site.id) ?? null;
+    const previousFlag = change.shadow ? shadowFlag : continuedFlag(previous?.flag ?? null, shadowFlag);
     searched.push({ site, acquisitions, previousFlag });
   }
-  searched.sort((a, b) => (a.previousFlag?.updatedAt ?? 0) - (b.previousFlag?.updatedAt ?? 0));
-  for (const { site, acquisitions, previousFlag } of searched) {
-    const flag = await change.score({ site, acquisitions, previous: previousFlag, nowMs });
-    if (change.shadow) {
-      if (flag) flags.set(site.id, flag);
-    } else {
-      records.set(site.id, withSiteFlag(records.get(site.id), flag));
+  if (change && refused && !change.shadow) {
+    // Records were built without a flag for scoring to fill; nothing is scored after a refusal.
+    for (const { site, previousFlag } of searched) {
+      try {
+        records.set(site.id, withSiteFlag(records.get(site.id), previousFlag));
+      } catch (error) {
+        records.delete(site.id);
+        failed.push({ siteId: site.id, reason: error?.message || String(error) });
+      }
     }
   }
-  return { records, flags, failed, evaluated, nextSiteId, change: change?.summary() ?? null };
+  if (change && !refused) {
+    searched.sort((a, b) => Number(!a.previousFlag?.unfinished) - Number(!b.previousFlag?.unfinished)
+      || (a.previousFlag?.updatedAt ?? 0) - (b.previousFlag?.updatedAt ?? 0));
+    await inPool(searched, change.concurrency ?? 1, async ({ site, acquisitions, previousFlag }) => {
+      const flag = await change.score({ site, acquisitions, previous: previousFlag, nowMs });
+      if (change.shadow) {
+        if (flag) flags.set(site.id, flag);
+        return;
+      }
+      try {
+        records.set(site.id, withSiteFlag(records.get(site.id), flag));
+      } catch (error) {
+        records.delete(site.id);
+        failed.push({ siteId: site.id, reason: error?.message || String(error) });
+      }
+    });
+  }
+  return { records, flags, failed, evaluated, nextSiteId, refused, change: change?.summary() ?? null };
 }
 
-/** Per-country projection of site records: no state of its own beyond what its sites carry. */
-export function buildCountryRollup(countryCode, records) {
-  const sites = records
-    .filter((record) => record.countryCode === countryCode)
+/**
+ * Per-country projection of site records: no state of its own beyond what its sites carry.
+ * Given `nowMs`, a site older than the freshness gate is left out while the country has a
+ * fresh one, so one stale site does not age its whole country past the gate.
+ */
+export function buildCountryRollup(countryCode, records, nowMs = null, maxAgeMs = ROLLUP_MAX_AGE_MS) {
+  const own = records.filter((record) => record.countryCode === countryCode);
+  const fresh = nowMs === null ? own : own.filter((record) => nowMs - record.evaluatedAt <= maxAgeMs);
+  const sites = (fresh.length > 0 ? fresh : own)
     .sort((a, b) => a.siteId.localeCompare(b.siteId))
     .map((record) => ({
       siteId: record.siteId,
@@ -319,7 +367,7 @@ export function planPublication({ sites, registryVersion, previousIndex, previou
   }
   const all = [...records.values()];
   const countryCodes = [...new Set(all.map((record) => record.countryCode))].sort();
-  const rollups = new Map(countryCodes.map((code) => [code, buildCountryRollup(code, all)]));
+  const rollups = new Map(countryCodes.map((code) => [code, buildCountryRollup(code, all, nowMs)]));
 
   const removedSiteIds = Object.keys(previousIndex?.sites ?? {}).filter((id) => !registryIds.has(id)).sort();
   const removedCountries = Object.keys(previousIndex?.countries ?? {}).filter((code) => !rollups.has(code)).sort();
@@ -331,6 +379,7 @@ export function planPublication({ sites, registryVersion, previousIndex, previou
     nextSiteId: evaluation.nextSiteId,
     evaluated: evaluation.evaluated,
     failed: evaluation.failed,
+    ...(evaluation.refused && { refused: evaluation.refused }),
     ...(evaluation.change && { change: evaluation.change }),
     // Countries the registry watches, so a reader can tell one not yet evaluated from one with no sites.
     registryCountries: [...new Set(sites.map((site) => site.countryCode))].sort(),

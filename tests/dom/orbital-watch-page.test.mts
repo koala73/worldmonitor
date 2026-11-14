@@ -443,6 +443,16 @@ describe('satellite pass lookup sheet', () => {
     expect(sheet().querySelector('[data-action="open-full"].ow-primary')).toBeNull();
   });
 
+  it('lists a future military pass as upcoming, still marked capability overhead', () => {
+    const ahead = { ...pass('YAOGAN-42 01', 'yaogan', 5, { kind: 'capability-overhead' }), category: 'military' as const };
+    mounted(answered([ahead]), null, 'full');
+    expect(rowNames('upcoming')).toHaveLength(1);
+    expect(group('could')).toBeNull();
+    const row = rowOf(ahead.name);
+    expect(row.querySelector('.ow-badges')!.textContent).toContain('capability overhead');
+    expect(row.querySelector('img')).toBeNull();
+  });
+
   it('keeps could-have-pointed, passed-overhead and weather groups collapsed and unrendered until opened', () => {
     const { all, military, commercial } = tiered();
     mounted(answered(all, { mosaics: [modis, viirs] }), null, 'full');

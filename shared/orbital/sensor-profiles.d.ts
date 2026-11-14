@@ -4,6 +4,9 @@ export type SensorCategory =
   | 'weather-polar'
   | 'commercial-optical'
   | 'commercial-radar'
+  | 'government-optical'
+  | 'government-radar'
+  | 'open-lidar'
   | 'military'
   | 'crewed-station'
   | 'geostationary';
@@ -24,6 +27,12 @@ export interface SensorProfile {
   noradIds: readonly number[];
   namePatterns: readonly string[];
   footprint: Footprint;
+  /** Best ground sample distance in metres a cited source states; null where none does. */
+  resolutionM: number | null;
+  /** Whether the sensor needs sunlight to see the ground (passive optical). */
+  daylight: boolean;
+  /** Public archive collection that holds the sensor's products; null when none is public. */
+  archive: string | null;
   /**
    * Where the mission acquires: a per-mission grid built from its archive footprints
    * (mission-coverage.data.js), land and coasts only, or everywhere.

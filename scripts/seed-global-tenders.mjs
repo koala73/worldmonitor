@@ -24,11 +24,13 @@ import {
   tracksTenderFreshness,
 } from './_global-tenders.mjs';
 
-const CACHE_TTL_SECONDS = 10_800; // 3h, safely beyond the hourly Railway cadence.
-// Per-source status must outlive the 24h last-good budget health grades it
-// against; 26h leaves two hourly ticks for the key to age into STALE_SEED
+// The bundle runs this seeder once a day. The snapshot outlives health's 3-day
+// staleness budget by a day, so a stopped seeder reads STALE_SEED before EMPTY.
+export const CACHE_TTL_SECONDS = 4 * 24 * 60 * 60;
+// Per-source status must outlive the 3-day last-good budget health grades it
+// against; 5 days leaves two daily runs for the key to age into STALE_SEED
 // before it expires into EMPTY.
-const SOURCE_STATUS_TTL_SECONDS = 26 * 60 * 60;
+export const SOURCE_STATUS_TTL_SECONDS = 5 * 24 * 60 * 60;
 const MAX_PER_SOURCE = 100;
 const GETS_FEED_URL = 'https://www.gets.govt.nz/ExternalRSSFeed.htm';
 const CANADA_BUYS_OPEN_CSV_URL = 'https://canadabuys.canada.ca/opendata/pub/openTenderNotice-ouvertAvisAppelOffres.csv';
@@ -149,16 +151,15 @@ function tedDate(value) {
 }
 
 // SAM.gov enforces a small per-key daily request quota (10/day for
-// non-federal keys). An hourly seed that fetches every tick — worse, with
-// in-run 429 retries — burns ~72 requests/day and pins the source at HTTP 429
-// permanently (#5444). Spread the budget instead: only hit the API when the
-// last ATTEMPT is older than this interval. The quota is spent by attempts,
-// not successes: a failed run carries lastSuccessfulAt forward unchanged, so a
-// gate measured from the last success stopped pacing as soon as a failure was
-// older than the interval and every hourly tick hit SAM again (#8505). Because
-// the enclosing bundle only checks this member hourly, the gate opens on every
-// third tick — 180 minutes apart, 8 requests/day against the 10/day budget —
-// and source health allows one more hourly gate for scheduling jitter.
+// non-federal keys). An hourly seed that fetched every tick — worse, with
+// in-run 429 retries — burned ~72 requests/day and pinned the source at HTTP
+// 429 permanently (#5444). Only hit the API when the last ATTEMPT is older
+// than this interval. The quota is spent by attempts, not successes: a failed
+// run carries lastSuccessfulAt forward unchanged, so a gate measured from the
+// last success stopped pacing as soon as a failure was older than the
+// interval (#8505). The bundle now runs this seeder once a day, so the gate is
+// always open on a scheduled run; it still stops manual reruns from spending
+// the quota.
 const SAM_MIN_FETCH_INTERVAL_MS = 150 * 60_000;
 
 function previousSamResult(previousSnapshot, now) {
@@ -514,7 +515,8 @@ export async function main({ adapters, now } = {}) {
     declareRecords,
     sourceVersion: 'global-tenders-22-sources-v5',
     schemaVersion: 1,
-    maxStaleMin: 180,
+    // Daily bundle member; matches api/health.js globalTenders (3 missed runs).
+    maxStaleMin: 4320,
     zeroIsValid: true,
     contentMeta,
     maxContentAgeMin: 14 * 24 * 60,
