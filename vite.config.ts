@@ -319,6 +319,10 @@ function htmlVariantPlugin(activeMeta: VariantMeta, activeVariant: string, isDes
       // Web builds use 'full' favicons in HTML; runtime JS swaps them per hostname.
       if (activeVariant !== 'full') {
         result = result
+          .replace(
+            /<link rel="icon" type="image\/png" sizes="96x96" href="\/favico\/android-chrome-96x96\.png" \/>/g,
+            `<link rel="icon" type="image/png" sizes="192x192" href="/favico/${activeVariant}/android-chrome-192x192.png" />`
+          )
           .replace(/\/favico\/favicon/g, `/favico/${activeVariant}/favicon`)
           .replace(/\/favico\/apple-touch-icon/g, `/favico/${activeVariant}/apple-touch-icon`)
           .replace(/\/favico\/android-chrome/g, `/favico/${activeVariant}/android-chrome`)
