@@ -24,7 +24,7 @@ import {
   siteKey,
   withSiteFlag,
 } from '../scripts/_orbital-sites.mjs';
-import { freshSiteCount, makeFetchSites, publicationCommands } from '../scripts/seed-orbital-sites.mjs';
+import { buildSeedOptions, makeFetchSites, publicationCommands } from '../scripts/seed-orbital-sites.mjs';
 import { PUBLISH_BLOCKED_EXIT_CODE } from '../scripts/_seed-utils.mjs';
 import { WATCHED_SITES } from '../scripts/shared/orbital-watched-sites.generated.mjs';
 
@@ -151,7 +151,7 @@ describe('orbital site records', () => {
     await run(store);
     const later = await run(store, { nowMs: NOW + ROLLUP_MAX_AGE_MS + DAY_MS, searchArchive: async (s) => { if (s.id !== 'hotspot:a') throw new Error('HTTP 503'); return fixtureAcquisitions; } });
     assert.equal(Object.keys(later.sites).length, 4);
-    assert.equal(freshSiteCount(later), 1);
+    assert.equal(buildSeedOptions().declareRecords(later), 1);
   });
 
   it('deletes the record and the country rollup of a site removed from the registry', async () => {
