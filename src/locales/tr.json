@@ -5212,7 +5212,7 @@
       "orbitAge": "yörünge verileri {{age}} önce",
       "edgeOfSwath": "Tarama şeridinin kenarı",
       "notInArchive": "Arşivde görüntü yok",
-      "geometryDisagreed": "Modellenen şeridin dışında görüntülendi",
+      "geometryDisagreed": "Modellenen şeridin dışında",
       "archiveUnanswered": "Arşiv yanıt vermedi",
       "imageAlt": "{{name}} görüntüsü, {{time}}",
       "mosaicDays": "Arşivdeki gün sayısı: {{count}}",

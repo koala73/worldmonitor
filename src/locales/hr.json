@@ -5250,7 +5250,7 @@
       "orbitAge": "orbitalni podaci stari {{age}}",
       "edgeOfSwath": "Rub pojasa snimanja",
       "notInArchive": "Nema snimke u arhivi",
-      "geometryDisagreed": "Snimljeno izvan modeliranog pojasa",
+      "geometryDisagreed": "Izvan modeliranog pojasa",
       "archiveUnanswered": "Arhiv nije odgovorio",
       "imageAlt": "Snimka {{name}}, {{time}}",
       "mosaicDays": "Dana u arhivi: {{count}}",

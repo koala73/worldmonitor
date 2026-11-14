@@ -5268,7 +5268,7 @@
       "orbitAge": "orbitální data stará {{age}}",
       "edgeOfSwath": "Okraj záběru",
       "notInArchive": "Žádný snímek v archivu",
-      "geometryDisagreed": "Snímáno mimo modelovaný pás",
+      "geometryDisagreed": "Mimo modelovaný pás",
       "archiveUnanswered": "Archiv neodpověděl",
       "imageAlt": "Snímek {{name}}, {{time}}",
       "mosaicDays": "Dní v archivu: {{count}}",

@@ -5240,7 +5240,7 @@
       "orbitAge": "datos orbitales de hace {{age}}",
       "edgeOfSwath": "Borde de la franja",
       "notInArchive": "Sin imagen en el archivo",
-      "geometryDisagreed": "Captada fuera de la franja modelada",
+      "geometryDisagreed": "Fuera de la franja modelada",
       "archiveUnanswered": "El archivo no respondió",
       "imageAlt": "Imagen de {{name}}, {{time}}",
       "mosaicDays": "Días en el archivo: {{count}}",

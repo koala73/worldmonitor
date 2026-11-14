@@ -5184,7 +5184,7 @@
       "orbitAge": "ข้อมูลวงโคจรอายุ {{age}}",
       "edgeOfSwath": "ขอบแนวถ่ายภาพ",
       "notInArchive": "ไม่มีภาพในคลัง",
-      "geometryDisagreed": "ถ่ายภาพนอกแนวที่คำนวณไว้",
+      "geometryDisagreed": "นอกแนวที่คำนวณไว้",
       "archiveUnanswered": "คลังภาพไม่ตอบสนอง",
       "imageAlt": "ภาพจาก {{name}}, {{time}}",
       "mosaicDays": "จำนวนวันในคลังข้อมูล: {{count}}",

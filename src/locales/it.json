@@ -5240,7 +5240,7 @@
       "orbitAge": "dati orbitali di {{age}} fa",
       "edgeOfSwath": "Bordo della strisciata",
       "notInArchive": "Nessuna immagine nell’archivio",
-      "geometryDisagreed": "Ripreso fuori dalla fascia modellata",
+      "geometryDisagreed": "Fuori dalla fascia modellata",
       "archiveUnanswered": "L'archivio non ha risposto",
       "imageAlt": "Immagine di {{name}}, {{time}}",
       "mosaicDays": "Giorni nell’archivio: {{count}}",

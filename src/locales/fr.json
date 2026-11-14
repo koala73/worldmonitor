@@ -5240,7 +5240,7 @@
       "orbitAge": "données orbitales datant de {{age}}",
       "edgeOfSwath": "Bord de la fauchée",
       "notInArchive": "Aucune image dans l’archive",
-      "geometryDisagreed": "Imagé hors de la fauchée modélisée",
+      "geometryDisagreed": "Hors fauchée modélisée",
       "archiveUnanswered": "L'archive n'a pas répondu",
       "imageAlt": "Image de {{name}}, {{time}}",
       "mosaicDays": "Jours dans l’archive : {{count}}",

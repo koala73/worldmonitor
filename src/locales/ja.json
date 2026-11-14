@@ -5184,7 +5184,7 @@
       "orbitAge": "軌道データ {{age}} 前",
       "edgeOfSwath": "観測幅の端",
       "notInArchive": "アーカイブに画像なし",
-      "geometryDisagreed": "推定した観測幅の外で撮影",
+      "geometryDisagreed": "推定観測幅の外",
       "archiveUnanswered": "アーカイブが応答しませんでした",
       "imageAlt": "{{name}} の画像、{{time}}",
       "mosaicDays": "アーカイブ内の日数：{{count}}",

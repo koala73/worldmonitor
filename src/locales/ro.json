@@ -5240,7 +5240,7 @@
       "orbitAge": "date orbitale vechi de {{age}}",
       "edgeOfSwath": "Marginea benzii",
       "notInArchive": "Nicio imagine în arhivă",
-      "geometryDisagreed": "Captat în afara benzii modelate",
+      "geometryDisagreed": "În afara benzii modelate",
       "archiveUnanswered": "Arhiva nu a răspuns",
       "imageAlt": "Imagine {{name}}, {{time}}",
       "mosaicDays": "Zile în arhivă: {{count}}",

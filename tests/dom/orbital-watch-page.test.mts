@@ -546,8 +546,8 @@ describe('satellite pass lookup sheet', () => {
     const agreed = pass('SENTINEL-2C', 'sentinel-2', -50, { kind: 'confirmed-image' });
     mounted(answered([disagreed, agreed]));
     click('.ow-tier-cell[data-group="watched"]');
-    expect(rowOf(disagreed.name).textContent).toContain('Imaged outside the modelled swath');
-    expect(rowOf(agreed.name).textContent).not.toContain('Imaged outside the modelled swath');
+    expect(rowOf(disagreed.name).textContent).toContain('Off modelled swath');
+    expect(rowOf(agreed.name).textContent).not.toContain('Off modelled swath');
   });
 
   it('marks a satellite that passed more than once in a group', () => {

@@ -5212,7 +5212,7 @@
       "orbitAge": "banddata {{age}} gamla",
       "edgeOfSwath": "Kanten av svepet",
       "notInArchive": "Ingen bild i arkivet",
-      "geometryDisagreed": "Avbildad utanför det beräknade stråket",
+      "geometryDisagreed": "Utanför beräknat stråk",
       "archiveUnanswered": "Arkivet svarade inte",
       "imageAlt": "Bild från {{name}}, {{time}}",
       "mosaicDays": "Dagar i arkivet: {{count}}",
