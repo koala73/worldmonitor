@@ -5062,6 +5062,23 @@
       ]
     },
     {
+      "host": "gibs.earthdata.nasa.gov",
+      "provider": "NASA GIBS",
+      "kind": "structured",
+      "observed": true,
+      "license": "NASA Earth science data are openly shared without restriction (CC0 unless marked); GIBS asks clients to acknowledge it",
+      "attribution": "We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/services/orbital/archive-gibs.ts"
+        },
+        {
+          "path": "src/services/orbital/crop-url.ts"
+        }
+      ]
+    },
+    {
       "host": "github.blog",
       "provider": "github.blog",
       "kind": "feed",
@@ -8031,6 +8048,23 @@
       "references": [
         {
           "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
+      "host": "planetarycomputer.microsoft.com",
+      "provider": "Microsoft Planetary Computer",
+      "kind": "structured",
+      "observed": true,
+      "license": "Copernicus Sentinel data under the Copernicus open licence; Landsat data are USGS public domain; Planetary Computer terms of use apply",
+      "attribution": "Microsoft Planetary Computer; credit \"Contains modified Copernicus Sentinel data\" or \"Landsat imagery courtesy of the U.S. Geological Survey\" and link to the item.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/services/orbital/archive-stac.ts"
+        },
+        {
+          "path": "src/services/orbital/crop-url.ts"
         }
       ]
     },
@@ -11005,6 +11039,23 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "view.eumetsat.int",
+      "provider": "EUMETSAT EUMETView",
+      "kind": "structured",
+      "observed": true,
+      "license": "EUMETSAT Data Policy: Meteosat advanced image products are Core data, free and unrestricted for any use",
+      "attribution": "Contains EUMETSAT Meteosat imagery; credit EUMETSAT and link to EUMETView.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/services/orbital/archive-eumetsat.ts"
+        },
+        {
+          "path": "src/services/orbital/crop-url.ts"
         }
       ]
     },
