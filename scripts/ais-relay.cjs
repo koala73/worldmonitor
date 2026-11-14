@@ -6825,6 +6825,13 @@ function startAirTrafficLoop() {
 // event and a drop in one is that feed.
 // adsb.lol rate-limits a burst after about 10 requests; one request every 5s
 // held in a measured run. 12 circles take about a minute.
+// A keyless IP gets 500 requests a day (adsb.lol open-data API page),
+// and this loop needs 3,456 plus retries, while the theater loop already spends
+// 144 a day of the relay IP's quota on /v2/mil. The loop runs only with a key
+// whose quota covers it (a feeder key gives 7,200 a day).
+const ADSBLOL_API_KEY = process.env.ADSBLOL_API_KEY || '';
+// A 200 whose snapshot is older than this describes an earlier moment.
+const ADSBLOL_MAX_SNAPSHOT_AGE_MS = 60_000;
 const ADSBLOL_TRAFFIC_SPACING_MS = Number.isFinite(Number(process.env.ADSBLOL_TRAFFIC_SPACING_MS))
   ? Math.max(0, Number(process.env.ADSBLOL_TRAFFIC_SPACING_MS)) : 5_000;
 const ADSBLOL_TRAFFIC_ATTEMPTS_PER_CIRCLE = 2;
@@ -6833,13 +6840,14 @@ const ADSBLOL_TRAFFIC_ENABLED = process.env.ADSBLOL_TRAFFIC_ENABLED !== 'false';
 async function fetchAdsbLolCircle({ lat, lon }) {
   try {
     const resp = await fetch(`https://api.adsb.lol/v2/point/${lat}/${lon}/${ADSBLOL_RADIUS_NM}`, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, 'x-api-key': ADSBLOL_API_KEY },
       signal: AbortSignal.timeout(20_000),
     });
     if (!resp.ok) return { gap: `http ${resp.status}` };
     let data;
     try { data = await resp.json(); } catch { data = null; }
-    if (!Array.isArray(data?.ac)) return { gap: 'malformed' };
+    if (!Array.isArray(data?.ac) || !Number.isFinite(data.now)) return { gap: 'malformed' };
+    if (Math.abs(Date.now() - data.now) > ADSBLOL_MAX_SNAPSHOT_AGE_MS) return { gap: 'stale' };
     return { data };
   } catch (e) {
     return { gap: e?.name === 'TimeoutError' ? 'timeout' : (e?.message || String(e)) };
@@ -6854,6 +6862,8 @@ async function sweepAdsbLol(t) {
     for (let attempt = 1; attempt <= ADSBLOL_TRAFFIC_ATTEMPTS_PER_CIRCLE; attempt += 1) {
       if (airTrafficBinStart(Date.now()) !== t) return { gap: 'bin ended' };
       result = await fetchAdsbLolCircle(circle);
+      // A response that lands after the bin ends belongs to no attempt of t.
+      if (airTrafficBinStart(Date.now()) !== t) return { gap: 'bin ended' };
       if (result.data) break;
       await new Promise((resolve) => setTimeout(resolve, ADSBLOL_TRAFFIC_SPACING_MS * 2));
     }
@@ -6893,6 +6903,10 @@ async function seedAdsbLolTrafficPoint() {
 function startAdsbLolTrafficLoop() {
   if (!UPSTASH_ENABLED || !ADSBLOL_TRAFFIC_ENABLED) {
     console.log('[AirTrafficAdsbLol] Disabled');
+    return;
+  }
+  if (!ADSBLOL_API_KEY) {
+    console.log('[AirTrafficAdsbLol] Disabled (ADSBLOL_API_KEY not set; the keyless 500 requests a day cannot cover 3,456)');
     return;
   }
   console.log(`[AirTrafficAdsbLol] loop starting (${ADSBLOL_CIRCLES.length} circles, ${ADSBLOL_TRAFFIC_SPACING_MS / 1000}s apart)`);

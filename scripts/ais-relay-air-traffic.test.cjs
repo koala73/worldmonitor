@@ -386,7 +386,7 @@ const ADSBLOL_AIRCRAFT = [
   { hex: '400001', lat: 51.47, lon: -0.45, alt_baro: 36000, seen_pos: 0 },
 ];
 
-async function adsbLolLane(statusSequence, body) {
+async function adsbLolLane(statusSequence, body, extraEnv = {}) {
   const redis = await createRedis();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'adsblol-lane-'));
   const file = path.join(dir, 'aircraft.json');
@@ -397,10 +397,12 @@ async function adsbLolLane(statusSequence, body) {
     RELAY_TEST_ADSBLOL_POINT_FILE: file,
     RELAY_TEST_ADSBLOL_POINT_STATUS_SEQUENCE: statusSequence,
     ADSBLOL_TRAFFIC_SPACING_MS: '1',
+    ADSBLOL_API_KEY: 'test-adsblol-key',
+    ...extraEnv,
   });
   const lines = () => relay.output().split('\n').filter((line) => line.startsWith('[AirTrafficAdsbLol] t='));
   try {
-    await relay.waitFor(() => relay.output().includes('[AirTrafficAdsbLol] loop starting'), 'adsb.lol loop ready');
+    await relay.waitFor(() => relay.output().includes('[AirTrafficAdsbLol] loop starting') || relay.output().includes('[AirTrafficAdsbLol] Disabled'), 'adsb.lol loop ready');
     await body({ redis, relay, lines });
   } finally {
     await relay.stop();
@@ -439,4 +441,31 @@ test('lane 18: a circle that fails twice makes the bin a gap, never a partial co
     assert.match(lines()[0], /status=gap reason=circle 2 http 429$/);
     assert.equal(redis.get('seed-meta:aviation:traffic-history-adsblol'), null);
   });
+});
+
+test('lane 19: without an adsb.lol key the loop stays off, so the keyless IP quota is never spent', async () => {
+  await adsbLolLane('', async ({ relay }) => {
+    assert.match(relay.output(), /\[AirTrafficAdsbLol\] Disabled \(ADSBLOL_API_KEY not set/);
+    assert.doesNotMatch(relay.output(), /\[AirTrafficAdsbLol\] loop starting/);
+  }, { ADSBLOL_API_KEY: '' });
+});
+
+test('lane 20: a 200 whose snapshot is minutes old is a gap, never an old count', async () => {
+  await adsbLolLane('', async ({ redis, relay, lines }) => {
+    await relay.waitFor(() => redis.points('2026-11-13', ADSBLOL_PREFIX).length >= 1 && lines().length >= 1, 'first adsb.lol point');
+    assert.deepEqual(redis.points('2026-11-13', ADSBLOL_PREFIX)[0].status, 'gap');
+    assert.match(lines()[0], /status=gap reason=circle 1 stale$/);
+  }, { RELAY_TEST_ADSBLOL_POINT_NOW_LAG_MS: '600000' });
+});
+
+test('lane 21: a last circle that answers after its bin ends makes that bin a gap', async () => {
+  // Only the 12th request is slow. At 300x, 1.2 real seconds is a full bin.
+  await adsbLolLane('', async ({ redis, relay, lines }) => {
+    // The next bin's tick can finish first, so wait for the 20:30 line by bin.
+    const t = Date.UTC(2026, 10, 13, 20, 30);
+    const line = () => lines().find((l) => l.includes('t=2026-11-13T20:30:00.000Z'));
+    await relay.waitFor(() => line(), 'the 20:30 adsb.lol line');
+    assert.deepEqual(redis.points('2026-11-13', ADSBLOL_PREFIX).find((p) => p.t === t), { t, status: 'gap' });
+    assert.match(line(), /status=gap reason=bin ended$/);
+  }, { RELAY_TEST_ADSBLOL_POINT_DELAY_MS: '1200', RELAY_TEST_ADSBLOL_POINT_DELAY_ON_CALL: '12' });
 });

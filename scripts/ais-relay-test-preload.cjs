@@ -64,6 +64,10 @@ const adsbPointStatuses = (process.env.RELAY_TEST_ADSBLOL_POINT_STATUS_SEQUENCE 
   .split(',')
   .map((value) => Number(value.trim()))
   .filter((value) => Number.isFinite(value) && value > 0);
+const adsbPointDelayMs = Number(process.env.RELAY_TEST_ADSBLOL_POINT_DELAY_MS || 0);
+const adsbPointDelayOnCall = Number(process.env.RELAY_TEST_ADSBLOL_POINT_DELAY_ON_CALL || 0);
+let adsbPointCalls = 0;
+const adsbPointNowLagMs = Number(process.env.RELAY_TEST_ADSBLOL_POINT_NOW_LAG_MS || 0);
 const adsbModes = (process.env.RELAY_TEST_ADSB_MODE_SEQUENCE || '')
   .split(',')
   .map((value) => value.trim())
@@ -139,8 +143,11 @@ globalThis.fetch = async (url, options) => {
   // Air-traffic adsb.lol lanes: every /v2/point circle returns the aircraft in
   // RELAY_TEST_ADSBLOL_POINT_FILE, with statuses from the sequence (then 200).
   if (target.includes('api.adsb.lol/v2/point/') && adsbPointAircraft) {
+    adsbPointCalls += 1;
+    if (adsbPointDelayMs > 0 && (!adsbPointDelayOnCall || adsbPointCalls === adsbPointDelayOnCall)) await new Promise((resolve) => setTimeout(resolve, adsbPointDelayMs));
     const status = nextValue(adsbPointStatuses, 200);
-    return { status, ok: status === 200, statusText: '', text: async () => '', json: async () => ({ ac: adsbPointAircraft }) };
+    const now = Date.now() - adsbPointNowLagMs;
+    return { status, ok: status === 200, statusText: '', text: async () => '', json: async () => ({ now, ac: adsbPointAircraft }) };
   }
   if (target.includes('api.adsb.lol')) {
     const mode = nextValue(adsbModes, 'error');
