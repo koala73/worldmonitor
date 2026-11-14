@@ -204,6 +204,17 @@ describe('orbital site records', () => {
     assert.equal(store.kv.has(ORBITAL_SITES_BACKOFF_KEY), false, 'a clean run clears the backoff');
   });
 
+  it('counts the backoff from the refusal, not from the start of the run', async () => {
+    const store = memoryStore();
+    let now = NOW;
+    const { fetchSites } = makeFetchSites({
+      store, sites: SITES, registryVersion: 'test', budgetMs: 60 * 60_000, clock: () => now,
+      searchArchive: async () => { now += 5 * 60_000; throw new ArchiveRefusal('HTTP 429'); },
+    });
+    await fetchSites();
+    assert.equal(store.kv.get(ORBITAL_SITES_BACKOFF_KEY).until, NOW + 5 * 60_000 + 15 * 60_000);
+  });
+
   it('doubles the backoff for each refusal in a row, up to a day', () => {
     let backoff = null;
     const waits = [];

@@ -299,7 +299,8 @@ export function makeFetchSites({
     shadow = change ? change.shadow : CHANGE_SHADOW;
     const scoringRefused = evaluation.change?.haltKind === 'refusal' ? evaluation.change.halted : null;
     const refusal = evaluation.refused ?? scoringRefused;
-    const newBackoff = refusal ? nextBackoff(backoff, refusal, nowMs) : null;
+    // The wait counts from the refusal, which can come minutes into the run.
+    const newBackoff = refusal ? nextBackoff(backoff, refusal, clock()) : null;
     if (evaluation.refused && evaluation.records.size === 0) {
       await store.writeBackoff?.(newBackoff);
       return { publishBlocked: evaluation.refused, sites: {} };
