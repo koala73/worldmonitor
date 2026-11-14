@@ -5342,7 +5342,35 @@
       "privacyHow": "Cum",
       "sources": "Surse",
       "archiveScene": "Scenă de arhivă",
-      "archiveOnly": "Nicio trecere calculată nu corespunde acestor imagini, așa că sunt afișate ca scene de arhivă."
+      "archiveOnly": "Nicio trecere calculată nu corespunde acestor imagini, așa că sunt afișate ca scene de arhivă.",
+      "zoneShowUtc": "Afișează orele în UTC",
+      "zoneShowLocal": "Afișează orele în ora locală a acestui loc"
+    },
+    "search": {
+      "label": "Nume de loc sau coordonate",
+      "placeholder": "Nume de loc sau 48.8584, 2.2945",
+      "submit": "Caută",
+      "locate": "Folosește locația mea",
+      "hint": "Coordonatele și locația ta rămân în acest browser. Un nume de loc căutat este trimis către WorldMonitor și către Nominatim de la OpenStreetMap.",
+      "results": "Locuri potrivite",
+      "searching": "Se caută…",
+      "tooShort": "Scrie cel puțin două caractere sau coordonate precum 48.8584, 2.2945.",
+      "invalidCoordinates": "Aceste coordonate sunt în afara globului. Latitudinea este între -90 și 90, iar longitudinea între -180 și 180.",
+      "failed": "Căutarea locurilor nu este disponibilă acum. Coordonatele și harta funcționează în continuare.",
+      "noResults": "Niciun loc nu se potrivește cu acest nume.",
+      "locating": "Se determină locația…",
+      "locationDenied": "Permisiunea de locație a fost refuzată. Caută un loc sau dă clic dreapta pe hartă.",
+      "locationUnavailable": "Locația ta nu a putut fi determinată. Caută un loc sau dă clic dreapta pe hartă.",
+      "idle": "Caută un loc după nume sau coordonate, folosește-ți locația sau dă clic dreapta pe hartă pentru a vedea ce sateliți au trecut deasupra lui."
+    },
+    "share": {
+      "copy": "Copiază linkul de partajare",
+      "copied": "Link copiat",
+      "copyManually": "Copiază linkul de mai jos",
+      "link": "Link de partajare",
+      "dismiss": "Închide",
+      "passOutsideWindow": "Trecerea din link este în afara ferestrei curente, așa că nu este selectată nicio trecere.",
+      "passNotFound": "Trecerea din link nu a fost găsită printre trecerile recalculate, așa că nu este selectată nicio trecere."
     },
     "timeline": {
       "now": "acum",

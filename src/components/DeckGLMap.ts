@@ -1170,6 +1170,8 @@ export class DeckGLMap {
         type: 'raster',
         tiles: [this.radarTileUrl],
         tileSize: 256,
+        // RainViewer serves a "Zoom Level Not Supported" tile above z7, so deeper views overzoom z7.
+        maxzoom: 7,
         attribution: '© RainViewer',
       });
       const beforeId = this.maplibreMap.getLayer('country-interactive') ? 'country-interactive' : undefined;

@@ -12,7 +12,7 @@ import {
   type PointContext,
 } from '@/services/orbital/point-context';
 import { getLocale, t } from '@/services/i18n';
-import { formatOrbitalTime, orbitalDisplayZone } from './OrbitalWatchPage';
+import { formatOrbitalTime, getOrbitalDisplayZone } from './OrbitalWatchPage';
 import { h, replaceChildren } from '@/utils/dom-utils';
 
 const HOUR_MS = 3_600_000;
@@ -137,7 +137,7 @@ export class OrbitalTimeline {
   update(input: OrbitalTimelineInput): void {
     const { window, nowMs } = input.lookup;
     const context = input.context.kind === 'loaded' ? input.context.context : null;
-    const clock = zonedClock(orbitalDisplayZone().timeZone, getLocale(), nowMs);
+    const clock = zonedClock(getOrbitalDisplayZone().timeZone, getLocale(), nowMs);
     const when = (ms: number) => `${formatOrbitalTime(ms, 'day')} · ${formatOrbitalTime(ms, 'clock')}`;
     const pct = (ms: number) => ((Math.min(Math.max(ms, window.startMs), window.endMs) - window.startMs) / (window.endMs - window.startMs)) * 100;
     const at = (ms: number) => `left:${pct(ms).toFixed(3)}%`;

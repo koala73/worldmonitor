@@ -12,6 +12,7 @@ import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
+import { placeTimeZone, placeTimeZoneLabel, zoneAbbreviation, type PlaceTimeZone } from '@/utils/place-time-zone';
 import '../styles/orbital-tokens.css';
 import '../styles/orbital-watch.css';
 
@@ -20,20 +21,23 @@ export type ArchiveState =
   | { kind: 'answered'; evidence: OrbitalEvidence };
 
 export type OrbitalWatchState =
+  | { kind: 'idle' }
   | { kind: 'computing'; done: number; total: number }
   | { kind: 'unavailable' }
   | { kind: 'passes'; lookup: PointPassLookup; archives: ArchiveState };
 
 export type OrbitalView = 'sheet' | 'full';
 
-/** Empty mount points other surfaces fill: the timeline dock, the pass detail, the replay HUD and the time-lapse entry. */
-export type OrbitalSlot = 'timeline' | 'pass-detail' | 'replay-hud' | 'timelapse';
+/** Empty mount points other surfaces fill: place search, the timeline dock, the pass detail, the replay HUD and the time-lapse entry. */
+export type OrbitalSlot = 'search' | 'timeline' | 'pass-detail' | 'replay-hud' | 'timelapse';
 
 export interface OrbitalWatchPageCallbacks {
   onClose: () => void;
   onRetry: () => void;
   onViewChange?: (view: OrbitalView) => void;
   onChangePlace?: () => void;
+  /** Copies the share link; without it the button copies the live point. */
+  onShare?: (button: HTMLElement) => void;
 }
 
 /** One glyph per evidence tier, used everywhere a tier is drawn. */
@@ -193,6 +197,11 @@ function formatPoint({ lat, lon }: GeoPoint, decimals = 3): string {
   return `${Math.abs(lat).toFixed(decimals)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lon).toFixed(decimals)}°${lon >= 0 ? 'E' : 'W'}`;
 }
 
+/** The first two parts of a searched name ("Palm Jumeirah, Dubai"), which fit the header; the full name is its tooltip. */
+function shortPlaceName(name: string): string {
+  return name.split(',').slice(0, 2).map((part) => part.trim()).join(', ');
+}
+
 /** The zone every displayed time uses, so the whole sheet can switch to the point's local time at once. */
 let displayZone = { timeZone: 'UTC', label: 'UTC' };
 
@@ -201,9 +210,9 @@ export function setOrbitalDisplayZone(timeZone: string, label: string): void {
   displayZone = { timeZone, label };
 }
 
-/** The IANA zone and short label every displayed time currently uses. */
-export function orbitalDisplayZone(): { timeZone: string; label: string } {
-  return { ...displayZone };
+/** The zone the sheet shows times in, for surfaces that label their own times (the timeline header). */
+export function getOrbitalDisplayZone(): { timeZone: string; label: string } {
+  return displayZone;
 }
 
 /** Formats a time in the display zone: weekday and date, date, clock, both with the zone label, or date and clock. */
@@ -215,7 +224,8 @@ export function formatOrbitalTime(ms: number, style: 'day' | 'date' | 'clock' | 
     case 'day': return day();
     case 'date': return new Intl.DateTimeFormat(lang(), { day: 'numeric', month: 'short', timeZone }).format(ms);
     case 'clock': return clock();
-    case 'when': return `${day()} · ${clock()} ${label}`;
+    // The abbreviation follows the moment shown, so a pass across a daylight-saving change reads right.
+    case 'when': return `${day()} · ${clock()} ${timeZone === 'UTC' ? label : zoneAbbreviation(timeZone, ms)}`;
     case 'stamp': return `${formatOrbitalTime(ms, 'date')} ${clock()}`;
   }
 }
@@ -761,6 +771,11 @@ export class OrbitalWatchPage {
   private readonly panel: HTMLElement;
   private readonly body: HTMLElement;
   private readonly place: HTMLElement;
+  private readonly zone: HTMLElement;
+  private placeName: string | null = null;
+  private placeZone: PlaceTimeZone | null = null;
+  /** Times show in the point's local zone unless the reader switched to UTC; the choice holds across places. */
+  private localTime = true;
   private readonly changeButton: HTMLElement;
   private readonly closeButton: HTMLElement;
   private readonly privacy: HTMLElement;
@@ -784,6 +799,7 @@ export class OrbitalWatchPage {
   constructor(private readonly callbacks: OrbitalWatchPageCallbacks) {
     const titleId = 'orbital-watch-title';
     this.place = h('h2', { id: titleId, className: 'ow-place' });
+    this.zone = h('button', { type: 'button', className: 'ow-zone ow-label', dataset: { action: 'zone' } });
     this.changeButton = h('button', { type: 'button', className: 'ow-change ow-label', dataset: { action: 'change' } });
     this.closeButton = h('button', { type: 'button', className: 'ow-close', dataset: { action: 'close' } }, '×');
     this.body = h('div', { className: 'ow-body' });
@@ -792,6 +808,7 @@ export class OrbitalWatchPage {
       h('span', { className: 'ow-mapmark-ring' }),
       h('span', { className: 'ow-mapmark-label ow-label' }));
     this.slots = {
+      search: h('div', { className: 'ow-slot ow-search-slot', dataset: { slot: 'search' }, hidden: true }),
       timelapse: h('div', { className: 'ow-slot', dataset: { slot: 'timelapse' } }),
       'pass-detail': h('div', { className: 'ow-slot', dataset: { slot: 'pass-detail' } }),
       timeline: h('div', { className: 'ow-slot ow-dock', dataset: { slot: 'timeline' } }),
@@ -801,9 +818,10 @@ export class OrbitalWatchPage {
       h('div', { className: 'ow-handle', 'aria-hidden': 'true' }),
       h('header', { className: 'ow-header' },
         h('span', { className: 'ow-search-icon', 'aria-hidden': 'true' }, '⌕'),
-        this.place,
+        h('div', { className: 'ow-place-block' }, this.place, this.zone),
         this.changeButton,
         this.closeButton),
+      this.slots.search,
       this.slots['pass-detail'],
       this.body,
       this.privacy);
@@ -827,23 +845,51 @@ export class OrbitalWatchPage {
     return this.slots[name];
   }
 
-  open(point: GeoPoint, returnFocusTo: HTMLElement | null, view: OrbitalView = 'sheet'): void {
+  /** Names the open point after the searched place, or null for its rounded coordinates. */
+  setPlaceName(name: string | null): void {
+    this.placeName = name && shortPlaceName(name);
+    this.place.title = name ?? '';
+    this.place.textContent = this.placeLabel();
+    if (this.state) this.render(this.state);
+  }
+
+  /** Points every time on the sheet at the place's zone, or at UTC when the reader asked for it or the zone is unknown. */
+  private applyZone(): void {
+    const zone = this.placeZone;
+    const local = this.localTime && zone !== null;
+    if (local) setOrbitalDisplayZone(zone.zone, zone.abbr);
+    else setOrbitalDisplayZone('UTC', 'UTC');
+    this.zone.hidden = zone === null;
+    this.zone.textContent = local ? placeTimeZoneLabel(zone) : 'UTC';
+    this.zone.setAttribute('aria-pressed', String(local));
+    this.zone.title = t(local ? 'orbitalWatch.ui.zoneShowUtc' : 'orbitalWatch.ui.zoneShowLocal');
+  }
+
+  private placeLabel(): string {
+    return this.placeName ?? (this.point ? formatPoint(this.point) : t('orbitalWatch.search.label'));
+  }
+
+  open(point: GeoPoint | null, returnFocusTo: HTMLElement | null, view: OrbitalView = 'sheet'): void {
     this.returnFocusTo = returnFocusTo;
     this.point = point;
+    this.placeName = null;
+    this.place.title = '';
     lookupImages.reset();
     this.toggled.clear();
     this.selectedKey = null;
     this.tab = 'all';
     this.cardIndex = 0;
     this.filter = null;
-    this.place.textContent = formatPoint(point);
+    this.place.textContent = this.placeLabel();
+    this.placeZone = point ? placeTimeZone(point) : null;
+    this.applyZone();
     this.sheet.setAttribute('aria-label', t('contextMenu.satellitePasses'));
     this.changeButton.textContent = t('orbitalWatch.ui.change');
     this.closeButton.setAttribute('aria-label', t('countryBrief.closeBtn'));
-    this.mapMark.lastElementChild!.textContent = formatPoint(point);
+    this.mapMark.lastElementChild!.textContent = point ? formatPoint(point) : '';
     this.renderPrivacy();
     this.applyView(view);
-    this.render({ kind: 'computing', done: 0, total: 0 });
+    this.render(point ? { kind: 'computing', done: 0, total: 0 } : { kind: 'idle' });
     if (!this.isOpen) {
       document.body.appendChild(this.sheet);
       document.addEventListener('keydown', this.onDocumentKeydown);
@@ -968,6 +1014,7 @@ export class OrbitalWatchPage {
   }
 
   private renderState(state: OrbitalWatchState): DomChild[] {
+    if (state.kind === 'idle') return [h('p', { className: 'ow-empty' }, t('orbitalWatch.search.idle'))];
     if (state.kind === 'passes' && state.archives.kind === 'answered') return this.renderResults(state.lookup, state.archives.evidence);
     const lookup = state.kind === 'passes' ? state.lookup : null;
     return [
@@ -1063,7 +1110,7 @@ export class OrbitalWatchPage {
     const template = t('orbitalWatch.ui.headline', { days, satellites: '\u0001', place: '\u0002' });
     const parts = template.split(/(\u0001|\u0002)/).map((part) =>
       part === '\u0001' ? h('strong', null, t('orbitalWatch.ui.satellites', { count: summary.satellites }))
-        : part === '\u0002' ? h('strong', null, formatPoint(lookup.point))
+        : part === '\u0002' ? h('strong', null, this.placeName ?? formatPoint(lookup.point))
         : part);
     return h('div', { className: 'ow-headline-row' },
       h('div', null,
@@ -1235,7 +1282,13 @@ export class OrbitalWatchPage {
       case 'close': this.view === 'full' ? this.setView('sheet') : this.close(); return;
       case 'change': this.callbacks.onChangePlace ? this.callbacks.onChangePlace() : this.close(); return;
       case 'open-full': this.setView('full'); return;
-      case 'share': this.share(actionEl!); return;
+      case 'zone':
+        this.localTime = !this.localTime;
+        this.applyZone();
+        if (this.state) this.render(this.state);
+        this.sheet.dispatchEvent(new CustomEvent('orbital-watch:zone-change', { bubbles: true, detail: getOrbitalDisplayZone() }));
+        return;
+      case 'share': this.callbacks.onShare ? this.callbacks.onShare(actionEl!) : this.share(actionEl!); return;
       case 'retry-image': {
         const tile = actionEl!.closest<HTMLElement>('.ow-tile');
         if (tile) tileRetries.get(tile)?.();

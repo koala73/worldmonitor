@@ -5276,7 +5276,35 @@
       "privacyHow": "Cách thức",
       "sources": "Nguồn",
       "archiveScene": "Cảnh lưu trữ",
-      "archiveOnly": "Không có lượt bay qua tính toán nào khớp với các ảnh này, nên chúng được hiển thị là cảnh lưu trữ."
+      "archiveOnly": "Không có lượt bay qua tính toán nào khớp với các ảnh này, nên chúng được hiển thị là cảnh lưu trữ.",
+      "zoneShowUtc": "Hiển thị thời gian theo UTC",
+      "zoneShowLocal": "Hiển thị thời gian theo giờ địa phương của nơi này"
+    },
+    "search": {
+      "label": "Tên địa điểm hoặc tọa độ",
+      "placeholder": "Tên địa điểm hoặc 48.8584, 2.2945",
+      "submit": "Tìm",
+      "locate": "Dùng vị trí của tôi",
+      "hint": "Tọa độ và vị trí của bạn chỉ ở trong trình duyệt này. Tên địa điểm bạn tìm được gửi tới WorldMonitor và Nominatim của OpenStreetMap.",
+      "results": "Địa điểm phù hợp",
+      "searching": "Đang tìm…",
+      "tooShort": "Nhập ít nhất hai ký tự, hoặc tọa độ như 48.8584, 2.2945.",
+      "invalidCoordinates": "Tọa độ này nằm ngoài địa cầu. Vĩ độ từ -90 đến 90 và kinh độ từ -180 đến 180.",
+      "failed": "Tìm địa điểm hiện không khả dụng. Tọa độ và bản đồ vẫn hoạt động.",
+      "noResults": "Không có địa điểm nào khớp với tên đó.",
+      "locating": "Đang xác định vị trí của bạn…",
+      "locationDenied": "Quyền truy cập vị trí đã bị từ chối. Hãy tìm một địa điểm hoặc nhấp chuột phải vào bản đồ.",
+      "locationUnavailable": "Không tìm thấy vị trí của bạn. Hãy tìm một địa điểm hoặc nhấp chuột phải vào bản đồ.",
+      "idle": "Tìm địa điểm theo tên hoặc tọa độ, dùng vị trí của bạn, hoặc nhấp chuột phải vào bản đồ để xem vệ tinh nào đã bay qua đó."
+    },
+    "share": {
+      "copy": "Sao chép liên kết chia sẻ",
+      "copied": "Đã sao chép liên kết",
+      "copyManually": "Sao chép liên kết bên dưới",
+      "link": "Liên kết chia sẻ",
+      "dismiss": "Đóng",
+      "passOutsideWindow": "Lượt bay qua trong liên kết nằm ngoài khoảng thời gian hiện tại, nên không có lượt nào được chọn.",
+      "passNotFound": "Không tìm thấy lượt bay qua trong liên kết giữa các lượt đã tính lại, nên không có lượt nào được chọn."
     },
     "timeline": {
       "now": "bây giờ",
