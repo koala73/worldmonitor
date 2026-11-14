@@ -5,10 +5,12 @@
 import {
   ArchiveRefusal,
   ARCHIVE_LOOKBACK_DAYS,
+  archiveBackoffMs,
   acquisitionsFromStac,
   countryKey,
   evaluateSites,
   ORBITAL_SITES_ACTIVATION_KEY,
+  ORBITAL_SITES_BACKOFF_KEY,
   ORBITAL_SITES_KEY,
   planPublication,
   ROLLUP_MAX_AGE_MS,
@@ -19,11 +21,16 @@ import {
 import { ORBITAL_CATALOG_KEY } from './_orbital-catalog.mjs';
 import {
   backfillSearchBody,
+  CHANGE_CONCURRENCY,
   CHANGE_SHADOW,
+  changeScoringExclusions,
+  checkStatistics,
   flagShadowKey,
   makeChangeStage,
   ScoringRefusal,
+  shadowExitStatus,
   statisticsUrl,
+  UnexpectedStatistics,
 } from './_orbital-change.mjs';
 import {
   getRedisCredentials,
@@ -37,6 +44,7 @@ import {
 import { isMainModule } from './lib/main-module.mjs';
 import orbitalSiteAlerts from './lib/orbital-site-alerts.cjs';
 import { publishNotificationEventOutcome } from './regional-snapshot/alert-emitter.mjs';
+import { SITE_WATER_PERCENT } from './shared/orbital-site-water.mjs';
 import { WATCHED_SITES, WATCHED_SITES_VERSION } from './shared/orbital-watched-sites.generated.mjs';
 
 loadEnvFile(import.meta.url);
@@ -53,24 +61,30 @@ export const MAX_STALE_MIN = 4_320;
 const REFUSAL_STATUSES = new Set([401, 403, 429, 451]);
 const MGET_CHUNK = 100;
 const PIPELINE_CHUNK = 50;
+/** Archive search pages read per site; one page is 100 items, and Sentinel-2 tiles alone can fill one. */
+export const MAX_SEARCH_PAGES = 5;
 
-// Change scoring gets its own share of the run, so a pass of the registry stays within the rollup freshness gate.
+/**
+ * The share of the run held back from the site pass for change scoring. Scoring then runs
+ * until the run's own deadline, so it also gets whatever the site pass leaves unused.
+ */
 export const CHANGE_BUDGET_MS = 2 * 60_000;
 
-/** One request at a time, `minIntervalMs` apart. */
+/** Requests start at least `minIntervalMs` apart, even when several callers wait at once. */
 function makeThrottle({ minIntervalMs, clock, wait }) {
-  let lastRequestAt = -Infinity;
+  let nextSlot = -Infinity;
   return async () => {
-    const gap = lastRequestAt + minIntervalMs - clock();
+    const slot = Math.max(clock(), nextSlot);
+    nextSlot = slot + minIntervalMs;
+    const gap = slot - clock();
     if (gap > 0) await wait(gap);
-    lastRequestAt = clock();
   };
 }
 
 /** Searches the archive for one site; `bodyFor` picks the window. Its `backfill` reads older radar scenes on the same throttle. */
 export function makeArchiveSearch({ fetchImpl = (...args) => globalThis.fetch(...args), minIntervalMs = ARCHIVE_MIN_INTERVAL_MS, clock = Date.now, wait = sleep } = {}) {
   const throttle = makeThrottle({ minIntervalMs, clock, wait });
-  async function search(body) {
+  async function page(body) {
     await throttle();
     const response = await fetchImpl(STAC_SEARCH_URL, {
       method: 'POST',
@@ -86,8 +100,19 @@ export function makeArchiveSearch({ fetchImpl = (...args) => globalThis.fetch(..
       await response.body?.cancel();
       throw new Error(`Planetary Computer HTTP ${response.status}`);
     }
-    const json = await response.json();
-    return acquisitionsFromStac(json?.features);
+    return response.json();
+  }
+  // Follows the search's `next` link (a POST body with a token) so a busy site is not cut at one page.
+  async function search(body) {
+    const features = [];
+    let next = body;
+    for (let pages = 0; next && pages < MAX_SEARCH_PAGES; pages += 1) {
+      const json = await page(next);
+      if (Array.isArray(json?.features)) features.push(...json.features);
+      const link = Array.isArray(json?.links) ? json.links.find((l) => l?.rel === 'next' && l.body?.token) : null;
+      next = link ? { ...body, ...link.body } : null;
+    }
+    return acquisitionsFromStac(features);
   }
   const searchArchive = (site, nowMs) => search(stacSearchBody(site, nowMs));
   searchArchive.backfill = (site, nowMs) => search(backfillSearchBody(site, nowMs, ARCHIVE_LOOKBACK_DAYS)).catch((error) => {
@@ -96,7 +121,7 @@ export function makeArchiveSearch({ fetchImpl = (...args) => globalThis.fetch(..
   return searchArchive;
 }
 
-/** Radar statistics of one scene over a footprint; null statistics mean the response had none. */
+/** Radar statistics of one scene over a footprint; a response without the requested bands fails loudly (UnexpectedStatistics). */
 export function makeStatisticsFetch({ fetchImpl = (...args) => globalThis.fetch(...args), minIntervalMs = ARCHIVE_MIN_INTERVAL_MS, clock = Date.now, wait = sleep } = {}) {
   const throttle = makeThrottle({ minIntervalMs, clock, wait });
   return async function fetchStatistics(scene, feature) {
@@ -115,8 +140,13 @@ export function makeStatisticsFetch({ fetchImpl = (...args) => globalThis.fetch(
       await response.body?.cancel();
       throw new Error(`Planetary Computer statistics HTTP ${response.status} for ${scene.itemId}`);
     }
-    const json = await response.json();
-    return json?.properties?.statistics ?? null;
+    let json;
+    try {
+      json = await response.json();
+    } catch (error) {
+      throw new UnexpectedStatistics(`statistics for ${scene.itemId} are not JSON: ${error.message}`);
+    }
+    return checkStatistics(scene, json?.properties?.statistics);
   };
 }
 
@@ -139,6 +169,15 @@ export function redisSiteStore({ credentials = getRedisCredentials, fetchImpl = 
     readCatalog: () => readCanonicalValue(ORBITAL_CATALOG_KEY, { strict: true }),
     readRecords: (siteIds) => readMany(siteIds, siteKey, 'Redis MGET orbital site records'),
     readFlags: (siteIds) => readMany(siteIds, flagShadowKey, 'Redis MGET orbital shadow flags'),
+    async readBackoff() {
+      const { url, token } = credentials();
+      const { result } = await redisCommand(url, token, ['GET', ORBITAL_SITES_BACKOFF_KEY], { label: 'Redis GET orbital archive backoff' });
+      return typeof result === 'string' ? JSON.parse(result) : null;
+    },
+    async writeBackoff(backoff) {
+      const { url, token } = credentials();
+      await redisCommand(url, token, backoffCommand(backoff), { label: 'Redis SET orbital archive backoff' });
+    },
     async write(commands) {
       const { url, token } = credentials();
       for (let start = 0; start < commands.length; start += PIPELINE_CHUNK) {
@@ -158,6 +197,15 @@ export function redisSiteStore({ credentials = getRedisCredentials, fetchImpl = 
   };
 }
 
+export const BACKOFF_TTL_SECONDS = 7 * 86_400;
+const backoffCommand = (backoff) => ['SET', ORBITAL_SITES_BACKOFF_KEY, JSON.stringify(backoff), 'EX', BACKOFF_TTL_SECONDS];
+
+/** The archive backoff after one more refusal: each refusal in a row doubles the wait. */
+export function nextBackoff(previous, reason, nowMs) {
+  const refusals = (previous?.refusals ?? 0) + 1;
+  return { refusals, reason, at: nowMs, until: nowMs + archiveBackoffMs(refusals) };
+}
+
 /** Site records and rollups land before the index that names their revisions. */
 export function publicationCommands(plan, { canonicalKey, payload, ttlSeconds }) {
   return [
@@ -167,6 +215,7 @@ export function publicationCommands(plan, { canonicalKey, payload, ttlSeconds })
     ...(plan.flagWrites ? plan.retainedSiteIds.map((id) => ['EXPIRE', flagShadowKey(id), RECORD_TTL_SECONDS]) : []),
     ...plan.rollupWrites.map((rollup) => ['SET', countryKey(rollup.countryCode), JSON.stringify(rollup), 'EX', RECORD_TTL_SECONDS]),
     ...plan.deletes.map((key) => ['DEL', key]),
+    ...(plan.backoff ? [backoffCommand(plan.backoff)] : plan.clearBackoff ? [['DEL', ORBITAL_SITES_BACKOFF_KEY]] : []),
     ['SET', canonicalKey, payload, 'EX', ttlSeconds],
     ['SET', ORBITAL_SITES_ACTIVATION_KEY, '1'],
   ];
@@ -209,13 +258,22 @@ export function redisSiteAlerts({ credentials = getRedisCredentials, publish = p
 /**
  * `scoring` ({ fetchStatistics, searchBackfill, budgetMs, shadow }) adds the change stage;
  * without it site records pass their previous flag through. `alerts` runs after a
- * successful publish; a failure there is logged and never fails the run.
+ * successful publish; a failure there is logged and never fails the run. An archive refusal
+ * keeps the sites already evaluated, publishes them when there are any, and backs off: runs
+ * inside the backoff window publish nothing and make no archive request.
  */
-export function makeFetchSites({ store, searchArchive, sites = WATCHED_SITES, registryVersion = WATCHED_SITES_VERSION, budgetMs = RUN_BUDGET_MS, clock = Date.now, scoring = null, alerts = null }) {
+export function makeFetchSites({
+  store, searchArchive, sites = WATCHED_SITES, registryVersion = WATCHED_SITES_VERSION, budgetMs = RUN_BUDGET_MS,
+  clock = Date.now, scoring = null, alerts = null, waterPercent = SITE_WATER_PERCENT,
+}) {
   let pending = null;
   let shadow = CHANGE_SHADOW;
   async function fetchSites() {
     const nowMs = clock();
+    const backoff = store.readBackoff ? await store.readBackoff() : null;
+    if (backoff && nowMs < backoff.until) {
+      return { publishBlocked: `archive backoff after ${backoff.refusals} refusal(s) until ${new Date(backoff.until).toISOString()}: ${backoff.reason}`, sites: {} };
+    }
     const catalog = await store.readCatalog();
     if (!Array.isArray(catalog?.satellites) || catalog.satellites.length === 0) {
       throw markPreservableFetchFailure(new Error('orbital catalog is missing; the catalog seeder has not published'));
@@ -223,22 +281,51 @@ export function makeFetchSites({ store, searchArchive, sites = WATCHED_SITES, re
     const previousIndex = await store.readIndex();
     const knownIds = [...new Set([...sites.map((site) => site.id), ...Object.keys(previousIndex?.sites ?? {})])];
     const previousRecords = await store.readRecords(knownIds);
-    // Scoring runs after the site pass, inside the same run budget.
-    const changeBudgetMs = scoring ? Math.min(scoring.budgetMs, budgetMs / 2) : 0;
+    // The site pass leaves scoring at least its reserved share; scoring runs to the run deadline.
+    const runDeadlineMs = nowMs + budgetMs;
+    const changeReserveMs = scoring ? Math.min(scoring.budgetMs, budgetMs / 2) : 0;
+    // Shadow flags are read in live mode too: leaving shadow continues from them.
     const change = scoring && makeChangeStage({
-      ...scoring, budgetMs: changeBudgetMs, clock, previousFlags: scoring.shadow === false ? new Map() : await store.readFlags(knownIds),
+      concurrency: CHANGE_CONCURRENCY,
+      ...scoring,
+      deadlineMs: runDeadlineMs,
+      clock,
+      previousFlags: await store.readFlags(knownIds),
+      exclusions: changeScoringExclusions(sites, waterPercent),
     });
     const evaluation = await evaluateSites({
-      sites, catalog, previousRecords, cursor: previousIndex?.nextSiteId ?? null, searchArchive, nowMs, deadlineMs: nowMs + budgetMs - changeBudgetMs, clock, change,
+      sites, catalog, previousRecords, cursor: previousIndex?.nextSiteId ?? null, searchArchive, nowMs, deadlineMs: runDeadlineMs - changeReserveMs, clock, change,
     });
     shadow = change ? change.shadow : CHANGE_SHADOW;
-    if (evaluation.refused) return { publishBlocked: evaluation.refused, sites: {} };
+    const scoringRefused = evaluation.change?.haltKind === 'refusal' ? evaluation.change.halted : null;
+    const refusal = evaluation.refused ?? scoringRefused;
+    const newBackoff = refusal ? nextBackoff(backoff, refusal, nowMs) : null;
+    if (evaluation.refused && evaluation.records.size === 0) {
+      await store.writeBackoff?.(newBackoff);
+      return { publishBlocked: evaluation.refused, sites: {} };
+    }
     if (evaluation.evaluated > 0 && evaluation.failed.length === evaluation.evaluated) {
       throw markPreservableFetchFailure(new Error(`archive search failed for all ${evaluation.evaluated} sites: ${evaluation.failed[0].reason}`));
     }
-    pending = planPublication({ sites, registryVersion, previousIndex, previousRecords, evaluation, nowMs });
+    if (evaluation.change?.shadow) {
+      const flags = new Map(change.previousFlags);
+      for (const [id, flag] of evaluation.flags) flags.set(id, flag);
+      const registryIds = new Set(sites.map((site) => site.id));
+      evaluation.change.exit = shadowExitStatus({
+        shadowSince: previousIndex?.change?.exit?.shadowSince ?? nowMs,
+        flags: [...flags.entries()].filter(([id]) => registryIds.has(id)).map(([, flag]) => flag),
+        nowMs,
+      });
+    }
+    pending = { ...planPublication({ sites, registryVersion, previousIndex, previousRecords, evaluation, nowMs }), backoff: newBackoff, clearBackoff: !newBackoff && Boolean(backoff) };
     console.log(`  Sites evaluated: ${evaluation.evaluated} of ${sites.length} (${evaluation.failed.length} kept after archive failure); next: ${evaluation.nextSiteId ?? 'full pass'}; countries: ${pending.rollupWrites.length}; deleted keys: ${pending.deletes.length}`);
-    if (evaluation.change) console.log(`  Change scoring${evaluation.change.shadow ? ' (shadow)' : ''}: ${evaluation.change.scoredSites} sites, ${evaluation.change.unfinishedSites} unfinished${evaluation.change.lastStopReason ? ` (last: ${evaluation.change.lastStopReason})` : ''}, ${evaluation.change.skippedSites} skipped, ${evaluation.change.statisticsRequests} statistics requests${evaluation.change.halted ? `; halted: ${evaluation.change.halted}` : ''}`);
+    if (evaluation.refused) console.warn(`  ARCHIVE REFUSED: ${evaluation.refused}; kept ${evaluation.records.size} evaluated sites, backing off until ${new Date(newBackoff.until).toISOString()}`);
+    const c = evaluation.change;
+    if (c) {
+      console.log(`  Change scoring${c.shadow ? ' (shadow)' : ''}: ${c.scoredSites} sites, ${c.unfinishedSites} unfinished${c.lastStopReason ? ` (last: ${c.lastStopReason})` : ''}, ${c.skippedSites} skipped, ${c.excludedSites} excluded (water or duplicate), ${c.skippedScenes} scenes skipped after repeated failures, ${c.statisticsRequests} statistics requests${c.halted ? `; halted: ${c.halted}` : ''}`);
+      if (c.exit) console.log(`  Shadow exit rule (R26): ${c.exit.ready ? 'met; review the confirmed flags before setting CHANGE_SHADOW to false' : `not met (${c.exit.blockers.join('; ')})`}`);
+      if (c.halted && c.haltKind !== 'refusal') console.error(`  CHANGE SCORING HALTED: ${c.halted}`);
+    }
     return pending.index;
   }
   async function publishAtomically(_index, context) {

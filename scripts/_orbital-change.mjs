@@ -31,8 +31,50 @@ export const BACKFILL_DAYS = 120;
 /** A geometry with no scene for this long is dropped; its orbit is no longer flown over the site. */
 export const TRACK_IDLE_DAYS = 180;
 
+/** A scene whose statistics request fails this many runs in a row is skipped and counted. */
+export const MAX_SCENE_ATTEMPTS = 3;
+/** Sites scored at once; the statistics fetch's own throttle still bounds the request rate. */
+export const CHANGE_CONCURRENCY = 4;
+/** A land site whose footprint is more than this share permanent water is a water point, not land. */
+export const WATER_SITE_PERCENT = 50;
+/**
+ * R26 (#10615): the shadow may end only after this many days of shadow scoring and this many
+ * raised flags resolved (confirmed or retracted), with fewer than this share retracted. The
+ * hand review of confirmed flags (environmental share) is not computable and stays manual.
+ */
+export const SHADOW_EXIT_RULE = Object.freeze({ minDays: 30, minResolvedFlags: 30, maxRetractedShare: 0.1 });
+
 const DAY_MS = 86_400_000;
 const STATISTICS = { median: 'median', p98: 'percentile_98' };
+
+/** Scoring must stop for the rest of the run: nothing more is requested, and what was folded is kept. */
+export class ScoringHalt extends Error {}
+/** The archive refused a request made for scoring. */
+export class ScoringRefusal extends ScoringHalt {}
+/** The statistics service answered in a shape the scorer does not know, so no scene can be read as no observation. */
+export class UnexpectedStatistics extends ScoringHalt {}
+
+/**
+ * The statistics of one scene, or an UnexpectedStatistics error when the response lacks a
+ * band the scene was requested with. A band that is present but has too few valid pixels is a
+ * real answer (no observation); a band that is missing or renamed is not.
+ */
+export function checkStatistics(scene, statistics) {
+  if (!statistics || typeof statistics !== 'object' || Array.isArray(statistics)) {
+    throw new UnexpectedStatistics(`statistics for ${scene.itemId} are missing from the response`);
+  }
+  for (const pol of scene.radar.polarizations) {
+    const key = `${pol.toLowerCase()}_b1`;
+    const band = statistics[key];
+    if (!band || typeof band !== 'object' || typeof band.valid_percent !== 'number') {
+      throw new UnexpectedStatistics(`statistics for ${scene.itemId} have no ${key} band with valid_percent (bands: ${Object.keys(statistics).join(', ') || 'none'})`);
+    }
+    if (band.valid_percent >= MIN_VALID_PERCENT && Object.values(STATISTICS).some((field) => !(field in band))) {
+      throw new UnexpectedStatistics(`statistics for ${scene.itemId} band ${key} lack ${Object.values(STATISTICS).filter((field) => !(field in band)).join(', ')}`);
+    }
+  }
+  return statistics;
+}
 
 /** The geometry facts of a Sentinel-1 STAC item, or null when any is missing. */
 export function radarGeometry(properties) {
@@ -111,48 +153,61 @@ function emptyFlag(site, halfSizeDeg) {
     state: 'baseline-building',
     tracks: {},
     events: [],
+    counts: emptyCounts(),
+    sceneFailures: {},
+    unfinished: false,
     backfilledAt: null,
     updatedAt: null,
   };
 }
 
+const emptyCounts = () => ({ raised: 0, confirmed: 0, retracted: 0, skippedScenes: 0 });
 const sameFootprint = (a, b) => a?.lat === b.lat && a?.lon === b.lon && a?.halfSizeDeg === b.halfSizeDeg;
-
-/** The archive refused a request made for scoring: scoring stops for the rest of the run. */
-export class ScoringRefusal extends Error {}
+const errorText = (error) => error?.message || String(error);
 
 /**
  * Folds every radar scene the flag has not yet seen into the site's flag record. A site
  * that has never been backfilled first reads enough archived scenes per geometry to build
- * its baselines. Scoring stops at the deadline or the first failed archive request;
- * what was folded before that is kept, and the rest is read next run.
+ * its baselines. Scoring stops at the deadline, at a failed statistics request, or at a halt
+ * (refusal or unknown response shape); what was folded before that is kept and the rest is
+ * read next run. A scene that fails `maxSceneAttempts` runs in a row is skipped and counted,
+ * so one bad scene cannot hold its site back for good.
  */
 export async function scoreSiteChange({
   site, acquisitions, previous, fetchStatistics, searchBackfill = null, nowMs, deadlineMs, clock = Date.now,
-  thresholds, halfSizeDeg = FOOTPRINT_HALF_SIZE_DEG,
+  thresholds, halfSizeDeg = FOOTPRINT_HALF_SIZE_DEG, maxEvents = MAX_FLAG_EVENTS, maxSceneAttempts = MAX_SCENE_ATTEMPTS,
 }) {
-  if (site.surface !== 'land') return { flag: null, requests: 0, stopped: null };
+  if (site.surface !== 'land') return { flag: null, requests: 0, stopped: null, halted: null, haltKind: null, skippedScenes: 0 };
   const footprint = { lat: site.lat, lon: site.lon, halfSizeDeg };
   const flag = previous && previous.schema === FLAG_SCHEMA && sameFootprint(previous.footprint, footprint)
     ? structuredClone(previous)
-    : { ...emptyFlag(site, halfSizeDeg), events: previous?.events ?? [] };
+    : { ...emptyFlag(site, halfSizeDeg), events: previous?.events ?? [], counts: { ...emptyCounts(), ...previous?.counts } };
+  flag.counts = { ...emptyCounts(), ...flag.counts };
+  flag.sceneFailures = { ...flag.sceneFailures };
 
   let scenes = radarScenes(acquisitions);
   let stopped = null;
+  let halted = null;
+  const haltKindOf = (error) => (error instanceof ScoringRefusal ? 'refusal' : 'unexpected-response');
+  let haltKind = null;
   let backfilling = flag.backfilledAt === null && searchBackfill !== null;
   if (backfilling) {
     try {
       const archived = await searchBackfill(site, nowMs);
       scenes = [...radarScenes(archived, (thresholds ?? CHANGE_THRESHOLDS).minBaselineScenes), ...scenes];
     } catch (error) {
-      if (error instanceof ScoringRefusal) throw error;
       backfilling = false;
-      stopped = error?.message || String(error);
+      stopped = errorText(error);
+      if (error instanceof ScoringHalt) {
+        halted = stopped;
+        haltKind = haltKindOf(error);
+      }
     }
   }
 
   const feature = footprintFeature(site, halfSizeDeg);
   let requests = 0;
+  let skippedScenes = 0;
   for (const scene of stopped === null ? scenes : []) {
     const key = geometryKey(scene.radar);
     const track = flag.tracks[key] ?? newTrack(scene.radar);
@@ -166,10 +221,25 @@ export async function scoreSiteChange({
       requests += 1;
       statistics = await fetchStatistics(scene, feature);
     } catch (error) {
-      if (error instanceof ScoringRefusal) throw error;
-      stopped = error?.message || String(error);
-      break;
+      stopped = errorText(error);
+      if (error instanceof ScoringHalt) {
+        halted = stopped;
+        haltKind = haltKindOf(error);
+        break;
+      }
+      const attempts = (flag.sceneFailures[scene.itemId] ?? 0) + 1;
+      if (attempts < maxSceneAttempts) {
+        flag.sceneFailures[scene.itemId] = attempts;
+        break;
+      }
+      delete flag.sceneFailures[scene.itemId];
+      flag.tracks[key] = { ...track, lastDatetime: scene.datetime };
+      flag.counts.skippedScenes += 1;
+      skippedScenes += 1;
+      stopped = null;
+      continue;
     }
+    delete flag.sceneFailures[scene.itemId];
     const observation = observationFromStatistics(scene, statistics);
     if (!observation) {
       flag.tracks[key] = { ...track, lastDatetime: scene.datetime };
@@ -177,35 +247,120 @@ export async function scoreSiteChange({
     }
     const next = advanceTrack(track, observation, thresholds);
     flag.tracks[key] = next.track;
-    if (next.event) flag.events = [...flag.events, next.event].slice(-MAX_FLAG_EVENTS);
+    if (next.event) {
+      flag.events = [...flag.events, next.event].slice(-maxEvents);
+      flag.counts[next.event.kind] += 1;
+    }
   }
   if (backfilling && stopped === null) flag.backfilledAt = nowMs;
+  const pending = new Set(scenes.map((scene) => scene.itemId));
+  flag.sceneFailures = Object.fromEntries(Object.entries(flag.sceneFailures).filter(([itemId]) => pending.has(itemId)));
   for (const [key, track] of Object.entries(flag.tracks)) {
     if (track.lastDatetime && nowMs - Date.parse(track.lastDatetime) > TRACK_IDLE_DAYS * DAY_MS) delete flag.tracks[key];
   }
   flag.state = siteFlagState(flag.tracks);
+  flag.unfinished = stopped !== null;
   flag.updatedAt = nowMs;
-  return { flag, requests, stopped };
+  return { flag, requests, stopped, halted, haltKind, skippedScenes };
 }
 
 /**
- * The per-run change stage the site seeder calls once per evaluated site. It owns the
- * stage's own time budget, so scoring never starves the site pass, and stops scoring for
- * the rest of the run after a refusal. A site it cannot score keeps its previous flag.
+ * Sites left out of change scoring, with the reason: water points (footprint mostly
+ * permanent water, from the measured `waterPercent` table) and every site but one of a
+ * group whose footprints overlap, so the same pixels are not scored twice. The site kept
+ * from a group is the one with the most origins, then the first by id.
  */
-export function makeChangeStage({ fetchStatistics, searchBackfill = null, budgetMs, shadow = CHANGE_SHADOW, previousFlags = new Map(), clock = Date.now, thresholds }) {
-  let deadlineMs = null;
+export function changeScoringExclusions(sites, waterPercent = {}, halfSizeDeg = FOOTPRINT_HALF_SIZE_DEG) {
+  const excluded = new Map();
+  const land = [];
+  for (const site of [...sites].sort((a, b) => a.id.localeCompare(b.id))) {
+    if (site.surface !== 'land') continue;
+    if ((waterPercent[site.id] ?? 0) > WATER_SITE_PERCENT) excluded.set(site.id, 'water');
+    else land.push(site);
+  }
+  const parent = land.map((_, i) => i);
+  const root = (i) => (parent[i] === i ? i : (parent[i] = root(parent[i])));
+  for (let i = 0; i < land.length; i += 1) {
+    for (let j = i + 1; j < land.length; j += 1) {
+      const a = land[i];
+      const b = land[j];
+      const halfLon = halfSizeDeg / Math.cos((((a.lat + b.lat) / 2) * Math.PI) / 180);
+      if (Math.abs(a.lat - b.lat) < 2 * halfSizeDeg && Math.abs(a.lon - b.lon) < 2 * halfLon) parent[root(j)] = root(i);
+    }
+  }
+  const groups = new Map();
+  land.forEach((site, i) => groups.set(root(i), [...(groups.get(root(i)) ?? []), site]));
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const [kept] = [...group].sort((a, b) => (b.origins?.length ?? 0) - (a.origins?.length ?? 0) || a.id.localeCompare(b.id));
+    for (const site of group) if (site !== kept) excluded.set(site.id, `duplicate of ${kept.id}`);
+  }
+  return excluded;
+}
+
+/**
+ * Where the R26 shadow-exit rule stands over every shadow flag record. `ready` means the
+ * mechanical rule is met; the shadow still ends only by a reviewed change to CHANGE_SHADOW.
+ */
+export function shadowExitStatus({ shadowSince, flags, nowMs, rule = SHADOW_EXIT_RULE }) {
+  let confirmed = 0;
+  let retracted = 0;
+  for (const flag of flags) {
+    confirmed += flag?.counts?.confirmed ?? 0;
+    retracted += flag?.counts?.retracted ?? 0;
+  }
+  const resolved = confirmed + retracted;
+  const days = Math.max(0, Math.floor((nowMs - shadowSince) / DAY_MS));
+  const retractedShare = resolved ? Math.round((1000 * retracted) / resolved) / 1000 : null;
+  const blockers = [];
+  if (days < rule.minDays) blockers.push(`${days} of ${rule.minDays} shadow days`);
+  if (resolved < rule.minResolvedFlags) blockers.push(`${resolved} of ${rule.minResolvedFlags} resolved flags`);
+  if (resolved > 0 && retracted / resolved >= rule.maxRetractedShare) blockers.push(`retracted share ${retractedShare} is not under ${rule.maxRetractedShare}`);
+  return { shadowSince, days, confirmed, retracted, resolved, retractedShare, ready: blockers.length === 0, blockers };
+}
+
+/** The flag a site's scoring continues from: the newer of its live flag and its shadow flag, so leaving shadow keeps the shadow period's state. */
+export function continuedFlag(liveFlag, shadowFlag) {
+  if (!liveFlag) return shadowFlag ?? null;
+  if (!shadowFlag) return liveFlag;
+  return (shadowFlag.updatedAt ?? 0) > (liveFlag.updatedAt ?? 0) ? shadowFlag : liveFlag;
+}
+
+/**
+ * The per-run change stage the site seeder calls once per evaluated site. It stops at its
+ * deadline (`deadlineMs`, or `budgetMs` from its first site), skips excluded sites, and stops
+ * scoring for the rest of the run after a halt while keeping what the halted site had folded.
+ * A site it cannot score keeps its previous flag.
+ */
+export function makeChangeStage({
+  fetchStatistics, searchBackfill = null, budgetMs, deadlineMs: fixedDeadlineMs = null, shadow = CHANGE_SHADOW,
+  previousFlags = new Map(), exclusions = new Map(), clock = Date.now, thresholds, concurrency = 1,
+}) {
+  let deadlineMs = fixedDeadlineMs;
   let halted = null;
+  let haltKind = null;
+  const halt = (reason, kind) => {
+    if (halted) return;
+    halted = reason;
+    haltKind = kind;
+  };
   let scoredSites = 0;
   let unfinishedSites = 0;
   let skippedSites = 0;
+  let excludedSites = 0;
+  let skippedScenes = 0;
   let lastStopReason = null;
   let requests = 0;
   return {
     shadow,
     previousFlags,
+    concurrency,
     async score({ site, acquisitions, previous, nowMs }) {
       if (site.surface !== 'land') return null;
+      if (exclusions.has(site.id)) {
+        excludedSites += 1;
+        return null;
+      }
       deadlineMs ??= clock() + budgetMs;
       if (halted || clock() >= deadlineMs) {
         skippedSites += 1;
@@ -214,6 +369,8 @@ export function makeChangeStage({ fetchStatistics, searchBackfill = null, budget
       try {
         const result = await scoreSiteChange({ site, acquisitions, previous, fetchStatistics, searchBackfill, nowMs, deadlineMs, clock, thresholds });
         requests += result.requests;
+        skippedScenes += result.skippedScenes;
+        if (result.halted) halt(result.halted, result.haltKind);
         if (result.stopped === null) scoredSites += 1;
         else {
           unfinishedSites += 1;
@@ -221,10 +378,10 @@ export function makeChangeStage({ fetchStatistics, searchBackfill = null, budget
         }
         return result.flag;
       } catch (error) {
-        halted = error?.message || String(error);
+        halt(errorText(error), 'error');
         return previous;
       }
     },
-    summary: () => ({ shadow, scoredSites, unfinishedSites, skippedSites, lastStopReason, statisticsRequests: requests, halted }),
+    summary: () => ({ shadow, scoredSites, unfinishedSites, skippedSites, excludedSites, skippedScenes, lastStopReason, statisticsRequests: requests, halted, haltKind }),
   };
 }
