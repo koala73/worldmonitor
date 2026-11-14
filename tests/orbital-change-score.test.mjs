@@ -291,6 +291,17 @@ describe('orbital change stage in the site seeder', () => {
     assert.deepEqual(scored, ['hotspot:b', 'hotspot:c', 'hotspot:a']);
   });
 
+  it('checks a published record\'s size only with the flag scoring returned, not the one it replaces', async () => {
+    const oversized = { state: 'monitoring', wording: 'imagery statistics changed', updatedAt: NOW - DAY_MS, tracks: {}, events: [], padding: 'x'.repeat(64 * 1024) };
+    const scoredFlag = { state: 'monitoring', wording: 'imagery statistics changed', updatedAt: NOW, tracks: {}, events: [] };
+    const change = { shadow: false, previousFlags: new Map(), score: async () => scoredFlag, summary: () => null };
+    const { records } = await evaluateSites({
+      sites: [LAND], catalog, previousRecords: new Map([[LAND.id, { flag: oversized }]]), cursor: null,
+      searchArchive: async () => [], nowMs: NOW, deadlineMs: Infinity, clock: () => NOW, change,
+    });
+    assert.deepEqual(records.get(LAND.id).flag, scoredFlag);
+  });
+
   it('refreshes shadow keys of sites it did not evaluate and deletes those of removed sites', () => {
     const commands = publicationCommands(
       { siteWrites: [], retainedSiteIds: ['hotspot:b'], rollupWrites: [], flagWrites: [{ siteId: 'hotspot:a' }], deletes: [flagShadowKey('gone')] },
