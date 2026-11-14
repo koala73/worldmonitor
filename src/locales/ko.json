@@ -5137,6 +5137,17 @@
     "errLoad": "여행 위험 평가를 열 수 없습니다. 페이지를 새로고침하고 다시 시도하세요."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "이 통과의 지상 궤적을 그릴 수 없습니다"
+    },
+    "replay": {
+      "acquisition": "촬영 · {{name}}",
+      "acquired": "촬영됨 {{time}} · {{resolution}}",
+      "play": "재생",
+      "pause": "일시정지",
+      "scrub": "재생 위치",
+      "reducedMotion": "동작 줄이기"
+    },
     "computing": "위성 카탈로그를 불러오는 중…",
     "computingProgress": "통과 계산 중: 위성 {{total}}개 중 {{done}}개",
     "unavailable": "위성 카탈로그를 불러오지 못해 이 지점의 통과를 계산하지 않았습니다.",

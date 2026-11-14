@@ -5137,6 +5137,17 @@
     "errLoad": "无法打开行程评估。请刷新页面后重试。"
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "无法绘制此次过境的地面轨迹"
+    },
+    "replay": {
+      "acquisition": "采集 · {{name}}",
+      "acquired": "已采集 {{time}} · {{resolution}}",
+      "play": "播放回放",
+      "pause": "暂停回放",
+      "scrub": "回放位置",
+      "reducedMotion": "减弱动态效果"
+    },
     "computing": "正在加载卫星目录…",
     "computingProgress": "正在计算过境：{{done}} / {{total}} 颗卫星",
     "unavailable": "无法加载卫星目录，因此未计算此地点的过境。",

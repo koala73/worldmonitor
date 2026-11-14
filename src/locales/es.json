@@ -5193,6 +5193,17 @@
     "errLoad": "No se pudo abrir la evaluación del viaje. Recarga la página e intenta de nuevo."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "No se pudo dibujar la traza terrestre de este paso"
+    },
+    "replay": {
+      "acquisition": "ADQUISICIÓN · {{name}}",
+      "acquired": "ADQUIRIDA {{time}} · {{resolution}}",
+      "play": "Reproducir",
+      "pause": "Pausar reproducción",
+      "scrub": "Posición de la reproducción",
+      "reducedMotion": "MOVIMIENTO REDUCIDO"
+    },
     "computing": "Cargando el catálogo de satélites…",
     "computingProgress": "Calculando pasos: {{done}} de {{total}} satélites",
     "unavailable": "No se pudo cargar el catálogo de satélites, por lo que no se calcularon pasos para este punto.",

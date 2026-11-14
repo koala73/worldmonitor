@@ -5193,6 +5193,17 @@
     "errLoad": "L'évaluation de voyage n'a pas pu être ouverte. Rechargez la page et réessayez."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "La trace au sol de ce passage n'a pas pu être dessinée"
+    },
+    "replay": {
+      "acquisition": "ACQUISITION · {{name}}",
+      "acquired": "ACQUIS {{time}} · {{resolution}}",
+      "play": "Lire la relecture",
+      "pause": "Mettre la relecture en pause",
+      "scrub": "Position de la relecture",
+      "reducedMotion": "MOUVEMENT RÉDUIT"
+    },
     "computing": "Chargement du catalogue de satellites…",
     "computingProgress": "Calcul des passages : {{done}} sur {{total}} satellites",
     "unavailable": "Le catalogue de satellites n’a pas pu être chargé, aucun passage n’a donc été calculé pour ce point.",

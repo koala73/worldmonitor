@@ -5165,6 +5165,17 @@
     "errLoad": "Az utazási értékelés nem nyitható meg. Töltse be újra az oldalt, és próbálja újra."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "Ennek az áthaladásnak a földi nyomvonalát nem sikerült megrajzolni"
+    },
+    "replay": {
+      "acquisition": "FELVÉTEL · {{name}}",
+      "acquired": "FELVÉVE {{time}} · {{resolution}}",
+      "play": "Visszajátszás indítása",
+      "pause": "Visszajátszás szüneteltetése",
+      "scrub": "Visszajátszás helyzete",
+      "reducedMotion": "CSÖKKENTETT MOZGÁS"
+    },
     "computing": "Műholdkatalógus betöltése…",
     "computingProgress": "Áthaladások számítása: {{done}} / {{total}} műhold",
     "unavailable": "A műholdkatalógust nem sikerült betölteni, ezért ehhez a ponthoz nem készült áthaladás-számítás.",

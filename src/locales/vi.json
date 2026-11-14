@@ -5137,6 +5137,17 @@
     "errLoad": "Không thể mở đánh giá chuyến đi. Tải lại trang và thử lại."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "Không thể vẽ vệt mặt đất của lượt bay qua này"
+    },
+    "replay": {
+      "acquisition": "THU NHẬN · {{name}}",
+      "acquired": "ĐÃ CHỤP {{time}} · {{resolution}}",
+      "play": "Phát lại",
+      "pause": "Tạm dừng phát lại",
+      "scrub": "Vị trí phát lại",
+      "reducedMotion": "GIẢM CHUYỂN ĐỘNG"
+    },
     "computing": "Đang tải danh mục vệ tinh…",
     "computingProgress": "Đang tính các lượt bay: {{done}} trên {{total}} vệ tinh",
     "unavailable": "Không thể tải danh mục vệ tinh nên chưa tính được lượt bay nào cho điểm này.",

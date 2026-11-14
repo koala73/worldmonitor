@@ -4623,6 +4623,17 @@
     }
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "This pass's ground track couldn't be drawn"
+    },
+    "replay": {
+      "acquisition": "ACQUISITION · {{name}}",
+      "acquired": "ACQUIRED {{time}} · {{resolution}}",
+      "play": "Play replay",
+      "pause": "Pause replay",
+      "scrub": "Replay position",
+      "reducedMotion": "REDUCED MOTION"
+    },
     "computing": "Loading the satellite catalog…",
     "computingProgress": "Computing passes: {{done}} of {{total}} satellites",
     "unavailable": "The satellite catalog could not be loaded, so no passes were computed for this point.",

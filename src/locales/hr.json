@@ -5203,6 +5203,17 @@
     "errLoad": "Procjena putovanja nije mogla biti otvorena. Ponovno učitajte stranicu i pokušajte ponovno."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "Zemaljski trag ovog preleta nije moguće iscrtati"
+    },
+    "replay": {
+      "acquisition": "SNIMANJE · {{name}}",
+      "acquired": "SNIMLJENO {{time}} · {{resolution}}",
+      "play": "Pokreni reprodukciju",
+      "pause": "Pauziraj reprodukciju",
+      "scrub": "Položaj reprodukcije",
+      "reducedMotion": "SMANJENO KRETANJE"
+    },
     "computing": "Učitavanje kataloga satelita…",
     "computingProgress": "Izračun preleta: {{done}} od {{total}} satelita",
     "unavailable": "Katalog satelita nije se mogao učitati pa za ovu točku nisu izračunati preleti.",
