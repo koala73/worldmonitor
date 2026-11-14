@@ -5311,7 +5311,35 @@
       "privacyHow": "Nasıl",
       "sources": "Kaynaklar",
       "archiveScene": "Arşiv sahnesi",
-      "archiveOnly": "Hesaplanan hiçbir geçiş bu görüntülerle eşleşmiyor, bu yüzden arşiv sahneleri olarak gösteriliyor."
+      "archiveOnly": "Hesaplanan hiçbir geçiş bu görüntülerle eşleşmiyor, bu yüzden arşiv sahneleri olarak gösteriliyor.",
+      "zoneShowUtc": "Saatleri UTC olarak göster",
+      "zoneShowLocal": "Saatleri bu yerin yerel saatiyle göster"
+    },
+    "search": {
+      "label": "Yer adı veya koordinatlar",
+      "placeholder": "Yer adı veya 48.8584, 2.2945",
+      "submit": "Ara",
+      "locate": "Konumumu kullan",
+      "hint": "Koordinatlar ve konumunuz bu tarayıcıda kalır. Aradığınız yer adı WorldMonitor'a ve OpenStreetMap'in Nominatim hizmetine gönderilir.",
+      "results": "Eşleşen yerler",
+      "searching": "Aranıyor…",
+      "tooShort": "En az iki karakter veya 48.8584, 2.2945 gibi koordinatlar yazın.",
+      "invalidCoordinates": "Bu koordinatlar dünyanın dışında. Enlem -90 ile 90, boylam -180 ile 180 arasındadır.",
+      "failed": "Yer arama şu anda kullanılamıyor. Koordinatlar ve harita çalışmaya devam ediyor.",
+      "noResults": "Bu adla eşleşen yer yok.",
+      "locating": "Konumunuz bulunuyor…",
+      "locationDenied": "Konum izni reddedildi. Bir yer arayın veya haritaya sağ tıklayın.",
+      "locationUnavailable": "Konumunuz bulunamadı. Bir yer arayın veya haritaya sağ tıklayın.",
+      "idle": "Bir yeri adı veya koordinatlarıyla arayın, konumunuzu kullanın ya da üzerinden hangi uyduların geçtiğini görmek için haritaya sağ tıklayın."
+    },
+    "share": {
+      "copy": "Paylaşım bağlantısını kopyala",
+      "copied": "Bağlantı kopyalandı",
+      "copyManually": "Aşağıdaki bağlantıyı kopyalayın",
+      "link": "Paylaşım bağlantısı",
+      "dismiss": "Kapat",
+      "passOutsideWindow": "Bağlantıdaki geçiş mevcut zaman aralığının dışında, bu yüzden hiçbir geçiş seçili değil.",
+      "passNotFound": "Bağlantıdaki geçiş yeniden hesaplanan geçişler arasında bulunamadı, bu yüzden hiçbir geçiş seçili değil."
     }
   },
   "settings": {

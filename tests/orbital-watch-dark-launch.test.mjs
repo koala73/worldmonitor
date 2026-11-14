@@ -20,3 +20,10 @@ test('the docs navigation and data-source list do not advertise Orbital Watch wh
   assert.doesNotMatch(read('docs/docs.json'), /"(?:zh\/)?orbital-watch"/);
   assert.doesNotMatch(read('docs/data-sources.mdx'), /\*\*Orbital Watch\*\*/);
 });
+
+test('the command palette entry and a shared #orbital link open the lookup only behind the flag', () => {
+  const commands = read('src/config/commands.ts');
+  assert.match(commands, /const ORBITAL_COMMANDS: Command\[\] = ORBITAL_WATCH_ENABLED\s*\? \[\{ id: 'orbital:search'/);
+  assert.equal(commands.match(/'orbital:search'/g)?.length, 1);
+  assert.match(read('src/App.ts'), /this\.pendingOrbitalShareLink = ORBITAL_WATCH_ENABLED \? takeOrbitalShareLink\(\) : null;/);
+});

@@ -5311,7 +5311,35 @@
       "privacyHow": "Vipi",
       "sources": "Vyanzo",
       "archiveScene": "Picha ya hifadhi",
-      "archiveOnly": "Hakuna mpito uliokokotolewa unaolingana na picha hizi, kwa hivyo zinaonyeshwa kama picha za hifadhi."
+      "archiveOnly": "Hakuna mpito uliokokotolewa unaolingana na picha hizi, kwa hivyo zinaonyeshwa kama picha za hifadhi.",
+      "zoneShowUtc": "Onyesha nyakati kwa UTC",
+      "zoneShowLocal": "Onyesha nyakati kwa saa za mahali hapa"
+    },
+    "search": {
+      "label": "Jina la mahali au viwianishi",
+      "placeholder": "Jina la mahali au 48.8584, 2.2945",
+      "submit": "Tafuta",
+      "locate": "Tumia mahali nilipo",
+      "hint": "Viwianishi na mahali ulipo hubaki kwenye kivinjari hiki. Jina la mahali unalotafuta hutumwa kwa WorldMonitor na kwa Nominatim ya OpenStreetMap.",
+      "results": "Maeneo yanayolingana",
+      "searching": "Inatafuta…",
+      "tooShort": "Andika angalau herufi mbili, au viwianishi kama 48.8584, 2.2945.",
+      "invalidCoordinates": "Viwianishi hivyo viko nje ya dunia. Latitudo ni kuanzia -90 hadi 90 na longitudo kuanzia -180 hadi 180.",
+      "failed": "Utafutaji wa maeneo haupatikani sasa. Viwianishi na ramani bado vinafanya kazi.",
+      "noResults": "Hakuna mahali panapolingana na jina hilo.",
+      "locating": "Inatafuta mahali ulipo…",
+      "locationDenied": "Ruhusa ya mahali imekataliwa. Tafuta mahali au bofya kulia kwenye ramani badala yake.",
+      "locationUnavailable": "Mahali ulipo hapakuweza kupatikana. Tafuta mahali au bofya kulia kwenye ramani badala yake.",
+      "idle": "Tafuta mahali kwa jina au viwianishi, tumia mahali ulipo, au bofya kulia kwenye ramani kuona satelaiti zilizopita juu yake."
+    },
+    "share": {
+      "copy": "Nakili kiungo cha kushiriki",
+      "copied": "Kiungo kimenakiliwa",
+      "copyManually": "Nakili kiungo kilicho hapa chini",
+      "link": "Kiungo cha kushiriki",
+      "dismiss": "Funga",
+      "passOutsideWindow": "Mpito uliounganishwa uko nje ya kipindi cha sasa, kwa hivyo hakuna mpito uliochaguliwa.",
+      "passNotFound": "Mpito uliounganishwa haukupatikana katika mipito iliyokokotolewa upya, kwa hivyo hakuna mpito uliochaguliwa."
     }
   },
   "settings": {
