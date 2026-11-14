@@ -6685,8 +6685,11 @@ async function seedTheaterPosture() {
 // proxy so the account cooldown, cache and request queue stay in one place. A
 // bbox-less query costs 4 credits, so the loop adds 1,152 credits a day, plus
 // the retries of failed attempts.
-// Real time one bin takes. Tests shrink it to match the fixture clock rate.
-const AIR_TRAFFIC_INTERVAL_MS = Number(process.env.AIR_TRAFFIC_INTERVAL_MS) || AIR_TRAFFIC_BIN_MS;
+// The test preload runs Date.now this many times faster than timers. Only test
+// mode reads it, so production waits are always the real time left.
+const AIR_TRAFFIC_CLOCK_RATE = RELAY_TEST_MODE
+  ? Math.max(1, Number(process.env.RELAY_TEST_CLOCK_RATE) || 1)
+  : 1;
 const AIR_TRAFFIC_START_DELAY_MS = process.env.AIR_TRAFFIC_START_DELAY_MS !== undefined
   ? Math.max(0, Number(process.env.AIR_TRAFFIC_START_DELAY_MS) || 0)
   : 30_000;
@@ -6780,14 +6783,14 @@ async function seedAirTrafficPoint() {
   }
 }
 
-// Sleeps until the fixture-or-real clock reaches targetMs. Under the test clock
-// Date.now runs faster than timers, so the wait is scaled and rechecked.
+// Sleeps until Date.now reaches targetMs, rechecking after each timer so a
+// timer that fires early cannot start a tick in the wrong bin.
 function sleepUntilAirTrafficTime(targetMs) {
   return new Promise((resolve) => {
     const step = () => {
       const remaining = targetMs - Date.now();
       if (remaining <= 0) return resolve();
-      setTimeout(step, Math.max(1, Math.ceil(remaining * AIR_TRAFFIC_INTERVAL_MS / AIR_TRAFFIC_BIN_MS))).unref?.();
+      setTimeout(step, Math.max(1, Math.ceil(remaining / AIR_TRAFFIC_CLOCK_RATE))).unref?.();
     };
     step();
   });

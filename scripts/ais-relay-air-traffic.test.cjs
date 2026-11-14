@@ -128,7 +128,6 @@ function spawnRelay(redis, extraEnv) {
       OPENSKY_NEGATIVE_CACHE_TTL_MS: '1',
       OPENSKY_429_COOLDOWN_MS: '1',
       RELAY_TEST_AIR_TRAFFIC_LOOP: 'true',
-      AIR_TRAFFIC_INTERVAL_MS: '1000',
       AIR_TRAFFIC_START_DELAY_MS: '0',
       AIR_TRAFFIC_RETRY_DELAY_MS: '20',
       RELAY_TEST_CLOCK_START_MS: String(Date.UTC(2026, 10, 13, 20, 30)),
@@ -367,4 +366,15 @@ test('lane 14: a skip check that runs past the end of its bin still records that
     await relay.waitFor(() => relay.lines().some((line) => line.includes('t=2026-11-13T20:30:00.000Z')), 'the 20:30 log line');
     assert.match(relay.lines().find((line) => line.includes('t=2026-11-13T20:30:00.000Z')), /status=gap reason=bin ended attempts=0$/);
   }, { firstPipelineDelayMs: 1200 });
+});
+
+test('lane 15: a leftover interval setting cannot stretch the wait past the next bin', async () => {
+  // Twice the bin's real length at 300x. Every bin must still get a point.
+  await lane([EUROPE_ONLY], { AIR_TRAFFIC_INTERVAL_MS: '2000' }, async ({ redis }) => {
+    const deadline = Date.now() + 6_000;
+    while (Date.now() < deadline && redis.points('2026-11-13').length < 4) await new Promise((r) => setTimeout(r, 50));
+    const ts = redis.points('2026-11-13').map((p) => p.t);
+    assert.ok(ts.length >= 4, `only ${ts.length} points in 6s`);
+    for (let i = 1; i < ts.length; i += 1) assert.equal(ts[i] - ts[i - 1], 300_000, `bins are consecutive: ${ts.map((t) => new Date(t).toISOString()).join(',')}`);
+  });
 });
