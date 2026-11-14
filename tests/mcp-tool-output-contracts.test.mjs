@@ -1,26 +1,3 @@
-// Per-tool output-shape contract regression. For every tool in
-// `__testing__.TOOL_REGISTRY`, dispatch a `tools/call` through the public
-// handler with default-ish arguments and assert the returned `content[0].text`
-// JSON validates against that tool's declared `outputSchema`.
-//
-// Coverage scope (documented intent — see PR body):
-//   • Cache tools (no `_execute`): real dispatch pipeline. fetch is stubbed
-//     so every cache-key read returns a non-null `{}` payload, executeTool
-//     assembles the envelope, and the test validates the response. This
-//     catches envelope-shape regression (missing `cached_at` / `stale`,
-//     wrong `data` shape, executeTool stripping the envelope, etc.).
-//   • RPC tools (has `_execute`): `_execute` is monkey-patched to return a
-//     minimal-shape object derived from the declared `outputSchema`. This
-//     proves the schema declaration is internally consistent (a `required`
-//     field whose type allows no concrete value would fail) and that the
-//     dispatch pipeline preserves the response unchanged through
-//     `applyJmespath` and `rpcOk`. It does NOT exercise the real `_execute`
-//     body — field-level shape drift for RPC tools is OUT OF SCOPE and is
-//     covered indirectly by the per-fixture parity test in
-//     `mcp-output-schema-coverage.test.mjs` (3 cache tools today).
-//
-// One `it()` per tool so a failure names the offending tool.
-
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 

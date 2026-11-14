@@ -4352,7 +4352,6 @@
     "dataAndCommunity": "Data & Gemenskap",
     "theme": "Tema",
     "themeDesc": "Automatiskt följer systeminställningar.",
-    "themeAuto": "Automatisk (följ systemet)",
     "themeDark": "Mörk",
     "themeLight": "Ljus",
     "mapProvider": "Kartpanel-leverantör",
@@ -5110,5 +5109,51 @@
     "errGeneric": "Utkastet kunde inte byggas. Försök igen.",
     "errDownload": "Filen kunde inte laddas ned här. Använd Skriv ut eller spara som PDF istället.",
     "errLoad": "Resebedömningen kunde inte öppnas. Ladda om sidan och försök igen."
+  },
+  "settings": {
+    "back": "Tillbaka till inställningar",
+    "signIn": {
+      "label": "Logga in",
+      "desc": "Synka inställningar och hantera din plan"
+    },
+    "summary": {
+      "themeAuto": "Automatiskt",
+      "count": "{{on}} av {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Preferenser",
+      "developer": "Utvecklare",
+      "app": "App"
+    },
+    "sections": {
+      "account": "Konto",
+      "map": "Karta",
+      "ai": "AI & analys",
+      "video": "Video & strömmar",
+      "apiKeys": "API-nycklar",
+      "embeds": "Inbäddningar",
+      "aiAgents": "AI-agenter (MCP)",
+      "sync": "Synk, import & export",
+      "about": "Om"
+    },
+    "descriptions": {
+      "panels": "Visa, dölj och ordna om",
+      "sources": "Regioner och flöden",
+      "notifications": "Kanaler och varningsregler",
+      "display": "Tema, typsnitt och språk",
+      "map": "Leverantör, tema och globus",
+      "ai": "Modeller, minne och ramverk",
+      "video": "Kvalitet och autoplay",
+      "apiKeys": "Nycklar för World Monitor API",
+      "embeds": "Widgets för din egen webbplats",
+      "aiAgents": "Anslutna MCP-klienter",
+      "about": "Webbplatslinks, villkor och sekretess"
+    },
+    "signOut": "Logga ut",
+    "signOutFailed": "Det gick inte att logga ut. Försök igen.",
+    "search": {
+      "empty": "Inga inställningar matchar"
+    }
   }
 }

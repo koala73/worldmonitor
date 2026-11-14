@@ -4352,7 +4352,6 @@
     "dataAndCommunity": "Data & community",
     "theme": "Thema",
     "themeDesc": "Automatisch volgt systeemvoorkeur.",
-    "themeAuto": "Automatisch (systeem volgen)",
     "themeDark": "Donker",
     "themeLight": "Licht",
     "mapProvider": "Kaarttegel-provider",
@@ -5110,5 +5109,51 @@
     "errGeneric": "De versie kon niet worden samengesteld. Probeer het opnieuw.",
     "errDownload": "Het bestand kon hier niet worden gedownload. Gebruik Afdrukken of opslaan als PDF.",
     "errLoad": "De reisbeoordeling kon niet worden geopend. Laad de pagina opnieuw en probeer het opnieuw."
+  },
+  "settings": {
+    "back": "Terug naar instellingen",
+    "signIn": {
+      "label": "Aanmelden",
+      "desc": "Synchroniseer instellingen en beheer je abonnement"
+    },
+    "summary": {
+      "themeAuto": "Automatisch",
+      "count": "{{on}} van {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Voorkeuren",
+      "developer": "Ontwikkelaar",
+      "app": "App"
+    },
+    "sections": {
+      "account": "Account",
+      "map": "Kaart",
+      "ai": "AI & analyse",
+      "video": "Video & streams",
+      "apiKeys": "API-sleutels",
+      "embeds": "Widgets",
+      "aiAgents": "AI-agenten (MCP)",
+      "sync": "Synchroniseren, importeren & exporteren",
+      "about": "Over"
+    },
+    "descriptions": {
+      "panels": "Weergeven, verbergen en opnieuw ordenen",
+      "sources": "Regio's en feeds",
+      "notifications": "Kanalen en waarschuwingsregels",
+      "display": "Thema, lettertype en taal",
+      "map": "Provider, thema en globe",
+      "ai": "Modellen, geheugen en frameworks",
+      "video": "Kwaliteit en automatisch afspelen",
+      "apiKeys": "Sleutels voor de World Monitor API",
+      "embeds": "Widgets voor je eigen site",
+      "aiAgents": "Verbonden MCP-clients",
+      "about": "Sitelinks, voorwaarden en privacy"
+    },
+    "signOut": "Afmelden",
+    "signOutFailed": "Afmelden mislukt. Probeer opnieuw.",
+    "search": {
+      "empty": "Geen instellingen gevonden"
+    }
   }
 }

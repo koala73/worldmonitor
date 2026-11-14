@@ -31,7 +31,7 @@ for (const theme of ['light', 'dark']) for (const standalone of [false, true]) {
     else {
       await page.waitForFunction(() => document.documentElement.dataset.wmEventHandlersReady === 'true');
       await page.locator('#unifiedSettingsBtn').click();
-      await page.locator('#us-tab-notifications').click();
+      await page.locator('[data-settings-nav="notifications"]').click();
     }
     await page.evaluate(async ({ channelPath, rendererPath, selector }) => {
       const channels = await import(channelPath);
@@ -44,7 +44,7 @@ for (const theme of ['light', 'dark']) for (const standalone of [false, true]) {
       const rendered = renderNotificationsSettings({ isSignedIn: true });
       container.innerHTML = rendered.html;
       rendered.attach(container);
-    }, { channelPath: '/src/services/notification-channels.ts', rendererPath: '/src/services/notifications-settings.ts', selector: standalone ? '#contentArea' : '#us-tab-panel-notifications' });
+    }, { channelPath: '/src/services/notification-channels.ts', rendererPath: '/src/services/notifications-settings.ts', selector: standalone ? '#contentArea' : '#us-page-notifications' });
     const channel = page.locator('.us-notif-ch-row[data-channel-type="telegram"]');
     await expect(channel).toHaveCount(1);
     await expect(channel.locator('.us-notif-ch-name')).toHaveText('Telegram');

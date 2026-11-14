@@ -83,20 +83,16 @@ function extractOpen() {
   );
 }
 
-let mcpAccess = false;
-let embedAccess = false;
-let accountRole = undefined;
 const Harness = extractOpen()(
-  () => ({ planKey: mcpAccess || embedAccess ? 'pro_monthly' : 'free' }),
+  () => ({ planKey: 'free' }),
   () => 'ready',
-  (feature) =>
-    (feature === 'mcpAccess' && mcpAccess) || (feature === 'embedAccess' && embedAccess),
-  (role) => role === 'pro' || embedAccess,
+  () => false,
+  () => false,
   () => () => {},
   () => () => {},
   () => () => {},
   () => null,
-  () => ({ user: accountRole ? { role: accountRole } : null }),
+  () => ({ user: null }),
   () => {},
   (value) => value,
   () => {},
@@ -111,9 +107,10 @@ const Harness = extractOpen()(
  */
 const STUB_SOURCE_SIGNATURE = 'stub-source-signature';
 
-function makeInstance(initialTab = 'settings') {
+function makeInstance() {
   const instance = new Harness();
-  instance.activeTab = initialTab;
+  const classes = new Set();
+  instance.calls = [];
   instance.resetPanelDraft = () => {};
   // The real one reads config.getDisabledSources(), which this harness has no
   // config for. Kept observable rather than a bare no-op so the baseline
@@ -122,12 +119,15 @@ function makeInstance(initialTab = 'settings') {
   // Mirrors the real field initializer. open() snapshots only from null, so a
   // harness left at undefined would model a state the class never has.
   instance.sourceSelectionBaseline = null;
-  instance.renderedTabs = [];
-  instance.render = function render() {
-    this.renderedTabs.push(this.activeTab);
-  };
+  instance.recentPage = null;
+  instance.startSession = () => instance.calls.push('startSession');
+  instance.renderPanelsTab = () => instance.calls.push('renderPanelsTab');
+  instance.dispatch = (event) => instance.calls.push(event);
   instance.overlay = {
-    classList: { add() {} },
+    classList: {
+      add(name) { classes.add(name); },
+      contains(name) { return classes.has(name); },
+    },
     querySelector() { return null; },
   };
   // Full FocusTrap shape, so extending this harness past open() cannot fail on a
@@ -142,11 +142,11 @@ function makeInstance(initialTab = 'settings') {
   return instance;
 }
 
-describe('UnifiedSettings.open active-tab availability (#5611)', () => {
+// Which page a target lands on, and the fallback for an unavailable one, is
+// reduceNav's job and is covered in tests/settings-sections.test.mts. open()
+// only starts the session and hands the target to the one navigation writer.
+describe('UnifiedSettings.open', () => {
   beforeEach(() => {
-    mcpAccess = false;
-    embedAccess = false;
-    accountRole = undefined;
     globalThis.localStorage = {
       getItem: () => null,
       setItem() {},
@@ -159,97 +159,39 @@ describe('UnifiedSettings.open active-tab availability (#5611)', () => {
       addEventListener() {},
       removeEventListener() {},
     };
+    globalThis.window = {
+      addEventListener() {},
+      removeEventListener() {},
+    };
   });
 
-  // AI Agents (tab id 'mcp-clients') is open to every account: connecting an
-  // agent needs no plan. Only its connected-clients section is mcpAccess-gated.
-  it('opens AI Agents without mcpAccess', () => {
+  it('starts a session and hands the target to dispatch', () => {
     const instance = makeInstance();
 
-    instance.open('mcp-clients');
+    instance.open('embeds');
 
-    assert.equal(instance.activeTab, 'mcp-clients');
-    assert.deepEqual(instance.renderedTabs, ['mcp-clients']);
+    assert.deepEqual(instance.calls, ['startSession', { type: 'open', target: 'embeds', layout: 'modal', recent: null }]);
   });
 
-  it('keeps a sticky AI Agents tab after access was lost between opens', () => {
-    const instance = makeInstance('mcp-clients');
+  it('passes no target, and the page selected last, when none is given', () => {
+    const instance = makeInstance();
+    instance.recentPage = 'map';
 
     instance.open();
 
-    assert.equal(instance.activeTab, 'mcp-clients');
-    assert.deepEqual(instance.renderedTabs, ['mcp-clients']);
+    assert.deepEqual(instance.calls.at(-1), { type: 'open', target: undefined, layout: 'modal', recent: 'map' });
   });
 
-  it('preserves AI Agents when mcpAccess is held', () => {
-    mcpAccess = true;
+  // Re-entry (the deep-dive "Notify me" jump) must keep pages mounted this
+  // session, so it refreshes the panels draft instead of restarting.
+  it('keeps the session when open() is re-entered', () => {
     const instance = makeInstance();
-
-    instance.open('mcp-clients');
-
-    assert.equal(instance.activeTab, 'mcp-clients');
-    assert.deepEqual(instance.renderedTabs, ['mcp-clients']);
-  });
-
-  // The Embeds tab is gated on embedAccess, not apiAccess: both Pro tiers are
-  // apiAccess:false, so an apiAccess gate would hide embed keys from the
-  // customers who bought embedding. Same clamp as MCP Clients.
-  it('falls back to Settings when opened to Embeds without embedAccess', () => {
-    const instance = makeInstance();
-
-    instance.open('embeds');
-
-    assert.equal(instance.activeTab, 'settings');
-    assert.deepEqual(instance.renderedTabs, ['settings']);
-  });
-
-  it('clears a sticky Embeds tab when embed access was lost between opens', () => {
-    const instance = makeInstance('embeds');
-
     instance.open();
+    instance.calls.length = 0;
 
-    assert.equal(instance.activeTab, 'settings');
-    assert.deepEqual(instance.renderedTabs, ['settings']);
-  });
+    instance.open('notifications');
 
-  it('preserves Embeds when embedAccess is present', () => {
-    embedAccess = true;
-    const instance = makeInstance();
-
-    instance.open('embeds');
-
-    assert.equal(instance.activeTab, 'embeds');
-    assert.deepEqual(instance.renderedTabs, ['embeds']);
-  });
-
-  it('preserves Embeds for a verified Clerk PRO role before entitlement hydration', () => {
-    accountRole = 'pro';
-    const instance = makeInstance();
-
-    instance.open('embeds');
-
-    assert.equal(instance.activeTab, 'embeds');
-    assert.deepEqual(instance.renderedTabs, ['embeds']);
-  });
-
-  // The load-bearing half: a Pro account carries embedAccess without mcpAccess
-  // and vice versa. Neither flag may stand in for the other.
-  it('does not open Embeds on mcpAccess alone', () => {
-    mcpAccess = true;
-    const instance = makeInstance();
-
-    instance.open('embeds');
-
-    assert.equal(instance.activeTab, 'settings');
-  });
-
-  it('does not clamp tabs that are always rendered', () => {
-    const instance = makeInstance();
-
-    instance.open('api-keys');
-
-    assert.equal(instance.activeTab, 'api-keys');
-    assert.deepEqual(instance.renderedTabs, ['api-keys']);
+    assert.deepEqual(instance.calls, ['renderPanelsTab', { type: 'open', target: 'notifications', layout: 'modal', recent: null }]);
   });
 
   // Sources apply on click with no Save step, and teardownSettings decides
@@ -276,5 +218,17 @@ describe('UnifiedSettings.open active-tab availability (#5611)', () => {
     instance.open('api-keys');
 
     assert.equal(instance.sourceSelectionBaseline, STUB_SOURCE_SIGNATURE);
+  });
+});
+
+// The avatar menu's Plan & billing entry is the main way in to the account
+// page; the section id it passes is checked by the compiler, the wiring here.
+describe('avatar menu', () => {
+  it('opens Plan & billing on the account page', () => {
+    const handlers = readFileSync(resolve(__dirname, '../src/app/event-handlers.ts'), 'utf8');
+    assert.match(
+      handlers,
+      /new AuthHeaderWidget\(\s*\(\) => modal\.open\(\),\s*\(\) => this\.ctx\.unifiedSettings\?\.open\(\),\s*\(\) => this\.ctx\.unifiedSettings\?\.open\('account'\),\s*\)/,
+    );
   });
 });

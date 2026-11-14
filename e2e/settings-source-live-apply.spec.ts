@@ -150,7 +150,7 @@ async function openSourcesTab(page: Page): Promise<void> {
   const settingsBtn = page.locator('#unifiedSettingsBtn');
   await expect(settingsBtn).toBeVisible({ timeout: 60_000 });
   await settingsBtn.click();
-  await page.locator('#us-tab-sources').click();
+  await page.locator('[data-settings-nav="sources"]').click();
   await expect(page.locator('#usSourceToggles .source-toggle-item').first()).toBeVisible({
     timeout: 15_000,
   });
