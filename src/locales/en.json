@@ -4778,7 +4778,35 @@
       "privacyHow": "How",
       "sources": "Sources",
       "archiveScene": "Archive scene",
-      "archiveOnly": "No computed pass matches these images, so they are shown as archive scenes."
+      "archiveOnly": "No computed pass matches these images, so they are shown as archive scenes.",
+      "zoneShowUtc": "Show times in UTC",
+      "zoneShowLocal": "Show times in this place's local time"
+    },
+    "search": {
+      "label": "Place name or coordinates",
+      "placeholder": "Place name or 48.8584, 2.2945",
+      "submit": "Search",
+      "locate": "Use my location",
+      "hint": "Coordinates and your location stay in this browser. A place name you search is sent to WorldMonitor and to OpenStreetMap's Nominatim.",
+      "results": "Matching places",
+      "searching": "Searching…",
+      "tooShort": "Type at least two characters, or coordinates such as 48.8584, 2.2945.",
+      "invalidCoordinates": "Those coordinates are outside the globe. Latitude runs from -90 to 90 and longitude from -180 to 180.",
+      "failed": "Place search is unavailable right now. Coordinates and the map still work.",
+      "noResults": "No place matched that name.",
+      "locating": "Finding your location…",
+      "locationDenied": "Location permission was denied. Search a place or right-click the map instead.",
+      "locationUnavailable": "Your location could not be found. Search a place or right-click the map instead.",
+      "idle": "Search a place by name or coordinates, use your location, or right-click the map to see which satellites passed over it."
+    },
+    "share": {
+      "copy": "Copy share link",
+      "copied": "Link copied",
+      "copyManually": "Copy the link below",
+      "link": "Share link",
+      "dismiss": "Dismiss",
+      "passOutsideWindow": "The linked pass is outside the current window, so no pass is selected.",
+      "passNotFound": "The linked pass was not found in the recomputed passes, so no pass is selected."
     }
   },
   "contextMenu": {

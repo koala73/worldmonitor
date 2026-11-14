@@ -6,21 +6,31 @@ import { loadOrbitalCatalog } from '@/services/orbital/catalog';
 import { buildPassTrack, framingBounds, type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { browserReplayDeps, createTrackReplay, type TrackReplay } from '@/services/orbital/track-replay';
 import { ARCHIVE_SEARCHES, findArchiveEvidence, type MatchedAcquisition, type OrbitalEvidence } from '@/services/orbital/match';
+import { setOrbitalLookupOpen } from '@/services/orbital/lookup-host';
 import { OrbitalWatchPage, type OrbitalView } from '@/components/OrbitalWatchPage';
 import { createReplayHud } from '@/components/OrbitalReplayHud';
 import { formatAcquiredLine, formatTargetCoordinates } from '@/components/orbital-target-label';
 import { t } from '@/services/i18n';
+import { OrbitalPlaceTools } from '@/components/OrbitalPlaceTools';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 import { formatOrbitalRoute, parseOrbitalRoute } from '@/app/orbital-route';
+import { DASHBOARD_SITE_ORIGIN } from '@/config/dashboard-reference-links';
+import { isDesktopRuntime } from '@/config/desktop-runtime';
+import { buildOrbitalShareFragment, type OrbitalShareLink, type OrbitalSharePass } from '@/utils/urlState';
 import { claimMapUrlCentre, getOrbitalMapView, releaseMapUrlCentreOnUserMove, type MapCamera } from '@/app/orbital-map-focus';
 import { visibleMapArea, type ScreenArea } from '@/utils/map-point-offset';
 
 let page: OrbitalWatchPage | null = null;
+let tools: OrbitalPlaceTools | null = null;
 let point: GeoPoint | null = null;
 let lookup: PointPassLookup | null = null;
 let run: AbortController | null = null;
 let evidence: OrbitalEvidence | null = null;
 let raisedMap = false;
+let linkedPass: OrbitalSharePass | null = null;
+/** The pass last selected in the sheet, so a shared link opens on it too. */
+let selectedPass: { noradId: number; timeMs: number } | null = null;
+let returnFocus: HTMLElement | null = null;
 let markFrame: number | null = null;
 let centredFor: string | null = null;
 /** Where the map was before the lookup first moved it; closing puts it back, so the point never becomes the map centre. */
@@ -41,6 +51,10 @@ let trackRequest = 0;
 let targetDrawn = false;
 
 const MAP_FULLSCREEN_CLASS = 'live-news-fullscreen-active';
+const MINUTE_MS = 60_000;
+/** Recomputed passes can shift by a minute when the orbit elements were refreshed in between. */
+const LINKED_PASS_TOLERANCE_MS = 2 * MINUTE_MS;
+const SHARE_LABEL_RESET_MS = 2000;
 
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
 
@@ -123,6 +137,20 @@ function writeRoute(view: OrbitalView): void {
   }
 }
 
+/** A shared pass, once the lookup has it, is selected; a pass no longer there gets a note. */
+function applyLinkedPass(found: PointPassLookup): void {
+  const wanted = linkedPass;
+  linkedPass = null;
+  if (!wanted) return;
+  const inWindow = wanted.minuteMs + MINUTE_MS > found.window.startMs && wanted.minuteMs <= found.window.endMs;
+  const match = inWindow
+    ? found.passes.find((pass) => pass.noradId === wanted.noradId && Math.abs(pass.timeMs - wanted.minuteMs) <= LINKED_PASS_TOLERANCE_MS)
+    : undefined;
+  if (match && page?.select(`${match.noradId}:${match.timeMs}`)) return;
+  tools!.showNote(t(inWindow ? 'orbitalWatch.share.passNotFound' : 'orbitalWatch.share.passOutsideWindow'));
+  showSearchRow(true);
+}
+
 function onViewChange(view: OrbitalView): void {
   writeRoute(view);
   syncMap(view);
@@ -164,6 +192,7 @@ async function start(): Promise<void> {
       lookup = found;
     }
     await checkArchives(lookup, signal);
+    if (!signal.aborted) applyLinkedPass(lookup);
   } catch (error) {
     if (!isAbort(error) && !signal.aborted) page!.render({ kind: 'unavailable' });
   }
@@ -255,49 +284,139 @@ function onReplayRequest(event: Event): void {
 
 const samePoint = (a: GeoPoint | null, b: GeoPoint) => !!a && Math.abs(a.lat - b.lat) < 1e-4 && Math.abs(a.lon - b.lon) < 1e-4;
 
-/** Opens the satellite pass lookup for a point. The point stays in the browser. */
-export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null, view: OrbitalView = 'sheet', map?: OrbitalTrackSurface | null): void {
-  if (!page) document.addEventListener('orbital-watch:replay', onReplayRequest);
-  page ??= new OrbitalWatchPage({
-    onClose: () => {
-      getOrbitalMapView()?.hold(false);
-      getOrbitalMapView()?.suppressLayers(false);
-      if (homeCamera) getOrbitalMapView()?.restore(homeCamera);
-      homeCamera = null;
-      releaseMapUrlCentreOnUserMove(document.getElementById('mapContainer'));
-      cancel();
-      clearTrack();
-      drawTarget(null);
-      surface = null;
-      lookup = null;
-      evidence = null;
-      point = null;
-    },
-    onRetry: () => void start(),
-    onViewChange,
-  });
+function shareLink(): string | null {
+  if (!point) return null;
+  // The desktop WebView origin is local, so its links point at the public dashboard.
+  const base = isDesktopRuntime() ? `${DASHBOARD_SITE_ORIGIN}/dashboard` : `${location.origin}${location.pathname}`;
+  return `${base}#${buildOrbitalShareFragment(point, selectedPass, page?.currentView ?? 'sheet')}`;
+}
+
+let shareReset: ReturnType<typeof setTimeout> | null = null;
+
+async function share(button: HTMLElement): Promise<void> {
+  const copied = await tools!.share();
+  if (!copied) {
+    showSearchRow(true);
+    return;
+  }
+  button.textContent = t('orbitalWatch.ui.shareCopied');
+  if (shareReset) clearTimeout(shareReset);
+  shareReset = setTimeout(() => { button.textContent = t('orbitalWatch.ui.share'); }, SHARE_LABEL_RESET_MS);
+}
+
+/** The search row sits under the place header; CHANGE opens it and a pick closes it. */
+function showSearchRow(open: boolean): void {
+  if (!page) return;
+  page.slot('search').hidden = !open;
+}
+
+function ensurePage(): OrbitalWatchPage {
+  tools ??= new OrbitalPlaceTools({ onPick: (at, name) => lookAt(at, name, { recentre: true, view: page?.currentView ?? 'sheet' }), shareLink });
+  if (!page) {
+    page = new OrbitalWatchPage({
+      onClose: () => {
+        getOrbitalMapView()?.hold(false);
+        getOrbitalMapView()?.suppressLayers(false);
+        if (homeCamera) getOrbitalMapView()?.restore(homeCamera);
+        homeCamera = null;
+        releaseMapUrlCentreOnUserMove(document.getElementById('mapContainer'));
+        cancel();
+        clearTrack();
+        drawTarget(null);
+        surface = null;
+        lookup = null;
+        evidence = null;
+        point = null;
+        linkedPass = null;
+        selectedPass = null;
+        returnFocus = null;
+        tools!.reset();
+        showSearchRow(false);
+        setOrbitalLookupOpen(false);
+      },
+      onRetry: () => void start(),
+      onViewChange,
+      onChangePlace: () => {
+        showSearchRow(true);
+        tools!.focusSearch();
+      },
+      onShare: (button) => void share(button),
+    });
+    page.slot('search').append(tools.element);
+    document.addEventListener('orbital-watch:replay', onReplayRequest);
+    document.addEventListener('orbital-watch:select', (event) => {
+      const { noradId, timeMs } = (event as CustomEvent<{ noradId: number; timeMs: number }>).detail;
+      selectedPass = { noradId, timeMs };
+    });
+  }
+  return page;
+}
+
+/** Points the lookup at the map its pass tracks are drawn on; `undefined` keeps the current one. */
+function useSurface(map: OrbitalTrackSurface | null | undefined): boolean {
   const moved = map !== undefined && map !== surface;
   if (moved) {
     clearTrack();
     drawTarget(null);
     surface = map;
   }
-  if (page.isOpen && samePoint(point, at)) {
+  return moved;
+}
+
+function lookAt(at: GeoPoint, name: string | null, { recentre, view, map }: { recentre: boolean; view: OrbitalView; map?: OrbitalTrackSurface | null }): void {
+  const sheet = ensurePage();
+  const moved = useSurface(map);
+  tools!.clearNote();
+  tools!.clearShare();
+  showSearchRow(false);
+  setOrbitalLookupOpen(true);
+  if (sheet.isOpen && samePoint(point, at)) {
     if (moved) drawTarget(targetFor(at, null));
-    page.setView(view);
+    sheet.setPlaceName(name);
+    sheet.setView(view);
+    if (recentre) focusMap();
     return;
   }
   clearTrack();
   point = at;
   drawTarget(targetFor(at, null));
+  selectedPass = null;
   lookup = null;
   evidence = null;
   claimMapUrlCentre();
-  const wasFull = page.isOpen && page.currentView === 'full';
-  page.open(at, returnFocusTo, view);
+  const wasFull = sheet.isOpen && sheet.currentView === 'full';
+  sheet.open(at, returnFocus, view);
+  sheet.setPlaceName(name);
   if (view === 'full' || wasFull) onViewChange(view);
   else focusMap();
   void start();
+}
+
+/** Opens the satellite pass lookup for a point. The point stays in the browser. */
+export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null, view: OrbitalView = 'sheet', map?: OrbitalTrackSurface | null): void {
+  returnFocus = returnFocusTo;
+  linkedPass = null;
+  lookAt(at, null, { recentre: false, view, map });
+}
+
+/** Opens the lookup with no place yet, focused on its search field. */
+export function openOrbitalWatchSearch(returnFocusTo: HTMLElement | null, map?: OrbitalTrackSurface | null): void {
+  const sheet = ensurePage();
+  if (useSurface(map) && point) drawTarget(targetFor(point, null));
+  if (!sheet.isOpen) {
+    returnFocus = returnFocusTo;
+    setOrbitalLookupOpen(true);
+    sheet.open(null, returnFocus);
+  }
+  showSearchRow(true);
+  tools!.focusSearch();
+}
+
+/** Opens a shared place in the view the link names, and its pass when that pass is still in the lookup window. */
+export function openOrbitalShareLink(link: OrbitalShareLink, returnFocusTo: HTMLElement | null, map?: OrbitalTrackSurface | null): void {
+  returnFocus = returnFocusTo;
+  linkedPass = link.pass;
+  lookAt(link.point, null, { recentre: true, view: link.view, map });
 }
 
 /** Returns from the full view to the sheet, for a route that no longer names one. */

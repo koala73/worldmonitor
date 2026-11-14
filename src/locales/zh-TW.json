@@ -5287,7 +5287,35 @@
       "privacyHow": "原理",
       "sources": "來源",
       "archiveScene": "檔案場景",
-      "archiveOnly": "沒有計算出的過境與這些影像匹配，因此顯示為檔案場景。"
+      "archiveOnly": "沒有計算出的過境與這些影像匹配，因此顯示為檔案場景。",
+      "zoneShowUtc": "以 UTC 顯示時間",
+      "zoneShowLocal": "以此地的當地時間顯示時間"
+    },
+    "search": {
+      "label": "地名或座標",
+      "placeholder": "地名或 48.8584, 2.2945",
+      "submit": "搜尋",
+      "locate": "使用我的位置",
+      "hint": "座標和你的位置只保留在此瀏覽器中。你搜尋的地名會傳送給 WorldMonitor 和 OpenStreetMap 的 Nominatim。",
+      "results": "匹配的地點",
+      "searching": "正在搜尋…",
+      "tooShort": "請輸入至少兩個字元，或類似 48.8584, 2.2945 的座標。",
+      "invalidCoordinates": "這些座標超出了地球範圍。緯度範圍為 -90 到 90，經度範圍為 -180 到 180。",
+      "failed": "地名搜尋暫時不可用。座標和地圖仍可使用。",
+      "noResults": "沒有與該名稱匹配的地點。",
+      "locating": "正在獲取你的位置…",
+      "locationDenied": "位置權限被拒絕。請搜尋地點或在地圖上右鍵單擊。",
+      "locationUnavailable": "無法獲取你的位置。請搜尋地點或在地圖上右鍵單擊。",
+      "idle": "按名稱或座標搜尋地點、使用你的位置，或在地圖上右鍵單擊，檢視哪些衛星經過了該地上空。"
+    },
+    "share": {
+      "copy": "複製分享連結",
+      "copied": "連結已複製",
+      "copyManually": "請複製下方連結",
+      "link": "分享連結",
+      "dismiss": "關閉",
+      "passOutsideWindow": "連結中的過境不在當前時間視窗內，因此未選中任何過境。",
+      "passNotFound": "在重新計算的過境中未找到連結中的過境，因此未選中任何過境。"
     }
   },
   "settings": {

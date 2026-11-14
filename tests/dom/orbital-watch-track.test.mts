@@ -19,9 +19,9 @@ import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
 import type { OrbitalTarget, PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
-import { openOrbitalWatch, type OrbitalTrackSurface } from '@/app/orbital-watch';
+import { openOrbitalShareLink, openOrbitalWatch, openOrbitalWatchSearch, type OrbitalTrackSurface } from '@/app/orbital-watch';
 import { watchOrbitalRoute } from '@/app/orbital-route';
-import { formatOrbitalTime, setOrbitalDisplayZone } from '@/components/OrbitalWatchPage';
+import { formatOrbitalTime, getOrbitalDisplayZone, setOrbitalDisplayZone } from '@/components/OrbitalWatchPage';
 import fixture from '../fixtures/orbital/celestrak-gp-2026-11-13.json';
 
 const records = fixture.records as OmmRecord[];
@@ -181,12 +181,14 @@ describe('replayed pass ground track', () => {
   });
 
   it('stamps the acquisition in the zone the sheet displays', async () => {
-    setOrbitalDisplayZone('Asia/Dubai', 'GST');
     try {
       await openWithPasses();
+      // The sheet shows the point's local time, so Paris is not stamped in UTC.
+      const { label } = getOrbitalDisplayZone();
+      expect(label).not.toBe('UTC');
       replay(sentinel);
       await vi.waitFor(() => expect(drawn()).toHaveLength(1));
-      expect(lastPin()?.lines[1]).toMatch(/ GST · 10 M$/);
+      expect(lastPin()?.lines[1]).toMatch(new RegExp(` ${label.replace(/[+]/g, '\\+')} · 10 M$`));
     } finally {
       setOrbitalDisplayZone('UTC', 'UTC');
     }
@@ -210,6 +212,20 @@ describe('replayed pass ground track', () => {
     openOrbitalWatch(next, null, 'sheet', { setOrbitalTrack: () => {}, setOrbitalTrackMarker: () => {}, setOrbitalTarget: (target) => other.push(target) });
     expect(pins(targets)).toEqual([point, null]);
     expect(pins(other)).toEqual([next]);
+  });
+
+  it('pins a shared link and a searched lookup on the map they were opened from', async () => {
+    await openWithPasses();
+    const shared: Array<OrbitalTarget | null> = [];
+    const surfaceFor = (sink: Array<OrbitalTarget | null>): OrbitalTrackSurface =>
+      ({ setOrbitalTrack: () => {}, setOrbitalTrackMarker: () => {}, setOrbitalTarget: (target) => sink.push(target) });
+    const next = { lat: -17.7, lon: 178.5 };
+    openOrbitalShareLink({ point: next, pass: null, view: 'sheet' }, null, surfaceFor(shared));
+    expect(pins(shared)).toEqual([next]);
+    const searched: Array<OrbitalTarget | null> = [];
+    openOrbitalWatchSearch(null, surfaceFor(searched));
+    expect(pins(shared)).toEqual([next, null]);
+    expect(pins(searched)).toEqual([next]);
   });
 
   it('replaces the first pass when a second is replayed', async () => {
