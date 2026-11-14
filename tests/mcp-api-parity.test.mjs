@@ -276,6 +276,10 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   // category is fetch-on-miss.
   ["GET /api/aviation/v1/get-airport-ops-summary",
     "deferred-to-future-tool: pure-read but no MCP tool exposes aviation:delays:intl:v3 yet — bundle into a future expanded-domain tool"],
+  ["GET /api/orbital/v1/get-point-passes",
+    "deferred-to-future-tool: get_point_satellite_passes stays unlisted while Orbital Watch is dark (#10721); restore it to the tool's _apiPaths by setting ORBITAL_MCP_TOOLS_PUBLISHED"],
+  ["GET /api/orbital/v1/get-country-imagery-evidence",
+    "deferred-to-future-tool: get_country_imagery_evidence stays unlisted while Orbital Watch is dark (#10721); restore it to the tool's _apiPaths by setting ORBITAL_MCP_TOOLS_PUBLISHED"],
   ["GET /api/orbital/v1/list-imaging-satellites",
     "deferred-to-future-tool: pure-read raw orbit elements; the subscription point-lookup tool computes passes from orbital:catalog:v1 instead of exposing the catalog"],
   ["GET /api/orbital/v1/get-watched-site-imagery",
