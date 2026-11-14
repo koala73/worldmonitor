@@ -5458,6 +5458,41 @@
       "dismiss": "Închide",
       "passOutsideWindow": "Trecerea din link este în afara ferestrei curente, așa că nu este selectată nicio trecere.",
       "passNotFound": "Trecerea din link nu a fost găsită printre trecerile recalculate, așa că nu este selectată nicio trecere."
+    },
+    "timeline": {
+      "now": "acum",
+      "nowAt": "Acum: {{time}}",
+      "density": "Treceri {{label}}, de la {{start}} la {{end}}: {{count}}",
+      "daylight": "Lumină de zi în punct de la {{start}} la {{end}}",
+      "unavailable": "indisponibil",
+      "notRetained": "fără date săptămâna aceasta",
+      "notRetainedSpan": "{{label}}: fără date de la {{start}} la {{end}}",
+      "countryWide": "la nivel național",
+      "source": {
+        "conflict": "Conflicte",
+        "fires": "Incendii",
+        "unrest": "Tulburări",
+        "outages": "Întreruperi de internet"
+      },
+      "live": {
+        "vessels": "Trafic maritim",
+        "militaryFlights": "Zboruri militare",
+        "gpsJamming": "Bruiaj GPS"
+      },
+      "name": "Cronologie",
+      "span": "{{days}} zile · următoarele {{hours}} h",
+      "daylightHere": "Lumină de zi aici",
+      "row": {
+        "geo": "Geo",
+        "photo": "Imagine",
+        "likely": "Probabil",
+        "could": "Posibil",
+        "overhead": "Trecere"
+      },
+      "retained": "{{start}} – {{end}}",
+      "retainedDay": "doar {{day}}",
+      "geoLine": "Geostaționari în vizor: {{names}}",
+      "away": "la {{km}} km"
     }
   },
   "settings": {

@@ -5557,6 +5557,41 @@
       "dismiss": "إغلاق",
       "passOutsideWindow": "المرور المرتبط خارج النافذة الحالية، لذا لم يُحدَّد أي مرور.",
       "passNotFound": "لم يُعثر على المرور المرتبط بين المرورات المعاد حسابها، لذا لم يُحدَّد أي مرور."
+    },
+    "timeline": {
+      "now": "الآن",
+      "nowAt": "الآن: {{time}}",
+      "density": "مرورات {{label}}، من {{start}} إلى {{end}}: {{count}}",
+      "daylight": "ضوء النهار عند النقطة من {{start}} إلى {{end}}",
+      "unavailable": "غير متاح",
+      "notRetained": "لا بيانات هذا الأسبوع",
+      "notRetainedSpan": "{{label}}: لا بيانات من {{start}} إلى {{end}}",
+      "countryWide": "على مستوى البلد",
+      "source": {
+        "conflict": "النزاعات",
+        "fires": "الحرائق",
+        "unrest": "الاضطرابات",
+        "outages": "انقطاعات الإنترنت"
+      },
+      "live": {
+        "vessels": "حركة الملاحة",
+        "militaryFlights": "الرحلات العسكرية",
+        "gpsJamming": "تشويش GPS"
+      },
+      "name": "الخط الزمني",
+      "span": "{{days}} أيام · الساعات {{hours}} القادمة",
+      "daylightHere": "ضوء النهار هنا",
+      "row": {
+        "geo": "ثابت",
+        "photo": "صورة",
+        "likely": "مرجّح",
+        "could": "ممكن",
+        "overhead": "عبور"
+      },
+      "retained": "من {{start}} إلى {{end}}",
+      "retainedDay": "{{day}} فقط",
+      "geoLine": "أقمار ثابتة بالنسبة للأرض في المجال: {{names}}",
+      "away": "على بعد {{km}} كم"
     }
   },
   "settings": {

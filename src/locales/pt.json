@@ -5458,6 +5458,41 @@
       "dismiss": "Fechar",
       "passOutsideWindow": "A passagem vinculada está fora da janela atual, então nenhuma passagem está selecionada.",
       "passNotFound": "A passagem vinculada não foi encontrada nas passagens recalculadas, então nenhuma passagem está selecionada."
+    },
+    "timeline": {
+      "now": "agora",
+      "nowAt": "Agora: {{time}}",
+      "density": "Passagens {{label}}, de {{start}} a {{end}}: {{count}}",
+      "daylight": "Luz do dia no ponto de {{start}} a {{end}}",
+      "unavailable": "indisponível",
+      "notRetained": "sem dados esta semana",
+      "notRetainedSpan": "{{label}}: sem dados de {{start}} a {{end}}",
+      "countryWide": "em todo o país",
+      "source": {
+        "conflict": "Conflitos",
+        "fires": "Incêndios",
+        "unrest": "Distúrbios",
+        "outages": "Quedas de internet"
+      },
+      "live": {
+        "vessels": "Tráfego marítimo",
+        "militaryFlights": "Voos militares",
+        "gpsJamming": "Interferência de GPS"
+      },
+      "name": "Linha do tempo",
+      "span": "{{days}} dias · próximas {{hours}} h",
+      "daylightHere": "Luz do dia aqui",
+      "row": {
+        "geo": "Geo",
+        "photo": "Foto",
+        "likely": "Provável",
+        "could": "Possível",
+        "overhead": "Passagem"
+      },
+      "retained": "{{start}} a {{end}}",
+      "retainedDay": "só {{day}}",
+      "geoLine": "Geoestacionários à vista: {{names}}",
+      "away": "a {{km}} km"
     }
   },
   "settings": {

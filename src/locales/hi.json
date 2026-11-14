@@ -5425,6 +5425,41 @@
       "dismiss": "बंद करें",
       "passOutsideWindow": "लिंक किया गया पास मौजूदा समय-सीमा से बाहर है, इसलिए कोई पास चुना नहीं गया है।",
       "passNotFound": "लिंक किया गया पास दोबारा गणना किए गए पासों में नहीं मिला, इसलिए कोई पास चुना नहीं गया है।"
+    },
+    "timeline": {
+      "now": "अभी",
+      "nowAt": "अभी: {{time}}",
+      "density": "{{label}} गुज़रने, {{start}} से {{end}} तक: {{count}}",
+      "daylight": "बिंदु पर {{start}} से {{end}} तक दिन का प्रकाश",
+      "unavailable": "उपलब्ध नहीं",
+      "notRetained": "इस सप्ताह कोई डेटा नहीं",
+      "notRetainedSpan": "{{label}}: {{start}} से {{end}} तक कोई डेटा नहीं",
+      "countryWide": "देशव्यापी",
+      "source": {
+        "conflict": "संघर्ष",
+        "fires": "आग",
+        "unrest": "अशांति",
+        "outages": "इंटरनेट बाधाएँ"
+      },
+      "live": {
+        "vessels": "जहाज़ यातायात",
+        "militaryFlights": "सैन्य उड़ानें",
+        "gpsJamming": "GPS जैमिंग"
+      },
+      "name": "समयरेखा",
+      "span": "{{days}} दिन · अगले {{hours}} घंटे",
+      "daylightHere": "यहाँ दिन का उजाला",
+      "row": {
+        "geo": "भूस्थिर",
+        "photo": "चित्र",
+        "likely": "संभावित",
+        "could": "शायद",
+        "overhead": "गुज़रा"
+      },
+      "retained": "{{start}} से {{end}}",
+      "retainedDay": "केवल {{day}}",
+      "geoLine": "दृश्य में भूस्थिर: {{names}}",
+      "away": "{{km}} किमी दूर"
     }
   },
   "settings": {

@@ -5425,6 +5425,41 @@
       "dismiss": "بستن",
       "passOutsideWindow": "گذر پیوندشده بیرون از بازه کنونی است، بنابراین هیچ گذری انتخاب نشده است.",
       "passNotFound": "گذر پیوندشده در میان گذرهای دوباره محاسبه‌شده پیدا نشد، بنابراین هیچ گذری انتخاب نشده است."
+    },
+    "timeline": {
+      "now": "اکنون",
+      "nowAt": "اکنون: {{time}}",
+      "density": "عبورهای {{label}}، از {{start}} تا {{end}}: {{count}}",
+      "daylight": "روشنایی روز در نقطه از {{start}} تا {{end}}",
+      "unavailable": "در دسترس نیست",
+      "notRetained": "این هفته داده‌ای نیست",
+      "notRetainedSpan": "{{label}}: از {{start}} تا {{end}} داده‌ای نیست",
+      "countryWide": "در سطح کشور",
+      "source": {
+        "conflict": "درگیری‌ها",
+        "fires": "آتش‌سوزی‌ها",
+        "unrest": "ناآرامی‌ها",
+        "outages": "قطعی‌های اینترنت"
+      },
+      "live": {
+        "vessels": "ترافیک دریایی",
+        "militaryFlights": "پروازهای نظامی",
+        "gpsJamming": "پارازیت GPS"
+      },
+      "name": "خط زمانی",
+      "span": "{{days}} روز · {{hours}} ساعت آینده",
+      "daylightHere": "روشنایی روز در اینجا",
+      "row": {
+        "geo": "زمین‌ثابت",
+        "photo": "تصویر",
+        "likely": "محتمل",
+        "could": "ممکن",
+        "overhead": "عبور"
+      },
+      "retained": "{{start}} تا {{end}}",
+      "retainedDay": "فقط {{day}}",
+      "geoLine": "زمین‌ثابت‌های در دید: {{names}}",
+      "away": "{{km}} کیلومتر دورتر"
     }
   },
   "settings": {

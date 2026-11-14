@@ -5425,6 +5425,41 @@
       "dismiss": "Stäng",
       "passOutsideWindow": "Den länkade passagen ligger utanför det aktuella fönstret, så ingen passage är vald.",
       "passNotFound": "Den länkade passagen hittades inte bland de omräknade passagerna, så ingen passage är vald."
+    },
+    "timeline": {
+      "now": "nu",
+      "nowAt": "Nu: {{time}}",
+      "density": "Överflygningar {{label}}, {{start}} till {{end}}: {{count}}",
+      "daylight": "Dagsljus vid punkten från {{start}} till {{end}}",
+      "unavailable": "ej tillgänglig",
+      "notRetained": "inga data denna vecka",
+      "notRetainedSpan": "{{label}}: inga data från {{start}} till {{end}}",
+      "countryWide": "hela landet",
+      "source": {
+        "conflict": "Konflikter",
+        "fires": "Bränder",
+        "unrest": "Oroligheter",
+        "outages": "Internetavbrott"
+      },
+      "live": {
+        "vessels": "Fartygstrafik",
+        "militaryFlights": "Militära flygningar",
+        "gpsJamming": "GPS-störning"
+      },
+      "name": "Tidslinje",
+      "span": "{{days}} dagar · nästa {{hours}} h",
+      "daylightHere": "Dagsljus här",
+      "row": {
+        "geo": "Geo",
+        "photo": "Foto",
+        "likely": "Troligt",
+        "could": "Möjligt",
+        "overhead": "Överflygning"
+      },
+      "retained": "{{start}} till {{end}}",
+      "retainedDay": "endast {{day}}",
+      "geoLine": "Geostationära i sikte: {{names}}",
+      "away": "{{km}} km bort"
     }
   },
   "settings": {

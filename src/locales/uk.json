@@ -5491,6 +5491,41 @@
       "dismiss": "Закрити",
       "passOutsideWindow": "Проліт із посилання поза поточним вікном, тому жоден проліт не вибрано.",
       "passNotFound": "Проліт із посилання не знайдено серед перерахованих прольотів, тому жоден проліт не вибрано."
+    },
+    "timeline": {
+      "now": "зараз",
+      "nowAt": "Зараз: {{time}}",
+      "density": "Прольоти {{label}}, з {{start}} до {{end}}: {{count}}",
+      "daylight": "Світлий час у точці з {{start}} до {{end}}",
+      "unavailable": "недоступно",
+      "notRetained": "немає даних цього тижня",
+      "notRetainedSpan": "{{label}}: немає даних з {{start}} до {{end}}",
+      "countryWide": "по всій країні",
+      "source": {
+        "conflict": "Конфлікти",
+        "fires": "Пожежі",
+        "unrest": "Заворушення",
+        "outages": "Збої інтернету"
+      },
+      "live": {
+        "vessels": "Судноплавство",
+        "militaryFlights": "Військові рейси",
+        "gpsJamming": "Глушіння GPS"
+      },
+      "name": "Хронологія",
+      "span": "{{days}} днів · наступні {{hours}} год",
+      "daylightHere": "Світловий день тут",
+      "row": {
+        "geo": "Гео",
+        "photo": "Знімок",
+        "likely": "Ймовірно",
+        "could": "Можливо",
+        "overhead": "Проліт"
+      },
+      "retained": "з {{start}} до {{end}}",
+      "retainedDay": "лише {{day}}",
+      "geoLine": "Геостаціонарні в зоні видимості: {{names}}",
+      "away": "за {{km}} км"
     }
   },
   "settings": {

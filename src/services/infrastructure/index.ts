@@ -9,7 +9,7 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { ListInternetDdosAttacksResponse, ListInternetOutagesResponse, ListInternetTrafficAnomaliesResponse, ListServiceStatusesResponse, InternetOutage as ProtoOutage, ServiceStatus as ProtoServiceStatus } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { InternetOutage } from '@/types';
-import { createCircuitBreaker } from '@/utils/circuit-breaker';
+import { createCircuitBreaker, type BreakerDataState } from '@/utils/circuit-breaker';
 import { isFeatureAvailable } from '../runtime-config';
 import { getHydratedData } from '@/services/bootstrap';
 import { dataFreshness } from '@/services/data-freshness';
@@ -134,6 +134,10 @@ export async function fetchInternetOutages(): Promise<InternetOutage[]> {
   // across feature disablement so healthy empty cache can re-enable the layer.
   setOutagesConfigured(outagesSeen ? true : null);
   return [];
+}
+
+export function getOutagesDataState(): BreakerDataState {
+  return outageBreaker.getDataState();
 }
 
 export function getOutagesStatus(): string {

@@ -5425,6 +5425,41 @@
       "dismiss": "Sluiten",
       "passOutsideWindow": "De gelinkte overvlucht valt buiten het huidige venster, dus er is geen overvlucht geselecteerd.",
       "passNotFound": "De gelinkte overvlucht is niet gevonden in de opnieuw berekende overvluchten, dus er is geen overvlucht geselecteerd."
+    },
+    "timeline": {
+      "now": "nu",
+      "nowAt": "Nu: {{time}}",
+      "density": "Overkomsten {{label}}, {{start}} tot {{end}}: {{count}}",
+      "daylight": "Daglicht op het punt van {{start}} tot {{end}}",
+      "unavailable": "niet beschikbaar",
+      "notRetained": "deze week geen gegevens",
+      "notRetainedSpan": "{{label}}: geen gegevens van {{start}} tot {{end}}",
+      "countryWide": "landelijk",
+      "source": {
+        "conflict": "Conflicten",
+        "fires": "Branden",
+        "unrest": "Onrust",
+        "outages": "Internetstoringen"
+      },
+      "live": {
+        "vessels": "Scheepvaartverkeer",
+        "militaryFlights": "Militaire vluchten",
+        "gpsJamming": "GPS-storing"
+      },
+      "name": "Tijdlijn",
+      "span": "{{days}} dagen · komende {{hours}} u",
+      "daylightHere": "Daglicht hier",
+      "row": {
+        "geo": "Geo",
+        "photo": "Foto",
+        "likely": "Waarschijnlijk",
+        "could": "Mogelijk",
+        "overhead": "Overvlucht"
+      },
+      "retained": "{{start}} tot {{end}}",
+      "retainedDay": "alleen {{day}}",
+      "geoLine": "Geostationair in zicht: {{names}}",
+      "away": "{{km}} km verderop"
     }
   },
   "settings": {

@@ -5392,6 +5392,41 @@
       "dismiss": "닫기",
       "passOutsideWindow": "링크된 통과가 현재 기간을 벗어나 선택된 통과가 없습니다.",
       "passNotFound": "링크된 통과를 다시 계산한 통과 중에서 찾지 못해 선택된 통과가 없습니다."
+    },
+    "timeline": {
+      "now": "현재",
+      "nowAt": "현재: {{time}}",
+      "density": "{{label}} 통과, {{start}}~{{end}}: {{count}}",
+      "daylight": "지점의 낮 시간 {{start}}~{{end}}",
+      "unavailable": "사용 불가",
+      "notRetained": "이번 주 데이터 없음",
+      "notRetainedSpan": "{{label}}: {{start}}~{{end}} 데이터 없음",
+      "countryWide": "전국",
+      "source": {
+        "conflict": "분쟁",
+        "fires": "화재",
+        "unrest": "소요",
+        "outages": "인터넷 장애"
+      },
+      "live": {
+        "vessels": "선박 교통",
+        "militaryFlights": "군용기",
+        "gpsJamming": "GPS 교란"
+      },
+      "name": "타임라인",
+      "span": "{{days}}일 · 향후 {{hours}}시간",
+      "daylightHere": "이곳의 낮",
+      "row": {
+        "geo": "정지",
+        "photo": "촬영",
+        "likely": "유력",
+        "could": "가능",
+        "overhead": "통과"
+      },
+      "retained": "{{start}}~{{end}}",
+      "retainedDay": "{{day}}만",
+      "geoLine": "시야 내 정지궤도: {{names}}",
+      "away": "{{km}}km 거리"
     }
   },
   "settings": {

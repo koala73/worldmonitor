@@ -5491,6 +5491,41 @@
       "dismiss": "Zavřít",
       "passOutsideWindow": "Odkazovaný přelet je mimo aktuální okno, proto není vybrán žádný přelet.",
       "passNotFound": "Odkazovaný přelet nebyl mezi přepočtenými přelety nalezen, proto není vybrán žádný přelet."
+    },
+    "timeline": {
+      "now": "teď",
+      "nowAt": "Teď: {{time}}",
+      "density": "Přelety {{label}}, od {{start}} do {{end}}: {{count}}",
+      "daylight": "Denní světlo v bodě od {{start}} do {{end}}",
+      "unavailable": "nedostupné",
+      "notRetained": "tento týden žádná data",
+      "notRetainedSpan": "{{label}}: žádná data od {{start}} do {{end}}",
+      "countryWide": "celostátní",
+      "source": {
+        "conflict": "Konflikty",
+        "fires": "Požáry",
+        "unrest": "Nepokoje",
+        "outages": "Výpadky internetu"
+      },
+      "live": {
+        "vessels": "Lodní doprava",
+        "militaryFlights": "Vojenské lety",
+        "gpsJamming": "Rušení GPS"
+      },
+      "name": "Časová osa",
+      "span": "{{days}} dní · dalších {{hours}} h",
+      "daylightHere": "Denní světlo zde",
+      "row": {
+        "geo": "Geo",
+        "photo": "Snímek",
+        "likely": "Pravděp.",
+        "could": "Možná",
+        "overhead": "Přelet"
+      },
+      "retained": "{{start}} až {{end}}",
+      "retainedDay": "jen {{day}}",
+      "geoLine": "Geostacionární v dohledu: {{names}}",
+      "away": "{{km}} km odtud"
     }
   },
   "settings": {

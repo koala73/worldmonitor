@@ -5425,6 +5425,41 @@
       "dismiss": "Kapat",
       "passOutsideWindow": "Bağlantıdaki geçiş mevcut zaman aralığının dışında, bu yüzden hiçbir geçiş seçili değil.",
       "passNotFound": "Bağlantıdaki geçiş yeniden hesaplanan geçişler arasında bulunamadı, bu yüzden hiçbir geçiş seçili değil."
+    },
+    "timeline": {
+      "now": "şimdi",
+      "nowAt": "Şimdi: {{time}}",
+      "density": "{{label}} geçişleri, {{start}} ile {{end}} arası: {{count}}",
+      "daylight": "Noktada gün ışığı {{start}} ile {{end}} arası",
+      "unavailable": "kullanılamıyor",
+      "notRetained": "bu hafta veri yok",
+      "notRetainedSpan": "{{label}}: {{start}} ile {{end}} arasında veri yok",
+      "countryWide": "ülke genelinde",
+      "source": {
+        "conflict": "Çatışmalar",
+        "fires": "Yangınlar",
+        "unrest": "Huzursuzluk",
+        "outages": "İnternet kesintileri"
+      },
+      "live": {
+        "vessels": "Gemi trafiği",
+        "militaryFlights": "Askerî uçuşlar",
+        "gpsJamming": "GPS karıştırma"
+      },
+      "name": "Zaman çizelgesi",
+      "span": "{{days}} gün · sonraki {{hours}} sa",
+      "daylightHere": "Burada gün ışığı",
+      "row": {
+        "geo": "Yerdurağan",
+        "photo": "Görüntü",
+        "likely": "Olası",
+        "could": "Mümkün",
+        "overhead": "Geçiş"
+      },
+      "retained": "{{start}} – {{end}}",
+      "retainedDay": "yalnızca {{day}}",
+      "geoLine": "Görüş alanındaki yerdurağanlar: {{names}}",
+      "away": "{{km}} km uzakta"
     }
   },
   "settings": {

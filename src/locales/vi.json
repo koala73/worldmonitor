@@ -5392,6 +5392,41 @@
       "dismiss": "Đóng",
       "passOutsideWindow": "Lượt bay qua trong liên kết nằm ngoài khoảng thời gian hiện tại, nên không có lượt nào được chọn.",
       "passNotFound": "Không tìm thấy lượt bay qua trong liên kết giữa các lượt đã tính lại, nên không có lượt nào được chọn."
+    },
+    "timeline": {
+      "now": "bây giờ",
+      "nowAt": "Bây giờ: {{time}}",
+      "density": "Lượt bay qua {{label}}, từ {{start}} đến {{end}}: {{count}}",
+      "daylight": "Ánh sáng ban ngày tại điểm từ {{start}} đến {{end}}",
+      "unavailable": "không khả dụng",
+      "notRetained": "không có dữ liệu tuần này",
+      "notRetainedSpan": "{{label}}: không có dữ liệu từ {{start}} đến {{end}}",
+      "countryWide": "toàn quốc",
+      "source": {
+        "conflict": "Xung đột",
+        "fires": "Cháy",
+        "unrest": "Bất ổn",
+        "outages": "Sự cố internet"
+      },
+      "live": {
+        "vessels": "Giao thông hàng hải",
+        "militaryFlights": "Chuyến bay quân sự",
+        "gpsJamming": "Gây nhiễu GPS"
+      },
+      "name": "Dòng thời gian",
+      "span": "{{days}} ngày · {{hours}} giờ tới",
+      "daylightHere": "Ban ngày tại đây",
+      "row": {
+        "geo": "Địa tĩnh",
+        "photo": "Ảnh",
+        "likely": "Có thể",
+        "could": "Khả dĩ",
+        "overhead": "Bay qua"
+      },
+      "retained": "{{start}} đến {{end}}",
+      "retainedDay": "chỉ {{day}}",
+      "geoLine": "Vệ tinh địa tĩnh trong tầm nhìn: {{names}}",
+      "away": "cách {{km}} km"
     }
   },
   "settings": {

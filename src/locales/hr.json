@@ -5468,6 +5468,41 @@
       "dismiss": "Zatvori",
       "passOutsideWindow": "Povezani prelet izvan je trenutačnog prozora, pa nijedan prelet nije odabran.",
       "passNotFound": "Povezani prelet nije pronađen među ponovno izračunatim preletima, pa nijedan prelet nije odabran."
+    },
+    "timeline": {
+      "now": "sada",
+      "nowAt": "Sada: {{time}}",
+      "density": "Preleti {{label}}, od {{start}} do {{end}}: {{count}}",
+      "daylight": "Dnevno svjetlo u točki od {{start}} do {{end}}",
+      "unavailable": "nedostupno",
+      "notRetained": "ovaj tjedan nema podataka",
+      "notRetainedSpan": "{{label}}: nema podataka od {{start}} do {{end}}",
+      "countryWide": "na razini države",
+      "source": {
+        "conflict": "Sukobi",
+        "fires": "Požari",
+        "unrest": "Nemiri",
+        "outages": "Prekidi interneta"
+      },
+      "live": {
+        "vessels": "Pomorski promet",
+        "militaryFlights": "Vojni letovi",
+        "gpsJamming": "Ometanje GPS-a"
+      },
+      "name": "Vremenska crta",
+      "span": "{{days}} dana · sljedećih {{hours}} h",
+      "daylightHere": "Dnevno svjetlo ovdje",
+      "row": {
+        "geo": "Geo",
+        "photo": "Snimka",
+        "likely": "Vjerojatno",
+        "could": "Moguće",
+        "overhead": "Prelet"
+      },
+      "retained": "{{start}} do {{end}}",
+      "retainedDay": "samo {{day}}",
+      "geoLine": "Geostacionarni u vidokrugu: {{names}}",
+      "away": "{{km}} km dalje"
     }
   },
   "settings": {

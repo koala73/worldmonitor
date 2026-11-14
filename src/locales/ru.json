@@ -5491,6 +5491,41 @@
       "dismiss": "Закрыть",
       "passOutsideWindow": "Пролёт из ссылки вне текущего окна, поэтому ни один пролёт не выбран.",
       "passNotFound": "Пролёт из ссылки не найден среди пересчитанных пролётов, поэтому ни один пролёт не выбран."
+    },
+    "timeline": {
+      "now": "сейчас",
+      "nowAt": "Сейчас: {{time}}",
+      "density": "Пролёты {{label}}, с {{start}} до {{end}}: {{count}}",
+      "daylight": "Светлое время в точке с {{start}} до {{end}}",
+      "unavailable": "недоступно",
+      "notRetained": "нет данных за эту неделю",
+      "notRetainedSpan": "{{label}}: нет данных с {{start}} до {{end}}",
+      "countryWide": "по всей стране",
+      "source": {
+        "conflict": "Конфликты",
+        "fires": "Пожары",
+        "unrest": "Беспорядки",
+        "outages": "Сбои интернета"
+      },
+      "live": {
+        "vessels": "Судоходство",
+        "militaryFlights": "Военные рейсы",
+        "gpsJamming": "Подавление GPS"
+      },
+      "name": "Хронология",
+      "span": "{{days}} дней · следующие {{hours}} ч",
+      "daylightHere": "Светлое время здесь",
+      "row": {
+        "geo": "Гео",
+        "photo": "Снимок",
+        "likely": "Вероятно",
+        "could": "Возможно",
+        "overhead": "Пролёт"
+      },
+      "retained": "с {{start}} по {{end}}",
+      "retainedDay": "только {{day}}",
+      "geoLine": "Геостационарные в зоне видимости: {{names}}",
+      "away": "в {{km}} км"
     }
   },
   "settings": {

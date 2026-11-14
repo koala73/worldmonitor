@@ -5425,6 +5425,41 @@
       "dismiss": "Funga",
       "passOutsideWindow": "Mpito uliounganishwa uko nje ya kipindi cha sasa, kwa hivyo hakuna mpito uliochaguliwa.",
       "passNotFound": "Mpito uliounganishwa haukupatikana katika mipito iliyokokotolewa upya, kwa hivyo hakuna mpito uliochaguliwa."
+    },
+    "timeline": {
+      "now": "sasa",
+      "nowAt": "Sasa: {{time}}",
+      "density": "Mapito ya {{label}}, kuanzia {{start}} hadi {{end}}: {{count}}",
+      "daylight": "Mchana kwenye eneo kuanzia {{start}} hadi {{end}}",
+      "unavailable": "haipatikani",
+      "notRetained": "hakuna data wiki hii",
+      "notRetainedSpan": "{{label}}: hakuna data kuanzia {{start}} hadi {{end}}",
+      "countryWide": "nchi nzima",
+      "source": {
+        "conflict": "Migogoro",
+        "fires": "Moto",
+        "unrest": "Machafuko",
+        "outages": "Kukatika kwa intaneti"
+      },
+      "live": {
+        "vessels": "Trafiki ya meli",
+        "militaryFlights": "Safari za ndege za kijeshi",
+        "gpsJamming": "Uzuiaji wa GPS"
+      },
+      "name": "Ratiba ya wakati",
+      "span": "Siku {{days}} · saa {{hours}} zijazo",
+      "daylightHere": "Mchana hapa",
+      "row": {
+        "geo": "Geo",
+        "photo": "Picha",
+        "likely": "Huenda",
+        "could": "Inawezekana",
+        "overhead": "Kupita"
+      },
+      "retained": "{{start}} hadi {{end}}",
+      "retainedDay": "{{day}} pekee",
+      "geoLine": "Satelaiti tuli zinazoonekana: {{names}}",
+      "away": "km {{km}} mbali"
     }
   },
   "settings": {

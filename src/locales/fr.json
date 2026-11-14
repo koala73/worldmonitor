@@ -5458,6 +5458,41 @@
       "dismiss": "Fermer",
       "passOutsideWindow": "Le passage lié est hors de la fenêtre actuelle, aucun passage n'est donc sélectionné.",
       "passNotFound": "Le passage lié est introuvable parmi les passages recalculés, aucun passage n'est donc sélectionné."
+    },
+    "timeline": {
+      "now": "maintenant",
+      "nowAt": "Maintenant : {{time}}",
+      "density": "Passages {{label}}, de {{start}} à {{end}} : {{count}}",
+      "daylight": "Lumière du jour au point de {{start}} à {{end}}",
+      "unavailable": "indisponible",
+      "notRetained": "aucune donnée cette semaine",
+      "notRetainedSpan": "{{label}} : aucune donnée de {{start}} à {{end}}",
+      "countryWide": "à l'échelle du pays",
+      "source": {
+        "conflict": "Conflits",
+        "fires": "Incendies",
+        "unrest": "Troubles",
+        "outages": "Coupures d'internet"
+      },
+      "live": {
+        "vessels": "Trafic maritime",
+        "militaryFlights": "Vols militaires",
+        "gpsJamming": "Brouillage GPS"
+      },
+      "name": "Chronologie",
+      "span": "{{days}} jours · {{hours}} h à venir",
+      "daylightHere": "Lumière du jour ici",
+      "row": {
+        "geo": "Géo",
+        "photo": "Photo",
+        "likely": "Probable",
+        "could": "Possible",
+        "overhead": "Passage"
+      },
+      "retained": "{{start}} au {{end}}",
+      "retainedDay": "{{day}} seulement",
+      "geoLine": "Géostationnaires en vue : {{names}}",
+      "away": "à {{km}} km"
     }
   },
   "settings": {

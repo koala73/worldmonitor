@@ -42,7 +42,7 @@ function lookup(passes: PointPass[], catalog: PointPassLookup['catalog']['status
   return {
     point, window: { startMs: NOW - 30 * 24 * HOUR, endMs: NOW + 48 * HOUR }, nowMs: NOW,
     catalog: { status: catalog, fetchedAt: NOW - 3 * 24 * HOUR, inventoryVersion: 'test' },
-    passes, satellites: [], computedOn: 'worker',
+    passes, satellites: [], daylight: [], computedOn: 'worker',
   };
 }
 

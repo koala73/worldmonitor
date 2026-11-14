@@ -5491,6 +5491,41 @@
       "dismiss": "Zamknij",
       "passOutsideWindow": "Powiązany przelot jest poza bieżącym oknem, więc żaden przelot nie jest zaznaczony.",
       "passNotFound": "Powiązanego przelotu nie znaleziono wśród ponownie obliczonych przelotów, więc żaden przelot nie jest zaznaczony."
+    },
+    "timeline": {
+      "now": "teraz",
+      "nowAt": "Teraz: {{time}}",
+      "density": "Przeloty {{label}}, od {{start}} do {{end}}: {{count}}",
+      "daylight": "Światło dzienne w punkcie od {{start}} do {{end}}",
+      "unavailable": "niedostępne",
+      "notRetained": "brak danych w tym tygodniu",
+      "notRetainedSpan": "{{label}}: brak danych od {{start}} do {{end}}",
+      "countryWide": "w całym kraju",
+      "source": {
+        "conflict": "Konflikty",
+        "fires": "Pożary",
+        "unrest": "Niepokoje",
+        "outages": "Awarie internetu"
+      },
+      "live": {
+        "vessels": "Ruch statków",
+        "militaryFlights": "Loty wojskowe",
+        "gpsJamming": "Zakłócanie GPS"
+      },
+      "name": "Oś czasu",
+      "span": "{{days}} dni · następne {{hours}} h",
+      "daylightHere": "Światło dzienne tutaj",
+      "row": {
+        "geo": "Geo",
+        "photo": "Zdjęcie",
+        "likely": "Prawdop.",
+        "could": "Możliwe",
+        "overhead": "Przelot"
+      },
+      "retained": "{{start}} do {{end}}",
+      "retainedDay": "tylko {{day}}",
+      "geoLine": "Geostacjonarne w zasięgu: {{names}}",
+      "away": "{{km}} km stąd"
     }
   },
   "settings": {

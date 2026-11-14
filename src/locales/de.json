@@ -5425,6 +5425,41 @@
       "dismiss": "Schließen",
       "passOutsideWindow": "Der verlinkte Überflug liegt außerhalb des aktuellen Zeitfensters, daher ist kein Überflug ausgewählt.",
       "passNotFound": "Der verlinkte Überflug wurde in den neu berechneten Überflügen nicht gefunden, daher ist kein Überflug ausgewählt."
+    },
+    "timeline": {
+      "now": "jetzt",
+      "nowAt": "Jetzt: {{time}}",
+      "density": "Überflüge {{label}}, {{start}} bis {{end}}: {{count}}",
+      "daylight": "Tageslicht am Punkt von {{start}} bis {{end}}",
+      "unavailable": "nicht verfügbar",
+      "notRetained": "diese Woche keine Daten",
+      "notRetainedSpan": "{{label}}: keine Daten von {{start}} bis {{end}}",
+      "countryWide": "landesweit",
+      "source": {
+        "conflict": "Konflikte",
+        "fires": "Brände",
+        "unrest": "Unruhen",
+        "outages": "Internetausfälle"
+      },
+      "live": {
+        "vessels": "Schiffsverkehr",
+        "militaryFlights": "Militärflüge",
+        "gpsJamming": "GPS-Störungen"
+      },
+      "name": "Zeitachse",
+      "span": "{{days}} Tage · nächste {{hours}} Std.",
+      "daylightHere": "Tageslicht hier",
+      "row": {
+        "geo": "Geo",
+        "photo": "Foto",
+        "likely": "Wahrsch.",
+        "could": "Möglich",
+        "overhead": "Überflug"
+      },
+      "retained": "{{start}} bis {{end}}",
+      "retainedDay": "nur {{day}}",
+      "geoLine": "Geostationär in Sicht: {{names}}",
+      "away": "{{km}} km entfernt"
     }
   },
   "settings": {
