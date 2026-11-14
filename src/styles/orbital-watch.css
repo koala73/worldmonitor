@@ -119,6 +119,7 @@
 @media (max-width: 768px) {
   .ies-panel {
     top: auto;
+    bottom: var(--wm-bottom-base, 0px);
     left: 0;
     width: 100%;
     border-left: none;
@@ -129,7 +130,7 @@
   }
   .imagery-evidence-sheet[data-height="collapsed"] .ies-panel { height: 34vh; }
   .imagery-evidence-sheet[data-height="half"] .ies-panel { height: 55vh; }
-  .imagery-evidence-sheet[data-height="full"] .ies-panel { height: calc(100vh - 40px); }
+  .imagery-evidence-sheet[data-height="full"] .ies-panel { height: calc(100vh - 40px - var(--wm-bottom-base, 0px)); }
   .ies-handle {
     display: block;
     align-self: center;
