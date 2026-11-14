@@ -23,6 +23,13 @@ const perSourceNames = Object.keys(SEED_META)
 test('the bundle runs the Global-Tenders section once a day', () => {
   const line = read('scripts/seed-bundle-relay-backup.mjs').split('\n').find((l) => l.includes("label: 'Global-Tenders'"));
   assert.match(line, /intervalMs: DAY,/);
+  // A missing canonical snapshot (for example the 3h-TTL snapshot left by the hourly
+  // build) makes the section due at once instead of waiting out the daily interval.
+  assert.match(line, /requireCanonical: true,/);
+});
+
+test('the seeder declares the same staleness budget as health', () => {
+  assert.match(read('scripts/seed-global-tenders.mjs'), /\n {4}maxStaleMin: 4320,\n/);
 });
 
 test('health allows three missed daily runs for the aggregate and every source', () => {

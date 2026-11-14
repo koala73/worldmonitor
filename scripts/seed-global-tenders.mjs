@@ -515,7 +515,8 @@ export async function main({ adapters, now } = {}) {
     declareRecords,
     sourceVersion: 'global-tenders-22-sources-v5',
     schemaVersion: 1,
-    maxStaleMin: 180,
+    // Daily bundle member; matches api/health.js globalTenders (3 missed runs).
+    maxStaleMin: 4320,
     zeroIsValid: true,
     contentMeta,
     maxContentAgeMin: 14 * 24 * 60,

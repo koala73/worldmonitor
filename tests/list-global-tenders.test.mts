@@ -169,3 +169,28 @@ test('new provider records pass through the canonical snapshot and existing coun
   assert.equal(sourceHealthMeta(failed.sourceStatuses[0]).fetchedAt, now);
   assert.equal(sourceHealthMeta(failed.sourceStatuses[0]).sourceState, 'error');
 });
+
+test('notices whose deadline passed since the last daily run leave the feed at read time', () => {
+  const fetchedAt = Date.parse('2026-07-13T08:00:00Z');
+  const snapshot = {
+    fetchedAt, dataAvailable: true, availability: 'available',
+    tenders: [
+      tender('closed', { deadline: '2026-07-13T10:00:00.000Z' }),
+      tender('closing-now', { deadline: '2026-07-13T12:00:00.000Z' }),
+      tender('open', { deadline: '2026-07-20T00:00:00.000Z' }),
+      tender('no-deadline', { deadline: '' }),
+    ],
+    sourceStatuses: [],
+  };
+  const now = Date.parse('2026-07-13T12:00:00Z');
+  const served = applySnapshotFreshness(snapshot, now);
+  assert.deepEqual(served.tenders?.map((item) => item.id), ['open', 'no-deadline']);
+  assert.equal(served.availability, 'available', 'dropping closed notices does not make a fresh snapshot stale');
+  assert.equal(snapshot.tenders.length, 4, 'the cached snapshot is not mutated');
+  const page = filterAndPaginateTenders(served.tenders || [], {
+    country: '', countries: [], region: '', source: '', status: '', deadlineFrom: '', deadlineTo: '', minValue: 0, maxValue: 0,
+    currency: '', category: '', query: '', pageSize: 25, cursor: '', sort: 'closing_soon', buyer: '', publishedFrom: '', publishedTo: '',
+    minAutomationScore: 0,
+  } as Parameters<typeof filterAndPaginateTenders>[1]);
+  assert.equal(page.total, 2);
+});
