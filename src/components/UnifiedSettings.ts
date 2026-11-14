@@ -67,7 +67,7 @@ import {
   onEntitlementVerificationChange,
 } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
-import { getSubscription, isSubscriptionLoaded, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
+import { getSubscription, isSubscriptionLoaded, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab, type SubscriptionInfo } from '@/services/billing';
 import { BusinessSeatsSection } from '@/components/BusinessSeatsSection';
 import { EnterpriseSeatsSection } from '@/components/EnterpriseSeatsSection';
 import {
@@ -1249,6 +1249,14 @@ export class UnifiedSettings {
   private readonly onTranslationsLoaded = (): void => {
     this.renderHome();
     replaceRawI18nKeyPlaceholders(this.overlay, t);
+    const statusLine = this.overlay.querySelector('.upgrade-pro-status-line');
+    if (statusLine) statusLine.textContent = this.planStatusLine(getSubscription());
+    // The deletion dialog sits on document.body, outside the overlay.
+    if (this.deletionDialog) {
+      replaceRawI18nKeyPlaceholders(this.deletionDialog, t);
+      const label = this.deletionDialog.querySelector('.account-deletion-dialog-label');
+      if (label) label.textContent = t('settings.account.deletion.phraseLabel', { phrase: DELETION_PHRASE });
+    }
   };
 
   /**
@@ -1640,36 +1648,8 @@ export class UnifiedSettings {
         ? 'active'
         : getSubscriptionStatusTone(sub, now);
 
-      let statusLine = '';
-      if (sub?.currentPeriodEnd) {
-        const dateStr = new Date(sub.currentPeriodEnd).toLocaleDateString();
-        if (sub.status === 'active') {
-          statusLine = sub.cancelAtPeriodEnd
-            ? t('settings.account.status.cancelScheduled', { date: dateStr })
-            : t('settings.account.status.renews', { date: dateStr });
-        } else if (sub.status === 'on_hold') {
-          statusLine = t('settings.account.status.onHold');
-        } else if (sub.status === 'cancelled') {
-          statusLine = t('settings.account.status.cancelled', { date: dateStr });
-        } else if (sub.status === 'expired') {
-          statusLine = t('settings.account.status.expired');
-        } else {
-          // A status this client does not model yet. We are inside the
-          // isEntitled() branch, so access is working — say only that, and
-          // point at the billing portal rather than leaving the `unknown`
-          // tone as a bare grey dot with no sentence at all.
-          statusLine = t('settings.account.status.unknown');
-        }
-      }
-
-      // An invitee holding a Business Pro grant has Pro features but no own
-      // subscription row — they hold a grant, not a subscription, so the
-      // billing surface remains owner-only. Show their plan status without
-      // the Manage Billing CTA that would 404 against Dodo.
       const hasOwnSubscription = sub !== null;
-      if (!hasOwnSubscription) {
-        statusLine = t('settings.account.status.ownerManaged');
-      }
+      const statusLine = this.planStatusLine(sub);
 
       return `
         <div class="upgrade-pro-section upgrade-pro-active" data-billing-tone="${tone}">
@@ -1728,6 +1708,31 @@ export class UnifiedSettings {
     input.disabled = this.deletionBusy;
     const error = overlay.querySelector('[data-deletion-error]');
     if (error) error.textContent = this.deletionError;
+  }
+
+  /**
+   * The plan status sentence under the plan name. The catalogue-load handler
+   * redraws it too, because the raw-key healer cannot restore its date.
+   */
+  private planStatusLine(sub: SubscriptionInfo | null): string {
+    // An invitee holding a Business Pro grant has Pro features but no own
+    // subscription row: they hold a grant, so the billing surface stays
+    // owner-only and the Manage Billing CTA (a Dodo 404) is not shown.
+    if (sub === null) return t('settings.account.status.ownerManaged');
+    if (!sub.currentPeriodEnd) return '';
+    const dateStr = new Date(sub.currentPeriodEnd).toLocaleDateString();
+    if (sub.status === 'active') {
+      return sub.cancelAtPeriodEnd
+        ? t('settings.account.status.cancelScheduled', { date: dateStr })
+        : t('settings.account.status.renews', { date: dateStr });
+    }
+    if (sub.status === 'on_hold') return t('settings.account.status.onHold');
+    if (sub.status === 'cancelled') return t('settings.account.status.cancelled', { date: dateStr });
+    if (sub.status === 'expired') return t('settings.account.status.expired');
+    // A status this client does not model yet. Callers are inside the
+    // isEntitled() branch, so access is working: say only that, and point at
+    // the billing portal instead of leaving the `unknown` tone as a bare dot.
+    return t('settings.account.status.unknown');
   }
 
   private openDeletionDialog(): void {

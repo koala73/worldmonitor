@@ -318,6 +318,28 @@ describe('UnifiedSettings opened before the full English catalogue loads', () =>
     expect(page.querySelector('.billing-settings-intro h3')?.textContent?.trim()).toBe('Plan & billing');
     expect(page.querySelector('.billing-settings-intro p')?.textContent?.trim()).toBe(en.settings.account.intro);
   });
+
+  it('restores the dated plan status and an open deletion dialog once the catalogue arrives', async () => {
+    const { I18N_RESOURCES_LOADED_EVENT } = await import('@/services/i18n');
+    settings.open('account');
+    const page = document.querySelector<HTMLElement>('[data-settings-page="account"]')!;
+    page.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
+    const dialog = document.querySelector<HTMLElement>('.account-deletion-dialog')!;
+    const phrase = dialog.querySelector<HTMLInputElement>('[data-deletion-phrase]')!;
+    phrase.value = 'DEL';
+    expect(rawKeysIn(dialog).length).toBeGreaterThan(0);
+
+    i18next.addResourceBundle('en', 'translation', en as Record<string, unknown>, true, true);
+    window.dispatchEvent(new CustomEvent(I18N_RESOURCES_LOADED_EVENT, { detail: { language: 'en' } }));
+
+    const renewsOn = new Date(mockSubscription!.currentPeriodEnd!).toLocaleDateString();
+    expect(page.querySelector('.upgrade-pro-status-line')?.textContent?.trim())
+      .toBe(en.settings.account.status.renews.replace('{{date}}', renewsOn));
+    expect(rawKeysIn(dialog)).toEqual([]);
+    expect(dialog.querySelector('label')?.textContent).toBe(en.settings.account.deletion.phraseLabel.replace('{{phrase}}', 'DELETE'));
+    expect(document.querySelector('.account-deletion-dialog')).toBe(dialog);
+    expect(phrase.value).toBe('DEL');
+  });
 });
 
 describe('UnifiedSettings sign out', () => {
