@@ -10761,6 +10761,65 @@ a.prediction-link:hover {
   text-decoration: underline;
 }
 
+/* Satellite imagery row of map-object popups (Orbital Watch, #10713). */
+.popup-imagery {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+.popup-imagery-status {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
+}
+
+.popup-imagery-frame {
+  aspect-ratio: 1;
+  max-width: 180px;
+  margin: 6px 0;
+  background: var(--overlay-subtle, var(--panel-bg));
+  border: 1px solid var(--border);
+}
+
+.popup-imagery-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.popup-imagery-stats {
+  margin-bottom: 6px;
+}
+
+.popup-imagery-source {
+  display: block;
+  color: var(--text-muted);
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+}
+
+.popup-stat.popup-imagery-stale .stat-value {
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
+}
+
+.popup-imagery-open {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  background: var(--green);
+  border: 1px solid var(--green);
+  color: #0a0a0a;
+  font-weight: bold;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.popup-imagery-open:hover,
+.popup-imagery-open:focus-visible {
+  filter: brightness(1.1);
+}
+
 button.popup-link {
   background: none;
   border: 0;

@@ -170,6 +170,35 @@ export interface ConfirmedChangeFlag {
   updatedAt: number;
 }
 
+export interface GetWatchedSiteImageryRequest {
+  siteId: string;
+}
+
+export interface GetWatchedSiteImageryResponse {
+  siteId: string;
+  name: string;
+  lat: number;
+  lon: number;
+  evaluatedAt: number;
+  stale: boolean;
+  latestImage?: SiteImage;
+  nextPass?: SitePass;
+}
+
+export interface SiteImage {
+  itemId: string;
+  collection: string;
+  profileId: string;
+  datetime: string;
+  cloudCoverPct?: number;
+}
+
+export interface SitePass {
+  satellite: string;
+  profileId: string;
+  time: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -290,6 +319,31 @@ export class OrbitalServiceClient {
     }
 
     return await resp.json() as GetCountryImageryEvidenceResponse;
+  }
+
+  async getWatchedSiteImagery(req: GetWatchedSiteImageryRequest, options?: OrbitalServiceCallOptions): Promise<GetWatchedSiteImageryResponse> {
+    let path = "/api/orbital/v1/get-watched-site-imagery";
+    const params = new URLSearchParams();
+    if (req.siteId != null && req.siteId !== "") params.set("site_id", String(req.siteId));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetWatchedSiteImageryResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

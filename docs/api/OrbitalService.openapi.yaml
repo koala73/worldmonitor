@@ -420,6 +420,130 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/orbital/v1/get-watched-site-imagery:
+        get:
+            tags:
+                - OrbitalService
+            summary: GetWatchedSiteImagery
+            description: GetWatchedSiteImagery returns one watched site's newest image and next imaging pass, looked up by the site's registry id so no point is sent.
+            operationId: GetWatchedSiteImagery
+            parameters:
+                - name: site_id
+                  in: query
+                  description: Watched-site id from the registry, "<list>:<entry id>", e.g. "port:jebel_ali". Never a coordinate.
+                  required: false
+                  example: "example-id"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "evaluatedAt": 1717200000000
+                                "lat": 40.7128
+                                "latestImage":
+                                    "cloudCoverPct": 1.5
+                                    "collection": "example"
+                                    "datetime": "2026-01-15"
+                                    "itemId": "example-id"
+                                    "profileId": "example-id"
+                                "lon": -74.006
+                                "name": "WorldMonitor Analyst"
+                            schema:
+                                $ref: '#/components/schemas/GetWatchedSiteImageryResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
     securitySchemes:
         WorldMonitorKey:
@@ -1032,3 +1156,69 @@ components:
                     format: int64
                     description: 'When the flag record last changed, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: ConfirmedChangeFlag is a change in radar statistics at a site that a second comparable scene confirmed.
+        GetWatchedSiteImageryRequest:
+            type: object
+            properties:
+                siteId:
+                    type: string
+                    description: Watched-site id from the registry, "<list>:<entry id>", e.g. "port:jebel_ali". Never a coordinate.
+            description: GetWatchedSiteImageryRequest names one watched site by its registry id.
+        GetWatchedSiteImageryResponse:
+            type: object
+            properties:
+                siteId:
+                    type: string
+                name:
+                    type: string
+                lat:
+                    type: number
+                    format: double
+                    description: The registry's site coordinates, which are public; never a user's point.
+                lon:
+                    type: number
+                    format: double
+                evaluatedAt:
+                    type: integer
+                    format: int64
+                    description: 'When the site was last evaluated, as Unix epoch milliseconds; 0 when it has no record.. Warning: Values > 2^53 may lose precision in JavaScript'
+                stale:
+                    type: boolean
+                    description: True when the record is missing or older than its freshness limit; latest_image and next_pass are then absent.
+                latestImage:
+                    $ref: '#/components/schemas/SiteImage'
+                nextPass:
+                    $ref: '#/components/schemas/SitePass'
+            description: |-
+                GetWatchedSiteImageryResponse is the public imagery summary of one watched site: its newest image and next pass.
+                 It carries no change flag, coverage or pass history; those stay on the Pro surfaces.
+        SiteImage:
+            type: object
+            properties:
+                itemId:
+                    type: string
+                collection:
+                    type: string
+                    description: STAC collection the scene is in, e.g. "sentinel-2-l2a".
+                profileId:
+                    type: string
+                    description: 'Sensor profile: sentinel-2, sentinel-1 or landsat.'
+                datetime:
+                    type: string
+                    description: Scene time, ISO 8601 UTC.
+                cloudCoverPct:
+                    type: number
+                    format: double
+                    description: Scene-wide cloud cover in percent; absent for radar or when the archive gives none.
+            description: SiteImage is the newest archive scene of a watched site.
+        SitePass:
+            type: object
+            properties:
+                satellite:
+                    type: string
+                    description: Satellite name, e.g. "SENTINEL-2A".
+                profileId:
+                    type: string
+                time:
+                    type: string
+                    description: Pass time, ISO 8601 UTC.
+            description: SitePass is the next pass expected to image a watched site.

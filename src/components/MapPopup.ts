@@ -15,6 +15,8 @@ import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { assessCorroboration, corroborationLabelHtml, evidenceFromItem } from '@/utils/corroboration-flag';
 import { isMobileDevice, getCSSColor } from '@/utils';
 import { TransitChart } from '@/utils/transit-chart';
+import { hasImageryRow, imageryTargetFor, mountImageryRow, renderImageryRow } from './map-popup-imagery';
+import { ORBITAL_EVIDENCE_EVENT } from '@/services/orbital/object-imagery';
 import { HS2RingChart } from '@/utils/hs2-ring-chart';
 import type { GetChokepointStatusResponse, TransitDayCount } from '@/services/supply-chain';
 import { fetchChokepointHistory } from '@/services/supply-chain';
@@ -317,6 +319,30 @@ export class MapPopup {
     this.chokepointData = data;
   }
 
+  /** Satellite imagery row (#10713 unit 1); kept out of the per-type renderers so they stay untouched. */
+  private disposeImagery: (() => void) | null = null;
+
+  private mountImagery(data: PopupData): void {
+    const target = imageryTargetFor(data.type, data.data);
+    const popup = this.popup;
+    if (!target || !popup) return;
+    const host = popup.querySelector<HTMLElement>('.popup-body') ?? popup;
+    const holder = document.createElement('div');
+    setTrustedHtml(holder, trustedHtml(renderImageryRow(), 'static locale strings'));
+    const row = holder.firstElementChild as HTMLElement | null;
+    if (!row) return;
+    host.appendChild(row);
+    this.disposeImagery = mountImageryRow(row, target, {
+      onLayout: () => {
+        if (this.popup === popup && !this.isMobileSheet) this.clampPopupToViewport();
+      },
+      onOpenEvidence: (picked) => {
+        this.hide();
+        window.dispatchEvent(new CustomEvent(ORBITAL_EVIDENCE_EVENT, { detail: picked.point }));
+      },
+    });
+  }
+
   public show(data: PopupData): void {
     this.hide('replacement');
 
@@ -325,6 +351,7 @@ export class MapPopup {
     this.popup.className = this.isMobileSheet ? 'map-popup map-popup-sheet' : 'map-popup';
 
     const content = this.renderContent(data);
+    const imageryRow = hasImageryRow(data.type, data.data);
     setTrustedHtml(this.popup, trustedHtml(this.isMobileSheet
       ? `<button class="map-popup-sheet-handle" aria-label="${t('common.close')}"></button>${content}`
       : content, "legacy direct innerHTML migration"));
@@ -339,6 +366,8 @@ export class MapPopup {
     } else {
       this.positionDesktopPopup(data, containerRect);
     }
+
+    if (imageryRow) this.mountImagery(data);
 
     // Append to body to avoid container overflow clipping
     document.body.appendChild(this.popup);
@@ -804,6 +833,8 @@ export class MapPopup {
   public hide(origin: OverlayCloseOrigin = 'control'): void {
     this.transitChart?.destroy();
     this.transitChart = null;
+    this.disposeImagery?.();
+    this.disposeImagery = null;
 
     this.mapPopupHistoryOpen?.cancel();
     this.mapPopupHistoryOpen = null;

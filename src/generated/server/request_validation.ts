@@ -2,7 +2,7 @@
 // Source: proto/worldmonitor/**/*.proto buf.validate annotations.
 
 export const GENERATED_PROTO_VALIDATION_RULE_COUNT = 739;
-export const GENERATED_REQUEST_METHOD_COUNT = 197;
+export const GENERATED_REQUEST_METHOD_COUNT = 198;
 
 export const GENERATED_REQUEST_TYPES = {
   "analyzeStock": "worldmonitor.market.v1.AnalyzeStockRequest",
@@ -108,6 +108,7 @@ export const GENERATED_REQUEST_TYPES = {
   "getUSNIFleetReport": "worldmonitor.military.v1.GetUSNIFleetReportRequest",
   "getUsTreasuryParYieldCurve": "worldmonitor.economic.v1.GetUsTreasuryParYieldCurveRequest",
   "getVesselSnapshot": "worldmonitor.maritime.v1.GetVesselSnapshotRequest",
+  "getWatchedSiteImagery": "worldmonitor.orbital.v1.GetWatchedSiteImageryRequest",
   "getWebcamImage": "worldmonitor.webcam.v1.GetWebcamImageRequest",
   "getWingbitsLiveFlight": "worldmonitor.military.v1.GetWingbitsLiveFlightRequest",
   "getWorldCpiMonthly": "worldmonitor.economic.v1.GetWorldCpiMonthlyRequest",
@@ -2570,6 +2571,14 @@ export const GENERATED_MESSAGE_RULES = {
         "kind": "double",
         "numberGte": -180,
         "numberLte": 180
+      }
+    }
+  },
+  "worldmonitor.orbital.v1.GetWatchedSiteImageryRequest": {
+    "fields": {
+      "siteId": {
+        "kind": "string",
+        "stringMaxBytes": 65536
       }
     }
   },
