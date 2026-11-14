@@ -376,7 +376,22 @@ function isLoopbackHttp(u) {
 export function clientAllowsRedirectUri(client, redirectUri) {
   if (!client || typeof redirectUri !== 'string') return false;
   const uris = Array.isArray(client.redirect_uris) ? client.redirect_uris : [];
-  if (!client.cimd) return uris.includes(redirectUri);
+  if (!client.cimd) {
+    if (!uris.includes(redirectUri)) return false;
+    // Registration refuses a fragment or credentials (isAllowedRedirectUri in
+    // ./_redirect-uri.js), but a client registered before it did still has one
+    // stored, and api/oauth/authorize.js reaches this branch with nothing else
+    // between it and the redirect. Re-check the same three components the CIMD
+    // branch below refuses, so the authorization endpoint fails closed rather
+    // than relying on what registration happened to accept at the time.
+    // RFC 6749 §3.1.2: a redirection endpoint URI MUST NOT carry a fragment.
+    // Every registered value is parseable — the hosted allowlist entries are
+    // absolute URLs and the loopback branch parses before admitting — so an
+    // unparseable one is corrupt state, not a shape to honour.
+    let u;
+    try { u = new URL(redirectUri); } catch { return false; }
+    return !u.username && !u.password && !u.hash;
+  }
 
   if (encoder.encode(redirectUri).byteLength > MAX_REDIRECT_URI_BYTES) return false;
   const entry = trustedEntry(client.client_id);
