@@ -516,6 +516,8 @@ interface ThumbSpec {
   sensor: string;
   view: ViewableImage;
   fallbacks?: string[];
+  /** The caption of each fallback frame, in the same order. */
+  fallbackCaptions?: string[];
   noDataAt?: CropPosition;
   /** Radar backscatter, drawn in greyscale so it never reads as a photo. */
   radar?: boolean;
@@ -537,25 +539,29 @@ function thumbSpecs(confirmed: MatchedAcquisition[], latest: MatchedAcquisition 
   for (const mosaic of evidence?.mosaics ?? []) {
     const [newest, ...earlier] = mosaicDays(mosaic);
     if (!newest) continue;
+    const mosaicCaption = (date: string) => `${mosaic.source.toUpperCase()} · ${formatOrbitalTime(Date.parse(date), 'date')} · ${t('orbitalWatch.sheet.dailyMosaic')}`;
     specs.push({
       key: `mosaic:${mosaic.layer}`,
       url: newest.imageUrl,
-      caption: `${mosaic.source.toUpperCase()} · ${formatOrbitalTime(Date.parse(newest.date), 'date')} · ${t('orbitalWatch.sheet.dailyMosaic')}`,
+      caption: mosaicCaption(newest.date),
       sensor: mosaic.source.toUpperCase(),
       view: { kind: 'mosaic', key: mosaic.layer },
       fallbacks: earlier.map((day) => day.imageUrl),
+      fallbackCaptions: earlier.map((day) => mosaicCaption(day.date)),
       noDataAt: mosaic.pointInCrop ?? CROP_CENTRE,
     });
   }
   for (const frame of evidence?.frames ?? []) {
     if (!frame.latest?.imageUrl) continue;
+    const frameCaption = (time: string) => `${frame.source.toUpperCase()} · ${formatStamp(Date.parse(time))} · ${t('orbitalWatch.sheet.weatherFrame')}`;
     specs.push({
       key: `frame:${frame.layer}`,
       url: frame.latest.imageUrl,
-      caption: `${frame.source.toUpperCase()} · ${formatStamp(Date.parse(frame.latest.time))} · ${t('orbitalWatch.sheet.weatherFrame')}`,
+      caption: frameCaption(frame.latest.time),
       sensor: frame.source.toUpperCase(),
       view: { kind: 'frame', key: frame.layer },
       fallbacks: frame.latest.fallbacks.map((earlier) => earlier.imageUrl),
+      fallbackCaptions: frame.latest.fallbacks.map((earlier) => frameCaption(earlier.time)),
     });
   }
   return specs;
@@ -941,8 +947,16 @@ export class OrbitalWatchPage {
     return h('ul', { className: 'ies-thumbs', 'aria-label': t('orbitalWatch.sheet.moreImages') },
       ...specs.map((spec) => {
         const caption = h('span', { className: 'ies-thumb-caption' }, spec.caption);
+        const captions = [spec.caption, ...(spec.fallbackCaptions ?? [])];
+        // An earlier frame stands in for a missing one, so its date replaces the newest one's everywhere it is named.
+        const show = (index: number) => {
+          const label = captions[index] ?? spec.caption;
+          caption.textContent = label;
+          tile.querySelector('img')?.setAttribute('alt', label);
+          tile.querySelector('.ow-view-image')?.setAttribute('aria-label', t('orbitalWatch.viewer.open', { image: label }));
+        };
         const fallbacks = spec.fallbacks?.length || spec.noDataAt
-          ? { urls: spec.fallbacks ?? [], show: () => {}, noDataAt: spec.noDataAt }
+          ? { urls: spec.fallbacks ?? [], show, noDataAt: spec.noDataAt }
           : null;
         const tile = imageTile(spec.url, spec.caption, spec.sensor, 'thumb', [viewButton(spec.view, spec.caption)], fallbacks);
         tile.classList.toggle('is-radar', !!spec.radar);

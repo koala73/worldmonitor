@@ -257,6 +257,20 @@ describe('imagery evidence sheet', () => {
     expect(fetched).toHaveLength(2);
   });
 
+  it('names the earlier day a mosaic thumbnail falls back to in its caption, alt text and view label', async () => {
+    const { all, confirmedNew, likely } = tiered();
+    const twoDays = { ...modis, layer: 'fallback-layer', days: [{ date: '2026-11-12', imageUrl: 'https://gibs.earthdata.nasa.gov/fb-new.jpg' }, { date: '2026-11-11', imageUrl: 'https://gibs.earthdata.nasa.gov/fb-old.jpg' }] } as OrbitalEvidence['mosaics'][number];
+    failing.add('https://gibs.earthdata.nasa.gov/fb-new.jpg');
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew), acquisition(likely)], mosaics: [twoDays] }));
+    await settle();
+    const thumb = sheet().querySelector<HTMLElement>('[data-key="mosaic:fallback-layer"]')!;
+    const caption = thumb.querySelector('.ies-thumb-caption')!.textContent!;
+    expect(caption).toMatch(/Nov 11/);
+    expect(caption).not.toMatch(/Nov 12/);
+    expect(thumb.querySelector('img')!.getAttribute('alt')).toBe(caption);
+    expect(thumb.querySelector('.ow-view-image')!.getAttribute('aria-label')).toContain(caption);
+  });
+
   it('paints point-bearing images only from blob: URLs and releases them when the lookup ends', async () => {
     const { all, confirmedNew, likely } = tiered();
     const state = answered(all, { acquisitions: [acquisition(confirmedNew), acquisition(likely)], mosaics: [modis], frames: [meteosat] });
