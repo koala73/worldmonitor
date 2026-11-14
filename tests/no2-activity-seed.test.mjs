@@ -18,6 +18,7 @@ import {
   parseStatisticsResponse,
   pendingRecord,
   publishNo2Atomically,
+  PUBLISH_NO2_ACTIVITY_LUA,
   refreshRange,
   regionResult,
   summarizeWindow,
@@ -265,7 +266,7 @@ describe('NO2 atomic publication', () => {
     await publishNo2Atomically({}, { canonicalKey: 'economic:no2-activity:v1', payload: '{}', ttlSeconds: 604800 }, { url: 'https://redis.test', token: 'test' });
     assert.equal(commands.length, 1);
     assert.equal(commands[0][0], 'EVAL');
-    assert.match(commands[0][1], /SET.*KEYS\[1\].*EX.*SET.*KEYS\[2\]/);
+    assert.equal(commands[0][1], PUBLISH_NO2_ACTIVITY_LUA, 'must send the exact script the redis-rest proxy pins');
     assert.deepEqual(commands[0].slice(2), [2, 'economic:no2-activity:v1', NO2_ACTIVITY_ACTIVATION_KEY, '{}', 604800]);
   });
 
