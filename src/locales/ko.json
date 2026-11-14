@@ -4330,7 +4330,6 @@
     "dataAndCommunity": "데이터 및 커뮤니티",
     "theme": "테마",
     "themeDesc": "자동으로 시스템 설정을 따릅니다.",
-    "themeAuto": "자동 (시스템 따르기)",
     "themeDark": "다크",
     "themeLight": "라이트",
     "mapProvider": "지도 타일 제공자",
@@ -5124,6 +5123,9 @@
       "about": "사이트 링크, 약관 및 개인정보보호정책"
     },
     "signOut": "로그아웃",
-    "signOutFailed": "로그아웃할 수 없습니다. 다시 시도하세요."
+    "signOutFailed": "로그아웃할 수 없습니다. 다시 시도하세요.",
+    "search": {
+      "empty": "일치하는 설정이 없습니다"
+    }
   }
 }

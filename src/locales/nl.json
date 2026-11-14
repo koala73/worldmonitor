@@ -4352,7 +4352,6 @@
     "dataAndCommunity": "Data & community",
     "theme": "Thema",
     "themeDesc": "Automatisch volgt systeemvoorkeur.",
-    "themeAuto": "Automatisch (systeem volgen)",
     "themeDark": "Donker",
     "themeLight": "Licht",
     "mapProvider": "Kaarttegel-provider",
@@ -5152,6 +5151,9 @@
       "about": "Sitelinks, voorwaarden en privacy"
     },
     "signOut": "Afmelden",
-    "signOutFailed": "Afmelden mislukt. Probeer opnieuw."
+    "signOutFailed": "Afmelden mislukt. Probeer opnieuw.",
+    "search": {
+      "empty": "Geen instellingen gevonden"
+    }
   }
 }

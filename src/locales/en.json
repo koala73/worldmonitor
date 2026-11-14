@@ -4500,7 +4500,6 @@
     "dataAndCommunity": "Data & Community",
     "theme": "Theme",
     "themeDesc": "Auto follows your system preference.",
-    "themeAuto": "Auto (follow system)",
     "themeDark": "Dark",
     "themeLight": "Light",
     "mapProvider": "Map Tile Provider",
@@ -5151,6 +5150,9 @@
       "embeds": "Widgets for your own site",
       "aiAgents": "Connected MCP clients",
       "about": "Site links, terms and privacy"
+    },
+    "search": {
+      "empty": "No settings match"
     }
   }
 }

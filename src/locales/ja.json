@@ -4330,7 +4330,6 @@
     "dataAndCommunity": "データとコミュニティ",
     "theme": "テーマ",
     "themeDesc": "自動でシステム設定に従います。",
-    "themeAuto": "自動（システムに従う）",
     "themeDark": "ダーク",
     "themeLight": "ライト",
     "mapProvider": "マップタイルプロバイダー",
@@ -5124,6 +5123,9 @@
       "about": "サイトリンク、利用規約、プライバシー"
     },
     "signOut": "ログアウト",
-    "signOutFailed": "ログアウトできませんでした。もう一度お試しください。"
+    "signOutFailed": "ログアウトできませんでした。もう一度お試しください。",
+    "search": {
+      "empty": "一致する設定はありません"
+    }
   }
 }

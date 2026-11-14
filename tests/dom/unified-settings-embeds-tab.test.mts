@@ -40,6 +40,8 @@ const entitlementState: EntitlementState = {
   validUntil: Date.now() + 86_400_000,
 };
 
+const entitlementListeners = vi.hoisted(() => new Set<(state: unknown) => void>());
+
 const storageValues = new Map<string, string>();
 const storage: Storage = {
   get length() { return storageValues.size; },
@@ -64,7 +66,10 @@ vi.mock('@/services/entitlements', () => ({
     role === 'pro' || features.embedAccess
   ),
   isEntitled: () => true,
-  onEntitlementChange: () => () => {},
+  onEntitlementChange: (listener: (state: unknown) => void) => {
+    entitlementListeners.add(listener);
+    return () => entitlementListeners.delete(listener);
+  },
   onEntitlementVerificationChange: () => () => {},
 }));
 
@@ -282,6 +287,32 @@ describe('Settings -> Embeds page gating', () => {
     const desc = panel('embeds')?.querySelector('.embed-keys-desc')?.textContent ?? '';
 
     expect(desc).toContain('shown once at creation');
+  });
+});
+
+describe('Settings -> Embeds row under a sidebar search', () => {
+  it('keeps open pages when an unchanged entitlement arrives while the search hides the Embeds row', () => {
+    openPage('embeds');
+    const mounted = panel('embeds');
+    const search = internal.overlay.querySelector<HTMLInputElement>('[data-settings-search]')!;
+    search.value = 'ollama';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(navRow('embeds')).toBeNull();
+
+    entitlementListeners.forEach((listener) => listener(entitlementState));
+
+    expect(panel('embeds')).toBe(mounted);
+  });
+
+  it('still remounts when embed access really goes away', () => {
+    openPage('embeds');
+    features.embedAccess = false;
+    session.user = { id: 'A', name: 'User A', email: 'a@example.com', role: 'free' };
+
+    entitlementListeners.forEach((listener) => listener(entitlementState));
+
+    expect(navRow('embeds')).toBeNull();
+    expect(panel('embeds')).toBeNull();
   });
 });
 

@@ -21325,15 +21325,9 @@ button.popup-link {
   height: 14px;
 }
 
-.unified-settings-modal {
-  max-width: 640px;
-  width: 95%;
-  height: 80vh;
-  max-height: 80vh;
-}
-
-/* Settings opens on a grouped list of sections (the home list). Each row
-   drills into one page; the header's back button returns to the list. */
+/* Settings is one list of sections. On phones it is a home list whose rows
+   drill into pages under a back button; wider screens show it as a sidebar
+   beside the open page. */
 .unified-settings-modal .modal-header {
   min-height: 32px;
 }
@@ -21377,8 +21371,43 @@ button.popup-link {
   display: none;
 }
 
-.us-install-slot:empty {
+.us-install-slot:empty,
+.us-search-empty:empty {
   display: none;
+}
+
+/* Search belongs to the wide layout's sidebar; the phone list has none. */
+.us-search {
+  display: none;
+}
+
+.us-search-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.us-search-input::placeholder {
+  color: var(--text-dim);
+}
+
+.us-search-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.us-search-empty {
+  margin: 0;
+  padding: 4px 10px;
+  color: var(--text-dim);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
 .us-install-slot .pwa-install-entry {
@@ -21710,6 +21739,63 @@ button.popup-link {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   cursor: pointer;
   margin-top: 4px;
+}
+
+/* A short choice (Theme, Font) as one row of segments. Each segment is a
+   native radio, so the group keeps arrow-key movement and its form semantics. */
+.us-segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 4px 0 6px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.us-segment {
+  position: relative;
+  flex: 1 1 auto;
+}
+
+.us-segment input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.us-segment span {
+  display: block;
+  min-width: 64px;
+  padding: 6px 14px;
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  text-align: center;
+  white-space: nowrap;
+}
+
+.us-segment:hover span {
+  color: var(--text);
+}
+
+.us-segment input:checked + span {
+  background: var(--surface-hover);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.us-segment input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .unified-settings-select:focus,
@@ -27897,14 +27983,6 @@ body.map-width-resizing {
    straight to Dodo's hosted checkout, where Dodo (merchant of record) shows its
    terms and never ours. Both surfaces are built by src/utils/legal-links.ts. */
 
-/* Short screens: use the available height while keeping phone navigation clear. */
-@media (max-height: 650px) {
-  .unified-settings-modal {
-    max-height: calc(100dvh - 16px);
-    padding: 12px;
-  }
-}
-
 /* Phones: Settings is a full-height sheet from the top safe area down to the
    mobile tab bar, which stays visible above it. The header stays put while the
    sheet scrolls under it. */
@@ -27935,6 +28013,173 @@ body.map-width-resizing {
     min-height: calc(52px + env(safe-area-inset-top, 0px));
     margin: 0 calc(-1 * var(--us-sheet-right)) 16px calc(-1 * var(--us-sheet-left));
     padding: env(safe-area-inset-top, 0px) calc(var(--us-sheet-right) - 6px) 0 var(--us-sheet-left);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+}
+
+/* Wider screens: a two-pane sheet over the dimmed dashboard, so a theme or
+   panel change shows behind it. The sidebar holds the section list and its
+   search; the page pane scrolls on its own under a pinned page title. The
+   query is the exact complement of the phone sheet's, so a fractional width
+   from browser zoom still gets one of the two layouts. */
+@media (width > 768px) {
+  #unifiedSettingsModal {
+    padding: 16px;
+    background: rgb(0 0 0 / 0.5);
+  }
+
+  [data-theme="light"] #unifiedSettingsModal {
+    background: rgb(0 0 0 / 0.35);
+  }
+
+  #unifiedSettingsModal .unified-settings-modal {
+    position: relative;
+    display: grid;
+    grid-template-columns: clamp(200px, 25%, 236px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    width: min(960px, 100%);
+    max-width: none;
+    height: min(760px, 88dvh);
+    max-height: none;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 8px;
+    box-shadow: 0 16px 48px rgb(0 0 0 / 0.4);
+  }
+
+  /* Only the close button shows; it sits in the page title's row. */
+  #unifiedSettingsModal .modal-header {
+    position: absolute;
+    top: 7px;
+    inset-inline-end: 8px;
+    z-index: 2;
+    min-height: 0;
+    margin: 0;
+  }
+
+  #unifiedSettingsModal .us-home {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    padding: 0 10px 16px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-inline-end: 1px solid var(--border);
+    background: var(--bg-secondary);
+  }
+
+  #unifiedSettingsModal .us-search {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: block;
+    margin: 0 -10px;
+    padding: 12px 10px 4px;
+    background: var(--bg-secondary);
+  }
+
+  #unifiedSettingsModal .us-home-rows {
+    gap: 14px;
+  }
+
+  #unifiedSettingsModal .us-group {
+    gap: 2px;
+  }
+
+  #unifiedSettingsModal .us-group-label {
+    padding: 0 10px 2px;
+    color: var(--text-dim);
+  }
+
+  #unifiedSettingsModal .us-home .us-list {
+    display: grid;
+    gap: 1px;
+    border: none;
+    border-radius: 0;
+  }
+
+  #unifiedSettingsModal .us-home .us-list li + li {
+    border-top: none;
+  }
+
+  #unifiedSettingsModal .us-home .us-row {
+    gap: 8px;
+    min-height: 32px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    color: var(--text-secondary);
+  }
+
+  #unifiedSettingsModal .us-home .us-row .us-row-title {
+    font-weight: 500;
+  }
+
+  #unifiedSettingsModal .us-home .us-row .us-row-desc,
+  #unifiedSettingsModal .us-home .us-row-chev {
+    display: none;
+  }
+
+  #unifiedSettingsModal .us-home .us-row-value {
+    font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  }
+
+  #unifiedSettingsModal .us-home .us-account-card {
+    gap: 10px;
+    min-height: 48px;
+    padding: 8px 10px;
+    background: var(--surface);
+  }
+
+  #unifiedSettingsModal .us-home .us-avatar {
+    width: 30px;
+    height: 30px;
+  }
+
+  /* The sign-in prompt is a sentence; let it wrap instead of cutting it off. */
+  #unifiedSettingsModal .us-home .us-signin-row .us-row-desc {
+    white-space: normal;
+  }
+
+  #unifiedSettingsModal .us-home .us-row:hover,
+  #unifiedSettingsModal .us-home .us-account-card:hover {
+    background: color-mix(in srgb, var(--text) 7%, transparent);
+  }
+
+  #unifiedSettingsModal .us-home [aria-current="page"],
+  #unifiedSettingsModal .us-home [aria-current="page"]:hover {
+    background: color-mix(in srgb, var(--green) 13%, transparent);
+    color: var(--green-text, var(--green));
+  }
+
+  #unifiedSettingsModal .us-home .us-row[aria-current="page"] .us-row-title {
+    font-weight: 700;
+  }
+
+  #unifiedSettingsModal .us-home [aria-current="page"] .us-row-value {
+    color: inherit;
+  }
+
+  #unifiedSettingsModal .us-pages {
+    min-height: 0;
+    padding: 0 24px 24px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* The page pane is wider than a select needs; full-width lists read as inputs. */
+  #unifiedSettingsModal .us-page-body .unified-settings-select,
+  #unifiedSettingsModal .us-page-body .unified-settings-lang-select {
+    max-width: 360px;
+  }
+
+  #unifiedSettingsModal .us-page-title {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    margin: 0 -24px 16px;
+    padding: 13px 56px 12px 24px;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
   }

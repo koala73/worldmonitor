@@ -4330,7 +4330,6 @@
     "dataAndCommunity": "数据与社区",
     "theme": "主题",
     "themeDesc": "自动跟随系统偏好。",
-    "themeAuto": "自动（跟随系统）",
     "themeDark": "深色",
     "themeLight": "浅色",
     "mapProvider": "地图图块提供者",
@@ -5124,6 +5123,9 @@
       "about": "网站链接、条款和隐私"
     },
     "signOut": "退出登录",
-    "signOutFailed": "无法退出登录。请重试。"
+    "signOutFailed": "无法退出登录。请重试。",
+    "search": {
+      "empty": "没有匹配的设置"
+    }
   }
 }

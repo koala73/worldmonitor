@@ -4374,7 +4374,6 @@
     "dataAndCommunity": "Données & Communauté",
     "theme": "Thème",
     "themeDesc": "Auto suit les préférences système.",
-    "themeAuto": "Auto (suivre le système)",
     "themeDark": "Sombre",
     "themeLight": "Clair",
     "mapProvider": "Fournisseur de tuiles",
@@ -5180,6 +5179,9 @@
       "about": "Liens du site, conditions et confidentialité"
     },
     "signOut": "Se déconnecter",
-    "signOutFailed": "Impossible de se déconnecter. Réessayez."
+    "signOutFailed": "Impossible de se déconnecter. Réessayez.",
+    "search": {
+      "empty": "Aucun paramètre ne correspond"
+    }
   }
 }

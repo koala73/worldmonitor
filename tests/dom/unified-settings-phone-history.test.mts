@@ -283,21 +283,21 @@ describe('scroll on the phone sheet', () => {
   });
 
   it('returns each page to its own offset in the desktop modal', () => {
+    // The modal scrolls its page pane beside the sidebar, not the whole sheet.
+    const pane = () => $('[data-settings-pages]')!;
     setWidth(1280);
     settings.open();
-    modal().scrollTop = 180;
-    row('display').click();
-    expect(modal().scrollTop).toBe(0);
-    modal().scrollTop = 120;
-
-    $<HTMLButtonElement>('[data-settings-back]')!.click();
-    expect(modal().scrollTop).toBe(180);
+    expect(page('display')!.hidden).toBe(false);
+    pane().scrollTop = 120;
 
     row('map').click();
-    expect(modal().scrollTop).toBe(0);
-    $<HTMLButtonElement>('[data-settings-back]')!.click();
+    expect(pane().scrollTop).toBe(0);
+    pane().scrollTop = 60;
+
     row('display').click();
-    expect(modal().scrollTop).toBe(120);
+    expect(pane().scrollTop).toBe(120);
+    row('map').click();
+    expect(pane().scrollTop).toBe(60);
   });
 
   it('keeps the reader on the same page in place when an account change remounts it', () => {

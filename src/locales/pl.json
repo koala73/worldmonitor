@@ -4396,7 +4396,6 @@
     "dataAndCommunity": "Dane i społeczność",
     "theme": "Motyw",
     "themeDesc": "Automatycznie podąża za ustawieniami systemu.",
-    "themeAuto": "Automatyczny (podążaj za systemem)",
     "themeDark": "Ciemny",
     "themeLight": "Jasny",
     "mapProvider": "Dostawca kafelków mapy",
@@ -5208,6 +5207,9 @@
       "about": "Linki, warunki i prywatność"
     },
     "signOut": "Wyloguj się",
-    "signOutFailed": "Nie udało się wylogować. Spróbuj ponownie."
+    "signOutFailed": "Nie udało się wylogować. Spróbuj ponownie.",
+    "search": {
+      "empty": "Brak pasujących ustawień"
+    }
   }
 }

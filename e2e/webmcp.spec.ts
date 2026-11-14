@@ -1478,8 +1478,10 @@ test.describe('top-level WebMCP dashboard contract', () => {
       tab: 'settings',
     });
     await expect(page.locator('#unifiedSettingsModal.active')).toBeVisible();
-    // The `settings` wire value opens the home list.
+    // The `settings` wire value opens Settings without a target: on a wide
+    // screen the sidebar with Display selected.
     await expect(page.locator('#unifiedSettingsModal [data-settings-home]')).toBeVisible();
+    await expect(page.locator('#unifiedSettingsModal #us-page-display')).toBeVisible();
 
     const alerts = await executeDashboardTool(page, 'open_alerts', {});
     expect(alerts).toMatchObject({

@@ -454,7 +454,7 @@ describe('settings save feedback', () => {
     const eventHandlers = source('src/app/event-handlers.ts');
     const countryIntel = source('src/app/country-intel.ts');
 
-    assert.match(settings, /onSettingSaved:\s*\(\)\s*=>\s*showToast\(t\('modals\.settingsWindow\.saved'\)\)/);
+    assert.match(settings, /onSettingSaved:\s*\(\)\s*=>\s*\{\s*showToast\(t\('modals\.settingsWindow\.saved'\)\);/);
     assert.doesNotMatch(extractMethodBody(settings, 'private savePanelChanges()'), /showToast\(/);
     assert.doesNotMatch(settings, /function showToast\(/);
     assert.doesNotMatch(eventHandlers, /\n\s{2}showToast\(msg: string\): void/);

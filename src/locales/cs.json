@@ -4396,7 +4396,6 @@
     "dataAndCommunity": "Data a komunita",
     "theme": "Motiv",
     "themeDesc": "Automaticky sleduje nastavení systému.",
-    "themeAuto": "Automaticky (podle systému)",
     "themeDark": "Tmavý",
     "themeLight": "Světlý",
     "mapProvider": "Poskytovatel dlaždic mapy",
@@ -5208,6 +5207,9 @@
       "about": "Odkazy webu, podmínky a ochrana soukromí"
     },
     "signOut": "Odhlásit se",
-    "signOutFailed": "Nepodařilo se odhlásit. Zkuste to znovu."
+    "signOutFailed": "Nepodařilo se odhlásit. Zkuste to znovu.",
+    "search": {
+      "empty": "Žádné nastavení neodpovídá"
+    }
   }
 }
