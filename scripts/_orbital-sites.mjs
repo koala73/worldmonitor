@@ -5,6 +5,8 @@ import { createHash } from 'node:crypto';
 import { findPasses, parseOrbitElements } from './shared/orbital/pass-geometry.js';
 import { SENSOR_PROFILES } from './shared/orbital/sensor-profiles.js';
 import { decidePassTier } from './shared/orbital/tiers.js';
+import { projectFlag } from './shared/orbital/flag-record.js';
+import { flagShadowKey, RADAR_COLLECTION, radarGeometry, STAC_RADAR_FIELDS } from './_orbital-change.mjs';
 
 export const ORBITAL_SITES_KEY = 'orbital:sites:v1';
 export const ORBITAL_SITE_KEY_PREFIX = 'orbital:site:v1:';
@@ -51,7 +53,7 @@ export function stacSearchBody(site, nowMs) {
     sortby: [{ field: 'properties.datetime', direction: 'desc' }],
     limit: 100,
     fields: {
-      include: ['id', 'collection', 'properties.datetime', 'properties.platform', 'properties.eo:cloud_cover'],
+      include: ['id', 'collection', 'properties.datetime', 'properties.platform', 'properties.eo:cloud_cover', ...STAC_RADAR_FIELDS],
       exclude: ['assets', 'links', 'geometry', 'bbox'],
     },
   };
@@ -77,6 +79,8 @@ export function acquisitionsFromStac(features) {
       datetime: new Date(timeMs).toISOString(),
       cloudCover: Number.isFinite(cloud) ? Math.round(cloud * 10) / 10 : null,
     };
+    const radar = feature.collection === RADAR_COLLECTION ? radarGeometry(feature.properties) : null;
+    if (radar) acquisition.radar = radar;
     const key = `${acquisition.platform}|${Math.round(timeMs / 60_000)}`;
     const held = byPass.get(key);
     if (!held || (acquisition.cloudCover ?? 101) < (held.cloudCover ?? 101)) byPass.set(key, acquisition);
@@ -127,10 +131,10 @@ const newest = (a, b) => (!a ? b ?? null : !b ? a : a.datetime >= b.datetime ? a
 
 /**
  * One site's record. `previous` carries what a scene that is absent this run cannot
- * replace: the last observation stays until a newer scene exists, and flag state is
- * owned by change scoring and passes through untouched.
+ * replace: the last observation stays until a newer scene exists. Flag state is owned by
+ * change scoring; without it the previous flag passes through untouched.
  */
-export function buildSiteRecord({ site, catalog, acquisitions, previous, nowMs }) {
+export function buildSiteRecord({ site, catalog, acquisitions, previous, nowMs, flag = previous?.flag ?? null }) {
   const passes = [];
   for (const satellite of catalog.satellites ?? []) {
     const profile = PROFILES_BY_ID.get(satellite.profileId);
@@ -186,12 +190,22 @@ export function buildSiteRecord({ site, catalog, acquisitions, previous, nowMs }
     recentPasses,
     nextWindows,
     coverage,
-    flag: previous?.flag ?? null,
+    flag,
   };
-  const record = { ...body, revision: hash(body), evaluatedAt: nowMs };
+  return finishSiteRecord(body, nowMs);
+}
+
+function finishSiteRecord(body, evaluatedAt) {
+  const record = { ...body, revision: hash(body), evaluatedAt };
   const bytes = Buffer.byteLength(JSON.stringify(record));
-  if (bytes > SITE_RECORD_MAX_BYTES) throw new Error(`site record ${site.id} is ${bytes} bytes, over ${SITE_RECORD_MAX_BYTES}`);
+  if (bytes > SITE_RECORD_MAX_BYTES) throw new Error(`site record ${body.siteId} is ${bytes} bytes, over ${SITE_RECORD_MAX_BYTES}`);
   return record;
+}
+
+/** The same record carrying another flag, without recomputing its passes. */
+export function withSiteFlag(record, flag) {
+  const { revision: _revision, evaluatedAt, ...body } = record;
+  return finishSiteRecord({ ...body, flag }, evaluatedAt);
 }
 
 /** Registry order starting at `cursor`, wrapping, so a run resumes where the last one stopped. */
@@ -203,12 +217,18 @@ export function siteOrder(sites, cursor) {
 
 /**
  * Evaluates sites in cursor order until the deadline. A site whose archive search fails
- * keeps its previous record; a refusal stops the run before anything is written.
+ * keeps its previous record; a refusal stops the run before anything is written. With a
+ * change stage, records are still built inside the pass, then each evaluated site's flag is
+ * scored from the same archive answer,
+ * least recently scored first, so sites the stage's budget missed go first next run; a
+ * shadowed flag goes to `flags` only, and the site record carries none.
  */
-export async function evaluateSites({ sites, catalog, previousRecords, cursor, searchArchive, nowMs, deadlineMs, clock = Date.now }) {
+export async function evaluateSites({ sites, catalog, previousRecords, cursor, searchArchive, nowMs, deadlineMs, clock = Date.now, change = null }) {
   const order = siteOrder(sites, cursor);
   const records = new Map();
+  const flags = new Map();
   const failed = [];
+  const searched = [];
   let evaluated = 0;
   let nextSiteId = null;
   for (const site of order) {
@@ -227,9 +247,24 @@ export async function evaluateSites({ sites, catalog, previousRecords, cursor, s
     } finally {
       evaluated += 1;
     }
-    records.set(site.id, buildSiteRecord({ site, catalog, acquisitions, previous, nowMs }));
+    if (!change) {
+      records.set(site.id, buildSiteRecord({ site, catalog, acquisitions, previous, nowMs }));
+      continue;
+    }
+    const previousFlag = change.shadow ? change.previousFlags.get(site.id) ?? null : previous?.flag ?? null;
+    records.set(site.id, buildSiteRecord({ site, catalog, acquisitions, previous, nowMs, flag: null }));
+    searched.push({ site, acquisitions, previousFlag });
   }
-  return { records, failed, evaluated, nextSiteId };
+  searched.sort((a, b) => (a.previousFlag?.updatedAt ?? 0) - (b.previousFlag?.updatedAt ?? 0));
+  for (const { site, acquisitions, previousFlag } of searched) {
+    const flag = await change.score({ site, acquisitions, previous: previousFlag, nowMs });
+    if (change.shadow) {
+      if (flag) flags.set(site.id, flag);
+    } else {
+      records.set(site.id, withSiteFlag(records.get(site.id), flag));
+    }
+  }
+  return { records, flags, failed, evaluated, nextSiteId, change: change?.summary() ?? null };
 }
 
 /** Per-country projection of site records: no state of its own beyond what its sites carry. */
@@ -251,7 +286,7 @@ export function buildCountryRollup(countryCode, records) {
         : null,
       nextWindow: record.nextWindows[0] ? { profileId: record.nextWindows[0].profileId, time: record.nextWindows[0].time } : null,
       operators: [...new Set(record.coverage.map((entry) => entry.operator))],
-      flag: record.flag,
+      flag: projectFlag(record.flag),
     }));
   const rollup = {
     schema: SITES_SCHEMA,
@@ -298,6 +333,7 @@ export function planPublication({ sites, registryVersion, previousIndex, previou
     nextSiteId: evaluation.nextSiteId,
     evaluated: evaluation.evaluated,
     failed: evaluation.failed,
+    ...(evaluation.change && { change: evaluation.change }),
     sites: Object.fromEntries([...records.entries()].sort(([a], [b]) => a.localeCompare(b))
       .map(([id, record]) => [id, { countryCode: record.countryCode, revision: record.revision, evaluatedAt: record.evaluatedAt }])),
     countries: Object.fromEntries([...rollups.entries()]
@@ -308,6 +344,7 @@ export function planPublication({ sites, registryVersion, previousIndex, previou
     siteWrites: [...evaluation.records.values()].filter((record) => registryIds.has(record.siteId)),
     retainedSiteIds: [...records.keys()].filter((id) => !evaluation.records.has(id)).sort(),
     rollupWrites: [...rollups.values()],
-    deletes: [...removedSiteIds.map(siteKey), ...removedCountries.map(countryKey)],
+    flagWrites: evaluation.change?.shadow ? [...evaluation.flags.values()].filter((flag) => registryIds.has(flag.siteId)) : null,
+    deletes: [...removedSiteIds.flatMap((id) => [siteKey(id), flagShadowKey(id)]), ...removedCountries.map(countryKey)],
   };
 }
