@@ -369,6 +369,38 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   failing.clear();
   await close();
 
+  // With both scene archives down the carousel leads with the daily mosaics, whose newest day can be black at the point.
+  failing.add('earth-search.aws.element84.com');
+  failing.add('planetarycomputer.microsoft.com');
+  await openAtPlace();
+  await sheet.locator('.ow-banner-partial').waitFor({ timeout: 90_000 });
+  await sheet.locator('.ow-card').first().waitFor({ timeout: 90_000 });
+  await privacy();
+  await showHeroCredit();
+  await settleImagesInView();
+  const heroes = await sheet.locator('.ow-card').evaluateAll((figures) => figures.map((figure) => {
+    const tile = figure.querySelector('.ow-tile');
+    const img = tile.querySelector('img');
+    const top = figure.querySelector('.ow-caption-lines span')?.textContent ?? '';
+    if (tile.dataset.state !== 'loaded' || !img) return { top, state: tile.dataset.state };
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, 32, 32);
+    let data;
+    try { ({ data } = ctx.getImageData(12, 12, 8, 8)); } catch { return { top, state: 'loaded', unreadable: true }; }
+    let empty = 0;
+    for (let i = 0; i < data.length; i += 4) if (data[i + 3] < 16 || Math.max(data[i], data[i + 1], data[i + 2]) <= 12) empty++;
+    return { top, state: 'loaded', emptyAtPoint: empty / (data.length / 4) };
+  }));
+  log('scene archives down, carousel', JSON.stringify(heroes));
+  const black = heroes.filter((card) => card.state === 'loaded' && card.emptyAtPoint >= 0.9);
+  if (black.length) throw new Error(`a carousel card shows no data at the point: ${black.map((card) => card.top).join(', ')}`);
+  await shot('scene-archives-down');
+  failing.clear();
+  await close();
+
   if (fixture) {
     catalog = { ...fixture, stale: true, fetchedAt: Date.now() - 9 * 24 * HOUR };
     await page.reload({ waitUntil: 'domcontentloaded' });
