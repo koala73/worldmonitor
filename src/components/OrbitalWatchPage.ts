@@ -273,7 +273,7 @@ class LookupImages {
 
 const lookupImages = new LookupImages();
 
-/** Loads an image for the viewer, compare and time-lapse, reusing the sheet's copy so no image is fetched twice. */
+/** Loads an image for the viewer, compare, reusing the sheet's copy so no image is fetched twice. */
 export function loadLookupImage(archive: ArchiveId, url: string, signal: AbortSignal): Promise<LoadedArchiveImage> {
   return lookupImages.lend(url) ?? loadArchiveImage(archive, [url], { signal }).then((result) => {
     if (result.status === 'failed') throw new ArchiveImageError(result.failure);

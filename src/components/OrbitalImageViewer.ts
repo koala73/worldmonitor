@@ -14,7 +14,7 @@ import {
   type DatedScene,
   type LoadImage,
   type SceneHistory,
-} from '@/services/orbital/timelapse';
+} from '@/services/orbital/scene-history';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 import { t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
@@ -47,7 +47,7 @@ export interface ImageViewerSubject {
   selected: ViewerScene;
   /** Other scenes of the same collection the lookup already holds. */
   scenes: ViewerScene[];
-  /** The mission whose earlier scenes are searched for compare and time-lapse; null for mosaics and frames. */
+  /** The mission whose earlier scenes are searched for compare; null for mosaics and frames. */
   historyProfile: ImagingProfileId | null;
   /** The place name, or null to show the rounded point. */
   place?: string | null;

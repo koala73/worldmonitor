@@ -4,7 +4,7 @@ import { initTestI18n } from './helpers/i18n.mts';
 
 import type { DailyMosaicRow, GeostationaryRow } from '@/services/orbital/archive-gibs';
 import type { MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
-import type { SceneHistory } from '@/services/orbital/timelapse';
+import type { SceneHistory } from '@/services/orbital/scene-history';
 import { OrbitalWatchPage } from '@/components/OrbitalWatchPage';
 import { IMAGE_CREDIT } from '@/services/orbital/credits';
 import {
