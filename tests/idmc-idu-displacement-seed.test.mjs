@@ -262,8 +262,13 @@ describe('fetchIduDisplacement', () => {
 
   it('identifies as a plain data client, since HDX challenges browser agents and blocks ours by name', async () => {
     const headers = [];
-    stub([pkg('sdn')], { 'https://data.humdata.org/dl/sdn.csv': csv([row()]) }, { headers });
-    await fetchIduDisplacement({ nowMs: NOW });
+    // HDX's download rule as probed 2026-11-14: only agents with a known HTTP-client token get the file.
+    const download = () => (/curl|wget|python-requests|python-urllib|hdxpythonlibrary/i.test(headers.at(-1).get('user-agent') ?? '')
+      ? new Response(csv([row()]))
+      : new Response('{"error":"Blocked due to bot activity."}', { status: 406 }));
+    stub([pkg('sdn')], { 'https://data.humdata.org/dl/sdn.csv': download }, { headers });
+    const data = await fetchIduDisplacement({ nowMs: NOW });
+    assert.deepEqual(data.missingCountries, []);
     assert.equal(headers.length, 2);
     for (const h of headers) {
       const agent = h.get('user-agent') ?? '';
