@@ -248,6 +248,19 @@ describe('satellite pass lookup sheet', () => {
     expect(bottom(1), 'a scene under 10% cloud needs no scene figure').toMatch(/ · Clear at point$/);
   });
 
+  it('keeps a caption age in its own span, so a phone can drop it and keep the condition on one line', () => {
+    const { all, confirmedNew } = tiered();
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew, { condition: 'clear', cloudCoverPct: 2 })] }));
+    const line = cards()[0]!.querySelectorAll('.ow-caption-lines > span')[1]!;
+    const age = line.querySelector('.ow-caption-ago');
+    expect(age?.textContent).toMatch(/^ · \S+ ago$/i);
+    expect(line.textContent).toBe(`10 M${age!.textContent} · Clear at point`);
+    const css = readFileSync(resolve(process.cwd(), 'src/styles/orbital-watch.css'), 'utf8');
+    const phone = css.slice(css.indexOf('@media (max-width: 768px)'));
+    expect(phone).toMatch(/\.ow-caption-ago \{ display: none; \}/);
+    expect(phone, 'the phone full view drops the summary heading as the sheet does').toMatch(/\n  \.ow-summary > \.ow-section-head \{ display: none; \}/);
+  });
+
   it('shows every image as a labelled skeleton, then the image or a failure tile with retry', () => {
     const { all, confirmedNew } = tiered();
     mounted(answered(all, { acquisitions: [acquisition(confirmedNew)] }));
