@@ -405,7 +405,7 @@ body.orbital-full-view #mapContainer .layer-toggles { display: none !important; 
   .ow-handle { display: block; width: 36px; height: 4px; margin: 6px auto 0; border-radius: 2px; background: var(--ow-line); }
   .ow-header { min-height: 42px; }
   .ow-body { padding-top: var(--ow-space-2); }
-  .orbital-watch-sheet[data-view="sheet"] .ow-summary > .ow-section-head { display: none; }
+  .ow-summary > .ow-section-head { display: none; }
   .ow-headline-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0 var(--ow-space-3); margin-bottom: 4px; }
   .ow-headline-row > div { display: contents; }
   .ow-headline { grid-column: 1 / -1; font-size: 16px; line-height: 20px; margin-bottom: 2px; }
@@ -424,6 +424,7 @@ body.orbital-full-view #mapContainer .layer-toggles { display: none !important; 
   .ow-caption { margin-top: 3px; line-height: 15px; }
   .ow-caption .ow-label { line-height: 15px; }
   .ow-caption-row { display: block; }
+  .ow-caption-ago { display: none; }
   .ow-replay { display: block; padding: 0; border-left: 0; }
   .ow-image-credit { margin-top: 0; }
   .ow-row { display: grid; grid-template-columns: var(--ow-thumb-size) minmax(0, 1fr) auto; gap: 0 var(--ow-space-3); align-items: start; align-content: center; }
