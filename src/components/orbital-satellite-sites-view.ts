@@ -87,7 +87,7 @@ export async function renderSatelliteSites(host: HTMLElement, noradId: string, n
   const loaded = getTrackedSatelliteTle(noradId);
   const tle: TrackedSatelliteTle | null = loaded ? { noradId, name: loaded.name || name, line1: loaded.line1, line2: loaded.line2 } : null;
   if (!tle) {
-    host.replaceChildren(host.firstChild!, note('Orbit elements are not loaded.'));
+    host.replaceChildren(host.firstChild!, note('Reopen this satellite after the layer refreshes; its orbit elements are not loaded.'));
     return null;
   }
   const nowMs = Date.now();
@@ -98,7 +98,7 @@ export async function renderSatelliteSites(host: HTMLElement, noradId: string, n
   } catch (err) {
     if (signal?.aborted) return null;
     console.warn('[orbital] satellite site coverage failed', err);
-    host.replaceChildren(host.firstChild!, note('Coverage failed to compute.'));
+    host.replaceChildren(host.firstChild!, note('Click the satellite again to retry; the projection failed.'));
     return null;
   }
   if (signal?.aborted || !host.isConnected) return null;
