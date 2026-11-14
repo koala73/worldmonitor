@@ -18,13 +18,23 @@ export interface OverlayReconcileHandlers {
   setActive(tab: string): void;
 }
 
-const SEARCH_OVERLAYS: ReadonlySet<string> = new Set(['search', 'search-pending']);
-const MORE_OVERLAYS: ReadonlySet<string> = new Set([
-  'menu',
-  'region',
-  'settings',
-  'settings-pending',
-]);
+/** The primary tab each overlay belongs to. Keyed by every id, so a new overlay must pick one. */
+const OVERLAY_TAB: Readonly<Record<OverlayId, 'search' | 'more' | null>> = {
+  search: 'search',
+  'search-pending': 'search',
+  menu: 'more',
+  region: 'more',
+  settings: 'more',
+  'settings-section': 'more',
+  'settings-pending': 'more',
+  'map-popup': null,
+  'deep-dive': null,
+};
+
+/** The primary tab to highlight while `top` is the open overlay. */
+export function overlayTab(top: OverlayId | null): 'search' | 'more' | null {
+  return top === null ? null : OVERLAY_TAB[top];
+}
 
 /**
  * Decide what happens to the open overlay when a primary tab is tapped.
@@ -37,21 +47,25 @@ export function reconcileOverlayForTab(
   tab: string,
   handlers: OverlayReconcileHandlers,
 ): OverlayId | undefined | null {
-  const top = handlers.top();
+  let top = handlers.top();
   if (!top) return undefined;
 
   // Never replace or dismiss a dirty Settings overlay: those paths call
   // close('replacement') and would discard the draft without confirmation.
-  if (top === 'settings' && handlers.settingsHasPendingChanges()) {
+  if ((top === 'settings' || top === 'settings-section') && handlers.settingsHasPendingChanges()) {
     handlers.closeSettings();
     handlers.setActive('more');
     return null;
   }
 
-  const reTappedOwnTab =
-    (tab === 'search' && SEARCH_OVERLAYS.has(top)) ||
-    (tab === 'more' && MORE_OVERLAYS.has(top));
-  if (reTappedOwnTab) {
+  // An open Settings page holds its own entry above Settings. Pop it first so
+  // the steps below dismiss or replace Settings whole and leave no entry behind.
+  if (top === 'settings-section') {
+    handlers.dismiss(top);
+    top = 'settings';
+  }
+
+  if (overlayTab(top) === tab) {
     handlers.dismiss(top);
     handlers.setActive('today');
     return null;

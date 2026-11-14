@@ -413,3 +413,24 @@ export async function resolveUserRegion(): Promise<MapView> {
   // retry geolocation in case the user has since granted permission.
   return tzRegion;
 }
+
+export type DevicePositionResult =
+  | { ok: true; lat: number; lon: number }
+  | { ok: false; reason: 'denied' | 'unavailable' };
+
+/**
+ * One position request for an explicit user action, so it may show the permission prompt.
+ * The position is returned to the caller only: it is not cached and not sent anywhere.
+ */
+export async function requestDevicePosition(timeout = 10_000): Promise<DevicePositionResult> {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) return { ok: false, reason: 'unavailable' };
+  try {
+    const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout, maximumAge: 60_000 });
+    });
+    return { ok: true, lat: position.coords.latitude, lon: position.coords.longitude };
+  } catch (error) {
+    const denied = typeof error === 'object' && error !== null && (error as GeolocationPositionError).code === 1;
+    return { ok: false, reason: denied ? 'denied' : 'unavailable' };
+  }
+}

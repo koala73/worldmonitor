@@ -172,7 +172,14 @@ export function consentPage(params, nonce, errorMsg = '') {
     : '';
   // U3 contract: bridge URL is apex (no www, no return_to). Apex page reads
   // oauth:nonce:<nonce> itself to recover client metadata + mint a grant.
-  const proCtaHref = `https://worldmonitor.app/mcp-grant?nonce=${encodeURIComponent(nonce)}`;
+  // OpenAI's app review rejects plan offers inside ChatGPT, so a ChatGPT
+  // sign-in names no plan and links nowhere near /pro. `surface` only changes
+  // the grant page's copy; it carries no client data.
+  const chatgpt = redirectHost === 'chatgpt.com';
+  const proCtaHref = `https://worldmonitor.app/mcp-grant?nonce=${encodeURIComponent(nonce)}${chatgpt ? '&surface=chatgpt' : ''}`;
+  const ctaNote = chatgpt ? 'A free account works.' : 'A free account works. Pro raises the daily allowance.';
+  const keyHint = chatgpt ? '' : '\n<p class="hint">No key? <a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener">Get one at worldmonitor.app/pro &#x2192;</a></p>';
+  const footerKeyLink = chatgpt ? '' : ' &middot; <a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener">Get an API key &#x2192;</a>';
   return new Response(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Authorize &#x2014; WorldMonitor MCP</title>
@@ -223,7 +230,7 @@ ${clientHostLine}${localhostWarn}
 <hr>
 <p class="scope-label">Read-only access to</p>
 <ul class="scope-list">
-<li>Intelligence data from 856 attributed providers</li>
+<li>Intelligence data from 861 attributed providers</li>
 <li>Real-time news &amp; events</li>
 <li>Live flight tracking &amp; AIS vessel positions</li>
 <li>Weather alerts, earthquakes &amp; natural disasters</li>
@@ -232,19 +239,18 @@ ${clientHostLine}${localhostWarn}
 </ul>
 <hr>
 <a id="pc" class="pro-cta" href="${escapeHtml(proCtaHref)}">Sign in to World Monitor</a>
-<p class="cta-note">A free account works. Pro raises the daily allowance.</p>
+<p class="cta-note">${ctaNote}</p>
 <div class="disclosure" id="dt"><a id="tk" role="button" tabindex="0">Use API key instead</a></div>
 <form id="cf" method="POST" action="https://api.worldmonitor.app/oauth/authorize" style="display:none;margin-top:1.25rem">
 <input type="hidden" name="_nonce" id="nn" value="${escapeHtml(nonce)}">
 <input type="hidden" name="_js" id="jf" value="">
 <label for="api_key">API Key</label>
-<input type="password" id="api_key" name="api_key" placeholder="wm_&#8230;" autocomplete="current-password">
-<p class="hint">No key? <a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener">Get one at worldmonitor.app/pro &#x2192;</a></p>
+<input type="password" id="api_key" name="api_key" placeholder="wm_&#8230;" autocomplete="current-password">${keyHint}
 <p class="error" id="ke"${errorMsg ? '' : ' style="display:none"'}>${errorMsg ? escapeHtml(errorMsg) : ''}</p>
 <button type="submit" id="ab">Authorize</button>
 </form>
 </div>
-<p class="footer"><a href="https://www.worldmonitor.app" target="_blank" rel="noopener">worldmonitor.app</a> &middot; <a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener">Get an API key &#x2192;</a></p>
+<p class="footer"><a href="https://www.worldmonitor.app" target="_blank" rel="noopener">worldmonitor.app</a>${footerKeyLink}</p>
 <script>(function(){function showForm(){var f=document.getElementById('cf');if(f)f.style.display='';var d=document.getElementById('dt');if(d)d.style.display='none';var k=document.getElementById('api_key');if(k){k.required=true;try{k.focus();}catch(e){}}}var em=document.getElementById('ke');if(em&&em.textContent&&em.textContent.length>0){showForm();}if(window.location.hash==='#api-key'){showForm();}var tk=document.getElementById('tk');if(tk){tk.addEventListener('click',function(e){e.preventDefault();showForm();});tk.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();showForm();}});}var cf=document.getElementById('cf');if(cf){cf.addEventListener('submit',function(e){e.preventDefault();var jf=document.getElementById('jf');if(jf)jf.value='1';var b=document.getElementById('ab');b.disabled=true;b.textContent='Authorizing…';var d=new URLSearchParams(new FormData(e.target));fetch('/oauth/authorize',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:d}).then(function(r){var c=r.headers.get('Content-Type')||'';if(c.indexOf('json')>=0)return r.json().then(function(j){if(j.location){window.location.replace(j.location);return;}if(j.error==='invalid_key'||j.error==='temporarily_unavailable'){var n=document.getElementById('nn');if(n)n.value=j.nonce||'';var em2=document.getElementById('ke');if(em2){em2.textContent=j.message||'Invalid API key. Please check and try again.';em2.style.display='';}showForm();}b.disabled=false;b.textContent='Authorize';});return r.text().then(function(h){document.open();document.write(h);document.close();});}).catch(function(){b.disabled=false;b.textContent='Authorize';});});}})();</script>
 </body></html>`, { status: 200, headers: PAGE_HEADERS });
 }

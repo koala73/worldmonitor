@@ -57,6 +57,7 @@ import { getMineralColor } from '@/config/mineral-colors';
 import { getWindColor } from '@/config/wind-colors';
 import { CII_LEVEL_COLORS, type CiiLevel } from '@/config/cii-colors';
 import type { GpsJamHex } from '@/services/gps-interference';
+import { continuousTrack, pointNear, sweptSwath, type FootprintRing, type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { fetchImageryScenes } from '@/services/imagery';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
@@ -70,6 +71,7 @@ import type { CanadaRoadRecord } from '@/services/canada-roads';
 import { isReportableCanadaRoad } from '@/services/canada-road-report';
 import type { CanadaAlert } from '@/services/canada-alerts';
 import { escapeHtml } from '@/utils/sanitize';
+import { installLongPressContextMenu } from '@/utils/long-press';
 import { corroborationLabelHtml } from '@/utils/corroboration-flag';
 import {
   derivePipelinePublicBadge,
@@ -583,6 +585,23 @@ function positionAlongPath(path: [number, number][], progress: number): [number,
   return [lon, latA + (latB - latA) * fraction];
 }
 
+const ORBITAL_TRACK_MARKER_LAYER_ID = 'orbital-track-marker-layer';
+const ORBITAL_SWEPT_LAYER_ID = 'orbital-swept-layer';
+const ORBITAL_LEADING_EDGE_LAYER_ID = 'orbital-leading-edge-layer';
+const ORBITAL_REPLAY_LAYER_IDS = new Set([ORBITAL_SWEPT_LAYER_ID, ORBITAL_LEADING_EDGE_LAYER_ID, ORBITAL_TRACK_MARKER_LAYER_ID]);
+/** The Orbital Watch accent, text and background tokens as deck.gl RGB. */
+/** Reads an Orbital Watch colour token per render, so a theme switch repaints the orbital overlay. */
+function orbitalRgba(token: '--ow-mark' | '--ow-text' | '--ow-dim' | '--ow-panel', alpha: number): [number, number, number, number] {
+  const hex = getCSSColor(token).replace(/^#([\da-f])([\da-f])([\da-f])$/i, '#$1$1$2$2$3$3');
+  const m = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex);
+  return m ? [parseInt(m[1]!, 16), parseInt(m[2]!, 16), parseInt(m[3]!, 16), alpha] : [128, 128, 128, alpha];
+}
+const ORBITAL_RETICLE = { pickable: false } as const;
+
+function deckLayerId(layer: LayersList[number]): string | null {
+  return layer && !Array.isArray(layer) && typeof layer === 'object' ? (layer as Layer).id : null;
+}
+
 const PREFERS_REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 const TRADE_ANIMATION_CYCLE = 1000;
 const TRADE_ANIMATION_SPEED = 0.3;
@@ -768,6 +787,12 @@ export class DeckGLMap {
   private highlightedLane: { routeId: string; path: [number, number][]; chokepointIds: string[] } | null = null;
   private highlightedMarkers: HighlightedMarker[] = [];
   private bypassArcData: BypassArcDatum[] = [];
+  private orbitalTrack: PassTrack | null = null;
+  private orbitalTrackMarker: TrackPoint | null = null;
+  private orbitalTarget: OrbitalTarget | null = null;
+  private orbitalFramedPastEdge = false;
+  /** The layer list last handed to deck.gl, so the replay marker can move without a full rebuild. */
+  private committedLayers: LayersList | null = null;
   private scenarioState: ScenarioVisualState | null = null;
   private selectedChinaCorridorOverlay: ChinaCorridorOverlayProjection | null = null;
   private affectedIso2Set: Set<string> = new Set();
@@ -850,6 +875,7 @@ export class DeckGLMap {
     if (!this.maplibreMap) return;
     const canvas = this.maplibreMap.getCanvas();
     canvas.addEventListener('contextmenu', this.handleContextMenu);
+    this.removeLongPress = installLongPressContextMenu(canvas);
     canvas.addEventListener('pointerdown', this.handleCountryClickPointerDown);
     canvas.addEventListener('pointermove', this.handleCountryClickPointerMove);
     canvas.addEventListener('pointerup', this.handleCountryClickPointerEnd);
@@ -863,11 +889,14 @@ export class DeckGLMap {
     this.maplibreMap.off('dragstart', this.markCountryDragGesture);
     this.maplibreMap.off('dragend', this.refreshCountryDragSuppression);
     canvas.removeEventListener('contextmenu', this.handleContextMenu);
+    this.removeLongPress?.();
+    this.removeLongPress = null;
     canvas.removeEventListener('pointerdown', this.handleCountryClickPointerDown);
     canvas.removeEventListener('pointermove', this.handleCountryClickPointerMove);
     canvas.removeEventListener('pointerup', this.handleCountryClickPointerEnd);
     canvas.removeEventListener('pointercancel', this.handleCountryClickPointerEnd);
   }
+  private removeLongPress: (() => void) | null = null;
   private readonly handleContextMenu = (e: MouseEvent): void => {
     e.preventDefault();
     if (!this.onMapContextMenu || !this.maplibreMap) return;
@@ -1165,6 +1194,8 @@ export class DeckGLMap {
         type: 'raster',
         tiles: [this.radarTileUrl],
         tileSize: 256,
+        // RainViewer serves a "Zoom Level Not Supported" tile above z7, so deeper views overzoom z7.
+        maxzoom: 7,
         attribution: '© RainViewer',
       });
       const beforeId = this.maplibreMap.getLayer('country-interactive') ? 'country-interactive' : undefined;
@@ -2593,6 +2624,8 @@ export class DeckGLMap {
         onClick: (info) => this.handleWebcamLayerClick(info),
       }));
     }
+
+    layers.push(...this.createOrbitalTrackLayers());
 
     // News geo-locations (always shown if data exists)
     if (this.newsLocations.length > 0) {
@@ -6795,6 +6828,7 @@ export class DeckGLMap {
       jsBuild = performance.now() - buildStart;
       layerCount = built.length;
       this.deckFrameProvider.wake();
+      this.committedLayers = built;
       this.deckOverlay?.setProps({ layers: built });
     } catch { /* map may be mid-teardown (null.getProjection) */ }
     if (import.meta.env.DEV) {
@@ -6943,7 +6977,7 @@ export class DeckGLMap {
     }
   }
 
-  public setCenter(lat: number, lon: number, zoom?: number): void {
+  public setCenter(lat: number, lon: number, zoom?: number, durationMs = 500): void {
     // Publish the requested destination immediately, matching setView(). This
     // keeps URL/context reads truthful even if flyTo is interrupted or its
     // moveend arrives after a programmatic caller's bounded settlement wait.
@@ -6958,7 +6992,7 @@ export class DeckGLMap {
       this.maplibreMap.flyTo({
         center: [lon, lat],
         ...(zoom != null && { zoom }),
-        duration: 500,
+        duration: durationMs,
       }, { [VIEWPORT_MOVEMENT_EVENT_KEY]: viewportMovementGeneration });
     }
     this.onStateChange?.(this.getState());
@@ -6973,6 +7007,14 @@ export class DeckGLMap {
       duration: 800,
       maxZoom: 8,
     });
+  }
+
+  /** Where (lat, lon) is drawn in client coordinates. */
+  public projectToClient(lat: number, lon: number): { x: number; y: number } | null {
+    const point = this.projectToScreen(lat, lon);
+    if (!point || !this.maplibreMap) return null;
+    const rect = this.maplibreMap.getContainer().getBoundingClientRect();
+    return { x: rect.left + point.x, y: rect.top + point.y };
   }
 
   public getCenter(): { lat: number; lon: number } | null {
@@ -8141,6 +8183,200 @@ export class DeckGLMap {
       target: c.toPort,
     }));
     this.render();
+  }
+
+  public setOrbitalTrack(track: PassTrack | null, marker: TrackPoint | null): void {
+    this.orbitalTrack = track;
+    this.orbitalTrackMarker = track ? marker : null;
+    this.syncOrbitalWorldCopies();
+    this.render();
+  }
+
+  /** Orbital shapes are drawn whole, with longitudes continuous near the looked-up point. */
+  private orbitalAroundLon(track: PassTrack): number {
+    return this.orbitalTarget?.lon ?? track.closest.lon;
+  }
+
+  /**
+   * The map draws no world copies, so a pass across the antimeridian would end at the map edge.
+   * While one is drawn or framed, the copies are on so the ground past ±180 shows under it.
+   */
+  private syncOrbitalWorldCopies(framed?: FrameBounds): void {
+    const track = this.orbitalTrack;
+    const beyond = (lon: number) => lon < -180 || lon > 180;
+    if (framed) this.orbitalFramedPastEdge = beyond(framed[0][0]) || beyond(framed[1][0]);
+    if (!track && !this.orbitalTarget) this.orbitalFramedPastEdge = false;
+    const shapes = track ? continuousTrack(track, this.orbitalAroundLon(track)) : null;
+    const past = this.orbitalFramedPastEdge || !!shapes && [shapes.path, ...shapes.footprint].some((line) => line.some(([lon]) => beyond(lon)));
+    this.maplibreMap?.setRenderWorldCopies(past);
+  }
+
+  /** Moves the replay to a moment by swapping only the replay layers into the layers already committed to deck.gl. */
+  public setOrbitalTrackMarker(point: TrackPoint | null): void {
+    if (!this.orbitalTrack) return;
+    this.orbitalTrackMarker = point;
+    const layers = this.committedLayers?.filter((layer) => !ORBITAL_REPLAY_LAYER_IDS.has(deckLayerId(layer) ?? ''));
+    const at = layers?.findIndex((layer) => deckLayerId(layer) === 'orbital-track-layer') ?? -1;
+    if (!layers || at < 0 || this.renderRafId !== null || this.renderPaused || this.webglLost || !this.maplibreMap) {
+      this.render();
+      return;
+    }
+    layers.splice(at + 1, 0, ...this.createOrbitalReplayLayers());
+    this.committedLayers = layers;
+    this.deckFrameProvider.wake();
+    this.deckOverlay?.setProps({ layers });
+    this.maplibreMap.triggerRepaint();
+  }
+
+  /** The swath swept so far, its leading edge and the satellite, at the replay moment. */
+  private createOrbitalReplayLayers(): Layer[] {
+    const marker = this.orbitalTrackMarker;
+    const track = this.orbitalTrack;
+    if (!marker || !track) return [];
+    const aroundLon = this.orbitalAroundLon(track);
+    const swept = sweptSwath(track, marker.timeMs, aroundLon);
+    return [
+      new PolygonLayer<FootprintRing>({
+        id: ORBITAL_SWEPT_LAYER_ID,
+        data: swept.rings,
+        getPolygon: (ring) => ring,
+        getFillColor: orbitalRgba('--ow-mark', 56),
+        stroked: false,
+        pickable: false,
+      }),
+      new PathLayer<Array<[number, number]>>({
+        id: ORBITAL_LEADING_EDGE_LAYER_ID,
+        data: swept.leadingEdge,
+        getPath: (line) => line,
+        getColor: orbitalRgba('--ow-mark', 255),
+        getWidth: 3,
+        widthUnits: 'pixels',
+        capRounded: true,
+        pickable: false,
+      }),
+      new ScatterplotLayer<TrackPoint>({
+        id: 'orbital-track-marker-layer',
+        data: [pointNear(marker, aroundLon)],
+        getPosition: (point) => [point.lon, point.lat],
+        getRadius: 5,
+        radiusUnits: 'pixels',
+        getFillColor: orbitalRgba('--ow-text', 255),
+        getLineColor: orbitalRgba('--ow-panel', 230),
+        stroked: true,
+        lineWidthMinPixels: 1.5,
+        pickable: false,
+      }),
+    ];
+  }
+
+  public setOrbitalTarget(target: OrbitalTarget | null): void {
+    this.orbitalTarget = target;
+    this.container.classList.toggle('orbital-pinned', !!target);
+    this.syncOrbitalWorldCopies();
+    this.render();
+  }
+
+  /**
+   * Fits the map to a box inside the part of the map left visible by `occluders`, the screen boxes
+   * of the lookup's sheet and HUD. Each one pads the side of the map it costs least to give up.
+   */
+  public frameOrbitalBounds(bounds: FrameBounds, occluders: DOMRect[] = []): void {
+    if (!this.maplibreMap) return;
+    const box = this.container.getBoundingClientRect();
+    const width = box.width || this.container.clientWidth;
+    const height = box.height || this.container.clientHeight;
+    const padding = { top: 40, bottom: 40, left: 40, right: 40 };
+    for (const r of occluders) {
+      if (Math.min(r.right, box.right) <= Math.max(r.left, box.left) || Math.min(r.bottom, box.bottom) <= Math.max(r.top, box.top)) continue;
+      const cost = { top: r.bottom - box.top, bottom: box.bottom - r.top, left: r.right - box.left, right: box.right - r.left };
+      const share = (side: keyof typeof cost) => cost[side] / (side === 'top' || side === 'bottom' ? height : width);
+      const side = (Object.keys(cost) as Array<keyof typeof cost>).reduce((best, next) => (share(next) < share(best) ? next : best));
+      padding[side] = Math.max(padding[side], Math.round(cost[side]) + 16);
+    }
+    if (width - padding.left - padding.right < 80 || height - padding.top - padding.bottom < 60) return;
+    this.syncOrbitalWorldCopies(bounds);
+    const [[west, south], [east, north]] = bounds;
+    this.maplibreMap.fitBounds([[west, south], [east, north]], { padding, maxZoom: 9, duration: 600 });
+    this.maplibreMap.once('moveend', () => this.render());
+  }
+
+  /** The reticle on the looked-up point: an accent ring with a dot and a mono label. */
+  private createOrbitalTargetLayer(): Layer[] {
+    const target = this.orbitalTarget;
+    if (!target) return [];
+    const ring = { ...ORBITAL_RETICLE, getPosition: (point: OrbitalTarget) => [point.lon, point.lat] as [number, number] };
+    // The tag sits right of the reticle unless that would run it off the map, as at the antimeridian edge.
+    const x = this.maplibreMap?.project([target.lon, target.lat]).x;
+    const labelWidth = 14 + 7 * Math.max(0, ...target.lines.map((line) => line.length));
+    const left = x !== undefined && x + 24 + labelWidth > this.container.clientWidth && x - 24 - labelWidth >= 0;
+    return [
+      new ScatterplotLayer<OrbitalTarget>({
+        id: 'orbital-target-layer',
+        data: [target],
+        ...ring,
+        getRadius: 14,
+        radiusUnits: 'pixels',
+        filled: false,
+        stroked: true,
+        getLineColor: orbitalRgba('--ow-mark', 255),
+        lineWidthUnits: 'pixels',
+        getLineWidth: 2,
+      }),
+      new ScatterplotLayer<OrbitalTarget>({
+        id: 'orbital-target-dot-layer',
+        data: [target],
+        ...ring,
+        getRadius: 3,
+        radiusUnits: 'pixels',
+        getFillColor: orbitalRgba('--ow-mark', 255),
+      }),
+      new TextLayer<OrbitalTarget>({
+        id: 'orbital-target-label-layer',
+        data: [target],
+        ...ring,
+        getText: (point) => point.lines.join('\n'),
+        getSize: 11,
+        fontFamily: getCSSColor('--ow-font-mono'),
+        fontWeight: 500,
+        characterSet: 'auto',
+        lineHeight: 1.45,
+        getColor: orbitalRgba('--ow-text', 255),
+        getTextAnchor: left ? 'end' : 'start',
+        getAlignmentBaseline: 'center',
+        getPixelOffset: [left ? -24 : 24, 0],
+        updateTriggers: { getTextAnchor: left, getPixelOffset: left },
+        background: true,
+        getBackgroundColor: orbitalRgba('--ow-panel', 225),
+        backgroundPadding: [7, 4, 7, 4],
+      }),
+    ];
+  }
+
+  private createOrbitalTrackLayers(): Layer[] {
+    const track = this.orbitalTrack;
+    if (!track) return this.createOrbitalTargetLayer();
+    const shapes = continuousTrack(track, this.orbitalAroundLon(track));
+    const layers: Layer[] = [
+      new PolygonLayer<FootprintRing>({
+        id: 'orbital-footprint-layer',
+        data: shapes.footprint,
+        getPolygon: (ring) => ring,
+        getFillColor: orbitalRgba('--ow-mark', 18),
+        getLineColor: orbitalRgba('--ow-mark', 120),
+        lineWidthMinPixels: 1,
+        pickable: false,
+      }),
+      new PathLayer<Array<[number, number]>>({
+        id: 'orbital-track-layer',
+        data: [shapes.path],
+        getPath: (path) => path,
+        getColor: orbitalRgba('--ow-dim', 230),
+        getWidth: 1.5,
+        widthUnits: 'pixels',
+        pickable: false,
+      }),
+    ];
+    return [...layers, ...this.createOrbitalReplayLayers(), ...this.createOrbitalTargetLayer()];
   }
 
   public clearBypassRoutes(): void {

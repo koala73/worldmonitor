@@ -1,4 +1,5 @@
 import { loadToolAliases } from '../alias';
+import { stripBillingCopy } from '../chatgpt-copy';
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../constants';
 import { CHATGPT_HIDDEN_TOOLS } from '../host-policy';
 import { JMESPATH_SCHEMA } from '../jmespath';
@@ -255,36 +256,48 @@ export function buildPublicTool(
 export const TOOL_LIST_RESPONSE = TOOL_REGISTRY.map((tool) => buildPublicTool(tool, { compressDescriptions: true }));
 
 // What a ChatGPT request lists (see ../host-policy.ts): every tool except the
-// checkout tool, with output-schema copy that describes the plans page instead
-// of telling the agent to upgrade. Only get_market_data carries `locked`.
+// hidden ones, with copy that states plan facts without promoting or pricing a
+// plan. Descriptions and schema text lose their API-plan weight, allocation and
+// subscription wording (../chatgpt-copy.ts), and the call-weight metadata,
+// which only prices API-plan calls, is dropped.
 const INFORM_ONLY_SCHEMA_DESCRIPTIONS: Readonly<Record<string, string>> = {
-  locked: 'Present only for a signed-in free account: subscription datasets withheld from `data`. Their absence means locked, not empty; they are not included in the current plan.',
-  upgradeUrl: 'Present with `locked`: a page describing the plans that include the locked datasets.',
+  locked: 'Present only for a signed-in free account: datasets withheld from `data` because the current plan does not include them. Their absence means locked, not empty.',
 };
 
-// Walks every `properties` map, so a field nested under anyOf/oneOf branches
-// is rewritten too.
+// Walks the whole schema, so a field nested under anyOf/oneOf branches is
+// rewritten too. `upgradeUrl` is removed from every properties map.
 function rewriteSchemaDescriptions(node: unknown): void {
   if (Array.isArray(node)) {
-    for (const item of node) rewriteSchemaDescriptions(item);
+    for (const value of node) rewriteSchemaDescriptions(value);
     return;
   }
   if (!node || typeof node !== 'object') return;
   const record = node as Record<string, unknown>;
   const properties = record.properties as Record<string, { description?: unknown }> | undefined;
   if (properties && typeof properties === 'object') {
+    delete properties.upgradeUrl;
     for (const [field, description] of Object.entries(INFORM_ONLY_SCHEMA_DESCRIPTIONS)) {
       const property = properties[field];
       if (property && typeof property === 'object' && typeof property.description === 'string') property.description = description;
     }
   }
-  for (const value of Object.values(record)) rewriteSchemaDescriptions(value);
+  if (Array.isArray(record.required)) record.required = record.required.filter((field) => field !== 'upgradeUrl');
+  if (typeof record.description === 'string') {
+    const description = stripBillingCopy(record.description);
+    if (description) record.description = description;
+    else delete record.description;
+  }
+  for (const [key, value] of Object.entries(record)) {
+    if (key !== 'description') rewriteSchemaDescriptions(value);
+  }
 }
 
 export function informOnlyPublicTool(tool: PublicToolShape): PublicToolShape {
-  if (tool.outputSchema === undefined) return tool;
   const copy = structuredClone(tool);
-  rewriteSchemaDescriptions(copy.outputSchema);
+  copy.description = stripBillingCopy(copy.description, { keepLead: true });
+  rewriteSchemaDescriptions(copy.inputSchema);
+  if (copy.outputSchema !== undefined) rewriteSchemaDescriptions(copy.outputSchema);
+  if (copy._meta) delete (copy._meta as Record<string, unknown>)['worldmonitor/weight'];
   return copy;
 }
 

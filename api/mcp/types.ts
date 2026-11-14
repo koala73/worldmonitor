@@ -669,6 +669,12 @@ export interface McpPromptDef {
   steps: McpPromptStep[];
   intro: string;
   intro_substitutions?: Record<string, McpPromptIntroSubstitution>;
+  /**
+   * Copy for a host that hides the headline-summary tools (ChatGPT; see
+   * host-policy.ts). Required when a step calls one of them or the copy names
+   * one; the steps that call a hidden tool are dropped for that host.
+   */
+  without_summary_tools?: { description: string; intro: string };
 }
 
 // ---------------------------------------------------------------------------

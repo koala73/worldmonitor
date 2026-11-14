@@ -67,8 +67,11 @@ async function settleOpens(): Promise<void> {
   for (let i = 0; i < 200; i++) await new Promise((resolve) => setImmediate(resolve));
 }
 
+// The account digest runs on the libuv threadpool, so a loaded runner can
+// take longer than any fixed number of event-loop ticks.
 async function waitForInvocations(count: number): Promise<void> {
-  for (let i = 0; i < 5_000 && globalThis.__desktopCheckoutHarness.invocations.length < count; i++) {
+  const deadline = Date.now() + 5_000;
+  while (globalThis.__desktopCheckoutHarness.invocations.length < count && Date.now() < deadline) {
     await new Promise((resolve) => setImmediate(resolve));
   }
 }
@@ -477,8 +480,12 @@ describe('startCheckout on desktop (#5911)', () => {
     const checkout = await loadCheckoutModule();
 
     assert.equal(await checkout.startCheckout('pro_monthly'), false);
+    // The /pro fallback launch lands after the account digest; wait for it so
+    // it cannot leak into the next test's harness.
+    await waitForInvocations(2);
 
     const harness = globalThis.__desktopCheckoutHarness;
+    assert.equal(harness.invocations.length, 2);
     assert.deepEqual(harness.toasts, [], 'must not announce a handoff that did not happen');
     assert.equal(harness.errorToasts.length, 1, 'the failure must reach the user');
     // Still no WebView navigation — the failure path must not reintroduce it.

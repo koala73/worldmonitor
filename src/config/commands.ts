@@ -1,5 +1,6 @@
 import type { MapLayers } from '@/types';
 import { CURATED_COUNTRIES } from '@/config/countries';
+import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 // boundary-ignore: commands are built lazily at runtime via getAllCommands()
 import { getCurrentLanguage, getCurrentLanguageTag, t } from '@/services/i18n';
 import { toFlagEmoji } from '@/utils/country-flag';
@@ -31,6 +32,11 @@ export const LAYER_KEY_MAP: Record<string, keyof MapLayers> = {
   radiation: 'radiationWatch',
   natural: 'natural',
 };
+
+// Orbital Watch ships dark (#10710).
+const ORBITAL_COMMANDS: Command[] = ORBITAL_WATCH_ENABLED
+  ? [{ id: 'orbital:search', keywords: ['satellite passes', 'satellite imagery', 'which satellites', 'imaged here', 'orbital watch', 'satellite lookup'], label: 'Satellite passes: find a place', icon: '\u{1F6F0}\uFE0F', category: 'actions' }]
+  : [];
 
 export const COMMANDS: Command[] = [
   // Navigation (region switching)
@@ -117,6 +123,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:fuel-shortages', keywords: ['fuel shortages', 'shortage', 'petrol shortage', 'diesel shortage', 'jet fuel shortage', 'rationing', 'stations closed'], label: 'Panel: Global Fuel Shortage Registry', icon: '⛽', category: 'panels' },
   { id: 'panel:energy-disruptions', keywords: ['energy disruptions', 'disruption log', 'disruption timeline', 'energy events', 'sanctions events', 'pipeline sabotage', 'nord stream sabotage', 'drone strike', 'force majeure', 'mechanical failure'], label: 'Panel: Energy Disruptions Log', icon: '\u{1F4A5}', category: 'panels' },
   { id: 'panel:energy-risk-overview', keywords: ['risk overview', 'energy risk', 'executive overview', 'energy dashboard', 'hormuz status', 'eu gas fill', 'brent price', 'crisis day', 'energy executive'], label: 'Panel: Global Energy Risk Overview', icon: '\u{1F4CA}', category: 'panels' },
+  { id: 'panel:grid-disruption-clock', keywords: ['US states', 'grid disruption clock', 'blackout', 'power outage', 'electricity', 'California', 'Tennessee', 'recovery'], label: 'Panel: US States Grid Disruption Clock', icon: '⚡', category: 'panels' },
   { id: 'panel:gov', keywords: ['government', 'gov', 'policy', 'legislation'], label: 'Panel: Government', icon: '\u{1F3DB}\uFE0F', category: 'panels' },
   { id: 'panel:policy', keywords: ['policy', 'ai policy', 'regulation', 'tech policy'], label: 'Panel: AI Policy & Regulation', icon: '\u{1F4DC}', category: 'panels' },
   { id: 'panel:thinktanks', keywords: ['think tanks', 'thinktanks', 'analysis'], label: 'Panel: Think Tanks', icon: '\u{1F9E0}', category: 'panels' },
@@ -294,6 +301,7 @@ export const COMMANDS: Command[] = [
   { id: 'view:route-explorer', keywords: ['route', 'explorer', 'ship', 'shipping', 'freight', 'cargo', 'lane', 'hs code', 'hs2', 'import', 'export', 'plan a shipment'], label: 'Route Explorer \u2014 plan a shipment', icon: '\u{1F6A2}', category: 'view' },
 
   // Time range
+  ...ORBITAL_COMMANDS,
   { id: 'time:1h', keywords: ['1h', 'last hour', '1 hour'], label: 'Show events from last hour', icon: '\u{1F550}', category: 'actions' },
   { id: 'time:6h', keywords: ['6h', 'last 6 hours', '6 hours'], label: 'Show events from last 6 hours', icon: '\u{1F555}', category: 'actions' },
   { id: 'time:24h', keywords: ['24h', 'last 24 hours', 'today'], label: 'Show events from last 24 hours', icon: '\u{1F55B}', category: 'actions' },
