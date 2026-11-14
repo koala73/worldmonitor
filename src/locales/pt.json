@@ -5217,6 +5217,8 @@
     "partial": "{{sources}} não respondeu, então algumas passagens podem estar sem imagens.",
     "stale": "Os dados orbitais estão desatualizados. O catálogo de satélites tem {{age}}, então os horários das passagens podem variar.",
     "empty": "Nenhum satélite de imageamento catalogado passou sobre este ponto nos últimos {{pastDays}} dias nem passará nas próximas {{futureHours}} horas.",
+    "sources": "Fontes · {{count}}",
+    "sourcesDocs": "Como estas fontes são usadas",
     "privacy": "Este ponto fica no seu navegador. Ele é enviado apenas aos arquivos públicos que seu navegador consulta diretamente: Earth Search, Microsoft Planetary Computer, NASA GIBS e EUMETSAT. A busca por nome de lugar é a única exceção: o nome digitado vai para o serviço de busca de lugares.",
     "inRange": "ao alcance",
     "tier": {

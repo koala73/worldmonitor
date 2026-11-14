@@ -3017,6 +3017,8 @@
   "orbitalWatch.share.link": "Share link",
   "orbitalWatch.share.passNotFound": "The linked pass was not found in the recomputed passes, so no pass is selected.",
   "orbitalWatch.share.passOutsideWindow": "The linked pass is outside the current window, so no pass is selected.",
+  "orbitalWatch.sources": "Sources · {{count}}",
+  "orbitalWatch.sourcesDocs": "How these sources are used",
   "orbitalWatch.stale": "Orbit data is stale. The satellite catalog is {{age}} old, so pass times may be off.",
   "orbitalWatch.tier.capabilityOverhead": "capability overhead",
   "orbitalWatch.tier.checking": "checking archive",

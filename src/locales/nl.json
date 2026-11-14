@@ -5189,6 +5189,8 @@
     "partial": "{{sources}} heeft niet geantwoord, dus bij sommige passages kunnen beelden ontbreken.",
     "stale": "De baangegevens zijn verouderd. De satellietcatalogus is {{age}} oud, dus passagetijden kunnen afwijken.",
     "empty": "Geen geregistreerde beeldvormingssatelliet is de afgelopen {{pastDays}} dagen over dit punt gevlogen of doet dat in de komende {{futureHours}} uur.",
+    "sources": "Bronnen · {{count}}",
+    "sourcesDocs": "Hoe deze bronnen worden gebruikt",
     "privacy": "Dit punt blijft in je browser. Het wordt alleen verzonden naar de openbare archieven die je browser rechtstreeks aanroept: Earth Search, Microsoft Planetary Computer, NASA GIBS en EUMETSAT. Zoeken op plaatsnaam is de enige uitzondering: de naam die je typt gaat naar de zoekdienst voor plaatsnamen.",
     "inRange": "binnen bereik",
     "tier": {

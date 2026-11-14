@@ -5189,6 +5189,8 @@
     "partial": "{{sources}} haikujibu, kwa hivyo baadhi ya mapito huenda yakakosa picha.",
     "stale": "Data ya obiti imepitwa na wakati. Orodha ya satelaiti ina umri wa {{age}}, kwa hivyo nyakati za mapito zinaweza kutofautiana.",
     "empty": "Hakuna satelaiti ya upigaji picha iliyoorodheshwa iliyopita juu ya sehemu hii katika siku {{pastDays}} zilizopita wala haitapita katika saa {{futureHours}} zijazo.",
+    "sources": "Vyanzo · {{count}}",
+    "sourcesDocs": "Jinsi vyanzo hivi vinavyotumika",
     "privacy": "Sehemu hii inabaki kwenye kivinjari chako. Inatumwa tu kwa kumbukumbu za umma ambazo kivinjari chako huziita moja kwa moja: Earth Search, Microsoft Planetary Computer, NASA GIBS na EUMETSAT. Kutafuta kwa jina la mahali ndiyo tofauti pekee: jina unaloandika linakwenda kwa huduma ya kutafuta majina ya mahali.",
     "inRange": "karibu",
     "tier": {

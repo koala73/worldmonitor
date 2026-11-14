@@ -5161,6 +5161,8 @@
     "partial": "{{sources}} が応答しなかったため、一部の通過で画像が欠けている可能性があります。",
     "stale": "軌道データが古くなっています。衛星カタログは {{age}} 前のもので、通過時刻がずれる可能性があります。",
     "empty": "過去 {{pastDays}} 日間に、登録済みの撮像衛星はこの地点の上空を通過しておらず、今後 {{futureHours}} 時間も通過しません。",
+    "sources": "出典 · {{count}}",
+    "sourcesDocs": "これらの出典の使い方",
     "privacy": "この地点はブラウザー内にとどまります。送信先は、ブラウザーが直接呼び出す公開アーカイブ（Earth Search、Microsoft Planetary Computer、NASA GIBS、EUMETSAT）のみです。唯一の例外は地名検索で、入力した地名は地名検索サービスに送られます。",
     "inRange": "範囲内",
     "tier": {

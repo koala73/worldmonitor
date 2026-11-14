@@ -5189,6 +5189,8 @@
     "partial": "{{sources}} nem válaszolt, ezért egyes áthaladásokhoz hiányozhatnak a felvételek.",
     "stale": "A pályaadatok elavultak. A műholdkatalógus {{age}} régi, ezért az áthaladási idők eltérhetnek.",
     "empty": "Egyetlen nyilvántartott képalkotó műhold sem haladt el e pont felett az elmúlt {{pastDays}} napban, és a következő {{futureHours}} órában sem fog.",
+    "sources": "Források · {{count}}",
+    "sourcesDocs": "Hogyan használjuk ezeket a forrásokat",
     "privacy": "Ez a pont a böngészőjében marad. Csak azokhoz a nyilvános archívumokhoz kerül, amelyeket a böngésző közvetlenül hív: Earth Search, Microsoft Planetary Computer, NASA GIBS és EUMETSAT. Az egyetlen kivétel a helynév szerinti keresés: a beírt név a helynévkereső szolgáltatáshoz kerül.",
     "inRange": "hatótávon belül",
     "tier": {

@@ -5161,6 +5161,8 @@
     "partial": "{{sources}} 未响应，因此部分过境可能缺少影像。",
     "stale": "轨道数据已过时。卫星目录已有 {{age}}，过境时间可能有偏差。",
     "empty": "过去 {{pastDays}} 天内没有已收录的成像卫星经过此地点，未来 {{futureHours}} 小时内也不会经过。",
+    "sources": "来源 · {{count}}",
+    "sourcesDocs": "这些来源的使用方式",
     "privacy": "此地点仅保留在你的浏览器中。它只会发送给浏览器直接调用的公共档案库：Earth Search、Microsoft Planetary Computer、NASA GIBS 和 EUMETSAT。按地名搜索是唯一的例外：你输入的地名会发送给地名搜索服务。",
     "inRange": "覆盖范围内",
     "tier": {

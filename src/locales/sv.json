@@ -5189,6 +5189,8 @@
     "partial": "{{sources}} svarade inte, så vissa passager kan sakna bilder.",
     "stale": "Banddata är inaktuella. Satellitkatalogen är {{age}} gammal, så passagetiderna kan avvika.",
     "empty": "Ingen registrerad avbildningssatellit har passerat över den här punkten under de senaste {{pastDays}} dagarna eller gör det inom de närmaste {{futureHours}} timmarna.",
+    "sources": "Källor · {{count}}",
+    "sourcesDocs": "Hur dessa källor används",
     "privacy": "Den här punkten stannar i din webbläsare. Den skickas bara till de offentliga arkiv som webbläsaren anropar direkt: Earth Search, Microsoft Planetary Computer, NASA GIBS och EUMETSAT. Sökning på ortnamn är det enda undantaget: namnet du skriver skickas till ortnamnssöktjänsten.",
     "inRange": "inom räckvidd",
     "tier": {

@@ -5227,6 +5227,8 @@
     "partial": "{{sources}} nije odgovorio pa nekim preletima možda nedostaju snimke.",
     "stale": "Orbitalni podaci su zastarjeli. Katalog satelita star je {{age}} pa vremena preleta mogu odstupati.",
     "empty": "Nijedan evidentirani satelit za snimanje nije preletio ovu točku u posljednjih {{pastDays}} dana niti će u sljedećih {{futureHours}} sati.",
+    "sources": "Izvori · {{count}}",
+    "sourcesDocs": "Kako se ovi izvori koriste",
     "privacy": "Ova točka ostaje u vašem pregledniku. Šalje se samo javnim arhivima koje preglednik izravno poziva: Earth Search, Microsoft Planetary Computer, NASA GIBS i EUMETSAT. Jedina iznimka je pretraživanje po nazivu mjesta: upisani naziv šalje se usluzi pretraživanja mjesta.",
     "inRange": "u dometu",
     "tier": {

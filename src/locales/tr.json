@@ -5189,6 +5189,8 @@
     "partial": "{{sources}} yanıt vermedi, bu nedenle bazı geçişlerin görüntüleri eksik olabilir.",
     "stale": "Yörünge verileri eski. Uydu kataloğu {{age}} önce güncellendi, bu nedenle geçiş saatleri sapabilir.",
     "empty": "Kayıtlı hiçbir görüntüleme uydusu son {{pastDays}} gün içinde bu noktanın üzerinden geçmedi ve önümüzdeki {{futureHours}} saat içinde geçmeyecek.",
+    "sources": "Kaynaklar · {{count}}",
+    "sourcesDocs": "Bu kaynaklar nasıl kullanılıyor",
     "privacy": "Bu nokta tarayıcınızda kalır. Yalnızca tarayıcınızın doğrudan çağırdığı herkese açık arşivlere gönderilir: Earth Search, Microsoft Planetary Computer, NASA GIBS ve EUMETSAT. Tek istisna yer adıyla aramadır: yazdığınız ad yer adı arama hizmetine gider.",
     "inRange": "erişimde",
     "tier": {

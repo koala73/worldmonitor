@@ -5189,6 +5189,8 @@
     "partial": "{{sources}} hat nicht geantwortet, daher fehlen manchen Überflügen möglicherweise die Aufnahmen.",
     "stale": "Die Bahndaten sind veraltet. Der Satellitenkatalog ist {{age}} alt, daher können die Überflugzeiten abweichen.",
     "empty": "Kein erfasster Erdbeobachtungssatellit hat diesen Punkt in den letzten {{pastDays}} Tagen überflogen oder wird es in den nächsten {{futureHours}} Stunden tun.",
+    "sources": "Quellen · {{count}}",
+    "sourcesDocs": "Wie diese Quellen verwendet werden",
     "privacy": "Dieser Punkt bleibt in Ihrem Browser. Er wird nur an die öffentlichen Archive gesendet, die Ihr Browser direkt abfragt: Earth Search, Microsoft Planetary Computer, NASA GIBS und EUMETSAT. Die einzige Ausnahme ist die Suche nach Ortsnamen: Der eingegebene Name geht an den Ortsnamen-Suchdienst.",
     "inRange": "in Reichweite",
     "tier": {
