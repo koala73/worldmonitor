@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { initTestI18n } from './helpers/i18n.mts';
 
@@ -350,6 +350,17 @@ describe('viewer images and the point', () => {
 });
 
 describe('opening the viewer from the lookup sheet', () => {
+  it('returns focus to the evidence sheet when the image that opened the viewer was re-rendered away', async () => {
+    const sheet = Object.assign(document.createElement('section'), { className: 'imagery-evidence-sheet', tabIndex: -1 });
+    document.body.append(sheet);
+    onTestFinished(() => sheet.remove());
+    open(scene(2, 5), {}, [], document.createElement('button'));
+    await vi.waitFor(() => expect(viewer()).not.toBeNull());
+    viewer()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(viewer()).toBeNull();
+    expect(document.activeElement).toBe(sheet);
+  });
+
   it('opens from the latest image, and Escape closes only the viewer and returns focus to that image', async () => {
     const acquisition = scene(2, 5);
     const evidence: OrbitalEvidence = { passes: [], acquisitions: [acquisition], mosaics: [], frames: [], bestView: acquisition, status: 'complete', failures: [], unansweredProfiles: [] };

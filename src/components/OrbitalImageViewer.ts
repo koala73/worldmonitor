@@ -258,7 +258,7 @@ export class OrbitalImageViewer {
     for (const paint of this.painted.values()) paint.release();
     this.painted.clear();
     if (!restoreFocus) return;
-    const target = this.returnFocusTo?.isConnected ? this.returnFocusTo : document.querySelector<HTMLElement>('.orbital-watch-sheet');
+    const target = this.returnFocusTo?.isConnected ? this.returnFocusTo : document.querySelector<HTMLElement>('.imagery-evidence-sheet');
     target?.focus({ preventScroll: true });
   }
 
