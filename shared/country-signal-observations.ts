@@ -144,6 +144,11 @@ const waterReservoirSchema = z.object({
  * `seasonalZ`). Context beside country risk: the family never feeds a score, and every row
  * carries the overpass date because lidar levels arrive weeks after the measurement.
  */
+/** A reservoir level is beyond its seasonal baseline at SEASONAL_Z_ALERT seasonal deviations. */
+export function isBeyondSeasonalBaseline(seasonalZ: number | null | undefined): boolean {
+  return seasonalZ != null && Number.isFinite(seasonalZ) && Math.abs(seasonalZ) >= SEASONAL_Z_ALERT;
+}
+
 export function projectWaterSignalFamily(countryCode: string, body: unknown): CountrySignalOutcome {
   const object = z.record(z.string(), z.unknown()).parse(body);
   if (object.dataAvailable === false || !Array.isArray(object.reservoirs)) return unavailableCountrySignal(countryCode, 'water', 'Strategic Water Levels snapshot unavailable.');
@@ -156,7 +161,7 @@ export function projectWaterSignalFamily(countryCode: string, body: unknown): Co
   const baselined = reservoirs.filter(r => r.seasonalZ != null && r.latest && r.status !== 'no_recent_data');
   if (baselined.length === 0) return unavailableCountrySignal(countryCode, 'water', 'This country\'s reservoirs have no recent pass with a seasonal baseline.');
   const observations = baselined
-    .filter(r => Math.abs(r.seasonalZ!) >= SEASONAL_Z_ALERT)
+    .filter(r => isBeyondSeasonalBaseline(r.seasonalZ))
     .sort((a, b) => Math.abs(b.seasonalZ!) - Math.abs(a.seasonalZ!) || a.id.localeCompare(b.id))
     .map((r): QualifiedCountryObservation => {
       const below = r.seasonalZ! < 0;
@@ -183,7 +188,7 @@ export function projectCountrySignalFamily(countryCode: string, family: CountryS
   const keys = { outages: 'outages', unrest: 'events', fires: 'fireDetections', radiation: 'observations', sanctions: 'countries', conflict: 'events', posture: 'theaters' } as const;
   const raw = object[keys[family]];
   if (!Array.isArray(raw) || object.dataAvailable === false || (family === 'sanctions' || family === 'conflict') && !outcome.snapshotAt || family === 'posture' && object.state !== 'observed') return unavailableCountrySignal(countryCode, family, family === 'conflict' ? 'Conflict source is disabled or its snapshot is unavailable.' : 'Source snapshot unavailable or unconfirmed.', object.state === 'locked' ? 'locked' : 'unavailable');
-  outcome.attribution = { outages: 'Cloudflare Radar', unrest: 'ACLED / GDELT; media-location signals are unverified', fires: 'NASA FIRMS / reporting agency', radiation: 'EPA RadNet / Safecast', sanctions: 'OFAC / Canada SEMA', conflict: 'Existing Iran-events source profile', posture: String(object.provider ?? 'Unknown provider') }[family];
+  outcome.attribution = { outages: 'Cloudflare Radar', unrest: 'GDELT / UCDP; media-location signals are unverified', fires: 'NASA FIRMS / reporting agency', radiation: 'EPA RadNet / Safecast', sanctions: 'OFAC / Canada SEMA', conflict: 'Existing Iran-events source profile', posture: String(object.provider ?? 'Unknown provider') }[family];
   if (family === 'posture') { outcome.snapshotAt = sourceClock(object.sourceAt); outcome.partial = object.status !== 'live'; outcome.scope = `Redistributable theater posture (${String(object.status)})`; }
   outcome.partial ||= outcome.sampleBeforeCountryFilter;
   let malformedRows = 0;
@@ -232,7 +237,7 @@ export function projectCountrySignalFamily(countryCode: string, family: CountryS
     const rawTime = row.detectedAt ?? row.occurredAt ?? row.observedAt ?? row.timestamp;
     const eventAt = sourceClock(family === 'conflict' && Number(rawTime) > 0 && Number(rawTime) < 1e12 ? Number(rawTime) * 1000 : rawTime);
     if (!title.trim() || row.id === '') { outcome.partial = true; malformedRows++; continue; }
-    const labels: Record<string, string> = { firms: 'NASA FIRMS', RADIATION_SOURCE_SAFECAST: 'Safecast', RADIATION_SOURCE_EPA_RADNET: 'EPA RadNet', UNREST_SOURCE_TYPE_ACLED: 'ACLED', UNREST_SOURCE_TYPE_GDELT: 'GDELT' };
+    const labels: Record<string, string> = { firms: 'NASA FIRMS', RADIATION_SOURCE_SAFECAST: 'Safecast', RADIATION_SOURCE_EPA_RADNET: 'EPA RadNet', UNREST_SOURCE_TYPE_ACLED: 'GDELT', UNREST_SOURCE_TYPE_GDELT: 'GDELT' };
     if (Array.isArray(row.sources) && (row.sources.length > 16 || row.sources.some(value => typeof value !== 'string'))) outcome.partial = true;
     const rawSource = Array.isArray(row.sources) ? row.sources.filter((value): value is string => typeof value === 'string').slice(0, 16).join(', ') : typeof row.source === 'string' ? row.source : typeof row.sourceType === 'string' ? row.sourceType : outcome.attribution;
     const rowSource = labels[rawSource] ?? rawSource;

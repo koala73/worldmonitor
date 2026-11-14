@@ -71,6 +71,10 @@ describe('qualified country source to rendered view and context', () => {
       expect(body.querySelector('.cdp-imagery-evidence .cdp-imagery-item')?.textContent).toContain('Imagery statistics changed at Controlled watched site: raised by Sentinel-1A scene 2026-10-05, confirmed by Sentinel-1C scene 2026-10-17');
       expect(panel.getQualifiedCountrySignals()?.details).toEqual(value.details);
       expect(body.textContent).toContain('not a 24-hour total');
+      expect(body.querySelector<HTMLDetailsElement>('details.cdp-sources')?.open).toBe(false);
+      expect(body.querySelectorAll('.cdp-signals-footer')).toHaveLength(1);
+      expect(body.querySelector('.cdp-signals-footer')?.textContent).toBe('Not an input to CII/CRI.');
+      expect(body.textContent).not.toContain('ACLED');
       panel.updateSignals(countrySignalsFromMilitary('IR'));
       expect(body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Critical1High4Moderate3Low3');
       return { panel, text: body.textContent };
@@ -131,7 +135,7 @@ describe('satellite imagery block in the country signals section', () => {
     const block = body.querySelector('.cdp-imagery-evidence')!;
     expect(block.querySelectorAll('.cdp-imagery-item')).toHaveLength(1);
     expect(block.textContent).toContain('Confirmed 2026-10-17');
-    expect(block.textContent).toContain('Not an input to the Country Instability Index');
+    expect(block.textContent).not.toContain('Country Instability Index');
     expect(block.textContent).not.toMatch(/activity|strike|build-up/i);
     panel.clearQualifiedCountrySignals();
     expect(body.querySelector('.cdp-imagery-evidence')).toBeNull();
@@ -143,7 +147,7 @@ describe('satellite imagery block in the country signals section', () => {
     expect(empty.body.querySelector('.cdp-imagery-evidence')?.textContent).toContain('No confirmed imagery statistics changes');
     const unavailable = render(unavailableCountrySignal('IR', 'imagery', 'Change scoring is not yet published for this country\'s watched sites.'));
     expect(unavailable.body.querySelector('.cdp-imagery-evidence')).toBeNull();
-    expect(unavailable.body.textContent).toContain('imagery: unavailable');
+    expect(unavailable.body.querySelector('.cdp-sources-row[data-family="imagery"] .cdp-sources-pill')?.textContent).toContain('unavailable');
     for (const { panel } of [empty, unavailable]) panel.hide();
   });
 });
@@ -165,8 +169,8 @@ describe('water levels block in the country signals section', () => {
     expect(block.querySelectorAll('.cdp-imagery-item')).toHaveLength(1);
     expect(block.textContent).toContain('Karkheh Dam: water level 6.4 m below its seasonal baseline');
     expect(block.textContent).toContain('Measured 2026-09-06');
-    expect(block.textContent).toContain('not a live reading');
-    expect(block.textContent).toContain('Not an input to the Country Instability Index');
+    expect(block.textContent).toContain('not live readings');
+    expect(block.textContent).not.toContain('Country Instability Index');
     expect(block.textContent).not.toContain('Lake Urmia');
     expect(body.querySelector('.cdp-imagery-evidence')?.textContent).not.toContain('Karkheh');
     panel.clearQualifiedCountrySignals();
@@ -179,7 +183,7 @@ describe('water levels block in the country signals section', () => {
     expect(empty.body.querySelector('.cdp-water-evidence')?.textContent).toContain('No strategic reservoir in this country is beyond its seasonal baseline');
     const unavailable = render(unavailableCountrySignal('IR', 'water', 'Strategic Water Levels snapshot unavailable.'));
     expect(unavailable.body.querySelector('.cdp-water-evidence')).toBeNull();
-    expect(unavailable.body.textContent).toContain('water: unavailable');
+    expect(unavailable.body.querySelector('.cdp-sources-row[data-family="water"] .cdp-sources-pill')?.textContent).toContain('unavailable');
     for (const { panel } of [empty, unavailable]) panel.hide();
   });
 });

@@ -1007,7 +1007,11 @@ export function computeChange(passes, nowMs) {
     arr.push(p.levelM);
     perDay.set(p.date, arr);
   }
-  out.series = [...perDay.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([d, v]) => [d, round(median(v))]);
+  // Third element: the seasonal baseline median for that day, null where seasonalBaseline has too few seasons.
+  out.series = [...perDay.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([d, v]) => {
+    const base = seasonalBaseline(ok, Date.parse(`${d}T12:00:00Z`));
+    return [d, round(median(v)), base ? round(base.medianM) : null];
+  });
   return out;
 }
 

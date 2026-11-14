@@ -1209,7 +1209,12 @@
       "shareLink": "Chia sẻ liên kết",
       "shareStory": "Chia sẻ bài viết",
       "printPdf": "In / PDF",
-      "exportData": "Xuất dữ liệu"
+      "exportData": "Xuất dữ liệu",
+      "sources": {
+        "summary": "Nguồn và khung thời gian · {{count}} nhóm",
+        "note": "Khung thời gian của các nguồn khác nhau; đây không phải tổng 24 giờ.",
+        "footer": "Không phải đầu vào của CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Đường ống",
@@ -3183,8 +3188,16 @@
       "countryEvidence": {
         "heading": "Mực nước",
         "empty": "Không hồ chứa chiến lược nào ở quốc gia này nằm ngoài đường cơ sở theo mùa ở lần đi qua gần nhất.",
-        "measured": "Đo ngày {{date}}",
-        "note": "Mực mặt nước đo bằng lidar từ lần đi qua có ghi ngày, không phải số đọc trực tiếp hay dung tích trữ. Không phải đầu vào của Chỉ số Bất ổn Quốc gia."
+        "measured": "Đo ngày {{date}}"
+      },
+      "card": {
+        "measured": "Đo {{date}} · {{age}}",
+        "noCrossing": "không có trong khoảng này (đến {{date}})",
+        "crossing": "Lượt bay qua dự kiến của ICESat-2",
+        "summary": "{{beyond}}/{{total}} hồ chứa ngoài đường cơ sở theo mùa",
+        "latestPass": "lượt ICESat-2 gần nhất {{date}}",
+        "sparkline": "Mực nước 36 tháng, đường cơ sở theo mùa là nét đứt",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Mực mặt nước bằng lidar từ các lượt có ngày, không phải số đo trực tiếp hay dung tích."
       }
     },
     "gridDisruptionClock": {

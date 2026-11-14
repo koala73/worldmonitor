@@ -1215,7 +1215,12 @@
       "shareLink": "Distribuie linkul",
       "shareStory": "Distribuie povestea",
       "printPdf": "Imprimare / PDF",
-      "exportData": "Exportați datele"
+      "exportData": "Exportați datele",
+      "sources": {
+        "summary": "Surse și ferestre · {{count}} grupuri",
+        "note": "Ferestrele surselor diferă; nu este un total pe 24 de ore.",
+        "footer": "Nu este o intrare pentru CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Conducta",
@@ -3225,8 +3230,16 @@
       "countryEvidence": {
         "heading": "Niveluri ale apei",
         "empty": "Niciun lac de acumulare strategic din această țară nu este în afara bazei sale sezoniere la ultima trecere.",
-        "measured": "Măsurat la {{date}}",
-        "note": "Nivelul suprafeței apei prin lidar la trecerea datată, nu o citire în timp real sau un volum stocat. Nu este o intrare a Indicelui de Instabilitate a Țării."
+        "measured": "Măsurat la {{date}}"
+      },
+      "card": {
+        "measured": "Măsurat {{date}} · {{age}}",
+        "noCrossing": "niciuna în această fereastră (până la {{date}})",
+        "crossing": "Trecere ICESat-2 prognozată",
+        "summary": "{{beyond}} din {{total}} lacuri în afara bazei sezoniere",
+        "latestPass": "ultima trecere ICESat-2 {{date}}",
+        "sparkline": "Nivel pe 36 de luni, cu baza sezonieră punctată",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Niveluri lidar ale suprafeței apei din treceri datate, nu citiri live sau volume stocate."
       }
     },
     "gridDisruptionClock": {

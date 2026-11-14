@@ -1209,7 +1209,12 @@
       "shareLink": "リンクを共有",
       "shareStory": "ストーリーを共有",
       "printPdf": "印刷 / PDF",
-      "exportData": "データをエクスポート"
+      "exportData": "データをエクスポート",
+      "sources": {
+        "summary": "ソースと期間 · {{count}} 系統",
+        "note": "ソースの期間は異なります。24時間の合計ではありません。",
+        "footer": "CII/CRI の入力ではありません。"
+      }
     },
     "relatedAssets": {
       "pipeline": "パイプライン",
@@ -3183,8 +3188,16 @@
       "countryEvidence": {
         "heading": "水位",
         "empty": "この国の戦略的貯水池で、最新の通過時に季節的基準線を外れているものはありません。",
-        "measured": "{{date}} 計測",
-        "note": "日付付きの通過時のライダーによる水面高。リアルタイムの値や貯水量ではありません。国別不安定指数の入力ではありません。"
+        "measured": "{{date}} 計測"
+      },
+      "card": {
+        "measured": "計測 {{date}} · {{age}}",
+        "noCrossing": "この期間内になし（{{date}}まで）",
+        "crossing": "ICESat-2 の予測通過",
+        "summary": "{{total}} 貯水池中 {{beyond}} が季節基準外",
+        "latestPass": "最新の ICESat-2 通過 {{date}}",
+        "sparkline": "36か月の水位（季節基準は破線）",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC)。日付付き通過のライダー水面高で、リアルタイム値や貯水量ではありません。"
       }
     },
     "gridDisruptionClock": {

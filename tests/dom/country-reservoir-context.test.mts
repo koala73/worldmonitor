@@ -41,9 +41,11 @@ describe('strategic reservoirs beside the energy mix', () => {
     const text = context()?.textContent ?? '';
     expect(text).toContain('Hydro 10% of primary energy');
     expect(text).toContain('Kremenchuk Reservoir');
-    expect(text).toMatch(/measured (Sep 6|6 Sep) \(69 days ago\)/);
+    expect(text).toMatch(/Measured (Sep 6|6 Sep) · 69d ago/);
+    expect(context()?.querySelectorAll('.wl-card')).toHaveLength(2);
+    expect(context()?.querySelector('.wl-card')?.classList.contains('wl-tone-beyond')).toBe(true);
     expect(text).toContain('No usable pass yet');
-    expect(text).toContain('not a live reading');
+    expect(text).toContain('not live readings');
     expect(text.indexOf('Kremenchuk')).toBeLessThan(text.indexOf('Dnipro'));
 
     panel.updateEnergyProfile({ ...energy, hydroShare: 12 });

@@ -1322,7 +1322,12 @@
       "printPdf": "Imprimir / PDF",
       "exportData": "Exportar datos",
       "moreActions": "Más acciones",
-      "shareLink": "Compartir enlace"
+      "shareLink": "Compartir enlace",
+      "sources": {
+        "summary": "Fuentes y ventanas · {{count}} grupos",
+        "note": "Las ventanas de las fuentes varían; esto no es un total de 24 horas.",
+        "footer": "No es una entrada del CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Ducto",
@@ -3225,8 +3230,16 @@
       "countryEvidence": {
         "heading": "Niveles de agua",
         "empty": "Ningún embalse estratégico de este país está fuera de su referencia estacional en su último paso.",
-        "measured": "Medido el {{date}}",
-        "note": "Nivel de la superficie del agua por lidar del paso fechado, no una lectura en directo ni un volumen almacenado. No es una entrada del Índice de Inestabilidad del País."
+        "measured": "Medido el {{date}}"
+      },
+      "card": {
+        "measured": "Medido {{date}} · {{age}}",
+        "noCrossing": "ninguno en esta ventana (hasta {{date}})",
+        "crossing": "Paso previsto de ICESat-2",
+        "summary": "{{beyond}} de {{total}} embalses fuera de la base estacional",
+        "latestPass": "último paso de ICESat-2 {{date}}",
+        "sparkline": "Nivel de 36 meses con la base estacional como línea discontinua",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Niveles de superficie del agua por lidar de pasos fechados, no lecturas en vivo ni volúmenes."
       }
     },
     "gridDisruptionClock": {

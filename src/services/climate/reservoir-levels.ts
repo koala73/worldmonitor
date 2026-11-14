@@ -49,7 +49,8 @@ export interface ReservoirLevel {
   recordLow: boolean;
   recordHigh: boolean;
   status: ReservoirLevelStatus;
-  series: Array<{ date: string; levelM: number }>;
+  /** `baselineM`: the seeded seasonal baseline median for that date, absent with too few prior seasons. */
+  series: Array<{ date: string; levelM: number; baselineM?: number }>;
 }
 
 export interface ReservoirLevelsSnapshot {
@@ -96,7 +97,7 @@ export function toDisplayReservoirLevel(proto: ProtoReservoirLevel): ReservoirLe
     recordLow: proto.recordLow === true,
     recordHigh: proto.recordHigh === true,
     status: (STATUSES.has(proto.status) ? proto.status : 'insufficient_history') as ReservoirLevelStatus,
-    series: (proto.series ?? []).map((p) => ({ date: p.date, levelM: p.levelM })),
+    series: (proto.series ?? []).map((p) => (num(p.baselineM) == null ? { date: p.date, levelM: p.levelM } : { date: p.date, levelM: p.levelM, baselineM: p.baselineM })),
   };
 }
 

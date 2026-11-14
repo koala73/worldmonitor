@@ -1212,7 +1212,12 @@
       "shareLink": "Bağlantıyı paylaş",
       "shareStory": "Hikayeyi paylas",
       "printPdf": "Yazdir / PDF",
-      "exportData": "Verileri disari aktar"
+      "exportData": "Verileri disari aktar",
+      "sources": {
+        "summary": "Kaynaklar ve aralıklar · {{count}} grup",
+        "note": "Kaynak aralıkları farklıdır; bu 24 saatlik toplam değildir.",
+        "footer": "CII/CRI girdisi değildir."
+      }
     },
     "relatedAssets": {
       "pipeline": "Boru Hatti",
@@ -3204,8 +3209,16 @@
       "countryEvidence": {
         "heading": "Su seviyeleri",
         "empty": "Bu ülkedeki hiçbir stratejik baraj gölü son geçişte mevsimsel taban çizgisinin dışında değil.",
-        "measured": "{{date}} tarihinde ölçüldü",
-        "note": "Tarihli geçişten lidar su yüzeyi seviyesi; canlı okuma veya depolama hacmi değildir. Ülke İstikrarsızlık Endeksi'nin girdisi değildir."
+        "measured": "{{date}} tarihinde ölçüldü"
+      },
+      "card": {
+        "measured": "Ölçüldü {{date}} · {{age}}",
+        "noCrossing": "bu aralıkta yok ({{date}} tarihine kadar)",
+        "crossing": "Öngörülen ICESat-2 geçişi",
+        "summary": "{{total}} rezervuardan {{beyond}} tanesi mevsimsel tabanın dışında",
+        "latestPass": "son ICESat-2 geçişi {{date}}",
+        "sparkline": "36 aylık seviye, mevsimsel taban kesikli çizgi",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Tarihli geçişlerden lidar su yüzeyi seviyeleri; canlı okuma veya depolama hacmi değildir."
       }
     },
     "gridDisruptionClock": {

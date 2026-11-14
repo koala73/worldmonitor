@@ -1369,7 +1369,12 @@
       "shareLink": "Dijeli vezu",
       "shareStory": "Dijeli priču",
       "printPdf": "Ispiši / PDF",
-      "exportData": "Izvezi podatke"
+      "exportData": "Izvezi podatke",
+      "sources": {
+        "summary": "Izvori i razdoblja · {{count}} skupina",
+        "note": "Razdoblja izvora se razlikuju; ovo nije 24-satni zbroj.",
+        "footer": "Nije ulaz za CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Cjevovod",
@@ -3297,8 +3302,16 @@
       "countryEvidence": {
         "heading": "Razine vode",
         "empty": "Nijedna strateška akumulacija u ovoj zemlji nije izvan svoje sezonske osnovice pri posljednjem preletu.",
-        "measured": "Izmjereno {{date}}",
-        "note": "Lidarska razina vodene površine s datiranog preleta, ne očitanje uživo ni volumen zaliha. Nije ulaz u Indeks nestabilnosti zemlje."
+        "measured": "Izmjereno {{date}}"
+      },
+      "card": {
+        "measured": "Izmjereno {{date}} · {{age}}",
+        "noCrossing": "nema u ovom razdoblju (do {{date}})",
+        "crossing": "Predviđeni prelet ICESat-2",
+        "summary": "{{beyond}} od {{total}} akumulacija izvan sezonske osnovice",
+        "latestPass": "zadnji prelet ICESat-2 {{date}}",
+        "sparkline": "Razina kroz 36 mjeseci sa sezonskom osnovicom kao isprekidanom crtom",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidarske razine vodene površine iz datiranih preleta, ne trenutna očitanja ni volumeni."
       }
     },
     "gridDisruptionClock": {

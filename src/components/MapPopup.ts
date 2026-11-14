@@ -30,11 +30,11 @@ import {
   reservoirMeasured,
   reservoirPlace,
   reservoirSparkline,
-  reservoirTone,
+  reservoirChipTone,
   statusLabel as reservoirStatusLabel,
-  reservoirLevelContext,
   reservoirNextPassText,
 } from './reservoir-levels-view';
+import { reservoirCard } from './reservoir-card';
 import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticle } from '@/services/gdelt-intel';
 import { getWingbitsLiveFlight } from '@/services/wingbits';
 import { isFeatureAvailable } from '@/services/runtime-config';
@@ -1796,7 +1796,8 @@ export class MapPopup {
     const severityText = escapeHtml(severityLabel(event.severity));
     const eventTypeLabel = mediaSignal ? t('popups.protest.mediaSignal') : escapeHtml(statusLabel(event.eventType.replace(/_/g, ' ')));
     const icon = event.eventType === 'riot' ? '🔥' : event.eventType === 'strike' ? '✊' : '📢';
-    const sourceLabel = event.sourceType === 'acled' ? t('popups.protest.acledVerified') : t('popups.protest.gdelt');
+    // conflict:acled:* keys are filled from GDELT, so every unrest row names GDELT.
+    const sourceLabel = t('popups.protest.gdelt');
     const validatedBadge = !mediaSignal && event.validated ? `<span class="popup-badge verified">${t('popups.verified')}</span>` : '';
     const fatalitiesSection = event.fatalities
       ? `<div class="popup-stat"><span class="stat-label">${t('popups.fatalities')}</span><span class="stat-value alert">${event.fatalities}</span></div>`
@@ -2298,7 +2299,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
   private renderReservoirLevelPopup(r: ReservoirLevel): string {
     const locale = getLocale();
     const ctx = { t, locale, nowMs: Date.now() };
-    const tone = reservoirTone(r.status);
+    const tone = reservoirChipTone(r.status);
     const signed = (v: number | null) => (v == null ? '\u2014' : escapeHtml(formatSignedMetres(v, locale)));
     const stat = (label: string, value: string, extraClass = '') =>
       `<div class="popup-stat"><span class="stat-label">${escapeHtml(label)}</span><span class="stat-value${extraClass}">${value}</span></div>`;
@@ -2373,7 +2374,9 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
         const line = site.querySelector('.wl-site-context-level');
         if (!line || !site.isConnected) return;
         const level = levels.get(id);
-        line.textContent = level ? reservoirLevelContext(level, { t, locale, nowMs: Date.now() }) : t('components.reservoirLevels.unavailable');
+        if (!level) { line.textContent = t('components.reservoirLevels.unavailable'); return; }
+        site.querySelector('.wl-site-context-name')?.remove();
+        line.replaceWith(reservoirCard(level, { t, locale, nowMs: Date.now() }, { compact: true }));
       });
     }
   }

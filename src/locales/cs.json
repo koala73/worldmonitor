@@ -1206,7 +1206,12 @@
       "printPdf": "Tisk / PDF",
       "exportData": "Exportovat data",
       "moreActions": "Další akce",
-      "shareLink": "Sdílet odkaz"
+      "shareLink": "Sdílet odkaz",
+      "sources": {
+        "summary": "Zdroje a okna · {{count}} skupin",
+        "note": "Okna zdrojů se liší; nejde o 24hodinový součet.",
+        "footer": "Není vstupem CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Potrubí",
@@ -3246,8 +3251,16 @@
       "countryEvidence": {
         "heading": "Hladiny vody",
         "empty": "Žádná strategická nádrž v této zemi není při posledním přeletu mimo svou sezónní základnu.",
-        "measured": "Měřeno {{date}}",
-        "note": "Lidarová výška vodní hladiny z datovaného přeletu, nikoli živé měření ani objem zásob. Není vstupem Indexu nestability země."
+        "measured": "Měřeno {{date}}"
+      },
+      "card": {
+        "measured": "Změřeno {{date}} · {{age}}",
+        "noCrossing": "v tomto okně žádný (do {{date}})",
+        "crossing": "Předpovězený přelet ICESat-2",
+        "summary": "{{beyond}} z {{total}} nádrží mimo sezónní základ",
+        "latestPass": "poslední přelet ICESat-2 {{date}}",
+        "sparkline": "Hladina za 36 měsíců se sezónním základem jako čárkovanou čarou",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidarové hladiny vodní hladiny z datovaných přeletů, ne aktuální údaje ani objemy."
       }
     },
     "gridDisruptionClock": {

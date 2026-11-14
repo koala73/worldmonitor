@@ -12,7 +12,7 @@ import {
   reservoirHeadline,
   reservoirPlace,
   reservoirSparkline,
-  reservoirTone,
+  reservoirChipTone,
   sortReservoirs,
   statusLabel,
   type ReservoirFilter,
@@ -183,7 +183,7 @@ export class ReservoirLevelsPanel extends Panel {
   }
 
   private row(r: ReservoirLevel, ctx: ReservoirFormatContext, scopeRow?: ScopeRow<ReservoirLevel>): SafeHtml {
-    const tone = reservoirTone(r.status);
+    const tone = reservoirChipTone(r.status);
     const spark = reservoirSparkline(r);
     return safeHtml`<li><button type="button" class="wl-row wl-tone-${tone}" data-reservoir-id="${r.id}" data-status="${r.status}">
       <span class="wl-id"><span class="wl-name" title="${r.name}">${r.name}</span><span class="wl-place">${reservoirPlace(r, ctx.locale)} ${unsafeRawHtml(scopeTagHtml(scopeRow), 'scope tag escaped by scopeTagHtml')}</span></span>

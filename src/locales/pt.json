@@ -773,7 +773,12 @@
       "printPdf": "Imprimir / PDF",
       "exportData": "Exportar dados",
       "moreActions": "Mais ações",
-      "shareLink": "Partilhar ligação"
+      "shareLink": "Partilhar ligação",
+      "sources": {
+        "summary": "Fontes e janelas · {{count}} grupos",
+        "note": "As janelas das fontes variam; isto não é um total de 24 horas.",
+        "footer": "Não é uma entrada do CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Duto",
@@ -2839,8 +2844,16 @@
       "countryEvidence": {
         "heading": "Níveis de água",
         "empty": "Nenhum reservatório estratégico deste país está fora da sua referência sazonal na última passagem.",
-        "measured": "Medido em {{date}}",
-        "note": "Nível da superfície da água por lidar na passagem datada, não uma leitura ao vivo nem volume armazenado. Não é uma entrada do Índice de Instabilidade do País."
+        "measured": "Medido em {{date}}"
+      },
+      "card": {
+        "measured": "Medido {{date}} · {{age}}",
+        "noCrossing": "nenhuma nesta janela (até {{date}})",
+        "crossing": "Passagem prevista do ICESat-2",
+        "summary": "{{beyond}} de {{total}} reservatórios fora da base sazonal",
+        "latestPass": "última passagem do ICESat-2 {{date}}",
+        "sparkline": "Nível de 36 meses com a base sazonal tracejada",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Níveis da superfície da água por lidar de passagens datadas, não leituras ao vivo nem volumes."
       }
     },
     "gridDisruptionClock": {

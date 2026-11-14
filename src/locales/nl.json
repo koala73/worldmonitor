@@ -772,7 +772,12 @@
       "printPdf": "Afdrukken / PDF",
       "exportData": "Gegevens exporteren",
       "moreActions": "Meer acties",
-      "shareLink": "Link delen"
+      "shareLink": "Link delen",
+      "sources": {
+        "summary": "Bronnen en vensters · {{count}} groepen",
+        "note": "Bronvensters verschillen; dit is geen 24-uurstotaal.",
+        "footer": "Geen invoer voor CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Pijpleiding",
@@ -2820,8 +2825,16 @@
       "countryEvidence": {
         "heading": "Waterstanden",
         "empty": "Geen strategisch stuwmeer in dit land ligt bij de laatste overkomst buiten zijn seizoensbasislijn.",
-        "measured": "Gemeten op {{date}}",
-        "note": "Lidar-waterspiegel van de gedateerde overkomst, geen live meting of opslagvolume. Geen invoer voor de Country Instability Index."
+        "measured": "Gemeten op {{date}}"
+      },
+      "card": {
+        "measured": "Gemeten {{date}} · {{age}}",
+        "noCrossing": "geen in dit venster (tot {{date}})",
+        "crossing": "Voorspelde ICESat-2-overkomst",
+        "summary": "{{beyond}} van {{total}} stuwmeren buiten de seizoensbasis",
+        "latestPass": "laatste ICESat-2-overkomst {{date}}",
+        "sparkline": "Peil over 36 maanden met de seizoensbasis als stippellijn",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidar-waterstanden uit gedateerde overkomsten, geen live metingen of opslagvolumes."
       }
     },
     "gridDisruptionClock": {

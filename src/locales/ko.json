@@ -1209,7 +1209,12 @@
       "shareLink": "링크 공유",
       "shareStory": "기사 공유",
       "printPdf": "인쇄 / PDF",
-      "exportData": "데이터 내보내기"
+      "exportData": "데이터 내보내기",
+      "sources": {
+        "summary": "출처와 기간 · {{count}}개 계열",
+        "note": "출처마다 기간이 다르며 24시간 합계가 아닙니다.",
+        "footer": "CII/CRI 입력값이 아닙니다."
+      }
     },
     "relatedAssets": {
       "pipeline": "파이프라인",
@@ -3183,8 +3188,16 @@
       "countryEvidence": {
         "heading": "수위",
         "empty": "이 나라의 전략 저수지 중 최근 통과 시 계절 기준선을 벗어난 곳은 없습니다.",
-        "measured": "{{date}} 측정",
-        "note": "날짜가 기록된 통과의 라이다 수면 높이로, 실시간 값이나 저수량이 아닙니다. 국가 불안정 지수의 입력값이 아닙니다."
+        "measured": "{{date}} 측정"
+      },
+      "card": {
+        "measured": "측정 {{date}} · {{age}}",
+        "noCrossing": "이 기간에 없음({{date}}까지)",
+        "crossing": "ICESat-2 예상 통과",
+        "summary": "저수지 {{total}}곳 중 {{beyond}}곳이 계절 기준선 밖",
+        "latestPass": "최근 ICESat-2 통과 {{date}}",
+        "sparkline": "36개월 수위, 계절 기준선은 점선",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). 날짜가 있는 통과의 라이다 수면 높이로, 실시간 값이나 저수량이 아닙니다."
       }
     },
     "gridDisruptionClock": {

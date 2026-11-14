@@ -1163,7 +1163,12 @@
       "printPdf": "Imprimer / PDF",
       "exportData": "Exporter les données",
       "moreActions": "Autres actions",
-      "shareLink": "Partager le lien"
+      "shareLink": "Partager le lien",
+      "sources": {
+        "summary": "Sources et fenêtres · {{count}} familles",
+        "note": "Les fenêtres des sources varient ; ce n’est pas un total sur 24 heures.",
+        "footer": "N’entre pas dans le CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Oléoduc",
@@ -3225,8 +3230,16 @@
       "countryEvidence": {
         "heading": "Niveaux d'eau",
         "empty": "Aucun réservoir stratégique de ce pays n'est hors de sa référence saisonnière à son dernier passage.",
-        "measured": "Mesuré le {{date}}",
-        "note": "Niveau de la surface de l'eau par lidar lors du passage daté, ni une lecture en direct ni un volume stocké. Pas une donnée d'entrée de l'indice d'instabilité des pays."
+        "measured": "Mesuré le {{date}}"
+      },
+      "card": {
+        "measured": "Mesuré {{date}} · {{age}}",
+        "noCrossing": "aucun dans cette fenêtre (jusqu’au {{date}})",
+        "crossing": "Passage ICESat-2 prévu",
+        "summary": "{{beyond}} sur {{total}} réservoirs hors de la référence saisonnière",
+        "latestPass": "dernier passage ICESat-2 {{date}}",
+        "sparkline": "Niveau sur 36 mois, référence saisonnière en pointillé",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Niveaux de surface de l’eau par lidar issus de passages datés, ni relevés en direct ni volumes stockés."
       }
     },
     "gridDisruptionClock": {

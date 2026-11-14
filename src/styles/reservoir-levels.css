@@ -28,6 +28,79 @@
   --wl-tone: var(--text-muted);
   --wl-tone-text: var(--text-muted);
 }
+/* Status chips (panel row, cards, popups): amber beyond the seasonal baseline, green for normal. */
+.wl-tone-beyond {
+  --wl-tone: var(--semantic-elevated);
+  --wl-tone-text: var(--semantic-elevated-text, var(--semantic-elevated));
+}
+.wl-tone-ok {
+  --wl-tone: var(--green);
+  --wl-tone-text: var(--green-text, var(--green));
+}
+
+/* Reservoir card: country brief Water Levels and Resources, dam-event popup. */
+.wl-summary {
+  margin: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.5;
+}
+.wl-summary-part { white-space: nowrap; }
+.wl-cards { display: grid; gap: 6px; }
+.wl-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "id chip"
+    "delta spark"
+    "measured spark"
+    "next next";
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-inline-start: 2px solid var(--wl-tone);
+  border-radius: 4px;
+  background: var(--panel-bg);
+  color: var(--text);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.35;
+}
+.wl-card-id { grid-area: id; display: flex; flex-direction: column; min-width: 0; }
+.wl-card-name { font-weight: 600; overflow-wrap: anywhere; }
+.wl-card-river { color: var(--text-muted); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); }
+.wl-card-delta {
+  grid-area: delta;
+  color: var(--wl-tone-text);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.wl-card.wl-tone-ok .wl-card-delta { color: var(--text); }
+.wl-card-measured { grid-area: measured; color: var(--text-dim); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); }
+.wl-card-spark { grid-area: spark; display: flex; justify-content: flex-end; }
+.wl-card-spark svg { display: block; }
+.wl-card-next {
+  grid-area: next;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border);
+  color: var(--text-secondary);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+}
+.wl-card-next-label { color: var(--text-dim); }
+.wl-card-compact {
+  grid-template-areas:
+    "id id"
+    "delta chip"
+    "measured spark";
+  padding: 6px 8px;
+}
+.wl-card-compact .wl-chip { justify-self: end; }
+@media (max-width: 480px) {
+  .wl-card-spark svg { width: 72px; height: 24px; }
+}
 
 .wl-panel {
   display: flex;
@@ -89,7 +162,7 @@
   cursor: pointer;
 }
 
-.wl-panel .wl-row:is(.wl-tone-record-low, .wl-tone-falling, .wl-tone-low, .wl-tone-rising) {
+.wl-panel .wl-row:is(.wl-tone-record-low, .wl-tone-falling, .wl-tone-low, .wl-tone-rising, .wl-tone-beyond) {
   border-inline-start-color: var(--wl-tone);
 }
 
@@ -158,7 +231,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.wl-panel :is(.wl-tone-normal, .wl-tone-muted) .wl-headline {
+.wl-panel :is(.wl-tone-normal, .wl-tone-ok, .wl-tone-muted) .wl-headline {
   color: var(--text);
   font-weight: 500;
 }

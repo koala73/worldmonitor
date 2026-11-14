@@ -2447,3 +2447,60 @@
   color: var(--text-secondary);
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
+
+.cdp-sources {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+.cdp-sources-summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.cdp-sources-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cdp-sources-note { margin: 6px 0 4px; color: var(--text-muted); }
+.cdp-sources-row {
+  display: grid;
+  grid-template-columns: 7em auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "family pill source time"
+    ". . detail detail";
+  column-gap: 8px;
+  row-gap: 2px;
+  align-items: baseline;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+}
+.cdp-sources-family { grid-area: family; color: var(--text); text-transform: capitalize; }
+.cdp-sources-pill {
+  grid-area: pill;
+  justify-self: start;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  white-space: nowrap;
+}
+.cdp-sources-pill-observed {
+  border-color: color-mix(in srgb, var(--green) 45%, transparent);
+  color: var(--green-text, var(--green));
+}
+.cdp-sources-source { grid-area: source; min-width: 0; overflow-wrap: anywhere; }
+.cdp-sources-time { grid-area: time; color: var(--text-dim); font-family: var(--font-mono); white-space: nowrap; }
+.cdp-sources-detail { grid-area: detail; color: var(--text-muted); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); }
+.cdp-signals-footer { margin-top: 6px; }
+.cdp-water-evidence .wl-summary { margin-bottom: 2px; }
+
+@media (max-width: 480px) {
+  .cdp-sources-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "family pill time"
+      "source source source"
+      "detail detail detail";
+  }
+}

@@ -1362,7 +1362,12 @@
       "shareLink": "Hivatkozás megosztása",
       "shareStory": "Történet megosztása",
       "printPdf": "Nyomtatás / PDF",
-      "exportData": "Adatok exportálása"
+      "exportData": "Adatok exportálása",
+      "sources": {
+        "summary": "Források és ablakok · {{count}} csoport",
+        "note": "A források ablakai eltérnek; ez nem 24 órás összeg.",
+        "footer": "Nem bemenete a CII/CRI-nek."
+      }
     },
     "relatedAssets": {
       "pipeline": "Vezeték",
@@ -3273,8 +3278,16 @@
       "countryEvidence": {
         "heading": "Vízszintek",
         "empty": "Az ország egyetlen stratégiai tározója sincs az utolsó áthaladáskor a szezonális alapvonalán kívül.",
-        "measured": "Mérve: {{date}}",
-        "note": "Lidaros vízfelszín-szint a dátumozott áthaladásból, nem élő mérés és nem tárolt térfogat. Nem bemenete az Országinstabilitási Indexnek."
+        "measured": "Mérve: {{date}}"
+      },
+      "card": {
+        "measured": "Mérve: {{date}} · {{age}}",
+        "noCrossing": "ebben az ablakban nincs ({{date}}-ig)",
+        "crossing": "Várható ICESat-2 átvonulás",
+        "summary": "{{total}} tározóból {{beyond}} a szezonális alapvonalon kívül",
+        "latestPass": "utolsó ICESat-2 áthaladás: {{date}}",
+        "sparkline": "36 havi szint, a szezonális alapvonal szaggatott vonallal",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidaros vízfelszín-szintek dátumozott áthaladásokból, nem élő értékek vagy tárolt térfogatok."
       }
     },
     "gridDisruptionClock": {

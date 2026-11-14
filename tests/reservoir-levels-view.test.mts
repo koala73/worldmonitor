@@ -9,7 +9,6 @@ import {
   needsAttention,
   reservoirDetail,
   reservoirHeadline,
-  reservoirLevelContext,
   reservoirNextPassText,
   reservoirMeasured,
   reservoirPlace,
@@ -167,11 +166,6 @@ describe('reservoir wording', () => {
 });
 
 describe('reservoir context and next ICESat-2 crossing', () => {
-  it('pairs the status and seasonal headline with the measurement date', () => {
-    assert.equal(reservoirLevelContext(reservoir(), ctx), `status.record_low · vsUsual(value=${MINUS}8.2 m,month=September) · measured(date=6 Sept,age=66 days ago)`);
-    assert.match(reservoirLevelContext(reservoir({ latest: null }), ctx), /noPass$/);
-  });
-
   it('labels a crossing as predicted from dated orbit data, and no crossing as a normal answer', () => {
     const epoch = Date.parse('2026-11-13T18:00:00Z');
     const windowEnd = Date.parse('2026-11-21T12:00:00Z');

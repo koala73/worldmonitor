@@ -1209,7 +1209,12 @@
       "shareLink": "分享链接",
       "shareStory": "分享报道",
       "printPdf": "打印 / PDF",
-      "exportData": "导出数据"
+      "exportData": "导出数据",
+      "sources": {
+        "summary": "来源与时间窗 · {{count}} 类",
+        "note": "各来源时间窗不同；这不是 24 小时总计。",
+        "footer": "不作为 CII/CRI 的输入。"
+      }
     },
     "relatedAssets": {
       "pipeline": "管道",
@@ -3183,8 +3188,16 @@
       "countryEvidence": {
         "heading": "水位",
         "empty": "该国没有任何战略水库在最近一次过境时超出其季节基线。",
-        "measured": "测量于 {{date}}",
-        "note": "来自注明日期过境的激光雷达水面高度，并非实时读数或蓄水量。不计入国家不稳定指数。"
+        "measured": "测量于 {{date}}"
+      },
+      "card": {
+        "measured": "测量于 {{date}} · {{age}}",
+        "noCrossing": "此窗口内无（至 {{date}}）",
+        "crossing": "ICESat-2 预测过境",
+        "summary": "{{total}} 座水库中 {{beyond}} 座超出季节基线",
+        "latestPass": "最近 ICESat-2 过境 {{date}}",
+        "sparkline": "36 个月水位，季节基线为虚线",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC)。来自带日期过境的激光雷达水面高度，并非实时读数或库容。"
       }
     },
     "gridDisruptionClock": {
