@@ -3036,6 +3036,7 @@
   "orbitalWatch.sheet.latestNone": "Archives returned nothing for this point and period.",
   "orbitalWatch.sheet.moreImages": "Other confirmed images",
   "orbitalWatch.sheet.newest": "newest {{when}}",
+  "orbitalWatch.sheet.newestNoPreview": "Latest acquisition {{when}} lacks a preview; older scene shown.",
   "orbitalWatch.sheet.noneConfirmed": "Zero confirmed images this period",
   "orbitalWatch.sheet.noneYet": "Archives still answering",
   "orbitalWatch.sheet.share": "Copy link",
