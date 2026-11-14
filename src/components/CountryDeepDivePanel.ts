@@ -201,7 +201,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private reservoirContext: { code: string; reservoirs: ReservoirLevel[] } | null = null;
   private reservoirContextEl: HTMLElement | null = null;
   private reservoirNextPasses: Map<string, ReservoirNextPass> | null = null;
-  private reservoirNextPassesRequested = false;
+  private reservoirNextPassesInFlight = false;
   private resilienceWidgetRequestId = 0;
   private foodStocksRequestId = 0;
   private foodStocksBody: HTMLElement | null = null;
@@ -1514,15 +1514,17 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.reservoirContext = { code, reservoirs };
     this.renderReservoirContext();
     this.rerenderWaterEvidence();
-    if (!this.reservoirNextPassesRequested) {
-      this.reservoirNextPassesRequested = true;
+    // Asked on every update: the loader reuses its predictions for an hour and recomputes once one has elapsed.
+    if (!this.reservoirNextPassesInFlight) {
+      this.reservoirNextPassesInFlight = true;
       // Lazy: the loader returns null unless ORBITAL_WATCH_ENABLED, and keeps orbit code out of the brief's chunk.
       void import('@/services/climate/reservoir-context-loader').then(({ loadReservoirNextPasses }) => loadReservoirNextPasses(STRATEGIC_RESERVOIR_SITES)).then((passes) => {
+        const changed = passes !== this.reservoirNextPasses;
         this.reservoirNextPasses = passes;
-        if (!passes || this.currentReservoirs() == null) return;
+        if (!changed || !passes || this.currentReservoirs() == null) return;
         this.renderReservoirContext();
         this.rerenderWaterEvidence();
-      });
+      }).finally(() => { this.reservoirNextPassesInFlight = false; });
     }
   }
 
