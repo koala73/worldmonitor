@@ -110,7 +110,7 @@
     "fx": "Wisselkoersen",
     "ukmtoIncidents": "UKMTO-incidenten",
     "reservoirLevels": "Strategische waterstanden",
-    "gridDisruptionClock": "Klok voor stroomstoringen"
+    "gridDisruptionClock": "Klok voor stroomstoringen in Amerikaanse staten"
   },
   "commands": {
     "prefixes": {

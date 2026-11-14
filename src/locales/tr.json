@@ -494,7 +494,7 @@
     "fx": "Döviz kurları",
     "ukmtoIncidents": "UKMTO olayları",
     "reservoirLevels": "Stratejik Su Seviyeleri",
-    "gridDisruptionClock": "Elektrik kesintisi saati"
+    "gridDisruptionClock": "ABD eyaletlerinde elektrik kesintisi saati"
   },
   "commands": {
     "prefixes": {

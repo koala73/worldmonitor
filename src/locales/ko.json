@@ -492,7 +492,7 @@
     "fx": "외환 환율",
     "ukmtoIncidents": "UKMTO 사건",
     "reservoirLevels": "전략 수위",
-    "gridDisruptionClock": "전력망 정전 현황"
+    "gridDisruptionClock": "미국 주별 전력망 정전 현황"
   },
   "commands": {
     "prefixes": {

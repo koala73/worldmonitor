@@ -585,7 +585,7 @@
     "fx": "Foreign exchange rates",
     "ukmtoIncidents": "UKMTO Incidents",
     "reservoirLevels": "Strategic Water Levels",
-    "gridDisruptionClock": "Grid disruption clock"
+    "gridDisruptionClock": "US States Grid Disruption Clock"
   },
   "panelVariants": {
     "finance": {

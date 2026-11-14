@@ -1177,9 +1177,9 @@ any red check anywhere strands this service's builds.
 | **Watch paths** | See `scripts/railway-services.json` (exact runtime closure; run `node scripts/audit-railway-watch-paths.mjs`) |
 | **Replaces** | 2 services |
 | **Net savings** | 1 slot |
-| **Members** | CII Economic Stress (1h), Correlation (5min), Market-Alert-Ledger (5min), Cross-Source Signals (15min), Grid Disruption Clock (10min), Cross-Strait Activity (3h), China Decision Signals (15min), Regional Snapshots (6h), Tension Evidence (15min) |
+| **Members** | CII Economic Stress (1h), Correlation (5min), Market-Alert-Ledger (5min), Cross-Source Signals (15min), US States Grid Disruption Clock (10min), Cross-Strait Activity (3h), China Decision Signals (15min), Regional Snapshots (6h), Tension Evidence (15min) |
 | **Required env** | `JAPAN_MOD_PROXY_URL` or `PROXY_URL` (Cross-Strait Activity's Japan MOD exit; the section declares an any-of group, so either satisfies it and only an environment with neither fails as `CONFIG_ERROR`) |
-| **Note** | Grid Disruption Clock polls public outage and warning feeds. Cross-Strait Activity uses bounded MND/Japan MOD requests and a 3h freshness gate. China Decision Signals validates and republishes the public composition from its domain lanes. The bundle enforces a 570s wall-time admission budget so a non-fitting due section defers before Railway's 10-minute container limit. |
+| **Note** | US States Grid Disruption Clock polls public outage and warning feeds. Cross-Strait Activity uses bounded MND/Japan MOD requests and a 3h freshness gate. China Decision Signals validates and republishes the public composition from its domain lanes. The bundle enforces a 570s wall-time admission budget so a non-fitting due section defers before Railway's 10-minute container limit. |
 
 CII Economic Stress reads six existing Redis inputs within a 30s section budget.
 The currency member needs the cleaned `daily90` block from `seed-fx-yoy`, which

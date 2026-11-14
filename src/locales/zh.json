@@ -492,7 +492,7 @@
     "fx": "外汇汇率",
     "ukmtoIncidents": "UKMTO事件",
     "reservoirLevels": "战略水位",
-    "gridDisruptionClock": "电网停电时钟"
+    "gridDisruptionClock": "美国各州电网停电时钟"
   },
   "commands": {
     "prefixes": {
