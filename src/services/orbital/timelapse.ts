@@ -121,8 +121,8 @@ export const loadPaintableImage: LoadImage = async (archive, url, signal) => {
 };
 
 /** Loads a time-lapse frame, rejecting a crop with no pixels so playback never shows an empty square. */
-export const loadLookImage: LoadImage = async (archive, url, signal) => {
-  const image = await loadPaintableImage(archive, url, signal);
+export const withPointData = (load: LoadImage): LoadImage => async (archive, url, signal) => {
+  const image = await load(archive, url, signal);
   try {
     await loadImageElement(image.objectUrl, signal, { requireData: true });
     return image;
@@ -131,6 +131,8 @@ export const loadLookImage: LoadImage = async (archive, url, signal) => {
     throw error;
   }
 };
+
+export const loadLookImage: LoadImage = withPointData(loadPaintableImage);
 
 export type PaintedFrame<T> = T & { paint: LoadedArchiveImage };
 

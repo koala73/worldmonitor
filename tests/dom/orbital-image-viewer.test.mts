@@ -375,9 +375,13 @@ describe('opening the viewer from the lookup sheet', () => {
     const page = new OrbitalWatchPage({ onClose: vi.fn(), onRetry: vi.fn() });
     page.open(point, null);
     page.render({ kind: 'passes', lookup: { point, window: { startMs: NOW - 30 * DAY, endMs: NOW + 2 * DAY }, nowMs: NOW, catalog: { status: 'fresh', fetchedAt: NOW, inventoryVersion: 't' }, passes: [], satellites: [], computedOn: 'worker' }, archives: { kind: 'answered', evidence } });
+    await vi.waitFor(() => expect(document.querySelector('.ow-card .ow-tile img[src^="blob:"]')).not.toBeNull());
     document.querySelector<HTMLButtonElement>('.ow-card [data-action="view-image"]')!.click();
     await vi.waitFor(() => expect(viewer()).not.toBeNull());
     await vi.waitFor(() => expect(sourceOf(viewer()!.querySelector('img.oiv-image')?.getAttribute('src') ?? null)).toBe(acquisition.imageUrl));
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === acquisition.imageUrl), 'the viewer reuses the sheet\'s copy').toHaveLength(1);
+    document.querySelector<HTMLButtonElement>('.oiv-close')!.click();
+    expect(released.size, 'closing the viewer leaves the sheet\'s copy alone').toBe(0);
     page.close();
   });
 });

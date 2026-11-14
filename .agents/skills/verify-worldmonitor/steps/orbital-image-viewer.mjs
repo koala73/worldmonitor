@@ -49,14 +49,19 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await page.route('**/api/orbital/v1/list-imaging-satellites*', (route) => route.fulfill({ json: catalog }));
   const requests = [];
   page.on('request', (req) => requests.push({ url: req.url(), body: req.postData() ?? '' }));
-  // Every src a viewer, compare or time-lapse <img> is ever given, so a point-bearing URL painted for a moment is still caught.
+  // Every src an Orbital Watch <img> is ever given, so a point-bearing URL painted for a moment is still caught, and every LCP URL.
   const overlaySrcs = [];
+  const lcpUrls = [];
   await page.exposeFunction('__wmRecordOverlaySrc', (src) => { overlaySrcs.push(src); });
+  await page.exposeFunction('__wmRecordLcp', (url) => { lcpUrls.push(url); });
   await page.addInitScript(() => {
+    // DebugBear reports the largest paint's URL; `getEntriesByType` returns no LCP entries, so observe them.
+    new PerformanceObserver((list) => { for (const entry of list.getEntries()) window.__wmRecordLcp(entry.url); })
+      .observe({ type: 'largest-contentful-paint', buffered: true });
     new MutationObserver((records) => {
       for (const record of records) {
         const nodes = record.type === 'attributes' ? [record.target] : [...record.addedNodes].flatMap((n) => (n.nodeType === 1 ? [n, ...n.querySelectorAll('img')] : []));
-        for (const node of nodes) if (node.tagName === 'IMG' && node.closest('.oiv-page') && node.getAttribute('src')) window.__wmRecordOverlaySrc(node.getAttribute('src'));
+        for (const node of nodes) if (node.tagName === 'IMG' && node.closest('.oiv-page, .orbital-watch-sheet') && node.getAttribute('src')) window.__wmRecordOverlaySrc(node.getAttribute('src'));
       }
     }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] });
   });
@@ -251,7 +256,11 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('requests ending their path with the point', pathLeaks.length);
   if (pathLeaks.length) throw new Error(`picked point ends a URL path: ${pathLeaks.map((l) => l.url).join(', ')}`);
   const overlayUnsafe = unsafeSrcs(overlaySrcs);
-  log('all viewer, compare and time-lapse img srcs', overlaySrcs.length, 'unsafe', overlayUnsafe.length);
+  log('all Orbital Watch img srcs', overlaySrcs.length, 'blob:', overlaySrcs.filter((src) => src.startsWith('blob:')).length, 'unsafe', overlayUnsafe.length);
+  const lcp = lcpUrls.filter(Boolean);
+  const lcpUnsafe = lcp.filter((url) => !url.startsWith('blob:') && POINT_IMAGE_HOSTS.includes(new URL(url).hostname));
+  log('lcp urls', lcp.map((url) => (url.startsWith('blob:') ? 'blob:…' : url)), 'unsafe', lcpUnsafe.length);
+  if (lcpUnsafe.length) throw new Error(`an archive URL became the LCP element: ${lcpUnsafe.join(', ')}`);
   if (overlayUnsafe.length) throw new Error(`an overlay img src is a point-bearing or non-archive URL: ${overlayUnsafe.join(', ')}`);
   return { mobile, pointText, leaks: leaks.length };
 }

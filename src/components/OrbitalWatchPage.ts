@@ -329,6 +329,17 @@ class LookupImages {
   }
 
   /** Drops a frame with no data at the point and releases its blob. */
+  /** The sheet's copy of an image loaded, or loading, on its own; the sheet releases it when the lookup ends, so the borrower's release does nothing. */
+  lend(url: string): Promise<LoadedArchiveImage> | null {
+    const hit = this.loaded.get(url);
+    const request = hit ? Promise.resolve<ArchiveImageResult>({ status: 'ok', image: hit }) : this.pending.get(url);
+    if (!request) return null;
+    return request.then((result) => {
+      if (result.status !== 'ok') throw new Error(`image failed: ${result.failure.reason}`);
+      return { ...result.image, release: () => {} };
+    });
+  }
+
   markEmpty(url: string): void {
     this.empty.add(url);
     this.loaded.get(url)?.release();
@@ -351,6 +362,14 @@ class LookupImages {
 }
 
 const lookupImages = new LookupImages();
+
+/** Loads an image for the viewer, compare and time-lapse, reusing the sheet's copy so no image is fetched twice. */
+export function loadLookupImage(archive: ArchiveId, url: string, signal: AbortSignal): Promise<LoadedArchiveImage> {
+  return lookupImages.lend(url) ?? loadArchiveImage(archive, [url], { signal }).then((result) => {
+    if (result.status === 'failed') throw new Error(`image failed: ${result.failure.reason}`);
+    return result.image;
+  });
+}
 
 const nearViewObservers = new Set<IntersectionObserver>();
 

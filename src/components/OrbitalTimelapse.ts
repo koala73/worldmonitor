@@ -3,8 +3,8 @@ import type { ArchiveFailure } from '@/services/orbital/archive-result';
 import type { LoadedArchiveImage } from '@/services/orbital/archive-image';
 import {
   MIN_TIMELAPSE_FRAMES,
-  loadLookImage,
   preloadFrames,
+  withPointData,
   type PaintedFrame,
   searchYearlyLooks,
   type LoadImage,
@@ -16,7 +16,7 @@ import { t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
-import { ARCHIVE_NAME, IMAGE_CREDIT } from './OrbitalWatchPage';
+import { ARCHIVE_NAME, IMAGE_CREDIT, loadLookupImage } from './OrbitalWatchPage';
 import '../styles/orbital-image-viewer.css';
 
 export interface TimelapseSubject {
@@ -72,7 +72,7 @@ export class OrbitalTimelapsePage {
   constructor(private readonly subject: TimelapseSubject, private readonly returnFocusTo: HTMLElement | null, deps: TimelapseDependencies = {}) {
     this.deps = {
       searchLooks: deps.searchLooks ?? searchYearlyLooks,
-      loadImage: deps.loadImage ?? loadLookImage,
+      loadImage: deps.loadImage ?? withPointData(loadLookupImage),
       prefersReducedMotion: deps.prefersReducedMotion ?? (() => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches),
     };
     const titleId = 'orbital-timelapse-title';

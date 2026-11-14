@@ -10,7 +10,6 @@ import {
   defaultCompareScene,
   isClearScene,
   HISTORY_DAYS,
-  loadPaintableImage,
   searchSceneHistory,
   type DatedScene,
   type LoadImage,
@@ -21,7 +20,7 @@ import { t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
-import { ARCHIVE_NAME, IMAGE_CREDIT, archiveHost } from './OrbitalWatchPage';
+import { ARCHIVE_NAME, IMAGE_CREDIT, archiveHost, loadLookupImage } from './OrbitalWatchPage';
 import { closeButton, formatPoint, reticle, trapTab } from './OrbitalTimelapse';
 import '../styles/orbital-image-viewer.css';
 
@@ -228,7 +227,7 @@ export class OrbitalImageViewer {
   constructor(private readonly subject: ImageViewerSubject, private readonly returnFocusTo: HTMLElement | null, deps: ViewerDependencies = {}) {
     this.deps = {
       searchHistory: deps.searchHistory ?? searchSceneHistory,
-      loadImage: deps.loadImage ?? loadPaintableImage,
+      loadImage: deps.loadImage ?? loadLookupImage,
       prefersReducedMotion: deps.prefersReducedMotion ?? (() => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches),
     };
     this.scenes = mergeScenes(subject.selected.collection, [subject.selected], subject.scenes);
