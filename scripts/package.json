@@ -25,6 +25,7 @@
     "papaparse": "^5.5.3",
     "pdfjs-dist": "6.2.108",
     "resend": "^4",
+    "satellite.js": "^6.0.2",
     "sax": "^1.6.0",
     "telegram": "^2.22.2",
     "tsx": "^4.21.0",
