@@ -445,6 +445,9 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
     // passes through intact. What still stops a caller here:
     //   - an entitlement the backend could not VERIFY (Convex 5xx, renewal
     //     re-check in flight) → the shared retryable 503 contract below;
+    //   - a confirmed `subscription_lapsed` row → the terminal 403, a
+    //     deliberate carve-out from the ladder (see the sister comment below
+    //     the denial branch);
     //   - the free-ladder prechecks for actions whose denial would otherwise
     //     be a late relay error or never reach Convex at all
     //     (create-pairing-token, over-ladder set-channel, send-test) →
