@@ -66,8 +66,8 @@ function warnings(region: GridClockRegion, state: ClockState): HTMLElement {
       : h('p', state.warningsFresh ? label('noActive') : label('unknownWarnings')),
     manualGridSource ? h('p', { className: 'grid-clock-meta' }, label('operatorLink'), ' ',
       source(manualGridSource.sourceName, manualGridSource.sourceUrl)) : null,
-    earlier ? h('details', h('summary', label('priorNotice')), h('ul', { className: 'grid-clock-list' }, warningRow(earlier))) : null,
-    h('details', h('summary', label('sources')), h('ul', { className: 'grid-clock-checks' }, ...checks)));
+    earlier ? h('details', { dataset: { clockDisclosure: 'prior-notice' } }, h('summary', label('priorNotice')), h('ul', { className: 'grid-clock-list' }, warningRow(earlier))) : null,
+    h('details', { dataset: { clockDisclosure: 'sources' } }, h('summary', label('sources')), h('ul', { className: 'grid-clock-checks' }, ...checks)));
 }
 
 function recovery(region: GridClockRegion, state: ClockState): HTMLElement {
@@ -80,7 +80,7 @@ function recovery(region: GridClockRegion, state: ClockState): HTMLElement {
       { amount: format.format(Math.abs(delta)) });
   }
   const history = [...region.history].sort((a, b) => b.observedAt - a.observedAt);
-  const historyList = history.length ? h('details', h('summary', label('history', { total: format.format(history.length) })),
+  const historyList = history.length ? h('details', { dataset: { clockDisclosure: 'history' } }, h('summary', label('history', { total: format.format(history.length) })),
     h('ol', { className: 'grid-clock-history' }, ...history.map(item =>
       h('li', time(item.observedAt), h('span', item.customersOut === null ? label('unknown') : format.format(item.customersOut)),
         h('small', item.coverageLabel))))) : null;
@@ -128,13 +128,13 @@ export class GridDisruptionClockPanel extends Panel {
     const region = this.snapshot?.regions.find(item => item.code === this.selected);
     if (!region) return;
     // A local clock tick must not close disclosures or steal keyboard focus.
-    const openDetails = new Set([...this.content.querySelectorAll('details[open]')]
-      .map(detail => detail.querySelector('summary')?.textContent));
+    const openDetails = new Set([...this.content.querySelectorAll<HTMLDetailsElement>('details[open]')]
+      .map(detail => detail.dataset.clockDisclosure));
     const focused = this.content.contains(document.activeElement) ? document.activeElement : null;
     const focusedRegion = focused instanceof HTMLElement ? focused.dataset.region : undefined;
-    const focusedSummary = focused?.tagName === 'SUMMARY' ? focused.textContent : null;
+    const focusedSummary = focused?.tagName === 'SUMMARY';
     const focusedHref = focused instanceof HTMLAnchorElement ? focused.href : null;
-    const focusedDisclosure = focused?.closest('details')?.querySelector('summary')?.textContent;
+    const focusedDisclosure = focused?.closest('details')?.dataset.clockDisclosure;
     const now = Date.now();
     const state = deriveGridClock(region, now);
     const point = state.freshness === 'unavailable' ? null : region.current;
@@ -171,15 +171,15 @@ export class GridDisruptionClockPanel extends Panel {
       warnings(region, state), recovery(region, state)));
     for (const detail of this.content.querySelectorAll('details')) {
       const summary = detail.querySelector('summary');
-      detail.open = openDetails.has(summary?.textContent);
-      if (focusedSummary !== null && summary?.textContent === focusedSummary) summary.focus({ preventScroll: true });
+      detail.open = openDetails.has(detail.dataset.clockDisclosure);
+      if (focusedSummary && detail.dataset.clockDisclosure === focusedDisclosure) summary?.focus({ preventScroll: true });
     }
     if (focusedRegion) {
       this.content.querySelector<HTMLButtonElement>(`button[data-region="${focusedRegion}"]`)?.focus({ preventScroll: true });
     }
     if (focusedHref) {
       [...this.content.querySelectorAll('a')].find(link => link.href === focusedHref
-        && link.closest('details')?.querySelector('summary')?.textContent === focusedDisclosure)?.focus({ preventScroll: true });
+        && link.closest('details')?.dataset.clockDisclosure === focusedDisclosure)?.focus({ preventScroll: true });
     }
   }
 }

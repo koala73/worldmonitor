@@ -83,3 +83,21 @@ it('preserves disclosures and focus, and stops ticking after destruction', async
   vi.advanceTimersByTime(60_000);
   expect(root.innerHTML).toBe(content);
 });
+
+it('keeps history open and focused when a refresh changes its summary count', async () => {
+  const root = await mount();
+  const snapshot = await transport.fetch.mock.results[0]!.value as GridClockSnapshot;
+  const region = snapshot.regions[0]!;
+  region.history.push({ ...region.current!, observedAt: Date.now() - 70 * 60_000 });
+  await panel!.fetchData();
+  const history = () => root.querySelector<HTMLDetailsElement>('[data-clock-disclosure="history"]')!;
+  history().open = true;
+  history().querySelector('summary')!.focus();
+  const previousLabel = document.activeElement!.textContent;
+  region.history.push({ ...region.current!, observedAt: Date.now() - 65 * 60_000 });
+  await panel!.fetchData();
+  expect(history().open).toBe(true);
+  expect(document.activeElement).toBe(history().querySelector('summary'));
+  expect(document.activeElement!.textContent).not.toBe(previousLabel);
+  expect(history().querySelectorAll('li')).toHaveLength(2);
+});
