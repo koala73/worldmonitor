@@ -4330,7 +4330,6 @@
     "dataAndCommunity": "数据与社区",
     "theme": "主题",
     "themeDesc": "自动跟随系统偏好。",
-    "themeAuto": "自动（跟随系统）",
     "themeDark": "深色",
     "themeLight": "浅色",
     "mapProvider": "地图图块提供者",
@@ -4486,7 +4485,8 @@
     "createAccount": "创建账户",
     "freeReason": "免费：保存布局、关注国家、获取提醒",
     "settings": "设置",
-    "passkeyOffer": {}
+    "passkeyOffer": {},
+    "planBilling": "套餐与计费"
   },
   "mcp": {
     "connectPanel": "连接 MCP",
@@ -4984,7 +4984,7 @@
     "neighboursHint": "风险跨越边界。相邻国家已标记，不计入 {{max}} 的限制中。",
     "startLabel": "从（可选）",
     "endLabel": "至（可选）",
-    "datesHint": "用于行程或任务。当时间窗口结束时，聚焦保持不变且状态栏会显示。",
+    "datesHint": "用于行程或任务。时间窗口结束后，聚焦保持不变，聚焦栏会注明窗口已结束。",
     "errorNoCountries": "至少选择一个国家。",
     "errorTooMany": "聚焦最多可容纳 {{max}} 个国家。",
     "errorDates": "结束日期早于开始日期。",
@@ -5013,7 +5013,7 @@
       "emptyAirports": "您监控的机场中没有位于这些国家的机场",
       "emptyFlights": "此面板中没有往返这些国家的航班",
       "emptyAviationNews": "最近 24 小时内这些国家没有航空新闻",
-      "tabNotFiltered": "此选项卡未按国家筛选",
+      "tabNotFiltered": "此标签页未按国家筛选",
       "hidden_other": "聚焦隐藏了 {{count}} 项",
       "showAllAria_other": "显示此面板中的全部内容，包括聚焦范围外的 {{count}} 项",
       "unattributed_other": "{{count}} 项无国家标记",
@@ -5035,7 +5035,7 @@
       "partialExposure": "无法加载所有 UCDP 地点。暴露数据不完整；覆盖统计仅包含骚乱事件。"
     },
     "draftAssessment": "行程评估",
-    "draftAssessmentAria": "打开行程评估，使用此焦点预填充",
+    "draftAssessmentAria": "打开行程评估，并以此聚焦预先填好",
     "draftCopied": "请求已复制。将其粘贴到您的AI助手中。",
     "draftCopiedPartial": "已为前 {{count}} 个国家复制请求。一份评估最多涵盖 {{max}} 个国家。未包含的国家：{{omitted}}。",
     "draftCopyFailed": "无法复制请求。"
@@ -5082,5 +5082,252 @@
     "errGeneric": "初稿生成失败。请重试。",
     "errDownload": "无法在此处下载文件。请改用打印或另存为 PDF。",
     "errLoad": "无法打开行程评估。请刷新页面后重试。"
+  },
+  "settings": {
+    "back": "返回设置",
+    "signIn": {
+      "label": "登录",
+      "desc": "同步设置并管理您的方案"
+    },
+    "summary": {
+      "themeAuto": "自动",
+      "count": "{{on}}/{{total}}"
+    },
+    "groups": {
+      "dashboard": "仪表板",
+      "preferences": "偏好设置",
+      "developer": "开发者",
+      "app": "应用"
+    },
+    "sections": {
+      "account": "账户",
+      "map": "地图",
+      "ai": "AI 与分析",
+      "video": "视频与流媒体",
+      "apiKeys": "API 密钥",
+      "embeds": "嵌入",
+      "aiAgents": "AI 代理 (MCP)",
+      "sync": "同步、导入与导出",
+      "about": "关于"
+    },
+    "descriptions": {
+      "panels": "显示、隐藏和重新排序",
+      "sources": "地区和数据源",
+      "notifications": "频道和警报规则",
+      "display": "主题、字体和语言",
+      "map": "提供商、主题和地球仪",
+      "ai": "模型、记忆和框架",
+      "video": "质量和自动播放",
+      "apiKeys": "World Monitor API 密钥",
+      "embeds": "用于您网站的 widget",
+      "aiAgents": "已连接的 MCP 客户端",
+      "about": "网站链接、条款和隐私"
+    },
+    "signOut": "退出登录",
+    "signOutFailed": "无法退出登录。请重试。",
+    "search": {
+      "empty": "没有匹配的设置"
+    },
+    "account": {
+      "intro": "查看您当前的套餐，管理支付方式、发票或取消订阅。",
+      "planFree": "免费版",
+      "planPremium": "高级版",
+      "external": {
+        "heading": "高级版访问权限",
+        "desc": "此访问权限不通过您的 WorldMonitor 账户计费。此处无法使用支付方式或查看发票。"
+      },
+      "checking": {
+        "heading": "正在检查您的套餐…",
+        "desc": "通常只需片刻。"
+      },
+      "status": {
+        "cancelScheduled": "已计划取消 -- 访问权限保留至 {{date}}",
+        "renews": "续订时间：{{date}}",
+        "onHold": "已暂停 -- 请更新支付方式",
+        "cancelled": "已取消 -- 访问权限保留至 {{date}}",
+        "expired": "已过期",
+        "unknown": "请查看\"管理计费\"了解您的当前套餐详情。",
+        "ownerManaged": "计费由您的套餐所有者管理。"
+      },
+      "upgradeToBusiness": "升级至 Business",
+      "unavailable": {
+        "heading": "套餐状态不可用",
+        "desc": "我们无法验证您的当前套餐。请重试或在新标签页中查看套餐。"
+      },
+      "free": {
+        "heading": "WorldMonitor 免费版",
+        "desc": "您当前的套餐是免费版。升级以获取全部面板、AI 分析和优先级数据刷新。"
+      },
+      "portal": {
+        "openFailed": "无法打开计费门户。请允许弹出窗口并重试。",
+        "unavailable": "计费门户不可用。请发送邮件至 support@worldmonitor.app 获取帮助。"
+      },
+      "deletion": {
+        "heading": "删除账户",
+        "desc": "永久删除此 World Monitor 账户。订阅立即取消，剩余预付时长不予退款。API 密钥、嵌入密钥和 MCP 令牌将停止工作。会计、纠纷处理和依法请求所需的计费记录将连同其中的客户联系方式一并保留；这些记录将不再关联您的登录账户，但支付服务商在删除前写入的 webhook 日志仍保留投递时附带的标识符。此设备上的仪表板偏好设置和桌面密钥链（系统凭据存储）中的机密信息不会被远程清除。",
+        "dialogTitle": "删除此账户?",
+        "dialogCopy": "此操作无法撤销。订阅将取消，密钥立即停止工作，计费记录将为会计、纠纷处理和依法请求而保留——包括其中的联系方式。之后请在其他设备上登出，并清除此设备的网站数据——服务器无法代为执行这些操作。",
+        "phraseLabel": "输入 {{phrase}} 以确认",
+        "deleted": "账户已删除。请在其他设备上登出，之后清除此设备的网站数据。",
+        "failed": "账户删除失败。请重试。"
+      },
+      "seats": {
+        "used": "已使用 {{used}} / {{cap}}",
+        "invite": "邀请",
+        "inviting": "邀请中...",
+        "remove": "移除",
+        "removing": "移除中...",
+        "inviteSent": "邀请已发送",
+        "alreadyInvited": "已邀请"
+      },
+      "businessSeats": {
+        "heading": "Business 席位",
+        "statusAccepted": "已接受",
+        "statusExpired": "已过期",
+        "statusPending": "待接受",
+        "expires": "有效期至 {{date}}",
+        "hintCorporate": "邀请任何企业邮箱域名的团队成员。",
+        "hintPersonal": "添加企业邮箱以邀请团队成员。",
+        "personalDomain": "免费或一次性邮箱域名无法邀请团队成员。请添加企业邮箱以使用此功能。",
+        "empty": "尚未邀请任何席位。",
+        "confirmRemove": "移除此席位？被邀请人将立即失去 Pro 访问权限。",
+        "removed": "席位已移除",
+        "alreadyInactive": "席位已停用",
+        "loadFailed": "加载席位失败",
+        "inviteFailed": "发送邀请失败",
+        "removeFailed": "移除席位失败",
+        "errors": {
+          "seatCap": "4 个席位已全部使用。请先移除一个席位。",
+          "ownerDomain": "您的账户邮箱必须是企业域名才能邀请团队成员。",
+          "self": "您无法邀请自己。",
+          "inviteeDomain": "被邀请人的邮箱必须是企业域名。"
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "{{account}} Enterprise 席位",
+        "memberHint": "您账户的管理员负责添加和移除此账户上的成员。",
+        "hintFull": "所有席位都在使用中。请移除某人或撤回邀请以空出席位。",
+        "hintOpen": "通过企业邮箱邀请成员。他们将获得一个有效期为 14 天的链接，并共享此账户的配额。",
+        "emailLabel": "邀请的邮箱地址",
+        "statusActive": "已激活",
+        "statusExpired": "邀请已过期",
+        "statusInvited": "已邀请",
+        "emailFailed": "邀请邮件无法发送。请检查地址，然后撤回并重新邀请。",
+        "inviteExpires": "邀请有效期至 {{date}}",
+        "roleAdmin": "管理员",
+        "you": "您",
+        "withdraw": "撤回",
+        "unknownEmail": "未知邮箱",
+        "alreadyMember": "已是成员",
+        "confirmRemove": "移除 {{email}}？对方将立即失去 Enterprise 访问权限。",
+        "confirmRemoveUnknown": "移除此成员？对方将立即失去 Enterprise 访问权限。",
+        "confirmWithdraw": "撤回对 {{email}} 的邀请？",
+        "confirmWithdrawUnknown": "撤回对此地址的邀请？",
+        "removed": "成员已移除",
+        "withdrawn": "邀请已撤回",
+        "loadFailed": "无法加载席位。请重试。",
+        "inviteFailed": "无法发送邀请。请重试。",
+        "removeFailed": "无法移除。请重试。",
+        "errors": {
+          "seatCap": "所有席位都已被占用。请先移除某个用户或撤回邀请。",
+          "inviteeDomain": "请邀请企业邮箱地址。不接受免费或一次性邮箱域名。",
+          "self": "您已经拥有一个席位。",
+          "contractEnded": "您的 Enterprise 合同已到期。请联系支持团队续约。",
+          "notAdmin": "仅账户管理员可以管理席位。",
+          "removeSelf": "您无法移除自己的席位。请联系支持团队更换管理员。",
+          "tooMany": "一次最多邀请10个人。",
+          "rateLimited": "您今天发送的邀请已达上限。请明天再试。"
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "布局",
+        "1": "小部件",
+        "2": "文字大小",
+        "3": "重置布局"
+      },
+      "sources": {
+        "0": "新闻",
+        "1": "源",
+        "2": "订阅源",
+        "3": "地区",
+        "4": "新闻报道"
+      },
+      "notifications": {
+        "0": "提醒",
+        "1": "警报",
+        "2": "Slack",
+        "3": "电子邮件",
+        "4": "Discord",
+        "5": "Webhook",
+        "6": "推送"
+      },
+      "display": {
+        "0": "主题",
+        "1": "深色",
+        "2": "浅色",
+        "3": "字体",
+        "4": "语言",
+        "5": "文本大小"
+      },
+      "map": {
+        "0": "地球",
+        "1": "提供商",
+        "2": "瓦片",
+        "3": "底图"
+      },
+      "ai": {
+        "0": "人工智能",
+        "1": "Ollama",
+        "2": "框架",
+        "3": "标题记忆",
+        "4": "浏览器模型"
+      },
+      "video": {
+        "0": "流媒体",
+        "1": "自动播放",
+        "2": "质量",
+        "3": "直播"
+      },
+      "apiKeys": {
+        "0": "密钥",
+        "1": "令牌",
+        "2": "桌面密钥"
+      },
+      "embeds": {
+        "0": "小部件",
+        "1": "iframe",
+        "2": "嵌入密钥"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "代理",
+        "3": "ChatGPT",
+        "4": "客户端"
+      },
+      "sync": {
+        "0": "导入",
+        "1": "导出",
+        "2": "备份",
+        "3": "云"
+      },
+      "about": {
+        "0": "条款",
+        "1": "隐私",
+        "2": "许可",
+        "3": "法律"
+      },
+      "account": {
+        "0": "套餐",
+        "1": "账单",
+        "2": "订阅",
+        "3": "发票",
+        "4": "席位",
+        "5": "登出",
+        "6": "删除账户, 退出登录"
+      }
+    }
   }
 }

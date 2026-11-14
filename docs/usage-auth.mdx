@@ -45,6 +45,19 @@ See [CORS](/cors) for the origin patterns.
 
 ## API key mode
 
+REST gateway authentication failures return `401` with an API-key discovery challenge:
+
+```http
+WWW-Authenticate: ApiKey realm="worldmonitor", header="X-WorldMonitor-Key", resource_metadata="https://api.worldmonitor.app/.well-known/oauth-protected-resource/api"
+```
+
+Follow `resource_metadata` for the REST resource identifier and API-key instructions.
+The `ApiKey` scheme and `api_key_header` / `api_key_registration_uri` fields are WorldMonitor extensions:
+send your key using the named header and create it at the linked dashboard.
+The document advertises no OAuth authorization server or scopes. MCP-issued OAuth
+tokens authenticate MCP, not REST gateway calls. Existing browser sessions continue
+to work on the routes that support them.
+
 ### Generate a key
 
 API Starter and API Business subscribers create their own `wm_` keys from **Settings → API Keys**. See [Find or replace your API key](/api-keys).

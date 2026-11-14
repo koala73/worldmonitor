@@ -209,7 +209,7 @@ import {
   shouldRunCloudLegacyRecovery,
   sweepLegacyDisabledCustomWidgets,
 } from '@/app/free-tier-gate';
-import { replaceRawI18nKeyPlaceholders } from '@/app/i18n-raw-key-healer';
+import { replaceRawI18nKeyPlaceholders } from '@/utils/i18n-raw-key-healer';
 import { startAccountAuthHandoff } from '@/app/account-auth-handoff';
 import { TierPreferenceHandoff } from '@/app/tier-preference-handoff';
 import { initialRegionFromCache, resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinates } from '@/utils/user-location';
@@ -2911,6 +2911,8 @@ export class App {
               if (!isAccountStillCurrent(userId)) return;
               if (kind === 'INVITE_EMAIL_MISMATCH') {
                 showToast('This invite is for a different email address');
+              } else if (kind === 'INVITEE_EMAIL_UNVERIFIED') {
+                showToast('Verify your email address to accept this invite');
               } else if (kind === 'INVITE_EXPIRED') {
                 showToast('This invite has expired');
               } else if (kind === 'BUSINESS_NOT_ACTIVE') {

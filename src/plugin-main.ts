@@ -25,10 +25,11 @@ import { loadPluginHazardSnapshot, type PluginHazardSnapshot } from '@/services/
 import { newsPanelAdmissionSchema, type NewsPanelAdmission } from '../shared/panel-admission';
 import { hostContextFromInitialize, layoutFlags, mergeHostContext, type PluginHostContext } from './plugin-host-context';
 import { applyHostLayout, createExpandButton, EXPAND_REFUSED } from './plugin-display-mode';
+import { loaderHostChannel } from './plugin-host-channel';
 
 const DIGEST_RELOAD_FAILED = 'The news feed could not be loaded. Ask for the dashboard again.';
 
-type DashboardDigest = ListFeedDigestResponse & { requestedView?: unknown; panelRequest?: unknown };
+type DashboardDigest = ListFeedDigestResponse & { requestedView?: unknown; panelRequest?: unknown; headlineAnalysis?: boolean };
 type HostBilling = { refresh: false } | { refresh: true; request_id?: string };
 
 function resolveNewsCategory(requested: string, keys: string[]): { category: string } | { reason: 'unknown_category' | 'ambiguous_category' } {
@@ -49,6 +50,7 @@ function mountPlugin(): void {
   status.after(categoryNotice);
   const usageNotice = document.getElementById('pluginUsage')!;
   let admission: NewsPanelAdmission | undefined;
+  let headlineAnalysis = true;
   let hostView: unknown;
   // How the host's own call was billed: a refresh is reused only through its request_id.
   let hostBilling: HostBilling = { refresh: false };
@@ -136,6 +138,10 @@ function mountPlugin(): void {
     const admissionChanged = !nextAdmission || nextAdmission.token !== admission?.token;
     if (admissionChanged) hazardCache.clear();
     admission = nextAdmission;
+    // A host that cannot summarize or translate headlines (ChatGPT) gets
+    // headlineAnalysis: false; the summarize and translate controls go.
+    headlineAnalysis = data.headlineAnalysis !== false;
+    document.documentElement.classList.toggle('no-headline-analysis', !headlineAnalysis);
     showUsage();
     digest = data;
     latestInteraction = null;
@@ -197,7 +203,7 @@ function mountPlugin(): void {
     usageNotice.hidden = !admission;
     if (!admission) return;
     const { remaining, limit, resetsAt } = admission.usage;
-    usageNotice.textContent = `${remaining === null ? 'Unlimited allowance' : `${remaining} of ${limit} requests remaining`}, at the last dashboard request. Resets ${new Date(resetsAt).toLocaleString()}. Opening this dashboard uses 1 request; its news panels and map loads are included. Refresh uses 1 new request. AI summaries and translations are separate requests.`;
+    usageNotice.textContent = `${remaining === null ? 'Unlimited allowance' : `${remaining} of ${limit} requests remaining`}, at the last dashboard request. Resets ${new Date(resetsAt).toLocaleString()}. Opening this dashboard uses 1 request; its news panels and map loads are included. Refresh uses 1 new request.${headlineAnalysis ? ' AI summaries and translations are separate requests.' : ''}`;
   }
 
   function refreshDashboard(): Promise<void> {
@@ -531,15 +537,17 @@ function mountPlugin(): void {
   }
 
   async function start(): Promise<void> {
-    window.addEventListener('message', onHostMessage);
+    const channel = loaderHostChannel();
+    if (!channel) window.addEventListener('message', onHostMessage);
     // Handshake before the map: Claude drops views that report initialized late.
-    const initialized = await request('ui/initialize', { appInfo: { name: 'WorldMonitor', version: '1.0.0' }, appCapabilities: { tools: {}, availableDisplayModes: ['inline', 'fullscreen'] }, protocolVersion: '2026-01-26' }) as { hostCapabilities?: { serverTools?: object; openLinks?: object; updateModelContext?: object } };
+    const initialized = await (channel?.initialized ?? request('ui/initialize', { appInfo: { name: 'WorldMonitor', version: '1.0.0' }, appCapabilities: { tools: {}, availableDisplayModes: ['inline', 'fullscreen'] }, protocolVersion: '2026-01-26' })) as { hostCapabilities?: { serverTools?: object; openLinks?: object; updateModelContext?: object } };
     serverTools = Boolean(initialized.hostCapabilities?.serverTools);
     modelContext = Boolean(initialized.hostCapabilities?.updateModelContext);
     openLinks = Boolean(initialized.hostCapabilities?.openLinks);
     host = hostContextFromInitialize(initialized);
     relayout();
-    send({ method: 'ui/notifications/initialized' });
+    if (channel) channel.adopt(onHostMessage);
+    else send({ method: 'ui/notifications/initialized' });
     await initI18n({ waitForFullTranslation: true });
     const layers: MapLayers = { ...DEFAULT_MAP_LAYERS };
     for (const key of Object.keys(layers) as Array<keyof MapLayers>) layers[key] = false;

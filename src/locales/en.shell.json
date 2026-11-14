@@ -282,7 +282,8 @@
     "signIn": "Sign In",
     "createAccount": "Create account",
     "freeReason": "Free: save your layout, follow countries, get alerts",
-    "settings": "Settings"
+    "settings": "Settings",
+    "planBilling": "Plan & billing"
   },
   "mcp": {
     "connectPanel": "Connect MCP",

@@ -15,6 +15,7 @@ import {
   PAGE_FAMILIES,
   buildScorecard,
   compareScorecards,
+  computeQuerySetDigest,
   formatScorecardMarkdown,
   pageFamiliesForSchemaVersion,
   runCli,
@@ -26,7 +27,18 @@ const readJson = (relativePath) => JSON.parse(
   readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8'),
 );
 
-const querySet = readJson('docs/research/seo-ai-visibility/query-set.json');
+// The 2026-07-27 baseline was measured with seo-ai-visibility-v1.
+const querySet = readJson('docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json');
+const currentQuerySet = readJson('docs/research/seo-ai-visibility/query-set.json');
+const archivedQuerySets = new Map(
+  readdirSync(new URL('../docs/research/seo-ai-visibility/query-sets/', import.meta.url))
+    .map((name) => [name, readJson(`docs/research/seo-ai-visibility/query-sets/${name}`)]),
+);
+const querySetFor = (querySetId) => (
+  querySetId === currentQuerySet.querySetId
+    ? currentQuerySet
+    : archivedQuerySets.get(`${querySetId}.json`)
+);
 const baseline = readJson(
   'docs/research/seo-ai-visibility/baselines/2026-07-27.json',
 );
@@ -102,6 +114,41 @@ describe('SEO and AI visibility query registry', () => {
         query.referenceEntities.every((entity) => entity.name && entity.url),
         `${query.id}: named competitors/sources need URLs`,
       );
+    }
+  });
+
+  it('keeps the v1 decision queries unchanged and adds short searches Search Console reports', () => {
+    assert.doesNotThrow(() => validateQuerySet(currentQuerySet));
+    assert.equal(currentQuerySet.querySetId, 'seo-ai-visibility-v2');
+    assert.deepEqual(currentQuerySet.queries.slice(0, querySet.queries.length), querySet.queries);
+    const added = currentQuerySet.queries.slice(querySet.queries.length);
+    assert.deepEqual(added.map((query) => query.id), ['q26', 'q27', 'q28', 'q29', 'q30', 'q31', 'q32', 'q33']);
+    for (const query of added) {
+      assert.ok(query.query.split(' ').length <= 3, `${query.id}: "${query.query}" is a short search, not a prompt`);
+    }
+    assert.deepEqual(
+      [...new Set(added.map((query) => query.intent))].sort(),
+      ['branded_entity', 'category_definition', 'developer_agent', 'evaluation', 'use_case'],
+    );
+    for (const family of pageFamiliesForSchemaVersion(currentQuerySet.schemaVersion)) {
+      assert.ok(
+        currentQuerySet.queries.some((query) => query.targetPage.family === family),
+        `the current set still covers ${family}`,
+      );
+    }
+  });
+
+  it('archives every earlier query set under its own id and never reuses an id for a new digest', () => {
+    assert.ok(archivedQuerySets.size >= 1, 'expected at least one archived query set');
+    for (const [name, archived] of archivedQuerySets) {
+      assert.equal(name, `${archived.querySetId}.json`);
+      assert.doesNotThrow(() => validateQuerySet(archived), name);
+      assert.notEqual(
+        archived.querySetId,
+        currentQuerySet.querySetId,
+        `${name}: query-set.json must take a new querySetId when its contract changes`,
+      );
+      assert.notEqual(computeQuerySetDigest(archived), computeQuerySetDigest(currentQuerySet), name);
     }
   });
 
@@ -599,7 +646,9 @@ describe('SEO and AI visibility baseline', () => {
       const committed = JSON.parse(
         readFileSync(new URL(name, baselinesDir), 'utf8'),
       );
-      assert.doesNotThrow(() => validateBaseline(committed, querySet), name);
+      const measuredWith = querySetFor(committed.querySetId);
+      assert.ok(measuredWith, `${name}: no query set named ${committed.querySetId} in query-set.json or query-sets/`);
+      assert.doesNotThrow(() => validateBaseline(committed, measuredWith), name);
     }
   });
 });
@@ -1486,7 +1535,7 @@ describe('scorecard computation', () => {
     try {
       await runCli([
         '--queries',
-        'docs/research/seo-ai-visibility/query-set.json',
+        'docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json',
         '--baseline',
         'docs/research/seo-ai-visibility/baselines/2026-07-27.json',
         '--output',
@@ -1503,7 +1552,7 @@ describe('scorecard computation', () => {
       assert.equal(generated, committed);
       await runCli([
         '--queries',
-        'docs/research/seo-ai-visibility/query-set.json',
+        'docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json',
         '--baseline',
         'docs/research/seo-ai-visibility/baselines/2026-07-27.json',
         '--output',
@@ -1514,7 +1563,7 @@ describe('scorecard computation', () => {
       await assert.rejects(
         runCli([
           '--queries',
-          'docs/research/seo-ai-visibility/query-set.json',
+          'docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json',
           '--baseline',
           'docs/research/seo-ai-visibility/baselines/2026-07-27.json',
           '--output',

@@ -737,6 +737,49 @@ describe('api/mcp — requested_tool and tool outcome on wm_api_usage (#9431)', 
     assert.equal(row.requested_tool, null);
   });
 
+  // The view-domain policy keys on clientInfo.name, and a re-scan showed a
+  // reader whose name was not on the list; the row now records what callers
+  // declare so the next one is read off Axiom instead of guessed.
+  const listWithClient = (clientInfo) => ({
+    jsonrpc: '2.0', id: 9, method: 'tools/list',
+    params: { _meta: { 'io.modelcontextprotocol/clientInfo': clientInfo } },
+  });
+
+  it('an authenticated request records the clientInfo name it declares', async () => {
+    const { row } = await oneRow(proReq('POST', listWithClient({ name: 'Manufact Cloud', version: '2' })));
+    assert.equal(row.mcp_client_name, 'Manufact Cloud');
+  });
+
+  it('initialize records params.clientInfo.name', async () => {
+    const body = { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'mcp-use-probe', version: '1' } } };
+    const { row } = await oneRow(proReq('POST', body, { Accept: 'application/json' }));
+    assert.equal(row.mcp_client_name, 'mcp-use-probe');
+  });
+
+  it('a request that names no client records null', async () => {
+    const { row } = await oneRow(proReq('POST', { jsonrpc: '2.0', id: 9, method: 'tools/list' }));
+    assert.equal(row.mcp_client_name, null);
+  });
+
+  it('an anonymous request never writes the client name (#8403 cardinality bound)', async () => {
+    const { row } = await oneRow(anonReq(listWithClient({ name: 'Manufact Cloud', version: '2' })));
+    assert.equal(row.auth_kind, 'anon');
+    assert.equal(row.mcp_client_name, null);
+  });
+
+  for (const [label, name, expected] of [
+    ['markup', '<script>alert(1)</script>', 'other'],
+    ['a 41-character name', `a${'b'.repeat(40)}`, 'other'],
+    ['a non-string value', { evil: 'payload' }, null],
+    ['a 40-character name', `a${'b'.repeat(39)}`, `a${'b'.repeat(39)}`],
+  ]) {
+    it(`a clientInfo name that is ${label} is bounded`, async () => {
+      const { row } = await oneRow(proReq('POST', listWithClient({ name, version: '1' })));
+      assert.equal(row.mcp_client_name, expected);
+      assert.ok(!JSON.stringify(row).includes('payload'), 'no request content reaches the row');
+    });
+  }
+
   for (const [label, name, expected] of [
     ['SQL-ish text', 'DROP TABLE;', '<invalid>'],
     ['a 65-character name', `a${'b'.repeat(64)}`, '<invalid>'],

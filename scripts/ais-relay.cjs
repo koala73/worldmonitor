@@ -3258,7 +3258,7 @@ async function seedUcdpEvents() {
     // `events` slice is the map's, the RPC's and MCP's).
     const windowStartMs = latestMs - UCDP_TRAILING_WINDOW_MS;
     // Aggregated by where each event happened (ucdpLocatedCountry), not UCDP's country code.
-    const located = filtered.map((e) => ({ country: ucdpLocatedCountry(e), dateStart: Date.parse(e.date_start) || 0, deathsBest: Number(e.best) || 0 }));
+    const located = filtered.map((e) => ({ country: ucdpLocatedCountry(e), dateStart: Date.parse(e.date_start) || 0, deathsBest: Number(e.best) || 0, sideA: e.side_a, sideB: e.side_b }));
     const summary = ucdpSummarizeWindow(located, { startMs: windowStartMs, endMs: latestMs });
     if (summary.gapMonths.length) console.warn(`[UCDP] Window has empty months before later data: ${summary.gapMonths.join(', ')}`);
     const window = {
@@ -3288,7 +3288,7 @@ async function seedUcdpEvents() {
       return;
     }
 
-    const payload = { events: capped, fetchedAt: Date.now(), version, candidateVersion, candidateComplete, annualFailedPages: failedPages, totalRaw: allEvents.length, filteredCount: capped.length, countryDays: summary.countryDays, dailyTotals: summary.dailyTotals, window };
+    const payload = { events: capped, fetchedAt: Date.now(), version, candidateVersion, candidateComplete, annualFailedPages: failedPages, totalRaw: allEvents.length, filteredCount: capped.length, countryDays: summary.countryDays, partyMonths: summary.partyMonths, dailyTotals: summary.dailyTotals, window };
     const ok = await envelopeWrite(UCDP_REDIS_KEY, payload, UCDP_TTL_SECONDS, { recordCount: capped.length, sourceVersion: 'ucdp' });
     // Content-age trio: api/health.js treats the presence of maxContentAgeMin as
     // the opt-in signal and reports STALE_CONTENT once the newest event outruns
@@ -9234,10 +9234,8 @@ function brotliSyncBuffer(body) {
 
 function getClientIp(req, isPublic = false) {
   if (isPublic) {
-    // Public routes: only trust CF-Connecting-IP (set by Cloudflare, not spoofable).
-    // x-real-ip is excluded — client-spoofable on unauthenticated endpoints.
-    const cfIp = req.headers['cf-connecting-ip'];
-    if (typeof cfIp === 'string' && cfIp.trim()) return cfIp.trim();
+    // Direct-origin callers can forge forwarding headers. None is authenticated
+    // here, so public callers must share their socket peer's bucket.
     return req.socket?.remoteAddress || 'unknown';
   }
   // Authenticated routes: x-real-ip is safe because auth token validates the caller

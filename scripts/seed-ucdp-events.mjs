@@ -321,7 +321,7 @@ async function main() {
   // `events` slice is the map's and the RPC's).
   const windowStartMs = latestDatasetMs - TRAILING_WINDOW_MS;
   // Aggregated by where each event happened (ucdpLocatedCountry), not UCDP's country code.
-  const located = filtered.map((e) => ({ country: ucdpLocatedCountry(e), dateStart: Date.parse(e.date_start) || 0, deathsBest: Number(e.best) || 0 }));
+  const located = filtered.map((e) => ({ country: ucdpLocatedCountry(e), dateStart: Date.parse(e.date_start) || 0, deathsBest: Number(e.best) || 0, sideA: e.side_a, sideB: e.side_b }));
   const summary = summarizeUcdpWindow(located, { startMs: windowStartMs, endMs: latestDatasetMs });
   if (summary.gapMonths.length) console.warn(`  Window has empty months before later data: ${summary.gapMonths.join(', ')}`);
 
@@ -332,7 +332,7 @@ async function main() {
     candidateVersion,
     totalRaw: allEvents.length,
     filteredCount: mapped.length,
-    countryDays: summary.countryDays,
+    countryDays: summary.countryDays, partyMonths: summary.partyMonths,
     dailyTotals: summary.dailyTotals,
     window: {
       startMs: windowStartMs,

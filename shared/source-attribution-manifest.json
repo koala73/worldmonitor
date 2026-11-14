@@ -1528,6 +1528,9 @@
           "path": "scripts/seed-capital-flows.mjs"
         },
         {
+          "path": "scripts/seed-cii-structural-prior.mjs"
+        },
+        {
           "path": "scripts/seed-education-attainment.mjs"
         },
         {
@@ -2907,6 +2910,20 @@
       ]
     },
     {
+      "host": "currency-api.pages.dev",
+      "provider": "fawazahmed0 currency-api",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC0-1.0 per the project repository (github.com/fawazahmed0/exchange-api); aggregated daily exchange rates, upstream sources not itemised by the project",
+      "attribution": "Credit the fawazahmed0 currency-api; used only as the second source for a currency whose Yahoo quotes are unreliable.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_currency-api.mjs"
+        }
+      ]
+    },
+    {
       "host": "cursor.com",
       "provider": "cursor.com",
       "kind": "structured",
@@ -3311,6 +3328,20 @@
       ]
     },
     {
+      "host": "datacatalogfiles.worldbank.org",
+      "provider": "World Bank Open Data",
+      "kind": "structured",
+      "observed": true,
+      "license": "Worldwide Governance Indicators: Creative Commons Attribution 4.0 (CC BY 4.0).",
+      "attribution": "World Bank Worldwide Governance Indicators, 2026 release, data year 2025. Link the original bulk release recorded in each prior payload.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-cii-structural-prior.mjs"
+        }
+      ]
+    },
+    {
       "host": "datalab.wto.org",
       "provider": "datalab.wto.org",
       "kind": "structured",
@@ -3338,9 +3369,6 @@
         },
         {
           "path": "scripts/seed-aviation.mjs"
-        },
-        {
-          "path": "server/worldmonitor/aviation/v1/_shared.ts"
         }
       ]
     },
@@ -9594,9 +9622,6 @@
         },
         {
           "path": "scripts/seed-capital-flows.mjs"
-        },
-        {
-          "path": "server/worldmonitor/economic/v1/_bis-shared.ts"
         }
       ]
     },
@@ -9779,6 +9804,20 @@
       "references": [
         {
           "path": "server/worldmonitor/infrastructure/v1/list-service-statuses.ts"
+        }
+      ]
+    },
+    {
+      "host": "status.worldmonitor.app",
+      "provider": "status.worldmonitor.app",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/status-page-smoke.mjs"
         }
       ]
     },
@@ -15561,6 +15600,9 @@
         },
         {
           "path": "api/not-found.ts"
+        },
+        {
+          "path": "api/oauth-protected-resource.ts"
         },
         {
           "path": "api/story.js"

@@ -180,6 +180,54 @@ describe('locale completeness', () => {
     });
   }
 
+  // Confirmed in the #10561 review. These are the sentences whose machine
+  // translation changed the meaning or did not parse. #10580 already renamed
+  // the button to "Trip assessment"; that label is not pinned here.
+  const CONFIRMED_FOCUS_COPY = {
+    'sw.json': {
+      datesHint: 'Kwa safari au kazi. Dirisha linapoisha, lengo linabaki na upau unasema hivyo.',
+      neighboursHint: 'Hatari huvuka mipaka. Jirani huwekwa alama hivyo, na hawahesabiwi kwenye kikomo cha {{max}}.',
+      draftAssessmentAria: 'Fungua tathmini ya safari, iliyojazwa mapema kwa lengo hili',
+      'filter.emptyHint': 'Mengine yote yamehesabiwa hapo juu.',
+      'filter.emptyAdvisories': 'Hakuna maonyo ya kusafiri kwa nchi hizi',
+      'filter.emptyConflictPartial': 'Hakuna matukio ya mgogoro kwa nchi hizi kati ya matukio ya hivi karibuni. Orodha kamili haijapakiwa.',
+      'filter.emptyAirports': 'Hakuna hata kimoja kati ya viwanja vya ndege unavyofuatilia kilicho katika nchi hizi',
+      'filter.emptyFlights': 'Hakuna ndege zinazoingia au zinazotoka nchi hizi kwenye bodi hii',
+      'filter.emptyAviationNews': 'Hakuna habari za usafiri wa anga kwa nchi hizi katika saa 24 zilizopita',
+      'filter.emptyDisplacement': 'Hakuna data ya uhamishaji kwa nchi hizi',
+      'filter.emptyCorrelation': 'Hakuna ishara kwa nchi hizi',
+    },
+    'nl.json': {
+      gateSignedOutDesc: 'Meld u aan om een dashboardtabblad te richten op de landen waar u verslag van doet.',
+      neighboursHint: 'Risico\'s stoppen niet bij grenzen. Buren zijn als zodanig gemarkeerd en tellen niet mee voor het maximum van {{max}}.',
+      draftAssessmentAria: 'Open de reisbeoordeling, vooraf ingevuld met deze focus',
+      'filter.emptyHint': 'Al het overige is hierboven meegeteld.',
+      'filter.emptyAviationNews': 'Geen luchtvaartnieuws voor deze landen in de afgelopen 24 uur',
+      'filter.emptyRadiation': 'Geen stralingsmetingen voor deze landen',
+      'filter.emptyDisplacement': 'Geen gegevens over ontheemding voor deze landen',
+    },
+    'zh.json': {
+      datesHint: '用于行程或任务。时间窗口结束后，聚焦保持不变，聚焦栏会注明窗口已结束。',
+      draftAssessmentAria: '打开行程评估，并以此聚焦预先填好',
+      'filter.tabNotFiltered': '此标签页未按国家筛选',
+    },
+    'zh-TW.json': {
+      datesHint: '用於行程或任務。時間視窗結束後，聚焦保持不變，聚焦欄會註明視窗已結束。',
+      draftAssessmentAria: '開啟行程評估，並以此聚焦預先填好',
+      'filter.tabNotFiltered': '此標籤頁未按國家篩選',
+    },
+  };
+
+  for (const [file, expected] of Object.entries(CONFIRMED_FOCUS_COPY)) {
+    it(`${file} keeps the confirmed focus copy`, () => {
+      const focus = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8')).focus;
+      const flat = flatten(focus);
+      for (const [key, value] of Object.entries(expected)) {
+        assert.equal(flat[key], value, `${file} focus.${key}`);
+      }
+    });
+  }
+
   for (const file of ['en.json', ...localeFiles]) {
     it(`${file} discloses NWS, ECCC, and WMO SWIC coverage in the weather layer help, not the short label`, () => {
       const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));

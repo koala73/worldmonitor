@@ -333,7 +333,8 @@ async function openUnifiedSettingsOverlay(
       context,
     };
   }
-  const opened = await Promise.resolve(ctx.unifiedSettings.open(tab));
+  // `tab` is the agent-facing wire value; 'settings' means the home list.
+  const opened = await Promise.resolve(ctx.unifiedSettings.open(tab === 'settings' ? undefined : tab));
   if (ctx.isDestroyed) return APP_DESTROYED_NAV_RESULT(navigationContext(ctx, currentVariant));
   if (opened === false) {
     return {

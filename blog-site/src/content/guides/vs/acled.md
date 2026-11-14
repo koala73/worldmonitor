@@ -1,6 +1,6 @@
 ---
 title: "World Monitor vs ACLED"
-description: "World Monitor vs ACLED for tracking conflict. ACLED is the coded conflict-event dataset for research. World Monitor is a live multi-domain map with country alert rules, an API and MCP at published prices."
+description: "World Monitor vs ACLED for conflict tracking: ACLED provides coded research datasets, while World Monitor adds a live map, country alerts, REST API and MCP."
 metaTitle: "World Monitor vs ACLED for conflict tracking | World Monitor"
 keywords: "ACLED evaluators, world monitor vs acled, global intelligence tools"
 audience: "ACLED evaluators"

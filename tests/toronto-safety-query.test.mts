@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { queryTorontoSafety } from '../server/worldmonitor/safety/v1/get-toronto-safety.ts';
-import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
+import { CACHE_TOOLS, RETIRED_CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
 import { validationFailure } from './helpers/validation-failure.mts';
 
 const MCI_KEY = 'safety:toronto:tps-mci:v1';
@@ -111,9 +111,10 @@ describe('Toronto safety bounded query surfaces (#7012)', () => {
     );
   });
 
-  it('registers two independent, bounded MCP cache tools with the Safety RPC path', () => {
-    const occurrences = CACHE_TOOLS.find((tool) => tool.name === 'get_toronto_reported_occurrences');
-    const calls = CACHE_TOOLS.find((tool) => tool.name === 'get_toronto_calls_attended');
+  it('keeps two independent, bounded MCP cache tools callable but off tools/list', () => {
+    assert.equal(CACHE_TOOLS.some((tool) => tool.name.startsWith('get_toronto_')), false);
+    const occurrences = RETIRED_CACHE_TOOLS.find((tool) => tool.name === 'get_toronto_reported_occurrences');
+    const calls = RETIRED_CACHE_TOOLS.find((tool) => tool.name === 'get_toronto_calls_attended');
     assert.ok(occurrences && '_cacheKeys' in occurrences && occurrences._postFilter);
     assert.ok(calls && '_cacheKeys' in calls && calls._postFilter);
     assert.deepEqual(occurrences._cacheKeys, [MCI_KEY]);

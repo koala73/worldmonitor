@@ -84,7 +84,7 @@ const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dock
 const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 'utf-8');
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
 const variantDashboardSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|country-instability-index|countries|chokepoints|compare|crises|tools|research|reference|changelog|sources|use-cases|accuracy|monitor-the-situation|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|sitemap-main\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|desktop-sign-in\\.html|desktop-sign-in|.*\\.md$).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|plugin/assets|blog|docs|country-instability-index|countries|chokepoints|compare|crises|tools|research|reference|changelog|sources|use-cases|accuracy|monitor-the-situation|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|sitemap-main\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|desktop-sign-in\\.html|desktop-sign-in|.*\\.md$).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html|wm-widget-sandbox\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const WEBMCP_PRODUCTION_HOST_PATTERN = '^(?:www|tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$';
@@ -1479,6 +1479,21 @@ describe('deploy/cache configuration guardrails', () => {
       effectiveCacheControl('/assets/index-abc.js'),
       'public, max-age=31536000, immutable'
     );
+  });
+
+  it('serves hashed MCP App plugin chunks immutable while the plugin documents revalidate', () => {
+    // A cold MCP App load fetched every plugin chunk again because the HTML
+    // catch-all marked /plugin/assets/* private no-cache, so the edge bypassed.
+    for (const path of ['/plugin/assets/plugin-abc123.js', '/plugin/assets/plugin-abc123.css', '/plugin/assets/boot-2/plugin-abc123.js']) {
+      assert.equal(sourceToRegExp(SPA_HTML_CACHE_SOURCE).test(path), false, `${path} must be excluded from the HTML no-cache catch-all`);
+      assert.equal(effectiveCacheControl(path), 'public, max-age=31536000, immutable', path);
+      assert.equal(effectiveHeader(path, 'Access-Control-Allow-Origin'), '*', path);
+      assert.equal(effectiveHeader(path, 'X-Robots-Tag'), 'noindex', path);
+    }
+    // The loader fetches these with no-store to pick up each deployment.
+    for (const path of ['/plugin/plugin.html', '/plugin/country.html', '/plugin/market.html']) {
+      assert.equal(effectiveCacheControl(path), 'private, no-cache, must-revalidate', path);
+    }
   });
 
   it('keeps PWA precache glob free of HTML files', () => {
@@ -4197,12 +4212,15 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
     // After the structural split (refactor PR), the host-derivation
     // (`requestHost = req.headers.get('host') ?? ...`) lives in
     // api/mcp/handler.ts and the template-literal that emits
-    // `resource_metadata="${url}"` lives in api/mcp/auth.ts (the
-    // `wwwAuthHeader` helper). Concatenate both so the three sub-greps
+    // `resource_metadata="${url}"` lives in api/_www-authenticate.ts (the
+    // `wwwAuthHeader` helper, re-exported by api/mcp/auth.ts since #4840 so
+    // the gateway's API-key challenge lives alongside it). Concatenate all three so the sub-greps
     // below still see the same byte surface they did pre-split.
     const source = readFileSync(resolve(__dirname, '../api/mcp/handler.ts'), 'utf-8')
       + '\n'
-      + readFileSync(resolve(__dirname, '../api/mcp/auth.ts'), 'utf-8');
+      + readFileSync(resolve(__dirname, '../api/mcp/auth.ts'), 'utf-8')
+      + '\n'
+      + readFileSync(resolve(__dirname, '../api/_www-authenticate.ts'), 'utf-8');
     // Must NOT contain a hardcoded apex or api URL for resource_metadata —
     // that regressed once (PR #3351 review: apex pointer emitted from
     // api.worldmonitor.app/mcp 401s) and the grep-only test didn't catch it.

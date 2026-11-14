@@ -955,8 +955,8 @@ function readLookup(lookup, response) {
 }
 
 /**
- * One exact-match lookup per reviewed query and window: 25 queries and two
- * windows are 50 small requests through the same retrying transport. A failed
+ * One exact-match lookup per reviewed query and window: 33 queries and two
+ * windows are 66 small requests through the same retrying transport. A failed
  * lookup is recorded against its query and the rest continue; the quota stops
  * them all, and every query left unasked says so.
  */

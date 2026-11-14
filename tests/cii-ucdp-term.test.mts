@@ -149,12 +149,24 @@ describe('CII UCDP read-time window check (P9)', () => {
     assert.deepEqual(w.gapMonths, []);
   });
 
-  it('rejects the 2026-10 cache on every fixture: Jan-Aug 2026 missing', () => {
-    for (const f of FIXTURES) {
+  it('rejects the October regression caches: Jan-Aug 2026 missing', () => {
+    for (const f of FIXTURES.filter(f => !f.calibration)) {
       const aux = parse(f.inputs, f.nowMs);
       const w = assessUcdpWindow(aux.ucdpEvents, aux.ucdpDailyTotals, f.nowMs);
       assert.equal(w.honest, false);
       assert.deepEqual(w.gapMonths, ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08'], f.label);
+    }
+  });
+
+  it('accepts each complete calibration capture at its captured clock (P9)', () => {
+    const captures = FIXTURES.filter(f => f.calibration);
+    assert.ok(captures.length > 0);
+    for (const f of captures) {
+      const aux = parse(f.inputs, f.nowMs);
+      const w = assessCiiInputWindows(aux, f.nowMs).ucdp!;
+      assert.equal(w.honest, true, `${f.label}: ${JSON.stringify(w)}`);
+      assert.equal(w.writerComplete, true);
+      assert.deepEqual(w.gapMonths, []);
     }
   });
 
@@ -202,7 +214,7 @@ describe('CII UCDP read-time window check (P9)', () => {
   });
 
   it('is reported in input health and graded short_window by the reader', () => {
-    const f = FIXTURES.at(-1)!;
+    const f = FIXTURES.filter(f => !f.calibration).at(-1)!;
     const aux = parse(f.inputs, f.nowMs);
     const windows = assessCiiInputWindows(aux, f.nowMs);
     assert.equal(windows.ucdp?.honest, false);

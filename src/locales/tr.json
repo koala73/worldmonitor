@@ -4352,7 +4352,6 @@
     "dataAndCommunity": "Veri ve Topluluk",
     "theme": "Tema",
     "themeDesc": "Otomatik olarak sistem tercihlerini takip eder.",
-    "themeAuto": "Otomatik (sistemi takip et)",
     "themeDark": "Koyu",
     "themeLight": "Açık",
     "mapProvider": "Harita döşeme sağlayıcısı",
@@ -4508,7 +4507,8 @@
     "createAccount": "Hesap oluştur",
     "freeReason": "Ücretsiz: düzeni kaydet, ülkeleri takip et, uyarılar",
     "settings": "Ayarlar",
-    "passkeyOffer": {}
+    "passkeyOffer": {},
+    "planBilling": "Plan ve faturalama"
   },
   "mcp": {
     "connectPanel": "MCP'yi Bağla",
@@ -5110,5 +5110,252 @@
     "errGeneric": "Taslak oluşturulamadı. Yeniden deneyin.",
     "errDownload": "Dosya buraya indirilemedi. Bunun yerine Yazdır seçeneğini kullanın veya PDF olarak kaydedin.",
     "errLoad": "Seyahat değerlendirmesi açılamadı. Sayfayı yeniden yükleyin ve tekrar deneyin."
+  },
+  "settings": {
+    "back": "Ayarlara dön",
+    "signIn": {
+      "label": "Oturum aç",
+      "desc": "Ayarları senkronize et ve planını yönet"
+    },
+    "summary": {
+      "themeAuto": "Otomatik",
+      "count": "{{on}} / {{total}}"
+    },
+    "groups": {
+      "dashboard": "Pano",
+      "preferences": "Tercihler",
+      "developer": "Geliştirici",
+      "app": "Uygulama"
+    },
+    "sections": {
+      "account": "Hesap",
+      "map": "Harita",
+      "ai": "YZ ve analiz",
+      "video": "Video ve akışlar",
+      "apiKeys": "API anahtarları",
+      "embeds": "Gömüler",
+      "aiAgents": "YZ ajanları (MCP)",
+      "sync": "Senkronizasyon, içe aktarma ve dışa aktarma",
+      "about": "Hakkında"
+    },
+    "descriptions": {
+      "panels": "Göster, gizle ve yeniden düzenle",
+      "sources": "Bölgeler ve akışlar",
+      "notifications": "Kanallar ve uyarı kuralları",
+      "display": "Tema, yazı tipi ve dil",
+      "map": "Sağlayıcı, tema ve küre",
+      "ai": "Modeller, bellek ve çerçeveler",
+      "video": "Kalite ve otomatik oynatma",
+      "apiKeys": "World Monitor API anahtarları",
+      "embeds": "Kendi siteniz için widget'lar",
+      "aiAgents": "Bağlı MCP istemcileri",
+      "about": "Site bağlantıları, şartlar ve gizlilik"
+    },
+    "signOut": "Çıkış yap",
+    "signOutFailed": "Oturum kapatılamadı. Lütfen tekrar deneyin.",
+    "search": {
+      "empty": "Eşleşen ayar yok"
+    },
+    "account": {
+      "intro": "Geçerli planınızı görüntüleyin ve ödeme bilgilerini, faturaları veya iptal işlemlerini yönetin.",
+      "planFree": "Ücretsiz",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Premium erişimi",
+        "desc": "Bu erişim WorldMonitor hesabınız üzerinden faturalandırılmaz. Burada ödeme yöntemi veya fatura bulunmamaktadır."
+      },
+      "checking": {
+        "heading": "Plan kontrol ediliyor…",
+        "desc": "Bu genellikle sadece bir an sürer."
+      },
+      "status": {
+        "cancelScheduled": "İptal planlandı -- {{date}} tarihine kadar erişim",
+        "renews": "Yenilenir: {{date}}",
+        "onHold": "Askıda -- ödeme yönteminizi güncelleyin",
+        "cancelled": "İptal edildi -- {{date}} tarihine kadar erişim",
+        "expired": "Süresi doldu",
+        "unknown": "Geçerli plan detayları için Faturalama Yönetimi'ne bakın.",
+        "ownerManaged": "Faturalama plan sahibi tarafından yönetilmektedir."
+      },
+      "upgradeToBusiness": "Business'a Yükselt",
+      "unavailable": {
+        "heading": "Plan durumu kullanılamıyor",
+        "desc": "Geçerli planınız doğrulanamadı. Yeniden deneyin veya planları yeni bir sekmede görüntüleyin."
+      },
+      "free": {
+        "heading": "WorldMonitor Ücretsiz",
+        "desc": "Geçerli planınız Ücretsiz'dir. Tüm paneller, AI analizi ve öncelikli veri yenilemesi için yükseltin."
+      },
+      "portal": {
+        "openFailed": "Faturalama portalı açılamadı. Lütfen açılır pencerelere izin verin ve yeniden deneyin.",
+        "unavailable": "Faturalama portalı kullanılamıyor. Yardım için support@worldmonitor.app adresine e-posta gönderin."
+      },
+      "deletion": {
+        "heading": "Hesabı sil",
+        "desc": "Bu World Monitor hesabını kalıcı olarak silin. Abonelikler hemen iptal edilir ve kalan ön ödemeli süre için iade yapılmaz. API anahtarları, gömme anahtarları ve MCP belirteçleri çalışmayı durdurur. Muhasebe, anlaşmazlıklar ve yasal talepler için gereken fatura kayıtları, içerdikleri müşteri iletişim bilgileriyle birlikte saklanır; bu kayıtlar artık giriş hesabınızı belirtmez, ancak silme işleminden önce yazılan ödeme sağlayıcısı webhook günlükleri teslim edildikleri tanımlayıcıları korur. Pano tercihleri ve masaüstü uygulamasının bu cihazdaki anahtar zincirinde saklanan gizli bilgileri uzaktan silinmez.",
+        "dialogTitle": "Bu hesap silinsin mi?",
+        "dialogCopy": "Bu geri alınamaz. Abonelikler iptal olur, anahtarlar hemen çalışmayı durdurur ve fatura kayıtları muhasebe, anlaşmazlık ve yasal taleplere yönelik olarak tutulur — taşıdıkları iletişim bilgileri de dahil. Diğer cihazlarda oturumu kapatın ve sonrasında bu cihazın site verilerini temizleyin — bunlar sunucu erişiminin dışındadır.",
+        "phraseLabel": "Onaylamak için {{phrase}} yazın",
+        "deleted": "Hesap silindi. Diğer cihazlarda oturumu kapatın ve bu cihazın site verilerini temizleyin.",
+        "failed": "Hesap silme işlemi başarısız oldu. Yeniden deneyin."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} kullanıldı",
+        "invite": "Davet et",
+        "inviting": "Davet gönderiliyor...",
+        "remove": "Kaldır",
+        "removing": "Kaldırılıyor...",
+        "inviteSent": "Davet gönderildi",
+        "alreadyInvited": "Zaten davet edildi"
+      },
+      "businessSeats": {
+        "heading": "Business koltukları",
+        "statusAccepted": "Kabul edildi",
+        "statusExpired": "Süresi doldu",
+        "statusPending": "Beklemede",
+        "expires": "{{date}} tarihinde süresi sona eriyor",
+        "hintCorporate": "Herhangi bir kurumsal e-posta alan adından takım arkadaşlarını davet edin.",
+        "hintPersonal": "Takım arkadaşlarını davet etmek için kurumsal bir e-posta ekleyin.",
+        "personalDomain": "Ücretsiz veya tek kullanımlık e-posta alan adları takım arkadaşlarını davet edemez. Bu özelliği kullanmak için kurumsal bir e-posta ekleyin.",
+        "empty": "Henüz kimse davet edilmedi.",
+        "confirmRemove": "Bu koltuğu kaldırmak istiyor musunuz? Davet edilen kişi Pro erişimini hemen kaybedecek.",
+        "removed": "Koltuk kaldırıldı",
+        "alreadyInactive": "Koltuk zaten etkin değil",
+        "loadFailed": "Koltuklar yüklenemedi",
+        "inviteFailed": "Davet gönderilemedi",
+        "removeFailed": "Koltuk kaldırılamadı",
+        "errors": {
+          "seatCap": "4 koltuğun tümü kullanımda. Önce bir koltuğu kaldırın.",
+          "ownerDomain": "Takım arkadaşlarını davet etmek için hesap e-postanız kurumsal bir alan adında olmalıdır.",
+          "self": "Kendinizi davet edemezsiniz.",
+          "inviteeDomain": "Davet edilen kişinin e-postası kurumsal bir alan adında olmalıdır."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "{{account}} Enterprise koltukları",
+        "memberHint": "Hesap yöneticiniz bu hesaptaki kişileri ekler ve kaldırır.",
+        "hintFull": "Tüm koltuklar kullanımda. Bir koltuğu boşaltmak için birini kaldırın veya daveti geri çekin.",
+        "hintOpen": "Kurumsal e-posta ile kişileri davet edin. 14 gün geçerli olan bir bağlantı alırlar ve bu hesabın limitini paylaşırlar.",
+        "emailLabel": "Davet edilecek e-posta adresi",
+        "statusActive": "Etkin",
+        "statusExpired": "Davet süresi doldu",
+        "statusInvited": "Davet edildi",
+        "emailFailed": "Davet e-postası gönderilemedi. Adresi kontrol edin, sonra daveti geri çekin ve yeniden davet edin.",
+        "inviteExpires": "Davet {{date}} tarihinde sona eriyor",
+        "roleAdmin": "Yönetici",
+        "you": "Siz",
+        "withdraw": "Geri çek",
+        "unknownEmail": "Bilinmeyen e-posta",
+        "alreadyMember": "Zaten üye",
+        "confirmRemove": "{{email}} kullanıcısını kaldırmak istiyor musunuz? Enterprise erişimini hemen kaybedecek.",
+        "confirmRemoveUnknown": "Bu kişiyi kaldırmak istiyor musunuz? Enterprise erişimini hemen kaybedecek.",
+        "confirmWithdraw": "{{email}} adresine gönderilen daveti geri çekmek istiyor musunuz?",
+        "confirmWithdrawUnknown": "Bu adrese gönderilen daveti geri çekmek istiyor musunuz?",
+        "removed": "Üye kaldırıldı",
+        "withdrawn": "Davet geri çekildi",
+        "loadFailed": "Koltuklar yüklenemedi. Tekrar deneyin.",
+        "inviteFailed": "Davet gönderilemedi. Tekrar deneyin.",
+        "removeFailed": "Kaldırılamadı. Tekrar deneyin.",
+        "errors": {
+          "seatCap": "Tüm koltuklar kullanımda. Önce birini kaldırın veya bir daveti geri çekin.",
+          "inviteeDomain": "Kurumsal bir e-posta adresini davet edin. Ücretsiz ve geçici e-posta alan adları kabul edilmez.",
+          "self": "Zaten bir koltuğunuz var.",
+          "contractEnded": "Enterprise sözleşmeniz sona erdi. Yenilemek için desteğe başvurun.",
+          "notAdmin": "Yalnızca hesap yöneticisi koltukları yönetebilir.",
+          "removeSelf": "Kendi koltuğunuzu kaldıramazsınız. Yöneticiyi değiştirmek için desteğe başvurun.",
+          "tooMany": "Aynı anda en fazla 10 kişiye davet gönderin.",
+          "rateLimited": "Bir gün içinde izin verilen en fazla daveti gönderdiniz. Yarın tekrar deneyin."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "düzen",
+        "1": "widget'lar",
+        "2": "metin boyutu",
+        "3": "düzeni sıfırla"
+      },
+      "sources": {
+        "0": "haberler",
+        "1": "beslemeler",
+        "2": "RSS",
+        "3": "bölgeler",
+        "4": "haber kapsamı"
+      },
+      "notifications": {
+        "0": "uyarılar",
+        "1": "Telegram",
+        "2": "Slack",
+        "3": "e-posta",
+        "4": "Discord",
+        "5": "webhook",
+        "6": "push bildirimi"
+      },
+      "display": {
+        "0": "tema",
+        "1": "koyu",
+        "2": "açık",
+        "3": "yazı tipi",
+        "4": "dil",
+        "5": "metin boyutu"
+      },
+      "map": {
+        "0": "küre",
+        "1": "sağlayıcı",
+        "2": "kutucuklar",
+        "3": "temel harita"
+      },
+      "ai": {
+        "0": "yapay zeka",
+        "1": "Ollama",
+        "2": "çerçeveler",
+        "3": "başlık belleği",
+        "4": "tarayıcı modeli"
+      },
+      "video": {
+        "0": "akış",
+        "1": "otomatik oynatma",
+        "2": "kalite",
+        "3": "canlı"
+      },
+      "apiKeys": {
+        "0": "anahtar",
+        "1": "token",
+        "2": "masaüstü anahtarı"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "gömme anahtarı"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "ajanlar",
+        "3": "ChatGPT",
+        "4": "istemciler"
+      },
+      "sync": {
+        "0": "içeri aktar",
+        "1": "dışarı aktar",
+        "2": "yedek",
+        "3": "bulut"
+      },
+      "about": {
+        "0": "koşullar",
+        "1": "gizlilik",
+        "2": "lisans",
+        "3": "yasal"
+      },
+      "account": {
+        "0": "kullanıcı",
+        "1": "faturalandırma",
+        "2": "abonelik",
+        "3": "fatura",
+        "4": "koltuk",
+        "5": "oturumu kapat",
+        "6": "hesabı sil"
+      }
+    }
   }
 }

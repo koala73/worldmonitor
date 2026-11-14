@@ -1,4 +1,4 @@
-import { CME_ENERGY_CLOSES, EIA_RELEASE_SHIFTS } from './oil-release-calendar';
+import { CME_ENERGY_CLOSES, eiaReleaseFor } from './oil-release-calendar';
 
 const DAY_MS = 86_400_000;
 const FUTURES_MAX_AGE_MS = 30 * 60_000;
@@ -25,15 +25,7 @@ function isFuturesTradingTime(time: number): boolean {
 }
 
 function nextEiaRelease(priceAt: number): number {
-  const nextWeek = new Date(Math.floor(priceAt / DAY_MS) * DAY_MS + 7 * DAY_MS);
-  const shift = EIA_RELEASE_SHIFTS[nextWeek.toISOString().slice(0, 10)];
-  if (shift) return Date.parse(shift);
-  // Regular release: Wednesday after the next week ends, at 10:30 ET.
-  const releaseDay = nextWeek.getTime() + ((3 - nextWeek.getUTCDay() + 7) % 7) * DAY_MS;
-  const candidate = releaseDay + (10 * 60 + 30) * 60_000;
-  const parts = Object.fromEntries(futuresSession.formatToParts(candidate).map(part => [part.type, part.value]));
-  const localTime = Number(parts.hour) * 60 + Number(parts.minute);
-  return candidate + (10 * 60 + 30 - localTime) * 60_000;
+  return eiaReleaseFor(Math.floor(priceAt / DAY_MS) * DAY_MS + 7 * DAY_MS);
 }
 
 export function isStaleOilPrice(priceAt: number | undefined, maxAgeMs: number, now = Date.now()): boolean {

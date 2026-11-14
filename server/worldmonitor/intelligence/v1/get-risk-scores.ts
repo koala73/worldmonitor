@@ -15,6 +15,7 @@ import { CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
 import { CII_DAY_MS, parseCiiDailyPoints } from '../../../../shared/cii-daily-history';
 import { ciiCountryAt, ciiCountryForIso2, ciiIsLand } from '../../../../scripts/shared/cii-country-borders.mjs';
 import { missingRegistersFromPayload } from '../../../../scripts/shared/advisory-registers.mjs';
+import { parsePartyMonths } from '../../../../scripts/shared/ucdp-state-parties.cjs';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
 import { isAcledConfigured } from '../../../_shared/acled-auth';
@@ -1167,6 +1168,8 @@ export function strikePressureBoost(pressure: number): number {
 
 export interface AuxiliarySources {
   ucdpEvents: CiiUcdpRow[];
+  /** Full-window party facts; retained as auxiliary data, not scored. */
+  ucdpPartyMonths?: ReturnType<typeof parsePartyMonths>;
   /** Events per UTC day across every country, from the UCDP writers; null for a payload without them. */
   ucdpDailyTotals?: Record<string, number> | null;
   /** The UCDP writers' `window.complete`; null for a payload without it. */
@@ -1515,6 +1518,7 @@ export function buildCiiAuxiliarySources(
   const ucdp = parseUcdpCache(ucdpRaw);
   return {
     ucdpEvents: ucdp.rows,
+    ucdpPartyMonths: parsePartyMonths((ucdpRaw as { partyMonths?: unknown } | null)?.partyMonths),
     ucdpDailyTotals: ucdp.dailyTotals,
     ucdpWriterComplete: ucdp.writerComplete,
     ucdpUpstreamGapMonths: ucdp.upstreamGapMonths,
@@ -2240,7 +2244,14 @@ export function countCiiRealtimeSignalDensityCoverage(
   const acledCoversTier1 = (acled ?? []).some((ev) => isTier1CountryCode(normalizeCountryName(ev.country)));
   const ucdpCoversTier1 = Object.values(ucdpViolenceRates(aux?.ucdpEvents, nowMs)).some((rate) => ucdpViolenceScore(rate) > 0);
   // GDELT scores every country, with or without ACLED rows, as in computeCIIScores.
-  const gdeltCoversTier1 = Object.keys(aux?.gdeltCountryEvents?.byCountry ?? {}).some(isTier1CountryCode);
+  // Global article-only rows describe availability, not conflict signal density.
+  const gdeltCoversTier1 = Object.entries(aux?.gdeltCountryEvents?.byCountry ?? {}).some(([code, row]) => (
+    isTier1CountryCode(code)
+    && ((row.conflict?.current ?? 0) > 0 || (row.conflict?.baselineMedian ?? 0) > 0
+      || (row.protest?.current ?? 0) > 0 || (row.protest?.baselineMedian ?? 0) > 0
+      || (row.week?.conflict ?? 0) > 0 || (row.week?.protest ?? 0) > 0
+      || row.strikes != null)
+  ));
   if (acledCoversTier1 || ucdpCoversTier1 || gdeltCoversTier1) {
     coveredFamilies.add('conflict');
   }
