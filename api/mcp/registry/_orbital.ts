@@ -94,6 +94,14 @@ const SITE_SCHEMA = {
   required: ['siteId', 'name', 'lat', 'lon'],
 };
 
+/**
+ * Orbital Watch ships dark (#10710): its REST endpoints answer 404 until
+ * ORBITAL_WATCH_ENABLED=true, so a listed tool would fail every call (#10721).
+ * Set this true in the same change that turns the feature on, then regenerate
+ * the server card and docs and bump SERVER_VERSION.
+ */
+export const ORBITAL_MCP_TOOLS_PUBLISHED = false;
+
 export const ORBITAL_TOOLS: ToolDef[] = [
   {
     name: 'get_point_satellite_passes',
