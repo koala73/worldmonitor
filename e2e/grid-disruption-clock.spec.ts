@@ -10,7 +10,7 @@ function fixture(now: number): GridClockSnapshot {
   return { regions: [
     { code: 'CA', current: { ...source, observedAt: now - 120_000, customersOut: 12_480 },
       history: [{ ...source, observedAt: now - 720_000, customersOut: 18_200 }],
-      warnings: [{ ...grid, title: 'Regional energy emergency watch', issuedAt: now - 3_600_000, expiresAt: now + 3_600_000 }],
+      warnings: [{ ...grid, title: 'Regional energy emergency watch', issuedAt: now - 30_000, expiresAt: now + 90_000 }],
       warningsCheckedAt: now, warningSources: [{ ...grid, checkedAt: now, status: 'available' }] },
     { code: 'TN', current: null, history: [],
       warnings: [{ ...weather, title: 'High wind warning', issuedAt: now - 3_600_000, expiresAt: now + 7_200_000 }],
@@ -35,6 +35,7 @@ async function seedDashboard(page: Page): Promise<void> {
 test('enable grid clock, inspect a California warning and Tennessee coverage', async ({ page }, testInfo) => {
   await seedDashboard(page);
   const snapshot = fixture(Date.now());
+  await page.clock.install({ time: new Date() });
   let requests = 0;
   await page.route('**/api/bootstrap?keys=gridDisruptionClock&public=1', route => {
     requests++;
@@ -60,6 +61,14 @@ test('enable grid clock, inspect a California warning and Tennessee coverage', a
   const californiaScreenshot = testInfo.outputPath('california-desktop.png');
   await panel.screenshot({ path: californiaScreenshot });
   await testInfo.attach('California fixture, declining count', { path: californiaScreenshot, contentType: 'image/png' });
+  const requestsBeforeTick = requests;
+  await page.clock.fastForward(120_000);
+  await expect(panel.getByText('Regional energy emergency watch')).toHaveCount(0);
+  await expect(panel.getByText('12,480', { exact: true })).toBeVisible();
+  expect(requests).toBe(requestsBeforeTick);
+  const expiredScreenshot = testInfo.outputPath('california-expired.png');
+  await panel.screenshot({ path: expiredScreenshot });
+  await testInfo.attach('California warning expires without fetching', { path: expiredScreenshot, contentType: 'image/png' });
   await page.setViewportSize({ width: 390, height: 844 });
   await panel.getByRole('button', { name: 'Tennessee' }).click();
   await expect(panel.getByText('Unknown', { exact: true })).toBeVisible();

@@ -94,6 +94,7 @@ export class GridDisruptionClockPanel extends Panel {
   private snapshot: GridClockSnapshot | null = null;
   private selected: GridClockRegion['code'] = 'CA';
   private refreshFailed = false;
+  private clockTimer: ReturnType<typeof setInterval>;
 
   constructor() {
     super({
@@ -101,6 +102,12 @@ export class GridDisruptionClockPanel extends Panel {
       className: 'panel-wide', defaultRowSpan: 2, trackActivity: false,
     });
     this.showLoading();
+    this.clockTimer = setInterval(() => this.render(), 60_000);
+  }
+
+  public override destroy(): void {
+    clearInterval(this.clockTimer);
+    super.destroy();
   }
 
   public async fetchData(): Promise<void> {
@@ -120,6 +127,14 @@ export class GridDisruptionClockPanel extends Panel {
   private render(): void {
     const region = this.snapshot?.regions.find(item => item.code === this.selected);
     if (!region) return;
+    // A local clock tick must not close disclosures or steal keyboard focus.
+    const openDetails = new Set([...this.content.querySelectorAll('details[open]')]
+      .map(detail => detail.querySelector('summary')?.textContent));
+    const focused = this.content.contains(document.activeElement) ? document.activeElement : null;
+    const focusedRegion = focused instanceof HTMLElement ? focused.dataset.region : undefined;
+    const focusedSummary = focused?.tagName === 'SUMMARY' ? focused.textContent : null;
+    const focusedHref = focused instanceof HTMLAnchorElement ? focused.href : null;
+    const focusedDisclosure = focused?.closest('details')?.querySelector('summary')?.textContent;
     const now = Date.now();
     const state = deriveGridClock(region, now);
     const point = state.freshness === 'unavailable' ? null : region.current;
@@ -154,5 +169,17 @@ export class GridDisruptionClockPanel extends Panel {
         point.detail ? h('span', { className: 'grid-clock-attribution' }, point.detail) : null)
         : h('p', { className: 'grid-clock-coverage' }, label('noObservation')),
       warnings(region, state), recovery(region, state)));
+    for (const detail of this.content.querySelectorAll('details')) {
+      const summary = detail.querySelector('summary');
+      detail.open = openDetails.has(summary?.textContent);
+      if (focusedSummary !== null && summary?.textContent === focusedSummary) summary.focus({ preventScroll: true });
+    }
+    if (focusedRegion) {
+      this.content.querySelector<HTMLButtonElement>(`button[data-region="${focusedRegion}"]`)?.focus({ preventScroll: true });
+    }
+    if (focusedHref) {
+      [...this.content.querySelectorAll('a')].find(link => link.href === focusedHref
+        && link.closest('details')?.querySelector('summary')?.textContent === focusedDisclosure)?.focus({ preventScroll: true });
+    }
   }
 }
