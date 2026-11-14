@@ -1,3 +1,4 @@
+import type { OrbitalTrackSurface } from '@/app/orbital-watch';
 import { ORBITAL_SHARE_KEY, parseOrbitalShareFragment, withoutOrbitalShareFragment, type OrbitalShareLink } from '@/utils/urlState';
 
 /**
@@ -16,11 +17,11 @@ export function takeOrbitalShareLink(): OrbitalShareLink | null {
 }
 
 /** Opens the link once the map has had time to render, as the other deep links do. Returns a cancel. */
-export function scheduleOrbitalShareLink(link: OrbitalShareLink, delayMs: number, isDestroyed: () => boolean): () => void {
+export function scheduleOrbitalShareLink(link: OrbitalShareLink, delayMs: number, isDestroyed: () => boolean, map: () => OrbitalTrackSurface | null = () => null): () => void {
   const timer = window.setTimeout(() => {
     if (isDestroyed()) return;
     void import('@/app/orbital-watch').then(({ openOrbitalShareLink }) =>
-      openOrbitalShareLink(link, document.getElementById('mapContainer')));
+      openOrbitalShareLink(link, document.getElementById('mapContainer'), map()));
   }, delayMs);
   return () => window.clearTimeout(timer);
 }

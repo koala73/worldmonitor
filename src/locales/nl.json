@@ -4560,8 +4560,8 @@
     "createAccount": "Account aanmaken",
     "freeReason": "Gratis: layout opslaan, landen volgen, meldingen",
     "settings": "Instellingen",
-    "passkeyOffer": {},
-    "planBilling": "Plan & facturering"
+    "planBilling": "Plan & facturering",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP Verbinden",
@@ -5165,6 +5165,17 @@
     "errLoad": "De reisbeoordeling kon niet worden geopend. Laad de pagina opnieuw en probeer het opnieuw."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "Het grondspoor van deze overkomst kon niet worden getekend"
+    },
+    "replay": {
+      "acquisition": "OPNAME · {{name}}",
+      "acquired": "OPGENOMEN {{time}} · {{resolution}}",
+      "play": "Herhaling afspelen",
+      "pause": "Herhaling pauzeren",
+      "scrub": "Positie van de herhaling",
+      "reducedMotion": "MINDER BEWEGING"
+    },
     "computing": "Satellietcatalogus laden…",
     "computingProgress": "Passages berekenen: {{done}} van {{total}} satellieten",
     "unavailable": "De satellietcatalogus kon niet worden geladen, dus er zijn geen passages voor dit punt berekend.",
@@ -5315,6 +5326,82 @@
       "zoneShowUtc": "Tijden in UTC tonen",
       "zoneShowLocal": "Tijden in de lokale tijd van deze plek tonen"
     },
+    "viewer": {
+      "open": "Afbeeldingsviewer openen: {{image}}",
+      "bestView": "Beste opname openen: {{name}}, {{time}}",
+      "imageAlt": "Opname van {{name}}, {{time}}",
+      "close": "Afbeeldingsviewer sluiten",
+      "northUp": "Noorden is boven",
+      "unreferenced": "Oriëntatie zoals geleverd door het archief; noorden is niet gemarkeerd",
+      "compareDates": "Andere datums van deze collectie",
+      "compareNone": "Geen andere opname van deze collectie om mee te vergelijken.",
+      "divider": "Voor/na-scheiding",
+      "searching": "Zoeken naar opnamen van deze plek uit de laatste {{days}} dagen",
+      "historyFailed": "{{archive}} antwoordde niet, dus eerdere opnamen ontbreken.",
+      "historyTimeout": "{{archive}} antwoordde niet op tijd, dus eerdere opnamen ontbreken.",
+      "loading": "Frames laden: {{loaded}} van {{total}}",
+      "pause": "Pauzeren",
+      "resume": "Afspelen",
+      "next": "Volgend frame",
+      "closeLabel": "Sluiten",
+      "agoNow": "Zojuist",
+      "agoHours": "{{count}} u geleden",
+      "agoDays": "{{count}} d geleden",
+      "clear": "Helder",
+      "clouded": "Bewolkt · {{pct}}%",
+      "tabImage": "Beeld",
+      "tabChange": "Verandering",
+      "metaAcquired": "Opgenomen",
+      "metaDate": "Datum",
+      "metaPixel": "Pixel",
+      "metaSpot": "Bewolking op de plek",
+      "metaScene": "Bewolking van de scène",
+      "metaSun": "Zonnehoogte",
+      "showCloudy": "Bewolkte datums tonen ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Timelapse",
+      "entry": "Deze plek, jaar na jaar",
+      "open": "De jaarlijkse timelapse van deze plek openen",
+      "searching": "Zoekt één heldere opname per jaar sinds 2015 · {{archive}}",
+      "loading": "Opnamen laden · {{loaded}} / {{total}}",
+      "failed": "{{archive}} antwoordde niet, dus de jaaropnamen ontbreken.",
+      "timeout": "{{archive}} antwoordde niet op tijd, dus de jaaropnamen ontbreken.",
+      "partial": "Ontbrekende jaren omdat {{archive}} niet antwoordde: {{count}}.",
+      "tooFew": "Heldere jaaropnamen van deze plek: {{count}}. Een timelapse heeft er {{min}} nodig.",
+      "total": "Heldere opnamen: {{count}} · één per jaar",
+      "years": "Jaren",
+      "share": "Delen",
+      "method": "Elk beeld is hetzelfde vierkant van 6 km van Sentinel-2, in natuurlijke kleuren. Elk jaar zoekt in een ander seizoen en houdt de minst bewolkte scène; een jaar zonder scène onder 30% bewolking valt weg."
+    },
+    "passDetail": {
+      "back": "Alle overkomsten",
+      "altitude": "Hoogte",
+      "offNadir": "Buiten nadir",
+      "crossed": "{{name}} kwam over op {{altitude}} km hoogte, {{distance}} km {{direction}}, om {{time}}, met {{speed}} km/s over de grond.",
+      "crossedHeading": "{{name}} kwam over op {{altitude}} km hoogte, {{distance}} km {{direction}}, om {{time}}, richting {{heading}} met {{speed}} km/s over de grond.",
+      "looking": "Het keek {{deg}}° naast loodrecht omlaag.",
+      "sceneCloud": "Bewolking van de scène: {{pct}}%.",
+      "pixelLine": "Pixel van {{m}} m",
+      "swathLine": "Strook van {{km}} km",
+      "clearestLook": "Helderste beeld",
+      "previous": "Vorige overkomst",
+      "next": "Volgende overkomst",
+      "dir": {
+        "n": "ten noorden",
+        "ne": "ten noordoosten",
+        "e": "ten oosten",
+        "se": "ten zuidoosten",
+        "s": "ten zuiden",
+        "sw": "ten zuidwesten",
+        "w": "ten westen",
+        "nw": "ten noordwesten"
+      },
+      "heading": {
+        "north": "noorden",
+        "south": "zuiden"
+      }
+    },
     "search": {
       "label": "Plaatsnaam of coördinaten",
       "placeholder": "Plaatsnaam of 48.8584, 2.2945",
@@ -5340,6 +5427,41 @@
       "dismiss": "Sluiten",
       "passOutsideWindow": "De gelinkte overvlucht valt buiten het huidige venster, dus er is geen overvlucht geselecteerd.",
       "passNotFound": "De gelinkte overvlucht is niet gevonden in de opnieuw berekende overvluchten, dus er is geen overvlucht geselecteerd."
+    },
+    "timeline": {
+      "now": "nu",
+      "nowAt": "Nu: {{time}}",
+      "density": "Overkomsten {{label}}, {{start}} tot {{end}}: {{count}}",
+      "daylight": "Daglicht op het punt van {{start}} tot {{end}}",
+      "unavailable": "niet beschikbaar",
+      "notRetained": "deze week geen gegevens",
+      "notRetainedSpan": "{{label}}: geen gegevens van {{start}} tot {{end}}",
+      "countryWide": "landelijk",
+      "source": {
+        "conflict": "Conflicten",
+        "fires": "Branden",
+        "unrest": "Onrust",
+        "outages": "Internetstoringen"
+      },
+      "live": {
+        "vessels": "Scheepvaartverkeer",
+        "militaryFlights": "Militaire vluchten",
+        "gpsJamming": "GPS-storing"
+      },
+      "name": "Tijdlijn",
+      "span": "{{days}} dagen · komende {{hours}} u",
+      "daylightHere": "Daglicht hier",
+      "row": {
+        "geo": "Geo",
+        "photo": "Foto",
+        "likely": "Waarschijnlijk",
+        "could": "Mogelijk",
+        "overhead": "Overvlucht"
+      },
+      "retained": "{{start}} tot {{end}}",
+      "retainedDay": "alleen {{day}}",
+      "geoLine": "Geostationair in zicht: {{names}}",
+      "away": "{{km}} km verderop"
     }
   },
   "settings": {

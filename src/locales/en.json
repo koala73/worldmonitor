@@ -4623,6 +4623,17 @@
     }
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "This pass's ground track couldn't be drawn"
+    },
+    "replay": {
+      "acquisition": "ACQUISITION · {{name}}",
+      "acquired": "ACQUIRED {{time}} · {{resolution}}",
+      "play": "Play replay",
+      "pause": "Pause replay",
+      "scrub": "Replay position",
+      "reducedMotion": "REDUCED MOTION"
+    },
     "computing": "Loading the satellite catalog…",
     "computingProgress": "Computing passes: {{done}} of {{total}} satellites",
     "unavailable": "The satellite catalog could not be loaded, so no passes were computed for this point.",
@@ -4773,6 +4784,82 @@
       "zoneShowUtc": "Show times in UTC",
       "zoneShowLocal": "Show times in this place's local time"
     },
+    "viewer": {
+      "open": "Open image viewer: {{image}}",
+      "bestView": "Open best view: {{name}}, {{time}}",
+      "imageAlt": "Image of {{name}}, {{time}}",
+      "close": "Close image viewer",
+      "northUp": "North is up",
+      "unreferenced": "Orientation as delivered by the archive; north is not marked",
+      "compareDates": "Other dates of this collection",
+      "compareNone": "No other scene of this collection to compare with.",
+      "divider": "Before and after divider",
+      "searching": "Looking for scenes of this place from the last {{days}} days",
+      "historyFailed": "{{archive}} did not answer, so earlier scenes are missing.",
+      "historyTimeout": "{{archive}} did not answer in time, so earlier scenes are missing.",
+      "loading": "Loading frames: {{loaded}} of {{total}}",
+      "pause": "Pause",
+      "resume": "Play",
+      "next": "Next frame",
+      "closeLabel": "Close",
+      "agoNow": "Just now",
+      "agoHours": "{{count}} h ago",
+      "agoDays": "{{count}} d ago",
+      "clear": "Clear",
+      "clouded": "Clouded · {{pct}}%",
+      "tabImage": "Image",
+      "tabChange": "Change",
+      "metaAcquired": "Acquired",
+      "metaDate": "Date",
+      "metaPixel": "Pixel",
+      "metaSpot": "Cloud at spot",
+      "metaScene": "Scene cloud",
+      "metaSun": "Sun elevation",
+      "showCloudy": "Show cloudy dates ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Time-lapse",
+      "entry": "This place, year by year",
+      "open": "Open the year-by-year time-lapse of this place",
+      "searching": "Finding one clear look per year since 2015 · {{archive}}",
+      "loading": "Loading looks · {{loaded}} / {{total}}",
+      "failed": "{{archive}} did not answer, so the yearly looks are missing.",
+      "timeout": "{{archive}} did not answer in time, so the yearly looks are missing.",
+      "partial": "Missing years because {{archive}} did not answer: {{count}}.",
+      "tooFew": "Clear yearly looks of this place: {{count}}. A time-lapse needs {{min}}.",
+      "total": "{{count}} clear looks · one a year",
+      "years": "Years",
+      "share": "Share",
+      "method": "Each frame is the same 6 km square from Sentinel-2, in natural colour. Each year searches a different season and keeps its least cloudy scene; a year with no scene under 30% cloud is left out."
+    },
+    "passDetail": {
+      "back": "All passes",
+      "altitude": "Altitude",
+      "offNadir": "Off-nadir",
+      "crossed": "{{name}} crossed {{altitude}} km up, {{distance}} km {{direction}}, at {{time}}, moving at {{speed}} km/s over the ground.",
+      "crossedHeading": "{{name}} crossed {{altitude}} km up, {{distance}} km {{direction}}, at {{time}}, moving {{heading}} at {{speed}} km/s over the ground.",
+      "looking": "It was looking {{deg}}° off straight down.",
+      "sceneCloud": "Scene cloud cover: {{pct}}%.",
+      "pixelLine": "{{m}} m pixel",
+      "swathLine": "{{km}} km swath",
+      "clearestLook": "Clearest look",
+      "previous": "Previous pass",
+      "next": "Next pass",
+      "dir": {
+        "n": "to the north",
+        "ne": "to the north-east",
+        "e": "to the east",
+        "se": "to the south-east",
+        "s": "to the south",
+        "sw": "to the south-west",
+        "w": "to the west",
+        "nw": "to the north-west"
+      },
+      "heading": {
+        "north": "north",
+        "south": "south"
+      }
+    },
     "search": {
       "label": "Place name or coordinates",
       "placeholder": "Place name or 48.8584, 2.2945",
@@ -4798,6 +4885,41 @@
       "dismiss": "Dismiss",
       "passOutsideWindow": "The linked pass is outside the current window, so no pass is selected.",
       "passNotFound": "The linked pass was not found in the recomputed passes, so no pass is selected."
+    },
+    "timeline": {
+      "now": "now",
+      "nowAt": "Now: {{time}}",
+      "density": "{{label}} passes, {{start}} to {{end}}: {{count}}",
+      "daylight": "Daylight at the point from {{start}} to {{end}}",
+      "unavailable": "unavailable",
+      "notRetained": "no data this week",
+      "notRetainedSpan": "{{label}}: no data from {{start}} to {{end}}",
+      "countryWide": "country-wide",
+      "source": {
+        "conflict": "Conflict",
+        "fires": "Fires",
+        "unrest": "Unrest",
+        "outages": "Internet outages"
+      },
+      "live": {
+        "vessels": "Shipping traffic",
+        "militaryFlights": "Military flights",
+        "gpsJamming": "GPS jamming"
+      },
+      "name": "Timeline",
+      "span": "{{days}} days · next {{hours}} h",
+      "daylightHere": "Daylight here",
+      "row": {
+        "geo": "Geo",
+        "photo": "Photo",
+        "likely": "Likely",
+        "could": "Could",
+        "overhead": "Overhead"
+      },
+      "retained": "{{start}} to {{end}}",
+      "retainedDay": "{{day}} only",
+      "geoLine": "Geostationary in view: {{names}}",
+      "away": "{{km}} km away"
     }
   },
   "contextMenu": {

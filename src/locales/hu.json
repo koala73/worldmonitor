@@ -4560,8 +4560,8 @@
     "createAccount": "Fiók létrehozása",
     "freeReason": "Ingyenes: elrendezés mentése, országok követése, riasztások",
     "settings": "Beállítások",
-    "passkeyOffer": {},
-    "planBilling": "Csomag és számlázás"
+    "planBilling": "Csomag és számlázás",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP csatlakoztatása",
@@ -5165,6 +5165,17 @@
     "errLoad": "Az utazási értékelés nem nyitható meg. Töltse be újra az oldalt, és próbálja újra."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "Ennek az áthaladásnak a földi nyomvonalát nem sikerült megrajzolni"
+    },
+    "replay": {
+      "acquisition": "FELVÉTEL · {{name}}",
+      "acquired": "FELVÉVE {{time}} · {{resolution}}",
+      "play": "Visszajátszás indítása",
+      "pause": "Visszajátszás szüneteltetése",
+      "scrub": "Visszajátszás helyzete",
+      "reducedMotion": "CSÖKKENTETT MOZGÁS"
+    },
     "computing": "Műholdkatalógus betöltése…",
     "computingProgress": "Áthaladások számítása: {{done}} / {{total}} műhold",
     "unavailable": "A műholdkatalógust nem sikerült betölteni, ezért ehhez a ponthoz nem készült áthaladás-számítás.",
@@ -5315,6 +5326,82 @@
       "zoneShowUtc": "Időpontok megjelenítése UTC szerint",
       "zoneShowLocal": "Időpontok megjelenítése a hely helyi ideje szerint"
     },
+    "viewer": {
+      "open": "Képnézegető megnyitása: {{image}}",
+      "bestView": "Legjobb nézet megnyitása: {{name}}, {{time}}",
+      "imageAlt": "{{name}} felvétele, {{time}}",
+      "close": "Képnézegető bezárása",
+      "northUp": "Észak felül van",
+      "unreferenced": "Tájolás az archívum szerint; észak nincs jelölve",
+      "compareDates": "A gyűjtemény további dátumai",
+      "compareNone": "Nincs másik felvétel ebből a gyűjteményből az összehasonlításhoz.",
+      "divider": "Előtte/utána elválasztó",
+      "searching": "A hely felvételeinek keresése az elmúlt {{days}} napból",
+      "historyFailed": "A(z) {{archive}} nem válaszolt, ezért a korábbi felvételek hiányoznak.",
+      "historyTimeout": "A(z) {{archive}} nem válaszolt időben, ezért a korábbi felvételek hiányoznak.",
+      "loading": "Képkockák betöltése: {{loaded}} / {{total}}",
+      "pause": "Szünet",
+      "resume": "Lejátszás",
+      "next": "Következő képkocka",
+      "closeLabel": "Bezárás",
+      "agoNow": "Épp most",
+      "agoHours": "{{count}} órája",
+      "agoDays": "{{count}} napja",
+      "clear": "Derült",
+      "clouded": "Felhős · {{pct}}%",
+      "tabImage": "Kép",
+      "tabChange": "Változás",
+      "metaAcquired": "Felvétel",
+      "metaDate": "Dátum",
+      "metaPixel": "Pixel",
+      "metaSpot": "Felhő a ponton",
+      "metaScene": "Jelenet felhőzete",
+      "metaSun": "Napmagasság",
+      "showCloudy": "Felhős dátumok mutatása ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Időközi felvétel",
+      "entry": "Ez a hely évről évre",
+      "open": "A hely éves időközi felvételének megnyitása",
+      "searching": "Évente egy derült felvétel keresése 2015 óta · {{archive}}",
+      "loading": "Felvételek betöltése · {{loaded}} / {{total}}",
+      "failed": "A(z) {{archive}} nem válaszolt, ezért hiányoznak az éves felvételek.",
+      "timeout": "A(z) {{archive}} nem válaszolt időben, ezért hiányoznak az éves felvételek.",
+      "partial": "Hiányzó évek, mert a(z) {{archive}} nem válaszolt: {{count}}.",
+      "tooFew": "A hely derült éves felvételei: {{count}}. Az időközi felvételhez {{min}} kell.",
+      "total": "Derült felvételek: {{count}} · évente egy",
+      "years": "Évek",
+      "share": "Megosztás",
+      "method": "Minden képkocka ugyanaz a 6 km-es négyzet a Sentinel-2-ről, természetes színekben. Minden év más évszakban keres, és a legkevésbé felhős jelenetet tartja meg; a 30% felhő alatti jelenet nélküli év kimarad."
+    },
+    "passDetail": {
+      "back": "Minden áthaladás",
+      "altitude": "Magasság",
+      "offNadir": "Nadírtól való eltérés",
+      "crossed": "A(z) {{name}} {{altitude}} km magasan haladt el, {{distance}} km-re {{direction}}, {{time}}-kor, {{speed}} km/s talajsebességgel.",
+      "crossedHeading": "A(z) {{name}} {{altitude}} km magasan haladt el, {{distance}} km-re {{direction}}, {{time}}-kor, {{heading}} felé, {{speed}} km/s talajsebességgel.",
+      "looking": "{{deg}}°-kal nézett el a függőlegestől.",
+      "sceneCloud": "A jelenet felhőzete: {{pct}}%.",
+      "pixelLine": "{{m}} m-es pixel",
+      "swathLine": "{{km}} km-es sáv",
+      "clearestLook": "Legtisztább kép",
+      "previous": "Előző áthaladás",
+      "next": "Következő áthaladás",
+      "dir": {
+        "n": "északra",
+        "ne": "északkeletre",
+        "e": "keletre",
+        "se": "délkeletre",
+        "s": "délre",
+        "sw": "délnyugatra",
+        "w": "nyugatra",
+        "nw": "északnyugatra"
+      },
+      "heading": {
+        "north": "észak",
+        "south": "dél"
+      }
+    },
     "search": {
       "label": "Helynév vagy koordináták",
       "placeholder": "Helynév vagy 48.8584, 2.2945",
@@ -5340,6 +5427,41 @@
       "dismiss": "Bezárás",
       "passOutsideWindow": "A linkelt áthaladás kívül esik az aktuális időablakon, ezért nincs kiválasztott áthaladás.",
       "passNotFound": "A linkelt áthaladás nem található az újraszámolt áthaladások között, ezért nincs kiválasztott áthaladás."
+    },
+    "timeline": {
+      "now": "most",
+      "nowAt": "Most: {{time}}",
+      "density": "{{label}} áthaladások, {{start}} és {{end}} között: {{count}}",
+      "daylight": "Nappali fény a pontban {{start}} és {{end}} között",
+      "unavailable": "nem elérhető",
+      "notRetained": "ezen a héten nincs adat",
+      "notRetainedSpan": "{{label}}: nincs adat {{start}} és {{end}} között",
+      "countryWide": "országos",
+      "source": {
+        "conflict": "Konfliktusok",
+        "fires": "Tüzek",
+        "unrest": "Zavargások",
+        "outages": "Internetkimaradások"
+      },
+      "live": {
+        "vessels": "Hajóforgalom",
+        "militaryFlights": "Katonai repülések",
+        "gpsJamming": "GPS-zavarás"
+      },
+      "name": "Idővonal",
+      "span": "{{days}} nap · következő {{hours}} óra",
+      "daylightHere": "Nappal itt",
+      "row": {
+        "geo": "Geo",
+        "photo": "Kép",
+        "likely": "Valószínű",
+        "could": "Lehetséges",
+        "overhead": "Áthaladt"
+      },
+      "retained": "{{start}} – {{end}}",
+      "retainedDay": "csak {{day}}",
+      "geoLine": "Látható geostacionárius: {{names}}",
+      "away": "{{km}} km-re"
     }
   },
   "settings": {

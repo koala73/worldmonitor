@@ -12,7 +12,8 @@ import '../styles/reservoir-levels.css';
 import type { ReservoirLevel } from '@/services/climate';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import type { FocusFitBounds } from '@/utils/focus-map';
-import { mercatorCenterForOffset, type ScreenOffset } from '@/utils/map-point-offset';
+import { type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
+import { mercatorCenterForOffset, visibleMapArea, type ScreenOffset } from '@/utils/map-point-offset';
 import {
   isLayerToggleAllowed,
   isLayerEntitled,
@@ -209,6 +210,9 @@ function noLayers(layers: MapLayers): MapLayers {
  * Unified map interface that delegates to either DeckGLMap or MapComponent
  * based on device capabilities
  */
+/** A pass's swath is a few degrees wide, so the flat SVG map frames it at its deepest zoom. */
+const SVG_ORBITAL_MAX_ZOOM = 5;
+
 export class MapContainer {
   private container: HTMLElement;
   private isMobile: boolean;
@@ -248,6 +252,9 @@ export class MapContainer {
   private pendingCenter: PendingCenter | null = null;
   private pendingViewportActions: PendingViewportAction[] = [];
   private focusOutline: MapFocusOutline | null = null;
+  private orbitalTrack: PassTrack | null = null;
+  private orbitalTrackMarker: TrackPoint | null = null;
+  private orbitalTarget: OrbitalTarget | null = null;
   /** Bumped by fits, clears and chosen-country changes; stale fits drop themselves. */
   private focusFitSeq = 0;
   private pendingChokepointOpen: string | null = null;
@@ -959,6 +966,8 @@ export class MapContainer {
     for (const [layer, hasData] of this.layerReadyState) this.setLayerReady(layer, hasData);
     if (this.cachedScenarioState !== undefined) this.applyScenarioState(this.cachedScenarioState);
     if (this.focusOutline) this.applyFocusOutline();
+    if (this.orbitalTrack) this.applyOrbitalTrack();
+    if (this.orbitalTarget) this.applyOrbitalTarget();
     for (const layer of this.hiddenLayerToggles) this.hideLayerToggle(layer);
     // A renderer built while the layers are hidden starts from the real toggles.
     if (this.suppressedLayers) this.drawLayers(noLayers(this.suppressedLayers));
@@ -2064,6 +2073,66 @@ export class MapContainer {
     if (this.useGlobe) { this.globeMap?.fitFocusBounds(action.fit, action.altitude); return; }
     if (this.useDeckGL) this.deckGLMap?.fitFocusBounds(action.flatFit, action.maxZoom);
     else this.svgMap?.fitFocusBounds(action.flatFit);
+  }
+
+  /** Draws a satellite pass's ground track and sensor footprint; null removes it. */
+  public setOrbitalTrack(track: PassTrack | null): void {
+    this.orbitalTrack = track;
+    this.orbitalTrackMarker = null;
+    this.applyOrbitalTrack();
+  }
+
+  /** Moves the replay marker along the drawn pass; null hides it. */
+  public setOrbitalTrackMarker(point: TrackPoint | null): void {
+    if (!this.orbitalTrack) return;
+    this.orbitalTrackMarker = point;
+    this.deckGLMap?.setOrbitalTrackMarker(point);
+    this.svgMap?.setOrbitalTrackMarker(point);
+    this.globeMap?.setOrbitalTrackMarker(point);
+  }
+
+  /** Pins the point a satellite lookup is about; null removes the pin. */
+  public setOrbitalTarget(target: OrbitalTarget | null): void {
+    this.orbitalTarget = target;
+    this.applyOrbitalTarget();
+  }
+
+  /** Frames a box on the active map, longitudes continuous so a box over the antimeridian stays local. */
+  public frameOrbitalBounds(bounds: FrameBounds, occluders: DOMRect[] = []): void {
+    const [[west, south], [east, north]] = bounds;
+    const lonSpan = Math.max(east - west, 0.05);
+    const latSpan = Math.max(north - south, 0.05);
+    const centerLon = ((((west + east) / 2) + 540) % 360) - 180;
+    const westLon = (((west + 540) % 360) - 180);
+    const fit: FocusFitBounds = { south, north, west: westLon, east: westLon + lonSpan, lonSpan, latSpan, center: { lat: (south + north) / 2, lon: centerLon } };
+    if (this.useGlobe) {
+      const center = this.orbitalTarget ?? fit.center;
+      const reach = Math.max(Math.abs(west - center.lon), Math.abs(east - center.lon), Math.abs(south - center.lat), Math.abs(north - center.lat));
+      this.globeMap?.fitFocusBounds({ ...fit, center: { lat: center.lat, lon: center.lon } }, Math.min(2.5, Math.max(0.35, reach * Math.PI / 180 * 5)));
+    }
+    else if (this.useDeckGL) this.deckGLMap?.frameOrbitalBounds(bounds, occluders);
+    else {
+      const box = this.container.getBoundingClientRect();
+      const area = visibleMapArea(box, occluders);
+      this.svgMap?.fitFocusBounds(fit, SVG_ORBITAL_MAX_ZOOM, {
+        width: area.right - area.left,
+        height: area.bottom - area.top,
+        x: (area.left + area.right - box.left - box.right) / 2,
+        y: (area.top + area.bottom - box.top - box.bottom) / 2,
+      });
+    }
+  }
+
+  private applyOrbitalTarget(): void {
+    this.deckGLMap?.setOrbitalTarget(this.orbitalTarget);
+    this.svgMap?.setOrbitalTarget(this.orbitalTarget);
+    this.globeMap?.setOrbitalTarget(this.orbitalTarget);
+  }
+
+  private applyOrbitalTrack(): void {
+    this.deckGLMap?.setOrbitalTrack(this.orbitalTrack, this.orbitalTrackMarker);
+    this.svgMap?.setOrbitalTrack(this.orbitalTrack, this.orbitalTrackMarker);
+    this.globeMap?.setOrbitalTrack(this.orbitalTrack, this.orbitalTrackMarker);
   }
 
   public highlightCountry(code: string): void {

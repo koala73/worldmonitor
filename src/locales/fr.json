@@ -4582,8 +4582,8 @@
     "createAccount": "Créer un compte",
     "freeReason": "Gratuit : enregistrer la mise en page, suivre des pays, alertes",
     "settings": "Paramètres",
-    "passkeyOffer": {},
-    "planBilling": "Plan et facturation"
+    "planBilling": "Plan et facturation",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Connecter MCP",
@@ -5193,6 +5193,17 @@
     "errLoad": "L'évaluation de voyage n'a pas pu être ouverte. Rechargez la page et réessayez."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "La trace au sol de ce passage n'a pas pu être dessinée"
+    },
+    "replay": {
+      "acquisition": "ACQUISITION · {{name}}",
+      "acquired": "ACQUIS {{time}} · {{resolution}}",
+      "play": "Lire la relecture",
+      "pause": "Mettre la relecture en pause",
+      "scrub": "Position de la relecture",
+      "reducedMotion": "MOUVEMENT RÉDUIT"
+    },
     "computing": "Chargement du catalogue de satellites…",
     "computingProgress": "Calcul des passages : {{done}} sur {{total}} satellites",
     "unavailable": "Le catalogue de satellites n’a pas pu être chargé, aucun passage n’a donc été calculé pour ce point.",
@@ -5348,6 +5359,82 @@
       "zoneShowUtc": "Afficher les heures en UTC",
       "zoneShowLocal": "Afficher les heures à l'heure locale de ce lieu"
     },
+    "viewer": {
+      "open": "Ouvrir la visionneuse : {{image}}",
+      "bestView": "Ouvrir la meilleure vue : {{name}}, {{time}}",
+      "imageAlt": "Image de {{name}}, {{time}}",
+      "close": "Fermer la visionneuse",
+      "northUp": "Le nord est en haut",
+      "unreferenced": "Orientation telle que fournie par l'archive ; le nord n'est pas indiqué",
+      "compareDates": "Autres dates de cette collection",
+      "compareNone": "Aucune autre scène de cette collection à comparer.",
+      "divider": "Séparateur avant/après",
+      "searching": "Recherche de scènes de ce lieu sur les {{days}} derniers jours",
+      "historyFailed": "{{archive}} n'a pas répondu, les scènes antérieures manquent.",
+      "historyTimeout": "{{archive}} n'a pas répondu à temps, les scènes antérieures manquent.",
+      "loading": "Chargement des images : {{loaded}} sur {{total}}",
+      "pause": "Pause",
+      "resume": "Lire",
+      "next": "Image suivante",
+      "closeLabel": "Fermer",
+      "agoNow": "À l'instant",
+      "agoHours": "il y a {{count}} h",
+      "agoDays": "il y a {{count}} j",
+      "clear": "Dégagé",
+      "clouded": "Nuageux · {{pct}} %",
+      "tabImage": "Image",
+      "tabChange": "Évolution",
+      "metaAcquired": "Acquise",
+      "metaDate": "Date",
+      "metaPixel": "Pixel",
+      "metaSpot": "Nuages sur le point",
+      "metaScene": "Nuages de la scène",
+      "metaSun": "Élévation du soleil",
+      "showCloudy": "Afficher les dates nuageuses ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Accéléré",
+      "entry": "Ce lieu, année par année",
+      "open": "Ouvrir l'accéléré annuel de ce lieu",
+      "searching": "Recherche d'une vue dégagée par an depuis 2015 · {{archive}}",
+      "loading": "Chargement des vues · {{loaded}} / {{total}}",
+      "failed": "{{archive}} n'a pas répondu, les vues annuelles manquent.",
+      "timeout": "{{archive}} n'a pas répondu à temps, les vues annuelles manquent.",
+      "partial": "Années manquantes car {{archive}} n'a pas répondu : {{count}}.",
+      "tooFew": "Vues annuelles dégagées de ce lieu : {{count}}. Un accéléré en demande {{min}}.",
+      "total": "Vues dégagées : {{count}} · une par an",
+      "years": "Années",
+      "share": "Partager",
+      "method": "Chaque image est le même carré de 6 km vu par Sentinel-2, en couleurs naturelles. Chaque année cherche dans une saison différente et garde sa scène la moins nuageuse ; une année sans scène sous 30 % de nuages est omise."
+    },
+    "passDetail": {
+      "back": "Tous les passages",
+      "altitude": "Altitude",
+      "offNadir": "Dépointage",
+      "crossed": "{{name}} est passé à {{altitude}} km d'altitude, {{distance}} km {{direction}}, à {{time}}, à {{speed}} km/s au sol.",
+      "crossedHeading": "{{name}} est passé à {{altitude}} km d'altitude, {{distance}} km {{direction}}, à {{time}}, en direction du {{heading}} à {{speed}} km/s au sol.",
+      "looking": "Il visait à {{deg}}° de la verticale.",
+      "sceneCloud": "Couverture nuageuse de la scène : {{pct}} %.",
+      "pixelLine": "Pixel de {{m}} m",
+      "swathLine": "Fauchée de {{km}} km",
+      "clearestLook": "Vue la plus dégagée",
+      "previous": "Passage précédent",
+      "next": "Passage suivant",
+      "dir": {
+        "n": "au nord",
+        "ne": "au nord-est",
+        "e": "à l'est",
+        "se": "au sud-est",
+        "s": "au sud",
+        "sw": "au sud-ouest",
+        "w": "à l'ouest",
+        "nw": "au nord-ouest"
+      },
+      "heading": {
+        "north": "nord",
+        "south": "sud"
+      }
+    },
     "search": {
       "label": "Nom de lieu ou coordonnées",
       "placeholder": "Nom de lieu ou 48.8584, 2.2945",
@@ -5373,6 +5460,41 @@
       "dismiss": "Fermer",
       "passOutsideWindow": "Le passage lié est hors de la fenêtre actuelle, aucun passage n'est donc sélectionné.",
       "passNotFound": "Le passage lié est introuvable parmi les passages recalculés, aucun passage n'est donc sélectionné."
+    },
+    "timeline": {
+      "now": "maintenant",
+      "nowAt": "Maintenant : {{time}}",
+      "density": "Passages {{label}}, de {{start}} à {{end}} : {{count}}",
+      "daylight": "Lumière du jour au point de {{start}} à {{end}}",
+      "unavailable": "indisponible",
+      "notRetained": "aucune donnée cette semaine",
+      "notRetainedSpan": "{{label}} : aucune donnée de {{start}} à {{end}}",
+      "countryWide": "à l'échelle du pays",
+      "source": {
+        "conflict": "Conflits",
+        "fires": "Incendies",
+        "unrest": "Troubles",
+        "outages": "Coupures d'internet"
+      },
+      "live": {
+        "vessels": "Trafic maritime",
+        "militaryFlights": "Vols militaires",
+        "gpsJamming": "Brouillage GPS"
+      },
+      "name": "Chronologie",
+      "span": "{{days}} jours · {{hours}} h à venir",
+      "daylightHere": "Lumière du jour ici",
+      "row": {
+        "geo": "Géo",
+        "photo": "Photo",
+        "likely": "Probable",
+        "could": "Possible",
+        "overhead": "Passage"
+      },
+      "retained": "{{start}} au {{end}}",
+      "retainedDay": "{{day}} seulement",
+      "geoLine": "Géostationnaires en vue : {{names}}",
+      "away": "à {{km}} km"
     }
   },
   "settings": {

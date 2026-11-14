@@ -4604,8 +4604,8 @@
     "createAccount": "Vytvořit účet",
     "freeReason": "Zdarma: ulož rozložení, sleduj země, upozornění",
     "settings": "Nastavení",
-    "passkeyOffer": {},
-    "planBilling": "Plán a fakturace"
+    "planBilling": "Plán a fakturace",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Připojit MCP",
@@ -5221,6 +5221,17 @@
     "errLoad": "Posouzení cesty se nepodařilo otevřít. Znovu načtěte stránku a zkuste to znovu."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "Pozemní stopu tohoto přeletu nelze vykreslit"
+    },
+    "replay": {
+      "acquisition": "SNÍMKOVÁNÍ · {{name}}",
+      "acquired": "POŘÍZENO {{time}} · {{resolution}}",
+      "play": "Přehrát záznam",
+      "pause": "Pozastavit záznam",
+      "scrub": "Pozice záznamu",
+      "reducedMotion": "OMEZENÝ POHYB"
+    },
     "computing": "Načítání katalogu satelitů…",
     "computingProgress": "Výpočet přeletů: {{done}} z {{total}} satelitů",
     "unavailable": "Katalog satelitů se nepodařilo načíst, proto pro tento bod nebyly vypočteny žádné přelety.",
@@ -5381,6 +5392,82 @@
       "zoneShowUtc": "Zobrazit časy v UTC",
       "zoneShowLocal": "Zobrazit časy v místním čase tohoto místa"
     },
+    "viewer": {
+      "open": "Otevřít prohlížeč snímků: {{image}}",
+      "bestView": "Otevřít nejlepší pohled: {{name}}, {{time}}",
+      "imageAlt": "Snímek {{name}}, {{time}}",
+      "close": "Zavřít prohlížeč snímků",
+      "northUp": "Sever je nahoře",
+      "unreferenced": "Orientace podle archivu; sever není vyznačen",
+      "compareDates": "Další data této kolekce",
+      "compareNone": "Žádný jiný snímek této kolekce k porovnání.",
+      "divider": "Oddělovač před/po",
+      "searching": "Hledání snímků tohoto místa za posledních {{days}} dní",
+      "historyFailed": "{{archive}} neodpověděl, proto chybí dřívější snímky.",
+      "historyTimeout": "{{archive}} neodpověděl včas, proto chybí dřívější snímky.",
+      "loading": "Načítání snímků: {{loaded}} z {{total}}",
+      "pause": "Pozastavit",
+      "resume": "Přehrát",
+      "next": "Další snímek",
+      "closeLabel": "Zavřít",
+      "agoNow": "Právě teď",
+      "agoHours": "před {{count}} h",
+      "agoDays": "před {{count}} d",
+      "clear": "Jasno",
+      "clouded": "Zataženo · {{pct}} %",
+      "tabImage": "Snímek",
+      "tabChange": "Změna",
+      "metaAcquired": "Pořízeno",
+      "metaDate": "Datum",
+      "metaPixel": "Pixel",
+      "metaSpot": "Oblačnost v bodě",
+      "metaScene": "Oblačnost scény",
+      "metaSun": "Výška slunce",
+      "showCloudy": "Zobrazit zatažená data ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Časosběr",
+      "entry": "Toto místo rok po roce",
+      "open": "Otevřít roční časosběr tohoto místa",
+      "searching": "Hledá se jeden jasný snímek ročně od roku 2015 · {{archive}}",
+      "loading": "Načítání snímků · {{loaded}} / {{total}}",
+      "failed": "{{archive}} neodpověděl, proto roční snímky chybí.",
+      "timeout": "{{archive}} neodpověděl včas, proto roční snímky chybí.",
+      "partial": "Chybějící roky, protože {{archive}} neodpověděl: {{count}}.",
+      "tooFew": "Jasné roční snímky tohoto místa: {{count}}. Časosběr potřebuje {{min}}.",
+      "total": "Jasné snímky: {{count}} · jeden ročně",
+      "years": "Roky",
+      "share": "Sdílet",
+      "method": "Každý snímek je stejný čtverec 6 km ze Sentinelu-2 v přirozených barvách. Každý rok se hledá v jiném ročním období a ponechá se nejméně oblačná scéna; rok bez scény pod 30 % oblačnosti se vynechá."
+    },
+    "passDetail": {
+      "back": "Všechny přelety",
+      "altitude": "Výška",
+      "offNadir": "Odklon od nadiru",
+      "crossed": "{{name}} přeletěl ve výšce {{altitude}} km, {{distance}} km {{direction}}, v {{time}}, rychlostí {{speed}} km/s nad zemí.",
+      "crossedHeading": "{{name}} přeletěl ve výšce {{altitude}} km, {{distance}} km {{direction}}, v {{time}}, směrem na {{heading}} rychlostí {{speed}} km/s nad zemí.",
+      "looking": "Díval se {{deg}}° od svislice.",
+      "sceneCloud": "Oblačnost scény: {{pct}} %.",
+      "pixelLine": "Pixel {{m}} m",
+      "swathLine": "Záběr {{km}} km",
+      "clearestLook": "Nejjasnější pohled",
+      "previous": "Předchozí přelet",
+      "next": "Další přelet",
+      "dir": {
+        "n": "na sever",
+        "ne": "na severovýchod",
+        "e": "na východ",
+        "se": "na jihovýchod",
+        "s": "na jih",
+        "sw": "na jihozápad",
+        "w": "na západ",
+        "nw": "na severozápad"
+      },
+      "heading": {
+        "north": "sever",
+        "south": "jih"
+      }
+    },
     "search": {
       "label": "Název místa nebo souřadnice",
       "placeholder": "Název místa nebo 48.8584, 2.2945",
@@ -5406,6 +5493,41 @@
       "dismiss": "Zavřít",
       "passOutsideWindow": "Odkazovaný přelet je mimo aktuální okno, proto není vybrán žádný přelet.",
       "passNotFound": "Odkazovaný přelet nebyl mezi přepočtenými přelety nalezen, proto není vybrán žádný přelet."
+    },
+    "timeline": {
+      "now": "teď",
+      "nowAt": "Teď: {{time}}",
+      "density": "Přelety {{label}}, od {{start}} do {{end}}: {{count}}",
+      "daylight": "Denní světlo v bodě od {{start}} do {{end}}",
+      "unavailable": "nedostupné",
+      "notRetained": "tento týden žádná data",
+      "notRetainedSpan": "{{label}}: žádná data od {{start}} do {{end}}",
+      "countryWide": "celostátní",
+      "source": {
+        "conflict": "Konflikty",
+        "fires": "Požáry",
+        "unrest": "Nepokoje",
+        "outages": "Výpadky internetu"
+      },
+      "live": {
+        "vessels": "Lodní doprava",
+        "militaryFlights": "Vojenské lety",
+        "gpsJamming": "Rušení GPS"
+      },
+      "name": "Časová osa",
+      "span": "{{days}} dní · dalších {{hours}} h",
+      "daylightHere": "Denní světlo zde",
+      "row": {
+        "geo": "Geo",
+        "photo": "Snímek",
+        "likely": "Pravděp.",
+        "could": "Možná",
+        "overhead": "Přelet"
+      },
+      "retained": "{{start}} až {{end}}",
+      "retainedDay": "jen {{day}}",
+      "geoLine": "Geostacionární v dohledu: {{names}}",
+      "away": "{{km}} km odtud"
     }
   },
   "settings": {
