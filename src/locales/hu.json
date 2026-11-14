@@ -5189,6 +5189,8 @@
     "partial": "{{sources}} nem válaszolt, ezért egyes áthaladásokhoz hiányozhatnak a felvételek.",
     "stale": "A pályaadatok elavultak. A műholdkatalógus {{age}} régi, ezért az áthaladási idők eltérhetnek.",
     "empty": "Egyetlen nyilvántartott képalkotó műhold sem haladt el e pont felett az elmúlt {{pastDays}} napban, és a következő {{futureHours}} órában sem fog.",
+    "sources": "Források · {{count}}",
+    "sourcesDocs": "Hogyan használjuk ezeket a forrásokat",
     "privacy": "Ez a pont a böngészőjében marad. Csak azokhoz a nyilvános archívumokhoz kerül, amelyeket a böngésző közvetlenül hív: Earth Search, Microsoft Planetary Computer, NASA GIBS és EUMETSAT. Az egyetlen kivétel a helynév szerinti keresés: a beírt név a helynévkereső szolgáltatáshoz kerül.",
     "inRange": "hatótávon belül",
     "tier": {
@@ -5425,6 +5427,41 @@
       "dismiss": "Bezárás",
       "passOutsideWindow": "A linkelt áthaladás kívül esik az aktuális időablakon, ezért nincs kiválasztott áthaladás.",
       "passNotFound": "A linkelt áthaladás nem található az újraszámolt áthaladások között, ezért nincs kiválasztott áthaladás."
+    },
+    "timeline": {
+      "now": "most",
+      "nowAt": "Most: {{time}}",
+      "density": "{{label}} áthaladások, {{start}} és {{end}} között: {{count}}",
+      "daylight": "Nappali fény a pontban {{start}} és {{end}} között",
+      "unavailable": "nem elérhető",
+      "notRetained": "ezen a héten nincs adat",
+      "notRetainedSpan": "{{label}}: nincs adat {{start}} és {{end}} között",
+      "countryWide": "országos",
+      "source": {
+        "conflict": "Konfliktusok",
+        "fires": "Tüzek",
+        "unrest": "Zavargások",
+        "outages": "Internetkimaradások"
+      },
+      "live": {
+        "vessels": "Hajóforgalom",
+        "militaryFlights": "Katonai repülések",
+        "gpsJamming": "GPS-zavarás"
+      },
+      "name": "Idővonal",
+      "span": "{{days}} nap · következő {{hours}} óra",
+      "daylightHere": "Nappal itt",
+      "row": {
+        "geo": "Geo",
+        "photo": "Kép",
+        "likely": "Valószínű",
+        "could": "Lehetséges",
+        "overhead": "Áthaladt"
+      },
+      "retained": "{{start}} – {{end}}",
+      "retainedDay": "csak {{day}}",
+      "geoLine": "Látható geostacionárius: {{names}}",
+      "away": "{{km}} km-re"
     }
   },
   "settings": {

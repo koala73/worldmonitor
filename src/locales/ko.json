@@ -5161,6 +5161,8 @@
     "partial": "{{sources}}이(가) 응답하지 않아 일부 통과에 영상이 없을 수 있습니다.",
     "stale": "궤도 데이터가 오래되었습니다. 위성 카탈로그가 {{age}} 전 것이므로 통과 시간이 다를 수 있습니다.",
     "empty": "지난 {{pastDays}}일 동안 이 지점 위를 지난 등록된 영상 위성이 없으며 향후 {{futureHours}}시간 동안에도 지나지 않습니다.",
+    "sources": "출처 · {{count}}",
+    "sourcesDocs": "이 출처를 사용하는 방법",
     "privacy": "이 지점은 브라우저에만 남습니다. 브라우저가 직접 호출하는 공개 아카이브인 Earth Search, Microsoft Planetary Computer, NASA GIBS, EUMETSAT에만 전송됩니다. 유일한 예외는 지명 검색으로, 입력한 이름은 지명 검색 서비스로 전송됩니다.",
     "inRange": "범위 내",
     "tier": {
@@ -5392,6 +5394,41 @@
       "dismiss": "닫기",
       "passOutsideWindow": "링크된 통과가 현재 기간을 벗어나 선택된 통과가 없습니다.",
       "passNotFound": "링크된 통과를 다시 계산한 통과 중에서 찾지 못해 선택된 통과가 없습니다."
+    },
+    "timeline": {
+      "now": "현재",
+      "nowAt": "현재: {{time}}",
+      "density": "{{label}} 통과, {{start}}~{{end}}: {{count}}",
+      "daylight": "지점의 낮 시간 {{start}}~{{end}}",
+      "unavailable": "사용 불가",
+      "notRetained": "이번 주 데이터 없음",
+      "notRetainedSpan": "{{label}}: {{start}}~{{end}} 데이터 없음",
+      "countryWide": "전국",
+      "source": {
+        "conflict": "분쟁",
+        "fires": "화재",
+        "unrest": "소요",
+        "outages": "인터넷 장애"
+      },
+      "live": {
+        "vessels": "선박 교통",
+        "militaryFlights": "군용기",
+        "gpsJamming": "GPS 교란"
+      },
+      "name": "타임라인",
+      "span": "{{days}}일 · 향후 {{hours}}시간",
+      "daylightHere": "이곳의 낮",
+      "row": {
+        "geo": "정지",
+        "photo": "촬영",
+        "likely": "유력",
+        "could": "가능",
+        "overhead": "통과"
+      },
+      "retained": "{{start}}~{{end}}",
+      "retainedDay": "{{day}}만",
+      "geoLine": "시야 내 정지궤도: {{names}}",
+      "away": "{{km}}km 거리"
     }
   },
   "settings": {

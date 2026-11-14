@@ -5,7 +5,8 @@ import { initTestI18n } from './helpers/i18n.mts';
 import type { DailyMosaicRow, GeostationaryRow } from '@/services/orbital/archive-gibs';
 import type { MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
 import type { SceneHistory } from '@/services/orbital/timelapse';
-import { IMAGE_CREDIT, OrbitalWatchPage } from '@/components/OrbitalWatchPage';
+import { OrbitalWatchPage } from '@/components/OrbitalWatchPage';
+import { IMAGE_CREDIT } from '@/services/orbital/credits';
 import {
   openOrbitalImageViewer,
   sceneFromAcquisition,
@@ -356,7 +357,7 @@ describe('opening the viewer from the lookup sheet', () => {
     const evidence: OrbitalEvidence = { passes: [], acquisitions: [acquisition], mosaics: [], frames: [], bestView: acquisition, status: 'complete', failures: [], unansweredProfiles: [] };
     const page = new OrbitalWatchPage({ onClose: vi.fn(), onRetry: vi.fn() });
     page.open(point, null, 'full');
-    page.render({ kind: 'passes', lookup: { point, window: { startMs: NOW - 30 * DAY, endMs: NOW + 2 * DAY }, nowMs: NOW, catalog: { status: 'fresh', fetchedAt: NOW, inventoryVersion: 't' }, passes: [], satellites: [], computedOn: 'worker' }, archives: { kind: 'answered', evidence } });
+    page.render({ kind: 'passes', lookup: { point, window: { startMs: NOW - 30 * DAY, endMs: NOW + 2 * DAY }, nowMs: NOW, catalog: { status: 'fresh', fetchedAt: NOW, inventoryVersion: 't' }, passes: [], satellites: [], daylight: [], computedOn: 'worker' }, archives: { kind: 'answered', evidence } });
     expect(subjectForImage(evidence, { kind: 'acquisition', key: acquisition.key }, { point, nowMs: NOW })!.selected.imageUrl).toBe(acquisition.imageUrl);
 
     const trigger = document.querySelector<HTMLButtonElement>('.ow-row [data-action="view-image"]')!;
@@ -375,7 +376,7 @@ describe('opening the viewer from the lookup sheet', () => {
   it('drops a viewer whose chunk lands after the sheet reopened at another place', async () => {
     const acquisition = scene(2, 5);
     const evidence: OrbitalEvidence = { passes: [], acquisitions: [acquisition], mosaics: [], frames: [], bestView: acquisition, status: 'complete', failures: [], unansweredProfiles: [] };
-    const state = (at: typeof point) => ({ kind: 'passes' as const, lookup: { point: at, window: { startMs: NOW - 30 * DAY, endMs: NOW + 2 * DAY }, nowMs: NOW, catalog: { status: 'fresh' as const, fetchedAt: NOW, inventoryVersion: 't' }, passes: [], satellites: [], computedOn: 'worker' as const }, archives: { kind: 'answered' as const, evidence } });
+    const state = (at: typeof point) => ({ kind: 'passes' as const, lookup: { point: at, window: { startMs: NOW - 30 * DAY, endMs: NOW + 2 * DAY }, nowMs: NOW, catalog: { status: 'fresh' as const, fetchedAt: NOW, inventoryVersion: 't' }, passes: [], satellites: [], daylight: [], computedOn: 'worker' as const }, archives: { kind: 'answered' as const, evidence } });
     const page = new OrbitalWatchPage({ onClose: vi.fn(), onRetry: vi.fn() });
     page.open(point, null);
     page.render(state(point));
@@ -395,7 +396,7 @@ describe('opening the viewer from the lookup sheet', () => {
     const evidence: OrbitalEvidence = { passes: [], acquisitions: [acquisition], mosaics: [], frames: [], bestView: acquisition, status: 'complete', failures: [], unansweredProfiles: [] };
     const page = new OrbitalWatchPage({ onClose: vi.fn(), onRetry: vi.fn() });
     page.open(point, null);
-    page.render({ kind: 'passes', lookup: { point, window: { startMs: NOW - 30 * DAY, endMs: NOW + 2 * DAY }, nowMs: NOW, catalog: { status: 'fresh', fetchedAt: NOW, inventoryVersion: 't' }, passes: [], satellites: [], computedOn: 'worker' }, archives: { kind: 'answered', evidence } });
+    page.render({ kind: 'passes', lookup: { point, window: { startMs: NOW - 30 * DAY, endMs: NOW + 2 * DAY }, nowMs: NOW, catalog: { status: 'fresh', fetchedAt: NOW, inventoryVersion: 't' }, passes: [], satellites: [], daylight: [], computedOn: 'worker' }, archives: { kind: 'answered', evidence } });
     await vi.waitFor(() => expect(document.querySelector('.ow-card .ow-tile img[src^="blob:"]')).not.toBeNull());
     document.querySelector<HTMLButtonElement>('.ow-card [data-action="view-image"]')!.click();
     await vi.waitFor(() => expect(viewer()).not.toBeNull());

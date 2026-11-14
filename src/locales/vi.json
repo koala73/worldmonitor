@@ -5161,6 +5161,8 @@
     "partial": "{{sources}} không phản hồi nên một số lượt bay có thể thiếu ảnh.",
     "stale": "Dữ liệu quỹ đạo đã cũ. Danh mục vệ tinh đã {{age}} nên thời gian bay qua có thể sai lệch.",
     "empty": "Không có vệ tinh chụp ảnh nào trong danh mục bay qua điểm này trong {{pastDays}} ngày qua hoặc sẽ bay qua trong {{futureHours}} giờ tới.",
+    "sources": "Nguồn · {{count}}",
+    "sourcesDocs": "Cách sử dụng các nguồn này",
     "privacy": "Điểm này được giữ trong trình duyệt của bạn. Điểm chỉ được gửi tới các kho lưu trữ công khai mà trình duyệt gọi trực tiếp: Earth Search, Microsoft Planetary Computer, NASA GIBS và EUMETSAT. Ngoại lệ duy nhất là tìm kiếm theo tên địa điểm: tên bạn nhập được gửi tới dịch vụ tìm kiếm địa điểm.",
     "inRange": "trong tầm",
     "tier": {
@@ -5392,6 +5394,41 @@
       "dismiss": "Đóng",
       "passOutsideWindow": "Lượt bay qua trong liên kết nằm ngoài khoảng thời gian hiện tại, nên không có lượt nào được chọn.",
       "passNotFound": "Không tìm thấy lượt bay qua trong liên kết giữa các lượt đã tính lại, nên không có lượt nào được chọn."
+    },
+    "timeline": {
+      "now": "bây giờ",
+      "nowAt": "Bây giờ: {{time}}",
+      "density": "Lượt bay qua {{label}}, từ {{start}} đến {{end}}: {{count}}",
+      "daylight": "Ánh sáng ban ngày tại điểm từ {{start}} đến {{end}}",
+      "unavailable": "không khả dụng",
+      "notRetained": "không có dữ liệu tuần này",
+      "notRetainedSpan": "{{label}}: không có dữ liệu từ {{start}} đến {{end}}",
+      "countryWide": "toàn quốc",
+      "source": {
+        "conflict": "Xung đột",
+        "fires": "Cháy",
+        "unrest": "Bất ổn",
+        "outages": "Sự cố internet"
+      },
+      "live": {
+        "vessels": "Giao thông hàng hải",
+        "militaryFlights": "Chuyến bay quân sự",
+        "gpsJamming": "Gây nhiễu GPS"
+      },
+      "name": "Dòng thời gian",
+      "span": "{{days}} ngày · {{hours}} giờ tới",
+      "daylightHere": "Ban ngày tại đây",
+      "row": {
+        "geo": "Địa tĩnh",
+        "photo": "Ảnh",
+        "likely": "Có thể",
+        "could": "Khả dĩ",
+        "overhead": "Bay qua"
+      },
+      "retained": "{{start}} đến {{end}}",
+      "retainedDay": "chỉ {{day}}",
+      "geoLine": "Vệ tinh địa tĩnh trong tầm nhìn: {{names}}",
+      "away": "cách {{km}} km"
     }
   },
   "settings": {
