@@ -161,9 +161,6 @@ const FULL_MAP_LAYERS: MapLayers = {
   radiationWatch: false,
   sanctions: true,
   weather: true,
-  // Opt-in — see DEFAULT_MAP_LAYERS in src/config/variants/full.ts. Its four
-  // sources are on-demand bootstrap keys (~2.7 MB), so shipping the layer on
-  // put that on every visitor (#6763).
   canadaRoads: false,
   canadaAlerts: true,
   economic: true,
@@ -182,6 +179,8 @@ const FULL_MAP_LAYERS: MapLayers = {
   ucdpEvents: false,
   displacement: false,
   climate: false,
+  reservoirLevels: false,
+  no2Activity: false,
   // Tech layers (disabled in full variant)
   startupHubs: false,
   cloudRegions: false,
@@ -250,6 +249,8 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   ucdpEvents: false,
   displacement: false,
   climate: false,
+  reservoirLevels: false,
+  no2Activity: false,
   // Tech layers (disabled in full variant)
   startupHubs: false,
   cloudRegions: false,
@@ -1091,6 +1092,7 @@ const ENERGY_MAP_LAYERS: MapLayers = {
   storageFacilities: true, // UGS / SPR / LNG / crude hubs (Day 9-10 registry)
   fuelShortages: true,     // Global fuel shortage alerts (Day 11-12 registry)
   liveTankers: true,       // AIS ship type 80-89 inside chokepoint bboxes (parity-push PR 3)
+  reservoirLevels: false,
 };
 
 const ENERGY_MOBILE_MAP_LAYERS: MapLayers = {
@@ -1151,6 +1153,7 @@ const ENERGY_MOBILE_MAP_LAYERS: MapLayers = {
   storageFacilities: true,
   fuelShortages: true,
   liveTankers: true,
+  reservoirLevels: false,
 };
 
 // ============================================
