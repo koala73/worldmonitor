@@ -662,6 +662,7 @@ const glyphTile = (glyph: TierGlyph) =>
 function noImageReason(pass: PointPass, unanswered: boolean): string | null {
   if (pass.tier.kind === 'likely-imaged') return t(unanswered ? 'orbitalWatch.ui.grid.likelyUnansweredShort' : 'orbitalWatch.ui.grid.likelyShort');
   if (pass.tier.kind === 'passed-overhead') return t('orbitalWatch.ui.grid.overheadShort');
+  if (pass.tier.kind === 'confirmed-image') return t('orbitalWatch.ui.grid.watchedNoPreviewShort');
   return null;
 }
 
@@ -715,6 +716,7 @@ function passRow(pass: PointPass, nowMs: number, acquisition: MatchedAcquisition
     military ? badge(t('orbitalWatch.tier.capabilityOverhead')) : null,
     pass.edgeOfSwath ? badge(t('orbitalWatch.row.edgeOfSwath')) : null,
     pass.tier.kind === 'passed-overhead' && pass.tier.note === 'not-in-archive' ? badge(t('orbitalWatch.row.notInArchive')) : null,
+    pass.tier.kind === 'confirmed-image' && pass.tier.note === 'geometry-disagreed' ? badge(t('orbitalWatch.row.geometryDisagreed')) : null,
     unanswered ? badge(t('orbitalWatch.row.archiveUnanswered')) : null,
     repeats > 1 ? h('span', { className: 'ow-repeat ow-label', title: t('orbitalWatch.ui.row.repeats', { count: repeats }) }, `×${repeats}`) : null,
   ];

@@ -43,7 +43,7 @@ function pass(noradId: number, hoursFromNow: number, tier: PassTier = { kind: 'l
   const timeMs = NOW + hoursFromNow * HOUR + 17_000;
   return {
     noradId, name: `SAT ${noradId}`, profileId: 'sentinel-2', category: 'open-optical', time: new Date(timeMs).toISOString(), timeMs,
-    opportunity: hoursFromNow > 0, groundDistanceKm: 42, side: 'left', elevationDeg: 80, azimuthDeg: 90, incidenceDeg: 10,
+    opportunity: hoursFromNow > 0, groundDistanceKm: 42, side: 'left', direction: 'ascending', elevationDeg: 80, azimuthDeg: 90, incidenceDeg: 10,
     sunElevationDeg: 40, altitudeKm: 700, subSatellite: EXACT, inFootprint: true, edgeOfSwath: false, coverage: true, tier,
     elementsEpochMs: NOW - 2 * HOUR, orbitAgeDays: 0.5,
   };
