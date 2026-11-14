@@ -65,6 +65,7 @@ function cancel(): void {
 function mapArea(): { map: DOMRect; area: ScreenArea } | null {
   const map = getOrbitalMapView()?.rect();
   if (!map || !page?.isOpen || map.width <= 0 || map.height <= 0) return null;
+  page.dockTo(map);
   return { map, area: visibleMapArea(map, page.coverRects()) };
 }
 

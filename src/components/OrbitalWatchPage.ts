@@ -771,6 +771,18 @@ export class OrbitalWatchPage {
     return r.width > 0 && r.height > 0 ? [r] : [];
   }
 
+  /** Docks the desktop panel inside the map's box, so columns beside the map (live news) stay visible. */
+  dockTo(map: DOMRect | null): void {
+    const style = this.sheet.style;
+    if (!map) {
+      for (const name of ['--ies-top', '--ies-right', '--ies-bottom']) style.removeProperty(name);
+      return;
+    }
+    style.setProperty('--ies-top', `${Math.max(0, Math.round(map.top))}px`);
+    style.setProperty('--ies-right', `${Math.max(0, Math.round(window.innerWidth - map.right))}px`);
+    style.setProperty('--ies-bottom', `${Math.max(0, Math.round(window.innerHeight - map.bottom))}px`);
+  }
+
   /** Draws the reticle at a client position on the map, or hides it. */
   placeMapMark(at: { x: number; y: number } | null): void {
     this.mapMark.hidden = !at;

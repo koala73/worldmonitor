@@ -614,3 +614,8 @@
 
 /* Radar backscatter has no colour; greyscale keeps it from reading as a photo. */
 .ow-tile.is-radar img { filter: grayscale(1) contrast(1.1); }
+
+/* On desktop the panel docks inside the map's box, leaving the live news column beside it visible. */
+@media (min-width: 769px) {
+  .ies-panel { top: var(--ies-top, 0); right: var(--ies-right, 0); bottom: var(--ies-bottom, 0); }
+}
