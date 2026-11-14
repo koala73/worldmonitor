@@ -844,10 +844,6 @@ async function seedFaaDelays() {
 const ICAO_NOTAM_URL = 'https://dataservices.icao.int/api/notams-realtime-list';
 const NOTAM_CLOSURE_QCODES = new Set(['FA', 'AH', 'AL', 'AW', 'AC', 'AM']);
 // Restrictions: NOTAM Q-codes RA (restricted area) and RO (overfly prohibited)
-// + restricted code45s and text patterns. Mirrors NOTAM_RESTRICTION_QCODES +
-// the restriction-text regex in server/worldmonitor/aviation/v1/_shared.ts:29,
-// :440-444 — keep in lockstep so seeded NOTAM data matches the live RPC's
-// classifier.
 const NOTAM_RESTRICTION_QCODES = new Set(['RA', 'RO']);
 
 // Returns the NOTAM array only for a real JSON-array answer. Every other outcome
