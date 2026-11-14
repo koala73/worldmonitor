@@ -20,7 +20,7 @@ import type { CountryScore } from '@/services/country-instability';
 import { t } from '@/services/i18n';
 import type { ReservoirLevel } from '@/services/climate';
 import { reservoirCard, reservoirSummaryLine, sortReservoirCards } from './reservoir-card';
-import type { ReservoirNextPass } from '@/services/orbital/reservoir-next-pass';
+import type { ReservoirNextPass } from '@/services/orbital/reservoir-next-pass-expiry';
 import { STRATEGIC_RESERVOIR_SITES } from '@/services/climate/reservoir-context';
 import { CountryHistory } from './CountryHistory';
 import { getCountryInfrastructure } from '@/services/related-assets';

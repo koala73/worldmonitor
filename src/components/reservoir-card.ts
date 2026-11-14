@@ -1,7 +1,7 @@
 import type { ReservoirLevel } from '@/services/climate';
-import { reservoirNextPassExpiresAt, type ReservoirNextPass } from '@/services/orbital/reservoir-next-pass';
+import { reservoirNextPassExpiresAt, type ReservoirNextPass } from '@/services/orbital/reservoir-next-pass-expiry';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
-import { isBeyondSeasonalBaseline } from '../../shared/country-signal-observations';
+import { isBeyondSeasonalBaseline } from '../../shared/reservoir-baseline';
 import {
   formatPassDate,
   reservoirChipTone,

@@ -12,19 +12,8 @@ const DAY_MS = 86_400_000;
 export type ReservoirExtent = readonly [number, number, number, number];
 export interface ReservoirPassSite { id: string; core: ReservoirExtent }
 
-/**
- * A predicted ICESat-2 crossing, never a measurement: `pass` gives the first time the
- * ground track crosses the lake in the window, `none` is the normal answer when the
- * track misses it (ICESat-2 repeats each track every 91 days).
- */
-export type ReservoirNextPass =
-  | { status: 'pass'; timeMs: number; windowEndMs: number; elementsEpochMs: number }
-  | { status: 'none'; windowEndMs: number; elementsEpochMs: number };
-
-/** When a prediction stops being the next one: its crossing time, or the end of a no-crossing window. */
-export function reservoirNextPassExpiresAt(pass: ReservoirNextPass): number {
-  return pass.status === 'pass' ? pass.timeMs : pass.windowEndMs;
-}
+export { reservoirNextPassExpiresAt, type ReservoirNextPass } from './reservoir-next-pass-expiry';
+import type { ReservoirNextPass } from './reservoir-next-pass-expiry';
 
 function crossesExtent(a: { lat: number; lon: number }, b: { lat: number; lon: number }, [w, s, e, n]: ReservoirExtent): number | null {
   // Liang-Barsky clip of the straight segment a->b against the box; returns the entry fraction.

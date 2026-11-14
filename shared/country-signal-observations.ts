@@ -4,6 +4,7 @@ import { countryActivityQueries } from './country-activity-query';
 import { COUNTRY_SIGNAL_BYTES, COUNTRY_SIGNAL_FAMILIES, COUNTRY_SIGNAL_WIRE_FAMILIES, type CountrySignalFamily } from './country-signal-contract';
 import { confirmedSiteFlags, readCountryRollup, scoredSiteCount } from './orbital/country-rollup.js';
 import { SEASONAL_Z_ALERT } from '../scripts/shared/reservoir-seasonal.mjs';
+import { isBeyondSeasonalBaseline } from './reservoir-baseline';
 export { COUNTRY_SIGNAL_PATH, COUNTRY_SIGNAL_BYTES, COUNTRY_SIGNAL_FAMILIES, COUNTRY_SIGNAL_WIRE_FAMILIES, type CountrySignalFamily } from './country-signal-contract';
 const countryFlightSchema = z.object({
   id: z.string().min(1).max(200), source: z.string().min(1).max(500),
@@ -144,10 +145,7 @@ const waterReservoirSchema = z.object({
  * `seasonalZ`). Context beside country risk: the family never feeds a score, and every row
  * carries the overpass date because lidar levels arrive weeks after the measurement.
  */
-/** A reservoir level is beyond its seasonal baseline at SEASONAL_Z_ALERT seasonal deviations. */
-export function isBeyondSeasonalBaseline(seasonalZ: number | null | undefined): boolean {
-  return seasonalZ != null && Number.isFinite(seasonalZ) && Math.abs(seasonalZ) >= SEASONAL_Z_ALERT;
-}
+export { isBeyondSeasonalBaseline };
 
 export function projectWaterSignalFamily(countryCode: string, body: unknown): CountrySignalOutcome {
   const object = z.record(z.string(), z.unknown()).parse(body);

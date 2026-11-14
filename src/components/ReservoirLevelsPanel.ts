@@ -21,7 +21,7 @@ import {
 } from './reservoir-levels-view';
 import type { ResolvedScope } from '@/services/tab-focus';
 import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
-import { reservoirNextPassExpiresAt, type ReservoirNextPass } from '@/services/orbital/reservoir-next-pass';
+import { reservoirNextPassExpiresAt, type ReservoirNextPass } from '@/services/orbital/reservoir-next-pass-expiry';
 import { loadReservoirNextPasses } from '@/services/climate/reservoir-context-loader';
 import { STRATEGIC_RESERVOIR_SITES } from '@/services/climate/reservoir-context';
 import { countryCodeFromName } from '@/services/scope-attribution';
