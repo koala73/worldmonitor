@@ -629,6 +629,24 @@ describe('satellite pass lookup sheet', () => {
     expect(URL.createObjectURL).toHaveBeenCalledTimes(sources.length);
   });
 
+  it('stops watching offscreen thumbnails when the rows are replaced or the sheet closes', () => {
+    const live = new Set<object>();
+    vi.stubGlobal('IntersectionObserver', class {
+      observe() { live.add(this); }
+      disconnect() { live.delete(this); }
+    });
+    const { all, confirmedNew, likely } = tiered();
+    const state = answered(all, { acquisitions: [acquisition(confirmedNew), acquisition(likely)], mosaics: [modis], frames: [meteosat] });
+    const page = mounted(state);
+    page.setView('full');
+    const watching = live.size;
+    expect(watching, 'offscreen thumbnails wait to come into view').toBeGreaterThan(0);
+    page.render(state);
+    expect(live.size, 'replaced rows are no longer watched').toBe(watching);
+    page.close();
+    expect(live.size, 'closing stops watching every thumbnail').toBe(0);
+  });
+
   it('names the archives that failed and retries on request', () => {
     const { all } = tiered();
     mounted(answered(all, { status: 'partial', failures: [{ archive: 'planetary-computer', reason: 'http-status', httpStatus: 503 }], unansweredProfiles: ['landsat'] }));
