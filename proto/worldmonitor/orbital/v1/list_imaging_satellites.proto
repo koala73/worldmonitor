@@ -48,7 +48,7 @@ message SensorProfile {
   // Family name, e.g. "Sentinel-2".
   string family = 2;
   string operator = 3;
-  // One of open-optical, open-radar, weather-polar, commercial-optical, commercial-radar, military, crewed-station, geostationary.
+  // One of open-optical, open-radar, open-lidar, weather-polar, commercial-optical, commercial-radar, government-optical, government-radar, military, crewed-station, geostationary.
   string category = 4;
   // Where the mission acquires: "land-coast" or "global".
   string coverage = 5;

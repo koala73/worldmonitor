@@ -34,7 +34,7 @@ const POINT_PASS_SCHEMA = {
     noradId: { type: 'integer' },
     name: { type: 'string', description: 'Satellite name as published.' },
     profileId: { type: 'string', description: 'Sensor profile, e.g. sentinel-2, sentinel-1, landsat.' },
-    category: { type: 'string', description: 'open-optical, open-radar, weather-polar, commercial-radar, military or crewed-station.' },
+    category: { type: 'string', description: 'open-optical, open-radar, open-lidar, weather-polar, commercial-optical, commercial-radar, government-optical, government-radar, military or crewed-station.' },
     timeMs: { type: 'integer', description: 'Closest approach, Unix epoch milliseconds.' },
     opportunity: { type: 'boolean', description: 'A future pass: a chance to image, never an image.' },
     groundDistanceKm: { type: 'number' },

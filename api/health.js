@@ -977,8 +977,8 @@ const SEED_META = {
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10490, activationKey: 'seed-activated:climate:reservoir-levels' } },
   // Climate bundle member every 3h; 540 = 3x the cadence. New probe: ROLLOUT_PENDING for up to a
   // day after deploy, until the seeder writes its activation marker after its first publication.
-  // minRecordCount sits below the 17 profiled satellites CelesTrak carried on 2026-11-13.
-  orbitalCatalog:   { key: 'seed-meta:orbital:catalog', maxStaleMin: 540, minRecordCount: 15, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:orbital:catalog',
+  // minRecordCount sits below the 297 profiled satellites the seeder kept from a 2026-11-14 CelesTrak active list.
+  orbitalCatalog:   { key: 'seed-meta:orbital:catalog', maxStaleMin: 540, minRecordCount: 250, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:orbital:catalog',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10615, activationKey: 'seed-activated:orbital:catalog' } },
   // Daily climate bundle member; 4320 = 3 missed days. One run evaluates the sites its budget
   // allows and the index keeps every site evaluated so far, so the count reaches the 655-site

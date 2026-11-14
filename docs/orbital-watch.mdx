@@ -22,13 +22,31 @@ Each satellite maps to a sensor profile that says what it can see and what to ex
 
 | Profile field | Meaning |
 |---|---|
-| Category | Open optical (Sentinel-2, Landsat), open radar (Sentinel-1), weather polar, commercial optical, commercial radar, military, crewed station, or geostationary |
+| Category | Open optical (Sentinel-2, Landsat), open radar (Sentinel-1), open lidar (ICESat-2), weather polar (MODIS, VIIRS), commercial optical, commercial radar, government optical, government radar, military, crewed station, or geostationary |
 | Footprint | The ground band the instrument covers, from its swath width or look and incidence angles |
+| Resolution | The finest ground resolution the operator states, in metres, or none when it publishes no figure |
+| Daylight | Whether the sensor needs the sun: passive optical sensors do, radar and lidar do not |
+| Archive collection | The public archive that holds the sensor's products, or none |
 | Coverage | Where the mission acquires: for Sentinel-2 and Sentinel-1, a grid built from the archive's own scene footprints (Sentinel-1 separately for northbound and southbound passes); land and coast for Landsat |
 | Archive wait | How long the open archive usually takes to publish a scene: 24 hours for Sentinel-2 and Sentinel-1, 235 hours for Landsat, set from the measured publication lag of the quicker archive |
 | Daily mosaic | Whether a daily global mosaic exists for the sensor |
 
-Optical sensors need daylight. An optical pass reaches an imaging tier only when the sun is at least 5 degrees above the horizon at the point. A pass in darkness still appears in the list, as `passed-overhead`.
+Sensors whose profile needs daylight reach an imaging tier only when the sun is at least 5 degrees above the horizon at the point. A pass in darkness still appears in the list, as `passed-overhead`.
+
+The inventory covers 33 profiles. A satellite matches by NORAD catalog number first, then by a family name pattern. Military families such as Yaogan list their imaging satellites by NORAD number, because their names do not separate imaging satellites from signals satellites, and the name patterns never match debris. Where an operator publishes no figure, the profile marks its footprint as assumed and leaves resolution empty.
+
+ICESat-2's footprint is the 6.6 km envelope of its six laser beams, not a continuous swath. The beams sample 11 m spots along three pairs of tracks, so a point inside the envelope can fall between tracks. Its passes say when the beam array next crosses a place, which suits reservoir-sized targets. They do not promise a measurement at an exact point, because orbit elements from CelesTrak carry kilometre-scale cross-track error.
+
+### Lookup cost
+
+Measured on 2026-11-14 against a CelesTrak active list recorded that day (16,896 objects), on an 8-core Intel Xeon VM with Node.js 24:
+
+| Measure | Result |
+|---|---|
+| Profiled satellites | 297 |
+| Stored catalog with a full 8-day element ring | 1.14 MB, about 3.8 KB per satellite |
+| Catalog response | 1.09 MB before compression |
+| Default lookup (7 days back, 72 hours ahead) over every profiled satellite | 2.3 to 2.8 seconds, about 8 to 10 ms per satellite |
 
 ### Matching against archives
 
@@ -45,9 +63,9 @@ Each pass gets exactly one tier. The tier says what the evidence supports, never
 | `passed-overhead` with **not in archive** | The same conditions held, the archive wait has passed, and the archive has no matching scene. The mission was overhead and did not publish an image of the point. |
 | `passed-overhead` | Any other pass: a crewed station, an optical pass in darkness, or a pass over ground the mission does not cover. No image is implied. |
 | `daily-mosaic` | A weather satellite in polar orbit covered the point, and its daily global mosaic for that day is shown when NASA GIBS has it. |
-| `within-reach` | A commercial satellite passed with the point inside what it could have imaged. Commercial imagery is tasked and paid for, so nothing says an image was taken. |
-| `capability-overhead` | A military satellite passed with the point in its footprint. Orbital Watch shows that the capability was overhead and nothing more. |
-| `opportunity` | A future pass. It is a chance to image, never an image. |
+| `within-reach` | A commercial or government-operated satellite passed with the point inside what it could have imaged. Its imagery is tasked and not published openly, so nothing says an image was taken. |
+| `capability-overhead` | A military satellite passes, or passed, with the point in its footprint. Orbital Watch shows that the capability is overhead and nothing more. |
+| `opportunity` | Any other future pass. It is a chance to image, never an image. |
 
 Overhead or within reach never means an image was taken. Only `confirmed-image` and the daily mosaic and geostationary rows show imagery, and only imagery that a public archive returned.
 
