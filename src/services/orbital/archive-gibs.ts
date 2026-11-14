@@ -60,6 +60,29 @@ export function latestFrame(times: readonly number[], imageUrl: (time: string) =
   return { time: isoSecond(latestMs), imageUrl: imageUrl(isoSecond(latestMs)), fallbacks };
 }
 
+/** Earlier days a daily mosaic tile steps back through when a day has no data at the point. */
+export const MOSAIC_FALLBACK_DAYS = 3;
+
+/** GIBS paints areas with no data yet (not imaged, not processed, or a swath gap) as black JPEG pixels. */
+const NO_DATA_LEVEL = 12;
+const NO_DATA_SHARE = 0.9;
+
+/** Whether an RGBA crop has no data at its centre, which is the selected point. */
+export function hasNoDataAtCentre(rgba: ArrayLike<number>, width: number, height: number): boolean {
+  const x0 = Math.floor(width * 3 / 8), x1 = Math.ceil(width * 5 / 8);
+  const y0 = Math.floor(height * 3 / 8), y1 = Math.ceil(height * 5 / 8);
+  let empty = 0;
+  let total = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = (y * width + x) * 4;
+      total++;
+      if (rgba[i + 3]! < 16 || Math.max(rgba[i]!, rgba[i + 1]!, rgba[i + 2]!) <= NO_DATA_LEVEL) empty++;
+    }
+  }
+  return total > 0 && empty / total >= NO_DATA_SHARE;
+}
+
 interface GibsLayer {
   source: string;
   layer: string;
