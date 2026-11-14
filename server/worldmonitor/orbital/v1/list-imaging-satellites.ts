@@ -115,6 +115,7 @@ function emptyCatalog(): ListImagingSatellitesResponse {
   };
 }
 
+/** Re-matches a stored catalog against the current sensor inventory; stale when empty or older than the health limit. */
 export function toCatalogResponse(value: unknown, nowMs: number): ListImagingSatellitesResponse {
   const catalog = asStoredCatalog(value);
   if (!catalog) return emptyCatalog();
@@ -140,6 +141,7 @@ export function toCatalogResponse(value: unknown, nowMs: number): ListImagingSat
   };
 }
 
+/** Serves the seeded imaging catalog; a missing or unreadable key yields an uncached empty stale catalog. */
 export async function listImagingSatellites(
   ctx: ServerContext,
   _req: ListImagingSatellitesRequest,
