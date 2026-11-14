@@ -1,7 +1,7 @@
 ---
 title: "Best global intelligence dashboards for macro analysts"
-description: "Which global intelligence dashboard suits a macro analyst's daily brief? World Monitor for events, chokepoint traffic and markets on one free map, ACLED for coded conflict data, Recorded Future for organizational threat research."
-metaTitle: "Best global intelligence dashboards for macro analysts (2026) | World Monitor"
+description: "Compare global intelligence dashboards for macro analysts: World Monitor for live events, chokepoints and markets, ACLED for conflict data, Recorded Future."
+metaTitle: "Best intelligence dashboards for macro | World Monitor"
 keywords: "Macro analysts, best global intelligence dashboards for macro analysts, geopolitics and markets dashboard, chokepoint shipping data, global intelligence tools"
 audience: "Macro analysts"
 pubDate: "2026-10-02"
@@ -47,7 +47,7 @@ Check your separate market-data, execution and research requirements. A geopolit
 
 **Best for a cross-domain morning brief.**
 
-World Monitor puts conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets on one map, free with no account at [worldmonitor.app/dashboard](https://www.worldmonitor.app/dashboard). Its [chokepoints page](https://www.worldmonitor.app/chokepoints) shows live ship transit counts at 13 maritime chokepoints; 7 of them are also measured against an EIA flow baseline, and the other six show counts only. That gives a Hormuz, Red Sea, Suez or Panama question a physical observation beside the news and the market move.
+World Monitor puts conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets on one map, free with no account at [worldmonitor.app/dashboard](https://www.worldmonitor.app/dashboard). Its [chokepoints page](https://www.worldmonitor.app/chokepoints/) shows live ship transit counts at 13 maritime chokepoints; 7 of them are also measured against an EIA flow baseline, and the other six show counts only. That gives a Hormuz, Red Sea, Suez or Panama question a physical observation beside the news and the market move.
 
 On the paid Pro plan, alert rules by country, event type and severity deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push or an HMAC-SHA256 signed webhook, in real time or as a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)). Pro also includes an MCP server for AI clients. The REST API, on a separate API plan, plus Python, Go and Ruby SDKs and an npm CLI, let you pull the same data into notebooks and models. It does not establish a causal model or a price forecast.
 

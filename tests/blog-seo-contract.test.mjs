@@ -13,9 +13,16 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
 const blogDir = resolve(root, 'blog-site/src/content/blog');
 const postFiles = readdirSync(blogDir).filter((name) => name.endsWith('.md')).sort();
+const guidesRoot = resolve(root, 'blog-site/src/content/guides');
+const guideFiles = ['vs', 'alternatives', 'best'].flatMap((category) =>
+  readdirSync(join(guidesRoot, category))
+    .filter((name) => name.endsWith('.md'))
+    .sort()
+    .map((name) => `${category}/${name}`),
+);
 
-function parsePost(file) {
-  const source = readFileSync(join(blogDir, file), 'utf8');
+function parseMarkdownEntry(baseDir, file) {
+  const source = readFileSync(join(baseDir, file), 'utf8');
   const frontmatter = source.match(/^---\n([\s\S]*?)\n---\n/);
   assert.ok(frontmatter, `${file}: missing frontmatter`);
   const field = (name) => {
@@ -25,7 +32,12 @@ function parsePost(file) {
   return { file, source, body: source.slice(frontmatter[0].length), field };
 }
 
+function parsePost(file) {
+  return parseMarkdownEntry(blogDir, file);
+}
+
 const posts = postFiles.map(parsePost);
+const guides = guideFiles.map((file) => parseMarkdownEntry(guidesRoot, file));
 
 const RESTRICTED_VENDOR_PRICE_ALLOWLIST = new Map();
 const UNSUPPORTED_VENDOR_PRICE_SOURCE = String.raw`(?:\$\s*\d[\d,.]*(?:[KM])?\+?|\b\d[\d,.]*(?:[KM])\b\+?|multi[- ]?million|six[- ]?figures?)`;
@@ -143,8 +155,8 @@ describe('blog SEO and GEO corpus contract', () => {
       const title = post.field('title');
       const metaTitle = post.field('metaTitle');
       const description = post.field('description');
-      assert.ok(metaTitle.length >= 30 && metaTitle.length <= 65, `${post.file}: metaTitle is ${metaTitle.length} chars`);
-      assert.ok(description.length >= 110 && description.length <= 165, `${post.file}: description is ${description.length} chars`);
+      assert.ok(metaTitle.length >= 30 && metaTitle.length <= 60, `${post.file}: metaTitle is ${metaTitle.length} chars`);
+      assert.ok(description.length >= 110 && description.length <= 160, `${post.file}: description is ${description.length} chars`);
       assert.ok(!titles.has(title), `${post.file}: duplicate title`);
       assert.ok(!metaTitles.has(metaTitle), `${post.file}: duplicate metaTitle`);
       assert.ok(!descriptions.has(description), `${post.file}: duplicate description`);
@@ -176,6 +188,37 @@ describe('blog SEO and GEO corpus contract', () => {
         previousLevel = level;
       }
     }
+  });
+
+  it('keeps every comparison and audience guide title and description within search bounds', () => {
+    assert.ok(guides.length >= 22, `expected at least 22 guides, got ${guides.length}`);
+    const guideTitles = new Set();
+    const guideMetaTitles = new Set();
+    const guideDescriptions = new Set();
+
+    for (const guide of guides) {
+      for (const key of ['title', 'description', 'metaTitle', 'keywords', 'audience', 'pubDate']) {
+        assert.ok(guide.field(key), `guides/${guide.file}: missing ${key}`);
+      }
+      const title = guide.field('title');
+      const metaTitle = guide.field('metaTitle');
+      const description = guide.field('description');
+      assert.ok(metaTitle.length >= 30 && metaTitle.length <= 60, `guides/${guide.file}: metaTitle is ${metaTitle.length} chars`);
+      assert.ok(description.length >= 110 && description.length <= 160, `guides/${guide.file}: description is ${description.length} chars`);
+      assert.ok(!guideTitles.has(title), `guides/${guide.file}: duplicate title`);
+      assert.ok(!guideMetaTitles.has(metaTitle), `guides/${guide.file}: duplicate metaTitle`);
+      assert.ok(!guideDescriptions.has(description), `guides/${guide.file}: duplicate description`);
+      guideTitles.add(title);
+      guideMetaTitles.add(metaTitle);
+      guideDescriptions.add(description);
+      assert.doesNotMatch(guide.body, /^#\s/m, `guides/${guide.file}: layout owns the sole H1`);
+    }
+
+    const guidesIndex = readFileSync(resolve(root, 'blog-site/src/pages/guides/index.astro'), 'utf8');
+    const indexTitle = guidesIndex.match(/<Base\s+title="([^"]+)"/)?.[1];
+    const indexDesc = guidesIndex.match(/<Base\s+[^>]*description="([^"]+)"/)?.[1];
+    assert.ok(indexTitle && indexTitle.length <= 60, `guides index title is ${indexTitle?.length} chars`);
+    assert.ok(indexDesc && indexDesc.length <= 160, `guides index description is ${indexDesc?.length} chars`);
   });
 
   it('does not reintroduce volatile aggregate inventory claims', () => {

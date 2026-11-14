@@ -1,7 +1,7 @@
 ---
 title: "Best geopolitical risk tools for supply chain teams"
-description: "Which geopolitical risk tools help supply chain teams watch routes and chokepoints? World Monitor for live chokepoint transit counts and chokepoint and country alerts, Dataminr for operational disruption at named sites, Recorded Future for facility threat investigation."
-metaTitle: "Best geopolitical risk tools for supply chain teams (2026) | World Monitor"
+description: "Compare geopolitical risk tools for supply chain teams: World Monitor for live chokepoint traffic and route alerts, Dataminr for sites, and Recorded Future."
+metaTitle: "Best supply chain geopolitical risk tools | World Monitor"
 keywords: "Supply chain teams, best geopolitical risk tools for supply chain teams, chokepoint monitoring, Red Sea shipping disruption, Suez, Hormuz, Panama Canal, global intelligence tools"
 audience: "Supply chain teams"
 pubDate: "2026-10-02"
@@ -47,7 +47,7 @@ Keep the supplier relationship and operational facts separate from public intell
 
 **Best for chokepoint and route context beside markets.**
 
-World Monitor shows live ship transit counts at 13 maritime chokepoints on its [chokepoints page](https://www.worldmonitor.app/chokepoints). Seven of them are also measured against an EIA flow baseline, so for those you can see current traffic against a reference level; the other six show transit counts without that baseline. The same map carries conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets, so a Red Sea, Suez, Hormuz or Panama question sits next to the events around it. The core map is free with no account at [worldmonitor.app/dashboard](https://www.worldmonitor.app/dashboard).
+World Monitor shows live ship transit counts at 13 maritime chokepoints on its [chokepoints page](https://www.worldmonitor.app/chokepoints/). Seven of them are also measured against an EIA flow baseline, so for those you can see current traffic against a reference level; the other six show transit counts without that baseline. The same map carries conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets, so a Red Sea, Suez, Hormuz or Panama question sits next to the events around it. The core map is free with no account at [worldmonitor.app/dashboard](https://www.worldmonitor.app/dashboard).
 
 On the paid Pro plan, alert rules filter by event type, severity (all, high or critical) and country, and deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push or an HMAC-SHA256 signed webhook, in real time or as a digest. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)). Rules can also opt in to [chokepoint disruption alerts](https://www.worldmonitor.app/docs/api-notifications#chokepoint-disruption-alerts) for every chokepoint or only the ones on your lanes. One fires when navigational warnings, AIS disruption or a drop in transits push a chokepoint into the red band, at least 15 points above its standing threat level, so Hormuz alerts on new activity rather than on its permanent war-zone rating. Each chokepoint alerts at most once every 12 hours, and these alerts arrive in real time, not in digests. Teams that feed their own systems can use the REST API on a separate API plan, or the Python, Go and Ruby SDKs, and API plans can subscribe a signed webhook to the same `chokepoint.disruption` event ([Shipping v2 API](https://www.worldmonitor.app/docs/api-shipping-v2#delivery-worker)). Alerts are scoped by country or chokepoint, not by a radius around a port or plant, and World Monitor does not know your shipments.
 
