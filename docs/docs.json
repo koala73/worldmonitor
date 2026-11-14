@@ -250,7 +250,6 @@
                 "pages": [
                   "map-engine",
                   "orbital-surveillance",
-                  "orbital-watch",
                   "military-tracking",
                   "maritime-intelligence",
                   "natural-disasters",
@@ -846,7 +845,6 @@
                 "pages": [
                   "zh/map-engine",
                   "zh/orbital-surveillance",
-                  "zh/orbital-watch",
                   "zh/military-tracking",
                   "zh/maritime-intelligence",
                   "zh/natural-disasters",
