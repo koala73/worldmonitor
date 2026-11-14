@@ -10,6 +10,7 @@
  * WM_VERIFY_ORBITAL_MAP=globe drives the 3D globe instead.
  */
 import { readFileSync } from 'node:fs';
+import { PNG } from 'pngjs';
 import { matchSensorProfile } from '../../../../shared/orbital/sensor-profiles.js';
 import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
 
@@ -334,6 +335,14 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   if (bootLayers !== 'none') await shot('layers-back-in-sheet');
   await close();
   await checkPageUrl('after close');
+  // Closing puts the map back where it was, so a click or a zoom that hands the URL centre back cannot publish the point.
+  const mapBox = await page.locator('#mapContainer').boundingBox();
+  await page.mouse.click(mapBox.x + mapBox.width / 2, mapBox.y + mapBox.height / 2);
+  await page.mouse.wheel(0, -240);
+  await page.waitForTimeout(1_500);
+  const centreAfterGestures = pageUrlPlaces(await page.evaluate(() => location.href)).centre;
+  log('page url centre after a click and a zoom', JSON.stringify(centreAfterGestures));
+  if (centreAfterGestures && centreAfterGestures.off < 0.5) throw new Error('a click or zoom after closing published the picked point as the map centre');
 
   failing.add('earth-search.aws.element84.com');
   await openAtPlace();
@@ -412,7 +421,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   if (timeline.lcp.some((url) => ARCHIVE_HOSTS.includes(new URL(url).hostname))) throw new Error('archive crop became the LCP element');
 
   // A shared link opens with no click on the globe, so nothing else stops its idle spin carrying the point away.
-  await page.goto(`${base}/dashboard?view=global&layers=none#orbital=${PLACE.lat.toFixed(4)},${PLACE.lon.toFixed(4)}&view=full`, { waitUntil: 'domcontentloaded' });
+  // It also builds the renderer while the full view already hides the layers, so check they stay hidden.
+  await page.goto(`${base}/dashboard?view=global&layers=${bootLayers}#orbital=${PLACE.lat.toFixed(4)},${PLACE.lon.toFixed(4)}&view=full`, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
   await waitForMap(page);
   await expectVisible('.orbital-watch-sheet');
@@ -421,5 +431,23 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const later = await markAt();
   log('shared link map mark', JSON.stringify(landed), 'after 5 s', JSON.stringify(later));
   if (Math.abs(later.x - landed.x) > 4 || Math.abs(later.y - landed.y) > 4) throw new Error('the map drifted off a shared point');
+  // The conflict zone over the point is the dashboard's red; count it where the full view leaves the map visible.
+  const drawnLayers = async () => {
+    const zones = await page.evaluate(() => document.querySelectorAll('#mapContainer .conflict-zone').length);
+    const box = await page.locator('#mapContainer').boundingBox();
+    const png = PNG.sync.read(await page.screenshot({ clip: { x: box.x, y: box.y, width: Math.min(box.width, 400), height: Math.min(box.height, 300) } }));
+    let red = 0;
+    for (let i = 0; i < png.data.length; i += 4) if (png.data[i] > 150 && png.data[i + 1] < 90 && png.data[i + 2] < 90) red += 1;
+    return { zones, red };
+  };
+  const sharedFull = await drawnLayers();
+  if (bootLayers !== 'none') await shot('shared-full-view-layers');
+  await page.keyboard.press('Escape');
+  await page.locator('.orbital-watch-sheet[data-view="sheet"]').waitFor();
+  await page.waitForTimeout(1_000);
+  const sharedSheet = await drawnLayers();
+  log('shared full view layers', JSON.stringify(sharedFull), '→ sheet', JSON.stringify(sharedSheet));
+  if (sharedFull.zones) throw new Error(`${sharedFull.zones} conflict zones drawn over a shared full view`);
+  if (bootLayers !== 'none' && sharedFull.red >= sharedSheet.red) throw new Error('a shared full view drew the dashboard layers');
   return { mobile, pointText, needles, leaks: leaks.length, lcp: timeline.lcp };
 }
