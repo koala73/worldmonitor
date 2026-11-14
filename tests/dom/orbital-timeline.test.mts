@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { initTestI18n } from './helpers/i18n.mts';
@@ -374,5 +377,15 @@ describe('timeline zone', () => {
     document.body.append(dock.element);
     dock.update({ lookup: lookup([]), passes: [], acquisitions: [], context: { kind: 'loading' }, selectedKey: null });
     expect(dock.element.querySelector('.ow-tl-head')!.textContent).toContain('Asia/Dubai · UTC+4');
+  });
+});
+
+describe('timeline theme', () => {
+  it('colours the dock only through WorldMonitor and --ow-* tokens, so dark and light themes both apply', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/styles/orbital-watch.css'), 'utf8');
+    const rules = css.split('}').filter((rule) => /\.ow-(tl-|timeline|now-)/.test(rule.split('{')[0] ?? ''));
+    expect(rules.length).toBeGreaterThan(20);
+    const literals = rules.flatMap((rule) => rule.match(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/gi) ?? []);
+    expect(literals).toEqual([]);
   });
 });
