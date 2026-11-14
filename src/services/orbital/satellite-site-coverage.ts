@@ -8,7 +8,7 @@ import { classifyYaogan } from './yaogan-class';
 export const COVERAGE_WINDOW_HOURS = 24;
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
-const YIELD_EVERY_SITES = 60;
+const YIELD_AFTER_MS = 8;
 
 /** One element set of a tracked satellite, as the map layer loads it. */
 export interface TrackedSatelliteTle {
@@ -117,10 +117,12 @@ export async function sitesCoveredBySatellite(input: {
   const orbitAgeDays = (input.nowMs - elements.epochMs) / DAY_MS;
   const sites: SiteCoverage[] = [];
 
+  let sliceStart = performance.now();
   for (let i = 0; i < input.sites.length; i++) {
-    if (i > 0 && i % YIELD_EVERY_SITES === 0) {
+    if (performance.now() - sliceStart > YIELD_AFTER_MS) {
       await nextTick();
       if (input.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      sliceStart = performance.now();
     }
     const site = input.sites[i]!;
     let result;
@@ -178,6 +180,11 @@ let watchedSites: Promise<CoverageSite[]> | null = null;
 
 /** The public watched-site registry, loaded once on first use. */
 export function loadWatchedSites(): Promise<CoverageSite[]> {
-  watchedSites ??= import('../../../shared/watched-sites').then(({ composeWatchedSites }) => composeWatchedSites());
+  watchedSites ??= import('../../../shared/watched-sites')
+    .then(({ composeWatchedSites }) => composeWatchedSites())
+    .catch((err: unknown) => {
+      watchedSites = null;
+      throw err;
+    });
   return watchedSites;
 }

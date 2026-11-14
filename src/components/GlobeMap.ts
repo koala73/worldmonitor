@@ -2168,7 +2168,14 @@ export class GlobeMap {
         const cr = this.container.getBoundingClientRect();
         card.style.top = Math.max(4, Math.min(card.offsetTop, cr.height - card.offsetHeight - 4)) + 'px';
       })
-      .catch((err) => console.warn('[orbital] satellite sites view failed', err));
+      .catch((err) => {
+        console.warn('[orbital] satellite sites view failed', err);
+        if (abort.signal.aborted || !card.isConnected) return;
+        const note = document.createElement('div');
+        note.className = 'osat-sites-note';
+        note.textContent = 'Click the satellite again to retry; the site list did not load.';
+        host.replaceChildren(note);
+      });
   }
 
   private hideTooltip(): void {
