@@ -494,7 +494,7 @@
     "fx": "Devisenkurse",
     "ukmtoIncidents": "UKMTO-Vorfälle",
     "reservoirLevels": "Strategische Wasserstände",
-    "gridDisruptionClock": "Stromausfall-Uhr"
+    "gridDisruptionClock": "Stromausfall-Uhr für US-Bundesstaaten"
   },
   "commands": {
     "prefixes": {

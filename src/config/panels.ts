@@ -97,7 +97,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'fuel-shortages': { name: 'Global Fuel Shortage Registry', enabled: true, priority: 2 },
   'energy-disruptions': { name: 'Energy Disruptions Log', enabled: true, priority: 2 },
   'energy-risk-overview': { name: 'Global Energy Risk Overview', enabled: false, priority: 2 },
-  'grid-disruption-clock': { name: 'Grid disruption clock', enabled: false, priority: 2 },
+  'grid-disruption-clock': { name: 'US States Grid Disruption Clock', enabled: false, priority: 2 },
   'gulf-economies': { name: 'Gulf Economies', enabled: false, priority: 2 },
   'consumer-prices': { name: 'Consumer Prices', enabled: false, priority: 2 },
   'grocery-basket': { name: 'Grocery Index', enabled: false, priority: 2 },
@@ -994,7 +994,7 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
 const ENERGY_PANELS: Record<string, PanelConfig> = {
   map: { name: 'Energy Atlas Map', enabled: true, priority: 1 },
   'energy-risk-overview': { name: 'Global Energy Risk Overview', enabled: true, priority: 1 },
-  'grid-disruption-clock': { name: 'Grid disruption clock', enabled: false, priority: 2 },
+  'grid-disruption-clock': { name: 'US States Grid Disruption Clock', enabled: false, priority: 2 },
   'chokepoint-strip': { name: 'Chokepoint Status', enabled: true, priority: 1 },
   'pipeline-status': { name: 'Oil & Gas Pipeline Status', enabled: true, priority: 1 },
   'storage-facility-map': { name: 'Strategic Storage Atlas', enabled: true, priority: 1 },
