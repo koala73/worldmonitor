@@ -2,10 +2,11 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { assembleEvidence, compareBestView, describePointCondition, findArchiveEvidence, groupAcquisitions, type MatchedAcquisition } from '../src/services/orbital/match.ts';
-import { parseStacItem, searchStacArchive } from '../src/services/orbital/archive-stac.ts';
+import { parseStacItem, readPointCondition, searchStacArchive } from '../src/services/orbital/archive-stac.ts';
 import { searchGibsDailyMosaics } from '../src/services/orbital/archive-gibs.ts';
+import { searchEumetsatGeostationary } from '../src/services/orbital/archive-eumetsat.ts';
 import { requestArchive } from '../src/services/orbital/archive-result.ts';
-import { ARCHIVE_RESPONSES, fakeArchiveFetch, fixtureLookup } from './helpers/orbital-archive-fetch.mts';
+import { ARCHIVE_RESPONSES, FIXTURE_NOW, FIXTURE_WINDOW, fakeArchiveFetch, fixtureLookup } from './helpers/orbital-archive-fetch.mts';
 
 const { denver, dubai } = ARCHIVE_RESPONSES.points;
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
@@ -161,6 +162,16 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.deepEqual(terra?.days.map((d) => d.date), ['2026-11-13']);
   });
 
+  it('reads the point pixel in each scene\'s own grid, so a box near a pixel edge cannot land on its neighbour', async () => {
+    for (const feature of [...denver['planetary-computer'].features, ...dubai['planetary-computer'].features]) {
+      const item = parseStacItem('planetary-computer', feature as never);
+      if (!item?.classification) continue;
+      const urls: string[] = [];
+      await readPointCondition(item, dubai, { fetch: async (url: string) => { urls.push(url); return new Response('{"properties":{"statistics":{"b1":{"majority":4}}}}'); } });
+      assert.equal(new URL(urls[0]!).searchParams.get('dst_crs'), `epsg:${(feature.properties as Record<string, unknown>)['proj:epsg']}`, item.itemId);
+    }
+  });
+
   it('reads "cloud at this spot" for a cloudy point in a mostly clear scene', async () => {
     const lookup = await fixtureLookup(dubai);
     const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { scl: 9 }).fetch });
@@ -174,7 +185,7 @@ describe('archive acquisitions attached to computed passes', () => {
 
   it('marks the lookup partial when the point classification read fails', async () => {
     const lookup = await fixtureLookup(dubai);
-    const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { scl: 9, failingPaths: ['/item/point/'] }).fetch });
+    const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { scl: 9, failingPaths: ['/item/statistics'] }).fetch });
     assert.equal(evidence.acquisitions.find((a) => a.platform === 'sentinel-2b')!.condition, 'unknown');
     assert.equal(evidence.status, 'partial');
     assert.ok(evidence.failures.length > 0 && evidence.failures.every((f) => f.archive === 'planetary-computer' && f.reason === 'http-status'));
@@ -192,6 +203,27 @@ describe('archive acquisitions attached to computed passes', () => {
     const withoutMosaics = assembleEvidence({ lookup, stac: [] });
     assert.deepEqual(confirmed(evidence.passes).filter((p) => !['sentinel-2', 'sentinel-1', 'landsat'].includes(p.profileId)), []);
     assert.equal(confirmed(withoutMosaics.passes).length, 0, 'no archive answer, no confirmed image');
+  });
+
+  it('gives the newest weather frame the two previous advertised frames to fall back on', async () => {
+    const goes = (await findArchiveEvidence(await fixtureLookup(denver), { fetch: fakeArchiveFetch(denver).fetch })).frames;
+    const meteosat = await searchEumetsatGeostationary({
+      point: dubai, window: FIXTURE_WINDOW, nowMs: FIXTURE_NOW, visibleNoradIds: new Set([54743]), fetch: fakeArchiveFetch(dubai).fetch,
+    });
+    assert.equal(meteosat.status, 'ok');
+    const frames = [...goes, ...(meteosat.status === 'ok' ? meteosat.items : [])];
+    assert.deepEqual(frames.map((f) => f.source).sort(), ['GOES-East', 'GOES-West', 'Meteosat-12']);
+    for (const frame of frames) {
+      const latest = frame.latest!;
+      const step = frame.cadenceMinutes! * 60_000;
+      const expected = [1, 2].map((n) => new Date(Date.parse(latest.time) - n * step).toISOString().replace('.000Z', 'Z'));
+      assert.deepEqual(latest.fallbacks.map((f) => f.time), expected, frame.source);
+      for (const fallback of latest.fallbacks) {
+        const url = new URL(fallback.imageUrl);
+        assert.equal(url.searchParams.get('TIME') ?? url.searchParams.get('time'), fallback.time);
+        assert.equal(url.host, new URL(latest.imageUrl!).host);
+      }
+    }
   });
 
   it('lists geostationary frames separately for the satellites that see the point', async () => {
