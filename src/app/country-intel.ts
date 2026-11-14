@@ -211,7 +211,7 @@ export class CountryIntelManager implements AppModule {
         const centre = this.ctx.map?.getCenter();
         return centre && this.ctx.map ? { ...centre, zoom: this.ctx.map.getState().zoom } : null;
       },
-      restore: ({ lat, lon, zoom }) => void this.ctx.map?.setCenter(lat, lon, zoom),
+      restore: ({ lat, lon, zoom }) => void this.ctx.map?.setCenter(lat, lon, zoom, { instant: true }),
     });
     this.orbitalRouteUnsubscribe = watchOrbitalRoute();
     this.lastHadPremium = hasPremiumAccess(getAuthState());
