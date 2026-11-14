@@ -109,7 +109,8 @@
     "climateNews": "Klimaatnieuws",
     "fx": "Wisselkoersen",
     "ukmtoIncidents": "UKMTO-incidenten",
-    "reservoirLevels": "Strategische waterstanden"
+    "reservoirLevels": "Strategische waterstanden",
+    "gridDisruptionClock": "Klok voor stroomstoringen in Amerikaanse staten"
   },
   "commands": {
     "prefixes": {
@@ -2802,6 +2803,57 @@
         "measured": "Gemeten",
         "sparkline": "Waterstand over 36 maanden"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Selecteer een staat",
+      "unknown": "Onbekend",
+      "customers": "Klanten zonder stroom volgens de meldingen",
+      "lastCustomers": "Klanten zonder stroom bij de laatste melding",
+      "denominatorUnknown": "Totaal aantal gevolgde klanten onbekend",
+      "tracked": "{{amount}} klanten gevolgd",
+      "dataAge": "Sinds de melding",
+      "minutes": "{{amount}} min",
+      "hours": "{{amount}} uur",
+      "warnings": "Waarschuwingen",
+      "recovery": "Gemelde veranderingen",
+      "decreased": "{{amount}} minder klanten zonder stroom gemeld",
+      "increased": "{{amount}} meer klanten zonder stroom gemeld",
+      "unchanged": "Gemeld aantal ongewijzigd",
+      "since": "sinds",
+      "peakLoad": "{{percent}}% van de gebruikelijke piekbelasting hersteld",
+      "noComparison": "Vergelijkbare storingscijfers ontbreken.",
+      "history": "Recente meldingen van klanten zonder stroom ({{total}})",
+      "priorNotice": "Eerder gemelde waarschuwing",
+      "sources": "Geraadpleegde waarschuwingsbronnen",
+      "operatorLink": "Raadpleeg voor netmeldingen",
+      "issued": "Uitgegeven",
+      "until": "vervalt",
+      "noActive": "Geen actieve waarschuwing in de gevolgde bronnen.",
+      "unknownWarnings": "Niet alle waarschuwingsbronnen zijn momenteel beschikbaar.",
+      "noObservation": "Het actuele aantal en de dekking zijn onbekend.",
+      "loadError": "Gegevens over stroomstoringen zijn niet beschikbaar.",
+      "retained": "Vernieuwen mislukt. De laatst ontvangen melding wordt getoond.",
+      "phase": {
+        "unknown": "Impact onbekend",
+        "monitoring": "Onder observatie",
+        "watch": "Verhoogde waakzaamheid",
+        "disrupted": "Stroomstoringen gemeld",
+        "recovering": "Herstel in gang gemeld",
+        "restored": "Stroomvoorziening hersteld volgens melding"
+      },
+      "kind": {
+        "grid": "Netmelding",
+        "weather": "Weerwaarschuwing",
+        "space-weather": "Ruimteweer"
+      },
+      "checks": {
+        "available": "Gecontroleerd",
+        "unavailable": "Niet beschikbaar",
+        "not_monitored": "Raadpleeg de netbeheerder",
+        "stale": "Laatste controle verouderd"
+      },
+      "warningAge": "Sinds de eerste nog geldige waarschuwing",
+      "days": "{{amount}} d"
     }
   },
   "popups": {
@@ -4352,7 +4404,6 @@
     "dataAndCommunity": "Data & community",
     "theme": "Thema",
     "themeDesc": "Automatisch volgt systeemvoorkeur.",
-    "themeAuto": "Automatisch (systeem volgen)",
     "themeDark": "Donker",
     "themeLight": "Licht",
     "mapProvider": "Kaarttegel-provider",
@@ -4509,7 +4560,8 @@
     "createAccount": "Account aanmaken",
     "freeReason": "Gratis: layout opslaan, landen volgen, meldingen",
     "settings": "Instellingen",
-    "passkeyOffer": {}
+    "passkeyOffer": {},
+    "planBilling": "Plan & facturering"
   },
   "mcp": {
     "connectPanel": "MCP Verbinden",
@@ -5293,6 +5345,253 @@
       "retainedDay": "alleen {{day}}",
       "geoLine": "Geostationair in zicht: {{names}}",
       "away": "{{km}} km verderop"
+    }
+  },
+  "settings": {
+    "back": "Terug naar instellingen",
+    "signIn": {
+      "label": "Aanmelden",
+      "desc": "Synchroniseer instellingen en beheer je abonnement"
+    },
+    "summary": {
+      "themeAuto": "Automatisch",
+      "count": "{{on}} van {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Voorkeuren",
+      "developer": "Ontwikkelaar",
+      "app": "App"
+    },
+    "sections": {
+      "account": "Account",
+      "map": "Kaart",
+      "ai": "AI & analyse",
+      "video": "Video & streams",
+      "apiKeys": "API-sleutels",
+      "embeds": "Widgets",
+      "aiAgents": "AI-agenten (MCP)",
+      "sync": "Synchroniseren, importeren & exporteren",
+      "about": "Over"
+    },
+    "descriptions": {
+      "panels": "Weergeven, verbergen en opnieuw ordenen",
+      "sources": "Regio's en feeds",
+      "notifications": "Kanalen en waarschuwingsregels",
+      "display": "Thema, lettertype en taal",
+      "map": "Provider, thema en globe",
+      "ai": "Modellen, geheugen en frameworks",
+      "video": "Kwaliteit en automatisch afspelen",
+      "apiKeys": "Sleutels voor de World Monitor API",
+      "embeds": "Widgets voor je eigen site",
+      "aiAgents": "Verbonden MCP-clients",
+      "about": "Sitelinks, voorwaarden en privacy"
+    },
+    "signOut": "Afmelden",
+    "signOutFailed": "Afmelden mislukt. Probeer opnieuw.",
+    "search": {
+      "empty": "Geen instellingen gevonden"
+    },
+    "account": {
+      "intro": "Bekijk uw huidige plan en beheer betalingsgegevens, facturen of annulering.",
+      "planFree": "Gratis",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Premium-toegang",
+        "desc": "Deze toegang wordt niet via uw WorldMonitor-account gefactureerd. Er zijn hier geen betaalmethode of facturen beschikbaar."
+      },
+      "checking": {
+        "heading": "Plan controleren…",
+        "desc": "Dit duurt meestal maar even."
+      },
+      "status": {
+        "cancelScheduled": "Annulering gepland -- toegang tot {{date}}",
+        "renews": "Verlenging: {{date}}",
+        "onHold": "Opgeschort -- werk uw betaalmethode bij",
+        "cancelled": "Geannuleerd -- toegang tot {{date}}",
+        "expired": "Verlopen",
+        "unknown": "Zie Facturering beheren voor details van uw huidige plan.",
+        "ownerManaged": "Facturering wordt beheerd door uw planeigenaar."
+      },
+      "upgradeToBusiness": "Upgrade naar Business",
+      "unavailable": {
+        "heading": "Planstatus niet beschikbaar",
+        "desc": "We konden uw huidige plan niet verifiëren. Probeer opnieuw of bekijk plannen in een nieuw tabblad."
+      },
+      "free": {
+        "heading": "WorldMonitor Gratis",
+        "desc": "Uw huidige plan is Gratis. Upgrade voor alle panelen, AI-analyse en prioritaire gegevensverversing."
+      },
+      "portal": {
+        "openFailed": "Kon de factureringsportal niet openen. Sta pop-ups toe en probeer opnieuw.",
+        "unavailable": "Factureringsportal niet beschikbaar. E-mail support@worldmonitor.app voor hulp."
+      },
+      "deletion": {
+        "heading": "Account verwijderen",
+        "desc": "Dit World Monitor-account permanent verwijderen. Abonnementen worden onmiddellijk opgezegd zonder terugbetaling van de resterende vooruitbetaalde periode. API-sleutels, insluitsleutels en MCP-tokens werken niet meer. Factureringsgegevens die nodig zijn voor de boekhouding, geschillen en wettelijke verzoeken worden bewaard met de klantcontactgegevens die ze bevatten; ze verwijzen niet langer naar uw inlogaccount, maar webhooklogboeken van de betaalprovider die vóór de verwijdering zijn geschreven, behouden de identificatoren waarmee ze zijn afgeleverd. Dashboardvoorkeuren en geheimen van de desktop-app in de sleutelhanger van dit apparaat worden niet op afstand gewist.",
+        "dialogTitle": "Dit account verwijderen?",
+        "dialogCopy": "Dit kan niet ongedaan gemaakt worden. Abonnementen worden geannuleerd, sleutels stoppen onmiddellijk met werken, en factureringsgegevens worden bewaard voor boekhoudkundige doeleinden, geschillen en wettelijke verzoeken -- inclusief de contactgegevens die ermee gepaard gaan. Meld u af op andere apparaten en wis daarna de sitegegevens op dit apparaat -- deze zijn buiten het bereik van de server.",
+        "phraseLabel": "Typ {{phrase}} ter bevestiging",
+        "deleted": "Account verwijderd. Meld u af op andere apparaten en wis de sitegegevens op dit apparaat.",
+        "failed": "Account verwijderen mislukt. Probeer opnieuw."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} gebruikt",
+        "invite": "Uitnodigen",
+        "inviting": "Uitnodigen...",
+        "remove": "Verwijderen",
+        "removing": "Verwijderen...",
+        "inviteSent": "Uitnodiging verzonden",
+        "alreadyInvited": "Reeds uitgenodigd"
+      },
+      "businessSeats": {
+        "heading": "Business-seats",
+        "statusAccepted": "Geaccepteerd",
+        "statusExpired": "Verlopen",
+        "statusPending": "In afwachting",
+        "expires": "Verloopt {{date}}",
+        "hintCorporate": "Nodig teamleden uit met elk zakelijk e-mailadres.",
+        "hintPersonal": "Voeg een zakelijk e-mailadres toe om teamleden uit te nodigen.",
+        "personalDomain": "Gratis of tijdelijke e-maildomeinen kunnen geen teamleden uitnodigen. Voeg een zakelijk e-mailadres toe om deze functie te gebruiken.",
+        "empty": "Nog niemand uitgenodigd.",
+        "confirmRemove": "Deze seat verwijderen? De genodigde verliest direct Pro-toegang.",
+        "removed": "Seat verwijderd",
+        "alreadyInactive": "Seat was al inactief",
+        "loadFailed": "Seats konden niet worden geladen",
+        "inviteFailed": "Uitnodiging kon niet worden verzonden",
+        "removeFailed": "Seat kon niet worden verwijderd",
+        "errors": {
+          "seatCap": "Alle 4 seats zijn in gebruik. Verwijder eerst een seat.",
+          "ownerDomain": "Het e-mailadres van uw account moet een zakelijk domein hebben om teamleden uit te nodigen.",
+          "self": "U kunt uzelf niet uitnodigen.",
+          "inviteeDomain": "Het e-mailadres van de genodigde moet een zakelijk domein zijn."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "{{account}} Enterprise-seats",
+        "memberHint": "De accountbeheerder van uw organisatie voegt personen toe en verwijdert deze van dit account.",
+        "hintFull": "Alle seats zijn in gebruik. Verwijder iemand of trek een uitnodiging in om een seat vrij te maken.",
+        "hintOpen": "Nodig personen uit met hun zakelijke e-mailadres. Zij ontvangen een link die 14 dagen geldig is en delen het gebruikstegoed van dit account.",
+        "emailLabel": "E-mailadres om uit te nodigen",
+        "statusActive": "Actief",
+        "statusExpired": "Uitnodiging verlopen",
+        "statusInvited": "Uitgenodigd",
+        "emailFailed": "De uitnodigingsmail kon niet worden verzonden. Controleer het adres, trek de uitnodiging in en nodig opnieuw uit.",
+        "inviteExpires": "Uitnodiging verloopt {{date}}",
+        "roleAdmin": "Beheerder",
+        "you": "U",
+        "withdraw": "Intrekken",
+        "unknownEmail": "Onbekend e-mailadres",
+        "alreadyMember": "Reeds lid",
+        "confirmRemove": "{{email}} verwijderen? Deze persoon verliest direct Enterprise-toegang.",
+        "confirmRemoveUnknown": "Deze persoon verwijderen? Deze persoon verliest direct Enterprise-toegang.",
+        "confirmWithdraw": "Uitnodiging voor {{email}} intrekken?",
+        "confirmWithdrawUnknown": "Uitnodiging voor dit adres intrekken?",
+        "removed": "Lid verwijderd",
+        "withdrawn": "Uitnodiging ingetrokken",
+        "loadFailed": "Seats konden niet worden geladen. Probeer het opnieuw.",
+        "inviteFailed": "Uitnodiging kon niet worden verzonden. Probeer het opnieuw.",
+        "removeFailed": "Kon niet verwijderen. Probeer het opnieuw.",
+        "errors": {
+          "seatCap": "Alle seats zijn in gebruik. Verwijder eerst iemand of trek een uitnodiging in.",
+          "inviteeDomain": "Nodig een zakelijk e-mailadres uit. Gratis en tijdelijke e-maildomeinen worden niet geaccepteerd.",
+          "self": "U hebt al een seat.",
+          "contractEnded": "Uw Enterprise-contract is verlopen. Neem contact op met support om het te vernieuwen.",
+          "notAdmin": "Alleen de accountbeheerder kan seats beheren.",
+          "removeSelf": "U kunt uw eigen seat niet verwijderen. Neem contact op met support om de beheerder te wijzigen.",
+          "tooMany": "Nodig maximaal 10 personen tegelijk uit.",
+          "rateLimited": "U hebt het maximum aantal uitnodigingen per dag verzonden. Probeer het morgen opnieuw."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "lay-out",
+        "1": "widgets",
+        "2": "tekstgrootte",
+        "3": "lay-out herstellen"
+      },
+      "sources": {
+        "0": "nieuws",
+        "1": "feeds",
+        "2": "RSS",
+        "3": "regio's",
+        "4": "berichtgeving"
+      },
+      "notifications": {
+        "0": "meldingen",
+        "1": "Telegram",
+        "2": "Slack",
+        "3": "e-mail",
+        "4": "Discord",
+        "5": "webhook",
+        "6": "push"
+      },
+      "display": {
+        "0": "thema",
+        "1": "donker",
+        "2": "licht",
+        "3": "lettertype",
+        "4": "taal",
+        "5": "tekstgrootte"
+      },
+      "map": {
+        "0": "aardbol",
+        "1": "provider",
+        "2": "tegels",
+        "3": "basiskaart"
+      },
+      "ai": {
+        "0": "AI",
+        "1": "Ollama",
+        "2": "frameworks",
+        "3": "kop-geheugen",
+        "4": "browsermodel"
+      },
+      "video": {
+        "0": "stream",
+        "1": "autoplay",
+        "2": "kwaliteit",
+        "3": "live"
+      },
+      "apiKeys": {
+        "0": "sleutel",
+        "1": "token",
+        "2": "desktopsleutel"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "embedsleutel"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "agenten",
+        "3": "ChatGPT",
+        "4": "clients"
+      },
+      "sync": {
+        "0": "importeren",
+        "1": "exporteren",
+        "2": "back-up",
+        "3": "cloud"
+      },
+      "about": {
+        "0": "voorwaarden",
+        "1": "privacy",
+        "2": "licentie",
+        "3": "juridisch"
+      },
+      "account": {
+        "0": "abonnement",
+        "1": "facturering",
+        "2": "abonnement",
+        "3": "factuur",
+        "4": "plan",
+        "5": "afmelden",
+        "6": "account verwijderen"
+      }
     }
   }
 }

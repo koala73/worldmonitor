@@ -41,6 +41,35 @@ async function renderHtml(params, nonce, errorMsg) {
   return await res.text();
 }
 
+describe('consentPage — ChatGPT sign-in carries no plan offer', () => {
+  // OpenAI rejected 2.10.1 for offering subscriptions inside ChatGPT. The
+  // reviewer signs in through this page, so it must not mention Pro or link
+  // to /pro when the client redirects to ChatGPT.
+  const CHATGPT = { ...BASE_PARAMS, client_name: 'ChatGPT', redirect_uri: 'https://chatgpt.com/connector_platform_oauth_redirect' };
+
+  it('drops the Pro note and every /pro link for a ChatGPT redirect', async () => {
+    const html = await renderHtml(CHATGPT, NONCE);
+    assert.match(html, /<p class="cta-note">A free account works\.<\/p>/);
+    assert.doesNotMatch(html, /\bPro\b/);
+    assert.doesNotMatch(html, /worldmonitor\.app\/pro/);
+    assert.match(html, /<a id="tk" role="button" tabindex="0">Use API key instead<\/a>/);
+  });
+
+  it('tells the grant page it is serving ChatGPT, and keeps the nonce first', async () => {
+    const html = await renderHtml(CHATGPT, NONCE);
+    const href = html.match(/<a id="pc"[^>]*href="([^"]+)"/)[1].replaceAll('&amp;', '&');
+    const u = new URL(href);
+    assert.equal(u.origin + u.pathname, 'https://worldmonitor.app/mcp-grant');
+    assert.deepEqual([...u.searchParams.entries()], [['nonce', NONCE], ['surface', 'chatgpt']]);
+  });
+
+  it('keeps the Pro note and links for other clients', async () => {
+    const html = await renderHtml(BASE_PARAMS, NONCE);
+    assert.match(html, /Pro raises the daily allowance/);
+    assert.match(html, /worldmonitor\.app\/pro/);
+  });
+});
+
 describe('consentPage — Pro CTA structure (U4)', () => {
   it('renders the brand-green Pro CTA as a top-level <a> with the apex grant URL', async () => {
     const html = await renderHtml(BASE_PARAMS, NONCE);

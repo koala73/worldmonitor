@@ -49,6 +49,11 @@ vi.mock('@/services/desktop-runtime', async (importOriginal) => ({
   isDesktopRuntime: () => desktopRuntime,
 }));
 
+vi.mock('@/services/clerk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/clerk')>()),
+  isClerkAuthEnabled: () => true,
+}));
+
 vi.mock('@/services/auth-state', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/auth-state')>()),
   getAuthState: () => signedIn ? session : { ...session, user: null },
@@ -75,7 +80,7 @@ vi.mock('@/services/widget-store', () => ({
 }));
 
 vi.mock('@/services/preferences-content', () => ({
-  renderPreferences: () => ({ html: '', attach: () => () => {} }),
+  renderPreferenceSection: () => ({ html: '', attach: () => () => {} }),
 }));
 
 vi.mock('@/services/notifications-settings', () => ({
@@ -155,7 +160,6 @@ const { UnifiedSettings } = await import('@/components/UnifiedSettings');
 type SettingsInternals = {
   handleUpgradeClick(): void;
   overlay: HTMLElement;
-  render(loadAccountData?: boolean): void;
 };
 
 const PRO_URL = 'https://worldmonitor.app/pro';
@@ -240,14 +244,15 @@ describe('UnifiedSettings upgrade click (#5911)', () => {
 });
 
 describe('UnifiedSettings desktop Plan & billing parity (#6108)', () => {
-  it.each(RUNTIMES)('renders the signed-in billing tab and canonical fallback plan href on %s', (_runtime, isDesktopApp) => {
+  it.each(RUNTIMES)('renders the signed-in account page and canonical fallback plan href on %s', (_runtime, isDesktopApp) => {
     desktopRuntime = isDesktopApp;
     settings = new UnifiedSettings(config(isDesktopApp));
     const internal = settings as unknown as SettingsInternals;
 
-    internal.render(false);
+    settings.open('account');
 
-    expect(internal.overlay.querySelector('[data-tab="billing"]')).not.toBeNull();
+    expect(internal.overlay.querySelector('[data-settings-nav="account"]')).not.toBeNull();
+    expect(internal.overlay.querySelector<HTMLElement>('[data-settings-page="account"]')?.hidden).toBe(false);
     expect(internal.overlay.querySelector<HTMLAnchorElement>('.upgrade-pro-cta-link')?.href)
       .toBe(PRO_URL);
   });
@@ -265,20 +270,22 @@ describe('UnifiedSettings desktop Plan & billing parity (#6108)', () => {
     settings = new UnifiedSettings(config(isDesktopApp));
     const internal = settings as unknown as SettingsInternals;
 
-    internal.render(false);
+    settings.open('account');
 
     expect(internal.overlay.querySelector<HTMLAnchorElement>('.upgrade-pro-cta-link')?.href)
       .toBe(`${PRO_URL}?wm_reactivate_plan=pro_annual#pricing`);
   });
 
-  it('keeps the billing tab hidden for a signed-out desktop session', () => {
+  it('offers sign-in instead of the account page for a signed-out desktop session', () => {
     desktopRuntime = true;
     signedIn = false;
     settings = new UnifiedSettings(config(true));
     const internal = settings as unknown as SettingsInternals;
 
-    internal.render(false);
+    settings.open('account');
 
-    expect(internal.overlay.querySelector('[data-tab="billing"]')).toBeNull();
+    expect(internal.overlay.querySelector('[data-settings-nav="account"]')).toBeNull();
+    expect(internal.overlay.querySelector('[data-settings-page="account"]')).toBeNull();
+    expect(internal.overlay.querySelector('[data-settings-signin]')).not.toBeNull();
   });
 });

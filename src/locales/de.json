@@ -493,7 +493,8 @@
     "climateNews": "Klimanachrichten",
     "fx": "Devisenkurse",
     "ukmtoIncidents": "UKMTO-Vorfälle",
-    "reservoirLevels": "Strategische Wasserstände"
+    "reservoirLevels": "Strategische Wasserstände",
+    "gridDisruptionClock": "Stromausfall-Uhr für US-Bundesstaaten"
   },
   "commands": {
     "prefixes": {
@@ -3186,6 +3187,57 @@
         "measured": "Gemessen",
         "sparkline": "Wasserstand über 36 Monate"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Bundesstaat auswählen",
+      "unknown": "Unbekannt",
+      "customers": "Laut Meldungen von Stromausfällen betroffene Kunden",
+      "lastCustomers": "Kunden ohne Strom bei der letzten Meldung",
+      "denominatorUnknown": "Gesamtzahl der erfassten Kunden unbekannt",
+      "tracked": "Erfasste Kunden: {{amount}}",
+      "dataAge": "Seit der Meldung",
+      "minutes": "{{amount}} Min.",
+      "hours": "{{amount}} Std.",
+      "warnings": "Warnungen",
+      "recovery": "Gemeldete Änderungen",
+      "decreased": "Laut Meldungen {{amount}} Kunden weniger ohne Strom",
+      "increased": "Laut Meldungen {{amount}} Kunden mehr ohne Strom",
+      "unchanged": "Gemeldete Zahl unverändert",
+      "since": "seit",
+      "peakLoad": "{{percent}} % der üblichen Spitzenlast wieder gedeckt",
+      "noComparison": "Vergleichbare Zahlen zu Kunden ohne Strom fehlen.",
+      "history": "Letzte Meldungen zur Zahl der Kunden ohne Strom ({{total}})",
+      "priorNotice": "Frühere Warnung",
+      "sources": "Abdeckung der Warnquellen",
+      "operatorLink": "Netzmeldungen finden Sie bei",
+      "issued": "Ausgegeben am",
+      "until": "gültig bis",
+      "noActive": "Keine aktive Warnung in den überwachten Quellen.",
+      "unknownWarnings": "Die Warnquellen sind derzeit nur teilweise erfasst.",
+      "noObservation": "Aktuelle Zahl und Erfassungsumfang unbekannt.",
+      "loadError": "Für die Stromausfall-Uhr sind keine Daten verfügbar.",
+      "retained": "Aktualisierung fehlgeschlagen. Die letzte empfangene Meldung wird angezeigt.",
+      "phase": {
+        "unknown": "Auswirkungen unbekannt",
+        "monitoring": "Beobachtung",
+        "watch": "Vorwarnung",
+        "disrupted": "Ausfälle gemeldet",
+        "recovering": "Wiederherstellung laut Meldung im Gange",
+        "restored": "Versorgung laut Meldung wiederhergestellt"
+      },
+      "kind": {
+        "grid": "Netzmeldung",
+        "weather": "Wetterwarnung",
+        "space-weather": "Weltraumwetter"
+      },
+      "checks": {
+        "available": "Geprüft",
+        "unavailable": "Nicht verfügbar",
+        "not_monitored": "Direkt beim Netzbetreiber prüfen",
+        "stale": "Letzte Prüfung veraltet"
+      },
+      "warningAge": "Seit der ersten noch gültigen Warnung",
+      "days": "{{amount}} T."
     }
   },
   "popups": {
@@ -4352,7 +4404,6 @@
     "dataAndCommunity": "Daten & Community",
     "theme": "Design",
     "themeDesc": "Automatisch folgt Ihrer Systemeinstellung.",
-    "themeAuto": "Automatisch (System folgen)",
     "themeDark": "Dunkel",
     "themeLight": "Hell",
     "mapProvider": "Karten-Tile-Anbieter",
@@ -4509,7 +4560,8 @@
     "createAccount": "Konto erstellen",
     "freeReason": "Gratis: Layout speichern, Ländern folgen, Alarme",
     "settings": "Einstellungen",
-    "passkeyOffer": {}
+    "passkeyOffer": {},
+    "planBilling": "Plan & Abrechnung"
   },
   "mcp": {
     "connectPanel": "MCP verbinden",
@@ -5293,6 +5345,253 @@
       "retainedDay": "nur {{day}}",
       "geoLine": "Geostationär in Sicht: {{names}}",
       "away": "{{km}} km entfernt"
+    }
+  },
+  "settings": {
+    "back": "Zurück zu Einstellungen",
+    "signIn": {
+      "label": "Anmelden",
+      "desc": "Einstellungen synchronisieren und Plan verwalten"
+    },
+    "summary": {
+      "themeAuto": "Automatisch",
+      "count": "{{on}} von {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Präferenzen",
+      "developer": "Entwickler",
+      "app": "App"
+    },
+    "sections": {
+      "account": "Konto",
+      "map": "Karte",
+      "ai": "KI & Analyse",
+      "video": "Video & Streams",
+      "apiKeys": "API-Schlüssel",
+      "embeds": "Einbettungen",
+      "aiAgents": "KI-Agenten (MCP)",
+      "sync": "Synchronisierung, Import & Export",
+      "about": "Über"
+    },
+    "descriptions": {
+      "panels": "Anzeigen, ausblenden und neu anordnen",
+      "sources": "Regionen und Feeds",
+      "notifications": "Kanäle und Benachrichtigungsregeln",
+      "display": "Design, Schriftart und Sprache",
+      "map": "Anbieter, Design und Globus",
+      "ai": "Modelle, Speicher und Frameworks",
+      "video": "Qualität und automatische Wiedergabe",
+      "apiKeys": "Schlüssel für die World Monitor API",
+      "embeds": "Widgets für deine Website",
+      "aiAgents": "Verbundene MCP-Clients",
+      "about": "Website-Links, Bedingungen und Datenschutz"
+    },
+    "signOut": "Abmelden",
+    "signOutFailed": "Abmeldung fehlgeschlagen. Bitte versuchen Sie es erneut.",
+    "search": {
+      "empty": "Keine passenden Einstellungen"
+    },
+    "account": {
+      "intro": "Sehen Sie Ihren aktuellen Plan und verwalten Sie Zahlungsdetails, Rechnungen oder die Kündigung.",
+      "planFree": "Kostenlos",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Premium-Zugriff",
+        "desc": "Dieser Zugriff wird nicht über Ihr WorldMonitor-Konto abgerechnet. Hier sind keine Zahlungsmethode oder Rechnungen verfügbar."
+      },
+      "checking": {
+        "heading": "Plan wird überprüft…",
+        "desc": "Dies dauert normalerweise nur einen Moment."
+      },
+      "status": {
+        "cancelScheduled": "Kündigung geplant – Zugriff bis {{date}}",
+        "renews": "Verlängert sich am: {{date}}",
+        "onHold": "Ausgesetzt – bitte aktualisieren Sie die Zahlungsmethode",
+        "cancelled": "Gekündigt – Zugriff bis {{date}}",
+        "expired": "Abgelaufen",
+        "unknown": "Weitere Informationen zu Ihrem aktuellen Plan finden Sie unter „Abrechnung verwalten\".",
+        "ownerManaged": "Die Abrechnung wird von Ihrem Plan-Inhaber verwaltet."
+      },
+      "upgradeToBusiness": "Auf Business upgraden",
+      "unavailable": {
+        "heading": "Planstatus nicht verfügbar",
+        "desc": "Wir konnten Ihren aktuellen Plan nicht überprüfen. Versuchen Sie es erneut oder öffnen Sie Pläne in einem neuen Tab."
+      },
+      "free": {
+        "heading": "WorldMonitor Free",
+        "desc": "Ihr aktueller Plan ist Free. Upgraden Sie für alle Panels, KI-Analyse und bevorzugte Datenaktualisierung."
+      },
+      "portal": {
+        "openFailed": "Das Abrechnungsportal konnte nicht geöffnet werden. Bitte aktivieren Sie Pop-ups und versuchen Sie es erneut.",
+        "unavailable": "Abrechnungsportal nicht verfügbar. Schreiben Sie an support@worldmonitor.app, um Hilfe zu erhalten."
+      },
+      "deletion": {
+        "heading": "Konto löschen",
+        "desc": "Löschen Sie dieses World Monitor-Konto dauerhaft. Abos werden sofort gekündigt, ohne Rückerstattung der verbleibenden vorausbezahlten Laufzeit. API-Schlüssel, Embed-Schlüssel und MCP-Tokens funktionieren nicht mehr. Abrechnungsunterlagen, die für Buchhaltung, Streitfälle und gesetzlich zulässige Anfragen erforderlich sind, werden mit den darin enthaltenen Kundenkontaktdaten aufbewahrt; sie nennen Ihr Login-Konto nicht mehr, Webhook-Protokolle des Zahlungsanbieters, die vor der Löschung geschrieben wurden, behalten jedoch die Kennungen, mit denen sie zugestellt wurden. Dashboard-Einstellungen und Geheimnisse der Desktop-App im Schlüsselbund dieses Geräts werden nicht aus der Ferne gelöscht.",
+        "dialogTitle": "Dieses Konto löschen?",
+        "dialogCopy": "Dies kann nicht rückgängig gemacht werden. Abos werden gekündigt, Schlüssel funktionieren sofort nicht mehr, und Abrechnungsunterlagen werden für Buchhaltung, Streitigkeiten und gesetzliche Anfragen aufbewahrt – einschließlich der Kontaktdetails, die sie enthalten. Melden Sie sich auf anderen Geräten ab und löschen Sie danach die Website-Daten dieses Geräts – diese sind außerhalb der Reichweite des Servers.",
+        "phraseLabel": "Geben Sie {{phrase}} ein, um zu bestätigen",
+        "deleted": "Konto gelöscht. Melden Sie sich auf anderen Geräten ab und löschen Sie die Website-Daten dieses Geräts.",
+        "failed": "Kontolöschung fehlgeschlagen. Versuchen Sie es erneut."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} verwendet",
+        "invite": "Einladung senden",
+        "inviting": "Wird eingeladen...",
+        "remove": "Entfernen",
+        "removing": "Wird entfernt...",
+        "inviteSent": "Einladung gesendet",
+        "alreadyInvited": "Bereits eingeladen"
+      },
+      "businessSeats": {
+        "heading": "Business-Plätze",
+        "statusAccepted": "Akzeptiert",
+        "statusExpired": "Abgelaufen",
+        "statusPending": "Ausstehend",
+        "expires": "Verfällt {{date}}",
+        "hintCorporate": "Laden Sie Teamkollegen von jeder Unternehmensdomäne ein.",
+        "hintPersonal": "Fügen Sie eine Unternehmens-E-Mail hinzu, um Teamkollegen einzuladen.",
+        "personalDomain": "Kostenlose oder Wegwerf-E-Mail-Domänen können keine Teamkollegen einladen. Fügen Sie eine Unternehmens-E-Mail hinzu, um diese Funktion zu nutzen.",
+        "empty": "Noch keine Teamkollegen eingeladen.",
+        "confirmRemove": "Diesen Platz entfernen? Der Eingeladene verliert sofort Pro-Zugriff.",
+        "removed": "Platz entfernt",
+        "alreadyInactive": "Platz war bereits inaktiv",
+        "loadFailed": "Plätze konnten nicht geladen werden",
+        "inviteFailed": "Einladung konnte nicht gesendet werden",
+        "removeFailed": "Platz konnte nicht entfernt werden",
+        "errors": {
+          "seatCap": "Alle 4 Plätze sind belegt. Entfernen Sie zuerst einen Platz.",
+          "ownerDomain": "Ihre Konto-E-Mail muss eine Unternehmensdomäne sein, um Teamkollegen einzuladen.",
+          "self": "Sie können sich nicht selbst einladen.",
+          "inviteeDomain": "Die E-Mail des Eingeladenen muss eine Unternehmensdomäne sein."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "Enterprise-Plätze für {{account}}",
+        "memberHint": "Der Kontoadministrator fügt Personen auf diesem Konto hinzu und entfernt sie.",
+        "hintFull": "Alle Plätze sind in Gebrauch. Entfernen Sie jemanden oder ziehen Sie eine Einladung zurück, um einen Platz freizugeben.",
+        "hintOpen": "Laden Sie Personen per Unternehmens-E-Mail ein. Sie erhalten einen Link, der 14 Tage lang gültig ist, und teilen sich das Kontingent dieses Kontos.",
+        "emailLabel": "E-Mail-Adresse zum Einladen",
+        "statusActive": "Aktiv",
+        "statusExpired": "Einladung abgelaufen",
+        "statusInvited": "Eingeladen",
+        "emailFailed": "Die Einladungs-E-Mail konnte nicht gesendet werden. Überprüfen Sie die Adresse, ziehen Sie dann die Einladung zurück und laden Sie erneut ein.",
+        "inviteExpires": "Einladung verfällt {{date}}",
+        "roleAdmin": "Administrator",
+        "you": "Sie",
+        "withdraw": "Zurückziehen",
+        "unknownEmail": "Unbekannte E-Mail",
+        "alreadyMember": "Bereits Mitglied",
+        "confirmRemove": "{{email}} entfernen? Diese Person verliert sofort Enterprise-Zugriff.",
+        "confirmRemoveUnknown": "Diese Person entfernen? Sie verliert sofort Enterprise-Zugriff.",
+        "confirmWithdraw": "Einladung an {{email}} zurückziehen?",
+        "confirmWithdrawUnknown": "Einladung an diese Adresse zurückziehen?",
+        "removed": "Mitglied entfernt",
+        "withdrawn": "Einladung zurückgezogen",
+        "loadFailed": "Plätze konnten nicht geladen werden. Versuchen Sie es erneut.",
+        "inviteFailed": "Einladung konnte nicht gesendet werden. Versuchen Sie es erneut.",
+        "removeFailed": "Entfernen fehlgeschlagen. Versuchen Sie es erneut.",
+        "errors": {
+          "seatCap": "Alle Plätze sind belegt. Entfernen Sie zuerst jemanden oder ziehen Sie eine Einladung zurück.",
+          "inviteeDomain": "Laden Sie eine Unternehmens-E-Mail-Adresse ein. Kostenlose und Wegwerf-E-Mail-Domänen werden nicht akzeptiert.",
+          "self": "Sie haben bereits einen Platz.",
+          "contractEnded": "Ihr Enterprise-Vertrag ist abgelaufen. Kontaktieren Sie den Support, um ihn zu erneuern.",
+          "notAdmin": "Nur der Kontoadministrator kann Plätze verwalten.",
+          "removeSelf": "Sie können Ihren eigenen Platz nicht entfernen. Kontaktieren Sie den Support, um den Administrator zu ändern.",
+          "tooMany": "Laden Sie maximal 10 Personen gleichzeitig ein.",
+          "rateLimited": "Sie haben die maximale Anzahl von Einladungen pro Tag versendet. Versuchen Sie es morgen erneut."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "Layout",
+        "1": "Widgets",
+        "2": "Textgröße",
+        "3": "Layout zurücksetzen"
+      },
+      "sources": {
+        "0": "Nachrichten",
+        "1": "Feeds",
+        "2": "RSS",
+        "3": "Regionen",
+        "4": "Berichterstattung"
+      },
+      "notifications": {
+        "0": "Benachrichtigungen",
+        "1": "Telegram",
+        "2": "Slack",
+        "3": "E-Mail",
+        "4": "Discord",
+        "5": "Webhook",
+        "6": "Push"
+      },
+      "display": {
+        "0": "Design",
+        "1": "Dunkel",
+        "2": "Hell",
+        "3": "Schriftart",
+        "4": "Sprache",
+        "5": "Textgröße"
+      },
+      "map": {
+        "0": "Globus",
+        "1": "Anbieter",
+        "2": "Kacheln",
+        "3": "Basiskarte"
+      },
+      "ai": {
+        "0": "KI",
+        "1": "Ollama",
+        "2": "Frameworks",
+        "3": "Überschriftenspeicher",
+        "4": "Browser-Modell"
+      },
+      "video": {
+        "0": "Stream",
+        "1": "Automatische Wiedergabe",
+        "2": "Qualität",
+        "3": "Live"
+      },
+      "apiKeys": {
+        "0": "Schlüssel",
+        "1": "Token",
+        "2": "Desktop-Schlüssel"
+      },
+      "embeds": {
+        "0": "Widget",
+        "1": "iframe",
+        "2": "Einbettungsschlüssel"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "Agenten",
+        "3": "ChatGPT",
+        "4": "Clients"
+      },
+      "sync": {
+        "0": "Importieren",
+        "1": "Exportieren",
+        "2": "Sicherung",
+        "3": "Cloud"
+      },
+      "about": {
+        "0": "Bedingungen",
+        "1": "Datenschutz",
+        "2": "Lizenz",
+        "3": "Rechtliches"
+      },
+      "account": {
+        "0": "Plan",
+        "1": "Abrechnung",
+        "2": "Abonnement",
+        "3": "Rechnung",
+        "4": "Plätze",
+        "5": "Abmelden",
+        "6": "Konto löschen"
+      }
     }
   }
 }

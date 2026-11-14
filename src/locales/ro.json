@@ -495,7 +495,8 @@
     "climateNews": "Știri despre climă",
     "fx": "Cursuri de schimb valutar",
     "ukmtoIncidents": "Incidente UKMTO",
-    "reservoirLevels": "Niveluri strategice ale apei"
+    "reservoirLevels": "Niveluri strategice ale apei",
+    "gridDisruptionClock": "Cronometrul întreruperilor de curent în statele SUA"
   },
   "commands": {
     "prefixes": {
@@ -3207,6 +3208,57 @@
         "measured": "Măsurat",
         "sparkline": "Nivelul apei în 36 de luni"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Selectați statul",
+      "unknown": "Necunoscut",
+      "customers": "Clienți fără curent conform raportărilor",
+      "lastCustomers": "Clienți fără curent la ultima raportare",
+      "denominatorUnknown": "Numărul total de clienți monitorizați este necunoscut",
+      "tracked": "{{amount}} de clienți monitorizați",
+      "dataAge": "Timp de la raportare",
+      "minutes": "{{amount}} min",
+      "hours": "{{amount}} h",
+      "warnings": "Avertizări",
+      "recovery": "Schimbări raportate",
+      "decreased": "Numărul raportat al clienților fără curent a scăzut cu {{amount}}",
+      "increased": "Numărul raportat al clienților fără curent a crescut cu {{amount}}",
+      "unchanged": "Numărul raportat a rămas neschimbat",
+      "since": "din",
+      "peakLoad": "S-a restabilit {{percent}}% din sarcina de vârf obișnuită",
+      "noComparison": "Nu există date comparabile despre numărul clienților fără curent.",
+      "history": "Raportări recente privind clienții fără curent ({{total}})",
+      "priorNotice": "Avertizare raportată anterior",
+      "sources": "Surse de avertizare monitorizate",
+      "operatorLink": "Pentru anunțurile rețelei, consultați",
+      "issued": "Emisă la",
+      "until": "expiră la",
+      "noActive": "Nicio avertizare activă în sursele monitorizate.",
+      "unknownWarnings": "Unele surse de avertizare nu sunt disponibile momentan.",
+      "noObservation": "Numărul actual și acoperirea datelor nu sunt disponibile.",
+      "loadError": "Datele privind întreruperile de curent nu sunt disponibile.",
+      "retained": "Actualizarea a eșuat. Se afișează ultima raportare primită.",
+      "phase": {
+        "unknown": "Impact necunoscut",
+        "monitoring": "Monitorizare",
+        "watch": "Stare de vigilență",
+        "disrupted": "Întreruperi raportate",
+        "recovering": "Reluare în curs, conform raportărilor",
+        "restored": "Alimentare restabilită, conform raportărilor"
+      },
+      "kind": {
+        "grid": "Anunț privind rețeaua electrică",
+        "weather": "Avertizare meteorologică",
+        "space-weather": "Vreme spațială"
+      },
+      "checks": {
+        "available": "Sursă verificată",
+        "unavailable": "Indisponibilă",
+        "not_monitored": "Verificați direct la operator",
+        "stale": "Ultima verificare nu mai este de actualitate"
+      },
+      "warningAge": "Timp de la prima avertizare încă în vigoare",
+      "days": "{{amount}} z"
     }
   },
   "popups": {
@@ -4374,7 +4426,6 @@
     "dataAndCommunity": "Date și comunitate",
     "theme": "Temă",
     "themeDesc": "Automat urmează preferințele sistemului.",
-    "themeAuto": "Automat (urmează sistemul)",
     "themeDark": "Întuneric",
     "themeLight": "Luminos",
     "mapProvider": "Furnizor de dale hartă",
@@ -4531,7 +4582,8 @@
     "createAccount": "Creare cont",
     "freeReason": "Gratuit: salvează aspectul, urmărește țări, alerte",
     "settings": "Setări",
-    "passkeyOffer": {}
+    "passkeyOffer": {},
+    "planBilling": "Plan și facturare"
   },
   "mcp": {
     "connectPanel": "Conectare MCP",
@@ -5326,6 +5378,253 @@
       "retainedDay": "doar {{day}}",
       "geoLine": "Geostaționari în vizor: {{names}}",
       "away": "la {{km}} km"
+    }
+  },
+  "settings": {
+    "back": "Înapoi la setări",
+    "signIn": {
+      "label": "Conectare",
+      "desc": "Sincronizați setările și gestionați planul dvs."
+    },
+    "summary": {
+      "themeAuto": "Automat",
+      "count": "{{on}} din {{total}}"
+    },
+    "groups": {
+      "dashboard": "Tablou de bord",
+      "preferences": "Preferințe",
+      "developer": "Pentru dezvoltatori",
+      "app": "Aplicație"
+    },
+    "sections": {
+      "account": "Cont",
+      "map": "Hartă",
+      "ai": "AI și analiză",
+      "video": "Video și streaming",
+      "apiKeys": "Chei API",
+      "embeds": "Widget-uri încorporate",
+      "aiAgents": "Agenți AI (MCP)",
+      "sync": "Sincronizare, import și export",
+      "about": "Despre"
+    },
+    "descriptions": {
+      "panels": "Afișare, ascundere și reordonare",
+      "sources": "Regiuni și feed-uri",
+      "notifications": "Canale și reguli de alertă",
+      "display": "Temă, font și limbă",
+      "map": "Furnizor, temă și glob",
+      "ai": "Modele, memorie și framework-uri",
+      "video": "Calitate și redare automată",
+      "apiKeys": "Chei pentru API-ul World Monitor",
+      "embeds": "Widget-uri pentru site-ul dvs.",
+      "aiAgents": "Clienți MCP conectați",
+      "about": "Legături site, termeni și confidențialitate"
+    },
+    "signOut": "Deconectare",
+    "signOutFailed": "Nu s-a putut deconecta. Încercați din nou.",
+    "search": {
+      "empty": "Nicio setare nu corespunde"
+    },
+    "account": {
+      "intro": "Vedeți planul dvs. actual și gestionați detaliile plății, facturile sau anularea.",
+      "planFree": "Gratuit",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Acces Premium",
+        "desc": "Acest acces nu este facturat prin contul dvs. WorldMonitor. Nu sunt disponibile metode de plată sau facturi aici."
+      },
+      "checking": {
+        "heading": "Se verifică planul dvs.…",
+        "desc": "De obicei, durează doar un moment."
+      },
+      "status": {
+        "cancelScheduled": "Anulare programată -- acces până la {{date}}",
+        "renews": "Se reînnoiește: {{date}}",
+        "onHold": "Suspendat -- vă rugăm să actualizați metoda de plată",
+        "cancelled": "Anulat -- acces până la {{date}}",
+        "expired": "Expirat",
+        "unknown": "Consultați Gestionare facturare pentru detaliile planului dvs. actual.",
+        "ownerManaged": "Facturarea este gestionată de proprietarul planului dvs."
+      },
+      "upgradeToBusiness": "Upgrade la Business",
+      "unavailable": {
+        "heading": "Starea planului indisponibilă",
+        "desc": "Nu am putut verifica planul dvs. actual. Încercați din nou sau vizualizați planurile într-o filă nouă."
+      },
+      "free": {
+        "heading": "WorldMonitor Gratuit",
+        "desc": "Planul dvs. actual este Gratuit. Faceți upgrade pentru toate panourile, analiza AI și reîmprospătarea prioritară a datelor."
+      },
+      "portal": {
+        "openFailed": "Nu s-a putut deschide portalul de facturare. Vă rugăm să permiteți pop-up-uri și încercați din nou.",
+        "unavailable": "Portalul de facturare nu este disponibil. Trimiteți un email la support@worldmonitor.app pentru ajutor."
+      },
+      "deletion": {
+        "heading": "Ștergere cont",
+        "desc": "Ștergeți permanent acest cont World Monitor. Abonamentele se anulează imediat, fără rambursarea timpului preplătit rămas. Cheile API, cheile de încorporare și tokenurile MCP nu mai funcționează. Înregistrările de facturare necesare pentru contabilitate, litigii și solicitări legale sunt păstrate împreună cu datele de contact ale clientului pe care le conțin; acestea nu mai identifică contul dvs. de conectare, deși jurnalele webhook ale furnizorului de plăți scrise înainte de ștergere păstrează identificatorii cu care au fost livrate. Preferințele tabloului de bord și secretele aplicației desktop din depozitul de chei al sistemului (keychain) de pe acest dispozitiv nu sunt șterse de la distanță.",
+        "dialogTitle": "Ștergeți acest cont?",
+        "dialogCopy": "Acțiunea nu poate fi anulată. Abonamentele se anulează, cheile nu mai funcționează imediat, iar înregistrările de facturare sunt păstrate pentru contabilitate, litigii și solicitări legale -- inclusiv datele de contact pe care le conțin. Apoi deconectați-vă pe alte dispozitive și ștergeți datele site-ului de pe acest dispozitiv -- acestea sunt în afara controlului serverului.",
+        "phraseLabel": "Tastați {{phrase}} pentru a confirma",
+        "deleted": "Cont șters. Deconectați-vă pe alte dispozitive și ștergeți datele site-ului de pe acest dispozitiv.",
+        "failed": "Ștergerea contului a eșuat. Încercați din nou."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} utilizate",
+        "invite": "Invită",
+        "inviting": "Se invită...",
+        "remove": "Elimină",
+        "removing": "Se elimină...",
+        "inviteSent": "Invitație trimisă",
+        "alreadyInvited": "Deja invitat"
+      },
+      "businessSeats": {
+        "heading": "Locuri Business",
+        "statusAccepted": "Acceptat",
+        "statusExpired": "Expirat",
+        "statusPending": "În așteptare",
+        "expires": "Expiră {{date}}",
+        "hintCorporate": "Invită coechipieri cu orice adresă de email dintr-un domeniu de companie.",
+        "hintPersonal": "Adaugă un email de companie pentru a invita coechipieri.",
+        "personalDomain": "Domeniile de email gratuite sau temporare nu pot invita coechipieri. Adaugă un email de companie pentru a folosi această funcție.",
+        "empty": "Nicio invitație trimisă deocamdată.",
+        "confirmRemove": "Elimini acest loc? Persoana invitată va pierde accesul Pro imediat.",
+        "removed": "Loc eliminat",
+        "alreadyInactive": "Locul era deja inactiv",
+        "loadFailed": "Încărcarea locurilor a eșuat",
+        "inviteFailed": "Trimiterea invitației a eșuat",
+        "removeFailed": "Eliminarea locului a eșuat",
+        "errors": {
+          "seatCap": "Toate cele 4 locuri sunt ocupate. Elimină mai întâi un loc.",
+          "ownerDomain": "Emailul tău de cont trebuie să fie dintr-un domeniu de companie pentru a invita coechipieri.",
+          "self": "Nu te poți invita pe tine însuți.",
+          "inviteeDomain": "Emailul persoanei invitate trebuie să fie dintr-un domeniu de companie."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "Locuri Enterprise {{account}}",
+        "memberHint": "Administratorul contului adaugă și elimină persoane pe acest cont.",
+        "hintFull": "Toate locurile sunt în folosință. Elimină pe cineva sau retrage o invitație pentru a elibera un loc.",
+        "hintOpen": "Invită persoane prin emailul de companie. Primesc un link valabil 14 zile și împart cota acestui cont.",
+        "emailLabel": "Adresa de email a persoanei invitate",
+        "statusActive": "Activ",
+        "statusExpired": "Invitație expirată",
+        "statusInvited": "Invitat",
+        "emailFailed": "Emailul de invitație nu a putut fi trimis. Verifică adresa, apoi retrage invitația și invită din nou.",
+        "inviteExpires": "Invitația expiră {{date}}",
+        "roleAdmin": "Administrator",
+        "you": "Tu",
+        "withdraw": "Retrage",
+        "unknownEmail": "Email necunoscut",
+        "alreadyMember": "Deja membru",
+        "confirmRemove": "Elimini {{email}}? Va pierde accesul Enterprise imediat.",
+        "confirmRemoveUnknown": "Elimini această persoană? Va pierde accesul Enterprise imediat.",
+        "confirmWithdraw": "Retragi invitația pentru {{email}}?",
+        "confirmWithdrawUnknown": "Retragi invitația pentru această adresă?",
+        "removed": "Membru eliminat",
+        "withdrawn": "Invitație retrasă",
+        "loadFailed": "Nu s-au putut încărca locurile. Încearcă din nou.",
+        "inviteFailed": "Nu s-a putut trimite invitația. Încearcă din nou.",
+        "removeFailed": "Nu s-a putut elimina. Încearcă din nou.",
+        "errors": {
+          "seatCap": "Toate locurile sunt în uz. Elimină pe cineva sau retrage o invitație mai întâi.",
+          "inviteeDomain": "Invită o adresă de email de companie. Domeniile de email gratuite și temporare nu sunt acceptate.",
+          "self": "Ai deja un loc.",
+          "contractEnded": "Contractul tău Enterprise a expirat. Contactează suportul pentru a-l prelungi.",
+          "notAdmin": "Doar administratorul contului poate gestiona locurile.",
+          "removeSelf": "Nu poți elimina propriul tău loc. Contactează suportul pentru a schimba administratorul.",
+          "tooMany": "Invită până la 10 persoane odată.",
+          "rateLimited": "Ai atins numărul maxim de invitații permise pe zi. Încearcă din nou mâine."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "aspect",
+        "1": "widget-uri",
+        "2": "dimensiune text",
+        "3": "resetare aspect"
+      },
+      "sources": {
+        "0": "știri",
+        "1": "fluxuri",
+        "2": "RSS",
+        "3": "regiuni",
+        "4": "presă"
+      },
+      "notifications": {
+        "0": "alerte",
+        "1": "Telegram",
+        "2": "Slack",
+        "3": "e-mail",
+        "4": "Discord",
+        "5": "webhook",
+        "6": "notificări push"
+      },
+      "display": {
+        "0": "temă",
+        "1": "întunecat",
+        "2": "luminos",
+        "3": "font",
+        "4": "limbă",
+        "5": "mărime text"
+      },
+      "map": {
+        "0": "glob",
+        "1": "furnizor",
+        "2": "plăci",
+        "3": "hartă de bază"
+      },
+      "ai": {
+        "0": "IA",
+        "1": "Ollama",
+        "2": "cadre",
+        "3": "memorie titluri",
+        "4": "model browser"
+      },
+      "video": {
+        "0": "flux",
+        "1": "redare automată",
+        "2": "calitate",
+        "3": "în direct"
+      },
+      "apiKeys": {
+        "0": "cheie",
+        "1": "token",
+        "2": "cheie desktop"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "cheie embed"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "agenți",
+        "3": "ChatGPT",
+        "4": "clienți"
+      },
+      "sync": {
+        "0": "import",
+        "1": "export",
+        "2": "backup",
+        "3": "cloud"
+      },
+      "about": {
+        "0": "termeni",
+        "1": "confidențialitate",
+        "2": "licență",
+        "3": "aspecte legale"
+      },
+      "account": {
+        "0": "plan",
+        "1": "facturare",
+        "2": "abonament",
+        "3": "factură",
+        "4": "locuri",
+        "5": "deconectare",
+        "6": "ștergere cont"
+      }
     }
   }
 }

@@ -32,18 +32,14 @@ function restoreGlobal(name: 'document' | 'localStorage' | 'requestAnimationFram
   else Object.defineProperty(globalThis, name, { configurable: true, value, writable: true });
 }
 
-type PreferenceChangeHandler = (
-  target: HTMLInputElement,
-  container: HTMLElement,
-  host: { isDesktopApp: boolean },
-) => boolean | Promise<boolean>;
+type PreferenceSectionId = 'display' | 'map' | 'ai' | 'video' | 'sync';
 
 interface PreferencesModule {
-  handlePreferenceChange: PreferenceChangeHandler;
-  renderPreferences: (host: {
+  renderPreferenceSection: (id: PreferenceSectionId, host: {
     isDesktopApp: boolean;
     onSettingSaved?: () => void;
   }) => {
+    html: string;
     attach: (container: HTMLElement) => () => void;
   };
 }
@@ -150,7 +146,7 @@ async function loadPreferencesModule(): Promise<PreferencesModule> {
     stubs,
     namespace: 'settings-stub',
     sourceFilter: /preferences-content\.ts$/,
-    transformSource: (contents) => `${contents}\nexport { handlePreferenceChange };`,
+    transformSource: (contents) => contents,
   });
 }
 
@@ -161,27 +157,51 @@ describe('settings save feedback', () => {
       __settingsSavedIdleStop?: unknown;
       __settingsSavedNewsAutoplay?: unknown;
     };
+    const originalWindow = globalThis.window;
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { addEventListener: () => undefined, dispatchEvent: () => true },
+      writable: true,
+    });
     try {
-      const { handlePreferenceChange } = await loadPreferencesModule();
-      const host = { isDesktopApp: false };
-      const container = {} as HTMLElement;
+      const { renderPreferenceSection } = await loadPreferencesModule();
+      let saved = 0;
+      const change = (section: PreferenceSectionId, target: Partial<HTMLInputElement>): boolean => {
+        let listener: ((event: Event) => void) | undefined;
+        const container = {
+          addEventListener: (type: string, handler: EventListenerOrEventListenerObject) => {
+            if (type === 'change' && typeof handler === 'function') listener = handler;
+          },
+          querySelector: () => null,
+        } as unknown as HTMLElement;
+        const before = saved;
+        const detach = renderPreferenceSection(section, { isDesktopApp: false, onSettingSaved: () => { saved += 1; } })
+          .attach(container);
+        assert.ok(listener, `${section} attaches a change listener`);
+        listener({ target } as unknown as Event);
+        detach();
+        return saved > before;
+      };
 
-      assert.equal(handlePreferenceChange({ id: 'us-stream-quality', value: 'hd720' } as HTMLInputElement, container, host), true);
+      assert.equal(change('video', { id: 'us-stream-quality', value: 'hd720' }), true);
       assert.equal(runtime.__settingsSavedQuality, 'hd720');
-      assert.equal(handlePreferenceChange({ id: 'us-live-media-idle-stop', value: 'never' } as HTMLInputElement, container, host), true);
+      assert.equal(change('video', { id: 'us-live-media-idle-stop', value: 'never' }), true);
       assert.equal(runtime.__settingsSavedIdleStop, 'never');
-      assert.equal(handlePreferenceChange({ id: 'us-live-media-idle-stop', value: '240' } as HTMLInputElement, container, host), true);
+      assert.equal(change('video', { id: 'us-live-media-idle-stop', value: '240' }), true);
       assert.equal(runtime.__settingsSavedIdleStop, 240);
-      assert.equal(handlePreferenceChange({ id: 'us-live-media-idle-stop', value: 'forever' } as HTMLInputElement, container, host), false);
+      assert.equal(change('video', { id: 'us-live-media-idle-stop', value: 'forever' }), false);
       assert.equal(runtime.__settingsSavedIdleStop, 240);
-      assert.equal(handlePreferenceChange({ id: 'us-live-news-autoplay', checked: false } as HTMLInputElement, container, host), true);
+      assert.equal(change('video', { id: 'us-live-news-autoplay', checked: false }), true);
       assert.equal(runtime.__settingsSavedNewsAutoplay, false);
-      assert.equal(handlePreferenceChange({ id: 'us-font-scale', value: 'invalid' } as HTMLInputElement, container, host), false);
-      assert.equal(handlePreferenceChange({ id: 'unrelated-control' } as HTMLInputElement, container, host), false);
+      assert.equal(change('display', { id: 'us-font-scale', value: 'invalid' }), false);
+      assert.equal(change('display', { id: 'unrelated-control' }), false);
+      assert.equal(change('display', { id: 'us-stream-quality', value: 'hd1080' }), false, 'a control from another section is ignored');
+      assert.equal(runtime.__settingsSavedQuality, 'hd720');
     } finally {
       delete runtime.__settingsSavedQuality;
       delete runtime.__settingsSavedIdleStop;
       delete runtime.__settingsSavedNewsAutoplay;
+      restoreGlobal('window', originalWindow);
     }
   });
 
@@ -198,8 +218,8 @@ describe('settings save feedback', () => {
     });
 
     try {
-      const { renderPreferences } = await loadPreferencesModule();
-      const { html } = renderPreferences({ isDesktopApp: false });
+      const { renderPreferenceSection } = await loadPreferencesModule();
+      const { html } = renderPreferenceSection('video', { isDesktopApp: false });
 
       const autoplayAt = html.indexOf('us-live-streams-always-on');
       const newsAutoplayAt = html.indexOf('us-live-news-autoplay');
@@ -260,8 +280,8 @@ describe('settings save feedback', () => {
       });
       runtime.__settingsChangeLanguage = () => pendingLanguage;
 
-      const { renderPreferences } = await loadPreferencesModule();
-      const detach = renderPreferences({
+      const { renderPreferenceSection } = await loadPreferencesModule();
+      const detach = renderPreferenceSection('display', {
         isDesktopApp: false,
         onSettingSaved: () => { savedCalls += 1; },
       }).attach(container);
@@ -434,7 +454,7 @@ describe('settings save feedback', () => {
     const eventHandlers = source('src/app/event-handlers.ts');
     const countryIntel = source('src/app/country-intel.ts');
 
-    assert.match(settings, /onSettingSaved:\s*\(\)\s*=>\s*showToast\(t\('modals\.settingsWindow\.saved'\)\)/);
+    assert.match(settings, /onSettingSaved:\s*\(\)\s*=>\s*\{\s*showToast\(t\('modals\.settingsWindow\.saved'\)\);/);
     assert.doesNotMatch(extractMethodBody(settings, 'private savePanelChanges()'), /showToast\(/);
     assert.doesNotMatch(settings, /function showToast\(/);
     assert.doesNotMatch(eventHandlers, /\n\s{2}showToast\(msg: string\): void/);

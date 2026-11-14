@@ -578,7 +578,7 @@ test('English panel picker names financial and regional topics in plain language
   void countryBrief;
   await page.goto('/dashboard');
   await page.locator('#unifiedSettingsBtn').click();
-  await page.locator('#us-tab-panels').click();
+  await page.locator('[data-settings-nav="panels"]').click();
   const panels = page.locator('#usPanelToggles');
   await expect(panels).toBeVisible();
   await expect(panels).toContainText('Bitcoin fund flows');
@@ -636,7 +636,7 @@ for (const mobile of [false, true]) {
     } else {
       await page.locator('#unifiedSettingsBtn').click();
     }
-    await page.locator('#us-tab-panels').click();
+    await page.locator('[data-settings-nav="panels"]').click();
     const panels = page.locator('#usPanelToggles');
     await expect(panels).toContainText('mtaji wa kufadhili biashara changa');
     const gulf = panels.getByText('Uwekezaji wa Baraza la Ushirikiano la Ghuba', { exact: true });
