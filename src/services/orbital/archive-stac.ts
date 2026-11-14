@@ -59,6 +59,10 @@ const SENTINEL_2_STRIP_REACH_MS = 20 * MINUTE_MS;
 const LANDSAT_SCENE_HALF_MS = 15_000;
 const NATIVE_RESOLUTION_M: Record<ImagingProfileId, number> = { 'sentinel-2': 10, 'sentinel-1': 10, landsat: 30 };
 
+/** The sensor's own pixel size, for a pass with no scene to read a gsd from. */
+export const nativeResolutionM = (profileId: string): number | null =>
+  Object.prototype.hasOwnProperty.call(NATIVE_RESOLUTION_M, profileId) ? NATIVE_RESOLUTION_M[profileId as ImagingProfileId] : null;
+
 /** These previews render the visual (TCI) asset, which clips bright ground to flat white or yellow. */
 const CLIPPED_PREVIEW = (_archive: StacArchiveId, profileId: ImagingProfileId) =>
   profileId === 'sentinel-2';
