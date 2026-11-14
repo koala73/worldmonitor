@@ -495,7 +495,8 @@
     "climateNews": "Știri despre climă",
     "fx": "Cursuri de schimb valutar",
     "ukmtoIncidents": "Incidente UKMTO",
-    "reservoirLevels": "Niveluri strategice ale apei"
+    "reservoirLevels": "Niveluri strategice ale apei",
+    "gridDisruptionClock": "Cronometrul întreruperilor de curent în statele SUA"
   },
   "commands": {
     "prefixes": {
@@ -3207,6 +3208,57 @@
         "measured": "Măsurat",
         "sparkline": "Nivelul apei în 36 de luni"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Selectați statul",
+      "unknown": "Necunoscut",
+      "customers": "Clienți fără curent conform raportărilor",
+      "lastCustomers": "Clienți fără curent la ultima raportare",
+      "denominatorUnknown": "Numărul total de clienți monitorizați este necunoscut",
+      "tracked": "{{amount}} de clienți monitorizați",
+      "dataAge": "Timp de la raportare",
+      "minutes": "{{amount}} min",
+      "hours": "{{amount}} h",
+      "warnings": "Avertizări",
+      "recovery": "Schimbări raportate",
+      "decreased": "Numărul raportat al clienților fără curent a scăzut cu {{amount}}",
+      "increased": "Numărul raportat al clienților fără curent a crescut cu {{amount}}",
+      "unchanged": "Numărul raportat a rămas neschimbat",
+      "since": "din",
+      "peakLoad": "S-a restabilit {{percent}}% din sarcina de vârf obișnuită",
+      "noComparison": "Nu există date comparabile despre numărul clienților fără curent.",
+      "history": "Raportări recente privind clienții fără curent ({{total}})",
+      "priorNotice": "Avertizare raportată anterior",
+      "sources": "Surse de avertizare monitorizate",
+      "operatorLink": "Pentru anunțurile rețelei, consultați",
+      "issued": "Emisă la",
+      "until": "expiră la",
+      "noActive": "Nicio avertizare activă în sursele monitorizate.",
+      "unknownWarnings": "Unele surse de avertizare nu sunt disponibile momentan.",
+      "noObservation": "Numărul actual și acoperirea datelor nu sunt disponibile.",
+      "loadError": "Datele privind întreruperile de curent nu sunt disponibile.",
+      "retained": "Actualizarea a eșuat. Se afișează ultima raportare primită.",
+      "phase": {
+        "unknown": "Impact necunoscut",
+        "monitoring": "Monitorizare",
+        "watch": "Stare de vigilență",
+        "disrupted": "Întreruperi raportate",
+        "recovering": "Reluare în curs, conform raportărilor",
+        "restored": "Alimentare restabilită, conform raportărilor"
+      },
+      "kind": {
+        "grid": "Anunț privind rețeaua electrică",
+        "weather": "Avertizare meteorologică",
+        "space-weather": "Vreme spațială"
+      },
+      "checks": {
+        "available": "Sursă verificată",
+        "unavailable": "Indisponibilă",
+        "not_monitored": "Verificați direct la operator",
+        "stale": "Ultima verificare nu mai este de actualitate"
+      },
+      "warningAge": "Timp de la prima avertizare încă în vigoare",
+      "days": "{{amount}} z"
     }
   },
   "popups": {
@@ -4374,7 +4426,6 @@
     "dataAndCommunity": "Date și comunitate",
     "theme": "Temă",
     "themeDesc": "Automat urmează preferințele sistemului.",
-    "themeAuto": "Automat (urmează sistemul)",
     "themeDark": "Întuneric",
     "themeLight": "Luminos",
     "mapProvider": "Furnizor de dale hartă",
@@ -4433,7 +4484,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Deschide prezentarea țării",
-    "copyCoordinates": "Copiază coordonatele"
+    "copyCoordinates": "Copiază coordonatele",
+    "satellitePasses": "Treceri de sateliți aici"
   },
   "shell": {
     "documentTitle": "World Monitor — Tabloul de Bord al Inteligenței Globale în Timp Real",
@@ -4530,6 +4582,7 @@
     "createAccount": "Creare cont",
     "freeReason": "Gratuit: salvează aspectul, urmărește țări, alerte",
     "settings": "Setări",
+    "planBilling": "Plan și facturare",
     "passkeyOffer": {}
   },
   "mcp": {
@@ -5138,5 +5191,557 @@
     "errGeneric": "Varianta nu a putut fi construită. Încercați din nou.",
     "errDownload": "Fișierul nu a putut fi descărcat aici. Utilizați Tipărire sau salvare ca PDF în schimb.",
     "errLoad": "Evaluarea călătoriei nu a putut fi deschisă. Reîncărcați pagina și încercați din nou."
+  },
+  "orbitalWatch": {
+    "track": {
+      "unavailable": "Urma la sol a acestei treceri nu a putut fi desenată"
+    },
+    "replay": {
+      "acquisition": "ACHIZIȚIE · {{name}}",
+      "acquired": "ACHIZIȚIONAT {{time}} · {{resolution}}",
+      "play": "Redă reluarea",
+      "pause": "Întrerupe reluarea",
+      "scrub": "Poziția reluării",
+      "reducedMotion": "MIȘCARE REDUSĂ"
+    },
+    "computing": "Se încarcă catalogul de sateliți…",
+    "computingProgress": "Se calculează trecerile: {{done}} din {{total}} sateliți",
+    "unavailable": "Catalogul de sateliți nu a putut fi încărcat, așa că nu s-au calculat treceri pentru acest punct.",
+    "checkingArchives": "Se verifică arhivele: {{done}} din {{total}} au răspuns",
+    "confirmedCount": "Imagini confirmate: {{count}}",
+    "counts": {
+      "mosaics": "Mozaicuri zilnice: {{count}}",
+      "frames": "Imagini meteo: {{count}}",
+      "inRange": "Treceri în rază: {{count}}"
+    },
+    "partial": "{{sources}} nu a răspuns, așa că unor treceri le pot lipsi imaginile.",
+    "stale": "Datele orbitale sunt învechite. Catalogul de sateliți are o vechime de {{age}}, așa că orele trecerilor pot fi inexacte.",
+    "empty": "Niciun satelit de imagistică catalogat nu a trecut peste acest punct în ultimele {{pastDays}} zile și nici nu va trece în următoarele {{futureHours}} ore.",
+    "sources": "Surse · {{count}}",
+    "sourcesDocs": "Cum sunt folosite aceste surse",
+    "privacy": "Acest punct rămâne în browserul tău. Este trimis doar arhivelor publice pe care browserul le apelează direct: Earth Search, Microsoft Planetary Computer, NASA GIBS și EUMETSAT. Căutarea după numele locului este singura excepție: numele introdus ajunge la serviciul de căutare a locurilor.",
+    "inRange": "în rază",
+    "tier": {
+      "checking": "se verifică arhiva",
+      "confirmed": "imagine confirmată",
+      "likely": "probabil fotografiat",
+      "opportunity": "trecere viitoare",
+      "dailyMosaic": "în mozaicul zilnic",
+      "withinReach": "în rază",
+      "capabilityOverhead": "capacitate deasupra",
+      "passedOverhead": "a trecut deasupra",
+      "unmatchedImage": "imagine fără trecere calculată",
+      "weatherFrame": "imagine meteo",
+      "unavailable": "indisponibil"
+    },
+    "row": {
+      "offNadir": "{{deg}}° față de nadir",
+      "distance": "la {{km}} km de urma la sol",
+      "orbitAge": "date orbitale vechi de {{age}}",
+      "edgeOfSwath": "Marginea benzii",
+      "notInArchive": "Nicio imagine în arhivă",
+      "archiveUnanswered": "Arhiva nu a răspuns",
+      "imageAlt": "Imagine {{name}}, {{time}}",
+      "mosaicDays": "Zile în arhivă: {{count}}",
+      "cadence": "imagine nouă la fiecare {{minutes}} min",
+      "sourceUnavailable": "Arhiva nu are imagini de la această sursă pentru aceste zile.",
+      "imageLoading": "Se încarcă imaginea…",
+      "imageFailed": "Imaginea nu s-a încărcat. Arhiva poate fi lentă sau indisponibilă.",
+      "noPreview": "Arhiva nu are încă o previzualizare a acestei scene."
+    },
+    "dailyMosaics": "mozaicuri zilnice",
+    "weatherFrames": "imagini meteo",
+    "ui": {
+      "change": "Schimbă",
+      "share": "Distribuie",
+      "shareCopied": "Link copiat",
+      "headline": "În ultimele {{days}} zile, {{satellites}} au trecut peste {{place}}.",
+      "satellites_one": "{{count}} satelit",
+      "satellites_few": "{{count}} sateliți",
+      "satellites_other": "{{count}} de sateliți",
+      "subline_one": "A fost publicată {{count}} imagine.",
+      "subline_few": "Au fost publicate {{count}} imagini.",
+      "subline_other": "Au fost publicate {{count}} de imagini.",
+      "closestLook": "Cea mai apropiată vedere",
+      "replay": "Redă",
+      "openFull": "Deschide vizualizarea completă",
+      "previous": "Imaginea anterioară",
+      "next": "Imaginea următoare",
+      "passes_one": "trecere",
+      "passes_few": "treceri",
+      "passes_other": "de treceri",
+      "showAll": "Arată toate trecerile",
+      "noRecentDays": "Nicio zi recentă în arhivă: {{sources}}",
+      "tab": {
+        "all": "Toate",
+        "detailed": "Detaliat",
+        "weather": "Vreme"
+      },
+      "caption": {
+        "clear": "Senin în punct",
+        "clearSceneCloud": "Senin în punct · nebulozitatea scenei {{pct}}%",
+        "clouded": "Înnorat · {{pct}}%",
+        "cloudShadow": "Umbră de nor",
+        "spotNotChecked": "Punct neverificat pentru nori",
+        "sceneCloud": "Nebulozitatea scenei {{pct}}% · punct neverificat",
+        "radar": "Radar",
+        "dailyMosaic": "Mozaic zilnic",
+        "geostationary": "Disc complet geostaționar",
+        "geostationaryCadence": "Geostaționar · la fiecare {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Imagine indisponibilă · {{archive}}",
+        "noPreview": "Arhiva nu are încă o previzualizare a acestei scene"
+      },
+      "grid": {
+        "watched": "Observat",
+        "watchedDef": "O arhivă publică deține o imagine a acestui punct.",
+        "likely": "Probabil observat",
+        "likelyDef": "Un senzor cu bandă fixă l-a acoperit; încă nicio imagine publicată.",
+        "could": "Ar fi putut ținti aici",
+        "couldDef": "Un senzor orientabil sau comercial era în rază; operatorul nu spune dacă a privit.",
+        "overhead": "A trecut deasupra",
+        "overheadDef": "A traversat cerul aici, fără dovezi de imagine.",
+        "watchedShort": "Imagine într-o arhivă publică",
+        "likelyShort": "Acoperit, încă fără imagine",
+        "likelyUnansweredDef": "Un senzor cu fâșie fixă l-a acoperit; o arhivă nu a răspuns, deci poate exista o imagine.",
+        "likelyUnansweredShort": "Acoperit, arhiva nu a răspuns",
+        "couldShort": "Senzor orientabil în rază",
+        "overheadShort": "Deasupra, fără imagine"
+      },
+      "group": {
+        "watched": "observate",
+        "likely": "probabil observate",
+        "upcoming": "următoare",
+        "could": "care ar fi putut ținti aici",
+        "overhead": "trecute deasupra",
+        "weather_one": "sursă meteo",
+        "weather_few": "surse meteo",
+        "weather_other": "de surse meteo"
+      },
+      "order": {
+        "closest": "Cea mai apropiată vedere, apoi cele mai noi",
+        "newest": "Cele mai noi întâi",
+        "soonest": "Cele mai apropiate întâi"
+      },
+      "row": {
+        "cloud": "Nori {{pct}}%",
+        "days_one": "{{count}} zi",
+        "days_few": "{{count}} zile",
+        "days_other": "{{count}} de zile",
+        "repeats": "{{count}} treceri ale acestui satelit în grup"
+      },
+      "section": {
+        "summary": "Rezumat",
+        "passes": "Treceri"
+      },
+      "status": {
+        "objects": "{{count}} sateliți de imagistică · CelesTrak GP",
+        "fetched": "Preluat {{time}} · {{ago}}",
+        "sun": "Soare {{point}} · punct subsolar"
+      },
+      "step": {
+        "computing": "Calcul",
+        "catalogLoading": "Catalog · se încarcă",
+        "catalog": "Catalog · {{count}} sateliți de imagistică",
+        "propagating": "Propagarea orbitelor · {{done}} / {{total}}",
+        "archives": "Arhive · {{done}} / {{total}} au răspuns",
+        "matching": "Potrivirea scenelor cu {{passes}} treceri",
+        "window": "Fereastră de 7 zile · {{start}} → {{end}}",
+        "failed": "Eșuat",
+        "note": "Planetary Computer și NASA GIBS generează imaginile la cerere, așa că acest pas poate dura câteva secunde."
+      },
+      "privacyLine": "Punctul rămâne în browserul tău",
+      "privacyHow": "Cum",
+      "sources": "Surse",
+      "archiveScene": "Scenă de arhivă",
+      "archiveOnly": "Nicio trecere calculată nu corespunde acestor imagini, așa că sunt afișate ca scene de arhivă.",
+      "zoneShowUtc": "Afișează orele în UTC",
+      "zoneShowLocal": "Afișează orele în ora locală a acestui loc"
+    },
+    "viewer": {
+      "open": "Deschide vizualizatorul de imagini: {{image}}",
+      "bestView": "Deschide cea mai bună vedere: {{name}}, {{time}}",
+      "imageAlt": "Imagine {{name}}, {{time}}",
+      "close": "Închide vizualizatorul de imagini",
+      "northUp": "Nordul este sus",
+      "unreferenced": "Orientare așa cum o livrează arhiva; nordul nu este marcat",
+      "compareDates": "Alte date din această colecție",
+      "compareNone": "Nicio altă scenă din această colecție pentru comparație.",
+      "divider": "Separator înainte/după",
+      "searching": "Se caută scene ale acestui loc din ultimele {{days}} zile",
+      "historyFailed": "{{archive}} nu a răspuns, deci lipsesc scenele anterioare.",
+      "historyTimeout": "{{archive}} nu a răspuns la timp, deci lipsesc scenele anterioare.",
+      "loading": "Se încarcă cadrele: {{loaded}} din {{total}}",
+      "pause": "Pauză",
+      "resume": "Redă",
+      "next": "Cadrul următor",
+      "closeLabel": "Închide",
+      "agoNow": "Chiar acum",
+      "agoHours": "acum {{count}} h",
+      "agoDays": "acum {{count}} z",
+      "clear": "Senin",
+      "clouded": "Înnorat · {{pct}}%",
+      "tabImage": "Imagine",
+      "tabChange": "Schimbare",
+      "metaAcquired": "Achiziționată",
+      "metaDate": "Dată",
+      "metaPixel": "Pixel",
+      "metaSpot": "Nori în punct",
+      "metaScene": "Nori în scenă",
+      "metaSun": "Înălțimea soarelui",
+      "showCloudy": "Arată datele înnorate ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Timelapse",
+      "entry": "Acest loc, an de an",
+      "open": "Deschide timelapse-ul anual al acestui loc",
+      "searching": "Se caută o imagine senină pe an din 2015 · {{archive}}",
+      "loading": "Se încarcă imaginile · {{loaded}} / {{total}}",
+      "failed": "{{archive}} nu a răspuns, deci imaginile anuale lipsesc.",
+      "timeout": "{{archive}} nu a răspuns la timp, deci imaginile anuale lipsesc.",
+      "partial": "Ani lipsă deoarece {{archive}} nu a răspuns: {{count}}.",
+      "tooFew": "Imagini anuale senine ale acestui loc: {{count}}. Un timelapse are nevoie de {{min}}.",
+      "total": "Imagini senine: {{count}} · una pe an",
+      "years": "Ani",
+      "share": "Distribuie",
+      "method": "Fiecare cadru este același pătrat de 6 km de la Sentinel-2, în culori naturale. Fiecare an caută într-un alt anotimp și păstrează scena cea mai puțin înnorată; un an fără scenă sub 30% nori este omis."
+    },
+    "passDetail": {
+      "back": "Toate trecerile",
+      "altitude": "Altitudine",
+      "offNadir": "Abatere de la nadir",
+      "crossed": "{{name}} a trecut la {{altitude}} km altitudine, la {{distance}} km {{direction}}, la {{time}}, cu {{speed}} km/s deasupra solului.",
+      "crossedHeading": "{{name}} a trecut la {{altitude}} km altitudine, la {{distance}} km {{direction}}, la {{time}}, deplasându-se spre {{heading}} cu {{speed}} km/s deasupra solului.",
+      "looking": "Privea la {{deg}}° de verticală.",
+      "sceneCloud": "Acoperirea cu nori a scenei: {{pct}}%.",
+      "pixelLine": "Pixel de {{m}} m",
+      "swathLine": "Fâșie de {{km}} km",
+      "clearestLook": "Cea mai senină imagine",
+      "previous": "Trecerea anterioară",
+      "next": "Trecerea următoare",
+      "dir": {
+        "n": "spre nord",
+        "ne": "spre nord-est",
+        "e": "spre est",
+        "se": "spre sud-est",
+        "s": "spre sud",
+        "sw": "spre sud-vest",
+        "w": "spre vest",
+        "nw": "spre nord-vest"
+      },
+      "heading": {
+        "north": "nord",
+        "south": "sud"
+      }
+    },
+    "search": {
+      "label": "Nume de loc sau coordonate",
+      "placeholder": "Nume de loc sau 48.8584, 2.2945",
+      "submit": "Caută",
+      "locate": "Folosește locația mea",
+      "hint": "Coordonatele și locația ta rămân în acest browser. Un nume de loc căutat este trimis către WorldMonitor și către Nominatim de la OpenStreetMap.",
+      "results": "Locuri potrivite",
+      "searching": "Se caută…",
+      "tooShort": "Scrie cel puțin două caractere sau coordonate precum 48.8584, 2.2945.",
+      "invalidCoordinates": "Aceste coordonate sunt în afara globului. Latitudinea este între -90 și 90, iar longitudinea între -180 și 180.",
+      "failed": "Căutarea locurilor nu este disponibilă acum. Coordonatele și harta funcționează în continuare.",
+      "noResults": "Niciun loc nu se potrivește cu acest nume.",
+      "locating": "Se determină locația…",
+      "locationDenied": "Permisiunea de locație a fost refuzată. Caută un loc sau dă clic dreapta pe hartă.",
+      "locationUnavailable": "Locația ta nu a putut fi determinată. Caută un loc sau dă clic dreapta pe hartă.",
+      "idle": "Caută un loc după nume sau coordonate, folosește-ți locația sau dă clic dreapta pe hartă pentru a vedea ce sateliți au trecut deasupra lui."
+    },
+    "share": {
+      "copy": "Copiază linkul de partajare",
+      "copied": "Link copiat",
+      "copyManually": "Copiază linkul de mai jos",
+      "link": "Link de partajare",
+      "dismiss": "Închide",
+      "passOutsideWindow": "Trecerea din link este în afara ferestrei curente, așa că nu este selectată nicio trecere.",
+      "passNotFound": "Trecerea din link nu a fost găsită printre trecerile recalculate, așa că nu este selectată nicio trecere."
+    },
+    "timeline": {
+      "now": "acum",
+      "nowAt": "Acum: {{time}}",
+      "density": "Treceri {{label}}, de la {{start}} la {{end}}: {{count}}",
+      "daylight": "Lumină de zi în punct de la {{start}} la {{end}}",
+      "unavailable": "indisponibil",
+      "notRetained": "fără date săptămâna aceasta",
+      "notRetainedSpan": "{{label}}: fără date de la {{start}} la {{end}}",
+      "countryWide": "la nivel național",
+      "source": {
+        "conflict": "Conflicte",
+        "fires": "Incendii",
+        "unrest": "Tulburări",
+        "outages": "Întreruperi de internet"
+      },
+      "live": {
+        "vessels": "Trafic maritim",
+        "militaryFlights": "Zboruri militare",
+        "gpsJamming": "Bruiaj GPS"
+      },
+      "name": "Cronologie",
+      "span": "{{days}} zile · următoarele {{hours}} h",
+      "daylightHere": "Lumină de zi aici",
+      "row": {
+        "geo": "Geo",
+        "photo": "Imagine",
+        "likely": "Probabil",
+        "could": "Posibil",
+        "overhead": "Trecere"
+      },
+      "retained": "{{start}} – {{end}}",
+      "retainedDay": "doar {{day}}",
+      "geoLine": "Geostaționari în vizor: {{names}}",
+      "away": "la {{km}} km"
+    }
+  },
+  "settings": {
+    "back": "Înapoi la setări",
+    "signIn": {
+      "label": "Conectare",
+      "desc": "Sincronizați setările și gestionați planul dvs."
+    },
+    "summary": {
+      "themeAuto": "Automat",
+      "count": "{{on}} din {{total}}"
+    },
+    "groups": {
+      "dashboard": "Tablou de bord",
+      "preferences": "Preferințe",
+      "developer": "Pentru dezvoltatori",
+      "app": "Aplicație"
+    },
+    "sections": {
+      "account": "Cont",
+      "map": "Hartă",
+      "ai": "AI și analiză",
+      "video": "Video și streaming",
+      "apiKeys": "Chei API",
+      "embeds": "Widget-uri încorporate",
+      "aiAgents": "Agenți AI (MCP)",
+      "sync": "Sincronizare, import și export",
+      "about": "Despre"
+    },
+    "descriptions": {
+      "panels": "Afișare, ascundere și reordonare",
+      "sources": "Regiuni și feed-uri",
+      "notifications": "Canale și reguli de alertă",
+      "display": "Temă, font și limbă",
+      "map": "Furnizor, temă și glob",
+      "ai": "Modele, memorie și framework-uri",
+      "video": "Calitate și redare automată",
+      "apiKeys": "Chei pentru API-ul World Monitor",
+      "embeds": "Widget-uri pentru site-ul dvs.",
+      "aiAgents": "Clienți MCP conectați",
+      "about": "Legături site, termeni și confidențialitate"
+    },
+    "signOut": "Deconectare",
+    "signOutFailed": "Nu s-a putut deconecta. Încercați din nou.",
+    "search": {
+      "empty": "Nicio setare nu corespunde"
+    },
+    "account": {
+      "intro": "Vedeți planul dvs. actual și gestionați detaliile plății, facturile sau anularea.",
+      "planFree": "Gratuit",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Acces Premium",
+        "desc": "Acest acces nu este facturat prin contul dvs. WorldMonitor. Nu sunt disponibile metode de plată sau facturi aici."
+      },
+      "checking": {
+        "heading": "Se verifică planul dvs.…",
+        "desc": "De obicei, durează doar un moment."
+      },
+      "status": {
+        "cancelScheduled": "Anulare programată -- acces până la {{date}}",
+        "renews": "Se reînnoiește: {{date}}",
+        "onHold": "Suspendat -- vă rugăm să actualizați metoda de plată",
+        "cancelled": "Anulat -- acces până la {{date}}",
+        "expired": "Expirat",
+        "unknown": "Consultați Gestionare facturare pentru detaliile planului dvs. actual.",
+        "ownerManaged": "Facturarea este gestionată de proprietarul planului dvs."
+      },
+      "upgradeToBusiness": "Upgrade la Business",
+      "unavailable": {
+        "heading": "Starea planului indisponibilă",
+        "desc": "Nu am putut verifica planul dvs. actual. Încercați din nou sau vizualizați planurile într-o filă nouă."
+      },
+      "free": {
+        "heading": "WorldMonitor Gratuit",
+        "desc": "Planul dvs. actual este Gratuit. Faceți upgrade pentru toate panourile, analiza AI și reîmprospătarea prioritară a datelor."
+      },
+      "portal": {
+        "openFailed": "Nu s-a putut deschide portalul de facturare. Vă rugăm să permiteți pop-up-uri și încercați din nou.",
+        "unavailable": "Portalul de facturare nu este disponibil. Trimiteți un email la support@worldmonitor.app pentru ajutor."
+      },
+      "deletion": {
+        "heading": "Ștergere cont",
+        "desc": "Ștergeți permanent acest cont World Monitor. Abonamentele se anulează imediat, fără rambursarea timpului preplătit rămas. Cheile API, cheile de încorporare și tokenurile MCP nu mai funcționează. Înregistrările de facturare necesare pentru contabilitate, litigii și solicitări legale sunt păstrate împreună cu datele de contact ale clientului pe care le conțin; acestea nu mai identifică contul dvs. de conectare, deși jurnalele webhook ale furnizorului de plăți scrise înainte de ștergere păstrează identificatorii cu care au fost livrate. Preferințele tabloului de bord și secretele aplicației desktop din depozitul de chei al sistemului (keychain) de pe acest dispozitiv nu sunt șterse de la distanță.",
+        "dialogTitle": "Ștergeți acest cont?",
+        "dialogCopy": "Acțiunea nu poate fi anulată. Abonamentele se anulează, cheile nu mai funcționează imediat, iar înregistrările de facturare sunt păstrate pentru contabilitate, litigii și solicitări legale -- inclusiv datele de contact pe care le conțin. Apoi deconectați-vă pe alte dispozitive și ștergeți datele site-ului de pe acest dispozitiv -- acestea sunt în afara controlului serverului.",
+        "phraseLabel": "Tastați {{phrase}} pentru a confirma",
+        "deleted": "Cont șters. Deconectați-vă pe alte dispozitive și ștergeți datele site-ului de pe acest dispozitiv.",
+        "failed": "Ștergerea contului a eșuat. Încercați din nou."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} utilizate",
+        "invite": "Invită",
+        "inviting": "Se invită...",
+        "remove": "Elimină",
+        "removing": "Se elimină...",
+        "inviteSent": "Invitație trimisă",
+        "alreadyInvited": "Deja invitat"
+      },
+      "businessSeats": {
+        "heading": "Locuri Business",
+        "statusAccepted": "Acceptat",
+        "statusExpired": "Expirat",
+        "statusPending": "În așteptare",
+        "expires": "Expiră {{date}}",
+        "hintCorporate": "Invită coechipieri cu orice adresă de email dintr-un domeniu de companie.",
+        "hintPersonal": "Adaugă un email de companie pentru a invita coechipieri.",
+        "personalDomain": "Domeniile de email gratuite sau temporare nu pot invita coechipieri. Adaugă un email de companie pentru a folosi această funcție.",
+        "empty": "Nicio invitație trimisă deocamdată.",
+        "confirmRemove": "Elimini acest loc? Persoana invitată va pierde accesul Pro imediat.",
+        "removed": "Loc eliminat",
+        "alreadyInactive": "Locul era deja inactiv",
+        "loadFailed": "Încărcarea locurilor a eșuat",
+        "inviteFailed": "Trimiterea invitației a eșuat",
+        "removeFailed": "Eliminarea locului a eșuat",
+        "errors": {
+          "seatCap": "Toate cele 4 locuri sunt ocupate. Elimină mai întâi un loc.",
+          "ownerDomain": "Emailul tău de cont trebuie să fie dintr-un domeniu de companie pentru a invita coechipieri.",
+          "self": "Nu te poți invita pe tine însuți.",
+          "inviteeDomain": "Emailul persoanei invitate trebuie să fie dintr-un domeniu de companie."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "Locuri Enterprise {{account}}",
+        "memberHint": "Administratorul contului adaugă și elimină persoane pe acest cont.",
+        "hintFull": "Toate locurile sunt în folosință. Elimină pe cineva sau retrage o invitație pentru a elibera un loc.",
+        "hintOpen": "Invită persoane prin emailul de companie. Primesc un link valabil 14 zile și împart cota acestui cont.",
+        "emailLabel": "Adresa de email a persoanei invitate",
+        "statusActive": "Activ",
+        "statusExpired": "Invitație expirată",
+        "statusInvited": "Invitat",
+        "emailFailed": "Emailul de invitație nu a putut fi trimis. Verifică adresa, apoi retrage invitația și invită din nou.",
+        "inviteExpires": "Invitația expiră {{date}}",
+        "roleAdmin": "Administrator",
+        "you": "Tu",
+        "withdraw": "Retrage",
+        "unknownEmail": "Email necunoscut",
+        "alreadyMember": "Deja membru",
+        "confirmRemove": "Elimini {{email}}? Va pierde accesul Enterprise imediat.",
+        "confirmRemoveUnknown": "Elimini această persoană? Va pierde accesul Enterprise imediat.",
+        "confirmWithdraw": "Retragi invitația pentru {{email}}?",
+        "confirmWithdrawUnknown": "Retragi invitația pentru această adresă?",
+        "removed": "Membru eliminat",
+        "withdrawn": "Invitație retrasă",
+        "loadFailed": "Nu s-au putut încărca locurile. Încearcă din nou.",
+        "inviteFailed": "Nu s-a putut trimite invitația. Încearcă din nou.",
+        "removeFailed": "Nu s-a putut elimina. Încearcă din nou.",
+        "errors": {
+          "seatCap": "Toate locurile sunt în uz. Elimină pe cineva sau retrage o invitație mai întâi.",
+          "inviteeDomain": "Invită o adresă de email de companie. Domeniile de email gratuite și temporare nu sunt acceptate.",
+          "self": "Ai deja un loc.",
+          "contractEnded": "Contractul tău Enterprise a expirat. Contactează suportul pentru a-l prelungi.",
+          "notAdmin": "Doar administratorul contului poate gestiona locurile.",
+          "removeSelf": "Nu poți elimina propriul tău loc. Contactează suportul pentru a schimba administratorul.",
+          "tooMany": "Invită până la 10 persoane odată.",
+          "rateLimited": "Ai atins numărul maxim de invitații permise pe zi. Încearcă din nou mâine."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "aspect",
+        "1": "widget-uri",
+        "2": "dimensiune text",
+        "3": "resetare aspect"
+      },
+      "sources": {
+        "0": "știri",
+        "1": "fluxuri",
+        "2": "RSS",
+        "3": "regiuni",
+        "4": "presă"
+      },
+      "notifications": {
+        "0": "alerte",
+        "1": "Telegram",
+        "2": "Slack",
+        "3": "e-mail",
+        "4": "Discord",
+        "5": "webhook",
+        "6": "notificări push"
+      },
+      "display": {
+        "0": "temă",
+        "1": "întunecat",
+        "2": "luminos",
+        "3": "font",
+        "4": "limbă",
+        "5": "mărime text"
+      },
+      "map": {
+        "0": "glob",
+        "1": "furnizor",
+        "2": "plăci",
+        "3": "hartă de bază"
+      },
+      "ai": {
+        "0": "IA",
+        "1": "Ollama",
+        "2": "cadre",
+        "3": "memorie titluri",
+        "4": "model browser"
+      },
+      "video": {
+        "0": "flux",
+        "1": "redare automată",
+        "2": "calitate",
+        "3": "în direct"
+      },
+      "apiKeys": {
+        "0": "cheie",
+        "1": "token",
+        "2": "cheie desktop"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "cheie embed"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "agenți",
+        "3": "ChatGPT",
+        "4": "clienți"
+      },
+      "sync": {
+        "0": "import",
+        "1": "export",
+        "2": "backup",
+        "3": "cloud"
+      },
+      "about": {
+        "0": "termeni",
+        "1": "confidențialitate",
+        "2": "licență",
+        "3": "aspecte legale"
+      },
+      "account": {
+        "0": "plan",
+        "1": "facturare",
+        "2": "abonament",
+        "3": "factură",
+        "4": "locuri",
+        "5": "deconectare",
+        "6": "ștergere cont"
+      }
+    }
   }
 }

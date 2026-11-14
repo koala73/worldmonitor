@@ -1,5 +1,5 @@
 import type { SatRec } from 'satellite.js';
-import type { SensorCategory, SensorProfile } from './sensor-profiles.js';
+import type { Footprint, SensorCategory, SensorProfile } from './sensor-profiles.js';
 
 /** Published OMM mean elements in CelesTrak's JSON form. */
 export interface OmmRecord {
@@ -76,6 +76,16 @@ export const PASS_MIN_ELEVATION_DEG: number;
 export const EDGE_OF_SWATH_KM: number;
 /** Longest search or ground-track window; longer or unordered windows, bounds outside the Date range, or bounds more than ORBIT_ELEMENTS_MAX_AGE_DAYS + PASS_WINDOW_MAX_DAYS from the element epoch throw a RangeError. */
 export const PASS_WINDOW_MAX_DAYS: number;
+
+/** A sensor's footprint as a band of ground range either side of the ground track. */
+export interface FootprintBand {
+  nearKm: number;
+  farKm: number;
+  sides: Array<'left' | 'right'>;
+}
+
+/** The band of ground range from the ground track the sensor sees, on the sides it can look. */
+export function footprintBand(footprint: Footprint, altitudeKm: number): FootprintBand;
 
 export function parseOrbitElements(omm: OmmRecord): OrbitElements;
 

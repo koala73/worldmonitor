@@ -1477,6 +1477,9 @@
       "references": [
         {
           "path": "scripts/_weather-alert-select.mjs"
+        },
+        {
+          "path": "scripts/lib/grid-clock-sources.mjs"
         }
       ]
     },
@@ -2389,11 +2392,11 @@
     },
     {
       "host": "celestrak.org",
-      "provider": "celestrak.org",
+      "provider": "CelesTrak",
       "kind": "structured",
       "observed": true,
-      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
-      "attribution": "Credit celestrak.org and link to the original upstream API/dataset.",
+      "license": "Public U.S. Space Force GP orbit elements republished by CelesTrak; CelesTrak usage terms apply and require review",
+      "attribution": "Orbit elements from CelesTrak; link to celestrak.org.",
       "status": "terms-review",
       "references": [
         {
@@ -3372,9 +3375,6 @@
         },
         {
           "path": "scripts/seed-aviation.mjs"
-        },
-        {
-          "path": "server/worldmonitor/aviation/v1/_shared.ts"
         }
       ]
     },
@@ -6677,6 +6677,20 @@
       ]
     },
     {
+      "host": "massoutage.com",
+      "provider": "massoutage.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "MassOutage API and compilations CC BY 4.0. Upstream terms continue to apply.",
+      "attribution": "Credit MassOutage (massoutage.com), link to the source and license, and identify the calculated change in state totals.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/grid-clock-sources.mjs"
+        }
+      ]
+    },
+    {
       "host": "masterpl.hls.nhkworld.jp",
       "provider": "masterpl.hls.nhkworld.jp",
       "kind": "feed",
@@ -7383,6 +7397,9 @@
         },
         {
           "path": "server/worldmonitor/infrastructure/v1/reverse-geocode.ts"
+        },
+        {
+          "path": "server/worldmonitor/infrastructure/v1/search-place.ts"
         }
       ]
     },
@@ -9668,9 +9685,6 @@
         },
         {
           "path": "scripts/seed-capital-flows.mjs"
-        },
-        {
-          "path": "server/worldmonitor/economic/v1/_bis-shared.ts"
         }
       ]
     },
@@ -12165,6 +12179,20 @@
       "references": [
         {
           "path": "scripts/china-policy/adapters.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.caiso.com",
+      "provider": "www.caiso.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.caiso.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/grid-clock-sources.mjs"
         }
       ]
     },
@@ -15737,6 +15765,9 @@
           "path": "scripts/lib/email-unsubscribe.cjs"
         },
         {
+          "path": "scripts/lib/grid-clock-sources.mjs"
+        },
+        {
           "path": "scripts/lib/internal-links.mjs"
         },
         {
@@ -15816,6 +15847,9 @@
         },
         {
           "path": "src/services/country-brief-source.ts"
+        },
+        {
+          "path": "src/services/orbital/credits.ts"
         }
       ]
     },
@@ -16011,6 +16045,20 @@
       "references": [
         {
           "path": "scripts/seed-fuel-prices.mjs"
+        }
+      ]
+    },
+    {
+      "host": "wwwmobile.caiso.com",
+      "provider": "wwwmobile.caiso.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "California ISO public website terms. Use factual emergency notice types and times.",
+      "attribution": "Credit California ISO and link to its emergency notifications.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/grid-clock-sources.mjs"
         }
       ]
     },

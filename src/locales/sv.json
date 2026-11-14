@@ -109,7 +109,8 @@
     "climateNews": "Klimatnyheter",
     "fx": "Valutakurser",
     "ukmtoIncidents": "UKMTO-incidenter",
-    "reservoirLevels": "Strategiska vattennivåer"
+    "reservoirLevels": "Strategiska vattennivåer",
+    "gridDisruptionClock": "Klocka för elavbrott i USA:s delstater"
   },
   "commands": {
     "prefixes": {
@@ -2802,6 +2803,57 @@
         "measured": "Mätt",
         "sparkline": "Vattennivå över 36 månader"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Välj delstat",
+      "unknown": "Okänt",
+      "customers": "Kunder utan el enligt rapporterna",
+      "lastCustomers": "Kunder utan el i senaste rapporten",
+      "denominatorUnknown": "Totalt antal bevakade kunder är okänt",
+      "tracked": "{{amount}} kunder bevakas",
+      "dataAge": "Tid sedan rapporten",
+      "minutes": "{{amount}} min",
+      "hours": "{{amount}} h",
+      "warnings": "Varningar",
+      "recovery": "Rapporterade förändringar",
+      "decreased": "{{amount}} färre kunder utan el enligt rapporterna",
+      "increased": "{{amount}} fler kunder utan el enligt rapporterna",
+      "unchanged": "Det rapporterade antalet är oförändrat",
+      "since": "sedan",
+      "peakLoad": "{{percent}} % av normal topplast återställd",
+      "noComparison": "Jämförbara uppgifter om antal kunder utan el saknas.",
+      "history": "Senaste uppgifter om antal kunder utan el ({{total}})",
+      "priorNotice": "Tidigare rapporterad varning",
+      "sources": "Bevakade varningskällor",
+      "operatorLink": "För meddelanden om elnätet, se",
+      "issued": "Utfärdad",
+      "until": "gäller till",
+      "noActive": "Inga aktiva varningar i de bevakade källorna.",
+      "unknownWarnings": "Vissa varningskällor är inte tillgängliga just nu.",
+      "noObservation": "Aktuellt antal och täckning är okända.",
+      "loadError": "Uppgifter om elavbrott är inte tillgängliga.",
+      "retained": "Uppdateringen misslyckades. Den senast mottagna rapporten visas.",
+      "phase": {
+        "unknown": "Okänd påverkan",
+        "monitoring": "Bevakning",
+        "watch": "Förhöjd beredskap",
+        "disrupted": "Elavbrott rapporterade",
+        "recovering": "Återställning pågår enligt rapport",
+        "restored": "Elförsörjningen återställd enligt rapport"
+      },
+      "kind": {
+        "grid": "Meddelande om elnätet",
+        "weather": "Vädervarning",
+        "space-weather": "Rymdväder"
+      },
+      "checks": {
+        "available": "Kontrollerad",
+        "unavailable": "Ej tillgänglig",
+        "not_monitored": "Kontrollera direkt med nätoperatören",
+        "stale": "Senaste kontrollen är inaktuell"
+      },
+      "warningAge": "Tid sedan den första varning som ännu gäller",
+      "days": "{{amount}} d"
     }
   },
   "popups": {
@@ -4352,7 +4404,6 @@
     "dataAndCommunity": "Data & Gemenskap",
     "theme": "Tema",
     "themeDesc": "Automatiskt följer systeminställningar.",
-    "themeAuto": "Automatisk (följ systemet)",
     "themeDark": "Mörk",
     "themeLight": "Ljus",
     "mapProvider": "Kartpanel-leverantör",
@@ -4411,7 +4462,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Öppna landsöversikt",
-    "copyCoordinates": "Kopiera koordinater"
+    "copyCoordinates": "Kopiera koordinater",
+    "satellitePasses": "Satellitpassager här"
   },
   "shell": {
     "documentTitle": "World Monitor — Realtidsinstrumentpanel för global underrättelse",
@@ -4508,6 +4560,7 @@
     "createAccount": "Skapa konto",
     "freeReason": "Gratis: spara layout, följ länder, aviseringar",
     "settings": "Inställningar",
+    "planBilling": "Plan & fakturering",
     "passkeyOffer": {}
   },
   "mcp": {
@@ -5110,5 +5163,552 @@
     "errGeneric": "Utkastet kunde inte byggas. Försök igen.",
     "errDownload": "Filen kunde inte laddas ned här. Använd Skriv ut eller spara som PDF istället.",
     "errLoad": "Resebedömningen kunde inte öppnas. Ladda om sidan och försök igen."
+  },
+  "orbitalWatch": {
+    "track": {
+      "unavailable": "Markspåret för den här passagen kunde inte ritas"
+    },
+    "replay": {
+      "acquisition": "UPPTAGNING · {{name}}",
+      "acquired": "TAGEN {{time}} · {{resolution}}",
+      "play": "Spela upp",
+      "pause": "Pausa uppspelning",
+      "scrub": "Uppspelningsposition",
+      "reducedMotion": "REDUCERAD RÖRELSE"
+    },
+    "computing": "Läser in satellitkatalogen…",
+    "computingProgress": "Beräknar passager: {{done}} av {{total}} satelliter",
+    "unavailable": "Satellitkatalogen kunde inte läsas in, så inga passager beräknades för den här punkten.",
+    "checkingArchives": "Kontrollerar arkiv: {{done}} av {{total}} har svarat",
+    "confirmedCount": "Bekräftade bilder: {{count}}",
+    "counts": {
+      "mosaics": "Dagliga mosaiker: {{count}}",
+      "frames": "Väderbilder: {{count}}",
+      "inRange": "Passager inom räckvidd: {{count}}"
+    },
+    "partial": "{{sources}} svarade inte, så vissa passager kan sakna bilder.",
+    "stale": "Banddata är inaktuella. Satellitkatalogen är {{age}} gammal, så passagetiderna kan avvika.",
+    "empty": "Ingen registrerad avbildningssatellit har passerat över den här punkten under de senaste {{pastDays}} dagarna eller gör det inom de närmaste {{futureHours}} timmarna.",
+    "sources": "Källor · {{count}}",
+    "sourcesDocs": "Hur dessa källor används",
+    "privacy": "Den här punkten stannar i din webbläsare. Den skickas bara till de offentliga arkiv som webbläsaren anropar direkt: Earth Search, Microsoft Planetary Computer, NASA GIBS och EUMETSAT. Sökning på ortnamn är det enda undantaget: namnet du skriver skickas till ortnamnssöktjänsten.",
+    "inRange": "inom räckvidd",
+    "tier": {
+      "checking": "kontrollerar arkiv",
+      "confirmed": "bekräftad bild",
+      "likely": "troligen avbildad",
+      "opportunity": "kommande passage",
+      "dailyMosaic": "i daglig mosaik",
+      "withinReach": "inom räckvidd",
+      "capabilityOverhead": "förmåga överhead",
+      "passedOverhead": "passerade över",
+      "unmatchedImage": "bild utan beräknad passage",
+      "weatherFrame": "väderbild",
+      "unavailable": "inte tillgänglig"
+    },
+    "row": {
+      "offNadir": "{{deg}}° från nadir",
+      "distance": "{{km}} km från markspåret",
+      "orbitAge": "banddata {{age}} gamla",
+      "edgeOfSwath": "Kanten av svepet",
+      "notInArchive": "Ingen bild i arkivet",
+      "archiveUnanswered": "Arkivet svarade inte",
+      "imageAlt": "Bild från {{name}}, {{time}}",
+      "mosaicDays": "Dagar i arkivet: {{count}}",
+      "cadence": "ny bild var {{minutes}}:e minut",
+      "sourceUnavailable": "Arkivet har inga bilder från den här källan för dessa dagar.",
+      "imageLoading": "Läser in bild…",
+      "imageFailed": "Bilden lästes inte in. Arkivet kan vara långsamt eller nere.",
+      "noPreview": "Arkivet har ännu ingen förhandsvisning av den här scenen."
+    },
+    "dailyMosaics": "dagliga mosaiker",
+    "weatherFrames": "väderbilder",
+    "ui": {
+      "change": "Ändra",
+      "share": "Dela",
+      "shareCopied": "Länk kopierad",
+      "headline": "Under de senaste {{days}} dagarna passerade {{satellites}} över {{place}}.",
+      "satellites_one": "{{count}} satellit",
+      "satellites_other": "{{count}} satelliter",
+      "subline_one": "{{count}} bild publicerades.",
+      "subline_other": "{{count}} bilder publicerades.",
+      "closestLook": "Närmaste blick",
+      "replay": "Spela upp",
+      "openFull": "Öppna helvy",
+      "previous": "Föregående bild",
+      "next": "Nästa bild",
+      "passes_one": "passage",
+      "passes_other": "passager",
+      "showAll": "Visa alla passager",
+      "noRecentDays": "Inga färska dagar i arkivet: {{sources}}",
+      "tab": {
+        "all": "Alla",
+        "detailed": "Detaljerat",
+        "weather": "Väder"
+      },
+      "caption": {
+        "clear": "Klart vid punkten",
+        "clearSceneCloud": "Klart vid punkten · scenens molnighet {{pct}} %",
+        "clouded": "Molnigt · {{pct}} %",
+        "cloudShadow": "Molnskugga",
+        "spotNotChecked": "Platsen ej kontrollerad för moln",
+        "sceneCloud": "Scenens molnighet {{pct}} % · platsen ej kontrollerad",
+        "radar": "Radarbild",
+        "dailyMosaic": "Dagligt mosaik",
+        "geostationary": "Geostationär helskiva",
+        "geostationaryCadence": "Geostationär · var {{minutes}}:e min"
+      },
+      "tile": {
+        "failed": "Bild ej tillgänglig · {{archive}}",
+        "noPreview": "Arkivet har ännu ingen förhandsvisning av scenen"
+      },
+      "grid": {
+        "watched": "Bevakad",
+        "watchedDef": "Ett offentligt arkiv har en bild av platsen.",
+        "likely": "Troligen bevakad",
+        "likelyDef": "En sensor med fast stråk täckte den; ingen bild publicerad ännu.",
+        "could": "Kunde ha riktats hit",
+        "couldDef": "En styrbar eller kommersiell sensor var inom räckhåll; operatören säger inte om den tittade.",
+        "overhead": "Passerade över",
+        "overheadDef": "Korsade himlen här, utan bildbevis.",
+        "watchedShort": "Bild i ett offentligt arkiv",
+        "likelyShort": "Täckt, ingen bild än",
+        "likelyUnansweredDef": "En sensor med fast stråk täckte den; ett arkiv svarade inte, så en bild kan finnas.",
+        "likelyUnansweredShort": "Täckt, arkivet svarade inte",
+        "couldShort": "Riktbar sensor inom räckhåll",
+        "overheadShort": "Överflygning, ingen bild"
+      },
+      "group": {
+        "watched": "bevakade",
+        "likely": "troligen bevakade",
+        "upcoming": "kommande",
+        "could": "som kunde ha riktats hit",
+        "overhead": "som passerade över",
+        "weather_one": "väderkälla",
+        "weather_other": "väderkällor"
+      },
+      "order": {
+        "closest": "Närmaste blick, sedan nyaste",
+        "newest": "Nyaste först",
+        "soonest": "Närmast i tid först"
+      },
+      "row": {
+        "cloud": "Moln {{pct}} %",
+        "days_one": "{{count}} dag",
+        "days_other": "{{count}} dagar",
+        "repeats": "{{count}} passager av satelliten i gruppen"
+      },
+      "section": {
+        "summary": "Sammanfattning",
+        "passes": "Passager"
+      },
+      "status": {
+        "objects": "{{count}} avbildande satelliter · CelesTrak GP",
+        "fetched": "Hämtad {{time}} · {{ago}}",
+        "sun": "Sol {{point}} · subsolär punkt"
+      },
+      "step": {
+        "computing": "Beräknar",
+        "catalogLoading": "Katalog · laddar",
+        "catalog": "Katalog · {{count}} avbildande satelliter",
+        "propagating": "Beräknar banor · {{done}} / {{total}}",
+        "archives": "Arkiv · {{done}} / {{total}} svarade",
+        "matching": "Matchar scener mot {{passes}} passager",
+        "window": "7-dagarsfönster · {{start}} → {{end}}",
+        "failed": "Misslyckades",
+        "note": "Planetary Computer och NASA GIBS skapar bilder på begäran, så steget kan ta några sekunder."
+      },
+      "privacyLine": "Punkten stannar i din webbläsare",
+      "privacyHow": "Hur",
+      "sources": "Källor",
+      "archiveScene": "Arkivscen",
+      "archiveOnly": "Ingen beräknad överflygning matchar dessa bilder, så de visas som arkivscener.",
+      "zoneShowUtc": "Visa tider i UTC",
+      "zoneShowLocal": "Visa tider i platsens lokala tid"
+    },
+    "viewer": {
+      "open": "Öppna bildvisaren: {{image}}",
+      "bestView": "Öppna bästa vyn: {{name}}, {{time}}",
+      "imageAlt": "Bild av {{name}}, {{time}}",
+      "close": "Stäng bildvisaren",
+      "northUp": "Norr är uppåt",
+      "unreferenced": "Orientering som arkivet levererar den; norr är inte markerat",
+      "compareDates": "Andra datum i denna samling",
+      "compareNone": "Ingen annan scen i denna samling att jämföra med.",
+      "divider": "Avdelare före/efter",
+      "searching": "Söker scener av platsen från de senaste {{days}} dagarna",
+      "historyFailed": "{{archive}} svarade inte, så tidigare scener saknas.",
+      "historyTimeout": "{{archive}} svarade inte i tid, så tidigare scener saknas.",
+      "loading": "Läser in bilder: {{loaded}} av {{total}}",
+      "pause": "Pausa",
+      "resume": "Spela",
+      "next": "Nästa bild",
+      "closeLabel": "Stäng",
+      "agoNow": "Nyss",
+      "agoHours": "för {{count}} h sedan",
+      "agoDays": "för {{count}} d sedan",
+      "clear": "Klart",
+      "clouded": "Molnigt · {{pct}} %",
+      "tabImage": "Bild",
+      "tabChange": "Förändring",
+      "metaAcquired": "Tagen",
+      "metaDate": "Datum",
+      "metaPixel": "Pixel",
+      "metaSpot": "Moln på platsen",
+      "metaScene": "Moln i scenen",
+      "metaSun": "Solhöjd",
+      "showCloudy": "Visa molniga datum ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Tidsförlopp",
+      "entry": "Den här platsen, år för år",
+      "open": "Öppna platsens tidsförlopp år för år",
+      "searching": "Söker en klar bild per år sedan 2015 · {{archive}}",
+      "loading": "Läser in bilder · {{loaded}} / {{total}}",
+      "failed": "{{archive}} svarade inte, så årsbilderna saknas.",
+      "timeout": "{{archive}} svarade inte i tid, så årsbilderna saknas.",
+      "partial": "År som saknas eftersom {{archive}} inte svarade: {{count}}.",
+      "tooFew": "Klara årsbilder av platsen: {{count}}. Ett tidsförlopp behöver {{min}}.",
+      "total": "Klara bilder: {{count}} · en per år",
+      "years": "År",
+      "share": "Dela",
+      "method": "Varje bild är samma 6 km-ruta från Sentinel-2 i naturliga färger. Varje år söks en annan årstid och den minst molniga scenen behålls; ett år utan scen under 30 % moln utelämnas."
+    },
+    "passDetail": {
+      "back": "Alla passager",
+      "altitude": "Höjd",
+      "offNadir": "Från nadir",
+      "crossed": "{{name}} passerade på {{altitude}} km höjd, {{distance}} km {{direction}}, kl. {{time}}, med {{speed}} km/s över marken.",
+      "crossedHeading": "{{name}} passerade på {{altitude}} km höjd, {{distance}} km {{direction}}, kl. {{time}}, på väg {{heading}} med {{speed}} km/s över marken.",
+      "looking": "Den tittade {{deg}}° från rakt ned.",
+      "sceneCloud": "Molntäcke i scenen: {{pct}} %.",
+      "pixelLine": "{{m}} m pixel",
+      "swathLine": "{{km}} km stråk",
+      "clearestLook": "Klaraste bilden",
+      "previous": "Föregående passage",
+      "next": "Nästa passage",
+      "dir": {
+        "n": "norrut",
+        "ne": "åt nordost",
+        "e": "österut",
+        "se": "åt sydost",
+        "s": "söderut",
+        "sw": "åt sydväst",
+        "w": "västerut",
+        "nw": "åt nordväst"
+      },
+      "heading": {
+        "north": "norrut",
+        "south": "söderut"
+      }
+    },
+    "search": {
+      "label": "Platsnamn eller koordinater",
+      "placeholder": "Platsnamn eller 48.8584, 2.2945",
+      "submit": "Sök",
+      "locate": "Använd min plats",
+      "hint": "Koordinater och din plats stannar i den här webbläsaren. Ett platsnamn du söker skickas till WorldMonitor och till OpenStreetMaps Nominatim.",
+      "results": "Matchande platser",
+      "searching": "Söker…",
+      "tooShort": "Skriv minst två tecken, eller koordinater som 48.8584, 2.2945.",
+      "invalidCoordinates": "De koordinaterna ligger utanför jordklotet. Latitud går från -90 till 90 och longitud från -180 till 180.",
+      "failed": "Platssökningen är inte tillgänglig just nu. Koordinater och kartan fungerar fortfarande.",
+      "noResults": "Ingen plats matchade det namnet.",
+      "locating": "Hämtar din plats…",
+      "locationDenied": "Platsbehörigheten nekades. Sök efter en plats eller högerklicka på kartan i stället.",
+      "locationUnavailable": "Din plats kunde inte hittas. Sök efter en plats eller högerklicka på kartan i stället.",
+      "idle": "Sök efter en plats med namn eller koordinater, använd din plats, eller högerklicka på kartan för att se vilka satelliter som passerat över den."
+    },
+    "share": {
+      "copy": "Kopiera delningslänk",
+      "copied": "Länken kopierad",
+      "copyManually": "Kopiera länken nedan",
+      "link": "Delningslänk",
+      "dismiss": "Stäng",
+      "passOutsideWindow": "Den länkade passagen ligger utanför det aktuella fönstret, så ingen passage är vald.",
+      "passNotFound": "Den länkade passagen hittades inte bland de omräknade passagerna, så ingen passage är vald."
+    },
+    "timeline": {
+      "now": "nu",
+      "nowAt": "Nu: {{time}}",
+      "density": "Överflygningar {{label}}, {{start}} till {{end}}: {{count}}",
+      "daylight": "Dagsljus vid punkten från {{start}} till {{end}}",
+      "unavailable": "ej tillgänglig",
+      "notRetained": "inga data denna vecka",
+      "notRetainedSpan": "{{label}}: inga data från {{start}} till {{end}}",
+      "countryWide": "hela landet",
+      "source": {
+        "conflict": "Konflikter",
+        "fires": "Bränder",
+        "unrest": "Oroligheter",
+        "outages": "Internetavbrott"
+      },
+      "live": {
+        "vessels": "Fartygstrafik",
+        "militaryFlights": "Militära flygningar",
+        "gpsJamming": "GPS-störning"
+      },
+      "name": "Tidslinje",
+      "span": "{{days}} dagar · nästa {{hours}} h",
+      "daylightHere": "Dagsljus här",
+      "row": {
+        "geo": "Geo",
+        "photo": "Foto",
+        "likely": "Troligt",
+        "could": "Möjligt",
+        "overhead": "Överflygning"
+      },
+      "retained": "{{start}} till {{end}}",
+      "retainedDay": "endast {{day}}",
+      "geoLine": "Geostationära i sikte: {{names}}",
+      "away": "{{km}} km bort"
+    }
+  },
+  "settings": {
+    "back": "Tillbaka till inställningar",
+    "signIn": {
+      "label": "Logga in",
+      "desc": "Synka inställningar och hantera din plan"
+    },
+    "summary": {
+      "themeAuto": "Automatiskt",
+      "count": "{{on}} av {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Preferenser",
+      "developer": "Utvecklare",
+      "app": "App"
+    },
+    "sections": {
+      "account": "Konto",
+      "map": "Karta",
+      "ai": "AI & analys",
+      "video": "Video & strömmar",
+      "apiKeys": "API-nycklar",
+      "embeds": "Inbäddningar",
+      "aiAgents": "AI-agenter (MCP)",
+      "sync": "Synk, import & export",
+      "about": "Om"
+    },
+    "descriptions": {
+      "panels": "Visa, dölj och ordna om",
+      "sources": "Regioner och flöden",
+      "notifications": "Kanaler och varningsregler",
+      "display": "Tema, typsnitt och språk",
+      "map": "Leverantör, tema och globus",
+      "ai": "Modeller, minne och ramverk",
+      "video": "Kvalitet och autoplay",
+      "apiKeys": "Nycklar för World Monitor API",
+      "embeds": "Widgets för din egen webbplats",
+      "aiAgents": "Anslutna MCP-klienter",
+      "about": "Webbplatslinks, villkor och sekretess"
+    },
+    "signOut": "Logga ut",
+    "signOutFailed": "Det gick inte att logga ut. Försök igen.",
+    "search": {
+      "empty": "Inga inställningar matchar"
+    },
+    "account": {
+      "intro": "Se din aktuella plan och hantera betalningsuppgifter, fakturor eller uppsägning.",
+      "planFree": "Gratis",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Premiumåtkomst",
+        "desc": "Denna åtkomst faktureras inte via ditt WorldMonitor-konto. Ingen betalningsmetod eller fakturor är tillgängliga här."
+      },
+      "checking": {
+        "heading": "Kontrollerar din plan…",
+        "desc": "Detta tar vanligtvis bara ett ögonblick."
+      },
+      "status": {
+        "cancelScheduled": "Uppsägning planerad – åtkomst till {{date}}",
+        "renews": "Förnyas: {{date}}",
+        "onHold": "Pausad – uppdatera din betalningsmetod",
+        "cancelled": "Uppsagd – åtkomst till {{date}}",
+        "expired": "Utgången",
+        "unknown": "Se Hantera fakturering för detaljer om din aktuella plan.",
+        "ownerManaged": "Faktureringen hanteras av planägaren."
+      },
+      "upgradeToBusiness": "Uppgradera till Business",
+      "unavailable": {
+        "heading": "Planstatus ej tillgänglig",
+        "desc": "Vi kunde inte verifiera din aktuella plan. Försök igen eller visa planer i en ny flik."
+      },
+      "free": {
+        "heading": "WorldMonitor Gratis",
+        "desc": "Din aktuella plan är Gratis. Uppgradera för alla paneler, AI-analys och prioriterad datauppdatering."
+      },
+      "portal": {
+        "openFailed": "Kunde inte öppna faktureringsportalen. Tillåt popup-fönster och försök igen.",
+        "unavailable": "Faktureringsportalen är inte tillgänglig. Mejla support@worldmonitor.app för hjälp."
+      },
+      "deletion": {
+        "heading": "Radera konto",
+        "desc": "Radera detta World Monitor-konto permanent. Prenumerationer avslutas omedelbart utan återbetalning av återstående förbetald tid. API-nycklar, embed-nycklar och MCP-tokens slutar fungera. Faktureringsposter som krävs för bokföring, tvister och lagliga förfrågningar sparas tillsammans med de kundkontaktuppgifter de innehåller; de kopplas inte längre till ditt inloggningskonto, men webhook-loggar från betalningsleverantören som skrevs före raderingen behåller de identifierare de levererades med. Inställningar för instrumentpanelen och skrivbordsappens hemligheter i nyckelringen på den här enheten raderas inte på distans.",
+        "dialogTitle": "Radera det här kontot?",
+        "dialogCopy": "Detta kan inte ångras. Prenumerationer avslutas, nycklar slutar fungera omedelbart och faktureringsposter sparas för bokföring, tvister och lagliga förfrågningar – inklusive de kontaktuppgifter de innehåller. Logga ut på andra enheter och rensa sedan den här enhetens webbplatsdata – det ligger utanför serverns räckvidd.",
+        "phraseLabel": "Skriv {{phrase}} för att bekräfta",
+        "deleted": "Konto raderat. Logga ut på andra enheter och rensa den här enhetens webbplatsdata.",
+        "failed": "Kontoradering misslyckades. Försök igen."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} använda",
+        "invite": "Bjud in",
+        "inviting": "Bjuder in...",
+        "remove": "Ta bort",
+        "removing": "Tar bort...",
+        "inviteSent": "Inbjudan skickad",
+        "alreadyInvited": "Redan inbjuden"
+      },
+      "businessSeats": {
+        "heading": "Business-platser",
+        "statusAccepted": "Accepterad",
+        "statusExpired": "Utgången",
+        "statusPending": "Väntande",
+        "expires": "Utgår {{date}}",
+        "hintCorporate": "Bjud in kollegor med en e-postadress på valfri företagsdomän.",
+        "hintPersonal": "Lägg till en e-postadress på en företagsdomän för att bjuda in kollegor.",
+        "personalDomain": "Gratis- eller engångsdomäner för e-post kan inte bjuda in kollegor. Lägg till en e-postadress på en företagsdomän för att använda funktionen.",
+        "empty": "Ingen inbjuden än.",
+        "confirmRemove": "Ta bort denna plats? Den inbjudna förlorar Pro-åtkomsten omedelbart.",
+        "removed": "Plats borttagen",
+        "alreadyInactive": "Platsen var redan inaktiv",
+        "loadFailed": "Det gick inte att läsa in platserna",
+        "inviteFailed": "Det gick inte att skicka inbjudan",
+        "removeFailed": "Det gick inte att ta bort platsen",
+        "errors": {
+          "seatCap": "Alla 4 platser är använda. Ta bort en plats först.",
+          "ownerDomain": "Ditt kontos e-postadress måste ha en företagsdomän för att du ska kunna bjuda in kollegor.",
+          "self": "Du kan inte bjuda in dig själv.",
+          "inviteeDomain": "Den inbjudnas e-postadress måste ha en företagsdomän."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "Enterprise-platser för {{account}}",
+        "memberHint": "Din kontoadministratör lägger till och tar bort personer på detta konto.",
+        "hintFull": "Alla platser används. Ta bort någon eller dra tillbaka en inbjudan för att frigöra en plats.",
+        "hintOpen": "Bjud in personer via deras e-postadress på företaget. De får en länk som är giltig i 14 dagar och delar det här kontots kvot.",
+        "emailLabel": "E-postadress att bjuda in",
+        "statusActive": "Aktiv",
+        "statusExpired": "Inbjudan utgången",
+        "statusInvited": "Inbjuden",
+        "emailFailed": "Inbjudningsmejlet kunde inte skickas. Kontrollera adressen, dra sedan tillbaka inbjudan och bjud in igen.",
+        "inviteExpires": "Inbjudan utgår {{date}}",
+        "roleAdmin": "Administratör",
+        "you": "Du",
+        "withdraw": "Dra tillbaka",
+        "unknownEmail": "Okänd e-postadress",
+        "alreadyMember": "Redan medlem",
+        "confirmRemove": "Ta bort {{email}}? Personen förlorar Enterprise-åtkomsten omedelbart.",
+        "confirmRemoveUnknown": "Ta bort denna person? Personen förlorar Enterprise-åtkomsten omedelbart.",
+        "confirmWithdraw": "Dra tillbaka inbjudan till {{email}}?",
+        "confirmWithdrawUnknown": "Dra tillbaka inbjudan till denna adress?",
+        "removed": "Medlem borttagen",
+        "withdrawn": "Inbjudan tillbakadragen",
+        "loadFailed": "Kunde inte ladda platser. Försök igen.",
+        "inviteFailed": "Kunde inte skicka inbjudan. Försök igen.",
+        "removeFailed": "Kunde inte ta bort. Försök igen.",
+        "errors": {
+          "seatCap": "Alla platser är redan tagna. Ta bort någon eller dra tillbaka en inbjudan först.",
+          "inviteeDomain": "Bjud in en e-postadress på en företagsdomän. Gratis- och engångsdomäner för e-post accepteras inte.",
+          "self": "Du har redan en plats.",
+          "contractEnded": "Ditt Enterprise-avtal har upphört. Kontakta support för att förnya.",
+          "notAdmin": "Endast kontoadministratören kan hantera platser.",
+          "removeSelf": "Du kan inte ta bort din egen plats. Kontakta support för att byta administratör.",
+          "tooMany": "Bjud in högst 10 personer åt gången.",
+          "rateLimited": "Du har skickat maximalt antal inbjudningar per dag. Försök igen imorgon."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "layout",
+        "1": "widgets",
+        "2": "textstorlek",
+        "3": "återställ layout"
+      },
+      "sources": {
+        "0": "nyheter",
+        "1": "flöden",
+        "2": "RSS",
+        "3": "regioner",
+        "4": "nyhetsrapportering"
+      },
+      "notifications": {
+        "0": "aviseringar",
+        "1": "Telegram",
+        "2": "Slack",
+        "3": "e-post",
+        "4": "Discord",
+        "5": "webhook",
+        "6": "push"
+      },
+      "display": {
+        "0": "tema",
+        "1": "mörk",
+        "2": "ljus",
+        "3": "typsnitt",
+        "4": "språk",
+        "5": "textstorlek"
+      },
+      "map": {
+        "0": "glob",
+        "1": "leverantör",
+        "2": "tiles",
+        "3": "baskarta"
+      },
+      "ai": {
+        "0": "AI",
+        "1": "Ollama",
+        "2": "ramverk",
+        "3": "rubrikinne",
+        "4": "webbläsarmodell"
+      },
+      "video": {
+        "0": "stream",
+        "1": "automatisk uppspelning",
+        "2": "kvalitet",
+        "3": "live"
+      },
+      "apiKeys": {
+        "0": "nyckel",
+        "1": "token",
+        "2": "skrivbordsnyckel"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "inbäddningsnyckel"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "agenter",
+        "3": "ChatGPT",
+        "4": "klienter"
+      },
+      "sync": {
+        "0": "importera",
+        "1": "exportera",
+        "2": "säkerhetskopia",
+        "3": "moln"
+      },
+      "about": {
+        "0": "villkor",
+        "1": "sekretess",
+        "2": "licens",
+        "3": "juridik"
+      },
+      "account": {
+        "0": "radera konto",
+        "1": "fakturering",
+        "2": "prenumeration",
+        "3": "faktura",
+        "4": "platser",
+        "5": "logga ut",
+        "6": "ta bort konto"
+      }
+    }
   }
 }

@@ -80,7 +80,7 @@ describe('point passes over REST', () => {
       const render = PLANETARY_COMPUTER_NATURAL_COLOUR[url.searchParams.get('collection') ?? ''];
       assert.ok(render, `${url.searchParams.get('collection')} has a natural-colour rendering`);
       assert.deepEqual(url.searchParams.getAll('assets'), render.filter(([key]) => key === 'assets').map(([, value]) => value));
-      assert.equal(url.searchParams.get('color_formula'), render.find(([key]) => key === 'color_formula')?.[1]);
+      assert.equal(url.searchParams.get('color_formula'), render.find(([key]) => key === 'color_formula')?.[1] ?? null);
       assert.ok(!url.searchParams.getAll('assets').includes('visual'), 'not the clipped visual asset');
     }
   });

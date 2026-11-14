@@ -28,7 +28,7 @@ Regional panels scope the world to one macro-region's news stream, with language
 | `latam` | Latin America | Full |
 | `asia` | Asia-Pacific | Full |
 
-All free. Source curation and entitlement live in `src/config/variants/full.ts` (and equivalents).
+All free. Sources are curated in `shared/news-catalog.json` and grouped per variant in `src/config/feeds.ts`.
 
 ## Topical news
 
@@ -73,7 +73,7 @@ The tech variant ships a large family of content streams covering the startup ec
 | `security` | Security |
 | `github` | GitHub |
 
-All free. Specific sub-feeds are configured in `src/config/variants/tech.ts`.
+All free. Sub-feeds come from the `tech` edition of `shared/news-catalog.json`.
 
 ## Finance streams (finance variant)
 
@@ -91,7 +91,7 @@ The finance variant's content-stream panels are tighter and market-focused.
 | `commodity-regulation` | Regulation & Policy |
 | `analysis` | Market Analysis |
 
-All free. Stream configuration lives in `src/config/variants/finance.ts`.
+All free. Streams come from the `finance` edition of `shared/news-catalog.json`.
 
 ## Energy streams (energy variant)
 
@@ -105,8 +105,7 @@ are served by the `energy` server digest.
 | `energy` | Energy Markets News |
 | `supply-chain` | Chokepoints & Routes |
 
-All free. Stream configuration lives in `src/config/variants/energy.ts` and
-`src/config/feeds.ts`.
+All free. Streams come from the `energy` edition of `shared/news-catalog.json`.
 
 ## Happy variant feeds
 
@@ -126,7 +125,7 @@ The happy variant (positive-news product) replaces conflict-centric feeds with a
 | `gov` | Government Action |
 | `renewable` | Renewable Energy |
 
-All free. Stream configuration lives in `src/config/variants/happy.ts`.
+All free. Streams come from the `happy` edition of `shared/news-catalog.json`.
 
 ## Shared behaviour across all news panels
 

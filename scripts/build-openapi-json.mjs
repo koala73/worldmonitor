@@ -323,6 +323,7 @@ export const SCANNER_BUNDLE_EXCLUDED_OPERATIONS = Object.freeze({
   '/api/intelligence/v1/get-pizzint-status': 'Budget: the dashboard\'s Pentagon Pizza Index and tension popup read it, and its tension evidence schemas cost about 1.4 KB when 77 bytes were free. Served and documented in the IntelligenceService spec and the YAML bundle.',
   '/api/orbital/v1/get-point-passes': 'Budget: the per-point pass and image lookup does not fit the 25 bytes of headroom left after the catalog exclusion. Served, documented in the OrbitalService spec and the YAML bundle, and exposed to agents by MCP get_point_satellite_passes.',
   '/api/orbital/v1/get-country-imagery-evidence': 'Budget: the per-country watched-site satellite evidence does not fit the 25 bytes of headroom left after the catalog exclusion. Served, documented in the OrbitalService spec and the YAML bundle, and exposed to agents by MCP get_country_imagery_evidence.',
+  '/api/infrastructure/v1/search-place': 'Place-name search for the satellite pass lookup sheet; the bundle had about 25 bytes of headroom. Served and documented in the InfrastructureService spec and the YAML bundle.',
   '/api/orbital/v1/list-imaging-satellites': 'Budget: the imaging-satellite catalog read by the point lookup carries the full OMM element schema and puts the scanner bundle 5,552 bytes over its cap. Served and documented in the OrbitalService spec and the YAML bundle.',
 });
 

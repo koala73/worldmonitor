@@ -495,7 +495,8 @@
     "climateNews": "Notizie Clima",
     "fx": "Tassi di cambio",
     "ukmtoIncidents": "Incidenti UKMTO",
-    "reservoirLevels": "Livelli idrici strategici"
+    "reservoirLevels": "Livelli idrici strategici",
+    "gridDisruptionClock": "Orologio delle interruzioni elettriche negli Stati USA"
   },
   "commands": {
     "prefixes": {
@@ -3207,6 +3208,57 @@
         "measured": "Misurato",
         "sparkline": "Livello dell’acqua in 36 mesi"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Seleziona lo Stato",
+      "unknown": "Sconosciuto",
+      "customers": "Clienti senza elettricità secondo le segnalazioni",
+      "lastCustomers": "Clienti senza elettricità all’ultima rilevazione",
+      "denominatorUnknown": "Numero totale di clienti monitorati sconosciuto",
+      "tracked": "Clienti monitorati: {{amount}}",
+      "dataAge": "Dall’ultima rilevazione",
+      "minutes": "{{amount}} min",
+      "hours": "{{amount}} h",
+      "warnings": "Avvisi",
+      "recovery": "Variazioni segnalate",
+      "decreased": "Dalle segnalazioni risultano {{amount}} clienti in meno senza elettricità",
+      "increased": "Dalle segnalazioni risultano {{amount}} clienti in più senza elettricità",
+      "unchanged": "Il numero segnalato non è cambiato",
+      "since": "dal",
+      "peakLoad": "Ripristinato il {{percent}}% del normale carico di punta",
+      "noComparison": "Non sono disponibili dati confrontabili sui clienti senza elettricità.",
+      "history": "Rilevazioni recenti dei clienti senza elettricità ({{total}})",
+      "priorNotice": "Avviso segnalato in precedenza",
+      "sources": "Copertura delle fonti degli avvisi",
+      "operatorLink": "Per gli avvisi della rete, consultare",
+      "issued": "Emesso il",
+      "until": "scade il",
+      "noActive": "Nessun avviso in vigore nelle fonti monitorate.",
+      "unknownWarnings": "La copertura attuale degli avvisi è parziale.",
+      "noObservation": "Il conteggio e la copertura attuali non sono disponibili.",
+      "loadError": "I dati sulle interruzioni elettriche non sono disponibili.",
+      "retained": "Aggiornamento non riuscito. È visualizzata l’ultima rilevazione ricevuta.",
+      "phase": {
+        "unknown": "Impatto sconosciuto",
+        "monitoring": "Monitoraggio",
+        "watch": "Preallerta",
+        "disrupted": "Interruzioni segnalate",
+        "recovering": "Ripristino in corso segnalato",
+        "restored": "Servizio ripristinato secondo le segnalazioni"
+      },
+      "kind": {
+        "grid": "Avviso sulla rete elettrica",
+        "weather": "Allerta meteo",
+        "space-weather": "Meteorologia spaziale"
+      },
+      "checks": {
+        "available": "Verificata",
+        "unavailable": "Non disponibile",
+        "not_monitored": "Consultare direttamente il gestore",
+        "stale": "L’ultima verifica è troppo datata"
+      },
+      "warningAge": "Dal primo avviso ancora in vigore",
+      "days": "{{amount}} g"
     }
   },
   "popups": {
@@ -4374,7 +4426,6 @@
     "dataAndCommunity": "Dati e comunità",
     "theme": "Tema",
     "themeDesc": "Automatico segue le preferenze di sistema.",
-    "themeAuto": "Automatico (segui sistema)",
     "themeDark": "Scuro",
     "themeLight": "Chiaro",
     "mapProvider": "Provider tile mappa",
@@ -4433,7 +4484,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Apri scheda paese",
-    "copyCoordinates": "Copia coordinate"
+    "copyCoordinates": "Copia coordinate",
+    "satellitePasses": "Passaggi satellitari qui"
   },
   "shell": {
     "documentTitle": "World Monitor — Dashboard di intelligence globale in tempo reale",
@@ -4530,6 +4582,7 @@
     "createAccount": "Crea account",
     "freeReason": "Gratis: salva il layout, segui i paesi, avvisi",
     "settings": "Impostazioni",
+    "planBilling": "Piano & fatturazione",
     "passkeyOffer": {}
   },
   "mcp": {
@@ -5138,5 +5191,557 @@
     "errGeneric": "La bozza non può essere creata. Riprova.",
     "errDownload": "Il file non può essere scaricato qui. Usa Stampa o salva come PDF.",
     "errLoad": "Non è stato possibile aprire la valutazione del viaggio. Ricarica la pagina e riprova."
+  },
+  "orbitalWatch": {
+    "track": {
+      "unavailable": "Impossibile disegnare la traccia al suolo di questo passaggio"
+    },
+    "replay": {
+      "acquisition": "ACQUISIZIONE · {{name}}",
+      "acquired": "ACQUISITA {{time}} · {{resolution}}",
+      "play": "Avvia riproduzione",
+      "pause": "Metti in pausa la riproduzione",
+      "scrub": "Posizione della riproduzione",
+      "reducedMotion": "MOVIMENTO RIDOTTO"
+    },
+    "computing": "Caricamento del catalogo satellitare…",
+    "computingProgress": "Calcolo dei passaggi: {{done}} di {{total}} satelliti",
+    "unavailable": "Impossibile caricare il catalogo satellitare, quindi non sono stati calcolati passaggi per questo punto.",
+    "checkingArchives": "Verifica degli archivi: {{done}} di {{total}} hanno risposto",
+    "confirmedCount": "Immagini confermate: {{count}}",
+    "counts": {
+      "mosaics": "Mosaici giornalieri: {{count}}",
+      "frames": "Immagini meteo: {{count}}",
+      "inRange": "Passaggi a portata: {{count}}"
+    },
+    "partial": "{{sources}} non ha risposto, quindi ad alcuni passaggi potrebbero mancare le immagini.",
+    "stale": "I dati orbitali non sono aggiornati. Il catalogo satellitare risale a {{age}} fa, quindi gli orari dei passaggi potrebbero essere imprecisi.",
+    "empty": "Nessun satellite per immagini censito è passato sopra questo punto negli ultimi {{pastDays}} giorni né passerà nelle prossime {{futureHours}} ore.",
+    "sources": "Fonti · {{count}}",
+    "sourcesDocs": "Come vengono usate queste fonti",
+    "privacy": "Questo punto resta nel tuo browser. Viene inviato solo agli archivi pubblici che il browser interroga direttamente: Earth Search, Microsoft Planetary Computer, NASA GIBS ed EUMETSAT. L’unica eccezione è la ricerca per nome di luogo: il nome digitato va al servizio di ricerca dei luoghi.",
+    "inRange": "a portata",
+    "tier": {
+      "checking": "verifica archivio",
+      "confirmed": "immagine confermata",
+      "likely": "probabilmente ripreso",
+      "opportunity": "passaggio imminente",
+      "dailyMosaic": "nel mosaico giornaliero",
+      "withinReach": "a portata",
+      "capabilityOverhead": "capacità in transito",
+      "passedOverhead": "passato sopra",
+      "unmatchedImage": "immagine senza passaggio calcolato",
+      "weatherFrame": "immagine meteo",
+      "unavailable": "non disponibile"
+    },
+    "row": {
+      "offNadir": "{{deg}}° fuori nadir",
+      "distance": "a {{km}} km dalla traccia a terra",
+      "orbitAge": "dati orbitali di {{age}} fa",
+      "edgeOfSwath": "Bordo della strisciata",
+      "notInArchive": "Nessuna immagine nell’archivio",
+      "archiveUnanswered": "L'archivio non ha risposto",
+      "imageAlt": "Immagine di {{name}}, {{time}}",
+      "mosaicDays": "Giorni nell’archivio: {{count}}",
+      "cadence": "nuova immagine ogni {{minutes}} min",
+      "sourceUnavailable": "L’archivio non contiene immagini di questa fonte per questi giorni.",
+      "imageLoading": "Caricamento immagine…",
+      "imageFailed": "L’immagine non è stata caricata. L’archivio potrebbe essere lento o non disponibile.",
+      "noPreview": "L'archivio non ha ancora un'anteprima di questa scena."
+    },
+    "dailyMosaics": "mosaici giornalieri",
+    "weatherFrames": "immagini meteo",
+    "ui": {
+      "change": "Cambia",
+      "share": "Condividi",
+      "shareCopied": "Link copiato",
+      "headline": "Negli ultimi {{days}} giorni, {{satellites}} sono passati sopra {{place}}.",
+      "satellites_one": "{{count}} satellite",
+      "satellites_many": "{{count}} satelliti",
+      "satellites_other": "{{count}} satelliti",
+      "subline_one": "È stata pubblicata {{count}} immagine.",
+      "subline_many": "Sono state pubblicate {{count}} immagini.",
+      "subline_other": "Sono state pubblicate {{count}} immagini.",
+      "closestLook": "Vista più ravvicinata",
+      "replay": "Riproduci",
+      "openFull": "Apri vista completa",
+      "previous": "Immagine precedente",
+      "next": "Immagine successiva",
+      "passes_one": "passaggio",
+      "passes_many": "passaggi",
+      "passes_other": "passaggi",
+      "showAll": "Mostra tutti i passaggi",
+      "noRecentDays": "Nessun giorno recente nell’archivio: {{sources}}",
+      "tab": {
+        "all": "Tutto",
+        "detailed": "Dettagliato",
+        "weather": "Meteo"
+      },
+      "caption": {
+        "clear": "Sereno sul punto",
+        "clearSceneCloud": "Sereno sul punto · nuvolosità della scena {{pct}}%",
+        "clouded": "Nuvoloso · {{pct}}%",
+        "cloudShadow": "Ombra di nube",
+        "spotNotChecked": "Punto non verificato per le nubi",
+        "sceneCloud": "Nuvolosità della scena {{pct}}% · punto non verificato",
+        "radar": "Radar",
+        "dailyMosaic": "Mosaico giornaliero",
+        "geostationary": "Disco intero geostazionario",
+        "geostationaryCadence": "Geostazionario · ogni {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Immagine non disponibile · {{archive}}",
+        "noPreview": "L’archivio non ha ancora un’anteprima di questa scena"
+      },
+      "grid": {
+        "watched": "Osservato",
+        "watchedDef": "Un archivio pubblico contiene un’immagine di questo punto.",
+        "likely": "Probabilmente osservato",
+        "likelyDef": "Un sensore a strisciata fissa l’ha coperto; nessuna immagine ancora pubblicata.",
+        "could": "Avrebbe potuto puntare qui",
+        "couldDef": "Un sensore orientabile o commerciale era a portata; l’operatore non dice se ha guardato.",
+        "overhead": "Passato sopra",
+        "overheadDef": "Ha attraversato il cielo qui, senza prove di immagini.",
+        "watchedShort": "Immagine in un archivio pubblico",
+        "likelyShort": "Coperto, ancora nessuna immagine",
+        "likelyUnansweredDef": "Un sensore a strisciata fissa lo ha coperto; un archivio non ha risposto, quindi un'immagine potrebbe esistere.",
+        "likelyUnansweredShort": "Coperto, l'archivio non ha risposto",
+        "couldShort": "Sensore orientabile in portata",
+        "overheadShort": "Sorvolato, nessuna immagine"
+      },
+      "group": {
+        "watched": "osservati",
+        "likely": "probabilmente osservati",
+        "upcoming": "in arrivo",
+        "could": "che avrebbero potuto puntare qui",
+        "overhead": "passati sopra",
+        "weather_one": "fonte meteo",
+        "weather_many": "fonti meteo",
+        "weather_other": "fonti meteo"
+      },
+      "order": {
+        "closest": "Vista più ravvicinata, poi più recenti",
+        "newest": "Più recenti prima",
+        "soonest": "Più vicini prima"
+      },
+      "row": {
+        "cloud": "Nubi {{pct}}%",
+        "days_one": "{{count}} giorno",
+        "days_many": "{{count}} giorni",
+        "days_other": "{{count}} giorni",
+        "repeats": "{{count}} passaggi di questo satellite nel gruppo"
+      },
+      "section": {
+        "summary": "Riepilogo",
+        "passes": "Passaggi"
+      },
+      "status": {
+        "objects": "{{count}} satelliti per immagini · CelesTrak GP",
+        "fetched": "Recuperato {{time}} · {{ago}}",
+        "sun": "Sole {{point}} · punto subsolare"
+      },
+      "step": {
+        "computing": "Calcolo",
+        "catalogLoading": "Catalogo · caricamento",
+        "catalog": "Catalogo · {{count}} satelliti per immagini",
+        "propagating": "Propagazione orbite · {{done}} / {{total}}",
+        "archives": "Archivi · {{done}} / {{total}} hanno risposto",
+        "matching": "Abbinamento scene a {{passes}} passaggi",
+        "window": "Finestra di 7 giorni · {{start}} → {{end}}",
+        "failed": "Non riuscito",
+        "note": "Planetary Computer e NASA GIBS generano le immagini su richiesta, quindi questo passaggio può richiedere alcuni secondi."
+      },
+      "privacyLine": "Il punto resta nel tuo browser",
+      "privacyHow": "Come",
+      "sources": "Fonti",
+      "archiveScene": "Scena d'archivio",
+      "archiveOnly": "Nessun passaggio calcolato corrisponde a queste immagini, quindi sono mostrate come scene d'archivio.",
+      "zoneShowUtc": "Mostra gli orari in UTC",
+      "zoneShowLocal": "Mostra gli orari nell'ora locale di questo luogo"
+    },
+    "viewer": {
+      "open": "Apri visualizzatore immagini: {{image}}",
+      "bestView": "Apri la vista migliore: {{name}}, {{time}}",
+      "imageAlt": "Immagine di {{name}}, {{time}}",
+      "close": "Chiudi visualizzatore immagini",
+      "northUp": "Il nord è in alto",
+      "unreferenced": "Orientamento come fornito dall'archivio; il nord non è indicato",
+      "compareDates": "Altre date di questa raccolta",
+      "compareNone": "Nessun'altra scena di questa raccolta da confrontare.",
+      "divider": "Divisore prima/dopo",
+      "searching": "Ricerca di scene di questo luogo degli ultimi {{days}} giorni",
+      "historyFailed": "{{archive}} non ha risposto, quindi mancano le scene precedenti.",
+      "historyTimeout": "{{archive}} non ha risposto in tempo, quindi mancano le scene precedenti.",
+      "loading": "Caricamento fotogrammi: {{loaded}} di {{total}}",
+      "pause": "Pausa",
+      "resume": "Riproduci",
+      "next": "Fotogramma successivo",
+      "closeLabel": "Chiudi",
+      "agoNow": "Proprio ora",
+      "agoHours": "{{count}} h fa",
+      "agoDays": "{{count}} g fa",
+      "clear": "Sereno",
+      "clouded": "Nuvoloso · {{pct}}%",
+      "tabImage": "Immagine",
+      "tabChange": "Cambiamento",
+      "metaAcquired": "Acquisita",
+      "metaDate": "Data",
+      "metaPixel": "Pixel",
+      "metaSpot": "Nubi sul punto",
+      "metaScene": "Nubi della scena",
+      "metaSun": "Elevazione solare",
+      "showCloudy": "Mostra date nuvolose ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Timelapse",
+      "entry": "Questo luogo, anno per anno",
+      "open": "Apri il timelapse annuale di questo luogo",
+      "searching": "Ricerca di una vista serena all'anno dal 2015 · {{archive}}",
+      "loading": "Caricamento viste · {{loaded}} / {{total}}",
+      "failed": "{{archive}} non ha risposto, quindi mancano le viste annuali.",
+      "timeout": "{{archive}} non ha risposto in tempo, quindi mancano le viste annuali.",
+      "partial": "Anni mancanti perché {{archive}} non ha risposto: {{count}}.",
+      "tooFew": "Viste annuali serene di questo luogo: {{count}}. Un timelapse ne richiede {{min}}.",
+      "total": "Viste serene: {{count}} · una all'anno",
+      "years": "Anni",
+      "share": "Condividi",
+      "method": "Ogni fotogramma è lo stesso quadrato di 6 km di Sentinel-2, a colori naturali. Ogni anno cerca in una stagione diversa e tiene la scena meno nuvolosa; un anno senza scene sotto il 30% di nubi viene escluso."
+    },
+    "passDetail": {
+      "back": "Tutti i passaggi",
+      "altitude": "Quota",
+      "offNadir": "Fuori nadir",
+      "crossed": "{{name}} è passato a {{altitude}} km di quota, {{distance}} km {{direction}}, alle {{time}}, a {{speed}} km/s al suolo.",
+      "crossedHeading": "{{name}} è passato a {{altitude}} km di quota, {{distance}} km {{direction}}, alle {{time}}, diretto a {{heading}} a {{speed}} km/s al suolo.",
+      "looking": "Guardava a {{deg}}° dalla verticale.",
+      "sceneCloud": "Copertura nuvolosa della scena: {{pct}}%.",
+      "pixelLine": "Pixel di {{m}} m",
+      "swathLine": "Fascia di {{km}} km",
+      "clearestLook": "Vista più serena",
+      "previous": "Passaggio precedente",
+      "next": "Passaggio successivo",
+      "dir": {
+        "n": "a nord",
+        "ne": "a nord-est",
+        "e": "a est",
+        "se": "a sud-est",
+        "s": "a sud",
+        "sw": "a sud-ovest",
+        "w": "a ovest",
+        "nw": "a nord-ovest"
+      },
+      "heading": {
+        "north": "nord",
+        "south": "sud"
+      }
+    },
+    "search": {
+      "label": "Nome del luogo o coordinate",
+      "placeholder": "Nome del luogo o 48.8584, 2.2945",
+      "submit": "Cerca",
+      "locate": "Usa la mia posizione",
+      "hint": "Le coordinate e la tua posizione restano in questo browser. Il nome di un luogo che cerchi viene inviato a WorldMonitor e a Nominatim di OpenStreetMap.",
+      "results": "Luoghi corrispondenti",
+      "searching": "Ricerca in corso…",
+      "tooShort": "Digita almeno due caratteri, o coordinate come 48.8584, 2.2945.",
+      "invalidCoordinates": "Queste coordinate sono fuori dal globo. La latitudine va da -90 a 90 e la longitudine da -180 a 180.",
+      "failed": "La ricerca dei luoghi non è disponibile al momento. Le coordinate e la mappa funzionano ancora.",
+      "noResults": "Nessun luogo corrisponde a quel nome.",
+      "locating": "Ricerca della posizione…",
+      "locationDenied": "L'autorizzazione alla posizione è stata negata. Cerca un luogo o fai clic destro sulla mappa.",
+      "locationUnavailable": "Impossibile trovare la tua posizione. Cerca un luogo o fai clic destro sulla mappa.",
+      "idle": "Cerca un luogo per nome o coordinate, usa la tua posizione o fai clic destro sulla mappa per vedere quali satelliti vi sono passati sopra."
+    },
+    "share": {
+      "copy": "Copia link di condivisione",
+      "copied": "Link copiato",
+      "copyManually": "Copia il link qui sotto",
+      "link": "Link di condivisione",
+      "dismiss": "Chiudi",
+      "passOutsideWindow": "Il passaggio collegato è fuori dalla finestra attuale, quindi nessun passaggio è selezionato.",
+      "passNotFound": "Il passaggio collegato non è stato trovato tra i passaggi ricalcolati, quindi nessun passaggio è selezionato."
+    },
+    "timeline": {
+      "now": "ora",
+      "nowAt": "Ora: {{time}}",
+      "density": "Passaggi {{label}}, da {{start}} a {{end}}: {{count}}",
+      "daylight": "Luce diurna nel punto da {{start}} a {{end}}",
+      "unavailable": "non disponibile",
+      "notRetained": "nessun dato questa settimana",
+      "notRetainedSpan": "{{label}}: nessun dato da {{start}} a {{end}}",
+      "countryWide": "a livello nazionale",
+      "source": {
+        "conflict": "Conflitti",
+        "fires": "Incendi",
+        "unrest": "Disordini",
+        "outages": "Interruzioni di internet"
+      },
+      "live": {
+        "vessels": "Traffico marittimo",
+        "militaryFlights": "Voli militari",
+        "gpsJamming": "Disturbo GPS"
+      },
+      "name": "Cronologia",
+      "span": "{{days}} giorni · prossime {{hours}} h",
+      "daylightHere": "Luce del giorno qui",
+      "row": {
+        "geo": "Geo",
+        "photo": "Foto",
+        "likely": "Probabile",
+        "could": "Possibile",
+        "overhead": "Passaggio"
+      },
+      "retained": "dal {{start}} al {{end}}",
+      "retainedDay": "solo {{day}}",
+      "geoLine": "Geostazionari in vista: {{names}}",
+      "away": "a {{km}} km"
+    }
+  },
+  "settings": {
+    "back": "Torna alle impostazioni",
+    "signIn": {
+      "label": "Accedi",
+      "desc": "Sincronizza le impostazioni e gestisci il tuo piano"
+    },
+    "summary": {
+      "themeAuto": "Automatico",
+      "count": "{{on}} di {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Preferenze",
+      "developer": "Sviluppatore",
+      "app": "App"
+    },
+    "sections": {
+      "account": "Account",
+      "map": "Mappa",
+      "ai": "AI & analisi",
+      "video": "Video e stream",
+      "apiKeys": "Chiavi API",
+      "embeds": "Widget",
+      "aiAgents": "Agenti AI (MCP)",
+      "sync": "Sincronizzazione, importazione ed esportazione",
+      "about": "Informazioni"
+    },
+    "descriptions": {
+      "panels": "Mostra, nascondi e riordina",
+      "sources": "Regioni e feed",
+      "notifications": "Canali e regole di avviso",
+      "display": "Tema, carattere e lingua",
+      "map": "Provider, tema e globo",
+      "ai": "Modelli, memoria e framework",
+      "video": "Qualità e riproduzione automatica",
+      "apiKeys": "Chiavi per l'API World Monitor",
+      "embeds": "Widget per il tuo sito",
+      "aiAgents": "Client MCP collegati",
+      "about": "Link del sito, termini e privacy"
+    },
+    "signOut": "Esci",
+    "signOutFailed": "Impossibile disconnettersi. Riprovare.",
+    "search": {
+      "empty": "Nessuna impostazione corrispondente"
+    },
+    "account": {
+      "intro": "Visualizza il tuo piano attuale e gestisci i dati di pagamento, le fatture o l'annullamento.",
+      "planFree": "Gratuito",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Accesso Premium",
+        "desc": "Questo accesso non viene fatturato tramite il tuo account WorldMonitor. Nessun metodo di pagamento o fatture disponibili qui."
+      },
+      "checking": {
+        "heading": "Verifica del piano in corso…",
+        "desc": "Di solito richiede solo un momento."
+      },
+      "status": {
+        "cancelScheduled": "Annullamento programmato -- accesso fino a {{date}}",
+        "renews": "Rinnovo: {{date}}",
+        "onHold": "In sospeso -- aggiorna il metodo di pagamento",
+        "cancelled": "Annullato -- accesso fino a {{date}}",
+        "expired": "Scaduto",
+        "unknown": "Visualizza Gestisci fatturazione per i dettagli del tuo piano attuale.",
+        "ownerManaged": "La fatturazione è gestita dal proprietario del tuo piano."
+      },
+      "upgradeToBusiness": "Esegui l'upgrade a Business",
+      "unavailable": {
+        "heading": "Stato del piano non disponibile",
+        "desc": "Non è stato possibile verificare il tuo piano attuale. Riprova o visualizza i piani in una nuova scheda."
+      },
+      "free": {
+        "heading": "WorldMonitor Gratuito",
+        "desc": "Il tuo piano attuale è Gratuito. Esegui l'upgrade per accedere a tutti i pannelli, all'analisi AI e all'aggiornamento prioritario dei dati."
+      },
+      "portal": {
+        "openFailed": "Impossibile aprire il portale di fatturazione. Consenti i pop-up e riprova.",
+        "unavailable": "Portale di fatturazione non disponibile. Invia un'email a support@worldmonitor.app per assistenza."
+      },
+      "deletion": {
+        "heading": "Elimina account",
+        "desc": "Elimina permanentemente questo account World Monitor. Gli abbonamenti vengono annullati immediatamente senza rimborso del tempo prepagato rimanente. Le chiavi API, le chiavi di incorporamento e i token MCP smettono di funzionare. I record di fatturazione necessari per la contabilità, le controversie e le richieste legali vengono conservati insieme ai dati di contatto del cliente che contengono; smettono di identificare il tuo account di accesso, anche se i log webhook del fornitore di pagamenti scritti prima dell'eliminazione mantengono gli identificatori con cui sono stati consegnati. Le preferenze della dashboard e i segreti dell'app desktop salvati nel portachiavi di sistema di questo dispositivo non vengono eliminati da remoto.",
+        "dialogTitle": "Eliminare questo account?",
+        "dialogCopy": "Non è possibile annullare questa operazione. Gli abbonamenti vengono annullati, le chiavi smettono di funzionare immediatamente e i record di fatturazione vengono conservati per la contabilità, le controversie e le richieste legali, inclusi i dati di contatto che contengono. Esci su altri dispositivi e cancella i dati del sito su questo dispositivo in seguito -- quelli sono fuori dalla portata del server.",
+        "phraseLabel": "Digita {{phrase}} per confermare",
+        "deleted": "Account eliminato. Esci su altri dispositivi e cancella i dati del sito su questo dispositivo.",
+        "failed": "Eliminazione dell'account non riuscita. Riprova."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} utilizzati",
+        "invite": "Invita",
+        "inviting": "Invio in corso...",
+        "remove": "Rimuovi",
+        "removing": "Rimozione in corso...",
+        "inviteSent": "Invito inviato",
+        "alreadyInvited": "Già invitato"
+      },
+      "businessSeats": {
+        "heading": "Posti Business",
+        "statusAccepted": "Accettato",
+        "statusExpired": "Scaduto",
+        "statusPending": "In attesa",
+        "expires": "Scade il {{date}}",
+        "hintCorporate": "Invita i colleghi di qualsiasi dominio email aziendale.",
+        "hintPersonal": "Aggiungi un'email aziendale per invitare i colleghi.",
+        "personalDomain": "I domini email gratuiti o temporanei non possono invitare colleghi. Aggiungi un'email aziendale per usare questa funzione.",
+        "empty": "Nessun invito ancora inviato.",
+        "confirmRemove": "Rimuovere questo posto? L'invitato perderà l'accesso Pro immediatamente.",
+        "removed": "Posto rimosso",
+        "alreadyInactive": "Il posto era già inattivo",
+        "loadFailed": "Caricamento dei posti non riuscito",
+        "inviteFailed": "Invio dell'invito non riuscito",
+        "removeFailed": "Rimozione del posto non riuscita",
+        "errors": {
+          "seatCap": "Tutti i 4 posti sono utilizzati. Rimuovi prima un posto.",
+          "ownerDomain": "L'email del tuo account deve essere un dominio aziendale per invitare i colleghi.",
+          "self": "Non puoi invitare te stesso.",
+          "inviteeDomain": "L'email dell'invitato deve essere un dominio aziendale."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "Posti Enterprise di {{account}}",
+        "memberHint": "L'amministratore del tuo account aggiunge e rimuove le persone su questo account.",
+        "hintFull": "Tutti i posti sono in uso. Rimuovi qualcuno o ritira un invito per liberare un posto.",
+        "hintOpen": "Invita le persone tramite email aziendale. Ricevono un link valido per 14 giorni e condividono la quota di questo account.",
+        "emailLabel": "Indirizzo email da invitare",
+        "statusActive": "Attivo",
+        "statusExpired": "Invito scaduto",
+        "statusInvited": "Invitato",
+        "emailFailed": "Impossibile inviare l'email di invito. Controlla l'indirizzo, poi ritira l'invito e invita di nuovo.",
+        "inviteExpires": "L'invito scade il {{date}}",
+        "roleAdmin": "Amministratore",
+        "you": "Tu",
+        "withdraw": "Ritira",
+        "unknownEmail": "Email sconosciuta",
+        "alreadyMember": "Già membro",
+        "confirmRemove": "Rimuovere {{email}}? Perderà l'accesso Enterprise immediatamente.",
+        "confirmRemoveUnknown": "Rimuovere questa persona? Perderà l'accesso Enterprise immediatamente.",
+        "confirmWithdraw": "Ritirare l'invito a {{email}}?",
+        "confirmWithdrawUnknown": "Ritirare l'invito a questo indirizzo?",
+        "removed": "Membro rimosso",
+        "withdrawn": "Invito ritirato",
+        "loadFailed": "Caricamento dei posti non riuscito. Riprova.",
+        "inviteFailed": "Invio dell'invito non riuscito. Riprova.",
+        "removeFailed": "Rimozione non riuscita. Riprova.",
+        "errors": {
+          "seatCap": "Tutti i posti sono in uso. Rimuovi qualcuno o ritira un invito prima.",
+          "inviteeDomain": "Invita un indirizzo email aziendale. I domini email gratuiti o temporanei non sono accettati.",
+          "self": "Hai già un posto.",
+          "contractEnded": "Il tuo contratto Enterprise è scaduto. Contatta il supporto per rinnovarlo.",
+          "notAdmin": "Solo l'amministratore dell'account può gestire i posti.",
+          "removeSelf": "Non puoi rimuovere il tuo posto. Contatta il supporto per cambiare l'amministratore.",
+          "tooMany": "Invita fino a 10 persone alla volta.",
+          "rateLimited": "Hai inviato il massimo numero di inviti consentiti in un giorno. Riprova domani."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "layout",
+        "1": "widget",
+        "2": "dimensione testo",
+        "3": "ripristina layout"
+      },
+      "sources": {
+        "0": "notizie",
+        "1": "feed",
+        "2": "RSS",
+        "3": "regioni",
+        "4": "copertura"
+      },
+      "notifications": {
+        "0": "avvisi",
+        "1": "Telegram",
+        "2": "Slack",
+        "3": "email",
+        "4": "Discord",
+        "5": "webhook",
+        "6": "push"
+      },
+      "display": {
+        "0": "tema",
+        "1": "scuro",
+        "2": "chiaro",
+        "3": "carattere",
+        "4": "lingua",
+        "5": "dimensione testo"
+      },
+      "map": {
+        "0": "globo",
+        "1": "provider",
+        "2": "tile",
+        "3": "mappa base"
+      },
+      "ai": {
+        "0": "memoria titoli",
+        "1": "Ollama",
+        "2": "framework",
+        "3": "memoria headline",
+        "4": "modello browser"
+      },
+      "video": {
+        "0": "stream",
+        "1": "riproduzione automatica",
+        "2": "qualità",
+        "3": "live"
+      },
+      "apiKeys": {
+        "0": "chiave",
+        "1": "token",
+        "2": "chiave desktop"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "chiave embed"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "agenti",
+        "3": "ChatGPT",
+        "4": "client"
+      },
+      "sync": {
+        "0": "importa",
+        "1": "esporta",
+        "2": "backup",
+        "3": "cloud"
+      },
+      "about": {
+        "0": "termini",
+        "1": "privacy",
+        "2": "licenza",
+        "3": "note legali"
+      },
+      "account": {
+        "0": "piano",
+        "1": "fatturazione",
+        "2": "abbonamento",
+        "3": "fattura",
+        "4": "posti",
+        "5": "esci",
+        "6": "elimina account"
+      }
+    }
   }
 }

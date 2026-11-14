@@ -1,5 +1,6 @@
 import {
   findPasses,
+  groundTrack,
   ORBIT_ELEMENTS_MAX_AGE_DAYS,
   parseOrbitElements,
   type GeoPoint,
@@ -8,6 +9,7 @@ import {
   type OrbitElements,
   type Pass,
 } from '../../../shared/orbital/pass-geometry.js';
+import { sunElevationDeg } from '../../../shared/orbital/sun.js';
 import { decidePassTier, type PassTier } from '../../../shared/orbital/tiers.js';
 import { assertPassQuery, profileFor, type PassWindow } from './pass-query';
 
@@ -15,6 +17,7 @@ export type { PassWindow };
 
 const DAY_MS = 86_400_000;
 const DUPLICATE_PASS_MS = 60_000;
+const DAYLIGHT_STEP_MS = 10 * 60_000;
 
 export interface CatalogSatellite {
   noradId: number;
@@ -31,20 +34,52 @@ export interface PassJobInput {
   satellites: CatalogSatellite[];
 }
 
+/** Which way the point under the satellite moves at the pass, and how fast across the ground. */
+export interface PassMotion {
+  heading: 'north' | 'south';
+  groundSpeedKmS: number;
+}
+
 export interface PointPass extends Pass {
   tier: PassTier;
   elementsEpochMs: number;
   /** Distance in days between the pass and the epoch of the orbit data it was computed from. */
   orbitAgeDays: number;
+  motion?: PassMotion | null;
+}
+
+const EARTH_RADIUS_KM = 6371;
+const MOTION_STEP_S = 1;
+
+function surfaceDistanceKm(a: GeoPoint, b: GeoPoint): number {
+  const rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad;
+  const dLon = (b.lon - a.lon) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/** Propagates the orbit at the pass and one second later; the two sub-satellite points give the heading and ground speed. */
+export function passMotion(elements: OrbitElements, timeMs: number): PassMotion | null {
+  const [from, to] = groundTrack(elements, { start: timeMs, end: timeMs + MOTION_STEP_S * 1000 }, MOTION_STEP_S).flat();
+  if (!from || !to) return null;
+  return { heading: to.lat >= from.lat ? 'north' : 'south', groundSpeedKmS: surfaceDistanceKm(from, to) / MOTION_STEP_S };
 }
 
 export type SatelliteOutcome =
   | { noradId: number; name: string; profileId: string; status: 'ok' | 'too-old' | 'invalid-elements' }
   | { noradId: number; name: string; profileId: string; status: 'geostationary'; visibility: GeostationaryVisibility };
 
+export interface DaylightSpan {
+  startMs: number;
+  endMs: number;
+}
+
 export interface PassJobResult {
   passes: PointPass[];
   satellites: SatelliteOutcome[];
+  /** Stretches of the window when the sun is above the horizon at the point, in time order. */
+  daylight: DaylightSpan[];
 }
 
 export interface PassJobHooks {
@@ -113,6 +148,7 @@ function satellitePasses(satellite: CatalogSatellite, input: PassJobInput): { ou
         tier: decidePassTier(pass, profile, null, input.nowMs),
         elementsEpochMs: segment.elements.epochMs,
         orbitAgeDays: Math.abs(pass.timeMs - segment.elements.epochMs) / DAY_MS,
+        motion: passMotion(segment.elements, pass.timeMs),
       });
     }
   }
@@ -140,7 +176,26 @@ export async function runPassJob(input: PassJobInput, hooks: PassJobHooks = {}):
   }
   if (hooks.isCancelled?.()) return null;
   passes.sort((a, b) => a.timeMs - b.timeMs);
-  return { passes, satellites };
+  return { passes, satellites, daylight: daylightSpans(input.point, input.window) };
+}
+
+/** Samples sun elevation across the window and merges consecutive sunlit samples into spans. */
+export function daylightSpans(point: GeoPoint, window: PassWindow, stepMs = DAYLIGHT_STEP_MS): DaylightSpan[] {
+  const spans: DaylightSpan[] = [];
+  let open: DaylightSpan | null = null;
+  for (let step = window.startMs; ; step += stepMs) {
+    const t = Math.min(step, window.endMs);
+    if (sunElevationDeg(new Date(t), point.lat, point.lon) > 0) {
+      open ??= { startMs: t, endMs: t };
+      open.endMs = t;
+    } else if (open) {
+      spans.push(open);
+      open = null;
+    }
+    if (t === window.endMs) break;
+  }
+  if (open) spans.push(open);
+  return spans;
 }
 
 export type PassJobRequest =

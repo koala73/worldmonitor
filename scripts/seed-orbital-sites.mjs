@@ -272,7 +272,12 @@ export function buildSeedOptions(publishAtomically) {
   };
 }
 
-if (isMainModule(import.meta.url, process.argv[1])) {
+/** Orbital Watch ships dark (#10710): watched-site seeding waits for the launch flag. */
+export const orbitalSitesEnabled = (env = process.env) => (env.ORBITAL_WATCH_ENABLED ?? '').trim().toLowerCase() === 'true';
+
+if (isMainModule(import.meta.url, process.argv[1]) && !orbitalSitesEnabled()) {
+  console.log('  SKIPPED: Orbital Watch ships dark (#10710); set ORBITAL_WATCH_ENABLED=true to seed watched sites');
+} else if (isMainModule(import.meta.url, process.argv[1])) {
   const searchArchive = makeArchiveSearch();
   const { fetchSites, publishAtomically } = makeFetchSites({
     store: redisSiteStore(),

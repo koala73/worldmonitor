@@ -1,5 +1,4 @@
 {
-  "app": {},
   "shell": {
     "documentTitle": "Svjetski Monitor — Nadzorna Ploča Globalne Obavještajne Informacije u Realnom Vremenu",
     "metaDescription": "Globalna platforma za praćenje u realnom vremenu. Predstavljena u WIRED-u. Koristi je 2M+ ljudi u 190 zemalja. Sukobi, tržišta, vojska, OSINT na jednom mjestu.",
@@ -565,7 +564,8 @@
     "climateNews": "Klimatske Vijesti",
     "fx": "Tečajevi deviza",
     "ukmtoIncidents": "Incidenti UKMTO-a",
-    "reservoirLevels": "Strateški vodostaji"
+    "reservoirLevels": "Strateški vodostaji",
+    "gridDisruptionClock": "Sat prekida opskrbe električnom energijom u saveznim državama SAD-a"
   },
   "commands": {
     "prefixes": {
@@ -2013,8 +2013,6 @@
       "sortRelevance": "Relevantnost",
       "translationUnavailable": "Prijevod nije dostupan. Provjerite postavke pružatelja AI usluge i pokušajte ponovno."
     },
-    "export": {},
-    "runtimeConfig": {},
     "breakingNews": {
       "critical": "KRITIČNO",
       "high": "VISOKO",
@@ -2617,7 +2615,6 @@
         "failedToLoad": "Učitavanje nije uspjelo"
       }
     },
-    "energyCrisis": {},
     "supplyVulnerability": {
       "title": "Ranjivost na robu",
       "help": "Izloženost države po robi na temelju koncentracije dobavljača, pomorskog tranzita i dostupnih strateških zaliha.",
@@ -3283,7 +3280,61 @@
         "measured": "Izmjereno",
         "sparkline": "Vodostaj kroz 36 mjeseci"
       }
-    }
+    },
+    "gridDisruptionClock": {
+      "region": "Odaberite saveznu državu",
+      "unknown": "Nepoznato",
+      "customers": "Korisnici bez struje prema prijavama",
+      "lastCustomers": "Korisnici bez struje prema posljednjem izvješću",
+      "denominatorUnknown": "Ukupan broj praćenih korisnika nije poznat",
+      "tracked": "Broj praćenih korisnika: {{amount}}",
+      "dataAge": "Od izvješća",
+      "minutes": "{{amount}} min.",
+      "hours": "{{amount}} h",
+      "warnings": "Upozorenja",
+      "recovery": "Prijavljene promjene",
+      "decreased": "Prema prijavama, broj korisnika bez struje smanjio se za {{amount}}",
+      "increased": "Prema prijavama, broj korisnika bez struje povećao se za {{amount}}",
+      "unchanged": "Prijavljeni broj nije se promijenio",
+      "since": "od",
+      "peakLoad": "Ponovno je pokriveno {{percent}} % uobičajenog vršnog opterećenja",
+      "noComparison": "Usporedivi podaci o broju korisnika bez struje nisu dostupni.",
+      "history": "Nedavni podaci o broju korisnika bez struje ({{total}})",
+      "priorNotice": "Prethodno objavljeno upozorenje",
+      "sources": "Obuhvat izvora upozorenja",
+      "operatorLink": "Za obavijesti o mreži pogledajte",
+      "issued": "Izdano",
+      "until": "vrijedi do",
+      "noActive": "U praćenim izvorima nema važećeg upozorenja.",
+      "unknownWarnings": "Trenutačni obuhvat upozorenja nije potpun.",
+      "noObservation": "Trenutačni broj i obuhvat nisu dostupni.",
+      "loadError": "Podaci o prekidima opskrbe električnom energijom nisu dostupni.",
+      "retained": "Ažuriranje nije uspjelo. Prikazuje se posljednje primljeno izvješće.",
+      "phase": {
+        "unknown": "Učinak nepoznat",
+        "monitoring": "Praćenje",
+        "watch": "Stanje pripravnosti",
+        "disrupted": "Prijavljeni prekidi",
+        "recovering": "Prijavljena obnova opskrbe u tijeku",
+        "restored": "Prijavljena ponovna uspostava opskrbe"
+      },
+      "kind": {
+        "grid": "Obavijest o elektroenergetskoj mreži",
+        "weather": "Vremensko upozorenje",
+        "space-weather": "Svemirsko vrijeme"
+      },
+      "checks": {
+        "available": "Provjereno",
+        "unavailable": "Nedostupno",
+        "not_monitored": "Provjerite izravno kod operatora",
+        "stale": "Posljednja provjera je zastarjela"
+      },
+      "warningAge": "Od prvog upozorenja koje još vrijedi",
+      "days": "{{amount}} d."
+    },
+    "export": {},
+    "runtimeConfig": {},
+    "energyCrisis": {}
   },
   "popups": {
     "startDate": "POČETNI DATUM",
@@ -3304,8 +3355,6 @@
     "events": "Događaji",
     "capacity": "Kapacitet",
     "updated": "Ažurirano",
-    "common": {},
-    "conflict": {},
     "earthquake": {
       "levels": {
         "major": "VELIKI",
@@ -3375,7 +3424,6 @@
       "ground": "Na tlu",
       "airborne": "U zraku"
     },
-    "apt": {},
     "cyberThreat": {
       "title": "KIBERNETSKA PRIJETNJA",
       "evidence": "Dokazi iz feed-a prijetnji",
@@ -3532,7 +3580,6 @@
         "critical": "KRITIČNO"
       }
     },
-    "buttons": {},
     "historicalContext": "POVIJESNI KONTEKST",
     "lastMajorEvent": "Posljednji veliki događaj",
     "precedents": "Prethodni primjeri",
@@ -4264,7 +4311,11 @@
       "yellowWarning": "Žuto upozorenje",
       "orangeWarning": "Narančasto upozorenje",
       "redWarning": "Crveno upozorenje"
-    }
+    },
+    "common": {},
+    "conflict": {},
+    "apt": {},
+    "buttons": {}
   },
   "signals": {
     "context": {
@@ -4459,7 +4510,6 @@
     "dataAndCommunity": "Podaci i zajednica",
     "theme": "Tema",
     "themeDesc": "Automatski slijedi vašu sistemsku postavku.",
-    "themeAuto": "Automatski (pratiti sustav)",
     "themeDark": "Tamna",
     "themeLight": "Svijetla",
     "mapProvider": "Davatelj karata",
@@ -4534,13 +4584,15 @@
   },
   "contextMenu": {
     "openCountryBrief": "Otvori Sažetak Zemlje",
-    "copyCoordinates": "Kopiraj Koordinate"
+    "copyCoordinates": "Kopiraj Koordinate",
+    "satellitePasses": "Preleti satelita ovdje"
   },
   "auth": {
     "signIn": "Prijava",
     "createAccount": "Kreiraj račun",
     "freeReason": "Besplatno: spremi raspored, prati zemlje, upozorenja",
     "settings": "Postavke",
+    "planBilling": "Plan i naplata",
     "passkeyOffer": {}
   },
   "mcp": {
@@ -5149,5 +5201,558 @@
     "errGeneric": "Nacrt se ne može izraditi. Pokušajte ponovno.",
     "errDownload": "Datoteka se ne može preuzeti odavdje. Umjesto toga koristite Ispis ili spremi kao PDF.",
     "errLoad": "Procjena putovanja nije mogla biti otvorena. Ponovno učitajte stranicu i pokušajte ponovno."
-  }
+  },
+  "orbitalWatch": {
+    "track": {
+      "unavailable": "Zemaljski trag ovog preleta nije moguće iscrtati"
+    },
+    "replay": {
+      "acquisition": "SNIMANJE · {{name}}",
+      "acquired": "SNIMLJENO {{time}} · {{resolution}}",
+      "play": "Pokreni reprodukciju",
+      "pause": "Pauziraj reprodukciju",
+      "scrub": "Položaj reprodukcije",
+      "reducedMotion": "SMANJENO KRETANJE"
+    },
+    "computing": "Učitavanje kataloga satelita…",
+    "computingProgress": "Izračun preleta: {{done}} od {{total}} satelita",
+    "unavailable": "Katalog satelita nije se mogao učitati pa za ovu točku nisu izračunati preleti.",
+    "checkingArchives": "Provjera arhiva: {{done}} od {{total}} odgovorilo",
+    "confirmedCount": "Potvrđene snimke: {{count}}",
+    "counts": {
+      "mosaics": "Dnevni mozaici: {{count}}",
+      "frames": "Meteorološke snimke: {{count}}",
+      "inRange": "Preleti u dometu: {{count}}"
+    },
+    "partial": "{{sources}} nije odgovorio pa nekim preletima možda nedostaju snimke.",
+    "stale": "Orbitalni podaci su zastarjeli. Katalog satelita star je {{age}} pa vremena preleta mogu odstupati.",
+    "empty": "Nijedan evidentirani satelit za snimanje nije preletio ovu točku u posljednjih {{pastDays}} dana niti će u sljedećih {{futureHours}} sati.",
+    "sources": "Izvori · {{count}}",
+    "sourcesDocs": "Kako se ovi izvori koriste",
+    "privacy": "Ova točka ostaje u vašem pregledniku. Šalje se samo javnim arhivima koje preglednik izravno poziva: Earth Search, Microsoft Planetary Computer, NASA GIBS i EUMETSAT. Jedina iznimka je pretraživanje po nazivu mjesta: upisani naziv šalje se usluzi pretraživanja mjesta.",
+    "inRange": "u dometu",
+    "tier": {
+      "checking": "provjera arhiva",
+      "confirmed": "potvrđena snimka",
+      "likely": "vjerojatno snimljeno",
+      "opportunity": "nadolazeći prelet",
+      "dailyMosaic": "u dnevnom mozaiku",
+      "withinReach": "u dometu",
+      "capabilityOverhead": "sposobnost iznad",
+      "passedOverhead": "preletio iznad",
+      "unmatchedImage": "snimka bez izračunatog preleta",
+      "weatherFrame": "meteorološka snimka",
+      "unavailable": "nedostupno"
+    },
+    "row": {
+      "offNadir": "{{deg}}° od nadira",
+      "distance": "{{km}} km od traga na tlu",
+      "orbitAge": "orbitalni podaci stari {{age}}",
+      "edgeOfSwath": "Rub pojasa snimanja",
+      "notInArchive": "Nema snimke u arhivi",
+      "archiveUnanswered": "Arhiv nije odgovorio",
+      "imageAlt": "Snimka {{name}}, {{time}}",
+      "mosaicDays": "Dana u arhivi: {{count}}",
+      "cadence": "nova snimka svakih {{minutes}} min",
+      "sourceUnavailable": "Arhiva nema snimaka iz ovog izvora za te dane.",
+      "imageLoading": "Učitavanje slike…",
+      "imageFailed": "Slika se nije učitala. Arhiva je možda spora ili nedostupna.",
+      "noPreview": "Arhiv još nema pregled ove scene."
+    },
+    "dailyMosaics": "dnevni mozaici",
+    "weatherFrames": "meteorološke snimke",
+    "ui": {
+      "change": "Promijeni",
+      "share": "Podijeli",
+      "shareCopied": "Poveznica kopirana",
+      "headline": "U posljednjih {{days}} dana iznad {{place}} prošlo je: {{satellites}}.",
+      "satellites_one": "{{count}} satelit",
+      "satellites_few": "{{count}} satelita",
+      "satellites_other": "{{count}} satelita",
+      "subline_one": "Objavljeno snimaka: {{count}}.",
+      "subline_few": "Objavljeno snimaka: {{count}}.",
+      "subline_other": "Objavljeno snimaka: {{count}}.",
+      "closestLook": "Najbliži pogled",
+      "replay": "Reproduciraj",
+      "openFull": "Otvori puni prikaz",
+      "previous": "Prethodna snimka",
+      "next": "Sljedeća snimka",
+      "passes_one": "prelazak",
+      "passes_few": "prelaska",
+      "passes_other": "prelazaka",
+      "showAll": "Prikaži sve prelaske",
+      "noRecentDays": "Nema nedavnih dana u arhivi: {{sources}}",
+      "tab": {
+        "all": "Sve",
+        "detailed": "Detaljno",
+        "weather": "Vrijeme"
+      },
+      "caption": {
+        "clear": "Vedro na točki",
+        "clearSceneCloud": "Vedro na točki · naoblaka scene {{pct}} %",
+        "clouded": "Oblačno · {{pct}} %",
+        "cloudShadow": "Sjena oblaka",
+        "spotNotChecked": "Mjesto nije provjereno za oblake",
+        "sceneCloud": "Naoblaka scene {{pct}} % · mjesto nije provjereno",
+        "radar": "Radarska snimka",
+        "dailyMosaic": "Dnevni mozaik",
+        "geostationary": "Geostacionarni puni disk",
+        "geostationaryCadence": "Geostacionarni · svakih {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Snimka nedostupna · {{archive}}",
+        "noPreview": "Arhiva još nema pregled ove scene"
+      },
+      "grid": {
+        "watched": "Promatrano",
+        "watchedDef": "Javna arhiva ima snimku ovog mjesta.",
+        "likely": "Vjerojatno promatrano",
+        "likelyDef": "Senzor fiksnog pojasa ga je pokrio; snimka još nije objavljena.",
+        "could": "Mogao je ciljati ovamo",
+        "couldDef": "Usmjerivi ili komercijalni senzor bio je u dometu; operater ne kaže je li gledao.",
+        "overhead": "Prošao iznad",
+        "overheadDef": "Prešao je nebo ovdje, bez dokaza snimanja.",
+        "watchedShort": "Snimka u javnom arhivu",
+        "likelyShort": "Pokriveno, još nema snimke",
+        "likelyUnansweredDef": "Pokrio ga je senzor fiksnog pojasa; arhiv nije odgovorio, pa snimka možda postoji.",
+        "likelyUnansweredShort": "Pokriveno, arhiv nije odgovorio",
+        "couldShort": "Usmjerivi senzor u dometu",
+        "overheadShort": "Iznad točke, bez snimke"
+      },
+      "group": {
+        "watched": "promatranih",
+        "likely": "vjerojatno promatranih",
+        "upcoming": "nadolazećih",
+        "could": "koji su mogli ciljati ovamo",
+        "overhead": "iznad mjesta",
+        "weather_one": "izvor vremena",
+        "weather_few": "izvora vremena",
+        "weather_other": "izvora vremena"
+      },
+      "order": {
+        "closest": "Najbliži pogled, zatim najnoviji",
+        "newest": "Najnoviji prvo",
+        "soonest": "Najbliži prvo"
+      },
+      "row": {
+        "cloud": "Oblaci {{pct}} %",
+        "days_one": "Dana: {{count}}",
+        "days_few": "Dana: {{count}}",
+        "days_other": "Dana: {{count}}",
+        "repeats": "Prelasci ovog satelita u skupini: {{count}}"
+      },
+      "section": {
+        "summary": "Sažetak",
+        "passes": "Prelasci"
+      },
+      "status": {
+        "objects": "Satelita za snimanje: {{count}} · CelesTrak GP",
+        "fetched": "Dohvaćeno {{time}} · {{ago}}",
+        "sun": "Sunce {{point}} · podsolarna točka"
+      },
+      "step": {
+        "computing": "Izračun",
+        "catalogLoading": "Katalog · učitavanje",
+        "catalog": "Katalog · Satelita za snimanje: {{count}}",
+        "propagating": "Propagacija orbita · {{done}} / {{total}}",
+        "archives": "Arhive · odgovorilo {{done}} / {{total}}",
+        "matching": "Uparivanje scena s prelascima: {{passes}}",
+        "window": "7-dnevni prozor · {{start}} → {{end}}",
+        "failed": "Neuspjelo",
+        "note": "Planetary Computer i NASA GIBS izrađuju snimke na zahtjev, pa ovaj korak može potrajati nekoliko sekundi."
+      },
+      "privacyLine": "Točka ostaje u vašem pregledniku",
+      "privacyHow": "Kako",
+      "sources": "Izvori",
+      "archiveScene": "Arhivska scena",
+      "archiveOnly": "Nijedan izračunati prelet ne odgovara ovim snimkama, pa su prikazane kao arhivske scene.",
+      "zoneShowUtc": "Prikaži vremena u UTC-u",
+      "zoneShowLocal": "Prikaži vremena po lokalnom vremenu ovog mjesta"
+    },
+    "viewer": {
+      "open": "Otvori preglednik slika: {{image}}",
+      "bestView": "Otvori najbolji prikaz: {{name}}, {{time}}",
+      "imageAlt": "Snimka {{name}}, {{time}}",
+      "close": "Zatvori preglednik slika",
+      "northUp": "Sjever je gore",
+      "unreferenced": "Orijentacija kako ju isporučuje arhiv; sjever nije označen",
+      "compareDates": "Ostali datumi ove zbirke",
+      "compareNone": "Nema druge snimke ove zbirke za usporedbu.",
+      "divider": "Razdjelnik prije/poslije",
+      "searching": "Traženje snimki ovog mjesta iz zadnjih {{days}} dana",
+      "historyFailed": "{{archive}} nije odgovorio, pa nedostaju ranije snimke.",
+      "historyTimeout": "{{archive}} nije odgovorio na vrijeme, pa nedostaju ranije snimke.",
+      "loading": "Učitavanje okvira: {{loaded}} od {{total}}",
+      "pause": "Pauza",
+      "resume": "Pokreni",
+      "next": "Sljedeći okvir",
+      "closeLabel": "Zatvori",
+      "agoNow": "Upravo sada",
+      "agoHours": "prije {{count}} h",
+      "agoDays": "prije {{count}} d",
+      "clear": "Vedro",
+      "clouded": "Oblačno · {{pct}} %",
+      "tabImage": "Snimka",
+      "tabChange": "Promjena",
+      "metaAcquired": "Snimljeno",
+      "metaDate": "Datum",
+      "metaPixel": "Piksel",
+      "metaSpot": "Oblaci na točki",
+      "metaScene": "Oblaci scene",
+      "metaSun": "Visina sunca",
+      "showCloudy": "Prikaži oblačne datume ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Vremenski niz",
+      "entry": "Ovo mjesto iz godine u godinu",
+      "open": "Otvori godišnji vremenski niz ovog mjesta",
+      "searching": "Traži se jedna vedra snimka godišnje od 2015. · {{archive}}",
+      "loading": "Učitavanje snimaka · {{loaded}} / {{total}}",
+      "failed": "{{archive}} nije odgovorio, pa godišnje snimke nedostaju.",
+      "timeout": "{{archive}} nije odgovorio na vrijeme, pa godišnje snimke nedostaju.",
+      "partial": "Godine koje nedostaju jer {{archive}} nije odgovorio: {{count}}.",
+      "tooFew": "Vedre godišnje snimke ovog mjesta: {{count}}. Vremenski niz treba {{min}}.",
+      "total": "Vedre snimke: {{count}} · jedna godišnje",
+      "years": "Godine",
+      "share": "Podijeli",
+      "method": "Svaki kadar je isti kvadrat od 6 km sa Sentinela-2 u prirodnim bojama. Svake se godine pretražuje drugo godišnje doba i zadržava najmanje oblačna scena; godina bez scene ispod 30 % oblaka izostavlja se."
+    },
+    "passDetail": {
+      "back": "Svi preleti",
+      "altitude": "Visina",
+      "offNadir": "Odmak od nadira",
+      "crossed": "{{name}} je preletio na {{altitude}} km visine, {{distance}} km {{direction}}, u {{time}}, brzinom {{speed}} km/s iznad tla.",
+      "crossedHeading": "{{name}} je preletio na {{altitude}} km visine, {{distance}} km {{direction}}, u {{time}}, krećući se prema {{heading}} brzinom {{speed}} km/s iznad tla.",
+      "looking": "Gledao je {{deg}}° od okomice.",
+      "sceneCloud": "Naoblaka scene: {{pct}} %.",
+      "pixelLine": "Piksel {{m}} m",
+      "swathLine": "Pojas {{km}} km",
+      "clearestLook": "Najvedriji prikaz",
+      "previous": "Prethodni prelet",
+      "next": "Sljedeći prelet",
+      "dir": {
+        "n": "sjeverno",
+        "ne": "sjeveroistočno",
+        "e": "istočno",
+        "se": "jugoistočno",
+        "s": "južno",
+        "sw": "jugozapadno",
+        "w": "zapadno",
+        "nw": "sjeverozapadno"
+      },
+      "heading": {
+        "north": "sjeveru",
+        "south": "jugu"
+      }
+    },
+    "search": {
+      "label": "Naziv mjesta ili koordinate",
+      "placeholder": "Naziv mjesta ili 48.8584, 2.2945",
+      "submit": "Traži",
+      "locate": "Koristi moju lokaciju",
+      "hint": "Koordinate i vaša lokacija ostaju u ovom pregledniku. Naziv mjesta koji tražite šalje se WorldMonitoru i OpenStreetMapovom Nominatimu.",
+      "results": "Odgovarajuća mjesta",
+      "searching": "Traženje…",
+      "tooShort": "Upišite barem dva znaka ili koordinate poput 48.8584, 2.2945.",
+      "invalidCoordinates": "Te su koordinate izvan zemaljske kugle. Geografska širina ide od -90 do 90, a dužina od -180 do 180.",
+      "failed": "Traženje mjesta trenutačno nije dostupno. Koordinate i karta i dalje rade.",
+      "noResults": "Nijedno mjesto ne odgovara tom nazivu.",
+      "locating": "Određivanje lokacije…",
+      "locationDenied": "Dopuštenje za lokaciju je odbijeno. Potražite mjesto ili desnom tipkom kliknite kartu.",
+      "locationUnavailable": "Vašu lokaciju nije moguće odrediti. Potražite mjesto ili desnom tipkom kliknite kartu.",
+      "idle": "Potražite mjesto po nazivu ili koordinatama, upotrijebite svoju lokaciju ili desnom tipkom kliknite kartu da vidite koji su sateliti prošli iznad njega."
+    },
+    "share": {
+      "copy": "Kopiraj poveznicu za dijeljenje",
+      "copied": "Poveznica kopirana",
+      "copyManually": "Kopirajte poveznicu ispod",
+      "link": "Poveznica za dijeljenje",
+      "dismiss": "Zatvori",
+      "passOutsideWindow": "Povezani prelet izvan je trenutačnog prozora, pa nijedan prelet nije odabran.",
+      "passNotFound": "Povezani prelet nije pronađen među ponovno izračunatim preletima, pa nijedan prelet nije odabran."
+    },
+    "timeline": {
+      "now": "sada",
+      "nowAt": "Sada: {{time}}",
+      "density": "Preleti {{label}}, od {{start}} do {{end}}: {{count}}",
+      "daylight": "Dnevno svjetlo u točki od {{start}} do {{end}}",
+      "unavailable": "nedostupno",
+      "notRetained": "ovaj tjedan nema podataka",
+      "notRetainedSpan": "{{label}}: nema podataka od {{start}} do {{end}}",
+      "countryWide": "na razini države",
+      "source": {
+        "conflict": "Sukobi",
+        "fires": "Požari",
+        "unrest": "Nemiri",
+        "outages": "Prekidi interneta"
+      },
+      "live": {
+        "vessels": "Pomorski promet",
+        "militaryFlights": "Vojni letovi",
+        "gpsJamming": "Ometanje GPS-a"
+      },
+      "name": "Vremenska crta",
+      "span": "{{days}} dana · sljedećih {{hours}} h",
+      "daylightHere": "Dnevno svjetlo ovdje",
+      "row": {
+        "geo": "Geo",
+        "photo": "Snimka",
+        "likely": "Vjerojatno",
+        "could": "Moguće",
+        "overhead": "Prelet"
+      },
+      "retained": "{{start}} do {{end}}",
+      "retainedDay": "samo {{day}}",
+      "geoLine": "Geostacionarni u vidokrugu: {{names}}",
+      "away": "{{km}} km dalje"
+    }
+  },
+  "settings": {
+    "back": "Natrag na postavke",
+    "signIn": {
+      "label": "Prijava",
+      "desc": "Sinhronizacija postavki i upravljanje planom"
+    },
+    "summary": {
+      "themeAuto": "Automatski",
+      "count": "{{on}} od {{total}}"
+    },
+    "groups": {
+      "dashboard": "Nadzorna ploča",
+      "preferences": "Postavke",
+      "developer": "Razvojni programeri",
+      "app": "Aplikacija"
+    },
+    "sections": {
+      "account": "Račun",
+      "map": "Karta",
+      "ai": "AI i analiza",
+      "video": "Video i tokovi",
+      "apiKeys": "API ključevi",
+      "embeds": "Ugrađeni elementi",
+      "aiAgents": "AI agenti (MCP)",
+      "sync": "Sinhronizacija, uvoz i izvoz",
+      "about": "O aplikaciji"
+    },
+    "descriptions": {
+      "panels": "Prikaži, sakrij i preuredi",
+      "sources": "Regije i izvori",
+      "notifications": "Kanali i pravila upozorenja",
+      "display": "Tema, font i jezik",
+      "map": "Davatelj, tema i globus",
+      "ai": "Modeli, memorija i okviri",
+      "video": "Kvaliteta i automatska reprodukcija",
+      "apiKeys": "Ključevi za World Monitor API",
+      "embeds": "Widgeti za vašu stranicu",
+      "aiAgents": "Povezani MCP klijenti",
+      "about": "Veze stranica, uvjeti korištenja i privatnost"
+    },
+    "signOut": "Odjava",
+    "signOutFailed": "Odjava nije uspjela. Pokušajte ponovno.",
+    "search": {
+      "empty": "Nema odgovarajućih postavki"
+    },
+    "account": {
+      "intro": "Pogledajte svoj trenutni plan i upravljajte podacima o plaćanju, računima ili otkazivanjem.",
+      "planFree": "Besplatno",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Pristup Premium",
+        "desc": "Ovaj pristup ne naplaćuje se putem vašeg WorldMonitor računa. Ovdje nema načina plaćanja ni računa."
+      },
+      "checking": {
+        "heading": "Provjera vašeg plana…",
+        "desc": "Obično traje samo trenutak."
+      },
+      "status": {
+        "cancelScheduled": "Otkazivanje zakazano — pristup do {{date}}",
+        "renews": "Obnavljanje: {{date}}",
+        "onHold": "Pauzirano — ažurirajte način plaćanja",
+        "cancelled": "Otkazano — pristup do {{date}}",
+        "expired": "Isteklo",
+        "unknown": "Pogledajte Upravljanje naplatom za detalje vašeg trenutnog plana.",
+        "ownerManaged": "Naplatom upravlja vlasnik vašeg plana."
+      },
+      "upgradeToBusiness": "Nadogradi na Business",
+      "unavailable": {
+        "heading": "Status plana nije dostupan",
+        "desc": "Nismo mogli provjeriti vaš trenutni plan. Pokušajte ponovno ili pogledajte planove u novoj kartici."
+      },
+      "free": {
+        "heading": "WorldMonitor Besplatno",
+        "desc": "Vaš trenutni plan je Besplatno. Nadogradite za sve panele, AI analizu i prioritetno osvježavanje podataka."
+      },
+      "portal": {
+        "openFailed": "Portal za naplatu nije moguće otvoriti. Omogućite skočne prozore i pokušajte ponovno.",
+        "unavailable": "Portal za naplatu nije dostupan. Pošaljite e-poštu na support@worldmonitor.app za pomoć."
+      },
+      "deletion": {
+        "heading": "Brisanje računa",
+        "desc": "Trajno izbrišite ovaj World Monitor račun. Pretplate se odmah otkazuju bez povrata novca za preostalo unaprijed plaćeno razdoblje. API ključevi, ključevi za ugrađivanje i MCP tokeni prestaju raditi. Zapisi o naplati potrebni za računovodstvo, sporove i zakonite zahtjeve čuvaju se zajedno s kontaktnim podacima kupca koje sadrže; u njima se više ne navodi vaš račun za prijavu, no zapisnici webhookova pružatelja usluge plaćanja zapisani prije brisanja zadržavaju identifikatore s kojima su isporučeni. Postavke nadzorne ploče i tajne desktop aplikacije u sustavskom privjesku ključeva (Keychain) na ovom uređaju ne brišu se na daljinu.",
+        "dialogTitle": "Obrisati ovaj račun?",
+        "dialogCopy": "Ovo se ne može poništiti. Pretplate se otkazuju, ključevi odmah prestaju raditi, a zapisi o naplati čuvaju se za računovodstvo, sporove i zakonite zahtjeve — uključujući kontaktne podatke koje sadrže. Nakon toga se odjavite na drugim uređajima i izbrišite podatke web-mjesta na ovom uređaju — poslužitelj do njih ne može doći.",
+        "phraseLabel": "Upišite {{phrase}} za potvrdu",
+        "deleted": "Račun je izbrisan. Odjavite se na drugim uređajima i izbrišite podatke web-mjesta na ovom uređaju.",
+        "failed": "Brisanje računa nije uspjelo. Pokušajte ponovno."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} iskorišteno",
+        "invite": "Pozovi",
+        "inviting": "Pozivanje...",
+        "remove": "Ukloni",
+        "removing": "Uklanjanje...",
+        "inviteSent": "Poziv poslan",
+        "alreadyInvited": "Već pozvan"
+      },
+      "businessSeats": {
+        "heading": "Mjesta Business",
+        "statusAccepted": "Prihvaćeno",
+        "statusExpired": "Isteklo",
+        "statusPending": "Na čekanju",
+        "expires": "Ističe {{date}}",
+        "hintCorporate": "Pozovite članove tima s bilo koje korporativne e-mail domene.",
+        "hintPersonal": "Dodajte poslovnu e-mail adresu da pozovete članove tima.",
+        "personalDomain": "Besplatne ili privremene e-mail domene ne mogu pozivati članove tima. Dodajte poslovnu e-mail adresu da koristite ovu mogućnost.",
+        "empty": "Još nema pozvanih članova.",
+        "confirmRemove": "Ukloniti ovo mjesto? Pozvana osoba odmah gubi pristup Pro.",
+        "removed": "Mjesto uklonjeno",
+        "alreadyInactive": "Mjesto je već bilo neaktivno",
+        "loadFailed": "Učitavanje mjesta nije uspjelo",
+        "inviteFailed": "Slanje poziva nije uspjelo",
+        "removeFailed": "Uklanjanje mjesta nije uspjelo",
+        "errors": {
+          "seatCap": "Sva 4 mjesta su iskorištena. Prvo uklonite jedno mjesto.",
+          "ownerDomain": "Vaša e-mail adresa računa mora biti iz poslovne domene da biste mogli pozivati članove tima.",
+          "self": "Ne možete pozvati sami sebe.",
+          "inviteeDomain": "E-mail adresa pozvanog mora biti iz poslovne domene."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "Mjesta Enterprise za {{account}}",
+        "memberHint": "Administrator vašeg računa dodaje i uklanja ljude na ovom računu.",
+        "hintFull": "Sva mjesta su iskorištena. Uklonite nekoga ili povucite poziv da oslobodite mjesto.",
+        "hintOpen": "Pozovite ljude putem poslovne e-mail adrese. Primit će poveznicu koja vrijedi 14 dana i dijelit će kvotu ovog računa.",
+        "emailLabel": "E-mail adresa za pozivanje",
+        "statusActive": "Aktivno",
+        "statusExpired": "Poziv istekao",
+        "statusInvited": "Pozvan",
+        "emailFailed": "E-mail poziva nije mogao biti poslan. Provjerite adresu, zatim povucite i ponovno pozovite.",
+        "inviteExpires": "Poziv ističe {{date}}",
+        "roleAdmin": "Administrator",
+        "you": "Vi",
+        "withdraw": "Povuci",
+        "unknownEmail": "Nepoznata e-mail adresa",
+        "alreadyMember": "Već je član",
+        "confirmRemove": "Ukloniti {{email}}? Ta osoba odmah gubi pristup Enterprise.",
+        "confirmRemoveUnknown": "Ukloniti ovu osobu? Ta osoba odmah gubi pristup Enterprise.",
+        "confirmWithdraw": "Povući poziv za {{email}}?",
+        "confirmWithdrawUnknown": "Povući poziv na ovu adresu?",
+        "removed": "Član uklonjen",
+        "withdrawn": "Poziv povučen",
+        "loadFailed": "Učitavanje mjesta nije uspjelo. Pokušajte ponovno.",
+        "inviteFailed": "Slanje poziva nije uspjelo. Pokušajte ponovno.",
+        "removeFailed": "Uklanjanje nije uspjelo. Pokušajte ponovno.",
+        "errors": {
+          "seatCap": "Sva mjesta su zauzeta. Prvo uklonite nekoga ili povucite poziv.",
+          "inviteeDomain": "Unesite poslovnu e-mail adresu. Besplatne i privremene e-mail domene nisu prihvaćene.",
+          "self": "Već imate mjesto.",
+          "contractEnded": "Vaš Enterprise ugovor je istekao. Obratite se podršci za obnovu.",
+          "notAdmin": "Samo administrator računa može upravljati mjestima.",
+          "removeSelf": "Ne možete ukloniti vlastito mjesto. Obratite se podršci za promjenu administratora.",
+          "tooMany": "Pozovite do 10 osoba odjednom.",
+          "rateLimited": "Poslali ste najveći dopušteni broj poziva u jednom danu. Pokušajte ponovno sutra."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "raspored",
+        "1": "widgeti",
+        "2": "veličina teksta",
+        "3": "resetiraj raspored"
+      },
+      "sources": {
+        "0": "vijesti",
+        "1": "feedovi",
+        "2": "izvori",
+        "3": "regije",
+        "4": "pokrivenost"
+      },
+      "notifications": {
+        "0": "upozorenja",
+        "1": "obavijesti",
+        "2": "Slack",
+        "3": "e-pošta",
+        "4": "Discord",
+        "5": "webhook",
+        "6": "push"
+      },
+      "display": {
+        "0": "tema",
+        "1": "tamno",
+        "2": "svjetlo",
+        "3": "font",
+        "4": "jezik",
+        "5": "veličina teksta"
+      },
+      "map": {
+        "0": "globus",
+        "1": "davatelj usluge",
+        "2": "pločice",
+        "3": "osnovna mapa"
+      },
+      "ai": {
+        "0": "AI",
+        "1": "Ollama",
+        "2": "okviri",
+        "3": "memorija naslova",
+        "4": "model preglednika"
+      },
+      "video": {
+        "0": "strujanje",
+        "1": "automatska reprodukcija",
+        "2": "kvaliteta",
+        "3": "direktno, stream, uživo"
+      },
+      "apiKeys": {
+        "0": "ključ",
+        "1": "token",
+        "2": "ključ za stolno računalo"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "ključ za ugrađivanje"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "agenti",
+        "3": "ChatGPT",
+        "4": "klijenti"
+      },
+      "sync": {
+        "0": "uvoz",
+        "1": "izvoz",
+        "2": "sigurnosna kopija",
+        "3": "oblak"
+      },
+      "about": {
+        "0": "uvjeti korištenja",
+        "1": "privatnost",
+        "2": "licenca",
+        "3": "pravne napomene"
+      },
+      "account": {
+        "0": "plaćanje",
+        "1": "naplata",
+        "2": "pretplata",
+        "3": "račun",
+        "4": "mjesta",
+        "5": "odjava",
+        "6": "brisanje računa, faktura"
+      }
+    }
+  },
+  "app": {}
 }

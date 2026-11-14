@@ -56,7 +56,9 @@ const ENGLISH_CEILING = {
   // translations, not placeholder copies.
   fa: 2576, fr: 426, hi: 141, hr: 281, hu: 255, it: 242,
   ja: 390, ko: 239, nl: 513, pl: 460, pt: 466, ro: 391,
-  ru: 61, sv: 490, sw: 393, th: 307, tr: 404, uk: 95,
+  // ru 61 -> 64, uk 95 -> 98: Settings adds the plan name "Premium" and the
+  // search keywords "webhook" and "iframe", which both catalogues keep in English.
+  ru: 64, sv: 490, sw: 393, th: 307, tr: 404, uk: 98,
   vi: 185, zh: 358, 'zh-TW': 358,
 };
 

@@ -493,7 +493,8 @@
     "climateNews": "İklim Haberleri",
     "fx": "Döviz kurları",
     "ukmtoIncidents": "UKMTO olayları",
-    "reservoirLevels": "Stratejik Su Seviyeleri"
+    "reservoirLevels": "Stratejik Su Seviyeleri",
+    "gridDisruptionClock": "ABD eyaletlerinde elektrik kesintisi saati"
   },
   "commands": {
     "prefixes": {
@@ -3186,6 +3187,57 @@
         "measured": "Ölçüm",
         "sparkline": "36 aylık su seviyesi"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Eyalet seçin",
+      "unknown": "Bilinmiyor",
+      "customers": "Bildirilen elektriksiz abone sayısı",
+      "lastCustomers": "Son bildirime göre elektriksiz aboneler",
+      "denominatorUnknown": "İzlenen toplam abone sayısı bilinmiyor",
+      "tracked": "{{amount}} abone izleniyor",
+      "dataAge": "Bildirimden bu yana",
+      "minutes": "{{amount}} dk.",
+      "hours": "{{amount}} sa.",
+      "warnings": "Uyarılar",
+      "recovery": "Bildirilen değişiklikler",
+      "decreased": "Bildirilen elektriksiz abone sayısı {{amount}} azaldı",
+      "increased": "Bildirilen elektriksiz abone sayısı {{amount}} arttı",
+      "unchanged": "Bildirilen sayı değişmedi",
+      "since": "şu zamandan bu yana",
+      "peakLoad": "Normal puant yükün %{{percent}} kadarı yeniden karşılanıyor",
+      "noComparison": "Karşılaştırılabilir kesinti sayıları bulunmuyor.",
+      "history": "Son elektriksiz abone sayıları ({{total}})",
+      "priorNotice": "Önceki uyarı",
+      "sources": "İzlenen uyarı kaynakları",
+      "operatorLink": "Şebeke duyuruları için başvurulacak kaynak",
+      "issued": "Yayımlanma",
+      "until": "bitiş",
+      "noActive": "İzlenen kaynaklarda geçerli bir uyarı yok.",
+      "unknownWarnings": "Şu anda bazı uyarı kaynaklarına ulaşılamıyor.",
+      "noObservation": "Güncel abone sayısı ve kapsama bilgisi alınamıyor.",
+      "loadError": "Elektrik kesintisi saati verileri alınamıyor.",
+      "retained": "Yenileme başarısız oldu. Alınan son rapor gösteriliyor.",
+      "phase": {
+        "unknown": "Etkisi bilinmiyor",
+        "monitoring": "İzlemede",
+        "watch": "Dikkat",
+        "disrupted": "Kesinti bildirildi",
+        "recovering": "Elektriğin yeniden verilmeye başlandığı bildirildi",
+        "restored": "Elektriğin geri geldiği bildirildi"
+      },
+      "kind": {
+        "grid": "Şebeke duyurusu",
+        "weather": "Hava durumu uyarısı",
+        "space-weather": "Uzay hava durumu"
+      },
+      "checks": {
+        "available": "Kontrol edildi",
+        "unavailable": "Ulaşılamıyor",
+        "not_monitored": "Doğrudan işletmeciden kontrol edin",
+        "stale": "Son kontrol güncelliğini yitirdi"
+      },
+      "warningAge": "Hâlen geçerli ilk uyarıdan bu yana",
+      "days": "{{amount}} gün"
     }
   },
   "popups": {
@@ -4352,7 +4404,6 @@
     "dataAndCommunity": "Veri ve Topluluk",
     "theme": "Tema",
     "themeDesc": "Otomatik olarak sistem tercihlerini takip eder.",
-    "themeAuto": "Otomatik (sistemi takip et)",
     "themeDark": "Koyu",
     "themeLight": "Açık",
     "mapProvider": "Harita döşeme sağlayıcısı",
@@ -4411,7 +4462,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Ülke özetini aç",
-    "copyCoordinates": "Koordinatları kopyala"
+    "copyCoordinates": "Koordinatları kopyala",
+    "satellitePasses": "Buradan geçen uydular"
   },
   "shell": {
     "documentTitle": "World Monitor — Gerçek Zamanlı Küresel İstihbarat Paneli",
@@ -4508,6 +4560,7 @@
     "createAccount": "Hesap oluştur",
     "freeReason": "Ücretsiz: düzeni kaydet, ülkeleri takip et, uyarılar",
     "settings": "Ayarlar",
+    "planBilling": "Plan ve faturalama",
     "passkeyOffer": {}
   },
   "mcp": {
@@ -5110,5 +5163,552 @@
     "errGeneric": "Taslak oluşturulamadı. Yeniden deneyin.",
     "errDownload": "Dosya buraya indirilemedi. Bunun yerine Yazdır seçeneğini kullanın veya PDF olarak kaydedin.",
     "errLoad": "Seyahat değerlendirmesi açılamadı. Sayfayı yeniden yükleyin ve tekrar deneyin."
+  },
+  "orbitalWatch": {
+    "track": {
+      "unavailable": "Bu geçişin yer izi çizilemedi"
+    },
+    "replay": {
+      "acquisition": "ÇEKİM · {{name}}",
+      "acquired": "ÇEKİLDİ {{time}} · {{resolution}}",
+      "play": "Tekrarı oynat",
+      "pause": "Tekrarı duraklat",
+      "scrub": "Tekrar konumu",
+      "reducedMotion": "AZALTILMIŞ HAREKET"
+    },
+    "computing": "Uydu kataloğu yükleniyor…",
+    "computingProgress": "Geçişler hesaplanıyor: {{total}} uydudan {{done}}",
+    "unavailable": "Uydu kataloğu yüklenemedi, bu nedenle bu nokta için geçiş hesaplanmadı.",
+    "checkingArchives": "Arşivler kontrol ediliyor: {{total}} arşivden {{done}} yanıt verdi",
+    "confirmedCount": "Doğrulanmış görüntüler: {{count}}",
+    "counts": {
+      "mosaics": "Günlük mozaikler: {{count}}",
+      "frames": "Hava durumu kareleri: {{count}}",
+      "inRange": "Erişimdeki geçişler: {{count}}"
+    },
+    "partial": "{{sources}} yanıt vermedi, bu nedenle bazı geçişlerin görüntüleri eksik olabilir.",
+    "stale": "Yörünge verileri eski. Uydu kataloğu {{age}} önce güncellendi, bu nedenle geçiş saatleri sapabilir.",
+    "empty": "Kayıtlı hiçbir görüntüleme uydusu son {{pastDays}} gün içinde bu noktanın üzerinden geçmedi ve önümüzdeki {{futureHours}} saat içinde geçmeyecek.",
+    "sources": "Kaynaklar · {{count}}",
+    "sourcesDocs": "Bu kaynaklar nasıl kullanılıyor",
+    "privacy": "Bu nokta tarayıcınızda kalır. Yalnızca tarayıcınızın doğrudan çağırdığı herkese açık arşivlere gönderilir: Earth Search, Microsoft Planetary Computer, NASA GIBS ve EUMETSAT. Tek istisna yer adıyla aramadır: yazdığınız ad yer adı arama hizmetine gider.",
+    "inRange": "erişimde",
+    "tier": {
+      "checking": "arşiv kontrol ediliyor",
+      "confirmed": "doğrulanmış görüntü",
+      "likely": "muhtemelen görüntülendi",
+      "opportunity": "yaklaşan geçiş",
+      "dailyMosaic": "günlük mozaikte",
+      "withinReach": "erişimde",
+      "capabilityOverhead": "kabiliyet üzerinde",
+      "passedOverhead": "üzerinden geçti",
+      "unmatchedImage": "hesaplanmış geçişi olmayan görüntü",
+      "weatherFrame": "hava durumu görüntüsü",
+      "unavailable": "kullanılamıyor"
+    },
+    "row": {
+      "offNadir": "nadirden {{deg}}°",
+      "distance": "yer izinden {{km}} km",
+      "orbitAge": "yörünge verileri {{age}} önce",
+      "edgeOfSwath": "Tarama şeridinin kenarı",
+      "notInArchive": "Arşivde görüntü yok",
+      "archiveUnanswered": "Arşiv yanıt vermedi",
+      "imageAlt": "{{name}} görüntüsü, {{time}}",
+      "mosaicDays": "Arşivdeki gün sayısı: {{count}}",
+      "cadence": "her {{minutes}} dakikada yeni görüntü",
+      "sourceUnavailable": "Arşivde bu günler için bu kaynaktan görüntü yok.",
+      "imageLoading": "Görüntü yükleniyor…",
+      "imageFailed": "Görüntü yüklenmedi. Arşiv yavaş ya da erişilemez olabilir.",
+      "noPreview": "Arşivde bu sahnenin henüz bir önizlemesi yok."
+    },
+    "dailyMosaics": "günlük mozaikler",
+    "weatherFrames": "hava durumu görüntüleri",
+    "ui": {
+      "change": "Değiştir",
+      "share": "Paylaş",
+      "shareCopied": "Bağlantı kopyalandı",
+      "headline": "Son {{days}} günde {{satellites}} {{place}} üzerinden geçti.",
+      "satellites_one": "{{count}} uydu",
+      "satellites_other": "{{count}} uydu",
+      "subline_one": "{{count}} görüntü yayımlandı.",
+      "subline_other": "{{count}} görüntü yayımlandı.",
+      "closestLook": "En yakın bakış",
+      "replay": "Tekrar oynat",
+      "openFull": "Tam görünümü aç",
+      "previous": "Önceki görüntü",
+      "next": "Sonraki görüntü",
+      "passes_one": "geçiş",
+      "passes_other": "geçiş",
+      "showAll": "Tüm geçişleri göster",
+      "noRecentDays": "Arşivde yakın tarihli gün yok: {{sources}}",
+      "tab": {
+        "all": "Tümü",
+        "detailed": "Ayrıntılı",
+        "weather": "Hava"
+      },
+      "caption": {
+        "clear": "Noktada açık",
+        "clearSceneCloud": "Noktada açık · sahne bulutluluğu %{{pct}}",
+        "clouded": "Bulutlu · %{{pct}}",
+        "cloudShadow": "Bulut gölgesi",
+        "spotNotChecked": "Nokta bulut için denetlenmedi",
+        "sceneCloud": "Sahne bulutluluğu %{{pct}} · nokta denetlenmedi",
+        "radar": "Radar",
+        "dailyMosaic": "Günlük mozaik",
+        "geostationary": "Yer eşzamanlı tam disk",
+        "geostationaryCadence": "Yer eşzamanlı · her {{minutes}} dk"
+      },
+      "tile": {
+        "failed": "Görüntü yok · {{archive}}",
+        "noPreview": "Arşivde bu sahnenin önizlemesi henüz yok"
+      },
+      "grid": {
+        "watched": "İzlendi",
+        "watchedDef": "Bir kamu arşivinde bu noktanın görüntüsü var.",
+        "likely": "Muhtemelen izlendi",
+        "likelyDef": "Sabit şeritli bir algılayıcı kapsadı; henüz görüntü yayımlanmadı.",
+        "could": "Buraya yönelebilirdi",
+        "couldDef": "Yönlendirilebilir ya da ticari bir algılayıcı menzildeydi; işletmeci bakıp bakmadığını söylemiyor.",
+        "overhead": "Üzerinden geçti",
+        "overheadDef": "Görüntüleme kanıtı olmadan burada gökyüzünü geçti.",
+        "watchedShort": "Herkese açık arşivde görüntü",
+        "likelyShort": "Kapsandı, henüz görüntü yok",
+        "likelyUnansweredDef": "Sabit şeritli bir sensör burayı kapsadı; bir arşiv yanıt vermedi, bu yüzden görüntü olabilir.",
+        "likelyUnansweredShort": "Kapsandı, arşiv yanıt vermedi",
+        "couldShort": "Yönlendirilebilir sensör menzilde",
+        "overheadShort": "Üstünden geçti, görüntü yok"
+      },
+      "group": {
+        "watched": "izlendi",
+        "likely": "muhtemelen izlendi",
+        "upcoming": "yaklaşan",
+        "could": "buraya yönelebilirdi",
+        "overhead": "üzerinden geçti",
+        "weather_one": "hava kaynağı",
+        "weather_other": "hava kaynağı"
+      },
+      "order": {
+        "closest": "En yakın bakış, sonra en yeni",
+        "newest": "Önce en yeni",
+        "soonest": "Önce en yakın"
+      },
+      "row": {
+        "cloud": "Bulut %{{pct}}",
+        "days_one": "{{count}} gün",
+        "days_other": "{{count}} gün",
+        "repeats": "Bu uydunun grupta {{count}} geçişi"
+      },
+      "section": {
+        "summary": "Özet",
+        "passes": "Geçişler"
+      },
+      "status": {
+        "objects": "{{count}} görüntüleme uydusu · CelesTrak GP",
+        "fetched": "Alındı {{time}} · {{ago}}",
+        "sun": "Güneş {{point}} · güneş altı noktası"
+      },
+      "step": {
+        "computing": "Hesaplanıyor",
+        "catalogLoading": "Katalog · yükleniyor",
+        "catalog": "Katalog · {{count}} görüntüleme uydusu",
+        "propagating": "Yörüngeler hesaplanıyor · {{done}} / {{total}}",
+        "archives": "Arşivler · {{done}} / {{total}} yanıtladı",
+        "matching": "Sahneler {{passes}} geçişle eşleştiriliyor",
+        "window": "7 günlük pencere · {{start}} → {{end}}",
+        "failed": "Başarısız",
+        "note": "Planetary Computer ve NASA GIBS görüntüleri istek üzerine oluşturur, bu adım birkaç saniye sürebilir."
+      },
+      "privacyLine": "Nokta tarayıcınızda kalır",
+      "privacyHow": "Nasıl",
+      "sources": "Kaynaklar",
+      "archiveScene": "Arşiv sahnesi",
+      "archiveOnly": "Hesaplanan hiçbir geçiş bu görüntülerle eşleşmiyor, bu yüzden arşiv sahneleri olarak gösteriliyor.",
+      "zoneShowUtc": "Saatleri UTC olarak göster",
+      "zoneShowLocal": "Saatleri bu yerin yerel saatiyle göster"
+    },
+    "viewer": {
+      "open": "Görüntü görüntüleyiciyi aç: {{image}}",
+      "bestView": "En iyi görüntüyü aç: {{name}}, {{time}}",
+      "imageAlt": "{{name}} görüntüsü, {{time}}",
+      "close": "Görüntü görüntüleyiciyi kapat",
+      "northUp": "Kuzey yukarıda",
+      "unreferenced": "Yön arşivin verdiği gibi; kuzey işaretli değil",
+      "compareDates": "Bu koleksiyonun diğer tarihleri",
+      "compareNone": "Karşılaştırılacak bu koleksiyona ait başka sahne yok.",
+      "divider": "Önce/sonra ayırıcı",
+      "searching": "Bu yerin son {{days}} gündeki sahneleri aranıyor",
+      "historyFailed": "{{archive}} yanıt vermedi, bu yüzden önceki sahneler eksik.",
+      "historyTimeout": "{{archive}} zamanında yanıt vermedi, bu yüzden önceki sahneler eksik.",
+      "loading": "Kareler yükleniyor: {{loaded}} / {{total}}",
+      "pause": "Duraklat",
+      "resume": "Oynat",
+      "next": "Sonraki kare",
+      "closeLabel": "Kapat",
+      "agoNow": "Az önce",
+      "agoHours": "{{count}} sa önce",
+      "agoDays": "{{count}} g önce",
+      "clear": "Açık",
+      "clouded": "Bulutlu · %{{pct}}",
+      "tabImage": "Görüntü",
+      "tabChange": "Değişim",
+      "metaAcquired": "Çekim",
+      "metaDate": "Tarih",
+      "metaPixel": "Piksel",
+      "metaSpot": "Noktadaki bulut",
+      "metaScene": "Sahne bulutu",
+      "metaSun": "Güneş yüksekliği",
+      "showCloudy": "Bulutlu tarihleri göster ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Zaman atlamalı",
+      "entry": "Bu yer, yıl yıl",
+      "open": "Bu yerin yıllık zaman atlamalı görünümünü aç",
+      "searching": "2015'ten beri her yıl için bir açık görüntü aranıyor · {{archive}}",
+      "loading": "Görüntüler yükleniyor · {{loaded}} / {{total}}",
+      "failed": "{{archive}} yanıt vermedi, bu yüzden yıllık görüntüler eksik.",
+      "timeout": "{{archive}} zamanında yanıt vermedi, bu yüzden yıllık görüntüler eksik.",
+      "partial": "{{archive}} yanıt vermediği için eksik yıllar: {{count}}.",
+      "tooFew": "Bu yerin açık yıllık görüntüleri: {{count}}. Zaman atlamalı için {{min}} gerekir.",
+      "total": "Açık görüntüler: {{count}} · yılda bir",
+      "years": "Yıllar",
+      "share": "Paylaş",
+      "method": "Her kare, Sentinel-2'den doğal renkte aynı 6 km'lik karedir. Her yıl farklı bir mevsimde arar ve en az bulutlu sahneyi tutar; %30 bulutun altında sahnesi olmayan yıl atlanır."
+    },
+    "passDetail": {
+      "back": "Tüm geçişler",
+      "altitude": "İrtifa",
+      "offNadir": "Nadirden sapma",
+      "crossed": "{{name}}, {{altitude}} km yükseklikte, {{distance}} km {{direction}}, {{time}}'de, yerde {{speed}} km/sn hızla geçti.",
+      "crossedHeading": "{{name}}, {{altitude}} km yükseklikte, {{distance}} km {{direction}}, {{time}}'de, {{heading}} yönünde yerde {{speed}} km/sn hızla geçti.",
+      "looking": "Dikeyden {{deg}}° sapmış bakıyordu.",
+      "sceneCloud": "Sahne bulut örtüsü: %{{pct}}.",
+      "pixelLine": "{{m}} m piksel",
+      "swathLine": "{{km}} km şerit",
+      "clearestLook": "En açık görüntü",
+      "previous": "Önceki geçiş",
+      "next": "Sonraki geçiş",
+      "dir": {
+        "n": "kuzeyde",
+        "ne": "kuzeydoğuda",
+        "e": "doğuda",
+        "se": "güneydoğuda",
+        "s": "güneyde",
+        "sw": "güneybatıda",
+        "w": "batıda",
+        "nw": "kuzeybatıda"
+      },
+      "heading": {
+        "north": "kuzey",
+        "south": "güney"
+      }
+    },
+    "search": {
+      "label": "Yer adı veya koordinatlar",
+      "placeholder": "Yer adı veya 48.8584, 2.2945",
+      "submit": "Ara",
+      "locate": "Konumumu kullan",
+      "hint": "Koordinatlar ve konumunuz bu tarayıcıda kalır. Aradığınız yer adı WorldMonitor'a ve OpenStreetMap'in Nominatim hizmetine gönderilir.",
+      "results": "Eşleşen yerler",
+      "searching": "Aranıyor…",
+      "tooShort": "En az iki karakter veya 48.8584, 2.2945 gibi koordinatlar yazın.",
+      "invalidCoordinates": "Bu koordinatlar dünyanın dışında. Enlem -90 ile 90, boylam -180 ile 180 arasındadır.",
+      "failed": "Yer arama şu anda kullanılamıyor. Koordinatlar ve harita çalışmaya devam ediyor.",
+      "noResults": "Bu adla eşleşen yer yok.",
+      "locating": "Konumunuz bulunuyor…",
+      "locationDenied": "Konum izni reddedildi. Bir yer arayın veya haritaya sağ tıklayın.",
+      "locationUnavailable": "Konumunuz bulunamadı. Bir yer arayın veya haritaya sağ tıklayın.",
+      "idle": "Bir yeri adı veya koordinatlarıyla arayın, konumunuzu kullanın ya da üzerinden hangi uyduların geçtiğini görmek için haritaya sağ tıklayın."
+    },
+    "share": {
+      "copy": "Paylaşım bağlantısını kopyala",
+      "copied": "Bağlantı kopyalandı",
+      "copyManually": "Aşağıdaki bağlantıyı kopyalayın",
+      "link": "Paylaşım bağlantısı",
+      "dismiss": "Kapat",
+      "passOutsideWindow": "Bağlantıdaki geçiş mevcut zaman aralığının dışında, bu yüzden hiçbir geçiş seçili değil.",
+      "passNotFound": "Bağlantıdaki geçiş yeniden hesaplanan geçişler arasında bulunamadı, bu yüzden hiçbir geçiş seçili değil."
+    },
+    "timeline": {
+      "now": "şimdi",
+      "nowAt": "Şimdi: {{time}}",
+      "density": "{{label}} geçişleri, {{start}} ile {{end}} arası: {{count}}",
+      "daylight": "Noktada gün ışığı {{start}} ile {{end}} arası",
+      "unavailable": "kullanılamıyor",
+      "notRetained": "bu hafta veri yok",
+      "notRetainedSpan": "{{label}}: {{start}} ile {{end}} arasında veri yok",
+      "countryWide": "ülke genelinde",
+      "source": {
+        "conflict": "Çatışmalar",
+        "fires": "Yangınlar",
+        "unrest": "Huzursuzluk",
+        "outages": "İnternet kesintileri"
+      },
+      "live": {
+        "vessels": "Gemi trafiği",
+        "militaryFlights": "Askerî uçuşlar",
+        "gpsJamming": "GPS karıştırma"
+      },
+      "name": "Zaman çizelgesi",
+      "span": "{{days}} gün · sonraki {{hours}} sa",
+      "daylightHere": "Burada gün ışığı",
+      "row": {
+        "geo": "Yerdurağan",
+        "photo": "Görüntü",
+        "likely": "Olası",
+        "could": "Mümkün",
+        "overhead": "Geçiş"
+      },
+      "retained": "{{start}} – {{end}}",
+      "retainedDay": "yalnızca {{day}}",
+      "geoLine": "Görüş alanındaki yerdurağanlar: {{names}}",
+      "away": "{{km}} km uzakta"
+    }
+  },
+  "settings": {
+    "back": "Ayarlara dön",
+    "signIn": {
+      "label": "Oturum aç",
+      "desc": "Ayarları senkronize et ve planını yönet"
+    },
+    "summary": {
+      "themeAuto": "Otomatik",
+      "count": "{{on}} / {{total}}"
+    },
+    "groups": {
+      "dashboard": "Pano",
+      "preferences": "Tercihler",
+      "developer": "Geliştirici",
+      "app": "Uygulama"
+    },
+    "sections": {
+      "account": "Hesap",
+      "map": "Harita",
+      "ai": "YZ ve analiz",
+      "video": "Video ve akışlar",
+      "apiKeys": "API anahtarları",
+      "embeds": "Gömüler",
+      "aiAgents": "YZ ajanları (MCP)",
+      "sync": "Senkronizasyon, içe aktarma ve dışa aktarma",
+      "about": "Hakkında"
+    },
+    "descriptions": {
+      "panels": "Göster, gizle ve yeniden düzenle",
+      "sources": "Bölgeler ve akışlar",
+      "notifications": "Kanallar ve uyarı kuralları",
+      "display": "Tema, yazı tipi ve dil",
+      "map": "Sağlayıcı, tema ve küre",
+      "ai": "Modeller, bellek ve çerçeveler",
+      "video": "Kalite ve otomatik oynatma",
+      "apiKeys": "World Monitor API anahtarları",
+      "embeds": "Kendi siteniz için widget'lar",
+      "aiAgents": "Bağlı MCP istemcileri",
+      "about": "Site bağlantıları, şartlar ve gizlilik"
+    },
+    "signOut": "Çıkış yap",
+    "signOutFailed": "Oturum kapatılamadı. Lütfen tekrar deneyin.",
+    "search": {
+      "empty": "Eşleşen ayar yok"
+    },
+    "account": {
+      "intro": "Geçerli planınızı görüntüleyin ve ödeme bilgilerini, faturaları veya iptal işlemlerini yönetin.",
+      "planFree": "Ücretsiz",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Premium erişimi",
+        "desc": "Bu erişim WorldMonitor hesabınız üzerinden faturalandırılmaz. Burada ödeme yöntemi veya fatura bulunmamaktadır."
+      },
+      "checking": {
+        "heading": "Plan kontrol ediliyor…",
+        "desc": "Bu genellikle sadece bir an sürer."
+      },
+      "status": {
+        "cancelScheduled": "İptal planlandı -- {{date}} tarihine kadar erişim",
+        "renews": "Yenilenir: {{date}}",
+        "onHold": "Askıda -- ödeme yönteminizi güncelleyin",
+        "cancelled": "İptal edildi -- {{date}} tarihine kadar erişim",
+        "expired": "Süresi doldu",
+        "unknown": "Geçerli plan detayları için Faturalama Yönetimi'ne bakın.",
+        "ownerManaged": "Faturalama plan sahibi tarafından yönetilmektedir."
+      },
+      "upgradeToBusiness": "Business'a Yükselt",
+      "unavailable": {
+        "heading": "Plan durumu kullanılamıyor",
+        "desc": "Geçerli planınız doğrulanamadı. Yeniden deneyin veya planları yeni bir sekmede görüntüleyin."
+      },
+      "free": {
+        "heading": "WorldMonitor Ücretsiz",
+        "desc": "Geçerli planınız Ücretsiz'dir. Tüm paneller, AI analizi ve öncelikli veri yenilemesi için yükseltin."
+      },
+      "portal": {
+        "openFailed": "Faturalama portalı açılamadı. Lütfen açılır pencerelere izin verin ve yeniden deneyin.",
+        "unavailable": "Faturalama portalı kullanılamıyor. Yardım için support@worldmonitor.app adresine e-posta gönderin."
+      },
+      "deletion": {
+        "heading": "Hesabı sil",
+        "desc": "Bu World Monitor hesabını kalıcı olarak silin. Abonelikler hemen iptal edilir ve kalan ön ödemeli süre için iade yapılmaz. API anahtarları, gömme anahtarları ve MCP belirteçleri çalışmayı durdurur. Muhasebe, anlaşmazlıklar ve yasal talepler için gereken fatura kayıtları, içerdikleri müşteri iletişim bilgileriyle birlikte saklanır; bu kayıtlar artık giriş hesabınızı belirtmez, ancak silme işleminden önce yazılan ödeme sağlayıcısı webhook günlükleri teslim edildikleri tanımlayıcıları korur. Pano tercihleri ve masaüstü uygulamasının bu cihazdaki anahtar zincirinde saklanan gizli bilgileri uzaktan silinmez.",
+        "dialogTitle": "Bu hesap silinsin mi?",
+        "dialogCopy": "Bu geri alınamaz. Abonelikler iptal olur, anahtarlar hemen çalışmayı durdurur ve fatura kayıtları muhasebe, anlaşmazlık ve yasal taleplere yönelik olarak tutulur — taşıdıkları iletişim bilgileri de dahil. Diğer cihazlarda oturumu kapatın ve sonrasında bu cihazın site verilerini temizleyin — bunlar sunucu erişiminin dışındadır.",
+        "phraseLabel": "Onaylamak için {{phrase}} yazın",
+        "deleted": "Hesap silindi. Diğer cihazlarda oturumu kapatın ve bu cihazın site verilerini temizleyin.",
+        "failed": "Hesap silme işlemi başarısız oldu. Yeniden deneyin."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} kullanıldı",
+        "invite": "Davet et",
+        "inviting": "Davet gönderiliyor...",
+        "remove": "Kaldır",
+        "removing": "Kaldırılıyor...",
+        "inviteSent": "Davet gönderildi",
+        "alreadyInvited": "Zaten davet edildi"
+      },
+      "businessSeats": {
+        "heading": "Business koltukları",
+        "statusAccepted": "Kabul edildi",
+        "statusExpired": "Süresi doldu",
+        "statusPending": "Beklemede",
+        "expires": "{{date}} tarihinde süresi sona eriyor",
+        "hintCorporate": "Herhangi bir kurumsal e-posta alan adından takım arkadaşlarını davet edin.",
+        "hintPersonal": "Takım arkadaşlarını davet etmek için kurumsal bir e-posta ekleyin.",
+        "personalDomain": "Ücretsiz veya tek kullanımlık e-posta alan adları takım arkadaşlarını davet edemez. Bu özelliği kullanmak için kurumsal bir e-posta ekleyin.",
+        "empty": "Henüz kimse davet edilmedi.",
+        "confirmRemove": "Bu koltuğu kaldırmak istiyor musunuz? Davet edilen kişi Pro erişimini hemen kaybedecek.",
+        "removed": "Koltuk kaldırıldı",
+        "alreadyInactive": "Koltuk zaten etkin değil",
+        "loadFailed": "Koltuklar yüklenemedi",
+        "inviteFailed": "Davet gönderilemedi",
+        "removeFailed": "Koltuk kaldırılamadı",
+        "errors": {
+          "seatCap": "4 koltuğun tümü kullanımda. Önce bir koltuğu kaldırın.",
+          "ownerDomain": "Takım arkadaşlarını davet etmek için hesap e-postanız kurumsal bir alan adında olmalıdır.",
+          "self": "Kendinizi davet edemezsiniz.",
+          "inviteeDomain": "Davet edilen kişinin e-postası kurumsal bir alan adında olmalıdır."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "{{account}} Enterprise koltukları",
+        "memberHint": "Hesap yöneticiniz bu hesaptaki kişileri ekler ve kaldırır.",
+        "hintFull": "Tüm koltuklar kullanımda. Bir koltuğu boşaltmak için birini kaldırın veya daveti geri çekin.",
+        "hintOpen": "Kurumsal e-posta ile kişileri davet edin. 14 gün geçerli olan bir bağlantı alırlar ve bu hesabın limitini paylaşırlar.",
+        "emailLabel": "Davet edilecek e-posta adresi",
+        "statusActive": "Etkin",
+        "statusExpired": "Davet süresi doldu",
+        "statusInvited": "Davet edildi",
+        "emailFailed": "Davet e-postası gönderilemedi. Adresi kontrol edin, sonra daveti geri çekin ve yeniden davet edin.",
+        "inviteExpires": "Davet {{date}} tarihinde sona eriyor",
+        "roleAdmin": "Yönetici",
+        "you": "Siz",
+        "withdraw": "Geri çek",
+        "unknownEmail": "Bilinmeyen e-posta",
+        "alreadyMember": "Zaten üye",
+        "confirmRemove": "{{email}} kullanıcısını kaldırmak istiyor musunuz? Enterprise erişimini hemen kaybedecek.",
+        "confirmRemoveUnknown": "Bu kişiyi kaldırmak istiyor musunuz? Enterprise erişimini hemen kaybedecek.",
+        "confirmWithdraw": "{{email}} adresine gönderilen daveti geri çekmek istiyor musunuz?",
+        "confirmWithdrawUnknown": "Bu adrese gönderilen daveti geri çekmek istiyor musunuz?",
+        "removed": "Üye kaldırıldı",
+        "withdrawn": "Davet geri çekildi",
+        "loadFailed": "Koltuklar yüklenemedi. Tekrar deneyin.",
+        "inviteFailed": "Davet gönderilemedi. Tekrar deneyin.",
+        "removeFailed": "Kaldırılamadı. Tekrar deneyin.",
+        "errors": {
+          "seatCap": "Tüm koltuklar kullanımda. Önce birini kaldırın veya bir daveti geri çekin.",
+          "inviteeDomain": "Kurumsal bir e-posta adresini davet edin. Ücretsiz ve geçici e-posta alan adları kabul edilmez.",
+          "self": "Zaten bir koltuğunuz var.",
+          "contractEnded": "Enterprise sözleşmeniz sona erdi. Yenilemek için desteğe başvurun.",
+          "notAdmin": "Yalnızca hesap yöneticisi koltukları yönetebilir.",
+          "removeSelf": "Kendi koltuğunuzu kaldıramazsınız. Yöneticiyi değiştirmek için desteğe başvurun.",
+          "tooMany": "Aynı anda en fazla 10 kişiye davet gönderin.",
+          "rateLimited": "Bir gün içinde izin verilen en fazla daveti gönderdiniz. Yarın tekrar deneyin."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "düzen",
+        "1": "widget'lar",
+        "2": "metin boyutu",
+        "3": "düzeni sıfırla"
+      },
+      "sources": {
+        "0": "haberler",
+        "1": "beslemeler",
+        "2": "RSS",
+        "3": "bölgeler",
+        "4": "haber kapsamı"
+      },
+      "notifications": {
+        "0": "uyarılar",
+        "1": "Telegram",
+        "2": "Slack",
+        "3": "e-posta",
+        "4": "Discord",
+        "5": "webhook",
+        "6": "push bildirimi"
+      },
+      "display": {
+        "0": "tema",
+        "1": "koyu",
+        "2": "açık",
+        "3": "yazı tipi",
+        "4": "dil",
+        "5": "metin boyutu"
+      },
+      "map": {
+        "0": "küre",
+        "1": "sağlayıcı",
+        "2": "kutucuklar",
+        "3": "temel harita"
+      },
+      "ai": {
+        "0": "yapay zeka",
+        "1": "Ollama",
+        "2": "çerçeveler",
+        "3": "başlık belleği",
+        "4": "tarayıcı modeli"
+      },
+      "video": {
+        "0": "akış",
+        "1": "otomatik oynatma",
+        "2": "kalite",
+        "3": "canlı"
+      },
+      "apiKeys": {
+        "0": "anahtar",
+        "1": "token",
+        "2": "masaüstü anahtarı"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "gömme anahtarı"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "ajanlar",
+        "3": "ChatGPT",
+        "4": "istemciler"
+      },
+      "sync": {
+        "0": "içeri aktar",
+        "1": "dışarı aktar",
+        "2": "yedek",
+        "3": "bulut"
+      },
+      "about": {
+        "0": "koşullar",
+        "1": "gizlilik",
+        "2": "lisans",
+        "3": "yasal"
+      },
+      "account": {
+        "0": "kullanıcı",
+        "1": "faturalandırma",
+        "2": "abonelik",
+        "3": "fatura",
+        "4": "koltuk",
+        "5": "oturumu kapat",
+        "6": "hesabı sil"
+      }
+    }
   }
 }

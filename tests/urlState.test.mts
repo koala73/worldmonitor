@@ -5,9 +5,14 @@ import {
   buildMapUrl,
   readDashboardSearchQuery,
   DASHBOARD_SEARCH_QUERY_MAX_CHARS,
+  withMapCentreOf,
   withUrlFragment,
   withoutVariantScopedUrlState,
+  buildOrbitalShareFragment,
+  parseOrbitalShareFragment,
+  withoutOrbitalShareFragment,
 } from '../src/utils/urlState.ts';
+import { redactSensitiveUrl, scrubSentryCredentials } from '../shared/sensitive-url-params.ts';
 import { LAYER_REGISTRY } from '../src/config/map-layer-definitions.ts';
 
 const EMPTY_LAYERS = {
@@ -274,5 +279,76 @@ describe('withoutVariantScopedUrlState', () => {
     assert.equal(next.searchParams.get('view'), 'global');
     assert.equal(next.searchParams.get('timeRange'), '7d');
     assert.equal(next.hash, '#signup');
+  });
+});
+
+describe('satellite pass share link', () => {
+  const eiffel = { lat: 48.858_37, lon: 2.294_48 };
+  const passAt = Date.UTC(2026, 10, 13, 10, 42, 37);
+
+  it('carries the point at 0.01-degree precision and no finer', () => {
+    const fragment = buildOrbitalShareFragment(eiffel);
+    assert.equal(fragment, 'orbital=48.86,2.29');
+    assert.doesNotMatch(fragment, /\d\.\d{3}/);
+    assert.equal(buildOrbitalShareFragment({ lat: -0.001, lon: -179.996 }), 'orbital=0.00,-180.00');
+  });
+
+  it('round-trips the point and the selected pass to the minute', () => {
+    const fragment = buildOrbitalShareFragment(eiffel, { noradId: 40697, timeMs: passAt });
+    assert.equal(fragment, 'orbital=48.86,2.29;40697-202611131042');
+    assert.deepEqual(parseOrbitalShareFragment(`#${fragment}`), {
+      point: { lat: 48.86, lon: 2.29 },
+      pass: { noradId: 40697, minuteMs: Date.UTC(2026, 10, 13, 10, 42) },
+      view: 'sheet',
+    });
+  });
+
+  it('opens the full view when the link asks for it', () => {
+    const fragment = buildOrbitalShareFragment(eiffel, null, 'full');
+    assert.equal(fragment, 'orbital=48.86,2.29&view=full');
+    assert.equal(parseOrbitalShareFragment(`#${fragment}`)?.view, 'full');
+    assert.equal(parseOrbitalShareFragment('#orbital=48.86,2.29&view=globe')?.view, 'sheet');
+    assert.equal(withoutOrbitalShareFragment(`#tab=1&${fragment}`), 'tab=1');
+  });
+
+  it('reads the key beside other fragment params and leaves them in place', () => {
+    assert.deepEqual(parseOrbitalShareFragment('#tab=1&orbital=-33.87,151.21')?.point, { lat: -33.87, lon: 151.21 });
+    assert.equal(withoutOrbitalShareFragment('#tab=1&orbital=-33.87,151.21'), 'tab=1');
+    assert.equal(withoutOrbitalShareFragment('#orbital=1.00,2.00'), '');
+    assert.equal(withoutOrbitalShareFragment('#/sign-up/continue'), '/sign-up/continue');
+  });
+
+  for (const malformed of [
+    '#orbital=91.00,10.00', '#orbital=10.00,181.00', '#orbital=48.8584,2.2945', '#orbital=abc',
+    '#orbital=48.86', '#orbital=48.86,2.29;40697-202613131042', '#orbital=48.86,2.29;x-202611131042', '#/sign-up', '',
+  ]) {
+    it(`ignores ${malformed || 'an empty fragment'}`, () => {
+      assert.equal(parseOrbitalShareFragment(malformed), null);
+    });
+  }
+
+  it('is redacted from analytics URLs and error reports', () => {
+    const shared = `https://www.worldmonitor.app/dashboard?view=global#${buildOrbitalShareFragment(eiffel)}`;
+    assert.equal(redactSensitiveUrl(shared), 'https://www.worldmonitor.app/dashboard?view=global');
+    const event = scrubSentryCredentials({ request: { url: shared }, breadcrumbs: [{ data: { from: shared } }] });
+    assert.doesNotMatch(JSON.stringify(event), /48\.86/);
+  });
+});
+
+describe('withMapCentreOf', () => {
+  const shared = 'https://www.worldmonitor.app/?lat=25.1120&lon=55.1390&zoom=11.00&view=global&layers=fires';
+
+  it('keeps the previous centre and zoom and takes every other param from the new URL', () => {
+    const next = new URL(withMapCentreOf(shared, 'https://www.worldmonitor.app/?lat=-15.0000&lon=80.0000&zoom=4.00&view=global&layers=none'));
+    assert.equal(next.searchParams.get('lat'), '-15.0000');
+    assert.equal(next.searchParams.get('lon'), '80.0000');
+    assert.equal(next.searchParams.get('zoom'), '4.00');
+    assert.equal(next.searchParams.get('layers'), 'fires');
+  });
+
+  it('drops the centre when the previous URL had none', () => {
+    const next = new URL(withMapCentreOf(shared, '/dashboard#orbital=25.1120,55.1390&view=full'));
+    assert.equal(next.search.includes('25.112') || next.search.includes('55.139'), false, next.search);
+    assert.equal(next.searchParams.get('layers'), 'fires');
   });
 });

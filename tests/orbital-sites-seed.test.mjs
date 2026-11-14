@@ -281,7 +281,7 @@ process.on('exit', () => {
 });
 `;
 
-function runSeeder({ mode = 'ok', initial = {}, budgetMs = 4_000 } = {}) {
+function runSeeder({ mode = 'ok', initial = {}, budgetMs = 4_000, enabled = 'true' } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'orbital-sites-seed-'));
   const preloadPath = join(dir, 'preload.mjs');
   writeFileSync(preloadPath, preload);
@@ -304,6 +304,7 @@ function runSeeder({ mode = 'ok', initial = {}, budgetMs = 4_000 } = {}) {
         TEST_STAC_FILE: stacFile,
         TEST_STATE_FILE: stateFile,
         TEST_INITIAL: JSON.stringify(initial),
+        ORBITAL_WATCH_ENABLED: enabled,
       },
       encoding: 'utf8',
       timeout: 90_000,
@@ -332,6 +333,14 @@ describe('seed-orbital-sites run', () => {
     assert.equal(meta.recordCount, ids.length);
     assert.ok(meta.fetchedAt > Date.now() - 120_000);
     assert.equal(values[ORBITAL_SITES_ACTIVATION_KEY], '1');
+  });
+
+  it('stays dark without ORBITAL_WATCH_ENABLED: no archive search and no writes (#10710)', () => {
+    const r = runSeeder({ initial: { 'orbital:catalog:v1': catalogEnvelope() }, enabled: '' });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.equal(r.state.archiveCalls, 0);
+    assert.deepEqual(r.state.writes, []);
+    assert.match(r.stdout, /ships dark/);
   });
 
   it('exits 76 on an archive refusal and writes nothing', () => {

@@ -1,6 +1,6 @@
 ---
 title: "Real-Time Radiation Monitoring: Read the Sensors, Not the Rumors"
-description: "WorldMonitor merges EPA RadNet stations and the Safecast citizen-sensor network into a live radiation layer, with nuclear sites and IAEA irradiators for context."
+description: "WorldMonitor merges EPA RadNet stations and Safecast citizen sensors into a live radiation layer, with nuclear sites and IAEA irradiators for map context."
 metaTitle: "Real-Time Radiation Monitoring Map | WorldMonitor"
 keywords: "real time radiation map, radiation levels live, nuclear radiation monitoring, Safecast radiation data, EPA RadNet, radiation monitoring dashboard"
 audience: "OSINT analysts, journalists, researchers, emergency-preparedness planners, concerned readers during nuclear events"
