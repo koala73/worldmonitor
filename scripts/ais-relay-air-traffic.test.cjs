@@ -173,7 +173,7 @@ async function lane(snapshots, extraEnv, body) {
 
 test('lane 1: a global snapshot becomes one ok point with the hand-counted totals and a heartbeat', async () => {
   await lane([GLOBAL_SNAPSHOT], {}, async ({ redis, relay }) => {
-    await relay.waitFor(() => redis.points('2026-11-13').length >= 1, 'first point');
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 1 && relay.lines().length >= 1, 'first point and its log line');
     const [point] = redis.points('2026-11-13');
     assert.equal(point.status, 'ok');
     assert.equal(point.t % 300_000, 0);
@@ -184,7 +184,9 @@ test('lane 1: a global snapshot becomes one ok point with the hand-counted total
     assert.deepEqual(point.hubs.ATL, { air: 0, ground: 300 });
     assert.equal(Object.keys(point.hubs).length, 20);
     assert.match(relay.lines()[0], /status=ok us=1500 usAirborne=1200 usLowClimbing=200 eu=2000 hubs=20/);
-    assert.deepEqual(JSON.parse(redis.get('seed-meta:aviation:traffic-history')), { fetchedAt: point.t, recordCount: 10_000 });
+    const meta = JSON.parse(redis.get('seed-meta:aviation:traffic-history'));
+    assert.equal(meta.recordCount, 10_000);
+    assert.ok(meta.fetchedAt >= point.t && meta.fetchedAt < point.t + 300_000, 'the heartbeat is the fetch time inside the bin');
     assert.equal(redis.get('seed-activated:aviation:traffic-history'), '1');
   });
 });
@@ -231,7 +233,7 @@ test('lane 6: two replicas on one Redis leave one ok point per bin and skip bins
     assert.ok(points.every((p) => p.status === 'ok'), JSON.stringify(points.map((p) => p.status)));
     const written = [...a.lines(), ...b.lines()].filter((line) => /status=ok/.test(line)).map((line) => line.match(/t=(\S+)/)[1]);
     const skipped = [...a.lines(), ...b.lines()].filter((line) => /already recorded/.test(line));
-    assert.equal(new Set(written).size, points.length, 'every bin in the hash was written, and no bin appears twice');
+    assert.deepEqual([...new Set(written)].sort(), points.map((p) => new Date(p.t).toISOString()), 'the hash holds exactly one point for each bin a replica wrote');
     assert.ok(skipped.length >= 1, `a replica skips a bin the other already recorded\n${a.output()}\n${b.output()}`);
   } finally {
     await Promise.all([a.stop(), b.stop()]);
@@ -240,9 +242,28 @@ test('lane 6: two replicas on one Redis leave one ok point per bin and skip bins
   }
 });
 
+test('lane 6b: a cached snapshot older than the bin is a gap, never a repeat of the earlier count', async () => {
+  // A long cache TTL serves the first snapshot to every later tick.
+  await lane([GLOBAL_SNAPSHOT, EUROPE_ONLY], { OPENSKY_CACHE_TTL_MS: '3600000' }, async ({ redis, relay }) => {
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 3, 'three bins');
+    const [first, ...later] = redis.points('2026-11-13');
+    assert.equal(first.status, 'ok');
+    for (const point of later) assert.deepEqual(point, { t: point.t, status: 'gap' });
+    assert.ok(relay.lines().slice(1).every((line) => /status=gap reason=stale/.test(line)), relay.lines().join('\n'));
+  });
+});
+
+test('lane 6c: a snapshot with no positioned aircraft is a gap, not a world with zero traffic', async () => {
+  await lane([[]], {}, async ({ redis, relay }) => {
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 1 && relay.lines().length >= 1, 'first point and its log line');
+    assert.deepEqual(redis.points('2026-11-13')[0], { t: redis.points('2026-11-13')[0].t, status: 'gap' });
+    assert.match(relay.lines()[0], /status=gap reason=empty/);
+  });
+});
+
 test('lane 7: a client /opensky request shares the cached global snapshot the loop fetched', async () => {
   await lane([GLOBAL_SNAPSHOT], { OPENSKY_CACHE_TTL_MS: '600000', RELAY_TEST_CLOCK_RATE: '1' }, async ({ redis, relay }) => {
-    await relay.waitFor(() => redis.points('2026-11-13').length >= 1, 'first point');
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 1 && relay.lines().length >= 1, 'first point and its log line');
     const response = await get(relay.port(), '/opensky');
     assert.equal(response.status, 200);
     assert.equal(response.headers['x-cache'], 'HIT', 'the client is served from the fetch the loop already paid for');
@@ -251,7 +272,7 @@ test('lane 7: a client /opensky request shares the cached global snapshot the lo
 
 test('lane 9: a snapshot with no US states is an ok point with zero US counts and a normal Europe count', async () => {
   await lane([EUROPE_ONLY], {}, async ({ redis, relay }) => {
-    await relay.waitFor(() => redis.points('2026-11-13').length >= 1, 'first point');
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 1 && relay.lines().length >= 1, 'first point and its log line');
     const [point] = redis.points('2026-11-13');
     assert.equal(point.status, 'ok');
     assert.equal(point.usAirborne, 0);

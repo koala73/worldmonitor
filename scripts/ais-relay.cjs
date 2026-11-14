@@ -6690,8 +6690,11 @@ const AIR_TRAFFIC_START_DELAY_MS = process.env.AIR_TRAFFIC_START_DELAY_MS !== un
 // serving a negative or stale cache entry. Only these X-Cache values carry a
 // fresh upstream snapshot; everything else is a gap, never a zero count.
 const AIR_TRAFFIC_FRESH_CACHE_STATES = new Set(['MISS', 'HIT', 'DEDUP']);
+// A HIT can be a snapshot another caller fetched up to a cache TTL ago. Past
+// this age it describes an earlier bin, so it is a gap, not this bin's count.
+const AIR_TRAFFIC_MAX_SNAPSHOT_AGE_MS = 180_000;
 
-async function fetchAirTrafficStates() {
+async function fetchAirTrafficStates(fetchedAt) {
   const resp = await fetch(`http://${RELAY_SELF_HOST}:${relayBoundPort}/opensky`, {
     headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
     signal: AbortSignal.timeout(20_000),
@@ -6705,6 +6708,8 @@ async function fetchAirTrafficStates() {
     console.warn(`[AirTraffic] Malformed OpenSky body (states is ${data?.states === null ? 'null' : typeof data?.states}); recording a gap`);
     return { gap: 'malformed' };
   }
+  const snapshotMs = Number(data.time) * 1000;
+  if (!Number.isFinite(snapshotMs) || fetchedAt - snapshotMs > AIR_TRAFFIC_MAX_SNAPSHOT_AGE_MS) return { gap: 'stale' };
   return { states: data.states };
 }
 
@@ -6719,14 +6724,17 @@ async function seedAirTrafficPoint() {
   let point;
   let gapReason = null;
   try {
-    const snapshot = await fetchAirTrafficStates();
+    const snapshot = await fetchAirTrafficStates(fetchedAt);
     if (snapshot.gap) gapReason = snapshot.gap;
     else point = aggregateAirTrafficStates(snapshot.states, fetchedAt);
+    // A global snapshot with no positioned aircraft is a degraded feed, not a
+    // grounded world.
+    if (point && point.statesTotal === 0) { point = null; gapReason = 'empty'; }
   } catch (e) {
     gapReason = e?.name === 'TimeoutError' ? 'timeout' : (e?.message || String(e));
   }
   if (!point) point = airTrafficGapPoint(fetchedAt);
-  await recordTrafficPoint(point, upstashPipeline);
+  await recordTrafficPoint(point, upstashPipeline, fetchedAt);
   const bin = new Date(t).toISOString();
   if (point.status === 'ok') {
     console.log(`[AirTraffic] t=${bin} status=ok us=${point.usSeen} usAirborne=${point.usAirborne} usLowClimbing=${point.usLowClimbing} eu=${point.euAirborne} hubs=${Object.keys(point.hubs).length}`);

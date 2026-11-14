@@ -60,7 +60,7 @@ test('real Redis keeps one point per bin, upgrades a gap, never downgrades an ok
     await history.recordTrafficPoint(okPoint(T), pipeline);
     assert.equal(JSON.parse(command('HGET', key, T)).status, 'ok', 'an ok point replaces a gap');
 
-    await history.recordTrafficPoint(okPoint(T, 120), pipeline);
+    await history.recordTrafficPoint(okPoint(T, 120), pipeline, T + 42_000);
     assert.equal(JSON.parse(command('HGET', key, T)).usSeen, 120, 'a rewrite of the same bin replaces it');
     assert.equal(command('HLEN', key), '1');
 
@@ -69,7 +69,7 @@ test('real Redis keeps one point per bin, upgrades a gap, never downgrades an ok
 
     assert.equal(Number(command('EXPIRETIME', key)), history.buildTrafficPointWrite(okPoint(T)).expireAt);
     const meta = JSON.parse(command('GET', history.HEARTBEAT_KEY));
-    assert.deepEqual(meta, { fetchedAt: T, recordCount: 400 });
+    assert.deepEqual(meta, { fetchedAt: T + 42_000, recordCount: 400 }, 'the heartbeat is the fetch time, not the bin start');
     assert.ok(Number(command('TTL', history.HEARTBEAT_KEY)) > 86400);
     assert.equal(command('GET', history.ACTIVATION_KEY), '1');
     assert.equal(command('TTL', history.ACTIVATION_KEY), '-1');

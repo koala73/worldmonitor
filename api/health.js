@@ -2427,7 +2427,8 @@ const SEED_META = {
       activationKey: 'seed-activated:intelligence:pizzint-history',
     },
   },
-  // Relay loop every 5min. 20 = four missed bins. Gap points (an OpenSky
+  // Relay loop every 5min; the heartbeat is the last ok fetch time. 20 = three
+  // missed ticks plus margin. Gap points (an OpenSky
   // failure or cooldown) never advance the heartbeat, so a run of gaps goes
   // stale here while the loop itself is alive.
   airTrafficHistory: {

@@ -26,8 +26,9 @@ function validPoint(point) {
 // point replaces a gap. A gap uses HSETNX, so it never overwrites anything. Two
 // relay replicas writing the same bin therefore leave one point, and a failed
 // fetch on one replica cannot erase another replica's data.
-function buildTrafficPointWrite(point) {
+function buildTrafficPointWrite(point, fetchedAt = point?.t) {
   if (!validPoint(point)) throw new TypeError('invalid traffic point');
+  if (!Number.isFinite(fetchedAt)) throw new TypeError('fetchedAt must be a finite epoch ms');
   const day = new Date(point.t).toISOString().slice(0, 10);
   const key = `${PREFIX}:${day}`;
   const expireAt = Math.floor(Date.parse(`${day}T00:00:00.000Z`) / 1000) + 86400 + RETENTION_DAYS * 86400;
@@ -40,7 +41,7 @@ function buildTrafficPointWrite(point) {
   ];
   if (point.status === 'ok') {
     commands.push(
-      ['SET', HEARTBEAT_KEY, JSON.stringify({ fetchedAt: point.t, recordCount: point.statesTotal }), 'EX', String(HEARTBEAT_TTL_SECONDS)],
+      ['SET', HEARTBEAT_KEY, JSON.stringify({ fetchedAt, recordCount: point.statesTotal }), 'EX', String(HEARTBEAT_TTL_SECONDS)],
       ['SET', ACTIVATION_KEY, '1'],
     );
   }
@@ -48,9 +49,11 @@ function buildTrafficPointWrite(point) {
 }
 
 // `pipeline` runs an Upstash /pipeline body and resolves to its result array.
-async function recordTrafficPoint(point, pipeline) {
+// `fetchedAt` is the fetch time, which the heartbeat records so health ages the
+// series from the last real fetch rather than from the bin start.
+async function recordTrafficPoint(point, pipeline, fetchedAt = point?.t) {
   if (typeof pipeline !== 'function') throw new TypeError('pipeline must be a function');
-  const write = buildTrafficPointWrite(point);
+  const write = buildTrafficPointWrite(point, fetchedAt);
   const results = await pipeline(write.commands);
   if (!Array.isArray(results) || results.length !== write.commands.length || results.some((r) => !r || r.error)) {
     throw new Error('traffic_history_write_failed');
