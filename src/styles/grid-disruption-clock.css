@@ -7,6 +7,7 @@
 .grid-clock[data-phase="recovering"], .grid-clock[data-phase="restored"] { --clock-tone: var(--green-text, var(--green)); }
 .grid-clock-selector {
   display: inline-flex;
+  max-width: 100%;
   flex-wrap: wrap;
   gap: 2px;
   padding: 2px;

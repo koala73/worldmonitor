@@ -6,14 +6,14 @@ import {
   afterGridClockPublish, buildGridClockSnapshot, gridClockHealth, GRID_CLOCK_ACTIVATION_KEY,
 } from '../scripts/seed-grid-disruption-clock.mjs';
 import { __testing__ as health } from '../api/health.js';
-import { deriveGridClock, isGridClockSnapshot } from '../shared/grid-disruption-clock.js';
+import { deriveGridClock, isGridClockSnapshot, GRID_CLOCK_REGIONS } from '../shared/grid-disruption-clock.js';
 import { BOOTSTRAP_CACHE_KEYS, bootstrapTierKeyNames } from '../shared/bootstrap-tier-keys.js';
 import { assertPublicBootstrapCorsHeaders, assertPublicBootstrapSharedCacheHeaders } from './helpers/public-bootstrap-contract.mjs';
 
 const start = Date.UTC(2026, 10, 13, 12);
 const tick = 600_000;
 function regions(time, count) {
-  return ['CA', 'TN'].map(code => ({
+  return Object.keys(GRID_CLOCK_REGIONS).map(code => ({
     code,
     current: count === null ? null : {
       observedAt: time, customersOut: count, customersTracked: null, coverageKey: code,
@@ -34,6 +34,16 @@ test('duplicate snapshots and revised totals only produce one observation per so
   assert.ok(isGridClockSnapshot(result));
   assert.equal(result.regions[0].history.length, 1);
   assert.equal(deriveGridClock(result.regions[0], start + 2 * tick).changeCustomers, -5);
+});
+
+test('expanding the original cache retains CA/TN history and starts the four new states independently', () => {
+  const previous = buildGridClockSnapshot(regions(start, 15).slice(0, 2), null, start);
+  const expanded = buildGridClockSnapshot(regions(start + tick, 12), previous, start + tick);
+  assert.ok(isGridClockSnapshot(expanded));
+  assert.deepEqual(expanded.regions.map(r => r.history.length), [1, 1, 0, 0, 0, 0]);
+  assert.equal(isGridClockSnapshot({ regions: expanded.regions.slice(0, 5) }), false);
+  assert.equal(isGridClockSnapshot({ regions: [...expanded.regions.slice(0, 5), expanded.regions[0]] }), false);
+  assert.equal(isGridClockSnapshot({ regions: expanded.regions.map(r => r.code === 'WA' ? { ...r, code: 'XX' } : r) }), false);
 });
 
 test('after a failed or regressed report, keep history and suppress the next comparison', () => {

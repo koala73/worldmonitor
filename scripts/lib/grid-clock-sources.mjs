@@ -1,7 +1,6 @@
 import { readBoundedJsonResponse } from '../_china-exchange-transport.mjs';
+import { GRID_CLOCK_REGIONS } from '../../shared/grid-disruption-clock.js';
 
-const REGIONS = { CA: 'California', TN: 'Tennessee' };
-const STATE_FIPS = { CA: '06', TN: '47' };
 const MASSOUTAGE_URL = 'https://massoutage.com/api/v1/live/summary';
 const CAISO_URL = 'https://wwwmobile.caiso.com/TodaysOutlookApi/api/EmergencyNotices/v2/ActiveEvents';
 const CAISO = { kind: 'grid', sourceName: 'California ISO', sourceUrl: 'https://www.caiso.com/emergency-notifications' };
@@ -45,16 +44,16 @@ function impactPoints(payload, nowMs) {
     || !isRecent(observedAt, nowMs) || !Array.isArray(states)) return points;
   const partial = national.stale || national.stale_out > 0 || !isRecent(oldestAt, nowMs);
 
-  for (const [code, name] of Object.entries(REGIONS)) {
+  for (const [code, { name, fips, slug }] of Object.entries(GRID_CLOCK_REGIONS)) {
     const rows = states.filter(row => row?.abbr === code);
     const row = rows[0];
-    if (rows.length !== 1 || row.state_fips !== STATE_FIPS[code]
+    if (rows.length !== 1 || row.state_fips !== fips
       || !Number.isSafeInteger(row.customers_out) || row.customers_out < 0) continue;
     points[code] = {
       observedAt, customersOut: row.customers_out, customersTracked: null,
       coverageKey: 'massoutage:' + code,
       coverageLabel: 'Reporting utilities in ' + name + '. Statewide coverage is incomplete.',
-      sourceName: 'MassOutage (massoutage.com)', sourceUrl: 'https://massoutage.com/' + name.toLowerCase(),
+      sourceName: 'MassOutage (massoutage.com)', sourceUrl: 'https://massoutage.com/' + slug,
       partial,
       detail: partial
         ? 'The national report includes older observations. It does not identify which states are affected.'
@@ -142,7 +141,7 @@ async function collectWarnings(source, fetchImpl, url, normalize, nowMs) {
 }
 
 export async function fetchGridClockSources({ fetchImpl = fetch, nowMs = Date.now() } = {}) {
-  const regionCodes = Object.keys(REGIONS);
+  const regionCodes = Object.keys(GRID_CLOCK_REGIONS);
   const [points, caiso, weather] = await Promise.all([
     fetchJson(fetchImpl, MASSOUTAGE_URL).then(payload => impactPoints(payload, nowMs)).catch(error => {
       console.warn('[grid-clock] MassOutage', error.message);
@@ -156,11 +155,12 @@ export async function fetchGridClockSources({ fetchImpl = fetch, nowMs = Date.no
     })),
   ]);
   return regionCodes.map((code, idx) => {
-    const grid = code === 'CA' ? caiso : { warnings: [], health: { ...TVA, checkedAt: null, status: 'not_monitored' } };
-    const warningSources = [grid.health, weather[idx].health];
+    const grid = code === 'CA' ? caiso : code === 'TN'
+      ? { warnings: [], health: { ...TVA, checkedAt: null, status: 'not_monitored' } } : null;
+    const warningSources = [...(grid ? [grid.health] : []), weather[idx].health];
     return {
       code, current: points[code] ?? null,
-      warnings: [...grid.warnings, ...weather[idx].warnings], warningSources,
+      warnings: [...(grid?.warnings ?? []), ...weather[idx].warnings], warningSources,
       warningsCheckedAt: warningSources.some(source => source.status === 'unavailable') ? null : nowMs,
     };
   });

@@ -24,7 +24,7 @@ const nwsFeature = extra => ({
   },
 });
 
-async function read({ mass = summary(), caiso = emptyCaiso(), caWeather = weather(), tnWeather = weather() } = {}) {
+async function read({ mass = summary(), caiso = emptyCaiso(), caWeather = weather(), tnWeather = weather(), stateWeather = {} } = {}) {
   const calls = [];
   const fetchImpl = async (url, options) => {
     const parsed = new URL(url);
@@ -34,12 +34,16 @@ async function read({ mass = summary(), caiso = emptyCaiso(), caWeather = weathe
     let payload;
     if (parsed.hostname === 'massoutage.com') payload = mass;
     else if (parsed.hostname === 'wwwmobile.caiso.com') payload = caiso;
-    else if (parsed.hostname === 'api.weather.gov') payload = parsed.searchParams.get('area') === 'CA' ? caWeather : tnWeather;
+    else if (parsed.hostname === 'api.weather.gov') {
+      const code = parsed.searchParams.get('area');
+      payload = code === 'CA' ? caWeather : code === 'TN' ? tnWeather : stateWeather[code] ?? weather();
+    }
     else throw new Error('Unexpected test URL');
     return payload instanceof Response ? payload : Response.json(payload);
   };
   const regions = await fetchGridClockSources({ fetchImpl, nowMs: now });
   assert.equal(calls.filter(h => h === 'massoutage.com').length, 1);
+  assert.equal(calls.filter(h => h === 'api.weather.gov').length, 6);
   return regions;
 }
 
@@ -52,6 +56,35 @@ test('CA and TN get their reported counts, preserve an explicit zero, and never 
   assert.equal(tennessee.current.customersOut, 0);
   assert.equal(tennessee.warningSources.find(s => s.kind === 'grid').status, 'not_monitored');
   assert.ok(california.warningSources.every(s => s.checkedAt === now && s.status === 'available'));
+});
+
+test('new states have independent counts and warnings without borrowing TVA operator coverage', async () => {
+  const mass = summary();
+  mass.data.states.push(
+    { abbr: 'TX', state_fips: '48', customers_out: 123 },
+    { abbr: 'FL', state_fips: '12', customers_out: 0 },
+    { abbr: 'NY', state_fips: '36', customers_out: 45 },
+    { abbr: 'WA', state_fips: '53', customers_out: 67 },
+  );
+  const stateWeather = { TX: { ...weather(), features: [nwsFeature({ event: 'Tornado Warning' })] },
+    WA: new Response('unavailable', { status: 503 }) };
+  const regions = await read({ mass, stateWeather });
+  assert.deepEqual(regions.map(r => r.code), ['CA', 'TN', 'TX', 'FL', 'NY', 'WA']);
+  assert.deepEqual(regions.slice(2).map(r => r.current.customersOut), [123, 0, 45, 67]);
+  for (const region of regions.slice(2)) {
+    assert.equal(region.warningSources.length, 1);
+    assert.equal(region.warningSources[0].kind, 'weather');
+    assert.match(region.warningSources[0].sourceUrl, new RegExp('area=' + region.code + '&'));
+  }
+  assert.equal(regions[2].warnings[0].title, 'Tornado Warning · Affected forecast zone');
+  assert.deepEqual(regions[3].warnings, []);
+  assert.equal(regions[4].current.sourceUrl, 'https://massoutage.com/new-york');
+  assert.equal(regions[5].warningsCheckedAt, null);
+  assert.equal(regions[4].warningsCheckedAt, now);
+  mass.data.states = mass.data.states.filter(row => row.abbr !== 'TX');
+  const missing = await read({ mass });
+  assert.equal(missing[2].current, null);
+  assert.equal(missing[3].current.customersOut, 0);
 });
 
 test('a missing, duplicate or malformed region cannot fabricate zero, or suppress the other state', async () => {

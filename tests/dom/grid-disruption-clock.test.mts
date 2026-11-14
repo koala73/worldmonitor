@@ -101,3 +101,18 @@ it('keeps history open and focused when a refresh changes its summary count', as
   expect(document.activeElement!.textContent).not.toBe(previousLabel);
   expect(history().querySelectorAll('li')).toHaveLength(2);
 });
+
+it('returns to California if a refresh serves the original two-state cache', async () => {
+  const root = await mount();
+  const original = await transport.fetch.mock.results[0]!.value as GridClockSnapshot;
+  transport.fetch.mockResolvedValue({ regions: [...original.regions,
+    ...(['TX', 'FL', 'NY', 'WA'] as const).map(code => ({ ...original.regions[0]!, code })),
+  ] });
+  await panel!.fetchData();
+  root.querySelector<HTMLButtonElement>('[data-region="TX"]')!.click();
+  expect(root.querySelector('[data-region="TX"]')!.getAttribute('aria-pressed')).toBe('true');
+  transport.fetch.mockResolvedValue(original);
+  await panel!.fetchData();
+  expect(root.querySelector('[data-region="TX"]')).toBeNull();
+  expect(root.querySelector('[data-region="CA"]')!.getAttribute('aria-pressed')).toBe('true');
+});

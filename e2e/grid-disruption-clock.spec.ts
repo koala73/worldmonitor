@@ -18,6 +18,12 @@ function fixture(now: number): GridClockSnapshot {
         { ...weather, checkedAt: now, status: 'available' },
         { ...grid, sourceName: 'Tennessee Valley Authority', checkedAt: null, status: 'not_monitored' },
       ] },
+    ...(['TX', 'FL', 'NY', 'WA'] as const).map((code, index) => ({
+      code, current: code === 'WA' ? null : { ...source, coverageKey: code,
+        coverageLabel: 'Participating utilities in ' + code, observedAt: now - 120_000, customersOut: [321, 0, 654][index]! },
+      history: [], warnings: [], warningsCheckedAt: now,
+      warningSources: [{ ...weather, checkedAt: now, status: 'available' as const }],
+    })),
   ] };
 }
 
@@ -69,7 +75,26 @@ test('enable grid clock, inspect a California warning and Tennessee coverage', a
   const expiredScreenshot = testInfo.outputPath('california-expired.png');
   await panel.screenshot({ path: expiredScreenshot });
   await testInfo.attach('California warning expires without fetching', { path: expiredScreenshot, contentType: 'image/png' });
+  await panel.getByRole('button', { name: 'New York', exact: true }).click();
+  await expect(panel.getByText('654', { exact: true })).toBeVisible();
+  await expect(panel.getByText('Grid notice · Check operator directly', { exact: true })).toBeVisible();
+  await expect(panel.getByRole('link', { name: 'Tennessee Valley Authority' })).toHaveCount(0);
+  const newYorkScreenshot = testInfo.outputPath('new-york-desktop.png');
+  await panel.screenshot({ path: newYorkScreenshot });
+  await testInfo.attach('New York fixture, six-state selector', { path: newYorkScreenshot, contentType: 'image/png' });
   await page.setViewportSize({ width: 390, height: 844 });
+  await panel.getByRole('button', { name: 'Texas', exact: true }).click();
+  await expect(panel.getByText('321', { exact: true })).toBeVisible();
+  await page.clock.fastForward(60_000);
+  await expect(panel.getByRole('button', { name: 'Texas', exact: true })).toBeFocused();
+  await panel.getByRole('button', { name: 'Florida', exact: true }).click();
+  await expect(panel.locator('.grid-clock-total')).toHaveText('0');
+  await panel.getByRole('button', { name: 'Washington', exact: true }).click();
+  await expect(panel.locator('.grid-clock-total')).toHaveText('Unknown');
+  expect(await panel.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  const washingtonScreenshot = testInfo.outputPath('washington-mobile.png');
+  await panel.screenshot({ path: washingtonScreenshot });
+  await testInfo.attach('Washington fixture, missing count on mobile', { path: washingtonScreenshot, contentType: 'image/png' });
   await panel.getByRole('button', { name: 'Tennessee' }).click();
   await expect(panel.getByText('Unknown', { exact: true })).toBeVisible();
   await expect(panel.getByText('High wind warning')).toBeVisible();

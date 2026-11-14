@@ -4,11 +4,10 @@ import { getLocale, t } from '@/services/i18n';
 import { h, type DomChild } from '@/utils/dom-utils';
 import { validateUrl } from '@/utils/sanitize';
 import {
-  deriveGridClock, GRID_CLOCK_MAX_AGE_MS, type GridClockRegion, type GridClockSnapshot, type GridClockWarning,
+  deriveGridClock, GRID_CLOCK_MAX_AGE_MS, GRID_CLOCK_REGIONS, type GridClockRegion, type GridClockSnapshot, type GridClockWarning,
 } from '../../shared/grid-disruption-clock.js';
 import '../styles/grid-disruption-clock.css';
 
-const regions = { CA: 'California', TN: 'Tennessee' } as const;
 type ClockState = ReturnType<typeof deriveGridClock>;
 
 function label(key: string, options?: Record<string, unknown>): string {
@@ -62,6 +61,8 @@ function warnings(region: GridClockRegion, state: ClockState): HTMLElement {
   });
   const manualGridSource = region.warningSources.find(check => check.kind === 'grid' && check.status === 'not_monitored');
   return section(label('warnings'),
+    !region.warningSources.some(check => check.kind === 'grid')
+      ? h('p', { className: 'grid-clock-meta' }, label('kind.grid'), ' · ', label('checks.not_monitored')) : null,
     current.length ? h('ul', { className: 'grid-clock-list' }, ...current.map(warningRow))
       : h('p', state.warningsFresh ? label('noActive') : label('unknownWarnings')),
     manualGridSource ? h('p', { className: 'grid-clock-meta' }, label('operatorLink'), ' ',
@@ -113,6 +114,7 @@ export class GridDisruptionClockPanel extends Panel {
   public async fetchData(): Promise<void> {
     try {
       this.snapshot = await fetchGridDisruptionClock();
+      if (!this.snapshot.regions.some(region => region.code === this.selected)) this.selected = 'CA';
       this.refreshFailed = false;
     } catch {
       if (!this.snapshot) {
@@ -140,14 +142,14 @@ export class GridDisruptionClockPanel extends Panel {
     const point = state.freshness === 'unavailable' ? null : region.current;
     const number = new Intl.NumberFormat(getLocale());
     const bar = h('div', { className: 'grid-clock-selector', role: 'group', 'aria-label': label('region') },
-      ...(['CA', 'TN'] as const).map(code => h('button', {
+      ...this.snapshot!.regions.map(({ code }) => h('button', {
         type: 'button', 'aria-pressed': String(code === this.selected), 'data-region': code,
         onclick: () => {
           this.selected = code;
           this.render();
           this.content.querySelector<HTMLButtonElement>(`button[data-region="${code}"]`)?.focus({ preventScroll: true });
         },
-      }, regions[code])));
+      }, GRID_CLOCK_REGIONS[code].name)));
     const firstWarning = state.activeWarnings.length
       ? Math.min(...state.activeWarnings.map(warning => warning.issuedAt)) : null;
     const ageLabel = elapsed(firstWarning ?? point?.observedAt ?? null, now);

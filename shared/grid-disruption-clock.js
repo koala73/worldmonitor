@@ -1,6 +1,15 @@
 /** Live sources are polled on a minutes-scale cadence. A retained seed never extends this clock. */
 export const GRID_CLOCK_MAX_AGE_MS = 60 * 60 * 1000;
 
+export const GRID_CLOCK_REGIONS = {
+  CA: { name: 'California', fips: '06', slug: 'california' },
+  TN: { name: 'Tennessee', fips: '47', slug: 'tennessee' },
+  TX: { name: 'Texas', fips: '48', slug: 'texas' },
+  FL: { name: 'Florida', fips: '12', slug: 'florida' },
+  NY: { name: 'New York', fips: '36', slug: 'new-york' },
+  WA: { name: 'Washington', fips: '53', slug: 'washington' },
+};
+
 const isText = value => typeof value === 'string' && value.trim().length > 0;
 const isTime = value => Number.isSafeInteger(value) && value > 0 && value <= 8.64e15;
 const isCount = value => value === null || (Number.isSafeInteger(value) && value >= 0);
@@ -42,10 +51,14 @@ function isWarningSource(value) {
 
 /** The wire carries explicit nulls so an omitted or malformed observation cannot become zero. */
 export function isGridClockSnapshot(value) {
-  if (!Array.isArray(value?.regions) || value.regions.length !== 2) return false;
+  if (!Array.isArray(value?.regions)) return false;
+  // Accept the original snapshot while the worker and browser roll out separately.
+  // Remove the two-state form when the v1 cache is retired.
+  const expectedCodes = value.regions.length === 2 ? ['CA', 'TN'] : Object.keys(GRID_CLOCK_REGIONS);
+  if (value.regions.length !== expectedCodes.length) return false;
   const codes = new Set();
   for (const region of value.regions) {
-    if (!region || !['CA', 'TN'].includes(region.code) || codes.has(region.code)) return false;
+    if (!region || !expectedCodes.includes(region.code) || codes.has(region.code)) return false;
     if (region.current !== null && !isPoint(region.current)) return false;
     if (!Array.isArray(region.history) || !region.history.every(isPoint)) return false;
     if (region.lastImpactGapAt != null && !isTime(region.lastImpactGapAt)) return false;

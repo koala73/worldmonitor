@@ -2,6 +2,7 @@
 import { pathToFileURL } from 'node:url';
 import { getRedisCredentials, loadEnvFile, readCanonicalValue, redisCommand, runSeed } from './_seed-utils.mjs';
 import { fetchGridClockSources } from './lib/grid-clock-sources.mjs';
+import { GRID_CLOCK_REGIONS, isGridClockSnapshot } from '../shared/grid-disruption-clock.js';
 
 const KEY = 'infra:grid-disruption-clock:v1';
 export const GRID_CLOCK_ACTIVATION_KEY = 'seed-activated:infra:grid-disruption-clock';
@@ -83,7 +84,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     sourceVersion: 'grid-disruption-clock-v1',
     schemaVersion: 1,
     maxStaleMin: 30,
-    validateFn: data => data.regions.length === 2 && ['CA', 'TN'].every(code => data.regions.some(r => r.code === code)),
+    validateFn: data => isGridClockSnapshot(data) && data.regions.length === Object.keys(GRID_CLOCK_REGIONS).length,
     declareRecords: data => data.regions.length,
     recordCount: data => data.regions.length,
     afterPublish: data => afterGridClockPublish(data),

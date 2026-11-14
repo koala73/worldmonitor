@@ -1,4 +1,5 @@
-export type GridClockRegionCode = 'CA' | 'TN';
+export type GridClockRegionCode = 'CA' | 'TN' | 'TX' | 'FL' | 'NY' | 'WA';
+export const GRID_CLOCK_REGIONS: Record<GridClockRegionCode, { name: string; fips: string; slug: string }>;
 export type GridClockWarningKind = 'grid' | 'weather' | 'space-weather';
 
 export interface GridClockPoint {
