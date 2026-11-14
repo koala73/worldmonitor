@@ -4749,7 +4749,11 @@
     },
     "sources": {
       "heading": "Sources ({{count}})",
-      "docs": "Method and coverage"
+      "docs": "Method and coverage",
+      "conflict": "conflict and unrest events",
+      "fires": "fire detections",
+      "outages": "internet outage feed",
+      "vessels": "ship positions"
     },
     "caption": {
       "clear": "No cloud over the point",

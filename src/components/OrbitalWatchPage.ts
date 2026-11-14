@@ -799,7 +799,7 @@ export class OrbitalWatchPage {
       again?.focus({ preventScroll: true });
     }
     const evidence = state.kind === 'passes' ? this.evidenceOf(state) : null;
-    this.renderSources(state.kind === 'passes' ? resultCredits(state.lookup, evidence) : []);
+    this.renderSources(state.kind === 'passes' ? [...resultCredits(state.lookup, evidence), ...this.eventCredits()] : []);
   }
 
   private renderState(state: OrbitalWatchState): DomChild[] {
@@ -1020,6 +1020,18 @@ export class OrbitalWatchPage {
             cell(t('orbitalWatch.row.elevation'), `${Math.round(pass.elevationDeg)}°`),
             orbitAgeCell(pass));
         })));
+  }
+
+  /** The feeds behind the events rows, named only once they answered. */
+  private eventCredits(): ResultCredit[] {
+    if (this.context.kind !== 'loaded') return [];
+    const { events, live } = this.context.context;
+    const credits: ResultCredit[] = [];
+    if (events.conflict.status === 'ok' || events.unrest.status === 'ok') credits.push({ source: 'GDELT · UCDP', text: t('orbitalWatch.sources.conflict') });
+    if (events.fires.status === 'ok') credits.push({ source: 'NASA FIRMS', text: t('orbitalWatch.sources.fires') });
+    if (events.outages.status === 'ok') credits.push({ source: 'WorldMonitor', text: t('orbitalWatch.sources.outages') });
+    if (live.vessels.status === 'ok') credits.push({ source: 'AIS', text: t('orbitalWatch.sources.vessels') });
+    return credits;
   }
 
   private renderSources(credits: ResultCredit[]): void {
