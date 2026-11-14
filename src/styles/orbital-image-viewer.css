@@ -67,7 +67,12 @@
 .oiv-slider::after { content: ''; position: absolute; top: 0; bottom: 0; left: var(--oiv-divider, 50%); width: 2px; margin-left: -1px; background: var(--ow-mark); pointer-events: none; }
 .oiv-chip-before { top: 12px; left: 12px; }
 .oiv-chip-after { top: 12px; right: 12px; }
-.oiv-divider { display: block; width: 100%; margin: 12px 0 0; accent-color: var(--ow-active); }
+.oiv-divider { display: block; width: 100%; height: 16px; margin: 12px 0 0; appearance: none; background: transparent; cursor: ew-resize; }
+/* A styled track, because the native one ignores the theme. */
+.oiv-divider::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: var(--ow-line-strong); }
+.oiv-divider::-moz-range-track { height: 4px; border-radius: 2px; background: var(--ow-line-strong); }
+.oiv-divider::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; margin-top: -5px; border: 0; border-radius: 50%; background: var(--ow-active); }
+.oiv-divider::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: var(--ow-active); }
 .oiv-dates { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--oiv-line); }
 .oiv-date { display: flex; justify-content: space-between; width: 100%; padding: 9px 10px; background: none; border: 0; border-bottom: 1px solid var(--oiv-line-soft); color: var(--oiv-dim); cursor: pointer; text-align: left; }
 .oiv-date-cloud { color: var(--oiv-dim); }
