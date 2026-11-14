@@ -196,6 +196,11 @@ interface TechEventMarker {
 type FireMarker = { lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string };
 type CIIScore = { code: string; score: number; level: string };
 
+const EXCLUSIVE_CHOROPLETHS: Partial<Record<string, keyof MapLayers>> = {
+  resilienceScore: 'ciiChoropleth',
+  ciiChoropleth: 'resilienceScore',
+};
+
 function noLayers(layers: MapLayers): MapLayers {
   return Object.fromEntries(Object.keys(layers).map((key) => [key, false])) as unknown as MapLayers;
 }
@@ -1839,6 +1844,13 @@ export class MapContainer {
     if (this.suppressedLayers) {
       // Saved now and drawn when the layers come back.
       if (this.suppressedLayers[layer]) return;
+      const displaced = this.useDeckGL ? EXCLUSIVE_CHOROPLETHS[layer as string] : undefined;
+      if (displaced && this.suppressedLayers[displaced]) {
+        // deck.gl draws one choropleth at a time; turn the other off as its enableLayer would.
+        this.suppressedLayers = { ...this.suppressedLayers, [displaced]: false };
+        this.initialState = { ...this.initialState, layers: { ...this.initialState.layers, [displaced]: false } };
+        this.cachedOnLayerChange?.(displaced, false, 'programmatic');
+      }
       this.suppressedLayers = { ...this.suppressedLayers, [layer]: true };
       this.cachedOnLayerChange?.(layer, true, 'programmatic');
       return;

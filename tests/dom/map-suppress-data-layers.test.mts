@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MapContainer } from '@/components/MapContainer';
 
+vi.mock('@/services/panel-gating', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/panel-gating')>(),
+  hasPremiumAccess: () => true,
+}));
+
 const SAVED = { conflicts: true, hotspots: true, fires: false } as Record<string, boolean>;
 
-function svgMap() {
-  let layers = { ...SAVED };
+function svgMap(start: Record<string, boolean> = SAVED) {
+  let layers = { ...start };
   let notify: ((layer: string, enabled: boolean, source: 'user' | 'programmatic') => void) | null = null;
   return {
     setLayers: vi.fn((next: Record<string, boolean>) => { layers = { ...next }; }),
@@ -101,5 +106,26 @@ describe('MapContainer.suppressDataLayers', () => {
     expect(map.notamAirspaceLayer.setEnabled).not.toHaveBeenCalledWith(true);
     map.suppressDataLayers(false);
     expect(svg.drawn()).toEqual({ ...SAVED, fires: true });
+  });
+
+  it.each([
+    ['resilienceScore', 'ciiChoropleth'],
+    ['ciiChoropleth', 'resilienceScore'],
+  ] as const)('enabling %s while suppressed turns %s off, as deck.gl draws one choropleth at a time', (picked, displaced) => {
+    const deck = svgMap({ ...SAVED, [displaced]: true });
+    const map = container(null);
+    Object.assign(map, { useDeckGL: true, deckGLMap: deck });
+    const saved = vi.fn();
+    map.setOnLayerChange(saved);
+    map.suppressDataLayers(true);
+    map.enableLayer(picked);
+    expect(deck.enableLayer).not.toHaveBeenCalled();
+    expect(saved.mock.calls, 'the app saves the displaced layer as off before the picked one').toEqual([
+      [displaced, false, 'programmatic'],
+      [picked, true, 'programmatic'],
+    ]);
+    expect(map.getState().layers).toMatchObject({ [picked]: true, [displaced]: false });
+    map.suppressDataLayers(false);
+    expect(deck.drawn()).toMatchObject({ [picked]: true, [displaced]: false });
   });
 });
