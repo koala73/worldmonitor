@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 
 import { assembleEvidence, compareBestView, describePointCondition, findArchiveEvidence, groupAcquisitions, type MatchedAcquisition } from '../src/services/orbital/match.ts';
 import { parseStacItem, readPointCondition, searchStacArchive } from '../src/services/orbital/archive-stac.ts';
-import { hasNoDataAtCentre, searchGibsDailyMosaics } from '../src/services/orbital/archive-gibs.ts';
+import { hasNoDataAtPoint, pointInCrop, searchGibsDailyMosaics } from '../src/services/orbital/archive-gibs.ts';
+import { cropBox } from '../src/services/orbital/crop-url.ts';
 import { searchEumetsatGeostationary } from '../src/services/orbital/archive-eumetsat.ts';
 import { requestArchive } from '../src/services/orbital/archive-result.ts';
 import { ARCHIVE_RESPONSES, FIXTURE_NOW, FIXTURE_WINDOW, fakeArchiveFetch, fixtureLookup } from './helpers/orbital-archive-fetch.mts';
@@ -179,6 +180,7 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.equal(result.status, 'ok');
     const terra = result.status === 'ok' ? result.items.find((row) => row.source === 'MODIS Terra') : undefined;
     assert.deepEqual(terra?.days.map((d) => d.date), ['2026-11-13']);
+    assert.ok(terra?.pointInCrop && Math.abs(terra.pointInCrop.x - 0.5) < 0.01, 'each row says where the point is in its crops');
   });
 
   it('reads the point pixel in each scene\'s own grid, so a box near a pixel edge cannot land on its neighbour', async () => {
@@ -373,14 +375,31 @@ describe('daily mosaic no-data check', () => {
   };
 
   it('treats a black or transparent centre as no data at the point', () => {
-    assert.equal(hasNoDataAtCentre(crop(() => [0, 0, 0, 255]), 32, 32), true);
-    assert.equal(hasNoDataAtCentre(crop(() => [9, 11, 12, 255]), 32, 32), true, 'JPEG noise on black');
-    assert.equal(hasNoDataAtCentre(crop(() => [90, 120, 140, 0]), 32, 32), true, 'transparent');
-    assert.equal(hasNoDataAtCentre(crop((x) => (x < 16 ? [0, 0, 0, 255] : [80, 90, 70, 255])), 32, 32), false, 'a swath edge through the point keeps the day');
+    assert.equal(hasNoDataAtPoint(crop(() => [0, 0, 0, 255]), 32, 32), true);
+    assert.equal(hasNoDataAtPoint(crop(() => [9, 11, 12, 255]), 32, 32), true, 'JPEG noise on black');
+    assert.equal(hasNoDataAtPoint(crop(() => [90, 120, 140, 0]), 32, 32), true, 'transparent');
+    assert.equal(hasNoDataAtPoint(crop((x) => (x < 16 ? [0, 0, 0, 255] : [80, 90, 70, 255])), 32, 32), false, 'a swath edge through the point keeps the day');
   });
 
   it('keeps imagery, dark water and a black edge away from the point', () => {
-    assert.equal(hasNoDataAtCentre(crop(() => [14, 30, 52, 255]), 32, 32), false, 'dark sea');
-    assert.equal(hasNoDataAtCentre(crop((x) => (x < 8 ? [0, 0, 0, 255] : [180, 170, 150, 255])), 32, 32), false);
+    assert.equal(hasNoDataAtPoint(crop(() => [14, 30, 52, 255]), 32, 32), false, 'dark sea');
+    assert.equal(hasNoDataAtPoint(crop((x) => (x < 8 ? [0, 0, 0, 255] : [180, 170, 150, 255])), 32, 32), false);
+  });
+
+  it('samples around the point where the crop slid inside the antimeridian or a pole', () => {
+    const atEastEdge = pointInCrop({ lat: 0, lon: 179.999 }, cropBox({ lat: 0, lon: 179.999 }));
+    assert.ok(atEastEdge.x > 0.95, `the point sits at the east edge, not the centre (x=${atEastEdge.x})`);
+    assert.ok(Math.abs(atEastEdge.y - 0.5) < 0.01);
+    const atPole = pointInCrop({ lat: 89.999, lon: 10 }, cropBox({ lat: 89.999, lon: 10 }));
+    assert.ok(atPole.y < 0.05, `the point sits at the north edge (y=${atPole.y})`);
+    const palm = pointInCrop({ lat: 25.112, lon: 55.139 }, cropBox({ lat: 25.112, lon: 55.139 }));
+    assert.ok(Math.abs(palm.x - 0.5) < 0.01 && Math.abs(palm.y - 0.5) < 0.01, 'away from the edges the point is the centre');
+
+    const swathEndsWestOfPoint = crop((x) => (x < 24 ? [80, 90, 70, 255] : [0, 0, 0, 255]));
+    assert.equal(hasNoDataAtPoint(swathEndsWestOfPoint, 32, 32), false, 'the crop centre has data');
+    assert.equal(hasNoDataAtPoint(swathEndsWestOfPoint, 32, 32, atEastEdge), true, 'the point at the east edge has none');
+    const swathEndsEastOfCentre = crop((x) => (x < 24 ? [0, 0, 0, 255] : [80, 90, 70, 255]));
+    assert.equal(hasNoDataAtPoint(swathEndsEastOfCentre, 32, 32), true);
+    assert.equal(hasNoDataAtPoint(swathEndsEastOfCentre, 32, 32, atEastEdge), false, 'a day with data at the point is kept');
   });
 });
