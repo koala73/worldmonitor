@@ -110,7 +110,7 @@
     "fx": "Valutakurser",
     "ukmtoIncidents": "UKMTO-incidenter",
     "reservoirLevels": "Strategiska vattennivåer",
-    "gridDisruptionClock": "Klocka för elavbrott"
+    "gridDisruptionClock": "Klocka för elavbrott i USA:s delstater"
   },
   "commands": {
     "prefixes": {

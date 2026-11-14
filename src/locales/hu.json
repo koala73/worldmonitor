@@ -563,7 +563,7 @@
     "fx": "Devizaárfolyamok",
     "ukmtoIncidents": "UKMTO-események",
     "reservoirLevels": "Stratégiai vízszintek",
-    "gridDisruptionClock": "Áramkimaradások időmérője"
+    "gridDisruptionClock": "Áramkimaradások időmérője az USA államaiban"
   },
   "commands": {
     "prefixes": {
