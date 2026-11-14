@@ -5184,6 +5184,7 @@
       "orbitAge": "궤도 데이터 {{age}} 전",
       "edgeOfSwath": "관측폭 가장자리",
       "notInArchive": "아카이브에 영상 없음",
+      "geometryDisagreed": "모델링한 관측 폭 밖에서 촬영됨",
       "archiveUnanswered": "아카이브가 응답하지 않음",
       "imageAlt": "{{name}} 영상, {{time}}",
       "mosaicDays": "아카이브의 일수: {{count}}",

@@ -5212,6 +5212,7 @@
       "orbitAge": "baangegevens {{age}} oud",
       "edgeOfSwath": "Rand van de opnamestrook",
       "notInArchive": "Geen beeld in het archief",
+      "geometryDisagreed": "Opgenomen buiten de berekende strook",
       "archiveUnanswered": "Archief gaf geen antwoord",
       "imageAlt": "Beeld van {{name}}, {{time}}",
       "mosaicDays": "Dagen in het archief: {{count}}",

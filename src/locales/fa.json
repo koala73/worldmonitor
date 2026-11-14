@@ -5212,6 +5212,7 @@
       "orbitAge": "داده‌های مداری با قدمت {{age}}",
       "edgeOfSwath": "لبهٔ نوار تصویربرداری",
       "notInArchive": "تصویری در بایگانی نیست",
+      "geometryDisagreed": "خارج از نوار مدل‌شده تصویربرداری شد",
       "archiveUnanswered": "بایگانی پاسخ نداد",
       "imageAlt": "تصویر {{name}}، {{time}}",
       "mosaicDays": "روزهای موجود در بایگانی: {{count}}",

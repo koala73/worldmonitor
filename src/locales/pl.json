@@ -5268,6 +5268,7 @@
       "orbitAge": "dane orbitalne sprzed {{age}}",
       "edgeOfSwath": "Krawędź pasa zobrazowania",
       "notInArchive": "Brak zdjęcia w archiwum",
+      "geometryDisagreed": "Zobrazowano poza modelowanym pasem",
       "archiveUnanswered": "Archiwum nie odpowiedziało",
       "imageAlt": "Zdjęcie {{name}}, {{time}}",
       "mosaicDays": "Dni w archiwum: {{count}}",

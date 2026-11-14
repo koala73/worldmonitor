@@ -5212,6 +5212,7 @@
       "orbitAge": "{{age}} régi pályaadatok",
       "edgeOfSwath": "A sáv széle",
       "notInArchive": "Nincs felvétel az archívumban",
+      "geometryDisagreed": "A modellezett sávon kívül készült",
       "archiveUnanswered": "Az archívum nem válaszolt",
       "imageAlt": "{{name}} felvétel, {{time}}",
       "mosaicDays": "Napok az archívumban: {{count}}",

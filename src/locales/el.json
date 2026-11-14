@@ -5212,6 +5212,7 @@
       "orbitAge": "τροχιακά δεδομένα {{age}}",
       "edgeOfSwath": "Άκρο της λωρίδας",
       "notInArchive": "Καμία εικόνα στο αρχείο",
+      "geometryDisagreed": "Απεικονίστηκε εκτός της μοντελοποιημένης λωρίδας",
       "archiveUnanswered": "Το αρχείο δεν απάντησε",
       "imageAlt": "Εικόνα {{name}}, {{time}}",
       "mosaicDays": "Ημέρες στο αρχείο: {{count}}",

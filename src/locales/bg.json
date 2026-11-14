@@ -5212,6 +5212,7 @@
       "orbitAge": "орбитални данни на {{age}}",
       "edgeOfSwath": "Ръб на ивицата",
       "notInArchive": "Няма изображение в архива",
+      "geometryDisagreed": "Заснето извън моделираната ивица",
       "archiveUnanswered": "Архивът не отговори",
       "imageAlt": "Изображение от {{name}}, {{time}}",
       "mosaicDays": "Дни в архива: {{count}}",

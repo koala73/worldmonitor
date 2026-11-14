@@ -5212,6 +5212,7 @@
       "orbitAge": "Bahndaten {{age}} alt",
       "edgeOfSwath": "Rand des Aufnahmestreifens",
       "notInArchive": "Keine Aufnahme im Archiv",
+      "geometryDisagreed": "Außerhalb des berechneten Streifens aufgenommen",
       "archiveUnanswered": "Archiv hat nicht geantwortet",
       "imageAlt": "Aufnahme von {{name}}, {{time}}",
       "mosaicDays": "Tage im Archiv: {{count}}",

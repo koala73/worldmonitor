@@ -74,7 +74,7 @@ function toApiPass(pass: ComputedPass, acquisitionKey: string): PointPass {
     edgeOfSwath: pass.edgeOfSwath,
     coverage: pass.coverage,
     tier: pass.tier.kind,
-    tierNote: pass.tier.kind === 'passed-overhead' ? pass.tier.note ?? '' : '',
+    tierNote: pass.tier.kind === 'passed-overhead' || pass.tier.kind === 'confirmed-image' ? pass.tier.note ?? '' : '',
     orbitAgeDays: round(pass.orbitAgeDays, 2),
     acquisitionKey,
   };

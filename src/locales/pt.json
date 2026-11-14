@@ -5240,6 +5240,7 @@
       "orbitAge": "dados orbitais de {{age}} atrás",
       "edgeOfSwath": "Borda da faixa",
       "notInArchive": "Nenhuma imagem no arquivo",
+      "geometryDisagreed": "Captada fora da faixa modelada",
       "archiveUnanswered": "O arquivo não respondeu",
       "imageAlt": "Imagem de {{name}}, {{time}}",
       "mosaicDays": "Dias no arquivo: {{count}}",

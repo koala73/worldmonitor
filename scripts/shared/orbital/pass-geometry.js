@@ -1,5 +1,5 @@
 import { ecfToLookAngles, eciToEcf, eciToGeodetic, gstime, json2satrec, propagate } from 'satellite.js';
-import { isLandOrCoast } from './coverage.js';
+import { acquiresAt } from './coverage.js';
 import { sunElevationDeg } from './sun.js';
 
 const EARTH_RADIUS_KM = 6371;
@@ -145,8 +145,15 @@ function describePass(elements, profile, point, state, nowMs) {
   const elevationDeg = look.elevation / DEG;
   const side = sideOfTrack(elements, state, point);
   const band = footprintBand(profile.footprint, state.altitudeKm);
-  const inFootprint = band.sides.includes(side) && distanceKm >= band.nearKm && distanceKm <= band.farKm;
-  const edgeDistanceKm = Math.min(band.farKm - distanceKm, band.nearKm > 0 ? distanceKm - band.nearKm : Infinity);
+  const onSide = band.sides.includes(side);
+  const inFootprint = onSide && distanceKm >= band.nearKm && distanceKm <= band.farKm;
+  // Distance to the nearest modelled edge, inside or outside it; across the
+  // track from a side-looking footprint the near edge is beyond the nadir line.
+  const edgeDistanceKm = onSide
+    ? Math.min(Math.abs(band.farKm - distanceKm), band.nearKm > 0 ? Math.abs(distanceKm - band.nearKm) : Infinity)
+    : distanceKm + band.nearKm;
+  const ahead = stateAt(elements, state.timeMs + 1000);
+  const direction = ahead && ahead.lat < state.lat ? 'descending' : 'ascending';
   return {
     noradId: elements.noradId,
     name: elements.name,
@@ -157,6 +164,7 @@ function describePass(elements, profile, point, state, nowMs) {
     opportunity: state.timeMs > nowMs,
     groundDistanceKm: distanceKm,
     side,
+    direction,
     elevationDeg,
     azimuthDeg: look.azimuth / DEG,
     incidenceDeg: 90 - elevationDeg,
@@ -164,8 +172,8 @@ function describePass(elements, profile, point, state, nowMs) {
     altitudeKm: state.altitudeKm,
     subSatellite: { lat: state.lat, lon: state.lon },
     inFootprint,
-    edgeOfSwath: inFootprint && edgeDistanceKm <= EDGE_OF_SWATH_KM,
-    coverage: profile.coverage === 'global' || isLandOrCoast(point.lat, point.lon),
+    edgeOfSwath: edgeDistanceKm <= EDGE_OF_SWATH_KM,
+    coverage: acquiresAt(profile.coverage, point, direction),
   };
 }
 

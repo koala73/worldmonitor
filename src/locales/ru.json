@@ -5268,6 +5268,7 @@
       "orbitAge": "орбитальным данным {{age}}",
       "edgeOfSwath": "Край полосы съёмки",
       "notInArchive": "Нет снимка в архиве",
+      "geometryDisagreed": "Снято вне расчётной полосы",
       "archiveUnanswered": "Архив не ответил",
       "imageAlt": "Снимок {{name}}, {{time}}",
       "mosaicDays": "Дней в архиве: {{count}}",

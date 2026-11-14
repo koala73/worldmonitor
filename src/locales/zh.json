@@ -5184,6 +5184,7 @@
       "orbitAge": "轨道数据已有 {{age}}",
       "edgeOfSwath": "幅宽边缘",
       "notInArchive": "档案库中无影像",
+      "geometryDisagreed": "在模型推算的幅宽之外成像",
       "archiveUnanswered": "存档未响应",
       "imageAlt": "{{name}} 影像，{{time}}",
       "mosaicDays": "存档中的天数：{{count}}",

@@ -5184,6 +5184,7 @@
       "orbitAge": "dữ liệu quỹ đạo đã {{age}}",
       "edgeOfSwath": "Mép dải quét",
       "notInArchive": "Không có ảnh trong kho",
+      "geometryDisagreed": "Chụp ngoài dải quét theo mô hình",
       "archiveUnanswered": "Kho lưu trữ không phản hồi",
       "imageAlt": "Ảnh {{name}}, {{time}}",
       "mosaicDays": "Số ngày trong kho lưu trữ: {{count}}",

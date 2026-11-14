@@ -5324,6 +5324,7 @@
       "orbitAge": "بيانات مدار عمرها {{age}}",
       "edgeOfSwath": "حافة الشريط",
       "notInArchive": "لا توجد صورة في الأرشيف",
+      "geometryDisagreed": "التُقطت خارج النطاق المُقدَّر",
       "archiveUnanswered": "لم يستجب الأرشيف",
       "imageAlt": "صورة {{name}}، {{time}}",
       "mosaicDays": "الأيام في الأرشيف: {{count}}",

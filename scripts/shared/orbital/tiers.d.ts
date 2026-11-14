@@ -2,7 +2,8 @@ import type { Pass } from './pass-geometry.js';
 import type { SensorProfile } from './sensor-profiles.js';
 
 export type PassTier =
-  | { kind: 'confirmed-image' }
+  /** `geometry-disagreed`: the archive holds the scene although the modelled footprint, daylight or coverage said otherwise. */
+  | { kind: 'confirmed-image'; note?: 'geometry-disagreed' }
   | { kind: 'likely-imaged' }
   | { kind: 'within-reach' }
   | { kind: 'capability-overhead' }

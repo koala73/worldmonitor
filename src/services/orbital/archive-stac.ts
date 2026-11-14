@@ -41,11 +41,11 @@ interface StacArchiveConfig {
 export const STAC_ARCHIVES: Record<StacArchiveId, StacArchiveConfig> = {
   'earth-search': {
     searchUrl: 'https://earth-search.aws.element84.com/v1/search',
-    collections: { 'sentinel-2-l2a': 'sentinel-2', 'sentinel-1-grd': 'sentinel-1' },
+    collections: { 'sentinel-2-l2a': 'sentinel-2', 'sentinel-1-grd': 'sentinel-1', 'landsat-c2-l2': 'landsat' },
   },
   'planetary-computer': {
     searchUrl: 'https://planetarycomputer.microsoft.com/api/stac/v1/search',
-    collections: { 'sentinel-2-l2a': 'sentinel-2', 'landsat-c2-l2': 'landsat' },
+    collections: { 'sentinel-2-l2a': 'sentinel-2', 'sentinel-1-grd': 'sentinel-1', 'landsat-c2-l2': 'landsat' },
   },
 };
 

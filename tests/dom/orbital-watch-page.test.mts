@@ -541,6 +541,15 @@ describe('satellite pass lookup sheet', () => {
     expect(sheet().querySelectorAll('.ow-group').length).toBeGreaterThan(1);
   });
 
+  it('notes a matched image the modelled geometry disagreed with', () => {
+    const disagreed = pass('SENTINEL-1C', 'sentinel-1', -40, { kind: 'confirmed-image', note: 'geometry-disagreed' });
+    const agreed = pass('SENTINEL-2C', 'sentinel-2', -50, { kind: 'confirmed-image' });
+    mounted(answered([disagreed, agreed]));
+    click('.ow-tier-cell[data-group="watched"]');
+    expect(rowOf(disagreed.name).textContent).toContain('Imaged outside the modelled swath');
+    expect(rowOf(agreed.name).textContent).not.toContain('Imaged outside the modelled swath');
+  });
+
   it('marks a satellite that passed more than once in a group', () => {
     const first = pass('SENTINEL-2B', 'sentinel-2', -30, { kind: 'likely-imaged' });
     const second = { ...pass('SENTINEL-2B', 'sentinel-2', -130, { kind: 'likely-imaged' }), noradId: first.noradId };

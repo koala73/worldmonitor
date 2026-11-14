@@ -45,7 +45,7 @@ const POINT_PASS_SCHEMA = {
     edgeOfSwath: { type: 'boolean', description: 'Within 5 km of the footprint edge, so imaging is uncertain.' },
     coverage: { type: 'boolean', description: 'The mission acquires over this point at all.' },
     tier: { type: 'string', enum: TIERS, description: 'Exactly one tier per pass. Military passes are capability-overhead, never an image.' },
-    tierNote: { type: 'string', description: 'not-in-archive when the archive answered without this pass after its publication delay.' },
+    tierNote: { type: 'string', description: 'not-in-archive when the archive answered without this pass after its publication delay; geometry-disagreed when the archive holds the image although the modelled footprint, daylight or coverage said otherwise.' },
     orbitAgeDays: { type: 'number', description: 'Days between the pass and the epoch of the orbit elements used.' },
     acquisitionKey: { type: 'string', description: 'Key of the matched entry in acquisitions; empty when none.' },
   },

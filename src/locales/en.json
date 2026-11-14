@@ -4672,6 +4672,7 @@
       "orbitAge": "orbit data {{age}} old",
       "edgeOfSwath": "Edge of swath",
       "notInArchive": "No image in the archive",
+      "geometryDisagreed": "Imaged outside the modelled swath",
       "archiveUnanswered": "Archive didn't answer",
       "imageAlt": "{{name}} image, {{time}}",
       "mosaicDays": "Days in the archive: {{count}}",

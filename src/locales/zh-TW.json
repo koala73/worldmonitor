@@ -5184,6 +5184,7 @@
       "orbitAge": "軌道資料已有 {{age}}",
       "edgeOfSwath": "幅寬邊緣",
       "notInArchive": "檔案庫中無影像",
+      "geometryDisagreed": "在模型推算的幅寬之外成像",
       "archiveUnanswered": "存檔未響應",
       "imageAlt": "{{name}} 影像，{{time}}",
       "mosaicDays": "存檔中的天數：{{count}}",
