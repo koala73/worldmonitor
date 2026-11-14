@@ -262,7 +262,6 @@ const HOST_ORIGINS = Object.freeze({
   'budgetlab.yale.edu': 'US',
   'calgaryherald.com': 'CA',
   'celestrak.org': 'US',
-  'planetarycomputer.microsoft.com': 'US',
   'chainwire.org': 'US',
   'changelog.com': 'US',
   'climate.copernicus.eu': 'EU',
