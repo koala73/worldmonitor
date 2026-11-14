@@ -19,6 +19,8 @@ Right-click or long-press any point on the map, land or ocean, and choose **Sate
 
 ## Driving it with wm-verify
 
+Orbital Watch ships dark, so export `VITE_ENABLE_ORBITAL_WATCH=true` before `wm-verify.sh` starts the dev server; without it the context-menu entry and the `#orbital=` route stay off.
+
 Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/orbital-watch.mjs --name orbital-watch`. Set `WM_VERIFY_ORBITAL_VIEWPORT=mobile` for the 390px bottom sheet. The step stores the globe map mode, because headless Chromium has only software GL and `MapContainer` keeps deck.gl off it. Use `WM_VERIFY_HEADED=1` on a machine with a GPU to drive the flat map.
 
 The step serves `/api/orbital/v1/list-imaging-satellites` from `tests/fixtures/orbital/celestrak-gp-2026-11-13.json` and lets archive requests reach the real archives. It holds them to capture the checking state, fails Earth Search for the partial state, marks the catalog stale, and for the empty state serves an empty catalog and empty archive answers (no scenes, empty GIBS time domains). Set `WM_VERIFY_ORBITAL_CATALOG=live` to read the local API instead. Fixture orbits drift with time, so far from 2026-11-13 the pass list shrinks.

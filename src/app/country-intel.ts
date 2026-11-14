@@ -84,6 +84,7 @@ import { showToast as showGlobalToast } from '@/utils/toast';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
 import { watchOrbitalRoute } from '@/app/orbital-route';
 import { setOrbitalMapView } from '@/app/orbital-map-focus';
+import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: no strikes in the
 // country deep-dive or the AI brief. Set VITE_ENABLE_IRAN_ATTACKS=true to restore.
@@ -213,7 +214,7 @@ export class CountryIntelManager implements AppModule {
       },
       restore: ({ lat, lon, zoom }) => void this.ctx.map?.setCenter(lat, lon, zoom, { instant: true }),
     });
-    this.orbitalRouteUnsubscribe = watchOrbitalRoute(() => this.ctx.map);
+    if (ORBITAL_WATCH_ENABLED) this.orbitalRouteUnsubscribe = watchOrbitalRoute(() => this.ctx.map);
     this.lastHadPremium = hasPremiumAccess(getAuthState());
     const syncPremiumAccess = () => this.handlePremiumAccessTransition(hasPremiumAccess(getAuthState()));
     this.authUnsubscribe = subscribeAuthState(syncPremiumAccess);
@@ -351,7 +352,7 @@ export class CountryIntelManager implements AppModule {
           },
         });
       }
-      items.push({
+      if (ORBITAL_WATCH_ENABLED) items.push({
         label: t('contextMenu.satellitePasses'),
         action: () => {
           void import('@/app/orbital-watch').then(({ openOrbitalWatch }) =>
