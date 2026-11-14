@@ -314,14 +314,14 @@ function imageTile(url: string | null, alt: string, sensor: string, size: TileSi
   const archive = archiveHost(url);
   if (!url || !isAllowedPreviewUrl(url)) {
     return h('div', { className: `ow-tile ow-tile-${size}`, dataset: { state: 'none' } },
-      h('span', { className: 'ow-tile-status ow-label' }, size === 'hero' ? t('orbitalWatch.tile.noPreview') : '◆'));
+      h('span', { className: 'ow-tile-status ow-label' }, t('orbitalWatch.tile.noPreview')));
   }
   const frames = [url, ...(fallbacks?.urls ?? []).filter(isAllowedPreviewUrl)];
   let frame = 0;
   let attempt = 0;
   let deadline = 0;
   let built = false;
-  const status = h('span', { className: 'ow-tile-status ow-label' }, size === 'hero' ? sensor : '');
+  const status = h('span', { className: 'ow-tile-status ow-label' }, size === 'hero' ? sensor : t('orbitalWatch.row.imageLoading'));
   const showFrame = (index: number) => {
     if (index !== frame && built) fallbacks?.show(index);
     frame = index;
@@ -329,21 +329,21 @@ function imageTile(url: string | null, alt: string, sensor: string, size: TileSi
   const failed = () => {
     tile.dataset.state = 'failed';
     replaceChildren(status,
-      size === 'hero' ? t('orbitalWatch.tile.failed', { archive: archive.name.toUpperCase() }) : '!',
+      t('orbitalWatch.tile.failed', { archive: archive.name.toUpperCase() }),
       size === 'hero' ? h('button', { type: 'button', className: 'ow-tile-retry', dataset: { action: 'retry-image' } }, t('countryBrief.retryBtn')) : null);
   };
   const noPreview = () => {
     showFrame(0);
     img.remove();
     tile.dataset.state = 'none';
-    replaceChildren(status, size === 'hero' ? t('orbitalWatch.tile.noPreview') : '◆');
+    replaceChildren(status, t('orbitalWatch.tile.noPreview'));
   };
   /** Paints the first frame from `from` on that loads, skipping frames already found empty at the point. */
   const load = (from: number) => {
     const token = ++attempt;
     if (from === 0) deadline = Date.now() + ARCHIVE_REQUEST_TIMEOUT_MS;
     tile.dataset.state = 'loading';
-    replaceChildren(status, size === 'hero' ? sensor : '');
+    replaceChildren(status, size === 'hero' ? sensor : t('orbitalWatch.row.imageLoading'));
     img.removeAttribute('src');
     const indices = frames.map((_, i) => i).filter((i) => i >= from && !lookupImages.isEmpty(frames[i]!));
     if (indices.length === 0) { noPreview(); return; }
