@@ -4,7 +4,7 @@ import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
 import type { ArchiveId } from '@/services/orbital/archive-result';
-import { GIBS_DAILY_MOSAICS, type DailyMosaicRow, type GeostationaryFrame, type GeostationaryRow } from '@/services/orbital/archive-gibs';
+import { GIBS_DAILY_MOSAICS, hasNoDataAtCentre, MOSAIC_FALLBACK_DAYS, type DailyMosaicRow, type GeostationaryFrame, type GeostationaryRow } from '@/services/orbital/archive-gibs';
 import { DEFAULT_CROP_HALF_SIZE_KM } from '@/services/orbital/crop-url';
 import { normalisePlatform } from '@/services/orbital/archive-stac';
 import { getCurrentLanguageTag, t } from '@/services/i18n';
@@ -266,6 +266,25 @@ type TileSize = 'hero' | 'thumb';
 interface TileFallbacks {
   urls: readonly string[];
   show: (index: number) => void;
+  /** Treat a frame with no data at the point as missing, for archives that serve empty pixels for days not yet imaged. */
+  skipNoData?: boolean;
+}
+
+const NO_DATA_SAMPLE_PX = 32;
+
+/** Unreadable pixels count as data, so a failed check never hides a real image. */
+function noDataAtPoint(img: HTMLImageElement): boolean {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = NO_DATA_SAMPLE_PX;
+    canvas.height = NO_DATA_SAMPLE_PX;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return false;
+    ctx.drawImage(img, 0, 0, NO_DATA_SAMPLE_PX, NO_DATA_SAMPLE_PX);
+    return hasNoDataAtCentre(ctx.getImageData(0, 0, NO_DATA_SAMPLE_PX, NO_DATA_SAMPLE_PX).data, NO_DATA_SAMPLE_PX, NO_DATA_SAMPLE_PX);
+  } catch {
+    return false;
+  }
 }
 
 const tileRetries = new WeakMap<HTMLElement, () => void>();
@@ -288,12 +307,18 @@ function imageTile(url: string | null, alt: string, sensor: string, size: TileSi
     img.setAttribute('src', frames[index]!);
   };
   const img = h('img', {
-    src: url,
     alt,
     loading: size === 'hero' ? 'eager' : 'lazy',
     decoding: 'async',
     referrerpolicy: 'no-referrer',
-    onLoad: () => { tile.dataset.state = 'loaded'; },
+    onLoad: () => {
+      if (!fallbacks?.skipNoData || !noDataAtPoint(img)) { tile.dataset.state = 'loaded'; return; }
+      if (frame < frames.length - 1) { load(frame + 1); return; }
+      fallbacks.show(0);
+      img.remove();
+      tile.dataset.state = 'none';
+      replaceChildren(status, size === 'hero' ? t('orbitalWatch.ui.tile.noPreview') : TIER_GLYPH_CHAR.watched);
+    },
     onError: () => {
       if (frame < frames.length - 1) { load(frame + 1); return; }
       tile.dataset.state = 'failed';
@@ -302,6 +327,8 @@ function imageTile(url: string | null, alt: string, sensor: string, size: TileSi
         size === 'hero' ? h('button', { type: 'button', className: 'ow-tile-retry', dataset: { action: 'retry-image' } }, t('countryBrief.retryBtn')) : null);
     },
   }) as HTMLImageElement;
+  if (fallbacks?.skipNoData) img.crossOrigin = 'anonymous';
+  img.setAttribute('src', url);
   const tile = h('div', { className: `ow-tile ow-tile-${size}`, dataset: { state: 'loading', sensor } }, img, status, ...overlays);
   tileRetries.set(tile, () => load(0));
   return tile;
@@ -330,6 +357,7 @@ interface ImageCard {
   pass: { noradId: number; timeMs: number } | null;
   /** Earlier frames of the same source, newest first, with the caption line each one shows. */
   fallbacks?: Array<{ url: string; top: string }>;
+  skipNoData?: boolean;
 }
 
 type Tab = 'all' | ImageCard['tab'];
@@ -363,20 +391,28 @@ function captionParts(parts: ImageCard['bottom']): DomChild[] {
   });
 }
 
+/** The newest day first, then the earlier days a tile falls back to when a day has no data at the point. */
+function mosaicDays(mosaic: DailyMosaicRow): Array<{ date: string; imageUrl: string }> {
+  return mosaic.days.flatMap((day) => (day.imageUrl ? [{ date: day.date, imageUrl: day.imageUrl }] : [])).slice(0, 1 + MOSAIC_FALLBACK_DAYS);
+}
+
 function weatherCards(evidence: OrbitalEvidence): ImageCard[] {
   const cards: ImageCard[] = [];
   for (const mosaic of evidence.mosaics) {
-    const latest = mosaic.days.find((day) => day.imageUrl) ?? null;
+    const [latest, ...earlier] = mosaicDays(mosaic);
     if (!latest) continue;
     const ms = Date.parse(latest.date);
     const resolution = MOSAIC_RESOLUTION_M.get(mosaic.layer);
+    const mosaicTop = (date: string) => `${mosaic.source.toUpperCase()} · ${formatDay(Date.parse(date))}`;
     cards.push({
       key: `mosaic:${mosaic.source}`,
       tab: 'weather',
       sensor: mosaic.source.toUpperCase(),
       url: latest.imageUrl,
       sortMs: ms,
-      top: `${mosaic.source.toUpperCase()} · ${formatDay(ms)}`,
+      top: mosaicTop(latest.date),
+      fallbacks: earlier.map((day) => ({ url: day.imageUrl, top: mosaicTop(day.date) })),
+      skipNoData: true,
       bottom: [t('orbitalWatch.ui.caption.dailyMosaic'), ...(resolution ? [`${resolution} M`] : [])],
       credit: { short: IMAGE_CREDIT.gibs, full: IMAGE_CREDIT.gibs },
       pass: null,
@@ -513,10 +549,22 @@ function unmatchedRow(acquisition: MatchedAcquisition, nowMs: number): HTMLEleme
 function mosaicRow(mosaic: DailyMosaicRow, day: { date: string; imageUrl: string | null }): HTMLElement {
   const ms = Date.parse(day.date);
   const resolution = MOSAIC_RESOLUTION_M.get(mosaic.layer);
-  const thumb = imageTile(day.imageUrl, t('orbitalWatch.row.imageAlt', { name: mosaic.source, time: formatDay(ms) }), mosaic.source.toUpperCase(), 'thumb');
-  return rowShell(`source:${mosaic.source}`, 'daily-mosaic', thumb, mosaic.source, t('orbitalWatch.tier.dailyMosaic'),
+  const tried = day.imageUrl ? mosaicDays(mosaic) : [];
+  const dayLabel = (index: number) => formatDay(Date.parse(tried[index]?.date ?? day.date));
+  const alt = (index: number) => t('orbitalWatch.row.imageAlt', { name: mosaic.source, time: dayLabel(index) });
+  const thumb = imageTile(day.imageUrl, alt(0), mosaic.source.toUpperCase(), 'thumb', [], {
+    urls: tried.slice(1).map((earlier) => earlier.imageUrl),
+    show: (index) => {
+      const when = row.querySelector<HTMLElement>('.ow-row-meta');
+      if (when) { when.textContent = dayLabel(index); when.title = dayLabel(index); }
+      thumb.querySelector('img')?.setAttribute('alt', alt(index));
+    },
+    skipNoData: true,
+  });
+  const row = rowShell(`source:${mosaic.source}`, 'daily-mosaic', thumb, mosaic.source, t('orbitalWatch.tier.dailyMosaic'),
     [formatDay(ms), [t('orbitalWatch.ui.caption.dailyMosaic'), resolution ? `${resolution} M` : null, t('orbitalWatch.ui.row.days', { count: mosaic.days.length })].filter(Boolean).join(' · ')],
     [badge('NASA')], { short: IMAGE_CREDIT.gibs, full: IMAGE_CREDIT.gibsAcknowledgement });
+  return row;
 }
 
 function frameRow(frame: GeostationaryRow, latest: GeostationaryFrame): HTMLElement {
@@ -937,9 +985,10 @@ export class OrbitalWatchPage {
       ...heroOverlays(),
       h('span', { className: 'ow-card-tag ow-label' }, closest ? t('orbitalWatch.ui.closestLook') : card.sensor),
       h('button', { type: 'button', className: 'ow-expand', dataset: { action: 'open-full' }, 'aria-label': t('orbitalWatch.ui.openFull') }, '⤢'),
-    ], card.fallbacks?.length ? {
-      urls: card.fallbacks.map((earlier) => earlier.url),
+    ], card.fallbacks?.length || card.skipNoData ? {
+      urls: (card.fallbacks ?? []).map((earlier) => earlier.url),
       show: (i) => { top.textContent = tops[i]!; tile.querySelector('img')?.setAttribute('alt', alt(i)); },
+      skipNoData: card.skipNoData,
     } : null);
     return h('figure', { className: 'ow-card', dataset: { key: card.key, tab: card.tab, index: String(index) } },
       tile,
