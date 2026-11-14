@@ -176,6 +176,7 @@ const errorText = (error) => error?.message || String(error);
 export async function scoreSiteChange({
   site, acquisitions, previous, fetchStatistics, searchBackfill = null, nowMs, deadlineMs, clock = Date.now,
   thresholds, halfSizeDeg = FOOTPRINT_HALF_SIZE_DEG, maxEvents = MAX_FLAG_EVENTS, maxSceneAttempts = MAX_SCENE_ATTEMPTS,
+  stopRequested = () => false,
 }) {
   if (site.surface !== 'land') return { flag: null, requests: 0, stopped: null, halted: null, haltKind: null, skippedScenes: 0 };
   const footprint = { lat: site.lat, lon: site.lon, halfSizeDeg };
@@ -214,6 +215,11 @@ export async function scoreSiteChange({
     if (track.lastDatetime !== null && scene.datetime <= track.lastDatetime) continue;
     if (clock() >= deadlineMs) {
       stopped = 'deadline';
+      break;
+    }
+    // Another site's scoring halted the stage (refusal or unknown response): request nothing more.
+    if (stopRequested()) {
+      stopped = 'scoring halted';
       break;
     }
     let statistics;
@@ -367,7 +373,9 @@ export function makeChangeStage({
         return previous;
       }
       try {
-        const result = await scoreSiteChange({ site, acquisitions, previous, fetchStatistics, searchBackfill, nowMs, deadlineMs, clock, thresholds });
+        const result = await scoreSiteChange({
+          site, acquisitions, previous, fetchStatistics, searchBackfill, nowMs, deadlineMs, clock, thresholds, stopRequested: () => halted !== null,
+        });
         requests += result.requests;
         skippedScenes += result.skippedScenes;
         if (result.halted) halt(result.halted, result.haltKind);

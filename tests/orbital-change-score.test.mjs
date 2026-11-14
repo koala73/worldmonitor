@@ -472,6 +472,31 @@ describe('orbital change stage in the site seeder', () => {
     assert.equal(stage.summary().skippedSites, 1);
   });
 
+  it('stops the sites still being scored at once when one of them is refused', async () => {
+    const scenes = BASELINE_DB.map((db) => radarScene(db));
+    const requested = [];
+    let release;
+    const refused = new Promise((resolve) => { release = resolve; });
+    const fetchStatistics = async (scene, feature) => {
+      requested.push(feature.geometry.coordinates[0][0][1]);
+      if (feature.geometry.coordinates[0][0][1] < 10) {
+        release();
+        throw new ScoringRefusal('HTTP 429');
+      }
+      await refused;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return scenes.find((s) => s.itemId === scene.itemId).statistics;
+    };
+    const stage = makeChangeStage({ fetchStatistics, budgetMs: 60_000, clock: () => NOW });
+    const [, other] = await Promise.all([
+      stage.score({ site: { ...LAND, lat: 5 }, acquisitions: scenes, previous: null, nowMs: NOW }),
+      stage.score({ site: LAND, acquisitions: scenes, previous: null, nowMs: NOW }),
+    ]);
+    assert.equal(requested.filter((lat) => lat > 10).length, 1, 'the other site requests nothing after the refusal');
+    assert.equal(other.unfinished, true);
+    assert.equal(stage.summary().haltKind, 'refusal');
+  });
+
   it('counts a site whose scoring stopped early as unfinished, with the reason', async () => {
     const stage = makeChangeStage({ fetchStatistics: async () => { throw new Error('HTTP 502'); }, budgetMs: 60_000, clock: () => NOW });
     await stage.score({ site: LAND, acquisitions: [radarScene(40)], previous: null, nowMs: NOW });
