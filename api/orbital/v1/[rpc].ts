@@ -9,6 +9,7 @@ const gateway = createDomainGateway(
   createOrbitalServiceRoutes(orbitalHandler, serverOptions),
 );
 
+/** Routes orbital RPCs through the gateway only when Orbital Watch is enabled. */
 export default function orbitalGateway(...args: Parameters<typeof gateway>): Promise<Response> {
   return isOrbitalWatchEnabled() ? gateway(...args) : Promise.resolve(orbitalWatchDarkResponse());
 }
