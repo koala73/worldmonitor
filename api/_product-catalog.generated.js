@@ -193,7 +193,7 @@ export const PUBLIC_PRODUCT_FACTS = {
     "aiDatacenters": 313,
     "hotspots": 29,
     "stockExchanges": 29,
-    "mcpTools": 102,
+    "mcpTools": 97,
     "commands": 625,
     "languages": 28
   },
@@ -276,7 +276,7 @@ export const TIER_CONFIG = {
     "maxDashboards": 3,
     "dataExport": false,
     "cta": "Get Started",
-    "href": "https://worldmonitor.app/dashboard",
+    "href": "https://www.worldmonitor.app/dashboard",
     "highlighted": false
   },
   "pro": {

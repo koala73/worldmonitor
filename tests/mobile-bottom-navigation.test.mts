@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
+  overlayTab,
   reconcileOverlayForTab,
   type OverlayReconcileHandlers,
 } from '../src/app/mobile-overlay-reconcile.ts';
@@ -108,6 +109,37 @@ describe('mobile primary-tab overlay reconciliation', () => {
         `tab ${tab} dismissed a dirty Settings overlay`,
       );
     }
+  });
+
+  it('pops an open Settings page before it dismisses or replaces Settings', () => {
+    const r = recorder('settings-section');
+    assert.equal(reconcileOverlayForTab('more', r.handlers), null);
+    assert.deepEqual(r.effects, ['dismiss:settings-section', 'dismiss:settings', 'setActive:today']);
+
+    const r2 = recorder('settings-section');
+    assert.equal(reconcileOverlayForTab('map', r2.handlers), undefined);
+    assert.deepEqual(r2.effects, ['dismiss:settings-section', 'dismiss:settings']);
+
+    const r3 = recorder('settings-section');
+    assert.equal(reconcileOverlayForTab('search', r3.handlers), 'settings');
+    assert.deepEqual(r3.effects, ['dismiss:settings-section']);
+  });
+
+  it('closes dirty Settings through its own handler while a page is open', () => {
+    const r = recorder('settings-section');
+    r.handlers.settingsHasPendingChanges = () => true;
+    assert.equal(reconcileOverlayForTab('today', r.handlers), null);
+    assert.deepEqual(r.effects, ['closeSettings', 'setActive:more']);
+  });
+
+  it('highlights the More tab for every Settings overlay and Search for search', () => {
+    for (const id of ['menu', 'region', 'settings', 'settings-section', 'settings-pending'] as const) {
+      assert.equal(overlayTab(id), 'more', id);
+    }
+    assert.equal(overlayTab('search'), 'search');
+    assert.equal(overlayTab('search-pending'), 'search');
+    assert.equal(overlayTab('map-popup'), null);
+    assert.equal(overlayTab(null), null);
   });
 
   it('only consults the pending-changes flag for Settings itself', () => {

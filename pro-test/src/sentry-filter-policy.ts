@@ -38,6 +38,7 @@ type PolicyPrimitive = number | string | boolean | bigint | symbol | null | unde
 interface PolicyFrame {
   filename?: string;
   function?: string;
+  lineno?: number;
 }
 interface PolicyException {
   type?: string;
@@ -571,6 +572,8 @@ const APPEND_CHILD_PARSE_FAILURE = /^Failed to execute 'appendChild' on 'Node': 
  * own bundle could in principle produce one (a `JSON.parse` on a malformed API
  * body throws exactly these phrasings), so it must stay behind the frame gate.
  */
+/** JavaScriptCore's and SpiderMonkey's wording for a malformed numeric literal (`3foo`). */
+const NUMERIC_LITERAL_PARSE_FAILURE = /^(?:SyntaxError: )?No identifiers allowed directly after numeric literal$/;
 const PARSE_FAILURE = /^(?:Unexpected token|Unexpected identifier|Invalid or unexpected token|Unexpected end of (?:script|input))\b/;
 /**
  * The `action` tags our third-party-SDK loader call sites stamp on a capture.
@@ -782,6 +785,23 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // `src/bootstrap/sentry-init.ts`.
   if (!hasFirstParty && nonInfraFrames.some((f) => MASKED_URL_FRAME.test(f.filename ?? ''))) return null;
 
+  // A ReferenceError whose every frame is `<anonymous>`: an injected script
+  // naming a bare global it never defined. Sentry WORLDMONITOR-1E7 and -1E8
+  // are the shape: two sibling `is not defined` errors from one VivoBrowser /
+  // Android page load at `/`, each with a single `<anonymous>:1:1` frame.
+  // `<anonymous>` is the filename an engine gives code evaluated from a
+  // string, and no first-party source on this surface does that (no `eval`,
+  // `new Function`, or string-bodied timer; tests/pro-sentry-filter-policy
+  // .test.mts pins it across `pro-test/src`, its `shared/` leaves and the
+  // inline scripts). So a first-party ReferenceError always carries an asset
+  // or document frame. Keyed on that stack invariant rather than on the
+  // identifier, so the next injected global needs no entry of its own. Ports
+  // the dashboard's WORLDMONITOR-1A2 gate (`src/bootstrap/sentry-init.ts`),
+  // including its strictness: a blob:, filename-less or empty stack reports.
+  if (exceptionType === 'ReferenceError'
+      && frames.length > 0
+      && frames.every((f) => f.filename === '<anonymous>')) return null;
+
   // An injected script's `eval` refused by our CSP. WORLDMONITOR-129 is the
   // shape: `EvalError` on Edge 150 / Windows at `/pro`, an `onerror` capture
   // whose only frames are two `<anonymous>:1` entries, the filename V8 gives
@@ -954,6 +974,25 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
       && /\bcontentWindow\b/.test(msg)
       && nonInfraFrames.length > 0
       && nonInfraFrames.every((f) => MARKETING_DOCUMENT_FRAME.test(f.filename ?? ''))) return null;
+
+  // An injected script that does not parse, attributed to line 1 of the
+  // document. Sentry WORLDMONITOR-10B's 2026-11-13 event is the shape:
+  // `SyntaxError: No identifiers allowed directly after numeric literal` on
+  // Firefox iOS 159 / iOS 18.7 at `/`, an `onerror` capture whose only frame
+  // is the document URL at line 1. The dashboard drops the same sentence
+  // behind its `!hasFirstParty` gate; that gate alone is not enough here,
+  // because this surface ships inline script that WebKit also attributes to
+  // the document URL. Line 1 is the licence: every marketing document opens
+  // with `<!doctype html>` on its own line (pinned by the test suite), so no
+  // inline script of ours can sit there. An inline parse failure of ours
+  // would also fire for every visitor on that engine, not as a one-off.
+  if ((excType === 'SyntaxError' || /^SyntaxError: /.test(msg))
+      && exceptionValues.length === 1
+      && !hasFirstParty
+      && NUMERIC_LITERAL_PARSE_FAILURE.test(msg)
+      && frames.every((f) => Boolean(f.filename?.trim()))
+      && nonInfraFrames.length > 0
+      && nonInfraFrames.every((f) => MARKETING_DOCUMENT_FRAME.test(f.filename ?? '') && f.lineno === 1)) return null;
 
   return event;
 }

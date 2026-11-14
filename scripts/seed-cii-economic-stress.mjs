@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getRedisCredentials, loadEnvFile, writeExtraKeyWithMetaAtomically } from './_seed-utils.mjs';
 import { upstashCommand } from './_upstash-rest.mjs';
+import ISO3_TO_ISO2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
 export const ECONOMIC_KEY = 'intelligence:cii-economic-stress:v1';
 export const ECONOMIC_META_KEY = 'seed-meta:intelligence:cii-economic-stress';
@@ -19,6 +20,7 @@ export const INPUT_KEYS = Object.freeze({
   yield: 'economic:yield-curve:oecd-lt:v1',
 });
 const DAY = 86400000;
+const INPUT_COUNTRY_CODES = new Set(Object.values(ISO3_TO_ISO2));
 
 function addMonths(ms, count) {
   const d = new Date(ms);
@@ -43,9 +45,12 @@ function observation(value, observedMs, expiresAt, sourceKey, unit, nowMs, refer
   return { status: 'fresh', value, observedAt, expiresAt, sourceKey, unit, reference };
 }
 
+const dailyOnlyRows = raw => (Array.isArray(raw.dailyOnly) ? raw.dailyOnly : []);
+
 function currencyMember(raw, code, nowMs) {
   if (['US', 'DE', 'FR'].includes(code)) return absent('not-applicable');
-  const row = raw.rates.find(x => x?.countryCode === code);
+  // A Yahoo row keeps priority; daily-only rows come from the second source alone.
+  const row = raw.rates.find(x => x?.countryCode === code) ?? dailyOnlyRows(raw).find(x => x?.countryCode === code);
   if (!row) return absent('missing');
   // seed-fx-yoy cleans the daily quotes upstream: medians remove isolated bad
   // prints, and a series that keeps reverting is flagged, not compared.
@@ -114,7 +119,15 @@ export function economicCountry(inputs, code, nowMs) {
 
 export function buildEconomicStress(inputs, nowMs = Date.now()) {
   validateInputs(inputs);
-  const countries = Object.fromEntries(ECONOMIC_COUNTRIES.map(code => [code, economicCountry(inputs, code, nowMs)]));
+  // Keep unmeasured scored rows, and publish every country the sources carry.
+  // Source aggregates and malformed identifiers must not become country rows.
+  const codes = [...new Set([
+    ...ECONOMIC_COUNTRIES,
+    ...inputs.currency.rates.map(row => row?.countryCode),
+    ...dailyOnlyRows(inputs.currency).map(row => row?.countryCode),
+    ...['inflation', 'eurostat', 'japan', 'yield'].flatMap(id => Object.keys(inputs[id].countries)),
+  ])].filter(code => INPUT_COUNTRY_CODES.has(code)).sort();
+  const countries = Object.fromEntries(codes.map(code => [code, economicCountry(inputs, code, nowMs)]));
   return { schemaVersion: 1, generatedAt: nowMs, countries, measuredCount: Object.values(countries).filter(x => x.measured).length };
 }
 
@@ -132,9 +145,9 @@ async function activate() {
 export async function seedEconomicStress({ read = readInput, publish = writeExtraKeyWithMetaAtomically, activateKey = activate, dryRun = false, nowMs = Date.now() } = {}) {
   const inputs = Object.fromEntries(await Promise.all(Object.entries(INPUT_KEYS).map(async ([id, key]) => [id, await read(key)])));
   const payload = buildEconomicStress(inputs, nowMs);
-  if (Object.keys(payload.countries).sort().join() !== [...ECONOMIC_COUNTRIES].sort().join()) throw new Error('Economic country list mismatch');
+  if (!ECONOMIC_COUNTRIES.every(code => Object.hasOwn(payload.countries, code))) throw new Error('Economic country list mismatch');
   if (!dryRun) {
-    const ok = await publish({ key: ECONOMIC_KEY, data: payload, ttlSeconds: 2 * 86400, recordCount: ECONOMIC_COUNTRIES.length, metaKey: ECONOMIC_META_KEY, metaTtlSeconds: 2 * 86400, fetchedAt: nowMs });
+    const ok = await publish({ key: ECONOMIC_KEY, data: payload, ttlSeconds: 2 * 86400, recordCount: Object.keys(payload.countries).length, metaKey: ECONOMIC_META_KEY, metaTtlSeconds: 2 * 86400, fetchedAt: nowMs });
     if (ok !== true) throw new Error('Economic-stress publication failed');
     await activateKey();
   }

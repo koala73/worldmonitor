@@ -99,6 +99,8 @@ for (const route of ROUTES) {
     vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://fake-upstash.invalid');
     vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'tok');
     const preview = 'https://worldmonitor-git-review-eliewm.vercel.app';
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('VERCEL_BRANCH_URL', new URL(preview).host);
     const fetchMock = vi.fn(async (_url, init) => {
       const commands = JSON.parse(init.body);
       expect(commands).toHaveLength(2);

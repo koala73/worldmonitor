@@ -15,25 +15,46 @@ import {
 } from '@/config/panels';
 import { isProUser } from '@/services/widget-store';
 import { SITE_VARIANT } from '@/config/variant';
-import { t } from '@/services/i18n';
+import { I18N_RESOURCES_LOADED_EVENT, t } from '@/services/i18n';
+import { replaceRawI18nKeyPlaceholders } from '@/utils/i18n-raw-key-healer';
 import { createSettingsButton } from '@/components/settings-button';
 import { confirmDialog } from '@/components/confirm-dialog';
-import type { UnifiedSettingsTabId } from '@/components/settings-types';
 import {
   getPanelToggleA11yState,
-  getSettingsTabNavigationIndex,
-  normalizeSettingsTab,
   restoreSettingsToggleFocus,
-  updateSettingsTabSelection,
 } from '@/components/unified-settings-interactions';
+import {
+  buildNav,
+  diffNav,
+  isPreferenceSection,
+  isSettingsSectionId,
+  pageEntryEffect,
+  reduceNav,
+  searchNav,
+  searchTerms,
+  sectionLabelKey,
+  type MountedSection,
+  type NavEvent,
+  type NavGroup,
+  type NavLayout,
+  type NavState,
+  type PreferenceSectionId,
+  type RowSummary,
+  type SectionMount,
+  type SettingsFacts,
+  type SettingsSectionId,
+  type ShellSectionId,
+} from '@/config/settings-sections';
+import { getThemePreference } from '@/utils/theme-manager';
 import type { MapProvider } from '@/config/basemap';
 import { escapeHtml } from '@/utils/sanitize';
 import { safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
 import type { PanelConfig } from '@/types';
-import { renderPreferences } from '@/services/preferences-content';
-import { renderNotificationsSettings, type NotificationsSettingsResult } from '@/services/notifications-settings';
+import { renderPreferenceSection } from '@/services/preferences-content';
+import { mountInstallEntry } from '@/services/pwa-install';
+import { renderNotificationsSettings } from '@/services/notifications-settings';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
-import { signOut } from '@/services/clerk';
+import { isClerkAuthEnabled, signOut } from '@/services/clerk';
 import { requestOwnAccountDeletion } from '@/services/account-deletion';
 import { track, trackAgentConnect, trackApiAction } from '@/services/analytics';
 import {
@@ -46,7 +67,7 @@ import {
   onEntitlementVerificationChange,
 } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
-import { getSubscription, isSubscriptionLoaded, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
+import { getSubscription, isSubscriptionLoaded, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab, type SubscriptionInfo } from '@/services/billing';
 import { BusinessSeatsSection } from '@/components/BusinessSeatsSection';
 import { EnterpriseSeatsSection } from '@/components/EnterpriseSeatsSection';
 import {
@@ -83,11 +104,13 @@ import {
   overlayHistory,
   type OverlayCloseOrigin,
   type OverlayId,
+  type OverlayOpenHandle,
 } from '@/utils/overlay-history';
 import { isMobileDevice } from '@/utils';
 import {
   FONT_SCALE_STEPS,
   fontScaleLabel,
+  panelFontScaleSummary,
   parseFontScale,
 } from '@/services/font-scale-settings';
 import { showToast } from '@/utils/toast';
@@ -122,9 +145,10 @@ export interface UnifiedSettingsConfig {
   onSourcesChanged?: () => void;
 }
 
-type TabId = UnifiedSettingsTabId;
-
 /** What the self-host Desktop key section shows (plan 2026-11-04-001, U6). */
+/** What the user types to confirm account deletion. Not translated: it is a token, not prose. */
+const DELETION_PHRASE = 'DELETE';
+
 const SELF_HOST_KEY_TONE: Record<SelfHostKeyStatus, 'ok' | 'warn' | 'bad' | 'neutral'> = {
   none: 'neutral',
   active: 'ok',
@@ -175,21 +199,34 @@ export class UnifiedSettings {
   private overlay: HTMLElement;
   private focusTrap: FocusTrap;
   private config: UnifiedSettingsConfig;
-  private activeTab: TabId = 'settings';
+  /** Where the window is. Written only by dispatch() and rebuild(). */
+  private nav: NavState | null = null;
+  /** Pages mounted this session. Each mounts on first visit and stays until close. */
+  private readonly pages = new Map<SettingsSectionId, { el: HTMLElement; mounted: MountedSection }>();
+  /** Where the home list and each page were last scrolled this session. */
+  private readonly scrollOffsets = new Map<SettingsSectionId | 'home', number>();
+  /** The last page shown while this shell has lived, open or closed. The modal reopens on it. */
+  private recentPage: SettingsSectionId | null = null;
+  /** The sidebar search text. The sheet has no search, so it is empty there. */
+  private navQuery = '';
+  /** Embed access the home rows were last built for. Search can hide the row, so the DOM cannot answer this. */
+  private renderedEmbedAccess = false;
+  private installCleanup: (() => void) | null = null;
   private legalLinkHandoffAttached = false;
   private activeSourceRegion = 'all';
   private sourceFilter = '';
   private activePanelCategory = 'all';
   private panelFilter = '';
   private escapeHandler: (e: KeyboardEvent) => void;
-  private prefsCleanup: (() => void) | null = null;
-  private notifCleanup: (() => void) | null = null;
-  private pendingNotifs: NotificationsSettingsResult | null = null;
   private draftPanelSettings: Record<string, PanelConfig> = {};
   private panelsJustSaved = false;
   private savedTimeout: ReturnType<typeof setTimeout> | null = null;
   private confirmingClose = false;
+  /** Runs once Settings has actually closed; dropped when the user keeps it open. */
+  private afterTeardown: (() => void) | null = null;
   private historyRegistered = false;
+  /** The open page's history entry on the phone sheet, from request until it closes. */
+  private pageEntry: OverlayOpenHandle | null = null;
   /**
    * `sourceSelectionSignature()` as of the last open(), or null while closed.
    *
@@ -304,13 +341,11 @@ export class UnifiedSettings {
           // refused and the browser fallback was blocked). Saying nothing here
           // reads as a dead click on a paid feature.
           if (result.outcome === 'open-failed') {
-            showToast('Could not open the billing portal. Please allow pop-ups and try again.');
+            showToast(t('settings.account.portal.openFailed'));
             return;
           }
           if (result.outcome === 'no-customer') {
-            showToast(
-              'Billing portal unavailable. Email support@worldmonitor.app for help.',
-            );
+            showToast(t('settings.account.portal.unavailable'));
           }
         });
         return;
@@ -336,13 +371,11 @@ export class UnifiedSettings {
           // refused and the browser fallback was blocked). Saying nothing here
           // reads as a dead click on a paid feature.
           if (result.outcome === 'open-failed') {
-            showToast('Could not open the billing portal. Please allow pop-ups and try again.');
+            showToast(t('settings.account.portal.openFailed'));
             return;
           }
           if (result.outcome === 'no-customer') {
-            showToast(
-              'Billing portal unavailable. Email support@worldmonitor.app for help.',
-            );
+            showToast(t('settings.account.portal.unavailable'));
           }
         });
         return;
@@ -360,9 +393,31 @@ export class UnifiedSettings {
         return;
       }
 
-      const tab = target.closest<HTMLElement>('.unified-settings-tab');
-      if (tab?.dataset.tab) {
-        this.switchTab(tab.dataset.tab as TabId);
+      const section = target.closest<HTMLElement>('[data-settings-nav]')?.dataset.settingsNav;
+      if (isSettingsSectionId(section)) {
+        this.dispatch({ type: 'select', id: section });
+        return;
+      }
+
+      if (target.closest('[data-settings-back]')) {
+        this.dispatch({ type: 'back' });
+        return;
+      }
+
+      const signOutButton = target.closest<HTMLButtonElement>('[data-settings-signout]');
+      if (signOutButton) {
+        // The auth subscription rebuilds Settings for the signed-out state.
+        signOutButton.disabled = true;
+        signOut().catch(() => {
+          signOutButton.disabled = false;
+          showToast(t('settings.signOutFailed'));
+        });
+        return;
+      }
+
+      if (target.closest('[data-settings-signin]')) {
+        this.afterTeardown = () => { import('@/services/clerk').then(m => m.openSignIn()).catch(() => {}); };
+        this.close();
         return;
       }
 
@@ -384,6 +439,7 @@ export class UnifiedSettings {
 
       if (target.closest('.panels-save-layout')) {
         this.savePanelChanges();
+        this.refreshSummaries();
         return;
       }
 
@@ -398,6 +454,7 @@ export class UnifiedSettings {
         const panelKey = panelItem.dataset.panel;
         const shouldRestoreFocus = document.activeElement === panelItem;
         this.toggleDraftPanel(panelKey);
+        this.refreshSummaries();
         restoreSettingsToggleFocus(
           shouldRestoreFocus,
           this.overlay.querySelectorAll<HTMLElement>('.panel-toggle-item'),
@@ -414,6 +471,7 @@ export class UnifiedSettings {
         this.config.toggleSource(sourceName);
         this.renderSourcesGrid();
         this.updateSourcesCounter();
+        this.refreshSummaries();
         restoreSettingsToggleFocus(
           shouldRestoreFocus,
           this.overlay.querySelectorAll<HTMLElement>('.source-toggle-item'),
@@ -440,6 +498,7 @@ export class UnifiedSettings {
         this.config.setSourcesEnabled(visible, true);
         this.renderSourcesGrid();
         this.updateSourcesCounter();
+        this.refreshSummaries();
         return;
       }
 
@@ -454,6 +513,7 @@ export class UnifiedSettings {
         this.config.setSourcesEnabled(visible, false);
         this.renderSourcesGrid();
         this.updateSourcesCounter();
+        this.refreshSummaries();
         return;
       }
 
@@ -575,12 +635,11 @@ export class UnifiedSettings {
         panel.fontScale = scale;
       }
 
-      const scaleSummary = select.closest('.panel-font-scale-details')?.querySelector('[data-panel-scale-summary]');
-      if (scaleSummary) scaleSummary.textContent = panel.fontScale === undefined
-        ? t('preferences.followGlobalFontScale', { defaultValue: 'Use global' })
-        : fontScaleLabel(panel.fontScale);
+      const row = select.closest('.panel-settings-item');
+      const scaleSummary = row?.querySelector('[data-panel-scale-summary]');
+      if (scaleSummary) scaleSummary.textContent = panelFontScaleSummary(panel.fontScale);
       this.panelsJustSaved = false;
-      select.closest('.panel-settings-item')
+      row
         ?.querySelector('.panel-toggle-item')
         ?.classList.toggle(
           'changed',
@@ -591,7 +650,10 @@ export class UnifiedSettings {
 
     this.overlay.addEventListener('input', (e) => {
       const target = e.target as HTMLInputElement;
-      if (target.closest('.panels-search')) {
+      if (target.matches('[data-settings-search]')) {
+        this.navQuery = target.value;
+        this.renderHome();
+      } else if (target.closest('.panels-search')) {
         this.panelFilter = target.value;
         this.renderPanelsTab();
       } else if (target.closest('.sources-search')) {
@@ -601,7 +663,24 @@ export class UnifiedSettings {
       }
     });
 
-    this.render();
+    // Kept as the reader scrolls: by the time a breakpoint crossing reaches
+    // onResize, the old layout's scroller has already lost its offset.
+    this.overlay.addEventListener('scroll', (e) => {
+      if (this.nav && e.target === this.scroller(this.nav)) {
+        this.scrollOffsets.set(this.nav.page ?? 'home', this.scroller(this.nav).scrollTop);
+      }
+    }, { capture: true, passive: true });
+
+    // Escape in a non-empty sidebar search clears it; the next Escape reaches
+    // escapeHandler on the document and closes Settings.
+    this.overlay.addEventListener('keydown', (e) => {
+      const target = e.target as HTMLInputElement;
+      if (e.key !== 'Escape' || !target.matches('[data-settings-search]') || target.value === '') return;
+      e.stopPropagation();
+      this.clearSearch();
+    });
+
+    this.renderFrame();
     document.body.appendChild(this.overlay);
     this.unsubscribeAuth = subscribeAuthState((state) => {
       this.handleAccountIdentityChange(state.user?.id ?? null);
@@ -641,7 +720,7 @@ export class UnifiedSettings {
     // Replace any rendered A-owned plaintext/list data synchronously. Account
     // loaders stay suppressed until the new entitlement snapshot rerenders.
     if (this.overlay.classList.contains('active')) {
-      this.render(false);
+      this.rebuild(false);
     }
   }
 
@@ -657,23 +736,22 @@ export class UnifiedSettings {
       && request.userId === getAuthState().user?.id;
   }
 
-  public open(tab?: TabId, replaceOverlayId?: OverlayId): void {
-    const requestedTab = tab ?? this.activeTab;
-    // AI Agents ('mcp-clients') is open to everyone: connecting needs no plan.
-    // Only its connected-clients section is gated, inside the tab.
-    const unavailable =
-      requestedTab === 'embeds' && !hasEmbedAccessForAccount(getAuthState().user?.role);
-    this.activeTab = unavailable ? 'settings' : requestedTab;
+  public open(section?: SettingsSectionId, replaceOverlayId?: OverlayId): void {
+    const reentrant = this.overlay.classList.contains('active');
     this.resetPanelDraft();
     // Only on a FRESH session. open() is re-entrant on an overlay that is
     // already up (the deep-dive "Notify me about this country" jump to the
-    // notifications tab, an overlayHistory replace), and re-snapshotting there
+    // notifications page, an overlayHistory replace), and re-snapshotting there
     // would adopt a source change already made in this session as the baseline
     // — silently discarding the very reload this exists to trigger.
     if (this.sourceSelectionBaseline === null) {
       this.sourceSelectionBaseline = this.sourceSelectionSignature();
     }
-    this.render();
+    if (reentrant) {
+      this.renderPanelsTab();
+    } else {
+      this.startSession();
+    }
     this.overlay.classList.add('active');
     this.focusTrap.activate();
     if (isMobileDevice()) {
@@ -682,61 +760,61 @@ export class UnifiedSettings {
       if (replaceOverlayId) overlayHistory.replace(replaceOverlayId, 'settings', close);
       else overlayHistory.open('settings', close);
     }
+    // After the Settings entry: a page opened directly stacks its entry above
+    // it, so Back from that page lands on the home list.
+    this.dispatch({ type: 'open', target: section, layout: isMobileDevice() ? 'sheet' : 'modal', recent: this.recentPage });
     safeStorageSet('wm-settings-open', '1');
     document.addEventListener('keydown', this.escapeHandler);
-    (this.overlay.querySelector('.unified-settings-tabs') as HTMLElement)?.addEventListener('keydown', (e: KeyboardEvent) => this.handleKeyDown(e));
-    track('settings-open', { tab: tab ?? 'default' });
+    window.addEventListener('resize', this.onResize);
+    window.addEventListener(I18N_RESOURCES_LOADED_EVENT, this.onTranslationsLoaded);
+    track('settings-open', { tab: section ?? 'default' });
 
-    // Re-render API Keys panel when entitlements arrive (cold-load race:
+    // Rebuild account-scoped pages when entitlements arrive (cold-load race:
     // hasFeature('apiAccess') returns false until the Convex subscription
     // delivers data, so a paid API Starter user sees the upgrade CTA briefly).
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = onEntitlementChange((state) => {
       if (this.accountEntitlementRefreshPending) {
         // Entitlements are account-scoped. Rebuild every account surface so a
-        // direct A→B handoff removes/adds MCP and API tabs using B's snapshot.
+        // direct A→B handoff removes/adds MCP and API pages using B's snapshot.
         // Keep the marker through the reset(null) emission; the first real B
         // snapshot must rebuild once more before ordinary targeted refreshes.
-        if (state !== null) {
-          this.accountEntitlementRefreshPending = false;
-          this.loadEnterpriseSeats();
-        }
-        this.render();
+        if (state !== null) this.accountEntitlementRefreshPending = false;
+        this.rebuild(true);
         return;
       }
 
-      const hasMcpManageSection = this.overlay.querySelector('[data-mcp-manage]') !== null;
-      const hasEmbedsTab = this.overlay.querySelector('[data-tab="embeds"]') !== null;
-      if (
-        hasMcpManageSection !== this.canManageMcpClients() ||
-        hasEmbedsTab !== hasEmbedAccessForAccount(getAuthState().user?.role)
-      ) {
+      const mcpPageStale = this.pages.has('mcp-clients')
+        && (this.overlay.querySelector('[data-mcp-manage]') !== null) !== this.canManageMcpClients();
+      const embedsRowStale = this.renderedEmbedAccess !== hasEmbedAccessForAccount(getAuthState().user?.role);
+      if (mcpPageStale || embedsRowStale) {
         // Entitlements can legitimately progress from a free/default snapshot
         // to Pro after the account handoff's first non-null emission. Rebuild
         // whenever MCP client management or embed capability changes in
         // either direction.
-        this.render();
+        this.rebuild(true);
         return;
       }
 
-      const panel = this.overlay.querySelector<HTMLElement>('[data-panel-id="api-keys"]');
-      if (panel) {
-        setTrustedHtml(panel, trustedHtml(this.renderApiKeysContent(), "legacy direct innerHTML migration"));
+      const keysHost = this.overlay.querySelector<HTMLElement>('[data-api-keys-host]');
+      if (keysHost) {
+        setTrustedHtml(keysHost, trustedHtml(this.renderApiKeysContent(), "legacy direct innerHTML migration"));
         this.attachApiKeysHandlers();
-        if (this.activeTab === 'api-keys' && this.canManageKeys()) {
+        if (this.nav?.page === 'api-keys' && this.canManageKeys()) {
           void this.loadApiKeys();
         }
       }
-      const embedsPanel = this.overlay.querySelector<HTMLElement>('[data-panel-id="embeds"]');
-      if (embedsPanel) {
-        setTrustedHtml(embedsPanel, trustedHtml(this.renderEmbedKeysContent(), "legacy direct innerHTML migration"));
+      const embedsBody = this.pageBody('embeds');
+      if (embedsBody) {
+        setTrustedHtml(embedsBody, trustedHtml(this.renderEmbedKeysContent(), "legacy direct innerHTML migration"));
         this.attachEmbedKeysHandlers();
-        if (this.activeTab === 'embeds' && getAuthState().user && hasEmbedAccessForAccount(getAuthState().user?.role)) {
+        if (this.nav?.page === 'embeds' && getAuthState().user && hasEmbedAccessForAccount(getAuthState().user?.role)) {
           void this.loadEmbedKeys();
         }
       }
       this.replaceUpgradeSection();
-      this.loadEnterpriseSeats();
+      if (this.pages.has('account')) this.loadEnterpriseSeats();
+      this.refreshSummaries();
     });
     this.unsubscribeEntitlementVerification?.();
     this.unsubscribeEntitlementVerification = onEntitlementVerificationChange(() => {
@@ -745,15 +823,20 @@ export class UnifiedSettings {
     this.unsubscribeSubscription?.();
     this.unsubscribeSubscription = onSubscriptionChange(() => {
       this.replaceUpgradeSection();
+      this.refreshSummaries();
       // Ask for seats whenever the account has ANY subscription row, and let
       // the server decide who owns seats. Filtering here on the display row's
       // plan/status would miss an owner whose Business row is outranked by
       // another subscription (see BusinessSeatsSection.businessSubscriptionId);
       // free accounts have no row at all, so they still never query.
-      if (getSubscription() !== null) {
+      if (this.pages.has('account') && getSubscription() !== null) {
         void this.businessSeatsSection.load();
       }
     });
+  }
+
+  /** Account page entry: seats load only once someone opens the page. */
+  private loadAccountSeats(): void {
     if (getSubscription() !== null) {
       void this.businessSeatsSection.load();
     }
@@ -797,6 +880,7 @@ export class UnifiedSettings {
     // after the flag is cleared above, because that is what makes the
     // re-registration condition reachable.
     if (this.deletionBusy) {
+      this.afterTeardown = null;
       if (origin === 'history' && !this.historyRegistered) {
         this.historyRegistered = true;
         overlayHistory.open('settings', (nextOrigin) => this.close(nextOrigin));
@@ -816,6 +900,7 @@ export class UnifiedSettings {
       void confirmDialog({ message: t('header.unsavedChanges') }).then((discard) => {
         this.confirmingClose = false;
         if (discard) this.teardownSettings('control');
+        else this.afterTeardown = null;
       });
       return;
     }
@@ -827,17 +912,14 @@ export class UnifiedSettings {
   }
 
   private teardownSettings(origin: OverlayCloseOrigin = 'control'): void {
+    this.releasePageEntry();
     if (origin === 'control' && this.historyRegistered) {
       overlayHistory.close('settings');
     }
     this.historyRegistered = false;
     this.overlay.classList.remove('active');
     this.focusTrap.deactivate();
-    this.prefsCleanup?.();
-    this.prefsCleanup = null;
-    this.notifCleanup?.();
-    this.notifCleanup = null;
-    this.pendingNotifs = null;
+    this.endSession();
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = null;
     this.unsubscribeEntitlementVerification?.();
@@ -849,9 +931,14 @@ export class UnifiedSettings {
     this.resetPanelDraft();
     safeStorageRemove('wm-settings-open');
     document.removeEventListener('keydown', this.escapeHandler);
+    window.removeEventListener('resize', this.onResize);
+    window.removeEventListener(I18N_RESOURCES_LOADED_EVENT, this.onTranslationsLoaded);
     // Last: the host reloads data in response, and the overlay covering the
     // dashboard has to be gone before that lands for the user to see it.
     this.notifySourceSelectionChanged();
+    const afterTeardown = this.afterTeardown;
+    this.afterTeardown = null;
+    afterTeardown?.();
   }
 
   /**
@@ -885,7 +972,8 @@ export class UnifiedSettings {
 
   public refreshPanelToggles(): void {
     this.resetPanelDraft();
-    if (this.activeTab === 'panels') this.renderPanelsTab();
+    this.renderPanelsTab();
+    this.refreshSummaries();
   }
 
   public getButton(): HTMLButtonElement {
@@ -893,14 +981,11 @@ export class UnifiedSettings {
   }
 
   public destroy(): void {
+    this.releasePageEntry();
     if (this.historyRegistered) overlayHistory.close('settings');
     this.historyRegistered = false;
     if (this.savedTimeout) clearTimeout(this.savedTimeout);
-    this.prefsCleanup?.();
-    this.prefsCleanup = null;
-    this.notifCleanup?.();
-    this.notifCleanup = null;
-    this.pendingNotifs = null;
+    this.endSession();
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = null;
     this.unsubscribeEntitlementVerification?.();
@@ -914,210 +999,561 @@ export class UnifiedSettings {
     this.stopMcpQuotaPolling();
     this.closeDeletionDialog();
     document.removeEventListener('keydown', this.escapeHandler);
+    window.removeEventListener('resize', this.onResize);
+    window.removeEventListener(I18N_RESOURCES_LOADED_EVENT, this.onTranslationsLoaded);
     // Teardown, not a user-initiated close: release the trap's document
     // listener without handing focus back to a trigger that is also going away.
     this.focusTrap.deactivate({ restoreFocus: false });
     this.overlay.remove();
   }
 
-  private handleKeyDown(e: KeyboardEvent): void {
-    if (!(e.target instanceof HTMLElement)) return;
-    const tablist = this.overlay.querySelector('.unified-settings-tabs');
-    if (!tablist || !tablist.contains(e.target)) return;
-    const tabs = Array.from(tablist.querySelectorAll<HTMLButtonElement>('button[role="tab"]'));
-    const currentIndex = tabs.indexOf(e.target.closest('button[role="tab"]') as HTMLButtonElement);
-    const nextIndex = getSettingsTabNavigationIndex(e.key, currentIndex, tabs.length);
-    if (nextIndex === null) return;
+  // ---------------------------------------------------------------------------
+  // Shell: home list, drill-in pages and the one navigation writer
+  // ---------------------------------------------------------------------------
 
-    e.preventDefault();
-
-    const nextTab = tabs[nextIndex];
-    const tabId = nextTab?.dataset.tab as TabId | undefined;
-    if (!tabId || !nextTab) return;
-    this.switchTab(tabId);
-    nextTab.focus();
+  /** Builds the persistent frame once. Pages and home rows fill it per session. */
+  private renderFrame(): void {
+    setTrustedHtml(this.overlay, trustedHtml(`
+      <div class="modal unified-settings-modal" data-settings-depth="home">
+        <div class="modal-header">
+          <button type="button" class="us-back" data-settings-back hidden aria-label="${escapeHtml(t('settings.back'))}"><span aria-hidden="true">‹</span> ${escapeHtml(t('header.tabSettings'))}</button>
+          <span class="modal-title" data-settings-title>${escapeHtml(t('header.settings'))}</span>
+          <button class="modal-close unified-settings-close" aria-label="Close">×</button>
+        </div>
+        <nav class="us-home" data-settings-home aria-label="${escapeHtml(t('header.tabSettings'))}">
+          <div class="us-search">
+            <input type="search" class="us-search-input" data-settings-search autocomplete="off" spellcheck="false"
+              placeholder="${escapeHtml(t('modals.settingsWindow.shellSearchPlaceholder'))}" aria-label="${escapeHtml(t('modals.settingsWindow.shellSearchPlaceholder'))}" aria-controls="us-home-rows">
+          </div>
+          ${this.config.isDesktopApp ? '' : '<div class="us-install-slot" data-pwa-install-entry></div>'}
+          <div class="us-home-rows" id="us-home-rows" data-settings-rows></div>
+          <p class="us-search-empty" data-settings-empty aria-live="polite"></p>
+        </nav>
+        <div class="us-pages" data-settings-pages></div>
+      </div>
+    `, 'settings frame; static markup and escaped translations'));
   }
 
-  private render(loadAccountData = true): void {
-    this.prefsCleanup?.();
-    this.prefsCleanup = null;
-    this.notifCleanup?.();
-    this.notifCleanup = null;
-    this.pendingNotifs = null;
+  private startSession(): void {
+    this.endSession();
+    this.scrollOffsets.clear();
+    this.clearSearch();
+    this.attachLegalLinkHandoff();
+    const installHost = this.overlay.querySelector<HTMLElement>('[data-pwa-install-entry]');
+    if (installHost) this.installCleanup = mountInstallEntry(installHost);
+  }
 
-    const isSignedIn = getAuthState().user !== null;
-    const prefs = renderPreferences({
+  /** Disposes every mounted page and returns to no navigation state. */
+  private endSession(): void {
+    this.disposePages();
+    this.nav = null;
+    this.installCleanup?.();
+    this.installCleanup = null;
+    this.reflectNav();
+  }
+
+  private readFacts(): SettingsFacts {
+    const user = getAuthState().user;
+    return {
+      signedIn: user !== null,
+      canSignIn: isClerkAuthEnabled(),
       isDesktopApp: this.config.isDesktopApp,
-      onMapProviderChange: this.config.onMapProviderChange,
-      onSettingSaved: () => showToast(t('modals.settingsWindow.saved')),
-      isSignedIn,
-    });
-    const showNotificationsTab = !this.config.isDesktopApp;
-    const notifs = showNotificationsTab
-      ? renderNotificationsSettings({ isSignedIn })
-      : null;
-    // Gated on `embedAccess`, NOT `apiAccess`: both Pro tiers are
-    // `apiAccess: false`, so an
-    // apiAccess gate would hide embed keys from most of the customers who
-    // bought embedding. A tab of its own rather than a section of API Keys so
-    // the two credential classes never look interchangeable.
-    const showEmbedsTab = hasEmbedAccessForAccount(getAuthState().user?.role);
-    const availableTabs: TabId[] = [
-      'settings',
-      ...(isSignedIn ? ['billing' as const] : []),
-      'panels',
-      'sources',
-      ...(showNotificationsTab ? ['notifications' as const] : []),
-      'api-keys',
-      ...(showEmbedsTab ? ['embeds' as const] : []),
-      'mcp-clients',
-    ];
-    this.activeTab = normalizeSettingsTab(this.activeTab, availableTabs);
-    const tabClass = (id: TabId) => `unified-settings-tab${this.activeTab === id ? ' active' : ''}`;
-    const applicablePresets = this.getApplicableTheaterPresets();
-    // The refresh cache must describe what this render draws.
-    const selfHostKeyHtml = this.renderSelfHostKeySection();
-    this.selfHostKeyRenderedHtml = selfHostKeyHtml;
+      embedAccess: hasEmbedAccessForAccount(user?.role),
+      account: user ? { plan: this.accountPlanLabel(), email: user.email } : null,
+      panels: this.panelCounts(),
+      sourcesOn: (() => {
+        const disabled = this.config.getDisabledSources();
+        return this.config.getAllSourceNames().filter((name) => !disabled.has(name)).length;
+      })(),
+      theme: getThemePreference(),
+    };
+  }
 
-    setTrustedHtml(this.overlay, trustedHtml(`
-      <div class="modal unified-settings-modal">
-        <div class="modal-header">
-          <span class="modal-title">${t('header.settings')}</span>
-          <button class="modal-close unified-settings-close" aria-label="Close">\u00d7</button>
+  /** The panels that read as on in the Panels page, out of every panel it lists. */
+  private panelCounts(): { on: number; total: number } {
+    const pro = isProUser();
+    const entries = this.listedPanelEntries();
+    const on = entries.filter(([key, panel]) => {
+      const resolvedPanel = ALL_PANELS[key] ? getEffectivePanelConfig(key, SITE_VARIANT) : panel;
+      return panel.enabled && isPanelEntitled(key, resolvedPanel, pro);
+    }).length;
+    return { on, total: entries.length };
+  }
+
+  /** Short plan name for the account card. Empty while the plan is still resolving. */
+  private accountPlanLabel(): string {
+    if (!isEntitled() && hasPremiumAccess()) return t('settings.account.planPremium');
+    if (isEntitled()) return getSubscription()?.displayName ?? 'Pro';
+    return getEntitlementState() === null ? '' : t('settings.account.planFree');
+  }
+
+  private formatSummary(summary: RowSummary): string {
+    switch (summary.kind) {
+      case 'count':
+        return t('settings.summary.count', { on: String(summary.on), total: String(summary.total) });
+      case 'total':
+        return new Intl.NumberFormat().format(summary.count);
+      case 'text':
+        return t(summary.key);
+      case 'account':
+        return [summary.plan, summary.email].filter(Boolean).join(' · ');
+    }
+  }
+
+  /** Renders the home rows, or on the modal the sidebar rows that match its search. */
+  private renderHome(): void {
+    const rows = this.overlay.querySelector<HTMLElement>('[data-settings-rows]');
+    if (!rows) return;
+    const facts = this.readFacts();
+    this.renderedEmbedAccess = facts.embedAccess;
+    const { groups, hits } = searchNav(buildNav(facts), this.navQuery, searchTerms(t));
+    setTrustedHtml(rows, trustedHtml(
+      groups.map((group) => this.renderNavGroup(group)).join(''),
+      'settings home rows; every interpolated value escaped',
+    ));
+    const empty = this.overlay.querySelector<HTMLElement>('[data-settings-empty]');
+    if (empty) empty.textContent = this.navQuery.trim() !== '' && hits === 0 ? t('settings.search.empty') : '';
+    this.markCurrentRow();
+  }
+
+  /** The modal's sidebar marks the open page's row; the sheet's list is never beside a page. */
+  private markCurrentRow(): void {
+    const current = this.nav?.layout === 'modal' ? this.nav.page : null;
+    for (const row of this.overlay.querySelectorAll<HTMLElement>('[data-settings-nav]')) {
+      if (row.dataset.settingsNav === current) row.setAttribute('aria-current', 'page');
+      else row.removeAttribute('aria-current');
+    }
+  }
+
+  private renderNavGroup(group: NavGroup): string {
+    const rows = group.rows.map((row) => {
+      if (row.kind === 'sign-in') {
+        return `
+          <button type="button" class="us-account-card us-signin-row" data-settings-signin>
+            <span class="us-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></span>
+            <span class="us-row-text">
+              <span class="us-row-title">${escapeHtml(t('settings.signIn.label'))}</span>
+              <span class="us-row-desc">${escapeHtml(t('settings.signIn.desc'))}</span>
+            </span>
+            <span class="us-row-chev" aria-hidden="true">›</span>
+          </button>`;
+      }
+      const summary = row.summary ? escapeHtml(this.formatSummary(row.summary)) : '';
+      const title = escapeHtml(t(row.labelKey));
+      if (row.id === 'account') {
+        return `
+          <button type="button" class="us-account-card" data-settings-nav="account" id="us-nav-account">
+            <span class="us-avatar" aria-hidden="true">${escapeHtml(this.accountInitials())}</span>
+            <span class="us-row-text">
+              <span class="us-row-title">${title}</span>
+              <span class="us-row-desc" data-settings-summary>${summary}</span>
+            </span>
+            <span class="us-row-chev" aria-hidden="true">›</span>
+          </button>`;
+      }
+      return `
+        <li>
+          <button type="button" class="us-row" data-settings-nav="${row.id}" id="us-nav-${row.id}">
+            <span class="us-row-text">
+              <span class="us-row-title">${title}${row.badge ? ' <span class="panel-pro-badge">PRO</span>' : ''}</span>
+              ${row.descKey ? `<span class="us-row-desc">${escapeHtml(t(row.descKey))}</span>` : ''}
+            </span>
+            ${row.summary ? `<span class="us-row-value" data-settings-summary>${summary}</span>` : ''}
+            <span class="us-row-chev" aria-hidden="true">›</span>
+          </button>
+        </li>`;
+    }).join('');
+    if (group.labelKey === null) return rows;
+    const headingId = `us-group-${group.id}`;
+    return `
+      <section class="us-group" aria-labelledby="${headingId}">
+        <h3 class="us-group-label" id="${headingId}">${escapeHtml(t(group.labelKey))}</h3>
+        <ul class="us-list" role="list">${rows}</ul>
+      </section>`;
+  }
+
+  private accountInitials(): string {
+    const user = getAuthState().user;
+    const source = user?.name?.trim() || user?.email || '';
+    const words = source.split(/[\s@._-]+/).filter(Boolean);
+    return words.slice(0, 2).map((word) => word.charAt(0).toUpperCase()).join('') || '?';
+  }
+
+  /** Patches each home row's summary in place, so a toggle never re-renders the list. */
+  private refreshSummaries(): void {
+    if (!this.overlay.classList.contains('active')) return;
+    for (const group of buildNav(this.readFacts())) {
+      for (const row of group.rows) {
+        if (row.kind !== 'section' || !row.summary) continue;
+        const el = this.overlay.querySelector(`[data-settings-nav="${row.id}"] [data-settings-summary]`);
+        if (el) el.textContent = this.formatSummary(row.summary);
+      }
+    }
+  }
+
+  /** The single writer of navigation state. Effects come only from diffNav. */
+  private dispatch(ev: NavEvent): void {
+    const prev = this.nav;
+    const next = reduceNav(prev, ev, this.readFacts());
+    if (next === prev) {
+      this.syncPageEntry();
+      return;
+    }
+    const fx = diffNav(prev, next);
+    // A relayout keeps the page, and the old layout's scroller no longer
+    // holds its offset, so only a page change records one here. The scroll
+    // listener has the offset from before the crossing.
+    const pageChanged = prev === null || fx.enter !== null || fx.leave !== null;
+    if (prev && pageChanged) this.scrollOffsets.set(prev.page ?? 'home', this.scroller(prev).scrollTop);
+    this.nav = next;
+    if (next.page !== null) this.recentPage = next.page;
+    if (fx.leave) this.pages.get(fx.leave)?.mounted.leave?.();
+    const entered = fx.enter ? this.ensurePage(fx.enter) : null;
+    // Search belongs to the modal's sidebar; the sheet lists every row.
+    if (next.layout === 'sheet' && this.navQuery !== '') this.clearSearch();
+    this.reflectNav();
+    // The phone sheet is a drill-in stack, so a page opens at its top there.
+    // The home list, and every page in the modal, return to where they were left.
+    if (pageChanged) {
+      const drillIn = next.layout === 'sheet' && next.page !== null;
+      this.scroller(next).scrollTop = drillIn ? 0 : this.scrollOffsets.get(next.page ?? 'home') ?? 0;
+    } else if (ev.type === 'relayout') {
+      this.scroller(next).scrollTop = this.scrollOffsets.get(next.page ?? 'home') ?? 0;
+    }
+    entered?.mounted.enter?.();
+    // The sidebar keeps focus on the row a user picked; elsewhere the page heading takes it.
+    const focusHeading = ev.type === 'open' || (ev.type === 'select' && next.layout === 'sheet');
+    // A relayout can hide the focused control: the sidebar search, or the sheet's Back.
+    const focused = document.activeElement;
+    const focusLost = ev.type === 'relayout' && focused instanceof HTMLElement
+      && this.overlay.contains(focused) && focused.closest('[hidden]') !== null;
+    if (entered && focusHeading) {
+      entered.el.querySelector<HTMLElement>('.us-page-title')?.focus({ preventScroll: true });
+    } else if (focusLost && next.page !== null) {
+      this.pages.get(next.page)?.el.querySelector<HTMLElement>('.us-page-title')?.focus({ preventScroll: true });
+    } else if (fx.leave && next.page === null) {
+      this.overlay.querySelector<HTMLElement>(`[data-settings-nav="${fx.leave}"]`)?.focus({ preventScroll: true });
+    }
+    this.syncPageEntry();
+  }
+
+  /** The layout the viewport calls for. Settings follows it on open and on resize. */
+  private navLayout(): NavLayout {
+    return isMobileDevice() ? 'sheet' : 'modal';
+  }
+
+  /**
+   * Settings can open before the full catalogue loads (a deep link, or the
+   * checkout return opening Account), and its keys are not in the boot shell.
+   * Redraw the rows and heal the open pages in place, so typed input survives.
+   */
+  private readonly onTranslationsLoaded = (): void => {
+    this.renderHome();
+    replaceRawI18nKeyPlaceholders(this.overlay, t);
+    const statusLine = this.overlay.querySelector('.upgrade-pro-status-line');
+    if (statusLine) statusLine.textContent = this.planStatusLine(getSubscription());
+    // The deletion dialog sits on document.body, outside the overlay.
+    if (this.deletionDialog) {
+      replaceRawI18nKeyPlaceholders(this.deletionDialog, t);
+      const label = this.deletionDialog.querySelector('.account-deletion-dialog-label');
+      if (label) label.textContent = t('settings.account.deletion.phraseLabel', { phrase: DELETION_PHRASE });
+    }
+  };
+
+  /**
+   * Crossing the phone breakpoint redraws Settings in the other layout on the
+   * same page. Settings opened in the desktop modal has no history entry, so a
+   * window narrowed to the phone sheet registers it first.
+   */
+  private readonly onResize = (): void => {
+    if (!this.historyRegistered && this.navLayout() === 'sheet') {
+      this.historyRegistered = true;
+      overlayHistory.open('settings', (origin) => this.close(origin));
+    }
+    this.dispatch({ type: 'relayout', layout: this.navLayout(), recent: this.recentPage });
+  };
+
+  /** The sheet scrolls as a whole; the modal scrolls its page pane beside a fixed sidebar. */
+  private scroller(nav: NavState): HTMLElement {
+    const selector = nav.layout === 'modal' ? '[data-settings-pages]' : '.unified-settings-modal';
+    return this.overlay.querySelector<HTMLElement>(selector)!;
+  }
+
+  /** Empties the sidebar search and lists every row again. */
+  private clearSearch(): void {
+    this.navQuery = '';
+    const search = this.overlay.querySelector<HTMLInputElement>('[data-settings-search]');
+    if (search) search.value = '';
+    this.renderHome();
+  }
+
+  /** Holds or releases the open page's history entry to match the page and layout. Idempotent. */
+  private syncPageEntry(): void {
+    if (pageEntryEffect(this.nav, this.historyRegistered) === 'hold') {
+      this.pageEntry ??= overlayHistory.openCancelable('settings-section', this.onPageEntryClosed);
+    } else {
+      this.releasePageEntry();
+    }
+  }
+
+  private releasePageEntry(): void {
+    this.pageEntry?.cancel();
+    this.pageEntry = null;
+    overlayHistory.close('settings-section');
+  }
+
+  /** The manager removed the page entry: device Back, or the tab bar replacing Settings. */
+  private readonly onPageEntryClosed = (origin: OverlayCloseOrigin): void => {
+    this.pageEntry = null;
+    // A replacement is the tab bar dismissing or replacing Settings next.
+    if (origin !== 'history') return;
+    // Back with the deletion dialog up acts like Escape: it closes the dialog
+    // (never mid-deletion) and keeps the Account page.
+    if (this.deletionDialog) {
+      if (!this.deletionBusy) this.closeDeletionDialog();
+      this.syncPageEntry();
+      return;
+    }
+    this.dispatch({ type: 'back' });
+  };
+
+  /**
+   * Account or entitlement change: every page may render differently, so
+   * remount them all. The current page stays if it is still available.
+   */
+  private rebuild(runEnter: boolean): void {
+    const focusWasInside = this.overlay.contains(document.activeElement);
+    const before = this.nav?.page ?? null;
+    const offset = this.nav ? this.scroller(this.nav).scrollTop : 0;
+    this.disposePages();
+    this.nav = reduceNav(this.nav, { type: 'facts-changed' }, this.readFacts());
+    if (this.nav.page !== null) this.recentPage = this.nav.page;
+    this.renderHome();
+    const page = this.nav.page ? this.ensurePage(this.nav.page) : null;
+    this.reflectNav();
+    // Removing the old page can clamp the scroller's offset. A reader who
+    // stays on the same page keeps their place.
+    this.scroller(this.nav).scrollTop = this.nav.page === before ? offset : this.scrollOffsets.get(this.nav.page ?? 'home') ?? 0;
+    if (runEnter) page?.mounted.enter?.();
+    if (focusWasInside && !this.overlay.contains(document.activeElement)) {
+      const target = page?.el.querySelector<HTMLElement>('.us-page-title')
+        ?? this.overlay.querySelector<HTMLElement>('[data-settings-nav], [data-settings-signin]');
+      target?.focus({ preventScroll: true });
+    }
+    this.syncPageEntry();
+  }
+
+  /**
+   * Shows what the state says. The sheet shows the home list or one page
+   * under a back button; the modal shows its sidebar beside the page.
+   */
+  private reflectNav(): void {
+    const page = this.nav?.page ?? null;
+    const sidebar = this.nav?.layout === 'modal';
+    const homeShown = sidebar || page === null;
+    const home = this.overlay.querySelector<HTMLElement>('[data-settings-home]');
+    if (home) home.hidden = !homeShown;
+    for (const [id, mounted] of this.pages) mounted.el.hidden = id !== page;
+    const back = this.overlay.querySelector<HTMLElement>('[data-settings-back]');
+    if (back) back.hidden = sidebar || page === null;
+    const title = this.overlay.querySelector<HTMLElement>('[data-settings-title]');
+    if (title) title.hidden = page !== null;
+    const modal = this.overlay.querySelector<HTMLElement>('.unified-settings-modal');
+    if (modal) modal.dataset.settingsDepth = page === null ? 'home' : 'page';
+    this.markCurrentRow();
+    if (homeShown) this.refreshSummaries();
+  }
+
+  private ensurePage(id: SettingsSectionId): { el: HTMLElement; mounted: MountedSection } {
+    const existing = this.pages.get(id);
+    if (existing) return existing;
+    const el = document.createElement('section');
+    el.className = 'us-page';
+    el.id = `us-page-${id}`;
+    el.dataset.settingsPage = id;
+    el.setAttribute('aria-labelledby', `us-page-${id}-title`);
+    el.hidden = true;
+    setTrustedHtml(el, trustedHtml(
+      `<h2 class="us-page-title" id="us-page-${id}-title" tabindex="-1">${escapeHtml(t(sectionLabelKey(id)))}</h2>`
+      + '<div class="us-page-body" data-settings-body></div>',
+      'settings page frame; escaped translation',
+    ));
+    this.overlay.querySelector('[data-settings-pages]')?.append(el);
+    const body = el.querySelector<HTMLElement>('[data-settings-body]')!;
+    const page = { el, mounted: this.mountFor(id)(body) };
+    this.pages.set(id, page);
+    return page;
+  }
+
+  private disposePages(): void {
+    for (const page of this.pages.values()) {
+      page.mounted.dispose();
+      page.el.remove();
+    }
+    this.pages.clear();
+  }
+
+  private pageBody(id: SettingsSectionId): HTMLElement | null {
+    return this.pages.get(id)?.el.querySelector<HTMLElement>('[data-settings-body]') ?? null;
+  }
+
+  private mountFor(id: SettingsSectionId): SectionMount {
+    return isPreferenceSection(id) ? this.mountPreference(id) : this.shellMounts[id];
+  }
+
+  private mountPreference(id: PreferenceSectionId): SectionMount {
+    return (body) => {
+      const section = renderPreferenceSection(id, {
+        isDesktopApp: this.config.isDesktopApp,
+        onMapProviderChange: this.config.onMapProviderChange,
+        onSettingSaved: () => {
+          showToast(t('modals.settingsWindow.saved'));
+          // The modal's sidebar stays in view, so its summaries follow at once.
+          this.refreshSummaries();
+        },
+        isSignedIn: getAuthState().user !== null,
+      });
+      setTrustedHtml(body, trustedHtml(section.html, 'preference section; the renderer escapes every value'));
+      return { dispose: section.attach(body) };
+    };
+  }
+
+  /** One page body per shell section. Keyed by the registry, so a missing page fails the build. */
+  private readonly shellMounts: { readonly [K in ShellSectionId]: SectionMount } = {
+    account: (body) => {
+      setTrustedHtml(body, trustedHtml(`
+        <div class="billing-settings-intro">
+          <h3>${escapeHtml(t('auth.planBilling'))}</h3>
+          <p>${escapeHtml(t('settings.account.intro'))}</p>
         </div>
-        <div class="unified-settings-tabs" role="tablist" aria-label="Settings">
-          <button class="${tabClass('settings')}" tabindex="${this.activeTab === 'settings' ? 0 : -1}" data-tab="settings" role="tab" aria-selected="${this.activeTab === 'settings'}" id="us-tab-settings" aria-controls="us-tab-panel-settings">${t('header.tabSettings')}</button>
-          ${isSignedIn ? `<button class="${tabClass('billing')}" tabindex="${this.activeTab === 'billing' ? 0 : -1}" data-tab="billing" role="tab" aria-selected="${this.activeTab === 'billing'}" id="us-tab-billing" aria-controls="us-tab-panel-billing">Plan &amp; billing</button>` : ''}
-          <button class="${tabClass('panels')}" tabindex="${this.activeTab === 'panels' ? 0 : -1}" data-tab="panels" role="tab" aria-selected="${this.activeTab === 'panels'}" id="us-tab-panels" aria-controls="us-tab-panel-panels">${t('header.tabPanels')}</button>
-          <button class="${tabClass('sources')}" tabindex="${this.activeTab === 'sources' ? 0 : -1}" data-tab="sources" role="tab" aria-selected="${this.activeTab === 'sources'}" id="us-tab-sources" aria-controls="us-tab-panel-sources">${t('header.tabSources')}</button>
-          ${showNotificationsTab ? `<button class="${tabClass('notifications')}" tabindex="${this.activeTab === 'notifications' ? 0 : -1}" data-tab="notifications" role="tab" aria-selected="${this.activeTab === 'notifications'}" id="us-tab-notifications" aria-controls="us-tab-panel-notifications">${t('header.tabNotifications')}</button>` : ''}
-          <button class="${tabClass('api-keys')}" tabindex="${this.activeTab === 'api-keys' ? 0 : -1}" data-tab="api-keys" role="tab" aria-selected="${this.activeTab === 'api-keys'}" id="us-tab-api-keys" aria-controls="us-tab-panel-api-keys">API Keys <span class="panel-pro-badge">PRO</span></button>
-          ${showEmbedsTab ? `<button class="${tabClass('embeds')}" tabindex="${this.activeTab === 'embeds' ? 0 : -1}" data-tab="embeds" role="tab" aria-selected="${this.activeTab === 'embeds'}" id="us-tab-embeds" aria-controls="us-tab-panel-embeds">Embeds <span class="panel-pro-badge">PRO</span></button>` : ''}
-          <button class="${tabClass('mcp-clients')}" tabindex="${this.activeTab === 'mcp-clients' ? 0 : -1}" data-tab="mcp-clients" role="tab" aria-selected="${this.activeTab === 'mcp-clients'}" id="us-tab-mcp-clients" aria-controls="us-tab-panel-mcp-clients">AI Agents</button>
+        ${this.renderUpgradeSection()}
+        <div id="usEnterpriseSeats">${this.enterpriseSeatsSection.renderContent()}</div>
+        <ul class="us-list us-signout" role="list">
+          <li><button type="button" class="us-row" data-settings-signout><span class="us-row-text"><span class="us-row-title">${escapeHtml(t('settings.signOut'))}</span></span></button></li>
+        </ul>
+        ${this.renderAccountDeletionSection()}
+      `, 'account page; billing and seat sections escape their values'));
+      return { enter: () => this.loadAccountSeats(), dispose: () => {} };
+    },
+    panels: (body) => {
+      setTrustedHtml(body, trustedHtml(`
+        <div class="unified-settings-region-wrapper">
+          <div class="unified-settings-region-bar" id="usPanelCatBar"></div>
         </div>
-        <div class="unified-settings-tab-panel${this.activeTab === 'settings' ? ' active' : ''}" data-panel-id="settings" id="us-tab-panel-settings" role="tabpanel" aria-labelledby="us-tab-settings">
-          <div data-selfhost-key-host>${selfHostKeyHtml}</div>
-          ${prefs.html}
+        <div class="panels-search">
+          <input type="text" placeholder="${t('header.filterPanels')}" aria-label="${t('header.filterPanels')}" value="${escapeHtml(this.panelFilter)}" />
         </div>
-        ${isSignedIn ? `
-        <div class="unified-settings-tab-panel${this.activeTab === 'billing' ? ' active' : ''}" data-panel-id="billing" id="us-tab-panel-billing" role="tabpanel" aria-labelledby="us-tab-billing">
-          <div class="billing-settings-intro">
-            <h2>Plan &amp; billing</h2>
-            <p>See your current plan and manage payment details, invoices, or cancellation.</p>
-          </div>
-          ${this.renderUpgradeSection()}
-          <div id="usEnterpriseSeats">${this.enterpriseSeatsSection.renderContent()}</div>
-          ${this.renderAccountDeletionSection()}
+        <div class="panel-toggle-grid" id="usPanelToggles"></div>
+        <div class="panels-footer">
+          <span class="panels-status" id="usPanelsStatus" aria-live="polite"></span>
+          <button class="panels-save-layout">${t('modals.story.save')}</button>
+          <button class="panels-reset-layout" title="${t('header.resetLayoutTooltip')}" aria-label="${t('header.resetLayoutTooltip')}">${t('header.resetLayout')}</button>
+        </div>
+      `, 'panels page; filter value escaped'));
+      this.renderPanelCategoryPills();
+      this.renderPanelsTab();
+      return { dispose: () => {} };
+    },
+    sources: (body) => {
+      const applicablePresets = this.getApplicableTheaterPresets();
+      setTrustedHtml(body, trustedHtml(`
+        <div class="unified-settings-region-wrapper">
+          <div class="unified-settings-region-bar" id="usRegionBar"></div>
+        </div>
+        ${applicablePresets.length > 0 ? `
+        <div class="unified-settings-presets" id="usCoveragePresets">
+          <span class="unified-settings-presets-label">${t('theaterPresets.label')}</span>
+          ${applicablePresets.map(preset =>
+            `<button type="button" class="unified-settings-region-pill unified-settings-preset-chip" data-preset-id="${preset.id}" title="${escapeHtml(t(preset.descriptionKey))}">${escapeHtml(t(preset.labelKey))}</button>`
+          ).join('')}
         </div>
         ` : ''}
-        <div class="unified-settings-tab-panel${this.activeTab === 'panels' ? ' active' : ''}" data-panel-id="panels" id="us-tab-panel-panels" role="tabpanel" aria-labelledby="us-tab-panels">
-          <div class="unified-settings-region-wrapper">
-            <div class="unified-settings-region-bar" id="usPanelCatBar"></div>
-          </div>
-          <div class="panels-search">
-            <input type="text" placeholder="${t('header.filterPanels')}" aria-label="${t('header.filterPanels')}" value="${escapeHtml(this.panelFilter)}" />
-          </div>
-          <div class="panel-toggle-grid" id="usPanelToggles"></div>
-          <div class="panels-footer">
-            <span class="panels-status" id="usPanelsStatus" aria-live="polite"></span>
-            <button class="panels-save-layout">${t('modals.story.save')}</button>
-            <button class="panels-reset-layout" title="${t('header.resetLayoutTooltip')}" aria-label="${t('header.resetLayoutTooltip')}">${t('header.resetLayout')}</button>
-          </div>
+        <div class="sources-search">
+          <input type="text" placeholder="${t('header.filterSources')}" aria-label="${t('header.filterSources')}" value="${escapeHtml(this.sourceFilter)}" />
         </div>
-        <div class="unified-settings-tab-panel${this.activeTab === 'sources' ? ' active' : ''}" data-panel-id="sources" id="us-tab-panel-sources" role="tabpanel" aria-labelledby="us-tab-sources">
-          <div class="unified-settings-region-wrapper">
-            <div class="unified-settings-region-bar" id="usRegionBar"></div>
-          </div>
-          ${applicablePresets.length > 0 ? `
-          <div class="unified-settings-presets" id="usCoveragePresets">
-            <span class="unified-settings-presets-label">${t('theaterPresets.label')}</span>
-            ${applicablePresets.map(preset =>
-              `<button type="button" class="unified-settings-region-pill unified-settings-preset-chip" data-preset-id="${preset.id}" title="${escapeHtml(t(preset.descriptionKey))}">${escapeHtml(t(preset.labelKey))}</button>`
-            ).join('')}
-          </div>
-          ` : ''}
-          <div class="sources-search">
-            <input type="text" placeholder="${t('header.filterSources')}" aria-label="${t('header.filterSources')}" value="${escapeHtml(this.sourceFilter)}" />
-          </div>
-          <div class="sources-toggle-grid" id="usSourceToggles"></div>
-          <div class="sources-footer">
-            <span class="sources-counter" id="usSourcesCounter"></span>
-            <button class="sources-select-all">${t('common.selectAll')}</button>
-            <button class="sources-select-none">${t('common.selectNone')}</button>
-          </div>
+        <div class="sources-toggle-grid" id="usSourceToggles"></div>
+        <div class="sources-footer">
+          <span class="sources-counter" id="usSourcesCounter"></span>
+          <button class="sources-select-all">${t('common.selectAll')}</button>
+          <button class="sources-select-none">${t('common.selectNone')}</button>
         </div>
-        ${notifs ? `
-        <div class="unified-settings-tab-panel${this.activeTab === 'notifications' ? ' active' : ''}" data-panel-id="notifications" id="us-tab-panel-notifications" role="tabpanel" aria-labelledby="us-tab-notifications">
-          ${notifs.html}
-        </div>
-        ` : ''}
-        <div class="unified-settings-tab-panel${this.activeTab === 'api-keys' ? ' active' : ''}" data-panel-id="api-keys" id="us-tab-panel-api-keys" role="tabpanel" aria-labelledby="us-tab-api-keys">
-          ${this.renderApiKeysContent()}
-        </div>
-        ${showEmbedsTab ? `
-        <div class="unified-settings-tab-panel${this.activeTab === 'embeds' ? ' active' : ''}" data-panel-id="embeds" id="us-tab-panel-embeds" role="tabpanel" aria-labelledby="us-tab-embeds">
-          ${this.renderEmbedKeysContent()}
-        </div>
-        ` : ''}
-        <div class="unified-settings-tab-panel${this.activeTab === 'mcp-clients' ? ' active' : ''}" data-panel-id="mcp-clients" id="us-tab-panel-mcp-clients" role="tabpanel" aria-labelledby="us-tab-mcp-clients">
-          ${this.renderMcpClientsContent()}
-        </div>
-        <div class="dashboard-chrome-links">
+      `, 'sources page; preset labels and filter value escaped'));
+      const refresh = () => {
+        this.renderRegionPills();
+        this.renderSourcesGrid();
+        this.updateSourcesCounter();
+      };
+      refresh();
+      // A Panels save can add or remove news categories, which changes the source list.
+      return { enter: refresh, dispose: () => {} };
+    },
+    // Mounting on first entry keeps the getChannelsData() fetch off every
+    // modal open for users who never visit this page.
+    notifications: (body) => {
+      const notifs = renderNotificationsSettings({ isSignedIn: getAuthState().user !== null });
+      setTrustedHtml(body, trustedHtml(notifs.html, 'notifications settings; the renderer escapes every value'));
+      return { dispose: notifs.attach(body) };
+    },
+    'api-keys': (body) => {
+      // The self-host key block sits here because its copy sends users to API keys.
+      const selfHostKeyHtml = this.renderSelfHostKeySection();
+      this.selfHostKeyRenderedHtml = selfHostKeyHtml;
+      setTrustedHtml(body, trustedHtml(
+        `<div data-selfhost-key-host>${selfHostKeyHtml}</div><div data-api-keys-host>${this.renderApiKeysContent()}</div>`,
+        'api keys page; key sections escape their values',
+      ));
+      this.attachSelfHostKeyHandlers();
+      this.attachApiKeysHandlers();
+      return {
+        enter: () => {
+          if (getAuthState().user && hasFeature('apiAccess')) void this.loadPlanLimitNotices();
+          if (this.canManageKeys()) void this.loadApiKeys();
+        },
+        dispose: () => {},
+      };
+    },
+    // Gated on `embedAccess`, NOT `apiAccess`: both Pro tiers are
+    // `apiAccess: false`, so an apiAccess gate would hide embed keys from most
+    // of the customers who bought embedding. A page of its own rather than a
+    // section of API keys so the two credential classes never look
+    // interchangeable.
+    embeds: (body) => {
+      setTrustedHtml(body, trustedHtml(this.renderEmbedKeysContent(), 'embeds page; key values escaped'));
+      this.attachEmbedKeysHandlers();
+      return {
+        enter: () => {
+          if (getAuthState().user && hasEmbedAccessForAccount(getAuthState().user?.role)) void this.loadEmbedKeys();
+        },
+        dispose: () => {},
+      };
+    },
+    'mcp-clients': (body) => {
+      setTrustedHtml(body, trustedHtml(this.renderMcpClientsContent(), 'AI agents page; client values escaped'));
+      return {
+        enter: () => {
+          if (!this.canManageMcpClients()) return;
+          void this.loadPlanLimitNotices();
+          void this.loadMcpClients();
+          this.startMcpQuotaPolling();
+        },
+        // No need to keep the quota timer running for a hidden page.
+        leave: () => this.stopMcpQuotaPolling(),
+        dispose: () => this.stopMcpQuotaPolling(),
+      };
+    },
+    about: (body) => {
+      setTrustedHtml(body, trustedHtml(`
+        <div class="us-about">
           ${dashboardSiteLinksHtml(resolveDashboardSiteOrigin({
             isDesktopApp: this.config.isDesktopApp,
             hostname: window.location.hostname,
           }))}
           ${legalLinksHtml(WEB_APP_ORIGIN)}
         </div>
-      </div>
-    `, "legacy direct innerHTML migration"));
-
-    const settingsPanel = this.overlay.querySelector('#us-tab-panel-settings');
-    if (settingsPanel) {
-      this.prefsCleanup = prefs.attach(settingsPanel as HTMLElement);
-    }
-
-    // Defer notifications attach until the tab is first activated —
-    // otherwise Pro users pay a getChannelsData() fetch on every modal
-    // open even if they never visit this tab.
-    this.pendingNotifs = notifs;
-    if (this.activeTab === 'notifications') this.attachNotificationsTab();
-
-    const closeBtn = this.overlay.querySelector<HTMLButtonElement>('.unified-settings-close');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        this.close();
-      });
-    }
-
-    this.attachLegalLinkHandoff();
-
-    this.renderPanelCategoryPills();
-    this.renderPanelsTab();
-    this.renderRegionPills();
-    this.renderSourcesGrid();
-    this.updateSourcesCounter();
-
-    this.attachSelfHostKeyHandlers();
-    this.attachApiKeysHandlers();
-    this.attachEmbedKeysHandlers();
-    if (loadAccountData) {
-      if (this.activeTab === 'api-keys' || (this.activeTab === 'mcp-clients' && this.canManageMcpClients())) {
-        void this.loadPlanLimitNotices();
-      }
-      if (this.activeTab === 'api-keys' && this.canManageKeys()) {
-        void this.loadApiKeys();
-      }
-      if (this.activeTab === 'embeds' && getAuthState().user && hasEmbedAccessForAccount(getAuthState().user?.role)) {
-        void this.loadEmbedKeys();
-      }
-      if (this.activeTab === 'mcp-clients' && getAuthState().user && hasFeature('mcpAccess')) {
-        void this.loadMcpClients();
-        this.startMcpQuotaPolling();
-      }
-    }
-  }
+      `, 'about page; link helpers escape every href'));
+      return { dispose: () => {} };
+    },
+  };
 
   /**
    * Desktop hands legal links to the OS browser (#5911 precedent). A plain
@@ -1141,57 +1577,14 @@ export class UnifiedSettings {
     });
   }
 
-  private switchTab(tab: TabId): void {
-    this.activeTab = tab;
-
-    updateSettingsTabSelection(
-      this.overlay.querySelectorAll<HTMLElement>('.unified-settings-tab'),
-      this.overlay.querySelectorAll<HTMLElement>('.unified-settings-tab-panel'),
-      tab,
-    );
-
-    if (tab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
-      void this.loadPlanLimitNotices();
-    }
-    if (tab === 'api-keys' && this.canManageKeys()) {
-      void this.loadApiKeys();
-    }
-
-    if (tab === 'embeds' && getAuthState().user && hasEmbedAccessForAccount(getAuthState().user?.role)) {
-      void this.loadEmbedKeys();
-    }
-
-    if (tab === 'mcp-clients' && getAuthState().user && hasFeature('mcpAccess')) {
-      void this.loadPlanLimitNotices();
-      void this.loadMcpClients();
-      this.startMcpQuotaPolling();
-    } else {
-      // Stop polling when switching away — no need to keep the timer running
-      // for a hidden tab.
-      this.stopMcpQuotaPolling();
-    }
-
-    if (tab === 'notifications') {
-      this.attachNotificationsTab();
-    }
-  }
-
-  private attachNotificationsTab(): void {
-    if (this.notifCleanup || !this.pendingNotifs) return;
-    const notifPanel = this.overlay.querySelector('#us-tab-panel-notifications');
-    if (notifPanel) {
-      this.notifCleanup = this.pendingNotifs.attach(notifPanel as HTMLElement);
-    }
-  }
-
   // Pending state shown while the plan is still resolving — used both before
   // the entitlement snapshot arrives and, for an entitled owner, while the
   // subscription watch is still settling (#6772).
   private renderPlanCheckingState(): string {
     return `
         <div class="upgrade-pro-section upgrade-pro-loading" role="status" aria-live="polite">
-          <div class="upgrade-pro-title">Checking your plan…</div>
-          <div class="upgrade-pro-desc">This usually takes only a moment.</div>
+          <div class="upgrade-pro-title">${escapeHtml(t('settings.account.checking.heading'))}</div>
+          <div class="upgrade-pro-desc">${escapeHtml(t('settings.account.checking.desc'))}</div>
         </div>
       `;
   }
@@ -1204,8 +1597,8 @@ export class UnifiedSettings {
     if (!isEntitled() && hasPremiumAccess()) {
       return `
         <div class="upgrade-pro-section upgrade-pro-external" data-billing-state="external">
-          <div class="upgrade-pro-title">Premium access</div>
-          <div class="upgrade-pro-desc">This access is not billed through your WorldMonitor account. No payment method or invoices are available here.</div>
+          <div class="upgrade-pro-title">${escapeHtml(t('settings.account.external.heading'))}</div>
+          <div class="upgrade-pro-desc">${escapeHtml(t('settings.account.external.desc'))}</div>
         </div>
       `;
     }
@@ -1256,36 +1649,8 @@ export class UnifiedSettings {
         ? 'active'
         : getSubscriptionStatusTone(sub, now);
 
-      let statusLine = '';
-      if (sub?.currentPeriodEnd) {
-        const dateStr = new Date(sub.currentPeriodEnd).toLocaleDateString();
-        if (sub.status === 'active') {
-          statusLine = sub.cancelAtPeriodEnd
-            ? `Cancellation scheduled -- access until ${dateStr}`
-            : `Renews: ${dateStr}`;
-        } else if (sub.status === 'on_hold') {
-          statusLine = 'On hold -- please update payment method';
-        } else if (sub.status === 'cancelled') {
-          statusLine = `Cancelled -- access until ${dateStr}`;
-        } else if (sub.status === 'expired') {
-          statusLine = 'Expired';
-        } else {
-          // A status this client does not model yet. We are inside the
-          // isEntitled() branch, so access is working — say only that, and
-          // point at the billing portal rather than leaving the `unknown`
-          // tone as a bare grey dot with no sentence at all.
-          statusLine = 'See Manage Billing for your current plan details.';
-        }
-      }
-
-      // An invitee holding a Business Pro grant has Pro features but no own
-      // subscription row — they hold a grant, not a subscription, so the
-      // billing surface remains owner-only. Show their plan status without
-      // the Manage Billing CTA that would 404 against Dodo.
       const hasOwnSubscription = sub !== null;
-      if (!hasOwnSubscription) {
-        statusLine = 'Billing is managed by your plan owner.';
-      }
+      const statusLine = this.planStatusLine(sub);
 
       return `
         <div class="upgrade-pro-section upgrade-pro-active" data-billing-tone="${tone}">
@@ -1294,8 +1659,8 @@ export class UnifiedSettings {
             <span class="upgrade-pro-plan-name">${escapeHtml(planName)}</span>
           </div>
           ${statusLine ? `<div class="upgrade-pro-status-line">${escapeHtml(statusLine)}</div>` : ''}
-          ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">Upgrade to Business</button>` : ''}
-          ${hasOwnSubscription ? `<button class="manage-billing-btn">Manage Billing</button>` : ''}
+          ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">${escapeHtml(t('settings.account.upgradeToBusiness'))}</button>` : ''}
+          ${hasOwnSubscription ? `<button class="manage-billing-btn">${escapeHtml(t('components.billingState.manageBilling'))}</button>` : ''}
         </div>
         ${hasOwnSubscription ? `<div id="usBusinessSeats">${this.businessSeatsSection.renderContent()}</div>` : ''}
       `;
@@ -1307,19 +1672,19 @@ export class UnifiedSettings {
     if (getAuthState().user && getEntitlementState() === null) {
       return `
         <div class="upgrade-pro-section upgrade-pro-fallback">
-          <div class="upgrade-pro-title">Plan status unavailable</div>
-          <div class="upgrade-pro-desc">We could not verify your current plan. Try again or view plans in a new tab.</div>
-          <button class="manage-billing-btn retry-plan-status-btn" style="margin-bottom:8px;">Try again</button>
-          <a class="upgrade-pro-cta-link" href="${WEB_APP_ORIGIN}/pro" target="_blank" rel="noopener">View plans →</a>
+          <div class="upgrade-pro-title">${escapeHtml(t('settings.account.unavailable.heading'))}</div>
+          <div class="upgrade-pro-desc">${escapeHtml(t('settings.account.unavailable.desc'))}</div>
+          <button class="manage-billing-btn retry-plan-status-btn" style="margin-bottom:8px;">${escapeHtml(t('components.checkoutFailureBanner.retry'))}</button>
+          <a class="upgrade-pro-cta-link" href="${WEB_APP_ORIGIN}/pro" target="_blank" rel="noopener">${escapeHtml(t('modals.settingsWindow.worldMonitor.register.submitBtn'))} →</a>
         </div>
       `;
     }
 
     return `
       <div class="upgrade-pro-section" data-billing-state="free">
-        <div class="upgrade-pro-title">WorldMonitor Free</div>
-        <div class="upgrade-pro-desc">Your current plan is Free. Upgrade for all panels, AI analysis, and priority data refresh.</div>
-        <button class="upgrade-pro-cta">Upgrade to Pro</button>
+        <div class="upgrade-pro-title">${escapeHtml(t('settings.account.free.heading'))}</div>
+        <div class="upgrade-pro-desc">${escapeHtml(t('settings.account.free.desc'))}</div>
+        <button class="upgrade-pro-cta">${escapeHtml(t('premium.upgradeToPro'))}</button>
       </div>
     `;
   }
@@ -1327,9 +1692,9 @@ export class UnifiedSettings {
   private renderAccountDeletionSection(): string {
     return `
       <section class="account-deletion-zone" data-account-deletion>
-        <h3 class="account-deletion-title">Delete account</h3>
-        <p class="account-deletion-desc">Permanently delete this World Monitor account. Subscriptions cancel immediately with no refund of remaining prepaid time. API keys, embed keys, and MCP tokens stop working. Billing records needed for accounting, disputes, and lawful requests are kept with the customer contact details they carry; they stop naming your login account, though payment-provider webhook logs written before deletion keep the identifiers they were delivered with. Dashboard preferences and desktop keychain secrets on this device are not wiped remotely.</p>
-        <button type="button" class="delete-account-btn" data-delete-account>Delete account</button>
+        <h3 class="account-deletion-title">${escapeHtml(t('settings.account.deletion.heading'))}</h3>
+        <p class="account-deletion-desc">${escapeHtml(t('settings.account.deletion.desc'))}</p>
+        <button type="button" class="delete-account-btn" data-delete-account>${escapeHtml(t('settings.account.deletion.heading'))}</button>
       </section>
     `;
   }
@@ -1340,10 +1705,35 @@ export class UnifiedSettings {
     const input = overlay.querySelector<HTMLInputElement>('[data-deletion-phrase]');
     const confirm = overlay.querySelector<HTMLButtonElement>('[data-deletion-confirm]');
     if (!input || !confirm) return;
-    confirm.disabled = this.deletionBusy || input.value.trim() !== 'DELETE';
+    confirm.disabled = this.deletionBusy || input.value.trim() !== DELETION_PHRASE;
     input.disabled = this.deletionBusy;
     const error = overlay.querySelector('[data-deletion-error]');
     if (error) error.textContent = this.deletionError;
+  }
+
+  /**
+   * The plan status sentence under the plan name. The catalogue-load handler
+   * redraws it too, because the raw-key healer cannot restore its date.
+   */
+  private planStatusLine(sub: SubscriptionInfo | null): string {
+    // An invitee holding a Business Pro grant has Pro features but no own
+    // subscription row: they hold a grant, so the billing surface stays
+    // owner-only and the Manage Billing CTA (a Dodo 404) is not shown.
+    if (sub === null) return t('settings.account.status.ownerManaged');
+    if (!sub.currentPeriodEnd) return '';
+    const dateStr = new Date(sub.currentPeriodEnd).toLocaleDateString();
+    if (sub.status === 'active') {
+      return sub.cancelAtPeriodEnd
+        ? t('settings.account.status.cancelScheduled', { date: dateStr })
+        : t('settings.account.status.renews', { date: dateStr });
+    }
+    if (sub.status === 'on_hold') return t('settings.account.status.onHold');
+    if (sub.status === 'cancelled') return t('settings.account.status.cancelled', { date: dateStr });
+    if (sub.status === 'expired') return t('settings.account.status.expired');
+    // A status this client does not model yet. Callers are inside the
+    // isEntitled() branch, so access is working: say only that, and point at
+    // the billing portal instead of leaving the `unknown` tone as a bare dot.
+    return t('settings.account.status.unknown');
   }
 
   private openDeletionDialog(): void {
@@ -1361,18 +1751,18 @@ export class UnifiedSettings {
       trustedHtml(
         `
       <div class="account-deletion-dialog">
-        <h2 id="account-deletion-dialog-title" class="account-deletion-dialog-title">Delete this account?</h2>
-        <p class="account-deletion-dialog-copy">This cannot be undone. Subscriptions cancel, keys stop working immediately, and billing records are kept for accounting, disputes, and lawful requests — including the contact details they carry. Sign out on other devices and clear this device's site data afterwards — those are out of server reach.</p>
-        <label class="account-deletion-dialog-label" for="account-deletion-phrase">Type DELETE to confirm</label>
+        <h2 id="account-deletion-dialog-title" class="account-deletion-dialog-title">${escapeHtml(t('settings.account.deletion.dialogTitle'))}</h2>
+        <p class="account-deletion-dialog-copy">${escapeHtml(t('settings.account.deletion.dialogCopy'))}</p>
+        <label class="account-deletion-dialog-label" for="account-deletion-phrase">${escapeHtml(t('settings.account.deletion.phraseLabel', { phrase: DELETION_PHRASE }))}</label>
         <input id="account-deletion-phrase" class="account-deletion-dialog-input" data-deletion-phrase type="text" autocomplete="off" spellcheck="false" />
         <p class="account-deletion-dialog-error" data-deletion-error role="alert"></p>
         <div class="account-deletion-dialog-actions">
-          <button type="button" class="confirm-dialog-btn" data-deletion-cancel>Cancel</button>
-          <button type="button" class="confirm-dialog-btn confirm-dialog-confirm" data-deletion-confirm disabled>Delete account</button>
+          <button type="button" class="confirm-dialog-btn" data-deletion-cancel>${escapeHtml(t('common.cancel'))}</button>
+          <button type="button" class="confirm-dialog-btn confirm-dialog-confirm" data-deletion-confirm disabled>${escapeHtml(t('settings.account.deletion.heading'))}</button>
         </div>
       </div>
     `,
-        'account deletion confirm dialog; static copy only',
+        'account deletion confirm dialog; escaped translations',
       ),
     );
     overlay.addEventListener('click', (event) => {
@@ -1419,7 +1809,7 @@ export class UnifiedSettings {
   private async confirmAccountDeletion(): Promise<void> {
     const overlay = this.deletionDialog;
     const input = overlay?.querySelector<HTMLInputElement>('[data-deletion-phrase]');
-    if (!overlay || !input || input.value.trim() !== 'DELETE' || this.deletionBusy) return;
+    if (!overlay || !input || input.value.trim() !== DELETION_PHRASE || this.deletionBusy) return;
     this.deletionBusy = true;
     this.deletionError = '';
     this.syncDeletionConfirmEnabled();
@@ -1431,9 +1821,9 @@ export class UnifiedSettings {
       // would stop to ask "discard changes?" for it while signOut() proceeds.
       this.teardownSettings('control');
       await signOut();
-      showToast('Account deleted. Sign out on other devices and clear this device\'s site data.');
+      showToast(t('settings.account.deletion.deleted'));
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Account deletion failed. Try again.';
+      const message = err instanceof Error ? err.message : t('settings.account.deletion.failed');
       if (message.includes('Account changed')) {
         // Only speak if this attempt still owns the dialog. When the account
         // switch already tore it down, the user has moved on and a late
@@ -1486,13 +1876,11 @@ export class UnifiedSettings {
         // refused and the browser fallback was blocked). Saying nothing here
         // reads as a dead click on a paid feature.
         if (result.outcome === 'open-failed') {
-          showToast('Could not open the billing portal. Please allow pop-ups and try again.');
+          showToast(t('settings.account.portal.openFailed'));
           return;
         }
         if (result.outcome === 'no-customer') {
-          showToast(
-            'Billing portal unavailable. Email support@worldmonitor.app for help.',
-          );
+          showToast(t('settings.account.portal.unavailable'));
         }
       });
       return;
@@ -1515,11 +1903,14 @@ export class UnifiedSettings {
     ];
   }
 
+  /** Every panel the Panels page can list, before the category and filter narrow it. */
+  private listedPanelEntries(): Array<[string, PanelConfig]> {
+    return Object.entries(this.draftPanelSettings)
+      .filter(([key]) => (key !== 'runtime-config' || this.config.isDesktopApp) && !key.startsWith('cw-'));
+  }
+
   private getVisiblePanelEntries(): Array<[string, PanelConfig]> {
-    const panelSettings = this.draftPanelSettings;
-    let entries = Object.entries(panelSettings)
-      .filter(([key]) => key !== 'runtime-config' || this.config.isDesktopApp)
-      .filter(([key]) => !key.startsWith('cw-'));
+    let entries = this.listedPanelEntries();
 
     if (this.activePanelCategory !== 'all') {
       const catDef = PANEL_CATEGORY_MAP[this.activePanelCategory];
@@ -1574,22 +1965,21 @@ export class UnifiedSettings {
       const a11yState = getPanelToggleA11yState(locked, panel.enabled, displayName);
       // Sandboxed MCP iframes cannot inherit the host panel's CSS scale.
       const supportsPanelFontScale = key !== 'map' && !key.startsWith('mcp-');
+      const on = panel.enabled && !locked;
       return `
-        <div class="panel-settings-item">
-          <button type="button" class="panel-toggle-item ${panel.enabled && !locked ? 'active' : ''}${changed ? ' changed' : ''}${locked ? ' pro-locked' : ''}" data-panel="${escapeHtml(key)}" ${a11yState.ariaPressed === null ? '' : `aria-pressed="${a11yState.ariaPressed}"`} ${a11yState.ariaLabel === null ? '' : `aria-label="${escapeHtml(a11yState.ariaLabel)}"`} ${locked ? 'data-pro-locked="1"' : ''}>
-            <div class="panel-toggle-checkbox" aria-hidden="true">${panel.enabled && !locked ? '\u2713' : ''}${locked ? '\uD83D\uDD12' : ''}</div>
+        <div class="panel-settings-item${supportsPanelFontScale ? ' has-font-scale' : ''}">
+          <button type="button" class="panel-toggle-item ${on ? 'active' : ''}${changed ? ' changed' : ''}${locked ? ' pro-locked' : ''}" data-panel="${escapeHtml(key)}" ${a11yState.ariaPressed === null ? '' : `aria-pressed="${a11yState.ariaPressed}"`} ${a11yState.ariaLabel === null ? '' : `aria-label="${escapeHtml(a11yState.ariaLabel)}"`} ${locked ? 'data-pro-locked="1"' : ''}>
             <span class="panel-toggle-label">${escapeHtml(displayName)}</span>
             ${(locked || resolvedPanel.premium) ? '<span class="panel-toggle-pro-badge" aria-hidden="true">PRO</span>' : ''}
+            <span class="panel-toggle-switch" aria-hidden="true"></span>
           </button>
-          ${supportsPanelFontScale ? `<details class="panel-font-scale-details"${panel.fontScale === undefined ? '' : ' open'}>
-            <summary><span>${escapeHtml(panelFontScaleLabel)}</span><span data-panel-scale-summary>${escapeHtml(panel.fontScale === undefined ? followGlobalFontScaleLabel : fontScaleLabel(panel.fontScale))}</span></summary>
-            <label class="panel-font-scale-control">
-            <span>${escapeHtml(panelFontScaleLabel)}</span>
+          ${supportsPanelFontScale ? `<label class="panel-font-scale-control">
+            <span class="panel-font-scale-value" data-panel-scale-summary aria-hidden="true">${escapeHtml(panelFontScaleSummary(panel.fontScale))}</span>
             <select data-panel-font-scale="${escapeHtml(key)}" aria-label="${escapeHtml(`${displayName}: ${panelFontScaleLabel}`)}"${locked ? ' disabled' : ''}>
               <option value="global"${panel.fontScale === undefined ? ' selected' : ''}>${escapeHtml(followGlobalFontScaleLabel)}</option>
               ${FONT_SCALE_STEPS.map(scale => `<option value="${scale}"${panel.fontScale === scale ? ' selected' : ''}>${fontScaleLabel(scale)}</option>`).join('')}
             </select>
-          </label></details>` : ''}
+          </label>` : ''}
         </div>
       `;
     }).join(''), "legacy direct innerHTML migration"));
@@ -2018,7 +2408,7 @@ export class UnifiedSettings {
 
   private attachApiKeysHandlers(): void {
     // Enter to submit (only exists when entitled user sees full UI)
-    const apiKeyInput = this.overlay.querySelector<HTMLInputElement>('.api-keys-name-input');
+    const apiKeyInput = this.overlay.querySelector<HTMLInputElement>('[data-api-keys-host] .api-keys-name-input');
     if (apiKeyInput) {
       apiKeyInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') void this.handleCreateApiKey();
@@ -2293,7 +2683,7 @@ export class UnifiedSettings {
   private syncDesktopKeyLimit(): void {
     if (this.keysMode() !== 'desktop') return;
     const countEl = this.overlay.querySelector<HTMLElement>('[data-desktop-keys-count]');
-    const input = this.overlay.querySelector<HTMLInputElement>('.api-keys-name-input');
+    const input = this.overlay.querySelector<HTMLInputElement>('[data-api-keys-host] .api-keys-name-input');
     const btn = this.overlay.querySelector<HTMLButtonElement>('.api-keys-create-btn');
     if (!countEl) return;
     if (this.apiKeysLoading && this.apiKeys.length === 0) {
@@ -2388,7 +2778,7 @@ export class UnifiedSettings {
   }
 
   private async handleCreateApiKey(): Promise<void> {
-    const input = this.overlay.querySelector<HTMLInputElement>('.api-keys-name-input');
+    const input = this.overlay.querySelector<HTMLInputElement>('[data-api-keys-host] .api-keys-name-input');
     const btn = this.overlay.querySelector<HTMLButtonElement>('.api-keys-create-btn');
     const name = input?.value.trim();
     if (!name || !input || !btn) return;
@@ -2949,9 +3339,9 @@ export class UnifiedSettings {
   private startMcpQuotaPolling(): void {
     if (this.mcpQuotaTimer) return; // idempotent
     this.mcpQuotaTimer = setInterval(() => {
-      // Skip silently if the tab is no longer visible — can happen if the
+      // Skip silently if the page is no longer visible — can happen if the
       // overlay was hidden via display:none rather than full destroy().
-      if (this.activeTab !== 'mcp-clients') return;
+      if (this.nav?.page !== 'mcp-clients') return;
       // AI Agents stays open after a downgrade, with the quota section gone.
       if (!this.canManageMcpClients()) {
         this.stopMcpQuotaPolling();

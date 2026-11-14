@@ -41,7 +41,7 @@ export async function resolveUserId(
  */
 export async function resolveUserIdentity(
   ctx: QueryCtx | MutationCtx | ActionCtx,
-): Promise<{ subject: string; name?: string; givenName?: string; familyName?: string; email?: string; plan?: 'free' | 'pro' } | null> {
+): Promise<{ subject: string; name?: string; givenName?: string; familyName?: string; email?: string; emailVerified?: boolean; plan?: 'free' | 'pro' } | null> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity?.subject) return null;
   const plan = identity.plan === 'free' || identity.plan === 'pro' ? identity.plan : undefined;

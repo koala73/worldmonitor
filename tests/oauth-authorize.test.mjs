@@ -15,9 +15,10 @@
 import { strict as assert } from 'node:assert';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { describe, it } from 'node:test';
+import { after, afterEach, before, describe, it } from 'node:test';
 
-import { consentPage } from '../api/oauth/authorize.js';
+import authorizeHandler, { consentPage } from '../api/oauth/authorize.js';
+import { OAUTH_BIND_COOKIE, hashOAuthBindValue } from '../api/oauth/_browser-binding.js';
 
 const BASE_PARAMS = {
   client_name: 'Claude Desktop',
@@ -39,6 +40,35 @@ async function renderHtml(params, nonce, errorMsg) {
   assert.equal(res.headers.get('Cache-Control'), 'no-store');
   return await res.text();
 }
+
+describe('consentPage — ChatGPT sign-in carries no plan offer', () => {
+  // OpenAI rejected 2.10.1 for offering subscriptions inside ChatGPT. The
+  // reviewer signs in through this page, so it must not mention Pro or link
+  // to /pro when the client redirects to ChatGPT.
+  const CHATGPT = { ...BASE_PARAMS, client_name: 'ChatGPT', redirect_uri: 'https://chatgpt.com/connector_platform_oauth_redirect' };
+
+  it('drops the Pro note and every /pro link for a ChatGPT redirect', async () => {
+    const html = await renderHtml(CHATGPT, NONCE);
+    assert.match(html, /<p class="cta-note">A free account works\.<\/p>/);
+    assert.doesNotMatch(html, /\bPro\b/);
+    assert.doesNotMatch(html, /worldmonitor\.app\/pro/);
+    assert.match(html, /<a id="tk" role="button" tabindex="0">Use API key instead<\/a>/);
+  });
+
+  it('tells the grant page it is serving ChatGPT, and keeps the nonce first', async () => {
+    const html = await renderHtml(CHATGPT, NONCE);
+    const href = html.match(/<a id="pc"[^>]*href="([^"]+)"/)[1].replaceAll('&amp;', '&');
+    const u = new URL(href);
+    assert.equal(u.origin + u.pathname, 'https://worldmonitor.app/mcp-grant');
+    assert.deepEqual([...u.searchParams.entries()], [['nonce', NONCE], ['surface', 'chatgpt']]);
+  });
+
+  it('keeps the Pro note and links for other clients', async () => {
+    const html = await renderHtml(BASE_PARAMS, NONCE);
+    assert.match(html, /Pro raises the daily allowance/);
+    assert.match(html, /worldmonitor\.app\/pro/);
+  });
+});
 
 describe('consentPage — Pro CTA structure (U4)', () => {
   it('renders the brand-green Pro CTA as a top-level <a> with the apex grant URL', async () => {
@@ -247,5 +277,93 @@ describe('consentPage — scripts allowed by the deployed CSP', () => {
       const hash = `'sha256-${createHash('sha256').update(body).digest('base64')}'`;
       assert.ok(scriptSrc.includes(hash), `inline consent script is blocked by the CSP (hash=${hash})`);
     }
+  });
+});
+
+// A DCR registration keeps the redirect URIs it was created with. Removing one
+// from ALLOWED_REDIRECT_URIS must stop the API-key path from issuing codes to
+// it, as the Pro path (mcp-grant-mint.ts) already does.
+describe('handler — registered redirect_uri removed from the allowlist', () => {
+  const REDIS_URL = 'https://redis.test';
+  const ENTERPRISE_KEY = 'enterprise-test-key';
+  const CLIENT_ID = 'client_stale';
+  const REMOVED_URI = 'https://old-vendor.example/callback';
+  const ENV_KEYS = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'WORLDMONITOR_VALID_KEYS'];
+  const originalEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+  const originalFetch = globalThis.fetch;
+  let store;
+  let writes;
+
+  before(() => {
+    process.env.UPSTASH_REDIS_REST_URL = REDIS_URL;
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-token';
+    process.env.WORLDMONITOR_VALID_KEYS = ENTERPRISE_KEY;
+  });
+  afterEach(() => { globalThis.fetch = originalFetch; });
+  after(() => {
+    for (const [k, v] of Object.entries(originalEnv)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  function installRedis() {
+    store = new Map();
+    writes = [];
+    store.set(`oauth:client:${CLIENT_ID}`, JSON.stringify({ client_name: 'Old Vendor', redirect_uris: [REMOVED_URI] }));
+    globalThis.fetch = async (input, init = {}) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      if (url.origin !== REDIS_URL) throw new Error(`unexpected fetch ${url}`);
+      const [, op, rawKey] = url.pathname.split('/');
+      const reply = (result) => Response.json({ result });
+      if (op === 'get') return reply(store.get(decodeURIComponent(rawKey)) ?? null);
+      if (op === 'getdel') {
+        const key = decodeURIComponent(rawKey);
+        const value = store.get(key) ?? null;
+        store.delete(key);
+        return reply(value);
+      }
+      const body = JSON.parse(init.body);
+      const pipeline = Array.isArray(body[0]);
+      const results = (pipeline ? body : [body]).map(([cmd, key, value]) => {
+        if (['eval', 'evalsha'].includes(cmd.toLowerCase())) return { result: [9, 10] };
+        writes.push(key);
+        store.set(key, value);
+        return { result: 'OK' };
+      });
+      return Response.json(pipeline ? results : results[0]);
+    };
+  }
+
+  it('GET renders Redirect URI Mismatch and stores no nonce', async () => {
+    installRedis();
+    const url = new URL('https://api.worldmonitor.app/oauth/authorize');
+    url.search = new URLSearchParams({
+      client_id: CLIENT_ID, redirect_uri: REMOVED_URI, response_type: 'code',
+      code_challenge: 'a'.repeat(43), code_challenge_method: 'S256', state: 's',
+    }).toString();
+    const res = await authorizeHandler(new Request(url, { headers: { host: 'api.worldmonitor.app' } }));
+    assert.match(await res.text(), /Redirect URI Mismatch/);
+    assert.deepEqual(writes.filter((k) => k.startsWith('oauth:')), []);
+  });
+
+  it('POST with a valid key renders Redirect URI Mismatch, writes no oauth:code and does not refresh the client', async () => {
+    installRedis();
+    const bindValue = 'b'.repeat(43);
+    store.set('oauth:nonce:stale', JSON.stringify({
+      client_id: CLIENT_ID, redirect_uri: REMOVED_URI, code_challenge: 'a'.repeat(43), state: '',
+      created_at: Date.now(), bind_hash: await hashOAuthBindValue(bindValue),
+    }));
+    const res = await authorizeHandler(new Request('https://api.worldmonitor.app/oauth/authorize', {
+      method: 'POST',
+      headers: {
+        host: 'api.worldmonitor.app', origin: 'https://api.worldmonitor.app',
+        'Content-Type': 'application/x-www-form-urlencoded', cookie: `${OAUTH_BIND_COOKIE}=${bindValue}`,
+      },
+      body: new URLSearchParams({ api_key: ENTERPRISE_KEY, _nonce: 'stale' }).toString(),
+    }));
+    assert.equal(res.headers.get('Location'), null);
+    assert.match(await res.text(), /Redirect URI Mismatch/);
+    assert.deepEqual(writes.filter((k) => k.startsWith('oauth:code:') || k.startsWith('oauth:client:')), []);
   });
 });

@@ -1,6 +1,6 @@
 ---
 title: "Track Global Conflicts in Real Time with World Monitor"
-description: "Monitor active conflicts, military movements, and geopolitical escalation in real time with the reviewed base and strategic-theater registries plus live ADS-B data."
+description: "Monitor active conflicts, military movements, and geopolitical escalation in real time with reviewed base and theater registries plus live ADS-B data."
 metaTitle: "Track Global Conflicts in Real Time | World Monitor"
 keywords: "real-time conflict map, geopolitical intelligence map, military tracking dashboard, conflict monitoring tool, global conflict tracker"
 audience: "Geopolitical analysts, defense researchers, policy makers, journalists covering conflict"

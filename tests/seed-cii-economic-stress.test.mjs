@@ -4,7 +4,7 @@ import { CII_COUNTRY_CODES } from '../shared/cii-weights.ts';
 import { __testing__ as health } from '../api/health.js';
 import { buildEconomicStress, economicCountry, seedEconomicStress, ECONOMIC_COUNTRIES, ECONOMIC_KEY, ECONOMIC_META_KEY, ECONOMIC_ACTIVATION_KEY, INPUT_KEYS } from '../scripts/seed-cii-economic-stress.mjs';
 import { readFileSync } from 'node:fs';
-import { computeYoy, cleanDailyQuotes, hasTimeForOptionalFetch, withTimeCap, needsFallback, FX_MAX_NOISE_SHARE, FX_OPTIONAL_CAP_MS } from '../scripts/seed-fx-yoy.mjs';
+import { computeYoy, cleanDailyQuotes, hasTimeForOptionalFetch, withTimeCap, needsFallback, buildDailyOnlyRates, CURRENCY_COUNTRY, DAILY_ONLY_CURRENCY_COUNTRY, FX_MAX_NOISE_SHARE, FX_OPTIONAL_CAP_MS } from '../scripts/seed-fx-yoy.mjs';
 import { fallbackDailyQuotes, fetchFallbackWindows } from '../scripts/_currency-api.mjs';
 const RECORDED = JSON.parse(readFileSync(new URL('./fixtures/fx-daily-quotes-2026-11-13.json', import.meta.url), 'utf8')).series;
 const recorded = (ccy) => cleanDailyQuotes(RECORDED[ccy].timestamps.map((ts, i) => ({ t: ts * 1000, close: RECORDED[ccy].closes[i] })), RECORDED[ccy].timeZone);
@@ -145,12 +145,88 @@ test('a second source keeps a country measured when Yahoo quotes are unreliable'
   assert.equal(fallbackDailyQuotes('XXX', windows), null);
   assert.equal(await fetchFallbackWindows(NOW, { fetchSnapshot: async (date) => { if (date > '2026-11-09') throw new Error('down'); return { date, usd: { qar: 3.64 } }; } }), null);
 });
+test('Russia, Venezuela and Iraq get a currency member from the second source alone; Iran stays excluded', async () => {
+  // Real snapshots recorded on 2026-11-13. Iraq devalued by about 15% on 2026-10-07.
+  const RECORDED_API = JSON.parse(readFileSync(new URL('./fixtures/currency-api-daily-only-2026-11-12.json', import.meta.url), 'utf8')).usd;
+  const fetchSnapshot = async (date) => {
+    if (!RECORDED_API[date]) throw new Error('not published');
+    return { date, usd: RECORDED_API[date] };
+  };
+  const windows = await fetchFallbackWindows(NOW, { fetchSnapshot });
+  const dailyOnly = buildDailyOnlyRates(windows);
+  assert.deepEqual(dailyOnly.map(r => r.countryCode).sort(), ['IQ', 'RU', 'VE']);
+  assert.deepEqual(Object.keys(DAILY_ONLY_CURRENCY_COUNTRY).sort(), ['IQD', 'RUB', 'VES']);
+  // IRR read a stale level for months while the official rate moved; its anchor is not a measurement.
+  assert.equal(DAILY_ONLY_CURRENCY_COUNTRY.IRR, undefined);
+  assert.equal(CURRENCY_COUNTRY.IRR, undefined);
+  for (const row of dailyOnly) assert.equal(row.daily90.source, 'currency-api');
+  // The producer reads them only where the Yahoo rows have no entry for the country.
+  const raw = inputs();
+  raw.currency.rates = raw.currency.rates.filter(r => !['RU', 'VE', 'IQ', 'IR'].includes(r.countryCode));
+  raw.currency.dailyOnly = dailyOnly;
+  const depreciation = code => economicCountry(raw, code, NOW).members.currency;
+  assert.ok(Math.abs(depreciation('IQ').value - 100 * (1 - 1310.19227799 / 1519.01568337)) < 1e-9);
+  assert.ok(Math.abs(depreciation('VE').value - 100 * (1 - 767.27603668 / 897.48554053)) < 1e-9);
+  assert.ok(Math.abs(depreciation('RU').value - 100 * (1 - 83.08333181 / 82.50432647)) < 1e-9);
+  assert.equal(depreciation('IQ').reference.quoteSource, 'currency-api');
+  assert.equal(economicCountry(raw, 'IR', NOW).absent.currency.reason, 'missing');
+  // A Yahoo row for the same country keeps priority over the daily-only row.
+  raw.currency.rates.push({ countryCode: 'RU', daily90: cleanDailyQuotes(flatDaily()) });
+  assert.equal(economicCountry(raw, 'RU', NOW).members.currency.value, 0);
+  // No second source: no daily-only rows, so each country keeps its other members.
+  assert.deepEqual(buildDailyOnlyRates(null), []);
+});
+test('daily-only rows count toward the published country union', () => {
+  const raw = inputs();
+  raw.currency.dailyOnly = [{ countryCode: 'BY', currency: 'BYN', daily90: cleanDailyQuotes(flatDaily()) }];
+  const payload = buildEconomicStress(raw, NOW);
+  assert.equal(payload.countries.BY.measured, true);
+  assert.equal(payload.countries.BY.members.currency.value, 0);
+});
 test('country, canonical key, metadata and activation contracts agree', () => {
   assert.deepEqual([...ECONOMIC_COUNTRIES].sort(), [...CII_COUNTRY_CODES].sort());
   assert.equal(health.STANDALONE_KEYS.ciiEconomicStress, ECONOMIC_KEY);
   assert.equal(health.SEED_META.ciiEconomicStress.key, ECONOMIC_META_KEY);
   assert.notEqual(ECONOMIC_KEY, ECONOMIC_META_KEY);
   assert.equal(health.ACTIVATION_MARKERS.ciiEconomicStress, ECONOMIC_ACTIVATION_KEY);
+});
+test('publishes the union of input countries, including unmeasured rows, with the actual record count', async () => {
+  const raw = inputs();
+  raw.inflation.countries.NO = { frequency: 'M', points: cpi };
+  raw.eurostat.countries.ES = { frequency: 'M', points: cpi };
+  raw.japan.countries.AU = { frequency: 'Q', points: [] };
+  raw.yield.countries.CA = { curves: [] };
+  raw.currency.rates.push({ countryCode: 'PH', daily90: cleanDailyQuotes(flatDaily()) });
+  // Aggregates and malformed identifiers are not countries.
+  raw.inflation.countries.WLD = { frequency: 'M', points: cpi };
+  raw.currency.rates.push({ countryCode: null }, { countryCode: 'ZZ' });
+  let published;
+  const { payload } = await seedEconomicStress({
+    read: async key => raw[Object.keys(INPUT_KEYS).find(id => INPUT_KEYS[id] === key)],
+    publish: async options => { published = options; return true; },
+    activateKey: async () => {}, nowMs: NOW,
+  });
+  assert.deepEqual(Object.keys(payload.countries).sort(), [...ECONOMIC_COUNTRIES, 'NO', 'ES', 'AU', 'CA', 'PH'].sort());
+  assert.equal(payload.countries.NO.measured, true);
+  assert.equal(payload.countries.PH.measured, true);
+  assert.equal(payload.countries.CA.measured, false);
+  assert.equal(payload.countries.AU.measured, false);
+  assert.equal(payload.measuredCount, 34);
+  assert.equal(published.recordCount, 36);
+  assert.equal(published.data, payload);
+  const scoredOnly = buildEconomicStress(inputs(), NOW);
+  for (const code of ECONOMIC_COUNTRIES) assert.deepEqual(payload.countries[code], scoredOnly.countries[code]);
+});
+test('health accepts global economic rows but still requires every scored country', () => {
+  const payload = buildEconomicStress(inputs(), NOW);
+  payload.countries.PH = economicCountry(inputs(), 'PH', NOW);
+  const check = () => health.composeCiiEconomicStressHealth({ status: 'OK' }, JSON.stringify(payload), false, NOW);
+  assert.equal(check().status, 'OK');
+  assert.equal(check().validCoverage, true);
+  delete payload.countries.KP; // Even a country with no expected economic member must exist.
+  assert.equal(check().status, 'COVERAGE_PARTIAL');
+  assert.equal(check().validCoverage, false);
+  assert.ok(check().unmeasuredCountries.includes('KP'));
 });
 test('peg zero is observed and GDP does not affect the member', () => {
   const raw = inputs();
@@ -221,10 +297,11 @@ test('25 measured countries stay healthy when India loses CPI but has fresh curr
   assert.equal(check(p).status, 'OK');
   p.countries.IN.members.currency.expiresAt = NOW - 1;
   assert.equal(check(p).measuredCount, 24);
-  assert.equal(check(p).status, 'OK');
+  assert.equal(check(p).status, 'COVERAGE_PARTIAL');
+  assert.deepEqual(check(p).missingExpectedCountries, ['IN']);
   p.countries.RU.members = {};
   assert.equal(check(p).measuredCount, 23);
-  assert.equal(check(p).status, 'OK');
+  assert.equal(check(p).status, 'COVERAGE_PARTIAL');
   p.countries.IR.members = {};
   assert.equal(check(p).measuredCount, 22);
   assert.equal(check(p).status, 'COVERAGE_PARTIAL');

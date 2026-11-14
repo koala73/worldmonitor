@@ -1,5 +1,11 @@
 import { trackGateHit, trackProBannerClick } from '@/services/analytics';
-import { onEntitlementChange, getEntitlementState, isEntitlementActive } from '@/services/entitlements';
+import {
+  onEntitlementChange,
+  onEntitlementVerificationChange,
+  getEntitlementState,
+  getEntitlementVerificationStatus,
+  isEntitlementActive,
+} from '@/services/entitlements';
 import { getSubscription, onSubscriptionChange } from '@/services/billing';
 import { deriveBillingUxState, getReactivationHref } from '@/services/billing-state';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
@@ -244,6 +250,7 @@ export function showProBanner(container: HTMLElement): void {
     clerkConfigured: isClerkAuthEnabled(),
     signedIn: getCurrentClerkUser() !== null || auth.user !== null,
     entitlementLoaded: acceptedEntitlementLoaded,
+    entitlementUnavailable: getEntitlementVerificationStatus() === 'unavailable',
   });
 
   if (decision === 'suppress') {
@@ -372,6 +379,8 @@ function syncProBanner(): void {
       bannerEl = null;
       setReservation(false);
     }
+    // No snapshot will settle this account, so the reserved strip would stay empty.
+    if (getEntitlementVerificationStatus() === 'unavailable') setReservation(false);
     return;
   }
   // A premium snapshot may have started the fade-out immediately before a
@@ -398,6 +407,7 @@ function syncProBanner(): void {
 }
 
 onEntitlementChange(syncProBanner);
+onEntitlementVerificationChange(syncProBanner);
 onSubscriptionChange(syncProBanner);
 // Clerk hydrates after first paint via requestIdleCallback. The init-time
 // showProBanner() call often runs while auth is still pending; without this

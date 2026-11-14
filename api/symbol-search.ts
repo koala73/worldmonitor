@@ -226,6 +226,15 @@ export default async function handler(
     // Cache infrastructure is best-effort; fall through to the real upstream.
   }
 
+  // Bound each IP's cold searches before reserving shared provider quota.
+  // Anonymous sessions are freely minted, so token rotation must not reset
+  // this budget. Cache hits above remain available after it is exhausted.
+  const callerQuotaResponse = await checkRateLimit(req, cors, {
+    scope: 'symbol-search:caller', limit: 10, window: '60 s',
+    failClosed: true, ctx,
+  });
+  if (callerQuotaResponse) return callerQuotaResponse;
+
   // One distributed admission bucket for every cold query and caller.
   // Keep half of the 60/min provider allowance for other Finnhub consumers.
   const quotaResponse = await checkRateLimit(req, cors, {

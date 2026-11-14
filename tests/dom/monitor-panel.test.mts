@@ -81,3 +81,41 @@ describe('monitor panel DOM ownership', () => {
     expect(first.getMonitors()).toEqual(savedMonitors);
   });
 });
+
+describe('monitor keyword matching', () => {
+  function matchedTitles(keywords: string[], titles: string[]): string[] {
+    const panel = createPanel([{ id: 'watch', keywords, color: '#ff0000' }]);
+    document.body.append(panel.getElement());
+    panel.notifyConnected();
+    panel.renderResults(titles.map((title, index) => ({
+      source: 'Test Wire', title, link: `https://example.com/${index}`, pubDate: new Date(), isAlert: false,
+    })));
+    return Array.from(panel.getElement().querySelectorAll('#monitorsResults .item-title'), item => item.textContent ?? '');
+  }
+
+  it('matches whole words in scripts beyond ASCII', () => {
+    expect(matchedTitles(['россия'], ['Россия и Украина начали переговоры'])).toEqual(['Россия и Украина начали переговоры']);
+    expect(matchedTitles(['ελλάδα'], ['Η Ελλάδα στέλνει φρεγάτα'])).toEqual(['Η Ελλάδα στέλνει φρεγάτα']);
+    expect(matchedTitles(['بيروت'], ['غارات على بيروت'])).toEqual(['غارات على بيروت']);
+    expect(matchedTitles(['bogotá'], ['Protests spread in Bogotá'])).toEqual(['Protests spread in Bogotá']);
+  });
+
+  it('matches keywords inside text written without spaces between words', () => {
+    expect(matchedTitles(['台湾'], ['台湾周辺で中国軍が演習'])).toEqual(['台湾周辺で中国軍が演習']);
+    expect(matchedTitles(['북한'], ['북한이 탄도미사일 발사'])).toEqual(['북한이 탄도미사일 발사']);
+    expect(matchedTitles(['g7'], ['G7サミットが開幕'])).toEqual(['G7サミットが開幕']);
+  });
+
+  it('keeps word boundaries at each spaced-script end of mixed-script keywords', () => {
+    expect(matchedTitles(['中国 AI'], ['中国 airline expands', '中国 AI summit'])).toEqual(['中国 AI summit']);
+    expect(matchedTitles(['AI 中国'], ['Thai 中国 agreement', 'AI 中国 summit'])).toEqual(['AI 中国 summit']);
+    expect(matchedTitles(['AI中国AI'], ['Thai中国airline', 'AI中国AI summit'])).toEqual(['AI中国AI summit']);
+    expect(matchedTitles(['中国AI'], ['中国airline', '中国AIサミット'])).toEqual(['中国AIサミット']);
+    expect(matchedTitles(['AI中国'], ['Thai中国', 'サミットAI中国'])).toEqual(['サミットAI中国']);
+  });
+
+  it('still rejects a keyword that is only part of a longer word', () => {
+    expect(matchedTitles(['ai'], ['Train strike ends'])).toEqual([]);
+    expect(matchedTitles(['мир'], ['Мирный договор подписан'])).toEqual([]);
+  });
+});
