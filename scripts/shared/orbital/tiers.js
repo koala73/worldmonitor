@@ -1,5 +1,5 @@
 const OPEN = ['open-optical', 'open-radar'];
-const COMMERCIAL = ['commercial-optical', 'commercial-radar'];
+const TASKABLE = ['commercial-optical', 'commercial-radar', 'government-optical', 'government-radar'];
 
 // The tier decision table, read top to bottom; the first matching row wins.
 // `needs` lists the geometry facts that must all hold; `archive` is the
@@ -10,7 +10,7 @@ const TIER_TABLE = [
   { categories: OPEN, needs: ['inFootprint', 'daylight', 'coverage'], archive: 'not-in-archive', tier: { kind: 'passed-overhead', note: 'not-in-archive' } },
   { categories: OPEN, needs: ['inFootprint', 'daylight', 'coverage'], archive: 'pending', tier: { kind: 'likely-imaged' } },
   { categories: ['weather-polar'], needs: ['inFootprint', 'dailyMosaic'], archive: 'any', tier: { kind: 'daily-mosaic' } },
-  { categories: COMMERCIAL, needs: ['inFootprint', 'daylight'], archive: 'any', tier: { kind: 'within-reach' } },
+  { categories: TASKABLE, needs: ['inFootprint', 'daylight'], archive: 'any', tier: { kind: 'within-reach' } },
   { categories: ['crewed-station'], needs: ['inFootprint'], archive: 'any', tier: { kind: 'passed-overhead' } },
 ];
 
@@ -18,10 +18,9 @@ export const OPTICAL_MIN_SUN_ELEVATION_DEG = 5;
 const HOUR_MS = 3_600_000;
 
 function passFacts(pass, profile) {
-  const optical = profile.category === 'open-optical' || profile.category === 'commercial-optical';
   return {
     inFootprint: pass.inFootprint,
-    daylight: !optical || pass.sunElevationDeg >= OPTICAL_MIN_SUN_ELEVATION_DEG,
+    daylight: !profile.daylight || pass.sunElevationDeg >= OPTICAL_MIN_SUN_ELEVATION_DEG,
     coverage: pass.coverage,
     dailyMosaic: profile.dailyMosaic === true,
   };
@@ -36,8 +35,10 @@ function archiveState(pass, profile, archive, nowMs) {
 
 export function decidePassTier(pass, profile, archive, now) {
   const nowMs = now instanceof Date ? now.getTime() : now;
-  if (pass.timeMs > nowMs) return { kind: 'opportunity' };
   const facts = passFacts(pass, profile);
+  if (pass.timeMs > nowMs) {
+    return profile.category === 'military' && facts.inFootprint ? { kind: 'capability-overhead' } : { kind: 'opportunity' };
+  }
   const state = archiveState(pass, profile, archive, nowMs);
   const row = TIER_TABLE.find((candidate) =>
     candidate.categories.includes(profile.category) &&

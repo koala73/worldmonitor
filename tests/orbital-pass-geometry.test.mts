@@ -251,6 +251,16 @@ describe('pass geometry rules', () => {
     }
   });
 
+  it('labels a future military pass capability overhead, and one outside its reach an opportunity', () => {
+    const { result, profile } = passesNear('YAOGAN-50 03', { lat: 25.03, lon: 121.56 }, FIXTURE_NOW + 36 * HOUR, 36 * HOUR);
+    const inReach = result.passes.find((pass) => pass.inFootprint);
+    const outOfReach = result.passes.find((pass) => !pass.inFootprint);
+    assert.ok(inReach && outOfReach, 'future Yaogan passes inside and outside the assumed reach');
+    assert.equal(inReach.opportunity, true);
+    assert.deepEqual(decidePassTier(inReach, profile, null, FIXTURE_NOW), { kind: 'capability-overhead' });
+    assert.deepEqual(decidePassTier(outOfReach, profile, null, FIXTURE_NOW), { kind: 'opportunity' });
+  });
+
   it('notes "not in archive" once the archive answered with no match after the publication delay', () => {
     const acquiredMs = Date.parse(paris.acquiredAt);
     const { result, profile } = passesNear('SENTINEL-2B', paris, acquiredMs, 30 * 60_000);
