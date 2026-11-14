@@ -126,12 +126,15 @@ describe('next passes for the widened inventory', () => {
 
   it('gives ICESat-2 a next pass over Lake Mead as an opportunity', () => {
     const { elements, profile } = satellite('ICESAT-2');
-    const result = findPasses({ elements, profile, point: { lat: 36.25, lon: -114.4 }, window: { start: now, end: now + 3 * DAY }, now });
+    // Its 91-day repeat leaves no fixture track over the lake until the 30 November crossing of Boulder Basin.
+    const lookupAt = Date.parse('2026-11-21T00:00:00Z');
+    const result = findPasses({ elements, profile, point: { lat: 36.1, lon: -114.8 }, window: { start: lookupAt, end: lookupAt + 10 * DAY }, now: lookupAt });
     assert.equal(result.status, 'ok');
-    const next = result.passes.find((pass) => pass.inFootprint) ?? result.passes[0];
-    assert.ok(next, 'ICESat-2 passes near Lake Mead within 3 days');
+    const next = result.passes.find((pass) => pass.inFootprint);
+    assert.ok(next, 'the beam envelope crosses Boulder Basin within the window');
+    assert.equal(next.time.slice(0, 10), '2026-11-30');
     assert.equal(next.opportunity, true);
-    assert.deepEqual(decidePassTier(next, profile, null, now), { kind: 'opportunity' });
+    assert.deepEqual(decidePassTier(next, profile, null, lookupAt), { kind: 'opportunity' });
   });
 
   for (const name of ['SUOMI NPP', 'NOAA 20 (JPSS-1)']) {
