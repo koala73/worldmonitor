@@ -624,8 +624,7 @@ export class ProActivationController implements AppModule {
             // replays this captured options object long after it was built, so
             // an entitlement that lapsed in between would otherwise deep-link
             // to a tab UnifiedSettings no longer renders.
-            if (hasFeature('mcpAccess')) ctx.unifiedSettings?.open('mcp-clients');
-            else ctx.unifiedSettings?.open('settings');
+            ctx.unifiedSettings?.open(hasFeature('mcpAccess') ? 'mcp-clients' : undefined);
           }
         : undefined,
       openChannelSettings: () => ctx.unifiedSettings?.open('notifications'),

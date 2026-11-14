@@ -136,7 +136,7 @@ describe("admin new-subscription email: conversion context", () => {
     expect(html).toMatch(/Source:<\/td><td[^>]*>twitter \/ social \/ launch</);
     expect(html).toMatch(/Referrer:<\/td><td[^>]*>t\.co</);
     expect(html).toMatch(/Landing Page:<\/td><td[^>]*>pricing</);
-    expect(html).toMatch(/First Visit:<\/td><td[^>]*>2026-03-11 \(10 days before purchase\)</);
+    expect(html).toMatch(/First Visit:<\/td><td[^>]*>2026-03-11 \(10 days before purchase\) in this browser; the account is older</);
     expect(html).toMatch(new RegExp(`MCP Funnel:</td><td[^>]*>${MCP_ATTRIBUTION_SOURCE}<`));
     expect(html).toMatch(/Referral:<\/td><td[^>]*>friend42 \(referrer@example\.com\)</);
     expect(html).toMatch(/Billing Country:<\/td><td[^>]*>LB</);
@@ -323,5 +323,47 @@ describe("adminNewSubscriptionHtml", () => {
     const html = adminNewSubscriptionHtml(base);
     for (const label of CONVERSION_LABELS) expect(html).not.toContain(label);
     expect(html).toContain("buyer@example.com");
+  });
+  test("a browser first visit newer than the account says the account is older", () => {
+    // Prod 2026-11-13: account seen 2026-07-24, attribution cookie set on the
+    // purchase day. "First Visit" alone contradicted "Account First Seen".
+    const html = adminNewSubscriptionHtml({
+      ...base,
+      conversion: {
+        purchasedAt: PURCHASED_AT,
+        acquisition: { referrer: "worldmonitor.app", landing: "dashboard", path: "/dashboard", firstSeen: "2026-03-21" },
+        accountFirstSeenAt: PURCHASED_AT - 112 * DAY_MS,
+      },
+    });
+    expect(html).toMatch(/First Visit:<\/td><td[^>]*>2026-03-21 \(same day as purchase\) in this browser; the account is older</);
+    expect(html).toMatch(/Account First Seen:<\/td><td[^>]*>2025-11-29 \(112 days before purchase\)</);
+  });
+
+  test("a first visit on or before the account day keeps the plain wording", () => {
+    const html = adminNewSubscriptionHtml({
+      ...base,
+      conversion: {
+        purchasedAt: PURCHASED_AT,
+        acquisition: { referrer: "t.co", firstSeen: "2026-03-11" },
+        accountFirstSeenAt: Date.parse("2026-03-11T23:00:00Z"),
+      },
+    });
+    expect(html).toMatch(/First Visit:<\/td><td[^>]*>2026-03-11 \(10 days before purchase\)</);
+    expect(html).not.toContain("in this browser");
+  });
+
+  test("a worldmonitor.app referrer reads as an internal link, not a source", () => {
+    for (const referrer of ["worldmonitor.app", "finance.worldmonitor.app"]) {
+      const html = adminNewSubscriptionHtml({
+        ...base,
+        conversion: { purchasedAt: PURCHASED_AT, acquisition: { referrer } },
+      });
+      expect(html).toContain(`Referrer:</td><td style="color: #fff;">${referrer} (internal link; the entry page was not recorded)<`);
+    }
+    const external = adminNewSubscriptionHtml({
+      ...base,
+      conversion: { purchasedAt: PURCHASED_AT, acquisition: { referrer: "notworldmonitor.app" } },
+    });
+    expect(external).toMatch(/Referrer:<\/td><td[^>]*>notworldmonitor\.app</);
   });
 });

@@ -158,6 +158,15 @@ describe('default PII collection', () => {
 });
 
 describe('ignoreErrors filters', () => {
+  it('suppresses the DuckDuckGo script-message-handler bridge rejection (WORLDMONITOR-1EH)', () => {
+    assert.ok(isIgnored('Script message handler is unavailable', 'Error'));
+  });
+
+  it('does NOT suppress a longer first-party message sharing the bridge phrase', () => {
+    assert.ok(!isIgnored('Script message handler is unavailable for panel news', 'Error'));
+    assert.ok(!isIgnored('Message handler is unavailable', 'Error'));
+  });
+
   it('suppresses Clerk SDK UI chunk load failure', () => {
     assert.ok(
       isIgnored('[clerk] failed to load https://clerk.worldmonitor.app/npm/@clerk/ui@1/dist/ui.browser.js'),

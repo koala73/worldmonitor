@@ -1,7 +1,14 @@
 /**
- * Header auth keeps a single Sign In action (#10464). Create account is folded
- * into Clerk's sign-in-or-up flow via `withSignUp: true` on openSignIn, and
- * pending email-code resume must still run on that click.
+ * Header auth keeps a single Sign In action (#10464). New visitors reach
+ * Create account through the Sign In modal's "Don't have an account? Sign up"
+ * footer link, and a pending email-code sign-up must still resume on that click.
+ *
+ * The modal must not use `withSignUp: true`. Under strict user enumeration
+ * protection the clerk-js 6.13.0 + @clerk/ui 1.42.4 pair production serves
+ * falls back to a plain strict sign-in: an unknown email gets a "Sign in
+ * attempt, no account found" notice instead of a sign-up code, and the
+ * footer Sign up link is hidden. Daily sign-ups fell from ~100 to ~18 the
+ * hour #10493 shipped it.
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -9,13 +16,18 @@ import { describe, it } from 'node:test';
 
 const CLERK_SRC = new URL('../src/services/clerk.ts', import.meta.url);
 
-describe('openSignIn withSignUp', () => {
-  it('passes withSignUp when opening the Clerk sign-in modal', () => {
+describe('openSignIn sign-up path', () => {
+  it('opens the plain sign-in modal so its footer Sign up link stays visible', () => {
     const src = readFileSync(CLERK_SRC, 'utf8');
     assert.match(
       src,
-      /openSignIn\(\{\s*appearance:\s*getAppearance\(\),\s*withSignUp:\s*true\s*\}\)/,
-      'openLoadedClerkSignIn must open sign-in-or-up so Create account stays available without a second header CTA',
+      /clerkInstance\?\.openSignIn\(\{\s*appearance:\s*getAppearance\(\)\s*\}\)/,
+      'openLoadedClerkSignIn must open the plain sign-in modal',
+    );
+    assert.doesNotMatch(
+      src,
+      /withSignUp\s*:/,
+      'withSignUp turns new-email sign-ups into "no account found" notices under strict enumeration protection',
     );
   });
 
