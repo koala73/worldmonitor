@@ -1,6 +1,6 @@
 // Hand-curated from each operator's own documentation; every row cites it.
 // Bump SENSOR_INVENTORY_VERSION whenever a row is added, removed or changed.
-export const SENSOR_INVENTORY_VERSION = '2026-11-13.1';
+export const SENSOR_INVENTORY_VERSION = '2026-11-14.1';
 
 export const SENSOR_CATEGORIES = Object.freeze([
   'open-optical',
