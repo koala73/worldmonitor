@@ -5225,9 +5225,9 @@
       "satellite": "Satellit",
       "sensor": "Sensor",
       "time": "Zeit",
-      "in": "In",
+      "in": "Noch",
       "tier": "Status",
-      "elevation": "Elev.",
+      "elevation": "Höhe",
       "point": "Punkt",
       "pixel": "Pixel",
       "credit": "Archiv",
@@ -5240,7 +5240,7 @@
     "events": {
       "title": "Ereignisse an diesem Punkt",
       "kindLabel": "Art",
-      "detail": "Detail",
+      "detail": "Angaben",
       "now": "jetzt",
       "loading": "Ereignisfeeds werden geladen…",
       "none": "Keine Ereignisse im Umkreis von {{km}} km in den letzten {{days}} Tagen.",
@@ -5286,7 +5286,7 @@
     },
     "privacy": {
       "line": "Punkt bleibt auf diesem Gerät; nur an Earth Search, Planetary Computer, NASA GIBS, EUMETSAT gesendet. Eingegebene Namen: WorldMonitor, OSM.",
-      "more": "Details",
+      "more": "Mehr",
       "body": "Die Bahngeometrie wird in diesem Browser berechnet. Archive erhalten ein Rechteck um den Punkt, um Szenen zu finden. Ein eingegebener Ortsname wird von WorldMonitor und OpenStreetMap Nominatim aufgelöst. Geteilte Links runden den Punkt auf 0,01°."
     },
     "sources": {
