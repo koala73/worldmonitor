@@ -35,7 +35,7 @@
 //   recovery (needs GH_TOKEN and GITHUB_REPOSITORY, as in Actions).
 
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import Ajv2020 from 'ajv/dist/2020.js';
 
 import { formatSafeError } from './mcp-smoke-http.mjs';
@@ -87,9 +87,6 @@ export function buildFixtures(now = new Date()) {
     get_maritime_activity: { country_code: 'US' },
     analyze_situation: { query: 'What are the implications of shipping disruption in the Strait of Hormuz?' },
     search_flights: { origin: 'JFK', destination: 'LHR', departure_date: isoDateOffset(30, now) },
-    search_flight_prices_by_date: {
-      origin: 'JFK', destination: 'LHR', start_date: isoDateOffset(30, now), end_date: isoDateOffset(37, now),
-    },
     get_supply_vulnerabilities: { country_code: 'JP' },
     get_chokepoint_dependencies: { chokepoint_id: 'hormuz_strait' },
     search_intel_history: { query: 'naval blockade of a shipping strait' },
@@ -330,6 +327,9 @@ export async function runCanary({
   retryDelayMs = RETRY_DELAY_MS,
   minStartGapMs = MIN_START_GAP_MS,
   runBudgetMs = RUN_BUDGET_MS,
+  expectedToolNames = null,
+  catalogWaitMs = 10 * 60_000,
+  catalogPollMs = 15_000,
   log = (line) => console.log(line),
 } = {}) {
   if (!key) throw new Error('MCP_CANARY_KEY is required');
@@ -344,17 +344,34 @@ export async function runCanary({
 
   // tools/list is stateless on this transport (the published CLI calls it
   // with no initialize); a failure here means nothing below can run.
-  const list = await rpc('tools/list', undefined, 30_000);
   let tools;
-  try {
-    if (list.status !== 200) throw new Error(list.timedOut ? 'timeout' : (list.error ?? `HTTP ${list.status}`));
-    const msg = parseRpcBody(list.body);
-    if (msg.error) throw new Error(`JSON-RPC ${msg.error.code}: ${msg.error.message}`);
-    tools = msg.result?.tools;
-    if (!Array.isArray(tools) || tools.length === 0) throw new Error('tools/list returned no tools');
-  } catch (err) {
-    report.setupError = redactCredential(`tools/list failed: ${truncate(err.message, 300)}`, key);
-    return report;
+  const catalogDeadline = Math.min(budgetEndsAt, Date.now() + catalogWaitMs);
+  const expectedNames = expectedToolNames && new Set(expectedToolNames);
+  while (true) {
+    const list = await rpc('tools/list', undefined, 30_000);
+    try {
+      if (list.status !== 200) throw new Error(list.timedOut ? 'timeout' : (list.error ?? `HTTP ${list.status}`));
+      const msg = parseRpcBody(list.body);
+      if (msg.error) throw new Error(`JSON-RPC ${msg.error.code}: ${msg.error.message}`);
+      tools = msg.result?.tools;
+      if (!Array.isArray(tools) || tools.length === 0) throw new Error('tools/list returned no tools');
+    } catch (err) {
+      report.setupError = redactCredential(`tools/list failed: ${truncate(err.message, 300)}`, key);
+      return report;
+    }
+    if (!expectedNames) break;
+    const liveNames = new Set(tools.map((t) => t.name));
+    const missing = [...expectedNames].filter((name) => !liveNames.has(name));
+    const unexpected = [...liveNames].filter((name) => !expectedNames.has(name));
+    if (missing.length === 0 && unexpected.length === 0) break;
+    const mismatch = `production catalog differs from checkout (missing: ${missing.join(', ') || 'none'}; unexpected: ${unexpected.join(', ') || 'none'})`;
+    const remainingMs = catalogDeadline - Date.now();
+    if (remainingMs <= 0) {
+      report.setupError = redactCredential(`Timed out waiting for ${mismatch}`, key);
+      return report;
+    }
+    log(redactCredential(`Waiting for catalog convergence: ${mismatch}`, key));
+    await sleep(Math.min(catalogPollMs, remainingMs));
   }
 
   const fixtures = buildFixtures(now);
@@ -517,11 +534,12 @@ export function publishIssue(report, { repository = process.env.GITHUB_REPOSITOR
 }
 
 function parseArgs(argv) {
-  const out = { report: null, only: null, publishIssue: false };
+  const out = { report: null, only: null, publishIssue: false, waitForCatalog: false };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--report') out.report = argv[++i];
     else if (argv[i] === '--only') out.only = argv[++i].split(',').map((s) => s.trim()).filter(Boolean);
     else if (argv[i] === '--publish-issue') out.publishIssue = true;
+    else if (argv[i] === '--wait-for-catalog') out.waitForCatalog = true;
     else throw new Error(`unknown argument: ${argv[i]}`);
   }
   return out;
@@ -561,7 +579,10 @@ async function main() {
     console.error('::error title=Malformed canary credential::MCP_CANARY_KEY must be one line of printable ASCII with no whitespace.');
     process.exit(2);
   }
-  const report = await runCanary({ url: process.env.MCP_CANARY_URL || DEFAULT_MCP_URL, key, only: args.only });
+  const expectedToolNames = args.waitForCatalog
+    ? JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8')).tools.map((t) => t.name)
+    : null;
+  const report = await runCanary({ url: process.env.MCP_CANARY_URL || DEFAULT_MCP_URL, key, only: args.only, expectedToolNames });
   const runUrl = process.env.GITHUB_RUN_ID
     ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
     : '';

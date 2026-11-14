@@ -1,5 +1,5 @@
 import { subscribeAuthState, type AuthSession } from '@/services/auth-state';
-import { mountUserButton, openSignIn } from '@/services/clerk';
+import { isClerkAuthEnabled, mountUserButton, openSignIn } from '@/services/clerk';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
@@ -77,8 +77,9 @@ export class AuthHeaderWidget {
   }
 
   private renderSignedOut(): void {
-    // One header account action (#10464): keep Sign In, fold Create account into
-    // Clerk's withSignUp sign-in flow, and show why a free account is worth it.
+    if (!isClerkAuthEnabled()) return;
+    // One header account action (#10464): Sign In opens Clerk's modal, whose
+    // footer Sign up link creates an account, and the reason says why to.
     const freeReason = document.createElement('span');
     freeReason.className = 'auth-free-reason';
     freeReason.textContent = t('auth.freeReason');
@@ -99,9 +100,11 @@ export class AuthHeaderWidget {
     const userBtnEl = document.createElement('div');
     userBtnEl.className = 'auth-clerk-user-button';
     this.container.appendChild(userBtnEl);
+    const billing = this.onBillingClick;
+    const settings = this.onSettingsClick;
     this.unmountUserButton = mountUserButton(userBtnEl, {
-      onBillingClick: this.onBillingClick,
-      onSettingsClick: this.onSettingsClick,
+      billing: billing && { label: t('auth.planBilling'), onClick: billing },
+      settings: settings && { label: t('auth.settings'), onClick: settings },
     });
   }
 }

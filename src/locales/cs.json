@@ -4396,7 +4396,6 @@
     "dataAndCommunity": "Data a komunita",
     "theme": "Motiv",
     "themeDesc": "Automaticky sleduje nastavení systému.",
-    "themeAuto": "Automaticky (podle systému)",
     "themeDark": "Tmavý",
     "themeLight": "Světlý",
     "mapProvider": "Poskytovatel dlaždic mapy",
@@ -4552,7 +4551,8 @@
     "createAccount": "Vytvořit účet",
     "freeReason": "Zdarma: ulož rozložení, sleduj země, upozornění",
     "settings": "Nastavení",
-    "passkeyOffer": {}
+    "passkeyOffer": {},
+    "planBilling": "Plán a fakturace"
   },
   "mcp": {
     "connectPanel": "Připojit MCP",
@@ -5166,5 +5166,252 @@
     "errGeneric": "Návrh nemohl být vytvořen. Zkuste to znovu.",
     "errDownload": "Soubor nelze stáhnout zde. Místo toho použijte Tisk nebo Uložit jako PDF.",
     "errLoad": "Posouzení cesty se nepodařilo otevřít. Znovu načtěte stránku a zkuste to znovu."
+  },
+  "settings": {
+    "back": "Zpět na nastavení",
+    "signIn": {
+      "label": "Přihlásit se",
+      "desc": "Synchronizuj nastavení a spravuj svůj plán"
+    },
+    "summary": {
+      "themeAuto": "Automaticky",
+      "count": "{{on}} z {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Preference",
+      "developer": "Vývojář",
+      "app": "Aplikace"
+    },
+    "sections": {
+      "account": "Účet",
+      "map": "Mapa",
+      "ai": "AI a analýza",
+      "video": "Video a streamy",
+      "apiKeys": "API klíče",
+      "embeds": "Vložené widgety",
+      "aiAgents": "AI agenti (MCP)",
+      "sync": "Synchronizace, import a export",
+      "about": "O aplikaci"
+    },
+    "descriptions": {
+      "panels": "Zobrazit, skrýt a změnit pořadí",
+      "sources": "Regiony a zdroje",
+      "notifications": "Kanály a pravidla výstrah",
+      "display": "Vzhled, písmo a jazyk",
+      "map": "Poskytovatel, vzhled a glóbus",
+      "ai": "Modely, paměť a rámce",
+      "video": "Kvalita a automatické přehrávání",
+      "apiKeys": "Klíče pro World Monitor API",
+      "embeds": "Widgety pro tvůj web",
+      "aiAgents": "Připojení MCP klienti",
+      "about": "Odkazy webu, podmínky a ochrana soukromí"
+    },
+    "signOut": "Odhlásit se",
+    "signOutFailed": "Nepodařilo se odhlásit. Zkuste to znovu.",
+    "search": {
+      "empty": "Žádné nastavení neodpovídá"
+    },
+    "account": {
+      "intro": "Podívejte se na svůj aktuální plán a spravujte údaje o platbě, faktury nebo zrušení.",
+      "planFree": "Zdarma",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Přístup Premium",
+        "desc": "Tento přístup se neúčtuje prostřednictvím vašeho účtu WorldMonitor. Platební metoda ani faktury zde nejsou k dispozici."
+      },
+      "checking": {
+        "heading": "Ověřování vašeho plánu…",
+        "desc": "Obvykle to trvá jen chvíli."
+      },
+      "status": {
+        "cancelScheduled": "Zrušení naplánováno -- přístup do {{date}}",
+        "renews": "Obnovuje se: {{date}}",
+        "onHold": "Pozastaveno -- aktualizujte prosím platební metodu",
+        "cancelled": "Zrušeno -- přístup do {{date}}",
+        "expired": "Vypršelo",
+        "unknown": "Podrobnosti o aktuálním plánu najdete v části Spravovat fakturaci.",
+        "ownerManaged": "Fakturaci spravuje vlastník vašeho plánu."
+      },
+      "upgradeToBusiness": "Přejít na Business",
+      "unavailable": {
+        "heading": "Stav plánu není dostupný",
+        "desc": "Nepodařilo se nám ověřit váš aktuální plán. Zkuste znovu nebo si zobrazte plány na nové kartě."
+      },
+      "free": {
+        "heading": "WorldMonitor Zdarma",
+        "desc": "Váš aktuální plán je Zdarma. Přejděte na vyšší plán a získejte všechny panely, analýzu AI a prioritní aktualizaci dat."
+      },
+      "portal": {
+        "openFailed": "Nepodařilo se otevřít portál fakturace. Povolte vyskakovací okna a zkuste to znovu.",
+        "unavailable": "Portál fakturace není dostupný. Pro pomoc napište na support@worldmonitor.app."
+      },
+      "deletion": {
+        "heading": "Smazat účet",
+        "desc": "Trvale smaže tento účet World Monitor. Předplatné se okamžitě zruší bez vrácení peněz za zbývající předplacené období. Klíče API, klíče pro vkládání a tokeny MCP přestanou fungovat. Fakturační záznamy potřebné pro účetnictví, spory a zákonné požadavky se uchovávají spolu s kontaktními údaji zákazníka, které obsahují; přestanou však uvádět váš přihlašovací účet, ačkoli protokoly webhooků poskytovatele plateb zapsané před smazáním si ponechají identifikátory, se kterými byly doručeny. Předvolby dashboardu a tajné údaje desktopové aplikace v systémové klíčence (Keychain) na tomto zařízení se na dálku nevymažou.",
+        "dialogTitle": "Smazat tento účet?",
+        "dialogCopy": "Tuto akci nelze vrátit zpět. Předplatné se zruší, klíče okamžitě přestanou fungovat a fakturační záznamy se uchovají pro účetnictví, spory a zákonné požadavky — včetně kontaktních údajů, které obsahují. Poté se odhlaste na ostatních zařízeních a vymažte data webu na tomto zařízení — k nim server nemá přístup.",
+        "phraseLabel": "Zadejte {{phrase}} pro potvrzení",
+        "deleted": "Účet smazán. Odhlaste se na ostatních zařízeních a vymažte data webu na tomto zařízení.",
+        "failed": "Smazání účtu se nezdařilo. Zkuste znovu."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} použito",
+        "invite": "Pozvat",
+        "inviting": "Posílání pozvání...",
+        "remove": "Odebrat",
+        "removing": "Odebírání...",
+        "inviteSent": "Pozvání odesláno",
+        "alreadyInvited": "Již pozván"
+      },
+      "businessSeats": {
+        "heading": "Místa Business",
+        "statusAccepted": "Přijato",
+        "statusExpired": "Vypršelo",
+        "statusPending": "Čekající",
+        "expires": "Vyprší {{date}}",
+        "hintCorporate": "Pozvěte kolegy z libovolné firemní domény.",
+        "hintPersonal": "Přidejte firemní e-mail, abyste mohli pozvat kolegy.",
+        "personalDomain": "Z bezplatných nebo dočasných e-mailových domén nelze zvát kolegy. Chcete-li tuto funkci používat, přidejte firemní e-mail.",
+        "empty": "Zatím nebyl nikdo pozván.",
+        "confirmRemove": "Odebrat toto místo? Pozvaný uživatel okamžitě ztratí přístup Pro.",
+        "removed": "Místo odebráno",
+        "alreadyInactive": "Místo již bylo neaktivní",
+        "loadFailed": "Nepodařilo se načíst místa",
+        "inviteFailed": "Nepodařilo se odeslat pozvání",
+        "removeFailed": "Nepodařilo se odebrat místo",
+        "errors": {
+          "seatCap": "Všechna 4 místa jsou obsazená. Nejdřív nějaké místo odeberte.",
+          "ownerDomain": "E-mail vašeho účtu musí být z firemní domény, abyste mohli zvát kolegy.",
+          "self": "Nemůžete pozvat sami sebe.",
+          "inviteeDomain": "E-mail pozvaného musí být z firemní domény."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "Místa Enterprise pro {{account}}",
+        "memberHint": "Správce vašeho účtu přidává a odebírá lidi na tomto účtu.",
+        "hintFull": "Všechna místa jsou obsazená. Odeberte někoho nebo stáhněte pozvání, abyste uvolnili místo.",
+        "hintOpen": "Pozvěte lidi pomocí firemního e-mailu. Dostanou odkaz, který je platný 14 dní, a sdílejí limit tohoto účtu.",
+        "emailLabel": "E-mailová adresa pro pozvání",
+        "statusActive": "Aktivní",
+        "statusExpired": "Pozvání vypršelo",
+        "statusInvited": "Pozván",
+        "emailFailed": "Pozvání se nepodařilo odeslat. Zkontrolujte adresu, pak stáhněte a pozvěte znovu.",
+        "inviteExpires": "Pozvání vyprší {{date}}",
+        "roleAdmin": "Správce",
+        "you": "Vy",
+        "withdraw": "Stáhnout",
+        "unknownEmail": "Neznámý e-mail",
+        "alreadyMember": "Už je členem",
+        "confirmRemove": "Odebrat {{email}}? Ztratí okamžitě přístup Enterprise.",
+        "confirmRemoveUnknown": "Odebrat tuto osobu? Ztratí okamžitě přístup Enterprise.",
+        "confirmWithdraw": "Stáhnout pozvání pro {{email}}?",
+        "confirmWithdrawUnknown": "Stáhnout pozvání na tuto adresu?",
+        "removed": "Člen odebrán",
+        "withdrawn": "Pozvání staženo",
+        "loadFailed": "Nepodařilo se načíst místa. Zkuste to znovu.",
+        "inviteFailed": "Nepodařilo se odeslat pozvání. Zkuste to znovu.",
+        "removeFailed": "Nepodařilo se odebrat. Zkuste to znovu.",
+        "errors": {
+          "seatCap": "Všechna místa jsou obsazená. Nejdřív někoho odeberte nebo stáhněte pozvání.",
+          "inviteeDomain": "Zadejte firemní e-mailovou adresu. Bezplatné a dočasné e-mailové domény nejsou povoleny.",
+          "self": "Už máte přiděleno místo.",
+          "contractEnded": "Vaše smlouva Enterprise skončila. Pro její obnovení kontaktujte podporu.",
+          "notAdmin": "Pouze správce účtu může spravovat místa.",
+          "removeSelf": "Nemůžete odebrat své vlastní místo. Kontaktujte podporu pro změnu správce.",
+          "tooMany": "Najednou můžete pozvat nejvýše 10 lidí.",
+          "rateLimited": "Odeslali jste maximální povolený počet pozvání za den. Zkuste to zítra."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "rozložení",
+        "1": "widgety",
+        "2": "velikost textu",
+        "3": "obnovit rozložení"
+      },
+      "sources": {
+        "0": "zprávy",
+        "1": "kanály",
+        "2": "zdroje",
+        "3": "regiony",
+        "4": "pokrytí"
+      },
+      "notifications": {
+        "0": "upozornění",
+        "1": "oznámení",
+        "2": "Slack",
+        "3": "e-mail",
+        "4": "Discord",
+        "5": "webhook",
+        "6": "push"
+      },
+      "display": {
+        "0": "motiv",
+        "1": "tmavý",
+        "2": "světlý",
+        "3": "písmo",
+        "4": "jazyk",
+        "5": "velikost textu"
+      },
+      "map": {
+        "0": "globus",
+        "1": "poskytovatel",
+        "2": "dlaždice",
+        "3": "podkladová mapa"
+      },
+      "ai": {
+        "0": "AI",
+        "1": "Ollama",
+        "2": "frameworky",
+        "3": "paměť nadpisů",
+        "4": "model prohlížeče"
+      },
+      "video": {
+        "0": "video",
+        "1": "automatické přehrávání",
+        "2": "kvalita",
+        "3": "živě"
+      },
+      "apiKeys": {
+        "0": "klíč",
+        "1": "token",
+        "2": "klíč pro desktop"
+      },
+      "embeds": {
+        "0": "vložení",
+        "1": "iframe",
+        "2": "klíč vkládání"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "agenti",
+        "3": "ChatGPT",
+        "4": "klienti"
+      },
+      "sync": {
+        "0": "import",
+        "1": "export",
+        "2": "záloha",
+        "3": "cloud"
+      },
+      "about": {
+        "0": "podmínky",
+        "1": "ochrana soukromí",
+        "2": "licence",
+        "3": "právní informace"
+      },
+      "account": {
+        "0": "plán",
+        "1": "fakturace",
+        "2": "předplatné",
+        "3": "faktura",
+        "4": "místa",
+        "5": "odhlášení",
+        "6": "smazání účtu, platba, odhlásit"
+      }
+    }
   }
 }

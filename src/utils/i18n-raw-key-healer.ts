@@ -13,8 +13,9 @@
  *  - One-shot: runs once when the full bundle arrives. Nodes inserted AFTER the
  *    event resolve correctly on their own — by then `t()` returns real strings —
  *    so no second pass is needed.
- *  - Container-scoped at the call site (`App.state.container`): body-level
- *    overlays are user-opened post-startup, after the bundle has loaded.
+ *  - Scoped at each call site: the App heals its container, and an overlay
+ *    that can open during startup (Settings, via a deep link or the checkout
+ *    return) heals itself.
  *  - Exact-match only: it heals a text node / attribute whose entire trimmed
  *    value is a single i18n key. Compound strings (`${t(a)}: ${t(b)}`) are not
  *    healed — keep first-paint keys in the shell instead of relying on this.
