@@ -15,6 +15,8 @@ import { PNG } from 'pngjs';
 import { matchSensorProfile } from '../../../../shared/orbital/sensor-profiles.js';
 import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
 
+// The archives whose image URLs carry the box around the point; the page must paint those from blob: URLs.
+const POINT_IMAGE_HOSTS = ['planetarycomputer.microsoft.com', 'gibs.earthdata.nasa.gov', 'view.eumetsat.int'];
 const ARCHIVE_HOSTS = ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com', 'gibs.earthdata.nasa.gov', 'view.eumetsat.int'];
 const CATALOG_PATH = '/api/orbital/v1/list-imaging-satellites';
 const HOUR = 3_600_000;
@@ -81,11 +83,34 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     url: req.url(), body: req.postData() ?? '', harnessNavigation: req.isNavigationRequest() && req.frame() === page.mainFrame(),
   }));
 
+  // Every LCP URL and every <img> src, kept across page loads.
+  const lcpUrls = [];
+  const imgSrcs = [];
+  await page.exposeFunction('__wmRecordLcp', (url) => { lcpUrls.push(url); });
+  await page.exposeFunction('__wmRecordSrc', (src) => { imgSrcs.push(src); });
   // DebugBear (and Sentry's history breadcrumbs) record each same-document navigation's URL, so record what they would see.
   await page.addInitScript(() => {
     window.__wmNavigations = [];
     window.navigation?.addEventListener('navigate', (event) => window.__wmNavigations.push(event.destination.url));
+    // DebugBear reports the largest paint's URL; `getEntriesByType` returns no LCP entries, so observe them.
+    new PerformanceObserver((list) => { for (const entry of list.getEntries()) window.__wmRecordLcp(entry.url); })
+      .observe({ type: 'largest-contentful-paint', buffered: true });
+    // Every src an <img> is ever given, so a point-bearing URL painted for a moment is still caught.
+    new MutationObserver((records) => {
+      for (const record of records) {
+        const nodes = record.type === 'attributes' ? [record.target] : [...record.addedNodes].flatMap((n) => (n.nodeType === 1 ? [n, ...n.querySelectorAll('img')] : []));
+        for (const node of nodes) if (node.tagName === 'IMG' && node.getAttribute('src')) window.__wmRecordSrc(node.getAttribute('src'));
+      }
+    }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] });
   });
+  // Every LCP URL must be a blob: or carry no archive host, so the RUM beacon never names the point's box.
+  const checkLcp = async (stage) => {
+    const urls = lcpUrls.filter(Boolean);
+    log(`${stage} lcp urls`, urls.map((url) => (url.startsWith('blob:') ? 'blob:…' : url)));
+    const leaking = urls.filter((url) => !url.startsWith('blob:') && ARCHIVE_HOSTS.includes(new URL(url).hostname));
+    if (leaking.length) throw new Error(`${stage}: an archive URL became the LCP element: ${leaking.join(', ')}`);
+    return urls;
+  };
 
   const mapMode = process.env.WM_VERIFY_ORBITAL_MAP === 'globe' ? 'globe' : 'flat';
   if (mapMode === 'flat') {
@@ -256,8 +281,11 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await privacy();
   log('headline', await sheet.locator('.ow-headline').innerText(), '|', await sheet.locator('.ow-subline').innerText());
   const hero = sheet.locator('.ow-card').first();
-  log('hero', await hero.locator('.ow-card-tag').innerText(), await hero.locator('img').evaluate((i) => new URL(i.src).pathname.split('/').slice(0, 6).join('/')).catch(() => 'no image'));
-  if (!(await hero.locator('img[src*="/item/bbox/"]').count())) throw new Error(`closest look is not a crop of ${PLACE.name}`);
+  // Point-bearing crops are fetched and painted from a blob: URL, so the crop shows in the request, not the src.
+  await hero.locator('.ow-tile[data-state="loaded"] img[src^="blob:"]').waitFor({ timeout: 60_000 });
+  const crops = requests.filter(({ url }) => new URL(url).hostname === 'planetarycomputer.microsoft.com' && new URL(url).pathname.includes('/item/bbox/'));
+  log('hero', await hero.locator('.ow-card-tag').innerText(), 'painted from blob:', 'crop requests', crops.length, crops[0] ? new URL(crops[0].url).pathname.split('/').slice(0, 6).join('/') : 'none');
+  if (!crops.length) throw new Error(`closest look is not a crop of ${PLACE.name}`);
   await hero.locator('.ow-tile[data-state="loaded"]').waitFor({ timeout: 90_000 });
   await settleImagesInView();
   log('hero caption', (await hero.locator('.ow-caption').innerText()).replace(/\s+/g, ' '));
@@ -502,10 +530,9 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('archive requests with the point in the path', pathLeaks.length);
   if (pathLeaks.length) throw new Error(`picked point in an archive URL path: ${pathLeaks.map((l) => l.url).join(', ')}`);
   const timeline = await page.evaluate((hosts) => ({
-    lcp: performance.getEntriesByType('largest-contentful-paint').map((e) => e.url).filter(Boolean),
     archiveResources: performance.getEntriesByType('resource').filter((e) => hosts.includes(new URL(e.name).hostname)).length,
   }), ARCHIVE_HOSTS);
-  log('lcp urls', timeline.lcp, 'archive resource entries', timeline.archiveResources);
+  log('archive resource entries', timeline.archiveResources);
   const vendor = requests.filter(({ url }) => VENDOR_URL.test(url));
   const vendorLeaks = vendor.filter(({ url, body }) => needles.every((n) => decodeURIComponent(`${url} ${body}`).includes(n)));
   log('telemetry vendor requests', vendor.length, 'at', [...new Set(vendor.map(({ url }) => { const u = new URL(url); return u.host + u.pathname; }))], 'carrying the point', vendorLeaks.length);
@@ -515,7 +542,11 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('same-document navigations', navigations.length, 'with a map centre within 0.01° of the point', centresNearPoint,
     'with the orbital route', navigations.filter(({ route }) => route).length);
   if (centresNearPoint) throw new Error('a same-document navigation put the picked point in the page query');
-  if (timeline.lcp.some((url) => ARCHIVE_HOSTS.includes(new URL(url).hostname))) throw new Error('archive crop became the LCP element');
+  await checkLcp('lookup');
+  const pointImgs = async () => imgSrcs.filter((src) => !src.startsWith('blob:') && POINT_IMAGE_HOSTS.includes(new URL(src, base).hostname));
+  const lookupDirect = await pointImgs();
+  log('img srcs set', imgSrcs.length, 'blob:', imgSrcs.filter((src) => src.startsWith('blob:')).length, 'point-bearing archive srcs', lookupDirect.length);
+  if (lookupDirect.length) throw new Error(`point-bearing archive URL in img src: ${lookupDirect.join(', ')}`);
 
   // A shared link opens with no click on the globe, so nothing else stops its idle spin carrying the point away.
   // It also builds the renderer while the full view already hides the layers, so check they stay hidden.
@@ -527,6 +558,14 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await page.waitForTimeout(5_000);
   const later = await markAt();
   log('shared link map mark', JSON.stringify(landed), 'after 5 s', JSON.stringify(later));
+  // A shared link paints the full view with no user input, so its images are the ones RUM can take as the LCP.
+  const sharedImages = await page.evaluate(() => [...document.querySelectorAll('.orbital-watch-sheet img[src]')].map((img) => ({
+    blob: img.getAttribute('src').startsWith('blob:'), painted: img.complete && img.naturalWidth > 0,
+  })));
+  log('shared link images', sharedImages.length, 'blob', sharedImages.filter((i) => i.blob).length, 'painted', sharedImages.filter((i) => i.painted).length);
+  const directSrc = await pointImgs();
+  if (directSrc.length) throw new Error(`point-bearing archive URL in img src: ${directSrc.join(', ')}`);
+  await checkLcp('shared link');
   if (Math.abs(later.x - landed.x) > 4 || Math.abs(later.y - landed.y) > 4) throw new Error('the map drifted off a shared point');
   // The conflict zone over the point is the dashboard's red; count it where the full view leaves the map visible.
   const drawnLayers = async () => {
@@ -546,5 +585,5 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('shared full view layers', JSON.stringify(sharedFull), '→ sheet', JSON.stringify(sharedSheet));
   if (sharedFull.zones) throw new Error(`${sharedFull.zones} conflict zones drawn over a shared full view`);
   if (bootLayers !== 'none' && sharedFull.red >= sharedSheet.red) throw new Error('a shared full view drew the dashboard layers');
-  return { mobile, pointText, needles, leaks: leaks.length, lcp: timeline.lcp };
+  return { mobile, pointText, needles, leaks: leaks.length, lcp: lcpUrls.filter(Boolean) };
 }
