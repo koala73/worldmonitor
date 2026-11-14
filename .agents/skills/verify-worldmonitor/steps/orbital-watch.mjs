@@ -181,13 +181,20 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   };
   const settleImagesInView = async () => {
     await page.waitForFunction(() => {
-      const vh = window.innerHeight;
-      const vw = window.innerWidth;
-      return [...document.querySelectorAll('.orbital-watch-sheet .ow-tile')].every((tile) => {
-        const r = tile.getBoundingClientRect();
-        const offscreen = r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw || r.width === 0;
-        return offscreen || tile.dataset.state !== 'loading';
-      });
+      // A thumbnail starts loading when the IntersectionObserver sees it, which clips it by its scroll containers.
+      const shown = (tile) => {
+        let r = tile.getBoundingClientRect();
+        let top = Math.max(r.top, 0), bottom = Math.min(r.bottom, window.innerHeight);
+        let left = Math.max(r.left, 0), right = Math.min(r.right, window.innerWidth);
+        for (let el = tile.parentElement; el; el = el.parentElement) {
+          if (getComputedStyle(el).overflow === 'visible') continue;
+          r = el.getBoundingClientRect();
+          top = Math.max(top, r.top); bottom = Math.min(bottom, r.bottom);
+          left = Math.max(left, r.left); right = Math.min(right, r.right);
+        }
+        return bottom > top && right > left;
+      };
+      return [...document.querySelectorAll('.orbital-watch-sheet .ow-tile')].every((tile) => !shown(tile) || tile.dataset.state !== 'loading');
     }, null, { timeout: 90_000 });
     log('tile states', await sheet.locator('.ow-tile').evaluateAll((tiles) => tiles.map((t) => t.dataset.state).join('')));
   };
