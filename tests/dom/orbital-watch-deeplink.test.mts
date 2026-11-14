@@ -97,7 +97,7 @@ beforeEach(() => {
   evidenceMock.mockImplementation(async (found: PointPassLookup) => answered(found.passes));
   mapCentre = null;
   connectOrbitalLookupMap(() => ({ getCenter: () => mapCentre }));
-  releaseMapView = setOrbitalMapView({ rect: () => new DOMRect(0, 0, 1440, 900), center, project: () => null, hold: () => {}, suppressLayers: () => {} });
+  releaseMapView = setOrbitalMapView({ rect: () => new DOMRect(0, 0, 1440, 900), center, project: () => null, hold: () => {}, suppressLayers: () => {}, camera: () => null, restore: () => {} });
 });
 
 afterEach(() => {

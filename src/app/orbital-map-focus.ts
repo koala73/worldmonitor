@@ -1,6 +1,12 @@
 import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import type { ScreenOffset } from '@/utils/map-point-offset';
 
+export interface MapCamera {
+  lat: number;
+  lon: number;
+  zoom: number;
+}
+
 /** The parts of the dashboard map the lookup needs, registered without loading the lookup at startup. */
 export interface OrbitalMapView {
   /** The map's box in client coordinates, or null when it is not on screen. */
@@ -13,6 +19,9 @@ export interface OrbitalMapView {
   hold(held: boolean): void;
   /** Hides or redraws the dashboard's data layers without changing the saved layer toggles. */
   suppressLayers(suppressed: boolean): void;
+  /** The map's centre and zoom, or null before it has a camera. */
+  camera(): MapCamera | null;
+  restore(camera: MapCamera): void;
 }
 
 let view: OrbitalMapView | null = null;
