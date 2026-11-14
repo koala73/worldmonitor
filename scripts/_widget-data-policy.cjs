@@ -205,6 +205,7 @@ const RPCS = [
 
 // Every other registry key and GET route, with the reason the widget does not use it.
 const EXCLUDED_BOOTSTRAP_KEYS = {
+  gridDisruptionClock: 'Regional outage reports require source times and coverage for comparison. See the Grid disruption clock.',
   ukmtoIncidents: 'Publisher claims requiring source attribution and freshness; use the UKMTO panel',
   iranEvents: "Disabled in production (IRAN_EVENTS_ENABLED off); returns nothing",
   liveVideoResolved: "Internal: live-video channel to video-ID map",

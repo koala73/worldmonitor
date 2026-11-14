@@ -1,7 +1,7 @@
 ---
 title: "Free vs. Paid Real-Time Intelligence Dashboards: What to Compare"
 description: "Compare free and paid intelligence dashboards using seven buying criteria and 2026 price anchors ranging from $0 to $24,000 per year."
-metaTitle: "Free vs Paid Intelligence Dashboards: Buyer's Comparison 2026"
+metaTitle: "Free vs Paid Intelligence Dashboards: 2026 Buyer's Guide"
 keywords: "free vs paid intelligence dashboard, real-time intelligence dashboard comparison, free OSINT dashboard, intelligence platform pricing, geopolitical dashboard cost, situational awareness tools comparison, free intelligence tools 2026"
 audience: "Buyers evaluating intelligence tooling, analysts justifying budget, procurement teams, researchers deciding whether to upgrade"
 heroImage: "/blog/images/blog/free-vs-paid-real-time-intelligence-dashboards.jpg"

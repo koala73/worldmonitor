@@ -1,14 +1,20 @@
 const OVERLAY_STATE_KEY = '__wmOverlay';
 
-export type OverlayId =
-  | 'menu'
-  | 'region'
-  | 'search'
-  | 'search-pending'
-  | 'settings'
-  | 'settings-pending'
-  | 'map-popup'
-  | 'deep-dive';
+const OVERLAY_IDS = [
+  'menu',
+  'region',
+  'search',
+  'search-pending',
+  'settings',
+  // An open Settings page on the phone sheet, held above 'settings' so Back
+  // returns to the home list before it closes Settings.
+  'settings-section',
+  'settings-pending',
+  'map-popup',
+  'deep-dive',
+] as const;
+
+export type OverlayId = (typeof OVERLAY_IDS)[number];
 
 export type OverlayCloseOrigin = 'control' | 'history' | 'replacement';
 type OverlayCloseCallback = (origin: OverlayCloseOrigin) => void;
@@ -49,14 +55,7 @@ function markerFromState(state: unknown): OverlayMarker | null {
 }
 
 function isOverlayId(value: unknown): value is OverlayId {
-  return value === 'menu'
-    || value === 'region'
-    || value === 'search'
-    || value === 'search-pending'
-    || value === 'settings'
-    || value === 'settings-pending'
-    || value === 'map-popup'
-    || value === 'deep-dive';
+  return (OVERLAY_IDS as readonly unknown[]).includes(value);
 }
 
 function withMarker(state: unknown, marker: OverlayMarker): Record<string, unknown> {

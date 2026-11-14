@@ -1,6 +1,6 @@
 ---
 title: "Military Flight Tracking for OSINT: Aircraft and Conflict Context"
-description: "Track military aircraft with conflict context in WorldMonitor. Learn how to inspect activity, assess unusual patterns, and understand coverage and history limits."
+description: "Track military aircraft with conflict context in WorldMonitor. Inspect activity, assess unusual flight patterns, and understand coverage and history limits."
 metaTitle: "Military Flight Tracking for OSINT | WorldMonitor"
 keywords: "military flight tracking, military aircraft tracker, OSINT flight tracking, military aircraft patterns, conflict zone flight data"
 audience: "OSINT researchers, journalists, geopolitical analysts"

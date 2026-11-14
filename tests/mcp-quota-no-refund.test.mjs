@@ -1,20 +1,3 @@
-// Regression for GHSA-hcq5-jm84-2395 — MCP daily cost-cap bypass via
-// quota slot refunded AFTER the tool already executed.
-//
-// dispatchToolsCall reserves a daily-quota slot (INCR) BEFORE running the
-// tool, which is correct. The bug: it then DECR-refunded that slot on two
-// attacker-reachable, POST-execution outcomes — (1) output over budget and
-// (2) any tool-execution error — even though `_execute()` had already done
-// the full upstream fetch/compute. Net quota charged for an already-executed,
-// cost-incurring call was therefore zero, so a Pro token could drive real
-// upstream cost far past the 50/day cap by always exceeding budget or erroring.
-//
-// The fix keeps the slot charged once `_execute()` has run: refunds happen
-// only on PRE-execution failures (reservation/validation), which the reserve
-// path already handles internally. These tests assert the counter STAYS
-// consumed (`pipe.count === 1`) after each post-execution outcome — RED before
-// the fix (the refund drove it back to 0), GREEN after.
-
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 
