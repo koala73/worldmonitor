@@ -17,8 +17,13 @@ import {
   statusLabel,
   type ReservoirFilter,
   type ReservoirFormatContext,
+  reservoirNextPassText,
 } from './reservoir-levels-view';
 import type { ResolvedScope } from '@/services/tab-focus';
+import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
+import type { ReservoirNextPass } from '@/services/orbital/reservoir-next-pass';
+import { loadReservoirNextPasses } from '@/services/climate/reservoir-context-loader';
+import { STRATEGIC_RESERVOIR_SITES } from '@/services/climate/reservoir-context';
 import { countryCodeFromName } from '@/services/scope-attribution';
 import { PanelScopeFilter, focusedEmptyHtml, scopeTagHtml, type ScopeRow } from './panel-scope-filter';
 import '../styles/reservoir-levels.css';
@@ -35,6 +40,8 @@ export class ReservoirLevelsPanel extends Panel {
   private readonly scopeFilter: PanelScopeFilter;
   private refreshing = false;
   private onSelect?: (reservoir: ReservoirLevel) => void;
+  private nextPasses: Map<string, ReservoirNextPass> | null = null;
+  private nextPassRequested = false;
 
   constructor() {
     super({
@@ -82,6 +89,18 @@ export class ReservoirLevelsPanel extends Panel {
     this.reservoirs = result.snapshot?.reservoirs ?? [];
     this.loaded = true;
     this.render();
+    this.requestNextPasses();
+  }
+
+  // Predicted ICESat-2 crossings come from Orbital pass geometry, so only with Orbital Watch on.
+  private requestNextPasses(): void {
+    if (!ORBITAL_WATCH_ENABLED || this.nextPassRequested) return;
+    this.nextPassRequested = true;
+    void loadReservoirNextPasses(STRATEGIC_RESERVOIR_SITES).then((passes) => {
+      if (!passes) { this.nextPassRequested = false; return; }
+      this.nextPasses = passes;
+      if (this.loaded && !this.refreshing && !this.showingLoadFailure) this.render();
+    });
   }
 
   public setFilter(filter: ReservoirFilter): void {
@@ -171,7 +190,14 @@ export class ReservoirLevelsPanel extends Panel {
       <span class="wl-headline">${reservoirHeadline(r, ctx)}</span>
       <span class="wl-spark">${unsafeRawHtml(spark, 'miniSparkline builds the SVG from numbers only')}</span>
       <span class="wl-detail">${reservoirDetail(r, ctx)}</span>
+      ${this.nextPassLine(r, ctx)}
     </button></li>`;
+  }
+
+  private nextPassLine(r: ReservoirLevel, ctx: ReservoirFormatContext): SafeHtml {
+    const pass = this.nextPasses?.get(r.id);
+    if (!pass) return safeHtml``;
+    return safeHtml`<span class="wl-next"><span class="wl-next-label">${t('components.reservoirLevels.nextPass.label')}:</span> ${reservoirNextPassText(pass, t, ctx.locale)}</span>`;
   }
 
   private footer(): SafeHtml {

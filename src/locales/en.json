@@ -3352,6 +3352,20 @@
         "change365": "Over 12 months",
         "measured": "Measured",
         "sparkline": "Water level over 36 months"
+      },
+      "nextPass": {
+        "label": "Next ICESat-2 crossing",
+        "loading": "Loading…",
+        "at": "{{date}} (predicted from orbit data of {{epoch}}; cloud can block the lidar)",
+        "none": "No measurement in this window (to {{date}}); orbit data of {{epoch}}",
+        "unavailable": "Orbit data unavailable"
+      },
+      "siteContext": {
+        "label": "Strategic reservoir at this site"
+      },
+      "energyContext": {
+        "title": "Strategic reservoirs",
+        "hydro": "Hydro {{share}}% of primary energy"
       }
     }
   },

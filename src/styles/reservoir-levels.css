@@ -69,7 +69,8 @@
   grid-template-areas:
     "id chip"
     "headline spark"
-    "detail detail";
+    "detail detail"
+    "next next";
   column-gap: 10px;
   row-gap: 3px;
   align-items: center;
@@ -285,4 +286,48 @@
 .wl-globe-dot.wl-tone-muted {
   border: 2px solid var(--wl-tone);
   background: transparent;
+}
+
+/* Next predicted ICESat-2 crossing (Orbital Watch only) and the reservoir beside a dam-related event. */
+.wl-popup .wl-next-pass {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  margin: 8px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.45;
+}
+
+.wl-popup .wl-next-pass-label {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.wl-popup .wl-next-pass-value {
+  color: var(--text-secondary);
+}
+
+.wl-site-context .wl-site-context-name {
+  color: var(--text);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.wl-site-context .wl-site-context-level {
+  color: var(--text-secondary);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.45;
+}
+
+.wl-panel .wl-next {
+  grid-area: next;
+  color: var(--text-muted);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-variant-numeric: tabular-nums;
+}
+
+.wl-panel .wl-next-label {
+  color: var(--text-secondary);
 }

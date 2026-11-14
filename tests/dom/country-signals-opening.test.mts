@@ -69,8 +69,8 @@ it.each(['IR', 'CN'])('measures %s panel and controller opening reads with ten s
     expect(calls.length + 2).toBeLessThanOrEqual(64);
     expect(calls.filter(call => call.section === 'countrySignals' && call.arguments.family !== 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE')).toHaveLength(code === 'CN' ? 4 : 5);
     const deferred = qualified.families.filter(family => family.reason?.startsWith('Deferred:')).map(family => family.family);
-    expect(deferred).toHaveLength(3);
-    expect(deferred[deferred.length - 1]).toBe('imagery');
+    expect(deferred).toHaveLength(4);
+    expect(deferred.slice(-2)).toEqual(['imagery', 'water']);
     expect(qualified.details).not.toBeNull();
   } finally { controller.dispose(); panel.hide(); }
 });

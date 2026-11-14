@@ -17,7 +17,9 @@ import { getCountryCentroid, ME_STRIKE_BOUNDS } from '@/services/country-geometr
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import type { CountryScore } from '@/services/country-instability';
-import { t } from '@/services/i18n';
+import { getLocale, t } from '@/services/i18n';
+import type { ReservoirLevel } from '@/services/climate';
+import { reservoirLevelContext } from './reservoir-levels-view';
 import { CountryHistory } from './CountryHistory';
 import { getCountryInfrastructure } from '@/services/related-assets';
 import type { PredictionMarket } from '@/services/prediction';
@@ -194,6 +196,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private factsBody: HTMLElement | null = null;
   private resilienceWidget: import('@/components/ResilienceWidget').ResilienceWidget | null = null;
   private pendingResilienceEnergyMix: CountryEnergyProfileData | null = null;
+  private reservoirContext: { code: string; reservoirs: ReservoirLevel[] } | null = null;
+  private reservoirContextEl: HTMLElement | null = null;
   private resilienceWidgetRequestId = 0;
   private foodStocksRequestId = 0;
   private foodStocksBody: HTMLElement | null = null;
@@ -533,6 +537,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.signalRecentBody?.replaceChildren();
     this.signalsBody?.querySelector('.cdp-qualified-coverage')?.remove();
     this.signalsBody?.querySelector('.cdp-imagery-evidence')?.remove();
+    this.signalsBody?.querySelector('.cdp-water-evidence')?.remove();
   }
 
   public updateQualifiedCountrySignals(value: import('../../shared/country-signal-observations').QualifiedCountrySignals): void {
@@ -553,8 +558,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
     this.signalsBody?.querySelector('.cdp-qualified-coverage')?.remove();
     this.signalsBody?.querySelector('.cdp-imagery-evidence')?.remove();
+    this.signalsBody?.querySelector('.cdp-water-evidence')?.remove();
     const imagery = this.buildImageryEvidence(value.families.find(family => family.family === 'imagery'));
     if (imagery) this.signalsBody?.append(imagery);
+    const water = this.buildWaterEvidence(value.families.find(family => family.family === 'water'));
+    if (water) this.signalsBody?.append(water);
     this.signalsBody?.append(notes);
   }
 
@@ -570,6 +578,21 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       block.append(item);
     }
     block.append(this.el('p', 'cdp-economic-source', `${family.attribution}. Radar statistics changed at the site; this does not say what changed. Not an input to the Country Instability Index.`));
+    return block;
+  }
+
+  private buildWaterEvidence(family: import('../../shared/country-signal-observations').CountrySignalOutcome | undefined): HTMLElement | null {
+    if (family?.state !== 'observed') return null;
+    const block = this.el('div', 'cdp-water-evidence');
+    block.append(this.el('div', 'cdp-imagery-title', 'Water levels'));
+    if (family.observations.length === 0) block.append(this.makeEmpty('No strategic reservoir in this country is beyond its seasonal baseline at its latest pass.'));
+    for (const row of family.observations) {
+      const item = this.el('div', 'cdp-imagery-item');
+      item.append(this.el('div', 'cdp-signal-desc', row.title));
+      if (row.eventAt) item.append(this.el('div', 'cdp-signal-time', `Measured ${row.eventAt.slice(0, 10)}`));
+      block.append(item);
+    }
+    block.append(this.el('p', 'cdp-economic-source', `${family.attribution}. Lidar water-surface level from the dated pass, not a live reading or storage volume. Not an input to the Country Instability Index.`));
     return block;
   }
 
@@ -1429,9 +1452,38 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
   public updateEnergyProfile(data: CountryEnergyProfileData): void {
     if (!this.energyBody) return;
-    this.renderEnergyProfile(data);
     this.pendingResilienceEnergyMix = data;
+    this.renderEnergyProfile(data);
+    this.renderReservoirContext();
     this.resilienceWidget?.setEnergyMix(data);
+  }
+
+  public updateReservoirContext(code: string, reservoirs: ReservoirLevel[]): void {
+    if (code !== this.currentCode) return;
+    this.reservoirContext = { code, reservoirs };
+    this.renderReservoirContext();
+  }
+
+  // Strategic Water Levels beside the hydro share: the country's reservoirs with their dated level.
+  private renderReservoirContext(): void {
+    const context = this.reservoirContext;
+    if (!context || context.code !== this.currentCode || context.reservoirs.length === 0 || !this.energyBody) { this.reservoirContextEl?.remove(); return; }
+    const el = this.reservoirContextEl ??= this.el('div', 'cdp-reservoir-context');
+    el.replaceChildren();
+    const ctx = { t, locale: getLocale(), nowMs: Date.now() };
+    const hydro = this.pendingResilienceEnergyMix?.mixAvailable ? this.pendingResilienceEnergyMix.hydroShare : null;
+    const head = this.el('div', 'cdp-reservoir-context-head');
+    head.append(this.el('span', 'cdp-imagery-title', t('components.reservoirLevels.energyContext.title')));
+    if (hydro != null && hydro > 0) head.append(this.el('span', 'cdp-reservoir-context-hydro', t('components.reservoirLevels.energyContext.hydro', { share: Math.round(hydro) })));
+    el.append(head);
+    const sorted = [...context.reservoirs].sort((a, b) => Number(b.tags.includes('hydropower')) - Number(a.tags.includes('hydropower')) || a.name.localeCompare(b.name));
+    for (const r of sorted) {
+      const row = this.el('div', 'cdp-imagery-item');
+      row.append(this.el('div', 'cdp-signal-desc', r.name), this.el('div', 'cdp-signal-time', reservoirLevelContext(r, ctx)));
+      el.append(row);
+    }
+    el.append(this.el('p', 'cdp-economic-source', `${t('components.reservoirLevels.source')} NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidar water-surface level from the dated pass, not a live reading or storage volume.`));
+    if (!el.isConnected) this.energyBody.append(el);
   }
 
   private renderEnergyProfile(data: CountryEnergyProfileData): void {
@@ -4163,6 +4215,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.map?.clearHighlightedRoute();
     this.scoreCard = null;
     this.imageryContext.replaceChildren();
+    this.reservoirContext = null;
+    this.reservoirContextEl?.remove();
     this.currentMilitarySummary = null;
     this.defenseIndustrialFailure = null;
     this.currentDefenseIndustrial = null;

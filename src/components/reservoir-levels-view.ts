@@ -6,6 +6,7 @@
  * Status semantics come from scripts/_reservoir-levels.mjs (classifyStatus).
  */
 import type { ReservoirLevel, ReservoirLevelStatus } from '@/services/climate';
+import type { ReservoirNextPass } from '@/services/orbital/reservoir-next-pass';
 import { miniSparkline } from '@/utils/sparkline';
 
 export type Translate = (key: string, params?: Record<string, unknown>) => string;
@@ -253,4 +254,18 @@ function hexToRgb(hex: string): [number, number, number] | null {
 export function reservoirToneRgb(tone: ReservoirTone, readToken?: (token: string) => string): [number, number, number] {
   const live = readToken ? hexToRgb(readToken(RESERVOIR_TONE_TOKENS[tone]) || '') : null;
   return live ?? hexToRgb(TONE_FALLBACK_HEX[tone])!;
+}
+
+/** "Low for season · −8.2 m vs usual for September · measured 6 Sep (66 days ago)". Never a live reading. */
+export function reservoirLevelContext(r: ReservoirLevel, ctx: ReservoirFormatContext): string {
+  return [statusLabel(r, ctx.t), reservoirHeadline(r, ctx), reservoirMeasured(r, ctx)].join(' · ');
+}
+
+/** Predicted ICESat-2 crossing, or the normal no-crossing answer, with the orbit data date. */
+export function reservoirNextPassText(pass: ReservoirNextPass, t: Translate, locale: string): string {
+  const day = (ms: number) => new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(ms));
+  const epoch = day(pass.elementsEpochMs);
+  return pass.status === 'pass'
+    ? t('components.reservoirLevels.nextPass.at', { date: day(pass.timeMs), epoch })
+    : t('components.reservoirLevels.nextPass.none', { date: day(pass.windowEndMs), epoch });
 }

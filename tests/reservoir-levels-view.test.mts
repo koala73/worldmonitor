@@ -9,6 +9,8 @@ import {
   needsAttention,
   reservoirDetail,
   reservoirHeadline,
+  reservoirLevelContext,
+  reservoirNextPassText,
   reservoirMeasured,
   reservoirPlace,
   reservoirSparkline,
@@ -161,5 +163,25 @@ describe('reservoir wording', () => {
       { date: '2026-01-11', levelM: 110 },
     ], 3);
     assert.deepEqual(values.map((v) => Math.round(v * 1000) / 1000), [100, 105, 110]);
+  });
+});
+
+describe('reservoir context and next ICESat-2 crossing', () => {
+  it('pairs the status and seasonal headline with the measurement date', () => {
+    assert.equal(reservoirLevelContext(reservoir(), ctx), `status.record_low · vsUsual(value=${MINUS}8.2 m,month=September) · measured(date=6 Sept,age=66 days ago)`);
+    assert.match(reservoirLevelContext(reservoir({ latest: null }), ctx), /noPass$/);
+  });
+
+  it('labels a crossing as predicted from dated orbit data, and no crossing as a normal answer', () => {
+    const epoch = Date.parse('2026-11-13T18:00:00Z');
+    const windowEnd = Date.parse('2026-11-21T12:00:00Z');
+    assert.equal(
+      reservoirNextPassText({ status: 'pass', timeMs: Date.parse('2026-11-16T03:12:00Z'), windowEndMs: windowEnd, elementsEpochMs: epoch }, t, 'en-GB'),
+      'nextPass.at(date=16 Nov 2026,epoch=13 Nov 2026)',
+    );
+    assert.equal(
+      reservoirNextPassText({ status: 'none', windowEndMs: windowEnd, elementsEpochMs: epoch }, t, 'en-GB'),
+      'nextPass.none(date=21 Nov 2026,epoch=13 Nov 2026)',
+    );
   });
 });

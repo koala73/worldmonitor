@@ -20,6 +20,7 @@
 // the lowest flat surface in a box drawn over the lake. The rest of the pipeline is shared.
 
 import { CHROME_UA, withRetry } from './_seed-utils.mjs';
+import { SEASONAL_Z_ALERT } from './shared/reservoir-seasonal.mjs';
 
 export const CMR_GRANULES_URL = 'https://cmr.earthdata.nasa.gov/search/granules.json';
 export const SLIDERULE_ATL13_URL = 'https://sliderule.slideruleearth.io/source/atl13x';
@@ -70,7 +71,7 @@ export const FAST_CHANGE_MIN_M = 2;
 export const FAST_CHANGE_RANGE_FRACTION = 0.15;
 export const LOW_PERCENT = 15;
 export const HIGH_PERCENT = 85;
-export const SEASONAL_Z_ALERT = 1.5;
+export { SEASONAL_Z_ALERT };
 export const SERIES_MONTHS = 36;
 
 // ATL06 lowest-cluster rule. ATL06 has no water mask: the box returns land as well as

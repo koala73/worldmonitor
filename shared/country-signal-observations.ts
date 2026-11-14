@@ -3,6 +3,7 @@ import { resolveCountryCode } from './country-code-resolve';
 import { countryActivityQueries } from './country-activity-query';
 import { COUNTRY_SIGNAL_BYTES, COUNTRY_SIGNAL_FAMILIES, COUNTRY_SIGNAL_WIRE_FAMILIES, type CountrySignalFamily } from './country-signal-contract';
 import { confirmedSiteFlags, readCountryRollup, scoredSiteCount } from './orbital/country-rollup.js';
+import { SEASONAL_Z_ALERT } from '../scripts/shared/reservoir-seasonal.mjs';
 export { COUNTRY_SIGNAL_PATH, COUNTRY_SIGNAL_BYTES, COUNTRY_SIGNAL_FAMILIES, COUNTRY_SIGNAL_WIRE_FAMILIES, type CountrySignalFamily } from './country-signal-contract';
 const countryFlightSchema = z.object({
   id: z.string().min(1).max(200), source: z.string().min(1).max(500),
@@ -88,8 +89,8 @@ export function projectQualifiedCountrySignalContext(value: QualifiedCountrySign
       ...row, description: text(row.description, 512), source: text(row.source, 256),
     })) },
     families: value.families.map(({ observations, ...coverage }) => ({
-      ...coverage, scope: text(coverage.scope, 192), attribution: text(coverage.attribution, 192),
-      reason: coverage.reason === null ? null : text(coverage.reason, 192), includedObservations: observations.length,
+      ...coverage, scope: text(coverage.scope, 160), attribution: text(coverage.attribution, 160),
+      reason: coverage.reason === null ? null : text(coverage.reason, 160), includedObservations: observations.length,
     })),
   };
 }
@@ -130,8 +131,53 @@ export function projectImagerySignalFamily(countryCode: string, body: unknown, n
   });
 }
 
+const WATER_ATTRIBUTION = 'NASA ICESat-2 ATL13 / ATL06 (NSIDC), processed with SlideRule Earth; World Monitor seasonal baseline';
+const waterReservoirSchema = z.object({
+  id: z.string().min(1).max(200), name: z.string().max(200).default(''), country: z.string().default(''),
+  status: z.string().default(''), seasonalZ: z.number().finite().nullish(), seasonalAnomalyM: z.number().finite().nullish(),
+  latest: z.object({ date: z.string(), levelM: z.number().finite() }).passthrough().nullish(),
+}).passthrough();
+
+/**
+ * Strategic reservoirs in the country whose latest dated ICESat-2 level sits beyond the
+ * seasonal baseline the reservoir seeder computes (`seasonalBaseline`, published as
+ * `seasonalZ`). Context beside country risk: the family never feeds a score, and every row
+ * carries the overpass date because lidar levels arrive weeks after the measurement.
+ */
+export function projectWaterSignalFamily(countryCode: string, body: unknown): CountrySignalOutcome {
+  const object = z.record(z.string(), z.unknown()).parse(body);
+  if (object.dataAvailable === false || !Array.isArray(object.reservoirs)) return unavailableCountrySignal(countryCode, 'water', 'Strategic Water Levels snapshot unavailable.');
+  const snapshotAt = sourceClock(object.fetchedAt);
+  const reservoirs = object.reservoirs.flatMap((value) => {
+    const parsed = waterReservoirSchema.safeParse(value);
+    return parsed.success && parsed.data.country.toUpperCase() === countryCode ? [parsed.data] : [];
+  });
+  if (reservoirs.length === 0) return unavailableCountrySignal(countryCode, 'water', 'No Strategic Water Levels reservoir is in this country.');
+  const baselined = reservoirs.filter(r => r.seasonalZ != null && r.latest && r.status !== 'no_recent_data');
+  if (baselined.length === 0) return unavailableCountrySignal(countryCode, 'water', 'This country\'s reservoirs have no recent pass with a seasonal baseline.');
+  const observations = baselined
+    .filter(r => Math.abs(r.seasonalZ!) >= SEASONAL_Z_ALERT)
+    .sort((a, b) => Math.abs(b.seasonalZ!) - Math.abs(a.seasonalZ!) || a.id.localeCompare(b.id))
+    .map((r): QualifiedCountryObservation => {
+      const below = r.seasonalZ! < 0;
+      const metres = r.seasonalAnomalyM == null ? '' : ` ${Math.abs(r.seasonalAnomalyM).toFixed(1)} m`;
+      return {
+        id: r.id, family: 'water', type: below ? 'reservoir_below_seasonal' : 'reservoir_above_seasonal', severity: 'low',
+        title: `${r.name || r.id}: water level${metres} ${below ? 'below' : 'above'} its seasonal baseline (z ${r.seasonalZ!.toFixed(1)}), ICESat-2 pass ${r.latest!.date.slice(0, 10)}`.slice(0, 512),
+        source: WATER_ATTRIBUTION, eventAt: sourceClock(r.latest!.date), snapshotAt, timeBasis: 'event',
+      };
+    });
+  return boundCountrySignalFamily({
+    ...unavailableCountrySignal(countryCode, 'water', ''), state: 'observed', reason: null, partial: baselined.length < reservoirs.length,
+    observations, snapshotAt, attribution: WATER_ATTRIBUTION,
+    scope: `Strategic reservoirs whose latest level is ${SEASONAL_Z_ALERT} or more seasonal deviations from earlier years; ${baselined.length} of ${reservoirs.length} in this country have a baseline`,
+    matchedRows: observations.length, sampledRows: Math.min(observations.length, 100), omittedRows: Math.max(0, observations.length - 100),
+  });
+}
+
 export function projectCountrySignalFamily(countryCode: string, family: CountrySignalFamily, body: unknown): CountrySignalOutcome {
   if (family === 'imagery') return projectImagerySignalFamily(countryCode, body);
+  if (family === 'water') return projectWaterSignalFamily(countryCode, body);
   const object = z.record(z.string(), z.unknown()).parse(body);
   const outcome: CountrySignalOutcome = { ...unavailableCountrySignal(countryCode, family, ''), state: 'observed', reason: null, partial: false, scope: 'Country-coded observations in the existing source profile', attribution: '', snapshotAt: sourceClock(object.fetchedAt ?? object.scrapedAt), sampleBeforeCountryFilter: family === 'fires' || family === 'radiation' };
   const keys = { outages: 'outages', unrest: 'events', fires: 'fireDetections', radiation: 'observations', sanctions: 'countries', conflict: 'events', posture: 'theaters' } as const;

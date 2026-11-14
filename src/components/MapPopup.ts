@@ -32,6 +32,8 @@ import {
   reservoirSparkline,
   reservoirTone,
   statusLabel as reservoirStatusLabel,
+  reservoirLevelContext,
+  reservoirNextPassText,
 } from './reservoir-levels-view';
 import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticle } from '@/services/gdelt-intel';
 import { getWingbitsLiveFlight } from '@/services/wingbits';
@@ -49,6 +51,9 @@ import { bindCyberNetworkSection, renderCyberNetworkSection } from './cyber-netw
 import { renderPopupSourceLinks } from './map-popup-source-links';
 import { overlayHistory, type OverlayCloseOrigin, type OverlayOpenHandle } from '@/utils/overlay-history';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
+import { loadReservoirLevelsById, loadReservoirNextPasses } from '@/services/climate/reservoir-context-loader';
+import { STRATEGIC_RESERVOIR_SITES, reservoirAtSite } from '@/services/climate/reservoir-context';
 import { aptSectorLabel, aptTacticLabel, countryLabel, datacenterSectorLabel, isSameLocation, localizeRelativePlace, parseGdeltReportTitle, severityLabel, statusLabel, storageFacilityTypeLabel, weatherEventLabel } from './map-popup-i18n';
 
 
@@ -328,6 +333,7 @@ export class MapPopup {
     setTrustedHtml(this.popup, trustedHtml(this.isMobileSheet
       ? `<button class="map-popup-sheet-handle" aria-label="${t('common.close')}"></button>${content}`
       : content, "legacy direct innerHTML migration"));
+    this.hydrateReservoirSections(this.popup);
 
     // Get container's viewport position for absolute positioning
     const containerRect = this.container.getBoundingClientRect();
@@ -1834,6 +1840,7 @@ export class MapPopup {
         ${sourceLinks}
         ${tagsSection}
         ${relatedHotspots}
+        ${this.renderReservoirSiteContext(event.lat, event.lon, event.title)}
       </div>
     `;
   }
@@ -2318,11 +2325,57 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
             ${stat(t('components.reservoirLevels.popup.change365'), signed(r.change365dM))}
             ${stat(t('components.reservoirLevels.popup.measured'), escapeHtml(reservoirMeasured(r, ctx, true)))}
           </div>
+          ${this.renderReservoirNextPass(r)}
           ${spark ? `<div class="wl-popup-spark" role="img" aria-label="${escapeHtml(t('components.reservoirLevels.popup.sparkline'))}">${spark}</div>` : ''}
           <p class="wl-popup-source">${escapeHtml(t('components.reservoirLevels.source'))} <a href="${RESERVOIR_SOURCE_URL}" target="_blank" rel="noopener noreferrer">NASA ICESat-2 ATL13</a> / <a href="${RESERVOIR_ATL06_SOURCE_URL}" target="_blank" rel="noopener noreferrer">ATL06</a> (NSIDC) · ${escapeHtml(t('components.reservoirLevels.processedWith'))} <a href="${RESERVOIR_PROCESSING_URL}" target="_blank" rel="noopener noreferrer">SlideRule Earth</a></p>
         </div>
       </div>
     `;
+  }
+
+  // Next ICESat-2 crossing of the lake. Orbital pass geometry, so absent unless Orbital Watch is on;
+  // filled in by hydrateReservoirSections once the orbital catalog resolves.
+  private renderReservoirNextPass(r: ReservoirLevel): string {
+    if (!ORBITAL_WATCH_ENABLED || !STRATEGIC_RESERVOIR_SITES.some(site => site.id === r.id)) return '';
+    return `<div class="wl-next-pass" data-wl-next-pass="${escapeHtml(r.id)}">
+      <span class="wl-next-pass-label">${escapeHtml(t('components.reservoirLevels.nextPass.label'))}</span>
+      <span class="wl-next-pass-value">${escapeHtml(t('components.reservoirLevels.nextPass.loading'))}</span>
+    </div>`;
+  }
+
+  // Strategic reservoir level beside a dam-related event at the same site.
+  private renderReservoirSiteContext(lat: number, lon: number, text: string): string {
+    const site = reservoirAtSite(lat, lon, text);
+    if (!site) return '';
+    return `<div class="popup-section wl-site-context" data-wl-site-context="${escapeHtml(site.id)}">
+      <span class="section-label">${escapeHtml(t('components.reservoirLevels.siteContext.label'))}</span>
+      <div class="wl-site-context-name">${escapeHtml(site.name)}</div>
+      <div class="wl-site-context-level">${escapeHtml(t('components.reservoirLevels.nextPass.loading'))}</div>
+    </div>`;
+  }
+
+  private hydrateReservoirSections(popup: HTMLElement): void {
+    const nextPass = popup.querySelector<HTMLElement>('[data-wl-next-pass]');
+    const site = popup.querySelector<HTMLElement>('[data-wl-site-context]');
+    const locale = getLocale();
+    if (nextPass) {
+      const id = nextPass.dataset.wlNextPass!;
+      void loadReservoirNextPasses(STRATEGIC_RESERVOIR_SITES).then((passes) => {
+        const value = nextPass.querySelector('.wl-next-pass-value');
+        if (!value || !nextPass.isConnected) return;
+        const pass = passes?.get(id);
+        value.textContent = pass ? reservoirNextPassText(pass, t, locale) : t('components.reservoirLevels.nextPass.unavailable');
+      });
+    }
+    if (site) {
+      const id = site.dataset.wlSiteContext!;
+      void loadReservoirLevelsById().then((levels) => {
+        const line = site.querySelector('.wl-site-context-level');
+        if (!line || !site.isConnected) return;
+        const level = levels.get(id);
+        line.textContent = level ? reservoirLevelContext(level, { t, locale, nowMs: Date.now() }) : t('components.reservoirLevels.unavailable');
+      });
+    }
   }
 
   private renderStorageFacilityPopup(facility: StorageFacilityPopupData): string {
@@ -3913,6 +3966,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
             <span class="stat-value">${escapeHtml(timeAgo)}</span>
           </div>` : ''}
         </div>
+        ${this.renderReservoirSiteContext(event.latitude, event.longitude, `${event.title} ${event.category} ${event.locationName}`)}
         ${relatedHtml}
         ${safeUrl ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer nofollow" class="popup-link">${t('popups.source')} →</a>` : ''}
       </div>

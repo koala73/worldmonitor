@@ -40,7 +40,7 @@ it.each([401, 403])('clears prior observations through the actual MCP HTTP %i ca
   } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
 });
 describe('qualified country source to rendered view and context', () => {
-  it('shows the same populated 1/4/3/2 and top three through website and native generated adapters', async () => {
+  it('shows the same populated 1/4/3/3 and top three through website and native generated adapters', async () => {
     const outcomes = qualifiedFixtureOutcomes();
     const envelope = (family: string) => ({ countryCode: 'IR', family, windowIndex: 0, outcomeJson: JSON.stringify(outcomes.find(row => `COUNTRY_SIGNAL_FAMILY_${row.family.toUpperCase()}` === family)) });
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
@@ -53,26 +53,26 @@ describe('qualified country source to rendered view and context', () => {
     const signal = new AbortController().signal;
     const [a, b] = await Promise.all([loadQualifiedCountrySignals(website, 'IR', signal, military()), loadQualifiedCountrySignals(native, 'IR', signal, military())]);
     expect(a.details).toEqual(b.details);
-    expect(a.details).toMatchObject({ critical: 1, high: 4, medium: 3, low: 2 });
+    expect(a.details).toMatchObject({ critical: 1, high: 4, medium: 3, low: 3 });
     const context = projectQualifiedCountrySignalContext(b);
-    expect(context.details).toMatchObject({ critical: 1, high: 4, medium: 3, low: 2 });
+    expect(context.details).toMatchObject({ critical: 1, high: 4, medium: 3, low: 3 });
     expect(context.details?.recentHigh.map(row => row.description.text)).toEqual(b.details?.recentHigh.map(row => row.description));
     expect(context.families.map(row => row.includedObservations)).toEqual(b.families.map(row => row.observations.length));
     expect(new TextEncoder().encode(JSON.stringify(context)).length).toBeLessThan(16384);
-    expect(calls).toHaveLength(8);
+    expect(calls).toHaveLength(9);
     const panels = [a, b].map(value => {
       const panel = new CountryDeepDivePanel();
       Reflect.set(panel, 'currentCode', 'IR');
       const body = document.createElement('div'); Reflect.set(panel, 'signalsBody', body);
       panel.updateSignals(countrySignalsFromMilitary('IR'));
       panel.updateQualifiedCountrySignals(value);
-      expect(body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Critical1High4Moderate3Low2');
+      expect(body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Critical1High4Moderate3Low3');
       expect(body.querySelectorAll('.cdp-signal-item')).toHaveLength(3);
       expect(body.querySelector('.cdp-imagery-evidence .cdp-imagery-item')?.textContent).toContain('Imagery statistics changed at Controlled watched site: raised by Sentinel-1A scene 2026-10-05, confirmed by Sentinel-1C scene 2026-10-17');
       expect(panel.getQualifiedCountrySignals()?.details).toEqual(value.details);
       expect(body.textContent).toContain('not a 24-hour total');
       panel.updateSignals(countrySignalsFromMilitary('IR'));
-      expect(body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Critical1High4Moderate3Low2');
+      expect(body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Critical1High4Moderate3Low3');
       return { panel, text: body.textContent };
     });
     expect(panels[0]!.text).toBe(panels[1]!.text);
@@ -90,7 +90,7 @@ describe('qualified country source to rendered view and context', () => {
     expect(value.details?.critical).toBe(0);
     signal.abort();
     await expect(loadQualifiedCountrySignals(source, 'IR', signal.signal, military())).rejects.toThrow();
-    expect(COUNTRY_SIGNAL_FAMILIES).toHaveLength(8);
+    expect(COUNTRY_SIGNAL_FAMILIES).toHaveLength(9);
   });
   it('bounds the website body before generated decoding and cancels an overflowing stream', async () => {
     let cancelled = false;
@@ -144,6 +144,42 @@ describe('satellite imagery block in the country signals section', () => {
     const unavailable = render(unavailableCountrySignal('IR', 'imagery', 'Change scoring is not yet published for this country\'s watched sites.'));
     expect(unavailable.body.querySelector('.cdp-imagery-evidence')).toBeNull();
     expect(unavailable.body.textContent).toContain('imagery: unavailable');
+    for (const { panel } of [empty, unavailable]) panel.hide();
+  });
+});
+
+describe('water levels block in the country signals section', () => {
+  const render = (water: ReturnType<typeof qualifiedFixtureOutcomes>[number]) => {
+    const panel = new CountryDeepDivePanel();
+    Reflect.set(panel, 'currentCode', 'IR');
+    const body = document.createElement('div'); Reflect.set(panel, 'signalsBody', body);
+    const outcomes = qualifiedFixtureOutcomes().map(row => row.family === 'water' ? water : row);
+    panel.updateQualifiedCountrySignals(projectQualifiedCountrySignals('IR', outcomes));
+    return { panel, body };
+  };
+  const beyond = () => qualifiedFixtureOutcomes().find(row => row.family === 'water')!;
+
+  it('lists reservoirs beyond their seasonal baseline with the pass date and the score exclusion, and clears it', () => {
+    const { panel, body } = render(beyond());
+    const block = body.querySelector('.cdp-water-evidence')!;
+    expect(block.querySelectorAll('.cdp-imagery-item')).toHaveLength(1);
+    expect(block.textContent).toContain('Karkheh Dam: water level 6.4 m below its seasonal baseline');
+    expect(block.textContent).toContain('Measured 2026-09-06');
+    expect(block.textContent).toContain('not a live reading');
+    expect(block.textContent).toContain('Not an input to the Country Instability Index');
+    expect(block.textContent).not.toContain('Lake Urmia');
+    expect(body.querySelector('.cdp-imagery-evidence')?.textContent).not.toContain('Karkheh');
+    panel.clearQualifiedCountrySignals();
+    expect(body.querySelector('.cdp-water-evidence')).toBeNull();
+    panel.hide();
+  });
+
+  it('says none is beyond the baseline when observed empty, and shows no block while unavailable', () => {
+    const empty = render({ ...beyond(), observations: [], matchedRows: 0, sampledRows: 0 });
+    expect(empty.body.querySelector('.cdp-water-evidence')?.textContent).toContain('No strategic reservoir in this country is beyond its seasonal baseline');
+    const unavailable = render(unavailableCountrySignal('IR', 'water', 'Strategic Water Levels snapshot unavailable.'));
+    expect(unavailable.body.querySelector('.cdp-water-evidence')).toBeNull();
+    expect(unavailable.body.textContent).toContain('water: unavailable');
     for (const { panel } of [empty, unavailable]) panel.hide();
   });
 });

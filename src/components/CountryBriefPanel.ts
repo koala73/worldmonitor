@@ -249,6 +249,7 @@ export interface CountryBriefPanel {
   updateChinaCountrySummary?(data: ChinaCountrySummaryData): void;
   updateCountryFacts?(data: CountryFactsData): void;
   updateEnergyProfile?(data: CountryEnergyProfileData): void;
+  updateReservoirContext?(code: string, reservoirs: import('@/services/climate').ReservoirLevel[]): void;
   updateMaritimeActivity?(data: CountryPortActivityData): void;
   updateTradeExposure?(data: GetCountryChokepointIndexResponse | null, sectors?: SectorExposureSummary[]): void;
   maximize?(): void;
