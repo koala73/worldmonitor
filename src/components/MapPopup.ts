@@ -2366,6 +2366,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
         if (!value || !nextPass.isConnected) return;
         const pass = passes?.get(id);
         value.textContent = pass ? reservoirNextPassText(pass, t, locale) : t('components.reservoirLevels.nextPass.unavailable');
+        this.clampPopupToViewport();
       });
     }
     if (site) {
@@ -2377,6 +2378,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
         if (!level) { line.textContent = t('components.reservoirLevels.unavailable'); return; }
         site.querySelector('.wl-site-context-name')?.remove();
         line.replaceWith(reservoirCard(level, { t, locale, nowMs: Date.now() }, { compact: true }));
+        this.clampPopupToViewport();
       });
     }
   }
