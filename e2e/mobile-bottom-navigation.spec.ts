@@ -242,17 +242,22 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await expect(settings).not.toHaveClass(/active/);
   });
 
-  test('Back with unsaved Settings changes opens one responsive confirm', async ({ page }) => {
+  test('Back with unsaved Settings changes returns to the list, then opens one responsive confirm', async ({ page }) => {
     await page.locator('[data-mobile-tab="more"]').click();
     await page.locator('#mobileMenuSettings').click();
     const settings = page.locator('#unifiedSettingsModal');
     await expect(settings).toHaveClass(/active/);
 
-    await page.locator('#us-tab-panels').click();
+    await page.locator('[data-settings-nav="panels"]').click();
     await page.locator('.panel-toggle-item:not(.pro-locked)').first().click();
     await page.evaluate(() => history.back());
 
     const confirm = page.locator('.confirm-dialog-overlay');
+    await expect(page.locator('[data-settings-home]')).toBeVisible();
+    await expect(confirm).toHaveCount(0);
+    await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBe('settings');
+    await page.evaluate(() => history.back());
+
     await expect(confirm).toHaveCount(1);
     await expect(confirm).toHaveClass(/active/);
     await page.evaluate(() => history.back());
@@ -270,17 +275,43 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await page.locator('#mobileMenuSettings').click();
     const settings = page.locator('#unifiedSettingsModal');
     await expect(settings).toHaveClass(/active/);
-    await page.locator('#us-tab-panels').click();
+    await page.locator('[data-settings-nav="panels"]').click();
     await page.locator('.panel-toggle-item:not(.pro-locked)').first().click();
 
     await page.locator('[data-mobile-tab="search"]').click();
     await expect(page.locator('.confirm-dialog-overlay')).toHaveCount(1);
     await expect(settings).toHaveClass(/active/);
     await expect(page.locator('.search-overlay.search-mobile')).toHaveCount(0);
-    await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBe('settings');
+    await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBe('settings-section');
     await page.keyboard.press('Escape');
     await expect(page.locator('.confirm-dialog-overlay')).toHaveCount(0);
     await expect(settings).toHaveClass(/active/);
+    await expect(page.locator('#us-page-panels')).toBeVisible();
+  });
+
+  test('a primary tab closes Settings from a page without leaving its entries behind', async ({ page }) => {
+    // Navigation API index: the position in session history, so a leftover
+    // entry shows up even after the manager strips its marker.
+    const historyIndex = () => page.evaluate(() => (window as unknown as { navigation: { currentEntry: { index: number } } }).navigation.currentEntry.index);
+    const baseline = await historyIndex();
+    const settings = page.locator('#unifiedSettingsModal');
+    await page.locator('[data-mobile-tab="more"]').click();
+    await page.locator('#mobileMenuSettings').click();
+    await page.locator('[data-settings-nav="about"]').click();
+    await expect.poll(historyIndex).toBe(baseline + 2);
+
+    await page.locator('[data-mobile-tab="today"]').click();
+    await expect(settings).not.toHaveClass(/active/);
+    await expect.poll(historyIndex).toBe(baseline);
+
+    await page.locator('[data-mobile-tab="more"]').click();
+    await page.locator('#mobileMenuSettings').click();
+    await page.locator('[data-settings-nav="about"]').click();
+    await page.locator('[data-mobile-tab="search"]').click();
+    await expect(page.locator('.search-overlay.search-mobile')).toHaveCount(1);
+    await expect(settings).not.toHaveClass(/active/);
+    await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBe('search');
+    await expect.poll(historyIndex).toBe(baseline + 1);
   });
 
   test('reveals an enabled alert panel and reports when none are enabled', async ({ page }) => {
