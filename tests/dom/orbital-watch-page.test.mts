@@ -73,7 +73,6 @@ function mounted(state?: OrbitalWatchState, returnFocusTo: HTMLElement | null = 
   return page;
 }
 
-const page = () => pages[pages.length - 1]!;
 const sheet = () => document.querySelector<HTMLElement>('[role="dialog"]')!;
 const text = () => sheet().textContent ?? '';
 const sectionOf = (id: string) => sheet().querySelector<HTMLElement>(`[data-section="${id}"]`)!;
@@ -103,12 +102,11 @@ const click = (selector: string) => sheet().querySelector<HTMLElement>(selector)
 const progress = (settled: EvidenceProgress['settled'], pendingProfiles: EvidenceProgress['pendingProfiles'], passes: PointPass[]): EvidenceProgress =>
   ({ settled, pendingProfiles, evidence: evidence(passes, { status: 'partial' }) });
 
-/** Archive image fetches: the page paints each one from a blob: URL, which `sourceOf` maps back. */
+/** Archive image fetches: the page paints each one from a blob: URL. */
 const failing = new Set<string>();
 const fetched: string[] = [];
 const sources: string[] = [];
 const revoked = new Set<string>();
-const sourceOf = (src: string | null) => (src?.startsWith('blob:orbital/') ? sources[Number(src.slice(13))]! : src);
 const settle = async () => { for (let i = 0; i < 4; i++) await new Promise((resolve) => setTimeout(resolve, 0)); };
 
 beforeAll(async () => {
@@ -167,7 +165,7 @@ describe('imagery evidence sheet', () => {
     mounted(answered(tiered().all));
     for (const height of ['half', 'full', 'collapsed']) {
       expect(sheet().dataset.height).toBe(height);
-      expect(sheet().querySelector('.ies-privacy-line')!.hidden).toBe(false);
+      expect(sheet().querySelector<HTMLElement>('.ies-privacy-line')!.hidden).toBe(false);
       click('[data-action="height"]');
     }
     expect(sheet().dataset.height).toBe('half');
