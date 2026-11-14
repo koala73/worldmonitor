@@ -26,6 +26,7 @@ import type { MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/mat
 import type { OrbitalTarget, PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
 import { openOrbitalShareLink, openOrbitalWatch, openOrbitalWatchSearch, type OrbitalTrackSurface } from '@/app/orbital-watch';
 import { watchOrbitalRoute } from '@/app/orbital-route';
+import { takeOrbitalShareLink } from '@/app/orbital-share-link';
 import { formatOrbitalTime, getOrbitalDisplayZone, setOrbitalDisplayZone } from '@/components/OrbitalWatchPage';
 import fixture from '../fixtures/orbital/celestrak-gp-2026-11-13.json';
 
@@ -276,7 +277,7 @@ describe('replayed pass ground track', () => {
     }
   });
 
-  it('rounds a finer route it opens to the share link\'s 0.01 degrees, without a history entry', async () => {
+  it('rewrites a finer route at load as the share link, so only the share link opens it', () => {
     history.replaceState(null, '', '/dashboard?view=global#orbital=25.1120,55.1390&view=full');
     const entries = history.length;
     const unwatch = watchOrbitalRoute(() => surface);
@@ -284,7 +285,21 @@ describe('replayed pass ground track', () => {
       expect(location.hash).toBe('#orbital=25.11,55.14&view=full');
       expect(location.search).toBe('?view=global');
       expect(history.length).toBe(entries);
+      expect(takeOrbitalShareLink()).toEqual({ point: { lat: 25.11, lon: 55.14 }, pass: null, view: 'full' });
+    } finally {
+      unwatch();
+      history.replaceState(null, '', '/');
+    }
+  });
+
+  it('opens a finer route followed in the tab at the share link\'s 0.01 degrees', async () => {
+    history.replaceState(null, '', '/dashboard?view=global');
+    const unwatch = watchOrbitalRoute(() => surface);
+    try {
+      location.hash = 'orbital=25.1120,55.1390&view=full';
       await vi.waitFor(() => expect(sheet().dataset.view).toBe('full'));
+      expect(location.hash).toBe('#orbital=25.11,55.14&view=full');
+      expect(sheet().querySelector('.ow-place')?.textContent).toContain('25.110°N 55.140°E');
     } finally {
       unwatch();
       document.querySelector<HTMLButtonElement>('.ow-close')?.click();

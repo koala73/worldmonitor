@@ -26,22 +26,24 @@ export function formatOrbitalRoute(point: GeoPoint, view: OrbitalRouteView): str
   return `#${buildOrbitalShareFragment(point, null, view)}`;
 }
 
-/** A route followed from an older or hand-written link is rewritten at the share link's precision. */
-function roundRouteInPlace(route: OrbitalRoute): void {
+/** A route followed from an older or hand-written link is rewritten at the share link's precision, and returned as written. */
+function roundRouteInPlace(route: OrbitalRoute): OrbitalRoute {
   const rounded = formatOrbitalRoute(route.point, route.view);
-  if (window.location.hash === rounded) return;
-  const url = new URL(window.location.href);
-  url.hash = rounded;
-  try {
-    history.replaceState(history.state, '', url.toString());
-  } catch {
-    // A sandboxed or file document can refuse; the lookup still opens.
+  if (window.location.hash !== rounded) {
+    const url = new URL(window.location.href);
+    url.hash = rounded;
+    try {
+      history.replaceState(history.state, '', url.toString());
+    } catch {
+      // A sandboxed or file document can refuse; the lookup still opens.
+    }
   }
+  return parseOrbitalRoute(rounded) ?? route;
 }
 
 function applyRoute(map: () => OrbitalTrackSurface | null): void {
-  const route = parseOrbitalRoute(window.location.hash);
-  if (route) roundRouteInPlace(route);
+  const parsed = parseOrbitalRoute(window.location.hash);
+  const route = parsed && roundRouteInPlace(parsed);
   void import('@/app/orbital-watch').then(({ openOrbitalWatch, leaveOrbitalFullView }) => {
     if (route) openOrbitalWatch(route.point, document.getElementById('mapContainer'), route.view, map());
     else leaveOrbitalFullView();
@@ -50,9 +52,10 @@ function applyRoute(map: () => OrbitalTrackSurface | null): void {
 
 /** Opens the lookup when the page loads or navigates to an orbital route. */
 export function watchOrbitalRoute(map: () => OrbitalTrackSurface | null = () => null): () => void {
-  // A share link (0.01-degree point, optional pass) is taken by App once the map is up, so the
-  // first read here only restores the full view's own route.
-  if (parseOrbitalRoute(window.location.hash) && !parseOrbitalShareFragment(window.location.hash)) applyRoute(map);
+  // A share link (0.01-degree point, optional pass) is taken by App once the map is up. A finer
+  // route from an older link is rewritten as that share link here, so App opens it once.
+  const initial = parseOrbitalRoute(window.location.hash);
+  if (initial && !parseOrbitalShareFragment(window.location.hash)) roundRouteInPlace(initial);
   let routed = parseOrbitalRoute(window.location.hash) !== null;
   const onHashChange = () => {
     const next = parseOrbitalRoute(window.location.hash) !== null;
