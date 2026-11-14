@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
-import { PASS_WINDOW_MAX_DAYS, findPasses, groundTrack, parseOrbitElements } from '../shared/orbital/pass-geometry.js';
+import { ORBIT_ELEMENTS_MAX_AGE_DAYS, PASS_WINDOW_MAX_DAYS, findPasses, groundTrack, parseOrbitElements } from '../shared/orbital/pass-geometry.js';
 import type { GeoPoint, OmmRecord, OrbitElements, Pass } from '../shared/orbital/pass-geometry.js';
 import { isLandOrCoast } from '../shared/orbital/coverage.js';
 import { matchSensorProfile } from '../shared/orbital/sensor-profiles.js';
@@ -128,7 +128,6 @@ describe('pass geometry rules', () => {
     assert.throws(search(FIXTURE_NOW, Infinity), RangeError);
     assert.throws(search(FIXTURE_NOW, Number.NaN), RangeError);
     assert.throws(search(2 ** 68, 2 ** 68 + HOUR), RangeError);
-    assert.doesNotThrow(search(8.64e15 - HOUR, 8.64e15));
     assert.throws(search(FIXTURE_NOW, FIXTURE_NOW - HOUR), RangeError);
     assert.throws(search(FIXTURE_NOW - 7 * DAY, FIXTURE_NOW + 365 * DAY), RangeError);
     assert.doesNotThrow(search(FIXTURE_NOW - 7 * DAY, FIXTURE_NOW - 7 * DAY + PASS_WINDOW_MAX_DAYS * DAY));
@@ -137,6 +136,24 @@ describe('pass geometry rules', () => {
     assert.throws(() => groundTrack(elements, { start: FIXTURE_NOW, end: FIXTURE_NOW + HOUR }, 0), RangeError);
     assert.throws(() => groundTrack(elements, { start: FIXTURE_NOW, end: FIXTURE_NOW + HOUR }, 1e-7), RangeError);
     assert.throws(() => groundTrack(elements, { start: FIXTURE_NOW, end: FIXTURE_NOW + HOUR }, Number.NaN), RangeError);
+  });
+
+  it('rejects a window too far from the element epoch before propagating to it', () => {
+    const reach = (ORBIT_ELEMENTS_MAX_AGE_DAYS + PASS_WINDOW_MAX_DAYS) * DAY;
+    for (const name of ['SENTINEL-2B', 'GOES 19']) {
+      const { elements, profile } = satellite(name);
+      const epochMs = elements.epochMs;
+      const search = (start: number, end: number) => () =>
+        findPasses({ elements, profile, point: paris, window: { start, end }, now: epochMs });
+      const startedMs = performance.now();
+      assert.throws(search(8.64e15 - HOUR, 8.64e15), RangeError, `${name} at the Date limit`);
+      assert.throws(() => groundTrack(elements, { start: 8.64e15 - HOUR, end: 8.64e15 }), RangeError, `${name} track at the Date limit`);
+      assert.ok(performance.now() - startedMs < 100, `${name} rejects without propagating`);
+      assert.throws(search(epochMs + reach - HOUR, epochMs + reach + 1), RangeError, `${name} past the reach`);
+      assert.throws(search(epochMs - reach - 1, epochMs - reach + HOUR), RangeError, `${name} before the reach`);
+      assert.doesNotThrow(search(epochMs + reach - HOUR, epochMs + reach), `${name} at the reach`);
+      assert.doesNotThrow(() => groundTrack(elements, { start: epochMs - reach, end: epochMs - reach + HOUR }), `${name} track at the reach`);
+    }
   });
 
   it('gives Sentinel-1 no likely-imaged pass on the side it does not look', () => {
@@ -210,6 +227,9 @@ describe('pass geometry rules', () => {
     const result = findPasses({ elements, profile, point: paris, window: { start: now - DAY, end: now }, now });
     assert.equal(result.status, 'too-old');
     assert.deepEqual(result.passes, []);
+    const monthLater = elements.epochMs + 30 * DAY;
+    const stale = findPasses({ elements, profile, point: paris, window: { start: monthLater - DAY, end: monthLater }, now: monthLater });
+    assert.equal(stale.status, 'too-old', 'stale elements report too-old rather than throwing');
   });
 
   it('splits an antimeridian-crossing ground track into continuous segments', () => {
