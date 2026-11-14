@@ -6,7 +6,7 @@
  * Status semantics come from scripts/_reservoir-levels.mjs (classifyStatus).
  */
 import type { ReservoirLevel, ReservoirLevelStatus } from '@/services/climate';
-import type { ReservoirNextPass } from '@/services/orbital/reservoir-next-pass';
+import type { ReservoirNextPass } from '@/services/orbital/reservoir-next-pass-expiry';
 import { miniSparkline } from '@/utils/sparkline';
 
 export type Translate = (key: string, params?: Record<string, unknown>) => string;
@@ -293,10 +293,14 @@ export function resampleBaselineByTime(
   points: ReadonlyArray<{ date: string; levelM: number; baselineM?: number }>,
   n = SPARKLINE_SAMPLES,
 ): Array<number | null> {
-  const base = timed(points, (p) => p.baselineM);
-  if (base.length < 2) return [];
+  if (points.filter((p) => Number.isFinite(p.baselineM)).length < 2) return [];
+  // A missing baseline stays NaN, so grid times beside it come out null instead of bridging the gap.
+  const base = points
+    .map((p) => ({ t: Date.parse(p.date), level: p.levelM, v: p.baselineM ?? Number.NaN }))
+    .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.level))
+    .sort((a, b) => a.t - b.t);
   const grid = timeGrid(timed(points, (p) => p.levelM), n);
-  return grid ? interpolateAt(base, grid) : [];
+  return grid ? interpolateAt(base, grid).map((v) => (v != null && Number.isFinite(v) ? v : null)) : [];
 }
 
 /**
