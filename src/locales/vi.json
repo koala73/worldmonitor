@@ -4538,8 +4538,8 @@
     "createAccount": "Tạo tài khoản",
     "freeReason": "Miễn phí: lưu bố cục, theo dõi quốc gia, cảnh báo",
     "settings": "Cài đặt",
-    "passkeyOffer": {},
-    "planBilling": "Gói & thanh toán"
+    "planBilling": "Gói & thanh toán",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Kết nối MCP",
@@ -5137,6 +5137,17 @@
     "errLoad": "Không thể mở đánh giá chuyến đi. Tải lại trang và thử lại."
   },
   "orbitalWatch": {
+    "track": {
+      "unavailable": "Không thể vẽ vệt mặt đất của lượt bay qua này"
+    },
+    "replay": {
+      "acquisition": "THU NHẬN · {{name}}",
+      "acquired": "ĐÃ CHỤP {{time}} · {{resolution}}",
+      "play": "Phát lại",
+      "pause": "Tạm dừng phát lại",
+      "scrub": "Vị trí phát lại",
+      "reducedMotion": "GIẢM CHUYỂN ĐỘNG"
+    },
     "computing": "Đang tải danh mục vệ tinh…",
     "computingProgress": "Đang tính các lượt bay: {{done}} trên {{total}} vệ tinh",
     "unavailable": "Không thể tải danh mục vệ tinh nên chưa tính được lượt bay nào cho điểm này.",
@@ -5279,6 +5290,82 @@
       "archiveOnly": "Không có lượt bay qua tính toán nào khớp với các ảnh này, nên chúng được hiển thị là cảnh lưu trữ.",
       "zoneShowUtc": "Hiển thị thời gian theo UTC",
       "zoneShowLocal": "Hiển thị thời gian theo giờ địa phương của nơi này"
+    },
+    "viewer": {
+      "open": "Mở trình xem ảnh: {{image}}",
+      "bestView": "Mở góc nhìn tốt nhất: {{name}}, {{time}}",
+      "imageAlt": "Ảnh của {{name}}, {{time}}",
+      "close": "Đóng trình xem ảnh",
+      "northUp": "Phía bắc ở trên",
+      "unreferenced": "Hướng như kho lưu trữ cung cấp; phía bắc không được đánh dấu",
+      "compareDates": "Các ngày khác của bộ sưu tập này",
+      "compareNone": "Không có cảnh nào khác của bộ sưu tập này để so sánh.",
+      "divider": "Vạch chia trước/sau",
+      "searching": "Đang tìm cảnh của nơi này trong {{days}} ngày qua",
+      "historyFailed": "{{archive}} không phản hồi nên thiếu các cảnh trước đó.",
+      "historyTimeout": "{{archive}} không phản hồi kịp nên thiếu các cảnh trước đó.",
+      "loading": "Đang tải khung hình: {{loaded}} / {{total}}",
+      "pause": "Tạm dừng",
+      "resume": "Phát",
+      "next": "Khung sau",
+      "closeLabel": "Đóng",
+      "agoNow": "Vừa xong",
+      "agoHours": "{{count}} giờ trước",
+      "agoDays": "{{count}} ngày trước",
+      "clear": "Quang",
+      "clouded": "Có mây · {{pct}}%",
+      "tabImage": "Ảnh",
+      "tabChange": "Thay đổi",
+      "metaAcquired": "Chụp lúc",
+      "metaDate": "Ngày",
+      "metaPixel": "Điểm ảnh",
+      "metaSpot": "Mây tại điểm",
+      "metaScene": "Mây của cảnh",
+      "metaSun": "Độ cao mặt trời",
+      "showCloudy": "Hiện ngày nhiều mây ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Tua nhanh thời gian",
+      "entry": "Nơi này, qua từng năm",
+      "open": "Mở chuỗi tua nhanh theo năm của nơi này",
+      "searching": "Đang tìm mỗi năm một ảnh quang mây từ 2015 · {{archive}}",
+      "loading": "Đang tải ảnh · {{loaded}} / {{total}}",
+      "failed": "{{archive}} không phản hồi nên thiếu ảnh theo năm.",
+      "timeout": "{{archive}} không phản hồi kịp nên thiếu ảnh theo năm.",
+      "partial": "Số năm bị thiếu vì {{archive}} không phản hồi: {{count}}.",
+      "tooFew": "Ảnh quang mây theo năm của nơi này: {{count}}. Tua nhanh cần {{min}}.",
+      "total": "Ảnh quang mây: {{count}} · mỗi năm một ảnh",
+      "years": "Năm",
+      "share": "Chia sẻ",
+      "method": "Mỗi khung là cùng một ô vuông 6 km từ Sentinel-2, màu tự nhiên. Mỗi năm tìm ở một mùa khác và giữ cảnh ít mây nhất; năm không có cảnh dưới 30% mây sẽ bị bỏ qua."
+    },
+    "passDetail": {
+      "back": "Tất cả lượt bay qua",
+      "altitude": "Độ cao",
+      "offNadir": "Lệch thiên đế",
+      "crossed": "{{name}} bay qua ở độ cao {{altitude}} km, cách {{distance}} km {{direction}}, lúc {{time}}, với tốc độ mặt đất {{speed}} km/s.",
+      "crossedHeading": "{{name}} bay qua ở độ cao {{altitude}} km, cách {{distance}} km {{direction}}, lúc {{time}}, đi về phía {{heading}} với tốc độ mặt đất {{speed}} km/s.",
+      "looking": "Nó nhìn lệch {{deg}}° so với phương thẳng đứng.",
+      "sceneCloud": "Độ che phủ mây của cảnh: {{pct}}%.",
+      "pixelLine": "Điểm ảnh {{m}} m",
+      "swathLine": "Dải quét {{km}} km",
+      "clearestLook": "Ảnh trong nhất",
+      "previous": "Lượt bay trước",
+      "next": "Lượt bay sau",
+      "dir": {
+        "n": "về phía bắc",
+        "ne": "về phía đông bắc",
+        "e": "về phía đông",
+        "se": "về phía đông nam",
+        "s": "về phía nam",
+        "sw": "về phía tây nam",
+        "w": "về phía tây",
+        "nw": "về phía tây bắc"
+      },
+      "heading": {
+        "north": "bắc",
+        "south": "nam"
+      }
     },
     "search": {
       "label": "Tên địa điểm hoặc tọa độ",

@@ -11,13 +11,14 @@ import { readFileSync } from 'node:fs';
 
 const read = (name) => readFileSync(new URL(`../src/styles/${name}`, import.meta.url), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
-const sheets = ['orbital-tokens.css', 'orbital-watch.css'];
+const sheets = ['orbital-tokens.css', 'orbital-watch.css', 'orbital-image-viewer.css'];
 const COLOUR_LITERAL = /#[0-9a-f]{3,8}\b|\brgba?\(|\bhsla?\(/gi;
 
 /** Literal colours with a reason they cannot follow the theme. */
 const ALLOWED = [
   // The ink .time-btn.active and .map-pin-btn.active put on --green.
   { selector: '.ow-tab[aria-selected="true"]', literal: '#0a0a0a' },
+  { selector: '.oiv-tab[aria-selected="true"], .oiv-date[aria-pressed="true"], .oiv-toggle[aria-pressed="true"], .otl-row[aria-current="true"]', literal: '#0a0a0a' },
   // Text drawn straight on satellite imagery, which looks the same in every theme.
   { selector: '.ow-scale', literal: '#fff' },
   { selector: '.ow-scale', literal: '#000' },
@@ -58,5 +59,13 @@ describe('Orbital Watch design tokens', () => {
 
   it('keeps the amber palette out', () => {
     for (const sheet of sheets) assert.doesNotMatch(read(sheet), /f5a524|245,\s*165,\s*36|--ow-accent/i, sheet);
+  });
+
+  it('draws the map overlay (track, swath, reticle, label) in Orbital Watch tokens on every renderer', () => {
+    for (const file of ['DeckGLMap.ts', 'GlobeMap.ts', 'Map.ts']) {
+      const source = readFileSync(new URL(`../src/components/${file}`, import.meta.url), 'utf8');
+      assert.doesNotMatch(source, /f5a524|245,\s*165,\s*36|ecebe7|236,\s*235,\s*231|0b0c0e|11,\s*12,\s*14|--ow-accent/i, file);
+      assert.match(source, /--ow-mark/, `${file} draws the overlay in --ow-mark`);
+    }
   });
 });

@@ -29,6 +29,13 @@ async function decodable(blob: Blob): Promise<Blob> {
   return blob;
 }
 
+/** A failed archive image load, carrying the archive's answer so callers can report it. */
+export class ArchiveImageError extends Error {
+  constructor(readonly failure: ArchiveFailure) {
+    super(`image failed: ${failure.reason}`);
+  }
+}
+
 /**
  * Fetches the first candidate image that loads and decodes, inside one deadline.
  * Archive image URLs carry the point in their path or query, and DebugBear reports

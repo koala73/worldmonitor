@@ -214,7 +214,7 @@ export class CountryIntelManager implements AppModule {
       },
       restore: ({ lat, lon, zoom }) => void this.ctx.map?.setCenter(lat, lon, zoom, { instant: true }),
     });
-    if (ORBITAL_WATCH_ENABLED) this.orbitalRouteUnsubscribe = watchOrbitalRoute();
+    if (ORBITAL_WATCH_ENABLED) this.orbitalRouteUnsubscribe = watchOrbitalRoute(() => this.ctx.map);
     this.lastHadPremium = hasPremiumAccess(getAuthState());
     const syncPremiumAccess = () => this.handlePremiumAccessTransition(hasPremiumAccess(getAuthState()));
     this.authUnsubscribe = subscribeAuthState(syncPremiumAccess);
@@ -356,7 +356,7 @@ export class CountryIntelManager implements AppModule {
         label: t('contextMenu.satellitePasses'),
         action: () => {
           void import('@/app/orbital-watch').then(({ openOrbitalWatch }) =>
-            openOrbitalWatch({ lat: payload.lat, lon: payload.lon }, document.getElementById('mapContainer')));
+            openOrbitalWatch({ lat: payload.lat, lon: payload.lon }, document.getElementById('mapContainer'), 'sheet', this.ctx.map));
         },
       });
       items.push({ label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) });

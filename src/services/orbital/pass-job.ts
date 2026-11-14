@@ -1,5 +1,6 @@
 import {
   findPasses,
+  groundTrack,
   ORBIT_ELEMENTS_MAX_AGE_DAYS,
   parseOrbitElements,
   type GeoPoint,
@@ -33,11 +34,36 @@ export interface PassJobInput {
   satellites: CatalogSatellite[];
 }
 
+/** Which way the point under the satellite moves at the pass, and how fast across the ground. */
+export interface PassMotion {
+  heading: 'north' | 'south';
+  groundSpeedKmS: number;
+}
+
 export interface PointPass extends Pass {
   tier: PassTier;
   elementsEpochMs: number;
   /** Distance in days between the pass and the epoch of the orbit data it was computed from. */
   orbitAgeDays: number;
+  motion?: PassMotion | null;
+}
+
+const EARTH_RADIUS_KM = 6371;
+const MOTION_STEP_S = 1;
+
+function surfaceDistanceKm(a: GeoPoint, b: GeoPoint): number {
+  const rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad;
+  const dLon = (b.lon - a.lon) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/** Propagates the orbit at the pass and one second later; the two sub-satellite points give the heading and ground speed. */
+export function passMotion(elements: OrbitElements, timeMs: number): PassMotion | null {
+  const [from, to] = groundTrack(elements, { start: timeMs, end: timeMs + MOTION_STEP_S * 1000 }, MOTION_STEP_S).flat();
+  if (!from || !to) return null;
+  return { heading: to.lat >= from.lat ? 'north' : 'south', groundSpeedKmS: surfaceDistanceKm(from, to) / MOTION_STEP_S };
 }
 
 export type SatelliteOutcome =
@@ -122,6 +148,7 @@ function satellitePasses(satellite: CatalogSatellite, input: PassJobInput): { ou
         tier: decidePassTier(pass, profile, null, input.nowMs),
         elementsEpochMs: segment.elements.epochMs,
         orbitAgeDays: Math.abs(pass.timeMs - segment.elements.epochMs) / DAY_MS,
+        motion: passMotion(segment.elements, pass.timeMs),
       });
     }
   }
