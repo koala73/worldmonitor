@@ -184,6 +184,31 @@ describe('SVG focus outline', () => {
     expect(map.state.zoom).toBeLessThan(2);
   });
 
+  it('fits into the visible part of the map and pans so the bounds sit in it, even by the antimeridian', () => {
+    const map = Object.assign(Object.create(MapComponent.prototype), {
+      state: { zoom: 1, pan: { x: 0, y: 0 } },
+      readContainerSize: () => ({ width: 390, height: 300 }),
+      getKnownContainerSize: () => ({ width: 390, height: 300 }),
+      resumeMobileLabelVisibility: vi.fn(),
+      ensureBaseLayerIntact: vi.fn(),
+    });
+    const setCenter = vi.fn((_lat: number, lon: number) => {
+      expect(lon, 'the centre stays inside the one world this map draws').toBeLessThanOrEqual(180);
+      map.state.pan = { x: 7, y: 3 };
+    });
+    const applyTransform = vi.fn();
+    Object.assign(map, { setCenter, applyTransform });
+    const fit = { center: { lat: -16.85, lon: 179.95 }, lonSpan: 60, latSpan: 40 };
+    map.fitFocusBounds(fit, 5);
+    const whole = map.state.zoom;
+    map.fitFocusBounds(fit, 5, { width: 390, height: 150, x: -40, y: -75 });
+    expect(map.state.zoom, 'half the height fits a smaller zoom').toBeLessThan(whole);
+    expect(setCenter).toHaveBeenLastCalledWith(fit.center.lat, fit.center.lon);
+    expect(map.state.pan).toEqual({ x: 7 - 40 / map.state.zoom, y: 3 - 75 / map.state.zoom });
+    expect(applyTransform).toHaveBeenCalledTimes(1);
+  });
+
+
   it('rings missing small-country boundaries at their projected centres and clears them', async () => {
     const d3 = await import('d3');
     const { group } = svgHost(['764', '458']);
@@ -262,7 +287,7 @@ describe('Globe focus outline', () => {
       destroyed: false,
       webglLost: false,
       layers: {},
-      scenarioPolygons: [],
+      scenarioPolygons: [], orbitalFootprintPolygons: [], orbitalSweptPolygons: [],
       focusOutline: null,
       reversedRingCache: new Map(),
       countriesGeoData: { type: 'FeatureCollection', features: ['TH', 'LA', 'FR', 'VN'].map(feature) },
@@ -285,7 +310,7 @@ describe('Globe focus outline', () => {
     const polygonsData = vi.fn();
     const map = Object.assign(Object.create(GlobeMap.prototype), {
       globe: { polygonsData }, initialized: true, destroyed: false, webglLost: false,
-      layers: { ciiChoropleth: true }, scenarioPolygons: [], focusOutline: null,
+      layers: { ciiChoropleth: true }, scenarioPolygons: [], orbitalFootprintPolygons: [], orbitalSweptPolygons: [], focusOutline: null,
       reversedRingCache: new Map(), ciiScoresMap: new Map(), wakeGlobe: vi.fn(),
       countriesGeoData: { type: 'FeatureCollection', features: [boundary] },
     });
@@ -301,7 +326,7 @@ describe('Globe focus outline', () => {
     const polygonsData = vi.fn();
     const map = Object.assign(Object.create(GlobeMap.prototype), {
       globe: { polygonsData },
-      initialized: true, destroyed: false, webglLost: false, layers: {}, scenarioPolygons: [],
+      initialized: true, destroyed: false, webglLost: false, layers: {}, scenarioPolygons: [], orbitalFootprintPolygons: [], orbitalSweptPolygons: [],
       focusOutline: null, reversedRingCache: new Map(), countriesGeoData: null, wakeGlobe: vi.fn(),
     });
     map.setFocusOutline({ chosen: ['TH'], neighbours: [] });

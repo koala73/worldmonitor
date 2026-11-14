@@ -491,7 +491,8 @@
     "climateNews": "气候新闻",
     "fx": "外汇汇率",
     "ukmtoIncidents": "UKMTO事件",
-    "reservoirLevels": "战略水位"
+    "reservoirLevels": "战略水位",
+    "gridDisruptionClock": "美国各州电网停电时钟"
   },
   "commands": {
     "prefixes": {
@@ -3165,6 +3166,57 @@
         "measured": "测量时间",
         "sparkline": "36 个月水位"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "选择州",
+      "unknown": "未知",
+      "customers": "据报停电的用户数",
+      "lastCustomers": "上次报告的停电用户数",
+      "denominatorUnknown": "监测覆盖的用户总数未知",
+      "tracked": "监测覆盖 {{amount}} 户",
+      "dataAge": "距上次报告",
+      "minutes": "{{amount}} 分钟",
+      "hours": "{{amount}} 小时",
+      "warnings": "预警",
+      "recovery": "报告的变化",
+      "decreased": "报告的停电用户减少 {{amount}} 户",
+      "increased": "报告的停电用户增加 {{amount}} 户",
+      "unchanged": "报告的停电用户数无变化",
+      "since": "对比时间",
+      "peakLoad": "已恢复正常峰值负荷的 {{percent}}%",
+      "noComparison": "暂无可供比较的停电用户数。",
+      "history": "近期停电用户统计（{{total}} 条）",
+      "priorNotice": "此前发布的预警",
+      "sources": "预警来源监测情况",
+      "operatorLink": "电网通告请查阅",
+      "issued": "发布于",
+      "until": "到期时间",
+      "noActive": "监测的来源中暂无有效预警。",
+      "unknownWarnings": "目前仅能核实部分预警来源。",
+      "noObservation": "暂无当前停电用户数及监测范围信息。",
+      "loadError": "暂时无法获取电网停电时钟数据。",
+      "retained": "刷新失败，现显示上次收到的报告。",
+      "phase": {
+        "unknown": "影响未知",
+        "monitoring": "监测中",
+        "watch": "关注",
+        "disrupted": "已报告停电",
+        "recovering": "据报正在恢复供电",
+        "restored": "据报已恢复供电"
+      },
+      "kind": {
+        "grid": "电网通告",
+        "weather": "天气预警",
+        "space-weather": "空间天气"
+      },
+      "checks": {
+        "available": "已核实",
+        "unavailable": "暂不可用",
+        "not_monitored": "请直接向电网运营方查询",
+        "stale": "上次核实结果已过时"
+      },
+      "warningAge": "距首条仍有效的预警",
+      "days": "{{amount}} 天"
     }
   },
   "popups": {
@@ -4330,7 +4382,6 @@
     "dataAndCommunity": "数据与社区",
     "theme": "主题",
     "themeDesc": "自动跟随系统偏好。",
-    "themeAuto": "自动（跟随系统）",
     "themeDark": "深色",
     "themeLight": "浅色",
     "mapProvider": "地图图块提供者",
@@ -4389,7 +4440,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "打开国家简报",
-    "copyCoordinates": "复制坐标"
+    "copyCoordinates": "复制坐标",
+    "satellitePasses": "经过此处的卫星"
   },
   "shell": {
     "documentTitle": "World Monitor — 实时全球情报仪表板",
@@ -4486,6 +4538,7 @@
     "createAccount": "创建账户",
     "freeReason": "免费：保存布局、关注国家、获取提醒",
     "settings": "设置",
+    "planBilling": "套餐与计费",
     "passkeyOffer": {}
   },
   "mcp": {
@@ -5082,5 +5135,510 @@
     "errGeneric": "初稿生成失败。请重试。",
     "errDownload": "无法在此处下载文件。请改用打印或另存为 PDF。",
     "errLoad": "无法打开行程评估。请刷新页面后重试。"
+  },
+  "orbitalWatch": {
+    "track": {
+      "unavailable": "无法绘制此次过境的地面轨迹"
+    },
+    "replay": {
+      "acquisition": "采集 · {{name}}",
+      "acquired": "已采集 {{time}} · {{resolution}}",
+      "play": "播放回放",
+      "pause": "暂停回放",
+      "scrub": "回放位置",
+      "reducedMotion": "减弱动态效果"
+    },
+    "computing": "正在加载卫星目录…",
+    "computingProgress": "正在计算过境：{{done}} / {{total}} 颗卫星",
+    "unavailable": "无法加载卫星目录，因此未计算此地点的过境。",
+    "checkingArchives": "正在检查档案库：{{done}} / {{total}} 已响应",
+    "confirmedCount": "已确认影像：{{count}}",
+    "counts": {
+      "mosaics": "每日镶嵌图：{{count}}",
+      "frames": "气象图像：{{count}}",
+      "inRange": "覆盖范围内的过境：{{count}}"
+    },
+    "partial": "{{sources}} 未响应，因此部分过境可能缺少影像。",
+    "stale": "轨道数据已过时。卫星目录已有 {{age}}，过境时间可能有偏差。",
+    "empty": "过去 {{pastDays}} 天内没有已收录的成像卫星经过此地点，未来 {{futureHours}} 小时内也不会经过。",
+    "privacy": "此地点仅保留在你的浏览器中。它只会发送给浏览器直接调用的公共档案库：Earth Search、Microsoft Planetary Computer、NASA GIBS 和 EUMETSAT。按地名搜索是唯一的例外：你输入的地名会发送给地名搜索服务。",
+    "inRange": "覆盖范围内",
+    "tier": {
+      "checking": "正在检查档案库",
+      "confirmed": "已确认影像",
+      "likely": "可能已成像",
+      "opportunity": "即将过境",
+      "dailyMosaic": "在每日镶嵌图中",
+      "withinReach": "覆盖范围内",
+      "capabilityOverhead": "能力过顶",
+      "passedOverhead": "已过顶",
+      "unmatchedImage": "影像无计算过境",
+      "weatherFrame": "气象图像",
+      "unavailable": "不可用"
+    },
+    "row": {
+      "offNadir": "偏离星下点 {{deg}}°",
+      "distance": "距地面轨迹 {{km}} 公里",
+      "orbitAge": "轨道数据已有 {{age}}",
+      "edgeOfSwath": "幅宽边缘",
+      "notInArchive": "档案库中无影像",
+      "archiveUnanswered": "存档未响应",
+      "imageAlt": "{{name}} 影像，{{time}}",
+      "mosaicDays": "存档中的天数：{{count}}",
+      "cadence": "每 {{minutes}} 分钟一帧新图像",
+      "sourceUnavailable": "存档中没有该来源在这些日期的图像。",
+      "imageLoading": "正在加载影像…",
+      "imageFailed": "影像未能加载。档案库可能较慢或无法访问。",
+      "noPreview": "存档中尚无此场景的预览。"
+    },
+    "dailyMosaics": "每日镶嵌图",
+    "weatherFrames": "气象图像",
+    "ui": {
+      "change": "更改",
+      "share": "分享",
+      "shareCopied": "链接已复制",
+      "headline": "过去 {{days}} 天里，{{satellites}}从{{place}}上空经过。",
+      "satellites_other": "{{count}} 颗卫星",
+      "subline_other": "已公开 {{count}} 张图像。",
+      "closestLook": "最近的视角",
+      "replay": "回放",
+      "openFull": "打开完整视图",
+      "previous": "上一张图像",
+      "next": "下一张图像",
+      "passes_other": "次过境",
+      "showAll": "显示全部过境",
+      "noRecentDays": "存档中没有近期日期：{{sources}}",
+      "tab": {
+        "all": "全部",
+        "detailed": "详细",
+        "weather": "天气"
+      },
+      "caption": {
+        "clear": "该点晴朗",
+        "clearSceneCloud": "该点晴朗 · 场景云量 {{pct}}%",
+        "clouded": "有云 · {{pct}}%",
+        "cloudShadow": "云影",
+        "spotNotChecked": "该点未检查云量",
+        "sceneCloud": "场景云量 {{pct}}% · 该点未检查",
+        "radar": "雷达",
+        "dailyMosaic": "每日镶嵌图",
+        "geostationary": "静止卫星全圆盘",
+        "geostationaryCadence": "静止卫星 · 每 {{minutes}} 分钟"
+      },
+      "tile": {
+        "failed": "图像不可用 · {{archive}}",
+        "noPreview": "存档中尚无此场景的预览"
+      },
+      "grid": {
+        "watched": "已拍摄",
+        "watchedDef": "公开存档中有此点的图像。",
+        "likely": "可能已拍摄",
+        "likelyDef": "固定幅宽传感器覆盖了此处；尚未发布图像。",
+        "could": "可能对准过这里",
+        "couldDef": "可转向或商业传感器在可达范围内；运营方未说明是否观测。",
+        "overhead": "上空经过",
+        "overheadDef": "从这里的天空经过，没有成像证据。",
+        "watchedShort": "公开档案中有影像",
+        "likelyShort": "已覆盖，尚无影像",
+        "likelyUnansweredDef": "固定幅宽传感器覆盖了此处；有存档未响应，因此可能存在图像。",
+        "likelyUnansweredShort": "已覆盖，存档未响应",
+        "couldShort": "可指向传感器在范围内",
+        "overheadShort": "过顶，无影像"
+      },
+      "group": {
+        "watched": "已拍摄",
+        "likely": "可能已拍摄",
+        "upcoming": "即将到来",
+        "could": "可能对准过这里",
+        "overhead": "上空经过",
+        "weather_other": "天气来源"
+      },
+      "order": {
+        "closest": "最近的视角，然后最新",
+        "newest": "最新优先",
+        "soonest": "最早优先"
+      },
+      "row": {
+        "cloud": "云量 {{pct}}%",
+        "days_other": "{{count}} 天",
+        "repeats": "该卫星在本组中的 {{count}} 次过境"
+      },
+      "section": {
+        "summary": "摘要",
+        "passes": "过境"
+      },
+      "status": {
+        "objects": "{{count}}颗成像卫星 · CelesTrak GP",
+        "fetched": "获取于 {{time}} · {{ago}}",
+        "sun": "太阳 {{point}} · 太阳直射点"
+      },
+      "step": {
+        "computing": "计算中",
+        "catalogLoading": "目录 · 加载中",
+        "catalog": "目录 · {{count}}颗成像卫星",
+        "propagating": "正在推算轨道 · {{done}} / {{total}}",
+        "archives": "存档 · {{done}} / {{total}} 已响应",
+        "matching": "正在将场景与 {{passes}} 次过境匹配",
+        "window": "7 天窗口 · {{start}} → {{end}}",
+        "failed": "失败",
+        "note": "Planetary Computer 和 NASA GIBS 按需生成图像，因此此步骤可能需要几秒钟。"
+      },
+      "privacyLine": "该点仅保留在你的浏览器中",
+      "privacyHow": "原理",
+      "sources": "来源",
+      "archiveScene": "档案场景",
+      "archiveOnly": "没有计算出的过境与这些影像匹配，因此显示为档案场景。",
+      "zoneShowUtc": "以 UTC 显示时间",
+      "zoneShowLocal": "以此地的当地时间显示时间"
+    },
+    "viewer": {
+      "open": "打开图像查看器：{{image}}",
+      "bestView": "打开最佳视图：{{name}}，{{time}}",
+      "imageAlt": "{{name}} 的图像，{{time}}",
+      "close": "关闭图像查看器",
+      "northUp": "上方为北",
+      "unreferenced": "方向为档案原始方向，未标注北向",
+      "compareDates": "此数据集的其他日期",
+      "compareNone": "此数据集没有其他可比较的影像。",
+      "divider": "前后对比分隔线",
+      "searching": "正在查找此地点过去 {{days}} 天的影像",
+      "historyFailed": "{{archive}} 未响应，因此缺少较早的影像。",
+      "historyTimeout": "{{archive}} 未及时响应，因此缺少较早的影像。",
+      "loading": "正在加载帧：{{loaded}} / {{total}}",
+      "pause": "暂停",
+      "resume": "播放",
+      "next": "下一帧",
+      "closeLabel": "关闭",
+      "agoNow": "刚刚",
+      "agoHours": "{{count}} 小时前",
+      "agoDays": "{{count}} 天前",
+      "clear": "晴空",
+      "clouded": "有云 · {{pct}}%",
+      "tabImage": "影像",
+      "tabChange": "变化",
+      "metaAcquired": "拍摄",
+      "metaDate": "日期",
+      "metaPixel": "像素",
+      "metaSpot": "该点云量",
+      "metaScene": "场景云量",
+      "metaSun": "太阳高度角",
+      "showCloudy": "显示多云日期（{{count}}）"
+    },
+    "timelapse": {
+      "heading": "延时动画",
+      "entry": "此地逐年变化",
+      "open": "打开此地的逐年延时动画",
+      "searching": "正在查找 2015 年以来每年一幅晴空影像 · {{archive}}",
+      "loading": "正在加载影像 · {{loaded}} / {{total}}",
+      "failed": "{{archive}} 未响应，因此缺少逐年影像。",
+      "timeout": "{{archive}} 未及时响应，因此缺少逐年影像。",
+      "partial": "因 {{archive}} 未响应而缺少的年份：{{count}}。",
+      "tooFew": "此地的晴空年度影像：{{count}} 幅。延时动画需要 {{min}} 幅。",
+      "total": "晴空影像 {{count}} 幅 · 每年一幅",
+      "years": "年份",
+      "share": "分享",
+      "method": "每一帧都是 Sentinel-2 拍摄的同一块 6 公里见方区域，采用自然色。每年在不同季节中查找并保留云量最少的场景；没有云量低于 30% 场景的年份将被略去。"
+    },
+    "passDetail": {
+      "back": "全部过境",
+      "altitude": "高度",
+      "offNadir": "偏离天底角",
+      "crossed": "{{name}} 于 {{time}} 在 {{altitude}} 公里高空经过，位于此地{{direction}} {{distance}} 公里处，地面速度 {{speed}} 公里/秒。",
+      "crossedHeading": "{{name}} 于 {{time}} 在 {{altitude}} 公里高空经过，位于此地{{direction}} {{distance}} 公里处，向{{heading}}移动，地面速度 {{speed}} 公里/秒。",
+      "looking": "其观测方向偏离垂直向下 {{deg}}°。",
+      "sceneCloud": "场景云量：{{pct}}%。",
+      "pixelLine": "{{m}} 米像素",
+      "swathLine": "{{km}} 公里幅宽",
+      "clearestLook": "最晴朗的影像",
+      "previous": "上一次过境",
+      "next": "下一次过境",
+      "dir": {
+        "n": "以北",
+        "ne": "东北方",
+        "e": "以东",
+        "se": "东南方",
+        "s": "以南",
+        "sw": "西南方",
+        "w": "以西",
+        "nw": "西北方"
+      },
+      "heading": {
+        "north": "北",
+        "south": "南"
+      }
+    },
+    "search": {
+      "label": "地名或坐标",
+      "placeholder": "地名或 48.8584, 2.2945",
+      "submit": "搜索",
+      "locate": "使用我的位置",
+      "hint": "坐标和你的位置只保留在此浏览器中。你搜索的地名会发送给 WorldMonitor 和 OpenStreetMap 的 Nominatim。",
+      "results": "匹配的地点",
+      "searching": "正在搜索…",
+      "tooShort": "请输入至少两个字符，或类似 48.8584, 2.2945 的坐标。",
+      "invalidCoordinates": "这些坐标超出了地球范围。纬度范围为 -90 到 90，经度范围为 -180 到 180。",
+      "failed": "地名搜索暂时不可用。坐标和地图仍可使用。",
+      "noResults": "没有与该名称匹配的地点。",
+      "locating": "正在获取你的位置…",
+      "locationDenied": "位置权限被拒绝。请搜索地点或在地图上右键单击。",
+      "locationUnavailable": "无法获取你的位置。请搜索地点或在地图上右键单击。",
+      "idle": "按名称或坐标搜索地点、使用你的位置，或在地图上右键单击，查看哪些卫星经过了该地上空。"
+    },
+    "share": {
+      "copy": "复制分享链接",
+      "copied": "链接已复制",
+      "copyManually": "请复制下方链接",
+      "link": "分享链接",
+      "dismiss": "关闭",
+      "passOutsideWindow": "链接中的过境不在当前时间窗口内，因此未选中任何过境。",
+      "passNotFound": "在重新计算的过境中未找到链接中的过境，因此未选中任何过境。"
+    }
+  },
+  "settings": {
+    "back": "返回设置",
+    "signIn": {
+      "label": "登录",
+      "desc": "同步设置并管理您的方案"
+    },
+    "summary": {
+      "themeAuto": "自动",
+      "count": "{{on}}/{{total}}"
+    },
+    "groups": {
+      "dashboard": "仪表板",
+      "preferences": "偏好设置",
+      "developer": "开发者",
+      "app": "应用"
+    },
+    "sections": {
+      "account": "账户",
+      "map": "地图",
+      "ai": "AI 与分析",
+      "video": "视频与流媒体",
+      "apiKeys": "API 密钥",
+      "embeds": "嵌入",
+      "aiAgents": "AI 代理 (MCP)",
+      "sync": "同步、导入与导出",
+      "about": "关于"
+    },
+    "descriptions": {
+      "panels": "显示、隐藏和重新排序",
+      "sources": "地区和数据源",
+      "notifications": "频道和警报规则",
+      "display": "主题、字体和语言",
+      "map": "提供商、主题和地球仪",
+      "ai": "模型、记忆和框架",
+      "video": "质量和自动播放",
+      "apiKeys": "World Monitor API 密钥",
+      "embeds": "用于您网站的 widget",
+      "aiAgents": "已连接的 MCP 客户端",
+      "about": "网站链接、条款和隐私"
+    },
+    "signOut": "退出登录",
+    "signOutFailed": "无法退出登录。请重试。",
+    "search": {
+      "empty": "没有匹配的设置"
+    },
+    "account": {
+      "intro": "查看您当前的套餐，管理支付方式、发票或取消订阅。",
+      "planFree": "免费版",
+      "planPremium": "高级版",
+      "external": {
+        "heading": "高级版访问权限",
+        "desc": "此访问权限不通过您的 WorldMonitor 账户计费。此处无法使用支付方式或查看发票。"
+      },
+      "checking": {
+        "heading": "正在检查您的套餐…",
+        "desc": "通常只需片刻。"
+      },
+      "status": {
+        "cancelScheduled": "已计划取消 -- 访问权限保留至 {{date}}",
+        "renews": "续订时间：{{date}}",
+        "onHold": "已暂停 -- 请更新支付方式",
+        "cancelled": "已取消 -- 访问权限保留至 {{date}}",
+        "expired": "已过期",
+        "unknown": "请查看\"管理计费\"了解您的当前套餐详情。",
+        "ownerManaged": "计费由您的套餐所有者管理。"
+      },
+      "upgradeToBusiness": "升级至 Business",
+      "unavailable": {
+        "heading": "套餐状态不可用",
+        "desc": "我们无法验证您的当前套餐。请重试或在新标签页中查看套餐。"
+      },
+      "free": {
+        "heading": "WorldMonitor 免费版",
+        "desc": "您当前的套餐是免费版。升级以获取全部面板、AI 分析和优先级数据刷新。"
+      },
+      "portal": {
+        "openFailed": "无法打开计费门户。请允许弹出窗口并重试。",
+        "unavailable": "计费门户不可用。请发送邮件至 support@worldmonitor.app 获取帮助。"
+      },
+      "deletion": {
+        "heading": "删除账户",
+        "desc": "永久删除此 World Monitor 账户。订阅立即取消，剩余预付时长不予退款。API 密钥、嵌入密钥和 MCP 令牌将停止工作。会计、纠纷处理和依法请求所需的计费记录将连同其中的客户联系方式一并保留；这些记录将不再关联您的登录账户，但支付服务商在删除前写入的 webhook 日志仍保留投递时附带的标识符。此设备上的仪表板偏好设置和桌面密钥链（系统凭据存储）中的机密信息不会被远程清除。",
+        "dialogTitle": "删除此账户?",
+        "dialogCopy": "此操作无法撤销。订阅将取消，密钥立即停止工作，计费记录将为会计、纠纷处理和依法请求而保留——包括其中的联系方式。之后请在其他设备上登出，并清除此设备的网站数据——服务器无法代为执行这些操作。",
+        "phraseLabel": "输入 {{phrase}} 以确认",
+        "deleted": "账户已删除。请在其他设备上登出，之后清除此设备的网站数据。",
+        "failed": "账户删除失败。请重试。"
+      },
+      "seats": {
+        "used": "已使用 {{used}} / {{cap}}",
+        "invite": "邀请",
+        "inviting": "邀请中...",
+        "remove": "移除",
+        "removing": "移除中...",
+        "inviteSent": "邀请已发送",
+        "alreadyInvited": "已邀请"
+      },
+      "businessSeats": {
+        "heading": "Business 席位",
+        "statusAccepted": "已接受",
+        "statusExpired": "已过期",
+        "statusPending": "待接受",
+        "expires": "有效期至 {{date}}",
+        "hintCorporate": "邀请任何企业邮箱域名的团队成员。",
+        "hintPersonal": "添加企业邮箱以邀请团队成员。",
+        "personalDomain": "免费或一次性邮箱域名无法邀请团队成员。请添加企业邮箱以使用此功能。",
+        "empty": "尚未邀请任何席位。",
+        "confirmRemove": "移除此席位？被邀请人将立即失去 Pro 访问权限。",
+        "removed": "席位已移除",
+        "alreadyInactive": "席位已停用",
+        "loadFailed": "加载席位失败",
+        "inviteFailed": "发送邀请失败",
+        "removeFailed": "移除席位失败",
+        "errors": {
+          "seatCap": "4 个席位已全部使用。请先移除一个席位。",
+          "ownerDomain": "您的账户邮箱必须是企业域名才能邀请团队成员。",
+          "self": "您无法邀请自己。",
+          "inviteeDomain": "被邀请人的邮箱必须是企业域名。"
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "{{account}} Enterprise 席位",
+        "memberHint": "您账户的管理员负责添加和移除此账户上的成员。",
+        "hintFull": "所有席位都在使用中。请移除某人或撤回邀请以空出席位。",
+        "hintOpen": "通过企业邮箱邀请成员。他们将获得一个有效期为 14 天的链接，并共享此账户的配额。",
+        "emailLabel": "邀请的邮箱地址",
+        "statusActive": "已激活",
+        "statusExpired": "邀请已过期",
+        "statusInvited": "已邀请",
+        "emailFailed": "邀请邮件无法发送。请检查地址，然后撤回并重新邀请。",
+        "inviteExpires": "邀请有效期至 {{date}}",
+        "roleAdmin": "管理员",
+        "you": "您",
+        "withdraw": "撤回",
+        "unknownEmail": "未知邮箱",
+        "alreadyMember": "已是成员",
+        "confirmRemove": "移除 {{email}}？对方将立即失去 Enterprise 访问权限。",
+        "confirmRemoveUnknown": "移除此成员？对方将立即失去 Enterprise 访问权限。",
+        "confirmWithdraw": "撤回对 {{email}} 的邀请？",
+        "confirmWithdrawUnknown": "撤回对此地址的邀请？",
+        "removed": "成员已移除",
+        "withdrawn": "邀请已撤回",
+        "loadFailed": "无法加载席位。请重试。",
+        "inviteFailed": "无法发送邀请。请重试。",
+        "removeFailed": "无法移除。请重试。",
+        "errors": {
+          "seatCap": "所有席位都已被占用。请先移除某个用户或撤回邀请。",
+          "inviteeDomain": "请邀请企业邮箱地址。不接受免费或一次性邮箱域名。",
+          "self": "您已经拥有一个席位。",
+          "contractEnded": "您的 Enterprise 合同已到期。请联系支持团队续约。",
+          "notAdmin": "仅账户管理员可以管理席位。",
+          "removeSelf": "您无法移除自己的席位。请联系支持团队更换管理员。",
+          "tooMany": "一次最多邀请10个人。",
+          "rateLimited": "您今天发送的邀请已达上限。请明天再试。"
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "布局",
+        "1": "小部件",
+        "2": "文字大小",
+        "3": "重置布局"
+      },
+      "sources": {
+        "0": "新闻",
+        "1": "源",
+        "2": "订阅源",
+        "3": "地区",
+        "4": "新闻报道"
+      },
+      "notifications": {
+        "0": "提醒",
+        "1": "警报",
+        "2": "Slack",
+        "3": "电子邮件",
+        "4": "Discord",
+        "5": "Webhook",
+        "6": "推送"
+      },
+      "display": {
+        "0": "主题",
+        "1": "深色",
+        "2": "浅色",
+        "3": "字体",
+        "4": "语言",
+        "5": "文本大小"
+      },
+      "map": {
+        "0": "地球",
+        "1": "提供商",
+        "2": "瓦片",
+        "3": "底图"
+      },
+      "ai": {
+        "0": "人工智能",
+        "1": "Ollama",
+        "2": "框架",
+        "3": "标题记忆",
+        "4": "浏览器模型"
+      },
+      "video": {
+        "0": "流媒体",
+        "1": "自动播放",
+        "2": "质量",
+        "3": "直播"
+      },
+      "apiKeys": {
+        "0": "密钥",
+        "1": "令牌",
+        "2": "桌面密钥"
+      },
+      "embeds": {
+        "0": "小部件",
+        "1": "iframe",
+        "2": "嵌入密钥"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "代理",
+        "3": "ChatGPT",
+        "4": "客户端"
+      },
+      "sync": {
+        "0": "导入",
+        "1": "导出",
+        "2": "备份",
+        "3": "云"
+      },
+      "about": {
+        "0": "条款",
+        "1": "隐私",
+        "2": "许可",
+        "3": "法律"
+      },
+      "account": {
+        "0": "套餐",
+        "1": "账单",
+        "2": "订阅",
+        "3": "发票",
+        "4": "席位",
+        "5": "登出",
+        "6": "删除账户, 退出登录"
+      }
+    }
   }
 }

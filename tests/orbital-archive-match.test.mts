@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 
 import { assembleEvidence, compareBestView, describePointCondition, findArchiveEvidence, groupAcquisitions, type MatchedAcquisition } from '../src/services/orbital/match.ts';
 import { parseStacItem, readPointCondition, searchStacArchive } from '../src/services/orbital/archive-stac.ts';
-import { searchGibsDailyMosaics } from '../src/services/orbital/archive-gibs.ts';
+import { hasNoDataAtPoint, pointInCrop, searchGibsDailyMosaics } from '../src/services/orbital/archive-gibs.ts';
+import { cropBox } from '../src/services/orbital/crop-url.ts';
 import { searchEumetsatGeostationary } from '../src/services/orbital/archive-eumetsat.ts';
 import { requestArchive } from '../src/services/orbital/archive-result.ts';
 import { loadArchiveImage } from '../src/services/orbital/archive-image.ts';
@@ -64,7 +65,9 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.ok(radar.length >= 2, 'radar acquisitions stay listed');
     for (const acquisition of radar) {
       assert.equal(acquisition.pass, null);
-      assert.ok(acquisition.imageUrl, 'and keep their image');
+      const crop = new URL(acquisition.imageUrl!);
+      assert.equal(crop.hostname, 'planetarycomputer.microsoft.com', 'and keep a crop of their image at the point');
+      assert.deepEqual([crop.searchParams.get('collection'), crop.searchParams.get('assets'), crop.searchParams.get('colormap_name')], ['sentinel-1-grd', 'vv', 'gray']);
     }
   });
 
@@ -145,9 +148,26 @@ describe('archive acquisitions attached to computed passes', () => {
   it('keeps answering layers and marks the lookup partial when one layer fails', async () => {
     const lookup = await fixtureLookup(denver);
     const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(denver, { failingPaths: ['GOES-West'] }).fetch });
-    assert.deepEqual(evidence.frames.map((f) => f.source), ['GOES-East']);
+    assert.deepEqual(evidence.frames.map((f) => [f.source, f.latest !== null]), [['GOES-East', true], ['GOES-West', false]]);
     assert.equal(evidence.status, 'partial');
     assert.deepEqual(evidence.failures, [{ archive: 'nasa-gibs', reason: 'http-status', httpStatus: 503, source: 'GOES-West' }]);
+  });
+
+  it('keeps the single EUMETSAT layer as an unavailable row when it fails', async () => {
+    const lookup = await fixtureLookup(dubai);
+    const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { failing: ['view.eumetsat.int'] }).fetch });
+    const eumetsat = evidence.frames.filter((f) => f.archive === 'eumetsat');
+    assert.ok(eumetsat.length > 0);
+    assert.ok(eumetsat.every((f) => f.latest === null));
+    assert.ok(evidence.failures.some((f) => f.archive === 'eumetsat'));
+  });
+
+  it('keeps every source as an unavailable row when all of its layers fail', async () => {
+    const lookup = await fixtureLookup(denver);
+    const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(denver, { failingPaths: ['GOES-East', 'GOES-West'] }).fetch });
+    assert.deepEqual(evidence.frames.map((f) => [f.source, f.latest !== null]), [['GOES-East', false], ['GOES-West', false]]);
+    assert.equal(evidence.status, 'partial');
+    assert.deepEqual(evidence.failures.map((f) => f.source), ['GOES-East', 'GOES-West']);
   });
 
   it('keeps the first day of a window that opens after midnight', async () => {
@@ -161,6 +181,7 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.equal(result.status, 'ok');
     const terra = result.status === 'ok' ? result.items.find((row) => row.source === 'MODIS Terra') : undefined;
     assert.deepEqual(terra?.days.map((d) => d.date), ['2026-11-13']);
+    assert.ok(terra?.pointInCrop && Math.abs(terra.pointInCrop.x - 0.5) < 0.01, 'each row says where the point is in its crops');
   });
 
   it('reads the point pixel in each scene\'s own grid, so a box near a pixel edge cannot land on its neighbour', async () => {
@@ -182,6 +203,20 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.equal(describePointCondition(scene), 'cloud at this spot');
     const clear = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { scl: 4 }).fetch });
     assert.equal(describePointCondition(clear.acquisitions.find((a) => a.platform === 'sentinel-2b')!), 'clear at this spot');
+  });
+
+  it('keeps a mosaic source with an empty time domain as a row with no days', async () => {
+    const lookup = await fixtureLookup(dubai);
+    const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { emptyLayers: ['VIIRS_SNPP'] }).fetch });
+    const viirs = evidence.mosaics.find((row) => row.source === 'VIIRS Suomi NPP');
+    assert.ok(viirs, 'VIIRS Suomi NPP row kept');
+    assert.deepEqual(viirs.days, []);
+    assert.ok(evidence.mosaics.find((row) => row.source === 'MODIS Terra')!.days.length > 0);
+  });
+
+  it('says a scene-wide cloud read did not check the spot', () => {
+    assert.equal(describePointCondition({ condition: 'unknown', cloudCoverPct: 12.4 }), '12% cloud across the scene, this spot not checked');
+    assert.equal(describePointCondition({ condition: 'unknown', cloudCoverPct: null }), 'this spot not checked for cloud');
   });
 
   it('marks the lookup partial when the point classification read fails', async () => {
@@ -330,5 +365,61 @@ describe('best view', () => {
     const groups = groupAcquisitions(items);
     assert.equal(groups.length, 5, 'five datatakes in the recorded window');
     for (const group of groups) assert.equal(new Set(group.items.map((i) => `${i.platform}:${i.orbit}`)).size, 1);
+  });
+});
+
+describe('archive search progress', () => {
+  it('reports each archive as it settles and holds a mission pending until every archive it uses has answered', async () => {
+    const lookup = await fixtureLookup(denver);
+    const progress: Array<{ settled: string[]; pendingProfiles: string[] }> = [];
+    const evidence = await findArchiveEvidence(lookup, {
+      fetch: fakeArchiveFetch(denver).fetch,
+      onProgress: ({ settled, pendingProfiles }) => progress.push({ settled, pendingProfiles }),
+    });
+    assert.equal(progress.length, 5, 'one report per archive search');
+    assert.deepEqual(progress.map((p) => p.settled.length), [1, 2, 3, 4, 5]);
+    for (const report of progress) {
+      const stacSettled = ['earth-search', 'planetary-computer'].filter((id) => report.settled.includes(id));
+      if (stacSettled.length < 2) assert.ok(report.pendingProfiles.includes('sentinel-2'), 'Sentinel-2 waits for both of its archives');
+    }
+    assert.deepEqual(progress.at(-1)!.pendingProfiles, []);
+    assert.equal(evidence.status, 'complete');
+  });
+});
+
+describe('daily mosaic no-data check', () => {
+  const crop = (pixel: (x: number, y: number) => [number, number, number, number], size = 32) => {
+    const rgba = new Uint8ClampedArray(size * size * 4);
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) rgba.set(pixel(x, y), (y * size + x) * 4);
+    return rgba;
+  };
+
+  it('treats a black or transparent centre as no data at the point', () => {
+    assert.equal(hasNoDataAtPoint(crop(() => [0, 0, 0, 255]), 32, 32), true);
+    assert.equal(hasNoDataAtPoint(crop(() => [9, 11, 12, 255]), 32, 32), true, 'JPEG noise on black');
+    assert.equal(hasNoDataAtPoint(crop(() => [90, 120, 140, 0]), 32, 32), true, 'transparent');
+    assert.equal(hasNoDataAtPoint(crop((x) => (x < 16 ? [0, 0, 0, 255] : [80, 90, 70, 255])), 32, 32), false, 'a swath edge through the point keeps the day');
+  });
+
+  it('keeps imagery, dark water and a black edge away from the point', () => {
+    assert.equal(hasNoDataAtPoint(crop(() => [14, 30, 52, 255]), 32, 32), false, 'dark sea');
+    assert.equal(hasNoDataAtPoint(crop((x) => (x < 8 ? [0, 0, 0, 255] : [180, 170, 150, 255])), 32, 32), false);
+  });
+
+  it('samples around the point where the crop slid inside the antimeridian or a pole', () => {
+    const atEastEdge = pointInCrop({ lat: 0, lon: 179.999 }, cropBox({ lat: 0, lon: 179.999 }));
+    assert.ok(atEastEdge.x > 0.95, `the point sits at the east edge, not the centre (x=${atEastEdge.x})`);
+    assert.ok(Math.abs(atEastEdge.y - 0.5) < 0.01);
+    const atPole = pointInCrop({ lat: 89.999, lon: 10 }, cropBox({ lat: 89.999, lon: 10 }));
+    assert.ok(atPole.y < 0.05, `the point sits at the north edge (y=${atPole.y})`);
+    const palm = pointInCrop({ lat: 25.112, lon: 55.139 }, cropBox({ lat: 25.112, lon: 55.139 }));
+    assert.ok(Math.abs(palm.x - 0.5) < 0.01 && Math.abs(palm.y - 0.5) < 0.01, 'away from the edges the point is the centre');
+
+    const swathEndsWestOfPoint = crop((x) => (x < 24 ? [80, 90, 70, 255] : [0, 0, 0, 255]));
+    assert.equal(hasNoDataAtPoint(swathEndsWestOfPoint, 32, 32), false, 'the crop centre has data');
+    assert.equal(hasNoDataAtPoint(swathEndsWestOfPoint, 32, 32, atEastEdge), true, 'the point at the east edge has none');
+    const swathEndsEastOfCentre = crop((x) => (x < 24 ? [0, 0, 0, 255] : [80, 90, 70, 255]));
+    assert.equal(hasNoDataAtPoint(swathEndsEastOfCentre, 32, 32), true);
+    assert.equal(hasNoDataAtPoint(swathEndsEastOfCentre, 32, 32, atEastEdge), false, 'a day with data at the point is kept');
   });
 });

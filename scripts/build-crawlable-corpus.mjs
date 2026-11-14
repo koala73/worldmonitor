@@ -2557,6 +2557,9 @@ function pageDocument({
     <meta name="description" content="${escapeHtml(description)}">
     <meta name="robots" content="${escapeHtml(robots)}">
     <link rel="canonical" href="${escapeHtml(canonical)}">
+    <link rel="icon" type="image/png" sizes="96x96" href="/favico/android-chrome-96x96.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favico/favicon-32x32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/favico/apple-touch-icon.png">
     <link rel="alternate" hreflang="x-default" href="${escapeHtml(canonical)}">
     <link rel="alternate" hreflang="en" href="${escapeHtml(canonical)}">
     ${lastmod ? `<meta name="lastmod" content="${escapeHtml(lastmod)}">` : []}
@@ -5674,7 +5677,7 @@ function signalConvergenceDatasetDownload(signalConvergence, snapshotPath) {
 
 function renderHazardPage({ countryBounds, baseUrl, lastmod }) {
   const path = '/tools/natural-hazard-pulse/';
-  const description = 'See which natural hazards are active right now — earthquakes, storms, wildfires and floods from EONET, GDACS, NHC and HKO feeds — worldwide or filtered to one country.';
+  const description = 'See active natural hazards right now — earthquakes, storms, wildfires and floods from EONET, GDACS, NHC and HKO feeds — worldwide or filtered to one country.';
   const body = `      <p class="eyebrow">Natural-hazard pulse</p>
       <h1>What natural hazards are active now?</h1>
       <p class="lede">${escapeHtml(description)}</p>

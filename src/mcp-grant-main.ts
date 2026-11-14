@@ -226,6 +226,13 @@ function promptSignIn(): void {
   openSignIn();
 }
 
+// Plan offers start hidden and stay hidden for ChatGPT: OpenAI's app review
+// rejects them there (api/oauth/authorize.js adds surface=chatgpt).
+function revealPlanOffers(): void {
+  if (new URLSearchParams(window.location.search).get('surface') === 'chatgpt') return;
+  document.querySelectorAll<HTMLElement>('[data-plan-offer]').forEach((el) => { el.hidden = false; });
+}
+
 function getNonceFromQuery(): string | null {
   const p = new URLSearchParams(window.location.search);
   const n = p.get('nonce');
@@ -495,6 +502,7 @@ async function onAuthorizeClick(nonce: string): Promise<void> {
 }
 
 async function bootstrap(): Promise<void> {
+  revealPlanOffers();
   const nonce = getNonceFromQuery();
   if (!nonce) {
     showErrorView('Missing authorization parameter. Start over from your MCP client.', 'Missing authorization parameter');

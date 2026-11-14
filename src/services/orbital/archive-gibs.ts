@@ -1,5 +1,5 @@
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
-import { failed, requestArchive, type ArchiveFailure, type ArchiveId, type ArchiveRequestOptions, type ArchiveResult } from './archive-result';
+import { requestArchive, type ArchiveFailure, type ArchiveId, type ArchiveRequestOptions, type ArchiveResult } from './archive-result';
 import { cropBox, gibsSnapshotUrl, type CropBox } from './crop-url';
 import type { PassWindow } from './pass-query';
 
@@ -16,7 +16,7 @@ export interface TimeRange {
   stepMs: number;
 }
 
-/** One image-per-day global layer, shown in its own row and never counted as a pass's image. */
+/** One image-per-day global layer, shown in its own row and never counted as a pass's image. No days means the source is unavailable. */
 export interface DailyMosaicRow {
   kind: 'daily-mosaic';
   archive: ArchiveId;
@@ -25,6 +25,8 @@ export interface DailyMosaicRow {
   noradId: number;
   /** Image URLs carry the point: paint them through `loadArchiveImage`, never straight into `img.src`. */
   days: Array<{ date: string; imageUrl: string | null }>;
+  /** Where the point sits in each day's crop; the centre when absent. */
+  pointInCrop?: CropPosition;
 }
 
 /** The newest full-disk frame of a geostationary satellite that sees the point. */
@@ -60,6 +62,52 @@ export function latestFrame(times: readonly number[], imageUrl: (time: string) =
     return url ? [{ time, imageUrl: url }] : [];
   });
   return { time: isoSecond(latestMs), imageUrl: imageUrl(isoSecond(latestMs)), fallbacks };
+}
+
+/** Earlier days a daily mosaic tile steps back through when a day has no data at the point. */
+export const MOSAIC_FALLBACK_DAYS = 3;
+
+/** GIBS paints areas with no data yet (not imaged, not processed, or a swath gap) as black JPEG pixels. */
+const NO_DATA_LEVEL = 12;
+const NO_DATA_SHARE = 0.9;
+
+/** Where the point sits in a crop, as fractions of its width from the west edge and height from the north edge. */
+export interface CropPosition {
+  x: number;
+  y: number;
+}
+
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+
+/** The point's position in its crop, which is off-centre where the crop slides inside a pole or the antimeridian. */
+export function pointInCrop(point: GeoPoint, box: CropBox): CropPosition {
+  return {
+    x: box.east > box.west ? clamp01((point.lon - box.west) / (box.east - box.west)) : 0.5,
+    y: box.north > box.south ? clamp01((box.north - point.lat) / (box.north - box.south)) : 0.5,
+  };
+}
+
+/** Bounds of a window a quarter of `size` wide around `at`, kept inside the crop. */
+function windowAround(at: number, size: number): [number, number] {
+  const span = Math.max(1, Math.ceil(size / 4));
+  const start = Math.min(Math.max(Math.round(at * size - span / 2), 0), size - span);
+  return [start, start + span];
+}
+
+/** Whether an RGBA crop has no data around the point, which is at `at` (the centre unless the crop slid). */
+export function hasNoDataAtPoint(rgba: ArrayLike<number>, width: number, height: number, at: CropPosition = { x: 0.5, y: 0.5 }): boolean {
+  const [x0, x1] = windowAround(at.x, width);
+  const [y0, y1] = windowAround(at.y, height);
+  let empty = 0;
+  let total = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = (y * width + x) * 4;
+      total++;
+      if (rgba[i + 3]! < 16 || Math.max(rgba[i]!, rgba[i + 1]!, rgba[i + 2]!) <= NO_DATA_LEVEL) empty++;
+    }
+  }
+  return total > 0 && empty / total >= NO_DATA_SHARE;
 }
 
 interface GibsLayer {
@@ -131,10 +179,9 @@ async function layerTimes(layer: GibsLayer, fromMs: number, toMs: number, daily:
   return { ok: true, times: timesWithin(ranges, daily ? startOfUtcDay(fromMs) : fromMs, toMs), stepMs: ranges[ranges.length - 1]?.stepMs ?? null };
 }
 
-/** Every layer's failure; the whole archive counts as failed only when no layer answered. */
-export function layerFailures(answers: LayerTimes[]): { failures: ArchiveFailure[]; allFailed: boolean } {
-  const failures = answers.flatMap((answer) => (answer.ok ? [] : [answer.failure]));
-  return { failures, allFailed: answers.length > 0 && failures.length === answers.length };
+/** Every failed layer, so a source that did not answer still keeps its row. */
+export function layerFailures(answers: LayerTimes[]): ArchiveFailure[] {
+  return answers.flatMap((answer) => (answer.ok ? [] : [answer.failure]));
 }
 
 export interface FrameQuery extends ArchiveRequestOptions {
@@ -148,13 +195,11 @@ export async function searchGibsDailyMosaics(query: FrameQuery): Promise<Archive
   const box = query.box ?? cropBox(query.point);
   const toMs = Math.min(query.window.endMs, query.nowMs);
   const answers = await Promise.all(GIBS_DAILY_MOSAICS.map((layer) => layerTimes(layer, query.window.startMs, toMs, true, query)));
-  const { failures, allFailed } = layerFailures(answers);
-  if (allFailed) return failed(failures[0]!);
-  const items = GIBS_DAILY_MOSAICS.flatMap((layer, i): DailyMosaicRow[] => {
+  const failures = layerFailures(answers);
+  const items = GIBS_DAILY_MOSAICS.map((layer, i): DailyMosaicRow => {
     const answer = answers[i]!;
-    if (!answer.ok || answer.times.length === 0) return [];
-    const days = answer.times.map((t) => isoDate(t)).reverse().map((date) => ({ date, imageUrl: gibsSnapshotUrl(layer.layer, date, box) }));
-    return [{ kind: 'daily-mosaic', archive: 'nasa-gibs', source: layer.source, layer: layer.layer, noradId: layer.noradId, days }];
+    const days = (answer.ok ? answer.times : []).map((t) => isoDate(t)).reverse().map((date) => ({ date, imageUrl: gibsSnapshotUrl(layer.layer, date, box) }));
+    return { kind: 'daily-mosaic', archive: 'nasa-gibs', source: layer.source, layer: layer.layer, noradId: layer.noradId, days, pointInCrop: pointInCrop(query.point, box) };
   });
   return { status: 'ok', archive: 'nasa-gibs', items, failures };
 }
@@ -165,20 +210,18 @@ export async function searchGibsGeostationary(query: FrameQuery & { visibleNorad
   const box = query.box ?? cropBox(query.point);
   const fromMs = query.nowMs - GEOSTATIONARY_LOOKBACK_MS;
   const answers = await Promise.all(layers.map((layer) => layerTimes(layer, fromMs, query.nowMs, false, query)));
-  const { failures, allFailed } = layerFailures(answers);
-  if (allFailed) return failed(failures[0]!);
-  const items = layers.flatMap((layer, i): GeostationaryRow[] => {
+  const failures = layerFailures(answers);
+  const items = layers.map((layer, i): GeostationaryRow => {
     const answer = answers[i]!;
-    if (!answer.ok) return [];
-    return [{
+    return {
       kind: 'geostationary',
       archive: 'nasa-gibs',
       source: layer.source,
       layer: layer.layer,
       noradId: layer.noradId,
-      cadenceMinutes: answer.stepMs === null ? null : answer.stepMs / 60_000,
-      latest: latestFrame(answer.times, (time) => gibsSnapshotUrl(layer.layer, time, box)),
-    }];
+      cadenceMinutes: !answer.ok || answer.stepMs === null ? null : answer.stepMs / 60_000,
+      latest: answer.ok ? latestFrame(answer.times, (time) => gibsSnapshotUrl(layer.layer, time, box)) : null,
+    };
   });
   return { status: 'ok', archive: 'nasa-gibs', items, failures };
 }
