@@ -193,7 +193,6 @@ const SEEDERS = [
   ['Chokepoints', "'seed-meta:supply_chain:chokepoints'", 'CHOKEPOINT_WARM_PING_INTERVAL_MS', 'seedChokepointWarmPing'],
   ['CableHealth', "'seed-meta:cable-health'", 'CABLE_HEALTH_WARM_PING_INTERVAL_MS', 'seedCableHealthWarmPing'],
   ['TheaterPosture', "'seed-meta:theater-posture'", 'THEATER_POSTURE_SEED_INTERVAL_MS', 'seedTheaterPosture'],
-  ['AirTraffic', 'AIR_TRAFFIC_HEARTBEAT_KEY', 'AIR_TRAFFIC_INTERVAL_MS', 'seedAirTrafficPoint'],
   ['Weather', "'seed-meta:weather:alerts'", 'WEATHER_SEED_INTERVAL_MS', 'seedWeatherAlerts'],
   ['Spending', "'seed-meta:economic:spending'", 'SPENDING_SEED_INTERVAL_MS', 'seedUsaSpending'],
   ['GSCPI', "'seed-meta:economic:gscpi'", 'GSCPI_SEED_INTERVAL_MS', 'seedGscpi'],
@@ -223,6 +222,17 @@ for (const [label, metaKey, intervalConst, seedFn] of SEEDERS) {
     assert.ok(relaySource.includes(call), `expected boot-seed wiring: ${call}`);
   });
 }
+
+// The air traffic loop runs on bin boundaries instead (a restart must still fill
+// the current bin). Its boot guard is the per-bin skip: a tick reads the bin's
+// stored point and returns before any OpenSky fetch when the bin is already ok.
+test('AirTraffic ticks skip a bin already recorded before fetching OpenSky', () => {
+  const body = relaySource.slice(relaySource.indexOf('async function seedAirTrafficPoint()'));
+  const skip = body.indexOf('if (isOkAirTrafficPoint(existing?.[0]?.result))');
+  const fetchAttempt = body.indexOf('attemptAirTrafficPoint(fetchedAt)');
+  assert.ok(skip > 0 && fetchAttempt > skip, 'the skip check runs before the first fetch attempt');
+  assert.ok(relaySource.includes('runAirTrafficLoop().catch('), 'the loop is started by startAirTrafficLoop');
+});
 
 test('exactly the expected number of boot seeds are scheduled (no drift)', () => {
   const count = (relaySource.match(/startBootSeedLoop\('/g) || []).length;
