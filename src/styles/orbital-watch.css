@@ -585,10 +585,8 @@ body.orbital-full-view #mapContainer .layer-toggles { display: none !important; 
   color: var(--ow-text);
 }
 
-.ow-tl-key[data-row='photo'] .ow-tl-glyph,
-.ow-tl-key[data-row='photo'] .ow-tl-key-label {
-  color: var(--green);
-}
+.ow-tl-key[data-row='photo'] .ow-tl-glyph { color: var(--ow-active); }
+.ow-tl-key[data-row='photo'] .ow-tl-key-label { color: var(--ow-active-text); }
 
 .ow-tl-plot-wrap {
   position: relative;
@@ -619,7 +617,7 @@ body.orbital-full-view #mapContainer .layer-toggles { display: none !important; 
 
 .ow-tl-now {
   top: -2px;
-  border-left: 1px solid var(--accent);
+  border-left: 1px solid var(--ow-emphasis);
 }
 
 .ow-tl-flags,
@@ -646,7 +644,7 @@ body.orbital-full-view #mapContainer .layer-toggles { display: none !important; 
 }
 
 .ow-tl-mark[data-tier='confirmed-image'] {
-  color: var(--green);
+  color: var(--ow-active);
   font-size: 12px;
   z-index: 1;
 }
@@ -664,7 +662,7 @@ body.orbital-full-view #mapContainer .layer-toggles { display: none !important; 
 
 .ow-tl-mark.is-selected {
   color: var(--ow-text);
-  outline: 1px solid var(--green);
+  outline: 1px solid var(--ow-active);
   outline-offset: 1px;
   z-index: 2;
 }
@@ -704,8 +702,8 @@ body.orbital-full-view #mapContainer .layer-toggles { display: none !important; 
 .ow-tl-now-label {
   top: 0;
   padding: 0 4px;
-  background: var(--accent);
-  color: var(--bg);
+  background: var(--ow-emphasis);
+  color: var(--ow-bg);
   font-size: 10px;
   font-weight: 600;
 }
@@ -784,7 +782,7 @@ body.orbital-full-view #mapContainer .layer-toggles { display: none !important; 
 
 .ow-tl-foot .ow-tl-count { color: var(--ow-text); }
 .ow-tl-retained { color: var(--ow-faint); }
-.ow-now-title { color: var(--text); }
+.ow-now-title { color: var(--ow-text); }
 
 .ow-tl-sr {
   position: absolute;
@@ -798,7 +796,7 @@ body.orbital-full-view #mapContainer .layer-toggles { display: none !important; 
 }
 
 .ow-row.is-selected {
-  outline: 2px solid var(--green);
+  outline: 2px solid var(--ow-active);
   outline-offset: -2px;
 }
 
