@@ -2956,7 +2956,7 @@
   "orbitalWatch.caption.clearSceneCloud": "Point cloud-free · scene {{pct}}% cloud",
   "orbitalWatch.caption.cloudShadow": "Shadow at point",
   "orbitalWatch.caption.clouded": "Cloud at point · {{pct}}%",
-  "orbitalWatch.caption.radar": "Radar, cloud-free",
+  "orbitalWatch.caption.radar": "Radar · unaffected by cloud",
   "orbitalWatch.caption.sceneCloud": "Scene {{pct}}% cloud · point unknown",
   "orbitalWatch.caption.spotNotChecked": "Point cloud unknown",
   "orbitalWatch.events.detail": "Detail",

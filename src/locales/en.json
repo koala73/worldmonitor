@@ -4762,7 +4762,7 @@
       "cloudShadow": "Shadow at point",
       "spotNotChecked": "Point cloud unknown",
       "sceneCloud": "Scene {{pct}}% cloud · point unknown",
-      "radar": "Radar, cloud-free"
+      "radar": "Radar · unaffected by cloud"
     },
     "tile": {
       "failed": "Scene did not load · {{archive}}",

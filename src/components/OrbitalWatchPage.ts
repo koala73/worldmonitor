@@ -810,7 +810,10 @@ export class OrbitalWatchPage {
     this.sheet.dataset.state = state.kind === 'passes' ? (state.archives.kind === 'answered' ? 'answered' : 'checking') : state.kind;
     const active = document.activeElement as HTMLElement | null;
     const focusKey = this.body.contains(active) ? active?.dataset.key ?? active?.dataset.action ?? null : null;
+    // Re-attaching the timeline slot resets its sideways scroll, so carry it over.
+    const timelineLeft = this.slots.timeline.scrollLeft;
     replaceChildren(this.body, ...this.renderState(state));
+    this.slots.timeline.scrollLeft = timelineLeft;
     if (focusKey) {
       const again = this.body.querySelector<HTMLElement>(`[data-key="${CSS.escape(focusKey)}"], [data-action="${CSS.escape(focusKey)}"]`);
       again?.focus({ preventScroll: true });
