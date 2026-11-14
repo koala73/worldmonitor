@@ -3320,11 +3320,11 @@ export class GlobeMap {
     this.moveViewport({ lat: preset.lat, lng: preset.lng, altitude });
   }
 
-  public setCenter(lat: number, lon: number, zoom?: number): void {
+  public setCenter(lat: number, lon: number, zoom?: number, durationMs = SET_CENTER_ROTATION_MS): void {
     if (!this.globe) return;
     this.wakeGlobe();
     const altitude = zoom === undefined ? 1.2 : mapZoomToGlobeAltitude(zoom);
-    this.moveViewport({ lat, lng: lon, altitude });
+    this.moveViewport({ lat, lng: lon, altitude }, durationMs);
   }
 
   /** The point of view that draws (lat, lon) `offset` pixels from the canvas centre at `zoom`. */

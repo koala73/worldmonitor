@@ -1,23 +1,29 @@
 :root {
-  --ow-bg: #0b0c0e;
-  --ow-panel: rgba(14, 15, 18, 0.94);
-  --ow-line: #24272d;
-  --ow-line-soft: #1a1c20;
-  --ow-text: #ecebe7;
-  --ow-dim: #8b9099;
-  --ow-faint: #5b6068;
-  --ow-accent: #f5a524;
-  --ow-accent-ink: #14110a;
-  --ow-cloud: #9aa3ad;
-  --ow-radar: #7cc4ff;
-  --ow-font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --ow-font-mono: var(--font-mono, ui-monospace, monospace);
+  /* Every colour and font is a WorldMonitor token, so the light and happy themes apply unchanged. */
+  --ow-bg: var(--bg);
+  --ow-panel: var(--panel-bg);
+  --ow-line: var(--border);
+  --ow-line-soft: var(--border-subtle);
+  --ow-line-strong: var(--border-strong);
+  --ow-text: var(--text);
+  --ow-dim: var(--text-dim);
+  --ow-faint: var(--text-faint);
+  --ow-emphasis: var(--accent);
+  --ow-active: var(--green);
+  --ow-active-text: var(--green-text, var(--green));
+  --ow-mark: var(--green);
+  --ow-hover: var(--overlay-light);
+  --ow-selected: var(--overlay-medium);
+  --ow-chip: color-mix(in srgb, var(--bg) 82%, transparent);
+  --ow-shadow: var(--shadow-color);
+  --ow-font-sans: var(--font-body);
+  --ow-font-mono: var(--font-mono);
   --ow-display-size: 26px;
   --ow-display-line: 30px;
   --ow-body-size: 13px;
   --ow-body-line: 18px;
   --ow-label-size: 11px;
-  --ow-label-tracking: 0.08em;
+  --ow-label-tracking: 1px;
   --ow-space-1: 4px;
   --ow-space-2: 8px;
   --ow-space-3: 12px;
@@ -72,4 +78,4 @@
   font-family: var(--ow-font-mono);
 }
 
-.ow-glyph[data-glyph="watched"] { color: var(--ow-accent); }
+.ow-glyph[data-glyph="watched"] { color: var(--ow-emphasis); }
