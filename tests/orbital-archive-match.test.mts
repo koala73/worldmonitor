@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { assembleEvidence, compareBestView, describePointCondition, findArchiveEvidence, groupAcquisitions, type MatchedAcquisition } from '../src/services/orbital/match.ts';
 import { parseStacItem, readPointCondition, searchStacArchive } from '../src/services/orbital/archive-stac.ts';
-import { searchGibsDailyMosaics } from '../src/services/orbital/archive-gibs.ts';
+import { hasNoDataAtCentre, searchGibsDailyMosaics } from '../src/services/orbital/archive-gibs.ts';
 import { searchEumetsatGeostationary } from '../src/services/orbital/archive-eumetsat.ts';
 import { requestArchive } from '../src/services/orbital/archive-result.ts';
 import { ARCHIVE_RESPONSES, FIXTURE_NOW, FIXTURE_WINDOW, fakeArchiveFetch, fixtureLookup } from './helpers/orbital-archive-fetch.mts';
@@ -362,5 +362,25 @@ describe('archive search progress', () => {
     }
     assert.deepEqual(progress.at(-1)!.pendingProfiles, []);
     assert.equal(evidence.status, 'complete');
+  });
+});
+
+describe('daily mosaic no-data check', () => {
+  const crop = (pixel: (x: number, y: number) => [number, number, number, number], size = 32) => {
+    const rgba = new Uint8ClampedArray(size * size * 4);
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) rgba.set(pixel(x, y), (y * size + x) * 4);
+    return rgba;
+  };
+
+  it('treats a black or transparent centre as no data at the point', () => {
+    assert.equal(hasNoDataAtCentre(crop(() => [0, 0, 0, 255]), 32, 32), true);
+    assert.equal(hasNoDataAtCentre(crop(() => [9, 11, 12, 255]), 32, 32), true, 'JPEG noise on black');
+    assert.equal(hasNoDataAtCentre(crop(() => [90, 120, 140, 0]), 32, 32), true, 'transparent');
+    assert.equal(hasNoDataAtCentre(crop((x) => (x < 16 ? [0, 0, 0, 255] : [80, 90, 70, 255])), 32, 32), false, 'a swath edge through the point keeps the day');
+  });
+
+  it('keeps imagery, dark water and a black edge away from the point', () => {
+    assert.equal(hasNoDataAtCentre(crop(() => [14, 30, 52, 255]), 32, 32), false, 'dark sea');
+    assert.equal(hasNoDataAtCentre(crop((x) => (x < 8 ? [0, 0, 0, 255] : [180, 170, 150, 255])), 32, 32), false);
   });
 });
