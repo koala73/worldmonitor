@@ -278,6 +278,17 @@ export async function evaluateSites({ sites, catalog, previousRecords, cursor, s
     const previousFlag = change.shadow ? shadowFlag : continuedFlag(previous?.flag ?? null, shadowFlag);
     searched.push({ site, acquisitions, previousFlag });
   }
+  if (change && refused && !change.shadow) {
+    // Records were built without a flag for scoring to fill; nothing is scored after a refusal.
+    for (const { site, previousFlag } of searched) {
+      try {
+        records.set(site.id, withSiteFlag(records.get(site.id), previousFlag));
+      } catch (error) {
+        records.delete(site.id);
+        failed.push({ siteId: site.id, reason: error?.message || String(error) });
+      }
+    }
+  }
   if (change && !refused) {
     searched.sort((a, b) => Number(!a.previousFlag?.unfinished) - Number(!b.previousFlag?.unfinished)
       || (a.previousFlag?.updatedAt ?? 0) - (b.previousFlag?.updatedAt ?? 0));

@@ -23,7 +23,7 @@ import {
   shadowExitStatus,
   UnexpectedStatistics,
 } from '../scripts/_orbital-change.mjs';
-import { acquisitionsFromStac, countryKey, evaluateSites, ORBITAL_SITES_KEY, siteKey, stacSearchBody } from '../scripts/_orbital-sites.mjs';
+import { ArchiveRefusal, acquisitionsFromStac, countryKey, evaluateSites, ORBITAL_SITES_KEY, siteKey, stacSearchBody } from '../scripts/_orbital-sites.mjs';
 import { makeArchiveSearch, makeFetchSites, makeStatisticsFetch, MAX_SEARCH_PAGES, publicationCommands } from '../scripts/seed-orbital-sites.mjs';
 import { replayKnownChanges, replaySample, TARGETS } from '../scripts/replay-orbital-change.mjs';
 import { SITE_WATER_PERCENT } from '../scripts/shared/orbital-site-water.mjs';
@@ -540,6 +540,19 @@ describe('orbital change stage in the site seeder', () => {
       searchArchive: async () => [], nowMs: NOW, deadlineMs: Infinity, clock: () => NOW, change,
     });
     assert.deepEqual(records.get(LAND.id).flag, scoredFlag);
+  });
+
+  it('keeps live flags on the records of sites searched before an archive refusal', async () => {
+    const liveFlag = { state: 'monitoring', wording: 'imagery statistics changed', updatedAt: NOW - DAY_MS, tracks: {}, events: [] };
+    const sites = [LAND, { ...LAND, id: 'nuclear-facility:test2' }];
+    const change = { shadow: false, previousFlags: new Map(), score: async () => assert.fail('nothing is scored after a refusal'), summary: () => null };
+    let calls = 0;
+    const { records, refused } = await evaluateSites({
+      sites, catalog, previousRecords: new Map([[LAND.id, { flag: liveFlag }]]), cursor: null, nowMs: NOW, deadlineMs: Infinity, clock: () => NOW, change,
+      searchArchive: async () => { calls += 1; if (calls === 2) throw new ArchiveRefusal('HTTP 429'); return []; },
+    });
+    assert.match(refused, /429/);
+    assert.deepEqual(records.get(LAND.id).flag, liveFlag);
   });
 
   it('keeps a site\'s previous record, instead of failing the run, when its new record is over the size cap', async () => {
