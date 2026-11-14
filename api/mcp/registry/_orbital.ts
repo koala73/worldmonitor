@@ -121,7 +121,7 @@ export const ORBITAL_TOOLS: ToolDef[] = [
         catalogFetchedAt: { type: 'integer' },
         stale: { type: 'boolean' },
         passes: { type: 'array', items: POINT_PASS_SCHEMA, description: 'Passes covering the point, oldest first.' },
-        outOfFootprintPasses: { type: 'integer', description: 'Passes in range whose footprint misses the point; counted, not listed.' },
+        outOfFootprintPasses: { type: 'integer', description: 'Passes in range whose footprint misses the point and that no archive image confirms; counted, not listed.' },
         acquisitions: { type: 'array', items: ACQUISITION_SCHEMA, description: 'Archive acquisitions at the point, newest first; tiles of one acquisition count once.' },
         archiveStatus: { type: 'string', enum: ['complete', 'partial'] },
         failedSources: { type: 'array', items: { type: 'object', properties: { archive: { type: 'string' }, reason: { type: 'string' }, httpStatus: { type: 'integer' } } } },
