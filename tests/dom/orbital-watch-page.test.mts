@@ -109,6 +109,7 @@ afterEach(() => {
   for (const page of pages.splice(0)) page.close();
   document.body.replaceChildren();
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 describe('satellite pass lookup sheet', () => {
@@ -272,7 +273,9 @@ describe('satellite pass lookup sheet', () => {
     expect(detail.querySelector('.ow-detail-glyph .ow-glyph')!.textContent).toBe(TIER_GLYPH_CHAR.watched);
     expect(detail.querySelector('.ow-detail-glyph .ow-label')!.textContent).toBe('confirmed image');
     expect(detail.querySelector('.ow-detail-title strong')!.textContent).toBe(confirmedOld.name);
-    expect(detail.querySelector('.ow-detail-cell:nth-child(3)')!.textContent).toBe('Pixel—');
+    expect(detail.querySelector('.ow-detail-cell:nth-child(3)')!.textContent).toBe('Pixel30 M');
+    expect(detail.querySelector('.ow-detail-cell:nth-child(4)')!.textContent).toBe('Cloud at spot—');
+    expect(detail.querySelector('.ow-detail-sensor')!.textContent).toContain('30 m pixel');
     expect(detail.querySelector('.ow-detail-sentence')!.textContent).toMatch(/^LANDSAT 9 crossed 700 km up, 42 km to the north, at \d\d:\d\d UTC, moving south at 6\.71 km\/s over the ground\./);
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
@@ -312,6 +315,18 @@ describe('satellite pass lookup sheet', () => {
     expect(sheet().dataset.view).toBe('full');
   });
 
+  it('says under the glyph whether a likely-watched pass is still waiting on its archive or the archive never answered', () => {
+    const { all, likely } = tiered();
+    const reason = () => page().slot('pass-detail').querySelector('.ow-detail-glyph .ow-detail-reason')?.textContent;
+    mounted(answered(all), null, 'full');
+    page().select(`${likely.noradId}:${likely.timeMs}`);
+    expect(page().slot('pass-detail').querySelector('.ow-detail-glyph .ow-label')!.textContent).toBe('likely imaged');
+    expect(reason()).toBe('Covered, no image yet');
+    page().render(answered(all, { status: 'partial', failures: [{ archive: 'earth-search', reason: 'timeout' }], unansweredProfiles: [likely.profileId as 'sentinel-2'] }));
+    page().select(`${likely.noradId}:${likely.timeMs}`);
+    expect(reason()).toBe("Covered, archive didn't answer");
+  });
+
   it('shows a capability-overhead pass as its tier glyph, not an image', () => {
     const { all, military } = tiered();
     mounted(answered(all, { acquisitions: [acquisition(military)] }), null, 'full');
@@ -333,6 +348,7 @@ describe('satellite pass lookup sheet', () => {
   });
 
   it('opens the full view with the pass list, the status bar and empty slots for the dock, detail and replay HUD', () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
     const { all, confirmedNew, confirmedOld, soon, later } = tiered();
     mounted(answered(all, { acquisitions: [acquisition(confirmedNew)] }));
     expect(sheet().querySelector('.ow-passes')).toBeNull();

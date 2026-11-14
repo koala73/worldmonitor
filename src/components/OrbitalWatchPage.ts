@@ -6,7 +6,7 @@ import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/se
 import type { ArchiveId } from '@/services/orbital/archive-result';
 import { GIBS_DAILY_MOSAICS, type DailyMosaicRow, type GeostationaryFrame, type GeostationaryRow } from '@/services/orbital/archive-gibs';
 import { DEFAULT_CROP_HALF_SIZE_KM } from '@/services/orbital/crop-url';
-import { normalisePlatform } from '@/services/orbital/archive-stac';
+import { nativeResolutionM, normalisePlatform } from '@/services/orbital/archive-stac';
 import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
@@ -473,14 +473,23 @@ const glyphTile = (glyph: TierGlyph) =>
   h('div', { className: 'ow-glyph-tile', dataset: { glyph }, 'aria-hidden': 'true' }, h('span', { className: 'ow-glyph', dataset: { glyph } }, TIER_GLYPH_CHAR[glyph]));
 
 /** The top of a pass detail: the pass's own crop, opening the viewer, or its tier glyph when the pass left no image. */
-function passDetailMedia(pass: PointPass, acquisition: MatchedAcquisition | null): HTMLElement {
+/** Why an imageless pass has no picture, in the tier grid's words. */
+function noImageReason(pass: PointPass, unanswered: boolean): string | null {
+  if (pass.tier.kind === 'likely-imaged') return t(unanswered ? 'orbitalWatch.ui.grid.likelyUnansweredShort' : 'orbitalWatch.ui.grid.likelyShort');
+  if (pass.tier.kind === 'passed-overhead') return t('orbitalWatch.ui.grid.overheadShort');
+  return null;
+}
+
+function passDetailMedia(pass: PointPass, acquisition: MatchedAcquisition | null, unanswered: boolean): HTMLElement {
   const tierLabel = t(TIER_LABEL_KEY[pass.tier.kind]);
   if (!acquisition?.imageUrl) {
     const glyph = GLYPH_OF_TIER[pass.tier.kind];
+    const reason = noImageReason(pass, unanswered);
     return h('figure', { className: 'ow-detail-media', dataset: { media: 'glyph' } },
       h('div', { className: 'ow-detail-glyph', dataset: { glyph } },
         h('span', { className: 'ow-glyph', dataset: { glyph }, 'aria-hidden': 'true' }, TIER_GLYPH_CHAR[glyph]),
-        h('span', { className: 'ow-label' }, tierLabel)));
+        h('span', { className: 'ow-label' }, tierLabel),
+        reason ? h('span', { className: 'ow-detail-reason' }, reason) : null));
   }
   const alt = t('orbitalWatch.row.imageAlt', { name: pass.name, time: formatWhen(pass.timeMs) });
   const credit = acquisitionRowCredit(acquisition);
@@ -1219,12 +1228,13 @@ export class OrbitalWatchPage {
       pass,
       acquisition: military ? null : acquisition,
       point: this.state.lookup.point,
-      media: passDetailMedia(pass, military ? null : acquisition),
+      media: passDetailMedia(pass, military ? null : acquisition, isUnanswered(pass, evidence)),
       glyph: TIER_GLYPH_CHAR[GLYPH_OF_TIER[pass.tier.kind]],
       when: formatWhen(pass.timeMs),
       clock: formatOrbitalTime(pass.timeMs, 'when').split(' · ').pop()!,
       offNadirDeg: offNadirDeg(pass),
       family: profile?.family ?? null,
+      pixelM: military ? null : acquisition?.resolutionM ?? nativeResolutionM(pass.profileId),
       swathKm: profile?.footprint.kind === 'nadir-swath' ? profile.footprint.swathKm : null,
       hasPrevious: index > 0,
       hasNext: index >= 0 && index < keys.length - 1,

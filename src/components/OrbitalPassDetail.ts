@@ -17,6 +17,8 @@ export interface PassDetailInput {
   clock: string;
   offNadirDeg: number;
   family: string | null;
+  /** The scene's pixel, else the sensor's native pixel. */
+  pixelM: number | null;
   swathKm: number | null;
   hasPrevious: boolean;
   hasNext: boolean;
@@ -81,7 +83,7 @@ export function renderPassDetail(input: PassDetailInput): HTMLElement {
   ].filter(Boolean).join(' ');
   const sensor = [
     input.family,
-    acquisition ? t('orbitalWatch.passDetail.pixelLine', { m: acquisition.resolutionM }) : null,
+    input.pixelM != null ? t('orbitalWatch.passDetail.pixelLine', { m: input.pixelM }) : null,
     input.swathKm ? t('orbitalWatch.passDetail.swathLine', { km: input.swathKm }) : null,
   ].filter(Boolean).join(' · ');
   const step = (delta: -1 | 1, label: string, enabled: boolean): DomChild =>
@@ -98,7 +100,7 @@ export function renderPassDetail(input: PassDetailInput): HTMLElement {
     h('dl', { className: 'ow-detail-grid' },
       cell(t('orbitalWatch.passDetail.altitude'), `${altitude} KM`),
       cell(t('orbitalWatch.passDetail.offNadir'), `${input.offNadirDeg.toFixed(1)}°`),
-      cell(t('orbitalWatch.viewer.metaPixel'), acquisition ? `${acquisition.resolutionM} M` : '—'),
+      cell(t('orbitalWatch.viewer.metaPixel'), input.pixelM != null ? `${input.pixelM} M` : '—'),
       cell(t('orbitalWatch.viewer.metaSpot'), spotCondition(acquisition))),
     h('p', { className: 'ow-detail-sentence' }, sentence),
     sensor ? h('p', { className: 'ow-detail-sensor ow-label' }, sensor) : null,

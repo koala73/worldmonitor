@@ -15,6 +15,18 @@ import { fixtureCatalog } from './orbital-watch.mjs';
 
 const ARCHIVE_HOSTS = ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com', 'gibs.earthdata.nasa.gov', 'view.eumetsat.int', 'sentinel-cogs.s3.us-west-2.amazonaws.com', 'sentinel-s1-l1c.s3.amazonaws.com'];
 
+// Scroll the pass-detail stats into view and require every row to sit clear of the pinned action bar.
+async function statsClearOfActions(page) {
+  const stats = await page.evaluate(() => {
+    const grid = document.querySelector('.ow-detail-grid');
+    grid.scrollIntoView({ block: 'end' });
+    const barTop = document.querySelector('.ow-detail-actions').getBoundingClientRect().top;
+    return { barTop: Math.round(barTop), cellBottoms: [...grid.querySelectorAll('.ow-detail-cell')].map((c) => Math.round(c.getBoundingClientRect().bottom)) };
+  });
+  if (stats.cellBottoms.some((bottom) => bottom > stats.barTop)) throw new Error(`pass-detail stats sit under the action bar: ${JSON.stringify(stats)}`);
+  return stats;
+}
+
 export default async function ({ page, base, shot, log, expectVisible }) {
   const mobile = process.env.WM_VERIFY_ORBITAL_VIEWPORT === 'mobile';
   await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
@@ -163,6 +175,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   if (!ARCHIVE_HOSTS.includes(new URL(cropInfo.src).hostname) || !cropInfo.natural[0] || !cropInfo.reticle || !cropInfo.credit) throw new Error(`pass detail crop incomplete: ${JSON.stringify(cropInfo)}`);
   log('pass detail', (await detail.innerText()).replace(/\s+/g, ' '));
   log('pass detail map mark', JSON.stringify(await markAt()));
+  log('pass detail stats clear of the action bar', JSON.stringify(await statsClearOfActions(page)));
   await shot('pass-detail');
   await crop.locator('[data-action="view-image"]').click();
   const cropViewer = page.locator('.oiv-dialog');
@@ -189,6 +202,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     await detail.waitFor();
     const glyph = await detail.locator('.ow-detail-media[data-media="glyph"]').innerText();
     log('pass detail without an image', glyph.replace(/\s+/g, ' '));
+    log('pass detail stats clear of the action bar', JSON.stringify(await statsClearOfActions(page)));
     await shot('pass-detail-glyph');
     await page.keyboard.press('Escape');
     await detail.waitFor({ state: 'detached' });
