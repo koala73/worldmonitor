@@ -36,4 +36,25 @@ const CONUS_BOX = Object.freeze({ south: 24.5, north: 49.5, west: -125.0, east: 
 // drop in both is a feed problem.
 const EUROPE_BOX = Object.freeze({ south: 36.0, north: 60.0, west: -10.0, east: 25.0 });
 
-module.exports = { US_HUBS, HUB_RADIUS_KM, CONUS_BOX, EUROPE_BOX };
+// adsb.lol answers 250 nm radius queries and rate-limits a sweep at roughly one
+// request every 3 to 4 seconds, so a national sweep (about 50 circles) cannot
+// fit in a bin. These 10 circles are a set cover of the 20 hub discs, and two
+// more sample the Europe control region. Counts from them are a partial view;
+// compare them only with the same series' own baseline.
+const ADSBLOL_RADIUS_NM = 250;
+const ADSBLOL_CIRCLES = Object.freeze([
+  { lat: 41.12, lon: -73.21 }, // JFK, EWR, LGA, BOS
+  { lat: 26.77, lon: -80.58 }, // MCO, MIA, FLL
+  { lat: 34.49, lon: -115.19 }, // LAX, LAS, PHX
+  { lat: 31.45, lon: -96.19 }, // DFW, IAH
+  { lat: 34.43, lon: -82.69 }, // ATL, CLT
+  { lat: 42.1, lon: -85.63 }, // ORD, DTW
+  { lat: 37.62, lon: -122.38 }, // SFO
+  { lat: 39.86, lon: -104.67 }, // DEN
+  { lat: 44.88, lon: -93.22 }, // MSP
+  { lat: 47.45, lon: -122.31 }, // SEA
+  { lat: 51.47, lon: -0.45 }, // Europe control, London
+  { lat: 50.03, lon: 8.56 }, // Europe control, Frankfurt
+].map(Object.freeze));
+
+module.exports = { US_HUBS, HUB_RADIUS_KM, CONUS_BOX, EUROPE_BOX, ADSBLOL_RADIUS_NM, ADSBLOL_CIRCLES };

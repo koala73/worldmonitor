@@ -719,6 +719,8 @@ const STANDALONE_KEYS = {
   // No dashboard consumer yet. Points live in one hash per UTC day, which health
   // cannot STRLEN, so the stable heartbeat each ok point advances is watched.
   airTrafficHistory:        'seed-meta:aviation:traffic-history',
+  // The same series from adsb.lol receivers, kept apart as a cross-check.
+  airTrafficHistoryAdsbLol: 'seed-meta:aviation:traffic-history-adsblol',
   resilienceStaticIndex:    'resilience:static:index:v1',
   resilienceStaticFao:      'resilience:static:fao',
   // USDA PSD food stocks + FAOSTAT production fill (#6440). RPC/MCP only —
@@ -2453,6 +2455,18 @@ const SEED_META = {
       activationKey: 'seed-activated:aviation:traffic-history',
     },
   },
+  // Same loop schedule and heartbeat rule as airTrafficHistory, from adsb.lol.
+  airTrafficHistoryAdsbLol: {
+    key: 'seed-meta:aviation:traffic-history-adsblol',
+    maxStaleMin: 20,
+    activationKey: 'seed-activated:aviation:traffic-history-adsblol',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 10719,
+      activationKey: 'seed-activated:aviation:traffic-history-adsblol',
+    },
+  },
   productCatalog:    { key: 'seed-meta:product-catalog',               maxStaleMin: 1080 }, // relay loop every 6h; 1080 = 18h = 3x interval
   vpdTrackerRealtime:   { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // daily seed (0 2 * * *); 2880min = 48h = 2x interval
   vpdTrackerHistorical: { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // shares seed-meta key with vpdTrackerRealtime (same run)
@@ -3034,6 +3048,7 @@ const ON_DEMAND_KEYS = new Set([
   // never covers a key that has data behind it (see classifyKey).
   'pizzintHistory',
   'airTrafficHistory', // empty until the relay's first ok point after deploy
+  'airTrafficHistoryAdsbLol', // empty until the first full adsb.lol sweep after deploy
   'riskScoresHistory', // first fresh leader build atomically activates daily history
   'ciiEconomicStress', // pending until the first economic publication
   'ciiStructuralPrior', // pending until the first complete prior publication
@@ -3120,6 +3135,7 @@ const ACTIVATION_MARKERS = {
   pizzintHistory: SEED_META.pizzintHistory.activationKey,
   // Written with the first ok point (scripts/shared/air-traffic-history.cjs).
   airTrafficHistory: SEED_META.airTrafficHistory.activationKey,
+  airTrafficHistoryAdsbLol: SEED_META.airTrafficHistoryAdsbLol.activationKey,
   riskScoresHistory: SEED_META.riskScoresHistory.activationKey,
   ciiStructuralPrior: SEED_META.ciiStructuralPrior.activationKey,
   ciiEconomicStress: SEED_META.ciiEconomicStress.activationKey,

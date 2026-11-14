@@ -319,6 +319,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: meta-only health heartbeat for the PizzINT retained archive (#8679). Daily per-provider buckets rotate by UTC date so they cannot sit in the static registry; this stable seed-meta key is what /api/health watches. Archive rows are not a queryable MCP slice — intelligence:pizzint:seed:v1 remains deferred to a future expanded intelligence tool.'],
   ['seed-meta:aviation:traffic-history',
     'operational: meta-only health heartbeat for the national air traffic series (#10719). Points live in one hash per UTC day, which rotates at midnight and cannot sit in the static registry. No MCP or dashboard consumer exists yet; the departure-collapse detector planned in #10719 is the first reader.'],
+  ['seed-meta:aviation:traffic-history-adsblol',
+    'operational: meta-only health heartbeat for the adsb.lol cross-check of the national air traffic series (#10719). Same day-hash layout as seed-meta:aviation:traffic-history, so it cannot sit in the static registry; the departure-collapse detector is its first reader.'],
   ['research:arxiv:v1:cs.AI::50',
     'deferred: strict health seed probe added by #5055; future research MCP expansion can expose the ArXiv/HN trending feed.'],
 
