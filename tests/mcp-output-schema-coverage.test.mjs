@@ -1,20 +1,3 @@
-// Parity test for the per-tool spec `outputSchema` field (v1.6.0).
-//
-// Covers:
-//   1. Every tool in TOOL_REGISTRY declares a non-empty outputSchema with at
-//      least one key on outputSchema.properties. Failures name the tool so a
-//      future PR adding a tool without an outputSchema fails loudly.
-//   2. Every fixture in tests/fixtures/jmespath-samples/ validates against the
-//      schema declared by the tool that produced it. Drift between declared
-//      schema and the real response shape fails the test by tool name.
-//   3. The reverse direction of 2: no tool may declare a list-item field that
-//      is absent from every captured row. Schema validation alone cannot see
-//      this — `properties` without `required` admits a payload that omits a
-//      declared key, which is how get_market_data advertised `changePercent`
-//      while every seeder wrote `change`.
-//   4. tools/list emits outputSchema on every advertised tool — surfacing the
-//      field at the wire boundary in addition to the in-process registry.
-
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readdirSync, readFileSync } from 'node:fs';
