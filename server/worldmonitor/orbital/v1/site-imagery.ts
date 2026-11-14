@@ -38,9 +38,10 @@ export interface CountrySiteImagery {
   credits: string[];
 }
 
-export function siteImagery(site: WatchedSiteEvidence): SiteImagery {
+/** A pass whose time has gone by is no longer a prediction, so it is dropped rather than shown as next. */
+export function siteImagery(site: WatchedSiteEvidence, nowMs: number): SiteImagery {
   const image = site.lastObservation;
-  const pass = site.nextWindow;
+  const pass = site.nextWindow && Date.parse(site.nextWindow.time) > nowMs ? site.nextWindow : null;
   return {
     siteId: site.siteId,
     name: site.name,
@@ -57,8 +58,8 @@ export function imageryCredits(sites: readonly SiteImagery[]): string[] {
 }
 
 /** The country's sites with their imagery, newest image first. */
-export function countrySiteImagery(evidence: GetCountryImageryEvidenceResponse): CountrySiteImagery {
-  const sites = evidence.sites.map(siteImagery)
+export function countrySiteImagery(evidence: GetCountryImageryEvidenceResponse, nowMs: number): CountrySiteImagery {
+  const sites = evidence.sites.map((site) => siteImagery(site, nowMs))
     .sort((a, b) => (b.latestImage?.datetime ?? '').localeCompare(a.latestImage?.datetime ?? '') || a.siteId.localeCompare(b.siteId));
   return { countryCode: evidence.countryCode, asOf: evidence.asOf, stale: evidence.stale, siteCount: evidence.siteCount, sites, credits: imageryCredits(sites) };
 }

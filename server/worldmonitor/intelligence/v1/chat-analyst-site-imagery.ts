@@ -38,7 +38,7 @@ function siteLine(site: SiteImagery): string {
     : 'no archive image on record';
   const pass = site.nextPass
     ? `next imaging pass ${minute(site.nextPass.time)} (${token(site.nextPass.profileId)})`
-    : 'no imaging pass expected in the next 72 hours';
+    : 'no upcoming imaging pass on record';
   return `- ${label(site.name)}: ${image}; ${pass}`;
 }
 
@@ -67,7 +67,7 @@ export async function buildWatchedSiteImagery(
   if (codes.length === 0) return undefined;
   const rollups = await Promise.all(codes.map((code) => getCachedJson(`${ORBITAL_COUNTRY_KEY_PREFIX}${code}`, true)));
   const blocks = codes
-    .map((code, i) => formatSiteImagery(countrySiteImagery(toCountryEvidence(code, index, rollups[i], nowMs)), keywords))
+    .map((code, i) => formatSiteImagery(countrySiteImagery(toCountryEvidence(code, index, rollups[i], nowMs), nowMs), keywords))
     .filter(Boolean);
   return blocks.length ? blocks.join('\n\n') : undefined;
 }

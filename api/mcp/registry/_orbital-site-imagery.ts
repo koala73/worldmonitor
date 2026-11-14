@@ -31,7 +31,7 @@ const IMAGE_SCHEMA = {
 
 const PASS_SCHEMA = {
   type: 'object',
-  description: 'Next expected imaging pass; null when none in 72 hours.',
+  description: 'Next predicted imaging pass; null when no upcoming pass is on record.',
   properties: {
     profileId: { type: 'string' },
     time: { type: 'string', description: 'ISO 8601 UTC.' },
@@ -43,7 +43,7 @@ export const WATCHED_SITE_IMAGERY_TOOL: ToolDef = {
   title: 'Latest image and next pass for watched sites',
   _subscriptionOnly: true,
   _outputBudgetBytes: 131072,
-  description: 'Return the watched sites in one country, newest image first, each with its latest archive image (scene id, sensor, date and the credit line owed when citing it) and its next expected imaging pass, plus every credit the listed sites owe. Pass site to keep only sites whose name or id contains it. Same evidence and currency rule as get_country_imagery_evidence: stale true means the evidence is missing or older than 3 days and sites is empty. Requires a paid plan; one downstream fetch. Read-only.',
+  description: 'Return the watched sites in one country, newest image first, each with its latest archive image (scene id, sensor, date and the credit line owed when citing it) and its next predicted imaging pass, plus attribution: every credit line the listed sites owe. Pass site to keep only sites whose name or id contains it. Same evidence and currency rule as get_country_imagery_evidence: stale true means the evidence is missing or older than 3 days and sites is empty. Requires a paid plan; one downstream fetch. Read-only.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -72,9 +72,9 @@ export const WATCHED_SITE_IMAGERY_TOOL: ToolDef = {
           required: ['siteId', 'name', 'latestImage', 'nextPass'],
         },
       },
-      credits: { type: 'array', items: { type: 'string' } },
+      attribution: { type: 'array', items: { type: 'string' }, description: 'Every credit line the listed sites owe, once each.' },
     },
-    required: ['countryCode', 'stale', 'siteCount', 'sites', 'credits'],
+    required: ['countryCode', 'stale', 'siteCount', 'sites', 'attribution'],
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   _validateArgs: (params) => { requireCountryCode(params.country_code, TOOL); siteQuery(params); },
@@ -82,11 +82,11 @@ export const WATCHED_SITE_IMAGERY_TOOL: ToolDef = {
     const countryCode = requireCountryCode(params.country_code, TOOL);
     const query = siteQuery(params);
     const evidence = await readOrbital(COUNTRY_EVIDENCE_PATH, new URLSearchParams({ country_code: countryCode }), TOOL, base, context, execution) as GetCountryImageryEvidenceResponse;
-    const imagery = countrySiteImagery({ ...evidence, sites: Array.isArray(evidence?.sites) ? evidence.sites : [] });
-    if (!query) return imagery;
-    const sites = imagery.sites.filter((site) => site.name.toLowerCase().includes(query) || site.siteId.toLowerCase().includes(query));
-    return { ...imagery, sites, credits: imageryCredits(sites) };
+    const { credits: _credits, ...imagery } = countrySiteImagery({ ...evidence, sites: Array.isArray(evidence?.sites) ? evidence.sites : [] }, Date.now());
+    const sites = query ? imagery.sites.filter((site) => site.name.toLowerCase().includes(query) || site.siteId.toLowerCase().includes(query)) : imagery.sites;
+    return { ...imagery, sites, attribution: imageryCredits(sites) };
   },
+  _attribution: '{attribution: attribution}',
   _coverageKeys: ['orbital:sites:v1'],
   _apiPaths: [`GET ${COUNTRY_EVIDENCE_PATH}`],
 };
