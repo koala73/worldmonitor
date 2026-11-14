@@ -4636,10 +4636,10 @@
       "confirmedCount_one": "{{count}} confirmed image",
       "confirmedCount_other": "{{count}} confirmed images",
       "newest": "newest {{when}}",
-      "noneConfirmed": "No confirmed image in the window",
+      "noneConfirmed": "Zero confirmed images this period",
       "noneYet": "Archives still answering",
       "latest": "Latest image",
-      "latestNone": "The archives returned no scene of this point in the window.",
+      "latestNone": "Archives returned nothing for this point and period.",
       "latestChecking": "Archive search in progress. Computed passes are listed below.",
       "compareWith": "Compare with",
       "compareDate": "Baseline date",
@@ -4652,12 +4652,12 @@
       "shareCopied": "Link copied",
       "showUtc": "UTC",
       "showLocal": "Local time",
-      "alert": "Get an alert before an open satellite passes over this point, and when a new clear image of it is published.",
+      "alert": "Alert before each open pass overhead, and on each new clear image.",
       "alertCta": "Set alert · Pro",
       "height": {
         "collapsed": "Sheet collapsed. Expand to half height",
         "half": "Sheet at half height. Expand to full height",
-        "full": "Sheet at full height. Collapse"
+        "full": "Expanded sheet. Collapse"
       }
     },
     "tier": {
@@ -4675,8 +4675,8 @@
     },
     "tierDef": {
       "confirmed": "An archive lists a scene covering the point.",
-      "likely": "A fixed-swath sensor covered the point; its archive has no scene yet.",
-      "inReach": "A steerable sensor could aim at the point. Tasking is not public.",
+      "likely": "Fixed-swath coverage included the point; no archived scene yet.",
+      "inReach": "A steerable sensor could aim here. Tasking is not public.",
       "capability": "A sensor class with no public archive was overhead."
     },
     "row": {
@@ -4701,7 +4701,7 @@
       "detail": "Detail",
       "now": "now",
       "loading": "Loading event feeds…",
-      "none": "No events within {{km}} km in the last {{days}} days.",
+      "none": "No events within {{km}} km over the past {{days}} days.",
       "unavailable": "Not available: {{sources}}",
       "kind": {
         "conflict": "Conflict",
@@ -4715,7 +4715,7 @@
     },
     "capability": {
       "heading": "Who can image this point",
-      "none": "No sensor pass in the window.",
+      "none": "No sensor passes during this period.",
       "tooOld": "Orbit data too old to compute: {{names}}",
       "showAll": "Show all {{count}}",
       "showFewer": "Show fewer",
@@ -4731,21 +4731,21 @@
       "heading": "Next collection windows",
       "optical": "Open optical",
       "radar": "Open radar",
-      "none": "No open optical or radar pass in the next {{hours}} h."
+      "none": "No open optical or radar pass due within {{hours}} h."
     },
     "status": {
       "catalog": "Loading the satellite catalogue…",
-      "computing": "Computing passes: {{done}} of {{total}} satellites",
+      "computing": "Computing passes · satellite {{done}} of {{total}}",
       "checking": "Archives answered: {{done}} of {{total}}",
       "partial": "No answer from {{sources}}. Counts may be low.",
-      "staleCatalog": "Catalogue is {{age}} old; pass times may drift.",
-      "empty": "No satellite passed within reach of this point in the window.",
+      "staleCatalog": "Catalogue is {{age}} old; predicted times can drift.",
+      "empty": "No satellite came within reach of this point during this period.",
       "unavailable": "Pass data is unavailable. Try again later."
     },
     "privacy": {
-      "line": "Point kept on this device; sent only to Earth Search, Planetary Computer, NASA GIBS, EUMETSAT. Typed names: WorldMonitor, OSM.",
+      "line": "Point stays local; sent only to Earth Search, Planetary Computer, NASA GIBS, EUMETSAT. Typed names: WorldMonitor, OSM.",
       "more": "Details",
-      "body": "Pass geometry runs in this browser. Archives receive a bounding box around the point to look up scenes. A typed place name is resolved by WorldMonitor and OpenStreetMap Nominatim. Links you share round the point to 0.01°."
+      "body": "Pass geometry is computed locally. Archives get a bounding box, never exact coordinates, to find scenes. Typed place names are resolved by WorldMonitor and OpenStreetMap Nominatim. Shared links keep two decimals (0.01°)."
     },
     "sources": {
       "heading": "Sources ({{count}})",
@@ -4756,8 +4756,8 @@
       "vessels": "ship positions"
     },
     "caption": {
-      "clear": "No cloud over the point",
-      "clearSceneCloud": "No cloud over the point · scene {{pct}}% cloud",
+      "clear": "Point cloud-free",
+      "clearSceneCloud": "Point cloud-free · scene {{pct}}% cloud",
       "clouded": "Cloud at point · {{pct}}%",
       "cloudShadow": "Shadow at point",
       "spotNotChecked": "Point cloud unknown",
@@ -4779,7 +4779,7 @@
       "compareDates": "Dates in this collection",
       "compareNone": "No second scene in this collection.",
       "divider": "Baseline divider",
-      "searching": "Searching the last {{days}} days for scenes",
+      "searching": "Searching {{days}} days of archive scenes",
       "historyFailed": "{{archive}} returned an error; older scenes are missing.",
       "historyTimeout": "{{archive}} timed out; older scenes are missing.",
       "loading": "Frames loaded: {{loaded}} of {{total}}",
@@ -4803,17 +4803,17 @@
       "placeholder": "Place or 25.11, 55.14",
       "submit": "Search",
       "locate": "My location",
-      "hint": "Coordinates and your location stay on this device. A typed place name goes to WorldMonitor and OpenStreetMap Nominatim.",
+      "hint": "Coordinates and your location never leave this device. Typed place names go to WorldMonitor and OpenStreetMap Nominatim.",
       "results": "Places",
       "searching": "Searching…",
-      "tooShort": "Enter two or more characters, or coordinates like 25.11, 55.14.",
+      "tooShort": "Enter at least two characters, or coordinates like 25.11, 55.14.",
       "invalidCoordinates": "Latitude must be -90 to 90 and longitude -180 to 180.",
-      "failed": "Place search is down. Coordinates and the map still work.",
+      "failed": "Place lookup failed. Coordinates and map clicks still work.",
       "noResults": "No matching place.",
       "locating": "Locating…",
-      "locationDenied": "Location access denied. Search a place or right-click the map.",
-      "locationUnavailable": "Location not found. Search a place or right-click the map.",
-      "idle": "Search a place, use your location, or right-click the map to see its imagery evidence."
+      "locationDenied": "Location access denied. Type any place name, or right-click the map.",
+      "locationUnavailable": "Location not found. Type any place name, or right-click the map.",
+      "idle": "Type any place name, use device location, or right-click the map to open its imagery evidence."
     },
     "share": {
       "copied": "Link copied",
@@ -4821,7 +4821,7 @@
       "link": "Share link",
       "dismiss": "Dismiss",
       "passOutsideWindow": "The linked pass is outside this window; none selected.",
-      "passNotFound": "The linked pass is not in the recomputed list; none selected."
+      "passNotFound": "The linked pass is missing from the recomputed list; none selected."
     },
     "timeline": {
       "name": "Timeline",
@@ -4829,7 +4829,7 @@
       "now": "now",
       "nowAt": "Now: {{time}}",
       "daylightHere": "Daylight at point",
-      "daylight": "Daylight at point, {{start}} to {{end}}",
+      "daylight": "Daylight here: {{start}}–{{end}}",
       "density": "{{label}}, {{start}} to {{end}}: {{count}}",
       "densityTip_one": "{{count}} pass from {{start}} · {{names}}",
       "densityTip_other": "{{count}} passes from {{start}} · {{names}}",

@@ -203,7 +203,7 @@ describe('imagery evidence sheet', () => {
     const line = sheet().querySelector<HTMLElement>('.ies-evidence-line')!;
     expect(line.tagName).toBe('P');
     expect(line.textContent, 'two acquisitions of one platform count twice').toMatch(/^2 confirmed images · newest /);
-    expect(line.textContent).toMatch(/no cloud over the point/i);
+    expect(line.textContent).toMatch(/point cloud-free/i);
     expect(sheet().querySelector('h1, .ow-headline')).toBeNull();
   });
 
@@ -231,7 +231,7 @@ describe('imagery evidence sheet', () => {
 
   it('says the archives found no scene instead of showing an empty image', () => {
     mounted(answered(tiered().all));
-    expect(sectionOf('latest').textContent).toContain('The archives returned no scene of this point in the window.');
+    expect(sectionOf('latest').textContent).toContain('Archives returned nothing for this point and period.');
     expect(sectionOf('latest').querySelector('img')).toBeNull();
   });
 
@@ -318,7 +318,7 @@ describe('imagery evidence sheet', () => {
       events: { conflict: ok(), fires: ok(), unrest: ok(), outages: ok() },
       live: { vessels: { status: 'ok' as const, items: [] }, 'military-flights': { status: 'ok' as const, items: [] }, 'gps-jamming': { status: 'ok' as const, items: [] } },
     } as never });
-    expect(sectionOf('events').textContent).toMatch(/No events within \d+ km in the last 7 days\./);
+    expect(sectionOf('events').textContent).toMatch(/No events within \d+ km over the past 7 days\./);
   });
 
   it('selects a pass from its row: marks it, opens its group and announces it for the timeline and the maps', () => {
@@ -362,7 +362,7 @@ describe('imagery evidence sheet', () => {
 
   it('warns about stale orbit data with its age', () => {
     mounted(answered(tiered().all, {}, 'stale'));
-    expect(sheet().querySelector('.ies-note.ies-stale')!.textContent).toBe('Catalogue is 3 days old; pass times may drift.');
+    expect(sheet().querySelector('.ies-note.ies-stale')!.textContent).toBe('Catalogue is 3 days old; predicted times can drift.');
   });
 
   it('words its credits as the source attribution manifest does', () => {
@@ -416,7 +416,7 @@ describe('opening the lookup for a point', () => {
     const found = lookup(all);
     lookupMock.mockImplementation(async (_query, options) => {
       options.onProgress(3, 9);
-      expect(text()).toContain('Computing passes: 3 of 9 satellites');
+      expect(text()).toContain('Computing passes · satellite 3 of 9');
       return found;
     });
     let finish!: (value: OrbitalEvidence) => void;
@@ -460,6 +460,6 @@ describe('opening the lookup for a point', () => {
     lookupMock.mockResolvedValueOnce(lookup([]));
     evidenceMock.mockResolvedValueOnce(evidence([]));
     click('[data-action="retry"]');
-    await vi.waitFor(() => expect(text()).toContain('No satellite passed within reach of this point in the window.'));
+    await vi.waitFor(() => expect(text()).toContain('No satellite came within reach of this point during this period.'));
   });
 });

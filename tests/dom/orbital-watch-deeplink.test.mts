@@ -129,7 +129,7 @@ describe('place search in the satellite pass lookup', () => {
     });
     dispatcher.handleCommand(command);
     await vi.waitFor(() => expect(document.activeElement).toBe(input()));
-    expect(text()).toContain('Search a place, use your location, or right-click the map');
+    expect(text()).toContain('Type any place name, use device location, or right-click the map');
     expect(lookupMock).not.toHaveBeenCalled();
   });
 
@@ -337,7 +337,7 @@ describe('satellite pass share link', () => {
     document.addEventListener('orbital-watch:select', selected, { once: true });
     history.replaceState(null, '', '/dashboard#orbital=48.86,2.29;40697-202611120600');
     scheduleOrbitalShareLink(takeOrbitalShareLink()!, 0, () => false);
-    await vi.waitFor(() => expect(text()).toContain('The linked pass is not in the recomputed list'));
+    await vi.waitFor(() => expect(text()).toContain('The linked pass is missing from the recomputed list'));
     expect(selected).not.toHaveBeenCalled();
   });
 
