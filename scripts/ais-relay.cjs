@@ -612,6 +612,8 @@ function upstashPipeline(commands) {
       }
       let data = '';
       resp.on('data', (chunk) => { data += chunk; });
+      resp.on('error', () => resolve(null));
+      resp.on('aborted', () => resolve(null));
       resp.on('end', () => {
         try {
           const parsed = JSON.parse(data);
@@ -6364,7 +6366,7 @@ async function fetchTheaterFlightsFromOpenSky() {
   const seenIds = new Set();
   const allFlights = [];
   const resp = await fetch(`http://${RELAY_SELF_HOST}:${relayBoundPort}/opensky`, {
-    headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
+    headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { [RELAY_AUTH_HEADER]: RELAY_SHARED_SECRET } : {}) },
     signal: AbortSignal.timeout(20_000),
   });
   if (!resp.ok) throw new Error(`OpenSky proxy ${resp.status} for GLOBAL`);
@@ -6696,7 +6698,7 @@ const AIR_TRAFFIC_MAX_SNAPSHOT_AGE_MS = 180_000;
 
 async function fetchAirTrafficStates(fetchedAt) {
   const resp = await fetch(`http://${RELAY_SELF_HOST}:${relayBoundPort}/opensky`, {
-    headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
+    headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { [RELAY_AUTH_HEADER]: RELAY_SHARED_SECRET } : {}) },
     signal: AbortSignal.timeout(20_000),
   });
   const cacheState = resp.headers.get('x-cache') || 'NONE';

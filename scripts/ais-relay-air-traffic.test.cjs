@@ -29,7 +29,8 @@ const GLOBAL_SNAPSHOT = [
 const GLOBAL_TOTALS = { usSeen: 1500, usAirborne: 1200, usLowClimbing: 200, euAirborne: 2000 };
 const EUROPE_ONLY = repeat(400, () => row(50, 10));
 
-function createRedis() {
+function createRedis({ abortPipelines = 0 } = {}) {
+  let pipelinesToAbort = abortPipelines;
   const strings = new Map();
   const hashes = new Map();
   const expireAt = new Map();
@@ -65,6 +66,14 @@ function createRedis() {
       }
       let body = null;
       try { body = JSON.parse(Buffer.concat(chunks).toString()); } catch { /* not a command */ }
+      if (req.url === '/pipeline' && Array.isArray(body) && pipelinesToAbort > 0) {
+        pipelinesToAbort -= 1;
+        // Headers and part of a body, then the connection drops.
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.write('[{"result":');
+        setTimeout(() => res.socket.destroy(), 20);
+        return;
+      }
       if (req.url === '/pipeline' && Array.isArray(body)) {
         res.end(JSON.stringify(body.map((command) => ({ result: run(command) }))));
         return;
@@ -157,8 +166,8 @@ function get(port, requestPath) {
   });
 }
 
-async function lane(snapshots, extraEnv, body) {
-  const redis = await createRedis();
+async function lane(snapshots, extraEnv, body, redisOptions) {
+  const redis = await createRedis(redisOptions);
   const fixture = snapshots ? writeSnapshots(snapshots) : null;
   const relay = spawnRelay(redis, fixture ? { RELAY_TEST_OPENSKY_STATES_FILE: fixture.file, ...extraEnv } : extraEnv);
   try {
@@ -290,5 +299,22 @@ test('lane 10: a body whose states is null records a gap and logs one warning pe
     const warnings = relay.output().split('\n').filter((line) => line.includes('[AirTraffic] Malformed OpenSky body')).length;
     assert.ok(gaps >= 1);
     assert.equal(warnings, gaps);
+  });
+});
+
+test('lane 11: a Redis response dropped mid-body settles the tick, so its bin is still recorded', async () => {
+  // The first pipeline is the skip check. A request that never settles would
+  // hang the first tick and leave the 20:30 bin empty.
+  await lane([EUROPE_ONLY], {}, async ({ redis, relay }) => {
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 2, 'two points');
+    assert.equal(redis.points('2026-11-13')[0].t, Date.UTC(2026, 10, 13, 20, 30));
+    assert.equal((await get(relay.port(), '/health')).status, 200);
+  }, { abortPipelines: 1 });
+});
+
+test('lane 12: a deployment with a custom auth header still records traffic', async () => {
+  await lane([EUROPE_ONLY], { RELAY_SHARED_SECRET: 'lane-secret', RELAY_AUTH_HEADER: 'X-Custom-Relay-Key' }, async ({ redis, relay }) => {
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 1 && relay.lines().length >= 1, 'first point and its log line');
+    assert.equal(redis.points('2026-11-13')[0].status, 'ok', relay.lines().join('\n'));
   });
 });
