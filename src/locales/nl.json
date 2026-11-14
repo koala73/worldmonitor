@@ -5380,6 +5380,7 @@
       "geoLine": "Geostationair zicht: {{names}}",
       "row": {
         "images": "Opnamen",
+        "events": "Gebeurtenissen",
         "passes": "Overkomsten"
       },
       "source": {

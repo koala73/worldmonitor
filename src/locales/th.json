@@ -5347,6 +5347,7 @@
       "geoLine": "มุมมองค้างฟ้า: {{names}}",
       "row": {
         "images": "ภาพ",
+        "events": "เหตุการณ์",
         "passes": "การผ่าน"
       },
       "source": {

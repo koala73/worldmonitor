@@ -5380,6 +5380,7 @@
       "geoLine": "Mwonekano wa kijiostesheni: {{names}}",
       "row": {
         "images": "Picha",
+        "events": "Matukio",
         "passes": "Mapito"
       },
       "source": {

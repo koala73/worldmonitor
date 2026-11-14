@@ -44,7 +44,7 @@ export interface OrbitalTimelineInput {
 
 type RowId = 'images' | 'passes';
 
-/** Images and passes are the two pass lanes; events draw on their own strip between them. Dense tiers draw as hourly bars. */
+/** Images and passes are the pass lanes; events draw on the lane between them. Dense tiers draw as hourly bars. */
 const ROWS: ReadonlyArray<{ id: RowId; tiers: ReadonlyArray<PassTier['kind']>; dense: ReadonlyArray<PassTier['kind']> }> = [
   { id: 'images', tiers: ['confirmed-image', 'daily-mosaic'], dense: [] },
   { id: 'passes', tiers: ['likely-imaged', 'within-reach', 'capability-overhead', 'passed-overhead', 'opportunity'], dense: ['within-reach', 'capability-overhead', 'passed-overhead'] },
@@ -114,8 +114,8 @@ function uncovered(retained: { startMs: number; endMs: number } | null, startMs:
 }
 
 /**
- * The timeline dock: five tier rows over the lookup window in the place's local time, daylight at the point,
- * nearby events on a strip above, and live-only context at the foot. A visually hidden list says the same in text.
+ * The timeline dock: images, events and passes lanes over the lookup window in the place's local time,
+ * daylight at the point, and live-only context at the foot. A visually hidden list says the same in text.
  */
 export class OrbitalTimeline {
   readonly element: HTMLElement;
@@ -163,7 +163,7 @@ export class OrbitalTimeline {
       h('span', { className: 'ow-tl-daylight-key' }, h('span', { className: 'ow-tl-swatch' }), t('orbitalWatch.timeline.daylightHere')));
 
     const geostationary = input.lookup.satellites.filter((s) => s.status === 'geostationary' && s.visibility.visible);
-    const keys: HTMLElement[] = [h('li', { className: 'ow-tl-key-spacer', 'aria-hidden': 'true' })];
+    const keys: HTMLElement[] = [];
     const rows: HTMLElement[] = [];
     for (const row of ROWS) {
       const passes = input.passes.filter((pass) => row.tiers.includes(pass.tier.kind));
@@ -188,7 +188,6 @@ export class OrbitalTimeline {
       }
       for (const pass of sparse) entries.push({ timeMs: pass.timeMs, text: `${t(TIER_LABEL_KEY[pass.tier.kind])}: ${pass.name}, ${formatUtc(pass.timeMs)}` });
     }
-    replaceChildren(this.legend, ...keys);
 
     const eventMarks: HTMLElement[] = [];
     const eventKeys = EVENT_SOURCES.map((id) => {
@@ -201,7 +200,8 @@ export class OrbitalTimeline {
       }
       for (const event of lane.events) {
         const where = event.distanceKm === null ? t('orbitalWatch.timeline.countryWide') : t('orbitalWatch.timeline.away', { km: Math.round(event.distanceKm) });
-        eventMarks.push(h('span', { className: 'ow-tl-event', style: at(event.timeMs), dataset: { source: id, tip: `${label} · ${event.label} · ${where} · ${when(event.timeMs)}` } }));
+        const tip = `${label} · ${event.label} · ${where} · ${when(event.timeMs)}`;
+        eventMarks.push(h('span', { className: 'ow-tl-event', style: at(event.timeMs), tabIndex: 0, 'aria-label': tip, dataset: { source: id, tip } }));
         entries.push({ timeMs: event.timeMs, text: `${label}: ${event.label}, ${formatUtc(event.timeMs)}, ${where}` });
       }
       // A feed that answered with nothing here kept nothing to cover, so it reads as zero, not as a gap.
@@ -222,6 +222,16 @@ export class OrbitalTimeline {
         kept ? h('span', { className: 'ow-tl-retained' }, ` · ${kept}`) : null);
     });
 
+    // Images, events and passes are the three lanes, in the order the plot draws them.
+    const eventCount = context ? EVENT_SOURCES.reduce((sum, id) => {
+      const lane = context.events[id];
+      return sum + (lane.status === 'ok' ? lane.events.length : 0);
+    }, 0) : null;
+    keys.splice(1, 0, h('li', { className: 'ow-tl-key', dataset: { row: 'events' } },
+      h('span', { className: 'ow-tl-key-label' }, t('orbitalWatch.timeline.row.events')),
+      h('span', { className: 'ow-tl-count' }, eventCount === null ? '…' : count(eventCount))));
+    replaceChildren(this.legend, ...keys);
+
     const midnights = clock.midnights(window.startMs, window.endMs);
     const dayStarts = [window.startMs, ...midnights.filter((ms) => ms > window.startMs && ms < window.endMs)];
     const days = dayStarts.flatMap((startMs, i) => {
@@ -234,8 +244,9 @@ export class OrbitalTimeline {
         ...midnights.map((ms) => h('span', { className: 'ow-tl-midnight', style: at(ms) })),
         h('span', { className: 'ow-tl-now', style: at(nowMs) })),
       h('div', { className: 'ow-tl-flags', 'aria-hidden': 'true' }, h('span', { className: 'ow-tl-now-label', style: at(nowMs) }, t('orbitalWatch.timeline.now'))),
-      h('div', { className: 'ow-tl-strip' }, ...eventMarks),
-      ...rows,
+      rows[0]!,
+      h('div', { className: 'ow-tl-row ow-tl-strip', dataset: { row: 'events' } }, ...eventMarks),
+      rows[1]!,
       h('div', { className: 'ow-tl-axis', 'aria-hidden': 'true' }, ...days));
     this.hideTip();
     requestAnimationFrame(() => this.revealNow(`${window.startMs}:${window.endMs}`));

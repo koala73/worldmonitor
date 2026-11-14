@@ -5347,6 +5347,7 @@
       "geoLine": "Góc nhìn địa tĩnh: {{names}}",
       "row": {
         "images": "Ảnh",
+        "events": "Sự kiện",
         "passes": "Lượt bay qua"
       },
       "source": {

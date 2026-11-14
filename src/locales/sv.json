@@ -5380,6 +5380,7 @@
       "geoLine": "Geostationär vy: {{names}}",
       "row": {
         "images": "Bilder",
+        "events": "Händelser",
         "passes": "Passager"
       },
       "source": {

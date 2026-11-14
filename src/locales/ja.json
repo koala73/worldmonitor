@@ -5347,6 +5347,7 @@
       "geoLine": "静止軌道からの視野: {{names}}",
       "row": {
         "images": "画像",
+        "events": "出来事",
         "passes": "通過"
       },
       "source": {

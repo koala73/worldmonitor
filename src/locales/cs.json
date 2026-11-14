@@ -5446,6 +5446,7 @@
       "geoLine": "Geostacionární pohled: {{names}}",
       "row": {
         "images": "Snímky",
+        "events": "Události",
         "passes": "Přelety"
       },
       "source": {

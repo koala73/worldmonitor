@@ -322,7 +322,6 @@
 .ow-tl-legend {
   display: grid;
   grid-auto-rows: var(--tl-row);
-  grid-template-rows: var(--tl-strip);
   margin: 0;
   padding: var(--tl-flag) 0 0;
   list-style: none;
@@ -354,7 +353,7 @@
 .ow-tl-plot {
   position: relative;
   display: grid;
-  grid-template-rows: var(--tl-flag) var(--tl-strip) repeat(5, var(--tl-row)) var(--tl-axis);
+  grid-template-rows: var(--tl-flag) repeat(3, var(--tl-row)) var(--tl-axis);
 }
 
 .ow-tl-backdrop {
@@ -385,7 +384,7 @@
   position: relative;
 }
 
-.ow-tl-strip { border-bottom: 1px solid var(--border-subtle); }
+.ow-tl-strip { border-block: 1px solid var(--border-subtle); }
 
 .ow-tl-mark,
 .ow-tl-event {

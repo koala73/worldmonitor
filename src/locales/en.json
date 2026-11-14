@@ -4838,6 +4838,7 @@
       "geoLine": "Geostationary view: {{names}}",
       "row": {
         "images": "Images",
+        "events": "Events",
         "passes": "Passes"
       },
       "source": {

@@ -3089,6 +3089,7 @@
   "orbitalWatch.timeline.nowAt": "Now: {{time}}",
   "orbitalWatch.timeline.retained": "history {{start}} to {{end}}",
   "orbitalWatch.timeline.retainedDay": "history {{day}} only",
+  "orbitalWatch.timeline.row.events": "Events",
   "orbitalWatch.timeline.row.images": "Images",
   "orbitalWatch.timeline.row.passes": "Passes",
   "orbitalWatch.timeline.source.conflict": "Conflict",

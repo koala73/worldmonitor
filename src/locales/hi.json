@@ -5380,6 +5380,7 @@
       "geoLine": "भूस्थिर दृश्य: {{names}}",
       "row": {
         "images": "छवियाँ",
+        "events": "घटनाएँ",
         "passes": "गुज़र"
       },
       "source": {

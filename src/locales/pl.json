@@ -5446,6 +5446,7 @@
       "geoLine": "Widok geostacjonarny: {{names}}",
       "row": {
         "images": "Obrazy",
+        "events": "Zdarzenia",
         "passes": "Przeloty"
       },
       "source": {

@@ -5347,6 +5347,7 @@
       "geoLine": "정지궤도 시야: {{names}}",
       "row": {
         "images": "영상",
+        "events": "사건",
         "passes": "통과"
       },
       "source": {

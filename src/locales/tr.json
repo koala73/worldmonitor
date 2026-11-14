@@ -5380,6 +5380,7 @@
       "geoLine": "Yer eşzamanlı görüş: {{names}}",
       "row": {
         "images": "Görüntüler",
+        "events": "Olaylar",
         "passes": "Geçişler"
       },
       "source": {

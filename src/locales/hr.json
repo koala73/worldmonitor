@@ -5423,6 +5423,7 @@
       "geoLine": "Geostacionarni pogled: {{names}}",
       "row": {
         "images": "Snimke",
+        "events": "Događaji",
         "passes": "Prelasci"
       },
       "source": {
