@@ -109,6 +109,11 @@ describe('orbital pass client', () => {
     await assert.rejects(pending, { name: 'AbortError' });
   });
 
+  it('rejects with an AbortError when the signal is already aborted, even for an empty catalog', async () => {
+    const client = createOrbitalPassClient({ createWorker: () => new InProcessWorker(), loadCatalog: async () => ({ ...catalog, status: 'empty', satellites: [] }), now: () => NOW });
+    await assert.rejects(client.lookup(lookupQuery(), { signal: AbortSignal.abort() }), { name: 'AbortError' });
+  });
+
   it('falls back to the main thread with the same passes when the worker cannot be constructed', async () => {
     let attempts = 0;
     const client = createOrbitalPassClient({
