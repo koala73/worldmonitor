@@ -24,6 +24,8 @@ export interface DailyMosaicRow {
   layer: string;
   noradId: number;
   days: Array<{ date: string; imageUrl: string | null }>;
+  /** Where the point sits in each day's crop; the centre when absent. */
+  pointInCrop?: CropPosition;
 }
 
 /** The newest full-disk frame of a geostationary satellite that sees the point. */
@@ -67,10 +69,33 @@ export const MOSAIC_FALLBACK_DAYS = 3;
 const NO_DATA_LEVEL = 12;
 const NO_DATA_SHARE = 0.9;
 
-/** Whether an RGBA crop has no data at its centre, which is the selected point. */
-export function hasNoDataAtCentre(rgba: ArrayLike<number>, width: number, height: number): boolean {
-  const x0 = Math.floor(width * 3 / 8), x1 = Math.ceil(width * 5 / 8);
-  const y0 = Math.floor(height * 3 / 8), y1 = Math.ceil(height * 5 / 8);
+/** Where the point sits in a crop, as fractions of its width from the west edge and height from the north edge. */
+export interface CropPosition {
+  x: number;
+  y: number;
+}
+
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+
+/** The point's position in its crop, which is off-centre where the crop slides inside a pole or the antimeridian. */
+export function pointInCrop(point: GeoPoint, box: CropBox): CropPosition {
+  return {
+    x: box.east > box.west ? clamp01((point.lon - box.west) / (box.east - box.west)) : 0.5,
+    y: box.north > box.south ? clamp01((box.north - point.lat) / (box.north - box.south)) : 0.5,
+  };
+}
+
+/** Bounds of a window a quarter of `size` wide around `at`, kept inside the crop. */
+function windowAround(at: number, size: number): [number, number] {
+  const span = Math.max(1, Math.ceil(size / 4));
+  const start = Math.min(Math.max(Math.round(at * size - span / 2), 0), size - span);
+  return [start, start + span];
+}
+
+/** Whether an RGBA crop has no data around the point, which is at `at` (the centre unless the crop slid). */
+export function hasNoDataAtPoint(rgba: ArrayLike<number>, width: number, height: number, at: CropPosition = { x: 0.5, y: 0.5 }): boolean {
+  const [x0, x1] = windowAround(at.x, width);
+  const [y0, y1] = windowAround(at.y, height);
   let empty = 0;
   let total = 0;
   for (let y = y0; y < y1; y++) {
@@ -172,7 +197,7 @@ export async function searchGibsDailyMosaics(query: FrameQuery): Promise<Archive
   const items = GIBS_DAILY_MOSAICS.map((layer, i): DailyMosaicRow => {
     const answer = answers[i]!;
     const days = (answer.ok ? answer.times : []).map((t) => isoDate(t)).reverse().map((date) => ({ date, imageUrl: gibsSnapshotUrl(layer.layer, date, box) }));
-    return { kind: 'daily-mosaic', archive: 'nasa-gibs', source: layer.source, layer: layer.layer, noradId: layer.noradId, days };
+    return { kind: 'daily-mosaic', archive: 'nasa-gibs', source: layer.source, layer: layer.layer, noradId: layer.noradId, days, pointInCrop: pointInCrop(query.point, box) };
   });
   return { status: 'ok', archive: 'nasa-gibs', items, failures };
 }
