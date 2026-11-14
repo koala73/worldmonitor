@@ -17,7 +17,7 @@ process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
 process.env.WORLDMONITOR_VALID_KEYS = 'test-key';
 
-const { __testing__ } = await import('../api/health.js');
+const { __testing__ } = await import('../api/health.js?orbital-watch=lit');
 const { handleSeedHealth } = await import('../api/seed-health.js');
 const { MAX_STALE_MIN } = await import('../scripts/seed-orbital-sites.mjs');
 const { ORBITAL_SITES_ACTIVATION_KEY, ORBITAL_SITES_KEY } = await import('../scripts/_orbital-sites.mjs');
