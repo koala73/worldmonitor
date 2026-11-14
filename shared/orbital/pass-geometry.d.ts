@@ -74,7 +74,7 @@ export interface GroundTrackPoint {
 export const ORBIT_ELEMENTS_MAX_AGE_DAYS: number;
 export const PASS_MIN_ELEVATION_DEG: number;
 export const EDGE_OF_SWATH_KM: number;
-/** Longest search or ground-track window; longer or unordered windows, or bounds outside the Date range, throw a RangeError. */
+/** Longest search or ground-track window; longer or unordered windows, bounds outside the Date range, or bounds more than ORBIT_ELEMENTS_MAX_AGE_DAYS + PASS_WINDOW_MAX_DAYS from the element epoch throw a RangeError. */
 export const PASS_WINDOW_MAX_DAYS: number;
 
 /** A sensor's footprint as a band of ground range either side of the ground track. */
