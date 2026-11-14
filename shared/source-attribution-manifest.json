@@ -3369,9 +3369,6 @@
         },
         {
           "path": "scripts/seed-aviation.mjs"
-        },
-        {
-          "path": "server/worldmonitor/aviation/v1/_shared.ts"
         }
       ]
     },
@@ -9625,9 +9622,6 @@
         },
         {
           "path": "scripts/seed-capital-flows.mjs"
-        },
-        {
-          "path": "server/worldmonitor/economic/v1/_bis-shared.ts"
         }
       ]
     },
