@@ -19,7 +19,10 @@ import { AGENT_GUIDE, CHATGPT_AGENT_GUIDE, CHATGPT_MODERN_SERVER_INSTRUCTIONS, C
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
 
 const CHATGPT_UA = 'openai-mcp/1.0.0';
-const SUMMARY_TOOLS = ['get_world_brief', 'get_country_brief', 'analyze_news_headlines'];
+// LLM briefs over headlines, plus tools whose results carry machine-translated
+// headlines or a model's reading of them (get_media_perspective) or describe a
+// generated narrative over news (get_focal_points).
+const SUMMARY_TOOLS = ['get_world_brief', 'get_country_brief', 'analyze_news_headlines', 'get_focal_points', 'get_media_perspective'];
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -42,7 +45,7 @@ async function invoke(body, userAgent) {
 }
 
 describe('summary tools are hidden from ChatGPT', () => {
-  it('the hidden set holds the three summary tools, and each exists', () => {
+  it('the hidden set holds the summary and headline-analysis tools, and each exists', () => {
     for (const name of SUMMARY_TOOLS) {
       assert.ok(CHATGPT_HIDDEN_TOOLS.has(name), name);
       assert.ok(TOOL_REGISTRY.some((tool) => tool.name === name), `${name} is a real tool`);
@@ -92,6 +95,14 @@ describe('summary tools are hidden from ChatGPT', () => {
     ]) assert.doesNotMatch(text, hidden, label);
     // Claude's guide keeps the routing.
     assert.match(AGENT_GUIDE, /get_world_brief for one written summary/);
+    assert.match(AGENT_GUIDE, /get_focal_points for entities/);
+  });
+
+  it('server instructions sent to ChatGPT mention no plan, subscription, upgrade or summary', () => {
+    for (const [label, text] of [
+      ['instructions', CHATGPT_SERVER_INSTRUCTIONS],
+      ['modern instructions', CHATGPT_MODERN_SERVER_INSTRUCTIONS],
+    ]) assert.doesNotMatch(text, /\bplans?\b|subscri|upgrade|\bPro\b|summar|translat/i, label);
   });
 
   it('no prompt sent to ChatGPT names a hidden tool', async () => {

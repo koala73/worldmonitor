@@ -202,14 +202,19 @@ export async function applyViewDomainPolicy(req: Request, method: string, res: R
 
 /**
  * Tools a ChatGPT request never sees or reaches: the checkout tool, and the
- * tools whose output is an LLM summary of third-party headlines (OpenAI's
- * 2026-11-13 review; see chatgpt-news.ts for the headline results).
+ * tools whose output summarizes, translates or interprets third-party
+ * headlines (OpenAI's 2026-11-13 review; see chatgpt-news.ts for the headline
+ * results).
  */
 export const CHATGPT_HIDDEN_TOOLS: ReadonlySet<string> = new Set([
   START_UPGRADE_TOOL,
   'get_world_brief',
   'get_country_brief',
   'analyze_news_headlines',
+  // Machine-translated headlines and a model's reading of their framing.
+  'get_media_perspective',
+  // A narrative and ai_context block built over headlines.
+  'get_focal_points',
 ]);
 
 const DENIAL_REASONS: ReadonlySet<string> = new Set<McpDenialReason>([
