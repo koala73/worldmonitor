@@ -305,6 +305,15 @@ describe('imagery evidence sheet', () => {
     expect((document.activeElement as HTMLElement).dataset.key).toBe(key);
   });
 
+  it('captions a mosaic with its archive day in a display zone west of UTC', () => {
+    setOrbitalDisplayZone('America/New_York', 'ET');
+    onTestFinished(() => setOrbitalDisplayZone('UTC', 'UTC'));
+    const { all, confirmedNew, likely } = tiered();
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew), acquisition(likely)], mosaics: [modis] }));
+    const caption = sheet().querySelector(`[data-key="mosaic:${modis.layer}"] .ies-thumb-caption`)!.textContent!;
+    expect(caption).toMatch(/Nov 12/);
+  });
+
   it('paints point-bearing images only from blob: URLs and releases them when the lookup ends', async () => {
     const { all, confirmedNew, likely } = tiered();
     const state = answered(all, { acquisitions: [acquisition(confirmedNew), acquisition(likely)], mosaics: [modis], frames: [meteosat] });

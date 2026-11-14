@@ -136,6 +136,11 @@ export function formatOrbitalTime(ms: number, style: 'day' | 'date' | 'clock' | 
 }
 
 
+/** An archive's calendar day (YYYY-MM-DD) reads as that day in every display zone. */
+function formatCalendarDay(date: string): string {
+  return new Intl.DateTimeFormat(lang(), { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(Date.parse(date));
+}
+
 function formatRelative(ms: number, nowMs: number, style: Intl.RelativeTimeFormatStyle = 'long'): string {
   const diff = ms - nowMs;
   const abs = Math.abs(diff);
@@ -554,7 +559,7 @@ function thumbSpecs(confirmed: MatchedAcquisition[], latest: MatchedAcquisition 
   for (const mosaic of evidence?.mosaics ?? []) {
     const [newest, ...earlier] = mosaicDays(mosaic);
     if (!newest) continue;
-    const mosaicCaption = (date: string) => `${mosaic.source.toUpperCase()} · ${formatOrbitalTime(Date.parse(date), 'date')} · ${t('orbitalWatch.sheet.dailyMosaic')}`;
+    const mosaicCaption = (date: string) => `${mosaic.source.toUpperCase()} · ${formatCalendarDay(date)} · ${t('orbitalWatch.sheet.dailyMosaic')}`;
     specs.push({
       key: `mosaic:${mosaic.layer}`,
       url: newest.imageUrl,
