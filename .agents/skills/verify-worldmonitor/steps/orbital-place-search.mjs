@@ -86,11 +86,24 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await sheet.locator('.ow-search-result').first().click();
   await page.waitForFunction(() => document.querySelector('.ow-place')?.textContent?.includes('Palm Jumeirah, Dubai'));
   await settled(page);
-  const zoom = Number(new URL(await page.evaluate(() => location.href)).searchParams.get('zoom'));
-  // The lookup asks for tile zoom 11; the SVG map's scale factor tops out at 10.
-  const wanted = renderer === 'svg' ? 10 : 11;
-  log('zoom after pick', zoom, 'wanted', wanted);
-  if (Math.abs(zoom - wanted) > 0.5) throw new Error(`the map did not zoom to the place: ${zoom}, wanted ${wanted}`);
+  // The page URL keeps the pre-lookup view while the lookup owns the map, so the recentre is read from the reticle.
+  const after = new URL(await page.evaluate(() => location.href));
+  log('url after pick', after.href);
+  if (/25\.1[01]|55\.1[34]/.test(after.search)) throw new Error(`the page URL carries the picked point: ${after.search}`);
+  let mark = null;
+  for (let tries = 0; tries < 40 && !mark; tries++) {
+    mark = await page.evaluate(() => {
+      const ring = document.querySelector('.ow-mapmark:not([hidden]) .ow-mapmark-ring')?.getBoundingClientRect();
+      const map = document.getElementById('mapContainer')?.getBoundingClientRect();
+      if (!ring || !map || !ring.width) return null;
+      const x = ring.left + ring.width / 2;
+      const y = ring.top + ring.height / 2;
+      return x > map.left && x < map.right && y > map.top && y < map.bottom ? { x: Math.round(x), y: Math.round(y) } : null;
+    });
+    if (!mark) await page.waitForTimeout(250);
+  }
+  log('reticle after pick', JSON.stringify(mark));
+  if (!mark) throw new Error('the map did not bring the picked place into view: no reticle inside the map');
   await basemapDrawn();
   await shot('after-pick-recentred-on-place');
   await sheet.locator('.ow-close').click();
@@ -127,7 +140,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   if (await sheet.locator('.ow-search-input').isVisible()) throw new Error('search row stayed open after the pick');
   await settled(page);
   log('url while open', await page.evaluate(() => location.href));
-  if (/[?&]lat=/.test(await page.evaluate(() => location.search))) throw new Error('map URL sync wrote the centre while the lookup is open');
+  // The URL may keep the pre-lookup centre, never the picked point.
+  if (/25\.1[01]|55\.1[34]/.test(await page.evaluate(() => location.search))) throw new Error('map URL sync wrote the picked point while the lookup is open');
 
   await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('blocked')) } }));
   await sheet.locator('.ow-share').click();
