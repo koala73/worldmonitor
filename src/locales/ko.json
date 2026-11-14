@@ -5150,7 +5150,8 @@
         "weather": "기상"
       },
       "caption": {
-        "clear": "맑음",
+        "clear": "지점 맑음",
+        "clearSceneCloud": "지점 맑음 · 장면 구름 {{pct}}%",
         "clouded": "흐림 · {{pct}}%",
         "cloudShadow": "구름 그림자",
         "spotNotChecked": "지점 구름 미확인",

@@ -253,7 +253,8 @@ const sensorName = (platform: string) => platform.toUpperCase();
 function conditionLabel(acquisition: MatchedAcquisition): string {
   const pct = acquisition.cloudCoverPct === null ? null : Math.round(acquisition.cloudCoverPct);
   switch (acquisition.condition) {
-    case 'clear': return t('orbitalWatch.ui.caption.clear');
+    // The point's pixel is clear; a cloudy scene says so, as the image can still be mostly cloud.
+    case 'clear': return (acquisition.cloudCoverPct ?? 0) >= 10 ? t('orbitalWatch.ui.caption.clearSceneCloud', { pct }) : t('orbitalWatch.ui.caption.clear');
     case 'cloud': return t('orbitalWatch.ui.caption.clouded', { pct: pct ?? 100 });
     case 'cloud-shadow': return t('orbitalWatch.ui.caption.cloudShadow');
     case 'not-applicable': return t('orbitalWatch.ui.caption.radar');

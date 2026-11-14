@@ -5243,7 +5243,8 @@
         "weather": "Pogoda"
       },
       "caption": {
-        "clear": "Bezchmurnie",
+        "clear": "Bezchmurnie w punkcie",
+        "clearSceneCloud": "Bezchmurnie w punkcie · zachmurzenie sceny {{pct}}%",
         "clouded": "Zachmurzenie · {{pct}}%",
         "cloudShadow": "Cień chmury",
         "spotNotChecked": "Miejsce niesprawdzone pod kątem chmur",

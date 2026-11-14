@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import i18next from 'i18next';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { initTestI18n } from './helpers/i18n.mts';
 
@@ -239,6 +239,15 @@ describe('satellite pass lookup sheet', () => {
     expect(cards()[1]!.querySelector<HTMLElement>('.ow-image-credit')!.title).toBe('Contains modified Copernicus Sentinel data 2026');
   });
 
+  it('says a clear read is about the point, and gives the scene cloud when the scene is cloudy', () => {
+    const { all, confirmedNew, confirmedOld } = tiered();
+    const cloudyScene = acquisition(confirmedOld, { condition: 'clear', cloudCoverPct: 64.4 });
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew, { condition: 'clear', cloudCoverPct: 9.6 }), cloudyScene], bestView: cloudyScene }));
+    const bottom = (i: number) => cards()[i]!.querySelectorAll('.ow-caption-lines span')[1]!.textContent;
+    expect(bottom(0)).toMatch(/ · Clear at point · 64% scene cloud$/);
+    expect(bottom(1), 'a scene under 10% cloud needs no scene figure').toMatch(/ · Clear at point$/);
+  });
+
   it('shows every image as a labelled skeleton, then the image or a failure tile with retry', () => {
     const { all, confirmedNew } = tiered();
     mounted(answered(all, { acquisitions: [acquisition(confirmedNew)] }));
@@ -359,7 +368,10 @@ describe('satellite pass lookup sheet', () => {
   });
 
   it('opens the full view with the pass list, the status bar and empty slots for the dock, detail and replay HUD', () => {
-    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+    // The status bar ages the catalog against the wall clock, so pin it to the fixture's now.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    onTestFinished(() => { vi.useRealTimers(); });
     const { all, confirmedNew, confirmedOld, soon, later } = tiered();
     mounted(answered(all, { acquisitions: [acquisition(confirmedNew)] }));
     expect(sheet().querySelector('.ow-passes')).toBeNull();

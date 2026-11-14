@@ -5150,7 +5150,8 @@
         "weather": "Thời tiết"
       },
       "caption": {
-        "clear": "Quang đãng",
+        "clear": "Quang đãng tại điểm",
+        "clearSceneCloud": "Quang đãng tại điểm · mây toàn cảnh {{pct}}%",
         "clouded": "Có mây · {{pct}}%",
         "cloudShadow": "Bóng mây",
         "spotNotChecked": "Chưa kiểm tra mây tại điểm này",

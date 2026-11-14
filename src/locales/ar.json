@@ -5305,7 +5305,8 @@
         "weather": "الطقس"
       },
       "caption": {
-        "clear": "صافٍ",
+        "clear": "صافٍ عند النقطة",
+        "clearSceneCloud": "صافٍ عند النقطة · غيوم المشهد {{pct}}٪",
         "clouded": "غائم · {{pct}}٪",
         "cloudShadow": "ظل سحابة",
         "spotNotChecked": "لم تُفحص النقطة بحثًا عن السحب",
