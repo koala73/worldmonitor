@@ -740,6 +740,7 @@
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/physical-divergence.mjs",
       "scripts/lib/grid-clock-sources.mjs",
+      "scripts/shared/grid-disruption-clock.js",
       "scripts/lib/story-track-batch-reader.mjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",

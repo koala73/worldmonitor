@@ -1,5 +1,5 @@
 import { readBoundedJsonResponse } from '../_china-exchange-transport.mjs';
-import { GRID_CLOCK_REGIONS } from '../../shared/grid-disruption-clock.js';
+import { GRID_CLOCK_REGIONS } from '../shared/grid-disruption-clock.js';
 
 const MASSOUTAGE_URL = 'https://massoutage.com/api/v1/live/summary';
 const CAISO_URL = 'https://wwwmobile.caiso.com/TodaysOutlookApi/api/EmergencyNotices/v2/ActiveEvents';

@@ -2,7 +2,7 @@
 import { pathToFileURL } from 'node:url';
 import { getRedisCredentials, loadEnvFile, readCanonicalValue, redisCommand, runSeed } from './_seed-utils.mjs';
 import { fetchGridClockSources } from './lib/grid-clock-sources.mjs';
-import { GRID_CLOCK_REGIONS, isGridClockSnapshot } from '../shared/grid-disruption-clock.js';
+import { GRID_CLOCK_REGIONS, isGridClockSnapshot } from './shared/grid-disruption-clock.js';
 
 const KEY = 'infra:grid-disruption-clock:v1';
 export const GRID_CLOCK_ACTIVATION_KEY = 'seed-activated:infra:grid-disruption-clock';
