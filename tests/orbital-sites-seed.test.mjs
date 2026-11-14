@@ -22,8 +22,9 @@ import {
   ROLLUP_MAX_AGE_MS,
   ROLLUP_MAX_BYTES,
   siteKey,
+  withSiteFlag,
 } from '../scripts/_orbital-sites.mjs';
-import { freshSiteCount, makeFetchSites, publicationCommands } from '../scripts/seed-orbital-sites.mjs';
+import { buildSeedOptions, makeFetchSites, publicationCommands } from '../scripts/seed-orbital-sites.mjs';
 import { PUBLISH_BLOCKED_EXIT_CODE } from '../scripts/_seed-utils.mjs';
 import { WATCHED_SITES } from '../scripts/shared/orbital-watched-sites.generated.mjs';
 
@@ -88,6 +89,14 @@ describe('orbital site records', () => {
     assert.equal(relabelled.recentPasses.some((pass) => pass.itemId === scene.itemId), false);
   });
 
+  it('gives a record built without a flag the same revision as one built with it', () => {
+    const flag = { state: 'monitoring', wording: 'imagery statistics changed', updatedAt: NOW, tracks: {}, events: [] };
+    const direct = buildSiteRecord({ site: SITES[0], catalog, acquisitions: [], previous: null, nowMs: NOW, flag });
+    const later = withSiteFlag(buildSiteRecord({ site: SITES[0], catalog, acquisitions: [], previous: null, nowMs: NOW, flag: null }), flag);
+    assert.deepEqual(later, direct);
+    assert.equal(JSON.stringify(later), JSON.stringify(direct));
+  });
+
   it('keeps last week of passes when the stored elements are older than the age limit today', () => {
     const later = NOW + 7.5 * DAY_MS;
     const record = buildSiteRecord({ site: SITES[0], catalog, acquisitions: [], previous: null, nowMs: later });
@@ -142,7 +151,7 @@ describe('orbital site records', () => {
     await run(store);
     const later = await run(store, { nowMs: NOW + ROLLUP_MAX_AGE_MS + DAY_MS, searchArchive: async (s) => { if (s.id !== 'hotspot:a') throw new Error('HTTP 503'); return fixtureAcquisitions; } });
     assert.equal(Object.keys(later.sites).length, 4);
-    assert.equal(freshSiteCount(later), 1);
+    assert.equal(buildSeedOptions().declareRecords(later), 1);
   });
 
   it('deletes the record and the country rollup of a site removed from the registry', async () => {
