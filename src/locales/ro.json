@@ -5175,6 +5175,7 @@
       "orbitAge": "date orbitale vechi de {{age}}",
       "edgeOfSwath": "Marginea benzii",
       "notInArchive": "Nicio imagine în arhivă",
+      "archiveUnanswered": "Arhiva nu a răspuns",
       "imageAlt": "Imagine {{name}}, {{time}}",
       "mosaicDays": "Zile în arhivă: {{count}}",
       "cadence": "imagine nouă la fiecare {{minutes}} min",
@@ -5212,7 +5213,8 @@
         "weather": "Vreme"
       },
       "caption": {
-        "clear": "Senin",
+        "clear": "Senin în punct",
+        "clearSceneCloud": "Senin în punct · nebulozitatea scenei {{pct}}%",
         "clouded": "Înnorat · {{pct}}%",
         "cloudShadow": "Umbră de nor",
         "spotNotChecked": "Punct neverificat pentru nori",
@@ -5237,6 +5239,8 @@
         "overheadDef": "A traversat cerul aici, fără dovezi de imagine.",
         "watchedShort": "Imagine într-o arhivă publică",
         "likelyShort": "Acoperit, încă fără imagine",
+        "likelyUnansweredDef": "Un senzor cu fâșie fixă l-a acoperit; o arhivă nu a răspuns, deci poate exista o imagine.",
+        "likelyUnansweredShort": "Acoperit, arhiva nu a răspuns",
         "couldShort": "Senzor orientabil în rază",
         "overheadShort": "Deasupra, fără imagine"
       },

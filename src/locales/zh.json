@@ -5119,6 +5119,7 @@
       "orbitAge": "轨道数据已有 {{age}}",
       "edgeOfSwath": "幅宽边缘",
       "notInArchive": "档案库中无影像",
+      "archiveUnanswered": "存档未响应",
       "imageAlt": "{{name}} 影像，{{time}}",
       "mosaicDays": "存档中的天数：{{count}}",
       "cadence": "每 {{minutes}} 分钟一帧新图像",
@@ -5150,7 +5151,8 @@
         "weather": "天气"
       },
       "caption": {
-        "clear": "晴朗",
+        "clear": "该点晴朗",
+        "clearSceneCloud": "该点晴朗 · 场景云量 {{pct}}%",
         "clouded": "有云 · {{pct}}%",
         "cloudShadow": "云影",
         "spotNotChecked": "该点未检查云量",
@@ -5175,6 +5177,8 @@
         "overheadDef": "从这里的天空经过，没有成像证据。",
         "watchedShort": "公开档案中有影像",
         "likelyShort": "已覆盖，尚无影像",
+        "likelyUnansweredDef": "固定幅宽传感器覆盖了此处；有存档未响应，因此可能存在图像。",
+        "likelyUnansweredShort": "已覆盖，存档未响应",
         "couldShort": "可指向传感器在范围内",
         "overheadShort": "过顶，无影像"
       },

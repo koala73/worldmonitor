@@ -6,7 +6,7 @@ import { OrbitalTimeline, type OrbitalTimelineInput, type PointContextState } fr
 import { loadPointContext } from '@/services/orbital/point-context';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 import { formatOrbitalRoute, parseOrbitalRoute } from '@/app/orbital-route';
-import { getOrbitalMapView } from '@/app/orbital-map-focus';
+import { claimMapUrlCentre, getOrbitalMapView, releaseMapUrlCentreOnUserMove, type MapCamera } from '@/app/orbital-map-focus';
 import { visibleMapArea, type ScreenArea } from '@/utils/map-point-offset';
 
 let page: OrbitalWatchPage | null = null;
@@ -20,6 +20,8 @@ let pointContext: PointContextState = { kind: 'loading' };
 let selectedPass: string | null = null;
 let markFrame: number | null = null;
 let centredFor: string | null = null;
+/** Where the map was before the lookup first moved it; closing puts it back, so the point never becomes the map centre. */
+let homeCamera: MapCamera | null = null;
 const RETRY = 'retry';
 
 const MAP_FULLSCREEN_CLASS = 'live-news-fullscreen-active';
@@ -50,6 +52,7 @@ function centreMap(): void {
     x: (area.left + area.right - map.left - map.right) / 2,
     y: (area.top + area.bottom - map.top - map.bottom) / 2,
   };
+  homeCamera ??= view.camera();
   // A map still booting cannot move yet; RETRY never matches a layout, so the next frame tries again.
   centredFor = view.center(point, offset) ? layoutKey(box) : RETRY;
 }
@@ -87,6 +90,8 @@ function syncMap(view: OrbitalView): void {
     if (active) button?.click();
     raisedMap = false;
   }
+  // The full view is the lookup's own map; the sheet leaves the dashboard as it is.
+  getOrbitalMapView()?.suppressLayers(view === 'full');
   focusMap();
 }
 
@@ -194,6 +199,10 @@ export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null
   page ??= new OrbitalWatchPage({
     onClose: () => {
       getOrbitalMapView()?.hold(false);
+      getOrbitalMapView()?.suppressLayers(false);
+      if (homeCamera) getOrbitalMapView()?.restore(homeCamera);
+      homeCamera = null;
+      releaseMapUrlCentreOnUserMove(document.getElementById('mapContainer'));
       cancel();
       lookup = null;
       point = null;
@@ -211,6 +220,7 @@ export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null
   point = at;
   lookup = null;
   selectedPass = null;
+  claimMapUrlCentre();
   const wasFull = page.isOpen && page.currentView === 'full';
   page.open(at, returnFocusTo, view);
   if (view === 'full' || wasFull) onViewChange(view);

@@ -5147,6 +5147,7 @@
       "orbitAge": "banddata {{age}} gamla",
       "edgeOfSwath": "Kanten av svepet",
       "notInArchive": "Ingen bild i arkivet",
+      "archiveUnanswered": "Arkivet svarade inte",
       "imageAlt": "Bild från {{name}}, {{time}}",
       "mosaicDays": "Dagar i arkivet: {{count}}",
       "cadence": "ny bild var {{minutes}}:e minut",
@@ -5181,7 +5182,8 @@
         "weather": "Väder"
       },
       "caption": {
-        "clear": "Klart",
+        "clear": "Klart vid punkten",
+        "clearSceneCloud": "Klart vid punkten · scenens molnighet {{pct}} %",
         "clouded": "Molnigt · {{pct}} %",
         "cloudShadow": "Molnskugga",
         "spotNotChecked": "Platsen ej kontrollerad för moln",
@@ -5206,6 +5208,8 @@
         "overheadDef": "Korsade himlen här, utan bildbevis.",
         "watchedShort": "Bild i ett offentligt arkiv",
         "likelyShort": "Täckt, ingen bild än",
+        "likelyUnansweredDef": "En sensor med fast stråk täckte den; ett arkiv svarade inte, så en bild kan finnas.",
+        "likelyUnansweredShort": "Täckt, arkivet svarade inte",
         "couldShort": "Riktbar sensor inom räckhåll",
         "overheadShort": "Överflygning, ingen bild"
       },

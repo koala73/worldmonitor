@@ -5186,6 +5186,7 @@
       "orbitAge": "orbitalni podaci stari {{age}}",
       "edgeOfSwath": "Rub pojasa snimanja",
       "notInArchive": "Nema snimke u arhivi",
+      "archiveUnanswered": "Arhiv nije odgovorio",
       "imageAlt": "Snimka {{name}}, {{time}}",
       "mosaicDays": "Dana u arhivi: {{count}}",
       "cadence": "nova snimka svakih {{minutes}} min",
@@ -5223,7 +5224,8 @@
         "weather": "Vrijeme"
       },
       "caption": {
-        "clear": "Vedro",
+        "clear": "Vedro na točki",
+        "clearSceneCloud": "Vedro na točki · naoblaka scene {{pct}} %",
         "clouded": "Oblačno · {{pct}} %",
         "cloudShadow": "Sjena oblaka",
         "spotNotChecked": "Mjesto nije provjereno za oblake",
@@ -5248,6 +5250,8 @@
         "overheadDef": "Prešao je nebo ovdje, bez dokaza snimanja.",
         "watchedShort": "Snimka u javnom arhivu",
         "likelyShort": "Pokriveno, još nema snimke",
+        "likelyUnansweredDef": "Pokrio ga je senzor fiksnog pojasa; arhiv nije odgovorio, pa snimka možda postoji.",
+        "likelyUnansweredShort": "Pokriveno, arhiv nije odgovorio",
         "couldShort": "Usmjerivi senzor u dometu",
         "overheadShort": "Iznad točke, bez snimke"
       },

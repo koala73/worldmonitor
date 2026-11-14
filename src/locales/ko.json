@@ -5119,6 +5119,7 @@
       "orbitAge": "궤도 데이터 {{age}} 전",
       "edgeOfSwath": "관측폭 가장자리",
       "notInArchive": "아카이브에 영상 없음",
+      "archiveUnanswered": "아카이브가 응답하지 않음",
       "imageAlt": "{{name}} 영상, {{time}}",
       "mosaicDays": "아카이브의 일수: {{count}}",
       "cadence": "{{minutes}}분마다 새 영상",
@@ -5150,7 +5151,8 @@
         "weather": "기상"
       },
       "caption": {
-        "clear": "맑음",
+        "clear": "지점 맑음",
+        "clearSceneCloud": "지점 맑음 · 장면 구름 {{pct}}%",
         "clouded": "흐림 · {{pct}}%",
         "cloudShadow": "구름 그림자",
         "spotNotChecked": "지점 구름 미확인",
@@ -5175,6 +5177,8 @@
         "overheadDef": "촬영 증거 없이 이곳 하늘을 지나갔습니다.",
         "watchedShort": "공개 아카이브에 영상 있음",
         "likelyShort": "관측됨, 아직 영상 없음",
+        "likelyUnansweredDef": "고정 관측폭 센서가 이곳을 지났지만 아카이브가 응답하지 않아 이미지가 있을 수 있습니다.",
+        "likelyUnansweredShort": "관측됨, 아카이브 응답 없음",
         "couldShort": "지향형 센서가 범위 내",
         "overheadShort": "상공 통과, 영상 없음"
       },

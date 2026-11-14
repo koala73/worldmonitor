@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import i18next from 'i18next';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { initTestI18n } from './helpers/i18n.mts';
 
@@ -92,7 +92,7 @@ const answered = (passes: PointPass[], over: Partial<OrbitalEvidence> = {}, stat
 
 const modis = { kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'MODIS Terra', layer: 'MODIS_Terra_CorrectedReflectance_TrueColor', noradId: 25994, days: [{ date: '2026-11-12', imageUrl: 'https://gibs.earthdata.nasa.gov/m.jpg' }] } as OrbitalEvidence['mosaics'][number];
 const viirs = { kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'VIIRS Suomi NPP', layer: 'v', noradId: 37849, days: [] } as OrbitalEvidence['mosaics'][number];
-const meteosat = { kind: 'geostationary', archive: 'eumetsat', source: 'Meteosat-10', layer: 'x', noradId: 38552, cadenceMinutes: 15, latest: { time: '2026-11-13T11:45:00Z', imageUrl: 'https://view.eumetsat.int/x.png' } } as OrbitalEvidence['frames'][number];
+const meteosat = { kind: 'geostationary', archive: 'eumetsat', source: 'Meteosat-10', layer: 'x', noradId: 38552, cadenceMinutes: 15, latest: { time: '2026-11-13T11:45:00Z', imageUrl: 'https://view.eumetsat.int/x.png', fallbacks: [] } } as OrbitalEvidence['frames'][number];
 
 const cards = () => [...sheet().querySelectorAll<HTMLElement>('.ow-card')];
 const rowOf = (name: string) => [...sheet().querySelectorAll<HTMLElement>('.ow-row')].find((r) => r.querySelector('.ow-row-name')?.firstChild?.textContent === name)!;
@@ -146,7 +146,7 @@ describe('satellite pass lookup sheet', () => {
     mounted(answered(all, { acquisitions: [acquisition(confirmedNew)], mosaics: [modis], frames: [meteosat] }));
     expect(sheet().querySelector('.ow-headline')!.textContent).toBe('In the last 30 days, 6 satellites passed over 25.205°N 55.271°E.');
     expect(sheet().querySelector('.ow-headline strong')!.textContent).toBe('6 satellites');
-    expect(sheet().querySelector('.ow-subline')!.textContent).toBe('3 images were made public.');
+    expect(sheet().querySelector('.ow-subline')!.textContent).toBe('1 image was made public.');
     const cell = (id: string) => sheet().querySelector<HTMLElement>(`.ow-tier-cell[data-group="${id}"]`)!;
     expect(cell('watched').querySelector('.ow-tier-number')!.textContent).toBe('2');
     expect(cell('likely').querySelector('.ow-tier-number')!.textContent).toBe('1');
@@ -154,6 +154,41 @@ describe('satellite pass lookup sheet', () => {
     expect(cell('overhead').querySelector('.ow-tier-number')!.textContent).toBe('1');
     expect(cell('watched').textContent).toContain('A public archive holds an image of this spot.');
     expect(cell('could').textContent).toContain("the operator doesn't say if it looked");
+  });
+
+  it('counts only scenes of the spot as published images, not weather mosaic days or frames', () => {
+    const { all, confirmedNew, confirmedOld } = tiered();
+    const days = [{ date: '2026-11-11', imageUrl: 'https://gibs.earthdata.nasa.gov/a.jpg' }, { date: '2026-11-12', imageUrl: 'https://gibs.earthdata.nasa.gov/b.jpg' }];
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew), acquisition(confirmedOld)], mosaics: [{ ...modis, days }], frames: [meteosat] }));
+    expect(sheet().querySelector('.ow-subline')!.textContent).toBe('2 images were made public.');
+    page().render(answered(all, { mosaics: [{ ...modis, days }], frames: [meteosat] }));
+    expect(sheet().querySelector('.ow-subline')!.textContent).toBe('0 images were made public.');
+    expect(cards().length).toBeGreaterThan(0);
+  });
+
+  it('says an archive did not answer instead of "no image published yet" for passes it left unresolved', () => {
+    const { all, likely } = tiered();
+    const def = () => sheet().querySelector('.ow-tier-cell[data-group="likely"] .ow-tier-def')!.textContent;
+    mounted(answered(all), null, 'full');
+    expect(def()).toBe('A fixed-swath sensor covered it; no image published yet.');
+    expect(rowOf(likely.name).textContent).not.toContain("Archive didn't answer");
+    page().render(answered(all, { status: 'partial', failures: [{ archive: 'earth-search', reason: 'timeout' }], unansweredProfiles: ['sentinel-2'] }));
+    expect(def()).toBe("A fixed-swath sensor covered it; an archive didn't answer, so an image may exist.");
+    expect(sheet().querySelector('.ow-tier-cell[data-group="likely"] .ow-tier-name')!.textContent).toBe('Likely watched');
+    expect(rowOf(likely.name).querySelector('.ow-badges')!.textContent).toContain("Archive didn't answer");
+    page().render(answered(all, { status: 'partial', failures: [{ archive: 'planetary-computer', reason: 'timeout' }], unansweredProfiles: ['landsat'] }));
+    expect(def()).toBe('A fixed-swath sensor covered it; no image published yet.');
+  });
+
+  it('keeps the default Likely definition when only some likely passes wait on an archive, and badges just those rows', () => {
+    const { all, likely } = tiered();
+    const landsat = pass('LANDSAT 9', 'landsat', -5, likely.tier);
+    const def = () => sheet().querySelector('.ow-tier-cell[data-group="likely"] .ow-tier-def')!.textContent;
+    mounted(answered([...all, landsat], { status: 'partial', failures: [{ archive: 'earth-search', reason: 'timeout' }], unansweredProfiles: ['sentinel-2'] }), null, 'full');
+    expect(sheet().querySelector('.ow-tier-cell[data-group="likely"] .ow-tier-number')!.textContent).toBe('2');
+    expect(def()).toBe('A fixed-swath sensor covered it; no image published yet.');
+    expect(rowOf(likely.name).querySelector('.ow-badges')!.textContent).toContain("Archive didn't answer");
+    expect(rowOf(landsat.name).textContent).not.toContain("Archive didn't answer");
   });
 
   it('uses singular wording for one satellite, image, pass and weather source', () => {
@@ -203,6 +238,15 @@ describe('satellite pass lookup sheet', () => {
     expect(cards()[1]!.querySelector<HTMLElement>('.ow-image-credit')!.title).toBe('Contains modified Copernicus Sentinel data 2026');
   });
 
+  it('says a clear read is about the point, and gives the scene cloud when the scene is cloudy', () => {
+    const { all, confirmedNew, confirmedOld } = tiered();
+    const cloudyScene = acquisition(confirmedOld, { condition: 'clear', cloudCoverPct: 64.4 });
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew, { condition: 'clear', cloudCoverPct: 9.6 }), cloudyScene], bestView: cloudyScene }));
+    const bottom = (i: number) => cards()[i]!.querySelectorAll('.ow-caption-lines span')[1]!.textContent;
+    expect(bottom(0)).toMatch(/ · Clear at point · 64% scene cloud$/);
+    expect(bottom(1), 'a scene under 10% cloud needs no scene figure').toMatch(/ · Clear at point$/);
+  });
+
   it('shows every image as a labelled skeleton, then the image or a failure tile with retry', () => {
     const { all, confirmedNew } = tiered();
     mounted(answered(all, { acquisitions: [acquisition(confirmedNew)] }));
@@ -237,6 +281,10 @@ describe('satellite pass lookup sheet', () => {
   });
 
   it('opens the full view with the pass list, the status bar and empty slots for the dock, detail and replay HUD', () => {
+    // The status bar ages the catalog against the wall clock, so pin it to the fixture's now.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    onTestFinished(() => { vi.useRealTimers(); });
     const { all, confirmedNew, confirmedOld, soon, later } = tiered();
     mounted(answered(all, { acquisitions: [acquisition(confirmedNew)] }));
     expect(sheet().querySelector('.ow-passes')).toBeNull();
@@ -254,7 +302,7 @@ describe('satellite pass lookup sheet', () => {
       expect(page().slot(slot as 'timeline').dataset.slot).toBe(slot);
       expect(page().slot(slot as 'timeline').childElementCount).toBe(0);
     }
-    expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/^0 imaging satellites · CelesTrak GP · Fetched \d{4}-\d\d-\d\d \d\d:\d\dZ · 3 days ago/);
+    expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/^0 imaging satellites · CelesTrak GP · Fetched \d{4}-\d\d-\d\d \d\d:\d\dZ · \d+ days ago/);
     expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/Sun \d+\.\d°[NS] \d+\.\d°[EW] · sub-solar point · \d\d:\d\d:\d\d UTC$/);
     expect(sheet().querySelector('[data-action="open-full"].ow-primary')).toBeNull();
   });
@@ -395,6 +443,38 @@ describe('satellite pass lookup sheet', () => {
     expect(cards()[0]!.querySelector('.ow-image-credit')!.textContent).toBe('© EUMETSAT');
     expect(cards()[0]!.querySelector<HTMLElement>('.ow-image-credit')!.title).toBe('Contains EUMETSAT Meteosat imagery');
     expect(cards()[0]!.querySelector('.ow-caption-lines')!.textContent).toContain('Geostationary · every 15 min');
+  });
+
+  it('steps a failed weather frame back through its earlier frames, then offers retry', () => {
+    const { all } = tiered();
+    const frame = { ...meteosat, latest: { ...meteosat.latest!, fallbacks: [
+      { time: '2026-11-13T11:30:00Z', imageUrl: 'https://view.eumetsat.int/x-1130.png' },
+      { time: '2026-11-13T11:15:00Z', imageUrl: 'https://view.eumetsat.int/x-1115.png' },
+    ] } };
+    const page = mounted(answered(all, { frames: [frame] }));
+    const check = (tile: () => HTMLElement, when: () => string, steps: Array<[string, string]>) => {
+      const img = () => tile().querySelector('img')!;
+      for (const [src, time] of steps) {
+        expect(img().getAttribute('src')).toBe(src);
+        expect(when()).toContain(time);
+        expect(img().alt).toContain(time);
+        expect(tile().dataset.state).toBe('loading');
+        img().dispatchEvent(new Event('error'));
+      }
+      expect(tile().dataset.state).toBe('failed');
+    };
+    const steps: Array<[string, string]> = [['https://view.eumetsat.int/x.png', '11:45'], ['https://view.eumetsat.int/x-1130.png', '11:30'], ['https://view.eumetsat.int/x-1115.png', '11:15']];
+    const hero = () => cards()[0]!.querySelector<HTMLElement>('.ow-tile')!;
+    check(hero, () => cards()[0]!.querySelector('.ow-caption-lines span')!.textContent!, steps);
+    expect(hero().querySelector('.ow-tile-status')!.textContent).toContain('Image unavailable · EUMETSAT');
+    hero().querySelector<HTMLButtonElement>('[data-action="retry-image"]')!.click();
+    expect(hero().dataset.state).toBe('loading');
+    expect(hero().querySelector('img')!.getAttribute('src')).toBe(steps[0]![0]);
+    expect(cards()[0]!.querySelector('.ow-caption-lines span')!.textContent).toContain('11:45');
+    page.setView('full');
+    group('weather')!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
+    const row = () => rowOf('Meteosat-10');
+    check(() => row().querySelector<HTMLElement>('.ow-tile')!, () => row().querySelector('.ow-row-meta')!.textContent!, steps);
   });
 
   it('names the archives that failed and retries on request', () => {

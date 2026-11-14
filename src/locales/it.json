@@ -5175,6 +5175,7 @@
       "orbitAge": "dati orbitali di {{age}} fa",
       "edgeOfSwath": "Bordo della strisciata",
       "notInArchive": "Nessuna immagine nell’archivio",
+      "archiveUnanswered": "L'archivio non ha risposto",
       "imageAlt": "Immagine di {{name}}, {{time}}",
       "mosaicDays": "Giorni nell’archivio: {{count}}",
       "cadence": "nuova immagine ogni {{minutes}} min",
@@ -5212,7 +5213,8 @@
         "weather": "Meteo"
       },
       "caption": {
-        "clear": "Sereno",
+        "clear": "Sereno sul punto",
+        "clearSceneCloud": "Sereno sul punto · nuvolosità della scena {{pct}}%",
         "clouded": "Nuvoloso · {{pct}}%",
         "cloudShadow": "Ombra di nube",
         "spotNotChecked": "Punto non verificato per le nubi",
@@ -5237,6 +5239,8 @@
         "overheadDef": "Ha attraversato il cielo qui, senza prove di immagini.",
         "watchedShort": "Immagine in un archivio pubblico",
         "likelyShort": "Coperto, ancora nessuna immagine",
+        "likelyUnansweredDef": "Un sensore a strisciata fissa lo ha coperto; un archivio non ha risposto, quindi un'immagine potrebbe esistere.",
+        "likelyUnansweredShort": "Coperto, l'archivio non ha risposto",
         "couldShort": "Sensore orientabile in portata",
         "overheadShort": "Sorvolato, nessuna immagine"
       },
