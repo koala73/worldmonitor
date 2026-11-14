@@ -245,7 +245,7 @@ describe('satellite pass lookup sheet', () => {
     expect(cards().map((c) => c.querySelector('.ow-card-tag')!.textContent)).toEqual(['Closest look', 'SENTINEL-2C', 'MODIS TERRA']);
     const [first] = cards();
     const lines = [...first!.querySelectorAll('.ow-caption-lines span')].map((l) => l.textContent);
-    expect(lines[0]).toMatch(/^LANDSAT 9 · .* UTC$/);
+    expect(lines[0]).toMatch(/^LANDSAT 9 · .* UTC\+4$/);
     expect(lines[1]).toBe('10 M · 8d ago · Clouded · 69%');
     expect(first!.querySelector('.ow-image-credit')!.textContent).toBe('USGS / Landsat');
     expect(first!.querySelector<HTMLElement>('.ow-image-credit')!.title).toBe(IMAGE_CREDIT.usgs);
@@ -564,8 +564,8 @@ describe('satellite pass lookup sheet', () => {
     await settle();
     const img = hero().querySelector('img')!;
     expect(sourceOf(img.getAttribute('src'))).toBe(urls[1]);
-    expect(when()).toContain('11:30');
-    expect(img.alt).toContain('11:30');
+    expect(when()).toContain('15:30');
+    expect(img.alt).toContain('15:30');
     img.dispatchEvent(new Event('load'));
     expect(hero().dataset.state).toBe('loaded');
 
@@ -574,7 +574,7 @@ describe('satellite pass lookup sheet', () => {
     const row = () => rowOf('Meteosat-10');
     await settle();
     expect(sourceOf(row().querySelector('.ow-tile img')!.getAttribute('src'))).toBe(urls[1]);
-    expect(row().querySelector('.ow-row-meta')!.textContent).toContain('11:30');
+    expect(row().querySelector('.ow-row-meta')!.textContent).toContain('15:30');
   });
 
   it('steps a daily mosaic back from a day with no data at the point, and never shows a black tile', async () => {

@@ -11,6 +11,7 @@ import type { AirlineIntelPanel } from '@/components/AirlineIntelPanel';
 import type { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
 import { deleteWidget, getWidget, saveWidget, isProUser, isProTierResolved } from '@/services/widget-store';
 import { hasPremiumAccess } from '@/services/panel-gating';
+import { isOrbitalLookupOpen } from '@/services/orbital/lookup-host';
 import {
   sanitizeLockedLayers,
   shouldSanitizeLockedLayers,
@@ -1706,7 +1707,7 @@ export class EventHandlerManager implements AppModule {
     return buildMapUrl(baseUrl, {
       view: state.view,
       zoom: state.zoom,
-      center,
+      center: isOrbitalLookupOpen() ? null : center,
       timeRange: state.timeRange,
       layers: state.layers,
       country: isCountryVisible ? code : pending?.code,

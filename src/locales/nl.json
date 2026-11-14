@@ -5311,7 +5311,35 @@
       "privacyHow": "Hoe",
       "sources": "Bronnen",
       "archiveScene": "Archiefscène",
-      "archiveOnly": "Geen berekende overkomst past bij deze beelden, dus ze worden als archiefscènes getoond."
+      "archiveOnly": "Geen berekende overkomst past bij deze beelden, dus ze worden als archiefscènes getoond.",
+      "zoneShowUtc": "Tijden in UTC tonen",
+      "zoneShowLocal": "Tijden in de lokale tijd van deze plek tonen"
+    },
+    "search": {
+      "label": "Plaatsnaam of coördinaten",
+      "placeholder": "Plaatsnaam of 48.8584, 2.2945",
+      "submit": "Zoeken",
+      "locate": "Mijn locatie gebruiken",
+      "hint": "Coördinaten en je locatie blijven in deze browser. Een plaatsnaam die je zoekt, wordt naar WorldMonitor en naar Nominatim van OpenStreetMap gestuurd.",
+      "results": "Overeenkomende plaatsen",
+      "searching": "Zoeken…",
+      "tooShort": "Typ minstens twee tekens, of coördinaten zoals 48.8584, 2.2945.",
+      "invalidCoordinates": "Die coördinaten liggen buiten de aardbol. Breedtegraad loopt van -90 tot 90 en lengtegraad van -180 tot 180.",
+      "failed": "Plaatsen zoeken is nu niet beschikbaar. Coördinaten en de kaart werken nog.",
+      "noResults": "Geen plaats komt overeen met die naam.",
+      "locating": "Je locatie wordt bepaald…",
+      "locationDenied": "Toestemming voor locatie is geweigerd. Zoek een plaats of klik met de rechtermuisknop op de kaart.",
+      "locationUnavailable": "Je locatie kon niet worden bepaald. Zoek een plaats of klik met de rechtermuisknop op de kaart.",
+      "idle": "Zoek een plaats op naam of coördinaten, gebruik je locatie, of klik met de rechtermuisknop op de kaart om te zien welke satellieten erover vlogen."
+    },
+    "share": {
+      "copy": "Deellink kopiëren",
+      "copied": "Link gekopieerd",
+      "copyManually": "Kopieer de link hieronder",
+      "link": "Deellink",
+      "dismiss": "Sluiten",
+      "passOutsideWindow": "De gelinkte overvlucht valt buiten het huidige venster, dus er is geen overvlucht geselecteerd.",
+      "passNotFound": "De gelinkte overvlucht is niet gevonden in de opnieuw berekende overvluchten, dus er is geen overvlucht geselecteerd."
     }
   },
   "settings": {

@@ -1,4 +1,5 @@
 import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
+import { parseOrbitalShareFragment } from '@/utils/urlState';
 
 export type OrbitalRouteView = 'sheet' | 'full';
 
@@ -33,7 +34,9 @@ function applyRoute(): void {
 
 /** Opens the lookup when the page loads or navigates to an orbital route. */
 export function watchOrbitalRoute(): () => void {
-  if (parseOrbitalRoute(window.location.hash)) applyRoute();
+  // A share link (0.01-degree point, optional pass) is taken by App once the map is up, so the
+  // first read here only restores the full view's own route.
+  if (parseOrbitalRoute(window.location.hash) && !parseOrbitalShareFragment(window.location.hash)) applyRoute();
   let routed = parseOrbitalRoute(window.location.hash) !== null;
   const onHashChange = () => {
     const next = parseOrbitalRoute(window.location.hash) !== null;

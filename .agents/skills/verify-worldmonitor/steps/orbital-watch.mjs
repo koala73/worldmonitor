@@ -24,7 +24,7 @@ const PLACE = { name: 'Palm Jumeirah, Dubai', lat: 25.112, lon: 55.139, zoom: 9 
 // Open ocean, so the calibrating right-click at the map centre opens no country.
 const START = { lat: -15, lon: 80, zoom: 4 };
 
-function fixtureCatalog() {
+export function fixtureCatalog() {
   const { records } = JSON.parse(readFileSync(new URL('../../../../tests/fixtures/orbital/celestrak-gp-2026-11-13.json', import.meta.url), 'utf8'));
   const satellites = records.flatMap((r) => {
     const profile = matchSensorProfile(r.NORAD_CAT_ID, r.OBJECT_NAME);

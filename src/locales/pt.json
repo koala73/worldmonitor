@@ -5344,7 +5344,35 @@
       "privacyHow": "Como",
       "sources": "Fontes",
       "archiveScene": "Cena de arquivo",
-      "archiveOnly": "Nenhuma passagem calculada corresponde a estas imagens, por isso são mostradas como cenas de arquivo."
+      "archiveOnly": "Nenhuma passagem calculada corresponde a estas imagens, por isso são mostradas como cenas de arquivo.",
+      "zoneShowUtc": "Mostrar horários em UTC",
+      "zoneShowLocal": "Mostrar horários na hora local deste lugar"
+    },
+    "search": {
+      "label": "Nome do local ou coordenadas",
+      "placeholder": "Nome do local ou 48.8584, 2.2945",
+      "submit": "Buscar",
+      "locate": "Usar minha localização",
+      "hint": "As coordenadas e sua localização ficam neste navegador. O nome de local que você buscar é enviado ao WorldMonitor e ao Nominatim do OpenStreetMap.",
+      "results": "Locais correspondentes",
+      "searching": "Buscando…",
+      "tooShort": "Digite pelo menos dois caracteres, ou coordenadas como 48.8584, 2.2945.",
+      "invalidCoordinates": "Essas coordenadas estão fora do globo. A latitude vai de -90 a 90 e a longitude de -180 a 180.",
+      "failed": "A busca de locais está indisponível no momento. As coordenadas e o mapa continuam funcionando.",
+      "noResults": "Nenhum local corresponde a esse nome.",
+      "locating": "Obtendo sua localização…",
+      "locationDenied": "A permissão de localização foi negada. Busque um local ou clique com o botão direito no mapa.",
+      "locationUnavailable": "Não foi possível encontrar sua localização. Busque um local ou clique com o botão direito no mapa.",
+      "idle": "Busque um local por nome ou coordenadas, use sua localização ou clique com o botão direito no mapa para ver quais satélites passaram sobre ele."
+    },
+    "share": {
+      "copy": "Copiar link de compartilhamento",
+      "copied": "Link copiado",
+      "copyManually": "Copie o link abaixo",
+      "link": "Link de compartilhamento",
+      "dismiss": "Fechar",
+      "passOutsideWindow": "A passagem vinculada está fora da janela atual, então nenhuma passagem está selecionada.",
+      "passNotFound": "A passagem vinculada não foi encontrada nas passagens recalculadas, então nenhuma passagem está selecionada."
     }
   },
   "settings": {
