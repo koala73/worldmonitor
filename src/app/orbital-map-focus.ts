@@ -21,6 +21,7 @@ export interface OrbitalMapView {
   suppressLayers(suppressed: boolean): void;
   /** The map's centre and zoom, or null before it has a camera. */
   camera(): MapCamera | null;
+  /** Jumps back with no animation: a gesture during an animated return would publish a centre near the point. */
   restore(camera: MapCamera): void;
 }
 
