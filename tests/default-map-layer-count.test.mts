@@ -4,7 +4,7 @@ import test from 'node:test';
 import { defaultOnLayerKeys, defaultOnLayerStats } from '../scripts/lib/default-map-layer-count.mjs';
 import { getCompleteLayerCatalogKeys } from '../src/config/map-layer-definitions.ts';
 
-const wrap = (body: string) => `export const DEFAULT_MAP_LAYERS: MapLayers = {\n${body}\n};\n\nexport const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {\n  conflicts: true,\n};\n`;
+const wrap = (body: string) => `const FULL_MAP_LAYERS: MapLayers = {\n${body}\n};\n\nconst FULL_MOBILE_MAP_LAYERS: MapLayers = {\n  conflicts: true,\n};\n`;
 
 test('counts unquoted and quoted true keys and ignores false ones', () => {
   const source = wrap("  conflicts: true,\n  'bases': true,\n  \"hotspots\" : true,\n  fires: false,");
@@ -16,13 +16,18 @@ test('ignores true values inside line and block comments', () => {
   assert.deepEqual(defaultOnLayerKeys(source), ['conflicts']);
 });
 
-test('fails closed on a layout the parser cannot read', () => {
-  const source = wrap('  conflicts: true, bases: true,\n  fires: false,');
-  assert.throws(() => defaultOnLayerKeys(source), /2 true values but 1 parsed keys/);
+test('counts a bare !_desktop value as on for the website and ignores the iran flag expression', () => {
+  const source = wrap('  bases: !_desktop,\n  conflicts: true,\n  iranAttacks: IRAN_ATTACKS_ENABLED && !_desktop,\n  fires: false,');
+  assert.deepEqual(defaultOnLayerKeys(source), ['bases', 'conflicts']);
 });
 
-test('fails closed when the DEFAULT_MAP_LAYERS block is missing', () => {
-  assert.throws(() => defaultOnLayerKeys('export const OTHER = {};'), /could not isolate DEFAULT_MAP_LAYERS/);
+test('fails closed on a layout the parser cannot read', () => {
+  const source = wrap('  conflicts: true, bases: true,\n  fires: false,');
+  assert.throws(() => defaultOnLayerKeys(source), /2 on values but 1 parsed keys/);
+});
+
+test('fails closed when the FULL_MAP_LAYERS block is missing', () => {
+  assert.throws(() => defaultOnLayerKeys('export const OTHER = {};'), /could not isolate FULL_MAP_LAYERS/);
 });
 
 test('counts only catalog layers and rounds the share', () => {
@@ -36,7 +41,7 @@ test('rejects a count of zero or the whole catalog', () => {
 });
 
 test('the real full-variant defaults match the published copy stats', () => {
-  const source = readFileSync(new URL('../src/config/variants/full.ts', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/config/panels.ts', import.meta.url), 'utf8');
   const published = JSON.parse(readFileSync(new URL('../pro-test/src/generated/copy-stats.json', import.meta.url), 'utf8'));
   const { defaultOnLayers, defaultOnLayerPct } = published;
   assert.deepEqual(defaultOnLayerStats(source, getCompleteLayerCatalogKeys('full')), { defaultOnLayers, defaultOnLayerPct });

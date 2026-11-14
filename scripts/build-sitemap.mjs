@@ -100,7 +100,7 @@ export const STATIC_ROUTE_MANIFEST = Object.freeze([
   )),
   route(`${SITE_ORIGIN}/dashboard`, 'dashboard', [
     ...DASHBOARD_MATERIAL_SOURCES,
-    'src/config/variants/full.ts',
+    'src/config/panels.ts',
   ]),
   route(`${SITE_ORIGIN}/pro`, 'product', [
     'pro-test/index.html',
@@ -122,23 +122,23 @@ export const STATIC_ROUTE_MANIFEST = Object.freeze([
   ]),
   route('https://tech.worldmonitor.app/dashboard', 'dashboard-variant', [
     ...DASHBOARD_MATERIAL_SOURCES,
-    'src/config/variants/tech.ts',
+    'src/config/panels.ts',
   ]),
   route('https://finance.worldmonitor.app/dashboard', 'dashboard-variant', [
     ...DASHBOARD_MATERIAL_SOURCES,
-    'src/config/variants/finance.ts',
+    'src/config/panels.ts',
   ]),
   route('https://commodity.worldmonitor.app/dashboard', 'dashboard-variant', [
     ...DASHBOARD_MATERIAL_SOURCES,
-    'src/config/variants/commodity.ts',
+    'src/config/panels.ts',
   ]),
   route('https://happy.worldmonitor.app/dashboard', 'dashboard-variant', [
     ...DASHBOARD_MATERIAL_SOURCES,
-    'src/config/variants/happy.ts',
+    'src/config/panels.ts',
   ]),
   route('https://energy.worldmonitor.app/dashboard', 'dashboard-variant', [
     ...DASHBOARD_MATERIAL_SOURCES,
-    'src/config/variants/energy.ts',
+    'src/config/panels.ts',
   ]),
 ]);
 
