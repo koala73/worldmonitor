@@ -95,6 +95,7 @@
       "scripts/shared/air-traffic-aggregate.cjs",
       "scripts/shared/air-traffic-history.cjs",
       "scripts/shared/air-traffic-regions.cjs",
+      "scripts/shared/adsblol-traffic.cjs",
       "scripts/shared/product-catalog.generated.json",
       "scripts/shared/rss-allowed-domains.cjs",
       "scripts/shared/rss-allowed-domains.json",

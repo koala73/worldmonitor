@@ -94,7 +94,7 @@ function createRedis({ abortPipelines = 0, firstPipelineDelayMs = 0 } = {}) {
       UPSTASH_REDIS_REST_TOKEN: 'test-upstash-token',
       UPSTASH_ALLOW_INSECURE_HTTP: 'true',
     },
-    points: (day) => [...(hashes.get(`aviation:traffic:history:v1:${day}`) ?? new Map()).values()]
+    points: (day, prefix = 'aviation:traffic:history:v1') => [...(hashes.get(`${prefix}:${day}`) ?? new Map()).values()]
       .map((value) => JSON.parse(value)).sort((a, b) => a.t - b.t),
     expireAtFor: (day) => expireAt.get(`aviation:traffic:history:v1:${day}`),
     get: (key) => strings.get(key) ?? null,
@@ -376,5 +376,67 @@ test('lane 15: a leftover interval setting cannot stretch the wait past the next
     const ts = redis.points('2026-11-13').map((p) => p.t);
     assert.ok(ts.length >= 4, `only ${ts.length} points in 6s`);
     for (let i = 1; i < ts.length; i += 1) assert.equal(ts[i] - ts[i - 1], 300_000, `bins are consecutive: ${ts.map((t) => new Date(t).toISOString()).join(',')}`);
+  });
+});
+
+const ADSBLOL_PREFIX = 'aviation:traffic:history:adsblol:v1';
+const ADSBLOL_AIRCRAFT = [
+  { hex: 'a00001', lat: ATL.lat, lon: ATL.lon, alt_baro: 2000, baro_rate: 1200, seen_pos: 1 },
+  { hex: 'a00002', lat: ATL.lat, lon: ATL.lon, alt_baro: 'ground', seen_pos: 1 },
+  { hex: '400001', lat: 51.47, lon: -0.45, alt_baro: 36000, seen_pos: 0 },
+];
+
+async function adsbLolLane(statusSequence, body) {
+  const redis = await createRedis();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'adsblol-lane-'));
+  const file = path.join(dir, 'aircraft.json');
+  fs.writeFileSync(file, JSON.stringify(ADSBLOL_AIRCRAFT));
+  const relay = spawnRelay(redis, {
+    RELAY_TEST_AIR_TRAFFIC_LOOP: 'false',
+    RELAY_TEST_ADSBLOL_TRAFFIC_LOOP: 'true',
+    RELAY_TEST_ADSBLOL_POINT_FILE: file,
+    RELAY_TEST_ADSBLOL_POINT_STATUS_SEQUENCE: statusSequence,
+    ADSBLOL_TRAFFIC_SPACING_MS: '1',
+  });
+  const lines = () => relay.output().split('\n').filter((line) => line.startsWith('[AirTrafficAdsbLol] t='));
+  try {
+    await relay.waitFor(() => relay.output().includes('[AirTrafficAdsbLol] loop starting'), 'adsb.lol loop ready');
+    await body({ redis, relay, lines });
+  } finally {
+    await relay.stop();
+    await redis.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('lane 16: a full adsb.lol sweep records a point in its own series, counting overlapping circles once', async () => {
+  await adsbLolLane('', async ({ redis, relay, lines }) => {
+    await relay.waitFor(() => redis.points('2026-11-13', ADSBLOL_PREFIX).length >= 1 && lines().length >= 1, 'first adsb.lol point');
+    const [point] = redis.points('2026-11-13', ADSBLOL_PREFIX);
+    assert.equal(point.status, 'ok', lines().join('\n'));
+    assert.deepEqual(point.hubs.ATL, { air: 1, ground: 1 }, 'all 12 circles return the same aircraft, counted once');
+    assert.equal(point.euAirborne, 1);
+    assert.equal(point.usLowClimbing, 1);
+    assert.ok(JSON.parse(redis.get('seed-meta:aviation:traffic-history-adsblol')).fetchedAt > 0);
+    assert.equal(redis.get('seed-activated:aviation:traffic-history-adsblol'), '1');
+    assert.deepEqual(redis.points('2026-11-13'), [], 'the OpenSky series is untouched');
+    assert.equal(redis.get('seed-meta:aviation:traffic-history'), null);
+  });
+});
+
+test('lane 17: a rate-limited circle is retried, so the sweep still records an ok point', async () => {
+  await adsbLolLane('200,429,200', async ({ redis, relay, lines }) => {
+    await relay.waitFor(() => redis.points('2026-11-13', ADSBLOL_PREFIX).length >= 1 && lines().length >= 1, 'first adsb.lol point');
+    assert.equal(redis.points('2026-11-13', ADSBLOL_PREFIX)[0].status, 'ok', lines().join('\n'));
+  });
+});
+
+test('lane 18: a circle that fails twice makes the bin a gap, never a partial count', async () => {
+  await adsbLolLane('200,429,429', async ({ redis, relay, lines }) => {
+    await relay.waitFor(() => redis.points('2026-11-13', ADSBLOL_PREFIX).length >= 1 && lines().length >= 1, 'first adsb.lol point');
+    const [point] = redis.points('2026-11-13', ADSBLOL_PREFIX);
+    assert.deepEqual(point, { t: point.t, status: 'gap' });
+    assert.match(lines()[0], /status=gap reason=circle 2 http 429$/);
+    assert.equal(redis.get('seed-meta:aviation:traffic-history-adsblol'), null);
   });
 });
