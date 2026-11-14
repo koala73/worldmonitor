@@ -1108,7 +1108,8 @@ export class MapContainer {
     if (this.useDeckGL) { this.deckGLMap?.setZoom(zoom); } else { this.svgMap?.setZoom(zoom); }
   }
 
-  public setCenter(lat: number, lon: number, zoom?: number): number {
+  /** `instant` jumps with no animation, so no frame between the old and new centre can be read. */
+  public setCenter(lat: number, lon: number, zoom?: number, options: { instant?: boolean } = {}): number {
     const viewportActionToken = ++this.viewportActionToken;
     if (!this.isViewportRendererReady()) {
       this.pendingCenter = { lat, lon, zoom, actionToken: viewportActionToken };
@@ -1116,14 +1117,15 @@ export class MapContainer {
       if (zoom != null) this.initialState = { ...this.initialState, zoom };
       return viewportActionToken;
     }
-    this.applyCenter(lat, lon, zoom);
+    this.applyCenter(lat, lon, zoom, options.instant);
     return viewportActionToken;
   }
 
-  private applyCenter(lat: number, lon: number, zoom?: number): void {
-    if (this.useGlobe) { this.globeMap?.setCenter(lat, lon, zoom); return; }
+  private applyCenter(lat: number, lon: number, zoom?: number, instant = false): void {
+    const jump = instant ? [0] as const : [];
+    if (this.useGlobe) { this.globeMap?.setCenter(lat, lon, zoom, ...jump); return; }
     if (this.useDeckGL) {
-      this.deckGLMap?.setCenter(lat, lon, zoom);
+      this.deckGLMap?.setCenter(lat, lon, zoom, ...jump);
     } else {
       this.svgMap?.setCenter(lat, lon);
       if (zoom != null) this.svgMap?.setZoom(zoom);
