@@ -1,6 +1,7 @@
 import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import type { OrbitalTrackSurface } from '@/app/orbital-watch';
 import { parseOrbitalShareFragment } from '@/utils/urlState';
+import { ORBITAL_EVIDENCE_EVENT } from '@/services/orbital/evidence-event';
 
 export type OrbitalRouteView = 'sheet' | 'full';
 
@@ -46,4 +47,16 @@ export function watchOrbitalRoute(map: () => OrbitalTrackSurface | null = () => 
   };
   window.addEventListener('hashchange', onHashChange);
   return () => window.removeEventListener('hashchange', onHashChange);
+}
+
+/** Opens the point lookup's sheet when a map popup's "Open evidence" sends its object's point. */
+export function watchOrbitalEvidence(map: () => OrbitalTrackSurface | null = () => null): () => void {
+  const onEvidence = (event: Event) => {
+    const point = (event as CustomEvent<GeoPoint>).detail;
+    if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lon)) return;
+    void import('@/app/orbital-watch').then(({ openOrbitalWatch }) =>
+      openOrbitalWatch({ lat: point.lat, lon: point.lon }, document.getElementById('mapContainer'), 'sheet', map()));
+  };
+  window.addEventListener(ORBITAL_EVIDENCE_EVENT, onEvidence);
+  return () => window.removeEventListener(ORBITAL_EVIDENCE_EVENT, onEvidence);
 }

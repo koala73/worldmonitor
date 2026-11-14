@@ -1400,6 +1400,7 @@ const cloudPreferredExact = new Set([
   // Orbital reads that only read seed-owned Redis; get-point-passes searches the archives live.
   '/api/orbital/v1/list-imaging-satellites',
   '/api/orbital/v1/get-country-imagery-evidence',
+  '/api/orbital/v1/get-watched-site-imagery',
   '/api/cyber/v1/list-cyber-threats',
   '/api/maritime/v1/list-ukmto-incidents',
   '/api/bootstrap',

@@ -5464,6 +5464,17 @@
       "retainedDay": "csak {{day}}",
       "geoLine": "Látható geostacionárius: {{names}}",
       "away": "{{km}} km-re"
+    },
+    "popup": {
+      "title": "Műholdképek",
+      "loading": "Műholdas archívumok ellenőrzése…",
+      "latest": "Legutóbbi felvétel",
+      "nextPass": "Következő áthaladás",
+      "noImage": "Nincs friss felvétel",
+      "noPass": "72 órán belül nincs áthaladás",
+      "openEvidence": "Bizonyítékok megnyitása",
+      "imageAlt": "Műholdas nézet innen: {{source}}",
+      "unavailable": "A műholdképek nem töltődtek be."
     }
   },
   "settings": {

@@ -5431,6 +5431,17 @@
       "retainedDay": "仅 {{day}}",
       "geoLine": "视野内的静止卫星：{{names}}",
       "away": "{{km}} 公里外"
+    },
+    "popup": {
+      "title": "卫星影像",
+      "loading": "正在检查卫星档案库…",
+      "latest": "最新影像",
+      "nextPass": "下次过境",
+      "noImage": "未找到近期影像",
+      "noPass": "72 小时内无过境",
+      "openEvidence": "打开证据",
+      "imageAlt": "来自 {{source}} 的卫星视图",
+      "unavailable": "卫星影像加载失败。"
     }
   },
   "settings": {

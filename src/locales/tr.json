@@ -5464,6 +5464,17 @@
       "retainedDay": "yalnızca {{day}}",
       "geoLine": "Görüş alanındaki yerdurağanlar: {{names}}",
       "away": "{{km}} km uzakta"
+    },
+    "popup": {
+      "title": "Uydu görüntüleri",
+      "loading": "Uydu arşivleri kontrol ediliyor…",
+      "latest": "En son görüntü",
+      "nextPass": "Sonraki geçiş",
+      "noImage": "Yakın tarihli görüntü bulunamadı",
+      "noPass": "72 saat içinde geçiş yok",
+      "openEvidence": "Kanıtları aç",
+      "imageAlt": "{{source}} uydu görünümü",
+      "unavailable": "Uydu görüntüleri yüklenemedi."
     }
   },
   "settings": {

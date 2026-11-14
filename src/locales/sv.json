@@ -5464,6 +5464,17 @@
       "retainedDay": "endast {{day}}",
       "geoLine": "Geostationära i sikte: {{names}}",
       "away": "{{km}} km bort"
+    },
+    "popup": {
+      "title": "Satellitbilder",
+      "loading": "Kontrollerar satellitarkiv…",
+      "latest": "Senaste bild",
+      "nextPass": "Nästa överflygning",
+      "noImage": "Ingen ny bild hittades",
+      "noPass": "Ingen överflygning inom 72 timmar",
+      "openEvidence": "Öppna bevis",
+      "imageAlt": "Satellitvy från {{source}}",
+      "unavailable": "Satellitbilderna kunde inte läsas in."
     }
   },
   "settings": {

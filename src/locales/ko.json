@@ -5431,6 +5431,17 @@
       "retainedDay": "{{day}}만",
       "geoLine": "시야 내 정지궤도: {{names}}",
       "away": "{{km}}km 거리"
+    },
+    "popup": {
+      "title": "위성 영상",
+      "loading": "위성 아카이브 확인 중…",
+      "latest": "최신 영상",
+      "nextPass": "다음 통과",
+      "noImage": "최근 영상을 찾을 수 없음",
+      "noPass": "72시간 내 통과 예정 없음",
+      "openEvidence": "증거 열기",
+      "imageAlt": "{{source}} 위성 화면",
+      "unavailable": "위성 영상을 불러오지 못했습니다."
     }
   },
   "settings": {

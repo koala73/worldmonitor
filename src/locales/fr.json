@@ -5497,6 +5497,17 @@
       "retainedDay": "{{day}} seulement",
       "geoLine": "Géostationnaires en vue : {{names}}",
       "away": "à {{km}} km"
+    },
+    "popup": {
+      "title": "Imagerie satellite",
+      "loading": "Vérification des archives satellite…",
+      "latest": "Dernière image",
+      "nextPass": "Prochain passage",
+      "noImage": "Aucune image récente",
+      "noPass": "Aucun passage prévu sous 72 heures",
+      "openEvidence": "Ouvrir les preuves",
+      "imageAlt": "Vue satellite de {{source}}",
+      "unavailable": "L’imagerie satellite n’a pas pu être chargée."
     }
   },
   "settings": {

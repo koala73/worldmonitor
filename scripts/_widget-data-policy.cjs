@@ -289,6 +289,7 @@ const EXCLUDED_RPC_ROUTES = {
   "/api/orbital/v1/list-imaging-satellites": "Orbit elements for the point lookup; raw OMM records, not displayable values",
   "/api/orbital/v1/get-point-passes": "Pro-only (401 for the anonymous widget session)",
   "/api/orbital/v1/get-country-imagery-evidence": "Pro-only (401 for the anonymous widget session)",
+  "/api/orbital/v1/get-watched-site-imagery": "One watched site's newest image for its map popup; image URLs must be painted through the archive blob loader",
   "/api/infrastructure/v1/get-bootstrap-data": "Internal duplicate of /api/bootstrap",
   "/api/infrastructure/v1/get-cable-health": "Returned empty (cables {}) in production",
   "/api/infrastructure/v1/get-ip-geo": "Blocked by relay widget endpoint policy",

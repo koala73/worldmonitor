@@ -5431,6 +5431,17 @@
       "retainedDay": "chỉ {{day}}",
       "geoLine": "Vệ tinh địa tĩnh trong tầm nhìn: {{names}}",
       "away": "cách {{km}} km"
+    },
+    "popup": {
+      "title": "Ảnh vệ tinh",
+      "loading": "Đang kiểm tra kho lưu trữ vệ tinh…",
+      "latest": "Ảnh mới nhất",
+      "nextPass": "Lượt bay qua tiếp theo",
+      "noImage": "Không tìm thấy ảnh gần đây",
+      "noPass": "Không có lượt bay qua trong 72 giờ",
+      "openEvidence": "Mở bằng chứng",
+      "imageAlt": "Ảnh vệ tinh từ {{source}}",
+      "unavailable": "Không tải được ảnh vệ tinh."
     }
   },
   "settings": {

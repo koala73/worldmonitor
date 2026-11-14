@@ -7,11 +7,11 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 481738
+    "raw": 485281
   },
   "chunks": {
     "analytics": {
-      "raw": 52083,
+      "raw": 52226,
       "files": 1
     },
     "auth-state": {
@@ -19,7 +19,7 @@
       "files": 1
     },
     "clerk": {
-      "raw": 22893,
+      "raw": 22965,
       "files": 1
     },
     "convex-client": {
@@ -27,7 +27,7 @@
       "files": 1
     },
     "debugbear-rum": {
-      "raw": 4250,
+      "raw": 4713,
       "files": 1
     },
     "dom-utils": {
@@ -35,7 +35,7 @@
       "files": 1
     },
     "entitlements": {
-      "raw": 2862,
+      "raw": 3039,
       "files": 1
     },
     "font-settings": {
@@ -47,7 +47,7 @@
       "files": 1
     },
     "geo-distance": {
-      "raw": 28609,
+      "raw": 28623,
       "files": 1
     },
     "globe-marker-probe": {
@@ -59,7 +59,7 @@
       "files": 1
     },
     "main": {
-      "raw": 142918,
+      "raw": 143136,
       "files": 1
     },
     "map-layer-definitions": {
@@ -67,7 +67,7 @@
       "files": 1
     },
     "panels": {
-      "raw": 37920,
+      "raw": 38224,
       "files": 1
     },
     "runtime-config": {
@@ -79,11 +79,11 @@
       "files": 1
     },
     "sensitive-url-params": {
-      "raw": 2944,
+      "raw": 3401,
       "files": 1
     },
     "tab-store": {
-      "raw": 13131,
+      "raw": 14621,
       "files": 1
     },
     "tauri-bridge": {
@@ -91,7 +91,7 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 72498,
+      "raw": 72703,
       "files": 1
     },
     "theme-manager": {
@@ -105,11 +105,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1574603
+      "raw": 1587330
     },
     "chunks": {
       "App": {
-        "raw": 1011371,
+        "raw": 1016991,
         "files": 1
       },
       "ai-flow-settings": {
@@ -125,7 +125,7 @@
         "files": 1
       },
       "base": {
-        "raw": 2433,
+        "raw": 2461,
         "files": 1
       },
       "cached-risk-scores": {
@@ -133,7 +133,7 @@
         "files": 1
       },
       "checkout": {
-        "raw": 15498,
+        "raw": 15534,
         "files": 1
       },
       "cloud-prefs-sync": {
@@ -146,6 +146,10 @@
       },
       "corroboration": {
         "raw": 14431,
+        "files": 1
+      },
+      "country-names": {
+        "raw": 5498,
         "files": 1
       },
       "cross-domain-storage": {
@@ -165,11 +169,11 @@
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 161289,
+        "raw": 162072,
         "files": 1
       },
       "index": {
-        "raw": 39620,
+        "raw": 39926,
         "files": 2
       },
       "layout-batch": {
@@ -233,11 +237,11 @@
         "files": 1
       },
       "user-location": {
-        "raw": 7532,
+        "raw": 7913,
         "files": 1
       },
       "widget-store": {
-        "raw": 28016,
+        "raw": 28091,
         "files": 1
       }
     }

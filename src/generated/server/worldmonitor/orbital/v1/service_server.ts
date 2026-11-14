@@ -170,6 +170,35 @@ export interface ConfirmedChangeFlag {
   updatedAt: number;
 }
 
+export interface GetWatchedSiteImageryRequest {
+  siteId: string;
+}
+
+export interface GetWatchedSiteImageryResponse {
+  siteId: string;
+  name: string;
+  lat: number;
+  lon: number;
+  evaluatedAt: number;
+  stale: boolean;
+  latestImage?: SiteImage;
+  nextPass?: SitePass;
+}
+
+export interface SiteImage {
+  itemId: string;
+  collection: string;
+  profileId: string;
+  datetime: string;
+  cloudCoverPct?: number;
+}
+
+export interface SitePass {
+  satellite: string;
+  profileId: string;
+  time: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -218,6 +247,7 @@ export interface OrbitalServiceHandler {
   listImagingSatellites(ctx: ServerContext, req: ListImagingSatellitesRequest): Promise<ListImagingSatellitesResponse>;
   getPointPasses(ctx: ServerContext, req: GetPointPassesRequest): Promise<GetPointPassesResponse>;
   getCountryImageryEvidence(ctx: ServerContext, req: GetCountryImageryEvidenceRequest): Promise<GetCountryImageryEvidenceResponse>;
+  getWatchedSiteImagery(ctx: ServerContext, req: GetWatchedSiteImageryRequest): Promise<GetWatchedSiteImageryResponse>;
 }
 
 export function createOrbitalServiceRoutes(
@@ -336,6 +366,53 @@ export function createOrbitalServiceRoutes(
 
           const result = await handler.getCountryImageryEvidence(ctx, body);
           return new Response(JSON.stringify(result as GetCountryImageryEvidenceResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/orbital/v1/get-watched-site-imagery",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetWatchedSiteImageryRequest = {
+            siteId: params.get("site_id") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getWatchedSiteImagery", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getWatchedSiteImagery(ctx, body);
+          return new Response(JSON.stringify(result as GetWatchedSiteImageryResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

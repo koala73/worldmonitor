@@ -5530,6 +5530,17 @@
       "retainedDay": "tylko {{day}}",
       "geoLine": "Geostacjonarne w zasięgu: {{names}}",
       "away": "{{km}} km stąd"
+    },
+    "popup": {
+      "title": "Zdjęcia satelitarne",
+      "loading": "Sprawdzanie archiwów satelitarnych…",
+      "latest": "Najnowsze zdjęcie",
+      "nextPass": "Następny przelot",
+      "noImage": "Nie znaleziono niedawnego zdjęcia",
+      "noPass": "Brak przelotu w ciągu 72 godzin",
+      "openEvidence": "Otwórz dowody",
+      "imageAlt": "Widok satelitarny z {{source}}",
+      "unavailable": "Nie udało się wczytać zdjęć satelitarnych."
     }
   },
   "settings": {

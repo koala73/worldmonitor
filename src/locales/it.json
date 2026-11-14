@@ -5497,6 +5497,17 @@
       "retainedDay": "solo {{day}}",
       "geoLine": "Geostazionari in vista: {{names}}",
       "away": "a {{km}} km"
+    },
+    "popup": {
+      "title": "Immagini satellitari",
+      "loading": "Controllo degli archivi satellitari…",
+      "latest": "Immagine più recente",
+      "nextPass": "Prossimo passaggio",
+      "noImage": "Nessuna immagine recente trovata",
+      "noPass": "Nessun passaggio previsto entro 72 ore",
+      "openEvidence": "Apri le prove",
+      "imageAlt": "Vista satellitare da {{source}}",
+      "unavailable": "Impossibile caricare le immagini satellitari."
     }
   },
   "settings": {

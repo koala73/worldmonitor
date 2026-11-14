@@ -5431,6 +5431,17 @@
       "retainedDay": "{{day}} のみ",
       "geoLine": "視野内の静止衛星: {{names}}",
       "away": "{{km}} km先"
+    },
+    "popup": {
+      "title": "衛星画像",
+      "loading": "衛星アーカイブを確認中…",
+      "latest": "最新の画像",
+      "nextPass": "次の通過",
+      "noImage": "最近の画像は見つかりません",
+      "noPass": "72 時間以内に通過予定はありません",
+      "openEvidence": "証拠を開く",
+      "imageAlt": "{{source}} による衛星画像",
+      "unavailable": "衛星画像を読み込めませんでした。"
     }
   },
   "settings": {

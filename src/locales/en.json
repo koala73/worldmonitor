@@ -4922,6 +4922,17 @@
       "retainedDay": "{{day}} only",
       "geoLine": "Geostationary in view: {{names}}",
       "away": "{{km}} km away"
+    },
+    "popup": {
+      "title": "Satellite imagery",
+      "loading": "Checking satellite archives…",
+      "latest": "Latest image",
+      "nextPass": "Next pass",
+      "noImage": "No recent image found",
+      "noPass": "No pass due within 72 hours",
+      "openEvidence": "Open evidence",
+      "imageAlt": "Satellite view from {{source}}",
+      "unavailable": "Satellite imagery did not load."
     }
   },
   "contextMenu": {

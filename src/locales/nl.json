@@ -5464,6 +5464,17 @@
       "retainedDay": "alleen {{day}}",
       "geoLine": "Geostationair in zicht: {{names}}",
       "away": "{{km}} km verderop"
+    },
+    "popup": {
+      "title": "Satellietbeelden",
+      "loading": "Satellietarchieven worden gecontroleerd…",
+      "latest": "Nieuwste beeld",
+      "nextPass": "Volgende overkomst",
+      "noImage": "Geen recent beeld gevonden",
+      "noPass": "Geen overkomst binnen 72 uur",
+      "openEvidence": "Bewijs openen",
+      "imageAlt": "Satellietbeeld van {{source}}",
+      "unavailable": "Satellietbeelden konden niet worden geladen."
     }
   },
   "settings": {
