@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { initTestI18n } from './helpers/i18n.mts';
 
-import type { GeostationaryRow } from '@/services/orbital/archive-gibs';
+import type { DailyMosaicRow, GeostationaryRow } from '@/services/orbital/archive-gibs';
 import type { MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
 import type { SceneHistory } from '@/services/orbital/timelapse';
 import { IMAGE_CREDIT, OrbitalWatchPage } from '@/components/OrbitalWatchPage';
@@ -79,6 +79,14 @@ describe('orbital image viewer', () => {
     expect(subject.scenes.map((scene) => scene.imageUrl)).toEqual([meteosat.latest!.imageUrl, earlier.imageUrl]);
     expect(subjectForImage(evidence, { kind: 'frame', key: frame.layer }, { point, nowMs: NOW }, earlier.imageUrl)!.selected.imageUrl).toBe(earlier.imageUrl);
     expect(subjectForImage({ ...evidence, frames: [meteosat] }, { kind: 'frame', key: frame.layer }, { point, nowMs: NOW })!.scenes).toEqual([]);
+  });
+
+  it('opens a daily mosaic on the day its thumbnail stepped back to', () => {
+    const days = [{ date: '2026-11-13', imageUrl: 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?TIME=2026-11-13' }, { date: '2026-11-12', imageUrl: 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?TIME=2026-11-12' }];
+    const mosaic: DailyMosaicRow = { kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'MODIS Terra', layer: 'MODIS_Terra_CorrectedReflectance_TrueColor', noradId: 25994, days };
+    const evidence: OrbitalEvidence = { passes: [], acquisitions: [], mosaics: [mosaic], frames: [], bestView: null, status: 'complete', failures: [], unansweredProfiles: [] };
+    expect(subjectForImage(evidence, { kind: 'mosaic', key: mosaic.layer }, { point, nowMs: NOW })!.selected.imageUrl).toBe(days[0]!.imageUrl);
+    expect(subjectForImage(evidence, { kind: 'mosaic', key: mosaic.layer }, { point, nowMs: NOW }, days[1]!.imageUrl)!.selected.imageUrl).toBe(days[1]!.imageUrl);
   });
 
   it('offers compare only when a second scene of the same collection exists', async () => {

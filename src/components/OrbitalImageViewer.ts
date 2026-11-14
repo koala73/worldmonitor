@@ -537,7 +537,8 @@ export function subjectForImage(evidence: OrbitalEvidence, image: ViewableImage,
     case 'mosaic': {
       const mosaic = evidence.mosaics.find((candidate) => candidate.layer === image.key);
       const scenes = mosaic ? scenesFromMosaic(mosaic) : [];
-      return scenes[0] ? { ...base, selected: scenes[0], scenes, historyProfile: null } : null;
+      const selected = scenes.find((scene) => scene.imageUrl === shownUrl) ?? scenes[0];
+      return selected ? { ...base, selected, scenes, historyProfile: null } : null;
     }
     case 'frame': {
       const frame = evidence.frames.find((candidate) => candidate.layer === image.key);
