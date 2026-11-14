@@ -9,9 +9,13 @@ import { loadQualifiedCountrySignals } from '@/services/country-signal-projectio
 import { qualifiedFixtureOutcomes } from '../../src/e2e/fixtures/qualified-country-signals';
 import { assembleRawSignals, failedRawSignal, RAW_SIGNAL_FAMILIES } from '../../shared/country-raw-signals';
 
+const orbitalWatch = vi.hoisted(() => ({ on: false }));
+vi.mock('@/config/orbital-watch-flag', () => ({ get ORBITAL_WATCH_ENABLED() { return orbitalWatch.on; } }));
+
 beforeAll(initTestI18n);
-afterEach(() => { vi.unstubAllGlobals(); });
-it.each(['IR', 'CN'])('measures %s panel and controller opening reads with ten sectors and eight flight pages', async code => {
+afterEach(() => { vi.unstubAllGlobals(); orbitalWatch.on = false; });
+it.each([['IR', false], ['CN', false], ['IR', true], ['CN', true]] as const)('measures %s panel and controller opening reads with ten sectors and eight flight pages (Orbital Watch %s)', async (code, enabled) => {
+  orbitalWatch.on = enabled;
   const calls: Array<{ section: string; arguments: Record<string, any> }> = [];
   vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('Network is forbidden in opening fixtures'); }));
   const source = await createHostCountryBriefSource(async (_name, args: any) => {
@@ -70,7 +74,9 @@ it.each(['IR', 'CN'])('measures %s panel and controller opening reads with ten s
     expect(calls.filter(call => call.section === 'countrySignals' && call.arguments.family !== 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE')).toHaveLength(code === 'CN' ? 4 : 5);
     const deferred = qualified.families.filter(family => family.reason?.startsWith('Deferred:')).map(family => family.family);
     expect(deferred).toHaveLength(3);
-    expect(deferred).not.toContain('imagery');
+    // Dark, imagery yields to every existing source; on, it is read before the budget runs out.
+    if (enabled) expect(deferred).not.toContain('imagery');
+    else expect(deferred[deferred.length - 1]).toBe('imagery');
     expect(qualified.families.map(family => family.family)).toEqual(['outages', 'unrest', 'fires', 'radiation', 'sanctions', 'conflict', 'posture', 'imagery', 'military']);
     expect(qualified.details).not.toBeNull();
   } finally { controller.dispose(); panel.hide(); }
