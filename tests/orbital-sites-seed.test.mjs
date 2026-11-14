@@ -18,13 +18,14 @@ import {
   countryKey,
   isRollupCurrent,
   ORBITAL_SITES_ACTIVATION_KEY,
+  ORBITAL_SITES_BACKOFF_KEY,
   ORBITAL_SITES_KEY,
   ROLLUP_MAX_AGE_MS,
   ROLLUP_MAX_BYTES,
   siteKey,
   withSiteFlag,
 } from '../scripts/_orbital-sites.mjs';
-import { buildSeedOptions, makeFetchSites, publicationCommands } from '../scripts/seed-orbital-sites.mjs';
+import { buildSeedOptions, makeFetchSites, nextBackoff, publicationCommands } from '../scripts/seed-orbital-sites.mjs';
 import { PUBLISH_BLOCKED_EXIT_CODE } from '../scripts/_seed-utils.mjs';
 import { WATCHED_SITES } from '../scripts/shared/orbital-watched-sites.generated.mjs';
 
@@ -53,6 +54,8 @@ function memoryStore() {
     readCatalog: async () => catalog,
     readIndex: async () => kv.get(ORBITAL_SITES_KEY) ?? null,
     readRecords: async (ids) => new Map(ids.filter((id) => kv.has(siteKey(id))).map((id) => [id, kv.get(siteKey(id))])),
+    readBackoff: async () => kv.get(ORBITAL_SITES_BACKOFF_KEY) ?? null,
+    writeBackoff: async (backoff) => { kv.set(ORBITAL_SITES_BACKOFF_KEY, backoff); },
     write: async (commands) => {
       for (const [verb, key, value] of commands) {
         if (verb === 'DEL') kv.delete(key);
@@ -166,13 +169,60 @@ describe('orbital site records', () => {
     assert.ok(store.kv.has(countryKey('AE')));
   });
 
-  it('exits publish-blocked on an archive refusal and preserves every record', async () => {
+  it('exits publish-blocked on an archive refusal at its first site, preserving every record and backing off', async () => {
     const store = memoryStore();
     await run(store);
     const snapshot = structuredClone([...store.kv.entries()]);
     const result = await run(store, { nowMs: NOW + DAY_MS, searchArchive: async () => { throw new ArchiveRefusal('HTTP 403'); } });
     assert.match(result.publishBlocked, /403/);
+    const backoff = store.kv.get(ORBITAL_SITES_BACKOFF_KEY);
+    store.kv.delete(ORBITAL_SITES_BACKOFF_KEY);
     assert.deepEqual([...store.kv.entries()], snapshot);
+    assert.deepEqual(backoff, { refusals: 1, reason: 'HTTP 403', at: NOW + DAY_MS, until: NOW + DAY_MS + 15 * 60_000 });
+  });
+
+  it('publishes the sites evaluated before a refusal, resumes at the refused site, and backs off', async () => {
+    const store = memoryStore();
+    let calls = 0;
+    const refusing = async () => {
+      calls += 1;
+      if (calls === 3) throw new ArchiveRefusal('HTTP 429');
+      return fixtureAcquisitions;
+    };
+    const first = await run(store, { searchArchive: refusing });
+    assert.deepEqual(Object.keys(first.sites), ['hotspot:a', 'hotspot:b']);
+    assert.equal(first.nextSiteId, 'hotspot:c');
+    assert.equal(store.kv.get(ORBITAL_SITES_BACKOFF_KEY).refusals, 1);
+
+    const blocked = await run(store, { nowMs: NOW + 10 * 60_000, searchArchive: async () => assert.fail('no archive request while backing off') });
+    assert.match(blocked.publishBlocked, /backoff after 1 refusal/);
+
+    const seen = [];
+    const resumed = await run(store, { nowMs: NOW + 20 * 60_000, searchArchive: async (s) => { seen.push(s.id); return fixtureAcquisitions; } });
+    assert.deepEqual(seen.slice(0, 2), ['hotspot:c', 'hotspot:d']);
+    assert.equal(resumed.nextSiteId, null);
+    assert.equal(store.kv.has(ORBITAL_SITES_BACKOFF_KEY), false, 'a clean run clears the backoff');
+  });
+
+  it('counts the backoff from the refusal, not from the start of the run', async () => {
+    const store = memoryStore();
+    let now = NOW;
+    const { fetchSites } = makeFetchSites({
+      store, sites: SITES, registryVersion: 'test', budgetMs: 60 * 60_000, clock: () => now,
+      searchArchive: async () => { now += 5 * 60_000; throw new ArchiveRefusal('HTTP 429'); },
+    });
+    await fetchSites();
+    assert.equal(store.kv.get(ORBITAL_SITES_BACKOFF_KEY).until, NOW + 5 * 60_000 + 15 * 60_000);
+  });
+
+  it('doubles the backoff for each refusal in a row, up to a day', () => {
+    let backoff = null;
+    const waits = [];
+    for (let i = 0; i < 9; i += 1) {
+      backoff = nextBackoff(backoff, 'HTTP 429', NOW);
+      waits.push((backoff.until - NOW) / 60_000);
+    }
+    assert.deepEqual(waits, [15, 30, 60, 120, 240, 480, 960, 1440, 1440]);
   });
 
   it('stops at its time budget and the next run resumes at the first unevaluated site', async () => {
@@ -209,6 +259,19 @@ describe('orbital country rollups', () => {
     assert.equal(isRollupCurrent(ae, index, NOW + DAY_MS), true);
     assert.equal(isRollupCurrent(ae, index, NOW + ROLLUP_MAX_AGE_MS + 1), false, 'too old');
     assert.equal(isRollupCurrent({ ...ae, revision: 'other' }, index, NOW), false, 'not the revision the index names');
+  });
+
+  it('leaves a stale site out of its country rollup, so it does not age the fresh ones past the gate', async () => {
+    const store = memoryStore();
+    await run(store);
+    const records = SITES.map((s) => store.kv.get(siteKey(s.id)));
+    const stale = { ...records[0], evaluatedAt: NOW - ROLLUP_MAX_AGE_MS - DAY_MS };
+    const ae = buildCountryRollup('AE', [stale, records[1]], NOW);
+    assert.deepEqual(ae.sites.map((s) => s.siteId), ['hotspot:b']);
+    assert.equal(ae.asOf, records[1].evaluatedAt);
+    const allStale = buildCountryRollup('AE', [stale, { ...records[1], evaluatedAt: stale.evaluatedAt }], NOW);
+    assert.equal(allStale.sites.length, 2, 'a country with no fresh site keeps its sites and reads as stale');
+    assert.equal(allStale.asOf, stale.evaluatedAt);
   });
 
   it('rebuilds byte-identically from unchanged site records', async () => {
@@ -343,13 +406,14 @@ describe('seed-orbital-sites run', () => {
     assert.match(r.stdout, /ships dark/);
   });
 
-  it('exits 76 on an archive refusal and writes nothing', () => {
+  it('exits 76 on an archive refusal and writes nothing but its backoff', () => {
     const record = JSON.stringify({ siteId: WATCHED_SITES[0].id, kept: true });
     const initial = { 'orbital:catalog:v1': catalogEnvelope(), [siteKey(WATCHED_SITES[0].id)]: record };
     const r = runSeeder({ mode: 'forbidden', initial });
     assert.equal(r.status, PUBLISH_BLOCKED_EXIT_CODE, r.stdout + r.stderr);
     assert.equal(r.state.archiveCalls, 1, 'a refusal stops the run');
     assert.equal(r.state.values[siteKey(WATCHED_SITES[0].id)], record);
-    assert.ok(!r.state.writes.some((key) => key.startsWith('orbital:') || key === 'seed-meta:orbital:sites'), `writes ${r.state.writes}`);
+    assert.ok(!r.state.writes.some((key) => (key.startsWith('orbital:') && key !== ORBITAL_SITES_BACKOFF_KEY) || key === 'seed-meta:orbital:sites'), `writes ${r.state.writes}`);
+    assert.equal(JSON.parse(r.state.values[ORBITAL_SITES_BACKOFF_KEY]).refusals, 1);
   });
 });
