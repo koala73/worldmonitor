@@ -4,7 +4,7 @@ import { combineAbortSignals } from './timeout-signal';
 import { CountrySectionError } from './country-brief-error';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
 import type { createHostCountryFetch } from './country-brief-host-transport';
-import { IntelligenceServiceClient, MarketServiceClient, MilitaryServiceClient, MaritimeServiceClient, EconomicServiceClient, TradeServiceClient, SupplyChainServiceClient, ResilienceServiceClient, ScorecardServiceClient, PredictionServiceClient } from '@/services/generated-rpc-clients';
+import { ClimateServiceClient, IntelligenceServiceClient, MarketServiceClient, MilitaryServiceClient, MaritimeServiceClient, EconomicServiceClient, TradeServiceClient, SupplyChainServiceClient, ResilienceServiceClient, ScorecardServiceClient, PredictionServiceClient } from '@/services/generated-rpc-clients';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -62,6 +62,7 @@ function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void; 
     intelligence,
     market: new MarketServiceClient(base, options),
     economic: new EconomicServiceClient(base, options),
+    climate: new ClimateServiceClient(base, options),
     trade: new TradeServiceClient(base, options),
     military: new MilitaryServiceClient(base, options),
     vessels: new MaritimeServiceClient(base, options),
@@ -85,6 +86,13 @@ function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void; 
         },
       };
     },
+    // Hosted reads go through the country-scoped reservoirs reader, which needs the country.
+    reservoirLevels: (code: string, signal: AbortSignal) => new ClimateServiceClient(base, { fetch: (input, init) => {
+      if (mode === 'website') return fetcher(input, { ...init, signal });
+      const url = new URL(input instanceof Request ? input.url : String(input), base);
+      url.searchParams.set('country_code', code);
+      return fetcher(url, { ...init, signal });
+    } }).listReservoirLevels({}, { signal }),
     food: async (code: string, signal: AbortSignal) => mode === 'website' ? (await import('@/services/resilience')).getFoodStocks({ countryCode: code, signal }) : resilience.getFoodStocks({ countryCode: code, commodity: '' }, { signal }),
     demographics: async (code: string, signal: AbortSignal) => mode === 'website' ? (await import('@/services/resilience')).getDemographicsCapability({ countryCode: code, signal }) : resilience.getDemographicsCapability({ countryCode: code }, { signal }),
     factors: async (code: string, signal: AbortSignal) => mode === 'website' ? (await import('@/services/scorecard')).getFiveFactorScorecard(code, signal) : scorecard.getFiveFactorScorecard({ countryCode: code }, { signal }),

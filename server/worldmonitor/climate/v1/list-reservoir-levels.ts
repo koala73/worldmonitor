@@ -51,7 +51,9 @@ function normalizeSeries(v: unknown): ReservoirLevelPoint[] {
     if (!Array.isArray(p)) continue;
     const date = asString(p[0]);
     const levelM = asNumber(p[1]);
-    if (date && levelM != null) out.push({ date, levelM });
+    if (!date || levelM == null) continue;
+    const baselineM = asNumber(p[2]);
+    out.push(baselineM == null ? { date, levelM } : { date, levelM, baselineM });
   }
   return out;
 }

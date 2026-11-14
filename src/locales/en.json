@@ -1459,7 +1459,12 @@
       "moreActions": "More actions",
       "shareStory": "Share story",
       "printPdf": "Print / PDF",
-      "exportData": "Export data"
+      "exportData": "Export data",
+      "sources": {
+        "summary": "Sources and windows · {{count}} families",
+        "note": "Source windows vary; not a 24-hour total.",
+        "footer": "Not an input to CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Pipeline",
@@ -3352,6 +3357,34 @@
         "change365": "Over 12 months",
         "measured": "Measured",
         "sparkline": "Water level over 36 months"
+      },
+      "nextPass": {
+        "label": "Next ICESat-2 crossing",
+        "loading": "Loading…",
+        "at": "{{date}} (predicted from orbit data of {{epoch}}; cloud can block the lidar)",
+        "none": "No measurement in this window (to {{date}}); orbit data of {{epoch}}",
+        "unavailable": "Orbit data unavailable"
+      },
+      "siteContext": {
+        "label": "Strategic reservoir at this site"
+      },
+      "energyContext": {
+        "heading": "Strategic reservoirs",
+        "hydro": "Hydro {{share}}% of primary energy"
+      },
+      "countryEvidence": {
+        "heading": "Water levels",
+        "empty": "No strategic reservoir in this country is beyond its seasonal baseline at its latest pass.",
+        "measured": "Measured {{date}}"
+      },
+      "card": {
+        "measured": "Measured {{date}} · {{age}}",
+        "noCrossing": "none in this window (to {{date}})",
+        "crossing": "Predicted ICESat-2 crossing",
+        "summary": "{{beyond}} of {{total}} reservoirs beyond seasonal baseline",
+        "latestPass": "latest ICESat-2 pass {{date}}",
+        "sparkline": "36-month water level; dashed line marks the seasonal baseline",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidar water-surface levels from dated passes, not live readings or storage volumes."
       }
     }
   },

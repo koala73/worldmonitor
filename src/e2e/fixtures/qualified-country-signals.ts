@@ -17,6 +17,10 @@ export function qualifiedFixtureOutcomes(): CountrySignalOutcome[] {
       { siteId: 'nuclear:controlled', name: 'Controlled watched site', lat: 33.7, lon: 51.7, surface: 'land', originLists: ['nuclear'], revision: 'controlled', evaluatedAt: at, lastObservation: null, nextWindow: null, operators: [],
         flag: { state: 'confirmed', wording: 'imagery statistics changed', updatedAt: at, confirmed: { geometryKey: 'sentinel-1|28|descending|IW|VH+VV', itemId: 'S1C_CONFIRM', datetime: new Date(at - 86_400_000).toISOString(), platform: 'Sentinel-1C', raisedBy: { itemId: 'S1A_RAISE', datetime: new Date(at - 13 * 86_400_000).toISOString(), platform: 'Sentinel-1A' } } } },
     ] }, at),
+    projectCountrySignalFamily('IR', 'water', { fetchedAt: new Date(at).toISOString(), reservoirs: [
+      { id: 'karkheh', name: 'Karkheh Dam', country: 'IR', status: 'low', seasonalZ: -2.1, seasonalAnomalyM: -6.4, latest: { date: '2026-09-06', levelM: 214.2 } },
+      { id: 'urmia', name: 'Lake Urmia', country: 'IR', status: 'normal', seasonalZ: 0.4, seasonalAnomalyM: 0.2, latest: { date: '2026-09-21', levelM: 1270.1 } },
+    ] }),
   ];
   const military: CountrySignalOutcome = { ...unavailableCountrySignal('IR', 'military', ''), state: 'observed', reason: null, partial: false, scope: 'Controlled eligible military observations', attribution: 'adsb.lol / USNI' };
   military.observations = ['military_flight', 'military_vessel', 'ais_disruption'].map((type, i) => ({ id: String(i), family: 'military', type, severity: 'medium', title: `Controlled ${type}`, source: i ? 'AIS / USNI' : 'adsb.lol', eventAt: new Date(at).toISOString(), snapshotAt: null, timeBasis: 'event' }));

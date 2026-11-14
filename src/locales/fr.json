@@ -1163,7 +1163,12 @@
       "printPdf": "Imprimer / PDF",
       "exportData": "Exporter les données",
       "moreActions": "Autres actions",
-      "shareLink": "Partager le lien"
+      "shareLink": "Partager le lien",
+      "sources": {
+        "summary": "Sources et fenêtres · {{count}} familles",
+        "note": "Les fenêtres des sources varient ; ce n’est pas un total sur 24 heures.",
+        "footer": "N’entre pas dans le CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Oléoduc",
@@ -3207,6 +3212,34 @@
         "change365": "Sur 12 mois",
         "measured": "Mesuré",
         "sparkline": "Niveau d’eau sur 36 mois"
+      },
+      "nextPass": {
+        "label": "Prochain passage d’ICESat-2",
+        "loading": "Chargement…",
+        "at": "{{date}} (prévu d’après les données orbitales du {{epoch}} ; les nuages peuvent bloquer le lidar)",
+        "none": "Aucune mesure sur cette période (jusqu’au {{date}}) ; données orbitales du {{epoch}}",
+        "unavailable": "Données orbitales indisponibles"
+      },
+      "siteContext": {
+        "label": "Réservoir stratégique sur ce site"
+      },
+      "energyContext": {
+        "heading": "Réservoirs stratégiques",
+        "hydro": "Hydroélectricité {{share}} % de l’énergie primaire"
+      },
+      "countryEvidence": {
+        "heading": "Niveaux d'eau",
+        "empty": "Aucun réservoir stratégique de ce pays n'est hors de sa référence saisonnière à son dernier passage.",
+        "measured": "Mesuré le {{date}}"
+      },
+      "card": {
+        "measured": "Mesuré {{date}} · {{age}}",
+        "noCrossing": "aucun dans cette fenêtre (jusqu’au {{date}})",
+        "crossing": "Passage ICESat-2 prévu",
+        "summary": "{{beyond}} sur {{total}} réservoirs hors de la référence saisonnière",
+        "latestPass": "dernier passage ICESat-2 {{date}}",
+        "sparkline": "Niveau sur 36 mois, référence saisonnière en pointillé",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Niveaux de surface de l’eau par lidar issus de passages datés, ni relevés en direct ni volumes stockés."
       }
     },
     "gridDisruptionClock": {

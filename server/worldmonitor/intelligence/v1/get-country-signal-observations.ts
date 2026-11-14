@@ -13,6 +13,7 @@ import { readTheaterPostureSnapshot } from '../../military/v1/get-theater-postur
 import { readMilitaryFlights } from '../../military/v1/list-military-flights';
 import { drainResponseHeaders, setResponseHeader } from '../../../_shared/response-headers';
 import { readCountryWatchedSiteRollup } from './_country-brief-evidence';
+import { listReservoirLevels } from '../../climate/v1/list-reservoir-levels';
 
 export const getCountrySignalObservations: IntelligenceServiceHandler['getCountrySignalObservations'] = async (ctx, req) => {
   setResponseHeader(ctx.request, 'Cache-Control', 'no-store');
@@ -50,6 +51,7 @@ export const getCountrySignalObservations: IntelligenceServiceHandler['getCountr
       conflict: () => listIranEvents(ctx, {}),
       posture: () => readTheaterPostureSnapshot(ctx, { redistributableOnly: true }),
       imagery: () => readCountryWatchedSiteRollup(req.countryCode),
+      water: () => listReservoirLevels(ctx, {}),
     }[selected];
     const body = await withinDeadline<unknown>(read());
     deadline.throwIfAborted();

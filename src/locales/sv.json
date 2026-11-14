@@ -772,7 +772,12 @@
       "printPdf": "Skriv ut / PDF",
       "exportData": "Exportera data",
       "moreActions": "Fler åtgärder",
-      "shareLink": "Dela länk"
+      "shareLink": "Dela länk",
+      "sources": {
+        "summary": "Källor och fönster · {{count}} grupper",
+        "note": "Källornas fönster varierar; detta är ingen 24-timmarssumma.",
+        "footer": "Ingen indata till CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Rörledning",
@@ -2802,6 +2807,34 @@
         "change365": "På 12 månader",
         "measured": "Mätt",
         "sparkline": "Vattennivå över 36 månader"
+      },
+      "nextPass": {
+        "label": "Nästa ICESat-2-passage",
+        "loading": "Laddar…",
+        "at": "{{date}} (förutsagt från banddata från {{epoch}}; moln kan blockera lidarn)",
+        "none": "Ingen mätning i detta fönster (till {{date}}); banddata från {{epoch}}",
+        "unavailable": "Banddata är inte tillgängliga"
+      },
+      "siteContext": {
+        "label": "Strategisk reservoar på denna plats"
+      },
+      "energyContext": {
+        "heading": "Strategiska reservoarer",
+        "hydro": "Vattenkraft {{share}} % av primärenergin"
+      },
+      "countryEvidence": {
+        "heading": "Vattennivåer",
+        "empty": "Ingen strategisk reservoar i det här landet ligger utanför sin säsongsbaslinje vid den senaste överflygningen.",
+        "measured": "Uppmätt {{date}}"
+      },
+      "card": {
+        "measured": "Uppmätt {{date}} · {{age}}",
+        "noCrossing": "ingen i detta fönster (till {{date}})",
+        "crossing": "Förutsagd ICESat-2-passage",
+        "summary": "{{beyond}} av {{total}} magasin utanför säsongsbasen",
+        "latestPass": "senaste ICESat-2-passage {{date}}",
+        "sparkline": "Nivå över 36 månader med säsongsbasen streckad",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidarnivåer för vattenytan från daterade passager, inte liveavläsningar eller volymer."
       }
     },
     "gridDisruptionClock": {

@@ -1369,7 +1369,12 @@
       "shareLink": "Dijeli vezu",
       "shareStory": "Dijeli priču",
       "printPdf": "Ispiši / PDF",
-      "exportData": "Izvezi podatke"
+      "exportData": "Izvezi podatke",
+      "sources": {
+        "summary": "Izvori i razdoblja · {{count}} skupina",
+        "note": "Razdoblja izvora se razlikuju; ovo nije 24-satni zbroj.",
+        "footer": "Nije ulaz za CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Cjevovod",
@@ -3279,6 +3284,34 @@
         "change365": "U 12 mjeseci",
         "measured": "Izmjereno",
         "sparkline": "Vodostaj kroz 36 mjeseci"
+      },
+      "nextPass": {
+        "label": "Sljedeći prelet ICESat-2",
+        "loading": "Učitavanje…",
+        "at": "{{date}} (predviđeno iz orbitalnih podataka od {{epoch}}; oblaci mogu blokirati lidar)",
+        "none": "Nema mjerenja u ovom razdoblju (do {{date}}); orbitalni podaci od {{epoch}}",
+        "unavailable": "Orbitalni podaci nisu dostupni"
+      },
+      "siteContext": {
+        "label": "Strateška akumulacija na ovom mjestu"
+      },
+      "energyContext": {
+        "heading": "Strateške akumulacije",
+        "hydro": "Hidroenergija {{share}} % primarne energije"
+      },
+      "countryEvidence": {
+        "heading": "Razine vode",
+        "empty": "Nijedna strateška akumulacija u ovoj zemlji nije izvan svoje sezonske osnovice pri posljednjem preletu.",
+        "measured": "Izmjereno {{date}}"
+      },
+      "card": {
+        "measured": "Izmjereno {{date}} · {{age}}",
+        "noCrossing": "nema u ovom razdoblju (do {{date}})",
+        "crossing": "Predviđeni prelet ICESat-2",
+        "summary": "{{beyond}} od {{total}} akumulacija izvan sezonske osnovice",
+        "latestPass": "zadnji prelet ICESat-2 {{date}}",
+        "sparkline": "Razina kroz 36 mjeseci sa sezonskom osnovicom kao isprekidanom crtom",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidarske razine vodene površine iz datiranih preleta, ne trenutna očitanja ni volumeni."
       }
     },
     "gridDisruptionClock": {

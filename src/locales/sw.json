@@ -1362,7 +1362,12 @@
       "shareLink": "Shiriki kiungo",
       "shareStory": "Shiriki hadithi",
       "printPdf": "Chapisha / PDF",
-      "exportData": "Hamisha data"
+      "exportData": "Hamisha data",
+      "sources": {
+        "summary": "Vyanzo na vipindi · makundi {{count}}",
+        "note": "Vipindi vya vyanzo vinatofautiana; hii si jumla ya saa 24.",
+        "footer": "Si pembejeo ya CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Bomba",
@@ -3255,6 +3260,34 @@
         "change365": "Katika miezi 12",
         "measured": "Ilipimwa",
         "sparkline": "Kiwango cha maji kwa miezi 36"
+      },
+      "nextPass": {
+        "label": "Upitaji ujao wa ICESat-2",
+        "loading": "Inapakia…",
+        "at": "{{date}} (imetabiriwa kutoka data ya obiti ya {{epoch}}; mawingu yanaweza kuzuia lidar)",
+        "none": "Hakuna kipimo katika kipindi hiki (hadi {{date}}); data ya obiti ya {{epoch}}",
+        "unavailable": "Data ya obiti haipatikani"
+      },
+      "siteContext": {
+        "label": "Bwawa la kimkakati katika eneo hili"
+      },
+      "energyContext": {
+        "heading": "Mabwawa ya kimkakati",
+        "hydro": "Umeme wa maji {{share}}% ya nishati ya msingi"
+      },
+      "countryEvidence": {
+        "heading": "Viwango vya maji",
+        "empty": "Hakuna bwawa la kimkakati katika nchi hii lililo nje ya msingi wake wa msimu katika upitaji wake wa mwisho.",
+        "measured": "Imepimwa {{date}}"
+      },
+      "card": {
+        "measured": "Imepimwa {{date}} · {{age}}",
+        "noCrossing": "hakuna katika kipindi hiki (hadi {{date}})",
+        "crossing": "Mpito unaotabiriwa wa ICESat-2",
+        "summary": "Mabwawa {{beyond}} kati ya {{total}} nje ya msingi wa msimu",
+        "latestPass": "mpito wa mwisho wa ICESat-2 {{date}}",
+        "sparkline": "Kiwango cha miezi 36 na msingi wa msimu kama mstari wa vistari",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Viwango vya uso wa maji vya lidar kutoka mipito yenye tarehe, si usomaji wa moja kwa moja wala ujazo."
       }
     },
     "gridDisruptionClock": {

@@ -1322,7 +1322,12 @@
       "printPdf": "Stampa/PDF",
       "exportData": "Esporta dati",
       "moreActions": "Altre azioni",
-      "shareLink": "Condividi link"
+      "shareLink": "Condividi link",
+      "sources": {
+        "summary": "Fonti e finestre · {{count}} famiglie",
+        "note": "Le finestre delle fonti variano; questo non è un totale di 24 ore.",
+        "footer": "Non è un input di CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Gasdotto",
@@ -3207,6 +3212,34 @@
         "change365": "In 12 mesi",
         "measured": "Misurato",
         "sparkline": "Livello dell’acqua in 36 mesi"
+      },
+      "nextPass": {
+        "label": "Prossimo passaggio di ICESat-2",
+        "loading": "Caricamento…",
+        "at": "{{date}} (previsto dai dati orbitali del {{epoch}}; le nuvole possono bloccare il lidar)",
+        "none": "Nessuna misurazione in questo periodo (fino al {{date}}); dati orbitali del {{epoch}}",
+        "unavailable": "Dati orbitali non disponibili"
+      },
+      "siteContext": {
+        "label": "Bacino strategico in questo sito"
+      },
+      "energyContext": {
+        "heading": "Bacini strategici",
+        "hydro": "Idroelettrico {{share}}% dell’energia primaria"
+      },
+      "countryEvidence": {
+        "heading": "Livelli dell'acqua",
+        "empty": "Nessun bacino strategico di questo paese è fuori dalla sua linea di base stagionale all'ultimo passaggio.",
+        "measured": "Misurato il {{date}}"
+      },
+      "card": {
+        "measured": "Misurato {{date}} · {{age}}",
+        "noCrossing": "nessuno in questa finestra (fino al {{date}})",
+        "crossing": "Passaggio ICESat-2 previsto",
+        "summary": "{{beyond}} di {{total}} bacini fuori dalla base stagionale",
+        "latestPass": "ultimo passaggio ICESat-2 {{date}}",
+        "sparkline": "Livello a 36 mesi con la base stagionale tratteggiata",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Livelli della superficie dell’acqua via lidar da passaggi datati, non letture in tempo reale né volumi."
       }
     },
     "gridDisruptionClock": {

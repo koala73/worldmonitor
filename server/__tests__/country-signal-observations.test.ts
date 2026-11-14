@@ -116,3 +116,40 @@ describe('imagery country signal family', () => {
     expect(projectCountrySignalFamily('IR', 'imagery', null)).toMatchObject({ state: 'unavailable', family: 'imagery' });
   });
 });
+
+describe('water country signal family', () => {
+  const reservoir = (id: string, country: string, seasonalZ: number | null, extra: Record<string, unknown> = {}) => ({
+    id, name: `Lake ${id}`, country, status: seasonalZ != null && seasonalZ <= -1.5 ? 'low' : 'normal', seasonalZ,
+    seasonalAnomalyM: seasonalZ == null ? null : seasonalZ * 2, latest: { date: '2026-09-06', levelM: 600 }, ...extra,
+  });
+  const body = (reservoirs: unknown[]) => ({ fetchedAt: '2026-11-14T00:00:00.000Z', reservoirs });
+
+  it('lists only the country reservoirs beyond the seasonal baseline, each with its pass date', () => {
+    const outcome = projectCountrySignalFamily('ET', 'water', body([
+      reservoir('gerd', 'ET', -2.4), reservoir('tana', 'ET', 0.3), reservoir('aswan', 'EG', -3), reservoir('koka', 'ET', 1.6),
+    ]));
+    expect(outcome.state).toBe('observed');
+    expect(outcome.observations.map(row => row.id)).toEqual(['gerd', 'koka']);
+    expect(outcome.observations[0]).toMatchObject({ family: 'water', type: 'reservoir_below_seasonal', severity: 'low', eventAt: '2026-09-06T00:00:00.000Z', timeBasis: 'event' });
+    expect(outcome.observations[0]!.title).toContain('ICESat-2 pass 2026-09-06');
+    expect(outcome.observations[1]!.type).toBe('reservoir_above_seasonal');
+    expect(outcome.partial).toBe(false);
+  });
+
+  it('is observed with no rows when the reservoirs sit within their seasonal range', () => {
+    const outcome = projectCountrySignalFamily('ET', 'water', body([reservoir('tana', 'ET', 0.3)]));
+    expect(outcome).toMatchObject({ state: 'observed', observations: [] });
+  });
+
+  it('is unavailable without a snapshot, without reservoirs in the country, or without a baseline', () => {
+    expect(projectCountrySignalFamily('ET', 'water', { dataAvailable: false })).toMatchObject({ state: 'unavailable', family: 'water' });
+    expect(projectCountrySignalFamily('FR', 'water', body([reservoir('gerd', 'ET', -2.4)]))).toMatchObject({ state: 'unavailable' });
+    expect(projectCountrySignalFamily('ET', 'water', body([reservoir('gerd', 'ET', null), reservoir('tana', 'ET', -2, { status: 'no_recent_data' })]))).toMatchObject({ state: 'unavailable' });
+  });
+
+  it('marks the family partial when some reservoirs lack a baseline and keeps rows out of high-severity signals', () => {
+    const outcome = projectCountrySignalFamily('ET', 'water', body([reservoir('gerd', 'ET', -2.4), reservoir('tana', 'ET', null)]));
+    expect(outcome.partial).toBe(true);
+    expect(projectQualifiedCountrySignals('ET', [outcome]).details?.recentHigh).toEqual([]);
+  });
+});

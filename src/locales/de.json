@@ -1319,7 +1319,12 @@
       "printPdf": "Drucken / PDF",
       "exportData": "Daten exportieren",
       "moreActions": "Weitere Aktionen",
-      "shareLink": "Link teilen"
+      "shareLink": "Link teilen",
+      "sources": {
+        "summary": "Quellen und Zeitfenster · {{count}} Gruppen",
+        "note": "Die Zeitfenster der Quellen unterscheiden sich; dies ist keine 24-Stunden-Summe.",
+        "footer": "Kein Eingangswert für CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Pipeline",
@@ -3186,6 +3191,34 @@
         "change365": "In 12 Monaten",
         "measured": "Gemessen",
         "sparkline": "Wasserstand über 36 Monate"
+      },
+      "nextPass": {
+        "label": "Nächster ICESat-2-Überflug",
+        "loading": "Wird geladen…",
+        "at": "{{date}} (vorhergesagt aus Bahndaten vom {{epoch}}; Wolken können das Lidar blockieren)",
+        "none": "Keine Messung in diesem Zeitraum (bis {{date}}); Bahndaten vom {{epoch}}",
+        "unavailable": "Bahndaten nicht verfügbar"
+      },
+      "siteContext": {
+        "label": "Strategischer Stausee an diesem Ort"
+      },
+      "energyContext": {
+        "heading": "Strategische Stauseen",
+        "hydro": "Wasserkraft {{share}} % der Primärenergie"
+      },
+      "countryEvidence": {
+        "heading": "Wasserstände",
+        "empty": "Kein strategischer Stausee in diesem Land liegt beim letzten Überflug außerhalb seiner saisonalen Basislinie.",
+        "measured": "Gemessen am {{date}}"
+      },
+      "card": {
+        "measured": "Gemessen {{date}} · {{age}}",
+        "noCrossing": "keiner in diesem Zeitraum (bis {{date}})",
+        "crossing": "Vorhergesagter ICESat-2-Überflug",
+        "summary": "{{beyond}} von {{total}} Stauseen außerhalb der saisonalen Basis",
+        "latestPass": "letzter ICESat-2-Überflug {{date}}",
+        "sparkline": "Pegel über 36 Monate, saisonale Basis als gestrichelte Linie",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidar-Wasserspiegel aus datierten Überflügen, keine Live-Werte oder Speichervolumen."
       }
     },
     "gridDisruptionClock": {

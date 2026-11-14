@@ -150,6 +150,18 @@ describe('bounded country family handler', () => {
     expect(new TextEncoder().encode(JSON.stringify(result)).length).toBeLessThanOrEqual(COUNTRY_SIGNAL_BYTES);
     expect(cache.reads.mock.calls.map(call => call[0])).toEqual(['orbital:country:v1:FR']);
   });
+  it('reads only the seeded reservoir snapshot for water and keeps the measurement date', async () => {
+    cache.rows.set('climate:reservoir-levels:v1', { fetchedAt: 1792324800000, reservoirs: [
+      { id: 'serre-poncon', name: 'Serre-Ponçon', country: 'FR', lat: 44.5, lon: 6.3, status: 'low', seasonalZ: -1.9, seasonalAnomalyM: -3.2, latest: { date: '2026-08-30', levelM: 772.4 } },
+      { id: 'gerd', name: 'GERD', country: 'ET', lat: 11.2, lon: 35.1, status: 'high', seasonalZ: 2.4, seasonalAnomalyM: 4.1, latest: { date: '2026-09-02', levelM: 620.2 } },
+    ] });
+    const result = await getCountrySignalObservations(context(), req('COUNTRY_SIGNAL_FAMILY_WATER'));
+    const outcome = countrySignalOutcomeSchema.parse(JSON.parse(result.outcomeJson));
+    expect(outcome).toMatchObject({ family: 'water', state: 'observed' });
+    expect(outcome.observations).toMatchObject([{ family: 'water', severity: 'low', eventAt: '2026-08-30T00:00:00.000Z' }]);
+    expect(outcome.observations[0]!.title).toContain('2026-08-30');
+    expect(cache.reads.mock.calls.map(call => call[0])).toEqual(['climate:reservoir-levels:v1']);
+  });
   it('reports a country without watched-site evidence as unavailable, not as an error', async () => {
     const result = await getCountrySignalObservations(context(), req('COUNTRY_SIGNAL_FAMILY_IMAGERY'));
     expect(countrySignalOutcomeSchema.parse(JSON.parse(result.outcomeJson))).toMatchObject({ family: 'imagery', state: 'unavailable', reason: 'No current watched-site evidence for this country.' });

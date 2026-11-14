@@ -231,6 +231,13 @@ describe('series and ended records', () => {
     assert.ok(!m.series.some(([, l]) => l === 50));
   });
 
+  it('carries the seasonalBaseline median per point, null with fewer than three prior seasons', () => {
+    const m = metrics(series('2021-01-01', '2026-01-01', 10, () => 100), '2026-02-01');
+    assert.equal(m.series[0][2], null);
+    assert.equal(m.series.at(-1)[2], 100);
+    assert.ok(m.series.every((p) => p.length === 3));
+  });
+
   it('a Kakhovka-style series shows the collapse and then reports no_recent_data, not an error', () => {
     const before = series('2018-11-01', '2023-05-30', 12, (t) => 16 + 0.8 * Math.sin(t / (60 * DAY)));
     const after = [pass('2023-06-12', 9.5), pass('2023-06-25', 4.1), pass('2023-07-20', 3.2), pass('2023-09-01', 3.0)];

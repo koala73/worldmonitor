@@ -1,8 +1,9 @@
 // MCP projection for get_reservoir_levels (climate:reservoir-levels:v1).
 //
 // Reuses the REST handler's normalizer, so MCP and /api/climate/v1/list-reservoir-levels
-// agree on every field. The stored series is [date, levelM] tuples; the normalizer turns
-// it into {date, levelM} objects, which the projection drops unless include_series is set.
+// agree on every field. The stored series is [date, levelM, baselineM] tuples; the normalizer
+// turns it into {date, levelM, baselineM?} objects, which the projection drops unless
+// include_series is set.
 
 import { normalizeReservoirLevelsSeed } from '../../../server/worldmonitor/climate/v1/list-reservoir-levels';
 import { matchesCode } from '../filters';
@@ -34,7 +35,11 @@ export function projectReservoirLevels(raw: unknown, query: ReservoirLevelsQuery
 
 const POINT_SCHEMA = {
   type: 'object',
-  properties: { date: { type: 'string', description: 'UTC pass date, YYYY-MM-DD.' }, levelM: { type: 'number' } },
+  properties: {
+    date: { type: 'string', description: 'UTC pass date, YYYY-MM-DD.' },
+    levelM: { type: 'number' },
+    baselineM: { type: 'number', description: 'Seasonal baseline median for this date; absent with fewer than three prior seasons.' },
+  },
   required: ['date', 'levelM'],
 };
 

@@ -1285,7 +1285,12 @@
       "printPdf": "Drukuj / PDF",
       "exportData": "Eksportuj dane",
       "moreActions": "Więcej działań",
-      "shareLink": "Udostępnij link"
+      "shareLink": "Udostępnij link",
+      "sources": {
+        "summary": "Źródła i okna · {{count}} grup",
+        "note": "Okna źródeł się różnią; to nie jest suma z 24 godzin.",
+        "footer": "Nie jest danymi wejściowymi CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Rurociąg",
@@ -3228,6 +3233,34 @@
         "change365": "W 12 miesięcy",
         "measured": "Pomiar",
         "sparkline": "Poziom wody w ciągu 36 miesięcy"
+      },
+      "nextPass": {
+        "label": "Następny przelot ICESat-2",
+        "loading": "Ładowanie…",
+        "at": "{{date}} (prognoza z danych orbitalnych z {{epoch}}; chmury mogą zablokować lidar)",
+        "none": "Brak pomiaru w tym okresie (do {{date}}); dane orbitalne z {{epoch}}",
+        "unavailable": "Dane orbitalne niedostępne"
+      },
+      "siteContext": {
+        "label": "Strategiczny zbiornik w tym miejscu"
+      },
+      "energyContext": {
+        "heading": "Strategiczne zbiorniki",
+        "hydro": "Energia wodna {{share}}% energii pierwotnej"
+      },
+      "countryEvidence": {
+        "heading": "Poziomy wody",
+        "empty": "Żaden strategiczny zbiornik w tym kraju nie wykracza przy ostatnim przelocie poza swoją sezonową linię bazową.",
+        "measured": "Zmierzono {{date}}"
+      },
+      "card": {
+        "measured": "Zmierzono {{date}} · {{age}}",
+        "noCrossing": "brak w tym oknie (do {{date}})",
+        "crossing": "Przewidywany przelot ICESat-2",
+        "summary": "{{beyond}} z {{total}} zbiorników poza bazą sezonową",
+        "latestPass": "ostatni przelot ICESat-2 {{date}}",
+        "sparkline": "Poziom z 36 miesięcy z bazą sezonową jako linią przerywaną",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidarowe poziomy lustra wody z datowanych przelotów, nie odczyty na żywo ani objętości."
       }
     },
     "gridDisruptionClock": {

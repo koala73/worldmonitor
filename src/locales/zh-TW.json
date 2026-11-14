@@ -1209,7 +1209,12 @@
       "shareLink": "分享連結",
       "shareStory": "分享報道",
       "printPdf": "列印 / PDF",
-      "exportData": "匯出資料"
+      "exportData": "匯出資料",
+      "sources": {
+        "summary": "來源與時間窗 · {{count}} 類",
+        "note": "各來源時間窗不同；這不是 24 小時總計。",
+        "footer": "不作為 CII/CRI 的輸入。"
+      }
     },
     "relatedAssets": {
       "pipeline": "管道",
@@ -3165,6 +3170,34 @@
         "change365": "12 個月內",
         "measured": "測量時間",
         "sparkline": "36 個月水位"
+      },
+      "nextPass": {
+        "label": "ICESat-2 下次過境",
+        "loading": "載入中…",
+        "at": "{{date}}（根據 {{epoch}} 的軌道資料預測；雲層可能遮擋光達）",
+        "none": "此時段內無測量（至 {{date}}）；軌道資料日期 {{epoch}}",
+        "unavailable": "軌道資料不可用"
+      },
+      "siteContext": {
+        "label": "此地點的戰略水庫"
+      },
+      "energyContext": {
+        "heading": "戰略水庫",
+        "hydro": "水電佔一次能源的 {{share}}%"
+      },
+      "countryEvidence": {
+        "heading": "水位",
+        "empty": "該國沒有任何戰略水庫在最近一次過境時超出其季節基線。",
+        "measured": "測量於 {{date}}"
+      },
+      "card": {
+        "measured": "測量於 {{date}} · {{age}}",
+        "noCrossing": "此視窗內無（至 {{date}}）",
+        "crossing": "ICESat-2 預測過境",
+        "summary": "{{total}} 座水庫中 {{beyond}} 座超出季節基線",
+        "latestPass": "最近 ICESat-2 過境 {{date}}",
+        "sparkline": "36 個月水位，季節基線為虛線",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC)。來自帶日期過境的光達水面高度，並非即時讀數或庫容。"
       }
     },
     "gridDisruptionClock": {

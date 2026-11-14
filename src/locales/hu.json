@@ -1362,7 +1362,12 @@
       "shareLink": "Hivatkozás megosztása",
       "shareStory": "Történet megosztása",
       "printPdf": "Nyomtatás / PDF",
-      "exportData": "Adatok exportálása"
+      "exportData": "Adatok exportálása",
+      "sources": {
+        "summary": "Források és ablakok · {{count}} csoport",
+        "note": "A források ablakai eltérnek; ez nem 24 órás összeg.",
+        "footer": "Nem bemenete a CII/CRI-nek."
+      }
     },
     "relatedAssets": {
       "pipeline": "Vezeték",
@@ -3255,6 +3260,34 @@
         "change365": "12 hónap alatt",
         "measured": "Mérés ideje",
         "sparkline": "Vízszint 36 hónap alatt"
+      },
+      "nextPass": {
+        "label": "Következő ICESat-2 áthaladás",
+        "loading": "Betöltés…",
+        "at": "{{date}} (előrejelzés a(z) {{epoch}} pályaadatai alapján; a felhőzet blokkolhatja a lidart)",
+        "none": "Nincs mérés ebben az időszakban ({{date}}-ig); pályaadatok: {{epoch}}",
+        "unavailable": "Pályaadatok nem érhetők el"
+      },
+      "siteContext": {
+        "label": "Stratégiai víztározó ezen a helyen"
+      },
+      "energyContext": {
+        "heading": "Stratégiai víztározók",
+        "hydro": "Vízenergia: a primer energia {{share}}%-a"
+      },
+      "countryEvidence": {
+        "heading": "Vízszintek",
+        "empty": "Az ország egyetlen stratégiai tározója sincs az utolsó áthaladáskor a szezonális alapvonalán kívül.",
+        "measured": "Mérve: {{date}}"
+      },
+      "card": {
+        "measured": "Mérve: {{date}} · {{age}}",
+        "noCrossing": "ebben az ablakban nincs ({{date}}-ig)",
+        "crossing": "Várható ICESat-2 átvonulás",
+        "summary": "{{total}} tározóból {{beyond}} a szezonális alapvonalon kívül",
+        "latestPass": "utolsó ICESat-2 áthaladás: {{date}}",
+        "sparkline": "36 havi szint, a szezonális alapvonal szaggatott vonallal",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidaros vízfelszín-szintek dátumozott áthaladásokból, nem élő értékek vagy tárolt térfogatok."
       }
     },
     "gridDisruptionClock": {

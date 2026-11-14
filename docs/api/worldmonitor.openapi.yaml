@@ -15698,6 +15698,7 @@ paths:
                         - 'COUNTRY_SIGNAL_FAMILY_POSTURE'
                         - 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE'
                         - 'COUNTRY_SIGNAL_FAMILY_IMAGERY'
+                        - 'COUNTRY_SIGNAL_FAMILY_WATER'
                 - name: window_index
                   in: query
                   description: Country-derived flight viewport index, 0 or 1. Other families require 0.
@@ -42983,6 +42984,10 @@ components:
                 levelM:
                     type: number
                     format: double
+                baselineM:
+                    type: number
+                    format: double
+                    description: Seasonal baseline median for this date (seasonalBaseline in scripts/_reservoir-levels.mjs); absent with too few prior seasons.
         worldmonitor_climate_v1_ReservoirLevelsSource:
             type: object
             properties:
@@ -50187,6 +50192,7 @@ components:
                         - COUNTRY_SIGNAL_FAMILY_POSTURE
                         - COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE
                         - COUNTRY_SIGNAL_FAMILY_IMAGERY
+                        - COUNTRY_SIGNAL_FAMILY_WATER
                     description: Fixed country observation profiles; callers cannot select sources or viewports.
                 windowIndex:
                     type: integer
@@ -50219,6 +50225,7 @@ components:
                         - COUNTRY_SIGNAL_FAMILY_POSTURE
                         - COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE
                         - COUNTRY_SIGNAL_FAMILY_IMAGERY
+                        - COUNTRY_SIGNAL_FAMILY_WATER
                     description: Fixed country observation profiles; callers cannot select sources or viewports.
                 outcomeJson:
                     type: string

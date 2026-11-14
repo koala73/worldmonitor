@@ -1206,7 +1206,12 @@
       "printPdf": "Tisk / PDF",
       "exportData": "Exportovat data",
       "moreActions": "Další akce",
-      "shareLink": "Sdílet odkaz"
+      "shareLink": "Sdílet odkaz",
+      "sources": {
+        "summary": "Zdroje a okna · {{count}} skupin",
+        "note": "Okna zdrojů se liší; nejde o 24hodinový součet.",
+        "footer": "Není vstupem CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Potrubí",
@@ -3228,6 +3233,34 @@
         "change365": "Za 12 měsíců",
         "measured": "Měřeno",
         "sparkline": "Vodní hladina za 36 měsíců"
+      },
+      "nextPass": {
+        "label": "Další přelet ICESat-2",
+        "loading": "Načítání…",
+        "at": "{{date}} (předpověď z orbitálních dat z {{epoch}}; oblačnost může lidar zablokovat)",
+        "none": "V tomto okně žádné měření (do {{date}}); orbitální data z {{epoch}}",
+        "unavailable": "Orbitální data nejsou k dispozici"
+      },
+      "siteContext": {
+        "label": "Strategická nádrž v tomto místě"
+      },
+      "energyContext": {
+        "heading": "Strategické nádrže",
+        "hydro": "Vodní energie {{share}} % primární energie"
+      },
+      "countryEvidence": {
+        "heading": "Hladiny vody",
+        "empty": "Žádná strategická nádrž v této zemi není při posledním přeletu mimo svou sezónní základnu.",
+        "measured": "Měřeno {{date}}"
+      },
+      "card": {
+        "measured": "Změřeno {{date}} · {{age}}",
+        "noCrossing": "v tomto okně žádný (do {{date}})",
+        "crossing": "Předpovězený přelet ICESat-2",
+        "summary": "{{beyond}} z {{total}} nádrží mimo sezónní základ",
+        "latestPass": "poslední přelet ICESat-2 {{date}}",
+        "sparkline": "Hladina za 36 měsíců se sezónním základem jako čárkovanou čarou",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidarové hladiny vodní hladiny z datovaných přeletů, ne aktuální údaje ani objemy."
       }
     },
     "gridDisruptionClock": {

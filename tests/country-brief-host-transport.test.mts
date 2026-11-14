@@ -18,6 +18,7 @@ it('keeps the local read budget with its admission across country switches and c
   const read = (code: string) => fetch(`https://www.worldmonitor.app/api/intelligence/v1/get-country-signal-observations?country_code=${code}&family=COUNTRY_SIGNAL_FAMILY_OUTAGES`);
   for (let count = 0; count < 62; count++) await assert.rejects(read('IR'), /Controlled unavailable/);
   await assert.rejects(read('IR'), /budget/);
+  await assert.rejects(fetch('https://www.worldmonitor.app/api/climate/v1/list-reservoir-levels?country_code=IR'), /budget/);
   assert.equal(calls, 62);
   select('admitted-CN');
   await assert.rejects(read('CN'), /Controlled unavailable/);
