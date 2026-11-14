@@ -9,6 +9,7 @@
  * WM_VERIFY_ORBITAL_POINT="lat,lon" picks the place; the default is Palm
  * Jebel Ali, Dubai, where construction gives compare and time-lapse real
  * change. Palm Jumeirah (25.112,55.139) shows recognisable fronds.
+ * WM_VERIFY_ORBITAL_THEME=light drives the light theme.
  */
 import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
 import { fixtureCatalog } from './orbital-watch.mjs';
@@ -48,7 +49,9 @@ export default async function ({ page, base, shot, log, expectVisible }) {
       }
     });
   }
-  await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': '"flat"' } });
+  // WM_VERIFY_ORBITAL_THEME=light drives the light theme.
+  const theme = process.env.WM_VERIFY_ORBITAL_THEME === 'light' ? 'light' : 'dark';
+  await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': '"flat"', 'worldmonitor-theme': theme } });
   await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
   log('renderer', await waitForMap(page));
