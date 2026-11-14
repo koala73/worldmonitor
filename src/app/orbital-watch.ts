@@ -30,6 +30,8 @@ let run: AbortController | null = null;
 let evidence: OrbitalEvidence | null = null;
 let raisedMap = false;
 let linkedPass: OrbitalSharePass | null = null;
+/** The current point's archive evidence is answered, so a linked pass can be selected now. */
+let evidenceReady = false;
 /** The pass last selected in the sheet, so a shared link opens on it too. */
 let selectedPass: { noradId: number; timeMs: number } | null = null;
 let returnFocus: HTMLElement | null = null;
@@ -220,6 +222,7 @@ async function checkArchives(found: PointPassLookup, signal: AbortSignal): Promi
 
 async function start(): Promise<void> {
   cancel();
+  evidenceReady = false;
   const controller = new AbortController();
   run = controller;
   const { signal } = controller;
@@ -241,7 +244,9 @@ async function start(): Promise<void> {
     }
     loadContext(lookup, signal);
     await checkArchives(lookup, signal);
-    if (!signal.aborted) applyLinkedPass(lookup);
+    if (signal.aborted) return;
+    evidenceReady = true;
+    applyLinkedPass(lookup);
   } catch (error) {
     if (!isAbort(error) && !signal.aborted) show({ kind: 'unavailable' });
   }
@@ -428,6 +433,7 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, view, map }: { re
     sheet.setPlaceName(name);
     sheet.setView(view);
     if (recentre) focusMap();
+    if (evidenceReady && lookup) applyLinkedPass(lookup);
     return;
   }
   clearTrack();

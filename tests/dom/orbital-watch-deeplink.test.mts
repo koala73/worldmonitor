@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { initTestI18n } from './helpers/i18n.mts';
 
@@ -28,6 +28,7 @@ import type { PointPass } from '@/services/orbital/pass-job';
 import type { OrbitalEvidence } from '@/services/orbital/match';
 import { openOrbitalWatch, openOrbitalWatchSearch } from '@/app/orbital-watch';
 import { scheduleOrbitalShareLink, takeOrbitalShareLink } from '@/app/orbital-share-link';
+import { watchOrbitalRoute } from '@/app/orbital-route';
 import { EventHandlerManager } from '@/app/event-handlers';
 import { SearchSelectionDispatcher } from '@/app/search-selection-dispatcher';
 import { COMMANDS } from '@/config/commands';
@@ -343,6 +344,54 @@ describe('satellite pass share link', () => {
     await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     const minute = new Date(PASSES[0]!.timeMs).toISOString().slice(0, 16).replace(/[-T:]/g, '');
     expect(new URL(writeText.mock.calls[0]![0]).hash).toBe(`#orbital=48.86,2.29;40697-${minute}&view=full`);
+  });
+
+  it('selects a pass from its row, by click and by Enter, and shares that pass', async () => {
+    openOrbitalWatch(EXACT, null, 'full');
+    await vi.waitFor(() => expect(sheet()!.querySelector('.ow-row[data-key^="pass:"]')).not.toBeNull());
+    const selected = vi.fn();
+    document.addEventListener('orbital-watch:select', (event) => selected((event as CustomEvent).detail));
+    onTestFinished(() => document.removeEventListener('orbital-watch:select', selected));
+    const row = () => sheet()!.querySelector<HTMLElement>('.ow-row[data-key^="pass:"]')!;
+    const key = row().dataset.key!;
+    row().click();
+    expect(selected).toHaveBeenCalledTimes(1);
+    expect(sheet()!.querySelector<HTMLElement>('.ow-row[aria-current]')?.dataset.key).toBe(key);
+    sheet()!.querySelector<HTMLElement>(`.ow-row[data-key="${key}"]`)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(selected).toHaveBeenCalledTimes(2);
+    const { noradId, timeMs } = selected.mock.calls[0]![0] as { noradId: number; timeMs: number };
+    button('.ow-share').click();
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const minute = new Date(timeMs).toISOString().slice(0, 16).replace(/[-T:]/g, '');
+    expect(new URL(writeText.mock.calls[0]![0]).hash).toBe(`#orbital=48.86,2.29;${noradId}-${minute}&view=full`);
+  });
+
+  it('opens a pass link pasted into the same tab, selects its pass, and takes it out of the live URL', async () => {
+    const stop = watchOrbitalRoute();
+    onTestFinished(stop);
+    const linked = vi.fn();
+    document.addEventListener('orbital-watch:select', (event) => linked((event as CustomEvent).detail), { once: true });
+    history.replaceState(null, '', '/dashboard#orbital=48.86,2.29;40697-202611120600');
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(location.hash).toBe('');
+    await vi.waitFor(() => expect(linked).toHaveBeenCalledTimes(1));
+    expect(lookupMock).toHaveBeenCalledWith({ point: { lat: 48.86, lon: 2.29 } }, expect.anything());
+    expect(linked.mock.calls[0]![0]).toEqual({ noradId: 40697, timeMs: PASSES[0]!.timeMs });
+  });
+
+  it('selects a second linked pass for the point that is already open', async () => {
+    const selected = vi.fn();
+    document.addEventListener('orbital-watch:select', (event) => selected((event as CustomEvent).detail));
+    onTestFinished(() => document.removeEventListener('orbital-watch:select', selected));
+    history.replaceState(null, '', '/dashboard#orbital=48.86,2.29;40697-202611120600');
+    scheduleOrbitalShareLink(takeOrbitalShareLink()!, 0, () => false);
+    await vi.waitFor(() => expect(selected).toHaveBeenCalledTimes(1));
+    const minute = new Date(PASSES[1]!.timeMs).toISOString().slice(0, 16).replace(/[-T:]/g, '');
+    history.replaceState(null, '', `/dashboard#orbital=48.86,2.29;48917-${minute}`);
+    scheduleOrbitalShareLink(takeOrbitalShareLink()!, 0, () => false);
+    await vi.waitFor(() => expect(selected).toHaveBeenCalledTimes(2));
+    expect(selected.mock.calls[1]![0]).toEqual({ noradId: 48917, timeMs: PASSES[1]!.timeMs });
+    expect(lookupMock).toHaveBeenCalledTimes(1);
   });
 
   it('notes a linked pass the sheet cannot select instead of failing silently', async () => {

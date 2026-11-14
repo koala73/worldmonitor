@@ -222,7 +222,8 @@ export function formatOrbitalTime(ms: number, style: 'day' | 'date' | 'clock' | 
   }
 }
 
-const formatDay = (ms: number) => formatOrbitalTime(ms, 'day');
+/** A date-only archive day (`YYYY-MM-DD`) names a UTC day, so it is never shifted into the place's zone. */
+const formatArchiveDay = (date: string) => new Intl.DateTimeFormat(lang(), { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(Date.parse(date));
 const formatWhen = (ms: number) => formatOrbitalTime(ms, 'when');
 
 function formatUtcClock(ms: number): string {
@@ -561,7 +562,7 @@ function weatherCards(evidence: OrbitalEvidence): ImageCard[] {
     if (!latest) continue;
     const ms = Date.parse(latest.date);
     const resolution = MOSAIC_RESOLUTION_M.get(mosaic.layer);
-    const mosaicTop = (date: string) => `${mosaic.source.toUpperCase()} · ${formatDay(Date.parse(date))}`;
+    const mosaicTop = (date: string) => `${mosaic.source.toUpperCase()} · ${formatArchiveDay(date)}`;
     cards.push({
       key: `mosaic:${mosaic.source}`,
       tab: 'weather',
@@ -735,10 +736,9 @@ function unmatchedRow(acquisition: MatchedAcquisition, nowMs: number): HTMLEleme
 }
 
 function mosaicRow(mosaic: DailyMosaicRow, day: { date: string; imageUrl: string | null }): HTMLElement {
-  const ms = Date.parse(day.date);
   const resolution = MOSAIC_RESOLUTION_M.get(mosaic.layer);
   const tried = day.imageUrl ? mosaicDays(mosaic) : [];
-  const dayLabel = (index: number) => formatDay(Date.parse(tried[index]?.date ?? day.date));
+  const dayLabel = (index: number) => formatArchiveDay(tried[index]?.date ?? day.date);
   const alt = (index: number) => t('orbitalWatch.row.imageAlt', { name: mosaic.source, time: dayLabel(index) });
   const thumb = imageTile(day.imageUrl, alt(0), mosaic.source.toUpperCase(), 'thumb', [viewButton({ kind: 'mosaic', key: mosaic.layer }, alt(0))], {
     urls: tried.slice(1).map((earlier) => earlier.imageUrl),
@@ -750,7 +750,7 @@ function mosaicRow(mosaic: DailyMosaicRow, day: { date: string; imageUrl: string
     noDataAt: mosaic.pointInCrop ?? CROP_CENTRE,
   });
   const row = rowShell(`source:${mosaic.source}`, 'daily-mosaic', thumb, mosaic.source, t('orbitalWatch.tier.dailyMosaic'),
-    [formatDay(ms), [t('orbitalWatch.ui.caption.dailyMosaic'), resolution ? `${resolution} M` : null, t('orbitalWatch.ui.row.days', { count: mosaic.days.length })].filter(Boolean).join(' · ')],
+    [formatArchiveDay(day.date), [t('orbitalWatch.ui.caption.dailyMosaic'), resolution ? `${resolution} M` : null, t('orbitalWatch.ui.row.days', { count: mosaic.days.length })].filter(Boolean).join(' · ')],
     [badge('NASA')], { short: IMAGE_CREDIT.gibs, full: IMAGE_CREDIT.gibsAcknowledgement });
   return row;
 }
@@ -1540,7 +1540,7 @@ export class OrbitalWatchPage {
   }
 
   private readonly onSheetKeydown = (event: KeyboardEvent): void => {
-    if (event.key === 'Enter' && this.view === 'full') {
+    if ((event.key === 'Enter' || event.key === ' ') && this.view === 'full') {
       const row = (event.target as HTMLElement).closest<HTMLElement>('.ow-row[data-key^="pass:"]');
       if (row && event.target === row) {
         event.preventDefault();
