@@ -3721,6 +3721,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/generate-orbital-mission-coverage.mjs"
+        },
+        {
           "path": "server/worldmonitor/imagery/v1/search-imagery.ts"
         }
       ]
@@ -15754,6 +15757,9 @@
         },
         {
           "path": "scripts/freeze-resilience-ranking.mjs"
+        },
+        {
+          "path": "scripts/generate-orbital-mission-coverage.mjs"
         },
         {
           "path": "scripts/generate-sandbox-fixtures.mjs"
