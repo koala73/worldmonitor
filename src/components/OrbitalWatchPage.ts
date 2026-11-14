@@ -162,6 +162,8 @@ export function archiveHost(url: string | null): { name: string; id: ArchiveId }
 
 const sensorName = (platform: string) => platform.toUpperCase();
 
+const isRadar = (acquisition: MatchedAcquisition) => acquisition.profileId === 'sentinel-1';
+
 function conditionLabel(acquisition: MatchedAcquisition): string {
   const pct = acquisition.cloudCoverPct === null ? null : Math.round(acquisition.cloudCoverPct);
   switch (acquisition.condition) {
@@ -183,6 +185,8 @@ interface TileFallbacks {
   show: (index: number) => void;
   /** Where the point sits in the frame; a frame with no data there counts as missing, for archives that serve empty pixels for days not yet imaged. */
   noDataAt?: CropPosition;
+  /** Radar backscatter, drawn in greyscale so it never reads as a photo. */
+  radar?: boolean;
 }
 
 const NO_DATA_SAMPLE_PX = 32;
@@ -523,9 +527,10 @@ function thumbSpecs(confirmed: MatchedAcquisition[], latest: MatchedAcquisition 
     specs.push({
       key: `image:${acquisition.key}`,
       url: acquisition.imageUrl,
-      caption: `${sensorName(acquisition.platform)} · ${formatStamp(acquisition.startMs)}`,
+      caption: `${sensorName(acquisition.platform)} · ${formatStamp(acquisition.startMs)}${isRadar(acquisition) ? ` · ${t('orbitalWatch.tile.radar')}` : ''}`,
       sensor: sensorName(acquisition.platform),
       view: { kind: 'acquisition', key: acquisition.key },
+      radar: isRadar(acquisition),
     });
   }
   for (const mosaic of evidence?.mosaics ?? []) {
@@ -894,11 +899,13 @@ export class OrbitalWatchPage {
         h('select', { className: 'ies-select', 'aria-label': t('orbitalWatch.sheet.compareDate'), dataset: { role: 'compare-date' } },
           ...others.map((acquisition) => h('option', { value: acquisition.key, selected: acquisition.key === this.compareKey }, formatStamp(acquisition.startMs)))))
       : null;
+    const hero = imageTile(latest.imageUrl, alt, sensor, 'hero', [...imageOverlays(), viewButton(view, alt)]);
+    hero.classList.toggle('is-radar', isRadar(latest));
     return section('latest', t('orbitalWatch.sheet.latest'),
       h('figure', { className: 'ies-figure' },
-        imageTile(latest.imageUrl, alt, sensor, 'hero', [...imageOverlays(), viewButton(view, alt)]),
+        hero,
         h('figcaption', { className: 'ies-caption' },
-          cell(t('orbitalWatch.row.sensor'), sensor),
+          cell(t('orbitalWatch.row.sensor'), isRadar(latest) ? `${sensor} · ${t('orbitalWatch.tile.radar')}` : sensor),
           cell(t('orbitalWatch.row.time'), formatStamp(latest.startMs)),
           cell(t('orbitalWatch.row.point'), conditionLabel(latest)),
           cell(t('orbitalWatch.row.pixel'), `${latest.resolutionM} m`),
@@ -917,9 +924,9 @@ export class OrbitalWatchPage {
         const fallbacks = spec.fallbacks?.length || spec.noDataAt
           ? { urls: spec.fallbacks ?? [], show: () => {}, noDataAt: spec.noDataAt }
           : null;
-        return h('li', { className: 'ies-thumb', dataset: { key: spec.key } },
-          imageTile(spec.url, spec.caption, spec.sensor, 'thumb', [viewButton(spec.view, spec.caption)], fallbacks),
-          caption);
+        const tile = imageTile(spec.url, spec.caption, spec.sensor, 'thumb', [viewButton(spec.view, spec.caption)], fallbacks);
+        tile.classList.toggle('is-radar', !!spec.radar);
+        return h('li', { className: 'ies-thumb', dataset: { key: spec.key } }, tile, caption);
       }));
   }
 

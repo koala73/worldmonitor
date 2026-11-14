@@ -611,3 +611,6 @@
 .ow-tl-bar.is-hover, .ow-tl-bar:focus-visible { background: var(--text); outline: none; }
 .ow-tl-bar.is-selected { background: var(--green); }
 .ow-tl-mark:focus-visible { outline: 1px solid var(--green); outline-offset: 1px; }
+
+/* Radar backscatter has no colour; greyscale keeps it from reading as a photo. */
+.ow-tile.is-radar img { filter: grayscale(1) contrast(1.1); }

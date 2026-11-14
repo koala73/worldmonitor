@@ -3075,6 +3075,7 @@
   "orbitalWatch.tierDef.likely": "A fixed-swath sensor covered the point; its archive has no scene yet.",
   "orbitalWatch.tile.failed": "Scene did not load · {{archive}}",
   "orbitalWatch.tile.noPreview": "No preview published for this scene yet",
+  "orbitalWatch.tile.radar": "radar",
   "orbitalWatch.timeline.away": "{{km}} km",
   "orbitalWatch.timeline.countryWide": "whole country",
   "orbitalWatch.timeline.daylight": "Daylight at point, {{start}} to {{end}}",

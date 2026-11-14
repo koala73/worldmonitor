@@ -4766,7 +4766,8 @@
     },
     "tile": {
       "failed": "Scene did not load · {{archive}}",
-      "noPreview": "No preview published for this scene yet"
+      "noPreview": "No preview published for this scene yet",
+      "radar": "radar"
     },
     "viewer": {
       "open": "Open scene: {{image}}",
