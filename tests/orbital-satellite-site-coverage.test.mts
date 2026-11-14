@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 
 import { findPasses } from '../shared/orbital/pass-geometry.js';
 import { SENSOR_PROFILES, matchSensorProfile } from '../shared/orbital/sensor-profiles.js';
+import { OPTICAL_MIN_SUN_ELEVATION_DEG } from '../shared/orbital/tiers.js';
 import { composeWatchedSites } from '../shared/watched-sites.ts';
 import {
   imagingProfileFor,
@@ -102,6 +103,32 @@ describe('satellite site coverage', () => {
         assert.equal(pass.tier, 'opportunity');
       }
     }
+  });
+
+  it('lists no night passes for a daylight-only military imager', async () => {
+    const gokturk = tle(41875, 'GOKTURK 1A');
+    const profile = imagingProfileFor(gokturk)!;
+    assert.equal(profile.category, 'military');
+    assert.equal(profile.daylight, true);
+    const nowMs = EPOCH_MS;
+    const coverage = await sitesCoveredBySatellite({ tle: gokturk, sites, nowMs });
+    assert.equal(coverage.status, 'ok');
+    if (coverage.status !== 'ok') return;
+    const elements = orbitElementsFromTle(gokturk)!;
+    const listed = new Map(coverage.sites.map((e) => [e.site.id, new Set(e.passes.map((p) => p.timeMs))]));
+    let nightInFootprint = 0;
+    for (const site of sites) {
+      const direct = findPasses({ elements, profile, point: { lat: site.lat, lon: site.lon }, window: { start: nowMs, end: nowMs + DAY }, now: nowMs });
+      if (direct.status !== 'ok') continue;
+      for (const pass of direct.passes) {
+        if (!pass.inFootprint) continue;
+        const night = pass.sunElevationDeg < OPTICAL_MIN_SUN_ELEVATION_DEG;
+        if (night) nightInFootprint++;
+        assert.equal(listed.get(site.id)?.has(pass.timeMs) ?? false, !night, `${site.id} pass at sun ${pass.sunElevationDeg.toFixed(1)}\u00B0`);
+      }
+    }
+    assert.ok(nightInFootprint > 0, 'the fixture orbit has night passes over watched sites');
+    assert.ok(coverage.sites.length > 0, 'and daylight ones');
   });
 
   it('gives signals and unidentified Yaogan objects no coverage, even with an imaging NORAD id', async () => {

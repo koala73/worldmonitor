@@ -84,8 +84,8 @@ export function imagingProfileFor(tle: Pick<TrackedSatelliteTle, 'noradId' | 'na
 
 function covers(pass: Pass, profile: SensorProfile): boolean {
   if (!pass.inFootprint) return false;
-  if (profile.category === 'military') return true;
-  return pass.coverage && (!profile.daylight || pass.sunElevationDeg >= OPTICAL_MIN_SUN_ELEVATION_DEG);
+  if (profile.daylight && pass.sunElevationDeg < OPTICAL_MIN_SUN_ELEVATION_DEG) return false;
+  return profile.category === 'military' || pass.coverage;
 }
 
 const sensorOf = (profile: SensorProfile): CoverageSensor => ({ profileId: profile.id, family: profile.family, category: profile.category });
