@@ -143,7 +143,8 @@
   }
   .ies-handle::before { content: ''; display: block; width: 40px; height: 4px; margin: 0 auto; border-radius: 2px; background: var(--border-strong); }
   .ies-header { padding-top: 2px; }
-  .ies-actions [data-action="share"], .ies-actions [data-action="change"] { display: none; }
+  .ies-header { flex-wrap: wrap; }
+  .ies-actions { flex-wrap: wrap; }
   .ies-thumbs { grid-template-columns: repeat(2, 1fr); }
   .ies-place { font-size: 16px; }
 }
