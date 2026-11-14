@@ -252,7 +252,7 @@ export async function evaluateSites({ sites, catalog, previousRecords, cursor, s
       continue;
     }
     const previousFlag = change.shadow ? change.previousFlags.get(site.id) ?? null : previous?.flag ?? null;
-    records.set(site.id, buildSiteRecord({ site, catalog, acquisitions, previous, nowMs, flag: change.shadow ? null : previousFlag }));
+    records.set(site.id, buildSiteRecord({ site, catalog, acquisitions, previous, nowMs, flag: null }));
     searched.push({ site, acquisitions, previousFlag });
   }
   searched.sort((a, b) => (a.previousFlag?.updatedAt ?? 0) - (b.previousFlag?.updatedAt ?? 0));
@@ -260,7 +260,7 @@ export async function evaluateSites({ sites, catalog, previousRecords, cursor, s
     const flag = await change.score({ site, acquisitions, previous: previousFlag, nowMs });
     if (change.shadow) {
       if (flag) flags.set(site.id, flag);
-    } else if (flag !== previousFlag) {
+    } else {
       records.set(site.id, withSiteFlag(records.get(site.id), flag));
     }
   }
