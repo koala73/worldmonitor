@@ -339,6 +339,7 @@ describe('satellite pass lookup sheet', () => {
     expect(detail.querySelector('.ow-detail-media img')).toBeNull();
     expect(detail.querySelector('.ow-detail-glyph .ow-glyph')!.textContent).toBe(TIER_GLYPH_CHAR.watched);
     expect(detail.querySelector('.ow-detail-glyph .ow-label')!.textContent).toBe('confirmed image');
+    expect(detail.querySelector('.ow-detail-glyph .ow-detail-reason')!.textContent).toBe('In an archive, no public preview');
     expect(detail.querySelector('.ow-detail-title strong')!.textContent).toBe(confirmedOld.name);
     expect(detail.querySelector('.ow-detail-cell:nth-child(3)')!.textContent).toBe('Pixel30 M');
     expect(detail.querySelector('.ow-detail-cell:nth-child(4)')!.textContent).toBe('Cloud at spot—');

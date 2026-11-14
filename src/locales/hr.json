@@ -5314,6 +5314,7 @@
         "overhead": "Prošao iznad",
         "overheadDef": "Prešao je nebo ovdje, bez dokaza snimanja.",
         "watchedShort": "Snimka u javnom arhivu",
+        "watchedNoPreviewShort": "U arhivi, bez javnog pregleda",
         "likelyShort": "Pokriveno, još nema snimke",
         "likelyUnansweredDef": "Pokrio ga je senzor fiksnog pojasa; arhiv nije odgovorio, pa snimka možda postoji.",
         "likelyUnansweredShort": "Pokriveno, arhiv nije odgovorio",

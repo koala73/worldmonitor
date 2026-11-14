@@ -4731,6 +4731,7 @@
         "overhead": "Passed overhead",
         "overheadDef": "Crossed the sky here, with no imaging evidence.",
         "watchedShort": "Image in a public archive",
+        "watchedNoPreviewShort": "In an archive, no public preview",
         "likelyShort": "Covered, no image yet",
         "likelyUnansweredDef": "A fixed-swath sensor covered it; an archive didn't answer, so an image may exist.",
         "likelyUnansweredShort": "Covered, archive didn't answer",

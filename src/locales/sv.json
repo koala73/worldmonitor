@@ -5273,6 +5273,7 @@
         "overhead": "Passerade över",
         "overheadDef": "Korsade himlen här, utan bildbevis.",
         "watchedShort": "Bild i ett offentligt arkiv",
+        "watchedNoPreviewShort": "I ett arkiv, ingen offentlig förhandsvisning",
         "likelyShort": "Täckt, ingen bild än",
         "likelyUnansweredDef": "En sensor med fast stråk täckte den; ett arkiv svarade inte, så en bild kan finnas.",
         "likelyUnansweredShort": "Täckt, arkivet svarade inte",

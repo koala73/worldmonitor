@@ -5335,6 +5335,7 @@
         "overhead": "Přeletěl nad",
         "overheadDef": "Přešel zde oblohu, bez důkazu snímkování.",
         "watchedShort": "Snímek ve veřejném archivu",
+        "watchedNoPreviewShort": "V archivu, bez veřejného náhledu",
         "likelyShort": "Pokryto, zatím bez snímku",
         "likelyUnansweredDef": "Pokryl ho senzor s pevným záběrem; archiv neodpověděl, takže snímek může existovat.",
         "likelyUnansweredShort": "Pokryto, archiv neodpověděl",

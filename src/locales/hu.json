@@ -5273,6 +5273,7 @@
         "overhead": "Elhaladt felette",
         "overheadDef": "Átszelte itt az eget, képi bizonyíték nélkül.",
         "watchedShort": "Kép nyilvános archívumban",
+        "watchedNoPreviewShort": "Archívumban, nyilvános előnézet nélkül",
         "likelyShort": "Lefedve, még nincs kép",
         "likelyUnansweredDef": "Egy rögzített sávszélességű érzékelő lefedte; egy archívum nem válaszolt, így lehet, hogy van kép.",
         "likelyUnansweredShort": "Lefedve, az archívum nem válaszolt",

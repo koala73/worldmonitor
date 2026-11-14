@@ -5242,6 +5242,7 @@
         "overhead": "Đã bay qua",
         "overheadDef": "Đã băng qua bầu trời nơi đây, không có bằng chứng chụp ảnh.",
         "watchedShort": "Có ảnh trong kho lưu trữ công khai",
+        "watchedNoPreviewShort": "Có trong kho lưu trữ, không có bản xem trước công khai",
         "likelyShort": "Đã phủ, chưa có ảnh",
         "likelyUnansweredDef": "Một cảm biến dải quét cố định đã bao phủ điểm này; một kho lưu trữ không phản hồi, nên có thể có ảnh.",
         "likelyUnansweredShort": "Đã bao phủ, kho lưu trữ không phản hồi",

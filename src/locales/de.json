@@ -5273,6 +5273,7 @@
         "overhead": "Überflogen",
         "overheadDef": "Hat den Himmel hier gekreuzt, ohne Bildnachweis.",
         "watchedShort": "Bild in einem öffentlichen Archiv",
+        "watchedNoPreviewShort": "Im Archiv, keine öffentliche Vorschau",
         "likelyShort": "Erfasst, noch kein Bild",
         "likelyUnansweredDef": "Ein Sensor mit fester Schwadbreite hat es erfasst; ein Archiv hat nicht geantwortet, daher kann es ein Bild geben.",
         "likelyUnansweredShort": "Erfasst, Archiv antwortete nicht",

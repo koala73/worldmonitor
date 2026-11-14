@@ -5397,6 +5397,7 @@
         "overhead": "مرّ فوقها",
         "overheadDef": "عبر السماء هنا دون دليل على التصوير.",
         "watchedShort": "صورة في أرشيف عام",
+        "watchedNoPreviewShort": "في أرشيف، بلا معاينة عامة",
         "likelyShort": "مُغطّى، لا صورة بعد",
         "likelyUnansweredDef": "غطّاه مستشعر ذو نطاق ثابت؛ لم يستجب أحد الأرشيفات، لذا قد توجد صورة.",
         "likelyUnansweredShort": "مغطّى، لم يستجب الأرشيف",

@@ -5304,6 +5304,7 @@
         "overhead": "Passato sopra",
         "overheadDef": "Ha attraversato il cielo qui, senza prove di immagini.",
         "watchedShort": "Immagine in un archivio pubblico",
+        "watchedNoPreviewShort": "In archivio, nessuna anteprima pubblica",
         "likelyShort": "Coperto, ancora nessuna immagine",
         "likelyUnansweredDef": "Un sensore a strisciata fissa lo ha coperto; un archivio non ha risposto, quindi un'immagine potrebbe esistere.",
         "likelyUnansweredShort": "Coperto, l'archivio non ha risposto",

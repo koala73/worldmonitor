@@ -5242,6 +5242,7 @@
         "overhead": "상공 통과",
         "overheadDef": "촬영 증거 없이 이곳 하늘을 지나갔습니다.",
         "watchedShort": "공개 아카이브에 영상 있음",
+        "watchedNoPreviewShort": "아카이브에 있음, 공개 미리보기 없음",
         "likelyShort": "관측됨, 아직 영상 없음",
         "likelyUnansweredDef": "고정 관측폭 센서가 이곳을 지났지만 아카이브가 응답하지 않아 이미지가 있을 수 있습니다.",
         "likelyUnansweredShort": "관측됨, 아카이브 응답 없음",

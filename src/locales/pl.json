@@ -5335,6 +5335,7 @@
         "overhead": "Przeleciał nad",
         "overheadDef": "Przeciął tu niebo, bez dowodu obrazowania.",
         "watchedShort": "Zdjęcie w publicznym archiwum",
+        "watchedNoPreviewShort": "W archiwum, bez publicznego podglądu",
         "likelyShort": "Pokryte, jeszcze bez zdjęcia",
         "likelyUnansweredDef": "Objął go czujnik o stałym pasie; archiwum nie odpowiedziało, więc zdjęcie może istnieć.",
         "likelyUnansweredShort": "Objęte, archiwum nie odpowiedziało",

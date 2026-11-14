@@ -3100,6 +3100,7 @@
   "orbitalWatch.ui.grid.overheadShort": "Overhead, no image",
   "orbitalWatch.ui.grid.watched": "Watched",
   "orbitalWatch.ui.grid.watchedDef": "A public archive holds an image of this spot.",
+  "orbitalWatch.ui.grid.watchedNoPreviewShort": "In an archive, no public preview",
   "orbitalWatch.ui.grid.watchedShort": "Image in a public archive",
   "orbitalWatch.ui.group.could": "could have pointed here",
   "orbitalWatch.ui.group.likely": "likely watched",

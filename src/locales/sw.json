@@ -5273,6 +5273,7 @@
         "overhead": "Ilipita juu",
         "overheadDef": "Ilivuka anga hapa, bila ushahidi wa picha.",
         "watchedShort": "Picha katika hifadhi ya umma",
+        "watchedNoPreviewShort": "Kwenye hifadhi, hakuna onyesho la umma",
         "likelyShort": "Imefunikwa, bado hakuna picha",
         "likelyUnansweredDef": "Kihisi chenye ukanda usiobadilika kililifunika; hifadhi moja haikujibu, kwa hivyo picha huenda ipo.",
         "likelyUnansweredShort": "Imefunikwa, hifadhi haikujibu",

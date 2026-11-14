@@ -5273,6 +5273,7 @@
         "overhead": "Overgevlogen",
         "overheadDef": "Kruiste hier de hemel, zonder beeldbewijs.",
         "watchedShort": "Beeld in een openbaar archief",
+        "watchedNoPreviewShort": "In een archief, geen openbare preview",
         "likelyShort": "Gedekt, nog geen beeld",
         "likelyUnansweredDef": "Een sensor met vaste strook heeft het gedekt; een archief gaf geen antwoord, dus er kan een beeld zijn.",
         "likelyUnansweredShort": "Gedekt, archief gaf geen antwoord",
