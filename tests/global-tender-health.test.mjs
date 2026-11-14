@@ -23,8 +23,8 @@ test('new tender sources become strict after their first successful publication'
     assert.equal(classify(false, false).status, 'EMPTY_ON_DEMAND', name);
     assert.equal(classify(true, false).status, 'EMPTY', name);
     assert.equal(classify(true, true).status, 'OK', name);
-    assert.equal(classify(true, true, 1439).status, 'OK', name);
-    assert.equal(classify(true, true, 1441).status, 'STALE_SEED', name);
+    assert.equal(classify(true, true, 4319).status, 'OK', name);
+    assert.equal(classify(true, true, 4321).status, 'STALE_SEED', name);
   }
 });
 
@@ -59,15 +59,15 @@ test('health registers and classifies per-source global tender freshness', () =>
     now,
   });
 
-  assert.equal(entry.status, 'OK', 'retained rows inside the 24h source budget are not an alarm');
+  assert.equal(entry.status, 'OK', 'retained rows inside the 3-day source budget are not an alarm');
   assert.equal(entry.records, 12);
 });
 
-test('every per-source tender check grades a failed attempt against a 24h last-success budget', () => {
+test('every per-source tender check grades a failed attempt against a 3-day last-success budget', () => {
   const { classifyKey, SEED_META, STANDALONE_KEYS } = __testing__;
   const now = Date.parse('2026-07-22T12:00:00Z');
-  // Contracts Finder keeps its bespoke 180min first-failure containment (tests below).
-  assert.equal(SEED_META.globalTendersContractsFinder.maxStaleMin, 180);
+  // Contracts Finder keeps its bespoke first-failure containment (tests below).
+  assert.equal(SEED_META.globalTendersContractsFinder.maxStaleMin, 4320);
   assert.equal(SEED_META.globalTendersContractsFinder.sourceFailureWithinBudgetOk, undefined);
   const sources = ['Sam', 'Ted', 'CanadaBuys', 'Gets', 'WorldBank',
     'ColombiaSecop', 'KenyaPpip', 'SouthAfricaEtenders', 'ChileMercadoPublico', 'BrazilPncp',
@@ -76,7 +76,7 @@ test('every per-source tender check grades a failed attempt against a 24h last-s
 
   for (const source of sources) {
     const name = `globalTenders${source}`;
-    assert.equal(SEED_META[name].maxStaleMin, 1440, name);
+    assert.equal(SEED_META[name].maxStaleMin, 4320, name);
     assert.equal(SEED_META[name].sourceFailureWithinBudgetOk, true, name);
     const dataKey = STANDALONE_KEYS[name];
     const classify = (ageMin, meta) => classifyKey(name, dataKey, { allowOnDemand: true }, {
@@ -85,8 +85,8 @@ test('every per-source tender check grades a failed attempt against a 24h last-s
       keyMetaValues: new Map([[SEED_META[name].key, JSON.stringify({ fetchedAt: now - ageMin * 60_000, ...meta })]]),
     });
     const retained = { recordCount: 3, sourceState: 'stale', stale: true, error: 'HTTP 429' };
-    assert.equal(classify(1439, retained).status, 'OK', `${name}: rate-limited source still serving last-good rows`);
-    assert.notEqual(classify(1441, retained).status, 'OK', `${name}: a day without a success warns`);
+    assert.equal(classify(4319, retained).status, 'OK', `${name}: rate-limited source still serving last-good rows`);
+    assert.notEqual(classify(4321, retained).status, 'OK', `${name}: three days without a success warns`);
     assert.equal(classify(60, { recordCount: 0, sourceState: 'error', stale: true, confirmedEmpty: true }).status, 'OK',
       `${name}: a verified empty result stays true while the next attempt fails`);
     assert.notEqual(classify(60, { recordCount: 0, sourceState: 'error', stale: true, error: 'HTTP 403' }).status, 'OK',
@@ -234,6 +234,11 @@ test('a source that actually failed still reports SEED_ERROR', () => {
 const CF_NAME = 'globalTendersContractsFinder';
 const CF_KEY = 'economic:global-tenders:v1';
 const CF_NOW = Date.parse('2026-07-13T06:00:00Z');
+// First-failure containment lasts until the next daily run can retry: a day plus the
+// relay-backup bundle's 30-minute tick (CONTRACTS_FINDER_RETRY_CONTAINMENT_MIN).
+const CF_CONTAIN_MS = (1440 + 30) * 60_000;
+// Health's aggregate and Contracts Finder staleness budget: three daily runs.
+const CF_BUDGET_MS = 4320 * 60_000;
 
 async function failedContractsFinder() {
   const { fetchGlobalTenders, sourceStatus } = await import('../scripts/seed-global-tenders.mjs');
@@ -241,7 +246,7 @@ async function failedContractsFinder() {
   const success = CF_NOW - 60 * 60_000;
   const record = normalizeContractsFinderRelease({
     id: 'health-fixture', date: new Date(success).toISOString(),
-    tender: { title: 'Network services', status: 'active', tenderPeriod: { endDate: new Date(CF_NOW + 4 * 60 * 60_000).toISOString() } },
+    tender: { title: 'Network services', status: 'active', tenderPeriod: { endDate: new Date(CF_NOW + 4 * 24 * 60 * 60_000).toISOString() } },
   });
   return fetchGlobalTenders({
     now: CF_NOW, previousSnapshot: {
@@ -288,8 +293,8 @@ test('verified empty source survives its first failed refresh with truthful prod
   assert.equal(entry.lastSuccessAt, new Date(CF_NOW - 60 * 60_000).toISOString());
   assert.equal(entry.consecutiveSourceFailures, 1);
   assert.match(entry.error, /timeout/);
-  assert.equal(entry.containmentUntil, new Date(CF_NOW + 90 * 60_000).toISOString());
-  assert.equal((await classifyContractsFinder(snapshot, CF_NOW + 90 * 60_000)).contained, false);
+  assert.equal(entry.containmentUntil, new Date(CF_NOW + CF_CONTAIN_MS).toISOString());
+  assert.equal((await classifyContractsFinder(snapshot, CF_NOW + CF_CONTAIN_MS)).contained, false);
   assert.equal((await classifyContractsFinder(await failedEmptyContractsFinder(snapshot))).contained, false);
   const record = { ...(await failedContractsFinder()).tenders[0], source: 'ted' };
   const populated = await failedEmptyContractsFinder(undefined, [record]);
@@ -305,7 +310,7 @@ test('verified empty source survives its first failed refresh with truthful prod
   assert.equal(recovered.sourceStatuses[0].confirmedEmpty, undefined);
   assert.equal(recovered.sourceStatuses[0].lastSuccessfulAt, new Date(CF_NOW).toISOString());
   const older = structuredClone(snapshot);
-  older.sourceStatuses[0].lastSuccessfulAt = new Date(CF_NOW - 150 * 60_000).toISOString();
+  older.sourceStatuses[0].lastSuccessfulAt = new Date(CF_NOW - CF_BUDGET_MS + 30 * 60_000).toISOString();
   assert.equal((await classifyContractsFinder(older)).entry.containmentUntil, new Date(CF_NOW + 30 * 60_000).toISOString());
   assert.equal((await classifyContractsFinder(older, CF_NOW + 30 * 60_000)).contained, false);
 });
@@ -321,7 +326,7 @@ test('zero count alone cannot prove a verified empty source or a usable aggregat
     ['unavailable read model', s => { s.availability = 'unavailable'; }],
     ['duplicate source', s => { s.sourceStatuses.push(s.sourceStatuses[0]); }],
     ['malformed aggregate status', s => { s.sourceStatuses.push(null); }],
-    ['stale aggregate', s => { s.fetchedAt = CF_NOW - 181 * 60_000; }],
+    ['stale aggregate', s => { s.fetchedAt = CF_NOW - CF_BUDGET_MS - 60_000; }],
     ['malformed aggregate row', s => { s.tenders = [null]; }],
   ]) {
     const snapshot = structuredClone(fixture);
@@ -385,7 +390,7 @@ test('Contracts Finder producer-to-health retains every diagnostic during bounde
   assert.equal(entry.lastSuccessAt, snapshot.sourceStatuses[0].lastSuccessfulAt);
   assert.equal(entry.lastAttemptAt, snapshot.sourceStatuses[0].fetchedAt);
   assert.match(entry.error, /timeout/);
-  assert.equal(entry.containmentUntil, new Date(CF_NOW + 90 * 60_000).toISOString());
+  assert.equal(entry.containmentUntil, new Date(CF_NOW + CF_CONTAIN_MS).toISOString());
   const verdict = __testing__.computeOverallStatus({ warn: 1, containedWarn: 1, onDemandWarn: 0, crit: 0 }, 292);
   assert.equal(verdict.overall, 'HEALTHY');
   assert.equal(verdict.realWarnCount, 1);
@@ -453,7 +458,7 @@ test('Contracts Finder health checks the canonical payload, not the positive sou
     const commands = JSON.parse(init.body);
     return new Response(JSON.stringify(commands.map(([op, key]) => {
       if (expireDuringWrite && op === 'EVAL' && key === __testing__.HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT) {
-        clock = CF_NOW + 90 * 60_000;
+        clock = CF_NOW + CF_CONTAIN_MS;
       }
       if (op === 'STRLEN') return { result: key === CF_KEY && canonical === null ? 0 : 256 };
       if (op === 'GET' && key === CF_KEY) { canonicalReads++; return { result: canonical === null ? null : JSON.stringify(canonical) }; }
@@ -466,7 +471,7 @@ test('Contracts Finder health checks the canonical payload, not the positive sou
   });
   const read = async () => (await handler(new Request('https://api.worldmonitor.app/api/health?compact=1'))).json();
   const initial = await read();
-  assert.equal(initial.problems[CF_NAME].containmentUntil, new Date(CF_NOW + 90 * 60_000).toISOString());
+  assert.equal(initial.problems[CF_NAME].containmentUntil, new Date(CF_NOW + CF_CONTAIN_MS).toISOString());
   canonical = await failedEmptyContractsFinder();
   Object.assign(meta, seed.sourceHealthMeta(canonical.sourceStatuses[0]));
   const empty = await read();
