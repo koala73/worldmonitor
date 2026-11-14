@@ -18,6 +18,8 @@ const SCAN_MARGIN_KM = 100;
 const REFINE_TOLERANCE_S = 0.5;
 const DUPLICATE_WINDOW_MS = 60_000;
 const GROUND_TRACK_MIN_STEP_S = 1;
+// Deep-space SGP4 integrates from the element epoch, so its cost grows with the distance from it.
+const EPOCH_REACH_MS = (ORBIT_ELEMENTS_MAX_AGE_DAYS + PASS_WINDOW_MAX_DAYS) * DAY_MS;
 const GEOSTATIONARY_MEAN_MOTION = [0.95, 1.05];
 
 export function parseOrbitElements(omm) {
@@ -50,6 +52,14 @@ function windowBounds(window) {
     throw new RangeError(`window must be valid dates, ordered and at most ${PASS_WINDOW_MAX_DAYS} days long`);
   }
   return { startMs, endMs };
+}
+
+function assertNearEpoch(epochMs, startMs, endMs) {
+  if (!(Math.abs(startMs - epochMs) <= EPOCH_REACH_MS && Math.abs(endMs - epochMs) <= EPOCH_REACH_MS)) {
+    throw new RangeError(
+      `window must lie within ${ORBIT_ELEMENTS_MAX_AGE_DAYS + PASS_WINDOW_MAX_DAYS} days of the element epoch`,
+    );
+  }
 }
 
 function stateAt(elements, timeMs) {
@@ -198,6 +208,7 @@ export function findPasses({ elements, profile, point, window, now }) {
   const { startMs, endMs } = windowBounds(window);
   const ageDays = (nowMs - elements.epochMs) / DAY_MS;
   if (ageDays > ORBIT_ELEMENTS_MAX_AGE_DAYS) return { status: 'too-old', ageDays, passes: [] };
+  assertNearEpoch(elements.epochMs, startMs, endMs);
 
   if (isGeostationary(elements)) {
     const state = stateAt(elements, Math.min(Math.max(nowMs, startMs), endMs));
@@ -259,6 +270,7 @@ export function findPasses({ elements, profile, point, window, now }) {
 
 export function groundTrack(elements, window, stepSeconds = 60) {
   const { startMs, endMs } = windowBounds(window);
+  assertNearEpoch(elements.epochMs, startMs, endMs);
   if (!(stepSeconds >= GROUND_TRACK_MIN_STEP_S)) {
     throw new RangeError(`stepSeconds must be at least ${GROUND_TRACK_MIN_STEP_S} second`);
   }
