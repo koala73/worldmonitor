@@ -4560,7 +4560,8 @@
     "createAccount": "Konto erstellen",
     "freeReason": "Gratis: Layout speichern, Ländern folgen, Alarme",
     "settings": "Einstellungen",
-    "planBilling": "Plan & Abrechnung"
+    "planBilling": "Plan & Abrechnung",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP verbinden",
@@ -5308,7 +5309,9 @@
       "privacyHow": "Wie",
       "sources": "Quellen",
       "archiveScene": "Archivszene",
-      "archiveOnly": "Kein berechneter Überflug passt zu diesen Bildern, daher werden sie als Archivszenen gezeigt."
+      "archiveOnly": "Kein berechneter Überflug passt zu diesen Bildern, daher werden sie als Archivszenen gezeigt.",
+      "zoneShowUtc": "Zeiten in UTC anzeigen",
+      "zoneShowLocal": "Zeiten in der Ortszeit dieses Ortes anzeigen"
     },
     "viewer": {
       "open": "Bildbetrachter öffnen: {{image}}",
@@ -5385,6 +5388,32 @@
         "north": "Norden",
         "south": "Süden"
       }
+    },
+    "search": {
+      "label": "Ortsname oder Koordinaten",
+      "placeholder": "Ortsname oder 48.8584, 2.2945",
+      "submit": "Suchen",
+      "locate": "Meinen Standort verwenden",
+      "hint": "Koordinaten und Ihr Standort bleiben in diesem Browser. Ein gesuchter Ortsname wird an WorldMonitor und an Nominatim von OpenStreetMap gesendet.",
+      "results": "Passende Orte",
+      "searching": "Suche läuft…",
+      "tooShort": "Geben Sie mindestens zwei Zeichen ein oder Koordinaten wie 48.8584, 2.2945.",
+      "invalidCoordinates": "Diese Koordinaten liegen außerhalb der Erdkugel. Der Breitengrad reicht von -90 bis 90, der Längengrad von -180 bis 180.",
+      "failed": "Die Ortssuche ist gerade nicht verfügbar. Koordinaten und die Karte funktionieren weiterhin.",
+      "noResults": "Kein Ort passt zu diesem Namen.",
+      "locating": "Standort wird ermittelt…",
+      "locationDenied": "Die Standortberechtigung wurde verweigert. Suchen Sie einen Ort oder klicken Sie mit der rechten Maustaste auf die Karte.",
+      "locationUnavailable": "Ihr Standort konnte nicht ermittelt werden. Suchen Sie einen Ort oder klicken Sie mit der rechten Maustaste auf die Karte.",
+      "idle": "Suchen Sie einen Ort nach Name oder Koordinaten, verwenden Sie Ihren Standort oder klicken Sie mit der rechten Maustaste auf die Karte, um zu sehen, welche Satelliten darüber geflogen sind."
+    },
+    "share": {
+      "copy": "Freigabelink kopieren",
+      "copied": "Link kopiert",
+      "copyManually": "Kopieren Sie den Link unten",
+      "link": "Freigabelink",
+      "dismiss": "Schließen",
+      "passOutsideWindow": "Der verlinkte Überflug liegt außerhalb des aktuellen Zeitfensters, daher ist kein Überflug ausgewählt.",
+      "passNotFound": "Der verlinkte Überflug wurde in den neu berechneten Überflügen nicht gefunden, daher ist kein Überflug ausgewählt."
     }
   },
   "settings": {

@@ -867,6 +867,9 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // before Nominatim. Redis outage therefore 503s instead of inheriting a
   // fail-open path that could expose the provider to unbounded aggregate load.
   '/api/infrastructure/v1/reverse-geocode': { limit: 60, window: '60 s' },
+  // Place-name search for the satellite pass lookup: submit-only, so 30/min per IP is
+  // generous. Cache misses spend the same fail-closed Nominatim bucket as reverse geocoding.
+  '/api/infrastructure/v1/search-place': { limit: 30, window: '60 s' },
   // Partner embed entitlement (#6599): keyed panels look up wm_ keys in Convex.
   // Cap per-IP so a stolen snippet cannot amplify validation traffic.
   '/api/embed/entitlement': { limit: 60, window: '60 s' },
@@ -1060,6 +1063,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/infrastructure/v1/reverse-geocode': {
     reason: 'Proxies Nominatim (egress-IP ban enforcement), same provider and egress IPs as the legacy edge route. Must fail closed on a Redis outage rather than inherit the fail-open 600/min fallback.',
+  },
+  '/api/infrastructure/v1/search-place': {
+    reason: 'Proxies Nominatim search on the same egress IPs and provider bucket as reverse geocoding; fail closed so a Redis outage cannot lift the per-IP budget.',
   },
   '/api/embed/entitlement': {
     reason: 'Keyed-panel entitlement lookups amplify into Convex user-key validation; fail closed so a Redis outage cannot lift the per-IP budget.',

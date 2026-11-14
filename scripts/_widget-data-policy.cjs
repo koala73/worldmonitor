@@ -297,6 +297,7 @@ const EXCLUDED_RPC_ROUTES = {
   "/api/infrastructure/v1/list-service-statuses": "Same data as bootstrap key serviceStatuses",
   "/api/infrastructure/v1/list-temporal-anomalies": "Same data as internal temporalAnomalies key; usually empty",
   "/api/infrastructure/v1/reverse-geocode": "Utility: lat/lon to country lookup",
+  "/api/infrastructure/v1/search-place": "Utility: place name to coordinates lookup for the satellite pass search",
   "/api/intelligence/v1/classify-event": "Pro-only (401 for the anonymous widget session)",
   "/api/intelligence/v1/get-china-decision-signals": "Same data as bootstrap key chinaDecisionSignals",
   "/api/intelligence/v1/get-country-coverage": "Pro-only (401 for the anonymous widget session)",

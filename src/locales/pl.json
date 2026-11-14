@@ -4604,7 +4604,8 @@
     "createAccount": "Utwórz konto",
     "freeReason": "Za darmo: zapisz układ, obserwuj kraje, alerty",
     "settings": "Ustawienia",
-    "planBilling": "Plan i rozliczenia"
+    "planBilling": "Plan i rozliczenia",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Połącz MCP",
@@ -5374,7 +5375,9 @@
       "privacyHow": "Jak",
       "sources": "Źródła",
       "archiveScene": "Scena archiwalna",
-      "archiveOnly": "Żaden obliczony przelot nie pasuje do tych zdjęć, więc są pokazane jako sceny archiwalne."
+      "archiveOnly": "Żaden obliczony przelot nie pasuje do tych zdjęć, więc są pokazane jako sceny archiwalne.",
+      "zoneShowUtc": "Pokaż godziny w UTC",
+      "zoneShowLocal": "Pokaż godziny w czasie lokalnym tego miejsca"
     },
     "viewer": {
       "open": "Otwórz przeglądarkę obrazów: {{image}}",
@@ -5451,6 +5454,32 @@
         "north": "północ",
         "south": "południe"
       }
+    },
+    "search": {
+      "label": "Nazwa miejsca lub współrzędne",
+      "placeholder": "Nazwa miejsca lub 48.8584, 2.2945",
+      "submit": "Szukaj",
+      "locate": "Użyj mojej lokalizacji",
+      "hint": "Współrzędne i Twoja lokalizacja pozostają w tej przeglądarce. Wyszukiwana nazwa miejsca jest wysyłana do WorldMonitor i do Nominatim OpenStreetMap.",
+      "results": "Pasujące miejsca",
+      "searching": "Wyszukiwanie…",
+      "tooShort": "Wpisz co najmniej dwa znaki lub współrzędne, np. 48.8584, 2.2945.",
+      "invalidCoordinates": "Te współrzędne są poza globem. Szerokość geograficzna wynosi od -90 do 90, a długość od -180 do 180.",
+      "failed": "Wyszukiwanie miejsc jest teraz niedostępne. Współrzędne i mapa nadal działają.",
+      "noResults": "Żadne miejsce nie pasuje do tej nazwy.",
+      "locating": "Ustalanie lokalizacji…",
+      "locationDenied": "Odmówiono dostępu do lokalizacji. Wyszukaj miejsce lub kliknij mapę prawym przyciskiem.",
+      "locationUnavailable": "Nie udało się ustalić Twojej lokalizacji. Wyszukaj miejsce lub kliknij mapę prawym przyciskiem.",
+      "idle": "Wyszukaj miejsce po nazwie lub współrzędnych, użyj swojej lokalizacji albo kliknij mapę prawym przyciskiem, aby zobaczyć, które satelity nad nim przeleciały."
+    },
+    "share": {
+      "copy": "Kopiuj link do udostępnienia",
+      "copied": "Link skopiowany",
+      "copyManually": "Skopiuj poniższy link",
+      "link": "Link do udostępnienia",
+      "dismiss": "Zamknij",
+      "passOutsideWindow": "Powiązany przelot jest poza bieżącym oknem, więc żaden przelot nie jest zaznaczony.",
+      "passNotFound": "Powiązanego przelotu nie znaleziono wśród ponownie obliczonych przelotów, więc żaden przelot nie jest zaznaczony."
     }
   },
   "settings": {

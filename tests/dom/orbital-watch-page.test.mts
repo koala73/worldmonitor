@@ -245,7 +245,7 @@ describe('satellite pass lookup sheet', () => {
     expect(cards().map((c) => c.querySelector('.ow-card-tag')!.textContent)).toEqual(['Closest look', 'SENTINEL-2C', 'MODIS TERRA']);
     const [first] = cards();
     const lines = [...first!.querySelectorAll('.ow-caption-lines span')].map((l) => l.textContent);
-    expect(lines[0]).toMatch(/^LANDSAT 9 · .* UTC$/);
+    expect(lines[0]).toMatch(/^LANDSAT 9 · .* UTC\+4$/);
     expect(lines[1]).toBe('10 M · 8d ago · Clouded · 69%');
     expect(first!.querySelector('.ow-image-credit')!.textContent).toBe('USGS / Landsat');
     expect(first!.querySelector<HTMLElement>('.ow-image-credit')!.title).toBe(IMAGE_CREDIT.usgs);
@@ -329,7 +329,7 @@ describe('satellite pass lookup sheet', () => {
     expect(document.activeElement).toBe(detail.querySelector('[data-action="detail-back"]'));
     expect(detail.querySelector('.ow-detail-title strong')!.textContent).toBe('SENTINEL-2C');
     expect([...detail.querySelectorAll('.ow-detail-cell')].map((c) => c.textContent)).toEqual(['Altitude700 KM', expect.stringMatching(/^Off-nadir\d+\.\d°$/), 'Pixel10 M', 'Cloud at spotClear']);
-    expect(detail.querySelector('.ow-detail-sentence')!.textContent).toMatch(/^SENTINEL-2C crossed 700 km up, 42 km to the north, at \d\d:\d\d UTC, moving at 6\.\d\d km\/s over the ground\. It was looking \d+\.\d° off straight down\. Scene cloud cover: 12%\.$/);
+    expect(detail.querySelector('.ow-detail-sentence')!.textContent).toMatch(/^SENTINEL-2C crossed 700 km up, 42 km to the north, at \d\d:\d\d UTC\+4, moving at 6\.\d\d km\/s over the ground\. It was looking \d+\.\d° off straight down\. Scene cloud cover: 12%\.$/);
     expect(detail.querySelector('.ow-detail-sensor')!.textContent).toContain('10 m pixel');
     expect(detail.querySelector<HTMLButtonElement>('[data-action="clearest-look"]')!.disabled).toBe(false);
 
@@ -342,7 +342,7 @@ describe('satellite pass lookup sheet', () => {
     expect(detail.querySelector('.ow-detail-cell:nth-child(3)')!.textContent).toBe('Pixel30 M');
     expect(detail.querySelector('.ow-detail-cell:nth-child(4)')!.textContent).toBe('Cloud at spot—');
     expect(detail.querySelector('.ow-detail-sensor')!.textContent).toContain('30 m pixel');
-    expect(detail.querySelector('.ow-detail-sentence')!.textContent).toMatch(/^LANDSAT 9 crossed 700 km up, 42 km to the north, at \d\d:\d\d UTC, moving south at 6\.71 km\/s over the ground\./);
+    expect(detail.querySelector('.ow-detail-sentence')!.textContent).toMatch(/^LANDSAT 9 crossed 700 km up, 42 km to the north, at \d\d:\d\d UTC\+4, moving south at 6\.71 km\/s over the ground\./);
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(detail.childElementCount).toBe(0);
@@ -600,8 +600,8 @@ describe('satellite pass lookup sheet', () => {
     await settle();
     const img = hero().querySelector('img')!;
     expect(sourceOf(img.getAttribute('src'))).toBe(urls[1]);
-    expect(when()).toContain('11:30');
-    expect(img.alt).toContain('11:30');
+    expect(when()).toContain('15:30');
+    expect(img.alt).toContain('15:30');
     img.dispatchEvent(new Event('load'));
     expect(hero().dataset.state).toBe('loaded');
 
@@ -610,7 +610,7 @@ describe('satellite pass lookup sheet', () => {
     const row = () => rowOf('Meteosat-10');
     await settle();
     expect(sourceOf(row().querySelector('.ow-tile img')!.getAttribute('src'))).toBe(urls[1]);
-    expect(row().querySelector('.ow-row-meta')!.textContent).toContain('11:30');
+    expect(row().querySelector('.ow-row-meta')!.textContent).toContain('15:30');
   });
 
   it('steps a daily mosaic back from a day with no data at the point, and never shows a black tile', async () => {

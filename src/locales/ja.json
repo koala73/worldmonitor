@@ -4538,7 +4538,8 @@
     "createAccount": "アカウントを作成",
     "freeReason": "無料: レイアウト保存、国のフォロー、アラート",
     "settings": "設定",
-    "planBilling": "プラン・課金"
+    "planBilling": "プラン・課金",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCPを接続",
@@ -5275,7 +5276,9 @@
       "privacyHow": "仕組み",
       "sources": "出典",
       "archiveScene": "アーカイブシーン",
-      "archiveOnly": "計算された通過と一致しない画像のため、アーカイブシーンとして表示しています。"
+      "archiveOnly": "計算された通過と一致しない画像のため、アーカイブシーンとして表示しています。",
+      "zoneShowUtc": "時刻をUTCで表示",
+      "zoneShowLocal": "時刻をこの場所の現地時間で表示"
     },
     "viewer": {
       "open": "画像ビューアを開く: {{image}}",
@@ -5352,6 +5355,32 @@
         "north": "北",
         "south": "南"
       }
+    },
+    "search": {
+      "label": "地名または座標",
+      "placeholder": "地名または 48.8584, 2.2945",
+      "submit": "検索",
+      "locate": "現在地を使う",
+      "hint": "座標と現在地はこのブラウザ内にとどまります。検索した地名は WorldMonitor と OpenStreetMap の Nominatim に送信されます。",
+      "results": "一致する場所",
+      "searching": "検索中…",
+      "tooShort": "2文字以上、または 48.8584, 2.2945 のような座標を入力してください。",
+      "invalidCoordinates": "この座標は地球の範囲外です。緯度は -90 から 90、経度は -180 から 180 です。",
+      "failed": "現在、地名検索を利用できません。座標と地図は引き続き使えます。",
+      "noResults": "その名前に一致する場所はありません。",
+      "locating": "現在地を取得中…",
+      "locationDenied": "位置情報の許可が拒否されました。場所を検索するか、地図を右クリックしてください。",
+      "locationUnavailable": "現在地を取得できませんでした。場所を検索するか、地図を右クリックしてください。",
+      "idle": "地名や座標で場所を検索するか、現在地を使うか、地図を右クリックして、その上空を通過した衛星を確認できます。"
+    },
+    "share": {
+      "copy": "共有リンクをコピー",
+      "copied": "リンクをコピーしました",
+      "copyManually": "下のリンクをコピーしてください",
+      "link": "共有リンク",
+      "dismiss": "閉じる",
+      "passOutsideWindow": "リンクされた通過は現在の期間外のため、通過は選択されていません。",
+      "passNotFound": "リンクされた通過は再計算された通過の中に見つからなかったため、通過は選択されていません。"
     }
   },
   "settings": {

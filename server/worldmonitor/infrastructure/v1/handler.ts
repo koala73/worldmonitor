@@ -10,6 +10,7 @@ import { recordBaselineSnapshot } from './record-baseline-snapshot';
 import { listTemporalAnomalies } from './list-temporal-anomalies';
 import { getIpGeo } from './get-ip-geo';
 import { reverseGeocode } from './reverse-geocode';
+import { searchPlace } from './search-place';
 import { getBootstrapData } from './get-bootstrap-data';
 
 export const infrastructureHandler: InfrastructureServiceHandler = {
@@ -23,5 +24,6 @@ export const infrastructureHandler: InfrastructureServiceHandler = {
   listTemporalAnomalies,
   getIpGeo,
   reverseGeocode,
+  searchPlace,
   getBootstrapData,
 };

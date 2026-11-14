@@ -932,7 +932,10 @@
         "base": "Vojne baze",
         "nuclear": "Nuklearni objekti",
         "port": "Luke"
-      }
+      },
+      "levels": {},
+      "trends": {},
+      "fallback": {}
     }
   },
   "components": {
@@ -3328,7 +3331,10 @@
       },
       "warningAge": "Od prvog upozorenja koje još vrijedi",
       "days": "{{amount}} d."
-    }
+    },
+    "export": {},
+    "runtimeConfig": {},
+    "energyCrisis": {}
   },
   "popups": {
     "startDate": "POČETNI DATUM",
@@ -4305,7 +4311,11 @@
       "yellowWarning": "Žuto upozorenje",
       "orangeWarning": "Narančasto upozorenje",
       "redWarning": "Crveno upozorenje"
-    }
+    },
+    "common": {},
+    "conflict": {},
+    "apt": {},
+    "buttons": {}
   },
   "signals": {
     "context": {
@@ -4582,7 +4592,8 @@
     "createAccount": "Kreiraj račun",
     "freeReason": "Besplatno: spremi raspored, prati zemlje, upozorenja",
     "settings": "Postavke",
-    "planBilling": "Plan i naplata"
+    "planBilling": "Plan i naplata",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Poveži MCP",
@@ -5341,7 +5352,9 @@
       "privacyHow": "Kako",
       "sources": "Izvori",
       "archiveScene": "Arhivska scena",
-      "archiveOnly": "Nijedan izračunati prelet ne odgovara ovim snimkama, pa su prikazane kao arhivske scene."
+      "archiveOnly": "Nijedan izračunati prelet ne odgovara ovim snimkama, pa su prikazane kao arhivske scene.",
+      "zoneShowUtc": "Prikaži vremena u UTC-u",
+      "zoneShowLocal": "Prikaži vremena po lokalnom vremenu ovog mjesta"
     },
     "viewer": {
       "open": "Otvori preglednik slika: {{image}}",
@@ -5418,6 +5431,32 @@
         "north": "sjeveru",
         "south": "jugu"
       }
+    },
+    "search": {
+      "label": "Naziv mjesta ili koordinate",
+      "placeholder": "Naziv mjesta ili 48.8584, 2.2945",
+      "submit": "Traži",
+      "locate": "Koristi moju lokaciju",
+      "hint": "Koordinate i vaša lokacija ostaju u ovom pregledniku. Naziv mjesta koji tražite šalje se WorldMonitoru i OpenStreetMapovom Nominatimu.",
+      "results": "Odgovarajuća mjesta",
+      "searching": "Traženje…",
+      "tooShort": "Upišite barem dva znaka ili koordinate poput 48.8584, 2.2945.",
+      "invalidCoordinates": "Te su koordinate izvan zemaljske kugle. Geografska širina ide od -90 do 90, a dužina od -180 do 180.",
+      "failed": "Traženje mjesta trenutačno nije dostupno. Koordinate i karta i dalje rade.",
+      "noResults": "Nijedno mjesto ne odgovara tom nazivu.",
+      "locating": "Određivanje lokacije…",
+      "locationDenied": "Dopuštenje za lokaciju je odbijeno. Potražite mjesto ili desnom tipkom kliknite kartu.",
+      "locationUnavailable": "Vašu lokaciju nije moguće odrediti. Potražite mjesto ili desnom tipkom kliknite kartu.",
+      "idle": "Potražite mjesto po nazivu ili koordinatama, upotrijebite svoju lokaciju ili desnom tipkom kliknite kartu da vidite koji su sateliti prošli iznad njega."
+    },
+    "share": {
+      "copy": "Kopiraj poveznicu za dijeljenje",
+      "copied": "Poveznica kopirana",
+      "copyManually": "Kopirajte poveznicu ispod",
+      "link": "Poveznica za dijeljenje",
+      "dismiss": "Zatvori",
+      "passOutsideWindow": "Povezani prelet izvan je trenutačnog prozora, pa nijedan prelet nije odabran.",
+      "passNotFound": "Povezani prelet nije pronađen među ponovno izračunatim preletima, pa nijedan prelet nije odabran."
     }
   },
   "settings": {
@@ -5666,5 +5705,6 @@
         "6": "brisanje računa, faktura"
       }
     }
-  }
+  },
+  "app": {}
 }

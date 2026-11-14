@@ -245,7 +245,8 @@ describe('overlay reload-contract gate', () => {
       // Read-only archive imagery and the yearly time-lapse for a looked-up point; a reload only closes them.
       'src/components/OrbitalImageViewer.ts :: this.root',
       'src/components/OrbitalTimelapse.ts :: this.root',
-      // Read-only satellite pass results; a reload only drops the lookup.
+      // Read-only satellite pass results; a reload only drops the lookup and
+      // an unsent place query, which is not saved work.
       'src/components/OrbitalWatchPage.ts :: this.sheet',
       'src/components/RouteExplorer/KeyboardHelp.ts :: this.element',
       'src/components/SignalModal.ts :: this.element',
