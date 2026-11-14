@@ -2399,6 +2399,12 @@
   .cdp-secondary-actions { grid-template-columns: minmax(0, 1fr); }
 }
 
+.cdp-imagery-context:empty { display: none; }
+.cdp-imagery-context { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.cdp-imagery-summary { color: var(--text); font-size: 12px; line-height: 1.5; margin: 0; }
+.cdp-imagery-exclusion { color: var(--text-muted); font-size: 11px; line-height: 1.5; margin: 4px 0 0; }
+.cdp-imagery-exclusion a { color: inherit; text-decoration: underline; }
+
 .cdp-imagery-evidence {
   display: grid;
   gap: 6px;

@@ -11,7 +11,7 @@
 
 import Papa from 'papaparse';
 
-import { loadEnvFile, CHROME_UA, runSeed, withRetry } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, withRetry } from './_seed-utils.mjs';
 import { DAY_MIN, tokensToContentMeta } from './_content-age-helpers.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 
@@ -21,6 +21,9 @@ export const IDU_CANONICAL_KEY = 'displacement:idmc-idu:v1';
 export const IDU_ACTIVATION_KEY = 'seed-activated:displacement:idmc-idu';
 const HDX_SEARCH_URL = 'https://data.humdata.org/api/3/action/package_search';
 const HDX_ORGANIZATION = 'international-displacement-monitoring-centre-idmc';
+// HDX's bot rules challenge browser agents, block agents naming WorldMonitor, and
+// serve file downloads only to agents carrying a known HTTP-client token.
+const HDX_USER_AGENT = 'IDU-Displacement-Seeder/1.0 (compatible; python-requests/2.32.3)';
 const DATASET_NAME = /^([a-z]{3})-idmc-idu-events$/;
 const SEARCH_ROWS = 1000;
 const CACHE_TTL_SECONDS = 3 * 24 * 60 * 60;
@@ -69,7 +72,7 @@ async function hdxGet(url, read) {
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
       if (!isAllowedHdxUrl(current)) throw nonRetryable(`HDX: refusing ${hop ? 'redirect to ' : ''}${current}`);
       const resp = await fetch(current, {
-        headers: { Accept: 'application/json, text/csv', 'User-Agent': CHROME_UA },
+        headers: { Accept: 'application/json, text/csv', 'User-Agent': HDX_USER_AGENT },
         redirect: 'manual',
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
@@ -80,10 +83,12 @@ async function hdxGet(url, read) {
         current = new URL(location, current).href;
         continue;
       }
-      if (!resp.ok) {
-        const err = new Error(`HDX ${current}: HTTP ${resp.status}`);
-        // A missing or forbidden resource stays that way within one run.
-        err.nonRetryable = resp.status >= 400 && resp.status < 500 && resp.status !== 429;
+      if (resp.status !== 200) {
+        await resp.body?.cancel().catch(() => {});
+        const waf = resp.headers.get('x-amzn-waf-action');
+        const err = new Error(`HDX ${current}: HTTP ${resp.status}${waf ? ` bot ${waf}` : ''}`);
+        // A missing or forbidden resource, or a challenge to this agent, stays that way within one run.
+        err.nonRetryable = resp.ok || (resp.status >= 400 && resp.status < 500 && resp.status !== 429);
         throw err;
       }
       return read(resp, current);

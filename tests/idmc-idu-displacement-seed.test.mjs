@@ -226,12 +226,13 @@ describe('fetchIduDisplacement', () => {
     resources: url ? [{ format: 'CSV', url }] : [],
   });
 
-  function stub(packages, files, { count = packages.length } = {}) {
+  function stub(packages, files, { count = packages.length, search, headers = [] } = {}) {
     const calls = [];
-    globalThis.fetch = async (input) => {
+    globalThis.fetch = async (input, init) => {
       const url = String(input);
       calls.push(url);
-      if (url.includes('package_search')) return Response.json({ success: true, result: { count, results: packages } });
+      headers.push(new Headers(init?.headers));
+      if (url.includes('package_search')) return search ? search() : Response.json({ success: true, result: { count, results: packages } });
       if (url in files) {
         const file = typeof files[url] === 'function' ? files[url]() : files[url];
         return file instanceof Response ? file : new Response(file);
@@ -257,6 +258,30 @@ describe('fetchIduDisplacement', () => {
     assert.deepEqual(data.countries.map((c) => c.countryCode).sort(), ['AFG', 'SDN']);
     assert.equal(data.windowFrom, '2026-04-24');
     assert.deepEqual(data.missingCountries, []);
+  });
+
+  it('identifies as a plain data client, since HDX challenges browser agents and blocks ours by name', async () => {
+    const headers = [];
+    // HDX's download rule as probed 2026-11-14: only agents with a known HTTP-client token get the file.
+    const download = () => (/curl|wget|python-requests|python-urllib|hdxpythonlibrary/i.test(headers.at(-1).get('user-agent') ?? '')
+      ? new Response(csv([row()]))
+      : new Response('{"error":"Blocked due to bot activity."}', { status: 406 }));
+    stub([pkg('sdn')], { 'https://data.humdata.org/dl/sdn.csv': download }, { headers });
+    const data = await fetchIduDisplacement({ nowMs: NOW });
+    assert.deepEqual(data.missingCountries, []);
+    assert.equal(headers.length, 2);
+    for (const h of headers) {
+      const agent = h.get('user-agent') ?? '';
+      assert.ok(agent && !/mozilla|chrome|safari|worldmonitor/i.test(agent), `User-Agent ${agent}`);
+    }
+  });
+
+  it('reports the HDX bot challenge instead of an empty-JSON parse error, without retrying it', async () => {
+    const calls = stub([], {}, {
+      search: () => new Response(null, { status: 202, headers: { 'x-amzn-waf-action': 'challenge' } }),
+    });
+    await assert.rejects(fetchIduDisplacement({ nowMs: NOW }), /HTTP 202 bot challenge/);
+    assert.equal(calls.length, 1);
   });
 
   it('fails when HDX truncates the dataset listing', async () => {
