@@ -819,6 +819,7 @@ export class OrbitalWatchPage {
     const focusKey = this.body.contains(active) ? active?.dataset.key ?? active?.dataset.action ?? null : null;
     // Re-attaching the timeline slot resets its sideways scroll, so carry it over.
     const timelineLeft = this.slots.timeline.scrollLeft;
+    stopWatchingNearView();
     replaceChildren(this.body, ...this.renderState(state));
     this.slots.timeline.scrollLeft = timelineLeft;
     if (focusKey) {

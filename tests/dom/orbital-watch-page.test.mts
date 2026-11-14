@@ -271,6 +271,21 @@ describe('imagery evidence sheet', () => {
     expect(thumb.querySelector('.ow-view-image')!.getAttribute('aria-label')).toContain(caption);
   });
 
+  it('drops the near-view watch of thumbnails a re-render replaces', () => {
+    const live = new Set<object>();
+    vi.stubGlobal('IntersectionObserver', class {
+      observe() { live.add(this); }
+      disconnect() { live.delete(this); }
+    });
+    const { all, confirmedNew, likely } = tiered();
+    const state = answered(all, { acquisitions: [acquisition(confirmedNew), acquisition(likely)], mosaics: [modis], frames: [meteosat] });
+    const page = mounted(state);
+    expect(live.size).toBe(3);
+    page.render(state);
+    page.render(state);
+    expect(live.size, 'one watch per thumbnail on screen').toBe(3);
+  });
+
   it('paints point-bearing images only from blob: URLs and releases them when the lookup ends', async () => {
     const { all, confirmedNew, likely } = tiered();
     const state = answered(all, { acquisitions: [acquisition(confirmedNew), acquisition(likely)], mosaics: [modis], frames: [meteosat] });
