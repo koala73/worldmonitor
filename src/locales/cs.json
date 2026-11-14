@@ -5255,7 +5255,8 @@
         "weather": "Počasí"
       },
       "caption": {
-        "clear": "Jasno",
+        "clear": "Jasno v bodě",
+        "clearSceneCloud": "Jasno v bodě · oblačnost scény {{pct}} %",
         "clouded": "Oblačno · {{pct}} %",
         "cloudShadow": "Stín mraku",
         "spotNotChecked": "Místo nezkontrolováno na oblačnost",

@@ -5255,7 +5255,8 @@
         "weather": "Погода"
       },
       "caption": {
-        "clear": "Ясно",
+        "clear": "Ясно в точці",
+        "clearSceneCloud": "Ясно в точці · хмарність сцени {{pct}}%",
         "clouded": "Хмарно · {{pct}}%",
         "cloudShadow": "Тінь хмари",
         "spotNotChecked": "Хмарність у точці не перевірено",

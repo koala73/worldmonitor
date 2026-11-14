@@ -5193,7 +5193,8 @@
         "weather": "Hava"
       },
       "caption": {
-        "clear": "Açık",
+        "clear": "Noktada açık",
+        "clearSceneCloud": "Noktada açık · sahne bulutluluğu %{{pct}}",
         "clouded": "Bulutlu · %{{pct}}",
         "cloudShadow": "Bulut gölgesi",
         "spotNotChecked": "Nokta bulut için denetlenmedi",

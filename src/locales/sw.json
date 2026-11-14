@@ -5193,7 +5193,8 @@
         "weather": "Hali ya hewa"
       },
       "caption": {
-        "clear": "Wazi",
+        "clear": "Wazi mahali hapa",
+        "clearSceneCloud": "Wazi mahali hapa · mawingu ya tukio {{pct}}%",
         "clouded": "Mawingu · {{pct}}%",
         "cloudShadow": "Kivuli cha wingu",
         "spotNotChecked": "Mahali hapajakaguliwa kwa mawingu",
