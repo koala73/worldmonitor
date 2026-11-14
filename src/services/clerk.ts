@@ -548,6 +548,10 @@ function openLoadedClerkSignIn(): void {
 }
 
 function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
+  if (!PUBLISHABLE_KEY) {
+    if (typeof document !== 'undefined') showToast('Sign-in is not available in this build.', 6000);
+    return;
+  }
   const open = action === 'open-sign-in'
     ? openLoadedClerkSignIn
     : () => clerkInstance?.openSignUp({ appearance: getAppearance() });

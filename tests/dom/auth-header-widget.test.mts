@@ -8,7 +8,8 @@ import type { UserButtonMenuActions } from '@/services/clerk';
 
 type AuthSession = { isPending: boolean; user: null | { id: string } };
 
-const { mountUserButton, openSignIn, openSignUp, subscribeAuthState } = vi.hoisted(() => ({
+const { isClerkAuthEnabled, mountUserButton, openSignIn, openSignUp, subscribeAuthState } = vi.hoisted(() => ({
+  isClerkAuthEnabled: vi.fn(() => true),
   mountUserButton: vi.fn((_el: HTMLDivElement, _actions?: UserButtonMenuActions) => () => {}),
   openSignIn: vi.fn(),
   openSignUp: vi.fn(),
@@ -20,6 +21,7 @@ const { mountUserButton, openSignIn, openSignUp, subscribeAuthState } = vi.hoist
 
 vi.mock('@/services/auth-state', () => ({ subscribeAuthState }));
 vi.mock('@/services/clerk', () => ({
+  isClerkAuthEnabled,
   mountUserButton,
   openSignIn,
   openSignUp,
@@ -41,6 +43,7 @@ describe('AuthHeaderWidget signed-out chrome', () => {
   afterEach(() => {
     openSignIn.mockClear();
     openSignUp.mockClear();
+    isClerkAuthEnabled.mockReturnValue(true);
     subscribeAuthState.mockReset();
     subscribeAuthState.mockImplementation((cb: (state: AuthSession) => void) => {
       cb({ isPending: false, user: null });
@@ -66,6 +69,16 @@ describe('AuthHeaderWidget signed-out chrome', () => {
     expect(openSignIn).toHaveBeenCalledTimes(1);
     expect(openSignUp).not.toHaveBeenCalled();
 
+    widget.destroy();
+  });
+
+  it('shows no account action when this build has no sign-in', () => {
+    isClerkAuthEnabled.mockReturnValue(false);
+
+    const widget = new AuthHeaderWidget();
+    const root = widget.getElement();
+
+    expect(root.childElementCount).toBe(0);
     widget.destroy();
   });
 

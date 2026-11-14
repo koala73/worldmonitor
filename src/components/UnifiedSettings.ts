@@ -54,7 +54,7 @@ import { renderPreferenceSection } from '@/services/preferences-content';
 import { mountInstallEntry } from '@/services/pwa-install';
 import { renderNotificationsSettings } from '@/services/notifications-settings';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
-import { signOut } from '@/services/clerk';
+import { isClerkAuthEnabled, signOut } from '@/services/clerk';
 import { requestOwnAccountDeletion } from '@/services/account-deletion';
 import { track, trackAgentConnect, trackApiAction } from '@/services/analytics';
 import {
@@ -1056,6 +1056,7 @@ export class UnifiedSettings {
     const user = getAuthState().user;
     return {
       signedIn: user !== null,
+      canSignIn: isClerkAuthEnabled(),
       isDesktopApp: this.config.isDesktopApp,
       embedAccess: hasEmbedAccessForAccount(user?.role),
       account: user ? { plan: this.accountPlanLabel(), email: user.email } : null,

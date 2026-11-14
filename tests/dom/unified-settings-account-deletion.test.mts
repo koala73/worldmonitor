@@ -64,6 +64,7 @@ function switchAccountTo(next: AuthSession): void {
 
 vi.mock('@/services/clerk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/clerk')>()),
+  isClerkAuthEnabled: () => true,
   signOut: () => signOutMock(),
   getCurrentClerkUser: () => session.user,
 }));
