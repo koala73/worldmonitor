@@ -861,7 +861,7 @@ const SEED_META = {
     activationKey: 'seed-activated:infra:grid-disruption-clock',
     cutover: {
       mode: 'activation-marker', fromKey: null,
-      issue: null, // Bound to the owning pull request at delivery.
+      issue: 10698,
       activationKey: 'seed-activated:infra:grid-disruption-clock',
     },
   },
