@@ -5,13 +5,13 @@
   "description": "Real-time global intelligence on conflict, markets, energy, trade, shipping and cyber.",
   "kind": "product",
   "icon": "https://worldmonitor.app/.well-known/mcp/hotlink-ok/icon-512.png",
-  "version": "1.56.0",
+  "version": "1.57.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
     "title": "WorldMonitor",
-    "version": "1.56.0",
+    "version": "1.57.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server, with per-outlet source ratings and a publicly scored forecast record, serving real-time data and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app",
@@ -342,22 +342,6 @@
       "description": "Nuclear test-site seismic monitor: USGS earthquakes near known test sites scored for proliferation concern. Watches seismic events within 100 km of the monitored nuclear test sites (Punggye-ri, Lop Nur, Novaya Zemlya, the Nevada National Security Site, Semipalatinsk, and other historical sites) and scores each event 0-100 from magnitude, proximity, and depth — shallow events close to a site score highest, since underground tests are shallow by nature. Concern bands: low, moderate, elevated, critical. Includes a per-site rollup (event count, max concern, max magnitude). An empty list with fresh data means no seismicity near any monitored site in the current feed window.",
       "_meta": {
         "worldmonitor/access": "free-account",
-        "worldmonitor/category": "geopolitical-security"
-      }
-    },
-    {
-      "name": "get_point_satellite_passes",
-      "description": "Return every imaging-satellite pass whose footprint covers a point over the last 7 days and the next 72 hours, each with exactly one tier (confirmed-image, likely-imaged, within-reach, capability-overhead, daily-mosaic, passed-overhead, opportunity), plus the Sentinel-2, Sentinel-1 and Landsat acquisitions found in the open archives with a public image URL. Tiers match the WorldMonitor point lookup. The point is rounded to 0.01 degrees and point names the one used. Military passes read capability-overhead, never an image. stale is true when the orbit catalog is missing or old; archiveStatus partial with failedSources means an archive failed and its passes keep geometry tiers. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.",
-      "_meta": {
-        "worldmonitor/access": "subscription",
-        "worldmonitor/category": "geopolitical-security"
-      }
-    },
-    {
-      "name": "get_country_imagery_evidence",
-      "description": "Return the watched sites in one country with each site's newest archive scene, next expected imaging pass, the operators whose satellites passed over it, and any confirmed change flag. A confirmed flag means radar backscatter statistics changed at the site and a second comparable scene confirmed it; it says that statistics changed, not what changed. Raised, retracted and unreleased changes are never returned. siteCount 0 with stale false means the country has no watched sites; stale true means the evidence is missing or older than 3 days and sites is empty. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.",
-      "_meta": {
-        "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"
       }
     },
