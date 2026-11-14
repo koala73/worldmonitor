@@ -93,6 +93,7 @@ export const CLIMATE_CO2_MONITORING_KEY = 'climate:co2-monitoring:v1';
 export const CLIMATE_OCEAN_ICE_KEY = 'climate:ocean-ice:v1';
 export const CLIMATE_NEWS_KEY = 'climate:news-intelligence:v1';
 export const CLIMATE_RESERVOIR_LEVELS_KEY = 'climate:reservoir-levels:v1';
+export const ORBITAL_CATALOG_KEY = 'orbital:catalog:v1';
 export const HEALTH_AIR_QUALITY_KEY = 'health:air-quality:v1';
 export const CHINA_COVERAGE_HEALTH_KEY = 'health:china-coverage:v1';
 export const CHINA_MACRO_KEY = BOOTSTRAP_CACHE_KEYS.chinaMacro;

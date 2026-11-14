@@ -1310,7 +1310,7 @@ Recovery is accepted only when:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 6 services |
 | **Net savings** | 5 slots |
-| **Members** | Zone Normals (monthly, skips ~359/360), Anomalies (3h, depends on zone-normals), Disasters (6h), Ocean Ice (daily), CO2 Monitoring (3 days) |
+| **Members** | Zone Normals (monthly, skips ~359/360), Anomalies (3h, depends on zone-normals), Disasters (6h), Ocean Ice (daily), CO2 Monitoring (3 days), Orbital Catalog (2h, so every 3h tick), Reservoir Levels (daily) |
 | **Note** | Zone-normals runs before anomalies (dependency ordering). Natural Events left the bundle on 2026-11-07: the standalone `seed-natural-events` service (`*/30`) is its sole producer. |
 
 ### Bundle 7: seed-bundle-energy-sources

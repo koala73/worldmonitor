@@ -2400,6 +2400,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/_orbital-catalog.mjs"
+        },
+        {
           "path": "scripts/ais-relay.cjs"
         }
       ]

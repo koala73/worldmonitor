@@ -411,6 +411,9 @@ const STANDALONE_KEYS = {
   // ICESat-2 strategic reservoir levels (scripts/seed-reservoir-levels.mjs). Served by
   // /api/climate/v1/list-reservoir-levels with no dashboard consumer yet.
   reservoirLevels: 'climate:reservoir-levels:v1',
+  // Imaging-satellite orbit elements and their daily ring (scripts/seed-orbital-catalog.mjs).
+  // No dashboard consumer yet; the orbital lookup reads it through its own RPC.
+  orbitalCatalog: 'orbital:catalog:v1',
   // Public chokepoint status open dataset index (/data/v1/chokepoints/), published
   // daily by .github/workflows/open-data-chokepoints.yml. Read only by
   // api/open-data-chokepoints.js, never by the dashboard.
@@ -965,6 +968,11 @@ const SEED_META = {
   // level or whose CMR discovery failed DISCOVERY_ALERT_RUNS runs in a row.
   reservoirLevels:  { key: 'seed-meta:climate:reservoir-levels', maxStaleMin: 4320, minRecordCount: 50, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:climate:reservoir-levels',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10490, activationKey: 'seed-activated:climate:reservoir-levels' } },
+  // Climate bundle member every 3h; 540 = 3x the cadence. New probe: ROLLOUT_PENDING for up to a
+  // day after deploy, until the seeder writes its activation marker after its first publication.
+  // minRecordCount sits below the 17 profiled satellites CelesTrak carried on 2026-11-13.
+  orbitalCatalog:   { key: 'seed-meta:orbital:catalog', maxStaleMin: 540, minRecordCount: 15, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:orbital:catalog',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10615, activationKey: 'seed-activated:orbital:catalog' } },
   unrestEvents:     { key: 'seed-meta:unrest:events',           maxStaleMin: 120 }, // 45min cron; 120 = 2h grace (was 75 = 30min buffer, too tight)
   cyberThreats:     { key: 'seed-meta:cyber:threats',           maxStaleMin: 240 }, // 2h interval; 240min = 2x interval
   cveReference: {
@@ -2816,6 +2824,8 @@ const ON_DEMAND_KEYS = new Set([
   // New ICESat-2 probe: absent before the first daily climate bundle run. firstPublicationMaxWaitMin
   // bounds the grace to one day; seed-activated:climate:reservoir-levels revokes it.
   'reservoirLevels',
+  // New imaging catalog: absent before the climate bundle's first run after deploy.
+  'orbitalCatalog',
 
   'globalTendersColombiaSecop',
   'globalTendersKenyaPpip',
@@ -3044,6 +3054,7 @@ const ACTIVATION_MARKERS = {
   regionalEnergyCreg: SEED_META.regionalEnergyCreg.activationKey,
   regionalEnergyUrsea: SEED_META.regionalEnergyUrsea.activationKey,
   reservoirLevels: SEED_META.reservoirLevels.activationKey,
+  orbitalCatalog: SEED_META.orbitalCatalog.activationKey,
 
   globalTendersColombiaSecop: SEED_META.globalTendersColombiaSecop.activationKey,
   globalTendersKenyaPpip: SEED_META.globalTendersKenyaPpip.activationKey,

@@ -3187,6 +3187,19 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         await exitAfterTelemetryFlush(0);
       }
 
+      // A seeder that reached its upstream but was refused, or received nothing it may
+      // publish, declares `publishBlocked` (the reason) on that run. Last-good stays,
+      // seed-meta keeps its clock, and the bundle runner reports PUBLISH_BLOCKED, not ok.
+      if (data?.publishBlocked) {
+        console.warn(
+          `  PUBLISH BLOCKED: ${data.publishBlocked} — published nothing, `
+          + (preserved ? 'last-good TTL extended.' : 'and there is no complete last-good to preserve.'),
+        );
+        console.log(`\n=== Done (${Math.round(durationMs)}ms, PUBLISH BLOCKED) ===`);
+        await releaseLock(`${domain}:${resource}`, runId);
+        await exitAfterTelemetryFlush(PUBLISH_BLOCKED_EXIT_CODE);
+      }
+
       if (!preserved) {
         console.error(`  FAILURE: declareRecords returned 0 and last-good preservation failed — one or more keys are missing or could not be extended`);
         console.log(`\n=== Done (${Math.round(durationMs)}ms, RETRY FAILED) ===`);
