@@ -495,7 +495,8 @@
     "climateNews": "Știri despre climă",
     "fx": "Cursuri de schimb valutar",
     "ukmtoIncidents": "Incidente UKMTO",
-    "reservoirLevels": "Niveluri strategice ale apei"
+    "reservoirLevels": "Niveluri strategice ale apei",
+    "gridDisruptionClock": "Grid disruption clock"
   },
   "commands": {
     "prefixes": {
@@ -3207,6 +3208,57 @@
         "measured": "Măsurat",
         "sparkline": "Nivelul apei în 36 de luni"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Select state",
+      "unknown": "Unknown",
+      "customers": "Customers reported without power",
+      "lastCustomers": "Customers out at last report",
+      "denominatorUnknown": "Tracked customer total unknown",
+      "tracked": "{{amount}} customers tracked",
+      "dataAge": "Since report",
+      "minutes": "{{amount}} min",
+      "hours": "{{amount}} h",
+      "warnings": "Warnings",
+      "recovery": "Recovery",
+      "decreased": "{{amount}} fewer reported out",
+      "increased": "{{amount}} more reported out",
+      "unchanged": "Reported count unchanged",
+      "since": "since",
+      "peakLoad": "{{percent}}% of normal peak load restored",
+      "noComparison": "Comparable outage counts unavailable.",
+      "history": "Recent outage counts ({{total}})",
+      "priorNotice": "Previously reported warning",
+      "sources": "Warning source coverage",
+      "operatorLink": "For grid notices, check",
+      "issued": "Issued",
+      "until": "expires",
+      "noActive": "No active warning in monitored sources.",
+      "unknownWarnings": "Current warning coverage is incomplete.",
+      "noObservation": "Current count and coverage unavailable.",
+      "loadError": "Grid disruption clock data is unavailable.",
+      "retained": "Refresh failed. Showing the last received report.",
+      "phase": {
+        "unknown": "Impact unknown",
+        "monitoring": "Monitoring",
+        "watch": "Watch",
+        "disrupted": "Outages reported",
+        "recovering": "Recovery reported",
+        "restored": "Restoration reported"
+      },
+      "kind": {
+        "grid": "Grid notice",
+        "weather": "Weather alert",
+        "space-weather": "Space weather"
+      },
+      "checks": {
+        "available": "Checked",
+        "unavailable": "Unavailable",
+        "not_monitored": "Check operator directly",
+        "stale": "Last check is stale"
+      },
+      "warningAge": "Since first active warning",
+      "days": "{{amount}} d"
     }
   },
   "popups": {

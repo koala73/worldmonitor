@@ -478,6 +478,19 @@ Deep dives: [Finance data](/finance-data) · [Premium finance](/premium-finance)
 
 Physical-economy fundamentals for the Energy and Commodity variants: storage, inventories, flows, and prices.
 
+### Grid disruption clock
+
+The opt-in Grid disruption clock covers California and Tennessee. It shows current warnings, customers reported without electricity, and the change between comparable observations. State totals include only reporting providers. The number of customers tracked within each state is unknown. A decrease is a net change in the reported total. It cannot identify individual restorations, prove a connection to a warning, or predict an outage duration.
+
+| Observation | Source and coverage |
+|---|---|
+| Customers without power | State aggregates from [MassOutage (massoutage.com)](https://massoutage.com/), refreshed by WorldMonitor every ten minutes. WorldMonitor calculates reported changes from stored snapshots. [Attribution and upstream terms](https://massoutage.com/terms) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| California grid notices | Active emergency notices for the California ISO operating footprint. [California ISO](https://www.caiso.com/emergency-notifications) |
+| Severe weather | Selected actual National Weather Service warnings in each state. The affected areas can cover only part of the state. [NWS](https://www.weather.gov/documentation/services-web-api) |
+| Tennessee grid notices | Consult [TVA releases](https://www.tva.com/news-media/releases/press-release-archive) for operator announcements. The clock monitors weather warnings automatically in Tennessee. |
+
+The clock retains up to 24 hours of observations. Missing, delayed, or stale outage reports interrupt the comparison. Earlier notices can remain visible after they drop out of the active list.
+
 Brent and WTI weekly EIA spot averages use the week-ending date. An observation becomes stale after the next week's scheduled EIA release plus a 24-hour grace for the daily cache refresh. The regular release is Wednesday at 10:30 ET; a US federal holiday on the Monday through Wednesday of that week moves it to Thursday at 12:00 ET, computed for any year. Two checked-in overrides record EIA's departures from that rule, including the December 29, 2025 release at 17:00 ET. All other weeks use the rule. Futures quotes use a 30-minute bound during trading. NYMEX daily breaks, weekends, and the checked-in CME energy holiday sessions for 2026–2027 extend that bound through 30 minutes after trading resumes. A quote already more than 30 minutes old at the halt remains stale. The CME table needs updates when CME revises its calendar; unlisted dates use regular hours, and exceptional closures are not detected automatically.
 
 EIA release times follow EIA's published rule, so that schedule does not expire. The Weekly Petroleum Status Report releases Wednesday at 10:30 ET, and a US federal holiday on the Monday through Wednesday of that week moves it to Thursday at 12:00 ET. Only publisher departures from the rule are listed as overrides. The CME table is hand-maintained and fail-closed. After its last listed entry, freshness continues using regular NYMEX session hours, so an unlisted holiday can mark a still-current price stale and expiry never grants indefinite freshness. The daily **Oil Calendar Horizon** GitHub Actions workflow fails when the CME table is within 45 days of its last date (or expired). It also fetches EIA's schedule page and fails when the computed release for any week disagrees with the published table, or when the page layout stops parsing. A failed EIA fetch is a warning, not a failure. Run `node scripts/check-oil-calendar-horizon.mts` to inspect the same status locally. An ISO timestamp argument injects the clock and skips the EIA fetch. CME’s last listed date is December 24, 2027.

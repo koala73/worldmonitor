@@ -321,6 +321,7 @@ export const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, Deferred
   'energy-complex': { rowSpan: 2 },
   'energy-crisis': { rowSpan: 2 },
   'energy-disruptions': { rowSpan: 2 },
+  'grid-disruption-clock': { rowSpan: 2, className: 'panel-wide' },
   'fuel-shortages': { rowSpan: 2 },
   fx: { rowSpan: 2 },
   'gdelt-intel': { rowSpan: 2 },
@@ -3448,6 +3449,7 @@ export class PanelLayoutManager implements AppModule {
 
     this.lazyDefaultPanel('commodities', () => import('@/components/MarketPanel'), 'CommoditiesPanel');
     this.lazyDefaultPanel('energy-complex', () => import('@/components/EnergyComplexPanel'), 'EnergyComplexPanel');
+    this.lazyDefaultPanel('grid-disruption-clock', () => import('@/components/GridDisruptionClockPanel'), 'GridDisruptionClockPanel');
     this.lazyDefaultPanel('oil-inventories', () => import('@/components/OilInventoriesPanel'), 'OilInventoriesPanel');
     this.lazyDefaultPanel('energy-crisis', () => import('@/components/EnergyCrisisPanel'), 'EnergyCrisisPanel');
     this.lazyDefaultPanel('chokepoint-strip', () => import('@/components/ChokepointStripPanel'), 'ChokepointStripPanel');

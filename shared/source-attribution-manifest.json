@@ -1477,6 +1477,9 @@
       "references": [
         {
           "path": "scripts/_weather-alert-select.mjs"
+        },
+        {
+          "path": "scripts/lib/grid-clock-sources.mjs"
         }
       ]
     },
@@ -6653,6 +6656,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "massoutage.com",
+      "provider": "massoutage.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "MassOutage API and compilations CC BY 4.0. Upstream terms continue to apply.",
+      "attribution": "Credit MassOutage (massoutage.com), link to the source and license, and identify the calculated change in state totals.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/grid-clock-sources.mjs"
         }
       ]
     },
@@ -12109,6 +12126,20 @@
       ]
     },
     {
+      "host": "www.caiso.com",
+      "provider": "www.caiso.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.caiso.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/grid-clock-sources.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.caracaschronicles.com",
       "provider": "Caracas Chronicles",
       "kind": "feed",
@@ -15677,6 +15708,9 @@
           "path": "scripts/lib/email-unsubscribe.cjs"
         },
         {
+          "path": "scripts/lib/grid-clock-sources.mjs"
+        },
+        {
           "path": "scripts/lib/internal-links.mjs"
         },
         {
@@ -15951,6 +15985,20 @@
       "references": [
         {
           "path": "scripts/seed-fuel-prices.mjs"
+        }
+      ]
+    },
+    {
+      "host": "wwwmobile.caiso.com",
+      "provider": "wwwmobile.caiso.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "California ISO public website terms. Use factual emergency notice types and times.",
+      "attribution": "Credit California ISO and link to its emergency notifications.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/grid-clock-sources.mjs"
         }
       ]
     },
