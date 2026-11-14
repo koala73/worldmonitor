@@ -4,7 +4,7 @@ import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
 import type { ArchiveId } from '@/services/orbital/archive-result';
-import { GIBS_DAILY_MOSAICS, hasNoDataAtCentre, MOSAIC_FALLBACK_DAYS, type DailyMosaicRow, type GeostationaryFrame, type GeostationaryRow } from '@/services/orbital/archive-gibs';
+import { GIBS_DAILY_MOSAICS, hasNoDataAtPoint, MOSAIC_FALLBACK_DAYS, type CropPosition, type DailyMosaicRow, type GeostationaryFrame, type GeostationaryRow } from '@/services/orbital/archive-gibs';
 import { DEFAULT_CROP_HALF_SIZE_KM } from '@/services/orbital/crop-url';
 import { acquisitionCredit, IMAGE_CREDIT, ORBITAL_WATCH_DOCS_URL, resultCredits, type ResultCredit } from '@/services/orbital/credits';
 import { normalisePlatform } from '@/services/orbital/archive-stac';
@@ -255,14 +255,15 @@ type TileSize = 'hero' | 'thumb';
 interface TileFallbacks {
   urls: readonly string[];
   show: (index: number) => void;
-  /** Treat a frame with no data at the point as missing, for archives that serve empty pixels for days not yet imaged. */
-  skipNoData?: boolean;
+  /** Where the point sits in the frame; a frame with no data there counts as missing, for archives that serve empty pixels for days not yet imaged. */
+  noDataAt?: CropPosition;
 }
 
 const NO_DATA_SAMPLE_PX = 32;
+const CROP_CENTRE: CropPosition = { x: 0.5, y: 0.5 };
 
 /** Unreadable pixels count as data, so a failed check never hides a real image. */
-function noDataAtPoint(img: HTMLImageElement): boolean {
+function noDataAtPoint(img: HTMLImageElement, at: CropPosition): boolean {
   try {
     const canvas = document.createElement('canvas');
     canvas.width = NO_DATA_SAMPLE_PX;
@@ -270,7 +271,7 @@ function noDataAtPoint(img: HTMLImageElement): boolean {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return false;
     ctx.drawImage(img, 0, 0, NO_DATA_SAMPLE_PX, NO_DATA_SAMPLE_PX);
-    return hasNoDataAtCentre(ctx.getImageData(0, 0, NO_DATA_SAMPLE_PX, NO_DATA_SAMPLE_PX).data, NO_DATA_SAMPLE_PX, NO_DATA_SAMPLE_PX);
+    return hasNoDataAtPoint(ctx.getImageData(0, 0, NO_DATA_SAMPLE_PX, NO_DATA_SAMPLE_PX).data, NO_DATA_SAMPLE_PX, NO_DATA_SAMPLE_PX, at);
   } catch {
     return false;
   }
@@ -301,7 +302,7 @@ function imageTile(url: string | null, alt: string, sensor: string, size: TileSi
     decoding: 'async',
     referrerpolicy: 'no-referrer',
     onLoad: () => {
-      if (!fallbacks?.skipNoData || !noDataAtPoint(img)) { tile.dataset.state = 'loaded'; return; }
+      if (!fallbacks?.noDataAt || !noDataAtPoint(img, fallbacks.noDataAt)) { tile.dataset.state = 'loaded'; return; }
       if (frame < frames.length - 1) { load(frame + 1); return; }
       fallbacks.show(0);
       img.remove();
@@ -316,7 +317,7 @@ function imageTile(url: string | null, alt: string, sensor: string, size: TileSi
         size === 'hero' ? h('button', { type: 'button', className: 'ow-tile-retry', dataset: { action: 'retry-image' } }, t('countryBrief.retryBtn')) : null);
     },
   }) as HTMLImageElement;
-  if (fallbacks?.skipNoData) img.crossOrigin = 'anonymous';
+  if (fallbacks?.noDataAt) img.crossOrigin = 'anonymous';
   img.setAttribute('src', url);
   const tile = h('div', { className: `ow-tile ow-tile-${size}`, dataset: { state: 'loading', sensor } }, img, status, ...overlays);
   tileRetries.set(tile, () => load(0));
@@ -346,7 +347,7 @@ interface ImageCard {
   pass: { noradId: number; timeMs: number } | null;
   /** Earlier frames of the same source, newest first, with the caption line each one shows. */
   fallbacks?: Array<{ url: string; top: string }>;
-  skipNoData?: boolean;
+  noDataAt?: CropPosition;
 }
 
 type Tab = 'all' | ImageCard['tab'];
@@ -401,7 +402,7 @@ function weatherCards(evidence: OrbitalEvidence): ImageCard[] {
       sortMs: ms,
       top: mosaicTop(latest.date),
       fallbacks: earlier.map((day) => ({ url: day.imageUrl, top: mosaicTop(day.date) })),
-      skipNoData: true,
+      noDataAt: mosaic.pointInCrop ?? CROP_CENTRE,
       bottom: [...(resolution ? [`${resolution} M`] : []), t('orbitalWatch.ui.caption.dailyMosaic')],
       credit: { short: IMAGE_CREDIT.gibs, full: IMAGE_CREDIT.gibs },
       pass: null,
@@ -548,7 +549,7 @@ function mosaicRow(mosaic: DailyMosaicRow, day: { date: string; imageUrl: string
       if (when) { when.textContent = dayLabel(index); when.title = dayLabel(index); }
       thumb.querySelector('img')?.setAttribute('alt', alt(index));
     },
-    skipNoData: true,
+    noDataAt: mosaic.pointInCrop ?? CROP_CENTRE,
   });
   const row = rowShell(`source:${mosaic.source}`, 'daily-mosaic', thumb, mosaic.source, t('orbitalWatch.tier.dailyMosaic'),
     [formatDay(ms), [t('orbitalWatch.ui.caption.dailyMosaic'), resolution ? `${resolution} M` : null, t('orbitalWatch.ui.row.days', { count: mosaic.days.length })].filter(Boolean).join(' · ')],
@@ -984,10 +985,10 @@ export class OrbitalWatchPage {
       ...heroOverlays(),
       h('span', { className: 'ow-card-tag ow-label' }, closest ? t('orbitalWatch.ui.closestLook') : card.sensor),
       h('button', { type: 'button', className: 'ow-expand', dataset: { action: 'open-full' }, 'aria-label': t('orbitalWatch.ui.openFull') }, '⤢'),
-    ], card.fallbacks?.length || card.skipNoData ? {
+    ], card.fallbacks?.length || card.noDataAt ? {
       urls: (card.fallbacks ?? []).map((earlier) => earlier.url),
       show: (i) => { top.textContent = tops[i]!; tile.querySelector('img')?.setAttribute('alt', alt(i)); },
-      skipNoData: card.skipNoData,
+      noDataAt: card.noDataAt,
     } : null);
     return h('figure', { className: 'ow-card', dataset: { key: card.key, tab: card.tab, index: String(index) } },
       tile,
