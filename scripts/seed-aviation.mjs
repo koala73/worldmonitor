@@ -748,6 +748,19 @@ function faaSeverityFromAvg(avgDelay) {
   return 'normal';
 }
 
+// FAA durations are prose ("2 hours and 18 minutes", "45 minutes", "1 hour").
+// parseInt alone reads "3 hours and 1 minute" as 3 minutes.
+export function parseFaaDurationMinutes(s, fallback) {
+  if (!s) return fallback;
+  const h = s.match(/(\d+)\s*hours?/i);
+  const m = s.match(/(\d+)\s*min/i);
+  if (!h && !m) {
+    const n = parseInt(s, 10);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  return (h ? Number(h[1]) * 60 : 0) + (m ? Number(m[1]) : 0);
+}
+
 export function parseFaaXml(text) {
   const delays = new Map();
   const parseTag = (xml, tag) => {
@@ -765,7 +778,7 @@ export function parseFaaXml(text) {
   for (const gd of parseTag(text, 'Ground_Delay')) {
     const arpt = getVal(gd, 'ARPT');
     if (arpt) {
-      delays.set(arpt, { airport: arpt, reason: getVal(gd, 'Reason') || 'Ground delay', avgDelay: parseInt(getVal(gd, 'Avg') || '30', 10), type: 'ground_delay' });
+      delays.set(arpt, { airport: arpt, reason: getVal(gd, 'Reason') || 'Ground delay', avgDelay: parseFaaDurationMinutes(getVal(gd, 'Avg'), 30), type: 'ground_delay' });
     }
   }
   for (const gs of parseTag(text, 'Ground_Stop')) {
@@ -779,8 +792,8 @@ export function parseFaaXml(text) {
     if (arpt) {
       const existing = delays.get(arpt);
       if (!existing || existing.type !== 'ground_stop') {
-        const min = parseInt(getVal(d, 'Min') || '15', 10);
-        const max = parseInt(getVal(d, 'Max') || '30', 10);
+        const min = parseFaaDurationMinutes(getVal(d, 'Min'), 15);
+        const max = parseFaaDurationMinutes(getVal(d, 'Max'), 30);
         delays.set(arpt, { airport: arpt, reason: getVal(d, 'Reason') || 'Delays', avgDelay: Math.round((min + max) / 2), type: parseDelayTypeFromReason(getVal(d, 'Reason') || '') });
       }
     }
@@ -844,10 +857,6 @@ async function seedFaaDelays() {
 const ICAO_NOTAM_URL = 'https://dataservices.icao.int/api/notams-realtime-list';
 const NOTAM_CLOSURE_QCODES = new Set(['FA', 'AH', 'AL', 'AW', 'AC', 'AM']);
 // Restrictions: NOTAM Q-codes RA (restricted area) and RO (overfly prohibited)
-// + restricted code45s and text patterns. Mirrors NOTAM_RESTRICTION_QCODES +
-// the restriction-text regex in server/worldmonitor/aviation/v1/_shared.ts:29,
-// :440-444 — keep in lockstep so seeded NOTAM data matches the live RPC's
-// classifier.
 const NOTAM_RESTRICTION_QCODES = new Set(['RA', 'RO']);
 
 // Returns the NOTAM array only for a real JSON-array answer. Every other outcome

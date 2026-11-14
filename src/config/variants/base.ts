@@ -74,6 +74,7 @@ export const REFRESH_INTERVALS = {
   reservoirLevels: 6 * 60 * 60 * 1000, // seeded daily; NASA publishes each pass 50-70 days after the overpass
   fuelShortages: 60 * 60 * 1000, // active shortage alerts can change intra-day
   energyDisruptions: 60 * 60 * 1000, // disruption log is low-volume but needs intra-day freshness
+  gridDisruptionClock: 10 * 60 * 1000,
   energyRiskOverview: 15 * 60 * 1000, // mixed market + supply-chain overview; refresh more often than the underlying weekly registries
   chokepointStrip: 10 * 60 * 1000, // the status refreshes every 6 min; the 5-min client cache never answers a poll
   macroTiles: 30 * 60 * 1000,

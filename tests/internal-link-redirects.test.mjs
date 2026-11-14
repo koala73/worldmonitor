@@ -263,7 +263,7 @@ function docsRoutes() {
 /** Astro blog routes: the index pages plus one route per post, author and glossary term. */
 function blogRoutes(manifest) {
   // `/blog` answers 200 without the trailing slash as well (probed).
-  const routes = new Set(['/blog', '/blog/', '/blog/glossary/']);
+  const routes = new Set(['/blog', '/blog/', '/blog/glossary/', '/blog/guides/']);
   for (const file of readdirSync(join(repoRoot, 'blog-site/src/content/blog'))) {
     if (file.endsWith('.md')) routes.add(`/blog/posts/${file.slice(0, -'.md'.length)}/`);
   }
@@ -591,6 +591,11 @@ describe('internal links never redirect or 404 (#8603)', () => {
     const blog = readdirSync(join(repoRoot, 'blog-site/src/content/blog'))
       .filter((file) => file.endsWith('.md'))
       .map((file) => `blog-site/src/content/blog/${file}`);
+    const guides = ['vs', 'alternatives', 'best'].flatMap((category) =>
+      readdirSync(join(repoRoot, 'blog-site/src/content/guides', category))
+        .filter((file) => file.endsWith('.md'))
+        .map((file) => `blog-site/src/content/guides/${category}/${file}`),
+    );
     // The root agent artifacts. public/llms.txt is hand-authored, and
     // llms-full.txt's brief above `## Generated corpus` is hand-authored too
     // (scripts/build-llms-full.mjs), so no regeneration will ever repair a bad
@@ -619,12 +624,13 @@ describe('internal links never redirect or 404 (#8603)', () => {
     // the blog moves to .mdx and its filter matches nothing.
     assert.ok(docs.length > 200, `expected the published docs pages, saw ${docs.length}`);
     assert.ok(blog.length > 40, `expected the blog posts, saw ${blog.length}`);
+    assert.ok(guides.length >= 22, `expected the blog guides, saw ${guides.length}`);
     assert.ok(artifacts.length > 10, `expected the public agent artifacts, saw ${artifacts.length}`);
     assert.ok(artifacts.includes('public/developers/llms.txt'), 'the developer briefing must be scanned');
     assert.ok(artifacts.includes('public/api/llms.txt'), 'the API section briefing must be scanned');
 
     const violations = [];
-    for (const file of [...docs, ...blog, ...artifacts]) {
+    for (const file of [...docs, ...blog, ...guides, ...artifacts]) {
       const source = readRepo(file);
       // Mintlify resolves a root-relative link in an .mdx against the docs
       // base path, so `[Terms](/terms)` renders as href="/docs/terms" (probed

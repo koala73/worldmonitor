@@ -130,6 +130,7 @@ export const PANEL_SCOPE_BEHAVIOUR: Readonly<Record<string, PanelScopeBehaviour>
   monitors: 'unsupported', // My Monitors
   'latest-brief': 'unsupported', // Latest Brief
   'energy-risk-overview': 'unsupported', // Global Energy Risk Overview
+  'grid-disruption-clock': 'unsupported', // Regional selector for California and Tennessee
   'chokepoint-strip': 'unsupported', // Chokepoint Status
   'storage-facility-map': 'unsupported', // Strategic Storage Atlas
   'fuel-shortages': 'filters', // Global Fuel Shortage Registry
