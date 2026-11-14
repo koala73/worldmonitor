@@ -21,15 +21,10 @@ export function parseOrbitalRoute(hash: string): OrbitalRoute | null {
   return { point: { lat, lon }, view: match[3] === 'full' ? 'full' : 'sheet' };
 }
 
-export function formatOrbitalRoute(point: GeoPoint, view: OrbitalRouteView): string {
-  return `#orbital=${point.lat.toFixed(4)},${point.lon.toFixed(4)}${view === 'full' ? '&view=full' : ''}`;
-}
-
 function applyRoute(map: () => OrbitalTrackSurface | null): void {
   const route = parseOrbitalRoute(window.location.hash);
-  void import('@/app/orbital-watch').then(({ openOrbitalWatch, leaveOrbitalFullView }) => {
-    if (route) openOrbitalWatch(route.point, document.getElementById('mapContainer'), route.view, map());
-    else leaveOrbitalFullView();
+  void import('@/app/orbital-watch').then(({ openOrbitalWatch }) => {
+    if (route) openOrbitalWatch(route.point, document.getElementById('mapContainer'), map());
   });
 }
 

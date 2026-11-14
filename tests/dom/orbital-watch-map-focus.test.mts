@@ -7,7 +7,7 @@ vi.mock('@/services/orbital/pass-client', () => ({
 }));
 
 import { isMapUrlCentreClaimed, setOrbitalMapView } from '@/app/orbital-map-focus';
-import { leaveOrbitalFullView, openOrbitalWatch } from '@/app/orbital-watch';
+import { openOrbitalWatch } from '@/app/orbital-watch';
 
 const PALM = { lat: 25.112, lon: 55.139 };
 const rect = (left: number, top: number, width: number, height: number) => new DOMRect(left, top, width, height);
@@ -30,7 +30,7 @@ describe('orbital watch map focus', () => {
   it('centres the point in the map area the sheet leaves visible and keeps the reticle on it', async () => {
     const original = Element.prototype.getBoundingClientRect;
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
-      return this.classList.contains('ow-panel') ? rect(988, 64, 440, 824) : original.call(this);
+      return this.classList.contains('ies-panel') ? rect(988, 64, 440, 824) : original.call(this);
     });
     const center = vi.fn(() => true);
     const project = vi.fn(() => ({ x: 494, y: 450 }));
@@ -42,7 +42,7 @@ describe('orbital watch map focus', () => {
       await frames(40);
       expect(center).toHaveBeenCalledWith(PALM, { x: -226, y: 0 });
       expect(hold, 'the idle globe spin would carry the point away').toHaveBeenLastCalledWith(true);
-      const mark = document.querySelector<HTMLElement>('.ow-mapmark')!;
+      const mark = document.querySelector<HTMLElement>('.ies-mapmark')!;
       expect(mark.hidden).toBe(false);
       expect(mark.style.transform).toBe('translate(494px, 450px)');
 
@@ -66,10 +66,10 @@ describe('orbital watch map focus', () => {
     const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center: () => true, project: () => ({ x: 494, y: 450 }), hold: vi.fn(), suppressLayers: vi.fn(), camera: () => null, restore: vi.fn() });
     const targets: unknown[] = [];
     try {
-      openOrbitalWatch(PALM, null, 'sheet', { setOrbitalTrack: () => {}, setOrbitalTrackMarker: () => {}, setOrbitalTarget: (t) => targets.push(t) });
+      openOrbitalWatch(PALM, null, { setOrbitalTrack: () => {}, setOrbitalTrackMarker: () => {}, setOrbitalTarget: (t) => targets.push(t) });
       await frames();
       expect(targets[targets.length - 1]).not.toBeNull();
-      expect(document.querySelector<HTMLElement>('.ow-mapmark')!.hidden, 'one reticle, not two').toBe(true);
+      expect(document.querySelector<HTMLElement>('.ies-mapmark')!.hidden, 'one reticle, not two').toBe(true);
     } finally {
       release();
     }
@@ -103,7 +103,7 @@ describe('orbital watch map focus', () => {
     openOrbitalWatch(PALM, null);
     expect(isMapUrlCentreClaimed()).toBe(true);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    expect(document.querySelector('.orbital-watch-sheet')).toBeNull();
+    expect(document.querySelector('.imagery-evidence-sheet')).toBeNull();
     expect(isMapUrlCentreClaimed()).toBe(true);
     outside.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     expect(isMapUrlCentreClaimed()).toBe(true);
@@ -122,22 +122,14 @@ describe('orbital watch map focus', () => {
     expect(isMapUrlCentreClaimed()).toBe(true);
   });
 
-  it('hides the dashboard layers only while the full view owns the map', () => {
+  it('leaves the dashboard layers on the map while the sheet is open', () => {
     const suppressLayers = vi.fn();
     const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center: () => true, project: () => null, hold: vi.fn(), suppressLayers, camera: () => null, restore: vi.fn() });
     try {
       openOrbitalWatch(PALM, null);
-      expect(suppressLayers, 'the sheet leaves the dashboard layers alone').not.toHaveBeenCalledWith(true);
-      openOrbitalWatch(PALM, null, 'full');
-      expect(suppressLayers).toHaveBeenLastCalledWith(true);
-      leaveOrbitalFullView();
-      expect(suppressLayers).toHaveBeenLastCalledWith(false);
-      openOrbitalWatch(PALM, null, 'full');
-      expect(suppressLayers).toHaveBeenLastCalledWith(true);
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-      expect(document.querySelector('.orbital-watch-sheet')).toBeNull();
-      expect(suppressLayers, 'closing from the full view brings the layers back').toHaveBeenLastCalledWith(false);
+      expect(document.querySelector('.imagery-evidence-sheet')).toBeNull();
+      expect(suppressLayers).not.toHaveBeenCalledWith(true);
     } finally {
       release();
     }
@@ -162,7 +154,7 @@ describe('orbital watch map focus', () => {
       openOrbitalWatch({ lat: 25.2, lon: 55.27 }, null);
       await frames(40);
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-      expect(document.querySelector('.orbital-watch-sheet')).toBeNull();
+      expect(document.querySelector('.imagery-evidence-sheet')).toBeNull();
       expect(restore, 'a second point keeps the camera from before the first').toHaveBeenCalledExactlyOnceWith(home);
     } finally {
       release();

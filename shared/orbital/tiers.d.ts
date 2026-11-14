@@ -18,6 +18,8 @@ export type ArchiveAnswer =
   | { status: 'no-match' }
   | { status: 'unanswered' };
 
+export const OPTICAL_MIN_SUN_ELEVATION_DEG: number;
+
 export function decidePassTier(
   pass: Pass,
   profile: SensorProfile,

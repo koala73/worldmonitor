@@ -13,5 +13,5 @@ export function formatTargetCoordinates(point: { lat: number; lon: number }): st
 export function formatAcquiredLine(acquisition: Pick<MatchedAcquisition, 'startMs' | 'resolutionM'>): string {
   const time = formatOrbitalTime(acquisition.startMs, 'when');
   const resolution = acquisition.resolutionM >= 1000 ? `${Math.round(acquisition.resolutionM / 1000)} KM` : `${Math.round(acquisition.resolutionM)} M`;
-  return t('orbitalWatch.replay.acquired', { time, resolution });
+  return t('orbitalWatch.target.acquired', { time, resolution });
 }

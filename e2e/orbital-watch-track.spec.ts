@@ -77,18 +77,18 @@ test('pins the looked-up point with or without a drawn pass', async ({ page }) =
   await expect.poll(() => orbitalLayers(page)).toEqual([]);
 });
 
-test('draws a track over the antimeridian as two paths', async ({ page }) => {
+test('draws a track over the antimeridian as one continuous path', async ({ page }) => {
   const track = trackOver('SENTINEL-2A', { lat: -17.7, lon: 178.5 }, (t) => t.segments.length > 1);
   await ready(page);
   await page.evaluate((t) => (window as HarnessWindow).__mapHarness!.setOrbitalTrack(t), track);
-  await expect.poll(() => orbitalLayers(page)).toContain('orbital-track-layer:2');
+  await expect.poll(() => orbitalLayers(page)).toContain('orbital-track-layer:1');
 });
 
 test('sweeps the swath behind the satellite over the antimeridian without wrapping across the map', async ({ page }) => {
   const track = trackOver('SENTINEL-1A', { lat: -17.7, lon: 178.5 }, (t) => t.segments.length > 1);
   await ready(page);
   await page.evaluate((t) => (window as HarnessWindow).__mapHarness!.setOrbitalTrack(t, t.closest), track);
-  await expect.poll(() => orbitalLayers(page)).toEqual(expect.arrayContaining(['orbital-track-layer:2', 'orbital-track-marker-layer:1']));
+  await expect.poll(() => orbitalLayers(page)).toEqual(expect.arrayContaining(['orbital-track-layer:1', 'orbital-track-marker-layer:1']));
   const swept = (await orbitalLayers(page)).find((layer) => layer.startsWith('orbital-swept-layer:'));
   expect(Number(swept?.split(':')[1])).toBeGreaterThanOrEqual(1);
 });

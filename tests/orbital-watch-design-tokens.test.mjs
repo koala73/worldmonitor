@@ -7,18 +7,17 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const read = (name) => readFileSync(new URL(`../src/styles/${name}`, import.meta.url), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
-const sheets = ['orbital-tokens.css', 'orbital-watch.css', 'orbital-image-viewer.css'];
+const sheets = ['orbital-watch.css', 'orbital-image-viewer.css'];
 const COLOUR_LITERAL = /#[0-9a-f]{3,8}\b|\brgba?\(|\bhsla?\(/gi;
 
 /** Literal colours with a reason they cannot follow the theme. */
 const ALLOWED = [
   // The ink .time-btn.active and .map-pin-btn.active put on --green.
-  { selector: '.ow-tab[aria-selected="true"]', literal: '#0a0a0a' },
-  { selector: '.oiv-tab[aria-selected="true"], .oiv-date[aria-pressed="true"], .oiv-toggle[aria-pressed="true"], .otl-row[aria-current="true"]', literal: '#0a0a0a' },
+  { selector: '.oiv-tab[aria-selected="true"], .oiv-date[aria-pressed="true"], .oiv-toggle[aria-pressed="true"]', literal: '#0a0a0a' },
   // Text drawn straight on satellite imagery, which looks the same in every theme.
   { selector: '.ow-scale', literal: '#fff' },
   { selector: '.ow-scale', literal: '#000' },
@@ -40,32 +39,32 @@ describe('Orbital Watch design tokens', () => {
           .map((literal) => `${selector}: ${literal}`));
       assert.deepEqual(found, []);
     });
+
+    it(`${sheet} reads only tokens main.css defines`, () => {
+      const main = read('main.css');
+      const css = read(sheet);
+      const local = new Set([...css.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]));
+      // A var() with a fallback is a custom property the component sets at run time.
+      const missing = [...new Set([...css.matchAll(/var\((--[a-z0-9-]+)\s*\)/g)].map((m) => m[1]))]
+        .filter((ref) => !local.has(ref) && !new RegExp(`${ref}\\s*:`).test(main));
+      assert.deepEqual(missing, []);
+    });
   }
 
-  it('every colour, font and shadow token resolves to a WorldMonitor var()', () => {
-    const root = rules(read('orbital-tokens.css')).find((r) => r.selector === ':root');
-    const tokens = [...root.body.matchAll(/(--ow-[a-z0-9-]+)\s*:\s*([^;]+);/g)].map(([, name, value]) => ({ name, value: value.trim() }));
-    const themed = tokens.filter(({ value }) => !/^-?[\d.]+(px|em|rem)?$/.test(value));
-    assert.ok(themed.length >= 10, 'the palette and fonts are tokens');
-    const main = read('main.css');
-    for (const { name, value } of themed) {
-      const refs = [...value.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]);
-      assert.ok(refs.length > 0, `${name} reads a WorldMonitor token, not "${value}"`);
-      for (const ref of refs) {
-        assert.ok(ref.startsWith('--ow-') || new RegExp(`${ref}\\s*:`).test(main), `${name} reads ${ref}, which main.css defines`);
-      }
-    }
+  it('has no lookup-only token stylesheet and no --ow-* palette', () => {
+    assert.ok(!existsSync(new URL('../src/styles/orbital-tokens.css', import.meta.url)));
+    for (const sheet of sheets) assert.doesNotMatch(read(sheet), /--ow-/, sheet);
   });
 
   it('keeps the amber palette out', () => {
     for (const sheet of sheets) assert.doesNotMatch(read(sheet), /f5a524|245,\s*165,\s*36|--ow-accent/i, sheet);
   });
 
-  it('draws the map overlay (track, swath, reticle, label) in Orbital Watch tokens on every renderer', () => {
+  it('draws the map overlay (track, swath, reticle, label) in shared tokens on every renderer', () => {
     for (const file of ['DeckGLMap.ts', 'GlobeMap.ts', 'Map.ts']) {
       const source = readFileSync(new URL(`../src/components/${file}`, import.meta.url), 'utf8');
-      assert.doesNotMatch(source, /f5a524|245,\s*165,\s*36|ecebe7|236,\s*235,\s*231|0b0c0e|11,\s*12,\s*14|--ow-accent/i, file);
-      assert.match(source, /--ow-mark/, `${file} draws the overlay in --ow-mark`);
+      assert.doesNotMatch(source, /f5a524|245,\s*165,\s*36|ecebe7|236,\s*235,\s*231|0b0c0e|11,\s*12,\s*14|--ow-/i, file);
+      assert.match(source, /'--green'/, `${file} draws the overlay in --green`);
     }
   });
 });
