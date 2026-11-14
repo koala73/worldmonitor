@@ -75,6 +75,13 @@ describe('SEO crawl-directive hygiene (#7380)', () => {
         `${variant} dashboard HTML must declare its own 192x192 square favicon`,
       );
     }
+
+    const viteConfig = read('vite.config.ts');
+    assert.match(
+      viteConfig,
+      /sizes="192x192" href="\/favico\/\$\{activeVariant\}\/android-chrome-192x192\.png"/,
+      'dedicated VITE_VARIANT builds in htmlVariantPlugin must rewrite 96x96 icon to existing 192x192 variant asset',
+    );
   });
 
   it('keeps each dashboard variant summary in the 300–500 word differentiation band', () => {
