@@ -1,6 +1,6 @@
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
 import type { CatalogStatus, OrbitalCatalog } from './catalog-shape';
-import type { PassJobInput, PassJobReply, PassJobRequest, PassJobResult, PointPass, SatelliteOutcome } from './pass-job';
+import type { DaylightSpan, PassJobInput, PassJobReply, PassJobRequest, PassJobResult, PointPass, SatelliteOutcome } from './pass-job';
 import { assertPassQuery, type PassWindow } from './pass-query';
 
 const HOUR_MS = 3_600_000;
@@ -31,6 +31,7 @@ export interface PointPassLookup {
   catalog: { status: CatalogStatus; fetchedAt: number; inventoryVersion: string };
   passes: PointPass[];
   satellites: SatelliteOutcome[];
+  daylight: DaylightSpan[];
   computedOn: 'worker' | 'main-thread' | 'none';
 }
 
@@ -230,7 +231,7 @@ export function createOrbitalPassClient(deps: PassClientDeps = {}): OrbitalPassC
         nowMs,
         catalog: { status: catalog.status, fetchedAt: catalog.fetchedAt, inventoryVersion: catalog.inventoryVersion },
       };
-      if (catalog.satellites.length === 0) return { ...base, passes: [], satellites: [], computedOn: 'none' };
+      if (catalog.satellites.length === 0) return { ...base, passes: [], satellites: [], daylight: [], computedOn: 'none' };
 
       const input: PassJobInput = { point: query.point, window, nowMs, satellites: catalog.satellites };
       const worker = await Promise.race([readyWorker(), cancelled]);

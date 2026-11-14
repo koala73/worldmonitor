@@ -138,6 +138,14 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('page url centre at boot', JSON.stringify(bootCentre));
 
   const sheet = page.locator('.orbital-watch-sheet');
+  const sources = sheet.locator('.ow-body .ow-sources');
+  const sourceCredits = async (keepOpen = false) => {
+    if (await sources.isHidden()) return [];
+    if (!(await sources.evaluate((d) => d.open))) await sources.locator('summary').click();
+    const credits = await sources.locator('li').allInnerTexts();
+    if (!keepOpen) await sources.locator('summary').click();
+    return credits;
+  };
   // Opening a lookup flies the map so the point sits in the middle of what the sheet leaves visible, so aim at
   // client positions, not offsets from the canvas centre.
   const open = async (at = null) => {
@@ -173,13 +181,20 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   };
   const settleImagesInView = async () => {
     await page.waitForFunction(() => {
-      const vh = window.innerHeight;
-      const vw = window.innerWidth;
-      return [...document.querySelectorAll('.orbital-watch-sheet .ow-tile')].every((tile) => {
-        const r = tile.getBoundingClientRect();
-        const offscreen = r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw || r.width === 0;
-        return offscreen || tile.dataset.state !== 'loading';
-      });
+      // A thumbnail starts loading when the IntersectionObserver sees it, which clips it by its scroll containers.
+      const shown = (tile) => {
+        let r = tile.getBoundingClientRect();
+        let top = Math.max(r.top, 0), bottom = Math.min(r.bottom, window.innerHeight);
+        let left = Math.max(r.left, 0), right = Math.min(r.right, window.innerWidth);
+        for (let el = tile.parentElement; el; el = el.parentElement) {
+          if (getComputedStyle(el).overflow === 'visible') continue;
+          r = el.getBoundingClientRect();
+          top = Math.max(top, r.top); bottom = Math.min(bottom, r.bottom);
+          left = Math.max(left, r.left); right = Math.min(right, r.right);
+        }
+        return bottom > top && right > left;
+      };
+      return [...document.querySelectorAll('.orbital-watch-sheet .ow-tile')].every((tile) => !shown(tile) || tile.dataset.state !== 'loading');
     }, null, { timeout: 90_000 });
     log('tile states', await sheet.locator('.ow-tile').evaluateAll((tiles) => tiles.map((t) => t.dataset.state).join('')));
   };
@@ -281,6 +296,10 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await hero.locator('.ow-tile[data-state="loaded"]').waitFor({ timeout: 90_000 });
   await settleImagesInView();
   log('hero caption', (await hero.locator('.ow-caption').innerText()).replace(/\s+/g, ' '));
+  const heroCredit = await hero.locator('.ow-image-credit').innerText();
+  log('hero credit', heroCredit);
+  if (!/COPERNICUS SENTINEL|LANDSAT/i.test(heroCredit)) throw new Error(`closest look has no image credit: ${heroCredit}`);
+  if (await sheet.locator('.orbital-watch-sheet, .ow-panel').first().evaluate((el) => el.textContent.includes('We acknowledge'))) throw new Error('acknowledgement paragraph in the sheet');
   // At rest the hero, its caption, REPLAY and credit all sit above the privacy line.
   const checkHeroFits = async (view) => {
     const heroFits = await page.evaluate(() => {
@@ -297,6 +316,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   };
   await checkHeroFits('sheet');
   log('sheet map mark', JSON.stringify(await markAt()));
+  await hero.locator('.ow-image-credit').evaluate((el) => el.scrollIntoView({ block: 'nearest' }));
   await shot('sheet-closest-look');
   // A lookup centres the map on the point; the map's URL sync (debounced 250 ms) must keep the pre-lookup centre.
   const checkPageUrl = async (stage, { route = false } = {}) => {
@@ -309,6 +329,14 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     if (inRoute && !route) throw new Error(`orbital route left in the page URL (${stage})`);
   };
   await checkPageUrl('sheet', { route: true });
+  const credits = await sourceCredits(true);
+  log('sources', credits);
+  if (!credits.includes('CelesTrak · orbit elements')) throw new Error(`sources miss CelesTrak: ${credits.join(' | ')}`);
+  if (!credits.some((c) => c.startsWith('Copernicus Sentinel · contains modified Copernicus Sentinel data'))) throw new Error(`sources miss Copernicus beside a confirmed crop: ${credits.join(' | ')}`);
+  if (credits.some((c) => { const [name, supplied] = c.split(' · '); return supplied?.toLowerCase().startsWith(name.toLowerCase()); })) throw new Error(`a source entry repeats its name: ${credits.join(' | ')}`);
+  await sources.evaluate((el) => el.scrollIntoView({ block: 'end' }));
+  await shot('sheet-sources-open');
+  await sources.locator('summary').click();
   await sheet.locator('.ow-tier-grid').evaluate((el) => el.scrollIntoView({ block: 'end' }));
   log('tier grid', (await sheet.locator('.ow-tier-cell').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ')));
   await settleImagesInView();
@@ -394,6 +422,34 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await showHeroCredit();
   await settleImagesInView();
   await shot('partial-archive-failure');
+  await close();
+
+  failing.add('planetarycomputer.microsoft.com');
+  await openAtPlace();
+  await sheet.locator('.ow-banner-partial').waitFor({ timeout: 90_000 });
+  await settleImagesInView();
+  const shownCard = async () => sheet.locator('.ow-track .ow-card').nth(Number((await sheet.locator('.ow-pager-count').innerText()).split('/')[0]) - 1);
+  for (let step = 0; step < 8; step++) {
+    if ((await (await shownCard()).locator('.ow-tile').getAttribute('data-state')) === 'loaded') break;
+    const next = sheet.locator('.ow-pager-btn[data-action="next"]');
+    if (await next.isDisabled()) break;
+    await next.click();
+    await settleImagesInView();
+  }
+  const weatherHero = await shownCard();
+  const weatherCaption = (await weatherHero.locator('.ow-caption-lines').innerText()).replace(/\s+/g, ' ');
+  const weatherCredit = await weatherHero.locator('.ow-image-credit').innerText();
+  log('weather hero caption', weatherCaption, '|', weatherCredit);
+  if (!/\d/.test(weatherCaption) || !/DAILY MOSAIC|GEOSTATIONARY/i.test(weatherCaption) || !/NASA GIBS|EUMETSAT/i.test(weatherCredit)) throw new Error(`weather hero caption incomplete: ${weatherCaption} | ${weatherCredit}`);
+  await weatherHero.locator('.ow-image-credit').evaluate((el) => el.scrollIntoView({ block: 'nearest' }));
+  await privacy();
+  await shot('weather-hero-without-scene-archives');
+  const withoutScenes = await sourceCredits(true);
+  log('sources with both scene archives down', withoutScenes);
+  if (withoutScenes.some((c) => /Copernicus|Landsat/.test(c))) throw new Error(`credit for an absent source: ${withoutScenes.join(' | ')}`);
+  if (!withoutScenes.includes('CelesTrak · orbit elements')) throw new Error(`sources miss CelesTrak: ${withoutScenes.join(' | ')}`);
+  await sources.evaluate((el) => el.scrollIntoView({ block: 'end' }));
+  await shot('sources-without-scene-archives');
   failing.clear();
   await close();
 
@@ -461,7 +517,10 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     if (await sheet.locator('.ow-card, [data-action="retry"]').count()) throw new Error('empty state is not empty');
     if (await sheet.locator('.ow-card img, .ow-row img').count()) throw new Error('empty state shows images');
     log('empty map mark', JSON.stringify(await markAt()));
-  await shot('empty-no-passes');
+    const emptyCredits = await sourceCredits();
+    log('empty state sources', emptyCredits);
+    if (emptyCredits.some((c) => c.startsWith('CelesTrak'))) throw new Error('CelesTrak credited with no passes listed');
+    await shot('empty-no-passes');
     emptyArchives = false;
     await close();
   }

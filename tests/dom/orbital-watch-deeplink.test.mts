@@ -11,6 +11,11 @@ vi.mock('@/config/desktop-runtime', async (importOriginal) => ({
   isDesktopRuntime: () => desktop.value,
 }));
 vi.mock('@/config/orbital-watch-flag', () => ({ ORBITAL_WATCH_ENABLED: true }));
+// The timeline's event context reads the dashboard's point-free global feeds; these tests count search requests only.
+vi.mock('@/services/orbital/point-context', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/orbital/point-context')>()),
+  loadPointContext: () => new Promise(() => {}),
+}));
 vi.mock('@/services/orbital/pass-client', () => ({ getOrbitalPassClient: () => ({ lookup: lookupMock, dispose: () => {} }) }));
 vi.mock('@/services/orbital/match', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/orbital/match')>()),
@@ -49,7 +54,7 @@ const PASSES = [pass(40697, -30), pass(48917, -60, { kind: 'passed-overhead' })]
 function lookupAt(point: { lat: number; lon: number }): PointPassLookup {
   return {
     point, window: { startMs: NOW - 7 * 24 * HOUR, endMs: NOW + 72 * HOUR }, nowMs: NOW,
-    catalog: { status: 'fresh', fetchedAt: NOW - HOUR, inventoryVersion: 'test' }, passes: PASSES, satellites: [], computedOn: 'worker',
+    catalog: { status: 'fresh', fetchedAt: NOW - HOUR, inventoryVersion: 'test' }, passes: PASSES, satellites: [], daylight: [], computedOn: 'worker',
   };
 }
 

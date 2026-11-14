@@ -5189,6 +5189,8 @@
     "partial": "{{sources}} yanıt vermedi, bu nedenle bazı geçişlerin görüntüleri eksik olabilir.",
     "stale": "Yörünge verileri eski. Uydu kataloğu {{age}} önce güncellendi, bu nedenle geçiş saatleri sapabilir.",
     "empty": "Kayıtlı hiçbir görüntüleme uydusu son {{pastDays}} gün içinde bu noktanın üzerinden geçmedi ve önümüzdeki {{futureHours}} saat içinde geçmeyecek.",
+    "sources": "Kaynaklar · {{count}}",
+    "sourcesDocs": "Bu kaynaklar nasıl kullanılıyor",
     "privacy": "Bu nokta tarayıcınızda kalır. Yalnızca tarayıcınızın doğrudan çağırdığı herkese açık arşivlere gönderilir: Earth Search, Microsoft Planetary Computer, NASA GIBS ve EUMETSAT. Tek istisna yer adıyla aramadır: yazdığınız ad yer adı arama hizmetine gider.",
     "inRange": "erişimde",
     "tier": {
@@ -5425,6 +5427,41 @@
       "dismiss": "Kapat",
       "passOutsideWindow": "Bağlantıdaki geçiş mevcut zaman aralığının dışında, bu yüzden hiçbir geçiş seçili değil.",
       "passNotFound": "Bağlantıdaki geçiş yeniden hesaplanan geçişler arasında bulunamadı, bu yüzden hiçbir geçiş seçili değil."
+    },
+    "timeline": {
+      "now": "şimdi",
+      "nowAt": "Şimdi: {{time}}",
+      "density": "{{label}} geçişleri, {{start}} ile {{end}} arası: {{count}}",
+      "daylight": "Noktada gün ışığı {{start}} ile {{end}} arası",
+      "unavailable": "kullanılamıyor",
+      "notRetained": "bu hafta veri yok",
+      "notRetainedSpan": "{{label}}: {{start}} ile {{end}} arasında veri yok",
+      "countryWide": "ülke genelinde",
+      "source": {
+        "conflict": "Çatışmalar",
+        "fires": "Yangınlar",
+        "unrest": "Huzursuzluk",
+        "outages": "İnternet kesintileri"
+      },
+      "live": {
+        "vessels": "Gemi trafiği",
+        "militaryFlights": "Askerî uçuşlar",
+        "gpsJamming": "GPS karıştırma"
+      },
+      "name": "Zaman çizelgesi",
+      "span": "{{days}} gün · sonraki {{hours}} sa",
+      "daylightHere": "Burada gün ışığı",
+      "row": {
+        "geo": "Yerdurağan",
+        "photo": "Görüntü",
+        "likely": "Olası",
+        "could": "Mümkün",
+        "overhead": "Geçiş"
+      },
+      "retained": "{{start}} – {{end}}",
+      "retainedDay": "yalnızca {{day}}",
+      "geoLine": "Görüş alanındaki yerdurağanlar: {{names}}",
+      "away": "{{km}} km uzakta"
     }
   },
   "settings": {

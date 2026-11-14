@@ -5217,6 +5217,8 @@
     "partial": "{{sources}} no respondió, por lo que a algunos pasos les pueden faltar imágenes.",
     "stale": "Los datos orbitales están desactualizados. El catálogo de satélites tiene {{age}} de antigüedad, por lo que las horas de paso pueden variar.",
     "empty": "Ningún satélite de imágenes catalogado pasó sobre este punto en los últimos {{pastDays}} días ni lo hará en las próximas {{futureHours}} horas.",
+    "sources": "Fuentes · {{count}}",
+    "sourcesDocs": "Cómo se usan estas fuentes",
     "privacy": "Este punto permanece en tu navegador. Solo se envía a los archivos públicos que tu navegador consulta directamente: Earth Search, Microsoft Planetary Computer, NASA GIBS y EUMETSAT. La búsqueda por nombre de lugar es la única excepción: el nombre que escribes se envía al servicio de búsqueda de lugares.",
     "inRange": "al alcance",
     "tier": {
@@ -5458,6 +5460,41 @@
       "dismiss": "Cerrar",
       "passOutsideWindow": "El paso enlazado está fuera de la ventana actual, así que no hay ningún paso seleccionado.",
       "passNotFound": "El paso enlazado no se encontró entre los pasos recalculados, así que no hay ningún paso seleccionado."
+    },
+    "timeline": {
+      "now": "ahora",
+      "nowAt": "Ahora: {{time}}",
+      "density": "Pasadas {{label}}, de {{start}} a {{end}}: {{count}}",
+      "daylight": "Luz diurna en el punto de {{start}} a {{end}}",
+      "unavailable": "no disponible",
+      "notRetained": "sin datos esta semana",
+      "notRetainedSpan": "{{label}}: sin datos de {{start}} a {{end}}",
+      "countryWide": "en todo el país",
+      "source": {
+        "conflict": "Conflictos",
+        "fires": "Incendios",
+        "unrest": "Disturbios",
+        "outages": "Cortes de internet"
+      },
+      "live": {
+        "vessels": "Tráfico marítimo",
+        "militaryFlights": "Vuelos militares",
+        "gpsJamming": "Interferencia GPS"
+      },
+      "name": "Cronología",
+      "span": "{{days}} días · próximas {{hours}} h",
+      "daylightHere": "Luz diurna aquí",
+      "row": {
+        "geo": "Geo",
+        "photo": "Foto",
+        "likely": "Probable",
+        "could": "Posible",
+        "overhead": "Paso"
+      },
+      "retained": "{{start}} a {{end}}",
+      "retainedDay": "solo {{day}}",
+      "geoLine": "Geoestacionarios a la vista: {{names}}",
+      "away": "a {{km}} km"
     }
   },
   "settings": {
