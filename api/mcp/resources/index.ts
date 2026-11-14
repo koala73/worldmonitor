@@ -57,7 +57,7 @@ import { rpcError, rpcOk, withMcpNoStore } from '../rpc';
 import { readJsonFromUpstash } from '../../_upstash-json.js';
 import { isAppOwnedRedisKey } from '../../_redis-key-ownership.js';
 import { CHOKEPOINT_SLUGS } from './slugs';
-import { AGENT_GUIDE, AGENT_GUIDE_RESOURCE_URI } from '../constants';
+import { AGENT_GUIDE, AGENT_GUIDE_RESOURCE_URI, CHATGPT_AGENT_GUIDE } from '../constants';
 
 // ---------------------------------------------------------------------------
 // Public resource freshness reader
@@ -297,6 +297,7 @@ export function isPublicResourceUri(uri: unknown): boolean {
 export async function buildPublicResourceResponse(
   body: { id?: unknown; params?: unknown },
   corsHeaders: Record<string, string>,
+  { informOnly = false }: { informOnly?: boolean } = {},
 ): Promise<Response> {
   const outerId = body.id ?? null;
   const params = body.params as { uri?: unknown } | null;
@@ -314,7 +315,8 @@ export async function buildPublicResourceResponse(
   // runtime. The current reader (readMarketFreshness) already catches internally.
   let text: string;
   try {
-    text = await def.read();
+    // An inform-only host (ChatGPT) reads the guide without plan billing copy.
+    text = informOnly && def.uri === AGENT_GUIDE_RESOURCE_URI ? CHATGPT_AGENT_GUIDE : await def.read();
   } catch {
     return rpcError(outerId, -32603, 'Internal error: resource reader failed', corsHeaders);
   }

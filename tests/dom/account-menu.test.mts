@@ -7,13 +7,13 @@ describe('account menu', () => {
     const openBilling = vi.fn();
     const openSettings = vi.fn();
     const items = createAccountMenuItems({
-      onBillingClick: openBilling,
-      onSettingsClick: openSettings,
+      billing: { label: 'Abonnement et facturation', onClick: openBilling },
+      settings: { label: 'Paramètres', onClick: openSettings },
     });
 
     expect(items.map((item) => item.label)).toEqual([
-      'Plan & billing',
-      'Settings',
+      'Abonnement et facturation',
+      'Paramètres',
     ]);
 
     items[0]?.onClick?.();
@@ -24,8 +24,8 @@ describe('account menu', () => {
 
   it('mounts quiet decorative icons without exposing them to assistive technology', () => {
     const items = createAccountMenuItems({
-      onBillingClick: () => {},
-      onSettingsClick: () => {},
+      billing: { label: 'Plan & billing', onClick: () => {} },
+      settings: { label: 'Settings', onClick: () => {} },
     });
 
     for (const item of items) {

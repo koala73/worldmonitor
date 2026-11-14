@@ -109,7 +109,8 @@
     "climateNews": "Klimatnyheter",
     "fx": "Valutakurser",
     "ukmtoIncidents": "UKMTO-incidenter",
-    "reservoirLevels": "Strategiska vattennivåer"
+    "reservoirLevels": "Strategiska vattennivåer",
+    "gridDisruptionClock": "Klocka för elavbrott i USA:s delstater"
   },
   "commands": {
     "prefixes": {
@@ -2802,6 +2803,57 @@
         "measured": "Mätt",
         "sparkline": "Vattennivå över 36 månader"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Välj delstat",
+      "unknown": "Okänt",
+      "customers": "Kunder utan el enligt rapporterna",
+      "lastCustomers": "Kunder utan el i senaste rapporten",
+      "denominatorUnknown": "Totalt antal bevakade kunder är okänt",
+      "tracked": "{{amount}} kunder bevakas",
+      "dataAge": "Tid sedan rapporten",
+      "minutes": "{{amount}} min",
+      "hours": "{{amount}} h",
+      "warnings": "Varningar",
+      "recovery": "Rapporterade förändringar",
+      "decreased": "{{amount}} färre kunder utan el enligt rapporterna",
+      "increased": "{{amount}} fler kunder utan el enligt rapporterna",
+      "unchanged": "Det rapporterade antalet är oförändrat",
+      "since": "sedan",
+      "peakLoad": "{{percent}} % av normal topplast återställd",
+      "noComparison": "Jämförbara uppgifter om antal kunder utan el saknas.",
+      "history": "Senaste uppgifter om antal kunder utan el ({{total}})",
+      "priorNotice": "Tidigare rapporterad varning",
+      "sources": "Bevakade varningskällor",
+      "operatorLink": "För meddelanden om elnätet, se",
+      "issued": "Utfärdad",
+      "until": "gäller till",
+      "noActive": "Inga aktiva varningar i de bevakade källorna.",
+      "unknownWarnings": "Vissa varningskällor är inte tillgängliga just nu.",
+      "noObservation": "Aktuellt antal och täckning är okända.",
+      "loadError": "Uppgifter om elavbrott är inte tillgängliga.",
+      "retained": "Uppdateringen misslyckades. Den senast mottagna rapporten visas.",
+      "phase": {
+        "unknown": "Okänd påverkan",
+        "monitoring": "Bevakning",
+        "watch": "Förhöjd beredskap",
+        "disrupted": "Elavbrott rapporterade",
+        "recovering": "Återställning pågår enligt rapport",
+        "restored": "Elförsörjningen återställd enligt rapport"
+      },
+      "kind": {
+        "grid": "Meddelande om elnätet",
+        "weather": "Vädervarning",
+        "space-weather": "Rymdväder"
+      },
+      "checks": {
+        "available": "Kontrollerad",
+        "unavailable": "Ej tillgänglig",
+        "not_monitored": "Kontrollera direkt med nätoperatören",
+        "stale": "Senaste kontrollen är inaktuell"
+      },
+      "warningAge": "Tid sedan den första varning som ännu gäller",
+      "days": "{{amount}} d"
     }
   },
   "popups": {
@@ -4509,7 +4561,8 @@
     "createAccount": "Skapa konto",
     "freeReason": "Gratis: spara layout, följ länder, aviseringar",
     "settings": "Inställningar",
-    "passkeyOffer": {}
+    "passkeyOffer": {},
+    "planBilling": "Plan & fakturering"
   },
   "mcp": {
     "connectPanel": "Anslut MCP",
@@ -5258,6 +5311,253 @@
       "sources": "Källor",
       "archiveScene": "Arkivscen",
       "archiveOnly": "Ingen beräknad överflygning matchar dessa bilder, så de visas som arkivscener."
+    }
+  },
+  "settings": {
+    "back": "Tillbaka till inställningar",
+    "signIn": {
+      "label": "Logga in",
+      "desc": "Synka inställningar och hantera din plan"
+    },
+    "summary": {
+      "themeAuto": "Automatiskt",
+      "count": "{{on}} av {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Preferenser",
+      "developer": "Utvecklare",
+      "app": "App"
+    },
+    "sections": {
+      "account": "Konto",
+      "map": "Karta",
+      "ai": "AI & analys",
+      "video": "Video & strömmar",
+      "apiKeys": "API-nycklar",
+      "embeds": "Inbäddningar",
+      "aiAgents": "AI-agenter (MCP)",
+      "sync": "Synk, import & export",
+      "about": "Om"
+    },
+    "descriptions": {
+      "panels": "Visa, dölj och ordna om",
+      "sources": "Regioner och flöden",
+      "notifications": "Kanaler och varningsregler",
+      "display": "Tema, typsnitt och språk",
+      "map": "Leverantör, tema och globus",
+      "ai": "Modeller, minne och ramverk",
+      "video": "Kvalitet och autoplay",
+      "apiKeys": "Nycklar för World Monitor API",
+      "embeds": "Widgets för din egen webbplats",
+      "aiAgents": "Anslutna MCP-klienter",
+      "about": "Webbplatslinks, villkor och sekretess"
+    },
+    "signOut": "Logga ut",
+    "signOutFailed": "Det gick inte att logga ut. Försök igen.",
+    "search": {
+      "empty": "Inga inställningar matchar"
+    },
+    "account": {
+      "intro": "Se din aktuella plan och hantera betalningsuppgifter, fakturor eller uppsägning.",
+      "planFree": "Gratis",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Premiumåtkomst",
+        "desc": "Denna åtkomst faktureras inte via ditt WorldMonitor-konto. Ingen betalningsmetod eller fakturor är tillgängliga här."
+      },
+      "checking": {
+        "heading": "Kontrollerar din plan…",
+        "desc": "Detta tar vanligtvis bara ett ögonblick."
+      },
+      "status": {
+        "cancelScheduled": "Uppsägning planerad – åtkomst till {{date}}",
+        "renews": "Förnyas: {{date}}",
+        "onHold": "Pausad – uppdatera din betalningsmetod",
+        "cancelled": "Uppsagd – åtkomst till {{date}}",
+        "expired": "Utgången",
+        "unknown": "Se Hantera fakturering för detaljer om din aktuella plan.",
+        "ownerManaged": "Faktureringen hanteras av planägaren."
+      },
+      "upgradeToBusiness": "Uppgradera till Business",
+      "unavailable": {
+        "heading": "Planstatus ej tillgänglig",
+        "desc": "Vi kunde inte verifiera din aktuella plan. Försök igen eller visa planer i en ny flik."
+      },
+      "free": {
+        "heading": "WorldMonitor Gratis",
+        "desc": "Din aktuella plan är Gratis. Uppgradera för alla paneler, AI-analys och prioriterad datauppdatering."
+      },
+      "portal": {
+        "openFailed": "Kunde inte öppna faktureringsportalen. Tillåt popup-fönster och försök igen.",
+        "unavailable": "Faktureringsportalen är inte tillgänglig. Mejla support@worldmonitor.app för hjälp."
+      },
+      "deletion": {
+        "heading": "Radera konto",
+        "desc": "Radera detta World Monitor-konto permanent. Prenumerationer avslutas omedelbart utan återbetalning av återstående förbetald tid. API-nycklar, embed-nycklar och MCP-tokens slutar fungera. Faktureringsposter som krävs för bokföring, tvister och lagliga förfrågningar sparas tillsammans med de kundkontaktuppgifter de innehåller; de kopplas inte längre till ditt inloggningskonto, men webhook-loggar från betalningsleverantören som skrevs före raderingen behåller de identifierare de levererades med. Inställningar för instrumentpanelen och skrivbordsappens hemligheter i nyckelringen på den här enheten raderas inte på distans.",
+        "dialogTitle": "Radera det här kontot?",
+        "dialogCopy": "Detta kan inte ångras. Prenumerationer avslutas, nycklar slutar fungera omedelbart och faktureringsposter sparas för bokföring, tvister och lagliga förfrågningar – inklusive de kontaktuppgifter de innehåller. Logga ut på andra enheter och rensa sedan den här enhetens webbplatsdata – det ligger utanför serverns räckvidd.",
+        "phraseLabel": "Skriv {{phrase}} för att bekräfta",
+        "deleted": "Konto raderat. Logga ut på andra enheter och rensa den här enhetens webbplatsdata.",
+        "failed": "Kontoradering misslyckades. Försök igen."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} använda",
+        "invite": "Bjud in",
+        "inviting": "Bjuder in...",
+        "remove": "Ta bort",
+        "removing": "Tar bort...",
+        "inviteSent": "Inbjudan skickad",
+        "alreadyInvited": "Redan inbjuden"
+      },
+      "businessSeats": {
+        "heading": "Business-platser",
+        "statusAccepted": "Accepterad",
+        "statusExpired": "Utgången",
+        "statusPending": "Väntande",
+        "expires": "Utgår {{date}}",
+        "hintCorporate": "Bjud in kollegor med en e-postadress på valfri företagsdomän.",
+        "hintPersonal": "Lägg till en e-postadress på en företagsdomän för att bjuda in kollegor.",
+        "personalDomain": "Gratis- eller engångsdomäner för e-post kan inte bjuda in kollegor. Lägg till en e-postadress på en företagsdomän för att använda funktionen.",
+        "empty": "Ingen inbjuden än.",
+        "confirmRemove": "Ta bort denna plats? Den inbjudna förlorar Pro-åtkomsten omedelbart.",
+        "removed": "Plats borttagen",
+        "alreadyInactive": "Platsen var redan inaktiv",
+        "loadFailed": "Det gick inte att läsa in platserna",
+        "inviteFailed": "Det gick inte att skicka inbjudan",
+        "removeFailed": "Det gick inte att ta bort platsen",
+        "errors": {
+          "seatCap": "Alla 4 platser är använda. Ta bort en plats först.",
+          "ownerDomain": "Ditt kontos e-postadress måste ha en företagsdomän för att du ska kunna bjuda in kollegor.",
+          "self": "Du kan inte bjuda in dig själv.",
+          "inviteeDomain": "Den inbjudnas e-postadress måste ha en företagsdomän."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "Enterprise-platser för {{account}}",
+        "memberHint": "Din kontoadministratör lägger till och tar bort personer på detta konto.",
+        "hintFull": "Alla platser används. Ta bort någon eller dra tillbaka en inbjudan för att frigöra en plats.",
+        "hintOpen": "Bjud in personer via deras e-postadress på företaget. De får en länk som är giltig i 14 dagar och delar det här kontots kvot.",
+        "emailLabel": "E-postadress att bjuda in",
+        "statusActive": "Aktiv",
+        "statusExpired": "Inbjudan utgången",
+        "statusInvited": "Inbjuden",
+        "emailFailed": "Inbjudningsmejlet kunde inte skickas. Kontrollera adressen, dra sedan tillbaka inbjudan och bjud in igen.",
+        "inviteExpires": "Inbjudan utgår {{date}}",
+        "roleAdmin": "Administratör",
+        "you": "Du",
+        "withdraw": "Dra tillbaka",
+        "unknownEmail": "Okänd e-postadress",
+        "alreadyMember": "Redan medlem",
+        "confirmRemove": "Ta bort {{email}}? Personen förlorar Enterprise-åtkomsten omedelbart.",
+        "confirmRemoveUnknown": "Ta bort denna person? Personen förlorar Enterprise-åtkomsten omedelbart.",
+        "confirmWithdraw": "Dra tillbaka inbjudan till {{email}}?",
+        "confirmWithdrawUnknown": "Dra tillbaka inbjudan till denna adress?",
+        "removed": "Medlem borttagen",
+        "withdrawn": "Inbjudan tillbakadragen",
+        "loadFailed": "Kunde inte ladda platser. Försök igen.",
+        "inviteFailed": "Kunde inte skicka inbjudan. Försök igen.",
+        "removeFailed": "Kunde inte ta bort. Försök igen.",
+        "errors": {
+          "seatCap": "Alla platser är redan tagna. Ta bort någon eller dra tillbaka en inbjudan först.",
+          "inviteeDomain": "Bjud in en e-postadress på en företagsdomän. Gratis- och engångsdomäner för e-post accepteras inte.",
+          "self": "Du har redan en plats.",
+          "contractEnded": "Ditt Enterprise-avtal har upphört. Kontakta support för att förnya.",
+          "notAdmin": "Endast kontoadministratören kan hantera platser.",
+          "removeSelf": "Du kan inte ta bort din egen plats. Kontakta support för att byta administratör.",
+          "tooMany": "Bjud in högst 10 personer åt gången.",
+          "rateLimited": "Du har skickat maximalt antal inbjudningar per dag. Försök igen imorgon."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "layout",
+        "1": "widgets",
+        "2": "textstorlek",
+        "3": "återställ layout"
+      },
+      "sources": {
+        "0": "nyheter",
+        "1": "flöden",
+        "2": "RSS",
+        "3": "regioner",
+        "4": "nyhetsrapportering"
+      },
+      "notifications": {
+        "0": "aviseringar",
+        "1": "Telegram",
+        "2": "Slack",
+        "3": "e-post",
+        "4": "Discord",
+        "5": "webhook",
+        "6": "push"
+      },
+      "display": {
+        "0": "tema",
+        "1": "mörk",
+        "2": "ljus",
+        "3": "typsnitt",
+        "4": "språk",
+        "5": "textstorlek"
+      },
+      "map": {
+        "0": "glob",
+        "1": "leverantör",
+        "2": "tiles",
+        "3": "baskarta"
+      },
+      "ai": {
+        "0": "AI",
+        "1": "Ollama",
+        "2": "ramverk",
+        "3": "rubrikinne",
+        "4": "webbläsarmodell"
+      },
+      "video": {
+        "0": "stream",
+        "1": "automatisk uppspelning",
+        "2": "kvalitet",
+        "3": "live"
+      },
+      "apiKeys": {
+        "0": "nyckel",
+        "1": "token",
+        "2": "skrivbordsnyckel"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "inbäddningsnyckel"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "agenter",
+        "3": "ChatGPT",
+        "4": "klienter"
+      },
+      "sync": {
+        "0": "importera",
+        "1": "exportera",
+        "2": "säkerhetskopia",
+        "3": "moln"
+      },
+      "about": {
+        "0": "villkor",
+        "1": "sekretess",
+        "2": "licens",
+        "3": "juridik"
+      },
+      "account": {
+        "0": "radera konto",
+        "1": "fakturering",
+        "2": "prenumeration",
+        "3": "faktura",
+        "4": "platser",
+        "5": "logga ut",
+        "6": "ta bort konto"
+      }
     }
   }
 }

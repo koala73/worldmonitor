@@ -60,6 +60,20 @@ async function openSettings(page: Page): Promise<void> {
   await expect(page.locator('#unifiedSettingsModal')).toBeVisible();
 }
 
+/** Reach a Settings page: through the home list on a phone, from the sidebar on wider screens. */
+async function openSettingsPage(page: Page, id: string): Promise<void> {
+  const back = page.locator('[data-settings-back]');
+  if (await back.isVisible()) await back.click();
+  await page.locator(`[data-settings-nav="${id}"]`).click();
+}
+
+/** The global text size lives on the Display page of Settings. */
+async function openDisplaySettings(page: Page): Promise<void> {
+  await openSettings(page);
+  await page.locator('[data-settings-nav="display"]').click();
+  await expect(page.locator('#us-page-display')).toBeVisible();
+}
+
 async function fontSize(page: Page, selector: string): Promise<number> {
   return page.locator(selector).first().evaluate(element =>
     Number.parseFloat(getComputedStyle(element).fontSize));
@@ -81,7 +95,7 @@ test.describe('panel font scaling', () => {
     const basePanelBodySize = await fontSize(page, panelBodyText);
     const baseMapSize = await fontSize(page, mapTitle);
 
-    await openSettings(page);
+    await openDisplaySettings(page);
     const select = page.locator('#us-font-scale');
     await expect(select).toHaveValue('1');
     await expect(select.locator('option')).toHaveCount(STEPS.length);
@@ -102,13 +116,13 @@ test.describe('panel font scaling', () => {
     expect(await fontSize(page, panelTitle)).toBeCloseTo(basePanelSize * 2, 1);
     expect(await fontSize(page, mapTitle)).toBeCloseTo(baseMapSize, 1);
 
-    await openSettings(page);
+    await openDisplaySettings(page);
     await expect(page.locator('#us-font-scale')).toHaveValue('2');
   });
 
   test('keeps an open scale selector current after storage and cloud reconciliation', async ({ context, page }) => {
     await bootDashboard(page);
-    await openSettings(page);
+    await openDisplaySettings(page);
     const select = page.locator('#us-font-scale');
     await expect(select).toHaveValue('1');
 
@@ -135,7 +149,7 @@ test.describe('panel font scaling', () => {
 
   test('keeps gauge labels and analyst controls uncut at 200%', async ({ page }) => {
     await bootDashboard(page);
-    await openSettings(page);
+    await openDisplaySettings(page);
     await page.locator('#us-font-scale').selectOption('2');
     await page.locator('.unified-settings-close').click();
 
@@ -192,12 +206,11 @@ test.describe('panel font scaling', () => {
     const panelId = await firstPanel.getAttribute('data-panel');
     expect(panelId).toBeTruthy();
 
-    await openSettings(page);
+    await openDisplaySettings(page);
     await page.locator('#us-font-scale').selectOption('2');
-    await page.locator('#us-tab-panels').click();
+    await openSettingsPage(page, 'panels');
 
     const panelScale = page.locator(`#usPanelToggles [data-panel-font-scale="${panelId}"]`);
-    await panelScale.locator('xpath=ancestor::details').locator('summary').click();
     await expect(panelScale).toBeVisible({ timeout: 15_000 });
     await expect(panelScale).toHaveValue('global');
     await panelScale.selectOption('0.9');
@@ -221,9 +234,9 @@ test.describe('panel font scaling', () => {
     await expect(page.locator(targetTitle)).toBeVisible({ timeout: 60_000 });
     await expect.poll(() => fontSize(page, targetTitle)).toBeCloseTo(targetSize, 1);
 
-    await openSettings(page);
+    await openDisplaySettings(page);
     await expect(page.locator('#us-font-scale')).toHaveValue('2');
-    await page.locator('#us-tab-panels').click();
+    await openSettingsPage(page, 'panels');
     await expect(page.locator(`#usPanelToggles [data-panel-font-scale="${panelId}"]`)).toHaveValue('0.9');
     await page.locator('.unified-settings-close').click();
 
@@ -245,7 +258,7 @@ test.describe('panel font scaling', () => {
     await expect.poll(() => fontSize(page, targetTitle)).toBeCloseTo(targetSize, 1);
 
     await openSettings(page);
-    await page.locator('#us-tab-panels').click();
+    await page.locator('[data-settings-nav="panels"]').click();
     await page.locator(`#usPanelToggles [data-panel-font-scale="${panelId}"]`).selectOption('global');
     await page.locator('.panels-save-layout').click();
     await page.locator('.unified-settings-close').click();
@@ -263,7 +276,7 @@ test.describe('panel font scaling', () => {
     test(`keeps the panel grid within the ${viewport.label} viewport at 200%`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await bootDashboard(page);
-      await openSettings(page);
+      await openDisplaySettings(page);
       await page.locator('#us-font-scale').selectOption('2');
       await page.locator('.unified-settings-close').click();
 

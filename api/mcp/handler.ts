@@ -26,9 +26,9 @@ import {
   SERVER_INFO,
 } from './constants';
 import { dispatchToolsCall } from './dispatch';
-import { buildPromptResponse, PROMPT_LIST_RESPONSE } from './prompts/index';
+import { buildPromptResponse, PROMPT_LIST_RESPONSE, WITHOUT_SUMMARY_TOOLS_PROMPT_LIST_RESPONSE } from './prompts/index';
 import { CHATGPT_TOOL_LIST_RESPONSE, FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE, TRAVEL_RISK_TOOL_NAMES } from './registry/index';
-import { applyChatGptCommercePolicy, applyViewDomainPolicy, declaredClientName, isChatGptHost, mintSessionId } from './host-policy';
+import { applyChatGptCommercePolicy, applyViewDomainPolicy, CHATGPT_HIDDEN_TOOLS, declaredClientName, isChatGptHost, mintSessionId } from './host-policy';
 import {
   ACCOUNT_RESOURCE_LIST_RESPONSE,
   buildAccountAllowanceResourceResponse,
@@ -242,7 +242,11 @@ function authRequiredResponse(id: unknown, resourceMetadataUrl: string, corsHead
 //
 // `initialize` advertises this object as is; `server/discover` advertises it
 // minus `logging`, which the modern era does not serve.
-function serverCapabilities() {
+//
+// ChatGPT gets no skills extension. The skills are recipes for API-key and
+// agent clients: they link the plans page and name tools ChatGPT does not
+// have (host-policy.ts).
+function serverCapabilities({ skills = true }: { skills?: boolean } = {}) {
   return {
     tools: {},
     logging: {},
@@ -250,13 +254,13 @@ function serverCapabilities() {
     resources: { subscribe: false, listChanged: false },
     extensions: {
       'io.modelcontextprotocol/ui': {},
-      'io.modelcontextprotocol/skills': {},
+      ...(skills ? { 'io.modelcontextprotocol/skills': {} } : {}),
     },
   };
 }
 
-function modernServerCapabilities() {
-  const { logging: _logging, ...capabilities } = serverCapabilities();
+function modernServerCapabilities(options: { skills?: boolean } = {}) {
+  const { logging: _logging, ...capabilities } = serverCapabilities(options);
   return capabilities;
 }
 
@@ -1423,7 +1427,7 @@ async function mcpHandlerInner(
   if (modernEra && method === 'server/discover') {
     return respond(rpcOk(id, {
       supportedVersions: allSupportedProtocolVersionsNewestFirst(),
-      capabilities: modernServerCapabilities(),
+      capabilities: modernServerCapabilities({ skills: !isChatGptHost(req) }),
       instructions: isChatGptHost(req) ? CHATGPT_MODERN_SERVER_INSTRUCTIONS : MODERN_SERVER_INSTRUCTIONS,
     }, corsHeaders));
   }
@@ -1462,7 +1466,7 @@ async function mcpHandlerInner(
       });
       return respond(rpcOk(id, {
         protocolVersion: negotiatedVersion,
-        capabilities: serverCapabilities(),
+        capabilities: serverCapabilities({ skills: !isChatGptHost(req) }),
         serverInfo: SERVER_INFO,
         instructions: isChatGptHost(req) ? CHATGPT_SERVER_INSTRUCTIONS : SERVER_INSTRUCTIONS,
       }, { 'Mcp-Session-Id': sessionId, ...corsHeaders }));
@@ -1508,20 +1512,23 @@ async function mcpHandlerInner(
     // defeats the prompt-discovery point), but the per-minute rate limit
     // applied above still gates abusive loops.
     case 'prompts/list':
-      return respond(rpcOk(id, { prompts: PROMPT_LIST_RESPONSE }, corsHeaders));
+      return respond(rpcOk(id, { prompts: isChatGptHost(req) ? WITHOUT_SUMMARY_TOOLS_PROMPT_LIST_RESPONSE : PROMPT_LIST_RESPONSE }, corsHeaders));
     case 'prompts/get': {
       const params = body.params as { name?: unknown; arguments?: unknown } | null;
       if (!params || typeof params.name !== 'string') {
         return respond(rpcError(id, -32602, 'Invalid params: missing prompt name', corsHeaders));
       }
-      const built = buildPromptResponse(params.name, params.arguments);
+      const built = buildPromptResponse(params.name, params.arguments, isChatGptHost(req) ? { hiddenTools: CHATGPT_HIDDEN_TOOLS } : {});
       if (!built.ok) return respond(rpcError(id, built.code, built.message, corsHeaders));
       return respond(rpcOk(id, { description: built.description, messages: built.messages }, corsHeaders));
     }
     case 'skills/list':
-      return respond(buildSkillsListResponse(id, body.params, corsHeaders));
     case 'skills/get':
-      return respond(buildSkillsGetResponse(id, body.params, corsHeaders));
+      // Not offered to ChatGPT (serverCapabilities).
+      if (isChatGptHost(req)) return respond(rpcError(id, -32601, `Method not found: ${method}`, corsHeaders));
+      return respond(method === 'skills/list'
+        ? buildSkillsListResponse(id, body.params, corsHeaders)
+        : buildSkillsGetResponse(id, body.params, corsHeaders));
     // Resources split by data sensitivity. resources/list + the new
     // resources/templates/list are metadata-class — public catalog-enumeration
     // methods (in PUBLIC_MCP_METHODS, quota-exempt, anon-rate-limited) that
@@ -1551,7 +1558,7 @@ async function mcpHandlerInner(
       return respond(rpcOk(id, { resourceTemplates: RESOURCE_TEMPLATE_LIST_RESPONSE }, corsHeaders));
     case 'resources/read':
       if (isSkillResourceRead) {
-        if (!skillResourceReadUri) {
+        if (!skillResourceReadUri || isChatGptHost(req)) {
           return respond(rpcError(
             id,
             -32602,
@@ -1571,7 +1578,7 @@ async function mcpHandlerInner(
       // probe) is likewise served anonymously + quota-exempt via its direct
       // reader — no data, no dispatchToolsCall, no Pro reservation.
       if (isPublicResourceRead) {
-        return respond(await buildPublicResourceResponse(body, corsHeaders));
+        return respond(await buildPublicResourceResponse(body, corsHeaders, { informOnly: isChatGptHost(req) }));
       }
       // Account allowance status is authenticated but quota-exempt. The gated
       // branch above already resolved identity, durable token validity, and the
