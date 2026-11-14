@@ -1272,6 +1272,12 @@ export class OrbitalWatchPage {
     }).catch(() => {});
   }
 
+  /** Selects the pass whose row holds `target`, as a share link would. */
+  private selectPassRow(target: HTMLElement): boolean {
+    const key = target.closest<HTMLElement>('.ow-row')?.dataset.key;
+    return key?.startsWith('pass:') ? this.select(key.slice('pass:'.length)) : false;
+  }
+
   private readonly onSheetClick = (event: MouseEvent): void => {
     const target = event.target as HTMLElement;
     const actionEl = target.closest<HTMLElement>('[data-action]');
@@ -1320,6 +1326,7 @@ export class OrbitalWatchPage {
         if (this.state) this.render(this.state);
         return;
     }
+    if (!actionEl && !target.closest('a, button') && this.selectPassRow(target)) return;
     const toggle = target.closest<HTMLElement>('.ow-group-toggle');
     const id = toggle?.dataset.group as GroupId | undefined;
     if (!id || !this.state) return;
@@ -1330,6 +1337,10 @@ export class OrbitalWatchPage {
   };
 
   private readonly onSheetKeydown = (event: KeyboardEvent): void => {
+    if ((event.key === 'Enter' || event.key === ' ') && (event.target as HTMLElement).matches('.ow-row')) {
+      if (this.selectPassRow(event.target as HTMLElement)) event.preventDefault();
+      return;
+    }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     const row = (event.target as HTMLElement).closest('.ow-row');
     if (!row) return;

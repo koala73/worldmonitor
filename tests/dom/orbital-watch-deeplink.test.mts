@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { initTestI18n } from './helpers/i18n.mts';
 
@@ -338,6 +338,26 @@ describe('satellite pass share link', () => {
     await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     const minute = new Date(PASSES[0]!.timeMs).toISOString().slice(0, 16).replace(/[-T:]/g, '');
     expect(new URL(writeText.mock.calls[0]![0]).hash).toBe(`#orbital=48.86,2.29;40697-${minute}&view=full`);
+  });
+
+  it('selects a pass from its row, by click and by Enter, and shares that pass', async () => {
+    openOrbitalWatch(EXACT, null, 'full');
+    await vi.waitFor(() => expect(sheet()!.querySelector('.ow-row[data-key^="pass:"]')).not.toBeNull());
+    const selected = vi.fn();
+    document.addEventListener('orbital-watch:select', (event) => selected((event as CustomEvent).detail));
+    onTestFinished(() => document.removeEventListener('orbital-watch:select', selected));
+    const row = () => sheet()!.querySelector<HTMLElement>('.ow-row[data-key^="pass:"]')!;
+    const key = row().dataset.key!;
+    row().click();
+    expect(selected).toHaveBeenCalledTimes(1);
+    expect(sheet()!.querySelector<HTMLElement>('.ow-row[aria-current]')?.dataset.key).toBe(key);
+    sheet()!.querySelector<HTMLElement>(`.ow-row[data-key="${key}"]`)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(selected).toHaveBeenCalledTimes(2);
+    const { noradId, timeMs } = selected.mock.calls[0]![0] as { noradId: number; timeMs: number };
+    button('.ow-share').click();
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const minute = new Date(timeMs).toISOString().slice(0, 16).replace(/[-T:]/g, '');
+    expect(new URL(writeText.mock.calls[0]![0]).hash).toBe(`#orbital=48.86,2.29;${noradId}-${minute}&view=full`);
   });
 
   it('notes a linked pass the sheet cannot select instead of failing silently', async () => {
