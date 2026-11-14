@@ -5,6 +5,7 @@
 // Redis and a fixture FAA airport status feed.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import Module, { createRequire } from 'node:module';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -186,6 +187,47 @@ test('a dedup key left by a failed push and a failed rollback does not mark the 
     assert.deepEqual(closureTitles(run(feed, { TEST_LPUSH_FAIL: '1', TEST_DEL_FAIL: '1' })), []);
     assert.deepEqual(closureTitles(run(feed)), [], 'the stale dedup key still blocks the push');
     assert.equal(closureTitles(run(feed, { TEST_EXPIRE_DEDUP: '1' })).length, 1, 'publishes once the dedup key expires');
+  } finally {
+    cleanup();
+  }
+});
+
+// Hand the events the real seeder queued to the relay's real rule gates, so a
+// publisher change the relay would silently drop fails here.
+function loadRelayGates() {
+  process.env.UPSTASH_REDIS_REST_URL ??= 'https://stub.upstash.io';
+  process.env.UPSTASH_REDIS_REST_TOKEN ??= 'stub-token';
+  process.env.CONVEX_URL ??= 'https://stub.convex.cloud';
+  process.env.CONVEX_NOTIFICATION_RELAY_SECRET ??= 'stub-secret';
+  process.env.TELEGRAM_BOT_TOKEN ??= 'stub-bot-token';
+  const originalLoad = Module._load;
+  Module._load = function patchedLoad(request, parent, ...rest) {
+    if (request === 'resend') return { Resend: class {} };
+    if (request === 'convex/browser') return { ConvexHttpClient: class { async query() {} } };
+    return originalLoad.call(this, request, parent, ...rest);
+  };
+  try {
+    return createRequire(import.meta.url)('../scripts/notification-relay.cjs');
+  } finally {
+    Module._load = originalLoad;
+  }
+}
+
+test('the relay delivers queued FAA events to matching realtime rules and respects country scope', () => {
+  const { ruleMatchesEventType, shouldNotify, eventMatchesCountryScope } = loadRelayGates();
+  const delivers = (rule, event) => ruleMatchesEventType(rule, event) && shouldNotify(rule, event) && eventMatchesCountryScope(event, rule);
+  const { run, cleanup } = makeRunner();
+  try {
+    const pushes = run({ stops: ['JFK'], closures: [['MCO', '!MCO 11/001 MCO AD AP CLSD 2611132100-2611140300']] })
+      .filter(p => p.eventType === 'aviation_closure');
+    assert.equal(pushes.length, 2, JSON.stringify(pushes));
+    const realtime = { digestMode: 'realtime', sensitivity: 'high', eventTypes: ['aviation_closure'] };
+    for (const event of pushes) {
+      const label = event.payload.title;
+      assert.ok(delivers({ ...realtime, countries: [] }, event), `${label} reaches an unscoped realtime rule`);
+      assert.ok(delivers({ ...realtime, countries: ['US'] }, event), `${label} reaches a US-scoped rule`);
+      assert.ok(!delivers({ ...realtime, countries: ['PL'] }, event), `${label} stays out of a Poland-scoped rule`);
+    }
   } finally {
     cleanup();
   }
