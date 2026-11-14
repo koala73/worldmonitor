@@ -180,6 +180,17 @@ describe('satellite pass lookup sheet', () => {
     expect(def()).toBe('A fixed-swath sensor covered it; no image published yet.');
   });
 
+  it('keeps the default Likely definition when only some likely passes wait on an archive, and badges just those rows', () => {
+    const { all, likely } = tiered();
+    const landsat = pass('LANDSAT 9', 'landsat', -5, likely.tier);
+    const def = () => sheet().querySelector('.ow-tier-cell[data-group="likely"] .ow-tier-def')!.textContent;
+    mounted(answered([...all, landsat], { status: 'partial', failures: [{ archive: 'earth-search', reason: 'timeout' }], unansweredProfiles: ['sentinel-2'] }), null, 'full');
+    expect(sheet().querySelector('.ow-tier-cell[data-group="likely"] .ow-tier-number')!.textContent).toBe('2');
+    expect(def()).toBe('A fixed-swath sensor covered it; no image published yet.');
+    expect(rowOf(likely.name).querySelector('.ow-badges')!.textContent).toContain("Archive didn't answer");
+    expect(rowOf(landsat.name).textContent).not.toContain("Archive didn't answer");
+  });
+
   it('uses singular wording for one satellite, image, pass and weather source', () => {
     const { confirmedNew } = tiered();
     mounted(answered([confirmedNew], { acquisitions: [acquisition(confirmedNew)] }), null, 'full');
