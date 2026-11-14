@@ -562,7 +562,8 @@
     "climateNews": "Habari za Hali ya Hewa",
     "fx": "Kiwango cha ubadilishaji wa fedha za kigeni",
     "ukmtoIncidents": "Matukio ya UKMTO",
-    "reservoirLevels": "Viwango vya Kimkakati vya Maji"
+    "reservoirLevels": "Viwango vya Kimkakati vya Maji",
+    "gridDisruptionClock": "Saa ya kukatika kwa umeme katika majimbo ya Marekani"
   },
   "commands": {
     "prefixes": {
@@ -3255,6 +3256,57 @@
         "measured": "Ilipimwa",
         "sparkline": "Kiwango cha maji kwa miezi 36"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Chagua jimbo",
+      "unknown": "Haijulikani",
+      "customers": "Wateja walioripotiwa kukosa umeme",
+      "lastCustomers": "Wateja bila umeme katika taarifa ya mwisho",
+      "denominatorUnknown": "Jumla ya wateja wanaofuatiliwa haijulikani",
+      "tracked": "Wateja {{amount}} wanafuatiliwa",
+      "dataAge": "Muda tangu taarifa",
+      "minutes": "Dakika {{amount}}",
+      "hours": "Saa {{amount}}",
+      "warnings": "Maonyo",
+      "recovery": "Mabadiliko yaliyoripotiwa",
+      "decreased": "Idadi iliyoripotiwa ya wateja bila umeme imepungua kwa {{amount}}",
+      "increased": "Idadi iliyoripotiwa ya wateja bila umeme imeongezeka kwa {{amount}}",
+      "unchanged": "Idadi iliyoripotiwa haijabadilika",
+      "since": "tangu",
+      "peakLoad": "Asilimia {{percent}} ya mzigo wa kawaida wa kilele imerejeshwa",
+      "noComparison": "Hakuna takwimu zinazoweza kulinganishwa za wateja bila umeme.",
+      "history": "Takwimu za hivi karibuni za wateja bila umeme ({{total}})",
+      "priorNotice": "Onyo lililotolewa awali",
+      "sources": "Vyanzo vya maonyo vinavyofuatiliwa",
+      "operatorLink": "Kwa matangazo ya gridi, angalia",
+      "issued": "Lilitolewa",
+      "until": "linaisha",
+      "noActive": "Hakuna onyo linalotumika katika vyanzo vinavyofuatiliwa.",
+      "unknownWarnings": "Baadhi ya vyanzo vya maonyo havipatikani kwa sasa.",
+      "noObservation": "Idadi ya sasa na upeo wa takwimu havipatikani.",
+      "loadError": "Takwimu za kukatika kwa umeme hazipatikani.",
+      "retained": "Imeshindikana kusasisha. Taarifa ya mwisho iliyopokelewa inaonyeshwa.",
+      "phase": {
+        "unknown": "Athari hazijulikani",
+        "monitoring": "Ufuatiliaji",
+        "watch": "Tahadhari",
+        "disrupted": "Umeme umeripotiwa kukatika",
+        "recovering": "Umeme unaripotiwa kurejeshwa",
+        "restored": "Umeme umeripotiwa kurejea"
+      },
+      "kind": {
+        "grid": "Tangazo la gridi ya umeme",
+        "weather": "Tahadhari ya hali ya hewa",
+        "space-weather": "Hali ya hewa ya angani"
+      },
+      "checks": {
+        "available": "Kimehakikiwa",
+        "unavailable": "Hakipatikani",
+        "not_monitored": "Angalia taarifa za mwendeshaji moja kwa moja",
+        "stale": "Uhakiki wa mwisho umepitwa na wakati"
+      },
+      "warningAge": "Muda tangu onyo la kwanza ambalo bado linatumika",
+      "days": "Siku {{amount}}"
     }
   },
   "popups": {
@@ -4509,7 +4561,8 @@
     "createAccount": "Fungua akaunti",
     "freeReason": "Bure: hifadhi mpangilio, fuata nchi, arifa",
     "settings": "Mipangilio",
-    "passkeyOffer": {}
+    "passkeyOffer": {},
+    "planBilling": "Mpango & malipo"
   },
   "mcp": {
     "connectPanel": "Unganisha MCP",
@@ -5286,6 +5339,253 @@
       "dismiss": "Funga",
       "passOutsideWindow": "Mpito uliounganishwa uko nje ya kipindi cha sasa, kwa hivyo hakuna mpito uliochaguliwa.",
       "passNotFound": "Mpito uliounganishwa haukupatikana katika mipito iliyokokotolewa upya, kwa hivyo hakuna mpito uliochaguliwa."
+    }
+  },
+  "settings": {
+    "back": "Rudi kwenye mipangilio",
+    "signIn": {
+      "label": "Ingia",
+      "desc": "Sawazisha mipangilio na simamia mpango wako"
+    },
+    "summary": {
+      "themeAuto": "Kiotomatiki",
+      "count": "{{on}} kati ya {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Mapendeleo",
+      "developer": "Msanidi programu",
+      "app": "Programu"
+    },
+    "sections": {
+      "account": "Akaunti",
+      "map": "Ramani",
+      "ai": "AI & uchambuzi",
+      "video": "Video & mtiririko",
+      "apiKeys": "Funguo za API",
+      "embeds": "Vipengele vya kupachika",
+      "aiAgents": "Mawakala wa AI (MCP)",
+      "sync": "Usawazishaji, kuingiza na kuhamisha",
+      "about": "Kuhusu"
+    },
+    "descriptions": {
+      "panels": "Onyesha, ficha na kupanga upya",
+      "sources": "Mikoa na mtiririko",
+      "notifications": "Njia na sheria za onyo",
+      "display": "Mandhari, fonti na lugha",
+      "map": "Mtoa huduma, mandhari na ulimwengu",
+      "ai": "Mifumo, kumbukumbu na muundo",
+      "video": "Ubora na kucheza kiotomatiki",
+      "apiKeys": "Funguo za API ya World Monitor",
+      "embeds": "Vipengele vya kurasa yako mwenyewe",
+      "aiAgents": "Wateja wa MCP waliounganishwa",
+      "about": "Kiungo cha tovuti, masharti na faragha"
+    },
+    "signOut": "Toka nje",
+    "signOutFailed": "Haiwezi kutoka. Jaribu tena.",
+    "search": {
+      "empty": "Hakuna mipangilio inayolingana"
+    },
+    "account": {
+      "intro": "Angalia mpango wako wa sasa na udhibiti maelezo ya malipo, ankara au kughairi.",
+      "planFree": "Bure",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Ufikiaji wa Premium",
+        "desc": "Ufikiaji huu haulipiwi kupitia akaunti yako ya WorldMonitor. Hakuna njia ya malipo wala ankara zinazopatikana hapa."
+      },
+      "checking": {
+        "heading": "Inakagua mpango wako…",
+        "desc": "Kwa kawaida huchukua muda mfupi tu."
+      },
+      "status": {
+        "cancelScheduled": "Kughairi kumepangwa -- ufikiaji hadi {{date}}",
+        "renews": "Itasasishwa: {{date}}",
+        "onHold": "Imesimamishwa -- tafadhali sasisha njia ya malipo",
+        "cancelled": "Imeghairiwa -- ufikiaji hadi {{date}}",
+        "expired": "Imeisha muda",
+        "unknown": "Angalia Dhibiti Malipo kwa maelezo ya mpango wako wa sasa.",
+        "ownerManaged": "Malipo yanadhibitiwa na mmiliki wa mpango wako."
+      },
+      "upgradeToBusiness": "Pandisha hadi Business",
+      "unavailable": {
+        "heading": "Hali ya mpango haipatikani",
+        "desc": "Hatukuweza kuthibitisha mpango wako wa sasa. Jaribu tena au angalia mipango katika kichupo kipya."
+      },
+      "free": {
+        "heading": "WorldMonitor Bure",
+        "desc": "Mpango wako wa sasa ni Bure. Pandisha daraja upate paneli zote, uchanganuzi wa AI na usasishaji wa data wa kipaumbele."
+      },
+      "portal": {
+        "openFailed": "Imeshindwa kufungua lango la malipo. Tafadhali ruhusu madirisha ibukizi kisha ujaribu tena.",
+        "unavailable": "Lango la malipo halipatikani. Tuma barua pepe kwa support@worldmonitor.app upate msaada."
+      },
+      "deletion": {
+        "heading": "Futa akaunti",
+        "desc": "Futa kabisa akaunti hii ya World Monitor. Usajili unaghairiwa mara moja bila kurejeshewa pesa za muda uliosalia uliolipiwa mapema. Funguo za API, funguo za kupachika na tokeni za MCP zinaacha kufanya kazi. Rekodi za malipo zinazohitajika kwa uhasibu, mizozo na maombi ya kisheria huhifadhiwa pamoja na maelezo ya mawasiliano ya mteja yaliyomo; hazitaitaja tena akaunti yako ya kuingia, ingawa kumbukumbu za webhook za mtoa huduma wa malipo zilizoandikwa kabla ya kufutwa huhifadhi vitambulisho zilivyowasilishwa navyo. Mapendeleo ya dashibodi na siri zilizo kwenye keychain ya kompyuta (hifadhi ya siri ya mfumo) kwenye kifaa hiki hazifutwi kwa mbali.",
+        "dialogTitle": "Futa akaunti hii?",
+        "dialogCopy": "Hatua hii haiwezi kutenduliwa. Usajili unaghairiwa, funguo zinaacha kufanya kazi mara moja, na rekodi za malipo huhifadhiwa kwa uhasibu, mizozo na maombi ya kisheria — pamoja na maelezo ya mawasiliano yaliyomo. Baadaye, toka kwenye vifaa vingine na ufute data ya tovuti kwenye kifaa hiki — hayo yako nje ya uwezo wa seva.",
+        "phraseLabel": "Andika {{phrase}} kuthibitisha",
+        "deleted": "Akaunti imefutwa. Toka kwenye vifaa vingine na ufute data ya tovuti kwenye kifaa hiki.",
+        "failed": "Imeshindwa kufuta akaunti. Jaribu tena."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} vimetumika",
+        "invite": "Alika",
+        "inviting": "Inaalika...",
+        "remove": "Ondoa",
+        "removing": "Inaondoa...",
+        "inviteSent": "Mwaliko umetumwa",
+        "alreadyInvited": "Tayari amealikwa"
+      },
+      "businessSeats": {
+        "heading": "Viti vya Business",
+        "statusAccepted": "Imekubaliwa",
+        "statusExpired": "Imeisha muda",
+        "statusPending": "Inasubiri",
+        "expires": "Inaishia {{date}}",
+        "hintCorporate": "Alika wenzako wa timu kwa kikoa chochote cha barua pepe ya kampuni.",
+        "hintPersonal": "Ongeza barua pepe ya kampuni ili kualika wenzako wa timu.",
+        "personalDomain": "Vikoa vya barua pepe za bure au za muda haviwezi kualika wenzako wa timu. Ongeza barua pepe ya kampuni ili kutumia kipengele hiki.",
+        "empty": "Bado hakuna viti vilivyoalikwa.",
+        "confirmRemove": "Ondoa kiti hiki? Mwalikwa atapoteza ufikiaji wa Pro mara moja.",
+        "removed": "Kiti kimeondolewa",
+        "alreadyInactive": "Kiti kilikuwa tayari hakitumiki",
+        "loadFailed": "Imeshindwa kupakia viti",
+        "inviteFailed": "Imeshindwa kutuma mwaliko",
+        "removeFailed": "Imeshindwa kuondoa kiti",
+        "errors": {
+          "seatCap": "Viti vyote 4 vinatumika. Ondoa kiti kwanza.",
+          "ownerDomain": "Barua pepe ya akaunti yako lazima iwe ya kikoa cha kampuni ili kualika wenzako wa timu.",
+          "self": "Huwezi kujialika mwenyewe.",
+          "inviteeDomain": "Barua pepe ya mwalikwa lazima iwe ya kikoa cha kampuni."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "Viti vya {{account}} Enterprise",
+        "memberHint": "Msimamizi wa akaunti yako huongeza na kuondoa watu kwenye akaunti hii.",
+        "hintFull": "Viti vyote vinatumika. Ondoa mtu au batilisha mwaliko ili kupata kiti wazi.",
+        "hintOpen": "Alika watu kwa barua pepe ya kampuni. Watapokea kiungo kinachofanya kazi kwa siku 14 na watashiriki mgao wa matumizi wa akaunti hii.",
+        "emailLabel": "Anwani ya barua pepe ya kualika",
+        "statusActive": "Hai",
+        "statusExpired": "Mwaliko umeisha muda",
+        "statusInvited": "Amealikwa",
+        "emailFailed": "Barua pepe ya mwaliko haikuweza kutumwa. Kagua anwani, kisha batilisha na ualike tena.",
+        "inviteExpires": "Mwaliko unaisha {{date}}",
+        "roleAdmin": "Msimamizi",
+        "you": "Wewe",
+        "withdraw": "Batilisha",
+        "unknownEmail": "Barua pepe isiyojulikana",
+        "alreadyMember": "Tayari ni mwanachama",
+        "confirmRemove": "Ondoa {{email}}? Atapoteza ufikiaji wa Enterprise mara moja.",
+        "confirmRemoveUnknown": "Ondoa mtu huyu? Atapoteza ufikiaji wa Enterprise mara moja.",
+        "confirmWithdraw": "Batilisha mwaliko uliotumwa kwa {{email}}?",
+        "confirmWithdrawUnknown": "Batilisha mwaliko uliotumwa kwa anwani hii?",
+        "removed": "Mwanachama ameondolewa",
+        "withdrawn": "Mwaliko umebatilishwa",
+        "loadFailed": "Haikuweza kupakia viti. Jaribu tena.",
+        "inviteFailed": "Haikuweza kutuma mwaliko. Jaribu tena.",
+        "removeFailed": "Haikuweza kuondoa. Jaribu tena.",
+        "errors": {
+          "seatCap": "Viti vyote vinatumika. Ondoa mtu au batilisha mwaliko kwanza.",
+          "inviteeDomain": "Alika anwani ya barua pepe ya kampuni. Vikoa vya barua pepe za bure na za muda havikubaliwi.",
+          "self": "Tayari una kiti.",
+          "contractEnded": "Mkataba wako wa Enterprise umekwisha. Wasiliana na msaada ili kuuhuisha.",
+          "notAdmin": "Ni msimamizi wa akaunti pekee anayeweza kusimamia viti.",
+          "removeSelf": "Huwezi kuondoa kiti chako mwenyewe. Wasiliana na msaada ili kubadilisha msimamizi.",
+          "tooMany": "Alika hadi watu 10 kwa wakati mmoja.",
+          "rateLimited": "Umetuma idadi ya juu ya mialiko inayoruhusiwa kwa siku. Jaribu tena kesho."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "mpangilio",
+        "1": "paneli",
+        "2": "saizi ya maandishi",
+        "3": "weka upya mpangilio"
+      },
+      "sources": {
+        "0": "habari",
+        "1": "milisho",
+        "2": "RSS",
+        "3": "maeneo",
+        "4": "ripoti za habari"
+      },
+      "notifications": {
+        "0": "arifa",
+        "1": "Telegram",
+        "2": "Slack",
+        "3": "barua pepe",
+        "4": "Discord",
+        "5": "webhook",
+        "6": "arifa za push"
+      },
+      "display": {
+        "0": "mandhari",
+        "1": "giza",
+        "2": "mwanga",
+        "3": "herufi",
+        "4": "lugha",
+        "5": "ukubwa wa maandishi"
+      },
+      "map": {
+        "0": "dunia",
+        "1": "mtoa huduma",
+        "2": "vigae",
+        "3": "ramani ya msingi"
+      },
+      "ai": {
+        "0": "akili bandia",
+        "1": "Ollama",
+        "2": "muundo",
+        "3": "kumbukumbu ya vichwa vya habari",
+        "4": "modeli ya kivinjari"
+      },
+      "video": {
+        "0": "mtiririko",
+        "1": "cheza kiotomatiki",
+        "2": "ubora",
+        "3": "mubashara"
+      },
+      "apiKeys": {
+        "0": "funguo",
+        "1": "tokeni",
+        "2": "funguo ya kompyuta"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "funguo ya kupachika"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "mawakala",
+        "3": "ChatGPT",
+        "4": "wateja"
+      },
+      "sync": {
+        "0": "ingiza",
+        "1": "hamisha",
+        "2": "hifadhi nakala",
+        "3": "wingu"
+      },
+      "about": {
+        "0": "masharti",
+        "1": "faragha",
+        "2": "leseni",
+        "3": "kisheria"
+      },
+      "account": {
+        "0": "mpango",
+        "1": "malipo",
+        "2": "usajili",
+        "3": "ankara",
+        "4": "viti",
+        "5": "toka",
+        "6": "futa akaunti"
+      }
     }
   }
 }

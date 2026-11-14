@@ -3,8 +3,8 @@ import type {
   AppContext,
   AppModule,
   UnifiedSettingsController,
-  UnifiedSettingsTabId,
 } from '@/app/app-context';
+import type { SettingsSectionId } from '@/config/settings-sections';
 import { applyVisibleMapDimension } from '@/app/map-dimension-control';
 import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AirlineIntelPanel } from '@/components/AirlineIntelPanel';
@@ -233,7 +233,7 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
   }
 
   open(
-    tab?: UnifiedSettingsTabId,
+    section?: SettingsSectionId,
     replaceOverlayId?: OverlayId,
     historyPending = false,
   ): Promise<boolean> {
@@ -245,7 +245,7 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
     return this.load().then((settings) => {
       if (this.destroyed || this.openEpoch !== epoch) return false;
       if (pendingGate && !pendingGate.isCurrent()) return false;
-      settings.open(tab, pendingGate ? pendingId : replaceOverlayId);
+      settings.open(section, pendingGate ? pendingId : replaceOverlayId);
       return true;
     }).catch((error) => {
       // A rejection because the controller was torn down mid-load is a
@@ -2486,8 +2486,8 @@ export class EventHandlerManager implements AppModule {
     // avatar menu, keeping account and subscription actions in one place.
     const widget = new AuthHeaderWidget(
       () => modal.open(),
-      () => this.ctx.unifiedSettings?.open('settings'),
-      () => this.ctx.unifiedSettings?.open('billing'),
+      () => this.ctx.unifiedSettings?.open(),
+      () => this.ctx.unifiedSettings?.open('account'),
     );
     this.ctx.authHeaderWidget = widget;
     const mount = document.getElementById('authWidgetMount');

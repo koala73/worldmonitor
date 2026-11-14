@@ -177,13 +177,13 @@ export const PUBLIC_PRODUCT_FACTS = {
   "heroProofStats": {
     "mapLayers": 60,
     "feeds": 470,
-    "providers": 858,
+    "providers": 861,
     "alertOrigins": 5
   },
   "depthProofStats": {
     "mapLayers": 60,
     "feeds": 470,
-    "providers": 858,
+    "providers": 861,
     "alertOrigins": 5,
     "chokepoints": 13,
     "instabilityCountries": 31,
@@ -276,7 +276,7 @@ export const TIER_CONFIG = {
     "maxDashboards": 3,
     "dataExport": false,
     "cta": "Get Started",
-    "href": "https://worldmonitor.app/dashboard",
+    "href": "https://www.worldmonitor.app/dashboard",
     "highlighted": false
   },
   "pro": {

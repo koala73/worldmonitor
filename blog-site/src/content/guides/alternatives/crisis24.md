@@ -1,6 +1,6 @@
 ---
 title: "Crisis24 alternatives for intelligence teams"
-description: "Crisis24 alternatives ranked by why teams leave: cost, self-serve access, alert routing and API. Compare World Monitor, Factal, Dataminr and Recorded Future, and when to stay with Crisis24."
+description: "Crisis24 alternatives ranked by why teams leave: cost, self-serve access, alert routing and API. Compare World Monitor, Factal, Dataminr and Recorded Future."
 metaTitle: "Crisis24 alternatives for risk monitoring | World Monitor"
 keywords: "Crisis24 buyers, crisis24 alternatives for intelligence teams, global intelligence tools"
 audience: "Crisis24 buyers"

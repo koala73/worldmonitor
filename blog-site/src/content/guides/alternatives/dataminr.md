@@ -1,6 +1,6 @@
 ---
 title: "Dataminr alternatives for intelligence teams"
-description: "Dataminr alternatives for breaking event alerts, ranked by why teams leave: cost, self-serve access, verified alerts and API. Compare World Monitor, Factal, Liveuamap and Recorded Future."
+description: "Dataminr alternatives for breaking alerts, ranked by cost, self-serve access, verification and API: World Monitor, Factal, Liveuamap and Recorded Future."
 metaTitle: "Dataminr alternatives for event alerts | World Monitor"
 keywords: "Dataminr buyers, dataminr alternatives for intelligence teams, global intelligence tools"
 audience: "Dataminr buyers"

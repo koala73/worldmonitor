@@ -604,9 +604,11 @@ async function probeDiscovery(host) {
   // text/html gets the HTML setup page, everything else (`*/*`, a bare fetch,
   // a machine crawler) keeps the markdown guide. Both representations must be
   // 200, no-store and varied on Accept / Last-Event-ID so no shared cache can
-  // replay either to a transport client.
+  // replay either to a transport client. The browser body check matches the
+  // product name inside <title>, not the full title, so SEO copy edits to
+  // public/mcp-setup.html (#10697) do not fail the live run.
   const representations = [
-    { label: 'browser', accept: 'text/html,*/*', type: /text\/html/i, name: 'HTML setup page', body: /<title>\s*Connect to World Monitor MCP\s*<\/title>/i },
+    { label: 'browser', accept: 'text/html,*/*', type: /text\/html/i, name: 'HTML setup page', body: /<title>[^<]*World Monitor MCP[^<]*<\/title>/i },
     { label: 'crawler', accept: '*/*', type: /text\/markdown/i, name: 'markdown guide', body: /World Monitor MCP Server/ },
   ];
   for (const rep of representations) {
