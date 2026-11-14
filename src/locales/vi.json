@@ -3179,6 +3179,12 @@
       "energyContext": {
         "heading": "Hồ chứa chiến lược",
         "hydro": "Thủy điện {{share}}% năng lượng sơ cấp"
+      },
+      "countryEvidence": {
+        "heading": "Mực nước",
+        "empty": "Không hồ chứa chiến lược nào ở quốc gia này nằm ngoài đường cơ sở theo mùa ở lần đi qua gần nhất.",
+        "measured": "Đo ngày {{date}}",
+        "note": "Mực mặt nước đo bằng lidar từ lần đi qua có ghi ngày, không phải số đọc trực tiếp hay dung tích trữ. Không phải đầu vào của Chỉ số Bất ổn Quốc gia."
       }
     },
     "gridDisruptionClock": {

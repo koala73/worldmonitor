@@ -2816,6 +2816,12 @@
       "energyContext": {
         "heading": "Strategiska reservoarer",
         "hydro": "Vattenkraft {{share}} % av primärenergin"
+      },
+      "countryEvidence": {
+        "heading": "Vattennivåer",
+        "empty": "Ingen strategisk reservoar i det här landet ligger utanför sin säsongsbaslinje vid den senaste överflygningen.",
+        "measured": "Uppmätt {{date}}",
+        "note": "Lidar-mätt vattenytenivå från den daterade överflygningen, inte en realtidsavläsning eller lagrad volym. Ingen indata till Country Instability Index."
       }
     },
     "gridDisruptionClock": {

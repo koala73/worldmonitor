@@ -3242,6 +3242,12 @@
       "energyContext": {
         "heading": "Strategické nádrže",
         "hydro": "Vodní energie {{share}} % primární energie"
+      },
+      "countryEvidence": {
+        "heading": "Hladiny vody",
+        "empty": "Žádná strategická nádrž v této zemi není při posledním přeletu mimo svou sezónní základnu.",
+        "measured": "Měřeno {{date}}",
+        "note": "Lidarová výška vodní hladiny z datovaného přeletu, nikoli živé měření ani objem zásob. Není vstupem Indexu nestability země."
       }
     },
     "gridDisruptionClock": {

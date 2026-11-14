@@ -3221,6 +3221,12 @@
       "energyContext": {
         "heading": "Embalses estratégicos",
         "hydro": "Hidroeléctrica {{share}} % de la energía primaria"
+      },
+      "countryEvidence": {
+        "heading": "Niveles de agua",
+        "empty": "Ningún embalse estratégico de este país está fuera de su referencia estacional en su último paso.",
+        "measured": "Medido el {{date}}",
+        "note": "Nivel de la superficie del agua por lidar del paso fechado, no una lectura en directo ni un volumen almacenado. No es una entrada del Índice de Inestabilidad del País."
       }
     },
     "gridDisruptionClock": {

@@ -3179,6 +3179,12 @@
       "energyContext": {
         "heading": "전략 저수지",
         "hydro": "수력 발전 1차 에너지의 {{share}}%"
+      },
+      "countryEvidence": {
+        "heading": "수위",
+        "empty": "이 나라의 전략 저수지 중 최근 통과 시 계절 기준선을 벗어난 곳은 없습니다.",
+        "measured": "{{date}} 측정",
+        "note": "날짜가 기록된 통과의 라이다 수면 높이로, 실시간 값이나 저수량이 아닙니다. 국가 불안정 지수의 입력값이 아닙니다."
       }
     },
     "gridDisruptionClock": {

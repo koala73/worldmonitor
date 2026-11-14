@@ -3200,6 +3200,12 @@
       "energyContext": {
         "heading": "Strategische Stauseen",
         "hydro": "Wasserkraft {{share}} % der Primärenergie"
+      },
+      "countryEvidence": {
+        "heading": "Wasserstände",
+        "empty": "Kein strategischer Stausee in diesem Land liegt beim letzten Überflug außerhalb seiner saisonalen Basislinie.",
+        "measured": "Gemessen am {{date}}",
+        "note": "Lidar-Wasserspiegel aus dem datierten Überflug, keine Live-Messung und kein Speichervolumen. Kein Eingangswert des Country Instability Index."
       }
     },
     "gridDisruptionClock": {

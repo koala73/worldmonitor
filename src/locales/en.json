@@ -3366,6 +3366,12 @@
       "energyContext": {
         "heading": "Strategic reservoirs",
         "hydro": "Hydro {{share}}% of primary energy"
+      },
+      "countryEvidence": {
+        "heading": "Water levels",
+        "empty": "No strategic reservoir in this country is beyond its seasonal baseline at its latest pass.",
+        "measured": "Measured {{date}}",
+        "note": "Lidar water-surface level from the dated pass, not a live reading or storage volume. Not an input to the Country Instability Index."
       }
     }
   },

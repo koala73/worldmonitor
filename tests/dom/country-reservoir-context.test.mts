@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
 import type { CountryEnergyProfileData } from '@/components/CountryBriefPanel';
@@ -7,7 +7,13 @@ import { initTestI18n } from './helpers/i18n.mts';
 
 beforeAll(async () => { await initTestI18n(); });
 
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-14T12:00:00Z'));
+});
+
 afterEach(() => {
+  vi.useRealTimers();
   document.getElementById('deep-dive-close')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   document.getElementById('country-deep-dive-panel')?.remove();
 });

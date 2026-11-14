@@ -3269,6 +3269,12 @@
       "energyContext": {
         "heading": "Mabwawa ya kimkakati",
         "hydro": "Umeme wa maji {{share}}% ya nishati ya msingi"
+      },
+      "countryEvidence": {
+        "heading": "Viwango vya maji",
+        "empty": "Hakuna bwawa la kimkakati katika nchi hii lililo nje ya msingi wake wa msimu katika upitaji wake wa mwisho.",
+        "measured": "Imepimwa {{date}}",
+        "note": "Kiwango cha uso wa maji kwa lidar kutoka upitaji ulio na tarehe, si usomaji wa moja kwa moja wala ujazo wa hifadhi. Si ingizo la Kielezo cha Ukosefu wa Utulivu wa Nchi."
       }
     },
     "gridDisruptionClock": {

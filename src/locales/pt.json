@@ -2835,6 +2835,12 @@
       "energyContext": {
         "heading": "Reservatórios estratégicos",
         "hydro": "Hidrelétrica {{share}}% da energia primária"
+      },
+      "countryEvidence": {
+        "heading": "Níveis de água",
+        "empty": "Nenhum reservatório estratégico deste país está fora da sua referência sazonal na última passagem.",
+        "measured": "Medido em {{date}}",
+        "note": "Nível da superfície da água por lidar na passagem datada, não uma leitura ao vivo nem volume armazenado. Não é uma entrada do Índice de Instabilidade do País."
       }
     },
     "gridDisruptionClock": {

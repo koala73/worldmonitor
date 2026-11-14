@@ -3269,6 +3269,12 @@
       "energyContext": {
         "heading": "Stratégiai víztározók",
         "hydro": "Vízenergia: a primer energia {{share}}%-a"
+      },
+      "countryEvidence": {
+        "heading": "Vízszintek",
+        "empty": "Az ország egyetlen stratégiai tározója sincs az utolsó áthaladáskor a szezonális alapvonalán kívül.",
+        "measured": "Mérve: {{date}}",
+        "note": "Lidaros vízfelszín-szint a dátumozott áthaladásból, nem élő mérés és nem tárolt térfogat. Nem bemenete az Országinstabilitási Indexnek."
       }
     },
     "gridDisruptionClock": {

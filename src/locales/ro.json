@@ -3221,6 +3221,12 @@
       "energyContext": {
         "heading": "Lacuri de acumulare strategice",
         "hydro": "Hidroenergie {{share}}% din energia primară"
+      },
+      "countryEvidence": {
+        "heading": "Niveluri ale apei",
+        "empty": "Niciun lac de acumulare strategic din această țară nu este în afara bazei sale sezoniere la ultima trecere.",
+        "measured": "Măsurat la {{date}}",
+        "note": "Nivelul suprafeței apei prin lidar la trecerea datată, nu o citire în timp real sau un volum stocat. Nu este o intrare a Indicelui de Instabilitate a Țării."
       }
     },
     "gridDisruptionClock": {

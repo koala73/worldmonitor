@@ -3221,6 +3221,12 @@
       "energyContext": {
         "heading": "Réservoirs stratégiques",
         "hydro": "Hydroélectricité {{share}} % de l’énergie primaire"
+      },
+      "countryEvidence": {
+        "heading": "Niveaux d'eau",
+        "empty": "Aucun réservoir stratégique de ce pays n'est hors de sa référence saisonnière à son dernier passage.",
+        "measured": "Mesuré le {{date}}",
+        "note": "Niveau de la surface de l'eau par lidar lors du passage daté, ni une lecture en direct ni un volume stocké. Pas une donnée d'entrée de l'indice d'instabilité des pays."
       }
     },
     "gridDisruptionClock": {

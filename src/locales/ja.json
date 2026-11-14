@@ -3179,6 +3179,12 @@
       "energyContext": {
         "heading": "戦略的貯水池",
         "hydro": "水力は一次エネルギーの{{share}}%"
+      },
+      "countryEvidence": {
+        "heading": "水位",
+        "empty": "この国の戦略的貯水池で、最新の通過時に季節的基準線を外れているものはありません。",
+        "measured": "{{date}} 計測",
+        "note": "日付付きの通過時のライダーによる水面高。リアルタイムの値や貯水量ではありません。国別不安定指数の入力ではありません。"
       }
     },
     "gridDisruptionClock": {

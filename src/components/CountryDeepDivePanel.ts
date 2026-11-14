@@ -584,15 +584,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private buildWaterEvidence(family: import('../../shared/country-signal-observations').CountrySignalOutcome | undefined): HTMLElement | null {
     if (family?.state !== 'observed') return null;
     const block = this.el('div', 'cdp-water-evidence');
-    block.append(this.el('div', 'cdp-imagery-title', 'Water levels'));
-    if (family.observations.length === 0) block.append(this.makeEmpty('No strategic reservoir in this country is beyond its seasonal baseline at its latest pass.'));
+    block.append(this.el('div', 'cdp-imagery-title', t('components.reservoirLevels.countryEvidence.heading')));
+    if (family.observations.length === 0) block.append(this.makeEmpty(t('components.reservoirLevels.countryEvidence.empty')));
     for (const row of family.observations) {
       const item = this.el('div', 'cdp-imagery-item');
       item.append(this.el('div', 'cdp-signal-desc', row.title));
-      if (row.eventAt) item.append(this.el('div', 'cdp-signal-time', `Measured ${row.eventAt.slice(0, 10)}`));
+      if (row.eventAt) item.append(this.el('div', 'cdp-signal-time', t('components.reservoirLevels.countryEvidence.measured', { date: row.eventAt.slice(0, 10) })));
       block.append(item);
     }
-    block.append(this.el('p', 'cdp-economic-source', `${family.attribution}. Lidar water-surface level from the dated pass, not a live reading or storage volume. Not an input to the Country Instability Index.`));
+    block.append(this.el('p', 'cdp-economic-source', `${family.attribution}. ${t('components.reservoirLevels.countryEvidence.note')}`));
     return block;
   }
 

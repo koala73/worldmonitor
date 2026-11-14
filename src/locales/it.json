@@ -3221,6 +3221,12 @@
       "energyContext": {
         "heading": "Bacini strategici",
         "hydro": "Idroelettrico {{share}}% dell’energia primaria"
+      },
+      "countryEvidence": {
+        "heading": "Livelli dell'acqua",
+        "empty": "Nessun bacino strategico di questo paese è fuori dalla sua linea di base stagionale all'ultimo passaggio.",
+        "measured": "Misurato il {{date}}",
+        "note": "Livello della superficie dell'acqua da lidar del passaggio datato, non una lettura in tempo reale né un volume invasato. Non è un input del Country Instability Index."
       }
     },
     "gridDisruptionClock": {

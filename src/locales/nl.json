@@ -2816,6 +2816,12 @@
       "energyContext": {
         "heading": "Strategische stuwmeren",
         "hydro": "Waterkracht {{share}}% van primaire energie"
+      },
+      "countryEvidence": {
+        "heading": "Waterstanden",
+        "empty": "Geen strategisch stuwmeer in dit land ligt bij de laatste overkomst buiten zijn seizoensbasislijn.",
+        "measured": "Gemeten op {{date}}",
+        "note": "Lidar-waterspiegel van de gedateerde overkomst, geen live meting of opslagvolume. Geen invoer voor de Country Instability Index."
       }
     },
     "gridDisruptionClock": {

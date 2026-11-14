@@ -3293,6 +3293,12 @@
       "energyContext": {
         "heading": "Strateške akumulacije",
         "hydro": "Hidroenergija {{share}} % primarne energije"
+      },
+      "countryEvidence": {
+        "heading": "Razine vode",
+        "empty": "Nijedna strateška akumulacija u ovoj zemlji nije izvan svoje sezonske osnovice pri posljednjem preletu.",
+        "measured": "Izmjereno {{date}}",
+        "note": "Lidarska razina vodene površine s datiranog preleta, ne očitanje uživo ni volumen zaliha. Nije ulaz u Indeks nestabilnosti zemlje."
       }
     },
     "gridDisruptionClock": {

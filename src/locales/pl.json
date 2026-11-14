@@ -3242,6 +3242,12 @@
       "energyContext": {
         "heading": "Strategiczne zbiorniki",
         "hydro": "Energia wodna {{share}}% energii pierwotnej"
+      },
+      "countryEvidence": {
+        "heading": "Poziomy wody",
+        "empty": "Żaden strategiczny zbiornik w tym kraju nie wykracza przy ostatnim przelocie poza swoją sezonową linię bazową.",
+        "measured": "Zmierzono {{date}}",
+        "note": "Poziom lustra wody z lidaru z datowanego przelotu, nie odczyt na żywo ani objętość retencji. Nie jest danymi wejściowymi Indeksu Niestabilności Kraju."
       }
     },
     "gridDisruptionClock": {

@@ -3179,6 +3179,12 @@
       "energyContext": {
         "heading": "战略水库",
         "hydro": "水电占一次能源的 {{share}}%"
+      },
+      "countryEvidence": {
+        "heading": "水位",
+        "empty": "该国没有任何战略水库在最近一次过境时超出其季节基线。",
+        "measured": "测量于 {{date}}",
+        "note": "来自注明日期过境的激光雷达水面高度，并非实时读数或蓄水量。不计入国家不稳定指数。"
       }
     },
     "gridDisruptionClock": {

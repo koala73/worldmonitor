@@ -3200,6 +3200,12 @@
       "energyContext": {
         "heading": "Stratejik baraj gölleri",
         "hydro": "Hidroelektrik, birincil enerjinin %{{share}} kadarı"
+      },
+      "countryEvidence": {
+        "heading": "Su seviyeleri",
+        "empty": "Bu ülkedeki hiçbir stratejik baraj gölü son geçişte mevsimsel taban çizgisinin dışında değil.",
+        "measured": "{{date}} tarihinde ölçüldü",
+        "note": "Tarihli geçişten lidar su yüzeyi seviyesi; canlı okuma veya depolama hacmi değildir. Ülke İstikrarsızlık Endeksi'nin girdisi değildir."
       }
     },
     "gridDisruptionClock": {
