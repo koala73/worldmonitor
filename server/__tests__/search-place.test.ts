@@ -44,10 +44,17 @@ beforeEach(() => {
   backoff.clear();
   limiter.mockResolvedValue({ allowed: true, degraded: false });
   vi.stubGlobal('fetch', vi.fn(async () => Response.json(rotterdam)));
+  vi.stubEnv('ORBITAL_WATCH_ENABLED', 'true');
 });
-afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.clearAllMocks(); });
 
 describe('place-name search', () => {
+  it('answers 404 without calling Nominatim while Orbital Watch is dark', async () => {
+    vi.stubEnv('ORBITAL_WATCH_ENABLED', '');
+    await expect(searchPlace(ctx, { q: 'Rotterdam' })).rejects.toMatchObject({ statusCode: 404 });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('asks Nominatim search once for a name and returns valid places only', async () => {
     const result = await searchPlace(ctx, { q: '  Rotterdam ' });
     expect(result).toEqual({ places: [{ name: 'Rotterdam, South Holland, Netherlands', lat: 51.9244, lon: 4.4777, kind: 'city' }], error: '' });

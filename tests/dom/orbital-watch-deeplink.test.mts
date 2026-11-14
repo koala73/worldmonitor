@@ -10,6 +10,7 @@ vi.mock('@/config/desktop-runtime', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/config/desktop-runtime')>()),
   isDesktopRuntime: () => desktop.value,
 }));
+vi.mock('@/config/orbital-watch-flag', () => ({ ORBITAL_WATCH_ENABLED: true }));
 vi.mock('@/services/orbital/pass-client', () => ({ getOrbitalPassClient: () => ({ lookup: lookupMock, dispose: () => {} }) }));
 vi.mock('@/services/orbital/match', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/orbital/match')>()),

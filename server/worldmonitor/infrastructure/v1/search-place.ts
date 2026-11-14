@@ -10,6 +10,7 @@ import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
 import { checkScopedRateLimit, readTrustedRateLimitPrincipal } from '../../../_shared/rate-limit';
 import { getClientRateLimitKey } from '../../../_shared/client-ip';
 import { sha256Hex } from '../../../_shared/hash';
+import { isOrbitalWatchEnabled } from '../../orbital/v1/dark-launch';
 
 const NOMINATIM_SEARCH = 'https://nominatim.openstreetmap.org/search';
 const USER_AGENT = 'WorldMonitor/2.0 (https://worldmonitor.app)';
@@ -98,6 +99,8 @@ export const searchPlace: InfrastructureServiceHandler['searchPlace'] = async (
   ctx: ServerContext,
   req: SearchPlaceRequest,
 ): Promise<SearchPlaceResponse> => {
+  // Place search exists for the Orbital Watch lookup, so it ships dark with it (#10710).
+  if (!isOrbitalWatchEnabled()) throw new ApiError(404, 'Not found', '');
   const query = normalizePlaceQuery(req.q ?? '');
   if (query.length < MIN_QUERY_CHARS || query.length > MAX_QUERY_CHARS) {
     throw new ValidationError([{ field: 'q', description: `must be ${MIN_QUERY_CHARS} to ${MAX_QUERY_CHARS} characters` }]);

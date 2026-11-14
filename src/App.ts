@@ -72,6 +72,7 @@ import { clearPanelSpans, invalidatePanelStorageCacheForKeys } from '@/utils/pan
 import type { OrbitalShareLink } from '@/utils/urlState';
 import { scheduleOrbitalShareLink, takeOrbitalShareLink } from '@/app/orbital-share-link';
 import { connectOrbitalLookupMap } from '@/services/orbital/lookup-host';
+import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 import { overlayHistory, type OverlayId } from '@/utils/overlay-history';
 import type { ParsedMapUrlState } from '@/utils';
 import { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
@@ -3110,7 +3111,7 @@ export class App {
     }
     this.pendingDeepLinkStoryCode = earlyParams.get('c') ?? null;
     this.pendingDeepLinkSearchQuery = readDashboardSearchQuery(window.location.search);
-    this.pendingOrbitalShareLink = takeOrbitalShareLink();
+    this.pendingOrbitalShareLink = ORBITAL_WATCH_ENABLED ? takeOrbitalShareLink() : null;
     connectOrbitalLookupMap(() => this.state.map);
     this.eventHandlers.setupUrlStateSync();
     if (import.meta.env.VITE_E2E === '1') {
