@@ -24,6 +24,7 @@ import { IMAGE_CREDIT, ORBITAL_WATCH_DOCS_URL } from '@/services/orbital/credits
 import manifest from '../../shared/source-attribution-manifest.json';
 import { openOrbitalWatch } from '@/app/orbital-watch';
 import { formatOrbitalRoute, parseOrbitalRoute } from '@/app/orbital-route';
+import { buildOrbitalShareFragment, parseOrbitalShareFragment } from '@/utils/urlState';
 
 const NOW = Date.UTC(2026, 10, 13, 12);
 const HOUR = 3_600_000;
@@ -923,7 +924,27 @@ describe('the orbital route', () => {
     expect(parseOrbitalRoute('#orbital=-33.9,151.2')).toEqual({ point: { lat: -33.9, lon: 151.2 }, view: 'sheet' });
     expect(parseOrbitalRoute('#orbital=95,10')).toBeNull();
     expect(parseOrbitalRoute('#view=full')).toBeNull();
-    expect(formatOrbitalRoute({ lat: 25.112, lon: 55.139 }, 'full')).toBe('#orbital=25.1120,55.1390&view=full');
+  });
+
+  it('writes the route with the share link\'s 0.01-degree point', () => {
+    expect(formatOrbitalRoute({ lat: 25.112, lon: 55.139 }, 'full')).toBe('#orbital=25.11,55.14&view=full');
+    expect(formatOrbitalRoute({ lat: -0.004, lon: 179.996 }, 'sheet')).toBe('#orbital=0.00,180.00');
+    const route = formatOrbitalRoute(point, 'full');
+    expect(route).toBe(`#${buildOrbitalShareFragment(point, null, 'full')}`);
+    expect(parseOrbitalShareFragment(route)).toEqual({ point: { lat: 25.2, lon: 55.27 }, pass: null, view: 'full' });
+  });
+
+  it('copies the full-view link at 0.01 degrees when the sheet has no share callback', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    history.replaceState(null, '', '/dashboard?lat=20&lon=50#tab=1');
+    mounted({ kind: 'passes', lookup: lookup([]), archives: { kind: 'answered', evidence: evidence([]) } });
+    sheet().querySelector<HTMLButtonElement>('.ow-share')!.click();
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalled());
+    const url = new URL(writeText.mock.calls[0]![0]);
+    expect(url.search).toBe('');
+    expect(url.hash).toBe('#orbital=25.20,55.27&view=full');
+    history.replaceState(null, '', '/');
   });
 });
 
@@ -961,7 +982,7 @@ describe('opening the lookup for a point', () => {
   it('writes the full-view route while it is open and clears it on the way back', async () => {
     lookupMock.mockReturnValue(new Promise(() => {}));
     openOrbitalWatch(point, null, 'full');
-    expect(location.hash).toBe('#orbital=25.2048,55.2708&view=full');
+    expect(location.hash).toBe('#orbital=25.20,55.27&view=full');
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(location.hash).toBe('');
     expect(sheet().dataset.view).toBe('sheet');

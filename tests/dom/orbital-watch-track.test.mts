@@ -276,6 +276,22 @@ describe('replayed pass ground track', () => {
     }
   });
 
+  it('rounds a finer route it opens to the share link\'s 0.01 degrees, without a history entry', async () => {
+    history.replaceState(null, '', '/dashboard?view=global#orbital=25.1120,55.1390&view=full');
+    const entries = history.length;
+    const unwatch = watchOrbitalRoute(() => surface);
+    try {
+      expect(location.hash).toBe('#orbital=25.11,55.14&view=full');
+      expect(location.search).toBe('?view=global');
+      expect(history.length).toBe(entries);
+      await vi.waitFor(() => expect(sheet().dataset.view).toBe('full'));
+    } finally {
+      unwatch();
+      document.querySelector<HTMLButtonElement>('.ow-close')?.click();
+      history.replaceState(null, '', '/');
+    }
+  });
+
   it('removes the track and stops the replay when the sheet closes', async () => {
     await openWithPasses();
     replay(sentinel);

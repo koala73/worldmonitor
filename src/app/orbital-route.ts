@@ -1,6 +1,6 @@
 import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import type { OrbitalTrackSurface } from '@/app/orbital-watch';
-import { parseOrbitalShareFragment } from '@/utils/urlState';
+import { buildOrbitalShareFragment, parseOrbitalShareFragment } from '@/utils/urlState';
 
 export type OrbitalRouteView = 'sheet' | 'full';
 
@@ -21,12 +21,27 @@ export function parseOrbitalRoute(hash: string): OrbitalRoute | null {
   return { point: { lat, lon }, view: match[3] === 'full' ? 'full' : 'sheet' };
 }
 
+/** Written with the share link's 0.01-degree point, so the address bar and history hold no finer place. */
 export function formatOrbitalRoute(point: GeoPoint, view: OrbitalRouteView): string {
-  return `#orbital=${point.lat.toFixed(4)},${point.lon.toFixed(4)}${view === 'full' ? '&view=full' : ''}`;
+  return `#${buildOrbitalShareFragment(point, null, view)}`;
+}
+
+/** A route followed from an older or hand-written link is rewritten at the share link's precision. */
+function roundRouteInPlace(route: OrbitalRoute): void {
+  const rounded = formatOrbitalRoute(route.point, route.view);
+  if (window.location.hash === rounded) return;
+  const url = new URL(window.location.href);
+  url.hash = rounded;
+  try {
+    history.replaceState(history.state, '', url.toString());
+  } catch {
+    // A sandboxed or file document can refuse; the lookup still opens.
+  }
 }
 
 function applyRoute(map: () => OrbitalTrackSurface | null): void {
   const route = parseOrbitalRoute(window.location.hash);
+  if (route) roundRouteInPlace(route);
   void import('@/app/orbital-watch').then(({ openOrbitalWatch, leaveOrbitalFullView }) => {
     if (route) openOrbitalWatch(route.point, document.getElementById('mapContainer'), route.view, map());
     else leaveOrbitalFullView();
