@@ -5141,9 +5141,9 @@
         "desc": "Điều này thường chỉ mất một lát."
       },
       "status": {
-        "cancelScheduled": "Hủy đã được lên lịch -- truy cập cho đến {{date}}",
+        "cancelScheduled": "Đã lên lịch hủy -- truy cập đến {{date}}",
         "renews": "Gia hạn: {{date}}",
-        "onHold": "Tạm giữ -- vui lòng cập nhật phương thức thanh toán",
+        "onHold": "Tạm ngưng -- vui lòng cập nhật phương thức thanh toán",
         "cancelled": "Đã hủy -- truy cập cho đến {{date}}",
         "expired": "Hết hạn",
         "unknown": "Xem Quản lý Thanh toán để biết chi tiết gói hiện tại của bạn.",
@@ -5155,8 +5155,8 @@
         "desc": "Chúng tôi không thể xác minh gói hiện tại của bạn. Thử lại hoặc xem các gói trong tab mới."
       },
       "free": {
-        "heading": "WorldMonitor Free",
-        "desc": "Gói hiện tại của bạn là Free. Nâng cấp để có tất cả các panel, phân tích AI và làm mới dữ liệu ưu tiên."
+        "heading": "WorldMonitor Miễn phí",
+        "desc": "Gói hiện tại của bạn là Miễn phí. Nâng cấp để có tất cả các panel, phân tích AI và làm mới dữ liệu ưu tiên."
       },
       "portal": {
         "openFailed": "Không thể mở cổng thông tin thanh toán. Vui lòng cho phép cửa sổ bật lên và thử lại.",
@@ -5164,15 +5164,15 @@
       },
       "deletion": {
         "heading": "Xóa tài khoản",
-        "desc": "Xóa vĩnh viễn tài khoản World Monitor này. Các gói đăng ký sẽ bị hủy ngay lập tức mà không hoàn tiền cho thời gian thanh toán trước. Các khóa API, khóa nhúng và token MCP sẽ ngừng hoạt động. Hồ sơ thanh toán cần thiết cho kế toán, tranh chấp và yêu cầu hợp pháp được lưu giữ cùng với thông tin liên hệ khách hàng mà chúng mang theo; chúng ngừng gọi tên tài khoản đăng nhập của bạn, mặc dù các nhật ký webhook của nhà cung cấp thanh toán được viết trước khi xóa sẽ giữ lại các mã định danh được gửi. Các tùy chọn dashboard và bí mật keychain máy tính để bàn trên thiết bị này sẽ không bị xóa từ xa.",
+        "desc": "Xóa vĩnh viễn tài khoản World Monitor này. Các gói đăng ký bị hủy ngay lập tức và không hoàn tiền cho thời gian còn lại đã trả trước. Khóa API, khóa nhúng và token MCP sẽ ngừng hoạt động. Hồ sơ thanh toán cần cho kế toán, tranh chấp và yêu cầu theo pháp luật được lưu giữ cùng thông tin liên hệ khách hàng có trong đó; các hồ sơ này không còn gắn với tài khoản đăng nhập của bạn, tuy nhiên nhật ký webhook của nhà cung cấp thanh toán được ghi trước khi xóa vẫn giữ các mã định danh đi kèm lúc được gửi. Tùy chọn dashboard và các bí mật lưu trong keychain của hệ điều hành máy tính trên thiết bị này sẽ không bị xóa từ xa.",
         "dialogTitle": "Xóa tài khoản này?",
-        "dialogCopy": "Điều này không thể hoàn tác. Các gói đăng ký sẽ bị hủy, các khóa sẽ ngừng hoạt động ngay lập tức và hồ sơ thanh toán được lưu giữ cho kế toán, tranh chấp và yêu cầu hợp pháp -- bao gồm thông tin liên hệ mà chúng mang theo. Đăng xuất trên các thiết bị khác và xóa dữ liệu trang web trên thiết bị này sau đó -- những dữ liệu đó nằm ngoài tầm với của máy chủ.",
+        "dialogCopy": "Không thể hoàn tác thao tác này. Các gói đăng ký bị hủy, khóa ngừng hoạt động ngay lập tức và hồ sơ thanh toán được lưu giữ cho kế toán, tranh chấp và yêu cầu theo pháp luật — bao gồm cả thông tin liên hệ có trong đó. Sau đó, hãy đăng xuất trên các thiết bị khác và xóa dữ liệu trang web trên thiết bị này — máy chủ không thể làm những việc đó.",
         "phraseLabel": "Nhập {{phrase}} để xác nhận",
         "deleted": "Tài khoản đã bị xóa. Đăng xuất trên các thiết bị khác và xóa dữ liệu trang web trên thiết bị này.",
         "failed": "Xóa tài khoản không thành công. Thử lại."
       },
       "seats": {
-        "used": "{{used}} / {{cap}} được sử dụng",
+        "used": "Đã dùng {{used}} / {{cap}}",
         "invite": "Mời",
         "inviting": "Đang mời...",
         "remove": "Xóa",
@@ -5207,9 +5207,9 @@
         "heading": "Chỗ Enterprise của {{account}}",
         "memberHint": "Quản trị viên tài khoản của bạn thêm và xóa những người trên tài khoản này.",
         "hintFull": "Tất cả chỗ đều đang được dùng. Xóa ai đó hoặc rút lại một lời mời để giải phóng chỗ.",
-        "hintOpen": "Mời những người bằng email công ty. Họ nhận được một liên kết có hiệu lực trong 14 ngày và chia sẻ hạn mức của tài khoản này.",
+        "hintOpen": "Mời mọi người bằng email công ty. Họ nhận được liên kết có hiệu lực trong 14 ngày và dùng chung hạn mức của tài khoản này.",
         "emailLabel": "Địa chỉ email để mời",
-        "statusActive": "Hoạt động",
+        "statusActive": "Đang hoạt động",
         "statusExpired": "Lời mời đã hết hạn",
         "statusInvited": "Đã mời",
         "emailFailed": "Không thể gửi email mời. Kiểm tra địa chỉ, sau đó rút lại và mời lại.",
@@ -5230,7 +5230,7 @@
         "removeFailed": "Không thể xóa. Thử lại.",
         "errors": {
           "seatCap": "Tất cả chỗ đều đang được dùng. Hãy xóa ai đó hoặc rút lại lời mời trước.",
-          "inviteeDomain": "Mời địa chỉ email công ty. Email miễn phí và tên miền có thể vứt bỏ không được chấp nhận.",
+          "inviteeDomain": "Hãy mời một địa chỉ email công ty. Không chấp nhận các miền email miễn phí và dùng một lần.",
           "self": "Bạn đã có một chỗ.",
           "contractEnded": "Hợp đồng Enterprise của bạn đã kết thúc. Liên hệ hỗ trợ để gia hạn.",
           "notAdmin": "Chỉ quản trị viên tài khoản mới có thể quản lý chỗ.",
@@ -5250,13 +5250,13 @@
       "sources": {
         "0": "tin tức",
         "1": "nguồn cấp dữ liệu",
-        "2": "RSS",
+        "2": "phạm vi",
         "3": "khu vực",
         "4": "coverage"
       },
       "notifications": {
         "0": "cảnh báo",
-        "1": "Telegram",
+        "1": "thông báo đẩy",
         "2": "Slack",
         "3": "email",
         "4": "Discord",
@@ -5274,35 +5274,35 @@
       "map": {
         "0": "quả địa cầu",
         "1": "nhà cung cấp",
-        "2": "tiles",
-        "3": "basemap"
+        "2": "ô bản đồ",
+        "3": "bản đồ nền"
       },
       "ai": {
-        "0": "LLM",
-        "1": "Ollama",
-        "2": "frameworks",
-        "3": "headline memory",
+        "0": "khung",
+        "1": "ghi nhớ tiêu đề",
+        "2": "mô hình trình duyệt",
+        "3": "trí tuệ nhân tạo",
         "4": "browser model"
       },
       "video": {
-        "0": "stream",
+        "0": "phát trực tuyến",
         "1": "tự động phát",
         "2": "chất lượng",
         "3": "trực tiếp"
       },
       "apiKeys": {
         "0": "khóa",
-        "1": "token",
+        "1": "khóa máy tính",
         "2": "khóa desktop"
       },
       "embeds": {
-        "0": "widget",
+        "0": "khóa nhúng",
         "1": "iframe",
         "2": "embed key"
       },
       "aiAgents": {
-        "0": "MCP",
-        "1": "Claude",
+        "0": "tác tử",
+        "1": "ứng dụng khách",
         "2": "agents",
         "3": "ChatGPT",
         "4": "clients"

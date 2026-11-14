@@ -5171,7 +5171,7 @@
       "status": {
         "cancelScheduled": "İptal planlandı -- {{date}} tarihine kadar erişim",
         "renews": "Yenilenir: {{date}}",
-        "onHold": "Beklemede -- ödeme yönteminizi güncelleyin",
+        "onHold": "Askıda -- ödeme yönteminizi güncelleyin",
         "cancelled": "İptal edildi -- {{date}} tarihine kadar erişim",
         "expired": "Süresi doldu",
         "unknown": "Geçerli plan detayları için Faturalama Yönetimi'ne bakın.",
@@ -5192,7 +5192,7 @@
       },
       "deletion": {
         "heading": "Hesabı sil",
-        "desc": "Bu World Monitor hesabını kalıcı olarak silin. Abonelikler geri ödeme yapılmaksızın hemen iptal olur. API anahtarları, embed anahtarları ve MCP belirteçleri çalışmayı durdurur. Muhasebe, anlaşmazlık ve yasal taleplere gerek duyulan fatura kayıtları, taşıdıkları müşteri iletişim bilgileriyle birlikte tutulur; artık giriş hesabınızı adlandırmaz, ancak silme işleminden önce yazılan ödeme sağlayıcı webhook günlükleri teslim edildikleri kimlikleri korur. Dashboard tercihleri ve bu cihazdaki masaüstü anahtar zinciri sırları uzaktan silinmez.",
+        "desc": "Bu World Monitor hesabını kalıcı olarak silin. Abonelikler hemen iptal edilir ve kalan ön ödemeli süre için iade yapılmaz. API anahtarları, gömme anahtarları ve MCP belirteçleri çalışmayı durdurur. Muhasebe, anlaşmazlıklar ve yasal talepler için gereken fatura kayıtları, içerdikleri müşteri iletişim bilgileriyle birlikte saklanır; bu kayıtlar artık giriş hesabınızı belirtmez, ancak silme işleminden önce yazılan ödeme sağlayıcısı webhook günlükleri teslim edildikleri tanımlayıcıları korur. Pano tercihleri ve masaüstü uygulamasının bu cihazdaki anahtar zincirinde saklanan gizli bilgileri uzaktan silinmez.",
         "dialogTitle": "Bu hesap silinsin mi?",
         "dialogCopy": "Bu geri alınamaz. Abonelikler iptal olur, anahtarlar hemen çalışmayı durdurur ve fatura kayıtları muhasebe, anlaşmazlık ve yasal taleplere yönelik olarak tutulur — taşıdıkları iletişim bilgileri de dahil. Diğer cihazlarda oturumu kapatın ve sonrasında bu cihazın site verilerini temizleyin — bunlar sunucu erişiminin dışındadır.",
         "phraseLabel": "Onaylamak için {{phrase}} yazın",
@@ -5214,10 +5214,10 @@
         "statusExpired": "Süresi doldu",
         "statusPending": "Beklemede",
         "expires": "{{date}} tarihinde süresi sona eriyor",
-        "hintCorporate": "Herhangi bir kurumsal e-posta alanından takım arkadaşlarını davet edin.",
+        "hintCorporate": "Herhangi bir kurumsal e-posta alan adından takım arkadaşlarını davet edin.",
         "hintPersonal": "Takım arkadaşlarını davet etmek için kurumsal bir e-posta ekleyin.",
-        "personalDomain": "Ücretsiz veya tek kullanımlık e-posta alanları takım arkadaşlarını davet edemez. Bu özelliği kullanmak için kurumsal bir e-posta ekleyin.",
-        "empty": "Henüz davet edilmiş koltuk yok.",
+        "personalDomain": "Ücretsiz veya tek kullanımlık e-posta alan adları takım arkadaşlarını davet edemez. Bu özelliği kullanmak için kurumsal bir e-posta ekleyin.",
+        "empty": "Henüz kimse davet edilmedi.",
         "confirmRemove": "Bu koltuğu kaldırmak istiyor musunuz? Davet edilen kişi Pro erişimini hemen kaybedecek.",
         "removed": "Koltuk kaldırıldı",
         "alreadyInactive": "Koltuk zaten etkin değil",
@@ -5226,9 +5226,9 @@
         "removeFailed": "Koltuk kaldırılamadı",
         "errors": {
           "seatCap": "4 koltuğun tümü kullanımda. Önce bir koltuğu kaldırın.",
-          "ownerDomain": "Takım arkadaşlarını davet etmek için hesap e-postanız kurumsal bir alan olmalıdır.",
+          "ownerDomain": "Takım arkadaşlarını davet etmek için hesap e-postanız kurumsal bir alan adında olmalıdır.",
           "self": "Kendinizi davet edemezsiniz.",
-          "inviteeDomain": "Davet edilen kişinin e-postası kurumsal bir alan olmalıdır."
+          "inviteeDomain": "Davet edilen kişinin e-postası kurumsal bir alan adında olmalıdır."
         }
       },
       "enterpriseSeats": {
@@ -5247,24 +5247,24 @@
         "withdraw": "Geri çek",
         "unknownEmail": "Bilinmeyen e-posta",
         "alreadyMember": "Zaten üye",
-        "confirmRemove": "{{email}} kaldırmak istiyor musunuz? Enterprise erişimini hemen kaybedecek.",
+        "confirmRemove": "{{email}} kullanıcısını kaldırmak istiyor musunuz? Enterprise erişimini hemen kaybedecek.",
         "confirmRemoveUnknown": "Bu kişiyi kaldırmak istiyor musunuz? Enterprise erişimini hemen kaybedecek.",
-        "confirmWithdraw": "{{email}} adresine gelen daveti geri çekmek istiyor musunuz?",
-        "confirmWithdrawUnknown": "Bu adrese gelen daveti geri çekmek istiyor musunuz?",
+        "confirmWithdraw": "{{email}} adresine gönderilen daveti geri çekmek istiyor musunuz?",
+        "confirmWithdrawUnknown": "Bu adrese gönderilen daveti geri çekmek istiyor musunuz?",
         "removed": "Üye kaldırıldı",
         "withdrawn": "Davet geri çekildi",
         "loadFailed": "Koltuklar yüklenemedi. Tekrar deneyin.",
         "inviteFailed": "Davet gönderilemedi. Tekrar deneyin.",
         "removeFailed": "Kaldırılamadı. Tekrar deneyin.",
         "errors": {
-          "seatCap": "Tüm koltuklar kullanımda. Birini kaldırın veya bir daveti geri çekin.",
-          "inviteeDomain": "Bir şirket e-posta adresine davet gönderin. Ücretsiz ve geçici e-posta alanları kabul edilmez.",
+          "seatCap": "Tüm koltuklar kullanımda. Önce birini kaldırın veya bir daveti geri çekin.",
+          "inviteeDomain": "Kurumsal bir e-posta adresini davet edin. Ücretsiz ve geçici e-posta alan adları kabul edilmez.",
           "self": "Zaten bir koltuğunuz var.",
           "contractEnded": "Enterprise sözleşmeniz sona erdi. Yenilemek için desteğe başvurun.",
           "notAdmin": "Yalnızca hesap yöneticisi koltukları yönetebilir.",
-          "removeSelf": "Kendi koltunuzu kaldıramazsınız. Yöneticiyi değiştirmek için desteğe başvurun.",
+          "removeSelf": "Kendi koltuğunuzu kaldıramazsınız. Yöneticiyi değiştirmek için desteğe başvurun.",
           "tooMany": "Aynı anda en fazla 10 kişiye davet gönderin.",
-          "rateLimited": "Bir gün içinde izin verilen maksimum daveti gönderdiyseniz. Yarın tekrar deneyin."
+          "rateLimited": "Bir gün içinde izin verilen en fazla daveti gönderdiniz. Yarın tekrar deneyin."
         }
       }
     },
@@ -5306,7 +5306,7 @@
         "3": "temel harita"
       },
       "ai": {
-        "0": "LLM",
+        "0": "yapay zeka",
         "1": "Ollama",
         "2": "çerçeveler",
         "3": "başlık belleği",
@@ -5348,7 +5348,7 @@
         "3": "yasal"
       },
       "account": {
-        "0": "plan",
+        "0": "kullanıcı",
         "1": "faturalandırma",
         "2": "abonelik",
         "3": "fatura",

@@ -5212,7 +5212,7 @@
       },
       "free": {
         "heading": "WorldMonitor Gratuit",
-        "desc": "Votre plan actuel est Gratuit. Passez à la version supérieure pour accéder à tous les panels, l'analyse par IA et l'actualisation prioritaire des données."
+        "desc": "Votre plan actuel est Gratuit. Passez à la version supérieure pour accéder à tous les panneaux, à l'analyse par IA et à l'actualisation prioritaire des données."
       },
       "portal": {
         "openFailed": "Impossible d'ouvrir le portail de facturation. Veuillez autoriser les pop-ups et réessayer.",
@@ -5220,7 +5220,7 @@
       },
       "deletion": {
         "heading": "Supprimer le compte",
-        "desc": "Supprimez définitivement ce compte World Monitor. Les abonnements sont annulés immédiatement sans remboursement du temps prépayé restant. Les clés API, clés intégrées et jetons MCP cessent de fonctionner. Les dossiers de facturation nécessaires à la comptabilité, aux litiges et aux demandes légales sont conservés avec les coordonnées du client qu'ils contiennent ; ils cessent d'identifier votre compte de connexion, bien que les journaux webhook du prestataire de paiement écrits avant la suppression conservent les identifiants avec lesquels ils ont été livrés. Les préférences du dashboard et les secrets du trousseau de bureau sur cet appareil ne sont pas supprimés à distance.",
+        "desc": "Supprimez définitivement ce compte World Monitor. Les abonnements sont annulés immédiatement, sans remboursement de la période prépayée restante. Les clés API, les clés d'intégration et les jetons MCP cessent de fonctionner. Les dossiers de facturation nécessaires à la comptabilité, aux litiges et aux demandes légales sont conservés avec les coordonnées du client qu'ils contiennent ; ils cessent d'identifier votre compte de connexion, mais les journaux webhook du prestataire de paiement écrits avant la suppression conservent les identifiants avec lesquels ils ont été transmis. Les préférences du tableau de bord et les secrets de l'application de bureau stockés dans le trousseau de cet appareil ne sont pas effacés à distance.",
         "dialogTitle": "Supprimer ce compte ?",
         "dialogCopy": "Cette action ne peut pas être annulée. Les abonnements sont annulés, les clés cessent de fonctionner immédiatement, et les dossiers de facturation sont conservés pour la comptabilité, les litiges et les demandes légales -- y compris les coordonnées qu'ils contiennent. Déconnectez-vous sur les autres appareils et effacez les données du site sur cet appareil ensuite -- celles-ci sont hors de portée du serveur.",
         "phraseLabel": "Tapez {{phrase}} pour confirmer",
@@ -5268,7 +5268,7 @@
         "statusActive": "Actif",
         "statusExpired": "Invitation expirée",
         "statusInvited": "Invité",
-        "emailFailed": "L'invitation n'a pas pu être envoyée. Vérifiez l'adresse, puis retirez et invitez à nouveau.",
+        "emailFailed": "L'e-mail d'invitation n'a pas pu être envoyé. Vérifiez l'adresse, puis retirez l'invitation et invitez à nouveau.",
         "inviteExpires": "L'invitation expire le {{date}}",
         "roleAdmin": "Administrateur",
         "you": "Vous",
@@ -5334,7 +5334,7 @@
         "3": "fond de carte"
       },
       "ai": {
-        "0": "LLM",
+        "0": "IA",
         "1": "Ollama",
         "2": "frameworks",
         "3": "mémoire des titres",
@@ -5382,7 +5382,7 @@
         "3": "facture",
         "4": "sièges",
         "5": "se déconnecter",
-        "6": "supprimer le compte"
+        "6": "supprimer le compte, plan"
       }
     }
   }

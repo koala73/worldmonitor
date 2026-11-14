@@ -5196,27 +5196,27 @@
       "empty": "Nema odgovarajućih postavki"
     },
     "account": {
-      "intro": "Pogledajte svoj trenutni plan i upravljajte detaljima uplate, računima ili otkazom.",
+      "intro": "Pogledajte svoj trenutni plan i upravljajte podacima o plaćanju, računima ili otkazivanjem.",
       "planFree": "Besplatno",
       "planPremium": "Premium",
       "external": {
         "heading": "Pristup Premium",
-        "desc": "Ovaj pristup se ne naplaćuje kroz vaš WorldMonitor račun. Nema dostupne metode uplate ili računa."
+        "desc": "Ovaj pristup ne naplaćuje se putem vašeg WorldMonitor računa. Ovdje nema načina plaćanja ni računa."
       },
       "checking": {
         "heading": "Provjera vašeg plana…",
         "desc": "Obično traje samo trenutak."
       },
       "status": {
-        "cancelScheduled": "Otkazivanje zakazano -- pristup do {{date}}",
+        "cancelScheduled": "Otkazivanje zakazano — pristup do {{date}}",
         "renews": "Obnavljanje: {{date}}",
-        "onHold": "U suspenziji -- molimo ažurirajte metodu uplate",
-        "cancelled": "Otkazano -- pristup do {{date}}",
+        "onHold": "Pauzirano — ažurirajte način plaćanja",
+        "cancelled": "Otkazano — pristup do {{date}}",
         "expired": "Isteklo",
         "unknown": "Pogledajte Upravljanje naplatom za detalje vašeg trenutnog plana.",
         "ownerManaged": "Naplatom upravlja vlasnik vašeg plana."
       },
-      "upgradeToBusiness": "Nadogradnja na Business",
+      "upgradeToBusiness": "Nadogradi na Business",
       "unavailable": {
         "heading": "Status plana nije dostupan",
         "desc": "Nismo mogli provjeriti vaš trenutni plan. Pokušajte ponovno ili pogledajte planove u novoj kartici."
@@ -5226,16 +5226,16 @@
         "desc": "Vaš trenutni plan je Besplatno. Nadogradite za sve panele, AI analizu i prioritetno osvježavanje podataka."
       },
       "portal": {
-        "openFailed": "Nije moguće otvoriti portal za naplatu. Molimo omogućite pop-upe i pokušajte ponovno.",
+        "openFailed": "Portal za naplatu nije moguće otvoriti. Omogućite skočne prozore i pokušajte ponovno.",
         "unavailable": "Portal za naplatu nije dostupan. Pošaljite e-poštu na support@worldmonitor.app za pomoć."
       },
       "deletion": {
         "heading": "Brisanje računa",
-        "desc": "Trajno izbrisati ovaj World Monitor račun. Pretplate se otkazuju odmah bez povrata preostalog unaprijed plaćenog vremena. API ključevi, ključevi za ugrađivanje i MCP tokeni prestaju raditi. Računi naplata potrebni za računovodstvo, sporove i zakonske zahtjeve čuvaju se s detaljima kontakta koji ih prate; prestaju biti naziv vašeg računa za prijavu, ali zapisnici webhooks-a davatelja usluge uplate napisani prije brisanja zadržavaju identifikatore s kojima su dostavljeni. Postavke panela i tajne ključnice na ovoj uređaju ne brišu se daljinski.",
+        "desc": "Trajno izbrišite ovaj World Monitor račun. Pretplate se odmah otkazuju bez povrata novca za preostalo unaprijed plaćeno razdoblje. API ključevi, ključevi za ugrađivanje i MCP tokeni prestaju raditi. Zapisi o naplati potrebni za računovodstvo, sporove i zakonite zahtjeve čuvaju se zajedno s kontaktnim podacima kupca koje sadrže; u njima se više ne navodi vaš račun za prijavu, no zapisnici webhookova pružatelja usluge plaćanja zapisani prije brisanja zadržavaju identifikatore s kojima su isporučeni. Postavke nadzorne ploče i tajne desktop aplikacije u sustavskom privjesku ključeva (Keychain) na ovom uređaju ne brišu se na daljinu.",
         "dialogTitle": "Obrisati ovaj račun?",
-        "dialogCopy": "To se ne može poništiti. Pretplate se otkazuju, ključevi prestaju raditi odmah, a računi naplata čuvaju se za računovodstvo, sporove i zakonske zahtjeve -- uključujući detalje kontakta koji ih prate. Odjavite se na drugim uređajima i obrisati podatke web-mjesta na ovoj uređaju -- oni su van dosega servera.",
+        "dialogCopy": "Ovo se ne može poništiti. Pretplate se otkazuju, ključevi odmah prestaju raditi, a zapisi o naplati čuvaju se za računovodstvo, sporove i zakonite zahtjeve — uključujući kontaktne podatke koje sadrže. Nakon toga se odjavite na drugim uređajima i izbrišite podatke web-mjesta na ovom uređaju — poslužitelj do njih ne može doći.",
         "phraseLabel": "Upišite {{phrase}} za potvrdu",
-        "deleted": "Račun obrisan. Odjavite se na drugim uređajima i obrisati podatke web-mjesta na ovoj uređaju.",
+        "deleted": "Račun je izbrisan. Odjavite se na drugim uređajima i izbrišite podatke web-mjesta na ovom uređaju.",
         "failed": "Brisanje računa nije uspjelo. Pokušajte ponovno."
       },
       "seats": {
@@ -5266,7 +5266,7 @@
         "errors": {
           "seatCap": "Sva 4 mjesta su iskorištena. Prvo uklonite jedno mjesto.",
           "ownerDomain": "Vaša e-mail adresa računa mora biti iz poslovne domene da biste mogli pozivati članove tima.",
-          "self": "Ne možete pozivati sami sebe.",
+          "self": "Ne možete pozvati sami sebe.",
           "inviteeDomain": "E-mail adresa pozvanog mora biti iz poslovne domene."
         }
       },
@@ -5274,7 +5274,7 @@
         "heading": "Mjesta Enterprise za {{account}}",
         "memberHint": "Administrator vašeg računa dodaje i uklanja ljude na ovom računu.",
         "hintFull": "Sva mjesta su iskorištena. Uklonite nekoga ili povucite poziv da oslobodite mjesto.",
-        "hintOpen": "Pozovite ljude koristeći poslovnu e-mail adresu. Oni primaju poveznicu koja je važeća 14 dana i dijele dozvolu ovog računa.",
+        "hintOpen": "Pozovite ljude putem poslovne e-mail adrese. Primit će poveznicu koja vrijedi 14 dana i dijelit će kvotu ovog računa.",
         "emailLabel": "E-mail adresa za pozivanje",
         "statusActive": "Aktivno",
         "statusExpired": "Poziv istekao",
@@ -5296,14 +5296,14 @@
         "inviteFailed": "Slanje poziva nije uspjelo. Pokušajte ponovno.",
         "removeFailed": "Uklanjanje nije uspjelo. Pokušajte ponovno.",
         "errors": {
-          "seatCap": "Sva mjesta su zauzeta. Prvo uklonite nekoga ili povucite pozivnicu.",
-          "inviteeDomain": "Pozovite na korporativnu e-mail adresu. Besplatne i privremene e-mail domene nisu prihvaćene.",
+          "seatCap": "Sva mjesta su zauzeta. Prvo uklonite nekoga ili povucite poziv.",
+          "inviteeDomain": "Unesite poslovnu e-mail adresu. Besplatne i privremene e-mail domene nisu prihvaćene.",
           "self": "Već imate mjesto.",
           "contractEnded": "Vaš Enterprise ugovor je istekao. Obratite se podršci za obnovu.",
           "notAdmin": "Samo administrator računa može upravljati mjestima.",
           "removeSelf": "Ne možete ukloniti vlastito mjesto. Obratite se podršci za promjenu administratora.",
           "tooMany": "Pozovite do 10 osoba odjednom.",
-          "rateLimited": "Poslali ste maksimalan broj pozivnica u jednom danu. Pokušajte ponovno sutra."
+          "rateLimited": "Poslali ste najveći dopušteni broj poziva u jednom danu. Pokušajte ponovno sutra."
         }
       }
     },
@@ -5317,13 +5317,13 @@
       "sources": {
         "0": "vijesti",
         "1": "feedovi",
-        "2": "RSS",
+        "2": "izvori",
         "3": "regije",
-        "4": "novinske vijesti"
+        "4": "pokrivenost"
       },
       "notifications": {
         "0": "upozorenja",
-        "1": "Telegram",
+        "1": "obavijesti",
         "2": "Slack",
         "3": "e-pošta",
         "4": "Discord",
@@ -5345,7 +5345,7 @@
         "3": "osnovna mapa"
       },
       "ai": {
-        "0": "LLM",
+        "0": "AI",
         "1": "Ollama",
         "2": "okviri",
         "3": "memorija naslova",
@@ -5355,7 +5355,7 @@
         "0": "strujanje",
         "1": "automatska reprodukcija",
         "2": "kvaliteta",
-        "3": "direktno"
+        "3": "direktno, stream, uživo"
       },
       "apiKeys": {
         "0": "ključ",
@@ -5384,16 +5384,16 @@
         "0": "uvjeti korištenja",
         "1": "privatnost",
         "2": "licenca",
-        "3": "pravni napomene"
+        "3": "pravne napomene"
       },
       "account": {
-        "0": "plan",
+        "0": "plaćanje",
         "1": "naplata",
         "2": "pretplata",
         "3": "račun",
         "4": "mjesta",
         "5": "odjava",
-        "6": "brisanje računa"
+        "6": "brisanje računa, faktura"
       }
     }
   }

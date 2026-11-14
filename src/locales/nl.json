@@ -5162,7 +5162,7 @@
       "planPremium": "Premium",
       "external": {
         "heading": "Premium-toegang",
-        "desc": "Deze toegang wordt niet via uw WorldMonitor-account gefactureerd. Geen betaalmethode of facturen beschikbaar hier."
+        "desc": "Deze toegang wordt niet via uw WorldMonitor-account gefactureerd. Er zijn hier geen betaalmethode of facturen beschikbaar."
       },
       "checking": {
         "heading": "Plan controleren…",
@@ -5171,10 +5171,10 @@
       "status": {
         "cancelScheduled": "Annulering gepland -- toegang tot {{date}}",
         "renews": "Verlenging: {{date}}",
-        "onHold": "In de wacht -- werk uw betaalmethode bij",
+        "onHold": "Opgeschort -- werk uw betaalmethode bij",
         "cancelled": "Geannuleerd -- toegang tot {{date}}",
         "expired": "Verlopen",
-        "unknown": "Zie Plan beheren voor details van uw huidige plan.",
+        "unknown": "Zie Facturering beheren voor details van uw huidige plan.",
         "ownerManaged": "Facturering wordt beheerd door uw planeigenaar."
       },
       "upgradeToBusiness": "Upgrade naar Business",
@@ -5192,7 +5192,7 @@
       },
       "deletion": {
         "heading": "Account verwijderen",
-        "desc": "Dit WorldMonitor-account permanent verwijderen. Abonnementen worden onmiddellijk geannuleerd zonder restitutie van resterend prepaid-tegoed. API-sleutels, insluitsleutels en MCP-tokens stoppen met werken. Factureringsgegevens die nodig zijn voor boekhoudkundige doeleinden, geschillen en wettelijke verzoeken worden opgeslagen met de contactgegevens die eraan zijn gekoppeld; ze verwijzen niet langer naar uw inlogaccount, maar webhook-logboeken van de betaalprovider die vóór verwijdering zijn geschreven, behouden de identificeerbare gegevens die ermee zijn verzonden. Dashboardvoorkeuren en desktopcoderingengeheimen op dit apparaat worden niet op afstand gewist.",
+        "desc": "Dit World Monitor-account permanent verwijderen. Abonnementen worden onmiddellijk opgezegd zonder terugbetaling van de resterende vooruitbetaalde periode. API-sleutels, insluitsleutels en MCP-tokens werken niet meer. Factureringsgegevens die nodig zijn voor de boekhouding, geschillen en wettelijke verzoeken worden bewaard met de klantcontactgegevens die ze bevatten; ze verwijzen niet langer naar uw inlogaccount, maar webhooklogboeken van de betaalprovider die vóór de verwijdering zijn geschreven, behouden de identificatoren waarmee ze zijn afgeleverd. Dashboardvoorkeuren en geheimen van de desktop-app in de sleutelhanger van dit apparaat worden niet op afstand gewist.",
         "dialogTitle": "Dit account verwijderen?",
         "dialogCopy": "Dit kan niet ongedaan gemaakt worden. Abonnementen worden geannuleerd, sleutels stoppen onmiddellijk met werken, en factureringsgegevens worden bewaard voor boekhoudkundige doeleinden, geschillen en wettelijke verzoeken -- inclusief de contactgegevens die ermee gepaard gaan. Meld u af op andere apparaten en wis daarna de sitegegevens op dit apparaat -- deze zijn buiten het bereik van de server.",
         "phraseLabel": "Typ {{phrase}} ter bevestiging",
@@ -5217,7 +5217,7 @@
         "hintCorporate": "Nodig teamleden uit met elk zakelijk e-mailadres.",
         "hintPersonal": "Voeg een zakelijk e-mailadres toe om teamleden uit te nodigen.",
         "personalDomain": "Gratis of tijdelijke e-maildomeinen kunnen geen teamleden uitnodigen. Voeg een zakelijk e-mailadres toe om deze functie te gebruiken.",
-        "empty": "Nog geen seats uitgenodigd.",
+        "empty": "Nog niemand uitgenodigd.",
         "confirmRemove": "Deze seat verwijderen? De genodigde verliest direct Pro-toegang.",
         "removed": "Seat verwijderd",
         "alreadyInactive": "Seat was al inactief",
@@ -5226,8 +5226,8 @@
         "removeFailed": "Seat kon niet worden verwijderd",
         "errors": {
           "seatCap": "Alle 4 seats zijn in gebruik. Verwijder eerst een seat.",
-          "ownerDomain": "Uw accounte-mailadres moet een zakelijk domein zijn om teamleden uit te nodigen.",
-          "self": "U kunt jezelf niet uitnodigen.",
+          "ownerDomain": "Het e-mailadres van uw account moet een zakelijk domein hebben om teamleden uit te nodigen.",
+          "self": "U kunt uzelf niet uitnodigen.",
           "inviteeDomain": "Het e-mailadres van de genodigde moet een zakelijk domein zijn."
         }
       },
@@ -5235,12 +5235,12 @@
         "heading": "{{account}} Enterprise-seats",
         "memberHint": "De accountbeheerder van uw organisatie voegt personen toe en verwijdert deze van dit account.",
         "hintFull": "Alle seats zijn in gebruik. Verwijder iemand of trek een uitnodiging in om een seat vrij te maken.",
-        "hintOpen": "Nodig personen uit met hun zakelijke e-mailadres. Zij ontvangen een link die 14 dagen geldig is en delen de budget van dit account.",
+        "hintOpen": "Nodig personen uit met hun zakelijke e-mailadres. Zij ontvangen een link die 14 dagen geldig is en delen het gebruikstegoed van dit account.",
         "emailLabel": "E-mailadres om uit te nodigen",
         "statusActive": "Actief",
         "statusExpired": "Uitnodiging verlopen",
         "statusInvited": "Uitgenodigd",
-        "emailFailed": "De uitnodiginge-mail kon niet worden verzonden. Controleer het adres en trek de uitnodiging in en probeer het opnieuw.",
+        "emailFailed": "De uitnodigingsmail kon niet worden verzonden. Controleer het adres, trek de uitnodiging in en nodig opnieuw uit.",
         "inviteExpires": "Uitnodiging verloopt {{date}}",
         "roleAdmin": "Beheerder",
         "you": "U",
@@ -5257,8 +5257,8 @@
         "inviteFailed": "Uitnodiging kon niet worden verzonden. Probeer het opnieuw.",
         "removeFailed": "Kon niet verwijderen. Probeer het opnieuw.",
         "errors": {
-          "seatCap": "Alle seats zijn in gebruik. Verwijder iemand of trek een uitnodiging in.",
-          "inviteeDomain": "Nodig een bedrijfsemailadres uit. Gratis en wegwerpemaildomeinenen zijn niet toegestaan.",
+          "seatCap": "Alle seats zijn in gebruik. Verwijder eerst iemand of trek een uitnodiging in.",
+          "inviteeDomain": "Nodig een zakelijk e-mailadres uit. Gratis en tijdelijke e-maildomeinen worden niet geaccepteerd.",
           "self": "U hebt al een seat.",
           "contractEnded": "Uw Enterprise-contract is verlopen. Neem contact op met support om het te vernieuwen.",
           "notAdmin": "Alleen de accountbeheerder kan seats beheren.",
@@ -5306,7 +5306,7 @@
         "3": "basiskaart"
       },
       "ai": {
-        "0": "LLM",
+        "0": "AI",
         "1": "Ollama",
         "2": "frameworks",
         "3": "kop-geheugen",
@@ -5352,7 +5352,7 @@
         "1": "facturering",
         "2": "abonnement",
         "3": "factuur",
-        "4": "seats",
+        "4": "plan",
         "5": "afmelden",
         "6": "account verwijderen"
       }

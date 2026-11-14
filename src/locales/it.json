@@ -5212,7 +5212,7 @@
       },
       "free": {
         "heading": "WorldMonitor Gratuito",
-        "desc": "Il tuo piano attuale è Gratuito. Esegui l'upgrade per accedere a tutti i panel, all'analisi AI e all'aggiornamento prioritario dei dati."
+        "desc": "Il tuo piano attuale è Gratuito. Esegui l'upgrade per accedere a tutti i pannelli, all'analisi AI e all'aggiornamento prioritario dei dati."
       },
       "portal": {
         "openFailed": "Impossibile aprire il portale di fatturazione. Consenti i pop-up e riprova.",
@@ -5220,7 +5220,7 @@
       },
       "deletion": {
         "heading": "Elimina account",
-        "desc": "Elimina permanentemente questo account World Monitor. Gli abbonamenti vengono annullati immediatamente senza rimborso del tempo prepagato rimanente. Le chiavi API, le chiavi di incorporamento e i token MCP smettono di funzionare. I record di fatturazione necessari per la contabilità, le controversie e le richieste legali vengono conservati insieme ai dati di contatto che contengono; smettono di identificare il tuo account di accesso, anche se i log webhook del fornitore di pagamenti scritti prima dell'eliminazione mantengono gli identificatori con cui sono stati consegnati. Le preferenze del dashboard e i segreti del portachiavi desktop su questo dispositivo non vengono eliminati da remoto.",
+        "desc": "Elimina permanentemente questo account World Monitor. Gli abbonamenti vengono annullati immediatamente senza rimborso del tempo prepagato rimanente. Le chiavi API, le chiavi di incorporamento e i token MCP smettono di funzionare. I record di fatturazione necessari per la contabilità, le controversie e le richieste legali vengono conservati insieme ai dati di contatto del cliente che contengono; smettono di identificare il tuo account di accesso, anche se i log webhook del fornitore di pagamenti scritti prima dell'eliminazione mantengono gli identificatori con cui sono stati consegnati. Le preferenze della dashboard e i segreti dell'app desktop salvati nel portachiavi di sistema di questo dispositivo non vengono eliminati da remoto.",
         "dialogTitle": "Eliminare questo account?",
         "dialogCopy": "Non è possibile annullare questa operazione. Gli abbonamenti vengono annullati, le chiavi smettono di funzionare immediatamente e i record di fatturazione vengono conservati per la contabilità, le controversie e le richieste legali, inclusi i dati di contatto che contengono. Esci su altri dispositivi e cancella i dati del sito su questo dispositivo in seguito -- quelli sono fuori dalla portata del server.",
         "phraseLabel": "Digita {{phrase}} per confermare",
@@ -5240,12 +5240,12 @@
         "heading": "Posti Business",
         "statusAccepted": "Accettato",
         "statusExpired": "Scaduto",
-        "statusPending": "In sospeso",
+        "statusPending": "In attesa",
         "expires": "Scade il {{date}}",
         "hintCorporate": "Invita i colleghi di qualsiasi dominio email aziendale.",
         "hintPersonal": "Aggiungi un'email aziendale per invitare i colleghi.",
         "personalDomain": "I domini email gratuiti o temporanei non possono invitare colleghi. Aggiungi un'email aziendale per usare questa funzione.",
-        "empty": "Nessun posto invitato ancora.",
+        "empty": "Nessun invito ancora inviato.",
         "confirmRemove": "Rimuovere questo posto? L'invitato perderà l'accesso Pro immediatamente.",
         "removed": "Posto rimosso",
         "alreadyInactive": "Il posto era già inattivo",
@@ -5260,17 +5260,17 @@
         }
       },
       "enterpriseSeats": {
-        "heading": "Posti Enterprise {{account}}",
+        "heading": "Posti Enterprise di {{account}}",
         "memberHint": "L'amministratore del tuo account aggiunge e rimuove le persone su questo account.",
         "hintFull": "Tutti i posti sono in uso. Rimuovi qualcuno o ritira un invito per liberare un posto.",
-        "hintOpen": "Invita le persone tramite email aziendale. Ricevono un link valido per 14 giorni e condividono l'allowance di questo account.",
+        "hintOpen": "Invita le persone tramite email aziendale. Ricevono un link valido per 14 giorni e condividono la quota di questo account.",
         "emailLabel": "Indirizzo email da invitare",
         "statusActive": "Attivo",
         "statusExpired": "Invito scaduto",
         "statusInvited": "Invitato",
-        "emailFailed": "L'email di invito non ha potuto essere inviata. Controlla l'indirizzo, quindi ritira e invita di nuovo.",
-        "inviteExpires": "Invito scade il {{date}}",
-        "roleAdmin": "Admin",
+        "emailFailed": "Impossibile inviare l'email di invito. Controlla l'indirizzo, poi ritira l'invito e invita di nuovo.",
+        "inviteExpires": "L'invito scade il {{date}}",
+        "roleAdmin": "Amministratore",
         "you": "Tu",
         "withdraw": "Ritira",
         "unknownEmail": "Email sconosciuta",
@@ -5286,7 +5286,7 @@
         "removeFailed": "Rimozione non riuscita. Riprova.",
         "errors": {
           "seatCap": "Tutti i posti sono in uso. Rimuovi qualcuno o ritira un invito prima.",
-          "inviteeDomain": "Invita un indirizzo email aziendale. I domini di posta gratuiti e monouso non sono accettati.",
+          "inviteeDomain": "Invita un indirizzo email aziendale. I domini email gratuiti o temporanei non sono accettati.",
           "self": "Hai già un posto.",
           "contractEnded": "Il tuo contratto Enterprise è scaduto. Contatta il supporto per rinnovarlo.",
           "notAdmin": "Solo l'amministratore dell'account può gestire i posti.",
@@ -5334,7 +5334,7 @@
         "3": "mappa base"
       },
       "ai": {
-        "0": "LLM",
+        "0": "memoria titoli",
         "1": "Ollama",
         "2": "framework",
         "3": "memoria headline",

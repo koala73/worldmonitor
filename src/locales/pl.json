@@ -5230,8 +5230,8 @@
         "onHold": "Wstrzymane — zaktualizuj metodę płatności",
         "cancelled": "Anulowano — dostęp do {{date}}",
         "expired": "Wygasło",
-        "unknown": "Przejdź do Zarządzania rozliczeniami, aby zobaczyć szczegóły bieżącego planu.",
-        "ownerManaged": "Rozliczenia są zarządzane przez właściciela planu."
+        "unknown": "Szczegóły bieżącego planu znajdziesz w sekcji Zarządzaj rozliczeniami.",
+        "ownerManaged": "Rozliczeniami zarządza właściciel Twojego planu."
       },
       "upgradeToBusiness": "Uaktualnij do Business",
       "unavailable": {
@@ -5248,9 +5248,9 @@
       },
       "deletion": {
         "heading": "Usuń konto",
-        "desc": "Trwale usuń to konto World Monitor. Subskrypcje anulują się natychmiast bez zwrotu pozostałego czasu prepłaconego. Klucze API, klucze osadzania i tokeny MCP przestają działać. Rejestry rozliczeń wymagane do rachunkowości, sporów i żądań zgodnych z prawem są przechowywane z danymi kontaktowymi, które zawierają; przestają odnosić się do konta logowania, chociaż dzienniki webhook dostawcy płatności zapisane przed usunięciem zachowują otrzymane identyfikatory. Preferencje dashboard i sekrety łańcucha kluczy pulpitu na tym urządzeniu nie są usuwane zdalnie.",
+        "desc": "Trwale usuń to konto World Monitor. Subskrypcje są anulowane natychmiast, bez zwrotu środków za pozostały opłacony z góry okres. Klucze API, klucze osadzania i tokeny MCP przestają działać. Dokumentacja rozliczeniowa potrzebna do celów księgowych, sporów i żądań wynikających z przepisów prawa jest przechowywana wraz z zawartymi w niej danymi kontaktowymi klienta; nie wskazuje już Twojego konta logowania, choć dzienniki webhooków dostawcy płatności zapisane przed usunięciem zachowują identyfikatory, z którymi zostały dostarczone. Preferencje pulpitu nawigacyjnego i sekrety aplikacji desktopowej w systemowym pęku kluczy (Keychain) na tym urządzeniu nie są usuwane zdalnie.",
         "dialogTitle": "Usunąć to konto?",
-        "dialogCopy": "Nie można tego cofnąć. Subskrypcje anulują się, klucze przestają działać natychmiast, a rejestry rozliczeń są przechowywane do rachunkowości, sporów i żądań zgodnych z prawem — łącznie z danymi kontaktowymi, które zawierają. Wyloguj się na innych urządzeniach i wyczyść dane witryny tego urządzenia — są poza zasięgiem serwera.",
+        "dialogCopy": "Tej operacji nie można cofnąć. Subskrypcje zostaną anulowane, klucze natychmiast przestaną działać, a dokumentacja rozliczeniowa zostanie zachowana do celów księgowych, sporów i żądań wynikających z przepisów prawa — wraz z zawartymi w niej danymi kontaktowymi. Następnie wyloguj się na innych urządzeniach i wyczyść dane witryny na tym urządzeniu — serwer nie ma do nich dostępu.",
         "phraseLabel": "Wpisz {{phrase}}, aby potwierdzić",
         "deleted": "Konto usunięte. Wyloguj się na innych urządzeniach i wyczyść dane witryny tego urządzenia.",
         "failed": "Usunięcie konta nie powiodło się. Spróbuj ponownie."
@@ -5273,7 +5273,7 @@
         "hintCorporate": "Zaproś kolegów z dowolnej domeny poczty firmowej.",
         "hintPersonal": "Dodaj firmowy adres e-mail, aby zaprosić kolegów.",
         "personalDomain": "Domeny bezpłatne lub jednorazowe nie mogą zapraszać kolegów. Dodaj firmowy adres e-mail, aby korzystać z tej funkcji.",
-        "empty": "Nie zaproszono jeszcze żadnych miejsc.",
+        "empty": "Nikt nie został jeszcze zaproszony.",
         "confirmRemove": "Usunąć to miejsce? Osoba zaproszona natychmiast straci dostęp Pro.",
         "removed": "Miejsce usunięte",
         "alreadyInactive": "Miejsce było już nieaktywne",
@@ -5291,7 +5291,7 @@
         "heading": "Miejsca Enterprise {{account}}",
         "memberHint": "Administrator Twojego konta dodaje i usuwa osoby z tego konta.",
         "hintFull": "Wszystkie miejsca są w użyciu. Usuń kogoś lub wycofaj zaproszenie, aby zwolnić miejsce.",
-        "hintOpen": "Zaproś osoby używając firmowego adresu e-mail. Otrzymają link ważny przez 14 dni i będą dzielić limit tego konta.",
+        "hintOpen": "Zapraszaj osoby przez firmowy adres e-mail. Otrzymają link ważny przez 14 dni i będą korzystać ze wspólnego limitu tego konta.",
         "emailLabel": "Adres e-mail do zaproszenia",
         "statusActive": "Aktywne",
         "statusExpired": "Zaproszenie wygasło",
@@ -5302,7 +5302,7 @@
         "you": "Ty",
         "withdraw": "Wycofaj",
         "unknownEmail": "Nieznany adres e-mail",
-        "alreadyMember": "Już członkiem",
+        "alreadyMember": "Już jest członkiem",
         "confirmRemove": "Usunąć {{email}}? Ta osoba natychmiast straci dostęp Enterprise.",
         "confirmRemoveUnknown": "Usunąć tę osobę? Natychmiast straci dostęp Enterprise.",
         "confirmWithdraw": "Wycofać zaproszenie dla {{email}}?",
@@ -5314,13 +5314,13 @@
         "removeFailed": "Nie udało się usunąć. Spróbuj ponownie.",
         "errors": {
           "seatCap": "Wszystkie miejsca są w użyciu. Usuń kogoś lub wycofaj zaproszenie.",
-          "inviteeDomain": "Zaproś osobę z firmowym adresem e-mail. Darmowe i tymczasowe domeny e-mail nie są akceptowane.",
-          "self": "Masz już miejsce przydzielone.",
-          "contractEnded": "Twoja umowa Enterprise wygasła. Skontaktuj się z pomocą, aby ją odnowić.",
+          "inviteeDomain": "Podaj firmowy adres e-mail. Bezpłatne i jednorazowe domeny e-mail nie są akceptowane.",
+          "self": "Masz już przydzielone miejsce.",
+          "contractEnded": "Twoja umowa Enterprise wygasła. Skontaktuj się z pomocą techniczną, aby ją odnowić.",
           "notAdmin": "Tylko administrator konta może zarządzać miejscami.",
-          "removeSelf": "Nie możesz usunąć swojego miejsca. Skontaktuj się z pomocą, aby zmienić administratora.",
+          "removeSelf": "Nie możesz usunąć własnego miejsca. Skontaktuj się z pomocą techniczną, aby zmienić administratora.",
           "tooMany": "Zaproś maksymalnie 10 osób jednocześnie.",
-          "rateLimited": "Osiągnąłeś limit zaproszeń na dzień. Spróbuj jutro."
+          "rateLimited": "Osiągnięto dzienny limit wysłanych zaproszeń. Spróbuj ponownie jutro."
         }
       }
     },
@@ -5334,9 +5334,9 @@
       "sources": {
         "0": "wiadomości",
         "1": "kanały",
-        "2": "RSS",
+        "2": "źródła",
         "3": "regiony",
-        "4": "relacja"
+        "4": "zasięg"
       },
       "notifications": {
         "0": "alerty",
@@ -5362,8 +5362,8 @@
         "3": "mapa bazowa"
       },
       "ai": {
-        "0": "LLM",
-        "1": "Ollama",
+        "0": "AI",
+        "1": "przeglądarka",
         "2": "frameworki",
         "3": "pamięć nagłówków",
         "4": "model przeglądarki"
@@ -5372,15 +5372,15 @@
         "0": "strumień",
         "1": "odtwarzanie automatyczne",
         "2": "jakość",
-        "3": "na żywo"
+        "3": "na żywo, transmisja"
       },
       "apiKeys": {
         "0": "klucz",
         "1": "token",
-        "2": "klucz desktop"
+        "2": "klucz desktopowy"
       },
       "embeds": {
-        "0": "widget",
+        "0": "osadzanie",
         "1": "iframe",
         "2": "klucz embeda"
       },
@@ -5404,7 +5404,7 @@
         "3": "informacje prawne"
       },
       "account": {
-        "0": "plan",
+        "0": "płatności",
         "1": "rozliczenia",
         "2": "subskrypcja",
         "3": "faktura",

@@ -5170,7 +5170,7 @@
       },
       "status": {
         "cancelScheduled": "Kündigung geplant – Zugriff bis {{date}}",
-        "renews": "Erneuert sich: {{date}}",
+        "renews": "Verlängert sich am: {{date}}",
         "onHold": "Ausgesetzt – bitte aktualisieren Sie die Zahlungsmethode",
         "cancelled": "Gekündigt – Zugriff bis {{date}}",
         "expired": "Abgelaufen",
@@ -5184,15 +5184,15 @@
       },
       "free": {
         "heading": "WorldMonitor Free",
-        "desc": "Ihr aktueller Plan ist Free. Upgraden Sie für alle Panels, KI-Analyse und Prioritätsdatenaktualisierung."
+        "desc": "Ihr aktueller Plan ist Free. Upgraden Sie für alle Panels, KI-Analyse und bevorzugte Datenaktualisierung."
       },
       "portal": {
         "openFailed": "Das Abrechnungsportal konnte nicht geöffnet werden. Bitte aktivieren Sie Pop-ups und versuchen Sie es erneut.",
-        "unavailable": "Abrechnungsportal nicht verfügbar. E-Mail an support@worldmonitor.app für Hilfe."
+        "unavailable": "Abrechnungsportal nicht verfügbar. Schreiben Sie an support@worldmonitor.app, um Hilfe zu erhalten."
       },
       "deletion": {
         "heading": "Konto löschen",
-        "desc": "Löschen Sie dieses World Monitor-Konto dauerhaft. Abos werden sofort gekündigt ohne Rückerstattung der restlichen Prepaid-Zeit. API-Schlüssel, Embed-Schlüssel und MCP-Tokens funktionieren nicht mehr. Abrechnungsunterlagen, die für Buchhaltung, Streitigkeiten und gesetzliche Anfragen erforderlich sind, werden mit den Kundenkontaktdetails aufbewahrt; sie nennen Ihr Login-Konto nicht mehr, aber Webhook-Protokolle des Zahlungsanbieters, die vor der Löschung geschrieben wurden, behalten die Identifizierer, mit denen sie geliefert wurden. Dashboard-Einstellungen und Desktop-Schlüsselbund-Geheimnisse auf diesem Gerät werden nicht remote gelöscht.",
+        "desc": "Löschen Sie dieses World Monitor-Konto dauerhaft. Abos werden sofort gekündigt, ohne Rückerstattung der verbleibenden vorausbezahlten Laufzeit. API-Schlüssel, Embed-Schlüssel und MCP-Tokens funktionieren nicht mehr. Abrechnungsunterlagen, die für Buchhaltung, Streitfälle und gesetzlich zulässige Anfragen erforderlich sind, werden mit den darin enthaltenen Kundenkontaktdaten aufbewahrt; sie nennen Ihr Login-Konto nicht mehr, Webhook-Protokolle des Zahlungsanbieters, die vor der Löschung geschrieben wurden, behalten jedoch die Kennungen, mit denen sie zugestellt wurden. Dashboard-Einstellungen und Geheimnisse der Desktop-App im Schlüsselbund dieses Geräts werden nicht aus der Ferne gelöscht.",
         "dialogTitle": "Dieses Konto löschen?",
         "dialogCopy": "Dies kann nicht rückgängig gemacht werden. Abos werden gekündigt, Schlüssel funktionieren sofort nicht mehr, und Abrechnungsunterlagen werden für Buchhaltung, Streitigkeiten und gesetzliche Anfragen aufbewahrt – einschließlich der Kontaktdetails, die sie enthalten. Melden Sie sich auf anderen Geräten ab und löschen Sie danach die Website-Daten dieses Geräts – diese sind außerhalb der Reichweite des Servers.",
         "phraseLabel": "Geben Sie {{phrase}} ein, um zu bestätigen",
@@ -5235,7 +5235,7 @@
         "heading": "Enterprise-Plätze für {{account}}",
         "memberHint": "Der Kontoadministrator fügt Personen auf diesem Konto hinzu und entfernt sie.",
         "hintFull": "Alle Plätze sind in Gebrauch. Entfernen Sie jemanden oder ziehen Sie eine Einladung zurück, um einen Platz freizugeben.",
-        "hintOpen": "Laden Sie Personen per Unternehmens-E-Mail ein. Sie erhalten einen Link, der 14 Tage lang gültig ist und dieses Konto freigibt.",
+        "hintOpen": "Laden Sie Personen per Unternehmens-E-Mail ein. Sie erhalten einen Link, der 14 Tage lang gültig ist, und teilen sich das Kontingent dieses Kontos.",
         "emailLabel": "E-Mail-Adresse zum Einladen",
         "statusActive": "Aktiv",
         "statusExpired": "Einladung abgelaufen",
@@ -5257,8 +5257,8 @@
         "inviteFailed": "Einladung konnte nicht gesendet werden. Versuchen Sie es erneut.",
         "removeFailed": "Entfernen fehlgeschlagen. Versuchen Sie es erneut.",
         "errors": {
-          "seatCap": "Alle Plätze sind belegt. Entfernen Sie jemanden oder widerrufen Sie eine Einladung.",
-          "inviteeDomain": "Laden Sie eine geschäftliche E-Mail-Adresse ein. Kostenlose und Wegwerf-E-Mail-Domains werden nicht akzeptiert.",
+          "seatCap": "Alle Plätze sind belegt. Entfernen Sie zuerst jemanden oder ziehen Sie eine Einladung zurück.",
+          "inviteeDomain": "Laden Sie eine Unternehmens-E-Mail-Adresse ein. Kostenlose und Wegwerf-E-Mail-Domänen werden nicht akzeptiert.",
           "self": "Sie haben bereits einen Platz.",
           "contractEnded": "Ihr Enterprise-Vertrag ist abgelaufen. Kontaktieren Sie den Support, um ihn zu erneuern.",
           "notAdmin": "Nur der Kontoadministrator kann Plätze verwalten.",
@@ -5306,7 +5306,7 @@
         "3": "Basiskarte"
       },
       "ai": {
-        "0": "LLM",
+        "0": "KI",
         "1": "Ollama",
         "2": "Frameworks",
         "3": "Überschriftenspeicher",

@@ -5198,7 +5198,7 @@
       },
       "status": {
         "cancelScheduled": "Cancelamento agendado -- acesso até {{date}}",
-        "renews": "Renova: {{date}}",
+        "renews": "Renovação: {{date}}",
         "onHold": "Suspenso -- atualize o método de pagamento",
         "cancelled": "Cancelado -- acesso até {{date}}",
         "expired": "Expirado",
@@ -5219,13 +5219,13 @@
         "unavailable": "Portal de faturamento indisponível. Envie um email para support@worldmonitor.app para obter ajuda."
       },
       "deletion": {
-        "heading": "Deletar conta",
-        "desc": "Deletar permanentemente esta conta World Monitor. Subscrições são canceladas imediatamente sem reembolso do tempo pré-pago restante. Chaves de API, chaves de embed e tokens MCP deixam de funcionar. Registros de faturamento necessários para contabilidade, disputas e solicitações legítimas são mantidos com os detalhes de contato que carregam; deixam de nomear sua conta de login, embora logs de webhook do provedor de pagamento escritos antes da exclusão mantenham os identificadores com que foram entregues. Preferências de dashboard e segredos do chaveiro do desktop neste dispositivo não são apagados remotamente.",
-        "dialogTitle": "Deletar esta conta?",
-        "dialogCopy": "Isto não pode ser desfeito. Subscrições são canceladas, chaves deixam de funcionar imediatamente, e registros de faturamento são mantidos para contabilidade, disputas e solicitações legítimas -- incluindo os detalhes de contato que carregam. Desconecte-se em outros dispositivos e limpe os dados do site deste dispositivo depois -- esses estão fora do alcance do servidor.",
+        "heading": "Excluir conta",
+        "desc": "Excluir permanentemente esta conta World Monitor. As assinaturas são canceladas imediatamente, sem reembolso do tempo pré-pago restante. Chaves de API, chaves de incorporação e tokens MCP deixam de funcionar. Os registros de faturamento necessários para contabilidade, disputas e solicitações legais são mantidos com os dados de contato do cliente que contêm; eles deixam de identificar sua conta de login, embora os logs de webhook do provedor de pagamento gravados antes da exclusão mantenham os identificadores com que foram entregues. As preferências do dashboard e os segredos do app para desktop guardados no chaveiro do sistema deste dispositivo não são apagados remotamente.",
+        "dialogTitle": "Excluir esta conta?",
+        "dialogCopy": "Isto não pode ser desfeito. As assinaturas são canceladas, as chaves deixam de funcionar imediatamente e os registros de faturamento são mantidos para contabilidade, disputas e solicitações legais -- incluindo os dados de contato que contêm. Depois, saia da conta nos outros dispositivos e limpe os dados do site deste dispositivo -- isso está fora do alcance do servidor.",
         "phraseLabel": "Digite {{phrase}} para confirmar",
-        "deleted": "Conta deletada. Desconecte-se em outros dispositivos e limpe os dados do site deste dispositivo.",
-        "failed": "Falha ao deletar conta. Tente novamente."
+        "deleted": "Conta excluída. Saia da conta nos outros dispositivos e limpe os dados do site deste dispositivo.",
+        "failed": "Falha ao excluir a conta. Tente novamente."
       },
       "seats": {
         "used": "{{used}} / {{cap}} em uso",
@@ -5245,7 +5245,7 @@
         "hintCorporate": "Convide colegas de qualquer domínio de email corporativo.",
         "hintPersonal": "Adicione um email corporativo para convidar colegas.",
         "personalDomain": "Domínios de email gratuitos ou descartáveis não podem convidar colegas. Adicione um email corporativo para usar este recurso.",
-        "empty": "Nenhum assento convidado ainda.",
+        "empty": "Nenhum convite enviado ainda.",
         "confirmRemove": "Remover este assento? O convidado perderá acesso Pro imediatamente.",
         "removed": "Assento removido",
         "alreadyInactive": "O assento já estava inativo",
@@ -5260,7 +5260,7 @@
         }
       },
       "enterpriseSeats": {
-        "heading": "Assentos Enterprise {{account}}",
+        "heading": "Assentos Enterprise de {{account}}",
         "memberHint": "O administrador da sua conta adiciona e remove pessoas nesta conta.",
         "hintFull": "Todos os assentos estão em uso. Remova alguém ou retire um convite para liberar um assento.",
         "hintOpen": "Convide pessoas por email corporativo. Eles recebem um link válido por 14 dias e compartilham a cota desta conta.",
@@ -5270,7 +5270,7 @@
         "statusInvited": "Convidado",
         "emailFailed": "O email de convite não pôde ser enviado. Verifique o endereço e retire o convite para convidar novamente.",
         "inviteExpires": "Convite expira em {{date}}",
-        "roleAdmin": "Admin",
+        "roleAdmin": "Administrador",
         "you": "Você",
         "withdraw": "Retirar",
         "unknownEmail": "Email desconhecido",
@@ -5285,7 +5285,7 @@
         "inviteFailed": "Não foi possível enviar o convite. Tente novamente.",
         "removeFailed": "Não foi possível remover. Tente novamente.",
         "errors": {
-          "seatCap": "Todos os assentos estão em uso. Remova alguém ou cancele um convite primeiro.",
+          "seatCap": "Todos os assentos estão em uso. Remova alguém ou retire um convite primeiro.",
           "inviteeDomain": "Convide um endereço de email corporativo. Domínios de email gratuitos e descartáveis não são aceitos.",
           "self": "Você já possui um assento.",
           "contractEnded": "Seu contrato Enterprise expirou. Entre em contato com o suporte para renovar.",
@@ -5382,7 +5382,7 @@
         "3": "fatura",
         "4": "assentos",
         "5": "sair",
-        "6": "deletar conta"
+        "6": "deletar conta, excluir conta, faturamento"
       }
     }
   }

@@ -5157,7 +5157,7 @@
       "empty": "Nincs egyező beállítás"
     },
     "account": {
-      "intro": "Tekintse meg aktuális csomagját és kezelheti fizetési módját, számláit vagy lemondását.",
+      "intro": "Tekintse meg aktuális csomagját, és kezelje fizetési módját, számláit vagy a lemondást.",
       "planFree": "Ingyenes",
       "planPremium": "Premium",
       "external": {
@@ -5169,22 +5169,22 @@
         "desc": "Ez általában csak egy pillanat."
       },
       "status": {
-        "cancelScheduled": "Lemondás ütemezve – hozzáférés: {{date}}",
+        "cancelScheduled": "Lemondás ütemezve – hozzáférés eddig: {{date}}",
         "renews": "Megújítás: {{date}}",
         "onHold": "Szüneteltetett – frissítse fizetési módját",
-        "cancelled": "Lemondva – hozzáférés: {{date}}",
+        "cancelled": "Lemondva – hozzáférés eddig: {{date}}",
         "expired": "Lejárt",
-        "unknown": "A Számlázás kezelése menüpontban tekintse meg csomag részleteit.",
+        "unknown": "Aktuális csomagja részleteit a Számlázás kezelése menüpontban találja.",
         "ownerManaged": "A számlázást a csomag tulajdonosa kezeli."
       },
-      "upgradeToBusiness": "Frissítés Businessre",
+      "upgradeToBusiness": "Váltás Business csomagra",
       "unavailable": {
         "heading": "Csomag státusza nem érhető el",
         "desc": "Nem sikerült ellenőrizni aktuális csomagját. Próbálja újra, vagy tekintse meg a csomagokat új lapon."
       },
       "free": {
         "heading": "WorldMonitor Ingyenes",
-        "desc": "Jelenlegi csomag: Ingyenes. Frissítsen az összes panel, AI-analízis és prioritás adatfrissítésért."
+        "desc": "Jelenlegi csomagja: Ingyenes. Váltson nagyobb csomagra az összes panelért, az AI-elemzésért és az elsőbbségi adatfrissítésért."
       },
       "portal": {
         "openFailed": "Nem sikerült megnyitni a számlázási portált. Engedélyezze az előugró ablakokat és próbálja újra.",
@@ -5192,10 +5192,10 @@
       },
       "deletion": {
         "heading": "Fiók törlése",
-        "desc": "Véglegesen törölje ezt a World Monitor-fiókot. Az előfizetések azonnal törlődnek, visszatérítés nélkül. API-kulcsok, beágyazási kulcsok és MCP-tokenek már nem működnek. A számviteli, vitarendezési és jogerős kérelmekhez szükséges számlázási nyilvántartások megmaradnak az azokat tartalmazó ügyfél-kapcsolattartási adatokkal; nem nevezik már meg a bejelentkezési fiókot, azonban a törlés előtt rögzített fizetési szolgáltató webhook-naplók megtartják a hozzájuk érkezett azonosítókat. Az irányítópult-beállítások és az eszközön lévő asztali kulcstartó-titkok nincsenek távolról törölve.",
+        "desc": "A World Monitor-fiók végleges törlése. Az előfizetések azonnal megszűnnek, a hátralévő előre kifizetett időszakért nincs visszatérítés. Az API-kulcsok, a beágyazási kulcsok és az MCP-tokenek nem működnek tovább. A számvitelhez, vitarendezéshez és jogszerű megkeresésekhez szükséges számlázási nyilvántartásokat megőrizzük a bennük szereplő ügyfél-kapcsolattartási adatokkal együtt; ezek a továbbiakban nem nevezik meg a bejelentkezési fiókját, a fizetési szolgáltató törlés előtt rögzített webhook-naplói azonban megtartják azokat az azonosítókat, amelyekkel kézbesítették őket. Az irányítópult-beállításokat és az asztali alkalmazás rendszerkulcstartójában (Keychain) tárolt titkokat ezen az eszközön nem töröljük távolról.",
         "dialogTitle": "Törli ezt a fiókot?",
-        "dialogCopy": "Ez nem vonható vissza. Az előfizetések törlődnek, a kulcsok azonnal megállnak, és számlázási nyilvántartások megmaradnak számviteli, vitarendezési és jogerős kérelmekhez – beleértve az azokat tartalmazó ügyfél-kapcsolattartási adatokat. Jelentkezzen ki más eszközökön, és ezt követően törölje ennek az eszköznek a webhelyhez kapcsolódó adatait – ezek a szerver elérésén kívüliek.",
-        "phraseLabel": "Írja be a {{phrase}} szöveget a megerősítéshez",
+        "dialogCopy": "Ez a művelet nem vonható vissza. Az előfizetések megszűnnek, a kulcsok azonnal leállnak, a számlázási nyilvántartásokat pedig megőrizzük számviteli, vitarendezési és jogszerű megkeresési célokra – a bennük szereplő kapcsolattartási adatokkal együtt. Ezután jelentkezzen ki a többi eszközön, és törölje a webhelyadatokat ezen az eszközön – ezeket a szerver nem éri el.",
+        "phraseLabel": "A megerősítéshez írja be: {{phrase}}",
         "deleted": "Fiók törölve. Jelentkezzen ki más eszközökön, és törölje ennek az eszköznek a webhelyhez kapcsolódó adatait.",
         "failed": "A fiók törlése sikertelen. Próbálja újra."
       },
@@ -5216,8 +5216,8 @@
         "expires": "Lejár: {{date}}",
         "hintCorporate": "Hívjon meg munkatársakat bármilyen vállalati e-mail tartományból.",
         "hintPersonal": "Adjon hozzá egy vállalati e-mail címet munkatársak meghívásához.",
-        "personalDomain": "Az ingyenes vagy eldobható e-mail tartományok nem tudják meghívni a munkatársakat. Adjon hozzá egy vállalati e-mail címet a funkció használatához.",
-        "empty": "Még nincsenek meghívott helyek.",
+        "personalDomain": "Ingyenes vagy eldobható e-mail-tartományból nem lehet munkatársakat meghívni. A funkció használatához adjon hozzá egy vállalati e-mail-címet.",
+        "empty": "Még nem hívott meg senkit.",
         "confirmRemove": "Eltávolítja ezt a helyet? A meghívott azonnal elveszíti a Pro hozzáférést.",
         "removed": "Hely eltávolítva",
         "alreadyInactive": "A hely már inaktív volt",
@@ -5226,16 +5226,16 @@
         "removeFailed": "Nem sikerült eltávolítani a helyet",
         "errors": {
           "seatCap": "Mind a 4 hely használatban van. Előbb távolítson el egy helyet.",
-          "ownerDomain": "A fiók e-mail címének vállalati tartománynak kell lennie a munkatársak meghívásához.",
+          "ownerDomain": "Munkatársak meghívásához a fiókja e-mail-címének vállalati tartományból kell származnia.",
           "self": "Nem hívhatja meg saját magát.",
-          "inviteeDomain": "A meghívott e-mail címnek vállalati tartománynak kell lennie."
+          "inviteeDomain": "A meghívott személy e-mail-címének vállalati tartományból kell származnia."
         }
       },
       "enterpriseSeats": {
         "heading": "{{account}} Enterprise helyek",
         "memberHint": "A fiók rendszergazdája adja hozzá és távolítja el az embereket ebből a fiókból.",
-        "hintFull": "Minden hely használatban van. Távolítson el valakit, vagy vonja vissza egy meghívást egy hely felszabadításához.",
-        "hintOpen": "Hívjon meg embereket vállalati e-mail címmel. Kapnak egy 14 napig érvényes linket, és osztják ezt a fiók keretét.",
+        "hintFull": "Minden hely foglalt. Egy hely felszabadításához távolítson el valakit, vagy vonjon vissza egy meghívást.",
+        "hintOpen": "Hívjon meg embereket vállalati e-mail-címmel. 14 napig érvényes linket kapnak, és közösen használják ennek a fióknak a keretét.",
         "emailLabel": "Meghívandó e-mail cím",
         "statusActive": "Aktív",
         "statusExpired": "Meghívás lejárt",
@@ -5247,7 +5247,7 @@
         "withdraw": "Visszavonás",
         "unknownEmail": "Ismeretlen e-mail",
         "alreadyMember": "Már tag",
-        "confirmRemove": "Eltávolítja {{email}} címet? Azonnal elveszíti az Enterprise hozzáférést.",
+        "confirmRemove": "Eltávolítja: {{email}}? Azonnal elveszíti az Enterprise-hozzáférést.",
         "confirmRemoveUnknown": "Eltávolítja ezt a személyt? Azonnal elveszíti az Enterprise hozzáférést.",
         "confirmWithdraw": "Visszavonja a meghívást {{email}} számára?",
         "confirmWithdrawUnknown": "Visszavonja a meghívást erre a címre?",
@@ -5258,7 +5258,7 @@
         "removeFailed": "Nem sikerült eltávolítani. Próbálja újra.",
         "errors": {
           "seatCap": "Minden hely foglalt. Előbb távolítson el valakit vagy vonjon vissza egy meghívást.",
-          "inviteeDomain": "Munkahelyi e-mail címre küldjön meghívást. Az ingyenes és ideiglenes e-mail domainek nem elfogadottak.",
+          "inviteeDomain": "Vállalati e-mail-címet adjon meg. Ingyenes és eldobható e-mail-tartományok nem fogadhatók el.",
           "self": "Már van egy helye.",
           "contractEnded": "Az Enterprise szerződés lejárt. Forduljon az ügyfélszolgálathoz a megújításhoz.",
           "notAdmin": "Csak a fiók rendszergazdája kezelheti a helyeket.",
@@ -5278,13 +5278,13 @@
       "sources": {
         "0": "hírek",
         "1": "feedek",
-        "2": "RSS",
+        "2": "források",
         "3": "régiók",
-        "4": "sajtóvisszhang"
+        "4": "lefedettség"
       },
       "notifications": {
         "0": "riasztások",
-        "1": "telegram",
+        "1": "értesítések",
         "2": "slack",
         "3": "e-mail",
         "4": "discord",
@@ -5306,14 +5306,14 @@
         "3": "alaptérkép"
       },
       "ai": {
-        "0": "LLM",
+        "0": "MI",
         "1": "ollama",
         "2": "keretrendszerek",
         "3": "címsor-memória",
         "4": "böngésző modell"
       },
       "video": {
-        "0": "stream",
+        "0": "videó",
         "1": "automatikus lejátszás",
         "2": "minőség",
         "3": "élő"

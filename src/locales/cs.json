@@ -5218,7 +5218,7 @@
       "planPremium": "Premium",
       "external": {
         "heading": "Přístup Premium",
-        "desc": "Tento přístup se neplatí prostřednictvím vašeho účtu WorldMonitor. Nejsou dostupné žádné platební údaje nebo faktury."
+        "desc": "Tento přístup se neúčtuje prostřednictvím vašeho účtu WorldMonitor. Platební metoda ani faktury zde nejsou k dispozici."
       },
       "checking": {
         "heading": "Ověřování vašeho plánu…",
@@ -5230,27 +5230,27 @@
         "onHold": "Pozastaveno -- aktualizujte prosím platební metodu",
         "cancelled": "Zrušeno -- přístup do {{date}}",
         "expired": "Vypršelo",
-        "unknown": "Podrobnosti o svém aktuálním plánu najdete v části Správa fakturace.",
+        "unknown": "Podrobnosti o aktuálním plánu najdete v části Spravovat fakturaci.",
         "ownerManaged": "Fakturaci spravuje vlastník vašeho plánu."
       },
-      "upgradeToBusiness": "Upgrade na Business",
+      "upgradeToBusiness": "Přejít na Business",
       "unavailable": {
         "heading": "Stav plánu není dostupný",
         "desc": "Nepodařilo se nám ověřit váš aktuální plán. Zkuste znovu nebo si zobrazte plány na nové kartě."
       },
       "free": {
         "heading": "WorldMonitor Zdarma",
-        "desc": "Váš aktuální plán je Zdarma. Upgradujte pro všechny panely, analýzu AI a prioritní aktualizaci dat."
+        "desc": "Váš aktuální plán je Zdarma. Přejděte na vyšší plán a získejte všechny panely, analýzu AI a prioritní aktualizaci dat."
       },
       "portal": {
-        "openFailed": "Nepodařilo se otevřít portál fakturace. Povolte prosím pop-upy a zkuste znovu.",
-        "unavailable": "Portál fakturace není dostupný. Napište na support@worldmonitor.app pro pomoc."
+        "openFailed": "Nepodařilo se otevřít portál fakturace. Povolte vyskakovací okna a zkuste to znovu.",
+        "unavailable": "Portál fakturace není dostupný. Pro pomoc napište na support@worldmonitor.app."
       },
       "deletion": {
         "heading": "Smazat účet",
-        "desc": "Trvale smaže tento účet World Monitor. Předplatná se zruší okamžitě bez vrácení zbývajícího předplaceného času. Klíče API, klíče vkládání a tokeny MCP přestanou fungovat. Fakturační záznamy potřebné pro účetnictví, spory a zákonné požadavky jsou uchovávány spolu s údaji o kontaktu na zákazníka, které obsahují; přestanou pojmenovat váš přihlašovací účet, ale protokoly webhooků poskytovatele plateb zapsané před smazáním si ponechají identifikátory, se kterými byly doručeny. Preference dashboardu a tajné údaje keychain desktopové aplikace na tomto zařízení se nezmaží na dálku.",
+        "desc": "Trvale smaže tento účet World Monitor. Předplatné se okamžitě zruší bez vrácení peněz za zbývající předplacené období. Klíče API, klíče pro vkládání a tokeny MCP přestanou fungovat. Fakturační záznamy potřebné pro účetnictví, spory a zákonné požadavky se uchovávají spolu s kontaktními údaji zákazníka, které obsahují; přestanou však uvádět váš přihlašovací účet, ačkoli protokoly webhooků poskytovatele plateb zapsané před smazáním si ponechají identifikátory, se kterými byly doručeny. Předvolby dashboardu a tajné údaje desktopové aplikace v systémové klíčence (Keychain) na tomto zařízení se na dálku nevymažou.",
         "dialogTitle": "Smazat tento účet?",
-        "dialogCopy": "To se nedá vrátit. Předplatná se zruší, klíče přestanou fungovat okamžitě a fakturační záznamy se uchovávají pro účetnictví, spory a zákonné požadavky -- včetně údajů o kontaktu, které obsahují. Odhlaste se na ostatních zařízeních a poté vymažte data webu na tomto zařízení -- ta jsou nedostupná ze serveru.",
+        "dialogCopy": "Tuto akci nelze vrátit zpět. Předplatné se zruší, klíče okamžitě přestanou fungovat a fakturační záznamy se uchovají pro účetnictví, spory a zákonné požadavky — včetně kontaktních údajů, které obsahují. Poté se odhlaste na ostatních zařízeních a vymažte data webu na tomto zařízení — k nim server nemá přístup.",
         "phraseLabel": "Zadejte {{phrase}} pro potvrzení",
         "deleted": "Účet smazán. Odhlaste se na ostatních zařízeních a vymažte data webu na tomto zařízení.",
         "failed": "Smazání účtu se nezdařilo. Zkuste znovu."
@@ -5272,17 +5272,17 @@
         "expires": "Vyprší {{date}}",
         "hintCorporate": "Pozvěte kolegy z libovolné firemní domény.",
         "hintPersonal": "Přidejte firemní e-mail, abyste mohli pozvat kolegy.",
-        "personalDomain": "Volné nebo dočasné e-mailové domény nemohou pozvat kolegy. Přidejte firemní e-mail, abyste mohli tuto funkci využívat.",
-        "empty": "Zatím nebyla pozvaná žádná místa.",
-        "confirmRemove": "Odebrat toto místo? Pozvaný bude mít okamžitě zrušen přístup Pro.",
+        "personalDomain": "Z bezplatných nebo dočasných e-mailových domén nelze zvát kolegy. Chcete-li tuto funkci používat, přidejte firemní e-mail.",
+        "empty": "Zatím nebyl nikdo pozván.",
+        "confirmRemove": "Odebrat toto místo? Pozvaný uživatel okamžitě ztratí přístup Pro.",
         "removed": "Místo odebráno",
         "alreadyInactive": "Místo již bylo neaktivní",
         "loadFailed": "Nepodařilo se načíst místa",
         "inviteFailed": "Nepodařilo se odeslat pozvání",
         "removeFailed": "Nepodařilo se odebrat místo",
         "errors": {
-          "seatCap": "Všechny 4 místa jsou obsazená. Nejdřív odeberte nějaké místo.",
-          "ownerDomain": "Váš e-mail účtu musí být firemní doménu, abyste mohli pozvat kolegy.",
+          "seatCap": "Všechna 4 místa jsou obsazená. Nejdřív nějaké místo odeberte.",
+          "ownerDomain": "E-mail vašeho účtu musí být z firemní domény, abyste mohli zvát kolegy.",
           "self": "Nemůžete pozvat sami sebe.",
           "inviteeDomain": "E-mail pozvaného musí být z firemní domény."
         }
@@ -5313,14 +5313,14 @@
         "inviteFailed": "Nepodařilo se odeslat pozvání. Zkuste to znovu.",
         "removeFailed": "Nepodařilo se odebrat. Zkuste to znovu.",
         "errors": {
-          "seatCap": "Všechny místa jsou obsazena. Nejdřív odeberte někoho nebo stornujte pozvánku.",
-          "inviteeDomain": "Pozvěte firemní e-mailovou adresu. Bezplatné a dočasné e-mailové domény nejsou přijímány.",
+          "seatCap": "Všechna místa jsou obsazená. Nejdřív někoho odeberte nebo stáhněte pozvání.",
+          "inviteeDomain": "Zadejte firemní e-mailovou adresu. Bezplatné a dočasné e-mailové domény nejsou povoleny.",
           "self": "Už máte přiděleno místo.",
-          "contractEnded": "Vaše smlouva Enterprise skončila. Kontaktujte podporu k jejímu obnovení.",
+          "contractEnded": "Vaše smlouva Enterprise skončila. Pro její obnovení kontaktujte podporu.",
           "notAdmin": "Pouze správce účtu může spravovat místa.",
           "removeSelf": "Nemůžete odebrat své vlastní místo. Kontaktujte podporu pro změnu správce.",
-          "tooMany": "Pozyvejte najednou až 10 lidí.",
-          "rateLimited": "Odeslali jste maximální počet pozvánek za den. Zkuste to zítra."
+          "tooMany": "Najednou můžete pozvat nejvýše 10 lidí.",
+          "rateLimited": "Odeslali jste maximální povolený počet pozvání za den. Zkuste to zítra."
         }
       }
     },
@@ -5334,13 +5334,13 @@
       "sources": {
         "0": "zprávy",
         "1": "kanály",
-        "2": "RSS",
+        "2": "zdroje",
         "3": "regiony",
         "4": "pokrytí"
       },
       "notifications": {
         "0": "upozornění",
-        "1": "Telegram",
+        "1": "oznámení",
         "2": "Slack",
         "3": "e-mail",
         "4": "Discord",
@@ -5362,14 +5362,14 @@
         "3": "podkladová mapa"
       },
       "ai": {
-        "0": "LLM",
+        "0": "AI",
         "1": "Ollama",
         "2": "frameworky",
         "3": "paměť nadpisů",
         "4": "model prohlížeče"
       },
       "video": {
-        "0": "stream",
+        "0": "video",
         "1": "automatické přehrávání",
         "2": "kvalita",
         "3": "živě"
@@ -5377,10 +5377,10 @@
       "apiKeys": {
         "0": "klíč",
         "1": "token",
-        "2": "klíč plochy"
+        "2": "klíč pro desktop"
       },
       "embeds": {
-        "0": "widget",
+        "0": "vložení",
         "1": "iframe",
         "2": "klíč vkládání"
       },
@@ -5410,7 +5410,7 @@
         "3": "faktura",
         "4": "místa",
         "5": "odhlášení",
-        "6": "smazání účtu"
+        "6": "smazání účtu, platba, odhlásit"
       }
     }
   }
