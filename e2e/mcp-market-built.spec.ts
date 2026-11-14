@@ -21,7 +21,9 @@ test.beforeAll(async () => {
   execFileSync('npm', ['run', 'build:plugin'], { timeout: 120_000, stdio: 'pipe' });
   const entry = readFileSync('dist/plugin/market.html', 'utf8').match(/src="(\/plugin\/assets\/[a-zA-Z0-9_.-]+\.js)"/)![1];
   // Rollup names the shared chunk after one of its modules, so take the entry's first static import instead of a name.
-  sharedChunk = readFileSync('dist' + entry, 'utf8').match(/from"\.\/([a-zA-Z0-9_.-]+\.js)"/)![1];
+  const firstImport = readFileSync('dist' + entry, 'utf8').match(/from"\.\/([a-zA-Z0-9_.-]+\.js)"/)?.[1];
+  if (!firstImport) throw new Error(`market entry ${entry} has no static import to fail`);
+  sharedChunk = firstImport;
   const previous = globalThis.fetch;
   globalThis.fetch = async url => {
     expect(String(url)).toBe('https://www.worldmonitor.app/plugin/market.html');
