@@ -63,7 +63,12 @@ export default async function ({ page, base, shot: capture, log, expectVisible }
   const optical = cards.findIndex((card) => /sentinel-2|landsat/i.test(card.sensor));
   const firstIndex = optical >= 0 ? optical : 0;
   const hud = page.locator('[data-slot="replay-hud"] .ow-replay-hud');
+  // Live breaking-news alerts push the phone map strip down under the replay HUD; dismiss them as a reader would.
+  const dismissAlerts = () => page.evaluate(() => {
+    for (const button of document.querySelectorAll('.breaking-alert-dismiss')) button.click();
+  });
   const play = async (index) => {
+    await dismissAlerts();
     await replays.nth(index).scrollIntoViewIfNeeded();
     await replays.nth(index).click();
     await hud.waitFor();
