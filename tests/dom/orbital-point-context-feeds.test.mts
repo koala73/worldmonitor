@@ -23,8 +23,8 @@ vi.mock('@/services/country-geometry', () => ({
 
 const { loadPointContext } = await import('@/services/orbital/point-context');
 
-const outage = (id: string, country: string) =>
-  ({ id, lat: 24.4, lon: 54.4, title: `Internet disruption in ${country}`, country, pubDate: new Date(NOW - DAY) });
+const outage = (id: string, country: string, lat = 25.2, lon = 55.3) =>
+  ({ id, lat, lon, title: `Internet disruption in ${country}`, country, pubDate: new Date(NOW - DAY) });
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 503, headers: { 'Content-Type': 'application/json' } })));
@@ -37,8 +37,8 @@ afterEach(() => {
 });
 
 describe('outage feed around a picked point', () => {
-  it('keeps a national outage the feed names by country, and drops one in another country', async () => {
-    outageFeed.outages = [outage('ae', 'United Arab Emirates'), outage('ir', 'Iran')];
+  it('matches outages by distance from the point, not by the country the feed names', async () => {
+    outageFeed.outages = [outage('ae', 'United Arab Emirates'), outage('ae-far', 'United Arab Emirates', 22.9, 53.6), outage('ir', 'Iran', 35.7, 51.4)];
     const { events } = await loadPointContext(palmJumeirah, WINDOW, NOW);
     expect(events.outages.status === 'ok' && events.outages.events.map((e) => e.id)).toEqual(['ae']);
   });

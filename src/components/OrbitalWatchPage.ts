@@ -12,6 +12,7 @@ import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
+import { iso2ToCountryName } from '@/utils/country-codes';
 import type { SensorCategory } from '../../shared/orbital/sensor-profiles.js';
 import { ORBIT_ELEMENTS_MAX_AGE_DAYS } from '../../shared/orbital/pass-geometry.js';
 import { EVENT_RADIUS_KM, type EventSourceId, type LiveSourceId } from '@/services/orbital/point-context';
@@ -643,11 +644,20 @@ export class OrbitalWatchPage {
     this.placeName = name && shortPlaceName(name);
     this.place.title = name ?? '';
     this.place.textContent = this.placeLabel();
+    this.renderSubline();
+  }
+
+  /** Coordinates under a place name (an unnamed point already shows them as its name), then the country. */
+  private renderSubline(): void {
+    const code = this.context.kind === 'loaded' ? this.context.context.countryCode : null;
+    this.coords.textContent = [this.placeName && this.point ? formatCoords(this.point) : null, code ? iso2ToCountryName(code) : null]
+      .filter(Boolean).join(' · ');
   }
 
   /** The conflict, fire, unrest and outage rows near the point, shared with the timeline. */
   setPointContext(context: PointContextState): void {
     this.context = context;
+    this.renderSubline();
     if (this.state) this.render(this.state);
   }
 
@@ -685,7 +695,7 @@ export class OrbitalWatchPage {
     this.compareKey = null;
     this.context = { kind: 'loading' };
     this.place.textContent = this.placeLabel();
-    this.coords.textContent = point ? formatCoords(point) : '';
+    this.renderSubline();
     this.placeZone = point ? placeTimeZone(point) : null;
     this.applyZone();
     this.shareButton.hidden = !this.callbacks.onShare || !point;

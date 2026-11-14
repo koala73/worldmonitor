@@ -40,6 +40,8 @@ export type LiveStrip = { status: 'ok'; items: LiveItem[] } | { status: 'unavail
 export interface PointContext {
   events: Record<EventSourceId, EventLane>;
   live: Record<LiveSourceId, LiveStrip>;
+  /** ISO 3166-1 alpha-2 of the country the point is in, or null at sea or when the lookup failed. */
+  countryCode?: string | null;
 }
 
 /** A dated record from a global feed, before the browser filters it to the point. */
@@ -146,6 +148,7 @@ export async function loadPointContext(
   return {
     events: Object.fromEntries(events) as Record<EventSourceId, EventLane>,
     live: Object.fromEntries(live) as Record<LiveSourceId, LiveStrip>,
+    countryCode,
   };
 }
 
