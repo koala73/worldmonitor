@@ -12,6 +12,7 @@ import { nativeResolutionM, normalisePlatform } from '@/services/orbital/archive
 import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
+import { buildOrbitalShareFragment } from '@/utils/urlState';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
 import { matchSensorProfile } from '../../shared/orbital/sensor-profiles.js';
 import type { ViewableImage } from './OrbitalImageViewer';
@@ -1350,7 +1351,7 @@ export class OrbitalWatchPage {
     if (!this.point) return;
     const url = new URL(window.location.href);
     url.search = '';
-    url.hash = `orbital=${this.point.lat.toFixed(4)},${this.point.lon.toFixed(4)}&view=full`;
+    url.hash = buildOrbitalShareFragment(this.point, null, 'full');
     void navigator.clipboard?.writeText(url.toString()).then(() => {
       button.textContent = t('orbitalWatch.ui.shareCopied');
       if (this.shareReset) clearTimeout(this.shareReset);

@@ -219,14 +219,18 @@ describe('orbital time-lapse page', () => {
     expect(page()!.querySelector('[data-timelapse="insufficient"] [data-action="retry"]')).not.toBeNull();
   });
 
-  it('shares a link that reopens this place', async () => {
+  it('shares the lookup link at 0.01 degrees, without the page query', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    history.replaceState(null, '', '/dashboard?lat=25.0030&lon=54.9900');
     open({ searchLooks: async () => ({ looks: [], failures: [] }) });
     await vi.waitFor(() => expect(document.querySelector('[data-action="share"]')).not.toBeNull());
     document.querySelector<HTMLButtonElement>('[data-action="share"]')!.click();
     await vi.waitFor(() => expect(writeText).toHaveBeenCalled());
-    expect(writeText.mock.calls[0]![0]).toMatch(/#orbital=25\.0030,54\.9900$/);
+    const url = new URL(writeText.mock.calls[0]![0]);
+    expect(url.hash).toBe('#orbital=25.00,54.99');
+    expect(url.search).toBe('');
+    history.replaceState(null, '', '/');
   });
 
   it('names the archive that timed out and retries', async () => {

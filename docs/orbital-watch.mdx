@@ -64,7 +64,11 @@ Change flags are planned and not computed yet. A change flag will compare a new 
 
 ## Privacy
 
-The point you pick stays in your browser. It goes only to the public archives your browser calls directly. A shared link carries the point rounded to two decimal places, about 1 km. Error reports and other telemetry have coordinate query parameters and coordinate path segments removed from every URL before they leave the browser.
+The point you pick stays in your browser. It goes only to the public archives your browser calls directly, some of which take it in the URL path as the box of an image crop. A shared link, and the page address while the full view is open, carry the point rounded to two decimal places (0.01 degrees, about 1 km). Error reports and other telemetry have coordinate query parameters and coordinate path segments removed from every URL before they leave the browser.
+
+Searching for a place by name is the exception: the text you type goes to WorldMonitor, which looks it up with the OpenStreetMap geocoder. The place you then pick stays in your browser like any other point.
+
+The lookup centres the map on the point, so the basemap tiles your browser loads next cover the area around it, as they do for any place you view on the map. On worldmonitor.app those tiles come from WorldMonitor's own tile storage.
 
 ## Credits
 

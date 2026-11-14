@@ -15,6 +15,7 @@ import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 import { t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
+import { buildOrbitalShareFragment } from '@/utils/urlState';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
 import { IMAGE_CREDIT } from '@/services/orbital/credits';
 import { ARCHIVE_NAME, loadLookupImage } from './OrbitalWatchPage';
@@ -302,9 +303,8 @@ export class OrbitalTimelapsePage {
   }
 
   private async share(): Promise<void> {
-    // The same `#orbital=<lat>,<lon>` route the lookup sheet reads, so the link opens this place.
-    const { lat, lon } = this.subject.point;
-    const url = `${location.origin}${location.pathname}${location.search}#orbital=${lat.toFixed(4)},${lon.toFixed(4)}`;
+    // The lookup's own share link, so it opens this place at the same 0.01-degree point.
+    const url = `${location.origin}${location.pathname}#${buildOrbitalShareFragment(this.subject.point)}`;
     const title = `${t('orbitalWatch.timelapse.heading')} / ${this.subject.place}`;
     try {
       if (typeof navigator.share === 'function') await navigator.share({ title, url });
