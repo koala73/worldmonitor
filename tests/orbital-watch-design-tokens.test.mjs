@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 
 const read = (name) => readFileSync(new URL(`../src/styles/${name}`, import.meta.url), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
-const sheets = ['orbital-tokens.css', 'orbital-watch.css', 'orbital-image-viewer.css'];
+const sheets = ['orbital-tokens.css', 'orbital-watch.css', 'orbital-image-viewer.css', 'orbital-satellite-sites.css'];
 const COLOUR_LITERAL = /#[0-9a-f]{3,8}\b|\brgba?\(|\bhsla?\(/gi;
 
 /** Literal colours with a reason they cannot follow the theme. */

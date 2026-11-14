@@ -63,6 +63,7 @@ export interface SatRecEntry {
 }
 
 let cachedData: SatelliteTLE[] | null = null;
+let tleByNorad = new Map<string, SatelliteTLE>();
 let cachedAt = 0;
 const CACHE_TTL = 10 * 60 * 1000;
 // Last-good TLEs are retained through failures for at most an hour; older
@@ -106,6 +107,7 @@ export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
     }));
     cachedData = satellites;
     cachedAt = Date.now();
+    tleByNorad = new Map(satellites.map((s) => [s.noradId, s]));
     failures = 0;
     return cachedData;
   } catch {
@@ -115,6 +117,12 @@ export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
     }
     return cachedData && Date.now() - cachedAt < STALE_MAX ? cachedData : null;
   }
+}
+
+/** The element set the layer last loaded for a tracked satellite, while it is still current. */
+export function getTrackedSatelliteTle(noradId: string): SatelliteTLE | null {
+  if (!cachedData || Date.now() - cachedAt >= STALE_MAX) return null;
+  return tleByNorad.get(noradId) ?? null;
 }
 
 export async function initSatRecs(tles: SatelliteTLE[]): Promise<SatRecEntry[]> {

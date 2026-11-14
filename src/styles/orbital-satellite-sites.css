@@ -1,0 +1,78 @@
+/* A tracked satellite's coverage of watched sites, inside the globe satellite card. */
+.osat-card {
+  background: var(--ow-panel) !important;
+  border: 1px solid var(--ow-line) !important;
+  color: var(--ow-text) !important;
+  font-family: var(--ow-font-mono) !important;
+  max-width: min(320px, calc(100vw - 24px)) !important;
+  box-shadow: 0 4px 16px var(--ow-shadow);
+}
+
+.osat-card .osat-name {
+  color: var(--ow-active-text);
+  font-weight: 600;
+}
+
+.osat-card .osat-meta {
+  color: var(--ow-dim);
+}
+
+.osat-sites {
+  margin-top: var(--ow-space-2);
+  padding-top: var(--ow-space-2);
+  border-top: 1px solid var(--ow-line-soft);
+}
+
+.osat-sites .ow-label {
+  display: block;
+  margin-bottom: var(--ow-space-1);
+}
+
+.osat-sites-note {
+  color: var(--ow-dim);
+  font-size: var(--ow-label-size);
+  line-height: 16px;
+}
+
+.osat-sites-note[data-tone="stale"] {
+  color: var(--yellow);
+}
+
+.osat-sites-list {
+  list-style: none;
+  margin: var(--ow-space-1) 0 0;
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.osat-site {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 var(--ow-space-2);
+  padding: 3px 0;
+  border-bottom: 1px solid var(--ow-line-soft);
+  font-size: var(--ow-label-size);
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.osat-site:last-child {
+  border-bottom: 0;
+}
+
+.osat-site-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ow-text);
+}
+
+.osat-site-time {
+  color: var(--ow-active-text);
+}
+
+.osat-site-detail {
+  grid-column: 1 / -1;
+  color: var(--ow-faint);
+}

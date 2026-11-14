@@ -47,6 +47,8 @@ import { GAMMA_IRRADIATORS } from '@/config/irradiators';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import { getCountryBbox, getCountriesGeoJson, getCountryAtCoordinates, getCountryNameByCode } from '@/services/country-geometry';
 import { escapeHtml } from '@/utils/sanitize';
+import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
+import { trackedSatelliteType } from '@/services/orbital/yaogan-class';
 import { installLongPressContextMenu } from '@/utils/long-press';
 import type { FocusFitBounds } from '@/utils/focus-map';
 import { corroborationLabelHtml } from '@/utils/corroboration-flag';
@@ -103,8 +105,18 @@ export interface GlobeMapOptions {
 }
 
 const SAT_COUNTRY_COLORS: Record<string, string> = { CN: '#ff2020', RU: '#ff8800', US: '#4488ff', EU: '#44cc44', KR: '#aa66ff', IN: '#ff66aa', TR: '#ff4466', OTHER: '#ccccff' };
-const SAT_TYPE_EMOJI: Record<string, string> = { sar: '\u{1F4E1}', optical: '\u{1F4F7}', military: '\u{1F396}', sigint: '\u{1F4FB}' };
-const SAT_TYPE_LABEL: Record<string, string> = { sar: 'SAR Imaging', optical: 'Optical Imaging', military: 'Military', sigint: 'SIGINT' };
+const SAT_TYPE_EMOJI: Record<string, string> = { sar: '\u{1F4E1}', optical: '\u{1F4F7}', military: '\u{1F396}', sigint: '\u{1F4FB}', signals: '\u{1F4FB}' };
+const SAT_TYPE_LABEL: Record<string, string> = { sar: 'SAR Imaging', optical: 'Optical Imaging', military: 'Military', sigint: 'SIGINT', signals: 'Signals' };
+/** Yaogan signals objects relabelled, unidentified Yaogan objects dropped. */
+function orbitalLayerSatellites(positions: SatellitePosition[]): SatellitePosition[] {
+  const out: SatellitePosition[] = [];
+  for (const s of positions) {
+    const type = trackedSatelliteType(s.name, s.type);
+    if (type === null) continue;
+    out.push(type === s.type ? s : { ...s, type });
+  }
+  return out;
+}
 const SAT_OPERATOR_NAME: Record<string, string> = { CN: 'China', RU: 'Russia', US: 'United States', EU: 'ESA / EU', KR: 'South Korea', IN: 'India', TR: 'Turkey', OTHER: 'Other' };
 
 function saveWebcamMarkerMode(mode: string): void {
@@ -682,6 +694,7 @@ export class GlobeMap {
   // Overlay UI elements
   private layerTogglesEl: HTMLElement | null = null;
   private tooltipEl: HTMLElement | null = null;
+  private satelliteSitesAbort: AbortController | null = null;
   private tooltipHideTimer: ReturnType<typeof setTimeout> | null = null;
   private satHoverStyle: HTMLStyleElement | null = null;
   private readonly chrome: boolean;
@@ -1886,7 +1899,20 @@ export class GlobeMap {
       const operatorName = SAT_OPERATOR_NAME[d.country] || getCountryNameByCode(d.country) || d.country;
       const overHit = getCountryAtCoordinates(d._lat, d._lng);
       const overLabel = overHit ? overHit.name : 'Ocean';
-      html = `<div style="min-width:220px;">` +
+      if (ORBITAL_WATCH_ENABLED) {
+        el.classList.add('osat-card');
+        html = `<div style="min-width:220px;">` +
+          `<span class="osat-name" style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));">${esc(d.name)}</span>` +
+          `<div class="osat-meta" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));margin:2px 0 6px;">NORAD ${esc(d.id)}</div>` +
+          `<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:calc(11px * var(--wm-panel-effective-scale, 1));">` +
+          `<span class="osat-meta">Type</span><span>${esc(SAT_TYPE_LABEL[d.type] || d.type)}</span>` +
+          `<span class="osat-meta">Operator</span><span>${esc(operatorName)}</span>` +
+          `<span class="osat-meta">Over</span><span>${esc(overLabel)}</span>` +
+          `<span class="osat-meta">Alt. band</span><span>${altBand} \u00B7 ${Math.round(d.alt)} km</span>` +
+          `<span class="osat-meta">Incl.</span><span>${d.inclination.toFixed(1)}\u00B0</span>` +
+          `<span class="osat-meta">Velocity</span><span>${d.velocity.toFixed(1)} km/s</span>` +
+          `</div><div data-osat-sites></div></div>`;
+      } else html = `<div style="min-width:220px;">` +
         `<span style="color:${sc};font-weight:bold;font-size:calc(12px * var(--wm-panel-effective-scale, 1));">${SAT_TYPE_EMOJI[d.type] || '\u{1F6F0}'} ${esc(d.name)}</span>` +
         `<div style="opacity:.5;font-size:calc(10px * var(--wm-panel-effective-scale, 1));margin:2px 0 6px;">NORAD ${esc(d.id)}</div>` +
         `<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:calc(11px * var(--wm-panel-effective-scale, 1));">` +
@@ -2029,7 +2055,9 @@ export class GlobeMap {
     el.addEventListener('mouseenter', () => {
       if (this.tooltipHideTimer) { clearTimeout(this.tooltipHideTimer); this.tooltipHideTimer = null; }
     });
+    const pinnedCard = ORBITAL_WATCH_ENABLED && d._kind === 'satellite';
     el.addEventListener('mouseleave', () => {
+      if (pinnedCard) return;
       this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), 2000);
     });
 
@@ -2053,7 +2081,8 @@ export class GlobeMap {
     if (this.tooltipHideTimer) clearTimeout(this.tooltipHideTimer);
     const richKinds = new Set(['satellite', 'flightDelay', 'cableAdvisory', 'conflictZone', 'nuclearSite', 'spaceport', 'economic', 'datacenter', 'imageryScene', 'repairShip', 'aisDisruption']);
     const hideDelay = d._kind === 'webcam' ? 8000 : d._kind === 'webcam-cluster' ? 12000 : richKinds.has(d._kind) ? 6000 : 3500;
-    this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), hideDelay);
+    if (!pinnedCard) this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), hideDelay);
+    if (pinnedCard && d._kind === 'satellite') this.fillSatelliteSites(el, d.id, d.name);
 
     if (d._kind === 'webcam-cluster') {
       const tooltipEl = el;
@@ -2127,7 +2156,24 @@ export class GlobeMap {
     }
   }
 
+  private fillSatelliteSites(card: HTMLElement, noradId: string, name: string): void {
+    const host = card.querySelector<HTMLElement>('[data-osat-sites]');
+    if (!host) return;
+    const abort = new AbortController();
+    this.satelliteSitesAbort = abort;
+    void import('./orbital-satellite-sites-view')
+      .then(({ renderSatelliteSites }) => renderSatelliteSites(host, noradId, name, abort.signal))
+      .then(() => {
+        if (abort.signal.aborted || !card.isConnected) return;
+        const cr = this.container.getBoundingClientRect();
+        card.style.top = Math.max(4, Math.min(card.offsetTop, cr.height - card.offsetHeight - 4)) + 'px';
+      })
+      .catch((err) => console.warn('[orbital] satellite sites view failed', err));
+  }
+
   private hideTooltip(): void {
+    this.satelliteSitesAbort?.abort();
+    this.satelliteSitesAbort = null;
     if (this.tooltipHideTimer) { clearTimeout(this.tooltipHideTimer); this.tooltipHideTimer = null; }
     this.tooltipEl?.remove();
     this.tooltipEl = null;
@@ -4234,7 +4280,8 @@ export class GlobeMap {
     scene.add(this.satBeamGroup);
   }
 
-  public setSatellites(positions: SatellitePosition[]): void {
+  public setSatellites(input: SatellitePosition[]): void {
+    const positions = ORBITAL_WATCH_ENABLED ? orbitalLayerSatellites(input) : input;
     this.satelliteMarkers = positions.map(s => ({
       _kind: 'satellite' as const,
       _lat: s.lat,
