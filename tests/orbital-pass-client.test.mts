@@ -9,7 +9,7 @@ import type { ListImagingSatellitesResponse, OmmElements } from '../src/generate
 import { toOmmRecord, toOrbitalCatalog, type OrbitalCatalog } from '../src/services/orbital/catalog.ts';
 import { createOrbitalPassClient, type PassWorkerLike } from '../src/services/orbital/pass-client.ts';
 import { PASS_QUERY_MAX_DAYS } from '../src/services/orbital/pass-query.ts';
-import { createPassJobHandler, runPassJob, type CatalogSatellite, type PassJobReply, type PassJobRequest } from '../src/services/orbital/pass-job.ts';
+import { createPassJobHandler, passMotion, runPassJob, type CatalogSatellite, type PassJobReply, type PassJobRequest } from '../src/services/orbital/pass-job.ts';
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -211,6 +211,22 @@ describe('orbital pass client', () => {
 });
 
 describe('orbital pass job', () => {
+  it('gives each pass its heading and ground speed from the orbit one second apart, ascending and descending', async () => {
+    const sentinel = satellites.find((satellite) => satellite.name === 'SENTINEL-2B')!;
+    const result = await runPassJob({ point: PARIS, window: { startMs: NOW - 3 * DAY, endMs: NOW }, nowMs: NOW, satellites: [sentinel] });
+    const passes = result!.passes;
+    // A sun-synchronous orbit descends in the morning and climbs back up in the late evening, local time; Paris is close to UTC.
+    const descending = passes.filter((pass) => new Date(pass.timeMs).getUTCHours() >= 6 && new Date(pass.timeMs).getUTCHours() < 18);
+    const ascending = passes.filter((pass) => !descending.includes(pass));
+    assert.ok(descending.length > 0 && ascending.length > 0, 'the window holds day and night passes');
+    for (const pass of descending) assert.equal(pass.motion?.heading, 'south', `day pass at ${pass.time}`);
+    for (const pass of ascending) assert.equal(pass.motion?.heading, 'north', `night pass at ${pass.time}`);
+    for (const pass of passes) assert.ok(pass.motion!.groundSpeedKmS > 6.4 && pass.motion!.groundSpeedKmS < 7, `ground speed ${pass.motion!.groundSpeedKmS}`);
+    const elements = parseOrbitElements(sentinel.elementSets[0]!);
+    const pass = descending[0]!;
+    assert.deepEqual(passMotion(elements, pass.timeMs), pass.motion);
+  });
+
   it('computes each part of the window from the element set nearest in time', async () => {
     const [sentinel] = satellites;
     const current = sentinel!.elementSets[0]!;

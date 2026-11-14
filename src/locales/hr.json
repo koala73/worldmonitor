@@ -1,5 +1,4 @@
 {
-  "app": {},
   "shell": {
     "documentTitle": "Svjetski Monitor — Nadzorna Ploča Globalne Obavještajne Informacije u Realnom Vremenu",
     "metaDescription": "Globalna platforma za praćenje u realnom vremenu. Predstavljena u WIRED-u. Koristi je 2M+ ljudi u 190 zemalja. Sukobi, tržišta, vojska, OSINT na jednom mjestu.",
@@ -2014,8 +2013,6 @@
       "sortRelevance": "Relevantnost",
       "translationUnavailable": "Prijevod nije dostupan. Provjerite postavke pružatelja AI usluge i pokušajte ponovno."
     },
-    "export": {},
-    "runtimeConfig": {},
     "breakingNews": {
       "critical": "KRITIČNO",
       "high": "VISOKO",
@@ -2618,7 +2615,6 @@
         "failedToLoad": "Učitavanje nije uspjelo"
       }
     },
-    "energyCrisis": {},
     "supplyVulnerability": {
       "title": "Ranjivost na robu",
       "help": "Izloženost države po robi na temelju koncentracije dobavljača, pomorskog tranzita i dostupnih strateških zaliha.",
@@ -3335,7 +3331,10 @@
       },
       "warningAge": "Od prvog upozorenja koje još vrijedi",
       "days": "{{amount}} d."
-    }
+    },
+    "export": {},
+    "runtimeConfig": {},
+    "energyCrisis": {}
   },
   "popups": {
     "startDate": "POČETNI DATUM",
@@ -3356,8 +3355,6 @@
     "events": "Događaji",
     "capacity": "Kapacitet",
     "updated": "Ažurirano",
-    "common": {},
-    "conflict": {},
     "earthquake": {
       "levels": {
         "major": "VELIKI",
@@ -3427,7 +3424,6 @@
       "ground": "Na tlu",
       "airborne": "U zraku"
     },
-    "apt": {},
     "cyberThreat": {
       "title": "KIBERNETSKA PRIJETNJA",
       "evidence": "Dokazi iz feed-a prijetnji",
@@ -3584,7 +3580,6 @@
         "critical": "KRITIČNO"
       }
     },
-    "buttons": {},
     "historicalContext": "POVIJESNI KONTEKST",
     "lastMajorEvent": "Posljednji veliki događaj",
     "precedents": "Prethodni primjeri",
@@ -4316,7 +4311,11 @@
       "yellowWarning": "Žuto upozorenje",
       "orangeWarning": "Narančasto upozorenje",
       "redWarning": "Crveno upozorenje"
-    }
+    },
+    "common": {},
+    "conflict": {},
+    "apt": {},
+    "buttons": {}
   },
   "signals": {
     "context": {
@@ -4593,8 +4592,8 @@
     "createAccount": "Kreiraj račun",
     "freeReason": "Besplatno: spremi raspored, prati zemlje, upozorenja",
     "settings": "Postavke",
-    "passkeyOffer": {},
-    "planBilling": "Plan i naplata"
+    "planBilling": "Plan i naplata",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Poveži MCP",
@@ -5368,6 +5367,82 @@
       "zoneShowUtc": "Prikaži vremena u UTC-u",
       "zoneShowLocal": "Prikaži vremena po lokalnom vremenu ovog mjesta"
     },
+    "viewer": {
+      "open": "Otvori preglednik slika: {{image}}",
+      "bestView": "Otvori najbolji prikaz: {{name}}, {{time}}",
+      "imageAlt": "Snimka {{name}}, {{time}}",
+      "close": "Zatvori preglednik slika",
+      "northUp": "Sjever je gore",
+      "unreferenced": "Orijentacija kako ju isporučuje arhiv; sjever nije označen",
+      "compareDates": "Ostali datumi ove zbirke",
+      "compareNone": "Nema druge snimke ove zbirke za usporedbu.",
+      "divider": "Razdjelnik prije/poslije",
+      "searching": "Traženje snimki ovog mjesta iz zadnjih {{days}} dana",
+      "historyFailed": "{{archive}} nije odgovorio, pa nedostaju ranije snimke.",
+      "historyTimeout": "{{archive}} nije odgovorio na vrijeme, pa nedostaju ranije snimke.",
+      "loading": "Učitavanje okvira: {{loaded}} od {{total}}",
+      "pause": "Pauza",
+      "resume": "Pokreni",
+      "next": "Sljedeći okvir",
+      "closeLabel": "Zatvori",
+      "agoNow": "Upravo sada",
+      "agoHours": "prije {{count}} h",
+      "agoDays": "prije {{count}} d",
+      "clear": "Vedro",
+      "clouded": "Oblačno · {{pct}} %",
+      "tabImage": "Snimka",
+      "tabChange": "Promjena",
+      "metaAcquired": "Snimljeno",
+      "metaDate": "Datum",
+      "metaPixel": "Piksel",
+      "metaSpot": "Oblaci na točki",
+      "metaScene": "Oblaci scene",
+      "metaSun": "Visina sunca",
+      "showCloudy": "Prikaži oblačne datume ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Vremenski niz",
+      "entry": "Ovo mjesto iz godine u godinu",
+      "open": "Otvori godišnji vremenski niz ovog mjesta",
+      "searching": "Traži se jedna vedra snimka godišnje od 2015. · {{archive}}",
+      "loading": "Učitavanje snimaka · {{loaded}} / {{total}}",
+      "failed": "{{archive}} nije odgovorio, pa godišnje snimke nedostaju.",
+      "timeout": "{{archive}} nije odgovorio na vrijeme, pa godišnje snimke nedostaju.",
+      "partial": "Godine koje nedostaju jer {{archive}} nije odgovorio: {{count}}.",
+      "tooFew": "Vedre godišnje snimke ovog mjesta: {{count}}. Vremenski niz treba {{min}}.",
+      "total": "Vedre snimke: {{count}} · jedna godišnje",
+      "years": "Godine",
+      "share": "Podijeli",
+      "method": "Svaki kadar je isti kvadrat od 6 km sa Sentinela-2 u prirodnim bojama. Svake se godine pretražuje drugo godišnje doba i zadržava najmanje oblačna scena; godina bez scene ispod 30 % oblaka izostavlja se."
+    },
+    "passDetail": {
+      "back": "Svi preleti",
+      "altitude": "Visina",
+      "offNadir": "Odmak od nadira",
+      "crossed": "{{name}} je preletio na {{altitude}} km visine, {{distance}} km {{direction}}, u {{time}}, brzinom {{speed}} km/s iznad tla.",
+      "crossedHeading": "{{name}} je preletio na {{altitude}} km visine, {{distance}} km {{direction}}, u {{time}}, krećući se prema {{heading}} brzinom {{speed}} km/s iznad tla.",
+      "looking": "Gledao je {{deg}}° od okomice.",
+      "sceneCloud": "Naoblaka scene: {{pct}} %.",
+      "pixelLine": "Piksel {{m}} m",
+      "swathLine": "Pojas {{km}} km",
+      "clearestLook": "Najvedriji prikaz",
+      "previous": "Prethodni prelet",
+      "next": "Sljedeći prelet",
+      "dir": {
+        "n": "sjeverno",
+        "ne": "sjeveroistočno",
+        "e": "istočno",
+        "se": "jugoistočno",
+        "s": "južno",
+        "sw": "jugozapadno",
+        "w": "zapadno",
+        "nw": "sjeverozapadno"
+      },
+      "heading": {
+        "north": "sjeveru",
+        "south": "jugu"
+      }
+    },
     "search": {
       "label": "Naziv mjesta ili koordinate",
       "placeholder": "Naziv mjesta ili 48.8584, 2.2945",
@@ -5641,5 +5716,6 @@
         "6": "brisanje računa, faktura"
       }
     }
-  }
+  },
+  "app": {}
 }

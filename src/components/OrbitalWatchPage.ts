@@ -4,14 +4,17 @@ import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
 import { ARCHIVE_REQUEST_TIMEOUT_MS, type ArchiveId } from '@/services/orbital/archive-result';
-import { loadArchiveImage, type ArchiveImageResult, type LoadedArchiveImage } from '@/services/orbital/archive-image';
+import { ArchiveImageError, loadArchiveImage, type ArchiveImageResult, type LoadedArchiveImage } from '@/services/orbital/archive-image';
 import { GIBS_DAILY_MOSAICS, hasNoDataAtPoint, MOSAIC_FALLBACK_DAYS, type CropPosition, type DailyMosaicRow, type GeostationaryFrame, type GeostationaryRow } from '@/services/orbital/archive-gibs';
 import { DEFAULT_CROP_HALF_SIZE_KM } from '@/services/orbital/crop-url';
-import { normalisePlatform } from '@/services/orbital/archive-stac';
+import { nativeResolutionM, normalisePlatform } from '@/services/orbital/archive-stac';
 import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
+import { matchSensorProfile } from '../../shared/orbital/sensor-profiles.js';
+import type { ViewableImage } from './OrbitalImageViewer';
+import { renderPassDetail } from './OrbitalPassDetail';
 import { placeTimeZone, placeTimeZoneLabel, zoneAbbreviation, type PlaceTimeZone } from '@/utils/place-time-zone';
 import '../styles/orbital-tokens.css';
 import '../styles/orbital-watch.css';
@@ -106,7 +109,7 @@ const GRID: ReadonlyArray<{ id: GroupId; glyph: TierGlyph; key: string }> = [
   { id: 'overhead', glyph: 'overhead', key: 'overhead' },
 ];
 
-const ARCHIVE_NAME: Record<ArchiveId, string> = {
+export const ARCHIVE_NAME: Record<ArchiveId, string> = {
   'earth-search': 'Earth Search',
   'planetary-computer': 'Microsoft Planetary Computer',
   'nasa-gibs': 'NASA GIBS',
@@ -122,7 +125,7 @@ const ARCHIVE_HOST: ReadonlyArray<[RegExp, string, ArchiveId]> = [
 
 /** Credit lines the archives ask for, worded as in the source attribution manifest. */
 export const IMAGE_CREDIT = {
-  copernicus: (year: number) => `Contains modified Copernicus Sentinel data ${year}`,
+  copernicus: (year: number | string) => `Contains modified Copernicus Sentinel data ${year}`,
   usgs: 'Landsat imagery courtesy of the U.S. Geological Survey',
   eumetsat: 'Contains EUMETSAT Meteosat imagery',
   gibs: 'NASA GIBS / EOSDIS',
@@ -251,7 +254,7 @@ function formatAge(days: number): string {
   return new Intl.NumberFormat(lang(), { style: 'unit', unit, unitDisplay: 'long' }).format(value);
 }
 
-function archiveHost(url: string | null): { name: string; id: ArchiveId } {
+export function archiveHost(url: string | null): { name: string; id: ArchiveId } {
   if (!url) return { name: '', id: 'earth-search' };
   try {
     const host = new URL(url).hostname;
@@ -341,6 +344,17 @@ class LookupImages {
   }
 
   /** Drops a frame with no data at the point and releases its blob. */
+  /** The sheet's copy of an image loaded, or loading, on its own; the sheet releases it when the lookup ends, so the borrower's release does nothing. */
+  lend(url: string): Promise<LoadedArchiveImage> | null {
+    const hit = this.loaded.get(url);
+    const request = hit ? Promise.resolve<ArchiveImageResult>({ status: 'ok', image: hit }) : this.pending.get(url);
+    if (!request) return null;
+    return request.then((result) => {
+      if (result.status !== 'ok') throw new ArchiveImageError(result.failure);
+      return { ...result.image, release: () => {} };
+    });
+  }
+
   markEmpty(url: string): void {
     this.empty.add(url);
     this.loaded.get(url)?.release();
@@ -364,6 +378,14 @@ class LookupImages {
 
 const lookupImages = new LookupImages();
 
+/** Loads an image for the viewer, compare and time-lapse, reusing the sheet's copy so no image is fetched twice. */
+export function loadLookupImage(archive: ArchiveId, url: string, signal: AbortSignal): Promise<LoadedArchiveImage> {
+  return lookupImages.lend(url) ?? loadArchiveImage(archive, [url], { signal }).then((result) => {
+    if (result.status === 'failed') throw new ArchiveImageError(result.failure);
+    return result.image;
+  });
+}
+
 const nearViewObservers = new Set<IntersectionObserver>();
 
 /** Starts a row thumbnail's fetch once it nears the viewport, as `loading="lazy"` did for `img.src`. */
@@ -386,6 +408,8 @@ function stopWatchingNearView(): void {
 }
 
 const tileRetries = new WeakMap<HTMLElement, () => void>();
+/** The archive URL of the frame a tile shows; its `img` holds only a `blob:` URL. */
+const tileShownUrls = new WeakMap<HTMLElement, () => string>();
 
 function imageTile(url: string | null, alt: string, sensor: string, size: TileSize, overlays: DomChild[] = [], fallbacks: TileFallbacks | null = null): HTMLElement {
   const archive = archiveHost(url);
@@ -449,6 +473,7 @@ function imageTile(url: string | null, alt: string, sensor: string, size: TileSi
   }) as HTMLImageElement;
   const tile = h('div', { className: `ow-tile ow-tile-${size}`, dataset: { state: 'loading', sensor } }, img, status, ...overlays);
   tileRetries.set(tile, () => load(0));
+  tileShownUrls.set(tile, () => frames[frame]!);
   if (size === 'thumb') whenNearView(tile, () => load(0));
   else load(0);
   // A frame known to be empty is skipped before the caller holds the tile, so its caption updates once it does.
@@ -459,6 +484,10 @@ function imageTile(url: string | null, alt: string, sensor: string, size: TileSi
   return tile;
 }
 
+function shownTileUrl(tile: HTMLElement | null): string | null {
+  return (tile && tileShownUrls.get(tile)?.()) ?? null;
+}
+
 function heroOverlays(): DomChild[] {
   return [
     h('span', { className: 'ow-reticle', 'aria-hidden': 'true' }),
@@ -467,6 +496,19 @@ function heroOverlays(): DomChild[] {
       `${SCALE_BAR_KM} KM`),
     h('span', { className: 'ow-north ow-label', 'aria-hidden': 'true' }, '▲ N'),
   ];
+}
+
+/** A transparent button over an image that opens it in the image viewer. */
+function viewButton(view: ViewableImage, alt: string): HTMLElement {
+  return h('button', { type: 'button', className: 'ow-view-image', 'aria-label': t('orbitalWatch.viewer.open', { image: alt }), dataset: { action: 'view-image', imageKind: view.kind, imageKey: view.key } });
+}
+
+function timelapseEntry(): HTMLElement {
+  return h('button', { type: 'button', className: 'ow-timelapse-entry', 'aria-label': t('orbitalWatch.timelapse.open'), dataset: { action: 'timelapse' } },
+    h('span', { className: 'ow-timelapse-glyph', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'), h('i'), h('i')),
+    h('span', { className: 'ow-timelapse-title ow-label' }, t('orbitalWatch.timelapse.heading')),
+    h('span', { className: 'ow-timelapse-text' }, t('orbitalWatch.timelapse.entry')),
+    h('span', { 'aria-hidden': 'true' }, '→'));
 }
 
 interface ImageCard {
@@ -480,6 +522,7 @@ interface ImageCard {
   bottom: ReadonlyArray<string | { ago: string }>;
   credit: RowCredit;
   pass: { noradId: number; timeMs: number } | null;
+  view: ViewableImage;
   /** Earlier frames of the same source, newest first, with the caption line each one shows. */
   fallbacks?: Array<{ url: string; top: string }>;
   noDataAt?: CropPosition;
@@ -506,6 +549,7 @@ function acquisitionCard(acquisition: MatchedAcquisition, nowMs: number, names: 
     ],
     credit: acquisitionRowCredit(acquisition),
     pass: acquisition.pass,
+    view: { kind: 'acquisition', key: acquisition.key },
   };
 }
 
@@ -541,6 +585,7 @@ function weatherCards(evidence: OrbitalEvidence): ImageCard[] {
       bottom: [t('orbitalWatch.ui.caption.dailyMosaic'), ...(resolution ? [`${resolution} M`] : [])],
       credit: { short: IMAGE_CREDIT.gibs, full: IMAGE_CREDIT.gibs },
       pass: null,
+      view: { kind: 'mosaic', key: mosaic.layer },
     });
   }
   for (const frame of evidence.frames) {
@@ -558,6 +603,7 @@ function weatherCards(evidence: OrbitalEvidence): ImageCard[] {
       bottom: [frame.cadenceMinutes === null ? t('orbitalWatch.ui.caption.geostationary') : t('orbitalWatch.ui.caption.geostationaryCadence', { minutes: frame.cadenceMinutes })],
       credit: frame.archive === 'eumetsat' ? frameCredit(frame.archive) : { short: IMAGE_CREDIT.gibs, full: IMAGE_CREDIT.gibs },
       pass: null,
+      view: { kind: 'frame', key: frame.layer },
     });
   }
   return cards.sort((a, b) => b.sortMs - a.sortMs);
@@ -622,6 +668,32 @@ function rowShell(key: string, tier: string, thumb: HTMLElement, name: string, t
 const glyphTile = (glyph: TierGlyph) =>
   h('div', { className: 'ow-glyph-tile', dataset: { glyph }, 'aria-hidden': 'true' }, h('span', { className: 'ow-glyph', dataset: { glyph } }, TIER_GLYPH_CHAR[glyph]));
 
+/** The top of a pass detail: the pass's own crop, opening the viewer, or its tier glyph when the pass left no image. */
+/** Why an imageless pass has no picture, in the tier grid's words. */
+function noImageReason(pass: PointPass, unanswered: boolean): string | null {
+  if (pass.tier.kind === 'likely-imaged') return t(unanswered ? 'orbitalWatch.ui.grid.likelyUnansweredShort' : 'orbitalWatch.ui.grid.likelyShort');
+  if (pass.tier.kind === 'passed-overhead') return t('orbitalWatch.ui.grid.overheadShort');
+  return null;
+}
+
+function passDetailMedia(pass: PointPass, acquisition: MatchedAcquisition | null, unanswered: boolean): HTMLElement {
+  const tierLabel = t(TIER_LABEL_KEY[pass.tier.kind]);
+  if (!acquisition?.imageUrl) {
+    const glyph = GLYPH_OF_TIER[pass.tier.kind];
+    const reason = noImageReason(pass, unanswered);
+    return h('figure', { className: 'ow-detail-media', dataset: { media: 'glyph' } },
+      h('div', { className: 'ow-detail-glyph', dataset: { glyph } },
+        h('span', { className: 'ow-glyph', dataset: { glyph }, 'aria-hidden': 'true' }, TIER_GLYPH_CHAR[glyph]),
+        h('span', { className: 'ow-label' }, tierLabel),
+        reason ? h('span', { className: 'ow-detail-reason' }, reason) : null));
+  }
+  const alt = t('orbitalWatch.row.imageAlt', { name: pass.name, time: formatWhen(pass.timeMs) });
+  const credit = acquisitionRowCredit(acquisition);
+  return h('figure', { className: 'ow-detail-media', dataset: { media: 'image' } },
+    imageTile(acquisition.imageUrl, alt, sensorName(acquisition.platform), 'hero', [...heroOverlays(), viewButton({ kind: 'acquisition', key: acquisition.key }, alt)]),
+    h('figcaption', { className: 'ow-detail-credit ow-label', title: credit.full }, `${tierLabel} · ${credit.short}`));
+}
+
 function acquisitionBadges(acquisition: MatchedAcquisition | null): HTMLElement[] {
   if (!acquisition) return [];
   if (acquisition.profileId === 'sentinel-1') return [badge(t('orbitalWatch.ui.caption.radar'), 'radar')];
@@ -643,8 +715,9 @@ function passRow(pass: PointPass, nowMs: number, acquisition: MatchedAcquisition
   const military = pass.tier.kind === 'capability-overhead';
   const glyph = GLYPH_OF_TIER[pass.tier.kind];
   const name = pass.name;
+  const alt = t('orbitalWatch.row.imageAlt', { name, time: formatWhen(pass.timeMs) });
   const thumb = acquisition && !military
-    ? imageTile(acquisition.imageUrl, t('orbitalWatch.row.imageAlt', { name, time: formatWhen(pass.timeMs) }), sensorName(acquisition.platform), 'thumb', [h('span', { className: 'ow-thumb-dot', 'aria-hidden': 'true' })])
+    ? imageTile(acquisition.imageUrl, alt, sensorName(acquisition.platform), 'thumb', [viewButton({ kind: 'acquisition', key: acquisition.key }, alt), h('span', { className: 'ow-thumb-dot', 'aria-hidden': 'true' })])
     : glyphTile(glyph);
   const geometry = [t('orbitalWatch.row.offNadir', { deg: offNadirDeg(pass).toFixed(1) }), `${formatInt(Math.round(pass.groundDistanceKm))} KM`];
   if (acquisition?.cloudCoverPct != null && acquisition.profileId !== 'sentinel-1') geometry.push(t('orbitalWatch.ui.row.cloud', { pct: Math.round(acquisition.cloudCoverPct) }));
@@ -663,7 +736,8 @@ function passRow(pass: PointPass, nowMs: number, acquisition: MatchedAcquisition
 
 function unmatchedRow(acquisition: MatchedAcquisition, nowMs: number): HTMLElement {
   const name = sensorName(acquisition.platform);
-  const thumb = imageTile(acquisition.imageUrl, t('orbitalWatch.row.imageAlt', { name, time: formatWhen(acquisition.startMs) }), name, 'thumb', [h('span', { className: 'ow-thumb-dot', 'aria-hidden': 'true' })]);
+  const alt = t('orbitalWatch.row.imageAlt', { name, time: formatWhen(acquisition.startMs) });
+  const thumb = imageTile(acquisition.imageUrl, alt, name, 'thumb', [viewButton({ kind: 'acquisition', key: acquisition.key }, alt), h('span', { className: 'ow-thumb-dot', 'aria-hidden': 'true' })]);
   const meta = [`${acquisition.resolutionM} M`];
   if (acquisition.cloudCoverPct != null && acquisition.profileId !== 'sentinel-1') meta.push(t('orbitalWatch.ui.row.cloud', { pct: Math.round(acquisition.cloudCoverPct) }));
   return rowShell(`image:${acquisition.key}`, 'confirmed-image', thumb, name, t('orbitalWatch.tier.unmatchedImage'),
@@ -677,7 +751,7 @@ function mosaicRow(mosaic: DailyMosaicRow, day: { date: string; imageUrl: string
   const tried = day.imageUrl ? mosaicDays(mosaic) : [];
   const dayLabel = (index: number) => formatDay(Date.parse(tried[index]?.date ?? day.date));
   const alt = (index: number) => t('orbitalWatch.row.imageAlt', { name: mosaic.source, time: dayLabel(index) });
-  const thumb = imageTile(day.imageUrl, alt(0), mosaic.source.toUpperCase(), 'thumb', [], {
+  const thumb = imageTile(day.imageUrl, alt(0), mosaic.source.toUpperCase(), 'thumb', [viewButton({ kind: 'mosaic', key: mosaic.layer }, alt(0))], {
     urls: tried.slice(1).map((earlier) => earlier.imageUrl),
     show: (index) => {
       const when = row.querySelector<HTMLElement>('.ow-row-meta');
@@ -695,7 +769,7 @@ function mosaicRow(mosaic: DailyMosaicRow, day: { date: string; imageUrl: string
 function frameRow(frame: GeostationaryRow, latest: GeostationaryFrame): HTMLElement {
   const times = [latest.time, ...latest.fallbacks.map((earlier) => earlier.time)].map((time) => formatWhen(Date.parse(time)));
   const alt = (index: number) => t('orbitalWatch.row.imageAlt', { name: frame.source, time: times[index]! });
-  const thumb = imageTile(latest.imageUrl, alt(0), frame.source.toUpperCase(), 'thumb', [], {
+  const thumb = imageTile(latest.imageUrl, alt(0), frame.source.toUpperCase(), 'thumb', [viewButton({ kind: 'frame', key: frame.layer }, alt(0))], {
     urls: latest.fallbacks.map((earlier) => earlier.imageUrl),
     show: (index) => {
       const when = row.querySelector<HTMLElement>('.ow-row-meta');
@@ -795,6 +869,10 @@ export class OrbitalWatchPage {
   private steps: StepTimes = { startedAt: 0, catalogAt: null, propagatedAt: null, archivesAt: null, total: 0 };
   private clock: ReturnType<typeof setInterval> | null = null;
   private shareReset: ReturnType<typeof setTimeout> | null = null;
+  /** The pass whose detail fills the pass-detail slot in the full view. */
+  private detailKey: string | null = null;
+  /** Counts open() calls, so a lazy chunk that lands after the sheet moved to another place is ignored. */
+  private openSeq = 0;
 
   constructor(private readonly callbacks: OrbitalWatchPageCallbacks) {
     const titleId = 'orbital-watch-title';
@@ -831,6 +909,10 @@ export class OrbitalWatchPage {
     declareOverlay(this.sheet, { reload: 'safe' });
     this.sheet.addEventListener('keydown', this.onSheetKeydown);
     this.sheet.addEventListener('click', this.onSheetClick);
+    this.sheet.addEventListener('orbital-watch:select', (event) => {
+      const { noradId, timeMs } = (event as CustomEvent<{ noradId: number; timeMs: number }>).detail;
+      this.openPassDetail(`${noradId}:${timeMs}`);
+    });
   }
 
   get isOpen(): boolean {
@@ -870,6 +952,7 @@ export class OrbitalWatchPage {
   }
 
   open(point: GeoPoint | null, returnFocusTo: HTMLElement | null, view: OrbitalView = 'sheet'): void {
+    this.openSeq++;
     this.returnFocusTo = returnFocusTo;
     this.point = point;
     this.placeName = null;
@@ -976,6 +1059,7 @@ export class OrbitalWatchPage {
   }
 
   private applyView(view: OrbitalView): void {
+    if (view !== 'full') this.clearPassDetail();
     this.view = view;
     this.sheet.dataset.view = view;
     document.body.classList.toggle(FULL_VIEW_BODY_CLASS, view === 'full');
@@ -993,6 +1077,7 @@ export class OrbitalWatchPage {
       : null;
     stopWatchingNearView();
     replaceChildren(this.body, ...this.renderState(state));
+    if (this.detailKey) this.renderPassDetail();
     if (this.selectedKey) this.body.querySelector(`.ow-row[data-key="${CSS.escape(this.selectedKey)}"]`)?.setAttribute('aria-current', 'true');
     this.renderStatusBar();
     if (focused) ((selector ? this.body.querySelector<HTMLElement>(selector) : null) ?? this.sheet).focus();
@@ -1084,6 +1169,7 @@ export class OrbitalWatchPage {
     const empty = lookup.passes.length > 0 ? null
       : summary.cards.length > 0 ? h('p', { className: 'ow-empty' }, t('orbitalWatch.ui.archiveOnly'))
       : h('p', { className: 'ow-empty' }, t('orbitalWatch.empty', { pastDays: Math.round((lookup.nowMs - lookup.window.startMs) / DAY_MS), futureHours: Math.round((lookup.window.endMs - lookup.nowMs) / HOUR_MS) }));
+    replaceChildren(this.slots.timelapse, timelapseEntry());
     return [
       this.staleBanner(lookup),
       h('section', { className: 'ow-section ow-summary' },
@@ -1148,6 +1234,7 @@ export class OrbitalWatchPage {
     const alt = (i: number) => t('orbitalWatch.row.imageAlt', { name: card.sensor, time: tops[i]! });
     const top = h('span', null, card.top);
     const tile = imageTile(card.url, alt(0), card.sensor, 'hero', [
+      viewButton(card.view, alt(0)),
       ...heroOverlays(),
       h('span', { className: 'ow-card-tag ow-label' }, closest ? t('orbitalWatch.ui.closestLook') : card.sensor),
       h('button', { type: 'button', className: 'ow-expand', dataset: { action: 'open-full' }, 'aria-label': t('orbitalWatch.ui.openFull') }, '⤢'),
@@ -1319,6 +1406,26 @@ export class OrbitalWatchPage {
         this.filter = null;
         if (this.state) this.render(this.state);
         return;
+      case 'view-image':
+        this.openImageViewer(actionEl!);
+        return;
+      case 'timelapse':
+        this.openTimelapse(actionEl!);
+        return;
+      case 'detail-back':
+        this.closePassDetail();
+        return;
+      case 'detail-step':
+        this.stepPassDetail(Number(actionEl!.dataset.step));
+        return;
+      case 'clearest-look':
+        this.openClearestLook(actionEl!);
+        return;
+    }
+    const passRow = target.closest<HTMLElement>('.ow-row[data-key^="pass:"]');
+    if (passRow && this.view === 'full') {
+      this.select(passRow.dataset.key!.replace(/^pass:/, ''));
+      return;
     }
     const toggle = target.closest<HTMLElement>('.ow-group-toggle');
     const id = toggle?.dataset.group as GroupId | undefined;
@@ -1329,7 +1436,119 @@ export class OrbitalWatchPage {
     this.render(this.state);
   };
 
+  private get evidence(): OrbitalEvidence | null {
+    if (this.state?.kind !== 'passes') return null;
+    const { archives } = this.state;
+    return archives.kind === 'answered' ? archives.evidence : archives.progress?.evidence ?? null;
+  }
+
+  /** The viewer is its own lazy chunk, fetched the first time someone opens an image. */
+  private openImageViewer(trigger: HTMLElement): void {
+    const evidence = this.evidence;
+    if (!evidence || this.state?.kind !== 'passes') return;
+    const { lookup } = this.state;
+    const image = { kind: trigger.dataset.imageKind, key: trigger.dataset.imageKey } as ViewableImage;
+    const returnFocusTo = trigger.closest<HTMLElement>('.ow-row') ?? trigger;
+    const seq = this.openSeq;
+    void import('./OrbitalImageViewer').then(({ openOrbitalImageViewer, subjectForImage }) => {
+      const subject = subjectForImage(evidence, image, lookup, shownTileUrl(trigger.closest<HTMLElement>('.ow-tile')), (url) => lookupImages.isEmpty(url));
+      if (subject && this.isOpen && seq === this.openSeq) openOrbitalImageViewer(subject, returnFocusTo);
+    });
+  }
+
+  private openTimelapse(trigger: HTMLElement): void {
+    if (this.state?.kind !== 'passes') return;
+    const { point, nowMs } = this.state.lookup;
+    const seq = this.openSeq;
+    void import('./OrbitalTimelapse').then(({ openOrbitalTimelapse }) => {
+      if (this.isOpen && seq === this.openSeq) openOrbitalTimelapse({ point, nowMs, place: formatPoint(point) }, trigger);
+    });
+  }
+
+  private openPassDetail(rowKey: string): void {
+    this.detailKey = rowKey.replace(/^pass:/, '');
+    this.renderPassDetail();
+    // select() focuses the row first; the list hides under the detail, so focus moves to the detail once that settles.
+    queueMicrotask(() => this.slots['pass-detail'].querySelector<HTMLElement>('[data-action="detail-back"]')?.focus());
+  }
+
+  private renderPassDetail(): void {
+    const evidence = this.evidence;
+    const pass = evidence?.passes.find((candidate) => passKey(candidate) === this.detailKey);
+    if (!evidence || !pass || this.state?.kind !== 'passes') {
+      this.clearPassDetail();
+      return;
+    }
+    const keys = this.passRowKeys();
+    const index = keys.indexOf(this.detailKey!);
+    const acquisition = evidence.acquisitions.find((candidate) => candidate.pass && passKey(candidate.pass) === this.detailKey) ?? null;
+    const profile = matchSensorProfile(pass.noradId, pass.name);
+    const military = pass.tier.kind === 'capability-overhead';
+    replaceChildren(this.slots['pass-detail'], renderPassDetail({
+      pass,
+      acquisition: military ? null : acquisition,
+      point: this.state.lookup.point,
+      media: passDetailMedia(pass, military ? null : acquisition, isUnanswered(pass, evidence)),
+      glyph: TIER_GLYPH_CHAR[GLYPH_OF_TIER[pass.tier.kind]],
+      when: formatWhen(pass.timeMs),
+      clock: formatOrbitalTime(pass.timeMs, 'when').split(' · ').pop()!,
+      offNadirDeg: offNadirDeg(pass),
+      family: profile?.family ?? null,
+      pixelM: military ? null : acquisition?.resolutionM ?? nativeResolutionM(pass.profileId),
+      swathKm: profile?.footprint.kind === 'nadir-swath' ? profile.footprint.swathKm : null,
+      hasPrevious: index > 0,
+      hasNext: index >= 0 && index < keys.length - 1,
+      clearestLook: Boolean((military ? null : acquisition)?.imageUrl ?? evidence.bestView?.imageUrl),
+    }));
+    this.panel.dataset.detail = 'open';
+  }
+
+  private passRowKeys(): string[] {
+    return [...this.body.querySelectorAll<HTMLElement>('.ow-row[data-key^="pass:"]')].map((row) => row.dataset.key!.replace(/^pass:/, ''));
+  }
+
+  private stepPassDetail(step: number): void {
+    const keys = this.passRowKeys();
+    const next = keys[keys.indexOf(this.detailKey ?? '') + step];
+    if (!next) return;
+    this.detailKey = next;
+    this.renderPassDetail();
+    this.slots['pass-detail'].querySelector<HTMLElement>(`[data-action="detail-step"][data-step="${step}"]:not([disabled])`)?.focus();
+  }
+
+  private openClearestLook(trigger: HTMLElement): void {
+    const evidence = this.evidence;
+    if (!evidence) return;
+    const own = evidence.acquisitions.find((candidate) => candidate.pass && passKey(candidate.pass) === this.detailKey && candidate.imageUrl);
+    const pick = own ?? evidence.bestView;
+    if (!pick) return;
+    trigger.dataset.imageKind = 'acquisition';
+    trigger.dataset.imageKey = pick.key;
+    this.openImageViewer(trigger);
+  }
+
+  private clearPassDetail(): void {
+    this.detailKey = null;
+    replaceChildren(this.slots['pass-detail']);
+    delete this.panel.dataset.detail;
+  }
+
+  private closePassDetail(): void {
+    const key = this.detailKey;
+    this.clearPassDetail();
+    const row = key ? this.body.querySelector<HTMLElement>(`.ow-row[data-key="${CSS.escape(`pass:${key}`)}"]`) : null;
+    (row ?? this.sheet).focus();
+  }
+
   private readonly onSheetKeydown = (event: KeyboardEvent): void => {
+    if (event.key === 'Enter' && this.view === 'full') {
+      const row = (event.target as HTMLElement).closest<HTMLElement>('.ow-row[data-key^="pass:"]');
+      if (row && event.target === row) {
+        event.preventDefault();
+        this.select(row.dataset.key!.replace(/^pass:/, ''));
+        return;
+      }
+    }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     const row = (event.target as HTMLElement).closest('.ow-row');
     if (!row) return;
@@ -1342,7 +1561,8 @@ export class OrbitalWatchPage {
 
   private readonly onDocumentKeydown = (event: KeyboardEvent): void => {
     if (event.key !== 'Escape') return;
-    if (this.view === 'full') this.setView('sheet');
+    if (this.detailKey) this.closePassDetail();
+    else if (this.view === 'full') this.setView('sheet');
     else this.close();
   };
 }
