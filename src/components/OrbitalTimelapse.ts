@@ -127,16 +127,16 @@ export class OrbitalTimelapsePage {
       this.render();
       return;
     }
-    const { failures } = result;
     const looks = result.looks.filter((look) => look.imageUrl !== null && isAllowedPreviewUrl(look.imageUrl));
-    this.state = { kind: 'loading', looks, failures, loaded: 0 };
+    this.state = { kind: 'loading', looks, failures: result.failures, loaded: 0 };
     this.render();
-    const frames = await preloadFrames(looks, 'planetary-computer', signal, (loaded) => {
+    const { frames, failures: unloaded } = await preloadFrames(looks, 'planetary-computer', signal, (loaded) => {
       if (this.state.kind !== 'loading') return;
       this.state = { ...this.state, loaded };
       this.render();
     }, this.deps.loadImage);
     if (signal.aborted) return;
+    const failures = [...result.failures, ...unloaded];
     this.held = frames.map((frame) => frame.paint);
     if (frames.length < MIN_TIMELAPSE_FRAMES) {
       this.releaseHeld();

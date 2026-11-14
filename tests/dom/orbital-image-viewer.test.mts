@@ -121,6 +121,16 @@ describe('orbital image viewer', () => {
     expect(subjectForImage(evidence, { kind: 'mosaic', key: mosaic.layer }, { point, nowMs: NOW }, days[1]!.imageUrl)!.selected.imageUrl).toBe(days[1]!.imageUrl);
   });
 
+  it('leaves the day the thumbnail found blank at the point out of compare', () => {
+    const days = ['2026-11-13', '2026-11-12', '2026-11-11'].map((date) => ({ date, imageUrl: `https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?TIME=${date}` }));
+    const mosaic: DailyMosaicRow = { kind: 'daily-mosaic', archive: 'nasa-gibs', source: 'MODIS Terra', layer: 'MODIS_Terra_CorrectedReflectance_TrueColor', noradId: 25994, days };
+    const evidence: OrbitalEvidence = { passes: [], acquisitions: [], mosaics: [mosaic], frames: [], bestView: null, status: 'complete', failures: [], unansweredProfiles: [] };
+    const blank = days[0]!.imageUrl;
+    const subject = subjectForImage(evidence, { kind: 'mosaic', key: mosaic.layer }, { point, nowMs: NOW }, days[1]!.imageUrl, (url) => url === blank)!;
+    expect(subject.selected.imageUrl).toBe(days[1]!.imageUrl);
+    expect(subject.scenes.map((scene) => scene.dateLabel)).toEqual(['2026-11-12', '2026-11-11']);
+  });
+
   it('offers compare only when a second scene of the same collection exists', async () => {
     const selected = scene(1, 5);
     const radar = scene(40, null, { profileId: 'sentinel-1', platform: 'sentinel-1c', key: 'sentinel-1c:1:x' });

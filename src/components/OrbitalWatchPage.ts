@@ -4,7 +4,7 @@ import type { PointPassLookup } from '@/services/orbital/pass-client';
 import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
 import { ARCHIVE_REQUEST_TIMEOUT_MS, type ArchiveId } from '@/services/orbital/archive-result';
-import { loadArchiveImage, type ArchiveImageResult, type LoadedArchiveImage } from '@/services/orbital/archive-image';
+import { ArchiveImageError, loadArchiveImage, type ArchiveImageResult, type LoadedArchiveImage } from '@/services/orbital/archive-image';
 import { GIBS_DAILY_MOSAICS, hasNoDataAtPoint, MOSAIC_FALLBACK_DAYS, type CropPosition, type DailyMosaicRow, type GeostationaryFrame, type GeostationaryRow } from '@/services/orbital/archive-gibs';
 import { DEFAULT_CROP_HALF_SIZE_KM } from '@/services/orbital/crop-url';
 import { nativeResolutionM, normalisePlatform } from '@/services/orbital/archive-stac';
@@ -350,7 +350,7 @@ class LookupImages {
     const request = hit ? Promise.resolve<ArchiveImageResult>({ status: 'ok', image: hit }) : this.pending.get(url);
     if (!request) return null;
     return request.then((result) => {
-      if (result.status !== 'ok') throw new Error(`image failed: ${result.failure.reason}`);
+      if (result.status !== 'ok') throw new ArchiveImageError(result.failure);
       return { ...result.image, release: () => {} };
     });
   }
@@ -381,7 +381,7 @@ const lookupImages = new LookupImages();
 /** Loads an image for the viewer, compare and time-lapse, reusing the sheet's copy so no image is fetched twice. */
 export function loadLookupImage(archive: ArchiveId, url: string, signal: AbortSignal): Promise<LoadedArchiveImage> {
   return lookupImages.lend(url) ?? loadArchiveImage(archive, [url], { signal }).then((result) => {
-    if (result.status === 'failed') throw new Error(`image failed: ${result.failure.reason}`);
+    if (result.status === 'failed') throw new ArchiveImageError(result.failure);
     return result.image;
   });
 }
@@ -1451,7 +1451,7 @@ export class OrbitalWatchPage {
     const returnFocusTo = trigger.closest<HTMLElement>('.ow-row') ?? trigger;
     const seq = this.openSeq;
     void import('./OrbitalImageViewer').then(({ openOrbitalImageViewer, subjectForImage }) => {
-      const subject = subjectForImage(evidence, image, lookup, shownTileUrl(trigger.closest<HTMLElement>('.ow-tile')));
+      const subject = subjectForImage(evidence, image, lookup, shownTileUrl(trigger.closest<HTMLElement>('.ow-tile')), (url) => lookupImages.isEmpty(url));
       if (subject && this.isOpen && seq === this.openSeq) openOrbitalImageViewer(subject, returnFocusTo);
     });
   }

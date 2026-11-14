@@ -563,8 +563,17 @@ export function openOrbitalImageViewer(subject: ImageViewerSubject, returnFocusT
 
 export type ViewableImage = { kind: 'acquisition' | 'mosaic' | 'frame'; key: string };
 
-/** Builds the viewer subject for an image the lookup sheet shows, or null when that image is gone. `shownUrl` is the frame a thumbnail fell back to. */
-export function subjectForImage(evidence: OrbitalEvidence, image: ViewableImage, lookup: { point: GeoPoint; nowMs: number }, shownUrl: string | null = null): ImageViewerSubject | null {
+/**
+ * Builds the viewer subject for an image the lookup sheet shows, or null when that image is gone.
+ * `shownUrl` is the frame a thumbnail fell back to; `isEmpty` names the days the sheet found blank at the point, which compare skips.
+ */
+export function subjectForImage(
+  evidence: OrbitalEvidence,
+  image: ViewableImage,
+  lookup: { point: GeoPoint; nowMs: number },
+  shownUrl: string | null = null,
+  isEmpty: (url: string) => boolean = () => false,
+): ImageViewerSubject | null {
   const base = { point: lookup.point, nowMs: lookup.nowMs };
   switch (image.kind) {
     case 'acquisition': {
@@ -575,7 +584,7 @@ export function subjectForImage(evidence: OrbitalEvidence, image: ViewableImage,
     }
     case 'mosaic': {
       const mosaic = evidence.mosaics.find((candidate) => candidate.layer === image.key);
-      const scenes = mosaic ? scenesFromMosaic(mosaic) : [];
+      const scenes = (mosaic ? scenesFromMosaic(mosaic) : []).filter((scene) => scene.imageUrl === shownUrl || !scene.imageUrl || !isEmpty(scene.imageUrl));
       const selected = scenes.find((scene) => scene.imageUrl === shownUrl) ?? scenes[0];
       return selected ? { ...base, selected, scenes, historyProfile: null } : null;
     }
