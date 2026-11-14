@@ -1,6 +1,6 @@
 # U21 calibration capture handoff
 
-U21 of [#10577](https://github.com/koala73/worldmonitor/issues/10577) is **incomplete**: one valid calibration capture exists for **2026-11-13 UTC**. A second genuinely different UTC date is required. October fixtures remain unchanged regression snapshots.
+U21 of [#10577](https://github.com/koala73/worldmonitor/issues/10577) now has **two valid calibration captures on distinct UTC dates: 2026-11-13 and 2026-11-14**. Both are retained on [PR #10618](https://github.com/koala73/worldmonitor/pull/10618), targeting `cii-v15`. U21 remains pending integration delivery and required checks; merge requires separate owner authorization. October fixtures remain unchanged regression snapshots.
 
 ## Production evidence and first capture
 
@@ -16,9 +16,19 @@ The first fixture, **`2026-11-13T0952Z.json`**, was read at **09:52:18.324 UTC**
 
 Capture provenance: an export of released `main@e5c5c69f759ef4d3394e991d322672bcebd235da`, with only the two capture harness files from PR #10616 at `884f6ad1a89bbff29735c012d0a720da51b0ab0a` overlaid. The scorer, server and shared source are byte-identical to that released main commit. The fixture belongs on `cii-v15`, with `expected.v15` recorded only by that branch's table-diff script. This does not imply the tooling PR was merged.
 
-The first fixture is durably retained as [`tests/fixtures/cii/2026-11-13T0952Z.json`](https://github.com/koala73/worldmonitor/blob/570fd245b5ce47f7c3790e8eae574d7157dc455a/tests/fixtures/cii/2026-11-13T0952Z.json) on `codex/cii-calibration-fixtures`. Its delivery is [PR #10618](https://github.com/koala73/worldmonitor/pull/10618), targeting `cii-v15`; it is not yet merged. Resume by fetching that existing PR branch, preserve its first fixture, and add the second-day fixture there. Both captures must reach the integration line before U21 is done. Merge still needs separate owner authorization.
+The first fixture is durably retained as [`tests/fixtures/cii/2026-11-13T0952Z.json`](https://github.com/koala73/worldmonitor/blob/570fd245b5ce47f7c3790e8eae574d7157dc455a/tests/fixtures/cii/2026-11-13T0952Z.json) on `codex/cii-calibration-fixtures`. Both captures must reach the integration line before U21 is done. Merge still needs separate owner authorization.
 
-## Resume on a different UTC date
+## Second capture: 2026-11-14 UTC
+
+Released `main@852a0f7dd8ba8beae9e0a08638dade4f2ab470b9` was checked out without scorer or harness overlays. The capture uses that released source, not the in-progress integration scorer.
+
+GET-only prerequisite reads found 208 priors, including all 37 targets, and 199 economic country rows with 149 measured globally and **25/31 measured scored countries**. Qatar's currency depreciation remains **0%** with the corrected `currency-api` anchor. The UCDP payload retains the same complete 365-day window, 2,397 party-month groups, 6,600 country-day rows and 366 daily-total rows. Deployed seed metadata again reports Iran events and strike pressure live, so `iranEventsEnabled` remains `true`.
+
+The first wait attempt stopped without writing a fixture when the old live table expired. After the natural production refresh, **`2026-11-14T0556Z.json`** was captured at **05:56:53.049 UTC**, 34 seconds after the stored build at **05:56:18.841 UTC**. The released scorer exactly reproduces its stored **v14 scores for 31/31 countries**. No production writes, timestamp edits or expected-v14 edits were used.
+
+The second fixture retains all 37 targets, both complete calibration maps and the full UCDP payload. Only `expected.v15` is added on the integration branch, through `scripts/cii-table-diff.mts --write-expected`. The fixture test now requires at least two calibration captures with different `capturedAt` UTC dates. All October fixtures and the first November capture remain byte-identical.
+
+## Capture procedure
 
 1. Refresh released `main` and the U21 capture harness. An in-progress integration scorer is rejected; do not relabel its output as released v14.
 2. Re-read production inputs and deployment evidence. Require the complete UCDP party window, all 37 priors, corrected Qatar FX input and at least 25 measured economic countries. Verify the current deployed Iran-feed setting again.
@@ -32,4 +42,4 @@ The first fixture is durably retained as [`tests/fixtures/cii/2026-11-13T0952Z.j
 4. Compare **`capturedAt` UTC dates**. Another November 13 read does not satisfy the second-day requirement.
 5. Deliver the second fixture to `cii-v15` without changing October fixtures. Record `expected.v15` through `scripts/cii-table-diff.mts --write-expected`, verify released v14 reproduction and integration P9, and monitor required checks on the exact PR head.
 
-No production seeds, service edits, deployments or merges were performed. U18 and formula changes remain out of scope. Do not mark U21 done until both different-day captures are delivered to the integration line and required checks pass.
+No production seeds, service edits, deployments or PR merges were performed. U18 and formula changes remain out of scope. Do not mark U21 done until both different-day captures are delivered to the integration line and required checks pass.

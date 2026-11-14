@@ -2244,7 +2244,14 @@ export function countCiiRealtimeSignalDensityCoverage(
   const acledCoversTier1 = (acled ?? []).some((ev) => isTier1CountryCode(normalizeCountryName(ev.country)));
   const ucdpCoversTier1 = Object.values(ucdpViolenceRates(aux?.ucdpEvents, nowMs)).some((rate) => ucdpViolenceScore(rate) > 0);
   // GDELT scores every country, with or without ACLED rows, as in computeCIIScores.
-  const gdeltCoversTier1 = Object.keys(aux?.gdeltCountryEvents?.byCountry ?? {}).some(isTier1CountryCode);
+  // Global article-only rows describe availability, not conflict signal density.
+  const gdeltCoversTier1 = Object.entries(aux?.gdeltCountryEvents?.byCountry ?? {}).some(([code, row]) => (
+    isTier1CountryCode(code)
+    && ((row.conflict?.current ?? 0) > 0 || (row.conflict?.baselineMedian ?? 0) > 0
+      || (row.protest?.current ?? 0) > 0 || (row.protest?.baselineMedian ?? 0) > 0
+      || (row.week?.conflict ?? 0) > 0 || (row.week?.protest ?? 0) > 0
+      || row.strikes != null)
+  ));
   if (acledCoversTier1 || ucdpCoversTier1 || gdeltCoversTier1) {
     coveredFamilies.add('conflict');
   }

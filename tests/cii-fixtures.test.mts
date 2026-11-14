@@ -66,7 +66,9 @@ describe('CII fixtures', () => {
 
   it('validate complete calibration inputs and keep every retained source field', () => {
     const captures = FIXTURES.filter(f => f.calibration);
-    assert.ok(captures.length > 0);
+    assert.ok(captures.length >= 2, 'U21 requires two calibration captures');
+    assert.ok(new Set(captures.map(f => f.capturedAt.slice(0, 10))).size >= 2,
+      'U21 calibration captures must come from different UTC dates');
     for (const f of captures) {
       validateCiiCalibrationInputs(f.inputs, f.captureTargets!);
       const trimmed = trimCiiRawInputs(f.inputs, f.captureTargets, true);
