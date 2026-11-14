@@ -1,6 +1,13 @@
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+
+const tier = vi.hoisted(() => ({ pro: false }));
+vi.mock('@/services/widget-store', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/widget-store')>()),
+  isProUser: () => tier.pro,
+}));
 
 import { UnifiedSettings } from '@/components/UnifiedSettings';
+import { ALL_PANELS, FREE_MAX_PANELS, isFreePanelCapCounted } from '@/config/panels';
 import type { PanelConfig } from '@/types';
 import { initTestI18n } from './helpers/i18n.mts';
 
@@ -38,8 +45,22 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
+  tier.pro = false;
   document.body.replaceChildren();
 });
+
+/** Every catalog panel saved explicitly, with exactly FREE_MAX_PANELS free panels on. */
+function atFreeCap(): { saved: Record<string, PanelConfig>; next: string } {
+  const free = Object.keys(ALL_PANELS).filter((key) => isFreePanelCapCounted(key) && !ALL_PANELS[key]!.premium);
+  expect(free.length).toBeGreaterThan(FREE_MAX_PANELS);
+  const saved: Record<string, PanelConfig> = {};
+  for (const key of Object.keys(ALL_PANELS)) saved[key] = { ...ALL_PANELS[key]!, enabled: false };
+  for (const key of free.slice(0, FREE_MAX_PANELS)) saved[key]!.enabled = true;
+  return { saved, next: free[FREE_MAX_PANELS]! };
+}
+
+const pressed = (key: string) => row(key).querySelector('.panel-toggle-item')!.getAttribute('aria-pressed');
+const saveButton = () => document.querySelector<HTMLButtonElement>('.panels-save-layout')!;
 
 describe('UnifiedSettings panel rows', () => {
   it('renders one row per panel with its switch button and, when supported, an inline text size select', () => {
@@ -106,6 +127,43 @@ describe('UnifiedSettings panel rows', () => {
     expect(saves).toHaveLength(1);
     expect(saves[0]!.markets!.fontScale).toBe(0.9);
     expect(saves[0]!['live-news']).not.toHaveProperty('fontScale');
+    settings.close();
+  });
+
+  it('refuses a free user a panel past the free cap and says why', () => {
+    const { saved, next } = atFreeCap();
+    const saves: Array<Record<string, PanelConfig>> = [];
+    const settings = createSettings(saved, saves);
+    settings.open('panels');
+
+    row(next).querySelector<HTMLElement>('.panel-toggle-item')!.click();
+
+    expect(pressed(next)).toBe('false');
+    expect(document.querySelector('.toast-notification')?.textContent).toContain(String(FREE_MAX_PANELS));
+    expect(saveButton().disabled).toBe(true);
+    saveButton().click();
+    expect(saves).toHaveLength(0);
+    settings.close();
+  });
+
+  it('drops unsaved panels past the cap when paid access ends with Settings open', () => {
+    tier.pro = true;
+    const { saved, next } = atFreeCap();
+    const saves: Array<Record<string, PanelConfig>> = [];
+    const settings = createSettings(saved, saves);
+    settings.open('panels');
+
+    row(next).querySelector<HTMLElement>('.panel-toggle-item')!.click();
+    expect(pressed(next)).toBe('true');
+    expect(saveButton().disabled).toBe(false);
+
+    tier.pro = false;
+    settings.refreshPanelToggles();
+
+    expect(pressed(next)).toBe('false');
+    expect(saveButton().disabled).toBe(true);
+    saveButton().click();
+    expect(saves).toHaveLength(0);
     settings.close();
   });
 });
