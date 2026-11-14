@@ -183,7 +183,7 @@ for (const [tierGroup, entries] of tierGroups) {
     }
   } else if (!primary.selfServe && primary.priceCents === 0) {
     tier.cta = 'Get Started';
-    tier.href = 'https://worldmonitor.app/dashboard';
+    tier.href = 'https://www.worldmonitor.app/dashboard';
   } else if (!primary.selfServe && primary.priceCents === null) {
     tier.cta = 'Contact Sales';
     tier.href = 'mailto:enterprise@worldmonitor.app';

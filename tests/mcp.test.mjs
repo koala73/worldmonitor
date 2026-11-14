@@ -4155,6 +4155,25 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.match(payload.upgradeUrl, /^https:\/\//);
   });
 
+  it('error: ChatGPT gets the locked list without the plans link', async () => {
+    const { deps } = makeProDeps({
+      getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86_400_000 }),
+    });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ result: JSON.stringify({ ok: 1 }) }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data'), { 'User-Agent': 'openai-mcp/1.0.0' }), deps);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.deepEqual(payload.locked, ['physical-premium', 'physical-divergence']);
+    assert.equal(Object.hasOwn(payload, 'upgradeUrl'), false);
+    assert.equal(Object.hasOwn(body.result.structuredContent, 'upgradeUrl'), false);
+  });
+
   it('happy: a Pro caller still reads the physical-metals datasets through get_market_data', async () => {
     const { deps } = makeProDeps();
     process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
