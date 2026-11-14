@@ -5,6 +5,8 @@
   color: var(--ow-text) !important;
   font-family: var(--ow-font-mono) !important;
   max-width: min(320px, calc(100vw - 24px)) !important;
+  max-height: calc(100% - 16px);
+  overflow-y: auto;
   box-shadow: 0 4px 16px var(--ow-shadow);
 }
 
