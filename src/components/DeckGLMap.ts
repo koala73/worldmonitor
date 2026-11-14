@@ -590,10 +590,12 @@ const ORBITAL_SWEPT_LAYER_ID = 'orbital-swept-layer';
 const ORBITAL_LEADING_EDGE_LAYER_ID = 'orbital-leading-edge-layer';
 const ORBITAL_REPLAY_LAYER_IDS = new Set([ORBITAL_SWEPT_LAYER_ID, ORBITAL_LEADING_EDGE_LAYER_ID, ORBITAL_TRACK_MARKER_LAYER_ID]);
 /** The Orbital Watch accent, text and background tokens as deck.gl RGB. */
-const ORBITAL_ACCENT = [245, 165, 36] as const;
-const ORBITAL_TEXT = [236, 235, 231] as const;
-const ORBITAL_BG = [11, 12, 14] as const;
-const ORBITAL_MONO_FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+/** Reads a WM colour token per render, so a theme switch repaints the orbital overlay. */
+function orbitalRgba(token: '--green' | '--text' | '--panel-bg', alpha: number): [number, number, number, number] {
+  const hex = getCSSColor(token).replace(/^#([\da-f])([\da-f])([\da-f])$/i, '#$1$1$2$2$3$3');
+  const m = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex);
+  return m ? [parseInt(m[1]!, 16), parseInt(m[2]!, 16), parseInt(m[3]!, 16), alpha] : [128, 128, 128, alpha];
+}
 const ORBITAL_RETICLE = { pickable: false } as const;
 
 function deckLayerId(layer: LayersList[number]): string | null {
@@ -8236,7 +8238,7 @@ export class DeckGLMap {
         id: ORBITAL_SWEPT_LAYER_ID,
         data: swept.rings,
         getPolygon: (ring) => ring,
-        getFillColor: [...ORBITAL_ACCENT, 56],
+        getFillColor: orbitalRgba('--green', 56),
         stroked: false,
         pickable: false,
       }),
@@ -8244,7 +8246,7 @@ export class DeckGLMap {
         id: ORBITAL_LEADING_EDGE_LAYER_ID,
         data: swept.leadingEdge,
         getPath: (line) => line,
-        getColor: [...ORBITAL_ACCENT, 255],
+        getColor: orbitalRgba('--green', 255),
         getWidth: 3,
         widthUnits: 'pixels',
         capRounded: true,
@@ -8256,8 +8258,8 @@ export class DeckGLMap {
         getPosition: (point) => [point.lon, point.lat],
         getRadius: 5,
         radiusUnits: 'pixels',
-        getFillColor: [...ORBITAL_TEXT, 255],
-        getLineColor: [...ORBITAL_BG, 230],
+        getFillColor: orbitalRgba('--text', 255),
+        getLineColor: orbitalRgba('--panel-bg', 230),
         stroked: true,
         lineWidthMinPixels: 1.5,
         pickable: false,
@@ -8314,7 +8316,7 @@ export class DeckGLMap {
         radiusUnits: 'pixels',
         filled: false,
         stroked: true,
-        getLineColor: [...ORBITAL_ACCENT, 255],
+        getLineColor: orbitalRgba('--green', 255),
         lineWidthUnits: 'pixels',
         getLineWidth: 2,
       }),
@@ -8324,7 +8326,7 @@ export class DeckGLMap {
         ...ring,
         getRadius: 3,
         radiusUnits: 'pixels',
-        getFillColor: [...ORBITAL_ACCENT, 255],
+        getFillColor: orbitalRgba('--green', 255),
       }),
       new TextLayer<OrbitalTarget>({
         id: 'orbital-target-label-layer',
@@ -8332,17 +8334,17 @@ export class DeckGLMap {
         ...ring,
         getText: (point) => point.lines.join('\n'),
         getSize: 11,
-        fontFamily: ORBITAL_MONO_FONT,
+        fontFamily: getCSSColor('--font-mono'),
         fontWeight: 500,
         characterSet: 'auto',
         lineHeight: 1.45,
-        getColor: [...ORBITAL_TEXT, 255],
+        getColor: orbitalRgba('--text', 255),
         getTextAnchor: left ? 'end' : 'start',
         getAlignmentBaseline: 'center',
         getPixelOffset: [left ? -24 : 24, 0],
         updateTriggers: { getTextAnchor: left, getPixelOffset: left },
         background: true,
-        getBackgroundColor: [...ORBITAL_BG, 225],
+        getBackgroundColor: orbitalRgba('--panel-bg', 225),
         backgroundPadding: [7, 4, 7, 4],
       }),
     ];
@@ -8357,8 +8359,8 @@ export class DeckGLMap {
         id: 'orbital-footprint-layer',
         data: shapes.footprint,
         getPolygon: (ring) => ring,
-        getFillColor: [...ORBITAL_ACCENT, 18],
-        getLineColor: [...ORBITAL_ACCENT, 120],
+        getFillColor: orbitalRgba('--green', 18),
+        getLineColor: orbitalRgba('--green', 120),
         lineWidthMinPixels: 1,
         pickable: false,
       }),
@@ -8366,7 +8368,7 @@ export class DeckGLMap {
         id: 'orbital-track-layer',
         data: [shapes.path],
         getPath: (path) => path,
-        getColor: [...ORBITAL_TEXT, 170],
+        getColor: orbitalRgba('--text', 170),
         getWidth: 1.5,
         widthUnits: 'pixels',
         pickable: false,
