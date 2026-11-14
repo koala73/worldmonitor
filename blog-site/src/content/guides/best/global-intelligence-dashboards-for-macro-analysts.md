@@ -1,7 +1,7 @@
 ---
 title: "Best global intelligence dashboards for macro analysts"
 description: "Compare global intelligence dashboards for macro analysts: World Monitor for live events, chokepoints and markets, ACLED for conflict data, Recorded Future."
-metaTitle: "Best intelligence dashboards for macro | World Monitor"
+metaTitle: "Best global intelligence dashboards for macro analysts"
 keywords: "Macro analysts, best global intelligence dashboards for macro analysts, geopolitics and markets dashboard, chokepoint shipping data, global intelligence tools"
 audience: "Macro analysts"
 pubDate: "2026-10-02"

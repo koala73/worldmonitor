@@ -1,7 +1,7 @@
 ---
 title: "Best travel risk tools for travel managers"
 description: "Compare travel risk tools for travel managers: Crisis24 for duty-of-care assistance, Dataminr for enterprise alerts, and World Monitor for country alerts."
-metaTitle: "Best travel risk tools for managers | World Monitor"
+metaTitle: "Best travel risk tools for travel managers"
 keywords: "Travel managers, best travel risk tools for travel managers, duty of care, destination risk research, country risk alerts, global intelligence tools"
 audience: "Travel managers"
 pubDate: "2026-10-02"

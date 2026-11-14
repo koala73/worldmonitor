@@ -231,7 +231,8 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
   );
 
   // Variant favicons: crawlers read raw HTML without executing src/main.ts,
-  // and 96x96 / 192x192 PNGs satisfy Google Search's >=48x48 square favicon rule.
+  // Google recommends square icons larger than 48px (8px is the minimum).
+  // Search selects one favicon per hostname from its homepage declaration.
   html = replaceCounted(
     html,
     /<link rel="icon" type="image\/png" sizes="96x96" href="\/favico\/android-chrome-96x96\.png" \/>/g,

@@ -1,7 +1,7 @@
 ---
 title: "Recorded Future alternatives for intelligence teams"
 description: "Recorded Future alternatives ranked by cost, self-serve access, alerts and API. Compare World Monitor, Dataminr, Factal and Crisis24 for geopolitical risk."
-metaTitle: "Recorded Future alternatives for risk | World Monitor"
+metaTitle: "Recorded Future alternatives for geopolitical risk"
 keywords: "Recorded Future buyers, recorded future alternatives for intelligence teams, global intelligence tools"
 audience: "Recorded Future buyers"
 pubDate: "2026-10-02"

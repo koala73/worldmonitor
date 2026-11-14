@@ -1,7 +1,7 @@
 ---
 title: "Best geopolitical monitoring tools for energy analysts"
 description: "Compare geopolitical tools for energy analysts: World Monitor for live Hormuz and Red Sea chokepoint traffic, Dataminr for site alerts, and Recorded Future."
-metaTitle: "Best geopolitical tools for energy analysts | World Monitor"
+metaTitle: "Best geopolitical monitoring tools for energy analysts"
 keywords: "Energy analysts, best geopolitical monitoring tools for energy analysts, Strait of Hormuz monitoring, oil chokepoints, energy security dashboard, global intelligence tools"
 audience: "Energy analysts"
 pubDate: "2026-10-02"

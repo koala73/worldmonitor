@@ -150,13 +150,13 @@ describe('blog SEO and GEO corpus contract', () => {
 
     for (const post of posts) {
       for (const key of ['title', 'description', 'metaTitle', 'keywords', 'audience', 'heroImage', 'pubDate']) {
-        assert.ok(post.field(key), `${post.file}: missing ${key}`);
+        assert.ok(post.field(key)?.trim(), `${post.file}: missing ${key}`);
       }
       const title = post.field('title');
       const metaTitle = post.field('metaTitle');
       const description = post.field('description');
-      assert.ok(metaTitle.length >= 30 && metaTitle.length <= 60, `${post.file}: metaTitle is ${metaTitle.length} chars`);
-      assert.ok(description.length >= 110 && description.length <= 160, `${post.file}: description is ${description.length} chars`);
+      // Google truncates by display width, not a fixed character limit.
+      // Keep metadata complete and unique without cutting useful topic wording.
       assert.ok(!titles.has(title), `${post.file}: duplicate title`);
       assert.ok(!metaTitles.has(metaTitle), `${post.file}: duplicate metaTitle`);
       assert.ok(!descriptions.has(description), `${post.file}: duplicate description`);
@@ -190,7 +190,7 @@ describe('blog SEO and GEO corpus contract', () => {
     }
   });
 
-  it('keeps every comparison and audience guide title and description within search bounds', () => {
+  it('keeps every comparison and audience guide metadata complete and unique', () => {
     assert.ok(guides.length >= 22, `expected at least 22 guides, got ${guides.length}`);
     const guideTitles = new Set();
     const guideMetaTitles = new Set();
@@ -198,13 +198,11 @@ describe('blog SEO and GEO corpus contract', () => {
 
     for (const guide of guides) {
       for (const key of ['title', 'description', 'metaTitle', 'keywords', 'audience', 'pubDate']) {
-        assert.ok(guide.field(key), `guides/${guide.file}: missing ${key}`);
+        assert.ok(guide.field(key)?.trim(), `guides/${guide.file}: missing ${key}`);
       }
       const title = guide.field('title');
       const metaTitle = guide.field('metaTitle');
       const description = guide.field('description');
-      assert.ok(metaTitle.length >= 30 && metaTitle.length <= 60, `guides/${guide.file}: metaTitle is ${metaTitle.length} chars`);
-      assert.ok(description.length >= 110 && description.length <= 160, `guides/${guide.file}: description is ${description.length} chars`);
       assert.ok(!guideTitles.has(title), `guides/${guide.file}: duplicate title`);
       assert.ok(!guideMetaTitles.has(metaTitle), `guides/${guide.file}: duplicate metaTitle`);
       assert.ok(!guideDescriptions.has(description), `guides/${guide.file}: duplicate description`);
@@ -217,8 +215,23 @@ describe('blog SEO and GEO corpus contract', () => {
     const guidesIndex = readFileSync(resolve(root, 'blog-site/src/pages/guides/index.astro'), 'utf8');
     const indexTitle = guidesIndex.match(/<Base\s+title="([^"]+)"/)?.[1];
     const indexDesc = guidesIndex.match(/<Base\s+[^>]*description="([^"]+)"/)?.[1];
-    assert.ok(indexTitle && indexTitle.length <= 60, `guides index title is ${indexTitle?.length} chars`);
-    assert.ok(indexDesc && indexDesc.length <= 160, `guides index description is ${indexDesc?.length} chars`);
+    assert.ok(indexTitle?.trim(), 'guides index must have a title');
+    assert.ok(indexDesc?.trim(), 'guides index must have a description');
+  });
+
+  it('preserves specific audiences in guide search titles', () => {
+    const audienceCases = [
+      ['best/travel-risk-tools-for-travel-managers.md', /travel managers/i],
+      ['best/global-intelligence-dashboards-for-macro-analysts.md', /macro analysts/i],
+      ['best/conflict-data-platforms-for-researchers.md', /researchers/i],
+      ['best/intelligence-apis-for-developers.md', /developers and AI agents/i],
+      ['best/risk-intelligence-platforms-for-corporate-security-teams.md', /corporate security teams/i],
+    ];
+    for (const [file, audience] of audienceCases) {
+      const guide = guides.find((entry) => entry.file === file);
+      assert.ok(guide, `missing guide ${file}`);
+      assert.match(guide.field('metaTitle'), audience, `${file}: keep the intended audience in search results`);
+    }
   });
 
   it('does not reintroduce volatile aggregate inventory claims', () => {

@@ -1,7 +1,7 @@
 ---
 title: "Best geopolitical risk tools for supply chain teams"
 description: "Compare geopolitical risk tools for supply chain teams: World Monitor for live chokepoint traffic and route alerts, Dataminr for sites, and Recorded Future."
-metaTitle: "Best supply chain geopolitical risk tools | World Monitor"
+metaTitle: "Best geopolitical risk tools for supply chain teams"
 keywords: "Supply chain teams, best geopolitical risk tools for supply chain teams, chokepoint monitoring, Red Sea shipping disruption, Suez, Hormuz, Panama Canal, global intelligence tools"
 audience: "Supply chain teams"
 pubDate: "2026-10-02"

@@ -1,7 +1,7 @@
 ---
 title: "Liveuamap alternatives for intelligence teams"
 description: "Liveuamap alternatives ranked by wider coverage, alert rules, API access and structured data. Compare World Monitor, ACLED, Factal and Dataminr."
-metaTitle: "Liveuamap alternatives for conflict maps | World Monitor"
+metaTitle: "Liveuamap alternatives for conflict monitoring"
 keywords: "Liveuamap buyers, liveuamap alternatives for intelligence teams, global intelligence tools"
 audience: "Liveuamap buyers"
 pubDate: "2026-10-02"

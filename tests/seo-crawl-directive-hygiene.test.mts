@@ -43,7 +43,7 @@ describe('SEO crawl-directive hygiene (#7380)', () => {
     );
   });
 
-  it('declares >=48x48 square favicons, Open Graph, and X cards across static templates', () => {
+  it('declares our large square favicons, Open Graph, and X cards across static templates', () => {
     for (const path of [
       'index.html',
       'pro-test/welcome.html',
@@ -59,7 +59,7 @@ describe('SEO crawl-directive hygiene (#7380)', () => {
       assert.match(
         html,
         /<link\s+[^>]*rel="icon"[^>]*sizes="(?:96x96|192x192)"[^>]*href="[^"]*android-chrome-(?:96x96|192x192)\.png"/,
-        `${path} must declare a >=48x48 square PNG favicon for search results`,
+        `${path} must declare our chosen 96px or 192px square PNG favicon`,
       );
       assert.match(html, /property="og:title"/, `${path} must declare og:title`);
       assert.match(html, /property="og:image"/, `${path} must declare og:image`);

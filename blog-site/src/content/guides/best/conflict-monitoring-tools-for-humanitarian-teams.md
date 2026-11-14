@@ -1,7 +1,7 @@
 ---
 title: "Best conflict monitoring tools for humanitarian teams"
 description: "Compare conflict monitoring tools for NGOs: ACLED for trend data, Crisis24 for staff assistance, World Monitor (free map, Pro country alerts), and Factal."
-metaTitle: "Best NGO conflict monitoring tools | World Monitor"
+metaTitle: "Best conflict monitoring tools for humanitarian teams"
 keywords: "Humanitarian teams, best conflict monitoring tools for humanitarian teams, NGO security monitoring, conflict alerts, global intelligence tools"
 audience: "Humanitarian teams"
 pubDate: "2026-10-02"
