@@ -109,7 +109,8 @@
     "climateNews": "Notícias Climáticas",
     "fx": "Taxas de câmbio",
     "ukmtoIncidents": "Incidentes UKMTO",
-    "reservoirLevels": "Níveis de água estratégicos"
+    "reservoirLevels": "Níveis de água estratégicos",
+    "gridDisruptionClock": "Relógio de interrupções de energia"
   },
   "commands": {
     "prefixes": {
@@ -2821,6 +2822,57 @@
         "measured": "Medido",
         "sparkline": "Nível da água em 36 meses"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Selecionar estado",
+      "unknown": "Desconhecido",
+      "customers": "Clientes sem energia segundo os informes",
+      "lastCustomers": "Clientes sem energia no último informe",
+      "denominatorUnknown": "Total de clientes monitorados desconhecido",
+      "tracked": "{{amount}} clientes monitorados",
+      "dataAge": "Tempo desde o informe",
+      "minutes": "{{amount}} min",
+      "hours": "{{amount}} h",
+      "warnings": "Alertas",
+      "recovery": "Alterações reportadas",
+      "decreased": "{{amount}} clientes a menos sem energia, segundo os informes",
+      "increased": "{{amount}} clientes a mais sem energia, segundo os informes",
+      "unchanged": "Número informado sem alteração",
+      "since": "desde",
+      "peakLoad": "{{percent}}% da carga de pico habitual restabelecida",
+      "noComparison": "Não há contagens comparáveis de clientes sem energia.",
+      "history": "Contagens recentes de clientes sem energia ({{total}})",
+      "priorNotice": "Alerta informado anteriormente",
+      "sources": "Fontes de alerta monitoradas",
+      "operatorLink": "Para avisos sobre a rede, consulte",
+      "issued": "Emitido em",
+      "until": "expira em",
+      "noActive": "Nenhum alerta ativo nas fontes monitoradas.",
+      "unknownWarnings": "Algumas fontes de alerta estão indisponíveis.",
+      "noObservation": "Contagem e cobertura atuais indisponíveis.",
+      "loadError": "Dados sobre interrupções de energia indisponíveis.",
+      "retained": "Falha na atualização. Exibindo o último informe recebido.",
+      "phase": {
+        "unknown": "Impacto desconhecido",
+        "monitoring": "Em monitoramento",
+        "watch": "Em atenção",
+        "disrupted": "Interrupções informadas",
+        "recovering": "Restabelecimento em curso segundo os informes",
+        "restored": "Fornecimento restabelecido segundo os informes"
+      },
+      "kind": {
+        "grid": "Aviso sobre a rede elétrica",
+        "weather": "Alerta meteorológico",
+        "space-weather": "Clima espacial"
+      },
+      "checks": {
+        "available": "Verificado",
+        "unavailable": "Indisponível",
+        "not_monitored": "Consulte a operadora diretamente",
+        "stale": "Última verificação desatualizada"
+      },
+      "warningAge": "Tempo desde o primeiro alerta ainda em vigor",
+      "days": "{{amount}} d"
     }
   },
   "popups": {

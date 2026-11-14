@@ -493,7 +493,8 @@
     "climateNews": "Klimanachrichten",
     "fx": "Devisenkurse",
     "ukmtoIncidents": "UKMTO-Vorfälle",
-    "reservoirLevels": "Strategische Wasserstände"
+    "reservoirLevels": "Strategische Wasserstände",
+    "gridDisruptionClock": "Stromausfall-Uhr"
   },
   "commands": {
     "prefixes": {
@@ -3186,6 +3187,57 @@
         "measured": "Gemessen",
         "sparkline": "Wasserstand über 36 Monate"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Bundesstaat auswählen",
+      "unknown": "Unbekannt",
+      "customers": "Laut Meldungen von Stromausfällen betroffene Kunden",
+      "lastCustomers": "Kunden ohne Strom bei der letzten Meldung",
+      "denominatorUnknown": "Gesamtzahl der erfassten Kunden unbekannt",
+      "tracked": "Erfasste Kunden: {{amount}}",
+      "dataAge": "Seit der Meldung",
+      "minutes": "{{amount}} Min.",
+      "hours": "{{amount}} Std.",
+      "warnings": "Warnungen",
+      "recovery": "Gemeldete Änderungen",
+      "decreased": "Laut Meldungen {{amount}} Kunden weniger ohne Strom",
+      "increased": "Laut Meldungen {{amount}} Kunden mehr ohne Strom",
+      "unchanged": "Gemeldete Zahl unverändert",
+      "since": "seit",
+      "peakLoad": "{{percent}} % der üblichen Spitzenlast wieder gedeckt",
+      "noComparison": "Vergleichbare Zahlen zu Kunden ohne Strom fehlen.",
+      "history": "Letzte Meldungen zur Zahl der Kunden ohne Strom ({{total}})",
+      "priorNotice": "Frühere Warnung",
+      "sources": "Abdeckung der Warnquellen",
+      "operatorLink": "Netzmeldungen finden Sie bei",
+      "issued": "Ausgegeben am",
+      "until": "gültig bis",
+      "noActive": "Keine aktive Warnung in den überwachten Quellen.",
+      "unknownWarnings": "Die Warnquellen sind derzeit nur teilweise erfasst.",
+      "noObservation": "Aktuelle Zahl und Erfassungsumfang unbekannt.",
+      "loadError": "Für die Stromausfall-Uhr sind keine Daten verfügbar.",
+      "retained": "Aktualisierung fehlgeschlagen. Die letzte empfangene Meldung wird angezeigt.",
+      "phase": {
+        "unknown": "Auswirkungen unbekannt",
+        "monitoring": "Beobachtung",
+        "watch": "Vorwarnung",
+        "disrupted": "Ausfälle gemeldet",
+        "recovering": "Wiederherstellung laut Meldung im Gange",
+        "restored": "Versorgung laut Meldung wiederhergestellt"
+      },
+      "kind": {
+        "grid": "Netzmeldung",
+        "weather": "Wetterwarnung",
+        "space-weather": "Weltraumwetter"
+      },
+      "checks": {
+        "available": "Geprüft",
+        "unavailable": "Nicht verfügbar",
+        "not_monitored": "Direkt beim Netzbetreiber prüfen",
+        "stale": "Letzte Prüfung veraltet"
+      },
+      "warningAge": "Seit der ersten noch gültigen Warnung",
+      "days": "{{amount}} T."
     }
   },
   "popups": {

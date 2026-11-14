@@ -495,7 +495,8 @@
     "climateNews": "Notizie Clima",
     "fx": "Tassi di cambio",
     "ukmtoIncidents": "Incidenti UKMTO",
-    "reservoirLevels": "Livelli idrici strategici"
+    "reservoirLevels": "Livelli idrici strategici",
+    "gridDisruptionClock": "Orologio delle interruzioni elettriche"
   },
   "commands": {
     "prefixes": {
@@ -3207,6 +3208,57 @@
         "measured": "Misurato",
         "sparkline": "Livello dell’acqua in 36 mesi"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Seleziona lo Stato",
+      "unknown": "Sconosciuto",
+      "customers": "Clienti senza elettricità secondo le segnalazioni",
+      "lastCustomers": "Clienti senza elettricità all’ultima rilevazione",
+      "denominatorUnknown": "Numero totale di clienti monitorati sconosciuto",
+      "tracked": "Clienti monitorati: {{amount}}",
+      "dataAge": "Dall’ultima rilevazione",
+      "minutes": "{{amount}} min",
+      "hours": "{{amount}} h",
+      "warnings": "Avvisi",
+      "recovery": "Variazioni segnalate",
+      "decreased": "Dalle segnalazioni risultano {{amount}} clienti in meno senza elettricità",
+      "increased": "Dalle segnalazioni risultano {{amount}} clienti in più senza elettricità",
+      "unchanged": "Il numero segnalato non è cambiato",
+      "since": "dal",
+      "peakLoad": "Ripristinato il {{percent}}% del normale carico di punta",
+      "noComparison": "Non sono disponibili dati confrontabili sui clienti senza elettricità.",
+      "history": "Rilevazioni recenti dei clienti senza elettricità ({{total}})",
+      "priorNotice": "Avviso segnalato in precedenza",
+      "sources": "Copertura delle fonti degli avvisi",
+      "operatorLink": "Per gli avvisi della rete, consultare",
+      "issued": "Emesso il",
+      "until": "scade il",
+      "noActive": "Nessun avviso in vigore nelle fonti monitorate.",
+      "unknownWarnings": "La copertura attuale degli avvisi è parziale.",
+      "noObservation": "Il conteggio e la copertura attuali non sono disponibili.",
+      "loadError": "I dati sulle interruzioni elettriche non sono disponibili.",
+      "retained": "Aggiornamento non riuscito. È visualizzata l’ultima rilevazione ricevuta.",
+      "phase": {
+        "unknown": "Impatto sconosciuto",
+        "monitoring": "Monitoraggio",
+        "watch": "Preallerta",
+        "disrupted": "Interruzioni segnalate",
+        "recovering": "Ripristino in corso segnalato",
+        "restored": "Servizio ripristinato secondo le segnalazioni"
+      },
+      "kind": {
+        "grid": "Avviso sulla rete elettrica",
+        "weather": "Allerta meteo",
+        "space-weather": "Meteorologia spaziale"
+      },
+      "checks": {
+        "available": "Verificata",
+        "unavailable": "Non disponibile",
+        "not_monitored": "Consultare direttamente il gestore",
+        "stale": "L’ultima verifica è troppo datata"
+      },
+      "warningAge": "Dal primo avviso ancora in vigore",
+      "days": "{{amount}} g"
     }
   },
   "popups": {

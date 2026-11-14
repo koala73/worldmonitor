@@ -491,7 +491,8 @@
     "climateNews": "气候新闻",
     "fx": "外汇汇率",
     "ukmtoIncidents": "UKMTO事件",
-    "reservoirLevels": "战略水位"
+    "reservoirLevels": "战略水位",
+    "gridDisruptionClock": "电网停电时钟"
   },
   "commands": {
     "prefixes": {
@@ -3165,6 +3166,57 @@
         "measured": "测量时间",
         "sparkline": "36 个月水位"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "选择州",
+      "unknown": "未知",
+      "customers": "据报停电的用户数",
+      "lastCustomers": "上次报告的停电用户数",
+      "denominatorUnknown": "监测覆盖的用户总数未知",
+      "tracked": "监测覆盖 {{amount}} 户",
+      "dataAge": "距上次报告",
+      "minutes": "{{amount}} 分钟",
+      "hours": "{{amount}} 小时",
+      "warnings": "预警",
+      "recovery": "报告的变化",
+      "decreased": "报告的停电用户减少 {{amount}} 户",
+      "increased": "报告的停电用户增加 {{amount}} 户",
+      "unchanged": "报告的停电用户数无变化",
+      "since": "对比时间",
+      "peakLoad": "已恢复正常峰值负荷的 {{percent}}%",
+      "noComparison": "暂无可供比较的停电用户数。",
+      "history": "近期停电用户统计（{{total}} 条）",
+      "priorNotice": "此前发布的预警",
+      "sources": "预警来源监测情况",
+      "operatorLink": "电网通告请查阅",
+      "issued": "发布于",
+      "until": "到期时间",
+      "noActive": "监测的来源中暂无有效预警。",
+      "unknownWarnings": "目前仅能核实部分预警来源。",
+      "noObservation": "暂无当前停电用户数及监测范围信息。",
+      "loadError": "暂时无法获取电网停电时钟数据。",
+      "retained": "刷新失败，现显示上次收到的报告。",
+      "phase": {
+        "unknown": "影响未知",
+        "monitoring": "监测中",
+        "watch": "关注",
+        "disrupted": "已报告停电",
+        "recovering": "据报正在恢复供电",
+        "restored": "据报已恢复供电"
+      },
+      "kind": {
+        "grid": "电网通告",
+        "weather": "天气预警",
+        "space-weather": "空间天气"
+      },
+      "checks": {
+        "available": "已核实",
+        "unavailable": "暂不可用",
+        "not_monitored": "请直接向电网运营方查询",
+        "stale": "上次核实结果已过时"
+      },
+      "warningAge": "距首条仍有效的预警",
+      "days": "{{amount}} 天"
     }
   },
   "popups": {

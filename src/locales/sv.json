@@ -109,7 +109,8 @@
     "climateNews": "Klimatnyheter",
     "fx": "Valutakurser",
     "ukmtoIncidents": "UKMTO-incidenter",
-    "reservoirLevels": "Strategiska vattennivåer"
+    "reservoirLevels": "Strategiska vattennivåer",
+    "gridDisruptionClock": "Klocka för elavbrott"
   },
   "commands": {
     "prefixes": {
@@ -2802,6 +2803,57 @@
         "measured": "Mätt",
         "sparkline": "Vattennivå över 36 månader"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Välj delstat",
+      "unknown": "Okänt",
+      "customers": "Kunder utan el enligt rapporterna",
+      "lastCustomers": "Kunder utan el i senaste rapporten",
+      "denominatorUnknown": "Totalt antal bevakade kunder är okänt",
+      "tracked": "{{amount}} kunder bevakas",
+      "dataAge": "Tid sedan rapporten",
+      "minutes": "{{amount}} min",
+      "hours": "{{amount}} h",
+      "warnings": "Varningar",
+      "recovery": "Rapporterade förändringar",
+      "decreased": "{{amount}} färre kunder utan el enligt rapporterna",
+      "increased": "{{amount}} fler kunder utan el enligt rapporterna",
+      "unchanged": "Det rapporterade antalet är oförändrat",
+      "since": "sedan",
+      "peakLoad": "{{percent}} % av normal topplast återställd",
+      "noComparison": "Jämförbara uppgifter om antal kunder utan el saknas.",
+      "history": "Senaste uppgifter om antal kunder utan el ({{total}})",
+      "priorNotice": "Tidigare rapporterad varning",
+      "sources": "Bevakade varningskällor",
+      "operatorLink": "För meddelanden om elnätet, se",
+      "issued": "Utfärdad",
+      "until": "gäller till",
+      "noActive": "Inga aktiva varningar i de bevakade källorna.",
+      "unknownWarnings": "Vissa varningskällor är inte tillgängliga just nu.",
+      "noObservation": "Aktuellt antal och täckning är okända.",
+      "loadError": "Uppgifter om elavbrott är inte tillgängliga.",
+      "retained": "Uppdateringen misslyckades. Den senast mottagna rapporten visas.",
+      "phase": {
+        "unknown": "Okänd påverkan",
+        "monitoring": "Bevakning",
+        "watch": "Förhöjd beredskap",
+        "disrupted": "Elavbrott rapporterade",
+        "recovering": "Återställning pågår enligt rapport",
+        "restored": "Elförsörjningen återställd enligt rapport"
+      },
+      "kind": {
+        "grid": "Meddelande om elnätet",
+        "weather": "Vädervarning",
+        "space-weather": "Rymdväder"
+      },
+      "checks": {
+        "available": "Kontrollerad",
+        "unavailable": "Ej tillgänglig",
+        "not_monitored": "Kontrollera direkt med nätoperatören",
+        "stale": "Senaste kontrollen är inaktuell"
+      },
+      "warningAge": "Tid sedan den första varning som ännu gäller",
+      "days": "{{amount}} d"
     }
   },
   "popups": {

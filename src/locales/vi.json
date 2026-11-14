@@ -491,7 +491,8 @@
     "climateNews": "Tin tức về Khí hậu",
     "fx": "Tỷ giá ngoại hối",
     "ukmtoIncidents": "Sự cố UKMTO",
-    "reservoirLevels": "Mực nước chiến lược"
+    "reservoirLevels": "Mực nước chiến lược",
+    "gridDisruptionClock": "Đồng hồ theo dõi mất điện"
   },
   "commands": {
     "prefixes": {
@@ -3165,6 +3166,57 @@
         "measured": "Ngày đo",
         "sparkline": "Mực nước trong 36 tháng"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Chọn tiểu bang",
+      "unknown": "Chưa rõ",
+      "customers": "Số khách hàng mất điện theo báo cáo",
+      "lastCustomers": "Số khách hàng mất điện trong báo cáo gần nhất",
+      "denominatorUnknown": "Chưa rõ tổng số khách hàng được theo dõi",
+      "tracked": "Đang theo dõi {{amount}} khách hàng",
+      "dataAge": "Thời gian từ khi có báo cáo",
+      "minutes": "{{amount}} phút",
+      "hours": "{{amount}} giờ",
+      "warnings": "Cảnh báo",
+      "recovery": "Thay đổi được báo cáo",
+      "decreased": "Số khách hàng mất điện theo báo cáo giảm {{amount}}",
+      "increased": "Số khách hàng mất điện theo báo cáo tăng {{amount}}",
+      "unchanged": "Số liệu báo cáo không đổi",
+      "since": "kể từ",
+      "peakLoad": "Đã khôi phục {{percent}}% phụ tải đỉnh thông thường",
+      "noComparison": "Chưa có số liệu mất điện để so sánh.",
+      "history": "Các báo cáo gần đây về số khách hàng mất điện ({{total}})",
+      "priorNotice": "Cảnh báo đã công bố trước đó",
+      "sources": "Các nguồn cảnh báo được theo dõi",
+      "operatorLink": "Xem thông báo về lưới điện tại",
+      "issued": "Ban hành lúc",
+      "until": "hết hiệu lực lúc",
+      "noActive": "Không có cảnh báo nào còn hiệu lực từ các nguồn đang theo dõi.",
+      "unknownWarnings": "Hiện chưa thể kiểm tra đầy đủ các nguồn cảnh báo.",
+      "noObservation": "Chưa có số liệu hiện tại và thông tin về phạm vi theo dõi.",
+      "loadError": "Không có dữ liệu theo dõi mất điện.",
+      "retained": "Không thể cập nhật. Đang hiển thị báo cáo nhận được gần nhất.",
+      "phase": {
+        "unknown": "Chưa rõ tác động",
+        "monitoring": "Đang theo dõi",
+        "watch": "Đề phòng",
+        "disrupted": "Đã ghi nhận mất điện",
+        "recovering": "Có báo cáo đang khôi phục cấp điện",
+        "restored": "Có báo cáo đã cấp điện trở lại"
+      },
+      "kind": {
+        "grid": "Thông báo về lưới điện",
+        "weather": "Cảnh báo thời tiết",
+        "space-weather": "Thời tiết không gian"
+      },
+      "checks": {
+        "available": "Đã kiểm tra",
+        "unavailable": "Không khả dụng",
+        "not_monitored": "Kiểm tra trực tiếp với đơn vị vận hành",
+        "stale": "Lần kiểm tra gần nhất đã quá lâu"
+      },
+      "warningAge": "Thời gian từ cảnh báo đầu tiên còn hiệu lực",
+      "days": "{{amount}} ngày"
     }
   },
   "popups": {

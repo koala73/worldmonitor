@@ -495,7 +495,8 @@
     "climateNews": "Știri despre climă",
     "fx": "Cursuri de schimb valutar",
     "ukmtoIncidents": "Incidente UKMTO",
-    "reservoirLevels": "Niveluri strategice ale apei"
+    "reservoirLevels": "Niveluri strategice ale apei",
+    "gridDisruptionClock": "Cronometrul întreruperilor de curent"
   },
   "commands": {
     "prefixes": {
@@ -3207,6 +3208,57 @@
         "measured": "Măsurat",
         "sparkline": "Nivelul apei în 36 de luni"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Selectați statul",
+      "unknown": "Necunoscut",
+      "customers": "Clienți fără curent conform raportărilor",
+      "lastCustomers": "Clienți fără curent la ultima raportare",
+      "denominatorUnknown": "Numărul total de clienți monitorizați este necunoscut",
+      "tracked": "{{amount}} de clienți monitorizați",
+      "dataAge": "Timp de la raportare",
+      "minutes": "{{amount}} min",
+      "hours": "{{amount}} h",
+      "warnings": "Avertizări",
+      "recovery": "Schimbări raportate",
+      "decreased": "Numărul raportat al clienților fără curent a scăzut cu {{amount}}",
+      "increased": "Numărul raportat al clienților fără curent a crescut cu {{amount}}",
+      "unchanged": "Numărul raportat a rămas neschimbat",
+      "since": "din",
+      "peakLoad": "S-a restabilit {{percent}}% din sarcina de vârf obișnuită",
+      "noComparison": "Nu există date comparabile despre numărul clienților fără curent.",
+      "history": "Raportări recente privind clienții fără curent ({{total}})",
+      "priorNotice": "Avertizare raportată anterior",
+      "sources": "Surse de avertizare monitorizate",
+      "operatorLink": "Pentru anunțurile rețelei, consultați",
+      "issued": "Emisă la",
+      "until": "expiră la",
+      "noActive": "Nicio avertizare activă în sursele monitorizate.",
+      "unknownWarnings": "Unele surse de avertizare nu sunt disponibile momentan.",
+      "noObservation": "Numărul actual și acoperirea datelor nu sunt disponibile.",
+      "loadError": "Datele privind întreruperile de curent nu sunt disponibile.",
+      "retained": "Actualizarea a eșuat. Se afișează ultima raportare primită.",
+      "phase": {
+        "unknown": "Impact necunoscut",
+        "monitoring": "Monitorizare",
+        "watch": "Stare de vigilență",
+        "disrupted": "Întreruperi raportate",
+        "recovering": "Reluare în curs, conform raportărilor",
+        "restored": "Alimentare restabilită, conform raportărilor"
+      },
+      "kind": {
+        "grid": "Anunț privind rețeaua electrică",
+        "weather": "Avertizare meteorologică",
+        "space-weather": "Vreme spațială"
+      },
+      "checks": {
+        "available": "Sursă verificată",
+        "unavailable": "Indisponibilă",
+        "not_monitored": "Verificați direct la operator",
+        "stale": "Ultima verificare nu mai este de actualitate"
+      },
+      "warningAge": "Timp de la prima avertizare încă în vigoare",
+      "days": "{{amount}} z"
     }
   },
   "popups": {

@@ -491,7 +491,8 @@
     "climateNews": "기후 뉴스",
     "fx": "외환 환율",
     "ukmtoIncidents": "UKMTO 사건",
-    "reservoirLevels": "전략 수위"
+    "reservoirLevels": "전략 수위",
+    "gridDisruptionClock": "전력망 정전 현황"
   },
   "commands": {
     "prefixes": {
@@ -3165,6 +3166,57 @@
         "measured": "측정일",
         "sparkline": "36개월 수위"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "주 선택",
+      "unknown": "알 수 없음",
+      "customers": "정전으로 보고된 고객 수",
+      "lastCustomers": "마지막 보고 당시 정전 고객 수",
+      "denominatorUnknown": "집계 대상 전체 고객 수 미상",
+      "tracked": "집계 대상 고객 {{amount}}명",
+      "dataAge": "보고 후 경과 시간",
+      "minutes": "{{amount}}분",
+      "hours": "{{amount}}시간",
+      "warnings": "경보",
+      "recovery": "보고된 변화",
+      "decreased": "보고된 정전 고객 {{amount}}명 감소",
+      "increased": "보고된 정전 고객 {{amount}}명 증가",
+      "unchanged": "보고된 정전 고객 수 변동 없음",
+      "since": "비교 기준 시각",
+      "peakLoad": "평상시 최대 부하의 {{percent}}% 복구",
+      "noComparison": "비교할 수 있는 정전 고객 수가 없습니다.",
+      "history": "최근 정전 고객 수 ({{total}}건)",
+      "priorNotice": "이전에 발표된 경보",
+      "sources": "경보 출처 확인 현황",
+      "operatorLink": "전력망 공지 확인",
+      "issued": "발표",
+      "until": "만료",
+      "noActive": "확인한 출처에 유효한 경보가 없습니다.",
+      "unknownWarnings": "현재 일부 출처의 경보를 확인할 수 없습니다.",
+      "noObservation": "현재 정전 고객 수와 집계 범위를 확인할 수 없습니다.",
+      "loadError": "전력망 정전 현황 데이터를 불러올 수 없습니다.",
+      "retained": "새로 고침에 실패해 마지막으로 받은 보고를 표시합니다.",
+      "phase": {
+        "unknown": "영향 미상",
+        "monitoring": "관찰 중",
+        "watch": "주의 단계",
+        "disrupted": "정전 보고됨",
+        "recovering": "복구 진행 보고됨",
+        "restored": "복구 완료 보고됨"
+      },
+      "kind": {
+        "grid": "전력망 공지",
+        "weather": "기상 경보",
+        "space-weather": "우주 기상"
+      },
+      "checks": {
+        "available": "확인됨",
+        "unavailable": "확인 불가",
+        "not_monitored": "운영사에 직접 확인",
+        "stale": "마지막 확인 후 시간이 오래 지남"
+      },
+      "warningAge": "현재 유효한 첫 경보 이후",
+      "days": "{{amount}}일"
     }
   },
   "popups": {

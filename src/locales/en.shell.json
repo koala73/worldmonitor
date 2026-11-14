@@ -196,7 +196,8 @@
     "marketBreadth": "Market Breadth",
     "climateNews": "Climate News",
     "ukmtoIncidents": "UKMTO Incidents",
-    "reservoirLevels": "Strategic Water Levels"
+    "reservoirLevels": "Strategic Water Levels",
+    "gridDisruptionClock": "Grid disruption clock"
   },
   "common": {
     "dismiss": "Dismiss",

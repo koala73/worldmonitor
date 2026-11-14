@@ -495,7 +495,8 @@
     "climateNews": "Actualités climatiques",
     "fx": "Taux de change",
     "ukmtoIncidents": "Incidents UKMTO",
-    "reservoirLevels": "Niveaux d’eau stratégiques"
+    "reservoirLevels": "Niveaux d’eau stratégiques",
+    "gridDisruptionClock": "Horloge des coupures de courant"
   },
   "commands": {
     "prefixes": {
@@ -3207,6 +3208,57 @@
         "measured": "Mesuré",
         "sparkline": "Niveau d’eau sur 36 mois"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Sélectionner un État",
+      "unknown": "Inconnu",
+      "customers": "Clients privés de courant selon les relevés",
+      "lastCustomers": "Clients privés de courant au dernier relevé",
+      "denominatorUnknown": "Nombre total de clients suivis inconnu",
+      "tracked": "Nombre de clients suivis : {{amount}}",
+      "dataAge": "Depuis le relevé",
+      "minutes": "{{amount}} min",
+      "hours": "{{amount}} h",
+      "warnings": "Alertes",
+      "recovery": "Changements signalés",
+      "decreased": "Selon le relevé, {{amount}} clients de moins sont privés de courant",
+      "increased": "Selon le relevé, {{amount}} clients de plus sont privés de courant",
+      "unchanged": "Nombre de clients signalés sans courant inchangé",
+      "since": "depuis",
+      "peakLoad": "{{percent}} % de la charge de pointe habituelle rétablie",
+      "noComparison": "Aucun chiffre comparable sur les clients privés de courant.",
+      "history": "Relevés récents des clients privés de courant ({{total}})",
+      "priorNotice": "Alerte signalée précédemment",
+      "sources": "Couverture des sources d’alerte",
+      "operatorLink": "Pour les avis concernant le réseau, consulter",
+      "issued": "Émise le",
+      "until": "expire le",
+      "noActive": "Aucune alerte en vigueur dans les sources suivies.",
+      "unknownWarnings": "La couverture actuelle des alertes est partielle.",
+      "noObservation": "Le nombre actuel et la couverture sont inconnus.",
+      "loadError": "Les données de l’horloge des coupures de courant sont indisponibles.",
+      "retained": "Échec de l’actualisation. Le dernier relevé reçu est affiché.",
+      "phase": {
+        "unknown": "Impact inconnu",
+        "monitoring": "Surveillance",
+        "watch": "Préalerte",
+        "disrupted": "Coupures signalées",
+        "recovering": "Rétablissement en cours signalé",
+        "restored": "Retour du courant signalé"
+      },
+      "kind": {
+        "grid": "Avis concernant le réseau",
+        "weather": "Alerte météo",
+        "space-weather": "Météo spatiale"
+      },
+      "checks": {
+        "available": "Vérifiée",
+        "unavailable": "Indisponible",
+        "not_monitored": "Consulter directement le gestionnaire du réseau",
+        "stale": "La dernière vérification est trop ancienne"
+      },
+      "warningAge": "Depuis la première alerte encore en vigueur",
+      "days": "{{amount}} j"
     }
   },
   "popups": {

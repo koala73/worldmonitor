@@ -565,7 +565,8 @@
     "climateNews": "Klimatske Vijesti",
     "fx": "Tečajevi deviza",
     "ukmtoIncidents": "Incidenti UKMTO-a",
-    "reservoirLevels": "Strateški vodostaji"
+    "reservoirLevels": "Strateški vodostaji",
+    "gridDisruptionClock": "Sat prekida opskrbe električnom energijom"
   },
   "commands": {
     "prefixes": {
@@ -3283,6 +3284,57 @@
         "measured": "Izmjereno",
         "sparkline": "Vodostaj kroz 36 mjeseci"
       }
+    },
+    "gridDisruptionClock": {
+      "region": "Odaberite saveznu državu",
+      "unknown": "Nepoznato",
+      "customers": "Korisnici bez struje prema prijavama",
+      "lastCustomers": "Korisnici bez struje prema posljednjem izvješću",
+      "denominatorUnknown": "Ukupan broj praćenih korisnika nije poznat",
+      "tracked": "Broj praćenih korisnika: {{amount}}",
+      "dataAge": "Od izvješća",
+      "minutes": "{{amount}} min.",
+      "hours": "{{amount}} h",
+      "warnings": "Upozorenja",
+      "recovery": "Prijavljene promjene",
+      "decreased": "Prema prijavama, broj korisnika bez struje smanjio se za {{amount}}",
+      "increased": "Prema prijavama, broj korisnika bez struje povećao se za {{amount}}",
+      "unchanged": "Prijavljeni broj nije se promijenio",
+      "since": "od",
+      "peakLoad": "Ponovno je pokriveno {{percent}} % uobičajenog vršnog opterećenja",
+      "noComparison": "Usporedivi podaci o broju korisnika bez struje nisu dostupni.",
+      "history": "Nedavni podaci o broju korisnika bez struje ({{total}})",
+      "priorNotice": "Prethodno objavljeno upozorenje",
+      "sources": "Obuhvat izvora upozorenja",
+      "operatorLink": "Za obavijesti o mreži pogledajte",
+      "issued": "Izdano",
+      "until": "vrijedi do",
+      "noActive": "U praćenim izvorima nema važećeg upozorenja.",
+      "unknownWarnings": "Trenutačni obuhvat upozorenja nije potpun.",
+      "noObservation": "Trenutačni broj i obuhvat nisu dostupni.",
+      "loadError": "Podaci o prekidima opskrbe električnom energijom nisu dostupni.",
+      "retained": "Ažuriranje nije uspjelo. Prikazuje se posljednje primljeno izvješće.",
+      "phase": {
+        "unknown": "Učinak nepoznat",
+        "monitoring": "Praćenje",
+        "watch": "Stanje pripravnosti",
+        "disrupted": "Prijavljeni prekidi",
+        "recovering": "Prijavljena obnova opskrbe u tijeku",
+        "restored": "Prijavljena ponovna uspostava opskrbe"
+      },
+      "kind": {
+        "grid": "Obavijest o elektroenergetskoj mreži",
+        "weather": "Vremensko upozorenje",
+        "space-weather": "Svemirsko vrijeme"
+      },
+      "checks": {
+        "available": "Provjereno",
+        "unavailable": "Nedostupno",
+        "not_monitored": "Provjerite izravno kod operatora",
+        "stale": "Posljednja provjera je zastarjela"
+      },
+      "warningAge": "Od prvog upozorenja koje još vrijedi",
+      "days": "{{amount}} d."
     }
   },
   "popups": {
