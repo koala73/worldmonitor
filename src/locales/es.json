@@ -496,7 +496,7 @@
     "fx": "Tipos de cambio",
     "ukmtoIncidents": "Incidentes de UKMTO",
     "reservoirLevels": "Niveles de agua estratégicos",
-    "gridDisruptionClock": "Grid disruption clock"
+    "gridDisruptionClock": "Reloj de cortes de electricidad"
   },
   "commands": {
     "prefixes": {
@@ -3210,55 +3210,55 @@
       }
     },
     "gridDisruptionClock": {
-      "region": "Select state",
-      "unknown": "Unknown",
-      "customers": "Customers reported without power",
-      "lastCustomers": "Customers out at last report",
-      "denominatorUnknown": "Tracked customer total unknown",
-      "tracked": "{{amount}} customers tracked",
-      "dataAge": "Since report",
-      "minutes": "{{amount}} min",
+      "region": "Seleccionar estado",
+      "unknown": "Sin datos",
+      "customers": "Clientes sin electricidad según los informes",
+      "lastCustomers": "Clientes sin electricidad en el último informe",
+      "denominatorUnknown": "Se desconoce el total de clientes cubiertos",
+      "tracked": "Clientes cubiertos: {{amount}}",
+      "dataAge": "Desde el informe",
+      "minutes": "{{amount}} min.",
       "hours": "{{amount}} h",
-      "warnings": "Warnings",
-      "recovery": "Recovery",
-      "decreased": "{{amount}} fewer reported out",
-      "increased": "{{amount}} more reported out",
-      "unchanged": "Reported count unchanged",
-      "since": "since",
-      "peakLoad": "{{percent}}% of normal peak load restored",
-      "noComparison": "Comparable outage counts unavailable.",
-      "history": "Recent outage counts ({{total}})",
-      "priorNotice": "Previously reported warning",
-      "sources": "Warning source coverage",
-      "operatorLink": "For grid notices, check",
-      "issued": "Issued",
-      "until": "expires",
-      "noActive": "No active warning in monitored sources.",
-      "unknownWarnings": "Current warning coverage is incomplete.",
-      "noObservation": "Current count and coverage unavailable.",
-      "loadError": "Grid disruption clock data is unavailable.",
-      "retained": "Refresh failed. Showing the last received report.",
+      "warnings": "Avisos",
+      "recovery": "Restablecimiento del servicio",
+      "decreased": "Se registran {{amount}} clientes menos sin electricidad",
+      "increased": "Se registran {{amount}} clientes más sin electricidad",
+      "unchanged": "El número registrado no ha cambiado",
+      "since": "desde",
+      "peakLoad": "Se ha restablecido el {{percent}} % de la carga máxima habitual",
+      "noComparison": "No hay cifras comparables de clientes sin electricidad.",
+      "history": "Recuentos recientes de clientes sin electricidad ({{total}})",
+      "priorNotice": "Aviso anterior",
+      "sources": "Cobertura de las fuentes de avisos",
+      "operatorLink": "Para ver avisos de la red, consulte",
+      "issued": "Emitido el",
+      "until": "vence el",
+      "noActive": "No hay avisos vigentes en las fuentes consultadas.",
+      "unknownWarnings": "La cobertura actual de los avisos es parcial.",
+      "noObservation": "No hay datos actuales sobre el número de clientes afectados ni sobre la cobertura.",
+      "loadError": "Los datos del reloj de cortes de electricidad no están disponibles.",
+      "retained": "No se pudo actualizar. Se muestra el último informe recibido.",
       "phase": {
-        "unknown": "Impact unknown",
-        "monitoring": "Monitoring",
-        "watch": "Watch",
-        "disrupted": "Outages reported",
-        "recovering": "Recovery reported",
-        "restored": "Restoration reported"
+        "unknown": "Impacto desconocido",
+        "monitoring": "Seguimiento",
+        "watch": "Vigilancia preventiva",
+        "disrupted": "Cortes notificados",
+        "recovering": "Restablecimiento en curso según los informes",
+        "restored": "Servicio restablecido según los informes"
       },
       "kind": {
-        "grid": "Grid notice",
-        "weather": "Weather alert",
-        "space-weather": "Space weather"
+        "grid": "Aviso de la red eléctrica",
+        "weather": "Alerta meteorológica",
+        "space-weather": "Meteorología espacial"
       },
       "checks": {
-        "available": "Checked",
-        "unavailable": "Unavailable",
-        "not_monitored": "Check operator directly",
-        "stale": "Last check is stale"
+        "available": "Comprobada",
+        "unavailable": "No disponible",
+        "not_monitored": "Consultar directamente al operador",
+        "stale": "La última comprobación está desactualizada"
       },
-      "warningAge": "Since first active warning",
-      "days": "{{amount}} d"
+      "warningAge": "Desde el primer aviso aún vigente",
+      "days": "{{amount}} d."
     }
   },
   "popups": {

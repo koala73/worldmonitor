@@ -3508,7 +3508,6 @@ const EMPTY_DATA_OK_KEYS = new Set([
 // EMPTY_DATA_OK_KEYS so a pre-first-publish absence remains STALE_SEED rather
 // than a false-critical EMPTY; tests/health-empty-data-ok.test.mjs enforces it.
 const MISSING_DATA_IS_FAILURE_KEYS = new Set([
-  'gridDisruptionClock',
   // These sparse feeds publish an explicit canonical payload on every
   // successful cycle, including valid zero-record cycles. Fresh metadata
   // therefore cannot excuse a vanished data key.

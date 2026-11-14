@@ -498,7 +498,7 @@
     "fx": "Валютные курсы",
     "ukmtoIncidents": "Инциденты UKMTO",
     "reservoirLevels": "Стратегические уровни воды",
-    "gridDisruptionClock": "Grid disruption clock"
+    "gridDisruptionClock": "Хроника отключений электроэнергии"
   },
   "commands": {
     "prefixes": {
@@ -3231,55 +3231,55 @@
       }
     },
     "gridDisruptionClock": {
-      "region": "Select state",
-      "unknown": "Unknown",
-      "customers": "Customers reported without power",
-      "lastCustomers": "Customers out at last report",
-      "denominatorUnknown": "Tracked customer total unknown",
-      "tracked": "{{amount}} customers tracked",
-      "dataAge": "Since report",
-      "minutes": "{{amount}} min",
-      "hours": "{{amount}} h",
-      "warnings": "Warnings",
-      "recovery": "Recovery",
-      "decreased": "{{amount}} fewer reported out",
-      "increased": "{{amount}} more reported out",
-      "unchanged": "Reported count unchanged",
-      "since": "since",
-      "peakLoad": "{{percent}}% of normal peak load restored",
-      "noComparison": "Comparable outage counts unavailable.",
-      "history": "Recent outage counts ({{total}})",
-      "priorNotice": "Previously reported warning",
-      "sources": "Warning source coverage",
-      "operatorLink": "For grid notices, check",
-      "issued": "Issued",
-      "until": "expires",
-      "noActive": "No active warning in monitored sources.",
-      "unknownWarnings": "Current warning coverage is incomplete.",
-      "noObservation": "Current count and coverage unavailable.",
-      "loadError": "Grid disruption clock data is unavailable.",
-      "retained": "Refresh failed. Showing the last received report.",
+      "region": "Выберите штат",
+      "unknown": "Нет данных",
+      "customers": "Потребители без электричества по данным сводок",
+      "lastCustomers": "Потребители без электричества на момент последней сводки",
+      "denominatorUnknown": "Общее число отслеживаемых потребителей неизвестно",
+      "tracked": "Число отслеживаемых потребителей: {{amount}}",
+      "dataAge": "С момента сводки",
+      "minutes": "{{amount}} мин",
+      "hours": "{{amount}} ч",
+      "warnings": "Предупреждения",
+      "recovery": "Восстановление электроснабжения",
+      "decreased": "По данным сводок, без электричества на {{amount}} потребителей меньше",
+      "increased": "По данным сводок, без электричества на {{amount}} потребителей больше",
+      "unchanged": "По данным сводок, число не изменилось",
+      "since": "с",
+      "peakLoad": "Восстановлено {{percent}}% обычной пиковой нагрузки",
+      "noComparison": "Нет сопоставимых данных о числе потребителей без электричества.",
+      "history": "Последние данные о числе потребителей без электричества ({{total}})",
+      "priorNotice": "Ранее опубликованное предупреждение",
+      "sources": "Источники предупреждений",
+      "operatorLink": "Сообщения об электросети публикует",
+      "issued": "Выпущено",
+      "until": "действует до",
+      "noActive": "В отслеживаемых источниках нет действующих предупреждений.",
+      "unknownWarnings": "Часть источников предупреждений сейчас недоступна.",
+      "noObservation": "Текущее число потребителей и охват данных неизвестны.",
+      "loadError": "Данные об отключениях электроэнергии недоступны.",
+      "retained": "Не удалось обновить данные. Показана последняя полученная сводка.",
       "phase": {
-        "unknown": "Impact unknown",
-        "monitoring": "Monitoring",
-        "watch": "Watch",
-        "disrupted": "Outages reported",
-        "recovering": "Recovery reported",
-        "restored": "Restoration reported"
+        "unknown": "Последствия неизвестны",
+        "monitoring": "Наблюдение",
+        "watch": "Повышенная готовность",
+        "disrupted": "Сообщается об отключениях",
+        "recovering": "Сообщается о ходе восстановления",
+        "restored": "Сообщается о восстановлении электроснабжения"
       },
       "kind": {
-        "grid": "Grid notice",
-        "weather": "Weather alert",
-        "space-weather": "Space weather"
+        "grid": "Сообщение оператора сети",
+        "weather": "Метеопредупреждение",
+        "space-weather": "Космическая погода"
       },
       "checks": {
-        "available": "Checked",
-        "unavailable": "Unavailable",
-        "not_monitored": "Check operator directly",
-        "stale": "Last check is stale"
+        "available": "Проверено",
+        "unavailable": "Недоступно",
+        "not_monitored": "Уточните у оператора",
+        "stale": "Данные последней проверки устарели"
       },
-      "warningAge": "Since first active warning",
-      "days": "{{amount}} d"
+      "warningAge": "С момента первого из действующих предупреждений",
+      "days": "{{amount}} дн."
     }
   },
   "popups": {

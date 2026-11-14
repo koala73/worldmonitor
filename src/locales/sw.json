@@ -563,7 +563,7 @@
     "fx": "Kiwango cha ubadilishaji wa fedha za kigeni",
     "ukmtoIncidents": "Matukio ya UKMTO",
     "reservoirLevels": "Viwango vya Kimkakati vya Maji",
-    "gridDisruptionClock": "Grid disruption clock"
+    "gridDisruptionClock": "Saa ya kukatika kwa umeme"
   },
   "commands": {
     "prefixes": {
@@ -3258,55 +3258,55 @@
       }
     },
     "gridDisruptionClock": {
-      "region": "Select state",
-      "unknown": "Unknown",
-      "customers": "Customers reported without power",
-      "lastCustomers": "Customers out at last report",
-      "denominatorUnknown": "Tracked customer total unknown",
-      "tracked": "{{amount}} customers tracked",
-      "dataAge": "Since report",
-      "minutes": "{{amount}} min",
-      "hours": "{{amount}} h",
-      "warnings": "Warnings",
-      "recovery": "Recovery",
-      "decreased": "{{amount}} fewer reported out",
-      "increased": "{{amount}} more reported out",
-      "unchanged": "Reported count unchanged",
-      "since": "since",
-      "peakLoad": "{{percent}}% of normal peak load restored",
-      "noComparison": "Comparable outage counts unavailable.",
-      "history": "Recent outage counts ({{total}})",
-      "priorNotice": "Previously reported warning",
-      "sources": "Warning source coverage",
-      "operatorLink": "For grid notices, check",
-      "issued": "Issued",
-      "until": "expires",
-      "noActive": "No active warning in monitored sources.",
-      "unknownWarnings": "Current warning coverage is incomplete.",
-      "noObservation": "Current count and coverage unavailable.",
-      "loadError": "Grid disruption clock data is unavailable.",
-      "retained": "Refresh failed. Showing the last received report.",
+      "region": "Chagua jimbo",
+      "unknown": "Haijulikani",
+      "customers": "Wateja walioripotiwa kukosa umeme",
+      "lastCustomers": "Wateja bila umeme katika taarifa ya mwisho",
+      "denominatorUnknown": "Jumla ya wateja wanaofuatiliwa haijulikani",
+      "tracked": "Wateja {{amount}} wanafuatiliwa",
+      "dataAge": "Muda tangu taarifa",
+      "minutes": "Dakika {{amount}}",
+      "hours": "Saa {{amount}}",
+      "warnings": "Maonyo",
+      "recovery": "Kurejeshwa kwa umeme",
+      "decreased": "Idadi iliyoripotiwa ya wateja bila umeme imepungua kwa {{amount}}",
+      "increased": "Idadi iliyoripotiwa ya wateja bila umeme imeongezeka kwa {{amount}}",
+      "unchanged": "Idadi iliyoripotiwa haijabadilika",
+      "since": "tangu",
+      "peakLoad": "Asilimia {{percent}} ya mzigo wa kawaida wa kilele imerejeshwa",
+      "noComparison": "Hakuna takwimu zinazoweza kulinganishwa za wateja bila umeme.",
+      "history": "Takwimu za hivi karibuni za wateja bila umeme ({{total}})",
+      "priorNotice": "Onyo lililotolewa awali",
+      "sources": "Vyanzo vya maonyo vinavyofuatiliwa",
+      "operatorLink": "Kwa matangazo ya gridi, angalia",
+      "issued": "Lilitolewa",
+      "until": "linaisha",
+      "noActive": "Hakuna onyo linalotumika katika vyanzo vinavyofuatiliwa.",
+      "unknownWarnings": "Baadhi ya vyanzo vya maonyo havipatikani kwa sasa.",
+      "noObservation": "Idadi ya sasa na upeo wa takwimu havipatikani.",
+      "loadError": "Takwimu za kukatika kwa umeme hazipatikani.",
+      "retained": "Imeshindikana kusasisha. Taarifa ya mwisho iliyopokelewa inaonyeshwa.",
       "phase": {
-        "unknown": "Impact unknown",
-        "monitoring": "Monitoring",
-        "watch": "Watch",
-        "disrupted": "Outages reported",
-        "recovering": "Recovery reported",
-        "restored": "Restoration reported"
+        "unknown": "Athari hazijulikani",
+        "monitoring": "Ufuatiliaji",
+        "watch": "Tahadhari",
+        "disrupted": "Umeme umeripotiwa kukatika",
+        "recovering": "Umeme unaripotiwa kurejeshwa",
+        "restored": "Umeme umeripotiwa kurejea"
       },
       "kind": {
-        "grid": "Grid notice",
-        "weather": "Weather alert",
-        "space-weather": "Space weather"
+        "grid": "Tangazo la gridi ya umeme",
+        "weather": "Tahadhari ya hali ya hewa",
+        "space-weather": "Hali ya hewa ya angani"
       },
       "checks": {
-        "available": "Checked",
-        "unavailable": "Unavailable",
-        "not_monitored": "Check operator directly",
-        "stale": "Last check is stale"
+        "available": "Kimehakikiwa",
+        "unavailable": "Hakipatikani",
+        "not_monitored": "Angalia taarifa za mwendeshaji moja kwa moja",
+        "stale": "Uhakiki wa mwisho umepitwa na wakati"
       },
-      "warningAge": "Since first active warning",
-      "days": "{{amount}} d"
+      "warningAge": "Muda tangu onyo la kwanza ambalo bado linatumika",
+      "days": "Siku {{amount}}"
     }
   },
   "popups": {

@@ -498,7 +498,7 @@
     "fx": "Kurzy zahraniční měny",
     "ukmtoIncidents": "Incidenty UKMTO",
     "reservoirLevels": "Strategické vodní hladiny",
-    "gridDisruptionClock": "Grid disruption clock"
+    "gridDisruptionClock": "Časomíra výpadků elektřiny"
   },
   "commands": {
     "prefixes": {
@@ -3231,55 +3231,55 @@
       }
     },
     "gridDisruptionClock": {
-      "region": "Select state",
-      "unknown": "Unknown",
-      "customers": "Customers reported without power",
-      "lastCustomers": "Customers out at last report",
-      "denominatorUnknown": "Tracked customer total unknown",
-      "tracked": "{{amount}} customers tracked",
-      "dataAge": "Since report",
-      "minutes": "{{amount}} min",
-      "hours": "{{amount}} h",
-      "warnings": "Warnings",
-      "recovery": "Recovery",
-      "decreased": "{{amount}} fewer reported out",
-      "increased": "{{amount}} more reported out",
-      "unchanged": "Reported count unchanged",
-      "since": "since",
-      "peakLoad": "{{percent}}% of normal peak load restored",
-      "noComparison": "Comparable outage counts unavailable.",
-      "history": "Recent outage counts ({{total}})",
-      "priorNotice": "Previously reported warning",
-      "sources": "Warning source coverage",
-      "operatorLink": "For grid notices, check",
-      "issued": "Issued",
-      "until": "expires",
-      "noActive": "No active warning in monitored sources.",
-      "unknownWarnings": "Current warning coverage is incomplete.",
-      "noObservation": "Current count and coverage unavailable.",
-      "loadError": "Grid disruption clock data is unavailable.",
-      "retained": "Refresh failed. Showing the last received report.",
+      "region": "Vyberte stát",
+      "unknown": "Neznámý počet",
+      "customers": "Odběratelé bez elektřiny podle hlášení",
+      "lastCustomers": "Odběratelé bez elektřiny při posledním hlášení",
+      "denominatorUnknown": "Celkový počet sledovaných odběratelů není znám",
+      "tracked": "Počet sledovaných odběratelů: {{amount}}",
+      "dataAge": "Od hlášení",
+      "minutes": "{{amount}} min.",
+      "hours": "{{amount}} hod.",
+      "warnings": "Výstrahy",
+      "recovery": "Obnova dodávek",
+      "decreased": "Hlášený počet odběratelů bez elektřiny klesl o {{amount}}",
+      "increased": "Hlášený počet odběratelů bez elektřiny vzrostl o {{amount}}",
+      "unchanged": "Hlášený počet se nezměnil",
+      "since": "od",
+      "peakLoad": "Obnoveno {{percent}} % běžného špičkového zatížení",
+      "noComparison": "Srovnatelné počty odběratelů bez elektřiny nejsou k dispozici.",
+      "history": "Poslední počty odběratelů bez elektřiny ({{total}})",
+      "priorNotice": "Dříve hlášená výstraha",
+      "sources": "Pokrytí zdrojů výstrah",
+      "operatorLink": "Oznámení o síti najdete u",
+      "issued": "Vydáno",
+      "until": "platí do",
+      "noActive": "Ve sledovaných zdrojích není žádná platná výstraha.",
+      "unknownWarnings": "Současné pokrytí výstrah není úplné.",
+      "noObservation": "Současný počet ani rozsah pokrytí nejsou k dispozici.",
+      "loadError": "Údaje o výpadcích elektřiny nejsou k dispozici.",
+      "retained": "Aktualizace se nezdařila. Zobrazuje se poslední přijaté hlášení.",
       "phase": {
-        "unknown": "Impact unknown",
-        "monitoring": "Monitoring",
-        "watch": "Watch",
-        "disrupted": "Outages reported",
-        "recovering": "Recovery reported",
-        "restored": "Restoration reported"
+        "unknown": "Dopad není znám",
+        "monitoring": "Sledování",
+        "watch": "Zvýšená pozornost",
+        "disrupted": "Hlášeny výpadky",
+        "recovering": "Hlášena probíhající obnova",
+        "restored": "Hlášeno obnovení dodávek"
       },
       "kind": {
-        "grid": "Grid notice",
-        "weather": "Weather alert",
-        "space-weather": "Space weather"
+        "grid": "Oznámení o elektrizační soustavě",
+        "weather": "Meteorologická výstraha",
+        "space-weather": "Kosmické počasí"
       },
       "checks": {
-        "available": "Checked",
-        "unavailable": "Unavailable",
-        "not_monitored": "Check operator directly",
-        "stale": "Last check is stale"
+        "available": "Ověřeno",
+        "unavailable": "Nedostupné",
+        "not_monitored": "Ověřte přímo u provozovatele",
+        "stale": "Poslední kontrola již není aktuální"
       },
-      "warningAge": "Since first active warning",
-      "days": "{{amount}} d"
+      "warningAge": "Od první dosud platné výstrahy",
+      "days": "{{amount}} d."
     }
   },
   "popups": {

@@ -492,7 +492,7 @@
     "fx": "อัตราแลกเปลี่ยนเงินตราต่างประเทศ",
     "ukmtoIncidents": "เหตุการณ์ UKMTO",
     "reservoirLevels": "ระดับน้ำเชิงยุทธศาสตร์",
-    "gridDisruptionClock": "Grid disruption clock"
+    "gridDisruptionClock": "นาฬิกาติดตามไฟฟ้าดับ"
   },
   "commands": {
     "prefixes": {
@@ -3168,55 +3168,55 @@
       }
     },
     "gridDisruptionClock": {
-      "region": "Select state",
-      "unknown": "Unknown",
-      "customers": "Customers reported without power",
-      "lastCustomers": "Customers out at last report",
-      "denominatorUnknown": "Tracked customer total unknown",
-      "tracked": "{{amount}} customers tracked",
-      "dataAge": "Since report",
-      "minutes": "{{amount}} min",
-      "hours": "{{amount}} h",
-      "warnings": "Warnings",
-      "recovery": "Recovery",
-      "decreased": "{{amount}} fewer reported out",
-      "increased": "{{amount}} more reported out",
-      "unchanged": "Reported count unchanged",
-      "since": "since",
-      "peakLoad": "{{percent}}% of normal peak load restored",
-      "noComparison": "Comparable outage counts unavailable.",
-      "history": "Recent outage counts ({{total}})",
-      "priorNotice": "Previously reported warning",
-      "sources": "Warning source coverage",
-      "operatorLink": "For grid notices, check",
-      "issued": "Issued",
-      "until": "expires",
-      "noActive": "No active warning in monitored sources.",
-      "unknownWarnings": "Current warning coverage is incomplete.",
-      "noObservation": "Current count and coverage unavailable.",
-      "loadError": "Grid disruption clock data is unavailable.",
-      "retained": "Refresh failed. Showing the last received report.",
+      "region": "เลือกรัฐ",
+      "unknown": "ไม่ทราบ",
+      "customers": "จำนวนผู้ใช้ไฟที่มีรายงานว่าไฟดับ",
+      "lastCustomers": "จำนวนผู้ใช้ไฟที่ยังไม่มีไฟใช้ตามรายงานล่าสุด",
+      "denominatorUnknown": "ไม่ทราบจำนวนผู้ใช้ไฟทั้งหมดที่ติดตาม",
+      "tracked": "ติดตามผู้ใช้ไฟ {{amount}} ราย",
+      "dataAge": "เวลานับจากรายงาน",
+      "minutes": "{{amount}} นาที",
+      "hours": "{{amount}} ชม.",
+      "warnings": "คำเตือน",
+      "recovery": "การจ่ายไฟคืน",
+      "decreased": "จำนวนผู้ใช้ไฟที่รายงานว่าไฟดับลดลง {{amount}} ราย",
+      "increased": "จำนวนผู้ใช้ไฟที่รายงานว่าไฟดับเพิ่มขึ้น {{amount}} ราย",
+      "unchanged": "จำนวนที่รายงานไม่เปลี่ยนแปลง",
+      "since": "นับจาก",
+      "peakLoad": "จ่ายไฟได้แล้ว {{percent}}% ของภาระไฟฟ้าสูงสุดตามปกติ",
+      "noComparison": "ไม่มีข้อมูลจำนวนผู้ใช้ไฟที่ไฟดับให้เปรียบเทียบ",
+      "history": "จำนวนผู้ใช้ไฟที่ไฟดับในรายงานล่าสุด ({{total}} รายงาน)",
+      "priorNotice": "คำเตือนที่เคยรายงาน",
+      "sources": "แหล่งคำเตือนที่ติดตาม",
+      "operatorLink": "ตรวจสอบประกาศเกี่ยวกับโครงข่ายไฟฟ้าได้ที่",
+      "issued": "ออกเมื่อ",
+      "until": "สิ้นสุดเมื่อ",
+      "noActive": "ไม่พบคำเตือนที่ยังมีผลจากแหล่งที่ติดตาม",
+      "unknownWarnings": "ขณะนี้ตรวจสอบแหล่งคำเตือนได้ไม่ครบ",
+      "noObservation": "ไม่มีข้อมูลจำนวนผู้ใช้ไฟที่ไฟดับและขอบเขตการรายงานในขณะนี้",
+      "loadError": "ไม่สามารถเรียกข้อมูลการติดตามไฟฟ้าดับได้",
+      "retained": "อัปเดตไม่สำเร็จ กำลังแสดงรายงานล่าสุดที่ได้รับ",
       "phase": {
-        "unknown": "Impact unknown",
-        "monitoring": "Monitoring",
-        "watch": "Watch",
-        "disrupted": "Outages reported",
-        "recovering": "Recovery reported",
-        "restored": "Restoration reported"
+        "unknown": "ยังไม่ทราบผลกระทบ",
+        "monitoring": "กำลังติดตาม",
+        "watch": "เฝ้าระวัง",
+        "disrupted": "มีรายงานไฟฟ้าดับ",
+        "recovering": "มีรายงานว่าอยู่ระหว่างจ่ายไฟคืน",
+        "restored": "มีรายงานว่าจ่ายไฟคืนแล้ว"
       },
       "kind": {
-        "grid": "Grid notice",
-        "weather": "Weather alert",
-        "space-weather": "Space weather"
+        "grid": "ประกาศเกี่ยวกับโครงข่ายไฟฟ้า",
+        "weather": "คำเตือนสภาพอากาศ",
+        "space-weather": "สภาพอากาศในอวกาศ"
       },
       "checks": {
-        "available": "Checked",
-        "unavailable": "Unavailable",
-        "not_monitored": "Check operator directly",
-        "stale": "Last check is stale"
+        "available": "ตรวจสอบแล้ว",
+        "unavailable": "ไม่พร้อมใช้งาน",
+        "not_monitored": "ตรวจสอบกับผู้ให้บริการโดยตรง",
+        "stale": "ผลการตรวจสอบล่าสุดล้าสมัยแล้ว"
       },
-      "warningAge": "Since first active warning",
-      "days": "{{amount}} d"
+      "warningAge": "เวลานับจากคำเตือนแรกที่ยังมีผล",
+      "days": "{{amount}} วัน"
     }
   },
   "popups": {

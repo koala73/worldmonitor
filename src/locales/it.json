@@ -496,7 +496,7 @@
     "fx": "Tassi di cambio",
     "ukmtoIncidents": "Incidenti UKMTO",
     "reservoirLevels": "Livelli idrici strategici",
-    "gridDisruptionClock": "Grid disruption clock"
+    "gridDisruptionClock": "Orologio delle interruzioni elettriche"
   },
   "commands": {
     "prefixes": {
@@ -3210,55 +3210,55 @@
       }
     },
     "gridDisruptionClock": {
-      "region": "Select state",
-      "unknown": "Unknown",
-      "customers": "Customers reported without power",
-      "lastCustomers": "Customers out at last report",
-      "denominatorUnknown": "Tracked customer total unknown",
-      "tracked": "{{amount}} customers tracked",
-      "dataAge": "Since report",
+      "region": "Seleziona lo Stato",
+      "unknown": "Sconosciuto",
+      "customers": "Clienti senza elettricità secondo le segnalazioni",
+      "lastCustomers": "Clienti senza elettricità all’ultima rilevazione",
+      "denominatorUnknown": "Numero totale di clienti monitorati sconosciuto",
+      "tracked": "Clienti monitorati: {{amount}}",
+      "dataAge": "Dall’ultima rilevazione",
       "minutes": "{{amount}} min",
       "hours": "{{amount}} h",
-      "warnings": "Warnings",
-      "recovery": "Recovery",
-      "decreased": "{{amount}} fewer reported out",
-      "increased": "{{amount}} more reported out",
-      "unchanged": "Reported count unchanged",
-      "since": "since",
-      "peakLoad": "{{percent}}% of normal peak load restored",
-      "noComparison": "Comparable outage counts unavailable.",
-      "history": "Recent outage counts ({{total}})",
-      "priorNotice": "Previously reported warning",
-      "sources": "Warning source coverage",
-      "operatorLink": "For grid notices, check",
-      "issued": "Issued",
-      "until": "expires",
-      "noActive": "No active warning in monitored sources.",
-      "unknownWarnings": "Current warning coverage is incomplete.",
-      "noObservation": "Current count and coverage unavailable.",
-      "loadError": "Grid disruption clock data is unavailable.",
-      "retained": "Refresh failed. Showing the last received report.",
+      "warnings": "Avvisi",
+      "recovery": "Ripristino",
+      "decreased": "Dalle segnalazioni risultano {{amount}} clienti in meno senza elettricità",
+      "increased": "Dalle segnalazioni risultano {{amount}} clienti in più senza elettricità",
+      "unchanged": "Il numero segnalato non è cambiato",
+      "since": "dal",
+      "peakLoad": "Ripristinato il {{percent}}% del normale carico di punta",
+      "noComparison": "Non sono disponibili dati confrontabili sui clienti senza elettricità.",
+      "history": "Rilevazioni recenti dei clienti senza elettricità ({{total}})",
+      "priorNotice": "Avviso segnalato in precedenza",
+      "sources": "Copertura delle fonti degli avvisi",
+      "operatorLink": "Per gli avvisi della rete, consultare",
+      "issued": "Emesso il",
+      "until": "scade il",
+      "noActive": "Nessun avviso in vigore nelle fonti monitorate.",
+      "unknownWarnings": "La copertura attuale degli avvisi è parziale.",
+      "noObservation": "Il conteggio e la copertura attuali non sono disponibili.",
+      "loadError": "I dati sulle interruzioni elettriche non sono disponibili.",
+      "retained": "Aggiornamento non riuscito. È visualizzata l’ultima rilevazione ricevuta.",
       "phase": {
-        "unknown": "Impact unknown",
-        "monitoring": "Monitoring",
-        "watch": "Watch",
-        "disrupted": "Outages reported",
-        "recovering": "Recovery reported",
-        "restored": "Restoration reported"
+        "unknown": "Impatto sconosciuto",
+        "monitoring": "Monitoraggio",
+        "watch": "Preallerta",
+        "disrupted": "Interruzioni segnalate",
+        "recovering": "Ripristino in corso segnalato",
+        "restored": "Servizio ripristinato secondo le segnalazioni"
       },
       "kind": {
-        "grid": "Grid notice",
-        "weather": "Weather alert",
-        "space-weather": "Space weather"
+        "grid": "Avviso sulla rete elettrica",
+        "weather": "Allerta meteo",
+        "space-weather": "Meteorologia spaziale"
       },
       "checks": {
-        "available": "Checked",
-        "unavailable": "Unavailable",
-        "not_monitored": "Check operator directly",
-        "stale": "Last check is stale"
+        "available": "Verificata",
+        "unavailable": "Non disponibile",
+        "not_monitored": "Consultare direttamente il gestore",
+        "stale": "L’ultima verifica è troppo datata"
       },
-      "warningAge": "Since first active warning",
-      "days": "{{amount}} d"
+      "warningAge": "Dal primo avviso ancora in vigore",
+      "days": "{{amount}} g"
     }
   },
   "popups": {

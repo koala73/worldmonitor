@@ -496,7 +496,7 @@
     "fx": "Cursuri de schimb valutar",
     "ukmtoIncidents": "Incidente UKMTO",
     "reservoirLevels": "Niveluri strategice ale apei",
-    "gridDisruptionClock": "Grid disruption clock"
+    "gridDisruptionClock": "Cronometrul întreruperilor de curent"
   },
   "commands": {
     "prefixes": {
@@ -3210,55 +3210,55 @@
       }
     },
     "gridDisruptionClock": {
-      "region": "Select state",
-      "unknown": "Unknown",
-      "customers": "Customers reported without power",
-      "lastCustomers": "Customers out at last report",
-      "denominatorUnknown": "Tracked customer total unknown",
-      "tracked": "{{amount}} customers tracked",
-      "dataAge": "Since report",
+      "region": "Selectați statul",
+      "unknown": "Necunoscut",
+      "customers": "Clienți fără curent conform raportărilor",
+      "lastCustomers": "Clienți fără curent la ultima raportare",
+      "denominatorUnknown": "Numărul total de clienți monitorizați este necunoscut",
+      "tracked": "{{amount}} de clienți monitorizați",
+      "dataAge": "Timp de la raportare",
       "minutes": "{{amount}} min",
       "hours": "{{amount}} h",
-      "warnings": "Warnings",
-      "recovery": "Recovery",
-      "decreased": "{{amount}} fewer reported out",
-      "increased": "{{amount}} more reported out",
-      "unchanged": "Reported count unchanged",
-      "since": "since",
-      "peakLoad": "{{percent}}% of normal peak load restored",
-      "noComparison": "Comparable outage counts unavailable.",
-      "history": "Recent outage counts ({{total}})",
-      "priorNotice": "Previously reported warning",
-      "sources": "Warning source coverage",
-      "operatorLink": "For grid notices, check",
-      "issued": "Issued",
-      "until": "expires",
-      "noActive": "No active warning in monitored sources.",
-      "unknownWarnings": "Current warning coverage is incomplete.",
-      "noObservation": "Current count and coverage unavailable.",
-      "loadError": "Grid disruption clock data is unavailable.",
-      "retained": "Refresh failed. Showing the last received report.",
+      "warnings": "Avertizări",
+      "recovery": "Reluarea alimentării",
+      "decreased": "Numărul raportat al clienților fără curent a scăzut cu {{amount}}",
+      "increased": "Numărul raportat al clienților fără curent a crescut cu {{amount}}",
+      "unchanged": "Numărul raportat a rămas neschimbat",
+      "since": "din",
+      "peakLoad": "S-a restabilit {{percent}}% din sarcina de vârf obișnuită",
+      "noComparison": "Nu există date comparabile despre numărul clienților fără curent.",
+      "history": "Raportări recente privind clienții fără curent ({{total}})",
+      "priorNotice": "Avertizare raportată anterior",
+      "sources": "Surse de avertizare monitorizate",
+      "operatorLink": "Pentru anunțurile rețelei, consultați",
+      "issued": "Emisă la",
+      "until": "expiră la",
+      "noActive": "Nicio avertizare activă în sursele monitorizate.",
+      "unknownWarnings": "Unele surse de avertizare nu sunt disponibile momentan.",
+      "noObservation": "Numărul actual și acoperirea datelor nu sunt disponibile.",
+      "loadError": "Datele privind întreruperile de curent nu sunt disponibile.",
+      "retained": "Actualizarea a eșuat. Se afișează ultima raportare primită.",
       "phase": {
-        "unknown": "Impact unknown",
-        "monitoring": "Monitoring",
-        "watch": "Watch",
-        "disrupted": "Outages reported",
-        "recovering": "Recovery reported",
-        "restored": "Restoration reported"
+        "unknown": "Impact necunoscut",
+        "monitoring": "Monitorizare",
+        "watch": "Stare de vigilență",
+        "disrupted": "Întreruperi raportate",
+        "recovering": "Reluare în curs, conform raportărilor",
+        "restored": "Alimentare restabilită, conform raportărilor"
       },
       "kind": {
-        "grid": "Grid notice",
-        "weather": "Weather alert",
-        "space-weather": "Space weather"
+        "grid": "Anunț privind rețeaua electrică",
+        "weather": "Avertizare meteorologică",
+        "space-weather": "Vreme spațială"
       },
       "checks": {
-        "available": "Checked",
-        "unavailable": "Unavailable",
-        "not_monitored": "Check operator directly",
-        "stale": "Last check is stale"
+        "available": "Sursă verificată",
+        "unavailable": "Indisponibilă",
+        "not_monitored": "Verificați direct la operator",
+        "stale": "Ultima verificare nu mai este de actualitate"
       },
-      "warningAge": "Since first active warning",
-      "days": "{{amount}} d"
+      "warningAge": "Timp de la prima avertizare încă în vigoare",
+      "days": "{{amount}} z"
     }
   },
   "popups": {

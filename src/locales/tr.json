@@ -494,7 +494,7 @@
     "fx": "Döviz kurları",
     "ukmtoIncidents": "UKMTO olayları",
     "reservoirLevels": "Stratejik Su Seviyeleri",
-    "gridDisruptionClock": "Grid disruption clock"
+    "gridDisruptionClock": "Elektrik kesintisi saati"
   },
   "commands": {
     "prefixes": {
@@ -3189,55 +3189,55 @@
       }
     },
     "gridDisruptionClock": {
-      "region": "Select state",
-      "unknown": "Unknown",
-      "customers": "Customers reported without power",
-      "lastCustomers": "Customers out at last report",
-      "denominatorUnknown": "Tracked customer total unknown",
-      "tracked": "{{amount}} customers tracked",
-      "dataAge": "Since report",
-      "minutes": "{{amount}} min",
-      "hours": "{{amount}} h",
-      "warnings": "Warnings",
-      "recovery": "Recovery",
-      "decreased": "{{amount}} fewer reported out",
-      "increased": "{{amount}} more reported out",
-      "unchanged": "Reported count unchanged",
-      "since": "since",
-      "peakLoad": "{{percent}}% of normal peak load restored",
-      "noComparison": "Comparable outage counts unavailable.",
-      "history": "Recent outage counts ({{total}})",
-      "priorNotice": "Previously reported warning",
-      "sources": "Warning source coverage",
-      "operatorLink": "For grid notices, check",
-      "issued": "Issued",
-      "until": "expires",
-      "noActive": "No active warning in monitored sources.",
-      "unknownWarnings": "Current warning coverage is incomplete.",
-      "noObservation": "Current count and coverage unavailable.",
-      "loadError": "Grid disruption clock data is unavailable.",
-      "retained": "Refresh failed. Showing the last received report.",
+      "region": "Eyalet seçin",
+      "unknown": "Bilinmiyor",
+      "customers": "Bildirilen elektriksiz abone sayısı",
+      "lastCustomers": "Son bildirime göre elektriksiz aboneler",
+      "denominatorUnknown": "İzlenen toplam abone sayısı bilinmiyor",
+      "tracked": "{{amount}} abone izleniyor",
+      "dataAge": "Bildirimden bu yana",
+      "minutes": "{{amount}} dk.",
+      "hours": "{{amount}} sa.",
+      "warnings": "Uyarılar",
+      "recovery": "Elektriğin yeniden verilmesi",
+      "decreased": "Bildirilen elektriksiz abone sayısı {{amount}} azaldı",
+      "increased": "Bildirilen elektriksiz abone sayısı {{amount}} arttı",
+      "unchanged": "Bildirilen sayı değişmedi",
+      "since": "şu zamandan bu yana",
+      "peakLoad": "Normal puant yükün %{{percent}} kadarı yeniden karşılanıyor",
+      "noComparison": "Karşılaştırılabilir kesinti sayıları bulunmuyor.",
+      "history": "Son elektriksiz abone sayıları ({{total}})",
+      "priorNotice": "Önceki uyarı",
+      "sources": "İzlenen uyarı kaynakları",
+      "operatorLink": "Şebeke duyuruları için başvurulacak kaynak",
+      "issued": "Yayımlanma",
+      "until": "bitiş",
+      "noActive": "İzlenen kaynaklarda geçerli bir uyarı yok.",
+      "unknownWarnings": "Şu anda bazı uyarı kaynaklarına ulaşılamıyor.",
+      "noObservation": "Güncel abone sayısı ve kapsama bilgisi alınamıyor.",
+      "loadError": "Elektrik kesintisi saati verileri alınamıyor.",
+      "retained": "Yenileme başarısız oldu. Alınan son rapor gösteriliyor.",
       "phase": {
-        "unknown": "Impact unknown",
-        "monitoring": "Monitoring",
-        "watch": "Watch",
-        "disrupted": "Outages reported",
-        "recovering": "Recovery reported",
-        "restored": "Restoration reported"
+        "unknown": "Etkisi bilinmiyor",
+        "monitoring": "İzlemede",
+        "watch": "Dikkat",
+        "disrupted": "Kesinti bildirildi",
+        "recovering": "Elektriğin yeniden verilmeye başlandığı bildirildi",
+        "restored": "Elektriğin geri geldiği bildirildi"
       },
       "kind": {
-        "grid": "Grid notice",
-        "weather": "Weather alert",
-        "space-weather": "Space weather"
+        "grid": "Şebeke duyurusu",
+        "weather": "Hava durumu uyarısı",
+        "space-weather": "Uzay hava durumu"
       },
       "checks": {
-        "available": "Checked",
-        "unavailable": "Unavailable",
-        "not_monitored": "Check operator directly",
-        "stale": "Last check is stale"
+        "available": "Kontrol edildi",
+        "unavailable": "Ulaşılamıyor",
+        "not_monitored": "Doğrudan işletmeciden kontrol edin",
+        "stale": "Son kontrol güncelliğini yitirdi"
       },
-      "warningAge": "Since first active warning",
-      "days": "{{amount}} d"
+      "warningAge": "Hâlen geçerli ilk uyarıdan bu yana",
+      "days": "{{amount}} gün"
     }
   },
   "popups": {

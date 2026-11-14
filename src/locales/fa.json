@@ -563,7 +563,7 @@
     "fx": "نرخ تبادل ارز",
     "ukmtoIncidents": "رویدادهای UKMTO",
     "reservoirLevels": "سطح آب راهبردی",
-    "gridDisruptionClock": "Grid disruption clock"
+    "gridDisruptionClock": "زمان‌سنج قطعی برق"
   },
   "commands": {
     "prefixes": {
@@ -3258,55 +3258,55 @@
       }
     },
     "gridDisruptionClock": {
-      "region": "Select state",
-      "unknown": "Unknown",
-      "customers": "Customers reported without power",
-      "lastCustomers": "Customers out at last report",
-      "denominatorUnknown": "Tracked customer total unknown",
-      "tracked": "{{amount}} customers tracked",
-      "dataAge": "Since report",
-      "minutes": "{{amount}} min",
-      "hours": "{{amount}} h",
-      "warnings": "Warnings",
-      "recovery": "Recovery",
-      "decreased": "{{amount}} fewer reported out",
-      "increased": "{{amount}} more reported out",
-      "unchanged": "Reported count unchanged",
-      "since": "since",
-      "peakLoad": "{{percent}}% of normal peak load restored",
-      "noComparison": "Comparable outage counts unavailable.",
-      "history": "Recent outage counts ({{total}})",
-      "priorNotice": "Previously reported warning",
-      "sources": "Warning source coverage",
-      "operatorLink": "For grid notices, check",
-      "issued": "Issued",
-      "until": "expires",
-      "noActive": "No active warning in monitored sources.",
-      "unknownWarnings": "Current warning coverage is incomplete.",
-      "noObservation": "Current count and coverage unavailable.",
-      "loadError": "Grid disruption clock data is unavailable.",
-      "retained": "Refresh failed. Showing the last received report.",
+      "region": "انتخاب ایالت",
+      "unknown": "نامشخص",
+      "customers": "مشترکان بدون برق طبق گزارش‌ها",
+      "lastCustomers": "مشترکان بدون برق در آخرین گزارش",
+      "denominatorUnknown": "شمار کل مشترکان تحت پوشش پایش مشخص نیست",
+      "tracked": "شمار مشترکان تحت پایش: {{amount}}",
+      "dataAge": "از زمان گزارش",
+      "minutes": "{{amount}} دقیقه",
+      "hours": "{{amount}} ساعت",
+      "warnings": "هشدارها",
+      "recovery": "برقراری مجدد برق",
+      "decreased": "شمار گزارش‌شدهٔ مشترکان بدون برق {{amount}} مشترک کاهش یافت",
+      "increased": "شمار گزارش‌شدهٔ مشترکان بدون برق {{amount}} مشترک افزایش یافت",
+      "unchanged": "شمار گزارش‌شده تغییری نکرده است",
+      "since": "از",
+      "peakLoad": "تأمین {{percent}}٪ از بار اوج معمول از سر گرفته شده است",
+      "noComparison": "آمار قابل مقایسه‌ای از مشترکان بدون برق در دسترس نیست.",
+      "history": "آمار اخیر مشترکان بدون برق ({{total}})",
+      "priorNotice": "هشدار پیشین",
+      "sources": "پوشش منابع هشدار",
+      "operatorLink": "برای اطلاعیه‌های شبکه مراجعه کنید به",
+      "issued": "زمان صدور",
+      "until": "زمان پایان",
+      "noActive": "در منابع تحت پایش هشدار فعالی وجود ندارد.",
+      "unknownWarnings": "پوشش فعلی هشدارها ناقص است.",
+      "noObservation": "شمار فعلی و دامنهٔ پوشش مشخص نیست.",
+      "loadError": "داده‌های زمان‌سنج قطعی برق در دسترس نیست.",
+      "retained": "به‌روزرسانی ناموفق بود. آخرین گزارش دریافتی نمایش داده می‌شود.",
       "phase": {
-        "unknown": "Impact unknown",
-        "monitoring": "Monitoring",
-        "watch": "Watch",
-        "disrupted": "Outages reported",
-        "recovering": "Recovery reported",
-        "restored": "Restoration reported"
+        "unknown": "پیامدها نامشخص است",
+        "monitoring": "در حال پایش",
+        "watch": "آماده‌باش",
+        "disrupted": "قطعی برق گزارش شده است",
+        "recovering": "روند وصل مجدد برق گزارش شده است",
+        "restored": "برقراری مجدد برق گزارش شده است"
       },
       "kind": {
-        "grid": "Grid notice",
-        "weather": "Weather alert",
-        "space-weather": "Space weather"
+        "grid": "اطلاعیهٔ شبکهٔ برق",
+        "weather": "هشدار هواشناسی",
+        "space-weather": "آب‌وهوای فضایی"
       },
       "checks": {
-        "available": "Checked",
-        "unavailable": "Unavailable",
-        "not_monitored": "Check operator directly",
-        "stale": "Last check is stale"
+        "available": "بررسی شد",
+        "unavailable": "در دسترس نیست",
+        "not_monitored": "مستقیماً به بهره‌بردار شبکه مراجعه کنید",
+        "stale": "از آخرین بررسی زمان زیادی گذشته است"
       },
-      "warningAge": "Since first active warning",
-      "days": "{{amount}} d"
+      "warningAge": "از نخستین هشدارِ همچنان فعال",
+      "days": "{{amount}} روز"
     }
   },
   "popups": {

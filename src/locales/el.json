@@ -494,7 +494,7 @@
     "fx": "Ισοτιμίες συναλλάγματος",
     "ukmtoIncidents": "Συμβάντα UKMTO",
     "reservoirLevels": "Στρατηγικές στάθμες υδάτων",
-    "gridDisruptionClock": "Grid disruption clock"
+    "gridDisruptionClock": "Χρονόμετρο διακοπών ρεύματος"
   },
   "commands": {
     "prefixes": {
@@ -3189,55 +3189,55 @@
       }
     },
     "gridDisruptionClock": {
-      "region": "Select state",
-      "unknown": "Unknown",
-      "customers": "Customers reported without power",
-      "lastCustomers": "Customers out at last report",
-      "denominatorUnknown": "Tracked customer total unknown",
-      "tracked": "{{amount}} customers tracked",
-      "dataAge": "Since report",
-      "minutes": "{{amount}} min",
-      "hours": "{{amount}} h",
-      "warnings": "Warnings",
-      "recovery": "Recovery",
-      "decreased": "{{amount}} fewer reported out",
-      "increased": "{{amount}} more reported out",
-      "unchanged": "Reported count unchanged",
-      "since": "since",
-      "peakLoad": "{{percent}}% of normal peak load restored",
-      "noComparison": "Comparable outage counts unavailable.",
-      "history": "Recent outage counts ({{total}})",
-      "priorNotice": "Previously reported warning",
-      "sources": "Warning source coverage",
-      "operatorLink": "For grid notices, check",
-      "issued": "Issued",
-      "until": "expires",
-      "noActive": "No active warning in monitored sources.",
-      "unknownWarnings": "Current warning coverage is incomplete.",
-      "noObservation": "Current count and coverage unavailable.",
-      "loadError": "Grid disruption clock data is unavailable.",
-      "retained": "Refresh failed. Showing the last received report.",
+      "region": "Επιλέξτε πολιτεία",
+      "unknown": "Άγνωστος αριθμός",
+      "customers": "Καταναλωτές χωρίς ρεύμα σύμφωνα με τις αναφορές",
+      "lastCustomers": "Καταναλωτές χωρίς ρεύμα στην τελευταία αναφορά",
+      "denominatorUnknown": "Άγνωστος ο συνολικός αριθμός καταναλωτών που καλύπτονται",
+      "tracked": "Καταναλωτές που καλύπτονται: {{amount}}",
+      "dataAge": "Από την αναφορά",
+      "minutes": "{{amount}} λεπ.",
+      "hours": "{{amount}} ώρ.",
+      "warnings": "Προειδοποιήσεις",
+      "recovery": "Αποκατάσταση",
+      "decreased": "Οι αναφορές δείχνουν {{amount}} λιγότερους καταναλωτές χωρίς ρεύμα",
+      "increased": "Οι αναφορές δείχνουν {{amount}} περισσότερους καταναλωτές χωρίς ρεύμα",
+      "unchanged": "Ο αναφερόμενος αριθμός δεν άλλαξε",
+      "since": "από",
+      "peakLoad": "Αποκαταστάθηκε το {{percent}}% του συνήθους φορτίου αιχμής",
+      "noComparison": "Δεν υπάρχουν συγκρίσιμα στοιχεία για τους καταναλωτές χωρίς ρεύμα.",
+      "history": "Πρόσφατες καταμετρήσεις καταναλωτών χωρίς ρεύμα ({{total}})",
+      "priorNotice": "Προγενέστερη προειδοποίηση",
+      "sources": "Κάλυψη πηγών προειδοποιήσεων",
+      "operatorLink": "Για ανακοινώσεις του δικτύου δείτε",
+      "issued": "Εκδόθηκε",
+      "until": "λήγει",
+      "noActive": "Δεν υπάρχει ενεργή προειδοποίηση στις πηγές που παρακολουθούνται.",
+      "unknownWarnings": "Η τρέχουσα κάλυψη των προειδοποιήσεων είναι ελλιπής.",
+      "noObservation": "Δεν υπάρχουν στοιχεία για τον τρέχοντα αριθμό ή την κάλυψη.",
+      "loadError": "Δεν υπάρχουν διαθέσιμα δεδομένα για το χρονόμετρο διακοπών ρεύματος.",
+      "retained": "Η ανανέωση απέτυχε. Εμφανίζεται η τελευταία αναφορά που ελήφθη.",
       "phase": {
-        "unknown": "Impact unknown",
-        "monitoring": "Monitoring",
-        "watch": "Watch",
-        "disrupted": "Outages reported",
-        "recovering": "Recovery reported",
-        "restored": "Restoration reported"
+        "unknown": "Άγνωστες επιπτώσεις",
+        "monitoring": "Παρακολούθηση",
+        "watch": "Επιφυλακή",
+        "disrupted": "Αναφέρθηκαν διακοπές",
+        "recovering": "Αναφέρθηκε αποκατάσταση σε εξέλιξη",
+        "restored": "Αναφέρθηκε επαναφορά της ηλεκτροδότησης"
       },
       "kind": {
-        "grid": "Grid notice",
-        "weather": "Weather alert",
-        "space-weather": "Space weather"
+        "grid": "Ανακοίνωση δικτύου",
+        "weather": "Καιρική προειδοποίηση",
+        "space-weather": "Διαστημικός καιρός"
       },
       "checks": {
-        "available": "Checked",
-        "unavailable": "Unavailable",
-        "not_monitored": "Check operator directly",
-        "stale": "Last check is stale"
+        "available": "Ελέγχθηκε",
+        "unavailable": "Μη διαθέσιμο",
+        "not_monitored": "Δείτε απευθείας τον διαχειριστή του δικτύου",
+        "stale": "Ο τελευταίος έλεγχος δεν είναι πρόσφατος"
       },
-      "warningAge": "Since first active warning",
-      "days": "{{amount}} d"
+      "warningAge": "Από την πρώτη προειδοποίηση που παραμένει σε ισχύ",
+      "days": "{{amount}} ημ."
     }
   },
   "popups": {

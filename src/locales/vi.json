@@ -492,7 +492,7 @@
     "fx": "Tỷ giá ngoại hối",
     "ukmtoIncidents": "Sự cố UKMTO",
     "reservoirLevels": "Mực nước chiến lược",
-    "gridDisruptionClock": "Grid disruption clock"
+    "gridDisruptionClock": "Đồng hồ theo dõi mất điện"
   },
   "commands": {
     "prefixes": {
@@ -3168,55 +3168,55 @@
       }
     },
     "gridDisruptionClock": {
-      "region": "Select state",
-      "unknown": "Unknown",
-      "customers": "Customers reported without power",
-      "lastCustomers": "Customers out at last report",
-      "denominatorUnknown": "Tracked customer total unknown",
-      "tracked": "{{amount}} customers tracked",
-      "dataAge": "Since report",
-      "minutes": "{{amount}} min",
-      "hours": "{{amount}} h",
-      "warnings": "Warnings",
-      "recovery": "Recovery",
-      "decreased": "{{amount}} fewer reported out",
-      "increased": "{{amount}} more reported out",
-      "unchanged": "Reported count unchanged",
-      "since": "since",
-      "peakLoad": "{{percent}}% of normal peak load restored",
-      "noComparison": "Comparable outage counts unavailable.",
-      "history": "Recent outage counts ({{total}})",
-      "priorNotice": "Previously reported warning",
-      "sources": "Warning source coverage",
-      "operatorLink": "For grid notices, check",
-      "issued": "Issued",
-      "until": "expires",
-      "noActive": "No active warning in monitored sources.",
-      "unknownWarnings": "Current warning coverage is incomplete.",
-      "noObservation": "Current count and coverage unavailable.",
-      "loadError": "Grid disruption clock data is unavailable.",
-      "retained": "Refresh failed. Showing the last received report.",
+      "region": "Chọn tiểu bang",
+      "unknown": "Chưa rõ",
+      "customers": "Số khách hàng mất điện theo báo cáo",
+      "lastCustomers": "Số khách hàng mất điện trong báo cáo gần nhất",
+      "denominatorUnknown": "Chưa rõ tổng số khách hàng được theo dõi",
+      "tracked": "Đang theo dõi {{amount}} khách hàng",
+      "dataAge": "Thời gian từ khi có báo cáo",
+      "minutes": "{{amount}} phút",
+      "hours": "{{amount}} giờ",
+      "warnings": "Cảnh báo",
+      "recovery": "Khôi phục cấp điện",
+      "decreased": "Số khách hàng mất điện theo báo cáo giảm {{amount}}",
+      "increased": "Số khách hàng mất điện theo báo cáo tăng {{amount}}",
+      "unchanged": "Số liệu báo cáo không đổi",
+      "since": "kể từ",
+      "peakLoad": "Đã khôi phục {{percent}}% phụ tải đỉnh thông thường",
+      "noComparison": "Chưa có số liệu mất điện để so sánh.",
+      "history": "Các báo cáo gần đây về số khách hàng mất điện ({{total}})",
+      "priorNotice": "Cảnh báo đã công bố trước đó",
+      "sources": "Các nguồn cảnh báo được theo dõi",
+      "operatorLink": "Xem thông báo về lưới điện tại",
+      "issued": "Ban hành lúc",
+      "until": "hết hiệu lực lúc",
+      "noActive": "Không có cảnh báo nào còn hiệu lực từ các nguồn đang theo dõi.",
+      "unknownWarnings": "Hiện chưa thể kiểm tra đầy đủ các nguồn cảnh báo.",
+      "noObservation": "Chưa có số liệu hiện tại và thông tin về phạm vi theo dõi.",
+      "loadError": "Không có dữ liệu theo dõi mất điện.",
+      "retained": "Không thể cập nhật. Đang hiển thị báo cáo nhận được gần nhất.",
       "phase": {
-        "unknown": "Impact unknown",
-        "monitoring": "Monitoring",
-        "watch": "Watch",
-        "disrupted": "Outages reported",
-        "recovering": "Recovery reported",
-        "restored": "Restoration reported"
+        "unknown": "Chưa rõ tác động",
+        "monitoring": "Đang theo dõi",
+        "watch": "Đề phòng",
+        "disrupted": "Đã ghi nhận mất điện",
+        "recovering": "Có báo cáo đang khôi phục cấp điện",
+        "restored": "Có báo cáo đã cấp điện trở lại"
       },
       "kind": {
-        "grid": "Grid notice",
-        "weather": "Weather alert",
-        "space-weather": "Space weather"
+        "grid": "Thông báo về lưới điện",
+        "weather": "Cảnh báo thời tiết",
+        "space-weather": "Thời tiết không gian"
       },
       "checks": {
-        "available": "Checked",
-        "unavailable": "Unavailable",
-        "not_monitored": "Check operator directly",
-        "stale": "Last check is stale"
+        "available": "Đã kiểm tra",
+        "unavailable": "Không khả dụng",
+        "not_monitored": "Kiểm tra trực tiếp với đơn vị vận hành",
+        "stale": "Lần kiểm tra gần nhất đã quá lâu"
       },
-      "warningAge": "Since first active warning",
-      "days": "{{amount}} d"
+      "warningAge": "Thời gian từ cảnh báo đầu tiên còn hiệu lực",
+      "days": "{{amount}} ngày"
     }
   },
   "popups": {

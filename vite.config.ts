@@ -122,7 +122,7 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   ChokepointStrip: 'panels-energy', EnergyComplex: 'panels-energy',
   EnergyCrisis: 'panels-energy', EnergyDisruptions: 'panels-energy',
   EnergyRiskOverview: 'panels-energy', FuelPrices: 'panels-energy',
-  FuelShortage: 'panels-energy', Hormuz: 'panels-energy',
+  FuelShortage: 'panels-energy', GridDisruptionClock: 'panels-energy', Hormuz: 'panels-energy',
   OilInventories: 'panels-energy', PipelineStatus: 'panels-energy',
   StorageFacilityMap: 'panels-energy', RenewableEnergy: 'panels-energy',
   // Defense / military / aviation

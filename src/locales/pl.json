@@ -498,7 +498,7 @@
     "fx": "Kursy walutowe",
     "ukmtoIncidents": "Incydenty UKMTO",
     "reservoirLevels": "Strategiczne poziomy wód",
-    "gridDisruptionClock": "Grid disruption clock"
+    "gridDisruptionClock": "Zegar awarii sieci energetycznej"
   },
   "commands": {
     "prefixes": {
@@ -3231,55 +3231,55 @@
       }
     },
     "gridDisruptionClock": {
-      "region": "Select state",
-      "unknown": "Unknown",
-      "customers": "Customers reported without power",
-      "lastCustomers": "Customers out at last report",
-      "denominatorUnknown": "Tracked customer total unknown",
-      "tracked": "{{amount}} customers tracked",
-      "dataAge": "Since report",
+      "region": "Wybierz stan",
+      "unknown": "Brak danych",
+      "customers": "Odbiorcy bez prądu według zgłoszeń",
+      "lastCustomers": "Odbiorcy bez prądu według ostatniego raportu",
+      "denominatorUnknown": "Łączna liczba monitorowanych odbiorców nieznana",
+      "tracked": "Liczba monitorowanych odbiorców: {{amount}}",
+      "dataAge": "Czas od raportu",
       "minutes": "{{amount}} min",
-      "hours": "{{amount}} h",
-      "warnings": "Warnings",
-      "recovery": "Recovery",
-      "decreased": "{{amount}} fewer reported out",
-      "increased": "{{amount}} more reported out",
-      "unchanged": "Reported count unchanged",
-      "since": "since",
-      "peakLoad": "{{percent}}% of normal peak load restored",
-      "noComparison": "Comparable outage counts unavailable.",
-      "history": "Recent outage counts ({{total}})",
-      "priorNotice": "Previously reported warning",
-      "sources": "Warning source coverage",
-      "operatorLink": "For grid notices, check",
-      "issued": "Issued",
-      "until": "expires",
-      "noActive": "No active warning in monitored sources.",
-      "unknownWarnings": "Current warning coverage is incomplete.",
-      "noObservation": "Current count and coverage unavailable.",
-      "loadError": "Grid disruption clock data is unavailable.",
-      "retained": "Refresh failed. Showing the last received report.",
+      "hours": "{{amount}} godz.",
+      "warnings": "Ostrzeżenia",
+      "recovery": "Przywracanie zasilania",
+      "decreased": "Zgłoszona liczba odbiorców bez prądu spadła o {{amount}}",
+      "increased": "Zgłoszona liczba odbiorców bez prądu wzrosła o {{amount}}",
+      "unchanged": "Zgłoszona liczba bez zmian",
+      "since": "od",
+      "peakLoad": "Przywrócono {{percent}}% typowego obciążenia szczytowego",
+      "noComparison": "Brak porównywalnych danych o liczbie odbiorców bez prądu.",
+      "history": "Ostatnie dane o liczbie odbiorców bez prądu ({{total}})",
+      "priorNotice": "Wcześniejsze ostrzeżenie",
+      "sources": "Monitorowane źródła ostrzeżeń",
+      "operatorLink": "Komunikaty sieciowe publikuje",
+      "issued": "Wydano",
+      "until": "wygasa",
+      "noActive": "Brak aktywnych ostrzeżeń w monitorowanych źródłach.",
+      "unknownWarnings": "Obecnie część źródeł ostrzeżeń jest niedostępna.",
+      "noObservation": "Brak aktualnej liczby odbiorców i informacji o zakresie danych.",
+      "loadError": "Dane zegara awarii sieci są niedostępne.",
+      "retained": "Odświeżanie nie powiodło się. Wyświetlono ostatni otrzymany raport.",
       "phase": {
-        "unknown": "Impact unknown",
-        "monitoring": "Monitoring",
-        "watch": "Watch",
-        "disrupted": "Outages reported",
-        "recovering": "Recovery reported",
-        "restored": "Restoration reported"
+        "unknown": "Skutki nieznane",
+        "monitoring": "Monitorowanie",
+        "watch": "Stan czujności",
+        "disrupted": "Zgłoszono przerwy w dostawie prądu",
+        "recovering": "Zgłoszono przywracanie zasilania",
+        "restored": "Zgłoszono przywrócenie zasilania"
       },
       "kind": {
-        "grid": "Grid notice",
-        "weather": "Weather alert",
-        "space-weather": "Space weather"
+        "grid": "Komunikat operatora sieci",
+        "weather": "Ostrzeżenie pogodowe",
+        "space-weather": "Pogoda kosmiczna"
       },
       "checks": {
-        "available": "Checked",
-        "unavailable": "Unavailable",
-        "not_monitored": "Check operator directly",
-        "stale": "Last check is stale"
+        "available": "Sprawdzono",
+        "unavailable": "Niedostępne",
+        "not_monitored": "Sprawdź bezpośrednio u operatora",
+        "stale": "Ostatnia kontrola jest nieaktualna"
       },
-      "warningAge": "Since first active warning",
-      "days": "{{amount}} d"
+      "warningAge": "Czas od pierwszego nadal ważnego ostrzeżenia",
+      "days": "{{amount}} dni"
     }
   },
   "popups": {

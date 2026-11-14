@@ -567,7 +567,7 @@
     "fx": "Курси іноземних валют",
     "ukmtoIncidents": "Інциденти UKMTO",
     "reservoirLevels": "Стратегічні рівні води",
-    "gridDisruptionClock": "Grid disruption clock"
+    "gridDisruptionClock": "Хроніка відключень електроенергії"
   },
   "commands": {
     "prefixes": {
@@ -3300,55 +3300,55 @@
       }
     },
     "gridDisruptionClock": {
-      "region": "Select state",
-      "unknown": "Unknown",
-      "customers": "Customers reported without power",
-      "lastCustomers": "Customers out at last report",
-      "denominatorUnknown": "Tracked customer total unknown",
-      "tracked": "{{amount}} customers tracked",
-      "dataAge": "Since report",
-      "minutes": "{{amount}} min",
-      "hours": "{{amount}} h",
-      "warnings": "Warnings",
-      "recovery": "Recovery",
-      "decreased": "{{amount}} fewer reported out",
-      "increased": "{{amount}} more reported out",
-      "unchanged": "Reported count unchanged",
-      "since": "since",
-      "peakLoad": "{{percent}}% of normal peak load restored",
-      "noComparison": "Comparable outage counts unavailable.",
-      "history": "Recent outage counts ({{total}})",
-      "priorNotice": "Previously reported warning",
-      "sources": "Warning source coverage",
-      "operatorLink": "For grid notices, check",
-      "issued": "Issued",
-      "until": "expires",
-      "noActive": "No active warning in monitored sources.",
-      "unknownWarnings": "Current warning coverage is incomplete.",
-      "noObservation": "Current count and coverage unavailable.",
-      "loadError": "Grid disruption clock data is unavailable.",
-      "retained": "Refresh failed. Showing the last received report.",
+      "region": "Виберіть штат",
+      "unknown": "Невідомо",
+      "customers": "Споживачі без електроенергії за даними звітів",
+      "lastCustomers": "Споживачі без електроенергії за останнім звітом",
+      "denominatorUnknown": "Загальна кількість охоплених споживачів невідома",
+      "tracked": "Кількість охоплених споживачів: {{amount}}",
+      "dataAge": "Час від публікації звіту",
+      "minutes": "{{amount}} хв",
+      "hours": "{{amount}} год",
+      "warnings": "Попередження",
+      "recovery": "Відновлення електропостачання",
+      "decreased": "За звітами, кількість споживачів без електроенергії зменшилася на {{amount}}",
+      "increased": "За звітами, кількість споживачів без електроенергії зросла на {{amount}}",
+      "unchanged": "Кількість за звітами не змінилася",
+      "since": "від",
+      "peakLoad": "Відновлено {{percent}}% звичайного пікового навантаження",
+      "noComparison": "Немає зіставних даних про кількість споживачів без електроенергії.",
+      "history": "Останні дані про кількість споживачів без електроенергії ({{total}})",
+      "priorNotice": "Раніше опубліковане попередження",
+      "sources": "Джерела попереджень, які відстежуються",
+      "operatorLink": "Повідомлення про стан мережі публікує",
+      "issued": "Опубліковано",
+      "until": "чинне до",
+      "noActive": "У відстежуваних джерелах немає чинних попереджень.",
+      "unknownWarnings": "Деякі джерела попереджень наразі недоступні.",
+      "noObservation": "Поточна кількість і охоплення даних невідомі.",
+      "loadError": "Дані про відключення електроенергії недоступні.",
+      "retained": "Не вдалося оновити дані. Показано останній отриманий звіт.",
       "phase": {
-        "unknown": "Impact unknown",
-        "monitoring": "Monitoring",
-        "watch": "Watch",
-        "disrupted": "Outages reported",
-        "recovering": "Recovery reported",
-        "restored": "Restoration reported"
+        "unknown": "Наслідки невідомі",
+        "monitoring": "Спостереження",
+        "watch": "Підвищена готовність",
+        "disrupted": "Повідомлено про відключення",
+        "recovering": "Повідомлено про перебіг відновлення",
+        "restored": "Повідомлено про відновлення електропостачання"
       },
       "kind": {
-        "grid": "Grid notice",
-        "weather": "Weather alert",
-        "space-weather": "Space weather"
+        "grid": "Повідомлення оператора мережі",
+        "weather": "Метеорологічне попередження",
+        "space-weather": "Космічна погода"
       },
       "checks": {
-        "available": "Checked",
-        "unavailable": "Unavailable",
-        "not_monitored": "Check operator directly",
-        "stale": "Last check is stale"
+        "available": "Перевірено",
+        "unavailable": "Недоступно",
+        "not_monitored": "Зверніться безпосередньо до оператора",
+        "stale": "Дані останньої перевірки застаріли"
       },
-      "warningAge": "Since first active warning",
-      "days": "{{amount}} d"
+      "warningAge": "Час від першого з чинних попереджень",
+      "days": "{{amount}} дн."
     }
   },
   "popups": {
