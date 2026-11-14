@@ -40,8 +40,8 @@ interface SectionDef {
   /** What the home list shows while the section is unavailable. Default 'hide'. */
   readonly whenUnavailable?: 'hide' | 'sign-in-row';
   readonly summary?: (f: SettingsFacts) => RowSummary | null;
-  /** Extra words the sidebar search matches, besides the translated label and description. */
-  readonly keywords?: readonly string[];
+  /** A numbered list in the locale catalogue ({"0": ..., "1": ...}): extra words the sidebar search matches. */
+  readonly keywordsKey: string;
 }
 
 interface GroupDef {
@@ -63,7 +63,7 @@ export const SETTINGS_GROUPS = [
       {
         id: 'account', labelKey: 'settings.sections.account', owner: 'shell',
         available: (f) => f.signedIn, whenUnavailable: 'sign-in-row',
-        keywords: ['plan', 'billing', 'subscription', 'invoice', 'seats', 'sign out', 'delete account'],
+        keywordsKey: 'settings.keywords.account',
         summary: (f) => (f.account ? { kind: 'account', plan: f.account.plan, email: f.account.email } : null),
       },
     ],
@@ -72,17 +72,17 @@ export const SETTINGS_GROUPS = [
     id: 'dashboard', labelKey: 'settings.groups.dashboard', sections: [
       {
         id: 'panels', labelKey: 'header.tabPanels', descKey: 'settings.descriptions.panels', owner: 'shell',
-        keywords: ['layout', 'widgets', 'text size', 'reset layout'],
+        keywordsKey: 'settings.keywords.panels',
         summary: (f) => ({ kind: 'count', on: f.panels.on, total: f.panels.total }),
       },
       {
         id: 'sources', labelKey: 'header.tabSources', descKey: 'settings.descriptions.sources', owner: 'shell',
-        keywords: ['news', 'feeds', 'rss', 'regions', 'coverage'],
+        keywordsKey: 'settings.keywords.sources',
         summary: (f) => ({ kind: 'total', count: f.sourcesOn }),
       },
       {
         id: 'notifications', labelKey: 'header.tabNotifications', descKey: 'settings.descriptions.notifications', owner: 'shell',
-        keywords: ['alerts', 'telegram', 'slack', 'email', 'discord', 'webhook', 'push'],
+        keywordsKey: 'settings.keywords.notifications',
         available: (f) => !f.isDesktopApp,
       },
     ],
@@ -91,20 +91,20 @@ export const SETTINGS_GROUPS = [
     id: 'preferences', labelKey: 'settings.groups.preferences', sections: [
       {
         id: 'display', labelKey: 'preferences.display', descKey: 'settings.descriptions.display', owner: 'preferences',
-        keywords: ['theme', 'dark', 'light', 'font', 'language', 'text size'],
+        keywordsKey: 'settings.keywords.display',
         summary: (f) => ({ kind: 'text', key: THEME_SUMMARY_KEY[f.theme] }),
       },
       {
         id: 'map', labelKey: 'settings.sections.map', descKey: 'settings.descriptions.map', owner: 'preferences',
-        keywords: ['globe', 'provider', 'tiles', 'basemap'],
+        keywordsKey: 'settings.keywords.map',
       },
       {
         id: 'ai', labelKey: 'settings.sections.ai', descKey: 'settings.descriptions.ai', owner: 'preferences',
-        keywords: ['llm', 'ollama', 'frameworks', 'headline memory', 'browser model'],
+        keywordsKey: 'settings.keywords.ai',
       },
       {
         id: 'video', labelKey: 'settings.sections.video', descKey: 'settings.descriptions.video', owner: 'preferences',
-        keywords: ['stream', 'autoplay', 'quality', 'live'],
+        keywordsKey: 'settings.keywords.video',
       },
     ],
   },
@@ -112,25 +112,25 @@ export const SETTINGS_GROUPS = [
     id: 'developer', labelKey: 'settings.groups.developer', sections: [
       {
         id: 'api-keys', labelKey: 'settings.sections.apiKeys', descKey: 'settings.descriptions.apiKeys', owner: 'shell', badge: 'pro',
-        keywords: ['key', 'token', 'desktop key'],
+        keywordsKey: 'settings.keywords.apiKeys',
       },
       {
         id: 'embeds', labelKey: 'settings.sections.embeds', descKey: 'settings.descriptions.embeds', owner: 'shell', badge: 'pro',
         available: (f) => f.embedAccess,
-        keywords: ['widget', 'iframe', 'embed key'],
+        keywordsKey: 'settings.keywords.embeds',
       },
       {
         id: 'mcp-clients', labelKey: 'settings.sections.aiAgents', descKey: 'settings.descriptions.aiAgents', owner: 'shell',
-        keywords: ['mcp', 'claude', 'agents', 'chatgpt', 'clients'],
+        keywordsKey: 'settings.keywords.aiAgents',
       },
     ],
   },
   {
     id: 'app', labelKey: 'settings.groups.app', sections: [
-      { id: 'sync', labelKey: 'settings.sections.sync', owner: 'preferences', keywords: ['import', 'export', 'backup', 'cloud'] },
+      { id: 'sync', labelKey: 'settings.sections.sync', owner: 'preferences', keywordsKey: 'settings.keywords.sync' },
       {
         id: 'about', labelKey: 'settings.sections.about', descKey: 'settings.descriptions.about', owner: 'shell',
-        keywords: ['terms', 'privacy', 'license', 'legal'],
+        keywordsKey: 'settings.keywords.about',
       },
     ],
   },
@@ -176,7 +176,7 @@ export type NavRow =
     readonly descKey: string | null;
     readonly badge: 'pro' | null;
     readonly summary: RowSummary | null;
-    readonly keywords: readonly string[];
+    readonly keywordsKey: string;
   }
   | { readonly kind: 'sign-in' };
 
@@ -201,7 +201,7 @@ export function buildNav(f: SettingsFacts): readonly NavGroup[] {
           descKey: def.descKey ?? null,
           badge: def.badge ?? null,
           summary: def.summary?.(f) ?? null,
-          keywords: def.keywords ?? [],
+          keywordsKey: def.keywordsKey,
         });
       } else if (def.whenUnavailable === 'sign-in-row') {
         rows.push({ kind: 'sign-in' });
@@ -218,21 +218,39 @@ export interface NavSearch {
   readonly hits: number;
 }
 
+/** i18next's `t` as the search calls it. A list value comes back as an object or an array. */
+export type Translate = (key: string, options: { readonly lng?: string; readonly returnObjects: true }) => unknown;
+
 /**
- * Keeps the rows whose translated label, description or keywords contain every
- * word of `query`, case-insensitively. Groups left empty are dropped. The
- * account card and the sign-in row always stay, so search never hides who is
- * signed in.
+ * Every rendering of a catalogue key, in the UI language and in English, with
+ * lists flattened. English stays searchable in every language, so a French
+ * user who types "billing" or "MCP" still finds the row. A missing key, which
+ * i18next echoes back, contributes nothing.
+ *
+ * The app catalogue stores a list as an object with numbered keys, because its
+ * locale tooling flattens objects and not arrays (see layer-explanation-card).
  */
-export function searchNav(groups: readonly NavGroup[], query: string, text: (key: string) => string): NavSearch {
+export function searchTerms(translate: Translate): (key: string) => readonly string[] {
+  return (key) => [translate(key, { returnObjects: true }), translate(key, { lng: 'en', returnObjects: true })]
+    .flatMap((value) => (value !== null && typeof value === 'object' ? Object.values(value) : [value]))
+    .filter((term): term is string => typeof term === 'string' && term !== key);
+}
+
+/**
+ * Keeps the rows whose label, description or keywords contain every word of
+ * `query`, case-insensitively. `terms` gives every rendering of a key (see
+ * searchTerms). Groups left empty are dropped. The account card and the
+ * sign-in row always stay, so search never hides who is signed in.
+ */
+export function searchNav(groups: readonly NavGroup[], query: string, terms: (key: string) => readonly string[]): NavSearch {
   const words = query.toLocaleLowerCase().split(/\s+/).filter(Boolean);
   let hits = 0;
   const kept: NavGroup[] = [];
   for (const group of groups) {
     const rows = group.rows.filter((row) => {
       if (row.kind === 'sign-in') return true;
-      const haystack = [text(row.labelKey), row.descKey ? text(row.descKey) : '', ...row.keywords]
-        .join('\n').toLocaleLowerCase();
+      const keys = [row.labelKey, row.descKey, row.keywordsKey].filter((key) => key !== null);
+      const haystack = keys.flatMap(terms).join('\n').toLocaleLowerCase();
       const matched = words.every((word) => haystack.includes(word));
       if (matched) hits += 1;
       return matched || row.id === 'account';

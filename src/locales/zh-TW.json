@@ -4485,7 +4485,8 @@
     "createAccount": "建立帳戶",
     "freeReason": "免費：儲存佈局、關注國家、獲取提醒",
     "settings": "設定",
-    "passkeyOffer": {}
+    "passkeyOffer": {},
+    "planBilling": "套餐與計費"
   },
   "mcp": {
     "connectPanel": "連線 MCP",
@@ -5126,6 +5127,207 @@
     "signOutFailed": "無法退出登入。請重試。",
     "search": {
       "empty": "沒有匹配的設定"
+    },
+    "account": {
+      "intro": "檢視您當前的套餐，管理支付方式、發票或取消訂閱。",
+      "planFree": "免費版",
+      "planPremium": "進階版",
+      "external": {
+        "heading": "進階版存取權限",
+        "desc": "此存取權限不透過您的 WorldMonitor 帳戶計費。此處無法使用支付方式或檢視發票。"
+      },
+      "checking": {
+        "heading": "正在檢查您的套餐…",
+        "desc": "通常只需片刻。"
+      },
+      "status": {
+        "cancelScheduled": "已計劃取消 -- 存取權限保留至 {{date}}",
+        "renews": "續訂時間：{{date}}",
+        "onHold": "已暫停 -- 請更新支付方式",
+        "cancelled": "已取消 -- 存取權限保留至 {{date}}",
+        "expired": "已過期",
+        "unknown": "請檢視\"管理計費\"瞭解您的當前套餐詳情。",
+        "ownerManaged": "計費由您的套餐所有者管理。"
+      },
+      "upgradeToBusiness": "升級至 Business",
+      "unavailable": {
+        "heading": "套餐狀態不可用",
+        "desc": "我們無法驗證您的當前套餐。請重試或在新標籤頁中檢視套餐。"
+      },
+      "free": {
+        "heading": "WorldMonitor 免費版",
+        "desc": "您當前的套餐是免費版。升級以獲取全部面板、AI 分析和優先順序資料重新整理。"
+      },
+      "portal": {
+        "openFailed": "無法開啟計費門戶。請允許彈出視窗並重試。",
+        "unavailable": "計費門戶不可用。請傳送郵件至 support@worldmonitor.app 獲取幫助。"
+      },
+      "deletion": {
+        "heading": "刪除帳戶",
+        "desc": "永久刪除此 World Monitor 帳戶。訂閱立即取消，剩餘預付時長不予退款。API 金鑰、嵌入金鑰和 MCP 令牌將停止工作。會計、糾紛處理和依法請求所需的計費記錄將連同其中的客戶聯絡方式一併保留；這些記錄將不再關聯您的登入帳戶，但支付服務商在刪除前寫入的 webhook 日誌仍保留投遞時附帶的識別符號。此裝置上的儀表板偏好設定和桌面金鑰鏈（系統憑據儲存）中的機密資訊不會被遠端清除。",
+        "dialogTitle": "刪除此帳戶?",
+        "dialogCopy": "此操作無法撤銷。訂閱將取消，金鑰立即停止工作，計費記錄將為會計、糾紛處理和依法請求而保留——包括其中的聯絡方式。之後請在其他裝置上登出，並清除此裝置的網站資料——伺服器無法代為執行這些操作。",
+        "phraseLabel": "輸入 {{phrase}} 以確認",
+        "deleted": "帳戶已刪除。請在其他裝置上登出，之後清除此裝置的網站資料。",
+        "failed": "帳戶刪除失敗。請重試。"
+      },
+      "seats": {
+        "used": "已使用 {{used}} / {{cap}}",
+        "invite": "邀請",
+        "inviting": "邀請中...",
+        "remove": "移除",
+        "removing": "移除中...",
+        "inviteSent": "邀請已傳送",
+        "alreadyInvited": "已邀請"
+      },
+      "businessSeats": {
+        "heading": "Business 席位",
+        "statusAccepted": "已接受",
+        "statusExpired": "已過期",
+        "statusPending": "待接受",
+        "expires": "有效期至 {{date}}",
+        "hintCorporate": "邀請任何企業郵箱域名的團隊成員。",
+        "hintPersonal": "新增企業郵箱以邀請團隊成員。",
+        "personalDomain": "免費或一次性郵箱域名無法邀請團隊成員。請新增企業郵箱以使用此功能。",
+        "empty": "尚未邀請任何席位。",
+        "confirmRemove": "移除此席位？被邀請人將立即失去 Pro 存取權限。",
+        "removed": "席位已移除",
+        "alreadyInactive": "席位已停用",
+        "loadFailed": "載入席位失敗",
+        "inviteFailed": "傳送邀請失敗",
+        "removeFailed": "移除席位失敗",
+        "errors": {
+          "seatCap": "4 個席位已全部使用。請先移除一個席位。",
+          "ownerDomain": "您的帳戶郵箱必須是企業域名才能邀請團隊成員。",
+          "self": "您無法邀請自己。",
+          "inviteeDomain": "被邀請人的郵箱必須是企業域名。"
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "{{account}} Enterprise 席位",
+        "memberHint": "您帳戶的管理員負責新增和移除此帳戶上的成員。",
+        "hintFull": "所有席位都在使用中。請移除某人或撤回邀請以空出席位。",
+        "hintOpen": "透過企業郵箱邀請成員。他們將獲得一個有效期為 14 天的連結，並共享此帳戶的配額。",
+        "emailLabel": "邀請的郵箱地址",
+        "statusActive": "已啟用",
+        "statusExpired": "邀請已過期",
+        "statusInvited": "已邀請",
+        "emailFailed": "邀請郵件無法傳送。請檢查地址，然後撤回並重新邀請。",
+        "inviteExpires": "邀請有效期至 {{date}}",
+        "roleAdmin": "管理員",
+        "you": "您",
+        "withdraw": "撤回",
+        "unknownEmail": "未知郵箱",
+        "alreadyMember": "已是成員",
+        "confirmRemove": "移除 {{email}}？對方將立即失去 Enterprise 存取權限。",
+        "confirmRemoveUnknown": "移除此成員？對方將立即失去 Enterprise 存取權限。",
+        "confirmWithdraw": "撤回對 {{email}} 的邀請？",
+        "confirmWithdrawUnknown": "撤回對此地址的邀請？",
+        "removed": "成員已移除",
+        "withdrawn": "邀請已撤回",
+        "loadFailed": "無法載入席位。請重試。",
+        "inviteFailed": "無法傳送邀請。請重試。",
+        "removeFailed": "無法移除。請重試。",
+        "errors": {
+          "seatCap": "所有席位都已被佔用。請先移除某個使用者或撤回邀請。",
+          "inviteeDomain": "請邀請企業郵箱地址。不接受免費或一次性郵箱域名。",
+          "self": "您已經擁有一個席位。",
+          "contractEnded": "您的 Enterprise 合同已到期。請聯絡支援團隊續約。",
+          "notAdmin": "僅帳戶管理員可以管理席位。",
+          "removeSelf": "您無法移除自己的席位。請聯絡支援團隊更換管理員。",
+          "tooMany": "一次最多邀請10個人。",
+          "rateLimited": "您今天傳送的邀請已達上限。請明天再試。"
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "佈局",
+        "1": "小工具",
+        "2": "文字大小",
+        "3": "重置佈局"
+      },
+      "sources": {
+        "0": "新聞",
+        "1": "源",
+        "2": "訂閱源",
+        "3": "地區",
+        "4": "新聞報道"
+      },
+      "notifications": {
+        "0": "提醒",
+        "1": "警報",
+        "2": "Slack",
+        "3": "電子郵件",
+        "4": "Discord",
+        "5": "Webhook",
+        "6": "推送"
+      },
+      "display": {
+        "0": "主題",
+        "1": "深色",
+        "2": "淺色",
+        "3": "字型",
+        "4": "語言",
+        "5": "文字大小"
+      },
+      "map": {
+        "0": "地球",
+        "1": "提供商",
+        "2": "瓦片",
+        "3": "底圖"
+      },
+      "ai": {
+        "0": "人工智慧",
+        "1": "Ollama",
+        "2": "框架",
+        "3": "標題記憶",
+        "4": "瀏覽器模型"
+      },
+      "video": {
+        "0": "流媒體",
+        "1": "自動播放",
+        "2": "質量",
+        "3": "直播"
+      },
+      "apiKeys": {
+        "0": "金鑰",
+        "1": "令牌",
+        "2": "桌面金鑰"
+      },
+      "embeds": {
+        "0": "小工具",
+        "1": "iframe",
+        "2": "嵌入金鑰"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "代理",
+        "3": "ChatGPT",
+        "4": "客戶端"
+      },
+      "sync": {
+        "0": "匯入",
+        "1": "匯出",
+        "2": "備份",
+        "3": "雲"
+      },
+      "about": {
+        "0": "條款",
+        "1": "隱私",
+        "2": "許可",
+        "3": "法律"
+      },
+      "account": {
+        "0": "套餐",
+        "1": "賬單",
+        "2": "訂閱",
+        "3": "發票",
+        "4": "席位",
+        "5": "登出",
+        "6": "刪除帳戶, 退出登入"
+      }
     }
   }
 }
