@@ -77,8 +77,8 @@ export class AuthHeaderWidget {
   }
 
   private renderSignedOut(): void {
-    // One header account action (#10464): keep Sign In, fold Create account into
-    // Clerk's withSignUp sign-in flow, and show why a free account is worth it.
+    // One header account action (#10464): Sign In opens Clerk's modal, whose
+    // footer Sign up link creates an account, and the reason says why to.
     const freeReason = document.createElement('span');
     freeReason.className = 'auth-free-reason';
     freeReason.textContent = t('auth.freeReason');
