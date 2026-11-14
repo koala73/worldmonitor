@@ -18,6 +18,9 @@ import {
 import { acquisitionsFromStac, countryKey, evaluateSites, ORBITAL_SITES_KEY, siteKey, stacSearchBody } from '../scripts/_orbital-sites.mjs';
 import { makeArchiveSearch, makeFetchSites, publicationCommands } from '../scripts/seed-orbital-sites.mjs';
 import { advanceTrack, geometryKey, newTrack } from '../scripts/shared/orbital/flag-record.js';
+import orbitalSiteAlerts from '../scripts/lib/orbital-site-alerts.cjs';
+
+const { publishOrbitalSiteAlerts } = orbitalSiteAlerts;
 
 const NOW = Date.parse('2026-11-13T12:00:00Z');
 const DAY_MS = 86_400_000;
@@ -222,7 +225,7 @@ describe('orbital change stage in the site seeder', () => {
     };
   }
 
-  async function run({ shadow }) {
+  async function run({ shadow, alerts = null }) {
     const scenes = [...BASELINE_DB.map((db) => radarScene(db)), radarScene(42.5), radarScene(42.4)];
     const archive = fakeArchive(scenes);
     const store = memoryStore();
@@ -230,6 +233,7 @@ describe('orbital change stage in the site seeder', () => {
       store, sites: [LAND, PORT], registryVersion: 'test', clock: () => NOW,
       searchArchive: async () => scenes,
       scoring: { fetchStatistics: archive.fetchStatistics, budgetMs: 60_000, shadow },
+      alerts,
     });
     const index = await fetchSites();
     await publishAtomically(index, { canonicalKey: ORBITAL_SITES_KEY, payload: JSON.stringify(index), ttlSeconds: 60 });
@@ -254,6 +258,35 @@ describe('orbital change stage in the site seeder', () => {
     assert.equal(site.flag.state, 'confirmed');
     assert.equal(site.flag.wording, 'imagery statistics changed');
     assert.equal(store.kv.has(flagShadowKey(LAND.id)), false);
+  });
+
+  function alertSink() {
+    let state = null;
+    const events = [];
+    const alerts = (records, { shadow }) => publishOrbitalSiteAlerts(records, {
+      shadow,
+      now: () => NOW,
+      readState: async () => state,
+      writeState: async (_key, next) => { state = structuredClone(next); return true; },
+      publish: async (event) => { events.push(event); return true; },
+    });
+    return { alerts, events };
+  }
+
+  it('sends no confirmed-change alert while the flag is shadowed', async () => {
+    const sink = alertSink();
+    const { store } = await run({ shadow: undefined, alerts: sink.alerts });
+    assert.equal(store.kv.get(flagShadowKey(LAND.id)).state, 'confirmed', 'the shadow flag is confirmed');
+    assert.deepEqual(sink.events.filter((event) => event.eventType === 'orbital_site_change'), []);
+  });
+
+  it('sends one confirmed-change alert per site once the shadow ends, and none on the next run', async () => {
+    const sink = alertSink();
+    await run({ shadow: false, alerts: sink.alerts });
+    const changes = sink.events.filter((event) => event.eventType === 'orbital_site_change');
+    assert.deepEqual(changes.map((event) => event.payload.siteId), [LAND.id]);
+    await run({ shadow: false, alerts: sink.alerts });
+    assert.equal(sink.events.filter((event) => event.eventType === 'orbital_site_change').length, 1);
   });
 
   it('keeps every previous flag when the statistics service refuses', async () => {

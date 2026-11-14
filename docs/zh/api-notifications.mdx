@@ -59,6 +59,18 @@ description: "World Monitor 通知系统 API 完整参考：涵盖通知渠道�
 
 `POST /api/notify` 会拒绝该事件类型:只有中继会发布它。
 
+## 关注站点卫星告警
+
+两种事件类型会就用户列出的关注站点发出告警:`orbital_imaging_window` 和 `orbital_site_change`。只有当规则的 `eventTypes` 列出该类型时,规则才会收到它,并且只针对其 `orbitalSites` 列表中的站点。`orbitalSites` 为空或缺省表示不接收关注站点告警。列出任一类型都不会缩小规则的其他告警范围。
+
+- **成像窗口**:每天关注站点刷新后,若开放光学或雷达卫星(Sentinel-2、Landsat、Sentinel-1 等开放存档)将在未来 24 小时内对某站点成像,该站点会发出告警。商业、气象和军用卫星不会触发告警。每次过境只告警一次。同一站点在一次刷新中的所有新过境合并为一条告警,且每个站点每 12 小时最多发送一条成像窗口告警。
+- **已确认变化**:当站点的雷达变化标记变为已确认(即后续过境再次出现影像统计变化)时发出告警。仅处于 raised 状态的标记不会告警,保持已确认状态的标记也不会重复告警。每个站点每 24 小时最多发送一条变化告警,超过七天的确认不会告警。变化检测处于审核期间时,不发送任何变化告警。
+- **严重级别**:始终为 `critical`。与其他队列事件一样,只投递给实时规则,不进入摘要。
+- **范围**:`orbitalSites` 接受关注站点 id,例如 `chokepoint:hormuz_strait` 或 `conflict-zone:sudan`,每条规则最多 25 个。更长的列表或格式错误的 id 返回 `400 ORBITAL_SITES_INVALID`。请求任一事件类型或列出站点需要 Pro 权益,否则返回 `402 PRO_REQUIRED`。`countries` 范围不会过滤这些事件。
+- **载荷**:`title`、`source`(`Orbital Watch`)、`siteId`、`siteName`、`triggeredAt`,以及标识一次告警、在中继重发时保持不变的 `coalesceKey`。成像窗口告警另含 `windows`,最多五次过境,每项含 `noradId`、`name`、`profileId`、`category` 和 `time`。变化告警另含确认变化的存档场景 `itemId` 以及 `platform`。
+
+`POST /api/notify` 拒绝这两种事件类型:只有关注站点采集器会发布它们。
+
 ## Webhook 投递契约
 
 当告警触发时,已注册的 webhook URL 将收到:

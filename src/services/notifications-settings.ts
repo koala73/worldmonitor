@@ -33,6 +33,7 @@ import { SITE_VARIANT } from '@/config/variant';
 import { CHOKEPOINT_REGISTRY } from '@/config/chokepoint-registry';
 import { mountCountryChipPicker, loadFollowedCountriesSafe, type CountryChipPickerHandle } from '@/utils/country-chip-picker';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { ORBITAL_ALERT_SITES_MAX } from '../../shared/alert-rule-shape';
 
 
 const QUIET_HOURS_BATCH_ENABLED = import.meta.env.VITE_QUIET_HOURS_BATCH_ENABLED !== '0';
@@ -46,6 +47,35 @@ const DIGEST_CRON_ENABLED = import.meta.env.VITE_DIGEST_CRON_ENABLED !== '0';
 const WATCHLIST_STORY_EVENT_TYPE = 'watchlist_story_alert';
 // Opt-in like the watchlist row; scoped by alertRules.chokepoints (#9217).
 const CHOKEPOINT_DISRUPTION_EVENT_TYPE = 'chokepoint_disruption';
+// Opt-in watched-site alerts, scoped by alertRules.orbitalSites (empty → none).
+const ORBITAL_WINDOW_EVENT_TYPE = 'orbital_imaging_window';
+const ORBITAL_CHANGE_EVENT_TYPE = 'orbital_site_change';
+
+type WatchedSiteOption = { id: string; name: string; countryCode: string };
+let watchedSiteOptions: Promise<WatchedSiteOption[]> | null = null;
+// The registry is composed from the static site lists; loaded only when the settings open.
+function loadWatchedSiteOptions(): Promise<WatchedSiteOption[]> {
+  watchedSiteOptions ??= import('../../shared/watched-sites').then(({ composeWatchedSites }) =>
+    composeWatchedSites()
+      .map(({ id, name, countryCode }) => ({ id, name, countryCode }))
+      .sort((a, b) => a.name.localeCompare(b.name)));
+  return watchedSiteOptions;
+}
+const watchedSiteLabelCounts = new WeakMap<WatchedSiteOption[], Map<string, number>>();
+// Several registry sites share a name and country; those labels also carry the id.
+function watchedSiteLabel(site: WatchedSiteOption, options: WatchedSiteOption[]): string {
+  let counts = watchedSiteLabelCounts.get(options);
+  if (!counts) {
+    counts = new Map();
+    for (const option of options) {
+      const key = `${option.name} (${option.countryCode})`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    watchedSiteLabelCounts.set(options, counts);
+  }
+  const label = `${site.name} (${site.countryCode})`;
+  return (counts.get(label) ?? 0) > 1 ? `${label} · ${site.id}` : label;
+}
 
 export interface NotificationsSettingsHost {
   isSignedIn?: boolean;
@@ -522,6 +552,9 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const aiDigestEnabled = alertRule?.aiDigestEnabled ?? true;
         const chokepointAlertsOn = alertRule?.eventTypes?.includes(CHOKEPOINT_DISRUPTION_EVENT_TYPE) ?? false;
         const chokepointScope = alertRule?.chokepoints ?? [];
+        const orbitalWindowsOn = alertRule?.eventTypes?.includes(ORBITAL_WINDOW_EVENT_TYPE) ?? false;
+        const orbitalChangesOn = alertRule?.eventTypes?.includes(ORBITAL_CHANGE_EVENT_TYPE) ?? false;
+        const orbitalSites = alertRule?.orbitalSites ?? [];
 
         const hourOptions = Array.from({ length: 24 }, (_, h) => {
           const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
@@ -623,6 +656,33 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 const on = chokepointScope.includes(cp.id);
                 return `<button type="button" class="us-notif-country-chip${on ? ' us-notif-country-chip-on' : ''}" data-chokepoint-id="${escapeHtml(cp.id)}" aria-pressed="${on}">${escapeHtml(cp.displayName)}</button>`;
               }).join('')}</div>
+            </div>
+            <div class="ai-flow-toggle-row">
+              <div class="ai-flow-toggle-label-wrap">
+                <div class="ai-flow-toggle-label">Satellite imaging windows</div>
+                <div class="ai-flow-toggle-desc">Alert when an open optical or radar satellite will image one of your watched sites within 24 hours</div>
+              </div>
+              <label class="ai-flow-switch">
+                <input type="checkbox" id="usOrbitalWindowAlerts"${orbitalWindowsOn ? ' checked' : ''}>
+                <span class="ai-flow-slider"></span>
+              </label>
+            </div>
+            <div class="ai-flow-toggle-row">
+              <div class="ai-flow-toggle-label-wrap">
+                <div class="ai-flow-toggle-label">Confirmed imagery changes</div>
+                <div class="ai-flow-toggle-desc">Alert when radar imagery of one of your watched sites changes and a later pass confirms it. Held while change detection is under review.</div>
+              </div>
+              <label class="ai-flow-switch">
+                <input type="checkbox" id="usOrbitalChangeAlerts"${orbitalChangesOn ? ' checked' : ''}>
+                <span class="ai-flow-slider"></span>
+              </label>
+            </div>
+            <div id="usOrbitalScope"${orbitalWindowsOn || orbitalChangesOn ? '' : ' hidden'}>
+              <div class="ai-flow-toggle-desc" style="margin-bottom:6px">Your watched sites, up to ${ORBITAL_ALERT_SITES_MAX}. Alerts cover only the sites listed here.</div>
+              <div class="us-notif-country-chips" id="usOrbitalSiteChips">${orbitalSites.map((id) =>
+                `<button type="button" class="us-notif-country-chip us-notif-country-chip-on" data-orbital-site-id="${escapeHtml(id)}" aria-label="Remove ${escapeHtml(id)}">${escapeHtml(id)} ×</button>`).join('')}</div>
+              <input type="search" id="usOrbitalSiteSearch" class="us-notif-country-add-input" list="usOrbitalSiteOptions" placeholder="Add a site by name" aria-label="Add a watched site" autocomplete="off" style="margin-top:6px;width:100%;box-sizing:border-box"${orbitalSites.length >= ORBITAL_ALERT_SITES_MAX ? ' disabled' : ''}>
+              <datalist id="usOrbitalSiteOptions"></datalist>
             </div>
             <div class="ai-flow-section-label" style="margin-top:8px">Quiet Hours</div>
             <div class="ai-flow-toggle-row">
@@ -744,6 +804,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           setTrustedHtml(contentEl, trustedHtml(renderNotifContent(data, webPushState), "legacy direct innerHTML migration"));
           loadingEl.style.display = 'none';
           contentEl.style.display = 'block';
+          mountOrbitalSitePicker();
 
           // Tear down stale picker (if any) before mounting fresh one — the
           // innerHTML rewrite above orphans the previous root.
@@ -823,12 +884,15 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         countries: string[] | undefined;
         tickers: string[];
         chokepoints: string[];
+        orbitalSites: string[];
       } {
         const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
         const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
         const aiDigestEl = container.querySelector<HTMLInputElement>('#usAiDigestEnabled');
         const watchlistEl = container.querySelector<HTMLInputElement>('#usWatchlistAlerts');
         const chokepointEl = container.querySelector<HTMLInputElement>('#usChokepointAlerts');
+        const orbitalWindowsEl = container.querySelector<HTMLInputElement>('#usOrbitalWindowAlerts');
+        const orbitalChangesEl = container.querySelector<HTMLInputElement>('#usOrbitalChangeAlerts');
         const connectedChannelTypes = Array.from(
           container.querySelectorAll<HTMLElement>('[data-channel-type]'),
         )
@@ -847,9 +911,14 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         // Chokepoint disruption alerts (#9217): same opt-in shape. No chips
         // selected means every chokepoint; OFF clears the scope.
         const chokepointOn = chokepointEl?.checked ?? false;
+        // Watched-site alerts: either toggle keeps the site list; both OFF clear it.
+        const orbitalWindowsOn = orbitalWindowsEl?.checked ?? false;
+        const orbitalChangesOn = orbitalChangesEl?.checked ?? false;
         const eventTypes = [
           ...(watchlistOn ? [WATCHLIST_STORY_EVENT_TYPE] : []),
           ...(chokepointOn ? [CHOKEPOINT_DISRUPTION_EVENT_TYPE] : []),
+          ...(orbitalWindowsOn ? [ORBITAL_WINDOW_EVENT_TYPE] : []),
+          ...(orbitalChangesOn ? [ORBITAL_CHANGE_EVENT_TYPE] : []),
         ];
         return {
           enabled: enabledEl?.checked ?? false,
@@ -864,7 +933,53 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               .map((el) => el.dataset.chokepointId ?? '')
               .filter(Boolean)
             : [],
+          orbitalSites: orbitalWindowsOn || orbitalChangesOn ? selectedOrbitalSites() : [],
         };
+      }
+
+      function selectedOrbitalSites(): string[] {
+        return Array.from(container.querySelectorAll<HTMLElement>('#usOrbitalSiteChips [data-orbital-site-id]'))
+          .map((el) => el.dataset.orbitalSiteId ?? '')
+          .filter(Boolean);
+      }
+
+      function renderOrbitalSiteChips(ids: string[], options: WatchedSiteOption[]): void {
+        const chips = container.querySelector<HTMLElement>('#usOrbitalSiteChips');
+        if (!chips) return;
+        const byId = new Map(options.map((site) => [site.id, site]));
+        setTrustedHtml(chips, trustedHtml(ids.map((id) => {
+          const site = byId.get(id);
+          const label = site ? watchedSiteLabel(site, options) : id;
+          return `<button type="button" class="us-notif-country-chip us-notif-country-chip-on" data-orbital-site-id="${escapeHtml(id)}" aria-label="Remove ${escapeHtml(label)}">${escapeHtml(label)} ×</button>`;
+        }).join(''), 'watched-site chips built from escaped registry fields'));
+        const search = container.querySelector<HTMLInputElement>('#usOrbitalSiteSearch');
+        if (search) search.disabled = ids.length >= ORBITAL_ALERT_SITES_MAX;
+      }
+
+      function mountOrbitalSitePicker(): void {
+        void loadWatchedSiteOptions().then((options) => {
+          if (signal.aborted) return;
+          const list = container.querySelector<HTMLElement>('#usOrbitalSiteOptions');
+          if (list) {
+            setTrustedHtml(list, trustedHtml(options.map((site) => `<option value="${escapeHtml(watchedSiteLabel(site, options))}"></option>`).join(''), 'watched-site options built from escaped registry fields'));
+          }
+          renderOrbitalSiteChips(selectedOrbitalSites(), options);
+        }).catch((err) => console.warn('[notifications] watched sites unavailable:', err));
+      }
+
+      function addOrbitalSite(input: HTMLInputElement): void {
+        const wanted = input.value.trim();
+        if (!wanted) return;
+        void loadWatchedSiteOptions().then((options) => {
+          const site = options.find((option) => watchedSiteLabel(option, options) === wanted);
+          if (!site) return;
+          const ids = selectedOrbitalSites();
+          input.value = '';
+          if (ids.includes(site.id) || ids.length >= ORBITAL_ALERT_SITES_MAX) return;
+          renderOrbitalSiteChips([...ids, site.id], options);
+          if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
+          alertRuleDebounceTimer = setTimeout(() => saveCurrentAlertRule(), 800);
+        });
       }
 
       // Read all current alert-rule fields off the DOM and POST through the
@@ -1117,7 +1232,16 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (target.id === 'usChokepointAlerts') {
           container.querySelector<HTMLElement>('#usChokepointScope')?.toggleAttribute('hidden', !(target as HTMLInputElement).checked);
         }
-        if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity' || target.id === 'usWatchlistAlerts' || target.id === 'usChokepointAlerts') {
+        if (target.id === 'usOrbitalSiteSearch') {
+          addOrbitalSite(target as HTMLInputElement);
+          return;
+        }
+        if (target.id === 'usOrbitalWindowAlerts' || target.id === 'usOrbitalChangeAlerts') {
+          const anyOn = ['#usOrbitalWindowAlerts', '#usOrbitalChangeAlerts']
+            .some((sel) => container.querySelector<HTMLInputElement>(sel)?.checked);
+          container.querySelector<HTMLElement>('#usOrbitalScope')?.toggleAttribute('hidden', !anyOn);
+        }
+        if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity' || target.id === 'usWatchlistAlerts' || target.id === 'usChokepointAlerts' || target.id === 'usOrbitalWindowAlerts' || target.id === 'usOrbitalChangeAlerts') {
           if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
           alertRuleDebounceTimer = setTimeout(() => {
             // Source from the centralized helper so `countries` flows through.
@@ -1135,6 +1259,16 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
         if (target.closest('[data-ios-install]')) {
           openIosInstallSheet();
+          return;
+        }
+
+        const orbitalChip = target.closest<HTMLElement>('#usOrbitalSiteChips [data-orbital-site-id]');
+        if (orbitalChip) {
+          orbitalChip.remove();
+          const search = container.querySelector<HTMLInputElement>('#usOrbitalSiteSearch');
+          if (search) search.disabled = false;
+          if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
+          alertRuleDebounceTimer = setTimeout(() => saveCurrentAlertRule(), 800);
           return;
         }
 

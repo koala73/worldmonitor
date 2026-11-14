@@ -166,6 +166,7 @@ const ALERT_RULE_SHAPE_CODES = new Set([
   "VARIANT_INVALID",
   "EVENT_TYPES_INVALID",
   "CHANNELS_INVALID",
+  "ORBITAL_SITES_INVALID",
   "RULE_LIMIT_EXCEEDED",
 ]);
 
@@ -1211,6 +1212,7 @@ http.route({
       countries?: string[];
       tickers?: string[];
       chokepoints?: string[];
+      orbitalSites?: string[];
       scheduleWelcome?: boolean;
     }>(request);
     if (!body) {
@@ -1353,7 +1355,8 @@ http.route({
           (body.sensitivity !== undefined && !VALID_SENSITIVITY.has(body.sensitivity as string)) ||
           (body.countries !== undefined && !Array.isArray(body.countries)) ||
           (body.tickers !== undefined && !Array.isArray(body.tickers)) ||
-          (body.chokepoints !== undefined && !Array.isArray(body.chokepoints))
+          (body.chokepoints !== undefined && !Array.isArray(body.chokepoints)) ||
+          (body.orbitalSites !== undefined && !Array.isArray(body.orbitalSites))
         ) {
           return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
@@ -1379,6 +1382,8 @@ http.route({
             tickers: Array.isArray(body.tickers) ? (body.tickers as string[]) : undefined,
             // Chokepoint-scope (#9217); mutation re-validates + normalizes.
             chokepoints: Array.isArray(body.chokepoints) ? (body.chokepoints as string[]) : undefined,
+            // Watched-site scope; the mutation validates the shape and gates it to Pro.
+            orbitalSites: Array.isArray(body.orbitalSites) ? (body.orbitalSites as string[]) : undefined,
           });
         } catch (err: unknown) {
           // normalizeTickers/normalizeCountries throw ConvexError with a
@@ -1396,6 +1401,9 @@ http.route({
           }
           const validation = alertRuleValidationResponse(err, ["INCOMPATIBLE_DELIVERY"]);
           if (validation) return validation;
+          if (code === "PRO_REQUIRED") {
+            return new Response(JSON.stringify({ error: code }), { status: 402, headers: { "Content-Type": "application/json" } });
+          }
           throw err;
         }
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -1479,6 +1487,9 @@ http.route({
         if (body.chokepoints !== undefined && !Array.isArray(body.chokepoints)) {
           return new Response(JSON.stringify({ error: "CHOKEPOINTS_MUST_BE_ARRAY" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
+        if (body.orbitalSites !== undefined && !Array.isArray(body.orbitalSites)) {
+          return new Response(JSON.stringify({ error: "ORBITAL_SITES_MUST_BE_ARRAY" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
         try {
           await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {
             userId,
@@ -1494,6 +1505,7 @@ http.route({
             countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
             tickers: Array.isArray(body.tickers) ? (body.tickers as string[]) : undefined,
             chokepoints: Array.isArray(body.chokepoints) ? (body.chokepoints as string[]) : undefined,
+            orbitalSites: Array.isArray(body.orbitalSites) ? (body.orbitalSites as string[]) : undefined,
           });
         } catch (err: unknown) {
           // Translate structured ConvexError codes into machine-readable HTTP

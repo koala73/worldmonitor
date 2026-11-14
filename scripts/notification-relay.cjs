@@ -36,6 +36,7 @@ const {
   releaseFailOpenFallback,
 } = require('./shared/notification-dedup.cjs');
 const { COMPARE_AND_DELETE_SCRIPT } = require('./shared/compare-and-delete-script.cjs');
+const { ORBITAL_SITE_EVENT_TYPES } = require('./lib/orbital-site-alerts.cjs');
 const {
   parseSuppressionEntries,
   isLinkSuppressed,
@@ -1162,6 +1163,8 @@ function normalizeEventCountryCode(raw) {
 //    by country — an explicit per-rule opt-in that country scope must not veto.
 //  - chokepoint_disruption: same reasoning, scoped by chokepoint
 //    (eventMatchesChokepointScope) and opt-in only (#9217).
+//  - orbital_imaging_window, orbital_site_change: scoped by watched site
+//    (eventMatchesOrbitalSiteScope) and opt-in only.
 const PERMISSIVE_UNATTRIBUTED_EVENT_TYPES = new Set([
   'rss_alert',
   'keyword_spike',
@@ -1169,6 +1172,7 @@ const PERMISSIVE_UNATTRIBUTED_EVENT_TYPES = new Set([
   'military_surge',
   'watchlist_story_alert',
   'chokepoint_disruption',
+  ...ORBITAL_SITE_EVENT_TYPES,
 ]);
 
 function isPermissiveUnattributedEvent(event) {
@@ -1287,17 +1291,16 @@ const CHOKEPOINT_DISRUPTION_EVENT_TYPE = 'chokepoint_disruption';
  *    UI toggling the watchlist row ON would silently unsubscribe the user
  *    from every other alert.
  */
+const OPT_IN_EVENT_TYPES = new Set([
+  WATCHLIST_STORY_EVENT_TYPE,
+  // Same opt-in contract as the watchlist row (#9217).
+  CHOKEPOINT_DISRUPTION_EVENT_TYPE,
+  ...ORBITAL_SITE_EVENT_TYPES,
+]);
+
 function ruleMatchesEventType(rule, event) {
-  if (event?.eventType === WATCHLIST_STORY_EVENT_TYPE) {
-    return rule.eventTypes.includes(WATCHLIST_STORY_EVENT_TYPE);
-  }
-  // Same opt-in contract as the watchlist row (#9217): a wildcard rule never
-  // receives it, and opting in does not narrow the rule's other alerts.
-  if (event?.eventType === CHOKEPOINT_DISRUPTION_EVENT_TYPE) {
-    return rule.eventTypes.includes(CHOKEPOINT_DISRUPTION_EVENT_TYPE);
-  }
-  const broadcastTypes = rule.eventTypes.filter((t) => t !== WATCHLIST_STORY_EVENT_TYPE)
-    .filter((t) => t !== CHOKEPOINT_DISRUPTION_EVENT_TYPE);
+  if (OPT_IN_EVENT_TYPES.has(event?.eventType)) return rule.eventTypes.includes(event.eventType);
+  const broadcastTypes = rule.eventTypes.filter((t) => !OPT_IN_EVENT_TYPES.has(t));
   return broadcastTypes.length === 0 || broadcastTypes.includes(event.eventType);
 }
 
@@ -1341,14 +1344,28 @@ function eventMatchesChokepointScope(event, rule) {
 }
 
 /**
+ * Narrows the watched-site alerts to the sites the rule lists. Like tickers, an
+ * empty/absent list means none: the sites are the user's own watch list, and
+ * there is no "every site" firehose. Every other event type passes through.
+ */
+function eventMatchesOrbitalSiteScope(event, rule) {
+  if (!ORBITAL_SITE_EVENT_TYPES.includes(event?.eventType)) return true;
+  if (!Array.isArray(rule.orbitalSites) || rule.orbitalSites.length === 0) return false;
+  const siteId = event?.payload?.siteId;
+  return typeof siteId === 'string' && rule.orbitalSites.includes(siteId);
+}
+
+/**
  * Web push tag: a later push with the same tag replaces the earlier one in the
- * tray. Chokepoint alerts carry the chokepoint so two crossings in one tick
- * both stay visible.
+ * tray. Chokepoint and watched-site alerts carry their subject so two alerts in
+ * one tick both stay visible.
  */
 function webPushTagFor(event, userId) {
-  const chokepointId = event?.eventType === CHOKEPOINT_DISRUPTION_EVENT_TYPE ? event?.payload?.chokepointId : null;
-  return typeof chokepointId === 'string' && chokepointId
-    ? `${event.eventType}:${chokepointId}:${userId}`
+  const subject = event?.eventType === CHOKEPOINT_DISRUPTION_EVENT_TYPE ? event?.payload?.chokepointId
+    : ORBITAL_SITE_EVENT_TYPES.includes(event?.eventType) ? event?.payload?.siteId
+      : null;
+  return typeof subject === 'string' && subject
+    ? `${event.eventType}:${subject}:${userId}`
     : `${event.eventType}:${userId}`;
 }
 
@@ -1893,6 +1910,7 @@ async function processEvent(event) {
     eventMatchesCountryScope(event, r) &&
     eventMatchesTickerScope(event, r) &&
     eventMatchesChokepointScope(event, r) &&
+    eventMatchesOrbitalSiteScope(event, r) &&
     (!event.variant || !r.variant || r.variant === event.variant) &&
     (!event.userId || r.userId === event.userId)
   );
@@ -1908,6 +1926,7 @@ async function processEvent(event) {
     !eventMatchesCountryScope(event, r) &&
     eventMatchesTickerScope(event, r) &&
     eventMatchesChokepointScope(event, r) &&
+    eventMatchesOrbitalSiteScope(event, r) &&
     (!event.variant || !r.variant || r.variant === event.variant) &&
     (!event.userId || r.userId === event.userId)
   ).length;
@@ -2178,6 +2197,7 @@ module.exports = {
   // the real ones change.
   eventMatchesTickerScope,
   eventMatchesChokepointScope,
+  eventMatchesOrbitalSiteScope,
   webPushTagFor,
   ruleMatchesEventType,
   // Exported so the effective-sensitivity coercion and the importance-score

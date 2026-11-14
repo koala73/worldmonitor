@@ -14,7 +14,7 @@ const TIER_TABLE = [
   { categories: ['crewed-station'], needs: ['inFootprint'], archive: 'any', tier: { kind: 'passed-overhead' } },
 ];
 
-const OPTICAL_MIN_SUN_ELEVATION_DEG = 5;
+export const OPTICAL_MIN_SUN_ELEVATION_DEG = 5;
 const HOUR_MS = 3_600_000;
 
 function passFacts(pass, profile) {
