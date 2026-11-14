@@ -5205,6 +5205,7 @@
       "orbitAge": "dane orbitalne sprzed {{age}}",
       "edgeOfSwath": "Krawędź pasa zobrazowania",
       "notInArchive": "Brak zdjęcia w archiwum",
+      "archiveUnanswered": "Archiwum nie odpowiedziało",
       "imageAlt": "Zdjęcie {{name}}, {{time}}",
       "mosaicDays": "Dni w archiwum: {{count}}",
       "cadence": "nowe zdjęcie co {{minutes}} min",
@@ -5270,6 +5271,8 @@
         "overheadDef": "Przeciął tu niebo, bez dowodu obrazowania.",
         "watchedShort": "Zdjęcie w publicznym archiwum",
         "likelyShort": "Pokryte, jeszcze bez zdjęcia",
+        "likelyUnansweredDef": "Objął go czujnik o stałym pasie; archiwum nie odpowiedziało, więc zdjęcie może istnieć.",
+        "likelyUnansweredShort": "Objęte, archiwum nie odpowiedziało",
         "couldShort": "Sterowalny sensor w zasięgu",
         "overheadShort": "Nad punktem, bez zdjęcia"
       },

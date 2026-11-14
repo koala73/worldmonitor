@@ -5,6 +5,7 @@ import {
   buildMapUrl,
   readDashboardSearchQuery,
   DASHBOARD_SEARCH_QUERY_MAX_CHARS,
+  withMapCentreOf,
   withUrlFragment,
   withoutVariantScopedUrlState,
 } from '../src/utils/urlState.ts';
@@ -274,5 +275,23 @@ describe('withoutVariantScopedUrlState', () => {
     assert.equal(next.searchParams.get('view'), 'global');
     assert.equal(next.searchParams.get('timeRange'), '7d');
     assert.equal(next.hash, '#signup');
+  });
+});
+
+describe('withMapCentreOf', () => {
+  const shared = 'https://www.worldmonitor.app/?lat=25.1120&lon=55.1390&zoom=11.00&view=global&layers=fires';
+
+  it('keeps the previous centre and zoom and takes every other param from the new URL', () => {
+    const next = new URL(withMapCentreOf(shared, 'https://www.worldmonitor.app/?lat=-15.0000&lon=80.0000&zoom=4.00&view=global&layers=none'));
+    assert.equal(next.searchParams.get('lat'), '-15.0000');
+    assert.equal(next.searchParams.get('lon'), '80.0000');
+    assert.equal(next.searchParams.get('zoom'), '4.00');
+    assert.equal(next.searchParams.get('layers'), 'fires');
+  });
+
+  it('drops the centre when the previous URL had none', () => {
+    const next = new URL(withMapCentreOf(shared, '/dashboard#orbital=25.1120,55.1390&view=full'));
+    assert.equal(next.search.includes('25.112') || next.search.includes('55.139'), false, next.search);
+    assert.equal(next.searchParams.get('layers'), 'fires');
   });
 });

@@ -209,6 +209,20 @@ export function withUrlFragment(url: string, hash: string): string {
   return next.toString();
 }
 
+const MAP_CENTRE_PARAMS = ['lat', 'lon', 'zoom'] as const;
+
+/** `url` with the map centre and zoom that `from` carries, or none if it carries none. */
+export function withMapCentreOf(url: string, from: string): string {
+  const next = new URL(url);
+  const previous = new URL(from, next).searchParams;
+  for (const key of MAP_CENTRE_PARAMS) {
+    const value = previous.get(key);
+    if (value === null) next.searchParams.delete(key);
+    else next.searchParams.set(key, value);
+  }
+  return next.toString();
+}
+
 /**
  * Layer sets are variant-specific. A same-origin variant switch reloads the
  * page, so the previous variant's `layers` param must not become a deep link

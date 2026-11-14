@@ -5261,6 +5261,7 @@
       "orbitAge": "بيانات مدار عمرها {{age}}",
       "edgeOfSwath": "حافة الشريط",
       "notInArchive": "لا توجد صورة في الأرشيف",
+      "archiveUnanswered": "لم يستجب الأرشيف",
       "imageAlt": "صورة {{name}}، {{time}}",
       "mosaicDays": "الأيام في الأرشيف: {{count}}",
       "cadence": "صورة جديدة كل {{minutes}} دقيقة",
@@ -5332,6 +5333,8 @@
         "overheadDef": "عبر السماء هنا دون دليل على التصوير.",
         "watchedShort": "صورة في أرشيف عام",
         "likelyShort": "مُغطّى، لا صورة بعد",
+        "likelyUnansweredDef": "غطّاه مستشعر ذو نطاق ثابت؛ لم يستجب أحد الأرشيفات، لذا قد توجد صورة.",
+        "likelyUnansweredShort": "مغطّى، لم يستجب الأرشيف",
         "couldShort": "مستشعر موجَّه في المدى",
         "overheadShort": "فوق النقطة، بلا صورة"
       },

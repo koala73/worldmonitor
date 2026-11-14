@@ -5149,6 +5149,7 @@
       "orbitAge": "Bahndaten {{age}} alt",
       "edgeOfSwath": "Rand des Aufnahmestreifens",
       "notInArchive": "Keine Aufnahme im Archiv",
+      "archiveUnanswered": "Archiv hat nicht geantwortet",
       "imageAlt": "Aufnahme von {{name}}, {{time}}",
       "mosaicDays": "Tage im Archiv: {{count}}",
       "cadence": "neues Bild alle {{minutes}} Min.",
@@ -5208,6 +5209,8 @@
         "overheadDef": "Hat den Himmel hier gekreuzt, ohne Bildnachweis.",
         "watchedShort": "Bild in einem öffentlichen Archiv",
         "likelyShort": "Erfasst, noch kein Bild",
+        "likelyUnansweredDef": "Ein Sensor mit fester Schwadbreite hat es erfasst; ein Archiv hat nicht geantwortet, daher kann es ein Bild geben.",
+        "likelyUnansweredShort": "Erfasst, Archiv antwortete nicht",
         "couldShort": "Schwenkbarer Sensor in Reichweite",
         "overheadShort": "Überflogen, kein Bild"
       },

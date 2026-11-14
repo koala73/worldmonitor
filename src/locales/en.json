@@ -4610,6 +4610,7 @@
       "orbitAge": "orbit data {{age}} old",
       "edgeOfSwath": "Edge of swath",
       "notInArchive": "No image in the archive",
+      "archiveUnanswered": "Archive didn't answer",
       "imageAlt": "{{name}} image, {{time}}",
       "mosaicDays": "Days in the archive: {{count}}",
       "cadence": "new frame every {{minutes}} min",
@@ -4667,6 +4668,8 @@
         "overheadDef": "Crossed the sky here, with no imaging evidence.",
         "watchedShort": "Image in a public archive",
         "likelyShort": "Covered, no image yet",
+        "likelyUnansweredDef": "A fixed-swath sensor covered it; an archive didn't answer, so an image may exist.",
+        "likelyUnansweredShort": "Covered, archive didn't answer",
         "couldShort": "Steerable sensor in reach",
         "overheadShort": "Overhead, no image"
       },

@@ -5177,6 +5177,7 @@
       "orbitAge": "données orbitales datant de {{age}}",
       "edgeOfSwath": "Bord de la fauchée",
       "notInArchive": "Aucune image dans l’archive",
+      "archiveUnanswered": "L'archive n'a pas répondu",
       "imageAlt": "Image de {{name}}, {{time}}",
       "mosaicDays": "Jours dans l’archive : {{count}}",
       "cadence": "nouvelle image toutes les {{minutes}} min",
@@ -5239,6 +5240,8 @@
         "overheadDef": "A traversé le ciel ici, sans preuve d’imagerie.",
         "watchedShort": "Image dans une archive publique",
         "likelyShort": "Couvert, pas encore d'image",
+        "likelyUnansweredDef": "Un capteur à fauchée fixe l'a couvert ; une archive n'a pas répondu, une image existe peut-être.",
+        "likelyUnansweredShort": "Couvert, l'archive n'a pas répondu",
         "couldShort": "Capteur orientable à portée",
         "overheadShort": "Survolé, sans image"
       },

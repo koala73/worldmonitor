@@ -5177,6 +5177,7 @@
       "orbitAge": "datos orbitales de hace {{age}}",
       "edgeOfSwath": "Borde de la franja",
       "notInArchive": "Sin imagen en el archivo",
+      "archiveUnanswered": "El archivo no respondió",
       "imageAlt": "Imagen de {{name}}, {{time}}",
       "mosaicDays": "Días en el archivo: {{count}}",
       "cadence": "nueva imagen cada {{minutes}} min",
@@ -5239,6 +5240,8 @@
         "overheadDef": "Cruzó el cielo aquí, sin evidencia de imagen.",
         "watchedShort": "Imagen en un archivo público",
         "likelyShort": "Cubierto, aún sin imagen",
+        "likelyUnansweredDef": "Un sensor de franja fija lo cubrió; un archivo no respondió, así que puede existir una imagen.",
+        "likelyUnansweredShort": "Cubierto, el archivo no respondió",
         "couldShort": "Sensor orientable a su alcance",
         "overheadShort": "Pasó encima, sin imagen"
       },

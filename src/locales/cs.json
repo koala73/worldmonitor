@@ -5205,6 +5205,7 @@
       "orbitAge": "orbitální data stará {{age}}",
       "edgeOfSwath": "Okraj záběru",
       "notInArchive": "Žádný snímek v archivu",
+      "archiveUnanswered": "Archiv neodpověděl",
       "imageAlt": "Snímek {{name}}, {{time}}",
       "mosaicDays": "Dní v archivu: {{count}}",
       "cadence": "nový snímek každých {{minutes}} min",
@@ -5270,6 +5271,8 @@
         "overheadDef": "Přešel zde oblohu, bez důkazu snímkování.",
         "watchedShort": "Snímek ve veřejném archivu",
         "likelyShort": "Pokryto, zatím bez snímku",
+        "likelyUnansweredDef": "Pokryl ho senzor s pevným záběrem; archiv neodpověděl, takže snímek může existovat.",
+        "likelyUnansweredShort": "Pokryto, archiv neodpověděl",
         "couldShort": "Natáčecí senzor v dosahu",
         "overheadShort": "Nad bodem, bez snímku"
       },

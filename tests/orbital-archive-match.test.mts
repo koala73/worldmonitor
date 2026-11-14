@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { assembleEvidence, compareBestView, describePointCondition, findArchiveEvidence, groupAcquisitions, type MatchedAcquisition } from '../src/services/orbital/match.ts';
-import { parseStacItem, searchStacArchive } from '../src/services/orbital/archive-stac.ts';
+import { parseStacItem, readPointCondition, searchStacArchive } from '../src/services/orbital/archive-stac.ts';
 import { searchGibsDailyMosaics } from '../src/services/orbital/archive-gibs.ts';
 import { searchEumetsatGeostationary } from '../src/services/orbital/archive-eumetsat.ts';
 import { requestArchive } from '../src/services/orbital/archive-result.ts';
@@ -179,6 +179,16 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.equal(result.status, 'ok');
     const terra = result.status === 'ok' ? result.items.find((row) => row.source === 'MODIS Terra') : undefined;
     assert.deepEqual(terra?.days.map((d) => d.date), ['2026-11-13']);
+  });
+
+  it('reads the point pixel in each scene\'s own grid, so a box near a pixel edge cannot land on its neighbour', async () => {
+    for (const feature of [...denver['planetary-computer'].features, ...dubai['planetary-computer'].features]) {
+      const item = parseStacItem('planetary-computer', feature as never);
+      if (!item?.classification) continue;
+      const urls: string[] = [];
+      await readPointCondition(item, dubai, { fetch: async (url: string) => { urls.push(url); return new Response('{"properties":{"statistics":{"b1":{"majority":4}}}}'); } });
+      assert.equal(new URL(urls[0]!).searchParams.get('dst_crs'), `epsg:${(feature.properties as Record<string, unknown>)['proj:epsg']}`, item.itemId);
+    }
   });
 
   it('reads "cloud at this spot" for a cloudy point in a mostly clear scene', async () => {
