@@ -237,14 +237,19 @@ test('lane 6: two replicas on one Redis leave one ok point per bin and skip bins
   const b = spawnRelay(redis, env);
   try {
     await Promise.all([a, b].map((r) => r.waitFor(() => r.output().includes('[AirTraffic] loop starting'), 'ready')));
-    const okLines = () => [...a.lines(), ...b.lines()].filter((line) => /status=ok/.test(line));
+    const loggedBins = () => new Set([...a.lines(), ...b.lines()].filter((line) => /status=ok/.test(line)).map((line) => line.match(/t=(\S+)/)[1]));
+    const bins = (points) => points.map((p) => new Date(p.t).toISOString());
     await a.waitFor(() => redis.points('2026-11-13').length >= 3, 'three bins', 20_000);
-    const points = redis.points('2026-11-13');
-    await a.waitFor(() => new Set(okLines().map((line) => line.match(/t=(\S+)/)[1])).size >= points.length, 'a log line for each stored bin');
-    assert.ok(points.every((p) => p.status === 'ok'), JSON.stringify(points.map((p) => p.status)));
-    const written = okLines().map((line) => line.match(/t=(\S+)/)[1]);
+    const snapshot = bins(redis.points('2026-11-13'));
+    await a.waitFor(() => snapshot.every((bin) => loggedBins().has(bin)), 'a log line for each stored bin');
+    // A replica logs a bin only after Redis stores it, so the logs read here
+    // are a subset of the points read after them, while the loops keep running.
+    const logged = loggedBins();
+    const stored = redis.points('2026-11-13');
+    assert.ok(stored.every((p) => p.status === 'ok'), JSON.stringify(stored.map((p) => p.status)));
+    assert.equal(new Set(bins(stored)).size, stored.length, 'one point per bin');
+    for (const bin of logged) assert.ok(bins(stored).includes(bin), `logged bin ${bin} is stored`);
     const skipped = [...a.lines(), ...b.lines()].filter((line) => /already recorded/.test(line));
-    assert.deepEqual([...new Set(written)].sort(), points.map((p) => new Date(p.t).toISOString()), 'the hash holds exactly one point for each bin a replica wrote');
     assert.ok(skipped.length >= 1, `a replica skips a bin the other already recorded\n${a.output()}\n${b.output()}`);
   } finally {
     await Promise.all([a.stop(), b.stop()]);
