@@ -82,7 +82,7 @@ describe('orbital image viewer', () => {
     await settle();
     expect(srcOf('img.oiv-image')).toBe(landsat.imageUrl);
     expect(viewerText()).toContain(IMAGE_CREDIT.usgs);
-    expect(viewer()!.querySelector('.oiv-north')!.getAttribute('aria-label')).toBe('North is up');
+    expect(viewer()!.querySelector('.oiv-north')!.getAttribute('aria-label')).toBe('North up');
   });
 
   it('offers a retry when the archive image fails, and paints it once the retry loads', async () => {
@@ -137,9 +137,8 @@ describe('orbital image viewer', () => {
     const radar = scene(40, null, { profileId: 'sentinel-1', platform: 'sentinel-1c', key: 'sentinel-1c:1:x' });
     open(selected, { searchHistory: history([selected]) }, [radar]);
     await settle();
-    showChange();
+    expect(viewer()!.querySelector('[data-mode="change"]'), 'a radar scene is no baseline for an optical one').toBeNull();
     expect(viewer()!.querySelector('.oiv-slider')).toBeNull();
-    expect(viewerText()).toContain('No other scene of this collection to compare with.');
 
     document.querySelector<HTMLButtonElement>('.oiv-close')!.click();
     open(selected, { searchHistory: history([selected, scene(20, 5)]) });
@@ -160,14 +159,14 @@ describe('orbital image viewer', () => {
     expect(viewer()!.querySelector('.oiv-north')).toBeNull();
     expect(viewer()!.querySelector('[data-mode="change"]')).toBeNull();
     expect(viewer()!.querySelector('[data-action="timelapse"]')).toBeNull();
-    expect(viewerText()).toContain('Orientation as delivered by the archive');
+    expect(viewerText()).toContain('Archive orientation; north not marked');
     expect(searchHistory).not.toHaveBeenCalled();
 
     document.querySelector<HTMLButtonElement>('.oiv-close')!.click();
     const earthSearchOnly = scene(40, 5, { key: 'sentinel-2c:1:es', imageUrl: preview('S2C_es') });
     open(scene(1, 5), { searchHistory: history([earthSearchOnly]) }, [earthSearchOnly]);
     await settle();
-    showChange();
+    expect(viewer()!.querySelector('[data-mode="change"]'), 'a whole-scene preview is no second scene').toBeNull();
     expect(viewer()!.querySelector('.oiv-slider')).toBeNull();
     expect(viewer()!.querySelector(`.oiv-date[data-key="${earthSearchOnly.key}"]`)).toBeNull();
   });
@@ -182,7 +181,7 @@ describe('orbital image viewer', () => {
       '10 M · 24 h ago · Clear',
     ]);
     const meta = Object.fromEntries([...viewer()!.querySelectorAll('.oiv-meta div')].map((cell) => [cell.querySelector('dt')!.textContent, cell.querySelector('dd')!.textContent]));
-    expect(meta).toMatchObject({ Pixel: '10M', 'Scene cloud': '5%', 'Sun elevation': '40°' });
+    expect(meta).toMatchObject({ Pixel: '10M', 'Scene cloud': '5%', 'Sun elev.': '40°' });
   });
 
   it('defaults the compare picker to the nearest clear scene at least 30 days away', async () => {
@@ -215,7 +214,7 @@ describe('orbital image viewer', () => {
     const dates = () => [...viewer()!.querySelectorAll<HTMLElement>('.oiv-date')].map((date) => date.dataset.key);
     expect(dates()).toEqual([hazy.key, clear.key]);
     const toggle = viewer()!.querySelector<HTMLButtonElement>('[data-action="show-cloudy"]')!;
-    expect(toggle.textContent).toBe('Show cloudy dates (3)');
+    expect(toggle.textContent).toBe('Include cloudy dates (3)');
     toggle.click();
     expect(dates()).toEqual([...cloudy, hazy, clear].map((s) => s.key));
     expect(viewer()!.querySelector('[data-action="show-cloudy"]')!.getAttribute('aria-pressed')).toBe('true');
@@ -233,11 +232,11 @@ describe('orbital image viewer', () => {
     showChange();
     const status = () => viewer()!.querySelector('.oiv-compare [role="status"]')!.textContent;
     expect(viewer()!.querySelector('.oiv-slider')).toBeNull();
-    expect(status()).toBe('Loading frames: 0 of 2');
+    expect(status()).toBe('Frames loaded: 0 of 2');
     pending.get(selected.imageUrl!)!();
     await settle();
     expect(viewer()!.querySelector('.oiv-slider')).toBeNull();
-    expect(status()).toBe('Loading frames: 1 of 2');
+    expect(status()).toBe('Frames loaded: 1 of 2');
     pending.get(other.imageUrl!)!();
     await settle();
     expect(srcOf('.oiv-before')).toBe(other.imageUrl);
@@ -264,8 +263,9 @@ describe('orbital image viewer', () => {
     expect(pressed()).toBe(recentClear.key);
   });
 
-  it('keeps Escape working after the focused tab is replaced', () => {
-    open(scene(1, 5), { searchHistory: history([]) });
+  it('keeps Escape working after the focused tab is replaced', async () => {
+    open(scene(1, 5), { searchHistory: history([scene(1, 5), scene(40, 3)]) });
+    await settle();
     const tab = viewer()!.querySelector<HTMLButtonElement>('[data-mode="change"]')!;
     tab.focus();
     tab.click();
@@ -278,8 +278,8 @@ describe('orbital image viewer', () => {
     const searchHistory = vi.fn(async (): Promise<SceneHistory> => ({ status: 'failed', failure: { archive: 'planetary-computer', reason: 'timeout' } }));
     open(scene(1, 5), { searchHistory });
     await settle();
-    expect(viewerText()).toContain('Microsoft Planetary Computer did not answer in time, so earlier scenes are missing.');
-    expect(viewerText()).not.toContain('No other scene of this collection');
+    expect(viewerText()).toContain('Microsoft Planetary Computer timed out; older scenes are missing.');
+    expect(viewer()!.querySelector('[data-mode="change"]'), 'no second scene yet').toBeNull();
     searchHistory.mockResolvedValueOnce({ status: 'ok', scenes: [scene(1, 5), scene(40, 3)] });
     viewer()!.querySelector<HTMLButtonElement>('[data-action="retry-history"]')!.click();
     await settle();
@@ -292,10 +292,8 @@ describe('orbital image viewer', () => {
     const selected = scene(1, 5);
     open(selected, { searchHistory: history([selected, scene(40, 3, { imageUrl: 'https://evil.example/x.png' })]) });
     await settle();
-    showChange();
-    await settle();
     expect([...document.querySelectorAll('img')].every((img) => new URL(sourceOf(img.getAttribute('src'))!).hostname === 'planetarycomputer.microsoft.com')).toBe(true);
-    expect(viewerText()).toContain('No other scene of this collection to compare with.');
+    expect(viewer()!.querySelector('[data-mode="change"]'), 'an image off the allowlist is no second scene').toBeNull();
   });
 });
 
@@ -352,16 +350,15 @@ describe('viewer images and the point', () => {
 });
 
 describe('opening the viewer from the lookup sheet', () => {
-  it('opens from a pass row image, and Escape closes only the viewer and returns focus to that row', async () => {
+  it('opens from the latest image, and Escape closes only the viewer and returns focus to that image', async () => {
     const acquisition = scene(2, 5);
     const evidence: OrbitalEvidence = { passes: [], acquisitions: [acquisition], mosaics: [], frames: [], bestView: acquisition, status: 'complete', failures: [], unansweredProfiles: [] };
     const page = new OrbitalWatchPage({ onClose: vi.fn(), onRetry: vi.fn() });
-    page.open(point, null, 'full');
+    page.open(point, null);
     page.render({ kind: 'passes', lookup: { point, window: { startMs: NOW - 30 * DAY, endMs: NOW + 2 * DAY }, nowMs: NOW, catalog: { status: 'fresh', fetchedAt: NOW, inventoryVersion: 't' }, passes: [], satellites: [], daylight: [], computedOn: 'worker' }, archives: { kind: 'answered', evidence } });
     expect(subjectForImage(evidence, { kind: 'acquisition', key: acquisition.key }, { point, nowMs: NOW })!.selected.imageUrl).toBe(acquisition.imageUrl);
 
-    const trigger = document.querySelector<HTMLButtonElement>('.ow-row [data-action="view-image"]')!;
-    const row = trigger.closest<HTMLElement>('.ow-row')!;
+    const trigger = document.querySelector<HTMLButtonElement>('[data-section="latest"] [data-action="view-image"]')!;
     trigger.click();
     await vi.waitFor(() => expect(viewer()).not.toBeNull());
     expect(document.activeElement).toBe(viewer());
@@ -369,7 +366,7 @@ describe('opening the viewer from the lookup sheet', () => {
     viewer()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(viewer()).toBeNull();
     expect(page.isOpen).toBe(true);
-    expect(document.activeElement).toBe(row);
+    expect(document.activeElement).toBe(trigger);
     page.close();
   });
 
@@ -380,7 +377,7 @@ describe('opening the viewer from the lookup sheet', () => {
     const page = new OrbitalWatchPage({ onClose: vi.fn(), onRetry: vi.fn() });
     page.open(point, null);
     page.render(state(point));
-    document.querySelector<HTMLButtonElement>('.ow-card [data-action="view-image"]')!.click();
+    document.querySelector<HTMLButtonElement>('[data-section="latest"] [data-action="view-image"]')!.click();
     page.close();
     const elsewhere = { lat: 48.85, lon: 2.35 };
     page.open(elsewhere, null);
@@ -397,8 +394,8 @@ describe('opening the viewer from the lookup sheet', () => {
     const page = new OrbitalWatchPage({ onClose: vi.fn(), onRetry: vi.fn() });
     page.open(point, null);
     page.render({ kind: 'passes', lookup: { point, window: { startMs: NOW - 30 * DAY, endMs: NOW + 2 * DAY }, nowMs: NOW, catalog: { status: 'fresh', fetchedAt: NOW, inventoryVersion: 't' }, passes: [], satellites: [], daylight: [], computedOn: 'worker' }, archives: { kind: 'answered', evidence } });
-    await vi.waitFor(() => expect(document.querySelector('.ow-card .ow-tile img[src^="blob:"]')).not.toBeNull());
-    document.querySelector<HTMLButtonElement>('.ow-card [data-action="view-image"]')!.click();
+    await vi.waitFor(() => expect(document.querySelector('[data-section="latest"] .ow-tile img[src^="blob:"]')).not.toBeNull());
+    document.querySelector<HTMLButtonElement>('[data-section="latest"] [data-action="view-image"]')!.click();
     await vi.waitFor(() => expect(viewer()).not.toBeNull());
     await vi.waitFor(() => expect(sourceOf(viewer()!.querySelector('img.oiv-image')?.getAttribute('src') ?? null)).toBe(acquisition.imageUrl));
     expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === acquisition.imageUrl), 'the viewer reuses the sheet\'s copy').toHaveLength(1);
