@@ -619,3 +619,9 @@
 @media (min-width: 769px) {
   .ies-panel { top: var(--ies-top, 0); right: var(--ies-right, 0); bottom: var(--ies-bottom, 0); }
 }
+
+/* A phone scrolls the hourly timeline sideways; OrbitalTimeline opens it at NOW. */
+@media (max-width: 768px) {
+  .ies-slot[data-slot="timeline"] { overflow-x: auto; }
+  .ies-slot[data-slot="timeline"] .ow-timeline { min-width: 640px; }
+}
