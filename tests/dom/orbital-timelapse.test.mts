@@ -90,7 +90,7 @@ describe('yearly looks', () => {
         return paintOf(url);
       });
       await vi.advanceTimersByTimeAsync(IMAGE_LOAD_TIMEOUT_MS);
-      await expect(done).resolves.toEqual([]);
+      await expect(done).resolves.toEqual({ frames: [], failures: [] });
     } finally {
       vi.useRealTimers();
     }
@@ -204,6 +204,18 @@ describe('orbital time-lapse page', () => {
     open({ searchLooks: async (...args: Parameters<typeof few>) => ({ ...(await few(...args)), failures: [{ archive: 'planetary-computer', reason: 'timeout' }] as never }) });
     await vi.waitFor(() => expect(page()!.querySelector('[data-timelapse="insufficient"]')).not.toBeNull());
     expect(text()).toContain('Missing years because Microsoft Planetary Computer did not answer: 1.');
+    expect(page()!.querySelector('[data-timelapse="insufficient"] [data-action="retry"]')).not.toBeNull();
+  });
+
+  it('keeps a retry when the archive found the looks but did not deliver enough of them', async () => {
+    const { ArchiveImageError } = await import('@/services/orbital/archive-image');
+    const loadImage: TimelapseDependencies['loadImage'] = async (archive, url) => {
+      if (!url.includes('2024') && !url.includes('2025')) throw new ArchiveImageError({ archive, reason: 'timeout' });
+      return paintOf(url);
+    };
+    open({ searchLooks: looks(years(2020, 2025)), loadImage });
+    await vi.waitFor(() => expect(page()!.querySelector('[data-timelapse="insufficient"]')).not.toBeNull());
+    expect(text()).toContain('Missing years because Microsoft Planetary Computer did not answer: 4.');
     expect(page()!.querySelector('[data-timelapse="insufficient"] [data-action="retry"]')).not.toBeNull();
   });
 

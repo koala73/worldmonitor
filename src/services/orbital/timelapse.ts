@@ -1,5 +1,5 @@
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
-import { loadArchiveImage, type LoadedArchiveImage } from './archive-image';
+import { ArchiveImageError, loadArchiveImage, type LoadedArchiveImage } from './archive-image';
 import type { ArchiveFailure, ArchiveId, ArchiveRequestOptions } from './archive-result';
 import { searchStacArchive, type ImagingProfileId, type StacArchiveId } from './archive-stac';
 import { cropBox, planetaryComputerCropUrl } from './crop-url';
@@ -116,7 +116,7 @@ export const loadImageElement = (url: string, signal: AbortSignal, options: { re
 /** Loads an archive image as a URL that carries no point, a `blob:` URL for a crop around it. */
 export const loadPaintableImage: LoadImage = async (archive, url, signal) => {
   const result = await loadArchiveImage(archive, [url], { signal, timeoutMs: IMAGE_LOAD_TIMEOUT_MS });
-  if (result.status === 'failed') throw new Error(`image failed: ${result.failure.reason}`);
+  if (result.status === 'failed') throw new ArchiveImageError(result.failure);
   return result.image;
 };
 
@@ -136,19 +136,24 @@ export const loadLookImage: LoadImage = withPointData(loadPaintableImage);
 
 export type PaintedFrame<T> = T & { paint: LoadedArchiveImage };
 
-/** Loads every frame before playback; a frame that fails is dropped and the rest keep their order. Aborting releases what loaded. */
+/**
+ * Loads every frame before playback; a frame that fails is dropped and the rest keep their order.
+ * `failures` lists the frames the archive did not deliver, so the caller can offer a retry. Aborting releases what loaded.
+ */
 export async function preloadFrames<T extends { imageUrl: string | null }>(
   frames: readonly T[],
   archive: ArchiveId,
   signal: AbortSignal,
   onProgress: (loaded: number, total: number) => void = () => {},
   loadImage: LoadImage = loadLookImage,
-): Promise<PaintedFrame<T>[]> {
+): Promise<{ frames: PaintedFrame<T>[]; failures: ArchiveFailure[] }> {
   let settled = 0;
+  const failures: ArchiveFailure[] = [];
   const outcomes = await Promise.all(frames.map(async (frame) => {
     try {
       return await loadImage(archive, frame.imageUrl!, signal);
-    } catch {
+    } catch (error) {
+      if (error instanceof ArchiveImageError && error.failure.reason !== 'aborted') failures.push(error.failure);
       return null;
     } finally {
       settled++;
@@ -157,9 +162,9 @@ export async function preloadFrames<T extends { imageUrl: string | null }>(
   }));
   if (signal.aborted) {
     for (const paint of outcomes) paint?.release();
-    return [];
+    return { frames: [], failures: [] };
   }
-  return frames.flatMap((frame, i) => (outcomes[i] ? [{ ...frame, paint: outcomes[i] }] : []));
+  return { frames: frames.flatMap((frame, i) => (outcomes[i] ? [{ ...frame, paint: outcomes[i] }] : [])), failures };
 }
 
 /** The first year Sentinel-2 imaged anywhere. */
