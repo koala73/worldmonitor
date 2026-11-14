@@ -444,7 +444,7 @@ export class OrbitalImageViewer {
     const pickedKey = this.compareKey;
     const hidden = this.hiddenCloudyCount;
     return [
-      h('p', { className: 'oiv-label', style: 'margin: 0 0 8px; color: var(--oiv-dim)' }, t('orbitalWatch.viewer.compareDates')),
+      h('p', { className: 'oiv-label oiv-side-label' }, t('orbitalWatch.viewer.compareDates')),
       others.length > 0
         ? h('ul', { className: 'oiv-dates', role: 'group', 'aria-label': t('orbitalWatch.viewer.compareDates') }, ...others.map((scene) => h('li', null, h('button', {
           type: 'button',
