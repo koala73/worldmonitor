@@ -10,8 +10,13 @@
  *
  * So for ChatGPT the server hides `start_upgrade` (it returns a checkout link),
  * drops the checkout hint from denials and rewrites their copy to state the
- * plan fact. Plan gating, limits and the plans page link (`upgradeUrl`, /pro)
- * stay the same. Every other client keeps the in-flow upgrade from #9144.
+ * plan fact. Plan gating and limits stay the same. Every other client keeps the
+ * in-flow upgrade from #9144.
+ *
+ * OpenAI's review on 2026-11-13 still rejected the app for facilitating
+ * commerce in digital services, so ChatGPT also loses the plans page link
+ * (`upgradeUrl`), the API-plan billing wording in tool descriptions and
+ * schemas, and the call-weight metadata (chatgpt-copy.ts).
  */
 
 import { START_UPGRADE_TOOL } from './checkout';
@@ -19,13 +24,14 @@ import { INFORM_ONLY_MESSAGES, informOnlyNextStep, type McpDenialReason } from '
 
 /**
  * ChatGPT sends `openai-mcp/<version>` on every MCP request, plain or followed
- * by ` (ChatGPT)`. The Codex CLI sends the same product token followed by
- * ` (Codex)`; it is not a ChatGPT app surface, so it keeps the default.
- * Observed in wm_api_usage over 2026-10-03..2026-11-02.
+ * by ` (ChatGPT)`. The same product token followed by ` (Codex)` (the Codex
+ * CLI) or ` (Responses API)` (a developer's MCP tool on OpenAI's API) is not a
+ * ChatGPT app surface, so it keeps the default.
+ * Observed in wm_api_usage over 2026-07-01..2026-11-13.
  */
 export function isChatGptHost(req: Request): boolean {
   const userAgent = req.headers.get('User-Agent') ?? '';
-  return /^openai-mcp\//i.test(userAgent) && !/\(codex\)/i.test(userAgent);
+  return /^openai-mcp\//i.test(userAgent) && !/\((?:codex|responses api)\)/i.test(userAgent);
 }
 
 /**
@@ -194,8 +200,22 @@ export async function applyViewDomainPolicy(req: Request, method: string, res: R
   return new Response(body, { status: res.status, statusText: res.statusText, headers });
 }
 
-/** Tools a ChatGPT request never sees or reaches. */
-export const CHATGPT_HIDDEN_TOOLS: ReadonlySet<string> = new Set([START_UPGRADE_TOOL]);
+/**
+ * Tools a ChatGPT request never sees or reaches: the checkout tool, and the
+ * tools whose output summarizes, translates or interprets third-party
+ * headlines (OpenAI's 2026-11-13 review; see chatgpt-news.ts for the headline
+ * results).
+ */
+export const CHATGPT_HIDDEN_TOOLS: ReadonlySet<string> = new Set([
+  START_UPGRADE_TOOL,
+  'get_world_brief',
+  'get_country_brief',
+  'analyze_news_headlines',
+  // Machine-translated headlines and a model's reading of their framing.
+  'get_media_perspective',
+  // A narrative and ai_context block built over headlines.
+  'get_focal_points',
+]);
 
 const DENIAL_REASONS: ReadonlySet<string> = new Set<McpDenialReason>([
   'no-account',
@@ -221,6 +241,7 @@ function rewriteError(message: unknown): boolean {
   });
   delete data.recommendedPlan;
   delete data.checkoutTool;
+  delete data.upgradeUrl;
   if (typeof err.message === 'string') err.message = INFORM_ONLY_MESSAGES.get(err.message) ?? err.message;
   return true;
 }

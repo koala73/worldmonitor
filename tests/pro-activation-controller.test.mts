@@ -563,19 +563,19 @@ describe('ProActivationController power-step surface wiring', () => {
     features: Record<string, unknown>,
   ): Promise<{
     options: Record<string, unknown>;
-    settingsOpens: string[];
+    settingsOpens: Array<string | undefined>;
     searchOpens: string[];
   }> {
     installBrowserState();
     installEligibleMarkerlessAccount(userId, features);
     const { ProActivationController } = await loadController();
-    const settingsOpens: string[] = [];
+    const settingsOpens: Array<string | undefined> = [];
     const searchOpens: string[] = [];
     const ctx = {
       isDestroyed: false,
       isDesktopApp: false,
       container: { dispatchEvent() {} },
-      unifiedSettings: { open: (tab: string) => settingsOpens.push(tab) },
+      unifiedSettings: { open: (section?: string) => settingsOpens.push(section) },
     };
     const controller = new ProActivationController(ctx as never, {
       reloadPending: false,
@@ -656,8 +656,8 @@ describe('ProActivationController power-step surface wiring', () => {
     (options.openMcpClients as () => void)();
     assert.deepEqual(
       settingsOpens,
-      ['settings'],
-      'a lapsed mcpAccess must land on a rendered tab, not the vanished MCP panel',
+      [undefined],
+      'a lapsed mcpAccess must open the settings home list, not deep-link to MCP',
     );
   });
 

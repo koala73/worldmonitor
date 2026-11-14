@@ -102,7 +102,7 @@ const FINANCE_FEEDS: Record<string, Feed[]> = browserFeeds('finance');
 
 const HAPPY_FEEDS: Record<string, Feed[]> = browserFeeds('happy');
 
-// Commodity variant feeds (from commodity.ts)
+// Commodity variant feeds
 const COMMODITY_FEEDS: Record<string, Feed[]> = browserFeeds('commodity');
 
 // Energy variant feeds — energy.worldmonitor.app

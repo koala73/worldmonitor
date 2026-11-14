@@ -19,6 +19,7 @@ import {
 import {
   SENSITIVE_URL_PARAM_RE,
   redactSensitiveUrl,
+  scrubSentryCredentials,
   urlCarriesSensitiveParams,
 } from '../shared/sensitive-url-params.ts';
 
@@ -152,5 +153,33 @@ describe('one sensitive-param list for every telemetry vendor', () => {
       assert.match(read(rel), /sensitive-url-params/, `${rel} must use the shared list`);
     }
     assert.ok(SENSITIVE_URL_PARAM_RE.test('__clerk_db_jwt'));
+  });
+});
+
+describe('the orbital lookup route', () => {
+  const href = 'https://www.worldmonitor.app/?lat=20&lon=50#orbital=25.1120,55.1390&view=full';
+
+  it('holds DebugBear while the fragment names a point', () => {
+    assert.equal(urlCarriesSensitiveParams(href), true);
+    assert.equal(urlCarriesSensitiveParams('https://www.worldmonitor.app/?lat=20&lon=50#view=full'), false);
+  });
+
+  it('drops the point from analytics and Sentry URLs and keeps the view', () => {
+    const redacted = redactAnalyticsUrl({ type: 'pageview', url: href }).url;
+    assert.equal(redacted.includes('25.112'), false, redacted);
+    assert.equal(new URL(redacted).hash, '#view=full');
+    const breadcrumb = scrubSentryCredentials({ category: 'navigation', data: { from: '/?lat=20&lon=50', to: '/?lat=20&lon=50#orbital=25.1120,55.1390&view=full' }, message: href });
+    assert.equal(JSON.stringify(breadcrumb).includes('55.139'), false, JSON.stringify(breadcrumb));
+    const fragmentField = scrubSentryCredentials({ 'url.fragment': '#orbital=25.1120,55.1390' });
+    assert.equal(JSON.stringify(fragmentField).includes('25.112'), false);
+  });
+
+  it('drops the point from the Umami page and referrer URLs', () => {
+    // Umami's beforeSend hook passes url and referrer through redactSensitiveUrl.
+    for (const raw of [href, '/?lat=20&lon=50#orbital=25.1120,55.1390&view=full']) {
+      const redacted = redactSensitiveUrl(raw, 'https://www.worldmonitor.app');
+      assert.equal(/25\.11|55\.13/.test(redacted), false, redacted);
+    }
+    assert.match(read('src/services/analytics.ts'), /for \(const field of \['url', 'referrer'\] as const\)[\s\S]*?redactSensitiveUrl\(raw, window\.location\?\.origin\)/);
   });
 });

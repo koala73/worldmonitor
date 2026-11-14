@@ -53,6 +53,7 @@ describe('scripts/shared/ stays in sync with shared/', () => {
   // client-only and intentionally NOT mirrored — grow this list only when a
   // new file is imported from `scripts/`.
   const explicitMirroredFiles = new Set([
+    'grid-disruption-clock.js',
     'brief-llm-core.js',
     'brief-llm-core.d.ts',
     'correlation-runtime-mode.js',

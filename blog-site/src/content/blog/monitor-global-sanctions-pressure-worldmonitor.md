@@ -1,6 +1,6 @@
 ---
 title: "Sanctions Monitoring: Designations and Country Pressure in Real Time"
-description: "WorldMonitor tracks OFAC SDN and consolidated designations, computes per-country sanctions pressure, and folds exposure into country risk — on the map and via API."
+description: "WorldMonitor tracks OFAC SDN and consolidated designations, computes country sanctions pressure, and folds exposure into country risk on the map and via API."
 metaTitle: "Real-Time Sanctions Monitoring | WorldMonitor"
 keywords: "sanctions tracking tool, OFAC SDN list monitoring, sanctions dashboard, country sanctions exposure, sanctions data API, sanctions pressure score"
 audience: "Compliance analysts, trade and export teams, risk researchers, macro analysts, journalists"

@@ -21,8 +21,8 @@ assert.ok(send);
 const helpers = file.statements.slice(0, file.statements.indexOf(mount)).filter(node => !ts.isImportDeclaration(node) && !ts.isExpressionStatement(node)).map(node => node.getText(file));
 const diagnosticNames = ['connection', 'contextGeneration', 'contextClosed', 'contextStatus', 'negotiationState', 'initialization'];
 const diagnosticDeclarations = mount.body.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(item => diagnosticNames.includes(item.name.getText(file))));
-const listener = mount.body.statements.find(node => ts.isExpressionStatement(node) && node.getText(file).startsWith("window.addEventListener('message'"));
-const receiver = listener.expression.arguments[1].body.statements.slice(0, 3).map(node => node.getText(file)).join('\n');
+const listener = mount.body.statements.find(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(item => item.name.getText(file) === 'onHostMessage'));
+const receiver = listener.declarationList.declarations[0].initializer.body.statements.slice(0, 3).map(node => node.getText(file)).join('\n');
 const observer = mount.body.statements.filter(node => node.getText(file).startsWith('const mutation =') || node.getText(file).startsWith('mutation.observe(') || node.getText(file).startsWith('panel.onClose(') || node.getText(file).startsWith("window.addEventListener('pagehide'"));
 const startupFailure = mount.body.statements.find(node => node.getText(file).startsWith('void start().catch')).expression.expression.arguments[0].getText(file);
 const program = ts.transpileModule([...helpers, send.getText(file), ...diagnosticDeclarations.map(node => node.getText(file)), ...selected.map(node => node.getText(file)), ...observer.map(node => node.getText(file)), `this.api = { snapshot, scheduleContext, request, boundedChinaContext, start, open, receive(event) { ${receiver} }, startupFailure: ${startupFailure} };`].join('\n'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
@@ -94,7 +94,7 @@ function harness({ country = 'CN', visible = true, capability = true } = {}) {
     modelContextRoot: root, translate: key => key.split('.').at(-1),
     status: doc.getElementById('countryStatus'), input: doc.querySelector('input'),
     panel: { getCode: () => state.country, getName: () => state.name, isVisible: () => state.visible, getAtlasSelection: () => state.atlas, getSignalCounts: () => null, getQualifiedCountrySignals: () => null, clearQualifiedCountrySignals() {}, onClose: callback => { state.close = callback; }, hide: () => { state.visible = false; } },
-    ready: true, toolsAvailable: false, linksAvailable: false, queuedView: undefined, openRequest: undefined,
+    channel: undefined, ready: true, toolsAvailable: false, linksAvailable: false, queuedView: undefined, openRequest: undefined,
     admissions: new Map(), assessments: new Map(), assessmentTimes: new Map(), coverages: new Map(),
     source: { clearLoadedData() {} }, controller: { dispose() {} }, timeline: undefined, signalSlots: undefined,
     countryViewSchema: { parse: value => value }, panelAdmissionSchema: { safeParse: () => ({ success: false }) },

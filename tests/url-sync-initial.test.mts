@@ -69,8 +69,17 @@ describe('setupUrlStateSync consults the predicate', () => {
     const source = readFileSync(resolve(import.meta.dirname, '../src/app/event-handlers.ts'), 'utf8');
     assert.match(
       source,
-      /history\.replaceState\(history\.state, '', withUrlFragment\(shareUrl, window\.location\.hash\)\)/,
+      /history\.replaceState\(history\.state, '', withUrlFragment\(url, window\.location\.hash\)\)/,
       'dropping the fragment sends the resumed sign-up card off #/verify-email-address (#8577)',
+    );
+  });
+
+  it('keeps the pre-lookup centre while a satellite lookup owns the map', () => {
+    const source = readFileSync(resolve(import.meta.dirname, '../src/app/event-handlers.ts'), 'utf8');
+    assert.match(
+      source,
+      /const url = isMapUrlCentreClaimed\(\) \? withMapCentreOf\(shareUrl, window\.location\.href\) : shareUrl;/,
+      'the lookup centres the map on the picked point, and URL-reading telemetry must not see it',
     );
   });
 });
