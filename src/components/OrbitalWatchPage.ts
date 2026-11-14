@@ -185,8 +185,6 @@ interface TileFallbacks {
   show: (index: number) => void;
   /** Where the point sits in the frame; a frame with no data there counts as missing, for archives that serve empty pixels for days not yet imaged. */
   noDataAt?: CropPosition;
-  /** Radar backscatter, drawn in greyscale so it never reads as a photo. */
-  radar?: boolean;
 }
 
 const NO_DATA_SAMPLE_PX = 32;
@@ -518,6 +516,8 @@ interface ThumbSpec {
   view: ViewableImage;
   fallbacks?: string[];
   noDataAt?: CropPosition;
+  /** Radar backscatter, drawn in greyscale so it never reads as a photo. */
+  radar?: boolean;
 }
 
 function thumbSpecs(confirmed: MatchedAcquisition[], latest: MatchedAcquisition | null, evidence: OrbitalEvidence | null): ThumbSpec[] {
