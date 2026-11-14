@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { initTestI18n } from './helpers/i18n.mts';
 
@@ -29,7 +29,15 @@ function item(startMs: number, cloudCoverPct: number | null, over: Partial<Archi
 
 const years = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => look(from + i));
 const looks = (list: YearlyLook[], failures: YearlyLooks['failures'] = []) => vi.fn(async (): Promise<YearlyLooks> => ({ looks: list, failures }));
-const loaded: TimelapseDependencies['loadImage'] = async () => {};
+/** Fake loads paint from `blob:test/<n>`, which `sourceOf` maps back to the archive URL. */
+const sources: string[] = [];
+const released = new Set<string>();
+const paintOf = (url: string) => {
+  const objectUrl = `blob:test/${sources.push(url) - 1}`;
+  return { objectUrl, index: 0, release: () => { released.add(objectUrl); } };
+};
+const sourceOf = (src: string | null) => (src?.startsWith('blob:test/') ? sources[Number(src.slice(10))]! : src);
+const loaded: TimelapseDependencies['loadImage'] = async (_archive, url) => paintOf(url);
 const page = () => document.querySelector<HTMLElement>('.otl-page');
 const text = () => page()?.textContent ?? '';
 const settle = async () => {
@@ -45,8 +53,15 @@ beforeAll(async () => {
   await initTestI18n();
 });
 
+beforeEach(() => {
+  sources.length = 0;
+  released.clear();
+});
+
 afterEach(() => {
   document.querySelector<HTMLButtonElement>('.oiv-close')?.click();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   document.body.replaceChildren();
   stac.search.mockReset();
   vi.useRealTimers();
@@ -70,7 +85,10 @@ describe('yearly looks', () => {
     vi.useFakeTimers();
     try {
       const frames = [{ imageUrl: 'https://planetarycomputer.microsoft.com/stall.png' }];
-      const done = preloadFrames(frames, new AbortController().signal, () => {}, loadImageElement);
+      const done = preloadFrames(frames, 'planetary-computer', new AbortController().signal, () => {}, async (_archive, url, signal) => {
+        await loadImageElement(url, signal);
+        return paintOf(url);
+      });
       await vi.advanceTimersByTimeAsync(IMAGE_LOAD_TIMEOUT_MS);
       await expect(done).resolves.toEqual([]);
     } finally {
@@ -135,26 +153,22 @@ describe('orbital time-lapse page', () => {
 
   it('advances a frame only after it has decoded, keeping the shown frame meanwhile', async () => {
     let release: (() => void) | null = null;
-    let preloaded = 0;
-    const loadImage: TimelapseDependencies['loadImage'] = () => {
-      preloaded += 1;
-      if (preloaded <= 4) return Promise.resolve();
-      return new Promise<void>((resolve) => { release = resolve; });
-    };
-    open({ searchLooks: looks(years(2015, 2018)), loadImage, prefersReducedMotion: () => true });
+    open({ searchLooks: looks(years(2015, 2018)), prefersReducedMotion: () => true });
     await vi.waitFor(() => expect(page()!.querySelector('[data-action="frame-next"]')).not.toBeNull());
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', { configurable: true, value: () => new Promise<void>((resolve) => { release = resolve; }) });
     page()!.querySelector<HTMLButtonElement>('[data-action="frame-next"]')!.click();
     await settle();
     expect(shownYear()).toBe('2015');
     const images = page()!.querySelectorAll<HTMLImageElement>('.oiv-stage .oiv-image');
     expect(images.length).toBe(1);
-    expect(images[0]!.getAttribute('src')).toBe(crop('S2_2015'));
+    expect(sourceOf(images[0]!.getAttribute('src'))).toBe(crop('S2_2015'));
     expect(images[0]!.classList.contains('oiv-pending')).toBe(false);
     expect(page()!.querySelector('.otl-stage-loading')!.textContent).toContain('2015');
     release!();
     await settle();
+    delete (HTMLImageElement.prototype as { decode?: unknown }).decode;
     expect(shownYear()).toBe('2016');
-    expect(page()!.querySelector<HTMLImageElement>('.oiv-image')!.getAttribute('src')).toBe(crop('S2_2016'));
+    expect(sourceOf(page()!.querySelector<HTMLImageElement>('.oiv-image')!.getAttribute('src'))).toBe(crop('S2_2016'));
   });
 
   it('keeps the decoded frame on screen when playback pauses', async () => {
@@ -172,7 +186,7 @@ describe('orbital time-lapse page', () => {
 
   it('gives reduced-motion users a stepper and leaves out looks that fail to load', async () => {
     const failing = crop('S2_2017');
-    open({ searchLooks: looks(years(2015, 2020)), prefersReducedMotion: () => true, loadImage: async (url) => { if (url === failing) throw new Error('x'); } });
+    open({ searchLooks: looks(years(2015, 2020)), prefersReducedMotion: () => true, loadImage: async (_archive, url) => { if (url === failing) throw new Error('x'); return paintOf(url); } });
     await vi.waitFor(() => expect(page()!.querySelector('.oiv-stage[data-timelapse="stepper"]')).not.toBeNull());
     expect(page()!.querySelector('[data-action="toggle"]')).toBeNull();
     expect(page()!.querySelectorAll('.otl-row')).toHaveLength(5);
@@ -220,7 +234,39 @@ describe('orbital time-lapse page', () => {
       page()!.querySelectorAll<HTMLButtonElement>('.otl-row')[i]?.click();
       await settle();
     }
-    expect([...document.querySelectorAll('img')].every((img) => new URL(img.src).hostname === 'planetarycomputer.microsoft.com')).toBe(true);
+    expect([...document.querySelectorAll('img')].every((img) => new URL(sourceOf(img.getAttribute('src'))!).hostname === 'planetarycomputer.microsoft.com')).toBe(true);
+  });
+
+  it('paints every look from a blob: URL and releases them on retry and on close', async () => {
+    const pointHost = /(^|\.)(planetarycomputer\.microsoft\.com|gibs\.earthdata\.nasa\.gov|view\.eumetsat\.int)$/;
+    const onPointHost = (src: string) => { try { return pointHost.test(new URL(src).hostname); } catch { return false; } };
+    vi.stubGlobal('fetch', vi.fn(async (input: string) => new Response(new Blob([new Uint8Array(sources.push(String(input)) - 1)], { type: 'image/png' }))));
+    vi.stubGlobal('createImageBitmap', async () => ({ close: () => {} }));
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => `blob:test/${(blob as Blob).size}`);
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation((url) => { released.add(url); });
+    const { loadPaintableImage } = await import('@/services/orbital/timelapse');
+    const searchLooks = vi.fn(async (): Promise<YearlyLooks> => ({ looks: years(2023, 2026), failures: [] }));
+    searchLooks.mockResolvedValueOnce({ looks: years(2024, 2026), failures: [{ archive: 'planetary-computer', reason: 'timeout' }] });
+    open({ searchLooks, loadImage: loadPaintableImage, prefersReducedMotion: () => true });
+    await vi.waitFor(() => expect(page()!.querySelector('[data-timelapse="insufficient"]')).not.toBeNull());
+    expect([...released].sort(), 'too few looks to play releases the ones that loaded').toEqual(['blob:test/0', 'blob:test/1', 'blob:test/2']);
+    page()!.querySelector<HTMLButtonElement>('[data-action="retry"]')!.click();
+    await vi.waitFor(() => expect(page()!.querySelector('[data-action="frame-next"]')).not.toBeNull());
+    const painted = new Set<string>();
+    for (let i = 0; i < 4; i += 1) {
+      const srcs = [...document.querySelectorAll('.otl-page img')].map((img) => img.getAttribute('src') ?? '');
+      expect(srcs.length).toBeGreaterThan(0);
+      for (const src of srcs) {
+        expect(src.startsWith('blob:') && !onPointHost(src), `no point-bearing URL in img src: ${src}`).toBe(true);
+        expect(released.has(src), 'a frame on screen is not released').toBe(false);
+        painted.add(src);
+      }
+      page()!.querySelector<HTMLButtonElement>('[data-action="frame-next"]')!.click();
+      await settle();
+    }
+    expect(painted.size).toBe(4);
+    document.querySelector<HTMLButtonElement>('.oiv-close')!.click();
+    expect([...painted].every((src) => released.has(src)), 'closing releases every frame').toBe(true);
   });
 
   it('closes on Escape and returns focus to the control that opened it', async () => {

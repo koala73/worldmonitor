@@ -239,7 +239,7 @@ function formatAge(days: number): string {
   return new Intl.NumberFormat(lang(), { style: 'unit', unit, unitDisplay: 'long' }).format(value);
 }
 
-function archiveHost(url: string | null): { name: string; id: ArchiveId } {
+export function archiveHost(url: string | null): { name: string; id: ArchiveId } {
   if (!url) return { name: '', id: 'earth-search' };
   try {
     const host = new URL(url).hostname;

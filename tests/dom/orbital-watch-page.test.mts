@@ -374,7 +374,7 @@ describe('satellite pass lookup sheet', () => {
     expect(open.dataset.imageKey).toBe(image.key);
     open.click();
     await vi.waitFor(() => expect(document.querySelector('.oiv-dialog')).not.toBeNull());
-    expect(document.querySelector('.oiv-dialog img.oiv-image')!.getAttribute('src')).toBe(image.imageUrl);
+    await vi.waitFor(() => expect(sourceOf(document.querySelector('.oiv-dialog img.oiv-image')?.getAttribute('src') ?? null)).toBe(image.imageUrl));
     document.querySelector('.oiv-dialog')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(document.activeElement).toBe(open);
     expect(page().slot('pass-detail').querySelector('.ow-detail')).not.toBeNull();

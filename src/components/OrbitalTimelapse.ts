@@ -1,8 +1,11 @@
 import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import type { ArchiveFailure } from '@/services/orbital/archive-result';
+import type { LoadedArchiveImage } from '@/services/orbital/archive-image';
 import {
   MIN_TIMELAPSE_FRAMES,
+  loadLookImage,
   preloadFrames,
+  type PaintedFrame,
   searchYearlyLooks,
   type LoadImage,
   type YearlyLook,
@@ -34,7 +37,7 @@ type PageState =
   | { kind: 'loading'; looks: YearlyLook[]; failures: ArchiveFailure[]; loaded: number }
   | { kind: 'failed'; failure: ArchiveFailure }
   | { kind: 'too-few'; count: number; failures: ArchiveFailure[] }
-  | { kind: 'ready'; frames: YearlyLook[]; failures: ArchiveFailure[]; index: number; playing: boolean };
+  | { kind: 'ready'; frames: PaintedFrame<YearlyLook>[]; failures: ArchiveFailure[]; index: number; playing: boolean };
 
 const FRAME_INTERVAL_MS = 1_000;
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -63,11 +66,13 @@ export class OrbitalTimelapsePage {
   private state: PageState = { kind: 'searching' };
   private stepping = false;
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** The loaded frames, kept while the page plays them in a loop and released when it closes or searches again. */
+  private held: LoadedArchiveImage[] = [];
 
   constructor(private readonly subject: TimelapseSubject, private readonly returnFocusTo: HTMLElement | null, deps: TimelapseDependencies = {}) {
     this.deps = {
       searchLooks: deps.searchLooks ?? searchYearlyLooks,
-      loadImage: deps.loadImage ?? ((url, signal) => import('@/services/orbital/timelapse').then((m) => m.loadLookImage(url, signal))),
+      loadImage: deps.loadImage ?? loadLookImage,
       prefersReducedMotion: deps.prefersReducedMotion ?? (() => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches),
     };
     const titleId = 'orbital-timelapse-title';
@@ -98,6 +103,7 @@ export class OrbitalTimelapsePage {
     if (!this.isOpen) return;
     this.controller.abort();
     this.stopTimer();
+    this.releaseHeld();
     this.root.remove();
     const target = this.returnFocusTo?.isConnected ? this.returnFocusTo : document.querySelector<HTMLElement>('.orbital-watch-sheet');
     target?.focus({ preventScroll: true });
@@ -105,6 +111,7 @@ export class OrbitalTimelapsePage {
 
   private async search(): Promise<void> {
     const { signal } = this.controller;
+    this.releaseHeld();
     this.state = { kind: 'searching' };
     this.render();
     let result: YearlyLooks;
@@ -124,13 +131,15 @@ export class OrbitalTimelapsePage {
     const looks = result.looks.filter((look) => look.imageUrl !== null && isAllowedPreviewUrl(look.imageUrl));
     this.state = { kind: 'loading', looks, failures, loaded: 0 };
     this.render();
-    const frames = await preloadFrames(looks, signal, (loaded) => {
+    const frames = await preloadFrames(looks, 'planetary-computer', signal, (loaded) => {
       if (this.state.kind !== 'loading') return;
       this.state = { ...this.state, loaded };
       this.render();
     }, this.deps.loadImage);
     if (signal.aborted) return;
+    this.held = frames.map((frame) => frame.paint);
     if (frames.length < MIN_TIMELAPSE_FRAMES) {
+      this.releaseHeld();
       this.state = { kind: 'too-few', count: frames.length, failures };
       this.render();
       return;
@@ -139,6 +148,11 @@ export class OrbitalTimelapsePage {
     this.state = { kind: 'ready', frames, failures, index: 0, playing };
     if (playing) this.startTimer();
     this.render();
+  }
+
+  private releaseHeld(): void {
+    for (const paint of this.held) paint.release();
+    this.held = [];
   }
 
   private render(): void {
@@ -246,31 +260,22 @@ export class OrbitalTimelapsePage {
     const frames = this.state.frames;
     const target = (index + frames.length) % frames.length;
     const frame = frames[target]!;
+    const next = frameImage(frame) as HTMLImageElement | null;
+    if (!next) return;
     this.stepping = true;
     try {
-      await this.deps.loadImage(frame.imageUrl!, this.controller.signal);
-    } catch {
-      return;
+      await (typeof next.decode === 'function' ? next.decode() : Promise.resolve()).catch(() => undefined);
     } finally {
       this.stepping = false;
     }
-    if (this.controller.signal.aborted || this.state.kind !== 'ready') return;
+    if (this.controller.signal.aborted || this.state.kind !== 'ready' || this.state.frames !== frames) return;
+    const loading = this.body.querySelector('.otl-stage-loading');
+    if (loading) loading.textContent = `${t('orbitalWatch.row.imageLoading')} ${frame.year} · ${platformName(frame)}`;
     this.state = { ...this.state, index: target };
     const image = this.body.querySelector<HTMLImageElement>('.oiv-image');
     if (!image) {
       this.render();
       return;
-    }
-    const next = frameImage(frame) as HTMLImageElement | null;
-    if (!next) return;
-    const loading = this.body.querySelector('.otl-stage-loading');
-    if (loading) loading.textContent = `${t('orbitalWatch.row.imageLoading')} ${frame.year} · ${platformName(frame)}`;
-    if (!next.complete) {
-      await new Promise<void>((resolve) => {
-        next.addEventListener('load', () => resolve(), { once: true });
-        next.addEventListener('error', () => resolve(), { once: true });
-      });
-      if (this.controller.signal.aborted || !image.isConnected) return;
     }
     next.classList.remove('oiv-pending');
     image.replaceWith(next);
@@ -371,11 +376,12 @@ export function reticle(): HTMLElement {
   return h('span', { className: 'oiv-reticle', 'aria-hidden': 'true' });
 }
 
-function frameImage(look: YearlyLook): DomChild {
+/** Paints the frame's loaded copy: its archive URL carries the point, and DebugBear reports the largest painted image's URL. */
+function frameImage(look: PaintedFrame<YearlyLook>): DomChild {
   if (!look.imageUrl || !isAllowedPreviewUrl(look.imageUrl)) return null;
   const image = h('img', {
     className: 'oiv-image',
-    src: look.imageUrl,
+    src: look.paint.objectUrl,
     alt: t('orbitalWatch.viewer.imageAlt', { name: platformName(look), time: `${dayMonth(look.timeMs)} ${look.year}` }),
     decoding: 'async',
     referrerpolicy: 'no-referrer',

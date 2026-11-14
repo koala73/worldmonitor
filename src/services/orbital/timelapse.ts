@@ -1,5 +1,6 @@
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
-import type { ArchiveFailure, ArchiveRequestOptions } from './archive-result';
+import { loadArchiveImage, type LoadedArchiveImage } from './archive-image';
+import type { ArchiveFailure, ArchiveId, ArchiveRequestOptions } from './archive-result';
 import { searchStacArchive, type ImagingProfileId, type StacArchiveId } from './archive-stac';
 import { cropBox, planetaryComputerCropUrl } from './crop-url';
 import { assembleEvidence, type MatchedAcquisition } from './match';
@@ -61,7 +62,8 @@ export function defaultCompareScene<T extends DatedScene>(selected: DatedScene, 
   return nearest(others.filter((scene) => isClearScene(scene) && gapMs(scene, selected) >= COMPARE_MIN_GAP_DAYS * DAY_MS)) ?? nearest(others);
 }
 
-export type LoadImage = (url: string, signal: AbortSignal) => Promise<void>;
+/** Loads an archive image for painting; rejects when it fails. */
+export type LoadImage = (archive: ArchiveId, url: string, signal: AbortSignal) => Promise<LoadedArchiveImage>;
 
 /** How long one archive image may take before it counts as failed. */
 export const IMAGE_LOAD_TIMEOUT_MS = 30_000;
@@ -111,29 +113,51 @@ export const loadImageElement = (url: string, signal: AbortSignal, options: { re
   image.src = url;
 });
 
-/** Loads a time-lapse frame, rejecting a crop with no pixels so playback never shows an empty square. */
-export const loadLookImage: LoadImage = (url, signal) => loadImageElement(url, signal, { requireData: true });
+/** Loads an archive image as a URL that carries no point, a `blob:` URL for a crop around it. */
+export const loadPaintableImage: LoadImage = async (archive, url, signal) => {
+  const result = await loadArchiveImage(archive, [url], { signal, timeoutMs: IMAGE_LOAD_TIMEOUT_MS });
+  if (result.status === 'failed') throw new Error(`image failed: ${result.failure.reason}`);
+  return result.image;
+};
 
-/** Loads every frame before playback; a frame that fails is dropped and the rest keep their order. */
+/** Loads a time-lapse frame, rejecting a crop with no pixels so playback never shows an empty square. */
+export const loadLookImage: LoadImage = async (archive, url, signal) => {
+  const image = await loadPaintableImage(archive, url, signal);
+  try {
+    await loadImageElement(image.objectUrl, signal, { requireData: true });
+    return image;
+  } catch (error) {
+    image.release();
+    throw error;
+  }
+};
+
+export type PaintedFrame<T> = T & { paint: LoadedArchiveImage };
+
+/** Loads every frame before playback; a frame that fails is dropped and the rest keep their order. Aborting releases what loaded. */
 export async function preloadFrames<T extends { imageUrl: string | null }>(
   frames: readonly T[],
+  archive: ArchiveId,
   signal: AbortSignal,
   onProgress: (loaded: number, total: number) => void = () => {},
   loadImage: LoadImage = loadLookImage,
-): Promise<T[]> {
+): Promise<PaintedFrame<T>[]> {
   let settled = 0;
   const outcomes = await Promise.all(frames.map(async (frame) => {
     try {
-      await loadImage(frame.imageUrl!, signal);
-      return true;
+      return await loadImage(archive, frame.imageUrl!, signal);
     } catch {
-      return false;
+      return null;
     } finally {
       settled++;
       if (!signal.aborted) onProgress(settled, frames.length);
     }
   }));
-  return frames.filter((_, i) => outcomes[i]);
+  if (signal.aborted) {
+    for (const paint of outcomes) paint?.release();
+    return [];
+  }
+  return frames.flatMap((frame, i) => (outcomes[i] ? [{ ...frame, paint: outcomes[i] }] : []));
 }
 
 /** The first year Sentinel-2 imaged anywhere. */

@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { initTestI18n } from './helpers/i18n.mts';
 
@@ -33,7 +33,16 @@ const meteosat: GeostationaryRow = {
 };
 
 const history = (scenes: MatchedAcquisition[]): ViewerDependencies['searchHistory'] => vi.fn(async (): Promise<SceneHistory> => ({ status: 'ok', scenes }));
-const loaded: ViewerDependencies['loadImage'] = async () => {};
+/** Fake loads paint from `blob:test/<n>`, which `sourceOf` maps back to the archive URL. */
+const sources: string[] = [];
+const released = new Set<string>();
+const paintOf = (url: string) => {
+  const objectUrl = `blob:test/${sources.push(url) - 1}`;
+  return { objectUrl, index: 0, release: () => { released.add(objectUrl); } };
+};
+const sourceOf = (src: string | null) => (src?.startsWith('blob:test/') ? sources[Number(src.slice(10))]! : src);
+const srcOf = (selector: string) => sourceOf(viewer()!.querySelector(selector)!.getAttribute('src'));
+const loaded: ViewerDependencies['loadImage'] = async (_archive, url) => paintOf(url);
 const viewer = () => document.querySelector<HTMLElement>('.oiv-dialog');
 const viewerText = () => viewer()?.textContent ?? '';
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -47,9 +56,21 @@ beforeAll(async () => {
   await initTestI18n();
 });
 
+beforeEach(() => {
+  sources.length = 0;
+  released.clear();
+  // The viewer's own loader fetches the image and paints it from an object URL named after its source.
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => new Response(new Blob([new Uint8Array(sources.push(String(input)) - 1)], { type: 'image/png' }))));
+  vi.stubGlobal('createImageBitmap', async () => ({ close: () => {} }));
+  vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => `blob:test/${(blob as Blob).size}`);
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation((url) => { released.add(url); });
+});
+
 afterEach(() => {
   document.querySelector<HTMLButtonElement>('.oiv-close')?.click();
   document.body.replaceChildren();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -58,7 +79,7 @@ describe('orbital image viewer', () => {
     const landsat = scene(3, 5, { profileId: 'landsat', platform: 'landsat-9', key: 'landsat-9:1:x' });
     open(landsat, { searchHistory: history([]) });
     await settle();
-    expect(viewer()!.querySelector('img.oiv-image')!.getAttribute('src')).toBe(landsat.imageUrl);
+    expect(srcOf('img.oiv-image')).toBe(landsat.imageUrl);
     expect(viewerText()).toContain(IMAGE_CREDIT.usgs);
     expect(viewer()!.querySelector('.oiv-north')!.getAttribute('aria-label')).toBe('North is up');
   });
@@ -154,11 +175,11 @@ describe('orbital image viewer', () => {
     await settle();
     const pressed = viewer()!.querySelector<HTMLElement>('.oiv-date[aria-pressed="true"]')!;
     expect(pressed.dataset.key).toBe(expected.key);
-    expect(viewer()!.querySelector('.oiv-before')!.getAttribute('src')).toBe(expected.imageUrl);
+    expect(srcOf('.oiv-before')).toBe(expected.imageUrl);
 
     viewer()!.querySelector<HTMLButtonElement>(`.oiv-date[data-key="${nearButRecent.key}"]`)!.click();
     await settle();
-    expect(viewer()!.querySelector('.oiv-before')!.getAttribute('src')).toBe(nearButRecent.imageUrl);
+    expect(srcOf('.oiv-before')).toBe(nearButRecent.imageUrl);
   });
 
   it('leaves dates over 30% cloud out of the compare list until cloudy dates are asked for', async () => {
@@ -184,7 +205,7 @@ describe('orbital image viewer', () => {
     const pending = new Map<string, () => void>();
     open(selected, {
       searchHistory: history([selected, other]),
-      loadImage: (url) => new Promise<void>((resolve) => pending.set(url, resolve)),
+      loadImage: (_archive, url) => new Promise((resolve) => pending.set(url, () => resolve(paintOf(url)))),
     });
     await settle();
     showChange();
@@ -197,8 +218,8 @@ describe('orbital image viewer', () => {
     expect(status()).toBe('Loading frames: 1 of 2');
     pending.get(other.imageUrl!)!();
     await settle();
-    expect(viewer()!.querySelector('.oiv-before')!.getAttribute('src')).toBe(other.imageUrl);
-    expect(viewer()!.querySelector('.oiv-after')!.getAttribute('src')).toBe(selected.imageUrl);
+    expect(srcOf('.oiv-before')).toBe(other.imageUrl);
+    expect(srcOf('.oiv-after')).toBe(selected.imageUrl);
     expect([...viewer()!.querySelectorAll('.oiv-chip')].map((chip) => chip.textContent)).toEqual(['8 OCT 2026', '12 NOV 2026']);
   });
 
@@ -251,8 +272,60 @@ describe('orbital image viewer', () => {
     await settle();
     showChange();
     await settle();
-    expect([...document.querySelectorAll('img')].every((img) => new URL(img.src).hostname === 'planetarycomputer.microsoft.com')).toBe(true);
+    expect([...document.querySelectorAll('img')].every((img) => new URL(sourceOf(img.getAttribute('src'))!).hostname === 'planetarycomputer.microsoft.com')).toBe(true);
     expect(viewerText()).toContain('No other scene of this collection to compare with.');
+  });
+});
+
+describe('viewer images and the point', () => {
+  const pointHost = /(^|\.)(planetarycomputer\.microsoft\.com|gibs\.earthdata\.nasa\.gov|view\.eumetsat\.int)$/;
+  const imageSrcs = () => [...document.querySelectorAll('.oiv-dialog img')].map((img) => img.getAttribute('src') ?? '');
+  const onPointHost = (src: string) => { try { return pointHost.test(new URL(src).hostname); } catch { return false; } };
+
+  it('paints the image and both compare sides from blob: URLs and releases them on a date change and on close', async () => {
+    const selected = scene(1, 5);
+    const first = scene(36, 4);
+    const second = scene(50, 2);
+    openOrbitalImageViewer({ point, nowMs: NOW, selected: sceneFromAcquisition(selected), scenes: [], historyProfile: 'sentinel-2' }, null, { searchHistory: history([selected, first, second]) });
+    await vi.waitFor(() => expect(imageSrcs()).toHaveLength(1));
+    expect(imageSrcs().every((src) => src.startsWith('blob:') && !onPointHost(src))).toBe(true);
+    expect(srcOf('img.oiv-image')).toBe(selected.imageUrl);
+
+    showChange();
+    await vi.waitFor(() => expect(viewer()!.querySelector('.oiv-slider')).not.toBeNull());
+    expect(imageSrcs()).toHaveLength(2);
+    expect(imageSrcs().every((src) => src.startsWith('blob:') && !onPointHost(src))).toBe(true);
+    const firstBlob = viewer()!.querySelector('.oiv-before')!.getAttribute('src')!;
+    expect(sourceOf(firstBlob)).toBe(first.imageUrl);
+
+    viewer()!.querySelector<HTMLButtonElement>(`.oiv-date[data-key="${second.key}"]`)!.click();
+    await vi.waitFor(() => expect(srcOf('.oiv-before')).toBe(second.imageUrl));
+    expect(imageSrcs().every((src) => src.startsWith('blob:') && !onPointHost(src))).toBe(true);
+    expect(released.has(firstBlob), 'the date left is released').toBe(true);
+    const shown = imageSrcs();
+    expect(shown.some((src) => released.has(src))).toBe(false);
+
+    document.querySelector<HTMLButtonElement>('.oiv-close')!.click();
+    expect(shown.every((src) => released.has(src)), 'closing releases every blob').toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('paints a weather frame only once loaded, and leaves no blob from a load that lands after close', async () => {
+    let finish: (() => void) | null = null;
+    vi.stubGlobal('fetch', vi.fn((input: string) => new Promise<Response>((resolve) => {
+      finish = () => resolve(new Response(new Blob([new Uint8Array(sources.push(String(input)) - 1)], { type: 'image/png' })));
+    })));
+    const viewerPage = openOrbitalImageViewer({ point, nowMs: NOW, selected: scenesFromFrame(meteosat)[0]!, scenes: [], historyProfile: null }, null, {});
+    await settle();
+    expect(imageSrcs()).toHaveLength(0);
+    expect(viewer()!.querySelector('.oiv-skeleton')).not.toBeNull();
+    viewerPage.close();
+    finish!();
+    await settle();
+    await settle();
+    const created = vi.mocked(URL.createObjectURL).mock.results.map((result) => result.value as string);
+    expect(created.every((src) => released.has(src)), 'a load that lands after close leaves no blob behind').toBe(true);
+    expect(imageSrcs()).toHaveLength(0);
   });
 });
 
@@ -304,7 +377,7 @@ describe('opening the viewer from the lookup sheet', () => {
     page.render({ kind: 'passes', lookup: { point, window: { startMs: NOW - 30 * DAY, endMs: NOW + 2 * DAY }, nowMs: NOW, catalog: { status: 'fresh', fetchedAt: NOW, inventoryVersion: 't' }, passes: [], satellites: [], computedOn: 'worker' }, archives: { kind: 'answered', evidence } });
     document.querySelector<HTMLButtonElement>('.ow-card [data-action="view-image"]')!.click();
     await vi.waitFor(() => expect(viewer()).not.toBeNull());
-    expect(viewer()!.querySelector('img.oiv-image')!.getAttribute('src')).toBe(acquisition.imageUrl);
+    await vi.waitFor(() => expect(sourceOf(viewer()!.querySelector('img.oiv-image')?.getAttribute('src') ?? null)).toBe(acquisition.imageUrl));
     page.close();
   });
 });

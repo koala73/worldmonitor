@@ -129,7 +129,18 @@ describe('a free lookup keeps the exact point to the archives', () => {
     const imageUrls = [...(history.status === 'ok' ? history.scenes.map((s) => s.imageUrl) : []), ...yearly.looks.map((look) => look.imageUrl)]
       .filter((url): url is string => Boolean(url));
     assert.ok(requests.length > 0);
-    for (const url of [...requests.map((r) => r.url), ...imageUrls]) assert.deepEqual(coordinatesIn(reportedName(url)), [], reportedName(url));
+    assert.ok(imageUrls.length > 0);
+    for (const { url } of requests) assert.deepEqual(coordinatesIn(reportedName(url)), [], reportedName(url));
+    // The viewer and time-lapse paint these crops from what loadArchiveImage returns, so the largest paint is a blob: URL.
+    for (const url of imageUrls) {
+      assert.ok(coordinatesIn(url).length > 0, 'a compare or time-lapse crop URL carries the point');
+      const loaded = await loadArchiveImage('planetary-computer', [url], { fetch: async () => new Response(new Blob([new Uint8Array(8)], { type: 'image/png' })) });
+      assert.equal(loaded.status, 'ok');
+      if (loaded.status !== 'ok') continue;
+      assert.match(loaded.image.objectUrl, /^blob:/, `${reportedName(url)} is painted from a blob: URL`);
+      assert.deepEqual(coordinatesIn(loaded.image.objectUrl), [], loaded.image.objectUrl);
+      loaded.image.release();
+    }
   });
 
   it('writes a point near zero in fixed decimals, and scrubs exponent-form coordinates too', async () => {
