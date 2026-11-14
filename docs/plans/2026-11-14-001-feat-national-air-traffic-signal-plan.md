@@ -133,7 +133,7 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 
 ## Alert on a US departure collapse (PR B)
 
-**Depends on.** PR A.
+**Depends on.** PR A. PR A's live series must also hold the OpenSky ground-stop evidence that Appendix A requires. Without it PR B does not start.
 
 **Files.**
 
@@ -147,7 +147,7 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 
 - [ ] Model the detector as a state machine with states `normal`, `collapsed`, and `insufficient-baseline`. Persist the state in `aviation:traffic:detector:v1`.
 - [ ] Baseline each bin as the median `usLowClimbing` at the same UTC bin on the last four same weekdays with `ok` points. Fewer than two such days puts the detector in `insufficient-baseline`, and it never alerts.
-- [ ] Enter `collapsed` when two consecutive `ok` points read below 30% of baseline while `euAirborne` is at least 80% of its own baseline and `usSeen` is at least 50% of its own baseline. Grounded aircraft stay visible at the hubs during a ground stop, so `usSeen` separates a traffic collapse from a US receiver outage. Leave it when two consecutive points read above 70%.
+- [ ] Enter `collapsed` when two consecutive `ok` points read below 30% of baseline while `euAirborne` is at least 80% of its own baseline and two coverage gates hold. `usSeen` is at least 50% of its own baseline, which catches a national receiver outage. At least 16 of the 20 hubs keep `air + ground` at or above 50% of their own baseline, which catches a regional outage around the departure airports that the national total hides. Grounded aircraft stay visible at the hubs during a ground stop, so both gates hold for a real collapse. PR B sets both 50% thresholds from the OpenSky evidence in Appendix A, not from these starting values. Leave it when two consecutive points read above 70%.
 - [ ] On entry, publish `aviation_traffic_collapse` with severity `critical`. On exit, publish the same type with severity `high` and a recovery title. Both payloads carry `countryCode` `US`, the ratio, and the onset bin.
 - [ ] Cover the new type in the payload audit and the country-scope test.
 
@@ -158,7 +158,7 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] `tests/air-traffic-detector.test.mjs` gains cases for each transition, a `gap` point inside the window, a Europe-control drop that blocks the alert, a `usSeen` drop that blocks the alert, and fewer than two baseline days. Run `node --test tests/air-traffic-detector.test.mjs`.
+- [ ] `tests/air-traffic-detector.test.mjs` gains cases for each transition, a `gap` point inside the window, a Europe-control drop that blocks the alert, a `usSeen` drop that blocks the alert, a hub-coverage drop with `usSeen` above 50% that blocks the alert, and fewer than two baseline days. Run `node --test tests/air-traffic-detector.test.mjs`.
 - [ ] `tests/air-traffic-detector-replay.test.mjs` replays committed 5-minute series derived from the adsb.lol archives for 2026-11-13 and 2026-11-06. Run `node --test tests/air-traffic-detector-replay.test.mjs`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `opus` at the PR head, per the boot recipe.
@@ -171,7 +171,7 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 - [ ] Lane 6. Replay with three `gap` points at 20:40Z to 20:50Z. Save `lane6-gaps.json`. Pass when the detector waits for two `ok` points before it enters `collapsed`.
 - [ ] Lane 7. Restart the relay at 20:45Z mid-replay. Save `lane7-restart.json`. Pass when exactly one critical event is queued across the restart.
 - [ ] Lane 8. Run the notification relay against the queued event with a US-scoped rule and a Europe-scoped rule. Save `lane8-delivery.json`. Pass when only the US-scoped rule matches.
-- [ ] Lane 9. Replay 2026-11-06 with every US state removed for 30 minutes and Europe unchanged. Save `lane9-us-receiver-loss.json`. Pass when nothing is queued and the log names the US coverage block.
+- [ ] Lane 9. Replay 2026-11-06 twice with Europe unchanged. First remove every US state for 30 minutes. Then remove only the states within 48 km of the 20 hubs for 30 minutes, which drops `usLowClimbing` below 30% while `usSeen` stays above 50%. Save `lane9-us-receiver-loss.json` with both runs. Pass when neither run queues anything and the log names the national coverage block for the first and the hub coverage block for the second.
 - [ ] Lane 10. Replay a single-bin dip to 10% that recovers in the next bin. Save `lane10-blip.json`. Pass when nothing is queued.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
@@ -202,7 +202,7 @@ The adsb.lol archive analysis on 2026-11-14 is the evidence for the signal. It r
 - Airline departures over CONUS fell from 106 to 20 per 5 minutes at 20:40Z on 2026-11-13. The previous Friday held between 102 and 136 for the same bins. The official ground stop started at 20:54Z.
 - Airline aircraft airborne over CONUS fell to 0.14 of the previous Friday by 23:45Z, while the Europe control region stayed between 0.85 and 1.0.
 
-Three questions stay unproven. Third, whether `usSeen` holds at least 50% of baseline during a ground stop, which requires OpenSky to keep reporting grounded aircraft. PR A lane 2 records `usSeen` for the 2026-11-13 onset replay, and PR B adjusts the threshold from that record before it ships. First, whether the stateless `usLowClimbing` count from 5-minute snapshots tracks true departures as sharply as the trace-based count. PR A lane 2 answers it. Second, how OpenSky coverage compares with adsb.lol coverage. The archive counted 1,314 aircraft airborne over CONUS at 23:30Z, and a public OpenSky count near that time was 1,083.
+Three questions stay unproven. Third, whether OpenSky keeps reporting grounded aircraft during a ground stop, so that `usSeen` and hub coverage hold above their thresholds. The adsb.lol replays cannot answer this, because they measure adsb.lol receivers. The evidence must come from PR A's live OpenSky series. PR B stays blocked until that series covers at least one FAA ground stop at a tracked hub, confirmed in the FAA ATCSCC advisory record. PR B reads the stopped hub's `air + ground` and the national `usSeen` against their baselines across the stop, sets both coverage thresholds below the lowest ratio observed, and cites the stop and the ratios in its description. If no such stop occurs, PR B does not ship. First, whether the stateless `usLowClimbing` count from 5-minute snapshots tracks true departures as sharply as the trace-based count. PR A lane 2 answers it. Second, how OpenSky coverage compares with adsb.lol coverage. The archive counted 1,314 aircraft airborne over CONUS at 23:30Z, and a public OpenSky count near that time was 1,083.
 
 ## Appendix B. Alternatives rejected
 
