@@ -2398,3 +2398,24 @@
   .cdp-header-right { width: 100%; }
   .cdp-secondary-actions { grid-template-columns: minmax(0, 1fr); }
 }
+
+.cdp-imagery-evidence {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.cdp-imagery-item {
+  display: grid;
+  gap: 2px;
+}
+
+.cdp-imagery-title {
+  color: var(--text-secondary);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

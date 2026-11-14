@@ -530,6 +530,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.signalBreakdownBody?.replaceChildren(this.makeEmpty('Qualified country observations are unavailable.'));
     this.signalRecentBody?.replaceChildren();
     this.signalsBody?.querySelector('.cdp-qualified-coverage')?.remove();
+    this.signalsBody?.querySelector('.cdp-imagery-evidence')?.remove();
   }
 
   public updateQualifiedCountrySignals(value: import('../../shared/country-signal-observations').QualifiedCountrySignals): void {
@@ -549,7 +550,25 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       notes.append(this.el('p', 'cdp-economic-source', `${family.family}: ${family.state}${family.partial ? ' (partial)' : ''}. ${family.scope}. ${family.attribution}. Source time: ${family.snapshotAt ?? 'unknown'}.${family.observationWindow ? ` ${family.observationWindow}.` : ''}${sampling}${upstream} ${family.reason ?? ''}`));
     }
     this.signalsBody?.querySelector('.cdp-qualified-coverage')?.remove();
+    this.signalsBody?.querySelector('.cdp-imagery-evidence')?.remove();
+    const imagery = this.buildImageryEvidence(value.families.find(family => family.family === 'imagery'));
+    if (imagery) this.signalsBody?.append(imagery);
     this.signalsBody?.append(notes);
+  }
+
+  private buildImageryEvidence(family: import('../../shared/country-signal-observations').CountrySignalOutcome | undefined): HTMLElement | null {
+    if (family?.state !== 'observed') return null;
+    const block = this.el('div', 'cdp-imagery-evidence');
+    block.append(this.el('div', 'cdp-imagery-title', 'Satellite imagery'));
+    if (family.observations.length === 0) block.append(this.makeEmpty('No confirmed imagery statistics changes at this country\'s watched sites.'));
+    for (const row of family.observations) {
+      const item = this.el('div', 'cdp-imagery-item');
+      item.append(this.el('div', 'cdp-signal-desc', row.title));
+      if (row.eventAt) item.append(this.el('div', 'cdp-signal-time', `Confirmed ${row.eventAt.slice(0, 10)}`));
+      block.append(item);
+    }
+    block.append(this.el('p', 'cdp-economic-source', `${family.attribution}. Radar statistics changed at the site; this does not say what changed. Not an input to the Country Instability Index.`));
+    return block;
   }
 
   public updateNews(headlines: NewsItem[]): void {
