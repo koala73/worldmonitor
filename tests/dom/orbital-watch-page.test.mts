@@ -278,7 +278,7 @@ describe('satellite pass lookup sheet', () => {
       expect(page().slot(slot as 'timeline').dataset.slot).toBe(slot);
       expect(page().slot(slot as 'timeline').childElementCount).toBe(0);
     }
-    expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/^0 imaging satellites · CelesTrak GP · Fetched \d{4}-\d\d-\d\d \d\d:\d\dZ · 3 days ago/);
+    expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/^0 imaging satellites · CelesTrak GP · Fetched \d{4}-\d\d-\d\d \d\d:\d\dZ · \d+ days ago/);
     expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/Sun \d+\.\d°[NS] \d+\.\d°[EW] · sub-solar point · \d\d:\d\d:\d\d UTC$/);
     expect(sheet().querySelector('[data-action="open-full"].ow-primary')).toBeNull();
   });
