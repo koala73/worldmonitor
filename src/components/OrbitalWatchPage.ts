@@ -701,8 +701,8 @@ export class OrbitalWatchPage {
     this.shareButton.hidden = !this.callbacks.onShare || !point;
     this.shareButton.textContent = t('orbitalWatch.sheet.share');
     // Fixed labels are set on every open, so a language chosen since the last one shows.
-    this.sheet.setAttribute('aria-label', t('orbitalWatch.sheet.title'));
-    this.kicker.textContent = t('orbitalWatch.sheet.title');
+    this.sheet.setAttribute('aria-label', t('orbitalWatch.sheet.heading'));
+    this.kicker.textContent = t('orbitalWatch.sheet.heading');
     this.changeButton.textContent = t('orbitalWatch.sheet.change');
     this.closeButton.setAttribute('aria-label', t('countryBrief.closeBtn'));
     this.mapMark.lastElementChild!.textContent = point ? formatCoords(point) : '';
@@ -924,7 +924,7 @@ export class OrbitalWatchPage {
   }
 
   private eventsSection(lookup: PointPassLookup): HTMLElement {
-    const title = t('orbitalWatch.events.title');
+    const title = t('orbitalWatch.events.heading');
     const context = this.context;
     if (context.kind === 'loading') return section('events', title, h('p', { className: 'ies-empty' }, t('orbitalWatch.events.loading')));
     const fromMs = lookup.nowMs - SHEET_PAST_DAYS * DAY_MS;
@@ -984,7 +984,7 @@ export class OrbitalWatchPage {
       groups.get(group)!.push(pass);
     }
     const tooOld = lookup.satellites.filter((satellite) => satellite.status === 'too-old').map((satellite) => satellite.name);
-    return section('capability', t('orbitalWatch.capability.title'),
+    return section('capability', t('orbitalWatch.capability.heading'),
       groups.size === 0 ? h('p', { className: 'ies-empty' }, t('orbitalWatch.capability.none')) : null,
       ...OPERATING_GROUPS.filter((group) => groups.has(group)).map((group) => {
         const rows = groups.get(group)!.sort((a, b) => b.timeMs - a.timeMs);
@@ -1007,7 +1007,7 @@ export class OrbitalWatchPage {
       .filter((pass) => pass.timeMs > lookup.nowMs && pass.timeMs <= toMs && (pass.category === 'open-optical' || pass.category === 'open-radar'))
       .sort((a, b) => a.timeMs - b.timeMs)
       .slice(0, NEXT_WINDOW_ROWS);
-    return section('windows', t('orbitalWatch.windows.title'),
+    return section('windows', t('orbitalWatch.windows.heading'),
       next.length === 0
         ? h('p', { className: 'ies-empty' }, t('orbitalWatch.windows.none', { hours: SHEET_FUTURE_HOURS }))
         : h('ul', { className: 'ies-table' }, ...next.map((pass) => {
@@ -1025,7 +1025,7 @@ export class OrbitalWatchPage {
   private renderSources(credits: ResultCredit[]): void {
     this.sources.hidden = credits.length === 0;
     replaceChildren(this.sources,
-      h('summary', null, t('orbitalWatch.sources.title', { count: credits.length })),
+      h('summary', null, t('orbitalWatch.sources.heading', { count: credits.length })),
       h('ul', null, ...credits.map(({ source, text, href }) => h('li', null,
         href ? h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, source) : source,
         ' · ', text))),

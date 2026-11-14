@@ -378,7 +378,7 @@ describe('imagery evidence sheet', () => {
   });
 
   it('shows its fixed labels in the language chosen since it was last opened', async () => {
-    i18next.addResourceBundle('de', 'translation', { countryBrief: { closeBtn: 'Schließen' }, orbitalWatch: { sheet: { title: 'Bildnachweise', change: 'Ort ändern' }, privacy: { line: 'Punkt bleibt auf diesem Gerät.' } } }, true, true);
+    i18next.addResourceBundle('de', 'translation', { countryBrief: { closeBtn: 'Schließen' }, orbitalWatch: { sheet: { heading: 'Bildnachweise', change: 'Ort ändern' }, privacy: { line: 'Punkt bleibt auf diesem Gerät.' } } }, true, true);
     const reused = mounted();
     reused.close();
     await i18next.changeLanguage('de');

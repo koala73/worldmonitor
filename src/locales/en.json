@@ -4624,7 +4624,7 @@
   },
   "orbitalWatch": {
     "sheet": {
-      "title": "Imagery evidence",
+      "heading": "Imagery evidence",
       "window": "Last {{days}} days, next {{hours}} h",
       "apart": "Counted separately:",
       "apartMosaics_one": "{{count}} daily mosaic",
@@ -4696,7 +4696,7 @@
       "imageLoading": "Loading scene…"
     },
     "events": {
-      "title": "Events at this point",
+      "heading": "Events at this point",
       "kindLabel": "Type",
       "detail": "Detail",
       "now": "now",
@@ -4714,7 +4714,7 @@
       }
     },
     "capability": {
-      "title": "Who can image this point",
+      "heading": "Who can image this point",
       "none": "No sensor pass in the window.",
       "tooOld": "Orbit data too old to compute: {{names}}",
       "showAll": "Show all {{count}}",
@@ -4728,7 +4728,7 @@
       }
     },
     "windows": {
-      "title": "Next collection windows",
+      "heading": "Next collection windows",
       "optical": "Open optical",
       "radar": "Open radar",
       "none": "No open optical or radar pass in the next {{hours}} h."
@@ -4748,7 +4748,7 @@
       "body": "Pass geometry runs in this browser. Archives receive a bounding box around the point to look up scenes. A typed place name is resolved by WorldMonitor and OpenStreetMap Nominatim. Links you share round the point to 0.01°."
     },
     "sources": {
-      "title": "Sources ({{count}})",
+      "heading": "Sources ({{count}})",
       "docs": "Method and coverage"
     },
     "caption": {
