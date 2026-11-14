@@ -3207,6 +3207,20 @@
         "change365": "În 12 luni",
         "measured": "Măsurat",
         "sparkline": "Nivelul apei în 36 de luni"
+      },
+      "nextPass": {
+        "label": "Următoarea trecere ICESat-2",
+        "loading": "Se încarcă…",
+        "at": "{{date}} (estimat din datele orbitale din {{epoch}}; norii pot bloca lidarul)",
+        "none": "Nicio măsurătoare în această perioadă (până la {{date}}); date orbitale din {{epoch}}",
+        "unavailable": "Datele orbitale nu sunt disponibile"
+      },
+      "siteContext": {
+        "label": "Lac de acumulare strategic în acest loc"
+      },
+      "energyContext": {
+        "heading": "Lacuri de acumulare strategice",
+        "hydro": "Hidroenergie {{share}}% din energia primară"
       }
     },
     "gridDisruptionClock": {

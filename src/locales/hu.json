@@ -3255,6 +3255,20 @@
         "change365": "12 hónap alatt",
         "measured": "Mérés ideje",
         "sparkline": "Vízszint 36 hónap alatt"
+      },
+      "nextPass": {
+        "label": "Következő ICESat-2 áthaladás",
+        "loading": "Betöltés…",
+        "at": "{{date}} (előrejelzés a(z) {{epoch}} pályaadatai alapján; a felhőzet blokkolhatja a lidart)",
+        "none": "Nincs mérés ebben az időszakban ({{date}}-ig); pályaadatok: {{epoch}}",
+        "unavailable": "Pályaadatok nem érhetők el"
+      },
+      "siteContext": {
+        "label": "Stratégiai víztározó ezen a helyen"
+      },
+      "energyContext": {
+        "heading": "Stratégiai víztározók",
+        "hydro": "Vízenergia: a primer energia {{share}}%-a"
       }
     },
     "gridDisruptionClock": {

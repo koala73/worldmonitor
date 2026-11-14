@@ -1473,7 +1473,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const ctx = { t, locale: document.documentElement.lang || 'en', nowMs: Date.now() };
     const hydro = this.pendingResilienceEnergyMix?.mixAvailable ? this.pendingResilienceEnergyMix.hydroShare : null;
     const head = this.el('div', 'cdp-reservoir-context-head');
-    head.append(this.el('span', 'cdp-imagery-title', t('components.reservoirLevels.energyContext.title')));
+    head.append(this.el('span', 'cdp-imagery-title', t('components.reservoirLevels.energyContext.heading')));
     if (hydro != null && hydro > 0) head.append(this.el('span', 'cdp-reservoir-context-hydro', t('components.reservoirLevels.energyContext.hydro', { share: Math.round(hydro) })));
     el.append(head);
     const sorted = [...context.reservoirs].sort((a, b) => Number(b.tags.includes('hydropower')) - Number(a.tags.includes('hydropower')) || a.name.localeCompare(b.name));

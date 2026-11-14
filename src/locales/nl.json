@@ -2802,6 +2802,20 @@
         "change365": "In 12 maanden",
         "measured": "Gemeten",
         "sparkline": "Waterstand over 36 maanden"
+      },
+      "nextPass": {
+        "label": "Volgende ICESat-2-overkomst",
+        "loading": "Laden…",
+        "at": "{{date}} (voorspeld uit baangegevens van {{epoch}}; bewolking kan de lidar blokkeren)",
+        "none": "Geen meting in deze periode (tot {{date}}); baangegevens van {{epoch}}",
+        "unavailable": "Baangegevens niet beschikbaar"
+      },
+      "siteContext": {
+        "label": "Strategisch stuwmeer op deze locatie"
+      },
+      "energyContext": {
+        "heading": "Strategische stuwmeren",
+        "hydro": "Waterkracht {{share}}% van primaire energie"
       }
     },
     "gridDisruptionClock": {

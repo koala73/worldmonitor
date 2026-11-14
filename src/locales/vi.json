@@ -3165,6 +3165,20 @@
         "change365": "Trong 12 tháng",
         "measured": "Ngày đo",
         "sparkline": "Mực nước trong 36 tháng"
+      },
+      "nextPass": {
+        "label": "Lần bay qua tiếp theo của ICESat-2",
+        "loading": "Đang tải…",
+        "at": "{{date}} (dự đoán từ dữ liệu quỹ đạo ngày {{epoch}}; mây có thể chặn lidar)",
+        "none": "Không có phép đo trong khoảng này (đến {{date}}); dữ liệu quỹ đạo ngày {{epoch}}",
+        "unavailable": "Không có dữ liệu quỹ đạo"
+      },
+      "siteContext": {
+        "label": "Hồ chứa chiến lược tại địa điểm này"
+      },
+      "energyContext": {
+        "heading": "Hồ chứa chiến lược",
+        "hydro": "Thủy điện {{share}}% năng lượng sơ cấp"
       }
     },
     "gridDisruptionClock": {

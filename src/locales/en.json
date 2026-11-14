@@ -3364,7 +3364,7 @@
         "label": "Strategic reservoir at this site"
       },
       "energyContext": {
-        "title": "Strategic reservoirs",
+        "heading": "Strategic reservoirs",
         "hydro": "Hydro {{share}}% of primary energy"
       }
     }

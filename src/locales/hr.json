@@ -3279,6 +3279,20 @@
         "change365": "U 12 mjeseci",
         "measured": "Izmjereno",
         "sparkline": "Vodostaj kroz 36 mjeseci"
+      },
+      "nextPass": {
+        "label": "Sljedeći prelet ICESat-2",
+        "loading": "Učitavanje…",
+        "at": "{{date}} (predviđeno iz orbitalnih podataka od {{epoch}}; oblaci mogu blokirati lidar)",
+        "none": "Nema mjerenja u ovom razdoblju (do {{date}}); orbitalni podaci od {{epoch}}",
+        "unavailable": "Orbitalni podaci nisu dostupni"
+      },
+      "siteContext": {
+        "label": "Strateška akumulacija na ovom mjestu"
+      },
+      "energyContext": {
+        "heading": "Strateške akumulacije",
+        "hydro": "Hidroenergija {{share}} % primarne energije"
       }
     },
     "gridDisruptionClock": {

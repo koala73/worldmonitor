@@ -3228,6 +3228,20 @@
         "change365": "W 12 miesięcy",
         "measured": "Pomiar",
         "sparkline": "Poziom wody w ciągu 36 miesięcy"
+      },
+      "nextPass": {
+        "label": "Następny przelot ICESat-2",
+        "loading": "Ładowanie…",
+        "at": "{{date}} (prognoza z danych orbitalnych z {{epoch}}; chmury mogą zablokować lidar)",
+        "none": "Brak pomiaru w tym okresie (do {{date}}); dane orbitalne z {{epoch}}",
+        "unavailable": "Dane orbitalne niedostępne"
+      },
+      "siteContext": {
+        "label": "Strategiczny zbiornik w tym miejscu"
+      },
+      "energyContext": {
+        "heading": "Strategiczne zbiorniki",
+        "hydro": "Energia wodna {{share}}% energii pierwotnej"
       }
     },
     "gridDisruptionClock": {

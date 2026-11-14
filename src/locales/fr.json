@@ -3207,6 +3207,20 @@
         "change365": "Sur 12 mois",
         "measured": "Mesuré",
         "sparkline": "Niveau d’eau sur 36 mois"
+      },
+      "nextPass": {
+        "label": "Prochain passage d’ICESat-2",
+        "loading": "Chargement…",
+        "at": "{{date}} (prévu d’après les données orbitales du {{epoch}} ; les nuages peuvent bloquer le lidar)",
+        "none": "Aucune mesure sur cette période (jusqu’au {{date}}) ; données orbitales du {{epoch}}",
+        "unavailable": "Données orbitales indisponibles"
+      },
+      "siteContext": {
+        "label": "Réservoir stratégique sur ce site"
+      },
+      "energyContext": {
+        "heading": "Réservoirs stratégiques",
+        "hydro": "Hydroélectricité {{share}} % de l’énergie primaire"
       }
     },
     "gridDisruptionClock": {

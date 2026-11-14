@@ -3186,6 +3186,20 @@
         "change365": "In 12 Monaten",
         "measured": "Gemessen",
         "sparkline": "Wasserstand über 36 Monate"
+      },
+      "nextPass": {
+        "label": "Nächster ICESat-2-Überflug",
+        "loading": "Wird geladen…",
+        "at": "{{date}} (vorhergesagt aus Bahndaten vom {{epoch}}; Wolken können das Lidar blockieren)",
+        "none": "Keine Messung in diesem Zeitraum (bis {{date}}); Bahndaten vom {{epoch}}",
+        "unavailable": "Bahndaten nicht verfügbar"
+      },
+      "siteContext": {
+        "label": "Strategischer Stausee an diesem Ort"
+      },
+      "energyContext": {
+        "heading": "Strategische Stauseen",
+        "hydro": "Wasserkraft {{share}} % der Primärenergie"
       }
     },
     "gridDisruptionClock": {

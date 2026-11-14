@@ -3165,6 +3165,20 @@
         "change365": "12か月間",
         "measured": "測定日",
         "sparkline": "36か月の水位"
+      },
+      "nextPass": {
+        "label": "次のICESat-2通過",
+        "loading": "読み込み中…",
+        "at": "{{date}}（{{epoch}}の軌道データによる予測。雲でライダーが遮られる場合があります）",
+        "none": "この期間に測定なし（{{date}}まで）。{{epoch}}の軌道データ",
+        "unavailable": "軌道データを取得できません"
+      },
+      "siteContext": {
+        "label": "この地点の戦略的貯水池"
+      },
+      "energyContext": {
+        "heading": "戦略的貯水池",
+        "hydro": "水力は一次エネルギーの{{share}}%"
       }
     },
     "gridDisruptionClock": {

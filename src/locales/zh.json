@@ -3165,6 +3165,20 @@
         "change365": "12 个月内",
         "measured": "测量时间",
         "sparkline": "36 个月水位"
+      },
+      "nextPass": {
+        "label": "ICESat-2 下次过境",
+        "loading": "加载中…",
+        "at": "{{date}}（根据 {{epoch}} 的轨道数据预测；云层可能遮挡激光雷达）",
+        "none": "此时段内无测量（至 {{date}}）；轨道数据日期 {{epoch}}",
+        "unavailable": "轨道数据不可用"
+      },
+      "siteContext": {
+        "label": "此地点的战略水库"
+      },
+      "energyContext": {
+        "heading": "战略水库",
+        "hydro": "水电占一次能源的 {{share}}%"
       }
     },
     "gridDisruptionClock": {

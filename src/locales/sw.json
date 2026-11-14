@@ -3255,6 +3255,20 @@
         "change365": "Katika miezi 12",
         "measured": "Ilipimwa",
         "sparkline": "Kiwango cha maji kwa miezi 36"
+      },
+      "nextPass": {
+        "label": "Upitaji ujao wa ICESat-2",
+        "loading": "Inapakia…",
+        "at": "{{date}} (imetabiriwa kutoka data ya obiti ya {{epoch}}; mawingu yanaweza kuzuia lidar)",
+        "none": "Hakuna kipimo katika kipindi hiki (hadi {{date}}); data ya obiti ya {{epoch}}",
+        "unavailable": "Data ya obiti haipatikani"
+      },
+      "siteContext": {
+        "label": "Bwawa la kimkakati katika eneo hili"
+      },
+      "energyContext": {
+        "heading": "Mabwawa ya kimkakati",
+        "hydro": "Umeme wa maji {{share}}% ya nishati ya msingi"
       }
     },
     "gridDisruptionClock": {

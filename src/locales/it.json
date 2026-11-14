@@ -3207,6 +3207,20 @@
         "change365": "In 12 mesi",
         "measured": "Misurato",
         "sparkline": "Livello dell’acqua in 36 mesi"
+      },
+      "nextPass": {
+        "label": "Prossimo passaggio di ICESat-2",
+        "loading": "Caricamento…",
+        "at": "{{date}} (previsto dai dati orbitali del {{epoch}}; le nuvole possono bloccare il lidar)",
+        "none": "Nessuna misurazione in questo periodo (fino al {{date}}); dati orbitali del {{epoch}}",
+        "unavailable": "Dati orbitali non disponibili"
+      },
+      "siteContext": {
+        "label": "Bacino strategico in questo sito"
+      },
+      "energyContext": {
+        "heading": "Bacini strategici",
+        "hydro": "Idroelettrico {{share}}% dell’energia primaria"
       }
     },
     "gridDisruptionClock": {

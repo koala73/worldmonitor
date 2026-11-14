@@ -3165,6 +3165,20 @@
         "change365": "12개월간",
         "measured": "측정일",
         "sparkline": "36개월 수위"
+      },
+      "nextPass": {
+        "label": "다음 ICESat-2 통과",
+        "loading": "불러오는 중…",
+        "at": "{{date}} ({{epoch}} 궤도 데이터 기준 예측, 구름이 라이다를 가릴 수 있음)",
+        "none": "이 기간에는 측정 없음({{date}}까지), {{epoch}} 궤도 데이터",
+        "unavailable": "궤도 데이터를 사용할 수 없음"
+      },
+      "siteContext": {
+        "label": "이 지점의 전략 저수지"
+      },
+      "energyContext": {
+        "heading": "전략 저수지",
+        "hydro": "수력 발전 1차 에너지의 {{share}}%"
       }
     },
     "gridDisruptionClock": {

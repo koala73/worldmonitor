@@ -3186,6 +3186,20 @@
         "change365": "12 ayda",
         "measured": "Ölçüm",
         "sparkline": "36 aylık su seviyesi"
+      },
+      "nextPass": {
+        "label": "Sonraki ICESat-2 geçişi",
+        "loading": "Yükleniyor…",
+        "at": "{{date}} ({{epoch}} tarihli yörünge verilerinden tahmin; bulutlar lidarı engelleyebilir)",
+        "none": "Bu aralıkta ölçüm yok ({{date}} tarihine kadar); {{epoch}} tarihli yörünge verileri",
+        "unavailable": "Yörünge verileri kullanılamıyor"
+      },
+      "siteContext": {
+        "label": "Bu konumdaki stratejik baraj gölü"
+      },
+      "energyContext": {
+        "heading": "Stratejik baraj gölleri",
+        "hydro": "Hidroelektrik, birincil enerjinin %{{share}} kadarı"
       }
     },
     "gridDisruptionClock": {

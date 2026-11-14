@@ -2821,6 +2821,20 @@
         "change365": "Em 12 meses",
         "measured": "Medido",
         "sparkline": "Nível da água em 36 meses"
+      },
+      "nextPass": {
+        "label": "Próxima passagem do ICESat-2",
+        "loading": "Carregando…",
+        "at": "{{date}} (previsto com dados orbitais de {{epoch}}; nuvens podem bloquear o lidar)",
+        "none": "Sem medição neste período (até {{date}}); dados orbitais de {{epoch}}",
+        "unavailable": "Dados orbitais indisponíveis"
+      },
+      "siteContext": {
+        "label": "Reservatório estratégico neste local"
+      },
+      "energyContext": {
+        "heading": "Reservatórios estratégicos",
+        "hydro": "Hidrelétrica {{share}}% da energia primária"
       }
     },
     "gridDisruptionClock": {

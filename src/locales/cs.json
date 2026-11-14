@@ -3228,6 +3228,20 @@
         "change365": "Za 12 měsíců",
         "measured": "Měřeno",
         "sparkline": "Vodní hladina za 36 měsíců"
+      },
+      "nextPass": {
+        "label": "Další přelet ICESat-2",
+        "loading": "Načítání…",
+        "at": "{{date}} (předpověď z orbitálních dat z {{epoch}}; oblačnost může lidar zablokovat)",
+        "none": "V tomto okně žádné měření (do {{date}}); orbitální data z {{epoch}}",
+        "unavailable": "Orbitální data nejsou k dispozici"
+      },
+      "siteContext": {
+        "label": "Strategická nádrž v tomto místě"
+      },
+      "energyContext": {
+        "heading": "Strategické nádrže",
+        "hydro": "Vodní energie {{share}} % primární energie"
       }
     },
     "gridDisruptionClock": {

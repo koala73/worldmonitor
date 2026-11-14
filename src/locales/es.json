@@ -3207,6 +3207,20 @@
         "change365": "En 12 meses",
         "measured": "Medido",
         "sparkline": "Nivel del agua en 36 meses"
+      },
+      "nextPass": {
+        "label": "Próximo paso de ICESat-2",
+        "loading": "Cargando…",
+        "at": "{{date}} (previsto con datos orbitales del {{epoch}}; las nubes pueden bloquear el lidar)",
+        "none": "Sin medición en este periodo (hasta el {{date}}); datos orbitales del {{epoch}}",
+        "unavailable": "Datos orbitales no disponibles"
+      },
+      "siteContext": {
+        "label": "Embalse estratégico en este lugar"
+      },
+      "energyContext": {
+        "heading": "Embalses estratégicos",
+        "hydro": "Hidroeléctrica {{share}} % de la energía primaria"
       }
     },
     "gridDisruptionClock": {

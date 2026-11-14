@@ -2802,6 +2802,20 @@
         "change365": "På 12 månader",
         "measured": "Mätt",
         "sparkline": "Vattennivå över 36 månader"
+      },
+      "nextPass": {
+        "label": "Nästa ICESat-2-passage",
+        "loading": "Laddar…",
+        "at": "{{date}} (förutsagt från banddata från {{epoch}}; moln kan blockera lidarn)",
+        "none": "Ingen mätning i detta fönster (till {{date}}); banddata från {{epoch}}",
+        "unavailable": "Banddata är inte tillgängliga"
+      },
+      "siteContext": {
+        "label": "Strategisk reservoar på denna plats"
+      },
+      "energyContext": {
+        "heading": "Strategiska reservoarer",
+        "hydro": "Vattenkraft {{share}} % av primärenergin"
       }
     },
     "gridDisruptionClock": {
