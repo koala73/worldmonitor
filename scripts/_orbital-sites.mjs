@@ -6,7 +6,7 @@ import { findPasses, parseOrbitElements } from './shared/orbital/pass-geometry.j
 import { SENSOR_PROFILES } from './shared/orbital/sensor-profiles.js';
 import { decidePassTier } from './shared/orbital/tiers.js';
 import { projectFlag } from './shared/orbital/flag-record.js';
-import { ROLLUP_MAX_AGE_MS, SITES_SCHEMA } from './shared/orbital/country-rollup.js';
+import { readCountryRollup, ROLLUP_MAX_AGE_MS, SITES_SCHEMA } from './shared/orbital/country-rollup.js';
 import { flagShadowKey, RADAR_COLLECTION, radarGeometry, STAC_RADAR_FIELDS } from './_orbital-change.mjs';
 
 export const ORBITAL_SITES_KEY = 'orbital:sites:v1';
@@ -160,6 +160,7 @@ export function buildSiteRecord({ site, catalog, acquisitions, previous, nowMs, 
     .map(({ pass }) => ({
       noradId: pass.noradId, name: pass.name, profileId: pass.profileId, category: pass.category, time: pass.time,
       sunElevationDeg: Math.round(pass.sunElevationDeg * 10) / 10,
+      coverage: pass.coverage,
     }));
 
   const byOperator = new Map();
@@ -299,11 +300,9 @@ export function buildCountryRollup(countryCode, records) {
   return rollup;
 }
 
-/** A reader's gate: the rollup is the one the index names, and its oldest site is fresh enough. */
+/** The readers' gate (shared/orbital/country-rollup.js) applied to what this seeder publishes. */
 export function isRollupCurrent(rollup, index, nowMs, maxAgeMs = ROLLUP_MAX_AGE_MS) {
-  if (!rollup || rollup.schema !== SITES_SCHEMA) return false;
-  if (index?.countries?.[rollup.countryCode]?.revision !== rollup.revision) return false;
-  return nowMs - rollup.asOf <= maxAgeMs;
+  return readCountryRollup(rollup, index, rollup?.countryCode, nowMs, maxAgeMs).status === 'current';
 }
 
 /**

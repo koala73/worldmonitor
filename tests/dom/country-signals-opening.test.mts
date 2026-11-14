@@ -70,7 +70,8 @@ it.each(['IR', 'CN'])('measures %s panel and controller opening reads with ten s
     expect(calls.filter(call => call.section === 'countrySignals' && call.arguments.family !== 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE')).toHaveLength(code === 'CN' ? 4 : 5);
     const deferred = qualified.families.filter(family => family.reason?.startsWith('Deferred:')).map(family => family.family);
     expect(deferred).toHaveLength(3);
-    expect(deferred[deferred.length - 1]).toBe('imagery');
+    expect(deferred).not.toContain('imagery');
+    expect(qualified.families.map(family => family.family)).toEqual(['outages', 'unrest', 'fires', 'radiation', 'sanctions', 'conflict', 'posture', 'imagery', 'military']);
     expect(qualified.details).not.toBeNull();
   } finally { controller.dispose(); panel.hide(); }
 });

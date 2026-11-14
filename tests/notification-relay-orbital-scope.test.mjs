@@ -50,7 +50,8 @@ function siteEvent(siteId = 'hotspot:a', eventType = 'orbital_site_change') {
   seq += 1;
   return {
     eventType,
-    severity: 'critical',
+    // The producer's real severities: neither is critical.
+    severity: eventType === 'orbital_site_change' ? alerts.SITE_CHANGE_SEVERITY : alerts.IMAGING_WINDOW_SEVERITY,
     payload: {
       title: `Site ${siteId}: radar imagery statistics changed (confirmed) #${seq}`,
       source: 'Orbital Watch',
@@ -139,6 +140,15 @@ describe('watched-site alert rule matching', () => {
     seq += 1;
     const rss = { eventType: 'rss_alert', severity: 'critical', payload: { title: `Headline #${seq}`, source: 'Reuters' } };
     assert.deepEqual(await deliveries([rule('user-1', { eventTypes: ['orbital_site_change'] })], rss), ['chat-user-1']);
+  });
+
+  it('quiet hours hold back both alert types under the default critical-only override', async () => {
+    const hour = new Date().getUTCHours();
+    const quiet = { quietHoursEnabled: true, quietHoursStart: hour, quietHoursEnd: (hour + 2) % 24, quietHoursTimezone: 'UTC' };
+    for (const eventType of ['orbital_site_change', 'orbital_imaging_window']) {
+      const rules = [rule('user-1', { eventTypes: [eventType], orbitalSites: ['hotspot:a'], ...quiet })];
+      assert.deepEqual(await deliveries(rules, siteEvent('hotspot:a', eventType)), [], eventType);
+    }
   });
 
   it('tags web pushes per site', () => {

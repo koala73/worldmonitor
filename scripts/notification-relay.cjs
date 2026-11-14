@@ -1389,6 +1389,11 @@ function shouldNotify(rule, event) {
       ? 'critical'
       : rule.sensitivity;
 
+  // Watched-site alerts are scoped by the rule's own site list and event-type
+  // opt-in, so the realtime critical-only gate does not apply; quiet hours still
+  // treat them by their real (non-critical) severity.
+  if (ORBITAL_SITE_EVENT_TYPES.includes(event?.eventType)) return true;
+
   const passesLegacy = matchesSensitivity(effectiveSensitivity, event.severity ?? 'high');
   if (!passesLegacy) return false;
 

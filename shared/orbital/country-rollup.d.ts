@@ -28,17 +28,17 @@ export interface CountryRollup {
 
 export type CountryRollupRead =
   | { status: 'current'; rollup: CountryRollup }
-  | { status: 'missing' | 'malformed' | 'stale' };
+  | { status: 'missing' | 'malformed' | 'superseded' | 'stale' };
 
 export interface ConfirmedSiteFlag {
   siteId: string;
   name: string;
   geometryKey: string;
-  raised: FlagScene;
+  raised: FlagScene | null;
   confirmed: FlagScene;
 }
 
-export function readCountryRollup(raw: unknown, countryCode: string, nowMs: number, maxAgeMs?: number): CountryRollupRead;
+export function readCountryRollup(raw: unknown, index: unknown, countryCode: string, nowMs: number, maxAgeMs?: number): CountryRollupRead;
 export function scoredSiteCount(rollup: CountryRollup): number;
 export function confirmedSiteFlags(rollup: CountryRollup): ConfirmedSiteFlag[];
 export function confirmedFlagsTag(flags: readonly ConfirmedSiteFlag[]): string;

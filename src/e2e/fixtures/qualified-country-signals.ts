@@ -13,10 +13,10 @@ export function qualifiedFixtureOutcomes(): CountrySignalOutcome[] {
     projectCountrySignalFamily('IR', 'sanctions', { fetchedAt: String(at), countries: [{ countryCode: 'IR', entryCount: 60, newEntryCount: 5 }] }),
     projectCountrySignalFamily('IR', 'conflict', { scrapedAt: String(at), events: [{ id: 'conflict', country: 'IR', severity: 'low', timestamp: String(at), location }] }),
     projectCountrySignalFamily('IR', 'posture', { state: 'observed', status: 'live', provider: 'adsb.lol', sourceAt: new Date(at).toISOString(), theaters: [{ theater: 'iran-theater', postureLevel: 'normal', assessedAt: at }] }),
-    projectImagerySignalFamily('IR', { schema: 1, countryCode: 'IR', asOf: at, revision: 'controlled', sites: [
+    projectImagerySignalFamily('IR', { index: { schema: 1, countries: { IR: { revision: 'controlled' } } }, rollup: { schema: 1, countryCode: 'IR', asOf: at, revision: 'controlled', sites: [
       { siteId: 'nuclear:controlled', name: 'Controlled watched site', lat: 33.7, lon: 51.7, surface: 'land', originLists: ['nuclear'], revision: 'controlled', evaluatedAt: at, lastObservation: null, nextWindow: null, operators: [],
         flag: { state: 'confirmed', wording: 'imagery statistics changed', updatedAt: at, confirmed: { geometryKey: 'sentinel-1|28|descending|IW|VH+VV', itemId: 'S1C_CONFIRM', datetime: new Date(at - 86_400_000).toISOString(), platform: 'Sentinel-1C', raisedBy: { itemId: 'S1A_RAISE', datetime: new Date(at - 13 * 86_400_000).toISOString(), platform: 'Sentinel-1A' } } } },
-    ] }, at),
+    ] } }, at),
   ];
   const military: CountrySignalOutcome = { ...unavailableCountrySignal('IR', 'military', ''), state: 'observed', reason: null, partial: false, scope: 'Controlled eligible military observations', attribution: 'adsb.lol / USNI' };
   military.observations = ['military_flight', 'military_vessel', 'ais_disruption'].map((type, i) => ({ id: String(i), family: 'military', type, severity: 'medium', title: `Controlled ${type}`, source: i ? 'AIS / USNI' : 'adsb.lol', eventAt: new Date(at).toISOString(), snapshotAt: null, timeBasis: 'event' }));
