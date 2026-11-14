@@ -352,15 +352,25 @@ class LookupImages {
 
 const lookupImages = new LookupImages();
 
+const nearViewObservers = new Set<IntersectionObserver>();
+
 /** Starts a row thumbnail's fetch once it nears the viewport, as `loading="lazy"` did for `img.src`. */
 function whenNearView(el: HTMLElement, start: () => void): void {
   if (typeof IntersectionObserver !== 'function') { start(); return; }
   const observer = new IntersectionObserver((entries) => {
     if (!entries.some((entry) => entry.isIntersecting)) return;
     observer.disconnect();
+    nearViewObservers.delete(observer);
     start();
   }, { rootMargin: '200px' });
+  nearViewObservers.add(observer);
   observer.observe(el);
+}
+
+/** Drops the observers of thumbnails that are being removed before they came into view. */
+function stopWatchingNearView(): void {
+  for (const observer of nearViewObservers) observer.disconnect();
+  nearViewObservers.clear();
 }
 
 const tileRetries = new WeakMap<HTMLElement, () => void>();
@@ -906,6 +916,7 @@ export class OrbitalWatchPage {
     this.stopClock();
     if (this.shareReset) clearTimeout(this.shareReset);
     this.sheet.remove();
+    stopWatchingNearView();
     lookupImages.reset();
     this.state = null;
     const wasFull = this.view === 'full';
@@ -994,6 +1005,7 @@ export class OrbitalWatchPage {
     const selector = focused?.dataset.key ? `.ow-row[data-key="${CSS.escape(focused.dataset.key)}"]`
       : focused?.dataset.group ? `.ow-group-toggle[data-group="${focused.dataset.group}"]`
       : null;
+    stopWatchingNearView();
     replaceChildren(this.body, ...this.renderState(state));
     if (this.detailKey) this.renderPassDetail();
     if (this.selectedKey) this.body.querySelector(`.ow-row[data-key="${CSS.escape(this.selectedKey)}"]`)?.setAttribute('aria-current', 'true');
