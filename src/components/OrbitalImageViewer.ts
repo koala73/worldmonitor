@@ -396,7 +396,9 @@ export class OrbitalImageViewer {
     const paint = this.painted.get(url);
     if (paint) return h('div', { className: 'oiv-stage' }, sceneImage(scene, 'oiv-image', paint), ...this.overlays(scene));
     if (this.failedUrls.has(url)) {
-      return h('div', { className: 'oiv-stage oiv-stage-empty', role: 'alert' }, h('span', { className: 'oiv-label' }, t('orbitalWatch.ui.tile.failed', { archive: archiveHost(url).name.toUpperCase() })));
+      return h('div', { className: 'oiv-stage oiv-stage-empty', role: 'alert' },
+        h('span', { className: 'oiv-label' }, t('orbitalWatch.ui.tile.failed', { archive: archiveHost(url).name.toUpperCase() })),
+        h('button', { type: 'button', className: 'oiv-button', dataset: { action: 'retry-image', url } }, t('countryBrief.retryBtn')));
     }
     return h('div', { className: 'oiv-stage oiv-skeleton', role: 'status' }, h('span', { className: 'oiv-label' }, t('orbitalWatch.row.imageLoading')));
   }
@@ -505,6 +507,10 @@ export class OrbitalImageViewer {
     switch (action?.dataset.action) {
       case 'close':
         this.close();
+        return;
+      case 'retry-image':
+        this.failedUrls.delete(action.dataset.url ?? '');
+        this.render();
         return;
       case 'retry-history':
         if (this.historyProfile) void this.loadHistory(this.historyProfile);

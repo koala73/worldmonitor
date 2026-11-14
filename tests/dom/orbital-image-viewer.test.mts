@@ -84,6 +84,17 @@ describe('orbital image viewer', () => {
     expect(viewer()!.querySelector('.oiv-north')!.getAttribute('aria-label')).toBe('North is up');
   });
 
+  it('offers a retry when the archive image fails, and paints it once the retry loads', async () => {
+    const landsat = scene(3, 5, { profileId: 'landsat', platform: 'landsat-9', key: 'landsat-9:1:x' });
+    let fail = true;
+    open(landsat, { searchHistory: history([]), loadImage: async (_archive, url) => { if (fail) throw new Error('image failed: timeout'); return paintOf(url); } });
+    await vi.waitFor(() => expect(viewer()!.querySelector('[role="alert"] [data-action="retry-image"]')).not.toBeNull());
+    expect(viewer()!.querySelector('img.oiv-image')).toBeNull();
+    fail = false;
+    viewer()!.querySelector<HTMLButtonElement>('[data-action="retry-image"]')!.click();
+    await vi.waitFor(() => expect(srcOf('img.oiv-image')).toBe(landsat.imageUrl));
+  });
+
   it('credits EUMETSAT on a Meteosat frame and offers no time-lapse for a single frame', () => {
     openOrbitalImageViewer({ point, nowMs: NOW, selected: scenesFromFrame(meteosat)[0]!, scenes: [], historyProfile: null }, null, {});
     expect(viewerText()).toContain(IMAGE_CREDIT.eumetsat);
