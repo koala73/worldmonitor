@@ -540,6 +540,58 @@ describe('satellite pass lookup sheet', () => {
     check(() => row().querySelector<HTMLElement>('.ow-tile')!, () => row().querySelector('.ow-row-meta')!.textContent!, steps);
   });
 
+  it('steps a daily mosaic back from a day with no data at the point, and never shows a black tile', () => {
+    const { all } = tiered();
+    const blank = new Set(['https://gibs.earthdata.nasa.gov/m-14.jpg']);
+    const original = HTMLCanvasElement.prototype.getContext;
+    let drawn = '';
+    HTMLCanvasElement.prototype.getContext = function getContext() {
+      return {
+        drawImage: (img: HTMLImageElement) => { drawn = img.getAttribute('src') ?? ''; },
+        getImageData: (_x: number, _y: number, w: number, hgt: number) => ({ data: new Uint8ClampedArray(w * hgt * 4).fill(blank.has(drawn) ? 0 : 120) }),
+      };
+    } as unknown as typeof original;
+    onTestFinished(() => { HTMLCanvasElement.prototype.getContext = original; });
+    const days = [
+      { date: '2026-11-14', imageUrl: 'https://gibs.earthdata.nasa.gov/m-14.jpg' },
+      { date: '2026-11-13', imageUrl: 'https://gibs.earthdata.nasa.gov/m-13.jpg' },
+    ];
+    const page = mounted(answered(all, { mosaics: [{ ...modis, days }] }));
+    const hero = () => cards()[0]!.querySelector<HTMLElement>('.ow-tile')!;
+    const top = () => cards()[0]!.querySelector('.ow-caption-lines span')!.textContent!;
+    const img = () => hero().querySelector('img')!;
+    expect(img().crossOrigin, 'the pixels must be readable').toBe('anonymous');
+    expect(img().getAttribute('src')).toBe(days[0]!.imageUrl);
+    expect(top()).toMatch(/14/);
+    img().dispatchEvent(new Event('load'));
+    expect(hero().dataset.state, 'a black day is never shown').toBe('loading');
+    expect(img().getAttribute('src')).toBe(days[1]!.imageUrl);
+    expect(top()).toMatch(/13/);
+    expect(top()).not.toMatch(/14/);
+    img().dispatchEvent(new Event('load'));
+    expect(hero().dataset.state).toBe('loaded');
+
+    blank.add(days[1]!.imageUrl);
+    page.render(answered(all, { mosaics: [{ ...modis, days }] }));
+    img().dispatchEvent(new Event('load'));
+    img().dispatchEvent(new Event('load'));
+    expect(hero().dataset.state, 'no day with data shows the no-image state').toBe('none');
+    expect(hero().querySelector('img')).toBeNull();
+    expect(hero().querySelector('.ow-tile-status')!.textContent).toBe('The archive has no preview of this scene yet');
+    expect(top(), 'the caption goes back to the newest advertised day').toMatch(/14/);
+
+    page.setView('full');
+    group('weather')!.querySelector<HTMLButtonElement>('.ow-group-toggle')!.click();
+    blank.delete(days[1]!.imageUrl);
+    const row = () => rowOf('MODIS Terra');
+    const thumb = () => row().querySelector('.ow-tile img')!;
+    thumb().dispatchEvent(new Event('load'));
+    expect(thumb().getAttribute('src')).toBe(days[1]!.imageUrl);
+    expect(row().querySelector('.ow-row-meta')!.textContent).toMatch(/13/);
+    thumb().dispatchEvent(new Event('load'));
+    expect(row().querySelector<HTMLElement>('.ow-tile')!.dataset.state).toBe('loaded');
+  });
+
   it('names the archives that failed and retries on request', () => {
     const { all } = tiered();
     mounted(answered(all, { status: 'partial', failures: [{ archive: 'planetary-computer', reason: 'http-status', httpStatus: 503 }], unansweredProfiles: ['landsat'] }));
