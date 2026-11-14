@@ -158,6 +158,10 @@ describe('UnifiedSettings.open', () => {
       addEventListener() {},
       removeEventListener() {},
     };
+    globalThis.window = {
+      addEventListener() {},
+      removeEventListener() {},
+    };
   });
 
   it('starts a session and hands the target to dispatch', () => {

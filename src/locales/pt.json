@@ -5178,6 +5178,7 @@
       "embeds": "Widgets para seu próprio site",
       "aiAgents": "Clientes MCP conectados",
       "about": "Links do site, termos e privacidade"
-    }
+    },
+    "signOut": "Sair"
   }
 }

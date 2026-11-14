@@ -5206,6 +5206,7 @@
       "embeds": "Widgety na własną stronę",
       "aiAgents": "Połączeni klienci MCP",
       "about": "Linki, warunki i prywatność"
-    }
+    },
+    "signOut": "Wyloguj się"
   }
 }

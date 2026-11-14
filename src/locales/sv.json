@@ -5150,6 +5150,7 @@
       "embeds": "Widgets för din egen webbplats",
       "aiAgents": "Anslutna MCP-klienter",
       "about": "Webbplatslinks, villkor och sekretess"
-    }
+    },
+    "signOut": "Logga ut"
   }
 }

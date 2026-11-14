@@ -5122,6 +5122,7 @@
       "embeds": "用於您網站的 widget",
       "aiAgents": "已連線的 MCP 客戶端",
       "about": "網站連結、條款和隱私"
-    }
+    },
+    "signOut": "退出登入"
   }
 }

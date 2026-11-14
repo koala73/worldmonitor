@@ -8,6 +8,7 @@ import {
   diffNav,
   isAvailable,
   isPreferenceSection,
+  pageEntryEffect,
   reduceNav,
   type NavState,
   type SettingsFacts,
@@ -188,5 +189,32 @@ describe('settings navigation effects', () => {
     assert.deepEqual(diffNav(mcp, reduceNav(mcp, { type: 'select', id: 'mcp-clients' }, facts())), { leave: null, enter: null });
     const home = at(null);
     assert.deepEqual(diffNav(home, reduceNav(home, { type: 'back' }, facts())), { leave: null, enter: null });
+  });
+});
+
+describe('settings page history entry', () => {
+  it('holds an entry for an open page on the phone sheet above a Settings entry', () => {
+    assert.equal(pageEntryEffect(at('notifications'), 'sheet', true), 'hold');
+  });
+
+  it('releases it on the home list, in the modal, or without a Settings entry beneath', () => {
+    assert.equal(pageEntryEffect(at(null), 'sheet', true), 'release');
+    assert.equal(pageEntryEffect(null, 'sheet', true), 'release');
+    assert.equal(pageEntryEffect(at('notifications'), 'modal', true), 'release');
+    assert.equal(pageEntryEffect(at('notifications'), 'sheet', false), 'release');
+  });
+
+  it('follows navigation: a row holds it, back releases it, an evicted page releases it', () => {
+    const page = reduceNav(at(null), { type: 'select', id: 'account' }, facts());
+    assert.equal(pageEntryEffect(page, 'sheet', true), 'hold');
+    assert.equal(pageEntryEffect(reduceNav(page, { type: 'back' }, facts()), 'sheet', true), 'release');
+    assert.equal(pageEntryEffect(reduceNav(page, { type: 'facts-changed' }, signedOut), 'sheet', true), 'release');
+  });
+
+  it('keeps holding one entry while the open page changes', () => {
+    const panels = at('panels');
+    const sources = reduceNav(panels, { type: 'open', target: 'sources' }, facts());
+    assert.equal(pageEntryEffect(panels, 'sheet', true), 'hold');
+    assert.equal(pageEntryEffect(sources, 'sheet', true), 'hold');
   });
 });

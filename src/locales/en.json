@@ -5112,6 +5112,7 @@
   },
   "settings": {
     "back": "Back to settings",
+    "signOut": "Sign out",
     "signIn": {
       "label": "Sign in",
       "desc": "Sync settings and manage your plan"

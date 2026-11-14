@@ -5150,6 +5150,7 @@
       "embeds": "Widgetek saját webhelyhez",
       "aiAgents": "Csatlakoztatott MCP-kliensek",
       "about": "Webhely-hivatkozások, feltételek és adatvédelem"
-    }
+    },
+    "signOut": "Kijelentkezés"
   }
 }

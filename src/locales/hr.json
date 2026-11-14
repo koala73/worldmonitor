@@ -5189,6 +5189,7 @@
       "embeds": "Widgeti za vašu stranicu",
       "aiAgents": "Povezani MCP klijenti",
       "about": "Veze stranica, uvjeti korištenja i privatnost"
-    }
+    },
+    "signOut": "Odjava"
   }
 }

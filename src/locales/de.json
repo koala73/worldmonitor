@@ -5150,6 +5150,7 @@
       "embeds": "Widgets für deine Website",
       "aiAgents": "Verbundene MCP-Clients",
       "about": "Website-Links, Bedingungen und Datenschutz"
-    }
+    },
+    "signOut": "Abmelden"
   }
 }

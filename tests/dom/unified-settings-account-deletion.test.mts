@@ -251,6 +251,40 @@ describe('UnifiedSettings account card', () => {
   });
 });
 
+describe('UnifiedSettings sign out', () => {
+  const signOutRow = () => document.querySelector<HTMLButtonElement>('[data-settings-signout]');
+
+  it('offers Sign out at the foot of the Account page, above Delete account', () => {
+    settings.open('account');
+    const row = signOutRow()!;
+    const deletion = document.querySelector('[data-account-deletion]')!;
+    expect(row.textContent?.trim()).toBe('Sign out');
+    expect(row.compareDocumentPosition(deletion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('signs out once, then shows the signed-out home list', () => {
+    settings.open('account');
+    signOutRow()!.click();
+    signOutRow()!.click();
+    expect(signOutMock).toHaveBeenCalledTimes(1);
+
+    switchAccountTo(anonymous());
+
+    expect(document.querySelector('[data-settings-page="account"]')).toBeNull();
+    expect(document.querySelector<HTMLElement>('[data-settings-home]')!.hidden).toBe(false);
+    expect(document.querySelector('[data-settings-signin]')).not.toBeNull();
+  });
+
+  it('reports a failed sign-out and lets the user try again', async () => {
+    signOutMock.mockRejectedValueOnce(new Error('network'));
+    settings.open('account');
+    signOutRow()!.click();
+
+    await vi.waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
+    expect(signOutRow()!.disabled).toBe(false);
+  });
+});
+
 describe('UnifiedSettings account deletion', () => {
   it('shows the danger zone when signed in and hides it when anonymous', () => {
     settings.open('account');
