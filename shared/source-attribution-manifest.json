@@ -8073,6 +8073,12 @@
           "path": "scripts/_orbital-sites.mjs"
         },
         {
+          "path": "scripts/measure-orbital-site-water.mjs"
+        },
+        {
+          "path": "scripts/replay-orbital-change.mjs"
+        },
+        {
           "path": "src/services/orbital/archive-stac.ts"
         },
         {
@@ -15792,7 +15798,13 @@
           "path": "scripts/measure-desktop-mainthread.mjs"
         },
         {
+          "path": "scripts/measure-orbital-site-water.mjs"
+        },
+        {
           "path": "scripts/notification-relay.cjs"
+        },
+        {
+          "path": "scripts/replay-orbital-change.mjs"
         },
         {
           "path": "scripts/seed-no2-activity.mjs"
