@@ -24,8 +24,11 @@ export interface SensorProfile {
   noradIds: readonly number[];
   namePatterns: readonly string[];
   footprint: Footprint;
-  /** Where the mission acquires: land and coasts only, or everywhere. */
-  coverage: 'land-coast' | 'global';
+  /**
+   * Where the mission acquires: a per-mission grid built from its archive footprints
+   * (mission-coverage.data.js), land and coasts only, or everywhere.
+   */
+  coverage: 'sentinel-2' | 'sentinel-1' | 'land-coast' | 'global';
   /** Hours after a pass before an archive's silence counts as "not in archive". */
   archiveWaitHours?: number;
   dailyMosaic?: boolean;

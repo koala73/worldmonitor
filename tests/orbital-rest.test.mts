@@ -45,14 +45,27 @@ describe('point passes over REST', () => {
       const point = { lat: fixture.lat, lon: fixture.lon };
       const rest = await computePointPasses(point, storedCatalog, FIXTURE_NOW, { fetch: fakeArchiveFetch(fixture).fetch });
       const { job, evidence } = await browserLookup(point, { startMs: rest.windowStartMs, endMs: rest.windowEndMs }, fakeArchiveFetch(fixture).fetch);
-      const browserTiers = new Map(evidence.passes.filter((p) => p.inFootprint).map((p) => [passKey(p), p.tier.kind]));
+      const listed = evidence.passes.filter((p) => p.inFootprint || p.tier.kind === 'confirmed-image');
+      const browserTiers = new Map(listed.map((p) => [passKey(p), p.tier.kind]));
       assert.ok(rest.passes.length > 0);
       assert.deepEqual(new Map(rest.passes.map((p) => [passKey(p), p.tier])), browserTiers);
-      assert.deepEqual(rest.passes.map(passKey), job.passes.filter((p) => p.inFootprint).map(passKey), 'the same passes the pure pass job computes');
+      assert.deepEqual(rest.passes.map(passKey), listed.map(passKey), 'the same passes the pure pass job computes');
       assert.equal(rest.outOfFootprintPasses, job.passes.length - rest.passes.length);
       assert.equal(rest.archiveStatus, 'complete');
       assert.equal(rest.stale, false);
     }
+  });
+
+  it('lists a pass the archive confirms although its modelled footprint misses the point, with the geometry note', async () => {
+    const fixture = ARCHIVE_RESPONSES.points.denver;
+    const offSwath = { lat: fixture.lat, lon: fixture.lon + 2 };
+    const rest = await computePointPasses(offSwath, storedCatalog, FIXTURE_NOW, { fetch: fakeArchiveFetch(fixture).fetch });
+    const matched = new Set(rest.acquisitions.filter((a) => a.passNoradId).map((a) => passKey({ noradId: a.passNoradId, timeMs: a.passTimeMs })));
+    assert.ok(matched.size > 1);
+    assert.deepEqual(new Set(rest.passes.filter((p) => p.tier === 'confirmed-image').map(passKey)), matched, 'every matched pass is listed as confirmed');
+    const disagreed = rest.passes.filter((p) => p.tierNote === 'geometry-disagreed');
+    assert.ok(disagreed.length > 0);
+    for (const pass of disagreed) assert.equal(pass.tier, 'confirmed-image');
   });
 
   it('returns a matched pass with the confirmed tier and its image reference', async () => {

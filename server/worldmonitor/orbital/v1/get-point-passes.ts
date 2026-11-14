@@ -75,7 +75,7 @@ function toApiPass(pass: ComputedPass, acquisitionKey: string): PointPass {
     edgeOfSwath: pass.edgeOfSwath,
     coverage: pass.coverage,
     tier: pass.tier.kind,
-    tierNote: pass.tier.kind === 'passed-overhead' ? pass.tier.note ?? '' : '',
+    tierNote: pass.tier.kind === 'passed-overhead' || pass.tier.kind === 'confirmed-image' ? pass.tier.note ?? '' : '',
     orbitAgeDays: round(pass.orbitAgeDays, 2),
     acquisitionKey,
   };
@@ -118,7 +118,7 @@ export async function computePointPasses(
   for (const acquisition of [...evidence.acquisitions].sort((a, b) => a.startMs - b.startMs)) {
     if (acquisition.pass && !acquisitionByPass.has(passKey(acquisition.pass))) acquisitionByPass.set(passKey(acquisition.pass), acquisition.key);
   }
-  const inFootprint = evidence.passes.filter((pass) => pass.inFootprint);
+  const listed = evidence.passes.filter((pass) => pass.inFootprint || pass.tier.kind === 'confirmed-image');
   const failedSources: ArchiveSourceFailure[] = evidence.failures.map((failure) => ({
     archive: failure.archive,
     reason: failure.reason,
@@ -132,8 +132,8 @@ export async function computePointPasses(
     inventoryVersion: catalogResponse.inventoryVersion,
     catalogFetchedAt: catalogResponse.fetchedAt,
     stale: catalogResponse.stale,
-    passes: inFootprint.map((pass) => toApiPass(pass, acquisitionByPass.get(passKey(pass)) ?? '')),
-    outOfFootprintPasses: evidence.passes.length - inFootprint.length,
+    passes: listed.map((pass) => toApiPass(pass, acquisitionByPass.get(passKey(pass)) ?? '')),
+    outOfFootprintPasses: evidence.passes.length - listed.length,
     acquisitions: evidence.acquisitions.map(toApiAcquisition),
     archiveStatus: evidence.status,
     failedSources,

@@ -4,6 +4,7 @@
 // loaded through NODE_OPTIONS by that test; production relay processes never
 // load it.
 const { EventEmitter } = require('node:events');
+const fs = require('node:fs');
 const https = require('node:https');
 // Node 24 loads the shared TypeScript module directly (type stripping), so the
 // emergency codes have one source of truth across TS, ESM and CommonJS.
@@ -28,6 +29,28 @@ const openskyRetryAfterSeconds = Number(process.env.RELAY_TEST_OPENSKY_RETRY_AFT
 const openskyRemainingCredits = Number(process.env.RELAY_TEST_OPENSKY_REMAINING_CREDITS || 0);
 const openskyResponseDelayMs = Number(process.env.RELAY_TEST_OPENSKY_RESPONSE_DELAY_MS || 0);
 const openskyMalformedEncoding = process.env.RELAY_TEST_OPENSKY_MALFORMED_ENCODING === '1';
+// Air-traffic lanes. RELAY_TEST_OPENSKY_STATES_FILE is a JSON array with one
+// entry per 200 response: an array of /states/all rows, or null for a body whose
+// states is null. The last entry repeats once the list is exhausted, and the
+// status sequence then defaults to 200 instead of 429.
+const openskySnapshots = process.env.RELAY_TEST_OPENSKY_STATES_FILE
+  ? JSON.parse(fs.readFileSync(process.env.RELAY_TEST_OPENSKY_STATES_FILE, 'utf8'))
+  : null;
+// One entry per OpenSky data request: 1 never answers and fires the request's
+// timeout, 0 answers normally. Exhausted -> 0.
+const openskyTimeouts = (process.env.RELAY_TEST_OPENSKY_TIMEOUT_SEQUENCE || '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+// The fixture clock starts at RELAY_TEST_CLOCK_START_MS and runs RATE times
+// faster than real time, so 1-second test ticks land in separate 5-minute bins.
+if (process.env.RELAY_TEST_CLOCK_START_MS) {
+  const realNow = Date.now.bind(Date);
+  const realStart = realNow();
+  const fixtureStart = Number(process.env.RELAY_TEST_CLOCK_START_MS);
+  const rate = Number(process.env.RELAY_TEST_CLOCK_RATE) || 1;
+  Date.now = () => fixtureStart + Math.floor((realNow() - realStart) * rate);
+}
 const wingbitsEchoAreas = process.env.RELAY_TEST_WINGBITS_ECHO_AREAS === '1';
 const wingbitsGhostRows = process.env.RELAY_TEST_WINGBITS_GHOST_ROWS === '1';
 // adsb.lol modes consumed per request: 'error' -> 503 (falls through to
@@ -195,7 +218,8 @@ https.get = function patchedGet(...args) {
   const cb = typeof options === 'function' ? options : callback;
   const parsed = targetUrl(input);
   if (parsed.hostname === 'opensky-network.org') {
-    const status = nextValue(openskyStatuses, 429);
+    if (nextValue(openskyTimeouts, '0') === '1') return request({ callback: cb, timeout: true });
+    const status = nextValue(openskyStatuses, openskySnapshots ? 200 : 429);
     const headers = {
       'content-type': 'application/json',
       'x-rate-limit-remaining': String(openskyRemainingCredits),
@@ -207,7 +231,10 @@ https.get = function patchedGet(...args) {
     return request({
       callback: cb,
       statusCode: status,
-      body: JSON.stringify({ states: status === 200 ? [OPENSKY_MIL_STATE, ...emergencyCodes.map((squawk, index) => {
+      body: openskySnapshots && status === 200 ? JSON.stringify({
+        states: openskySnapshots.length > 1 ? openskySnapshots.shift() : openskySnapshots[0],
+        time: Math.floor(Date.now() / 1000),
+      }) : JSON.stringify({ states: status === 200 ? [OPENSKY_MIL_STATE, ...emergencyCodes.map((squawk, index) => {
         const row = Array.from({ length: 15 }, (_, i) => OPENSKY_MIL_STATE[i] ?? null);
         row[0] = `ae000${index}`;
         row[1] = `RCH${squawk}`;
