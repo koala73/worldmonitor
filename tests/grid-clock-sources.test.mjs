@@ -24,7 +24,7 @@ const nwsFeature = extra => ({
   },
 });
 
-async function read({ mass = summary(), caiso = emptyCaiso(), caWeather = weather(), tnWeather = weather(), stateWeather = {} } = {}) {
+async function read({ mass = summary(), caiso = emptyCaiso(), caWeather = weather(), tnWeather = weather(), stateWeather = {}, nowMs = now } = {}) {
   const calls = [];
   const fetchImpl = async (url, options) => {
     const parsed = new URL(url);
@@ -41,7 +41,7 @@ async function read({ mass = summary(), caiso = emptyCaiso(), caWeather = weathe
     else throw new Error('Unexpected test URL');
     return payload instanceof Response ? payload : Response.json(payload);
   };
-  const regions = await fetchGridClockSources({ fetchImpl, nowMs: now });
+  const regions = await fetchGridClockSources({ fetchImpl, nowMs });
   assert.equal(calls.filter(h => h === 'massoutage.com').length, 1);
   assert.equal(calls.filter(h => h === 'api.weather.gov').length, 6);
   return regions;
@@ -56,6 +56,30 @@ test('CA and TN get their reported counts, preserve an explicit zero, and never 
   assert.equal(tennessee.current.customersOut, 0);
   assert.equal(tennessee.warningSources.find(s => s.kind === 'grid').status, 'not_monitored');
   assert.ok(california.warningSources.every(s => s.checkedAt === now && s.status === 'available'));
+});
+
+test('impossible calendar dates cannot become fresh outage observations; leap days and offsets remain valid', async () => {
+  for (const [raw, valid] of [
+    ['2026-02-30T03:10:00Z', false], ['2026-02-29T03:10:00Z', false],
+    ['2024-02-29T03:10:00Z', true], ['2026-03-01T23:10:00-05:00', true],
+  ]) {
+    const mass = summary();
+    mass.data.national.updated_at = raw;
+    mass.data.national.as_of = raw;
+    mass.meta.live.last_poll_ts = raw;
+    const [region] = await read({ mass, nowMs: Date.parse(raw) + 60_000 });
+    assert.equal(region.current !== null, valid, raw);
+    if (valid) assert.equal(region.current.observedAt, Date.parse(raw));
+  }
+});
+
+test('an impossible NWS expiry marks the warning collection unavailable', async () => {
+  const nowMs = Date.parse('2026-03-02T03:30:00Z');
+  const caWeather = { type: 'FeatureCollection', updated: new Date(nowMs).toISOString(),
+    features: [nwsFeature({ sent: '2026-03-02T03:20:00Z', expires: '2026-02-30T04:30:00Z', ends: null })] };
+  const [region] = await read({ caWeather, nowMs });
+  assert.equal(region.warningSources.find(s => s.kind === 'weather').status, 'unavailable');
+  assert.deepEqual(region.warnings, []);
 });
 
 test('new states have independent counts and warnings without borrowing TVA operator coverage', async () => {

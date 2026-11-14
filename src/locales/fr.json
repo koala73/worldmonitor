@@ -3220,7 +3220,7 @@
       "minutes": "{{amount}} min",
       "hours": "{{amount}} h",
       "warnings": "Alertes",
-      "recovery": "Rétablissement",
+      "recovery": "Changements signalés",
       "decreased": "Selon le relevé, {{amount}} clients de moins sont privés de courant",
       "increased": "Selon le relevé, {{amount}} clients de plus sont privés de courant",
       "unchanged": "Nombre de clients signalés sans courant inchangé",

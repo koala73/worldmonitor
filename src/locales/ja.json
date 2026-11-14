@@ -3178,7 +3178,7 @@
       "minutes": "{{amount}} 分",
       "hours": "{{amount}} 時間",
       "warnings": "警報",
-      "recovery": "復旧状況",
+      "recovery": "報告された変化",
       "decreased": "報告された停電契約件数が {{amount}} 件減少",
       "increased": "報告された停電契約件数が {{amount}} 件増加",
       "unchanged": "報告された件数に変動なし",

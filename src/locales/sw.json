@@ -3268,7 +3268,7 @@
       "minutes": "Dakika {{amount}}",
       "hours": "Saa {{amount}}",
       "warnings": "Maonyo",
-      "recovery": "Kurejeshwa kwa umeme",
+      "recovery": "Mabadiliko yaliyoripotiwa",
       "decreased": "Idadi iliyoripotiwa ya wateja bila umeme imepungua kwa {{amount}}",
       "increased": "Idadi iliyoripotiwa ya wateja bila umeme imeongezeka kwa {{amount}}",
       "unchanged": "Idadi iliyoripotiwa haijabadilika",

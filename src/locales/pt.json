@@ -2834,7 +2834,7 @@
       "minutes": "{{amount}} min",
       "hours": "{{amount}} h",
       "warnings": "Alertas",
-      "recovery": "Restabelecimento",
+      "recovery": "Alterações reportadas",
       "decreased": "{{amount}} clientes a menos sem energia, segundo os informes",
       "increased": "{{amount}} clientes a mais sem energia, segundo os informes",
       "unchanged": "Número informado sem alteração",

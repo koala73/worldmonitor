@@ -3199,7 +3199,7 @@
       "minutes": "{{amount}} Min.",
       "hours": "{{amount}} Std.",
       "warnings": "Warnungen",
-      "recovery": "Wiederherstellung",
+      "recovery": "Gemeldete Änderungen",
       "decreased": "Laut Meldungen {{amount}} Kunden weniger ohne Strom",
       "increased": "Laut Meldungen {{amount}} Kunden mehr ohne Strom",
       "unchanged": "Gemeldete Zahl unverändert",

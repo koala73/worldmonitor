@@ -3241,7 +3241,7 @@
       "minutes": "{{amount}} min.",
       "hours": "{{amount}} hod.",
       "warnings": "Výstrahy",
-      "recovery": "Obnova dodávek",
+      "recovery": "Hlášené změny",
       "decreased": "Hlášený počet odběratelů bez elektřiny klesl o {{amount}}",
       "increased": "Hlášený počet odběratelů bez elektřiny vzrostl o {{amount}}",
       "unchanged": "Hlášený počet se nezměnil",

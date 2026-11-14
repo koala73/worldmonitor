@@ -3178,7 +3178,7 @@
       "minutes": "{{amount}}분",
       "hours": "{{amount}}시간",
       "warnings": "경보",
-      "recovery": "복구 현황",
+      "recovery": "보고된 변화",
       "decreased": "보고된 정전 고객 {{amount}}명 감소",
       "increased": "보고된 정전 고객 {{amount}}명 증가",
       "unchanged": "보고된 정전 고객 수 변동 없음",

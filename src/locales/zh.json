@@ -3178,7 +3178,7 @@
       "minutes": "{{amount}} 分钟",
       "hours": "{{amount}} 小时",
       "warnings": "预警",
-      "recovery": "供电恢复情况",
+      "recovery": "报告的变化",
       "decreased": "报告的停电用户减少 {{amount}} 户",
       "increased": "报告的停电用户增加 {{amount}} 户",
       "unchanged": "报告的停电用户数无变化",

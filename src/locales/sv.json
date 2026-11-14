@@ -2815,7 +2815,7 @@
       "minutes": "{{amount}} min",
       "hours": "{{amount}} h",
       "warnings": "Varningar",
-      "recovery": "Återställning",
+      "recovery": "Rapporterade förändringar",
       "decreased": "{{amount}} färre kunder utan el enligt rapporterna",
       "increased": "{{amount}} fler kunder utan el enligt rapporterna",
       "unchanged": "Det rapporterade antalet är oförändrat",

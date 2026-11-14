@@ -2815,7 +2815,7 @@
       "minutes": "{{amount}} min",
       "hours": "{{amount}} uur",
       "warnings": "Waarschuwingen",
-      "recovery": "Herstel",
+      "recovery": "Gemelde veranderingen",
       "decreased": "{{amount}} minder klanten zonder stroom gemeld",
       "increased": "{{amount}} meer klanten zonder stroom gemeld",
       "unchanged": "Gemeld aantal ongewijzigd",

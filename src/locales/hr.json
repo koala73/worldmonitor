@@ -3296,7 +3296,7 @@
       "minutes": "{{amount}} min.",
       "hours": "{{amount}} h",
       "warnings": "Upozorenja",
-      "recovery": "Obnova opskrbe",
+      "recovery": "Prijavljene promjene",
       "decreased": "Prema prijavama, broj korisnika bez struje smanjio se za {{amount}}",
       "increased": "Prema prijavama, broj korisnika bez struje povećao se za {{amount}}",
       "unchanged": "Prijavljeni broj nije se promijenio",

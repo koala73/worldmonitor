@@ -3220,7 +3220,7 @@
       "minutes": "{{amount}} min",
       "hours": "{{amount}} h",
       "warnings": "Avvisi",
-      "recovery": "Ripristino",
+      "recovery": "Variazioni segnalate",
       "decreased": "Dalle segnalazioni risultano {{amount}} clienti in meno senza elettricità",
       "increased": "Dalle segnalazioni risultano {{amount}} clienti in più senza elettricità",
       "unchanged": "Il numero segnalato non è cambiato",

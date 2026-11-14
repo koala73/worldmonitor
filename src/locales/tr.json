@@ -3199,7 +3199,7 @@
       "minutes": "{{amount}} dk.",
       "hours": "{{amount}} sa.",
       "warnings": "Uyarılar",
-      "recovery": "Elektriğin yeniden verilmesi",
+      "recovery": "Bildirilen değişiklikler",
       "decreased": "Bildirilen elektriksiz abone sayısı {{amount}} azaldı",
       "increased": "Bildirilen elektriksiz abone sayısı {{amount}} arttı",
       "unchanged": "Bildirilen sayı değişmedi",

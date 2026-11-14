@@ -3241,7 +3241,7 @@
       "minutes": "{{amount}} min",
       "hours": "{{amount}} godz.",
       "warnings": "Ostrzeżenia",
-      "recovery": "Przywracanie zasilania",
+      "recovery": "Zgłoszone zmiany",
       "decreased": "Zgłoszona liczba odbiorców bez prądu spadła o {{amount}}",
       "increased": "Zgłoszona liczba odbiorców bez prądu wzrosła o {{amount}}",
       "unchanged": "Zgłoszona liczba bez zmian",

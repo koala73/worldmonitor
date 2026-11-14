@@ -3220,7 +3220,7 @@
       "minutes": "{{amount}} min",
       "hours": "{{amount}} h",
       "warnings": "Avertizări",
-      "recovery": "Reluarea alimentării",
+      "recovery": "Schimbări raportate",
       "decreased": "Numărul raportat al clienților fără curent a scăzut cu {{amount}}",
       "increased": "Numărul raportat al clienților fără curent a crescut cu {{amount}}",
       "unchanged": "Numărul raportat a rămas neschimbat",

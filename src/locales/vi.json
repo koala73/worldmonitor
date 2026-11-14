@@ -3178,7 +3178,7 @@
       "minutes": "{{amount}} phút",
       "hours": "{{amount}} giờ",
       "warnings": "Cảnh báo",
-      "recovery": "Khôi phục cấp điện",
+      "recovery": "Thay đổi được báo cáo",
       "decreased": "Số khách hàng mất điện theo báo cáo giảm {{amount}}",
       "increased": "Số khách hàng mất điện theo báo cáo tăng {{amount}}",
       "unchanged": "Số liệu báo cáo không đổi",

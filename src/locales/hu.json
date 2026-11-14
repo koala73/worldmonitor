@@ -3268,7 +3268,7 @@
       "minutes": "{{amount}} perc",
       "hours": "{{amount}} óra",
       "warnings": "Figyelmeztetések",
-      "recovery": "Helyreállítás",
+      "recovery": "Jelentett változások",
       "decreased": "A jelentett adatok szerint {{amount}} fogyasztóval kevesebb van áram nélkül",
       "increased": "A jelentett adatok szerint {{amount}} fogyasztóval több van áram nélkül",
       "unchanged": "A jelentett létszám változatlan",

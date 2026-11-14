@@ -992,7 +992,7 @@
       "hours": "{{amount}} h",
       "days": "{{amount}} d",
       "warnings": "Warnings",
-      "recovery": "Recovery",
+      "recovery": "Reported changes",
       "decreased": "{{amount}} fewer reported out",
       "increased": "{{amount}} more reported out",
       "unchanged": "Reported count unchanged",

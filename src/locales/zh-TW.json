@@ -3178,7 +3178,7 @@
       "minutes": "{{amount}} 分鐘",
       "hours": "{{amount}} 小時",
       "warnings": "預警",
-      "recovery": "供電恢復情況",
+      "recovery": "報告的變化",
       "decreased": "報告的停電使用者減少 {{amount}} 戶",
       "increased": "報告的停電使用者增加 {{amount}} 戶",
       "unchanged": "報告的停電使用者數無變化",

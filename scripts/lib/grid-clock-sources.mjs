@@ -13,6 +13,9 @@ const pacificClock = new Intl.DateTimeFormat('sv-SE', {
 
 function zonedMs(raw) {
   if (typeof raw !== 'string' || !/^\d{4}-\d\d-\d\dT.+(?:Z|[+-]\d\d:\d\d)$/i.test(raw)) return NaN;
+  const date = raw.slice(0, 10);
+  const calendarMs = Date.parse(date + 'T00:00:00Z');
+  if (!Number.isFinite(calendarMs) || new Date(calendarMs).toISOString().slice(0, 10) !== date) return NaN;
   return Date.parse(raw);
 }
 

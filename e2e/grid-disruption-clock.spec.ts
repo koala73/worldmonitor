@@ -60,6 +60,8 @@ test('enable grid clock, inspect a California warning and Tennessee coverage', a
   await panel.scrollIntoViewIfNeeded();
   await expect(panel.getByText('12,480', { exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(panel.getByText(/5,720 fewer reported out/)).toBeVisible();
+  await expect(panel.getByRole('heading', { name: 'Reported changes', exact: true })).toBeVisible();
+  await expect(panel.getByRole('heading', { name: 'Recovery', exact: true })).toHaveCount(0);
   await expect(panel.getByText('Regional energy emergency watch')).toBeVisible();
   await expect(panel.getByRole('link', { name: 'Fixture utility' })).toHaveAttribute('href', 'https://example.org/power');
   await expect(panel.getByText(/Tracked customer total unknown/)).toBeVisible();
