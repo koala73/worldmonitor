@@ -181,16 +181,18 @@ const PANEL_INITIALIZE = {
 
 type HostMessage = { jsonrpc?: string; id?: unknown; method?: string; params?: unknown; echo?: string | null; adopted?: string };
 
-async function mountWithHost(page: Page, shell: string, { answer = true, notify = false } = {}) {
+async function mountWithHost(page: Page, shell: string, { answer = true, notify = false, reject = false } = {}) {
   await page.setContent('<iframe title="WorldMonitor" sandbox="allow-scripts" style="width:100%;height:600px;border:0"></iframe>');
-  await page.evaluate(({ answer, notify }) => {
+  await page.evaluate(({ answer, notify, reject }) => {
     const frame = document.querySelector('iframe')!;
     const host = window as unknown as { hostMessages: unknown[]; notified: boolean; answerInitialize: () => void };
     host.hostMessages = [];
     host.notified = false;
     const post = (message: object) => frame.contentWindow!.postMessage({ jsonrpc: '2.0', ...message }, '*');
     let initializeId: unknown;
-    host.answerInitialize = () => post({ id: initializeId, result: { protocolVersion: '2026-01-26', hostCapabilities: {}, hostContext: { theme: 'light' } } });
+    host.answerInitialize = () => post(reject
+      ? { id: initializeId, error: { code: -32000, message: 'Fixture initialization failed' } }
+      : { id: initializeId, result: { protocolVersion: '2026-01-26', hostCapabilities: {}, hostContext: { theme: 'light' } } });
     window.addEventListener('message', event => {
       if (event.source !== frame.contentWindow) return;
       host.hostMessages.push(event.data);
@@ -204,7 +206,7 @@ async function mountWithHost(page: Page, shell: string, { answer = true, notify 
         host.notified = true;
       }
     });
-  }, { answer, notify });
+  }, { answer, notify, reject });
   await page.locator('iframe').evaluate((frame, html) => { (frame as HTMLIFrameElement).srcdoc = html; }, shell);
   return {
     frame: page.frameLocator('iframe'),
@@ -267,4 +269,15 @@ test('retrying the interface does not initialize with the host a second time', a
   const messages = await host.messages();
   expect(messages.filter(message => message.method === 'ui/initialize')).toHaveLength(1);
   expect(messages.filter(message => message.method === 'ui/notifications/initialized')).toHaveLength(1);
+});
+
+test('a host that rejects initialize reaches the panel as a failed handshake without an initialized notification', async ({ page }) => {
+  await page.route(`${origin}/plugin/market.html`, route => route.fulfill({ headers, contentType: 'text/html', body: currentHtml('marketRoot', 'rejected') }));
+  await page.route(`${origin}/plugin/assets/**`, route => {
+    const css = route.request().url().endsWith('.css');
+    return route.fulfill({ headers, contentType: css ? 'text/css' : 'application/javascript', body: css ? '' : "document.addEventListener('wm-plugin-boot-'+new URL(import.meta.url).pathname.match(/boot-(\\d+)/)?.[1],()=>{window.wmPluginHost.initialized.catch(error=>{document.getElementById('marketRoot').textContent='Rejected: '+error.message;});},{once:true});" });
+  });
+  const host = await mountWithHost(page, buildPluginShell({ origin, entry: 'market.html', root: 'marketRoot' }), { reject: true });
+  await expect(host.frame.locator('main')).toHaveText('Rejected: Fixture initialization failed');
+  expect((await host.messages()).map(message => message.method)).toEqual(['ui/initialize']);
 });
