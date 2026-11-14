@@ -320,6 +320,8 @@
   pointer-events: none;
 }
 body.orbital-full-view #mapSection > .panel-header { display: none !important; }
+/* The layers are hidden in the full view, so their toggles would show the wrong state. */
+body.orbital-full-view #mapContainer .layer-toggles { display: none !important; }
 .ow-mapmark {
   position: fixed;
   left: 0;
