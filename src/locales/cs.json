@@ -5375,7 +5375,35 @@
       "privacyHow": "Jak",
       "sources": "Zdroje",
       "archiveScene": "Archivní scéna",
-      "archiveOnly": "Těmto snímkům neodpovídá žádný vypočtený přelet, proto jsou zobrazeny jako archivní scény."
+      "archiveOnly": "Těmto snímkům neodpovídá žádný vypočtený přelet, proto jsou zobrazeny jako archivní scény.",
+      "zoneShowUtc": "Zobrazit časy v UTC",
+      "zoneShowLocal": "Zobrazit časy v místním čase tohoto místa"
+    },
+    "search": {
+      "label": "Název místa nebo souřadnice",
+      "placeholder": "Název místa nebo 48.8584, 2.2945",
+      "submit": "Hledat",
+      "locate": "Použít moji polohu",
+      "hint": "Souřadnice a vaše poloha zůstávají v tomto prohlížeči. Hledaný název místa se odešle do WorldMonitor a do služby Nominatim od OpenStreetMap.",
+      "results": "Odpovídající místa",
+      "searching": "Hledání…",
+      "tooShort": "Zadejte alespoň dva znaky nebo souřadnice jako 48.8584, 2.2945.",
+      "invalidCoordinates": "Tyto souřadnice leží mimo zeměkouli. Zeměpisná šířka je od -90 do 90 a délka od -180 do 180.",
+      "failed": "Hledání míst je teď nedostupné. Souřadnice a mapa stále fungují.",
+      "noResults": "Tomuto názvu neodpovídá žádné místo.",
+      "locating": "Zjišťování polohy…",
+      "locationDenied": "Oprávnění k poloze bylo zamítnuto. Vyhledejte místo nebo klikněte pravým tlačítkem na mapu.",
+      "locationUnavailable": "Vaši polohu se nepodařilo zjistit. Vyhledejte místo nebo klikněte pravým tlačítkem na mapu.",
+      "idle": "Vyhledejte místo podle názvu nebo souřadnic, použijte svou polohu nebo klikněte pravým tlačítkem na mapu a zjistěte, které družice nad ním přeletěly."
+    },
+    "share": {
+      "copy": "Kopírovat odkaz ke sdílení",
+      "copied": "Odkaz zkopírován",
+      "copyManually": "Zkopírujte odkaz níže",
+      "link": "Odkaz ke sdílení",
+      "dismiss": "Zavřít",
+      "passOutsideWindow": "Odkazovaný přelet je mimo aktuální okno, proto není vybrán žádný přelet.",
+      "passNotFound": "Odkazovaný přelet nebyl mezi přepočtenými přelety nalezen, proto není vybrán žádný přelet."
     }
   },
   "settings": {

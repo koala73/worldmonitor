@@ -5309,7 +5309,35 @@
       "privacyHow": "Hogyan",
       "sources": "Források",
       "archiveScene": "Archív jelenet",
-      "archiveOnly": "Egyik számított áthaladás sem egyezik ezekkel a képekkel, ezért archív jelenetként jelennek meg."
+      "archiveOnly": "Egyik számított áthaladás sem egyezik ezekkel a képekkel, ezért archív jelenetként jelennek meg.",
+      "zoneShowUtc": "Időpontok megjelenítése UTC szerint",
+      "zoneShowLocal": "Időpontok megjelenítése a hely helyi ideje szerint"
+    },
+    "search": {
+      "label": "Helynév vagy koordináták",
+      "placeholder": "Helynév vagy 48.8584, 2.2945",
+      "submit": "Keresés",
+      "locate": "Saját helyzet használata",
+      "hint": "A koordináták és a helyzete ebben a böngészőben maradnak. A keresett helynevet a WorldMonitor és az OpenStreetMap Nominatim szolgáltatása kapja meg.",
+      "results": "Egyező helyek",
+      "searching": "Keresés…",
+      "tooShort": "Írjon be legalább két karaktert, vagy koordinátákat, például 48.8584, 2.2945.",
+      "invalidCoordinates": "Ezek a koordináták a földgömbön kívül esnek. A szélesség -90 és 90, a hosszúság -180 és 180 között van.",
+      "failed": "A helykeresés most nem érhető el. A koordináták és a térkép továbbra is működnek.",
+      "noResults": "Egy hely sem egyezik ezzel a névvel.",
+      "locating": "Helyzet meghatározása…",
+      "locationDenied": "A helyhozzáférést elutasították. Keressen egy helyet, vagy kattintson jobb gombbal a térképre.",
+      "locationUnavailable": "A helyzetét nem sikerült meghatározni. Keressen egy helyet, vagy kattintson jobb gombbal a térképre.",
+      "idle": "Keressen helyet név vagy koordináták alapján, használja a helyzetét, vagy kattintson jobb gombbal a térképre, hogy lássa, mely műholdak haladtak el felette."
+    },
+    "share": {
+      "copy": "Megosztási link másolása",
+      "copied": "Link másolva",
+      "copyManually": "Másolja ki az alábbi linket",
+      "link": "Megosztási link",
+      "dismiss": "Bezárás",
+      "passOutsideWindow": "A linkelt áthaladás kívül esik az aktuális időablakon, ezért nincs kiválasztott áthaladás.",
+      "passNotFound": "A linkelt áthaladás nem található az újraszámolt áthaladások között, ezért nincs kiválasztott áthaladás."
     }
   },
   "settings": {

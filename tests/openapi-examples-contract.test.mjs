@@ -656,7 +656,7 @@ describe('OpenAPI examples contract', () => {
       const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
       return sum + operationEntries(spec).length;
     }, 0);
-    assert.equal(total, 262, `expected 262 OpenAPI operations, found ${total}`);
+    assert.equal(total, 263, `expected 263 OpenAPI operations, found ${total}`);
   });
 
   it('adds schema-valid request and response examples to every service JSON spec', () => {
@@ -668,9 +668,9 @@ describe('OpenAPI examples contract', () => {
       totals.requestExpected += result.requestExpected;
       totals.responseExpected += result.responseExpected;
     }
-    assert.equal(totals.operations, 262);
+    assert.equal(totals.operations, 263);
     assert.ok(totals.requestExpected >= 137, `expected at least 137 request example targets, found ${totals.requestExpected}`);
-    assert.equal(totals.responseExpected, 262);
+    assert.equal(totals.responseExpected, 263);
   });
 
   // record-baseline-snapshot's nested updates[].type is a bare string (no schema
@@ -709,14 +709,14 @@ describe('OpenAPI examples contract', () => {
       const spec = loadYaml(readFileSync(resolve(apiDir, yamlFile), 'utf8'));
       operations += assertOperationExamples(spec, yamlFile).operations;
     }
-    assert.equal(operations, 262);
+    assert.equal(operations, 263);
   });
 
   it('adds request and response examples to the unified OpenAPI bundle', () => {
     const bundle = loadUnifiedOpenApiSpec();
     const result = assertOperationExamples(bundle, 'worldmonitor.openapi.yaml');
-    assert.equal(result.operations, 262);
-    assert.equal(result.responseExpected, 262);
+    assert.equal(result.operations, 263);
+    assert.equal(result.responseExpected, 263);
   });
 
   it('labels aircraft emergency examples synthetic and documents projected response shapes', () => {

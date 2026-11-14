@@ -5342,7 +5342,35 @@
       "privacyHow": "Cómo",
       "sources": "Fuentes",
       "archiveScene": "Escena de archivo",
-      "archiveOnly": "Ningún paso calculado coincide con estas imágenes, así que se muestran como escenas de archivo."
+      "archiveOnly": "Ningún paso calculado coincide con estas imágenes, así que se muestran como escenas de archivo.",
+      "zoneShowUtc": "Mostrar las horas en UTC",
+      "zoneShowLocal": "Mostrar las horas en la hora local de este lugar"
+    },
+    "search": {
+      "label": "Nombre de lugar o coordenadas",
+      "placeholder": "Nombre de lugar o 48.8584, 2.2945",
+      "submit": "Buscar",
+      "locate": "Usar mi ubicación",
+      "hint": "Las coordenadas y tu ubicación se quedan en este navegador. El nombre de lugar que busques se envía a WorldMonitor y a Nominatim de OpenStreetMap.",
+      "results": "Lugares coincidentes",
+      "searching": "Buscando…",
+      "tooShort": "Escribe al menos dos caracteres, o coordenadas como 48.8584, 2.2945.",
+      "invalidCoordinates": "Esas coordenadas están fuera del globo. La latitud va de -90 a 90 y la longitud de -180 a 180.",
+      "failed": "La búsqueda de lugares no está disponible ahora. Las coordenadas y el mapa siguen funcionando.",
+      "noResults": "Ningún lugar coincide con ese nombre.",
+      "locating": "Buscando tu ubicación…",
+      "locationDenied": "Se denegó el permiso de ubicación. Busca un lugar o haz clic derecho en el mapa.",
+      "locationUnavailable": "No se pudo encontrar tu ubicación. Busca un lugar o haz clic derecho en el mapa.",
+      "idle": "Busca un lugar por nombre o coordenadas, usa tu ubicación o haz clic derecho en el mapa para ver qué satélites pasaron sobre él."
+    },
+    "share": {
+      "copy": "Copiar enlace para compartir",
+      "copied": "Enlace copiado",
+      "copyManually": "Copia el enlace de abajo",
+      "link": "Enlace para compartir",
+      "dismiss": "Cerrar",
+      "passOutsideWindow": "El paso enlazado está fuera de la ventana actual, así que no hay ningún paso seleccionado.",
+      "passNotFound": "El paso enlazado no se encontró entre los pasos recalculados, así que no hay ningún paso seleccionado."
     }
   },
   "settings": {
