@@ -114,7 +114,10 @@ export function makeArchiveSearch({ fetchImpl = (...args) => globalThis.fetch(..
       const link = Array.isArray(json?.links) ? json.links.find((l) => l?.rel === 'next' && l.body?.token) : null;
       next = link ? { ...body, ...link.body } : null;
     }
-    return acquisitionsFromStac(features);
+    // Newest first: a search cut short lacks the oldest scenes, which change scoring must not skip past.
+    const acquisitions = acquisitionsFromStac(features);
+    acquisitions.complete = next === null;
+    return acquisitions;
   }
   const searchArchive = (site, nowMs, deadlineMs) => search(stacSearchBody(site, nowMs), deadlineMs);
   searchArchive.backfill = (site, nowMs, deadlineMs) => search(backfillSearchBody(site, nowMs, ARCHIVE_LOOKBACK_DAYS), deadlineMs).catch((error) => {

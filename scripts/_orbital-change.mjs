@@ -375,7 +375,8 @@ export function makeChangeStage({
         return null;
       }
       deadlineMs ??= clock() + budgetMs;
-      if (halted || clock() >= deadlineMs) {
+      // A search cut short holds only the newest scenes; folding them would skip the older ones for good.
+      if (halted || clock() >= deadlineMs || acquisitions.complete === false) {
         skippedSites += 1;
         return previous;
       }

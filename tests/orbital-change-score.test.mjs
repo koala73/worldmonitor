@@ -553,8 +553,13 @@ describe('orbital change stage in the site seeder', () => {
         return Response.json({ features: [], links: [{ rel: 'next', method: 'POST', body: { ...JSON.parse(init.body), token: `next:${pages}` } }] });
       },
     });
-    await searchArchive(LAND, NOW, NOW + 90_000);
+    const acquisitions = await searchArchive(LAND, NOW, NOW + 90_000);
     assert.equal(pages, 2, 'the first page always, then pages only while time is left');
+    assert.equal(acquisitions.complete, false);
+    const stage = makeChangeStage({ fetchStatistics: async () => assert.fail('a cut-short search is not scored'), budgetMs: 60_000, clock: () => NOW });
+    const previous = { updatedAt: NOW - DAY_MS };
+    assert.equal(await stage.score({ site: LAND, acquisitions: Object.assign([radarScene(40)], { complete: false }), previous, nowMs: NOW }), previous);
+    assert.equal(stage.summary().skippedSites, 1);
   });
 
   it('starts no statistics request that waited for its slot after the stage halted', async () => {
