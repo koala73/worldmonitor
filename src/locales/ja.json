@@ -492,7 +492,7 @@
     "fx": "外国為替レート",
     "ukmtoIncidents": "UKMTO事案",
     "reservoirLevels": "戦略的水位",
-    "gridDisruptionClock": "停電時計"
+    "gridDisruptionClock": "米国各州の停電時計"
   },
   "commands": {
     "prefixes": {
@@ -4440,7 +4440,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "国の概要を開く",
-    "copyCoordinates": "座標をコピー"
+    "copyCoordinates": "座標をコピー",
+    "satellitePasses": "この地点を通過した衛星"
   },
   "shell": {
     "documentTitle": "ワールドモニター — リアルタイム グローバルインテリジェンスダッシュボード",
@@ -4537,8 +4538,8 @@
     "createAccount": "アカウントを作成",
     "freeReason": "無料: レイアウト保存、国のフォロー、アラート",
     "settings": "設定",
-    "passkeyOffer": {},
-    "planBilling": "プラン・課金"
+    "planBilling": "プラン・課金",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCPを接続",
@@ -5134,6 +5135,264 @@
     "errGeneric": "初版を作成できませんでした。再度お試しください。",
     "errDownload": "ファイルをここからダウンロードできません。代わりに印刷または PDF として保存を使用してください。",
     "errLoad": "旅行リスク評価を開くことができませんでした。ページを再度読み込んでもう一度お試しください。"
+  },
+  "orbitalWatch": {
+    "track": {
+      "unavailable": "この通過の地上軌跡を描画できませんでした"
+    },
+    "replay": {
+      "acquisition": "取得 · {{name}}",
+      "acquired": "取得済み {{time}} · {{resolution}}",
+      "play": "再生",
+      "pause": "一時停止",
+      "scrub": "再生位置",
+      "reducedMotion": "動きを減らす"
+    },
+    "computing": "衛星カタログを読み込み中…",
+    "computingProgress": "通過を計算中：{{total}} 機中 {{done}} 機",
+    "unavailable": "衛星カタログを読み込めなかったため、この地点の通過は計算されていません。",
+    "checkingArchives": "アーカイブを確認中：{{total}} 件中 {{done}} 件が応答",
+    "confirmedCount": "確認済み画像：{{count}}",
+    "counts": {
+      "mosaics": "日次モザイク：{{count}}",
+      "frames": "気象画像：{{count}}",
+      "inRange": "範囲内の通過：{{count}}"
+    },
+    "partial": "{{sources}} が応答しなかったため、一部の通過で画像が欠けている可能性があります。",
+    "stale": "軌道データが古くなっています。衛星カタログは {{age}} 前のもので、通過時刻がずれる可能性があります。",
+    "empty": "過去 {{pastDays}} 日間に、登録済みの撮像衛星はこの地点の上空を通過しておらず、今後 {{futureHours}} 時間も通過しません。",
+    "privacy": "この地点はブラウザー内にとどまります。送信先は、ブラウザーが直接呼び出す公開アーカイブ（Earth Search、Microsoft Planetary Computer、NASA GIBS、EUMETSAT）のみです。唯一の例外は地名検索で、入力した地名は地名検索サービスに送られます。",
+    "inRange": "範囲内",
+    "tier": {
+      "checking": "アーカイブ確認中",
+      "confirmed": "確認済み画像",
+      "likely": "撮像の可能性が高い",
+      "opportunity": "今後の通過",
+      "dailyMosaic": "日次モザイク内",
+      "withinReach": "範囲内",
+      "capabilityOverhead": "能力上空通過",
+      "passedOverhead": "上空通過",
+      "unmatchedImage": "計算済み通過のない画像",
+      "weatherFrame": "気象画像",
+      "unavailable": "利用不可"
+    },
+    "row": {
+      "offNadir": "天底から {{deg}}°",
+      "distance": "地上軌跡から {{km}} km",
+      "orbitAge": "軌道データ {{age}} 前",
+      "edgeOfSwath": "観測幅の端",
+      "notInArchive": "アーカイブに画像なし",
+      "archiveUnanswered": "アーカイブが応答しませんでした",
+      "imageAlt": "{{name}} の画像、{{time}}",
+      "mosaicDays": "アーカイブ内の日数：{{count}}",
+      "cadence": "{{minutes}} 分ごとに新しい画像",
+      "sourceUnavailable": "アーカイブには、この期間のこのソースの画像がありません。",
+      "imageLoading": "画像を読み込み中…",
+      "imageFailed": "画像を読み込めませんでした。アーカイブが遅いか停止している可能性があります。",
+      "noPreview": "アーカイブにはまだこのシーンのプレビューがありません。"
+    },
+    "dailyMosaics": "日次モザイク",
+    "weatherFrames": "気象画像",
+    "ui": {
+      "change": "変更",
+      "share": "共有",
+      "shareCopied": "リンクをコピーしました",
+      "headline": "過去{{days}}日間に{{satellites}}が{{place}}の上空を通過しました。",
+      "satellites_other": "{{count}}基の衛星",
+      "subline_other": "{{count}}枚の画像が公開されました。",
+      "closestLook": "最も近い撮影",
+      "replay": "再生",
+      "openFull": "全画面表示を開く",
+      "previous": "前の画像",
+      "next": "次の画像",
+      "passes_other": "回の通過",
+      "showAll": "すべての通過を表示",
+      "noRecentDays": "アーカイブに最近の日がありません: {{sources}}",
+      "tab": {
+        "all": "すべて",
+        "detailed": "詳細",
+        "weather": "気象"
+      },
+      "caption": {
+        "clear": "地点は晴れ",
+        "clearSceneCloud": "地点は晴れ · シーンの雲量 {{pct}}%",
+        "clouded": "曇り · {{pct}}%",
+        "cloudShadow": "雲の影",
+        "spotNotChecked": "地点の雲は未確認",
+        "sceneCloud": "シーンの雲量 {{pct}}% · 地点は未確認",
+        "radar": "レーダー",
+        "dailyMosaic": "日次モザイク",
+        "geostationary": "静止衛星フルディスク",
+        "geostationaryCadence": "静止衛星 · {{minutes}}分ごと"
+      },
+      "tile": {
+        "failed": "画像を利用できません · {{archive}}",
+        "noPreview": "アーカイブにはまだこのシーンのプレビューがありません"
+      },
+      "grid": {
+        "watched": "撮影済み",
+        "watchedDef": "公開アーカイブにこの地点の画像があります。",
+        "likely": "撮影の可能性大",
+        "likelyDef": "固定観測幅のセンサーが範囲に含めましたが、画像はまだ公開されていません。",
+        "could": "ここを向けた可能性",
+        "couldDef": "指向可能または商用のセンサーが届く範囲にいましたが、運用者は観測したかを公表していません。",
+        "overhead": "上空を通過",
+        "overheadDef": "撮影の証拠なしにこの上空を通過しました。",
+        "watchedShort": "公開アーカイブに画像あり",
+        "likelyShort": "観測済み、画像はまだなし",
+        "likelyUnansweredDef": "固定幅センサーが撮影範囲に収めましたが、アーカイブが応答しなかったため、画像が存在する可能性があります。",
+        "likelyUnansweredShort": "撮影範囲内、アーカイブ応答なし",
+        "couldShort": "指向可能なセンサーが圏内",
+        "overheadShort": "上空通過、画像なし"
+      },
+      "group": {
+        "watched": "撮影済み",
+        "likely": "撮影の可能性大",
+        "upcoming": "今後",
+        "could": "ここを向けた可能性",
+        "overhead": "上空を通過",
+        "weather_other": "気象ソース"
+      },
+      "order": {
+        "closest": "最も近い撮影、次に新しい順",
+        "newest": "新しい順",
+        "soonest": "早い順"
+      },
+      "row": {
+        "cloud": "雲 {{pct}}%",
+        "days_other": "{{count}}日",
+        "repeats": "このグループでのこの衛星の通過 {{count}}回"
+      },
+      "section": {
+        "summary": "概要",
+        "passes": "通過"
+      },
+      "status": {
+        "objects": "{{count}}基の撮像衛星 · CelesTrak GP",
+        "fetched": "取得 {{time}} · {{ago}}",
+        "sun": "太陽 {{point}} · 太陽直下点"
+      },
+      "step": {
+        "computing": "計算中",
+        "catalogLoading": "カタログ · 読み込み中",
+        "catalog": "カタログ · {{count}}基の撮像衛星",
+        "propagating": "軌道を計算中 · {{done}} / {{total}}",
+        "archives": "アーカイブ · {{done}} / {{total}} が応答",
+        "matching": "シーンを{{passes}}回の通過と照合中",
+        "window": "7日間の範囲 · {{start}} → {{end}}",
+        "failed": "失敗",
+        "note": "Planetary ComputerとNASA GIBSは画像を要求時に生成するため、この手順には数秒かかることがあります。"
+      },
+      "privacyLine": "地点はブラウザ内にとどまります",
+      "privacyHow": "仕組み",
+      "sources": "出典",
+      "archiveScene": "アーカイブシーン",
+      "archiveOnly": "計算された通過と一致しない画像のため、アーカイブシーンとして表示しています。",
+      "zoneShowUtc": "時刻をUTCで表示",
+      "zoneShowLocal": "時刻をこの場所の現地時間で表示"
+    },
+    "viewer": {
+      "open": "画像ビューアを開く: {{image}}",
+      "bestView": "最適な画像を開く: {{name}}、{{time}}",
+      "imageAlt": "{{name}} の画像、{{time}}",
+      "close": "画像ビューアを閉じる",
+      "northUp": "上が北",
+      "unreferenced": "アーカイブ提供時の向きのまま。北は示されていません",
+      "compareDates": "このコレクションの他の日付",
+      "compareNone": "比較できる同じコレクションの画像はありません。",
+      "divider": "前後比較の境界",
+      "searching": "過去{{days}}日間のこの地点の画像を検索中",
+      "historyFailed": "{{archive}} から応答がなかったため、過去の画像はありません。",
+      "historyTimeout": "{{archive}} が時間内に応答しなかったため、過去の画像はありません。",
+      "loading": "フレームを読み込み中: {{loaded}} / {{total}}",
+      "pause": "一時停止",
+      "resume": "再生",
+      "next": "次のフレーム",
+      "closeLabel": "閉じる",
+      "agoNow": "たった今",
+      "agoHours": "{{count}}時間前",
+      "agoDays": "{{count}}日前",
+      "clear": "晴天",
+      "clouded": "雲 · {{pct}}%",
+      "tabImage": "画像",
+      "tabChange": "変化",
+      "metaAcquired": "撮影",
+      "metaDate": "日付",
+      "metaPixel": "ピクセル",
+      "metaSpot": "地点の雲",
+      "metaScene": "シーンの雲",
+      "metaSun": "太陽高度",
+      "showCloudy": "曇りの日付を表示 ({{count}})"
+    },
+    "timelapse": {
+      "heading": "タイムラプス",
+      "entry": "この場所の年ごとの変化",
+      "open": "この場所の年ごとのタイムラプスを開く",
+      "searching": "2015年以降、毎年1枚の晴天画像を検索中 · {{archive}}",
+      "loading": "画像を読み込み中 · {{loaded}} / {{total}}",
+      "failed": "{{archive}} から応答がなかったため、年ごとの画像はありません。",
+      "timeout": "{{archive}} が時間内に応答しなかったため、年ごとの画像はありません。",
+      "partial": "{{archive}} が応答しなかったため欠けている年: {{count}}。",
+      "tooFew": "この場所の晴天の年次画像: {{count}}。タイムラプスには {{min}} 枚必要です。",
+      "total": "晴天画像 {{count}} 枚 · 年に1枚",
+      "years": "年",
+      "share": "共有",
+      "method": "各フレームは Sentinel-2 による同じ 6 km 四方の自然色画像です。年ごとに異なる季節を検索し、最も雲の少ないシーンを使います。雲量 30% 未満のシーンがない年は除外します。"
+    },
+    "passDetail": {
+      "back": "すべての通過",
+      "altitude": "高度",
+      "offNadir": "オフナディア角",
+      "crossed": "{{name}} は高度 {{altitude}} km、この地点の{{direction}} {{distance}} km を {{time}} に地表速度 {{speed}} km/s で通過しました。",
+      "crossedHeading": "{{name}} は高度 {{altitude}} km、この地点の{{direction}} {{distance}} km を {{time}} に{{heading}}へ地表速度 {{speed}} km/s で通過しました。",
+      "looking": "真下から {{deg}}° 傾けて観測していました。",
+      "sceneCloud": "シーンの雲量: {{pct}}%。",
+      "pixelLine": "{{m}} m ピクセル",
+      "swathLine": "{{km}} km 観測幅",
+      "clearestLook": "最も晴れた画像",
+      "previous": "前の通過",
+      "next": "次の通過",
+      "dir": {
+        "n": "北",
+        "ne": "北東",
+        "e": "東",
+        "se": "南東",
+        "s": "南",
+        "sw": "南西",
+        "w": "西",
+        "nw": "北西"
+      },
+      "heading": {
+        "north": "北",
+        "south": "南"
+      }
+    },
+    "search": {
+      "label": "地名または座標",
+      "placeholder": "地名または 48.8584, 2.2945",
+      "submit": "検索",
+      "locate": "現在地を使う",
+      "hint": "座標と現在地はこのブラウザ内にとどまります。検索した地名は WorldMonitor と OpenStreetMap の Nominatim に送信されます。",
+      "results": "一致する場所",
+      "searching": "検索中…",
+      "tooShort": "2文字以上、または 48.8584, 2.2945 のような座標を入力してください。",
+      "invalidCoordinates": "この座標は地球の範囲外です。緯度は -90 から 90、経度は -180 から 180 です。",
+      "failed": "現在、地名検索を利用できません。座標と地図は引き続き使えます。",
+      "noResults": "その名前に一致する場所はありません。",
+      "locating": "現在地を取得中…",
+      "locationDenied": "位置情報の許可が拒否されました。場所を検索するか、地図を右クリックしてください。",
+      "locationUnavailable": "現在地を取得できませんでした。場所を検索するか、地図を右クリックしてください。",
+      "idle": "地名や座標で場所を検索するか、現在地を使うか、地図を右クリックして、その上空を通過した衛星を確認できます。"
+    },
+    "share": {
+      "copy": "共有リンクをコピー",
+      "copied": "リンクをコピーしました",
+      "copyManually": "下のリンクをコピーしてください",
+      "link": "共有リンク",
+      "dismiss": "閉じる",
+      "passOutsideWindow": "リンクされた通過は現在の期間外のため、通過は選択されていません。",
+      "passNotFound": "リンクされた通過は再計算された通過の中に見つからなかったため、通過は選択されていません。"
+    }
   },
   "settings": {
     "back": "設定に戻る",

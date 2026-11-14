@@ -88,12 +88,14 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ['GET /api/safety/v1/get-toronto-safety', 'deferred-to-future-tool: city-level Toronto Police data serves the Toronto Safety panel; the MCP tools were removed in 1.54.0 and a country-level safety tool replaces them once more countries are covered'],
   ['GET /api/maritime/v1/list-ukmto-incidents', 'deferred-to-future-tool: UKMTO publisher reports await activation and source-aware MCP composition (#9831)'],
 
-  // === mutating (20) ===
+  // === mutating (21) ===
   ["GET /api/aviation/v1/list-airport-delays",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["GET /api/infrastructure/v1/list-temporal-anomalies",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["GET /api/infrastructure/v1/reverse-geocode",
+    "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
+  ["GET /api/infrastructure/v1/search-place",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["GET /api/resilience/v1/get-resilience-ranking",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
@@ -274,6 +276,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   // category is fetch-on-miss.
   ["GET /api/aviation/v1/get-airport-ops-summary",
     "deferred-to-future-tool: pure-read but no MCP tool exposes aviation:delays:intl:v3 yet — bundle into a future expanded-domain tool"],
+  ["GET /api/orbital/v1/list-imaging-satellites",
+    "deferred-to-future-tool: pure-read raw orbit elements; the subscription point-lookup tool computes passes from orbital:catalog:v1 instead of exposing the catalog"],
   ["GET /api/cyber/v1/list-cyber-threats",
     "deferred-to-future-tool: pure-read but no MCP tool exposes cyber:threats:v2 yet — bundle into a future expanded-domain tool"],
   ["GET /api/economic/v1/get-bis-credit",

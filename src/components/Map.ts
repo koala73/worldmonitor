@@ -5,6 +5,7 @@ import { UKMTO_SOURCE_URL, ukmtoIncidentLabel, type UkmtoMapIncident } from '../
 import { iso2ToUnCode } from '../../shared/country-numeric-codes';
 import { FOCUS_CENTRES, type FocusFitBounds } from '@/utils/focus-map';
 import type { ReservoirLevel } from '@/services/climate';
+import { continuousTrack, pointNear, sweptSwath, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { reservoirTone, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
 import * as topojson from 'topojson-client';
 import { escapeHtml } from '@/utils/sanitize';
@@ -25,6 +26,7 @@ import { getThreatColor } from '@/services/threat-classifier';
 import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/smart-poll-loop';
 import { scheduleAfterFirstPaint, yieldToMain } from '@/utils/after-paint';
 import { measure, mutate } from '@/utils/layout-batch';
+import type { ScreenOffset } from '@/utils/map-point-offset';
 import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import {
   INTEL_HOTSPOTS,
@@ -162,6 +164,15 @@ const RENDERABLE_AI_DATA_CENTERS = AI_DATA_CENTERS.filter(
  */
 const SVG_FOCUS_MAX_ZOOM = 6;
 
+type OrbitalLabelSide = 'right' | 'left' | 'below';
+
+export interface FocusFitInset {
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+}
+
 export class MapComponent {
   private static readonly MOBILE_MIN_EARTHQUAKE_MAGNITUDE = 5;
   private static readonly MOBILE_MAX_IRAN_EVENTS = 50;
@@ -209,8 +220,14 @@ export class MapComponent {
    * keys its country features by M49, not ISO2.
    */
   private focusOutline: { chosen: Set<string>; neighbours: Set<string> } | null = null;
+  private orbitalTrack: PassTrack | null = null;
+  private orbitalTrackMarker: TrackPoint | null = null;
+  private orbitalTarget: OrbitalTarget | null = null;
+  private orbitalMarkerNodes: SVGCircleElement[] = [];
+  private orbitalSweptNodes: SVGPathElement[] = [];
+  private orbitalEdgeNodes: SVGPathElement[] = [];
   /** A focus fit requested while the map had no size (a collapsed mobile map). */
-  private pendingFocusFit: FocusFitBounds | null = null;
+  private pendingFocusFit: { fit: FocusFitBounds; maxZoom: number; inset?: FocusFitInset } | null = null;
   private isResizing = false;
   private baseLayerGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
   private dynamicLayerGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
@@ -515,7 +532,7 @@ export class MapComponent {
   public resize(renderNow = false): void {
     const pendingFocusFit = this.pendingFocusFit;
     const pendingCenter = this.pendingCenter;
-    if (pendingFocusFit) this.fitFocusBounds(pendingFocusFit);
+    if (pendingFocusFit) this.fitFocusBounds(pendingFocusFit.fit, pendingFocusFit.maxZoom, pendingFocusFit.inset);
     else if (pendingCenter) this.setCenter(pendingCenter.lat, pendingCenter.lon);
     if (renderNow) this.render();
     else this.scheduleRender();
@@ -1573,6 +1590,8 @@ export class MapComponent {
     if (this.state.layers.ais) steps.push(() => this.renderAisDensity(projection));
     steps.push(() => this.renderClusterLayer(projection));
     steps.push(() => this.renderOverlays(projection));
+    if (this.orbitalTrack) steps.push(() => this.renderOrbitalTrack(projection));
+    if (this.orbitalTarget) steps.push(() => this.renderOrbitalTarget(projection));
 
     for (let i = 0; i < steps.length; i++) {
       if (chunk && (this.destroyed || token !== this.dynamicRenderToken)) return;
@@ -5099,6 +5118,182 @@ export class MapComponent {
     this.onCountryClick = cb;
   }
 
+  public setOrbitalTrack(track: PassTrack | null, marker: TrackPoint | null): void {
+    this.orbitalTrack = track;
+    this.orbitalTrackMarker = track ? marker : null;
+    this.container.classList.toggle('orbital-tracked', !!track);
+    if (!track) {
+      this.dynamicLayerGroup?.node()?.querySelector('.orbital-track')?.remove();
+      this.orbitalMarkerNodes = [];
+      this.orbitalSweptNodes = [];
+      this.orbitalEdgeNodes = [];
+    }
+    this.render();
+  }
+
+  public setOrbitalTrackMarker(point: TrackPoint | null): void {
+    if (!this.orbitalTrack) return;
+    this.orbitalTrackMarker = point;
+    const { width, height } = this.getKnownContainerSize();
+    if (width > 0 && height > 0) this.placeOrbitalMarker(this.getProjection(width, height));
+  }
+
+  private renderOrbitalTrack(projection: d3.GeoProjection): void {
+    const track = this.orbitalTrack;
+    const group = this.dynamicLayerGroup;
+    if (!track || !group) return;
+    const shapes = continuousTrack(track, this.orbitalAroundLon(track));
+    const toPath = (positions: Array<[number, number]>, close: boolean) => MapComponent.orbitalPathData(projection, positions, close);
+    const layer = group.append('g').attr('class', 'orbital-track').attr('pointer-events', 'none');
+    this.orbitalSweptNodes = [];
+    this.orbitalEdgeNodes = [];
+    this.orbitalMarkerNodes = [];
+    const accent = getCSSColor('--ow-mark');
+    const text = getCSSColor('--ow-text');
+    for (const copy of MapComponent.orbitalWorldCopies(layer, projection)) {
+      for (const ring of shapes.footprint) {
+        copy.append('path').attr('d', toPath(ring, true))
+          .attr('fill', accent).attr('fill-opacity', 0.07).attr('stroke', accent).attr('stroke-opacity', 0.5).attr('stroke-width', 1).attr('vector-effect', 'non-scaling-stroke');
+      }
+      copy.append('path').attr('d', toPath(shapes.path, false))
+        .attr('fill', 'none').attr('stroke', getCSSColor('--ow-dim')).attr('stroke-width', 1.5).attr('vector-effect', 'non-scaling-stroke');
+      this.orbitalSweptNodes.push(copy.append('path').attr('class', 'orbital-swept').attr('fill', accent).attr('fill-opacity', 0.24).attr('stroke', 'none').node()!);
+      this.orbitalEdgeNodes.push(copy.append('path').attr('class', 'orbital-leading-edge').attr('fill', 'none')
+        .attr('stroke', accent).attr('stroke-width', 2.6).attr('stroke-linecap', 'round').attr('vector-effect', 'non-scaling-stroke').node()!);
+      this.orbitalMarkerNodes.push(copy.append('circle').attr('r', 4).attr('fill', text).attr('stroke', getCSSColor('--ow-panel'))
+        .attr('vector-effect', 'non-scaling-stroke').node()!);
+    }
+    this.placeOrbitalMarker(projection);
+  }
+
+  private orbitalAroundLon(track: PassTrack): number {
+    return this.orbitalTarget?.lon ?? track.closest.lon;
+  }
+
+  /** The map draws one world, so orbital shapes are drawn three times, a world width apart, to show past ±180. */
+  private static orbitalWorldCopies(
+    layer: d3.Selection<SVGGElement, unknown, null, undefined>,
+    projection: d3.GeoProjection,
+  ): Array<d3.Selection<SVGGElement, unknown, null, undefined>> {
+    const world = MapComponent.orbitalWorldWidth(projection);
+    return [0, -1, 1].map((turn) => layer.append('g').attr('class', 'orbital-world').attr('data-turn', turn)
+      .attr('transform', turn ? `translate(${turn * world},0)` : null));
+  }
+
+  private static orbitalWorldWidth(projection: d3.GeoProjection): number {
+    return (projection([180, 0])?.[0] ?? 0) - (projection([-180, 0])?.[0] ?? 0);
+  }
+
+  public setOrbitalTarget(target: OrbitalTarget | null): void {
+    this.orbitalTarget = target;
+    this.container.classList.toggle('orbital-pinned', !!target);
+    if (!target) this.dynamicLayerGroup?.node()?.querySelectorAll('.orbital-target, .orbital-target-copy').forEach((node) => node.remove());
+    this.render();
+  }
+
+  /** Projects a longitude past ±180 a world width over, since the projection wraps it back into -180..180. */
+  private static orbitalProject(projection: d3.GeoProjection, [lon, lat]: [number, number]): [number, number] | null {
+    const turns = Math.round(lon / 360);
+    const xy = projection([lon - 360 * turns, lat]);
+    return xy && turns ? [xy[0] + turns * MapComponent.orbitalWorldWidth(projection), xy[1]] : xy;
+  }
+
+  private static orbitalPathData(projection: d3.GeoProjection, positions: Array<[number, number]>, close: boolean): string {
+    const projected = positions.map((position) => MapComponent.orbitalProject(projection, position)).filter((xy): xy is [number, number] => xy !== null);
+    return projected.length < 2 ? '' : `M${projected.map(([x, y]) => `${x},${y}`).join('L')}${close ? 'Z' : ''}`;
+  }
+
+  private renderOrbitalTarget(projection: d3.GeoProjection): void {
+    const target = this.orbitalTarget;
+    const xy = target ? projection([target.lon, target.lat]) : null;
+    if (!xy || !this.dynamicLayerGroup) return;
+    const unit = 1 / Math.max(1, this.state.zoom);
+    const accent = getCSSColor('--ow-mark');
+    const reticle = this.dynamicLayerGroup.append('g').attr('class', 'orbital-target').attr('pointer-events', 'none')
+      .attr('transform', `translate(${xy[0]},${xy[1]}) scale(${unit})`);
+    reticle.append('circle').attr('r', 12).attr('fill', 'none').attr('stroke', accent).attr('stroke-width', 2);
+    reticle.append('circle').attr('r', 3).attr('fill', accent);
+    const world = MapComponent.orbitalWorldWidth(projection);
+    if (world > 0) {
+      for (const turn of [-1, 1]) {
+        const copy = this.dynamicLayerGroup.append('g').attr('class', 'orbital-target-copy').attr('pointer-events', 'none')
+          .attr('transform', `translate(${xy[0] + turn * world},${xy[1]}) scale(${unit})`);
+        copy.append('circle').attr('r', 12).attr('fill', 'none').attr('stroke', accent).attr('stroke-width', 2);
+        copy.append('circle').attr('r', 3).attr('fill', accent);
+      }
+    }
+    const lines = target?.lines ?? [];
+    if (lines.length === 0) return;
+    const frame = this.container.getBoundingClientRect();
+    const right = Math.min(frame.right, document.documentElement.clientWidth) - 48;
+    // The tag sits right of the reticle; on a narrow map it moves left, then under it, then wraps at its ' · ' breaks.
+    const attempts: Array<[string[], OrbitalLabelSide]> = [[lines, 'right'], [lines, 'left'], [lines, 'below']];
+    const wrapped = MapComponent.wrapOrbitalLines(lines);
+    if (wrapped.length > lines.length) attempts.push([wrapped, 'right'], [wrapped, 'left']);
+    for (const [i, [rows, side]] of attempts.entries()) {
+      const label = MapComponent.drawOrbitalLabel(reticle, rows, side);
+      const box = label.node()?.getBoundingClientRect();
+      const fits = !box || box.width <= 0 || (box.left >= frame.left + 4 && box.right <= right);
+      if (fits || i === attempts.length - 1) return;
+      label.remove();
+    }
+  }
+
+  private static drawOrbitalLabel(
+    reticle: d3.Selection<SVGGElement, unknown, null, undefined>,
+    lines: string[],
+    side: OrbitalLabelSide,
+  ): d3.Selection<SVGGElement, unknown, null, undefined> {
+    const width = 10 + 7 * Math.max(...lines.map((line) => line.length));
+    const x = side === 'left' ? -20 - width : side === 'below' ? -width / 2 : 20;
+    const label = reticle.append('g');
+    if (side === 'below') label.attr('transform', `translate(0,${20 + 9 * lines.length + 3})`);
+    label.append('rect').attr('x', x).attr('y', -9 * lines.length - 3).attr('height', 18 * lines.length + 6)
+      .attr('width', width).attr('fill', getCSSColor('--ow-panel')).attr('fill-opacity', 0.88);
+    const text = label.append('text').attr('fill', getCSSColor('--ow-text'))
+      .attr('font-family', getCSSColor('--ow-font-mono')).attr('font-size', 11).attr('letter-spacing', '0.06em');
+    lines.forEach((line, i) => {
+      text.append('tspan').attr('x', x + 5).attr('y', (i - (lines.length - 1) / 2) * 18 + 4).text(line);
+    });
+    return label;
+  }
+
+  /** Splits each line at its ' · ' breaks, packing parts back together up to the widest unbreakable part. */
+  private static wrapOrbitalLines(lines: string[]): string[] {
+    const parts = lines.map((line) => line.split(' \u00b7 '));
+    const limit = Math.max(...parts.flat().map((part) => part.length));
+    return parts.flatMap((pieces) => pieces.reduce<string[]>((rows, piece) => {
+      const last = rows[rows.length - 1];
+      if (last !== undefined && last.length + 3 + piece.length <= limit) rows[rows.length - 1] = `${last} \u00b7 ${piece}`;
+      else rows.push(piece);
+      return rows;
+    }, []));
+  }
+
+  private placeOrbitalMarker(projection: d3.GeoProjection): void {
+    const track = this.orbitalTrack;
+    if (!track || !this.orbitalMarkerNodes[0]?.isConnected) return;
+    const aroundLon = this.orbitalAroundLon(track);
+    const marker = this.orbitalTrackMarker ? pointNear(this.orbitalTrackMarker, aroundLon) : null;
+    const swept = marker ? sweptSwath(track, marker.timeMs, aroundLon) : { rings: [], leadingEdge: [] };
+    const sweptPath = swept.rings.map((ring) => MapComponent.orbitalPathData(projection, ring, true)).join('');
+    const edgePath = swept.leadingEdge.map((line) => MapComponent.orbitalPathData(projection, line, false)).join('');
+    const xy = marker ? MapComponent.orbitalProject(projection, [marker.lon, marker.lat]) : null;
+    this.orbitalSweptNodes.forEach((node) => node.setAttribute('d', sweptPath));
+    this.orbitalEdgeNodes.forEach((node) => node.setAttribute('d', edgePath));
+    for (const node of this.orbitalMarkerNodes) {
+      if (!xy) {
+        node.setAttribute('display', 'none');
+        continue;
+      }
+      node.removeAttribute('display');
+      node.setAttribute('r', String(4 / Math.max(1, this.state.zoom)));
+      node.setAttribute('cx', String(xy[0]));
+      node.setAttribute('cy', String(xy[1]));
+    }
+  }
+
+
   /**
    * Outline the dashboard focus (#10453): chosen countries with a solid
    * border, neighbours with a lighter one (styles in main.css). Null removes
@@ -5160,12 +5355,13 @@ export class MapComponent {
    * this flat map has one world copy, so a dateline-crossing union centres on
    * the arc's midpoint and shows the part of it on this side of the edge.
    */
-  public fitFocusBounds(fit: FocusFitBounds): void {
+  /** `inset` is the part of the map left uncovered by overlays: its size, and its centre's offset from the map's. */
+  public fitFocusBounds(fit: FocusFitBounds, maxZoom = SVG_FOCUS_MAX_ZOOM, inset?: FocusFitInset): void {
     const { width, height } = this.readContainerSize();
     if (width <= 0 || height <= 0) {
       // Collapsed (the mobile "Show map" toggle) or not laid out: fit when
       // resize() reports a size, unless another view command comes first.
-      this.pendingFocusFit = fit;
+      this.pendingFocusFit = { fit, maxZoom, inset };
       return;
     }
     this.pendingFocusFit = null;
@@ -5173,10 +5369,17 @@ export class MapComponent {
     // Equirectangular: pixels per degree are the same on both axes.
     const pxPerDegree = projection.scale() * Math.PI / 180;
     const padFactor = 0.8;
-    const zoomX = fit.lonSpan > 0 ? (width * padFactor) / (fit.lonSpan * pxPerDegree) : SVG_FOCUS_MAX_ZOOM;
-    const zoomY = fit.latSpan > 0 ? (height * padFactor) / (fit.latSpan * pxPerDegree) : SVG_FOCUS_MAX_ZOOM;
-    this.state.zoom = Math.max(1, Math.min(SVG_FOCUS_MAX_ZOOM, zoomX, zoomY));
+    const view = inset ?? { width, height, x: 0, y: 0 };
+    const zoomX = fit.lonSpan > 0 ? (view.width * padFactor) / (fit.lonSpan * pxPerDegree) : maxZoom;
+    const zoomY = fit.latSpan > 0 ? (view.height * padFactor) / (fit.latSpan * pxPerDegree) : maxZoom;
+    this.state.zoom = Math.max(1, Math.min(maxZoom, zoomX, zoomY));
     this.setCenter(fit.center.lat, fit.center.lon);
+    if (view.x || view.y) {
+      // Shift in pixels, not degrees: a centre moved past ±180 would project into the other world.
+      this.state.pan.x += view.x / this.state.zoom;
+      this.state.pan.y += view.y / this.state.zoom;
+      this.applyTransform();
+    }
     this.resumeMobileLabelVisibility();
   }
 
@@ -5261,7 +5464,6 @@ export class MapComponent {
   }
 
   public setCenter(lat: number, lon: number): void {
-    console.log('[Map] setCenter called:', { lat, lon });
     // Any centre command, including the one a focus fit ends with, ends a
     // fit still waiting for the map to have a size.
     this.pendingFocusFit = null;
@@ -5273,7 +5475,6 @@ export class MapComponent {
     this.pendingCenter = null;
     const projection = this.getProjection(width, height);
     const pos = projection([lon, lat]);
-    console.log('[Map] projected pos:', pos, 'container:', { width, height }, 'zoom:', this.state.zoom);
     if (!pos) return;
     // Pan formula: after applyTransform() computes tx = centerOffset + pan*zoom,
     // and transform is translate(tx,ty) scale(zoom), to center on pos:
@@ -5287,6 +5488,36 @@ export class MapComponent {
     this.applyTransform();
     // Ensure base layer is intact after pan
     this.ensureBaseLayerIntact();
+  }
+
+  /** The centre that draws (lat, lon) `offset` pixels from the container centre at `zoom`, clamped as setZoom clamps it. */
+  public centerForOffset(lat: number, lon: number, zoom: number, offset: ScreenOffset): { lat: number; lon: number } {
+    const { width, height } = this.readContainerSize();
+    if (width === 0 || height === 0) return { lat, lon };
+    const projection = this.getProjection(width, height);
+    const pos = projection([lon, lat]);
+    const scale = Math.max(1, Math.min(10, zoom));
+    if (!pos) return { lat, lon };
+    // One world is drawn, so a centre past the antimeridian would wrap to the far edge.
+    const west = projection([-180, 0])?.[0] ?? -Infinity;
+    const east = projection([180, 0])?.[0] ?? Infinity;
+    const x = Math.min(east - 1e-6, Math.max(west + 1e-6, pos[0] - offset.x / scale));
+    const centre = projection.invert?.([x, pos[1] - offset.y / scale]);
+    return centre ? { lat: centre[1], lon: centre[0] } : { lat, lon };
+  }
+
+  /** Where (lat, lon) is drawn in client coordinates, through the same translate and scale applyTransform() sets. */
+  public projectToClient(lat: number, lon: number): { x: number; y: number } | null {
+    const { width, height } = this.readContainerSize();
+    if (width === 0 || height === 0) return null;
+    const pos = this.getProjection(width, height)([lon, lat]);
+    if (!pos) return null;
+    const { zoom, pan } = this.state;
+    const rect = this.container.getBoundingClientRect();
+    return {
+      x: rect.left + (width / 2) * (1 - zoom) + (pan.x + pos[0]) * zoom,
+      y: rect.top + (height / 2) * (1 - zoom) + (pan.y + pos[1]) * zoom,
+    };
   }
 
   public setLayers(layers: MapLayers): void {

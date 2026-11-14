@@ -498,7 +498,7 @@
     "fx": "Kursy walutowe",
     "ukmtoIncidents": "Incydenty UKMTO",
     "reservoirLevels": "Strategiczne poziomy wód",
-    "gridDisruptionClock": "Zegar awarii sieci energetycznej"
+    "gridDisruptionClock": "Zegar awarii sieci energetycznej w stanach USA"
   },
   "commands": {
     "prefixes": {
@@ -4506,7 +4506,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Otwórz przegląd kraju",
-    "copyCoordinates": "Kopiuj współrzędne"
+    "copyCoordinates": "Kopiuj współrzędne",
+    "satellitePasses": "Przeloty satelitów tutaj"
   },
   "shell": {
     "documentTitle": "World Monitor — Tablica bieżącej analizy globalnej",
@@ -4603,8 +4604,8 @@
     "createAccount": "Utwórz konto",
     "freeReason": "Za darmo: zapisz układ, obserwuj kraje, alerty",
     "settings": "Ustawienia",
-    "passkeyOffer": {},
-    "planBilling": "Plan i rozliczenia"
+    "planBilling": "Plan i rozliczenia",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Połącz MCP",
@@ -5218,6 +5219,279 @@
     "errGeneric": "Nie można było zbudować szkicu. Spróbuj ponownie.",
     "errDownload": "Nie można było pobrać pliku tutaj. Użyj funkcji Drukuj lub zapisz jako PDF.",
     "errLoad": "Nie można było otworzyć oceny podróży. Odśwież stronę i spróbuj ponownie."
+  },
+  "orbitalWatch": {
+    "track": {
+      "unavailable": "Nie udało się narysować śladu naziemnego tego przelotu"
+    },
+    "replay": {
+      "acquisition": "AKWIZYCJA · {{name}}",
+      "acquired": "ZAREJESTROWANO {{time}} · {{resolution}}",
+      "play": "Odtwórz powtórkę",
+      "pause": "Wstrzymaj powtórkę",
+      "scrub": "Pozycja powtórki",
+      "reducedMotion": "OGRANICZONY RUCH"
+    },
+    "computing": "Wczytywanie katalogu satelitów…",
+    "computingProgress": "Obliczanie przelotów: {{done}} z {{total}} satelitów",
+    "unavailable": "Nie udało się wczytać katalogu satelitów, więc dla tego punktu nie obliczono przelotów.",
+    "checkingArchives": "Sprawdzanie archiwów: odpowiedziało {{done}} z {{total}}",
+    "confirmedCount": "Potwierdzone zdjęcia: {{count}}",
+    "counts": {
+      "mosaics": "Mozaiki dzienne: {{count}}",
+      "frames": "Zdjęcia pogodowe: {{count}}",
+      "inRange": "Przeloty w zasięgu: {{count}}"
+    },
+    "partial": "{{sources}} nie odpowiedział, więc niektórym przelotom mogą brakować zdjęć.",
+    "stale": "Dane orbitalne są nieaktualne. Katalog satelitów ma {{age}}, więc czasy przelotów mogą się różnić.",
+    "empty": "Żaden skatalogowany satelita obrazujący nie przeleciał nad tym punktem w ciągu ostatnich {{pastDays}} dni ani nie przeleci w ciągu najbliższych {{futureHours}} godzin.",
+    "privacy": "Ten punkt pozostaje w Twojej przeglądarce. Jest wysyłany tylko do publicznych archiwów, z którymi przeglądarka łączy się bezpośrednio: Earth Search, Microsoft Planetary Computer, NASA GIBS i EUMETSAT. Jedynym wyjątkiem jest wyszukiwanie po nazwie miejsca: wpisana nazwa trafia do usługi wyszukiwania miejsc.",
+    "inRange": "w zasięgu",
+    "tier": {
+      "checking": "sprawdzanie archiwum",
+      "confirmed": "potwierdzone zdjęcie",
+      "likely": "prawdopodobnie sfotografowano",
+      "opportunity": "nadchodzący przelot",
+      "dailyMosaic": "w mozaice dziennej",
+      "withinReach": "w zasięgu",
+      "capabilityOverhead": "zdolność nad punktem",
+      "passedOverhead": "przeleciał nad",
+      "unmatchedImage": "zdjęcie bez obliczonego przelotu",
+      "weatherFrame": "zdjęcie pogodowe",
+      "unavailable": "niedostępne"
+    },
+    "row": {
+      "offNadir": "{{deg}}° od nadiru",
+      "distance": "{{km}} km od śladu naziemnego",
+      "orbitAge": "dane orbitalne sprzed {{age}}",
+      "edgeOfSwath": "Krawędź pasa zobrazowania",
+      "notInArchive": "Brak zdjęcia w archiwum",
+      "archiveUnanswered": "Archiwum nie odpowiedziało",
+      "imageAlt": "Zdjęcie {{name}}, {{time}}",
+      "mosaicDays": "Dni w archiwum: {{count}}",
+      "cadence": "nowe zdjęcie co {{minutes}} min",
+      "sourceUnavailable": "Archiwum nie ma zdjęć z tego źródła dla tych dni.",
+      "imageLoading": "Wczytywanie obrazu…",
+      "imageFailed": "Obraz się nie wczytał. Archiwum może działać wolno lub być niedostępne.",
+      "noPreview": "Archiwum nie ma jeszcze podglądu tej sceny."
+    },
+    "dailyMosaics": "dzienne mozaiki",
+    "weatherFrames": "zdjęcia pogodowe",
+    "ui": {
+      "change": "Zmień",
+      "share": "Udostępnij",
+      "shareCopied": "Skopiowano link",
+      "headline": "W ciągu ostatnich {{days}} dni nad {{place}} przeleciało: {{satellites}}.",
+      "satellites_one": "{{count}} satelita",
+      "satellites_few": "{{count}} satelity",
+      "satellites_many": "{{count}} satelitów",
+      "satellites_other": "{{count}} satelity",
+      "subline_one": "Opublikowano obrazy: {{count}}.",
+      "subline_few": "Opublikowano obrazy: {{count}}.",
+      "subline_many": "Opublikowano obrazy: {{count}}.",
+      "subline_other": "Opublikowano obrazy: {{count}}.",
+      "closestLook": "Najbliższe ujęcie",
+      "replay": "Odtwórz",
+      "openFull": "Otwórz pełny widok",
+      "previous": "Poprzedni obraz",
+      "next": "Następny obraz",
+      "passes_one": "przelot",
+      "passes_few": "przeloty",
+      "passes_many": "przelotów",
+      "passes_other": "przelotu",
+      "showAll": "Pokaż wszystkie przeloty",
+      "noRecentDays": "Brak niedawnych dni w archiwum: {{sources}}",
+      "tab": {
+        "all": "Wszystko",
+        "detailed": "Szczegółowe",
+        "weather": "Pogoda"
+      },
+      "caption": {
+        "clear": "Bezchmurnie w punkcie",
+        "clearSceneCloud": "Bezchmurnie w punkcie · zachmurzenie sceny {{pct}}%",
+        "clouded": "Zachmurzenie · {{pct}}%",
+        "cloudShadow": "Cień chmury",
+        "spotNotChecked": "Miejsce niesprawdzone pod kątem chmur",
+        "sceneCloud": "Zachmurzenie sceny {{pct}}% · miejsce niesprawdzone",
+        "radar": "Radar",
+        "dailyMosaic": "Dzienna mozaika",
+        "geostationary": "Pełna tarcza geostacjonarna",
+        "geostationaryCadence": "Geostacjonarny · co {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Obraz niedostępny · {{archive}}",
+        "noPreview": "Archiwum nie ma jeszcze podglądu tej sceny"
+      },
+      "grid": {
+        "watched": "Obserwowane",
+        "watchedDef": "Publiczne archiwum ma obraz tego miejsca.",
+        "likely": "Prawdopodobnie obserwowane",
+        "likelyDef": "Czujnik o stałym pasie je objął; obraz nie został jeszcze opublikowany.",
+        "could": "Mógł tu celować",
+        "couldDef": "Sterowalny lub komercyjny czujnik był w zasięgu; operator nie mówi, czy patrzył.",
+        "overhead": "Przeleciał nad",
+        "overheadDef": "Przeciął tu niebo, bez dowodu obrazowania.",
+        "watchedShort": "Zdjęcie w publicznym archiwum",
+        "likelyShort": "Pokryte, jeszcze bez zdjęcia",
+        "likelyUnansweredDef": "Objął go czujnik o stałym pasie; archiwum nie odpowiedziało, więc zdjęcie może istnieć.",
+        "likelyUnansweredShort": "Objęte, archiwum nie odpowiedziało",
+        "couldShort": "Sterowalny sensor w zasięgu",
+        "overheadShort": "Nad punktem, bez zdjęcia"
+      },
+      "group": {
+        "watched": "obserwowanych",
+        "likely": "prawdopodobnie obserwowanych",
+        "upcoming": "nadchodzących",
+        "could": "które mogły tu celować",
+        "overhead": "nad miejscem",
+        "weather_one": "źródło pogodowe",
+        "weather_few": "źródła pogodowe",
+        "weather_many": "źródeł pogodowych",
+        "weather_other": "źródła pogodowego"
+      },
+      "order": {
+        "closest": "Najbliższe ujęcie, potem najnowsze",
+        "newest": "Najpierw najnowsze",
+        "soonest": "Najpierw najbliższe"
+      },
+      "row": {
+        "cloud": "Chmury {{pct}}%",
+        "days_one": "Dni: {{count}}",
+        "days_few": "Dni: {{count}}",
+        "days_many": "Dni: {{count}}",
+        "days_other": "Dni: {{count}}",
+        "repeats": "Przeloty tego satelity w grupie: {{count}}"
+      },
+      "section": {
+        "summary": "Podsumowanie",
+        "passes": "Przeloty"
+      },
+      "status": {
+        "objects": "Satelity obrazujące: {{count}} · CelesTrak GP",
+        "fetched": "Pobrano {{time}} · {{ago}}",
+        "sun": "Słońce {{point}} · punkt podsłoneczny"
+      },
+      "step": {
+        "computing": "Obliczanie",
+        "catalogLoading": "Katalog · wczytywanie",
+        "catalog": "Katalog · Satelity obrazujące: {{count}}",
+        "propagating": "Propagacja orbit · {{done}} / {{total}}",
+        "archives": "Archiwa · odpowiedziało {{done}} / {{total}}",
+        "matching": "Dopasowywanie scen do przelotów: {{passes}}",
+        "window": "Okno 7 dni · {{start}} → {{end}}",
+        "failed": "Niepowodzenie",
+        "note": "Planetary Computer i NASA GIBS generują obrazy na żądanie, więc ten krok może potrwać kilka sekund."
+      },
+      "privacyLine": "Punkt zostaje w Twojej przeglądarce",
+      "privacyHow": "Jak",
+      "sources": "Źródła",
+      "archiveScene": "Scena archiwalna",
+      "archiveOnly": "Żaden obliczony przelot nie pasuje do tych zdjęć, więc są pokazane jako sceny archiwalne.",
+      "zoneShowUtc": "Pokaż godziny w UTC",
+      "zoneShowLocal": "Pokaż godziny w czasie lokalnym tego miejsca"
+    },
+    "viewer": {
+      "open": "Otwórz przeglądarkę obrazów: {{image}}",
+      "bestView": "Otwórz najlepszy widok: {{name}}, {{time}}",
+      "imageAlt": "Zdjęcie {{name}}, {{time}}",
+      "close": "Zamknij przeglądarkę obrazów",
+      "northUp": "Północ jest u góry",
+      "unreferenced": "Orientacja zgodna z archiwum; północ nie jest oznaczona",
+      "compareDates": "Inne daty tej kolekcji",
+      "compareNone": "Brak innej sceny tej kolekcji do porównania.",
+      "divider": "Rozdzielacz przed/po",
+      "searching": "Szukanie scen tego miejsca z ostatnich {{days}} dni",
+      "historyFailed": "{{archive}} nie odpowiedziało, więc brakuje wcześniejszych scen.",
+      "historyTimeout": "{{archive}} nie odpowiedziało na czas, więc brakuje wcześniejszych scen.",
+      "loading": "Ładowanie klatek: {{loaded}} z {{total}}",
+      "pause": "Pauza",
+      "resume": "Odtwórz",
+      "next": "Następna klatka",
+      "closeLabel": "Zamknij",
+      "agoNow": "Przed chwilą",
+      "agoHours": "{{count}} godz. temu",
+      "agoDays": "{{count}} dn. temu",
+      "clear": "Bezchmurnie",
+      "clouded": "Pochmurno · {{pct}}%",
+      "tabImage": "Obraz",
+      "tabChange": "Zmiana",
+      "metaAcquired": "Wykonano",
+      "metaDate": "Data",
+      "metaPixel": "Piksel",
+      "metaSpot": "Chmury w punkcie",
+      "metaScene": "Chmury sceny",
+      "metaSun": "Wysokość słońca",
+      "showCloudy": "Pokaż pochmurne daty ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Timelapse",
+      "entry": "To miejsce rok po roku",
+      "open": "Otwórz roczny timelapse tego miejsca",
+      "searching": "Szukam jednego bezchmurnego ujęcia na rok od 2015 · {{archive}}",
+      "loading": "Ładowanie ujęć · {{loaded}} / {{total}}",
+      "failed": "{{archive}} nie odpowiedział, więc brakuje ujęć rocznych.",
+      "timeout": "{{archive}} nie odpowiedział na czas, więc brakuje ujęć rocznych.",
+      "partial": "Brakujące lata, bo {{archive}} nie odpowiedział: {{count}}.",
+      "tooFew": "Bezchmurne ujęcia roczne tego miejsca: {{count}}. Timelapse wymaga {{min}}.",
+      "total": "Bezchmurne ujęcia: {{count}} · jedno na rok",
+      "years": "Lata",
+      "share": "Udostępnij",
+      "method": "Każda klatka to ten sam kwadrat 6 km z Sentinel-2 w barwach naturalnych. Każdy rok przeszukuje inną porę roku i zachowuje najmniej zachmurzoną scenę; rok bez sceny poniżej 30% chmur jest pomijany."
+    },
+    "passDetail": {
+      "back": "Wszystkie przeloty",
+      "altitude": "Wysokość",
+      "offNadir": "Odchylenie od nadiru",
+      "crossed": "{{name}} przeleciał na wysokości {{altitude}} km, {{distance}} km {{direction}}, o {{time}}, z prędkością {{speed}} km/s nad ziemią.",
+      "crossedHeading": "{{name}} przeleciał na wysokości {{altitude}} km, {{distance}} km {{direction}}, o {{time}}, lecąc na {{heading}} z prędkością {{speed}} km/s nad ziemią.",
+      "looking": "Patrzył {{deg}}° od pionu.",
+      "sceneCloud": "Zachmurzenie sceny: {{pct}}%.",
+      "pixelLine": "Piksel {{m}} m",
+      "swathLine": "Pas {{km}} km",
+      "clearestLook": "Najczystsze ujęcie",
+      "previous": "Poprzedni przelot",
+      "next": "Następny przelot",
+      "dir": {
+        "n": "na północ",
+        "ne": "na północny wschód",
+        "e": "na wschód",
+        "se": "na południowy wschód",
+        "s": "na południe",
+        "sw": "na południowy zachód",
+        "w": "na zachód",
+        "nw": "na północny zachód"
+      },
+      "heading": {
+        "north": "północ",
+        "south": "południe"
+      }
+    },
+    "search": {
+      "label": "Nazwa miejsca lub współrzędne",
+      "placeholder": "Nazwa miejsca lub 48.8584, 2.2945",
+      "submit": "Szukaj",
+      "locate": "Użyj mojej lokalizacji",
+      "hint": "Współrzędne i Twoja lokalizacja pozostają w tej przeglądarce. Wyszukiwana nazwa miejsca jest wysyłana do WorldMonitor i do Nominatim OpenStreetMap.",
+      "results": "Pasujące miejsca",
+      "searching": "Wyszukiwanie…",
+      "tooShort": "Wpisz co najmniej dwa znaki lub współrzędne, np. 48.8584, 2.2945.",
+      "invalidCoordinates": "Te współrzędne są poza globem. Szerokość geograficzna wynosi od -90 do 90, a długość od -180 do 180.",
+      "failed": "Wyszukiwanie miejsc jest teraz niedostępne. Współrzędne i mapa nadal działają.",
+      "noResults": "Żadne miejsce nie pasuje do tej nazwy.",
+      "locating": "Ustalanie lokalizacji…",
+      "locationDenied": "Odmówiono dostępu do lokalizacji. Wyszukaj miejsce lub kliknij mapę prawym przyciskiem.",
+      "locationUnavailable": "Nie udało się ustalić Twojej lokalizacji. Wyszukaj miejsce lub kliknij mapę prawym przyciskiem.",
+      "idle": "Wyszukaj miejsce po nazwie lub współrzędnych, użyj swojej lokalizacji albo kliknij mapę prawym przyciskiem, aby zobaczyć, które satelity nad nim przeleciały."
+    },
+    "share": {
+      "copy": "Kopiuj link do udostępnienia",
+      "copied": "Link skopiowany",
+      "copyManually": "Skopiuj poniższy link",
+      "link": "Link do udostępnienia",
+      "dismiss": "Zamknij",
+      "passOutsideWindow": "Powiązany przelot jest poza bieżącym oknem, więc żaden przelot nie jest zaznaczony.",
+      "passNotFound": "Powiązanego przelotu nie znaleziono wśród ponownie obliczonych przelotów, więc żaden przelot nie jest zaznaczony."
+    }
   },
   "settings": {
     "back": "Powrót do ustawień",

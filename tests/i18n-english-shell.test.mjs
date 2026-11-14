@@ -11,8 +11,10 @@ const COMPONENTS_DIR = 'src/components';
 // First-paint energy labels add 379 bytes to the formatted shell file, the
 // dashboard tab bar's new-tab options add 413, its team button adds 61, and
 // the team menu adds 492. Every panel title ships in the shell, so the
-// Strategic Water Levels panel title adds 49.
-const SHELL_BUDGET_BYTES = 52 * 1024 + 379 + 413 + 61 + 492 + 80 + 49;
+// Strategic Water Levels panel title adds 49. The "US States " scope prefix
+// on the Grid Disruption Clock title adds 10 bytes. The map context menu's
+// "Satellite passes here" item adds 47.
+const SHELL_BUDGET_BYTES = 52 * 1024 + 379 + 413 + 61 + 492 + 80 + 49 + 10 + 47;
 
 function tsFilesUnder(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

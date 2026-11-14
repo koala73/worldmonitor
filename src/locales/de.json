@@ -494,7 +494,7 @@
     "fx": "Devisenkurse",
     "ukmtoIncidents": "UKMTO-Vorfälle",
     "reservoirLevels": "Strategische Wasserstände",
-    "gridDisruptionClock": "Stromausfall-Uhr"
+    "gridDisruptionClock": "Stromausfall-Uhr für US-Bundesstaaten"
   },
   "commands": {
     "prefixes": {
@@ -4462,7 +4462,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Länderübersicht öffnen",
-    "copyCoordinates": "Koordinaten kopieren"
+    "copyCoordinates": "Koordinaten kopieren",
+    "satellitePasses": "Satellitenüberflüge hier"
   },
   "shell": {
     "documentTitle": "World Monitor — Dashboard für globale Echtzeitinformationen",
@@ -4559,8 +4560,8 @@
     "createAccount": "Konto erstellen",
     "freeReason": "Gratis: Layout speichern, Ländern folgen, Alarme",
     "settings": "Einstellungen",
-    "passkeyOffer": {},
-    "planBilling": "Plan & Abrechnung"
+    "planBilling": "Plan & Abrechnung",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP verbinden",
@@ -5162,6 +5163,269 @@
     "errGeneric": "Der Entwurf konnte nicht erstellt werden. Versuchen Sie es erneut.",
     "errDownload": "Die Datei konnte hier nicht heruntergeladen werden. Verwenden Sie stattdessen „Drucken\" oder „Als PDF speichern\".",
     "errLoad": "Die Reisebewertung konnte nicht geöffnet werden. Laden Sie die Seite neu und versuchen Sie es erneut."
+  },
+  "orbitalWatch": {
+    "track": {
+      "unavailable": "Die Bodenspur dieses Überflugs konnte nicht gezeichnet werden"
+    },
+    "replay": {
+      "acquisition": "AUFNAHME · {{name}}",
+      "acquired": "AUFGENOMMEN {{time}} · {{resolution}}",
+      "play": "Wiedergabe starten",
+      "pause": "Wiedergabe anhalten",
+      "scrub": "Wiedergabeposition",
+      "reducedMotion": "REDUZIERTE BEWEGUNG"
+    },
+    "computing": "Satellitenkatalog wird geladen…",
+    "computingProgress": "Überflüge werden berechnet: {{done}} von {{total}} Satelliten",
+    "unavailable": "Der Satellitenkatalog konnte nicht geladen werden, daher wurden für diesen Punkt keine Überflüge berechnet.",
+    "checkingArchives": "Archive werden geprüft: {{done}} von {{total}} haben geantwortet",
+    "confirmedCount": "Bestätigte Aufnahmen: {{count}}",
+    "counts": {
+      "mosaics": "Tägliche Mosaike: {{count}}",
+      "frames": "Wetterbilder: {{count}}",
+      "inRange": "Überflüge in Reichweite: {{count}}"
+    },
+    "partial": "{{sources}} hat nicht geantwortet, daher fehlen manchen Überflügen möglicherweise die Aufnahmen.",
+    "stale": "Die Bahndaten sind veraltet. Der Satellitenkatalog ist {{age}} alt, daher können die Überflugzeiten abweichen.",
+    "empty": "Kein erfasster Erdbeobachtungssatellit hat diesen Punkt in den letzten {{pastDays}} Tagen überflogen oder wird es in den nächsten {{futureHours}} Stunden tun.",
+    "privacy": "Dieser Punkt bleibt in Ihrem Browser. Er wird nur an die öffentlichen Archive gesendet, die Ihr Browser direkt abfragt: Earth Search, Microsoft Planetary Computer, NASA GIBS und EUMETSAT. Die einzige Ausnahme ist die Suche nach Ortsnamen: Der eingegebene Name geht an den Ortsnamen-Suchdienst.",
+    "inRange": "in Reichweite",
+    "tier": {
+      "checking": "Archiv wird geprüft",
+      "confirmed": "bestätigte Aufnahme",
+      "likely": "wahrscheinlich aufgenommen",
+      "opportunity": "bevorstehender Überflug",
+      "dailyMosaic": "im Tagesmosaik",
+      "withinReach": "in Reichweite",
+      "capabilityOverhead": "Fähigkeit überfliegend",
+      "passedOverhead": "überflogen",
+      "unmatchedImage": "Aufnahme ohne berechneten Überflug",
+      "weatherFrame": "Wetterbild",
+      "unavailable": "nicht verfügbar"
+    },
+    "row": {
+      "offNadir": "{{deg}}° außerhalb des Nadirs",
+      "distance": "{{km}} km von der Bodenspur",
+      "orbitAge": "Bahndaten {{age}} alt",
+      "edgeOfSwath": "Rand des Aufnahmestreifens",
+      "notInArchive": "Keine Aufnahme im Archiv",
+      "archiveUnanswered": "Archiv hat nicht geantwortet",
+      "imageAlt": "Aufnahme von {{name}}, {{time}}",
+      "mosaicDays": "Tage im Archiv: {{count}}",
+      "cadence": "neues Bild alle {{minutes}} Min.",
+      "sourceUnavailable": "Das Archiv führt für diese Tage keine Bilder dieser Quelle.",
+      "imageLoading": "Bild wird geladen…",
+      "imageFailed": "Bild wurde nicht geladen. Das Archiv ist möglicherweise langsam oder nicht erreichbar.",
+      "noPreview": "Das Archiv hat noch keine Vorschau dieser Szene."
+    },
+    "dailyMosaics": "Tagesmosaike",
+    "weatherFrames": "Wetterbilder",
+    "ui": {
+      "change": "Ändern",
+      "share": "Teilen",
+      "shareCopied": "Link kopiert",
+      "headline": "In den letzten {{days}} Tagen haben {{satellites}} {{place}} überflogen.",
+      "satellites_one": "{{count}} Satellit",
+      "satellites_other": "{{count}} Satelliten",
+      "subline_one": "{{count}} Bild wurde veröffentlicht.",
+      "subline_other": "{{count}} Bilder wurden veröffentlicht.",
+      "closestLook": "Nächster Blick",
+      "replay": "Wiedergabe",
+      "openFull": "Vollansicht öffnen",
+      "previous": "Vorheriges Bild",
+      "next": "Nächstes Bild",
+      "passes_one": "Überflug",
+      "passes_other": "Überflüge",
+      "showAll": "Alle Überflüge zeigen",
+      "noRecentDays": "Keine aktuellen Tage im Archiv: {{sources}}",
+      "tab": {
+        "all": "Alle",
+        "detailed": "Detailliert",
+        "weather": "Wetter"
+      },
+      "caption": {
+        "clear": "Klar am Punkt",
+        "clearSceneCloud": "Klar am Punkt · Szenenbewölkung {{pct}} %",
+        "clouded": "Bewölkt · {{pct}} %",
+        "cloudShadow": "Wolkenschatten",
+        "spotNotChecked": "Stelle nicht auf Wolken geprüft",
+        "sceneCloud": "Szenenbewölkung {{pct}} % · Stelle nicht geprüft",
+        "radar": "Radar",
+        "dailyMosaic": "Tägliches Mosaik",
+        "geostationary": "Geostationäre Vollscheibe",
+        "geostationaryCadence": "Geostationär · alle {{minutes}} Min."
+      },
+      "tile": {
+        "failed": "Bild nicht verfügbar · {{archive}}",
+        "noPreview": "Das Archiv hat noch keine Vorschau dieser Szene"
+      },
+      "grid": {
+        "watched": "Beobachtet",
+        "watchedDef": "Ein öffentliches Archiv hält ein Bild dieser Stelle.",
+        "likely": "Wahrscheinlich beobachtet",
+        "likelyDef": "Ein Sensor mit festem Streifen hat sie erfasst; noch kein Bild veröffentlicht.",
+        "could": "Hätte hierher zielen können",
+        "couldDef": "Ein schwenkbarer oder kommerzieller Sensor war in Reichweite; der Betreiber sagt nicht, ob er hinsah.",
+        "overhead": "Überflogen",
+        "overheadDef": "Hat den Himmel hier gekreuzt, ohne Bildnachweis.",
+        "watchedShort": "Bild in einem öffentlichen Archiv",
+        "likelyShort": "Erfasst, noch kein Bild",
+        "likelyUnansweredDef": "Ein Sensor mit fester Schwadbreite hat es erfasst; ein Archiv hat nicht geantwortet, daher kann es ein Bild geben.",
+        "likelyUnansweredShort": "Erfasst, Archiv antwortete nicht",
+        "couldShort": "Schwenkbarer Sensor in Reichweite",
+        "overheadShort": "Überflogen, kein Bild"
+      },
+      "group": {
+        "watched": "beobachtet",
+        "likely": "wahrscheinlich beobachtet",
+        "upcoming": "demnächst",
+        "could": "hätte hierher zielen können",
+        "overhead": "überflogen",
+        "weather_one": "Wetterquelle",
+        "weather_other": "Wetterquellen"
+      },
+      "order": {
+        "closest": "Nächster Blick, dann neueste",
+        "newest": "Neueste zuerst",
+        "soonest": "Früheste zuerst"
+      },
+      "row": {
+        "cloud": "Wolken {{pct}} %",
+        "days_one": "{{count}} Tag",
+        "days_other": "{{count}} Tage",
+        "repeats": "{{count}} Überflüge dieses Satelliten in dieser Gruppe"
+      },
+      "section": {
+        "summary": "Übersicht",
+        "passes": "Überflüge"
+      },
+      "status": {
+        "objects": "{{count}} Bildgebungssatelliten · CelesTrak GP",
+        "fetched": "Abgerufen {{time}} · {{ago}}",
+        "sun": "Sonne {{point}} · Subsolarpunkt"
+      },
+      "step": {
+        "computing": "Berechnung",
+        "catalogLoading": "Katalog · wird geladen",
+        "catalog": "Katalog · {{count}} Bildgebungssatelliten",
+        "propagating": "Bahnen werden berechnet · {{done}} / {{total}}",
+        "archives": "Archive · {{done}} / {{total}} geantwortet",
+        "matching": "Szenen werden {{passes}} Überflügen zugeordnet",
+        "window": "7-Tage-Fenster · {{start}} → {{end}}",
+        "failed": "Fehlgeschlagen",
+        "note": "Planetary Computer und NASA GIBS erzeugen Bilder auf Abruf, daher kann dieser Schritt einige Sekunden dauern."
+      },
+      "privacyLine": "Der Punkt bleibt in Ihrem Browser",
+      "privacyHow": "Wie",
+      "sources": "Quellen",
+      "archiveScene": "Archivszene",
+      "archiveOnly": "Kein berechneter Überflug passt zu diesen Bildern, daher werden sie als Archivszenen gezeigt.",
+      "zoneShowUtc": "Zeiten in UTC anzeigen",
+      "zoneShowLocal": "Zeiten in der Ortszeit dieses Ortes anzeigen"
+    },
+    "viewer": {
+      "open": "Bildbetrachter öffnen: {{image}}",
+      "bestView": "Beste Ansicht öffnen: {{name}}, {{time}}",
+      "imageAlt": "Aufnahme von {{name}}, {{time}}",
+      "close": "Bildbetrachter schließen",
+      "northUp": "Norden ist oben",
+      "unreferenced": "Ausrichtung wie vom Archiv geliefert; Norden ist nicht markiert",
+      "compareDates": "Weitere Daten dieser Sammlung",
+      "compareNone": "Keine weitere Aufnahme dieser Sammlung zum Vergleich.",
+      "divider": "Vorher-Nachher-Trenner",
+      "searching": "Suche nach Aufnahmen dieses Ortes aus den letzten {{days}} Tagen",
+      "historyFailed": "{{archive}} hat nicht geantwortet, daher fehlen frühere Aufnahmen.",
+      "historyTimeout": "{{archive}} hat nicht rechtzeitig geantwortet, daher fehlen frühere Aufnahmen.",
+      "loading": "Bilder werden geladen: {{loaded}} von {{total}}",
+      "pause": "Pause",
+      "resume": "Abspielen",
+      "next": "Nächstes Bild",
+      "closeLabel": "Schließen",
+      "agoNow": "Gerade eben",
+      "agoHours": "vor {{count}} Std.",
+      "agoDays": "vor {{count}} T.",
+      "clear": "Klar",
+      "clouded": "Bewölkt · {{pct}} %",
+      "tabImage": "Bild",
+      "tabChange": "Veränderung",
+      "metaAcquired": "Aufgenommen",
+      "metaDate": "Datum",
+      "metaPixel": "Pixel",
+      "metaSpot": "Wolken am Ort",
+      "metaScene": "Wolken der Szene",
+      "metaSun": "Sonnenhöhe",
+      "showCloudy": "Bewölkte Daten zeigen ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Zeitraffer",
+      "entry": "Dieser Ort, Jahr für Jahr",
+      "open": "Zeitraffer dieses Ortes Jahr für Jahr öffnen",
+      "searching": "Suche eine klare Aufnahme pro Jahr seit 2015 · {{archive}}",
+      "loading": "Aufnahmen werden geladen · {{loaded}} / {{total}}",
+      "failed": "{{archive}} hat nicht geantwortet, daher fehlen die Jahresaufnahmen.",
+      "timeout": "{{archive}} hat nicht rechtzeitig geantwortet, daher fehlen die Jahresaufnahmen.",
+      "partial": "Fehlende Jahre, weil {{archive}} nicht geantwortet hat: {{count}}.",
+      "tooFew": "Klare Jahresaufnahmen dieses Ortes: {{count}}. Ein Zeitraffer braucht {{min}}.",
+      "total": "Klare Aufnahmen: {{count}} · eine pro Jahr",
+      "years": "Jahre",
+      "share": "Teilen",
+      "method": "Jedes Bild ist dasselbe 6-km-Quadrat von Sentinel-2 in natürlichen Farben. Jedes Jahr wird eine andere Jahreszeit durchsucht und die wolkenärmste Szene behalten; ein Jahr ohne Szene unter 30 % Wolken entfällt."
+    },
+    "passDetail": {
+      "back": "Alle Überflüge",
+      "altitude": "Höhe",
+      "offNadir": "Off-Nadir",
+      "crossed": "{{name}} überflog den Ort in {{altitude}} km Höhe, {{distance}} km {{direction}}, um {{time}}, mit {{speed}} km/s über Grund.",
+      "crossedHeading": "{{name}} überflog den Ort in {{altitude}} km Höhe, {{distance}} km {{direction}}, um {{time}}, Richtung {{heading}} mit {{speed}} km/s über Grund.",
+      "looking": "Es blickte {{deg}}° neben die Senkrechte.",
+      "sceneCloud": "Wolkenbedeckung der Szene: {{pct}} %.",
+      "pixelLine": "{{m}} m Pixel",
+      "swathLine": "{{km}} km Schwad",
+      "clearestLook": "Klarste Ansicht",
+      "previous": "Vorheriger Überflug",
+      "next": "Nächster Überflug",
+      "dir": {
+        "n": "nördlich",
+        "ne": "nordöstlich",
+        "e": "östlich",
+        "se": "südöstlich",
+        "s": "südlich",
+        "sw": "südwestlich",
+        "w": "westlich",
+        "nw": "nordwestlich"
+      },
+      "heading": {
+        "north": "Norden",
+        "south": "Süden"
+      }
+    },
+    "search": {
+      "label": "Ortsname oder Koordinaten",
+      "placeholder": "Ortsname oder 48.8584, 2.2945",
+      "submit": "Suchen",
+      "locate": "Meinen Standort verwenden",
+      "hint": "Koordinaten und Ihr Standort bleiben in diesem Browser. Ein gesuchter Ortsname wird an WorldMonitor und an Nominatim von OpenStreetMap gesendet.",
+      "results": "Passende Orte",
+      "searching": "Suche läuft…",
+      "tooShort": "Geben Sie mindestens zwei Zeichen ein oder Koordinaten wie 48.8584, 2.2945.",
+      "invalidCoordinates": "Diese Koordinaten liegen außerhalb der Erdkugel. Der Breitengrad reicht von -90 bis 90, der Längengrad von -180 bis 180.",
+      "failed": "Die Ortssuche ist gerade nicht verfügbar. Koordinaten und die Karte funktionieren weiterhin.",
+      "noResults": "Kein Ort passt zu diesem Namen.",
+      "locating": "Standort wird ermittelt…",
+      "locationDenied": "Die Standortberechtigung wurde verweigert. Suchen Sie einen Ort oder klicken Sie mit der rechten Maustaste auf die Karte.",
+      "locationUnavailable": "Ihr Standort konnte nicht ermittelt werden. Suchen Sie einen Ort oder klicken Sie mit der rechten Maustaste auf die Karte.",
+      "idle": "Suchen Sie einen Ort nach Name oder Koordinaten, verwenden Sie Ihren Standort oder klicken Sie mit der rechten Maustaste auf die Karte, um zu sehen, welche Satelliten darüber geflogen sind."
+    },
+    "share": {
+      "copy": "Freigabelink kopieren",
+      "copied": "Link kopiert",
+      "copyManually": "Kopieren Sie den Link unten",
+      "link": "Freigabelink",
+      "dismiss": "Schließen",
+      "passOutsideWindow": "Der verlinkte Überflug liegt außerhalb des aktuellen Zeitfensters, daher ist kein Überflug ausgewählt.",
+      "passNotFound": "Der verlinkte Überflug wurde in den neu berechneten Überflügen nicht gefunden, daher ist kein Überflug ausgewählt."
+    }
   },
   "settings": {
     "back": "Zurück zu Einstellungen",

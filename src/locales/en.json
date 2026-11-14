@@ -585,7 +585,7 @@
     "fx": "Foreign exchange rates",
     "ukmtoIncidents": "UKMTO Incidents",
     "reservoirLevels": "Strategic Water Levels",
-    "gridDisruptionClock": "Grid disruption clock"
+    "gridDisruptionClock": "US States Grid Disruption Clock"
   },
   "panelVariants": {
     "finance": {
@@ -4622,9 +4622,273 @@
       "xIntel2": "API-fresh posts and permalinks"
     }
   },
+  "orbitalWatch": {
+    "track": {
+      "unavailable": "This pass's ground track couldn't be drawn"
+    },
+    "replay": {
+      "acquisition": "ACQUISITION · {{name}}",
+      "acquired": "ACQUIRED {{time}} · {{resolution}}",
+      "play": "Play replay",
+      "pause": "Pause replay",
+      "scrub": "Replay position",
+      "reducedMotion": "REDUCED MOTION"
+    },
+    "computing": "Loading the satellite catalog…",
+    "computingProgress": "Computing passes: {{done}} of {{total}} satellites",
+    "unavailable": "The satellite catalog could not be loaded, so no passes were computed for this point.",
+    "checkingArchives": "Checking archives: {{done}} of {{total}} answered",
+    "confirmedCount": "Confirmed images: {{count}}",
+    "counts": {
+      "mosaics": "Daily mosaics: {{count}}",
+      "frames": "Weather frames: {{count}}",
+      "inRange": "Passes in range: {{count}}"
+    },
+    "partial": "{{sources}} did not answer, so some passes may be missing their images.",
+    "stale": "Orbit data is stale. The satellite catalog is {{age}} old, so pass times may be off.",
+    "empty": "No profiled imaging satellite passed over this point in the last {{pastDays}} days or will in the next {{futureHours}} hours.",
+    "privacy": "This point stays in your browser. It is sent only to the public archives your browser calls directly: Earth Search, Microsoft Planetary Computer, NASA GIBS and EUMETSAT. Searching by place name is the one exception: the name you type goes to the place-name search service.",
+    "inRange": "in range",
+    "dailyMosaics": "daily mosaics",
+    "weatherFrames": "weather frames",
+    "tier": {
+      "checking": "checking archive",
+      "confirmed": "confirmed image",
+      "likely": "likely imaged",
+      "opportunity": "upcoming pass",
+      "dailyMosaic": "in daily mosaic",
+      "withinReach": "within reach",
+      "capabilityOverhead": "capability overhead",
+      "passedOverhead": "passed overhead",
+      "unmatchedImage": "image, no computed pass",
+      "weatherFrame": "weather frame",
+      "unavailable": "unavailable"
+    },
+    "row": {
+      "offNadir": "{{deg}}° off nadir",
+      "distance": "{{km}} km from ground track",
+      "orbitAge": "orbit data {{age}} old",
+      "edgeOfSwath": "Edge of swath",
+      "notInArchive": "No image in the archive",
+      "archiveUnanswered": "Archive didn't answer",
+      "imageAlt": "{{name}} image, {{time}}",
+      "mosaicDays": "Days in the archive: {{count}}",
+      "cadence": "new frame every {{minutes}} min",
+      "sourceUnavailable": "The archive lists no imagery from this source for these days.",
+      "imageLoading": "Loading image…",
+      "imageFailed": "Image did not load. The archive may be slow or down.",
+      "noPreview": "The archive has no preview of this scene yet."
+    },
+    "ui": {
+      "change": "Change",
+      "share": "Share",
+      "shareCopied": "Link copied",
+      "headline": "In the last {{days}} days, {{satellites}} passed over {{place}}.",
+      "satellites_one": "{{count}} satellite",
+      "satellites_other": "{{count}} satellites",
+      "subline_one": "{{count}} image was made public.",
+      "subline_other": "{{count}} images were made public.",
+      "closestLook": "Closest look",
+      "replay": "Replay",
+      "openFull": "Open full view",
+      "previous": "Previous image",
+      "next": "Next image",
+      "passes_one": "pass",
+      "passes_other": "passes",
+      "showAll": "Show all passes",
+      "noRecentDays": "No recent days in the archive: {{sources}}",
+      "tab": {
+        "all": "All",
+        "detailed": "Detailed",
+        "weather": "Weather"
+      },
+      "caption": {
+        "clear": "Clear at point",
+        "clearSceneCloud": "Clear at point · {{pct}}% scene cloud",
+        "clouded": "Clouded · {{pct}}%",
+        "cloudShadow": "Cloud shadow",
+        "spotNotChecked": "Spot not checked for cloud",
+        "sceneCloud": "Scene cloud {{pct}}% · spot not checked",
+        "radar": "Radar",
+        "dailyMosaic": "Daily mosaic",
+        "geostationary": "Geostationary full disk",
+        "geostationaryCadence": "Geostationary · every {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Image unavailable · {{archive}}",
+        "noPreview": "The archive has no preview of this scene yet"
+      },
+      "grid": {
+        "watched": "Watched",
+        "watchedDef": "A public archive holds an image of this spot.",
+        "likely": "Likely watched",
+        "likelyDef": "A fixed-swath sensor covered it; no image published yet.",
+        "could": "Could have pointed here",
+        "couldDef": "A steerable or commercial sensor was in reach; the operator doesn't say if it looked.",
+        "overhead": "Passed overhead",
+        "overheadDef": "Crossed the sky here, with no imaging evidence.",
+        "watchedShort": "Image in a public archive",
+        "likelyShort": "Covered, no image yet",
+        "likelyUnansweredDef": "A fixed-swath sensor covered it; an archive didn't answer, so an image may exist.",
+        "likelyUnansweredShort": "Covered, archive didn't answer",
+        "couldShort": "Steerable sensor in reach",
+        "overheadShort": "Overhead, no image"
+      },
+      "group": {
+        "watched": "watched",
+        "likely": "likely watched",
+        "upcoming": "coming up",
+        "could": "could have pointed here",
+        "overhead": "passed overhead",
+        "weather_one": "weather source",
+        "weather_other": "weather sources"
+      },
+      "order": {
+        "closest": "Closest look, then newest",
+        "newest": "Newest first",
+        "soonest": "Soonest first"
+      },
+      "row": {
+        "cloud": "Cloud {{pct}}%",
+        "days_one": "{{count}} day",
+        "days_other": "{{count}} days",
+        "repeats": "{{count}} passes by this satellite in this group"
+      },
+      "section": {
+        "summary": "Summary",
+        "passes": "Passes"
+      },
+      "status": {
+        "objects": "{{count}} imaging satellites · CelesTrak GP",
+        "fetched": "Fetched {{time}} · {{ago}}",
+        "sun": "Sun {{point}} · sub-solar point"
+      },
+      "step": {
+        "computing": "Computing",
+        "catalogLoading": "Catalog · loading",
+        "catalog": "Catalog · {{count}} imaging satellites",
+        "propagating": "Propagating orbits · {{done}} / {{total}}",
+        "archives": "Archives · {{done}} / {{total}} answered",
+        "matching": "Matching scenes to {{passes}} passes",
+        "window": "7-day window · {{start}} → {{end}}",
+        "failed": "Failed",
+        "note": "Planetary Computer and NASA GIBS render images on demand, so this step can take a few seconds."
+      },
+      "privacyLine": "Point stays in your browser",
+      "privacyHow": "How",
+      "sources": "Sources",
+      "archiveScene": "Archive scene",
+      "archiveOnly": "No computed pass matches these images, so they are shown as archive scenes.",
+      "zoneShowUtc": "Show times in UTC",
+      "zoneShowLocal": "Show times in this place's local time"
+    },
+    "viewer": {
+      "open": "Open image viewer: {{image}}",
+      "bestView": "Open best view: {{name}}, {{time}}",
+      "imageAlt": "Image of {{name}}, {{time}}",
+      "close": "Close image viewer",
+      "northUp": "North is up",
+      "unreferenced": "Orientation as delivered by the archive; north is not marked",
+      "compareDates": "Other dates of this collection",
+      "compareNone": "No other scene of this collection to compare with.",
+      "divider": "Before and after divider",
+      "searching": "Looking for scenes of this place from the last {{days}} days",
+      "historyFailed": "{{archive}} did not answer, so earlier scenes are missing.",
+      "historyTimeout": "{{archive}} did not answer in time, so earlier scenes are missing.",
+      "loading": "Loading frames: {{loaded}} of {{total}}",
+      "pause": "Pause",
+      "resume": "Play",
+      "next": "Next frame",
+      "closeLabel": "Close",
+      "agoNow": "Just now",
+      "agoHours": "{{count}} h ago",
+      "agoDays": "{{count}} d ago",
+      "clear": "Clear",
+      "clouded": "Clouded · {{pct}}%",
+      "tabImage": "Image",
+      "tabChange": "Change",
+      "metaAcquired": "Acquired",
+      "metaDate": "Date",
+      "metaPixel": "Pixel",
+      "metaSpot": "Cloud at spot",
+      "metaScene": "Scene cloud",
+      "metaSun": "Sun elevation",
+      "showCloudy": "Show cloudy dates ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Time-lapse",
+      "entry": "This place, year by year",
+      "open": "Open the year-by-year time-lapse of this place",
+      "searching": "Finding one clear look per year since 2015 · {{archive}}",
+      "loading": "Loading looks · {{loaded}} / {{total}}",
+      "failed": "{{archive}} did not answer, so the yearly looks are missing.",
+      "timeout": "{{archive}} did not answer in time, so the yearly looks are missing.",
+      "partial": "Missing years because {{archive}} did not answer: {{count}}.",
+      "tooFew": "Clear yearly looks of this place: {{count}}. A time-lapse needs {{min}}.",
+      "total": "{{count}} clear looks · one a year",
+      "years": "Years",
+      "share": "Share",
+      "method": "Each frame is the same 6 km square from Sentinel-2, in natural colour. Each year searches a different season and keeps its least cloudy scene; a year with no scene under 30% cloud is left out."
+    },
+    "passDetail": {
+      "back": "All passes",
+      "altitude": "Altitude",
+      "offNadir": "Off-nadir",
+      "crossed": "{{name}} crossed {{altitude}} km up, {{distance}} km {{direction}}, at {{time}}, moving at {{speed}} km/s over the ground.",
+      "crossedHeading": "{{name}} crossed {{altitude}} km up, {{distance}} km {{direction}}, at {{time}}, moving {{heading}} at {{speed}} km/s over the ground.",
+      "looking": "It was looking {{deg}}° off straight down.",
+      "sceneCloud": "Scene cloud cover: {{pct}}%.",
+      "pixelLine": "{{m}} m pixel",
+      "swathLine": "{{km}} km swath",
+      "clearestLook": "Clearest look",
+      "previous": "Previous pass",
+      "next": "Next pass",
+      "dir": {
+        "n": "to the north",
+        "ne": "to the north-east",
+        "e": "to the east",
+        "se": "to the south-east",
+        "s": "to the south",
+        "sw": "to the south-west",
+        "w": "to the west",
+        "nw": "to the north-west"
+      },
+      "heading": {
+        "north": "north",
+        "south": "south"
+      }
+    },
+    "search": {
+      "label": "Place name or coordinates",
+      "placeholder": "Place name or 48.8584, 2.2945",
+      "submit": "Search",
+      "locate": "Use my location",
+      "hint": "Coordinates and your location stay in this browser. A place name you search is sent to WorldMonitor and to OpenStreetMap's Nominatim.",
+      "results": "Matching places",
+      "searching": "Searching…",
+      "tooShort": "Type at least two characters, or coordinates such as 48.8584, 2.2945.",
+      "invalidCoordinates": "Those coordinates are outside the globe. Latitude runs from -90 to 90 and longitude from -180 to 180.",
+      "failed": "Place search is unavailable right now. Coordinates and the map still work.",
+      "noResults": "No place matched that name.",
+      "locating": "Finding your location…",
+      "locationDenied": "Location permission was denied. Search a place or right-click the map instead.",
+      "locationUnavailable": "Your location could not be found. Search a place or right-click the map instead.",
+      "idle": "Search a place by name or coordinates, use your location, or right-click the map to see which satellites passed over it."
+    },
+    "share": {
+      "copy": "Copy share link",
+      "copied": "Link copied",
+      "copyManually": "Copy the link below",
+      "link": "Share link",
+      "dismiss": "Dismiss",
+      "passOutsideWindow": "The linked pass is outside the current window, so no pass is selected.",
+      "passNotFound": "The linked pass was not found in the recomputed passes, so no pass is selected."
+    }
+  },
   "contextMenu": {
     "openCountryBrief": "Open Country Brief",
-    "copyCoordinates": "Copy Coordinates"
+    "copyCoordinates": "Copy Coordinates",
+    "satellitePasses": "Satellite passes here"
   },
   "auth": {
     "signIn": "Sign In",

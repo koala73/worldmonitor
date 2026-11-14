@@ -496,7 +496,7 @@
     "fx": "Tassi di cambio",
     "ukmtoIncidents": "Incidenti UKMTO",
     "reservoirLevels": "Livelli idrici strategici",
-    "gridDisruptionClock": "Orologio delle interruzioni elettriche"
+    "gridDisruptionClock": "Orologio delle interruzioni elettriche negli Stati USA"
   },
   "commands": {
     "prefixes": {
@@ -4484,7 +4484,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Apri scheda paese",
-    "copyCoordinates": "Copia coordinate"
+    "copyCoordinates": "Copia coordinate",
+    "satellitePasses": "Passaggi satellitari qui"
   },
   "shell": {
     "documentTitle": "World Monitor — Dashboard di intelligence globale in tempo reale",
@@ -4581,8 +4582,8 @@
     "createAccount": "Crea account",
     "freeReason": "Gratis: salva il layout, segui i paesi, avvisi",
     "settings": "Impostazioni",
-    "passkeyOffer": {},
-    "planBilling": "Piano & fatturazione"
+    "planBilling": "Piano & fatturazione",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Connetti MCP",
@@ -5190,6 +5191,274 @@
     "errGeneric": "La bozza non può essere creata. Riprova.",
     "errDownload": "Il file non può essere scaricato qui. Usa Stampa o salva come PDF.",
     "errLoad": "Non è stato possibile aprire la valutazione del viaggio. Ricarica la pagina e riprova."
+  },
+  "orbitalWatch": {
+    "track": {
+      "unavailable": "Impossibile disegnare la traccia al suolo di questo passaggio"
+    },
+    "replay": {
+      "acquisition": "ACQUISIZIONE · {{name}}",
+      "acquired": "ACQUISITA {{time}} · {{resolution}}",
+      "play": "Avvia riproduzione",
+      "pause": "Metti in pausa la riproduzione",
+      "scrub": "Posizione della riproduzione",
+      "reducedMotion": "MOVIMENTO RIDOTTO"
+    },
+    "computing": "Caricamento del catalogo satellitare…",
+    "computingProgress": "Calcolo dei passaggi: {{done}} di {{total}} satelliti",
+    "unavailable": "Impossibile caricare il catalogo satellitare, quindi non sono stati calcolati passaggi per questo punto.",
+    "checkingArchives": "Verifica degli archivi: {{done}} di {{total}} hanno risposto",
+    "confirmedCount": "Immagini confermate: {{count}}",
+    "counts": {
+      "mosaics": "Mosaici giornalieri: {{count}}",
+      "frames": "Immagini meteo: {{count}}",
+      "inRange": "Passaggi a portata: {{count}}"
+    },
+    "partial": "{{sources}} non ha risposto, quindi ad alcuni passaggi potrebbero mancare le immagini.",
+    "stale": "I dati orbitali non sono aggiornati. Il catalogo satellitare risale a {{age}} fa, quindi gli orari dei passaggi potrebbero essere imprecisi.",
+    "empty": "Nessun satellite per immagini censito è passato sopra questo punto negli ultimi {{pastDays}} giorni né passerà nelle prossime {{futureHours}} ore.",
+    "privacy": "Questo punto resta nel tuo browser. Viene inviato solo agli archivi pubblici che il browser interroga direttamente: Earth Search, Microsoft Planetary Computer, NASA GIBS ed EUMETSAT. L’unica eccezione è la ricerca per nome di luogo: il nome digitato va al servizio di ricerca dei luoghi.",
+    "inRange": "a portata",
+    "tier": {
+      "checking": "verifica archivio",
+      "confirmed": "immagine confermata",
+      "likely": "probabilmente ripreso",
+      "opportunity": "passaggio imminente",
+      "dailyMosaic": "nel mosaico giornaliero",
+      "withinReach": "a portata",
+      "capabilityOverhead": "capacità in transito",
+      "passedOverhead": "passato sopra",
+      "unmatchedImage": "immagine senza passaggio calcolato",
+      "weatherFrame": "immagine meteo",
+      "unavailable": "non disponibile"
+    },
+    "row": {
+      "offNadir": "{{deg}}° fuori nadir",
+      "distance": "a {{km}} km dalla traccia a terra",
+      "orbitAge": "dati orbitali di {{age}} fa",
+      "edgeOfSwath": "Bordo della strisciata",
+      "notInArchive": "Nessuna immagine nell’archivio",
+      "archiveUnanswered": "L'archivio non ha risposto",
+      "imageAlt": "Immagine di {{name}}, {{time}}",
+      "mosaicDays": "Giorni nell’archivio: {{count}}",
+      "cadence": "nuova immagine ogni {{minutes}} min",
+      "sourceUnavailable": "L’archivio non contiene immagini di questa fonte per questi giorni.",
+      "imageLoading": "Caricamento immagine…",
+      "imageFailed": "L’immagine non è stata caricata. L’archivio potrebbe essere lento o non disponibile.",
+      "noPreview": "L'archivio non ha ancora un'anteprima di questa scena."
+    },
+    "dailyMosaics": "mosaici giornalieri",
+    "weatherFrames": "immagini meteo",
+    "ui": {
+      "change": "Cambia",
+      "share": "Condividi",
+      "shareCopied": "Link copiato",
+      "headline": "Negli ultimi {{days}} giorni, {{satellites}} sono passati sopra {{place}}.",
+      "satellites_one": "{{count}} satellite",
+      "satellites_many": "{{count}} satelliti",
+      "satellites_other": "{{count}} satelliti",
+      "subline_one": "È stata pubblicata {{count}} immagine.",
+      "subline_many": "Sono state pubblicate {{count}} immagini.",
+      "subline_other": "Sono state pubblicate {{count}} immagini.",
+      "closestLook": "Vista più ravvicinata",
+      "replay": "Riproduci",
+      "openFull": "Apri vista completa",
+      "previous": "Immagine precedente",
+      "next": "Immagine successiva",
+      "passes_one": "passaggio",
+      "passes_many": "passaggi",
+      "passes_other": "passaggi",
+      "showAll": "Mostra tutti i passaggi",
+      "noRecentDays": "Nessun giorno recente nell’archivio: {{sources}}",
+      "tab": {
+        "all": "Tutto",
+        "detailed": "Dettagliato",
+        "weather": "Meteo"
+      },
+      "caption": {
+        "clear": "Sereno sul punto",
+        "clearSceneCloud": "Sereno sul punto · nuvolosità della scena {{pct}}%",
+        "clouded": "Nuvoloso · {{pct}}%",
+        "cloudShadow": "Ombra di nube",
+        "spotNotChecked": "Punto non verificato per le nubi",
+        "sceneCloud": "Nuvolosità della scena {{pct}}% · punto non verificato",
+        "radar": "Radar",
+        "dailyMosaic": "Mosaico giornaliero",
+        "geostationary": "Disco intero geostazionario",
+        "geostationaryCadence": "Geostazionario · ogni {{minutes}} min"
+      },
+      "tile": {
+        "failed": "Immagine non disponibile · {{archive}}",
+        "noPreview": "L’archivio non ha ancora un’anteprima di questa scena"
+      },
+      "grid": {
+        "watched": "Osservato",
+        "watchedDef": "Un archivio pubblico contiene un’immagine di questo punto.",
+        "likely": "Probabilmente osservato",
+        "likelyDef": "Un sensore a strisciata fissa l’ha coperto; nessuna immagine ancora pubblicata.",
+        "could": "Avrebbe potuto puntare qui",
+        "couldDef": "Un sensore orientabile o commerciale era a portata; l’operatore non dice se ha guardato.",
+        "overhead": "Passato sopra",
+        "overheadDef": "Ha attraversato il cielo qui, senza prove di immagini.",
+        "watchedShort": "Immagine in un archivio pubblico",
+        "likelyShort": "Coperto, ancora nessuna immagine",
+        "likelyUnansweredDef": "Un sensore a strisciata fissa lo ha coperto; un archivio non ha risposto, quindi un'immagine potrebbe esistere.",
+        "likelyUnansweredShort": "Coperto, l'archivio non ha risposto",
+        "couldShort": "Sensore orientabile in portata",
+        "overheadShort": "Sorvolato, nessuna immagine"
+      },
+      "group": {
+        "watched": "osservati",
+        "likely": "probabilmente osservati",
+        "upcoming": "in arrivo",
+        "could": "che avrebbero potuto puntare qui",
+        "overhead": "passati sopra",
+        "weather_one": "fonte meteo",
+        "weather_many": "fonti meteo",
+        "weather_other": "fonti meteo"
+      },
+      "order": {
+        "closest": "Vista più ravvicinata, poi più recenti",
+        "newest": "Più recenti prima",
+        "soonest": "Più vicini prima"
+      },
+      "row": {
+        "cloud": "Nubi {{pct}}%",
+        "days_one": "{{count}} giorno",
+        "days_many": "{{count}} giorni",
+        "days_other": "{{count}} giorni",
+        "repeats": "{{count}} passaggi di questo satellite nel gruppo"
+      },
+      "section": {
+        "summary": "Riepilogo",
+        "passes": "Passaggi"
+      },
+      "status": {
+        "objects": "{{count}} satelliti per immagini · CelesTrak GP",
+        "fetched": "Recuperato {{time}} · {{ago}}",
+        "sun": "Sole {{point}} · punto subsolare"
+      },
+      "step": {
+        "computing": "Calcolo",
+        "catalogLoading": "Catalogo · caricamento",
+        "catalog": "Catalogo · {{count}} satelliti per immagini",
+        "propagating": "Propagazione orbite · {{done}} / {{total}}",
+        "archives": "Archivi · {{done}} / {{total}} hanno risposto",
+        "matching": "Abbinamento scene a {{passes}} passaggi",
+        "window": "Finestra di 7 giorni · {{start}} → {{end}}",
+        "failed": "Non riuscito",
+        "note": "Planetary Computer e NASA GIBS generano le immagini su richiesta, quindi questo passaggio può richiedere alcuni secondi."
+      },
+      "privacyLine": "Il punto resta nel tuo browser",
+      "privacyHow": "Come",
+      "sources": "Fonti",
+      "archiveScene": "Scena d'archivio",
+      "archiveOnly": "Nessun passaggio calcolato corrisponde a queste immagini, quindi sono mostrate come scene d'archivio.",
+      "zoneShowUtc": "Mostra gli orari in UTC",
+      "zoneShowLocal": "Mostra gli orari nell'ora locale di questo luogo"
+    },
+    "viewer": {
+      "open": "Apri visualizzatore immagini: {{image}}",
+      "bestView": "Apri la vista migliore: {{name}}, {{time}}",
+      "imageAlt": "Immagine di {{name}}, {{time}}",
+      "close": "Chiudi visualizzatore immagini",
+      "northUp": "Il nord è in alto",
+      "unreferenced": "Orientamento come fornito dall'archivio; il nord non è indicato",
+      "compareDates": "Altre date di questa raccolta",
+      "compareNone": "Nessun'altra scena di questa raccolta da confrontare.",
+      "divider": "Divisore prima/dopo",
+      "searching": "Ricerca di scene di questo luogo degli ultimi {{days}} giorni",
+      "historyFailed": "{{archive}} non ha risposto, quindi mancano le scene precedenti.",
+      "historyTimeout": "{{archive}} non ha risposto in tempo, quindi mancano le scene precedenti.",
+      "loading": "Caricamento fotogrammi: {{loaded}} di {{total}}",
+      "pause": "Pausa",
+      "resume": "Riproduci",
+      "next": "Fotogramma successivo",
+      "closeLabel": "Chiudi",
+      "agoNow": "Proprio ora",
+      "agoHours": "{{count}} h fa",
+      "agoDays": "{{count}} g fa",
+      "clear": "Sereno",
+      "clouded": "Nuvoloso · {{pct}}%",
+      "tabImage": "Immagine",
+      "tabChange": "Cambiamento",
+      "metaAcquired": "Acquisita",
+      "metaDate": "Data",
+      "metaPixel": "Pixel",
+      "metaSpot": "Nubi sul punto",
+      "metaScene": "Nubi della scena",
+      "metaSun": "Elevazione solare",
+      "showCloudy": "Mostra date nuvolose ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Timelapse",
+      "entry": "Questo luogo, anno per anno",
+      "open": "Apri il timelapse annuale di questo luogo",
+      "searching": "Ricerca di una vista serena all'anno dal 2015 · {{archive}}",
+      "loading": "Caricamento viste · {{loaded}} / {{total}}",
+      "failed": "{{archive}} non ha risposto, quindi mancano le viste annuali.",
+      "timeout": "{{archive}} non ha risposto in tempo, quindi mancano le viste annuali.",
+      "partial": "Anni mancanti perché {{archive}} non ha risposto: {{count}}.",
+      "tooFew": "Viste annuali serene di questo luogo: {{count}}. Un timelapse ne richiede {{min}}.",
+      "total": "Viste serene: {{count}} · una all'anno",
+      "years": "Anni",
+      "share": "Condividi",
+      "method": "Ogni fotogramma è lo stesso quadrato di 6 km di Sentinel-2, a colori naturali. Ogni anno cerca in una stagione diversa e tiene la scena meno nuvolosa; un anno senza scene sotto il 30% di nubi viene escluso."
+    },
+    "passDetail": {
+      "back": "Tutti i passaggi",
+      "altitude": "Quota",
+      "offNadir": "Fuori nadir",
+      "crossed": "{{name}} è passato a {{altitude}} km di quota, {{distance}} km {{direction}}, alle {{time}}, a {{speed}} km/s al suolo.",
+      "crossedHeading": "{{name}} è passato a {{altitude}} km di quota, {{distance}} km {{direction}}, alle {{time}}, diretto a {{heading}} a {{speed}} km/s al suolo.",
+      "looking": "Guardava a {{deg}}° dalla verticale.",
+      "sceneCloud": "Copertura nuvolosa della scena: {{pct}}%.",
+      "pixelLine": "Pixel di {{m}} m",
+      "swathLine": "Fascia di {{km}} km",
+      "clearestLook": "Vista più serena",
+      "previous": "Passaggio precedente",
+      "next": "Passaggio successivo",
+      "dir": {
+        "n": "a nord",
+        "ne": "a nord-est",
+        "e": "a est",
+        "se": "a sud-est",
+        "s": "a sud",
+        "sw": "a sud-ovest",
+        "w": "a ovest",
+        "nw": "a nord-ovest"
+      },
+      "heading": {
+        "north": "nord",
+        "south": "sud"
+      }
+    },
+    "search": {
+      "label": "Nome del luogo o coordinate",
+      "placeholder": "Nome del luogo o 48.8584, 2.2945",
+      "submit": "Cerca",
+      "locate": "Usa la mia posizione",
+      "hint": "Le coordinate e la tua posizione restano in questo browser. Il nome di un luogo che cerchi viene inviato a WorldMonitor e a Nominatim di OpenStreetMap.",
+      "results": "Luoghi corrispondenti",
+      "searching": "Ricerca in corso…",
+      "tooShort": "Digita almeno due caratteri, o coordinate come 48.8584, 2.2945.",
+      "invalidCoordinates": "Queste coordinate sono fuori dal globo. La latitudine va da -90 a 90 e la longitudine da -180 a 180.",
+      "failed": "La ricerca dei luoghi non è disponibile al momento. Le coordinate e la mappa funzionano ancora.",
+      "noResults": "Nessun luogo corrisponde a quel nome.",
+      "locating": "Ricerca della posizione…",
+      "locationDenied": "L'autorizzazione alla posizione è stata negata. Cerca un luogo o fai clic destro sulla mappa.",
+      "locationUnavailable": "Impossibile trovare la tua posizione. Cerca un luogo o fai clic destro sulla mappa.",
+      "idle": "Cerca un luogo per nome o coordinate, usa la tua posizione o fai clic destro sulla mappa per vedere quali satelliti vi sono passati sopra."
+    },
+    "share": {
+      "copy": "Copia link di condivisione",
+      "copied": "Link copiato",
+      "copyManually": "Copia il link qui sotto",
+      "link": "Link di condivisione",
+      "dismiss": "Chiudi",
+      "passOutsideWindow": "Il passaggio collegato è fuori dalla finestra attuale, quindi nessun passaggio è selezionato.",
+      "passNotFound": "Il passaggio collegato non è stato trovato tra i passaggi ricalcolati, quindi nessun passaggio è selezionato."
+    }
   },
   "settings": {
     "back": "Torna alle impostazioni",

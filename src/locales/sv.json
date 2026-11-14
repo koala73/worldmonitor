@@ -110,7 +110,7 @@
     "fx": "Valutakurser",
     "ukmtoIncidents": "UKMTO-incidenter",
     "reservoirLevels": "Strategiska vattennivåer",
-    "gridDisruptionClock": "Klocka för elavbrott"
+    "gridDisruptionClock": "Klocka för elavbrott i USA:s delstater"
   },
   "commands": {
     "prefixes": {
@@ -4462,7 +4462,8 @@
   },
   "contextMenu": {
     "openCountryBrief": "Öppna landsöversikt",
-    "copyCoordinates": "Kopiera koordinater"
+    "copyCoordinates": "Kopiera koordinater",
+    "satellitePasses": "Satellitpassager här"
   },
   "shell": {
     "documentTitle": "World Monitor — Realtidsinstrumentpanel för global underrättelse",
@@ -4559,8 +4560,8 @@
     "createAccount": "Skapa konto",
     "freeReason": "Gratis: spara layout, följ länder, aviseringar",
     "settings": "Inställningar",
-    "passkeyOffer": {},
-    "planBilling": "Plan & fakturering"
+    "planBilling": "Plan & fakturering",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Anslut MCP",
@@ -5162,6 +5163,269 @@
     "errGeneric": "Utkastet kunde inte byggas. Försök igen.",
     "errDownload": "Filen kunde inte laddas ned här. Använd Skriv ut eller spara som PDF istället.",
     "errLoad": "Resebedömningen kunde inte öppnas. Ladda om sidan och försök igen."
+  },
+  "orbitalWatch": {
+    "track": {
+      "unavailable": "Markspåret för den här passagen kunde inte ritas"
+    },
+    "replay": {
+      "acquisition": "UPPTAGNING · {{name}}",
+      "acquired": "TAGEN {{time}} · {{resolution}}",
+      "play": "Spela upp",
+      "pause": "Pausa uppspelning",
+      "scrub": "Uppspelningsposition",
+      "reducedMotion": "REDUCERAD RÖRELSE"
+    },
+    "computing": "Läser in satellitkatalogen…",
+    "computingProgress": "Beräknar passager: {{done}} av {{total}} satelliter",
+    "unavailable": "Satellitkatalogen kunde inte läsas in, så inga passager beräknades för den här punkten.",
+    "checkingArchives": "Kontrollerar arkiv: {{done}} av {{total}} har svarat",
+    "confirmedCount": "Bekräftade bilder: {{count}}",
+    "counts": {
+      "mosaics": "Dagliga mosaiker: {{count}}",
+      "frames": "Väderbilder: {{count}}",
+      "inRange": "Passager inom räckvidd: {{count}}"
+    },
+    "partial": "{{sources}} svarade inte, så vissa passager kan sakna bilder.",
+    "stale": "Banddata är inaktuella. Satellitkatalogen är {{age}} gammal, så passagetiderna kan avvika.",
+    "empty": "Ingen registrerad avbildningssatellit har passerat över den här punkten under de senaste {{pastDays}} dagarna eller gör det inom de närmaste {{futureHours}} timmarna.",
+    "privacy": "Den här punkten stannar i din webbläsare. Den skickas bara till de offentliga arkiv som webbläsaren anropar direkt: Earth Search, Microsoft Planetary Computer, NASA GIBS och EUMETSAT. Sökning på ortnamn är det enda undantaget: namnet du skriver skickas till ortnamnssöktjänsten.",
+    "inRange": "inom räckvidd",
+    "tier": {
+      "checking": "kontrollerar arkiv",
+      "confirmed": "bekräftad bild",
+      "likely": "troligen avbildad",
+      "opportunity": "kommande passage",
+      "dailyMosaic": "i daglig mosaik",
+      "withinReach": "inom räckvidd",
+      "capabilityOverhead": "förmåga överhead",
+      "passedOverhead": "passerade över",
+      "unmatchedImage": "bild utan beräknad passage",
+      "weatherFrame": "väderbild",
+      "unavailable": "inte tillgänglig"
+    },
+    "row": {
+      "offNadir": "{{deg}}° från nadir",
+      "distance": "{{km}} km från markspåret",
+      "orbitAge": "banddata {{age}} gamla",
+      "edgeOfSwath": "Kanten av svepet",
+      "notInArchive": "Ingen bild i arkivet",
+      "archiveUnanswered": "Arkivet svarade inte",
+      "imageAlt": "Bild från {{name}}, {{time}}",
+      "mosaicDays": "Dagar i arkivet: {{count}}",
+      "cadence": "ny bild var {{minutes}}:e minut",
+      "sourceUnavailable": "Arkivet har inga bilder från den här källan för dessa dagar.",
+      "imageLoading": "Läser in bild…",
+      "imageFailed": "Bilden lästes inte in. Arkivet kan vara långsamt eller nere.",
+      "noPreview": "Arkivet har ännu ingen förhandsvisning av den här scenen."
+    },
+    "dailyMosaics": "dagliga mosaiker",
+    "weatherFrames": "väderbilder",
+    "ui": {
+      "change": "Ändra",
+      "share": "Dela",
+      "shareCopied": "Länk kopierad",
+      "headline": "Under de senaste {{days}} dagarna passerade {{satellites}} över {{place}}.",
+      "satellites_one": "{{count}} satellit",
+      "satellites_other": "{{count}} satelliter",
+      "subline_one": "{{count}} bild publicerades.",
+      "subline_other": "{{count}} bilder publicerades.",
+      "closestLook": "Närmaste blick",
+      "replay": "Spela upp",
+      "openFull": "Öppna helvy",
+      "previous": "Föregående bild",
+      "next": "Nästa bild",
+      "passes_one": "passage",
+      "passes_other": "passager",
+      "showAll": "Visa alla passager",
+      "noRecentDays": "Inga färska dagar i arkivet: {{sources}}",
+      "tab": {
+        "all": "Alla",
+        "detailed": "Detaljerat",
+        "weather": "Väder"
+      },
+      "caption": {
+        "clear": "Klart vid punkten",
+        "clearSceneCloud": "Klart vid punkten · scenens molnighet {{pct}} %",
+        "clouded": "Molnigt · {{pct}} %",
+        "cloudShadow": "Molnskugga",
+        "spotNotChecked": "Platsen ej kontrollerad för moln",
+        "sceneCloud": "Scenens molnighet {{pct}} % · platsen ej kontrollerad",
+        "radar": "Radarbild",
+        "dailyMosaic": "Dagligt mosaik",
+        "geostationary": "Geostationär helskiva",
+        "geostationaryCadence": "Geostationär · var {{minutes}}:e min"
+      },
+      "tile": {
+        "failed": "Bild ej tillgänglig · {{archive}}",
+        "noPreview": "Arkivet har ännu ingen förhandsvisning av scenen"
+      },
+      "grid": {
+        "watched": "Bevakad",
+        "watchedDef": "Ett offentligt arkiv har en bild av platsen.",
+        "likely": "Troligen bevakad",
+        "likelyDef": "En sensor med fast stråk täckte den; ingen bild publicerad ännu.",
+        "could": "Kunde ha riktats hit",
+        "couldDef": "En styrbar eller kommersiell sensor var inom räckhåll; operatören säger inte om den tittade.",
+        "overhead": "Passerade över",
+        "overheadDef": "Korsade himlen här, utan bildbevis.",
+        "watchedShort": "Bild i ett offentligt arkiv",
+        "likelyShort": "Täckt, ingen bild än",
+        "likelyUnansweredDef": "En sensor med fast stråk täckte den; ett arkiv svarade inte, så en bild kan finnas.",
+        "likelyUnansweredShort": "Täckt, arkivet svarade inte",
+        "couldShort": "Riktbar sensor inom räckhåll",
+        "overheadShort": "Överflygning, ingen bild"
+      },
+      "group": {
+        "watched": "bevakade",
+        "likely": "troligen bevakade",
+        "upcoming": "kommande",
+        "could": "som kunde ha riktats hit",
+        "overhead": "som passerade över",
+        "weather_one": "väderkälla",
+        "weather_other": "väderkällor"
+      },
+      "order": {
+        "closest": "Närmaste blick, sedan nyaste",
+        "newest": "Nyaste först",
+        "soonest": "Närmast i tid först"
+      },
+      "row": {
+        "cloud": "Moln {{pct}} %",
+        "days_one": "{{count}} dag",
+        "days_other": "{{count}} dagar",
+        "repeats": "{{count}} passager av satelliten i gruppen"
+      },
+      "section": {
+        "summary": "Sammanfattning",
+        "passes": "Passager"
+      },
+      "status": {
+        "objects": "{{count}} avbildande satelliter · CelesTrak GP",
+        "fetched": "Hämtad {{time}} · {{ago}}",
+        "sun": "Sol {{point}} · subsolär punkt"
+      },
+      "step": {
+        "computing": "Beräknar",
+        "catalogLoading": "Katalog · laddar",
+        "catalog": "Katalog · {{count}} avbildande satelliter",
+        "propagating": "Beräknar banor · {{done}} / {{total}}",
+        "archives": "Arkiv · {{done}} / {{total}} svarade",
+        "matching": "Matchar scener mot {{passes}} passager",
+        "window": "7-dagarsfönster · {{start}} → {{end}}",
+        "failed": "Misslyckades",
+        "note": "Planetary Computer och NASA GIBS skapar bilder på begäran, så steget kan ta några sekunder."
+      },
+      "privacyLine": "Punkten stannar i din webbläsare",
+      "privacyHow": "Hur",
+      "sources": "Källor",
+      "archiveScene": "Arkivscen",
+      "archiveOnly": "Ingen beräknad överflygning matchar dessa bilder, så de visas som arkivscener.",
+      "zoneShowUtc": "Visa tider i UTC",
+      "zoneShowLocal": "Visa tider i platsens lokala tid"
+    },
+    "viewer": {
+      "open": "Öppna bildvisaren: {{image}}",
+      "bestView": "Öppna bästa vyn: {{name}}, {{time}}",
+      "imageAlt": "Bild av {{name}}, {{time}}",
+      "close": "Stäng bildvisaren",
+      "northUp": "Norr är uppåt",
+      "unreferenced": "Orientering som arkivet levererar den; norr är inte markerat",
+      "compareDates": "Andra datum i denna samling",
+      "compareNone": "Ingen annan scen i denna samling att jämföra med.",
+      "divider": "Avdelare före/efter",
+      "searching": "Söker scener av platsen från de senaste {{days}} dagarna",
+      "historyFailed": "{{archive}} svarade inte, så tidigare scener saknas.",
+      "historyTimeout": "{{archive}} svarade inte i tid, så tidigare scener saknas.",
+      "loading": "Läser in bilder: {{loaded}} av {{total}}",
+      "pause": "Pausa",
+      "resume": "Spela",
+      "next": "Nästa bild",
+      "closeLabel": "Stäng",
+      "agoNow": "Nyss",
+      "agoHours": "för {{count}} h sedan",
+      "agoDays": "för {{count}} d sedan",
+      "clear": "Klart",
+      "clouded": "Molnigt · {{pct}} %",
+      "tabImage": "Bild",
+      "tabChange": "Förändring",
+      "metaAcquired": "Tagen",
+      "metaDate": "Datum",
+      "metaPixel": "Pixel",
+      "metaSpot": "Moln på platsen",
+      "metaScene": "Moln i scenen",
+      "metaSun": "Solhöjd",
+      "showCloudy": "Visa molniga datum ({{count}})"
+    },
+    "timelapse": {
+      "heading": "Tidsförlopp",
+      "entry": "Den här platsen, år för år",
+      "open": "Öppna platsens tidsförlopp år för år",
+      "searching": "Söker en klar bild per år sedan 2015 · {{archive}}",
+      "loading": "Läser in bilder · {{loaded}} / {{total}}",
+      "failed": "{{archive}} svarade inte, så årsbilderna saknas.",
+      "timeout": "{{archive}} svarade inte i tid, så årsbilderna saknas.",
+      "partial": "År som saknas eftersom {{archive}} inte svarade: {{count}}.",
+      "tooFew": "Klara årsbilder av platsen: {{count}}. Ett tidsförlopp behöver {{min}}.",
+      "total": "Klara bilder: {{count}} · en per år",
+      "years": "År",
+      "share": "Dela",
+      "method": "Varje bild är samma 6 km-ruta från Sentinel-2 i naturliga färger. Varje år söks en annan årstid och den minst molniga scenen behålls; ett år utan scen under 30 % moln utelämnas."
+    },
+    "passDetail": {
+      "back": "Alla passager",
+      "altitude": "Höjd",
+      "offNadir": "Från nadir",
+      "crossed": "{{name}} passerade på {{altitude}} km höjd, {{distance}} km {{direction}}, kl. {{time}}, med {{speed}} km/s över marken.",
+      "crossedHeading": "{{name}} passerade på {{altitude}} km höjd, {{distance}} km {{direction}}, kl. {{time}}, på väg {{heading}} med {{speed}} km/s över marken.",
+      "looking": "Den tittade {{deg}}° från rakt ned.",
+      "sceneCloud": "Molntäcke i scenen: {{pct}} %.",
+      "pixelLine": "{{m}} m pixel",
+      "swathLine": "{{km}} km stråk",
+      "clearestLook": "Klaraste bilden",
+      "previous": "Föregående passage",
+      "next": "Nästa passage",
+      "dir": {
+        "n": "norrut",
+        "ne": "åt nordost",
+        "e": "österut",
+        "se": "åt sydost",
+        "s": "söderut",
+        "sw": "åt sydväst",
+        "w": "västerut",
+        "nw": "åt nordväst"
+      },
+      "heading": {
+        "north": "norrut",
+        "south": "söderut"
+      }
+    },
+    "search": {
+      "label": "Platsnamn eller koordinater",
+      "placeholder": "Platsnamn eller 48.8584, 2.2945",
+      "submit": "Sök",
+      "locate": "Använd min plats",
+      "hint": "Koordinater och din plats stannar i den här webbläsaren. Ett platsnamn du söker skickas till WorldMonitor och till OpenStreetMaps Nominatim.",
+      "results": "Matchande platser",
+      "searching": "Söker…",
+      "tooShort": "Skriv minst två tecken, eller koordinater som 48.8584, 2.2945.",
+      "invalidCoordinates": "De koordinaterna ligger utanför jordklotet. Latitud går från -90 till 90 och longitud från -180 till 180.",
+      "failed": "Platssökningen är inte tillgänglig just nu. Koordinater och kartan fungerar fortfarande.",
+      "noResults": "Ingen plats matchade det namnet.",
+      "locating": "Hämtar din plats…",
+      "locationDenied": "Platsbehörigheten nekades. Sök efter en plats eller högerklicka på kartan i stället.",
+      "locationUnavailable": "Din plats kunde inte hittas. Sök efter en plats eller högerklicka på kartan i stället.",
+      "idle": "Sök efter en plats med namn eller koordinater, använd din plats, eller högerklicka på kartan för att se vilka satelliter som passerat över den."
+    },
+    "share": {
+      "copy": "Kopiera delningslänk",
+      "copied": "Länken kopierad",
+      "copyManually": "Kopiera länken nedan",
+      "link": "Delningslänk",
+      "dismiss": "Stäng",
+      "passOutsideWindow": "Den länkade passagen ligger utanför det aktuella fönstret, så ingen passage är vald.",
+      "passNotFound": "Den länkade passagen hittades inte bland de omräknade passagerna, så ingen passage är vald."
+    }
   },
   "settings": {
     "back": "Tillbaka till inställningar",
