@@ -262,16 +262,21 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('hero credit', heroCredit);
   if (!/COPERNICUS SENTINEL|LANDSAT/i.test(heroCredit)) throw new Error(`closest look has no image credit: ${heroCredit}`);
   if (await sheet.locator('.orbital-watch-sheet, .ow-panel').first().evaluate((el) => el.textContent.includes('We acknowledge'))) throw new Error('acknowledgement paragraph in the sheet');
-  const heroFits = await page.evaluate(() => {
-    const card = document.querySelector('.orbital-watch-sheet .ow-card');
-    const floor = Math.min(...[...document.querySelectorAll('.orbital-watch-sheet .ow-privacy, .mobile-tab-bar')]
-      .map((el) => el.getBoundingClientRect()).filter((r) => r.height > 0).map((r) => r.top), window.innerHeight);
-    const r = card.getBoundingClientRect();
-    const tile = card.querySelector('.ow-tile').getBoundingClientRect();
-    return { top: Math.round(r.top), bottom: Math.round(r.bottom), image: Math.round(tile.height), floor: Math.round(floor) };
-  });
-  log('hero box', JSON.stringify(heroFits));
-  if (heroFits.bottom > heroFits.floor) throw new Error(`hero and caption run under the bottom edge: ${JSON.stringify(heroFits)}`);
+  // At rest the hero, its caption, REPLAY and credit all sit above the privacy line.
+  const checkHeroFits = async (view) => {
+    const heroFits = await page.evaluate(() => {
+      const card = document.querySelector('.orbital-watch-sheet .ow-card');
+      const floor = Math.min(...[...document.querySelectorAll('.orbital-watch-sheet .ow-privacy, .mobile-tab-bar')]
+        .map((el) => el.getBoundingClientRect()).filter((r) => r.height > 0).map((r) => r.top), window.innerHeight);
+      const r = card.getBoundingClientRect();
+      const tile = card.querySelector('.ow-tile').getBoundingClientRect();
+      const replay = card.querySelector('.ow-replay')?.getBoundingClientRect();
+      return { top: Math.round(r.top), bottom: Math.round(r.bottom), image: Math.round(tile.height), replay: replay ? Math.round(replay.bottom) : null, floor: Math.round(floor) };
+    });
+    log(`${view} hero box`, JSON.stringify(heroFits));
+    if (heroFits.bottom > heroFits.floor) throw new Error(`${view}: hero and caption run under the bottom edge: ${JSON.stringify(heroFits)}`);
+  };
+  await checkHeroFits('sheet');
   log('sheet map mark', JSON.stringify(await markAt()));
   await hero.locator('.ow-image-credit').evaluate((el) => el.scrollIntoView({ block: 'nearest' }));
   await shot('sheet-closest-look');
@@ -317,6 +322,10 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('full view route', hash.replace(/[\d.]+,[\d.]+/, '<point>'));
   if (!hash.startsWith('#orbital=') || !hash.endsWith('&view=full')) throw new Error(`full view route ${hash}`);
   await checkPageUrl('full view', { route: true });
+  await sheet.locator('.ow-body').evaluate((el) => el.scrollTo(0, 0));
+  await settleImagesInView();
+  await checkHeroFits('full view');
+  if (mobile) await shot('full-view-closest-look');
   await sheet.locator('.ow-passes').evaluate((el) => el.scrollIntoView({ block: 'start' }));
   await settleImagesInView();
   log('groups', (await sheet.locator('.ow-group-toggle').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ')));

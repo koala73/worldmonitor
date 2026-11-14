@@ -5153,7 +5153,8 @@
         "weather": "天氣"
       },
       "caption": {
-        "clear": "晴朗",
+        "clear": "該點晴朗",
+        "clearSceneCloud": "該點晴朗 · 場景雲量 {{pct}}%",
         "clouded": "有云 · {{pct}}%",
         "cloudShadow": "雲影",
         "spotNotChecked": "該點未檢查雲量",

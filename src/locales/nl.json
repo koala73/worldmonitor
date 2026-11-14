@@ -5184,7 +5184,8 @@
         "weather": "Weer"
       },
       "caption": {
-        "clear": "Helder",
+        "clear": "Helder op het punt",
+        "clearSceneCloud": "Helder op het punt · scènebewolking {{pct}}%",
         "clouded": "Bewolkt · {{pct}}%",
         "cloudShadow": "Wolkenschaduw",
         "spotNotChecked": "Plek niet op wolken gecontroleerd",

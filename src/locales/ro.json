@@ -5215,7 +5215,8 @@
         "weather": "Vreme"
       },
       "caption": {
-        "clear": "Senin",
+        "clear": "Senin în punct",
+        "clearSceneCloud": "Senin în punct · nebulozitatea scenei {{pct}}%",
         "clouded": "Înnorat · {{pct}}%",
         "cloudShadow": "Umbră de nor",
         "spotNotChecked": "Punct neverificat pentru nori",

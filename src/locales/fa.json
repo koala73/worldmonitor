@@ -5184,7 +5184,8 @@
         "weather": "هوا"
       },
       "caption": {
-        "clear": "صاف",
+        "clear": "صاف در نقطه",
+        "clearSceneCloud": "صاف در نقطه · ابرناکی صحنه {{pct}}٪",
         "clouded": "ابری · {{pct}}٪",
         "cloudShadow": "سایه ابر",
         "spotNotChecked": "نقطه از نظر ابر بررسی نشده",

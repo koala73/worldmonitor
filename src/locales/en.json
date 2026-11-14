@@ -4643,7 +4643,8 @@
         "weather": "Weather"
       },
       "caption": {
-        "clear": "Clear",
+        "clear": "Clear at point",
+        "clearSceneCloud": "Clear at point · {{pct}}% scene cloud",
         "clouded": "Clouded · {{pct}}%",
         "cloudShadow": "Cloud shadow",
         "spotNotChecked": "Spot not checked for cloud",

@@ -5226,7 +5226,8 @@
         "weather": "Vrijeme"
       },
       "caption": {
-        "clear": "Vedro",
+        "clear": "Vedro na točki",
+        "clearSceneCloud": "Vedro na točki · naoblaka scene {{pct}} %",
         "clouded": "Oblačno · {{pct}} %",
         "cloudShadow": "Sjena oblaka",
         "spotNotChecked": "Mjesto nije provjereno za oblake",

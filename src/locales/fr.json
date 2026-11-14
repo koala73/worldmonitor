@@ -5215,7 +5215,8 @@
         "weather": "Météo"
       },
       "caption": {
-        "clear": "Dégagé",
+        "clear": "Dégagé au point",
+        "clearSceneCloud": "Dégagé au point · nébulosité de la scène {{pct}} %",
         "clouded": "Nuageux · {{pct}} %",
         "cloudShadow": "Ombre de nuage",
         "spotNotChecked": "Point non vérifié pour les nuages",

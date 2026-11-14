@@ -5215,7 +5215,8 @@
         "weather": "Clima"
       },
       "caption": {
-        "clear": "Despejado",
+        "clear": "Despejado en el punto",
+        "clearSceneCloud": "Despejado en el punto · nubosidad de la escena {{pct}} %",
         "clouded": "Nublado · {{pct}} %",
         "cloudShadow": "Sombra de nube",
         "spotNotChecked": "Punto sin comprobar nubes",

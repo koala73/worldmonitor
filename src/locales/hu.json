@@ -5184,7 +5184,8 @@
         "weather": "Időjárás"
       },
       "caption": {
-        "clear": "Derült",
+        "clear": "Derült a ponton",
+        "clearSceneCloud": "Derült a ponton · jelenet felhőzete {{pct}}%",
         "clouded": "Felhős · {{pct}}%",
         "cloudShadow": "Felhőárnyék",
         "spotNotChecked": "A hely felhőzetét nem ellenőrizték",

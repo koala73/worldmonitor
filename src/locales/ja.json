@@ -5153,7 +5153,8 @@
         "weather": "気象"
       },
       "caption": {
-        "clear": "晴れ",
+        "clear": "地点は晴れ",
+        "clearSceneCloud": "地点は晴れ · シーンの雲量 {{pct}}%",
         "clouded": "曇り · {{pct}}%",
         "cloudShadow": "雲の影",
         "spotNotChecked": "地点の雲は未確認",
