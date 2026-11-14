@@ -10,8 +10,8 @@ const DOMAIN_EMPHASIS: Record<string, string> = {
 /** Context fields included per domain. 'all' includes everything. */
 const DOMAIN_SECTIONS: Record<string, Set<string>> = {
   market:   new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'predictionMarkets', 'forecasts', 'liveHeadlines']),
-  geo:      new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'predictionMarkets', 'countryBrief', 'energyExposure', 'coalSpotPrice', 'gasSpotTtf', 'liveHeadlines', 'gasStorage', 'energyIntelligence', 'productSupply', 'gasFlows', 'electricityMix']),
-  military: new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'countryBrief', 'liveHeadlines']),
+  geo:      new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'predictionMarkets', 'countryBrief', 'energyExposure', 'coalSpotPrice', 'gasSpotTtf', 'liveHeadlines', 'gasStorage', 'energyIntelligence', 'productSupply', 'gasFlows', 'electricityMix', 'watchedSiteImagery']),
+  military: new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'countryBrief', 'liveHeadlines', 'watchedSiteImagery']),
   economic: new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'riskScores', 'energyExposure', 'coalSpotPrice', 'gasSpotTtf', 'liveHeadlines', 'gasStorage', 'electricityPrices', 'energyIntelligence', 'sprLevel', 'refineryUtil', 'productSupply', 'gasFlows', 'oilStocksCover', 'electricityMix']),
 };
 
@@ -108,6 +108,8 @@ export function buildAnalystLiveContext(ctx: AnalystContext, domainFocus?: strin
     contextSections.push(`## ${ctx.countryBrief}`);
   if (ctx.liveHeadlines && include('liveHeadlines'))
     contextSections.push(`## ${ctx.liveHeadlines}`);
+  if (ctx.watchedSiteImagery && include('watchedSiteImagery'))
+    contextSections.push(`## ${ctx.watchedSiteImagery}`);
 
   if (contextSections.length === 0) return NO_LIVE_CONTEXT;
   return contextSections
@@ -129,6 +131,7 @@ Use SITUATION / ANALYSIS / WATCH format for geopolitical queries.
 For market queries use SIGNAL / THESIS / RISK.
 Never speculate beyond what the data supports. Acknowledge uncertainty explicitly.
 Do not cite data sources by name. Do not mention AI, models, or providers.
+${ctx.watchedSiteImagery ? 'When "Watched-Site Imagery" appears in context and the question concerns one of its sites, state the date of its latest image and its next imaging pass, and end with that section\'s credit line. These lines say only when a site was imaged; never describe what an image shows or infer why anything happened there.\n' : ''}\
 ${ctx.relevantArticles ? 'When "Matched News Articles" appear in context, treat them as the primary factual basis for your response. Cite them before forecast probabilities or risk scores.\n' : ''}\
 ${emphasis ? `\n${emphasis}\n` : ''}
 The user turn carries a data block between the "${LIVE_CONTEXT_OPEN}" and "${LIVE_CONTEXT_CLOSE}" delimiters, followed by the question after "${QUESTION_MARKER}". Answer the question using that block. If the block reads "${NO_LIVE_CONTEXT}", acknowledge this limitation explicitly and do not present inference or training knowledge as current intelligence.

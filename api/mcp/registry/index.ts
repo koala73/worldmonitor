@@ -9,6 +9,7 @@ import type { McpAccessClass, PublicToolShape, ToolDef } from '../types';
 import { compressDescription, utf8ByteLength } from '../utils';
 import { CACHE_TOOLS, RETIRED_CACHE_TOOLS } from './cache-tools';
 import { NLP_TOOLS } from './nlp-tools';
+import { orbitalSiteImageryTools } from './_orbital-site-imagery';
 import { RETIRED_RPC_TOOLS, RPC_TOOLS } from './rpc-tools';
 import { COUNTRY_VIEW_TOOLS } from './country-view';
 import { NEWS_DASHBOARD_TOOLS } from './news-dashboard';
@@ -46,7 +47,7 @@ import { TRAVEL_RISK_TOOLS } from './travel-risk-tool';
 // returns the available-list sorted before responding. NLP_TOOLS is appended
 // last so extracting it from rpc-tools.ts left every other tool's position
 // unchanged. SOURCE_TOOLS is appended after it for the same reason.
-export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS, ...NEWS_DASHBOARD_TOOLS, ...MACRO_TOOLS, ...STOCK_TOOLS, ...COST_SHOCK_TOOLS, ...PUBLIC_DOMAIN_TOOLS, ...COUNTRY_VIEW_TOOLS, ...TARIFF_TOOLS, ...WEBCAM_TOOLS, ...FEEDBACK_TOOLS, ...TRAVEL_RISK_TOOLS];
+export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS, ...NEWS_DASHBOARD_TOOLS, ...MACRO_TOOLS, ...STOCK_TOOLS, ...COST_SHOCK_TOOLS, ...PUBLIC_DOMAIN_TOOLS, ...COUNTRY_VIEW_TOOLS, ...TARIFF_TOOLS, ...WEBCAM_TOOLS, ...FEEDBACK_TOOLS, ...TRAVEL_RISK_TOOLS, ...orbitalSiteImageryTools()];
 export const RETIRED_TOOLS: ToolDef[] = [...RETIRED_RPC_TOOLS, ...RETIRED_CACHE_TOOLS];
 
 export const FREE_TIER_TOOL_NAMES: ReadonlySet<string> = new Set(

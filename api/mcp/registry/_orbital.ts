@@ -5,7 +5,7 @@ import { fetchMcpDownstream } from '../downstream';
 import type { ToolDef } from '../types';
 
 const POINT_PASSES_PATH = '/api/orbital/v1/get-point-passes';
-const COUNTRY_EVIDENCE_PATH = '/api/orbital/v1/get-country-imagery-evidence';
+export const COUNTRY_EVIDENCE_PATH = '/api/orbital/v1/get-country-imagery-evidence';
 const USER_AGENT = 'worldmonitor-mcp-edge/1.0';
 
 function coordinate(params: Record<string, unknown>, name: 'lat' | 'lon', limit: number): number {
@@ -18,7 +18,7 @@ function coordinate(params: Record<string, unknown>, name: 'lat' | 'lon', limit:
 
 const pointArgs = (params: Record<string, unknown>) => ({ lat: coordinate(params, 'lat', 90), lon: coordinate(params, 'lon', 180) });
 
-async function readOrbital(path: string, query: URLSearchParams, label: string, base: string, context: Parameters<typeof buildAuthHeaders>[0], execution: Parameters<typeof fetchMcpDownstream>[2]) {
+export async function readOrbital(path: string, query: URLSearchParams, label: string, base: string, context: Parameters<typeof buildAuthHeaders>[0], execution: Parameters<typeof fetchMcpDownstream>[2]) {
   const url = `${base}${path}?${query}`;
   const auth = await buildAuthHeaders(context, 'GET', url, undefined);
   const res = await fetchMcpDownstream(url, { method: 'GET', headers: { ...auth, 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(25_000) }, execution);
