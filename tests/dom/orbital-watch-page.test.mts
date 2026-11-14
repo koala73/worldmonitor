@@ -142,6 +142,7 @@ afterEach(() => {
   vi.mocked(URL.createObjectURL).mockRestore();
   vi.mocked(URL.revokeObjectURL).mockRestore();
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 describe('satellite pass lookup sheet', () => {
@@ -316,6 +317,92 @@ describe('satellite pass lookup sheet', () => {
     expect(tile.textContent).toBe('The archive has no preview of this scene yet');
   });
 
+  it('opens a pass detail from a pass row in the full view and steps between passes', async () => {
+    const { all, confirmedNew, confirmedOld } = tiered();
+    confirmedOld.motion = { heading: 'south', groundSpeedKmS: 6.71 };
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew, { cloudCoverPct: 12, condition: 'clear' })] }), null, 'full');
+    rowOf(confirmedNew.name).click();
+    const detail = page().slot('pass-detail');
+    expect(sheet().querySelector('.ow-panel')!.getAttribute('data-detail')).toBe('open');
+    expect(detail.querySelector('[data-action="detail-back"]')!.textContent).toBe('← All passes ESC');
+    await Promise.resolve();
+    expect(document.activeElement).toBe(detail.querySelector('[data-action="detail-back"]'));
+    expect(detail.querySelector('.ow-detail-title strong')!.textContent).toBe('SENTINEL-2C');
+    expect([...detail.querySelectorAll('.ow-detail-cell')].map((c) => c.textContent)).toEqual(['Altitude700 KM', expect.stringMatching(/^Off-nadir\d+\.\d°$/), 'Pixel10 M', 'Cloud at spotClear']);
+    expect(detail.querySelector('.ow-detail-sentence')!.textContent).toMatch(/^SENTINEL-2C crossed 700 km up, 42 km to the north, at \d\d:\d\d UTC\+4, moving at 6\.\d\d km\/s over the ground\. It was looking \d+\.\d° off straight down\. Scene cloud cover: 12%\.$/);
+    expect(detail.querySelector('.ow-detail-sensor')!.textContent).toContain('10 m pixel');
+    expect(detail.querySelector<HTMLButtonElement>('[data-action="clearest-look"]')!.disabled).toBe(false);
+
+    detail.querySelector<HTMLButtonElement>('[data-action="detail-step"][data-step="1"]')!.click();
+    expect(detail.querySelector('.ow-detail-media')!.getAttribute('data-media')).toBe('glyph');
+    expect(detail.querySelector('.ow-detail-media img')).toBeNull();
+    expect(detail.querySelector('.ow-detail-glyph .ow-glyph')!.textContent).toBe(TIER_GLYPH_CHAR.watched);
+    expect(detail.querySelector('.ow-detail-glyph .ow-label')!.textContent).toBe('confirmed image');
+    expect(detail.querySelector('.ow-detail-title strong')!.textContent).toBe(confirmedOld.name);
+    expect(detail.querySelector('.ow-detail-cell:nth-child(3)')!.textContent).toBe('Pixel30 M');
+    expect(detail.querySelector('.ow-detail-cell:nth-child(4)')!.textContent).toBe('Cloud at spot—');
+    expect(detail.querySelector('.ow-detail-sensor')!.textContent).toContain('30 m pixel');
+    expect(detail.querySelector('.ow-detail-sentence')!.textContent).toMatch(/^LANDSAT 9 crossed 700 km up, 42 km to the north, at \d\d:\d\d UTC\+4, moving south at 6\.71 km\/s over the ground\./);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(detail.childElementCount).toBe(0);
+    expect(sheet().dataset.view).toBe('full');
+    expect(document.activeElement).toBe(rowOf(confirmedOld.name));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(sheet().dataset.view).toBe('sheet');
+  });
+
+  it('tops a pass detail with the pass crop, its reticle and credit, and opens the viewer on that crop', async () => {
+    const { all, confirmedNew } = tiered();
+    const image = acquisition(confirmedNew, { cloudCoverPct: 12, condition: 'clear' });
+    mounted(answered(all, { acquisitions: [image] }), null, 'full');
+    rowOf(confirmedNew.name).click();
+    const detail = page().slot('pass-detail');
+    const media = detail.querySelector<HTMLElement>('.ow-detail-media')!;
+    expect(media.dataset.media).toBe('image');
+    expect(detail.querySelector('.ow-detail-title')!.nextElementSibling).toBe(media);
+    expect(media.nextElementSibling!.classList.contains('ow-detail-grid')).toBe(true);
+    const tile = media.querySelector<HTMLElement>('.ow-tile-hero')!;
+    await vi.waitFor(() => expect(sourceOf(tile.querySelector('img')!.getAttribute('src'))).toBe(image.imageUrl));
+    expect(tile.querySelector('.ow-reticle')).not.toBeNull();
+    expect(media.querySelector('.ow-detail-credit')!.textContent).toBe(`confirmed image · © Copernicus Sentinel ${new Date(confirmedNew.timeMs).getUTCFullYear()}`);
+    expect(detail.querySelector('.ow-detail-sentence')).not.toBeNull();
+    expect(detail.querySelectorAll('.ow-detail-cell')).toHaveLength(4);
+
+    tile.querySelector('img')!.dispatchEvent(new Event('load'));
+    const open = tile.querySelector<HTMLButtonElement>('[data-action="view-image"]')!;
+    expect(open.dataset.imageKey).toBe(image.key);
+    open.click();
+    await vi.waitFor(() => expect(document.querySelector('.oiv-dialog')).not.toBeNull());
+    await vi.waitFor(() => expect(sourceOf(document.querySelector('.oiv-dialog img.oiv-image')?.getAttribute('src') ?? null)).toBe(image.imageUrl));
+    document.querySelector('.oiv-dialog')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(document.activeElement).toBe(open);
+    expect(page().slot('pass-detail').querySelector('.ow-detail')).not.toBeNull();
+    expect(sheet().dataset.view).toBe('full');
+  });
+
+  it('says under the glyph whether a likely-watched pass is still waiting on its archive or the archive never answered', () => {
+    const { all, likely } = tiered();
+    const reason = () => page().slot('pass-detail').querySelector('.ow-detail-glyph .ow-detail-reason')?.textContent;
+    mounted(answered(all), null, 'full');
+    page().select(`${likely.noradId}:${likely.timeMs}`);
+    expect(page().slot('pass-detail').querySelector('.ow-detail-glyph .ow-label')!.textContent).toBe('likely imaged');
+    expect(reason()).toBe('Covered, no image yet');
+    page().render(answered(all, { status: 'partial', failures: [{ archive: 'earth-search', reason: 'timeout' }], unansweredProfiles: [likely.profileId as 'sentinel-2'] }));
+    page().select(`${likely.noradId}:${likely.timeMs}`);
+    expect(reason()).toBe("Covered, archive didn't answer");
+  });
+
+  it('shows a capability-overhead pass as its tier glyph, not an image', () => {
+    const { all, military } = tiered();
+    mounted(answered(all, { acquisitions: [acquisition(military)] }), null, 'full');
+    page().select(`${military.noradId}:${military.timeMs}`);
+    const media = page().slot('pass-detail').querySelector<HTMLElement>('.ow-detail-media')!;
+    expect(media.dataset.media).toBe('glyph');
+    expect(media.querySelector('img, [data-action="view-image"]')).toBeNull();
+    expect(media.querySelector('.ow-detail-glyph .ow-label')!.textContent).toBe('capability overhead');
+  });
+
   it('asks the globe to replay a pass that has one', () => {
     const { all, confirmedNew } = tiered();
     mounted(answered(all, { acquisitions: [acquisition(confirmedNew)] }));
@@ -344,10 +431,9 @@ describe('satellite pass lookup sheet', () => {
     expect(rowOf(confirmedNew.name).querySelector('.ow-tile-thumb')).not.toBeNull();
     expect(rowOf(confirmedOld.name).querySelector('.ow-glyph-tile')).not.toBeNull();
     for (const row of sheet().querySelectorAll('.ow-row')) expect(row.querySelector('.ow-tier-label')?.textContent?.trim()).not.toBe('');
-    for (const slot of ['timeline', 'pass-detail', 'replay-hud', 'timelapse']) {
-      expect(page().slot(slot as 'timeline').dataset.slot).toBe(slot);
-      expect(page().slot(slot as 'timeline').childElementCount).toBe(0);
-    }
+    for (const slot of ['timeline', 'pass-detail', 'replay-hud', 'timelapse']) expect(page().slot(slot as 'timeline').dataset.slot).toBe(slot);
+    for (const slot of ['timeline', 'pass-detail', 'replay-hud']) expect(page().slot(slot as 'timeline').childElementCount).toBe(0);
+    expect(page().slot('timelapse').querySelector('[data-action="timelapse"]')!.textContent).toContain('This place, year by year');
     expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/^0 imaging satellites · CelesTrak GP · Fetched \d{4}-\d\d-\d\d \d\d:\d\dZ · \d+ days ago/);
     expect(sheet().querySelector('.ow-statusbar')!.textContent).toMatch(/Sun \d+\.\d°[NS] \d+\.\d°[EW] · sub-solar point · \d\d:\d\d:\d\d UTC$/);
     expect(sheet().querySelector('[data-action="open-full"].ow-primary')).toBeNull();
