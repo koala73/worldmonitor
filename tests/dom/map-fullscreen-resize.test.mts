@@ -71,14 +71,14 @@ describe('map fullscreen resize synchronization', () => {
     document.body.append(section, pinButton, fullscreenButton);
     manager.setupMapPin();
     fullscreenButton.click();
-    const escape = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    const pressEscape = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
     document.body.classList.add('orbital-full-view');
-    escape();
+    pressEscape();
     expect(document.body.classList.contains('live-news-fullscreen-active')).toBe(true);
 
     document.body.classList.remove('orbital-full-view');
-    escape();
+    pressEscape();
     expect(document.body.classList.contains('live-news-fullscreen-active')).toBe(false);
   });
 
