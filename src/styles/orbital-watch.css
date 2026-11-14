@@ -390,6 +390,7 @@ body.orbital-full-view #mapSection > .panel-header { display: none !important; }
 
 @media (max-width: 768px) {
   .ow-detail-media .ow-tile-hero { aspect-ratio: 2 / 1; }
+  .ow-detail-actions { position: sticky; bottom: calc(-1 * var(--ow-panel-pad)); z-index: 2; margin: 0 calc(-1 * var(--ow-panel-pad)); padding: var(--ow-space-2) var(--ow-panel-pad); background: var(--ow-panel); border-top: 1px solid var(--ow-line); }
   .orbital-watch-sheet,
   .orbital-watch-sheet[data-view="full"] {
     inset: 38vh 0 calc(58px + env(safe-area-inset-bottom, 0px)) 0;

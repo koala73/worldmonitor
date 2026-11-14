@@ -308,6 +308,8 @@ describe('satellite pass lookup sheet', () => {
     expect(document.querySelector('.oiv-dialog img.oiv-image')!.getAttribute('src')).toBe(image.imageUrl);
     document.querySelector('.oiv-dialog')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(document.activeElement).toBe(open);
+    expect(page().slot('pass-detail').querySelector('.ow-detail')).not.toBeNull();
+    expect(sheet().dataset.view).toBe('full');
   });
 
   it('shows a capability-overhead pass as its tier glyph, not an image', () => {

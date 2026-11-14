@@ -3136,7 +3136,8 @@ export class EventHandlerManager implements AppModule {
       if (isFullscreen) toggle();
     };
     this.boundMapFullscreenEscHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isFullscreen) toggle();
+      // The orbital full view raises the map and owns Escape while it is open; it lowers the map itself on leaving.
+      if (e.key === 'Escape' && isFullscreen && !document.body.classList.contains('orbital-full-view')) toggle();
     };
     document.addEventListener('keydown', this.boundMapFullscreenEscHandler);
   }

@@ -172,8 +172,14 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   if (viewerSrc !== cropInfo.src) throw new Error('the pass detail crop opened the viewer on another image');
   await page.keyboard.press('Escape');
   await cropViewer.waitFor({ state: 'detached' });
+  const afterViewer = await page.evaluate(() => ({ view: document.querySelector('.orbital-watch-sheet')?.dataset.view, detail: Boolean(document.querySelector('.ow-detail')), focus: document.activeElement?.className }));
+  log('after closing the crop viewer', JSON.stringify(afterViewer));
+  if (afterViewer.view !== 'full' || !afterViewer.detail) throw new Error(`closing the crop viewer also closed the pass detail: ${JSON.stringify(afterViewer)}`);
   await page.keyboard.press('Escape');
   await detail.waitFor({ state: 'detached' });
+  if (!(await page.evaluate(() => document.body.classList.contains('live-news-fullscreen-active')))) {
+    throw new Error('Escape from the pass detail lowered the raised map under the full view');
+  }
 
   // A pass with no image of the spot shows its tier glyph and label instead of a blank box.
   const bare = sheet.locator('.ow-row[data-key^="pass:"]:has(.ow-glyph-tile)').first();
