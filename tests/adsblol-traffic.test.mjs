@@ -51,6 +51,14 @@ test('overlapping circles count an aircraft once, at its freshest position', () 
   assert.equal(rows[0][6], 41);
 });
 
+test('across circles fetched at different times, the later position wins', () => {
+  const early = { now: 1_000_000, ac: [{ hex: 'abc', lat: 40, lon: -100, alt_baro: 30000, seen_pos: 0 }] };
+  const late = { now: 1_010_000, ac: [{ hex: 'abc', lat: 41, lon: -100, alt_baro: 'ground', seen_pos: 1 }] };
+  const [row] = mergeSweep([early, late]);
+  assert.equal(row[6], 41, 'seen 9s later than the first circle');
+  assert.equal(row[8], true);
+});
+
 test('a response without an ac array fails the sweep instead of counting zero', () => {
   assert.throws(() => mergeSweep([{ ac: [] }, {}]), /no ac array/);
 });

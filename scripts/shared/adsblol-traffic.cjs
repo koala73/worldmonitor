@@ -32,18 +32,21 @@ function toStateRow(ac) {
   ];
 }
 
-// Circles overlap, so one aircraft can appear in several responses. Keep the
-// row with the freshest position.
+// Circles overlap, so one aircraft can appear in several responses fetched
+// seconds apart. Keep the row with the latest absolute position time, which is
+// the response's `now` (epoch ms) less the position's age. On a tie the later
+// response wins.
 function mergeSweep(responses) {
   const best = new Map();
   for (const response of responses) {
     if (!Array.isArray(response?.ac)) throw new TypeError('adsb.lol response has no ac array');
+    const now = finite(response.now) ? response.now : 0;
     for (const ac of response.ac) {
       const row = toStateRow(ac);
       if (!row) continue;
-      const age = finite(ac.seen_pos) ? ac.seen_pos : 0;
+      const positionAt = now - (finite(ac.seen_pos) ? ac.seen_pos : 0) * 1000;
       const prev = best.get(row[0]);
-      if (!prev || age < prev.age) best.set(row[0], { age, row });
+      if (!prev || positionAt >= prev.positionAt) best.set(row[0], { positionAt, row });
     }
   }
   return [...best.values()].map((entry) => entry.row);
