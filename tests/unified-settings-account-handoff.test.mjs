@@ -97,7 +97,7 @@ describe('UnifiedSettings account handoff', () => {
       },
     };
     instance.overlay = { classList: { contains: () => true } };
-    instance.render = (loadAccountData) => renders.push(loadAccountData);
+    instance.rebuild = (runEnter) => renders.push(runEnter);
     let listRenders = 0;
     instance.renderApiKeysList = () => {
       listRenders += 1;
@@ -128,7 +128,7 @@ describe('UnifiedSettings account handoff', () => {
     assert.equal(instance.mcpQuota, null);
     assert.equal(seatsReset, 1);
     assert.equal(enterpriseSeatsReset, 1, 'account B must not see account A\'s Enterprise roster');
-    assert.deepEqual(renders, [false], 'the synchronous rerender must suppress account loads');
+    assert.deepEqual(renders, [false], 'the synchronous rebuild must not run page entry loads');
     assert.equal(listRenders, 1, 'A settlement must not render after B clears the surface');
     assert.equal(instance.isAccountRequestCurrent(requestA), false);
   });

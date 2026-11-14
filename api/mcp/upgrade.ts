@@ -172,8 +172,7 @@ const PLAN_FEATURE_COPY: Record<McpPlanFeature, { message: string; nextStep: str
       'Upgrade to Pro Business or API Business at the upgrade URL to use this tool. '
       + 'Every other tool the current plan includes still works.',
     informOnlyNextStep:
-      'This tool is not included in the current plan. Every other tool the current plan includes still works. '
-      + 'The upgrade URL describes the plans that include this tool.',
+      'This tool is not included in the current plan. Every other tool the current plan includes still works.',
   },
 };
 
@@ -214,8 +213,8 @@ export const API_PLAN_REQUIRED_MESSAGE =
 
 /**
  * Copy for hosts whose app rules forbid promoting an upgrade (ChatGPT, see
- * host-policy.ts). It states what the current plan covers and points at the
- * plans page; it never tells the agent to subscribe or buy. Messages that
+ * host-policy.ts). It states what the current plan covers; it never tells the
+ * agent to subscribe or buy, and links no plans page. Messages that
  * already only state a fact are left as they are.
  */
 export const INFORM_ONLY_MESSAGES: ReadonlyMap<string, string> = new Map([
@@ -226,16 +225,15 @@ export const INFORM_ONLY_MESSAGES: ReadonlyMap<string, string> = new Map([
 const INFORM_ONLY_NEXT_STEP: Record<McpStaticDenialReason, string> = {
   'no-account':
     'Connect via OAuth (see the WWW-Authenticate header) to sign in with a free account, '
-    + 'or call get_sources, which needs no credential. The upgrade URL describes the plans.',
+    + 'or call get_sources, which needs no credential.',
   'allowance-exhausted':
-    'The free-account allowance resets at the next UTC day. '
-    + 'The upgrade URL describes the plans with a higher daily limit.',
+    'The free-account allowance resets at the next UTC day.',
   'upgrade-required':
     'This tool is not included in the current plan. The free allowance covers cached-data tools only, '
-    + 'so call one of those. The upgrade URL describes the plans that include this tool.',
+    + 'so call one of those.',
   'lapsed-subscription':
     'The subscription is no longer active. The existing credential stays valid — '
-    + 're-authenticating will not restore access. The upgrade URL describes the plans.',
+    + 're-authenticating will not restore access.',
 };
 
 /**
@@ -256,9 +254,8 @@ export function informOnlyNextStep(data: { reason: McpDenialReason; sharedWithRe
   if (typeof data.allowance === 'number') return ACCOUNT_SAFETY_LIMIT_NEXT_STEP;
   return data.sharedWithRestApi
     ? 'This allowance is shared with your REST API requests, so REST traffic spends it too — '
-      + 'the exhaustion may not be your tool calls. It resets at the next UTC day; '
-      + 'the upgrade URL describes the plans with a higher daily limit.'
-    : 'The allowance resets at the next UTC day. The upgrade URL describes the plans with a higher daily limit.';
+      + 'the exhaustion may not be your tool calls. It resets at the next UTC day.'
+    : 'The allowance resets at the next UTC day.';
 }
 
 export function buildMcpStructuredDenial(denial: McpDenial): {

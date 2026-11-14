@@ -21,7 +21,7 @@
   "dependencies": {
     "@astrojs/rss": "^4.0.18",
     "@astrojs/sitemap": "^3.7.1",
-    "astro": "^7.3.3",
+    "astro": "^7.4.7",
     "gray-matter": "^4.0.3",
     "http-cache-semantics": "file:../vendor/http-cache-semantics",
     "satori": "^0.33.5",

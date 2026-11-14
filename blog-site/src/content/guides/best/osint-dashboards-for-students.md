@@ -1,6 +1,6 @@
 ---
 title: "Best OSINT dashboards for students"
-description: "Which OSINT dashboard should students use? World Monitor for a free, no-account global map with labelled, tiered sources and open-source code; ACLED for learning conflict-data methods; Liveuamap for a regional report timeline."
+description: "Compare OSINT dashboards for students: World Monitor for a free, open-source global map with tiered source labels, ACLED for conflict coding, and Liveuamap."
 metaTitle: "Best OSINT dashboards for students (2026) | World Monitor"
 keywords: "Students, best osint dashboards for students, free OSINT dashboard, open source intelligence course, global intelligence tools"
 audience: "Students"

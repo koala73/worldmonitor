@@ -83,3 +83,21 @@ export async function useChineseCatalogue(lng: 'zh' | 'zh-TW'): Promise<void> {
     throw new Error(`[dom-harness] ${lng} dictionary did not load — t() returned ${String(probe)}`);
   }
 }
+
+/**
+ * Switch the English singleton to another real catalogue, keeping English
+ * loaded beside it the way the app does for a non-English user. Call
+ * `restoreEnglish()` afterwards: the singleton outlives the test.
+ */
+export async function useCatalogue(lng: string, dictionary: Record<string, unknown>): Promise<void> {
+  await initTestI18n();
+  i18next.addResourceBundle(lng, 'translation', dictionary, true, true);
+  await i18next.changeLanguage(lng);
+  if (i18next.language !== lng) {
+    throw new Error(`[dom-harness] asked for ${lng}, i18next reports ${i18next.language}`);
+  }
+}
+
+export async function restoreEnglish(): Promise<void> {
+  await i18next.changeLanguage('en');
+}
