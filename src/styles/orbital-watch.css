@@ -56,6 +56,7 @@
 .ies-primary:hover { background: color-mix(in srgb, var(--green) 12%, transparent); }
 /* The dashboard's share-link button, sized to the chips beside it. */
 .ies-actions .cdp-share-btn { min-height: 0; height: 24px; width: 28px; padding: 0; }
+.ies-actions .cdp-share-btn[hidden] { display: none; }
 .ies-close { font-size: 18px; line-height: 1; background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 2px 4px; }
 .ies-close:hover { color: var(--text); }
 .ies-slot:empty { display: none; }
