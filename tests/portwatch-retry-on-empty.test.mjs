@@ -390,6 +390,15 @@ test('buildBaseline withholds a tanker mean whose own coverage is too thin to de
     buildBaseline({ avg_total: 87.4, avg_tanker: 49.3, avg_cap_tanker: 1069000, day_count: 325, tanker_days: 365, cap_tanker_days: 170, cap_tanker_rows: 365 }, WINDOW),
     { ...base, days: 325, tankerAvgDaily: 49.3 },
   );
+  // One DWT row among blanks is a majority of one: too few rows to define normal.
+  assert.deepEqual(
+    buildBaseline({ avg_total: 87.4, avg_tanker: 49.3, avg_cap_tanker: 50000, day_count: 365, tanker_days: 365, cap_tanker_days: 1, cap_tanker_rows: 1 }, WINDOW),
+    { ...base, tankerAvgDaily: 49.3 },
+  );
+  assert.deepEqual(
+    buildBaseline({ avg_total: 87.4, avg_cap_tanker: 50000, day_count: 365, cap_tanker_days: BASELINE_MIN_DAYS - 1, cap_tanker_rows: BASELINE_MIN_DAYS - 1 }, WINDOW),
+    base,
+  );
   // A row without coverage counts cannot vouch for its means.
   assert.deepEqual(buildBaseline({ avg_total: 87.4, avg_tanker: 49.3, avg_cap_tanker: 2294291, day_count: 365 }, WINDOW), base);
   assert.deepEqual(
