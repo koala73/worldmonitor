@@ -78,12 +78,14 @@ beforeEach(() => {
   harness.lookup = vi.fn(async (query: unknown) => passLookup((query as { point: { lat: number; lon: number } }).point));
   harness.siteRead = vi.fn(async () => record());
   vi.stubGlobal('IntersectionObserver', class { observe() {} disconnect() {} });
+  vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
 });
 afterEach(() => {
   document.querySelector<HTMLButtonElement>('.ies-close')?.click();
   for (const page of pages.splice(0)) page.close();
   document.body.replaceChildren();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe('watchedSiteAt', () => {
@@ -128,6 +130,13 @@ describe('evidence sheet on a watched site', () => {
     expect(siteSection()!.textContent).toContain('No current daily check on record');
     page.setWatchedSite({ kind: 'loaded', site, record: record({ latestImage: undefined, nextPass: { satellite: 'S', profileId: 'sentinel-2', time: new Date(NOW - HOUR).toISOString() } }) });
     expect(siteSection()!.textContent).toContain('No recent image');
+    expect(siteSection()!.textContent).toContain('No upcoming pass on record');
+  });
+
+  it('drops a next pass that has gone by since the lookup', () => {
+    const page = mounted();
+    vi.setSystemTime(NOW + 6 * HOUR);
+    page.setWatchedSite({ kind: 'loaded', site, record: record() });
     expect(siteSection()!.textContent).toContain('No upcoming pass on record');
   });
 

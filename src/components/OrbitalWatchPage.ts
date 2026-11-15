@@ -885,12 +885,12 @@ export class OrbitalWatchPage {
   private renderState(state: OrbitalWatchState): DomChild[] {
     if (state.kind === 'idle') return [h('p', { className: 'ies-empty' }, t('orbitalWatch.search.idle'))];
     if (state.kind === 'unavailable') {
-      return [h('div', { className: 'ies-empty' }, h('p', null, t('orbitalWatch.status.unavailable')), this.retryButton()), this.siteSection(Date.now())];
+      return [h('div', { className: 'ies-empty' }, h('p', null, t('orbitalWatch.status.unavailable')), this.retryButton()), this.siteSection()];
     }
     if (state.kind === 'computing') {
       return [h('p', { className: 'ies-status', role: 'status' }, state.total > 0
         ? t('orbitalWatch.status.computing', { done: state.done, total: state.total })
-        : t('orbitalWatch.status.catalog')), this.siteSection(Date.now())];
+        : t('orbitalWatch.status.catalog')), this.siteSection()];
     }
     return this.renderSheet(state);
   }
@@ -905,7 +905,7 @@ export class OrbitalWatchPage {
       this.staleBanner(lookup),
       this.evidenceBlock(lookup, archives, summary, evidence),
       this.latestImage(summary, evidence, archives),
-      this.siteSection(lookup.nowMs),
+      this.siteSection(),
       this.slots.timeline,
       this.eventsSection(lookup),
       this.capabilitySection(lookup, passes, isPending),
@@ -1000,7 +1000,7 @@ export class OrbitalWatchPage {
 
   /** Every other image of the point; each starts loading only as it nears the viewport. */
   /** The site's daily record: its newest image, next pass and when it was checked. No change flag while flags are in shadow. */
-  private siteSection(nowMs: number): DomChild {
+  private siteSection(): DomChild {
     const state = this.watchedSite;
     if (state.kind === 'none') return null;
     const kinds = [...new Set(state.site.origins.map((origin) => t(`orbitalWatch.site.list.${SITE_LIST_KEY[origin.list]}`)))].join(' · ');
@@ -1018,7 +1018,7 @@ export class OrbitalWatchPage {
     return section('site', title, name,
       h('div', { className: 'ies-caption' },
         cell(t('orbitalWatch.popup.latest'), image && Number.isFinite(imageMs) ? `${formatStamp(imageMs)} · ${sensorName(image.profileId)}` : t('orbitalWatch.popup.noImage')),
-        cell(t('orbitalWatch.popup.nextPass'), pass && passMs > nowMs ? `${formatStamp(passMs)} · ${pass.satellite}` : t('orbitalWatch.site.noPass')),
+        cell(t('orbitalWatch.popup.nextPass'), pass && passMs > Date.now() ? `${formatStamp(passMs)} · ${pass.satellite}` : t('orbitalWatch.site.noPass')),
         cell(t('orbitalWatch.site.checked'), formatStamp(record.evaluatedAt))));
   }
 
