@@ -26,8 +26,10 @@ const UNSIGNED = String.raw`(\d+(?:\.\d+)?)`;
 const DEGREE = '[°º]';
 const MINUTE = "['′’]";
 const SECOND = `(?:["″”]|${MINUTE}{2})`;
+/** Minutes and seconds start after a mark or a space, so one number is never split into two fields. */
+const FIELD_START = String.raw`(?<=[°º'′’\s])`;
 /** Decimal degrees, or degrees with minutes and seconds, then an optional hemisphere. */
-const COMPONENT = String.raw`${NUMBER}\s*${DEGREE}?\s*(?:${UNSIGNED}\s*${MINUTE}(?!${MINUTE})\s*)?(?:${UNSIGNED}\s*${SECOND}\s*)?([NSEW])?`;
+const COMPONENT = String.raw`${NUMBER}\s*${DEGREE}?\s*(?:${FIELD_START}${UNSIGNED}\s*${MINUTE}(?!${MINUTE})\s*)?(?:${FIELD_START}${UNSIGNED}\s*${SECOND}\s*)?([NSEW])?`;
 const COORDINATE_PAIR_RE = new RegExp(String.raw`^${COMPONENT}\s*[,;\s]\s*${COMPONENT}$`, 'i');
 /** Text made only of digits, signs, separators, brackets, degree marks and hemisphere letters is a coordinate attempt, never a name. */
 const COORDINATE_SHAPED_RE = /^(?=.*\d)[\d\s.,;°º'"′″’”()[\]+\-NSEWnsew]+$/;
@@ -41,7 +43,8 @@ function componentDegrees(degrees: string, minutes: string | undefined, seconds:
   const sec = seconds === undefined ? 0 : Number(seconds);
   if (min >= 60 || sec >= 60) return null;
   if ((minutes !== undefined || seconds !== undefined) && !Number.isInteger(whole)) return null;
-  if (hemisphere && degrees.startsWith('-')) return null;
+  // A hemisphere letter gives the sign, so a written sign as well is ambiguous.
+  if (hemisphere && /^[+-]/.test(degrees)) return null;
   const magnitude = Math.abs(whole) + min / 60 + sec / 3600;
   return degrees.startsWith('-') || hemisphere === negative ? -magnitude : magnitude;
 }

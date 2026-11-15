@@ -57,7 +57,7 @@ describe('place search keeps the point out of the request names a RUM collector 
 
   it('keeps unreadable coordinate attempts in the browser', async () => {
     const urls = recordRequests();
-    for (const text of [`25°61'N 55°08'E`, `25°06'61"N 55°08'E`, '(25.112, 55.139, 3)', '25.112E 55.139N', `-25°06'N 55°E`, `25.5°06'N 55°E`]) {
+    for (const text of [`25°61'N 55°08'E`, `25°06'61"N 55°08'E`, '(25.112, 55.139, 3)', '25.112E 55.139N', `-25°06'N 55°E`, `+25°06'S 55°E`, `25°N +55°E`, `25.5°06'N 55°E`, `25.1'N 55.1'E`, `25.1"N 55.1"E`, `2506'N 5508'E`]) {
       assert.equal((await searchPlaces(text)).kind, 'invalid-coordinates', text);
     }
     assert.deepEqual(urls, []);
