@@ -1,5 +1,5 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import type { ClimateAnomaly as ProtoClimateAnomaly, Co2DataPoint as ProtoCo2DataPoint, Co2Monitoring as ProtoCo2Monitoring, AnomalySeverity as ProtoAnomalySeverity, AnomalyType as ProtoAnomalyType, GetCo2MonitoringResponse, GetOceanIceDataResponse, ListClimateAnomaliesResponse, ListClimateDisastersResponse, ListReservoirLevelsResponse } from '@/generated/client/worldmonitor/climate/v1/service_client';
+import type { ClimateAnomaly as ProtoClimateAnomaly, Co2DataPoint as ProtoCo2DataPoint, Co2Monitoring as ProtoCo2Monitoring, AnomalySeverity as ProtoAnomalySeverity, AnomalyType as ProtoAnomalyType, GetCo2MonitoringResponse, GetOceanIceDataResponse, ListClimateAnomaliesResponse, ListReservoirLevelsResponse } from '@/generated/client/worldmonitor/climate/v1/service_client';
 import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import {
@@ -110,10 +110,6 @@ export async function fetchCo2Monitoring(): Promise<Co2Monitoring | null> {
   }, emptyCo2Fallback, { shouldCache: (result) => Boolean(result.monitoring?.currentPpm) });
 
   return response.monitoring ? toDisplayCo2Monitoring(response.monitoring) : null;
-}
-
-export function getHydratedClimateDisasters(): ListClimateDisastersResponse | undefined {
-  return getHydratedData('climateDisasters') as ListClimateDisastersResponse | undefined;
 }
 
 export async function fetchOceanIceData(): Promise<OceanIceIndicators | null> {

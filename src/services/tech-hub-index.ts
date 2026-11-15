@@ -251,18 +251,3 @@ export function inferHubsFromTitle(title: string): HubMatch[] {
 
   return matches;
 }
-
-export function getHubById(hubId: string): TechHubLocation | undefined {
-  const index = buildTechHubIndex();
-  return index.hubs.get(hubId);
-}
-
-export function getAllHubs(): TechHubLocation[] {
-  const index = buildTechHubIndex();
-  return Array.from(index.hubs.values());
-}
-
-export function getHubsByTier(tier: 'mega' | 'major' | 'emerging'): TechHubLocation[] {
-  const index = buildTechHubIndex();
-  return Array.from(index.hubs.values()).filter(h => h.tier === tier);
-}

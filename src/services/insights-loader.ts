@@ -225,11 +225,6 @@ export async function fetchServerInsights(timeoutMs = 5_000): Promise<ServerInsi
   return inFlight;
 }
 
-export function setServerInsights(data: ServerInsights): void {
-  cached = data;
-  rejectedHydration = false;
-}
-
 /** Test-only: reset module-local cache so suites can exercise the drain-once behavior. */
 export function __resetServerInsightsCacheForTests(): void {
   cached = null;

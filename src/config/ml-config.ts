@@ -81,11 +81,3 @@ export const ML_THRESHOLDS = {
 export function getModelConfig(modelId: string): ModelConfig | undefined {
   return MODEL_CONFIGS.find(m => m.id === modelId);
 }
-
-export function getRequiredModels(): ModelConfig[] {
-  return MODEL_CONFIGS.filter(m => m.required);
-}
-
-export function getModelsByPriority(): ModelConfig[] {
-  return [...MODEL_CONFIGS].sort((a, b) => a.priority - b.priority);
-}

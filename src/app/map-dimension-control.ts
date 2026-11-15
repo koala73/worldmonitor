@@ -29,10 +29,6 @@ export function dashboardMapModeToPreference(mode: DashboardMapMode): MapModePre
   return mode === '3d' ? 'globe' : 'flat';
 }
 
-export function preferenceToDashboardMapMode(preference: MapModePreference): DashboardMapMode {
-  return preference === 'globe' ? '3d' : '2d';
-}
-
 export function currentDashboardMapMode(ctx: AppContext): DashboardMapMode {
   return ctx.map?.isGlobeMode() ? '3d' : '2d';
 }

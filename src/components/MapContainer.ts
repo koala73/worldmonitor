@@ -2245,10 +2245,6 @@ export class MapContainer {
     return this.useDeckGL;
   }
 
-  public isMobileMode(): boolean {
-    return this.isMobile;
-  }
-
   public destroy(): void {
     this.emergencyLayer.destroy();
     this.notamAirspaceLayer.destroy();

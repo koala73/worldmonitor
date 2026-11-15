@@ -35,8 +35,6 @@ import {
   syncColResizeAria,
 } from '@/utils/panel-grid';
 
-export type PanelSeverity = 'critical' | 'high' | 'medium' | 'low' | 'none';
-
 export interface PanelOptions {
   id: string;
   title: string;
@@ -143,7 +141,6 @@ export class Panel {
   private freshnessUnsubscribe: (() => void) | null = null;
   private freshnessRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private severityDotEl: HTMLElement | null = null;
-  private currentSeverity: PanelSeverity = 'none';
   private scopeChipEl: HTMLElement | null = null;
   protected panelId: string;
   private abortController: AbortController = new AbortController();
@@ -194,7 +191,6 @@ export class Panel {
   private retryCallback: (() => void) | null = null;
   private retryCountdownTimer: ReturnType<typeof setInterval> | null = null;
   private retryAttempt = 0;
-  private _fetching = false;
   private _locked = false;
   // Lock-awareness for subclasses that write positionally (insertBefore /
   // appendChild into this.content) instead of through the setContent* helpers.
@@ -350,7 +346,7 @@ export class Panel {
 
     this.content.addEventListener('click', (e) => {
       const target = (e.target as HTMLElement).closest('[data-panel-retry]');
-      if (!target || this._fetching) return;
+      if (!target) return;
       this.retryCallback?.();
     });
 
@@ -1470,16 +1466,6 @@ export class Panel {
     this.retryCallback = fn;
   }
 
-  protected setFetching(v: boolean): void {
-    this._fetching = v;
-    const btn = this.content.querySelector<HTMLButtonElement>('[data-panel-retry]');
-    if (btn) btn.disabled = v;
-  }
-
-  protected get isFetching(): boolean {
-    return this._fetching;
-  }
-
   public showConfigError(message: string): void {
     const msgEl = h('div', { className: 'config-error-message' }, message);
     if (isDesktopRuntime()) {
@@ -1808,36 +1794,6 @@ export class Panel {
    */
   public clearNewBadge(): void {
     this.setNewBadge(0);
-  }
-
-  /**
-   * Set the panel's severity level, controlling the header pulse dot speed.
-   * critical = 0.6s, high = 1s, medium = 1.8s, low = 2.5s, none = hidden.
-   */
-  public setSeverity(level: PanelSeverity): void {
-    if (level === this.currentSeverity) return;
-    this.currentSeverity = level;
-    if (!this.severityDotEl) return;
-    this.severityDotEl.className = 'panel-severity-dot';
-    if (level !== 'none') {
-      this.severityDotEl.classList.add(`severity-${level}`);
-      // Severity was color+animation only (and aria-hidden), i.e. absent from
-      // the accessibility tree entirely; expose it as a named image.
-      this.severityDotEl.removeAttribute('aria-hidden');
-      this.severityDotEl.setAttribute('role', 'img');
-      this.severityDotEl.setAttribute('aria-label', `${level} severity`);
-    } else {
-      this.severityDotEl.setAttribute('aria-hidden', 'true');
-      this.severityDotEl.removeAttribute('role');
-      this.severityDotEl.removeAttribute('aria-label');
-    }
-  }
-
-  /**
-   * Get the panel ID
-   */
-  public getId(): string {
-    return this.panelId;
   }
 
   /**
