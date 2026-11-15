@@ -5442,7 +5442,7 @@
     "privacy": {
       "line": "จุดของคุณส่งไปยังคลังภาพเท่านั้น",
       "more": "รายละเอียด",
-      "body": "การโคจรผ่านคำนวณบนอุปกรณ์นี้ ในการค้นหาภาพ เบราว์เซอร์ของคุณส่งจุดนั้นตรงไปยัง Earth Search, Planetary Computer, NASA GIBS และ EUMETSAT โดย WorldMonitor ไม่ได้รับจุดนั้น ชื่อสถานที่ที่คุณพิมพ์จะส่งไปยัง WorldMonitor และ OpenStreetMap Nominatim เพื่อค้นหา ลิงก์ที่แชร์เก็บทศนิยมสองตำแหน่ง (0.01°)"
+      "body": "การโคจรผ่านคำนวณบนอุปกรณ์นี้ ในการค้นหาภาพ เบราว์เซอร์ของคุณส่งจุดนั้นตรงไปยัง Earth Search, Planetary Computer, NASA GIBS และ EUMETSAT โดย WorldMonitor ไม่ได้รับจุดนั้น สำหรับพื้นที่ที่ติดตาม ระบบจะขอบันทึกรายวันของพื้นที่นั้นจาก WorldMonitor ด้วยรหัสพื้นที่ ไม่ใช่จุดของคุณ ชื่อสถานที่ที่คุณพิมพ์จะส่งไปยัง WorldMonitor และ OpenStreetMap Nominatim เพื่อค้นหา ลิงก์ที่แชร์เก็บทศนิยมสองตำแหน่ง (0.01°)"
     },
     "sources": {
       "heading": "แหล่งข้อมูล ({{count}})",
@@ -5502,20 +5502,20 @@
       }
     },
     "site": {
-      "heading": "Monitored site",
-      "loading": "Loading the site's daily record…",
-      "failed": "The site's daily record did not load; reopen the point to retry.",
-      "stale": "No current daily check on record for this site.",
-      "checked": "Checked",
-      "noPass": "No upcoming pass on record",
+      "heading": "พื้นที่ที่ติดตาม",
+      "loading": "กำลังโหลดบันทึกรายวันของพื้นที่…",
+      "failed": "โหลดบันทึกรายวันของพื้นที่ไม่สำเร็จ เปิดจุดนี้อีกครั้งเพื่อลองใหม่",
+      "stale": "ไม่มีการตรวจสอบรายวันล่าสุดสำหรับพื้นที่นี้",
+      "checked": "ตรวจสอบเมื่อ",
+      "noPass": "ไม่มีบันทึกการโคจรผ่านครั้งถัดไป",
       "list": {
-        "hotspot": "hotspot",
-        "conflictZone": "conflict zone",
-        "militaryBase": "military base",
-        "nuclearFacility": "nuclear facility",
-        "port": "port",
-        "chokepoint": "chokepoint",
-        "reservoir": "reservoir"
+        "hotspot": "จุดร้อน",
+        "conflictZone": "เขตความขัดแย้ง",
+        "militaryBase": "ฐานทัพทหาร",
+        "nuclearFacility": "สถานที่นิวเคลียร์",
+        "port": "ท่าเรือ",
+        "chokepoint": "ช่องแคบ",
+        "reservoir": "อ่างเก็บน้ำ"
       }
     }
   },

@@ -5442,7 +5442,7 @@
     "privacy": {
       "line": "귀하의 포인트는 이미지 아카이브에만 전송됩니다.",
       "more": "세부정보",
-      "body": "패스는 이 기기에서 계산됩니다. 이미지를 찾기 위해 브라우저가 포인트를 Earth Search, Planetary Computer, NASA GIBS, EUMETSAT으로 직접 전송합니다. WorldMonitor는 이를 수신하지 않습니다. 입력한 지명은 WorldMonitor와 OpenStreetMap Nominatim으로 전송되어 검색됩니다. 공유 링크는 소수점 2자리(0.01°)로 유지됩니다."
+      "body": "패스는 이 기기에서 계산됩니다. 이미지를 찾기 위해 브라우저가 포인트를 Earth Search, Planetary Computer, NASA GIBS, EUMETSAT으로 직접 전송합니다. WorldMonitor는 이를 수신하지 않습니다. 모니터링 지점에서는 WorldMonitor에 사용자의 지점이 아닌 지점 ID로 해당 지점의 일일 기록을 요청합니다. 입력한 지명은 WorldMonitor와 OpenStreetMap Nominatim으로 전송되어 검색됩니다. 공유 링크는 소수점 2자리(0.01°)로 유지됩니다."
     },
     "sources": {
       "heading": "소스 ({{count}})",
@@ -5502,20 +5502,20 @@
       }
     },
     "site": {
-      "heading": "Monitored site",
-      "loading": "Loading the site's daily record…",
-      "failed": "The site's daily record did not load; reopen the point to retry.",
-      "stale": "No current daily check on record for this site.",
-      "checked": "Checked",
-      "noPass": "No upcoming pass on record",
+      "heading": "모니터링 지점",
+      "loading": "지점의 일일 기록을 불러오는 중…",
+      "failed": "지점의 일일 기록을 불러오지 못했습니다. 다시 시도하려면 지점을 다시 여세요.",
+      "stale": "이 지점에 대한 현재 일일 점검 기록이 없습니다.",
+      "checked": "확인 시각",
+      "noPass": "예정된 통과 기록 없음",
       "list": {
-        "hotspot": "hotspot",
-        "conflictZone": "conflict zone",
-        "militaryBase": "military base",
-        "nuclearFacility": "nuclear facility",
-        "port": "port",
-        "chokepoint": "chokepoint",
-        "reservoir": "reservoir"
+        "hotspot": "핫스팟",
+        "conflictZone": "분쟁 지역",
+        "militaryBase": "군사 기지",
+        "nuclearFacility": "핵 시설",
+        "port": "항구",
+        "chokepoint": "해협",
+        "reservoir": "저수지"
       }
     }
   },

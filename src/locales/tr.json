@@ -5478,7 +5478,7 @@
     "privacy": {
       "line": "Noktanız yalnızca görüntü arşivlerine gider.",
       "more": "Ayrıntılar",
-      "body": "Geçişler bu cihazda hesaplanır. Görüntüleri bulmak için tarayıcınız noktayı doğrudan Earth Search, Planetary Computer, NASA GIBS ve EUMETSAT'a gönderir; WorldMonitor bunu almaz. Yazılan bir yer adı, bulunması için WorldMonitor ve OpenStreetMap Nominatim'e gider. Paylaşılan bağlantılar iki ondalık basamak içerir (0,01°)."
+      "body": "Geçişler bu cihazda hesaplanır. Görüntüleri bulmak için tarayıcınız noktayı doğrudan Earth Search, Planetary Computer, NASA GIBS ve EUMETSAT'a gönderir; WorldMonitor bunu almaz. İzlenen bir alanda, WorldMonitor'dan o alanın günlük kaydı noktanızla değil alanın kimliğiyle istenir. Yazılan bir yer adı, bulunması için WorldMonitor ve OpenStreetMap Nominatim'e gider. Paylaşılan bağlantılar iki ondalık basamak içerir (0,01°)."
     },
     "sources": {
       "heading": "Kaynaklar ({{count}})",
@@ -5538,20 +5538,20 @@
       }
     },
     "site": {
-      "heading": "Monitored site",
-      "loading": "Loading the site's daily record…",
-      "failed": "The site's daily record did not load; reopen the point to retry.",
-      "stale": "No current daily check on record for this site.",
-      "checked": "Checked",
-      "noPass": "No upcoming pass on record",
+      "heading": "İzlenen alan",
+      "loading": "Alanın günlük kaydı yükleniyor…",
+      "failed": "Alanın günlük kaydı yüklenemedi; yeniden denemek için noktayı tekrar açın.",
+      "stale": "Bu alan için güncel bir günlük kontrol kaydı yok.",
+      "checked": "Kontrol edildi",
+      "noPass": "Kayıtlı yaklaşan geçiş yok",
       "list": {
-        "hotspot": "hotspot",
-        "conflictZone": "conflict zone",
-        "militaryBase": "military base",
-        "nuclearFacility": "nuclear facility",
-        "port": "port",
-        "chokepoint": "chokepoint",
-        "reservoir": "reservoir"
+        "hotspot": "sıcak nokta",
+        "conflictZone": "çatışma bölgesi",
+        "militaryBase": "askeri üs",
+        "nuclearFacility": "nükleer tesis",
+        "port": "liman",
+        "chokepoint": "boğaz",
+        "reservoir": "baraj gölü"
       }
     }
   },

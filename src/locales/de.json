@@ -5478,7 +5478,7 @@
     "privacy": {
       "line": "Ihr Punkt geht nur an die Bildarchive.",
       "more": "Details",
-      "body": "Überflüge werden auf diesem Gerät berechnet. Um Bilder zu finden, sendet Ihr Browser den Punkt direkt an Earth Search, Planetary Computer, NASA GIBS und EUMETSAT; WorldMonitor erhält ihn nicht. Ein eingegebener Ortsname wird an WorldMonitor und OpenStreetMap Nominatim gesendet, um ihn zu finden. Geteilte Links behalten zwei Dezimalstellen (0,01°)."
+      "body": "Überflüge werden auf diesem Gerät berechnet. Um Bilder zu finden, sendet Ihr Browser den Punkt direkt an Earth Search, Planetary Computer, NASA GIBS und EUMETSAT; WorldMonitor erhält ihn nicht. Bei einem beobachteten Ort wird WorldMonitor nach dem Tagesprotokoll dieses Orts anhand seiner ID gefragt, nicht anhand Ihres Punkts. Ein eingegebener Ortsname wird an WorldMonitor und OpenStreetMap Nominatim gesendet, um ihn zu finden. Geteilte Links behalten zwei Dezimalstellen (0,01°)."
     },
     "sources": {
       "heading": "Quellen ({{count}})",
@@ -5538,20 +5538,20 @@
       }
     },
     "site": {
-      "heading": "Monitored site",
-      "loading": "Loading the site's daily record…",
-      "failed": "The site's daily record did not load; reopen the point to retry.",
-      "stale": "No current daily check on record for this site.",
-      "checked": "Checked",
-      "noPass": "No upcoming pass on record",
+      "heading": "Beobachteter Ort",
+      "loading": "Tagesprotokoll des Orts wird geladen…",
+      "failed": "Das Tagesprotokoll des Orts wurde nicht geladen; öffnen Sie den Punkt erneut, um es noch einmal zu versuchen.",
+      "stale": "Für diesen Ort liegt keine aktuelle tägliche Prüfung vor.",
+      "checked": "Geprüft",
+      "noPass": "Kein bevorstehender Überflug erfasst",
       "list": {
-        "hotspot": "hotspot",
-        "conflictZone": "conflict zone",
-        "militaryBase": "military base",
-        "nuclearFacility": "nuclear facility",
-        "port": "port",
-        "chokepoint": "chokepoint",
-        "reservoir": "reservoir"
+        "hotspot": "Brennpunkt",
+        "conflictZone": "Konfliktzone",
+        "militaryBase": "Militärbasis",
+        "nuclearFacility": "Nuklearanlage",
+        "port": "Hafen",
+        "chokepoint": "Meerenge",
+        "reservoir": "Stausee"
       }
     }
   },

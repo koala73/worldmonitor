@@ -5478,7 +5478,7 @@
     "privacy": {
       "line": "Το σημείο σας μεταδίδεται μόνο στα αρχεία εικόνων.",
       "more": "Λεπτομέρειες",
-      "body": "Οι διαβάσεις υπολογίζονται σε αυτή τη συσκευή. Για να βρει εικόνες, το πρόγραμμα περιήγησής σας στέλνει το σημείο απευθείας στο Earth Search, Planetary Computer, NASA GIBS και EUMETSAT· το WorldMonitor δεν το λαμβάνει. Ένα πληκτρολογημένο όνομα τοποθεσίας μεταδίδεται στο WorldMonitor και OpenStreetMap Nominatim για εντοπισμό. Οι κοινοποιημένοι σύνδεσμοι διατηρούν δύο δεκαδικά ψηφία (0,01°)."
+      "body": "Οι διαβάσεις υπολογίζονται σε αυτή τη συσκευή. Για να βρει εικόνες, το πρόγραμμα περιήγησής σας στέλνει το σημείο απευθείας στο Earth Search, Planetary Computer, NASA GIBS και EUMETSAT· το WorldMonitor δεν το λαμβάνει. Σε παρακολουθούμενη τοποθεσία, το WorldMonitor ερωτάται για την ημερήσια καταγραφή της με βάση το αναγνωριστικό της τοποθεσίας, όχι το σημείο σας. Ένα πληκτρολογημένο όνομα τοποθεσίας μεταδίδεται στο WorldMonitor και OpenStreetMap Nominatim για εντοπισμό. Οι κοινοποιημένοι σύνδεσμοι διατηρούν δύο δεκαδικά ψηφία (0,01°)."
     },
     "sources": {
       "heading": "Πηγές ({{count}})",
@@ -5538,20 +5538,20 @@
       }
     },
     "site": {
-      "heading": "Monitored site",
-      "loading": "Loading the site's daily record…",
-      "failed": "The site's daily record did not load; reopen the point to retry.",
-      "stale": "No current daily check on record for this site.",
-      "checked": "Checked",
-      "noPass": "No upcoming pass on record",
+      "heading": "Παρακολουθούμενη τοποθεσία",
+      "loading": "Φόρτωση της ημερήσιας καταγραφής της τοποθεσίας…",
+      "failed": "Η ημερήσια καταγραφή της τοποθεσίας δεν φορτώθηκε· ανοίξτε ξανά το σημείο για νέα προσπάθεια.",
+      "stale": "Δεν υπάρχει τρέχων ημερήσιος έλεγχος για αυτή την τοποθεσία.",
+      "checked": "Ελέγχθηκε",
+      "noPass": "Καμία επερχόμενη διέλευση στην καταγραφή",
       "list": {
-        "hotspot": "hotspot",
-        "conflictZone": "conflict zone",
-        "militaryBase": "military base",
-        "nuclearFacility": "nuclear facility",
-        "port": "port",
-        "chokepoint": "chokepoint",
-        "reservoir": "reservoir"
+        "hotspot": "θερμό σημείο",
+        "conflictZone": "ζώνη σύγκρουσης",
+        "militaryBase": "στρατιωτική βάση",
+        "nuclearFacility": "πυρηνική εγκατάσταση",
+        "port": "λιμάνι",
+        "chokepoint": "στενό",
+        "reservoir": "ταμιευτήρας"
       }
     }
   },

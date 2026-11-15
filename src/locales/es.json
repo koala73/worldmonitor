@@ -5514,7 +5514,7 @@
     "privacy": {
       "line": "Tu punto solo va a los archivos de imágenes.",
       "more": "Detalles",
-      "body": "Las pasadas se calculan en este dispositivo. Para encontrar imágenes, tu navegador envía el punto directamente a Earth Search, Planetary Computer, NASA GIBS y EUMETSAT; WorldMonitor no lo recibe. Un nombre de lugar escrito se envía a WorldMonitor y OpenStreetMap Nominatim para localizarlo. Los enlaces compartidos mantienen dos decimales (0,01°)."
+      "body": "Las pasadas se calculan en este dispositivo. Para encontrar imágenes, tu navegador envía el punto directamente a Earth Search, Planetary Computer, NASA GIBS y EUMETSAT; WorldMonitor no lo recibe. En un sitio monitorizado, se pide a WorldMonitor el registro diario de ese sitio por su ID, no por tu punto. Un nombre de lugar escrito se envía a WorldMonitor y OpenStreetMap Nominatim para localizarlo. Los enlaces compartidos mantienen dos decimales (0,01°)."
     },
     "sources": {
       "heading": "Fuentes ({{count}})",
@@ -5574,20 +5574,20 @@
       }
     },
     "site": {
-      "heading": "Monitored site",
-      "loading": "Loading the site's daily record…",
-      "failed": "The site's daily record did not load; reopen the point to retry.",
-      "stale": "No current daily check on record for this site.",
-      "checked": "Checked",
-      "noPass": "No upcoming pass on record",
+      "heading": "Sitio monitorizado",
+      "loading": "Cargando el registro diario del sitio…",
+      "failed": "No se cargó el registro diario del sitio; vuelve a abrir el punto para reintentarlo.",
+      "stale": "No hay una comprobación diaria actual registrada para este sitio.",
+      "checked": "Comprobado",
+      "noPass": "Ningún paso próximo registrado",
       "list": {
-        "hotspot": "hotspot",
-        "conflictZone": "conflict zone",
-        "militaryBase": "military base",
-        "nuclearFacility": "nuclear facility",
-        "port": "port",
-        "chokepoint": "chokepoint",
-        "reservoir": "reservoir"
+        "hotspot": "punto caliente",
+        "conflictZone": "zona de conflicto",
+        "militaryBase": "base militar",
+        "nuclearFacility": "instalación nuclear",
+        "port": "puerto",
+        "chokepoint": "estrecho",
+        "reservoir": "embalse"
       }
     }
   },

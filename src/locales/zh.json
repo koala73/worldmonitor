@@ -5442,7 +5442,7 @@
     "privacy": {
       "line": "您的点位仅发送到图像档案库。",
       "more": "详情",
-      "body": "轨道过境时间在本设备上计算。为了查找图像，您的浏览器将该点位直接发送到 Earth Search、Planetary Computer、NASA GIBS 和 EUMETSAT；WorldMonitor 不会收到它。输入的地名将发送到 WorldMonitor 和 OpenStreetMap Nominatim 进行定位。共享链接保留两位小数（0.01°）。"
+      "body": "轨道过境时间在本设备上计算。为了查找图像，您的浏览器将该点位直接发送到 Earth Search、Planetary Computer、NASA GIBS 和 EUMETSAT；WorldMonitor 不会收到它。在监测站点上，系统按站点 ID 向 WorldMonitor 请求该站点的每日记录，而不是按您的点位。输入的地名将发送到 WorldMonitor 和 OpenStreetMap Nominatim 进行定位。共享链接保留两位小数（0.01°）。"
     },
     "sources": {
       "heading": "数据源 ({{count}})",
@@ -5502,20 +5502,20 @@
       }
     },
     "site": {
-      "heading": "Monitored site",
-      "loading": "Loading the site's daily record…",
-      "failed": "The site's daily record did not load; reopen the point to retry.",
-      "stale": "No current daily check on record for this site.",
-      "checked": "Checked",
-      "noPass": "No upcoming pass on record",
+      "heading": "监测站点",
+      "loading": "正在加载站点的每日记录…",
+      "failed": "站点的每日记录未能加载；请重新打开该点以重试。",
+      "stale": "此站点没有当前的每日检查记录。",
+      "checked": "检查时间",
+      "noPass": "没有即将到来的过境记录",
       "list": {
-        "hotspot": "hotspot",
-        "conflictZone": "conflict zone",
-        "militaryBase": "military base",
-        "nuclearFacility": "nuclear facility",
-        "port": "port",
-        "chokepoint": "chokepoint",
-        "reservoir": "reservoir"
+        "hotspot": "热点",
+        "conflictZone": "冲突区",
+        "militaryBase": "军事基地",
+        "nuclearFacility": "核设施",
+        "port": "港口",
+        "chokepoint": "咽喉要道",
+        "reservoir": "水库"
       }
     }
   },

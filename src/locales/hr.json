@@ -5524,7 +5524,7 @@
     "privacy": {
       "line": "Vaša točka ide samo u arhive slika.",
       "more": "Pojedinosti",
-      "body": "Prolasci se izračunavaju na ovom uređaju. Za pronalaženje slika vaš preglednik šalje točku izravno servisima Earth Search, Planetary Computer, NASA GIBS i EUMETSAT; WorldMonitor je ne prima. Upisani naziv mjesta šalje se servisima WorldMonitor i OpenStreetMap Nominatim radi pronalaženja. Dijeljene poveznice čuvaju dva decimalna mjesta (0,01°)."
+      "body": "Prolasci se izračunavaju na ovom uređaju. Za pronalaženje slika vaš preglednik šalje točku izravno servisima Earth Search, Planetary Computer, NASA GIBS i EUMETSAT; WorldMonitor je ne prima. Na praćenoj lokaciji WorldMonitor se traži dnevni zapis te lokacije prema njezinu ID-u, a ne prema vašoj točki. Upisani naziv mjesta šalje se servisima WorldMonitor i OpenStreetMap Nominatim radi pronalaženja. Dijeljene poveznice čuvaju dva decimalna mjesta (0,01°)."
     },
     "sources": {
       "heading": "Izvori ({{count}})",
@@ -5584,20 +5584,20 @@
       }
     },
     "site": {
-      "heading": "Monitored site",
-      "loading": "Loading the site's daily record…",
-      "failed": "The site's daily record did not load; reopen the point to retry.",
-      "stale": "No current daily check on record for this site.",
-      "checked": "Checked",
-      "noPass": "No upcoming pass on record",
+      "heading": "Praćena lokacija",
+      "loading": "Učitavanje dnevnog zapisa lokacije…",
+      "failed": "Dnevni zapis lokacije nije učitan; ponovno otvorite točku za novi pokušaj.",
+      "stale": "Za ovu lokaciju nema aktualne dnevne provjere.",
+      "checked": "Provjereno",
+      "noPass": "Nema nadolazećeg preleta u zapisu",
       "list": {
-        "hotspot": "hotspot",
-        "conflictZone": "conflict zone",
-        "militaryBase": "military base",
-        "nuclearFacility": "nuclear facility",
-        "port": "port",
-        "chokepoint": "chokepoint",
-        "reservoir": "reservoir"
+        "hotspot": "žarište",
+        "conflictZone": "zona sukoba",
+        "militaryBase": "vojna baza",
+        "nuclearFacility": "nuklearno postrojenje",
+        "port": "luka",
+        "chokepoint": "tjesnac",
+        "reservoir": "akumulacija"
       }
     }
   },

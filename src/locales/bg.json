@@ -5478,7 +5478,7 @@
     "privacy": {
       "line": "Точката ви отива само в архивите със снимки.",
       "more": "Подробности",
-      "body": "Преминаванията се изчисляват на това устройство. За намиране на изображения браузърът ви изпраща точката директно до Earth Search, Planetary Computer, NASA GIBS и EUMETSAT; WorldMonitor не я получава. Въведено име на място се изпраща до WorldMonitor и OpenStreetMap Nominatim, за да бъде намерено. Споделените връзки запазват два знака след десетичната запетая (0,01°)."
+      "body": "Преминаванията се изчисляват на това устройство. За намиране на изображения браузърът ви изпраща точката директно до Earth Search, Planetary Computer, NASA GIBS и EUMETSAT; WorldMonitor не я получава. За наблюдаван обект WorldMonitor получава заявка за дневния запис на обекта по неговия идентификатор, а не по вашата точка. Въведено име на място се изпраща до WorldMonitor и OpenStreetMap Nominatim, за да бъде намерено. Споделените връзки запазват два знака след десетичната запетая (0,01°)."
     },
     "sources": {
       "heading": "Източници ({{count}})",
@@ -5538,20 +5538,20 @@
       }
     },
     "site": {
-      "heading": "Monitored site",
-      "loading": "Loading the site's daily record…",
-      "failed": "The site's daily record did not load; reopen the point to retry.",
-      "stale": "No current daily check on record for this site.",
-      "checked": "Checked",
-      "noPass": "No upcoming pass on record",
+      "heading": "Наблюдаван обект",
+      "loading": "Зареждане на дневния запис за обекта…",
+      "failed": "Дневният запис за обекта не се зареди; отворете точката отново, за да опитате пак.",
+      "stale": "Няма актуална дневна проверка за този обект.",
+      "checked": "Проверено",
+      "noPass": "Няма предстоящо преминаване в записа",
       "list": {
-        "hotspot": "hotspot",
-        "conflictZone": "conflict zone",
-        "militaryBase": "military base",
-        "nuclearFacility": "nuclear facility",
-        "port": "port",
-        "chokepoint": "chokepoint",
-        "reservoir": "reservoir"
+        "hotspot": "гореща точка",
+        "conflictZone": "зона на конфликт",
+        "militaryBase": "военна база",
+        "nuclearFacility": "ядрено съоръжение",
+        "port": "пристанище",
+        "chokepoint": "тесен проход",
+        "reservoir": "язовир"
       }
     }
   },

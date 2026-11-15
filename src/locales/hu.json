@@ -5478,7 +5478,7 @@
     "privacy": {
       "line": "A pont csak a képarchívumokba kerül.",
       "more": "Részletek",
-      "body": "Az áthaladásokat ez az eszköz számítja ki. A képek megkereséséhez a böngésző közvetlenül az Earth Search, a Planetary Computer, a NASA GIBS és az EUMETSAT felé küldi a pontot; a WorldMonitor nem kapja meg. A beírt helynév a WorldMonitorhoz és az OpenStreetMap Nominatimhez kerül a megtalálásához. A megosztott hivatkozások két tizedesjegyet őriznek meg (0,01°)."
+      "body": "Az áthaladásokat ez az eszköz számítja ki. A képek megkereséséhez a böngésző közvetlenül az Earth Search, a Planetary Computer, a NASA GIBS és az EUMETSAT felé küldi a pontot; a WorldMonitor nem kapja meg. Megfigyelt helyszínen a WorldMonitor a helyszín napi rekordját a helyszín azonosítója alapján kapja kérésként, nem az Ön pontja alapján. A beírt helynév a WorldMonitorhoz és az OpenStreetMap Nominatimhez kerül a megtalálásához. A megosztott hivatkozások két tizedesjegyet őriznek meg (0,01°)."
     },
     "sources": {
       "heading": "Források ({{count}})",
@@ -5538,20 +5538,20 @@
       }
     },
     "site": {
-      "heading": "Monitored site",
-      "loading": "Loading the site's daily record…",
-      "failed": "The site's daily record did not load; reopen the point to retry.",
-      "stale": "No current daily check on record for this site.",
-      "checked": "Checked",
-      "noPass": "No upcoming pass on record",
+      "heading": "Megfigyelt helyszín",
+      "loading": "A helyszín napi rekordjának betöltése…",
+      "failed": "A helyszín napi rekordja nem töltődött be; nyissa meg újra a pontot az újrapróbálkozáshoz.",
+      "stale": "Ehhez a helyszínhez nincs aktuális napi ellenőrzés.",
+      "checked": "Ellenőrizve",
+      "noPass": "Nincs rögzített közelgő áthaladás",
       "list": {
-        "hotspot": "hotspot",
-        "conflictZone": "conflict zone",
-        "militaryBase": "military base",
-        "nuclearFacility": "nuclear facility",
-        "port": "port",
-        "chokepoint": "chokepoint",
-        "reservoir": "reservoir"
+        "hotspot": "válsággóc",
+        "conflictZone": "konfliktuszóna",
+        "militaryBase": "katonai bázis",
+        "nuclearFacility": "nukleáris létesítmény",
+        "port": "kikötő",
+        "chokepoint": "szoros",
+        "reservoir": "víztározó"
       }
     }
   },

@@ -5514,7 +5514,7 @@
     "privacy": {
       "line": "Votre point ne va que dans les archives d'images.",
       "more": "Détails",
-      "body": "Les passes sont calculées sur cet appareil. Pour trouver des images, votre navigateur envoie le point directement à Earth Search, Planetary Computer, NASA GIBS et EUMETSAT ; WorldMonitor ne le reçoit pas. Un nom de lieu saisi va à WorldMonitor et à OpenStreetMap Nominatim pour être localisé. Les liens partagés conservent deux décimales (0,01°)."
+      "body": "Les passes sont calculées sur cet appareil. Pour trouver des images, votre navigateur envoie le point directement à Earth Search, Planetary Computer, NASA GIBS et EUMETSAT ; WorldMonitor ne le reçoit pas. Sur un site surveillé, WorldMonitor reçoit la demande du relevé quotidien de ce site par son identifiant, pas par votre point. Un nom de lieu saisi va à WorldMonitor et à OpenStreetMap Nominatim pour être localisé. Les liens partagés conservent deux décimales (0,01°)."
     },
     "sources": {
       "heading": "Sources ({{count}})",
@@ -5574,20 +5574,20 @@
       }
     },
     "site": {
-      "heading": "Monitored site",
-      "loading": "Loading the site's daily record…",
-      "failed": "The site's daily record did not load; reopen the point to retry.",
-      "stale": "No current daily check on record for this site.",
-      "checked": "Checked",
-      "noPass": "No upcoming pass on record",
+      "heading": "Site surveillé",
+      "loading": "Chargement du relevé quotidien du site…",
+      "failed": "Le relevé quotidien du site n’a pas pu être chargé ; rouvrez le point pour réessayer.",
+      "stale": "Aucune vérification quotidienne actuelle enregistrée pour ce site.",
+      "checked": "Vérifié",
+      "noPass": "Aucun passage à venir enregistré",
       "list": {
-        "hotspot": "hotspot",
-        "conflictZone": "conflict zone",
-        "militaryBase": "military base",
-        "nuclearFacility": "nuclear facility",
+        "hotspot": "point chaud",
+        "conflictZone": "zone de conflit",
+        "militaryBase": "base militaire",
+        "nuclearFacility": "installation nucléaire",
         "port": "port",
-        "chokepoint": "chokepoint",
-        "reservoir": "reservoir"
+        "chokepoint": "détroit",
+        "reservoir": "réservoir"
       }
     }
   },

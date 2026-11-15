@@ -5442,7 +5442,7 @@
     "privacy": {
       "line": "Điểm của bạn chỉ được gửi đến kho lưu trữ ảnh.",
       "more": "Chi tiết",
-      "body": "Các lượt bay qua được tính trên thiết bị này. Để tìm ảnh, trình duyệt của bạn gửi điểm trực tiếp đến Earth Search, Planetary Computer, NASA GIBS và EUMETSAT; WorldMonitor không nhận được điểm này. Tên địa điểm bạn nhập được gửi đến WorldMonitor và OpenStreetMap Nominatim để tìm kiếm. Liên kết chia sẻ giữ hai chữ số thập phân (0,01°)."
+      "body": "Các lượt bay qua được tính trên thiết bị này. Để tìm ảnh, trình duyệt của bạn gửi điểm trực tiếp đến Earth Search, Planetary Computer, NASA GIBS và EUMETSAT; WorldMonitor không nhận được điểm này. Tại một địa điểm được giám sát, WorldMonitor được yêu cầu bản ghi hằng ngày của địa điểm đó theo ID của địa điểm, không phải điểm của bạn. Tên địa điểm bạn nhập được gửi đến WorldMonitor và OpenStreetMap Nominatim để tìm kiếm. Liên kết chia sẻ giữ hai chữ số thập phân (0,01°)."
     },
     "sources": {
       "heading": "Nguồn ({{count}})",
@@ -5502,20 +5502,20 @@
       }
     },
     "site": {
-      "heading": "Monitored site",
-      "loading": "Loading the site's daily record…",
-      "failed": "The site's daily record did not load; reopen the point to retry.",
-      "stale": "No current daily check on record for this site.",
-      "checked": "Checked",
-      "noPass": "No upcoming pass on record",
+      "heading": "Địa điểm được giám sát",
+      "loading": "Đang tải bản ghi hằng ngày của địa điểm…",
+      "failed": "Không tải được bản ghi hằng ngày của địa điểm; hãy mở lại điểm để thử lại.",
+      "stale": "Không có lần kiểm tra hằng ngày hiện tại cho địa điểm này.",
+      "checked": "Đã kiểm tra",
+      "noPass": "Không có lượt bay qua sắp tới trong bản ghi",
       "list": {
-        "hotspot": "hotspot",
-        "conflictZone": "conflict zone",
-        "militaryBase": "military base",
-        "nuclearFacility": "nuclear facility",
-        "port": "port",
-        "chokepoint": "chokepoint",
-        "reservoir": "reservoir"
+        "hotspot": "điểm nóng",
+        "conflictZone": "vùng xung đột",
+        "militaryBase": "căn cứ quân sự",
+        "nuclearFacility": "cơ sở hạt nhân",
+        "port": "cảng",
+        "chokepoint": "eo biển",
+        "reservoir": "hồ chứa"
       }
     }
   },

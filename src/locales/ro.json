@@ -5514,7 +5514,7 @@
     "privacy": {
       "line": "Punctul tău merge doar către arhivele de imagini.",
       "more": "Detalii",
-      "body": "Trecerile sunt calculate pe acest dispozitiv. Pentru a găsi imagini, browserul tău trimite punctul direct la Earth Search, Planetary Computer, NASA GIBS și EUMETSAT; WorldMonitor nu îl primește. Un nume de loc introdus este trimis la WorldMonitor și OpenStreetMap Nominatim pentru a fi găsit. Linkurile partajate păstrează două zecimale (0,01°)."
+      "body": "Trecerile sunt calculate pe acest dispozitiv. Pentru a găsi imagini, browserul tău trimite punctul direct la Earth Search, Planetary Computer, NASA GIBS și EUMETSAT; WorldMonitor nu îl primește. Pentru un loc monitorizat, WorldMonitor este întrebat de înregistrarea zilnică a locului după ID-ul acestuia, nu după punctul dvs. Un nume de loc introdus este trimis la WorldMonitor și OpenStreetMap Nominatim pentru a fi găsit. Linkurile partajate păstrează două zecimale (0,01°)."
     },
     "sources": {
       "heading": "Surse ({{count}})",
@@ -5574,20 +5574,20 @@
       }
     },
     "site": {
-      "heading": "Monitored site",
-      "loading": "Loading the site's daily record…",
-      "failed": "The site's daily record did not load; reopen the point to retry.",
-      "stale": "No current daily check on record for this site.",
-      "checked": "Checked",
-      "noPass": "No upcoming pass on record",
+      "heading": "Loc monitorizat",
+      "loading": "Se încarcă înregistrarea zilnică a locului…",
+      "failed": "Înregistrarea zilnică a locului nu s-a încărcat; redeschideți punctul pentru a reîncerca.",
+      "stale": "Nu există o verificare zilnică actuală pentru acest loc.",
+      "checked": "Verificat",
+      "noPass": "Nicio trecere viitoare înregistrată",
       "list": {
-        "hotspot": "hotspot",
-        "conflictZone": "conflict zone",
-        "militaryBase": "military base",
-        "nuclearFacility": "nuclear facility",
+        "hotspot": "punct fierbinte",
+        "conflictZone": "zonă de conflict",
+        "militaryBase": "bază militară",
+        "nuclearFacility": "instalație nucleară",
         "port": "port",
-        "chokepoint": "chokepoint",
-        "reservoir": "reservoir"
+        "chokepoint": "strâmtoare",
+        "reservoir": "lac de acumulare"
       }
     }
   },

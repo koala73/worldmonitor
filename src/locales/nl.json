@@ -5478,7 +5478,7 @@
     "privacy": {
       "line": "Je punt gaat alleen naar de beeldarchieven.",
       "more": "Details",
-      "body": "Passages worden op dit apparaat berekend. Om beelden te vinden, stuurt je browser het punt rechtstreeks naar Earth Search, Planetary Computer, NASA GIBS en EUMETSAT; WorldMonitor ontvangt het niet. Een getypte plaatsnaam gaat naar WorldMonitor en OpenStreetMap Nominatim om te worden gevonden. Gedeelde links behouden twee decimalen (0,01°)."
+      "body": "Passages worden op dit apparaat berekend. Om beelden te vinden, stuurt je browser het punt rechtstreeks naar Earth Search, Planetary Computer, NASA GIBS en EUMETSAT; WorldMonitor ontvangt het niet. Op een gemonitorde locatie wordt WorldMonitor om het dagelijkse overzicht van die locatie gevraagd via de ID van de locatie, niet via uw punt. Een getypte plaatsnaam gaat naar WorldMonitor en OpenStreetMap Nominatim om te worden gevonden. Gedeelde links behouden twee decimalen (0,01°)."
     },
     "sources": {
       "heading": "Bronnen ({{count}})",
@@ -5538,20 +5538,20 @@
       }
     },
     "site": {
-      "heading": "Monitored site",
-      "loading": "Loading the site's daily record…",
-      "failed": "The site's daily record did not load; reopen the point to retry.",
-      "stale": "No current daily check on record for this site.",
-      "checked": "Checked",
-      "noPass": "No upcoming pass on record",
+      "heading": "Gemonitorde locatie",
+      "loading": "Dagelijks overzicht van de locatie laden…",
+      "failed": "Het dagelijkse overzicht van de locatie is niet geladen; open het punt opnieuw om het nog eens te proberen.",
+      "stale": "Geen actuele dagelijkse controle vastgelegd voor deze locatie.",
+      "checked": "Gecontroleerd",
+      "noPass": "Geen komende overkomst vastgelegd",
       "list": {
-        "hotspot": "hotspot",
-        "conflictZone": "conflict zone",
-        "militaryBase": "military base",
-        "nuclearFacility": "nuclear facility",
-        "port": "port",
-        "chokepoint": "chokepoint",
-        "reservoir": "reservoir"
+        "hotspot": "brandhaard",
+        "conflictZone": "conflictgebied",
+        "militaryBase": "militaire basis",
+        "nuclearFacility": "nucleaire installatie",
+        "port": "haven",
+        "chokepoint": "zeestraat",
+        "reservoir": "stuwmeer"
       }
     }
   },
