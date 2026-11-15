@@ -585,26 +585,30 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
   let anyDelivered = false;
   let mostDelivered = 0;
   for (const ch of verifiedChannels) {
+    // Declared outside the try: a request that rejects after earlier parts went out must still count them.
+    let ok = false;
+    let delivered = 0;
     try {
-      let ok = false;
-      let delivered = 0;
       if (textLimits[ch.channelType]) {
         const parts = buildHeldTextParts(heldLines, textLimits[ch.channelType]);
-        ok = true;
+        // `ok` is set only after the loop: a part whose request rejects must leave it false.
+        let allSent = true;
         for (const part of parts) {
-          if (!(await sendTextPart(ch, part.text))) { ok = false; break; }
+          if (!(await sendTextPart(ch, part.text))) { allSent = false; break; }
           delivered += part.count;
         }
+        ok = allSent;
       }
       else if (ch.channelType === 'teams' && ch.webhookEnvelope) {
         const groups = chunkArray(heldLines, TEAMS_HELD_LINES_PER_CARD_GROUP);
-        ok = true;
+        let allSent = true;
         for (let i = 0; i < groups.length; i += 1) {
           const title = groups.length > 1 ? `${lines[0]} (part ${i + 1} of ${groups.length})` : lines[0];
           const payloads = buildTeamsNoticePayloads({ title, lines: groups[i], link: NOTIFY_DASHBOARD_URL, linkTitle: 'Open dashboard' });
-          if (!(await sendTeamsCards(userId, ch.webhookEnvelope, payloads))) { ok = false; break; }
+          if (!(await sendTeamsCards(userId, ch.webhookEnvelope, payloads))) { allSent = false; break; }
           delivered += groups[i].length;
         }
+        ok = allSent;
       }
       else if (ch.channelType === 'email' && ch.email) {
         // Key the exact email Resend receives: a drain that filters out a
@@ -643,11 +647,11 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
           eventType: 'quiet_hours_batch',
         });
       }
-      if (ok) anyDelivered = true;
-      else mostDelivered = Math.max(mostDelivered, delivered);
     } catch (err) {
       console.warn(`[relay] drainHeldForUser: delivery error for ${userId}/${ch.channelType}:`, err.message);
     }
+    if (ok) anyDelivered = true;
+    else mostDelivered = Math.max(mostDelivered, delivered);
   }
   if (anyDelivered) {
     await upstashRest('DEL', key);
@@ -656,10 +660,11 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
     // No channel took the whole batch, but some alerts already arrived: keep only the rest, so the
     // next drain does not send them again.
     const remaining = events.length - mostDelivered;
-    // Held items are the newest QUIET_HELD_MAX of the list; the delivered alerts are the first of them
-    // that survived the link re-check, so trim up to and including the last delivered one.
-    const dropFromList = Math.max(0, Number(len) - items.length) + itemIndex.get(events[mostDelivered - 1]) + 1;
-    await upstashRest('LTRIM', key, String(dropFromList), '-1');
+    // Remove each delivered alert by its own value (LREM, count 1), not by a position taken before the
+    // sends: a hold that arrives at QUIET_HELD_MAX meanwhile drops the oldest entry from the head and
+    // shifts every index. Upstash /pipeline is not transactional, so nothing here relies on atomicity;
+    // an entry that is already gone is simply not removed.
+    for (const ev of events.slice(0, mostDelivered)) await upstashRest('LREM', key, '1', items[itemIndex.get(ev)]);
     console.log(`[relay] drainHeldForUser: delivered ${mostDelivered} of ${events.length} held events to ${userId} (${variant}); ${remaining} stay held`);
   }
 }

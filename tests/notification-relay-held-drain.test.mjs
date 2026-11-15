@@ -49,7 +49,7 @@ const heldEvents = (count) => Array.from({ length: count }, (_, n) => reservoirE
 const titleOf = (n) => reservoirEvent(n).payload.title;
 
 /** Runs one drain. `failTelegramSend` lists 1-based send numbers that Telegram rejects. */
-async function drain(held, { failTelegramSend = [] } = {}) {
+async function drain(held, { failTelegramSend = [], throwTelegramSend = [], onTelegramSend = null } = {}) {
   const sent = [];
   const silence = [console.log, console.warn, console.error];
   console.log = console.warn = console.error = () => {};
@@ -66,6 +66,8 @@ async function drain(held, { failTelegramSend = [] } = {}) {
     }
     if (parsed.hostname === 'api.telegram.org') {
       sends += 1;
+      if (onTelegramSend) onTelegramSend(sends, held);
+      if (throwTelegramSend.includes(sends)) throw new TypeError('fetch failed');
       if (failTelegramSend.includes(sends)) return { status: 500, ok: false, json: async () => ({}) };
       // The real Bot API refuses text over 4096 characters, and nothing is delivered then.
       if ((body?.text ?? '').length > 4096) return { status: 400, ok: false, json: async () => ({ description: 'Bad Request: message is too long' }) };
@@ -75,6 +77,7 @@ async function drain(held, { failTelegramSend = [] } = {}) {
     if (path.startsWith('/RPUSH/')) { held.push(decodeURIComponent(path.split('/')[3])); return { ok: true, json: async () => ({ result: held.length }) }; }
     if (path.startsWith('/LLEN/')) return { ok: true, json: async () => ({ result: held.length }) };
     if (path.startsWith('/LRANGE/')) return { ok: true, json: async () => ({ result: [...held] }) };
+    if (path.startsWith('/LREM/')) { const [, , , , value] = path.split('/'); const i = held.indexOf(decodeURIComponent(value)); if (i >= 0) held.splice(i, 1); return { ok: true, json: async () => ({ result: i >= 0 ? 1 : 0 }) }; }
     if (path.startsWith('/LTRIM/')) { held.splice(0, Number(path.split('/')[3])); return { ok: true, json: async () => ({ result: 'OK' }) }; }
     if (path.startsWith('/DEL/')) { held.length = 0; return { ok: true, json: async () => ({ result: 1 }) }; }
     if (path.endsWith('/pipeline')) return { ok: true, json: async () => [] };
@@ -126,6 +129,35 @@ describe('quiet-hours drain with a long held batch', () => {
     const all = [...first, ...second];
     for (let n = 0; n < 60; n += 1) assert.equal(countOf(all, titleOf(n)), 1, `alert ${n} delivered exactly once across both drains`);
     assert.deepEqual(held, []);
+  });
+
+  it('when the request for a later part rejects, the parts that went out are still not sent again', async () => {
+    const held = asHeld(heldEvents(60));
+    const first = await drain(held, { throwTelegramSend: [2] });
+    assert.equal(first.length, 1, 'only the first part went out');
+    assert.ok(held.length > 0 && held.length < 60, `the unsent alerts stay held (${held.length})`);
+    const second = await drain(held);
+    const all = [...first, ...second];
+    for (let n = 0; n < 60; n += 1) assert.equal(countOf(all, titleOf(n)), 1, `alert ${n} delivered exactly once across both drains`);
+    assert.deepEqual(held, []);
+  });
+
+  it('an alert held at the cap while the drain is sending is neither lost nor sent twice', async () => {
+    const held = asHeld(heldEvents(100));
+    // holdEvent: RPUSH, then keep only the newest 100. At the cap this drops the oldest entry from the head.
+    const hold = (n) => (sendNumber, list) => {
+      if (sendNumber !== 2) return;
+      list.push(JSON.stringify(reservoirEvent(n)));
+      while (list.length > 100) list.shift();
+    };
+    const first = await drain(held, { failTelegramSend: [2], onTelegramSend: hold(100) });
+    const second = await drain(held);
+    const all = [...first, ...second];
+    for (let n = 0; n <= 100; n += 1) {
+      const delivered = countOf(all, titleOf(n));
+      const stillHeld = held.filter((raw) => raw.includes(titleOf(n))).length;
+      assert.equal(delivered + stillHeld, 1, `alert ${n}: delivered ${delivered}, held ${stillHeld}`);
+    }
   });
 
   it('an unreadable held item does not shift which alerts stay held after a partial drain', async () => {
