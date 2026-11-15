@@ -148,6 +148,10 @@
         "raw": 14431,
         "files": 1
       },
+      "country-names": {
+        "raw": 5498,
+        "files": 1
+      },
       "cross-domain-storage": {
         "raw": 536,
         "files": 1
@@ -210,6 +214,10 @@
       },
       "sanitize": {
         "raw": 1280,
+        "files": 1
+      },
+      "satellites": {
+        "raw": 2382,
         "files": 1
       },
       "select": {
