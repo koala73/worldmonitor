@@ -125,75 +125,6 @@ describe('resilience scorer contracts', () => {
       return [domainId, average];
     }));
 
-    // PR 3 §3.5: economic 68.33 → 66.33 after currencyExternal rebuild.
-    // Recovery 54.83 → 47.33 after externalDebtCoverage goalpost was
-    // tightened from (0..5) to (0..2) per §3.5 point 3 (US ratio=1.5
-    // now scores 25 instead of 70).
-    //
-    // PR 2 §3.4: recovery 47.33 → 48.75 after the split. The flat mean
-    // now covers 8 dims for US: fiscalSpace=44, reserveAdequacy=50
-    // (retired, coverage=0 but still in the flat mean), externalDebt=25,
-    // importConcentration=88, stateContinuity=65, fuelStockDays=50
-    // (retired, same shape), liquidReserveAdequacy=18 (US has ~1 month
-    // of reserves via WB FI.RES.TOTL.MO normalized 1..12 → 18), and
-    // sovereignFiscalBuffer=50 (IMPUTE fallback until Railway cron
-    // populates the SWF seed; US has no manifest entry). Sum 390 / 8
-    // = 48.75. Coverage-weighted domain aggregation (used by the real
-    // scoring pipeline) is separately verified below.
-    // Plan 2026-04-25-004 Phase 1 (Ship 1): economic 66.33 → 71. The
-    // OFAC-domicile component was dropped from the renamed tradePolicy
-    // dim, lifting the US `tradePolicy` score (US has many designated
-    // entities but those listings don't reflect on US resilience under
-    // the new construct). US-specific delta is small here because the
-    // US already had a high tariff-policy openness; the bigger movers
-    // are transit-hub jurisdictions (UAE/SG/HK).
-    // Plan 2026-04-25-004 Phase 2 (Ship 2): economic 71 → 53.25. The
-    // new `financialSystemExposure` dim is added to the economic domain
-    // but ships flag-gated off by default (rollout pattern matches
-    // energy v2). Flag-off ⇒ score=0, so the simple-average computed
-    // here drops 71 = (78+68+67)/3 → 53.25 = (78+68+67+0)/4. NOTE
-    // this domainAverages computation is a flat mean (NOT the
-    // production coverage-weighted mean). The next test below uses
-    // the coverage-weighted-mean path which CORRECTLY drops a coverage=0
-    // dim from the blend; the headline overall is unaffected by the
-    // flag-off baseline beyond the small tradePolicy-reweight shift.
-    // Plan 2026-04-26-002 §U6 (combined PR 3+4+5): social-governance
-    // 61.75 → 66.25. Per-capita normalization of unrest event counts +
-    // UCDP eventCount + typeWeight + deaths lifts the US (333M pop)
-    // socialCohesion and borderSecurity dim scores — fixture event counts
-    // of ~5-10 events become 0.015-0.03 events/M, well inside the 0..10
-    // / 0..15 lowerBetter anchors → higher scores. typeWeight is now also
-    // per-capita normalized (review fix: it's an event-count-scaled term,
-    // not dimensionless), accounting for the additional +1.0pt vs the
-    // initial commit's 65.25 expectation.
-    // Plan 2026-05-12 debtSustainabilityGap addition: recovery 48.75 → 49.63.
-    // The new gap indicator (weight 0.35) inside fiscalSpace lifts the US
-    // fiscalSpace sub-score because the fixture's gap value (0.02, near
-    // debt-stabilizing) normalizes to ~63 against the -5/+3 goalposts,
-    // higher than the level-only blend the previous weights produced for
-    // a country with debt=122% GDP.
-    // Round 2 P2-N2: economic 53.25 -> 54.25 after replacing the old
-    // lower-is-better inflation clamp with explicit inflation-stability
-    // scoring. The fixture's low-positive inflation now lands in the target
-    // band instead of being scored as a distance from zero.
-    // Audit P2-1: economic 54.25 -> 56.50 after tradePolicy starts scoring
-    // the WTO one-row-per-reporter severity feed instead of row counts against
-    // 30/40 anchors. The fixture's US WTO rows are low severity, so the
-    // component now reflects a clean reporter payload rather than near-inert
-    // one-count data.
-    // Issue #3971: infrastructure 79 -> 79.67 after capping the cyberDigital
-    // per-snapshot cyber severity weight (fixture threats are undated, so the
-    // whole snapshot is one capped bucket — same value pre/post the day-bucket
-    // rework). Undated rows intentionally fall back to the current bucket.
-    // 2026-08-10 education dim: social-governance 66.25 -> 53. Flat-mean
-    // artifact — the `education` dim shipped flag-gated off, so score=0, and
-    // this flat average dropped 66.25 = 265/4 -> 53 = 265/5.
-    // 2026-08-11 education ACTIVATED (#6460): social-governance 53 -> 72.20.
-    // The same 265/5 mean now carries a real education score instead of the
-    // dark placeholder zero: (265 + 96) / 5 = 72.20, where 96 is the US
-    // fixture's 92.1% attainment through the piecewise transform. The jump is
-    // the placeholder leaving the mean, NOT a 19-point construct swing.
-    //
     // This arithmetic-only assertion deliberately averages every serialized
     // row. Production aggregation is different: the domain blend drops zero
     // coverage, which is why the coverage-weighted assertion below moves by a
@@ -222,95 +153,13 @@ describe('resilience scorer contracts', () => {
     const stressScore = round(coverageWeightedMean(stressDims));
     const stressFactor = round(getResilienceStressFactor(stressScore), 4);
 
-    // PR 3 §3.5: 62.64 → 63.63 (fuelStockDays retirement) → 60.12
-    // (externalDebtCoverage goalpost tightened).
-    // PR 2 §3.4: 60.12 → 60.35 — split adds liquidReserveAdequacy
-    // (US ≈ 1 month WB reserves → score 18 at cov=1.0) and
-    // sovereignFiscalBuffer (IMPUTE at 50 / cov=0.3) into the baseline
-    // coverage-weighted mean.
-    // PR 2 §3.4 weight rebalance: 60.35 → 62.17. The two new recovery
-    // dims now carry weight=0.5 (RESILIENCE_DIMENSION_WEIGHTS), so
-    // the low-scoring liquidReserveAdequacy (18) and partial-coverage
-    // sovereignFiscalBuffer (50 × 0.3) contribute ~half as much to
-    // the US baseline aggregate as under the equal-weight default.
-    // Plan 2026-04-26-002 §U4 (combined PR 3+4+5): 62.17 → 62.72. The
-    // coverage penalty halves the weight of fully-imputed dims (US has
-    // sovereignFiscalBuffer at IMPUTE 50/0.3 since US has no SWF
-    // manifest entry — fixture defaults). Halving its already-low
-    // contribution lifts the baseline mean.
-    // Plan 2026-05-12 debtSustainabilityGap addition: 62.72 → 63.29.
-    // fiscalSpace re-weighting (0.4/0.3/0.3 → 0.25/0.20/0.20/0.35) +
-    // new gap sub-score lifts US fiscalSpace, which is in the recovery
-    // domain feeding the baseline aggregate.
-    // PR #4088 P2 follow-up: 63.29 -> 61.81. Shared fixtures intentionally
-    // omit import-HHI source years, so the scorer keeps the HHI score but
-    // derates certainty coverage to the stale/missing-year floor.
-    // #6460 education activation: 61.81 -> 63.21. `education` is a `baseline`
-    // dimension (RESILIENCE_DIMENSION_TYPES), so it joins this aggregate and
-    // the US fixture's high attainment score lifts it by 1.40. It is absent
-    // from the stress aggregate below, which is why that number is unchanged.
     assert.equal(baselineScore, 63.21);
-    // PR 3 §3.5: 65.84 → 67.85 (fuelStockDays retirement) → 67.21
-    // (currencyExternal rebuilt on IMF inflation + WB reserves, coverage
-    // shifts and US stress score moves).
-    // Plan 2026-04-25-004 Phase 1 (Ship 1): 67.21 → 69.01. tradePolicy
-    // is in the 'stress' class (RESILIENCE_DIMENSION_TYPES) so its
-    // post-rename uplift (OFAC component dropped) propagates into the
-    // stress-only mean. stressFactor updates in lockstep:
-    //   1 - 69.01/100 = 0.3099, clamped to 0.5.
-    // Plan 2026-04-25-004 Phase 2 (Ship 2): 69.01 → 67.98. The new
-    // `financialSystemExposure` dim is also stress-class and ships
-    // flag-gated off → score 0 → drags the stress-only mean down.
-    //   1 - 67.98/100 = 0.3202, clamped to 0.5.
-    // Plan 2026-04-26-002 §U4+§U6 (combined PR 3+4+5): 67.98 → 69.08.
-    // U4 halves the weight of US's fully-imputed stress dims (BIS DSR
-    // imputed at 60, WTO trade imputed at 60, financialSystemExposure
-    // imputed at 50/0.3); U6 lifts borderSecurity for US (333M pop) via
-    // per-capita normalization. Net positive shift in the stress mean,
-    // raising the stress factor proportionally.
-    //   1 - 69.08/100 = 0.3092, clamped to 0.5.
-    // typeWeight per-capita review fix: stress score lifts further on
-    // borderSecurity (typeWeight is now divided by population denominator).
-    //   stress score 69.08 -> 69.63.
-    // Issue #3971 cyberDigital burst cap: stress score 69.63 -> 69.91.
-    // Round 2 P2-N2 inflation-stability scorer: stress score 69.91 -> 70.38.
-    // Audit P2-1 tradePolicy severity scorer: stress score 70.38 -> 71.00.
-    //   1 - 71.00/100 = 0.2900, clamped to 0.5.
     assert.equal(stressScore, 71);
     assert.equal(stressFactor, 0.29);
 
     const overallScore = round(
       buildDomainList(dimensions).reduce((sum, domain) => sum + domain.score * domain.weight, 0),
     );
-    // PR 3 §3.5: 65.57 → 65.82 (fuelStockDays retirement) → 65.52
-    // (currencyExternal rebuild) → 63.27 (externalDebtCoverage goalpost
-    // tightened 0..5 → 0..2; US recovery-domain contribution drops).
-    // PR 2 §3.4: 63.27 → 63.6 after the reserveAdequacy split.
-    // PR 2 §3.4 weight rebalance: 63.6 → 64.39. The two new recovery
-    // dims (liquidReserveAdequacy @ score=18, sovereignFiscalBuffer @
-    // score=50/cov=0.3) now carry weight=0.5 so they're each ~10% of
-    // the recovery domain instead of the equal-share ~16.7%. The
-    // under-weighted score-18 dim matters less, lifting US's recovery
-    // contribution by ~3 points and the overall by ~0.79.
-    // Plan 2026-04-25-004 Phase 1 (Ship 1): 64.39 → 65.24. economic
-    // domain rises 66.33 → 71 with tradePolicy reweight (OFAC dropped),
-    // contributing economic_delta * 0.17 ≈ +0.79 to the overall score.
-    // Plan 2026-04-25-004 Phase 2 (Ship 2): 65.24 → 64.78. Adding
-    // `financialSystemExposure` to the economic domain reweights
-    // tradePolicy 1.0 → 0.5 (to keep the domain's total dim weight
-    // conserved). The new dim ships dark behind a flag (default off)
-    // and contributes coverage=0 → drops from the coverage-weighted
-    // mean. The half-weight on tradePolicy shifts the economic domain
-    // mean slightly, dropping the overall by ~0.46 points. When the
-    // flag flips on in production with seeders populated, the dim will
-    // contribute its own signal; the expected value here will move
-    // accordingly in a future PR.
-    // Plan 2026-04-26-002 §U4+§U6 (combined PR 3+4+5): 64.78 → 65.64.
-    // Plan 2026-05-12 debtSustainabilityGap addition: 65.64 → 66.02.
-    // Issue #3971 cyberDigital burst cap: 66.02 -> 66.12.
-    // Round 2 P2-N2 inflation-stability scorer: 66.12 -> 66.38.
-    // PR #4088 import-HHI missing-year certainty derate: 66.38 -> 64.79.
-    // Audit P2-1 tradePolicy severity scorer (on top of the derate): 64.79 -> 65.12.
     assert.equal(overallScore, 65.75);
   });
 
