@@ -47,16 +47,24 @@ export function isOrbitalLookupOpen(): boolean {
   return false;
 }
 
-export function setOrbitalLookupOpen(open: boolean): void {
-  if (open) {
-    closeToken += 1;
-    leftAt = null;
-    anchor = 'set';
-    lookupOpen = true;
-    return;
-  }
-  if (!lookupOpen) return;
-  lookupOpen = false;
+const resumeListeners = new Set<() => void>();
+
+/**
+ * While the lookup is open the map is centred on its point, so a request that sends the map's viewport
+ * to a WorldMonitor host would carry the point. Those requests do not go out while this is true, and
+ * their layers keep the data they had. Closing the lookup puts the map back where it was.
+ */
+export function holdsViewportRequests(): boolean {
+  return lookupOpen;
+}
+
+/** Calls `listener` each time the lookup closes, so a held layer can fetch for where the map is now. */
+export function onViewportRequestsResumed(listener: () => void): () => void {
+  resumeListeners.add(listener);
+  return () => { resumeListeners.delete(listener); };
+}
+
+function anchorAfterClose(): void {
   const token = ++closeToken;
   // A camera still flying to the point reports a latitude it is about to leave, so anchor once it stops.
   const settled = mapAccess()?.whenViewportSettled?.();
@@ -69,4 +77,25 @@ export function setOrbitalLookupOpen(open: boolean): void {
     () => { if (token === closeToken) anchorOnCentre(); },
     () => { if (token === closeToken) anchor = 'unread'; },
   );
+}
+
+export function setOrbitalLookupOpen(open: boolean): void {
+  if (open) {
+    closeToken += 1;
+    leftAt = null;
+    anchor = 'set';
+    lookupOpen = true;
+    return;
+  }
+  if (!lookupOpen) return;
+  lookupOpen = false;
+  anchorAfterClose();
+  for (const listener of [...resumeListeners]) {
+    try {
+      listener();
+    } catch (error) {
+      // One layer's failed refetch must not keep the others held.
+      console.error('[orbital] viewport refetch after the lookup closed failed', error);
+    }
+  }
 }

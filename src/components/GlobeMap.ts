@@ -24,7 +24,7 @@ import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/ge
 import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import { NUCLEAR_FACILITIES, SPACEPORTS, ECONOMIC_CENTERS, CRITICAL_MINERALS, UNDERSEA_CABLES } from '@/config/geo-map';
 import { PIPELINES } from '@/config/pipelines';
-import { getLocale, initI18n, t } from '@/services/i18n';
+import { getLocale, I18N_RESOURCES_LOADED_EVENT, initI18n, t } from '@/services/i18n';
 import type { ReservoirLevel } from '@/services/climate';
 import { sweptSwath, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { reservoirHeadline, reservoirTone, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
@@ -47,6 +47,8 @@ import { GAMMA_IRRADIATORS } from '@/config/irradiators';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import { getCountryBbox, getCountriesGeoJson, getCountryAtCoordinates, getCountryNameByCode } from '@/services/country-geometry';
 import { escapeHtml } from '@/utils/sanitize';
+import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
+import { trackedSatelliteType } from '@/services/orbital/yaogan-class';
 import { installLongPressContextMenu } from '@/utils/long-press';
 import type { FocusFitBounds } from '@/utils/focus-map';
 import { corroborationLabelHtml } from '@/utils/corroboration-flag';
@@ -97,6 +99,7 @@ import { globeAltitudeToMapZoom, mapZoomToGlobeAltitude } from '@/utils/globe-zo
 import { globeCenterForOffset, isOnVisibleHemisphere, type ScreenOffset } from '@/utils/map-point-offset';
 import { headingToCompass } from '@/utils/heading-to-compass';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
+import { holdsViewportRequests, onViewportRequestsResumed } from '@/services/orbital/lookup-host';
 
 export interface GlobeMapOptions {
   onInitError?: (error: unknown) => void;
@@ -104,8 +107,18 @@ export interface GlobeMapOptions {
 }
 
 const SAT_COUNTRY_COLORS: Record<string, string> = { CN: '#ff2020', RU: '#ff8800', US: '#4488ff', EU: '#44cc44', KR: '#aa66ff', IN: '#ff66aa', TR: '#ff4466', OTHER: '#ccccff' };
-const SAT_TYPE_EMOJI: Record<string, string> = { sar: '\u{1F4E1}', optical: '\u{1F4F7}', military: '\u{1F396}', sigint: '\u{1F4FB}' };
-const SAT_TYPE_LABEL: Record<string, string> = { sar: 'SAR Imaging', optical: 'Optical Imaging', military: 'Military', sigint: 'SIGINT' };
+const SAT_TYPE_EMOJI: Record<string, string> = { sar: '\u{1F4E1}', optical: '\u{1F4F7}', military: '\u{1F396}', sigint: '\u{1F4FB}', signals: '\u{1F4FB}' };
+const SAT_TYPE_LABEL: Record<string, string> = { sar: 'SAR Imaging', optical: 'Optical Imaging', military: 'Military', sigint: 'SIGINT', signals: 'Signals' };
+/** Yaogan signals objects relabelled, unidentified Yaogan objects dropped. */
+function orbitalLayerSatellites(positions: SatellitePosition[]): SatellitePosition[] {
+  const out: SatellitePosition[] = [];
+  for (const s of positions) {
+    const type = trackedSatelliteType(s.name, s.type);
+    if (type === null) continue;
+    out.push(type === s.type ? s : { ...s, type });
+  }
+  return out;
+}
 const SAT_OPERATOR_NAME: Record<string, string> = { CN: 'China', RU: 'Russia', US: 'United States', EU: 'ESA / EU', KR: 'South Korea', IN: 'India', TR: 'Turkey', OTHER: 'Other' };
 
 function saveWebcamMarkerMode(mode: string): void {
@@ -547,6 +560,7 @@ export class GlobeMap {
   private unsubscribeGlobeQuality: (() => void) | null = null;
   private unsubscribeGlobeTexture: (() => void) | null = null;
   private unsubscribeVisualPreset: (() => void) | null = null;
+  private stopViewportResume: (() => void) | null = null;
   private premiumLayerGate: PremiumLayerGate | null = null;
   private pendingPremiumLayerChanges = new Set<keyof MapLayers>();
   private savedDefaultMaterial: any = null;
@@ -685,6 +699,16 @@ export class GlobeMap {
   // Overlay UI elements
   private layerTogglesEl: HTMLElement | null = null;
   private tooltipEl: HTMLElement | null = null;
+  private satelliteSitesAbort: AbortController | null = null;
+  private satelliteSitesView: {
+    relabelSatelliteSites(host: HTMLElement): void;
+    satelliteSitesOutdated(host: HTMLElement, noradId: string): boolean;
+    advanceSatelliteSites(host: HTMLElement, nowMs: number): 'current' | 'rescan';
+  } | null = null;
+  private openSatelliteCard: { id: string; name: string; el: HTMLElement } | null = null;
+  private satelliteSitesClock: ReturnType<typeof setInterval> | null = null;
+  private satelliteSitesScanning = false;
+  private satelliteCardI18nListener: (() => void) | null = null;
   private tooltipHideTimer: ReturnType<typeof setTimeout> | null = null;
   private satHoverStyle: HTMLStyleElement | null = null;
   private readonly chrome: boolean;
@@ -723,6 +747,11 @@ export class GlobeMap {
 
     this.container.classList.add('globe-mode');
     this.container.style.cssText = 'width:100%;height:100%;background:#000;position:relative;';
+
+    // An imagery search held while the satellite pass lookup was open runs for where the globe is now.
+    this.stopViewportResume = onViewportRequestsResumed(() => {
+      if (!this.destroyed && this.layers.satellites) void this.fetchImageryForViewport();
+    });
 
     this.initPromise = this.initGlobe();
     this.initPromise.catch(err => {
@@ -1912,7 +1941,10 @@ export class GlobeMap {
       const operatorName = SAT_OPERATOR_NAME[d.country] || getCountryNameByCode(d.country) || d.country;
       const overHit = getCountryAtCoordinates(d._lat, d._lng);
       const overLabel = overHit ? overHit.name : 'Ocean';
-      html = `<div style="min-width:220px;">` +
+      if (ORBITAL_WATCH_ENABLED) {
+        el.classList.add('osat-card');
+        html = `<div style="min-width:220px;"><div data-osat-card-body>${this.satelliteCardBodyHtml(d)}</div><div data-osat-sites></div></div>`;
+      } else html = `<div style="min-width:220px;">` +
         `<span style="color:${sc};font-weight:bold;font-size:calc(12px * var(--wm-panel-effective-scale, 1));">${SAT_TYPE_EMOJI[d.type] || '\u{1F6F0}'} ${esc(d.name)}</span>` +
         `<div style="opacity:.5;font-size:calc(10px * var(--wm-panel-effective-scale, 1));margin:2px 0 6px;">NORAD ${esc(d.id)}</div>` +
         `<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:calc(11px * var(--wm-panel-effective-scale, 1));">` +
@@ -2055,7 +2087,9 @@ export class GlobeMap {
     el.addEventListener('mouseenter', () => {
       if (this.tooltipHideTimer) { clearTimeout(this.tooltipHideTimer); this.tooltipHideTimer = null; }
     });
+    const pinnedCard = ORBITAL_WATCH_ENABLED && d._kind === 'satellite';
     el.addEventListener('mouseleave', () => {
+      if (pinnedCard) return;
       this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), 2000);
     });
 
@@ -2079,7 +2113,15 @@ export class GlobeMap {
     if (this.tooltipHideTimer) clearTimeout(this.tooltipHideTimer);
     const richKinds = new Set(['satellite', 'flightDelay', 'cableAdvisory', 'conflictZone', 'nuclearSite', 'spaceport', 'economic', 'datacenter', 'imageryScene', 'repairShip', 'aisDisruption']);
     const hideDelay = d._kind === 'webcam' ? 8000 : d._kind === 'webcam-cluster' ? 12000 : richKinds.has(d._kind) ? 6000 : 3500;
-    this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), hideDelay);
+    if (!pinnedCard) this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), hideDelay);
+    if (pinnedCard && d._kind === 'satellite') {
+      this.openSatelliteCard = { id: d.id, name: d.name, el };
+      // Countdowns move and passed sites drop off while the card stays open.
+      this.satelliteSitesClock = setInterval(() => this.advanceSatelliteSites(), 30_000);
+      this.satelliteCardI18nListener = () => this.relabelSatelliteCard();
+      window.addEventListener(I18N_RESOURCES_LOADED_EVENT, this.satelliteCardI18nListener);
+      this.fillSatelliteSites(el, d.id, d.name);
+    }
 
     if (d._kind === 'webcam-cluster') {
       const tooltipEl = el;
@@ -2153,7 +2195,107 @@ export class GlobeMap {
     }
   }
 
+  /** The Orbital Watch satellite card's header and detail grid, in the current language. */
+  private satelliteCardBodyHtml(d: SatelliteMarker): string {
+    const k = 'orbitalWatch.satelliteSites.card';
+    const altBand = d.alt < 2000 ? 'LEO' : d.alt < 35786 ? 'MEO' : 'GEO';
+    const operatorName = SAT_OPERATOR_NAME[d.country] || getCountryNameByCode(d.country) || d.country;
+    const overHit = getCountryAtCoordinates(d._lat, d._lng);
+    const typeKey = `${k}.types.${d.type}`;
+    const typeLabel = t(typeKey);
+    const row = (label: string, value: string) => `<span class="osat-meta">${escapeHtml(label)}</span><span>${escapeHtml(value)}</span>`;
+    return `<span class="osat-name" style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));">${escapeHtml(d.name)}</span>` +
+      `<div class="osat-meta" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));margin:2px 0 6px;">${escapeHtml(t(`${k}.norad`, { id: d.id }))}</div>` +
+      `<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:calc(11px * var(--wm-panel-effective-scale, 1));">` +
+      row(t(`${k}.type`), typeLabel === typeKey ? (SAT_TYPE_LABEL[d.type] || d.type) : typeLabel) +
+      row(t(`${k}.operator`), operatorName) +
+      row(t(`${k}.over`), overHit ? overHit.name : t(`${k}.ocean`)) +
+      row(t(`${k}.altBand`), `${altBand} \u00B7 ${Math.round(d.alt)} km`) +
+      row(t(`${k}.inclination`), `${d.inclination.toFixed(1)}\u00B0`) +
+      row(t(`${k}.velocity`), `${d.velocity.toFixed(1)} km/s`) +
+      `</div>`;
+  }
+
+  /**
+   * Redraws the open Orbital Watch satellite card from the layer's current marker,
+   * so its position, labels and language follow data refreshes. Closes the card
+   * when the satellite has left the layer.
+   */
+  private refreshSatelliteCard(): void {
+    const open = this.openSatelliteCard;
+    if (!open || this.tooltipEl !== open.el) return;
+    const marker = this.satelliteMarkers.find((m) => m.id === open.id);
+    if (!marker) {
+      this.hideTooltip();
+      return;
+    }
+    const body = open.el.querySelector<HTMLElement>('[data-osat-card-body]');
+    if (body) setTrustedHtml(body, trustedHtml(this.satelliteCardBodyHtml(marker), 'satellite card fields escaped with escapeHtml'));
+    // The layer swapped in a new element set for this satellite: drop the old scan and rescan.
+    const host = open.el.querySelector<HTMLElement>('[data-osat-sites]');
+    if (host && this.satelliteSitesView?.satelliteSitesOutdated(host, open.id)) this.fillSatelliteSites(open.el, open.id, open.name);
+  }
+
+  private advanceSatelliteSites(): void {
+    const open = this.openSatelliteCard;
+    const host = open?.el.querySelector<HTMLElement>('[data-osat-sites]');
+    if (!open || !host || this.tooltipEl !== open.el || !this.satelliteSitesView || this.satelliteSitesScanning) return;
+    if (this.satelliteSitesView.advanceSatelliteSites(host, Date.now()) === 'rescan') this.fillSatelliteSites(open.el, open.id, open.name);
+  }
+
+  /** The full locale arrived after the card opened: redraw the header and the sites section in it. */
+  private relabelSatelliteCard(): void {
+    this.refreshSatelliteCard();
+    const host = this.openSatelliteCard?.el.querySelector<HTMLElement>('[data-osat-sites]');
+    if (!host) return;
+    if (host.dataset.osatNote === 'viewFailed') host.firstElementChild!.textContent = t('orbitalWatch.satelliteSites.viewFailed');
+    else this.satelliteSitesView?.relabelSatelliteSites(host);
+  }
+
+  private fillSatelliteSites(card: HTMLElement, noradId: string, name: string): void {
+    const host = card.querySelector<HTMLElement>('[data-osat-sites]');
+    if (!host) return;
+    this.satelliteSitesAbort?.abort();
+    const abort = new AbortController();
+    this.satelliteSitesAbort = abort;
+    this.satelliteSitesScanning = true;
+    void import('./orbital-satellite-sites-view')
+      .then((view) => {
+        this.satelliteSitesView = view;
+        return view.renderSatelliteSites(host, noradId, name, abort.signal);
+      })
+      .then(() => {
+        if (abort.signal.aborted || !card.isConnected) return;
+        const cr = this.container.getBoundingClientRect();
+        card.style.top = Math.max(4, Math.min(card.offsetTop, cr.height - card.offsetHeight - 4)) + 'px';
+      })
+      .catch((err) => {
+        console.warn('[orbital] satellite sites view failed', err);
+        if (abort.signal.aborted || !card.isConnected) return;
+        const note = document.createElement('div');
+        note.className = 'osat-sites-note';
+        note.textContent = t('orbitalWatch.satelliteSites.viewFailed');
+        host.dataset.osatNote = 'viewFailed';
+        host.replaceChildren(note);
+      })
+      .finally(() => {
+        if (this.satelliteSitesAbort === abort) this.satelliteSitesScanning = false;
+      });
+  }
+
   private hideTooltip(): void {
+    this.satelliteSitesAbort?.abort();
+    this.satelliteSitesAbort = null;
+    this.openSatelliteCard = null;
+    this.satelliteSitesScanning = false;
+    if (this.satelliteSitesClock) {
+      clearInterval(this.satelliteSitesClock);
+      this.satelliteSitesClock = null;
+    }
+    if (this.satelliteCardI18nListener) {
+      window.removeEventListener(I18N_RESOURCES_LOADED_EVENT, this.satelliteCardI18nListener);
+      this.satelliteCardI18nListener = null;
+    }
     if (this.tooltipHideTimer) { clearTimeout(this.tooltipHideTimer); this.tooltipHideTimer = null; }
     this.tooltipEl?.remove();
     this.tooltipEl = null;
@@ -3829,7 +3971,8 @@ export class GlobeMap {
   }
 
   private async fetchImageryForViewport(): Promise<void> {
-    if (this.destroyed) return;
+    // The satellite pass lookup has the globe on its point; the scenes already drawn stay.
+    if (this.destroyed || holdsViewportRequests()) return;
     const center = this.getCenter();
     if (!center) return;
     if (this.lastImageryCenter) {
@@ -4261,7 +4404,8 @@ export class GlobeMap {
     scene.add(this.satBeamGroup);
   }
 
-  public setSatellites(positions: SatellitePosition[]): void {
+  public setSatellites(input: SatellitePosition[]): void {
+    const positions = ORBITAL_WATCH_ENABLED ? orbitalLayerSatellites(input) : input;
     this.satelliteMarkers = positions.map(s => ({
       _kind: 'satellite' as const,
       _lat: s.lat,
@@ -4297,6 +4441,7 @@ export class GlobeMap {
     this.rebuildSatBeams(positions);
     this.flushMarkers();
     this.flushPaths();
+    this.refreshSatelliteCard();
   }
   public setTechEvents(events: Array<{ id: string; title: string; lat: number; lng: number; country: string; daysUntil: number; [key: string]: any }>): void {
     this.techMarkers = (events ?? []).filter(e => e.lat != null && e.lng != null).map(e => ({
@@ -4542,6 +4687,8 @@ export class GlobeMap {
     this.unsubscribeGlobeTexture = null;
     this.unsubscribeVisualPreset?.();
     this.unsubscribeVisualPreset = null;
+    this.stopViewportResume?.();
+    this.stopViewportResume = null;
     this.premiumLayerGate?.destroy();
     this.premiumLayerGate = null;
     this.pendingPremiumLayerChanges.clear();

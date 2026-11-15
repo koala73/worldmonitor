@@ -222,6 +222,7 @@ export class MapContainer {
   private svgMap: MapComponent | null = null;
   private globeMap: GlobeMap | null = null;
   private autoRotateHeld = false;
+  private zoomCap: number | null = null;
   private supplyChainPanel: import('@/components/SupplyChainPanel').SupplyChainPanel | null = null;
   private initialState: MapContainerState;
   private suppressedLayers: MapLayers | null = null;
@@ -888,6 +889,8 @@ export class MapContainer {
   }
 
   private rehydrateActiveMap(): void {
+    // A renderer built while a lookup holds the zoom comes up held too; one built with no cap needs nothing.
+    if (this.useDeckGL && this.zoomCap != null) this.deckGLMap?.setZoomCap(this.zoomCap);
     // 1. Re-wire callbacks (through own public methods for adapter safety)
     if (this.cachedOnStateChanged) this.onStateChanged(this.cachedOnStateChanged);
     if (this.cachedOnLayerChange) this.setOnLayerChange(this.cachedOnLayerChange);
@@ -1158,6 +1161,15 @@ export class MapContainer {
   public holdAutoRotate(held: boolean): void {
     this.autoRotateHeld = held;
     this.globeMap?.holdAutoRotate(held);
+  }
+
+  /**
+   * Caps how far the flat map zooms in, or lifts the cap with null. Only the flat map fetches viewport-sized basemap tiles;
+   * the globe draws fixed textures and the SVG map one country topology, so neither needs a cap.
+   */
+  public capZoom(max: number | null): void {
+    this.zoomCap = max;
+    this.deckGLMap?.setZoomCap(max);
   }
 
   /** Where (lat, lon) is drawn in client coordinates, or null when the renderer cannot say or it faces away. */

@@ -4770,6 +4770,47 @@
       "noPreview": "No preview published for this scene yet",
       "radar": "radar"
     },
+    "satelliteSites": {
+      "heading": "Monitored sites · next {{hours}} h",
+      "projecting": "Projecting passes…",
+      "notLoaded": "Click the satellite again; its orbit elements are not loaded.",
+      "failed": "Click the satellite again to retry; the projection failed.",
+      "viewFailed": "Click the satellite again to retry; the site list did not load.",
+      "unavailable": "Click the satellite again to retry; the pass geometry rejected these orbit elements.",
+      "signals": "Signals-intelligence satellite. No imager, so no ground coverage is modelled.",
+      "noProfile": "No sensor profile for this satellite, so its ground coverage is not modelled.",
+      "geostationary": "Geostationary: fixed above one longitude, so no passes to list.",
+      "badElements": "Orbit elements are unreadable.",
+      "tooOld_one": "Orbit elements are {{count}} day old, too old to project passes.",
+      "tooOld_other": "Orbit elements are {{count}} days old, too old to project passes.",
+      "none": "No monitored site inside its footprint within {{hours}} h.",
+      "count_one": "{{count}} site inside the {{family}} footprint",
+      "count_other": "{{count}} sites inside the {{family}} footprint",
+      "utc": "{{time}} UTC",
+      "inMinutes": "in {{minutes}} min",
+      "inHours": "in {{hours}} h {{minutes}} min",
+      "offTrack": "{{km}} km off track",
+      "swathEdge": "at swath edge",
+      "passes_one": "{{count}} pass",
+      "passes_other": "{{count}} passes",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "Type",
+        "operator": "Operator",
+        "over": "Over",
+        "ocean": "Ocean",
+        "altBand": "Alt. band",
+        "inclination": "Incl.",
+        "velocity": "Velocity",
+        "types": {
+          "sar": "SAR Imaging",
+          "optical": "Optical Imaging",
+          "military": "Military",
+          "sigint": "SIGINT",
+          "signals": "Signals"
+        }
+      }
+    },
     "viewer": {
       "open": "Open scene: {{image}}",
       "imageAlt": "{{name}} scene, {{time}}",

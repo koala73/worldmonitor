@@ -59,6 +59,7 @@ import { CII_LEVEL_COLORS, type CiiLevel } from '@/config/cii-colors';
 import type { GpsJamHex } from '@/services/gps-interference';
 import { continuousTrack, pointNear, sweptSwath, type FootprintRing, type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { fetchImageryScenes } from '@/services/imagery';
+import { holdsViewportRequests, onViewportRequestsResumed } from '@/services/orbital/lookup-host';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { CrossBorderData, CrossBorderPoint, DisplacementEventPoint, DisplacementEventsData, DisplacementFlow, InternalDisplacementData, InternalDisplacementRegion, InternalDisplacementRoute } from '@/services/displacement';
@@ -722,6 +723,7 @@ export class DeckGLMap {
   private aptGroupsLoaded = false;
   private _unsubscribeAuthState: (() => void) | null = null;
   private _unsubscribeEntitlement: (() => void) | null = null;
+  private stopViewportResume: (() => void) | null = null;
   private aptGroupsLayerFailed = false;
   private satelliteImageryLayerFailed = false;
   private iranEvents: IranEvent[] = [];
@@ -966,6 +968,9 @@ export class DeckGLMap {
     windowMs: 60_000,
   });
   private destroyed = false;
+  private zoomCap: number | null = null;
+  /** The map's own max zoom, kept while a cap is on so lifting the cap puts it back. */
+  private uncappedMaxZoom: number | null = null;
   private distanceControl: MapDistanceControl | null = null;
   private usedFallbackStyle = false;
   private readonly chrome: boolean;
@@ -1065,6 +1070,16 @@ export class DeckGLMap {
     }, 150);
     this.debouncedFetchBases = debounce(() => this.fetchServerBases(), 300);
     this.debouncedFetchAircraft = debounce(() => this.fetchViewportAircraft(), 500);
+    // Viewport fetches held while the satellite pass lookup was open run for where the map is now.
+    this.stopViewportResume = onViewportRequestsResumed(() => {
+      if (this.destroyed) return;
+      if (this.state.layers.bases) this.debouncedFetchBases();
+      if (this.state.layers.flights) this.debouncedFetchAircraft();
+      if (this.state.layers.satellites) {
+        if (this.imagerySearchTimer) clearTimeout(this.imagerySearchTimer);
+        this.imagerySearchTimer = setTimeout(() => this.fetchImageryForViewport(), 500);
+      }
+    });
     this.rafUpdateLayers = rafSchedule(() => {
       if (this.renderPaused || this.webglLost || !this.maplibreMap) return;
       this.updateLayers();
@@ -1298,6 +1313,7 @@ export class DeckGLMap {
         }
         : {}),
     });
+    this.applyZoomCap();
 
     const reportFatalBasemapFailure = (error: unknown, center = this.getCenter()): void => {
       const message = error instanceof Error ? error.message : String(error);
@@ -1369,6 +1385,7 @@ export class DeckGLMap {
             }
             : {}),
         });
+        this.applyZoomCap();
       } catch (error) {
         // MapLibre throws GPUInitializationError synchronously when WebGL2 is
         // gone (lost context, software renderer revoked, etc.). Catch it so it
@@ -5366,7 +5383,7 @@ export class DeckGLMap {
 
   private async fetchImageryForViewport(): Promise<void> {
     const map = this.maplibreMap;
-    if (!map) return;
+    if (!map || holdsViewportRequests()) return;
     const bounds = map.getBounds();
     const bbox = `${bounds.getWest().toFixed(4)},${bounds.getSouth().toFixed(4)},${bounds.getEast().toFixed(4)},${bounds.getNorth().toFixed(4)}`;
     const version = ++this.imagerySearchVersion;
@@ -7084,6 +7101,25 @@ export class DeckGLMap {
     };
   }
 
+  /** Holds the map at `max` zoom or below, through a rebuilt basemap too, or lifts the cap with null. MapLibre clamps a map already past it. */
+  public setZoomCap(max: number | null): void {
+    this.zoomCap = max;
+    this.applyZoomCap();
+  }
+
+  private applyZoomCap(): void {
+    const map = this.maplibreMap;
+    if (!map) return;
+    if (this.zoomCap === null) {
+      if (this.uncappedMaxZoom !== null) map.setMaxZoom(this.uncappedMaxZoom);
+      this.uncappedMaxZoom = null;
+      return;
+    }
+    this.uncappedMaxZoom ??= map.getMaxZoom();
+    map.setMaxZoom(this.zoomCap);
+    this.state.zoom = Math.min(this.state.zoom, this.zoomCap);
+  }
+
   // Zoom controls - public for external access
   public zoomIn(): void {
     if (this.maplibreMap) {
@@ -7869,6 +7905,8 @@ export class DeckGLMap {
   }
 
   private fetchServerBases(): void {
+    // The satellite pass lookup has the map on its point; the bases already drawn stay.
+    if (holdsViewportRequests()) return;
     const fetchSeq = ++this.serverBasesFetchSeq;
     this.serverBases = [];
     this.serverBaseClusters = [];
@@ -7937,7 +7975,7 @@ export class DeckGLMap {
   }
 
   private fetchViewportAircraft(): void {
-    if (!this.maplibreMap) return;
+    if (!this.maplibreMap || holdsViewportRequests()) return;
     if (!this.state.layers.flights) return;
     const zoom = this.maplibreMap.getZoom();
     if (zoom < 2) {
@@ -7952,6 +7990,9 @@ export class DeckGLMap {
       return;
     }
     if (!this.hasAircraftViewportChanged()) return;
+    // Coverage is the viewport the request was made for. The map can move without
+    // a new request (the point lookup holds them), so the live view may differ by completion.
+    const requestCenter = this.maplibreMap.getCenter();
     const bounds = this.maplibreMap.getBounds();
     const sw = bounds.getSouthWest();
     const ne = bounds.getNorthEast();
@@ -7964,11 +8005,8 @@ export class DeckGLMap {
       if (seq !== this.aircraftFetchSeq) return; // discard stale response
       this.aircraftPositions = positions;
       this.onAircraftPositionsUpdate?.(positions);
-      const center = this.maplibreMap?.getCenter();
-      if (center) {
-        this.lastAircraftFetchCenter = [center.lng, center.lat];
-        this.lastAircraftFetchZoom = this.maplibreMap!.getZoom();
-      }
+      this.lastAircraftFetchCenter = [requestCenter.lng, requestCenter.lat];
+      this.lastAircraftFetchZoom = zoom;
       this.setLayerReady('flights', positions.length > 0);
       this.render();
     }).catch((err) => {
@@ -9444,6 +9482,8 @@ export class DeckGLMap {
     this._unsubscribeAuthState = null;
     this._unsubscribeEntitlement?.();
     this._unsubscribeEntitlement = null;
+    this.stopViewportResume?.();
+    this.stopViewportResume = null;
     window.removeEventListener('theme-changed', this.handleThemeChange);
     window.removeEventListener('map-theme-changed', this.handleMapThemeChange);
     this.tradeReducedMotionMedia?.removeEventListener('change', this.handleTradeMotionPreferenceChange);

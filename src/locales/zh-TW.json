@@ -5274,6 +5274,44 @@
       "away": "{{km}} 公里",
       "densityTip_other": "自 {{start}} 起 {{count}} 次過境 · {{names}}"
     },
+    "satelliteSites": {
+      "heading": "監視地點 · 未來 {{hours}} 小時",
+      "projecting": "正在計算過境…",
+      "notLoaded": "再次點選衛星；其軌道根數未載入。",
+      "failed": "再次點選衛星以重試；過境計算失敗。",
+      "viewFailed": "再次點選衛星以重試；地點列表未能載入。",
+      "unavailable": "再次點選衛星以重試；過境幾何計算拒絕了這些軌道根數。",
+      "signals": "訊號情報衛星。沒有成像裝置，因此不模擬地面覆蓋範圍。",
+      "noProfile": "此衛星沒有感測器引數，因此不模擬其地面覆蓋範圍。",
+      "geostationary": "地球靜止軌道：固定在某一經度上方，因此沒有可列出的過境。",
+      "badElements": "軌道根數無法讀取。",
+      "none": "未來 {{hours}} 小時內，其覆蓋範圍內沒有監視地點。",
+      "utc": "{{time}} UTC",
+      "inMinutes": "{{minutes}} 分鐘後",
+      "inHours": "{{hours}} 小時 {{minutes}} 分鐘後",
+      "offTrack": "距地面軌跡 {{km}} 公里",
+      "swathEdge": "位於幅寬邊緣",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "型別",
+        "operator": "運營方",
+        "over": "下方",
+        "ocean": "海洋",
+        "altBand": "高度範圍",
+        "inclination": "傾角",
+        "velocity": "速度",
+        "types": {
+          "sar": "SAR 成像",
+          "optical": "光學成像",
+          "military": "軍用",
+          "sigint": "SIGINT",
+          "signals": "訊號情報"
+        }
+      },
+      "tooOld_other": "軌道根數已有 {{count}} 天，過舊，無法計算過境。",
+      "count_other": "{{family}} 覆蓋範圍內有 {{count}} 個地點",
+      "passes_other": "{{count}} 次過境"
+    },
     "sheet": {
       "heading": "影像證據",
       "window": "過去 {{days}} 天，未來 {{hours}} 小時",

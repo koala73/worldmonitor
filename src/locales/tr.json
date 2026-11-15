@@ -5303,6 +5303,47 @@
       "densityTip_one": "{{start}} tarihinden {{count}} geçiş · {{names}}",
       "densityTip_other": "{{start}} tarihinden {{count}} geçiş · {{names}}"
     },
+    "satelliteSites": {
+      "heading": "İzlenen konumlar · önümüzdeki {{hours}} sa",
+      "projecting": "Geçişler hesaplanıyor…",
+      "notLoaded": "Uyduya tekrar tıklayın; yörünge elemanları yüklenmedi.",
+      "failed": "Yeniden denemek için uyduya tekrar tıklayın; geçiş hesaplaması başarısız oldu.",
+      "viewFailed": "Yeniden denemek için uyduya tekrar tıklayın; konum listesi yüklenemedi.",
+      "unavailable": "Yeniden denemek için uyduya tekrar tıklayın; geçiş geometrisi bu yörünge elemanlarını reddetti.",
+      "signals": "Sinyal istihbaratı uydusu. Görüntüleyicisi olmadığından yer kapsaması modellenmiyor.",
+      "noProfile": "Bu uydu için sensör profili yok, bu nedenle yer kapsaması modellenmiyor.",
+      "geostationary": "Yerdurağan: tek bir boylamın üzerinde sabit, bu nedenle listelenecek geçiş yok.",
+      "badElements": "Yörünge elemanları okunamıyor.",
+      "none": "Önümüzdeki {{hours}} sa içinde kapsama alanına giren izlenen konum yok.",
+      "utc": "{{time}} UTC",
+      "inMinutes": "{{minutes}} dk içinde",
+      "inHours": "{{hours}} sa {{minutes}} dk içinde",
+      "offTrack": "yer izinden {{km}} km uzakta",
+      "swathEdge": "tarama şeridinin kenarında",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "Tür",
+        "operator": "İşletmeci",
+        "over": "Üzerinde",
+        "ocean": "Okyanus",
+        "altBand": "Yükseklik bandı",
+        "inclination": "Eğim",
+        "velocity": "Hız",
+        "types": {
+          "sar": "SAR Görüntüleme",
+          "optical": "Optik Görüntüleme",
+          "military": "Askeri",
+          "sigint": "SIGINT",
+          "signals": "Sinyal istihbaratı"
+        }
+      },
+      "tooOld_one": "Yörünge elemanları {{count}} günlük; geçişleri hesaplamak için çok eski.",
+      "tooOld_other": "Yörünge elemanları {{count}} günlük; geçişleri hesaplamak için çok eski.",
+      "count_one": "{{family}} kapsama alanında {{count}} konum",
+      "count_other": "{{family}} kapsama alanında {{count}} konum",
+      "passes_one": "{{count}} geçiş",
+      "passes_other": "{{count}} geçiş"
+    },
     "sheet": {
       "heading": "Uydu görüntü kanıtı",
       "window": "Son {{days}} gün, sonraki {{hours}} s",
