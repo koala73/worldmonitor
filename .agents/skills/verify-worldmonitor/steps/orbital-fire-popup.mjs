@@ -112,7 +112,9 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('mosaic text', (await mosaic.innerText()).replace(/\s+/g, ' '));
   const row = popup.locator('[data-orbital-imagery]');
   await row.waitFor({ timeout: 15_000 });
-  await page.waitForFunction(() => !document.querySelector('[data-orbital-imagery] .popup-imagery-status')?.textContent?.includes('Checking'), null, { timeout: 60_000 }).catch(() => {});
+  // An unavailable or error state is a finished row; a row still checking after 60 s fails the drive.
+  await page.waitForFunction(() => !document.querySelector('[data-orbital-imagery] .popup-imagery-status')?.textContent?.includes('Checking'), null, { timeout: 60_000 })
+    .catch(() => { throw new Error('the imagery row was still checking after 60 s'); });
   log('row text', (await row.innerText()).replace(/\s+/g, ' '));
   await popup.evaluate((el) => { el.scrollTop = 0; });
   await shot(`fire-${empty ? 'none' : 'image'}-${mobile ? 'mobile' : 'desktop'}-${theme}`);
