@@ -182,7 +182,7 @@ describe('orbital watch map focus', () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
       expect(calls.slice(-2)).toEqual(['cap:null', 'restore']);
       calls.length = 0;
-      openOrbitalShareLink({ point: PALM, pass: null }, null);
+      openOrbitalShareLink({ point: PALM, pass: null, view: 'sheet' }, null);
       await frames(40);
       expect(calls[0]).toBe(`cap:${ORBITAL_LOOKUP_MAX_ZOOM}`);
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
