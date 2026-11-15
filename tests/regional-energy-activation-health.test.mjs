@@ -43,3 +43,13 @@ test('regional deadlines use persistent NX and existing budgets capped at one da
   assert.deepEqual(anp.slice(2), [String(now + 1440 * 60000), 'NX']);
   assert.deepEqual(regionalEnergyRolloutCommands(now, 'preview'), []);
 });
+test('a Wingbits traffic series that never publishes becomes EMPTY at its deadline, despite being on-demand', () => {
+  const wingbits = 'airTrafficHistoryWingbits';
+  const status = (until) => classifyKey(wingbits, STANDALONE_KEYS[wingbits], { allowOnDemand: true }, {
+    keyStrens: new Map(), keyErrors: new Map(), keyMetaErrors: new Map(), keyMetaValues: new Map(),
+    activationStates: new Map([[wingbits, false]]),
+    rolloutPendingUntilMs: new Map(until ? [[wingbits, until]] : []), now,
+  }).status;
+  assert.equal(status(now + 1), 'ROLLOUT_PENDING');
+  assert.equal(status(now), 'EMPTY');
+});
