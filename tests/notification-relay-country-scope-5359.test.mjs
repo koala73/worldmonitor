@@ -212,6 +212,18 @@ describe('#5359 — real eventMatchesCountryScope drops out-of-scope domain even
   });
 });
 
+describe('aviation_traffic_collapse is attributed to the US', () => {
+  it('reaches a US-scoped rule and no other scope', () => {
+    const { buildCollapseNotification } = require(resolve(__dirname, '..', 'scripts', 'shared', 'air-traffic-detector.cjs'));
+    const onset = Date.parse('2026-11-13T20:50:00Z');
+    for (const kind of ['collapse', 'recovery']) {
+      const event = buildCollapseNotification({ kind, t: onset + 300_000, onset, ratio: kind === 'collapse' ? 0.42 : 0.91 });
+      assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), true, kind);
+      assert.equal(eventMatchesCountryScope(event, EASTERN_EUROPE_RULE), false, kind);
+    }
+  });
+});
+
 describe('#5359 — aviation publisher attaches countryCode (source-grep contract)', () => {
   const aviationSrc = readFileSync(
     resolve(__dirname, '..', 'scripts', 'seed-aviation.mjs'),

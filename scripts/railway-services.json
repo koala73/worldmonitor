@@ -94,6 +94,7 @@
       "scripts/shared/pizzint-history.cjs",
       "scripts/shared/air-traffic-aggregate.cjs",
       "scripts/shared/air-traffic-history.cjs",
+      "scripts/shared/air-traffic-detector.cjs",
       "scripts/shared/air-traffic-regions.cjs",
       "scripts/shared/wingbits-traffic.cjs",
       "scripts/shared/product-catalog.generated.json",

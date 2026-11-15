@@ -30,17 +30,27 @@ const GLOBAL_SNAPSHOT = [
 const GLOBAL_TOTALS = { usSeen: 1500, usAirborne: 1200, usLowClimbing: 200, usLowClimbingAirline: 150, euAirborne: 2000 };
 const EUROPE_ONLY = repeat(400, () => row(50, 10));
 
-function createRedis({ abortPipelines = 0, firstPipelineDelayMs = 0 } = {}) {
+function createRedis({ abortPipelines = 0, firstPipelineDelayMs = 0, seedHashes = null } = {}) {
   let pipelinesToAbort = abortPipelines;
   let pipelineDelayMs = firstPipelineDelayMs;
   const strings = new Map();
-  const hashes = new Map();
+  const hashes = new Map(seedHashes ?? []);
+  const lists = new Map();
   const expireAt = new Map();
   const run = ([verb, key, ...args]) => {
     switch (String(verb).toUpperCase()) {
       case 'GET': return strings.get(key) ?? null;
-      case 'SET': strings.set(key, args[0]); return 'OK';
+      case 'SET':
+        if (args.includes('NX') && strings.has(key)) return null;
+        strings.set(key, args[0]);
+        return 'OK';
       case 'HGET': return hashes.get(key)?.get(args[0]) ?? null;
+      case 'HGETALL': return [...(hashes.get(key) ?? new Map())].flat();
+      case 'LPUSH': {
+        if (!lists.has(key)) lists.set(key, []);
+        lists.get(key).unshift(args[0]);
+        return lists.get(key).length;
+      }
       case 'HSET': {
         if (!hashes.has(key)) hashes.set(key, new Map());
         const isNew = !hashes.get(key).has(args[0]);
@@ -99,6 +109,7 @@ function createRedis({ abortPipelines = 0, firstPipelineDelayMs = 0 } = {}) {
       .map((value) => JSON.parse(value)).sort((a, b) => a.t - b.t),
     expireAtFor: (day) => expireAt.get(`aviation:traffic:history:v1:${day}`),
     get: (key) => strings.get(key) ?? null,
+    list: (key) => lists.get(key) ?? [],
     close: () => new Promise((done) => server.close(done)),
   })));
 }
@@ -172,6 +183,18 @@ function get(port, requestPath) {
       response.on('end', () => resolve({ status: response.statusCode, headers: response.headers }));
     }).on('error', reject);
   });
+}
+
+// Every bin of the UTC days from..to holds the same ordinary OpenSky point, the
+// detector's four weeks of history.
+function historyHashes(from, to, point) {
+  const hashes = new Map();
+  for (let day = Date.parse(`${from}T00:00:00Z`); day <= Date.parse(`${to}T00:00:00Z`); day += 86_400_000) {
+    const bins = new Map();
+    for (let t = day; t < day + 86_400_000; t += 300_000) bins.set(String(t), JSON.stringify({ t, status: 'ok', ...point }));
+    hashes.set(`aviation:traffic:history:v1:${new Date(day).toISOString().slice(0, 10)}`, bins);
+  }
+  return hashes;
 }
 
 async function lane(snapshots, extraEnv, body, redisOptions) {
@@ -503,4 +526,46 @@ test('lane 24: a response that repeats one area and omits another is a gap, neve
     assert.equal(redis.points('2026-11-13', WINGBITS_PREFIX)[0].status, 'gap');
     assert.match(lines()[0], /status=gap reason=malformed attempts=3$/);
   });
+});
+
+// The detector runs after each OpenSky point. Four weeks of history read 150
+// airline departures per bin; the live snapshots drop to 30 (ratio 0.2) with
+// the national count unchanged, so the coverage check passes.
+const DEPARTURES_STOPPED = [
+  ...repeat(1000, () => row(35, -100)),
+  ...repeat(170, () => row(35, -100, { alt: 1000, vr: 5 })),
+  ...repeat(30, () => row(35, -100, { alt: 1000, vr: 5, callsign: 'DAL123  ' })),
+  ...repeat(300, () => row(ATL.lat, ATL.lon, { ground: true, alt: null })),
+  ...repeat(2000, () => row(50, 10)),
+  ...repeat(6500, () => row(-20, 130)),
+];
+const ORDINARY_HISTORY = { usSeen: 1500, euAirborne: 2000, usLowClimbingAirline: 150 };
+
+test('lane 25: two bins of collapsed departures against four weeks of history queue one critical alert', async () => {
+  const seedHashes = historyHashes('2026-10-14', '2026-11-08', ORDINARY_HISTORY);
+  await lane([GLOBAL_SNAPSHOT, DEPARTURES_STOPPED, DEPARTURES_STOPPED, DEPARTURES_STOPPED, DEPARTURES_STOPPED], {}, async ({ redis, relay }) => {
+    const queued = () => redis.list('wm:events:queue').map((m) => JSON.parse(m));
+    await relay.waitFor(() => queued().length >= 1, 'the collapse event');
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 5, 'two more bins after the collapse');
+    const events = queued();
+    assert.equal(events.length, 1, 'one event per collapse, not one per bin');
+    const [event] = events;
+    assert.equal(event.eventType, 'aviation_traffic_collapse');
+    assert.equal(event.severity, 'critical');
+    assert.equal(event.payload.countryCode, 'US');
+    assert.equal(event.payload.onset, '2026-11-13T20:35:00.000Z');
+    assert.match(event.payload.title, /^US airline departures fell to 20% of normal since 20:35 UTC$/);
+    assert.match(relay.output(), /\[AirTraffic\] collapse entered ratio=0\.20 onset=20:35Z/);
+    assert.match(relay.output(), /\[AirTrafficDetector\] t=2026-11-13T20:30:00\.000Z verdict=normal state=normal ratio=1\.00 europe=1\.00 coverage=1\.00\(baseline\)/);
+    assert.equal(JSON.parse(redis.get('aviation:traffic:detector:v1')).state, 'collapsed');
+  }, { seedHashes });
+});
+
+test('lane 26: with under two weeks of history the detector stays silent', async () => {
+  const seedHashes = historyHashes('2026-11-05', '2026-11-08', ORDINARY_HISTORY);
+  await lane([GLOBAL_SNAPSHOT, DEPARTURES_STOPPED], {}, async ({ redis, relay }) => {
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 4, 'four bins');
+    assert.equal(redis.list('wm:events:queue').length, 0);
+    assert.match(relay.output(), /verdict=insufficient-baseline/);
+  }, { seedHashes });
 });
