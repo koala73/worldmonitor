@@ -99,7 +99,8 @@ export function crossGeometryConsensus(params = {}) {
           candidate = null;
           continue;
         }
-        if (candidate.changes.every((r) => Number.isFinite(observation.values[r.component]))) {
+        // Only an orbit that can score the same bands can disagree.
+        if (baseline.length >= t.minBaselineScenes && candidate.changes.every((r) => Number.isFinite(observation.values[r.component]))) {
           events.push(event('retracted', observation, []));
           candidate = null;
         }
