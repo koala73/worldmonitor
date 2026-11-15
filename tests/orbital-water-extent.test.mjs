@@ -193,7 +193,7 @@ describe('reservoir water extent: producer', () => {
       features: [scene(id, 1)],
       links: token ? [{ rel: 'next', method: 'POST', href: 'https://planetarycomputer.microsoft.com/api/stac/v1/search', body: { token }, merge: true }] : [],
     });
-    const search = makeSceneSearch(async (url, init) => {
+    const search = makeSceneSearch(async (_url, init) => {
       const body = JSON.parse(init.body);
       posts.push(body);
       const n = posts.length;
