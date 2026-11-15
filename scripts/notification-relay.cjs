@@ -536,7 +536,14 @@ async function lremPipeline(key, rawItems) {
     return rawItems.map(() => 'failed-timed-out');
   }
   if (!res.ok) return rawItems.map(() => 'failed-non-ok');
-  const results = await res.json().catch(() => null);
+  let results;
+  try {
+    results = await res.json();
+  } catch (err) {
+    // Reading the body can hit the same timeout; only a body that parsed badly is a refusal.
+    if (!(err instanceof SyntaxError)) return rawItems.map(() => 'failed-timed-out');
+    results = null;
+  }
   if (!Array.isArray(results) || results.length !== rawItems.length) return rawItems.map(() => 'failed-non-ok');
   return results.map((entry) => {
     const removed = entry && typeof entry === 'object' && !entry.error ? entry.result : null;
