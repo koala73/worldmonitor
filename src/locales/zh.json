@@ -2333,7 +2333,7 @@
       "proLocked": "升级至PRO以查看商品脆弱性评分"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>霍尔木兹贸易追踪器</strong> WTO DataLab 关于霍尔木兹海峡日度船运指数：离开波斯湾的原油、液化天然气和化肥，以及抵达的农产品。按体积计，2025年1月至3月平均值 = 100，仅包括AIS可见船只。图表为日度数据；状态来自WTO评论。",
+      "infoTooltip": "<strong>霍尔木兹贸易追踪</strong> WTO DataLab 关于霍尔木兹海峡的日货运指数：离开波斯湾的原油、液化天然气和化肥，以及抵达的农产品。按体积计，2025年1–3月平均值 = 100，仅包括 AIS 可见船舶。图表为日度数据；状态来自WTO评论。",
       "title": "霍尔木兹贸易追踪",
       "noData": "无数据",
       "notAvailable": "不适用",

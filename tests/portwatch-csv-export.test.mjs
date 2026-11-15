@@ -221,6 +221,23 @@ for (const [label, probe] of [
   });
 }
 
+test('fetchAll keeps the CSV year-earlier baseline when newer queried history comes without one', async (t) => {
+  stubNetwork(t, () => new Response(CSV, { status: 200 }), null, (url) => {
+    if (url.includes('latest_date')) return Response.json({ features: [{ attributes: { latest_date: '2026-11-01' } }] });
+    if (url.includes("portname='Korea Strait'") && url.includes('outStatistics')) return new Response('down', { status: 503 });
+    if (url.includes("portname='Korea Strait'")) {
+      return Response.json({ features: [{ attributes: { date: Date.parse('2026-11-01T00:00:00Z'), n_total: 140 } }] });
+    }
+    return null;
+  });
+  const result = await fetchAll();
+  assert.equal(result.korea_strait.history.at(-1).date, '2026-11-01', 'the newer queried history is kept');
+  // The flow seeder measures oil flow against this baseline; dropping it would
+  // fall back to a trailing window that reads a long closure as normal.
+  assert.equal(result.korea_strait.baseline?.avgDaily, 222.1);
+  assert.equal(result.korea_strait.baseline?.capTankerAvgDaily, 826712);
+});
+
 test('fetchAll skips the latest-day probe when the fetch deadline leaves no margin for it', async (t) => {
   const calls = stubNetwork(t, () => new Response(CSV, { status: 200 }));
   const result = await fetchAll({ fetchDeadlineAtMs: NOW + 5_000 });

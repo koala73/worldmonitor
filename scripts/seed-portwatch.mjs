@@ -145,6 +145,10 @@ export async function fetchBaselineStats(portname, { fromEpoch, toEpoch }, timeo
       { statisticType: 'avg', onStatisticField: 'n_total', outStatisticFieldName: 'avg_total' },
       { statisticType: 'avg', onStatisticField: 'n_tanker', outStatisticFieldName: 'avg_tanker' },
       { statisticType: 'avg', onStatisticField: 'capacity_tanker', outStatisticFieldName: 'avg_cap_tanker' },
+      { statisticType: 'count', onStatisticField: 'n_tanker', outStatisticFieldName: 'tanker_days' },
+      // Days with tanker DWT reported. A zero-filled gap lowers the mean, so the
+      // mean only defines normal when most days carry DWT.
+      { statisticType: 'sum', onStatisticField: 'CASE WHEN capacity_tanker > 0 THEN 1 ELSE 0 END', outStatisticFieldName: 'cap_tanker_days' },
       { statisticType: 'count', onStatisticField: 'n_total', outStatisticFieldName: 'day_count' },
     ]),
     f: 'json',
@@ -208,10 +212,16 @@ export function buildBaseline(stats, window) {
   const days = Number(stats?.day_count);
   if (!Number.isFinite(avg) || avg < 0 || !Number.isInteger(days) || days < BASELINE_MIN_DAYS) return null;
   const baseline = { avgDaily: Math.round(avg * 10) / 10, days, from: window.from, to: window.to };
+  // Each tanker mean needs its own coverage: the day gate above counts n_total.
   const tanker = finiteNonNegative(stats.avg_tanker);
-  if (tanker !== null) baseline.tankerAvgDaily = Math.round(tanker * 10) / 10;
+  if (tanker !== null && Number(stats.tanker_days) >= BASELINE_MIN_DAYS) {
+    baseline.tankerAvgDaily = Math.round(tanker * 10) / 10;
+  }
+  // Same majority rule the flow seeder applies to its trailing window.
   const capTanker = finiteNonNegative(stats.avg_cap_tanker);
-  if (capTanker !== null) baseline.capTankerAvgDaily = Math.round(capTanker);
+  if (capTanker !== null && Number(stats.cap_tanker_days) >= Math.ceil(days / 2)) {
+    baseline.capTankerAvgDaily = Math.round(capTanker);
+  }
   return baseline;
 }
 
@@ -312,6 +322,8 @@ export function chokepointsFromCsv(text, sinceEpoch, window) {
       avg_tanker: mean(base.tanker),
       avg_cap_tanker: mean(base.capTanker),
       day_count: base.total.length,
+      tanker_days: base.tanker.length,
+      cap_tanker_days: base.capTanker.filter(v => v > 0).length,
     };
     result[id] = { history, wowChangePct: computeWow(history), baseline: buildBaseline(stats, window) };
   }
@@ -580,7 +592,10 @@ async function fetchFresh(sinceEpoch, window, fetchDeadlineAtMs, prior) {
       return fresh;
     }
     for (const [id, entry] of Object.entries(queried)) {
-      if (lastHistoryDate(entry) > lastHistoryDate(fresh[id])) fresh[id] = entry;
+      if (lastHistoryDate(entry) <= lastHistoryDate(fresh[id])) continue;
+      // Newer history whose own baseline request failed keeps the CSV's
+      // baseline for the same window; the flow seeder depends on it.
+      fresh[id] = entry.baseline || !fresh[id]?.baseline ? entry : { ...entry, baseline: fresh[id].baseline };
     }
     return fresh;
   } catch (e) {

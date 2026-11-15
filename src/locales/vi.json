@@ -2333,7 +2333,7 @@
       "proLocked": "Nâng cấp lên PRO để xem điểm số lỗ hổng hàng hóa"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Các chỉ số lô hàng hàng ngày của WTO DataLab cho Eo biển Hormuz: dầu thô, LNG và phân bón xuất khẩu từ Vịnh, hàng nông sản nhập khẩu. Theo khối lượng, trung bình tháng 1–3 năm 2025 = 100, chỉ những tàu có thể nhìn thấy trên AIS. Biểu đồ là hàng ngày; trạng thái được lấy từ bình luận của WTO.",
+      "infoTooltip": "<strong>Theo dõi Thương mại Hormuz</strong> chỉ số lưu lượng hàng ngày từ WTO DataLab cho Eo biển Hormuz: dầu thô, LNG và phân bón rời khỏi Vịnh, hàng nông sản đến. Theo khối lượng, trung bình tháng 1–3 năm 2025 = 100, chỉ các tàu có tín hiệu AIS. Biểu đồ là hàng ngày; trạng thái được lấy từ bình luận của WTO.",
       "title": "Theo dõi Thương mại Hormuz",
       "noData": "Không có dữ liệu",
       "notAvailable": "N/A",

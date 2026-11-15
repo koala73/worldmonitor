@@ -2353,7 +2353,7 @@
       "proLocked": "Esegui l'upgrade a PRO per la valutazione della vulnerabilità delle materie prime"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Indici giornalieri di spedizioni WTO DataLab per lo Stretto di Hormuz: petrolio greggio, GNL e fertilizzanti in uscita dal Golfo, prodotti agricoli in arrivo. Per volume, media gennaio–marzo 2025 = 100, solo navi visibili su AIS. I grafici sono giornalieri; lo stato è tratto dal commento WTO.",
+      "infoTooltip": "<strong>Tracker Commerciale Hormuz</strong> – indici giornalieri di spedizioni WTO DataLab per lo Stretto di Hormuz: petrolio greggio, GNL e fertilizzanti in uscita dal Golfo, merci agricole in ingresso. Per volume, media gennaio–marzo 2025 = 100, solo navi visibili su AIS. I grafici sono giornalieri; lo stato è tratto dal commento WTO.",
       "title": "Tracker Commerciale Hormuz",
       "noData": "Nessun dato",
       "notAvailable": "N/D",

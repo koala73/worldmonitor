@@ -2363,7 +2363,7 @@
       "proLocked": "Uaktualnij do PRO, aby zobaczyć ocenę podatności surowców"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> – dzienne indeksy wysyłek WTO DataLab dla Cieśniny Hormuza: ropa naftowa, LNG i nawozy opuszczające Zatokę, towary rolne przybywające. W ujęciu wolumenowym, średnia styczeń–marzec 2025 = 100, tylko vessels widoczne w AIS. Wykresy są dzienne; status pochodzi z komentarzy WTO.",
+      "infoTooltip": "<strong>Tracker Handlu przez Hormuz</strong> — codzienne indeksy wysyłek WTO DataLab dla Cieśniny Hormuz: ropa naftowa, LNG i nawozy opuszczające Zatokę, towary rolne przybywające. Według objętości, średnia ze stycznia–marca 2025 = 100, tylko statki widoczne w AIS. Wykresy są dzienne; status pochodzi z komentarzy WTO.",
       "title": "Tracker Handlu przez Hormuz",
       "noData": "Brak danych",
       "notAvailable": "Niedostępne",

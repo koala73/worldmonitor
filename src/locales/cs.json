@@ -2363,7 +2363,7 @@
       "proLocked": "Upgradujte na PRO pro skórování zranitelnosti komodit"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> – denní indexy zásilek WTO DataLab pro Hormuzský průliv: ropa, LNG a hnojiva opouštějící Perský záliv, zemědělské zboží přicházející. Podle objemu, průměr led.–březen 2025 = 100, pouze plavidla viditelná přes AIS. Grafy jsou denní; stav je z komentářů WTO.",
+      "infoTooltip": "<strong>Sledování obchodu v Hormuzu</strong> denní indexy zásilek WTO DataLab pro Hormuzský průliv: surová ropa, LNG a hnojiva vyvážená z Perského zálivu, zemědělské produkty přicházející. Dle objemu, průměr za leden–březen 2025 = 100, pouze AIS-viditelné lodě. Grafy jsou denní; stav je z komentářů WTO.",
       "title": "Sledování obchodu v Hormuzu",
       "noData": "Žádná data",
       "notAvailable": "N/A",

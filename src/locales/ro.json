@@ -2353,7 +2353,7 @@
       "proLocked": "Actualizare la PRO pentru scoruri de vulnerabilitate a mărfurilor"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> indexuri zilnice de expedieri WTO DataLab pentru Strâmtoarea Ormuz: petrol brut, GNL și îngrășăminte care pleacă din Golf, produse agricole care sosesc. După volum, media ianuarie–martie 2025 = 100, doar nave vizibile pe AIS. Graficele sunt zilnice; statusul provine din comentariile WTO.",
+      "infoTooltip": "<strong>Urmăritor Comerț Hormuz</strong> indici zilnici ai expedierilor WTO DataLab pentru Strâmtoarea Hormuz: petrol brut, GNL și îngrășământ plecând din Golf, produse agricole care sosesc. După volum, media ianuarie–martie 2025 = 100, doar vase vizibile AIS. Graficele sunt zilnice; statusul provine din comentariile WTO.",
       "title": "Urmăritor Comerț Hormuz",
       "noData": "Nicio dată",
       "notAvailable": "N/A",

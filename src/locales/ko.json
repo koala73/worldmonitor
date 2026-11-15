@@ -2333,7 +2333,7 @@
       "proLocked": "PRO로 업그레이드하여 원자재 취약성 점수 확인"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> WTO DataLab의 호르무즈 해협 일일 해운 지수: 페르시만에서 출항하는 원유, LNG, 비료 및 농산물 도착. 거래량 기준, 2025년 1월~3월 평균 = 100, AIS 추적 가능 선박만 해당. 차트는 일별 데이터이며, 상태는 WTO 논평에서 발췌.",
+      "infoTooltip": "<strong>호르무즈 무역 추적기</strong> WTO DataLab의 호르무즈 해협 일일 해운 지수: 걸프만에서 나가는 원유, LNG, 비료 및 도착하는 농산물. 부피 기준, 2025년 1~3월 평균 = 100, AIS 식별 가능 선박만 포함. 차트는 일별 데이터이며, 상태는 WTO 논평에서 발췌.",
       "title": "호르무즈 무역 추적기",
       "noData": "데이터 없음",
       "notAvailable": "해당 없음",

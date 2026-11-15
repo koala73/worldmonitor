@@ -361,14 +361,30 @@ test('baseline window is the 12 UTC-aligned months ending one year ago, with inc
 
 test('buildBaseline carries the year-earlier tanker count and tanker DWT when the row has them', () => {
   assert.deepEqual(
-    buildBaseline({ avg_total: 87.4, avg_tanker: 49.27945205479452, avg_cap_tanker: 2294290.520547945, day_count: 365 }, WINDOW),
+    buildBaseline({ avg_total: 87.4, avg_tanker: 49.27945205479452, avg_cap_tanker: 2294290.520547945, day_count: 365, tanker_days: 365, cap_tanker_days: 365 }, WINDOW),
     { avgDaily: 87.4, days: 365, from: '2024-10-22', to: '2025-10-21', tankerAvgDaily: 49.3, capTankerAvgDaily: 2294291 },
   );
   // A malformed tanker statistic is dropped; the total-traffic baseline stands.
   assert.deepEqual(
-    buildBaseline({ avg_total: 87.4, avg_tanker: 'x', avg_cap_tanker: -5, day_count: 365 }, WINDOW),
+    buildBaseline({ avg_total: 87.4, avg_tanker: 'x', avg_cap_tanker: -5, day_count: 365, tanker_days: 365, cap_tanker_days: 365 }, WINDOW),
     { avgDaily: 87.4, days: 365, from: '2024-10-22', to: '2025-10-21' },
   );
+});
+
+test('buildBaseline withholds a tanker mean whose own coverage is too thin to define normal', () => {
+  const base = { avgDaily: 87.4, days: 365, from: '2024-10-22', to: '2025-10-21' };
+  // 20 DWT days at 50,000 among 345 zero days average 2,740: a false normal
+  // that would read an ordinary week as 150% of baseline.
+  assert.deepEqual(
+    buildBaseline({ avg_total: 87.4, avg_tanker: 49.3, avg_cap_tanker: 2740, day_count: 365, tanker_days: 365, cap_tanker_days: 20 }, WINDOW),
+    { ...base, tankerAvgDaily: 49.3 },
+  );
+  assert.deepEqual(
+    buildBaseline({ avg_total: 87.4, avg_tanker: 49.3, avg_cap_tanker: 2294291, day_count: 365, tanker_days: BASELINE_MIN_DAYS - 1, cap_tanker_days: 365 }, WINDOW),
+    { ...base, capTankerAvgDaily: 2294291 },
+  );
+  // A row without coverage counts cannot vouch for its means.
+  assert.deepEqual(buildBaseline({ avg_total: 87.4, avg_tanker: 49.3, avg_cap_tanker: 2294291, day_count: 365 }, WINDOW), base);
 });
 
 test('fetchBaselineStats asks ArcGIS for the tanker count and tanker DWT means', async () => {
@@ -384,6 +400,8 @@ test('fetchBaselineStats asks ArcGIS for the tanker count and tanker DWT means',
   const byName = Object.fromEntries(stats.map((s) => [s.outStatisticFieldName, `${s.statisticType}:${s.onStatisticField}`]));
   assert.equal(byName.avg_tanker, 'avg:n_tanker');
   assert.equal(byName.avg_cap_tanker, 'avg:capacity_tanker');
+  assert.equal(byName.tanker_days, 'count:n_tanker');
+  assert.equal(byName.cap_tanker_days, 'sum:CASE WHEN capacity_tanker > 0 THEN 1 ELSE 0 END');
 });
 
 test('buildBaseline rounds the mean to one decimal and rejects malformed or thin rows', () => {

@@ -2627,7 +2627,7 @@
       "proLocked": "Frissítsen PRO verzióra az árucikk-sebezhetőségi pontszám megtekintéséhez"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> WTO DataLab napi szállítmányindexei a Hormuz-szorosra: nyersolaj, LNG és műtrágya, amely elhagyja a Öbölt, illetve élelmiszerek, amelyek megérkeznek. Hangerő szerint: január–március 2025 átlaga = 100, csak AIS-látható hajók. A diagramok napi adatok; az állapot a WTO megjegyzéseiből származik.",
+      "infoTooltip": "<strong>Hormuzi kereskedelemkövető</strong> WTO DataLab napi szállítmányindexei a Hormuz-szorosra: az Öbölből eltávozó kőolaj, LNG és műtrágya, valamint az érkező mezőgazdasági termékek. Volumen szerint, 2025. január–márciusi átlag = 100, csak AIS-látható hajók. A diagramok napi adatok; az állapot a WTO megjegyzéseiből származik.",
       "title": "Hormuzi kereskedelemkövető",
       "noData": "Nincs adat",
       "notAvailable": "N/A",
@@ -2637,12 +2637,12 @@
         "unavailable": "Hormuz adatok nem érhetőek el",
         "failedToLoad": "Betöltés sikertelen"
       },
-      "analysisDate": "WTO megjegyzések: {{date}}",
+      "analysisDate": "WTO-kommentár {{date}}",
       "indexNote": "Szállítmányi index térfogat szerint, 2025. január–márciusi átlag = 100",
       "units": {
         "index": "index"
       },
-      "dataThrough": "Napi adatok: {{date}}",
+      "dataThrough": "Napi adatok eddig: {{date}}",
       "noShipments": "Nincs szállítmány rögzítve {{from}} és {{to}} között"
     },
     "liveWebcams": {
