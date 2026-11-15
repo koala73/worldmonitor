@@ -1,5 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
+import i18next from 'i18next';
+
 import { initTestI18n } from './helpers/i18n.mts';
 
 const flag = vi.hoisted(() => ({ ORBITAL_WATCH_ENABLED: false }));
@@ -99,6 +101,20 @@ describe('map locate control', () => {
     expect(document.querySelector('[role="menu"]')).toBeNull();
     expect(status(control).hidden).toBe(false);
     expect(status(control).textContent).toBe(line);
+  });
+
+  it('reads the recovery line before the lazy dictionary has loaded', async () => {
+    const components = i18next.store.data.en!.translation as { components: Record<string, unknown> };
+    const lazy = components.components.mapLocate;
+    delete components.components.mapLocate;
+    try {
+      requestDevicePosition.mockResolvedValue({ ok: false, reason: 'denied' });
+      const { control } = mountControl();
+      await control.locate();
+      expect(status(control).textContent).toBe('Location access denied. Use Search to find a place.');
+    } finally {
+      components.components.mapLocate = lazy;
+    }
   });
 
   it('points to Search when nothing applies at the located point', async () => {

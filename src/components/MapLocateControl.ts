@@ -112,10 +112,10 @@ export class MapLocateControl {
     const message = {
       idle: '',
       located: '',
-      locating: t('components.mapLocate.locating'),
-      denied: t('components.mapLocate.denied'),
-      unavailable: t('components.mapLocate.unavailable'),
-      empty: t('components.mapLocate.noCountry'),
+      locating: t('components.mapLocate.locating', { defaultValue: 'Locating…' }),
+      denied: t('components.mapLocate.denied', { defaultValue: 'Location access denied. Use Search to find a place.' }),
+      unavailable: t('components.mapLocate.unavailable', { defaultValue: 'Location not found. Use Search to find a place.' }),
+      empty: t('components.mapLocate.noCountry', { defaultValue: 'No country at your location. Use Search to find a place.' }),
     }[state];
     this.status.textContent = message;
     this.status.hidden = message === '';
