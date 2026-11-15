@@ -864,8 +864,8 @@ export class OrbitalWatchPage {
     this.state = state;
     this.sheet.dataset.state = state.kind === 'passes' ? (state.archives.kind === 'answered' ? 'answered' : 'checking') : state.kind;
     const active = document.activeElement as HTMLElement | null;
-    // The timeline slot is the same element after the render, so a mark in it keeps its focus.
-    const inTimeline = active !== null && this.slots.timeline.contains(active);
+    // The timeline and satellites slots are the same elements after the render, so a control in one keeps its focus.
+    const inTimeline = active !== null && (this.slots.timeline.contains(active) || this.slots.satellites.contains(active));
     const focusKey = !inTimeline && this.body.contains(active) ? active?.dataset.key ?? active?.dataset.action ?? null : null;
     // Re-attaching the timeline slot resets its sideways scroll, so carry it over.
     const timelineLeft = this.slots.timeline.scrollLeft;

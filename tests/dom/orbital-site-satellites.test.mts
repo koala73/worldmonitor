@@ -135,7 +135,7 @@ describe('#10713 unit 3: a watched site links back to the satellites covering it
     expect(section()!.textContent).toContain(tt('orbitalWatch.siteSatellites.notLoaded'));
   });
 
-  it('folds a busy site after the first rows, and keeps the fold open when the sheet redraws', async () => {
+  it('folds a busy site after the first rows, and keeps the fold open and focused when the sheet redraws', async () => {
     const many = Array.from({ length: 9 }, (_, i) => covering(String(99100 + i), `SAT-${i}`, NOW + (i + 4) * HOUR));
     coverage.covering.mockResolvedValue(many);
     let answer!: (value: OrbitalEvidence) => void;
@@ -147,12 +147,14 @@ describe('#10713 unit 3: a watched site links back to the satellites covering it
     const more = section()!.querySelector<HTMLButtonElement>('.ies-more')!;
     expect(more.textContent).toBe(tt('orbitalWatch.capability.showAll', { count: 9 }));
     more.click();
+    more.focus();
     expect(visible()).toBe(9);
     answer(evidence());
     await vi.waitFor(() => expect(evidenceMock).toHaveBeenCalled());
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(visible()).toBe(9);
     expect(section()!.querySelector('.ies-more')!.textContent).toBe(tt('orbitalWatch.capability.showFewer'));
+    expect(document.activeElement).toBe(section()!.querySelector('.ies-more'));
   });
 
   it('says no tracked satellite covers the site in the window', async () => {

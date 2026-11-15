@@ -44,6 +44,7 @@ let timelinePasses: Pick<OrbitalTimelineInput, 'lookup' | 'passes' | 'acquisitio
 let pointContext: PointContextState = { kind: 'loading' };
 /** The watched site at the open point and the tracked satellites over it, or null for any other point. */
 let siteSatellites: { site: CoverageSite; state: SiteSatellitesState } | null = null;
+const SITE_SATELLITES_TICK_MS = 30_000;
 let markFrame: number | null = null;
 let centredFor: string | null = null;
 /** Where the map was before the lookup first moved it; closing puts it back, so the point never becomes the map centre. */
@@ -228,12 +229,15 @@ function drawSiteSatellites(): void {
     return;
   }
   const expanded = slot.querySelector('[data-section="site-satellites"] .ies-more')?.getAttribute('aria-expanded') === 'true';
+  const focused = document.activeElement instanceof HTMLElement && slot.contains(document.activeElement) ? document.activeElement : null;
+  const refocus = focused?.classList.contains('ies-more') ? '.ies-more' : focused?.dataset.key ? `[data-key="${CSS.escape(focused.dataset.key)}"]` : null;
   slot.replaceChildren(siteSatellitesSection(siteSatellites.site, siteSatellites.state, {
     nowMs: Date.now(),
     passKey: lookupPassKey,
     selectedKey: selectedKey(),
     expanded,
   }));
+  if (refocus) slot.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
 }
 
 /**
@@ -259,8 +263,20 @@ async function loadSiteSatellites(found: PointPassLookup, signal: AbortSignal): 
       draw({ kind: 'not-loaded' });
       return;
     }
-    const satellites = await satellitesCoveringSite({ site, tles, nowMs: Date.now(), signal });
-    if (!signal.aborted) draw({ kind: 'ok', satellites });
+    const project = async () => {
+      const satellites = await satellitesCoveringSite({ site, tles, nowMs: Date.now(), signal });
+      if (!signal.aborted) draw({ kind: 'ok', satellites });
+    };
+    await project();
+    if (signal.aborted) return;
+    // The open list moves with the clock: elapsed passes drop out and, once its window has
+    // slid far enough, the cached scans renew, so no past pass is labelled upcoming.
+    const clock = setInterval(() => {
+      project().catch((error: unknown) => {
+        if (!isAbort(error) && !signal.aborted) draw({ kind: 'failed' });
+      });
+    }, SITE_SATELLITES_TICK_MS);
+    signal.addEventListener('abort', () => clearInterval(clock), { once: true });
   } catch (error) {
     if (!isAbort(error) && !signal.aborted) draw({ kind: 'failed' });
   }
