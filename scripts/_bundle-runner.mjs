@@ -10,17 +10,19 @@
  *   import { runBundle } from './_bundle-runner.mjs';
  *   await runBundle('ecb-eu', [ { label, script, seedMetaKey, freshnessMetaKey, completionMetaKey, intervalMs, timeoutMs } ]);
  *
- * Budget (opt-in): a wall-time cap that WE impose, not a platform limit.
+ * Budget (opt-in): a project-set admission limit, not a platform limit.
  * Railway does not terminate a cron run (docs.railway.com/cron-jobs: it skips
  * the next scheduled run while the previous one is still active), and
  * seed-bundle-energy-sources finished a 607.5s run in one container on
  * 2026-11-06. #3094 assumed a 10min container kill from a portwatch run whose
- * last section died with no output; that cause was never confirmed. The cap
- * keeps one tick short and predictable so it does not eat the next tick.
- * Callers can pass `{ maxBundleMs }` to enforce the wall-time
- * budget — sections whose worst-case timeout wouldn't fit in the remaining
- * budget are deferred to the next tick. Default is Infinity (no budget) so
- * existing bundles whose individual sections already exceed 9min (e.g.
+ * last section died with no output; that cause was never confirmed.
+ * Callers can pass `{ maxBundleMs }` to limit section admission: sections
+ * whose worst-case timeout would not fit in the remaining budget are deferred.
+ * This reduces the risk of running into the next scheduled tick, but does not
+ * prevent it: derived-signals has a 570s budget and a 5-minute schedule.
+ * The budget does not guarantee a maximum tick duration. Freshness reads and
+ * onTerminalComplete can continue after it is exhausted.
+ * Default is Infinity (no budget), so bundles whose sections exceed 9min (e.g.
  * 600_000-1 timeouts in imf-extended, energy-sources) are not silently
  * broken by adopting the runner.
  *

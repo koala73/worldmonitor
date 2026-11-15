@@ -53,10 +53,10 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS_DIR = join(resolve(__dirname, '..'), 'scripts');
 
-// Project policy: one bundle tick stays under 10 minutes. This is our cap, not
+// Project policy: configured admission budgets stay under 10 minutes. This is not
 // a Railway limit — Railway does not kill cron runs, it skips the next tick
 // while one is still active (see scripts/_bundle-runner.mjs). A budget at or
-// above the cap is not a budget.
+// above the cap violates this policy; tick duration is not bounded here.
 const BUNDLE_WALL_CAP_MS = 600_000;
 
 /**
@@ -113,11 +113,11 @@ function readBudgetedBundles() {
     // The budget only means anything if it is under the ceiling it exists to
     // stay beneath. Nothing else in the repo checks this: a bundle declaring
     // maxBundleMs 900_000 would satisfy every per-section assertion below and
-    // still let one tick run past the cap.
+    // still violate the admission budget policy.
     assert.ok(
       maxBundleMs < BUNDLE_WALL_CAP_MS,
       `${name}: maxBundleMs ${maxBundleMs}ms is at or above the ${BUNDLE_WALL_CAP_MS}ms bundle wall cap. `
-      + 'Keep every bundle tick under the cap.',
+      + 'Keep configured admission budgets under the cap.',
     );
 
     const sections = extractBundleSections(src);

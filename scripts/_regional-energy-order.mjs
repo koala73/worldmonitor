@@ -1,4 +1,4 @@
-// A bundle tick is capped below 10 minutes (our own cap), so it has 570 s. Four
+// The regional-energy bundle has a 570 s admission budget. Four
 // 120 s sections (plus kill grace and preflight headroom) fit together; more
 // would let a run of timeouts push later feeds out of every tick.
 export const REGIONAL_ENERGY_LEAD_GROUP_SIZE = 4;

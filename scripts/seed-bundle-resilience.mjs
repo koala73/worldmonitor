@@ -64,8 +64,8 @@ await runBundle('resilience', [
   // those long-cadence sections skip and the 180s reservation fits after Scores.
   { label: 'Five-Factor-Scorecard', script: 'seed-five-factor-scorecard.mjs', seedMetaKey: 'scorecard:five-factor', intervalMs: DAY, timeoutMs: 180_000 },
 ], {
-  // Our own wall cap keeps a tick under 10 minutes (Railway does not kill cron
-  // runs; see scripts/_bundle-runner.mjs). The runner admits a section only
+  // Our admission budget is 570s (see scripts/_bundle-runner.mjs).
+  // The runner admits a section only
   // when `timeoutMs + KILL_GRACE_MS` still fits the remaining budget, so without
   // this a 600s section plus grace could start with no room to finish inside
   // the cap instead of being skipped cleanly. Every section above must

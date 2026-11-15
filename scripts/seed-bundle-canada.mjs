@@ -115,7 +115,7 @@ const sections = CANADA_SECTIONS.filter((section) => {
 });
 
 await runBundle('Canada', sections, {
-  // Keep a tick under our 10-minute wall cap. Defer sections whose full
+  // Limit section admission to the configured budget. Defer sections whose full
   // timeout plus SIGTERM/SIGKILL grace cannot fit, preserving completed work
   // and the terminal reason in logs.
   maxBundleMs: 570_000,

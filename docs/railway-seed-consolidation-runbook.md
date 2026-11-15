@@ -1082,8 +1082,8 @@ detects old source material.
 ### Bundle 3 heavy: seed-bundle-static-ref-heavy (live, #6806)
 
 Arms-Suppliers (380s reservation) and Military-Bases (410s) cannot share a 570s
-tick — the bundle wall cap keeps every tick under 10 minutes. That cap is our
-own: Railway does not terminate a cron run, it skips the next tick while one is
+admission budget. Project policy keeps configured budgets below 600s; it
+does not guarantee a maximum tick duration. Railway skips the next tick while one is
 still active. They CAN share a bundle: the runner defers whichever loses the tick
 to the next daily fire, and at 14-day and 30-day cadences a one-day deferral
 costs nothing. One service carries all three heavy members instead of three
@@ -1180,7 +1180,7 @@ any red check anywhere strands this service's builds.
 | **Net savings** | 1 slot |
 | **Members** | CII Economic Stress (1h), Correlation (5min), Market-Alert-Ledger (5min), Cross-Source Signals (15min), US States Grid Disruption Clock (10min), Cross-Strait Activity (3h), China Decision Signals (15min), Regional Snapshots (6h), Tension Evidence (15min) |
 | **Required env** | `JAPAN_MOD_PROXY_URL` or `PROXY_URL` (Cross-Strait Activity's Japan MOD exit; the section declares an any-of group, so either satisfies it and only an environment with neither fails as `CONFIG_ERROR`) |
-| **Note** | US States Grid Disruption Clock polls public outage and warning feeds. Cross-Strait Activity uses bounded MND/Japan MOD requests and a 3h freshness gate. China Decision Signals validates and republishes the public composition from its domain lanes. The bundle enforces a 570s wall-time admission budget so a non-fitting due section defers instead of pushing the tick past the 600-second wall cap. |
+| **Note** | US States Grid Disruption Clock polls public outage and warning feeds. Cross-Strait Activity uses bounded MND/Japan MOD requests and a 3h freshness gate. China Decision Signals validates and republishes the public composition from its domain lanes. The bundle enforces a 570s wall-time admission budget so a non-fitting due section defers. This does not guarantee completion before the next five-minute tick or a maximum tick duration. |
 
 CII Economic Stress reads six existing Redis inputs within a 30s section budget.
 The currency member needs the cleaned `daily90` block from `seed-fx-yoy`, which

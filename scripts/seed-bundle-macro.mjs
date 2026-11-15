@@ -142,7 +142,7 @@ const sections = orderMacroSections(
 );
 
 await runBundle('macro', sections, {
-  // Keep a tick under our 10-minute wall cap. Defer sections whose full
+  // Limit section admission to the configured budget. Defer sections whose full
   // timeout plus SIGTERM/SIGKILL grace cannot fit, preserving completed work
   // and the terminal reason in logs. Bounded parallel freshness reads prevent
   // late per-member Redis reads from consuming the cursor's acknowledgement

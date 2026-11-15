@@ -24,8 +24,8 @@ export const MIN_COMPLETE_SIPRI_IMPORTER_COUNT = 25;
 // Measured 2026-08-18 against atbackend.sipri.org: a single importer POST takes
 // mean 31.8s / p90 37.3s, not the ~10.6s this file was sized on. At concurrency
 // 8 the full ~200-importer refresh therefore needs ~800s, and it cannot be made
-// to fit: every bundle tick is capped at 600s (our own wall cap; Railway does
-// not kill cron runs), so no fetch deadline and no bundle budget can hold it.
+// to fit the existing admission budgets. Project policy keeps configured
+// budgets below 600s; this is not a Railway termination limit.
 // Raising concurrency is not the escape either --
 // sequential samples climbed 23.2s -> 37.3s as they accumulated, which reads as
 // upstream throttling, and the importer POSTs share a host with

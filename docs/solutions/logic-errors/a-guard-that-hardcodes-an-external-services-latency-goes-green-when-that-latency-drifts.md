@@ -40,7 +40,7 @@ The blast radius is the giveaway: a 390.9s failure inside a 570s budget leaves 1
 
 **Raising concurrency (shipped, didn't help).** An earlier fix moved `concurrency` 4 → 8 on the arithmetic in the source comment: 200 importers ÷ 8 workers × 10.6s ≈ 265s, comfortably inside the 390s deadline. Production still failed at 390.9s. The change was correct reasoning applied to a wrong input.
 
-**Raising the deadline (considered, rejected).** The obvious next move — give the fetch more time — cannot work, and the reason is worth internalising: **every bundle tick is capped at 600s.** (This document first called that cap a Railway container kill. Railway does not kill cron runs; the cap is a project limit, see `scripts/_bundle-runner.mjs`.) The fetch needs ~800s at measured latency. No `fetchPhaseTimeoutMs` value fits, and raising it toward the ceiling makes things strictly worse, because the section then consumes the entire bundle budget before failing anyway.
+**Raising the deadline (considered, rejected).** The fetch needs ~800s at measured latency, which cannot fit the project policy that keeps configured bundle admission budgets below 600s. Omitting `maxBundleMs` leaves a bundle unlimited; the runner does not guarantee a maximum tick duration even with a budget. This document first called the limit a Railway container kill. It is project policy, not a Railway termination limit; see `scripts/_bundle-runner.mjs`. Raising `fetchPhaseTimeoutMs` cannot fit the full pass into the existing budget, and a longer failed attempt leaves less budget for later sections.
 
 **Raising concurrency further (considered, rejected).** Sequential latency samples climbed `23.2s → 29.0s → 32.6s → 34.5s → 36.5s → 37.3s` as they accumulated. That shape reads as upstream throttling, so more parallelism plausibly increases total wall time — and these POSTs share a host with `seed-defense-industrial`, so a block takes that seeder down too.
 
@@ -53,7 +53,7 @@ The blast radius is the giveaway: a 390.9s failure inside a 570s budget leaves 1
 | modelled in the guard | 10.6s |
 | **measured 2026-08-18** | **mean 31.8s, p90 37.3s** |
 
-Three times the modelled figure. At concurrency 8 that is ~800s for a full pass, against a 600s container ceiling.
+Three times the modelled figure. At concurrency 8 that is ~800s for a full pass, against the project's sub-600s admission budget policy for budgeted bundles.
 
 **Then chunk.** Each tick refreshes the slice of importers whose rows are oldest and lets the rest stand (`scripts/_defense-industrial-source.mjs:39`, `SIPRI_SWEEP_CHUNK = 56`). The published snapshot *is* the cursor — no separate cursor key, because a cursor can disagree with the data after a crash or a restore and then skip a slice forever.
 
