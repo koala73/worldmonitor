@@ -127,18 +127,6 @@ message ThreatClassification {
   string source = 4;
 }
 
-// HeadlineSummary represents an AI-generated summary of recent headlines.
-message HeadlineSummary {
-  // Summary text.
-  string text = 1;
-  // Number of headlines analyzed.
-  int32 headline_count = 2;
-  // Summary generation time, as Unix epoch milliseconds.
-  int64 generated_at = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
-  // AI model used for summarization.
-  string model = 4;
-}
-
 // ThreatLevel represents the assessed threat level of a news event.
 enum ThreatLevel {
   // Unspecified threat level.

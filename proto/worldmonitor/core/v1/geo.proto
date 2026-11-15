@@ -17,12 +17,3 @@ message GeoCoordinates {
     (buf.validate.field).double.lte = 180
   ];
 }
-
-// BoundingBox represents a rectangular geographic area defined by its corners.
-// Used for spatial queries to filter results within a geographic region.
-message BoundingBox {
-  // The north-east corner of the bounding box.
-  GeoCoordinates north_east = 1;
-  // The south-west corner of the bounding box.
-  GeoCoordinates south_west = 2;
-}

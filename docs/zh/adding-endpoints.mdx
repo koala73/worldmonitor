@@ -220,8 +220,6 @@ message ListWeatherStationsRequest {
   string network = 1;
   // Filter by country code.
   string country_code = 2 [(buf.validate.field).string.max_len = 2];
-  // Pagination parameters.
-  worldmonitor.core.v1.PaginationRequest pagination = 3;
 }
 
 // ListWeatherStationsResponse contains the matching stations.
@@ -454,9 +452,6 @@ double latitude = 1 [
 | 类型 | 导入 | 用途 |
 |------|------|------|
 | `GeoCoordinates` | `worldmonitor/core/v1/geo.proto` | 任何经纬度位置（内置 -90/90 和 -180/180 边界） |
-| `BoundingBox` | `worldmonitor/core/v1/geo.proto` | 空间过滤 |
-| `TimeRange` | `worldmonitor/core/v1/time.proto` | 基于时间的过滤（带 `INT64_ENCODING_NUMBER`） |
-| `PaginationRequest` | `worldmonitor/core/v1/pagination.proto` | 请求分页（带 page_size 1-100 约束） |
 | `PaginationResponse` | `worldmonitor/core/v1/pagination.proto` | 响应分页元数据 |
 
 ### 注释
