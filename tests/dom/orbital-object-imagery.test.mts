@@ -145,13 +145,15 @@ describe('loadObjectImagery: the latest-image search', () => {
 
   it('looks back LATEST_IMAGE_DAYS, not the seven-day pass window', async () => {
     harness.lookup.mockImplementation(async () => point7Days());
+    // The loader reads the clock once between these two readings, so its window is bracketed by them.
     const before = Date.now();
     await loadObjectImagery({ kind: 'point', point });
+    const after = Date.now();
 
     const { window } = harness.stac.mock.calls[0]![1] as { window: { startMs: number; endMs: number } };
-    expect(before - window.startMs).toBeGreaterThanOrEqual(LATEST_IMAGE_DAYS * 24 * HOUR);
-    expect(before - window.startMs).toBeLessThan(LATEST_IMAGE_DAYS * 24 * HOUR + 60_000);
-    expect(window.endMs).toBeLessThanOrEqual(Date.now());
+    expect(window.endMs - window.startMs).toBe(LATEST_IMAGE_DAYS * 24 * HOUR);
+    expect(window.endMs).toBeGreaterThanOrEqual(before);
+    expect(window.endMs).toBeLessThanOrEqual(after);
   });
 
   it('keeps the stale colour reachable: the search reaches past IMAGE_STALE_MS', () => {
