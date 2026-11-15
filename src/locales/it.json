@@ -5756,7 +5756,9 @@
       "thresholdHint": "Ricevi un avviso quando l'ultimo livello misurato è inferiore a questa percentuale dell'intervallo misurato del serbatoio, dove 0 è il livello più basso misurato e 100 il più alto. Lascia vuoto per nessuna soglia.",
       "thresholdInputLabel": "Soglia di livello, percentuale dell'intervallo misurato",
       "seasonalLabel": "Calo oltre la linea di base stagionale",
-      "seasonalHint": "Ricevi un avviso quando l'ultimo livello misurato è significativamente inferiore a quello che il serbatoio di solito misura in questo periodo dell'anno."
+      "seasonalHint": "Ricevi un avviso quando l'ultimo livello misurato è significativamente inferiore a quello che il serbatoio di solito misura in questo periodo dell'anno.",
+      "quietNote": "Questi avvisi arrivano anche quando gli avvisi in tempo reale sono impostati solo su critico. Le ore silenziose li silenziano.",
+      "quietNoteBatch": "Questi avvisi arrivano anche quando gli avvisi in tempo reale sono impostati solo su critico. Le ore silenziose li silenziano, oppure li trattengono fino alla fine delle ore silenziose se scegli Batch."
     }
   }
 }

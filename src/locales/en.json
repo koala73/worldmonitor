@@ -5722,7 +5722,9 @@
       "thresholdHint": "Alert when the latest measured level is below this percent of the reservoir's own measured range, where 0 is the lowest level measured and 100 the highest. Leave empty for no threshold.",
       "thresholdInputLabel": "Level threshold, percent of measured range",
       "seasonalLabel": "Drop beyond the seasonal baseline",
-      "seasonalHint": "Alert when the latest measured level is well below what that reservoir usually measures at this time of year."
+      "seasonalHint": "Alert when the latest measured level is well below what that reservoir usually measures at this time of year.",
+      "quietNote": "These alerts arrive even when real-time alerts are set to critical only. Quiet hours silence them.",
+      "quietNoteBatch": "These alerts arrive even when real-time alerts are set to critical only. Quiet hours silence them, or hold them until quiet hours end if you choose Batch."
     }
   }
 }

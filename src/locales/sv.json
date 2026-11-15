@@ -5723,7 +5723,9 @@
       "thresholdHint": "Få varning när den senaste uppmätta nivån ligger under denna procent av reservoarens eget uppmätta intervall, där 0 är den lägsta uppmätta nivån och 100 den högsta. Lämna tomt för ingen gräns.",
       "thresholdInputLabel": "Nivågräns, procent av uppmätt intervall",
       "seasonalLabel": "Minskning utöver säsongsbasklinjen",
-      "seasonalHint": "Få varning när den senaste uppmätta nivån är väsentligt lägre än vad denna reservoar normalt mäter vid denna årstid."
+      "seasonalHint": "Få varning när den senaste uppmätta nivån är väsentligt lägre än vad denna reservoar normalt mäter vid denna årstid.",
+      "quietNote": "Dessa aviseringar kommer fram även när realtidsaviseringar är inställda på endast kritiska. Tysta timmar tystar dem.",
+      "quietNoteBatch": "Dessa aviseringar kommer fram även när realtidsaviseringar är inställda på endast kritiska. Tysta timmar tystar dem, eller håller kvar dem tills de tysta timmarna är slut om du väljer Batch."
     }
   }
 }

@@ -5756,7 +5756,9 @@
       "thresholdHint": "Alerte lorsque le dernier niveau mesuré est inférieur à ce pourcentage de la plage mesurée du réservoir, où 0 est le niveau le plus bas mesuré et 100 le plus haut. Laissez vide pour aucun seuil.",
       "thresholdInputLabel": "Seuil de niveau, pourcentage de la plage mesurée",
       "seasonalLabel": "Baisse au-delà de la ligne de base saisonnière",
-      "seasonalHint": "Alerte lorsque le dernier niveau mesuré est bien inférieur à ce que ce réservoir mesure généralement à cette période de l'année."
+      "seasonalHint": "Alerte lorsque le dernier niveau mesuré est bien inférieur à ce que ce réservoir mesure généralement à cette période de l'année.",
+      "quietNote": "Ces alertes arrivent même quand les alertes en temps réel sont définies sur critique uniquement. Les heures silencieuses les désactivent.",
+      "quietNoteBatch": "Ces alertes arrivent même quand les alertes en temps réel sont définies sur critique uniquement. Les heures silencieuses les désactivent, ou les mettent en attente jusqu'à la fin des heures silencieuses si vous choisissez Batch."
     }
   }
 }

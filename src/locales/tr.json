@@ -5723,7 +5723,9 @@
       "thresholdHint": "En son ölçülen seviye, rezervuarın kendi ölçülen aralığının bu yüzdesinin altında olduğunda uyarı alın; burada 0 ölçülen en düşük seviye ve 100 en yüksek seviyedir. Eşik yoksa boş bırakın.",
       "thresholdInputLabel": "Seviye eşiği, ölçülen aralığın yüzdesi",
       "seasonalLabel": "Mevsimsel taban çizgisinin ötesinde düşüş",
-      "seasonalHint": "En son ölçülen seviye, o rezervuarın yılın bu döneminde genellikle ölçtüğü değerin önemli ölçüde altında olduğunda uyarı alın."
+      "seasonalHint": "En son ölçülen seviye, o rezervuarın yılın bu döneminde genellikle ölçtüğü değerin önemli ölçüde altında olduğunda uyarı alın.",
+      "quietNote": "Bu uyarılar, gerçek zamanlı uyarılar yalnızca kritik olarak ayarlanmış olsa bile gelir. Sessiz saatler bunları susturur.",
+      "quietNoteBatch": "Bu uyarılar, gerçek zamanlı uyarılar yalnızca kritik olarak ayarlanmış olsa bile gelir. Sessiz saatler bunları susturur veya Batch seçeneğini seçerseniz sessiz saatler bitene kadar bekletir."
     }
   }
 }

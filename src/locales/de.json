@@ -5723,7 +5723,9 @@
       "thresholdHint": "Warnung, wenn der zuletzt gemessene Pegel unter diesem Prozentsatz der gemessenen Spannweite des Stausees liegt, wobei 0 der niedrigste gemessene Pegel und 100 der höchste ist. Lassen Sie das Feld leer, um keine Schwelle zu setzen.",
       "thresholdInputLabel": "Pegelschwelle, Prozent der gemessenen Spannweite",
       "seasonalLabel": "Rückgang unter die saisonale Basislinie",
-      "seasonalHint": "Warnung, wenn der zuletzt gemessene Pegel deutlich unter dem liegt, was dieser Stausee normalerweise zu dieser Jahreszeit aufweist."
+      "seasonalHint": "Warnung, wenn der zuletzt gemessene Pegel deutlich unter dem liegt, was dieser Stausee normalerweise zu dieser Jahreszeit aufweist.",
+      "quietNote": "Diese Benachrichtigungen treffen ein, auch wenn Echtzeit-Benachrichtigungen nur auf kritisch eingestellt sind. Ruhezeiten stellen sie stumm.",
+      "quietNoteBatch": "Diese Benachrichtigungen treffen ein, auch wenn Echtzeit-Benachrichtigungen nur auf kritisch eingestellt sind. Ruhezeiten stellen sie stumm oder halten sie bis zum Ende der Ruhezeiten zurück, wenn Sie Batch wählen."
     }
   }
 }

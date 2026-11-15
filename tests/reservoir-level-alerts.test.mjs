@@ -2,7 +2,7 @@
  * Reservoir level alerts: rule evaluation, the producer, and delivery through the relay's
  * real rule evaluation (processEvent), including a realtime rule, which only critical events pass.
  */
-import { describe, it, before, afterEach } from 'node:test';
+import { describe, it, before, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import Module, { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
@@ -91,10 +91,10 @@ describe('reservoirAlertDecision', () => {
 });
 
 describe('buildReservoirLevelEvent', () => {
-  it('is critical, carries the measurement date, and never reads as live', () => {
+  it('is not critical, carries the measurement date, and never reads as live', () => {
     const event = buildReservoirLevelEvent(record());
     assert.equal(event.eventType, RESERVOIR_ALERT_EVENT_TYPE);
-    assert.equal(event.severity, 'critical');
+    assert.equal(event.severity, 'medium', 'a measurement that is days old is never urgent');
     assert.equal(event.payload.measuredAt, '2026-09-14');
     assert.match(event.payload.title, /measured 2026-09-14/);
     assert.doesNotMatch(event.payload.title, /\b(now|currently|live|today|just)\b/i);
@@ -211,7 +211,7 @@ const rule = (userId, overrides = {}) => ({
   ...overrides,
 });
 
-async function deliveries(rules, event, { tiers = {} } = {}) {
+async function deliveries(rules, event, { tiers = {}, held = [] } = {}) {
   const chats = [];
   const texts = [];
   const silence = [console.log, console.warn, console.error];
@@ -230,6 +230,10 @@ async function deliveries(rules, event, { tiers = {} } = {}) {
       texts.push(body?.text);
       return { status: 200, ok: true, json: async () => ({ ok: true }) };
     }
+    if (path.startsWith('/RPUSH/')) { held.push(decodeURIComponent(path.split('/')[3])); return { ok: true, json: async () => ({ result: held.length }) }; }
+    if (path.startsWith('/LLEN/')) return { ok: true, json: async () => ({ result: held.length }) };
+    if (path.startsWith('/LRANGE/')) return { ok: true, json: async () => ({ result: [...held] }) };
+    if (path.startsWith('/DEL/')) { held.length = 0; return { ok: true, json: async () => ({ result: 1 }) }; }
     if (path.endsWith('/pipeline')) return { ok: true, json: async () => [] };
     if (String(url).includes('/SET/')) return { ok: true, json: async () => ({ result: 'OK' }) };
     return { ok: true, json: async () => ({ result: null }) };
@@ -295,12 +299,6 @@ describe('reservoir alert delivery through the relay', () => {
     assert.deepEqual((await deliveries([rule('user-1')], rss)).chats, ['chat-user-1']);
   });
 
-  it('a non-critical event never reaches a realtime rule, which is why this one is critical', async () => {
-    const event = freshEvent();
-    event.severity = 'high';
-    assert.deepEqual((await deliveries([rule('user-1')], event)).chats, []);
-  });
-
   it('end to end: a seeded new measurement reaches the subscribed channel once', async () => {
     const h = harness();
     await h.run([record()]);
@@ -310,5 +308,47 @@ describe('reservoir alert delivery through the relay', () => {
     assert.deepEqual(chats, ['chat-user-1']);
     assert.match(texts[0], /Lake Nasser/);
     assert.match(texts[0], /measured 2026-11-01/);
+  });
+});
+
+// ── Quiet hours ──────────────────────────────────────────────────────────────
+
+const NIGHT = Date.parse('2026-11-15T02:00:00Z');
+const DAY = Date.parse('2026-11-15T12:00:00Z');
+const quiet = (override) => ({ quietHoursEnabled: true, quietHoursStart: 22, quietHoursEnd: 7, quietHoursTimezone: 'UTC', ...(override ? { quietHoursOverride: override } : {}) });
+const at = (ms) => mock.method(Date, 'now', () => ms);
+afterEach(() => mock.restoreAll());
+
+describe('reservoir alerts and quiet hours', () => {
+  it('a realtime critical-only rule delivers outside quiet hours although the event is not critical', async () => {
+    at(DAY);
+    assert.deepEqual((await deliveries([rule('user-1', quiet())], freshEvent())).chats, ['chat-user-1']);
+  });
+
+  it('quiet hours with the default critical-only override suppress it', async () => {
+    at(NIGHT);
+    const held = [];
+    assert.deepEqual((await deliveries([rule('user-1', quiet())], freshEvent(), { held })).chats, []);
+    assert.deepEqual(held, [], 'suppressed, not held');
+  });
+
+  it('quiet hours with silence-all suppress it', async () => {
+    at(NIGHT);
+    assert.deepEqual((await deliveries([rule('user-1', quiet('silence_all'))], freshEvent())).chats, []);
+  });
+
+  it('quiet hours with Batch hold it, and the batch delivers it with its measurement date once they end', async () => {
+    const held = [];
+    const batchRule = rule('user-1', quiet('batch_on_wake'));
+    const event = freshEvent();
+    at(NIGHT);
+    assert.deepEqual((await deliveries([batchRule], event, { held })).chats, [], 'nothing at night');
+    assert.equal(held.length, 1, 'held until quiet hours end');
+    at(DAY);
+    const drained = await deliveries([batchRule], { eventType: 'flush_quiet_held', userId: 'user-1', variant: 'full' }, { held });
+    assert.deepEqual(drained.chats, ['chat-user-1']);
+    assert.match(drained.texts[0], /1 held alert/);
+    assert.match(drained.texts[0], new RegExp(`measured ${event.payload.measuredAt}`));
+    assert.deepEqual(held, []);
   });
 });

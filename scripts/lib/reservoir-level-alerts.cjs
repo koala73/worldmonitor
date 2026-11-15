@@ -20,9 +20,10 @@
 // when the level was measured and none says it is current.
 
 const RESERVOIR_ALERT_EVENT_TYPE = 'reservoir_level_alert';
-// Realtime rules deliver critical events only, so the event is critical. The per-reservoir
-// opt-in and the rule's own threshold are the filters, not the severity.
-const SEVERITY = 'critical';
+// A level measured days ago is never urgent, so the event is not critical: quiet hours silence
+// it (or hold it, under Batch). The relay lets it past the realtime critical-only gate because
+// the per-reservoir opt-in and the rule's own threshold are the filters (shouldNotify).
+const SEVERITY = 'medium';
 const DEDUP_TTL_SECONDS = 30 * 24 * 60 * 60;
 const STATE_KEY = 'notify:reservoir-level:state:v1';
 const STATE_TTL_SECONDS = 120 * 24 * 60 * 60;
@@ -136,6 +137,7 @@ async function publishReservoirLevelAlerts(records, { readState, writeState, pub
 
 module.exports = {
   RESERVOIR_ALERT_EVENT_TYPE,
+  SEVERITY,
   STATE_KEY,
   DEDUP_TTL_SECONDS,
   isMeasurementDate,

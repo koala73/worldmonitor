@@ -161,6 +161,13 @@ describe('notification settings water level alerts', () => {
     expect(container.textContent).toMatch(/measurement date/);
   });
 
+  it('says quiet hours still silence or hold the alert', async () => {
+    const container = await mount(rule());
+    expect(container.querySelector('#usReservoirQuietNote')?.textContent).toBe(
+      'These alerts arrive even when real-time alerts are set to critical only. Quiet hours silence them, or hold them until quiet hours end if you choose Batch.',
+    );
+  });
+
   it('adds a reservoir picked by name and saves it with the opted-in event type', async () => {
     const container = await mount(rule());
     toggle(container, 'usReservoirAlerts', true);

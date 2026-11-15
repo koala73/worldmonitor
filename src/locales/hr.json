@@ -5766,7 +5766,9 @@
       "thresholdHint": "Upozorenje kada je posljednja izmjerena razina ispod ovog postotka izmjerenog raspona akumulacije, gdje je 0 najniža izmjerena razina a 100 najviša. Ostavite prazno bez praga.",
       "thresholdInputLabel": "Prag razine, postotak izmjerenog raspona",
       "seasonalLabel": "Pad izvan sezonske osnovice",
-      "seasonalHint": "Upozorenje kada je posljednja izmjerena razina značajno ispod onoga što ta akumulacija obično mjeri u isto vrijeme godine."
+      "seasonalHint": "Upozorenje kada je posljednja izmjerena razina značajno ispod onoga što ta akumulacija obično mjeri u isto vrijeme godine.",
+      "quietNote": "Ove obavijesti stižu čak i kada su obavijesti u stvarnom vremenu postavljene samo na kritične. Tihi sati ih utišavaju.",
+      "quietNoteBatch": "Ove obavijesti stižu čak i kada su obavijesti u stvarnom vremenu postavljene samo na kritične. Tihi sati ih utišavaju ili ih, ako odaberete Batch, zadržavaju do kraja tihih sati."
     }
   },
   "app": {}

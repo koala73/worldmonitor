@@ -5756,7 +5756,9 @@
       "thresholdHint": "Alerta quando o nível medido mais recente está abaixo deste percentual do intervalo medido do reservatório, onde 0 é o nível mais baixo medido e 100 o mais alto. Deixe vazio para sem limite.",
       "thresholdInputLabel": "Limite de nível, percentual do intervalo medido",
       "seasonalLabel": "Queda além da linha de base sazonal",
-      "seasonalHint": "Alerta quando o nível medido mais recente está bem abaixo do que aquele reservatório normalmente mede nesta época do ano."
+      "seasonalHint": "Alerta quando o nível medido mais recente está bem abaixo do que aquele reservatório normalmente mede nesta época do ano.",
+      "quietNote": "Esses alertas chegam mesmo quando os alertas em tempo real estão configurados apenas para críticos. As horas silenciosas os silenciam.",
+      "quietNoteBatch": "Esses alertas chegam mesmo quando os alertas em tempo real estão configurados apenas para críticos. As horas silenciosas os silenciam ou os mantêm retidos até o fim das horas silenciosas, se você escolher Batch."
     }
   }
 }

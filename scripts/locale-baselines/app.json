@@ -4352,6 +4352,8 @@
   "settings.keywords.video.2": "quality",
   "settings.keywords.video.3": "live",
   "settings.reservoirAlert.description": "Alert when a strategic reservoir's lidar water level is low. NASA publishes each satellite pass about two months after it is measured, so every alert gives its measurement date.",
+  "settings.reservoirAlert.quietNote": "These alerts arrive even when real-time alerts are set to critical only. Quiet hours silence them.",
+  "settings.reservoirAlert.quietNoteBatch": "These alerts arrive even when real-time alerts are set to critical only. Quiet hours silence them, or hold them until quiet hours end if you choose Batch.",
   "settings.reservoirAlert.removeLabel": "Remove {{name}}",
   "settings.reservoirAlert.scopeHint": "Choose up to {{max}} reservoirs. Alerts cover only the reservoirs listed here.",
   "settings.reservoirAlert.searchLabel": "Add a reservoir",

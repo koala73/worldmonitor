@@ -5789,7 +5789,9 @@
       "thresholdHint": "Upozornění když poslední naměřená hladina klesne pod toto procento naměřeného rozsahu přehrady, kde 0 je nejnižší a 100 nejvyšší naměřená hladina. Ponechte prázdné pro žádný práh.",
       "thresholdInputLabel": "Prahová hladina, procento naměřeného rozsahu",
       "seasonalLabel": "Pokles nad sezónní úroveň",
-      "seasonalHint": "Upozornění když poslední naměřená hladina je výrazně nižší, než obvykle měří tato přehrada v tuto dobu roku."
+      "seasonalHint": "Upozornění když poslední naměřená hladina je výrazně nižší, než obvykle měří tato přehrada v tuto dobu roku.",
+      "quietNote": "Tyto výstrahy přicházejí, i když jsou výstrahy v reálném čase nastaveny pouze na kritické. Tiché hodiny je umlčí.",
+      "quietNoteBatch": "Tyto výstrahy přicházejí, i když jsou výstrahy v reálném čase nastaveny pouze na kritické. Tiché hodiny je umlčí, nebo je zadrží do konce tichých hodin, pokud zvolíte Batch."
     }
   }
 }

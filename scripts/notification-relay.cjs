@@ -1388,6 +1388,11 @@ function webPushTagFor(event, userId) {
 }
 
 function shouldNotify(rule, event) {
+  // Reservoir level alerts are scoped by the rule's own reservoir list, threshold and event-type
+  // opt-in, so the realtime critical-only gate does not apply. They are not critical, so quiet
+  // hours still silence them, or hold them under Batch (resolveQuietAction).
+  if (event?.eventType === RESERVOIR_ALERT_EVENT_TYPE) return true;
+
   // Coerce (effective realtime + non-critical) → 'critical' before consulting
   // sensitivity in either branch. The mutation validators + migration make this
   // state unreachable for new traffic; this catches in-flight rows during

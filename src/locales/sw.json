@@ -5723,7 +5723,9 @@
       "thresholdHint": "Pokea onyo wakati kiwango kilichopimwa karibuni kiko chini ya asilimia hii ya wigo uliopimwa wa bwawa hilo, ambapo 0 ni kiwango cha chini kabisa kilichopimwa na 100 ni cha juu kabisa. Acha wazi ikiwa hutaki kizingiti.",
       "thresholdInputLabel": "Kiwango cha kizingiti, asilimia ya eneo lililopimwa",
       "seasonalLabel": "Kushuka zaidi ya mstari wa msingi wa kimsimu",
-      "seasonalHint": "Pokea onyo wakati kiwango kilichopimwa karibuni kiko chini sana ya kile ambacho bwawa hilo hupimwa kwa kawaida wakati huu wa mwaka."
+      "seasonalHint": "Pokea onyo wakati kiwango kilichopimwa karibuni kiko chini sana ya kile ambacho bwawa hilo hupimwa kwa kawaida wakati huu wa mwaka.",
+      "quietNote": "Arifa hizi hufika hata wakati arifa za wakati halisi zimewekwa kwa muhimu tu. Saa za kimya huzinyamazisha.",
+      "quietNoteBatch": "Arifa hizi hufika hata wakati arifa za wakati halisi zimewekwa kwa muhimu tu. Saa za kimya huzinyamazisha, au huzishikilia hadi saa za kimya ziishe ukichagua Batch."
     }
   }
 }

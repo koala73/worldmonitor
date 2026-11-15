@@ -720,6 +720,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             </div>
             <div id="usReservoirScope"${reservoirAlertOn ? '' : ' hidden'}>
               <div class="ai-flow-toggle-desc" style="margin-bottom:6px">${escapeHtml(t('settings.reservoirAlert.scopeHint', { max: RESERVOIR_ALERT_RESERVOIRS_MAX }))}</div>
+              <div class="ai-flow-toggle-desc" id="usReservoirQuietNote" style="margin-bottom:6px">${escapeHtml(t(QUIET_HOURS_BATCH_ENABLED ? 'settings.reservoirAlert.quietNoteBatch' : 'settings.reservoirAlert.quietNote'))}</div>
               <div class="us-notif-country-chips" id="usReservoirChips">${reservoirSettings.reservoirs.map((id) =>
                 `<button type="button" class="us-notif-country-chip us-notif-country-chip-on" data-reservoir-id="${escapeHtml(id)}" aria-label="${escapeHtml(t('settings.reservoirAlert.removeLabel', { name: id }))}">${escapeHtml(id)} ×</button>`).join('')}</div>
               <input type="search" id="usReservoirSearch" class="us-notif-country-add-input" list="usReservoirOptions" placeholder="${escapeHtml(t('settings.reservoirAlert.searchPlaceholder'))}" aria-label="${escapeHtml(t('settings.reservoirAlert.searchLabel'))}" autocomplete="off" style="margin-top:6px;width:100%;box-sizing:border-box"${reservoirSettings.reservoirs.length >= RESERVOIR_ALERT_RESERVOIRS_MAX ? ' disabled' : ''}>

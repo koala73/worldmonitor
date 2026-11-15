@@ -5756,7 +5756,9 @@
       "thresholdHint": "Alerta cuando el último nivel medido está por debajo de este porcentaje del rango medido del embalse, donde 0 es el nivel más bajo medido y 100 el más alto. Deja en blanco si no deseas un umbral.",
       "thresholdInputLabel": "Umbral de nivel, porcentaje del rango medido",
       "seasonalLabel": "Caída por debajo de la línea base estacional",
-      "seasonalHint": "Alerta cuando el último nivel medido está muy por debajo de lo que ese embalse normalmente mide en esta época del año."
+      "seasonalHint": "Alerta cuando el último nivel medido está muy por debajo de lo que ese embalse normalmente mide en esta época del año.",
+      "quietNote": "Estas alertas llegan incluso cuando las alertas en tiempo real están configuradas solo para críticas. Las horas silenciosas las silencian.",
+      "quietNoteBatch": "Estas alertas llegan incluso cuando las alertas en tiempo real están configuradas solo para críticas. Las horas silenciosas las silencian o las retienen hasta que terminen, si eliges Batch."
     }
   }
 }
