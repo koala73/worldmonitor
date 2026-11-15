@@ -547,10 +547,28 @@ function replacePreviousPrices(source) {
   return result;
 }
 
+const ORBITAL_WATCH_DOCS_START = '{/* orbital-watch-pricing:start */}';
+const ORBITAL_WATCH_DOCS_END = '{/* orbital-watch-pricing:end */}';
+const ORBITAL_WATCH_DOCS_COPY = {
+  'docs/pricing.mdx': `- **Orbital Watch** — on Free, satellite passes over any point (looked up in your browser; the point is not sent to World Monitor) and the latest image and date on watched sites. Pro and Pro Business add imaging-window and site-change alerts and satellite passes and watched-site imagery over MCP; API Starter, API Business and Enterprise also get them over the REST API.`,
+  'docs/zh/pricing.mdx': `- **Orbital Watch** — Free 可查询任意地点的卫星过境（在浏览器中完成，地点不会发送到 World Monitor），并查看监测站点的最新影像及日期。Pro 和 Pro Business 另含成像窗口和站点变化提醒，并可通过 MCP 获取卫星过境和监测站点影像；API Starter、API Business 和 Enterprise 还可通过 REST API 获取。`,
+};
+
+/** The Orbital Watch plan bullet between the doc's markers, empty until launch (#10768). */
+function withOrbitalWatchDocs(path, source) {
+  const start = source.indexOf(ORBITAL_WATCH_DOCS_START);
+  const end = source.indexOf(ORBITAL_WATCH_DOCS_END);
+  if (start < 0 || end < start) throw new Error(`${path}: missing the Orbital Watch pricing markers`);
+  const body = orbitalWatchAccess('free') ? `\n${ORBITAL_WATCH_DOCS_COPY[path]}\n` : '\n';
+  return source.slice(0, start + ORBITAL_WATCH_DOCS_START.length) + body + source.slice(end);
+}
+
+for (const path of Object.keys(ORBITAL_WATCH_DOCS_COPY)) {
+  transform(path, (source) => withOrbitalWatchDocs(path, replacePreviousPrices(source)));
+}
+
 for (const path of new Set([
   'public/pricing.md',
-  'docs/pricing.mdx',
-  'docs/zh/pricing.mdx',
   'docs/zh/about.mdx',
   'docs/api-commerce.mdx',
   'docs/zh/api-commerce.mdx',

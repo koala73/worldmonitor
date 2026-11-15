@@ -15,7 +15,7 @@ describe('Orbital Watch on the pricing page and in the product facts (#10761)', 
   it('stays hidden until launch', () => {
     assert.equal(ORBITAL_WATCH_PRICING_PUBLISHED, false);
     for (const tier of Object.keys(ORBITAL_WATCH_ACCESS)) assert.equal(orbitalWatchAccess(tier), null, tier);
-    for (const path of ['public/pricing.md', 'shared/product-facts.generated.json']) {
+    for (const path of ['public/pricing.md', 'shared/product-facts.generated.json', 'docs/pricing.mdx', 'docs/zh/pricing.mdx']) {
       assert.doesNotMatch(read(path), /Orbital Watch/, path);
     }
   });
@@ -42,6 +42,11 @@ describe('Orbital Watch on the pricing page and in the product facts (#10761)', 
 
   it('the comparison table and the product facts read the same switch', () => {
     assert.match(read('pro-test/src/components/PlanComparisonTable.tsx'), /orbitalWatchAccess\(tier\.localeKey\)/);
-    assert.match(read('scripts/generate-public-product-facts.mjs'), /orbitalWatchAccess\(TIER_BY_PLAN_KEY\[planKey\]\)/);
+    const generator = read('scripts/generate-public-product-facts.mjs');
+    assert.match(generator, /orbitalWatchAccess\(TIER_BY_PLAN_KEY\[planKey\]\)/);
+    assert.match(generator, /orbitalWatchAccess\('free'\) \?/);
+    for (const doc of ['docs/pricing.mdx', 'docs/zh/pricing.mdx']) {
+      assert.match(read(doc), /\{\/\* orbital-watch-pricing:start \*\/\}\n\{\/\* orbital-watch-pricing:end \*\/\}/, doc);
+    }
   });
 });
