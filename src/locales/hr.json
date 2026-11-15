@@ -5507,6 +5507,50 @@
       "retainedDay": "samo {{day}}",
       "geoLine": "Geostacionarni u vidokrugu: {{names}}",
       "away": "{{km}} km dalje"
+    },
+    "satelliteSites": {
+      "heading": "Praćena mjesta · sljedećih {{hours}} h",
+      "projecting": "Izračun preleta…",
+      "notLoaded": "Kliknite ponovno na satelit; njegovi orbitalni elementi nisu učitani.",
+      "failed": "Kliknite ponovno na satelit da pokušate ponovno; izračun preleta nije uspio.",
+      "viewFailed": "Kliknite ponovno na satelit da pokušate ponovno; popis mjesta nije učitan.",
+      "unavailable": "Kliknite ponovno na satelit da pokušate ponovno; geometrija preleta odbacila je ove orbitalne elemente.",
+      "signals": "Satelit za signalno izviđanje. Nema senzora za snimanje, pa se pokrivenost tla ne modelira.",
+      "noProfile": "Nema profila senzora za ovaj satelit, pa se njegova pokrivenost tla ne modelira.",
+      "geostationary": "Geostacionaran: nepomičan iznad jedne zemljopisne dužine, pa nema preleta za prikaz.",
+      "badElements": "Orbitalni elementi nisu čitljivi.",
+      "none": "Nijedno praćeno mjesto nije unutar područja snimanja u sljedećih {{hours}} h.",
+      "utc": "{{time}} UTC",
+      "inMinutes": "za {{minutes}} min",
+      "inHours": "za {{hours}} h {{minutes}} min",
+      "offTrack": "{{km}} km od traga na tlu",
+      "swathEdge": "na rubu pojasa snimanja",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "Tip",
+        "operator": "Operater",
+        "over": "Iznad",
+        "ocean": "Ocean",
+        "altBand": "Visinski pojas",
+        "inclination": "Nagib",
+        "velocity": "Brzina",
+        "types": {
+          "sar": "SAR snimanje",
+          "optical": "Optičko snimanje",
+          "military": "Vojni",
+          "sigint": "SIGINT",
+          "signals": "Signalno izviđanje"
+        }
+      },
+      "tooOld_one": "Orbitalni elementi stari su {{count}} dan, prestari za izračun preleta.",
+      "tooOld_few": "Orbitalni elementi stari su {{count}} dana, prestari za izračun preleta.",
+      "tooOld_other": "Orbitalni elementi stari su {{count}} dana, prestari za izračun preleta.",
+      "count_one": "{{count}} praćeno mjesto unutar područja snimanja {{family}}",
+      "count_few": "{{count}} praćena mjesta unutar područja snimanja {{family}}",
+      "count_other": "{{count}} praćenih mjesta unutar područja snimanja {{family}}",
+      "passes_one": "{{count}} prelet",
+      "passes_few": "{{count}} preleta",
+      "passes_other": "{{count}} preleta"
     }
   },
   "settings": {

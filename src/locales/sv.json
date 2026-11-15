@@ -5464,6 +5464,47 @@
       "retainedDay": "endast {{day}}",
       "geoLine": "Geostationära i sikte: {{names}}",
       "away": "{{km}} km bort"
+    },
+    "satelliteSites": {
+      "heading": "Övervakade platser · kommande {{hours}} h",
+      "projecting": "Beräknar passager…",
+      "notLoaded": "Klicka på satelliten igen; dess banelement har inte laddats.",
+      "failed": "Klicka på satelliten igen för att försöka på nytt; beräkningen misslyckades.",
+      "viewFailed": "Klicka på satelliten igen för att försöka på nytt; platslistan kunde inte laddas.",
+      "unavailable": "Klicka på satelliten igen för att försöka på nytt; passagegeometrin avvisade dessa banelement.",
+      "signals": "Signalspaningssatellit. Ingen bildsensor, så ingen marktäckning modelleras.",
+      "noProfile": "Ingen sensorprofil för denna satellit, så dess marktäckning modelleras inte.",
+      "geostationary": "Geostationär: fast över en longitud, så det finns inga passager att lista.",
+      "badElements": "Banelementen är oläsbara.",
+      "none": "Ingen övervakad plats inom täckningsområdet under de kommande {{hours}} h.",
+      "utc": "{{time}} UTC",
+      "inMinutes": "om {{minutes}} min",
+      "inHours": "om {{hours}} h {{minutes}} min",
+      "offTrack": "{{km}} km från markspåret",
+      "swathEdge": "vid kanten av svepet",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "Typ",
+        "operator": "Operatör",
+        "over": "Över",
+        "ocean": "Hav",
+        "altBand": "Höjdband",
+        "inclination": "Inkl.",
+        "velocity": "Hastighet",
+        "types": {
+          "sar": "SAR-avbildning",
+          "optical": "Optisk avbildning",
+          "military": "Militär",
+          "sigint": "SIGINT",
+          "signals": "Signalspaning"
+        }
+      },
+      "tooOld_one": "Banelementen är {{count}} dag gamla, för gamla för att beräkna passager.",
+      "tooOld_other": "Banelementen är {{count}} dagar gamla, för gamla för att beräkna passager.",
+      "count_one": "{{count}} plats inom täckningsområdet för {{family}}",
+      "count_other": "{{count}} platser inom täckningsområdet för {{family}}",
+      "passes_one": "{{count}} passage",
+      "passes_other": "{{count}} passager"
     }
   },
   "settings": {

@@ -5431,6 +5431,44 @@
       "retainedDay": "chỉ {{day}}",
       "geoLine": "Vệ tinh địa tĩnh trong tầm nhìn: {{names}}",
       "away": "cách {{km}} km"
+    },
+    "satelliteSites": {
+      "heading": "Các địa điểm được theo dõi · {{hours}} giờ tới",
+      "projecting": "Đang tính các lượt bay qua…",
+      "notLoaded": "Nhấp lại vào vệ tinh; các phần tử quỹ đạo của nó chưa được tải.",
+      "failed": "Nhấp lại vào vệ tinh để thử lại; tính toán lượt bay qua không thành công.",
+      "viewFailed": "Nhấp lại vào vệ tinh để thử lại; danh sách địa điểm không tải được.",
+      "unavailable": "Nhấp lại vào vệ tinh để thử lại; hình học lượt bay qua đã từ chối các phần tử quỹ đạo này.",
+      "signals": "Vệ tinh tình báo tín hiệu. Không có thiết bị chụp ảnh, do đó vùng quan sát mặt đất không được mô phỏng.",
+      "noProfile": "Không có hồ sơ cảm biến cho vệ tinh này, do đó vùng quan sát mặt đất của nó không được mô phỏng.",
+      "geostationary": "Địa tĩnh: cố định phía trên một kinh độ, do đó không có lượt bay qua nào để liệt kê.",
+      "badElements": "Các phần tử quỹ đạo không thể đọc được.",
+      "none": "Không có địa điểm được theo dõi nào trong vùng quan sát của vệ tinh trong {{hours}} giờ tới.",
+      "utc": "{{time}} UTC",
+      "inMinutes": "sau {{minutes}} phút",
+      "inHours": "sau {{hours}} giờ {{minutes}} phút",
+      "offTrack": "cách vết mặt đất {{km}} km",
+      "swathEdge": "tại mép dải quét",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "Loại",
+        "operator": "Nhà khai thác",
+        "over": "Phía trên",
+        "ocean": "Đại dương",
+        "altBand": "Dải độ cao",
+        "inclination": "Độ nghiêng",
+        "velocity": "Vận tốc",
+        "types": {
+          "sar": "Chụp ảnh SAR",
+          "optical": "Chụp ảnh quang học",
+          "military": "Quân sự",
+          "sigint": "SIGINT",
+          "signals": "Tình báo tín hiệu"
+        }
+      },
+      "tooOld_other": "Các phần tử quỹ đạo đã có từ {{count}} ngày trước, quá cũ để tính các lượt bay qua.",
+      "count_other": "{{count}} địa điểm trong vùng quan sát của {{family}}",
+      "passes_other": "{{count}} lượt bay qua"
     }
   },
   "settings": {

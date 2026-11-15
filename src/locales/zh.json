@@ -5431,6 +5431,44 @@
       "retainedDay": "仅 {{day}}",
       "geoLine": "视野内的静止卫星：{{names}}",
       "away": "{{km}} 公里外"
+    },
+    "satelliteSites": {
+      "heading": "监视地点 · 未来 {{hours}} 小时",
+      "projecting": "正在计算过境…",
+      "notLoaded": "再次点击卫星；其轨道根数未加载。",
+      "failed": "再次点击卫星以重试；过境计算失败。",
+      "viewFailed": "再次点击卫星以重试；地点列表未能加载。",
+      "unavailable": "再次点击卫星以重试；过境几何计算拒绝了这些轨道根数。",
+      "signals": "信号情报卫星。没有成像设备，因此不模拟地面覆盖范围。",
+      "noProfile": "此卫星没有传感器参数，因此不模拟其地面覆盖范围。",
+      "geostationary": "地球静止轨道：固定在某一经度上方，因此没有可列出的过境。",
+      "badElements": "轨道根数无法读取。",
+      "none": "未来 {{hours}} 小时内，其覆盖范围内没有监视地点。",
+      "utc": "{{time}} UTC",
+      "inMinutes": "{{minutes}} 分钟后",
+      "inHours": "{{hours}} 小时 {{minutes}} 分钟后",
+      "offTrack": "距地面轨迹 {{km}} 公里",
+      "swathEdge": "位于幅宽边缘",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "类型",
+        "operator": "运营方",
+        "over": "下方",
+        "ocean": "海洋",
+        "altBand": "高度范围",
+        "inclination": "倾角",
+        "velocity": "速度",
+        "types": {
+          "sar": "SAR 成像",
+          "optical": "光学成像",
+          "military": "军用",
+          "sigint": "SIGINT",
+          "signals": "信号情报"
+        }
+      },
+      "tooOld_other": "轨道根数已有 {{count}} 天，过旧，无法计算过境。",
+      "count_other": "{{family}} 覆盖范围内有 {{count}} 个地点",
+      "passes_other": "{{count}} 次过境"
     }
   },
   "settings": {
