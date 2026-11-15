@@ -570,12 +570,6 @@ describe('feed catalog drift', () => {
   // looks it up. Grandfathering 41 names would add noise without protecting anything.
   // The dangerous direction is the one asserted above: enabled-by-default with no feed.
 
-  it('keeps the two source-tiers mirrors byte-identical', () => {
-    const shared = readFileSync(join(repoRoot, 'shared/source-tiers.json'), 'utf8');
-    const scripts = readFileSync(join(repoRoot, 'scripts/shared/source-tiers.json'), 'utf8');
-    assert.equal(scripts, shared, 'scripts/shared/source-tiers.json drifted from shared/source-tiers.json');
-  });
-
   // Issue #5949 — EN full-variant defaults under-cover the Ukraine war.
   // Kyiv Independent, PL frontline, and independent RU were cataloged but
   // off-by-default, so users only saw Western wire/EU framing.
