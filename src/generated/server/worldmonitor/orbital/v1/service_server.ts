@@ -184,6 +184,7 @@ export interface GetWatchedSiteImageryResponse {
   latestImage?: SiteImage;
   nextPass?: SitePass;
   waterExtent?: WaterExtent;
+  waterExtentUnavailable?: boolean;
 }
 
 export interface SiteImage {

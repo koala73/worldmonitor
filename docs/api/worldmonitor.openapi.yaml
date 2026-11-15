@@ -59335,6 +59335,9 @@ components:
                     $ref: '#/components/schemas/worldmonitor_orbital_v1_SitePass'
                 waterExtent:
                     $ref: '#/components/schemas/worldmonitor_orbital_v1_WaterExtent'
+                waterExtentUnavailable:
+                    type: boolean
+                    description: True when the radar summary could not be read, so an absent water_extent says nothing about the reservoir.
             description: |-
                 GetWatchedSiteImageryResponse is the public imagery summary of one watched site: its newest image and next pass.
                  It carries no change flag, coverage or pass history; those stay on the Pro surfaces.

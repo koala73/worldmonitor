@@ -73,4 +73,6 @@ message GetWatchedSiteImageryResponse {
   SitePass next_pass = 8;
   // Radar water extent, for reservoir sites only; absent when the site is not a reservoir or has no reading.
   WaterExtent water_extent = 9;
+  // True when the radar summary could not be read, so an absent water_extent says nothing about the reservoir.
+  optional bool water_extent_unavailable = 10;
 }

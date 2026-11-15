@@ -80,6 +80,34 @@ describe('watched-site imagery read (KTD16)', () => {
     }
   });
 
+  it('flags an unreadable radar summary instead of reading it as no water reading', async () => {
+    const env = { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN };
+    const realFetch = globalThis.fetch;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    const call = async (summaryStatus: number) => {
+      globalThis.fetch = (async (input: RequestInfo | URL) => String(input).includes('water-extent')
+        ? new Response(summaryStatus === 200 ? JSON.stringify({ result: null }) : 'down', { status: summaryStatus })
+        : new Response(JSON.stringify({ result: null }))) as typeof fetch;
+      const res = await route(new Request(`https://api.worldmonitor.app${PATH}?site_id=reservoir%3Akariba`));
+      assert.equal(res.status, 200);
+      return res.json() as Promise<Record<string, unknown>>;
+    };
+    try {
+      const failed = await call(500);
+      assert.equal(failed.waterExtentUnavailable, true);
+      assert.equal(failed.waterExtent, undefined);
+      const empty = await call(200);
+      assert.equal(empty.waterExtentUnavailable, undefined);
+      assert.equal(empty.waterExtent, undefined);
+    } finally {
+      globalThis.fetch = realFetch;
+      for (const [name, value] of [['UPSTASH_REDIS_REST_URL', env.url], ['UPSTASH_REDIS_REST_TOKEN', env.token]] as const) {
+        if (value === undefined) delete process.env[name]; else process.env[name] = value;
+      }
+    }
+  });
+
   it('is free for map objects while the per-point and per-country APIs stay Pro', () => {
     assert.ok(!PREMIUM_RPC_PATHS.has(PATH));
     assert.equal(getRequiredTier(PATH), null);

@@ -15,7 +15,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/orbital/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/orbital/v1/service_server';
 import { ORBITAL_SITE_KEY_PREFIX, ORBITAL_WATER_EXTENT_LATEST_KEY } from '../../../_shared/cache-keys';
-import { getCachedJson } from '../../../_shared/redis';
+import { getCachedJson, readCachedJson } from '../../../_shared/redis';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 import { ROLLUP_MAX_AGE_MS, SITES_SCHEMA } from '../../../../shared/orbital/country-rollup.js';
 
@@ -88,9 +88,14 @@ export async function getWatchedSiteImagery(
   }
   const [record, summary] = await Promise.all([
     getCachedJson(`${ORBITAL_SITE_KEY_PREFIX}${siteId}`, true),
-    RESERVOIR_SITE.test(siteId) ? getCachedJson(ORBITAL_WATER_EXTENT_LATEST_KEY, true) : null,
+    RESERVOIR_SITE.test(siteId) ? readCachedJson(ORBITAL_WATER_EXTENT_LATEST_KEY, true) : null,
   ]);
-  const waterExtent = toWaterExtent(siteId, summary);
-  const response = { ...toWatchedSiteImagery(siteId, record, Date.now()), ...(waterExtent && { waterExtent }) };
-  return response.stale ? markNoStoreFallbackResponse(ctx.request, response) : response;
+  const summaryFailed = summary?.status === 'error';
+  const waterExtent = summary?.status === 'hit' ? toWaterExtent(siteId, summary.value) : null;
+  const response = {
+    ...toWatchedSiteImagery(siteId, record, Date.now()),
+    ...(waterExtent && { waterExtent }),
+    ...(summaryFailed && { waterExtentUnavailable: true }),
+  };
+  return response.stale || summaryFailed ? markNoStoreFallbackResponse(ctx.request, response) : response;
 }

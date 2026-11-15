@@ -201,6 +201,7 @@ export async function loadReservoirWaterExtent(reservoirId: string, signal?: Abo
   const siteId = await resolveWatchedSiteId({ list: 'reservoir', id: reservoirId });
   if (!siteId) return null;
   const record = await getOrbitalClient().getWatchedSiteImagery({ siteId }, { signal });
+  if (record.waterExtentUnavailable) throw new Error('radar water-extent summary unavailable');
   return record.waterExtent ?? null;
 }
 
