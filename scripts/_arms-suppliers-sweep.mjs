@@ -52,7 +52,7 @@ export async function fetchSupplierSnapshot({
   return buildSnapshot({
     previousSnapshot: previous,
     // One SLICE per tick. The full ~200-importer catalog needs ~800s at the
-    // measured 31.8s/request and Railway kills the container at 600s, so a
+    // measured 31.8s/request and a bundle tick is capped at 600s, so a
     // whole-catalog pass cannot be made to fit at any deadline.
     fetchSipri: (options) => fetchSipri({
       ...options,

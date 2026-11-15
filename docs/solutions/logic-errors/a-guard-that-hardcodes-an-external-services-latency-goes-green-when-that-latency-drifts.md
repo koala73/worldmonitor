@@ -40,7 +40,7 @@ The blast radius is the giveaway: a 390.9s failure inside a 570s budget leaves 1
 
 **Raising concurrency (shipped, didn't help).** An earlier fix moved `concurrency` 4 → 8 on the arithmetic in the source comment: 200 importers ÷ 8 workers × 10.6s ≈ 265s, comfortably inside the 390s deadline. Production still failed at 390.9s. The change was correct reasoning applied to a wrong input.
 
-**Raising the deadline (considered, rejected).** The obvious next move — give the fetch more time — cannot work, and the reason is worth internalising: **Railway hard-kills a cron container at 600s.** The fetch needs ~800s at measured latency. No `fetchPhaseTimeoutMs` value fits, and raising it toward the ceiling makes things strictly worse, because the section then consumes the entire bundle budget before failing anyway.
+**Raising the deadline (considered, rejected).** The obvious next move — give the fetch more time — cannot work, and the reason is worth internalising: **every bundle tick is capped at 600s.** (This document first called that cap a Railway container kill. Railway does not kill cron runs; the cap is a project limit, see `scripts/_bundle-runner.mjs`.) The fetch needs ~800s at measured latency. No `fetchPhaseTimeoutMs` value fits, and raising it toward the ceiling makes things strictly worse, because the section then consumes the entire bundle budget before failing anyway.
 
 **Raising concurrency further (considered, rejected).** Sequential latency samples climbed `23.2s → 29.0s → 32.6s → 34.5s → 36.5s → 37.3s` as they accumulated. That shape reads as upstream throttling, so more parallelism plausibly increases total wall time — and these POSTs share a host with `seed-defense-industrial`, so a block takes that seeder down too.
 
@@ -71,9 +71,9 @@ const status = failures.length === 0 && sweepComplete ? 'ok' : 'partial';
 ```js
 const fullPassS = (MAPPED_IMPORTERS / concurrency) * SIPRI_LATENCY_P90_S;
 assert.ok(
-  fullPassS > RAILWAY_CONTAINER_KILL_S,
+  fullPassS > BUNDLE_WALL_CAP_S,
   `a full ${MAPPED_IMPORTERS}-importer pass is ${Math.round(fullPassS)}s at concurrency ${concurrency}. `
-  + 'If that now fits Railway\'s 600s container kill, the sweep may be unnecessary — re-measure and simplify deliberately.',
+  + 'If that now fits the 600s bundle wall cap, the sweep may be unnecessary — re-measure and simplify deliberately.',
 );
 ```
 

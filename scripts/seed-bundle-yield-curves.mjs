@@ -28,7 +28,7 @@ await runBundle('yield-curves', [
   // a monthly print reaches readers the day a publisher releases it.
   { label: 'OECD-LT-Rates', script: 'seed-oecd-lt-rates.mjs', seedMetaKey: 'economic:oecd-lt-rates', canonicalKey: 'economic:yield-curve:oecd-lt:v1', completionMetaKey: 'seed-completion:economic:oecd-lt-rates', intervalMs: DAY, timeoutMs: 240_000 },
 ], {
-  // Railway kills cron containers at 10 minutes. The GB cold start (420s) plus
+  // Keep a tick under our 10-minute wall cap. The GB cold start (420s) plus
   // any two mid-size sections cannot fit after it, so deferral sheds them to
   // the next tick; the freshness gate makes the next tick run them first.
   maxBundleMs: 570_000,

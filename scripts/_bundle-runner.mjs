@@ -10,10 +10,14 @@
  *   import { runBundle } from './_bundle-runner.mjs';
  *   await runBundle('ecb-eu', [ { label, script, seedMetaKey, freshnessMetaKey, completionMetaKey, intervalMs, timeoutMs } ]);
  *
- * Budget (opt-in): Railway cron services SIGKILL the container at 10min. If
- * the sum of timeoutMs for sections that happen to be due exceeds ~9min, we
- * risk losing the in-flight section's logs AND marking the job as crashed.
- * Callers on Railway cron can pass `{ maxBundleMs }` to enforce a wall-time
+ * Budget (opt-in): a wall-time cap that WE impose, not a platform limit.
+ * Railway does not terminate a cron run (docs.railway.com/cron-jobs: it skips
+ * the next scheduled run while the previous one is still active), and
+ * seed-bundle-energy-sources finished a 607.5s run in one container on
+ * 2026-11-06. #3094 assumed a 10min container kill from a portwatch run whose
+ * last section died with no output; that cause was never confirmed. The cap
+ * keeps one tick short and predictable so it does not eat the next tick.
+ * Callers can pass `{ maxBundleMs }` to enforce the wall-time
  * budget — sections whose worst-case timeout wouldn't fit in the remaining
  * budget are deferred to the next tick. Default is Infinity (no budget) so
  * existing bundles whose individual sections already exceed 9min (e.g.
@@ -396,9 +400,8 @@ function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs, completion
     let killTimer = null;
     // Fire the terminal "Failed ... timeout" log the moment we decide to kill,
     // BEFORE the SIGTERM→SIGKILL grace window. This guarantees the reason
-    // reaches the log stream even if the container itself is killed during
-    // the grace period (Railway's ~10min cap can land inside the grace for
-    // sections whose timeoutMs is close to 10min).
+    // reaches the log stream even if the container itself is stopped during
+    // the grace period (a redeploy, an OOM kill, or an operator stop).
     const softKill = setTimeout(() => {
       timedOut = true;
       const elapsedAtTimeout = ((Date.now() - t0) / 1000).toFixed(1);
@@ -603,8 +606,8 @@ export async function runBundle(label, sections, opts = {}) {
       .join('; ');
     const largestFittingTimeoutMs = maxBundleMs - KILL_GRACE_MS - ADMISSION_HEADROOM_MS;
     const remedy = largestFittingTimeoutMs > 0
-      ? `Lower those section timeouts to at most ${largestFittingTimeoutMs}ms, or raise maxBundleMs (it must stay under the Railway container cap).`
-      : `No section timeout can fit this budget at all — ${KILL_GRACE_MS}ms kill grace plus ${ADMISSION_HEADROOM_MS}ms admission headroom already exceed it. Raise maxBundleMs (it must stay under the Railway container cap).`;
+      ? `Lower those section timeouts to at most ${largestFittingTimeoutMs}ms, or raise maxBundleMs (it must stay under the 600s bundle wall cap).`
+      : `No section timeout can fit this budget at all — ${KILL_GRACE_MS}ms kill grace plus ${ADMISSION_HEADROOM_MS}ms admission headroom already exceed it. Raise maxBundleMs (it must stay under the 600s bundle wall cap).`;
     throw new Error(
       `[Bundle:${label}] maxBundleMs=${maxBundleMs} is below the worst case of ${unadmittable.length} section(s), which can therefore never be admitted on any tick: ${detail}. `
       + remedy,

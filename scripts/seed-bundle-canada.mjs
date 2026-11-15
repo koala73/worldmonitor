@@ -115,7 +115,7 @@ const sections = CANADA_SECTIONS.filter((section) => {
 });
 
 await runBundle('Canada', sections, {
-  // Railway kills cron containers at 10 minutes. Defer sections whose full
+  // Keep a tick under our 10-minute wall cap. Defer sections whose full
   // timeout plus SIGTERM/SIGKILL grace cannot fit, preserving completed work
   // and the terminal reason in logs.
   maxBundleMs: 570_000,

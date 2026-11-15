@@ -253,7 +253,7 @@ describe('SIPRI importer fan-out fits its fetch deadline (#6799, #6806)', () => 
 
   const SIPRI_LATENCY_P90_S = 37.3;  // measured 2026-08-18, was modelled at 10.6
   const MAPPED_IMPORTERS = 200;      // 385 catalog entries, ~185 unmapped non-state actors
-  const RAILWAY_CONTAINER_KILL_S = 600;
+  const BUNDLE_WALL_CAP_S = 600;     // our per-tick cap; Railway does not kill cron runs
   const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
   const readNumber = (src, re, label) => {
@@ -306,9 +306,9 @@ describe('SIPRI importer fan-out fits its fetch deadline (#6799, #6806)', () => 
 
     const fullPassS = (MAPPED_IMPORTERS / concurrency) * SIPRI_LATENCY_P90_S;
     assert.ok(
-      fullPassS > RAILWAY_CONTAINER_KILL_S,
+      fullPassS > BUNDLE_WALL_CAP_S,
       `a full ${MAPPED_IMPORTERS}-importer pass is ${Math.round(fullPassS)}s at concurrency ${concurrency}. `
-      + 'If that now fits Railway\'s 600s container kill, the sweep may be unnecessary — re-measure and simplify deliberately.',
+      + 'If that now fits the 600s bundle wall cap, the sweep may be unnecessary — re-measure and simplify deliberately.',
     );
     assert.ok(
       chunk < MAPPED_IMPORTERS,

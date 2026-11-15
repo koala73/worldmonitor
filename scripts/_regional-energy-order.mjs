@@ -1,4 +1,4 @@
-// Railway kills a cron container at 10 minutes, so a tick has 570 s. Four
+// A bundle tick is capped below 10 minutes (our own cap), so it has 570 s. Four
 // 120 s sections (plus kill grace and preflight headroom) fit together; more
 // would let a run of timeouts push later feeds out of every tick.
 export const REGIONAL_ENERGY_LEAD_GROUP_SIZE = 4;

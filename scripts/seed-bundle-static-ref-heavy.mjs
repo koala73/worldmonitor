@@ -13,7 +13,7 @@ import {
 // Military-Bases and the projection cannot fit at their combined worst case,
 // so this two-tick fairness rule is what bounds either member's deferral.
 //
-// ONE service, not three. Railway kills a cron container at 10 minutes, so the
+// ONE service, not three. A bundle tick is capped under 10 minutes, so the
 // budget is 570s and no arrangement can run Arms-Suppliers (380s worst case)
 // and Military-Bases (410s) in the SAME tick. But "cannot share a tick" is not
 // "cannot share a bundle": the runner defers the loser to the next daily tick,
@@ -101,7 +101,7 @@ console.log(
 );
 
 await runBundle('static-ref-heavy', sections, {
-  // Railway kills cron containers at 10 minutes. Defer sections whose full
+  // Keep a tick under our 10-minute wall cap. Defer sections whose full
   // timeout plus SIGTERM/SIGKILL grace cannot fit, preserving completed work
   // and the terminal reason in logs.
   maxBundleMs: 570_000,

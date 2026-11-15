@@ -2615,7 +2615,7 @@ const SEED_META = {
   },
   // The heavy half of static-ref: Arms-Suppliers, Military-Bases and
   // Mineral-Production on one rotating daily tick (#6806). One heartbeat, not
-  // three — Railway's 10-minute container kill means no two of those members
+  // three — the 570s bundle budget means no two of those members
   // can share a tick, but they share a BUNDLE and the runner defers the loser
   // to tomorrow, which is free at 10/30/60-day cadences.
   staticRefHeavyBundleTick: {

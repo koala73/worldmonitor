@@ -142,11 +142,11 @@ const sections = orderMacroSections(
 );
 
 await runBundle('macro', sections, {
-  // Railway kills cron containers at 10 minutes. Defer sections whose full
+  // Keep a tick under our 10-minute wall cap. Defer sections whose full
   // timeout plus SIGTERM/SIGKILL grace cannot fit, preserving completed work
   // and the terminal reason in logs. Bounded parallel freshness reads prevent
   // late per-member Redis reads from consuming the cursor's acknowledgement
-  // window. The 550s budget leaves 50s before Railway's kill, covering the
+  // window. The 550s budget leaves 50s under the 600s cap, covering the
   // <=5s lease claim, <=5s acknowledgement and process/module cleanup.
   maxBundleMs: 550_000,
   prefetchFreshness: true,
