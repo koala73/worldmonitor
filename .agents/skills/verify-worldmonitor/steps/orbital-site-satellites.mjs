@@ -61,7 +61,10 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const state = await section.getAttribute('data-state');
   log('site', await section.getAttribute('data-site-id'), 'state', state);
   if (state !== 'ok') throw new Error(`site-satellites answered ${state}`);
-  log('rows', await section.locator('[data-norad-id]').count(), 'shown', await section.locator('[data-norad-id]:not([hidden])').count(), 'linked', await section.locator('.ies-row').count());
+  const rows = await section.locator('[data-norad-id]').count();
+  const shown = await section.locator('[data-norad-id]:visible').count();
+  log('rows', rows, 'shown', shown, 'linked', await section.locator('.ies-row').count());
+  if (rows > 6 && shown !== 6) throw new Error(`a folded list shows ${shown} of ${rows} rows`);
   log('section text', (await section.innerText()).replace(/\s+/g, ' ').slice(0, 600));
   await section.evaluate((el) => el.scrollIntoView({ block: 'start' }));
   await shot(`site-satellites-${mobile ? 'mobile' : 'desktop'}`);
@@ -69,13 +72,14 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const more = section.locator('.ies-more');
   if (await more.count()) await more.click();
   const linked = section.locator('.ies-row').first();
-  if (await linked.count()) {
-    await linked.scrollIntoViewIfNeeded();
-    await linked.click();
-    await page.waitForFunction(() => document.querySelector('[data-section="site-satellites"] .ies-row[aria-current="true"]'), null, { timeout: 10_000 });
-    log('selected', (await section.locator('.ies-row[aria-current="true"]').innerText()).replace(/\s+/g, ' '));
-    await shot(`site-satellites-selected-${mobile ? 'mobile' : 'desktop'}`);
-  }
+  if (!(await linked.count())) throw new Error('no satellite over the site is linked to a pass in the sheet');
+  await linked.scrollIntoViewIfNeeded();
+  const key = await linked.getAttribute('data-key');
+  await linked.click();
+  await page.waitForFunction((k) => document.querySelector(`[data-section="site-satellites"] [data-key="${k}"][aria-current="true"]`), key, { timeout: 10_000 });
+  log('selected', (await section.locator('.ies-row[aria-current="true"]').innerText()).replace(/\s+/g, ' '));
+  await page.waitForTimeout(2_500);
+  await shot(`site-satellites-selected-${mobile ? 'mobile' : 'desktop'}`);
 
   const leaks = requests.filter((r) => {
     const url = new URL(r.url);
