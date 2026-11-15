@@ -1,5 +1,5 @@
 {
-  "comment": "Initial /dashboard bundle-size budgets (#7111). Gated on raw bytes: per chunk \u00b1max(2048 B, 2%), total \u00b1max(16384 B, 0.25%). The \"deferred\" section gates the application graph the entry imports on every visit with the same tolerances. Tolerance fields here are informational \u2014 the gate enforces its own constants and rejects a snapshot that disagrees. Regenerate after \"npm run build:pro && VITE_VARIANT=full ./node_modules/.bin/vite build\" with: npm run bundle:budgets",
+  "comment": "Initial /dashboard bundle-size budgets (#7111). Gated on raw bytes: per chunk ±max(2048 B, 2%), total ±max(16384 B, 0.25%). The \"deferred\" section gates the application graph the entry imports on every visit with the same tolerances. Tolerance fields here are informational — the gate enforces its own constants and rejects a snapshot that disagrees. Regenerate after \"npm run build:pro && VITE_VARIANT=full ./node_modules/.bin/vite build\" with: npm run bundle:budgets",
   "surface": "dashboard",
   "variant": "full",
   "tolerancePct": 2,
@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 481738
+    "raw": 481811
   },
   "chunks": {
     "analytics": {
@@ -59,7 +59,7 @@
       "files": 1
     },
     "main": {
-      "raw": 142918,
+      "raw": 142991,
       "files": 1
     },
     "map-layer-definitions": {
@@ -105,11 +105,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1582507
+      "raw": 1574578
     },
     "chunks": {
       "App": {
-        "raw": 1011371,
+        "raw": 1003397,
         "files": 1
       },
       "ai-flow-settings": {
@@ -133,7 +133,7 @@
         "files": 1
       },
       "checkout": {
-        "raw": 15498,
+        "raw": 15567,
         "files": 1
       },
       "cloud-prefs-sync": {
@@ -217,7 +217,7 @@
         "files": 1
       },
       "satellites": {
-        "raw": 2406,
+        "raw": 2382,
         "files": 1
       },
       "select": {
