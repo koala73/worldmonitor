@@ -7,8 +7,8 @@ const { aggregateStates, binStart, BIN_MS } = require('../scripts/shared/air-tra
 const { US_HUBS, CONUS_BOX, EUROPE_BOX } = require('../scripts/shared/air-traffic-regions.cjs');
 
 // OpenSky /states/all row: [icao24, callsign, country, t_pos, t_contact, lon, lat, baro_alt, on_ground, velocity, track, vertical_rate, sensors, geo_alt]
-const row = ({ lat, lon, alt = 10000, ground = false, vr = 0, geo = null }) =>
-  ['abc123', 'TEST1   ', 'US', 0, 0, lon, lat, alt, ground, 200, 90, vr, null, geo];
+const row = ({ lat, lon, alt = 10000, ground = false, vr = 0, geo = null, callsign = 'TEST1   ' }) =>
+  ['abc123', callsign, 'US', 0, 0, lon, lat, alt, ground, 200, 90, vr, null, geo];
 const T = Date.UTC(2026, 10, 13, 20, 50, 0);
 const ATL = US_HUBS.find(h => h.iata === 'ATL');
 
@@ -46,7 +46,7 @@ test('on-ground rows count as seen and at the hub on the ground, never airborne'
   assert.equal(p.usSeen, 1);
   assert.equal(p.usAirborne, 0);
   assert.equal(p.usLowClimbing, 0);
-  assert.deepEqual(p.hubs.ATL, { air: 0, ground: 1 });
+  assert.deepEqual(p.hubs.ATL, { air: 0, ground: 1, dep: 0 });
 });
 
 test('low and climbing needs airborne, altitude under 3,000 m and a positive vertical rate', () => {
@@ -74,4 +74,33 @@ test('the hub radius is 48 km', () => {
 
 test('a snapshot without a states array is not a point with zero counts', () => {
   assert.throws(() => aggregateStates(null, T), /states must be an array/);
+});
+
+// A national ground stop halts airline departures, while general aviation keeps
+// flying. On 2026-11-13 the all-aircraft climber count fell to 0.58 of normal
+// an hour into the stop; the airline count fell to 0.33.
+test('airline counts take only callsigns of three letters then a digit, trimmed of OpenSky padding', () => {
+  const p = aggregateStates([
+    row({ lat: 35, lon: -90, alt: 1500, vr: 5, callsign: 'DAL1234 ' }),
+    row({ lat: 35, lon: -90, alt: 1500, vr: 5, callsign: 'N123AB  ' }),
+    row({ lat: 35, lon: -90, alt: 1500, vr: 5, callsign: 'AB1234  ' }),
+    row({ lat: 35, lon: -90, alt: 1500, vr: 5, callsign: null }),
+    row({ lat: 35, lon: -90, alt: 9000, vr: 0, callsign: 'UAL9    ' }),
+    row({ lat: 48, lon: 10, callsign: 'DLH400' }),
+    row({ lat: 48, lon: 10, callsign: 'DEABC' }),
+  ], T);
+  assert.equal(p.usLowClimbing, 4);
+  assert.equal(p.usLowClimbingAirline, 1);
+  assert.equal(p.usAirborneAirline, 2);
+  assert.equal(p.euAirborne, 2);
+  assert.equal(p.euAirborneAirline, 1);
+});
+
+test('a hub counts airline departures inside its radius', () => {
+  const p = aggregateStates([
+    row({ lat: ATL.lat, lon: ATL.lon, alt: 800, vr: 8, callsign: 'DAL1' }),
+    row({ lat: ATL.lat, lon: ATL.lon, alt: 800, vr: 8, callsign: 'N1AB' }),
+    row({ lat: ATL.lat, lon: ATL.lon, alt: 800, vr: -8, callsign: 'DAL2' }),
+  ], T);
+  assert.deepEqual(p.hubs.ATL, { air: 3, ground: 0, dep: 1 });
 });

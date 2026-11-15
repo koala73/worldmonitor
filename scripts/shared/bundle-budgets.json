@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 481776
+    "raw": 481738
   },
   "chunks": {
     "analytics": {
@@ -59,7 +59,7 @@
       "files": 1
     },
     "main": {
-      "raw": 142956,
+      "raw": 142918,
       "files": 1
     },
     "map-layer-definitions": {
@@ -105,11 +105,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1574051
+      "raw": 1586582
     },
     "chunks": {
       "App": {
-        "raw": 1002903,
+        "raw": 1011371,
         "files": 1
       },
       "ai-flow-settings": {
@@ -133,7 +133,7 @@
         "files": 1
       },
       "checkout": {
-        "raw": 15534,
+        "raw": 15498,
         "files": 1
       },
       "cloud-prefs-sync": {
@@ -169,7 +169,7 @@
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 161289,
+        "raw": 165388,
         "files": 1
       },
       "index": {

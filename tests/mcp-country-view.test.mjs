@@ -346,6 +346,25 @@ describe('country view MCP boundary', () => {
     assert.match(requests[0].init.headers['X-WM-MCP-Internal'], /^\d+\./);
     assert.equal(deps.pipe.count, 1);
   });
+  it('returns only the country\'s strategic reservoirs with their pass dates, and unknown for a missing snapshot', async () => {
+    const reservoir = (id, country) => ({ id, name: id, country, latest: { date: '2026-09-06', levelM: 79.1, madM: 0.1, segmentCount: 4, ageDays: 69 }, seasonalZ: -2.2, status: 'low', series: [] });
+    let snapshot = { reservoirs: [reservoir('kremenchuk', 'UA'), reservoir('gerd', 'ET'), reservoir('dnipro', 'ua')], fetchedAt: 1794700000000, dataAvailable: true, methodology: 'ICESat-2 ATL13' };
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url: String(url), init });
+      return new Response(JSON.stringify(snapshot), { headers: { 'Content-Type': 'application/json' } });
+    };
+    const { body } = await invoke('get_country_brief_section', { section: 'reservoirs', arguments: { country_code: 'UA' } });
+    const result = body.result.structuredContent;
+    assert.equal(result.state, 'ready', JSON.stringify(body));
+    assert.equal(result.value.countryCode, 'UA');
+    assert.deepEqual(result.value.reservoirs.map(r => [r.id, r.latest.date]), [['kremenchuk', '2026-09-06'], ['dnipro', '2026-09-06']]);
+    const url = new URL(requests[0].url);
+    assert.equal(url.pathname, '/api/climate/v1/list-reservoir-levels');
+    assert.equal(url.search, '');
+    snapshot = { reservoirs: [], fetchedAt: 0, dataAvailable: false, methodology: '' };
+    const missing = (await invoke('get_country_brief_section', { section: 'reservoirs', arguments: { country_code: 'UA' } })).body.result.structuredContent;
+    assert.equal(missing.state, 'unavailable');
+  });
   it('rejects oversized Atlas responses before JSON parsing and cancels their bodies', async () => {
     for (const headers of [{ 'Content-Length': '524289' }, {}]) {
       let cancelled = false;

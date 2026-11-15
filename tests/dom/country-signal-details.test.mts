@@ -203,7 +203,7 @@ describe('website Signals lifecycle', () => {
       if (phase === 'opening') await h.open(); else h.manager.refreshOpenBrief();
       await vi.waitFor(() => expect(publish).toHaveBeenCalledWith(value));
       expect(value.details).toBeNull();
-      expect(value.families).toHaveLength(9);
+      expect(value.families).toHaveLength(10);
       expect(h.body.textContent).toContain('Controlled radiation unavailable');
       expect(h.body.textContent).toContain('This is not zero activity');
       expect(h.body.querySelectorAll('.cdp-signal-item')).toHaveLength(0);

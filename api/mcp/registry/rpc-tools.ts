@@ -3825,8 +3825,8 @@ export const RPC_TOOLS: ToolDef[] = [
     name: 'describe_tool',
     title: 'Describe a tool',
     // Must hold the largest full definition (get_country_brief_section, whose
-    // 37 described oneOf branches run to ~26 KB).
-    _outputBudgetBytes: 32768,
+    // 40 described oneOf branches run to ~33 KB).
+    _outputBudgetBytes: 40960,
     description: 'Return the complete definition of one tool by name: the same name, title, description, inputSchema, outputSchema, annotations and _meta entry that tools/list carries, so a single tool can be re-read without re-listing all of them. Server-local metadata lookup with no data fetch; it spends no daily allowance or quota (the per-minute rate limit still applies). An unknown tool_name returns {error: "unknown_tool", requested, available: [sorted tool names]} and an empty one returns {error: "missing_tool_name"}, both as normal results rather than JSON-RPC errors.',
     inputSchema: {
       type: 'object',
