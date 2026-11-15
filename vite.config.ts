@@ -1454,7 +1454,7 @@ export default defineConfig(({ mode }) => {
             // Map/globe/search consumers import directly (lazy); the eager
             // related-assets/infrastructure-cascade/cable-activity chains
             // lazy-cache it. Kept off the eager @/config barrel above. (#4404)
-            if (id.endsWith('/src/config/geo-map.ts')) {
+            if (id.endsWith('/src/config/geo-map.ts') || id.endsWith('/shared/nuclear-facilities-data.ts')) {
               return 'geo-map-data';
             }
             // Military-bases bulk (~48KB MILITARY_BASES_EXPANDED + merged
