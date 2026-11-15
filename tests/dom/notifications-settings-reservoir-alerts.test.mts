@@ -182,6 +182,7 @@ describe('notification settings water level alerts', () => {
     input.value = '90';
     input.dispatchEvent(new Event('change', { bubbles: true }));
     expect((await lastSave()).reservoirAlert.belowPercent).toBe(50);
+    expect(input.value).toBe('50');
     channelMocks.saveAlertRules.mockClear();
     input.value = '';
     input.dispatchEvent(new Event('change', { bubbles: true }));

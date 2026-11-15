@@ -1014,6 +1014,9 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const belowPercent = Number.isFinite(parsed)
           ? Math.min(RESERVOIR_ALERT_BELOW_PERCENT_MAX, Math.max(RESERVOIR_ALERT_BELOW_PERCENT_MIN, parsed))
           : undefined;
+        // Show the value that is saved, so the field never differs from the stored threshold.
+        const input = container.querySelector<HTMLInputElement>('#usReservoirBelowPercent');
+        if (input) input.value = belowPercent === undefined ? '' : String(belowPercent);
         return {
           reservoirs: selectedReservoirs(),
           ...(belowPercent !== undefined ? { belowPercent } : {}),
