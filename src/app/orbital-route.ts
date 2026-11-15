@@ -58,7 +58,7 @@ export function watchOrbitalEvidence(map: () => OrbitalTrackSurface | null = () 
     const point = (event as CustomEvent<GeoPoint>).detail;
     if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lon)) return;
     void import('@/app/orbital-watch').then(({ openOrbitalWatch }) =>
-      openOrbitalWatch({ lat: point.lat, lon: point.lon }, document.getElementById('mapContainer'), 'sheet', map()));
+      openOrbitalWatch({ lat: point.lat, lon: point.lon }, document.getElementById('mapContainer'), map()));
   };
   window.addEventListener(ORBITAL_EVIDENCE_EVENT, onEvidence);
   return () => window.removeEventListener(ORBITAL_EVIDENCE_EVENT, onEvidence);

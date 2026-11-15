@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { WATCHED_SITE_ID, toWatchedSiteImagery } from '../server/worldmonitor/orbital/v1/get-watched-site-imagery.ts';
-import { ORBITAL_ROLLUP_MAX_AGE_MS, ORBITAL_SITES_SCHEMA } from '../server/worldmonitor/orbital/v1/get-country-imagery-evidence.ts';
+import { ROLLUP_MAX_AGE_MS, SITES_SCHEMA } from '../shared/orbital/country-rollup.js';
 import { orbitalHandler } from '../server/worldmonitor/orbital/v1/handler.ts';
 import { createOrbitalServiceRoutes } from '../src/generated/server/worldmonitor/orbital/v1/service_server.ts';
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
@@ -15,7 +15,7 @@ const NOW = Date.parse('2026-11-14T12:00:00Z');
 const route = createOrbitalServiceRoutes(orbitalHandler).find((r) => r.path === PATH)!.handler;
 
 const record = (overrides: Record<string, unknown> = {}) => ({
-  schema: ORBITAL_SITES_SCHEMA,
+  schema: SITES_SCHEMA,
   siteId: 'port:jebel_ali',
   name: 'Jebel Ali',
   lat: 25.01,
@@ -70,8 +70,8 @@ describe('watched-site imagery read (KTD16)', () => {
     const stale = [
       toWatchedSiteImagery('port:jebel_ali', null, NOW),
       toWatchedSiteImagery('port:jebel_ali', record({ siteId: 'port:other' }), NOW),
-      toWatchedSiteImagery('port:jebel_ali', record({ schema: ORBITAL_SITES_SCHEMA + 1 }), NOW),
-      toWatchedSiteImagery('port:jebel_ali', record({ evaluatedAt: NOW - ORBITAL_ROLLUP_MAX_AGE_MS - 1 }), NOW),
+      toWatchedSiteImagery('port:jebel_ali', record({ schema: SITES_SCHEMA + 1 }), NOW),
+      toWatchedSiteImagery('port:jebel_ali', record({ evaluatedAt: NOW - ROLLUP_MAX_AGE_MS - 1 }), NOW),
     ];
     for (const res of stale) {
       assert.equal(res.stale, true);

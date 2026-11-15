@@ -14,7 +14,7 @@ import { ValidationError } from '../../../../src/generated/server/worldmonitor/o
 import { ORBITAL_SITE_KEY_PREFIX } from '../../../_shared/cache-keys';
 import { getCachedJson } from '../../../_shared/redis';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
-import { ORBITAL_ROLLUP_MAX_AGE_MS, ORBITAL_SITES_SCHEMA } from './get-country-imagery-evidence';
+import { ROLLUP_MAX_AGE_MS, SITES_SCHEMA } from '../../../../shared/orbital/country-rollup.js';
 
 /** Registry ids are "<origin list>:<entry id>" (shared/watched-sites.ts). */
 // The registry's id alphabet; one base id keeps a non-breaking space from its source name.
@@ -28,9 +28,9 @@ const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(va
 /** A record is served only when it is the site's, in the current schema and fresh enough. */
 export function toWatchedSiteImagery(siteId: string, record: unknown, nowMs: number): GetWatchedSiteImageryResponse {
   const empty: GetWatchedSiteImageryResponse = { siteId, name: '', lat: 0, lon: 0, evaluatedAt: 0, stale: true };
-  if (!isRecord(record) || record.schema !== ORBITAL_SITES_SCHEMA || record.siteId !== siteId) return empty;
+  if (!isRecord(record) || record.schema !== SITES_SCHEMA || record.siteId !== siteId) return empty;
   const base = { siteId, name: str(record.name), lat: num(record.lat), lon: num(record.lon), evaluatedAt: num(record.evaluatedAt) };
-  if (nowMs - base.evaluatedAt > ORBITAL_ROLLUP_MAX_AGE_MS) return { ...base, stale: true };
+  if (nowMs - base.evaluatedAt > ROLLUP_MAX_AGE_MS) return { ...base, stale: true };
   const observation = isRecord(record.lastObservation) ? record.lastObservation : null;
   const next = Array.isArray(record.nextWindows)
     ? record.nextWindows.filter(isRecord).find((window) => Date.parse(str(window.time)) > nowMs) ?? null
