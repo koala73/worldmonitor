@@ -57,17 +57,17 @@ const wingbitsGhostRows = process.env.RELAY_TEST_WINGBITS_GHOST_ROWS === '1';
 // Wingbits), 'empty' -> 200 with zero aircraft (authoritative quiet skies —
 // stops the fallback chain), 'flight' -> 200 with one military aircraft in
 // iran-theater bounds. Exhausted -> 'error'.
-const adsbPointAircraft = process.env.RELAY_TEST_ADSBLOL_POINT_FILE
-  ? JSON.parse(fs.readFileSync(process.env.RELAY_TEST_ADSBLOL_POINT_FILE, 'utf8'))
+// Air-traffic Wingbits lanes. Every area of a traffic request (aliases 'us-'
+// and 'eu-') returns all flights in RELAY_TEST_WINGBITS_TRAFFIC_FILE, each
+// reported `ageMs` (default 1000) before the response. Statuses come from the
+// sequence, then 200. 'short' answers one area fewer than asked.
+const wingbitsTrafficFlights = process.env.RELAY_TEST_WINGBITS_TRAFFIC_FILE
+  ? JSON.parse(fs.readFileSync(process.env.RELAY_TEST_WINGBITS_TRAFFIC_FILE, 'utf8'))
   : null;
-const adsbPointStatuses = (process.env.RELAY_TEST_ADSBLOL_POINT_STATUS_SEQUENCE || '')
+const wingbitsTrafficStatuses = (process.env.RELAY_TEST_WINGBITS_TRAFFIC_STATUS_SEQUENCE || '')
   .split(',')
-  .map((value) => Number(value.trim()))
-  .filter((value) => Number.isFinite(value) && value > 0);
-const adsbPointDelayMs = Number(process.env.RELAY_TEST_ADSBLOL_POINT_DELAY_MS || 0);
-const adsbPointDelayOnCall = Number(process.env.RELAY_TEST_ADSBLOL_POINT_DELAY_ON_CALL || 0);
-let adsbPointCalls = 0;
-const adsbPointNowLagMs = Number(process.env.RELAY_TEST_ADSBLOL_POINT_NOW_LAG_MS || 0);
+  .map((value) => value.trim())
+  .filter(Boolean);
 const adsbModes = (process.env.RELAY_TEST_ADSB_MODE_SEQUENCE || '')
   .split(',')
   .map((value) => value.trim())
@@ -140,15 +140,6 @@ globalThis.fetch = async (url, options) => {
       text: async () => body,
     };
   }
-  // Air-traffic adsb.lol lanes: every /v2/point circle returns the aircraft in
-  // RELAY_TEST_ADSBLOL_POINT_FILE, with statuses from the sequence (then 200).
-  if (target.includes('api.adsb.lol/v2/point/') && adsbPointAircraft) {
-    adsbPointCalls += 1;
-    if (adsbPointDelayMs > 0 && (!adsbPointDelayOnCall || adsbPointCalls === adsbPointDelayOnCall)) await new Promise((resolve) => setTimeout(resolve, adsbPointDelayMs));
-    const status = nextValue(adsbPointStatuses, 200);
-    const now = Date.now() - adsbPointNowLagMs;
-    return { status, ok: status === 200, statusText: '', text: async () => '', json: async () => ({ now, ac: adsbPointAircraft }) };
-  }
   if (target.includes('api.adsb.lol')) {
     const mode = nextValue(adsbModes, 'error');
     if (mode === 'empty') {
@@ -171,6 +162,15 @@ globalThis.fetch = async (url, options) => {
     return { status: 503, ok: false, statusText: 'Service Unavailable', text: async () => '', json: async () => ({}) };
   }
   if (target.includes('customer-api.wingbits.com')) {
+    const requested = JSON.parse(String(options?.body || '[]'));
+    if (wingbitsTrafficFlights && requested.some((area) => /^(us|eu)-/.test(area.alias))) {
+      const mode = nextValue(wingbitsTrafficStatuses, '200');
+      const status = mode === 'short' ? 200 : Number(mode);
+      const now = Date.now();
+      const flights = wingbitsTrafficFlights.map(({ ageMs = 1000, ...f }) => ({ ...f, ra: new Date(now - ageMs).toISOString() }));
+      const areas = (mode === 'short' ? requested.slice(1) : requested).map((area) => ({ alias: area.alias, data: flights }));
+      return { status, ok: status === 200, statusText: '', text: async () => '', json: async () => areas };
+    }
     if (wingbitsEchoAreas) {
       const areas = JSON.parse(String(options?.body || '[]'));
       return {

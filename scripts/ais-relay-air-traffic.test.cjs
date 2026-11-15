@@ -379,31 +379,33 @@ test('lane 15: a leftover interval setting cannot stretch the wait past the next
   });
 });
 
-const ADSBLOL_PREFIX = 'aviation:traffic:history:adsblol:v1';
-const ADSBLOL_AIRCRAFT = [
-  { hex: 'a00001', lat: ATL.lat, lon: ATL.lon, alt_baro: 2000, baro_rate: 1200, seen_pos: 1 },
-  { hex: 'a00002', lat: ATL.lat, lon: ATL.lon, alt_baro: 'ground', seen_pos: 1 },
-  { hex: '400001', lat: 51.47, lon: -0.45, alt_baro: 36000, seen_pos: 0 },
+const WINGBITS_PREFIX = 'aviation:traffic:history:wingbits:v1';
+const WINGBITS_FLIGHTS = [
+  { h: 'a00001', la: ATL.lat, lo: ATL.lon, ab: 2000, og: false },
+  { h: 'a00002', la: ATL.lat, lo: ATL.lon, og: true },
+  { h: '400001', la: 51.47, lo: -0.45, ab: 36000, og: false },
+  // Reported two minutes ago: where it was, not where it is.
+  { h: 'a00003', la: 35, lo: -100, ab: 30000, og: false, ageMs: 120_000 },
 ];
 
-async function adsbLolLane(statusSequence, body, extraEnv = {}) {
+async function wingbitsLane(statusSequence, body, extraEnv = {}, flights = WINGBITS_FLIGHTS) {
   const redis = await createRedis();
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'adsblol-lane-'));
-  const file = path.join(dir, 'aircraft.json');
-  fs.writeFileSync(file, JSON.stringify(ADSBLOL_AIRCRAFT));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wingbits-lane-'));
+  const file = path.join(dir, 'flights.json');
+  fs.writeFileSync(file, JSON.stringify(flights));
   const relay = spawnRelay(redis, {
     RELAY_TEST_AIR_TRAFFIC_LOOP: 'false',
-    RELAY_TEST_ADSBLOL_TRAFFIC_LOOP: 'true',
-    RELAY_TEST_ADSBLOL_POINT_FILE: file,
-    RELAY_TEST_ADSBLOL_POINT_STATUS_SEQUENCE: statusSequence,
-    ADSBLOL_TRAFFIC_SPACING_MS: '1',
-    ADSBLOL_API_KEY: 'test-adsblol-key',
+    RELAY_TEST_WINGBITS_TRAFFIC_LOOP: 'true',
+    RELAY_TEST_WINGBITS_TRAFFIC_FILE: file,
+    RELAY_TEST_WINGBITS_TRAFFIC_STATUS_SEQUENCE: statusSequence,
+    WINGBITS_API_KEY: 'test-wingbits-key',
     ...extraEnv,
   });
-  const lines = () => relay.output().split('\n').filter((line) => line.startsWith('[AirTrafficAdsbLol] t='));
+  const lines = () => relay.output().split('\n').filter((line) => line.startsWith('[AirTrafficWingbits] t='));
+  const firstPoint = () => relay.waitFor(() => redis.points('2026-11-13', WINGBITS_PREFIX).length >= 1 && lines().length >= 1, 'first Wingbits point');
   try {
-    await relay.waitFor(() => relay.output().includes('[AirTrafficAdsbLol] loop starting') || relay.output().includes('[AirTrafficAdsbLol] Disabled'), 'adsb.lol loop ready');
-    await body({ redis, relay, lines });
+    await relay.waitFor(() => relay.output().includes('[AirTrafficWingbits] loop starting') || relay.output().includes('[AirTrafficWingbits] Disabled'), 'Wingbits loop ready');
+    await body({ redis, relay, lines, firstPoint });
   } finally {
     await relay.stop();
     await redis.close();
@@ -411,61 +413,60 @@ async function adsbLolLane(statusSequence, body, extraEnv = {}) {
   }
 }
 
-test('lane 16: a full adsb.lol sweep records a point in its own series, counting overlapping circles once', async () => {
-  await adsbLolLane('', async ({ redis, relay, lines }) => {
-    await relay.waitFor(() => redis.points('2026-11-13', ADSBLOL_PREFIX).length >= 1 && lines().length >= 1, 'first adsb.lol point');
-    const [point] = redis.points('2026-11-13', ADSBLOL_PREFIX);
+test('lane 16: one Wingbits request records a point in its own series, counting overlapping areas once', async () => {
+  await wingbitsLane('', async ({ redis, lines, firstPoint }) => {
+    await firstPoint();
+    const [point] = redis.points('2026-11-13', WINGBITS_PREFIX);
     assert.equal(point.status, 'ok', lines().join('\n'));
-    assert.deepEqual(point.hubs.ATL, { air: 1, ground: 1 }, 'all 12 circles return the same aircraft, counted once');
+    assert.deepEqual(point.hubs.ATL, { air: 1, ground: 1 }, 'every area returns the same flights, counted once');
+    assert.equal(point.usSeen, 2, 'the two-minute-old report is left out');
     assert.equal(point.euAirborne, 1);
-    assert.equal(point.usLowClimbing, 1);
-    assert.ok(JSON.parse(redis.get('seed-meta:aviation:traffic-history-adsblol')).fetchedAt > 0);
-    assert.equal(redis.get('seed-activated:aviation:traffic-history-adsblol'), '1');
+    assert.equal('usLowClimbing' in point, false, 'Wingbits has no vertical rate, so climbers are not stored as 0');
+    assert.match(lines()[0], /status=ok us=2 usAirborne=1 eu=1 hubs=20 attempts=1$/);
+    assert.ok(JSON.parse(redis.get('seed-meta:aviation:traffic-history-wingbits')).fetchedAt > 0);
+    assert.equal(redis.get('seed-activated:aviation:traffic-history-wingbits'), '1');
     assert.deepEqual(redis.points('2026-11-13'), [], 'the OpenSky series is untouched');
     assert.equal(redis.get('seed-meta:aviation:traffic-history'), null);
   });
 });
 
-test('lane 17: a rate-limited circle is retried, so the sweep still records an ok point', async () => {
-  await adsbLolLane('200,429,200', async ({ redis, relay, lines }) => {
-    await relay.waitFor(() => redis.points('2026-11-13', ADSBLOL_PREFIX).length >= 1 && lines().length >= 1, 'first adsb.lol point');
-    assert.equal(redis.points('2026-11-13', ADSBLOL_PREFIX)[0].status, 'ok', lines().join('\n'));
+test('lane 17: a failed Wingbits request is retried inside the bin', async () => {
+  await wingbitsLane('503', async ({ redis, lines, firstPoint }) => {
+    await firstPoint();
+    assert.equal(redis.points('2026-11-13', WINGBITS_PREFIX)[0].status, 'ok', lines().join('\n'));
+    assert.match(lines()[0], /attempts=2$/);
   });
 });
 
-test('lane 18: a circle that fails twice makes the bin a gap, never a partial count', async () => {
-  await adsbLolLane('200,429,429', async ({ redis, relay, lines }) => {
-    await relay.waitFor(() => redis.points('2026-11-13', ADSBLOL_PREFIX).length >= 1 && lines().length >= 1, 'first adsb.lol point');
-    const [point] = redis.points('2026-11-13', ADSBLOL_PREFIX);
+test('lane 18: three failed attempts make the bin a gap with no heartbeat', async () => {
+  await wingbitsLane('503,503,503', async ({ redis, lines, firstPoint }) => {
+    await firstPoint();
+    const [point] = redis.points('2026-11-13', WINGBITS_PREFIX);
     assert.deepEqual(point, { t: point.t, status: 'gap' });
-    assert.match(lines()[0], /status=gap reason=circle 2 http 429$/);
-    assert.equal(redis.get('seed-meta:aviation:traffic-history-adsblol'), null);
+    assert.match(lines()[0], /status=gap reason=http 503 attempts=3$/);
+    assert.equal(redis.get('seed-meta:aviation:traffic-history-wingbits'), null);
   });
 });
 
-test('lane 19: without an adsb.lol key the loop stays off, so the keyless IP quota is never spent', async () => {
-  await adsbLolLane('', async ({ relay }) => {
-    assert.match(relay.output(), /\[AirTrafficAdsbLol\] Disabled \(ADSBLOL_API_KEY not set/);
-    assert.doesNotMatch(relay.output(), /\[AirTrafficAdsbLol\] loop starting/);
-  }, { ADSBLOL_API_KEY: '' });
+test('lane 19: without a Wingbits key the loop stays off', async () => {
+  await wingbitsLane('', async ({ relay }) => {
+    assert.match(relay.output(), /\[AirTrafficWingbits\] Disabled \(WINGBITS_API_KEY not set\)/);
+    assert.doesNotMatch(relay.output(), /\[AirTrafficWingbits\] loop starting/);
+  }, { WINGBITS_API_KEY: '' });
 });
 
-test('lane 20: a 200 whose snapshot is minutes old is a gap, never an old count', async () => {
-  await adsbLolLane('', async ({ redis, relay, lines }) => {
-    await relay.waitFor(() => redis.points('2026-11-13', ADSBLOL_PREFIX).length >= 1 && lines().length >= 1, 'first adsb.lol point');
-    assert.deepEqual(redis.points('2026-11-13', ADSBLOL_PREFIX)[0].status, 'gap');
-    assert.match(lines()[0], /status=gap reason=circle 1 stale$/);
-  }, { RELAY_TEST_ADSBLOL_POINT_NOW_LAG_MS: '600000' });
+test('lane 20: a response with one area missing is a gap, never a partial count', async () => {
+  await wingbitsLane('short,short,short', async ({ redis, lines, firstPoint }) => {
+    await firstPoint();
+    assert.equal(redis.points('2026-11-13', WINGBITS_PREFIX)[0].status, 'gap');
+    assert.match(lines()[0], /status=gap reason=malformed attempts=3$/);
+  });
 });
 
-test('lane 21: a last circle that answers after its bin ends makes that bin a gap', async () => {
-  // Only the 12th request is slow. At 300x, 1.2 real seconds is a full bin.
-  await adsbLolLane('', async ({ redis, relay, lines }) => {
-    // The next bin's tick can finish first, so wait for the 20:30 line by bin.
-    const t = Date.UTC(2026, 10, 13, 20, 30);
-    const line = () => lines().find((l) => l.includes('t=2026-11-13T20:30:00.000Z'));
-    await relay.waitFor(() => line(), 'the 20:30 adsb.lol line');
-    assert.deepEqual(redis.points('2026-11-13', ADSBLOL_PREFIX).find((p) => p.t === t), { t, status: 'gap' });
-    assert.match(line(), /status=gap reason=bin ended$/);
-  }, { RELAY_TEST_ADSBLOL_POINT_DELAY_MS: '1200', RELAY_TEST_ADSBLOL_POINT_DELAY_ON_CALL: '12' });
+test('lane 21: a response whose every report is stale is a gap, never an empty sky', async () => {
+  await wingbitsLane('', async ({ redis, lines, firstPoint }) => {
+    await firstPoint();
+    assert.equal(redis.points('2026-11-13', WINGBITS_PREFIX)[0].status, 'gap');
+    assert.match(lines()[0], /status=gap reason=empty attempts=3$/);
+  }, {}, WINGBITS_FLIGHTS.map((f) => ({ ...f, ageMs: 120_000 })));
 });
