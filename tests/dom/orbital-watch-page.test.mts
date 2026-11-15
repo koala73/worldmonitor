@@ -188,6 +188,12 @@ describe('imagery evidence sheet', () => {
     expect(sectionOf('alert').querySelector('a')!.getAttribute('href')).toBe('/pro#pricing');
   });
 
+  it('keeps the water card slot when pass data is unavailable', () => {
+    const page = mounted({ kind: 'unavailable' });
+    page.slot('water').append(Object.assign(document.createElement('section'), { className: 'wl-water-card' }));
+    expect(sheet().querySelector('.ies-body .wl-water-card')).not.toBeNull();
+  });
+
   it('lists computed passes at once, reading "checking archive" until their archive answers, then moves them to their tier', () => {
     const { all, likely, confirmedNew, military } = tiered();
     const page = mounted({ kind: 'passes', lookup: lookup(all), archives: { kind: 'checking', total: 5, progress: null } });
