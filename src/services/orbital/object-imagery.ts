@@ -86,22 +86,43 @@ function nextPassOf(passes: PointPassLookup['passes'], nowMs: number): ObjectPas
   return next ? { satellite: next.name, profileId: next.profileId, timeMs: next.timeMs } : null;
 }
 
+/**
+ * How far back a popup looks for its latest image. It reaches past the popup's
+ * 14-day stale mark, so an old image shows as old rather than as no image.
+ */
+export const LATEST_IMAGE_DAYS = 30;
+const DAY_MS = 86_400_000;
+
 /** Answered entirely in the browser: the point goes to the pass worker and the public archives only. */
 export async function lookupPointImagery(point: GeoPoint, signal?: AbortSignal): Promise<ObjectImagery> {
-  const lookup = await lookupPasses(point, signal);
-  const window = { startMs: lookup.window.startMs, endMs: Math.min(lookup.window.endMs, lookup.nowMs) };
-  const stac = await Promise.all((['earth-search', 'planetary-computer'] as const)
-    .map((archive) => searchStacArchive(archive, { point, window, signal })));
-  const evidence = assembleEvidence({ lookup, stac });
+  signal?.throwIfAborted();
+  const nowMs = Date.now();
+  // The archive search has its own window, so a pass worker that fails to start still leaves the latest image.
+  const window = { startMs: nowMs - LATEST_IMAGE_DAYS * DAY_MS, endMs: nowMs };
+  const [lookup, stac] = await Promise.all([
+    lookupPasses(point, signal).catch((error: unknown) => {
+      if (signal?.aborted || (error instanceof Error && error.name === 'AbortError')) throw error;
+      return null;
+    }),
+    Promise.all((['earth-search', 'planetary-computer'] as const).map((archive) => searchStacArchive(archive, { point, window, signal }))),
+  ]);
+  const evidence = assembleEvidence({ lookup: lookup ?? noPasses(point, window, nowMs), stac });
   const newest = evidence.acquisitions.find((a) => a.imageUrl);
   return {
     latest: newest?.imageUrl
       ? { datetime: new Date(newest.startMs).toISOString(), profileId: newest.profileId, archive: archiveOf(newest.imageUrl), candidates: [newest.imageUrl] }
       : null,
     imageSearchFailed: !newest && evidence.failures.length > 0,
-    nextPass: nextPassOf(lookup.passes, Date.now()),
+    nextPass: lookup ? nextPassOf(lookup.passes, Date.now()) : null,
   };
 }
+
+/** Matching needs a lookup; without passes every scene stands alone and no pass is named. */
+const noPasses = (point: GeoPoint, window: PointPassLookup['window'], nowMs: number): PointPassLookup => ({
+  point, window, nowMs,
+  catalog: { status: 'empty', fetchedAt: 0, inventoryVersion: '' },
+  passes: [], satellites: [], daylight: [], computedOn: 'none',
+});
 
 export async function loadObjectImagery(target: ImageryTarget, signal?: AbortSignal): Promise<ObjectImagery> {
   if (target.kind === 'site') {

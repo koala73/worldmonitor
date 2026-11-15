@@ -30,7 +30,7 @@ vi.mock('../../shared/watched-sites', () => ({
   composeWatchedSites: () => [{ id: 'military-base:al_udeid', origins: [{ list: 'military-base', id: 'al_udeid' }] }],
 }));
 
-import { loadObjectImagery, type ImageryTarget } from '@/services/orbital/object-imagery';
+import { LATEST_IMAGE_DAYS, loadObjectImagery, type ImageryTarget } from '@/services/orbital/object-imagery';
 
 const HOUR = 3_600_000;
 const point = { lat: 25.12, lon: 51.31 };
@@ -128,6 +128,40 @@ describe('loadObjectImagery: fallback to the in-browser lookup', () => {
 
     expect(result.latest).toBeNull();
     expect(result.imageSearchFailed).toBe(true);
+  });
+});
+
+describe('loadObjectImagery: the latest-image search', () => {
+  const point7Days = () => ({ ...passLookup([]), window: { startMs: Date.now() - 7 * 24 * HOUR, endMs: Date.now() + 72 * HOUR } });
+
+  it('still searches the archives when the pass lookup fails, and names no next pass', async () => {
+    harness.lookup.mockImplementation(async () => { throw new Error('pass worker init timeout'); });
+    const result = await loadObjectImagery({ kind: 'point', point });
+
+    expect(harness.stac.mock.calls.map(([archive]) => archive).sort()).toEqual(['earth-search', 'planetary-computer']);
+    expect(result.latest).toMatchObject({ candidates: [browserImage] });
+    expect(result.nextPass).toBeNull();
+  });
+
+  it('looks back LATEST_IMAGE_DAYS, not the seven-day pass window', async () => {
+    harness.lookup.mockImplementation(async () => point7Days());
+    const before = Date.now();
+    await loadObjectImagery({ kind: 'point', point });
+
+    const { window } = harness.stac.mock.calls[0]![1] as { window: { startMs: number; endMs: number } };
+    expect(before - window.startMs).toBeGreaterThanOrEqual(LATEST_IMAGE_DAYS * 24 * HOUR);
+    expect(before - window.startMs).toBeLessThan(LATEST_IMAGE_DAYS * 24 * HOUR + 60_000);
+    expect(window.endMs).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('keeps the stale colour reachable: the search reaches past IMAGE_STALE_MS', () => {
+    expect(LATEST_IMAGE_DAYS * 24 * HOUR).toBeGreaterThan(14 * 24 * HOUR);
+  });
+
+  it('still rejects when the popup closed during the pass lookup', async () => {
+    const closed = new AbortController();
+    harness.lookup.mockImplementation(async () => { closed.abort(); throw new DOMException('aborted', 'AbortError'); });
+    await expect(loadObjectImagery({ kind: 'point', point }, closed.signal)).rejects.toMatchObject({ name: 'AbortError' });
   });
 });
 
