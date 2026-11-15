@@ -211,7 +211,6 @@ syntax = "proto3";
 package worldmonitor.weather.v1;
 
 import "buf/validate/validate.proto";
-import "worldmonitor/core/v1/pagination.proto";
 import "worldmonitor/weather/v1/weather_station.proto";
 
 // ListWeatherStationsRequest specifies filters for weather station data.
@@ -226,8 +225,6 @@ message ListWeatherStationsRequest {
 message ListWeatherStationsResponse {
   // The list of weather stations.
   repeated WeatherStation stations = 1;
-  // Pagination metadata.
-  worldmonitor.core.v1.PaginationResponse pagination = 2;
 }
 ```
 
@@ -283,7 +280,7 @@ export const listWeatherStations: WeatherServiceHandler['listWeatherStations'] =
   req: ListWeatherStationsRequest,
 ): Promise<ListWeatherStationsResponse> => {
   // Your implementation here — fetch from upstream API, transform to proto shape
-  return { stations: [], pagination: undefined };
+  return { stations: [] };
 };
 ```
 
