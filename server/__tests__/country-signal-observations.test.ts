@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { COUNTRY_SIGNAL_BYTES, COUNTRY_SIGNAL_FAMILIES, projectCountrySignalFamily, projectImagerySignalFamily, projectQualifiedCountrySignals, projectQualifiedCountrySignalContext, unavailableCountrySignal, boundCountrySignalFamily, sourceClock, type CountrySignalOutcome } from '../../shared/country-signal-observations';
 import { ROLLUP_MAX_AGE_MS } from '../../shared/orbital/country-rollup.js';
-import { CONFIRMED, RAISED, flagAfter, rollupOf, shadowedRollup, siteOf } from '../../tests/helpers/orbital-country-rollup.mjs';
+import { CONFIRMED, RAISED, flagAfter, rollupOf, shadowedRollup, siteOf, watchedRead } from '../../tests/helpers/orbital-country-rollup.mjs';
 
 describe('qualified country Signals', () => {
   it.each([['elevated', 1, 'medium'], ['elevated', 5, 'high'], ['critical', 1, 'medium'], ['critical', 5, 'high']] as const)('keeps vessel count thresholds for %s posture with %i vessels', (postureLevel, trackedVessels, severity) => {
@@ -73,7 +73,7 @@ describe('qualified country Signals', () => {
 describe('imagery country signal family', () => {
   const now = Date.UTC(2026, 8, 21, 12);
   const natanz = siteOf('nuclear:natanz', 'Natanz Enrichment Facility');
-  const project = (rollup: unknown) => projectImagerySignalFamily('IR', rollup, now);
+  const project = (rollup: Parameters<typeof watchedRead>[0]) => projectImagerySignalFamily('IR', watchedRead(rollup), now);
 
   it('projects one confirmed flag with its site, satellites and scene dates', () => {
     const outcome = project(rollupOf('IR', now, [{ site: natanz, flag: flagAfter(natanz.id, now, CONFIRMED) }]));
@@ -99,7 +99,7 @@ describe('imagery country signal family', () => {
     const flagged = [{ site: natanz, flag: flagAfter(natanz.id, now, CONFIRMED) }];
     expect(project(null)).toMatchObject({ state: 'unavailable', reason: 'No current watched-site evidence for this country.' });
     expect(project(rollupOf('IR', now, flagged, { evaluatedAt: now - ROLLUP_MAX_AGE_MS - 1 }))).toMatchObject({ state: 'unavailable', observations: [] });
-    expect(projectImagerySignalFamily('IQ', rollupOf('IR', now, flagged), now)).toMatchObject({ state: 'unavailable', observations: [] });
+    expect(projectImagerySignalFamily('IQ', watchedRead(rollupOf('IR', now, flagged)), now)).toMatchObject({ state: 'unavailable', observations: [] });
   });
 
   it('stays under the family byte cap with 100 confirmed sites', () => {

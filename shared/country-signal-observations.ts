@@ -103,6 +103,7 @@ const IMAGERY_ATTRIBUTION = 'Copernicus Sentinel-1 via Microsoft Planetary Compu
 const IMAGERY_UNAVAILABLE = {
   missing: 'No current watched-site evidence for this country.',
   malformed: 'Watched-site evidence is unreadable.',
+  superseded: 'Watched-site evidence is not the revision the site index names.',
   stale: 'Watched-site evidence is older than its freshness limit.',
 } as const;
 
@@ -112,14 +113,15 @@ const IMAGERY_UNAVAILABLE = {
  * not "no change"; a raised flag is never an observation.
  */
 export function projectImagerySignalFamily(countryCode: string, body: unknown, nowMs = Date.now()): CountrySignalOutcome {
-  const read = readCountryRollup(body, countryCode, nowMs);
+  const { rollup, index } = (body ?? {}) as { rollup?: unknown; index?: unknown };
+  const read = readCountryRollup(rollup, index, countryCode, nowMs);
   if (read.status !== 'current') return unavailableCountrySignal(countryCode, 'imagery', IMAGERY_UNAVAILABLE[read.status]);
   const scored = scoredSiteCount(read.rollup);
   if (scored === 0) return unavailableCountrySignal(countryCode, 'imagery', 'Change scoring is not yet published for this country\'s watched sites.');
   const day = (iso: string) => iso.slice(0, 10);
   const observations = confirmedSiteFlags(read.rollup).map((flag): QualifiedCountryObservation => ({
     id: flag.siteId.slice(0, 200), family: 'imagery', type: 'imagery_statistics_changed', severity: 'low',
-    title: `Imagery statistics changed at ${flag.name}: raised by ${flag.raised.platform ?? 'a radar'} scene ${day(flag.raised.datetime)}, confirmed by ${flag.confirmed.platform ?? 'a radar'} scene ${day(flag.confirmed.datetime)}`.slice(0, 512),
+    title: `Imagery statistics changed at ${flag.name}: ${flag.raised ? `raised by ${flag.raised.platform ?? 'a radar'} scene ${day(flag.raised.datetime)}, ` : ''}confirmed by ${flag.confirmed.platform ?? 'a radar'} scene ${day(flag.confirmed.datetime)}`.slice(0, 512),
     source: IMAGERY_ATTRIBUTION, eventAt: sourceClock(flag.confirmed.datetime), snapshotAt: sourceClock(read.rollup.asOf), timeBasis: 'event',
   }));
   return boundCountrySignalFamily({
