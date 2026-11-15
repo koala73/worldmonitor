@@ -7,12 +7,18 @@ const LOW_ALTITUDE_M = 3000;
 const EARTH_RADIUS_KM = 6371;
 
 // OpenSky /states/all row indexes.
+const CALLSIGN = 1;
 const LON = 5;
 const LAT = 6;
 const BARO_ALT = 7;
 const ON_GROUND = 8;
 const VERTICAL_RATE = 11;
 const GEO_ALT = 13;
+
+// An ICAO airline designator then a flight number. Registrations (N123AB,
+// DEABC) are general aviation, which keeps flying through a ground stop.
+const AIRLINE_CALLSIGN = /^[A-Z]{3}[0-9]/;
+const isAirline = (callsign) => typeof callsign === 'string' && AIRLINE_CALLSIGN.test(callsign.trim());
 
 const binStart = (ms) => Math.floor(ms / BIN_MS) * BIN_MS;
 const finite = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -40,7 +46,10 @@ function aggregateStates(states, fetchedAt) {
   let usAirborne = 0;
   let usLowClimbing = 0;
   let euAirborne = 0;
-  const hubs = Object.fromEntries(US_HUBS.map((hub) => [hub.iata, { air: 0, ground: 0 }]));
+  let usAirborneAirline = 0;
+  let usLowClimbingAirline = 0;
+  let euAirborneAirline = 0;
+  const hubs = Object.fromEntries(US_HUBS.map((hub) => [hub.iata, { air: 0, ground: 0, dep: 0 }]));
   for (const state of states) {
     if (!Array.isArray(state)) continue;
     const lat = state[LAT];
@@ -48,27 +57,44 @@ function aggregateStates(states, fetchedAt) {
     if (!finite(lat) || !finite(lon)) continue;
     statesTotal += 1;
     const onGround = state[ON_GROUND] === true;
+    const airline = isAirline(state[CALLSIGN]);
     if (inBox(lat, lon, EUROPE_BOX)) {
-      if (!onGround) euAirborne += 1;
+      if (!onGround) {
+        euAirborne += 1;
+        if (airline) euAirborneAirline += 1;
+      }
       continue;
     }
     if (!inBox(lat, lon, CONUS_BOX)) continue;
     usSeen += 1;
+    let departing = false;
     if (!onGround) {
       usAirborne += 1;
+      if (airline) usAirborneAirline += 1;
       const altitude = finite(state[BARO_ALT]) ? state[BARO_ALT] : state[GEO_ALT];
       const verticalRate = state[VERTICAL_RATE];
-      if (finite(altitude) && altitude < LOW_ALTITUDE_M && finite(verticalRate) && verticalRate > 0) usLowClimbing += 1;
+      if (finite(altitude) && altitude < LOW_ALTITUDE_M && finite(verticalRate) && verticalRate > 0) {
+        usLowClimbing += 1;
+        if (airline) {
+          usLowClimbingAirline += 1;
+          departing = true;
+        }
+      }
     }
     const latRad = toRad(lat);
     const lonRad = toRad(lon);
     const cosLat = Math.cos(latRad);
     for (const hub of HUBS) {
       if (Math.abs(latRad - hub.lat) * (180 / Math.PI) > HUB_LAT_SPAN_DEG) continue;
-      if (withinHubRadius(hub, latRad, lonRad, cosLat)) hubs[hub.iata][onGround ? 'ground' : 'air'] += 1;
+      if (!withinHubRadius(hub, latRad, lonRad, cosLat)) continue;
+      hubs[hub.iata][onGround ? 'ground' : 'air'] += 1;
+      if (departing) hubs[hub.iata].dep += 1;
     }
   }
-  return { t: binStart(fetchedAt), status: 'ok', usSeen, usAirborne, usLowClimbing, euAirborne, hubs, statesTotal };
+  return {
+    t: binStart(fetchedAt), status: 'ok', usSeen, usAirborne, usLowClimbing, euAirborne,
+    usAirborneAirline, usLowClimbingAirline, euAirborneAirline, hubs, statesTotal,
+  };
 }
 
 function gapPoint(fetchedAt) {

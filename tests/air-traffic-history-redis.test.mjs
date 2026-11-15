@@ -14,7 +14,7 @@ const server = process.env.REDIS_SERVER_BIN || 'redis-server';
 const enabled = spawnSync(cli, ['--version']).status === 0 && spawnSync(server, ['--version']).status === 0;
 
 const T = Date.UTC(2026, 10, 13, 23, 55, 0);
-const okPoint = (t, n = 100) => ({ t, status: 'ok', usSeen: n, usAirborne: n - 10, usLowClimbing: 7, euAirborne: 50, hubs: { ATL: { air: 3, ground: 9 } }, statesTotal: 400 });
+const okPoint = (t, n = 100) => ({ t, status: 'ok', usSeen: n, usAirborne: n - 10, usLowClimbing: 7, euAirborne: 50, usAirborneAirline: n - 40, usLowClimbingAirline: 5, euAirborneAirline: 30, hubs: { ATL: { air: 3, ground: 9, dep: 1 } }, statesTotal: 400 });
 const gapPoint = (t) => ({ t, status: 'gap' });
 
 test('the write plan targets one hash per UTC day with EXPIREAT at day end plus 35 days', () => {

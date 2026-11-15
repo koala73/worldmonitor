@@ -14,19 +14,20 @@ const test = require('node:test');
 const { US_HUBS } = require('./shared/air-traffic-regions.cjs');
 
 const ATL = US_HUBS.find((hub) => hub.iata === 'ATL');
-const row = (lat, lon, { alt = 10000, ground = false, vr = 0 } = {}) =>
-  ['abc123', 'TEST1   ', 'US', 0, 0, lon, lat, alt, ground, 200, 90, vr, null, null];
+const row = (lat, lon, { alt = 10000, ground = false, vr = 0, callsign = 'TEST1   ' } = {}) =>
+  ['abc123', callsign, 'US', 0, 0, lon, lat, alt, ground, 200, 90, vr, null, null];
 const repeat = (n, make) => Array.from({ length: n }, make);
 
 // 10,000 states with hand-counted totals.
 const GLOBAL_SNAPSHOT = [
   ...repeat(1000, () => row(35, -100)),
-  ...repeat(200, () => row(35, -100, { alt: 1000, vr: 5 })),
+  ...repeat(50, () => row(35, -100, { alt: 1000, vr: 5 })),
+  ...repeat(150, () => row(35, -100, { alt: 1000, vr: 5, callsign: 'DAL123  ' })),
   ...repeat(300, () => row(ATL.lat, ATL.lon, { ground: true, alt: null })),
   ...repeat(2000, () => row(50, 10)),
   ...repeat(6500, () => row(-20, 130)),
 ];
-const GLOBAL_TOTALS = { usSeen: 1500, usAirborne: 1200, usLowClimbing: 200, euAirborne: 2000 };
+const GLOBAL_TOTALS = { usSeen: 1500, usAirborne: 1200, usLowClimbing: 200, usLowClimbingAirline: 150, euAirborne: 2000 };
 const EUROPE_ONLY = repeat(400, () => row(50, 10));
 
 function createRedis({ abortPipelines = 0, firstPipelineDelayMs = 0 } = {}) {
@@ -194,12 +195,15 @@ test('lane 1: a global snapshot becomes one ok point with the hand-counted total
     assert.equal(point.status, 'ok');
     assert.equal(point.t % 300_000, 0);
     assert.deepEqual(
-      { usSeen: point.usSeen, usAirborne: point.usAirborne, usLowClimbing: point.usLowClimbing, euAirborne: point.euAirborne },
+      {
+        usSeen: point.usSeen, usAirborne: point.usAirborne, usLowClimbing: point.usLowClimbing,
+        usLowClimbingAirline: point.usLowClimbingAirline, euAirborne: point.euAirborne,
+      },
       GLOBAL_TOTALS,
     );
-    assert.deepEqual(point.hubs.ATL, { air: 0, ground: 300 });
+    assert.deepEqual(point.hubs.ATL, { air: 0, ground: 300, dep: 0 });
     assert.equal(Object.keys(point.hubs).length, 20);
-    assert.match(relay.lines()[0], /status=ok us=1500 usAirborne=1200 usLowClimbing=200 eu=2000 hubs=20/);
+    assert.match(relay.lines()[0], /status=ok us=1500 usAirborne=1200 usLowClimbing=200 usLowClimbingAirline=150 eu=2000 hubs=20/);
     const meta = JSON.parse(redis.get('seed-meta:aviation:traffic-history'));
     assert.equal(meta.recordCount, 10_000);
     assert.ok(meta.fetchedAt >= point.t && meta.fetchedAt < point.t + 300_000, 'the heartbeat is the fetch time inside the bin');

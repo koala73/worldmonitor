@@ -56,14 +56,19 @@ test('a Wingbits point stores only what Wingbits measures, in its own keys', () 
   assert.equal(write.key, 'aviation:traffic:history:wingbits:v1:2026-11-15');
   const stored = JSON.parse(write.commands[0][3]);
   assert.equal('usLowClimbing' in stored, false);
-  assert.deepEqual(stored.hubs.ATL, { air: 1, ground: 0 });
+  assert.equal('usLowClimbingAirline' in stored, false);
+  assert.equal(stored.usAirborneAirline, 0, 'the row has no callsign');
+  assert.deepEqual(stored.hubs.ATL, { air: 1, ground: 0 }, 'no departure count without a vertical rate');
   assert.equal(write.metaCommands[0][1], 'seed-meta:aviation:traffic-history-wingbits');
   assert.equal(write.metaCommands[1][1], 'seed-activated:aviation:traffic-history-wingbits');
 });
 
 test('an OpenSky point still stores climbers, and rejects a point without them', () => {
   const point = aggregateStates([['a1', null, null, null, null, ATL.lon, ATL.lat, 500, false, 100, 0, 5, null, null]], NOW);
-  assert.equal(JSON.parse(buildTrafficPointWrite(point, NOW).commands[0][3]).usLowClimbing, 1);
+  const stored = JSON.parse(buildTrafficPointWrite(point, NOW).commands[0][3]);
+  assert.equal(stored.usLowClimbing, 1);
+  assert.equal(stored.usLowClimbingAirline, 0);
+  assert.deepEqual(stored.hubs.ATL, { air: 1, ground: 0, dep: 0 });
   const { usLowClimbing, ...withoutClimbers } = point;
   assert.equal(usLowClimbing, 1);
   assert.throws(() => buildTrafficPointWrite(withoutClimbers, NOW), TypeError);
@@ -93,3 +98,15 @@ for (const [name, s, w, n, e] of [
     for (const area of areas) assert.ok(area.w <= 2000 && area.h <= 2000, 'every box is within the Wingbits size limit');
   });
 }
+
+test('an OpenSky point stores airline counts and hub departures', () => {
+  const point = aggregateStates([['a1', 'DAL12   ', null, null, null, ATL.lon, ATL.lat, 500, false, 100, 0, 5, null, null]], NOW);
+  const stored = JSON.parse(buildTrafficPointWrite(point, NOW).commands[0][3]);
+  assert.deepEqual(
+    [stored.usAirborneAirline, stored.usLowClimbingAirline, stored.euAirborneAirline, stored.hubs.ATL.dep],
+    [1, 1, 0, 1],
+  );
+  const { usLowClimbingAirline, ...withoutAirlineClimbers } = point;
+  assert.equal(usLowClimbingAirline, 1);
+  assert.throws(() => buildTrafficPointWrite(withoutAirlineClimbers, NOW), TypeError);
+});
