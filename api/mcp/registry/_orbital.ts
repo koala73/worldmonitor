@@ -102,6 +102,14 @@ const SITE_SCHEMA = {
  */
 export const ORBITAL_MCP_TOOLS_PUBLISHED = false;
 
+/**
+ * The one catalog gate for every orbital MCP tool: listed together, by the constant
+ * alone, so a catalog built in any environment lists all of them or none.
+ */
+export function orbitalMcpTools<T>(tools: readonly T[], published: boolean = ORBITAL_MCP_TOOLS_PUBLISHED): T[] {
+  return published ? [...tools] : [];
+}
+
 export const ORBITAL_TOOLS: ToolDef[] = [
   {
     name: 'get_point_satellite_passes',

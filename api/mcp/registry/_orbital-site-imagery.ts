@@ -1,10 +1,10 @@
-import { isOrbitalWatchEnabled } from '../../../server/worldmonitor/orbital/v1/dark-launch';
+import { isOrbitalWatchEnabled, orbitalWatchDarkResponse } from '../../../server/worldmonitor/orbital/v1/dark-launch';
 import { countrySiteImagery, imageryCredits } from '../../../server/worldmonitor/orbital/v1/site-imagery';
 import type { GetCountryImageryEvidenceResponse } from '../../../src/generated/server/worldmonitor/orbital/v1/service_server';
 import { requireCountryCode } from '../_country-args';
-import { RpcValidationError } from '../billing-denial';
+import { assertToolFetchOk, RpcValidationError } from '../billing-denial';
 import type { ToolDef } from '../types';
-import { COUNTRY_EVIDENCE_PATH, ORBITAL_MCP_TOOLS_PUBLISHED, readOrbital } from './_orbital';
+import { COUNTRY_EVIDENCE_PATH, ORBITAL_MCP_TOOLS_PUBLISHED, orbitalMcpTools, readOrbital } from './_orbital';
 
 const TOOL = 'get-watched-site-imagery';
 const MAX_SITE_QUERY = 80;
@@ -81,6 +81,8 @@ export const WATCHED_SITE_IMAGERY_TOOL: ToolDef = {
   _execute: async (params, base, context, execution) => {
     const countryCode = requireCountryCode(params.country_code, TOOL);
     const query = siteQuery(params);
+    // While dark, fail with the same 404 the other orbital tools get from the dark REST endpoint.
+    if (!isOrbitalWatchEnabled()) await assertToolFetchOk(orbitalWatchDarkResponse(), TOOL);
     const evidence = await readOrbital(COUNTRY_EVIDENCE_PATH, new URLSearchParams({ country_code: countryCode }), TOOL, base, context, execution) as GetCountryImageryEvidenceResponse;
     const { credits: _credits, ...imagery } = countrySiteImagery({ ...evidence, sites: Array.isArray(evidence?.sites) ? evidence.sites : [] }, Date.now());
     const sites = query ? imagery.sites.filter((site) => site.name.toLowerCase().includes(query) || site.siteId.toLowerCase().includes(query)) : imagery.sites;
@@ -92,12 +94,9 @@ export const WATCHED_SITE_IMAGERY_TOOL: ToolDef = {
 };
 
 /**
- * Listed with the other orbital tools once they are published (#10729), and only while
- * ORBITAL_WATCH_ENABLED=true. Dark, the tool is absent from tools/list and cannot be called.
+ * Listed with the other orbital tools, by the same constant (#10729). A call made while
+ * ORBITAL_WATCH_ENABLED is off fails in the handler with the dark 404.
  */
-export function orbitalSiteImageryTools(
-  env: Record<string, string | undefined> = process.env,
-  published: boolean = ORBITAL_MCP_TOOLS_PUBLISHED,
-): ToolDef[] {
-  return published && isOrbitalWatchEnabled(env) ? [WATCHED_SITE_IMAGERY_TOOL] : [];
+export function orbitalSiteImageryTools(published: boolean = ORBITAL_MCP_TOOLS_PUBLISHED): ToolDef[] {
+  return orbitalMcpTools([WATCHED_SITE_IMAGERY_TOOL], published);
 }

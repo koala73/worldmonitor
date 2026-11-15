@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 
+import { orbitalMcpTools, ORBITAL_MCP_TOOLS_PUBLISHED, ORBITAL_TOOLS } from '../api/mcp/registry/_orbital.ts';
 import { orbitalSiteImageryTools, WATCHED_SITE_IMAGERY_TOOL } from '../api/mcp/registry/_orbital-site-imagery.ts';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 import { getRequiredTier } from '../server/_shared/entitlement-check.ts';
 import { toCountryEvidence } from '../server/worldmonitor/orbital/v1/get-country-imagery-evidence.ts';
+import { orbitalWatchDarkResponse } from '../server/worldmonitor/orbital/v1/dark-launch.ts';
 import { countrySiteImagery, siteImagery } from '../server/worldmonitor/orbital/v1/site-imagery.ts';
 import { buildWatchedSiteImagery, formatSiteImagery, imageryCountries } from '../server/worldmonitor/intelligence/v1/chat-analyst-site-imagery.ts';
 import { assembleAnalystContext } from '../server/worldmonitor/intelligence/v1/chat-analyst-context.ts';
@@ -131,6 +133,23 @@ describe('analyst watched-site imagery', () => {
     for (const url of seen) assert.doesNotMatch(decodeURIComponent(url), /imaged|lately|Bandar/i);
   });
 
+  it('drops a stale country rollup and keeps the fresh country the question also names', async () => {
+    const UA_ROLLUP = {
+      schema: 1, countryCode: 'UA', revision: 'u1', asOf: NOW - 7_200_000,
+      sites: [site('port-odesa', 'Odesa', { lastObservation: { itemId: 'S2A_MSIL2A_20261113', profileId: 'sentinel-2', datetime: '2026-11-13T09:00:00Z' }, operators: ['ESA'] })],
+    };
+    redisFixture({
+      'orbital:sites:v1': INDEX,
+      'orbital:country:v1:IR': { ...IR_ROLLUP, asOf: NOW - 4 * 86_400_000 },
+      'orbital:country:v1:UA': UA_ROLLUP,
+    });
+    const text = await buildWatchedSiteImagery(null, 'What is the latest imagery on Iran and Ukraine?', [], NOW) ?? '';
+    assert.match(text, /^Watched-Site Imagery — Ukraine \(evaluated 2026-11-14, 1 of 1 sites\)$/m);
+    assert.match(text, /- Odesa: latest image 2026-11-13/);
+    assert.doesNotMatch(text, /Iran|Bandar Abbas|Natanz|Chabahar/, 'the stale Iran rollup contributes nothing');
+    assert.doesNotMatch(text, new RegExp(IMAGE_CREDIT.usgs.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'no credit owed to a dropped site');
+  });
+
   it('ranks a site the question names after its eighth content word first', async () => {
     process.env.ORBITAL_WATCH_ENABLED = 'true';
     redisFixture({ 'orbital:sites:v1': INDEX, 'orbital:country:v1:IR': IR_ROLLUP });
@@ -160,15 +179,51 @@ describe('analyst watched-site imagery', () => {
     assert.match(system, /never describe what an image shows or infer why/);
     assert.doesNotMatch(system, /Bandar Abbas/, 'feed data stays out of the system prompt');
   });
+
+  it('makes the imagery credit line the one exception to the no-source-names rule', async () => {
+    process.env.ORBITAL_WATCH_ENABLED = 'true';
+    redisFixture({ 'orbital:sites:v1': INDEX, 'orbital:country:v1:IR': IR_ROLLUP });
+    const ctx = await assembleAnalystContext('IR', 'military', 'Bandar Abbas');
+    const system = buildAnalystSystemPrompt(ctx, 'military');
+    assert.match(system, /Do not cite data sources by name\./);
+    assert.match(system, /The imagery credit line is the one exception to the rule against naming data sources: copy it exactly as given\./);
+    assert.match(system, /Name no other source\./);
+    const withoutImagery = buildAnalystSystemPrompt({ ...ctx, watchedSiteImagery: undefined }, 'military');
+    assert.match(withoutImagery, /Do not cite data sources by name\./);
+    assert.doesNotMatch(withoutImagery, /exception|credit line/, 'no exception without an imagery section');
+  });
 });
 
 describe('get_watched_site_imagery MCP tool', () => {
-  it('is absent from the registry and tools/list while dark, and listed only when published and enabled', () => {
-    assert.equal(TOOL_REGISTRY.some((tool) => tool.name === WATCHED_SITE_IMAGERY_TOOL.name), false);
-    assert.deepEqual(orbitalSiteImageryTools({ ORBITAL_WATCH_ENABLED: 'true' }), [], 'unpublished with the other orbital tools');
-    assert.deepEqual(orbitalSiteImageryTools({}, true), []);
-    assert.deepEqual(orbitalSiteImageryTools({ ORBITAL_WATCH_ENABLED: 'false' }, true), []);
-    assert.deepEqual(orbitalSiteImageryTools({ ORBITAL_WATCH_ENABLED: 'true' }, true), [WATCHED_SITE_IMAGERY_TOOL]);
+  it('is listed under the same constant as the other orbital tools, whatever the runtime env', () => {
+    const names = [...ORBITAL_TOOLS.map((tool) => tool.name), WATCHED_SITE_IMAGERY_TOOL.name];
+    assert.equal(names.length, 3);
+    const listed = names.filter((name) => TOOL_REGISTRY.some((tool) => tool.name === name));
+    assert.deepEqual(listed, ORBITAL_MCP_TOOLS_PUBLISHED ? names : [], 'all three orbital tools are listed together or not at all');
+    for (const env of [undefined, 'true', 'false']) {
+      if (env === undefined) delete process.env.ORBITAL_WATCH_ENABLED; else process.env.ORBITAL_WATCH_ENABLED = env;
+      for (const published of [false, true]) {
+        assert.deepEqual(orbitalSiteImageryTools(published), published ? [WATCHED_SITE_IMAGERY_TOOL] : [], `published=${published} env=${env}`);
+        assert.deepEqual(orbitalMcpTools(ORBITAL_TOOLS, published), published ? ORBITAL_TOOLS : [], `published=${published} env=${env}`);
+      }
+    }
+  });
+
+  it('fails a dark call the way the other orbital tools do, without a downstream fetch', async () => {
+    delete process.env.ORBITAL_WATCH_ENABLED;
+    let fetches = 0;
+    globalThis.fetch = (async () => { fetches += 1; return orbitalWatchDarkResponse(); }) as typeof fetch;
+    const evidenceTool = ORBITAL_TOOLS.find((tool) => tool.name === 'get_country_imagery_evidence');
+    assert.ok(evidenceTool);
+    const viaRest = await evidenceTool._execute({ country_code: 'IR' }, 'https://worldmonitor.app', { kind: 'env_key', apiKey: 'wm_fixture' } as never).then(() => null, (err: unknown) => err);
+    assert.equal(fetches, 1);
+    const direct = await WATCHED_SITE_IMAGERY_TOOL._execute({ country_code: 'IR' }, 'https://worldmonitor.app', { kind: 'env_key', apiKey: 'wm_fixture' } as never).then(() => null, (err: unknown) => err);
+    assert.equal(fetches, 1, 'the dark check runs before any fetch');
+    assert.ok(viaRest instanceof Error && direct instanceof Error);
+    assert.equal(direct.constructor, viaRest.constructor);
+    assert.equal((direct as { status?: number }).status, 404);
+    assert.equal((viaRest as { status?: number }).status, 404);
+    assert.equal(direct.message, 'get-watched-site-imagery HTTP 404');
   });
 
   it('is a paid-plan tool over the Pro-tier country evidence endpoint', () => {
@@ -180,6 +235,7 @@ describe('get_watched_site_imagery MCP tool', () => {
   });
 
   it('projects the REST evidence, filters by site, and drops change flags', async () => {
+    process.env.ORBITAL_WATCH_ENABLED = 'true';
     const evidence = toCountryEvidence('IR', INDEX, IR_ROLLUP, NOW);
     const urls: string[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL) => {
