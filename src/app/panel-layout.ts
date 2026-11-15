@@ -1,3 +1,4 @@
+import { readChunkModule } from '@/bootstrap/chunk-reload';
 import { clearTelegramIntelCache } from '@/services/telegram-intel';
 import { subscribeRuntimeConfig } from '@/services/runtime-config';
 import type { AppContext, AppModule } from '@/app/app-context';
@@ -506,7 +507,7 @@ let focusUi: FocusUi | null = null;
 let focusUiLoad: Promise<FocusUi> | null = null;
 
 function loadFocusUi(): Promise<FocusUi> {
-  focusUiLoad ??= import('@/components/focus-ui').then(
+  focusUiLoad ??= readChunkModule(import('@/components/focus-ui')).then(
     (mod) => {
       focusUi = mod;
       return mod;
@@ -843,7 +844,7 @@ export class PanelLayoutManager implements AppModule {
 
     // Handle analyst action chip "Create chart widget →" click
     this.boundWidgetCreatorHandler = ((e: CustomEvent<{ initialMessage?: string }>) => {
-      void import('@/components/WidgetChatModal').then((m) => m.openWidgetChatModal({
+      void readChunkModule(import('@/components/WidgetChatModal')).then((m) => m.openWidgetChatModal({
         mode: 'create',
         tier: 'pro',
         initialMessage: e.detail.initialMessage,
@@ -1748,7 +1749,7 @@ export class PanelLayoutManager implements AppModule {
       return;
     }
     const tabId = this.tabsState.activeTabId;
-    void import('@/components/FocusEditor').then(({ openFocusEditor }) => {
+    void readChunkModule(import('@/components/FocusEditor')).then(({ openFocusEditor }) => {
       // The tab can change while the chunk loads; edit only the tab it was opened for.
       if (this.ctx.isDestroyed || this.focusEditor || this.tabsState?.activeTabId !== tabId) return;
       this.focusEditor = openFocusEditor({
@@ -3419,7 +3420,7 @@ export class PanelLayoutManager implements AppModule {
     // initEscalationGetters/getTimeRange and onTimeRangeChanged — are grouped together
     // after the registration block (just before the onTimeRangeChanged wiring).
     // Failed-fetch reload guard: src/main.ts:285-290 (installChunkReloadGuard).
-    const mapModulePromise = import('@/components/MapContainer');
+    const mapModulePromise = readChunkModule(import('@/components/MapContainer'));
 
     this.createNewsPanel('politics', 'panels.politics');
     this.createNewsPanel('tech', 'panels.tech');
@@ -4123,7 +4124,7 @@ export class PanelLayoutManager implements AppModule {
     proBlock.appendChild(proLabel);
     proBlock.appendChild(proBadge);
     proBlock.addEventListener('click', () => {
-      void import('@/components/WidgetChatModal').then((m) => m.openWidgetChatModal({
+      void readChunkModule(import('@/components/WidgetChatModal')).then((m) => m.openWidgetChatModal({
         mode: 'create',
         tier: 'pro',
         onComplete: (spec) => {
@@ -4741,7 +4742,7 @@ export class PanelLayoutManager implements AppModule {
     exportName: K,
     createPanel: (PanelClass: PanelExport<M, K>, module: M) => ImportedPanel<M, K> | null,
   ): Promise<ImportedPanel<M, K> | null> {
-    return importer().then((module) => {
+    return readChunkModule(importer()).then((module) => {
       const PanelClass = module[exportName];
       if (typeof PanelClass !== 'function') {
         console.error(`[panel] ${exportName} export unavailable for "${key}"`);
