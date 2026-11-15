@@ -3,6 +3,7 @@ import { findPasses, type OrbitElements, type Pass } from '../../../shared/orbit
 import { matchSensorProfile, type SensorCategory, type SensorProfile } from '../../../shared/orbital/sensor-profiles.js';
 import { decidePassTier, OPTICAL_MIN_SUN_ELEVATION_DEG, type PassTier } from '../../../shared/orbital/tiers.js';
 import type { WatchedSite } from '../../../shared/watched-sites';
+import { BoundedCache, shareWork, type SharedWork } from './request-cache';
 import { classifyYaogan } from './yaogan-class';
 
 export const COVERAGE_WINDOW_HOURS = 24;
@@ -98,7 +99,7 @@ const nextTick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
  * and `hours` later. Runs on the client from the layer's element set and the public
  * site registry; no point leaves the browser.
  */
-export async function sitesCoveredBySatellite(input: {
+async function computeCoverage(input: {
   tle: TrackedSatelliteTle;
   sites: readonly CoverageSite[];
   nowMs: number;
@@ -163,4 +164,54 @@ export function loadWatchedSites(): Promise<CoverageSite[]> {
       throw err;
     });
   return watchedSites;
+}
+
+/** A card shows a scan until its 24-hour window has slid this far, then scans again. */
+export const COVERAGE_RENEW_MS = HOUR_MS;
+
+interface CoverageEntry { windowStartMs: number; work: SharedWork<SatelliteCoverage> }
+/** Completed scans by registry, then by satellite, element set and window length. Browser memory only. */
+const coverageCaches = new WeakMap<readonly CoverageSite[], BoundedCache<CoverageEntry>>();
+
+/** Drops passes already behind `nowMs`, keeping the earliest-next-pass order. */
+export function coverageAt(coverage: SatelliteCoverage, nowMs: number): SatelliteCoverage {
+  if (coverage.status !== 'ok') return coverage;
+  const sites = coverage.sites
+    .map((entry) => ({ site: entry.site, passes: entry.passes.filter((p) => p.timeMs > nowMs) }))
+    .filter((entry) => entry.passes.length > 0)
+    .sort((a, b) => a.passes[0]!.timeMs - b.passes[0]!.timeMs || a.site.name.localeCompare(b.site.name));
+  return { ...coverage, sites };
+}
+
+/**
+ * The watched sites a satellite covers over the window starting at `nowMs`.
+ * A scan of the same satellite, element set and registry whose window started
+ * less than `COVERAGE_RENEW_MS` ago answers instead, with passes already behind
+ * dropped; once the window slides that far the satellite is scanned again.
+ * A consumer that aborts never cancels a scan another consumer still waits on.
+ */
+export async function sitesCoveredBySatellite(input: {
+  tle: TrackedSatelliteTle;
+  sites: readonly CoverageSite[];
+  nowMs: number;
+  hours?: number;
+  signal?: AbortSignal;
+}): Promise<SatelliteCoverage> {
+  input.signal?.throwIfAborted();
+  let cache = coverageCaches.get(input.sites);
+  if (!cache) coverageCaches.set(input.sites, cache = new BoundedCache<CoverageEntry>(16));
+  const hours = input.hours ?? COVERAGE_WINDOW_HOURS;
+  const key = `${input.tle.noradId}|${input.tle.name}|${input.tle.line1}|${input.tle.line2}|${hours}`;
+  let entry = cache.get(key, input.nowMs);
+  if (!entry || entry.work.abandoned || input.nowMs < entry.windowStartMs) {
+    const { tle, sites, nowMs } = input;
+    const created: CoverageEntry = { windowStartMs: nowMs, work: shareWork((signal) => computeCoverage({ tle, sites, nowMs, hours, signal })) };
+    const owner = cache;
+    owner.set(key, created, nowMs + COVERAGE_RENEW_MS);
+    const forget = () => owner.delete(key, created);
+    created.work.done.then((coverage) => { if (coverage.status === 'unavailable') forget(); }, forget);
+    entry = created;
+  }
+  const coverage = await entry.work.join(input.signal, () => { throw new DOMException('Aborted', 'AbortError'); });
+  return coverageAt(coverage, input.nowMs);
 }

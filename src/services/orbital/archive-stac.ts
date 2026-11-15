@@ -1,8 +1,9 @@
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
 import { isAllowedPreviewUrl } from '../../utils/imagery-preview';
 import { formatCoordinate } from './crop-url';
-import { failed, requestArchive, type ArchiveFailure, type ArchiveReply, type ArchiveRequestOptions, type ArchiveResult } from './archive-result';
+import { defaultFetch, failed, requestArchive, type ArchiveFailure, type ArchiveReply, type ArchiveRequestOptions, type ArchiveResult, type FetchLike } from './archive-result';
 import type { PassWindow } from './pass-query';
+import { BoundedCache, shareWork, type SharedWork } from './request-cache';
 
 export type StacArchiveId = 'earth-search' | 'planetary-computer';
 export type ImagingProfileId = 'sentinel-2' | 'sentinel-1' | 'landsat';
@@ -164,6 +165,8 @@ export function parseStacItem(archive: StacArchiveId, feature: StacFeature): Arc
 export interface StacSearchQuery extends ArchiveRequestOptions {
   point: GeoPoint;
   window: PassWindow;
+  /** A subset of the archive's collections; all of them when absent. */
+  collections?: readonly string[];
 }
 
 const SEARCH_HEADERS = { 'Content-Type': 'application/json', Accept: 'application/geo+json' };
@@ -211,11 +214,10 @@ async function readSearchPage(response: Response): Promise<StacSearchPage> {
   return { features: page.features, links: page.links };
 }
 
-/** One search per archive, sent straight from the browser to the archive. */
-export async function searchStacArchive(archive: StacArchiveId, query: StacSearchQuery): Promise<ArchiveResult<ArchiveItem>> {
+async function fetchStacSearch(archive: StacArchiveId, query: StacSearchQuery & { collections: readonly string[] }): Promise<ArchiveResult<ArchiveItem>> {
   const config = STAC_ARCHIVES[archive];
   const body = {
-    collections: Object.keys(config.collections),
+    collections: [...query.collections],
     intersects: { type: 'Point', coordinates: [query.point.lon, query.point.lat] },
     datetime: `${new Date(query.window.startMs - SEARCH_LEAD_MS).toISOString()}/${new Date(query.window.endMs).toISOString()}`,
     limit: SEARCH_LIMIT,
@@ -235,6 +237,75 @@ export async function searchStacArchive(archive: StacArchiveId, query: StacSearc
     return item && item.endMs >= query.window.startMs && item.startMs <= query.window.endMs ? [item] : [];
   });
   return { status: 'ok', archive, items };
+}
+
+/** How long a search answer stands for the archive's current holdings. */
+export const STAC_RESULT_FRESH_MS = 5 * MINUTE_MS;
+/** A search whose window ends this close to when it was sent reaches the present. */
+const REACHES_PRESENT_MS = MINUTE_MS;
+const STAC_CACHE_ENTRIES = 24;
+
+interface StacCacheEntry {
+  archive: StacArchiveId;
+  pointKey: string;
+  collections: ReadonlySet<string>;
+  window: PassWindow;
+  sentAtMs: number;
+  work: SharedWork<ArchiveResult<ArchiveItem>>;
+}
+
+/** One cache per transport, so an injected fetch never reads answers another transport fetched. */
+const stacCaches = new WeakMap<FetchLike, BoundedCache<StacCacheEntry>>();
+const pointKeyOf = (point: GeoPoint) => `${point.lat},${point.lon}`;
+
+/** Whether a cached or running search answers `query`: same point, every collection asked for, and a window that holds it. */
+function answers(entry: StacCacheEntry, archive: StacArchiveId, pointKey: string, collections: readonly string[], window: PassWindow, nowMs: number): boolean {
+  if (entry.work.abandoned || entry.archive !== archive || entry.pointKey !== pointKey || !collections.every((c) => entry.collections.has(c))) return false;
+  if (entry.window.startMs > window.startMs) return false;
+  // A fresh search that reached the present stands for the archive now.
+  const reachesPresent = entry.window.endMs >= entry.sentAtMs - REACHES_PRESENT_MS && window.endMs <= nowMs;
+  return entry.window.endMs >= window.endMs || reachesPresent;
+}
+
+const narrowed = (result: ArchiveResult<ArchiveItem>, collections: readonly string[], window: PassWindow): ArchiveResult<ArchiveItem> =>
+  result.status !== 'ok' ? result : {
+    ...result,
+    items: result.items.filter((item) => collections.includes(item.collection) && item.endMs >= window.startMs && item.startMs <= window.endMs),
+  };
+
+/**
+ * One search per archive, sent straight from the browser to the archive. Answers
+ * are shared in this tab's memory: a running or fresh search for the same point
+ * with a window and collections that hold the request answers it, and a consumer
+ * that aborts never cancels a search another consumer still waits on. Failures
+ * are never kept.
+ */
+export async function searchStacArchive(archive: StacArchiveId, query: StacSearchQuery): Promise<ArchiveResult<ArchiveItem>> {
+  const collections = query.collections ?? Object.keys(STAC_ARCHIVES[archive].collections);
+  const transport = query.fetch ?? defaultFetch;
+  let cache = stacCaches.get(transport);
+  if (!cache) stacCaches.set(transport, cache = new BoundedCache<StacCacheEntry>(STAC_CACHE_ENTRIES));
+  const nowMs = Date.now();
+  const pointKey = pointKeyOf(query.point);
+  let entry: StacCacheEntry | undefined;
+  for (const [, candidate] of cache.live(nowMs)) {
+    if (answers(candidate, archive, pointKey, collections, query.window, nowMs)) entry = candidate;
+  }
+  if (!entry) {
+    const key = `${archive}|${pointKey}|${[...collections].sort().join(',')}|${query.window.startMs}|${query.window.endMs}`;
+    const { fetch, timeoutMs } = query;
+    const created: StacCacheEntry = {
+      archive, pointKey, collections: new Set(collections), window: query.window, sentAtMs: nowMs,
+      work: shareWork((signal) => fetchStacSearch(archive, { point: query.point, window: query.window, collections, fetch, timeoutMs, signal })),
+    };
+    entry = created;
+    const owner = cache;
+    owner.set(key, created, nowMs + STAC_RESULT_FRESH_MS);
+    const forget = () => owner.delete(key, created);
+    created.work.done.then((result) => { if (result.status !== 'ok') forget(); }, forget);
+  }
+  const result = await entry.work.join(query.signal, () => failed<ArchiveItem>({ archive, reason: 'aborted' }));
+  return narrowed(result, collections, query.window);
 }
 
 const SCL_CONDITION: Record<number, PointCondition> = {

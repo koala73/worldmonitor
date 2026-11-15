@@ -7,6 +7,8 @@ import { SENSOR_PROFILES, matchSensorProfile } from '../shared/orbital/sensor-pr
 import { OPTICAL_MIN_SUN_ELEVATION_DEG } from '../shared/orbital/tiers.js';
 import { composeWatchedSites } from '../shared/watched-sites.ts';
 import {
+  COVERAGE_RENEW_MS,
+  coverageAt,
   imagingProfileFor,
   orbitElementsFromTle,
   sitesCoveredBySatellite,
@@ -153,6 +155,45 @@ describe('satellite site coverage', () => {
   it('exports no reverse site-to-satellites lookup until a site sheet links to it', async () => {
     const mod = await import('../src/services/orbital/satellite-site-coverage.ts');
     assert.equal('satellitesCoveringSite' in mod, false);
+  });
+});
+
+describe('#10758 item 5: the coverage cache', () => {
+  const MINUTE = 60_000;
+  // A copy of the registry is a different cache owner, so it always scans fresh.
+  const fresh = (nowMs: number) => sitesCoveredBySatellite({ tle: sentinel2a, sites: [...sites], nowMs });
+
+  it('serves an identical scan from memory, equal to a fresh scan', async () => {
+    const cached = await sitesCoveredBySatellite({ tle: sentinel2a, sites, nowMs: EPOCH_MS });
+    const again = await sitesCoveredBySatellite({ tle: sentinel2a, sites, nowMs: EPOCH_MS });
+    assert.deepEqual(again, cached);
+    assert.deepEqual(cached, await fresh(EPOCH_MS));
+  });
+
+  it('drops passes already behind on read, matching the fresh scan of the same window', async () => {
+    const readAt = EPOCH_MS + 40 * MINUTE;
+    const cached = await sitesCoveredBySatellite({ tle: sentinel2a, sites, nowMs: readAt });
+    assert.equal(cached.status, 'ok');
+    if (cached.status !== 'ok') return;
+    assert.equal(cached.windowStartMs, EPOCH_MS, 'the window has not slid far enough to rescan');
+    assert.ok(cached.sites.every((entry) => entry.passes.every((p) => p.timeMs > readAt)));
+    assert.deepEqual(cached, coverageAt(await fresh(EPOCH_MS), readAt));
+  });
+
+  it('rescans once the window has slid, equal to a fresh scan from then', async () => {
+    const slid = EPOCH_MS + COVERAGE_RENEW_MS;
+    const cached = await sitesCoveredBySatellite({ tle: sentinel2a, sites, nowMs: slid });
+    assert.equal(cached.status === 'ok' && cached.windowStartMs, slid);
+    assert.deepEqual(cached, await fresh(slid));
+  });
+
+  it('rescans a new element set for the same satellite', async () => {
+    const renewed = { ...sentinel2a, line1: sentinel2a.line1.replace('26317.50000000', '26317.45000000') };
+    const before = await sitesCoveredBySatellite({ tle: sentinel2a, sites, nowMs: EPOCH_MS });
+    const after = await sitesCoveredBySatellite({ tle: renewed, sites, nowMs: EPOCH_MS });
+    assert.deepEqual(after, await sitesCoveredBySatellite({ tle: renewed, sites: [...sites], nowMs: EPOCH_MS }));
+    assert.equal(before.status, after.status);
+    assert.notDeepEqual(after, before, 'a moved epoch moves the passes');
   });
 });
 

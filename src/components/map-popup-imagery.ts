@@ -94,19 +94,24 @@ export const formatUtc = (ms: number) => new Intl.DateTimeFormat(getCurrentLangu
 const PROFILE_NAMES: Record<string, string> = { 'sentinel-2': 'Sentinel-2', 'sentinel-1': 'Sentinel-1 radar', landsat: 'Landsat' };
 const profileName = (id: string) => PROFILE_NAMES[id] ?? id;
 
+function renderNextPass(imagery: ObjectImagery): string {
+  if (imagery.nextPassPending) return '…';
+  return imagery.nextPass
+    ? `${escapeHtml(formatUtc(imagery.nextPass.timeMs))}<span class="popup-imagery-source">${escapeHtml(imagery.nextPass.satellite)}</span>`
+    : label('noPass');
+}
+
 export function renderImageryDetails(imagery: ObjectImagery, nowMs: number, showNextPass = true): string {
   const latestMs = imagery.latest ? Date.parse(imagery.latest.datetime) : NaN;
   const stale = Number.isFinite(latestMs) && nowMs - latestMs > IMAGE_STALE_MS;
   const latest = imagery.latest && Number.isFinite(latestMs)
     ? `${escapeHtml(formatUtc(latestMs))}<span class="popup-imagery-source">${escapeHtml(profileName(imagery.latest.profileId))}</span>`
     : label(imagery.imageSearchFailed ? 'unavailable' : 'noImage');
-  const next = imagery.nextPass
-    ? `${escapeHtml(formatUtc(imagery.nextPass.timeMs))}<span class="popup-imagery-source">${escapeHtml(imagery.nextPass.satellite)}</span>`
-    : label('noPass');
+  const next = renderNextPass(imagery);
   return `${imagery.latest ? '<div class="popup-imagery-frame" data-orbital-image></div>' : ''}
     <div class="popup-stats popup-imagery-stats">
       <div class="popup-stat${stale ? ' popup-imagery-stale' : ''}"><span class="stat-label">${label('latest')}</span><span class="stat-value">${latest}</span></div>
-      ${showNextPass ? `<div class="popup-stat"><span class="stat-label">${label('nextPass')}</span><span class="stat-value">${next}</span></div>` : ''}
+      ${showNextPass ? `<div class="popup-stat"><span class="stat-label">${label('nextPass')}</span><span class="stat-value" data-orbital-next-pass>${next}</span></div>` : ''}
     </div>
     ${renderChangeFlagRow(imagery)}
     <button type="button" class="popup-imagery-open" data-orbital-open-evidence>${label('openEvidence')}</button>`;
@@ -126,9 +131,10 @@ export function mountImageryRow(root: HTMLElement, target: ImageryTarget, hooks:
   const body = root.querySelector<HTMLElement>('.popup-imagery-body');
   const load = hooks.load ?? loadObjectImagery;
   if (!body) return () => {};
-  void load(target, controller.signal).then(async (imagery) => {
-    if (controller.signal.aborted) return;
-    setTrustedHtml(body, trustedHtml(renderImageryDetails(imagery, (hooks.now ?? Date.now)(), !(target.kind === 'point' && target.ownNextPass)), 'imagery row markup escapes every value'));
+  const showNextPass = !(target.kind === 'point' && target.ownNextPass);
+  let early: ObjectImagery | null = null;
+  const paint = async (imagery: ObjectImagery) => {
+    setTrustedHtml(body, trustedHtml(renderImageryDetails(imagery, (hooks.now ?? Date.now)(), showNextPass), 'imagery row markup escapes every value'));
     body.querySelector('[data-orbital-open-evidence]')?.addEventListener('click', () => hooks.onOpenEvidence(target));
     hooks.onLayout();
     const frame = body.querySelector<HTMLElement>('[data-orbital-image]');
@@ -147,6 +153,23 @@ export function mountImageryRow(root: HTMLElement, target: ImageryTarget, hooks:
     img.src = result.image.objectUrl;
     frame.appendChild(img);
     hooks.onLayout();
+  };
+  // The image paints as soon as it is known; the next pass fills its stat when the pass worker answers.
+  let earlyPaint: Promise<void> = Promise.resolve();
+  const onImageReady = (imagery: ObjectImagery) => {
+    if (controller.signal.aborted) return;
+    early = imagery;
+    earlyPaint = paint(imagery);
+  };
+  void load(target, controller.signal, onImageReady).then(async (imagery) => {
+    if (controller.signal.aborted) return;
+    const nextPassCell = body.querySelector<HTMLElement>('[data-orbital-next-pass]');
+    if (early && early.latest === imagery.latest && early.imageSearchFailed === imagery.imageSearchFailed && (nextPassCell || !showNextPass)) {
+      if (nextPassCell) setTrustedHtml(nextPassCell, trustedHtml(renderNextPass(imagery), 'next pass markup escapes every value'));
+      hooks.onLayout();
+      return earlyPaint;
+    }
+    return paint(imagery);
   }).catch(() => {
     if (controller.signal.aborted) return;
     setTrustedHtml(body, trustedHtml(`<span class="popup-imagery-status">${label('unavailable')}</span>`, 'static locale string'));
