@@ -8,11 +8,11 @@
  */
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { fixtureCatalog } from './orbital-watch.mjs';
+import { pointLeak } from './_point-leak.mjs';
 import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
 
 const SITE = { lat: 25.28, lon: 51.52 };
 const ARCHIVE_HOSTS = ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com', 'gibs.earthdata.nasa.gov', 'view.eumetsat.int'];
-const COORD = /25\.2[78]|51\.52/;
 
 // CelesTrak asks clients not to download a group more than once every two hours.
 const TLE_CACHE = new URL('../../../../.claude/verify-evidence/celestrak-resource.tle', import.meta.url);
@@ -83,7 +83,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
 
   const leaks = requests.filter((r) => {
     const url = new URL(r.url);
-    return !ARCHIVE_HOSTS.includes(url.hostname) && (COORD.test(url.pathname + url.search) || COORD.test(r.body));
+    return !ARCHIVE_HOSTS.includes(url.hostname) && pointLeak(`${url.pathname}${url.search}\n${r.body}`, SITE) !== null;
   });
   if (leaks.length) throw new Error(`site coordinates reached a non-archive host: ${leaks.map((r) => r.url).join(', ')}`);
   return { state, leaks: leaks.length };
