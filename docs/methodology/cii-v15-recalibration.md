@@ -75,3 +75,49 @@ Enumerate distinct unordered country pairs on each calibration date. A disagreem
 Randomise presentation order and left/right position with a recorded seed held by the coordinator. Judges use their own knowledge, consistent with the owner's invitation. They receive only the country names, assessment date, R21 construct and the options left higher, right higher, tie or insufficient evidence. No coordinator-authored evidence packets or model-input summaries are supplied. The ballot reveals no formula, scores, ranks, model identity, predicted winner or control label. Lock ballots separately before discussion.
 
 A pair is decided only when at least two thirds of all participating judges choose the same strict ordering. Ties, abstentions and unresolved pairs remain in the report but not the denominator. The candidate passes when it matches **at least two thirds of decided disagreement pairs**. Zero decided pairs is undefined, never a pass. Report decided and undecided counts, judge agreement, all disagreement outcomes and control outcomes separately. Controls cannot inflate the primary pass fraction. Preserve ballots and the selection seed for audit. This is a reported measurement only and ends at the owner-ruling stop, even if it fails.
+
+## P15b historical unrest episode
+
+Registered on 2026-11-15, before any GDELT data inside the search window was downloaded or inspected. The U18 study found the P15b episode from the calibration captures (KR, week to 2026-11-13, protest share 1.81%) is not an unrest episode: the rule above takes the largest eligible week without requiring anything unusual to have happened. The owner ruled that anchor unavailable on the current captures and asked for it to be rebuilt from a recorded historical episode. This section replaces only P15b's selection rule. The P15b scenario and its 35–55 band are unchanged. Before this commit, the only GDELT files downloaded were for days on or after 2026-11-10, which are used to validate the rebuild tool and lie outside the window.
+
+### Construct
+
+Sustained unrest above norm is a stable democracy in which protest makes up a much larger share of its news coverage than usual, on most days of a week, at a volume large enough for the share to be measured. The share is used rather than the count because GDELT's article volume per country moves with the media cycle and has drifted over the years, while the share does not. The norm is the country's own, never another country's.
+
+### Data and tools
+
+- **Countries.** DE, FR, GB, JP, KR, PL and US, the seven stable democracies already named in the brief.
+- **Window.** Capture days `T` from 2015-04-01 to 2026-10-31. The GDELT 2.0 export stream starts on 2015-02-18. 2015-04-01 is the first month start with the 35 prior days each rule needs. The end is the last full month before the calibration captures the owner has already ruled on.
+- **Counts.** For each country and UTC day: articles `A` and protest-coded articles `P` (CAMEO root 14), counted by the seeder's own `parseCountryEventsExport` (`scripts/_gdelt-country-events.mjs`).
+- **Selection source.** Rebuilding every day of the window from its 96 quarter-hour GDELT 2.0 exports is about 400,000 requests. At GDELT's sequential rate of about one per second, that takes more than four days. Selection therefore reads GDELT's one-file-a-day event export. It uses the same engine and the 1.0 column layout, and is mapped column-for-column to the 2.0 layout and parsed by the same parser (`scripts/cii-gdelt-archive-rebuild.mjs daily`). The daily file is admissible only if, on every validation day, each of the seven countries has article counts within 5% of the 2.0 rebuild and protest-coded counts within 10% of it (or within 3 when the 2.0 count is under 30). Otherwise the scan is not run and the finding is a blocker. The selected episode is then rebuilt from the 2.0 exports and must re-qualify there (below). All copied magnitudes come from the 2.0 rebuild.
+- **Rebuild validity.** The 2.0 rebuild (`scripts/cii-gdelt-archive-rebuild.mjs v2`) must reproduce the `gdeltCountryEvents` block of both `calibration: true` captures. Integer counts must match exactly, `current` to within 0.05 (its one-decimal rounding) and `baselineMedian` exactly. A mismatch stops the study until it is explained.
+
+### Rule
+
+For country `c` and capture day `T`, using the scorer's clock at the end of day `T` (cursor `T 23:45:00`):
+
+- **Week** `W`: the seven days `T-7` to `T-1`, the scorer's `week` at that clock. All seven must be present.
+- **Current day**: `T` itself, the scorer's `current` at that clock. It must be present.
+- **Norm** `N`: the 28 days `T-35` to `T-8`, the four weeks before the week, so the episode cannot raise its own norm. At least 21 of the 28 days must be present (the scorer's own minimum baseline). The norm share is `n = ΣP / ΣA` over the present days.
+
+A missing day is unknown, never quiet. `T` qualifies when all of the following hold:
+
+| # | Criterion | Threshold | Reason from the construct |
+|---|---|---|---|
+| 1 | Week articles `ΣA_W` | ≥ 200 | OQ11's volume floor. Below it, a share is a handful of articles. |
+| 2 | Week protest articles `ΣP_W` | ≥ 35 | An average of five a day. Sustained unrest is reported every day, and below this, one multi-article story can make the week. |
+| 3 | Norm protest articles `ΣP_N` | ≥ 28 | An average of one a day, so the norm is an estimate rather than a few events. The Poisson relative error is then at most 19%. |
+| 4 | Magnitude: week share `ΣP_W / ΣA_W` | ≥ 2n | "Well above norm" is taken as protest's share of coverage at least doubling. A ratio of two is the conventional threshold for a large relative change in a rate. It is fixed here without reference to how shares vary in these countries. |
+| 5 | Sustained: week days with daily share `P/A` ≥ 2n | ≥ 5 of 7 | Most days of the week, allowing two quiet days such as a weekend. Five is also the scorer's own minimum for a measured week (`COUNTRY_EVENTS_MIN_WEEK_DAYS`). |
+| 6 | Current day share `P_T / A_T` | ≥ 2n | The scorer's `current` must lie inside the episode, not after it. |
+| 7 | Significance: binomial upper tail `P(X ≥ ΣP_W)` with `X ~ Bin(ΣA_W, n)` | ≤ 1 × 10⁻⁶ | The scan makes about 30,000 country-day tests. A Bonferroni bound for a 5% family-wise error rate is 1.7 × 10⁻⁶, rounded down. |
+
+**Episodes.** The qualifying days of one country that are at most seven days apart form one episode. An episode's statistic is the ratio `week share / n` on its peak day, the qualifying day with the greatest ratio. Ties go to the earliest day.
+
+**Selection.** Sort all episodes of all seven countries by peak ratio ascending, then by earliest peak date, then by ISO2. Take the lower median, position `floor((m - 1) / 2)` with zero-based indexing, as the chronic-war rule does. The 35–55 band sits mid-scale, so the anchor should be a typical qualifying episode. The maximum over eleven years and seven countries is an extreme value that grows with the window. The median does not.
+
+**Confirmation on the 2.0 stream.** Rebuild days `T-35` to `T` of the selected episode's peak day from the 2.0 exports. The peak day must satisfy criteria 1–7 on those counts. Every day must have all 96 exports, or the day counts as missing. `summarizeCountryEvents` at nowMs `T 23:59:59.999Z` with cursor `T 23:45:00` must also report `weekReady`, `baselineReady` and `currentComplete`, a positive protest `baselineMedian` and protest `current` above it (the original P15b eligibility). If confirmation fails, remove that episode and take the lower median of the rest. Repeat until one confirms or none remain. If none qualifies or confirms, report that P15b has no episode. Do not loosen any threshold after the scan.
+
+### Copied magnitudes
+
+From the confirmed episode's `summarizeCountryEvents` output for that country, unchanged: `protest.current`, `protest.baselineMedian`, `conflict.current`, `conflict.baselineMedian` and `week.articles`, `week.conflict` and `week.protest`. The same values go to each of DE, FR, GB, JP, KR, PL and US, as in the existing P15b scenario. GDELT strike days are not copied, and other evidence stays at zero. The AE9 check repeats this week's level for eight weeks, with current equal to median, as before. The manifest records the episode country, the capture clock, the week and norm dates, every criterion's value and the full candidate list with each episode's statistics. The country identifies evidence, never a score target.
