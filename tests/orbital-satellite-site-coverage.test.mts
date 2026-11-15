@@ -9,7 +9,6 @@ import { composeWatchedSites } from '../shared/watched-sites.ts';
 import {
   imagingProfileFor,
   orbitElementsFromTle,
-  satellitesCoveringSite,
   sitesCoveredBySatellite,
   type TrackedSatelliteTle,
 } from '../src/services/orbital/satellite-site-coverage.ts';
@@ -144,15 +143,16 @@ describe('satellite site coverage', () => {
     assert.equal(coverage.status, 'too-old');
   });
 
-  it('answers the reverse question for one site from the same passes', async () => {
-    const nowMs = EPOCH_MS + 6 * 3_600_000;
-    const coverage = await sitesCoveredBySatellite({ tle: sentinel2a, sites, nowMs });
-    assert.equal(coverage.status, 'ok');
-    if (coverage.status !== 'ok') return;
-    const first = coverage.sites[0]!;
-    const over = await satellitesCoveringSite({ site: first.site, tles: [sentinel2a, tle(99_990, 'UNKNOWN SAT'), tle(40697, 'YAOGAN-30 02A')], nowMs });
-    assert.deepEqual(over.map((s) => s.noradId), ['40697']);
-    assert.deepEqual(over[0]!.passes, first.passes);
+  it('reports a pass projection that throws as unavailable, not as stale orbit elements', async () => {
+    // Elements dated a month after "now" are fresh by age but outside the pass
+    // geometry's reach from the epoch, so findPasses() throws a RangeError.
+    const coverage = await sitesCoveredBySatellite({ tle: sentinel2a, sites, nowMs: EPOCH_MS - 30 * DAY });
+    assert.deepEqual(coverage, { status: 'unavailable' });
+  });
+
+  it('exports no reverse site-to-satellites lookup until a site sheet links to it', async () => {
+    const mod = await import('../src/services/orbital/satellite-site-coverage.ts');
+    assert.equal('satellitesCoveringSite' in mod, false);
   });
 });
 

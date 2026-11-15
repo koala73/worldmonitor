@@ -51,7 +51,9 @@ export type SatelliteCoverage =
   | { status: 'no-profile' }
   | { status: 'geostationary'; sensor: CoverageSensor }
   | { status: 'too-old'; orbitAgeDays: number }
-  | { status: 'bad-elements' };
+  | { status: 'bad-elements' }
+  /** The pass geometry rejected the elements (for example an epoch far after now); nothing is listed. */
+  | { status: 'unavailable' };
 
 /** Epoch and mean motion straight from the TLE columns, with the SGP4 record satellite.js builds. */
 export function orbitElementsFromTle(tle: TrackedSatelliteTle): OrbitElements | null {
@@ -129,7 +131,7 @@ export async function sitesCoveredBySatellite(input: {
     try {
       result = findPasses({ elements, profile, point: { lat: site.lat, lon: site.lon }, window, now: input.nowMs });
     } catch {
-      return { status: 'too-old', orbitAgeDays };
+      return { status: 'unavailable' };
     }
     if (result.status === 'too-old') return { status: 'too-old', orbitAgeDays: result.ageDays };
     if (result.status === 'geostationary') return { status: 'geostationary', sensor: sensorOf(profile) };
@@ -148,32 +150,6 @@ export async function sitesCoveredBySatellite(input: {
 
   sites.sort((a, b) => a.passes[0]!.timeMs - b.passes[0]!.timeMs || a.site.name.localeCompare(b.site.name));
   return { status: 'ok', sensor: sensorOf(profile), windowStartMs, windowEndMs, orbitAgeDays, sites };
-}
-
-export interface SatelliteOverSite {
-  noradId: string;
-  name: string;
-  sensor: CoverageSensor;
-  passes: CoveragePass[];
-}
-
-/**
- * The reverse view, for a site's evidence sheet: which tracked imaging satellites
- * cover one watched site in the window. Not wired to any sheet yet.
- */
-export async function satellitesCoveringSite(input: {
-  site: CoverageSite;
-  tles: readonly TrackedSatelliteTle[];
-  nowMs: number;
-  hours?: number;
-}): Promise<SatelliteOverSite[]> {
-  const out: SatelliteOverSite[] = [];
-  for (const tle of input.tles) {
-    const coverage = await sitesCoveredBySatellite({ tle, sites: [input.site], nowMs: input.nowMs, hours: input.hours });
-    if (coverage.status !== 'ok' || !coverage.sites.length) continue;
-    out.push({ noradId: tle.noradId, name: tle.name, sensor: coverage.sensor, passes: coverage.sites[0]!.passes });
-  }
-  return out.sort((a, b) => a.passes[0]!.timeMs - b.passes[0]!.timeMs);
 }
 
 let watchedSites: Promise<CoverageSite[]> | null = null;

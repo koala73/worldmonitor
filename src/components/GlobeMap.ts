@@ -24,7 +24,7 @@ import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/ge
 import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import { NUCLEAR_FACILITIES, SPACEPORTS, ECONOMIC_CENTERS, CRITICAL_MINERALS, UNDERSEA_CABLES } from '@/config/geo-map';
 import { PIPELINES } from '@/config/pipelines';
-import { getLocale, initI18n, t } from '@/services/i18n';
+import { getLocale, I18N_RESOURCES_LOADED_EVENT, initI18n, t } from '@/services/i18n';
 import type { ReservoirLevel } from '@/services/climate';
 import { sweptSwath, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { reservoirHeadline, reservoirTone, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
@@ -695,6 +695,9 @@ export class GlobeMap {
   private layerTogglesEl: HTMLElement | null = null;
   private tooltipEl: HTMLElement | null = null;
   private satelliteSitesAbort: AbortController | null = null;
+  private satelliteSitesView: { relabelSatelliteSites(host: HTMLElement): void } | null = null;
+  private openSatelliteCard: { id: string; el: HTMLElement } | null = null;
+  private satelliteCardI18nListener: (() => void) | null = null;
   private tooltipHideTimer: ReturnType<typeof setTimeout> | null = null;
   private satHoverStyle: HTMLStyleElement | null = null;
   private readonly chrome: boolean;
@@ -1901,17 +1904,7 @@ export class GlobeMap {
       const overLabel = overHit ? overHit.name : 'Ocean';
       if (ORBITAL_WATCH_ENABLED) {
         el.classList.add('osat-card');
-        html = `<div style="min-width:220px;">` +
-          `<span class="osat-name" style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));">${esc(d.name)}</span>` +
-          `<div class="osat-meta" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));margin:2px 0 6px;">NORAD ${esc(d.id)}</div>` +
-          `<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:calc(11px * var(--wm-panel-effective-scale, 1));">` +
-          `<span class="osat-meta">Type</span><span>${esc(SAT_TYPE_LABEL[d.type] || d.type)}</span>` +
-          `<span class="osat-meta">Operator</span><span>${esc(operatorName)}</span>` +
-          `<span class="osat-meta">Over</span><span>${esc(overLabel)}</span>` +
-          `<span class="osat-meta">Alt. band</span><span>${altBand} \u00B7 ${Math.round(d.alt)} km</span>` +
-          `<span class="osat-meta">Incl.</span><span>${d.inclination.toFixed(1)}\u00B0</span>` +
-          `<span class="osat-meta">Velocity</span><span>${d.velocity.toFixed(1)} km/s</span>` +
-          `</div><div data-osat-sites></div></div>`;
+        html = `<div style="min-width:220px;"><div data-osat-card-body>${this.satelliteCardBodyHtml(d)}</div><div data-osat-sites></div></div>`;
       } else html = `<div style="min-width:220px;">` +
         `<span style="color:${sc};font-weight:bold;font-size:calc(12px * var(--wm-panel-effective-scale, 1));">${SAT_TYPE_EMOJI[d.type] || '\u{1F6F0}'} ${esc(d.name)}</span>` +
         `<div style="opacity:.5;font-size:calc(10px * var(--wm-panel-effective-scale, 1));margin:2px 0 6px;">NORAD ${esc(d.id)}</div>` +
@@ -2082,7 +2075,12 @@ export class GlobeMap {
     const richKinds = new Set(['satellite', 'flightDelay', 'cableAdvisory', 'conflictZone', 'nuclearSite', 'spaceport', 'economic', 'datacenter', 'imageryScene', 'repairShip', 'aisDisruption']);
     const hideDelay = d._kind === 'webcam' ? 8000 : d._kind === 'webcam-cluster' ? 12000 : richKinds.has(d._kind) ? 6000 : 3500;
     if (!pinnedCard) this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), hideDelay);
-    if (pinnedCard && d._kind === 'satellite') this.fillSatelliteSites(el, d.id, d.name);
+    if (pinnedCard && d._kind === 'satellite') {
+      this.openSatelliteCard = { id: d.id, el };
+      this.satelliteCardI18nListener = () => this.relabelSatelliteCard();
+      window.addEventListener(I18N_RESOURCES_LOADED_EVENT, this.satelliteCardI18nListener);
+      this.fillSatelliteSites(el, d.id, d.name);
+    }
 
     if (d._kind === 'webcam-cluster') {
       const tooltipEl = el;
@@ -2156,13 +2154,63 @@ export class GlobeMap {
     }
   }
 
+  /** The Orbital Watch satellite card's header and detail grid, in the current language. */
+  private satelliteCardBodyHtml(d: SatelliteMarker): string {
+    const k = 'orbitalWatch.satelliteSites.card';
+    const altBand = d.alt < 2000 ? 'LEO' : d.alt < 35786 ? 'MEO' : 'GEO';
+    const operatorName = SAT_OPERATOR_NAME[d.country] || getCountryNameByCode(d.country) || d.country;
+    const overHit = getCountryAtCoordinates(d._lat, d._lng);
+    const typeKey = `${k}.types.${d.type}`;
+    const typeLabel = t(typeKey);
+    const row = (label: string, value: string) => `<span class="osat-meta">${escapeHtml(label)}</span><span>${escapeHtml(value)}</span>`;
+    return `<span class="osat-name" style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));">${escapeHtml(d.name)}</span>` +
+      `<div class="osat-meta" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));margin:2px 0 6px;">${escapeHtml(t(`${k}.norad`, { id: d.id }))}</div>` +
+      `<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:calc(11px * var(--wm-panel-effective-scale, 1));">` +
+      row(t(`${k}.type`), typeLabel === typeKey ? (SAT_TYPE_LABEL[d.type] || d.type) : typeLabel) +
+      row(t(`${k}.operator`), operatorName) +
+      row(t(`${k}.over`), overHit ? overHit.name : t(`${k}.ocean`)) +
+      row(t(`${k}.altBand`), `${altBand} \u00B7 ${Math.round(d.alt)} km`) +
+      row(t(`${k}.inclination`), `${d.inclination.toFixed(1)}\u00B0`) +
+      row(t(`${k}.velocity`), `${d.velocity.toFixed(1)} km/s`) +
+      `</div>`;
+  }
+
+  /**
+   * Redraws the open Orbital Watch satellite card from the layer's current marker,
+   * so its position, labels and language follow data refreshes. Closes the card
+   * when the satellite has left the layer.
+   */
+  private refreshSatelliteCard(): void {
+    const open = this.openSatelliteCard;
+    if (!open || this.tooltipEl !== open.el) return;
+    const marker = this.satelliteMarkers.find((m) => m.id === open.id);
+    if (!marker) {
+      this.hideTooltip();
+      return;
+    }
+    const body = open.el.querySelector<HTMLElement>('[data-osat-card-body]');
+    if (body) setTrustedHtml(body, trustedHtml(this.satelliteCardBodyHtml(marker), 'satellite card fields escaped with escapeHtml'));
+  }
+
+  /** The full locale arrived after the card opened: redraw the header and the sites section in it. */
+  private relabelSatelliteCard(): void {
+    this.refreshSatelliteCard();
+    const host = this.openSatelliteCard?.el.querySelector<HTMLElement>('[data-osat-sites]');
+    if (!host) return;
+    if (host.dataset.osatNote === 'viewFailed') host.firstElementChild!.textContent = t('orbitalWatch.satelliteSites.viewFailed');
+    else this.satelliteSitesView?.relabelSatelliteSites(host);
+  }
+
   private fillSatelliteSites(card: HTMLElement, noradId: string, name: string): void {
     const host = card.querySelector<HTMLElement>('[data-osat-sites]');
     if (!host) return;
     const abort = new AbortController();
     this.satelliteSitesAbort = abort;
     void import('./orbital-satellite-sites-view')
-      .then(({ renderSatelliteSites }) => renderSatelliteSites(host, noradId, name, abort.signal))
+      .then((view) => {
+        this.satelliteSitesView = view;
+        return view.renderSatelliteSites(host, noradId, name, abort.signal);
+      })
       .then(() => {
         if (abort.signal.aborted || !card.isConnected) return;
         const cr = this.container.getBoundingClientRect();
@@ -2173,7 +2221,8 @@ export class GlobeMap {
         if (abort.signal.aborted || !card.isConnected) return;
         const note = document.createElement('div');
         note.className = 'osat-sites-note';
-        note.textContent = 'Click the satellite again to retry; the site list did not load.';
+        note.textContent = t('orbitalWatch.satelliteSites.viewFailed');
+        host.dataset.osatNote = 'viewFailed';
         host.replaceChildren(note);
       });
   }
@@ -2181,6 +2230,11 @@ export class GlobeMap {
   private hideTooltip(): void {
     this.satelliteSitesAbort?.abort();
     this.satelliteSitesAbort = null;
+    this.openSatelliteCard = null;
+    if (this.satelliteCardI18nListener) {
+      window.removeEventListener(I18N_RESOURCES_LOADED_EVENT, this.satelliteCardI18nListener);
+      this.satelliteCardI18nListener = null;
+    }
     if (this.tooltipHideTimer) { clearTimeout(this.tooltipHideTimer); this.tooltipHideTimer = null; }
     this.tooltipEl?.remove();
     this.tooltipEl = null;
@@ -4324,6 +4378,7 @@ export class GlobeMap {
     this.rebuildSatBeams(positions);
     this.flushMarkers();
     this.flushPaths();
+    this.refreshSatelliteCard();
   }
   public setTechEvents(events: Array<{ id: string; title: string; lat: number; lng: number; country: string; daysUntil: number; [key: string]: any }>): void {
     this.techMarkers = (events ?? []).filter(e => e.lat != null && e.lng != null).map(e => ({

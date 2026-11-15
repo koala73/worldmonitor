@@ -18,7 +18,6 @@ export type ArchiveAnswer =
   | { status: 'no-match' }
   | { status: 'unanswered' };
 
-/** Lowest sun elevation at which a passive optical sensor counts as seeing the ground. */
 export const OPTICAL_MIN_SUN_ELEVATION_DEG: number;
 
 export function decidePassTier(

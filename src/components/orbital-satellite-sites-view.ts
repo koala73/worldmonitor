@@ -1,5 +1,5 @@
-import '../styles/orbital-tokens.css';
 import '../styles/orbital-satellite-sites.css';
+import { t } from '@/services/i18n';
 import { getTrackedSatelliteTle } from '@/services/satellites';
 import {
   COVERAGE_WINDOW_HOURS,
@@ -12,16 +12,20 @@ import {
 
 const HOUR_MS = 3_600_000;
 const MINUTE_MS = 60_000;
+const KEY = 'orbitalWatch.satelliteSites';
 
 function utcTime(ms: number): string {
   const d = new Date(ms);
-  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')} UTC`;
+  return t(`${KEY}.utc`, { time: `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}` });
 }
 
 function untilLabel(ms: number, nowMs: number): string {
   const delta = Math.max(0, ms - nowMs);
-  if (delta < HOUR_MS) return `in ${Math.max(1, Math.round(delta / MINUTE_MS))} min`;
-  return `in ${Math.floor(delta / HOUR_MS)} h ${String(Math.floor((delta % HOUR_MS) / MINUTE_MS)).padStart(2, '0')} min`;
+  if (delta < HOUR_MS) return t(`${KEY}.inMinutes`, { minutes: Math.max(1, Math.round(delta / MINUTE_MS)) });
+  return t(`${KEY}.inHours`, {
+    hours: Math.floor(delta / HOUR_MS),
+    minutes: String(Math.floor((delta % HOUR_MS) / MINUTE_MS)).padStart(2, '0'),
+  });
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
@@ -45,10 +49,10 @@ function siteRow(entry: SiteCoverage, nowMs: number): HTMLElement {
     el('span', 'osat-site-name', entry.site.name),
     el('span', 'osat-site-time', utcTime(first.timeMs)),
   );
-  const parts = [entry.site.countryCode, untilLabel(first.timeMs, nowMs), `${Math.round(first.groundDistanceKm)} km off track`];
-  if (first.edgeOfSwath) parts.push('at swath edge');
-  if (entry.passes.length > 1) parts.push(`${entry.passes.length} passes`);
-  row.append(el('span', 'osat-site-detail', parts.join(' \u00B7 ')));
+  const parts = [entry.site.countryCode, untilLabel(first.timeMs, nowMs), t(`${KEY}.offTrack`, { km: Math.round(first.groundDistanceKm) })];
+  if (first.edgeOfSwath) parts.push(t(`${KEY}.swathEdge`));
+  if (entry.passes.length > 1) parts.push(t(`${KEY}.passes`, { count: entry.passes.length }));
+  row.append(el('span', 'osat-site-detail', parts.join(' · ')));
   return row;
 }
 
@@ -56,24 +60,50 @@ function siteRow(entry: SiteCoverage, nowMs: number): HTMLElement {
 export function coverageNodes(coverage: SatelliteCoverage, nowMs: number): HTMLElement[] {
   switch (coverage.status) {
     case 'signals':
-      return [note('Signals-intelligence satellite. No imager, so no ground coverage is modelled.')];
+      return [note(t(`${KEY}.signals`))];
     case 'excluded':
     case 'no-profile':
-      return [note('No sensor profile for this satellite, so its ground coverage is not modelled.')];
+      return [note(t(`${KEY}.noProfile`))];
     case 'geostationary':
-      return [note('Geostationary: fixed above one longitude, so no passes to list.')];
+      return [note(t(`${KEY}.geostationary`))];
     case 'bad-elements':
-      return [note('Orbit elements are unreadable.')];
+      return [note(t(`${KEY}.badElements`))];
+    case 'unavailable':
+      return [note(t(`${KEY}.unavailable`))];
     case 'too-old':
-      return [note(`Orbit elements are ${Math.floor(coverage.orbitAgeDays)} days old, too old to project passes.`, 'stale')];
+      return [note(t(`${KEY}.tooOld`, { count: Math.floor(coverage.orbitAgeDays) }), 'stale')];
     case 'ok': {
-      if (!coverage.sites.length) return [note(`No watched site inside its footprint within ${COVERAGE_WINDOW_HOURS} h.`)];
-      const count = coverage.sites.length;
+      if (!coverage.sites.length) return [note(t(`${KEY}.none`, { hours: COVERAGE_WINDOW_HOURS }))];
       const list = el('ul', 'osat-sites-list');
       for (const entry of coverage.sites) list.append(siteRow(entry, nowMs));
-      return [note(`${count} ${count === 1 ? 'site' : 'sites'} inside the ${coverage.sensor.family} footprint`), list];
+      return [note(t(`${KEY}.count`, { count: coverage.sites.length, family: coverage.sensor.family })), list];
     }
   }
+}
+
+/** What a section host shows, so it can be drawn again in the current language. */
+type SectionState = { kind: 'note'; key: string } | { kind: 'coverage'; coverage: SatelliteCoverage };
+const sections = new WeakMap<HTMLElement, SectionState>();
+
+function draw(host: HTMLElement, state: SectionState, nowMs: number): void {
+  sections.set(host, state);
+  const heading = el('span', 'osat-sites-label', t(`${KEY}.heading`, { hours: COVERAGE_WINDOW_HOURS }));
+  const body = state.kind === 'note' ? [note(t(state.key))] : coverageNodes(state.coverage, nowMs);
+  host.replaceChildren(heading, ...body);
+  if (state.kind === 'coverage') host.dataset.coverage = state.coverage.status;
+  else delete host.dataset.coverage;
+}
+
+/** Shows a one-line note under the section heading; `key` is under orbitalWatch.satelliteSites. */
+export function showSatelliteSitesNote(host: HTMLElement, key: string): void {
+  host.classList.add('osat-sites');
+  draw(host, { kind: 'note', key: `${KEY}.${key}` }, Date.now());
+}
+
+/** Draws a section again from what it last showed, in the current language and against the current time. */
+export function relabelSatelliteSites(host: HTMLElement): void {
+  const state = sections.get(host);
+  if (state) draw(host, state, Date.now());
 }
 
 /**
@@ -82,12 +112,11 @@ export function coverageNodes(coverage: SatelliteCoverage, nowMs: number): HTMLE
  * site registry.
  */
 export async function renderSatelliteSites(host: HTMLElement, noradId: string, name: string, signal?: AbortSignal): Promise<SatelliteCoverage | null> {
-  host.classList.add('osat-sites');
-  host.replaceChildren(el('span', 'ow-label', `Watched sites \u00B7 next ${COVERAGE_WINDOW_HOURS} h`), note('Projecting passes\u2026'));
+  showSatelliteSitesNote(host, 'projecting');
   const loaded = getTrackedSatelliteTle(noradId);
   const tle: TrackedSatelliteTle | null = loaded ? { noradId, name: loaded.name || name, line1: loaded.line1, line2: loaded.line2 } : null;
   if (!tle) {
-    host.replaceChildren(host.firstChild!, note('Click the satellite again; its orbit elements are not loaded.'));
+    showSatelliteSitesNote(host, 'notLoaded');
     return null;
   }
   const nowMs = Date.now();
@@ -98,11 +127,10 @@ export async function renderSatelliteSites(host: HTMLElement, noradId: string, n
   } catch (err) {
     if (signal?.aborted) return null;
     console.warn('[orbital] satellite site coverage failed', err);
-    host.replaceChildren(host.firstChild!, note('Click the satellite again to retry; the projection failed.'));
+    showSatelliteSitesNote(host, 'failed');
     return null;
   }
   if (signal?.aborted || !host.isConnected) return null;
-  host.replaceChildren(host.firstChild!, ...coverageNodes(coverage, nowMs));
-  host.dataset.coverage = coverage.status;
+  draw(host, { kind: 'coverage', coverage }, nowMs);
   return coverage;
 }
