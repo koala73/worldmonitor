@@ -50,8 +50,7 @@ for (const { label, width, height } of [
     await expect(panel.locator('.panel-error-msg')).toContainText('Temporarily unavailable');
     await expect(panel.locator('.panel-error-countdown')).toContainText(/retrying/i);
     const failedPath = testInfo.outputPath(`service-status-${label}-503.png`);
-    await evidenceScreenshot(panel, { path: failedPath, animations: 'disabled' });
-    await testInfo.attach(`service-status-${label}-503`, { path: failedPath, contentType: 'image/png' });
+    await evidenceScreenshot(panel, { path: failedPath, animations: 'disabled' }, { testInfo, name: `service-status-${label}-503` });
 
     available = true;
     await page.clock.fastForward(15_000);
@@ -59,7 +58,6 @@ for (const { label, width, height } of [
     await expect(panel.locator('.service-status-item.operational')).toContainText('GitHub');
     await expect(panel.locator('.all-operational')).toContainText('All services operational');
     const recoveredPath = testInfo.outputPath(`service-status-${label}-recovered.png`);
-    await evidenceScreenshot(panel, { path: recoveredPath, animations: 'disabled' });
-    await testInfo.attach(`service-status-${label}-recovered`, { path: recoveredPath, contentType: 'image/png' });
+    await evidenceScreenshot(panel, { path: recoveredPath, animations: 'disabled' }, { testInfo, name: `service-status-${label}-recovered` });
   });
 }

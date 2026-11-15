@@ -153,6 +153,5 @@ test('diagnostic traffic methods render as text', async ({ page }, testInfo) => 
   await expect(page.locator('#trafficCount')).toHaveText('(3)');
   await page.locator('#diagnosticsSection').scrollIntoViewIfNeeded();
   const path = testInfo.outputPath('diagnostic-method-text.png');
-  await evidenceScreenshot(page, { path });
-  await testInfo.attach('synthetic native response - literal method cells', { path, contentType: 'image/png' });
+  await evidenceScreenshot(page, { path }, { testInfo, name: 'synthetic native response - literal method cells' });
 });

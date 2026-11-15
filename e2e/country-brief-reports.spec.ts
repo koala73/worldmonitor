@@ -570,8 +570,7 @@ for (const mobile of [false, true]) {
     await expect(activity.locator('.cdp-china-summary-source-link')).toHaveCount(1);
     expect(await activity.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
     const path = testInfo.outputPath(`china-plain-language-${mobile ? 'mobile' : 'desktop'}.png`);
-    await evidenceScreenshot(page, { path });
-    await testInfo.attach('China activity with controlled source data', { path, contentType: 'image/png' });
+    await evidenceScreenshot(page, { path }, { testInfo, name: 'China activity with controlled source data' });
   });
 }
 
@@ -589,8 +588,7 @@ test('English panel picker names financial and regional topics in plain language
   await page.getByPlaceholder('Filter panels...').fill('Bitcoin');
   await expect(panels.getByText('Bitcoin fund flows', { exact: true })).toBeVisible();
   const path = testInfo.outputPath('english-panel-labels.png');
-  await evidenceScreenshot(page, { path });
-  await testInfo.attach('English panel names', { path, contentType: 'image/png' });
+  await evidenceScreenshot(page, { path }, { testInfo, name: 'English panel names' });
 });
 
 for (const mobile of [false, true]) {
@@ -620,8 +618,7 @@ for (const mobile of [false, true]) {
     await expect(panel.getByText('0.0%', { exact: true })).toBeVisible();
     await expect(panel).not.toContainText('% Above Stocks');
     const path = testInfo.outputPath(`market-breadth-${mobile ? 'mobile' : 'desktop'}.png`);
-    await evidenceScreenshot(panel, { path });
-    await testInfo.attach('Controlled market breadth component preview', { path, contentType: 'image/png' });
+    await evidenceScreenshot(panel, { path }, { testInfo, name: 'Controlled market breadth component preview' });
   });
 }
 
@@ -645,7 +642,6 @@ for (const mobile of [false, true]) {
     await expect(gulf).toBeVisible();
     await expect(panels).not.toContainText('mtaji wa uhamiaji');
     const path = testInfo.outputPath(`swahili-panel-labels-${mobile ? 'mobile' : 'desktop'}.png`);
-    await evidenceScreenshot(page, { path });
-    await testInfo.attach('Reviewed Swahili investment labels', { path, contentType: 'image/png' });
+    await evidenceScreenshot(page, { path }, { testInfo, name: 'Reviewed Swahili investment labels' });
   });
 }

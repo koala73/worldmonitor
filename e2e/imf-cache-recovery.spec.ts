@@ -35,7 +35,6 @@ for (const { label, width, height } of [
     await expect(row).toContainText('+2.0%');
     await expect(row).toContainText('2026');
     const screenshot = testInfo.outputPath(`imf-partial-${label}.png`);
-    await evidenceScreenshot(panel, { path: screenshot, animations: 'disabled' });
-    await testInfo.attach(`imf-partial-${label}`, { path: screenshot, contentType: 'image/png' });
+    await evidenceScreenshot(panel, { path: screenshot, animations: 'disabled' }, { testInfo, name: `imf-partial-${label}` });
   });
 }

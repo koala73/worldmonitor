@@ -30,8 +30,7 @@ for (const [language, width, label] of [['fr', 1280, 'Débloquez 90 jours avec P
     expect(await history.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     await expect(page.locator('html')).toHaveCSS('direction', language === 'ar' ? 'rtl' : 'ltr');
     const path = testInfo.outputPath(`history-${language}-${width}.png`);
-    await evidenceScreenshot(history, { path });
-    await testInfo.attach(language, { path, contentType: 'image/png' });
+    await evidenceScreenshot(history, { path }, { testInfo, name: language });
   });
 }
 
@@ -66,8 +65,7 @@ for (const width of [1280, 390]) {
     };
     const captureHistory = async (state: string) => {
       const path = testInfo.outputPath(`history-${state}-${width}.png`);
-      await evidenceScreenshot(page.locator('#cdp-section-history'), { path });
-      await testInfo.attach(state, { path, contentType: 'image/png' });
+      await evidenceScreenshot(page.locator('#cdp-section-history'), { path }, { testInfo, name: state });
     };
     await openHistory();
     const history = page.locator('#cdp-section-history');
@@ -210,8 +208,7 @@ async function screenshot(page: Page, testInfo: TestInfo, name: string) {
   await marketsCard(page).scrollIntoViewIfNeeded();
   await marketsCard(page).evaluate(card => card.scrollIntoView({ block: 'center' }));
   const path = testInfo.outputPath(`${name}.png`);
-  await evidenceScreenshot(page, { path });
-  await testInfo.attach(name, { path, contentType: 'image/png' });
+  await evidenceScreenshot(page, { path }, { testInfo, name });
 }
 
 test('country shortcut keeps the dashboard canonical and shares a working dashboard URL', async ({ page, context, countryBrief }, testInfo) => {
@@ -231,8 +228,7 @@ test('country shortcut keeps the dashboard canonical and shares a working dashbo
     await page.setViewportSize({ width, height });
     await page.locator('#country-deep-dive-panel .cdp-country-name').scrollIntoViewIfNeeded();
     const path = testInfo.outputPath(`country-shortcut-${name}.png`);
-    await evidenceScreenshot(page, { path });
-    await testInfo.attach(`country-shortcut-${name}`, { path, contentType: 'image/png' });
+    await evidenceScreenshot(page, { path }, { testInfo, name: `country-shortcut-${name}` });
   }
   await page.goto(sharedUrl);
   await expect(countryName).toHaveText('Ukraine');

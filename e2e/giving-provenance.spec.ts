@@ -209,8 +209,7 @@ async function setupGivingPage(
 
 async function capturePanel(page: Page, testInfo: TestInfo, name: string): Promise<void> {
   const path = testInfo.outputPath(`${name}.png`);
-  await evidenceScreenshot(page.locator('.panel[data-panel="giving"]'), { path });
-  await testInfo.attach(name, { path, contentType: 'image/png' });
+  await evidenceScreenshot(page.locator('.panel[data-panel="giving"]'), { path }, { testInfo, name });
 }
 
 test.describe('Happy variant Giving provenance', () => {

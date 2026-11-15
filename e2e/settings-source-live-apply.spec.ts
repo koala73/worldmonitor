@@ -249,8 +249,7 @@ test.describe('settings source live apply (#6380)', () => {
       else await expect(source).not.toHaveClass(/\bactive\b/);
       const capture = async (name: string) => {
         const path = testInfo.outputPath(`${locale}-${name}.png`);
-        await evidenceScreenshot(page, { path });
-        await testInfo.attach(`${locale} ${name}`, { path, contentType: 'image/png' });
+        await evidenceScreenshot(page, { path }, { testInfo, name: `${locale} ${name}` });
       };
       await capture('desktop-default');
       await source.click();
@@ -298,8 +297,7 @@ test.describe('settings source live apply (#6380)', () => {
     expect(disabled).toContain('France 24 Asia Pacific');
     await page.locator('.sources-search input').fill('Guardian');
     const screenshotPath = testInfo.outputPath('regional-source-choice.png');
-    await evidenceScreenshot(page, { path: screenshotPath });
-    await testInfo.attach('Regional source choice after reload', { path: screenshotPath, contentType: 'image/png' });
+    await evidenceScreenshot(page, { path: screenshotPath }, { testInfo, name: 'Regional source choice after reload' });
   });
 
   test('toggling sources and closing Settings reloads news once, without a reload', async ({ page }) => {
