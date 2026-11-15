@@ -52,6 +52,7 @@ import { mountWebcamPinButton } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { tokenizeForMatch, matchKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { MapPopup } from './MapPopup';
+import { fireDetectionPopupData } from './map-popup-fire';
 import type { CrossBorderData, CrossBorderPoint, DisplacementFlow, DisplacementEventsData, InternalDisplacementData } from '@/services/displacement';
 import { createCrossBorderMarker, crossBorderMarkerOffsets } from './cross-border-marker';
 import { createDisplacementMarker, displacementFlowMarkers, displacementEventMarkers, internalDisplacementMarkers, type DisplacementMarker } from './displacement-marker';
@@ -265,7 +266,7 @@ export class MapComponent {
   private displacementFlows: DisplacementMarker[] = [];
   private internalDisplacement: DisplacementMarker[] = [];
   private displacementEvents: DisplacementMarker[] = [];
-  private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }> = [];
+  private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string; detected_at?: number; satellite?: string; source?: string }> = [];
   private techEvents: TechEventMarker[] = [];
   private techActivities: TechHubActivity[] = [];
   private geoActivities: GeoHubActivity[] = [];
@@ -3944,6 +3945,17 @@ export class MapComponent {
         dot.style.backgroundColor = color;
         dot.title = `${fire.region} — ${Math.round(fire.brightness)}K, ${fire.frp}MW`;
 
+        // A satellite detection opens its popup when Orbital Watch is on (#10713).
+        const detection = fireDetectionPopupData(fire);
+        if (detection) {
+          dot.classList.add('fire-dot-popup');
+          dot.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const rect = this.container.getBoundingClientRect();
+            this.popup.show({ type: 'fireDetection', data: detection, x: e.clientX - rect.left, y: e.clientY - rect.top });
+          });
+        }
+
         this.appendOverlay(dot);
       });
     }
@@ -5685,7 +5697,7 @@ export class MapComponent {
     this.render();
   }
 
-  public setFires(fires: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }>): void {
+  public setFires(fires: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string; detected_at?: number; satellite?: string; source?: string }>): void {
     this.firmsFireData = fires;
     this.render();
   }
