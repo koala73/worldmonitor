@@ -153,7 +153,7 @@ describe('locate menu entries', () => {
     geometry.getCountryNearCoordinates.mockReturnValue({ code: 'AE', name: 'United Arab Emirates' });
     const { openBrief } = await setUp();
     expect(menuLabels()).toEqual(['Open Country Brief']);
-    expect(geometry.getCountryNearCoordinates).toHaveBeenCalledWith(ROUNDED.lat, ROUNDED.lon);
+    expect(geometry.getCountryNearCoordinates).toHaveBeenCalledWith(ROUNDED.lat, ROUNDED.lon, 0.05);
     menuItem('Open Country Brief')!.click();
     expect(openBrief).toHaveBeenCalledWith('AE', 'United Arab Emirates');
   });

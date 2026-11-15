@@ -264,5 +264,9 @@ describe('coastal country lookup', () => {
     assert.equal(geometry.getCountryNearCoordinates(25.2, 55.27)?.code, 'AE');
     assert.equal(geometry.getCountryNearCoordinates(48.86, 2.35)?.code, 'FR');
     assert.equal(geometry.getCountryNearCoordinates(0, -30), null);
+  assert.equal(geometry.getCountryNearCoordinates(1.29, 103.85)?.code, 'MY', 'Singapore has no outline, so the wide search lands in Malaysia');
+  assert.equal(geometry.getCountryNearCoordinates(1.29, 103.85, 0.05), null);
+  assert.equal(geometry.getCountryNearCoordinates(1.44, 103.79, 0.05), null);
+  assert.equal(geometry.getCountryNearCoordinates(25.2, 55.27, 0.05)?.code, 'AE');
   });
 });

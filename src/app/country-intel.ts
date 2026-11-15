@@ -155,6 +155,8 @@ type CountryPresentation = {
 const AVIATION_SIGNAL_TIMEOUT_MS = 2500;
 /** Town scale: the share grid's 0.01° cell stays well inside the view. */
 const LOCATE_ZOOM = 9;
+// About 5 km: absorbs simplified coastlines without crossing a strait into the neighbour of an outline-less state like Singapore.
+const LOCATE_COAST_TOLERANCE_DEG = 0.05;
 
 export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
@@ -379,7 +381,7 @@ export class CountryIntelManager implements AppModule {
   private async locatedActions(point: { lat: number; lon: number }): Promise<MapContextMenuItem[]> {
     const items: MapContextMenuItem[] = [];
     await preloadCountryGeometry().catch(() => {});
-    const country = getCountryNearCoordinates(point.lat, point.lon);
+    const country = getCountryNearCoordinates(point.lat, point.lon, LOCATE_COAST_TOLERANCE_DEG);
     if (country) items.push({
       label: t('contextMenu.openCountryBrief'),
       action: () => {
