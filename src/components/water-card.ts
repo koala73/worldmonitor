@@ -93,7 +93,7 @@ export function waterCard(name: string, input: WaterCardInput, ctx: ReservoirFor
   card.dataset.section = 'water';
   const title = document.createElement('div');
   title.className = 'wl-water-title';
-  title.textContent = t('components.reservoirLevels.water.title', { name });
+  title.textContent = t('components.reservoirLevels.water.heading', { name });
   const { level, extent, optical, nextPass } = input;
   const pass = nextPass && reservoirNextPassExpiresAt(nextPass) > nowMs ? nextPass : null;
   const note = document.createElement('p');

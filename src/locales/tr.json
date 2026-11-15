@@ -3230,7 +3230,7 @@
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Tarihli geçişlerden lidar su yüzeyi seviyeleri; canlı okuma veya depolama hacmi değildir."
       },
       "water": {
-        "title": "{{name}} suyu",
+        "heading": "{{name}} suyu",
         "level": "Lidar seviyesi",
         "extent": "Radar su alanı",
         "extentValue": "{{date}} itibarıyla %{{percent}} açık su ({{area}} km²)",

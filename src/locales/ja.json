@@ -3209,7 +3209,7 @@
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC)。日付付き通過のライダー水面高で、リアルタイム値や貯水量ではありません。"
       },
       "water": {
-        "title": "{{name}}の水",
+        "heading": "{{name}}の水",
         "level": "ライダー水位",
         "extent": "レーダー水域面積",
         "extentValue": "{{date}}時点で開水面 {{percent}}%（{{area}} km²）",

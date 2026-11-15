@@ -3209,7 +3209,7 @@
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). 날짜가 있는 통과의 라이다 수면 높이로, 실시간 값이나 저수량이 아닙니다."
       },
       "water": {
-        "title": "{{name}}의 물",
+        "heading": "{{name}}의 물",
         "level": "라이다 수위",
         "extent": "레이더 수면 면적",
         "extentValue": "{{date}} 기준 개방 수면 {{percent}}%({{area}} km²)",

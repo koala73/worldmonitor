@@ -3299,7 +3299,7 @@
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidaros vízfelszín-szintek dátumozott áthaladásokból, nem élő értékek vagy tárolt térfogatok."
       },
       "water": {
-        "title": "Víz: {{name}}",
+        "heading": "Víz: {{name}}",
         "level": "Lidaros vízszint",
         "extent": "Radaros vízfelület",
         "extentValue": "{{percent}}% nyílt víz ({{area}} km²), {{date}}",

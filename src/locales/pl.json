@@ -3272,7 +3272,7 @@
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidarowe poziomy lustra wody z datowanych przelotów, nie odczyty na żywo ani objętości."
       },
       "water": {
-        "title": "Woda: {{name}}",
+        "heading": "Woda: {{name}}",
         "level": "Poziom z lidaru",
         "extent": "Powierzchnia wody z radaru",
         "extentValue": "{{percent}}% otwartej wody ({{area}} km²) w dniu {{date}}",

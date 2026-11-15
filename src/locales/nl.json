@@ -2846,7 +2846,7 @@
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidar-waterstanden uit gedateerde overkomsten, geen live metingen of opslagvolumes."
       },
       "water": {
-        "title": "Water bij {{name}}",
+        "heading": "Water bij {{name}}",
         "level": "Lidarpeil",
         "extent": "Wateroppervlak via radar",
         "extentValue": "{{percent}}% open water ({{area}} km²) op {{date}}",

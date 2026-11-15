@@ -3230,7 +3230,7 @@
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Στάθμες επιφάνειας νερού με lidar από χρονολογημένες διελεύσεις, όχι ζωντανές μετρήσεις ή όγκοι."
       },
       "water": {
-        "title": "Νερό στη {{name}}",
+        "heading": "Νερό στη {{name}}",
         "level": "Στάθμη lidar",
         "extent": "Έκταση νερού με ραντάρ",
         "extentValue": "{{percent}}% ανοιχτό νερό ({{area}} km²) στις {{date}}",

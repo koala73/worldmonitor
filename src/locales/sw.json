@@ -3299,7 +3299,7 @@
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Viwango vya uso wa maji vya lidar kutoka mipito yenye tarehe, si usomaji wa moja kwa moja wala ujazo."
       },
       "water": {
-        "title": "Maji katika {{name}}",
+        "heading": "Maji katika {{name}}",
         "level": "Kiwango cha lidar",
         "extent": "Eneo la maji kwa rada",
         "extentValue": "{{percent}}% maji wazi ({{area}} km²) tarehe {{date}}",

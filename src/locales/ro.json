@@ -3251,7 +3251,7 @@
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Niveluri lidar ale suprafeței apei din treceri datate, nu citiri live sau volume stocate."
       },
       "water": {
-        "title": "Apa la {{name}}",
+        "heading": "Apa la {{name}}",
         "level": "Nivel lidar",
         "extent": "Suprafața apei prin radar",
         "extentValue": "{{percent}}% apă deschisă ({{area}} km²) pe {{date}}",

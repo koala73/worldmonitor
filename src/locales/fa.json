@@ -3299,7 +3299,7 @@
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). تراز سطح آب با لیدار از عبورهای تاریخ‌دار، نه خوانش زنده یا حجم ذخیره."
       },
       "water": {
-        "title": "آب در {{name}}",
+        "heading": "آب در {{name}}",
         "level": "تراز لیدار",
         "extent": "گستره آب با رادار",
         "extentValue": "{{percent}}% آب باز ({{area}} کیلومتر مربع) در {{date}}",

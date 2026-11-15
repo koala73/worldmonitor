@@ -3272,7 +3272,7 @@
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidarové hladiny vodní hladiny z datovaných přeletů, ne aktuální údaje ani objemy."
       },
       "water": {
-        "title": "Voda na {{name}}",
+        "heading": "Voda na {{name}}",
         "level": "Hladina z lidaru",
         "extent": "Vodní plocha z radaru",
         "extentValue": "{{percent}} % volné vody ({{area}} km²) dne {{date}}",

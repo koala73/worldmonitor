@@ -2846,7 +2846,7 @@
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidarnivåer för vattenytan från daterade passager, inte liveavläsningar eller volymer."
       },
       "water": {
-        "title": "Vatten vid {{name}}",
+        "heading": "Vatten vid {{name}}",
         "level": "Lidarnivå",
         "extent": "Vattenyta enligt radar",
         "extentValue": "{{percent}} % öppet vatten ({{area}} km²) den {{date}}",

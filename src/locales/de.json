@@ -3230,7 +3230,7 @@
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidar-Wasserspiegel aus datierten Überflügen, keine Live-Werte oder Speichervolumen."
       },
       "water": {
-        "title": "Wasser am {{name}}",
+        "heading": "Wasser am {{name}}",
         "level": "Lidar-Pegel",
         "extent": "Radar-Wasserfläche",
         "extentValue": "{{percent}} % offenes Wasser ({{area}} km²) am {{date}}",

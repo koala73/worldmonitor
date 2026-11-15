@@ -3323,7 +3323,7 @@
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidarske razine vodene površine iz datiranih preleta, ne trenutna očitanja ni volumeni."
       },
       "water": {
-        "title": "Voda na {{name}}",
+        "heading": "Voda na {{name}}",
         "level": "Razina prema lidaru",
         "extent": "Površina vode prema radaru",
         "extentValue": "{{percent}} % otvorene vode ({{area}} km²) dana {{date}}",

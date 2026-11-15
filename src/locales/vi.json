@@ -3209,7 +3209,7 @@
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Mực mặt nước bằng lidar từ các lượt có ngày, không phải số đo trực tiếp hay dung tích."
       },
       "water": {
-        "title": "Nước tại {{name}}",
+        "heading": "Nước tại {{name}}",
         "level": "Mực nước lidar",
         "extent": "Diện tích nước theo radar",
         "extentValue": "{{percent}}% mặt nước mở ({{area}} km²) vào {{date}}",

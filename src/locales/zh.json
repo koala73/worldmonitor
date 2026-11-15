@@ -3209,7 +3209,7 @@
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC)。来自带日期过境的激光雷达水面高度，并非实时读数或库容。"
       },
       "water": {
-        "title": "{{name}}的水体",
+        "heading": "{{name}}的水体",
         "level": "激光雷达水位",
         "extent": "雷达水域面积",
         "extentValue": "{{date}} 开阔水面 {{percent}}%（{{area}} km²）",

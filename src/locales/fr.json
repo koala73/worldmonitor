@@ -3251,7 +3251,7 @@
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Niveaux de surface de l’eau par lidar issus de passages datés, ni relevés en direct ni volumes stockés."
       },
       "water": {
-        "title": "L’eau à {{name}}",
+        "heading": "L’eau à {{name}}",
         "level": "Niveau lidar",
         "extent": "Étendue d’eau radar",
         "extentValue": "{{percent}} % d’eau libre ({{area}} km²) le {{date}}",
