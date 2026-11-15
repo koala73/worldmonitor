@@ -61,9 +61,6 @@ export const FACT_CHECKER_DOMAINS: ReadonlySet<string> = new Set(
   (FACT_CHECKERS as { domains: string[] }).domains.map(normalizeHost),
 );
 
-/** The IFCN snapshot the allowlist was copied from. */
-export const FACT_CHECKER_SNAPSHOT: string = (FACT_CHECKERS as { snapshot: string }).snapshot;
-
 function normalizeHost(host: string): string {
   return String(host || '').trim().toLowerCase().replace(/\.$/, '').replace(/^www\./, '');
 }

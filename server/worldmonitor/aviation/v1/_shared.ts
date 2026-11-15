@@ -76,7 +76,6 @@ export async function requireLiveAviationAccess(request: Request): Promise<void>
 
 // ---------- Constants ----------
 
-export const FAA_URL = 'https://nasstatus.faa.gov/api/airport-status-information';
 export const DEFAULT_WATCHED_AIRPORTS = ['IST', 'ESB', 'SAW', 'LHR', 'FRA', 'CDG'];
 
 // Shared by every route that turns a caller-supplied airport code into a PAID

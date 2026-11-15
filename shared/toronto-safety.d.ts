@@ -23,4 +23,3 @@ export declare const TORONTO_SAFETY_SEMANTICS: Readonly<{
 export declare const TORONTO_SAFETY_SOURCES: readonly TorontoSafetySourceDescriptor[];
 export declare const TORONTO_SAFETY_CANONICAL_KEYS: Readonly<Record<string, string>>;
 export declare function torontoSafetySourceById(id: string): TorontoSafetySourceDescriptor | undefined;
-export declare function torontoSafetySourcesForSemantic(semantic: TorontoSafetySemantic): TorontoSafetySourceDescriptor[];

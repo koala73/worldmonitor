@@ -134,13 +134,6 @@ export function parseCheckoutContext(value: unknown): CheckoutContext | null {
   };
 }
 
-export function withCheckoutEventSurface(
-  context: CheckoutContext,
-  eventSurface: CheckoutSurface,
-): CheckoutContext {
-  return { ...context, eventSurface };
-}
-
 export function buildAttributedProUrl(
   baseUrl: string,
   attribution?: CheckoutAttribution | null,
