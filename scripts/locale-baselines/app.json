@@ -3125,8 +3125,6 @@
   "orbitalWatch.sheet.newestNoPreview": "Latest acquisition {{when}} lacks a preview; older scene shown.",
   "orbitalWatch.sheet.noneConfirmed": "Zero confirmed images this period",
   "orbitalWatch.sheet.noneYet": "Archives still answering",
-  "orbitalWatch.sheet.share": "Copy link",
-  "orbitalWatch.sheet.shareCopied": "Link copied",
   "orbitalWatch.sheet.showLocal": "Local time",
   "orbitalWatch.sheet.showUtc": "UTC",
   "orbitalWatch.sheet.weatherFrame": "weather frame",
