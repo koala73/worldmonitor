@@ -107,7 +107,6 @@ export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
     }));
     cachedData = satellites;
     cachedAt = Date.now();
-    tleByNorad = new Map(satellites.map((s) => [s.noradId, s]));
     failures = 0;
     return cachedData;
   } catch {
@@ -119,7 +118,18 @@ export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
   }
 }
 
-/** The element set the layer last drew a tracked satellite from; coverage reports its age. */
+/**
+ * Points the lookup at the element sets the layer draws: call it when the loader
+ * swaps its SGP4 records (with the TLEs those records came from), and with an
+ * empty list when it clears the layer. A fetched set the layer has not drawn yet
+ * is never answered.
+ */
+export function setTrackedSatelliteTles(tles: readonly SatelliteTLE[], drawn: readonly SatRecEntry[] = []): void {
+  const ids = new Set(drawn.map((entry) => entry.meta.noradId));
+  tleByNorad = new Map(tles.filter((tle) => ids.has(tle.noradId)).map((tle) => [tle.noradId, tle]));
+}
+
+/** The element set the layer is drawing a tracked satellite from; coverage reports its age. */
 export function getTrackedSatelliteTle(noradId: string): SatelliteTLE | null {
   return tleByNorad.get(noradId) ?? null;
 }
