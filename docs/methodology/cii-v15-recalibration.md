@@ -346,3 +346,49 @@ GPI stops binding once the unrest anchor is removed: it fails at 30 of 67,068 po
 - Add corrections 2 and 3.
 - New questions: whether P5b covers countries with no live evidence, and whether P3c's half-life is measured on the latent term.
 - Unchanged: the P12b and R14/KTD-8 conflict.
+
+## Owner rulings and rerun (2026-11-15)
+
+The owner ruled on three questions on 2026-11-15, after the diagnostic addendum. The reruns below use the same two captures, so they remain diagnostic. A design is accepted only after it passes on new captures under a fresh pre-registration.
+
+### Rulings
+
+1. **P5b exemption.** Countries whose every live family term is exactly zero are exempt from the band count. The exempt set is reported on every run, and those countries carry the label "structural estimate, no live inputs". The limit stays at 7 of 31.
+2. **P3c measurement.** The half-life is measured on the latent strike term and must fall in 4 to 6 days. P3b stays on the score. A new check requires that a finished campaign's contribution to the score never rises by more than 0.2 between 3-hour samples.
+3. **Strike half-life.** Five days, as the brief's P3 row states. The live constant `CII_STRIKE_HALF_LIFE_DAYS` is 3 and the public methodology page says 3; v15 changes both.
+
+The relative-increment fraction for P1 and P3c is 25% in these runs. The owner has not ruled on that number.
+
+### Rerun
+
+Design: the prior inside the violence union, as in the addendum. Rules: the rulings above, P15b dropped, P8a with a last-good snapshot for UCDP and GDELT, P1 violence injected per capita, and the 25% relative-increment rule.
+
+Grid: b 0.3 / 0.4 / 0.5 / 0.6 / 0.8; ks 0.03 / 0.05 / 0.08 / 0.12; ku 0.75 / 1 / 1.25 / 1.5; w 0.5 / 1; kg 0.25 / 0.5 / 1 / 2; knee 0.1 / 0.3 / 1; (kl, fp) in (0, 0.02), (1, 0.01); ke 0 / 0.5; C 6 / 8 / 10; φ 0.02; n0 200; ko 2. That is 23,040 combinations, of which 8,512 are anchor-feasible. Every fourth anchor-feasible combination in enumeration order is measured (2,128), at up to five values of `a`.
+
+| Run | P5b exemption | Points | Pass all | Distinct combinations |
+|---|---|---|---|---|
+| G0 | as ruled: every live term exactly zero | 9,008 | 10 | 8 |
+| G1 | not ruled: live evidence moves the score by less than 1 point | 9,008 | 59 | 36 |
+
+Findings:
+
+- **The exemption as ruled covers two countries per capture.** The other quiet countries carry small non-zero terms and still share a band. Under G1 the exemption covers five or six countries, and the passing set grows about sixfold. The owner should decide whether the exemption is "exactly zero" or "under 1 point".
+- **The G1 passing set is a region, not a point.** It spans b 0.3 to 0.6, ku 1 to 1.5, every knee value, C 8 and 10, and kg 0.25 to 2. Most passes use kg 0.25 or 0.5, so GDELT noise is no longer doing the separating.
+- **Three constants are pinned.**
+  - ks is 0.05 in 55 of 59 passes, on a grid with steps at 0.03 and 0.08.
+  - kl is 1 in every pass.
+  - ke is 0 in every pass, which means the economic family carries no weight. OQ7 puts economic stress inside the construct, so a rerun needs values of ke between 0 and 0.5.
+- **Targets on a typical G1 pass:**
+  - P13a is 89.4% and 89.5% (v14: 14.8% and 16.0%).
+  - P12a passes (median 0.1, p99 5.0).
+  - P12b misses at 7.2 (limit 1).
+  - P4 misses: the smallest response is +0.8 at 48 hours.
+- **GPI on that pass.** ρ is 0.828 on both captures, against v14's 0.730 and 0.786.
+- **The latent half-life is 5.13 to 5.25 days.** Eight cases fall under the relative increment. They are countries where the GDELT backstop already reports more strikes on the day than the injected campaign, and the formula takes the larger source.
+
+### What still blocks U4
+
+- The unrest and strike anchors are unavailable on these captures. Both need new evidence: a historical unrest episode rebuilt from GDELT's archive, and a capture holding seven days of the version 2 strike tally.
+- Rulings are still open on OQ1 to OQ4, OQ8 and OQ10, the P8a snapshot, the prior inside the violence union, the per-capita and relative-increment forms of P1, the P5b exemption threshold, and the P12b and R14/KTD-8 conflict.
+- The economic weight is unresolved.
+- Nothing here has been confirmed on captures the design has not seen.
