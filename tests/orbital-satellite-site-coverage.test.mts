@@ -163,11 +163,24 @@ describe('#10758 item 5: the coverage cache', () => {
   // A copy of the registry is a different cache owner, so it always scans fresh.
   const fresh = (nowMs: number) => sitesCoveredBySatellite({ tle: sentinel2a, sites: [...sites], nowMs });
 
+  // Every scan builds its own site objects and a read only filters passes, so a shared
+  // site object proves the answer came from memory rather than from another scan.
+  const firstSite = (coverage: Awaited<ReturnType<typeof fresh>>) => {
+    assert.equal(coverage.status, 'ok');
+    if (coverage.status !== 'ok') throw new Error('unreachable');
+    assert.ok(coverage.sites.length > 0, 'the window covers at least one site');
+    return coverage.sites[0]!.site;
+  };
+
   it('serves an identical scan from memory, equal to a fresh scan', async () => {
-    const cached = await sitesCoveredBySatellite({ tle: sentinel2a, sites, nowMs: EPOCH_MS });
-    const again = await sitesCoveredBySatellite({ tle: sentinel2a, sites, nowMs: EPOCH_MS });
+    const owner = [...sites];
+    const cached = await sitesCoveredBySatellite({ tle: sentinel2a, sites: owner, nowMs: EPOCH_MS });
+    const again = await sitesCoveredBySatellite({ tle: sentinel2a, sites: owner, nowMs: EPOCH_MS });
+    assert.equal(firstSite(again), firstSite(cached), 'the second read reuses the first scan');
     assert.deepEqual(again, cached);
-    assert.deepEqual(cached, await fresh(EPOCH_MS));
+    const scanned = await fresh(EPOCH_MS);
+    assert.notEqual(firstSite(scanned), firstSite(cached), 'another registry owner scans on its own');
+    assert.deepEqual(cached, scanned);
   });
 
   it('scans again once the element set has grown too old, as a fresh scan does', async () => {
@@ -192,10 +205,16 @@ describe('#10758 item 5: the coverage cache', () => {
   });
 
   it('rescans once the window has slid, equal to a fresh scan from then', async () => {
+    const owner = [...sites];
     const slid = EPOCH_MS + COVERAGE_RENEW_MS;
-    const cached = await sitesCoveredBySatellite({ tle: sentinel2a, sites, nowMs: slid });
-    assert.equal(cached.status === 'ok' && cached.windowStartMs, slid);
-    assert.deepEqual(cached, await fresh(slid));
+    const first = await sitesCoveredBySatellite({ tle: sentinel2a, sites: owner, nowMs: EPOCH_MS });
+    const before = await sitesCoveredBySatellite({ tle: sentinel2a, sites: owner, nowMs: slid - 1 });
+    assert.equal(before.status === 'ok' && before.windowStartMs, EPOCH_MS, 'just before the slide the first scan still answers');
+    assert.equal(firstSite(before), firstSite(first));
+    const rescanned = await sitesCoveredBySatellite({ tle: sentinel2a, sites: owner, nowMs: slid });
+    assert.equal(rescanned.status === 'ok' && rescanned.windowStartMs, slid);
+    assert.notEqual(firstSite(rescanned), firstSite(first), 'the slid window is a new scan');
+    assert.deepEqual(rescanned, await fresh(slid));
   });
 
   it('rescans a new element set for the same satellite', async () => {

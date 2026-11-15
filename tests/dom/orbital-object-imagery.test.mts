@@ -12,12 +12,13 @@ const harness = vi.hoisted(() => ({
   siteRead: null as unknown as Mock<(request: unknown, options?: WithSignal) => Promise<unknown>>,
   stac: null as unknown as Mock<(archive: string, query?: unknown) => Promise<unknown>>,
   evidence: null as unknown as Mock<(input?: unknown) => unknown>,
+  catalog: { fetchedAt: 1, inventoryVersion: 'v1' },
 }));
 
 vi.mock('@/services/orbital/pass-client', () => ({
   createOrbitalPassClient: () => ({ lookup: (query: unknown, options?: WithSignal) => harness.lookup(query, options), dispose: () => {} }),
 }));
-vi.mock('@/services/orbital/catalog', () => ({ loadOrbitalCatalog: async () => ({ fetchedAt: 1, inventoryVersion: 'v1' }) }));
+vi.mock('@/services/orbital/catalog', () => ({ loadOrbitalCatalog: async () => ({ ...harness.catalog }) }));
 vi.mock('@/services/orbital/archive-stac', () => ({ searchStacArchive: (archive: string, query: unknown) => harness.stac(archive, query) }));
 vi.mock('@/services/orbital/match', () => ({ assembleEvidence: (input: unknown) => harness.evidence(input) }));
 vi.mock('@/services/rpc-client', () => ({
@@ -42,7 +43,7 @@ const passLookup = (passes: Array<{ name: string; timeMs: number; inFootprint?: 
   point,
   window: { startMs: Date.now() - 30 * 24 * HOUR, endMs: Date.now() + 72 * HOUR },
   nowMs: Date.now(),
-  catalog: { status: 'ok', fetchedAt: 1, inventoryVersion: 'v1' },
+  catalog: { status: 'ok', ...harness.catalog },
   passes: passes.map((p) => ({ profileId: 'sentinel-2', inFootprint: true, ...p })),
 });
 const record = (over: Record<string, unknown> = {}) => ({
@@ -55,6 +56,7 @@ const browserImage = 'https://earth-search.aws.element84.com/v1/collections/sent
 
 beforeEach(() => {
   forgetNextPasses();
+  harness.catalog = { fetchedAt: 1, inventoryVersion: 'v1' };
   harness.lookup = vi.fn<(query: unknown, options?: WithSignal) => Promise<unknown>>(async () => passLookup([{ name: 'LANDSAT 9', timeMs: Date.now() + 2 * HOUR }]));
   harness.siteRead = vi.fn<(request: unknown, options?: WithSignal) => Promise<unknown>>(async () => record());
   harness.stac = vi.fn<(archive: string, query?: unknown) => Promise<unknown>>(async (archive) => ({ status: 'ok', archive, items: [] }));
@@ -83,6 +85,18 @@ describe('loadObjectImagery: watched-site record', () => {
     expect(harness.stac).not.toHaveBeenCalled();
     expect(result.latest?.datetime).toBe('2026-11-13T07:00:00Z');
     expect(result.nextPass?.satellite).toBe('LANDSAT 9');
+  });
+
+  it('keeps the painted record image when a newer pass lookup supersedes this one', async () => {
+    harness.siteRead.mockImplementation(async () => record({ nextPass: undefined }));
+    // The shared pass client rejects a superseded lookup with AbortError although this popup never closed.
+    harness.lookup.mockImplementation(async () => { throw new DOMException('Superseded by a newer pass lookup', 'AbortError'); });
+    const open = new AbortController();
+    const result = await loadObjectImagery(site, open.signal);
+
+    expect(open.signal.aborted).toBe(false);
+    expect(result.latest?.datetime).toBe('2026-11-13T07:00:00Z');
+    expect(result.nextPass).toBeNull();
   });
 
   it('keeps the record image with no next pass when the local pass lookup fails', async () => {
@@ -254,6 +268,29 @@ describe('#10758 item 3: the next pass is shared in browser memory', () => {
 
     expect(harness.lookup).toHaveBeenCalledTimes(2);
     expect(again.nextPass?.satellite).toBe('LANDSAT 9');
+  });
+
+  it('looks again when the catalog revision changed since the pass was remembered', async () => {
+    expect((await loadObjectImagery({ kind: 'point', point })).nextPass?.satellite).toBe('LANDSAT 9');
+    harness.catalog = { fetchedAt: 2, inventoryVersion: 'v2' };
+    harness.lookup.mockImplementation(async () => passLookup([{ name: 'SENTINEL-2B', timeMs: Date.now() + 3 * HOUR }]));
+    const again = await loadObjectImagery({ kind: 'point', point });
+
+    expect(harness.lookup).toHaveBeenCalledTimes(2);
+    expect(again.nextPass?.satellite).toBe('SENTINEL-2B');
+  });
+
+  it('a lookup that finishes after its entry was forgotten does not put it back', async () => {
+    let answerPasses!: (value: unknown) => void;
+    harness.lookup.mockImplementationOnce(() => new Promise((resolve) => { answerPasses = resolve; }));
+    const first = loadObjectImagery({ kind: 'point', point });
+    await vi.waitFor(() => expect(harness.lookup).toHaveBeenCalledTimes(1));
+    forgetNextPasses();
+    answerPasses(passLookup([{ name: 'LANDSAT 9', timeMs: Date.now() + 2 * HOUR }]));
+    await first;
+    await loadObjectImagery({ kind: 'point', point });
+
+    expect(harness.lookup).toHaveBeenCalledTimes(2);
   });
 
   it('looks again after a failed pass lookup', async () => {

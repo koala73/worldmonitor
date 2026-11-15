@@ -132,7 +132,7 @@ async function nextPassAt(point: GeoPoint, signal?: AbortSignal): Promise<Object
   });
   nextPasses.set(key, work, Date.now() + NEXT_PASS_HOURS * HOUR_MS);
   work.done.then(
-    (answer) => nextPasses.set(key, work, answer.pass?.timeMs ?? Date.now() + NO_PASS_FRESH_MS),
+    (answer) => { if (nextPasses.get(key, Date.now()) === work) nextPasses.set(key, work, answer.pass?.timeMs ?? Date.now() + NO_PASS_FRESH_MS); },
     () => nextPasses.delete(key, work),
   );
   return (await work.join(signal, aborted)).pass;
@@ -200,8 +200,9 @@ export async function loadObjectImagery(target: ImageryTarget, signal?: AbortSig
       // A CDN-cached record can name a pass that has since happened; the pass worker finds the next one locally.
       if (imagery && !imagery.nextPass) {
         if (signal?.aborted) return imagery;
+        // Only this popup closing is an abort: a newer lookup superseding this one on the shared client keeps the record image.
         return withNextPass(imagery, nextPassAt(target.point, signal), onImageReady, signal).catch((error: unknown) => {
-          if (isAbort(error, signal)) throw error;
+          if (signal?.aborted) throw error;
           return imagery;
         });
       }
