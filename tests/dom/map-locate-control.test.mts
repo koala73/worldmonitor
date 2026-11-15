@@ -11,7 +11,11 @@ vi.mock('@/utils/user-location', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/utils/user-location')>(),
   requestDevicePosition,
 }));
-const geometry = vi.hoisted(() => ({ getCountryNearCoordinates: vi.fn(), preloadCountryGeometry: vi.fn(async () => {}) }));
+const geometry = vi.hoisted(() => ({
+  getCountryNearCoordinates: vi.fn(),
+  preloadCountryGeometry: vi.fn(async () => {}),
+  isCountryGeometryLoaded: vi.fn(() => true),
+}));
 vi.mock('@/services/country-geometry', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/country-geometry')>(),
   ...geometry,
@@ -21,7 +25,7 @@ vi.mock('@/app/orbital-watch', () => ({ openOrbitalWatch }));
 
 import type { AppContext } from '@/app/app-context';
 import { CountryIntelManager } from '@/app/country-intel';
-import { isMapUrlCentreClaimed, releaseMapUrlCentreOnUserMove } from '@/app/orbital-map-focus';
+import { isMapUrlCentreClaimed, publishedMapCentre, releaseMapUrlCentreOnUserMove } from '@/app/orbital-map-focus';
 import { MapContainer } from '@/components/MapContainer';
 import { dismissMapContextMenu, type MapContextMenuItem } from '@/components/MapContextMenu';
 import { MapLocateControl, type LocatedPoint } from '@/components/MapLocateControl';
@@ -50,6 +54,7 @@ afterEach(() => {
   flag.ORBITAL_WATCH_ENABLED = false;
   releaseMapUrlCentreOnUserMove(null);
   vi.clearAllMocks();
+  geometry.isCountryGeometryLoaded.mockReturnValue(true);
 });
 
 describe('map locate control', () => {
@@ -146,11 +151,18 @@ describe('locate menu entries', () => {
   async function setUp() {
     let control!: HTMLElement;
     let viewportAction = 0;
+    const camera = { centre: { lat: 10, lon: 10 } };
     const map = {
       onCountryClicked: () => {},
       onMapContextMenu: () => {},
-      setCenter: vi.fn((_lat: number, _lon: number, _zoom?: number) => ++viewportAction),
+      setCenter: vi.fn((lat: number, lon: number, _zoom?: number) => {
+        camera.centre = { lat, lon };
+        return ++viewportAction;
+      }),
+      getCenter: () => camera.centre,
       isViewportActionCurrent: (token: number) => token === viewportAction,
+      /** Another viewport command that has started but not moved the camera yet. */
+      startViewportAction: () => ++viewportAction,
       addMapControl: (el: HTMLElement) => { control = el; document.body.append(el); },
     };
     const manager = new CountryIntelManager({ map, isDestroyed: false } as unknown as AppContext);
@@ -159,7 +171,7 @@ describe('locate menu entries', () => {
     requestDevicePosition.mockResolvedValue(EXACT);
     control.querySelector('button')!.click();
     await vi.waitFor(() => expect(control.dataset.state).not.toBe('locating'));
-    return { control, openBrief, map, manager };
+    return { control, openBrief, map, manager, camera };
   }
   const menuItem = (label: string) => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((el) => el.textContent === label);
 
@@ -174,12 +186,45 @@ describe('locate menu entries', () => {
     const mapEl = document.createElement('div');
     mapEl.id = 'mapContainer';
     document.body.append(mapEl);
-    await setUp();
+    const { camera } = await setUp();
     // The URL sync writes the map centre into the address bar, which analytics and
     // shared links read; the user's own position must not land there.
     expect(isMapUrlCentreClaimed()).toBe(true);
     mapEl.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    camera.centre = { lat: ROUNDED.lat, lon: ROUNDED.lon - 2 };
     expect(isMapUrlCentreClaimed()).toBe(false);
+  });
+
+  it('keeps the claim through a zoom click or Tab that leaves the map on the located point', async () => {
+    geometry.getCountryNearCoordinates.mockReturnValue({ code: 'AE', name: 'United Arab Emirates' });
+    const mapEl = document.createElement('div');
+    mapEl.id = 'mapContainer';
+    document.body.append(mapEl);
+    const { camera } = await setUp();
+    mapEl.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    mapEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    expect(isMapUrlCentreClaimed()).toBe(true);
+    // A real pan moves the centre off the located point, and the URL may then follow the map.
+    camera.centre = { lat: ROUNDED.lat + 1, lon: ROUNDED.lon };
+    expect(isMapUrlCentreClaimed()).toBe(false);
+  });
+
+  it('keeps the claim while another viewport command has started but not moved the map', async () => {
+    geometry.getCountryNearCoordinates.mockReturnValue({ code: 'AE', name: 'United Arab Emirates' });
+    const { map } = await setUp();
+    map.startViewportAction();
+    expect(isMapUrlCentreClaimed()).toBe(true);
+  });
+
+  it('gives share links and embeds the address-bar centre, not the located point', async () => {
+    geometry.getCountryNearCoordinates.mockReturnValue({ code: 'AE', name: 'United Arab Emirates' });
+    const { map } = await setUp();
+    const located = map.getCenter();
+    expect(publishedMapCentre(located, 'https://www.worldmonitor.app/?lat=48.8600&lon=2.3500&zoom=4')).toEqual({ lat: 48.86, lon: 2.35 });
+    expect(publishedMapCentre(located, 'https://www.worldmonitor.app/')).toBeNull();
+    // Once Search moves the map elsewhere, links carry the live centre again.
+    map.setCenter(48.86, 2.35, 6);
+    expect(publishedMapCentre(map.getCenter(), 'https://www.worldmonitor.app/?lat=10.0000&lon=10.0000')).toEqual({ lat: 48.86, lon: 2.35 });
   });
 
   it('hands the URL centre back when Search or a panel link moves the map after locating', async () => {
@@ -191,6 +236,14 @@ describe('locate menu entries', () => {
     expect(isMapUrlCentreClaimed()).toBe(true);
     map.setCenter(48.86, 2.35, 6);
     expect(isMapUrlCentreClaimed()).toBe(false);
+  });
+
+  it('reports an outline fetch that failed inside the loader as unavailable', async () => {
+    // The loader catches its own fetch failure and resolves with no outlines loaded.
+    geometry.isCountryGeometryLoaded.mockReturnValue(false);
+    geometry.getCountryNearCoordinates.mockReturnValue(null);
+    const { control } = await setUp();
+    expect(control.dataset.state).toBe('unavailable');
   });
 
   it('reports a failed outline load as unavailable, not as no country', async () => {

@@ -41,6 +41,7 @@ import {
   getCountryNearCoordinates,
   getCountryCentroid,
   hasCountryGeometry,
+  isCountryGeometryLoaded,
   ME_STRIKE_BOUNDS,
   preloadCountryGeometry,
 } from '@/services/country-geometry';
@@ -372,9 +373,12 @@ export class CountryIntelManager implements AppModule {
       centre: (point) => {
         // The URL sync would write the user's own position into the address bar,
         // which shared links and analytics read. Keep the previous centre there
-        // until the user moves the map, or Search or a panel link moves it elsewhere.
+        // until the map's centre actually leaves the located point.
         let token: number | null = null;
-        claimMapUrlCentre(() => token === null || map.isViewportActionCurrent(token));
+        claimMapUrlCentre(
+          () => token === null || map.isViewportActionCurrent(token),
+          { point, read: () => map.getCenter() },
+        );
         token = map.setCenter(point.lat, point.lon, LOCATE_ZOOM);
         releaseMapUrlCentreOnUserMove(document.getElementById('mapContainer'));
       },
@@ -391,6 +395,8 @@ export class CountryIntelManager implements AppModule {
     const items: MapContextMenuItem[] = [];
     // A failed outline load must read as "location unavailable", not as "no country here".
     await preloadCountryGeometry();
+    // The loader catches its own fetch failure and resolves with no outlines.
+    if (!isCountryGeometryLoaded()) throw new Error('country outlines unavailable');
     const country = getCountryNearCoordinates(point.lat, point.lon, LOCATE_COAST_TOLERANCE_DEG);
     if (country) items.push({
       label: t('contextMenu.openCountryBrief'),
