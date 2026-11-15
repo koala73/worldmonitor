@@ -36,7 +36,7 @@ function requireSeedRefreshKey() {
   throw new Error('WORLDMONITOR_SEED_REFRESH_KEY is required for resilience ranking refresh');
 }
 
-// resilience:score:v29: and resilience:ranking:v29 must match server/worldmonitor/resilience/v1/_shared.ts. The seeder writes these keys and the handlers read them.
+// resilience:score:v29: and resilience:ranking:v29 must match server/worldmonitor/resilience/v1/_shared.ts. The handlers write these keys and the seeder reads them.
 // v22 → v23 batches three same-tag `pc` scorer changes: import-HHI stale /
 // missing source years now derate certainty coverage (#4088), observed
 // zero-outage feeds score as observed-quiet in infrastructure (P3-8), and WTO

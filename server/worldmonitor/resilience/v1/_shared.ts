@@ -142,7 +142,7 @@ export const RESILIENCE_SCORE_TRACE_CACHE_PREFIX = 'resilience:score-trace:v1:';
 // full cron-cycle of headroom — ensureRankingPresent() still refreshes on
 // every cron, so under normal operation the key stays well above TTL=0.
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
-// Must match scripts/seed-resilience-scores.mjs. The seeder writes this prefix and the score handler reads it.
+// Must match scripts/seed-resilience-scores.mjs. ensureResilienceScoreCached writes this prefix and the seeder reads it.
 // v22→v23 bump batches three same-tag `pc` scorer changes: import-HHI stale /
 // missing source years now derate certainty coverage (#4088), infrastructure
 // treats an observed outage feed with zero outages as observed-quiet (score 100)
@@ -158,7 +158,7 @@ export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
 export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v29:';
 // appendHistory writes resilience:history:v23: and the trend reader scans the same prefix.
 export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v23:';
-// Must match scripts/seed-resilience-scores.mjs and api/health.js. The seeder writes this key and the ranking handler reads it.
+// Must match scripts/seed-resilience-scores.mjs and api/health.js. getResilienceRanking writes this key. The seeder and the health probe read it.
 export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v29';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 // Must match scripts/_resilience-intervals.mjs and api/seed-health.js. The seeder writes these keys and getResilienceScore reads them.
