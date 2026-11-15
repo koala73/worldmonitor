@@ -3,7 +3,7 @@ retailer:
   name: ADCOOP UAE
   marketCode: ae
   currencyCode: AED
-  adapter: exa-search
+  adapter: search
   baseUrl: https://www.adcoop.com
   enabled: false  # adcoop.com product pages indexed by Exa but prices not extractable (JS-rendered/login-gated)
 

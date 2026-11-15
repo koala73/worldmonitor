@@ -1,8 +1,8 @@
 import * as z from 'zod';
 
 export const AcquisitionConfigSchema = z.object({
-  provider: z.enum(['playwright', 'exa', 'firecrawl', 'p0']),
-  fallback: z.enum(['playwright', 'exa', 'firecrawl', 'p0']).optional(),
+  provider: z.enum(['exa', 'firecrawl']),
+  fallback: z.enum(['exa', 'firecrawl']).optional(),
   options: z
     .object({
       waitForSelector: z.string().optional(),
@@ -108,7 +108,7 @@ export const RetailerConfigSchema = z.object({
     name: z.string(),
     marketCode: z.string().length(2),
     currencyCode: z.string().length(3),
-    adapter: z.enum(['generic', 'exa-search', 'search', 'custom']).default('generic'),
+    adapter: z.enum(['search']).default('search'),
     baseUrl: z.string().url(),
     rateLimit: RateLimitSchema.optional(),
     acquisition: AcquisitionConfigSchema.optional(),
