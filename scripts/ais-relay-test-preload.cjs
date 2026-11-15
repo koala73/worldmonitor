@@ -68,6 +68,8 @@ const wingbitsTrafficStatuses = (process.env.RELAY_TEST_WINGBITS_TRAFFIC_STATUS_
   .split(',')
   .map((value) => value.trim())
   .filter(Boolean);
+// Real milliseconds before the first traffic response is answered.
+let wingbitsTrafficFirstDelayMs = Number(process.env.RELAY_TEST_WINGBITS_TRAFFIC_FIRST_DELAY_MS || 0);
 const adsbModes = (process.env.RELAY_TEST_ADSB_MODE_SEQUENCE || '')
   .split(',')
   .map((value) => value.trim())
@@ -164,6 +166,11 @@ globalThis.fetch = async (url, options) => {
   if (target.includes('customer-api.wingbits.com')) {
     const requested = JSON.parse(String(options?.body || '[]'));
     if (wingbitsTrafficFlights && requested.some((area) => /^(us|eu)-/.test(area.alias))) {
+      if (wingbitsTrafficFirstDelayMs > 0) {
+        const delayMs = wingbitsTrafficFirstDelayMs;
+        wingbitsTrafficFirstDelayMs = 0;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
       const mode = nextValue(wingbitsTrafficStatuses, '200');
       const status = mode === 'short' ? 200 : Number(mode);
       const now = Date.now();

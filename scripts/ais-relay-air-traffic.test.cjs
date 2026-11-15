@@ -470,3 +470,14 @@ test('lane 21: a response whose every report is stale is a gap, never an empty s
     assert.match(lines()[0], /status=gap reason=empty attempts=3$/);
   }, {}, WINGBITS_FLIGHTS.map((f) => ({ ...f, ageMs: 120_000 })));
 });
+
+test('lane 22: a Wingbits response that lands after its bin ends makes that bin a gap', async () => {
+  // At 300x, 1.2 real seconds is longer than a bin.
+  await wingbitsLane('', async ({ redis, relay, lines }) => {
+    const t = Date.UTC(2026, 10, 13, 20, 30);
+    const line = () => lines().find((l) => l.includes('t=2026-11-13T20:30:00.000Z'));
+    await relay.waitFor(() => line(), 'the 20:30 Wingbits line');
+    assert.deepEqual(redis.points('2026-11-13', WINGBITS_PREFIX).find((p) => p.t === t), { t, status: 'gap' });
+    assert.match(line(), /status=gap reason=bin ended attempts=1$/);
+  }, { RELAY_TEST_WINGBITS_TRAFFIC_FIRST_DELAY_MS: '1200' });
+});

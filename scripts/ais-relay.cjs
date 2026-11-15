@@ -6823,6 +6823,9 @@ async function attemptWingbitsTrafficPoint(fetchedAt) {
       body: JSON.stringify(WINGBITS_TRAFFIC_AREAS),
       signal: AbortSignal.timeout(20_000),
     });
+    // Reports in a response that lands after the bin ends describe the next
+    // bin, so they cannot be dated to this one.
+    if (airTrafficBinStart(Date.now()) !== airTrafficBinStart(fetchedAt)) return { gapReason: 'bin ended' };
     if (!resp.ok) return { gapReason: `http ${resp.status}` };
     let areas;
     try { areas = await resp.json(); } catch { areas = null; }
