@@ -112,9 +112,12 @@ export function computeFlowEstimate(rawHistory, baselineMbd, yearBaseline = null
 
   const yearDwt = Number(yearBaseline?.capTankerAvgDaily);
   const yearCount = Number(yearBaseline?.tankerAvgDaily);
+  // PortWatch stores a blank capacity as 0. A day with tankers but no tonnage
+  // is unreported DWT, not zero flow; only counts can measure that week.
+  const recentDwtReported = last7.every(d => (d.capTanker ?? 0) > 0 || (d.tanker ?? 0) === 0);
   let useDwt;
   let baseline90d;
-  if (Number.isFinite(yearDwt) && yearDwt >= 1) {
+  if (Number.isFinite(yearDwt) && yearDwt >= 1 && recentDwtReported) {
     useDwt = true;
     baseline90d = yearDwt;
   } else if (Number.isFinite(yearCount) && yearCount >= 0.5) {

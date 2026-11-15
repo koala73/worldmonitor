@@ -113,6 +113,24 @@ describe('computeFlowEstimate — year-earlier baseline', () => {
     assert.equal(computeFlowEstimate(history, BASELINE_MBD, null).flowRatio, 1);
   });
 
+  it('uses the tanker-count baseline when recent days carry tankers but no DWT', () => {
+    // PortWatch blanks (stored as 0) mean DWT was not reported; a passing
+    // tanker always has tonnage. Reading them as zero DWT would report a
+    // closure at a strait running normally.
+    const history = makeDays(97, 49, 0);
+    const estimate = computeFlowEstimate(history, BASELINE_MBD, YEAR_EARLIER);
+    assert.equal(estimate.source, 'portwatch-counts');
+    assert.ok(Math.abs(estimate.flowRatio - 1) < 0.01, `got ${estimate.flowRatio}`);
+    assert.equal(estimate.disrupted, false);
+  });
+
+  it('keeps DWT when recent zero tonnage comes with zero tankers: that is a closure', () => {
+    const estimate = computeFlowEstimate(makeDays(97, 0, 0), BASELINE_MBD, YEAR_EARLIER);
+    assert.equal(estimate.source, 'portwatch-dwt');
+    assert.equal(estimate.flowRatio, 0);
+    assert.equal(estimate.disrupted, true);
+  });
+
   it('reads a normal week as normal against the year before', () => {
     const estimate = computeFlowEstimate(makeDays(97, 50, 2_300_000), BASELINE_MBD, YEAR_EARLIER);
     assert.ok(Math.abs(estimate.flowRatio - 1) < 0.01, `got ${estimate.flowRatio}`);
