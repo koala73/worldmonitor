@@ -26,6 +26,7 @@ import {
 import { ArchiveRefusal, acquisitionsFromStac, countryKey, evaluateSites, ORBITAL_SITES_KEY, siteKey, stacSearchBody } from '../scripts/_orbital-sites.mjs';
 import { makeArchiveSearch, makeFetchSites, makeStatisticsFetch, MAX_SEARCH_PAGES, publicationCommands } from '../scripts/seed-orbital-sites.mjs';
 import { replayKnownChanges, replaySample, TARGETS } from '../scripts/replay-orbital-change.mjs';
+import { METHODS, runSpike } from '../scripts/orbital-change-spike.mjs';
 import { SITE_WATER_PERCENT } from '../scripts/shared/orbital-site-water.mjs';
 import { waterPercent } from '../scripts/measure-orbital-site-water.mjs';
 import { WATCHED_SITES } from '../scripts/shared/orbital-watched-sites.generated.mjs';
@@ -224,6 +225,18 @@ describe('orbital change scoring', () => {
     assert.deepEqual([scored.sites, scored.raised, scored.confirmed, scored.retracted, scored.likelyEnvironmental], [24, 26, 2, 13, 1]);
     assert.ok(scored.retractedShare >= TARGETS.maxRetractedShare, 'the shadow-exit rule keeps this target, so the flag stays in shadow');
     assert.ok(scored.retractedShare >= SHADOW_EXIT_RULE.maxRetractedShare);
+  });
+
+  it('records that no method tried in the #10763 spike meets the retraction target', async () => {
+    const rows = await runSpike();
+    assert.deepEqual(rows.map((row) => row.method), Object.keys(METHODS));
+    for (const row of rows) {
+      for (const run of [row.default, row.best]) {
+        const [retracted, resolved] = run.retracted.split(' of ').map(Number);
+        assert.ok(resolved === 0 || retracted / resolved >= TARGETS.maxRetractedShare, `${row.method} ${JSON.stringify(run.params)}`);
+      }
+    }
+    assert.ok(rows.every((row) => !row.best.knownDetail.some((line) => line.startsWith('natanz-2025: raised'))), 'no method raises Natanz');
   });
 
   it('skips and counts a scene whose statistics fail on every run, then reads past it', async () => {

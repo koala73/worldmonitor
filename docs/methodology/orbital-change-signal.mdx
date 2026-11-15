@@ -143,6 +143,44 @@ at most one known change is raised in its window. The targets are therefore not 
 thresholds are left as they are rather than fitted to the sample. The shadow-exit rule keeps
 the retraction target, so the flag stays in shadow until the scorer or the targets are revised.
 
+## Alternative methods tried
+
+`node scripts/orbital-change-spike.mjs` replays three alternative methods against the same sample and
+known changes. Each method was run at its default setting and over a small grid of settings.
+Every method makes the same statistics requests as today's scorer: one per new scene, about
+0.34 a day per site, or about 170 a day across all sites. Scoring is negligible: every method and
+setting replays in under half a second. Rows give the 24 scored sites.
+
+| Method | Retracted share | Confirmed at a site with water | Known changes in window |
+|---|---|---|---|
+| Today's scorer | 13 of 15 | 1 of 2 | 0 of 4 |
+| A. Persistent shift: two deviating scenes in a row raise, a third confirms (default) | 3 of 4 | 0 of 1 | 1 of 4 |
+| A, best setting (floor 0.75 dB, multiplier 2) | 3 of 6 | 0 of 3 | 2 of 4 |
+| B. Another orbit must agree within 12 days (default) | 19 of 22 | 0 of 3 | 1 of 4 |
+| B, best setting (floor 0.75 dB, multiplier 2, 24 days) | 38 of 49 | 1 of 11 | 3 of 4 |
+| C. Bright-target contrast and VH/VV ratio (default, floor 1 dB) | 5 of 9 | 1 of 4 | 2 of 4 |
+| C, best setting (floor 0.75 dB, multiplier 2) | 5 of 13 | 1 of 8 | 2 of 4 |
+
+No method meets the retraction target on any setting. A and C meet the other two targets, but on
+too few resolved flags to trust. B raises three of the four known changes only on settings
+where about four in five flags are retracted. Every method that counts Zaporizhzhia raises it
+from one orbit whose statistics were already rising five days before the breach. No method
+raises Natanz on any setting. At Fordow and Natanz the event moves the footprint's 98th
+percentile by about half a decibel, which is no more than the spring drift before the strikes.
+A median and a 98th percentile over a footprint about 2 km across cannot see damage that
+covers a small part of it.
+
+Coherence change was not tried. The Planetary Computer archive the scorer reads holds
+ground-range detected scenes only, with no phase. A per-site seasonal model needs at least a
+year of scenes per orbit, and the sample covers 90 days.
+
+**Decision (#10763): flags stay off.** No method is adopted. The targets are not revised,
+because none of the methods is close enough for revised targets to be meaningful.
+`SHADOW_EXIT_RULE` and the shadow record are unchanged. A future attempt needs pixel-level
+change, for example a log-ratio of the scene against a baseline composite, counted as the
+share of changed pixels. That costs tile reads rather than one statistics request per
+scene, so it needs its own capacity estimate.
+
 Observed during development, over 90 days ending 13 November 2026 on a spread sample of
 watched land sites, a typical comparable scene differed from its baseline median by a few
 tenths of a decibel. Coastal and river sites showed much wider spread from water surface
