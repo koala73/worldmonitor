@@ -5735,6 +5735,21 @@
         "5": "sair",
         "6": "deletar conta, excluir conta, faturamento"
       }
+    },
+    "reservoirAlert": {
+      "title": "Alertas de nível de água",
+      "description": "Receber alerta quando o nível de água lidar de um reservatório estratégico estiver baixo. A NASA publica cada passagem de satélite cerca de dois meses após a medição, portanto cada alerta fornece a data da medição.",
+      "scopeHint": "Escolha até {{max}} reservatórios. Os alertas cobrem apenas os reservatórios listados aqui.",
+      "searchPlaceholder": "Adicionar um reservatório por nome",
+      "searchLabel": "Adicionar um reservatório",
+      "removeLabel": "Remover {{name}}",
+      "thresholdLabel": "Limite de nível",
+      "thresholdHint": "Alerta quando o nível medido mais recente está abaixo deste percentual do intervalo medido do reservatório, onde 0 é o nível mais baixo medido e 100 o mais alto. Deixe vazio para sem limite.",
+      "thresholdInputLabel": "Limite de nível, percentual do intervalo medido",
+      "seasonalLabel": "Queda além da linha de base sazonal",
+      "seasonalHint": "Alerta quando o nível medido mais recente está bem abaixo do que aquele reservatório normalmente mede nesta época do ano.",
+      "quietNote": "Esses alertas chegam mesmo quando os alertas em tempo real estão configurados apenas para críticos. As horas silenciosas os silenciam.",
+      "quietNoteBatch": "Esses alertas chegam mesmo quando os alertas em tempo real estão configurados apenas para críticos. As horas silenciosas os silenciam ou os mantêm retidos até o fim das horas silenciosas, se você escolher Batch."
     }
   }
 }

@@ -40,7 +40,7 @@ Action-dispatched writer. The body's `action` field selects the mutation:
 | `set-alert-rules` | Replace the caller's alert-rules set in one shot. |
 | `set-quiet-hours` | Set do-not-disturb windows. |
 | `set-digest-settings` | Configure digest cadence and channel routing. |
-| `set-notification-config` | Per-variant notification config: `variant` (required), `enabled`, `eventTypes`, `sensitivity` (`all`/`high`/`critical`), `channels`, `aiDigestEnabled`, `digestMode` (`realtime`/`daily`/`twice_daily`/`weekly`), `digestHour`, `digestTimezone`, `countries`, `tickers`, `chokepoints`, `orbitalSites`. Validation errors return structured 400 codes (e.g. `COUNTRIES_MUST_BE_ARRAY`, `TICKERS_LIMIT_EXCEEDED`, `CHOKEPOINTS_MUST_BE_ARRAY`, `CHOKEPOINTS_INVALID`, `ORBITAL_SITES_INVALID`). |
+| `set-notification-config` | Per-variant notification config: `variant` (required), `enabled`, `eventTypes`, `sensitivity` (`all`/`high`/`critical`), `channels`, `aiDigestEnabled`, `digestMode` (`realtime`/`daily`/`twice_daily`/`weekly`), `digestHour`, `digestTimezone`, `countries`, `tickers`, `chokepoints`, `orbitalSites`, `reservoirAlert`. Validation errors return structured 400 codes (e.g. `COUNTRIES_MUST_BE_ARRAY`, `TICKERS_LIMIT_EXCEEDED`, `CHOKEPOINTS_MUST_BE_ARRAY`, `CHOKEPOINTS_INVALID`, `ORBITAL_SITES_INVALID`, `RESERVOIR_ALERT_INVALID`). |
 
 All actions require Clerk bearer + PRO, and PRO here specifically means a **billed entitlement row** at `tier >= 1`. A Clerk session whose role is `pro` but which has no entitlement row does **not** qualify, unlike the gateway's tier-1 REST gate: notification delivery is enforced a second time inside Convex (`assertProEntitlement`), so the edge gate returns the clean `403 pro_required` rather than letting the request fail deeper with a less useful error. Invalid actions return `400 Unknown action`. Requests are forwarded to Convex via `RELAY_SHARED_SECRET`.
 
@@ -73,6 +73,19 @@ Two event types tell a user about the watched sites they list: `orbital_imaging_
 - **Payload**: `title`, `source` (`Orbital Watch`), `siteId`, `siteName`, `triggeredAt` and `coalesceKey`, which names one alert and stays the same if the relay re-sends it. Imaging-window alerts add `windows`, up to five passes with `noradId`, `name`, `profileId`, `category` and `time`. Change alerts add `itemId`, the archive scene that confirmed the change, and `platform`.
 
 `POST /api/notify` rejects both event types: only the watched-site seeder publishes them.
+
+## Reservoir water level alerts
+
+A Pro rule receives `reservoir_level_alert` only when its `eventTypes` lists it. A rule with an empty `eventTypes` list does not receive it, and listing it does not narrow the rule's other alerts. The rule's `reservoirAlert` object says which reservoirs it follows and when to alert.
+
+- **Settings**: `reservoirAlert` is `{ reservoirs, belowPercent?, seasonalDrop? }`. `reservoirs` holds registry ids such as `nasser` or `gerd`, at most 50. An empty or absent list means no reservoir alerts. `belowPercent` is a whole number from 1 to 50: alert when the latest measured level is below that percent of the reservoir's own measured range (0 is the lowest level measured, 100 the highest). `seasonalDrop: true` alerts when the latest measured level is beyond the reservoir's seasonal baseline on the low side. A rule may set either or both; with neither it never fires. A reservoir with too little history for a measured range or a seasonal baseline cannot trigger the matching criterion.
+- **Measurement dates**: levels come from NASA ICESat-2 lidar and reach the dashboard about two months after the pass. One alert is sent when a reservoir gets a new measurement date, never on a clock, and its title and `measuredAt` give that date. An event without a valid measurement date matches no rule. The first seed run after launch only records the current measurements, so nobody is alerted about history.
+- **Baseline**: the seasonal baseline is the one the Strategic Water Levels seeder already computes (`seasonalBaseline` in `scripts/_reservoir-levels.mjs`); the alert carries its verdict and adds no second baseline.
+- **Severity**: `medium`. A level measured days ago is never urgent, so the alert does not break through quiet hours: the default critical-only override silences it, `silence_all` silences it, and `batch_on_wake` holds it and sends it in the batch when quiet hours end. Outside quiet hours it reaches real-time rules even when sensitivity is critical only, because the per-reservoir opt-in and the rule's own threshold are the filters. It is delivered to real-time rules only, not digests.
+- **Scope**: a `countries` scope does not filter this event. Invalid settings return `400 RESERVOIR_ALERT_INVALID`. Asking for the event type, or listing a reservoir, needs a Pro entitlement. A confirmed non-Pro caller gets `403 pro_required` from the public endpoint; `402 PRO_REQUIRED` is the answer of the Convex layer behind it.
+- **Payload**: `title`, `source` (`NASA ICESat-2 lidar`), `reservoirId`, `reservoirName`, `reservoirCountry`, `measuredAt` (`YYYY-MM-DD`), `levelM` (metres above the EGM2008 geoid), `percentOfRange`, `seasonalAnomalyM`, `seasonalZ`, `beyondSeasonalBaseline`, and `coalesceKey`, which names one measurement and stays the same if the relay re-sends it.
+
+`POST /api/notify` rejects this event type: only the reservoir seeder publishes it.
 
 ## Webhook delivery contract
 

@@ -5735,6 +5735,21 @@
         "5": "esci",
         "6": "elimina account"
       }
+    },
+    "reservoirAlert": {
+      "title": "Avvisi di livello dell'acqua",
+      "description": "Ricevi un avviso quando il livello dell'acqua misurato da lidar di un serbatoio strategico è basso. La NASA pubblica ogni passaggio satellitare circa due mesi dopo la misurazione, quindi ogni avviso fornisce la data di misurazione.",
+      "scopeHint": "Scegli fino a {{max}} serbatoi. Gli avvisi riguardano solo i serbatoi elencati qui.",
+      "searchPlaceholder": "Aggiungi un serbatoio per nome",
+      "searchLabel": "Aggiungi un serbatoio",
+      "removeLabel": "Rimuovi {{name}}",
+      "thresholdLabel": "Soglia di livello",
+      "thresholdHint": "Ricevi un avviso quando l'ultimo livello misurato è inferiore a questa percentuale dell'intervallo misurato del serbatoio, dove 0 è il livello più basso misurato e 100 il più alto. Lascia vuoto per nessuna soglia.",
+      "thresholdInputLabel": "Soglia di livello, percentuale dell'intervallo misurato",
+      "seasonalLabel": "Calo oltre la linea di base stagionale",
+      "seasonalHint": "Ricevi un avviso quando l'ultimo livello misurato è significativamente inferiore a quello che il serbatoio di solito misura in questo periodo dell'anno.",
+      "quietNote": "Questi avvisi arrivano anche quando gli avvisi in tempo reale sono impostati solo su critico. Le ore silenziose li silenziano.",
+      "quietNoteBatch": "Questi avvisi arrivano anche quando gli avvisi in tempo reale sono impostati solo su critico. Le ore silenziose li silenziano, oppure li trattengono fino alla fine delle ore silenziose se scegli Batch."
     }
   }
 }

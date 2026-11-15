@@ -26,6 +26,7 @@ import type { MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/mat
 import type { OrbitalTarget, PassTrack, TrackPoint } from '@/services/orbital/track-geometry';
 import { openOrbitalShareLink, openOrbitalWatch, openOrbitalWatchSearch, type OrbitalTrackSurface } from '@/app/orbital-watch';
 import { watchOrbitalRoute } from '@/app/orbital-route';
+import { takeOrbitalShareLink } from '@/app/orbital-share-link';
 import { formatOrbitalTime, getOrbitalDisplayZone, setOrbitalDisplayZone } from '@/components/OrbitalWatchPage';
 import fixture from '../fixtures/orbital/celestrak-gp-2026-11-13.json';
 
@@ -245,6 +246,54 @@ describe('one pass selection for the list, the timeline and the maps', () => {
     } finally {
       unwatch();
       history.replaceState(null, '', window.location.pathname);
+    }
+  });
+
+  it('rewrites a finer route at load as the share link, so only the share link opens it', () => {
+    history.replaceState(null, '', '/dashboard?view=global#orbital=25.1120,55.1390&view=full');
+    const entries = history.length;
+    const unwatch = watchOrbitalRoute(() => surface);
+    try {
+      expect(location.hash).toBe('#orbital=25.11,55.14');
+      expect(location.search).toBe('?view=global');
+      expect(history.length).toBe(entries);
+      expect(takeOrbitalShareLink()).toEqual({ point: { lat: 25.11, lon: 55.14 }, pass: null, view: 'sheet' });
+      expect(location.hash).toBe('');
+    } finally {
+      unwatch();
+      history.replaceState(null, '', '/');
+    }
+  });
+
+  it('accepts an old &view=full share link and strips the view from the live URL', () => {
+    history.replaceState(null, '', '/dashboard?view=global#orbital=25.11,55.14&view=full');
+    try {
+      expect(takeOrbitalShareLink()).toMatchObject({ point: { lat: 25.11, lon: 55.14 }, pass: null });
+      expect(location.hash).toBe('');
+      expect(location.search).toBe('?view=global');
+    } finally {
+      history.replaceState(null, '', '/');
+    }
+  });
+
+  it('opens a finer route followed in the tab at the share link\'s 0.01 degrees', async () => {
+    history.replaceState(null, '', '/dashboard?view=global');
+    lookupMock.mockReturnValue(new Promise(() => {}));
+    const replace = vi.spyOn(history, 'replaceState');
+    const unwatch = watchOrbitalRoute(() => surface);
+    try {
+      location.hash = 'orbital=25.1120,55.1390&view=full';
+      await vi.waitFor(() => expect(lookupMock).toHaveBeenCalled());
+      expect(lookupMock.mock.calls[0]![0]).toEqual({ point: { lat: 25.11, lon: 55.14 } });
+      expect(replace.mock.calls.some(([, , url]) => String(url).endsWith('#orbital=25.11,55.14'))).toBe(true);
+      expect(location.href).not.toContain('25.112');
+      expect(location.href).not.toContain('view=full');
+      expect(sheet().textContent).not.toContain('25.112');
+    } finally {
+      replace.mockRestore();
+      unwatch();
+      document.querySelector<HTMLButtonElement>('.ies-close')?.click();
+      history.replaceState(null, '', '/');
     }
   });
 
