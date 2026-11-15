@@ -20,6 +20,22 @@ const PENDING_KEY = 'wm-conversion-pending';
 const KNOWN_PRODUCT = 'pdt_0Nbtt71uObulf7fGXhQup';
 
 describe('shared checkout attribution contract', () => {
+  it('preserves standalone panel attribution without inventing a mission preview', async () => {
+    const attribution = await import('../shared/checkout-attribution.ts');
+    const url = new URL(attribution.buildAttributedProUrl('https://worldmonitor.app/pro#pricing', {
+      panelKey: 'market-implications',
+    }));
+    assert.equal(url.searchParams.get('wm_checkout_panel'), 'market-implications');
+    assert.equal(url.hash, '#pricing');
+    assert.equal(attribution.parseMissionPreviewAttributionFromSearch(url.search), null);
+    for (const input of [
+      { panelKey: 'bad&panel=value' },
+      { missionId: 'supply-chain-risk', panelKey: 'cii' },
+    ]) {
+      assert.equal(attribution.buildAttributedProUrl('https://worldmonitor.app/pro#pricing', input),
+        'https://worldmonitor.app/pro#pricing');
+    }
+  });
   it('round-trips only registered preview mission and panel pairs', async () => {
     const attribution = await import('../shared/checkout-attribution.ts');
     const url = attribution.buildAttributedProUrl('https://worldmonitor.app/pro', {

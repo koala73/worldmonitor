@@ -153,6 +153,9 @@ export function buildAttributedProUrl(
   if (preview) {
     url.searchParams.set(CHECKOUT_MISSION_PARAM, preview.missionId);
     url.searchParams.set(CHECKOUT_PANEL_PARAM, preview.panelKey);
+  } else if (attribution?.missionId === undefined) {
+    const panelKey = parseCheckoutPanelKey(attribution?.panelKey);
+    if (panelKey) url.searchParams.set(CHECKOUT_PANEL_PARAM, panelKey);
   }
   return url.toString();
 }

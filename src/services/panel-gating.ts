@@ -22,6 +22,7 @@ import type { ClientEntitlementBelief } from './premium-denial';
 import { getSecretState } from './runtime-config';
 import { isSelfHostKeyUnlocked } from './self-host-key';
 import { isProUser } from './widget-store';
+import { openUpgradePlans } from './upgrade-flow';
 
 export enum PanelGateReason {
   NONE = 'none',           // show content (pro user, or desktop with API key, or non-premium panel)
@@ -156,6 +157,7 @@ export function resolveBillingAwareGateReason(reason: PanelGateReason): PanelGat
  * drift — the auth-modal opener is injected instead.
  */
 export interface GateActionDeps {
+  panelKey?: string;
   /** Opens the sign-in modal for the ANONYMOUS reason. */
   openAuthModal: () => void;
   /**
@@ -179,7 +181,7 @@ export function resolveGateAction(reason: PanelGateReason, deps: GateActionDeps)
     case PanelGateReason.ANONYMOUS:
       return () => deps.openAuthModal();
     case PanelGateReason.FREE_TIER:
-      return () => openProPage('/pro');
+      return () => { void openUpgradePlans({ panelKey: deps.panelKey }); };
     case PanelGateReason.PAYMENT_ON_HOLD:
     case PanelGateReason.RENEWAL_FAILED:
       // Pre-reserve the portal tab synchronously inside the click gesture

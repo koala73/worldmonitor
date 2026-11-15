@@ -3,7 +3,7 @@ import { invokeTauri } from '../services/tauri-bridge';
 import { t } from '../services/i18n';
 import { type DomChild, h, replaceChildren, safeHtml as sanitizeHtmlFragment, setTrustedHtml, trustedHtml, type TrustedHtml } from '../utils/dom-utils';
 import { safeHtmlToString, type SafeHtml } from '@/utils/sanitize';
-import { trackLayoutCustomized } from '@/services/analytics';
+import { trackGateHit, trackLayoutCustomized, trackPanelGateClick } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
@@ -208,6 +208,8 @@ export class Panel {
   // unchanged verdict skip the DOM teardown/rebuild (#4771 re-runs gating on
   // every subscription-row change, including fields irrelevant to gating).
   private _lastGateReason: PanelGateReason | null = null;
+  private static readonly viewedGatedPanels = new Set<string>();
+  private gateViewObserver: IntersectionObserver | null = null;
   // Snapshot of this.content's children at the moment showLocked /
   // showGatedCta replaces them with a lock CTA. unlockPanel re-attaches
   // these nodes so subclasses whose UI is constructed once (typically in
@@ -1212,6 +1214,8 @@ export class Panel {
   }
 
   public showLocked(features: string[] = []): void {
+    this.stopGateViewObserver();
+    this._lastGateReason = null;
     this._locked = true;
     this.clearRetryCountdown();
     this._snapshotContentForRestore();
@@ -1313,6 +1317,7 @@ export class Panel {
     // Gating re-runs on every subscription-row change (#4771), including
     // Convex updates to fields irrelevant to the gate verdict.
     if (this._locked && this._lastGateReason === reason) return;
+    this.stopGateViewObserver();
     this._lastGateReason = reason;
 
     // Bail-out done — now commit to the locked state. Doing this AFTER the
@@ -1339,12 +1344,34 @@ export class Panel {
     else if (reason === PanelGateReason.FREE_TIER || reason === PanelGateReason.LAPSED) {
       ctaBtn.dataset.dashboardInteraction = 'upgrade';
     }
-    ctaBtn.addEventListener('click', onAction);
+    const tracksAcquisition = reason === PanelGateReason.ANONYMOUS || reason === PanelGateReason.FREE_TIER;
+    ctaBtn.addEventListener('click', () => {
+      if (tracksAcquisition) trackPanelGateClick(this.panelId, reason);
+      onAction();
+    });
 
     this.replaceContent(h('div', { className: 'panel-locked-state' }, iconEl, descEl, ctaBtn));
+    if (tracksAcquisition && !Panel.viewedGatedPanels.has(this.panelId)
+      && !this.destroyed && typeof IntersectionObserver !== 'undefined') {
+      const observer = new IntersectionObserver((entries) => {
+        if (this.gateViewObserver !== observer || !entries.some(entry => entry.isIntersecting && entry.intersectionRatio > 0)) return;
+        this.stopGateViewObserver();
+        if (Panel.viewedGatedPanels.has(this.panelId)) return;
+        Panel.viewedGatedPanels.add(this.panelId);
+        trackGateHit(`panel:${this.panelId}`);
+      }, { threshold: 0.001 });
+      this.gateViewObserver = observer;
+      observer.observe(this.element);
+    }
+  }
+
+  private stopGateViewObserver(): void {
+    this.gateViewObserver?.disconnect();
+    this.gateViewObserver = null;
   }
 
   public unlockPanel(): void {
+    this.stopGateViewObserver();
     if (!this._locked) return;
     this._locked = false;
     this._lastGateReason = null;
@@ -1888,6 +1915,7 @@ export class Panel {
 
   public destroy(): void {
     this.destroyed = true;
+    this.stopGateViewObserver();
     this.abortController.abort();
     this.clearRetryCountdown();
     this.unobserveViewport();
