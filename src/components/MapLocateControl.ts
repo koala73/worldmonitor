@@ -87,7 +87,14 @@ export class MapLocateControl {
       return;
     }
     const point = { lat: roundShareCoordinate(position.lat), lon: roundShareCoordinate(position.lon) };
-    const actions = await this.callbacks.actions(point);
+    let actions: MapContextMenuItem[];
+    try {
+      actions = await this.callbacks.actions(point);
+    } catch {
+      if (this.destroyed || request !== this.request) return;
+      this.setState('unavailable');
+      return;
+    }
     if (this.destroyed || request !== this.request) return;
     if (actions.length === 0) {
       this.setState('empty');

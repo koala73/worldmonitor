@@ -59,6 +59,7 @@ import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
 import { showMapContextMenu, type MapContextMenuItem } from '@/components/MapContextMenu';
 import { MapLocateControl } from '@/components/MapLocateControl';
+import { claimMapUrlCentre, releaseMapUrlCentreOnUserMove } from '@/app/orbital-map-focus';
 import { BETA_MODE } from '@/config/beta';
 import { mlWorker } from '@/services/ml-worker';
 import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
@@ -368,7 +369,14 @@ export class CountryIntelManager implements AppModule {
     const map = this.ctx.map;
     this.locateControl?.destroy();
     this.locateControl = new MapLocateControl({
-      centre: (point) => { map.setCenter(point.lat, point.lon, LOCATE_ZOOM); },
+      centre: (point) => {
+        // The URL sync would write the user's own position into the address bar,
+        // which shared links and analytics read. Keep the previous centre there
+        // until the user moves the map themselves.
+        claimMapUrlCentre();
+        map.setCenter(point.lat, point.lon, LOCATE_ZOOM);
+        releaseMapUrlCentreOnUserMove(document.getElementById('mapContainer'));
+      },
       actions: (point) => this.locatedActions(point),
     });
     map.addMapControl(this.locateControl.element);
@@ -380,7 +388,8 @@ export class CountryIntelManager implements AppModule {
    */
   private async locatedActions(point: { lat: number; lon: number }): Promise<MapContextMenuItem[]> {
     const items: MapContextMenuItem[] = [];
-    await preloadCountryGeometry().catch(() => {});
+    // A failed outline load must read as "location unavailable", not as "no country here".
+    await preloadCountryGeometry();
     const country = getCountryNearCoordinates(point.lat, point.lon, LOCATE_COAST_TOLERANCE_DEG);
     if (country) items.push({
       label: t('contextMenu.openCountryBrief'),

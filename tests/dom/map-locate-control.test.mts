@@ -21,6 +21,7 @@ vi.mock('@/app/orbital-watch', () => ({ openOrbitalWatch }));
 
 import type { AppContext } from '@/app/app-context';
 import { CountryIntelManager } from '@/app/country-intel';
+import { isMapUrlCentreClaimed, releaseMapUrlCentreOnUserMove } from '@/app/orbital-map-focus';
 import { MapContainer } from '@/components/MapContainer';
 import { dismissMapContextMenu, type MapContextMenuItem } from '@/components/MapContextMenu';
 import { MapLocateControl, type LocatedPoint } from '@/components/MapLocateControl';
@@ -47,6 +48,7 @@ afterEach(() => {
   dismissMapContextMenu();
   document.body.replaceChildren();
   flag.ORBITAL_WATCH_ENABLED = false;
+  releaseMapUrlCentreOnUserMove(null);
   vi.clearAllMocks();
 });
 
@@ -163,6 +165,28 @@ describe('locate menu entries', () => {
     geometry.getCountryNearCoordinates.mockReturnValue({ code: 'AE', name: 'United Arab Emirates' });
     const { map } = await setUp();
     expect(map.setCenter).toHaveBeenCalledExactlyOnceWith(ROUNDED.lat, ROUNDED.lon, expect.any(Number));
+  });
+
+  it('keeps the located point out of the page URL until the user moves the map', async () => {
+    geometry.getCountryNearCoordinates.mockReturnValue({ code: 'AE', name: 'United Arab Emirates' });
+    const mapEl = document.createElement('div');
+    mapEl.id = 'mapContainer';
+    document.body.append(mapEl);
+    await setUp();
+    // The URL sync writes the map centre into the address bar, which analytics and
+    // shared links read; the user's own position must not land there.
+    expect(isMapUrlCentreClaimed()).toBe(true);
+    mapEl.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(isMapUrlCentreClaimed()).toBe(false);
+  });
+
+  it('reports a failed outline load as unavailable, not as no country', async () => {
+    geometry.preloadCountryGeometry.mockRejectedValueOnce(new Error('network'));
+    geometry.getCountryNearCoordinates.mockReturnValue(null);
+    const { control, map } = await setUp();
+    expect(control.dataset.state).toBe('unavailable');
+    expect(map.setCenter).not.toHaveBeenCalled();
+    expect(isMapUrlCentreClaimed()).toBe(false);
   });
 
   it('offers only Country Brief while Orbital Watch is off', async () => {
