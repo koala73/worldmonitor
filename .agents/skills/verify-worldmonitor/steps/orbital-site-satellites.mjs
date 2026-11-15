@@ -71,11 +71,11 @@ export default async function ({ page, base, shot, log, expectVisible }) {
 
   const more = section.locator('.ies-more');
   if (await more.count()) await more.click();
-  const linked = section.locator('.ies-row').first();
-  if (!(await linked.count())) throw new Error('no satellite over the site is linked to a pass in the sheet');
-  await linked.scrollIntoViewIfNeeded();
-  const key = await linked.getAttribute('data-key');
-  await linked.click();
+  const first = section.locator('.ies-row').first();
+  if (!(await first.count())) throw new Error('no satellite over the site is linked to a pass in the sheet');
+  // The sheet may redraw the list while the archives answer; a key locator re-resolves the row, and click retries a detached one.
+  const key = await first.getAttribute('data-key');
+  await section.locator(`.ies-row[data-key="${key}"]`).click();
   await page.waitForFunction((k) => document.querySelector(`[data-section="site-satellites"] [data-key="${k}"][aria-current="true"]`), key, { timeout: 10_000 });
   log('selected', (await section.locator('.ies-row[aria-current="true"]').innerText()).replace(/\s+/g, ' '));
   await page.waitForTimeout(2_500);
