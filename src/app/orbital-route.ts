@@ -1,7 +1,7 @@
 import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import type { OrbitalTrackSurface } from '@/app/orbital-watch';
 import { takeOrbitalShareLink } from '@/app/orbital-share-link';
-import { parseOrbitalShareFragment } from '@/utils/urlState';
+import { buildOrbitalShareFragment, parseOrbitalShareFragment } from '@/utils/urlState';
 import { ORBITAL_EVIDENCE_EVENT } from '@/services/orbital/evidence-event';
 
 export type OrbitalRouteView = 'sheet' | 'full';
@@ -23,8 +23,28 @@ export function parseOrbitalRoute(hash: string): OrbitalRoute | null {
   return { point: { lat, lon }, view: match[3] === 'full' ? 'full' : 'sheet' };
 }
 
+/**
+ * A route followed from an older or hand-written link is rewritten at the share link's
+ * precision (0.01 degrees, no `&view=full`) so the address bar and history hold no finer
+ * place. Returns the route as rewritten.
+ */
+function roundRouteInPlace(route: OrbitalRoute): OrbitalRoute {
+  const rounded = `#${buildOrbitalShareFragment(route.point, null)}`;
+  if (window.location.hash !== rounded) {
+    const url = new URL(window.location.href);
+    url.hash = rounded;
+    try {
+      history.replaceState(history.state, '', url.toString());
+    } catch {
+      // A sandboxed or file document can refuse; the lookup still opens.
+    }
+  }
+  return parseOrbitalRoute(rounded) ?? route;
+}
+
 function applyRoute(map: () => OrbitalTrackSurface | null): void {
-  const route = parseOrbitalRoute(window.location.hash);
+  const parsed = parseOrbitalRoute(window.location.hash);
+  const route = parsed && roundRouteInPlace(parsed);
   void import('@/app/orbital-watch').then(({ openOrbitalWatch }) => {
     if (route) openOrbitalWatch(route.point, document.getElementById('mapContainer'), map());
   });
@@ -32,9 +52,10 @@ function applyRoute(map: () => OrbitalTrackSurface | null): void {
 
 /** Opens the lookup when the page loads or navigates to an orbital route. */
 export function watchOrbitalRoute(map: () => OrbitalTrackSurface | null = () => null): () => void {
-  // A share link (0.01-degree point, optional pass) is taken by App once the map is up, so the
-  // first read here only opens a plain `#orbital=` route.
-  if (parseOrbitalRoute(window.location.hash) && !parseOrbitalShareFragment(window.location.hash)) applyRoute(map);
+  // A share link (0.01-degree point, optional pass) is taken by App once the map is up. A finer
+  // route from an older link is rewritten as that share link here, so App opens it once.
+  const initial = parseOrbitalRoute(window.location.hash);
+  if (initial && !parseOrbitalShareFragment(window.location.hash)) roundRouteInPlace(initial);
   let routed = parseOrbitalRoute(window.location.hash) !== null;
   const onHashChange = () => {
     // A share link pasted into this tab opens with its pass and leaves the live URL, as on a fresh load.
