@@ -76,6 +76,12 @@ Overhead or within reach never means an image was taken. Only `confirmed-image` 
 - **Cloud.** An optical scene can exist and still show only cloud. Each image says whether the point itself was clear, cloudy or in cloud shadow, or that only a scene-wide cloud figure is known.
 - **Archive latency.** Open archives publish scenes hours to days after acquisition. Until the archive wait for a mission has passed, a pass with no scene stays `likely-imaged` rather than `passed-overhead` with not in archive.
 
+## Reservoir water extent
+
+The 50 strategic reservoirs that WorldMonitor tracks with ICESat-2 lidar are also watched sites, with their own `water` surface type. They get imaging evidence like any other watched site and never get a land change score. A daily job measures their open-water extent from Sentinel-1 radar instead. For each radar scene that images at least 90% of a reservoir's core box, it records the share of the box where the VV backscatter (terrain-corrected gamma0 from Microsoft Planetary Computer) is below -18 dB, which calm open water is and land almost never is. Radar sees through cloud and at night, so the series fills the gaps between lidar visits.
+
+Readings from different orbits view the shore at different angles, so compare a reading with earlier readings from the same relative orbit. Wind roughens open water until it looks like land, so one low reading on a large open lake is not evidence of shrinkage. A few very large lakes are wider than any single scene and get no reading. The series is stored and not yet shown on any panel.
+
 ## Change flags
 
 Change flags are planned and not computed yet. A change flag will compare a new image of a point with an earlier one. It will run in shadow mode first, with flags computed and stored for review and shown by no panel, risk score, alert, API endpoint or MCP tool. Publication will wait for at least 30 days of shadow running and at least 30 raised flags confirmed or retracted by review.

@@ -2353,7 +2353,7 @@
       "proLocked": "Actualizare la PRO pentru scoruri de vulnerabilitate a mărfurilor"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Urmăritor Comerț Hormuz</strong> indici zilnici ai expedierilor WTO DataLab pentru Strâmtoarea Hormuz: petrol brut, GNL și îngrășământ plecând din Golf, produse agricole care sosesc. După volum, media ianuarie–martie 2025 = 100, doar vase vizibile AIS. Starea și data provin din cea mai recentă analiză a WTO.",
+      "infoTooltip": "<strong>Urmăritor Comerț Hormuz</strong> indici zilnici ai expedierilor WTO DataLab pentru Strâmtoarea Hormuz: petrol brut, GNL și îngrășământ plecând din Golf, produse agricole care sosesc. După volum, media ianuarie–martie 2025 = 100, doar vase vizibile AIS. Graficele sunt zilnice; statusul provine din comentariile WTO.",
       "title": "Urmăritor Comerț Hormuz",
       "noData": "Nicio dată",
       "notAvailable": "N/A",
@@ -2366,8 +2366,10 @@
         "unavailable": "Datele Hormuz nu sunt disponibile",
         "failedToLoad": "Încărcarea a eșuat"
       },
-      "analysisDate": "Analiza WTO {{date}}",
-      "indexNote": "Indice de expediere după volum, media ianuarie–martie 2025 = 100"
+      "analysisDate": "Comentariu WTO {{date}}",
+      "indexNote": "Indice de expediere după volum, media ianuarie–martie 2025 = 100",
+      "dataThrough": "Date zilnice până la {{date}}",
+      "noShipments": "Nicio expediere înregistrată între {{from}} și {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Camere web în direct</strong> Fluxuri în direct din locații semnificative geopolitic din întreaga lume: zone de conflict, capitale, puncte de trecere a frontierei și puncte strategice de blocaj. Fluxuri de la YouTube și rețele publice."
@@ -5426,8 +5428,6 @@
       "dailyMosaic": "mozaic zilnic",
       "weatherFrame": "cadru meteo",
       "change": "Schimbă locația",
-      "share": "Copiază legătura",
-      "shareCopied": "Legătura copiată",
       "showUtc": "UTC",
       "showLocal": "Ora locală",
       "alert": "Alertă înaintea fiecărei treceri deschise deasupra punctului și la fiecare imagine nouă fără nori.",

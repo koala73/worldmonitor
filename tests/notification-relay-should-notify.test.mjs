@@ -127,3 +127,21 @@ describe('shouldNotify — importance threshold uses the coerced sensitivity', (
     assert.equal(shouldNotify(rule, scored('critical', 10)), true);
   });
 });
+
+describe('shouldNotify — national air traffic collapse', () => {
+  const { buildCollapseNotification } = require(resolve(__dirname, '..', 'scripts', 'shared', 'air-traffic-detector.cjs'));
+  const onset = Date.parse('2026-11-13T20:50:00Z');
+  const realtime = { digestMode: 'realtime', sensitivity: 'critical' };
+
+  it('delivers the collapse to realtime rules', () => {
+    const event = buildCollapseNotification({ kind: 'collapse', t: onset + 300_000, onset, ratio: 0.2 });
+    assert.equal(shouldNotify(realtime, event), true);
+  });
+
+  it('delivers the recovery to the same realtime rules while it stays high, so quiet hours still hold it', () => {
+    const event = buildCollapseNotification({ kind: 'recovery', t: onset + 86_400_000, onset, ratio: 0.8 });
+    assert.equal(event.severity, 'high');
+    assert.equal(shouldNotify(realtime, event), true);
+    assert.equal(shouldNotify({ ...realtime, sensitivity: 'high' }, event), true);
+  });
+});

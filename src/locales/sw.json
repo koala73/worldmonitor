@@ -2630,7 +2630,7 @@
       "proLocked": "Boreshaji hadi PRO kwa alama ya kufa kwa kilicho haraka cha bidhaa"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Kifuatiliaji cha Biashara cha Hormuz</strong> Fahirisi za kila siku za usafirishaji kupitia Mlango-bahari wa Hormuz kutoka WTO DataLab: mafuta ghafi, LNG na mbolea zinazoondoka Ghuba, na bidhaa za kilimo zinazowasili. Kwa kiasi, wastani wa Januari–Machi 2025 = 100, meli zinazoonekana kupitia AIS pekee. Hali na tarehe zinatoka kwenye uchambuzi wa hivi karibuni wa WTO.",
+      "infoTooltip": "<strong>Kifuatiliaji cha Biashara cha Hormuz</strong> Fahirisi za kila siku za usafirishaji kupitia Mlango-bahari wa Hormuz kutoka WTO DataLab: mafuta ghafi, LNG na mbolea zinazoondoka Ghuba, na bidhaa za kilimo zinazowasili. Kwa kiasi, wastani wa Januari–Machi 2025 = 100, meli zinazoonekana kupitia AIS pekee. Chati ni za kila siku; hali inatoka kwa maoni ya WTO.",
       "title": "Kifuatiliaji cha Biashara cha Hormuz",
       "noData": "Hakuna data",
       "notAvailable": "N/A",
@@ -2640,11 +2640,13 @@
         "unavailable": "Data ya Hormuz haipatikani",
         "failedToLoad": "Imeshindwa kupakia"
       },
-      "analysisDate": "Uchambuzi wa WTO {{date}}",
+      "analysisDate": "Maoni ya WTO {{date}}",
       "indexNote": "Fahirisi ya mizigo kwa kiasi, wastani wa Januari–Machi 2025 = 100",
       "units": {
         "index": "fahirisi"
-      }
+      },
+      "dataThrough": "Data ya kila siku hadi {{date}}",
+      "noShipments": "Hakuna mizigo iliyorekodiwa {{from}} hadi {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Kamera za Wavuti za Moja kwa Moja</strong> Mipasho ya moja kwa moja kutoka maeneo muhimu ya kijiografia duniani kote: maeneo ya migogoro, miji mikuu, vivuko vya mipaka, na maeneo ya kimkakati ya kukokota. Mitiririko kutoka kwa YouTube na mitandao ya umma."
@@ -5394,8 +5396,6 @@
       "dailyMosaic": "mozaiki ya kila siku",
       "weatherFrame": "fremu ya satelaiti ya hali ya hewa",
       "change": "Badilisha mahali",
-      "share": "Nakili kiungo",
-      "shareCopied": "Kiungo kimenakiliwa",
       "showUtc": "UTC",
       "showLocal": "Saa ya ndani",
       "alert": "Tahadhari kabla ya kila kupita kwa satelaiti ya data wazi juu ya nukta, na kwa kila picha mpya isiyo na mawingu.",

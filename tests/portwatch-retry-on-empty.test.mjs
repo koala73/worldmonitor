@@ -23,6 +23,7 @@ import {
   baselineBudgetMs,
   baselineWindow,
   buildBaseline,
+  fetchBaselineStats,
   runFetchPipeline,
 } from '../scripts/seed-portwatch.mjs';
 
@@ -356,6 +357,64 @@ test('baseline window is the 12 UTC-aligned months ending one year ago, with inc
   // Day-aligned: any time of day on 2026-10-22 produces the same window.
   assert.deepEqual(baselineWindow(Date.UTC(2026, 9, 22, 0, 0, 1)), WINDOW);
   assert.deepEqual(baselineWindow(Date.UTC(2026, 9, 22, 23, 59, 59)), WINDOW);
+});
+
+test('buildBaseline carries the year-earlier tanker count and tanker DWT when the row has them', () => {
+  assert.deepEqual(
+    buildBaseline({ avg_total: 87.4, avg_tanker: 49.27945205479452, avg_cap_tanker: 2294290.520547945, day_count: 365, tanker_days: 365, cap_tanker_days: 365, cap_tanker_rows: 365 }, WINDOW),
+    { avgDaily: 87.4, days: 365, from: '2024-10-22', to: '2025-10-21', tankerAvgDaily: 49.3, capTankerAvgDaily: 2294291 },
+  );
+  // A malformed tanker statistic is dropped; the total-traffic baseline stands.
+  assert.deepEqual(
+    buildBaseline({ avg_total: 87.4, avg_tanker: 'x', avg_cap_tanker: -5, day_count: 365, tanker_days: 365, cap_tanker_days: 365, cap_tanker_rows: 365 }, WINDOW),
+    { avgDaily: 87.4, days: 365, from: '2024-10-22', to: '2025-10-21' },
+  );
+});
+
+test('buildBaseline withholds a tanker mean whose own coverage is too thin to define normal', () => {
+  const base = { avgDaily: 87.4, days: 365, from: '2024-10-22', to: '2025-10-21' };
+  // 20 DWT days at 50,000 among 345 zero days average 2,740: a false normal
+  // that would read an ordinary week as 150% of baseline.
+  assert.deepEqual(
+    buildBaseline({ avg_total: 87.4, avg_tanker: 49.3, avg_cap_tanker: 2740, day_count: 365, tanker_days: 365, cap_tanker_days: 20, cap_tanker_rows: 365 }, WINDOW),
+    { ...base, tankerAvgDaily: 49.3 },
+  );
+  assert.deepEqual(
+    buildBaseline({ avg_total: 87.4, avg_tanker: 49.3, avg_cap_tanker: 2294291, day_count: 365, tanker_days: BASELINE_MIN_DAYS - 1, cap_tanker_days: 365, cap_tanker_rows: 365 }, WINDOW),
+    { ...base, capTankerAvgDaily: 2294291 },
+  );
+  // DWT coverage is measured against the rows the DWT mean averages, not the
+  // n_total days: 170 positive of 365 capacity rows is a minority even when
+  // only 325 days carry n_total.
+  assert.deepEqual(
+    buildBaseline({ avg_total: 87.4, avg_tanker: 49.3, avg_cap_tanker: 1069000, day_count: 325, tanker_days: 365, cap_tanker_days: 170, cap_tanker_rows: 365 }, WINDOW),
+    { ...base, days: 325, tankerAvgDaily: 49.3 },
+  );
+  // A row without coverage counts cannot vouch for its means.
+  assert.deepEqual(buildBaseline({ avg_total: 87.4, avg_tanker: 49.3, avg_cap_tanker: 2294291, day_count: 365 }, WINDOW), base);
+  assert.deepEqual(
+    buildBaseline({ avg_total: 87.4, avg_cap_tanker: 2294291, day_count: 365, cap_tanker_days: 365 }, WINDOW),
+    base,
+    'a DWT day count without the DWT row count has no denominator',
+  );
+});
+
+test('fetchBaselineStats asks ArcGIS for the tanker count and tanker DWT means', async () => {
+  const realFetch = globalThis.fetch;
+  let requested = '';
+  globalThis.fetch = async (url) => { requested = String(url); return Response.json({ features: [{ attributes: { avg_total: 1, day_count: 365 } }] }); };
+  try {
+    await fetchBaselineStats('Strait of Hormuz', WINDOW);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  const stats = JSON.parse(new URL(requested).searchParams.get('outStatistics'));
+  const byName = Object.fromEntries(stats.map((s) => [s.outStatisticFieldName, `${s.statisticType}:${s.onStatisticField}`]));
+  assert.equal(byName.avg_tanker, 'avg:n_tanker');
+  assert.equal(byName.avg_cap_tanker, 'avg:capacity_tanker');
+  assert.equal(byName.tanker_days, 'count:n_tanker');
+  assert.equal(byName.cap_tanker_days, 'sum:CASE WHEN capacity_tanker > 0 THEN 1 ELSE 0 END');
+  assert.equal(byName.cap_tanker_rows, 'count:capacity_tanker');
 });
 
 test('buildBaseline rounds the mean to one decimal and rejects malformed or thin rows', () => {

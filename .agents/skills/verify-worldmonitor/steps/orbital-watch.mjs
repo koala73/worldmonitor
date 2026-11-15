@@ -11,7 +11,6 @@
  * the light theme.
  */
 import { readFileSync } from 'node:fs';
-import { PNG } from 'pngjs';
 import { matchSensorProfile } from '../../../../shared/orbital/sensor-profiles.js';
 import { archiveUrlAfterScrub, pointFromText, pointLeak } from './_point-leak.mjs';
 import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
@@ -127,7 +126,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   // WM_VERIFY_ORBITAL_THEME=light drives the light theme.
   const theme = process.env.WM_VERIFY_ORBITAL_THEME === 'light' ? 'light' : 'dark';
   await seedProfile(page, { localStorage: { 'worldmonitor-map-mode': JSON.stringify(mapMode), 'worldmonitor-theme': theme } });
-  // WM_VERIFY_ORBITAL_LAYERS=conflicts boots with a dashboard layer over the point, to prove the full view hides it.
+  // WM_VERIFY_ORBITAL_LAYERS=conflicts boots with a dashboard layer over the point.
   const bootLayers = process.env.WM_VERIFY_ORBITAL_LAYERS || 'none';
   // Boot far from the point, so a centre in the page URL near it could only have come from the lookup.
   await page.goto(`${base}/dashboard?view=global&layers=${bootLayers}&lat=${START.lat}&lon=${START.lon}&zoom=${START.zoom}`, { waitUntil: 'domcontentloaded' });
@@ -242,7 +241,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const pickedAt = async (at) => {
     const before = await page.evaluate(() => location.hash);
     await open(at);
-    // A lookup opened from the map writes no route; only the full view (a shareable link) does.
+    // A lookup opened from the map writes no route.
     const opened = await page.evaluate(() => location.hash);
     log('page url hash (sheet opened from the map)', opened || 'none');
     if (opened !== before && /orbital=/.test(opened)) throw new Error(`a lookup opened from the map wrote its point into the hash: ${opened}`);
@@ -343,67 +342,6 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('tier grid', (await sheet.locator('.ow-tier-cell').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ')));
   await settleImagesInView();
   await shot('sheet-tier-grid');
-  // The full view hides the dashboard's data layers; the share URL and the saved toggles keep them.
-  const layerState = () => page.evaluate(() => ({
-    url: new URL(location.href).searchParams.get('layers'),
-    saved: localStorage.getItem('worldmonitor-layers'),
-    svgZones: document.querySelectorAll('#mapContainer .conflict-zone').length,
-  }));
-  const layersBefore = await layerState();
-  if (bootLayers !== 'none') await shot('layers-in-sheet');
-  await sheet.locator('.ow-primary').click();
-  await page.locator('.orbital-watch-sheet[data-view="full"]').waitFor();
-  await page.waitForTimeout(800);
-  const layersFull = await layerState();
-  log('layers (sheet → full view)', JSON.stringify({ ...layersBefore, saved: !!layersBefore.saved }), '→', JSON.stringify({ ...layersFull, saved: !!layersFull.saved }));
-  if (layersFull.url !== layersBefore.url || layersFull.saved !== layersBefore.saved) throw new Error('the full view changed the layer state the dashboard shares or saves');
-  if (layersFull.svgZones) throw new Error(`${layersFull.svgZones} conflict zones still drawn over the full view`);
-  if (bootLayers !== 'none') await shot('layers-hidden-in-full-view');
-  const hash = await page.evaluate(() => location.hash);
-  log('full view route', hash.replace(/[\d.]+,[\d.]+/, '<point>'));
-  if (!hash.startsWith('#orbital=') || !hash.endsWith('&view=full')) throw new Error(`full view route ${hash}`);
-  await checkPageUrl('full view', { route: true });
-  await sheet.locator('.ow-body').evaluate((el) => el.scrollTo(0, 0));
-  await settleImagesInView();
-  await checkHeroFits('full view');
-  if (mobile) await shot('full-view-closest-look');
-  await sheet.locator('.ow-passes').evaluate((el) => el.scrollIntoView({ block: 'start' }));
-  await settleImagesInView();
-  log('groups', (await sheet.locator('.ow-group-toggle').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ')));
-  log('status bar', await sheet.locator('.ow-statusbar').innerText());
-  log('full view map mark', JSON.stringify(await markAt()));
-  if (!mobile) {
-    log('map mark', await sheet.locator('.ow-mapmark-label').innerText());
-    if (!(await sheet.locator('.ow-mapmark-ring').isVisible())) throw new Error('point not marked on the map');
-    const chrome = await page.evaluate(() => {
-      // The full view lets pointer input through to the map around its panels, so the map is the only other thing allowed here.
-      const owners = [document.querySelector('.orbital-watch-sheet'), document.getElementById('mapContainer')];
-      const hits = [[1440 - 30, 8], [1440 - 120, 8], [1440 - 220, 8], [80, 8], [300, 300]].map(([x, y]) => document.elementFromPoint(x, y));
-      return hits.filter((el) => el && !owners.some((owner) => owner?.contains(el))).map((el) => el.className || el.tagName);
-    });
-    if (chrome.length) throw new Error(`app chrome shows through the full view: ${chrome.join(', ')}`);
-    const mapTakesInput = await page.evaluate(() => !!document.getElementById('mapContainer')?.contains(document.elementFromPoint(300, 300)));
-    if (!mapTakesInput) throw new Error('the full view blocks pointer input to the map around its panels');
-  }
-  const wrapped = await sheet.locator('.ow-row-meta, .ow-row-credit').evaluateAll((els) => els.filter((el) => el.scrollHeight > 18).length);
-  if (wrapped) throw new Error(`${wrapped} pass row lines wrap`);
-  await shot('full-view-passes');
-  const weatherTab = sheet.locator('.ow-tab[data-tab="weather"]');
-  if (await weatherTab.count()) {
-    await weatherTab.click();
-    const credit = await sheet.locator('.ow-card').first().locator('.ow-image-credit').innerText();
-    if (!/NASA GIBS|EUMETSAT/i.test(credit)) throw new Error(`weather card credit ${credit}`);
-    log('weather credit', credit);
-  }
-  log('image credits', [...new Set(await sheet.locator('.ow-image-credit').allInnerTexts())]);
-  await page.keyboard.press('Escape');
-  await page.locator('.orbital-watch-sheet[data-view="sheet"]').waitFor();
-  if (await page.evaluate(() => location.hash)) throw new Error('route left behind after leaving the full view');
-  await page.waitForTimeout(800);
-  const layersBack = await layerState();
-  log('layers (back to the sheet)', JSON.stringify({ ...layersBack, saved: !!layersBack.saved }));
-  if (JSON.stringify(layersBack) !== JSON.stringify(layersBefore)) throw new Error('leaving the full view did not restore the dashboard layers exactly');
-  if (bootLayers !== 'none') await shot('layers-back-in-sheet');
   const mapBox = await page.locator('#mapContainer').boundingBox();
   await close();
   // Closing jumps the map back where it was, so a click or a zoom straight after, which hands the URL centre back
@@ -559,8 +497,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   if (lookupDirect.length) throw new Error(`point-bearing archive URL in img src: ${lookupDirect.join(', ')}`);
 
   // A shared link opens with no click on the globe, so nothing else stops its idle spin carrying the point away.
-  // It also builds the renderer while the full view already hides the layers, so check they stay hidden.
-  await page.goto(`${base}/dashboard?view=global&layers=${bootLayers}#orbital=${PLACE.lat.toFixed(2)},${PLACE.lon.toFixed(2)}&view=full`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${base}/dashboard?view=global&layers=${bootLayers}#orbital=${PLACE.lat.toFixed(2)},${PLACE.lon.toFixed(2)}`, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
   await waitForMap(page);
   await expectVisible('.orbital-watch-sheet');
@@ -568,7 +505,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await page.waitForTimeout(5_000);
   const later = await markAt();
   log('shared link map mark', JSON.stringify(landed), 'after 5 s', JSON.stringify(later));
-  // A shared link paints the full view with no user input, so its images are the ones RUM can take as the LCP.
+  // A shared link paints the sheet with no user input, so its images are the ones RUM can take as the LCP.
   const sharedImages = await page.evaluate(() => [...document.querySelectorAll('.orbital-watch-sheet img[src]')].map((img) => ({
     blob: img.getAttribute('src').startsWith('blob:'), painted: img.complete && img.naturalWidth > 0,
   })));
@@ -577,23 +514,5 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   if (directSrc.length) throw new Error(`point-bearing archive URL in img src: ${directSrc.join(', ')}`);
   await checkLcp('shared link');
   if (Math.abs(later.x - landed.x) > 4 || Math.abs(later.y - landed.y) > 4) throw new Error('the map drifted off a shared point');
-  // The conflict zone over the point is the dashboard's red; count it where the full view leaves the map visible.
-  const drawnLayers = async () => {
-    const zones = await page.evaluate(() => document.querySelectorAll('#mapContainer .conflict-zone').length);
-    const box = await page.locator('#mapContainer').boundingBox();
-    const png = PNG.sync.read(await page.screenshot({ clip: { x: box.x, y: box.y, width: Math.min(box.width, 400), height: Math.min(box.height, 300) } }));
-    let red = 0;
-    for (let i = 0; i < png.data.length; i += 4) if (png.data[i] > 150 && png.data[i + 1] < 90 && png.data[i + 2] < 90) red += 1;
-    return { zones, red };
-  };
-  const sharedFull = await drawnLayers();
-  if (bootLayers !== 'none') await shot('shared-full-view-layers');
-  await page.keyboard.press('Escape');
-  await page.locator('.orbital-watch-sheet[data-view="sheet"]').waitFor();
-  await page.waitForTimeout(1_000);
-  const sharedSheet = await drawnLayers();
-  log('shared full view layers', JSON.stringify(sharedFull), '→ sheet', JSON.stringify(sharedSheet));
-  if (sharedFull.zones) throw new Error(`${sharedFull.zones} conflict zones drawn over a shared full view`);
-  if (bootLayers !== 'none' && sharedFull.red >= sharedSheet.red) throw new Error('a shared full view drew the dashboard layers');
   return { mobile, pointText, leaks: leaks.length, lcp: lcpUrls.filter(Boolean) };
 }

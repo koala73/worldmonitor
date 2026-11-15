@@ -2333,7 +2333,7 @@
       "proLocked": "升級至PRO以檢視商品脆弱性評分"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>霍爾木茲貿易追蹤</strong> WTO DataLab 關於霍爾木茲海峽的日貨運指數：離開波斯灣的原油、液化天然氣和化肥，以及抵達的農產品。按體積計，2025年1–3月平均值 = 100，僅包括 AIS 可見船舶。狀態和日期來自 WTO 的最新分析。",
+      "infoTooltip": "<strong>霍爾木茲貿易追蹤</strong> WTO DataLab 關於霍爾木茲海峽的日貨運指數：離開波斯灣的原油、液化天然氣和化肥，以及抵達的農產品。按體積計，2025年1–3月平均值 = 100，僅包括 AIS 可見船舶。圖表為日度資料；狀態來自WTO評論。",
       "title": "霍爾木茲貿易追蹤",
       "noData": "無資料",
       "notAvailable": "不適用",
@@ -2346,8 +2346,10 @@
         "unavailable": "霍爾木茲資料不可用",
         "failedToLoad": "載入失敗"
       },
-      "analysisDate": "WTO分析 {{date}}",
-      "indexNote": "貨運指數（按體積），2025年1–3月平均值 = 100"
+      "analysisDate": "WTO評論{{date}}",
+      "indexNote": "貨運指數（按體積），2025年1–3月平均值 = 100",
+      "dataThrough": "每日資料至{{date}}",
+      "noShipments": "{{from}}至{{to}}期間無船運記錄"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>即時攝影機</strong> 來自全球地緣政治重要地點的直播：衝突區、首都、邊境口岸和戰略咽喉要道。流媒體來自YouTube和公共網路。"
@@ -5362,8 +5364,6 @@
       "dailyMosaic": "每日鑲嵌圖",
       "weatherFrame": "氣象影象",
       "change": "更換位置",
-      "share": "複製連結",
-      "shareCopied": "連結已複製",
       "showUtc": "UTC",
       "showLocal": "本地時間",
       "alert": "每次開放資料衛星過境上空前提醒，並在每幅新的無雲影像出現時提醒。",

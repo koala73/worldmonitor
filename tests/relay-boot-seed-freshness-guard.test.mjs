@@ -236,7 +236,7 @@ test('air traffic ticks skip a bin already recorded before fetching', () => {
 for (const [label, seedFn] of [['AirTraffic', 'seedAirTrafficPoint'], ['AirTrafficWingbits', 'seedWingbitsTrafficPoint']]) {
   test(`${label} runs through the shared skip-then-fetch tick on the bin scheduler`, () => {
     const fn = relaySource.slice(relaySource.indexOf(`function ${seedFn}()`)).split('\n}')[0];
-    assert.match(fn, /return seedTrafficSeries\(/, `${seedFn} delegates to seedTrafficSeries`);
+    assert.match(fn, /(?:return|await) seedTrafficSeries\(/, `${seedFn} delegates to seedTrafficSeries`);
     assert.ok(relaySource.includes(`runAirTrafficLoop(${seedFn}, '${label}').catch(`), 'the loop is started on the bin scheduler');
   });
 }

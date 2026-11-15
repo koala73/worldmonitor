@@ -49,7 +49,8 @@ const heldEvents = (count) => Array.from({ length: count }, (_, n) => reservoirE
 const titleOf = (n) => reservoirEvent(n).payload.title;
 
 /** Runs one drain. `failTelegramSend` lists 1-based send numbers that Telegram rejects. */
-async function drain(held, { failTelegramSend = [], throwTelegramSend = [], onTelegramSend = null, lremFails = null, logs = null, entitlement = 1 } = {}) {
+/** `lremFails(raw)` answers 'status' (the command errors), 'throw' (its request rejects), 'body-timeout' (its body read times out), 'bad-json' (its body is not JSON), 'short' (its response lacks a result), 'non-numeric' (its result is not a count) or 'http' (its request is non-OK). */
+async function drain(held, { failTelegramSend = [], throwTelegramSend = [], onTelegramSend = null, lremFails = null, logs = null, removals = null, entitlement = 1 } = {}) {
   const sent = [];
   const silence = [console.log, console.warn, console.error];
   console.log = console.warn = console.error = (...args) => { logs?.push(args.join(' ')); };
@@ -86,13 +87,23 @@ async function drain(held, { failTelegramSend = [], throwTelegramSend = [], onTe
     if (path.startsWith('/RPUSH/')) { held.push(decodeURIComponent(path.split('/')[3])); return { ok: true, json: async () => ({ result: held.length }) }; }
     if (path.startsWith('/LLEN/')) return { ok: true, json: async () => ({ result: held.length }) };
     if (path.startsWith('/LRANGE/')) return { ok: true, json: async () => ({ result: [...held] }) };
-    if (path.startsWith('/LREM/') && lremFails) {
-      const raw = decodeURIComponent(path.split('/')[4]);
-      const mode = lremFails(raw);
-      if (mode === 'throw') throw new TypeError('The operation was aborted due to timeout');
-      if (mode === 'status') return { ok: false, status: 503, json: async () => ({}) };
+    if (path.startsWith('/LREM/')) throw new Error('held alerts are removed through /pipeline, not one request per alert');
+    if (path.endsWith('/pipeline') && Array.isArray(body) && body.length > 0 && body.every((cmd) => cmd[0] === 'LREM')) {
+      removals?.push(body.map((cmd) => cmd[3]));
+      const modes = body.map((cmd) => lremFails?.(cmd[3]) ?? null);
+      if (modes.includes('throw')) throw new TypeError('The operation was aborted due to timeout');
+      if (modes.includes('http')) return { ok: false, status: 503, json: async () => ({}) };
+      if (modes.includes('body-timeout')) return { ok: true, json: async () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); } };
+      if (modes.includes('bad-json')) return { ok: true, json: async () => { throw new SyntaxError('Unexpected token'); } };
+      if (modes.includes('short')) return { ok: true, json: async () => body.slice(1).map(() => ({ result: 1 })) };
+      return { ok: true, json: async () => body.map(([, , , raw], i) => {
+        if (modes[i] === 'status') return { error: 'ERR stub' };
+        if (modes[i] === 'non-numeric') return { result: 'OK' };
+        const at = held.indexOf(raw);
+        if (at >= 0) held.splice(at, 1);
+        return { result: at >= 0 ? 1 : 0 };
+      }) };
     }
-    if (path.startsWith('/LREM/')) { const [, , , , value] = path.split('/'); const i = held.indexOf(decodeURIComponent(value)); if (i >= 0) held.splice(i, 1); return { ok: true, json: async () => ({ result: i >= 0 ? 1 : 0 }) }; }
     if (path.startsWith('/LTRIM/')) { held.splice(0, Number(path.split('/')[3])); return { ok: true, json: async () => ({ result: 'OK' }) }; }
     if (path.startsWith('/DEL/')) { held.length = 0; return { ok: true, json: async () => ({ result: 1 }) }; }
     if (path.endsWith('/pipeline')) return { ok: true, json: async () => [] };
@@ -256,32 +267,79 @@ describe('buildHeldTextParts', () => {
 });
 
 describe('removing delivered held alerts', () => {
-  it('a non-OK LREM is reported as not cleaned up, and the other alerts are still removed', async () => {
+  it('a command that errors is reported as not cleaned up, retried alone, and the other alerts are still removed', async () => {
     const held = asHeld(heldEvents(5));
     const stuck = held[2];
     const logs = [];
-    const sent = await drain(held, { lremFails: (raw) => (raw === stuck ? 'status' : null), logs });
+    const removals = [];
+    const sent = await drain(held, { lremFails: (raw) => (raw === stuck ? 'status' : null), logs, removals });
     assert.equal(sent.length, 1);
     assert.deepEqual(held, [stuck], 'only the alert whose removal failed is still held');
+    assert.deepEqual(removals.map((r) => r.length), [5, 1], 'one request for the batch, then a retry of the failed command only');
+    assert.deepEqual(removals[1], [stuck]);
     assert.ok(logs.some((l) => /could not remove 1 delivered held alert/.test(l) && /1 non-OK/.test(l) && /0 timed out/.test(l)), logs.join('\n'));
     assert.ok(!logs.some((l) => /delivered 5 held events .*\(full\)$/.test(l)), 'not reported as a clean delivery');
   });
 
-  it('a timed-out LREM is told apart from a non-OK one and does not stop the removals after it', async () => {
+  it('a timed-out request is told apart from a non-OK one', async () => {
     const held = asHeld(heldEvents(5));
-    const stuck = held[0];
     const logs = [];
-    await drain(held, { lremFails: (raw) => (raw === stuck ? 'throw' : null), logs });
-    assert.deepEqual(held, [stuck], 'the removals after the timed-out one still ran');
-    assert.ok(logs.some((l) => /could not remove 1 delivered held alert/.test(l) && /0 non-OK/.test(l) && /1 timed out/.test(l)), logs.join('\n'));
+    await drain(held, { lremFails: () => 'throw', logs });
+    assert.equal(held.length, 5);
+    assert.ok(logs.some((l) => /could not remove 5 delivered held alerts/.test(l) && /0 non-OK/.test(l) && /5 timed out/.test(l)), logs.join('\n'));
+  });
+
+  it('a body read that times out after OK headers is counted as timed out, not as a refusal', async () => {
+    const held = asHeld(heldEvents(5));
+    const logs = [];
+    await drain(held, { lremFails: () => 'body-timeout', logs });
+    assert.equal(held.length, 5);
+    assert.ok(logs.some((l) => /could not remove 5 delivered held alerts/.test(l) && /0 non-OK/.test(l) && /5 timed out/.test(l)), logs.join('\n'));
+  });
+
+  it('a body that is not JSON counts as non-OK', async () => {
+    const held = asHeld(heldEvents(5));
+    const logs = [];
+    await drain(held, { lremFails: () => 'bad-json', logs });
+    assert.equal(held.length, 5);
+    assert.ok(logs.some((l) => /could not remove 5 delivered held alerts/.test(l) && /5 non-OK/.test(l) && /0 timed out/.test(l)), logs.join('\n'));
+  });
+
+  for (const mode of ['short', 'non-numeric']) {
+    it(`a ${mode} pipeline response is retried, then counted as non-OK`, async () => {
+      const held = asHeld(heldEvents(5));
+      const logs = [];
+      const removals = [];
+      await drain(held, { lremFails: () => mode, logs, removals });
+      assert.equal(held.length, 5);
+      assert.deepEqual(removals.map((r) => r.length), [5, 5]);
+      assert.ok(logs.some((l) => /could not remove 5 delivered held alerts/.test(l) && /5 non-OK/.test(l) && /0 timed out/.test(l)), logs.join('\n'));
+    });
+  }
+
+  it('a non-OK request counts every command in it as not removed', async () => {
+    const held = asHeld(heldEvents(5));
+    const logs = [];
+    await drain(held, { lremFails: () => 'http', logs });
+    assert.equal(held.length, 5);
+    assert.ok(logs.some((l) => /could not remove 5 delivered held alerts/.test(l) && /5 non-OK/.test(l) && /0 timed out/.test(l)), logs.join('\n'));
   });
 
   it('a removal that fails once is retried and counts as cleaned up when the retry works', async () => {
     const held = asHeld(heldEvents(3));
     const seen = new Map();
     const logs = [];
-    await drain(held, { lremFails: (raw) => { const n = (seen.get(raw) ?? 0) + 1; seen.set(raw, n); return n === 1 ? 'status' : null; }, logs });
+    await drain(held, { lremFails: (raw) => { const n = (seen.get(raw) ?? 0) + 1; seen.set(raw, n); return n === 1 ? 'throw' : null; }, logs });
     assert.deepEqual(held, []);
     assert.ok(!logs.some((l) => /could not remove/.test(l)));
+  });
+
+  it('clearing 100 held alerts takes two requests, and an alert held meanwhile survives', async () => {
+    const held = asHeld(heldEvents(100));
+    const late = JSON.stringify(reservoirEvent(100));
+    const removals = [];
+    await drain(held, { onTelegramSend: (n, list) => { if (n === 1) list.push(late); }, removals });
+    assert.deepEqual(removals.map((r) => r.length), [50, 50]);
+    assert.deepEqual(held, [late]);
   });
 });

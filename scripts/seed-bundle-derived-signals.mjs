@@ -23,7 +23,7 @@ await runBundle('derived-signals', [
   { label: 'Regional-Snapshots', script: 'seed-regional-snapshots.mjs', seedMetaKey: 'intelligence:regional-snapshots', intervalMs: 6 * HOUR, timeoutMs: 180_000 },
   { label: 'Tension-Evidence', script: 'seed-tension-evidence.mjs', seedMetaKey: 'intelligence:tension-evidence', canonicalKey: 'intelligence:tension-evidence:v1', completionMetaKey: 'seed-completion:intelligence:tension-evidence', intervalMs: 15 * MIN, timeoutMs: 60_000 },
 ], {
-  // Railway kills cron containers at 10 minutes. Defer sections whose full
+  // Limit section admission to the configured budget. Defer sections whose full
   // timeout plus SIGTERM/SIGKILL grace cannot fit, preserving completed work.
   maxBundleMs: 570_000,
 });
