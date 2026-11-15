@@ -163,7 +163,7 @@ export async function measureReservoir(target, previous, { searchScenes, fetchSt
   let scenes;
   let truncated;
   try {
-    const collection = await searchScenes(stacSearchBody(target.box, searchSince(keep, nowMs), untilIso));
+    const collection = await searchScenes(stacSearchBody(target.box, searchSince(keep, nowMs), untilIso), { deadlineMs });
     scenes = scenesFromSearch(collection);
     truncated = collection?.truncated === true;
   } catch (error) {

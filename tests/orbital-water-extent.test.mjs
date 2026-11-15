@@ -100,7 +100,7 @@ describe('reservoir water extent: producer', () => {
     const fetchWaterExtent = makeFetchWaterExtent({
       sites, watchlist, budgetMs,
       readPrevious: async () => previous,
-      searchScenes: async (body) => { calls.push(['search', body]); return search(body); },
+      searchScenes: async (body, options) => { calls.push(['search', body, options]); return search(body); },
       fetchStatistics: async (id, geometry) => { calls.push(['statistics', id, geometry]); return statistics(id); },
       now,
     });
@@ -120,8 +120,9 @@ describe('reservoir water extent: producer', () => {
     assert.equal(kariba.latest.relativeOrbit, 43);
     assert.deepEqual(kariba.partialScenes, ['edge']);
     assert.equal(kariba.searchedThrough, new Date(NOW).toISOString());
-    const search = calls.find((c) => c[0] === 'search')[1];
+    const [, search, options] = calls.find((c) => c[0] === 'search');
     assert.deepEqual(search.collections, ['sentinel-1-rtc']);
+    assert.ok(Number.isFinite(options.deadlineMs), 'the search is told the run deadline');
     assert.equal(freshReservoirCount(data), 2);
   });
 
@@ -207,6 +208,12 @@ describe('reservoir water extent: producer', () => {
     const capped = await endless({});
     assert.equal(capped.features.length, MAX_SEARCH_PAGES);
     assert.equal(capped.truncated, true);
+
+    let clock = 0;
+    const late = makeSceneSearch(async () => { clock += 10; return { ok: true, json: async () => pageOf('first', 'more') }; }, () => clock);
+    const stopped = await late({}, { deadlineMs: 5 });
+    assert.equal(stopped.features.length, 1, 'no further page is requested past the deadline');
+    assert.equal(stopped.truncated, true);
 
     let pages = 0;
     const flaky = makeSceneSearch(async () => {
