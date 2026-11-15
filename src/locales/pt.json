@@ -5500,6 +5500,17 @@
     },
     "target": {
       "acquired": "ADQUIRIDO {{time}} · {{resolution}}"
+    },
+    "popup": {
+      "title": "Imagens de satélite",
+      "loading": "Verificando arquivos de satélite…",
+      "latest": "Imagem mais recente",
+      "nextPass": "Próxima passagem",
+      "noImage": "Nenhuma imagem recente encontrada",
+      "noPass": "Nenhuma passagem prevista em 72 horas",
+      "openEvidence": "Abrir evidências",
+      "imageAlt": "Vista de satélite de {{source}}",
+      "unavailable": "Não foi possível carregar as imagens de satélite."
     }
   },
   "settings": {

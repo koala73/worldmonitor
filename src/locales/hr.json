@@ -5510,6 +5510,17 @@
     },
     "target": {
       "acquired": "SNIMLJENO {{time}} · {{resolution}}"
+    },
+    "popup": {
+      "title": "Satelitske snimke",
+      "loading": "Provjera satelitskih arhiva…",
+      "latest": "Najnovija snimka",
+      "nextPass": "Sljedeći prelet",
+      "noImage": "Nije pronađena nedavna snimka",
+      "noPass": "Nema preleta u sljedeća 72 sata",
+      "openEvidence": "Otvori dokaze",
+      "imageAlt": "Satelitski prikaz iz {{source}}",
+      "unavailable": "Satelitske snimke nisu se učitale."
     }
   },
   "settings": {

@@ -13,6 +13,7 @@
 import { readFileSync } from 'node:fs';
 import { PNG } from 'pngjs';
 import { matchSensorProfile } from '../../../../shared/orbital/sensor-profiles.js';
+import { archiveUrlAfterScrub, pointFromText, pointLeak } from './_point-leak.mjs';
 import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
 
 // The archives whose image URLs carry the box around the point; the page must paint those from blob: URLs.
@@ -53,7 +54,7 @@ function pageUrlPlaces(href) {
   const route = /orbital=([-\d.]+),([-\d.]+)/.exec(url.hash);
   return {
     centre: url.searchParams.has('lat') ? { lat, lon, off: off(lat, lon) } : null,
-    route: route ? { off: off(Number(route[1]), Number(route[2])) } : null,
+    route: route ? { off: off(Number(route[1]), Number(route[2])), decimals: Math.max(...route.slice(1, 3).map((n) => n.split('.')[1]?.length ?? 0)) } : null,
   };
 }
 
@@ -327,6 +328,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     // The globe's idle spin moves its centre before the lookup holds it, so only the flat maps keep the boot centre exactly.
     if (renderer !== 'globe' && JSON.stringify(centre) !== JSON.stringify(bootCentre)) throw new Error(`page URL centre moved during the lookup (${stage})`);
     if (inRoute && !route) throw new Error(`orbital route left in the page URL (${stage})`);
+    if (inRoute && inRoute.decimals > 2) throw new Error(`orbital route holds the point at ${inRoute.decimals} decimals, finer than a share link (${stage})`);
   };
   await checkPageUrl('sheet', { route: true });
   const credits = await sourceCredits(true);
@@ -525,23 +527,24 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     await close();
   }
 
-  const needles = pointText.match(/\d+\.\d\d/g);
+  const picked = pointFromText(pointText);
+  const leaking = (text) => pointLeak(text, picked);
   // The harness's own page loads carry the map centre in the query string; the app never navigates the page.
   const leaks = requests.filter(({ url, body, harnessNavigation }) => !harnessNavigation && !ARCHIVE_HOSTS.includes(new URL(url).hostname)
-    && needles.every((n) => `${url} ${body}`.includes(n)));
+    && leaking(`${url} ${body}`));
   log('requests', requests.length, 'archive requests', requests.filter(({ url }) => ARCHIVE_HOSTS.includes(new URL(url).hostname)).length);
   if (leaks.length) throw new Error(`picked point left the browser: ${leaks.map((l) => l.url).join(', ')}`);
-  // RUM resource timings keep a URL's path, so the point may ride only in an archive request's query or body.
-  const pathLeaks = requests.filter(({ url }) => ARCHIVE_HOSTS.includes(new URL(url).hostname)
-    && needles.some((n) => new URL(url).pathname.includes(n)));
-  log('archive requests with the point in the path', pathLeaks.length);
-  if (pathLeaks.length) throw new Error(`picked point in an archive URL path: ${pathLeaks.map((l) => l.url).join(', ')}`);
+  // Archives get the point, some as a crop box in the path; telemetry keeps an archive URL only after
+  // its coordinate params and path segments are scrubbed, so nothing of the point may survive that.
+  const pathLeaks = requests.filter(({ url }) => ARCHIVE_HOSTS.includes(new URL(url).hostname) && leaking(archiveUrlAfterScrub(url)));
+  log('archive requests with the point left after the telemetry scrub', pathLeaks.length);
+  if (pathLeaks.length) throw new Error(`picked point outside an archive URL's coordinate parts: ${pathLeaks.map((l) => l.url).join(', ')}`);
   const timeline = await page.evaluate((hosts) => ({
     archiveResources: performance.getEntriesByType('resource').filter((e) => hosts.includes(new URL(e.name).hostname)).length,
   }), ARCHIVE_HOSTS);
   log('archive resource entries', timeline.archiveResources);
   const vendor = requests.filter(({ url }) => VENDOR_URL.test(url));
-  const vendorLeaks = vendor.filter(({ url, body }) => needles.every((n) => decodeURIComponent(`${url} ${body}`).includes(n)));
+  const vendorLeaks = vendor.filter(({ url, body }) => leaking(`${url} ${body}`));
   log('telemetry vendor requests', vendor.length, 'at', [...new Set(vendor.map(({ url }) => { const u = new URL(url); return u.host + u.pathname; }))], 'carrying the point', vendorLeaks.length);
   if (vendorLeaks.length) throw new Error(`picked point in a telemetry payload: ${vendorLeaks.map((l) => l.url).join(', ')}`);
   const navigations = (await page.evaluate(() => window.__wmNavigations)).map(pageUrlPlaces);
@@ -557,7 +560,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
 
   // A shared link opens with no click on the globe, so nothing else stops its idle spin carrying the point away.
   // It also builds the renderer while the full view already hides the layers, so check they stay hidden.
-  await page.goto(`${base}/dashboard?view=global&layers=${bootLayers}#orbital=${PLACE.lat.toFixed(4)},${PLACE.lon.toFixed(4)}&view=full`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${base}/dashboard?view=global&layers=${bootLayers}#orbital=${PLACE.lat.toFixed(2)},${PLACE.lon.toFixed(2)}&view=full`, { waitUntil: 'domcontentloaded' });
   await waitForBoot(page, { data: true });
   await waitForMap(page);
   await expectVisible('.orbital-watch-sheet');
@@ -592,5 +595,5 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('shared full view layers', JSON.stringify(sharedFull), '→ sheet', JSON.stringify(sharedSheet));
   if (sharedFull.zones) throw new Error(`${sharedFull.zones} conflict zones drawn over a shared full view`);
   if (bootLayers !== 'none' && sharedFull.red >= sharedSheet.red) throw new Error('a shared full view drew the dashboard layers');
-  return { mobile, pointText, needles, leaks: leaks.length, lcp: lcpUrls.filter(Boolean) };
+  return { mobile, pointText, leaks: leaks.length, lcp: lcpUrls.filter(Boolean) };
 }
