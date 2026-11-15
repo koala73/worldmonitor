@@ -671,8 +671,9 @@ test('lane 30: a UK departure collapse queues one critical alert scoped to GB, a
     assert.equal(events.length, 1, events.map((e) => e.payload.title).join(' | '));
     assert.equal(events[0].severity, 'critical');
     assert.equal(events[0].payload.countryCode, 'GB');
-    // A four-bin window: the first window with all four bins low ends at 20:50.
-    assert.match(events[0].payload.title, /^UK airline departures fell to 20% of normal since 20:50 UTC$/);
+    // The series starts at 20:30, so the first full window ends at 20:45, and
+    // entry waits until four checked bins fill it: the run starts at 21:00.
+    assert.match(events[0].payload.title, /^UK airline departures fell to 20% of normal since 21:00 UTC$/);
     assert.match(relay.output(), /market=GB verdict=entered state=collapsed ratio=0\.20 control=1\.00 coverage=1\.00\(baseline\)/);
     const states = JSON.parse(redis.get('aviation:traffic:detector:v2'));
     assert.equal(states.GB.state, 'collapsed');

@@ -191,16 +191,14 @@ function evaluateCollapse(state, { t, point, wingbits, getPoint, peakBaseline, m
   const signalNow = windowSum(signal, t, at, size);
   const seenNow = windowSum(seen, t, at, size);
   if (signalNow === null || seenNow === null || !usable(point, control.read)) {
-    return { state: next('gap'), event: null };
+    return { state: next('gap', { covered: 0 }), event: null };
   }
   const base = baselineAt(t, signal, getPoint, market.tz, size);
   const controlBase = baselineAt(t, control.read, getPoint, control.tz);
   const seenBase = baselineAt(t, seen, getPoint, market.tz, size);
   if (base === null || controlBase === null || seenBase === null || !(peakBaseline > 0)) {
-    return { state: next('insufficient-baseline', { run: 0 }), event: null };
+    return { state: next('insufficient-baseline', { run: 0, covered: 0 }), event: null };
   }
-  if (base < QUIET_SHARE * peakBaseline || base < market.minBaseline || base === 0) return { state: next('quiet'), event: null };
-
   const ratio = signalNow / base;
   const controlRatio = controlBase > 0 ? control.read(point) / controlBase : 0;
   // Against Wingbits, one bin: both networks lose a stopped country's aircraft
@@ -209,6 +207,14 @@ function evaluateCollapse(state, { t, point, wingbits, getPoint, peakBaseline, m
     ? { ratio: seen(point) / seen(wingbits), min: COVERAGE_MIN_VS_WINGBITS, against: 'wingbits' }
     : { ratio: seenBase > 0 ? seenNow / seenBase : 0, min: market.coverageMinVsBaseline, against: 'baseline' };
   const detail = { ratio, control: controlRatio, coverage: coverage.ratio, coverageAgainst: coverage.against, baseline: base };
+  // The window sums bins whose checks ran on earlier ticks. Entry waits until
+  // every bin in it passed them, so a bin recorded during a feed or receiver
+  // outage cannot read as a collapse once coverage returns. Quiet bins are
+  // checked too: they skip only the ratio.
+  const checked = controlRatio >= CONTROL_MIN && coverage.ratio >= coverage.min;
+  const covered = checked ? Math.min((current.covered || 0) + 1, size) : 0;
+
+  if (base < QUIET_SHARE * peakBaseline || base < market.minBaseline || base === 0) return { state: next('quiet', { covered }), event: null };
 
   if (current.state === STATES.COLLAPSED) {
     // The feed checks guard entry only. Parked aircraft switch their
@@ -217,21 +223,24 @@ function evaluateCollapse(state, { t, point, wingbits, getPoint, peakBaseline, m
     const run = ratio > market.exit ? current.run + 1 : 0;
     if (run < CONSECUTIVE) return { state: next('collapsed', { run, ...detail }), event: null };
     return {
-      state: next('recovered', { state: STATES.NORMAL, run: 0, ...detail }),
+      state: next('recovered', { state: STATES.NORMAL, run: 0, covered: 0, ...detail }),
       event: { kind: 'recovery', market: market.code, t, onset: current.onset, ...detail },
     };
   }
 
-  if (controlRatio < CONTROL_MIN) return { state: next('blocked-feed', { run: 0, ratio, control: controlRatio }), event: null };
+  if (controlRatio < CONTROL_MIN) return { state: next('blocked-feed', { run: 0, covered: 0, ratio, control: controlRatio }), event: null };
   if (coverage.ratio < coverage.min) {
-    return { state: next('blocked-coverage', { run: 0, ratio, control: controlRatio, coverage: coverage.ratio, coverageAgainst: coverage.against }), event: null };
+    return { state: next('blocked-coverage', { run: 0, covered: 0, ratio, control: controlRatio, coverage: coverage.ratio, coverageAgainst: coverage.against }), event: null };
+  }
+  if (covered < size) {
+    return { state: next('blocked-coverage', { run: 0, covered, ...detail }), event: null };
   }
 
   const run = ratio < market.enter ? current.run + 1 : 0;
   const onset = run === 1 ? t : current.onset;
-  if (run < CONSECUTIVE) return { state: next('normal', { run, onset: run ? onset : null, ...detail }), event: null };
+  if (run < CONSECUTIVE) return { state: next('normal', { run, covered, onset: run ? onset : null, ...detail }), event: null };
   return {
-    state: next('entered', { state: STATES.COLLAPSED, run: 0, onset, ...detail }),
+    state: next('entered', { state: STATES.COLLAPSED, run: 0, covered: 0, onset, ...detail }),
     event: { kind: 'collapse', market: market.code, t, onset, ...detail },
   };
 }
