@@ -463,6 +463,57 @@ function formatHeldAlertLines(events) {
   });
 }
 
+// Message limits of the text channels. Telegram refuses a sendMessage over 4096 characters (the whole
+// message is rejected). Discord content is capped at 2000 after escaping. Slack accepts far more, but
+// its own guidance is 4000 characters; 3900 leaves room for the escaping.
+const TELEGRAM_MAX_TEXT = 4096;
+const SLACK_MAX_TEXT = 3900;
+const TEAMS_HELD_LINES_PER_CARD_GROUP = 15;
+
+function chunkArray(items, size) {
+  const out = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/**
+ * Packs held alert lines into message parts that each fit `limit` after the channel's escaping
+ * (`measure`). Every line stays whole inside one part; a line too long for any part is shortened with
+ * an ellipsis rather than dropped. More than one part gets a "(part i of m)" label, and the last part
+ * ends with the dashboard link. Returns [{ text, count }], `count` being the alerts in that part.
+ */
+function buildHeldTextParts(heldLines, { limit, measure }) {
+  const total = heldLines.length;
+  const first = (suffix) => `WorldMonitor — ${total} held alert${total !== 1 ? 's' : ''} from quiet hours${suffix}`;
+  const later = (suffix) => `WorldMonitor — held alerts from quiet hours${suffix}`;
+  const footer = '\n\nView full dashboard → worldmonitor.app';
+  const widest = ` (part ${total} of ${total})`;
+  const overhead = Math.max(measure(first(widest)), measure(later(widest))) + measure('\n\n') + measure(footer);
+  const room = Math.max(1, limit - overhead - 1);
+  const fit = (line) => {
+    if (measure(line) <= room) return line;
+    let cut = line.length;
+    while (cut > 1 && measure(`${line.slice(0, cut)}…`) > room) cut -= 1;
+    return `${line.slice(0, cut)}…`;
+  };
+  const groups = [];
+  let current = [];
+  let used = 0;
+  for (const raw of heldLines) {
+    const line = fit(raw);
+    const cost = measure(line) + 1;
+    if (current.length > 0 && used + cost > room) { groups.push(current); current = []; used = 0; }
+    current.push(line);
+    used += cost;
+  }
+  if (current.length > 0 || groups.length === 0) groups.push(current);
+  return groups.map((group, i) => {
+    const suffix = groups.length > 1 ? ` (part ${i + 1} of ${groups.length})` : '';
+    const head = i === 0 ? first(suffix) : later(suffix);
+    return { text: `${head}\n\n${group.join('\n')}${i === groups.length - 1 ? footer : ''}`, count: group.length };
+  });
+}
+
 // Delivers (or discards) the held queue for a single user+variant.
 // Used by both drainBatchOnWake (wake-up) and processFlushQuietHeld (settings change).
 // allowedChannelTypes: which channels to attempt delivery on; null = use rule's channels.
@@ -474,7 +525,14 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
   const items = await upstashRest('LRANGE', key, String(-QUIET_HELD_MAX), '-1');
   if (!Array.isArray(items) || items.length === 0) return;
 
-  const parsedEvents = items.map(i => { try { return JSON.parse(i); } catch { return null; } }).filter(Boolean);
+  const parsedEvents = [];
+  const itemIndex = new Map(); // parsed event -> its position in `items`
+  items.forEach((raw, index) => {
+    try {
+      const ev = JSON.parse(raw);
+      if (ev) { parsedEvents.push(ev); itemIndex.set(ev, index); }
+    } catch { /* an unreadable held item is skipped */ }
+  });
   // Re-check the operator set: a link blocked while the event sat in the
   // queue must not go out in the batch (#8401).
   const events = [];
@@ -509,19 +567,45 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
     (c.channelType !== 'telegram' || c.telegramOwnership === 'verified_callback') &&
     (allowedChannelTypes == null || allowedChannelTypes.includes(c.channelType)),
   );
+  // Text channels refuse a message over their own limit, and a long batch (a reservoir sweep alone can
+  // hold dozens of alerts) goes out as numbered parts that each keep every alert whole. `delivered`
+  // counts the alerts of the parts that went out, so a failed later part leaves only the unsent alerts
+  // held and a retry never repeats a part that already arrived.
+  const textLimits = {
+    telegram: { limit: TELEGRAM_MAX_TEXT, measure: (t) => t.length },
+    slack: { limit: SLACK_MAX_TEXT, measure: (t) => escapeSlackText(t).length },
+    discord: { limit: DISCORD_MAX_CONTENT, measure: (t) => escapeDiscordText(t).length },
+  };
+  const sendTextPart = (ch, part) => {
+    if (ch.channelType === 'telegram' && ch.chatId) return sendTelegram(userId, ch.chatId, part);
+    if (ch.channelType === 'slack' && ch.webhookEnvelope) return sendSlack(userId, ch.webhookEnvelope, part);
+    if (ch.channelType === 'discord' && ch.webhookEnvelope) return sendDiscord(userId, ch.webhookEnvelope, part);
+    return false;
+  };
   let anyDelivered = false;
+  let mostDelivered = 0;
   for (const ch of verifiedChannels) {
     try {
       let ok = false;
-      if (ch.channelType === 'telegram' && ch.chatId) ok = await sendTelegram(userId, ch.chatId, text);
-      else if (ch.channelType === 'slack' && ch.webhookEnvelope) ok = await sendSlack(userId, ch.webhookEnvelope, text);
-      else if (ch.channelType === 'discord' && ch.webhookEnvelope) ok = await sendDiscord(userId, ch.webhookEnvelope, text);
-      else if (ch.channelType === 'teams' && ch.webhookEnvelope) ok = await sendTeamsCards(userId, ch.webhookEnvelope, buildTeamsNoticePayloads({
-        title: lines[0],
-        lines: heldLines,
-        link: NOTIFY_DASHBOARD_URL,
-        linkTitle: 'Open dashboard',
-      }));
+      let delivered = 0;
+      if (textLimits[ch.channelType]) {
+        const parts = buildHeldTextParts(heldLines, textLimits[ch.channelType]);
+        ok = true;
+        for (const part of parts) {
+          if (!(await sendTextPart(ch, part.text))) { ok = false; break; }
+          delivered += part.count;
+        }
+      }
+      else if (ch.channelType === 'teams' && ch.webhookEnvelope) {
+        const groups = chunkArray(heldLines, TEAMS_HELD_LINES_PER_CARD_GROUP);
+        ok = true;
+        for (let i = 0; i < groups.length; i += 1) {
+          const title = groups.length > 1 ? `${lines[0]} (part ${i + 1} of ${groups.length})` : lines[0];
+          const payloads = buildTeamsNoticePayloads({ title, lines: groups[i], link: NOTIFY_DASHBOARD_URL, linkTitle: 'Open dashboard' });
+          if (!(await sendTeamsCards(userId, ch.webhookEnvelope, payloads))) { ok = false; break; }
+          delivered += groups[i].length;
+        }
+      }
       else if (ch.channelType === 'email' && ch.email) {
         // Key the exact email Resend receives: a drain that filters out a
         // newly blocked link changes `text`, and reusing the key with a
@@ -560,6 +644,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
         });
       }
       if (ok) anyDelivered = true;
+      else mostDelivered = Math.max(mostDelivered, delivered);
     } catch (err) {
       console.warn(`[relay] drainHeldForUser: delivery error for ${userId}/${ch.channelType}:`, err.message);
     }
@@ -567,6 +652,15 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
   if (anyDelivered) {
     await upstashRest('DEL', key);
     console.log(`[relay] drainHeldForUser: delivered ${events.length} held events to ${userId} (${variant})`);
+  } else if (mostDelivered > 0) {
+    // No channel took the whole batch, but some alerts already arrived: keep only the rest, so the
+    // next drain does not send them again.
+    const remaining = events.length - mostDelivered;
+    // Held items are the newest QUIET_HELD_MAX of the list; the delivered alerts are the first of them
+    // that survived the link re-check, so trim up to and including the last delivered one.
+    const dropFromList = Math.max(0, Number(len) - items.length) + itemIndex.get(events[mostDelivered - 1]) + 1;
+    await upstashRest('LTRIM', key, String(dropFromList), '-1');
+    console.log(`[relay] drainHeldForUser: delivered ${mostDelivered} of ${events.length} held events to ${userId} (${variant}); ${remaining} stay held`);
   }
 }
 
@@ -2248,6 +2342,7 @@ module.exports = {
   buildDiscordMessagePayload,
   buildTeamsAlertForEvent,
   formatHeldAlertLines,
+  buildHeldTextParts,
   sendTeams,
   processWelcome,
   popNextEvent,
