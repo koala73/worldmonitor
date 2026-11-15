@@ -634,3 +634,6 @@
   .ies-slot[data-slot="timeline"] { overflow-x: auto; }
   .ies-slot[data-slot="timeline"] .ow-timeline { min-width: 640px; }
 }
+
+.ies-site-name { margin: 0; font-size: 12px; color: var(--text-secondary); }
+.ies-site-name strong { color: var(--text-primary); font-weight: 600; }

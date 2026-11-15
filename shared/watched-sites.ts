@@ -122,7 +122,8 @@ function candidates(): WatchedSiteCandidate[] {
   ];
 }
 
-const cellKey = (lat: number, lon: number) => `${Math.round(lat * 100)},${Math.round(lon * 100)}`;
+/** The 0.01-degree cell entries merge by; a looked-up point on a site's cell falls on that site. */
+export const watchedSiteCellKey = (lat: number, lon: number): string => `${Math.round(lat * 100)},${Math.round(lon * 100)}`;
 
 /**
  * Entries of different lists at the same 0.01-degree cell become one site that keeps
@@ -137,7 +138,7 @@ export function composeWatchedSites(input: WatchedSiteCandidate[] = candidates()
       unattributed.push(`${c.origin.list}:${c.origin.id}`);
       continue;
     }
-    const key = cellKey(c.lat, c.lon);
+    const key = watchedSiteCellKey(c.lat, c.lon);
     const held = byCell.get(key);
     if (held) {
       held.origins.push(c.origin);

@@ -11,6 +11,7 @@ import { OrbitalWatchPage, type OrbitalWatchState } from '@/components/OrbitalWa
 import { OrbitalTimeline, type OrbitalTimelineInput, type PointContextState } from '@/components/OrbitalTimeline';
 import { formatAcquiredLine, formatTargetCoordinates } from '@/components/orbital-target-label';
 import { loadPointContext } from '@/services/orbital/point-context';
+import { loadWatchedSiteRecord, watchedSiteAt } from '@/services/orbital/watched-site-at';
 import { OrbitalPlaceTools } from '@/components/OrbitalPlaceTools';
 import { confirmShareLinkCopied } from '@/components/share-link-button';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
@@ -25,6 +26,7 @@ let tools: OrbitalPlaceTools | null = null;
 let point: GeoPoint | null = null;
 let lookup: PointPassLookup | null = null;
 let run: AbortController | null = null;
+let siteRun: AbortController | null = null;
 let evidence: OrbitalEvidence | null = null;
 let linkedPass: OrbitalSharePass | null = null;
 /** The pass last selected in the sheet, so a shared link opens on it too. */
@@ -178,6 +180,24 @@ function loadContext(found: PointPassLookup, signal: AbortSignal): void {
   });
 }
 
+/** When the point falls on a watched site, reads that site's public record by its id; the point stays here. */
+function loadWatchedSite(at: GeoPoint): void {
+  siteRun?.abort();
+  const controller = new AbortController();
+  siteRun = controller;
+  const { signal } = controller;
+  void watchedSiteAt(at).then(async (site) => {
+    if (signal.aborted || !site) return;
+    page?.setWatchedSite({ kind: 'loading', site });
+    try {
+      const record = await loadWatchedSiteRecord(site.id, signal);
+      if (!signal.aborted) page?.setWatchedSite({ kind: 'loaded', site, record });
+    } catch {
+      if (!signal.aborted) page?.setWatchedSite({ kind: 'failed', site });
+    }
+  }, () => {});
+}
+
 async function checkArchives(found: PointPassLookup, signal: AbortSignal): Promise<void> {
   show({ kind: 'passes', lookup: found, archives: { kind: 'checking', total: ARCHIVE_SEARCHES.length, progress: null } });
   await afterDebugBearRequestWindow(signal);
@@ -314,6 +334,8 @@ function ensurePage(): OrbitalWatchPage {
         homeCamera = null;
         releaseMapUrlCentreOnUserMove(document.getElementById('mapContainer'));
         cancel();
+        siteRun?.abort();
+        siteRun = null;
         clearTrack();
         drawTarget(null);
         surface = null;
@@ -386,6 +408,7 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, map }: { recentre
   claimMapUrlCentre();
   sheet.open(at, returnFocus);
   sheet.setPlaceName(name);
+  loadWatchedSite(at);
   focusMap();
   void start();
 }
