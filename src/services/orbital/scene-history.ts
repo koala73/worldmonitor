@@ -1,9 +1,10 @@
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
 import type { LoadedArchiveImage } from './archive-image';
-import type { ArchiveFailure, ArchiveId, ArchiveRequestOptions } from './archive-result';
-import { searchStacArchive, type ImagingProfileId, type StacArchiveId } from './archive-stac';
+import { defaultFetch, type ArchiveFailure, type ArchiveId, type ArchiveRequestOptions, type FetchLike } from './archive-result';
+import { searchStacArchive, STAC_ARCHIVES, type ImagingProfileId, type StacArchiveId } from './archive-stac';
 import { cropBox, EUMETSAT_WMS_ENDPOINT, GIBS_WMS_ENDPOINT } from './crop-url';
 import { assembleEvidence, type MatchedAcquisition } from './match';
+import { BoundedCache, shareWork, type SharedWork } from './request-cache';
 
 const DAY_MS = 86_400_000;
 /** How far back the compare dates look. */
@@ -41,7 +42,37 @@ export type SceneHistory =
   | { status: 'ok'; scenes: MatchedAcquisition[] }
   | { status: 'failed'; failure: ArchiveFailure };
 
-/** Every scene of one mission at the point over the prior 60 days, one per acquisition, newest first. */
+/** How long a point's history answers later viewers in this tab; the lookup's own scenes cover anything newer. */
+export const HISTORY_REUSE_MS = 6 * 3_600_000;
+const HISTORY_CACHE_ENTRIES = 16;
+
+interface HistoryEntry {
+  startMs: number;
+  endMs: number;
+  work: SharedWork<SceneHistory>;
+}
+
+/** One cache per transport, so an injected fetch never reads answers another transport fetched. */
+const historyCaches = new WeakMap<FetchLike, BoundedCache<HistoryEntry>>();
+
+const missionCollections = (archive: StacArchiveId, profileId: ImagingProfileId) =>
+  Object.entries(STAC_ARCHIVES[archive].collections).filter(([, profile]) => profile === profileId).map(([collection]) => collection);
+
+async function fetchSceneHistory(point: GeoPoint, profileId: ImagingProfileId, window: { startMs: number; endMs: number }, options: ArchiveRequestOptions): Promise<SceneHistory> {
+  const archive = HISTORY_ARCHIVE[profileId];
+  const result = await searchStacArchive(archive, { ...options, point, window, collections: missionCollections(archive, profileId) });
+  if (result.status === 'failed') return { status: 'failed', failure: result.failure };
+  const items = result.items.filter((item) => item.profileId === profileId);
+  const { acquisitions } = assembleEvidence({ lookup: { point, nowMs: window.endMs, passes: [] }, stac: [{ ...result, items }], box: cropBox(point) });
+  return { status: 'ok', scenes: acquisitions.filter((scene) => scene.imageUrl) };
+}
+
+/**
+ * Every scene of one mission at the point over the prior 60 days, one per acquisition, newest first.
+ * Searches only that mission's collections. The answer stays in this tab's memory for the point, so
+ * reopening the viewer there reuses it; a consumer that aborts never cancels a search another still
+ * waits on, and failures are never kept.
+ */
 export async function searchSceneHistory(
   point: GeoPoint,
   profileId: ImagingProfileId,
@@ -49,11 +80,25 @@ export async function searchSceneHistory(
   options: ArchiveRequestOptions = {},
 ): Promise<SceneHistory> {
   const archive = HISTORY_ARCHIVE[profileId];
-  const result = await searchStacArchive(archive, { ...options, point, window: { startMs: nowMs - HISTORY_DAYS * DAY_MS, endMs: nowMs } });
-  if (result.status === 'failed') return { status: 'failed', failure: result.failure };
-  const items = result.items.filter((item) => item.profileId === profileId);
-  const { acquisitions } = assembleEvidence({ lookup: { point, nowMs, passes: [] }, stac: [{ ...result, items }], box: cropBox(point) });
-  return { status: 'ok', scenes: acquisitions.filter((scene) => scene.imageUrl) };
+  const window = { startMs: nowMs - HISTORY_DAYS * DAY_MS, endMs: nowMs };
+  const transport = options.fetch ?? defaultFetch;
+  let cache = historyCaches.get(transport);
+  if (!cache) historyCaches.set(transport, cache = new BoundedCache<HistoryEntry>(HISTORY_CACHE_ENTRIES));
+  const key = `${profileId}|${point.lat},${point.lon}`;
+  const clockMs = Date.now();
+  let entry = cache.get(key, clockMs);
+  if (!entry || entry.work.abandoned || entry.startMs > window.startMs || Math.abs(entry.endMs - window.endMs) > HISTORY_REUSE_MS) {
+    const { fetch, timeoutMs } = options;
+    const created: HistoryEntry = { ...window, work: shareWork((signal) => fetchSceneHistory(point, profileId, window, { fetch, timeoutMs, signal })) };
+    entry = created;
+    const owner = cache;
+    owner.set(key, created, clockMs + HISTORY_REUSE_MS);
+    const forget = () => owner.delete(key, created);
+    created.work.done.then((result) => { if (result.status !== 'ok') forget(); }, forget);
+  }
+  const result = await entry.work.join(options.signal, (): SceneHistory => ({ status: 'failed', failure: { archive, reason: 'aborted' } }));
+  if (result.status !== 'ok') return result;
+  return { status: 'ok', scenes: result.scenes.filter((scene) => scene.startMs >= window.startMs && scene.startMs <= window.endMs) };
 }
 
 export interface DatedScene {
