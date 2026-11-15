@@ -178,6 +178,15 @@ describe('water levels block in the country signals section', () => {
     panel.hide();
   });
 
+  it('labels each source time as the WorldMonitor fetch, not a reading time', () => {
+    const { panel, body } = render(beyond());
+    const time = (family: string) => body.querySelector(`.cdp-sources-row[data-family="${family}"] .cdp-sources-time`)?.textContent;
+    expect(time('water')).toBe('Fetched 2026-10-18 12:00 UTC');
+    expect(time('unrest')).toBe('Fetched: unknown');
+    expect(time('imagery')).toBe('Computed 2026-10-18 12:00 UTC');
+    panel.hide();
+  });
+
   it('says none is beyond the baseline when observed empty, and shows no block while unavailable', () => {
     const empty = render({ ...beyond(), observations: [], matchedRows: 0, sampledRows: 0 });
     expect(empty.body.querySelector('.cdp-water-evidence')?.textContent).toContain('No strategic reservoir in this country is beyond its seasonal baseline');

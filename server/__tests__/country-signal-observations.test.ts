@@ -30,6 +30,10 @@ describe('qualified country Signals', () => {
     expect(outcome.observations).toHaveLength(1);
     expect(outcome.observations[0]).toMatchObject({ severity, eventAt: null, snapshotAt: null, timeBasis: 'unknown' });
   });
+  it('credits unrest to GDELT alone; UCDP is the conflict feed', () => {
+    const outcome = projectCountrySignalFamily('FR', 'unrest', { events: [{ id: 'a', country: 'FR', occurredAt: 1792324800000 }] });
+    expect(outcome.attribution).toBe('GDELT; media-location signals are unverified');
+  });
   it.each([[1, 'low'], [2, 'medium'], [4, 'medium'], [5, 'critical']])('preserves the conflict summary threshold at %i high rows', (count, severity) => {
     const events = Array.from({ length: count as number }, (_, i) => ({ id: String(i), country: 'FR', severity: 'high', timestamp: 1792324800 }));
     const outcome = projectCountrySignalFamily('FR', 'conflict', { events, scrapedAt: '1792324800000' });

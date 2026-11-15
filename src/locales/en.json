@@ -3423,7 +3423,6 @@
       }
     },
     "protest": {
-      "acledVerified": "ACLED (verified)",
       "gdelt": "GDELT",
       "records": "records",
       "mediaSignal": "Unverified media signal",

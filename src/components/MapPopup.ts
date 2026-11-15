@@ -1796,7 +1796,7 @@ export class MapPopup {
     const severityText = escapeHtml(severityLabel(event.severity));
     const eventTypeLabel = mediaSignal ? t('popups.protest.mediaSignal') : escapeHtml(statusLabel(event.eventType.replace(/_/g, ' ')));
     const icon = event.eventType === 'riot' ? '🔥' : event.eventType === 'strike' ? '✊' : '📢';
-    // conflict:acled:* keys are filled from GDELT, so every unrest row names GDELT.
+    // Every unrest row comes from GDELT, whatever its sourceType enum says.
     const sourceLabel = t('popups.protest.gdelt');
     const validatedBadge = !mediaSignal && event.validated ? `<span class="popup-badge verified">${t('popups.verified')}</span>` : '';
     const fatalitiesSection = event.fatalities

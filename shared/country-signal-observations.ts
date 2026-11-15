@@ -186,7 +186,7 @@ export function projectCountrySignalFamily(countryCode: string, family: CountryS
   const keys = { outages: 'outages', unrest: 'events', fires: 'fireDetections', radiation: 'observations', sanctions: 'countries', conflict: 'events', posture: 'theaters' } as const;
   const raw = object[keys[family]];
   if (!Array.isArray(raw) || object.dataAvailable === false || (family === 'sanctions' || family === 'conflict') && !outcome.snapshotAt || family === 'posture' && object.state !== 'observed') return unavailableCountrySignal(countryCode, family, family === 'conflict' ? 'Conflict source is disabled or its snapshot is unavailable.' : 'Source snapshot unavailable or unconfirmed.', object.state === 'locked' ? 'locked' : 'unavailable');
-  outcome.attribution = { outages: 'Cloudflare Radar', unrest: 'GDELT / UCDP; media-location signals are unverified', fires: 'NASA FIRMS / reporting agency', radiation: 'EPA RadNet / Safecast', sanctions: 'OFAC / Canada SEMA', conflict: 'Existing Iran-events source profile', posture: String(object.provider ?? 'Unknown provider') }[family];
+  outcome.attribution = { outages: 'Cloudflare Radar', unrest: 'GDELT; media-location signals are unverified', fires: 'NASA FIRMS / reporting agency', radiation: 'EPA RadNet / Safecast', sanctions: 'OFAC / Canada SEMA', conflict: 'Existing Iran-events source profile', posture: String(object.provider ?? 'Unknown provider') }[family];
   if (family === 'posture') { outcome.snapshotAt = sourceClock(object.sourceAt); outcome.partial = object.status !== 'live'; outcome.scope = `Redistributable theater posture (${String(object.status)})`; }
   outcome.partial ||= outcome.sampleBeforeCountryFilter;
   let malformedRows = 0;

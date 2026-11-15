@@ -561,7 +561,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.signalsBody?.append(this.buildSourcesDisclosure(value.families), this.el('p', 'cdp-economic-source cdp-signals-footer', t('components.countryBrief.sources.footer')));
   }
 
-  // "Sources and windows": one row per family with its state, source and source time; closed by default.
+  // "Sources and windows": one row per family with its state, source and fetch time; closed by default.
   private buildSourcesDisclosure(families: import('../../shared/country-signal-observations').CountrySignalOutcome[]): HTMLElement {
     const box = document.createElement('details');
     box.className = 'cdp-qualified-coverage cdp-sources';
@@ -572,7 +572,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     for (const family of families) {
       const row = this.el('div', 'cdp-sources-row');
       row.dataset.family = family.family;
-      const time = family.snapshotAt ? `${family.snapshotAt.slice(0, 16).replace('T', ' ')} UTC` : 'unknown';
+      // snapshotAt is when WorldMonitor fetched the source (imagery: when its rollup was computed), not when anything was measured.
+      const timeLabel = family.family === 'imagery' ? 'Computed' : 'Fetched';
+      const time = family.snapshotAt ? `${timeLabel} ${family.snapshotAt.slice(0, 16).replace('T', ' ')} UTC` : `${timeLabel}: unknown`;
       row.append(
         this.el('span', 'cdp-sources-family', family.family),
         this.el('span', `cdp-sources-pill cdp-sources-pill-${family.state}`, `${family.state}${family.partial ? ' · partial' : ''}`),
