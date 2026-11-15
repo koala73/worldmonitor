@@ -2503,4 +2503,5 @@
       "source source source"
       "detail detail detail";
   }
+  .cdp-sources-time { white-space: normal; text-align: end; }
 }
