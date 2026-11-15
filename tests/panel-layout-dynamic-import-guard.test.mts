@@ -152,8 +152,8 @@ function assertLazyLoaderHandlesFailedImports(source: string) {
 }
 
 function assertSharedImportPanelGuard(source: string) {
-  const callback = findCallbackBody(source, /return\s+importer\(\)\.then\(\(module\)\s*=>\s*\{/);
-  assert.ok(callback, 'importPanel helper must call importer().then(onFulfilled, onRejected)');
+  const callback = findCallbackBody(source, /return\s+readChunkModule\(importer\(\)\)\.then\(\(module\)\s*=>\s*\{/);
+  assert.ok(callback, 'importPanel helper must pass the import through readChunkModule and use two-arg .then(onFulfilled, onRejected)');
   assert.match(
     callback.body,
     /const PanelClass = module\[exportName\];/,

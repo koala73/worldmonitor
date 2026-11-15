@@ -46,6 +46,8 @@
  * traffic metric and is unaffected.
  */
 
+import { markSentryChunkClaim } from './chunk-reload';
+
 type SentryNs = typeof import('@sentry/browser');
 type SentryCall = (s: SentryNs) => void;
 type SentryEvent = Parameters<SentryNs['captureEvent']>[0];
@@ -96,11 +98,11 @@ function isSentryChunkFailure(payload: unknown): boolean {
  *
  * An ad blocker or privacy proxy that blocks the Sentry chunks blocks them on
  * every load, so the failure is not deploy skew and a reload cannot fix it.
- * Vite dispatches `vite:preloadError` for the failed import; calling
- * `preventDefault()` on it makes the chunk-reload guard stand down.
- * It also makes Vite's helper resolve the import to `undefined` instead of
- * rejecting, so the original error is rethrown here in place of the
- * TypeError that `undefined` causes downstream.
+ * Vite dispatches `vite:preloadError` for the failed import. The claim marks
+ * that event when the failure names a Sentry asset, and the guard skips it.
+ * It does not call `preventDefault()`: Vite would then resolve the import to
+ * `undefined`, and any other lazy import in flight would throw on destructure
+ * instead of rejecting. The original error still propagates from `load`.
  */
 export async function claimSentryPreloadErrors<T>(
   load: () => Promise<T>,
@@ -111,7 +113,7 @@ export async function claimSentryPreloadErrors<T>(
     const payload = (event as Event & { payload?: unknown }).payload;
     if (!isSentryChunkFailure(payload)) return;
     if (claimed.length === 0) claimed.push(payload);
-    event.preventDefault();
+    markSentryChunkClaim(event);
   };
   target.addEventListener('vite:preloadError', claim);
   try {
