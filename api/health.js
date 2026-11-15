@@ -5476,21 +5476,6 @@ function snapshotTtlSeconds(snapshot, now) {
   return Math.min(HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS, Math.max(1, secondsUntilDeadline));
 }
 
-/**
- * Bucket counts -> the endpoint's overall verdict.
- *
- * Extracted from the handler so it is reachable from tests. It used to be inline
- * arithmetic that only a replica in the test file asserted, which meant the
- * load-bearing severity claims — that EMPTY_ON_DEMAND is excused and that
- * ROLLOUT_PENDING is NOT — were pinned against a copy rather than against this
- * code. Subtracting a new bucket here would have kept every test green.
- *
- * `realWarnCount` preserves the diagnostic warning census by subtracting only
- * on-demand misses. Availability then subtracts the explicit contained subset;
- * those defects stay actionable in `summary.warn` and `problems`.
- * ROLLOUT_PENDING is never contained (#6059): it stays availability-affecting
- * until its deadline promotes a missing payload to critical.
- */
 // ── Tenant-relay gateway gate probe (#8208 / #8217) ──────────────────────
 //
 // #8208 took checkout, the customer portal and notification channels down for
@@ -5949,6 +5934,21 @@ async function probeRelayGatewayGate({
   };
 }
 
+/**
+ * Bucket counts -> the endpoint's overall verdict.
+ *
+ * Extracted from the handler so it is reachable from tests. It used to be inline
+ * arithmetic that only a replica in the test file asserted, which meant the
+ * load-bearing severity claims — that EMPTY_ON_DEMAND is excused and that
+ * ROLLOUT_PENDING is NOT — were pinned against a copy rather than against this
+ * code. Subtracting a new bucket here would have kept every test green.
+ *
+ * `realWarnCount` preserves the diagnostic warning census by subtracting only
+ * on-demand misses. Availability then subtracts the explicit contained subset;
+ * those defects stay actionable in `summary.warn` and `problems`.
+ * ROLLOUT_PENDING is never contained (#6059): it stays availability-affecting
+ * until its deadline promotes a missing payload to critical.
+ */
 function computeOverallStatus(counts, totalChecks) {
   const realWarnCount = counts.warn - counts.onDemandWarn;
   const containedWarnCount = Number.isInteger(counts.containedWarn)

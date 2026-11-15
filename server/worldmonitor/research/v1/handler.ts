@@ -1,11 +1,7 @@
 /**
- * Research service handler -- thin composition file.
- *
- * Each RPC is implemented in its own file:
- * - list-arxiv-papers.ts    (arXiv Atom XML API)
- * - list-trending-repos.ts  (GitHub trending JSON APIs)
- * - list-hackernews-items.ts (HN Firebase JSON API)
- * - list-tech-events.ts     (Techmeme ICS + dev.events RSS + curated)
+ * Research service handler. Each RPC is its own file.
+ * list-tech-events.ts fetches on demand. The other three read seeds
+ * written by scripts/seed-research.mjs.
  */
 
 import type { ResearchServiceHandler } from '../../../../src/generated/server/worldmonitor/research/v1/service_server';

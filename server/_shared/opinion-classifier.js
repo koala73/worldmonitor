@@ -1,12 +1,5 @@
 // Brief-exclusion classifier for the WorldMonitor pipeline.
 //
-// The brief is event-driven intelligence — an op-ed column is not an
-// event. On 2026-05-14 a Le Monde opinion column ("'Russia's invasion
-// of Ukraine could have warned Trump…'", by columnist Gilles Paris)
-// shipped as story #1, tagged Critical, ahead of a nuclear ICBM test.
-// See plan docs/plans/2026-05-14-001-fix-brief-pipeline-parity-grounding-opinion-plan.md
-// (F3, Phase 3).
-//
 // This module is the SINGLE classifier, imported by BOTH the ingest
 // path (server/worldmonitor/news/v1/list-feed-digest.ts — stamps
 // `isOpinion` onto the story:track:v1 row) AND the read path

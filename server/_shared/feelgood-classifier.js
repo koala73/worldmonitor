@@ -1,16 +1,5 @@
 // Feel-good / lifestyle classifier for the WorldMonitor brief pipeline.
 //
-// The brief is event-driven intelligence — a vintage-warplane veterans'
-// reunion in Peru, Illinois (population 9,800) is not an event. On
-// 2026-05-17 the 08:02 brief shipped "Veterans reunite with their
-// vintage war planes" at card #4 (HIGH severity), sitting alongside
-// WHO's Ebola declaration, Israeli airstrikes in Lebanon, US-Cuba
-// escalation, and Iran's war-readiness warnings. The upstream
-// importance/severity classifier wrongly tagged a community
-// human-interest feature as HIGH because "veterans"/"war"/"planes"
-// register as conflict-relevant vocabulary. See plan
-// docs/plans/2026-05-17-001-fix-feelgood-lifestyle-filter-plan.md.
-//
 // This module is the SINGLE classifier — sibling to classifyOpinion —
 // imported by BOTH the ingest path (list-feed-digest.ts → stamps
 // isFeelGood onto story:track:v1) AND the read path

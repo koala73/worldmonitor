@@ -6,42 +6,6 @@
 // inherit every auth/entitlement gate a browser user is subject to — they are
 // not a backdoor around the paywall.
 //
-// Current tools mirror the static Agent Skills set (#3310) and add bounded
-// live-dashboard context/actions through the existing agent-bus seam (#6211):
-//   1. openCountryBrief({ iso2 }) — opens the country deep-dive panel.
-//   2. openSearch()               — opens the global command palette.
-//   3. get_dashboard_context()    — reads bounded visible dashboard state.
-//   4. list_map_layers()          — pages the canonical map-layer catalog.
-//   5. list_dashboard_panels()    — pages the canonical panel catalog.
-//   6. switch_monitor()           — switches World/Tech/Finance/Commodity/Energy/Good News.
-//   7. open_settings()            — opens the settings overlay.
-//   8. open_alerts()              — opens the alerts/notifications tab.
-//   9. open_dashboard_panel()     — opens an already-live panel.
-//  10. set_panel_enabled()        — enables or disables a catalog panel.
-//  11. get_panel_layout()         — reads region order, collapse, fullscreen.
-//  12. set_panel_collapsed()      — collapses or expands a collapsible panel.
-//  13. move_panel()               — moves a panel by region and index.
-//  14. set_panel_fullscreen()     — toggles panel fullscreen when supported.
-//  15. set_map_view()             — moves the visible map.
-//  16. set_map_layers()           — changes allowed visible map layers.
-//  17. set_time_range()           — sets the visible map time range.
-//  18. focus_country()            — focuses a country bbox without a briefing.
-//  19. set_map_mode()             — switches the visible 2D/3D map renderer.
-//  20. search_dashboard()         — searches the live dashboard index.
-//  21. open_search_result()       — selects an opaque, revalidated result.
-//  22. list_dashboard_tabs()      — enumerates persistent workspace tabs.
-//  23. select_dashboard_tab()     — switches the active workspace tab.
-//  24. create_dashboard_tab()     — creates a workspace, or returns one by name.
-//  25. rename_dashboard_tab()     — renames a workspace tab by stable ID.
-//  26. delete_dashboard_tab()     — deletes a workspace tab after confirm=true.
-//  27. list_mission_presets()     — lists bundled mission presets for this monitor.
-//  28. apply_mission_preset()     — applies a bundled preset atomically.
-//  29. open_mission_picker()      — opens the mission preset picker.
-//  30. list_followed_countries()  — reads the current followed-country list.
-//  31. set_country_followed()     — follows or unfollows one country.
-//  32. get_access_context()       — reads signed-out / loading / signed-in access.
-//  33. open_sign_in()             — opens the existing Clerk sign-in dialog.
-//
 // No tool is conditionally registered. Live controls re-check auth and
 // entitlement through the agent-bus applier on every invocation, so a single
 // registration remains correct across sign-in/sign-out.

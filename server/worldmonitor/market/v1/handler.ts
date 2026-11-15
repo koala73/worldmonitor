@@ -1,18 +1,3 @@
-/**
- * Market service handler -- thin composition of per-RPC modules.
- *
- * RPCs:
- *   - ListMarketQuotes      (Finnhub + Yahoo Finance for stocks/indices)
- *   - ListCryptoQuotes      (CoinGecko markets API)
- *   - ListCommodityQuotes   (Yahoo Finance for commodity futures)
- *   - GetSectorSummary      (Finnhub for sector ETFs)
- *   - ListStablecoinMarkets (CoinGecko stablecoin peg health)
- *   - ListEtfFlows          (Yahoo Finance BTC spot ETF flow estimates)
- *   - GetCountryStockIndex  (Yahoo Finance national stock indices)
- *   - GetPriceHistory       (Yahoo Finance dated daily closes for tracked symbols)
- *   - ListGulfQuotes        (Yahoo Finance GCC indices, currencies, oil)
- */
-
 import type { MarketServiceHandler } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { listMarketQuotes } from './list-market-quotes';
 import { listCryptoQuotes } from './list-crypto-quotes';

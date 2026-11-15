@@ -1,6 +1,6 @@
 /**
  * ListCyberThreats RPC -- reads seeded cyber threat data from Railway seed cache.
- * All external IOC feed calls happen in seed-cyber.mjs on Railway.
+ * All external IOC feed calls happen in scripts/seed-cyber-threats.mjs on Railway.
  */
 
 import type {
