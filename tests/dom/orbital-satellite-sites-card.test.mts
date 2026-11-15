@@ -231,6 +231,33 @@ describe('Orbital Watch satellite card sites section', () => {
     expect(listedSites(host)).toEqual(['bravo']);
   });
 
+  it('keeps the list and its scroll offset on screen through the hourly rescan', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(Date.UTC(2026, 10, 15, 12, 0));
+    mocks.getTrackedSatelliteTle.mockReturnValue(elementSet('0'));
+    const many = (nowMs: number) => okCoverage(nowMs, Array.from({ length: 12 }, (_, i) => [`site${String(i).padStart(2, '0')}`, [90 + i]] as [string, number[]]));
+    mocks.sitesCoveredBySatellite.mockImplementationOnce(async ({ nowMs }) => many(nowMs));
+    const map = fakeGlobe();
+    map.setSatellites([satellite()]);
+    const host = openCard(map).querySelector<HTMLElement>('[data-osat-sites]')!;
+    await vi.waitFor(() => expect(listedSites(host)).toHaveLength(12));
+    host.querySelector<HTMLElement>('.osat-sites-list')!.scrollTop = 40;
+
+    let finish!: (coverage: SatelliteCoverage) => void;
+    mocks.sitesCoveredBySatellite.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    vi.advanceTimersByTime(61 * 60_000);
+    await vi.waitFor(() => expect(mocks.sitesCoveredBySatellite).toHaveBeenCalledTimes(2));
+    // While the rescan runs, the previous list stays on screen instead of a "projecting" note.
+    expect(listedSites(host)).toHaveLength(12);
+    expect(host.textContent).not.toContain(tt(`${K}.projecting`));
+
+    finish(many(Date.now()));
+    await vi.waitFor(() => expect(mocks.sitesCoveredBySatellite.mock.results[1]!.value).resolves.toBeTruthy());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(listedSites(host)).toHaveLength(12);
+    expect(host.querySelector<HTMLElement>('.osat-sites-list')!.scrollTop).toBe(40);
+  });
+
   it('moves the countdowns, drops passed sites and renews the window while open, and stops once closed', async () => {
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
     const start = Date.UTC(2026, 10, 15, 12, 0);

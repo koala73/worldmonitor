@@ -88,6 +88,8 @@ type SectionState = { kind: 'note'; key: string } | { kind: 'coverage'; coverage
 const sections = new WeakMap<HTMLElement, SectionState>();
 /** The element set (both TLE lines) a section's scan ran on; null when none was loaded. */
 const scannedFrom = new WeakMap<HTMLElement, string | null>();
+/** The list's last scroll offset per section, kept across note states so a redrawn list returns to it. */
+const listScroll = new WeakMap<HTMLElement, number>();
 
 function elementSetKey(noradId: string): string | null {
   const tle = getTrackedSatelliteTle(noradId);
@@ -96,11 +98,13 @@ function elementSetKey(noradId: string): string | null {
 
 function draw(host: HTMLElement, state: SectionState, nowMs: number): void {
   sections.set(host, state);
-  const scroll = host.querySelector('.osat-sites-list')?.scrollTop ?? 0;
+  const shown = host.querySelector('.osat-sites-list');
+  if (shown) listScroll.set(host, shown.scrollTop);
   const heading = el('span', 'osat-sites-label', t(`${KEY}.heading`, { hours: COVERAGE_WINDOW_HOURS }));
   const body = state.kind === 'note' ? [note(t(state.key))] : coverageNodes(state.coverage, nowMs);
   host.replaceChildren(heading, ...body);
   const list = host.querySelector('.osat-sites-list');
+  const scroll = listScroll.get(host) ?? 0;
   if (list && scroll) list.scrollTop = scroll;
   if (state.kind === 'coverage') host.dataset.coverage = state.coverage.status;
   else delete host.dataset.coverage;
@@ -147,9 +151,13 @@ export function advanceSatelliteSites(host: HTMLElement, nowMs: number): 'curren
  * site registry.
  */
 export async function renderSatelliteSites(host: HTMLElement, noradId: string, name: string, signal?: AbortSignal): Promise<SatelliteCoverage | null> {
-  showSatelliteSitesNote(host, 'projecting');
   const loaded = getTrackedSatelliteTle(noradId);
   const key = loaded ? `${loaded.line1}\n${loaded.line2}` : null;
+  // A rescan of the same element set (the window renewing) keeps the current list until
+  // the new one is ready; a first scan or a new element set shows the projecting note.
+  const shown = sections.get(host);
+  const renewing = shown?.kind === 'coverage' && shown.coverage.status === 'ok' && scannedFrom.has(host) && scannedFrom.get(host) === key;
+  if (!renewing) showSatelliteSitesNote(host, 'projecting');
   scannedFrom.set(host, key);
   const tle: TrackedSatelliteTle | null = loaded ? { noradId, name: loaded.name || name, line1: loaded.line1, line2: loaded.line2 } : null;
   if (!tle) {
