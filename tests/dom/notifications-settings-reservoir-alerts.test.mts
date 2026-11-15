@@ -64,18 +64,22 @@ vi.mock('@/utils/country-chip-picker', () => ({
   }),
 }));
 
-vi.mock('@/services/climate', () => ({
-  fetchReservoirLevels: async () => ({
-    ok: true,
-    snapshot: {
-      reservoirs: [
-        { id: 'nasser', name: 'Lake Nasser', country: 'EG' },
-        { id: 'tana', name: 'Lake Tana', country: 'ET' },
-        { id: 'gerd', name: 'GERD reservoir', country: 'ET' },
-      ],
-    },
-  }),
+vi.mock('@/services/generated-rpc-clients', () => ({
+  ClimateServiceClient: class {
+    async listReservoirLevels() {
+      return {
+        dataAvailable: true,
+        reservoirs: [
+          { id: 'nasser', name: 'Lake Nasser', country: 'EG' },
+          { id: 'tana', name: 'Lake Tana', country: 'ET' },
+          { id: 'gerd', name: 'GERD reservoir', country: 'ET' },
+        ],
+      };
+    }
+  },
 }));
+
+vi.mock('@/services/rpc-client', () => ({ getRpcBaseUrl: () => '' }));
 
 vi.mock('uqr', () => ({
   renderSVG: () => '<svg></svg>',

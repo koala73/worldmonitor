@@ -62,10 +62,12 @@ type ReservoirOption = { id: string; name: string; country: string };
 let reservoirOptions: Promise<ReservoirOption[]> | null = null;
 // The watchlist comes from the reservoir levels API; loaded only when the settings open.
 function loadReservoirOptions(): Promise<ReservoirOption[]> {
-  reservoirOptions ??= import('@/services/climate').then(async ({ fetchReservoirLevels }) => {
-    const { snapshot } = await fetchReservoirLevels();
-    if (!snapshot) throw new Error('reservoir levels unavailable');
-    return snapshot.reservoirs
+  // Not '@/services/climate': importing the service from here would hoist it into the main app chunk.
+  reservoirOptions ??= Promise.all([import('@/services/generated-rpc-clients'), import('@/services/rpc-client')]).then(async ([{ ClimateServiceClient }, { getRpcBaseUrl }]) => {
+    const client = new ClimateServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+    const resp = await client.listReservoirLevels({});
+    if (!resp.dataAvailable || !(resp.reservoirs ?? []).length) throw new Error('reservoir levels unavailable');
+    return resp.reservoirs
       .map(({ id, name, country }) => ({ id, name, country }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }).catch((err) => { reservoirOptions = null; throw err; });
