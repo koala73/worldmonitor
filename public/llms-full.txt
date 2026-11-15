@@ -883,10 +883,13 @@ field is the annual EIA 2023 reference level; it is used to convert the
 observed ratio into mb/d. Flow ratios can publish from 0% to 150% of baseline
 after the clamp.
 
-When the year-earlier baseline is missing (fewer than 300 published days in
-that year, or the baseline query failed), the seeder falls back to the previous
-up-to-90 days (`history.slice(-97, -7)`): DWT when at least half of those days
-have DWT coverage, otherwise tanker counts.
+When neither year-earlier mean can be used, the seeder falls back to the
+previous up-to-90 days. That happens when the baseline is missing (fewer than
+300 published days in that year, or the baseline query failed), or when the DWT
+mean fails step 3 (below 1, or recent tonnage unreported) and the tanker count
+mean is missing or below 0.5. The fallback window (`history.slice(-97, -7)`)
+uses DWT when at least half of its days have DWT coverage, otherwise tanker
+counts.
 
 Live flow is eligible only when the PortWatch series has at least 40 total days
 of history. After that gate, the seeder still requires at least three recent
