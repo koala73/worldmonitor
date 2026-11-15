@@ -37,6 +37,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await waitForMap(page);
   await expectVisible('.imagery-evidence-sheet');
   await page.waitForFunction(() => /Checked/.test([...document.querySelectorAll('.imagery-evidence-sheet [data-section="site"] .ies-cell')].map((c) => c.dataset.label).join(' ')), null, { timeout: 30_000 });
+  await page.waitForSelector('.imagery-evidence-sheet [data-section="latest"]', { timeout: 60_000 });
   const read = await page.evaluate(() => ({
     title: document.querySelector('.imagery-evidence-sheet .ies-place')?.textContent,
     subline: document.querySelector('.imagery-evidence-sheet .ies-coords')?.textContent,
