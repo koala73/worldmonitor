@@ -26,8 +26,6 @@ export interface OrbitalMapView {
   project(point: GeoPoint): { x: number; y: number } | null;
   /** Stops or resumes the globe's idle spin, which would carry the point out of view. */
   hold(held: boolean): void;
-  /** Hides or redraws the dashboard's data layers without changing the saved layer toggles. */
-  suppressLayers(suppressed: boolean): void;
   /** The map's centre and zoom, or null before it has a camera. */
   camera(): MapCamera | null;
   /** Caps how far the map can zoom in, or lifts the cap with null. The map is clamped at once if it is already past it. */
@@ -38,7 +36,7 @@ export interface OrbitalMapView {
 
 /** The dashboard map as the lookup drives it. */
 export type OrbitalViewport = Pick<MapContainer,
-  'getViewportRect' | 'setCenterAt' | 'projectToClient' | 'holdAutoRotate' | 'suppressDataLayers' | 'getCenter' | 'getState' | 'setCenter' | 'capZoom'>;
+  'getViewportRect' | 'setCenterAt' | 'projectToClient' | 'holdAutoRotate' | 'getCenter' | 'getState' | 'setCenter' | 'capZoom'>;
 
 export function orbitalMapViewFor(getMap: () => OrbitalViewport | null | undefined): OrbitalMapView {
   return {
@@ -46,7 +44,6 @@ export function orbitalMapViewFor(getMap: () => OrbitalViewport | null | undefin
     center: (point, offset) => (getMap()?.setCenterAt(point.lat, point.lon, ORBITAL_LOOKUP_MAX_ZOOM, offset) ?? null) !== null,
     project: (point) => getMap()?.projectToClient(point.lat, point.lon) ?? null,
     hold: (held) => getMap()?.holdAutoRotate(held),
-    suppressLayers: (suppressed) => getMap()?.suppressDataLayers(suppressed),
     camera: () => {
       const map = getMap();
       const centre = map?.getCenter();

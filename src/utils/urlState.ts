@@ -238,12 +238,10 @@ export function withoutVariantScopedUrlState(url: string): string {
  * Satellite pass share links put the place in the fragment, which browsers never send to a
  * server: `#orbital=48.86,2.29` or, with a selected pass, `#orbital=48.86,2.29;40697-202611131230`
  * (NORAD id and closest-approach minute, UTC). Coordinates are rounded to 0.01 degrees.
- * `&view=full` opens the full-screen view instead of the side sheet.
+ * Older links may end in `&view=full`; it is accepted and dropped.
  */
 export const ORBITAL_SHARE_KEY = 'orbital';
 const ORBITAL_VIEW_KEY = 'view';
-
-export type OrbitalShareView = 'sheet' | 'full';
 
 export interface OrbitalSharePass {
   noradId: number;
@@ -254,7 +252,6 @@ export interface OrbitalSharePass {
 export interface OrbitalShareLink {
   point: { lat: number; lon: number };
   pass: OrbitalSharePass | null;
-  view: OrbitalShareView;
 }
 
 const SHARE_VALUE_RE = /^(-?\d{1,2}(?:\.\d{1,2})?),(-?\d{1,3}(?:\.\d{1,2})?)(?:;(\d{1,9})-(\d{12}))?$/;
@@ -278,11 +275,9 @@ function parseShareMinute(stamp: string): number | null {
 export function buildOrbitalShareFragment(
   point: { lat: number; lon: number },
   pass?: { noradId: number; timeMs: number } | null,
-  view: OrbitalShareView = 'sheet',
 ): string {
   const coords = `${roundShareCoordinate(point.lat).toFixed(2)},${roundShareCoordinate(point.lon).toFixed(2)}`;
-  const value = `${ORBITAL_SHARE_KEY}=${pass ? `${coords};${pass.noradId}-${formatShareMinute(pass.timeMs)}` : coords}`;
-  return view === 'full' ? `${value}&${ORBITAL_VIEW_KEY}=full` : value;
+  return `${ORBITAL_SHARE_KEY}=${pass ? `${coords};${pass.noradId}-${formatShareMinute(pass.timeMs)}` : coords}`;
 }
 
 /** The share link in a `location.hash`, or null when it is absent or malformed. */
@@ -301,7 +296,7 @@ export function parseOrbitalShareFragment(hash: string): OrbitalShareLink | null
     if (minuteMs === null) return null;
     pass = { noradId: Number(match[3]), minuteMs };
   }
-  return { point: { lat, lon }, pass, view: params.get(ORBITAL_VIEW_KEY) === 'full' ? 'full' : 'sheet' };
+  return { point: { lat, lon }, pass };
 }
 
 /** `hash` without the share key, keeping anything else another surface routes on. */

@@ -1,6 +1,6 @@
 /**
  * Satellite passes place search: open a share link, search a place by name,
- * share it, and open a view=full link, proving the point reaches no WorldMonitor host.
+ * share it, and open an older `&view=full` link, proving the point reaches no WorldMonitor host.
  * The point is Palm Jumeirah, Dubai, whose fronds make a crop easy to check by eye.
  *
  * WM_VERIFY_ORBITAL_VIEWPORT=mobile drives a phone-sized viewport. The flat map is deck.gl on desktop
@@ -162,10 +162,11 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await page.goto(`${base}/dashboard${SHARE_FRAGMENT}&view=full`, { waitUntil: 'domcontentloaded' });
   log('opened', `${base}/dashboard${SHARE_FRAGMENT}&view=full`);
   await waitForBoot(page, { data: true });
-  await page.waitForFunction(() => document.querySelector('.orbital-watch-sheet')?.getAttribute('data-view') === 'full', null, { timeout: 60_000 });
+  // The full view is gone; an older link that asks for it opens the sheet and leaves no view in the URL.
+  await page.waitForFunction(() => document.querySelector('.orbital-watch-sheet') && !location.hash.includes('view=full'), null, { timeout: 60_000 });
   await settled(page);
   await basemapDrawn();
-  await shot('full-view-from-view-full-link');
+  await shot('sheet-from-old-view-full-link');
 
   const leaks = requests.filter((url) => !ARCHIVE_HOSTS.includes(new URL(url).hostname) && /25\.11[0-9]|55\.1[34][0-9]/.test(url));
   if (leaks.length) throw new Error(`point reached a non-archive host: ${leaks.join(', ')}`);

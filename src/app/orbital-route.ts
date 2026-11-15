@@ -4,23 +4,20 @@ import { takeOrbitalShareLink } from '@/app/orbital-share-link';
 import { buildOrbitalShareFragment, parseOrbitalShareFragment } from '@/utils/urlState';
 import { ORBITAL_EVIDENCE_EVENT } from '@/services/orbital/evidence-event';
 
-export type OrbitalRouteView = 'sheet' | 'full';
-
 export interface OrbitalRoute {
   point: GeoPoint;
-  view: OrbitalRouteView;
 }
 
-const ROUTE_RE = /^#?orbital=(-?\d{1,2}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)(?:&view=(full))?$/;
+const ROUTE_RE = /^#?orbital=(-?\d{1,2}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)(?:&view=full)?$/;
 
-/** Reads `#orbital=<lat>,<lon>[&view=full]`. */
+/** Reads `#orbital=<lat>,<lon>`, accepting the `&view=full` that older links carry. */
 export function parseOrbitalRoute(hash: string): OrbitalRoute | null {
   const match = ROUTE_RE.exec(hash);
   if (!match) return null;
   const lat = Number(match[1]);
   const lon = Number(match[2]);
   if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
-  return { point: { lat, lon }, view: match[3] === 'full' ? 'full' : 'sheet' };
+  return { point: { lat, lon } };
 }
 
 /**
