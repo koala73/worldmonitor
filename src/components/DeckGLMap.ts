@@ -7986,6 +7986,9 @@ export class DeckGLMap {
       return;
     }
     if (!this.hasAircraftViewportChanged()) return;
+    // Coverage is the viewport the request was made for. The map can move without
+    // a new request (the point lookup holds them), so the live view may differ by completion.
+    const requestCenter = this.maplibreMap.getCenter();
     const bounds = this.maplibreMap.getBounds();
     const sw = bounds.getSouthWest();
     const ne = bounds.getNorthEast();
@@ -7998,11 +8001,8 @@ export class DeckGLMap {
       if (seq !== this.aircraftFetchSeq) return; // discard stale response
       this.aircraftPositions = positions;
       this.onAircraftPositionsUpdate?.(positions);
-      const center = this.maplibreMap?.getCenter();
-      if (center) {
-        this.lastAircraftFetchCenter = [center.lng, center.lat];
-        this.lastAircraftFetchZoom = this.maplibreMap!.getZoom();
-      }
+      this.lastAircraftFetchCenter = [requestCenter.lng, requestCenter.lat];
+      this.lastAircraftFetchZoom = zoom;
       this.setLayerReady('flights', positions.length > 0);
       this.render();
     }).catch((err) => {

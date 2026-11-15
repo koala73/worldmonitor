@@ -274,6 +274,8 @@ describe('DeckGLMap viewport layers while the satellite pass lookup is open', ()
     await map.whenReady();
     const fake = fakeMaps[fakeMaps.length - 1]!;
     fake.emit('load');
+    // The constructor does not start the 120 s aircraft poll; the layer path does.
+    map.setLayers(layersOn(['satellites', 'bases', 'flights']));
     // Let the start-up fetches go out, then watch only what the lookup causes.
     fake.moveTo(10, 10, 5);
     await settle(2000);

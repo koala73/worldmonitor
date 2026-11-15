@@ -33,6 +33,7 @@ function createHarness() {
   const effects = [];
   const cancelable = () => Object.assign(() => {}, { cancel() {} });
   let zoom = 5;
+  let center = { lat: 0, lng: 0 };
   Object.assign(instance, {
     controlDisclosureCleanups: [],
     aircraftFetchSeq: 0,
@@ -45,7 +46,7 @@ function createHarness() {
         getSouthWest: () => ({ lat: -10, lng: -20 }),
         getNorthEast: () => ({ lat: 10, lng: 20 }),
       }),
-      getCenter: () => ({ lat: 0, lng: 0 }),
+      getCenter: () => ({ ...center }),
       remove() {},
     },
     hasAircraftViewportChanged: () => true,
@@ -68,7 +69,12 @@ function createHarness() {
     'stopDayNightTimer', 'stopWeatherRadar', 'stopLiveTankersLoop', 'detachMapLibreInteractionHandlers']) {
     instance[name] = () => {};
   }
-  return { instance, requests, effects, zoomOut: () => { zoom = 1; instance.fetchViewportAircraft(); } };
+  return {
+    instance, requests, effects,
+    zoomOut: () => { zoom = 1; instance.fetchViewportAircraft(); },
+    // A camera move that issues no request, as when the point lookup holds viewport requests.
+    moveWithoutFetch: (next, nextZoom) => { center = next; zoom = nextZoom; },
+  };
 }
 
 // The production method chains then().catch(); flush both continuations.
@@ -143,4 +149,14 @@ describe('DeckGL aircraft fetch state', () => {
       assert.deepEqual(effects, [['positions', positions], ['ready', 'flights', true], ['render']]);
     });
   }
+
+  it('records the viewport a response was requested for, not the one the map moved to', async () => {
+    const { instance, requests, moveWithoutFetch } = createHarness();
+    instance.fetchViewportAircraft();
+    moveWithoutFetch({ lat: 40, lng: 30 }, 7);
+    requests[0].resolve([{ icao24: 'before-move' }]);
+    await flushFetch();
+    assert.deepEqual(instance.lastAircraftFetchCenter, [0, 0]);
+    assert.equal(instance.lastAircraftFetchZoom, 5);
+  });
 });
