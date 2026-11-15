@@ -286,3 +286,63 @@ These are proposals only. None is applied, and every threshold in the brief stay
 - **P15c and AE12.** Ship B3's version 2 tally writer to `main`, then capture a third calibration fixture holding a fresh version 2 tally before any rerun.
 
 After these rulings, the next study needs new captures (for the unrest and strike episodes) and a fresh pre-registration of the changed rules. Re-running this grid against amended thresholds would be selecting rules from results.
+
+## Diagnostic addendum (2026-11-15, after the results)
+
+Everything in this section is post hoc. It was run on the same two captures after the results above were known, so it registers nothing and proves nothing about a future design. Its purpose is to tell the owner which rulings would change the outcome. Any design or rule taken from it must be confirmed on new captures under a fresh pre-registration.
+
+### Three corrections to the proposals above
+
+1. **The unrest anchor is not an unrest episode.** The selected KR week has a protest share of 1.81%. FR's ordinary week on the same capture has 2.96%, and was ineligible only because its current count was not above its own median. The selection rule takes the largest eligible week without requiring that any week be unusual. The OQ6 proposal above (a volume floor) does not fix this.
+
+   Proposed instead: rule the unrest anchor unavailable on these captures, as the strike anchor already is. Rebuild it from a recorded historical episode, using GDELT's archived event exports and the seeder's own day-rebuild code (`rebuildCountryEventsDay` in `scripts/_gdelt-country-events.mjs`).
+
+2. **The structural prior double-counts violence.** WGI PV.EST is itself a lagged measure of political violence. Adding it to the UCDP term stacks the same evidence twice, and puts ten war countries in one band above 95. That is the P5b failure.
+
+   Proposed instead: make the prior a member of the violence union, `P = b·max(0, 1.5 − PV)`, under the brief's own rule of deduplicating and never summing. The score becomes `z = a + union(P, strikes, UCDP, burden, GDELT conflict, OREF) + U + E`.
+
+3. **P1 and P3c inject fixed amounts.** Twenty-five deaths, or fifteen strike units, added to a country that already carries hundreds, move the score by less than the threshold. That is correct behaviour, and excluding scores of 95 and above does not cover it.
+
+   Proposed instead, in two parts:
+
+   - P1's violence injection is stated per capita, as OQ4 does for the war anchor. The runs below use 25 deaths at the median population of the 31 countries, which is 0.4845 per million.
+   - P1 and P3c count only cases where the injection raises the country's existing level in that channel by at least a stated fraction. The runs below use 25%; the owner sets the number before any rerun.
+
+### What the corrections change
+
+Each run drops P15b, measures P8a with a last-good snapshot for UCDP and GDELT, and excludes scores of 95 and above from P3c.
+
+| Run | Design and rules | Points | Pass all | Closest miss |
+|---|---|---|---|---|
+| A | additive prior; per-capita P1 | 38,922 | 0 | 23 points fail only P5b (12 to 15 quiet countries in one band) |
+| B | additive prior, b 0.4 to 1.2 | 1,512 | 0 | P5b fails at every point (ten war countries above 95) |
+| C | prior in the union; knee and C varied | 5,670 | 0 | P5b passes at 381 points; P1 and P3c fail everywhere |
+| C2 | as C, with the relative-increment rule for P1 and P3c | 5,670 | 0 | 4 points fail only P5b, by one or two countries |
+| E | as C2, finer grid | 67,068 | 3 | 547 points fail one property |
+
+Run E's grid: b 0.3 / 0.4 / 0.5 / 0.6 / 0.8; ks 0.03 / 0.04 / 0.05 / 0.06; ku 0.75 / 1 / 1.25 / 1.5; knee 0.1 / 0.3 / 1; w 0.5 / 0.75 / 1; kg 0.5 / 1 / 2; φ 0.02; (kl, fp) in (0, 0.02), (1, 0.01), (2, 0.02); ke 0 / 0.5; C 5 / 6 / 8 / 10; union merge; n0 200; ko 2; strike half-life 5 days. That is 51,840 combinations, of which 16,632 are anchor-feasible. Each is measured at `k + 1` values of `a`, with `k = max(1, min(4, floor(h/0.1)))`.
+
+Run E's failures per property, out of 67,068 points: P3c (amended) 63,771; P5b 63,393; P1 (amended) 48,962; AE9 44,712; P3b 25,560; P2 7,617; P5a 6,207; GPI 30.
+
+**Three points pass every amended must-pass property, and they are isolated.** They are three different combinations, with no two adjacent on the grid. All three use kg 2, kl 1 and ke 0. On the first of them:
+
+- GPI ρ is 0.800 and 0.819 (v14: 0.730 and 0.786).
+- P13a is 90.8% on both captures.
+- P12a passes (median 0.3, p99 4.7).
+- P4 and P12b still miss (P12b: 22.8 at four times the volume).
+- The worst P5b band holds exactly 7, the limit.
+
+This is not a design to build on. It shows the amended rule set is satisfiable, and that two properties now bind:
+
+- **P5b at the quiet end.** Seven to nine countries with no live evidence and similar priors sit within five points of each other. The passing points separate them with a GDELT weight of 2, which means small-count noise is doing the separating. The owner should decide whether P5b applies to countries whose live families are all empty.
+- **P3c's window.** The 4 to 6 day window is measured on the score, and the sigmoid and the union stretch the apparent half-life as a country nears saturation. Measuring the half-life on the latent strike term would test the decay the formula actually applies.
+
+GPI stops binding once the unrest anchor is removed: it fails at 30 of 67,068 points, against 38,516 of 38,808 in the registered main grid.
+
+### Revised list for owner ruling
+
+- Stand as proposed: OQ1, OQ2, OQ3, OQ4, OQ8 (the weight `w` is no longer pinned at 1; passing points use 0.5 and 0.75), OQ10, the P8a snapshot, and shipping B3's version 2 tally writer to `main`.
+- Replace the OQ6 proposal with correction 1.
+- Add corrections 2 and 3.
+- New questions: whether P5b covers countries with no live evidence, and whether P3c's half-life is measured on the latent term.
+- Unchanged: the P12b and R14/KTD-8 conflict.
