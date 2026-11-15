@@ -151,6 +151,8 @@ describe('notification settings water level alerts', () => {
     expect(container.textContent).toContain('Water level alerts');
     expect(container.querySelector('#usReservoirBelowPercent')?.getAttribute('aria-label')).toContain('percent of measured range');
     expect(container.querySelector('#usReservoirSearch')?.getAttribute('aria-label')).toBe('Add a reservoir');
+    expect(container.querySelector('#usReservoirAlerts')?.getAttribute('aria-label')).toBe('Water level alerts');
+    expect(container.querySelector('#usReservoirSeasonal')?.getAttribute('aria-label')).toBe('Drop beyond the seasonal baseline');
   });
 
   it('says the level is a dated satellite measurement', async () => {

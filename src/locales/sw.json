@@ -5714,16 +5714,16 @@
     },
     "reservoirAlert": {
       "title": "Onyo za kiwango cha maji",
-      "description": "Pokea onyo wakati kiwango cha maji cha hazini ya kijeshi kinachopimwa kwa lidar kipo chini. NASA inachapisha kila kupita kwa satelaiti karibu miezi miwili baada ya kupimwa, kwa hiyo kila onyo inatoa tarehe ya kupima.",
-      "scopeHint": "Chagua hazini hadi {{max}}. Onyo zinashughulikia hazini tu zilizoorodheshwa hapa.",
-      "searchPlaceholder": "Ongeza hazini kwa jina",
-      "searchLabel": "Ongeza hazini",
+      "description": "Pokea onyo wakati kiwango cha maji cha bwawa la kimkakati la kuhifadhi maji, kinachopimwa kwa lidar, kipo chini. NASA huchapisha kila njia ya satelaiti karibu miezi miwili baada ya kupimwa, kwa hiyo kila onyo hutoa tarehe ya kupimwa.",
+      "scopeHint": "Chagua hadi mabwawa {{max}} ya kuhifadhi maji. Maonyo yanahusu tu mabwawa yaliyoorodheshwa hapa.",
+      "searchPlaceholder": "Ongeza bwawa la kuhifadhi maji kwa jina",
+      "searchLabel": "Ongeza bwawa la kuhifadhi maji",
       "removeLabel": "Ondoa {{name}}",
       "thresholdLabel": "Kiwango cha kizingiti",
-      "thresholdHint": "Pokea onyo wakati kiwango cha maji kilichopimwa karibuni kiko chini ya asilimia hii ya eneo lililopimwa la hazini, ambapo 0 ni kiwango cha chini zaidi kilichopimwa na 100 ni kiwango cha juu zaidi. Acha tupu kwa kizingiti hakuna.",
+      "thresholdHint": "Pokea onyo wakati kiwango kilichopimwa karibuni kiko chini ya asilimia hii ya wigo uliopimwa wa bwawa hilo, ambapo 0 ni kiwango cha chini kabisa kilichopimwa na 100 ni cha juu kabisa. Acha wazi ikiwa hutaki kizingiti.",
       "thresholdInputLabel": "Kiwango cha kizingiti, asilimia ya eneo lililopimwa",
       "seasonalLabel": "Kushuka zaidi ya mstari wa msingi wa kimsimu",
-      "seasonalHint": "Pokea onyo wakati kiwango cha maji kilichopimwa karibuni kiko chini sana ya kile hazini hii kawaida hupima kwa wakati huu wa mwaka."
+      "seasonalHint": "Pokea onyo wakati kiwango kilichopimwa karibuni kiko chini sana ya kile ambacho bwawa hilo hupimwa kwa kawaida wakati huu wa mwaka."
     }
   }
 }

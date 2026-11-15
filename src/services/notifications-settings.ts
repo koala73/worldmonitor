@@ -714,7 +714,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 <div class="ai-flow-toggle-desc">${escapeHtml(t('settings.reservoirAlert.description'))}</div>
               </div>
               <label class="ai-flow-switch">
-                <input type="checkbox" id="usReservoirAlerts"${reservoirAlertOn ? ' checked' : ''}>
+                <input type="checkbox" id="usReservoirAlerts" aria-label="${escapeHtml(t('settings.reservoirAlert.title'))}"${reservoirAlertOn ? ' checked' : ''}>
                 <span class="ai-flow-slider"></span>
               </label>
             </div>
@@ -737,7 +737,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                   <div class="ai-flow-toggle-desc">${escapeHtml(t('settings.reservoirAlert.seasonalHint'))}</div>
                 </div>
                 <label class="ai-flow-switch">
-                  <input type="checkbox" id="usReservoirSeasonal"${reservoirSettings.seasonalDrop ? ' checked' : ''}>
+                  <input type="checkbox" id="usReservoirSeasonal" aria-label="${escapeHtml(t('settings.reservoirAlert.seasonalLabel'))}"${reservoirSettings.seasonalDrop ? ' checked' : ''}>
                   <span class="ai-flow-slider"></span>
                 </label>
               </div>
