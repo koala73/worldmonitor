@@ -5747,6 +5747,21 @@
         "5": "deconectare",
         "6": "ștergere cont"
       }
+    },
+    "reservoirAlert": {
+      "title": "Alertele pentru nivelul apei",
+      "description": "Primește avertisment când nivelul apei lidar al unui rezervor strategic este scăzut. NASA publică fiecare trecere satelitară aproximativ două luni după ce a fost măsurată, deci fiecare avertisment indică data măsurării.",
+      "scopeHint": "Alege până la {{max}} rezervoare. Alertele acoperă doar rezervoarele enumerate aici.",
+      "searchPlaceholder": "Adaugă un rezervor după nume",
+      "searchLabel": "Adaugă un rezervor",
+      "removeLabel": "Elimină {{name}}",
+      "thresholdLabel": "Prag de nivel",
+      "thresholdHint": "Avertizează când cel mai recent nivel măsurat este sub acest procent din intervalul măsurat al rezervorului, unde 0 este cel mai scăzut nivel măsurat și 100 cel mai ridicat. Lasă gol pentru niciun prag.",
+      "thresholdInputLabel": "Prag de nivel, procent din intervalul măsurat",
+      "seasonalLabel": "Scădere peste linia de bază sezonieră",
+      "seasonalHint": "Avertizează când cel mai recent nivel măsurat este mult sub ceea ce măsoară de obicei acel rezervor în această perioadă a anului.",
+      "quietNote": "Aceste alerte sosesc chiar și atunci când alertele în timp real sunt setate numai la critic. Orele liniștite le opresc.",
+      "quietNoteBatch": "Aceste alerte sosesc chiar și atunci când alertele în timp real sunt setate numai la critic. Orele liniștite le opresc, sau le rețin până la sfârșitul orelor liniștite dacă alegi Batch."
     }
   }
 }

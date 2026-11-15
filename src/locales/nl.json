@@ -5711,6 +5711,21 @@
         "5": "afmelden",
         "6": "account verwijderen"
       }
+    },
+    "reservoirAlert": {
+      "title": "Waarschuwingen voor waterstand",
+      "description": "Waarschuwing wanneer het lidar-waterpeil van een strategisch reservoir laag is. NASA publiceert elke satellietdoorgang ongeveer twee maanden nadat deze is gemeten, dus elke waarschuwing geeft de meetdatum aan.",
+      "scopeHint": "Kies tot {{max}} reservoirs. Waarschuwingen gelden alleen voor de reservoirs in deze lijst.",
+      "searchPlaceholder": "Voeg een reservoir toe op naam",
+      "searchLabel": "Voeg een reservoir toe",
+      "removeLabel": "Verwijder {{name}}",
+      "thresholdLabel": "Niveaudrempel",
+      "thresholdHint": "Waarschuwing wanneer het laatst gemeten niveau onder dit percentage van het eigen gemeten bereik van het reservoir ligt, waarbij 0 het laagste gemeten niveau is en 100 het hoogste. Laat leeg voor geen drempel.",
+      "thresholdInputLabel": "Niveaudrempel, percentage van gemeten bereik",
+      "seasonalLabel": "Daling onder de seizoensbasislijn",
+      "seasonalHint": "Waarschuwing wanneer het laatst gemeten niveau aanzienlijk lager is dan wat dat reservoir op dit moment van het jaar gewoonlijk meet.",
+      "quietNote": "Deze waarschuwingen komen binnen, ook als real-time waarschuwingen alleen op kritiek zijn ingesteld. Stille uren dempen ze.",
+      "quietNoteBatch": "Deze waarschuwingen komen binnen, ook als real-time waarschuwingen alleen op kritiek zijn ingesteld. Stille uren dempen ze, of houden ze tot het einde van de stille uren als je Batch kiest."
     }
   }
 }

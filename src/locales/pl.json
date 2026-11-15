@@ -5783,6 +5783,21 @@
         "5": "wyloguj się",
         "6": "usuń konto"
       }
+    },
+    "reservoirAlert": {
+      "title": "Alerty poziomu wody",
+      "description": "Alert gdy poziom wody w strategicznym zbiorniku mierzony lidarом jest niski. NASA publikuje każdy przejazd satelity około dwa miesiące po pomiarze, dlatego każdy alert zawiera datę pomiaru.",
+      "scopeHint": "Wybierz maksymalnie {{max}} zbiorników. Alerty obejmują tylko zbiorniki wymienione tutaj.",
+      "searchPlaceholder": "Dodaj zbiornik według nazwy",
+      "searchLabel": "Dodaj zbiornik",
+      "removeLabel": "Usuń {{name}}",
+      "thresholdLabel": "Próg poziomu",
+      "thresholdHint": "Alert gdy ostatni zmierzony poziom jest poniżej tego procentu zmierzonego zakresu zbiornika, gdzie 0 to najniższy zmierzony poziom a 100 najwyższy. Pozostaw puste jeśli brak progu.",
+      "thresholdInputLabel": "Próg poziomu, procent zmierzonego zakresu",
+      "seasonalLabel": "Spadek poza sezonową linię bazową",
+      "seasonalHint": "Alert gdy ostatni zmierzony poziom jest znacznie poniżej tego, co ten zbiornik zwykle mierzy w tym czasie roku.",
+      "quietNote": "Te alerty docierają nawet wtedy, gdy alerty w czasie rzeczywistym są ustawione tylko na krytyczne. Ciche godziny je wyciszają.",
+      "quietNoteBatch": "Te alerty docierają nawet wtedy, gdy alerty w czasie rzeczywistym są ustawione tylko na krytyczne. Ciche godziny je wyciszają albo, jeśli wybierzesz Batch, wstrzymują do końca cichych godzin."
     }
   }
 }

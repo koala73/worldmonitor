@@ -58,7 +58,7 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
       if (url.includes('/GET/relay%3Aentitlement')) return Response.json({ result: '1' });
       if (url.includes('/LLEN/')) return Response.json({ result: 1 });
       if (url.includes('/LRANGE/')) return Response.json({ result: [JSON.stringify(queued[0])] });
-      if (url.includes('/DEL/')) { heldDeleted = true; return Response.json({ result: 1 }); }
+      if (url.includes('/DEL/') || url.includes('/LREM/')) { heldDeleted = true; return Response.json({ result: 1 }); }
       if (url.includes('/SET/')) return Response.json({ result: 'OK' });
       throw new Error(`Unexpected transport: ${url}`);
     };
