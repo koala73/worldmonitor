@@ -5402,8 +5402,6 @@
       "dailyMosaic": "napi mozaik",
       "weatherFrame": "időjárási műholdkép",
       "change": "Hely módosítása",
-      "share": "Link másolása",
-      "shareCopied": "Link másolva",
       "showUtc": "UTC",
       "showLocal": "Helyi idő",
       "alert": "Értesítés minden nyitott áthaladás előtt a pont fölött, és minden új felhőmentes képnél.",

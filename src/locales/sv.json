@@ -5402,8 +5402,6 @@
       "dailyMosaic": "daglig mosaik",
       "weatherFrame": "väderram",
       "change": "Ändra plats",
-      "share": "Kopiera länk",
-      "shareCopied": "Länk kopierad",
       "showUtc": "UTC",
       "showLocal": "Lokal tid",
       "alert": "Meddela före varje öppen passage över punkten och vid varje ny molnfri bild.",
