@@ -96,7 +96,7 @@ export class ReservoirLevelsPanel extends Panel {
   private requestNextPasses(): void {
     if (!ORBITAL_WATCH_ENABLED || this.nextPassRequested) return;
     this.nextPassRequested = true;
-    void loadReservoirNextPasses(STRATEGIC_RESERVOIR_SITES).then((passes) => {
+    void loadReservoirNextPasses(STRATEGIC_RESERVOIR_SITES, { signal: this.signal }).then((passes) => {
       this.nextPassRequested = false;
       if (!passes) return;
       this.nextPasses = passes;

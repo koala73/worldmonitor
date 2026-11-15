@@ -1520,7 +1520,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.reservoirNextPassesInFlight) {
       this.reservoirNextPassesInFlight = true;
       // Lazy: the loader returns null unless ORBITAL_WATCH_ENABLED, and keeps orbit code out of the brief's chunk.
-      void import('@/services/climate/reservoir-context-loader').then(({ loadReservoirNextPasses }) => loadReservoirNextPasses(STRATEGIC_RESERVOIR_SITES)).then((passes) => {
+      const signal = this.signal;
+      void import('@/services/climate/reservoir-context-loader').then(({ loadReservoirNextPasses }) => loadReservoirNextPasses(STRATEGIC_RESERVOIR_SITES, { signal })).then((passes) => {
+        // An aborted wait resolves null for a country or panel that is gone, not an answer to store.
+        if (signal.aborted) return;
         const changed = passes !== this.reservoirNextPasses;
         this.reservoirNextPasses = passes;
         if (!changed || !passes || this.currentReservoirs() == null) return;

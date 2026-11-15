@@ -298,6 +298,7 @@ function weatherSourceUrl(raw: string | undefined): URL | null {
 export class MapPopup {
   private container: HTMLElement;
   private popup: HTMLElement | null = null;
+  private reservoirScan: AbortController | null = null;
   private onClose?: () => void;
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
@@ -808,6 +809,8 @@ export class MapPopup {
   };
 
   public hide(origin: OverlayCloseOrigin = 'control'): void {
+    this.reservoirScan?.abort();
+    this.reservoirScan = null;
     this.transitChart?.destroy();
     this.transitChart = null;
 
@@ -2361,7 +2364,9 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
     const locale = getLocale();
     if (nextPass) {
       const id = nextPass.dataset.wlNextPass!;
-      void loadReservoirNextPasses(STRATEGIC_RESERVOIR_SITES).then((passes) => {
+      this.reservoirScan?.abort();
+      const scan = this.reservoirScan = new AbortController();
+      void loadReservoirNextPasses(STRATEGIC_RESERVOIR_SITES, { signal: scan.signal }).then((passes) => {
         const value = nextPass.querySelector('.wl-next-pass-value');
         if (!value || !nextPass.isConnected) return;
         const pass = passes?.get(id);
