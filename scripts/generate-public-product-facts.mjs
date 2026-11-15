@@ -550,8 +550,8 @@ function replacePreviousPrices(source) {
 const ORBITAL_WATCH_DOCS_START = '{/* orbital-watch-pricing:start */}';
 const ORBITAL_WATCH_DOCS_END = '{/* orbital-watch-pricing:end */}';
 const ORBITAL_WATCH_DOCS_COPY = {
-  'docs/pricing.mdx': `- **Orbital Watch** — on Free, satellite passes over any point (looked up in your browser; the point is not sent to World Monitor) and the latest image and date on watched sites. Pro and Pro Business add imaging-window and site-change alerts and satellite passes and watched-site imagery over MCP; API Starter, API Business and Enterprise also get them over the REST API.`,
-  'docs/zh/pricing.mdx': `- **Orbital Watch** — Free 可查询任意地点的卫星过境（在浏览器中完成，地点不会发送到 World Monitor），并查看监测站点的最新影像及日期。Pro 和 Pro Business 另含成像窗口和站点变化提醒，并可通过 MCP 获取卫星过境和监测站点影像；API Starter、API Business 和 Enterprise 还可通过 REST API 获取。`,
+  'docs/pricing.mdx': `- **Orbital Watch** — on Free, satellite passes over any point (looked up in your browser; the point is not sent to World Monitor) and the latest image and date on watched sites. Pro and Pro Business add imaging-window alerts, plus satellite passes and watched-site imagery over MCP; API Starter, API Business and Enterprise also get them over the REST API.`,
+  'docs/zh/pricing.mdx': `- **Orbital Watch** — Free 可查询任意地点的卫星过境（在浏览器中完成，地点不会发送到 World Monitor），并查看监测站点的最新影像及日期。Pro 和 Pro Business 另含成像窗口提醒，并可通过 MCP 获取卫星过境和监测站点影像；API Starter、API Business 和 Enterprise 还可通过 REST API 获取。`,
 };
 
 /** The Orbital Watch plan bullet between the doc's markers, empty until launch (#10768). */

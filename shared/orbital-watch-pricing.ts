@@ -9,7 +9,8 @@ export const ORBITAL_WATCH_PRICING_PUBLISHED = false;
 
 /**
  * lookup: the browser-only point lookup and the public latest image on watched sites.
- * alerts-mcp: adds the Pro imaging-window and site-change alerts and the paid MCP tools.
+ * alerts-mcp: adds the Pro imaging-window alerts and the paid MCP tools. Site-change alerts
+ *   stay out of the copy while change scoring is in shadow (CHANGE_SHADOW, #10763).
  * alerts-mcp-api: also the premium REST paths, which need an API key.
  */
 export type OrbitalWatchAccess = 'lookup' | 'alerts-mcp' | 'alerts-mcp-api';
@@ -27,8 +28,8 @@ export const ORBITAL_WATCH_ACCESS: Readonly<Record<string, OrbitalWatchAccess>> 
 /** Product-facts wording, one line per access level. */
 export const ORBITAL_WATCH_PLAN_LINES: Readonly<Record<OrbitalWatchAccess, string>> = {
   lookup: 'Orbital Watch: satellite passes over any point, looked up in your browser; latest image and date on watched sites',
-  'alerts-mcp': 'Orbital Watch: imaging-window and site-change alerts; satellite passes and watched-site imagery over MCP',
-  'alerts-mcp-api': 'Orbital Watch: imaging-window and site-change alerts; satellite passes and watched-site imagery over MCP and the REST API',
+  'alerts-mcp': 'Orbital Watch: imaging-window alerts; satellite passes and watched-site imagery over MCP',
+  'alerts-mcp-api': 'Orbital Watch: imaging-window alerts; satellite passes and watched-site imagery over MCP and the REST API',
 };
 
 /** What a tier gets from Orbital Watch, or null while it is hidden or for an unknown tier. */

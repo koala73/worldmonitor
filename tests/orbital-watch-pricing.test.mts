@@ -8,6 +8,7 @@ import {
   orbitalWatchAccess,
 } from '../shared/orbital-watch-pricing.ts';
 import tiers from '../pro-test/src/generated/tiers.json' with { type: 'json' };
+import { CHANGE_SHADOW } from '../scripts/_orbital-change.mjs';
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -37,6 +38,16 @@ describe('Orbital Watch on the pricing page and in the product facts (#10761)', 
   it('claims no feature that has not shipped', () => {
     for (const line of Object.values(ORBITAL_WATCH_PLAN_LINES)) {
       assert.doesNotMatch(line, /before and after|own sites|team|report|bulk|export/i, line);
+    }
+  });
+
+  it('claims no site-change alert while change scoring is in shadow', () => {
+    // The relay drops orbital_site_change while CHANGE_SHADOW is true (scripts/lib/orbital-site-alerts.cjs).
+    if (!CHANGE_SHADOW) return;
+    const generator = read('scripts/generate-public-product-facts.mjs');
+    const docsCopy = generator.slice(generator.indexOf('const ORBITAL_WATCH_DOCS_COPY'), generator.indexOf('function withOrbitalWatchDocs'));
+    for (const text of [...Object.values(ORBITAL_WATCH_PLAN_LINES), docsCopy]) {
+      assert.doesNotMatch(text, /change alert|site-change|站点变化/i, text);
     }
   });
 
