@@ -2,6 +2,7 @@ import { createServer, type Server } from 'node:http';
 import { expect, test, type FrameLocator, type Page } from '@playwright/test';
 
 import { classifyPublicEmbedFrameRequest } from '../shared/embed-map-frame';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 const WORLD_TOPOLOGY = {
   type: 'Topology',
@@ -151,8 +152,7 @@ test.describe('public map embed', () => {
     expect(cdnAtlasRequests, 'map atlas must be self-hosted, not fetched from cdn.jsdelivr.net').toHaveLength(0);
 
     const screenshotPath = testInfo.outputPath('embed-direct.png');
-    await page.screenshot({ path: screenshotPath, fullPage: true });
-    await testInfo.attach('embed-direct', { path: screenshotPath, contentType: 'image/png' });
+    await evidenceScreenshot(page, { path: screenshotPath, fullPage: true }, { testInfo, name: 'embed-direct' });
   });
 
   test('loads inside a third-party iframe host page', async ({ page, baseURL, browser }, testInfo) => {
@@ -327,8 +327,7 @@ test.describe('public map embed', () => {
       }
 
       const screenshotPath = testInfo.outputPath('embed-iframe.png');
-      await page.screenshot({ path: screenshotPath, fullPage: true });
-      await testInfo.attach('embed-iframe', { path: screenshotPath, contentType: 'image/png' });
+      await evidenceScreenshot(page, { path: screenshotPath, fullPage: true }, { testInfo, name: 'embed-iframe' });
     } finally {
       await host.close();
     }

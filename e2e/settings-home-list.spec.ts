@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { devices, expect, test, type Page } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // Settings is one grouped list of sections. On a phone it opens on that list,
 // each row opens one page, and the header's back button returns to the list;
@@ -52,7 +53,7 @@ for (const width of [393, 360]) {
         await openSettingsFromMore(page, lang);
         const modal = page.locator('.unified-settings-modal');
         await expect(page.locator('[data-settings-home]')).toBeVisible();
-        await modal.screenshot({ path: testInfo.outputPath(`settings-home-${width}${lang ? '-ar' : ''}.png`) });
+        await evidenceScreenshot(modal, { path: testInfo.outputPath(`settings-home-${width}${lang ? '-ar' : ''}.png`) });
         expect(await page.locator('[data-settings-nav]').count(), 'the list has rows').toBeGreaterThan(8);
         expect(await rowsOutsideModal(page), 'rows cut off by the sheet edge').toEqual([]);
         const overflow = await modal.evaluate((el) => el.scrollWidth - el.clientWidth);
@@ -122,7 +123,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768
       await expect(page.locator('[data-settings-back]')).toBeHidden();
       const box = (await sheet.boundingBox())!;
       expect(box.width, 'the sheet is 960px wide or the viewport less its gutters').toBe(Math.min(960, viewport.width - 32));
-      await sheet.screenshot({ path: testInfo.outputPath(`settings-sidebar-${viewport.width}.png`) });
+      await evidenceScreenshot(sheet, { path: testInfo.outputPath(`settings-sidebar-${viewport.width}.png`) });
 
       for (const id of ['panels', 'sources', 'api-keys', 'about']) {
         await page.locator(`[data-settings-nav="${id}"]`).click();

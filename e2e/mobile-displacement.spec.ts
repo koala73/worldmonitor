@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { DisplacementEventsData, DisplacementFlow, InternalDisplacementData } from '../src/services/displacement';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 type Harness = {
   ready: boolean;
@@ -65,7 +66,7 @@ for (const width of [390, 1280]) {
       });
       await expect(page.locator('.displacement-route')).toHaveCount(2);
       await expect.poll(async () => (await page.locator('.displacement-unhcr').boundingBox())?.width ?? Infinity).toBeLessThanOrEqual(38);
-      await page.screenshot({ path: testInfo.outputPath(`displacement-${width}.png`) });
+      await evidenceScreenshot(page, { path: testInfo.outputPath(`displacement-${width}.png`) });
       await page.evaluate(() => (window as unknown as { __mobileMapIntegrationHarness: Harness }).__mobileMapIntegrationHarness.toggleCrossBorderLayer());
       await expect(page.locator('.displacement-marker, .displacement-route')).toHaveCount(0);
       await page.evaluate(() => (window as unknown as { __mobileMapIntegrationHarness: Harness }).__mobileMapIntegrationHarness.toggleCrossBorderLayer());
@@ -129,11 +130,11 @@ test.describe('Dashboard displacement data path', () => {
     await expect(page.locator('.map-popup')).toContainText('Controlled flood');
     await expect(page.locator('.map-popup')).toContainText('IDMC');
     await expect(page.locator('.map-popup .popup-body')).toBeInViewport({ ratio: 1 });
-    await page.screenshot({ path: testInfo.outputPath('dashboard-mobile-idmc.png') });
+    await evidenceScreenshot(page, { path: testInfo.outputPath('dashboard-mobile-idmc.png') });
     await page.locator('.map-popup .popup-close').tap();
     await page.reload();
     if (await page.locator('#mapSection').evaluate(el => el.classList.contains('collapsed'))) await page.locator('.map-collapse-btn').click();
     await expect(page.locator('.displacement-marker')).toHaveCount(4);
-    await page.screenshot({ path: testInfo.outputPath('dashboard-mobile-displacement.png') });
+    await evidenceScreenshot(page, { path: testInfo.outputPath('dashboard-mobile-displacement.png') });
   });
 });

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 const base = 'https://webcams.windy.com/webcams/public/embed/player';
 const fixture = { webcamId: '123', title: 'Saved camera', lat: 25, lng: 55, category: 'city', country: 'AE', playerUrl: `${base}?webcamId=123&playerType=month&interactive=true`, active: true, pinnedAt: 1 };
@@ -34,7 +35,7 @@ test('filters restored and imported records before frame navigation under shippe
   await expect.poll(() => navigations.length).toBeGreaterThanOrEqual(3);
   await expect(page.frameLocator('.pinned-webcam-iframe').first().locator('body')).toContainText('Windy player test response');
   expect(await page.evaluate(() => Reflect.get(window, '__webcamCanary'))).toBeUndefined();
-  await page.screenshot({ path: testInfo.outputPath('validated-pins-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('validated-pins-desktop.png'), fullPage: true });
   await page.getByTitle('Unpin', { exact: true }).nth(2).press('Enter');
   await expect(frames).toHaveCount(2);
   await page.getByTitle('Hide stream', { exact: true }).nth(0).click();
@@ -45,7 +46,7 @@ test('filters restored and imported records before frame navigation under shippe
   await expect(frames).toHaveCount(1);
   await expect(frames).toHaveAttribute('src', `${base}/123/day`);
   await expect(page.frameLocator('.pinned-webcam-iframe').locator('body')).toContainText('Windy player test response');
-  await page.screenshot({ path: testInfo.outputPath('imported-fallback-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('imported-fallback-desktop.png'), fullPage: true });
   expect(navigations.every(url => new URL(url).origin === 'https://webcams.windy.com')).toBe(true);
 });
 
@@ -60,7 +61,7 @@ test('bounds imported pins and shows the pin limit without losing saved cameras'
   await expect(page.locator('.wm-toast')).toHaveText('You can pin up to 32 webcams');
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('wm-pinned-webcams')!).length)).toBe(32);
   expect(await page.evaluate(() => localStorage.getItem('wm-font-scale'))).toBe('1.2');
-  await page.screenshot({ path: testInfo.outputPath('pin-limit-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('pin-limit-desktop.png'), fullPage: true });
 });
 
 test('normalizes malformed imported webcam blobs while retaining unrelated settings', async ({ page }) => {

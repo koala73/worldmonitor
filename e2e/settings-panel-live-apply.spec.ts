@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 /**
  * The Settings modal must apply a panel toggle to the LIVE dashboard on Save.
@@ -152,6 +153,5 @@ test('diagnostic traffic methods render as text', async ({ page }, testInfo) => 
   await expect(page.locator('#trafficCount')).toHaveText('(3)');
   await page.locator('#diagnosticsSection').scrollIntoViewIfNeeded();
   const path = testInfo.outputPath('diagnostic-method-text.png');
-  await page.screenshot({ path });
-  await testInfo.attach('synthetic native response - literal method cells', { path, contentType: 'image/png' });
+  await evidenceScreenshot(page, { path }, { testInfo, name: 'synthetic native response - literal method cells' });
 });

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 test('UKMTO Settings search uses the translated panel label', async ({ page }, testInfo) => {
   await seedAnonymousDashboard(page, 'full', {
@@ -16,7 +17,7 @@ test('UKMTO Settings search uses the translated panel label', async ({ page }, t
   const toggle = page.locator('#usPanelToggles [data-panel="ukmto-incidents"]');
   await expect(toggle).toBeVisible();
   await expect(toggle).toContainText('Incidents UKMTO');
-  await page.locator('#us-page-panels').screenshot({ path: testInfo.outputPath('ukmto-french-settings.png') });
+  await evidenceScreenshot(page.locator('#us-page-panels'), { path: testInfo.outputPath('ukmto-french-settings.png') });
 });
 
 for (const state of ['fresh', 'stale', 'empty', 'unavailable'] as const) {
@@ -56,11 +57,11 @@ for (const state of ['fresh', 'stale', 'empty', 'unavailable'] as const) {
       await expect(panel).toContainText(state === 'empty' ? 'No incidents' : 'unavailable');
     }
     await panel.scrollIntoViewIfNeeded();
-    await panel.screenshot({ path: testInfo.outputPath(`ukmto-${state}-desktop.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`ukmto-${state}-desktop.png`) });
     await page.setViewportSize({ width: 390, height: 844 });
     await panel.scrollIntoViewIfNeeded();
     await expect(panel).toBeVisible();
-    await panel.screenshot({ path: testInfo.outputPath(`ukmto-${state}-mobile.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`ukmto-${state}-mobile.png`) });
   });
 }
 
@@ -135,7 +136,7 @@ test('UKMTO map status distinguishes empty and unavailable with the report panel
   await expect(status).toContainText('No incidents');
   await page.evaluate(() => (window as any).__ukmtoMap.setUkmtoSnapshot({ incidents: [], fetchedAt: 0, dataAvailable: false, stale: false }));
   await expect(status).toContainText('unavailable');
-  await page.locator('#ukmto-map-proof').screenshot({ path: testInfo.outputPath('ukmto-map-unavailable.png') });
+  await evidenceScreenshot(page.locator('#ukmto-map-proof'), { path: testInfo.outputPath('ukmto-map-unavailable.png') });
   await page.evaluate(() => (window as any).__ukmtoMap.setLayers({ ais: false }));
   await expect(status).toHaveCount(0);
   await page.evaluate(() => (window as any).__ukmtoMap.setLayers({ ais: true }));

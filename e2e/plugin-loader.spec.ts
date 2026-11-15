@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { buildPluginShell } from '../api/mcp/ui/_plugin-loader';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 const origin = 'https://www.worldmonitor.app';
 const headers = { 'Access-Control-Allow-Origin': '*' };
@@ -81,12 +82,12 @@ for (const failure of ['document', 'module', 'style'] as const) {
     });
     const frame = await mount(page, buildPluginShell({ origin, entry: 'country.html', root: 'countryRoot' }));
     await expect(frame.getByRole('status')).toContainText('could not load');
-    if (failure === 'module') await page.screenshot({ path: info.outputPath('interface-failure.png') });
+    if (failure === 'module') await evidenceScreenshot(page, { path: info.outputPath('interface-failure.png') });
     failed = false;
     await frame.getByRole('button', { name: 'Retry interface' }).click();
     await expect(frame.locator('main')).toHaveText('Recovered current panel');
     expect(documentReads).toBe(2);
-    if (failure === 'module') await page.screenshot({ path: info.outputPath('interface-recovered.png') });
+    if (failure === 'module') await evidenceScreenshot(page, { path: info.outputPath('interface-recovered.png') });
   });
 }
 
@@ -164,13 +165,13 @@ test('host-injected about:blank document recovers without navigating away', asyn
   await injected.evaluate(html => { document.open(); document.write(html); document.close(); }, buildPluginShell({ origin, entry: 'country.html', root: 'countryRoot' }));
   const frame = page.frameLocator('iframe');
   await expect(frame.getByRole('status')).toContainText('could not load');
-  await page.screenshot({ path: info.outputPath('injected-interface-failure.png') });
+  await evidenceScreenshot(page, { path: info.outputPath('injected-interface-failure.png') });
   failed = false;
   await frame.getByRole('button', { name: 'Retry interface' }).click();
   await expect(frame.locator('main')).toHaveText('Recovered injected panel');
   expect(documentReads).toBe(2);
   expect(requests.some(url => url.includes('/mcp'))).toBe(false);
-  await page.screenshot({ path: info.outputPath('injected-interface-recovered.png') });
+  await evidenceScreenshot(page, { path: info.outputPath('injected-interface-recovered.png') });
 });
 
 const PANEL_INITIALIZE = {

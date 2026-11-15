@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // Real panel renderers and shared CSS, with deterministic RPC fixtures. This
 // isolates list scrolling from provider availability and the dashboard's map.
@@ -141,7 +142,7 @@ for (const width of [1440, 390]) {
       await page.mouse.wheel(0, 200);
       await expect.poll(() => content.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
       if (['climate-news', 'internet-disruptions', 'wsb-ticker-scanner'].includes(id)) {
-        await panel.screenshot({ path: testInfo.outputPath(`${id}-${width}.png`) });
+        await evidenceScreenshot(panel, { path: testInfo.outputPath(`${id}-${width}.png`) });
       }
     }
     // A narrow sidebar forces horizontal overflow even when the table fits a phone.
