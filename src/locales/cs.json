@@ -5521,6 +5521,17 @@
     },
     "target": {
       "acquired": "POŘÍZENO {{time}} · {{resolution}}"
+    },
+    "popup": {
+      "title": "Satelitní snímky",
+      "loading": "Prohledávání satelitních archivů…",
+      "latest": "Nejnovější snímek",
+      "nextPass": "Další přelet",
+      "noImage": "Žádný nedávný snímek nenalezen",
+      "noPass": "Během 72 hodin není plánován žádný přelet",
+      "openEvidence": "Otevřít důkazy",
+      "imageAlt": "Satelitní pohled z {{source}}",
+      "unavailable": "Satelitní snímky se nepodařilo načíst."
     }
   },
   "settings": {
