@@ -15,6 +15,7 @@ import { declareOverlay } from '@/utils/open-modal';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
 import { iso2ToCountryName } from '@/utils/country-codes';
+import { createShareLinkButton, resetShareLinkButton } from './share-link-button';
 import type { SensorCategory } from '../../shared/orbital/sensor-profiles.js';
 import { ORBIT_ELEMENTS_MAX_AGE_DAYS } from '../../shared/orbital/pass-geometry.js';
 import { EVENT_RADIUS_KM, type EventSourceId, type LiveSourceId } from '@/services/orbital/point-context';
@@ -613,7 +614,8 @@ export class OrbitalWatchPage {
     this.place = h('h2', { id: titleId, className: 'ies-place cdp-country-name' });
     this.coords = h('span', { className: 'ies-coords' });
     this.zone = h('button', { type: 'button', className: 'ies-chip', dataset: { action: 'zone' } });
-    this.shareButton = h('button', { type: 'button', className: 'ies-chip', dataset: { action: 'share' } });
+    this.shareButton = createShareLinkButton(t('components.countryBrief.shareLink'));
+    this.shareButton.dataset.action = 'share';
     this.handle = h('button', { type: 'button', className: 'ies-handle', dataset: { action: 'height' } });
     this.kicker = h('span', { className: 'ies-kicker' });
     this.changeButton = h('button', { type: 'button', className: 'ies-chip', dataset: { action: 'change' } });
@@ -719,7 +721,7 @@ export class OrbitalWatchPage {
     this.placeZone = point ? placeTimeZone(point) : null;
     this.applyZone();
     this.shareButton.hidden = !this.callbacks.onShare || !point;
-    this.shareButton.textContent = t('orbitalWatch.sheet.share');
+    resetShareLinkButton(this.shareButton, t('components.countryBrief.shareLink'));
     // Fixed labels are set on every open, so a language chosen since the last one shows.
     this.sheet.setAttribute('aria-label', t('orbitalWatch.sheet.heading'));
     this.kicker.textContent = t('orbitalWatch.sheet.heading');

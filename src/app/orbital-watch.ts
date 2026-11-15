@@ -12,6 +12,7 @@ import { OrbitalTimeline, type OrbitalTimelineInput, type PointContextState } fr
 import { formatAcquiredLine, formatTargetCoordinates } from '@/components/orbital-target-label';
 import { loadPointContext } from '@/services/orbital/point-context';
 import { OrbitalPlaceTools } from '@/components/OrbitalPlaceTools';
+import { confirmShareLinkCopied } from '@/components/share-link-button';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 import { DASHBOARD_SITE_ORIGIN } from '@/config/dashboard-reference-links';
 import { isDesktopRuntime } from '@/config/desktop-runtime';
@@ -53,7 +54,6 @@ let targetDrawn = false;
 const MINUTE_MS = 60_000;
 /** Recomputed passes can shift by a minute when the orbit elements were refreshed in between. */
 const LINKED_PASS_TOLERANCE_MS = 2 * MINUTE_MS;
-const SHARE_LABEL_RESET_MS = 2000;
 
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
 
@@ -291,17 +291,9 @@ function shareLink(): string | null {
   return `${base}#${buildOrbitalShareFragment(point, selectedPass)}`;
 }
 
-let shareReset: ReturnType<typeof setTimeout> | null = null;
-
 async function share(button: HTMLElement): Promise<void> {
-  const copied = await tools!.share();
-  if (!copied) {
-    showSearchRow(true);
-    return;
-  }
-  button.textContent = t('orbitalWatch.sheet.shareCopied');
-  if (shareReset) clearTimeout(shareReset);
-  shareReset = setTimeout(() => { button.textContent = t('orbitalWatch.sheet.share'); }, SHARE_LABEL_RESET_MS);
+  if (await tools!.share()) confirmShareLinkCopied(button, t('orbitalWatch.share.copied'));
+  else showSearchRow(true);
 }
 
 /** The search row sits under the place header; CHANGE opens it and a pick closes it. */

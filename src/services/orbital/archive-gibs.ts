@@ -1,7 +1,8 @@
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
-import { requestArchive, type ArchiveFailure, type ArchiveId, type ArchiveRequestOptions, type ArchiveResult } from './archive-result';
+import { defaultFetch, requestArchive, type ArchiveFailure, type ArchiveId, type ArchiveReply, type ArchiveRequestOptions, type ArchiveResult, type FetchLike } from './archive-result';
 import { cropBox, gibsSnapshotUrl, type CropBox } from './crop-url';
 import type { PassWindow } from './pass-query';
+import { BoundedCache, shareWork, type SharedWork } from './request-cache';
 
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
@@ -161,6 +162,44 @@ export function timesWithin(ranges: TimeRange[], fromMs: number, toMs: number): 
 const startOfUtcDay = (ms: number) => Math.floor(ms / DAY_MS) * DAY_MS;
 const isoDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
+function fetchDomain(url: string, options: ArchiveRequestOptions): Promise<ArchiveReply<TimeRange[]>> {
+  return requestArchive('nasa-gibs', url, {}, options, async (response) => {
+    const domain = /<Domain>([^<]*)<\/Domain>/.exec(await response.text());
+    if (!domain) throw new TypeError('no time domain');
+    return parseTimeDomain(domain[1]!);
+  });
+}
+
+/** A day still being processed can gain data; a day before today rarely changes. */
+const DOMAIN_FRESH_MS = 5 * 60_000;
+const PAST_DOMAIN_FRESH_MS = 6 * HOUR_MS;
+const domainCaches = new WeakMap<FetchLike, BoundedCache<SharedWork<ArchiveReply<TimeRange[]>>>>();
+
+/**
+ * Daily time domains by layer and days, shared across fire dots and lookups in
+ * this tab. The URL names only the layer and the days, never a point. Failures
+ * are never kept, and one consumer aborting never cancels another's request.
+ */
+async function dailyDomain(url: string, options: ArchiveRequestOptions): Promise<ArchiveReply<TimeRange[]>> {
+  const transport = options.fetch ?? defaultFetch;
+  let cache = domainCaches.get(transport);
+  if (!cache) domainCaches.set(transport, cache = new BoundedCache(64));
+  const nowMs = Date.now();
+  let work = cache.get(url, nowMs);
+  if (!work || work.abandoned) {
+    const { fetch, timeoutMs } = options;
+    const created = shareWork((signal) => fetchDomain(url, { fetch, timeoutMs, signal }));
+    const lastDay = Date.parse(url.slice(-14, -4));
+    const past = Number.isFinite(lastDay) && lastDay + DAY_MS <= startOfUtcDay(nowMs);
+    const owner = cache;
+    owner.set(url, created, nowMs + (past ? PAST_DOMAIN_FRESH_MS : DOMAIN_FRESH_MS));
+    const forget = () => owner.delete(url, created);
+    created.done.then((reply) => { if (!reply.ok) forget(); }, forget);
+    work = created;
+  }
+  return work.join(options.signal, () => ({ ok: false as const, failure: { archive: 'nasa-gibs' as const, reason: 'aborted' as const } }));
+}
+
 /** Asks GIBS which times a layer has, for the whole globe, so the request carries no point. */
 export type LayerTimes =
   | { ok: true; times: number[]; stepMs: number | null }
@@ -169,11 +208,7 @@ export type LayerTimes =
 async function layerTimes(layer: GibsLayer, fromMs: number, toMs: number, daily: boolean, options: ArchiveRequestOptions): Promise<LayerTimes> {
   const fmt = daily ? isoDate : isoSecond;
   const url = `${GIBS_DOMAINS_URL}/${layer.layer}/default/${layer.matrixSet}/all/${fmt(fromMs)}--${fmt(toMs)}.xml`;
-  const reply = await requestArchive('nasa-gibs', url, {}, options, async (response) => {
-    const domain = /<Domain>([^<]*)<\/Domain>/.exec(await response.text());
-    if (!domain) throw new TypeError('no time domain');
-    return parseTimeDomain(domain[1]!);
-  });
+  const reply = daily ? await dailyDomain(url, options) : await fetchDomain(url, options);
   if (!reply.ok) return { ok: false, failure: { ...reply.failure, source: layer.source } };
   const ranges = reply.value;
   return { ok: true, times: timesWithin(ranges, daily ? startOfUtcDay(fromMs) : fromMs, toMs), stepMs: ranges[ranges.length - 1]?.stepMs ?? null };

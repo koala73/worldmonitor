@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
-import { findPasses } from '../shared/orbital/pass-geometry.js';
+import { findPasses, ORBIT_ELEMENTS_MAX_AGE_DAYS } from '../shared/orbital/pass-geometry.js';
 import { SENSOR_PROFILES, matchSensorProfile } from '../shared/orbital/sensor-profiles.js';
 import { OPTICAL_MIN_SUN_ELEVATION_DEG } from '../shared/orbital/tiers.js';
 import { composeWatchedSites } from '../shared/watched-sites.ts';
 import {
+  COVERAGE_RENEW_MS,
+  coverageAt,
   imagingProfileFor,
   orbitElementsFromTle,
   sitesCoveredBySatellite,
@@ -153,6 +155,75 @@ describe('satellite site coverage', () => {
   it('exports no reverse site-to-satellites lookup until a site sheet links to it', async () => {
     const mod = await import('../src/services/orbital/satellite-site-coverage.ts');
     assert.equal('satellitesCoveringSite' in mod, false);
+  });
+});
+
+describe('#10758 item 5: the coverage cache', () => {
+  const MINUTE = 60_000;
+  // A copy of the registry is a different cache owner, so it always scans fresh.
+  const fresh = (nowMs: number) => sitesCoveredBySatellite({ tle: sentinel2a, sites: [...sites], nowMs });
+
+  // Every scan builds its own site objects and a read only filters passes, so a shared
+  // site object proves the answer came from memory rather than from another scan.
+  const firstSite = (coverage: Awaited<ReturnType<typeof fresh>>) => {
+    assert.equal(coverage.status, 'ok');
+    if (coverage.status !== 'ok') throw new Error('unreachable');
+    assert.ok(coverage.sites.length > 0, 'the window covers at least one site');
+    return coverage.sites[0]!.site;
+  };
+
+  it('serves an identical scan from memory, equal to a fresh scan', async () => {
+    const owner = [...sites];
+    const cached = await sitesCoveredBySatellite({ tle: sentinel2a, sites: owner, nowMs: EPOCH_MS });
+    const again = await sitesCoveredBySatellite({ tle: sentinel2a, sites: owner, nowMs: EPOCH_MS });
+    assert.equal(firstSite(again), firstSite(cached), 'the second read reuses the first scan');
+    assert.deepEqual(again, cached);
+    const scanned = await fresh(EPOCH_MS);
+    assert.notEqual(firstSite(scanned), firstSite(cached), 'another registry owner scans on its own');
+    assert.deepEqual(cached, scanned);
+  });
+
+  it('scans again once the element set has grown too old, as a fresh scan does', async () => {
+    const owner = [...sites];
+    const limitMs = orbitElementsFromTle(sentinel2a)!.epochMs + ORBIT_ELEMENTS_MAX_AGE_DAYS * DAY;
+    const inside = await sitesCoveredBySatellite({ tle: sentinel2a, sites: owner, nowMs: limitMs - 30 * MINUTE });
+    assert.equal(inside.status, 'ok');
+    const past = await sitesCoveredBySatellite({ tle: sentinel2a, sites: owner, nowMs: limitMs + MINUTE });
+    assert.equal(past.status, 'too-old');
+    assert.deepEqual(past, await fresh(limitMs + MINUTE));
+  });
+
+  it('drops passes already behind on read, matching the fresh scan of the same window', async () => {
+    await sitesCoveredBySatellite({ tle: sentinel2a, sites, nowMs: EPOCH_MS });
+    const readAt = EPOCH_MS + 40 * MINUTE;
+    const cached = await sitesCoveredBySatellite({ tle: sentinel2a, sites, nowMs: readAt });
+    assert.equal(cached.status, 'ok');
+    if (cached.status !== 'ok') return;
+    assert.equal(cached.windowStartMs, EPOCH_MS, 'the window has not slid far enough to rescan');
+    assert.ok(cached.sites.every((entry) => entry.passes.every((p) => p.timeMs > readAt)));
+    assert.deepEqual(cached, coverageAt(await fresh(EPOCH_MS), readAt));
+  });
+
+  it('rescans once the window has slid, equal to a fresh scan from then', async () => {
+    const owner = [...sites];
+    const slid = EPOCH_MS + COVERAGE_RENEW_MS;
+    const first = await sitesCoveredBySatellite({ tle: sentinel2a, sites: owner, nowMs: EPOCH_MS });
+    const before = await sitesCoveredBySatellite({ tle: sentinel2a, sites: owner, nowMs: slid - 1 });
+    assert.equal(before.status === 'ok' && before.windowStartMs, EPOCH_MS, 'just before the slide the first scan still answers');
+    assert.equal(firstSite(before), firstSite(first));
+    const rescanned = await sitesCoveredBySatellite({ tle: sentinel2a, sites: owner, nowMs: slid });
+    assert.equal(rescanned.status === 'ok' && rescanned.windowStartMs, slid);
+    assert.notEqual(firstSite(rescanned), firstSite(first), 'the slid window is a new scan');
+    assert.deepEqual(rescanned, await fresh(slid));
+  });
+
+  it('rescans a new element set for the same satellite', async () => {
+    const renewed = { ...sentinel2a, line1: sentinel2a.line1.replace('26317.50000000', '26317.45000000') };
+    const before = await sitesCoveredBySatellite({ tle: sentinel2a, sites, nowMs: EPOCH_MS });
+    const after = await sitesCoveredBySatellite({ tle: renewed, sites, nowMs: EPOCH_MS });
+    assert.deepEqual(after, await sitesCoveredBySatellite({ tle: renewed, sites: [...sites], nowMs: EPOCH_MS }));
+    assert.equal(before.status, after.status);
+    assert.notDeepEqual(after, before, 'a moved epoch moves the passes');
   });
 });
 
