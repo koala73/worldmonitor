@@ -5360,7 +5360,7 @@
       "placeholder": "مكان أو 25.11, 55.14",
       "submit": "بحث",
       "locate": "موقعي",
-      "hint": "الإحداثيات وموقعك لا تغادر هذا الجهاز أبداً. أسماء الأماكن المكتوبة تُرسل إلى WorldMonitor و OpenStreetMap Nominatim.",
+      "hint": "الإحداثيات المكتوبة وموقعك لا يُرسلان أبداً إلى WorldMonitor. أسماء الأماكن المكتوبة تُرسل إلى WorldMonitor و OpenStreetMap Nominatim.",
       "results": "أماكن",
       "searching": "جارٍ البحث…",
       "tooShort": "أدخل حرفين على الأقل، أو إحداثيات مثل 25.11, 55.14.",
@@ -5527,9 +5527,9 @@
       "unavailable": "بيانات المرور غير متاحة. حاول مرة أخرى لاحقاً."
     },
     "privacy": {
-      "line": "النقطة الدقيقة تبقى على هذا الجهاز.",
+      "line": "نقطتك تذهب فقط إلى أرشيفات الصور.",
       "more": "التفاصيل",
-      "body": "يتم حساب المسارات على هذا الجهاز. للعثور على المشاهد، يتلقى Earth Search و Planetary Computer و NASA GIBS و EUMETSAT صندوق تحديد حول النقطة، وليس النقطة نفسها. يتم إرسال اسم المكان المكتوب إلى WorldMonitor و OpenStreetMap Nominatim للبحث عنه. تحتفظ الروابط المشاركة برقمين عشريين (0.01°)."
+      "body": "يتم حساب المسارات على هذا الجهاز. للعثور على الصور، يرسل متصفحك النقطة مباشرة إلى Earth Search و Planetary Computer و NASA GIBS و EUMETSAT؛ لا يتلقاها WorldMonitor. يذهب اسم المكان المكتوب إلى WorldMonitor و OpenStreetMap Nominatim للعثور عليه. الروابط المشاركة تحتفظ برقمين عشريين (0.01°)."
     },
     "sources": {
       "heading": "المصادر ({{count}})",

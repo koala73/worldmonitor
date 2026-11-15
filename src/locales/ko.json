@@ -5220,7 +5220,7 @@
       "placeholder": "장소 또는 25.11, 55.14",
       "submit": "검색",
       "locate": "내 위치",
-      "hint": "좌표와 현재 위치는 이 기기를 벗어나지 않습니다. 입력한 장소명은 WorldMonitor와 OpenStreetMap Nominatim으로 전송됩니다.",
+      "hint": "입력한 좌표와 현재 위치는 WorldMonitor로 전송되지 않습니다. 입력한 장소명은 WorldMonitor와 OpenStreetMap Nominatim으로 전송됩니다.",
       "results": "장소",
       "searching": "검색 중…",
       "tooShort": "최소 2글자를 입력하거나 25.11, 55.14 형식의 좌표를 입력하세요.",
@@ -5362,9 +5362,9 @@
       "unavailable": "통과 데이터를 사용할 수 없습니다. 나중에 다시 시도하세요."
     },
     "privacy": {
-      "line": "정확한 지점은 이 기기를 벗어나지 않습니다.",
+      "line": "귀하의 포인트는 이미지 아카이브에만 전송됩니다.",
       "more": "세부정보",
-      "body": "궤도 계산은 이 기기에서 수행됩니다. 장면을 찾기 위해 Earth Search, Planetary Computer, NASA GIBS, EUMETSAT에는 위치 주변의 경계 상자만 전송되며, 정확한 위치는 절대 전송되지 않습니다. 입력된 지명은 WorldMonitor와 OpenStreetMap Nominatim으로 전송되어 위치를 찾습니다. 공유 링크는 소수점 두 자리(0.01°)로 유지됩니다."
+      "body": "패스는 이 기기에서 계산됩니다. 이미지를 찾기 위해 브라우저가 포인트를 Earth Search, Planetary Computer, NASA GIBS, EUMETSAT으로 직접 전송합니다. WorldMonitor는 이를 수신하지 않습니다. 입력한 지명은 WorldMonitor와 OpenStreetMap Nominatim으로 전송되어 검색됩니다. 공유 링크는 소수점 2자리(0.01°)로 유지됩니다."
     },
     "sources": {
       "heading": "소스 ({{count}})",

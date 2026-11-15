@@ -5248,7 +5248,7 @@
       "placeholder": "Plaats of 25.11, 55.14",
       "submit": "Zoeken",
       "locate": "Mijn locatie",
-      "hint": "Coördinaten en je locatie verlaten dit apparaat nooit. Ingetypte plaatsnamen gaan naar WorldMonitor en OpenStreetMap Nominatim.",
+      "hint": "Getypte coördinaten en je locatie worden nooit naar WorldMonitor verzonden. Getypte plaatsnamen gaan naar WorldMonitor en OpenStreetMap Nominatim.",
       "results": "Plaatsen",
       "searching": "Zoeken…",
       "tooShort": "Voer minstens twee tekens in, of coördinaten zoals 25.11, 55.14.",
@@ -5395,9 +5395,9 @@
       "unavailable": "Passagedata niet beschikbaar. Probeer later opnieuw."
     },
     "privacy": {
-      "line": "De exacte locatie blijft op dit apparaat.",
+      "line": "Je punt gaat alleen naar de beeldarchieven.",
       "more": "Details",
-      "body": "Passes worden op dit apparaat berekend. Om scènes te vinden, ontvangen Earth Search, Planetary Computer, NASA GIBS en EUMETSAT een begrenzingsvak rond de locatie, nooit de locatie zelf. Een getypte plaatsnaam gaat naar WorldMonitor en OpenStreetMap Nominatim om te worden gevonden. Gedeelde links behouden twee decimalen (0,01°)."
+      "body": "Passages worden op dit apparaat berekend. Om beelden te vinden, stuurt je browser het punt rechtstreeks naar Earth Search, Planetary Computer, NASA GIBS en EUMETSAT; WorldMonitor ontvangt het niet. Een getypte plaatsnaam gaat naar WorldMonitor en OpenStreetMap Nominatim om te worden gevonden. Gedeelde links behouden twee decimalen (0,01°)."
     },
     "sources": {
       "heading": "Bronnen ({{count}})",

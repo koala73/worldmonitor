@@ -5220,7 +5220,7 @@
       "placeholder": "地点或 25.11, 55.14",
       "submit": "搜索",
       "locate": "我的位置",
-      "hint": "坐标和您的位置永不离开本设备。键入的地点名称会发送到 WorldMonitor 和 OpenStreetMap Nominatim。",
+      "hint": "输入的坐标和您的位置永远不会发送到 WorldMonitor。输入的地名会发送到 WorldMonitor 和 OpenStreetMap Nominatim。",
       "results": "地点",
       "searching": "正在搜索…",
       "tooShort": "输入至少两个字符，或输入坐标如 25.11, 55.14。",
@@ -5362,9 +5362,9 @@
       "unavailable": "过境数据不可用。请稍后重试。"
     },
     "privacy": {
-      "line": "精确位置不会离开此设备。",
+      "line": "您的点位仅发送到图像档案库。",
       "more": "详情",
-      "body": "过境计算在此设备上执行。查找场景时，Earth Search、Planetary Computer、NASA GIBS 和 EUMETSAT 仅接收该点周围的边界框，从不接收精确位置。键入的地名将发送至 WorldMonitor 和 OpenStreetMap Nominatim 进行定位。共享链接保留两位小数（0.01°）。"
+      "body": "轨道过境时间在本设备上计算。为了查找图像，您的浏览器将该点位直接发送到 Earth Search、Planetary Computer、NASA GIBS 和 EUMETSAT；WorldMonitor 不会收到它。输入的地名将发送到 WorldMonitor 和 OpenStreetMap Nominatim 进行定位。共享链接保留两位小数（0.01°）。"
     },
     "sources": {
       "heading": "数据源 ({{count}})",

@@ -5304,7 +5304,7 @@
       "placeholder": "Miejsce lub 25.11, 55.14",
       "submit": "Szukaj",
       "locate": "Moja lokalizacja",
-      "hint": "Współrzędne i Twoja lokalizacja nigdy nie opuszczają tego urządzenia. Wpisane nazwy miejsc trafiają do WorldMonitor i OpenStreetMap Nominatim.",
+      "hint": "Wpisane współrzędne i Twoja lokalizacja nigdy nie są wysyłane do WorldMonitor. Wpisane nazwy miejsc trafiają do WorldMonitor i OpenStreetMap Nominatim.",
       "results": "Miejsca",
       "searching": "Wyszukiwanie…",
       "tooShort": "Wpisz co najmniej dwa znaki lub współrzędne takie jak 25.11, 55.14.",
@@ -5461,9 +5461,9 @@
       "unavailable": "Dane przejść są niedostępne. Spróbuj ponownie później."
     },
     "privacy": {
-      "line": "Dokładny punkt zostaje na tym urządzeniu.",
+      "line": "Twój punkt trafia tylko do archiwów obrazów.",
       "more": "Szczegóły",
-      "body": "Przejścia satelitów są obliczane na tym urządzeniu. Aby znaleźć sceny, Earth Search, Planetary Computer, NASA GIBS i EUMETSAT otrzymują pole ograniczające wokół punktu, nigdy sam punkt. Wpisana nazwa miejsca trafia do WorldMonitor i OpenStreetMap Nominatim w celu lokalizacji. Udostępniane linki zawierają dwa miejsca po przecinku (0,01°)."
+      "body": "Przejścia są obliczane na tym urządzeniu. Aby znaleźć obrazy, Twoja przeglądarka wysyła punkt bezpośrednio do Earth Search, Planetary Computer, NASA GIBS i EUMETSAT; WorldMonitor go nie otrzymuje. Wpisana nazwa miejsca trafia do WorldMonitor i OpenStreetMap Nominatim w celu jej zlokalizowania. Udostępniane linki zachowują dwa miejsca dziesiętne (0,01°)."
     },
     "sources": {
       "heading": "Źródła ({{count}})",

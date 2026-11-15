@@ -5248,7 +5248,7 @@
       "placeholder": "Ort oder 25.11, 55.14",
       "submit": "Suchen",
       "locate": "Mein Standort",
-      "hint": "Koordinaten und Ihr Standort verlassen dieses Gerät nie. Eingegebene Ortsnamen werden an WorldMonitor und OpenStreetMap Nominatim übermittelt.",
+      "hint": "Eingegebene Koordinaten und Ihr Standort werden nie an WorldMonitor gesendet. Eingegebene Ortsnamen werden an WorldMonitor und OpenStreetMap Nominatim übermittelt.",
       "results": "Orte",
       "searching": "Suche läuft…",
       "tooShort": "Mindestens zwei Zeichen eingeben oder Koordinaten wie 25.11, 55.14.",
@@ -5395,9 +5395,9 @@
       "unavailable": "Überflugdaten sind nicht verfügbar. Versuchen Sie es später erneut."
     },
     "privacy": {
-      "line": "Der genaue Punkt bleibt auf diesem Gerät.",
+      "line": "Ihr Punkt geht nur an die Bildarchive.",
       "more": "Details",
-      "body": "Überflüge werden auf diesem Gerät berechnet. Um Szenen zu finden, erhalten Earth Search, Planetary Computer, NASA GIBS und EUMETSAT einen Begrenzungsrahmen um den Punkt, niemals den Punkt selbst. Ein eingegebener Ortsname wird an WorldMonitor und OpenStreetMap Nominatim gesendet, um ihn zu finden. Geteilte Links behalten zwei Dezimalstellen (0,01°)."
+      "body": "Überflüge werden auf diesem Gerät berechnet. Um Bilder zu finden, sendet Ihr Browser den Punkt direkt an Earth Search, Planetary Computer, NASA GIBS und EUMETSAT; WorldMonitor erhält ihn nicht. Ein eingegebener Ortsname wird an WorldMonitor und OpenStreetMap Nominatim gesendet, um ihn zu finden. Geteilte Links behalten zwei Dezimalstellen (0,01°)."
     },
     "sources": {
       "heading": "Quellen ({{count}})",

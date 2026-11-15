@@ -5276,7 +5276,7 @@
       "placeholder": "Lieu ou 25.11, 55.14",
       "submit": "Rechercher",
       "locate": "Ma position",
-      "hint": "Les coordonnées et votre position ne quittent jamais cet appareil. Les noms de lieux saisis sont envoyés à WorldMonitor et OpenStreetMap Nominatim.",
+      "hint": "Les coordonnées saisies et votre localisation ne sont jamais envoyées à WorldMonitor. Les noms de lieux saisis sont envoyés à WorldMonitor et OpenStreetMap Nominatim.",
       "results": "Lieux",
       "searching": "Recherche…",
       "tooShort": "Entrez au moins deux caractères, ou des coordonnées comme 25.11, 55.14.",
@@ -5428,9 +5428,9 @@
       "unavailable": "Les données de passage ne sont pas disponibles. Réessayez plus tard."
     },
     "privacy": {
-      "line": "Le point exact reste sur cet appareil.",
+      "line": "Votre point ne va que dans les archives d'images.",
       "more": "Détails",
-      "body": "Les passages sont calculés sur cet appareil. Pour trouver des scènes, Earth Search, Planetary Computer, NASA GIBS et EUMETSAT reçoivent une boîte englobante autour du point, jamais le point lui-même. Un nom de lieu saisi est envoyé à WorldMonitor et OpenStreetMap Nominatim pour être localisé. Les liens partagés conservent deux décimales (0,01°)."
+      "body": "Les passes sont calculées sur cet appareil. Pour trouver des images, votre navigateur envoie le point directement à Earth Search, Planetary Computer, NASA GIBS et EUMETSAT ; WorldMonitor ne le reçoit pas. Un nom de lieu saisi va à WorldMonitor et à OpenStreetMap Nominatim pour être localisé. Les liens partagés conservent deux décimales (0,01°)."
     },
     "sources": {
       "heading": "Sources ({{count}})",

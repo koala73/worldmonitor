@@ -5248,7 +5248,7 @@
       "placeholder": "Plats eller 25.11, 55.14",
       "submit": "Sök",
       "locate": "Min plats",
-      "hint": "Koordinater och din plats lämnar aldrig denna enhet. Skrivna platsnamn går till WorldMonitor och OpenStreetMap Nominatim.",
+      "hint": "Skrivna koordinater och din plats skickas aldrig till WorldMonitor. Skrivna ortnamn skickas till WorldMonitor och OpenStreetMap Nominatim.",
       "results": "Platser",
       "searching": "Söker…",
       "tooShort": "Ange minst två tecken, eller koordinater som 25.11, 55.14.",
@@ -5395,9 +5395,9 @@
       "unavailable": "Passagedata är inte tillgängliga. Försök igen senare."
     },
     "privacy": {
-      "line": "Den exakta punkten stannar på denna enhet.",
+      "line": "Din punkt skickas endast till bildarkiven.",
       "more": "Detaljer",
-      "body": "Passager beräknas på denna enhet. För att hitta scener får Earth Search, Planetary Computer, NASA GIBS och EUMETSAT en begränsningsruta runt punkten, aldrig själva punkten. Ett inskrivet ortnamn skickas till WorldMonitor och OpenStreetMap Nominatim för att hittas. Delade länkar behåller två decimaler (0,01°)."
+      "body": "Passager beräknas på denna enhet. För att hitta bilder skickar din webbläsare punkten direkt till Earth Search, Planetary Computer, NASA GIBS och EUMETSAT; WorldMonitor tar inte emot den. Ett inskrivet ortnamn skickas till WorldMonitor och OpenStreetMap Nominatim för att hittas. Delade länkar behåller två decimaler (0,01°)."
     },
     "sources": {
       "heading": "Källor ({{count}})",

@@ -5248,7 +5248,7 @@
       "placeholder": "Yer veya 25.11, 55.14",
       "submit": "Ara",
       "locate": "Konumum",
-      "hint": "Koordinatlar ve konumunuz bu cihazdan hiçbir zaman ayrılmaz. Yazılan yer adları WorldMonitor ve OpenStreetMap Nominatim'e gider.",
+      "hint": "Yazılan koordinatlar ve konumunuz asla WorldMonitor'a gönderilmez. Yazılan yer adları WorldMonitor ve OpenStreetMap Nominatim'e gönderilir.",
       "results": "Yerler",
       "searching": "Aranıyor…",
       "tooShort": "En az iki karakter girin veya 25.11, 55.14 gibi koordinatlar girin.",
@@ -5395,9 +5395,9 @@
       "unavailable": "Geçiş verisi kullanılamıyor. Daha sonra tekrar deneyin."
     },
     "privacy": {
-      "line": "Kesin konum bu cihazda kalır.",
+      "line": "Noktanız yalnızca görüntü arşivlerine gider.",
       "more": "Ayrıntılar",
-      "body": "Geçişler bu cihazda hesaplanır. Sahneleri bulmak için Earth Search, Planetary Computer, NASA GIBS ve EUMETSAT noktanın etrafındaki sınır kutusunu alır, asla noktanın kendisini almaz. Yazılan bir yer adı WorldMonitor ve OpenStreetMap Nominatim'e gönderilerek bulunur. Paylaşılan bağlantılar iki ondalık basamak içerir (0,01°)."
+      "body": "Geçişler bu cihazda hesaplanır. Görüntüleri bulmak için tarayıcınız noktayı doğrudan Earth Search, Planetary Computer, NASA GIBS ve EUMETSAT'a gönderir; WorldMonitor bunu almaz. Yazılan bir yer adı, bulunması için WorldMonitor ve OpenStreetMap Nominatim'e gider. Paylaşılan bağlantılar iki ondalık basamak içerir (0,01°)."
     },
     "sources": {
       "heading": "Kaynaklar ({{count}})",

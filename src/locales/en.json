@@ -4744,9 +4744,9 @@
       "unavailable": "Pass data is unavailable. Try again later."
     },
     "privacy": {
-      "line": "The exact point stays on this device.",
+      "line": "Your point goes only to the image archives.",
       "more": "Details",
-      "body": "Passes are computed on this device. To find scenes, Earth Search, Planetary Computer, NASA GIBS and EUMETSAT receive a bounding box around the point, never the point itself. A typed place name goes to WorldMonitor and OpenStreetMap Nominatim to be found. Shared links keep two decimals (0.01°)."
+      "body": "Passes are computed on this device. To find images, your browser sends the point straight to Earth Search, Planetary Computer, NASA GIBS and EUMETSAT; WorldMonitor does not receive it. A typed place name goes to WorldMonitor and OpenStreetMap Nominatim to be found. Shared links keep two decimals (0.01°)."
     },
     "sources": {
       "heading": "Sources ({{count}})",
@@ -4804,7 +4804,7 @@
       "placeholder": "Place or 25.11, 55.14",
       "submit": "Search",
       "locate": "My location",
-      "hint": "Coordinates and your location never leave this device. Typed place names go to WorldMonitor and OpenStreetMap Nominatim.",
+      "hint": "Typed coordinates and your location are never sent to WorldMonitor. Typed place names go to WorldMonitor and OpenStreetMap Nominatim.",
       "results": "Places",
       "searching": "Searching…",
       "tooShort": "Enter at least two characters, or coordinates like 25.11, 55.14.",

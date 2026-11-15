@@ -5220,7 +5220,7 @@
       "placeholder": "場所または 25.11, 55.14",
       "submit": "検索",
       "locate": "現在地",
-      "hint": "座標と現在地はこのデバイスから送信されません。入力した場所名はWorldMonitorとOpenStreetMap Nominatimに送信されます。",
+      "hint": "入力した座標と現在地はWorldMonitorに送信されません。入力した地名はWorldMonitorとOpenStreetMap Nominatimに送信されます。",
       "results": "場所",
       "searching": "検索中…",
       "tooShort": "2文字以上入力するか、25.11, 55.14のような座標を入力してください。",
@@ -5362,9 +5362,9 @@
       "unavailable": "パスデータは利用不可です。後でもう一度お試しください。"
     },
     "privacy": {
-      "line": "正確な地点はこのデバイスから出ません。",
+      "line": "ご指定のポイントはイメージアーカイブのみに送信されます。",
       "more": "詳細",
-      "body": "衛星パスはこのデバイスで計算されます。シーンを検索する際、Earth Search、Planetary Computer、NASA GIBS、EUMETSATには、正確な位置情報ではなく、その周辺を示す範囲情報のみが送信されます。入力された地名はWorldMonitorとOpenStreetMap Nominatimに送信されて検索されます。共有リンクは小数点以下2桁（0.01°）で保持されます。"
+      "body": "パスはこのデバイス上で計算されます。イメージを検索するとき、ブラウザはそのポイントを Earth Search、Planetary Computer、NASA GIBS、EUMETSAT に直接送信します。WorldMonitor は受信しません。入力された地名は WorldMonitor と OpenStreetMap Nominatim に送信され、検索されます。共有リンクは小数点以下2桁（0.01°）を保持します。"
     },
     "sources": {
       "heading": "ソース ({{count}})",

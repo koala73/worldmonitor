@@ -5220,7 +5220,7 @@
       "placeholder": "Địa điểm hoặc 25.11, 55.14",
       "submit": "Tìm",
       "locate": "Vị trí của tôi",
-      "hint": "Tọa độ và vị trí của bạn không bao giờ rời khỏi thiết bị này. Tên địa điểm được nhập sẽ được gửi đến WorldMonitor và OpenStreetMap Nominatim.",
+      "hint": "Các tọa độ được nhập và vị trí của bạn không bao giờ được gửi đến WorldMonitor. Các tên địa điểm được nhập sẽ được gửi đến WorldMonitor và OpenStreetMap Nominatim.",
       "results": "Địa điểm",
       "searching": "Đang tìm…",
       "tooShort": "Nhập ít nhất hai ký tự hoặc tọa độ như 25.11, 55.14.",
@@ -5362,9 +5362,9 @@
       "unavailable": "Dữ liệu lượt bay qua không khả dụng. Vui lòng thử lại sau."
     },
     "privacy": {
-      "line": "Vị trí chính xác vẫn nằm trên thiết bị này.",
+      "line": "Điểm của bạn chỉ được gửi đến kho lưu trữ ảnh.",
       "more": "Chi tiết",
-      "body": "Các lượt bay qua được tính trên thiết bị này. Để tìm ảnh, Earth Search, Planetary Computer, NASA GIBS và EUMETSAT chỉ nhận một khung giới hạn quanh điểm, không bao giờ nhận chính điểm đó. Tên địa điểm bạn nhập được gửi đến WorldMonitor và OpenStreetMap Nominatim để tìm kiếm. Liên kết chia sẻ giữ hai chữ số thập phân (0,01°)."
+      "body": "Các lượt bay qua được tính trên thiết bị này. Để tìm ảnh, trình duyệt của bạn gửi điểm trực tiếp đến Earth Search, Planetary Computer, NASA GIBS và EUMETSAT; WorldMonitor không nhận được điểm này. Tên địa điểm bạn nhập được gửi đến WorldMonitor và OpenStreetMap Nominatim để tìm kiếm. Liên kết chia sẻ giữ hai chữ số thập phân (0,01°)."
     },
     "sources": {
       "heading": "Nguồn ({{count}})",

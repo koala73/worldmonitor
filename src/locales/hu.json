@@ -5248,7 +5248,7 @@
       "placeholder": "Hely vagy 25.11, 55.14",
       "submit": "Keresés",
       "locate": "Saját hely",
-      "hint": "A koordináták és az Ön tartózkodási helye soha nem hagyják el ezt az eszközt. A begépelt helynevek a WorldMonitor és az OpenStreetMap Nominatim szolgáltatáshoz kerülnek.",
+      "hint": "A beírt koordináták és az Ön tartózkodási helye soha nem kerülnek a WorldMonitorhoz. A beírt helynevek a WorldMonitorhoz és az OpenStreetMap Nominatimhez kerülnek.",
       "results": "Helyek",
       "searching": "Keresés…",
       "tooShort": "Adjon meg legalább két karaktert, vagy koordinátákat, például 25.11, 55.14.",
@@ -5395,9 +5395,9 @@
       "unavailable": "Áthaladási adatok nem érhetők el. Próbálja később."
     },
     "privacy": {
-      "line": "A pontos hely ezen az eszközön marad.",
+      "line": "A pont csak a képarchívumokba kerül.",
       "more": "Részletek",
-      "body": "Az áthaladások ezen az eszközön kerülnek kiszámításra. A jelenetek megtalálásához az Earth Search, Planetary Computer, NASA GIBS és EUMETSAT a pont körüli határoló dobozt kapja meg, soha nem a pontot magát. A beírt helynév a WorldMonitor és az OpenStreetMap Nominatim felé kerül továbbításra a megtaláláshoz. A megosztott linkek két tizedesjegyet őriznek meg (0,01°)."
+      "body": "Az áthaladásokat ez az eszköz számítja ki. A képek megkereséséhez a böngésző közvetlenül az Earth Search, a Planetary Computer, a NASA GIBS és az EUMETSAT felé küldi a pontot; a WorldMonitor nem kapja meg. A beírt helynév a WorldMonitorhoz és az OpenStreetMap Nominatimhez kerül a megtalálásához. A megosztott hivatkozások két tizedesjegyet őriznek meg (0,01°)."
     },
     "sources": {
       "heading": "Források ({{count}})",

@@ -5286,7 +5286,7 @@
       "placeholder": "Mjesto ili 25.11, 55.14",
       "submit": "Traži",
       "locate": "Moja lokacija",
-      "hint": "Koordinate i vaša lokacija nikada ne napuštaju ovaj uređaj. Upisana imena mjesta šalju se servisima WorldMonitor i OpenStreetMap Nominatim.",
+      "hint": "Upisane koordinate i vaša lokacija nikada se ne šalju na WorldMonitor. Upisana imena mjesta šalju se na WorldMonitor i OpenStreetMap Nominatim.",
       "results": "Mjesta",
       "searching": "Traženje…",
       "tooShort": "Unesite najmanje dva znaka ili koordinate poput 25.11, 55.14.",
@@ -5438,9 +5438,9 @@
       "unavailable": "Podaci o prolascima nisu dostupni. Pokušajte kasnije."
     },
     "privacy": {
-      "line": "Točna lokacija ostaje na ovom uređaju.",
+      "line": "Vaša točka ide samo u arhive slika.",
       "more": "Pojedinosti",
-      "body": "Prolasci se izračunavaju na ovom uređaju. Za pronalaženje scena Earth Search, Planetary Computer, NASA GIBS i EUMETSAT primaju okvir oko točke, nikad samu točku. Upisani naziv mjesta šalje se WorldMonitoru i OpenStreetMap Nominatimu radi pronalaženja. Dijeljene poveznice čuvaju dva decimalna mjesta (0,01°)."
+      "body": "Prolasci se izračunavaju na ovom uređaju. Za pronalaženje slika vaš preglednik šalje točku izravno servisima Earth Search, Planetary Computer, NASA GIBS i EUMETSAT; WorldMonitor je ne prima. Upisani naziv mjesta šalje se servisima WorldMonitor i OpenStreetMap Nominatim radi pronalaženja. Dijeljene poveznice čuvaju dva decimalna mjesta (0,01°)."
     },
     "sources": {
       "heading": "Izvori ({{count}})",

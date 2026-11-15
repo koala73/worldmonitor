@@ -5248,7 +5248,7 @@
       "placeholder": "Mahali au 25.11, 55.14",
       "submit": "Tafuta",
       "locate": "Eneo langu",
-      "hint": "Viwianishi na eneo lako kamwe haviondoki kwenye kifaa hiki. Majina ya mahali yaliyoandikwa hutumwa kwa WorldMonitor na OpenStreetMap Nominatim.",
+      "hint": "Viwianishi unavyoandika na eneo lako havitumwi kamwe kwa WorldMonitor. Majina ya mahali unayoandika hutumwa kwa WorldMonitor na OpenStreetMap Nominatim.",
       "results": "Maeneo",
       "searching": "Inatafuta…",
       "tooShort": "Ingiza angalau herufi mbili, au viwianishi kama 25.11, 55.14.",
@@ -5395,9 +5395,9 @@
       "unavailable": "Data ya kupita haipatikani. Jaribu tena baadaye."
     },
     "privacy": {
-      "line": "Mahali halisi hubaki kwenye kifaa hiki.",
+      "line": "Eneo lako hutumwa kwa hifadhi za picha tu.",
       "more": "Maelezo",
-      "body": "Kupita kwa satelaiti kunakokotolewa kwenye kifaa hiki. Ili kupata picha, Earth Search, Planetary Computer, NASA GIBS na EUMETSAT hupokea kisanduku kinachozunguka mahali hapo, kamwe si mahali hapo hasa. Jina la mahali unaloandika hutumwa kwa WorldMonitor na OpenStreetMap Nominatim ili lipatikane. Viungo vinavyoshirikiwa huhifadhi desimali mbili (0.01°)."
+      "body": "Kupita kwa satelaiti kunakokotolewa kwenye kifaa hiki. Ili kupata picha, kivinjari chako hutuma eneo hilo moja kwa moja kwa Earth Search, Planetary Computer, NASA GIBS na EUMETSAT; WorldMonitor haipokei. Jina la mahali unaloandika hutumwa kwa WorldMonitor na OpenStreetMap Nominatim ili lipatikane. Viungo vinavyoshirikiwa huhifadhi desimali mbili (0.01°)."
     },
     "sources": {
       "heading": "Vyanzo ({{count}})",
