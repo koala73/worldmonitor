@@ -381,10 +381,14 @@ about 70 MB per 15 min), so a 75 s freeze fills about 6 MB of the 20 MB
 1 per WAL write to 3.6/s against 9.6 writes/s, which shows the collector's
 pooled sessions picked up the setting without a restart.
 
-The cost: if Postgres crashes, the last 600 ms (3 × `wal_writer_delay`) of
-acknowledged events can be lost. The database stays consistent. Before the
-change, every freeze lost the pageviews and events sent during it, because
-the browser client does not retry an append-only event after a 5xx (see the
+The cost: if Postgres crashes, acknowledged events that were not yet flushed
+are lost. The database stays consistent. While the WAL writer makes progress
+that is at most the last 600 ms (3 × `wal_writer_delay`). During a storage
+freeze nothing is flushed, so a crash inside a 75 s freeze can lose up to
+75 s of acknowledged events. Before the change, each freeze already lost
+writes. Requests that timed out waiting for a pool connection never reached
+the database, and the browser client does not retry an append-only event
+after a 5xx, because a 500 can also follow a write that committed (see the
 write-path contract).
 
 Judge it on the next 10:16–10:24 UTC window: the sampler should log no
