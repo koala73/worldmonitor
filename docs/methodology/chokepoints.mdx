@@ -146,8 +146,8 @@ previous up-to-90 days. That happens when the baseline is missing (fewer than
 300 published days in that year, or the baseline query failed), or when the DWT
 mean fails step 3 (below 1, or recent tonnage unreported) and the tanker count
 mean is missing or below 0.5. The fallback window (`history.slice(-97, -7)`)
-uses DWT when at least half of its days have DWT coverage, otherwise tanker
-counts.
+uses DWT when at least half of its days have DWT coverage and the recent week
+reports tonnage under the same rule as step 3, otherwise tanker counts.
 
 Live flow is eligible only when the PortWatch series has at least 40 total days
 of history. After that gate, the seeder still requires at least three recent
