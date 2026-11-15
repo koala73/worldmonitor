@@ -69,7 +69,7 @@ describe('coverageNodes', () => {
     const base = { status: 'ok' as const, sensor, windowStartMs: NOW, windowEndMs: NOW + 86_400_000, orbitAgeDays: 0.4 };
     expect(coverageNodes({ ...base, sites: [{ site: site('a', 'Alpha'), passes: [pass(5)] }] }, NOW)[0]!.textContent)
       .toBe('1 site inside the Sentinel-2 footprint');
-    expect(text(coverageNodes({ ...base, sites: [] }, NOW))).toBe('No watched site inside its footprint within 24 h.');
+    expect(text(coverageNodes({ ...base, sites: [] }, NOW))).toBe('No monitored site inside its footprint within 24 h.');
   });
 
   it('gives each non-listing status its own note, amber only for stale orbit elements', () => {

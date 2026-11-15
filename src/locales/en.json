@@ -4771,7 +4771,7 @@
       "radar": "radar"
     },
     "satelliteSites": {
-      "heading": "Watched sites · next {{hours}} h",
+      "heading": "Monitored sites · next {{hours}} h",
       "projecting": "Projecting passes…",
       "notLoaded": "Click the satellite again; its orbit elements are not loaded.",
       "failed": "Click the satellite again to retry; the projection failed.",
@@ -4783,7 +4783,7 @@
       "badElements": "Orbit elements are unreadable.",
       "tooOld_one": "Orbit elements are {{count}} day old, too old to project passes.",
       "tooOld_other": "Orbit elements are {{count}} days old, too old to project passes.",
-      "none": "No watched site inside its footprint within {{hours}} h.",
+      "none": "No monitored site inside its footprint within {{hours}} h.",
       "count_one": "{{count}} site inside the {{family}} footprint",
       "count_other": "{{count}} sites inside the {{family}} footprint",
       "utc": "{{time}} UTC",
