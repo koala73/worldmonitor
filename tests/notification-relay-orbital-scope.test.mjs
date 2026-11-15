@@ -155,7 +155,7 @@ describe('watched-site alert rule matching', () => {
     assert.deepEqual(await deliveries([rule('user-1', { eventTypes: ['orbital_site_change'] })], rss), ['chat-user-1']);
   });
 
-  it('quiet hours hold back both alert types under the default critical-only override', async () => {
+  it('quiet hours silence both alert types under the default critical-only override', async () => {
     const hour = new Date().getUTCHours();
     const quiet = { quietHoursEnabled: true, quietHoursStart: hour, quietHoursEnd: (hour + 2) % 24, quietHoursTimezone: 'UTC' };
     for (const eventType of ['orbital_site_change', 'orbital_imaging_window']) {

@@ -134,7 +134,12 @@ describe('notification settings watched-site alerts', () => {
     const container = await mount(rule());
     toggle(container, 'usOrbitalWindowAlerts', true);
     expect(container.querySelector<HTMLElement>('#usOrbitalScope')?.hidden).toBe(false);
-    expect(container.querySelector('#usOrbitalCriticalNote')?.textContent).toContain('arrive even when realtime alerts are critical-only');
+    // The relay suppresses these medium/high events in quiet hours under the
+    // default critical_only override and holds them only under batch_on_wake.
+    expect(container.querySelector('#usOrbitalCriticalNote')?.textContent).toBe(
+      'Alerts for these sites arrive even when realtime alerts are set to critical only. '
+      + 'Quiet hours silence them, or hold them until quiet hours end if you choose Batch.',
+    );
     await vi.waitFor(() => {
       expect(container.querySelectorAll('#usOrbitalSiteOptions option').length).toBeGreaterThan(100);
     });
