@@ -97,15 +97,17 @@ export const statisticsQuery = (sceneId) => new URLSearchParams({
 
 /**
  * One scene's reading from a titiler statistics response, or null when the scene images too little of
- * the box to say anything about it.
+ * the box to say anything about it. A response without the histogram throws, so the scene is retried.
  */
 export function readingFromStatistics(response, areaKm2) {
   const band = response?.properties?.statistics?.vv_b1;
   const validPercent = Number(band?.valid_percent);
   const validPixels = Number(band?.valid_pixels);
   const waterPixels = Number(band?.histogram?.[0]?.[0]);
-  if (!Number.isFinite(validPercent) || !(validPixels > 0) || !Number.isFinite(waterPixels)) return null;
-  if (validPercent < MIN_VALID_PERCENT) return null;
+  if (!Number.isFinite(validPercent) || !Number.isFinite(validPixels) || validPixels < 0 || !Number.isFinite(waterPixels)) {
+    throw new Error('statistics response lacks the vv_b1 histogram');
+  }
+  if (validPercent < MIN_VALID_PERCENT || validPixels === 0) return null;
   const share = Math.min(1, Math.max(0, waterPixels / validPixels));
   return {
     waterPercent: Math.round(share * 1000) / 10,

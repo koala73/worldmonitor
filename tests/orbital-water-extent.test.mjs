@@ -65,7 +65,7 @@ describe('reservoir water extent: pure helpers', () => {
   it('reads the water share of a scene that images the box and drops a slice edge', () => {
     assert.deepEqual(readingFromStatistics(stats(98.92, 777962, 558831), 1422.5), { waterPercent: 71.8, waterKm2: 1021.8, validPercent: 98.9 });
     assert.equal(readingFromStatistics(stats(MIN_VALID_PERCENT - 0.1, 1000, 10), 100), null);
-    assert.equal(readingFromStatistics({ properties: {} }, 100), null);
+    assert.throws(() => readingFromStatistics({ properties: {} }, 100), /lacks the vv_b1 histogram/);
     assert.equal(readingFromStatistics(stats(100, 0, 0), 100), null);
   });
 
@@ -134,6 +134,14 @@ describe('reservoir water extent: producer', () => {
     assert.deepEqual(kariba.observations.map((o) => o.sceneId), ['s1'], 'kept the earlier reading');
     assert.equal(kariba.searchedThrough, first.data.reservoirs['reservoir:kariba'].searchedThrough, 'search window not advanced');
     assert.deepEqual(calls.filter((c) => c[0] === 'statistics').map((c) => c[1]), ['s2', 's2'], 's1 is not requested again');
+  });
+
+  it('retries a scene whose statistics response is malformed instead of marking it partial', async () => {
+    const { data } = await run({ search: () => ({ features: [scene('s1', 8), scene('s2', 9)] }), statistics: (id) => (id === 's1' ? { properties: {} } : stats(100, 10, 5)) });
+    const kariba = data.reservoirs['reservoir:kariba'];
+    assert.deepEqual(kariba.observations.map((o) => o.sceneId), ['s2']);
+    assert.deepEqual(kariba.partialScenes, []);
+    assert.equal(kariba.searchedThrough, null, 'search window not advanced');
   });
 
   it('keeps the series when the scene search fails', async () => {
