@@ -148,15 +148,17 @@ Measured on the two frozen calibration captures with the manifest above. The exp
 - Economic family `E`: `ke·max(1 − exp(−x/τ))` over fresh members only. The τ values are currency 10%, inflation 3 pp and yield 1 pp.
 - News and headlines are context-only (the OQ1 proposal).
 
-For each combination, `a` is solved analytically as the interval that keeps every anchor inside its band. Properties are measured at up to nine evenly spaced points inside that interval.
+For each combination, `a` is solved analytically as the interval that keeps every anchor inside its band. With interval width `h = hi − lo`, properties are measured at `k + 1` evenly spaced values of `a` from `lo` to `hi` inclusive, where `k = max(1, min(m, floor(h/0.05)))`. `m` is 8 on the main grid (at most nine points) and 4 on the extension grids (at most five points).
 
 ### Grids
 
 | Grid | Constants | Combinations | Anchor-feasible | Points measured | Pass every must-pass |
 |---|---|---|---|---|---|
-| Main | merge union / max; b 0–0.8 step 0.1; ks 0.03 / 0.05 / 0.08 / 0.12; ku 0.25 / 0.5 / 1 / 1.5 / 2; w 0 / 0.5 / 1; kg 0.5 / 1 / 2 / 4 / 8; φ 0.02 / 0.05 / 0.1; (kl, fp) in 10 pairs; ke 0 / 0.5 / 1 / 2; C 4 / 8; n0 200; ko 2; smin 1; log UCDP | 1,296,000 | 7,968 | 38,808 | 0 |
-| Extension | adds smin 1 / 5 and the square-root UCDP transform; ks 0.05 / 0.12; ku adds 0.1; kg 1 / 2 / 4 / 8; φ 0.02 / 0.1; 6 (kl, fp) pairs; ke 0 / 1; C 8 | 165,888 | 2,468 | 9,768 | 0 |
-| Extension without P15b (diagnostic only) | same | 165,888 | 36,736 (5,248 sampled) | 24,176 | 0 |
+| Main | merge union / max; b 0–0.8 step 0.1; ks 0.03 / 0.05 / 0.08 / 0.12; ku 0.25 / 0.5 / 1 / 1.5 / 2; w 0 / 0.5 / 1; kg 0.5 / 1 / 2 / 4 / 8; φ 0.02 / 0.05 / 0.1; (kl, fp) in (0, 0.02), (1, 0.005), (1, 0.01), (1, 0.02), (2, 0.005), (2, 0.01), (2, 0.02), (4, 0.005), (4, 0.01), (4, 0.02); ke 0 / 0.5 / 1 / 2; C 4 / 8; n0 200; ko 2; smin 1; log UCDP | 1,296,000 | 7,968 | 38,808 | 0 |
+| Extension | merge union / max; b 0–0.8 step 0.1; ks 0.05 / 0.12; ku 0.1 / 0.25 / 0.5 / 1 / 1.5 / 2; w 0 / 1; kg 1 / 2 / 4 / 8; φ 0.02 / 0.1; (kl, fp) in (0, 0.02), (1, 0.005), (1, 0.01), (2, 0.005), (2, 0.01), (4, 0.01); ke 0 / 1; smin 1 / 5; UCDP log / square root; C 8; n0 200; ko 2 | 165,888 | 2,468 | 9,768 | 0 |
+| Extension without P15b (diagnostic only) | same as the extension; P15b dropped from the anchor set and counted as passing | 165,888 | 36,736 (5,248 sampled) | 24,176 | 0 |
+
+When an extension run has more than 6,000 anchor-feasible combinations, it keeps every `ceil(N/6000)`-th combination in enumeration order, starting with the first. Enumeration nests merge, b, ks, ku, w, kg, φ, (kl, fp), ke, smin and the UCDP transform, in the listed value order, with the last varying fastest. The main grid and the registered extension measure every anchor-feasible combination.
 
 **Anchor conflicts on the main grid.** For each infeasible combination, the binding pair is the anchor with the highest lower bound on `a` against the anchor with the lowest upper bound:
 
@@ -276,7 +278,7 @@ These are proposals only. None is applied, and every threshold in the brief stay
 - **OQ6.** The registered 20-point bands cap `b` at 0.5, and P15a against P15b binds 587,028 combinations. A 30-point band does not fix the cause, which is the noise-level unrest episode (root cause 1). Proposed instead (a new rule, not measured here): change the unrest selection rule to require at least 20 protest-coded articles in the week's current day and at least 200 weekly articles, matching OQ11's volume floor. Keep the 35–55 band. Re-freeze the manifest on new captures if no current capture qualifies.
 - **OQ8 (adopt as proposed, with weight w = 1).** A state party carries a conflict's deaths outside its own borders, per million of its own population, through the same transform as territorial violence, at `w = 1`. Deaths inside its borders score once, as territorial. Measured: AE10 passes, and `w < 1` loses GPI at the representative.
 - **OQ10 (adopt as registered).** P13a is defined over the full source window, at 50% and above v14. Measured: 94% against v14's 15–16% at every grid point.
-- **P8a.** Give UCDP and GDELT a B2-style last-good snapshot, read through the real path with the existing honesty checks. Keep K = 10, measured with the snapshot present, plus a separate report of the no-snapshot move. Without the snapshot, no design with a high live share can pass P8a.
+- **P8a.** Give UCDP and GDELT a B2-style last-good snapshot, read through the real path with the existing honesty checks. Keep K = 10, measured with the snapshot present, plus a separate report of the no-snapshot move. Without a snapshot, no tested design passes P8a: it fails at all 38,808 main-grid points and all 9,768 extension points. This is a result for the tested family, not a proof for every design. Any design that keeps a high live share still has to bound the move when its largest live input reads null.
 - **P3c.** Exclude countries whose score is at or above 95 before the campaign, as P1 and P2 already do. Measured: 1 silent case remains at the representative and 0 of 9,768 extension points pass, so this is necessary but not sufficient.
 - **P12b and R14/KTD-8.** The credibility weight and the volume invariance cannot both hold. The owner chooses between them:
   - keep credibility and redefine P12b to apply only at or above the OQ11 volume floor (200 weekly articles); or
