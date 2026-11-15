@@ -147,8 +147,6 @@ const waterReservoirSchema = z.object({
  * `seasonalZ`). Context beside country risk: the family never feeds a score, and every row
  * carries the overpass date because lidar levels arrive weeks after the measurement.
  */
-export { isBeyondSeasonalBaseline };
-
 export function projectWaterSignalFamily(countryCode: string, body: unknown): CountrySignalOutcome {
   const object = z.record(z.string(), z.unknown()).parse(body);
   if (object.dataAvailable === false || !Array.isArray(object.reservoirs)) return unavailableCountrySignal(countryCode, 'water', 'Strategic Water Levels snapshot unavailable.');
