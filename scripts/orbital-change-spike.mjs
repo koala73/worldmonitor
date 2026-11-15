@@ -47,6 +47,8 @@ export function persistentShift(params = {}) {
       let run = [];
       let raised = false;
       for (const observation of series) {
+        // A scene missing a band of the pending run says nothing about it: neither repeats nor recovers.
+        if (run.length && !run.at(-1).changes.every((c) => Number.isFinite(observation.values[c.component]))) continue;
         const changes = baseline.length >= t.minBaselineScenes ? changesFrom(baseline, observation, t) : [];
         const repeated = run.length ? changes.filter((c) => run.at(-1).changes.some((r) => sameDirection(r, c))) : changes;
         if (changes.length && repeated.length) {
