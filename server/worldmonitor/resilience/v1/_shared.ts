@@ -435,10 +435,6 @@ function currentEducationCacheState(): EducationCacheState {
   return isEducationEnabled() ? 'education-on' : 'education-off';
 }
 
-export function getCurrentEducationCacheState(): EducationCacheState {
-  return currentEducationCacheState();
-}
-
 export function getCurrentResilienceConstructVersions(): ResilienceConstructVersions {
   return {
     energy: isEnergyV2Enabled() ? 'v2' : 'legacy',
