@@ -6,6 +6,8 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
+  MAX_OBSERVATIONS,
+  MAX_PARTIAL_SCENES,
   MIN_VALID_PERCENT,
   SEARCH_LOOKBACK_DAYS,
   WATER_THRESHOLD_LINEAR,
@@ -14,13 +16,16 @@ import {
   mergeSeries,
   orderTargets,
   pendingScenes,
+  measureReservoir,
   readingFromStatistics,
   reservoirTargets,
+  scenesFromSearch,
   searchSince,
   statisticsQuery,
 } from '../scripts/_orbital-water-extent.mjs';
 import {
   ORBITAL_WATER_EXTENT_KEY,
+  RUN_BUDGET_MS,
   buildSeedOptions,
   loadWatchlist,
   MAX_SEARCH_PAGES,
@@ -30,6 +35,9 @@ import {
   waterExtentEnabled,
 } from '../scripts/seed-orbital-water-extent.mjs';
 import { WATCHED_SITES } from '../scripts/shared/orbital-watched-sites.generated.mjs';
+import { ORBITAL_SITES_BACKOFF_KEY } from '../scripts/_orbital-sites.mjs';
+import { buildEnvelope } from '../scripts/_seed-envelope-source.mjs';
+import { MAX_PAYLOAD_BYTES } from '../scripts/_seed-utils.mjs';
 
 const NOW = Date.parse('2026-11-15T12:00:00Z');
 const DAY = 86_400_000;
@@ -271,5 +279,168 @@ describe('reservoir water extent: seed contract', () => {
     assert.match(bundle, /script: 'seed-orbital-water-extent\.mjs', seedMetaKey: 'orbital:water-extent', canonicalKey: 'orbital:water-extent:v1'/);
     const railway = readFileSync(new URL('../scripts/railway-services.json', import.meta.url), 'utf8');
     for (const path of ['scripts/seed-orbital-water-extent.mjs', 'scripts/_orbital-water-extent.mjs']) assert.ok(railway.includes(`"${path}"`), path);
+  });
+});
+
+// A Planetary Computer RTC item id at full length, e.g. S1A_IW_GRDH_1SDV_20241105T033305_20241105T033330_056472_06E851_rtc.
+const rtcId = (platform, t, n) => {
+  const stamp = new Date(t).toISOString().replace(/[-:]/g, '').slice(0, 15);
+  return `S1${platform}_IW_GRDH_1SDV_${stamp}_${stamp}_${String(56_000 + n).padStart(6, '0')}_${(0xE0000 + n).toString(16).toUpperCase()}_rtc`;
+};
+
+describe('reservoir water extent: payload size', () => {
+  it('fits the per-key limit with every reservoir at the series and partial-scene caps', () => {
+    const targets = reservoirTargets(WATCHED_SITES, watchlist);
+    const reservoirs = {};
+    let n = 0;
+    for (const target of targets) {
+      // Twice the cap of covering scenes inside retention, at microsecond timestamps like the catalogue's.
+      const features = Array.from({ length: 2 * MAX_OBSERVATIONS }, (_, i) => {
+        const t = NOW - i * 0.9 * DAY - 123_456;
+        n += 1;
+        return { id: rtcId('A', t, n), properties: { datetime: new Date(t).toISOString().replace('Z', '643Z'), platform: 'SENTINEL-1A', 'sat:relative_orbit': 175, 'sat:orbit_state': 'descending' } };
+      });
+      const additions = scenesFromSearch({ features }).map((s) => ({ ...s, ...readingFromStatistics(stats(99.97, 1_048_576, 1_000_001), 99_999.9) }));
+      const observations = mergeSeries([], additions, NOW);
+      assert.equal(observations.length, MAX_OBSERVATIONS);
+      const partialScenes = Array.from({ length: MAX_PARTIAL_SCENES }, (_, i) => rtcId('C', NOW - i * DAY, (n += 1)));
+      reservoirs[target.siteId] = { siteId: target.siteId, reservoirId: target.reservoirId, name: target.name, countryCode: target.countryCode, box: target.box, areaKm2: 99_999.9, searchedThrough: new Date(NOW).toISOString(), observations, partialScenes, latest: observations[0] };
+    }
+    const data = { schema: 1, runAt: NOW, thresholdDb: -18, minValidPercent: 90, source: {}, methodology: 'x'.repeat(400), reservoirs };
+    const published = JSON.stringify(buildEnvelope({ fetchedAt: NOW, recordCount: targets.length, sourceVersion: 'planetary-computer-sentinel-1-rtc-vv-18db', schemaVersion: 1, state: 'OK', data }));
+    const bytes = Buffer.byteLength(published, 'utf8');
+    assert.ok(bytes <= MAX_PAYLOAD_BYTES * 0.9, `${(bytes / 1024 / 1024).toFixed(2)} MB at the caps; the key limit is ${MAX_PAYLOAD_BYTES / 1024 / 1024} MB and a run must keep 10% headroom`);
+  });
+
+  it('keeps no more partial scenes than its cap when a run stops early', async () => {
+    const features = Array.from({ length: 3 * MAX_PARTIAL_SCENES }, (_, i) => scene(`edge${i}`, 1 + i * 0.5));
+    let record = null;
+    for (let run = 0; run < 3 * MAX_PARTIAL_SCENES; run += 1) {
+      ({ record } = await measureReservoir({ siteId: 's', reservoirId: 'r', name: 'R', countryCode: 'XX', box: [0, 0, 1, 1] }, record, {
+        searchScenes: async () => ({ features, truncated: true }),
+        fetchStatistics: async () => stats(1, 10, 1),
+        nowMs: NOW,
+        deadlineMs: Infinity,
+      }));
+    }
+    assert.equal(record.partialScenes.length, MAX_PARTIAL_SCENES);
+  });
+});
+
+describe('reservoir water extent: archive refusal and backoff', () => {
+  const sites = WATCHED_SITES.filter((s) => s.id === 'reservoir:kariba' || s.id === 'reservoir:kakhovka');
+  const page = (features) => ({ ok: true, status: 200, json: async () => ({ features, links: [] }) });
+  const refused = (status) => ({ ok: false, status, body: null, json: async () => ({}) });
+  const build = ({ fetchImpl, previous = null, backoff = null }) => {
+    const writes = [];
+    const requests = [];
+    const counted = async (url, init) => { requests.push(url); return fetchImpl(url, init, requests.length); };
+    const fetchWaterExtent = makeFetchWaterExtent({
+      sites, watchlist,
+      readPrevious: async () => previous,
+      readBackoff: async () => backoff,
+      writeBackoff: async (value) => { writes.push(value); },
+      searchScenes: makeSceneSearch(counted),
+      fetchStatistics: makeStatisticsFetch(counted),
+      now: () => NOW,
+    });
+    return { fetchWaterExtent, writes, requests };
+  };
+
+  it('makes no request and publishes nothing while the shared archive backoff runs', async () => {
+    const { fetchWaterExtent, writes, requests } = build({
+      fetchImpl: async () => page([]),
+      backoff: { refusals: 2, reason: 'Planetary Computer refused the search (HTTP 429)', at: NOW - 60_000, until: NOW + 3_600_000 },
+    });
+    const data = await fetchWaterExtent();
+    assert.deepEqual(requests, []);
+    assert.deepEqual(writes, []);
+    assert.match(data.publishBlocked, /archive backoff after 2 refusal\(s\) until/);
+    assert.equal(buildSeedOptions(2).declareRecords(data), 0, 'runSeed takes the publish-blocked path, not a failure');
+  });
+
+  it('runs normally once the backoff has expired', async () => {
+    const { fetchWaterExtent, requests } = build({
+      fetchImpl: async (url) => (url.includes('/stac/') ? page([scene('s1', 2)]) : { ok: true, status: 200, json: async () => stats(100, 10, 5) }),
+      backoff: { refusals: 1, reason: 'x', at: NOW - 2 * 3_600_000, until: NOW - 3_600_000 },
+    });
+    const data = await fetchWaterExtent();
+    assert.equal(data.publishBlocked, undefined);
+    assert.equal(freshReservoirCount(data), 2);
+    assert.ok(requests.length > 0);
+  });
+
+  for (const status of [403, 429]) {
+    it(`stops at the first HTTP ${status} search refusal, backs off and publishes nothing new`, async () => {
+      const { fetchWaterExtent, writes, requests } = build({ fetchImpl: async () => refused(status) });
+      const data = await fetchWaterExtent();
+      assert.equal(requests.length, 1, 'no further search after the refusal');
+      assert.equal(writes.length, 1);
+      assert.equal(writes[0].refusals, 1);
+      assert.equal(writes[0].until, NOW + 15 * 60_000);
+      assert.match(writes[0].reason, new RegExp(`HTTP ${status}`));
+      assert.match(data.publishBlocked, new RegExp(`HTTP ${status}`));
+      assert.equal(buildSeedOptions(2).declareRecords(data), 0);
+    });
+  }
+
+  it('keeps what it measured before a statistics refusal and doubles an existing backoff', async () => {
+    const { fetchWaterExtent, writes, requests } = build({
+      fetchImpl: async (url, _init, n) => {
+        if (url.includes('/stac/')) return page([scene(`s${n}`, 2)]);
+        return n <= 2 ? { ok: true, status: 200, json: async () => stats(100, 10, 5) } : refused(429);
+      },
+      backoff: { refusals: 1, reason: 'earlier', at: NOW - 2 * 3_600_000, until: NOW - 3_600_000 },
+    });
+    const data = await fetchWaterExtent();
+    assert.equal(requests.length, 4, 'search, statistics, search, refused statistics; nothing after');
+    assert.equal(data.publishBlocked, undefined);
+    assert.equal(freshReservoirCount(data), 1);
+    assert.equal(Object.keys(data.reservoirs).length, 2, 'the refused reservoir is carried');
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].refusals, 2);
+    assert.equal(writes[0].until, NOW + 30 * 60_000);
+  });
+
+  it('reads and writes the backoff key the watched-sites seeder honours', () => {
+    const source = readFileSync(new URL('../scripts/seed-orbital-water-extent.mjs', import.meta.url), 'utf8');
+    assert.match(source, /ORBITAL_SITES_BACKOFF_KEY/);
+    assert.equal(ORBITAL_SITES_BACKOFF_KEY, 'orbital:sites:backoff:v1');
+  });
+});
+
+describe('reservoir water extent: cold start', () => {
+  it('reaches the health record floor on a first run at the measured request rate', async () => {
+    const health = readFileSync(new URL('../api/health.js', import.meta.url), 'utf8');
+    const floor = Number(health.match(/orbitalWaterExtent: \{[^}]*minRecordCount: (\d+)/)[1]);
+    const targets = reservoirTargets(WATCHED_SITES, watchlist);
+    // Every tenth reservoir is a huge lake no single scene images whole (#10714).
+    const uncovered = new Set(targets.filter((_, i) => i % 10 === 3).map((t) => t.siteId));
+    const boxOwner = new Map(targets.map((t) => [JSON.stringify(t.box), t.siteId]));
+    const ownerOfScene = new Map();
+    let clock = NOW;
+    // A live probe needed about 8 minutes for 427 requests: 1.12 s each.
+    const tick = () => { clock += 1_124; };
+    const fetchWaterExtent = makeFetchWaterExtent({
+      sites: WATCHED_SITES, watchlist,
+      readPrevious: async () => null,
+      readBackoff: async () => null,
+      writeBackoff: async () => {},
+      searchScenes: async (body) => {
+        tick();
+        const [[west, south], , [east, north]] = body.intersects.coordinates[0];
+        const siteId = boxOwner.get(JSON.stringify([west, south, east, north]));
+        const features = Array.from({ length: 41 }, (_, i) => scene(`${siteId}#${i}`, 1 + i * 2.9));
+        for (const f of features) ownerOfScene.set(f.id, siteId);
+        return { features };
+      },
+      fetchStatistics: async (id) => { tick(); return uncovered.has(ownerOfScene.get(id)) ? stats(40, 1000, 10) : stats(99, 1000, 600); },
+      budgetMs: RUN_BUDGET_MS,
+      now: () => clock,
+    });
+    const data = await fetchWaterExtent();
+    const fresh = freshReservoirCount(data, NOW);
+    assert.ok(fresh >= floor, `a cold run left ${fresh} reservoirs fresh; health wants ${floor}`);
+    assert.equal(fresh, targets.length - uncovered.size, 'every reservoir a scene can image gets a reading');
   });
 });

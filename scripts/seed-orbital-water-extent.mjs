@@ -7,12 +7,21 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadEnvFile, readCanonicalValue, runSeed } from './_seed-utils.mjs';
+import { getRedisCredentials, loadEnvFile, readCanonicalValue, redisCommand, runSeed } from './_seed-utils.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { isMainModule } from './lib/main-module.mjs';
-import { STAC_SEARCH_URL } from './_orbital-sites.mjs';
+import {
+  ARCHIVE_REFUSAL_STATUSES,
+  ArchiveRefusal,
+  archiveBackoffCommand,
+  nextBackoff,
+  ORBITAL_SITES_BACKOFF_KEY,
+  STAC_SEARCH_URL,
+} from './_orbital-sites.mjs';
 import { WATCHED_SITES } from './shared/orbital-watched-sites.generated.mjs';
 import {
+  FIRST_PASS_SCENES,
+  MAX_SCENES_PER_SITE_PER_RUN,
   METHODOLOGY,
   SOURCE,
   WATER_EXTENT_SCHEMA,
@@ -42,6 +51,12 @@ const USER_AGENT = 'WorldMonitor-Seed/1.0 (https://www.worldmonitor.app)';
 
 export const loadWatchlist = (path = WATCHLIST_PATH) => JSON.parse(readFileSync(path, 'utf8')).reservoirs;
 
+/** Planetary Computer is shared with the watched-sites seeder: a refusal stops this run and backs both off. */
+function checkResponse(response) {
+  if (ARCHIVE_REFUSAL_STATUSES.has(response.status)) throw new ArchiveRefusal(`Planetary Computer refused the request (HTTP ${response.status})`);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+}
+
 async function postJson(url, body, fetchImpl) {
   const response = await fetchImpl(url, {
     method: 'POST',
@@ -49,7 +64,7 @@ async function postJson(url, body, fetchImpl) {
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  checkResponse(response);
   return response.json();
 }
 
@@ -58,7 +73,7 @@ async function getJson(url, fetchImpl) {
     headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  checkResponse(response);
   return response.json();
 }
 
@@ -89,7 +104,8 @@ export const makeSceneSearch = (fetchImpl = (...args) => globalThis.fetch(...arg
     if (!next) return { features, truncated: true };
     try {
       page = await next;
-    } catch {
+    } catch (error) {
+      if (error instanceof ArchiveRefusal) throw error;
       return { features, truncated: true };
     }
   }
@@ -98,32 +114,70 @@ export const makeSceneSearch = (fetchImpl = (...args) => globalThis.fetch(...arg
 export const makeStatisticsFetch = (fetchImpl = (...args) => globalThis.fetch(...args)) =>
   (sceneId, geometry) => postJson(`${STATISTICS_URL}?${statisticsQuery(sceneId)}`, { type: 'Feature', properties: {}, geometry }, fetchImpl);
 
-/** Measures every reservoir in turn, carrying each previous series forward, inside one run budget. */
-export function makeFetchWaterExtent({ sites = WATCHED_SITES, watchlist = loadWatchlist(), readPrevious, searchScenes, fetchStatistics, budgetMs = RUN_BUDGET_MS, now = Date.now }) {
+const isRefusal = (error) => error instanceof ArchiveRefusal;
+
+/**
+ * Measures every reservoir inside one run budget, carrying each previous series forward. The first pass
+ * takes the newest scenes of every reservoir, so a cold start reaches the whole watchlist; the second
+ * spends what is left of the budget on the backlog, reusing the first pass's searches. A run inside the
+ * shared archive backoff makes no request; a refusal stops the run and extends that backoff.
+ */
+export function makeFetchWaterExtent({
+  sites = WATCHED_SITES, watchlist = loadWatchlist(), readPrevious, readBackoff = async () => null, writeBackoff = async () => {},
+  searchScenes, fetchStatistics, budgetMs = RUN_BUDGET_MS, now = Date.now,
+}) {
   return async function fetchWaterExtent() {
     const nowMs = now();
+    const backoff = await readBackoff();
+    if (backoff && nowMs < backoff.until) {
+      return { publishBlocked: `archive backoff after ${backoff.refusals} refusal(s) until ${new Date(backoff.until).toISOString()}: ${backoff.reason}`, reservoirs: {} };
+    }
     const deadlineMs = nowMs + budgetMs;
     const previous = await readPrevious();
     const prior = previous?.schema === WATER_EXTENT_SCHEMA ? previous.reservoirs ?? {} : {};
     const targets = orderTargets(reservoirTargets(sites, watchlist), prior);
+    const searches = new Map();
+    const searchOnce = async (body, options) => {
+      const key = JSON.stringify(body);
+      if (!searches.has(key)) searches.set(key, await searchScenes(body, options));
+      return searches.get(key);
+    };
+    const firstPass = new Map();
     const reservoirs = {};
     let requests = 0;
     let added = 0;
+    let refused = null;
     const tally = { searched: 0, searchFailed: 0, answered: 0, failed: 0 };
     const errors = [];
-    for (const target of targets) {
-      const result = await measureReservoir(target, prior[target.siteId], { searchScenes, fetchStatistics, nowMs, deadlineMs, clock: now });
-      reservoirs[target.siteId] = result.record;
-      requests += result.requests;
-      added += result.added;
-      if (result.searched === true) tally.searched += 1;
-      if (result.searched === false) tally.searchFailed += 1;
-      tally.answered += result.answered;
-      tally.failed += result.failed;
-      if (result.error) errors.push(`${target.reservoirId}: ${result.error}`);
+    for (const [pass, limit] of [[1, FIRST_PASS_SCENES], [2, MAX_SCENES_PER_SITE_PER_RUN - FIRST_PASS_SCENES]]) {
+      for (const target of targets) {
+        const first = firstPass.get(target.siteId);
+        if (pass === 2 && (refused || first.searched !== true || first.complete || first.error)) continue;
+        // After a refusal the remaining reservoirs are carried without a request (a deadline already past).
+        const result = await measureReservoir(target, pass === 1 ? prior[target.siteId] : first.record, {
+          searchScenes: searchOnce, fetchStatistics, nowMs, deadlineMs: refused ? -Infinity : deadlineMs, clock: now, limit, isRefusal,
+        });
+        if (pass === 1) firstPass.set(target.siteId, result);
+        reservoirs[target.siteId] = result.record;
+        // The second pass's search is the first pass's, answered from memory.
+        requests += pass === 2 && result.searched === true ? result.requests - 1 : result.requests;
+        added += result.added;
+        if (pass === 1 && result.searched === true) tally.searched += 1;
+        if (pass === 1 && result.searched === false) tally.searchFailed += 1;
+        tally.answered += result.answered;
+        tally.failed += result.failed;
+        if (result.error) errors.push(`${target.reservoirId}: ${result.error}`);
+        refused ??= result.refused;
+      }
     }
     console.log(`  Water extent: ${targets.length} reservoirs, ${added} new readings, ${requests} requests, ${errors.length} errors`);
     for (const line of errors.slice(0, 5)) console.warn(`  ${line}`);
+    if (refused) {
+      const next = nextBackoff(backoff, refused, now());
+      await writeBackoff(next);
+      console.warn(`  ARCHIVE REFUSED: ${refused}; no further requests this run, backing off until ${new Date(next.until).toISOString()}`);
+      if (tally.searched === 0) return { publishBlocked: refused, reservoirs: {} };
+    }
     // A run in which the archive answered nothing must not refresh seed-meta from the carried series.
     if (tally.searchFailed > 0 && tally.searched === 0) throw new Error(`every scene search failed (${errors[0]})`);
     if (tally.failed > 0 && tally.answered === 0) throw new Error(`every statistics request failed (${errors[0]})`);
@@ -165,6 +219,15 @@ if (isMainModule(import.meta.url, process.argv[1]) && !waterExtentEnabled()) {
 } else if (isMainModule(import.meta.url, process.argv[1])) {
   const fetchWaterExtent = makeFetchWaterExtent({
     readPrevious: () => readCanonicalValue(ORBITAL_WATER_EXTENT_KEY, { strict: true }),
+    async readBackoff() {
+      const { url, token } = getRedisCredentials();
+      const { result } = await redisCommand(url, token, ['GET', ORBITAL_SITES_BACKOFF_KEY], { label: 'Redis GET orbital archive backoff' });
+      return typeof result === 'string' ? JSON.parse(result) : null;
+    },
+    async writeBackoff(backoff) {
+      const { url, token } = getRedisCredentials();
+      await redisCommand(url, token, archiveBackoffCommand(backoff), { label: 'Redis SET orbital archive backoff' });
+    },
     searchScenes: makeSceneSearch(),
     fetchStatistics: makeStatisticsFetch(),
     budgetMs: Number(process.env.ORBITAL_WATER_EXTENT_RUN_BUDGET_MS) || RUN_BUDGET_MS,

@@ -15,8 +15,17 @@ export const STATISTICS_MAX_SIZE = 1024;
 /** First run backfills this far; later runs pick up only new scenes. */
 export const SEARCH_LOOKBACK_DAYS = 120;
 export const SERIES_RETENTION_DAYS = 730;
-export const MAX_OBSERVATIONS = 400;
+/**
+ * The canonical key holds every reservoir's series under the 5 MB per-key limit: at about 230 bytes
+ * a reading, 50 reservoirs x 300 readings plus 60 partial scene ids each is about 3.7 MB. A reservoir
+ * gets about 0.34 scenes a day (#10727), about 250 inside retention, so the cap trims only the busiest.
+ */
+export const MAX_OBSERVATIONS = 300;
+/** Partial scenes are remembered only while their search window is open; a 120-day backfill holds about 40. */
+export const MAX_PARTIAL_SCENES = 60;
 export const MAX_SCENES_PER_SITE_PER_RUN = 8;
+/** A run's first pass takes this many scenes per reservoir, so a cold start reaches every reservoir before backfilling. */
+export const FIRST_PASS_SCENES = 2;
 export const SOURCE = Object.freeze({
   name: 'Copernicus Sentinel-1 RTC via Microsoft Planetary Computer',
   collection: RTC_COLLECTION,
@@ -145,12 +154,16 @@ export function searchSince(record, nowMs) {
 }
 
 /**
- * Measure one reservoir. Scenes are taken newest first; a run that stops early (budget, upstream error)
- * keeps everything measured so far and leaves `searchedThrough` where it was so the rest is retried.
- * Past the deadline it makes no request at all and carries the previous record (or an empty one).
- * `searched` (null when skipped), `answered` and `failed` let the run tell an upstream outage from a quiet day.
+ * Measure one reservoir. Scenes are taken newest first, at most `limit` of them; a run that stops early
+ * (budget, scene limit, upstream error) keeps everything measured so far and leaves `searchedThrough`
+ * where it was so the rest is retried. Past the deadline it makes no request at all and carries the
+ * previous record (or an empty one). `searched` (null when skipped), `answered` and `failed` let the run
+ * tell an upstream outage from a quiet day. An error `isRefusal` accepts stops the reservoir at once and
+ * comes back as `refused`, so the run sends nothing more to that host.
  */
-export async function measureReservoir(target, previous, { searchScenes, fetchStatistics, nowMs, deadlineMs, clock = Date.now }) {
+export async function measureReservoir(target, previous, {
+  searchScenes, fetchStatistics, nowMs, deadlineMs, clock = Date.now, limit = MAX_SCENES_PER_SITE_PER_RUN, isRefusal = () => false,
+}) {
   const areaKm2 = boxAreaKm2(target.box);
   const untilIso = new Date(nowMs).toISOString();
   const base = { siteId: target.siteId, reservoirId: target.reservoirId, name: target.name, countryCode: target.countryCode, box: target.box, areaKm2 };
@@ -159,7 +172,8 @@ export async function measureReservoir(target, previous, { searchScenes, fetchSt
     const observations = keep?.observations ?? [];
     return { ...base, searchedThrough: keep?.searchedThrough ?? null, observations, partialScenes: keep?.partialScenes ?? [], latest: observations[0] ?? null };
   };
-  if (clock() >= deadlineMs) return { record: carried(), requests: 0, added: 0, error: null, searched: null, answered: 0, failed: 0 };
+  const skipped = { requests: 0, added: 0, error: null, searched: null, answered: 0, failed: 0, complete: false, refused: null };
+  if (clock() >= deadlineMs) return { ...skipped, record: carried() };
   let scenes;
   let truncated;
   try {
@@ -167,14 +181,17 @@ export async function measureReservoir(target, previous, { searchScenes, fetchSt
     scenes = scenesFromSearch(collection);
     truncated = collection?.truncated === true;
   } catch (error) {
-    return { record: carried(), requests: 1, added: 0, error: `search: ${error.message}`, searched: false, answered: 0, failed: 0 };
+    const refused = isRefusal(error) ? error.message : null;
+    return { ...skipped, record: carried(), requests: 1, error: `search: ${error.message}`, searched: refused ? null : false, refused };
   }
-  const todo = pendingScenes(scenes, keep);
+  const todo = pendingScenes(scenes, keep, limit);
   const additions = [];
   const partial = new Set(keep?.partialScenes ?? []);
   let requests = 1;
   let error = null;
   let answered = 0;
+  let failed = 0;
+  let refused = null;
   let complete = !truncated && todo.length === pendingScenes(scenes, keep, Infinity).length;
   for (const scene of todo) {
     if (clock() >= deadlineMs) { complete = false; break; }
@@ -187,6 +204,8 @@ export async function measureReservoir(target, previous, { searchScenes, fetchSt
     } catch (e) {
       error = `statistics ${scene.sceneId}: ${e.message}`;
       complete = false;
+      if (isRefusal(e)) { refused = e.message; break; }
+      failed += 1;
     }
   }
   const observations = mergeSeries(keep?.observations, additions, nowMs);
@@ -195,10 +214,10 @@ export async function measureReservoir(target, previous, { searchScenes, fetchSt
     ...base,
     searchedThrough: complete ? untilIso : (keep?.searchedThrough ?? null),
     observations,
-    partialScenes: [...partial].filter((id) => sceneIds.has(id) || !complete).slice(-200),
+    partialScenes: [...partial].filter((id) => sceneIds.has(id) || !complete).slice(-MAX_PARTIAL_SCENES),
     latest: observations[0] ?? null,
   };
-  return { record, requests, added: additions.length, error, searched: true, answered, failed: requests - 1 - answered };
+  return { record, requests, added: additions.length, error, searched: true, answered, failed, complete, refused };
 }
 
 /** Health counts reservoirs with a reading inside the last 60 days. */
