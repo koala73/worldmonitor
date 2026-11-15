@@ -386,9 +386,64 @@ Findings:
 - **GPI on that pass.** ρ is 0.828 on both captures, against v14's 0.730 and 0.786.
 - **The latent half-life is 5.13 to 5.25 days.** Eight cases fall under the relative increment. They are countries where the GDELT backstop already reports more strikes on the day than the injected campaign, and the formula takes the larger source.
 
+### Fourth ruling and full grid (2026-11-15)
+
+4. **P5b exemption threshold.** The owner ruled that a country is exempt when live evidence moves its score by less than 1 point, measured as the score minus the prior-only score. This replaces "exactly zero" in ruling 1. The exempt set is still reported and labelled.
+
+The full grid measures every anchor-feasible combination under rulings 2 to 4, and adds in-between economic and strike weights.
+
+Grid: b 0.3 / 0.4 / 0.5 / 0.6 / 0.8; ks 0.03 / 0.04 / 0.05 / 0.06 / 0.08; ku 0.75 / 1 / 1.25 / 1.5; w 0.5 / 1; kg 0.25 / 0.5 / 1 / 2; knee 0.1 / 0.3 / 1; (kl, fp) in (1, 0.01), (2, 0.02); ke 0 / 0.1 / 0.25 / 0.5; C 8 / 10 / 12; φ 0.02; n0 200; ko 2. Other rules are as in the rerun above.
+
+| Measure | Count |
+|---|---|
+| Combinations | 57,600 |
+| Anchor-feasible | 25,520 |
+| Points measured | 110,960 |
+| Points passing every amended must-pass property | 1,691 |
+| Distinct passing combinations | 1,055 |
+
+**The passing set is a connected region.** A neighbour is the same combination with one constant moved one grid step.
+
+- The best combination has 12 of its 14 neighbours passing.
+- 426 of the 1,055 passing combinations have at least half their neighbours passing; the median is 45%.
+
+**Passing combinations per constant value:**
+
+| Constant | Passing combinations |
+|---|---|
+| b | 0.3: 394; 0.4: 315; 0.5: 191; 0.6: 137; 0.8: 18 |
+| ks | 0.03: 66; 0.04: 195; 0.05: 375; 0.06: 419; 0.08: none |
+| ku | 0.75: 58; 1: 360; 1.25: 350; 1.5: 287 |
+| w | 0.5: 874; 1: 181 |
+| kg | 0.25: 378; 0.5: 348; 1: 176; 2: 153 |
+| knee | 0.1: 365; 0.3: 552; 1: 138 |
+| ke | 0: 518; 0.1: 479; 0.25: 58; 0.5: none |
+| C | 8: 260; 10: 430; 12: 365 |
+| (kl, fp) | (1, 0.01): 1,055; (2, 0.02): none |
+
+- The economic family can carry weight: 537 passing combinations have ke above 0, up to 0.25.
+- The strike weight is no longer pinned; it passes from 0.03 to 0.06.
+
+**Failures per property,** out of 110,960 points: P5b (as ruled) 93,153; AE9 55,480; P3c (as ruled) 49,417; P1 (amended) 43,310; P2 25,628; P3b 22,042; P5a 15,182; P8a (with snapshots) 1,376; GPI 26.
+
+**The most robust combination** is b 0.4, ks 0.05, ku 1.25, w 0.5, kg 0.25, knee 0.3, kl 1, fp 0.01, ke 0, C 10. It passes at four values of `a`; at a −2.74309:
+
+- GPI ρ is 0.832 and 0.829 (v14: 0.730 and 0.786).
+- P13a is 91.1% on both captures (v14: 14.8% and 16.0%).
+- Anchors: quiet week 6.6 to 11.4; chronic war 76.1 to 92.1; full-scale war 97.8 to 98.6.
+- P2 spread is 0.196 (limit 0.25).
+- The worst P5b band holds 6. Seven countries are exempt on each capture.
+- P12a: median 0.1, p99 5.3 (limits 2 and 6).
+- P12b misses at 8.1 (limit 1).
+- P4 misses: the smallest response is +0.9 at 48 hours.
+
+Across all passing points, P13a passes at every one and P12a at 1,659 of 1,691. P4 and P12b pass at none. Both need an owner sign-off or a design change before release.
+
+This is still a diagnostic on the two captures the rules were adjusted against. It shows that a robust design exists under the rulings. It does not select the constants.
+
 ### What still blocks U4
 
 - The unrest and strike anchors are unavailable on these captures. Both need new evidence: a historical unrest episode rebuilt from GDELT's archive, and a capture holding seven days of the version 2 strike tally.
-- Rulings are still open on OQ1 to OQ4, OQ8 and OQ10, the P8a snapshot, the prior inside the violence union, the per-capita and relative-increment forms of P1, the P5b exemption threshold, and the P12b and R14/KTD-8 conflict.
-- The economic weight is unresolved.
+- Rulings are still open on OQ1 to OQ4, OQ8 and OQ10, the P8a snapshot, the prior inside the violence union, the per-capita and relative-increment forms of P1 (including the 25% fraction), and the P12b and R14/KTD-8 conflict.
+- P4 and P12b miss at every passing point.
 - Nothing here has been confirmed on captures the design has not seen.
