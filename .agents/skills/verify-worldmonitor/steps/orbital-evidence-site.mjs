@@ -8,12 +8,12 @@
  * 390px bottom sheet.
  */
 import { fixtureCatalog } from './orbital-watch.mjs';
+import { pointLeak } from './_point-leak.mjs';
 import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
 
 const SITE = { siteId: 'military-base:al_udeid', name: 'Al Udeid', lat: 25.2793, lon: 51.5224 };
 const READ_PATH = '/api/orbital/v1/get-watched-site-imagery';
 const ARCHIVE_HOSTS = ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com', 'gibs.earthdata.nasa.gov', 'view.eumetsat.int'];
-const COORD = /25\.2[78]|51\.52/;
 
 export default async function ({ page, base, shot, log, expectVisible }) {
   const mobile = process.env.WM_VERIFY_ORBITAL_VIEWPORT === 'mobile';
@@ -53,12 +53,15 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   if (read.title !== SITE.name) throw new Error(`sheet title is ${read.title}, not the site name`);
   if (!/Monitored site/.test(read.subline ?? '')) throw new Error('subline does not mark the monitored site');
   if (/changed/i.test(read.block ?? '')) throw new Error('a change-flag row rendered');
+  const latestAt = read.order.indexOf('latest');
+  const siteAt = read.order.indexOf('site');
+  if (latestAt < 0 || siteAt !== latestAt + 1) throw new Error(`site block is not right after the latest image: ${read.order.join(',')}`);
   log('site reads', JSON.stringify(reads));
   if (reads.length !== 1) throw new Error(`expected one site read, saw ${reads.length}`);
   const params = [...new URL(reads[0]).searchParams.keys()];
   if (params.join() !== 'site_id' || new URL(reads[0]).searchParams.get('site_id') !== SITE.siteId) throw new Error(`site read carried ${reads[0]}`);
   const leaks = requests.filter(({ url, body }) => !ARCHIVE_HOSTS.includes(new URL(url).hostname) && !url.startsWith('blob:') && !url.startsWith('data:')
-    && (COORD.test(decodeURIComponent(url)) || COORD.test(body)));
+    && (pointLeak(url, SITE) || pointLeak(body, SITE)));
   log('non-archive requests carrying the point', leaks.length, leaks.slice(0, 3).map((l) => l.url).join(' '));
   if (leaks.length) throw new Error(`the point reached a non-archive host: ${leaks[0].url}`);
   return { mobile, read, reads: reads.length };
