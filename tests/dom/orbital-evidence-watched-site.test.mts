@@ -131,6 +131,16 @@ describe('evidence sheet on a watched site', () => {
     expect(siteSection()!.textContent).toContain('No upcoming pass on record');
   });
 
+  it('keeps the record readable while passes compute and when pass data is unavailable', () => {
+    const page = mounted();
+    page.render({ kind: 'computing', done: 3, total: 9 });
+    page.setWatchedSite({ kind: 'loaded', site, record: record() });
+    const cells = () => siteSection()!.querySelectorAll('.ies-cell').length;
+    expect(cells()).toBe(3);
+    page.render({ kind: 'unavailable' });
+    expect(cells()).toBe(3);
+  });
+
   it('drops the block when the sheet opens on another point', () => {
     const page = mounted();
     page.setWatchedSite({ kind: 'loaded', site, record: record() });

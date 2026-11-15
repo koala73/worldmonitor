@@ -885,12 +885,12 @@ export class OrbitalWatchPage {
   private renderState(state: OrbitalWatchState): DomChild[] {
     if (state.kind === 'idle') return [h('p', { className: 'ies-empty' }, t('orbitalWatch.search.idle'))];
     if (state.kind === 'unavailable') {
-      return [h('div', { className: 'ies-empty' }, h('p', null, t('orbitalWatch.status.unavailable')), this.retryButton())];
+      return [h('div', { className: 'ies-empty' }, h('p', null, t('orbitalWatch.status.unavailable')), this.retryButton()), this.siteSection(Date.now())];
     }
     if (state.kind === 'computing') {
       return [h('p', { className: 'ies-status', role: 'status' }, state.total > 0
         ? t('orbitalWatch.status.computing', { done: state.done, total: state.total })
-        : t('orbitalWatch.status.catalog'))];
+        : t('orbitalWatch.status.catalog')), this.siteSection(Date.now())];
     }
     return this.renderSheet(state);
   }
