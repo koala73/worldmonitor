@@ -5,8 +5,9 @@ vi.mock('@/services/orbital/object-imagery', () => ({
   loadObjectImagery: async () => imagery.result,
   loadReservoirWaterExtent: async () => null,
 }));
+const levelsSource = vi.hoisted(() => ({ reject: false }));
 vi.mock('@/services/climate/reservoir-context-loader', () => ({
-  loadReservoirLevelsById: async () => new Map(),
+  loadReservoirLevelsById: async () => { if (levelsSource.reject) throw new Error('down'); return new Map(); },
   loadReservoirNextPasses: async () => new Map(),
 }));
 
@@ -91,6 +92,14 @@ describe('water card (#10714)', () => {
     expect(await optical()).toBe(t('components.reservoirLevels.water.unavailable'));
     imagery.result = { latest: null, nextPass: null };
     expect(await optical()).toBe(t('components.reservoirLevels.water.opticalNone'));
+  });
+
+  it('reads an unreadable levels source as unavailable', async () => {
+    levelsSource.reject = true;
+    imagery.result = { latest: null, nextPass: null };
+    const card = await loadWaterCard(STRATEGIC_RESERVOIR_SITES[0]!, new AbortController().signal);
+    levelsSource.reject = false;
+    expect(card.querySelector('[data-row="level"] .wl-water-value')!.textContent).toBe(t('components.reservoirLevels.water.unavailable'));
   });
 
   it('finds the reservoir for an evidence point inside its core box or at its own map point', () => {

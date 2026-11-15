@@ -2446,7 +2446,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
     }
     if (site) {
       const id = site.dataset.wlSiteContext!;
-      void loadReservoirLevelsById().then((levels) => {
+      void loadReservoirLevelsById().catch(() => new Map<string, ReservoirLevel>()).then((levels) => {
         const line = site.querySelector('.wl-site-context-level');
         if (!line || !site.isConnected) return;
         const level = levels.get(id);
