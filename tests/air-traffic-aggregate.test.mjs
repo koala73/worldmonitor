@@ -4,7 +4,7 @@ import { test } from 'node:test';
 
 const require = createRequire(import.meta.url);
 const { aggregateStates, binStart, BIN_MS } = require('../scripts/shared/air-traffic-aggregate.cjs');
-const { US_HUBS, CONUS_BOX, EUROPE_BOX } = require('../scripts/shared/air-traffic-regions.cjs');
+const { US_HUBS, CONUS_BOX, EUROPE_BOX, EUROPE_MARKETS } = require('../scripts/shared/air-traffic-regions.cjs');
 
 // OpenSky /states/all row: [icao24, callsign, country, t_pos, t_contact, lon, lat, baro_alt, on_ground, velocity, track, vertical_rate, sensors, geo_alt]
 const row = ({ lat, lon, alt = 10000, ground = false, vr = 0, geo = null, callsign = 'TEST1   ' }) =>
@@ -103,4 +103,42 @@ test('a hub counts airline departures inside its radius', () => {
     row({ lat: ATL.lat, lon: ATL.lon, alt: 800, vr: -8, callsign: 'DAL2' }),
   ], T);
   assert.deepEqual(p.hubs.ATL, { air: 3, ground: 0, dep: 1 });
+});
+
+test('a European market counts each aircraft near any of its hubs once, and only airline climbers as departures', () => {
+  const hub = (code, iata) => EUROPE_MARKETS.find((m) => m.code === code).hubs.find((h) => h.iata === iata);
+  const LHR = hub('GB', 'LHR');
+  const CDG = hub('FR', 'CDG');
+  // Between Heathrow and Gatwick, inside both radii: one UK aircraft.
+  const between = { lat: (LHR.lat + hub('GB', 'LGW').lat) / 2, lon: (LHR.lon + hub('GB', 'LGW').lon) / 2 };
+  const point = aggregateStates([
+    row({ ...between, alt: 900, vr: 6, callsign: 'BAW12   ' }),
+    row({ lat: LHR.lat, lon: LHR.lon, alt: 900, vr: 6, callsign: 'G-ABCD  ' }),
+    row({ lat: LHR.lat, lon: LHR.lon, ground: true, alt: null, callsign: 'BAW99   ' }),
+    row({ lat: LHR.lat, lon: LHR.lon, alt: 900, vr: -6, callsign: 'BAW77   ' }),
+    row({ lat: CDG.lat, lon: CDG.lon, alt: 900, vr: 6, callsign: 'AFR1    ' }),
+    row({ lat: 47, lon: 2 }),
+  ], T);
+  assert.deepEqual(point.markets.GB, { seen: 4, dep: 1 });
+  assert.deepEqual(point.markets.FR, { seen: 1, dep: 1 });
+  assert.deepEqual(point.markets.DE, { seen: 0, dep: 0 });
+  assert.deepEqual(Object.keys(point.markets).sort(), ['DE', 'ES', 'FR', 'GB', 'IT']);
+  assert.equal(point.euAirborne, 5);
+});
+
+test('every European market hub sits inside the Europe box, and no hub falls inside another market\'s radius', () => {
+  const R = 6371;
+  const km = (a, b) => {
+    const toRad = (d) => (d * Math.PI) / 180;
+    const h = Math.sin(toRad(b.lat - a.lat) / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(toRad(b.lon - a.lon) / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  };
+  for (const market of EUROPE_MARKETS) {
+    for (const h of market.hubs) {
+      assert.ok(h.lat >= EUROPE_BOX.south && h.lat <= EUROPE_BOX.north && h.lon >= EUROPE_BOX.west && h.lon <= EUROPE_BOX.east, h.iata);
+      for (const other of EUROPE_MARKETS.filter((m) => m !== market)) {
+        for (const o of other.hubs) assert.ok(km(h, o) > 96, `${h.iata} and ${o.iata} share aircraft`);
+      }
+    }
+  }
 });

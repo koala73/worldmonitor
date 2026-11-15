@@ -18,6 +18,7 @@
 // already read under it.
 
 const { BIN_MS } = require('./air-traffic-aggregate.cjs');
+const { EUROPE_MARKETS } = require('./air-traffic-regions.cjs');
 
 const SIGNAL = 'usLowClimbingAirline';
 const ENTER_RATIO = 0.4;
@@ -30,10 +31,12 @@ const CONSECUTIVE = 2;
 // Bins whose baseline is under this share of the day's peak baseline are quiet
 // hours: too few departures for a ratio to mean anything.
 const QUIET_SHARE = 0.25;
-// The OpenSky feed is alive. A dead feed reads near 0; ordinary days never read
-// below 0.39 of Europe's same-local-time baseline, and a US stop pulls Europe
-// down too (0.54 by the end of the 2026-11-13 stop), so this stays low.
-const EUROPE_MIN = 0.3;
+// The OpenSky feed is alive: the market's control count, from the other side of
+// the Atlantic, is at least this share of its own baseline. A dead feed reads
+// near 0; ordinary days never read below 0.39 of Europe's same-local-time
+// baseline, and a US stop pulls Europe down too (0.54 by the end of the
+// 2026-11-13 stop), so this stays low.
+const CONTROL_MIN = 0.3;
 // OpenSky still sees the country. Against Wingbits for the same bin, ordinary
 // bins read 0.91 to 1.02. Without a Wingbits point, against OpenSky's own
 // baseline: ordinary bins never read below 0.59 and the 2026-11-13 entry read 0.87.
@@ -44,6 +47,48 @@ const MIN_BASELINE_DAYS = 2;
 const US_TZ = 'America/New_York';
 const EUROPE_TZ = 'Europe/Paris';
 const DAY_MS = 86_400_000;
+
+const marketCount = (code, field) => (p) => p?.markets?.[code]?.[field];
+
+// A market is what the detector watches: a departure signal, the receiver
+// coverage behind it, and a control count from the other side of the Atlantic
+// that only a dead feed pulls down with it. Baselines use each count's own
+// local time.
+const US_MARKET = Object.freeze({
+  code: 'US', name: 'US', tz: US_TZ,
+  enter: ENTER_RATIO, exit: EXIT_RATIO, window: 1, minBaseline: 1, coverageMinVsBaseline: COVERAGE_MIN_VS_BASELINE,
+  signal: (p) => p?.[SIGNAL],
+  coverage: (p) => p?.usSeen,
+  control: Object.freeze({ tz: EUROPE_TZ, read: (p) => p?.euAirborne }),
+});
+// European markets, from replaying adsb.lol archive days (tests/fixtures/
+// air-traffic-archive-series.json.gz). A market has 4 to 17 departures per
+// bin, so ratios are summed over a 20-minute window. The UK NATS flight-plan
+// failure of 2026-09-08 reads 0.24 at entry (12:10Z); the lowest ordinary
+// windows are 0.42 (Spain, Italy) and 0.50 or more elsewhere. Italy's
+// 2026-09-30 four-hour ATC strike kept protected flights and read 0.47: a
+// partial strike is not a collapse. Entry sits at 0.30: ordinary windows come
+// within 0.02 of the US value of 0.40, and the NATS failure clears 0.30 by
+// 0.06.
+const EUROPE_ENTER_RATIO = 0.3;
+const EUROPE_WINDOW_BINS = 4;
+// A window summed under 30 departures is quiet hours for the market. The
+// Netherlands (AMS, EIN, about 4 departures a bin) never reached it, so it is
+// not a market; Italy (about 7) reaches it only around its daily peaks.
+const EUROPE_MIN_WINDOW_BASELINE = 30;
+// Parked aircraft drop out of the count near the hubs: during the NATS failure
+// the UK read 0.62 of its usual aircraft at entry and 0.42 at the lowest, so
+// the coverage floor against the market's own baseline is lower than the US one.
+const EUROPE_COVERAGE_MIN_VS_BASELINE = 0.4;
+const EUROPE_MARKET_NAMES = Object.freeze({ GB: 'UK', FR: 'France', DE: 'Germany', ES: 'Spain', IT: 'Italy' });
+const EUROPE_DETECTOR_MARKETS = Object.freeze(EUROPE_MARKETS.map(({ code, tz }) => Object.freeze({
+  code, name: EUROPE_MARKET_NAMES[code], tz,
+  enter: EUROPE_ENTER_RATIO, exit: EXIT_RATIO, window: EUROPE_WINDOW_BINS, minBaseline: EUROPE_MIN_WINDOW_BASELINE, coverageMinVsBaseline: EUROPE_COVERAGE_MIN_VS_BASELINE,
+  signal: marketCount(code, 'dep'),
+  coverage: marketCount(code, 'seen'),
+  control: Object.freeze({ tz: US_TZ, read: (p) => p?.usAirborne }),
+})));
+const MARKETS = Object.freeze([US_MARKET, ...EUROPE_DETECTOR_MARKETS]);
 
 const STATES = Object.freeze({ NORMAL: 'normal', COLLAPSED: 'collapsed' });
 
@@ -72,7 +117,8 @@ function sameLocalBin(t, weeks, timeZone) {
 }
 
 const isCount = (v) => Number.isInteger(v) && v >= 0;
-const usable = (p, field) => p && p.status === 'ok' && isCount(p[field]);
+// `read` takes a point and returns one count from it.
+const usable = (p, read) => Boolean(p) && p.status === 'ok' && isCount(read(p));
 
 function median(values) {
   const s = [...values].sort((a, b) => a - b);
@@ -87,10 +133,22 @@ function baselineBins(t, timeZone = US_TZ) {
   return bins;
 }
 
-// Same-local-time median of `field` over the prior weeks, or null when fewer
-// than MIN_BASELINE_DAYS weeks have a usable point.
-function baselineAt(t, field, getPoint, timeZone) {
-  const values = baselineBins(t, timeZone).map(getPoint).filter((p) => usable(p, field)).map((p) => p[field]);
+// Sum of `read` over the `size` bins ending at `end`, or null when any of them
+// has no usable point. A window smooths markets with few departures per bin.
+function windowSum(read, end, getPoint, size) {
+  let sum = 0;
+  for (let i = 0; i < size; i += 1) {
+    const p = getPoint(end - i * BIN_MS);
+    if (!usable(p, read)) return null;
+    sum += read(p);
+  }
+  return sum;
+}
+
+// Same-local-time median of the windowed `read` over the prior weeks, or null
+// when fewer than MIN_BASELINE_DAYS weeks have a usable window.
+function baselineAt(t, read, getPoint, timeZone, size = 1) {
+  const values = baselineBins(t, timeZone).map((bin) => windowSum(read, bin, getPoint, size)).filter((v) => v !== null);
   return values.length >= MIN_BASELINE_DAYS ? median(values) : null;
 }
 
@@ -102,24 +160,24 @@ function localMidnightUtc(day, timeZone) {
   return wall - tzOffsetMinutes(timeZone, guess) * 60_000;
 }
 
-// Largest SIGNAL baseline over the US-local day containing t, the reference
-// for the quiet-hours floor.
-function peakBaselineFor(t, getPoint) {
-  const localDay = Math.floor((t + tzOffsetMinutes(US_TZ, t) * 60_000) / DAY_MS);
+// Largest signal baseline over the market-local day containing t, the
+// reference for the quiet-hours floor.
+function peakBaselineFor(t, getPoint, market = US_MARKET) {
+  const localDay = Math.floor((t + tzOffsetMinutes(market.tz, t) * 60_000) / DAY_MS);
   let peak = 0;
   // Each midnight takes its own offset, so a DST day spans 23 or 25 hours.
-  for (let bin = localMidnightUtc(localDay, US_TZ); bin < localMidnightUtc(localDay + 1, US_TZ); bin += BIN_MS) {
-    const base = baselineAt(bin, SIGNAL, getPoint, US_TZ);
+  for (let bin = localMidnightUtc(localDay, market.tz); bin < localMidnightUtc(localDay + 1, market.tz); bin += BIN_MS) {
+    const base = baselineAt(bin, market.signal, getPoint, market.tz, market.window);
     if (base !== null && base > peak) peak = base;
   }
   return peak;
 }
 
-// One evaluation step. `getPoint(t)` returns the stored OpenSky point for bin t
-// (or undefined), `wingbits` is the Wingbits point for the same bin, and
-// `peakBaseline` is the largest SIGNAL baseline over the local day. Returns the
-// next state and, on a transition, the event to publish.
-function evaluateCollapse(state, { t, point, wingbits, getPoint, peakBaseline }) {
+// One evaluation step for one market. `getPoint(t)` returns the stored OpenSky
+// point for bin t (or undefined), `wingbits` is the Wingbits point for the same
+// bin, and `peakBaseline` is the largest signal baseline over the market's
+// local day. Returns the next state and, on a transition, the event to publish.
+function evaluateCollapse(state, { t, point, wingbits, getPoint, peakBaseline, market = US_MARKET }) {
   // Re-evaluating the last bin (a restart, a second replica) starts from the
   // state before it, so the bin cannot raise its event twice. Only one level
   // of history is kept.
@@ -128,47 +186,53 @@ function evaluateCollapse(state, { t, point, wingbits, getPoint, peakBaseline })
   const current = prev ? prevFlat : { state: STATES.NORMAL, run: 0, onset: null };
   const next = (verdict, extra = {}) => ({ ...current, ...extra, lastT: t, prior: prev ? prevFlat : null, verdict });
 
-  if (!usable(point, SIGNAL) || !usable(point, 'euAirborne') || !usable(point, 'usSeen')) {
+  const { signal, coverage: seen, control, window: size } = market;
+  const at = (bin) => (bin === t ? point : getPoint(bin));
+  const signalNow = windowSum(signal, t, at, size);
+  const seenNow = windowSum(seen, t, at, size);
+  if (signalNow === null || seenNow === null || !usable(point, control.read)) {
     return { state: next('gap'), event: null };
   }
-  const base = baselineAt(t, SIGNAL, getPoint, US_TZ);
-  const euBase = baselineAt(t, 'euAirborne', getPoint, EUROPE_TZ);
-  const seenBase = baselineAt(t, 'usSeen', getPoint, US_TZ);
-  if (base === null || euBase === null || seenBase === null || !(peakBaseline > 0)) {
+  const base = baselineAt(t, signal, getPoint, market.tz, size);
+  const controlBase = baselineAt(t, control.read, getPoint, control.tz);
+  const seenBase = baselineAt(t, seen, getPoint, market.tz, size);
+  if (base === null || controlBase === null || seenBase === null || !(peakBaseline > 0)) {
     return { state: next('insufficient-baseline', { run: 0 }), event: null };
   }
-  if (base < QUIET_SHARE * peakBaseline || base === 0) return { state: next('quiet'), event: null };
+  if (base < QUIET_SHARE * peakBaseline || base < market.minBaseline || base === 0) return { state: next('quiet'), event: null };
 
-  const ratio = point[SIGNAL] / base;
-  const europe = euBase > 0 ? point.euAirborne / euBase : 0;
-  const coverage = usable(wingbits, 'usSeen') && wingbits.usSeen > 0
-    ? { ratio: point.usSeen / wingbits.usSeen, min: COVERAGE_MIN_VS_WINGBITS, against: 'wingbits' }
-    : { ratio: seenBase > 0 ? point.usSeen / seenBase : 0, min: COVERAGE_MIN_VS_BASELINE, against: 'baseline' };
-  const detail = { ratio, europe, coverage: coverage.ratio, coverageAgainst: coverage.against, baseline: base };
+  const ratio = signalNow / base;
+  const controlRatio = controlBase > 0 ? control.read(point) / controlBase : 0;
+  // Against Wingbits, one bin: both networks lose a stopped country's aircraft
+  // together, so the ratio holds through the event.
+  const coverage = usable(wingbits, seen) && seen(wingbits) > 0
+    ? { ratio: seen(point) / seen(wingbits), min: COVERAGE_MIN_VS_WINGBITS, against: 'wingbits' }
+    : { ratio: seenBase > 0 ? seenNow / seenBase : 0, min: market.coverageMinVsBaseline, against: 'baseline' };
+  const detail = { ratio, control: controlRatio, coverage: coverage.ratio, coverageAgainst: coverage.against, baseline: base };
 
   if (current.state === STATES.COLLAPSED) {
     // The feed checks guard entry only. Parked aircraft switch their
     // transponders off, so during a stop the national count falls with the
     // signal; a failing feed can only lower the ratio, never fake a recovery.
-    const run = ratio > EXIT_RATIO ? current.run + 1 : 0;
+    const run = ratio > market.exit ? current.run + 1 : 0;
     if (run < CONSECUTIVE) return { state: next('collapsed', { run, ...detail }), event: null };
     return {
       state: next('recovered', { state: STATES.NORMAL, run: 0, ...detail }),
-      event: { kind: 'recovery', t, onset: current.onset, ...detail },
+      event: { kind: 'recovery', market: market.code, t, onset: current.onset, ...detail },
     };
   }
 
-  if (europe < EUROPE_MIN) return { state: next('blocked-feed', { run: 0, ratio, europe }), event: null };
+  if (controlRatio < CONTROL_MIN) return { state: next('blocked-feed', { run: 0, ratio, control: controlRatio }), event: null };
   if (coverage.ratio < coverage.min) {
-    return { state: next('blocked-coverage', { run: 0, ratio, europe, coverage: coverage.ratio, coverageAgainst: coverage.against }), event: null };
+    return { state: next('blocked-coverage', { run: 0, ratio, control: controlRatio, coverage: coverage.ratio, coverageAgainst: coverage.against }), event: null };
   }
 
-  const run = ratio < ENTER_RATIO ? current.run + 1 : 0;
+  const run = ratio < market.enter ? current.run + 1 : 0;
   const onset = run === 1 ? t : current.onset;
   if (run < CONSECUTIVE) return { state: next('normal', { run, onset: run ? onset : null, ...detail }), event: null };
   return {
     state: next('entered', { state: STATES.COLLAPSED, run: 0, onset, ...detail }),
-    event: { kind: 'collapse', t, onset, ...detail },
+    event: { kind: 'collapse', market: market.code, t, onset, ...detail },
   };
 }
 
@@ -185,17 +249,19 @@ const utcTime = (t) => new Date(t).toISOString().slice(11, 16);
 function buildCollapseNotification(event) {
   const percent = Math.round(event.ratio * 100);
   const recovery = event.kind === 'recovery';
+  const market = MARKETS.find((m) => m.code === event.market);
+  if (!market) throw new TypeError(`unknown air traffic market ${event.market}`);
   return {
     eventType: EVENT_TYPE,
     severity: recovery ? 'high' : 'critical',
     dedupTtl: DEDUP_TTL_SECONDS,
     payload: {
       title: recovery
-        ? `US airline departures back near normal (${percent}% of usual), after a drop that began ${utcTime(event.onset)} UTC`
-        : `US airline departures fell to ${percent}% of normal since ${utcTime(event.onset)} UTC`,
+        ? `${market.name} airline departures back near normal (${percent}% of usual), after a drop that began ${utcTime(event.onset)} UTC`
+        : `${market.name} airline departures fell to ${percent}% of normal since ${utcTime(event.onset)} UTC`,
       source: 'WorldMonitor air traffic (OpenSky)',
-      countryCode: 'US',
-      coalesceKey: `${EVENT_TYPE}:${event.kind}:${event.onset}`,
+      countryCode: market.code,
+      coalesceKey: `${EVENT_TYPE}:${market.code}:${event.kind}:${event.onset}`,
       ratio: Math.round(event.ratio * 1000) / 1000,
       onset: new Date(event.onset).toISOString(),
       kind: event.kind,
@@ -205,8 +271,8 @@ function buildCollapseNotification(event) {
 
 module.exports = {
   EVENT_TYPE, buildCollapseNotification,
-  SIGNAL, ENTER_RATIO, EXIT_RATIO, CONSECUTIVE, QUIET_SHARE, EUROPE_MIN,
+  SIGNAL, ENTER_RATIO, EXIT_RATIO, CONSECUTIVE, QUIET_SHARE, CONTROL_MIN,
   COVERAGE_MIN_VS_WINGBITS, COVERAGE_MIN_VS_BASELINE, BASELINE_WEEKS, MIN_BASELINE_DAYS,
-  US_TZ, EUROPE_TZ, STATES,
+  US_TZ, EUROPE_TZ, STATES, US_MARKET, MARKETS,
   tzOffsetMinutes, sameLocalBin, baselineBins, baselineAt, peakBaselineFor, evaluateCollapse,
 };

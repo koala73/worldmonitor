@@ -564,7 +564,8 @@ test('lane 25: two bins of collapsed departures against four weeks of history qu
   const seedHashes = historyHashes('2026-10-14', '2026-11-08', ORDINARY_HISTORY);
   await lane([GLOBAL_SNAPSHOT, DEPARTURES_STOPPED, DEPARTURES_STOPPED, DEPARTURES_STOPPED, DEPARTURES_STOPPED], {}, async ({ redis, relay }) => {
     const queued = () => redis.list('wm:events:queue').map((m) => JSON.parse(m));
-    await relay.waitFor(() => queued().length >= 1, 'the collapse event');
+    const usState = () => JSON.parse(redis.get('aviation:traffic:detector:v2') || '{}').US?.state;
+    await relay.waitFor(() => usState() === 'collapsed', 'the saved collapse');
     await relay.waitFor(() => redis.points('2026-11-13').length >= 5, 'two more bins after the collapse');
     const events = queued();
     assert.equal(events.length, 1, 'one event per collapse, not one per bin');
@@ -574,9 +575,9 @@ test('lane 25: two bins of collapsed departures against four weeks of history qu
     assert.equal(event.payload.countryCode, 'US');
     assert.equal(event.payload.onset, '2026-11-13T20:35:00.000Z');
     assert.match(event.payload.title, /^US airline departures fell to 20% of normal since 20:35 UTC$/);
-    assert.match(relay.output(), /\[AirTraffic\] collapse entered ratio=0\.20 onset=20:35Z/);
-    assert.match(relay.output(), /\[AirTrafficDetector\] t=2026-11-13T20:30:00\.000Z verdict=normal state=normal ratio=1\.00 europe=1\.00 coverage=1\.00\(baseline\)/);
-    assert.equal(JSON.parse(redis.get('aviation:traffic:detector:v1')).state, 'collapsed');
+    assert.match(relay.output(), /\[AirTraffic\] US collapse entered ratio=0\.20 onset=20:35Z/);
+    assert.match(relay.output(), /\[AirTrafficDetector\] t=2026-11-13T20:30:00\.000Z market=US verdict=normal state=normal ratio=1\.00 control=1\.00 coverage=1\.00\(baseline\)/);
+    assert.equal(JSON.parse(redis.get('aviation:traffic:detector:v2')).US.state, 'collapsed');
   }, { seedHashes });
 });
 
@@ -594,7 +595,7 @@ test('lane 27: a baseline read that fails per command is retried on the next bin
   await lane([GLOBAL_SNAPSHOT, DEPARTURES_STOPPED, DEPARTURES_STOPPED, DEPARTURES_STOPPED, DEPARTURES_STOPPED], {}, async ({ redis, relay }) => {
     await relay.waitFor(() => redis.list('wm:events:queue').length >= 1, 'the collapse event after the failed read');
     assert.match(relay.output(), /\[AirTrafficDetector\] baseline read failed; skipping this bin/);
-    assert.doesNotMatch(relay.output(), /verdict=insufficient-baseline/);
+    assert.doesNotMatch(relay.output(), /market=US verdict=insufficient-baseline/);
   }, { seedHashes, failHgetallPipelines: 1 });
 });
 
@@ -606,7 +607,7 @@ test('lane 28: a tick whose bin ends before it records evaluates its own bin, an
     // The 20:35 tick evaluates first; the slow 20:30 tick then finds a newer
     // state and leaves it alone rather than evaluating 20:35 a second time.
     const lines = relay.output().split('\n').filter((line) => line.startsWith('[AirTrafficDetector] t='));
-    const evaluated = lines.filter((line) => line.includes(' verdict=')).map((line) => line.match(/t=(\S+)/)[1]);
+    const evaluated = lines.filter((line) => line.includes(' market=US verdict=')).map((line) => line.match(/t=(\S+)/)[1]);
     assert.equal(new Set(evaluated).size, evaluated.length, `each bin once: ${evaluated.join(' ')}`);
     assert.ok(lines.some((line) => /t=2026-11-13T20:30:00\.000Z skipped: 2026-11-13T20:35:00\.000Z already evaluated/.test(line)), lines.join('\n'));
   }, { seedHashes, firstPipelineDelayMs: 1200 });
@@ -624,7 +625,42 @@ for (const [name, failure] of [['an error', {}], ['no result', { missingResult: 
     assert.match(relay.output(), /\[AirTrafficDetector\] state read failed; skipping this bin/);
   }, {
     seedHashes,
-    seedStrings: [['aviation:traffic:detector:v1', JSON.stringify(collapsed)]],
-    failGetKey: { key: 'aviation:traffic:detector:v1', times: 1, ...failure },
+    seedStrings: [['aviation:traffic:detector:v2', JSON.stringify({ US: collapsed })]],
+    failGetKey: { key: 'aviation:traffic:detector:v2', times: 1, ...failure },
   });
+});
+
+// A UK stop: departures around the London, Manchester and other UK hubs fall
+// to a fifth of four weeks of history while the US, the control for Europe,
+// flies as usual.
+const LHR = { lat: 51.47, lon: -0.4543 };
+const uk = (departures) => [
+  ...repeat(1200, () => row(35, -100)),
+  ...repeat(150, () => row(35, -100, { alt: 1000, vr: 5, callsign: 'DAL123  ' })),
+  ...repeat(2000, () => row(50, 10)),
+  ...repeat(100 - departures, () => row(LHR.lat, LHR.lon, { ground: true, alt: null })),
+  ...repeat(departures, () => row(LHR.lat, LHR.lon, { alt: 800, vr: 6, callsign: 'BAW12   ' })),
+  ...repeat(6500, () => row(-20, 130)),
+];
+const UK_HISTORY = { usSeen: 1350, usAirborne: 1350, euAirborne: 2100, usLowClimbingAirline: 150, markets: { GB: { seen: 100, dep: 20 } } };
+
+test('lane 30: a UK departure collapse queues one critical alert scoped to GB, and the US stays normal', async () => {
+  const seedHashes = historyHashes('2026-10-14', '2026-11-08', UK_HISTORY);
+  await lane([uk(20), uk(4), uk(4), uk(4), uk(4), uk(4), uk(4)], {}, async ({ redis, relay }) => {
+    const queued = () => redis.list('wm:events:queue').map((m) => JSON.parse(m));
+    const gbState = () => JSON.parse(redis.get('aviation:traffic:detector:v2') || '{}').GB?.state;
+    await relay.waitFor(() => gbState() === 'collapsed', 'the saved UK collapse');
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 7, 'two more bins after the collapse');
+    const events = queued();
+    assert.equal(events.length, 1, events.map((e) => e.payload.title).join(' | '));
+    assert.equal(events[0].severity, 'critical');
+    assert.equal(events[0].payload.countryCode, 'GB');
+    // A four-bin window: the first window with all four bins low ends at 20:50.
+    assert.match(events[0].payload.title, /^UK airline departures fell to 20% of normal since 20:50 UTC$/);
+    assert.match(relay.output(), /market=GB verdict=entered state=collapsed ratio=0\.20 control=1\.00 coverage=1\.00\(baseline\)/);
+    const states = JSON.parse(redis.get('aviation:traffic:detector:v2'));
+    assert.equal(states.GB.state, 'collapsed');
+    assert.equal(states.US.state, 'normal');
+    assert.equal(redis.points('2026-11-13')[1].markets.GB.dep, 4);
+  }, { seedHashes });
 });

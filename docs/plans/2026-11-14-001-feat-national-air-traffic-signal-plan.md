@@ -193,6 +193,20 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 - [ ] Rebased onto current trunk after the verdict, patch-id unchanged.
 - [ ] The root appends PR B to the base-branch stack and the operator lands it bottom-up.
 
+## Alert on a European departure collapse (PR C, stacked on PR B)
+
+Goal. The same alert for the UK, France, Germany, Spain and Italy, validated on adsb.lol archive days before it ships. A market the archive cannot validate does not ship.
+
+- [x] Count each aircraft once per market when it is within 48 km of any of the market's main airports, inside the Europe box: `markets.<code>.seen` and `markets.<code>.dep` (airline callsign, under 3,000 m, climbing). Wingbits has no vertical rate, so its series stores `seen` only.
+- [x] Generalize the detector to a market table. Each market names its signal, coverage and control reads, time zone, window, entry ratio and floors. The US market is unchanged. A European market's control is the US airborne count in New York time.
+- [x] Keep every market's state in one key, `aviation:traffic:detector:v2`, keyed by market code. A failed publish keeps that market's old state, so the next bin retries.
+- [x] Extract 60 or more archive days from 2026-08-10, the 2026-09-08 NATS failure and the 2026-09-30 Italian ATC strike included, into the shared fixture.
+- [x] Tune from the replay. A market has 4 to 17 departures per bin, so the ratio is summed over a 4-bin (20-minute) window. Entry is 0.30. The NATS failure reads 0.24 at entry and ordinary windows reach 0.42 at the lowest. A window under 30 departures is quiet. Coverage needs 0.40 of the market's own baseline, because the UK read 0.62 at entry and 0.42 at the lowest.
+- [x] Drop the Netherlands. About 4 departures a bin never fill the window floor, so it was never evaluated.
+- [x] `tests/air-traffic-detector-replay.test.mjs` asserts one GB collapse at 12:10Z on 2026-09-08, one recovery at 18:35Z, and no event in France, Germany, Spain or Italy. Relay lane 30 queues one GB critical event while the US stays normal.
+
+Evidence. With a 3-bin window and entry at 0.40, the UK flapped (recovered at 12:50Z and re-entered at 13:05Z) and Spain fired on the NATS day, probably because flights to the UK were held at Spanish airports. With a 6-bin window, Italy fired on a 2026-09-10 afternoon dip with no reported cause. Italy's 2026-09-30 strike kept protected flights and read 0.47: a partial strike is not a collapse.
+
 ## Close the program
 
 - [ ] Every box above is checked with its evidence.
