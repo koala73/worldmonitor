@@ -1,5 +1,6 @@
 import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import type { OrbitalTrackSurface } from '@/app/orbital-watch';
+import { takeOrbitalShareLink } from '@/app/orbital-share-link';
 import { buildOrbitalShareFragment, parseOrbitalShareFragment } from '@/utils/urlState';
 
 export type OrbitalRouteView = 'sheet' | 'full';
@@ -21,14 +22,13 @@ export function parseOrbitalRoute(hash: string): OrbitalRoute | null {
   return { point: { lat, lon }, view: match[3] === 'full' ? 'full' : 'sheet' };
 }
 
-/** Written with the share link's 0.01-degree point, so the address bar and history hold no finer place. */
-export function formatOrbitalRoute(point: GeoPoint, view: OrbitalRouteView): string {
-  return `#${buildOrbitalShareFragment(point, null, view)}`;
-}
-
-/** A route followed from an older or hand-written link is rewritten at the share link's precision, and returned as written. */
+/**
+ * A route followed from an older or hand-written link is rewritten at the share link's
+ * precision (0.01 degrees, no `&view=full`) so the address bar and history hold no finer
+ * place. Returns the route as rewritten.
+ */
 function roundRouteInPlace(route: OrbitalRoute): OrbitalRoute {
-  const rounded = formatOrbitalRoute(route.point, route.view);
+  const rounded = `#${buildOrbitalShareFragment(route.point, null)}`;
   if (window.location.hash !== rounded) {
     const url = new URL(window.location.href);
     url.hash = rounded;
@@ -44,9 +44,8 @@ function roundRouteInPlace(route: OrbitalRoute): OrbitalRoute {
 function applyRoute(map: () => OrbitalTrackSurface | null): void {
   const parsed = parseOrbitalRoute(window.location.hash);
   const route = parsed && roundRouteInPlace(parsed);
-  void import('@/app/orbital-watch').then(({ openOrbitalWatch, leaveOrbitalFullView }) => {
-    if (route) openOrbitalWatch(route.point, document.getElementById('mapContainer'), route.view, map());
-    else leaveOrbitalFullView();
+  void import('@/app/orbital-watch').then(({ openOrbitalWatch }) => {
+    if (route) openOrbitalWatch(route.point, document.getElementById('mapContainer'), map());
   });
 }
 
@@ -58,6 +57,13 @@ export function watchOrbitalRoute(map: () => OrbitalTrackSurface | null = () => 
   if (initial && !parseOrbitalShareFragment(window.location.hash)) roundRouteInPlace(initial);
   let routed = parseOrbitalRoute(window.location.hash) !== null;
   const onHashChange = () => {
+    // A share link pasted into this tab opens with its pass and leaves the live URL, as on a fresh load.
+    if (parseOrbitalShareFragment(window.location.hash)) {
+      const link = takeOrbitalShareLink();
+      routed = false;
+      if (link) void import('@/app/orbital-watch').then(({ openOrbitalShareLink }) => openOrbitalShareLink(link, document.getElementById('mapContainer'), map()));
+      return;
+    }
     const next = parseOrbitalRoute(window.location.hash) !== null;
     if (next || routed) applyRoute(map);
     routed = next;

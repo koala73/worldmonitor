@@ -41,6 +41,8 @@ export interface Pass {
   groundDistanceKm: number;
   /** Which side of the ground track the point lies on, facing the direction of travel. */
   side: 'left' | 'right';
+  /** Northbound or southbound at closest approach. */
+  direction: 'ascending' | 'descending';
   elevationDeg: number;
   azimuthDeg: number;
   incidenceDeg: number;
@@ -48,9 +50,9 @@ export interface Pass {
   altitudeKm: number;
   subSatellite: GeoPoint;
   inFootprint: boolean;
-  /** Within a few kilometres of the footprint edge, so whether it was imaged is uncertain. */
+  /** Within 5 km of the modelled footprint edge, inside or outside it, so whether it was imaged is uncertain. */
   edgeOfSwath: boolean;
-  /** The mission acquires over this point at all (land and coasts for the open missions). */
+  /** The mission acquires over this point at all, by its own coverage (see SensorProfile.coverage). */
   coverage: boolean;
 }
 

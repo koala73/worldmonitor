@@ -34,7 +34,7 @@ message PointPass {
   string name = 2;
   // Id of the sensor profile the satellite belongs to.
   string profile_id = 3;
-  // Sensor category, e.g. open-optical, open-radar, weather-polar, commercial-radar, military, crewed-station.
+  // Sensor category, e.g. open-optical, open-radar, open-lidar, weather-polar, commercial-radar, government-optical, military, crewed-station.
   string category = 4;
   // Time of closest approach, as Unix epoch milliseconds.
   int64 time_ms = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];

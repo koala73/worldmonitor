@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { computePointPasses, parsePoint, pointPassesCacheKey } from '../server/worldmonitor/orbital/v1/get-point-passes.ts';
-import { ORBITAL_ROLLUP_MAX_AGE_MS, ORBITAL_SITES_SCHEMA, toCountryEvidence } from '../server/worldmonitor/orbital/v1/get-country-imagery-evidence.ts';
+import { toCountryEvidence } from '../server/worldmonitor/orbital/v1/get-country-imagery-evidence.ts';
 import { toCatalogResponse } from '../server/worldmonitor/orbital/v1/list-imaging-satellites.ts';
 import { orbitalHandler } from '../server/worldmonitor/orbital/v1/handler.ts';
 import { createOrbitalServiceRoutes } from '../src/generated/server/worldmonitor/orbital/v1/service_server.ts';
@@ -13,7 +13,7 @@ import { findArchiveEvidence } from '../src/services/orbital/match.ts';
 import { runPassJob } from '../src/services/orbital/pass-job.ts';
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
 import { getRequiredTier } from '../server/_shared/entitlement-check.ts';
-import { ROLLUP_MAX_AGE_MS, SITES_SCHEMA, evaluateSites, planPublication } from '../scripts/_orbital-sites.mjs';
+import { ROLLUP_MAX_AGE_MS, evaluateSites, planPublication } from '../scripts/_orbital-sites.mjs';
 import { WATCHED_SITES } from '../scripts/shared/orbital-watched-sites.generated.mjs';
 import { ARCHIVE_RESPONSES, fakeArchiveFetch, FIXTURE_NOW } from './helpers/orbital-archive-fetch.mts';
 
@@ -45,14 +45,27 @@ describe('point passes over REST', () => {
       const point = { lat: fixture.lat, lon: fixture.lon };
       const rest = await computePointPasses(point, storedCatalog, FIXTURE_NOW, { fetch: fakeArchiveFetch(fixture).fetch });
       const { job, evidence } = await browserLookup(point, { startMs: rest.windowStartMs, endMs: rest.windowEndMs }, fakeArchiveFetch(fixture).fetch);
-      const browserTiers = new Map(evidence.passes.filter((p) => p.inFootprint).map((p) => [passKey(p), p.tier.kind]));
+      const listed = evidence.passes.filter((p) => p.inFootprint || p.tier.kind === 'confirmed-image');
+      const browserTiers = new Map(listed.map((p) => [passKey(p), p.tier.kind]));
       assert.ok(rest.passes.length > 0);
       assert.deepEqual(new Map(rest.passes.map((p) => [passKey(p), p.tier])), browserTiers);
-      assert.deepEqual(rest.passes.map(passKey), job.passes.filter((p) => p.inFootprint).map(passKey), 'the same passes the pure pass job computes');
+      assert.deepEqual(rest.passes.map(passKey), listed.map(passKey), 'the same passes the pure pass job computes');
       assert.equal(rest.outOfFootprintPasses, job.passes.length - rest.passes.length);
       assert.equal(rest.archiveStatus, 'complete');
       assert.equal(rest.stale, false);
     }
+  });
+
+  it('lists a pass the archive confirms although its modelled footprint misses the point, with the geometry note', async () => {
+    const fixture = ARCHIVE_RESPONSES.points.denver;
+    const offSwath = { lat: fixture.lat, lon: fixture.lon + 2 };
+    const rest = await computePointPasses(offSwath, storedCatalog, FIXTURE_NOW, { fetch: fakeArchiveFetch(fixture).fetch });
+    const matched = new Set(rest.acquisitions.filter((a) => a.passNoradId).map((a) => passKey({ noradId: a.passNoradId, timeMs: a.passTimeMs })));
+    assert.ok(matched.size > 1);
+    assert.deepEqual(new Set(rest.passes.filter((p) => p.tier === 'confirmed-image').map(passKey)), matched, 'every matched pass is listed as confirmed');
+    const disagreed = rest.passes.filter((p) => p.tierNote === 'geometry-disagreed');
+    assert.ok(disagreed.length > 0);
+    for (const pass of disagreed) assert.equal(pass.tier, 'confirmed-image');
   });
 
   it('returns a matched pass with the confirmed tier and its image reference', async () => {
@@ -115,7 +128,7 @@ describe('point passes over REST', () => {
   });
 
   it('computes and caches on the 0.01-degree cell and names the point used', async () => {
-    assert.deepEqual(parsePoint(new Request('https://api.worldmonitor.app/api/orbital/v1/get-point-passes?lon=31.2')), { lat: 0, lon: 31.2 }, 'the generated client omits a zero latitude');
+    assert.deepEqual(parsePoint(new Request('https://api.worldmonitor.app/api/orbital/v1/get-point-passes?lat=0&lon=31.2')), { lat: 0, lon: 31.2 }, 'an explicit zero is the equator');
     const a = parsePoint(new Request('https://api.worldmonitor.app/api/orbital/v1/get-point-passes?lat=39.7392&lon=-104.9903'));
     const b = parsePoint(new Request('https://api.worldmonitor.app/api/orbital/v1/get-point-passes?lat=39.7449&lon=-104.9851'));
     assert.deepEqual(a, { lat: 39.74, lon: -104.99 });
@@ -136,7 +149,7 @@ describe('point passes over REST', () => {
 
   it('answers invalid caller input with 400, never 500', async () => {
     const handler = route('/api/orbital/v1/get-point-passes');
-    for (const query of ['lat=91&lon=0', 'lat=-90.5&lon=0', 'lat=0&lon=180.01', 'lat=abc&lon=0', 'lat=&lon=0', 'lat=Infinity&lon=0']) {
+    for (const query of ['lon=31.2', 'lat=12', '', 'lat=91&lon=0', 'lat=-90.5&lon=0', 'lat=0&lon=180.01', 'lat=abc&lon=0', 'lat=&lon=0', 'lat=Infinity&lon=0']) {
       const res = await handler(new Request(`https://api.worldmonitor.app/api/orbital/v1/get-point-passes?${query}`));
       assert.equal(res.status, 400, query);
       assert.ok(Array.isArray((await res.json()).violations), query);
@@ -190,11 +203,6 @@ async function publish(shadow: boolean, state = 'confirmed') {
 }
 
 describe('country imagery evidence over REST', () => {
-  it('reads the rollup with the seeder schema and freshness limit', () => {
-    assert.equal(ORBITAL_SITES_SCHEMA, SITES_SCHEMA);
-    assert.equal(ORBITAL_ROLLUP_MAX_AGE_MS, ROLLUP_MAX_AGE_MS);
-  });
-
   it('returns a confirmed flag with its confirming scene', async () => {
     const plan = await publish(false);
     const evidence = toCountryEvidence(site.countryCode, plan.index, plan.rollupWrites[0], NOW);

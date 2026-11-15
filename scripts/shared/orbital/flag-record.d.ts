@@ -72,6 +72,12 @@ export interface FlagRecord {
   state: TrackState;
   tracks: Record<string, FlagTrack>;
   events: FlagEvent[];
+  /** Events and skipped scenes since the record began; `events` keeps only the newest. */
+  counts?: { raised: number; confirmed: number; retracted: number; skippedScenes: number };
+  /** Failed statistics attempts per scene item, until the scene is folded or skipped. */
+  sceneFailures?: Record<string, number>;
+  /** The last scoring run stopped before every scene was read. */
+  unfinished?: boolean;
   backfilledAt: number | null;
   updatedAt: number;
 }

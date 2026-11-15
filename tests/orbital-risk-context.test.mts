@@ -85,11 +85,16 @@ afterEach(() => {
 });
 
 describe('imagery change flags stay out of the Country Instability Index', () => {
-  it('every committed fixture scores identically with flag records present', () => {
+  it('the scorer never reads a watched-site key, for every committed fixture', () => {
     const flagKeys = orbitalKeys([buildCountryRollup('IR', IR_RECORDS), buildCountryRollup(OUTSIDE, DJ_RECORDS)]);
     for (const fixture of loadCiiFixtures()) {
-      const withFlags = { ...fixture, inputs: { ...fixture.inputs, ...flagKeys } };
-      assert.deepEqual(scoreCiiFixture(withFlags), scoreCiiFixture(fixture), fixture.label);
+      const read = new Set<string>();
+      const inputs = new Proxy({ ...fixture.inputs, ...flagKeys }, {
+        get(target, key, receiver) { if (typeof key === 'string') read.add(key); return Reflect.get(target, key, receiver); },
+      });
+      assert.deepEqual(scoreCiiFixture({ ...fixture, inputs }), scoreCiiFixture(fixture), fixture.label);
+      assert.ok(read.size > 0, `${fixture.label}: the scorer reads its inputs through this object`);
+      assert.deepEqual(Object.keys(flagKeys).filter((key) => read.has(key)), [], fixture.label);
     }
   });
 
@@ -105,11 +110,13 @@ describe('imagery change flags stay out of the Country Instability Index', () =>
 });
 
 describe('imagery change context beside country risk', () => {
-  it('a country with a confirmed flag names it out of its watched-site total', async () => {
-    useRedis({ ...BASE_KEYS, ...orbitalKeys([buildCountryRollup('IR', IR_RECORDS)]) });
+  it('a country with a confirmed flag names it out of the watched sites whose change is scored', async () => {
+    const port = { ...site('port:bandar-abbas', 'Port of Bandar Abbas', 'IR', null), surface: 'maritime' };
+    useRedis({ ...BASE_KEYS, ...orbitalKeys([buildCountryRollup('IR', [...IR_RECORDS, port])]) });
     const response = await read('IR');
     assert.deepEqual(response.imageryChange, {
-      watchedSiteCount: 3,
+      // Natanz and Fordow are scored; Bushehr (unscored) and the port (never scored) are not counted.
+      watchedSiteCount: 2,
       confirmedSites: [{ siteId: 'nuclear-facility:natanz', name: 'Natanz nuclear facility', confirmedAt: Date.parse('2026-11-10T02:41:00Z') }],
     });
   });
@@ -130,7 +137,7 @@ describe('imagery change context beside country risk', () => {
       ...orbitalKeys([buildCountryRollup('IR', shadowed)]),
       [flagShadowKey('nuclear-facility:natanz')]: { siteId: 'nuclear-facility:natanz', ...confirmedFlag('2026-11-10T02:41:00Z') },
     });
-    assert.deepEqual((await read('IR')).imageryChange, { watchedSiteCount: 3, confirmedSites: [] });
+    assert.equal((await read('IR')).imageryChange, undefined, 'no count is served while scoring is shadowed');
   });
 
   it('a stale or superseded site summary contributes nothing', async () => {

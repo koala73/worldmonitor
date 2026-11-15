@@ -59,9 +59,9 @@ test('health is soft before the activation marker exists and enforced after', ()
 
 test('a published catalog reads healthy, and a thin or old one does not', () => {
   const fresh = now - 60_000;
-  assert.equal(classify({ activated: true, meta: { fetchedAt: fresh, recordCount: 17 } }), 'OK');
+  assert.equal(classify({ activated: true, meta: { fetchedAt: fresh, recordCount: 297 } }), 'OK');
   assert.equal(classify({ activated: true, meta: { fetchedAt: fresh, recordCount: SEED_META[name].minRecordCount - 1 } }), 'COVERAGE_PARTIAL');
-  assert.equal(classify({ activated: true, meta: { fetchedAt: now - (MAX_STALE_MIN + 1) * 60_000, recordCount: 17 } }), 'STALE_SEED');
+  assert.equal(classify({ activated: true, meta: { fetchedAt: now - (MAX_STALE_MIN + 1) * 60_000, recordCount: 297 } }), 'STALE_SEED');
 });
 
 function installRedisMock({ activated, meta }) {
@@ -88,6 +88,6 @@ test('seed-health is pending before the first publication and ok after it', asyn
   assert.equal((await seedHealthEntry()).status, 'pending-activation');
   installRedisMock({ activated: true, meta: null });
   assert.notEqual((await seedHealthEntry()).status, 'pending-activation');
-  installRedisMock({ activated: true, meta: { fetchedAt: now - 60_000, recordCount: 17 } });
+  installRedisMock({ activated: true, meta: { fetchedAt: now - 60_000, recordCount: 297 } });
   assert.equal((await seedHealthEntry()).status, 'ok');
 });

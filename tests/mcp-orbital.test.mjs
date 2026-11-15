@@ -4,8 +4,9 @@ import assert from 'node:assert/strict';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../api/mcp/constants.ts';
 import { RpcValidationError } from '../api/mcp/billing-denial.ts';
+import { ORBITAL_TOOLS } from '../api/mcp/registry/_orbital.ts';
 
-const tool = (name) => TOOL_REGISTRY.find((t) => t.name === name);
+const tool = (name) => ORBITAL_TOOLS.find((t) => t.name === name);
 const POINT = 'get_point_satellite_passes';
 const COUNTRY = 'get_country_imagery_evidence';
 const ORBITAL_KEYS = ['orbital:catalog:v1', 'orbital:sites:v1', 'seed-meta:orbital:catalog', 'seed-meta:orbital:sites'];
@@ -14,6 +15,13 @@ afterEach(() => { globalThis.fetch = originalFetch; });
 const call = (name, args) => tool(name)._execute(args, 'https://worldmonitor.app', { kind: 'env_key', apiKey: 'wm_orbital_fixture' });
 
 describe('orbital MCP tools', () => {
+  // #10721: the orbital REST endpoints answer 404 while Orbital Watch is dark
+  // (#10710), so a listed tool fails every call with -32603.
+  it('stay out of the published catalog while Orbital Watch is dark', () => {
+    const listed = TOOL_REGISTRY.map((t) => t.name);
+    for (const name of [POINT, COUNTRY]) assert.ok(!listed.includes(name), `${name} must not be listed`);
+  });
+
   it('refuse free accounts: both are subscription tools', () => {
     for (const name of [POINT, COUNTRY]) {
       assert.equal(tool(name)?._subscriptionOnly, true, name);

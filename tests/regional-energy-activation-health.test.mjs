@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { __testing__ } from '../api/health.js';
+// Health reads ORBITAL_WATCH_ENABLED at import time, and the deadline count below depends
+// on it (orbitalSites claims a deadline only once lit). Pin the dark default, then restore.
+const previousOrbitalWatch = process.env.ORBITAL_WATCH_ENABLED;
+process.env.ORBITAL_WATCH_ENABLED = 'false';
+const { __testing__ } = await import('../api/health.js?orbital-watch=dark');
+if (previousOrbitalWatch === undefined) delete process.env.ORBITAL_WATCH_ENABLED;
+else process.env.ORBITAL_WATCH_ENABLED = previousOrbitalWatch;
 const { classifyKey, STANDALONE_KEYS, SEED_META, regionalEnergyRolloutCommands } = __testing__;
 const name = 'regionalEnergyCammesa';
 const key = STANDALONE_KEYS[name];
@@ -25,11 +31,25 @@ test('first fetch error is visible inside rollout grace without a success clock'
 });
 test('regional deadlines use persistent NX and existing budgets capped at one day', () => {
   const commands = regionalEnergyRolloutCommands(now, 'production');
-  // 23 regional feeds, reservoirLevels, orbitalCatalog and orbitalSites, two commands each.
+  // 23 regional feeds, reservoirLevels, orbitalCatalog and airTrafficHistoryWingbits, two
+  // commands each. orbitalSites claims none while Orbital Watch is dark
+  // (tests/orbital-sites-dark-launch-health.test.mjs).
   assert.equal(commands.length, 52);
+  const wingbits = commands.find(c => c[0] === 'SET' && c[1] === 'health:rollout-deadline:seed-meta:aviation:traffic-history-wingbits');
+  assert.deepEqual(wingbits.slice(2), [String(now + 60 * 60000), 'NX']);
   const cammesa = commands.find(c => c[0] === 'SET' && c[1].includes(':cammesa:'));
   assert.deepEqual(cammesa.slice(2), [String(now + 180 * 60000), 'NX']);
   const anp = commands.find(c => c[0] === 'SET' && c[1].includes(':anp:'));
   assert.deepEqual(anp.slice(2), [String(now + 1440 * 60000), 'NX']);
   assert.deepEqual(regionalEnergyRolloutCommands(now, 'preview'), []);
+});
+test('a Wingbits traffic series that never publishes becomes EMPTY at its deadline, despite being on-demand', () => {
+  const wingbits = 'airTrafficHistoryWingbits';
+  const status = (until) => classifyKey(wingbits, STANDALONE_KEYS[wingbits], { allowOnDemand: true }, {
+    keyStrens: new Map(), keyErrors: new Map(), keyMetaErrors: new Map(), keyMetaValues: new Map(),
+    activationStates: new Map([[wingbits, false]]),
+    rolloutPendingUntilMs: new Map(until ? [[wingbits, until]] : []), now,
+  }).status;
+  assert.equal(status(now + 1), 'ROLLOUT_PENDING');
+  assert.equal(status(now), 'EMPTY');
 });

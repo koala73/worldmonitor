@@ -33,8 +33,9 @@ export const PASS_MATCH_TOLERANCE_MS = 5 * MINUTE_MS;
 /** Which archives answer for each imaging mission. */
 export const PROFILE_ARCHIVES: Record<ImagingProfileId, readonly StacArchiveId[]> = {
   'sentinel-2': ['earth-search', 'planetary-computer'],
-  'sentinel-1': ['earth-search'],
-  landsat: ['planetary-computer'],
+  'sentinel-1': ['earth-search', 'planetary-computer'],
+  // Earth Search mirrors USGS as it publishes; Planetary Computer lags it by days.
+  landsat: ['earth-search', 'planetary-computer'],
 };
 
 export type AcquisitionCondition = PointCondition | 'not-applicable';

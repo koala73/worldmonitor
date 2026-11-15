@@ -58749,7 +58749,7 @@ components:
                     type: string
                 category:
                     type: string
-                    description: One of open-optical, open-radar, weather-polar, commercial-optical, commercial-radar, military, crewed-station, geostationary.
+                    description: One of open-optical, open-radar, open-lidar, weather-polar, commercial-optical, commercial-radar, government-optical, government-radar, military, crewed-station, geostationary.
                 coverage:
                     type: string
                     description: 'Where the mission acquires: "land-coast" or "global".'
@@ -58944,7 +58944,7 @@ components:
                     description: Id of the sensor profile the satellite belongs to.
                 category:
                     type: string
-                    description: Sensor category, e.g. open-optical, open-radar, weather-polar, commercial-radar, military, crewed-station.
+                    description: Sensor category, e.g. open-optical, open-radar, open-lidar, weather-polar, commercial-radar, government-optical, military, crewed-station.
                 timeMs:
                     type: integer
                     format: int64
