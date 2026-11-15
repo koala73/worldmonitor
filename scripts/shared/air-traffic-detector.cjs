@@ -172,7 +172,8 @@ const utcTime = (t) => new Date(t).toISOString().slice(11, 16);
 
 // The notification for a detector event. A collapse is critical, so it reaches
 // realtime rules (they take critical only) and quiet hours do not hold it. The
-// recovery is high: digest rules carry it, and it wakes no one.
+// recovery is high: notification-relay's shouldNotify lets it through to the
+// same rules, and quiet hours silence it or hold it, so it wakes no one.
 function buildCollapseNotification(event) {
   const percent = Math.round(event.ratio * 100);
   const recovery = event.kind === 'recovery';

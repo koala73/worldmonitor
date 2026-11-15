@@ -6808,9 +6808,11 @@ async function loadDetectorBaseline(t) {
   if (missing.length === 0) return true;
   const prefix = AIR_TRAFFIC_SERIES.opensky.prefix;
   const results = await upstashPipeline(missing.map((day) => ['HGETALL', `${prefix}:${day}`]));
-  if (!Array.isArray(results) || results.length !== missing.length) return false;
+  // A failed command must not be cached as an empty day, or the detector stays
+  // at insufficient-baseline until the day leaves the window.
+  if (!Array.isArray(results) || results.length !== missing.length || !results.every((r) => Array.isArray(r?.result))) return false;
   missing.forEach((day, i) => {
-    const flat = Array.isArray(results[i]?.result) ? results[i].result : [];
+    const flat = results[i].result;
     const points = new Map();
     for (let j = 0; j + 1 < flat.length; j += 2) {
       const point = trimDetectorPoint(flat[j + 1]);

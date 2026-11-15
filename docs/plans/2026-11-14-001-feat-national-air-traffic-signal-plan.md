@@ -151,7 +151,7 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 - [ ] Bins whose baseline is under 25% of the local day's peak baseline are `quiet`. They neither count toward nor break a run.
 - [ ] Enter `collapsed` when two consecutive evaluated bins read below 0.40, with Europe at least 0.30 of its baseline (the feed is alive) and coverage holding. Coverage is OpenSky `usSeen` at least 0.80 of Wingbits `usSeen` for the same bin, or, without a Wingbits point, at least 0.60 of its own baseline. The feed checks guard entry only, because parked aircraft switch transponders off and the national count falls during a real stop.
 - [ ] Leave it when two consecutive bins read above 0.70.
-- [ ] On entry, publish `aviation_traffic_collapse` with severity `critical`. On exit, publish the same type with severity `high` and a recovery title, which reaches digest rules and wakes no one. Both payloads carry `countryCode` `US`, the ratio, and the onset bin. The state moves only after the event is queued.
+- [ ] On entry, publish `aviation_traffic_collapse` with severity `critical`. On exit, publish the same type with severity `high` and a recovery title. A `shouldNotify` bypass delivers it to the realtime rules that got the alert, and quiet hours silence or hold it because it is not critical. Both payloads carry `countryCode` `US`, the ratio, and the onset bin. The state moves only after the event is queued.
 - [ ] Cover the new type in the payload audit and the country-scope test.
 
 **You see.**

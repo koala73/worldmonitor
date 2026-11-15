@@ -30,8 +30,9 @@ const GLOBAL_SNAPSHOT = [
 const GLOBAL_TOTALS = { usSeen: 1500, usAirborne: 1200, usLowClimbing: 200, usLowClimbingAirline: 150, euAirborne: 2000 };
 const EUROPE_ONLY = repeat(400, () => row(50, 10));
 
-function createRedis({ abortPipelines = 0, firstPipelineDelayMs = 0, seedHashes = null } = {}) {
+function createRedis({ abortPipelines = 0, firstPipelineDelayMs = 0, seedHashes = null, failHgetallPipelines = 0 } = {}) {
   let pipelinesToAbort = abortPipelines;
+  let hgetallFailures = failHgetallPipelines;
   let pipelineDelayMs = firstPipelineDelayMs;
   const strings = new Map();
   const hashes = new Map(seedHashes ?? []);
@@ -90,6 +91,15 @@ function createRedis({ abortPipelines = 0, firstPipelineDelayMs = 0, seedHashes 
         const delayMs = pipelineDelayMs;
         pipelineDelayMs = 0;
         setTimeout(() => res.end(JSON.stringify(body.map((command) => ({ result: run(command) })))), delayMs);
+        return;
+      }
+      if (req.url === '/pipeline' && Array.isArray(body) && hgetallFailures > 0
+        && body.some((command) => String(command[0]).toUpperCase() === 'HGETALL')) {
+        hgetallFailures -= 1;
+        // Upstash reports a failed command inside a 200 pipeline response.
+        res.end(JSON.stringify(body.map((command) => (String(command[0]).toUpperCase() === 'HGETALL'
+          ? { error: 'ERR max requests limit exceeded' }
+          : { result: run(command) }))));
         return;
       }
       if (req.url === '/pipeline' && Array.isArray(body)) {
@@ -568,4 +578,13 @@ test('lane 26: with under two weeks of history the detector stays silent', async
     assert.equal(redis.list('wm:events:queue').length, 0);
     assert.match(relay.output(), /verdict=insufficient-baseline/);
   }, { seedHashes });
+});
+
+test('lane 27: a baseline read that fails per command is retried on the next bin, not cached as empty', async () => {
+  const seedHashes = historyHashes('2026-10-14', '2026-11-08', ORDINARY_HISTORY);
+  await lane([GLOBAL_SNAPSHOT, DEPARTURES_STOPPED, DEPARTURES_STOPPED, DEPARTURES_STOPPED, DEPARTURES_STOPPED], {}, async ({ redis, relay }) => {
+    await relay.waitFor(() => redis.list('wm:events:queue').length >= 1, 'the collapse event after the failed read');
+    assert.match(relay.output(), /\[AirTrafficDetector\] baseline read failed; skipping this bin/);
+    assert.doesNotMatch(relay.output(), /verdict=insufficient-baseline/);
+  }, { seedHashes, failHgetallPipelines: 1 });
 });
