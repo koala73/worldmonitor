@@ -51,6 +51,8 @@ message ReservoirLatestPass {
 message ReservoirLevelPoint {
   string date = 1;
   double level_m = 2;
+  // Seasonal baseline median for this date (seasonalBaseline in scripts/_reservoir-levels.mjs); absent with too few prior seasons.
+  optional double baseline_m = 3;
 }
 
 message ReservoirLevelsSource {

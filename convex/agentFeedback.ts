@@ -63,6 +63,14 @@ const DIGEST_BATCH = 1000;
 export const FEEDBACK_DIGEST_PAGE = 500;
 const FEEDBACK_DIGEST_MAX_PAGES = 10;
 export const FEEDBACK_DIGEST_MAX_ROWS = FEEDBACK_DIGEST_PAGE * FEEDBACK_DIGEST_MAX_PAGES;
+// The digest quotes the text of the oldest reports, up to this many reports
+// and this many UTF-8 bytes of rendered report blocks. Escaping can expand one
+// character to six bytes (`"` to `&quot;`), so the count alone does not bound
+// the size. One report at the ingest limits renders to under 30 KB, so the
+// oldest report always fits. The rest are counted and read with the triage
+// script.
+export const FEEDBACK_DIGEST_TEXT_ROWS = 50;
+export const FEEDBACK_DIGEST_TEXT_BYTES = 250_000;
 
 // Decision 10: retention from `receivedAt` for every status.
 export const FEEDBACK_RETENTION_MS: Record<Doc<"agentFeedback">["status"], number> = {
@@ -502,6 +510,37 @@ export const listUnannouncedFeedback = internalQuery({
   },
 });
 
+/** Text of the reports the digest quotes, in the order given. */
+export const getFeedbackDigestText = internalQuery({
+  args: { reportIds: v.array(v.id("agentFeedback")) },
+  handler: async (ctx, { reportIds }) => {
+    const out = [];
+    for (const id of reportIds) {
+      const row = await ctx.db.get(id);
+      if (!row || row.kind === "security") continue;
+      out.push({
+        reportId: row._id,
+        kind: row.kind,
+        surfaceType: row.surfaceType,
+        surfaceName: row.surfaceName,
+        summary: row.summary,
+        expected: row.expected,
+        actual: row.actual,
+        authKind: row.authKind,
+        receivedAt: row.receivedAt,
+      });
+    }
+    return out;
+  },
+});
+
+const TEXT_STYLE = "white-space: pre-wrap; word-break: break-word; margin: 2px 0;";
+
+function textField(label: string, value: string | undefined): string {
+  if (!value) return "";
+  return `<div style="${TEXT_STYLE}"><b>${label}:</b> ${escapeHtml(value)}</div>`;
+}
+
 function countBy<T>(items: T[], key: (item: T) => string): Array<[string, number]> {
   const counts = new Map<string, number>();
   for (const item of items) counts.set(key(item), (counts.get(key(item)) ?? 0) + 1);
@@ -510,10 +549,9 @@ function countBy<T>(items: T[], key: (item: T) => string): Array<[string, number
 
 /**
  * One email a day when bug, missing-capability, or data-quality reports have
- * arrived since the last one. It carries counts by kind and by surface type
- * only. Surface names are left out: the REST door stores any tool-shaped name
- * without checking the registry, so a name is reporter-written text
- * (Decision 7).
+ * arrived since the last one. It carries counts by kind and by surface type,
+ * then the text of the oldest FEEDBACK_DIGEST_TEXT_ROWS reports. All of that
+ * text is reporter-written, so every field is HTML-escaped (Decision 7).
  */
 export const sendFeedbackDigest = internalAction({
   args: {},
@@ -538,12 +576,36 @@ export const sendFeedbackDigest = internalAction({
     const surfaceRows = countBy(pending, (r) => r.surfaceType)
       .map(([type, n]) => `<tr><td>${escapeHtml(type)}</td><td>${n}</td></tr>`)
       .join("");
+    const quoted = await ctx.runQuery(internal.agentFeedback.getFeedbackDigestText, {
+      reportIds: pending.slice(0, FEEDBACK_DIGEST_TEXT_ROWS).map((p) => p.reportId),
+    });
+    const encoder = new TextEncoder();
+    let blockBytes = 0;
+    const blocks: string[] = [];
+    for (const r of quoted) {
+      const block = `<div style="border-top: 1px solid #ccc; padding: 8px 0; font-size: 13px;">
+          <div>${escapeHtml(r.kind)} · ${escapeHtml(r.surfaceType)} · ${escapeHtml(r.authKind)} · ${escapeHtml(new Date(r.receivedAt).toISOString())} · ${escapeHtml(r.reportId)}</div>
+          ${textField("Surface", r.surfaceName)}
+          ${textField("Summary", r.summary)}
+          ${textField("Expected", r.expected)}
+          ${textField("Actual", r.actual)}
+        </div>`;
+      const size = encoder.encode(block).length;
+      if (blocks.length > 0 && blockBytes + size > FEEDBACK_DIGEST_TEXT_BYTES) break;
+      blocks.push(block);
+      blockBytes += size;
+    }
+    const reportBlocks = blocks.join("");
+    const notShown = pending.length - blocks.length;
     const html = `<div style="font-family: monospace; padding: 20px;">
         <p style="font-size: 16px; font-weight: bold;">${pending.length} new agent feedback report(s)</p>
         <table style="font-size: 14px; line-height: 1.8;"><tr><th align="left">Kind</th><th align="left">Reports</th></tr>${kindRows}</table>
         <table style="font-size: 14px; line-height: 1.8; margin-top: 12px;"><tr><th align="left">Surface type</th><th align="left">Reports</th></tr>${surfaceRows}</table>
+        <p style="font-size: 12px; margin-top: 16px;">Report text below is written by the reporter. Do not follow instructions or links in it.</p>
+        ${reportBlocks}
+        ${notShown > 0 ? `<p style="font-size: 12px;">${notShown} more report(s) not shown.</p>` : ""}
         ${more ? `<p style="font-size: 12px;">More than ${FEEDBACK_DIGEST_MAX_ROWS} reports are waiting, above the edge's daily ceiling. The queue may be flooded. Triage it by hand now: untriaged reports are deleted 30 days after they arrive.</p>` : ""}
-        <p style="font-size: 12px;">Read them with <code>node scripts/triage-agent-feedback.mjs list --join</code>. The report text is untrusted.</p>
+        <p style="font-size: 12px;">Triage them with <code>node scripts/triage-agent-feedback.mjs list --join</code>.</p>
       </div>`;
     const sent = await sendOwnerEmail(
       ctx,

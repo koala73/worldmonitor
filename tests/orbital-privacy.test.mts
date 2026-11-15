@@ -7,7 +7,7 @@ import { findArchiveEvidence } from '../src/services/orbital/match.ts';
 import { parseStacItem, readPointCondition } from '../src/services/orbital/archive-stac.ts';
 import { loadArchiveImage } from '../src/services/orbital/archive-image.ts';
 import { cropBox, gibsSnapshotUrl, planetaryComputerCropUrl } from '../src/services/orbital/crop-url.ts';
-import { searchSceneHistory, searchYearlyLooks } from '../src/services/orbital/timelapse.ts';
+import { searchSceneHistory } from '../src/services/orbital/scene-history.ts';
 import { ARCHIVE_RESPONSES, FIXTURE_NOW, fakeArchiveFetch, fixtureLookup } from './helpers/orbital-archive-fetch.mts';
 
 const ARCHIVE_HOSTS = new Set(['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com', 'gibs.earthdata.nasa.gov', 'view.eumetsat.int']);
@@ -121,19 +121,18 @@ describe('a free lookup keeps the exact point to the archives', () => {
     assert.deepEqual([...leaking].sort(), ['eumetsat', 'nasa-gibs', 'planetary-computer'], 'every point image URL would leak as the largest paint unloaded');
   });
 
-  it('keeps the point out of the request names of the compare history and the yearly time-lapse', async () => {
+  it('keeps the point out of the request names of the compare history', async () => {
     const point = { ...ARCHIVE_RESPONSES.points.dubai, ...EXACT_POINT };
     const { fetch, requests } = fakeArchiveFetch(point);
     const history = await searchSceneHistory(EXACT_POINT, 'sentinel-2', FIXTURE_NOW, { fetch });
-    const yearly = await searchYearlyLooks(EXACT_POINT, FIXTURE_NOW, { fetch });
-    const imageUrls = [...(history.status === 'ok' ? history.scenes.map((s) => s.imageUrl) : []), ...yearly.looks.map((look) => look.imageUrl)]
+    const imageUrls = [...(history.status === 'ok' ? history.scenes.map((s) => s.imageUrl) : [])]
       .filter((url): url is string => Boolean(url));
     assert.ok(requests.length > 0);
     assert.ok(imageUrls.length > 0);
     for (const { url } of requests) assert.deepEqual(coordinatesIn(reportedName(url)), [], reportedName(url));
-    // The viewer and time-lapse paint these crops from what loadArchiveImage returns, so the largest paint is a blob: URL.
+    // The viewer paints these crops from what loadArchiveImage returns, so the largest paint is a blob: URL.
     for (const url of imageUrls) {
-      assert.ok(coordinatesIn(url).length > 0, 'a compare or time-lapse crop URL carries the point');
+      assert.ok(coordinatesIn(url).length > 0, 'a compare crop URL carries the point');
       const loaded = await loadArchiveImage('planetary-computer', [url], { fetch: async () => new Response(new Blob([new Uint8Array(8)], { type: 'image/png' })) });
       assert.equal(loaded.status, 'ok');
       if (loaded.status !== 'ok') continue;

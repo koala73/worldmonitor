@@ -10,27 +10,38 @@ const HEARTBEAT_KEY = 'seed-meta:aviation:traffic-history';
 const HEARTBEAT_TTL_SECONDS = 7 * 86400;
 const ACTIVATION_KEY = 'seed-activated:aviation:traffic-history';
 
+const MEASURES = Object.freeze([
+  'usSeen', 'usAirborne', 'usLowClimbing', 'euAirborne',
+  'usAirborneAirline', 'usLowClimbingAirline', 'euAirborneAirline',
+]);
+const CLIMB_MEASURES = new Set(['usLowClimbing', 'usLowClimbingAirline']);
+const HUB_MEASURES = Object.freeze(['air', 'ground', 'dep']);
+
 // Each source keeps its own day hashes, heartbeat and activation marker, so the
-// series never mix and a ratio is only ever taken within one source.
+// series never mix and a ratio is only ever taken within one source. `measures`
+// lists the counts a source can observe and therefore stores.
 const SERIES = Object.freeze({
-  opensky: Object.freeze({ prefix: PREFIX, heartbeatKey: HEARTBEAT_KEY, activationKey: ACTIVATION_KEY }),
-  adsblol: Object.freeze({
-    prefix: 'aviation:traffic:history:adsblol:v1',
-    heartbeatKey: 'seed-meta:aviation:traffic-history-adsblol',
-    activationKey: 'seed-activated:aviation:traffic-history-adsblol',
+  opensky: Object.freeze({ prefix: PREFIX, heartbeatKey: HEARTBEAT_KEY, activationKey: ACTIVATION_KEY, measures: MEASURES, hubMeasures: HUB_MEASURES }),
+  // Wingbits /v1/flights carries no vertical rate, so it cannot count climbers
+  // or hub departures. Storing 0 there would read as a departure collapse.
+  wingbits: Object.freeze({
+    prefix: 'aviation:traffic:history:wingbits:v1',
+    heartbeatKey: 'seed-meta:aviation:traffic-history-wingbits',
+    activationKey: 'seed-activated:aviation:traffic-history-wingbits',
+    measures: Object.freeze(MEASURES.filter((field) => !CLIMB_MEASURES.has(field))),
+    hubMeasures: Object.freeze(HUB_MEASURES.filter((field) => field !== 'dep')),
   }),
 });
 
-const COUNT_FIELDS = ['usSeen', 'usAirborne', 'usLowClimbing', 'euAirborne', 'statesTotal'];
 const isCount = (v) => Number.isInteger(v) && v >= 0;
 
-function validPoint(point) {
+function validPoint(point, series) {
   if (!point || !Number.isInteger(point.t) || point.t % BIN_MS !== 0) return false;
   if (point.status === 'gap') return Object.keys(point).length === 2;
   if (point.status !== 'ok') return false;
-  if (!COUNT_FIELDS.every((field) => isCount(point[field]))) return false;
+  if (![...series.measures, 'statesTotal'].every((field) => isCount(point[field]))) return false;
   return point.hubs && typeof point.hubs === 'object'
-    && Object.values(point.hubs).every((hub) => hub && isCount(hub.air) && isCount(hub.ground));
+    && Object.values(point.hubs).every((hub) => hub && series.hubMeasures.every((field) => isCount(hub[field])));
 }
 
 // An ok point uses HSET, so a later fetch of the same bin replaces it and an ok
@@ -38,14 +49,21 @@ function validPoint(point) {
 // relay replicas writing the same bin therefore leave one point, and a failed
 // fetch on one replica cannot erase another replica's data.
 function buildTrafficPointWrite(point, fetchedAt = point?.t, series = SERIES.opensky) {
-  if (!validPoint(point)) throw new TypeError('invalid traffic point');
+  if (!validPoint(point, series)) throw new TypeError('invalid traffic point');
   if (!Number.isFinite(fetchedAt)) throw new TypeError('fetchedAt must be a finite epoch ms');
   const day = new Date(point.t).toISOString().slice(0, 10);
   const key = `${series.prefix}:${day}`;
   const expireAt = Math.floor(Date.parse(`${day}T00:00:00.000Z`) / 1000) + 86400 + RETENTION_DAYS * 86400;
   const stored = point.status === 'gap'
     ? { t: point.t, status: 'gap' }
-    : { t: point.t, status: 'ok', usSeen: point.usSeen, usAirborne: point.usAirborne, usLowClimbing: point.usLowClimbing, euAirborne: point.euAirborne, hubs: point.hubs };
+    : {
+      t: point.t,
+      status: 'ok',
+      ...Object.fromEntries(series.measures.map((field) => [field, point[field]])),
+      hubs: Object.fromEntries(Object.entries(point.hubs).map(([iata, hub]) => [
+        iata, Object.fromEntries(series.hubMeasures.map((field) => [field, hub[field]])),
+      ])),
+    };
   const commands = [
     [point.status === 'gap' ? 'HSETNX' : 'HSET', key, String(point.t), JSON.stringify(stored)],
     ['EXPIREAT', key, String(expireAt)],

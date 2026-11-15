@@ -59,6 +59,7 @@ import { CII_LEVEL_COLORS, type CiiLevel } from '@/config/cii-colors';
 import type { GpsJamHex } from '@/services/gps-interference';
 import { continuousTrack, pointNear, sweptSwath, type FootprintRing, type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { fetchImageryScenes } from '@/services/imagery';
+import { holdsViewportRequests, onViewportRequestsResumed } from '@/services/orbital/lookup-host';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { CrossBorderData, CrossBorderPoint, DisplacementEventPoint, DisplacementEventsData, DisplacementFlow, InternalDisplacementData, InternalDisplacementRegion, InternalDisplacementRoute } from '@/services/displacement';
@@ -154,6 +155,7 @@ import { onEntitlementChange } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 import { MapPopup, type PopupType } from './MapPopup';
+import { fireDetectionPopupData } from './map-popup-fire';
 import { renderMilitaryVesselTooltipHtml } from './deckgl-tooltip-renderers';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { ChinaCorridorControlTower } from '../../shared/china-corridor-control-towers';
@@ -591,7 +593,7 @@ const ORBITAL_LEADING_EDGE_LAYER_ID = 'orbital-leading-edge-layer';
 const ORBITAL_REPLAY_LAYER_IDS = new Set([ORBITAL_SWEPT_LAYER_ID, ORBITAL_LEADING_EDGE_LAYER_ID, ORBITAL_TRACK_MARKER_LAYER_ID]);
 /** The Orbital Watch accent, text and background tokens as deck.gl RGB. */
 /** Reads an Orbital Watch colour token per render, so a theme switch repaints the orbital overlay. */
-function orbitalRgba(token: '--ow-mark' | '--ow-text' | '--ow-dim' | '--ow-panel', alpha: number): [number, number, number, number] {
+function orbitalRgba(token: '--green' | '--text' | '--text-dim' | '--panel-bg', alpha: number): [number, number, number, number] {
   const hex = getCSSColor(token).replace(/^#([\da-f])([\da-f])([\da-f])$/i, '#$1$1$2$2$3$3');
   const m = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex);
   return m ? [parseInt(m[1]!, 16), parseInt(m[2]!, 16), parseInt(m[3]!, 16), alpha] : [128, 128, 128, alpha];
@@ -721,6 +723,7 @@ export class DeckGLMap {
   private aptGroupsLoaded = false;
   private _unsubscribeAuthState: (() => void) | null = null;
   private _unsubscribeEntitlement: (() => void) | null = null;
+  private stopViewportResume: (() => void) | null = null;
   private aptGroupsLayerFailed = false;
   private satelliteImageryLayerFailed = false;
   private iranEvents: IranEvent[] = [];
@@ -754,7 +757,7 @@ export class DeckGLMap {
   private serverBasesFetchSeq = 0;
   private baseConfigLoadPending = false;
   private naturalEvents: NaturalEvent[] = [];
-  private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }> = [];
+  private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string; detected_at?: number; satellite?: string; source?: string }> = [];
   private techEvents: TechEventMarker[] = [];
   private flightDelays: AirportDelayAlert[] = [];
   private aircraftPositions: PositionSample[] = [];
@@ -965,6 +968,9 @@ export class DeckGLMap {
     windowMs: 60_000,
   });
   private destroyed = false;
+  private zoomCap: number | null = null;
+  /** The map's own max zoom, kept while a cap is on so lifting the cap puts it back. */
+  private uncappedMaxZoom: number | null = null;
   private distanceControl: MapDistanceControl | null = null;
   private usedFallbackStyle = false;
   private readonly chrome: boolean;
@@ -1064,6 +1070,16 @@ export class DeckGLMap {
     }, 150);
     this.debouncedFetchBases = debounce(() => this.fetchServerBases(), 300);
     this.debouncedFetchAircraft = debounce(() => this.fetchViewportAircraft(), 500);
+    // Viewport fetches held while the satellite pass lookup was open run for where the map is now.
+    this.stopViewportResume = onViewportRequestsResumed(() => {
+      if (this.destroyed) return;
+      if (this.state.layers.bases) this.debouncedFetchBases();
+      if (this.state.layers.flights) this.debouncedFetchAircraft();
+      if (this.state.layers.satellites) {
+        if (this.imagerySearchTimer) clearTimeout(this.imagerySearchTimer);
+        this.imagerySearchTimer = setTimeout(() => this.fetchImageryForViewport(), 500);
+      }
+    });
     this.rafUpdateLayers = rafSchedule(() => {
       if (this.renderPaused || this.webglLost || !this.maplibreMap) return;
       this.updateLayers();
@@ -1297,6 +1313,7 @@ export class DeckGLMap {
         }
         : {}),
     });
+    this.applyZoomCap();
 
     const reportFatalBasemapFailure = (error: unknown, center = this.getCenter()): void => {
       const message = error instanceof Error ? error.message : String(error);
@@ -1368,6 +1385,7 @@ export class DeckGLMap {
             }
             : {}),
         });
+        this.applyZoomCap();
       } catch (error) {
         // MapLibre throws GPUInitializationError synchronously when WebGL2 is
         // gone (lost context, software renderer revoked, etc.). Catch it so it
@@ -5365,7 +5383,7 @@ export class DeckGLMap {
 
   private async fetchImageryForViewport(): Promise<void> {
     const map = this.maplibreMap;
-    if (!map) return;
+    if (!map || holdsViewportRequests()) return;
     const bounds = map.getBounds();
     const bbox = `${bounds.getWest().toFixed(4)},${bounds.getSouth().toFixed(4)},${bounds.getEast().toFixed(4)},${bounds.getNorth().toFixed(4)}`;
     const version = ++this.imagerySearchVersion;
@@ -6029,10 +6047,13 @@ export class DeckGLMap {
       'cable-advisories-layer': 'cable-advisory',
       'repair-ships-layer': 'repair-ship',
       'reservoir-levels-layer': 'reservoirLevel',
+      'fires-layer': 'fireDetection',
     };
 
     const popupType = layerToPopupType[layerId];
     if (!popupType) return;
+    // Only a satellite detection opens a fire popup, and only with Orbital Watch on (#10713).
+    if (popupType === 'fireDetection' && !fireDetectionPopupData(info.object)) return;
 
     // For synthetic storm layers, unwrap the backing NaturalEvent
     let data = info.object?._event ?? info.object;
@@ -7080,6 +7101,25 @@ export class DeckGLMap {
     };
   }
 
+  /** Holds the map at `max` zoom or below, through a rebuilt basemap too, or lifts the cap with null. MapLibre clamps a map already past it. */
+  public setZoomCap(max: number | null): void {
+    this.zoomCap = max;
+    this.applyZoomCap();
+  }
+
+  private applyZoomCap(): void {
+    const map = this.maplibreMap;
+    if (!map) return;
+    if (this.zoomCap === null) {
+      if (this.uncappedMaxZoom !== null) map.setMaxZoom(this.uncappedMaxZoom);
+      this.uncappedMaxZoom = null;
+      return;
+    }
+    this.uncappedMaxZoom ??= map.getMaxZoom();
+    map.setMaxZoom(this.zoomCap);
+    this.state.zoom = Math.min(this.state.zoom, this.zoomCap);
+  }
+
   // Zoom controls - public for external access
   public zoomIn(): void {
     if (this.maplibreMap) {
@@ -7865,6 +7905,8 @@ export class DeckGLMap {
   }
 
   private fetchServerBases(): void {
+    // The satellite pass lookup has the map on its point; the bases already drawn stay.
+    if (holdsViewportRequests()) return;
     const fetchSeq = ++this.serverBasesFetchSeq;
     this.serverBases = [];
     this.serverBaseClusters = [];
@@ -7933,7 +7975,7 @@ export class DeckGLMap {
   }
 
   private fetchViewportAircraft(): void {
-    if (!this.maplibreMap) return;
+    if (!this.maplibreMap || holdsViewportRequests()) return;
     if (!this.state.layers.flights) return;
     const zoom = this.maplibreMap.getZoom();
     if (zoom < 2) {
@@ -7948,6 +7990,9 @@ export class DeckGLMap {
       return;
     }
     if (!this.hasAircraftViewportChanged()) return;
+    // Coverage is the viewport the request was made for. The map can move without
+    // a new request (the point lookup holds them), so the live view may differ by completion.
+    const requestCenter = this.maplibreMap.getCenter();
     const bounds = this.maplibreMap.getBounds();
     const sw = bounds.getSouthWest();
     const ne = bounds.getNorthEast();
@@ -7960,11 +8005,8 @@ export class DeckGLMap {
       if (seq !== this.aircraftFetchSeq) return; // discard stale response
       this.aircraftPositions = positions;
       this.onAircraftPositionsUpdate?.(positions);
-      const center = this.maplibreMap?.getCenter();
-      if (center) {
-        this.lastAircraftFetchCenter = [center.lng, center.lat];
-        this.lastAircraftFetchZoom = this.maplibreMap!.getZoom();
-      }
+      this.lastAircraftFetchCenter = [requestCenter.lng, requestCenter.lat];
+      this.lastAircraftFetchZoom = zoom;
       this.setLayerReady('flights', positions.length > 0);
       this.render();
     }).catch((err) => {
@@ -7983,7 +8025,7 @@ export class DeckGLMap {
     this.render();
   }
 
-  public setFires(fires: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }>): void {
+  public setFires(fires: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string; detected_at?: number; satellite?: string; source?: string }>): void {
     this.firmsFireData = fires;
     this.render();
   }
@@ -8240,7 +8282,7 @@ export class DeckGLMap {
         id: ORBITAL_SWEPT_LAYER_ID,
         data: swept.rings,
         getPolygon: (ring) => ring,
-        getFillColor: orbitalRgba('--ow-mark', 56),
+        getFillColor: orbitalRgba('--green', 56),
         stroked: false,
         pickable: false,
       }),
@@ -8248,7 +8290,7 @@ export class DeckGLMap {
         id: ORBITAL_LEADING_EDGE_LAYER_ID,
         data: swept.leadingEdge,
         getPath: (line) => line,
-        getColor: orbitalRgba('--ow-mark', 255),
+        getColor: orbitalRgba('--green', 255),
         getWidth: 3,
         widthUnits: 'pixels',
         capRounded: true,
@@ -8260,8 +8302,8 @@ export class DeckGLMap {
         getPosition: (point) => [point.lon, point.lat],
         getRadius: 5,
         radiusUnits: 'pixels',
-        getFillColor: orbitalRgba('--ow-text', 255),
-        getLineColor: orbitalRgba('--ow-panel', 230),
+        getFillColor: orbitalRgba('--text', 255),
+        getLineColor: orbitalRgba('--panel-bg', 230),
         stroked: true,
         lineWidthMinPixels: 1.5,
         pickable: false,
@@ -8318,7 +8360,7 @@ export class DeckGLMap {
         radiusUnits: 'pixels',
         filled: false,
         stroked: true,
-        getLineColor: orbitalRgba('--ow-mark', 255),
+        getLineColor: orbitalRgba('--green', 255),
         lineWidthUnits: 'pixels',
         getLineWidth: 2,
       }),
@@ -8328,7 +8370,7 @@ export class DeckGLMap {
         ...ring,
         getRadius: 3,
         radiusUnits: 'pixels',
-        getFillColor: orbitalRgba('--ow-mark', 255),
+        getFillColor: orbitalRgba('--green', 255),
       }),
       new TextLayer<OrbitalTarget>({
         id: 'orbital-target-label-layer',
@@ -8336,17 +8378,17 @@ export class DeckGLMap {
         ...ring,
         getText: (point) => point.lines.join('\n'),
         getSize: 11,
-        fontFamily: getCSSColor('--ow-font-mono'),
+        fontFamily: getCSSColor('--font-mono'),
         fontWeight: 500,
         characterSet: 'auto',
         lineHeight: 1.45,
-        getColor: orbitalRgba('--ow-text', 255),
+        getColor: orbitalRgba('--text', 255),
         getTextAnchor: left ? 'end' : 'start',
         getAlignmentBaseline: 'center',
         getPixelOffset: [left ? -24 : 24, 0],
         updateTriggers: { getTextAnchor: left, getPixelOffset: left },
         background: true,
-        getBackgroundColor: orbitalRgba('--ow-panel', 225),
+        getBackgroundColor: orbitalRgba('--panel-bg', 225),
         backgroundPadding: [7, 4, 7, 4],
       }),
     ];
@@ -8361,8 +8403,8 @@ export class DeckGLMap {
         id: 'orbital-footprint-layer',
         data: shapes.footprint,
         getPolygon: (ring) => ring,
-        getFillColor: orbitalRgba('--ow-mark', 18),
-        getLineColor: orbitalRgba('--ow-mark', 120),
+        getFillColor: orbitalRgba('--green', 18),
+        getLineColor: orbitalRgba('--green', 120),
         lineWidthMinPixels: 1,
         pickable: false,
       }),
@@ -8370,7 +8412,7 @@ export class DeckGLMap {
         id: 'orbital-track-layer',
         data: [shapes.path],
         getPath: (path) => path,
-        getColor: orbitalRgba('--ow-dim', 230),
+        getColor: orbitalRgba('--text-dim', 230),
         getWidth: 1.5,
         widthUnits: 'pixels',
         pickable: false,
@@ -9428,6 +9470,8 @@ export class DeckGLMap {
     this.controlDisclosureCleanups.forEach(cleanup => cleanup());
     this.controlDisclosureCleanups = [];
     this.destroyed = true;
+    // The popup is appended to document.body, so removing the map container leaves it open.
+    this.popup.hide();
     this.aircraftFetchSeq += 1;
     this.deckFrameProvider.dispose();
     this.settleViewportMovement(false);
@@ -9438,6 +9482,8 @@ export class DeckGLMap {
     this._unsubscribeAuthState = null;
     this._unsubscribeEntitlement?.();
     this._unsubscribeEntitlement = null;
+    this.stopViewportResume?.();
+    this.stopViewportResume = null;
     window.removeEventListener('theme-changed', this.handleThemeChange);
     window.removeEventListener('map-theme-changed', this.handleMapThemeChange);
     this.tradeReducedMotionMedia?.removeEventListener('change', this.handleTradeMotionPreferenceChange);

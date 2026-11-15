@@ -12,7 +12,7 @@ import { readMilitaryFlights } from '../worldmonitor/military/v1/list-military-f
 import { getTheaterPosture } from '../worldmonitor/military/v1/get-theater-posture';
 import { drainResponseHeaders } from '../_shared/response-headers';
 import { COUNTRY_SIGNAL_BYTES, countrySignalOutcomeSchema } from '../../shared/country-signal-observations';
-import { CONFIRMED, flagAfter, rollupOf, siteOf } from '../../tests/helpers/orbital-country-rollup.mjs';
+import { CONFIRMED, flagAfter, indexFor, rollupOf, siteOf } from '../../tests/helpers/orbital-country-rollup.mjs';
 import type { GetCountrySignalObservationsRequest } from '../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 import { createIntelligenceServiceRoutes, ValidationError, type IntelligenceServiceHandler } from '../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
@@ -139,16 +139,30 @@ describe('bounded country family handler', () => {
       expect(cache.reads.mock.calls.map(call => call[0])).toEqual(['infra:outages:v1', 'seed-meta:infra:outages']);
     } finally { timer.mockRestore(); }
   });
-  it('reads only the country\'s watched-site rollup for imagery and returns it within the byte cap', async () => {
+  it('reads only the country\'s watched-site rollup and the index naming it for imagery, within the byte cap', async () => {
     const now = Date.now();
     const sites = Array.from({ length: 100 }, (_, i) => siteOf(`nuclear:site-${i}`, `Watched Site ${i}`, 'FR'));
-    cache.rows.set('orbital:country:v1:FR', rollupOf('FR', now, sites.map(site => ({ site, flag: flagAfter(site.id, now, CONFIRMED) }))));
+    const rollup = rollupOf('FR', now, sites.map(site => ({ site, flag: flagAfter(site.id, now, CONFIRMED) })));
+    cache.rows.set('orbital:country:v1:FR', rollup);
+    cache.rows.set('orbital:sites:v1', indexFor(rollup));
     const result = await getCountrySignalObservations(context(), req('COUNTRY_SIGNAL_FAMILY_IMAGERY'));
     const outcome = countrySignalOutcomeSchema.parse(JSON.parse(result.outcomeJson));
     expect(outcome).toMatchObject({ family: 'imagery', state: 'observed' });
     expect(outcome.observations.length).toBeGreaterThan(0);
     expect(new TextEncoder().encode(JSON.stringify(result)).length).toBeLessThanOrEqual(COUNTRY_SIGNAL_BYTES);
-    expect(cache.reads.mock.calls.map(call => call[0])).toEqual(['orbital:country:v1:FR']);
+    expect(cache.reads.mock.calls.map(call => call[0])).toEqual(['orbital:country:v1:FR', 'orbital:sites:v1']);
+  });
+  it('reads only the seeded reservoir snapshot for water and keeps the measurement date', async () => {
+    cache.rows.set('climate:reservoir-levels:v1', { fetchedAt: 1792324800000, reservoirs: [
+      { id: 'serre-poncon', name: 'Serre-Ponçon', country: 'FR', lat: 44.5, lon: 6.3, status: 'low', seasonalZ: -1.9, seasonalAnomalyM: -3.2, latest: { date: '2026-08-30', levelM: 772.4 } },
+      { id: 'gerd', name: 'GERD', country: 'ET', lat: 11.2, lon: 35.1, status: 'high', seasonalZ: 2.4, seasonalAnomalyM: 4.1, latest: { date: '2026-09-02', levelM: 620.2 } },
+    ] });
+    const result = await getCountrySignalObservations(context(), req('COUNTRY_SIGNAL_FAMILY_WATER'));
+    const outcome = countrySignalOutcomeSchema.parse(JSON.parse(result.outcomeJson));
+    expect(outcome).toMatchObject({ family: 'water', state: 'observed' });
+    expect(outcome.observations).toMatchObject([{ family: 'water', severity: 'low', eventAt: '2026-08-30T00:00:00.000Z' }]);
+    expect(outcome.observations[0]!.title).toContain('2026-08-30');
+    expect(cache.reads.mock.calls.map(call => call[0])).toEqual(['climate:reservoir-levels:v1']);
   });
   it('reports a country without watched-site evidence as unavailable, not as an error', async () => {
     const result = await getCountrySignalObservations(context(), req('COUNTRY_SIGNAL_FAMILY_IMAGERY'));

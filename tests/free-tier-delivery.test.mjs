@@ -8,7 +8,7 @@ import {
   freeTierAllowsEvent,
   freeTierAllowsEventType,
 } from '../scripts/lib/free-tier-delivery.cjs';
-import { ORBITAL_SITE_ALERT_EVENT_TYPES } from '../shared/alert-rule-shape.ts';
+import { ORBITAL_SITE_ALERT_EVENT_TYPES, RESERVOIR_ALERT_EVENT_TYPE } from '../shared/alert-rule-shape.ts';
 
 // Delivery-time clamp for the free alert ladder (#4273). These constants
 // mirror shared/alert-capabilities.ts (the relay is CJS); the sets below are
@@ -35,12 +35,15 @@ describe('free-tier delivery clamp (#4273)', () => {
     }
   });
 
-  it('free tier never receives Pro-only orbital event types (Strix 3e984e61)', () => {
-    // Orbital events are stamped critical and carry no country attribution,
-    // so this rung is the only thing between a downgraded account's leftover
-    // rule and the paid stream.
-    assert.deepEqual([...FREE_EXCLUDED_EVENT_TYPES].sort(), [...ORBITAL_SITE_ALERT_EVENT_TYPES].sort());
-    for (const type of ORBITAL_SITE_ALERT_EVENT_TYPES) {
+  it('free tier never receives Pro-only event types (Strix 3e984e61)', () => {
+    // These opt-in types bypass the relay's realtime sensitivity gate
+    // (shouldNotify) and carry no country attribution, so this rung is the
+    // only thing between a downgraded account's leftover rule and the paid
+    // stream. The set mirrors the write-time Pro gates in
+    // convex/alertRules.ts: watched-site orbital alerts + reservoir levels.
+    const proOnlyTypes = [...ORBITAL_SITE_ALERT_EVENT_TYPES, RESERVOIR_ALERT_EVENT_TYPE];
+    assert.deepEqual([...FREE_EXCLUDED_EVENT_TYPES].sort(), [...proOnlyTypes].sort());
+    for (const type of proOnlyTypes) {
       assert.equal(freeTierAllowsEventType(0, type), false, type);
     }
     assert.equal(freeTierAllowsEventType(0, 'military_conflict'), true);
@@ -51,7 +54,7 @@ describe('free-tier delivery clamp (#4273)', () => {
     for (const tier of [1, 2, 3]) {
       assert.equal(freeTierAllowsEvent(tier, 'low'), true);
       assert.equal(freeTierAllowsChannel(tier, 'webhook'), true);
-      for (const type of ORBITAL_SITE_ALERT_EVENT_TYPES) {
+      for (const type of [...ORBITAL_SITE_ALERT_EVENT_TYPES, RESERVOIR_ALERT_EVENT_TYPE]) {
         assert.equal(freeTierAllowsEventType(tier, type), true, `${tier}:${type}`);
       }
     }

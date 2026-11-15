@@ -27,7 +27,7 @@ Each satellite maps to a sensor profile that says what it can see and what to ex
 | Resolution | The finest ground resolution the operator states, in metres, or none when it publishes no figure |
 | Daylight | Whether the sensor needs the sun: passive optical sensors do, radar and lidar do not |
 | Archive collection | The public archive that holds the sensor's products, or none |
-| Coverage | Where the mission acquires: for Sentinel-2 and Sentinel-1, a grid built from the archive's own scene footprints (Sentinel-1 separately for northbound and southbound passes); land and coast for Landsat |
+| Coverage | Where the mission acquires: for Sentinel-2 and Sentinel-1, a grid built from the archive's own scene footprints (Sentinel-1 separately for northbound and southbound passes); land and coast for Landsat; global for every other sensor |
 | Archive wait | How long the open archive usually takes to publish a scene: 24 hours for Sentinel-2 and Sentinel-1, 235 hours for Landsat, set from the measured publication lag of the quicker archive |
 | Daily mosaic | Whether a daily global mosaic exists for the sensor |
 
@@ -82,7 +82,9 @@ Change flags are planned and not computed yet. A change flag will compare a new 
 
 ## Privacy
 
-The point you pick stays in your browser. It goes only to the public archives your browser calls directly. A shared link carries the point rounded to two decimal places, about 1 km. Error reports and other telemetry have coordinate query parameters and coordinate path segments removed from every URL before they leave the browser.
+Passes are computed in your browser. To find images, your browser sends the point you pick straight to the public archives (Earth Search, Microsoft Planetary Computer, NASA GIBS and EUMETSAT); WorldMonitor does not receive it. A place name you type goes to WorldMonitor and OpenStreetMap Nominatim to be found. A shared link carries the point rounded to two decimal places (0.01 degrees, about 1 km). A link that carries a finer point is rewritten to two decimals in the address bar when it opens, and the page address never holds more. Error reports and other telemetry have coordinate query parameters and coordinate path segments removed from every URL before they leave the browser.
+
+The flat map loads basemap tiles from a WorldMonitor host when the self-hosted map tiles are in use. With the OpenFreeMap or CARTO map style, or when the self-hosted tiles fail and the map falls back to OpenFreeMap, the tiles come from `tiles.openfreemap.org` or `basemaps.cartocdn.com` instead. Each tile request names the tile that holds the view. While the lookup is open that map stops at zoom 7, where one tile spans about 2.8 degrees, and returns to its earlier zoom when you close the lookup.
 
 ## Credits
 

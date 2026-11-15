@@ -11,6 +11,7 @@
  * change. Palm Jumeirah (25.112,55.139) shows recognisable fronds.
  * WM_VERIFY_ORBITAL_THEME=light drives the light theme.
  */
+import { archiveUrlAfterScrub, pointFromText, pointLeak } from './_point-leak.mjs';
 import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
 import { fixtureCatalog } from './orbital-watch.mjs';
 
@@ -247,14 +248,14 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   } else log('pass detail without an image', 'no imageless pass in this lookup');
   if (!(await page.locator('.orbital-watch-sheet[data-view="full"]').count())) throw new Error('Escape from the pass detail left the full view');
 
-  const needles = pointText.match(/\d+\.\d\d/g);
-  const leaks = requests.filter(({ url, body }) => !ARCHIVE_HOSTS.includes(new URL(url).hostname) && needles.every((n) => `${url} ${body}`.includes(n)));
+  const picked = pointFromText(pointText);
+  const leaks = requests.filter(({ url, body }) => !ARCHIVE_HOSTS.includes(new URL(url).hostname) && pointLeak(`${url} ${body}`, picked));
   log('requests', requests.length, 'leaks', leaks.length);
   if (leaks.length) throw new Error(`picked point left the browser: ${leaks.map((l) => l.url).join(', ')}`);
-  // RUM collectors name a resource by host and its last path segment, so the point may not end any path.
-  const pathLeaks = requests.filter(({ url }) => needles.some((n) => new URL(url).pathname.split('/').pop().includes(n)));
-  log('requests ending their path with the point', pathLeaks.length);
-  if (pathLeaks.length) throw new Error(`picked point ends a URL path: ${pathLeaks.map((l) => l.url).join(', ')}`);
+  // Telemetry keeps an archive URL only after its coordinate params and path segments are scrubbed.
+  const pathLeaks = requests.filter(({ url }) => ARCHIVE_HOSTS.includes(new URL(url).hostname) && pointLeak(archiveUrlAfterScrub(url), picked));
+  log('archive requests with the point left after the telemetry scrub', pathLeaks.length);
+  if (pathLeaks.length) throw new Error(`picked point outside an archive URL's coordinate parts: ${pathLeaks.map((l) => l.url).join(', ')}`);
   const overlayUnsafe = unsafeSrcs(overlaySrcs);
   log('all Orbital Watch img srcs', overlaySrcs.length, 'blob:', overlaySrcs.filter((src) => src.startsWith('blob:')).length, 'unsafe', overlayUnsafe.length);
   const lcp = lcpUrls.filter(Boolean);

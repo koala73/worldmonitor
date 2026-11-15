@@ -1369,7 +1369,12 @@
       "shareLink": "Dijeli vezu",
       "shareStory": "Dijeli priču",
       "printPdf": "Ispiši / PDF",
-      "exportData": "Izvezi podatke"
+      "exportData": "Izvezi podatke",
+      "sources": {
+        "summary": "Izvori i razdoblja · {{count}} skupina",
+        "note": "Razdoblja izvora se razlikuju; ovo nije 24-satni zbroj.",
+        "footer": "Nije ulaz za CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Cjevovod",
@@ -3279,6 +3284,34 @@
         "change365": "U 12 mjeseci",
         "measured": "Izmjereno",
         "sparkline": "Vodostaj kroz 36 mjeseci"
+      },
+      "nextPass": {
+        "label": "Sljedeći prelet ICESat-2",
+        "loading": "Učitavanje…",
+        "at": "{{date}} (predviđeno iz orbitalnih podataka od {{epoch}}; oblaci mogu blokirati lidar)",
+        "none": "Nema mjerenja u ovom razdoblju (do {{date}}); orbitalni podaci od {{epoch}}",
+        "unavailable": "Orbitalni podaci nisu dostupni"
+      },
+      "siteContext": {
+        "label": "Strateška akumulacija na ovom mjestu"
+      },
+      "energyContext": {
+        "heading": "Strateške akumulacije",
+        "hydro": "Hidroenergija {{share}} % primarne energije"
+      },
+      "countryEvidence": {
+        "heading": "Razine vode",
+        "empty": "Nijedna strateška akumulacija u ovoj zemlji nije izvan svoje sezonske osnovice pri posljednjem preletu.",
+        "measured": "Izmjereno {{date}}"
+      },
+      "card": {
+        "measured": "Izmjereno {{date}} · {{age}}",
+        "noCrossing": "nema u ovom razdoblju (do {{date}})",
+        "crossing": "Predviđeni prelet ICESat-2",
+        "summary": "{{beyond}} od {{total}} akumulacija izvan sezonske osnovice",
+        "latestPass": "zadnji prelet ICESat-2 {{date}}",
+        "sparkline": "Razina kroz 36 mjeseci sa sezonskom osnovicom kao isprekidanom crtom",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidarske razine vodene površine iz datiranih preleta, ne trenutna očitanja ni volumeni."
       }
     },
     "gridDisruptionClock": {
@@ -3371,7 +3404,6 @@
       }
     },
     "protest": {
-      "acledVerified": "ACLED (potvrđeno)",
       "gdelt": "GDELT",
       "records": "zapisa",
       "mediaSignal": "Nepotvrđeni medijski signal",
@@ -5203,310 +5235,345 @@
     "errLoad": "Procjena putovanja nije mogla biti otvorena. Ponovno učitajte stranicu i pokušajte ponovno."
   },
   "orbitalWatch": {
-    "track": {
-      "unavailable": "Zemaljski trag ovog preleta nije moguće iscrtati"
-    },
-    "replay": {
-      "acquisition": "SNIMANJE · {{name}}",
-      "acquired": "SNIMLJENO {{time}} · {{resolution}}",
-      "play": "Pokreni reprodukciju",
-      "pause": "Pauziraj reprodukciju",
-      "scrub": "Položaj reprodukcije",
-      "reducedMotion": "SMANJENO KRETANJE"
-    },
-    "computing": "Učitavanje kataloga satelita…",
-    "computingProgress": "Izračun preleta: {{done}} od {{total}} satelita",
-    "unavailable": "Katalog satelita nije se mogao učitati pa za ovu točku nisu izračunati preleti.",
-    "checkingArchives": "Provjera arhiva: {{done}} od {{total}} odgovorilo",
-    "confirmedCount": "Potvrđene snimke: {{count}}",
-    "counts": {
-      "mosaics": "Dnevni mozaici: {{count}}",
-      "frames": "Meteorološke snimke: {{count}}",
-      "inRange": "Preleti u dometu: {{count}}"
-    },
-    "partial": "{{sources}} nije odgovorio pa nekim preletima možda nedostaju snimke.",
-    "stale": "Orbitalni podaci su zastarjeli. Katalog satelita star je {{age}} pa vremena preleta mogu odstupati.",
-    "empty": "Nijedan evidentirani satelit za snimanje nije preletio ovu točku u posljednjih {{pastDays}} dana niti će u sljedećih {{futureHours}} sati.",
-    "sources": "Izvori · {{count}}",
-    "sourcesDocs": "Kako se ovi izvori koriste",
-    "privacy": "Ova točka ostaje u vašem pregledniku. Šalje se samo javnim arhivima koje preglednik izravno poziva: Earth Search, Microsoft Planetary Computer, NASA GIBS i EUMETSAT. Jedina iznimka je pretraživanje po nazivu mjesta: upisani naziv šalje se usluzi pretraživanja mjesta.",
-    "inRange": "u dometu",
+    "track": {},
+    "replay": {},
+    "counts": {},
     "tier": {
       "checking": "provjera arhiva",
-      "confirmed": "potvrđena snimka",
-      "likely": "vjerojatno snimljeno",
-      "opportunity": "nadolazeći prelet",
-      "dailyMosaic": "u dnevnom mozaiku",
-      "withinReach": "u dometu",
-      "capabilityOverhead": "sposobnost iznad",
-      "passedOverhead": "preletio iznad",
-      "unmatchedImage": "snimka bez izračunatog preleta",
+      "confirmed": "potvrđeno",
+      "likely": "vjerojatno",
+      "unmatchedImage": "snimka bez izračunatog prolaska",
       "weatherFrame": "meteorološka snimka",
-      "unavailable": "nedostupno"
+      "unavailable": "nedostupno",
+      "inReach": "dostižno",
+      "capability": "mogućnost snimanja",
+      "inRange": "u dometu",
+      "mosaic": "mozaik",
+      "upcoming": "nadolazeće"
     },
     "row": {
       "offNadir": "{{deg}}° od nadira",
-      "distance": "{{km}} km od traga na tlu",
-      "orbitAge": "orbitalni podaci stari {{age}}",
-      "edgeOfSwath": "Rub pojasa snimanja",
-      "notInArchive": "Nema snimke u arhivi",
-      "geometryDisagreed": "Izvan modeliranog pojasa",
-      "archiveUnanswered": "Arhiv nije odgovorio",
-      "imageAlt": "Snimka {{name}}, {{time}}",
-      "mosaicDays": "Dana u arhivi: {{count}}",
-      "cadence": "nova snimka svakih {{minutes}} min",
-      "sourceUnavailable": "Arhiva nema snimaka iz ovog izvora za te dane.",
-      "imageLoading": "Učitavanje slike…",
-      "imageFailed": "Slika se nije učitala. Arhiva je možda spora ili nedostupna.",
-      "noPreview": "Arhiv još nema pregled ove scene."
+      "distance": "{{km}} km do putanje",
+      "orbitAge": "Orbitalni podaci",
+      "imageLoading": "Učitavanje scene…",
+      "satellite": "Satelit",
+      "sensor": "Senzor",
+      "time": "Vrijeme",
+      "in": "Za",
+      "tier": "Stanje",
+      "elevation": "Uzv.",
+      "point": "Točka",
+      "pixel": "Piksel",
+      "credit": "Arhiv",
+      "orbitAgeValue": "{{age}} stara"
     },
-    "dailyMosaics": "dnevni mozaici",
-    "weatherFrames": "meteorološke snimke",
     "ui": {
-      "change": "Promijeni",
-      "share": "Podijeli",
-      "shareCopied": "Poveznica kopirana",
-      "headline": "U posljednjih {{days}} dana iznad {{place}} prošlo je: {{satellites}}.",
-      "satellites_one": "{{count}} satelit",
-      "satellites_few": "{{count}} satelita",
-      "satellites_other": "{{count}} satelita",
-      "subline_one": "Objavljeno snimaka: {{count}}.",
-      "subline_few": "Objavljeno snimaka: {{count}}.",
-      "subline_other": "Objavljeno snimaka: {{count}}.",
-      "closestLook": "Najbliži pogled",
-      "replay": "Reproduciraj",
-      "openFull": "Otvori puni prikaz",
-      "previous": "Prethodna snimka",
-      "next": "Sljedeća snimka",
-      "passes_one": "prelazak",
-      "passes_few": "prelaska",
-      "passes_other": "prelazaka",
-      "showAll": "Prikaži sve prelaske",
-      "noRecentDays": "Nema nedavnih dana u arhivi: {{sources}}",
-      "tab": {
-        "all": "Sve",
-        "detailed": "Detaljno",
-        "weather": "Vrijeme"
-      },
-      "caption": {
-        "clear": "Vedro na točki",
-        "clearSceneCloud": "Vedro na točki · naoblaka scene {{pct}} %",
-        "clouded": "Oblačno · {{pct}} %",
-        "cloudShadow": "Sjena oblaka",
-        "spotNotChecked": "Mjesto nije provjereno za oblake",
-        "sceneCloud": "Naoblaka scene {{pct}} % · mjesto nije provjereno",
-        "radar": "Radarska snimka",
-        "dailyMosaic": "Dnevni mozaik",
-        "geostationary": "Geostacionarni puni disk",
-        "geostationaryCadence": "Geostacionarni · svakih {{minutes}} min"
-      },
-      "tile": {
-        "failed": "Snimka nedostupna · {{archive}}",
-        "noPreview": "Arhiva još nema pregled ove scene"
-      },
-      "grid": {
-        "watched": "Promatrano",
-        "watchedDef": "Javna arhiva ima snimku ovog mjesta.",
-        "likely": "Vjerojatno promatrano",
-        "likelyDef": "Senzor fiksnog pojasa ga je pokrio; snimka još nije objavljena.",
-        "could": "Mogao je ciljati ovamo",
-        "couldDef": "Usmjerivi ili komercijalni senzor bio je u dometu; operater ne kaže je li gledao.",
-        "overhead": "Prošao iznad",
-        "overheadDef": "Prešao je nebo ovdje, bez dokaza snimanja.",
-        "watchedShort": "Snimka u javnom arhivu",
-        "watchedNoPreviewShort": "U arhivi, bez javnog pregleda",
-        "likelyShort": "Pokriveno, još nema snimke",
-        "likelyUnansweredDef": "Pokrio ga je senzor fiksnog pojasa; arhiv nije odgovorio, pa snimka možda postoji.",
-        "likelyUnansweredShort": "Pokriveno, arhiv nije odgovorio",
-        "couldShort": "Usmjerivi senzor u dometu",
-        "overheadShort": "Iznad točke, bez snimke"
-      },
-      "group": {
-        "watched": "promatranih",
-        "likely": "vjerojatno promatranih",
-        "upcoming": "nadolazećih",
-        "could": "koji su mogli ciljati ovamo",
-        "overhead": "iznad mjesta",
-        "weather_one": "izvor vremena",
-        "weather_few": "izvora vremena",
-        "weather_other": "izvora vremena"
-      },
-      "order": {
-        "closest": "Najbliži pogled, zatim najnoviji",
-        "newest": "Najnoviji prvo",
-        "soonest": "Najbliži prvo"
-      },
-      "row": {
-        "cloud": "Oblaci {{pct}} %",
-        "days_one": "Dana: {{count}}",
-        "days_few": "Dana: {{count}}",
-        "days_other": "Dana: {{count}}",
-        "repeats": "Prelasci ovog satelita u skupini: {{count}}"
-      },
-      "section": {
-        "summary": "Sažetak",
-        "passes": "Prelasci"
-      },
-      "status": {
-        "objects": "Satelita za snimanje: {{count}} · CelesTrak GP",
-        "fetched": "Dohvaćeno {{time}} · {{ago}}",
-        "sun": "Sunce {{point}} · podsolarna točka"
-      },
-      "step": {
-        "computing": "Izračun",
-        "catalogLoading": "Katalog · učitavanje",
-        "catalog": "Katalog · Satelita za snimanje: {{count}}",
-        "propagating": "Propagacija orbita · {{done}} / {{total}}",
-        "archives": "Arhive · odgovorilo {{done}} / {{total}}",
-        "matching": "Uparivanje scena s prelascima: {{passes}}",
-        "window": "7-dnevni prozor · {{start}} → {{end}}",
-        "failed": "Neuspjelo",
-        "note": "Planetary Computer i NASA GIBS izrađuju snimke na zahtjev, pa ovaj korak može potrajati nekoliko sekundi."
-      },
-      "privacyLine": "Točka ostaje u vašem pregledniku",
-      "privacyHow": "Kako",
-      "sources": "Izvori",
-      "archiveScene": "Arhivska scena",
-      "archiveOnly": "Nijedan izračunati prelet ne odgovara ovim snimkama, pa su prikazane kao arhivske scene.",
-      "zoneShowUtc": "Prikaži vremena u UTC-u",
-      "zoneShowLocal": "Prikaži vremena po lokalnom vremenu ovog mjesta"
+      "tab": {},
+      "caption": {},
+      "tile": {},
+      "grid": {},
+      "group": {},
+      "order": {},
+      "row": {},
+      "section": {},
+      "status": {},
+      "step": {}
     },
     "viewer": {
-      "open": "Otvori preglednik slika: {{image}}",
-      "bestView": "Otvori najbolji prikaz: {{name}}, {{time}}",
-      "imageAlt": "Snimka {{name}}, {{time}}",
-      "close": "Zatvori preglednik slika",
-      "northUp": "Sjever je gore",
-      "unreferenced": "Orijentacija kako ju isporučuje arhiv; sjever nije označen",
-      "compareDates": "Ostali datumi ove zbirke",
-      "compareNone": "Nema druge snimke ove zbirke za usporedbu.",
-      "divider": "Razdjelnik prije/poslije",
-      "searching": "Traženje snimki ovog mjesta iz zadnjih {{days}} dana",
-      "historyFailed": "{{archive}} nije odgovorio, pa nedostaju ranije snimke.",
-      "historyTimeout": "{{archive}} nije odgovorio na vrijeme, pa nedostaju ranije snimke.",
-      "loading": "Učitavanje okvira: {{loaded}} od {{total}}",
-      "pause": "Pauza",
-      "resume": "Pokreni",
-      "next": "Sljedeći okvir",
+      "open": "Otvori scenu: {{image}}",
+      "imageAlt": "{{name}} scena, {{time}}",
+      "close": "Zatvori preglednik scene",
+      "northUp": "Sjever gore",
+      "unreferenced": "Arhivska orijentacija; sjever nije označen",
+      "compareDates": "Datumi u ovoj kolekciji",
+      "compareNone": "Nema druge scene u ovoj kolekciji.",
+      "divider": "Referentna razdjelnica",
+      "searching": "Pretraživanje arhivskih scena iz posljednjih {{days}} dana",
+      "historyFailed": "{{archive}} je vratio grešku; starije scene nedostaju.",
+      "historyTimeout": "{{archive}} nije odgovorio na vrijeme; starije scene nedostaju.",
+      "loading": "Učitano kadrova: {{loaded}} od {{total}}",
       "closeLabel": "Zatvori",
-      "agoNow": "Upravo sada",
+      "agoNow": "Sada",
       "agoHours": "prije {{count}} h",
       "agoDays": "prije {{count}} d",
       "clear": "Vedro",
-      "clouded": "Oblačno · {{pct}} %",
-      "tabImage": "Snimka",
-      "tabChange": "Promjena",
+      "clouded": "Oblaci {{pct}}%",
+      "tabImage": "Scena",
+      "tabChange": "Usporedi",
       "metaAcquired": "Snimljeno",
       "metaDate": "Datum",
       "metaPixel": "Piksel",
-      "metaSpot": "Oblaci na točki",
+      "metaSpot": "Oblak na točki",
       "metaScene": "Oblaci scene",
       "metaSun": "Visina sunca",
-      "showCloudy": "Prikaži oblačne datume ({{count}})"
+      "showCloudy": "Uključi oblačne datume ({{count}})"
     },
-    "timelapse": {
-      "heading": "Vremenski niz",
-      "entry": "Ovo mjesto iz godine u godinu",
-      "open": "Otvori godišnji vremenski niz ovog mjesta",
-      "searching": "Traži se jedna vedra snimka godišnje od 2015. · {{archive}}",
-      "loading": "Učitavanje snimaka · {{loaded}} / {{total}}",
-      "failed": "{{archive}} nije odgovorio, pa godišnje snimke nedostaju.",
-      "timeout": "{{archive}} nije odgovorio na vrijeme, pa godišnje snimke nedostaju.",
-      "partial": "Godine koje nedostaju jer {{archive}} nije odgovorio: {{count}}.",
-      "tooFew": "Vedre godišnje snimke ovog mjesta: {{count}}. Vremenski niz treba {{min}}.",
-      "total": "Vedre snimke: {{count}} · jedna godišnje",
-      "years": "Godine",
-      "share": "Podijeli",
-      "method": "Svaki kadar je isti kvadrat od 6 km sa Sentinela-2 u prirodnim bojama. Svake se godine pretražuje drugo godišnje doba i zadržava najmanje oblačna scena; godina bez scene ispod 30 % oblaka izostavlja se."
-    },
+    "timelapse": {},
     "passDetail": {
-      "back": "Svi preleti",
-      "altitude": "Visina",
-      "offNadir": "Odmak od nadira",
-      "crossed": "{{name}} je preletio na {{altitude}} km visine, {{distance}} km {{direction}}, u {{time}}, brzinom {{speed}} km/s iznad tla.",
-      "crossedHeading": "{{name}} je preletio na {{altitude}} km visine, {{distance}} km {{direction}}, u {{time}}, krećući se prema {{heading}} brzinom {{speed}} km/s iznad tla.",
-      "looking": "Gledao je {{deg}}° od okomice.",
-      "sceneCloud": "Naoblaka scene: {{pct}} %.",
-      "pixelLine": "Piksel {{m}} m",
-      "swathLine": "Pojas {{km}} km",
-      "clearestLook": "Najvedriji prikaz",
-      "previous": "Prethodni prelet",
-      "next": "Sljedeći prelet",
-      "dir": {
-        "n": "sjeverno",
-        "ne": "sjeveroistočno",
-        "e": "istočno",
-        "se": "jugoistočno",
-        "s": "južno",
-        "sw": "jugozapadno",
-        "w": "zapadno",
-        "nw": "sjeverozapadno"
-      },
-      "heading": {
-        "north": "sjeveru",
-        "south": "jugu"
-      }
+      "dir": {},
+      "heading": {}
     },
     "search": {
-      "label": "Naziv mjesta ili koordinate",
-      "placeholder": "Naziv mjesta ili 48.8584, 2.2945",
+      "label": "Mjesto ili koordinate",
+      "placeholder": "Mjesto ili 25.11, 55.14",
       "submit": "Traži",
-      "locate": "Koristi moju lokaciju",
-      "hint": "Koordinate i vaša lokacija ostaju u ovom pregledniku. Naziv mjesta koji tražite šalje se WorldMonitoru i OpenStreetMapovom Nominatimu.",
-      "results": "Odgovarajuća mjesta",
+      "locate": "Moja lokacija",
+      "hint": "Upisane koordinate i vaša lokacija nikada se ne šalju na WorldMonitor. Upisana imena mjesta šalju se na WorldMonitor i OpenStreetMap Nominatim.",
+      "results": "Mjesta",
       "searching": "Traženje…",
-      "tooShort": "Upišite barem dva znaka ili koordinate poput 48.8584, 2.2945.",
-      "invalidCoordinates": "Te su koordinate izvan zemaljske kugle. Geografska širina ide od -90 do 90, a dužina od -180 do 180.",
-      "failed": "Traženje mjesta trenutačno nije dostupno. Koordinate i karta i dalje rade.",
-      "noResults": "Nijedno mjesto ne odgovara tom nazivu.",
-      "locating": "Određivanje lokacije…",
-      "locationDenied": "Dopuštenje za lokaciju je odbijeno. Potražite mjesto ili desnom tipkom kliknite kartu.",
-      "locationUnavailable": "Vašu lokaciju nije moguće odrediti. Potražite mjesto ili desnom tipkom kliknite kartu.",
-      "idle": "Potražite mjesto po nazivu ili koordinatama, upotrijebite svoju lokaciju ili desnom tipkom kliknite kartu da vidite koji su sateliti prošli iznad njega."
+      "tooShort": "Unesite najmanje dva znaka ili koordinate poput 25.11, 55.14.",
+      "invalidCoordinates": "Širina mora biti od -90 do 90, a dužina od -180 do 180.",
+      "failed": "Pretraga mjesta nije uspjela. Koordinate i klikovi na karti i dalje rade.",
+      "noResults": "Nema odgovarajućeg mjesta.",
+      "locating": "Lociranje…",
+      "locationDenied": "Pristup lokaciji odbijen. Unesite bilo koje mjesto ili desnom tipkom kliknite na kartu.",
+      "locationUnavailable": "Lokacija nije pronađena. Unesite bilo koje mjesto ili desnom tipkom kliknite na kartu.",
+      "idle": "Unesite bilo koje mjesto, koristite lokaciju uređaja ili desnom tipkom kliknite na kartu da otvorite njezine slikovne dokaze."
     },
     "share": {
-      "copy": "Kopiraj poveznicu za dijeljenje",
       "copied": "Poveznica kopirana",
-      "copyManually": "Kopirajte poveznicu ispod",
+      "copyManually": "Kopiraj ovu poveznicu",
       "link": "Poveznica za dijeljenje",
       "dismiss": "Zatvori",
-      "passOutsideWindow": "Povezani prelet izvan je trenutačnog prozora, pa nijedan prelet nije odabran.",
-      "passNotFound": "Povezani prelet nije pronađen među ponovno izračunatim preletima, pa nijedan prelet nije odabran."
+      "passOutsideWindow": "Povezani prolazak je izvan ovog prozora; nijedan nije odabran.",
+      "passNotFound": "Povezani prolazak nedostaje na ponovno izračunatom popisu; nijedan nije odabran."
     },
     "timeline": {
       "now": "sada",
       "nowAt": "Sada: {{time}}",
-      "density": "Preleti {{label}}, od {{start}} do {{end}}: {{count}}",
-      "daylight": "Dnevno svjetlo u točki od {{start}} do {{end}}",
+      "density": "{{label}}, {{start}} do {{end}}: {{count}}",
+      "daylight": "Dnevna svjetlost ovdje: {{start}}–{{end}}",
       "unavailable": "nedostupno",
-      "notRetained": "ovaj tjedan nema podataka",
-      "notRetainedSpan": "{{label}}: nema podataka od {{start}} do {{end}}",
-      "countryWide": "na razini države",
+      "notRetained": "izvor ne čuva povijest",
+      "notRetainedSpan": "{{label}}: izvor nema povijesti od {{start}} do {{end}}",
+      "countryWide": "cijela država",
       "source": {
         "conflict": "Sukobi",
-        "fires": "Požari",
+        "fires": "Požar",
         "unrest": "Nemiri",
-        "outages": "Prekidi interneta"
+        "outages": "Prekid"
       },
       "live": {
         "vessels": "Pomorski promet",
-        "militaryFlights": "Vojni letovi",
+        "militaryFlights": "Vojno zrakoplovstvo",
         "gpsJamming": "Ometanje GPS-a"
       },
       "name": "Vremenska crta",
-      "span": "{{days}} dana · sljedećih {{hours}} h",
-      "daylightHere": "Dnevno svjetlo ovdje",
+      "span": "{{days}} d unazad · {{hours}} h unaprijed",
+      "daylightHere": "Dnevna svjetlost na točki",
       "row": {
-        "geo": "Geo",
-        "photo": "Snimka",
-        "likely": "Vjerojatno",
-        "could": "Moguće",
-        "overhead": "Prelet"
+        "images": "Slike",
+        "events": "Događaji",
+        "passes": "Prolasci"
       },
-      "retained": "{{start}} do {{end}}",
-      "retainedDay": "samo {{day}}",
-      "geoLine": "Geostacionarni u vidokrugu: {{names}}",
-      "away": "{{km}} km dalje"
+      "retained": "povijest od {{start}} do {{end}}",
+      "retainedDay": "povijest samo {{day}}",
+      "geoLine": "Geostacionarni pogled: {{names}}",
+      "away": "{{km}} km",
+      "densityTip_one": "{{count}} prolazak od {{start}} · {{names}}",
+      "densityTip_few": "{{count}} prolaska od {{start}} · {{names}}",
+      "densityTip_other": "{{count}} prolazaka od {{start}} · {{names}}"
+    },
+    "satelliteSites": {
+      "heading": "Praćena mjesta · sljedećih {{hours}} h",
+      "projecting": "Izračun preleta…",
+      "notLoaded": "Kliknite ponovno na satelit; njegovi orbitalni elementi nisu učitani.",
+      "failed": "Kliknite ponovno na satelit da pokušate ponovno; izračun preleta nije uspio.",
+      "viewFailed": "Kliknite ponovno na satelit da pokušate ponovno; popis mjesta nije učitan.",
+      "unavailable": "Kliknite ponovno na satelit da pokušate ponovno; geometrija preleta odbacila je ove orbitalne elemente.",
+      "signals": "Satelit za signalno izviđanje. Nema senzora za snimanje, pa se pokrivenost tla ne modelira.",
+      "noProfile": "Nema profila senzora za ovaj satelit, pa se njegova pokrivenost tla ne modelira.",
+      "geostationary": "Geostacionaran: nepomičan iznad jedne zemljopisne dužine, pa nema preleta za prikaz.",
+      "badElements": "Orbitalni elementi nisu čitljivi.",
+      "none": "Nijedno praćeno mjesto nije unutar područja snimanja u sljedećih {{hours}} h.",
+      "utc": "{{time}} UTC",
+      "inMinutes": "za {{minutes}} min",
+      "inHours": "za {{hours}} h {{minutes}} min",
+      "offTrack": "{{km}} km od traga na tlu",
+      "swathEdge": "na rubu pojasa snimanja",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "Tip",
+        "operator": "Operater",
+        "over": "Iznad",
+        "ocean": "Ocean",
+        "altBand": "Visinski pojas",
+        "inclination": "Nagib",
+        "velocity": "Brzina",
+        "types": {
+          "sar": "SAR snimanje",
+          "optical": "Optičko snimanje",
+          "military": "Vojni",
+          "sigint": "SIGINT",
+          "signals": "Signalno izviđanje"
+        }
+      },
+      "tooOld_one": "Orbitalni elementi stari su {{count}} dan, prestari za izračun preleta.",
+      "tooOld_few": "Orbitalni elementi stari su {{count}} dana, prestari za izračun preleta.",
+      "tooOld_other": "Orbitalni elementi stari su {{count}} dana, prestari za izračun preleta.",
+      "count_one": "{{count}} praćeno mjesto unutar područja snimanja {{family}}",
+      "count_few": "{{count}} praćena mjesta unutar područja snimanja {{family}}",
+      "count_other": "{{count}} praćenih mjesta unutar područja snimanja {{family}}",
+      "passes_one": "{{count}} prelet",
+      "passes_few": "{{count}} preleta",
+      "passes_other": "{{count}} preleta"
+    },
+    "sheet": {
+      "heading": "Dokazi iz snimaka",
+      "window": "Zadnjih {{days}} dana, idućih {{hours}} h",
+      "apart": "Nisu uključeni:",
+      "newest": "najnoviji {{when}}",
+      "newestNoPreview": "Najnovija snimka {{when}} nema pretpregleda; prikazana je starija snimka.",
+      "noneConfirmed": "Nema potvrđenih snimaka u ovom razdoblju",
+      "noneYet": "Arhivi još odgovaraju",
+      "latest": "Najnovija snimka",
+      "latestNone": "Arhivi nisu vratili ništa za ovu točku i razdoblje.",
+      "latestChecking": "Pretraga arhiva u tijeku. Izračunati prolasci navedeni su dolje.",
+      "compareWith": "Usporedi s",
+      "compareDate": "Referentni datum",
+      "moreImages": "Ostale potvrđene snimke",
+      "imageAlt": "Snimka {{sensor}}, {{time}}",
+      "dailyMosaic": "dnevni mozaik",
+      "weatherFrame": "vremenski kadar",
+      "change": "Promijeni lokaciju",
+      "share": "Kopiraj poveznicu",
+      "shareCopied": "Poveznica kopirana",
+      "showUtc": "UTC",
+      "showLocal": "Lokalno vrijeme",
+      "alert": "Upozorenje prije svakog otvorenog prolaska iznad točke i kod svake nove snimke bez oblaka.",
+      "alertCta": "Postavi upozorenje · Pro",
+      "height": {
+        "collapsed": "Panel sažet. Proširi na pola visine",
+        "half": "Panel na pola visine. Proširi na punu visinu",
+        "full": "Prošireni panel. Sažmi"
+      },
+      "apartMosaics_one": "{{count}} dnevni mozaik",
+      "apartMosaics_few": "{{count}} dnevna mozaika",
+      "apartMosaics_other": "{{count}} dnevnih mozaika",
+      "apartFrames_one": "{{count}} snimka vremenskog satelita",
+      "apartFrames_few": "{{count}} snimke vremenskog satelita",
+      "apartFrames_other": "{{count}} snimaka vremenskog satelita",
+      "apartInRange_one": "{{count}} prolazak u dometu",
+      "apartInRange_few": "{{count}} prolaska u dometu",
+      "apartInRange_other": "{{count}} prolazaka u dometu",
+      "confirmedCount_one": "{{count}} potvrđena snimka",
+      "confirmedCount_few": "{{count}} potvrđene slike",
+      "confirmedCount_other": "{{count}} potvrđenih snimaka"
+    },
+    "tierDef": {
+      "confirmed": "Arhiv navodi snimku koja pokriva točku.",
+      "likely": "Pokrivanje fiksnom trakom uključilo je točku; arhivirana snimka još nije dostupna.",
+      "inReach": "Usmjerivi senzor mogao bi se usmjeriti ovamo. Planiranje snimanja nije javno.",
+      "capability": "Klasa senzora bez javnog arhiva prošla je iznad točke."
+    },
+    "events": {
+      "heading": "Događaji na ovoj točki",
+      "kindLabel": "Vrsta",
+      "detail": "Detalj",
+      "now": "sada",
+      "loading": "Učitavanje kanala događaja…",
+      "none": "Nema događaja unutar {{km}} km u posljednjih {{days}} dana.",
+      "unavailable": "Nije dostupno: {{sources}}",
+      "kind": {
+        "conflict": "Konflikt",
+        "fires": "Požar",
+        "unrest": "Nemiri",
+        "outages": "Prekid",
+        "vessels": "Pomorski promet",
+        "military-flights": "Vojni let",
+        "gps-jamming": "Ometanje GPS-a"
+      }
+    },
+    "capability": {
+      "heading": "Tko može snimiti ovu točku",
+      "none": "Nema prolazaka senzora tijekom ovog razdoblja.",
+      "tooOld": "Orbitalni podaci previše stari za izračun: {{names}}",
+      "showAll": "Prikaži svih {{count}}",
+      "showFewer": "Prikaži manje",
+      "group": {
+        "open": "Otvoreni podaci",
+        "commercial": "Komercijalni",
+        "government": "Državni",
+        "military": "Vojni",
+        "other": "Ostalo"
+      }
+    },
+    "windows": {
+      "heading": "Sljedeći prozori prikupljanja",
+      "optical": "Otvoreni optički",
+      "radar": "Otvoreni radar",
+      "none": "Nema otvorenog optičkog ili radarskog prolaza u sljedećih {{hours}} h."
+    },
+    "status": {
+      "catalog": "Učitavanje kataloga satelita…",
+      "computing": "Izračunavanje prolazaka · satelit {{done}} od {{total}}",
+      "checking": "Arhive odgovorile: {{done}} od {{total}}",
+      "partial": "Nema odgovora od {{sources}}. Brojevi mogu biti niži.",
+      "staleCatalog": "Katalog je star {{age}}; predviđena vremena mogu biti neprecizna.",
+      "empty": "Niti jedan satelit nije prošao u domet ove točke tijekom ovog razdoblja.",
+      "unavailable": "Podaci o prolascima nisu dostupni. Pokušajte kasnije."
+    },
+    "privacy": {
+      "line": "Vaša točka ide samo u arhive slika.",
+      "more": "Pojedinosti",
+      "body": "Prolasci se izračunavaju na ovom uređaju. Za pronalaženje slika vaš preglednik šalje točku izravno servisima Earth Search, Planetary Computer, NASA GIBS i EUMETSAT; WorldMonitor je ne prima. Upisani naziv mjesta šalje se servisima WorldMonitor i OpenStreetMap Nominatim radi pronalaženja. Dijeljene poveznice čuvaju dva decimalna mjesta (0,01°)."
+    },
+    "sources": {
+      "heading": "Izvori ({{count}})",
+      "docs": "Metoda i pokrivenost",
+      "conflict": "događaji sukoba i nemira",
+      "fires": "detekcije požara",
+      "outages": "izvor podataka o prekidima interneta",
+      "vessels": "položaji brodova"
+    },
+    "caption": {
+      "clear": "Bez oblaka na točki",
+      "clearSceneCloud": "Bez oblaka na točki · scena {{pct}}% oblaka",
+      "clouded": "Oblak na točki · {{pct}}%",
+      "cloudShadow": "Sjena na točki",
+      "spotNotChecked": "Oblak točke nepoznat",
+      "sceneCloud": "Scena {{pct}}% oblaka · točka nepoznata",
+      "radar": "Radar · neosjetljiv na oblake"
+    },
+    "tile": {
+      "failed": "Scena se nije učitala · {{archive}}",
+      "noPreview": "Pregled za ovu scenu još nije objavljen",
+      "radar": "radar"
+    },
+    "target": {
+      "acquired": "SNIMLJENO {{time}} · {{resolution}}"
+    },
+    "popup": {
+      "title": "Satelitske snimke",
+      "loading": "Provjera satelitskih arhiva…",
+      "latest": "Najnovija snimka",
+      "nextPass": "Sljedeći prelet",
+      "noImage": "Nije pronađena nedavna snimka",
+      "noPass": "Nema preleta u sljedeća 72 sata",
+      "openEvidence": "Otvori dokaze",
+      "imageAlt": "Satelitski prikaz iz {{source}}",
+      "unavailable": "Satelitske snimke nisu se učitale.",
+      "fire": {
+        "title": "Detekcija požara iz satelita",
+        "detected": "Detektirano",
+        "satellite": "Satelit",
+        "confidence": "Pouzdanost",
+        "confidenceHigh": "Visoka",
+        "confidenceNominal": "Nominalna",
+        "confidenceLow": "Niska",
+        "power": "Snaga požara",
+        "powerValue": "{{value}} MW",
+        "region": "Regija",
+        "source": "Izvor",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Dnevni mozaik",
+        "mosaicLoading": "Provjera NASA GIBS…",
+        "mosaicCaption": "Kompozit dnevnih prolaza {{source}} za {{date}}; požar može biti skriven oblacima ili dimom.",
+        "mosaicNone": "NASA GIBS nema {{source}} mozaika za {{date}}.",
+        "mosaicNoLayer": "Dnevni mozaik nije dostupan za ovaj satelit.",
+        "mosaicUnavailable": "Dnevni mozaik se nije učitao.",
+        "mosaicAlt": "NASA GIBS {{source}} dnevni mozaik za {{date}}"
+      }
     }
   },
   "settings": {
@@ -5754,6 +5821,21 @@
         "5": "odjava",
         "6": "brisanje računa, faktura"
       }
+    },
+    "reservoirAlert": {
+      "title": "Upozorenja o razini vode",
+      "description": "Upozorenje kada je lidar razina vode strateške akumulacije niska. NASA objavljuje svaki prolazak satelita oko dva mjeseca nakon što je izmjeren, pa svako upozorenje daje svoj datum mjerenja.",
+      "scopeHint": "Odaberite do {{max}} akumulacija. Upozorenja pokrivaju samo akumulacije navedene ovdje.",
+      "searchPlaceholder": "Dodajte akumulaciju po imenu",
+      "searchLabel": "Dodajte akumulaciju",
+      "removeLabel": "Uklonite {{name}}",
+      "thresholdLabel": "Prag razine",
+      "thresholdHint": "Upozorenje kada je posljednja izmjerena razina ispod ovog postotka izmjerenog raspona akumulacije, gdje je 0 najniža izmjerena razina a 100 najviša. Ostavite prazno bez praga.",
+      "thresholdInputLabel": "Prag razine, postotak izmjerenog raspona",
+      "seasonalLabel": "Pad izvan sezonske osnovice",
+      "seasonalHint": "Upozorenje kada je posljednja izmjerena razina značajno ispod onoga što ta akumulacija obično mjeri u isto vrijeme godine.",
+      "quietNote": "Ove obavijesti stižu čak i kada su obavijesti u stvarnom vremenu postavljene samo na kritične. Tihi sati ih utišavaju.",
+      "quietNoteBatch": "Ove obavijesti stižu čak i kada su obavijesti u stvarnom vremenu postavljene samo na kritične. Tihi sati ih utišavaju ili ih, ako odaberete Batch, zadržavaju do kraja tihih sati."
     }
   },
   "app": {}

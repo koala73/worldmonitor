@@ -1209,7 +1209,12 @@
       "shareLink": "リンクを共有",
       "shareStory": "ストーリーを共有",
       "printPdf": "印刷 / PDF",
-      "exportData": "データをエクスポート"
+      "exportData": "データをエクスポート",
+      "sources": {
+        "summary": "ソースと期間 · {{count}} 系統",
+        "note": "ソースの期間は異なります。24時間の合計ではありません。",
+        "footer": "CII/CRI の入力ではありません。"
+      }
     },
     "relatedAssets": {
       "pipeline": "パイプライン",
@@ -3165,6 +3170,34 @@
         "change365": "12か月間",
         "measured": "測定日",
         "sparkline": "36か月の水位"
+      },
+      "nextPass": {
+        "label": "次のICESat-2通過",
+        "loading": "読み込み中…",
+        "at": "{{date}}（{{epoch}}の軌道データによる予測。雲でライダーが遮られる場合があります）",
+        "none": "この期間に測定なし（{{date}}まで）。{{epoch}}の軌道データ",
+        "unavailable": "軌道データを取得できません"
+      },
+      "siteContext": {
+        "label": "この地点の戦略的貯水池"
+      },
+      "energyContext": {
+        "heading": "戦略的貯水池",
+        "hydro": "水力は一次エネルギーの{{share}}%"
+      },
+      "countryEvidence": {
+        "heading": "水位",
+        "empty": "この国の戦略的貯水池で、最新の通過時に季節的基準線を外れているものはありません。",
+        "measured": "{{date}} 計測"
+      },
+      "card": {
+        "measured": "計測 {{date}} · {{age}}",
+        "noCrossing": "この期間内になし（{{date}}まで）",
+        "crossing": "ICESat-2 の予測通過",
+        "summary": "{{total}} 貯水池中 {{beyond}} が季節基準外",
+        "latestPass": "最新の ICESat-2 通過 {{date}}",
+        "sparkline": "36か月の水位（季節基準は破線）",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC)。日付付き通過のライダー水面高で、リアルタイム値や貯水量ではありません。"
       }
     },
     "gridDisruptionClock": {
@@ -3254,7 +3287,6 @@
       }
     },
     "protest": {
-      "acledVerified": "ACLED（検証済）",
       "gdelt": "GDELT",
       "records": "件の記録",
       "mediaSignal": "未確認のメディア情報",
@@ -5137,300 +5169,329 @@
     "errLoad": "旅行リスク評価を開くことができませんでした。ページを再度読み込んでもう一度お試しください。"
   },
   "orbitalWatch": {
-    "track": {
-      "unavailable": "この通過の地上軌跡を描画できませんでした"
-    },
-    "replay": {
-      "acquisition": "取得 · {{name}}",
-      "acquired": "取得済み {{time}} · {{resolution}}",
-      "play": "再生",
-      "pause": "一時停止",
-      "scrub": "再生位置",
-      "reducedMotion": "動きを減らす"
-    },
-    "computing": "衛星カタログを読み込み中…",
-    "computingProgress": "通過を計算中：{{total}} 機中 {{done}} 機",
-    "unavailable": "衛星カタログを読み込めなかったため、この地点の通過は計算されていません。",
-    "checkingArchives": "アーカイブを確認中：{{total}} 件中 {{done}} 件が応答",
-    "confirmedCount": "確認済み画像：{{count}}",
-    "counts": {
-      "mosaics": "日次モザイク：{{count}}",
-      "frames": "気象画像：{{count}}",
-      "inRange": "範囲内の通過：{{count}}"
-    },
-    "partial": "{{sources}} が応答しなかったため、一部の通過で画像が欠けている可能性があります。",
-    "stale": "軌道データが古くなっています。衛星カタログは {{age}} 前のもので、通過時刻がずれる可能性があります。",
-    "empty": "過去 {{pastDays}} 日間に、登録済みの撮像衛星はこの地点の上空を通過しておらず、今後 {{futureHours}} 時間も通過しません。",
-    "sources": "出典 · {{count}}",
-    "sourcesDocs": "これらの出典の使い方",
-    "privacy": "この地点はブラウザー内にとどまります。送信先は、ブラウザーが直接呼び出す公開アーカイブ（Earth Search、Microsoft Planetary Computer、NASA GIBS、EUMETSAT）のみです。唯一の例外は地名検索で、入力した地名は地名検索サービスに送られます。",
-    "inRange": "範囲内",
+    "track": {},
+    "replay": {},
+    "counts": {},
     "tier": {
       "checking": "アーカイブ確認中",
-      "confirmed": "確認済み画像",
-      "likely": "撮像の可能性が高い",
-      "opportunity": "今後の通過",
-      "dailyMosaic": "日次モザイク内",
-      "withinReach": "範囲内",
-      "capabilityOverhead": "能力上空通過",
-      "passedOverhead": "上空通過",
-      "unmatchedImage": "計算済み通過のない画像",
+      "confirmed": "確認済み",
+      "likely": "可能性が高い",
+      "unmatchedImage": "計算済みパスのない画像",
       "weatherFrame": "気象画像",
-      "unavailable": "利用不可"
+      "unavailable": "利用不可",
+      "inReach": "指向可能",
+      "capability": "撮像可能",
+      "inRange": "範囲内",
+      "mosaic": "モザイク",
+      "upcoming": "今後"
     },
     "row": {
       "offNadir": "天底から {{deg}}°",
-      "distance": "地上軌跡から {{km}} km",
-      "orbitAge": "軌道データ {{age}} 前",
-      "edgeOfSwath": "観測幅の端",
-      "notInArchive": "アーカイブに画像なし",
-      "geometryDisagreed": "推定観測幅の外",
-      "archiveUnanswered": "アーカイブが応答しませんでした",
-      "imageAlt": "{{name}} の画像、{{time}}",
-      "mosaicDays": "アーカイブ内の日数：{{count}}",
-      "cadence": "{{minutes}} 分ごとに新しい画像",
-      "sourceUnavailable": "アーカイブには、この期間のこのソースの画像がありません。",
-      "imageLoading": "画像を読み込み中…",
-      "imageFailed": "画像を読み込めませんでした。アーカイブが遅いか停止している可能性があります。",
-      "noPreview": "アーカイブにはまだこのシーンのプレビューがありません。"
+      "distance": "地上軌跡まで{{km}} km",
+      "orbitAge": "軌道データ",
+      "imageLoading": "シーン読み込み中…",
+      "satellite": "衛星",
+      "sensor": "センサー",
+      "time": "時刻",
+      "in": "開始まで",
+      "tier": "ステータス",
+      "elevation": "仰角",
+      "point": "地点",
+      "pixel": "ピクセル",
+      "credit": "アーカイブ",
+      "orbitAgeValue": "{{age}}前"
     },
-    "dailyMosaics": "日次モザイク",
-    "weatherFrames": "気象画像",
     "ui": {
-      "change": "変更",
-      "share": "共有",
-      "shareCopied": "リンクをコピーしました",
-      "headline": "過去{{days}}日間に{{satellites}}が{{place}}の上空を通過しました。",
-      "satellites_other": "{{count}}基の衛星",
-      "subline_other": "{{count}}枚の画像が公開されました。",
-      "closestLook": "最も近い撮影",
-      "replay": "再生",
-      "openFull": "全画面表示を開く",
-      "previous": "前の画像",
-      "next": "次の画像",
-      "passes_other": "回の通過",
-      "showAll": "すべての通過を表示",
-      "noRecentDays": "アーカイブに最近の日がありません: {{sources}}",
-      "tab": {
-        "all": "すべて",
-        "detailed": "詳細",
-        "weather": "気象"
-      },
-      "caption": {
-        "clear": "地点は晴れ",
-        "clearSceneCloud": "地点は晴れ · シーンの雲量 {{pct}}%",
-        "clouded": "曇り · {{pct}}%",
-        "cloudShadow": "雲の影",
-        "spotNotChecked": "地点の雲は未確認",
-        "sceneCloud": "シーンの雲量 {{pct}}% · 地点は未確認",
-        "radar": "レーダー",
-        "dailyMosaic": "日次モザイク",
-        "geostationary": "静止衛星フルディスク",
-        "geostationaryCadence": "静止衛星 · {{minutes}}分ごと"
-      },
-      "tile": {
-        "failed": "画像を利用できません · {{archive}}",
-        "noPreview": "アーカイブにはまだこのシーンのプレビューがありません"
-      },
-      "grid": {
-        "watched": "撮影済み",
-        "watchedDef": "公開アーカイブにこの地点の画像があります。",
-        "likely": "撮影の可能性大",
-        "likelyDef": "固定観測幅のセンサーが範囲に含めましたが、画像はまだ公開されていません。",
-        "could": "ここを向けた可能性",
-        "couldDef": "指向可能または商用のセンサーが届く範囲にいましたが、運用者は観測したかを公表していません。",
-        "overhead": "上空を通過",
-        "overheadDef": "撮影の証拠なしにこの上空を通過しました。",
-        "watchedShort": "公開アーカイブに画像あり",
-        "watchedNoPreviewShort": "アーカイブにあり、公開プレビューなし",
-        "likelyShort": "観測済み、画像はまだなし",
-        "likelyUnansweredDef": "固定幅センサーが撮影範囲に収めましたが、アーカイブが応答しなかったため、画像が存在する可能性があります。",
-        "likelyUnansweredShort": "撮影範囲内、アーカイブ応答なし",
-        "couldShort": "指向可能なセンサーが圏内",
-        "overheadShort": "上空通過、画像なし"
-      },
-      "group": {
-        "watched": "撮影済み",
-        "likely": "撮影の可能性大",
-        "upcoming": "今後",
-        "could": "ここを向けた可能性",
-        "overhead": "上空を通過",
-        "weather_other": "気象ソース"
-      },
-      "order": {
-        "closest": "最も近い撮影、次に新しい順",
-        "newest": "新しい順",
-        "soonest": "早い順"
-      },
-      "row": {
-        "cloud": "雲 {{pct}}%",
-        "days_other": "{{count}}日",
-        "repeats": "このグループでのこの衛星の通過 {{count}}回"
-      },
-      "section": {
-        "summary": "概要",
-        "passes": "通過"
-      },
-      "status": {
-        "objects": "{{count}}基の撮像衛星 · CelesTrak GP",
-        "fetched": "取得 {{time}} · {{ago}}",
-        "sun": "太陽 {{point}} · 太陽直下点"
-      },
-      "step": {
-        "computing": "計算中",
-        "catalogLoading": "カタログ · 読み込み中",
-        "catalog": "カタログ · {{count}}基の撮像衛星",
-        "propagating": "軌道を計算中 · {{done}} / {{total}}",
-        "archives": "アーカイブ · {{done}} / {{total}} が応答",
-        "matching": "シーンを{{passes}}回の通過と照合中",
-        "window": "7日間の範囲 · {{start}} → {{end}}",
-        "failed": "失敗",
-        "note": "Planetary ComputerとNASA GIBSは画像を要求時に生成するため、この手順には数秒かかることがあります。"
-      },
-      "privacyLine": "地点はブラウザ内にとどまります",
-      "privacyHow": "仕組み",
-      "sources": "出典",
-      "archiveScene": "アーカイブシーン",
-      "archiveOnly": "計算された通過と一致しない画像のため、アーカイブシーンとして表示しています。",
-      "zoneShowUtc": "時刻をUTCで表示",
-      "zoneShowLocal": "時刻をこの場所の現地時間で表示"
+      "tab": {},
+      "caption": {},
+      "tile": {},
+      "grid": {},
+      "group": {},
+      "order": {},
+      "row": {},
+      "section": {},
+      "status": {},
+      "step": {}
     },
     "viewer": {
-      "open": "画像ビューアを開く: {{image}}",
-      "bestView": "最適な画像を開く: {{name}}、{{time}}",
-      "imageAlt": "{{name}} の画像、{{time}}",
-      "close": "画像ビューアを閉じる",
-      "northUp": "上が北",
-      "unreferenced": "アーカイブ提供時の向きのまま。北は示されていません",
-      "compareDates": "このコレクションの他の日付",
-      "compareNone": "比較できる同じコレクションの画像はありません。",
-      "divider": "前後比較の境界",
-      "searching": "過去{{days}}日間のこの地点の画像を検索中",
-      "historyFailed": "{{archive}} から応答がなかったため、過去の画像はありません。",
-      "historyTimeout": "{{archive}} が時間内に応答しなかったため、過去の画像はありません。",
-      "loading": "フレームを読み込み中: {{loaded}} / {{total}}",
-      "pause": "一時停止",
-      "resume": "再生",
-      "next": "次のフレーム",
+      "open": "シーンを開く: {{image}}",
+      "imageAlt": "{{name}}シーン、{{time}}",
+      "close": "シーンビューアを閉じる",
+      "northUp": "北が上",
+      "unreferenced": "アーカイブの向きのまま。北は示されていません",
+      "compareDates": "このコレクション内の日付",
+      "compareNone": "このコレクション内に2番目のシーンはありません。",
+      "divider": "基準の境界線",
+      "searching": "{{days}}日間のアーカイブシーンを検索中",
+      "historyFailed": "{{archive}}がエラーを返しました。古いシーンは表示できません。",
+      "historyTimeout": "{{archive}}がタイムアウトしました。古いシーンは表示できません。",
+      "loading": "フレーム読み込み: {{loaded}} / {{total}}",
       "closeLabel": "閉じる",
-      "agoNow": "たった今",
+      "agoNow": "今",
       "agoHours": "{{count}}時間前",
       "agoDays": "{{count}}日前",
       "clear": "晴天",
-      "clouded": "雲 · {{pct}}%",
-      "tabImage": "画像",
-      "tabChange": "変化",
+      "clouded": "雲 {{pct}}%",
+      "tabImage": "シーン",
+      "tabChange": "比較",
       "metaAcquired": "撮影",
       "metaDate": "日付",
       "metaPixel": "ピクセル",
       "metaSpot": "地点の雲",
       "metaScene": "シーンの雲",
-      "metaSun": "太陽高度",
-      "showCloudy": "曇りの日付を表示 ({{count}})"
+      "metaSun": "太陽仰角",
+      "showCloudy": "曇りの日を含める ({{count}})"
     },
-    "timelapse": {
-      "heading": "タイムラプス",
-      "entry": "この場所の年ごとの変化",
-      "open": "この場所の年ごとのタイムラプスを開く",
-      "searching": "2015年以降、毎年1枚の晴天画像を検索中 · {{archive}}",
-      "loading": "画像を読み込み中 · {{loaded}} / {{total}}",
-      "failed": "{{archive}} から応答がなかったため、年ごとの画像はありません。",
-      "timeout": "{{archive}} が時間内に応答しなかったため、年ごとの画像はありません。",
-      "partial": "{{archive}} が応答しなかったため欠けている年: {{count}}。",
-      "tooFew": "この場所の晴天の年次画像: {{count}}。タイムラプスには {{min}} 枚必要です。",
-      "total": "晴天画像 {{count}} 枚 · 年に1枚",
-      "years": "年",
-      "share": "共有",
-      "method": "各フレームは Sentinel-2 による同じ 6 km 四方の自然色画像です。年ごとに異なる季節を検索し、最も雲の少ないシーンを使います。雲量 30% 未満のシーンがない年は除外します。"
-    },
+    "timelapse": {},
     "passDetail": {
-      "back": "すべての通過",
-      "altitude": "高度",
-      "offNadir": "オフナディア角",
-      "crossed": "{{name}} は高度 {{altitude}} km、この地点の{{direction}} {{distance}} km を {{time}} に地表速度 {{speed}} km/s で通過しました。",
-      "crossedHeading": "{{name}} は高度 {{altitude}} km、この地点の{{direction}} {{distance}} km を {{time}} に{{heading}}へ地表速度 {{speed}} km/s で通過しました。",
-      "looking": "真下から {{deg}}° 傾けて観測していました。",
-      "sceneCloud": "シーンの雲量: {{pct}}%。",
-      "pixelLine": "{{m}} m ピクセル",
-      "swathLine": "{{km}} km 観測幅",
-      "clearestLook": "最も晴れた画像",
-      "previous": "前の通過",
-      "next": "次の通過",
-      "dir": {
-        "n": "北",
-        "ne": "北東",
-        "e": "東",
-        "se": "南東",
-        "s": "南",
-        "sw": "南西",
-        "w": "西",
-        "nw": "北西"
-      },
-      "heading": {
-        "north": "北",
-        "south": "南"
-      }
+      "dir": {},
+      "heading": {}
     },
     "search": {
-      "label": "地名または座標",
-      "placeholder": "地名または 48.8584, 2.2945",
+      "label": "場所または座標",
+      "placeholder": "場所または 25.11, 55.14",
       "submit": "検索",
-      "locate": "現在地を使う",
-      "hint": "座標と現在地はこのブラウザ内にとどまります。検索した地名は WorldMonitor と OpenStreetMap の Nominatim に送信されます。",
-      "results": "一致する場所",
+      "locate": "現在地",
+      "hint": "入力した座標と現在地はWorldMonitorに送信されません。入力した地名はWorldMonitorとOpenStreetMap Nominatimに送信されます。",
+      "results": "場所",
       "searching": "検索中…",
-      "tooShort": "2文字以上、または 48.8584, 2.2945 のような座標を入力してください。",
-      "invalidCoordinates": "この座標は地球の範囲外です。緯度は -90 から 90、経度は -180 から 180 です。",
-      "failed": "現在、地名検索を利用できません。座標と地図は引き続き使えます。",
-      "noResults": "その名前に一致する場所はありません。",
-      "locating": "現在地を取得中…",
-      "locationDenied": "位置情報の許可が拒否されました。場所を検索するか、地図を右クリックしてください。",
-      "locationUnavailable": "現在地を取得できませんでした。場所を検索するか、地図を右クリックしてください。",
-      "idle": "地名や座標で場所を検索するか、現在地を使うか、地図を右クリックして、その上空を通過した衛星を確認できます。"
+      "tooShort": "2文字以上入力するか、25.11, 55.14のような座標を入力してください。",
+      "invalidCoordinates": "緯度は-90〜90、経度は-180〜180である必要があります。",
+      "failed": "場所の検索に失敗しました。座標とマップクリックは引き続き機能します。",
+      "noResults": "一致する場所はありません。",
+      "locating": "位置情報取得中…",
+      "locationDenied": "位置情報アクセスが拒否されました。任意の場所名を入力するか、マップを右クリックしてください。",
+      "locationUnavailable": "位置情報が見つかりません。任意の場所名を入力するか、マップを右クリックしてください。",
+      "idle": "任意の場所名を入力するか、デバイスの位置情報を使用するか、マップを右クリックして衛星画像の証拠を開きます。"
     },
     "share": {
-      "copy": "共有リンクをコピー",
       "copied": "リンクをコピーしました",
-      "copyManually": "下のリンクをコピーしてください",
+      "copyManually": "このリンクをコピー",
       "link": "共有リンク",
       "dismiss": "閉じる",
-      "passOutsideWindow": "リンクされた通過は現在の期間外のため、通過は選択されていません。",
-      "passNotFound": "リンクされた通過は再計算された通過の中に見つからなかったため、通過は選択されていません。"
+      "passOutsideWindow": "リンクされたパスはこの期間外のため、選択されていません。",
+      "passNotFound": "リンクされたパスは再計算した一覧にないため、選択されていません。"
     },
     "timeline": {
       "now": "現在",
       "nowAt": "現在: {{time}}",
-      "density": "{{label}}の通過、{{start}}～{{end}}: {{count}}",
-      "daylight": "地点の日照 {{start}}～{{end}}",
+      "density": "{{label}}、{{start}}〜{{end}}: {{count}}",
+      "daylight": "ここの日照: {{start}}–{{end}}",
       "unavailable": "利用不可",
-      "notRetained": "今週のデータなし",
-      "notRetainedSpan": "{{label}}: {{start}}～{{end}} のデータなし",
+      "notRetained": "フィードは履歴を保持しません",
+      "notRetainedSpan": "{{label}}: フィードは{{start}}〜{{end}}の履歴がありません",
       "countryWide": "国全体",
       "source": {
         "conflict": "紛争",
         "fires": "火災",
         "unrest": "騒乱",
-        "outages": "インターネット障害"
+        "outages": "通信障害"
       },
       "live": {
-        "vessels": "船舶交通",
+        "vessels": "海運",
         "militaryFlights": "軍用機",
         "gpsJamming": "GPS妨害"
       },
       "name": "タイムライン",
-      "span": "{{days}}日間 · 今後{{hours}}時間",
-      "daylightHere": "この地点の日中",
+      "span": "過去{{days}}日 · 今後{{hours}}時間",
+      "daylightHere": "地点の日照",
       "row": {
-        "geo": "静止",
-        "photo": "撮影",
-        "likely": "可能性高",
-        "could": "可能",
-        "overhead": "通過"
+        "images": "画像",
+        "events": "イベント",
+        "passes": "パス"
       },
-      "retained": "{{start}}〜{{end}}",
-      "retainedDay": "{{day}} のみ",
-      "geoLine": "視野内の静止衛星: {{names}}",
-      "away": "{{km}} km先"
+      "retained": "{{start}}〜{{end}}の履歴",
+      "retainedDay": "{{day}}のみの履歴",
+      "geoLine": "静止衛星の視野: {{names}}",
+      "away": "{{km}} km",
+      "densityTip_other": "{{start}}から{{count}}件のパス · {{names}}"
+    },
+    "satelliteSites": {
+      "heading": "監視対象地点 · 今後{{hours}}時間",
+      "projecting": "通過を計算中…",
+      "notLoaded": "衛星をもう一度クリックしてください。軌道要素が読み込まれていません。",
+      "failed": "衛星をもう一度クリックして再試行してください。通過の計算に失敗しました。",
+      "viewFailed": "衛星をもう一度クリックして再試行してください。地点一覧を読み込めませんでした。",
+      "unavailable": "衛星をもう一度クリックして再試行してください。通過ジオメトリの計算でこの軌道要素を使用できませんでした。",
+      "signals": "信号情報収集（SIGINT）衛星。撮像センサーがないため、地上の観測範囲はモデル化されていません。",
+      "noProfile": "この衛星のセンサープロファイルがないため、地上の観測範囲はモデル化されていません。",
+      "geostationary": "静止衛星：特定の経度上に固定されているため、表示する通過はありません。",
+      "badElements": "軌道要素が読み取れません。",
+      "none": "{{hours}}時間以内に観測範囲に入る監視対象地点はありません。",
+      "utc": "{{time}} UTC",
+      "inMinutes": "{{minutes}}分後",
+      "inHours": "{{hours}}時間{{minutes}}分後",
+      "offTrack": "地上軌跡から {{km}} km",
+      "swathEdge": "観測幅の端",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "種別",
+        "operator": "運用者",
+        "over": "上空",
+        "ocean": "海洋",
+        "altBand": "高度帯",
+        "inclination": "軌道傾斜角",
+        "velocity": "速度",
+        "types": {
+          "sar": "SAR撮像",
+          "optical": "光学撮像",
+          "military": "軍事",
+          "sigint": "SIGINT",
+          "signals": "信号情報"
+        }
+      },
+      "tooOld_other": "軌道要素が{{count}}日前のもので、通過の計算には古すぎます。",
+      "count_other": "{{family}}の観測範囲内に{{count}}地点",
+      "passes_other": "{{count}}回の通過"
+    },
+    "sheet": {
+      "heading": "衛星画像の証拠",
+      "window": "過去{{days}}日間、今後{{hours}}時間",
+      "apart": "カウント対象外：",
+      "newest": "最新{{when}}",
+      "newestNoPreview": "最新取得{{when}}にはプレビューがありません。古いシーンを表示しています。",
+      "noneConfirmed": "この期間に確認済み画像はありません",
+      "noneYet": "アーカイブからの回答を待機中",
+      "latest": "最新画像",
+      "latestNone": "この地点と期間について、アーカイブから結果がありません。",
+      "latestChecking": "アーカイブ検索中。計算済みパスを以下に一覧表示します。",
+      "compareWith": "比較対象",
+      "compareDate": "基準日",
+      "moreImages": "その他の確認済み画像",
+      "imageAlt": "{{sensor}}シーン、{{time}}",
+      "dailyMosaic": "日次モザイク",
+      "weatherFrame": "気象フレーム",
+      "change": "場所を変更",
+      "share": "リンクをコピー",
+      "shareCopied": "リンクをコピーしました",
+      "showUtc": "UTC",
+      "showLocal": "現地時間",
+      "alert": "オープンデータ衛星が上空を通過する前と、雲のない新しい画像が出るたびに通知します。",
+      "alertCta": "アラートを設定 · Pro",
+      "height": {
+        "collapsed": "シートが折りたたまれています。半分の高さまで展開",
+        "half": "シートが半分の高さです。全高まで展開",
+        "full": "シートが展開されています。折りたたむ"
+      },
+      "apartMosaics_other": "{{count}}件の日次モザイク",
+      "apartFrames_other": "{{count}}件の気象衛星画像",
+      "apartInRange_other": "{{count}}件の範囲内パス",
+      "confirmedCount_other": "{{count}}件の確認済み画像"
+    },
+    "tierDef": {
+      "confirmed": "アーカイブにこの地点をカバーするシーンがあります。",
+      "likely": "固定スワスの範囲にこの地点が含まれていました。アーカイブのシーンはまだありません。",
+      "inReach": "指向可能なセンサーがここを撮像対象にできます。撮像計画は非公開です。",
+      "capability": "公開アーカイブのないセンサー種別が上空にありました。"
+    },
+    "events": {
+      "heading": "この地点のイベント",
+      "kindLabel": "種類",
+      "detail": "詳細",
+      "now": "現在",
+      "loading": "イベントフィードを読み込み中…",
+      "none": "過去{{days}}日間に{{km}} km以内のイベントはありません。",
+      "unavailable": "利用不可: {{sources}}",
+      "kind": {
+        "conflict": "紛争",
+        "fires": "火災",
+        "unrest": "騒乱",
+        "outages": "通信障害",
+        "vessels": "海運",
+        "military-flights": "軍用機",
+        "gps-jamming": "GPS妨害"
+      }
+    },
+    "capability": {
+      "heading": "この地点を撮像可能なセンサー",
+      "none": "この期間中、センサーパスはありません。",
+      "tooOld": "軌道データが古すぎます: {{names}}",
+      "showAll": "{{count}}件すべて表示",
+      "showFewer": "表示を減らす",
+      "group": {
+        "open": "オープンデータ",
+        "commercial": "商用",
+        "government": "政府",
+        "military": "軍用",
+        "other": "その他"
+      }
+    },
+    "windows": {
+      "heading": "次の観測ウィンドウ",
+      "optical": "オープン光学",
+      "radar": "オープンレーダー",
+      "none": "今後{{hours}}時間以内に利用可能な光学式またはレーダーパスはありません。"
+    },
+    "status": {
+      "catalog": "衛星カタログを読み込み中…",
+      "computing": "パス計算中 · 衛星 {{done}}/{{total}}",
+      "checking": "アーカイブ応答: {{done}}/{{total}}",
+      "partial": "{{sources}}から応答がありません。カウントが少なくなる可能性があります。",
+      "staleCatalog": "カタログは{{age}}前のものです。予測時刻がずれる可能性があります。",
+      "empty": "この期間中、衛星がこの地点の範囲内に入りませんでした。",
+      "unavailable": "パスデータは利用不可です。後でもう一度お試しください。"
+    },
+    "privacy": {
+      "line": "ご指定のポイントはイメージアーカイブのみに送信されます。",
+      "more": "詳細",
+      "body": "パスはこのデバイス上で計算されます。イメージを検索するとき、ブラウザはそのポイントを Earth Search、Planetary Computer、NASA GIBS、EUMETSAT に直接送信します。WorldMonitor は受信しません。入力された地名は WorldMonitor と OpenStreetMap Nominatim に送信され、検索されます。共有リンクは小数点以下2桁（0.01°）を保持します。"
+    },
+    "sources": {
+      "heading": "ソース ({{count}})",
+      "docs": "方法とカバレッジ",
+      "conflict": "紛争・騒乱イベント",
+      "fires": "火災検出",
+      "outages": "インターネット障害フィード",
+      "vessels": "船舶位置"
+    },
+    "caption": {
+      "clear": "地点に雲なし",
+      "clearSceneCloud": "地点に雲なし · シーン{{pct}}%雲",
+      "clouded": "地点に雲あり · {{pct}}%",
+      "cloudShadow": "地点に影あり",
+      "spotNotChecked": "地点の雲は不明",
+      "sceneCloud": "シーン{{pct}}%雲 · 地点不明",
+      "radar": "レーダー · 雲の影響なし"
+    },
+    "tile": {
+      "failed": "シーン読み込み失敗 · {{archive}}",
+      "noPreview": "このシーンのプレビューはまだ公開されていません",
+      "radar": "レーダー"
+    },
+    "target": {
+      "acquired": "撮影 {{time}} · {{resolution}}"
+    },
+    "popup": {
+      "title": "衛星画像",
+      "loading": "衛星アーカイブを確認中…",
+      "latest": "最新の画像",
+      "nextPass": "次の通過",
+      "noImage": "最近の画像は見つかりません",
+      "noPass": "72 時間以内に通過予定はありません",
+      "openEvidence": "証拠を開く",
+      "imageAlt": "{{source}} による衛星画像",
+      "unavailable": "衛星画像を読み込めませんでした。",
+      "fire": {
+        "title": "衛星火災検出",
+        "detected": "検出日時",
+        "satellite": "衛星",
+        "confidence": "信頼度",
+        "confidenceHigh": "高",
+        "confidenceNominal": "標準",
+        "confidenceLow": "低",
+        "power": "火災の規模",
+        "powerValue": "{{value}} MW",
+        "region": "地域",
+        "source": "ソース",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "日次モザイク",
+        "mosaicLoading": "NASA GIBSを確認中…",
+        "mosaicCaption": "{{date}}に{{source}}が通過した観測を合成した日次画像です。火災は雲や煙に隠れている可能性があります。",
+        "mosaicNone": "NASA GIBSには{{date}}の{{source}}モザイクがありません。",
+        "mosaicNoLayer": "この衛星の日次モザイクは利用できません。",
+        "mosaicUnavailable": "日次モザイクが読み込まれませんでした。",
+        "mosaicAlt": "NASA GIBS {{source}} {{date}}の日次モザイク"
+      }
     }
   },
   "settings": {
@@ -5678,6 +5739,21 @@
         "5": "サインアウト",
         "6": "アカウント削除"
       }
+    },
+    "reservoirAlert": {
+      "title": "水位アラート",
+      "description": "戦略的貯水池のlidar水位が低い場合にアラートを送信します。NASAは各衛星パスの測定から約2ヶ月後にデータを公開するため、すべてのアラートには測定日が記載されます。",
+      "scopeHint": "最大{{max}}個の貯水池を選択できます。アラートはここにリストされた貯水池のみが対象です。",
+      "searchPlaceholder": "貯水池を名前で追加",
+      "searchLabel": "貯水池を追加",
+      "removeLabel": "{{name}}を削除",
+      "thresholdLabel": "レベル閾値",
+      "thresholdHint": "最新の測定値がその貯水池の測定範囲のこのパーセンテージを下回る場合にアラートを送信します。0は測定された最低水位、100は最高水位です。閾値を設定しない場合は空白のままにします。",
+      "thresholdInputLabel": "レベル閾値、測定範囲の百分率",
+      "seasonalLabel": "季節基準を下回る低下",
+      "seasonalHint": "最新の測定値がその貯水池が通常この時期に測定する値を大きく下回る場合にアラートを送信します。",
+      "quietNote": "これらのアラートは、リアルタイムアラートが重大のみに設定されていても届きます。サイレント時間中は通知されません。",
+      "quietNoteBatch": "これらのアラートは、リアルタイムアラートが重大のみに設定されていても届きます。サイレント時間中は通知されません。Batch を選択した場合は、サイレント時間が終わるまで保留されます。"
     }
   }
 }

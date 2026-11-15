@@ -82,6 +82,7 @@ import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-temp
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
+import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 
 export type { ScenarioVisualState, ScenarioResult };
 
@@ -194,7 +195,7 @@ interface TechEventMarker {
   daysUntil: number;
 }
 
-type FireMarker = { lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string };
+type FireMarker = { lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string; detected_at?: number; satellite?: string; source?: string };
 type CIIScore = { code: string; score: number; level: string };
 
 const EXCLUSIVE_CHOROPLETHS: Partial<Record<string, keyof MapLayers>> = {
@@ -221,6 +222,7 @@ export class MapContainer {
   private svgMap: MapComponent | null = null;
   private globeMap: GlobeMap | null = null;
   private autoRotateHeld = false;
+  private zoomCap: number | null = null;
   private supplyChainPanel: import('@/components/SupplyChainPanel').SupplyChainPanel | null = null;
   private initialState: MapContainerState;
   private suppressedLayers: MapLayers | null = null;
@@ -887,6 +889,8 @@ export class MapContainer {
   }
 
   private rehydrateActiveMap(): void {
+    // A renderer built while a lookup holds the zoom comes up held too; one built with no cap needs nothing.
+    if (this.useDeckGL && this.zoomCap != null) this.deckGLMap?.setZoomCap(this.zoomCap);
     // 1. Re-wire callbacks (through own public methods for adapter safety)
     if (this.cachedOnStateChanged) this.onStateChanged(this.cachedOnStateChanged);
     if (this.cachedOnLayerChange) this.setOnLayerChange(this.cachedOnLayerChange);
@@ -1157,6 +1161,15 @@ export class MapContainer {
   public holdAutoRotate(held: boolean): void {
     this.autoRotateHeld = held;
     this.globeMap?.holdAutoRotate(held);
+  }
+
+  /**
+   * Caps how far the flat map zooms in, or lifts the cap with null. Only the flat map fetches viewport-sized basemap tiles;
+   * the globe draws fixed textures and the SVG map one country topology, so neither needs a cap.
+   */
+  public capZoom(max: number | null): void {
+    this.zoomCap = max;
+    this.deckGLMap?.setZoomCap(max);
   }
 
   /** Where (lat, lon) is drawn in client coordinates, or null when the renderer cannot say or it faces away. */
@@ -1990,7 +2003,9 @@ export class MapContainer {
   public onMapContextMenu(callback: (payload: { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }) => void): void {
     this.cachedOnMapContextMenu = callback;
     if (this.useGlobe) { this.globeMap?.setOnMapContextMenu(callback); return; }
-    if (this.useDeckGL) { this.deckGLMap?.setOnMapContextMenu(callback); }
+    if (this.useDeckGL) { this.deckGLMap?.setOnMapContextMenu(callback); return; }
+    // The flat SVG map gains its menu with the point lookup, so it stays unchanged while the lookup is dark.
+    if (ORBITAL_WATCH_ENABLED) this.svgMap?.setOnMapContextMenu(callback);
   }
 
   public fitCountry(code: string): void {

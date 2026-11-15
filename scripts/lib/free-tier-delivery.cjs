@@ -25,13 +25,16 @@ function freeTierAllowsEvent(tier, eventSeverity) {
 }
 
 // Event types the free ladder does not include at all: Orbital Watch
-// watched-site alerts are Pro-only outright (convex/alertRules.ts
-// assertOrbitalAlertEntitlement; mirrors ORBITAL_SITE_ALERT_EVENT_TYPES in
-// shared/alert-rule-shape.ts — keep the two in step). That gate runs once,
-// at write time, so delivery must re-apply it or a later-downgraded account
-// keeps the paid stream: the events are stamped `critical` and carry no
-// country attribution, so the severity and scope rungs alone pass them.
-const FREE_EXCLUDED_EVENT_TYPES = new Set(['orbital_imaging_window', 'orbital_site_change']);
+// watched-site alerts and reservoir level alerts are Pro-only outright
+// (convex/alertRules.ts assertOrbitalAlertEntitlement and
+// assertReservoirAlertEntitlement; mirrors ORBITAL_SITE_ALERT_EVENT_TYPES +
+// RESERVOIR_ALERT_EVENT_TYPE in shared/alert-rule-shape.ts — keep them in
+// step). Those gates run once, at write time, so delivery must re-apply the
+// set or a later-downgraded account keeps the paid stream on its leftover
+// rule: these opt-in types bypass the realtime sensitivity gate and carry no
+// country attribution, so the severity and scope rungs alone cannot be
+// relied on to stop them.
+const FREE_EXCLUDED_EVENT_TYPES = new Set(['orbital_imaging_window', 'orbital_site_change', 'reservoir_level_alert']);
 
 /** Whether a rule owner at `tier` may receive events of this type at all. */
 function freeTierAllowsEventType(tier, eventType) {

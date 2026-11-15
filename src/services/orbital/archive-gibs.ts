@@ -191,12 +191,13 @@ export interface FrameQuery extends ArchiveRequestOptions {
   box?: CropBox;
 }
 
-export async function searchGibsDailyMosaics(query: FrameQuery): Promise<ArchiveResult<DailyMosaicRow>> {
+export async function searchGibsDailyMosaics(query: FrameQuery & { noradIds?: ReadonlySet<number> }): Promise<ArchiveResult<DailyMosaicRow>> {
   const box = query.box ?? cropBox(query.point);
   const toMs = Math.min(query.window.endMs, query.nowMs);
-  const answers = await Promise.all(GIBS_DAILY_MOSAICS.map((layer) => layerTimes(layer, query.window.startMs, toMs, true, query)));
+  const layers = query.noradIds ? GIBS_DAILY_MOSAICS.filter((layer) => query.noradIds!.has(layer.noradId)) : GIBS_DAILY_MOSAICS;
+  const answers = await Promise.all(layers.map((layer) => layerTimes(layer, query.window.startMs, toMs, true, query)));
   const failures = layerFailures(answers);
-  const items = GIBS_DAILY_MOSAICS.map((layer, i): DailyMosaicRow => {
+  const items = layers.map((layer, i): DailyMosaicRow => {
     const answer = answers[i]!;
     const days = (answer.ok ? answer.times : []).map((t) => isoDate(t)).reverse().map((date) => ({ date, imageUrl: gibsSnapshotUrl(layer.layer, date, box) }));
     return { kind: 'daily-mosaic', archive: 'nasa-gibs', source: layer.source, layer: layer.layer, noradId: layer.noradId, days, pointInCrop: pointInCrop(query.point, box) };

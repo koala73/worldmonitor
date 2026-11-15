@@ -52,6 +52,7 @@ import { mountWebcamPinButton } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { tokenizeForMatch, matchKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { MapPopup } from './MapPopup';
+import { fireDetectionPopupData } from './map-popup-fire';
 import type { CrossBorderData, CrossBorderPoint, DisplacementFlow, DisplacementEventsData, InternalDisplacementData } from '@/services/displacement';
 import { createCrossBorderMarker, crossBorderMarkerOffsets } from './cross-border-marker';
 import { createDisplacementMarker, displacementFlowMarkers, displacementEventMarkers, internalDisplacementMarkers, type DisplacementMarker } from './displacement-marker';
@@ -67,6 +68,8 @@ import {
 import { getCachedCountryScoreValue } from '@/services/cached-risk-scores';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
+import { installLongPressContextMenu } from '@/utils/long-press';
+
 import type { CountryClickPayload } from './DeckGLMap';
 import { initI18n, t } from '@/services/i18n';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
@@ -104,6 +107,8 @@ import {
   updateCountryClickGestureDrag,
 } from './map-interaction-guard';
 import { resolveClusterGlContext } from './map-cluster-gl';
+
+export interface MapContextMenuPayload { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }
 
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
@@ -261,7 +266,7 @@ export class MapComponent {
   private displacementFlows: DisplacementMarker[] = [];
   private internalDisplacement: DisplacementMarker[] = [];
   private displacementEvents: DisplacementMarker[] = [];
-  private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }> = [];
+  private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string; detected_at?: number; satellite?: string; source?: string }> = [];
   private techEvents: TechEventMarker[] = [];
   private techActivities: TechHubActivity[] = [];
   private geoActivities: GeoHubActivity[] = [];
@@ -280,6 +285,7 @@ export class MapComponent {
   private layerZoomOverrides: Partial<Record<keyof MapLayers, boolean>> = {};
   private onStateChange?: (state: MapState) => void;
   private onCountryClick?: (country: CountryClickPayload) => void;
+  private onMapContextMenu?: (payload: MapContextMenuPayload) => void;
   private highlightedAssets: Record<AssetType, Set<string>> = {
     pipeline: new Set(),
     cable: new Set(),
@@ -542,6 +548,8 @@ export class MapComponent {
     this.controlDisclosureCleanups.forEach(cleanup => cleanup());
     this.controlDisclosureCleanups = [];
     this.destroyed = true;
+    // The popup is appended to document.body, so removing the map container leaves it open.
+    this.popup.hide();
     this.listenerAbort.abort();
     if (this.markerSettleTimer !== null) {
       clearTimeout(this.markerSettleTimer);
@@ -1331,6 +1339,18 @@ export class MapComponent {
         this.onCountryClick({ lat, lon, code: hit.code, name: hit.name });
       }
     }, { signal });
+
+    // Right-click, or a long press on a phone, opens the point lookup as on the globe and deck.gl maps.
+    this.container.addEventListener('contextmenu', (e) => {
+      if (!this.onMapContextMenu || shouldIgnoreInteractionStart(e.target)) return;
+      const point = this.clientToLatLon(e.clientX, e.clientY);
+      if (!point) return;
+      e.preventDefault();
+      const hit = getCountryAtCoordinates(point.lat, point.lon);
+      this.onMapContextMenu({ ...point, screenX: e.clientX, screenY: e.clientY, countryCode: hit?.code, countryName: hit?.name });
+    }, { signal });
+    const removeLongPress = installLongPressContextMenu(this.container, { ignore: shouldIgnoreInteractionStart });
+    signal.addEventListener('abort', removeLongPress, { once: true });
 
     this.container.style.cursor = 'grab';
   }
@@ -2190,6 +2210,40 @@ export class MapComponent {
   ): LatLng {
     const centre = projection.invert?.(projectionPointAtScreenCentre(width, height, this.state.pan));
     return { lat: centre?.[1] ?? 0, lng: centre?.[0] ?? 0 };
+  }
+
+  /** A fire dot; a satellite detection is a button that opens its popup when Orbital Watch is on (#10713). */
+  private createFireDot(fire: MapComponent['firmsFireData'][number], pos: [number, number]): HTMLElement {
+    const color = fire.brightness > 400 ? getCSSColor('--semantic-critical') : fire.brightness > 350 ? getCSSColor('--semantic-high') : getCSSColor('--semantic-elevated');
+    const size = Math.max(4, Math.min(10, (fire.frp || 1) * 0.5));
+
+    const detection = fireDetectionPopupData(fire);
+    const dot = document.createElement(detection ? 'button' : 'div');
+    dot.className = 'fire-dot';
+    dot.style.left = `${pos[0]}px`;
+    dot.style.top = `${pos[1]}px`;
+    dot.style.width = `${size}px`;
+    dot.style.height = `${size}px`;
+    dot.style.backgroundColor = color;
+    dot.title = `${fire.region} — ${Math.round(fire.brightness)}K, ${fire.frp}MW`;
+
+    if (detection) {
+      dot.classList.add('fire-dot-popup');
+      (dot as HTMLButtonElement).type = 'button';
+      dot.setAttribute('aria-label', dot.title);
+      dot.addEventListener('click', (event) => {
+        const e = event as MouseEvent;
+        e.stopPropagation();
+        const rect = this.container.getBoundingClientRect();
+        // Enter and Space click with no pointer position, so anchor on the dot itself.
+        const at = e.detail === 0 ? dot.getBoundingClientRect() : null;
+        this.popup.show({
+          type: 'fireDetection', data: detection,
+          x: (at ? at.left + at.width / 2 : e.clientX) - rect.left, y: (at ? at.top + at.height / 2 : e.clientY) - rect.top,
+        });
+      });
+    }
+    return dot;
   }
 
   /** True when this render pass withheld `marker` under the overlay budget (#7112). */
@@ -3915,18 +3969,7 @@ export class MapComponent {
         const pos = projection([fire.lon, fire.lat]);
         if (!pos) return;
 
-        const color = fire.brightness > 400 ? getCSSColor('--semantic-critical') : fire.brightness > 350 ? getCSSColor('--semantic-high') : getCSSColor('--semantic-elevated');
-        const size = Math.max(4, Math.min(10, (fire.frp || 1) * 0.5));
-
-        const dot = document.createElement('div');
-        dot.className = 'fire-dot';
-        dot.style.left = `${pos[0]}px`;
-        dot.style.top = `${pos[1]}px`;
-        dot.style.width = `${size}px`;
-        dot.style.height = `${size}px`;
-        dot.style.backgroundColor = color;
-        dot.title = `${fire.region} — ${Math.round(fire.brightness)}K, ${fire.frp}MW`;
-
+        const dot = this.createFireDot(fire, pos);
         this.appendOverlay(dot);
       });
     }
@@ -3957,7 +4000,7 @@ export class MapComponent {
         dot.style.opacity = '0.75';
         dot.style.cursor = 'pointer';
         dot.title = isCluster ? `${(cam as WebcamCluster).count} webcams` : ((cam as WebcamEntry).title || 'Webcam');
-        dot.addEventListener('click', (e) => {
+        dot.addEventListener('click', (e: MouseEvent) => {
           e.stopPropagation();
           if (isCluster) {
             this.showWebcamClusterPopup(cam as WebcamCluster, e.clientX, e.clientY);
@@ -5114,6 +5157,22 @@ export class MapComponent {
     this.onTimeRangeChange = callback;
   }
 
+  public setOnMapContextMenu(cb: (payload: MapContextMenuPayload) => void): void {
+    this.onMapContextMenu = cb;
+  }
+
+  /** The map point under a client position, or null off the projection. */
+  private clientToLatLon(clientX: number, clientY: number): { lat: number; lon: number } | null {
+    const rect = this.container.getBoundingClientRect();
+    const zoom = this.state.zoom;
+    const { width, height } = this.readContainerSize();
+    const tx = (width / 2) * (1 - zoom) + this.state.pan.x * zoom;
+    const ty = (height / 2) * (1 - zoom) + this.state.pan.y * zoom;
+    const coords = this.getProjection(width, height).invert?.([(clientX - rect.left - tx) / zoom, (clientY - rect.top - ty) / zoom]);
+    if (!coords || !Number.isFinite(coords[0]) || !Number.isFinite(coords[1])) return null;
+    return { lat: coords[1], lon: coords[0] };
+  }
+
   public setOnCountryClick(cb: (country: CountryClickPayload) => void): void {
     this.onCountryClick = cb;
   }
@@ -5148,19 +5207,19 @@ export class MapComponent {
     this.orbitalSweptNodes = [];
     this.orbitalEdgeNodes = [];
     this.orbitalMarkerNodes = [];
-    const accent = getCSSColor('--ow-mark');
-    const text = getCSSColor('--ow-text');
+    const accent = getCSSColor('--green');
+    const text = getCSSColor('--text');
     for (const copy of MapComponent.orbitalWorldCopies(layer, projection)) {
       for (const ring of shapes.footprint) {
         copy.append('path').attr('d', toPath(ring, true))
           .attr('fill', accent).attr('fill-opacity', 0.07).attr('stroke', accent).attr('stroke-opacity', 0.5).attr('stroke-width', 1).attr('vector-effect', 'non-scaling-stroke');
       }
       copy.append('path').attr('d', toPath(shapes.path, false))
-        .attr('fill', 'none').attr('stroke', getCSSColor('--ow-dim')).attr('stroke-width', 1.5).attr('vector-effect', 'non-scaling-stroke');
+        .attr('fill', 'none').attr('stroke', getCSSColor('--text-dim')).attr('stroke-width', 1.5).attr('vector-effect', 'non-scaling-stroke');
       this.orbitalSweptNodes.push(copy.append('path').attr('class', 'orbital-swept').attr('fill', accent).attr('fill-opacity', 0.24).attr('stroke', 'none').node()!);
       this.orbitalEdgeNodes.push(copy.append('path').attr('class', 'orbital-leading-edge').attr('fill', 'none')
         .attr('stroke', accent).attr('stroke-width', 2.6).attr('stroke-linecap', 'round').attr('vector-effect', 'non-scaling-stroke').node()!);
-      this.orbitalMarkerNodes.push(copy.append('circle').attr('r', 4).attr('fill', text).attr('stroke', getCSSColor('--ow-panel'))
+      this.orbitalMarkerNodes.push(copy.append('circle').attr('r', 4).attr('fill', text).attr('stroke', getCSSColor('--panel-bg'))
         .attr('vector-effect', 'non-scaling-stroke').node()!);
     }
     this.placeOrbitalMarker(projection);
@@ -5208,7 +5267,7 @@ export class MapComponent {
     const xy = target ? projection([target.lon, target.lat]) : null;
     if (!xy || !this.dynamicLayerGroup) return;
     const unit = 1 / Math.max(1, this.state.zoom);
-    const accent = getCSSColor('--ow-mark');
+    const accent = getCSSColor('--green');
     const reticle = this.dynamicLayerGroup.append('g').attr('class', 'orbital-target').attr('pointer-events', 'none')
       .attr('transform', `translate(${xy[0]},${xy[1]}) scale(${unit})`);
     reticle.append('circle').attr('r', 12).attr('fill', 'none').attr('stroke', accent).attr('stroke-width', 2);
@@ -5249,9 +5308,9 @@ export class MapComponent {
     const label = reticle.append('g');
     if (side === 'below') label.attr('transform', `translate(0,${20 + 9 * lines.length + 3})`);
     label.append('rect').attr('x', x).attr('y', -9 * lines.length - 3).attr('height', 18 * lines.length + 6)
-      .attr('width', width).attr('fill', getCSSColor('--ow-panel')).attr('fill-opacity', 0.88);
-    const text = label.append('text').attr('fill', getCSSColor('--ow-text'))
-      .attr('font-family', getCSSColor('--ow-font-mono')).attr('font-size', 11).attr('letter-spacing', '0.06em');
+      .attr('width', width).attr('fill', getCSSColor('--panel-bg')).attr('fill-opacity', 0.88);
+    const text = label.append('text').attr('fill', getCSSColor('--text'))
+      .attr('font-family', getCSSColor('--font-mono')).attr('font-size', 11).attr('letter-spacing', '0.06em');
     lines.forEach((line, i) => {
       text.append('tspan').attr('x', x + 5).attr('y', (i - (lines.length - 1) / 2) * 18 + 4).text(line);
     });
@@ -5652,7 +5711,7 @@ export class MapComponent {
     this.render();
   }
 
-  public setFires(fires: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }>): void {
+  public setFires(fires: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string; detected_at?: number; satellite?: string; source?: string }>): void {
     this.firmsFireData = fires;
     this.render();
   }

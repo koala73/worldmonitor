@@ -105,7 +105,7 @@
   },
   "deferred": {
     "total": {
-      "raw": 1574603
+      "raw": 1586582
     },
     "chunks": {
       "App": {
@@ -148,6 +148,10 @@
         "raw": 14431,
         "files": 1
       },
+      "country-names": {
+        "raw": 5498,
+        "files": 1
+      },
       "cross-domain-storage": {
         "raw": 536,
         "files": 1
@@ -165,7 +169,7 @@
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 161289,
+        "raw": 165388,
         "files": 1
       },
       "index": {
@@ -210,6 +214,10 @@
       },
       "sanitize": {
         "raw": 1280,
+        "files": 1
+      },
+      "satellites": {
+        "raw": 2382,
         "files": 1
       },
       "select": {

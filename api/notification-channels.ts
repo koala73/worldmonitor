@@ -230,10 +230,10 @@ async function publishFlushHeld(userId: string, variant: string): Promise<void> 
  * table, so Convex answers that one and its 400 passes through below.
  */
 function alertRuleShapeError(
-  body: { variant?: unknown; eventTypes?: unknown; channels?: unknown; orbitalSites?: unknown },
+  body: { variant?: unknown; eventTypes?: unknown; channels?: unknown; orbitalSites?: unknown; reservoirAlert?: unknown },
   cors: Record<string, string>,
 ): Response | null {
-  const violation = getAlertRuleShapeViolation({ variant: body.variant, eventTypes: body.eventTypes, channels: body.channels, orbitalSites: body.orbitalSites });
+  const violation = getAlertRuleShapeViolation({ variant: body.variant, eventTypes: body.eventTypes, channels: body.channels, orbitalSites: body.orbitalSites, reservoirAlert: body.reservoirAlert });
   return violation ? json({ error: violation.code, message: violation.message }, 400, cors) : null;
 }
 
@@ -375,6 +375,8 @@ interface PostBody {
   chokepoints?: string[];
   // Watched-site ids for the opt-in watched-site alerts; bounded by the shared rule shape.
   orbitalSites?: string[];
+  // Reservoir level alert settings; bounded by the shared rule shape.
+  reservoirAlert?: { reservoirs: string[]; belowPercent?: number; seasonalDrop?: boolean };
 }
 
 export default async function handler(req: Request, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<Response> {
@@ -815,8 +817,8 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       }
 
       if (action === 'set-alert-rules') {
-        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, countries, tickers, chokepoints, orbitalSites } = body;
-        const shapeError = alertRuleShapeError({ variant, eventTypes, channels, orbitalSites }, corsHeaders);
+        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, countries, tickers, chokepoints, orbitalSites, reservoirAlert } = body;
+        const shapeError = alertRuleShapeError({ variant, eventTypes, channels, orbitalSites, reservoirAlert }, corsHeaders);
         if (shapeError) return finish(shapeError);
         if (tickers !== undefined && !Array.isArray(tickers)) {
           return finish(json({ error: 'TICKERS_MUST_BE_ARRAY' }, 400, corsHeaders));
@@ -837,6 +839,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           tickers,
           chokepoints,
           orbitalSites,
+          reservoirAlert,
         });
         if (!resp.ok) {
           // A 400 carries a structured validation code (TICKERS_LIMIT_EXCEEDED /
@@ -922,9 +925,9 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       if (action === 'set-notification-config') {
         const VALID_SENSITIVITY = new Set(['all', 'high', 'critical']);
         const VALID_DIGEST_MODE = new Set(['realtime', 'daily', 'twice_daily', 'weekly']);
-        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone, countries, tickers, chokepoints, orbitalSites } = body;
+        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone, countries, tickers, chokepoints, orbitalSites, reservoirAlert } = body;
         if (!variant) return finish(json({ error: 'variant required' }, 400, corsHeaders));
-        const shapeError = alertRuleShapeError({ variant, eventTypes, channels, orbitalSites }, corsHeaders);
+        const shapeError = alertRuleShapeError({ variant, eventTypes, channels, orbitalSites, reservoirAlert }, corsHeaders);
         if (shapeError) return finish(shapeError);
         if (sensitivity !== undefined && !VALID_SENSITIVITY.has(sensitivity)) {
           return finish(json({ error: 'invalid sensitivity' }, 400, corsHeaders));
@@ -957,6 +960,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           tickers,
           chokepoints,
           orbitalSites,
+          reservoirAlert,
         });
         if (!resp.ok) {
           // 400 from convex/http means user-facing validation failure (e.g.

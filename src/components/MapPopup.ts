@@ -15,6 +15,9 @@ import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { assessCorroboration, corroborationLabelHtml, evidenceFromItem } from '@/utils/corroboration-flag';
 import { isMobileDevice, getCSSColor } from '@/utils';
 import { TransitChart } from '@/utils/transit-chart';
+import { hasImageryRow, imageryTargetFor, mountImageryRow, renderImageryRow } from './map-popup-imagery';
+import { mountFireMosaic, renderFireDetectionPopup, type FireDetectionPopupData } from './map-popup-fire';
+import { ORBITAL_EVIDENCE_EVENT } from '@/services/orbital/evidence-event';
 import { HS2RingChart } from '@/utils/hs2-ring-chart';
 import type { GetChokepointStatusResponse, TransitDayCount } from '@/services/supply-chain';
 import { fetchChokepointHistory } from '@/services/supply-chain';
@@ -30,9 +33,11 @@ import {
   reservoirMeasured,
   reservoirPlace,
   reservoirSparkline,
-  reservoirTone,
+  reservoirChipTone,
   statusLabel as reservoirStatusLabel,
+  reservoirNextPassText,
 } from './reservoir-levels-view';
+import { reservoirCard } from './reservoir-card';
 import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticle } from '@/services/gdelt-intel';
 import { getWingbitsLiveFlight } from '@/services/wingbits';
 import { isFeatureAvailable } from '@/services/runtime-config';
@@ -49,6 +54,9 @@ import { bindCyberNetworkSection, renderCyberNetworkSection } from './cyber-netw
 import { renderPopupSourceLinks } from './map-popup-source-links';
 import { overlayHistory, type OverlayCloseOrigin, type OverlayOpenHandle } from '@/utils/overlay-history';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
+import { loadReservoirLevelsById, loadReservoirNextPasses } from '@/services/climate/reservoir-context-loader';
+import { STRATEGIC_RESERVOIR_SITES, reservoirAtSite } from '@/services/climate/reservoir-context';
 import { aptSectorLabel, aptTacticLabel, countryLabel, datacenterSectorLabel, isSameLocation, localizeRelativePlace, parseGdeltReportTitle, severityLabel, statusLabel, storageFacilityTypeLabel, weatherEventLabel } from './map-popup-i18n';
 
 
@@ -127,7 +135,7 @@ function fmtDelayMin(min: number | undefined): string {
 /** A news marker's popup: its title and, when known, the cluster's corroboration (#9213). */
 type NewsPopupData = Pick<NewsLocationMarker, 'title' | 'corroboration'>;
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'news' | 'crossBorder' | 'displacement' | 'storageFacility' | 'reservoirLevel';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'news' | 'crossBorder' | 'displacement' | 'storageFacility' | 'reservoirLevel' | 'fireDetection';
 
 interface TechEventPopupData {
   id: string;
@@ -266,7 +274,7 @@ interface StorageFacilityPopupData {
 
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation | NewsPopupData | DisplacementMarker | CrossBorderPoint | StorageFacilityPopupData | ReservoirLevel;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation | NewsPopupData | DisplacementMarker | CrossBorderPoint | StorageFacilityPopupData | ReservoirLevel | FireDetectionPopupData;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -293,6 +301,7 @@ function weatherSourceUrl(raw: string | undefined): URL | null {
 export class MapPopup {
   private container: HTMLElement;
   private popup: HTMLElement | null = null;
+  private reservoirScan: AbortController | null = null;
   private onClose?: () => void;
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
@@ -317,6 +326,43 @@ export class MapPopup {
     this.chokepointData = data;
   }
 
+  /** Satellite imagery row (#10713 unit 1); kept out of the per-type renderers so they stay untouched. */
+  private disposeImagery: (() => void) | null = null;
+
+  private mountImagery(data: PopupData): void {
+    const target = imageryTargetFor(data.type, data.data);
+    const popup = this.popup;
+    if (!target || !popup) return;
+    const host = popup.querySelector<HTMLElement>('.popup-body') ?? popup;
+    const holder = document.createElement('div');
+    setTrustedHtml(holder, trustedHtml(renderImageryRow(), 'static locale strings'));
+    const row = holder.firstElementChild as HTMLElement | null;
+    if (!row) return;
+    host.appendChild(row);
+    this.disposeImagery = mountImageryRow(row, target, {
+      onLayout: () => {
+        if (this.popup === popup && !this.isMobileSheet) this.clampPopupToViewport();
+      },
+      onOpenEvidence: (picked) => {
+        this.hide();
+        window.dispatchEvent(new CustomEvent(ORBITAL_EVIDENCE_EVENT, { detail: picked.point }));
+      },
+    });
+  }
+
+  private disposeFireMosaic: (() => void) | null = null;
+
+  /** The daily mosaic of a fire detection's date (#10713); held to the same flag as the imagery row. */
+  private mountFireMosaic(fire: FireDetectionPopupData): void {
+    const popup = this.popup;
+    if (!popup) return;
+    this.disposeFireMosaic = mountFireMosaic(popup, fire, {
+      onLayout: () => {
+        if (this.popup === popup && !this.isMobileSheet) this.clampPopupToViewport();
+      },
+    });
+  }
+
   public show(data: PopupData): void {
     this.hide('replacement');
 
@@ -325,9 +371,11 @@ export class MapPopup {
     this.popup.className = this.isMobileSheet ? 'map-popup map-popup-sheet' : 'map-popup';
 
     const content = this.renderContent(data);
+    const imageryRow = hasImageryRow(data.type, data.data);
     setTrustedHtml(this.popup, trustedHtml(this.isMobileSheet
       ? `<button class="map-popup-sheet-handle" aria-label="${t('common.close')}"></button>${content}`
       : content, "legacy direct innerHTML migration"));
+    this.hydrateReservoirSections(this.popup);
 
     // Get container's viewport position for absolute positioning
     const containerRect = this.container.getBoundingClientRect();
@@ -339,6 +387,9 @@ export class MapPopup {
     } else {
       this.positionDesktopPopup(data, containerRect);
     }
+
+    if (data.type === 'fireDetection' && imageryRow) this.mountFireMosaic(data.data as FireDetectionPopupData);
+    if (imageryRow) this.mountImagery(data);
 
     // Append to body to avoid container overflow clipping
     document.body.appendChild(this.popup);
@@ -802,8 +853,14 @@ export class MapPopup {
   };
 
   public hide(origin: OverlayCloseOrigin = 'control'): void {
+    this.reservoirScan?.abort();
+    this.reservoirScan = null;
     this.transitChart?.destroy();
     this.transitChart = null;
+    this.disposeImagery?.();
+    this.disposeImagery = null;
+    this.disposeFireMosaic?.();
+    this.disposeFireMosaic = null;
 
     this.mapPopupHistoryOpen?.cancel();
     this.mapPopupHistoryOpen = null;
@@ -929,6 +986,8 @@ export class MapPopup {
         return this.renderCentralBankPopup(data.data as CentralBankPopupData);
       case 'commodityHub':
         return this.renderCommodityHubPopup(data.data as CommodityHubPopupData);
+      case 'fireDetection':
+        return renderFireDetectionPopup(data.data as FireDetectionPopupData);
       case 'iranEvent':
         return this.renderIranEventPopup(data.data as IranEventPopupData);
       case 'gpsJamming':
@@ -1790,7 +1849,8 @@ export class MapPopup {
     const severityText = escapeHtml(severityLabel(event.severity));
     const eventTypeLabel = mediaSignal ? t('popups.protest.mediaSignal') : escapeHtml(statusLabel(event.eventType.replace(/_/g, ' ')));
     const icon = event.eventType === 'riot' ? '🔥' : event.eventType === 'strike' ? '✊' : '📢';
-    const sourceLabel = event.sourceType === 'acled' ? t('popups.protest.acledVerified') : t('popups.protest.gdelt');
+    // Every unrest row comes from GDELT, whatever its sourceType enum says.
+    const sourceLabel = t('popups.protest.gdelt');
     const validatedBadge = !mediaSignal && event.validated ? `<span class="popup-badge verified">${t('popups.verified')}</span>` : '';
     const fatalitiesSection = event.fatalities
       ? `<div class="popup-stat"><span class="stat-label">${t('popups.fatalities')}</span><span class="stat-value alert">${event.fatalities}</span></div>`
@@ -1834,6 +1894,7 @@ export class MapPopup {
         ${sourceLinks}
         ${tagsSection}
         ${relatedHotspots}
+        ${this.renderReservoirSiteContext(event.lat, event.lon, event.title)}
       </div>
     `;
   }
@@ -2291,7 +2352,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
   private renderReservoirLevelPopup(r: ReservoirLevel): string {
     const locale = getLocale();
     const ctx = { t, locale, nowMs: Date.now() };
-    const tone = reservoirTone(r.status);
+    const tone = reservoirChipTone(r.status);
     const signed = (v: number | null) => (v == null ? '\u2014' : escapeHtml(formatSignedMetres(v, locale)));
     const stat = (label: string, value: string, extraClass = '') =>
       `<div class="popup-stat"><span class="stat-label">${escapeHtml(label)}</span><span class="stat-value${extraClass}">${value}</span></div>`;
@@ -2318,11 +2379,63 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
             ${stat(t('components.reservoirLevels.popup.change365'), signed(r.change365dM))}
             ${stat(t('components.reservoirLevels.popup.measured'), escapeHtml(reservoirMeasured(r, ctx, true)))}
           </div>
+          ${this.renderReservoirNextPass(r)}
           ${spark ? `<div class="wl-popup-spark" role="img" aria-label="${escapeHtml(t('components.reservoirLevels.popup.sparkline'))}">${spark}</div>` : ''}
           <p class="wl-popup-source">${escapeHtml(t('components.reservoirLevels.source'))} <a href="${RESERVOIR_SOURCE_URL}" target="_blank" rel="noopener noreferrer">NASA ICESat-2 ATL13</a> / <a href="${RESERVOIR_ATL06_SOURCE_URL}" target="_blank" rel="noopener noreferrer">ATL06</a> (NSIDC) · ${escapeHtml(t('components.reservoirLevels.processedWith'))} <a href="${RESERVOIR_PROCESSING_URL}" target="_blank" rel="noopener noreferrer">SlideRule Earth</a></p>
         </div>
       </div>
     `;
+  }
+
+  // Next ICESat-2 crossing of the lake. Orbital pass geometry, so absent unless Orbital Watch is on;
+  // filled in by hydrateReservoirSections once the orbital catalog resolves.
+  private renderReservoirNextPass(r: ReservoirLevel): string {
+    if (!ORBITAL_WATCH_ENABLED || !STRATEGIC_RESERVOIR_SITES.some(site => site.id === r.id)) return '';
+    return `<div class="wl-next-pass" data-wl-next-pass="${escapeHtml(r.id)}">
+      <span class="wl-next-pass-label">${escapeHtml(t('components.reservoirLevels.nextPass.label'))}</span>
+      <span class="wl-next-pass-value">${escapeHtml(t('components.reservoirLevels.nextPass.loading'))}</span>
+    </div>`;
+  }
+
+  // Strategic reservoir level beside a dam-related event at the same site.
+  private renderReservoirSiteContext(lat: number, lon: number, text: string): string {
+    const site = reservoirAtSite(lat, lon, text);
+    if (!site) return '';
+    return `<div class="popup-section wl-site-context" data-wl-site-context="${escapeHtml(site.id)}">
+      <span class="section-label">${escapeHtml(t('components.reservoirLevels.siteContext.label'))}</span>
+      <div class="wl-site-context-name">${escapeHtml(site.name)}</div>
+      <div class="wl-site-context-level">${escapeHtml(t('components.reservoirLevels.nextPass.loading'))}</div>
+    </div>`;
+  }
+
+  private hydrateReservoirSections(popup: HTMLElement): void {
+    const nextPass = popup.querySelector<HTMLElement>('[data-wl-next-pass]');
+    const site = popup.querySelector<HTMLElement>('[data-wl-site-context]');
+    const locale = getLocale();
+    if (nextPass) {
+      const id = nextPass.dataset.wlNextPass!;
+      this.reservoirScan?.abort();
+      const scan = this.reservoirScan = new AbortController();
+      void loadReservoirNextPasses(STRATEGIC_RESERVOIR_SITES, { signal: scan.signal }).then((passes) => {
+        const value = nextPass.querySelector('.wl-next-pass-value');
+        if (!value || !nextPass.isConnected) return;
+        const pass = passes?.get(id);
+        value.textContent = pass ? reservoirNextPassText(pass, t, locale) : t('components.reservoirLevels.nextPass.unavailable');
+        this.clampPopupToViewport();
+      });
+    }
+    if (site) {
+      const id = site.dataset.wlSiteContext!;
+      void loadReservoirLevelsById().then((levels) => {
+        const line = site.querySelector('.wl-site-context-level');
+        if (!line || !site.isConnected) return;
+        const level = levels.get(id);
+        if (!level) { line.textContent = t('components.reservoirLevels.unavailable'); return; }
+        site.querySelector('.wl-site-context-name')?.remove();
+        line.replaceWith(reservoirCard(level, { t, locale, nowMs: Date.now() }, { compact: true }));
+        this.clampPopupToViewport();
+      });
+    }
   }
 
   private renderStorageFacilityPopup(facility: StorageFacilityPopupData): string {
@@ -3913,6 +4026,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
             <span class="stat-value">${escapeHtml(timeAgo)}</span>
           </div>` : ''}
         </div>
+        ${this.renderReservoirSiteContext(event.latitude, event.longitude, `${event.title} ${event.category} ${event.locationName}`)}
         ${relatedHtml}
         ${safeUrl ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer nofollow" class="popup-link">${t('popups.source')} →</a>` : ''}
       </div>
