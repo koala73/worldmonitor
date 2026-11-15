@@ -149,6 +149,8 @@ export async function fetchBaselineStats(portname, { fromEpoch, toEpoch }, timeo
       // Days with tanker DWT reported. A zero-filled gap lowers the mean, so the
       // mean only defines normal when most days carry DWT.
       { statisticType: 'sum', onStatisticField: 'CASE WHEN capacity_tanker > 0 THEN 1 ELSE 0 END', outStatisticFieldName: 'cap_tanker_days' },
+      // The rows avg_cap_tanker averages: the denominator for that majority.
+      { statisticType: 'count', onStatisticField: 'capacity_tanker', outStatisticFieldName: 'cap_tanker_rows' },
       { statisticType: 'count', onStatisticField: 'n_total', outStatisticFieldName: 'day_count' },
     ]),
     f: 'json',
@@ -217,9 +219,11 @@ export function buildBaseline(stats, window) {
   if (tanker !== null && Number(stats.tanker_days) >= BASELINE_MIN_DAYS) {
     baseline.tankerAvgDaily = Math.round(tanker * 10) / 10;
   }
-  // Same majority rule the flow seeder applies to its trailing window.
+  // Same majority rule the flow seeder applies to its trailing window, over
+  // the rows the DWT mean averages rather than the n_total days.
   const capTanker = finiteNonNegative(stats.avg_cap_tanker);
-  if (capTanker !== null && Number(stats.cap_tanker_days) >= Math.ceil(days / 2)) {
+  const capRows = Number(stats.cap_tanker_rows);
+  if (capTanker !== null && Number.isInteger(capRows) && capRows > 0 && Number(stats.cap_tanker_days) >= Math.ceil(capRows / 2)) {
     baseline.capTankerAvgDaily = Math.round(capTanker);
   }
   return baseline;
@@ -325,6 +329,7 @@ export function chokepointsFromCsv(text, sinceEpoch, window) {
       day_count: base.total.length,
       tanker_days: base.tanker.length,
       cap_tanker_days: base.capTanker.filter(v => v > 0).length,
+      cap_tanker_rows: base.capTanker.length,
     };
     result[id] = { history, wowChangePct: computeWow(history), baseline: buildBaseline(stats, window) };
   }
