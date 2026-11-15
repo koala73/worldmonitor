@@ -23,7 +23,10 @@ const DAY_MS = 86_400_000;
 async function newestMosaicDay() {
   const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
   const url = `https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/1.0.0/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/250m/all/${iso(Date.now() - 30 * DAY_MS)}--${iso(Date.now())}.xml`;
-  const text = await (await fetch(url, { signal: AbortSignal.timeout(20_000) })).text();
+  const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+  // An outage must read as an outage, not as an archive with no recent mosaic.
+  if (!res.ok) throw new Error(`GIBS capabilities request failed: HTTP ${res.status} ${res.statusText}`.trim());
+  const text = await res.text();
   const last = [...text.matchAll(/<Domain>([^<]*)<\/Domain>/g)].flatMap((m) => m[1].split(',')).map((part) => part.split('/')[1]).filter(Boolean).pop();
   if (!last) throw new Error('GIBS lists no VIIRS Suomi NPP mosaic day in the last 30 days');
   return last;
