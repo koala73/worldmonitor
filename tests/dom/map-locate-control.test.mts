@@ -148,10 +148,11 @@ describe('map locate control', () => {
 });
 
 describe('locate menu entries', () => {
-  async function setUp() {
+  async function setUp(options: { flying?: boolean } = {}) {
     let control!: HTMLElement;
     let viewportAction = 0;
     const camera = { centre: { lat: 10, lon: 10 } };
+    let flight: Promise<void> = Promise.resolve();
     const map = {
       onCountryClicked: () => {},
       onMapContextMenu: () => {},
@@ -160,18 +161,26 @@ describe('locate menu entries', () => {
         return ++viewportAction;
       }),
       getCenter: () => camera.centre,
+      whenViewportSettled: () => flight,
       isViewportActionCurrent: (token: number) => token === viewportAction,
       /** Another viewport command that has started but not moved the camera yet. */
       startViewportAction: () => ++viewportAction,
       addMapControl: (el: HTMLElement) => { control = el; document.body.append(el); },
     };
+    /** Makes the next locate an animated flight that has not landed yet. */
+    const holdFlight = () => {
+      let land!: () => void;
+      flight = new Promise<void>((resolve) => { land = resolve; });
+      return () => land();
+    };
     const manager = new CountryIntelManager({ map, isDestroyed: false } as unknown as AppContext);
     await Reflect.get(manager, 'setupCountryIntel').call(manager);
+    const landFlight = options.flying ? holdFlight() : null;
     const openBrief = vi.spyOn(manager, 'openCountryBriefByCode').mockResolvedValue(undefined);
     requestDevicePosition.mockResolvedValue(EXACT);
     control.querySelector('button')!.click();
     await vi.waitFor(() => expect(control.dataset.state).not.toBe('locating'));
-    return { control, openBrief, map, manager, camera };
+    return { control, openBrief, map, manager, camera, landFlight };
   }
   const menuItem = (label: string) => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((el) => el.textContent === label);
 
@@ -207,6 +216,22 @@ describe('locate menu entries', () => {
     // A real pan moves the centre off the located point, and the URL may then follow the map.
     camera.centre = { lat: ROUNDED.lat + 1, lon: ROUNDED.lon };
     expect(isMapUrlCentreClaimed()).toBe(false);
+  });
+
+  it('keeps the claim through map input while a globe or WebGL flight is still on its way', async () => {
+    geometry.getCountryNearCoordinates.mockReturnValue({ code: 'AE', name: 'United Arab Emirates' });
+    const mapEl = document.createElement('div');
+    mapEl.id = 'mapContainer';
+    document.body.append(mapEl);
+    const { camera, landFlight } = await setUp({ flying: true });
+    // Mid-flight the camera still reads a centre far from the located point.
+    camera.centre = { lat: 10, lon: 10 };
+    mapEl.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(isMapUrlCentreClaimed()).toBe(true);
+    camera.centre = { lat: ROUNDED.lat, lon: ROUNDED.lon };
+    landFlight!();
+    await Promise.resolve();
+    expect(isMapUrlCentreClaimed()).toBe(true);
   });
 
   it('keeps the claim while another viewport command has started but not moved the map', async () => {

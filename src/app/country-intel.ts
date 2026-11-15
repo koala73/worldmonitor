@@ -374,12 +374,17 @@ export class CountryIntelManager implements AppModule {
         // The URL sync would write the user's own position into the address bar,
         // which shared links and analytics read. Keep the previous centre there
         // until the map's centre actually leaves the located point.
+        // A globe or WebGL flight still reads a centre short of the point, so the
+        // claim cannot judge the centre until the flight has landed or stopped.
         let token: number | null = null;
+        let landed = false;
         claimMapUrlCentre(
           () => token === null || map.isViewportActionCurrent(token),
-          { point, read: () => map.getCenter() },
+          { point, read: () => (landed ? map.getCenter() : null) },
         );
         token = map.setCenter(point.lat, point.lon, LOCATE_ZOOM);
+        const land = () => { landed = true; };
+        map.whenViewportSettled(token).then(land, land);
         releaseMapUrlCentreOnUserMove(document.getElementById('mapContainer'));
       },
       actions: (point) => this.locatedActions(point),
