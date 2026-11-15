@@ -5306,6 +5306,44 @@
       "away": "{{km}} km",
       "densityTip_other": "{{start}}부터의 통과 {{count}}개 · {{names}}"
     },
+    "satelliteSites": {
+      "heading": "감시 중인 지점 · 다음 {{hours}}시간",
+      "projecting": "통과 계산 중…",
+      "notLoaded": "위성을 다시 클릭하세요. 궤도 요소가 로드되지 않았습니다.",
+      "failed": "위성을 다시 클릭하여 재시도하세요. 통과 계산에 실패했습니다.",
+      "viewFailed": "위성을 다시 클릭하여 재시도하세요. 지점 목록을 로드할 수 없었습니다.",
+      "unavailable": "위성을 다시 클릭하여 재시도하세요. 통과 기하 계산에서 이 궤도 요소를 사용할 수 없습니다.",
+      "signals": "신호정보 위성입니다. 영상 센서가 없어 지상 관측 범위를 모델링하지 않습니다.",
+      "noProfile": "이 위성의 센서 프로필이 없어 지상 관측 범위를 모델링하지 않습니다.",
+      "geostationary": "정지궤도: 한 경도 위에 고정되어 있어 통과 목록이 없습니다.",
+      "badElements": "궤도 요소를 읽을 수 없습니다.",
+      "none": "{{hours}}시간 내에 관측 범위에 들어오는 감시 중인 지점이 없습니다.",
+      "utc": "{{time}} UTC",
+      "inMinutes": "{{minutes}}분 후",
+      "inHours": "{{hours}}시간 {{minutes}}분 후",
+      "offTrack": "지상 궤적에서 {{km}} km",
+      "swathEdge": "관측폭 가장자리",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "유형",
+        "operator": "운영 기관",
+        "over": "상공",
+        "ocean": "해양",
+        "altBand": "고도 범위",
+        "inclination": "경사각",
+        "velocity": "속도",
+        "types": {
+          "sar": "SAR 촬상",
+          "optical": "광학 촬상",
+          "military": "군사",
+          "sigint": "SIGINT",
+          "signals": "신호정보"
+        }
+      },
+      "tooOld_other": "궤도 요소가 {{count}}일 전 것이어서 통과를 계산하기에는 너무 오래되었습니다.",
+      "count_other": "{{family}} 관측 범위 내 {{count}}개 지점",
+      "passes_other": "{{count}}회 통과"
+    },
     "sheet": {
       "heading": "위성 영상 증거",
       "window": "지난 {{days}}일, 향후 {{hours}}시간",

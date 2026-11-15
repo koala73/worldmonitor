@@ -5335,6 +5335,47 @@
       "densityTip_one": "{{count}} Überflug ab {{start}} · {{names}}",
       "densityTip_other": "{{count}} Überflüge ab {{start}} · {{names}}"
     },
+    "satelliteSites": {
+      "heading": "Überwachte Orte · nächste {{hours}} h",
+      "projecting": "Überflüge werden berechnet…",
+      "notLoaded": "Klicken Sie erneut auf den Satelliten; seine Bahndaten sind nicht geladen.",
+      "failed": "Klicken Sie erneut auf den Satelliten, um es erneut zu versuchen; die Berechnung ist fehlgeschlagen.",
+      "viewFailed": "Klicken Sie erneut auf den Satelliten, um es erneut zu versuchen; die Ortsliste konnte nicht geladen werden.",
+      "unavailable": "Klicken Sie erneut auf den Satelliten, um es erneut zu versuchen; die Überfluggeometrie hat diese Bahndaten abgelehnt.",
+      "signals": "Signalaufklärungssatellit. Kein Bildsensor, daher wird keine Bodenabdeckung modelliert.",
+      "noProfile": "Kein Sensorprofil für diesen Satelliten, daher wird seine Bodenabdeckung nicht modelliert.",
+      "geostationary": "Geostationär: steht fest über einem Längengrad, daher gibt es keine Überflüge aufzulisten.",
+      "badElements": "Bahndaten sind nicht lesbar.",
+      "none": "Kein überwachter Ort innerhalb des Footprints in den nächsten {{hours}} h.",
+      "utc": "{{time}} UTC",
+      "inMinutes": "in {{minutes}} Min",
+      "inHours": "in {{hours}} h {{minutes}} Min",
+      "offTrack": "{{km}} km neben der Bodenspur",
+      "swathEdge": "am Rand des Aufnahmestreifens",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "Typ",
+        "operator": "Betreiber",
+        "over": "Über",
+        "ocean": "Ozean",
+        "altBand": "Höhenband",
+        "inclination": "Inklination",
+        "velocity": "Geschwindigkeit",
+        "types": {
+          "sar": "SAR-Bildgebung",
+          "optical": "Optische Bildgebung",
+          "military": "Militärisch",
+          "sigint": "SIGINT",
+          "signals": "Signalaufklärung"
+        }
+      },
+      "tooOld_one": "Bahndaten sind {{count}} Tag alt, zu alt für die Überflugberechnung.",
+      "tooOld_other": "Bahndaten sind {{count}} Tage alt, zu alt für die Überflugberechnung.",
+      "count_one": "{{count}} Ort innerhalb des {{family}}-Footprints",
+      "count_other": "{{count}} Orte innerhalb des {{family}}-Footprints",
+      "passes_one": "{{count}} Überflug",
+      "passes_other": "{{count}} Überflüge"
+    },
     "sheet": {
       "heading": "Bildbelege",
       "window": "Letzte {{days}} Tage, nächste {{hours}} h",

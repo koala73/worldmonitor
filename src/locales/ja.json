@@ -5306,6 +5306,44 @@
       "away": "{{km}} km",
       "densityTip_other": "{{start}}から{{count}}件のパス · {{names}}"
     },
+    "satelliteSites": {
+      "heading": "監視対象地点 · 今後{{hours}}時間",
+      "projecting": "通過を計算中…",
+      "notLoaded": "衛星をもう一度クリックしてください。軌道要素が読み込まれていません。",
+      "failed": "衛星をもう一度クリックして再試行してください。通過の計算に失敗しました。",
+      "viewFailed": "衛星をもう一度クリックして再試行してください。地点一覧を読み込めませんでした。",
+      "unavailable": "衛星をもう一度クリックして再試行してください。通過ジオメトリの計算でこの軌道要素を使用できませんでした。",
+      "signals": "信号情報収集（SIGINT）衛星。撮像センサーがないため、地上の観測範囲はモデル化されていません。",
+      "noProfile": "この衛星のセンサープロファイルがないため、地上の観測範囲はモデル化されていません。",
+      "geostationary": "静止衛星：特定の経度上に固定されているため、表示する通過はありません。",
+      "badElements": "軌道要素が読み取れません。",
+      "none": "{{hours}}時間以内に観測範囲に入る監視対象地点はありません。",
+      "utc": "{{time}} UTC",
+      "inMinutes": "{{minutes}}分後",
+      "inHours": "{{hours}}時間{{minutes}}分後",
+      "offTrack": "地上軌跡から {{km}} km",
+      "swathEdge": "観測幅の端",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "種別",
+        "operator": "運用者",
+        "over": "上空",
+        "ocean": "海洋",
+        "altBand": "高度帯",
+        "inclination": "軌道傾斜角",
+        "velocity": "速度",
+        "types": {
+          "sar": "SAR撮像",
+          "optical": "光学撮像",
+          "military": "軍事",
+          "sigint": "SIGINT",
+          "signals": "信号情報"
+        }
+      },
+      "tooOld_other": "軌道要素が{{count}}日前のもので、通過の計算には古すぎます。",
+      "count_other": "{{family}}の観測範囲内に{{count}}地点",
+      "passes_other": "{{count}}回の通過"
+    },
     "sheet": {
       "heading": "衛星画像の証拠",
       "window": "過去{{days}}日間、今後{{hours}}時間",

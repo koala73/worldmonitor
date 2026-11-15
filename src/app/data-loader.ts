@@ -120,7 +120,7 @@ import type { TheaterPostureSummary } from '@/services/military-surge';
 import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
 import { ingestConflictsForCountryData, ingestDisplacementForCountryData, ingestClimateForCountryData, ingestGpsJammingForCountryData, isInLearningMode, type CountryScore } from '@/services/country-instability';
 import { fetchGpsInterference } from '@/services/gps-interference';
-import { fetchSatelliteTLEs, initSatRecs, propagatePositions, startPropagationLoop } from '@/services/satellites';
+import { fetchSatelliteTLEs, initSatRecs, propagatePositions, setTrackedSatelliteTles, startPropagationLoop } from '@/services/satellites';
 import type { SatRecEntry } from '@/services/satellites';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import type { CorrelationSignal } from '@/services/correlation';
@@ -1591,14 +1591,18 @@ export class DataLoaderManager implements AppModule {
       // Confirmed empty, expired, or unavailable without last-good data:
       // clear the layer instead of leaving the previous orbits on the map.
       this.cachedSatRecs = [];
+      setTrackedSatelliteTles([]);
       this.ctx.map?.setSatellites([]);
       return;
     }
     try {
       this.cachedSatRecs = await initSatRecs(data);
+      // The card's element-set lookup follows the records the layer draws, not the last fetch.
+      setTrackedSatelliteTles(data, this.cachedSatRecs);
     } catch (err) {
       console.error('[satellites] failed to initialize satellite propagation', err);
       this.cachedSatRecs = [];
+      setTrackedSatelliteTles([]);
       this.ctx.map?.setSatellites([]);
       return;
     }

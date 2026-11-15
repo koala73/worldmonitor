@@ -5335,6 +5335,47 @@
       "densityTip_one": "{{count}} passage vanaf {{start}} · {{names}}",
       "densityTip_other": "{{count}} passages vanaf {{start}} · {{names}}"
     },
+    "satelliteSites": {
+      "heading": "Gevolgde locaties · volgende {{hours}} u",
+      "projecting": "Overkomsten worden berekend…",
+      "notLoaded": "Klik opnieuw op de satelliet; de baanelementen zijn niet geladen.",
+      "failed": "Klik opnieuw op de satelliet om opnieuw te proberen; de berekening van de overkomsten is mislukt.",
+      "viewFailed": "Klik opnieuw op de satelliet om opnieuw te proberen; de locatielijst is niet geladen.",
+      "unavailable": "Klik opnieuw op de satelliet om opnieuw te proberen; de overkomstgeometrie heeft deze baanelementen afgewezen.",
+      "signals": "Satelliet voor signaalinlichtingen. Geen beeldsensor, dus er wordt geen gronddekking gemodelleerd.",
+      "noProfile": "Geen sensorprofiel voor deze satelliet, dus de gronddekking wordt niet gemodelleerd.",
+      "geostationary": "Geostationair: vast boven één lengtegraad, dus geen overkomsten om te tonen.",
+      "badElements": "De baanelementen zijn onleesbaar.",
+      "none": "Binnen {{hours}} u valt geen gevolgde locatie binnen de voetafdruk.",
+      "utc": "{{time}} UTC",
+      "inMinutes": "over {{minutes}} min",
+      "inHours": "over {{hours}} u {{minutes}} min",
+      "offTrack": "{{km}} km van het grondspoor",
+      "swathEdge": "aan de rand van de opnamestrook",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "Type",
+        "operator": "Exploitant",
+        "over": "Boven",
+        "ocean": "Oceaan",
+        "altBand": "Hoogtebereik",
+        "inclination": "Incl.",
+        "velocity": "Snelheid",
+        "types": {
+          "sar": "SAR-beeldvorming",
+          "optical": "Optische beeldvorming",
+          "military": "Militair",
+          "sigint": "SIGINT",
+          "signals": "Signaalinlichtingen"
+        }
+      },
+      "tooOld_one": "De baanelementen zijn {{count}} dag oud, te oud om overkomsten te berekenen.",
+      "tooOld_other": "De baanelementen zijn {{count}} dagen oud, te oud om overkomsten te berekenen.",
+      "count_one": "{{count}} gevolgde locatie in de {{family}}-voetafdruk",
+      "count_other": "{{count}} gevolgde locaties in de {{family}}-voetafdruk",
+      "passes_one": "{{count}} overkomst",
+      "passes_other": "{{count}} overkomsten"
+    },
     "sheet": {
       "heading": "Bewijsmateriaal uit satellieten",
       "window": "Afgelopen {{days}} dagen, komende {{hours}} u",

@@ -5335,6 +5335,47 @@
       "densityTip_one": "{{count}} kupita kutoka {{start}} · {{names}}",
       "densityTip_other": "{{count}} kupita kutoka {{start}} · {{names}}"
     },
+    "satelliteSites": {
+      "heading": "Maeneo yanayofuatiliwa · saa {{hours}} zijazo",
+      "projecting": "Inakokotoa mapito…",
+      "notLoaded": "Bofya satelaiti tena; vipengele vyake vya obiti havijapakiwa.",
+      "failed": "Bofya satelaiti tena ili kujaribu upya; ukokotoaji wa mapito umeshindwa.",
+      "viewFailed": "Bofya satelaiti tena ili kujaribu upya; orodha ya maeneo haikupakiwa.",
+      "unavailable": "Bofya satelaiti tena ili kujaribu upya; jiometri ya mapito ilikataa vipengele hivi vya obiti.",
+      "signals": "Satelaiti ya ujasusi wa mawimbi. Haina kifaa cha kupiga picha, kwa hivyo eneo la ardhini inalofunika halikokotolewi.",
+      "noProfile": "Hakuna wasifu wa kihisi kwa satelaiti hii, kwa hivyo eneo la ardhini inalofunika halikokotolewi.",
+      "geostationary": "Obiti tuli: satelaiti imesimama juu ya longitudo moja, kwa hivyo hakuna mapito ya kuorodhesha.",
+      "badElements": "Vipengele vya obiti havisomeki.",
+      "none": "Hakuna eneo linalofuatiliwa ndani ya eneo inalofunika katika saa {{hours}} zijazo.",
+      "utc": "{{time}} UTC",
+      "inMinutes": "baada ya dakika {{minutes}}",
+      "inHours": "baada ya saa {{hours}} dakika {{minutes}}",
+      "offTrack": "km {{km}} kutoka njia ya ardhini",
+      "swathEdge": "kwenye ukingo wa ukanda",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "Aina",
+        "operator": "Mwendeshaji",
+        "over": "Juu ya",
+        "ocean": "Bahari",
+        "altBand": "Ngazi ya mwinuko",
+        "inclination": "Mwinamo",
+        "velocity": "Kasi",
+        "types": {
+          "sar": "Upigaji picha wa SAR",
+          "optical": "Upigaji picha wa kioptiki",
+          "military": "Kijeshi",
+          "sigint": "SIGINT",
+          "signals": "Ujasusi wa mawimbi"
+        }
+      },
+      "tooOld_one": "Vipengele vya obiti vina umri wa siku {{count}}, ni vya zamani mno kukokotoa mapito.",
+      "tooOld_other": "Vipengele vya obiti vina umri wa siku {{count}}, ni vya zamani mno kukokotoa mapito.",
+      "count_one": "Eneo {{count}} ndani ya eneo la ufunikaji la {{family}}",
+      "count_other": "Maeneo {{count}} ndani ya eneo la ufunikaji la {{family}}",
+      "passes_one": "Pito {{count}}",
+      "passes_other": "Mapito {{count}}"
+    },
     "sheet": {
       "heading": "Ushahidi wa picha za satelaiti",
       "window": "Siku {{days}} zilizopita, {{hours}} h zijazo",
