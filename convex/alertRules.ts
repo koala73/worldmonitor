@@ -112,7 +112,14 @@ async function assertAlertCapabilitiesFor(
   countryUnion?: { variant: string; countries: readonly string[] },
 ): Promise<void> {
   const caps = await loadAlertCapabilities(ctx, userId);
-  if (countryUnion && caps.requireCountryScope) {
+  // A write whose effective rule state is disabled leaves (or stays out of)
+  // the enabled set, so the account-wide union is not judged on it: a
+  // downgraded account must always be able to disable a legacy
+  // wider-than-plan variant even while its OTHER enabled rows exceed the
+  // ladder (Greptile review 3). The per-row countriesCount in `state` still
+  // caps what the disabled row may store, the stored scope is re-judged on
+  // any re-enable (Strix review 7), and delivery ignores disabled rows.
+  if (countryUnion && caps.requireCountryScope && state.enabled !== false) {
     state = {
       ...state,
       countriesCount: await freeAccountCountryUnionCount(

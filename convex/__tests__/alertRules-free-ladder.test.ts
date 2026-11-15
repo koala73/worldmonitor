@@ -379,6 +379,51 @@ describe("free ladder — country rung is account-wide across variants (#4273, S
     expect(rows[0]?.enabled).toBe(true);
   });
 
+  test("disabling a legacy variant that resends its own scope succeeds past the union (Greptile review 3)", async () => {
+    // A downgrade can leave several ENABLED rows whose union exceeds the
+    // ladder. Disabling one — the client resends the row's own countries on
+    // the atomic path — must not be refused for the union of the rows it is
+    // leaving behind, or the account can never pause its way back under the
+    // cap. The per-row cap still binds what the disabled row may store, and
+    // re-enabling re-judges the union (test above).
+    const t = convexTest(schema, modules);
+    // Operator-staged legacy state: two enabled rows, six countries.
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject, variant: "full", enabled: true, eventTypes: [],
+      sensitivity: "critical", channels: ["web_push"], countries: ["UA", "TW", "LB"],
+    });
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject, variant: "tech", enabled: true, eventTypes: [],
+      sensitivity: "critical", channels: ["web_push"], countries: ["IL", "PL", "FR"],
+    });
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, {
+      userId: USER.subject,
+      variant: "full",
+      enabled: false,
+      countries: ["UA", "TW", "LB"],
+    });
+    const rows = await t.run(async (ctx) =>
+      ctx.db
+        .query("alertRules")
+        .withIndex("by_user_variant", (q) => q.eq("userId", USER.subject).eq("variant", "full"))
+        .collect(),
+    );
+    expect(rows[0]?.enabled).toBe(false);
+  });
+
+  test("a disable may not smuggle a wider scope onto the stored row", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, freeShaped("full", ["UA", "TW", "LB"]));
+    await expect(
+      t.mutation(internal.alertRules.setNotificationConfigForUser, {
+        userId: USER.subject,
+        variant: "full",
+        enabled: false,
+        countries: ["UA", "TW", "LB", "IL", "PL"],
+      }),
+    ).rejects.toThrow(/ALERT_COUNTRIES_UPGRADE_REQUIRED/);
+  });
+
   test("pro accounts keep the per-row cap across variants", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t);

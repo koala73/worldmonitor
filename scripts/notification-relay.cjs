@@ -583,13 +583,26 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
   // Re-check the operator set: a link blocked while the event sat in the
   // queue must not go out in the batch (#8401).
   const events = [];
+  // Raw items the tier clamp refused stay HELD rather than removed:
+  // getUserTier fails CLOSED to 0, so a transient entitlement outage must
+  // not erase a paid account's held batch — the entries wait for a later
+  // drain once the tier resolves (Greptile review 3). On a genuinely
+  // downgraded account they are never delivered and the key's TTL retires
+  // them. Suppressed-link and unreadable entries are still removed below.
+  const clampHeld = new Set();
   for (const ev of parsedEvents) {
-    if (!freeTierAllowsEvent(drainTier, ev.severity ?? 'high')) continue;
-    if (!freeTierAllowsEventType(drainTier, ev.eventType)) continue;
-    if (drainTier < 1 && (!drainScope.ok || !eventMatchesCountryScope(ev, { countries: drainScope.countries }))) continue;
+    const pastLadder = !freeTierAllowsEvent(drainTier, ev.severity ?? 'high')
+      || !freeTierAllowsEventType(drainTier, ev.eventType)
+      || (drainTier < 1 && (!drainScope.ok || !eventMatchesCountryScope(ev, { countries: drainScope.countries })));
+    if (pastLadder) { clampHeld.add(items[itemIndex.get(ev)]); continue; }
     if ((await suppressedLinksFor(ev, 1, 'stage=quiet-hours-drain')).length === 0) events.push(ev);
   }
-  if (events.length === 0) { await removeHeldItems(key, items); return; }
+  // What a successful drain may remove: everything except clamp-held entries.
+  const removable = items.filter((raw) => !clampHeld.has(raw));
+  if (events.length === 0) {
+    if (removable.length > 0) await removeHeldItems(key, removable);
+    return;
+  }
 
   const heldLines = formatHeldAlertLines(events);
   const lines = [`WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''} from quiet hours`, '', ...heldLines];
@@ -708,7 +721,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountr
     else mostDelivered = Math.max(mostDelivered, delivered);
   }
   if (anyDelivered) {
-    const cleared = await removeHeldItems(key, items);
+    const cleared = await removeHeldItems(key, removable);
     console.log(`[relay] drainHeldForUser: delivered ${events.length} held events to ${userId} (${variant})${cleared.failed > 0 ? `; ${cleared.failed} not removed` : ''}`);
   } else if (mostDelivered > 0) {
     // No channel took the whole batch, but some alerts already arrived: keep only the rest, so the
