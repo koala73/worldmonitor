@@ -36,6 +36,7 @@ function createHarness() {
   let center = { lat: 0, lng: 0 };
   Object.assign(instance, {
     controlDisclosureCleanups: [],
+    popup: { hide() {} },
     aircraftFetchSeq: 0,
     aircraftFetchTimer: null,
     aircraftPositions: [],
