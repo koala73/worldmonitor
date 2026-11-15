@@ -6757,8 +6757,11 @@ async function seedTrafficSeries({ label, series, attempt }) {
   const point = result.point || airTrafficGapPoint(t);
   await recordTrafficPoint(point, upstashPipeline, result.point ? fetchedAt : t, series);
   if (point.status === 'ok') {
-    const counts = { us: point.usSeen, usAirborne: point.usAirborne, usLowClimbing: point.usLowClimbing, eu: point.euAirborne };
-    if (!series.measures.includes('usLowClimbing')) delete counts.usLowClimbing;
+    const counts = {
+      us: point.usSeen, usAirborne: point.usAirborne, usLowClimbing: point.usLowClimbing,
+      usLowClimbingAirline: point.usLowClimbingAirline, eu: point.euAirborne,
+    };
+    for (const name of ['usLowClimbing', 'usLowClimbingAirline']) if (!series.measures.includes(name)) delete counts[name];
     const fields = Object.entries(counts).map(([name, value]) => `${name}=${value}`).join(' ');
     console.log(`[${label}] t=${bin} status=ok ${fields} hubs=${Object.keys(point.hubs).length} attempts=${attempts}`);
   } else {
