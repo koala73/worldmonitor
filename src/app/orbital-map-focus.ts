@@ -69,16 +69,19 @@ export function getOrbitalMapView(): OrbitalMapView | null {
 
 const USER_MOVE_EVENTS = ['pointerdown', 'wheel', 'keydown'] as const;
 let urlClaimed = false;
+let ownsCentre: (() => boolean) | null = null;
 let stopWaiting: (() => void) | null = null;
 
 /**
  * A lookup centres the map on the picked point, and the page URL is read by
  * analytics and error reporting, so the map's URL sync keeps the centre it
- * had before the lookup.
+ * had before the lookup. With `stillOwned`, the claim also ends once it returns
+ * false, e.g. when Search or a panel link has since moved the map elsewhere.
  */
-export function claimMapUrlCentre(): void {
+export function claimMapUrlCentre(stillOwned: (() => boolean) | null = null): void {
   stopWaiting?.();
   urlClaimed = true;
+  ownsCentre = stillOwned;
 }
 
 /** Hands the URL centre back once the user moves the map themselves; until then it still shows the picked point. */
@@ -102,5 +105,10 @@ export function releaseMapUrlCentreOnUserMove(map: HTMLElement | null): void {
 }
 
 export function isMapUrlCentreClaimed(): boolean {
+  if (urlClaimed && ownsCentre && !ownsCentre()) {
+    stopWaiting?.();
+    urlClaimed = false;
+    ownsCentre = null;
+  }
   return urlClaimed;
 }

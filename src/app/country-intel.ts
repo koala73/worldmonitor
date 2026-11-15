@@ -372,9 +372,10 @@ export class CountryIntelManager implements AppModule {
       centre: (point) => {
         // The URL sync would write the user's own position into the address bar,
         // which shared links and analytics read. Keep the previous centre there
-        // until the user moves the map themselves.
-        claimMapUrlCentre();
-        map.setCenter(point.lat, point.lon, LOCATE_ZOOM);
+        // until the user moves the map, or Search or a panel link moves it elsewhere.
+        let token: number | null = null;
+        claimMapUrlCentre(() => token === null || map.isViewportActionCurrent(token));
+        token = map.setCenter(point.lat, point.lon, LOCATE_ZOOM);
         releaseMapUrlCentreOnUserMove(document.getElementById('mapContainer'));
       },
       actions: (point) => this.locatedActions(point),

@@ -1010,6 +1010,11 @@ export class MapContainer {
     this.humanViewportInteractionToken += 1;
   }
 
+  /** False once a later programmatic move (search, panel link, agent) has superseded the one that returned `viewportActionToken`. */
+  public isViewportActionCurrent(viewportActionToken: number): boolean {
+    return viewportActionToken === this.viewportActionToken;
+  }
+
   /** Resolves after the current programmatic viewport transition is visible. */
   public async whenViewportSettled(viewportActionToken = this.viewportActionToken): Promise<void> {
     const rendererInitToken = this.rendererInitToken;

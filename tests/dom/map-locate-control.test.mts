@@ -145,10 +145,12 @@ describe('map locate control', () => {
 describe('locate menu entries', () => {
   async function setUp() {
     let control!: HTMLElement;
+    let viewportAction = 0;
     const map = {
       onCountryClicked: () => {},
       onMapContextMenu: () => {},
-      setCenter: vi.fn(),
+      setCenter: vi.fn(() => ++viewportAction),
+      isViewportActionCurrent: (token: number) => token === viewportAction,
       addMapControl: (el: HTMLElement) => { control = el; document.body.append(el); },
     };
     const manager = new CountryIntelManager({ map, isDestroyed: false } as unknown as AppContext);
@@ -177,6 +179,17 @@ describe('locate menu entries', () => {
     // shared links read; the user's own position must not land there.
     expect(isMapUrlCentreClaimed()).toBe(true);
     mapEl.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(isMapUrlCentreClaimed()).toBe(false);
+  });
+
+  it('hands the URL centre back when Search or a panel link moves the map after locating', async () => {
+    geometry.getCountryNearCoordinates.mockReturnValue({ code: 'AE', name: 'United Arab Emirates' });
+    const mapEl = document.createElement('div');
+    mapEl.id = 'mapContainer';
+    document.body.append(mapEl);
+    const { map } = await setUp();
+    expect(isMapUrlCentreClaimed()).toBe(true);
+    map.setCenter(48.86, 2.35, 6);
     expect(isMapUrlCentreClaimed()).toBe(false);
   });
 
