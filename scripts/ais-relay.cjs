@@ -6089,8 +6089,8 @@ async function seedMiddleEastStrikesV2() {
         if (!await upstashSet(middleEastStrikesV2.PRESSURE_SEED_META_KEY, meta, MIDDLE_EAST_STRIKES_META_TTL_S)) return false;
         // Durable, no TTL: health reads the key as pending until the first
         // healthy v2 tally publish and strict afterwards (api/health.js ACTIVATION_MARKERS).
-        await upstashEval("return redis.call('SET', KEYS[1], ARGV[1])", [middleEastStrikesV2.PRESSURE_ACTIVATION_KEY], [String(t0)]);
-        return true;
+        // A failed marker write reports the publish as failed; the next healthy tick rewrites it.
+        return await upstashEval("return redis.call('SET', KEYS[1], ARGV[1])", [middleEastStrikesV2.PRESSURE_ACTIVATION_KEY], [String(t0)]) === 'OK';
       },
     });
     for (const id of doneIds) {

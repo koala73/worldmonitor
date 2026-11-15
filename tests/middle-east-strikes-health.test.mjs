@@ -171,5 +171,6 @@ test('the relay v2 loop reads and writes only the v2 module, never the v1 feed',
   assert.doesNotMatch(block, /middleEastStrikes\./, 'the v2 loop must not touch v1 keys or state');
   assert.doesNotMatch(block, /middleEastStrike(Pending|Done|Misses)\b/);
   assert.match(block, /middleEastStrikesV2\.PRESSURE_KEY/);
+  assert.match(block, /return await upstashEval\([^\n]*middleEastStrikesV2\.PRESSURE_ACTIVATION_KEY[^\n]*\) === 'OK';/, 'a failed activation-marker write fails the tally publish');
   assert.match(relay, /startMiddleEastStrikesLoop\(\);\n\s*startMiddleEastStrikesV2Loop\(\);/);
 });
