@@ -266,7 +266,7 @@ test('each added source accepts valid empty responses and has a strict official 
   }
 });
 
-test('added sources retain last-good records only within their own 24-hour success clock', async () => {
+test('added sources retain last-good records only within their own 3-day success clock', async () => {
   const record = (await fetchKenya({ now: NOW, fetchJsonFn: async () => ({ data: [{ id: 1, title: 'Water supply',
     status_id: 1, terminated: 0, published: 1, close_at: '2026-11-09 10:00:00' }] }) })).records[0];
   const prior = { fetchedAt: NOW, dataAvailable: true, tenders: [record], sourceStatuses: [{
@@ -276,10 +276,10 @@ test('added sources retain last-good records only within their own 24-hour succe
     settled: [{ status: 'rejected', reason: new Error('HTTP 429') }], attemptedAt: new Date(now).toISOString() });
   const retained = failed(NOW + 60_000, prior);
   assert.equal(retained.sourceStatuses[0].state, 'stale');
-  const lateDay = failed(NOW + (24 * 60 - 1) * 60_000, retained);
+  const lateDay = failed(NOW + (3 * 24 * 60 - 1) * 60_000, retained);
   assert.equal(lateDay.sourceStatuses[0].state, 'stale');
   assert.equal(lateDay.tenders.length, 1);
-  const expired = failed(NOW + 24 * 60 * 60_000, lateDay);
+  const expired = failed(NOW + 3 * 24 * 60 * 60_000, lateDay);
   assert.equal(expired.tenders.length, 0);
   assert.equal(expired.sourceStatuses[0].state, 'error');
   assert.equal(expired.sourceStatuses[0].lastSuccessfulAt, new Date(NOW).toISOString());

@@ -39,8 +39,9 @@ export const roundToCell = (degrees: number) => Math.round(degrees * 100) / 100 
 
 function coordinate(params: URLSearchParams, name: 'lat' | 'lon', limit: number): number {
   const raw = params.get(name);
-  // Generated clients omit a zero coordinate, so an absent one is the equator or prime meridian.
-  const value = raw === null ? 0 : raw.trim() === '' ? Number.NaN : Number(raw);
+  // Absent is an error, never the equator or prime meridian. The generated client omits a zero
+  // coordinate, so a caller must send both coordinates itself (the MCP tool does).
+  const value = raw === null || raw.trim() === '' ? Number.NaN : Number(raw);
   if (!Number.isFinite(value) || Math.abs(value) > limit) {
     throw new ValidationError([{ field: name, description: `${name} must be a number from -${limit} to ${limit}` }]);
   }

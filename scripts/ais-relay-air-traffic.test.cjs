@@ -29,8 +29,9 @@ const GLOBAL_SNAPSHOT = [
 const GLOBAL_TOTALS = { usSeen: 1500, usAirborne: 1200, usLowClimbing: 200, euAirborne: 2000 };
 const EUROPE_ONLY = repeat(400, () => row(50, 10));
 
-function createRedis({ abortPipelines = 0 } = {}) {
+function createRedis({ abortPipelines = 0, firstPipelineDelayMs = 0 } = {}) {
   let pipelinesToAbort = abortPipelines;
+  let pipelineDelayMs = firstPipelineDelayMs;
   const strings = new Map();
   const hashes = new Map();
   const expireAt = new Map();
@@ -74,6 +75,12 @@ function createRedis({ abortPipelines = 0 } = {}) {
         setTimeout(() => res.socket.destroy(), 20);
         return;
       }
+      if (req.url === '/pipeline' && Array.isArray(body) && pipelineDelayMs > 0) {
+        const delayMs = pipelineDelayMs;
+        pipelineDelayMs = 0;
+        setTimeout(() => res.end(JSON.stringify(body.map((command) => ({ result: run(command) })))), delayMs);
+        return;
+      }
       if (req.url === '/pipeline' && Array.isArray(body)) {
         res.end(JSON.stringify(body.map((command) => ({ result: run(command) }))));
         return;
@@ -87,7 +94,7 @@ function createRedis({ abortPipelines = 0 } = {}) {
       UPSTASH_REDIS_REST_TOKEN: 'test-upstash-token',
       UPSTASH_ALLOW_INSECURE_HTTP: 'true',
     },
-    points: (day) => [...(hashes.get(`aviation:traffic:history:v1:${day}`) ?? new Map()).values()]
+    points: (day, prefix = 'aviation:traffic:history:v1') => [...(hashes.get(`${prefix}:${day}`) ?? new Map()).values()]
       .map((value) => JSON.parse(value)).sort((a, b) => a.t - b.t),
     expireAtFor: (day) => expireAt.get(`aviation:traffic:history:v1:${day}`),
     get: (key) => strings.get(key) ?? null,
@@ -121,8 +128,8 @@ function spawnRelay(redis, extraEnv) {
       OPENSKY_NEGATIVE_CACHE_TTL_MS: '1',
       OPENSKY_429_COOLDOWN_MS: '1',
       RELAY_TEST_AIR_TRAFFIC_LOOP: 'true',
-      AIR_TRAFFIC_INTERVAL_MS: '1000',
       AIR_TRAFFIC_START_DELAY_MS: '0',
+      AIR_TRAFFIC_RETRY_DELAY_MS: '20',
       RELAY_TEST_CLOCK_START_MS: String(Date.UTC(2026, 10, 13, 20, 30)),
       RELAY_TEST_CLOCK_RATE: '300',
       NODE_OPTIONS: `--require=${path.join(__dirname, 'ais-relay-test-preload.cjs')}`,
@@ -210,13 +217,25 @@ test('lane 3: an OpenSky 429 and the cooldown after it record gaps, never zero c
   });
 });
 
-test('lane 4: three timeouts record three gaps, then the next tick records an ok point while other routes keep serving', async () => {
+test('lane 4: two timeouts in a bin are retried, so the bin still records an ok point', async () => {
+  await lane([EUROPE_ONLY], { RELAY_TEST_OPENSKY_TIMEOUT_SEQUENCE: '1,1,0' }, async ({ redis, relay }) => {
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 1 && relay.lines().length >= 1, 'first point and its log line');
+    const [point] = redis.points('2026-11-13');
+    assert.equal(point.t, Date.UTC(2026, 10, 13, 20, 30));
+    assert.equal(point.status, 'ok', relay.output());
+    assert.match(relay.lines()[0], /status=ok .* attempts=3$/);
+    const retries = relay.output().split('\n').filter((line) => /\[AirTraffic\] Attempt \d for t=2026-11-13T20:30:00.000Z failed \(http 504\)/.test(line));
+    assert.equal(retries.length, 2, relay.output());
+    assert.equal((await get(relay.port(), '/health')).status, 200);
+  });
+});
+
+test('lane 4b: a bin whose every attempt times out is one gap, then the next bin records an ok point', async () => {
   await lane([EUROPE_ONLY], { RELAY_TEST_OPENSKY_TIMEOUT_SEQUENCE: '1,1,1,0' }, async ({ redis, relay }) => {
     await relay.waitFor(() => redis.points('2026-11-13').some((p) => p.status === 'ok'), 'recovery');
     const statuses = redis.points('2026-11-13').map((p) => p.status);
-    assert.deepEqual(statuses.slice(0, 4), ['gap', 'gap', 'gap', 'ok'], statuses.join(','));
-    assert.ok(relay.lines().slice(0, 3).every((line) => /status=gap reason=http 504/.test(line)), relay.lines().join('\n'));
-    assert.equal((await get(relay.port(), '/health')).status, 200);
+    assert.deepEqual(statuses.slice(0, 2), ['gap', 'ok'], statuses.join(','));
+    assert.match(relay.lines()[0], /status=gap reason=http 504 attempts=3$/);
   });
 });
 
@@ -233,8 +252,9 @@ test('lane 6: two replicas on one Redis leave one ok point per bin and skip bins
   const redis = await createRedis();
   const fixture = writeSnapshots([EUROPE_ONLY]);
   const env = { RELAY_TEST_OPENSKY_STATES_FILE: fixture.file, RELAY_TEST_CLOCK_RATE: '150' };
+  // Replica b ticks later in each bin than a, so it finds a's point.
   const a = spawnRelay(redis, env);
-  const b = spawnRelay(redis, env);
+  const b = spawnRelay(redis, { ...env, AIR_TRAFFIC_BIN_OFFSET_MS: '200000' });
   try {
     await Promise.all([a, b].map((r) => r.waitFor(() => r.output().includes('[AirTraffic] loop starting'), 'ready')));
     const loggedBins = () => new Set([...a.lines(), ...b.lines()].filter((line) => /status=ok/.test(line)).map((line) => line.match(/t=(\S+)/)[1]));
@@ -297,12 +317,12 @@ test('lane 9: a snapshot with no US states is an ok point with zero US counts an
   });
 });
 
-test('lane 10: a body whose states is null records a gap and logs one warning per malformed tick', async () => {
+test('lane 10: a body whose states is null records a gap after every attempt warns once', async () => {
   await lane([null], {}, async ({ redis, relay }) => {
-    const gaps = () => relay.lines().filter((line) => /status=gap reason=malformed/.test(line)).length;
+    const gaps = () => relay.lines().filter((line) => /status=gap reason=malformed attempts=3$/.test(line)).length;
     const warnings = () => relay.output().split('\n').filter((line) => line.includes('[AirTraffic] Malformed OpenSky body')).length;
     // Warnings and gap lines arrive on separate streams, so wait for them to agree.
-    await relay.waitFor(() => redis.points('2026-11-13').length >= 1 && gaps() >= 1 && warnings() === gaps(), 'one warning per malformed gap');
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 1 && gaps() >= 1 && warnings() >= 3 * gaps(), 'one warning per malformed attempt');
     const [point] = redis.points('2026-11-13');
     assert.deepEqual(point, { t: point.t, status: 'gap' });
   });
@@ -322,5 +342,161 @@ test('lane 12: a deployment with a custom auth header still records traffic', as
   await lane([EUROPE_ONLY], { RELAY_SHARED_SECRET: 'lane-secret', RELAY_AUTH_HEADER: 'X-Custom-Relay-Key' }, async ({ redis, relay }) => {
     await relay.waitFor(() => redis.points('2026-11-13').length >= 1 && relay.lines().length >= 1, 'first point and its log line');
     assert.equal(redis.points('2026-11-13')[0].status, 'ok', relay.lines().join('\n'));
+  });
+});
+
+test('lane 13: ticks after the first start at the configured offset into their bin', async () => {
+  await lane([EUROPE_ONLY], { AIR_TRAFFIC_BIN_OFFSET_MS: '60000' }, async ({ redis, relay }) => {
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 3, 'three bins');
+    const { fetchedAt } = JSON.parse(redis.get('seed-meta:aviation:traffic-history'));
+    const intoBin = fetchedAt % 300_000;
+    // Timer jitter of a few real ms is a few fixture seconds at 300x.
+    assert.ok(intoBin >= 60_000 && intoBin < 75_000, `fetched ${intoBin / 1000}s into its bin`);
+  });
+});
+
+test('lane 14: a skip check that runs past the end of its bin still records that bin, as a gap', async () => {
+  // The first pipeline is the skip check. At 300x, 1.2 real seconds is a full
+  // bin, so no attempt can start inside the 20:30 bin.
+  await lane([EUROPE_ONLY], {}, async ({ redis, relay }) => {
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 2, 'two points');
+    const [first] = redis.points('2026-11-13');
+    assert.deepEqual(first, { t: Date.UTC(2026, 10, 13, 20, 30), status: 'gap' });
+    // The delayed tick logs after the next bin's tick, so find its line by bin.
+    await relay.waitFor(() => relay.lines().some((line) => line.includes('t=2026-11-13T20:30:00.000Z')), 'the 20:30 log line');
+    assert.match(relay.lines().find((line) => line.includes('t=2026-11-13T20:30:00.000Z')), /status=gap reason=bin ended attempts=0$/);
+  }, { firstPipelineDelayMs: 1200 });
+});
+
+test('lane 15: a leftover interval setting cannot stretch the wait past the next bin', async () => {
+  // Twice the bin's real length at 300x. Every bin must still get a point.
+  await lane([EUROPE_ONLY], { AIR_TRAFFIC_INTERVAL_MS: '2000' }, async ({ redis }) => {
+    const deadline = Date.now() + 6_000;
+    while (Date.now() < deadline && redis.points('2026-11-13').length < 4) await new Promise((r) => setTimeout(r, 50));
+    const ts = redis.points('2026-11-13').map((p) => p.t);
+    assert.ok(ts.length >= 4, `only ${ts.length} points in 6s`);
+    for (let i = 1; i < ts.length; i += 1) assert.equal(ts[i] - ts[i - 1], 300_000, `bins are consecutive: ${ts.map((t) => new Date(t).toISOString()).join(',')}`);
+  });
+});
+
+const WINGBITS_PREFIX = 'aviation:traffic:history:wingbits:v1';
+const WINGBITS_FLIGHTS = [
+  { h: 'a00001', la: ATL.lat, lo: ATL.lon, ab: 2000, og: false },
+  { h: 'a00002', la: ATL.lat, lo: ATL.lon, og: true },
+  { h: '400001', la: 51.47, lo: -0.45, ab: 36000, og: false },
+  // Reported two minutes ago: where it was, not where it is.
+  { h: 'a00003', la: 35, lo: -100, ab: 30000, og: false, ageMs: 120_000 },
+];
+
+async function wingbitsLane(statusSequence, body, extraEnv = {}, flights = WINGBITS_FLIGHTS) {
+  const redis = await createRedis();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wingbits-lane-'));
+  const file = path.join(dir, 'flights.json');
+  fs.writeFileSync(file, JSON.stringify(flights));
+  const relay = spawnRelay(redis, {
+    RELAY_TEST_AIR_TRAFFIC_LOOP: 'false',
+    RELAY_TEST_WINGBITS_TRAFFIC_LOOP: 'true',
+    RELAY_TEST_WINGBITS_TRAFFIC_FILE: file,
+    RELAY_TEST_WINGBITS_TRAFFIC_STATUS_SEQUENCE: statusSequence,
+    WINGBITS_API_KEY: 'test-wingbits-key',
+    ...extraEnv,
+  });
+  const lines = () => relay.output().split('\n').filter((line) => line.startsWith('[AirTrafficWingbits] t='));
+  const firstPoint = () => relay.waitFor(() => redis.points('2026-11-13', WINGBITS_PREFIX).length >= 1 && lines().length >= 1, 'first Wingbits point');
+  try {
+    await relay.waitFor(() => relay.output().includes('[AirTrafficWingbits] loop starting') || relay.output().includes('[AirTrafficWingbits] Disabled'), 'Wingbits loop ready');
+    await body({ redis, relay, lines, firstPoint });
+  } finally {
+    await relay.stop();
+    await redis.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('lane 16: one Wingbits request records a point in its own series, counting overlapping areas once', async () => {
+  await wingbitsLane('', async ({ redis, lines, firstPoint }) => {
+    await firstPoint();
+    const [point] = redis.points('2026-11-13', WINGBITS_PREFIX);
+    assert.equal(point.status, 'ok', lines().join('\n'));
+    assert.deepEqual(point.hubs.ATL, { air: 1, ground: 1 }, 'every area returns the same flights, counted once');
+    assert.equal(point.usSeen, 2, 'the two-minute-old report is left out');
+    assert.equal(point.euAirborne, 1);
+    assert.equal('usLowClimbing' in point, false, 'Wingbits has no vertical rate, so climbers are not stored as 0');
+    assert.match(lines()[0], /status=ok us=2 usAirborne=1 eu=1 hubs=20 attempts=1$/);
+    assert.ok(JSON.parse(redis.get('seed-meta:aviation:traffic-history-wingbits')).fetchedAt > 0);
+    assert.equal(redis.get('seed-activated:aviation:traffic-history-wingbits'), '1');
+    assert.deepEqual(redis.points('2026-11-13'), [], 'the OpenSky series is untouched');
+    assert.equal(redis.get('seed-meta:aviation:traffic-history'), null);
+  });
+});
+
+test('lane 17: a failed Wingbits request is retried inside the bin', async () => {
+  await wingbitsLane('503', async ({ redis, lines, firstPoint }) => {
+    await firstPoint();
+    assert.equal(redis.points('2026-11-13', WINGBITS_PREFIX)[0].status, 'ok', lines().join('\n'));
+    assert.match(lines()[0], /attempts=2$/);
+  });
+});
+
+test('lane 18: three failed attempts make the bin a gap with no heartbeat', async () => {
+  await wingbitsLane('503,503,503', async ({ redis, lines, firstPoint }) => {
+    await firstPoint();
+    const [point] = redis.points('2026-11-13', WINGBITS_PREFIX);
+    assert.deepEqual(point, { t: point.t, status: 'gap' });
+    assert.match(lines()[0], /status=gap reason=http 503 attempts=3$/);
+    assert.equal(redis.get('seed-meta:aviation:traffic-history-wingbits'), null);
+  });
+});
+
+test('lane 19: without a Wingbits key the loop stays off', async () => {
+  await wingbitsLane('', async ({ relay }) => {
+    assert.match(relay.output(), /\[AirTrafficWingbits\] Disabled \(WINGBITS_API_KEY not set\)/);
+    assert.doesNotMatch(relay.output(), /\[AirTrafficWingbits\] loop starting/);
+  }, { WINGBITS_API_KEY: '' });
+});
+
+test('lane 20: a response with one area missing is a gap, never a partial count', async () => {
+  await wingbitsLane('short,short,short', async ({ redis, lines, firstPoint }) => {
+    await firstPoint();
+    assert.equal(redis.points('2026-11-13', WINGBITS_PREFIX)[0].status, 'gap');
+    assert.match(lines()[0], /status=gap reason=malformed attempts=3$/);
+  });
+});
+
+test('lane 21: a response whose every report is stale is a gap, never an empty sky', async () => {
+  await wingbitsLane('', async ({ redis, lines, firstPoint }) => {
+    await firstPoint();
+    assert.equal(redis.points('2026-11-13', WINGBITS_PREFIX)[0].status, 'gap');
+    assert.match(lines()[0], /status=gap reason=empty attempts=3$/);
+  }, {}, WINGBITS_FLIGHTS.map((f) => ({ ...f, ageMs: 120_000 })));
+});
+
+test('lane 22: a Wingbits response that lands after its bin ends makes that bin a gap', async () => {
+  // At 300x, 1.2 real seconds is longer than a bin.
+  await wingbitsLane('', async ({ redis, relay, lines }) => {
+    const t = Date.UTC(2026, 10, 13, 20, 30);
+    const line = () => lines().find((l) => l.includes('t=2026-11-13T20:30:00.000Z'));
+    await relay.waitFor(() => line(), 'the 20:30 Wingbits line');
+    assert.deepEqual(redis.points('2026-11-13', WINGBITS_PREFIX).find((p) => p.t === t), { t, status: 'gap' });
+    assert.match(line(), /status=gap reason=bin ended attempts=1$/);
+  }, { RELAY_TEST_WINGBITS_TRAFFIC_FIRST_DELAY_MS: '1200' });
+});
+
+test('lane 23: a Wingbits body that finishes after its bin ends makes that bin a gap', async () => {
+  // Headers arrive in the bin; the body takes 1.2 real seconds, longer than a bin at 300x.
+  await wingbitsLane('', async ({ redis, relay, lines }) => {
+    const t = Date.UTC(2026, 10, 13, 20, 30);
+    const line = () => lines().find((l) => l.includes('t=2026-11-13T20:30:00.000Z'));
+    await relay.waitFor(() => line(), 'the 20:30 Wingbits line');
+    assert.deepEqual(redis.points('2026-11-13', WINGBITS_PREFIX).find((p) => p.t === t), { t, status: 'gap' });
+    assert.match(line(), /status=gap reason=bin ended attempts=1$/);
+  }, { RELAY_TEST_WINGBITS_TRAFFIC_FIRST_BODY_DELAY_MS: '1200' });
+});
+
+test('lane 24: a response that repeats one area and omits another is a gap, never a partial count', async () => {
+  await wingbitsLane('dup,dup,dup', async ({ redis, lines, firstPoint }) => {
+    await firstPoint();
+    assert.equal(redis.points('2026-11-13', WINGBITS_PREFIX)[0].status, 'gap');
+    assert.match(lines()[0], /status=gap reason=malformed attempts=3$/);
   });
 });

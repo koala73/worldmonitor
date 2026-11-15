@@ -37,10 +37,11 @@ const OFFICIAL_SOURCE_HOSTS = {
   'malaysia-myprocurement': ['myprocurement.treasury.gov.my'],
 };
 
-// A failed source keeps its last-good open tenders for a day: procurement
-// portals rate-limit, publish daily, and go quiet over weekends, and a
-// day-old open tender is still actionable until its own deadline.
-export const TENDER_SOURCE_RETENTION_MS = 24 * 60 * 60_000;
+// A failed source keeps its last-good open tenders for three days, the same
+// budget health grades it against: the seeder runs once a day, procurement
+// portals rate-limit and go quiet over weekends, and an open tender stays
+// actionable until its own deadline.
+export const TENDER_SOURCE_RETENTION_MS = 3 * 24 * 60 * 60_000;
 
 export function tracksTenderFreshness(source) {
   return ['contracts-finder', 'world-bank', 'colombia-secop', 'kenya-ppip', 'south-africa-etenders',
