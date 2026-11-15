@@ -49,7 +49,7 @@ const heldEvents = (count) => Array.from({ length: count }, (_, n) => reservoirE
 const titleOf = (n) => reservoirEvent(n).payload.title;
 
 /** Runs one drain. `failTelegramSend` lists 1-based send numbers that Telegram rejects. */
-/** `lremFails(raw)` answers 'status' (the command errors), 'throw' (its request rejects), 'body-timeout' (its body read times out), 'bad-json' (its body is not JSON) or 'http' (its request is non-OK). */
+/** `lremFails(raw)` answers 'status' (the command errors), 'throw' (its request rejects), 'body-timeout' (its body read times out), 'bad-json' (its body is not JSON), 'short' (its response lacks a result), 'non-numeric' (its result is not a count) or 'http' (its request is non-OK). */
 async function drain(held, { failTelegramSend = [], throwTelegramSend = [], onTelegramSend = null, lremFails = null, logs = null, removals = null } = {}) {
   const sent = [];
   const silence = [console.log, console.warn, console.error];
@@ -86,8 +86,10 @@ async function drain(held, { failTelegramSend = [], throwTelegramSend = [], onTe
       if (modes.includes('http')) return { ok: false, status: 503, json: async () => ({}) };
       if (modes.includes('body-timeout')) return { ok: true, json: async () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); } };
       if (modes.includes('bad-json')) return { ok: true, json: async () => { throw new SyntaxError('Unexpected token'); } };
+      if (modes.includes('short')) return { ok: true, json: async () => body.slice(1).map(() => ({ result: 1 })) };
       return { ok: true, json: async () => body.map(([, , , raw], i) => {
         if (modes[i] === 'status') return { error: 'ERR stub' };
+        if (modes[i] === 'non-numeric') return { result: 'OK' };
         const at = held.indexOf(raw);
         if (at >= 0) held.splice(at, 1);
         return { result: at >= 0 ? 1 : 0 };
@@ -273,6 +275,18 @@ describe('removing delivered held alerts', () => {
     assert.equal(held.length, 5);
     assert.ok(logs.some((l) => /could not remove 5 delivered held alerts/.test(l) && /5 non-OK/.test(l) && /0 timed out/.test(l)), logs.join('\n'));
   });
+
+  for (const mode of ['short', 'non-numeric']) {
+    it(`a ${mode} pipeline response is retried, then counted as non-OK`, async () => {
+      const held = asHeld(heldEvents(5));
+      const logs = [];
+      const removals = [];
+      await drain(held, { lremFails: () => mode, logs, removals });
+      assert.equal(held.length, 5);
+      assert.deepEqual(removals.map((r) => r.length), [5, 5]);
+      assert.ok(logs.some((l) => /could not remove 5 delivered held alerts/.test(l) && /5 non-OK/.test(l) && /0 timed out/.test(l)), logs.join('\n'));
+    });
+  }
 
   it('a non-OK request counts every command in it as not removed', async () => {
     const held = asHeld(heldEvents(5));
