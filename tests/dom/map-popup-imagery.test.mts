@@ -48,7 +48,7 @@ beforeEach(() => {
   vi.mocked(loadArchiveImage).mockClear();
 });
 
-function mountRow(load: (target: ImageryTarget, signal?: AbortSignal) => Promise<ObjectImagery>) {
+function mountRow(load: (target: ImageryTarget, signal?: AbortSignal, onImageReady?: (early: ObjectImagery) => void) => Promise<ObjectImagery>) {
   const holder = document.createElement('div');
   holder.innerHTML = renderImageryRow();
   const row = holder.firstElementChild as HTMLElement;
@@ -104,6 +104,31 @@ describe('mountImageryRow', () => {
 
     expect(release).toHaveBeenCalledTimes(1);
     expect(row.querySelector('img')).toBeNull();
+  });
+});
+
+describe('#10758 item 1: the image before the next pass', () => {
+  it('paints the image as soon as it is known, then fills the next pass without reloading the image', async () => {
+    let finish!: (value: ObjectImagery) => void;
+    const early = imagery();
+    const { row, dispose } = mountRow((_target, _signal, onImageReady) => {
+      onImageReady?.({ ...early, nextPass: null, nextPassPending: true });
+      return new Promise<ObjectImagery>((resolve) => { finish = resolve; });
+    });
+    await flush();
+    expect(row.querySelector('[data-orbital-next-pass]')?.textContent).toBe('…');
+    expect(harness.archive).toHaveLength(1);
+    harness.archive[0]!.resolve(okImage('blob:early', vi.fn()));
+    await flush();
+    const img = row.querySelector('img');
+    expect(img?.getAttribute('src')).toBe('blob:early');
+
+    finish({ ...early });
+    await flush();
+    expect(row.querySelector('[data-orbital-next-pass]')?.textContent).toContain('SENTINEL-2B');
+    expect(row.querySelector('img')).toBe(img);
+    expect(loadArchiveImage).toHaveBeenCalledTimes(1);
+    dispose();
   });
 });
 

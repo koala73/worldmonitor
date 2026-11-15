@@ -671,6 +671,8 @@
       "scripts/seed-orbital-sites.mjs",
       "scripts/_orbital-sites.mjs",
       "scripts/_orbital-change.mjs",
+      "scripts/seed-orbital-water-extent.mjs",
+      "scripts/_orbital-water-extent.mjs",
       "scripts/lib/orbital-site-alerts.cjs",
       "scripts/regional-snapshot/alert-emitter.mjs",
       "scripts/shared/notification-dedup.cjs",
