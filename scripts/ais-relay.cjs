@@ -6836,7 +6836,8 @@ async function runAirTrafficDetector(t) {
     ])) || [];
     // A failed read must not stand in for no state: during a collapse, the
     // next bin would start from normal and the recovery would never be sent.
-    if (!stateRes || stateRes.error || !pointRes || pointRes.error) {
+    const answered = (res) => res && !res.error && 'result' in res;
+    if (!answered(stateRes) || !answered(pointRes)) {
       console.warn('[AirTrafficDetector] state read failed; skipping this bin');
       return;
     }
@@ -6845,7 +6846,14 @@ async function runAirTrafficDetector(t) {
       return;
     }
     let state = null;
-    try { state = stateRes.result ? JSON.parse(stateRes.result) : null; } catch { state = null; }
+    try {
+      state = stateRes.result === null ? null : JSON.parse(stateRes.result);
+    } catch {
+      // Only this relay writes the key. A value it cannot parse would stop the
+      // detector until the TTL if skipped, so it starts over, loudly.
+      console.warn('[AirTrafficDetector] stored state is unreadable; starting from normal');
+      state = null;
+    }
     if (state && state.lastT > t) {
       // A slow tick finished after the next bin's tick evaluated, and the run
       // only moves forward.

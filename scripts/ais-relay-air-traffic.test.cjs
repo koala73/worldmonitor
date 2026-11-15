@@ -98,7 +98,7 @@ function createRedis({ abortPipelines = 0, firstPipelineDelayMs = 0, seedHashes 
         && body.some((command) => String(command[0]).toUpperCase() === 'GET' && command[1] === failGetKey.key)) {
         getFailures -= 1;
         res.end(JSON.stringify(body.map((command) => (String(command[0]).toUpperCase() === 'GET' && command[1] === failGetKey.key
-          ? { error: 'ERR max requests limit exceeded' }
+          ? (failGetKey.missingResult ? {} : { error: 'ERR max requests limit exceeded' })
           : { result: run(command) }))));
         return;
       }
@@ -612,7 +612,7 @@ test('lane 28: a tick whose bin ends before it records evaluates its own bin, an
   }, { seedHashes, firstPipelineDelayMs: 1200 });
 });
 
-test('lane 29: a failed read of the detector state leaves an active collapse in place, so its recovery is still sent', async () => {
+for (const [name, failure] of [['an error', {}], ['no result', { missingResult: true }]]) test(`lane 29: a state read with ${name} leaves an active collapse in place, so its recovery is still sent`, async () => {
   const seedHashes = historyHashes('2026-10-14', '2026-11-08', ORDINARY_HISTORY);
   const onset = Date.parse('2026-11-13T19:00:00Z');
   const collapsed = { state: 'collapsed', run: 0, onset, lastT: Date.parse('2026-11-13T20:25:00Z'), prior: null, verdict: 'collapsed' };
@@ -625,6 +625,6 @@ test('lane 29: a failed read of the detector state leaves an active collapse in 
   }, {
     seedHashes,
     seedStrings: [['aviation:traffic:detector:v1', JSON.stringify(collapsed)]],
-    failGetKey: { key: 'aviation:traffic:detector:v1', times: 1 },
+    failGetKey: { key: 'aviation:traffic:detector:v1', times: 1, ...failure },
   });
 });
