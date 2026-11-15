@@ -249,6 +249,15 @@ export default defineSchema({
     // Watched-site ids (shared/watched-sites.ts) for the opt-in watched-site
     // alerts. Empty/absent → none: the list is the user's own watch list.
     orbitalSites: v.optional(v.array(v.string())),
+    // Opt-in `reservoir_level_alert` (Strategic Water Levels): the reservoirs the user
+    // follows and when to alert on them, a level below a share of the reservoir's
+    // measured range or a drop beyond its seasonal baseline. Empty/absent
+    // reservoirs → none. Bounds in shared/alert-rule-shape.ts.
+    reservoirAlert: v.optional(v.object({
+      reservoirs: v.array(v.string()),
+      belowPercent: v.optional(v.number()),
+      seasonalDrop: v.optional(v.boolean()),
+    })),
   })
     .index("by_user", ["userId"])
     .index("by_user_variant", ["userId", "variant"])

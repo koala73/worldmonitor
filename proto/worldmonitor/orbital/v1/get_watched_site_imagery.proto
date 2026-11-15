@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package worldmonitor.orbital.v1;
+
+import "sebuf/http/annotations.proto";
+
+// GetWatchedSiteImageryRequest names one watched site by its registry id.
+message GetWatchedSiteImageryRequest {
+  // Watched-site id from the registry, "<list>:<entry id>", e.g. "port:jebel_ali". Never a coordinate.
+  string site_id = 1 [(sebuf.http.query) = {name: "site_id", required: true}];
+}
+
+// SiteImage is the newest archive scene of a watched site.
+message SiteImage {
+  string item_id = 1;
+  // STAC collection the scene is in, e.g. "sentinel-2-l2a".
+  string collection = 2;
+  // Sensor profile: sentinel-2, sentinel-1 or landsat.
+  string profile_id = 3;
+  // Scene time, ISO 8601 UTC.
+  string datetime = 4;
+  // Scene-wide cloud cover in percent; absent for radar or when the archive gives none.
+  optional double cloud_cover_pct = 5;
+}
+
+// SitePass is the next pass expected to image a watched site.
+message SitePass {
+  // Satellite name, e.g. "SENTINEL-2A".
+  string satellite = 1;
+  string profile_id = 2;
+  // Pass time, ISO 8601 UTC.
+  string time = 3;
+}
+
+// GetWatchedSiteImageryResponse is the public imagery summary of one watched site: its newest image and next pass.
+// It carries no change flag, coverage or pass history; those stay on the Pro surfaces.
+message GetWatchedSiteImageryResponse {
+  string site_id = 1;
+  string name = 2;
+  // The registry's site coordinates, which are public; never a user's point.
+  double lat = 3;
+  double lon = 4;
+  // When the site was last evaluated, as Unix epoch milliseconds; 0 when it has no record.
+  int64 evaluated_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // True when the record is missing or older than its freshness limit; latest_image and next_pass are then absent.
+  bool stale = 6;
+  // Newest archive scene of the site; absent when none was found.
+  SiteImage latest_image = 7;
+  // Next expected imaging pass; absent when none falls in the next 72 hours.
+  SitePass next_pass = 8;
+}

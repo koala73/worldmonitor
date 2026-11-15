@@ -5423,6 +5423,17 @@
     },
     "target": {
       "acquired": "ERFASST {{time}} · {{resolution}}"
+    },
+    "popup": {
+      "title": "Satellitenbilder",
+      "loading": "Satellitenarchive werden geprüft…",
+      "latest": "Neueste Aufnahme",
+      "nextPass": "Nächster Überflug",
+      "noImage": "Keine aktuelle Aufnahme gefunden",
+      "noPass": "Kein Überflug in den nächsten 72 Stunden",
+      "openEvidence": "Belege öffnen",
+      "imageAlt": "Satellitenansicht von {{source}}",
+      "unavailable": "Satellitenbilder konnten nicht geladen werden."
     }
   },
   "settings": {
@@ -5670,6 +5681,21 @@
         "5": "Abmelden",
         "6": "Konto löschen"
       }
+    },
+    "reservoirAlert": {
+      "title": "Wasserstands-Warnungen",
+      "description": "Warnung, wenn der Lidar-Wasserstand eines strategischen Stausees niedrig ist. Die NASA veröffentlicht jeden Satellitenpass etwa zwei Monate nach der Messung, daher enthält jede Warnung das Messdatum.",
+      "scopeHint": "Wählen Sie bis zu {{max}} Stauseen. Warnungen gelten nur für die hier aufgeführten Stauseen.",
+      "searchPlaceholder": "Stausee nach Name hinzufügen",
+      "searchLabel": "Stausee hinzufügen",
+      "removeLabel": "{{name}} entfernen",
+      "thresholdLabel": "Pegelschwelle",
+      "thresholdHint": "Warnung, wenn der zuletzt gemessene Pegel unter diesem Prozentsatz der gemessenen Spannweite des Stausees liegt, wobei 0 der niedrigste gemessene Pegel und 100 der höchste ist. Lassen Sie das Feld leer, um keine Schwelle zu setzen.",
+      "thresholdInputLabel": "Pegelschwelle, Prozent der gemessenen Spannweite",
+      "seasonalLabel": "Rückgang unter die saisonale Basislinie",
+      "seasonalHint": "Warnung, wenn der zuletzt gemessene Pegel deutlich unter dem liegt, was dieser Stausee normalerweise zu dieser Jahreszeit aufweist.",
+      "quietNote": "Diese Benachrichtigungen treffen ein, auch wenn Echtzeit-Benachrichtigungen nur auf kritisch eingestellt sind. Ruhezeiten stellen sie stumm.",
+      "quietNoteBatch": "Diese Benachrichtigungen treffen ein, auch wenn Echtzeit-Benachrichtigungen nur auf kritisch eingestellt sind. Ruhezeiten stellen sie stumm oder halten sie bis zum Ende der Ruhezeiten zurück, wenn Sie Batch wählen."
     }
   }
 }

@@ -686,6 +686,8 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/orbital/v1/list-imaging-satellites': { limit: 60, window: '60 s' },
   '/api/orbital/v1/get-point-passes': { limit: 20, window: '60 s' },
   '/api/orbital/v1/get-country-imagery-evidence': { limit: 60, window: '60 s' },
+  // One seeded site read per map popup.
+  '/api/orbital/v1/get-watched-site-imagery': { limit: 60, window: '60 s' },
   // Generic batch fan-out: one request re-dispatches up to 20 gateway GETs, so
   // cap the multiplier at the same 30/min budget as the other batch routes.
   '/api/batch/v1/execute': { limit: 30, window: '60 s' },

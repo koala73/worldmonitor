@@ -14,6 +14,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { initTestI18n } from './helpers/i18n.mts';
+import { ORBITAL_EVIDENCE_EVENT } from '@/services/orbital/evidence-event';
 
 type Handler = (event?: unknown) => void;
 type Camera = { lat?: number; lon?: number; center?: [number, number]; zoom?: number; duration?: number };
@@ -315,6 +316,10 @@ describe('the map while the satellite pass lookup is open', () => {
     ['the map context menu', async () => { await openFromContextMenu(); }, {}],
     ['a share link', async () => {
       openOrbitalShareLink({ point: POINT, pass: null, view: 'sheet' }, document.getElementById('mapContainer'), null);
+      await settle();
+    }, {}],
+    ['a map-object popup evidence row', async () => {
+      window.dispatchEvent(new CustomEvent(ORBITAL_EVIDENCE_EVENT, { detail: POINT }));
       await settle();
     }, {}],
     ['a #orbital= route in the page URL at load', async () => { await settle(); }, { hash: `#orbital=${POINT.lat},${POINT.lon}` }],
