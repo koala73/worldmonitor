@@ -256,14 +256,21 @@ async function loadSiteSatellites(found: PointPassLookup, signal: AbortSignal): 
   };
   draw({ kind: 'projecting' });
   try {
-    const tracked = getTrackedSatelliteTles();
-    const tles = tracked.length > 0 ? tracked : (await fetchSatelliteTLEs()) ?? [];
+    const fallback = getTrackedSatelliteTles().length > 0 ? [] : (await fetchSatelliteTLEs()) ?? [];
     if (signal.aborted) return;
-    if (tles.length === 0) {
+    // Each projection reads the layer's current set, so satellites it adds or re-elements later are included.
+    const currentTles = () => {
+      const tracked = getTrackedSatelliteTles();
+      return tracked.length > 0 ? tracked : fallback;
+    };
+    if (currentTles().length === 0) {
       draw({ kind: 'not-loaded' });
       return;
     }
     const project = async () => {
+      const tles = currentTles();
+      // A layer switched off since keeps the last list rather than reading as no coverage.
+      if (tles.length === 0) return;
       const satellites = await satellitesCoveringSite({ site, tles, nowMs: Date.now(), signal });
       if (!signal.aborted) draw({ kind: 'ok', satellites });
     };
