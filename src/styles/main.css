@@ -10820,6 +10820,15 @@ a.prediction-link:hover {
   filter: brightness(1.1);
 }
 
+/* Fire detection popup: the daily mosaic block sits above the imagery row (#10713). */
+.popup-fire-mosaic {
+  margin-top: 8px;
+}
+
+.popup-fire-mosaic-body .popup-imagery-status {
+  display: block;
+}
+
 button.popup-link {
   background: none;
   border: 0;

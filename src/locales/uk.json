@@ -5499,7 +5499,28 @@
       "noPass": "Прольотів у найближчі 72 години немає",
       "openEvidence": "Відкрити докази",
       "imageAlt": "Супутниковий вигляд від {{source}}",
-      "unavailable": "Не вдалося завантажити супутникові знімки."
+      "unavailable": "Не вдалося завантажити супутникові знімки.",
+      "fire": {
+        "title": "Виявлення пожеж з супутника",
+        "detected": "Виявлено",
+        "satellite": "Супутник",
+        "confidence": "Впевненість",
+        "confidenceHigh": "Висока",
+        "confidenceNominal": "Номінальна",
+        "confidenceLow": "Низька",
+        "power": "Потужність пожежі",
+        "powerValue": "{{value}} МВт",
+        "region": "Регіон",
+        "source": "Джерело",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Щоденна мозаїка",
+        "mosaicLoading": "Перевірка NASA GIBS…",
+        "mosaicCaption": "Композит проходів {{source}} протягом дня {{date}}; пожежа може бути прихована хмарами або димом.",
+        "mosaicNone": "NASA GIBS не має мозаїки {{source}} для {{date}}.",
+        "mosaicNoLayer": "Щоденна мозаїка недоступна для цього супутника.",
+        "mosaicUnavailable": "Щоденна мозаїка не завантажилася.",
+        "mosaicAlt": "NASA GIBS {{source}} щоденна мозаїка для {{date}}"
+      }
     }
   },
   "settings": {

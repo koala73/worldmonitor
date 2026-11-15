@@ -5400,7 +5400,28 @@
       "noPass": "72시간 내 통과 예정 없음",
       "openEvidence": "증거 열기",
       "imageAlt": "{{source}} 위성 화면",
-      "unavailable": "위성 영상을 불러오지 못했습니다."
+      "unavailable": "위성 영상을 불러오지 못했습니다.",
+      "fire": {
+        "title": "위성 화재 감지",
+        "detected": "감지됨",
+        "satellite": "위성",
+        "confidence": "신뢰도",
+        "confidenceHigh": "높음",
+        "confidenceNominal": "보통",
+        "confidenceLow": "낮음",
+        "power": "화재 강도",
+        "powerValue": "{{value}} MW",
+        "region": "지역",
+        "source": "출처",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "일일 모자이크",
+        "mosaicLoading": "NASA GIBS 확인 중…",
+        "mosaicCaption": "{{date}}의 {{source}} 패스에 대한 일일 합성 이미지입니다. 화재가 구름이나 연기에 가려져 있을 수 있습니다.",
+        "mosaicNone": "NASA GIBS에 {{date}}의 {{source}} 모자이크가 없습니다.",
+        "mosaicNoLayer": "이 위성에 사용 가능한 일일 모자이크가 없습니다.",
+        "mosaicUnavailable": "일일 모자이크를 불러올 수 없습니다.",
+        "mosaicAlt": "NASA GIBS {{source}} {{date}} 일일 모자이크"
+      }
     }
   },
   "settings": {

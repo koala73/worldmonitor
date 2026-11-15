@@ -154,6 +154,7 @@ import { onEntitlementChange } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 import { MapPopup, type PopupType } from './MapPopup';
+import { fireDetectionPopupData } from './map-popup-fire';
 import { renderMilitaryVesselTooltipHtml } from './deckgl-tooltip-renderers';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { ChinaCorridorControlTower } from '../../shared/china-corridor-control-towers';
@@ -754,7 +755,7 @@ export class DeckGLMap {
   private serverBasesFetchSeq = 0;
   private baseConfigLoadPending = false;
   private naturalEvents: NaturalEvent[] = [];
-  private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }> = [];
+  private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string; detected_at?: number; satellite?: string; source?: string }> = [];
   private techEvents: TechEventMarker[] = [];
   private flightDelays: AirportDelayAlert[] = [];
   private aircraftPositions: PositionSample[] = [];
@@ -6029,10 +6030,13 @@ export class DeckGLMap {
       'cable-advisories-layer': 'cable-advisory',
       'repair-ships-layer': 'repair-ship',
       'reservoir-levels-layer': 'reservoirLevel',
+      'fires-layer': 'fireDetection',
     };
 
     const popupType = layerToPopupType[layerId];
     if (!popupType) return;
+    // Only a satellite detection opens a fire popup, and only with Orbital Watch on (#10713).
+    if (popupType === 'fireDetection' && !fireDetectionPopupData(info.object)) return;
 
     // For synthetic storm layers, unwrap the backing NaturalEvent
     let data = info.object?._event ?? info.object;
@@ -7983,7 +7987,7 @@ export class DeckGLMap {
     this.render();
   }
 
-  public setFires(fires: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }>): void {
+  public setFires(fires: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string; detected_at?: number; satellite?: string; source?: string }>): void {
     this.firmsFireData = fires;
     this.render();
   }

@@ -4871,7 +4871,28 @@
       "noPass": "No pass due within 72 hours",
       "openEvidence": "Open evidence",
       "imageAlt": "Satellite view from {{source}}",
-      "unavailable": "Satellite imagery did not load."
+      "unavailable": "Satellite imagery did not load.",
+      "fire": {
+        "title": "Satellite fire detection",
+        "detected": "Detected",
+        "satellite": "Satellite",
+        "confidence": "Confidence",
+        "confidenceHigh": "High",
+        "confidenceNominal": "Nominal",
+        "confidenceLow": "Low",
+        "power": "Fire power",
+        "powerValue": "{{value}} MW",
+        "region": "Region",
+        "source": "Source",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Daily mosaic",
+        "mosaicLoading": "Checking NASA GIBS…",
+        "mosaicCaption": "A composite of the day's {{source}} passes for {{date}}; the fire may be hidden by cloud or smoke.",
+        "mosaicNone": "NASA GIBS has no {{source}} mosaic for {{date}}.",
+        "mosaicNoLayer": "No daily mosaic is available for this satellite.",
+        "mosaicUnavailable": "The daily mosaic did not load.",
+        "mosaicAlt": "NASA GIBS {{source}} daily mosaic for {{date}}"
+      }
     }
   },
   "contextMenu": {

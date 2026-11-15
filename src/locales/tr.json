@@ -5433,7 +5433,28 @@
       "noPass": "72 saat içinde geçiş yok",
       "openEvidence": "Kanıtları aç",
       "imageAlt": "{{source}} uydu görünümü",
-      "unavailable": "Uydu görüntüleri yüklenemedi."
+      "unavailable": "Uydu görüntüleri yüklenemedi.",
+      "fire": {
+        "title": "Uydu yangın tespiti",
+        "detected": "Tespit edildi",
+        "satellite": "Uydu",
+        "confidence": "Güven",
+        "confidenceHigh": "Yüksek",
+        "confidenceNominal": "Normal",
+        "confidenceLow": "Düşük",
+        "power": "Yangın gücü",
+        "powerValue": "{{value}} MW",
+        "region": "Bölge",
+        "source": "Kaynak",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Günlük mozaik",
+        "mosaicLoading": "NASA GIBS kontrol ediliyor…",
+        "mosaicCaption": "{{date}} tarihinde {{source}} geçişlerinin günlük bileşimi; yangın bulut veya duman tarafından gizlenebilir.",
+        "mosaicNone": "NASA GIBS'te {{date}} tarihi için {{source}} mozaiği bulunmuyor.",
+        "mosaicNoLayer": "Bu uydu için günlük mozaik mevcut değildir.",
+        "mosaicUnavailable": "Günlük mozaik yüklenemedi.",
+        "mosaicAlt": "NASA GIBS {{source}} {{date}} günlük mozaiği"
+      }
     }
   },
   "settings": {

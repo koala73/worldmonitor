@@ -5565,7 +5565,28 @@
       "noPass": "لا مرور متوقع خلال 72 ساعة",
       "openEvidence": "فتح الأدلة",
       "imageAlt": "منظر فضائي من {{source}}",
-      "unavailable": "تعذّر تحميل صور الأقمار الصناعية."
+      "unavailable": "تعذّر تحميل صور الأقمار الصناعية.",
+      "fire": {
+        "title": "كشف الحرائق عبر الأقمار الصناعية",
+        "detected": "تم الكشف",
+        "satellite": "القمر الصناعي",
+        "confidence": "درجة الثقة",
+        "confidenceHigh": "عالية",
+        "confidenceNominal": "عادية",
+        "confidenceLow": "منخفضة",
+        "power": "قوة الحريق",
+        "powerValue": "{{value}} ميجاوات",
+        "region": "المنطقة",
+        "source": "المصدر",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "الفسيفساء اليومية",
+        "mosaicLoading": "جاري التحقق من NASA GIBS…",
+        "mosaicCaption": "مركب من مسارات {{source}} لليوم {{date}}؛ قد يكون الحريق مختفياً بسبب السحب أو الدخان.",
+        "mosaicNone": "لا توجد فسيفساء {{source}} من NASA GIBS لـ {{date}}.",
+        "mosaicNoLayer": "لا توجد فسيفساء يومية متاحة لهذا القمر الصناعي.",
+        "mosaicUnavailable": "لم يتم تحميل الفسيفساء اليومية.",
+        "mosaicAlt": "فسيفساء NASA GIBS اليومية {{source}} لـ {{date}}"
+      }
     }
   },
   "settings": {

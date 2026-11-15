@@ -5499,7 +5499,28 @@
       "noPass": "Brak przelotu w ciągu 72 godzin",
       "openEvidence": "Otwórz dowody",
       "imageAlt": "Widok satelitarny z {{source}}",
-      "unavailable": "Nie udało się wczytać zdjęć satelitarnych."
+      "unavailable": "Nie udało się wczytać zdjęć satelitarnych.",
+      "fire": {
+        "title": "Detekcja pożarów z satelity",
+        "detected": "Wykryto",
+        "satellite": "Satelita",
+        "confidence": "Pewność",
+        "confidenceHigh": "Wysoka",
+        "confidenceNominal": "Nominalna",
+        "confidenceLow": "Niska",
+        "power": "Moc pożaru",
+        "powerValue": "{{value}} MW",
+        "region": "Region",
+        "source": "Źródło",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Mozaika dzienna",
+        "mosaicLoading": "Sprawdzanie NASA GIBS…",
+        "mosaicCaption": "Kompozyt przejść {{source}} z dnia {{date}}; pożar może być ukryty przez chmury lub dym.",
+        "mosaicNone": "NASA GIBS nie ma mozaiki {{source}} dla {{date}}.",
+        "mosaicNoLayer": "Dla tego satelity nie ma dostępnej mozaiki dziennej.",
+        "mosaicUnavailable": "Mozaika dzienna nie została załadowana.",
+        "mosaicAlt": "Mozaika dzienna NASA GIBS {{source}} dla {{date}}"
+      }
     }
   },
   "settings": {

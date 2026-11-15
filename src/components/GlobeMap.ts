@@ -67,6 +67,7 @@ import type { MapLayers, Hotspot, MilitaryFlight, MilitaryVessel, MilitaryVessel
 import type { Earthquake } from '@/services/earthquakes';
 import type { AirportDelayAlert } from '@/services/aviation';
 import { MapPopup } from './MapPopup';
+import { fireDetectionPopupData } from './map-popup-fire';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { MapContainerState, MapView, TimeRange } from './MapContainer';
 import type { CountryClickPayload } from './DeckGLMap';
@@ -217,6 +218,8 @@ interface FireMarker extends BaseMarker {
   id: string;
   region: string;
   brightness: number;
+  /** The map fire this marker was made from, for the satellite detection popup. */
+  detection: unknown;
 }
 interface ProtestMarker extends BaseMarker {
   _kind: 'protest';
@@ -1533,6 +1536,17 @@ export class GlobeMap {
       this.popup.show({ type: 'reservoirLevel', data: d.reservoir,
         x: rect.left - containerRect.left + rect.width / 2, y: rect.top - containerRect.top });
       return;
+    }
+    if (d._kind === 'fire' && this.popup) {
+      const detection = fireDetectionPopupData(d.detection);
+      if (detection) {
+        const rect = anchor.getBoundingClientRect();
+        const containerRect = this.container.getBoundingClientRect();
+        this.hideTooltip();
+        this.popup.show({ type: 'fireDetection', data: detection,
+          x: rect.left - containerRect.left + rect.width / 2, y: rect.top - containerRect.top });
+        return;
+      }
     }
     if (d._kind === 'crossBorder' && this.popup) {
       const rect = anchor.getBoundingClientRect();
@@ -4050,6 +4064,7 @@ export class GlobeMap {
       id: (f.id as string | undefined) ?? `${f.lat},${f.lon}`,
       region: f.region ?? '',
       brightness: f.brightness ?? 330,
+      detection: f,
     }));
     this.flushMarkers();
   }

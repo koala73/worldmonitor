@@ -35,6 +35,11 @@ export interface MapFire {
   region: string;
   acq_date: string;
   daynight: string;
+  /** Detection time in epoch milliseconds, for the popup of a satellite detection. */
+  detected_at?: number;
+  satellite?: string;
+  /** `firms` for satellite detections; agency-reported fires name their agency. */
+  source?: string;
 }
 
 // -- Client --
@@ -118,7 +123,7 @@ export function flattenFires(regions: Record<string, FireDetection[]>): FireDete
   return all;
 }
 
-export function toMapFires(fires: Pick<FireDetection, 'location' | 'brightness' | 'frp' | 'confidence' | 'region' | 'detectedAt' | 'dayNight'>[]): MapFire[] {
+export function toMapFires(fires: Array<Pick<FireDetection, 'location' | 'brightness' | 'frp' | 'confidence' | 'region' | 'detectedAt' | 'dayNight'> & Partial<Pick<FireDetection, 'satellite' | 'source'>>>): MapFire[] {
   return fires.map(f => ({
     lat: f.location?.latitude ?? 0,
     lon: f.location?.longitude ?? 0,
@@ -128,6 +133,9 @@ export function toMapFires(fires: Pick<FireDetection, 'location' | 'brightness' 
     region: f.region,
     acq_date: new Date(f.detectedAt).toISOString().slice(0, 10),
     daynight: f.dayNight,
+    detected_at: f.detectedAt,
+    satellite: f.satellite,
+    source: f.source,
   }));
 }
 

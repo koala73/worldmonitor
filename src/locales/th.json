@@ -5400,7 +5400,28 @@
       "noPass": "ไม่มีการโคจรผ่านภายใน 72 ชั่วโมง",
       "openEvidence": "เปิดหลักฐาน",
       "imageAlt": "ภาพจากดาวเทียม {{source}}",
-      "unavailable": "โหลดภาพถ่ายดาวเทียมไม่สำเร็จ"
+      "unavailable": "โหลดภาพถ่ายดาวเทียมไม่สำเร็จ",
+      "fire": {
+        "title": "การตรวจจับไฟจากดาวเทียม",
+        "detected": "ตรวจพบ",
+        "satellite": "ดาวเทียม",
+        "confidence": "ความเชื่อมั่น",
+        "confidenceHigh": "สูง",
+        "confidenceNominal": "ปกติ",
+        "confidenceLow": "ต่ำ",
+        "power": "พลังไฟ",
+        "powerValue": "{{value}} MW",
+        "region": "พื้นที่",
+        "source": "แหล่งที่มา",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "โมเสกรายวัน",
+        "mosaicLoading": "กำลังตรวจสอบ NASA GIBS…",
+        "mosaicCaption": "ภาพรวมของการผ่านของ {{source}} ในแต่ละวันสำหรับ {{date}} ไฟอาจถูกซ่อนโดยเมฆหรือควัน",
+        "mosaicNone": "NASA GIBS ไม่มีโมเสก {{source}} สำหรับ {{date}}",
+        "mosaicNoLayer": "ไม่มีโมเสกรายวันสำหรับดาวเทียมนี้",
+        "mosaicUnavailable": "โมเสกรายวันไม่สามารถโหลดได้",
+        "mosaicAlt": "โมเสกรายวัน NASA GIBS {{source}} สำหรับ {{date}}"
+      }
     }
   },
   "settings": {

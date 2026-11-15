@@ -5476,7 +5476,28 @@
       "noPass": "Nema preleta u sljedeća 72 sata",
       "openEvidence": "Otvori dokaze",
       "imageAlt": "Satelitski prikaz iz {{source}}",
-      "unavailable": "Satelitske snimke nisu se učitale."
+      "unavailable": "Satelitske snimke nisu se učitale.",
+      "fire": {
+        "title": "Detekcija požara iz satelita",
+        "detected": "Detektirano",
+        "satellite": "Satelit",
+        "confidence": "Pouzdanost",
+        "confidenceHigh": "Visoka",
+        "confidenceNominal": "Nominalna",
+        "confidenceLow": "Niska",
+        "power": "Snaga požara",
+        "powerValue": "{{value}} MW",
+        "region": "Регион",
+        "source": "Izvor",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Dnevni mozaik",
+        "mosaicLoading": "Provjera NASA GIBS…",
+        "mosaicCaption": "Kompozit dnevnih prolaza {{source}} za {{date}}; požar može biti skriven oblacima ili dimom.",
+        "mosaicNone": "NASA GIBS nema {{source}} mozaika za {{date}}.",
+        "mosaicNoLayer": "Dnevni mozaik nije dostupan za ovaj satelit.",
+        "mosaicUnavailable": "Dnevni mozaik se nije učitao.",
+        "mosaicAlt": "NASA GIBS {{source}} dnevni mozaik za {{date}}"
+      }
     }
   },
   "settings": {

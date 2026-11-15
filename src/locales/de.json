@@ -5433,7 +5433,28 @@
       "noPass": "Kein Überflug in den nächsten 72 Stunden",
       "openEvidence": "Belege öffnen",
       "imageAlt": "Satellitenansicht von {{source}}",
-      "unavailable": "Satellitenbilder konnten nicht geladen werden."
+      "unavailable": "Satellitenbilder konnten nicht geladen werden.",
+      "fire": {
+        "title": "Satellitenerkennung von Bränden",
+        "detected": "Erkannt",
+        "satellite": "Satellit",
+        "confidence": "Zuverlässigkeit",
+        "confidenceHigh": "Hoch",
+        "confidenceNominal": "Mittel",
+        "confidenceLow": "Niedrig",
+        "power": "Brandleistung",
+        "powerValue": "{{value}} MW",
+        "region": "Region",
+        "source": "Quelle",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Tägliches Mosaik",
+        "mosaicLoading": "NASA GIBS wird überprüft…",
+        "mosaicCaption": "Zusammengesetztes Bild der {{source}}-Überflüge des Tages ({{date}}); das Feuer kann durch Wolken oder Rauch verdeckt sein.",
+        "mosaicNone": "NASA GIBS hat kein {{source}}-Mosaik für {{date}}.",
+        "mosaicNoLayer": "Für diesen Satelliten ist kein tägliches Mosaik verfügbar.",
+        "mosaicUnavailable": "Das tägliche Mosaik konnte nicht geladen werden.",
+        "mosaicAlt": "Tägliches NASA-GIBS-Mosaik ({{source}}) für {{date}}"
+      }
     }
   },
   "settings": {

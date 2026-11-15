@@ -5400,7 +5400,28 @@
       "noPass": "72 小时内无过境",
       "openEvidence": "打开证据",
       "imageAlt": "来自 {{source}} 的卫星视图",
-      "unavailable": "卫星影像加载失败。"
+      "unavailable": "卫星影像加载失败。",
+      "fire": {
+        "title": "卫星火灾检测",
+        "detected": "探测时间",
+        "satellite": "卫星",
+        "confidence": "置信度",
+        "confidenceHigh": "高",
+        "confidenceNominal": "中等",
+        "confidenceLow": "低",
+        "power": "火灾功率",
+        "powerValue": "{{value}} MW",
+        "region": "地区",
+        "source": "数据源",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "每日合成图",
+        "mosaicLoading": "正在检查 NASA GIBS…",
+        "mosaicCaption": "{{date}} 当天 {{source}} 过境数据的合成图；火灾可能被云或烟雾遮挡。",
+        "mosaicNone": "NASA GIBS 没有 {{date}} 的 {{source}} 合成图。",
+        "mosaicNoLayer": "此卫星没有可用的每日合成图。",
+        "mosaicUnavailable": "每日合成图加载失败。",
+        "mosaicAlt": "NASA GIBS {{source}} {{date}} 每日合成图"
+      }
     }
   },
   "settings": {

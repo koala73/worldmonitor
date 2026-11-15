@@ -5400,7 +5400,28 @@
       "noPass": "72 時間以内に通過予定はありません",
       "openEvidence": "証拠を開く",
       "imageAlt": "{{source}} による衛星画像",
-      "unavailable": "衛星画像を読み込めませんでした。"
+      "unavailable": "衛星画像を読み込めませんでした。",
+      "fire": {
+        "title": "衛星火災検出",
+        "detected": "検出日時",
+        "satellite": "衛星",
+        "confidence": "信頼度",
+        "confidenceHigh": "高",
+        "confidenceNominal": "標準",
+        "confidenceLow": "低",
+        "power": "火災の規模",
+        "powerValue": "{{value}} MW",
+        "region": "地域",
+        "source": "ソース",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "日次モザイク",
+        "mosaicLoading": "NASA GIBSを確認中…",
+        "mosaicCaption": "{{date}}に{{source}}が通過した観測を合成した日次画像です。火災は雲や煙に隠れている可能性があります。",
+        "mosaicNone": "NASA GIBSには{{date}}の{{source}}モザイクがありません。",
+        "mosaicNoLayer": "この衛星の日次モザイクは利用できません。",
+        "mosaicUnavailable": "日次モザイクが読み込まれませんでした。",
+        "mosaicAlt": "NASA GIBS {{source}} {{date}}の日次モザイク"
+      }
     }
   },
   "settings": {

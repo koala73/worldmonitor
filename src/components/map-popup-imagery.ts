@@ -8,6 +8,7 @@
 import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 import { t, getCurrentLanguageTag } from '@/services/i18n';
 import { loadArchiveImage } from '@/services/orbital/archive-image';
+import { isFirmsDetection } from '@/services/orbital/fire-mosaic';
 import { loadObjectImagery, type ImageryTarget, type ObjectImagery } from '@/services/orbital/object-imagery';
 import type { ConflictZone, MilitaryBase, NaturalEvent, NuclearFacility, Port, StrategicWaterway } from '@/types';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -55,6 +56,10 @@ export function imageryTargetFor(type: string, data: unknown): ImageryTarget | n
       const e = data as NaturalEvent;
       return e.category === 'wildfires' ? { kind: 'point', point: { lat: e.lat, lon: e.lon } } : null;
     }
+    case 'fireDetection': {
+      const f = data as PointData;
+      return isFirmsDetection(data) ? { kind: 'point', point: { lat: f.lat, lon: f.lon } } : null;
+    }
     default:
       return null;
   }
@@ -82,7 +87,7 @@ export function renderChangeFlagRow(_imagery: ObjectImagery): string {
   return '';
 }
 
-const formatUtc = (ms: number) => new Intl.DateTimeFormat(getCurrentLanguageTag(), {
+export const formatUtc = (ms: number) => new Intl.DateTimeFormat(getCurrentLanguageTag(), {
   day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC', timeZoneName: 'short',
 }).format(ms);
 

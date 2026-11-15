@@ -5433,7 +5433,28 @@
       "noPass": "Ingen överflygning inom 72 timmar",
       "openEvidence": "Öppna bevis",
       "imageAlt": "Satellitvy från {{source}}",
-      "unavailable": "Satellitbilderna kunde inte läsas in."
+      "unavailable": "Satellitbilderna kunde inte läsas in.",
+      "fire": {
+        "title": "Upptäckning av satellielbränder",
+        "detected": "Upptäckt",
+        "satellite": "Satellit",
+        "confidence": "Säkerhet",
+        "confidenceHigh": "Hög",
+        "confidenceNominal": "Normal",
+        "confidenceLow": "Låg",
+        "power": "Eldstyrka",
+        "powerValue": "{{value}} MW",
+        "region": "Region",
+        "source": "Källa",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Daglig mosaik",
+        "mosaicLoading": "Kontrollerar NASA GIBS…",
+        "mosaicCaption": "En sammanställning av dagens {{source}}-passager för {{date}}; branden kan vara dold av moln eller rök.",
+        "mosaicNone": "NASA GIBS har ingen {{source}}-mosaik för {{date}}.",
+        "mosaicNoLayer": "Ingen daglig mosaik är tillgänglig för denna satellit.",
+        "mosaicUnavailable": "Den dagliga mosaiken laddades inte.",
+        "mosaicAlt": "NASA GIBS {{source}} daglig mosaik för {{date}}"
+      }
     }
   },
   "settings": {
