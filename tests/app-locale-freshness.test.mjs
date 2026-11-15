@@ -50,7 +50,9 @@ const ENGLISH_CEILING = {
   // de 278 -> 166, ru 377 -> 61, uk 2708 -> 95: copied English prose in those
   // catalogues was translated. What remains is brands, typed command examples,
   // acronyms, and words spelled the same in that language.
-  ar: 359, bg: 250, cs: 292, de: 167, el: 359, es: 433,
+  // de 167 -> 170, ru 64 -> 65: the fire popup adds the brand "NASA FIRMS" (both),
+  // the unit "{{value}} MW" and "Region", which is also the German word.
+  ar: 359, bg: 250, cs: 292, de: 170, el: 359, es: 433,
   // fr 425 -> 426: "Concentration" (supply vulnerability) and "Normal"
   // (divergence regime) are spelled identically in French. Both are correct
   // translations, not placeholder copies.
@@ -61,7 +63,7 @@ const ENGLISH_CEILING = {
   // de 166 -> 167, uk 98 -> 99: the imagery evidence sheet adds the "UTC" time
   // toggle, which both catalogues keep, and German shares "Sensor", "Status",
   // "Pixel" and "Details" with English.
-  ru: 64, sv: 490, sw: 393, th: 307, tr: 404, uk: 99,
+  ru: 65, sv: 490, sw: 393, th: 307, tr: 404, uk: 99,
   vi: 185, zh: 358, 'zh-TW': 358,
 };
 
