@@ -84,6 +84,8 @@ Change flags are planned and not computed yet. A change flag will compare a new 
 
 The point you pick stays in your browser. It goes only to the public archives your browser calls directly. A shared link carries the point rounded to two decimal places, about 1 km. Error reports and other telemetry have coordinate query parameters and coordinate path segments removed from every URL before they leave the browser.
 
+The flat map loads basemap tiles from a WorldMonitor host, and a tile request names the tile that holds the view. While the lookup is open that map stops at zoom 7, where one tile spans about 2.8 degrees, and returns to its earlier zoom when you close the lookup.
+
 ## Credits
 
 Each image carries a one-line credit for its source. The Sources list at the end of the sheet names only the sources present in the current result and what each one supplied, and links here. The full credit each source asks for is:

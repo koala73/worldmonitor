@@ -1,5 +1,14 @@
 import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import type { ScreenOffset } from '@/utils/map-point-offset';
+import type { MapContainer } from '@/components/MapContainer';
+
+/**
+ * The deepest the map zooms while the lookup is open (#10704). The basemap is
+ * PMTiles on a WorldMonitor host, and a tile request names the tile that holds
+ * the viewport: 0.18 degrees wide at zoom 11 puts the point inside the request,
+ * 2.8 degrees wide at zoom 7 does not.
+ */
+export const ORBITAL_LOOKUP_MAX_ZOOM = 7;
 
 export interface MapCamera {
   lat: number;
@@ -21,8 +30,31 @@ export interface OrbitalMapView {
   suppressLayers(suppressed: boolean): void;
   /** The map's centre and zoom, or null before it has a camera. */
   camera(): MapCamera | null;
+  /** Caps how far the map can zoom in, or lifts the cap with null. The map is clamped at once if it is already past it. */
+  capZoom(max: number | null): void;
   /** Jumps back with no animation: a gesture during an animated return would publish a centre near the point. */
   restore(camera: MapCamera): void;
+}
+
+/** The dashboard map as the lookup drives it. */
+export type OrbitalViewport = Pick<MapContainer,
+  'getViewportRect' | 'setCenterAt' | 'projectToClient' | 'holdAutoRotate' | 'suppressDataLayers' | 'getCenter' | 'getState' | 'setCenter' | 'capZoom'>;
+
+export function orbitalMapViewFor(getMap: () => OrbitalViewport | null | undefined): OrbitalMapView {
+  return {
+    rect: () => getMap()?.getViewportRect() ?? null,
+    center: (point, offset) => (getMap()?.setCenterAt(point.lat, point.lon, ORBITAL_LOOKUP_MAX_ZOOM, offset) ?? null) !== null,
+    project: (point) => getMap()?.projectToClient(point.lat, point.lon) ?? null,
+    hold: (held) => getMap()?.holdAutoRotate(held),
+    suppressLayers: (suppressed) => getMap()?.suppressDataLayers(suppressed),
+    camera: () => {
+      const map = getMap();
+      const centre = map?.getCenter();
+      return centre && map ? { ...centre, zoom: map.getState().zoom } : null;
+    },
+    capZoom: (max) => getMap()?.capZoom(max),
+    restore: ({ lat, lon, zoom }) => void getMap()?.setCenter(lat, lon, zoom, { instant: true }),
+  };
 }
 
 let view: OrbitalMapView | null = null;

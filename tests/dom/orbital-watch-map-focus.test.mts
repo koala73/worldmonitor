@@ -36,7 +36,7 @@ describe('orbital watch map focus', () => {
     const project = vi.fn(() => ({ x: 494, y: 450 }));
     let mapRect = rect(0, 0, 1440, 900);
     const hold = vi.fn();
-    const release = setOrbitalMapView({ rect: () => mapRect, center, project, hold, suppressLayers: vi.fn(), camera: () => null, restore: vi.fn() });
+    const release = setOrbitalMapView({ rect: () => mapRect, center, project, hold, suppressLayers: vi.fn(), camera: () => null, capZoom: () => {}, restore: vi.fn() });
     try {
       openOrbitalWatch(PALM, null);
       await frames(40);
@@ -63,7 +63,7 @@ describe('orbital watch map focus', () => {
   });
 
   it('leaves the point to the map when the map draws its own reticle there', async () => {
-    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center: () => true, project: () => ({ x: 494, y: 450 }), hold: vi.fn(), suppressLayers: vi.fn(), camera: () => null, restore: vi.fn() });
+    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center: () => true, project: () => ({ x: 494, y: 450 }), hold: vi.fn(), suppressLayers: vi.fn(), camera: () => null, capZoom: () => {}, restore: vi.fn() });
     const targets: unknown[] = [];
     try {
       openOrbitalWatch(PALM, null, 'sheet', { setOrbitalTrack: () => {}, setOrbitalTrackMarker: () => {}, setOrbitalTarget: (t) => targets.push(t) });
@@ -78,7 +78,7 @@ describe('orbital watch map focus', () => {
   it('keeps trying to centre until a booting map can move', async () => {
     let ready = false;
     const center = vi.fn(() => ready);
-    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center, project: () => null, hold: vi.fn(), suppressLayers: vi.fn(), camera: () => null, restore: vi.fn() });
+    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center, project: () => null, hold: vi.fn(), suppressLayers: vi.fn(), camera: () => null, capZoom: () => {}, restore: vi.fn() });
     try {
       openOrbitalWatch(PALM, null);
       await frames();
@@ -124,7 +124,7 @@ describe('orbital watch map focus', () => {
 
   it('hides the dashboard layers only while the full view owns the map', () => {
     const suppressLayers = vi.fn();
-    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center: () => true, project: () => null, hold: vi.fn(), suppressLayers, camera: () => null, restore: vi.fn() });
+    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center: () => true, project: () => null, hold: vi.fn(), suppressLayers, camera: () => null, capZoom: () => {}, restore: vi.fn() });
     try {
       openOrbitalWatch(PALM, null);
       expect(suppressLayers, 'the sheet leaves the dashboard layers alone').not.toHaveBeenCalledWith(true);
@@ -153,6 +153,7 @@ describe('orbital watch map focus', () => {
       project: () => null,
       hold: vi.fn(),
       suppressLayers: vi.fn(),
+      capZoom: vi.fn(),
       camera: () => camera,
       restore,
     });
