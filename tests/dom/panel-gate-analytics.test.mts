@@ -22,7 +22,7 @@ function mount(id = `gate-test-${nextId++}`) {
   return panel;
 }
 function observer(panel: Panel) {
-  return VisibilityObserver.instances.findLast(item => item.target === panel.getElement())!;
+  return [...VisibilityObserver.instances].reverse().find(item => item.target === panel.getElement())!;
 }
 beforeEach(() => {
   VisibilityObserver.instances = [];
