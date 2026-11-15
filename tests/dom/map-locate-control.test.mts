@@ -377,4 +377,26 @@ describe('located URL claim across a satellite lookup', () => {
     centre = { lat: ROUNDED.lat + 1, lon: ROUNDED.lon };
     expect(isMapUrlCentreClaimed()).toBe(false);
   });
+
+  it('keeps the located anchor while the lookup centres the map off the point', () => {
+    const mapEl = document.createElement('div');
+    mapEl.id = 'mapContainer';
+    document.body.append(mapEl);
+    let centre = { ...ROUNDED };
+    let locateCurrent = true;
+    claimMapUrlCentre(() => locateCurrent, { point: ROUNDED, read: () => centre });
+    releaseMapUrlCentreOnUserMove(mapEl);
+    claimMapUrlCentre();
+    // The lookup supersedes the locate move and draws the point off centre, beside its sheet.
+    locateCurrent = false;
+    centre = { lat: ROUNDED.lat + 1.5, lon: ROUNDED.lon - 2 };
+    expect(isMapUrlCentreClaimed()).toBe(true);
+    // Closing restores the located camera and hands the centre back.
+    centre = { ...ROUNDED };
+    releaseMapUrlCentreOnUserMove(mapEl);
+    mapEl.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(isMapUrlCentreClaimed()).toBe(true);
+    centre = { lat: ROUNDED.lat, lon: ROUNDED.lon + 1 };
+    expect(isMapUrlCentreClaimed()).toBe(false);
+  });
 });

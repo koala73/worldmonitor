@@ -77,6 +77,8 @@ let urlClaimed = false;
 let ownsCentre: (() => boolean) | null = null;
 let anchor: MapUrlCentreAnchor | null = null;
 let userInput = false;
+/** A lookup opened inside an anchored claim: it moves the map off the point until it closes. */
+let nested = false;
 let stopWaiting: (() => void) | null = null;
 
 function endClaim(): void {
@@ -85,6 +87,7 @@ function endClaim(): void {
   ownsCentre = null;
   anchor = null;
   userInput = false;
+  nested = false;
 }
 
 function anchorLeft(): boolean {
@@ -108,22 +111,27 @@ function anchorLeft(): boolean {
  * A later claim with no anchor (a satellite lookup opened at the located
  * point) keeps an anchored claim that is still active: replacing it would let
  * the first gesture after that sheet closes publish the located position.
+ * The lookup's own offset centring must not end it either, so the anchor is
+ * judged again only once the lookup hands the centre back.
  */
 export function claimMapUrlCentre(stillOwned: (() => boolean) | null = null, anchorAt: MapUrlCentreAnchor | null = null): void {
   stopWaiting?.();
   if (!anchorAt && urlClaimed && anchor) {
     userInput = false;
+    nested = true;
     return;
   }
   urlClaimed = true;
   ownsCentre = stillOwned;
   anchor = anchorAt;
   userInput = false;
+  nested = false;
 }
 
 /** Hands the URL centre back once the user moves the map themselves; until then it still shows the picked point. */
 export function releaseMapUrlCentreOnUserMove(map: HTMLElement | null): void {
   stopWaiting?.();
+  nested = false;
   if (!urlClaimed) return;
   if (!map) {
     // An anchored claim still ends when the centre leaves its point.
@@ -147,6 +155,7 @@ export function releaseMapUrlCentreOnUserMove(map: HTMLElement | null): void {
 
 export function isMapUrlCentreClaimed(): boolean {
   if (!urlClaimed) return false;
+  if (nested) return true;
   const movedOn = userInput || (ownsCentre !== null && !ownsCentre());
   if (movedOn && anchorLeft()) endClaim();
   return urlClaimed;
