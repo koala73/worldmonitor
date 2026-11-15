@@ -302,9 +302,10 @@ export function chokepointsFromCsv(text, sinceEpoch, window) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || formatDate(Date.parse(`${date}T00:00:00Z`)) !== date) {
       throw new Error(`CSV export has an invalid date for ${cells[col.portname]}`);
     }
-    if (date >= window.from && date < baselineEndDay && cells[col.n_total] !== '') {
+    // Each field counts on its own, as the query's per-field avg/count does.
+    if (date >= window.from && date < baselineEndDay) {
       const base = (baselineTotals[id] ??= { total: [], tanker: [], capTanker: [] });
-      base.total.push(Number(cells[col.n_total]));
+      if (cells[col.n_total] !== '') base.total.push(Number(cells[col.n_total]));
       if (cells[col.n_tanker] !== '') base.tanker.push(Number(cells[col.n_tanker]));
       if (cells[col.capacity_tanker] !== '') base.capTanker.push(Number(cells[col.capacity_tanker]));
     }

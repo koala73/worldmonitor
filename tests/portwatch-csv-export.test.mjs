@@ -61,6 +61,33 @@ test('the baseline equals the outStatistics avg/count over the year-earlier wind
   assert.equal(result.suez.baseline, null, '10 published days is below BASELINE_MIN_DAYS');
 });
 
+test('tanker means count rows whose n_total is blank, as the query statistics do', () => {
+  const lines = CSV.split('\n');
+  const columns = lines[0].replace(/^\uFEFF/, '').trim().split(',');
+  const col = Object.fromEntries(columns.map((name, n) => [name, n]));
+  const tankers = [];
+  let blanked = 0;
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i].split(',');
+    if (cells[col.portname] !== 'Korea Strait') continue;
+    const date = cells[col.date].replaceAll('/', '-');
+    if (date < WINDOW.from || date > WINDOW.to) continue;
+    // 40 baseline days publish tankers but no total; 325 days still clear the day gate.
+    if (blanked < 40) {
+      cells[col.n_total] = '';
+      cells[col.n_tanker] = '1000';
+      lines[i] = cells.join(',');
+      blanked++;
+    }
+    tankers.push(Number(cells[col.n_tanker]));
+  }
+  const baseline = chokepointsFromCsv(lines.join('\n'), SINCE, WINDOW).korea_strait.baseline;
+  assert.equal(baseline.days, 325);
+  const expected = Math.round((tankers.reduce((a, b) => a + b, 0) / tankers.length) * 10) / 10;
+  assert.equal(tankers.length, 365);
+  assert.equal(baseline.tankerAvgDaily, expected);
+});
+
 test('untracked ports and chokepoints with no rows in the history window are left out', () => {
   const result = chokepointsFromCsv(CSV, SINCE, WINDOW);
   assert.deepEqual(Object.keys(result).sort(), ['korea_strait', 'suez']);
