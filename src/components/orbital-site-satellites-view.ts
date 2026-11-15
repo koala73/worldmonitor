@@ -4,6 +4,8 @@ import { COVERAGE_WINDOW_HOURS, type CoverageSite, type SiteSatellite } from '@/
 import { untilLabel, utcTime } from './orbital-satellite-sites-view';
 
 const KEY = 'orbitalWatch.siteSatellites';
+/** Rows shown before the list folds, so a busy site does not push the rest of the sheet away. */
+export const SITE_SATELLITE_ROWS = 6;
 
 export type SiteSatellitesState =
   | { kind: 'projecting' }
@@ -16,6 +18,8 @@ export interface SiteSatellitesOptions {
   /** The sheet's key for this satellite's pass, or null when the lookup does not list it. */
   passKey: (noradId: string, timeMs: number) => string | null;
   selectedKey: string | null;
+  /** Whether the list shows every satellite rather than the first SITE_SATELLITE_ROWS. */
+  expanded?: boolean;
 }
 
 function cell(label: string, value: string, className = ''): HTMLElement {
@@ -35,10 +39,10 @@ function satelliteRow(satellite: SiteSatellite, { nowMs, passKey, selectedKey }:
     'aria-current': key && key === selectedKey ? 'true' : null,
     dataset: { key: key ? `pass:${key}` : `satellite:${satellite.noradId}`, noradId: satellite.noradId },
   },
-  cell(t('orbitalWatch.row.satellite'), satellite.name, 'ies-grow ies-name'),
-  cell(t('orbitalWatch.row.sensor'), satellite.sensor.family),
   cell(t('orbitalWatch.row.time'), utcTime(first.timeMs)),
   cell(t('orbitalWatch.row.in'), untilLabel(first.timeMs, nowMs)),
+  cell(t('orbitalWatch.row.satellite'), satellite.name, 'ies-grow ies-name'),
+  cell(t('orbitalWatch.row.sensor'), satellite.sensor.family),
   cell('', detail.join(' · ')));
 }
 
@@ -52,7 +56,19 @@ export function siteSatellitesSection(site: CoverageSite, state: SiteSatellitesS
   else if (state.kind === 'failed') content = [note(t(`${KEY}.failed`))];
   else if (state.satellites.length === 0) content = [note(t(`${KEY}.none`, { hours }))];
   else {
-    content = [h('ul', { className: 'ies-table' }, ...state.satellites.map((satellite) => satelliteRow(satellite, options)))];
+    const rows = state.satellites.map((satellite) => satelliteRow(satellite, options));
+    content = [h('ul', { className: 'ies-table' }, ...rows)];
+    if (rows.length > SITE_SATELLITE_ROWS) {
+      const more = h('button', { type: 'button', className: 'ies-more' });
+      const fold = (expanded: boolean) => {
+        rows.forEach((row, i) => { row.hidden = !expanded && i >= SITE_SATELLITE_ROWS; });
+        more.textContent = expanded ? t('orbitalWatch.capability.showFewer') : t('orbitalWatch.capability.showAll', { count: rows.length });
+        more.setAttribute('aria-expanded', String(expanded));
+      };
+      more.addEventListener('click', () => fold(more.getAttribute('aria-expanded') !== 'true'));
+      fold(options.expanded === true);
+      content.push(more);
+    }
   }
   return h('section', { className: 'ies-section', dataset: { section: 'site-satellites', state: state.kind, siteId: site.id } },
     h('h3', { className: 'ies-section-title' }, t(`${KEY}.heading`, { hours })),

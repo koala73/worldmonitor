@@ -227,10 +227,12 @@ function drawSiteSatellites(): void {
     slot.replaceChildren();
     return;
   }
+  const expanded = slot.querySelector('[data-section="site-satellites"] .ies-more')?.getAttribute('aria-expanded') === 'true';
   slot.replaceChildren(siteSatellitesSection(siteSatellites.site, siteSatellites.state, {
     nowMs: Date.now(),
     passKey: lookupPassKey,
     selectedKey: selectedKey(),
+    expanded,
   }));
 }
 
