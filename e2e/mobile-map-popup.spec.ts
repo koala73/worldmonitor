@@ -1,5 +1,6 @@
 import { devices, expect, test } from '@playwright/test';
 import type { CrossBorderData } from '../src/services/displacement';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 type HarnessWindow = Window & {
   __mobileMapHarness?: {
@@ -62,7 +63,7 @@ for (const width of [320, 1280]) {
         const summary = details.locator('summary');
         await expect(summary).toHaveText(lang === 'de' ? 'Weitere Informationen' : 'More details');
         await expect(details).not.toHaveAttribute('open');
-        await popup.screenshot({ path: testInfo.outputPath(`datacenter-compact-${lang}-${width}.png`) });
+        await evidenceScreenshot(popup, { path: testInfo.outputPath(`datacenter-compact-${lang}-${width}.png`) });
         await summary.focus();
         await page.keyboard.press('Enter');
         await expect(details).toHaveAttribute('open');
@@ -86,7 +87,7 @@ for (const width of [320, 1280]) {
         expect(geometry.overflow).toBeLessThanOrEqual(1);
         expect(geometry.titleOverflow).toBeLessThanOrEqual(1);
         await details.locator('h3').scrollIntoViewIfNeeded();
-        await popup.screenshot({ path: testInfo.outputPath(`datacenter-details-${lang}-${width}.png`) });
+        await evidenceScreenshot(popup, { path: testInfo.outputPath(`datacenter-details-${lang}-${width}.png`) });
         await details.locator('a').last().scrollIntoViewIfNeeded();
         await expect(details.locator('a').first()).toBeVisible();
         await expect(details.locator('a').last()).toBeVisible();
@@ -99,7 +100,7 @@ for (const width of [320, 1280]) {
           return context.getImageData(0, 0, 1, 1).data[3];
         });
         expect(headerAlpha).toBe(255);
-        await popup.screenshot({ path: testInfo.outputPath(`datacenter-sources-${lang}-${width}.png`) });
+        await evidenceScreenshot(popup, { path: testInfo.outputPath(`datacenter-sources-${lang}-${width}.png`) });
         await summary.scrollIntoViewIfNeeded();
         await summary.focus();
         await page.keyboard.press('Space');
@@ -153,7 +154,7 @@ for (const width of [320, 1280]) {
           await expect(row.locator('.component-value')).toBeVisible();
           await expect(row.locator('.component-value')).toHaveText(/^\d+$/);
         }
-        await popup.screenshot({ path: testInfo.outputPath(`breakdown-${language}-${width}.png`) });
+        await evidenceScreenshot(popup, { path: testInfo.outputPath(`breakdown-${language}-${width}.png`) });
       });
     }
   });
@@ -200,7 +201,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
             - element.getBoundingClientRect().top,
         )).toBeCloseTo(1, 0);
         if (opening === 0) {
-          await page.screenshot({ path: testInfo.outputPath('hotspot-header-scrolled.png') });
+          await evidenceScreenshot(page, { path: testInfo.outputPath('hotspot-header-scrolled.png') });
         }
         await close.click();
         await expect(popup).toHaveCount(0);

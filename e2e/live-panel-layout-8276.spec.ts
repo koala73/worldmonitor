@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 test('wide live video panels do not overlap adjacent dashboard panels (#8276)', async ({
   page,
@@ -317,7 +318,7 @@ test('collapsed resized video panels release rows in the bottom grid (#10185)', 
     await expect(toolbar).toBeVisible();
     await toggle.click();
     await expect(panel).toHaveClass(/panel-collapsed/);
-    await page.screenshot({ path: testInfo.outputPath(`${id}-collapsed-bottom.png`) });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`${id}-collapsed-bottom.png`) });
     await expect.poll(span, { message: `collapsed ${id} reserves one bottom-grid row` }).toBe('span 1');
     await expect(toolbar).toBeHidden();
     await expect(handle).toBeHidden();

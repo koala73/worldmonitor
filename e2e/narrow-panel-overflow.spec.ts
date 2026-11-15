@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // The sidebar's narrowest two-column layout gives each panel about 271px
 // (repeat(auto-fill, minmax(270px, 1fr)) at 1400). A signed-in audit found
@@ -254,6 +255,6 @@ for (const { mode, width, hydrate } of [
     expect(fallbackRequests).toBe(hydrate ? 0 : 1);
     const content = panel.locator('.panel-content');
     expect(await content.evaluate(el => el.scrollWidth)).toBeLessThanOrEqual(await content.evaluate(el => el.clientWidth));
-    await panel.screenshot({ path: testInfo.outputPath(`tech-readiness-${mode}.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`tech-readiness-${mode}.png`) });
   });
 }

@@ -2,6 +2,7 @@ import type { Locator, Page, TestInfo } from '@playwright/test';
 import { test, expect } from './country-brief-fixtures';
 import { readFile } from 'node:fs/promises';
 import { installDecisionBriefData, installCommodityBriefData } from './country-brief-design-fixtures';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 for (const action of ['Create story', 'Decision brief']) {
   test(`${action} returns focus to a disclosure closed during loading`, async ({ page, countryBrief }) => {
@@ -52,7 +53,7 @@ for (const mobile of [false, true]) {
     await expect(form).toContainText('Labeled example');
     expect(state.requests).toHaveLength(0);
     await form.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: testInfo.outputPath('worksheet-example.png'), fullPage: true });
+    await evidenceScreenshot(page, { path: testInfo.outputPath('worksheet-example.png'), fullPage: true });
     await form.getByRole('button', { name: 'Add alternative delivery', exact: true }).click();
     await expect(form.locator('.operational-result')).toHaveCount(0);
     await expect(form.getByRole('button', { name: 'Export worksheet JSON' })).toBeDisabled();
@@ -63,7 +64,7 @@ for (const mobile of [false, true]) {
     await expect(form.locator('[data-day="10"] td')).toHaveText(['0', '20', '0', '20', '0', '20', '0', '20']);
     await expect(form).toContainText('Delivery cost comparison unavailable');
     await form.locator(mobile ? '.operational-result' : '.operational-header').evaluate(element => element.scrollIntoView({ block: 'start' }));
-    await page.screenshot({ path: testInfo.outputPath('worksheet-day10.png'), fullPage: true });
+    await evidenceScreenshot(page, { path: testInfo.outputPath('worksheet-day10.png'), fullPage: true });
     const event = page.waitForEvent('download');
     await form.getByRole('button', { name: 'Export worksheet JSON' }).click();
     const download = await event;
@@ -103,7 +104,7 @@ for (const mobile of [false, true]) {
         expect(JSON.parse(await exported.locator('#decision-brief-snapshot').textContent() ?? 'null')).toEqual(preview);
         await expect(exported.locator('.operational-summary')).toContainText('Alternative first gap: Day 10');
         await expect(exported.locator('a[href]').first()).toHaveAttribute('href', /https:/);
-        await exported.screenshot({ path: testInfo.outputPath('worksheet-export.png'), fullPage: true });
+        await evidenceScreenshot(exported, { path: testInfo.outputPath('worksheet-export.png'), fullPage: true });
         await exported.close();
       }
     }
@@ -201,7 +202,7 @@ for (const mobile of [false, true]) {
     await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
     const output = panel.getByRole('region', { name: 'Decision brief', exact: true });
     await expect(output).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath('decision-before.png') });
+    await evidenceScreenshot(page, { path: testInfo.outputPath('decision-before.png') });
     for (const mode of ['ready', 'missing', 'mismatch'] as const) {
       state.mode = mode;
       await output.getByRole('button', { name: 'Capture / refresh both' }).click();
@@ -236,10 +237,10 @@ for (const mobile of [false, true]) {
       await expect(exported.locator('body')).toContainText(preview.action.constraint);
       await expect(exported.locator('body')).toContainText(preview.action.trigger);
       for (const ref of preview.action.references) await expect(exported.locator('body')).toContainText(ref);
-      await exported.screenshot({ path: testInfo.outputPath(`${mode}-export.png`), fullPage: true });
+      await evidenceScreenshot(exported, { path: testInfo.outputPath(`${mode}-export.png`), fullPage: true });
       await exported.close();
       await paper.scrollIntoViewIfNeeded();
-      await page.screenshot({ path: testInfo.outputPath(`${mode}-preview.png`) });
+      await evidenceScreenshot(page, { path: testInfo.outputPath(`${mode}-preview.png`) });
       expect(await output.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     }
     expect(state.requests).toHaveLength(6);
@@ -404,7 +405,7 @@ async function expectCommodityPresentation(page: Page, output: Locator, testInfo
   await expect(details).not.toHaveAttribute('open');
   expect(await output.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   await page.locator('#country-deep-dive-panel .panel-content').evaluate(el => { el.scrollTop = 0; });
-  await page.screenshot({ path: testInfo.outputPath('helium-preview.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('helium-preview.png') });
 }
 
 test('commodity decision brief desktop dark preserves presentation and all commodity exports', async ({ page, countryBrief }, testInfo) => {
@@ -470,7 +471,7 @@ test('commodity decision brief desktop dark preserves presentation and all commo
       await expect(exported.locator('[data-origin="NL"]')).toContainText('Supplier scale unavailable');
       await expect(exported.locator('body')).toContainText('39 omitted holding 3.1% combined');
     }
-    await exported.screenshot({ path: testInfo.outputPath(`${commodity}-export.png`), fullPage: true });
+    await evidenceScreenshot(exported, { path: testInfo.outputPath(`${commodity}-export.png`), fullPage: true });
     await exported.close();
     expect(await output.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   }
@@ -497,7 +498,7 @@ for (const { mobile, light } of [
     const exported = await page.context().newPage();
     await exported.setContent(html, { waitUntil: 'domcontentloaded' });
     expect(JSON.parse(await exported.locator('#commodity-brief-snapshot').textContent() ?? 'null')).toEqual(snapshot);
-    await exported.screenshot({ path: testInfo.outputPath('helium-export.png'), fullPage: true });
+    await evidenceScreenshot(exported, { path: testInfo.outputPath('helium-export.png'), fullPage: true });
     await exported.close();
 
     await output.getByLabel('Commodity / product', { exact: true }).selectOption('wheat');
@@ -531,7 +532,7 @@ test('country brief excludes global temporal observations from country signals',
   await expect(signals).not.toContainText('Temporal Anomalies');
   await expect(signals).not.toContainText('Temporal anomalies');
   await expect(panel.locator('#cdp-section-assessment')).toContainText('3 observed temporal anomalies; not attributed to this country');
-  await page.screenshot({ path: testInfo.outputPath('country-global-temporal-scope.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('country-global-temporal-scope.png') });
 });
 
 
@@ -545,7 +546,7 @@ test('country brief shows unavailable temporal evidence after a failed feed read
   const signals = panel.locator('#cdp-section-signals');
   await signals.scrollIntoViewIfNeeded();
   await expect(signals).toContainText('Temporal observations unavailable');
-  await page.screenshot({ path: testInfo.outputPath('country-temporal-unavailable.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('country-temporal-unavailable.png') });
 });
 
 for (const mobile of [false, true]) {
@@ -569,7 +570,7 @@ for (const mobile of [false, true]) {
     await expect(activity.locator('.cdp-china-summary-source-link')).toHaveCount(1);
     expect(await activity.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
     const path = testInfo.outputPath(`china-plain-language-${mobile ? 'mobile' : 'desktop'}.png`);
-    await page.screenshot({ path });
+    await evidenceScreenshot(page, { path });
     await testInfo.attach('China activity with controlled source data', { path, contentType: 'image/png' });
   });
 }
@@ -588,7 +589,7 @@ test('English panel picker names financial and regional topics in plain language
   await page.getByPlaceholder('Filter panels...').fill('Bitcoin');
   await expect(panels.getByText('Bitcoin fund flows', { exact: true })).toBeVisible();
   const path = testInfo.outputPath('english-panel-labels.png');
-  await page.screenshot({ path });
+  await evidenceScreenshot(page, { path });
   await testInfo.attach('English panel names', { path, contentType: 'image/png' });
 });
 
@@ -619,7 +620,7 @@ for (const mobile of [false, true]) {
     await expect(panel.getByText('0.0%', { exact: true })).toBeVisible();
     await expect(panel).not.toContainText('% Above Stocks');
     const path = testInfo.outputPath(`market-breadth-${mobile ? 'mobile' : 'desktop'}.png`);
-    await panel.screenshot({ path });
+    await evidenceScreenshot(panel, { path });
     await testInfo.attach('Controlled market breadth component preview', { path, contentType: 'image/png' });
   });
 }
@@ -644,7 +645,7 @@ for (const mobile of [false, true]) {
     await expect(gulf).toBeVisible();
     await expect(panels).not.toContainText('mtaji wa uhamiaji');
     const path = testInfo.outputPath(`swahili-panel-labels-${mobile ? 'mobile' : 'desktop'}.png`);
-    await page.screenshot({ path });
+    await evidenceScreenshot(page, { path });
     await testInfo.attach('Reviewed Swahili investment labels', { path, contentType: 'image/png' });
   });
 }

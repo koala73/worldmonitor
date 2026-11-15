@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { buildUiResourceRead, MARKET_RADAR_UI_URI } from '../api/mcp/ui/registry';
 import { terminalChart } from '../src/utils/terminal-chart';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 test.describe.configure({ mode: 'serial' });
 let bootstrap: string;
@@ -106,7 +107,7 @@ for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 90
     await expect(frame.getByRole('status')).toContainText('could not load');
     await expect.poll(() => page.evaluate(() => (window as unknown as { marketMessages: { method: string }[] }).marketMessages.map(message => message.method)))
       .toEqual(['ui/initialize', 'ui/notifications/initialized']);
-    await page.screenshot({ path: info.outputPath('injected-market-failure-' + name + '.png') });
+    await evidenceScreenshot(page, { path: info.outputPath('injected-market-failure-' + name + '.png') });
     failDocument = false;
     await frame.getByRole('button', { name: 'Retry interface' }).click();
     await expect(frame.locator('.qsym')).toHaveCount(12);
@@ -146,7 +147,7 @@ for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 90
     expect(await page.evaluate(() => (window as unknown as { marketMessages: { method: string }[] }).marketMessages
       .filter(message => !['ui/initialize', 'ui/notifications/initialized', 'ui/notifications/size-changed'].includes(message.method)))).toEqual([]);
     expect(errors).toEqual([]);
-    await page.screenshot({ path: info.outputPath('injected-market-recovered-' + name + '.png') });
+    await evidenceScreenshot(page, { path: info.outputPath('injected-market-recovered-' + name + '.png') });
     await writeFile(info.outputPath('native-recovery-messages.json'), JSON.stringify(await page.evaluate(() => (window as unknown as { marketMessages: unknown[] }).marketMessages), null, 2));
   });
 }

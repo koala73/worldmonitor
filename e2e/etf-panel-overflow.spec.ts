@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 test.use({ hasTouch: true });
 
@@ -35,7 +36,7 @@ for (const language of ['en', 'de']) {
     await expect(panel.locator('tbody tr')).toHaveCount(2);
     const columns = () => panel.locator('.etf-summary').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').filter(track => parseFloat(track) > 0).length);
     await expect.poll(columns).toBe(2);
-    await panel.screenshot({ path: testInfo.outputPath(`etf-${language}-narrow.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`etf-${language}-narrow.png`) });
     // English values can fit at 350px. A narrower sidebar exercises overflow
     // in both languages without forcing an artificial table minimum width.
     await page.locator('.panels-grid').evaluate(el => { el.style.width = '250px'; el.style.gridTemplateColumns = '250px'; });
@@ -45,7 +46,7 @@ for (const language of ['en', 'de']) {
     await expect(nav).toBeVisible();
     await expect(previous).toBeDisabled();
     await expect(next).toBeEnabled();
-    await panel.screenshot({ path: testInfo.outputPath(`etf-${language}-overflow.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`etf-${language}-overflow.png`) });
     await next.focus();
     await page.keyboard.press('Enter');
     await expect(next).toBeDisabled();
@@ -84,7 +85,7 @@ for (const language of ['en', 'de']) {
     await page.locator('.panels-grid').evaluate(el => { el.style.width = '900px'; el.style.gridTemplateColumns = '900px'; });
     await expect.poll(columns).toBe(4);
     await expect(nav).toBeHidden();
-    await panel.screenshot({ path: testInfo.outputPath(`etf-${language}-wide.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`etf-${language}-wide.png`) });
     await page.locator('.panels-grid').evaluate(el => { el.style.width = '350px'; el.style.gridTemplateColumns = '350px'; });
     await panel.evaluate(el => el.style.setProperty('--wm-panel-effective-scale', '1.5'));
     await expect(nav).toBeVisible();
@@ -97,7 +98,7 @@ for (const language of ['en', 'de']) {
       };
     });
     expect(geometry).toEqual({ overflow: 0, clipped: false });
-    await panel.screenshot({ path: testInfo.outputPath(`etf-${language}-scaled.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`etf-${language}-scaled.png`) });
     // A long translated word must also stay inside a scaled, narrow button.
     await page.locator('.panels-grid').evaluate(el => { el.style.width = '250px'; el.style.gridTemplateColumns = '250px'; });
     const labels = await nav.locator('button').evaluateAll(buttons => {
@@ -112,6 +113,6 @@ for (const language of ['en', 'de']) {
     await page.setViewportSize({ width: 390, height: 844 });
     await panel.evaluate(el => el.style.setProperty('--wm-panel-effective-scale', '1'));
     await expect.poll(columns).toBe(2);
-    await panel.screenshot({ path: testInfo.outputPath(`etf-${language}-mobile.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`etf-${language}-mobile.png`) });
   });
 }

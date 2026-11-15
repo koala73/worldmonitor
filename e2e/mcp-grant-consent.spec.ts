@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 /**
  * MCP Grant Consent Page — DOM-behavioural coverage (#5654).
@@ -364,9 +365,9 @@ test.describe('MCP grant consent page (#5654)', () => {
       await expect(page.locator('#retryContextBtn')).toBeVisible();
       await expect(page.locator('#loading')).toBeHidden();
       if (stalledStage === 'context') {
-        await page.screenshot({ path: testInfo.outputPath('consent-timeout-desktop.png'), fullPage: true });
+        await evidenceScreenshot(page, { path: testInfo.outputPath('consent-timeout-desktop.png'), fullPage: true });
         await page.setViewportSize({ width: 390, height: 844 });
-        await page.screenshot({ path: testInfo.outputPath('consent-timeout-mobile.png'), fullPage: true });
+        await evidenceScreenshot(page, { path: testInfo.outputPath('consent-timeout-mobile.png'), fullPage: true });
       }
       await page.locator('#retryContextBtn').click();
       await expect(page.locator('#consent')).toBeVisible();
@@ -395,10 +396,10 @@ test.describe('MCP grant consent page (#5654)', () => {
     await expect(page.locator('#consent')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('#loading')).toBeHidden();
     expect(contextRequests).toBe(1);
-    await page.screenshot({ path: testInfo.outputPath('consent-token-update-desktop.png'), fullPage: true });
+    await evidenceScreenshot(page, { path: testInfo.outputPath('consent-token-update-desktop.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.locator('#authorizeBtn')).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath('consent-token-update-mobile.png'), fullPage: true });
+    await evidenceScreenshot(page, { path: testInfo.outputPath('consent-token-update-mobile.png'), fullPage: true });
   });
 
   test('signing in again replaces the old pending load without duplicating the new one', async ({ page }) => {
@@ -546,7 +547,7 @@ test.describe('MCP grant consent page (#5654)', () => {
     await expect(page.locator('.scope-list li').nth(1)).toHaveText('Real-time news & events');
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 1000 });
-      await page.screenshot({ path: testInfo.outputPath(`consent-provider-scope-${width}.png`), fullPage: true });
+      await evidenceScreenshot(page, { path: testInfo.outputPath(`consent-provider-scope-${width}.png`), fullPage: true });
     }
 
     // authedFetch must attach the Clerk JWT; a regression to a bare fetch()
@@ -975,7 +976,7 @@ test.describe('MCP grant consent page (#5654)', () => {
         expect(visibleText).not.toMatch(/\bPro\b/);
         await expect(proLinks).toHaveCount(0);
       }
-      await page.screenshot({ path: testInfo.outputPath(`grant-sign-in-${surface || 'default'}.png`) });
+      await evidenceScreenshot(page, { path: testInfo.outputPath(`grant-sign-in-${surface || 'default'}.png`) });
     });
   }
 

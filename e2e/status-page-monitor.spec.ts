@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { createServer, type RequestListener } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { checkStatusPage, monitorStatusPage } from '../scripts/status-page-smoke.mjs';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 const markup = `<section id="overall-uptime">${['Last 24 hours', 'Last 7 days', 'Last 30 days', 'Last 90 days'].map((label) => `<div><h3>99.123%</h3><div>${label}</div></div>`).join('')}</section>`;
 
@@ -42,7 +43,7 @@ for (const width of [1280, 390]) {
     await expect(page.getByRole('link', { name: 'World Monitor status page', exact: true })).toHaveAttribute('href', 'https://status.worldmonitor.app/');
     await expect(page.getByRole('link', { name: 'GitHub private vulnerability reporting', exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page.screenshot({ path: testInfo.outputPath(`security-${width}.png`), fullPage: true });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`security-${width}.png`), fullPage: true });
   });
 }
 

@@ -4,6 +4,7 @@ import { captureImfPeriods, type ImfPeriodScenario } from './country-brief-fixtu
 import { readFile, writeFile } from 'node:fs/promises';
 import { installCountryBriefDesignData } from './country-brief-design-fixtures';
 import type { CountrySignalOutcome } from '../shared/country-signal-observations';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 const recording = process.env.CI ? 'on-first-retry' : 'retain-on-failure';
 
@@ -29,7 +30,7 @@ for (const [language, width, label] of [['fr', 1280, 'Débloquez 90 jours avec P
     expect(await history.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     await expect(page.locator('html')).toHaveCSS('direction', language === 'ar' ? 'rtl' : 'ltr');
     const path = testInfo.outputPath(`history-${language}-${width}.png`);
-    await history.screenshot({ path });
+    await evidenceScreenshot(history, { path });
     await testInfo.attach(language, { path, contentType: 'image/png' });
   });
 }
@@ -65,7 +66,7 @@ for (const width of [1280, 390]) {
     };
     const captureHistory = async (state: string) => {
       const path = testInfo.outputPath(`history-${state}-${width}.png`);
-      await page.locator('#cdp-section-history').screenshot({ path });
+      await evidenceScreenshot(page.locator('#cdp-section-history'), { path });
       await testInfo.attach(state, { path, contentType: 'image/png' });
     };
     await openHistory();
@@ -153,8 +154,8 @@ for (const width of [1280, 390]) for (const addedIds of [0, 5]) {
     await expect(signals.getByText(title, { exact: true })).toBeVisible();
     const clipped = await signals.getByText(title, { exact: true }).evaluate(el => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1);
     expect(clipped).toBe(false);
-    await signals.screenshot({ path: testInfo.outputPath(`controlled-mixed-source-${addedIds}-added-${width}-signals.png`) });
-    await page.screenshot({ path: testInfo.outputPath(`controlled-mixed-source-${addedIds}-added-${width}-viewport.png`) });
+    await evidenceScreenshot(signals, { path: testInfo.outputPath(`controlled-mixed-source-${addedIds}-added-${width}-signals.png`) });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`controlled-mixed-source-${addedIds}-added-${width}-viewport.png`) });
     await writeFile(testInfo.outputPath('sanctions-fixture.json'), JSON.stringify({ mode: 'controlled mixed OFAC / Canada SEMA through qualified RPC', addedIds, width, entries, title, reads, qualifiedReads }, null, 2));
   });
 }
@@ -209,7 +210,7 @@ async function screenshot(page: Page, testInfo: TestInfo, name: string) {
   await marketsCard(page).scrollIntoViewIfNeeded();
   await marketsCard(page).evaluate(card => card.scrollIntoView({ block: 'center' }));
   const path = testInfo.outputPath(`${name}.png`);
-  await page.screenshot({ path });
+  await evidenceScreenshot(page, { path });
   await testInfo.attach(name, { path, contentType: 'image/png' });
 }
 
@@ -230,7 +231,7 @@ test('country shortcut keeps the dashboard canonical and shares a working dashbo
     await page.setViewportSize({ width, height });
     await page.locator('#country-deep-dive-panel .cdp-country-name').scrollIntoViewIfNeeded();
     const path = testInfo.outputPath(`country-shortcut-${name}.png`);
-    await page.screenshot({ path });
+    await evidenceScreenshot(page, { path });
     await testInfo.attach(`country-shortcut-${name}`, { path, contentType: 'image/png' });
   }
   await page.goto(sharedUrl);
@@ -552,7 +553,7 @@ test('country report export keeps safe links and removes unsafe or malformed URL
   await expect(fixture.getByText('Fragment', { exact: true })).toHaveAttribute('href', '#export-fixture-evidence');
   await expect(fixture.getByText('Web source', { exact: true })).toHaveAttribute('href', 'https://example.com/evidence?a=1&b=2');
   await fixture.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: testInfo.outputPath('export-url-policy-preview.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('export-url-policy-preview.png') });
   const event = page.waitForEvent('download');
   await panel.getByRole('button', { name: 'Download report HTML', exact: true }).click();
   const download = await event;
@@ -568,6 +569,6 @@ test('country report export keeps safe links and removes unsafe or malformed URL
   await expect(saved.getByText('Relative source', { exact: true })).toHaveAttribute('href', 'https://worldmonitor.app/sources');
   await expect(exported.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveAttribute('content', "default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; base-uri 'none'; form-action 'none'");
   await saved.scrollIntoViewIfNeeded();
-  await exported.screenshot({ path: testInfo.outputPath('export-url-policy-downloaded.png') });
+  await evidenceScreenshot(exported, { path: testInfo.outputPath('export-url-policy-downloaded.png') });
   await exported.close();
 });

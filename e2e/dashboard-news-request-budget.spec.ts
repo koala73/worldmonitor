@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { attachBrowserLossDiagnostics, pageBrowserLossEvents } from './browser-loss-diagnostics';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // Request budget for the news load on a default anonymous dashboard load (#5376).
 //
@@ -1186,7 +1187,7 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
       await expect.poll(() => stablecoinRequests.length).toBe(1);
       await expect(panel.locator('.stable-health')).toContainText('HEALTHY');
       expect(await lcpMarkCount(page, VIEWPORT_HYDRATION_MARK)).toBe(0);
-      await page.screenshot({ path: testInfo.outputPath('catchup-desktop.png') });
+      await evidenceScreenshot(page, { path: testInfo.outputPath('catchup-desktop.png') });
     } finally {
       release();
       slowBootstrap.release();
@@ -1241,7 +1242,7 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
         });
         expect(sideBySide, 'two panels must be visible side by side on first load').toBe(true);
       }
-      await page.screenshot({ path: testInfo.outputPath(`initial-${viewport.label}.png`) });
+      await evidenceScreenshot(page, { path: testInfo.outputPath(`initial-${viewport.label}.png`) });
       expect(initial.owner, 'the layout must use the expected dashboard scroll owner').toBe(
         viewport.scrollOwner,
       );
@@ -1287,7 +1288,7 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
       ).toBe(1);
       await expect(stablecoins.locator('.stable-health')).toContainText('HEALTHY');
       expect(stablecoinRequests).toHaveLength(1);
-      await page.screenshot({ path: testInfo.outputPath(`hydrated-${viewport.label}.png`) });
+      await evidenceScreenshot(page, { path: testInfo.outputPath(`hydrated-${viewport.label}.png`) });
     });
   }
 

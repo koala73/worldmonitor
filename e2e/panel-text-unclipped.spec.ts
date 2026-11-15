@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // The Predictions bar gave each side at least 40px, but "No 11%" needs about
 // 48px, so a small share's label spilled out of its own segment and the bar's
@@ -123,7 +124,7 @@ test('prediction labels and SEC filer names are never clipped', async ({ browser
         return predictions.locator('.prediction-bar').count();
       }, { message: `prediction bars at ${variant}`, timeout: 90_000 })
       .toBe(MARKETS.length);
-    await predictions.screenshot({ path: testInfo.outputPath(`polymarket-${variant}.png`) });
+    await evidenceScreenshot(predictions, { path: testInfo.outputPath(`polymarket-${variant}.png`) });
     const bars = await measureLabels(page);
     expect(bars.labels).toHaveLength(MARKETS.length * 2);
     expect.soft(
@@ -138,7 +139,7 @@ test('prediction labels and SEC filer names are never clipped', async ({ browser
         return filings.getByText('8-K', { exact: true }).count();
       }, { message: `material events at ${variant}`, timeout: 90_000 })
       .toBe(EVENTS.length);
-    await filings.screenshot({ path: testInfo.outputPath(`material-events-${variant}.png`) });
+    await evidenceScreenshot(filings, { path: testInfo.outputPath(`material-events-${variant}.png`) });
     const names = await measureNames(page, FILERS);
     expect(names.names.map((name) => name.text).sort()).toEqual([...FILERS].sort());
     expect.soft(

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
 import type { GridClockSnapshot } from '../shared/grid-disruption-clock.js';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 function fixture(now: number): GridClockSnapshot {
   const source = { sourceName: 'Fixture utility', sourceUrl: 'https://example.org/power',
@@ -67,7 +68,7 @@ test('enable grid clock, inspect a California warning and Tennessee coverage', a
   await expect(panel.getByText(/Tracked customer total unknown/)).toBeVisible();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('worldmonitor-panels')!)['grid-disruption-clock'].enabled)).toBe(true);
   const californiaScreenshot = testInfo.outputPath('california-desktop.png');
-  await panel.screenshot({ path: californiaScreenshot });
+  await evidenceScreenshot(panel, { path: californiaScreenshot });
   await testInfo.attach('California fixture, declining count', { path: californiaScreenshot, contentType: 'image/png' });
   const requestsBeforeTick = requests;
   await page.clock.fastForward(120_000);
@@ -75,14 +76,14 @@ test('enable grid clock, inspect a California warning and Tennessee coverage', a
   await expect(panel.getByText('12,480', { exact: true })).toBeVisible();
   expect(requests).toBe(requestsBeforeTick);
   const expiredScreenshot = testInfo.outputPath('california-expired.png');
-  await panel.screenshot({ path: expiredScreenshot });
+  await evidenceScreenshot(panel, { path: expiredScreenshot });
   await testInfo.attach('California warning expires without fetching', { path: expiredScreenshot, contentType: 'image/png' });
   await panel.getByRole('button', { name: 'New York', exact: true }).click();
   await expect(panel.getByText('654', { exact: true })).toBeVisible();
   await expect(panel.getByText('Grid notice · Check operator directly', { exact: true })).toBeVisible();
   await expect(panel.getByRole('link', { name: 'Tennessee Valley Authority' })).toHaveCount(0);
   const newYorkScreenshot = testInfo.outputPath('new-york-desktop.png');
-  await panel.screenshot({ path: newYorkScreenshot });
+  await evidenceScreenshot(panel, { path: newYorkScreenshot });
   await testInfo.attach('New York fixture, six-state selector', { path: newYorkScreenshot, contentType: 'image/png' });
   await page.setViewportSize({ width: 390, height: 844 });
   await panel.getByRole('button', { name: 'Texas', exact: true }).click();
@@ -95,7 +96,7 @@ test('enable grid clock, inspect a California warning and Tennessee coverage', a
   await expect(panel.locator('.grid-clock-total')).toHaveText('Unknown');
   expect(await panel.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   const washingtonScreenshot = testInfo.outputPath('washington-mobile.png');
-  await panel.screenshot({ path: washingtonScreenshot });
+  await evidenceScreenshot(panel, { path: washingtonScreenshot });
   await testInfo.attach('Washington fixture, missing count on mobile', { path: washingtonScreenshot, contentType: 'image/png' });
   await panel.getByRole('button', { name: 'Tennessee' }).click();
   await expect(panel.getByText('Unknown', { exact: true })).toBeVisible();
@@ -109,7 +110,7 @@ test('enable grid clock, inspect a California warning and Tennessee coverage', a
   await panel.evaluate(el => el.scrollIntoView({ block: 'start', behavior: 'instant' }));
   const mobileBox = (await panel.boundingBox())!;
   const navBox = (await page.locator('#mobileTabBar').boundingBox())!;
-  await page.screenshot({ path: tennesseeScreenshot, clip: {
+  await evidenceScreenshot(page, { path: tennesseeScreenshot, clip: {
     x: mobileBox.x, y: mobileBox.y, width: mobileBox.width,
     height: Math.min(mobileBox.height, navBox.y - mobileBox.y),
   } });

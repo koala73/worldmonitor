@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // Built from the committed ICESat-2 backfill baseline (scripts/data/reservoir-levels-baseline.json)
 // through buildSummary in scripts/seed-reservoir-levels.mjs at 2026-11-11T00:00Z, then
@@ -62,7 +63,7 @@ test('Strategic Water Levels lists attention first, filters, and opens the reser
   await panel.locator('button[data-wl-filter="all"]').click();
   await expect(rows).toHaveCount(48);
 
-  await panel.screenshot({ path: testInfo.outputPath('reservoir-levels-panel.png') });
+  await evidenceScreenshot(panel, { path: testInfo.outputPath('reservoir-levels-panel.png') });
   await mead.click();
   const popup = page.locator('.map-popup .wl-popup');
   await expect(popup).toBeVisible();
@@ -190,7 +191,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     for (const key of ['climate', 'population-exposure']) {
       await expect(page.locator(`.panel[data-panel="${key}"] .panel-scope-chip`)).toHaveText('Not filtered');
     }
-    await panel.screenshot({ path: testInfo.outputPath(`focus-egypt-${viewport.width}.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`focus-egypt-${viewport.width}.png`) });
     await panel.locator('[data-scope-action="show-all"]').click();
     await expect(panel.locator('.wl-row')).toHaveCount(48);
     await panel.locator('[data-scope-action="apply"]').click();

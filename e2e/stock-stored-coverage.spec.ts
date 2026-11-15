@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 for (const count of [12, 50]) {
   test(`stored stock panels preserve ${count} mixed-case targets across partial refresh and failure`, async ({ page }, testInfo) => {
@@ -86,7 +87,7 @@ for (const count of [12, 50]) {
       await expect(row).toHaveCount(1);
       await expect(row).toBeVisible();
     }
-    await page.screenshot({ path: testInfo.outputPath(`stock-${count}-partial.png`), fullPage: true });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`stock-${count}-partial.png`), fullPage: true });
     await page.getByRole('button', { name: 'Refresh stock panels', exact: true }).click();
     await expect(page.locator('#fixture-status')).toHaveText(JSON.stringify([`sym${count - 1}`, `sym${count - 1}`]));
     await expect(page.locator('[data-panel="stock-analysis"]')).toContainText(`${count} symbols`);
@@ -97,7 +98,7 @@ for (const count of [12, 50]) {
       await expect(row).toHaveCount(1);
       await expect(row).toBeVisible();
     }
-    await page.screenshot({ path: testInfo.outputPath(`stock-${count}-fallback.png`), fullPage: true });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`stock-${count}-fallback.png`), fullPage: true });
     for (const id of ['stock-analysis', 'stock-backtest']) {
       const panel = page.locator(`[data-panel="${id}"]`);
       await panel.getByRole('textbox').fill(`SYM${count - 1}`);

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 /**
  * Pro Activation Onboarding — end-to-end coverage.
@@ -829,7 +830,7 @@ test.describe('Pro activation — step scroll position (#5731)', () => {
       // does not catch content clipped by a scrolled modal body.
       await expect(page.locator(viewport.height < 600 ? '.pro-activation-close' : ADVANCE_SKIP_BTN)).toBeFocused();
       await expect(page.locator(':focus')).toBeInViewport({ ratio: 1 });
-      await page.screenshot({ path: testInfo.outputPath('toolkit.png') });
+      await evidenceScreenshot(page, { path: testInfo.outputPath('toolkit.png') });
       expect(await body.evaluate((element) => element.scrollTop)).toBe(0);
       await expect(page.locator('.pro-activation-status')).toBeInViewport({ ratio: 1 });
       await expect(page.locator('.pro-activation-heading')).toBeInViewport({ ratio: 1 });

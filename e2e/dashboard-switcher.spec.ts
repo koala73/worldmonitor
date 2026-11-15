@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // Exercises the real layout, responsive relocation and existing click handler.
 test('dashboard names remain readable from tablet through desktop', async ({ page }) => {
@@ -40,7 +41,7 @@ test('dashboard names remain readable from tablet through desktop', async ({ pag
       await expect(last).toBeInViewport();
     }
     if ([834, 940, 1440].includes(width)) {
-      await page.screenshot({ path: `test-results/dashboard-switcher-${width}.png` });
+      await evidenceScreenshot(page, { path: `test-results/dashboard-switcher-${width}.png` });
     }
   }
   await page.setViewportSize({ width: 1280, height: 900 });
