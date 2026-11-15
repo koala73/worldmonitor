@@ -531,8 +531,12 @@ for (const failure of ['silent', 'trickle', 'refused']) {
         res.once('close', () => { clearInterval(timer); timers.delete(timer); });
       }
     });
-    const remotePort = await listen(remote);
-    if (failure === 'refused') await new Promise(resolve => remote.close(resolve));
+    // A refused upstream must stay refused. Closing a listener and reusing its
+    // port raced the other suites `node --test` runs at the same time: one of
+    // them could bind the freed port and answer 401 (PR #10785 run
+    // 43738172975). Port 1 is outside every ephemeral range, so no port-0
+    // listener can ever receive it.
+    const remotePort = failure === 'refused' ? 1 : await listen(remote);
     const localApi = await setupApiDir({
       'displacement/v1/get-displacement-summary.js': `export default async function handler(req) {
         return Response.json({ source: 'local-empty', dataAvailable: false, body: await req.json() });

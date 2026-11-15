@@ -18,7 +18,7 @@ import { ROLLUP_MAX_AGE_MS, SITES_SCHEMA } from '../../../../shared/orbital/coun
 
 /** Registry ids are "<origin list>:<entry id>" (shared/watched-sites.ts). */
 // The registry's id alphabet; one base id keeps a non-breaking space from its source name.
-export const WATCHED_SITE_ID = /^(hotspot|conflict-zone|military-base|nuclear-facility|port|chokepoint):[a-z0-9_\u00a0]{1,96}$/;
+export const WATCHED_SITE_ID = /^(hotspot|conflict-zone|military-base|nuclear-facility|port|chokepoint|reservoir):[a-z0-9_\u00a0-]{1,96}$/;
 
 type Json = Record<string, unknown>;
 const isRecord = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value);

@@ -19,6 +19,16 @@ const BACKOFF_FIRST_MS = 15 * 60_000;
 const BACKOFF_MAX_MS = 24 * 3_600_000;
 /** Wait after the n-th refusal in a row: 15 minutes, doubling, at most a day. */
 export const archiveBackoffMs = (refusals) => Math.min(BACKOFF_FIRST_MS * 2 ** Math.max(0, refusals - 1), BACKOFF_MAX_MS);
+/** Statuses with which Planetary Computer refuses service, as opposed to failing one request. */
+export const ARCHIVE_REFUSAL_STATUSES = new Set([401, 403, 429, 451]);
+export const BACKOFF_TTL_SECONDS = 7 * 86_400;
+export const archiveBackoffCommand = (backoff) => ['SET', ORBITAL_SITES_BACKOFF_KEY, JSON.stringify(backoff), 'EX', BACKOFF_TTL_SECONDS];
+
+/** The archive backoff after one more refusal: each refusal in a row doubles the wait. */
+export function nextBackoff(previous, reason, nowMs) {
+  const refusals = (previous?.refusals ?? 0) + 1;
+  return { refusals, reason, at: nowMs, until: nowMs + archiveBackoffMs(refusals) };
+}
 export { ROLLUP_MAX_AGE_MS, SITES_SCHEMA };
 
 export const PAST_DAYS = 6;

@@ -3254,6 +3254,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         ttlSeconds,
         recordCount: contractRecordCount,
         runId,
+        lockFence,
         preservationSucceeded: preserved,
       };
       // Some rejected snapshots carry failure evidence that must survive even
@@ -3499,7 +3500,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
 
     assertLockStillHeld();
     const afterPublishResult = afterPublish
-      ? await afterPublish(data, { canonicalKey, ttlSeconds, recordCount, runId })
+      ? await afterPublish(data, { canonicalKey, ttlSeconds, recordCount, runId, lockFence })
       : null;
 
     // Mirror content-age fields into seed-meta when the seeder opted in.
