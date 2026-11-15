@@ -53,8 +53,40 @@ async function postJson(url, body, fetchImpl) {
   return response.json();
 }
 
-export const makeSceneSearch = (fetchImpl = (...args) => globalThis.fetch(...args)) =>
-  (body) => postJson(STAC_SEARCH_URL, body, fetchImpl);
+async function getJson(url, fetchImpl) {
+  const response = await fetchImpl(url, {
+    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+export const MAX_SEARCH_PAGES = 5;
+
+const nextLink = (page) => (Array.isArray(page?.links) ? page.links.find((l) => l?.rel === 'next') : null);
+
+/** The next page of a STAC search, followed only on the search host; null when it is elsewhere. */
+function fetchNextPage(link, body, fetchImpl) {
+  const href = new URL(link.href ?? STAC_SEARCH_URL, STAC_SEARCH_URL);
+  if (href.origin !== new URL(STAC_SEARCH_URL).origin) return null;
+  if (String(link.method ?? 'GET').toUpperCase() === 'POST') return postJson(href.href, link.merge ? { ...body, ...link.body } : (link.body ?? body), fetchImpl);
+  return getJson(href.href, fetchImpl);
+}
+
+/** Every page of a scene search; `truncated` when pages remain, so the search window is not marked complete. */
+export const makeSceneSearch = (fetchImpl = (...args) => globalThis.fetch(...args)) => async (body) => {
+  let page = await postJson(STAC_SEARCH_URL, body, fetchImpl);
+  const features = [];
+  for (let n = 1; ; n += 1) {
+    if (Array.isArray(page?.features)) features.push(...page.features);
+    const link = nextLink(page);
+    if (!link) return { features, truncated: false };
+    const next = n < MAX_SEARCH_PAGES ? fetchNextPage(link, body, fetchImpl) : null;
+    if (!next) return { features, truncated: true };
+    page = await next;
+  }
+};
 
 export const makeStatisticsFetch = (fetchImpl = (...args) => globalThis.fetch(...args)) =>
   (sceneId, geometry) => postJson(`${STATISTICS_URL}?${statisticsQuery(sceneId)}`, { type: 'Feature', properties: {}, geometry }, fetchImpl);

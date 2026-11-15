@@ -160,8 +160,11 @@ export async function measureReservoir(target, previous, { searchScenes, fetchSt
   };
   if (clock() >= deadlineMs) return { record: carried(), requests: 0, added: 0, error: null };
   let scenes;
+  let truncated;
   try {
-    scenes = scenesFromSearch(await searchScenes(stacSearchBody(target.box, searchSince(keep, nowMs), untilIso)));
+    const collection = await searchScenes(stacSearchBody(target.box, searchSince(keep, nowMs), untilIso));
+    scenes = scenesFromSearch(collection);
+    truncated = collection?.truncated === true;
   } catch (error) {
     return { record: carried(), requests: 1, added: 0, error: `search: ${error.message}` };
   }
@@ -170,7 +173,7 @@ export async function measureReservoir(target, previous, { searchScenes, fetchSt
   const partial = new Set(keep?.partialScenes ?? []);
   let requests = 1;
   let error = null;
-  let complete = todo.length === pendingScenes(scenes, keep, Infinity).length;
+  let complete = !truncated && todo.length === pendingScenes(scenes, keep, Infinity).length;
   for (const scene of todo) {
     if (clock() >= deadlineMs) { complete = false; break; }
     requests += 1;

@@ -23,7 +23,9 @@ import {
   ORBITAL_WATER_EXTENT_KEY,
   buildSeedOptions,
   loadWatchlist,
+  MAX_SEARCH_PAGES,
   makeFetchWaterExtent,
+  makeSceneSearch,
   makeStatisticsFetch,
   waterExtentEnabled,
 } from '../scripts/seed-orbital-water-extent.mjs';
@@ -162,6 +164,39 @@ describe('reservoir water extent: producer', () => {
     const first = await run({ search: () => ({ features: [scene('s1', 8)] }), statistics: () => stats(100, 10, 5) });
     const { data } = await run({ previous: first.data, search: () => { throw new Error('HTTP 503'); }, statistics: () => stats(100, 10, 5) });
     assert.deepEqual(data.reservoirs['reservoir:kariba'].observations.map((o) => o.sceneId), ['s1']);
+  });
+
+  it('follows search pages on the search host and flags a search with pages left over', async () => {
+    const posts = [];
+    const pageOf = (id, token) => ({
+      features: [scene(id, 1)],
+      links: token ? [{ rel: 'next', method: 'POST', href: 'https://planetarycomputer.microsoft.com/api/stac/v1/search', body: { token }, merge: true }] : [],
+    });
+    const search = makeSceneSearch(async (url, init) => {
+      const body = JSON.parse(init.body);
+      posts.push(body);
+      const n = posts.length;
+      return { ok: true, json: async () => pageOf(`p${n}`, n < 2 ? `next:${n}` : null) };
+    });
+    const two = await search({ collections: ['sentinel-1-rtc'] });
+    assert.deepEqual(two.features.map((f) => f.id), ['p1', 'p2']);
+    assert.equal(two.truncated, false);
+    assert.deepEqual(posts[1], { collections: ['sentinel-1-rtc'], token: 'next:1' }, 'next page merges the token into the search');
+
+    const endless = makeSceneSearch(async () => ({ ok: true, json: async () => pageOf('x', 'more') }));
+    const capped = await endless({});
+    assert.equal(capped.features.length, MAX_SEARCH_PAGES);
+    assert.equal(capped.truncated, true);
+
+    const offHost = makeSceneSearch(async () => ({ ok: true, json: async () => ({ features: [], links: [{ rel: 'next', href: 'https://example.com/steal' }] }) }));
+    assert.equal((await offHost({})).truncated, true);
+  });
+
+  it('does not mark a truncated search complete', async () => {
+    const { data } = await run({ search: () => ({ features: [scene('s1', 2)], truncated: true }), statistics: () => stats(100, 10, 5) });
+    const kariba = data.reservoirs['reservoir:kariba'];
+    assert.deepEqual(kariba.observations.map((o) => o.sceneId), ['s1']);
+    assert.equal(kariba.searchedThrough, null);
   });
 
   it('posts the box as a GeoJSON feature with a User-Agent', async () => {
