@@ -96,6 +96,7 @@ import { globeAltitudeToMapZoom, mapZoomToGlobeAltitude } from '@/utils/globe-zo
 import { globeCenterForOffset, isOnVisibleHemisphere, type ScreenOffset } from '@/utils/map-point-offset';
 import { headingToCompass } from '@/utils/heading-to-compass';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
+import { holdsViewportRequests, onViewportRequestsResumed } from '@/services/orbital/lookup-host';
 
 export interface GlobeMapOptions {
   onInitError?: (error: unknown) => void;
@@ -544,6 +545,7 @@ export class GlobeMap {
   private unsubscribeGlobeQuality: (() => void) | null = null;
   private unsubscribeGlobeTexture: (() => void) | null = null;
   private unsubscribeVisualPreset: (() => void) | null = null;
+  private stopViewportResume: (() => void) | null = null;
   private premiumLayerGate: PremiumLayerGate | null = null;
   private pendingPremiumLayerChanges = new Set<keyof MapLayers>();
   private savedDefaultMaterial: any = null;
@@ -720,6 +722,11 @@ export class GlobeMap {
 
     this.container.classList.add('globe-mode');
     this.container.style.cssText = 'width:100%;height:100%;background:#000;position:relative;';
+
+    // An imagery search held while the satellite pass lookup was open runs for where the globe is now.
+    this.stopViewportResume = onViewportRequestsResumed(() => {
+      if (!this.destroyed && this.layers.satellites) void this.fetchImageryForViewport();
+    });
 
     this.initPromise = this.initGlobe();
     this.initPromise.catch(err => {
@@ -3803,7 +3810,8 @@ export class GlobeMap {
   }
 
   private async fetchImageryForViewport(): Promise<void> {
-    if (this.destroyed) return;
+    // The satellite pass lookup has the globe on its point; the scenes already drawn stay.
+    if (this.destroyed || holdsViewportRequests()) return;
     const center = this.getCenter();
     if (!center) return;
     if (this.lastImageryCenter) {
@@ -4515,6 +4523,8 @@ export class GlobeMap {
     this.unsubscribeGlobeTexture = null;
     this.unsubscribeVisualPreset?.();
     this.unsubscribeVisualPreset = null;
+    this.stopViewportResume?.();
+    this.stopViewportResume = null;
     this.premiumLayerGate?.destroy();
     this.premiumLayerGate = null;
     this.pendingPremiumLayerChanges.clear();

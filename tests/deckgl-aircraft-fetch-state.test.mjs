@@ -24,10 +24,10 @@ function createHarness() {
   // Execute the real methods without constructing the WebGL map. Select methods
   // by syntax node so comments, formatting and adjacent methods are irrelevant.
   // eslint-disable-next-line no-new-func
-  const Harness = new Function('fetchAircraftPositions', 'window', 'setTrustedHtml', 'trustedHtml', 'console',
+  const Harness = new Function('fetchAircraftPositions', 'window', 'setTrustedHtml', 'trustedHtml', 'console', 'holdsViewportRequests',
     `${harnessJs}\nreturn AircraftHarness;`)(
     () => new Promise((resolve, reject) => requests.push({ resolve, reject })),
-    { removeEventListener() {} }, () => {}, () => '', { error() {} },
+    { removeEventListener() {} }, () => {}, () => '', { error() {} }, () => false,
   );
   const instance = new Harness();
   const effects = [];
