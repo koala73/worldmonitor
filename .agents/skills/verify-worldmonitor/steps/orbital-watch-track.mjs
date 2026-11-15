@@ -12,6 +12,7 @@
  * WM_VERIFY_ORBITAL_THEME=light drives the light theme.
  */
 import { fixtureCatalog } from './orbital-watch.mjs';
+import { pointFromText, pointLeak } from './_point-leak.mjs';
 import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
 
 const ARCHIVE_HOSTS = ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com', 'gibs.earthdata.nasa.gov', 'view.eumetsat.int'];
@@ -137,9 +138,9 @@ export default async function ({ page, base, shot: capture, log, expectVisible }
   await page.waitForTimeout(1_000);
   await shot('track-removed-on-close');
 
-  const needles = pointText.match(/\d+\.\d\d/g) ?? [];
+  const picked = pointFromText(pointText);
   const leaks = requests.filter(({ url, body }) => url.split('#')[0] !== startUrl.split('#')[0] && !ARCHIVE_HOSTS.includes(new URL(url).hostname)
-    && needles.length > 0 && needles.every((n) => `${url} ${body}`.includes(n)));
+    && pointLeak(`${url} ${body}`, picked));
   if (leaks.length) throw new Error(`picked point left the browser: ${leaks.map((l) => l.url).join(', ')}`);
   return { mobile, flat, fiji, renderer, pointText, firstName, secondName, leaks: leaks.length };
 }

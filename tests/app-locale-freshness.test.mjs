@@ -50,7 +50,7 @@ const ENGLISH_CEILING = {
   // de 278 -> 166, ru 377 -> 61, uk 2708 -> 95: copied English prose in those
   // catalogues was translated. What remains is brands, typed command examples,
   // acronyms, and words spelled the same in that language.
-  ar: 359, bg: 250, cs: 292, de: 166, el: 359, es: 433,
+  ar: 359, bg: 250, cs: 292, de: 170, el: 359, es: 433,
   // fr 425 -> 426: "Concentration" (supply vulnerability) and "Normal"
   // (divergence regime) are spelled identically in French. Both are correct
   // translations, not placeholder copies.
@@ -58,7 +58,13 @@ const ENGLISH_CEILING = {
   ja: 390, ko: 239, nl: 513, pl: 460, pt: 466, ro: 391,
   // ru 61 -> 64, uk 95 -> 98: Settings adds the plan name "Premium" and the
   // search keywords "webhook" and "iframe", which both catalogues keep in English.
-  ru: 64, sv: 490, sw: 393, th: 307, tr: 404, uk: 98,
+  // de 166 -> 167, uk 98 -> 99: the imagery evidence sheet adds the "UTC" time
+  // toggle, which both catalogues keep, and German shares "Sensor", "Status",
+  // "Pixel" and "Details" with English.
+  // de 167 -> 170, ru 64 -> 66, uk 99 -> 101: the globe satellite card adds
+  // "{{time}} UTC" and "NORAD {{id}}", which these catalogues keep as written,
+  // and German keeps the "SIGINT" type label.
+  ru: 66, sv: 490, sw: 393, th: 307, tr: 404, uk: 101,
   vi: 185, zh: 358, 'zh-TW': 358,
 };
 

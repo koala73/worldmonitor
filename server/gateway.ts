@@ -480,6 +480,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   // Premium-gated, so served private in practice; the tiers document intent.
   '/api/orbital/v1/get-point-passes': 'medium',
   '/api/orbital/v1/get-country-imagery-evidence': 'slow',
+  '/api/orbital/v1/get-watched-site-imagery': 'slow',
 
   '/api/infrastructure/v1/list-temporal-anomalies': 'medium',
   '/api/infrastructure/v1/get-ip-geo': 'no-store',

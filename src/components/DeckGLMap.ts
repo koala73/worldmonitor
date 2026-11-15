@@ -592,7 +592,7 @@ const ORBITAL_LEADING_EDGE_LAYER_ID = 'orbital-leading-edge-layer';
 const ORBITAL_REPLAY_LAYER_IDS = new Set([ORBITAL_SWEPT_LAYER_ID, ORBITAL_LEADING_EDGE_LAYER_ID, ORBITAL_TRACK_MARKER_LAYER_ID]);
 /** The Orbital Watch accent, text and background tokens as deck.gl RGB. */
 /** Reads an Orbital Watch colour token per render, so a theme switch repaints the orbital overlay. */
-function orbitalRgba(token: '--ow-mark' | '--ow-text' | '--ow-dim' | '--ow-panel', alpha: number): [number, number, number, number] {
+function orbitalRgba(token: '--green' | '--text' | '--text-dim' | '--panel-bg', alpha: number): [number, number, number, number] {
   const hex = getCSSColor(token).replace(/^#([\da-f])([\da-f])([\da-f])$/i, '#$1$1$2$2$3$3');
   const m = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex);
   return m ? [parseInt(m[1]!, 16), parseInt(m[2]!, 16), parseInt(m[3]!, 16), alpha] : [128, 128, 128, alpha];
@@ -967,6 +967,9 @@ export class DeckGLMap {
     windowMs: 60_000,
   });
   private destroyed = false;
+  private zoomCap: number | null = null;
+  /** The map's own max zoom, kept while a cap is on so lifting the cap puts it back. */
+  private uncappedMaxZoom: number | null = null;
   private distanceControl: MapDistanceControl | null = null;
   private usedFallbackStyle = false;
   private readonly chrome: boolean;
@@ -1309,6 +1312,7 @@ export class DeckGLMap {
         }
         : {}),
     });
+    this.applyZoomCap();
 
     const reportFatalBasemapFailure = (error: unknown, center = this.getCenter()): void => {
       const message = error instanceof Error ? error.message : String(error);
@@ -1380,6 +1384,7 @@ export class DeckGLMap {
             }
             : {}),
         });
+        this.applyZoomCap();
       } catch (error) {
         // MapLibre throws GPUInitializationError synchronously when WebGL2 is
         // gone (lost context, software renderer revoked, etc.). Catch it so it
@@ -7092,6 +7097,25 @@ export class DeckGLMap {
     };
   }
 
+  /** Holds the map at `max` zoom or below, through a rebuilt basemap too, or lifts the cap with null. MapLibre clamps a map already past it. */
+  public setZoomCap(max: number | null): void {
+    this.zoomCap = max;
+    this.applyZoomCap();
+  }
+
+  private applyZoomCap(): void {
+    const map = this.maplibreMap;
+    if (!map) return;
+    if (this.zoomCap === null) {
+      if (this.uncappedMaxZoom !== null) map.setMaxZoom(this.uncappedMaxZoom);
+      this.uncappedMaxZoom = null;
+      return;
+    }
+    this.uncappedMaxZoom ??= map.getMaxZoom();
+    map.setMaxZoom(this.zoomCap);
+    this.state.zoom = Math.min(this.state.zoom, this.zoomCap);
+  }
+
   // Zoom controls - public for external access
   public zoomIn(): void {
     if (this.maplibreMap) {
@@ -8254,7 +8278,7 @@ export class DeckGLMap {
         id: ORBITAL_SWEPT_LAYER_ID,
         data: swept.rings,
         getPolygon: (ring) => ring,
-        getFillColor: orbitalRgba('--ow-mark', 56),
+        getFillColor: orbitalRgba('--green', 56),
         stroked: false,
         pickable: false,
       }),
@@ -8262,7 +8286,7 @@ export class DeckGLMap {
         id: ORBITAL_LEADING_EDGE_LAYER_ID,
         data: swept.leadingEdge,
         getPath: (line) => line,
-        getColor: orbitalRgba('--ow-mark', 255),
+        getColor: orbitalRgba('--green', 255),
         getWidth: 3,
         widthUnits: 'pixels',
         capRounded: true,
@@ -8274,8 +8298,8 @@ export class DeckGLMap {
         getPosition: (point) => [point.lon, point.lat],
         getRadius: 5,
         radiusUnits: 'pixels',
-        getFillColor: orbitalRgba('--ow-text', 255),
-        getLineColor: orbitalRgba('--ow-panel', 230),
+        getFillColor: orbitalRgba('--text', 255),
+        getLineColor: orbitalRgba('--panel-bg', 230),
         stroked: true,
         lineWidthMinPixels: 1.5,
         pickable: false,
@@ -8332,7 +8356,7 @@ export class DeckGLMap {
         radiusUnits: 'pixels',
         filled: false,
         stroked: true,
-        getLineColor: orbitalRgba('--ow-mark', 255),
+        getLineColor: orbitalRgba('--green', 255),
         lineWidthUnits: 'pixels',
         getLineWidth: 2,
       }),
@@ -8342,7 +8366,7 @@ export class DeckGLMap {
         ...ring,
         getRadius: 3,
         radiusUnits: 'pixels',
-        getFillColor: orbitalRgba('--ow-mark', 255),
+        getFillColor: orbitalRgba('--green', 255),
       }),
       new TextLayer<OrbitalTarget>({
         id: 'orbital-target-label-layer',
@@ -8350,17 +8374,17 @@ export class DeckGLMap {
         ...ring,
         getText: (point) => point.lines.join('\n'),
         getSize: 11,
-        fontFamily: getCSSColor('--ow-font-mono'),
+        fontFamily: getCSSColor('--font-mono'),
         fontWeight: 500,
         characterSet: 'auto',
         lineHeight: 1.45,
-        getColor: orbitalRgba('--ow-text', 255),
+        getColor: orbitalRgba('--text', 255),
         getTextAnchor: left ? 'end' : 'start',
         getAlignmentBaseline: 'center',
         getPixelOffset: [left ? -24 : 24, 0],
         updateTriggers: { getTextAnchor: left, getPixelOffset: left },
         background: true,
-        getBackgroundColor: orbitalRgba('--ow-panel', 225),
+        getBackgroundColor: orbitalRgba('--panel-bg', 225),
         backgroundPadding: [7, 4, 7, 4],
       }),
     ];
@@ -8375,8 +8399,8 @@ export class DeckGLMap {
         id: 'orbital-footprint-layer',
         data: shapes.footprint,
         getPolygon: (ring) => ring,
-        getFillColor: orbitalRgba('--ow-mark', 18),
-        getLineColor: orbitalRgba('--ow-mark', 120),
+        getFillColor: orbitalRgba('--green', 18),
+        getLineColor: orbitalRgba('--green', 120),
         lineWidthMinPixels: 1,
         pickable: false,
       }),
@@ -8384,7 +8408,7 @@ export class DeckGLMap {
         id: 'orbital-track-layer',
         data: [shapes.path],
         getPath: (path) => path,
-        getColor: orbitalRgba('--ow-dim', 230),
+        getColor: orbitalRgba('--text-dim', 230),
         getWidth: 1.5,
         widthUnits: 'pixels',
         pickable: false,

@@ -167,8 +167,24 @@ const ALERT_RULE_SHAPE_CODES = new Set([
   "EVENT_TYPES_INVALID",
   "CHANNELS_INVALID",
   "ORBITAL_SITES_INVALID",
+  "RESERVOIR_ALERT_INVALID",
   "RULE_LIMIT_EXCEEDED",
 ]);
+
+type ReservoirAlertBody = { reservoirs: string[]; belowPercent?: number; seasonalDrop?: boolean };
+
+/**
+ * The reservoir alert as the Convex validator needs it: an object holding only the three known
+ * keys, with the right types. Anything finer (id format, bounds) is the mutation's shape check, which answers 400.
+ */
+function isReservoirAlertBody(value: unknown): value is ReservoirAlertBody {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const { reservoirs, belowPercent, seasonalDrop, ...extra } = value as Record<string, unknown>;
+  return Object.keys(extra).length === 0
+    && Array.isArray(reservoirs) && reservoirs.every((id) => typeof id === "string")
+    && (belowPercent === undefined || typeof belowPercent === "number")
+    && (seasonalDrop === undefined || typeof seasonalDrop === "boolean");
+}
 
 function alertRuleValidationResponse(err: unknown, passthroughCodes: readonly string[] = []): Response | null {
   const code = extractConvexErrorCode(err);
@@ -1213,6 +1229,7 @@ http.route({
       tickers?: string[];
       chokepoints?: string[];
       orbitalSites?: string[];
+      reservoirAlert?: unknown;
       scheduleWelcome?: boolean;
     }>(request);
     if (!body) {
@@ -1356,7 +1373,8 @@ http.route({
           (body.countries !== undefined && !Array.isArray(body.countries)) ||
           (body.tickers !== undefined && !Array.isArray(body.tickers)) ||
           (body.chokepoints !== undefined && !Array.isArray(body.chokepoints)) ||
-          (body.orbitalSites !== undefined && !Array.isArray(body.orbitalSites))
+          (body.orbitalSites !== undefined && !Array.isArray(body.orbitalSites)) ||
+          (body.reservoirAlert !== undefined && !isReservoirAlertBody(body.reservoirAlert))
         ) {
           return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
@@ -1384,6 +1402,8 @@ http.route({
             chokepoints: Array.isArray(body.chokepoints) ? (body.chokepoints as string[]) : undefined,
             // Watched-site scope; the mutation validates the shape and gates it to Pro.
             orbitalSites: Array.isArray(body.orbitalSites) ? (body.orbitalSites as string[]) : undefined,
+            // Reservoir level alert; the mutation validates the shape and gates it to Pro.
+            reservoirAlert: body.reservoirAlert as ReservoirAlertBody | undefined,
           });
         } catch (err: unknown) {
           // normalizeTickers/normalizeCountries throw ConvexError with a
@@ -1490,6 +1510,9 @@ http.route({
         if (body.orbitalSites !== undefined && !Array.isArray(body.orbitalSites)) {
           return new Response(JSON.stringify({ error: "ORBITAL_SITES_MUST_BE_ARRAY" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
+        if (body.reservoirAlert !== undefined && !isReservoirAlertBody(body.reservoirAlert)) {
+          return new Response(JSON.stringify({ error: "RESERVOIR_ALERT_INVALID" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
         try {
           await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {
             userId,
@@ -1506,6 +1529,8 @@ http.route({
             tickers: Array.isArray(body.tickers) ? (body.tickers as string[]) : undefined,
             chokepoints: Array.isArray(body.chokepoints) ? (body.chokepoints as string[]) : undefined,
             orbitalSites: Array.isArray(body.orbitalSites) ? (body.orbitalSites as string[]) : undefined,
+            // Reservoir level alert; the mutation validates the shape and gates it to Pro.
+            reservoirAlert: body.reservoirAlert as ReservoirAlertBody | undefined,
           });
         } catch (err: unknown) {
           // Translate structured ConvexError codes into machine-readable HTTP

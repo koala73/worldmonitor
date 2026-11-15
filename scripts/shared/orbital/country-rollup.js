@@ -13,12 +13,17 @@ const scene = (value) => value && typeof value.itemId === 'string' && value.item
   ? { itemId: value.itemId, datetime: value.datetime, platform: typeof value.platform === 'string' ? value.platform : null }
   : null;
 
-/** The rollup when it is this country's, of a known schema and fresh; otherwise why not. */
-export function readCountryRollup(raw, countryCode, nowMs, maxAgeMs = ROLLUP_MAX_AGE_MS) {
+/**
+ * The one reader gate, shared with the seeder's own check: the rollup is this country's,
+ * of a known schema, the revision the sites index names, and fresh by its own `asOf`.
+ * `superseded` means the index is unreadable or names a different revision.
+ */
+export function readCountryRollup(raw, index, countryCode, nowMs, maxAgeMs = ROLLUP_MAX_AGE_MS) {
   if (raw === null || raw === undefined) return { status: 'missing' };
   if (typeof raw !== 'object' || raw.schema !== SITES_SCHEMA || raw.countryCode !== countryCode
-    || !Array.isArray(raw.sites) || !Number.isFinite(raw.asOf)) return { status: 'malformed' };
-  if (nowMs - raw.asOf > maxAgeMs) return { status: 'stale' };
+    || !Array.isArray(raw.sites) || !Number.isFinite(raw.asOf) || typeof raw.revision !== 'string') return { status: 'malformed' };
+  if (index?.schema !== SITES_SCHEMA || index.countries?.[countryCode]?.revision !== raw.revision) return { status: 'superseded' };
+  if (!(nowMs - raw.asOf <= maxAgeMs)) return { status: 'stale' };
   return { status: 'current', rollup: raw };
 }
 
@@ -27,7 +32,10 @@ export function scoredSiteCount(rollup) {
   return rollup.sites.filter((site) => site?.flag && typeof site.flag.state === 'string').length;
 }
 
-/** Each confirmed change, newest confirming scene first, with the scenes that raised and confirmed it. */
+/**
+ * Each confirmed change, newest confirming scene first, with the scenes that raised and
+ * confirmed it. Flags confirmed before the record kept its raising scene carry `raised: null`.
+ */
 export function confirmedSiteFlags(rollup) {
   const flags = [];
   for (const site of rollup.sites) {
@@ -35,7 +43,7 @@ export function confirmedSiteFlags(rollup) {
     if (flag?.state !== 'confirmed' || flag.wording !== FLAG_WORDING || !flag.confirmed) continue;
     const confirmed = scene(flag.confirmed);
     const raised = scene(flag.confirmed.raisedBy);
-    if (!confirmed || !raised || typeof site.siteId !== 'string' || typeof site.name !== 'string' || !site.name.trim()) continue;
+    if (!confirmed || typeof site.siteId !== 'string' || typeof site.name !== 'string' || !site.name.trim()) continue;
     flags.push({ siteId: site.siteId, name: site.name.trim(), geometryKey: String(flag.confirmed.geometryKey ?? ''), raised, confirmed });
   }
   return flags.sort((a, b) => b.confirmed.datetime.localeCompare(a.confirmed.datetime) || a.siteId.localeCompare(b.siteId));
