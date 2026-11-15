@@ -5364,8 +5364,6 @@
       "dailyMosaic": "日次モザイク",
       "weatherFrame": "気象フレーム",
       "change": "場所を変更",
-      "share": "リンクをコピー",
-      "shareCopied": "リンクをコピーしました",
       "showUtc": "UTC",
       "showLocal": "現地時間",
       "alert": "オープンデータ衛星が上空を通過する前と、雲のない新しい画像が出るたびに通知します。",
