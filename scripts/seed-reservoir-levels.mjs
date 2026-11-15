@@ -18,6 +18,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   DAY_MS,
   MISSION_START_ISO,
+  SEASONAL_Z_ALERT,
   bboxToPolygon,
   classifyPasses,
   computeChange,
@@ -39,6 +40,8 @@ import {
   runSeed,
 } from './_seed-utils.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
+import reservoirLevelAlerts from './lib/reservoir-level-alerts.cjs';
+import { publishNotificationEventOutcome } from './regional-snapshot/alert-emitter.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -502,6 +505,54 @@ export async function fetchReservoirLevels({
   };
 }
 
+/**
+ * The part of a published reservoir record the Pro level alert needs. A drop beyond the
+ * seasonal baseline is the seeder's own verdict: seasonalZ comes from seasonalBaseline,
+ * and SEASONAL_Z_ALERT is the limit classifyStatus already calls "low" with.
+ */
+export function toAlertRecord(r) {
+  return {
+    id: r.id,
+    name: r.name,
+    country: r.country,
+    latest: r.latest ? { date: r.latest.date, levelM: r.latest.levelM } : null,
+    percentOfRange: r.percentOfRange ?? null,
+    seasonalAnomalyM: r.seasonalAnomalyM ?? null,
+    seasonalZ: r.seasonalZ ?? null,
+    belowSeasonalBaseline: r.seasonalZ != null && r.seasonalZ <= -SEASONAL_Z_ALERT,
+  };
+}
+
+/** Level alerts over the reservoirs a run just published; their state lives beside the seed keys. */
+export async function publishLevelAlerts(data, creds, publish = publishNotificationEventOutcome) {
+  const records = (Array.isArray(data?.reservoirs) ? data.reservoirs : []).map(toAlertRecord);
+  return reservoirLevelAlerts.publishReservoirLevelAlerts(records, {
+    async readState(key, onError) {
+      try {
+        const { result } = await upstashCommand(creds, ['GET', key]);
+        return typeof result === 'string' ? JSON.parse(result) : null;
+      } catch (error) {
+        console.warn(`  Reservoir alerts: state read failed: ${error.message}`);
+        onError();
+        return null;
+      }
+    },
+    async writeState(key, state, ttlSeconds) {
+      try {
+        await upstashCommand(creds, ['SET', key, JSON.stringify(state), 'EX', String(ttlSeconds)]);
+        return true;
+      } catch (error) {
+        console.warn(`  Reservoir alerts: state write failed: ${error.message}`);
+        return false;
+      }
+    },
+    publish: async (event) => {
+      const outcome = await publish(event);
+      return outcome.enqueued || outcome.dedupHit;
+    },
+  });
+}
+
 export function stripState(data) {
   if (!data || typeof data !== 'object') return data;
   const { _state, ...rest } = data;
@@ -530,10 +581,17 @@ export function buildSeedOptions(watchlistSize = loadWatchlist().length) {
       declareRecords: (state) => Object.keys(state?.byId || {}).length,
     }],
     // runSeed calls this only after the canonical key, the state key and seed-meta are written.
-    afterFreshness: async () => {
+    afterFreshness: async (data) => {
       const creds = getOptionalUpstashCreds();
       if (!creds) throw new Error('Missing reservoir levels activation credentials');
       await upstashCommand(creds, ['SET', RESERVOIR_LEVELS_ACTIVATION_KEY, '1']);
+      // Best effort: an alert failure must not fail a seed whose data is already published.
+      try {
+        const summary = await publishLevelAlerts(data, creds);
+        if (summary) console.log(`  Reservoir alerts: ${summary.published} published, ${summary.failed} failed, ${summary.seeded} recorded`);
+      } catch (error) {
+        console.warn(`  Reservoir alerts failed: ${error.message}`);
+      }
     },
   };
 }

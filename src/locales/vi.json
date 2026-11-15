@@ -5637,6 +5637,21 @@
         "5": "đăng xuất",
         "6": "xóa tài khoản"
       }
+    },
+    "reservoirAlert": {
+      "title": "Cảnh báo mức nước",
+      "description": "Cảnh báo khi mức nước lidar của một hồ chứa chiến lược thấp. NASA công bố mỗi vòng quay vệ tinh khoảng hai tháng sau khi đo, vì vậy mỗi cảnh báo đều cung cấp ngày đo của nó.",
+      "scopeHint": "Chọn tối đa {{max}} hồ chứa. Cảnh báo chỉ bao gồm các hồ chứa được liệt kê ở đây.",
+      "searchPlaceholder": "Thêm hồ chứa theo tên",
+      "searchLabel": "Thêm hồ chứa",
+      "removeLabel": "Xóa {{name}}",
+      "thresholdLabel": "Ngưỡng mức nước",
+      "thresholdHint": "Cảnh báo khi mức nước đo được mới nhất dưới phần trăm này trong phạm vi đo được của chính hồ chứa, trong đó 0 là mức nước thấp nhất đo được và 100 là mức cao nhất. Để trống nếu không có ngưỡng.",
+      "thresholdInputLabel": "Ngưỡng mức nước, phần trăm phạm vi đo được",
+      "seasonalLabel": "Giảm vượt quá đường cơ sở theo mùa",
+      "seasonalHint": "Cảnh báo khi mức nước đo được mới nhất thấp hơn đáng kể so với những gì hồ chứa thường đo được vào thời điểm này trong năm.",
+      "quietNote": "Những cảnh báo này đến ngay cả khi cảnh báo thời gian thực chỉ được đặt ở mức quan trọng. Giờ yên tĩnh sẽ tắt chúng.",
+      "quietNoteBatch": "Những cảnh báo này đến ngay cả khi cảnh báo thời gian thực chỉ được đặt ở mức quan trọng. Giờ yên tĩnh sẽ tắt chúng hoặc giữ lại chúng cho đến khi giờ yên tĩnh kết thúc nếu bạn chọn Batch."
     }
   }
 }

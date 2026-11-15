@@ -56,7 +56,7 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
       if (url.includes('/SET/')) return Response.json({ result: 'OK' });
       if (url.includes('/LLEN/')) return Response.json({ result: 1 });
       if (url.includes('/LRANGE/')) return Response.json({ result: [JSON.stringify({ eventType: 'market_alert', payload: { title: 'Held alert' } })] });
-      if (url.includes('/DEL/')) return Response.json({ result: 1 });
+      if (url.includes('/DEL/') || url.includes('/LREM/')) return Response.json({ result: 1 });
       assert.equal(url, 'https://api.telegram.org/botfake/sendMessage');
       sends.push(JSON.parse(String(init?.body)));
       return Response.json({ ok: true });
