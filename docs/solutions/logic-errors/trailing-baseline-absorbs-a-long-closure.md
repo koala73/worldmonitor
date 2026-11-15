@@ -46,8 +46,8 @@ baseline for a closed strait.
 
 ## Solution
 
-Measure flow against the same strait a year earlier, which a closure cannot
-contaminate (PR #10784):
+Measure flow against the same strait a year earlier, which a closure shorter
+than a year cannot contaminate (PR #10784):
 
 - `scripts/seed-portwatch.mjs` `fetchBaselineStats` asks ArcGIS
   `outStatistics` for tanker count and tanker DWT means over the 12 months
@@ -86,8 +86,15 @@ normal.
 
 A trailing baseline answers "is this week unusual compared with the recent
 past?". During a disruption longer than the window, the recent past is the
-disruption, so the question has the wrong answer built in. A fixed reference
-period before the event answers "is this week unusual compared with normal?".
+disruption, so the question has the wrong answer built in. The year-earlier
+window answers "is this week unusual compared with the same strait a year
+ago?", which stays correct for any closure shorter than a year.
+
+The window still moves: `baselineWindow()` covers `[now - 730d, now - 365d)`
+and advances on every run. A closure that lasts more than a year starts to
+enter it, and after two years it fills it, so the estimate would drift back
+towards "normal". Protection beyond that needs a baseline pinned to a date
+before the event, which this fix does not do.
 The coverage gates keep a thinly reported year from defining normal, and the
 unreported-DWT rule keeps a missing value from reading as a measured zero.
 
@@ -95,7 +102,9 @@ unreported-DWT rule keeps a missing value from reading as a measured zero.
 
 - When a metric compares recent values with a trailing window, ask what it
   reports once a disruption outlasts the window. If the answer is "normal",
-  anchor the baseline to a period that ends before the disruption could start.
+  move the window further back, and state how long a disruption it covers. A
+  lagged window only delays the problem by its lag; only a baseline pinned
+  before the event removes it.
 - Store a mean only with the count of the rows it averages, and gate each mean
   on its own coverage. A coverage check that divides by another field's day
   count can pass while the mean itself is mostly zero-filled.
