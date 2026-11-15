@@ -23,9 +23,6 @@ export async function fetchJSON(url: string, timeout = 8000): Promise<any> {
   return await res.json();
 }
 
-/**
- * Extract volumes from a Yahoo Finance v8 chart response.
- */
 export function extractVolumes(chart: any): number[] {
   try {
     const result = chart?.chart?.result?.[0];

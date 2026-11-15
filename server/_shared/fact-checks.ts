@@ -56,7 +56,6 @@ const RATING_MAX_CHARS = 200;
 const REVIEWED_CLAIM_MAX_CHARS = 1000;
 const TITLE_MAX_CHARS = 200;
 
-/** IFCN-verified fact-checker domains (shared/fact-checkers.json). */
 export const FACT_CHECKER_DOMAINS: ReadonlySet<string> = new Set(
   (FACT_CHECKERS as { domains: string[] }).domains.map(normalizeHost),
 );

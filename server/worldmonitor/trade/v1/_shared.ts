@@ -1,6 +1,3 @@
-/**
- * WTO member numeric codes → human-readable names.
- */
 export const WTO_MEMBER_CODES: Record<string, string> = {
   '840': 'United States',
   '156': 'China',
