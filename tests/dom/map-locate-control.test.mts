@@ -25,7 +25,7 @@ vi.mock('@/app/orbital-watch', () => ({ openOrbitalWatch }));
 
 import type { AppContext } from '@/app/app-context';
 import { CountryIntelManager } from '@/app/country-intel';
-import { isMapUrlCentreClaimed, publishedMapCentre, releaseMapUrlCentreOnUserMove } from '@/app/orbital-map-focus';
+import { claimMapUrlCentre, isMapUrlCentreClaimed, publishedMapCentre, releaseMapUrlCentreOnUserMove } from '@/app/orbital-map-focus';
 import { MapContainer } from '@/components/MapContainer';
 import { dismissMapContextMenu, type MapContextMenuItem } from '@/components/MapContextMenu';
 import { MapLocateControl, type LocatedPoint } from '@/components/MapLocateControl';
@@ -357,5 +357,24 @@ describe('locate control placement', () => {
     const { map, mounts } = container('deck', false);
     map.addMapControl(document.createElement('div'));
     expect(mounts.deckGLMap.mountMapControl).not.toHaveBeenCalled();
+  });
+});
+
+describe('located URL claim across a satellite lookup', () => {
+  it('keeps the located anchor when a lookup at that point claims the centre without one', () => {
+    const mapEl = document.createElement('div');
+    mapEl.id = 'mapContainer';
+    document.body.append(mapEl);
+    let centre = { ...ROUNDED };
+    claimMapUrlCentre(null, { point: ROUNDED, read: () => centre });
+    // "Imagery evidence here" opens the satellite lookup at the located point,
+    // which claims the URL centre with no anchor of its own.
+    claimMapUrlCentre();
+    // Closing the sheet restores the camera at the located point and waits for a user move.
+    releaseMapUrlCentreOnUserMove(mapEl);
+    mapEl.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(isMapUrlCentreClaimed()).toBe(true);
+    centre = { lat: ROUNDED.lat + 1, lon: ROUNDED.lon };
+    expect(isMapUrlCentreClaimed()).toBe(false);
   });
 });

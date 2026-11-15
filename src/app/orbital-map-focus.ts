@@ -104,9 +104,17 @@ function anchorLeft(): boolean {
  * newer viewport command ends the claim by itself: it ends only once the live
  * centre has actually left the point. A zoom click, a Tab press, or a fit that
  * has not landed yet would otherwise let the URL sync publish the position.
+ *
+ * A later claim with no anchor (a satellite lookup opened at the located
+ * point) keeps an anchored claim that is still active: replacing it would let
+ * the first gesture after that sheet closes publish the located position.
  */
 export function claimMapUrlCentre(stillOwned: (() => boolean) | null = null, anchorAt: MapUrlCentreAnchor | null = null): void {
   stopWaiting?.();
+  if (!anchorAt && urlClaimed && anchor) {
+    userInput = false;
+    return;
+  }
   urlClaimed = true;
   ownsCentre = stillOwned;
   anchor = anchorAt;
