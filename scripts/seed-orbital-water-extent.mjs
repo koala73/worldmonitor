@@ -74,7 +74,10 @@ function fetchNextPage(link, body, fetchImpl) {
   return getJson(href.href, fetchImpl);
 }
 
-/** Every page of a scene search; `truncated` when pages remain, so the search window is not marked complete. */
+/**
+ * Every page of a scene search; `truncated` when pages remain or a later page fails, so the scenes found
+ * are still measured but the search window is not marked complete.
+ */
 export const makeSceneSearch = (fetchImpl = (...args) => globalThis.fetch(...args)) => async (body) => {
   let page = await postJson(STAC_SEARCH_URL, body, fetchImpl);
   const features = [];
@@ -84,7 +87,11 @@ export const makeSceneSearch = (fetchImpl = (...args) => globalThis.fetch(...arg
     if (!link) return { features, truncated: false };
     const next = n < MAX_SEARCH_PAGES ? fetchNextPage(link, body, fetchImpl) : null;
     if (!next) return { features, truncated: true };
-    page = await next;
+    try {
+      page = await next;
+    } catch {
+      return { features, truncated: true };
+    }
   }
 };
 

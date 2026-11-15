@@ -208,6 +208,16 @@ describe('reservoir water extent: producer', () => {
     assert.equal(capped.features.length, MAX_SEARCH_PAGES);
     assert.equal(capped.truncated, true);
 
+    let pages = 0;
+    const flaky = makeSceneSearch(async () => {
+      pages += 1;
+      if (pages === 2) return { ok: false, status: 502 };
+      return { ok: true, json: async () => pageOf('first', 'more') };
+    });
+    const kept = await flaky({});
+    assert.deepEqual(kept.features.map((f) => f.id), ['first'], 'a failed later page keeps the pages already read');
+    assert.equal(kept.truncated, true);
+
     const offHost = makeSceneSearch(async () => ({ ok: true, json: async () => ({ features: [], links: [{ rel: 'next', href: 'https://example.com/steal' }] }) }));
     assert.equal((await offHost({})).truncated, true);
   });
