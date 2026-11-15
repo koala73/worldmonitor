@@ -514,6 +514,39 @@ function buildHeldTextParts(heldLines, { limit, measure }) {
   });
 }
 
+// Removes the items this drain read, each by its own value (LREM, count 1), and leaves the rest. DEL
+// would also discard an alert held while the sends were in flight, and a position-based trim shifts
+// when a hold at QUIET_HELD_MAX drops the head. Upstash /pipeline is not transactional, so nothing
+// here relies on atomicity: an item that is already gone is simply not removed.
+async function removeHeldItems(key, rawItems) {
+  const result = { removed: 0, alreadyGone: 0, failedNonOk: 0, failedTimedOut: 0 };
+  for (const raw of rawItems) {
+    // One retry: a failed removal means a delivered alert stays held and is sent again.
+    let outcome = 'failed-non-ok';
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const removed = await upstashRest('LREM', key, '1', raw);
+        // upstashRest answers null for a non-OK response; the count is 1 (removed) or 0 (already gone).
+        if (removed === null || removed === undefined) { outcome = 'failed-non-ok'; continue; }
+        outcome = removed > 0 ? 'removed' : 'already-gone';
+        break;
+      } catch {
+        // The request itself rejected (timeout or network), which is not the same as a refusal.
+        outcome = 'failed-timed-out';
+      }
+    }
+    if (outcome === 'removed') result.removed += 1;
+    else if (outcome === 'already-gone') result.alreadyGone += 1;
+    else if (outcome === 'failed-timed-out') result.failedTimedOut += 1;
+    else result.failedNonOk += 1;
+  }
+  const failed = result.failedNonOk + result.failedTimedOut;
+  if (failed > 0) {
+    console.warn(`[relay] drainHeldForUser: could not remove ${failed} delivered held alert${failed === 1 ? '' : 's'} (${result.failedNonOk} non-OK, ${result.failedTimedOut} timed out); they may be sent again`);
+  }
+  return { ...result, failed };
+}
+
 // Delivers (or discards) the held queue for a single user+variant.
 // Used by both drainBatchOnWake (wake-up) and processFlushQuietHeld (settings change).
 // allowedChannelTypes: which channels to attempt delivery on; null = use rule's channels.
@@ -539,7 +572,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
   for (const ev of parsedEvents) {
     if ((await suppressedLinksFor(ev, 1, 'stage=quiet-hours-drain')).length === 0) events.push(ev);
   }
-  if (events.length === 0) { await upstashRest('DEL', key); return; }
+  if (events.length === 0) { await removeHeldItems(key, items); return; }
 
   const heldLines = formatHeldAlertLines(events);
   const lines = [`WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''} from quiet hours`, '', ...heldLines];
@@ -654,8 +687,8 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
     else mostDelivered = Math.max(mostDelivered, delivered);
   }
   if (anyDelivered) {
-    await upstashRest('DEL', key);
-    console.log(`[relay] drainHeldForUser: delivered ${events.length} held events to ${userId} (${variant})`);
+    const cleared = await removeHeldItems(key, items);
+    console.log(`[relay] drainHeldForUser: delivered ${events.length} held events to ${userId} (${variant})${cleared.failed > 0 ? `; ${cleared.failed} not removed` : ''}`);
   } else if (mostDelivered > 0) {
     // No channel took the whole batch, but some alerts already arrived: keep only the rest, so the
     // next drain does not send them again.
@@ -664,8 +697,8 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
     // sends: a hold that arrives at QUIET_HELD_MAX meanwhile drops the oldest entry from the head and
     // shifts every index. Upstash /pipeline is not transactional, so nothing here relies on atomicity;
     // an entry that is already gone is simply not removed.
-    for (const ev of events.slice(0, mostDelivered)) await upstashRest('LREM', key, '1', items[itemIndex.get(ev)]);
-    console.log(`[relay] drainHeldForUser: delivered ${mostDelivered} of ${events.length} held events to ${userId} (${variant}); ${remaining} stay held`);
+    const cleared = await removeHeldItems(key, events.slice(0, mostDelivered).map((ev) => items[itemIndex.get(ev)]));
+    console.log(`[relay] drainHeldForUser: delivered ${mostDelivered} of ${events.length} held events to ${userId} (${variant}); ${remaining} stay held${cleared.failed > 0 ? `, ${cleared.failed} delivered but not removed` : ''}`);
   }
 }
 
@@ -2348,6 +2381,7 @@ module.exports = {
   buildTeamsAlertForEvent,
   formatHeldAlertLines,
   buildHeldTextParts,
+  removeHeldItems,
   sendTeams,
   processWelcome,
   popNextEvent,

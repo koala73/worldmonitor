@@ -49,10 +49,10 @@ const heldEvents = (count) => Array.from({ length: count }, (_, n) => reservoirE
 const titleOf = (n) => reservoirEvent(n).payload.title;
 
 /** Runs one drain. `failTelegramSend` lists 1-based send numbers that Telegram rejects. */
-async function drain(held, { failTelegramSend = [], throwTelegramSend = [], onTelegramSend = null } = {}) {
+async function drain(held, { failTelegramSend = [], throwTelegramSend = [], onTelegramSend = null, lremFails = null, logs = null } = {}) {
   const sent = [];
   const silence = [console.log, console.warn, console.error];
-  console.log = console.warn = console.error = () => {};
+  console.log = console.warn = console.error = (...args) => { logs?.push(args.join(' ')); };
   let sends = 0;
   globalThis.fetch = async (url, init) => {
     const parsed = new URL(String(url));
@@ -77,6 +77,12 @@ async function drain(held, { failTelegramSend = [], throwTelegramSend = [], onTe
     if (path.startsWith('/RPUSH/')) { held.push(decodeURIComponent(path.split('/')[3])); return { ok: true, json: async () => ({ result: held.length }) }; }
     if (path.startsWith('/LLEN/')) return { ok: true, json: async () => ({ result: held.length }) };
     if (path.startsWith('/LRANGE/')) return { ok: true, json: async () => ({ result: [...held] }) };
+    if (path.startsWith('/LREM/') && lremFails) {
+      const raw = decodeURIComponent(path.split('/')[4]);
+      const mode = lremFails(raw);
+      if (mode === 'throw') throw new TypeError('The operation was aborted due to timeout');
+      if (mode === 'status') return { ok: false, status: 503, json: async () => ({}) };
+    }
     if (path.startsWith('/LREM/')) { const [, , , , value] = path.split('/'); const i = held.indexOf(decodeURIComponent(value)); if (i >= 0) held.splice(i, 1); return { ok: true, json: async () => ({ result: i >= 0 ? 1 : 0 }) }; }
     if (path.startsWith('/LTRIM/')) { held.splice(0, Number(path.split('/')[3])); return { ok: true, json: async () => ({ result: 'OK' }) }; }
     if (path.startsWith('/DEL/')) { held.length = 0; return { ok: true, json: async () => ({ result: 1 }) }; }
@@ -160,6 +166,17 @@ describe('quiet-hours drain with a long held batch', () => {
     }
   });
 
+  it('an alert held while every send succeeds stays held, and only the delivered alerts are cleared', async () => {
+    const held = asHeld(heldEvents(60));
+    const late = JSON.stringify(reservoirEvent(60));
+    const first = await drain(held, { onTelegramSend: (n, list) => { if (n === 1) list.push(late); } });
+    for (let n = 0; n < 60; n += 1) assert.equal(countOf(first, titleOf(n)), 1, `alert ${n} delivered once`);
+    assert.deepEqual(held, [late], 'the alert held mid-drain is still held');
+    const second = await drain(held);
+    assert.equal(countOf(second, titleOf(60)), 1);
+    assert.deepEqual(held, []);
+  });
+
   it('an unreadable held item does not shift which alerts stay held after a partial drain', async () => {
     const held = ['{not json', ...asHeld(heldEvents(60))];
     const first = await drain(held, { failTelegramSend: [2] });
@@ -206,5 +223,36 @@ describe('buildHeldTextParts', () => {
     assert.equal(parts.length, 1);
     assert.ok(parts[0].text.length <= 2000);
     assert.equal(parts[0].count, 1);
+  });
+});
+
+describe('removing delivered held alerts', () => {
+  it('a non-OK LREM is reported as not cleaned up, and the other alerts are still removed', async () => {
+    const held = asHeld(heldEvents(5));
+    const stuck = held[2];
+    const logs = [];
+    const sent = await drain(held, { lremFails: (raw) => (raw === stuck ? 'status' : null), logs });
+    assert.equal(sent.length, 1);
+    assert.deepEqual(held, [stuck], 'only the alert whose removal failed is still held');
+    assert.ok(logs.some((l) => /could not remove 1 delivered held alert/.test(l) && /1 non-OK/.test(l) && /0 timed out/.test(l)), logs.join('\n'));
+    assert.ok(!logs.some((l) => /delivered 5 held events .*\(full\)$/.test(l)), 'not reported as a clean delivery');
+  });
+
+  it('a timed-out LREM is told apart from a non-OK one and does not stop the removals after it', async () => {
+    const held = asHeld(heldEvents(5));
+    const stuck = held[0];
+    const logs = [];
+    await drain(held, { lremFails: (raw) => (raw === stuck ? 'throw' : null), logs });
+    assert.deepEqual(held, [stuck], 'the removals after the timed-out one still ran');
+    assert.ok(logs.some((l) => /could not remove 1 delivered held alert/.test(l) && /0 non-OK/.test(l) && /1 timed out/.test(l)), logs.join('\n'));
+  });
+
+  it('a removal that fails once is retried and counts as cleaned up when the retry works', async () => {
+    const held = asHeld(heldEvents(3));
+    const seen = new Map();
+    const logs = [];
+    await drain(held, { lremFails: (raw) => { const n = (seen.get(raw) ?? 0) + 1; seen.set(raw, n); return n === 1 ? 'status' : null; }, logs });
+    assert.deepEqual(held, []);
+    assert.ok(!logs.some((l) => /could not remove/.test(l)));
   });
 });

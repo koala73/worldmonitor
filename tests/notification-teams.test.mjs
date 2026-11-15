@@ -301,6 +301,7 @@ describe('realtime relay Teams dispatch', () => {
     const deactivations = [];
     const held = [];
     const deletedHeld = [];
+    const removedHeld = [];
     globalThis.fetch = async (input, init) => {
       const url = String(input);
       if (url.includes('/relay/enabled-rules')) return Response.json([{
@@ -313,9 +314,10 @@ describe('realtime relay Teams dispatch', () => {
       if (url.includes('/LLEN/')) return Response.json({ result: 1 });
       if (url.includes('/LRANGE/')) return Response.json({ result: heldEvents.map(ev => JSON.stringify(ev)) });
       if (url.includes('/DEL/')) { deletedHeld.push(url); return Response.json({ result: 1 }); }
+      if (url.includes('/LREM/')) { removedHeld.push(url); return Response.json({ result: 1 }); }
       return Response.json({ result: 'OK' });
     };
-    return { relay: loaded.relay, posts, deactivations, held, deletedHeld };
+    return { relay: loaded.relay, posts, deactivations, held, deletedHeld, removedHeld };
   }
 
   it('delivers a matching event to the Teams channel as an Adaptive Card', async () => {
@@ -367,7 +369,7 @@ describe('realtime relay Teams dispatch', () => {
     const heldEvents = Array.from({ length: 100 }, (_, i) => ({
       eventType: 'conflict_escalation', severity: 'high', payload: { title: `Held ${String(i).padStart(3, '0')} ${'x'.repeat(190)}` },
     }));
-    const { relay, posts, deletedHeld } = setup({ heldEvents });
+    const { relay, posts, removedHeld } = setup({ heldEvents });
     await relay.processEvent({ eventType: 'flush_quiet_held', userId: 'owner', variant: 'full' });
     assert.ok(posts.length > 1, 'the batch is split, not refused as oversized');
     const delivered = [];
@@ -379,17 +381,18 @@ describe('realtime relay Teams dispatch', () => {
     }
     assert.equal(delivered.length, 100, 'no held alert is dropped before the queue is cleared');
     assert.equal(new Set(delivered).size, 100);
-    assert.equal(deletedHeld.length, 1, 'a delivered batch clears the held queue');
+    assert.equal(removedHeld.length, 100, 'a delivered batch removes each delivered alert from the held queue');
   });
 
   it('keeps the held queue when a later card of the batch fails', async () => {
     const heldEvents = Array.from({ length: 100 }, (_, i) => ({
       eventType: 'conflict_escalation', severity: 'high', payload: { title: `Held ${String(i).padStart(3, '0')} ${'x'.repeat(190)}` },
     }));
-    const { relay, posts, deletedHeld } = setup({ heldEvents, status: [202, 500] });
+    const { relay, posts, deletedHeld, removedHeld } = setup({ heldEvents, status: [202, 500] });
     await relay.processEvent({ eventType: 'flush_quiet_held', userId: 'owner', variant: 'full' });
     assert.ok(posts.length >= 2);
     assert.equal(deletedHeld.length, 0, 'a partly delivered Teams batch is retried, not dropped');
+    assert.ok(removedHeld.length < 100, 'only fully delivered groups are removed');
   });
 });
 
