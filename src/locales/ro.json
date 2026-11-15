@@ -5456,6 +5456,17 @@
     },
     "target": {
       "acquired": "CAPTAT {{time}} · {{resolution}}"
+    },
+    "popup": {
+      "title": "Imagini din satelit",
+      "loading": "Se verifică arhivele satelitare…",
+      "latest": "Cea mai recentă imagine",
+      "nextPass": "Următoarea trecere",
+      "noImage": "Nu s-a găsit nicio imagine recentă",
+      "noPass": "Nicio trecere în următoarele 72 de ore",
+      "openEvidence": "Deschide dovezile",
+      "imageAlt": "Vedere din satelit de la {{source}}",
+      "unavailable": "Imaginile din satelit nu s-au încărcat."
     }
   },
   "settings": {

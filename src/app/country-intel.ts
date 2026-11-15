@@ -82,7 +82,7 @@ import { getChinaDecisionSignalsData } from '@/services/china-decision-signals';
 import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-signals';
 import { showToast as showGlobalToast } from '@/utils/toast';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
-import { watchOrbitalRoute } from '@/app/orbital-route';
+import { watchOrbitalEvidence, watchOrbitalRoute } from '@/app/orbital-route';
 import { setOrbitalMapView } from '@/app/orbital-map-focus';
 import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 
@@ -170,6 +170,7 @@ export class CountryIntelManager implements AppModule {
   // don't re-hammer fetchProSections.
   private authUnsubscribe: (() => void) | null = null;
   private orbitalRouteUnsubscribe: (() => void) | null = null;
+  private orbitalEvidenceUnsubscribe: (() => void) | null = null;
   private orbitalMapFocusUnsubscribe: (() => void) | null = null;
   private entitlementUnsubscribe: (() => void) | null = null;
   private lastHadPremium = false;
@@ -214,7 +215,10 @@ export class CountryIntelManager implements AppModule {
       },
       restore: ({ lat, lon, zoom }) => void this.ctx.map?.setCenter(lat, lon, zoom, { instant: true }),
     });
-    if (ORBITAL_WATCH_ENABLED) this.orbitalRouteUnsubscribe = watchOrbitalRoute(() => this.ctx.map);
+    if (ORBITAL_WATCH_ENABLED) {
+      this.orbitalRouteUnsubscribe = watchOrbitalRoute(() => this.ctx.map);
+      this.orbitalEvidenceUnsubscribe = watchOrbitalEvidence(() => this.ctx.map);
+    }
     this.lastHadPremium = hasPremiumAccess(getAuthState());
     const syncPremiumAccess = () => this.handlePremiumAccessTransition(hasPremiumAccess(getAuthState()));
     this.authUnsubscribe = subscribeAuthState(syncPremiumAccess);
@@ -224,6 +228,8 @@ export class CountryIntelManager implements AppModule {
   destroy(): void {
     this.orbitalRouteUnsubscribe?.();
     this.orbitalRouteUnsubscribe = null;
+    this.orbitalEvidenceUnsubscribe?.();
+    this.orbitalEvidenceUnsubscribe = null;
     this.orbitalMapFocusUnsubscribe?.();
     this.orbitalMapFocusUnsubscribe = null;
     this.currentCountryPresentation = null;
