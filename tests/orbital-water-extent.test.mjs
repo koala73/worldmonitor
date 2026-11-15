@@ -303,7 +303,9 @@ describe('reservoir water extent: payload size', () => {
       const additions = scenesFromSearch({ features }).map((s) => ({ ...s, ...readingFromStatistics(stats(99.97, 1_048_576, 1_000_001), 99_999.9) }));
       const observations = mergeSeries([], additions, NOW);
       assert.equal(observations.length, MAX_OBSERVATIONS);
-      const partialScenes = Array.from({ length: MAX_PARTIAL_SCENES }, (_, i) => rtcId('C', NOW - i * DAY, (n += 1)));
+      // Worst case: every scene of a 120-day search window is partial (0.34 a day), plus the capped ids kept from outside it.
+      const inWindow = Math.ceil(SEARCH_LOOKBACK_DAYS * 0.34);
+      const partialScenes = Array.from({ length: inWindow + MAX_PARTIAL_SCENES }, (_, i) => rtcId('C', NOW - i * DAY, (n += 1)));
       reservoirs[target.siteId] = { siteId: target.siteId, reservoirId: target.reservoirId, name: target.name, countryCode: target.countryCode, box: target.box, areaKm2: 99_999.9, searchedThrough: new Date(NOW).toISOString(), observations, partialScenes, latest: observations[0] };
     }
     const data = { schema: 1, runAt: NOW, thresholdDb: -18, minValidPercent: 90, source: {}, methodology: 'x'.repeat(400), reservoirs };
@@ -312,18 +314,38 @@ describe('reservoir water extent: payload size', () => {
     assert.ok(bytes <= MAX_PAYLOAD_BYTES * 0.9, `${(bytes / 1024 / 1024).toFixed(2)} MB at the caps; the key limit is ${MAX_PAYLOAD_BYTES / 1024 / 1024} MB and a run must keep 10% headroom`);
   });
 
-  it('keeps no more partial scenes than its cap when a run stops early', async () => {
-    const features = Array.from({ length: 3 * MAX_PARTIAL_SCENES }, (_, i) => scene(`edge${i}`, 1 + i * 0.5));
+  const target = { siteId: 's', reservoirId: 'r', name: 'R', countryCode: 'XX', box: [0, 0, 1, 1] };
+
+  it('caps only the partial scenes a truncated search no longer returns', async () => {
+    const outside = Array.from({ length: 3 * MAX_PARTIAL_SCENES }, (_, i) => `gone${i}`);
+    const { record } = await measureReservoir(target, { reservoirId: 'r', observations: [], partialScenes: outside, searchedThrough: null }, {
+      searchScenes: async () => ({ features: [scene('edge', 1)], truncated: true }),
+      fetchStatistics: async () => stats(1, 10, 1),
+      nowMs: NOW,
+      deadlineMs: Infinity,
+    });
+    assert.equal(record.partialScenes.length, MAX_PARTIAL_SCENES + 1);
+    assert.ok(record.partialScenes.includes('edge'), 'a partial scene the search still returns is never dropped');
+  });
+
+  it('reaches a covering scene behind more partial scenes than the cap', async () => {
+    // 80 partial scenes, newest first, then 20 that image the whole box.
+    const features = Array.from({ length: 100 }, (_, i) => scene(i < 80 ? `edge${i}` : `full${i}`, 1 + i));
     let record = null;
-    for (let run = 0; run < 3 * MAX_PARTIAL_SCENES; run += 1) {
-      ({ record } = await measureReservoir({ siteId: 's', reservoirId: 'r', name: 'R', countryCode: 'XX', box: [0, 0, 1, 1] }, record, {
-        searchScenes: async () => ({ features, truncated: true }),
-        fetchStatistics: async () => stats(1, 10, 1),
+    let runs = 0;
+    while (!record?.searchedThrough && runs < 40) {
+      runs += 1;
+      ({ record } = await measureReservoir(target, record, {
+        searchScenes: async () => ({ features }),
+        fetchStatistics: async (id) => (id.startsWith('edge') ? stats(1, 10, 1) : stats(99, 1000, 600)),
         nowMs: NOW,
         deadlineMs: Infinity,
       }));
     }
-    assert.equal(record.partialScenes.length, MAX_PARTIAL_SCENES);
+    assert.ok(record.observations.length > 0, `no reading after ${runs} runs`);
+    assert.equal(record.observations.length, 20);
+    assert.equal(record.searchedThrough, new Date(NOW).toISOString(), 'the search window completes');
+    assert.ok(record.partialScenes.length <= features.length, 'partial ids are bounded by the search window');
   });
 });
 
@@ -419,6 +441,38 @@ describe('reservoir water extent: archive refusal and backoff', () => {
     const source = readFileSync(new URL('../scripts/seed-orbital-water-extent.mjs', import.meta.url), 'utf8');
     assert.match(source, /ORBITAL_SITES_BACKOFF_KEY/);
     assert.equal(ORBITAL_SITES_BACKOFF_KEY, 'orbital:sites:backoff:v1');
+  });
+});
+
+describe('reservoir water extent: a run that never reaches the archive', () => {
+  const sites = WATCHED_SITES.filter((s) => s.id === 'reservoir:kariba' || s.id === 'reservoir:kakhovka');
+  const previous = { schema: 1, reservoirs: { 'reservoir:kariba': { reservoirId: 'kariba', observations: [{ sceneId: 'old', time: new Date(NOW - DAY).toISOString() }], partialScenes: [], searchedThrough: null } } };
+
+  it('publishes nothing when the budget runs out before any search', async () => {
+    let clock = NOW;
+    const calls = [];
+    const fetchWaterExtent = makeFetchWaterExtent({
+      sites, watchlist, budgetMs: 1_000, now: () => clock,
+      readPrevious: async () => { clock += 5_000; return previous; },
+      searchScenes: async () => { calls.push('search'); return { features: [] }; },
+      fetchStatistics: async () => { calls.push('statistics'); return stats(100, 10, 5); },
+    });
+    const data = await fetchWaterExtent();
+    assert.deepEqual(calls, []);
+    assert.match(data.publishBlocked, /no archive search/);
+    assert.equal(buildSeedOptions(2).declareRecords(data), 0, 'carried readings must not refresh seed freshness');
+  });
+
+  it('still publishes a run whose searches answered with no new scenes', async () => {
+    const fetchWaterExtent = makeFetchWaterExtent({
+      sites, watchlist, now: () => NOW,
+      readPrevious: async () => previous,
+      searchScenes: async () => ({ features: [] }),
+      fetchStatistics: async () => stats(100, 10, 5),
+    });
+    const data = await fetchWaterExtent();
+    assert.equal(data.publishBlocked, undefined);
+    assert.equal(freshReservoirCount(data), 1);
   });
 });
 

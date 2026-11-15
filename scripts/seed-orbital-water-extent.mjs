@@ -178,6 +178,10 @@ export function makeFetchWaterExtent({
       console.warn(`  ARCHIVE REFUSED: ${refused}; no further requests this run, backing off until ${new Date(next.until).toISOString()}`);
       if (tally.answered === 0) return { publishBlocked: refused, reservoirs: {} };
     }
+    // A run that sent no search at all (the budget ran out first) has learned nothing about the archive.
+    if (!refused && tally.searched === 0 && tally.searchFailed === 0) {
+      return { publishBlocked: 'no archive search was attempted within the run budget', reservoirs: {} };
+    }
     // A run in which the archive answered nothing must not refresh seed-meta from the carried series.
     if (tally.searchFailed > 0 && tally.searched === 0) throw new Error(`every scene search failed (${errors[0]})`);
     if (tally.failed > 0 && tally.answered === 0) throw new Error(`every statistics request failed (${errors[0]})`);

@@ -21,7 +21,11 @@ export const SERIES_RETENTION_DAYS = 730;
  * gets about 0.34 scenes a day (#10727), about 250 inside retention, so the cap trims only the busiest.
  */
 export const MAX_OBSERVATIONS = 300;
-/** Partial scenes are remembered only while their search window is open; a 120-day backfill holds about 40. */
+/**
+ * Partial scenes the current search returns are always remembered, or they would come back as pending and
+ * stall the newest-first selection (a 120-day backfill window holds about 40). Only ids a truncated search
+ * no longer returns are capped, at this many.
+ */
 export const MAX_PARTIAL_SCENES = 60;
 export const MAX_SCENES_PER_SITE_PER_RUN = 8;
 /** A run's first pass takes this many scenes per reservoir, so a cold start reaches every reservoir before backfilling. */
@@ -214,7 +218,10 @@ export async function measureReservoir(target, previous, {
     ...base,
     searchedThrough: complete ? untilIso : (keep?.searchedThrough ?? null),
     observations,
-    partialScenes: [...partial].filter((id) => sceneIds.has(id) || !complete).slice(-MAX_PARTIAL_SCENES),
+    partialScenes: [
+      ...(complete ? [] : [...partial].filter((id) => !sceneIds.has(id)).slice(-MAX_PARTIAL_SCENES)),
+      ...[...partial].filter((id) => sceneIds.has(id)),
+    ],
     latest: observations[0] ?? null,
   };
   return { record, requests, added: additions.length, error, searched: true, answered, failed, complete, refused };
