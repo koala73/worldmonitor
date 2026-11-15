@@ -231,12 +231,13 @@ describe('orbital change scoring', () => {
     const rows = await runSpike();
     assert.deepEqual(rows.map((row) => row.method), Object.keys(METHODS));
     for (const row of rows) {
-      for (const run of [row.default, row.best]) {
+      for (const run of row.runs) {
+        const label = `${row.method} ${JSON.stringify(run.params)}`;
         const [retracted, resolved] = run.retracted.split(' of ').map(Number);
-        assert.ok(resolved === 0 || retracted / resolved >= TARGETS.maxRetractedShare, `${row.method} ${JSON.stringify(run.params)}`);
+        assert.ok(resolved === 0 || retracted / resolved >= TARGETS.maxRetractedShare, label);
+        assert.ok(!run.knownDetail.some((line) => line.startsWith('natanz-2025: raised')), `${label} raises Natanz`);
       }
     }
-    assert.ok(rows.every((row) => !row.best.knownDetail.some((line) => line.startsWith('natanz-2025: raised'))), 'no method raises Natanz');
   });
 
   it('skips and counts a scene whose statistics fail on every run, then reads past it', async () => {
