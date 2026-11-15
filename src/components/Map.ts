@@ -3936,7 +3936,9 @@ export class MapComponent {
         const color = fire.brightness > 400 ? getCSSColor('--semantic-critical') : fire.brightness > 350 ? getCSSColor('--semantic-high') : getCSSColor('--semantic-elevated');
         const size = Math.max(4, Math.min(10, (fire.frp || 1) * 0.5));
 
-        const dot = document.createElement('div');
+        // A satellite detection opens its popup when Orbital Watch is on (#10713), so it is a button.
+        const detection = fireDetectionPopupData(fire);
+        const dot = document.createElement(detection ? 'button' : 'div');
         dot.className = 'fire-dot';
         dot.style.left = `${pos[0]}px`;
         dot.style.top = `${pos[1]}px`;
@@ -3945,14 +3947,20 @@ export class MapComponent {
         dot.style.backgroundColor = color;
         dot.title = `${fire.region} — ${Math.round(fire.brightness)}K, ${fire.frp}MW`;
 
-        // A satellite detection opens its popup when Orbital Watch is on (#10713).
-        const detection = fireDetectionPopupData(fire);
         if (detection) {
           dot.classList.add('fire-dot-popup');
-          dot.addEventListener('click', (e) => {
+          (dot as HTMLButtonElement).type = 'button';
+          dot.setAttribute('aria-label', dot.title);
+          dot.addEventListener('click', (event) => {
+            const e = event as MouseEvent;
             e.stopPropagation();
             const rect = this.container.getBoundingClientRect();
-            this.popup.show({ type: 'fireDetection', data: detection, x: e.clientX - rect.left, y: e.clientY - rect.top });
+            // Enter and Space click with no pointer position, so anchor on the dot itself.
+            const at = e.detail === 0 ? dot.getBoundingClientRect() : null;
+            this.popup.show({
+              type: 'fireDetection', data: detection,
+              x: (at ? at.left + at.width / 2 : e.clientX) - rect.left, y: (at ? at.top + at.height / 2 : e.clientY) - rect.top,
+            });
           });
         }
 
@@ -3986,7 +3994,7 @@ export class MapComponent {
         dot.style.opacity = '0.75';
         dot.style.cursor = 'pointer';
         dot.title = isCluster ? `${(cam as WebcamCluster).count} webcams` : ((cam as WebcamEntry).title || 'Webcam');
-        dot.addEventListener('click', (e) => {
+        dot.addEventListener('click', (e: MouseEvent) => {
           e.stopPropagation();
           if (isCluster) {
             this.showWebcamClusterPopup(cam as WebcamCluster, e.clientX, e.clientY);

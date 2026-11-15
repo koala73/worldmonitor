@@ -5512,7 +5512,7 @@
         "powerValue": "{{value}} МВт",
         "region": "Регіон",
         "source": "Джерело",
-        "sourceCredit": "NASA FIRMS",
+        "sourceCredit": "Дані NASA FIRMS",
         "mosaicTitle": "Щоденна мозаїка",
         "mosaicLoading": "Перевірка NASA GIBS…",
         "mosaicCaption": "Композит проходів {{source}} протягом дня {{date}}; пожежа може бути прихована хмарами або димом.",

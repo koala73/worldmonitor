@@ -7431,6 +7431,13 @@ body.playback-mode .status-dot {
 .fire-dot.fire-dot-popup {
   pointer-events: auto;
   cursor: pointer;
+  padding: 0;
+  border: 0;
+}
+
+.fire-dot.fire-dot-popup:focus-visible {
+  outline: 2px solid var(--text, #fff);
+  outline-offset: 3px;
 }
 
 /* Keeps a 4px dot a usable touch target. */
