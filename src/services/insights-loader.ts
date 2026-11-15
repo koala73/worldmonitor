@@ -61,6 +61,20 @@ export interface ServerInsights {
     sourcesConsidered: number;
     selectionDrops?: { admissibility: number; sourceCap: number; overflow: number };
   };
+  /** Seven-day threat-level history (stories counted once, on the UTC day
+   * first seen). Absent on payloads seeded before the history existed. */
+  threatTimeline?: ServerThreatTimeline;
+}
+
+export interface ServerThreatTimeline {
+  version: number;
+  /** First UTC day (YYYY-MM-DD) the history was written; earlier days are partial. */
+  recordingSince: string | null;
+  updatedAt: string;
+  days: Array<{
+    date: string;
+    counts: { critical: number; high: number; medium: number; low: number; info: number };
+  }>;
 }
 
 let cached: ServerInsights | null = null;

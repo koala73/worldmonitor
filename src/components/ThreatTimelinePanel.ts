@@ -8,6 +8,7 @@ import {
   THREAT_LEVEL_COLORS,
   THREAT_LEVEL_LABELS,
   buildThreatTimelineState,
+  buildThreatTimelineStateFromHistory,
   countHighSeverityDays,
   describeThreatTimelineTrend,
   normalizeClusterStories,
@@ -39,7 +40,7 @@ export class ThreatTimelinePanel extends Panel {
       id: 'threat-timeline',
       title: 'Threat Timeline',
       showCount: false,
-      infoTooltip: 'Seven-day threat-level distribution from intelligence insights.',
+      infoTooltip: 'Stories per day by threat level over the last seven days, each counted once on the day it first appeared. The list shows the current top stories.',
       defaultRowSpan: 2,
     });
 
@@ -66,10 +67,14 @@ export class ThreatTimelinePanel extends Panel {
 
   public updateFromServerInsights(insights: ServerInsights): void {
     const items = normalizeServerInsightStories(insights);
-    const state = buildThreatTimelineState(items, {
+    const options = {
       status: insights.status,
       statusMessage: insights.status === 'degraded' ? 'Server insight snapshot degraded' : '',
-    });
+    };
+    // Payloads seeded before the history existed fall back to binning the
+    // top stories, which only ever fills the current day.
+    const state = buildThreatTimelineStateFromHistory(insights.threatTimeline, items, options)
+      ?? buildThreatTimelineState(items, options);
     this.renderState(state, 'Insights snapshot');
   }
 
@@ -110,7 +115,7 @@ export class ThreatTimelinePanel extends Panel {
         <div class="threat-timeline-summary">
           <div class="threat-timeline-stat">
             <span class="threat-timeline-stat-value">${highSeverityCount}</span>
-            <span class="threat-timeline-stat-label">Critical/high</span>
+            <span class="threat-timeline-stat-label">Critical / high</span>
           </div>
           <div class="threat-timeline-stat">
             <span class="threat-timeline-stat-value">${highSeverityDays}</span>
@@ -128,14 +133,22 @@ export class ThreatTimelinePanel extends Panel {
             ${THREAT_LEVEL_LABELS[level]} <strong>${state.totals[level]}</strong>
           </span>
         `).join('')}</div>
-        <div class="threat-timeline-groups" aria-label="Current threat alerts grouped by level">
+        ${state.historyStoryCount !== undefined ? '<div class="threat-timeline-groups-title">Top stories now</div>' : ''}
+        <div class="threat-timeline-groups" aria-label="Current top stories grouped by threat level">
           ${groups}
         </div>
-        <div class="threat-timeline-footer">${total} insight item${total === 1 ? '' : 's'} from ${escapeHtml(sourceLabel)}</div>
+        <div class="threat-timeline-footer">${escapeHtml(this.footerCopy(state, total, sourceLabel))}</div>
         ${degradation}
       </div>
       ${this.renderStyles()}
     `, 'legacy Panel.setContent() migration'));
+  }
+
+  private footerCopy(state: ThreatTimelineState, total: number, sourceLabel: string): string {
+    const items = `${total} top stor${total === 1 ? 'y' : 'ies'} from ${sourceLabel}`;
+    if (state.historyStoryCount === undefined) return items;
+    const stories = state.historyStoryCount;
+    return `${stories} stor${stories === 1 ? 'y' : 'ies'} over 7 days · ${items}`;
   }
 
   private renderEmpty(message: string, reasons: string[] = []): void {
@@ -193,8 +206,10 @@ export class ThreatTimelinePanel extends Panel {
         const yBottom = y(segment[0]);
         const barHeight = Math.max(0, yBottom - yTop);
         if (barHeight <= 0) return '';
-        return `<rect x="${xPos.toFixed(1)}" y="${yTop.toFixed(1)}" width="${x.bandwidth().toFixed(1)}" height="${barHeight.toFixed(1)}" rx="2" fill="${THREAT_LEVEL_COLORS[level]}">
-          <title>${escapeHtml(day.label)} ${THREAT_LEVEL_LABELS[level]}: ${day.counts[level]}</title>
+        const partialAttrs = day.partial ? ' opacity="0.45"' : '';
+        const partialNote = day.partial ? ' (partial day)' : '';
+        return `<rect x="${xPos.toFixed(1)}" y="${yTop.toFixed(1)}" width="${x.bandwidth().toFixed(1)}" height="${barHeight.toFixed(1)}" rx="2" fill="${THREAT_LEVEL_COLORS[level]}"${partialAttrs}>
+          <title>${escapeHtml(day.label)} ${THREAT_LEVEL_LABELS[level]}: ${day.counts[level]}${partialNote}</title>
         </rect>`;
       }).join('');
     }).join('');
@@ -276,6 +291,7 @@ export class ThreatTimelinePanel extends Panel {
         .threat-timeline-stat, .threat-timeline-trend { border: 1px solid var(--border-color); background: var(--bg-secondary); border-radius: 8px; padding: 8px; min-width: 0; }
         .threat-timeline-stat-value { display: block; font-size: calc(20px * var(--wm-panel-effective-scale, 1)); line-height: 1; font-weight: 700; color: var(--text-primary); }
         .threat-timeline-stat-label, .threat-timeline-trend-copy, .threat-timeline-footer, .threat-timeline-note { display: block; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary); margin-top: 4px; }
+        .threat-timeline-groups-title { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); }
         .threat-timeline-trend { border-left: 3px solid var(--accent); }
         .threat-timeline-trend.worsening { border-left-color: #ef4444; }
         .threat-timeline-trend.easing { border-left-color: #38bdf8; }

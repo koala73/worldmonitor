@@ -1,4 +1,4 @@
-import type { ServerInsightStory, ServerInsights } from '@/services/insights-loader';
+import type { ServerInsightStory, ServerInsights, ServerThreatTimeline } from '@/services/insights-loader';
 import type { ClusteredEvent } from '@/types';
 
 export const THREAT_LEVELS = ['critical', 'high', 'medium', 'low', 'info'] as const;
@@ -51,6 +51,8 @@ export interface ThreatTimelineDay {
   startMs: number;
   counts: Record<TimelineThreatLevel, number>;
   total: number;
+  /** True when the history does not cover the whole day (before recording began, or after the last update). */
+  partial?: boolean;
 }
 
 export interface ThreatTimelineGroup {
@@ -69,6 +71,8 @@ export interface ThreatTimelineState {
   statusMessage: string;
   degradedReasons: string[];
   hasData: boolean;
+  /** Set when day counts come from the seeded history rather than the listed items. */
+  historyStoryCount?: number;
 }
 
 export interface ThreatTimelineTrend {
@@ -173,23 +177,114 @@ export function buildThreatTimelineState(
   };
 }
 
+const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function readHistoryCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+/**
+ * Day counts from the seeded seven-day history; the grouped list stays the
+ * current top stories. Returns null when the payload carries no usable
+ * history, so the caller can fall back to binning the listed items.
+ */
+export function buildThreatTimelineStateFromHistory(
+  history: ServerThreatTimeline | undefined,
+  topItems: ThreatTimelineItem[],
+  options: { nowMs?: number; status?: 'ok' | 'degraded'; statusMessage?: string } = {},
+): ThreatTimelineState | null {
+  if (!history || !Array.isArray(history.days)) return null;
+  const countsByDate = new Map<string, Record<TimelineThreatLevel, number>>();
+  for (const day of history.days) {
+    if (!day || typeof day.date !== 'string' || !DAY_KEY_RE.test(day.date) || !day.counts) continue;
+    const counts = emptyCounts();
+    for (const level of THREAT_LEVELS) counts[level] = readHistoryCount(day.counts[level]);
+    countsByDate.set(day.date, counts);
+  }
+  if (countsByDate.size === 0) return null;
+  const recordedDates = [...countsByDate.keys()].sort();
+  const lastRecorded = recordedDates[recordedDates.length - 1]!;
+  const recordingSince = typeof history.recordingSince === 'string' && DAY_KEY_RE.test(history.recordingSince)
+    ? history.recordingSince
+    : recordedDates[0]!;
+
+  const nowMs = options.nowMs ?? Date.now();
+  const todayStart = utcDayStartMs(nowMs);
+  const totals = emptyCounts();
+  const days: ThreatTimelineDay[] = [];
+  for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+    const dayStart = todayStart - ((6 - dayIndex) * DAY_MS);
+    const key = dayKey(dayStart);
+    const counts = countsByDate.get(key) ?? emptyCounts();
+    let total = 0;
+    for (const level of THREAT_LEVELS) {
+      totals[level] += counts[level];
+      total += counts[level];
+    }
+    days.push({
+      key,
+      label: dayLabel(dayStart),
+      startMs: dayStart,
+      counts,
+      total,
+      partial: key < recordingSince || key > lastRecorded,
+    });
+  }
+
+  const degradedReasons: string[] = [];
+  if (options.status === 'degraded' && options.statusMessage) degradedReasons.push(options.statusMessage);
+  const sortedItems = topItems.filter(item => Number.isFinite(item.timestampMs)).sort(compareThreatTimelineItems);
+  const groups = THREAT_LEVELS
+    .map((level) => {
+      const levelItems = sortedItems.filter((item) => item.threatLevel === level);
+      return { level, label: THREAT_LEVEL_LABELS[level], count: levelItems.length, items: levelItems.slice(0, 5) };
+    })
+    .filter((group) => group.count > 0);
+  const historyStoryCount = THREAT_LEVELS.reduce((sum, level) => sum + totals[level], 0);
+
+  return {
+    days,
+    groups,
+    totals,
+    items: sortedItems,
+    status: options.status ?? 'ok',
+    statusMessage: options.statusMessage ?? '',
+    degradedReasons,
+    hasData: historyStoryCount > 0 || sortedItems.length > 0,
+    historyStoryCount,
+  };
+}
+
 export function countHighSeverityDays(state: ThreatTimelineState): number {
   return state.days.filter((day) => day.counts.critical + day.counts.high > 0).length;
 }
 
 export function describeThreatTimelineTrend(days: ThreatTimelineDay[]): ThreatTimelineTrend {
+  // A comparison against days the history never covered would read an empty
+  // past as a rising present.
+  const partialDays = days.filter(day => day.partial).length;
+  if (partialDays > 0) {
+    const recorded = days.length - partialDays;
+    return { label: 'Building', copy: `${recorded} of ${days.length} days fully recorded`, className: 'noisy' };
+  }
   const firstThree = days.slice(0, 3).reduce((sum, day) => sum + day.counts.critical + day.counts.high, 0);
   const lastThree = days.slice(-3).reduce((sum, day) => sum + day.counts.critical + day.counts.high, 0);
   if (lastThree === 0 && firstThree === 0) {
     return { label: 'Quiet', copy: 'No critical/high days', className: 'quiet' };
   }
-  if (lastThree >= firstThree + 2) {
+  // A move must be both absolute (2+) and relative (25%+): the seeded history
+  // counts dozens of critical/high stories a week, where a swing of two is noise.
+  if (isMaterialRise(lastThree, firstThree)) {
     return { label: 'Worsening', copy: `${lastThree} recent vs ${firstThree} earlier`, className: 'worsening' };
   }
-  if (firstThree >= lastThree + 2) {
+  if (isMaterialRise(firstThree, lastThree)) {
     return { label: 'Easing', copy: `${lastThree} recent vs ${firstThree} earlier`, className: 'easing' };
   }
   return { label: 'Noisy', copy: `${lastThree} recent vs ${firstThree} earlier`, className: 'noisy' };
+}
+
+function isMaterialRise(next: number, previous: number): boolean {
+  return next - previous >= 2 && next >= previous * 1.25;
 }
 
 export function compareThreatTimelineItems(a: ThreatTimelineItem, b: ThreatTimelineItem): number {
