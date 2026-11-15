@@ -1,0 +1,1164 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
+import { deflateRawSync } from 'node:zlib';
+import { readFileSync } from 'node:fs';
+import ts from 'typescript';
+import { TELEGRAM_CHANNEL_TRUST } from '../shared/telegram-channel-trust.ts';
+import { GDELT_FIPS_TO_ISO2 } from '../scripts/_gdelt-country-codes.mjs';
+import { geoToCountry } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
+
+const require = createRequire(import.meta.url);
+// B3's writer tests from cii-v15 (tests/middle-east-strikes.test.mjs), run
+// against the v2 shadow module that main runs beside the v1 feed.
+const gazetteer = require('../scripts/lib/middle-east-strikes-gazetteer-v2.cjs');
+const strikes = require('../scripts/lib/middle-east-strikes-v2.cjs');
+const strikesV1 = require('../scripts/lib/middle-east-strikes.cjs');
+
+const NOW = Date.parse('2026-10-19T12:00:00Z');
+const MIN = 60_000;
+const HOUR = 60 * MIN;
+const IRAN_CENTROID = [32.4279, 53.688];
+
+let messageId = 1000;
+function post(channel, text, ageMs = 10 * MIN, overrides = {}) {
+  const id = ++messageId;
+  return {
+    id: `${channel.toLowerCase()}:${id}`,
+    channel: channel.toLowerCase(),
+    url: `https://t.me/${channel}/${id}`,
+    ts: new Date(NOW - ageMs).toISOString(),
+    text,
+    ...overrides,
+  };
+}
+
+function cls(overrides = {}) {
+  return { isStrike: true, kind: 'strike', when: 'new', atSea: false, place: 'Jizan', countryIso2: 'SA', severity: 'high', ...overrides };
+}
+
+function candidate(channel, classification, ageMs = 10 * MIN, text = `${channel} reports ${classification.place} (${ageMs})`) {
+  const c = strikes.buildTelegramCandidate(post(channel, text, ageMs), classification, NOW);
+  assert.ok(c, `fixture candidate for ${channel} must build`);
+  return c;
+}
+
+// 61-column GDELT 2.0 event row. Only the columns the mapper reads are filled.
+function gdeltRow({ id = '1', baseCode = '195', geoType = '4', fips = 'SA', lat = 16.89, lon = 42.55,
+  numSources = 2, added = '20261019113000', url = 'https://news.example/a', fullName = 'Jizan, Jizan, Saudi Arabia' } = {}) {
+  const f = new Array(61).fill('');
+  f[0] = id; f[25] = '1'; f[26] = baseCode; f[27] = baseCode; f[28] = baseCode.slice(0, 2); f[29] = '4';
+  f[32] = String(numSources); f[51] = geoType; f[52] = fullName; f[53] = fips;
+  f[56] = String(lat); f[57] = String(lon); f[59] = added; f[60] = url;
+  return f.join('\t');
+}
+
+describe('keyword pre-filter', () => {
+  it('passes English, Arabic and Persian strike reports anchored in the theater', () => {
+    assert.equal(strikes.prefilterStrikeText('Ballistic missile strike hits Jizan, Saudi Arabia'), true);
+    assert.equal(strikes.prefilterStrikeText('Houthi drone intercepted over the Red Sea'), true);
+    assert.equal(strikes.prefilterStrikeText('الدفاع المدني: سقوط شظايا صاروخ تم اعتراضه في الرياض'), true);
+    assert.equal(strikes.prefilterStrikeText('غارات جوية على صنعاء'), true);
+    assert.equal(strikes.prefilterStrikeText('انفجار مهیب در تهران'), true);
+    assert.equal(strikes.prefilterStrikeText('Air raid sirens and explosions reported in Erbil'), true);
+    assert.equal(strikes.prefilterStrikeText('حمله موشکی به عربستان'), true);
+    assert.equal(strikes.prefilterStrikeText('حمله پهپادی به یمن'), true);
+    assert.equal(strikes.prefilterStrikeText('قصف في سورية'), true);
+  });
+
+  it('drops strike vocabulary outside the theater and theater news without strike vocabulary', () => {
+    assert.equal(strikes.prefilterStrikeText('Massive drone attack on Kyiv overnight, explosions reported'), false);
+    assert.equal(strikes.prefilterStrikeText('Saudi crown prince receives the Emir of Qatar in Riyadh'), false);
+    assert.equal(strikes.prefilterStrikeText(''), false);
+    assert.equal(strikes.prefilterStrikeText(null), false);
+  });
+});
+
+describe('classifier response parsing', () => {
+  it('normalizes well-formed entries and keeps index alignment', () => {
+    const parsed = strikes.parseStrikeClassifications([
+      { i: 1, isStrike: false },
+      { i: 0, isStrike: true, kind: 'intercept', when: 'new', atSea: false, place: ' Riyadh ', countryIso2: 'sa', severity: 'elevated' },
+    ], 2);
+    assert.deepEqual(parsed[0], { isStrike: true, kind: 'intercept', when: 'new', atSea: false, place: 'Riyadh', countryIso2: 'SA', severity: 'elevated' });
+    assert.deepEqual(parsed[1], { isStrike: false, kind: null, when: null, atSea: false, place: '', countryIso2: null, severity: null });
+  });
+
+  it('reads when and atSea, and gives an answer without a valid when no recency signal', () => {
+    const parsed = strikes.parseStrikeClassifications([
+      { i: 0, isStrike: true, kind: 'strike', when: 'past', atSea: true, place: 'Strait of Hormuz', countryIso2: 'IR', severity: 'critical' },
+      { i: 1, isStrike: true, kind: 'strike', place: 'Aden', countryIso2: 'YE', severity: 'high' },
+      { i: 2, isStrike: true, kind: 'strike', when: 'yesterday', atSea: 'yes', place: 'Aden', countryIso2: 'YE', severity: 'high' },
+    ], 3);
+    assert.deepEqual(parsed.map((p) => [p.when, p.atSea]), [['past', true], ['unknown', false], ['unknown', false]]);
+  });
+
+  it('rejects out-of-range, duplicate, and malformed entries instead of guessing', () => {
+    const parsed = strikes.parseStrikeClassifications([
+      { i: 0, isStrike: true, kind: 'strike', place: 'Aden', countryIso2: 'YE', severity: 'high' },
+      { i: 0, isStrike: true, kind: 'strike', place: 'Sanaa', countryIso2: 'YE', severity: 'high' },
+      { i: 1, isStrike: true, kind: 'bombardment', place: 'Aden', countryIso2: 'YE', severity: 'high' },
+      { i: 2, isStrike: true, kind: 'strike', place: 'Aden', countryIso2: 'YE', severity: 'apocalyptic' },
+      { i: 3, isStrike: 'yes' },
+      { i: 9, isStrike: false },
+      { i: 1.5, isStrike: false },
+      'garbage',
+    ], 4);
+    assert.deepEqual(parsed, [undefined, undefined, undefined, undefined]);
+    assert.deepEqual(strikes.parseStrikeClassifications(null, 2), [undefined, undefined]);
+    assert.deepEqual(strikes.parseStrikeClassifications({ i: 0 }, 1), [undefined]);
+  });
+
+  it('caps claims at elevated severity', () => {
+    const [parsed] = strikes.parseStrikeClassifications([
+      { i: 0, isStrike: true, kind: 'claim', place: 'Eilat', countryIso2: 'IL', severity: 'critical' },
+    ], 1);
+    assert.equal(parsed.severity, 'elevated');
+  });
+});
+
+describe('gazetteer', () => {
+  const REQUIRED = {
+    Riyadh: 'SA', Jeddah: 'SA', Dammam: 'SA', Jizan: 'SA', Najran: 'SA', Abha: 'SA', Yanbu: 'SA',
+    Sanaa: 'YE', Hodeidah: 'YE', Marib: 'YE', Aden: 'YE',
+  };
+
+  for (const [name, iso2] of Object.entries(REQUIRED)) {
+    it(`${name} resolves to ${iso2}, never the Iran centroid`, () => {
+      for (const reported of [iso2, null]) {
+        const place = gazetteer.resolvePlace({ place: name, iso2: reported });
+        assert.ok(place, `${name} (${reported}) must resolve`);
+        assert.equal(place.iso2, iso2);
+        assert.equal(place.countryLevel, undefined, `${name} must resolve to the city, not a centroid`);
+        assert.notDeepEqual([place.lat, place.lon], IRAN_CENTROID);
+        assert.equal(geoToCountry(place.lat, place.lon), iso2,
+          `${name} (${place.lat},${place.lon}) must score to ${iso2}`);
+      }
+    });
+  }
+
+  it('resolves spelling variants and Arabic script', () => {
+    assert.equal(gazetteer.resolvePlace({ place: 'Al Hudaydah port', iso2: 'YE' }).name, 'Al Hudaydah');
+    assert.equal(gazetteer.resolvePlace({ place: "Ma'rib", iso2: 'YE' }).key, gazetteer.resolvePlace({ place: 'Marib', iso2: 'YE' }).key);
+    assert.equal(gazetteer.resolvePlace({ place: 'Jazan', iso2: 'SA' }).key, gazetteer.resolvePlace({ place: 'Jizan', iso2: 'SA' }).key);
+    assert.equal(gazetteer.findPlaceInText('سقوط مقذوف عسكري في جازان').iso2, 'SA');
+    assert.equal(gazetteer.findPlaceInText('غارات على الحديدة').name, 'Al Hudaydah');
+    assert.equal(gazetteer.findPlaceInText('اعتراض صاروخ بالرياض').name, 'Riyadh');
+  });
+
+  it('does not read Arabic common words as places', () => {
+    assert.equal(gazetteer.findPlaceInText('عاجل: خبر عن عديد الضحايا'), null);
+  });
+
+  it('falls back to the reported country centroid, and drops reports with no focus country', () => {
+    const fallback = gazetteer.resolvePlace({ place: 'an undisclosed desert site', iso2: 'SA' });
+    assert.equal(fallback.iso2, 'SA');
+    assert.equal(fallback.countryLevel, true);
+    assert.deepEqual([fallback.lat, fallback.lon], gazetteer.COUNTRY_CENTROIDS.SA);
+    assert.equal(gazetteer.resolvePlace({ place: 'Kyiv', iso2: 'UA' }), null);
+    assert.equal(gazetteer.resolvePlace({ place: 'somewhere', iso2: null }), null);
+  });
+
+  it('prefers the gazetteer country when the classifier names the attacker instead', () => {
+    assert.equal(gazetteer.resolvePlace({ place: 'Eilat', iso2: 'YE' }).iso2, 'IL');
+    assert.equal(gazetteer.resolvePlace({ place: 'Eilat' }).iso2, 'IL', 'no country given');
+  });
+
+  it('keeps an impact the classifier placed outside the theater out of it', () => {
+    assert.equal(gazetteer.resolvePlace({ place: 'Tripoli', iso2: 'LY' }), null);
+    assert.equal(gazetteer.resolvePlace({ place: 'Tripoli', iso2: 'LB' }).iso2, 'LB');
+  });
+
+  it('plots maritime incidents at the strait, not the inland Iran centroid', () => {
+    const place = gazetteer.resolvePlace({ place: 'Strait of Hormuz', iso2: 'IR' });
+    assert.equal(place.name, 'Strait of Hormuz');
+    assert.notDeepEqual([place.lat, place.lon], gazetteer.COUNTRY_CENTROIDS.IR);
+    assert.equal(gazetteer.resolvePlace({ place: 'Sirik', iso2: 'IR' }).name, 'Sirik');
+    assert.equal(gazetteer.resolvePlace({ place: 'Jardan district, Shabwa', iso2: 'YE' }).name, 'Shabwah');
+  });
+
+  it('scores every CII-tracked country centroid to its own country, and no other centroid', () => {
+    for (const iso2 of ['SA', 'YE', 'IR', 'IQ', 'AE', 'IL', 'QA', 'LB', 'SY']) {
+      const [lat, lon] = gazetteer.COUNTRY_CENTROIDS[iso2];
+      assert.equal(geoToCountry(lat, lon), iso2, `${iso2} centroid`);
+    }
+    // Not CII-tracked: their events must not land on a neighbour's row.
+    for (const iso2 of ['KW', 'BH', 'OM', 'JO']) {
+      const [lat, lon] = gazetteer.COUNTRY_CENTROIDS[iso2];
+      assert.equal(geoToCountry(lat, lon), null, `${iso2} centroid`);
+    }
+  });
+
+  it('does not read English words in free text as places', () => {
+    const place = gazetteer.resolvePlace({ iso2: 'SA', text: 'A hail of drones hit Saudi Arabia overnight' });
+    assert.equal(place.countryLevel, true, `got ${place.name}`);
+    assert.equal(gazetteer.resolvePlace({ iso2: 'JO', text: 'They will salt the earth, Jordan says' }).countryLevel, true);
+  });
+
+  it('names cities, not the province that shares their point', () => {
+    assert.equal(gazetteer.resolvePlace({ place: 'Mosul', iso2: 'IQ' }).name, 'Mosul');
+    assert.equal(gazetteer.resolvePlace({ place: 'Zahedan', iso2: 'IR' }).name, 'Zahedan');
+    assert.equal(gazetteer.resolvePlace({ place: 'Ibb', iso2: 'YE' }).countryLevel, undefined);
+  });
+
+  it('never plots Palestinian places inside Israel', () => {
+    assert.equal(gazetteer.resolvePlace({ place: 'Gaza City', iso2: 'IL' }), null);
+    assert.equal(gazetteer.resolvePlace({ place: 'Jenin camp', iso2: 'IL' }), null);
+    assert.equal(gazetteer.resolvePlace({ place: '', iso2: 'IL', text: 'Airstrikes on Khan Yunis in southern Gaza' }), null);
+  });
+});
+
+describe('source trust', () => {
+  it('mirrors shared/telegram-channel-trust.ts exactly', () => {
+    const expected = Object.fromEntries(TELEGRAM_CHANNEL_TRUST.map((entry) => [
+      entry.handle, [entry.tier, entry.risk, entry.stateAffiliated ?? null],
+    ]));
+    assert.deepEqual(strikes.TELEGRAM_STRIKE_TRUST, expected);
+  });
+
+  it('classifies official, independent, and propaganda-leaning channels', () => {
+    assert.equal(strikes.channelTrust('saudidcd').cls, 'official');
+    assert.equal(strikes.channelTrust('OSINTdefender').cls, 'independent');
+    assert.equal(strikes.channelTrust('sepah').cls, 'propaganda');
+    assert.equal(strikes.channelTrust('tasnimnewsen').cls, 'propaganda');
+    assert.equal(strikes.channelTrust('IDFofficial').cls, 'propaganda');
+    assert.equal(strikes.channelTrust('RezistanceTrench1').cls, 'propaganda', 'tier 4 needs corroboration');
+    assert.equal(strikes.channelTrust('some_new_channel').cls, 'propaganda', 'unknown channels fail closed');
+    assert.equal(strikes.channelTrust('sepah').group, strikes.channelTrust('tasnimnewsen').group, 'one state, one voice');
+  });
+});
+
+describe('corroboration rule', () => {
+  const events = (cands) => strikes.deriveStrikeEvents(cands, NOW);
+
+  it('lets a tier-1 official source stand alone', () => {
+    assert.equal(events([candidate('SaudiDCD', cls())]).length, 1);
+  });
+
+  it('lets an independent observed report stand alone, but not an independent relay of a claim', () => {
+    assert.equal(events([candidate('OSINTdefender', cls())]).length, 1);
+    assert.equal(events([candidate('OSINTdefender', cls({ kind: 'claim', severity: 'elevated' }))]).length, 0);
+  });
+
+  it('holds a propaganda-leaning report until an independent source agrees', () => {
+    const sepah = candidate('sepah', cls({ place: 'Riyadh' }));
+    assert.equal(events([sepah]).length, 0, 'sepah alone');
+    assert.equal(events([sepah, candidate('TasnimNewsEN', cls({ place: 'Riyadh' }))]).length, 0, 'same-state echo is not corroboration');
+    const confirmed = events([sepah, candidate('ClashReport', cls({ place: 'Riyadh', kind: 'claim', severity: 'elevated' }), 30 * MIN)]);
+    assert.equal(confirmed.length, 1, 'independent agreement publishes');
+    assert.equal(confirmed[0].locationName, 'Riyadh');
+    assert.equal(events([sepah, candidate('ClashReport', cls({ place: 'Jeddah' }))]).filter((e) => e.locationName === 'Riyadh').length, 0,
+      'agreement must be about the same place');
+  });
+
+  it('requires the agreeing report inside the corroboration window', () => {
+    const sepah = candidate('sepah', cls({ place: 'Abha' }), 10 * MIN);
+    const late = candidate('ClashReport', cls({ place: 'Abha', kind: 'claim', severity: 'elevated' }), 10 * MIN + 5 * HOUR);
+    assert.equal(events([sepah, late]).length, 0);
+  });
+
+  it('two propaganda claims from opposing states still need an observed report', () => {
+    const iranClaim = candidate('sepah', cls({ place: 'Haifa', countryIso2: 'IL', kind: 'claim', severity: 'elevated' }));
+    const israelClaim = candidate('IDFofficial', cls({ place: 'Haifa', countryIso2: 'IL', kind: 'claim', severity: 'elevated' }));
+    assert.equal(events([iranClaim, israelClaim]).length, 0);
+    const israelReport = candidate('IDFofficial', cls({ place: 'Haifa', countryIso2: 'IL', kind: 'intercept', severity: 'elevated' }));
+    assert.equal(events([iranClaim, israelReport]).length, 1);
+  });
+});
+
+describe('dedupe and window', () => {
+  it('bounds fuzzy matching work at the full candidate-store size', () => {
+    const reports = Array.from({ length: 4000 }, (_, i) => candidate('SaudiDCD', cls({
+      place: createHash('sha256').update(String(i)).digest('hex').slice(0, 36),
+    })));
+    assert.ok(reports.every((report) => report.placeKey.startsWith('SA:*:')));
+    const start = performance.now();
+    const result = strikes.deriveStrikeEvents(reports, NOW);
+    assert.ok(performance.now() - start < 2000, 'an unlisted-name flood must not block the relay for seconds');
+    assert.equal(result.length, strikes.MAX_EVENTS, 'the bounded fuzzy pass still publishes independent reports up to the normal output cap');
+    assert.equal(reports.length, 4000, 'the input store is not truncated by the fuzzy pass');
+  });
+
+  it('merges reports of one place inside one incident into one stable event', () => {
+    const a = candidate('SaudiDCD', cls(), 12 * MIN);
+    const b = candidate('OSINTdefender', cls(), 11 * MIN);
+    const out = strikes.deriveStrikeEvents([a, b], NOW);
+    assert.equal(out.length, 1);
+    assert.match(out[0].id, /^tg:SA:SA:jizan:\d+$/);
+    assert.equal(out[0].sourceUrl, a.url, 'the official source represents the event');
+    assert.deepEqual(strikes.deriveStrikeEvents([b, a], NOW).map((e) => e.id), out.map((e) => e.id));
+  });
+
+  it('keeps separate incidents and separate places apart', () => {
+    const out = strikes.deriveStrikeEvents([
+      candidate('SaudiDCD', cls(), 10 * MIN),
+      candidate('SaudiDCD', cls(), 4 * HOUR),
+      candidate('SaudiDCD', cls({ place: 'Najran' }), 10 * MIN),
+    ], NOW);
+    assert.equal(out.length, 3);
+  });
+
+  it('emits the conflict:iran-events event schema', () => {
+    const [event] = strikes.deriveStrikeEvents([candidate('SaudiDCD', cls({ place: 'Riyadh', kind: 'intercept', severity: 'elevated' }))], NOW);
+    assert.deepEqual(Object.keys(event).sort(), ['category', 'countryCode', 'id', 'latitude', 'locationName', 'longitude', 'severity', 'sourceUrl', 'timestamp', 'title'].sort());
+    assert.equal(event.countryCode, 'SA', 'the CII scores an event by the country it carries');
+    assert.equal(event.category, 'defense');
+    assert.equal(typeof event.timestamp, 'number');
+    assert.equal(event.severity, 'elevated');
+  });
+
+  it('drops reports older than 72h and from the future', () => {
+    const aging = candidate('SaudiDCD', cls(), 71 * HOUR);
+    assert.equal(strikes.deriveStrikeEvents([aging], NOW).length, 1);
+    assert.equal(strikes.deriveStrikeEvents([aging], NOW + 2 * HOUR).length, 0, 'ages out after 72h');
+    assert.equal(strikes.buildTelegramCandidate(post('SaudiDCD', 'x', -2 * HOUR), cls(), NOW), null);
+    // Past the window a report stays one more day as an incident anchor, then goes.
+    const anchor = { ...candidate('SaudiDCD', cls()), id: 'tg:saudidcd:1', ts: NOW - 80 * HOUR };
+    const expired = { ...candidate('SaudiDCD', cls()), id: 'tg:saudidcd:2', ts: NOW - 100 * HOUR };
+    const store = strikes.mergeCandidateStore({ candidates: [anchor, expired] }, [candidate('SaudiDCD', cls())], NOW);
+    assert.equal(store.candidates.length, 2);
+    assert.ok(store.candidates.some((c) => c.id === anchor.id), 'a report past the window stays as an anchor');
+    assert.ok(!store.candidates.some((c) => c.id === expired.id), 'a report 24h past the window is pruned');
+    assert.equal(strikes.deriveStrikeEvents([anchor], NOW).length, 0, 'an anchor is never published');
+  });
+
+  it('drops out-of-theater and non-strike classifications', () => {
+    assert.equal(strikes.buildTelegramCandidate(post('ClashReport', 'x'), cls({ countryIso2: 'UA', place: 'Kyiv' }), NOW), null);
+    assert.equal(strikes.buildTelegramCandidate(post('ClashReport', 'x'), { isStrike: false }, NOW), null);
+  });
+});
+
+describe('GDELT backstop', () => {
+  it('maps the FIPS codes it filters on to the same ISO-2 codes as the shared GDELT table', () => {
+    for (const [fips, iso2] of Object.entries(strikes.GDELT_STRIKE_FIPS)) assert.equal(GDELT_FIPS_TO_ISO2[fips], iso2, fips);
+    assert.equal(strikes.GDELT_STRIKE_FIPS.YM, 'YE');
+    assert.equal(strikes.GDELT_STRIKE_FIPS.IZ, 'IQ');
+  });
+
+  it('keeps city-level force events in the theater and clusters them with enough sources', () => {
+    const csv = [
+      gdeltRow({ id: '1', numSources: 2, url: 'https://a.example/1' }),
+      gdeltRow({ id: '2', numSources: 1, url: 'https://b.example/2', lat: 16.9, lon: 42.56 }),
+      gdeltRow({ id: '3', geoType: '1', numSources: 9 }),
+      gdeltRow({ id: '4', baseCode: '042', numSources: 9 }),
+      gdeltRow({ id: '5', fips: 'UP', lat: 50.45, lon: 30.52, numSources: 9 }),
+      gdeltRow({ id: '6', fips: 'YM', lat: 15.46, lon: 45.33, numSources: 2, url: 'https://c.example/6', fullName: 'Marib, Ma\'rib, Yemen' }),
+    ].join('\n');
+    const cands = strikes.mapGdeltExportToStrikeCandidates(csv);
+    assert.deepEqual(cands.map((c) => `${c.iso2}:${c.place}:${c.sources}`).sort(), ['SA:Jizan:3', "YE:Ma'rib:2"],
+      'country-level, non-force and out-of-theater rows are dropped; same place and bucket cluster');
+    for (const c of cands) {
+      assert.equal(c.src, 'gdelt');
+      assert.equal(c.severity, 'moderate');
+    }
+    const events = strikes.deriveStrikeEvents(cands, NOW);
+    assert.deepEqual(events.map((e) => e.locationName), ['Jizan'], 'Marib has one URL and two mentions: below the source gate');
+  });
+
+  it('ignores rows geocoded to capital datelines', () => {
+    const csv = [
+      gdeltRow({ id: '1', lat: 24.69, lon: 46.72, numSources: 5, url: 'https://a.example/1', fullName: 'Riyadh, Ar Riyad, Saudi Arabia' }),
+      gdeltRow({ id: '2', lat: 24.7, lon: 46.7, numSources: 5, url: 'https://b.example/2', fullName: 'Riyadh, Ar Riyad, Saudi Arabia' }),
+      gdeltRow({ id: '3', fips: 'IR', lat: 35.69, lon: 51.42, numSources: 5, url: 'https://c.example/3', fullName: 'Tehran, Tehran, Iran' }),
+    ].join('\n');
+    assert.deepEqual(strikes.mapGdeltExportToStrikeCandidates(csv), []);
+  });
+
+  it('ignores Gaza coded as Israel and rows whose province GDELT could not resolve', () => {
+    const csv = [
+      gdeltRow({ id: '1', fips: 'IS', lat: 31.42, lon: 34.33, numSources: 5, url: 'https://a.example/1', fullName: 'Gaza, Israel (general), Israel' }),
+      gdeltRow({ id: '2', lat: 28.57, lon: 37.27, numSources: 5, url: 'https://b.example/2', fullName: 'Al-Azhar, Saudi Arabia (general), Saudi Arabia' }),
+    ].join('\n');
+    assert.deepEqual(strikes.mapGdeltExportToStrikeCandidates(csv), []);
+  });
+
+  it('accumulates sources for one incident across export files', () => {
+    const a = strikes.mapGdeltExportToStrikeCandidates(gdeltRow({ id: '1', numSources: 1, url: 'https://a.example/1' }));
+    const b = strikes.mapGdeltExportToStrikeCandidates(gdeltRow({ id: '2', numSources: 2, url: 'https://b.example/2', added: '20261019114500' }));
+    assert.equal(strikes.deriveStrikeEvents(a, NOW).length, 0);
+    assert.equal(strikes.deriveStrikeEvents([...a, ...b], NOW).length, 1);
+  });
+
+  it('prunes GDELT clusters that never reach the source gate', () => {
+    const lone = strikes.mapGdeltExportToStrikeCandidates(gdeltRow({ id: '1', numSources: 1, added: '20261019060000' }));
+    assert.equal(strikes.mergeCandidateStore(null, lone, NOW).candidates.length, 0);
+    const recent = strikes.mapGdeltExportToStrikeCandidates(gdeltRow({ id: '2', numSources: 1, added: '20261019113000' }));
+    assert.equal(strikes.mergeCandidateStore(null, recent, NOW).candidates.length, 1, 'recent clusters wait for late coverage');
+  });
+
+  it('publishes a GDELT-only cluster as a flagged lower-trust event', () => {
+    const csv = [gdeltRow({ id: '1', numSources: 3, url: 'https://a.example/1' }), gdeltRow({ id: '2', numSources: 1, url: 'https://b.example/2' })].join('\n');
+    const [event] = strikes.deriveStrikeEvents(strikes.mapGdeltExportToStrikeCandidates(csv), NOW);
+    assert.match(event.id, /^gdelt:SA:/);
+    assert.equal(event.countryCode, 'SA');
+    assert.equal(event.category, 'gdelt');
+    assert.equal(event.severity, 'moderate');
+  });
+
+  it('folds a GDELT cluster into a nearby Telegram event instead of double counting', () => {
+    const csv = [gdeltRow({ id: '1', numSources: 3, url: 'https://a.example/1' }), gdeltRow({ id: '2', numSources: 1, url: 'https://b.example/2' })].join('\n');
+    const out = strikes.deriveStrikeEvents([
+      ...strikes.mapGdeltExportToStrikeCandidates(csv),
+      candidate('SaudiDCD', cls({ place: 'Sabya' }), 30 * MIN),
+    ], NOW);
+    assert.equal(out.length, 1);
+    assert.match(out[0].id, /^tg:/);
+  });
+
+  it('fetches only unprocessed exports, verifies them, and retries a failed one', async () => {
+    const bulk = await import('../scripts/_conflict-gdelt-bulk.mjs');
+    const csv = [gdeltRow({ id: '1', numSources: 3, url: 'https://a.example/1' }), gdeltRow({ id: '2', url: 'https://b.example/2' })].join('\n');
+    const zipOf = (stamp, body) => {
+      const name = Buffer.from(`${stamp}.export.CSV`);
+      const raw = Buffer.from(body);
+      const data = deflateRawSync(raw);
+      const header = Buffer.alloc(30);
+      header.writeUInt32LE(0x04034b50, 0); header.writeUInt16LE(20, 4); header.writeUInt16LE(8, 8);
+      header.writeUInt32LE(data.length, 18); header.writeUInt32LE(raw.length, 22); header.writeUInt16LE(name.length, 26);
+      return Buffer.concat([header, name, data]);
+    };
+    const good = zipOf('20261019113000', csv);
+    const bad = zipOf('20261019114500', csv);
+    const md5 = (b) => createHash('md5').update(b).digest('hex');
+    const manifest = [
+      `${good.length} ${md5(good)} http://data.gdeltproject.org/gdeltv2/20261019113000.export.CSV.zip`,
+      `${bad.length} ${'0'.repeat(32)} http://data.gdeltproject.org/gdeltv2/20261019114500.export.CSV.zip`,
+    ].join('\n');
+    const requested = [];
+    const fetchImpl = async (url) => {
+      requested.push(url);
+      const body = url === bulk.GDELT_MASTER_FILELIST_URL ? Buffer.from(manifest) : (url.includes('113000') ? good : bad);
+      return new Response(body, { status: url === bulk.GDELT_MASTER_FILELIST_URL ? 206 : 200 });
+    };
+    const first = await strikes.fetchGdeltStrikeCandidates({ bulk, fetchImpl });
+    assert.equal(first.candidates.length, 1);
+    assert.deepEqual(first.processed, ['20261019113000']);
+    assert.equal(first.errors.length, 1, 'checksum mismatch is reported, not mapped');
+    requested.length = 0;
+    const second = await strikes.fetchGdeltStrikeCandidates({ bulk, fetchImpl, processed: first.processed });
+    assert.equal(second.candidates.length, 0);
+    assert.ok(!requested.some((url) => url.includes('113000')), 'a processed export is not downloaded again');
+    assert.ok(requested.some((url) => url.includes('114500')), 'the failed export is retried');
+  });
+
+  it('can corroborate a propaganda-leaning report', () => {
+    const csv = [gdeltRow({ id: '1', numSources: 3, url: 'https://a.example/1' }), gdeltRow({ id: '2', numSources: 1, url: 'https://b.example/2' })].join('\n');
+    const out = strikes.deriveStrikeEvents([
+      ...strikes.mapGdeltExportToStrikeCandidates(csv),
+      candidate('sepah', cls(), 30 * MIN),
+    ], NOW);
+    assert.equal(out.length, 1);
+    assert.match(out[0].id, /^tg:/);
+  });
+});
+
+describe('incident integrity', () => {
+  const gdelt = (row) => strikes.mapGdeltExportToStrikeCandidates(gdeltRow(row));
+
+  it('a trusted report two hours earlier does not let a lone propaganda report publish a second event', () => {
+    const official = candidate('PikudHaOref_all', cls({ place: 'Haifa', countryIso2: 'IL', kind: 'intercept', severity: 'elevated' }), 240 * MIN);
+    const tasnim = candidate('TasnimNewsEN', cls({ place: 'Haifa', countryIso2: 'IL', kind: 'strike', severity: 'critical' }), 150 * MIN);
+    const out = strikes.deriveStrikeEvents([official, tasnim], NOW);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].sourceUrl, official.url);
+    assert.equal(out[0].severity, 'elevated');
+  });
+
+  it('takes severity from trusted members, not from a propaganda report in the same incident', () => {
+    const official = candidate('SaudiDCD', cls({ place: 'Riyadh', kind: 'intercept', severity: 'elevated' }), 20 * MIN);
+    const sepah = candidate('sepah', cls({ place: 'Riyadh', kind: 'strike', severity: 'critical' }), 15 * MIN);
+    assert.equal(strikes.deriveStrikeEvents([official, sepah], NOW)[0].severity, 'elevated');
+  });
+
+  it('caps a corroborated propaganda-only incident below critical', () => {
+    const sepah = candidate('sepah', cls({ place: 'Abha', severity: 'critical' }), 20 * MIN);
+    const clash = candidate('ClashReport', cls({ place: 'Abha', kind: 'claim', severity: 'elevated' }), 15 * MIN);
+    assert.equal(strikes.deriveStrikeEvents([sepah, clash], NOW)[0].severity, 'high');
+  });
+
+  it('never emits two events with one id when GDELT precedes the Telegram reports', () => {
+    const early = gdelt({ id: '1', fips: 'IS', lat: 32.81, lon: 35.0, numSources: 3, url: 'https://a.example/1', added: '20261019093100', fullName: 'Haifa, Haifa, Israel' });
+    const out = strikes.deriveStrikeEvents([
+      ...early,
+      candidate('PikudHaOref_all', cls({ place: 'Haifa', countryIso2: 'IL', kind: 'intercept', severity: 'elevated' }), 120 * MIN),
+      candidate('PikudHaOref_all', cls({ place: 'Haifa', countryIso2: 'IL', kind: 'intercept', severity: 'elevated' }), 118 * MIN),
+    ], NOW);
+    assert.equal(new Set(out.map((e) => e.id)).size, out.length, out.map((e) => e.id).join(', '));
+    assert.equal(out.filter((e) => e.id.startsWith('tg:')).length, 1);
+  });
+
+  it('a word-for-word repost is one voice, not independent agreement', () => {
+    const text = 'IRGC statement: our missiles struck military targets in Haifa';
+    const a = candidate('RezistanceTrench1', cls({ place: 'Haifa', countryIso2: 'IL' }), 20 * MIN, text);
+    const b = candidate('FotrosResistancee', cls({ place: 'Haifa', countryIso2: 'IL' }), 15 * MIN, text);
+    assert.equal(strikes.deriveStrikeEvents([a, b], NOW).length, 0);
+  });
+
+  it('keeps a published GDELT incident that straddles two 30-minute buckets past the pending TTL', () => {
+    const halves = [
+      ...gdelt({ id: '1', numSources: 2, url: 'https://a.example/1', added: '20261019082500' }),
+      ...gdelt({ id: '2', numSources: 1, url: 'https://b.example/2', added: '20261019083500' }),
+    ];
+    assert.equal(strikes.deriveStrikeEvents(halves, Date.parse('2026-10-19T09:00:00Z')).length, 1);
+    const store = strikes.mergeCandidateStore(null, halves, NOW);
+    assert.equal(store.candidates.length, 2);
+    assert.equal(strikes.deriveStrikeEvents(store.candidates, NOW).length, 1);
+  });
+
+  it('keeps GDELT support for a stored propaganda report past the pending TTL', () => {
+    const lone = gdelt({ id: '1', numSources: 3, url: 'https://a.example/1', added: '20261019080000' });
+    const sepah = candidate('sepah', cls(), 230 * MIN);
+    const store = strikes.mergeCandidateStore(null, [...lone, ...gdelt({ id: '2', url: 'https://b.example/2', added: '20261019083500' }), sepah], NOW);
+    assert.equal(strikes.deriveStrikeEvents(store.candidates, NOW).length, 1);
+  });
+
+  it('labels GDELT events by distinct articles, not summed row mentions', () => {
+    const csv = [gdeltRow({ id: '1', numSources: 5, url: 'https://a.example/1' }), gdeltRow({ id: '2', numSources: 4, url: 'https://b.example/2' })].join('\n');
+    const [event] = strikes.deriveStrikeEvents(strikes.mapGdeltExportToStrikeCandidates(csv), NOW);
+    assert.match(event.title, /\(2 articles\)$/);
+  });
+});
+
+// CII v15 Stage B3. Global rule: one physical incident counts once, on the
+// country hit, dated to its first report. Each case paraphrases a defect measured
+// in the production window of 2026-10-20..23 (no post text is copied).
+describe('precision: one incident, once, on the country hit, dated to its first report', () => {
+  const events = (cands) => strikes.deriveStrikeEvents(cands, NOW);
+  const tally = (evs) => strikes.mergeStrikePressure(null, evs, NOW).days;
+
+  it('drops a retrospective post the classifier marks as an old attack', () => {
+    const item = post('OSINTdefender', 'Video shows an Iranian missile hitting a US base in the UAE during the summer war');
+    assert.equal(strikes.buildTelegramCandidate(item, cls({ place: 'Al Dhafra Air Base', countryIso2: 'AE', when: 'past' }), NOW), null);
+  });
+
+  it('drops a retrospective post by its wording even when the classifier calls it new', () => {
+    for (const text of [
+      'WATCH: Previously unseen footage of an Iranian ballistic missile hitting a US base in the UAE',
+      'Never-before-seen footage shows a missile striking a military installation in the UAE',
+      'Newly obtained footage allegedly shows the moment a missile struck a base in the UAE',
+      'Leaked images and whistleblower accounts show the damage at Prince Sultan Air Base, Saudi Arabia',
+      'Newly circulating footage of strikes on Prince Sultan Air Base in Saudi Arabia',
+      'Never seen before footage of a ballistic missile striking a US base in the UAE, from during the war',
+      'تصاویر دیده نشده از تخریب پایگاه هوایی موفق سلطی اردن',
+    ]) {
+      assert.equal(strikes.isRetrospectivePost(text), true, text);
+      assert.equal(strikes.prefilterStrikeText(text), false, `not worth a classifier call: ${text}`);
+      assert.equal(strikes.buildTelegramCandidate(post('OSINTdefender', text), cls({ place: 'Riyadh' }), NOW), null, text);
+    }
+    for (const text of [
+      'Ballistic missile impact in Riyadh moments ago', 'Footage shows smoke rising after a drone strike in Jizan',
+      // Context about the past is not a look back at an old attack.
+      'Drone strike hits the Abqaiq plant, rebuilt years ago after the 2019 attack', 'Missiles struck Haifa port today, months ago it was hit too',
+      'On the anniversary of the war, a drone struck Erbil airport',
+      // A release cue on a strike that is happening now: the time marker wins.
+      "Leaked footage shows today's drone strike on Riyadh",
+      "Previously unseen footage of this morning's missile strike on Jizan",
+      'Whistleblower: the drone strike on Najran an hour ago killed two',
+      'BREAKING: leaked video shows a missile hitting Dammam port',
+    ]) {
+      assert.equal(strikes.isRetrospectivePost(text), false, text);
+      assert.equal(strikes.prefilterStrikeText(text), true, text);
+    }
+  });
+
+  it('holds a report with no recency signal until an independent report agrees', () => {
+    const undated = candidate('OSINTdefender', cls({ place: 'Riyadh', when: 'unknown' }), 30 * MIN);
+    assert.equal(events([undated]).length, 0);
+    assert.equal(events([undated, candidate('ClashReport', cls({ place: 'Riyadh' }), 20 * MIN)]).length, 1);
+  });
+
+  it('counts one airport attack once, whichever name, language or outlet reports it', () => {
+    // The 2026-10-21 Dammam airport attack: an outlet's report, the aviation
+    // authority's confirmation 35 minutes later, a Persian report naming the
+    // airport 86 minutes later, then GDELT articles the next morning.
+    const out = events([
+      candidate('wfwitness', cls({ place: 'Dammam', severity: 'critical' }), 14 * HOUR),
+      candidate('Alsaa_plus_EN', cls({ place: 'King Fahd International Airport', when: 'update', severity: 'critical' }), 14 * HOUR - 35 * MIN),
+      candidate('VahidOnline', cls({ place: 'King Fahd International Airport, Dammam', severity: 'critical' }), 14 * HOUR - 86 * MIN),
+      ...strikes.mapGdeltExportToStrikeCandidates([
+        gdeltRow({ id: '1', fips: 'SA', lat: 26.43, lon: 50.1, numSources: 3, url: 'https://a.example/1', added: '20261019100000', fullName: 'Dammam, Eastern Province, Saudi Arabia' }),
+        gdeltRow({ id: '2', fips: 'SA', lat: 26.43, lon: 50.1, numSources: 2, url: 'https://b.example/2', added: '20261019100500', fullName: 'Dammam, Eastern Province, Saudi Arabia' }),
+      ].join('\n')),
+    ]);
+    assert.deepEqual(out.map((e) => [e.countryCode, e.locationName, e.severity]), [['SA', 'Dammam', 'critical']]);
+    assert.deepEqual(tally(out), { '2026-10-18': { SA: [1, 0, 0, 0] } });
+  });
+
+  it('joins a later toll update to its strike, but counts a new attack on the same city hours later', () => {
+    const strike = candidate('wfwitness', cls({ place: 'Shabwah', countryIso2: 'YE', severity: 'critical' }), 20 * HOUR);
+    const toll = candidate('Alsaa_plus_EN', cls({ place: 'Shabwah', countryIso2: 'YE', when: 'update', severity: 'critical' }), 7 * HOUR);
+    assert.equal(events([strike, toll]).length, 1, 'a death-toll update 13h later is the same incident');
+    const again = candidate('wfwitness', cls({ place: 'Riyadh', severity: 'high' }), 20 * HOUR);
+    const second = candidate('wfwitness', cls({ place: 'Riyadh', severity: 'high' }), 11 * HOUR);
+    assert.equal(events([again, second]).length, 2, 'a new attack on the same city 9h later is a second incident');
+  });
+
+  it('does not publish a late update of an attack the window never saw', () => {
+    // An official toll update about yesterday's attack, with no earlier report.
+    const toll = candidate('SaudiDCD', cls({ place: 'Najran', when: 'update', severity: 'critical' }), 2 * HOUR);
+    assert.deepEqual(events([toll]), []);
+    const first = candidate('wfwitness', cls({ place: 'Najran', severity: 'high' }), 20 * HOUR);
+    const out = events([first, toll]);
+    assert.deepEqual(out.map((e) => [e.timestamp, e.severity]), [[first.ts, 'critical']], 'an update joins its strike and dates to it');
+  });
+
+  it('never re-dates an incident when its first report leaves the window', () => {
+    // A strike at 23:55 and its update the next morning: once the 23:55 report
+    // passes 72h, the update must not become a new event on the next day.
+    const midnight = Date.parse('2026-10-16T00:00:00Z');
+    const strike = { ...candidate('SaudiDCD', cls({ place: 'Abha' })), id: 'tg:saudidcd:a', ts: midnight - 5 * MIN };
+    const update = { ...candidate('SaudiDCD', cls({ place: 'Abha', when: 'update' })), id: 'tg:saudidcd:b', ts: midnight + 9 * HOUR };
+    let store = null;
+    for (const now of [midnight + 10 * HOUR, midnight - 5 * MIN + 72 * HOUR + MIN, midnight + 9 * HOUR + 71 * HOUR]) {
+      store = strikes.mergeCandidateStore(store, [strike, update], now);
+      const out = strikes.deriveStrikeEvents(store.candidates, now);
+      for (const e of out) assert.equal(e.timestamp, strike.ts, `${new Date(now).toISOString()}: dated to the strike, not the update`);
+    }
+    assert.equal(strikes.deriveStrikeEvents(store.candidates, midnight + 9 * HOUR + 71 * HOUR).length, 0);
+  });
+
+  it('keeps a ship hit off a town and a strike on the town as two incidents', () => {
+    const ship = candidate('wfwitness', cls({ place: 'Duqm', countryIso2: 'OM', atSea: true, severity: 'elevated' }), 2 * HOUR);
+    const port = candidate('OSINTdefender', cls({ place: 'Duqm', countryIso2: 'OM', severity: 'high' }), 90 * MIN);
+    for (const order of [[ship, port], [port, ship]]) {
+      const out = events(order);
+      assert.deepEqual(out.map((e) => e.countryCode).sort(), ['', 'OM']);
+      assert.equal(new Set(out.map((e) => e.id)).size, 2);
+      assert.deepEqual(tally(out), { '2026-10-19': { OM: [0, 1, 0, 0] } });
+    }
+  });
+
+  it('folds GDELT coverage into a ship hit at sea nearby, because GDELT cannot tell sea from land', () => {
+    // A tanker hit off Fujairah: GDELT geocodes its coverage to the coastal
+    // city, and only a waterway place ever carries `sea` on the GDELT side.
+    // The articles describe the same attack and must not score the UAE.
+    const ship = candidate('wamnews_en', cls({ place: 'Fujairah', countryIso2: 'AE', atSea: true, severity: 'critical' }), 2 * HOUR);
+    const coverage = strikes.mapGdeltExportToStrikeCandidates([
+      gdeltRow({ id: '1', fips: 'AE', lat: 25.12, lon: 56.34, numSources: 3, url: 'https://a.example/1', added: '20261019104000', fullName: 'Fujairah, Fujairah, United Arab Emirates' }),
+      gdeltRow({ id: '2', fips: 'AE', lat: 25.12, lon: 56.34, numSources: 2, url: 'https://b.example/2', added: '20261019105000', fullName: 'Fujairah, Fujairah, United Arab Emirates' }),
+    ].join('\n'));
+    for (const order of [[ship, ...coverage], [...coverage, ship]]) {
+      const out = events(order);
+      assert.deepEqual(out.map((e) => [e.category, e.countryCode]), [['airstrike', '']]);
+      assert.deepEqual(tally(out), {});
+    }
+    // A Telegram land strike there absorbs the same GDELT rows.
+    const onLand = candidate('wamnews_en', cls({ place: 'Fujairah', countryIso2: 'AE', severity: 'high' }), 2 * HOUR);
+    assert.deepEqual(events([onLand, ...coverage]).map((e) => e.countryCode), ['AE']);
+  });
+
+  it('lets GDELT corroborate a ship hit at sea, and keeps those rows while the report needs them', () => {
+    const ship = candidate('sepah', cls({ place: 'Fujairah', countryIso2: 'AE', atSea: true }), 2 * HOUR);
+    const coverage = strikes.mapGdeltExportToStrikeCandidates([
+      gdeltRow({ id: '1', fips: 'AE', lat: 25.12, lon: 56.34, numSources: 3, url: 'https://a.example/1', added: '20261019104000', fullName: 'Fujairah, Fujairah, United Arab Emirates' }),
+      gdeltRow({ id: '2', fips: 'AE', lat: 25.12, lon: 56.34, numSources: 2, url: 'https://b.example/2', added: '20261019105000', fullName: 'Fujairah, Fujairah, United Arab Emirates' }),
+    ].join('\n'));
+    assert.deepEqual(events([ship, ...coverage]).map((e) => [e.category, e.countryCode]), [['airstrike', '']]);
+    assert.deepEqual(events([ship]), [], 'a belligerent\'s report still needs agreement');
+    // One article, past the pending TTL, under the propaganda report at sea.
+    const lone = strikes.mapGdeltExportToStrikeCandidates(gdeltRow({ id: '3', fips: 'AE', lat: 25.12, lon: 56.34, numSources: 1, url: 'https://c.example/3', added: '20261019080000', fullName: 'Fujairah, Fujairah, United Arab Emirates' }));
+    const stored = strikes.mergeCandidateStore(null, [candidate('sepah', cls({ place: 'Fujairah', countryIso2: 'AE', atSea: true }), 4 * HOUR), ...lone], NOW);
+    assert.ok(stored.candidates.some((c) => c.src === 'gdelt'), 'the article still backs the report at sea');
+  });
+
+  it('keeps Telegram reports of a ship and of a strike on the town apart when GDELT covers both', () => {
+    const ship = candidate('wfwitness', cls({ place: 'Duqm', countryIso2: 'OM', atSea: true, severity: 'elevated' }), 8 * HOUR);
+    const port = candidate('OSINTdefender', cls({ place: 'Duqm', countryIso2: 'OM', severity: 'high' }), 7 * HOUR);
+    const land = strikes.mapGdeltExportToStrikeCandidates([
+      gdeltRow({ id: '1', fips: 'MU', lat: 19.66, lon: 57.7, numSources: 3, url: 'https://a.example/1', added: '20261019100000', fullName: 'Duqm, Al Wusta, Oman' }),
+      gdeltRow({ id: '2', fips: 'MU', lat: 19.66, lon: 57.7, numSources: 2, url: 'https://b.example/2', added: '20261019100500', fullName: 'Duqm, Al Wusta, Oman' }),
+    ].join('\n'));
+    assert.deepEqual(events([ship, port, ...land]).map((e) => e.countryCode).sort(), ['', 'OM']);
+  });
+
+  it('keeps strikes on two unlisted villages of one country apart', () => {
+    // Neither village is in the gazetteer, so both resolve to the Lebanon centroid.
+    const out = events([
+      candidate('wfwitness', cls({ place: 'Kfar Tebnit', countryIso2: 'LB' }), 3 * HOUR),
+      candidate('wfwitness', cls({ place: 'Qantara', countryIso2: 'LB' }), 2 * HOUR),
+      candidate('Alsaa_plus_EN', cls({ place: 'Qantara', countryIso2: 'LB' }), 2 * HOUR - 20 * MIN),
+    ]);
+    assert.equal(out.length, 2);
+    assert.equal(new Set(out.map((e) => e.id)).size, 2);
+    assert.ok(out.every((e) => e.countryCode === 'LB'));
+  });
+
+  describe('reports the gazetteer cannot place', () => {
+    const lb = (place, ageMs, overrides = {}) => candidate(overrides.channel ?? 'wfwitness', cls({ place, countryIso2: 'LB', severity: 'critical', ...overrides.cls }), ageMs);
+
+    for (const other of ['', 'Yatar', 'South Lebanon', 'Southern Lebanon', 'Lebanon', 'southern Lebanon border villages', 'Yater, South Lebanon', 'the town of Yater', 'Yater village']) {
+      it(`counts one strike once when one channel says 'Yater' and another '${other}'`, () => {
+        const named = lb('Yater', 40 * MIN);
+        const second = lb(other, 20 * MIN, { channel: 'Alsaa_plus_EN' });
+        for (const order of [[named, second], [second, named]]) {
+          const out = events(order);
+          assert.equal(out.length, 1, out.map((e) => e.id).join(', '));
+          assert.equal(out[0].countryCode, 'LB');
+          assert.equal(out[0].timestamp, named.ts, 'dated to the first report');
+          assert.deepEqual(tally(out), { '2026-10-19': { LB: [1, 0, 0, 0] } });
+        }
+      });
+    }
+
+    it('dates the incident to an unnamed first report, and takes its place from the named one', () => {
+      const unnamed = lb('', 50 * MIN);
+      const named = candidate('Alsaa_plus_EN', cls({ place: 'Tyre', countryIso2: 'LB', severity: 'high' }), 30 * MIN);
+      const [event, ...rest] = events([named, unnamed]);
+      assert.deepEqual(rest, []);
+      assert.equal(event.timestamp, unnamed.ts);
+      assert.equal(event.locationName, 'Tyre');
+      assert.deepEqual([event.latitude, event.longitude], [named.lat, named.lon]);
+    });
+
+    it('keeps two named villages apart, however close in time or spelling length', () => {
+      for (const [a, b] of [['Yater', 'Kfar Tebnit'], ['Deir Seryan', 'Beit Yahoun'], ['Qarn', 'Qurn']]) {
+        const out = events([lb(a, 40 * MIN), lb(b, 20 * MIN, { channel: 'Alsaa_plus_EN' })]);
+        assert.equal(out.length, 2, `${a} / ${b}`);
+        assert.equal(new Set(out.map((e) => e.id)).size, 2);
+      }
+    });
+
+    it('sends an unnamed report to the nearest named incident, once', () => {
+      const out = events([
+        lb('Yater', 3 * HOUR),
+        lb('', 2 * HOUR - 40 * MIN, { channel: 'Alsaa_plus_EN' }),
+        lb('Kfar Tebnit', 2 * HOUR, { channel: 'OSINTdefender' }),
+      ]);
+      assert.equal(out.length, 2);
+      assert.deepEqual(tally(out), { '2026-10-19': { LB: [2, 0, 0, 0] } });
+      assert.ok(out.every((e) => e.id.includes(':*:')), out.map((e) => e.id).join(', '));
+    });
+
+    it('leaves an unnamed report on its own when no named incident is within the incident window', () => {
+      assert.equal(events([lb('Yater', 6 * HOUR), lb('', 2 * HOUR, { channel: 'Alsaa_plus_EN' })]).length, 2);
+    });
+
+    it('counts unnamed reports of one country in one incident window once', () => {
+      assert.equal(events([lb('', 2 * HOUR), lb('South Lebanon', 90 * MIN, { channel: 'Alsaa_plus_EN' })]).length, 1);
+    });
+
+    it('never merges a report at sea with a land incident while resolving places', () => {
+      const out = events([lb('Yater', 40 * MIN), lb('', 20 * MIN, { channel: 'Alsaa_plus_EN', cls: { atSea: true } })]);
+      assert.deepEqual(out.map((e) => e.countryCode).sort(), ['', 'LB']);
+    });
+  });
+
+  it('maps an interception but never tallies it as a strike on the country', () => {
+    const intercepted = events([candidate('SaudiDCD', cls({ place: 'Medina', kind: 'intercept', severity: 'elevated' }))]);
+    assert.equal(intercepted[0].category, 'defense');
+    assert.deepEqual(tally(intercepted), {});
+    // An incident that one carrying report says hit something is a strike.
+    const mixed = events([
+      candidate('SaudiDCD', cls({ place: 'Shaybah', kind: 'intercept', severity: 'elevated' }), 2 * HOUR),
+      candidate('wfwitness', cls({ place: 'Shaybah oil field', kind: 'strike', severity: 'critical' }), 2 * HOUR - 70 * MIN),
+    ]);
+    assert.deepEqual(mixed.map((e) => [e.category, e.severity]), [['airstrike', 'critical']]);
+    assert.deepEqual(tally(mixed), { '2026-10-19': { SA: [1, 0, 0, 0] } });
+  });
+
+  it('scores no country for a ship hit at sea, by the classifier or by a waterway place', () => {
+    const tanker = events([candidate('wfwitness', cls({ place: 'Bukha', countryIso2: 'OM', atSea: true, severity: 'elevated' }))]);
+    const mined = events([candidate('wfwitness', cls({ place: 'Strait of Hormuz', countryIso2: 'IR', severity: 'critical' }))]);
+    for (const out of [tanker, mined]) {
+      assert.equal(out.length, 1, 'still on the map');
+      assert.equal(out[0].countryCode, '');
+      assert.ok(Number.isFinite(out[0].latitude) && Number.isFinite(out[0].longitude));
+      assert.deepEqual(tally(out), {});
+    }
+    // The same place on land still scores: a launcher struck in Sirik is a strike on Iran.
+    assert.equal(events([candidate('wfwitness', cls({ place: 'Sirik', countryIso2: 'IR' }))])[0].countryCode, 'IR');
+  });
+
+  it('discards a tally written before these rules, instead of keeping its inflated days', () => {
+    const v1 = { version: 1, updatedAt: NOW - HOUR, days: { '2026-10-18': { SA: [3, 4, 2, 0] } } };
+    assert.deepEqual(strikes.mergeStrikePressure(v1, [], NOW).days, {});
+    const v2 = { ...v1, version: 2 };
+    assert.deepEqual(strikes.mergeStrikePressure(v2, [], NOW).days, v1.days);
+  });
+
+  it('gives the classifier room for the longest answer it may give, and the relay passes that budget', () => {
+    // The relay's provider chain caps max_tokens at posts x maxTokensPerItem; a
+    // cut answer is unparseable, so a full batch would fail and retry forever.
+    const longest = JSON.stringify({
+      i: 19, isStrike: true, kind: 'intercept', when: 'update', atSea: false,
+      place: 'x'.repeat(80), countryIso2: 'SA', severity: 'critical',
+    });
+    const tokens = Math.ceil(longest.length / 3); // JSON runs about 3 characters a token
+    assert.ok(tokens <= strikes.CLASSIFY_MAX_TOKENS_PER_ITEM, `${tokens} tokens > ${strikes.CLASSIFY_MAX_TOKENS_PER_ITEM}`);
+    assert.ok(tokens > 60, 'the v1 budget of 60 would cut the longest answer');
+    const relay = ts.createSourceFile('ais-relay.cjs', readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+    const budgets = [];
+    const visit = (node) => {
+      if (ts.isObjectLiteralExpression(node)) {
+        const props = new Map(node.properties.filter(ts.isPropertyAssignment).map((p) => [p.name.getText(relay), p.initializer.getText(relay)]));
+        if (props.get('systemPrompt') === 'middleEastStrikesV2.STRIKE_CLASSIFIER_PROMPT') budgets.push(props.get('maxTokensPerItem'));
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(relay);
+    assert.deepEqual(budgets, ['middleEastStrikesV2.CLASSIFY_MAX_TOKENS_PER_ITEM']);
+  });
+
+  it('asks the classifier for the fields these rules read', () => {
+    for (const field of ['"when":"new|update|past"', '"atSea":false']) assert.ok(strikes.STRIKE_CLASSIFIER_PROMPT.includes(field), field);
+    assert.match(strikes.STRIKE_CLASSIFIER_PROMPT, /launches with no reported impact or interception/);
+    assert.match(strikes.STRIKE_CLASSIFIER_PROMPT, /summaries or tallies of many attacks/);
+    assert.match(strikes.STRIKE_CLASSIFIER_PROMPT, /not the attacker's country and not the launch site/);
+    // `when` must not overlap: a toll posted hours after an attack is an update.
+    assert.match(strikes.STRIKE_CLASSIFIER_PROMPT, /"new" = the first report of an attack/);
+    assert.match(strikes.STRIKE_CLASSIFIER_PROMPT, /"update" = a post adding details to an attack already reported, even within those 24 hours/);
+  });
+});
+
+describe('extraction cycle', () => {
+  function harness(overrides = {}) {
+    const cache = new Map();
+    const calls = [];
+    const deps = {
+      now: NOW,
+      telegramItems: [],
+      previousStore: null,
+      readCache: async (key) => cache.get(key) ?? null,
+      writeCache: async (key, value) => { cache.set(key, value); },
+      classify: async (texts) => {
+        calls.push(texts);
+        return texts.map((_, i) => ({ i, isStrike: true, kind: 'strike', when: 'new', place: 'Jizan', countryIso2: 'SA', severity: 'high' }));
+      },
+      gdeltCandidates: [],
+      telegramPolledAt: NOW - 2 * MIN,
+      ...overrides,
+    };
+    return { deps, cache, calls };
+  }
+
+  it('classifies only pre-filtered posts, caches by text hash, and writes the window', async () => {
+    const items = [
+      post('SaudiDCD', 'سقوط مقذوف عسكري في جازان وإصابة شخصين'),
+      post('ClashReport', 'Russian drone strike on Kharkiv'),
+      post('ClashReport', 'Football: Al Hilal wins in Riyadh'),
+    ];
+    const { deps, calls, cache } = harness({ telegramItems: items });
+    const first = await strikes.runStrikeCycle(deps);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].length, 1, 'only the Saudi strike post reaches the model');
+    assert.equal(first.payload.events.length, 1);
+    assert.equal(first.payload.events[0].locationName, 'Jizan');
+    assert.equal(first.healthy, true);
+    assert.ok([...cache.keys()].every((k) => /^conflict:iran-events:classify:v2:[0-9a-f]{16}$/.test(k)));
+    assert.match(calls[0][0], /^\[posted 2026-10-19\] /, 'the classifier sees the posting date, to judge an old attack');
+
+    const again = harness({ telegramItems: [{ ...items[0], id: 'saudidcd:99999' }], previousStore: first.store });
+    for (const [k, v] of cache) again.cache.set(k, v);
+    const second = await strikes.runStrikeCycle(again.deps);
+    assert.equal(again.calls.length, 0, 'identical text is served from the classification cache');
+    assert.equal(second.payload.events.length, 1, 'the repost dedupes into the same event');
+  });
+
+  it('reports unhealthy when Telegram stalls or the classifier fails, so seed-meta stops advancing', async () => {
+    const stalled = await strikes.runStrikeCycle(harness({ telegramPolledAt: NOW - 3 * HOUR }).deps);
+    assert.equal(stalled.healthy, false);
+    const failing = await strikes.runStrikeCycle(harness({
+      telegramItems: [post('SaudiDCD', 'Missile intercepted over Riyadh')],
+      classify: async () => null,
+    }).deps);
+    assert.equal(failing.healthy, false);
+    assert.equal(failing.pending.length, 1, 'unclassified posts are retried next cycle');
+    const useless = await strikes.runStrikeCycle(harness({
+      telegramItems: [post('SaudiDCD', 'Missile intercepted over Riyadh')],
+      classify: async () => [],
+    }).deps);
+    assert.equal(useless.healthy, false, 'an answer with nothing usable is a classifier failure');
+    const partial = await strikes.runStrikeCycle(harness({
+      telegramItems: [post('SaudiDCD', 'Missile intercepted over Riyadh'), post('SaudiDCD', 'Drone debris fell in Jizan')],
+      classify: async () => [{ i: 0, isStrike: true, kind: 'intercept', when: 'new', place: 'Riyadh', countryIso2: 'SA', severity: 'elevated' }],
+    }).deps);
+    assert.equal(partial.healthy, false, 'an unanswered post is not a healthy cycle');
+    assert.equal(partial.pending.length, 1);
+    let calls = 0;
+    const many = Array.from({ length: 45 }, (_, i) => post('SaudiDCD', `Missile intercepted over Riyadh, wave ${i}`));
+    const dead = await strikes.runStrikeCycle(harness({ telegramItems: many, classify: async () => { calls += 1; return null; } }).deps);
+    assert.equal(calls, 1, 'a dead provider chain is not retried batch after batch inside one cycle');
+    assert.equal(dead.pending.length, 45);
+    const quiet = await strikes.runStrikeCycle(harness().deps);
+    assert.equal(quiet.healthy, true, 'a quiet window with a live poll is healthy');
+    assert.equal(quiet.payload.events.length, 0);
+  });
+
+  function publishHarness(overrides = {}) {
+    const writes = { store: [], canonical: [], meta: [] };
+    const deps = {
+      now: NOW,
+      pendingItems: [post('SaudiDCD', 'Missile intercepted over Riyadh')],
+      readStore: async () => ({ ok: true, value: null }),
+      writeStore: async (s) => { writes.store.push(s); return true; },
+      writeCanonical: async (p, n) => { writes.canonical.push({ p, n }); return true; },
+      writeSeedMeta: async (m) => { writes.meta.push(m); return true; },
+      readCache: async () => null,
+      writeCache: async () => {},
+      classify: async (texts) => texts.map((_, i) => ({ i, isStrike: true, kind: 'intercept', when: 'new', place: 'Riyadh', countryIso2: 'SA', severity: 'elevated' })),
+      loadGdelt: async (processed) => ({ candidates: [], processed, fetched: 0 }),
+      telegramPolledAt: NOW - MIN,
+      ...overrides,
+    };
+    return { deps, writes };
+  }
+
+  it('publishes canonical and seed-meta on a healthy cycle', async () => {
+    const { deps, writes } = publishHarness();
+    const out = await strikes.publishStrikeCycle(deps);
+    assert.equal(out.status, 'ok');
+    assert.equal(writes.canonical[0].n, 1);
+    assert.deepEqual(writes.meta, [{ fetchedAt: NOW, recordCount: 1, sourceVersion: 'telegram-strikes-v2' }]);
+    assert.deepEqual(out.doneIds, deps.pendingItems.map((i) => i.id));
+  });
+
+  it('skips the cycle entirely when the store read fails, so 72h of history is never overwritten', async () => {
+    const { deps, writes } = publishHarness({ readStore: async () => ({ ok: false, value: null }) });
+    const out = await strikes.publishStrikeCycle(deps);
+    assert.equal(out.status, 'store-read-failed');
+    assert.deepEqual([writes.store.length, writes.canonical.length, writes.meta.length], [0, 0, 0]);
+  });
+
+  it('keeps the data fresh but withholds seed-meta when Telegram stalls or the classifier dies', async () => {
+    for (const overrides of [{ telegramPolledAt: NOW - 2 * HOUR }, { classify: async () => null }]) {
+      const { deps, writes } = publishHarness(overrides);
+      const out = await strikes.publishStrikeCycle(deps);
+      assert.equal(out.status, 'degraded');
+      assert.equal(writes.canonical.length, 1);
+      assert.equal(writes.meta.length, 0, 'health must age into STALE_SEED');
+    }
+  });
+
+  it('reports a failed seed-meta write instead of ok', async () => {
+    const { deps } = publishHarness({ writeSeedMeta: async () => false });
+    assert.equal((await strikes.publishStrikeCycle(deps)).status, 'write-failed');
+  });
+
+  it('withholds seed-meta and keeps posts pending when a Redis write fails', async () => {
+    const { deps, writes } = publishHarness({ writeStore: async () => false });
+    const out = await strikes.publishStrikeCycle(deps);
+    assert.equal(out.status, 'write-failed');
+    assert.equal(writes.meta.length, 0);
+    assert.deepEqual(out.doneIds, [], 'unpersisted posts are offered again next cycle');
+  });
+
+  it('keeps previously stored candidates and GDELT exports across cycles', async () => {
+    const { deps } = harness({ telegramItems: [post('SaudiDCD', 'Missile intercepted over Riyadh')] });
+    const first = await strikes.runStrikeCycle(deps);
+    const second = await strikes.runStrikeCycle(harness({ previousStore: first.store }).deps);
+    assert.equal(second.payload.events.length, 1);
+    assert.equal(second.payload.scrapedAt, NOW);
+  });
+});
+
+describe('strike pressure tally (conflict:strike-pressure:v2)', () => {
+  const DAY = 24 * HOUR;
+  const ev = (id, countryCode, severity, ageMs, extra = {}) => ({
+    id, countryCode, severity, timestamp: NOW - ageMs, title: id, category: 'airstrike', ...extra,
+  });
+  const window = [
+    ev('tg:SA:SA:riyadh:1', 'SA', 'high', 2 * HOUR),
+    ev('tg:SA:SA:najran:2', 'SA', 'elevated', 3 * HOUR),
+    ev('tg:SA:SA:jizan:3', 'SA', 'critical', 30 * HOUR),
+    ev('gdelt:YE:YE:sanaa:4', 'YE', 'moderate', 5 * HOUR),
+  ];
+
+  it('tallies published events per country, UTC day of the event and severity', () => {
+    const out = strikes.mergeStrikePressure(null, window, NOW);
+    assert.equal(out.version, 2);
+    assert.equal(out.updatedAt, NOW);
+    // [critical, high, elevated, moderate]
+    assert.deepEqual(out.days['2026-10-19'], { SA: [0, 1, 1, 0], YE: [0, 0, 0, 1] });
+    assert.deepEqual(out.days['2026-10-18'], { SA: [1, 0, 0, 0] });
+  });
+
+  it('never counts an event twice when the 72h window is republished every cycle', () => {
+    let state = strikes.mergeStrikePressure(null, window, NOW);
+    for (let i = 1; i <= 5; i++) state = strikes.mergeStrikePressure(state, window, NOW + i * 10 * MIN);
+    assert.deepEqual(state.days['2026-10-19'], { SA: [0, 1, 1, 0], YE: [0, 0, 0, 1] });
+    assert.deepEqual(state.days['2026-10-18'], { SA: [1, 0, 0, 0] });
+  });
+
+  // Event ids are not stable across cycles: an id carries the 30-minute bucket
+  // of its session's first report, and sessions re-partition when a late post
+  // with an earlier timestamp arrives or the oldest post leaves the window.
+  // The tally must count what the window shows, not every id it ever saw.
+  const at = Date.parse('2026-10-15T10:00:00Z');
+  const riyadh = (id, ts) => ({
+    id, src: 'telegram', cls: 'official', kind: 'strike', when: 'new', severity: 'high', iso2: 'SA', placeKey: 'riyadh',
+    place: 'Riyadh', lat: 24.7, lon: 46.7, ts, title: id, url: '', handle: 'h', group: 'g',
+  });
+
+  it('does not count a re-partitioned incident twice when a late report with an earlier time arrives', () => {
+    // Reports 2h50m apart are one incident (3h); a late post 15 minutes before
+    // the first re-anchors it and pushes the last report into a second one.
+    const cands = [riyadh('a', at + 10 * MIN), riyadh('b', at + 170 * MIN)];
+    const first = strikes.deriveStrikeEvents(cands, at + 4 * HOUR);
+    assert.equal(first.length, 1);
+    let state = strikes.mergeStrikePressure(null, first, at + 4 * HOUR);
+    const late = strikes.deriveStrikeEvents([...cands, riyadh('z', at - 15 * MIN)], at + 4 * HOUR + 10 * MIN);
+    assert.equal(late.length, 2, 'the late post splits the incident into two sessions');
+    state = strikes.mergeStrikePressure(state, late, at + 4 * HOUR + 10 * MIN);
+    assert.deepEqual(state.days['2026-10-15'], { SA: [0, 2, 0, 0] });
+  });
+
+  it('does not count an incident again when its first report leaves the 72h window and its id moves', () => {
+    // a and b are one incident, c (3h05m after a) a second; once a leaves the
+    // window, b and c form one incident dated b.
+    const cands = [riyadh('a', at + 25 * MIN), riyadh('b', at + 2 * HOUR), riyadh('c', at + 210 * MIN)];
+    let state = null;
+    for (const now of [at + 4 * HOUR, at + 72 * HOUR + 26 * MIN, at + 72 * HOUR + 2 * HOUR + MIN]) {
+      state = strikes.mergeStrikePressure(state, strikes.deriveStrikeEvents(cands, now), now);
+    }
+    assert.deepEqual(state.days['2026-10-15'], { SA: [0, 2, 0, 0] });
+  });
+
+  it('does not move an incident to the next day when its first report, just before midnight, leaves the window', () => {
+    // 23:55 and 00:10 form one incident dated 23:55; at 72h the 23:55 report
+    // leaves and the 00:10 report alone would be re-dated to the next day.
+    const midnight = Date.parse('2026-10-16T00:00:00Z');
+    const cands = [riyadh('a', midnight - 5 * MIN), riyadh('b', midnight + 10 * MIN)];
+    let state = null;
+    for (const now of [midnight + 2 * HOUR, midnight - 5 * MIN + 72 * HOUR + MIN, midnight - 5 * MIN + 72 * HOUR + 11 * MIN]) {
+      state = strikes.mergeStrikePressure(state, strikes.deriveStrikeEvents(cands, now), now);
+    }
+    assert.deepEqual(state.days, { '2026-10-15': { SA: [0, 1, 0, 0] } });
+  });
+
+  it('moves an event to its higher severity when later reports raise it, and never lowers it', () => {
+    const first = strikes.mergeStrikePressure(null, [ev('tg:SA:SA:riyadh:1', 'SA', 'elevated', HOUR)], NOW);
+    const raised = strikes.mergeStrikePressure(first, [ev('tg:SA:SA:riyadh:1', 'SA', 'critical', HOUR)], NOW);
+    assert.deepEqual(raised.days['2026-10-19'], { SA: [1, 0, 0, 0] });
+    const lowered = strikes.mergeStrikePressure(raised, [ev('tg:SA:SA:riyadh:1', 'SA', 'high', HOUR)], NOW);
+    assert.deepEqual(lowered.days['2026-10-19'], { SA: [1, 0, 0, 0] });
+  });
+
+  it('keeps 30 days of tallies after the events leave the 72h window, then drops the oldest day', () => {
+    let state = strikes.mergeStrikePressure(null, window, NOW);
+    // Ten days on, the window holds none of these events; the tallies stay.
+    state = strikes.mergeStrikePressure(state, [], NOW + 10 * DAY);
+    assert.deepEqual(state.days['2026-10-19'], { SA: [0, 1, 1, 0], YE: [0, 0, 0, 1] });
+    state = strikes.mergeStrikePressure(state, [], NOW + 30 * DAY);
+    assert.equal(state.days['2026-10-19'], undefined);
+    assert.equal(state.days['2026-10-18'], undefined);
+  });
+
+  it('ignores events it cannot place: no country, unknown severity, future or ancient timestamps', () => {
+    const out = strikes.mergeStrikePressure(null, [
+      ev('a', 'Saudi', 'high', HOUR),
+      ev('b', 'SA', 'catastrophic', HOUR),
+      ev('c', 'SA', 'high', -2 * HOUR),
+      ev('d', 'SA', 'high', 40 * DAY),
+      { ...ev('e', 'SA', 'high', HOUR), timestamp: 'yesterday' },
+      ev('', 'SA', 'high', HOUR),
+      null,
+    ], NOW);
+    assert.deepEqual(out.days, {});
+  });
+
+  it('survives a malformed stored snapshot without throwing or keeping garbage', () => {
+    const out = strikes.mergeStrikePressure({ version: 2, days: { 'not-a-date': { SA: [1, 0, 0, 0] }, '2026-10-18': { SA: 'x', YE: [0, 1, 0, 0] } }, events: [] }, [], NOW);
+    assert.deepEqual(out.days, { '2026-10-18': { YE: [0, 1, 0, 0] } });
+  });
+
+  function pressureHarness(overrides = {}) {
+    const writes = { store: [], canonical: [], meta: [], pressure: [], pressureMeta: [] };
+    const deps = {
+      now: NOW,
+      pendingItems: [post('SaudiDCD', 'Missile debris hit a building in Riyadh')],
+      readStore: async () => ({ ok: true, value: null }),
+      writeStore: async (s) => { writes.store.push(s); return true; },
+      writeCanonical: async (p, n) => { writes.canonical.push({ p, n }); return true; },
+      writeSeedMeta: async (m) => { writes.meta.push(m); return true; },
+      readCache: async () => null,
+      writeCache: async () => {},
+      classify: async (texts) => texts.map((_, i) => ({ i, isStrike: true, kind: 'strike', when: 'new', place: 'Riyadh', countryIso2: 'SA', severity: 'elevated' })),
+      loadGdelt: async (processed) => ({ candidates: [], processed, fetched: 0 }),
+      telegramPolledAt: NOW - MIN,
+      readPressure: async () => ({ ok: true, value: null }),
+      writePressure: async (p) => { writes.pressure.push(p); return true; },
+      writePressureMeta: async (m) => { writes.pressureMeta.push(m); return true; },
+      ...overrides,
+    };
+    return { deps, writes };
+  }
+
+  it('adds each published window to the tally and advances its seed-meta on a healthy cycle', async () => {
+    const { deps, writes } = pressureHarness();
+    const out = await strikes.publishStrikeCycle(deps);
+    assert.equal(out.status, 'ok');
+    assert.equal(out.pressureStatus, 'ok');
+    assert.deepEqual(writes.pressure[0].days['2026-10-19'], { SA: [0, 0, 1, 0] });
+    assert.deepEqual(writes.pressureMeta, [{ fetchedAt: NOW, recordCount: 1, sourceVersion: 'strike-pressure-v2' }]);
+  });
+
+  it('never overwrites 30 days of tallies after a failed read, and keeps the feed publishing', async () => {
+    const { deps, writes } = pressureHarness({ readPressure: async () => ({ ok: false, value: null }) });
+    const out = await strikes.publishStrikeCycle(deps);
+    assert.equal(out.status, 'ok', 'the strike feed itself is unaffected');
+    assert.equal(out.pressureStatus, 'read-failed');
+    assert.deepEqual([writes.pressure.length, writes.pressureMeta.length], [0, 0]);
+  });
+
+  it('records the events of a degraded cycle but withholds the tally seed-meta', async () => {
+    const { deps, writes } = pressureHarness({ telegramPolledAt: NOW - 2 * HOUR });
+    const out = await strikes.publishStrikeCycle(deps);
+    assert.equal(out.status, 'degraded');
+    assert.equal(out.pressureStatus, 'degraded');
+    assert.equal(writes.pressure.length, 1);
+    assert.equal(writes.pressureMeta.length, 0);
+  });
+
+  it('does not touch the tally when the canonical window was not written', async () => {
+    const { deps, writes } = pressureHarness({ writeCanonical: async () => false });
+    const out = await strikes.publishStrikeCycle(deps);
+    assert.equal(out.status, 'write-failed');
+    assert.equal(out.pressureStatus, 'skipped');
+    assert.equal(writes.pressure.length, 0);
+  });
+
+  it('reports a failed tally write without failing the feed', async () => {
+    const { deps, writes } = pressureHarness({ writePressure: async () => false });
+    const out = await strikes.publishStrikeCycle(deps);
+    assert.equal(out.status, 'ok');
+    assert.equal(out.pressureStatus, 'write-failed');
+    assert.equal(writes.pressureMeta.length, 0);
+  });
+});
+
+describe('v2 runs beside the live v1 feed', () => {
+  it('writes only its own keys, never one the v14 scorer reads', () => {
+    const keys = (m) => [
+      m.CANONICAL_KEY, m.STORE_KEY, m.SEED_META_KEY, m.PRESSURE_KEY, m.PRESSURE_SEED_META_KEY, m.PRESSURE_ACTIVATION_KEY,
+    ];
+    assert.deepEqual(keys(strikes), [
+      'conflict:iran-events:v2',
+      'conflict:iran-events:candidates:v2',
+      'seed-meta:conflict:iran-events:v2',
+      'conflict:strike-pressure:v2',
+      'seed-meta:conflict:strike-pressure:v2',
+      'seed-activated:conflict:strike-pressure:v2',
+    ]);
+    const v1 = new Set(keys(strikesV1));
+    for (const key of keys(strikes)) assert.ok(!v1.has(key), `${key} is a v1 key`);
+    assert.notEqual(strikes.classificationCacheKey('x').split(':').slice(0, 4).join(':'),
+      strikesV1.classificationCacheKey('x').split(':').slice(0, 4).join(':'));
+  });
+
+  it('tallies version 2 and leaves v1 at version 1', () => {
+    assert.equal(strikes.PRESSURE_VERSION, 2);
+    assert.equal(strikes.PRESSURE_SOURCE_VERSION, 'strike-pressure-v2');
+    assert.notEqual(strikesV1.PRESSURE_VERSION, 2);
+    assert.equal(strikesV1.PRESSURE_KEY, 'conflict:strike-pressure:v1');
+    assert.equal(strikesV1.CANONICAL_KEY, 'conflict:iran-events:v1');
+  });
+
+  it('discards a v1 tally rather than carry its days into v2', () => {
+    const v1 = strikesV1.mergeStrikePressure(null, [{
+      id: 'tg:1', countryCode: 'SA', severity: 'high', category: 'military', timestamp: NOW - HOUR,
+    }], NOW);
+    assert.equal(Object.keys(v1.days).length, 1);
+    assert.deepEqual(strikes.mergeStrikePressure(v1, [], NOW).days, {});
+  });
+});

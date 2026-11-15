@@ -454,6 +454,11 @@ const STANDALONE_KEYS = {
   // strike feed; read only by the CII strike pressure (get-risk-scores), so
   // monitored here. Gated by IRAN_EVENTS_ENABLED like the feed itself.
   strikePressure:     'conflict:strike-pressure:v1',
+  // The same tally under CII v15 Stage B3's rules (version 2: deduplicated,
+  // current, landed strikes only), written beside v1 by the relay's shadow loop.
+  // Nothing on main reads it; it accumulates days for the v15 calibration
+  // captures. Gated by IRAN_EVENTS_ENABLED like the v1 tally.
+  strikePressureV2:   'conflict:strike-pressure:v2',
   chinaCoverage:      CHINA_COVERAGE_SUMMARY_KEY,
   // Control-plane heartbeat only. Convex owns every durable scan lease,
   // checkpoint, receipt, and replay decision; this Redis value is disposable.
@@ -1640,6 +1645,17 @@ const SEED_META = {
       activationKey: 'seed-activated:conflict:strike-pressure',
     },
   },
+  // The relay's v2 shadow loop (10min), same publish rules as strikePressure.
+  // Pending until its first healthy tally publish writes the durable marker,
+  // strict after it. Owner: CII v15 (#10577).
+  strikePressureV2: {
+    key: 'seed-meta:conflict:strike-pressure:v2', maxStaleMin: 45,
+    activationKey: 'seed-activated:conflict:strike-pressure:v2',
+    cutover: {
+      mode: 'activation-marker', fromKey: null, issue: 10577,
+      activationKey: 'seed-activated:conflict:strike-pressure:v2',
+    },
+  },
   // Same materializer tick as gdeltIntel; the 2-day data TTL outlives this
   // gate. Pending until the materializer's first successful index publish
   // writes the durable marker, strict after it (#7748).
@@ -2805,6 +2821,8 @@ if (!IRAN_EVENTS_ENABLED) {
   delete SEED_META.iranEvents;
   delete STANDALONE_KEYS.strikePressure;
   delete SEED_META.strikePressure;
+  delete STANDALONE_KEYS.strikePressureV2;
+  delete SEED_META.strikePressureV2;
 }
 
 // Sources whose content is a scheduled government release (food-price sheets
@@ -2987,6 +3005,7 @@ const ON_DEMAND_KEYS = new Set([
   'tensionEvidence',
   // Relay strike-pressure tally: the marker is written after its first healthy publish.
   'strikePressure',
+  'strikePressureV2',
   // Relay digest warm cycle: the marker is written after its first healthy cycle.
   'newsDigestWarmRelayHeartbeat',
   // Scheduled producer. The marker is written only after a successful
@@ -3235,6 +3254,7 @@ const ACTIVATION_MARKERS = {
   gdeltCountryEvents: SEED_META.gdeltCountryEvents.activationKey,
   // Written by scripts/ais-relay.cjs after the first healthy strike-pressure publish.
   strikePressure: 'seed-activated:conflict:strike-pressure',
+  strikePressureV2: SEED_META.strikePressureV2.activationKey,
   // Written by scripts/ais-relay.cjs after the first healthy digest warm cycle.
   newsDigestWarmRelayHeartbeat: SEED_META.newsDigestWarmRelayHeartbeat.activationKey,
   physicalPremiums: SEED_META.physicalPremiums.activationKey,
@@ -3642,6 +3662,7 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   'iranEvents',
   // Thirty quiet days leave an empty tally ({days: {}}), still written every tick.
   'strikePressure',
+  'strikePressureV2',
   // A current List query can validly return no Posts. The relay still writes
   // the canonical snapshot, so a missing xFeed key remains a hard failure.
   'xFeed',

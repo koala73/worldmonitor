@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 
 process.env.IRAN_EVENTS_ENABLED = 'true';
 const { __testing__ } = await import('../api/health.js');
-const { classifyKey, BOOTSTRAP_KEYS, SEED_META, ACTIVATION_MARKERS } = __testing__;
+const { classifyKey, BOOTSTRAP_KEYS, STANDALONE_KEYS, SEED_META, ACTIVATION_MARKERS } = __testing__;
 
 const NOW = 1_700_000_000_000;
 const MIN = 60_000;
@@ -121,4 +121,55 @@ test('seed-health keeps the tally pending until its first healthy publish, like 
   const src = readFileSync(new URL('../api/seed-health.js', import.meta.url), 'utf8');
   const entry = /'conflict:strike-pressure':\s*\{([^}]*)\}/.exec(src)?.[1] ?? '';
   assert.match(entry, new RegExp(`activationKey: '${SEED_META.strikePressure.activationKey}'`));
+});
+
+// CII v15 Stage B3's tally (version 2) runs in shadow beside v1 on its own key;
+// the v14 scorer never reads it (tests/cii-strike-tally-v2-shadow.test.mts).
+const PRESSURE_V2_KEY = 'conflict:strike-pressure:v2';
+function classifyPressureV2({ present = true, metaAgeMin = 1, activated = true } = {}) {
+  return classifyKey('strikePressureV2', PRESSURE_V2_KEY, { allowOnDemand: true }, {
+    containmentEvidenceByName: new Map(),
+    keyStrens: new Map(present ? [[PRESSURE_V2_KEY, 120]] : []),
+    keyErrors: new Map(),
+    keyMetaValues: new Map(metaAgeMin == null ? [] : [[SEED_META.strikePressureV2.key, JSON.stringify({
+      fetchedAt: NOW - metaAgeMin * MIN, recordCount: 0, sourceVersion: 'strike-pressure-v2',
+    })]]),
+    keyMetaErrors: new Map(),
+    activationStates: new Map([['strikePressureV2', activated]]),
+    now: NOW,
+  }).status;
+}
+
+test('the v2 shadow tally is a standalone key with its own seed-meta and activation marker', () => {
+  assert.equal(STANDALONE_KEYS.strikePressureV2, PRESSURE_V2_KEY);
+  assert.equal(STANDALONE_KEYS.strikePressure, PRESSURE_KEY, 'the v1 key the v14 scorer reads is unchanged');
+  assert.equal(SEED_META.strikePressureV2.key, 'seed-meta:conflict:strike-pressure:v2');
+  assert.equal(SEED_META.strikePressureV2.maxStaleMin, 45);
+  assert.equal(ACTIVATION_MARKERS.strikePressureV2, 'seed-activated:conflict:strike-pressure:v2');
+  const lib = readFileSync(new URL('../scripts/lib/middle-east-strikes-v2.cjs', import.meta.url), 'utf8');
+  assert.match(lib, new RegExp(`PRESSURE_KEY = '${PRESSURE_V2_KEY}'`));
+  assert.match(lib, new RegExp(`PRESSURE_SEED_META_KEY = '${SEED_META.strikePressureV2.key}'`));
+  assert.match(lib, new RegExp(`PRESSURE_ACTIVATION_KEY = '${SEED_META.strikePressureV2.activationKey}'`));
+  const src = readFileSync(new URL('../api/seed-health.js', import.meta.url), 'utf8');
+  const entry = /'conflict:strike-pressure:v2':\s*\{([^}]*)\}/.exec(src)?.[1] ?? '';
+  assert.match(entry, new RegExp(`activationKey: '${SEED_META.strikePressureV2.activationKey}'`));
+});
+
+test('the v2 tally is pending before its first healthy publish and strict afterwards', () => {
+  assert.equal(classifyPressureV2({ present: false, metaAgeMin: null, activated: false }), 'EMPTY_ON_DEMAND');
+  assert.notEqual(classifyPressureV2({ present: false, metaAgeMin: null, activated: true }), 'OK');
+  assert.equal(classifyPressureV2({ metaAgeMin: 5 }), 'OK');
+  assert.equal(classifyPressureV2({ metaAgeMin: 46 }), 'STALE_SEED');
+});
+
+test('the relay v2 loop reads and writes only the v2 module, never the v1 feed', () => {
+  const relay = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
+  const start = relay.indexOf('const middleEastStrikeV2Pending = new Map();');
+  const end = relay.indexOf('function startMiddleEastStrikesV2Loop()');
+  assert.ok(start > 0 && end > start);
+  const block = relay.slice(start, end);
+  assert.doesNotMatch(block, /middleEastStrikes\./, 'the v2 loop must not touch v1 keys or state');
+  assert.doesNotMatch(block, /middleEastStrike(Pending|Done|Misses)\b/);
+  assert.match(block, /middleEastStrikesV2\.PRESSURE_KEY/);
+  assert.match(relay, /startMiddleEastStrikesLoop\(\);\n\s*startMiddleEastStrikesV2Loop\(\);/);
 });

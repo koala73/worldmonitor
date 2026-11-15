@@ -49,6 +49,8 @@
       "scripts/lib/chokepoint-disruption-alerts.cjs",
       "scripts/lib/middle-east-strikes.cjs",
       "scripts/lib/middle-east-strikes-gazetteer.cjs",
+      "scripts/lib/middle-east-strikes-v2.cjs",
+      "scripts/lib/middle-east-strikes-gazetteer-v2.cjs",
       "scripts/lib/news-digest-warm.cjs",
       "scripts/data/outbreak-places.json",
       "scripts/_conflict-gdelt-bulk.mjs",
