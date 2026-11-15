@@ -74,6 +74,26 @@ describe('loadReservoirNextPasses', () => {
     expect(await loadReservoirNextPasses(sites)).toBe(prediction);
   });
 
+  it('a caller arriving after the last one left, before the aborted scan settles, gets a fresh scan and the real result', async () => {
+    mocks.scan.mockImplementationOnce((_input, options: { signal: AbortSignal }) => new Promise((_, reject) => {
+      options.signal.addEventListener('abort', () => setTimeout(() => reject(new DOMException('aborted', 'AbortError')), 20));
+    }));
+    mocks.scan.mockResolvedValue(prediction);
+    const { loadReservoirNextPasses } = await freshLoader();
+    const leaving = new AbortController();
+    const first = loadReservoirNextPasses(sites, { signal: leaving.signal });
+    await flush();
+    leaving.abort();
+    expect(await first).toBeNull();
+    // The aborted scan has not rejected yet, so it is still the pending entry.
+    expect(await loadReservoirNextPasses(sites)).toBe(prediction);
+    expect(mocks.scan).toHaveBeenCalledTimes(2);
+    // The old scan settling afterwards must not clear the newer entry.
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(await loadReservoirNextPasses(sites)).toBe(prediction);
+    expect(mocks.scan).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps the shared scan running while another caller still waits', async () => {
     let finish!: (value: typeof prediction) => void;
     let workSignal: AbortSignal | undefined;

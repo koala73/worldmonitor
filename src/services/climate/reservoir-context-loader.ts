@@ -33,7 +33,8 @@ let pending: NextPassEntry | null = null;
 export function loadReservoirNextPasses(sites: readonly ReservoirPassSite[], options: { signal?: AbortSignal } = {}): Promise<Map<string, ReservoirNextPass> | null> {
   const { signal } = options;
   if (!ORBITAL_WATCH_ENABLED || signal?.aborted) return Promise.resolve(null);
-  if (!(pending && Date.now() < pending.until)) pending = startNextPassScan(sites);
+  // An entry whose scan was cancelled can still be pending until it settles; it must not serve a new caller.
+  if (!(pending && Date.now() < pending.until && !pending.work.signal.aborted)) pending = startNextPassScan(sites);
   return awaitNextPasses(pending, signal);
 }
 
