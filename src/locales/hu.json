@@ -5303,6 +5303,47 @@
       "densityTip_one": "{{count}} áthaladás {{start}} óta · {{names}}",
       "densityTip_other": "{{count}} áthaladás {{start}} óta · {{names}}"
     },
+    "satelliteSites": {
+      "heading": "Megfigyelt helyek · következő {{hours}} h",
+      "projecting": "Áthaladások kiszámítása…",
+      "notLoaded": "Kattintson ismét a műholdra; a pályaelemei nincsenek betöltve.",
+      "failed": "Kattintson ismét a műholdra az újrapróbálkozáshoz; az áthaladások kiszámítása sikertelen.",
+      "viewFailed": "Kattintson ismét a műholdra az újrapróbálkozáshoz; a helylista nem töltődött be.",
+      "unavailable": "Kattintson ismét a műholdra az újrapróbálkozáshoz; az áthaladási geometria elutasította ezeket a pályaelemeket.",
+      "signals": "Jelfelderítő műhold. Nincs képalkotó érzékelője, így a földi lefedettsége nincs modellezve.",
+      "noProfile": "Ehhez a műholdhoz nincs érzékelőprofil, így a földi lefedettsége nincs modellezve.",
+      "geostationary": "Geostacionárius: egyetlen földrajzi hosszúság felett áll, így nincsenek listázható áthaladások.",
+      "badElements": "A pályaelemek nem olvashatók.",
+      "none": "{{hours}} órán belül egyetlen megfigyelt hely sem esik a lábnyomába.",
+      "utc": "{{time}} UTC",
+      "inMinutes": "{{minutes}} perc múlva",
+      "inHours": "{{hours}} óra {{minutes}} perc múlva",
+      "offTrack": "{{km}} km-re a talajnyomtól",
+      "swathEdge": "a sáv szélén",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "Típus",
+        "operator": "Üzemeltető",
+        "over": "Felett",
+        "ocean": "Óceán",
+        "altBand": "Magassági sáv",
+        "inclination": "Hajl.",
+        "velocity": "Sebesség",
+        "types": {
+          "sar": "SAR képalkotás",
+          "optical": "Optikai képalkotás",
+          "military": "Katonai",
+          "sigint": "SIGINT",
+          "signals": "Jelfelderítés"
+        }
+      },
+      "tooOld_one": "A pályaelemek {{count}} naposak, túl régiek az áthaladások kiszámításához.",
+      "tooOld_other": "A pályaelemek {{count}} naposak, túl régiek az áthaladások kiszámításához.",
+      "count_one": "{{family}}: {{count}} megfigyelt hely a lábnyomon belül",
+      "count_other": "{{family}}: {{count}} megfigyelt hely a lábnyomon belül",
+      "passes_one": "{{count}} áthaladás",
+      "passes_other": "{{count}} áthaladás"
+    },
     "sheet": {
       "heading": "Képi bizonyíték",
       "window": "Utolsó {{days}} nap, következő {{hours}} ó",

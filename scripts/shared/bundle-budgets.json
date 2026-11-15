@@ -109,7 +109,7 @@
     },
     "chunks": {
       "App": {
-        "raw": 1005285,
+        "raw": 1002903,
         "files": 1
       },
       "ai-flow-settings": {
@@ -214,6 +214,10 @@
       },
       "sanitize": {
         "raw": 1280,
+        "files": 1
+      },
+      "satellites": {
+        "raw": 2382,
         "files": 1
       },
       "select": {
