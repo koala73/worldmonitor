@@ -3,6 +3,7 @@ import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { isAnalyticsHost, track } from '@/services/analytics';
 import { isPageUnloading } from '@/bootstrap/page-unload-signal';
 import { fetchUkmtoIncidents } from '@/services/ukmto-incidents';
+import { holdsViewportRequests, onViewportRequestsResumed } from '@/services/orbital/lookup-host';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { isReportableCanadaRoad } from '@/services/canada-road-report';
 import { enqueuePanelCall, invokePanelMethod } from '@/app/pending-panel-data';
@@ -466,6 +467,7 @@ export class DataLoaderManager implements AppModule {
   private activeGlobalTenderScopedGeneration: number | null = null;
   private dailyBriefFrameworkUnsubscribe: (() => void) | null = null;
   private marketImplicationsFrameworkUnsubscribe: (() => void) | null = null;
+  private stopViewportResume: (() => void) | null = null;
   private orefUnsubscribe: (() => void) | null = null;
   private orefDisposed = false;
   private cachedSatRecs: SatRecEntry[] | null = null;
@@ -620,6 +622,11 @@ export class DataLoaderManager implements AppModule {
     this.marketImplicationsFrameworkUnsubscribe = subscribeFrameworkChange('market-implications', () => {
       void this.loadMarketImplications();
     });
+    // Webcams held while the satellite pass lookup was open load for where the map is now.
+    // The maps refetch their own imagery footprints.
+    this.stopViewportResume = onViewportRequestsResumed(() => {
+      if (this.ctx.mapLayers.webcams) void this.loadWebcams();
+    });
   }
 
   destroy(): void {
@@ -647,6 +654,8 @@ export class DataLoaderManager implements AppModule {
     this.dailyBriefFrameworkUnsubscribe = null;
     this.marketImplicationsFrameworkUnsubscribe?.();
     this.marketImplicationsFrameworkUnsubscribe = null;
+    this.stopViewportResume?.();
+    this.stopViewportResume = null;
   }
 
   private getAuthoritativeCachedRiskScores(): CachedRiskScores | null {
@@ -1622,6 +1631,8 @@ export class DataLoaderManager implements AppModule {
 
   private loadImageryFootprints(retries = 2): void {
     if (!this.ctx.mapLayers.satellites) return;
+    // The satellite pass lookup has the map on its point; the map refetches once it closes.
+    if (holdsViewportRequests()) return;
     if (this.ctx.map?.isGlobeMode()) return;
     const bbox = this.ctx.map?.getBbox();
     if (!bbox) {
@@ -4300,7 +4311,8 @@ export class DataLoaderManager implements AppModule {
   private lastWebcamFetchAt = 0;
 
   async loadWebcams(): Promise<void> {
-    if (!this.ctx.map) return;
+    // The satellite pass lookup has the map on its point; the webcams already drawn stay.
+    if (!this.ctx.map || holdsViewportRequests()) return;
     try {
       const map = this.ctx.map;
       const zoom = Math.max(2, map.getState().zoom ?? 3);
