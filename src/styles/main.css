@@ -6077,12 +6077,12 @@ body.playback-mode .status-dot {
 }
 
 .map-locate[data-state='located'] .map-locate-btn {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .map-locate[data-state='denied'] .map-locate-btn,
 .map-locate[data-state='unavailable'] .map-locate-btn {
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
 }
 
 .map-locate-status {
