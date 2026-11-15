@@ -285,6 +285,8 @@ average about 1 ms, sometimes took 73–89 s: `website_event` 77.7 s, `session`
 | `log_parameter_max_length` | -1 | 0 | no |
 | `log_lock_waits` | off | on | no |
 | `log_autovacuum_min_duration` | 10min | 10s | no |
+| `track_wal_io_timing` | off | on | no |
+| `synchronous_commit` | on | off | no |
 
 `max_connections` stays at 500. It was already set in `postgresql.auto.conf`.
 
@@ -314,7 +316,8 @@ WHERE name IN ('shared_buffers', 'dynamic_shared_memory_type',
   'effective_io_concurrency', 'random_page_cost', 'max_wal_size',
   'checkpoint_timeout', 'wal_compression', 'track_io_timing',
   'log_min_duration_statement', 'log_parameter_max_length', 'log_lock_waits',
-  'log_autovacuum_min_duration', 'max_connections')
+  'log_autovacuum_min_duration', 'track_wal_io_timing', 'synchronous_commit',
+  'max_connections')
 ORDER BY name;
 SELECT name, setting, applied, error FROM pg_file_settings
 WHERE sourcefile LIKE '%auto.conf' ORDER BY name;
@@ -349,6 +352,52 @@ that its maximums describe the tuned server alone. Compare over a week:
 - the Postgres log, which now records every statement over 2 s, without its
   parameter values, and every lock wait longer than `deadlock_timeout` (1 s).
   The next stall will name its statement.
+
+### WAL fsync freezes and `synchronous_commit`
+
+The tuning above raised the cache hit rate to 96% but did not stop the
+bursts. The `umami-stall-sampler` service (a `postgres:16-alpine` loop that
+logs `pg_stat_activity` whenever an insert runs longer than 3 s) captured
+them from 2026-11-07. In every burst, one backend sits in `IO/WALSync` for
+45–75 s and every other insert queues behind it on `LWLock/WALWrite`. The
+freeze recurs every day between 10:16 and 10:24 UTC (2026-11-06 through
+2026-11-15, except 11-11), with irregular extra freezes such as 2026-11-13
+14:13 and 2026-11-14 02:50.
+
+The database is idle when it happens. Checkpoints in that window write about
+4% of `shared_buffers` with `sync` under 0.05 s, no non-insert statement over
+2 s overlaps the freeze, and nothing in this project is scheduled at 10:1x
+UTC. The volume has no backup schedule (its last backup is from 2026-09-13),
+so a volume snapshot is not the trigger either. The stall is below Postgres,
+in Railway's volume storage. The cause there is unknown.
+
+Each blocked insert was waiting to fsync its own commit record. On
+2026-11-15 10:27 UTC `synchronous_commit` was set to `off` with `ALTER SYSTEM`
+and `pg_reload_conf()`. A commit now returns once its record is in the WAL
+buffers, and the WAL writer flushes them every 200 ms in the background. The
+collector writes about 75 KB of WAL per second (checkpoint `distance` of
+about 70 MB per 15 min), so a 75 s freeze fills about 6 MB of the 20 MB
+`wal_buffers`. Over the 2 minutes after the reload, WAL syncs fell from about
+1 per WAL write to 3.6/s against 9.6 writes/s, which shows the collector's
+pooled sessions picked up the setting without a restart.
+
+The cost: if Postgres crashes, acknowledged events that were not yet flushed
+are lost. The database stays consistent. While the WAL writer makes progress
+that is at most the last 600 ms (3 × `wal_writer_delay`). During a storage
+freeze nothing is flushed, so a crash inside a 75 s freeze can lose up to
+75 s of acknowledged events. Before the change, each freeze already lost
+writes. Requests that timed out waiting for a pool connection never reached
+the database, and the browser client does not retry an append-only event
+after a 5xx, because a 500 can also follow a write that committed (see the
+write-path contract).
+
+Judge it on the next 10:16–10:24 UTC window: the sampler should log no
+`WALSync` stall on a client backend, and Railway HTTP metrics should show no
+`/api/send` 5xx burst. A freeze that outlasts the WAL buffers, or a dirty page
+eviction that needs a WAL flush, can still block an insert, so a shorter or
+smaller burst is a partial result. Delete `umami-stall-sampler` once the
+result is recorded. To revert, run `ALTER SYSTEM RESET synchronous_commit`
+and `pg_reload_conf()`.
 
 The `website_event` indexes are a further lever. Eight of them, totaling
 12.7 GB, had zero scans between 2026-10-20 and 2026-11-05, including
