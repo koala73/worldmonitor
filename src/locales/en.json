@@ -4681,8 +4681,6 @@
       "dailyMosaic": "daily mosaic",
       "weatherFrame": "weather frame",
       "change": "Change place",
-      "share": "Copy link",
-      "shareCopied": "Link copied",
       "showUtc": "UTC",
       "showLocal": "Local time",
       "alert": "Alert before each open pass overhead, and on each new clear image.",

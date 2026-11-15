@@ -5426,8 +5426,6 @@
       "dailyMosaic": "mosaico diario",
       "weatherFrame": "imagen meteorológica",
       "change": "Cambiar ubicación",
-      "share": "Copiar enlace",
-      "shareCopied": "Enlace copiado",
       "showUtc": "UTC",
       "showLocal": "Hora local",
       "alert": "Avisar antes de cada pasada abierta sobre el punto y con cada nueva imagen sin nubes.",
