@@ -5395,9 +5395,9 @@
       "unavailable": "Data ya kupita haipatikani. Jaribu tena baadaye."
     },
     "privacy": {
-      "line": "Nukta inabaki kwenye kifaa chako; inatumwa tu kwa Earth Search, Planetary Computer, NASA GIBS, EUMETSAT. Majina yaliyoandikwa: WorldMonitor, OSM.",
+      "line": "Mahali halisi hubaki kwenye kifaa hiki.",
       "more": "Maelezo",
-      "body": "Jiometri ya kupita inakokotolewa kwenye kifaa chako. Ili kupata taswira, kumbukumbu hupokea kisanduku cha mipaka, kamwe si viwianishi kamili. Majina ya mahali yaliyoandikwa hutambuliwa na WorldMonitor na OpenStreetMap Nominatim. Viungo vinavyoshirikiwa huhifadhi nafasi mbili za desimali (0.01°)."
+      "body": "Kupita kwa satelaiti kunakokotolewa kwenye kifaa hiki. Ili kupata picha, Earth Search, Planetary Computer, NASA GIBS na EUMETSAT hupokea kisanduku kinachozunguka mahali hapo, kamwe si mahali hapo hasa. Jina la mahali unaloandika hutumwa kwa WorldMonitor na OpenStreetMap Nominatim ili lipatikane. Viungo vinavyoshirikiwa huhifadhi desimali mbili (0.01°)."
     },
     "sources": {
       "heading": "Vyanzo ({{count}})",

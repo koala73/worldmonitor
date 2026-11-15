@@ -157,7 +157,16 @@ describe('imagery evidence sheet', () => {
     expect(sheet().querySelector('.cdp-header'), 'Country Brief header chrome').not.toBeNull();
     const line = sheet().querySelector<HTMLElement>('.ies-privacy-line')!;
     expect(line.closest('details'), 'the line itself is never folded away').toBeNull();
-    for (const name of ['Earth Search', 'Planetary Computer', 'NASA GIBS', 'EUMETSAT', 'WorldMonitor', 'OSM']) expect(line.textContent).toContain(name);
+    // One line at 11px fits about 45 characters beside the Details toggle in a 390 px sheet.
+    expect(line.textContent!.length).toBeLessThanOrEqual(45);
+    const more = sheet().querySelector<HTMLButtonElement>('[data-action="privacy-more"]')!;
+    const body = sheet().querySelector<HTMLElement>('.ies-privacy-body')!;
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    expect(body.hidden).toBe(true);
+    more.click();
+    expect(more.getAttribute('aria-expanded')).toBe('true');
+    expect(body.hidden).toBe(false);
+    for (const name of ['Earth Search', 'Planetary Computer', 'NASA GIBS', 'EUMETSAT', 'WorldMonitor', 'OpenStreetMap']) expect(body.textContent).toContain(name);
     expect(text()).toContain('Loading the satellite catalogue');
   });
 
@@ -293,6 +302,30 @@ describe('imagery evidence sheet', () => {
     expect(evidenceLine()).toContain(newest);
     expect(sectionOf('latest').querySelector('.ies-note')!.textContent).toContain(newest);
     expect(sectionOf('latest').querySelector('.ies-caption')!.textContent).toContain(formatOrbitalTime(confirmedNew.timeMs, 'stamp'));
+  });
+
+  it('keeps focus on a timeline mark when the sheet re-renders around it', () => {
+    const state = answered(tiered().all);
+    const page = mounted(state);
+    const mark = page.slot('timeline').appendChild(Object.assign(document.createElement('span'), { tabIndex: 0 }));
+    mark.dataset.pass = '1:2';
+    mark.focus();
+    page.render(state);
+    expect(document.activeElement).toBe(mark);
+  });
+
+  it('starts row thumbnails as they near the visible part of the scrolling sheet body', () => {
+    const roots: Array<Element | Document | null | undefined> = [];
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(private readonly callback: IntersectionObserverCallback, options?: IntersectionObserverInit) { roots.push(options?.root); }
+      observe(target: Element) { this.callback([{ isIntersecting: true, target } as IntersectionObserverEntry], this as unknown as IntersectionObserver); }
+      disconnect() {}
+    });
+    const { all, confirmedNew, likely } = tiered();
+    mounted(answered(all, { acquisitions: [acquisition(confirmedNew), acquisition(likely)], mosaics: [modis] }));
+    expect(roots.length).toBeGreaterThan(0);
+    const body = sheet().querySelector('.ies-body');
+    expect(roots.every((root) => root === body), 'the body scrolls, not the window').toBe(true);
   });
 
   it('keeps focus in collection windows when a pass listed there is chosen', () => {

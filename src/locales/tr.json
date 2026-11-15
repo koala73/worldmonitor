@@ -5395,9 +5395,9 @@
       "unavailable": "Geçiş verisi kullanılamıyor. Daha sonra tekrar deneyin."
     },
     "privacy": {
-      "line": "Nokta yerel kalır; yalnızca Earth Search, Planetary Computer, NASA GIBS, EUMETSAT'a gönderilir. Yazılan adlar: WorldMonitor, OSM.",
+      "line": "Kesin konum bu cihazda kalır.",
       "more": "Ayrıntılar",
-      "body": "Geçiş geometrisi yerel olarak hesaplanır. Arşivler sahneleri bulmak için tam koordinat yerine yalnızca sınırlayıcı kutu alır. Yazılan yer adları WorldMonitor ve OpenStreetMap Nominatim tarafından çözümlenir. Paylaşılan bağlantılar iki ondalık basamak tutar (0.01°)."
+      "body": "Geçişler bu cihazda hesaplanır. Sahneleri bulmak için Earth Search, Planetary Computer, NASA GIBS ve EUMETSAT noktanın etrafındaki sınır kutusunu alır, asla noktanın kendisini almaz. Yazılan bir yer adı WorldMonitor ve OpenStreetMap Nominatim'e gönderilerek bulunur. Paylaşılan bağlantılar iki ondalık basamak içerir (0,01°)."
     },
     "sources": {
       "heading": "Kaynaklar ({{count}})",

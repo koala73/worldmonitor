@@ -5362,9 +5362,9 @@
       "unavailable": "過境資料不可用。請稍後重試。"
     },
     "privacy": {
-      "line": "點位保持本地；僅傳送至 Earth Search、Planetary Computer、NASA GIBS、EUMETSAT。輸入的地名：WorldMonitor、OSM。",
+      "line": "精確位置不會離開此裝置。",
       "more": "詳情",
-      "body": "過境幾何在本地計算。檔案庫只獲取邊界框而非精確座標，用於查詢場景。輸入的地名由 WorldMonitor 和 OpenStreetMap Nominatim 解析。共享連結保留兩位小數 (0.01°)。"
+      "body": "過境計算在此裝置上執行。查詢場景時，Earth Search、Planetary Computer、NASA GIBS 和 EUMETSAT 僅接收該點周圍的邊界框，從不接收精確位置。鍵入的地名將傳送至 WorldMonitor 和 OpenStreetMap Nominatim 進行定位。共享連結保留兩位小數（0.01°）。"
     },
     "sources": {
       "heading": "資料來源 ({{count}})",

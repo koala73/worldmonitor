@@ -5461,9 +5461,9 @@
       "unavailable": "Dane przejść są niedostępne. Spróbuj ponownie później."
     },
     "privacy": {
-      "line": "Punkt pozostaje lokalny; wysyłany tylko do Earth Search, Planetary Computer, NASA GIBS, EUMETSAT. Wpisane nazwy: WorldMonitor, OSM.",
+      "line": "Dokładny punkt zostaje na tym urządzeniu.",
       "more": "Szczegóły",
-      "body": "Geometria przejść jest obliczana lokalnie. Aby znaleźć sceny, archiwa otrzymują ramkę ograniczającą, nigdy dokładne współrzędne. Wpisane nazwy miejsc są rozpoznawane przez WorldMonitor i OpenStreetMap Nominatim. Udostępniane linki zawierają dwa miejsca dziesiętne (0,01°)."
+      "body": "Przejścia satelitów są obliczane na tym urządzeniu. Aby znaleźć sceny, Earth Search, Planetary Computer, NASA GIBS i EUMETSAT otrzymują pole ograniczające wokół punktu, nigdy sam punkt. Wpisana nazwa miejsca trafia do WorldMonitor i OpenStreetMap Nominatim w celu lokalizacji. Udostępniane linki zawierają dwa miejsca po przecinku (0,01°)."
     },
     "sources": {
       "heading": "Źródła ({{count}})",

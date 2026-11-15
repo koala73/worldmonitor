@@ -106,9 +106,11 @@
 .ies-alert { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; font-size: 12px; color: var(--text-secondary); }
 .ies-alert-cta { font: 11px var(--font-mono); color: var(--green-text, var(--green)); text-decoration: none; border: 1px solid var(--green); border-radius: 3px; padding: 4px 8px; white-space: nowrap; }
 .ies-footer { border-top: 1px solid var(--border); padding: 8px 16px; font-size: 11px; color: var(--text-muted); }
-.ies-privacy-line { margin: 0; color: var(--text-secondary); }
-.ies-privacy-more summary, .ies-sources summary { cursor: pointer; font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
-.ies-privacy-more p { margin: 4px 0 0; }
+.ies-privacy-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.ies-privacy-line { flex: 1; min-width: 0; margin: 0; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ies-privacy-more { flex: none; padding: 0; border: 0; background: none; color: var(--text-muted); cursor: pointer; font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; }
+.ies-sources summary { cursor: pointer; font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
+.ies-privacy-body { margin: 4px 0 0; }
 .ies-sources ul { margin: 4px 0; padding-left: 16px; }
 .ies-sources a, .ies-privacy a { color: var(--accent); }
 .ies-mapmark { position: absolute; left: 0; top: 0; pointer-events: none; }

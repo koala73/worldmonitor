@@ -69,7 +69,6 @@ import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
 import { installLongPressContextMenu } from '@/utils/long-press';
 
-export interface MapContextMenuPayload { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }
 import type { CountryClickPayload } from './DeckGLMap';
 import { initI18n, t } from '@/services/i18n';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
@@ -107,6 +106,8 @@ import {
   updateCountryClickGestureDrag,
 } from './map-interaction-guard';
 import { resolveClusterGlContext } from './map-cluster-gl';
+
+export interface MapContextMenuPayload { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }
 
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';

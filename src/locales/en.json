@@ -4744,9 +4744,9 @@
       "unavailable": "Pass data is unavailable. Try again later."
     },
     "privacy": {
-      "line": "Point stays local; sent only to Earth Search, Planetary Computer, NASA GIBS, EUMETSAT. Typed names: WorldMonitor, OSM.",
+      "line": "The exact point stays on this device.",
       "more": "Details",
-      "body": "Pass geometry is computed locally. Archives get a bounding box, never exact coordinates, to find scenes. Typed place names are resolved by WorldMonitor and OpenStreetMap Nominatim. Shared links keep two decimals (0.01°)."
+      "body": "Passes are computed on this device. To find scenes, Earth Search, Planetary Computer, NASA GIBS and EUMETSAT receive a bounding box around the point, never the point itself. A typed place name goes to WorldMonitor and OpenStreetMap Nominatim to be found. Shared links keep two decimals (0.01°)."
     },
     "sources": {
       "heading": "Sources ({{count}})",

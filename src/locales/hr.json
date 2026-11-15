@@ -5438,9 +5438,9 @@
       "unavailable": "Podaci o prolascima nisu dostupni. Pokušajte kasnije."
     },
     "privacy": {
-      "line": "Točka ostaje lokalna; šalje se samo servisima Earth Search, Planetary Computer, NASA GIBS, EUMETSAT. Upisana imena: WorldMonitor, OSM.",
+      "line": "Točna lokacija ostaje na ovom uređaju.",
       "more": "Pojedinosti",
-      "body": "Geometrija prolaza izračunava se lokalno. Arhive dobivaju okvir, nikada točne koordinate, kako bi pronašle scene. Upisana imena mjesta rješavaju WorldMonitor i OpenStreetMap Nominatim. Dijeljene veze čuvaju dvije decimale (0,01°)."
+      "body": "Prolasci se izračunavaju na ovom uređaju. Za pronalaženje scena Earth Search, Planetary Computer, NASA GIBS i EUMETSAT primaju okvir oko točke, nikad samu točku. Upisani naziv mjesta šalje se WorldMonitoru i OpenStreetMap Nominatimu radi pronalaženja. Dijeljene poveznice čuvaju dva decimalna mjesta (0,01°)."
     },
     "sources": {
       "heading": "Izvori ({{count}})",

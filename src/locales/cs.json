@@ -5461,9 +5461,9 @@
       "unavailable": "Údaje o průletech nejsou k dispozici. Zkuste později."
     },
     "privacy": {
-      "line": "Bod zůstává místní; odesílá se pouze do Earth Search, Planetary Computer, NASA GIBS, EUMETSAT. Zadané názvy: WorldMonitor, OSM.",
+      "line": "Přesný bod zůstává na tomto zařízení.",
       "more": "Podrobnosti",
-      "body": "Geometrie průletů se počítá místně. K hledání scén dostávají archivy ohraničující rámeček, nikdy přesné souřadnice. Zadané názvy míst vyhledává WorldMonitor a OpenStreetMap Nominatim. Sdílené odkazy mají dvě desetinná místa (0,01°)."
+      "body": "Průlety se počítají na tomto zařízení. Při vyhledávání scén Earth Search, Planetary Computer, NASA GIBS a EUMETSAT obdrží ohraničující rámeček kolem bodu, nikdy samotný bod. Zadaný název místa se odesílá do WorldMonitor a OpenStreetMap Nominatim k vyhledání. Sdílené odkazy obsahují dvě desetinná místa (0,01°)."
     },
     "sources": {
       "heading": "Zdroje ({{count}})",

@@ -5395,9 +5395,9 @@
       "unavailable": "Überflugdaten sind nicht verfügbar. Versuchen Sie es später erneut."
     },
     "privacy": {
-      "line": "Punkt bleibt lokal; nur an Earth Search, Planetary Computer, NASA GIBS, EUMETSAT gesendet. Eingegebene Namen: WorldMonitor, OSM.",
+      "line": "Der genaue Punkt bleibt auf diesem Gerät.",
       "more": "Details",
-      "body": "Die Überfluggeometrie wird lokal berechnet. Archive erhalten nur einen Begrenzungsrahmen, nie exakte Koordinaten, um Szenen zu finden. Eingegebene Ortsnamen werden durch WorldMonitor und OpenStreetMap Nominatim aufgelöst. Geteilte Links behalten zwei Dezimalstellen (0,01°)."
+      "body": "Überflüge werden auf diesem Gerät berechnet. Um Szenen zu finden, erhalten Earth Search, Planetary Computer, NASA GIBS und EUMETSAT einen Begrenzungsrahmen um den Punkt, niemals den Punkt selbst. Ein eingegebener Ortsname wird an WorldMonitor und OpenStreetMap Nominatim gesendet, um ihn zu finden. Geteilte Links behalten zwei Dezimalstellen (0,01°)."
     },
     "sources": {
       "heading": "Quellen ({{count}})",

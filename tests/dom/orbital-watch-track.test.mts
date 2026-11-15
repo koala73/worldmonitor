@@ -157,6 +157,18 @@ describe('one pass selection for the list, the timeline and the maps', () => {
     expect(row(sentinel)!.getAttribute('aria-current')).toBe('true');
   });
 
+  it('keeps keyboard focus on the timeline mark it selected and across later sheet renders', async () => {
+    await openWithPasses();
+    await vi.waitFor(() => expect(glyph(sentinel)).not.toBeNull());
+    glyph(sentinel)!.focus();
+    glyph(sentinel)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await vi.waitFor(() => expect(drawn()).toHaveLength(1));
+    expect(document.activeElement, 'focus stays on the mark, not the list row').toBe(glyph(sentinel));
+    // A late context or archive answer re-renders the sheet body around the timeline slot.
+    document.dispatchEvent(new CustomEvent('orbital-watch:zone-change'));
+    expect(document.activeElement).toBe(glyph(sentinel));
+  });
+
   it('replaces the first pass when a second is selected', async () => {
     await openWithPasses();
     pick(sentinel);

@@ -82,6 +82,7 @@ import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-temp
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
+import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 
 export type { ScenarioVisualState, ScenarioResult };
 
@@ -1991,7 +1992,8 @@ export class MapContainer {
     this.cachedOnMapContextMenu = callback;
     if (this.useGlobe) { this.globeMap?.setOnMapContextMenu(callback); return; }
     if (this.useDeckGL) { this.deckGLMap?.setOnMapContextMenu(callback); return; }
-    this.svgMap?.setOnMapContextMenu(callback);
+    // The flat SVG map gains its menu with the point lookup, so it stays unchanged while the lookup is dark.
+    if (ORBITAL_WATCH_ENABLED) this.svgMap?.setOnMapContextMenu(callback);
   }
 
   public fitCountry(code: string): void {

@@ -5362,9 +5362,9 @@
       "unavailable": "Dữ liệu lượt bay qua không khả dụng. Vui lòng thử lại sau."
     },
     "privacy": {
-      "line": "Điểm được giữ trên máy; chỉ gửi đến Earth Search, Planetary Computer, NASA GIBS, EUMETSAT. Tên được nhập: WorldMonitor, OSM.",
+      "line": "Vị trí chính xác vẫn nằm trên thiết bị này.",
       "more": "Chi tiết",
-      "body": "Hình học lượt bay qua được tính cục bộ. Các kho lưu trữ chỉ nhận một hộp giới hạn, không bao giờ nhận tọa độ chính xác, để tìm cảnh. Tên địa điểm được nhập được tra cứu bởi WorldMonitor và OpenStreetMap Nominatim. Các liên kết được chia sẻ giữ hai chữ số thập phân (0.01°)."
+      "body": "Các lượt bay qua được tính trên thiết bị này. Để tìm ảnh, Earth Search, Planetary Computer, NASA GIBS và EUMETSAT chỉ nhận một khung giới hạn quanh điểm, không bao giờ nhận chính điểm đó. Tên địa điểm bạn nhập được gửi đến WorldMonitor và OpenStreetMap Nominatim để tìm kiếm. Liên kết chia sẻ giữ hai chữ số thập phân (0,01°)."
     },
     "sources": {
       "heading": "Nguồn ({{count}})",

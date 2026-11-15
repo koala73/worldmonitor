@@ -5395,9 +5395,9 @@
       "unavailable": "Passagedata niet beschikbaar. Probeer later opnieuw."
     },
     "privacy": {
-      "line": "Punt blijft lokaal; alleen naar Earth Search, Planetary Computer, NASA GIBS, EUMETSAT verzonden. Getypte namen: WorldMonitor, OSM.",
+      "line": "De exacte locatie blijft op dit apparaat.",
       "more": "Details",
-      "body": "Passagegeometrie wordt lokaal berekend. Archieven krijgen een begrenzingsvak, nooit exacte coördinaten, om scènes te vinden. Getypte plaatsnamen worden opgelost via WorldMonitor en OpenStreetMap Nominatim. Gedeelde koppelingen houden twee decimalen (0,01°)."
+      "body": "Passes worden op dit apparaat berekend. Om scènes te vinden, ontvangen Earth Search, Planetary Computer, NASA GIBS en EUMETSAT een begrenzingsvak rond de locatie, nooit de locatie zelf. Een getypte plaatsnaam gaat naar WorldMonitor en OpenStreetMap Nominatim om te worden gevonden. Gedeelde links behouden twee decimalen (0,01°)."
     },
     "sources": {
       "heading": "Bronnen ({{count}})",

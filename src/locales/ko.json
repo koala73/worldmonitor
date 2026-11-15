@@ -5362,9 +5362,9 @@
       "unavailable": "통과 데이터를 사용할 수 없습니다. 나중에 다시 시도하세요."
     },
     "privacy": {
-      "line": "지점은 로컬에만 유지되며, Earth Search, Planetary Computer, NASA GIBS, EUMETSAT에만 전송됩니다. 입력된 이름: WorldMonitor, OSM.",
+      "line": "정확한 지점은 이 기기를 벗어나지 않습니다.",
       "more": "세부정보",
-      "body": "통과 형상은 로컬에서 계산됩니다. 아카이브는 장면을 찾기 위해 정확한 좌표 대신 경계 상자만 받습니다. 입력된 지명은 WorldMonitor 및 OpenStreetMap Nominatim으로 해석됩니다. 공유 링크는 소수점 둘째 자리(0.01°)를 유지합니다."
+      "body": "궤도 계산은 이 기기에서 수행됩니다. 장면을 찾기 위해 Earth Search, Planetary Computer, NASA GIBS, EUMETSAT에는 위치 주변의 경계 상자만 전송되며, 정확한 위치는 절대 전송되지 않습니다. 입력된 지명은 WorldMonitor와 OpenStreetMap Nominatim으로 전송되어 위치를 찾습니다. 공유 링크는 소수점 두 자리(0.01°)로 유지됩니다."
     },
     "sources": {
       "heading": "소스 ({{count}})",

@@ -1,5 +1,5 @@
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
-import { ArchiveImageError, loadArchiveImage, type LoadedArchiveImage } from './archive-image';
+import type { LoadedArchiveImage } from './archive-image';
 import type { ArchiveFailure, ArchiveId, ArchiveRequestOptions } from './archive-result';
 import { searchStacArchive, type ImagingProfileId, type StacArchiveId } from './archive-stac';
 import { cropBox, EUMETSAT_WMS_ENDPOINT, GIBS_WMS_ENDPOINT } from './crop-url';
@@ -80,58 +80,3 @@ export function defaultCompareScene<T extends DatedScene>(selected: DatedScene, 
 
 /** Loads an archive image for painting; rejects when it fails. */
 export type LoadImage = (archive: ArchiveId, url: string, signal: AbortSignal) => Promise<LoadedArchiveImage>;
-
-/** How long one archive image may take before it counts as failed. */
-export const IMAGE_LOAD_TIMEOUT_MS = 30_000;
-
-/** False when a decoded image is fully transparent: the archive's nodata, a crop that fell outside the scene's pixels. */
-export function imageHasData(image: CanvasImageSource, canvas: HTMLCanvasElement = document.createElement('canvas')): boolean {
-  canvas.width = canvas.height = 32;
-  const context = canvas.getContext('2d', { willReadFrequently: true });
-  if (!context) return true;
-  try {
-    context.drawImage(image, 0, 0, 32, 32);
-    const { data } = context.getImageData(0, 0, 32, 32);
-    for (let i = 3; i < data.length; i += 4) if (data[i]! > 0) return true;
-    return false;
-  } catch {
-    return true;
-  }
-}
-
-/** Loads an image and resolves once it has decoded. `requireData` loads it CORS-readable and rejects one with no pixels. */
-export const loadImageElement = (url: string, signal: AbortSignal, options: { requireData?: boolean } = {}): Promise<void> => new Promise((resolve, reject) => {
-  const image = new Image();
-  if (options.requireData) image.crossOrigin = 'anonymous';
-  image.referrerPolicy = 'no-referrer';
-  image.decoding = 'async';
-  const finish = (error: Error | null) => {
-    clearTimeout(deadline);
-    signal.removeEventListener('abort', abort);
-    image.onload = null;
-    image.onerror = null;
-    if (error) {
-      image.src = '';
-      reject(error);
-    } else {
-      resolve();
-    }
-  };
-  const abort = () => finish(new DOMException('Aborted', 'AbortError'));
-  const deadline = setTimeout(() => finish(new Error('image load timed out')), IMAGE_LOAD_TIMEOUT_MS);
-  signal.addEventListener('abort', abort, { once: true });
-  image.onload = () => {
-    void image.decode().catch(() => undefined).then(() => finish(
-      options.requireData && !imageHasData(image) ? new Error('image has no data at this spot') : null,
-    ));
-  };
-  image.onerror = () => finish(new Error('image failed to load'));
-  image.src = url;
-});
-
-/** Loads an archive image as a URL that carries no point, a `blob:` URL for a crop around it. */
-export const loadPaintableImage: LoadImage = async (archive, url, signal) => {
-  const result = await loadArchiveImage(archive, [url], { signal, timeoutMs: IMAGE_LOAD_TIMEOUT_MS });
-  if (result.status === 'failed') throw new ArchiveImageError(result.failure);
-  return result.image;
-};

@@ -293,7 +293,10 @@ export function loadLookupImage(archive: ArchiveId, url: string, signal: AbortSi
 const NEAR_VIEW_MARGIN = '300px';
 const nearViewObservers = new Set<IntersectionObserver>();
 
-/** Starts a row thumbnail's fetch once it nears the viewport, as `loading="lazy"` did for `img.src`. */
+/** The sheet body scrolls inside the sheet, so thumbnails are measured against it rather than the window. */
+let nearViewRoot: HTMLElement | null = null;
+
+/** Starts a row thumbnail's fetch once it nears the visible part of the sheet body. */
 function whenNearView(el: HTMLElement, start: () => void): void {
   if (typeof IntersectionObserver !== 'function') { start(); return; }
   const observer = new IntersectionObserver((entries) => {
@@ -301,7 +304,7 @@ function whenNearView(el: HTMLElement, start: () => void): void {
     observer.disconnect();
     nearViewObservers.delete(observer);
     start();
-  }, { rootMargin: NEAR_VIEW_MARGIN });
+  }, { root: nearViewRoot, rootMargin: NEAR_VIEW_MARGIN });
   nearViewObservers.add(observer);
   observer.observe(el);
 }
@@ -820,11 +823,13 @@ export class OrbitalWatchPage {
   }
 
   private renderPrivacy(): void {
+    const bodyId = 'orbital-watch-privacy-body';
+    // One visible line in every state; the archives and the name-search exception sit behind Details.
     replaceChildren(this.privacy,
-      h('p', { className: 'ies-privacy-line' }, t('orbitalWatch.privacy.line')),
-      h('details', { className: 'ies-privacy-more' },
-        h('summary', null, t('orbitalWatch.privacy.more')),
-        h('p', null, t('orbitalWatch.privacy.body'))));
+      h('div', { className: 'ies-privacy-row' },
+        h('p', { className: 'ies-privacy-line', title: t('orbitalWatch.privacy.line') }, t('orbitalWatch.privacy.line')),
+        h('button', { type: 'button', className: 'ies-privacy-more', 'aria-expanded': 'false', 'aria-controls': bodyId, dataset: { action: 'privacy-more' } }, t('orbitalWatch.privacy.more'))),
+      h('p', { id: bodyId, className: 'ies-privacy-body', hidden: true }, t('orbitalWatch.privacy.body')));
   }
 
   private passes(state: Extract<OrbitalWatchState, { kind: 'passes' }>): PointPass[] {
@@ -839,13 +844,18 @@ export class OrbitalWatchPage {
     this.state = state;
     this.sheet.dataset.state = state.kind === 'passes' ? (state.archives.kind === 'answered' ? 'answered' : 'checking') : state.kind;
     const active = document.activeElement as HTMLElement | null;
-    const focusKey = this.body.contains(active) ? active?.dataset.key ?? active?.dataset.action ?? null : null;
+    // The timeline slot is the same element after the render, so a mark in it keeps its focus.
+    const inTimeline = active !== null && this.slots.timeline.contains(active);
+    const focusKey = !inTimeline && this.body.contains(active) ? active?.dataset.key ?? active?.dataset.action ?? null : null;
     // Re-attaching the timeline slot resets its sideways scroll, so carry it over.
     const timelineLeft = this.slots.timeline.scrollLeft;
     stopWatchingNearView();
+    nearViewRoot = this.body;
     replaceChildren(this.body, ...this.renderState(state));
     this.slots.timeline.scrollLeft = timelineLeft;
-    if (focusKey) {
+    if (inTimeline && active.isConnected) {
+      active.focus({ preventScroll: true });
+    } else if (focusKey) {
       const again = this.body.querySelector<HTMLElement>(`[data-key="${CSS.escape(focusKey)}"], [data-action="${CSS.escape(focusKey)}"]`);
       again?.focus({ preventScroll: true });
     }
@@ -1137,6 +1147,12 @@ export class OrbitalWatchPage {
         this.sheet.dispatchEvent(new CustomEvent('orbital-watch:zone-change', { bubbles: true, detail: getOrbitalDisplayZone() }));
         return;
       case 'share': this.callbacks.onShare?.(actionEl); return;
+      case 'privacy-more': {
+        const body = this.privacy.querySelector<HTMLElement>('.ies-privacy-body')!;
+        body.hidden = !body.hidden;
+        actionEl.setAttribute('aria-expanded', String(!body.hidden));
+        return;
+      }
       case 'retry-image': {
         const tile = actionEl.closest<HTMLElement>('.ow-tile');
         if (tile) tileRetries.get(tile)?.();

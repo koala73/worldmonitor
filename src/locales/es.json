@@ -5428,9 +5428,9 @@
       "unavailable": "Los datos de pasadas no están disponibles. Inténtalo más tarde."
     },
     "privacy": {
-      "line": "El punto se mantiene local; se envía solo a Earth Search, Planetary Computer, NASA GIBS, EUMETSAT. Nombres escritos: WorldMonitor, OSM.",
+      "line": "El punto exacto queda en este dispositivo.",
       "more": "Detalles",
-      "body": "La geometría de las pasadas se calcula localmente. Los archivos reciben un cuadro delimitador, nunca coordenadas exactas, para encontrar escenas. Los nombres de lugar escritos se resuelven con WorldMonitor y OpenStreetMap Nominatim. Los enlaces compartidos mantienen dos decimales (0,01°)."
+      "body": "Los pases se calculan en este dispositivo. Para encontrar escenas, Earth Search, Planetary Computer, NASA GIBS y EUMETSAT reciben un cuadro delimitador alrededor de la ubicación, nunca la ubicación exacta. Un nombre de lugar escrito se envía a WorldMonitor y OpenStreetMap Nominatim para localizarlo. Los enlaces compartidos conservan dos decimales (0,01°)."
     },
     "sources": {
       "heading": "Fuentes ({{count}})",

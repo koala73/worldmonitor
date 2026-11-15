@@ -139,7 +139,8 @@ function drawTimeline(): void {
 
 /** A glyph picks its pass the same way a sheet row does; both end in `selectPass`. */
 function selectTimelinePass(key: string): void {
-  if (page?.select(key)) return;
+  // Focus stays on the mark that was activated; the list row is only marked.
+  if (page?.select(key, { focus: false })) return;
   const [noradId, timeMs] = key.split(':').map(Number);
   selectPass(noradId!, timeMs!);
 }

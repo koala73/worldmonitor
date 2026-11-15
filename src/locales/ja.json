@@ -5362,9 +5362,9 @@
       "unavailable": "パスデータは利用不可です。後でもう一度お試しください。"
     },
     "privacy": {
-      "line": "地点はローカルに保管され、Earth Search、Planetary Computer、NASA GIBS、EUMETSATにのみ送信されます。入力された地名: WorldMonitor、OSM。",
+      "line": "正確な地点はこのデバイスから出ません。",
       "more": "詳細",
-      "body": "パスジオメトリはローカルで計算されます。アーカイブはシーンを検索するためにバウンディングボックスを受け取り、正確な座標は受け取りません。入力された地名はWorldMonitorとOpenStreetMap Nominatimで解決されます。共有リンクは小数点以下2桁(0.01°)が保持されます。"
+      "body": "衛星パスはこのデバイスで計算されます。シーンを検索する際、Earth Search、Planetary Computer、NASA GIBS、EUMETSATには、正確な位置情報ではなく、その周辺を示す範囲情報のみが送信されます。入力された地名はWorldMonitorとOpenStreetMap Nominatimに送信されて検索されます。共有リンクは小数点以下2桁（0.01°）で保持されます。"
     },
     "sources": {
       "heading": "ソース ({{count}})",

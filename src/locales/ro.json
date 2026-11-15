@@ -5428,9 +5428,9 @@
       "unavailable": "Datele de trecere sunt indisponibile. Încercați din nou mai târziu."
     },
     "privacy": {
-      "line": "Punctul rămâne local; trimis doar către Earth Search, Planetary Computer, NASA GIBS, EUMETSAT. Nume introduse: WorldMonitor, OSM.",
+      "line": "Locația exactă rămâne pe acest dispozitiv.",
       "more": "Detalii",
-      "body": "Geometria trecerilor se calculează local. Arhivele primesc o casetă de delimitare, niciodată coordonate exacte, pentru a găsi scenele. Numele de locuri introduse sunt rezolvate de WorldMonitor și OpenStreetMap Nominatim. Legăturile partajate păstrează două zecimale (0,01°)."
+      "body": "Trecerile sunt calculate pe acest dispozitiv. Pentru a găsi scene, Earth Search, Planetary Computer, NASA GIBS și EUMETSAT primesc un dreptunghi de încadrare în jurul punctului, niciodată punctul în sine. Un nume de loc introdus este trimis la WorldMonitor și OpenStreetMap Nominatim pentru a fi găsit. Linkurile partajate păstrează două zecimale (0,01°)."
     },
     "sources": {
       "heading": "Surse ({{count}})",

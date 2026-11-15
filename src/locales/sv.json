@@ -5395,9 +5395,9 @@
       "unavailable": "Passagedata är inte tillgängliga. Försök igen senare."
     },
     "privacy": {
-      "line": "Punkten förblir lokal; skickas endast till Earth Search, Planetary Computer, NASA GIBS, EUMETSAT. Skrivna namn: WorldMonitor, OSM.",
+      "line": "Den exakta punkten stannar på denna enhet.",
       "more": "Detaljer",
-      "body": "Passagegeometri beräknas lokalt. Arkiv får en avgränsningsram, aldrig exakta koordinater, för att hitta scener. Skrivna platsnamn slås upp av WorldMonitor och OpenStreetMap Nominatim. Delade länkar behåller två decimaler (0,01°)."
+      "body": "Passager beräknas på denna enhet. För att hitta scener får Earth Search, Planetary Computer, NASA GIBS och EUMETSAT en begränsningsruta runt punkten, aldrig själva punkten. Ett inskrivet ortnamn skickas till WorldMonitor och OpenStreetMap Nominatim för att hittas. Delade länkar behåller två decimaler (0,01°)."
     },
     "sources": {
       "heading": "Källor ({{count}})",

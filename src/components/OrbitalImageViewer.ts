@@ -27,8 +27,6 @@ import { ARCHIVE_NAME, archiveHost, loadLookupImage } from './OrbitalWatchPage';
 import { closeButton, formatPoint, reticle, trapTab } from './orbital-dialog';
 import '../styles/orbital-image-viewer.css';
 
-/** How the image's pixels sit against the ground: a geographic grid is north-up; a raw quick-look is not georeferenced. */
-
 export interface ViewerScene extends DatedScene {
   /** Scenes compare only within one collection: a mission, or one mosaic or frame layer. */
   collection: string;
@@ -36,6 +34,7 @@ export interface ViewerScene extends DatedScene {
   dateLabel: string;
   credit: string;
   conditionText: string | null;
+  /** How the pixels sit against the ground: a geographic grid is north-up; a raw quick-look is not georeferenced. */
   grid: ImageGrid;
   /** Ground size of one pixel, when the archive states it. */
   resolutionM: number | null;
