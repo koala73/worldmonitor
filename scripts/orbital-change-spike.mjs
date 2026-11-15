@@ -102,7 +102,9 @@ export function crossGeometryConsensus(params = {}) {
           continue;
         }
         // Only an orbit that can score the same bands can disagree.
-        if (baseline.length >= t.minBaselineScenes && candidate.changes.every((r) => Number.isFinite(observation.values[r.component]))) {
+        const scorable = (component) => Number.isFinite(observation.values[component])
+          && baseline.filter((o) => Number.isFinite(o.values[component])).length >= t.minBaselineScenes;
+        if (candidate.changes.every((r) => scorable(r.component))) {
           events.push(event('retracted', observation, []));
           candidate = null;
         }
@@ -178,7 +180,7 @@ export async function runSpike() {
     for (const params of sweep) runs.push({ params, ...summary(await replay({ scoreSeries: make(params) })) });
     const best = [...runs].sort((a, b) => b.met - a.met || Number(b.known.split(' ')[0]) - Number(a.known.split(' ')[0])
       || (Number(a.retracted.split(' ')[0]) / (Number(a.retracted.split(' of ')[1]) || 1)) - (Number(b.retracted.split(' ')[0]) / (Number(b.retracted.split(' of ')[1]) || 1)))[0];
-    rows.push({ method: name, default: runs[0], best, settingsTried: runs.length });
+    rows.push({ method: name, default: runs[0], best, runs, settingsTried: runs.length });
   }
   return rows;
 }
