@@ -112,6 +112,10 @@ export const THREAT_TIMELINE_DAYS = 7;
 const THREAT_HISTORY_TTL = 9 * 24 * 60 * 60;
 const THREAT_HISTORY_LEVELS = ['critical', 'high', 'medium', 'low', 'info'];
 const THREAT_HISTORY_DAY_MS = 24 * 60 * 60 * 1000;
+// MAX_ITEMS_PER_CATEGORY in server/worldmonitor/news/v1/list-feed-digest.ts
+// (pinned by tests/seed-insights-threat-history.test.mjs). A category at the
+// cap may have dropped older items; one below it is complete.
+export const DIGEST_CATEGORY_CAP = 20;
 
 // Defense-in-depth auth — see seed-infra.mjs for the same pattern + rationale.
 // Set WORLDMONITOR_RELAY_KEY on the Railway service (must match a value in
@@ -1074,6 +1078,12 @@ export function mergeThreatHistory(previous, clusters, { nowMs = Date.now(), pub
 
   const partialDays = new Set(state.partialDays);
   const previousRunMs = itemPubMs(previous?.updatedAt);
+  if (state.recordingSince === null && Number.isFinite(coverageStartMs)
+    && coverageStartMs > Date.parse(`${today}T00:00:00.000Z`)) {
+    // First run: earlier days are partial by recordingSince, and today is
+    // partial too when the digest does not reach back to its midnight.
+    partialDays.add(today);
+  }
   if (previousRunMs !== null && Number.isFinite(coverageStartMs) && previousRunMs < coverageStartMs) {
     const gapEnd = threatHistoryDayKey(Math.min(coverageStartMs, nowMs));
     for (let ms = Date.parse(`${threatHistoryDayKey(previousRunMs)}T00:00:00.000Z`); ; ms += THREAT_HISTORY_DAY_MS) {
@@ -1093,22 +1103,26 @@ export function mergeThreatHistory(previous, clusters, { nowMs = Date.now(), pub
 }
 
 /**
- * How far back the digest is complete: each category is capped, so a busy
- * category drops old items first. The bound is the newest of the categories'
- * oldest items. Null when the digest carries no dated items.
+ * How far back the digest is complete. A category at the producer cap drops
+ * its oldest items first, so the bound is the newest oldest-item among capped
+ * categories. Uncapped categories are complete back to the freshness floor;
+ * when none is capped, the oldest item bounds the digest. Null when the
+ * digest carries no dated items.
  */
 export function digestCoverageStartMs(digest) {
   const groups = digest?.categories && typeof digest.categories === 'object'
     ? Object.values(digest.categories).map(bucket => (Array.isArray(bucket?.items) ? bucket.items : []))
     : [digestItemsForInsights(digest)];
-  let bound = null;
+  let cappedBound = null;
+  let oldestOverall = null;
   for (const items of groups) {
     const times = items.map(item => itemPubMs(item?.pubDate ?? item?.publishedAt ?? item?.date)).filter(ms => ms !== null);
     if (times.length === 0) continue;
     const oldestInGroup = Math.min(...times);
-    if (bound === null || oldestInGroup > bound) bound = oldestInGroup;
+    if (oldestOverall === null || oldestInGroup < oldestOverall) oldestOverall = oldestInGroup;
+    if (items.length >= DIGEST_CATEGORY_CAP && (cappedBound === null || oldestInGroup > cappedBound)) cappedBound = oldestInGroup;
   }
-  return bound;
+  return cappedBound ?? oldestOverall;
 }
 
 /** Earliest publish time per headline, for first-seen day placement. */
@@ -1164,6 +1178,27 @@ async function readThreatHistory() {
   } catch (err) {
     console.warn(`  Threat history read failed: ${err?.message || err}`);
     return undefined;
+  }
+}
+
+/**
+ * Threat-timeline fields for the payload. When the history read failed, the
+ * stored week is intact but unread: keep the last published counts rather
+ * than drop the panel back to binning the top stories.
+ */
+export function threatTimelineFields(threatHistoryRun, existingInsights) {
+  if (threatHistoryRun) {
+    return { threatTimeline: threatHistoryRun.threatTimeline, threatHistory: threatHistoryRun.threatHistory };
+  }
+  const previous = existingInsights?.threatTimeline;
+  return previous && typeof previous === 'object' ? { threatTimeline: previous } : {};
+}
+
+async function readExistingInsightsOrNull() {
+  try {
+    return await readExistingInsights();
+  } catch {
+    return null;
   }
 }
 
@@ -1528,7 +1563,7 @@ async function fetchInsights() {
     provenance,
     chinaNewsCoverage,
     storyPool,
-    ...(threatHistoryRun ? { threatTimeline: threatHistoryRun.threatTimeline, threatHistory: threatHistoryRun.threatHistory } : {}),
+    ...threatTimelineFields(threatHistoryRun, threatHistoryRun ? null : await readExistingInsightsOrNull()),
   };
 
   // LKG preservation: don't overwrite "ok" with "degraded"
@@ -1605,23 +1640,25 @@ async function writeInsightsStoryPool(data) {
   await writeExtraKey(STORY_POOL_KEY, data.storyPool, CACHE_TTL);
 }
 
-async function writeInsightsThreatHistory(data) {
+async function writeInsightsThreatHistory(data, { lockFence } = {}) {
   if (!data?.threatHistory) {
     // Digest unavailable or the history read failed: keep the stored week.
     await extendExistingTtl([THREAT_HISTORY_KEY], THREAT_HISTORY_TTL);
     return;
   }
-  await writeExtraKey(THREAT_HISTORY_KEY, data.threatHistory, THREAT_HISTORY_TTL);
+  // Read-merge-write: fenced so a run that lost its lease cannot overwrite a
+  // newer run's history with its stale merge.
+  await writeExtraKey(THREAT_HISTORY_KEY, data.threatHistory, THREAT_HISTORY_TTL, undefined, { lockFence });
 }
 
-async function finalizeInsightsRun(data, outcome, { previousMeta } = {}) {
+async function finalizeInsightsRun(data, outcome, { previousMeta, lockFence } = {}) {
   const [resolvedPreviousMeta] = await Promise.all([
     previousMeta === undefined
       ? readExistingSeedMeta('news', 'insights')
       : Promise.resolve(previousMeta),
     writeInsightsChinaCoverage(data),
     writeInsightsStoryPool(data),
-    writeInsightsThreatHistory(data),
+    writeInsightsThreatHistory(data, { lockFence }),
   ]);
   return {
     freshnessMetaPatch: buildInsightsFreshnessMetaPatch(
@@ -1647,18 +1684,20 @@ if (_isDirectRun) {
     preserveKeys: [CHINA_COVERAGE_KEY, STORY_POOL_KEY],
     preserveKeyTtls: [{ key: THREAT_HISTORY_KEY, ttlSeconds: THREAT_HISTORY_TTL }],
     publishTransform: publishInsightsPayload,
-    afterPublish: async (data) => {
+    afterPublish: async (data, context) => {
       const runMeta = insightsRunMeta(data);
       return finalizeInsightsRun(
         data,
         runMeta?.outcome === INSIGHTS_RUN_OUTCOMES.PUBLISHED
           ? INSIGHTS_RUN_OUTCOMES.PUBLISHED
           : INSIGHTS_RUN_OUTCOMES.DEGRADED,
+        { lockFence: context?.lockFence },
       );
     },
     afterValidationSkip: async (data, context) => {
       return finalizeInsightsRun(data, INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED, {
         previousMeta: context.existingSeedMeta,
+        lockFence: context.lockFence,
       });
     },
   }).catch(async (err) => {

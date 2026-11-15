@@ -108,17 +108,44 @@ describe('seed-insights threat history', () => {
     assert.deepEqual(later.partialDays, []);
   });
 
-  it('takes the coverage bound from the category whose oldest item is newest', () => {
+  it('takes the coverage bound from the capped categories only', () => {
+    const cap = seedInsights.DIGEST_CATEGORY_CAP;
+    const full = (oldestMs) => Array.from({ length: cap }, (_, i) => ({ publishedAt: i === 0 ? oldestMs : NOW }));
     const digest = {
       categories: {
-        quiet: { items: [{ publishedAt: NOW - 4 * DAY_MS }, { publishedAt: NOW }] },
-        busy: { items: [{ publishedAt: NOW - DAY_MS }, { publishedAt: NOW }] },
+        // Uncapped: complete back to the freshness floor, whatever its oldest item.
+        sparse: { items: [{ publishedAt: NOW - 2 * 60 * 60_000 }] },
+        quietCapped: { items: full(NOW - 4 * DAY_MS) },
+        busyCapped: { items: full(NOW - DAY_MS) },
         empty: { items: [] },
       },
     };
     assert.equal(seedInsights.digestCoverageStartMs(digest), NOW - DAY_MS);
+    assert.equal(seedInsights.digestCoverageStartMs({ categories: { sparse: digest.categories.sparse } }), NOW - 2 * 60 * 60_000,
+      'with no capped category, the oldest item bounds the digest');
     assert.equal(seedInsights.digestCoverageStartMs([{ pubDate: NOW - 3 * DAY_MS }, { pubDate: NOW }]), NOW - 3 * DAY_MS);
     assert.equal(seedInsights.digestCoverageStartMs({}), null);
+  });
+
+  it('pins the category cap to the digest producer', () => {
+    const producer = readFileSync(new URL('../server/worldmonitor/news/v1/list-feed-digest.ts', import.meta.url), 'utf8');
+    const match = producer.match(/const MAX_ITEMS_PER_CATEGORY = (\d+);/);
+    assert.ok(match, 'producer constant not found');
+    assert.equal(seedInsights.DIGEST_CATEGORY_CAP, Number(match[1]));
+  });
+
+  it('marks the first recording day partial when the digest does not reach its midnight', () => {
+    const late = seedInsights.mergeThreatHistory(null, [cluster(['First story'], { level: 'high' })], {
+      nowMs: NOW,
+      coverageStartMs: Date.parse('2026-11-15T12:00:00Z'),
+    });
+    assert.deepEqual(late.partialDays, ['2026-11-15']);
+
+    const covered = seedInsights.mergeThreatHistory(null, [cluster(['First story'], { level: 'high' })], {
+      nowMs: NOW,
+      coverageStartMs: NOW - DAY_MS,
+    });
+    assert.deepEqual(covered.partialDays, []);
   });
 
   it('keeps earlier days across runs and drops days that leave the window', () => {
@@ -200,9 +227,22 @@ describe('seed-insights threat history', () => {
     assert.equal(Object.hasOwn(published, 'threatHistory'), false);
   });
 
-  it('writes the history after publish and protects it on every preservation path', () => {
+  it('carries the last published timeline forward when the history read fails', () => {
+    const previous = { version: 1, recordingSince: '2026-11-10', updatedAt: 'x', partialDays: [], days: [] };
+    assert.deepEqual(seedInsights.threatTimelineFields(null, { threatTimeline: previous }), { threatTimeline: previous });
+    assert.deepEqual(seedInsights.threatTimelineFields(null, { topStories: [] }), {});
+    assert.deepEqual(seedInsights.threatTimelineFields(null, null), {});
+    const run = { threatTimeline: { days: ['fresh'] }, threatHistory: { days: {} } };
+    assert.deepEqual(seedInsights.threatTimelineFields(run, { threatTimeline: previous }), run);
+  });
+
+  it('writes the history after publish, fenced by the run lock, and protects it on every preservation path', () => {
     const source = readFileSync(new URL('../scripts/seed-insights.mjs', import.meta.url), 'utf8');
     assert.match(source, /preserveKeyTtls: \[\{ key: THREAT_HISTORY_KEY, ttlSeconds: THREAT_HISTORY_TTL \}\]/);
-    assert.match(source, /writeInsightsThreatHistory\(data\),/);
+    assert.match(source, /writeInsightsThreatHistory\(data, \{ lockFence \}\),/);
+    assert.match(source, /writeExtraKey\(THREAT_HISTORY_KEY, data\.threatHistory, THREAT_HISTORY_TTL, undefined, \{ lockFence \}\)/);
+    const utils = readFileSync(new URL('../scripts/_seed-utils.mjs', import.meta.url), 'utf8');
+    assert.match(utils, /afterPublish\(data, \{ canonicalKey, ttlSeconds, recordCount, runId, lockFence \}\)/);
+    assert.match(utils, /const validationSkipContext = \{[^}]*lockFence,/);
   });
 });

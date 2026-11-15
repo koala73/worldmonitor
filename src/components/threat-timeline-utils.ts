@@ -275,17 +275,19 @@ export function describeThreatTimelineTrend(days: ThreatTimelineDay[]): ThreatTi
   }
   // A move must be both absolute (2+) and relative (25%+): the seeded history
   // counts dozens of critical/high stories a week, where a swing of two is noise.
-  if (isMaterialRise(lastThree, firstThree)) {
+  if (isMaterialChange(firstThree, lastThree, 1.25)) {
     return { label: 'Worsening', copy: `${lastThree} recent vs ${firstThree} earlier`, className: 'worsening' };
   }
-  if (isMaterialRise(firstThree, lastThree)) {
+  if (isMaterialChange(firstThree, lastThree, 0.75)) {
     return { label: 'Easing', copy: `${lastThree} recent vs ${firstThree} earlier`, className: 'easing' };
   }
   return { label: 'Noisy', copy: `${lastThree} recent vs ${firstThree} earlier`, className: 'noisy' };
 }
 
-function isMaterialRise(next: number, previous: number): boolean {
-  return next - previous >= 2 && next >= previous * 1.25;
+/** Both moves measured against the earlier count: 25% up or 25% down, and at least 2 stories. */
+function isMaterialChange(earlier: number, recent: number, factor: number): boolean {
+  if (Math.abs(recent - earlier) < 2) return false;
+  return factor > 1 ? recent >= earlier * factor : recent <= earlier * factor;
 }
 
 export function compareThreatTimelineItems(a: ThreatTimelineItem, b: ThreatTimelineItem): number {

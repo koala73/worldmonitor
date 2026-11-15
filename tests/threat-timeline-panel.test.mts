@@ -512,6 +512,17 @@ describe('ThreatTimelinePanel seeded history', () => {
     const risingState = buildThreatTimelineStateFromHistory(rising, [], { nowMs: NOW_MS });
     assert.ok(risingState);
     assert.equal(describeThreatTimelineTrend(risingState.days).label, 'Worsening', '61 vs 48 is');
+
+    // Drops are measured against the earlier count too: 10 to 8 is 20%, not 25%.
+    const dip = seededHistory(NOW_MS, [{ high: 4 }, { high: 3 }, { high: 3 }, {}, { high: 3 }, { high: 3 }, { high: 2 }]);
+    const dipState = buildThreatTimelineStateFromHistory(dip, [], { nowMs: NOW_MS });
+    assert.ok(dipState);
+    assert.equal(describeThreatTimelineTrend(dipState.days).label, 'Noisy', '8 vs 10 is not easing');
+
+    const drop = seededHistory(NOW_MS, [{ high: 4 }, { high: 3 }, { high: 3 }, {}, { high: 3 }, { high: 2 }, { high: 2 }]);
+    const dropState = buildThreatTimelineStateFromHistory(drop, [], { nowMs: NOW_MS });
+    assert.ok(dropState);
+    assert.equal(describeThreatTimelineTrend(dropState.days).label, 'Easing', '7 vs 10 is');
   });
 
   it('keeps the grouped list to the current top stories, counted on their own', () => {
