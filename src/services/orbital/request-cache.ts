@@ -24,7 +24,10 @@ export function shareWork<T>(run: (signal: AbortSignal) => Promise<T>): SharedWo
     done: result,
     get abandoned() { return controller.signal.aborted; },
     join<L>(signal: AbortSignal | undefined, left: () => L): Promise<T | L> {
-      if (signal?.aborted) return Promise.resolve(left());
+      if (signal?.aborted) {
+        if (consumers === 0 && !settled) controller.abort();
+        return Promise.resolve(left());
+      }
       consumers++;
       return new Promise<T | L>((resolve, reject) => {
         const leave = () => {

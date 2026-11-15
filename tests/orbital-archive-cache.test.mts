@@ -112,6 +112,20 @@ describe('shared STAC search cache', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(calls.length, 2);
   });
+
+  it('a consumer that arrives already aborted leaves no request running, and the next consumer searches again', async () => {
+    const { fetch, calls } = stacFetch(() => new Promise<Response>(() => {}));
+    const window = lastDays(30);
+    const result = await searchStacArchive('earth-search', { point, window, fetch, signal: AbortSignal.abort() });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(result.status, 'failed');
+    assert.ok(calls.every((call) => call.signal?.aborted), 'nobody waits on it, so it is cancelled');
+    const before = calls.length;
+    void searchStacArchive('earth-search', { point, window, fetch, signal: AbortSignal.timeout(20) });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(calls.length, before + 1);
+  });
 });
 
 describe('shared GIBS time-domain cache', () => {
