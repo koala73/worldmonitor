@@ -6,10 +6,11 @@
 import assert from 'node:assert/strict';
 import { describe, it, mock } from 'node:test';
 
-import { HISTORY_REUSE_MS, searchSceneHistory } from '../src/services/orbital/scene-history.ts';
+import { HISTORY_DAYS, HISTORY_REUSE_MS, searchSceneHistory } from '../src/services/orbital/scene-history.ts';
 import { ARCHIVE_RESPONSES, FIXTURE_NOW, fakeArchiveFetch } from './helpers/orbital-archive-fetch.mts';
 
 const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
 const dubai = ARCHIVE_RESPONSES.points.dubai;
 let nextLat = 0;
 /** A point of its own per test, so the tab-wide cache never answers from an earlier test. */
@@ -46,6 +47,18 @@ describe('compare history search', () => {
     assert.equal(history.status, 'ok');
     const onePage = await searchSceneHistory(freshPoint(), 'sentinel-2', FIXTURE_NOW, { fetch: async () => Response.json({ features: features.slice(0, 1), links: [] }) });
     assert.ok(history.status === 'ok' && onePage.status === 'ok' && history.scenes.length > onePage.scenes.length, 'the second page adds scenes');
+  });
+
+  it('keeps a scene whose capture starts before the 60-day cutoff and ends after it', async () => {
+    const [feature] = dubai['planetary-computer'].features.filter((candidate) => candidate.collection === 'sentinel-2-l2a');
+    const cutoffMs = FIXTURE_NOW - HISTORY_DAYS * DAY;
+    const iso = (ms: number) => new Date(ms).toISOString();
+    // Without a datastrip id, a Planetary Computer Sentinel-2 capture spans 20 minutes from its datetime.
+    const { 's2:datastrip_id': _strip, ...properties } = feature!.properties as Record<string, unknown>;
+    const straddling = { ...feature, id: 'S2-straddles-cutoff', properties: { ...properties, datetime: iso(cutoffMs - 60_000) } };
+    const history = await searchSceneHistory(freshPoint(), 'sentinel-2', FIXTURE_NOW, { fetch: async () => Response.json({ features: [straddling], links: [] }) });
+    assert.equal(history.status, 'ok');
+    assert.equal(history.status === 'ok' && history.scenes.length, 1, 'the scene overlapping the window stays in the history');
   });
 
   it('reuses the answer for the point when the viewer opens again, and searches again for another mission or point', async () => {
