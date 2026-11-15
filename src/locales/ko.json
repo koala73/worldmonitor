@@ -5500,6 +5500,23 @@
         "mosaicUnavailable": "일일 모자이크를 불러올 수 없습니다.",
         "mosaicAlt": "NASA GIBS {{source}} {{date}} 일일 모자이크"
       }
+    },
+    "site": {
+      "heading": "Monitored site",
+      "loading": "Loading the site's daily record…",
+      "failed": "The site's daily record did not load; reopen the point to retry.",
+      "stale": "No current daily check on record for this site.",
+      "checked": "Checked",
+      "noPass": "No upcoming pass on record",
+      "list": {
+        "hotspot": "hotspot",
+        "conflictZone": "conflict zone",
+        "militaryBase": "military base",
+        "nuclearFacility": "nuclear facility",
+        "port": "port",
+        "chokepoint": "chokepoint",
+        "reservoir": "reservoir"
+      }
     }
   },
   "settings": {

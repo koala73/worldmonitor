@@ -5536,6 +5536,23 @@
         "mosaicUnavailable": "Дневната мозайка не се зареди.",
         "mosaicAlt": "NASA GIBS {{source}} дневна мозайка за {{date}}"
       }
+    },
+    "site": {
+      "heading": "Monitored site",
+      "loading": "Loading the site's daily record…",
+      "failed": "The site's daily record did not load; reopen the point to retry.",
+      "stale": "No current daily check on record for this site.",
+      "checked": "Checked",
+      "noPass": "No upcoming pass on record",
+      "list": {
+        "hotspot": "hotspot",
+        "conflictZone": "conflict zone",
+        "militaryBase": "military base",
+        "nuclearFacility": "nuclear facility",
+        "port": "port",
+        "chokepoint": "chokepoint",
+        "reservoir": "reservoir"
+      }
     }
   },
   "settings": {
