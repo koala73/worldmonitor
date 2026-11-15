@@ -12,6 +12,8 @@ import { OrbitalTimeline, type OrbitalTimelineInput, type PointContextState } fr
 import { formatAcquiredLine, formatTargetCoordinates } from '@/components/orbital-target-label';
 import { loadPointContext } from '@/services/orbital/point-context';
 import { OrbitalPlaceTools } from '@/components/OrbitalPlaceTools';
+import { loadWaterCard } from '@/components/water-card';
+import { reservoirAtPoint } from '@/services/climate/reservoir-context';
 import { confirmShareLinkCopied } from '@/components/share-link-button';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 import { DASHBOARD_SITE_ORIGIN } from '@/config/dashboard-reference-links';
@@ -56,6 +58,23 @@ const MINUTE_MS = 60_000;
 const LINKED_PASS_TOLERANCE_MS = 2 * MINUTE_MS;
 
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
+
+let waterRun: AbortController | null = null;
+
+/** The water card (#10714) when the point lies on a strategic reservoir's open water. */
+function drawWater(at: GeoPoint | null): void {
+  waterRun?.abort();
+  waterRun = null;
+  const slot = page?.slot('water');
+  if (!slot) return;
+  slot.replaceChildren();
+  const site = at ? reservoirAtPoint(at.lat, at.lon) : null;
+  if (!site) return;
+  const controller = waterRun = new AbortController();
+  void loadWaterCard(site, controller.signal).then((card) => {
+    if (!controller.signal.aborted) slot.replaceChildren(card);
+  }).catch(() => {});
+}
 
 function cancel(): void {
   run?.abort();
@@ -325,6 +344,7 @@ function ensurePage(): OrbitalWatchPage {
         returnFocus = null;
         timelinePasses = null;
         drawTimeline();
+        drawWater(null);
         tools!.reset();
         showSearchRow(false);
         setOrbitalLookupOpen(false);
@@ -387,6 +407,7 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, map }: { recentre
   sheet.open(at, returnFocus);
   sheet.setPlaceName(name);
   focusMap();
+  drawWater(at);
   void start();
 }
 

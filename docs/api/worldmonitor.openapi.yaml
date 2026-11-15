@@ -59333,6 +59333,8 @@ components:
                     $ref: '#/components/schemas/worldmonitor_orbital_v1_SiteImage'
                 nextPass:
                     $ref: '#/components/schemas/worldmonitor_orbital_v1_SitePass'
+                waterExtent:
+                    $ref: '#/components/schemas/worldmonitor_orbital_v1_WaterExtent'
             description: |-
                 GetWatchedSiteImageryResponse is the public imagery summary of one watched site: its newest image and next pass.
                  It carries no change flag, coverage or pass history; those stay on the Pro surfaces.
@@ -59367,6 +59369,40 @@ components:
                     type: string
                     description: Pass time, ISO 8601 UTC.
             description: SitePass is the next pass expected to image a watched site.
+        worldmonitor_orbital_v1_WaterExtent:
+            type: object
+            properties:
+                latest:
+                    $ref: '#/components/schemas/worldmonitor_orbital_v1_WaterReading'
+                sameOrbitPrevious:
+                    $ref: '#/components/schemas/worldmonitor_orbital_v1_WaterReading'
+                boxKm2:
+                    type: number
+                    format: double
+                    description: Area of the core box the share is measured over, in square kilometres.
+            description: WaterExtent is a reservoir's newest radar water-extent reading and the newest earlier one from the same relative orbit.
+        worldmonitor_orbital_v1_WaterReading:
+            type: object
+            properties:
+                time:
+                    type: string
+                    description: Scene time, ISO 8601 UTC.
+                waterPercent:
+                    type: number
+                    format: double
+                    description: Share of the core box that read as open water, in percent.
+                waterKm2:
+                    type: number
+                    format: double
+                    description: That share as an area, in square kilometres.
+                platform:
+                    type: string
+                    description: Satellite, e.g. "Sentinel-1A"; empty when the archive gives none.
+                relativeOrbit:
+                    type: integer
+                    format: int32
+                    description: Relative orbit of the scene; 0 when the archive gives none.
+            description: WaterReading is one Sentinel-1 radar water-extent reading of a reservoir's core box.
         worldmonitor_positive_events_v1_ListPositiveGeoEventsRequest:
             type: object
         worldmonitor_positive_events_v1_ListPositiveGeoEventsResponse:

@@ -3207,6 +3207,18 @@
         "latestPass": "lượt ICESat-2 gần nhất {{date}}",
         "sparkline": "Mực nước 36 tháng, đường cơ sở theo mùa là nét đứt",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Mực mặt nước bằng lidar từ các lượt có ngày, không phải số đo trực tiếp hay dung tích."
+      },
+      "water": {
+        "title": "Nước tại {{name}}",
+        "level": "Mực nước lidar",
+        "extent": "Diện tích nước theo radar",
+        "extentValue": "{{percent}}% mặt nước mở ({{area}} km²) vào {{date}}",
+        "extentChange": "{{delta}} điểm kể từ {{date}} trên cùng quỹ đạo",
+        "extentNoComparison": "Không có số đo trước đó trên cùng quỹ đạo để so sánh",
+        "extentNone": "Chưa có số đo radar",
+        "optical": "Ảnh quang học mới nhất",
+        "opticalNone": "Không có ảnh quang học trong vòng 30 ngày",
+        "note": "Mỗi hàng là một số đo có ghi ngày từ một lần bay qua riêng, không phải số đọc trực tiếp. Radar đo mặt nước mở trong vùng lõi của hồ chứa; mặt nước gợn sóng do gió có thể bị đọc thành đất liền."
       }
     },
     "gridDisruptionClock": {

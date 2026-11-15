@@ -32,6 +32,29 @@ message SitePass {
   string time = 3;
 }
 
+// WaterReading is one Sentinel-1 radar water-extent reading of a reservoir's core box.
+message WaterReading {
+  // Scene time, ISO 8601 UTC.
+  string time = 1;
+  // Share of the core box that read as open water, in percent.
+  double water_percent = 2;
+  // That share as an area, in square kilometres.
+  double water_km2 = 3;
+  // Satellite, e.g. "Sentinel-1A"; empty when the archive gives none.
+  string platform = 4;
+  // Relative orbit of the scene; 0 when the archive gives none.
+  int32 relative_orbit = 5;
+}
+
+// WaterExtent is a reservoir's newest radar water-extent reading and the newest earlier one from the same relative orbit.
+message WaterExtent {
+  WaterReading latest = 1;
+  // Absent when no earlier reading shares the latest one's relative orbit; other orbits are not strictly comparable.
+  WaterReading same_orbit_previous = 2;
+  // Area of the core box the share is measured over, in square kilometres.
+  double box_km2 = 3;
+}
+
 // GetWatchedSiteImageryResponse is the public imagery summary of one watched site: its newest image and next pass.
 // It carries no change flag, coverage or pass history; those stay on the Pro surfaces.
 message GetWatchedSiteImageryResponse {
@@ -48,4 +71,6 @@ message GetWatchedSiteImageryResponse {
   SiteImage latest_image = 7;
   // Next expected imaging pass; absent when none falls in the next 72 hours.
   SitePass next_pass = 8;
+  // Radar water extent, for reservoir sites only; absent when the site is not a reservoir or has no reading.
+  WaterExtent water_extent = 9;
 }

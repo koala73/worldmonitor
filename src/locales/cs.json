@@ -3270,6 +3270,18 @@
         "latestPass": "poslední přelet ICESat-2 {{date}}",
         "sparkline": "Hladina za 36 měsíců se sezónním základem jako čárkovanou čarou",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidarové hladiny vodní hladiny z datovaných přeletů, ne aktuální údaje ani objemy."
+      },
+      "water": {
+        "title": "Voda na {{name}}",
+        "level": "Hladina z lidaru",
+        "extent": "Vodní plocha z radaru",
+        "extentValue": "{{percent}} % volné vody ({{area}} km²) dne {{date}}",
+        "extentChange": "{{delta}} bodu od {{date}} na stejné dráze",
+        "extentNoComparison": "Žádné dřívější měření na stejné dráze ke srovnání",
+        "extentNone": "Zatím žádné radarové měření",
+        "optical": "Nejnovější optický snímek",
+        "opticalNone": "Žádný optický snímek do 30 dnů",
+        "note": "Každý řádek je datované měření z jiného přeletu, nikoli aktuální údaj. Radar měří volnou vodu v jádrové oblasti nádrže; větrem zvlněná voda se může jevit jako souš."
       }
     },
     "gridDisruptionClock": {

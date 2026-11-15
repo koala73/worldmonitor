@@ -3,15 +3,18 @@
  * watched site's registry id, never by a point, so a user's own point never
  * reaches the server. It returns only what the free tier gets on map objects:
  * the newest image, its date and the next pass. The change flag, coverage and
- * pass history stay off this path.
+ * pass history stay off this path. A reservoir site also gets its newest radar
+ * water-extent reading, for the water card (#10714).
  */
 import type {
   GetWatchedSiteImageryRequest,
   GetWatchedSiteImageryResponse,
   ServerContext,
+  WaterExtent,
+  WaterReading,
 } from '../../../../src/generated/server/worldmonitor/orbital/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/orbital/v1/service_server';
-import { ORBITAL_SITE_KEY_PREFIX } from '../../../_shared/cache-keys';
+import { ORBITAL_SITE_KEY_PREFIX, ORBITAL_WATER_EXTENT_LATEST_KEY } from '../../../_shared/cache-keys';
 import { getCachedJson } from '../../../_shared/redis';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 import { ROLLUP_MAX_AGE_MS, SITES_SCHEMA } from '../../../../shared/orbital/country-rollup.js';
@@ -52,6 +55,29 @@ export function toWatchedSiteImagery(siteId: string, record: unknown, nowMs: num
   };
 }
 
+const RESERVOIR_SITE = /^reservoir:/;
+
+function toWaterReading(value: unknown): WaterReading | null {
+  if (!isRecord(value)) return null;
+  const time = str(value.time);
+  const waterPercent = value.waterPercent;
+  if (!Number.isFinite(Date.parse(time)) || typeof waterPercent !== 'number' || !Number.isFinite(waterPercent)) return null;
+  return { time, waterPercent, waterKm2: num(value.waterKm2), platform: str(value.platform), relativeOrbit: Math.trunc(num(value.relativeOrbit)) };
+}
+
+/** The site's entry in the water-extent summary; null when it has no reading. */
+export function toWaterExtent(siteId: string, summary: unknown): WaterExtent | null {
+  if (!isRecord(summary) || !isRecord(summary.reservoirs)) return null;
+  const entry = summary.reservoirs[siteId];
+  if (!isRecord(entry)) return null;
+  const latest = toWaterReading(entry.latest);
+  if (!latest) return null;
+  const previous = toWaterReading(entry.sameOrbitPrevious);
+  const comparable = previous && latest.relativeOrbit > 0 && previous.relativeOrbit === latest.relativeOrbit
+    && Date.parse(previous.time) < Date.parse(latest.time);
+  return { latest, ...(comparable && { sameOrbitPrevious: previous }), boxKm2: num(entry.areaKm2) };
+}
+
 export async function getWatchedSiteImagery(
   ctx: ServerContext,
   req: GetWatchedSiteImageryRequest,
@@ -60,7 +86,11 @@ export async function getWatchedSiteImagery(
   if (!WATCHED_SITE_ID.test(siteId)) {
     throw new ValidationError([{ field: 'site_id', description: 'site_id must be a watched-site registry id such as "port:jebel_ali"' }]);
   }
-  const record = await getCachedJson(`${ORBITAL_SITE_KEY_PREFIX}${siteId}`, true);
-  const response = toWatchedSiteImagery(siteId, record, Date.now());
+  const [record, summary] = await Promise.all([
+    getCachedJson(`${ORBITAL_SITE_KEY_PREFIX}${siteId}`, true),
+    RESERVOIR_SITE.test(siteId) ? getCachedJson(ORBITAL_WATER_EXTENT_LATEST_KEY, true) : null,
+  ]);
+  const waterExtent = toWaterExtent(siteId, summary);
+  const response = { ...toWatchedSiteImagery(siteId, record, Date.now()), ...(waterExtent && { waterExtent }) };
   return response.stale ? markNoStoreFallbackResponse(ctx.request, response) : response;
 }

@@ -5,11 +5,14 @@ export interface StrategicReservoirSite extends ReservoirPassSite {
   name: string;
   country: string;
   tags: readonly string[];
+  /** The reservoir's map point. */
+  lat: number;
+  lon: number;
 }
 
-export const STRATEGIC_RESERVOIR_SITES: readonly StrategicReservoirSite[] = (registry.reservoirs as Array<{ id: string; name: string; country: string; tags: string[]; core: number[] }>)
+export const STRATEGIC_RESERVOIR_SITES: readonly StrategicReservoirSite[] = (registry.reservoirs as Array<{ id: string; name: string; country: string; tags: string[]; lat: number; lon: number; core: number[] }>)
   .filter(r => r.core.length === 4)
-  .map(r => ({ id: r.id, name: r.name, country: r.country, tags: r.tags, core: r.core as unknown as ReservoirExtent }));
+  .map(r => ({ id: r.id, name: r.name, country: r.country, tags: r.tags, lat: r.lat, lon: r.lon, core: r.core as unknown as ReservoirExtent }));
 
 const SITE_MARGIN_KM = 10;
 const DAM_TERMS = /\b(dams?|reservoirs?|barrages?|spillways?|hydro(?:electric|power)?|floodgates?|sluices?)\b/i;
@@ -32,4 +35,12 @@ export function reservoirAtSite(lat: number, lon: number, text: string): Strateg
     if (lat >= s - dLat && lat <= n + dLat && lon >= w - dLon && lon <= e + dLon) return site;
   }
   return null;
+}
+
+/** The strategic reservoir whose open-water core box holds the point, or whose own map point it is. */
+export function reservoirAtPoint(lat: number, lon: number): StrategicReservoirSite | null {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  return STRATEGIC_RESERVOIR_SITES.find(({ core: [w, s, e, n] }) => lat >= s && lat <= n && lon >= w && lon <= e)
+    ?? STRATEGIC_RESERVOIR_SITES.find((site) => Math.abs(site.lat - lat) < 0.006 && Math.abs(site.lon - lon) < 0.006)
+    ?? null;
 }

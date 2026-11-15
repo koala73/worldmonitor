@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { WATCHED_SITE_ID, toWatchedSiteImagery } from '../server/worldmonitor/orbital/v1/get-watched-site-imagery.ts';
+import { WATCHED_SITE_ID, toWaterExtent, toWatchedSiteImagery } from '../server/worldmonitor/orbital/v1/get-watched-site-imagery.ts';
 import { ROLLUP_MAX_AGE_MS, SITES_SCHEMA } from '../shared/orbital/country-rollup.js';
 import { orbitalHandler } from '../server/worldmonitor/orbital/v1/handler.ts';
 import { createOrbitalServiceRoutes } from '../src/generated/server/worldmonitor/orbital/v1/service_server.ts';
@@ -101,5 +101,25 @@ describe('site record to popup imagery', () => {
 
   it('falls back to the browser lookup when the record is stale', () => {
     assert.equal(fromSiteRecord(toWatchedSiteImagery('port:jebel_ali', null, NOW), NOW), null);
+  });
+
+  it('gives a reservoir its newest radar water reading and the same-orbit one before it', () => {
+    const reading = (time: string, waterPercent: number, relativeOrbit = 43) => ({ time, waterPercent, waterKm2: waterPercent * 2, platform: 'Sentinel-1A', relativeOrbit });
+    const summary = (entry: unknown) => ({ schema: 1, reservoirs: { 'reservoir:kariba': entry } });
+    const latest = reading('2026-11-09T03:40:00Z', 62.4);
+    const previous = reading('2026-10-28T03:40:00Z', 65.5);
+    assert.deepEqual(toWaterExtent('reservoir:kariba', summary({ areaKm2: 640, latest, sameOrbitPrevious: previous })), {
+      latest, sameOrbitPrevious: previous, boxKm2: 640,
+    });
+    // Other orbits, a later "previous" or a malformed one are not compared.
+    for (const bad of [reading('2026-10-28T03:40:00Z', 65.5, 145), reading('2026-11-10T03:40:00Z', 65.5), { time: 'x', waterPercent: 1 }]) {
+      assert.equal(toWaterExtent('reservoir:kariba', summary({ areaKm2: 640, latest, sameOrbitPrevious: bad }))?.sameOrbitPrevious, undefined);
+    }
+    // Readings without a relative orbit cannot be matched to one.
+    const unorbited = (time: string) => ({ time, waterPercent: 60, waterKm2: 120 });
+    assert.equal(toWaterExtent('reservoir:kariba', summary({ areaKm2: 640, latest: unorbited('2026-11-09T03:40:00Z'), sameOrbitPrevious: unorbited('2026-10-28T03:40:00Z') }))?.sameOrbitPrevious, undefined);
+    for (const missing of [null, {}, { reservoirs: {} }, summary(null), summary({ latest: { time: 'x', waterPercent: 1 } }), summary({ latest: { time: latest.time } })]) {
+      assert.equal(toWaterExtent('reservoir:kariba', missing), null);
+    }
   });
 });

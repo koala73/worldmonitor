@@ -35,7 +35,7 @@ export type OrbitalWatchState =
   | { kind: 'passes'; lookup: PointPassLookup; archives: ArchiveState };
 
 /** Empty mount points other surfaces fill: the place search and the timeline. */
-export type OrbitalSlot = 'search' | 'timeline';
+export type OrbitalSlot = 'search' | 'timeline' | 'water';
 
 /** The mobile bottom sheet's three heights; the docked desktop sheet ignores it. */
 export type SheetHeight = 'collapsed' | 'half' | 'full';
@@ -629,6 +629,7 @@ export class OrbitalWatchPage {
     this.slots = {
       search: h('div', { className: 'ies-slot', dataset: { slot: 'search' }, hidden: true }),
       timeline: h('div', { className: 'ies-slot', dataset: { slot: 'timeline' } }),
+      water: h('div', { className: 'ies-slot', dataset: { slot: 'water' } }),
     };
     this.panel = h('div', { className: 'ies-panel' },
       this.handle,
@@ -873,6 +874,7 @@ export class OrbitalWatchPage {
       this.staleBanner(lookup),
       this.evidenceBlock(lookup, archives, summary, evidence),
       this.latestImage(summary, evidence, archives),
+      this.slots.water,
       this.slots.timeline,
       this.eventsSection(lookup),
       this.capabilitySection(lookup, passes, isPending),

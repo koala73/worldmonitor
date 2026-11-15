@@ -231,3 +231,22 @@ export async function measureReservoir(target, previous, {
 export function freshReservoirCount(data, nowMs = data?.runAt) {
   return Object.values(data?.reservoirs ?? {}).filter((r) => r.latest && nowMs - Date.parse(r.latest.time) <= 60 * DAY_MS).length;
 }
+
+/**
+ * The water card's read: per reservoir site, the newest reading and the newest earlier reading from
+ * the same relative orbit (the only one it can be strictly compared with). A few KB, so the popup RPC
+ * never reads the full series key.
+ */
+export function waterExtentSummary(data) {
+  const pick = (o) => ({ time: o.time, waterPercent: o.waterPercent, waterKm2: o.waterKm2, platform: o.platform ?? null, relativeOrbit: o.relativeOrbit ?? null });
+  const reservoirs = {};
+  for (const [siteId, record] of Object.entries(data?.reservoirs ?? {})) {
+    const latest = record?.latest;
+    if (!latest || !Number.isFinite(latest.waterPercent) || !Number.isFinite(Date.parse(latest.time))) continue;
+    const previous = latest.relativeOrbit == null ? null
+      : (record.observations ?? []).find((o) => o !== latest && o.sceneId !== latest.sceneId && o.relativeOrbit === latest.relativeOrbit
+        && Number.isFinite(o.waterPercent) && Date.parse(o.time) < Date.parse(latest.time)) ?? null;
+    reservoirs[siteId] = { areaKm2: record.areaKm2, latest: pick(latest), sameOrbitPrevious: previous ? pick(previous) : null };
+  }
+  return { schema: data?.schema ?? WATER_EXTENT_SCHEMA, runAt: data?.runAt ?? null, thresholdDb: data?.thresholdDb ?? WATER_THRESHOLD_DB, reservoirs };
+}

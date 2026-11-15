@@ -3228,6 +3228,18 @@
         "latestPass": "letzter ICESat-2-Überflug {{date}}",
         "sparkline": "Pegel über 36 Monate, saisonale Basis als gestrichelte Linie",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidar-Wasserspiegel aus datierten Überflügen, keine Live-Werte oder Speichervolumen."
+      },
+      "water": {
+        "title": "Wasser am {{name}}",
+        "level": "Lidar-Pegel",
+        "extent": "Radar-Wasserfläche",
+        "extentValue": "{{percent}} % offenes Wasser ({{area}} km²) am {{date}}",
+        "extentChange": "{{delta}} Punkte seit {{date}} auf demselben Orbit",
+        "extentNoComparison": "Keine frühere Messung auf demselben Orbit zum Vergleich",
+        "extentNone": "Noch keine Radarmessung",
+        "optical": "Neuestes optisches Bild",
+        "opticalNone": "Kein optisches Bild innerhalb von 30 Tagen",
+        "note": "Jede Zeile ist eine datierte Messung eines eigenen Überflugs, kein Live-Wert. Das Radar erfasst offenes Wasser im Kernbereich des Stausees; vom Wind aufgeraute Wasserflächen können als Land erscheinen."
       }
     },
     "gridDisruptionClock": {

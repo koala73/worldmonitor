@@ -3207,6 +3207,18 @@
         "latestPass": "최근 ICESat-2 통과 {{date}}",
         "sparkline": "36개월 수위, 계절 기준선은 점선",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). 날짜가 있는 통과의 라이다 수면 높이로, 실시간 값이나 저수량이 아닙니다."
+      },
+      "water": {
+        "title": "{{name}}의 물",
+        "level": "라이다 수위",
+        "extent": "레이더 수면 면적",
+        "extentValue": "{{date}} 기준 개방 수면 {{percent}}%({{area}} km²)",
+        "extentChange": "같은 궤도에서 {{date}} 이후 {{delta}}포인트",
+        "extentNoComparison": "비교할 같은 궤도의 이전 관측이 없습니다",
+        "extentNone": "아직 레이더 관측이 없습니다",
+        "optical": "최신 광학 영상",
+        "opticalNone": "30일 이내 광학 영상이 없습니다",
+        "note": "각 행은 별도 통과에서 얻은 날짜가 있는 측정값이며 실시간 값이 아닙니다. 레이더는 저수지 핵심 구역의 개방 수면을 측정하며, 바람에 물결이 인 수면은 육지로 판독될 수 있습니다."
       }
     },
     "gridDisruptionClock": {
