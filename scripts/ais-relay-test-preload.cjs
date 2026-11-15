@@ -60,7 +60,8 @@ const wingbitsGhostRows = process.env.RELAY_TEST_WINGBITS_GHOST_ROWS === '1';
 // Air-traffic Wingbits lanes. Every area of a traffic request (aliases 'us-'
 // and 'eu-') returns all flights in RELAY_TEST_WINGBITS_TRAFFIC_FILE, each
 // reported `ageMs` (default 1000) before the response. Statuses come from the
-// sequence, then 200. 'short' answers one area fewer than asked.
+// sequence, then 200. 'short' answers one area fewer than asked; 'dup' repeats
+// the first area in place of the last.
 const wingbitsTrafficFlights = process.env.RELAY_TEST_WINGBITS_TRAFFIC_FILE
   ? JSON.parse(fs.readFileSync(process.env.RELAY_TEST_WINGBITS_TRAFFIC_FILE, 'utf8'))
   : null;
@@ -70,6 +71,8 @@ const wingbitsTrafficStatuses = (process.env.RELAY_TEST_WINGBITS_TRAFFIC_STATUS_
   .filter(Boolean);
 // Real milliseconds before the first traffic response is answered.
 let wingbitsTrafficFirstDelayMs = Number(process.env.RELAY_TEST_WINGBITS_TRAFFIC_FIRST_DELAY_MS || 0);
+// Real milliseconds before the first traffic body finishes, after its headers.
+let wingbitsTrafficFirstBodyDelayMs = Number(process.env.RELAY_TEST_WINGBITS_TRAFFIC_FIRST_BODY_DELAY_MS || 0);
 const adsbModes = (process.env.RELAY_TEST_ADSB_MODE_SEQUENCE || '')
   .split(',')
   .map((value) => value.trim())
@@ -172,11 +175,20 @@ globalThis.fetch = async (url, options) => {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
       const mode = nextValue(wingbitsTrafficStatuses, '200');
-      const status = mode === 'short' ? 200 : Number(mode);
+      const status = mode === 'short' || mode === 'dup' ? 200 : Number(mode);
       const now = Date.now();
       const flights = wingbitsTrafficFlights.map(({ ageMs = 1000, ...f }) => ({ ...f, ra: new Date(now - ageMs).toISOString() }));
-      const areas = (mode === 'short' ? requested.slice(1) : requested).map((area) => ({ alias: area.alias, data: flights }));
-      return { status, ok: status === 200, statusText: '', text: async () => '', json: async () => areas };
+      const answered = mode === 'short' ? requested.slice(1)
+        : mode === 'dup' ? [...requested.slice(0, -1), requested[0]]
+          : requested;
+      const areas = answered.map((area) => ({ alias: area.alias, data: flights }));
+      const bodyDelayMs = wingbitsTrafficFirstBodyDelayMs;
+      wingbitsTrafficFirstBodyDelayMs = 0;
+      const json = async () => {
+        if (bodyDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, bodyDelayMs));
+        return areas;
+      };
+      return { status: mode === 'dup' ? 200 : status, ok: mode === 'dup' || status === 200, statusText: '', text: async () => '', json };
     }
     if (wingbitsEchoAreas) {
       const areas = JSON.parse(String(options?.body || '[]'));

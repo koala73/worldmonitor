@@ -481,3 +481,22 @@ test('lane 22: a Wingbits response that lands after its bin ends makes that bin 
     assert.match(line(), /status=gap reason=bin ended attempts=1$/);
   }, { RELAY_TEST_WINGBITS_TRAFFIC_FIRST_DELAY_MS: '1200' });
 });
+
+test('lane 23: a Wingbits body that finishes after its bin ends makes that bin a gap', async () => {
+  // Headers arrive in the bin; the body takes 1.2 real seconds, longer than a bin at 300x.
+  await wingbitsLane('', async ({ redis, relay, lines }) => {
+    const t = Date.UTC(2026, 10, 13, 20, 30);
+    const line = () => lines().find((l) => l.includes('t=2026-11-13T20:30:00.000Z'));
+    await relay.waitFor(() => line(), 'the 20:30 Wingbits line');
+    assert.deepEqual(redis.points('2026-11-13', WINGBITS_PREFIX).find((p) => p.t === t), { t, status: 'gap' });
+    assert.match(line(), /status=gap reason=bin ended attempts=1$/);
+  }, { RELAY_TEST_WINGBITS_TRAFFIC_FIRST_BODY_DELAY_MS: '1200' });
+});
+
+test('lane 24: a response that repeats one area and omits another is a gap, never a partial count', async () => {
+  await wingbitsLane('dup,dup,dup', async ({ redis, lines, firstPoint }) => {
+    await firstPoint();
+    assert.equal(redis.points('2026-11-13', WINGBITS_PREFIX)[0].status, 'gap');
+    assert.match(lines()[0], /status=gap reason=malformed attempts=3$/);
+  });
+});

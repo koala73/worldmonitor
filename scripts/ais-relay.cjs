@@ -6810,10 +6810,15 @@ function startAirTrafficLoop() {
 // both is a real event and a drop in one is that feed. One POST covers the
 // CONUS and Europe boxes, so a bin costs one request on the key the map
 // viewport and theater loop already use.
-const WINGBITS_TRAFFIC_ENABLED = process.env.WINGBITS_TRAFFIC_ENABLED !== 'false';
 const WINGBITS_TRAFFIC_AREAS = [['us', AIR_TRAFFIC_CONUS_BOX], ['eu', AIR_TRAFFIC_EUROPE_BOX]]
   .flatMap(([region, box]) => buildWingbitsViewportAreas(box.south, box.west, box.north, box.east)
     .map((area) => ({ ...area, alias: `${region}-${area.alias}` })));
+
+function sameAliases(areas, requested) {
+  const answered = areas.map((area) => area?.alias).sort();
+  const asked = requested.map((area) => area.alias).sort();
+  return answered.length === asked.length && answered.every((alias, i) => alias === asked[i]);
+}
 
 async function attemptWingbitsTrafficPoint(fetchedAt) {
   try {
@@ -6823,14 +6828,15 @@ async function attemptWingbitsTrafficPoint(fetchedAt) {
       body: JSON.stringify(WINGBITS_TRAFFIC_AREAS),
       signal: AbortSignal.timeout(20_000),
     });
-    // Reports in a response that lands after the bin ends describe the next
-    // bin, so they cannot be dated to this one.
-    if (airTrafficBinStart(Date.now()) !== airTrafficBinStart(fetchedAt)) return { gapReason: 'bin ended' };
     if (!resp.ok) return { gapReason: `http ${resp.status}` };
     let areas;
     try { areas = await resp.json(); } catch { areas = null; }
-    // Every area must answer, or the point would undercount and read as a drop.
-    if (!Array.isArray(areas) || areas.length !== WINGBITS_TRAFFIC_AREAS.length) return { gapReason: 'malformed' };
+    // Reports in a response whose body finishes after the bin ends describe the
+    // next bin, so they cannot be dated to this one.
+    if (airTrafficBinStart(Date.now()) !== airTrafficBinStart(fetchedAt)) return { gapReason: 'bin ended' };
+    // Every requested area must answer exactly once, or the point would
+    // undercount and read as a drop.
+    if (!Array.isArray(areas) || !sameAliases(areas, WINGBITS_TRAFFIC_AREAS)) return { gapReason: 'malformed' };
     let rows;
     try { rows = wingbitsTrafficStateRows(areas, Date.now()); } catch { return { gapReason: 'malformed' }; }
     const point = aggregateAirTrafficStates(rows, fetchedAt);
@@ -6846,8 +6852,8 @@ function seedWingbitsTrafficPoint() {
 }
 
 function startWingbitsTrafficLoop() {
-  if (!UPSTASH_ENABLED || !WINGBITS_TRAFFIC_ENABLED) {
-    console.log('[AirTrafficWingbits] Disabled');
+  if (!UPSTASH_ENABLED) {
+    console.log('[AirTrafficWingbits] Disabled (no Upstash Redis)');
     return;
   }
   if (!process.env.WINGBITS_API_KEY) {

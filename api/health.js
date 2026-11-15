@@ -2459,6 +2459,9 @@ const SEED_META = {
   airTrafficHistoryWingbits: {
     key: 'seed-meta:aviation:traffic-history-wingbits',
     maxStaleMin: 20,
+    // The relay has the key, so a series still unpublished an hour (12 bins)
+    // after deploy is broken, not pending.
+    firstPublicationMaxWaitMin: 60,
     activationKey: 'seed-activated:aviation:traffic-history-wingbits',
     cutover: {
       mode: 'activation-marker',
