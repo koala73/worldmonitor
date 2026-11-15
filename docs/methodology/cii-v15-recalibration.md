@@ -75,3 +75,45 @@ Enumerate distinct unordered country pairs on each calibration date. A disagreem
 Randomise presentation order and left/right position with a recorded seed held by the coordinator. Judges use their own knowledge, consistent with the owner's invitation. They receive only the country names, assessment date, R21 construct and the options left higher, right higher, tie or insufficient evidence. No coordinator-authored evidence packets or model-input summaries are supplied. The ballot reveals no formula, scores, ranks, model identity, predicted winner or control label. Lock ballots separately before discussion.
 
 A pair is decided only when at least two thirds of all participating judges choose the same strict ordering. Ties, abstentions and unresolved pairs remain in the report but not the denominator. The candidate passes when it matches **at least two thirds of decided disagreement pairs**. Zero decided pairs is undefined, never a pass. Report decided and undecided counts, judge agreement, all disagreement outcomes and control outcomes separately. Controls cannot inflate the primary pass fraction. Preserve ballots and the selection seed for audit. This is a reported measurement only and ends at the owner-ruling stop, even if it fails.
+
+## Frozen inputs (2026-11-15, before any candidate evaluation)
+
+Frozen at `cii-v15@b28c37a312` after the second U21 capture landed (#10618). Nothing in this section was chosen after a candidate score was computed; this commit precedes every candidate result.
+
+### Calibration fixtures
+
+| Fixture | `capturedAt` | SHA-256 of the parsed fixture (first 16 hex) |
+|---|---|---|
+| `tests/fixtures/cii/2026-11-13T0952Z.json` | 2026-11-13T09:52:18.324Z | `cd68ab468c563866` |
+| `tests/fixtures/cii/2026-11-14T0556Z.json` | 2026-11-14T05:56:53.049Z | `423d2076d6538c28` |
+
+Both are marked `calibration: true` and hold the full UCDP window (2025-09-30 to 2026-09-30, 365 days, `complete: true`, no missing releases), the party-month table, the prior map (208 countries) and the economic key (199 rows). No other fixture is eligible.
+
+### GPI benchmark
+
+Read GET-only from production `resilience:static:<ISO2>` at 2026-11-15T14:48:57Z for all 31 scored countries: source `gpi-voh`, vintage 2026, no country missing. Every score and rank is identical to the snapshot preserved in `cii-v15-calibration.md` (read 2026-11-12), so that table is the pinned benchmark payload. Intersection: all 31.
+
+### Episode manifest
+
+Selection follows the rules above exactly. Ties did not arise. Country names identify evidence, never score targets.
+
+| Anchor | Episode | Selection statistic | Candidates considered |
+|---|---|---|---|
+| Quiet week | US on 2026-11-13T0952Z | protest share 312 / 41,456 = 0.00753, the lowest | 14 complete stable-democracy weeks (7 countries × 2 captures) |
+| Sustained unrest above norm | KR on 2026-11-13T0952Z | protest share 12 / 662 = 0.01813, the greatest eligible | DE 11-13 (4.8 vs 3), KR 11-13 (2.6 vs 1), PL 11-13 (1.2 vs 1), DE 11-14 (3.8 vs 3), JP 11-14 (1.8 vs 1), KR 11-14 (1.5 vs 1) |
+| Strike campaign | **Unavailable** | no fresh confirmed tally | see blocker below |
+| Chronic war | MX on 2026-11-13T0952Z | 24.80 factual territorial deaths per million per year, position 6 of 13 | IN 0.22, BR 1.99, RU 2.78, IQ 4.92, PK 19.31, AF 20.69, **MX 24.80**, SY 26.03, MM 33.80, YE 125.63, IR 254.02, LB 771.02, UA 2263.15 (all 12/12 positive months) |
+| Full-scale war | UA on 2026-11-13T0952Z | 2263.15 per million per year, the greatest | same 13 |
+
+Copied magnitudes, exactly as recorded:
+
+- **Quiet week (US, 2026-11-13T0952Z).** GDELT conflict current 727.3 against median 769.5 (coded articles per day); protest current 40.9 against median 65.5; week of 41,456 articles, 4,671 conflict-coded and 312 protest-coded; the recorded GDELT strike day counts (23 days from 2026-10-19 to 2026-11-12, at most 8 strike-coded of 4,099 articles on one day). Economic readings: inflation acceleration +0.7250 percentage points (IMF, observed 2026-09-30, fresh), 10-year yield +0.6942 percentage points against its trailing 12-month mean (OECD, observed 2026-09-30, fresh), currency absent as not applicable (dollar numeraire). Applied to each of DE, FR, GB, JP, KR, PL and US, with the US economic availability states, positive readings unclipped.
+- **Sustained unrest (KR, 2026-11-13T0952Z).** GDELT protest current 2.6 against median 1 coded articles per day; week of 662 articles, 12 protest-coded (and 30 conflict-coded, carried as recorded in the week object). Applied to the same seven. The AE9 check repeats this week's level for eight weeks with current equal to median.
+- **Chronic war (MX, 2026-11-13T0952Z).** Population 133 million (`CII_POPULATION_MILLIONS`). Factual deaths per million per calendar month, 2025-10 to 2026-09: 5.1203, 2.3308, 1.1429, 3.0150, 1.1278, 1.9850, 2.1278, 1.8045, 1.3459, 1.2030, 1.6090, 1.9699 (sum 24.78; the selection statistic, 24.80, also counts the window's single day of 2025-09-30). Annualisation factor 365 / 365 = 1. Scaled by each destination's population, for all 31.
+- **Full-scale war (UA, 2026-11-13T0952Z).** Population 39.54 million. Per million per month, 2025-10 to 2026-09: 128.1234, 270.9408, 255.6146, 338.1892, 188.0627, 196.5604, 173.4193, 168.3359, 119.4992, 123.1411, 142.8680, 156.8538. Copied to all 31.
+
+Each monthly profile keeps its dates relative to the episode's capture clock (`nowMs` 1794563535410).
+
+### Blocker: no strike-campaign episode
+
+Both calibration captures hold a `conflict:strike-pressure:v1` tally with `version: 1`, the relay writer on `main` (`scripts/lib/middle-east-strikes.cjs`). The integration branch reads only `CII_STRIKE_TALLY_VERSION = 2` (Stage B3, #9592), because a v1 tally counts retrospective reposts, duplicates and interceptions, and rejects v1 as unusable. So neither capture has a fresh confirmed feed and the rule selects nothing. Per the rule, no synthetic magnitude is substituted and no other source (the 72-hour event window or the GDELT backstop) is promoted into the selection. The strike anchor (P15c, and AE12) is unmeasurable until B3's v2 tally writer ships to `main` as a producer-only change and a third calibration capture holds a fresh v2 tally.
