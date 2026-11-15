@@ -175,6 +175,26 @@ describe('satellite site coverage', () => {
     assert.deepEqual(none, []);
   });
 
+  it('fails a site whose every imaging scan failed, instead of reporting no coverage', async () => {
+    const site = sites[0]!;
+    await assert.rejects(satellitesCoveringSite({ site, tles: [sentinel2a], nowMs: EPOCH_MS - 30 * DAY }));
+    await assert.rejects(satellitesCoveringSite({ site, tles: [sentinel2a], nowMs: EPOCH_MS + 30 * DAY }));
+    assert.deepEqual(await satellitesCoveringSite({ site, tles: [tle(99999, 'UNPROFILED SAT')], nowMs: EPOCH_MS }), []);
+  });
+
+  it('reuses every satellite scan when a site is reopened, however many satellites are drawn', async () => {
+    const nowMs = EPOCH_MS + 6 * 3_600_000;
+    const card = await sitesCoveredBySatellite({ tle: sentinel2a, sites: [...sites], nowMs });
+    if (card.status !== 'ok') throw new Error('expected coverage');
+    const site = sites.find((s) => s.id === card.sites[0]!.site.id)!;
+    const tles = Array.from({ length: 40 }, (_, i) => tle(60_000 + i, 'SENTINEL-2A'));
+    const first = await satellitesCoveringSite({ site, tles, nowMs });
+    const again = await satellitesCoveringSite({ site, tles, nowMs: nowMs + 60_000 });
+    assert.equal(first.length, tles.length);
+    assert.equal(again.length, first.length);
+    again.forEach((s, i) => assert.equal(s.passes[0], first[i]!.passes[0], 'a reopened site reads the cached scan'));
+  });
+
   it('matches a looked-up point to the watched site in its 0.01° cell, across the antimeridian', () => {
     const site = { id: 'x:1', name: 'One', lat: 10.123, lon: 179.999, countryCode: 'XX' };
     const near = { id: 'x:2', name: 'Two', lat: 10.12, lon: 179.996, countryCode: 'XX' };
@@ -183,6 +203,9 @@ describe('satellite site coverage', () => {
     assert.equal(watchedSiteAt({ lat: 10.13, lon: 179.99 }, [site]), null);
     const real = sites[0]!;
     assert.equal(watchedSiteAt({ lat: Math.round(real.lat * 100) / 100, lon: Math.round(real.lon * 100) / 100 }, sites)?.id, real.id);
+    const halfCell = { id: 'x:3', name: 'Half cell', lat: 26.205, lon: 50.615, countryCode: 'XX' };
+    assert.equal(watchedSiteAt({ lat: 26.21, lon: 50.62 }, [halfCell])?.id, 'x:3', 'a half-cell rounding still matches');
+    for (const s of sites) assert.equal(watchedSiteAt({ lat: Math.round(s.lat * 100) / 100, lon: Math.round(s.lon * 100) / 100 }, [s])?.id, s.id, s.id);
   });
 });
 

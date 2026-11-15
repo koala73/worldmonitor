@@ -218,8 +218,8 @@ export async function sitesCoveredBySatellite(input: {
   return coverageAt(coverage, input.nowMs);
 }
 
-/** Half a 0.01° grid cell: a looked-up point this close to a site's coordinates is that site. */
-const SITE_MATCH_DEG = 0.005;
+/** Half a 0.01° grid cell, with float slack: a looked-up point this close to a site's coordinates is that site. */
+const SITE_MATCH_DEG = 0.005 + 1e-9;
 
 /** The watched site at a looked-up point, nearest first; matched in the browser, so the point never leaves it. */
 export function watchedSiteAt(point: { lat: number; lon: number }, sites: readonly CoverageSite[]): CoverageSite | null {
@@ -248,6 +248,10 @@ export interface SiteSatellite {
 
 /** One stable registry per site, so a reopened site reads the satellites' cached scans. */
 const singleSiteRegistries = new Map<string, readonly CoverageSite[]>();
+/** A site scans every drawn satellite, so its cache holds a whole layer's scans. */
+const SITE_SCAN_CACHE_ENTRIES = 1024;
+/** Scans that answered nothing about the site; if no scan answers, the site's answer is unknown, not empty. */
+const FAILED_SCANS = new Set<SatelliteCoverage['status']>(['unavailable', 'bad-elements', 'too-old']);
 
 /**
  * The tracked satellites whose modelled footprint covers `site` in the window, earliest
@@ -266,12 +270,18 @@ export async function satellitesCoveringSite(input: {
   if (!sites) {
     sites = [site];
     singleSiteRegistries.set(site.id, sites);
+    coverageCaches.set(sites, new BoundedCache<CoverageEntry>(SITE_SCAN_CACHE_ENTRIES));
   }
   const covering: SiteSatellite[] = [];
+  let answered = 0;
+  let failed = 0;
   for (const tle of tles) {
     const coverage = await sitesCoveredBySatellite({ tle, sites, nowMs, hours, signal });
+    if (coverage.status === 'ok') answered++;
+    else if (FAILED_SCANS.has(coverage.status)) failed++;
     const passes = coverage.status === 'ok' ? coverage.sites[0]?.passes : undefined;
     if (coverage.status === 'ok' && passes?.length) covering.push({ noradId: tle.noradId, name: tle.name, sensor: coverage.sensor, passes });
   }
+  if (answered === 0 && failed > 0) throw new Error('No satellite pass could be projected for this site');
   return covering.sort((a, b) => a.passes[0]!.timeMs - b.passes[0]!.timeMs || a.name.localeCompare(b.name));
 }
