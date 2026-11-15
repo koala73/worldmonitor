@@ -4,7 +4,7 @@
 // episode") to per-country GDELT day counts rebuilt by
 // scripts/cii-gdelt-archive-rebuild.mjs. Inputs only: no score is read.
 //
-//   node scripts/cii-unrest-episode-scan.mjs scan --from 2015-04-01 --to 2026-10-31 --cache-dir DIR --out candidates.json
+//   node scripts/cii-unrest-episode-scan.mjs scan --cache-dir DIR --out candidates.json
 //   node scripts/cii-unrest-episode-scan.mjs confirm --candidates candidates.json --cache-dir DIR --out selected.json
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
@@ -171,6 +171,18 @@ export function scanDays(days, rule = RULE) {
   return { evaluations, episodes: orderEpisodes(episodes) };
 }
 
+/** Every day the registered scan reads: the window plus each capture's 35-day lead-in. */
+export function requiredScanDates(rule = RULE) {
+  return datesBetween(shiftDate(rule.windowFrom, -(rule.weekDays + rule.normDays)), rule.windowTo);
+}
+
+/** The registered copied magnitudes only; GDELT strike days are never copied. */
+export function copiedMagnitudes(scorer) {
+  if (!scorer) return null;
+  const { conflict, protest, week } = scorer;
+  return { conflict, protest, week };
+}
+
 /** The scorer's view at the end of capture day T, from v2 days T-35..T. */
 export function scorerViewAt(T, v2Days) {
   const cursor = `${T.replaceAll('-', '')}234500`;
@@ -183,8 +195,6 @@ async function main() {
   const { values } = parseArgs({
     args: rest,
     options: {
-      from: { type: 'string', default: shiftDate(RULE.windowFrom, -(RULE.weekDays + RULE.normDays)) },
-      to: { type: 'string', default: RULE.windowTo },
       'cache-dir': { type: 'string' },
       out: { type: 'string' },
       candidates: { type: 'string' },
@@ -197,7 +207,9 @@ async function main() {
   if (command === 'scan') {
     const md5s = await loadDailyMd5s({ cacheDir });
     const days = {};
-    for (const date of datesBetween(values.from, values.to)) {
+    // The range is fixed by the registered rule, never by the caller.
+    const dates = requiredScanDates();
+    for (const date of dates) {
       days[date] = await rebuildDailyDay(date, { cacheDir, md5s });
       if (date.endsWith('-01')) log(`${date}: ${days[date].available ? 'ok' : 'missing'}`);
     }
@@ -207,8 +219,8 @@ async function main() {
     const output = {
       rule: RULE,
       source: 'gdelt-daily-events',
-      scannedFrom: values.from,
-      scannedTo: values.to,
+      scannedFrom: dates[0],
+      scannedTo: dates.at(-1),
       missingDays,
       episodeCount: episodes.length,
       selectedIndex,
@@ -246,7 +258,7 @@ async function main() {
         const { byCountry, ...meta } = view.summary;
         writeFileSync(values.out, JSON.stringify({
           episode, attempts, cursor: view.cursor, nowMs: view.nowMs,
-          scorerSummaryMeta: meta, copied: scorer,
+          scorerSummaryMeta: meta, copied: copiedMagnitudes(scorer), scorerCountrySummary: scorer,
           v2Days: Object.fromEntries(Object.entries(v2Days).map(([date, day]) => [date, {
             cohorts: day.cohorts, counts: day.countries[episode.iso2] ?? [0, 0, 0, 0],
           }])),

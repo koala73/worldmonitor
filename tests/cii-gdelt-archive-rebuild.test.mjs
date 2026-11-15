@@ -19,9 +19,11 @@ import {
 import {
   binomialUpperTail,
   clusterEpisodes,
+  copiedMagnitudes,
   evaluateCaptureDay,
   lowerMedianIndex,
   orderEpisodes,
+  requiredScanDates,
   RULE,
 } from '../scripts/cii-unrest-episode-scan.mjs';
 import {
@@ -280,6 +282,24 @@ describe('P15b episode rule', () => {
     assert.equal(lowerMedianIndex(4), 1);
     assert.equal(lowerMedianIndex(5), 2);
     assert.equal(lowerMedianIndex(0), -1);
+  });
+
+  it('scans the whole window plus the first capture\'s 35-day lead-in, whatever the caller asks', () => {
+    const dates = requiredScanDates();
+    assert.equal(dates[0], '2015-02-25');
+    assert.equal(dates.at(-1), '2026-10-31');
+    assert.equal(dates.length, datesBetween('2015-02-25', '2026-10-31').length);
+  });
+
+  it('copies conflict, protest and week only, never strike days', () => {
+    const scorer = {
+      conflict: { current: 8.5, baselineMedian: 7.5 },
+      protest: { current: 2.6, baselineMedian: 1 },
+      week: { articles: 662, conflict: 30, protest: 12 },
+      strikes: { '2026-11-10': [1, 108] },
+    };
+    assert.deepEqual(Object.keys(copiedMagnitudes(scorer)), ['conflict', 'protest', 'week']);
+    assert.equal(copiedMagnitudes(null), null);
   });
 
   it('pins the registered constants', () => {
