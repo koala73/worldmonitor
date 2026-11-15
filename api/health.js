@@ -3254,7 +3254,8 @@ const ACTIVATION_MARKERS = {
   gdeltCountryEvents: SEED_META.gdeltCountryEvents.activationKey,
   // Written by scripts/ais-relay.cjs after the first healthy strike-pressure publish.
   strikePressure: 'seed-activated:conflict:strike-pressure',
-  strikePressureV2: SEED_META.strikePressureV2.activationKey,
+  // A literal like strikePressure: the IRAN_EVENTS_ENABLED gate above deletes its SEED_META entry.
+  strikePressureV2: 'seed-activated:conflict:strike-pressure:v2',
   // Written by scripts/ais-relay.cjs after the first healthy digest warm cycle.
   newsDigestWarmRelayHeartbeat: SEED_META.newsDigestWarmRelayHeartbeat.activationKey,
   physicalPremiums: SEED_META.physicalPremiums.activationKey,
