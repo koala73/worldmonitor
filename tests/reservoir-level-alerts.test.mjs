@@ -233,9 +233,15 @@ async function deliveries(rules, event, { tiers = {}, held = [] } = {}) {
     if (path.startsWith('/RPUSH/')) { held.push(decodeURIComponent(path.split('/')[3])); return { ok: true, json: async () => ({ result: held.length }) }; }
     if (path.startsWith('/LLEN/')) return { ok: true, json: async () => ({ result: held.length }) };
     if (path.startsWith('/LRANGE/')) return { ok: true, json: async () => ({ result: [...held] }) };
-    if (path.startsWith('/LREM/')) { const i = held.indexOf(decodeURIComponent(path.split('/')[4])); if (i >= 0) held.splice(i, 1); return { ok: true, json: async () => ({ result: i >= 0 ? 1 : 0 }) }; }
     if (path.startsWith('/DEL/')) { held.length = 0; return { ok: true, json: async () => ({ result: 1 }) }; }
-    if (path.endsWith('/pipeline')) return { ok: true, json: async () => [] };
+    if (path.endsWith('/pipeline')) {
+      if (!Array.isArray(body) || !body.every((cmd) => cmd[0] === 'LREM')) return { ok: true, json: async () => [] };
+      return { ok: true, json: async () => body.map((cmd) => {
+        const i = held.indexOf(cmd[3]);
+        if (i >= 0) held.splice(i, 1);
+        return { result: i >= 0 ? 1 : 0 };
+      }) };
+    }
     if (String(url).includes('/SET/')) return { ok: true, json: async () => ({ result: 'OK' }) };
     return { ok: true, json: async () => ({ result: null }) };
   };
