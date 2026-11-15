@@ -74,12 +74,12 @@ test('the default call returns all 50 reservoirs without series', async t => {
   assert.equal(out.source.name, SNAPSHOT.source.name);
 });
 
-test('include_series returns the stored tuples as {date, levelM} points', async t => {
+test('include_series returns the stored tuples as {date, levelM, baselineM?} points', async t => {
   const result = await call(t, { include_series: true });
   const out = result.data['reservoir-levels'];
   assert.equal(out.reservoirs.length, 50);
   for (const [i, r] of out.reservoirs.entries()) {
-    assert.deepEqual(r.series, SNAPSHOT.reservoirs[i].series.map(([date, levelM]) => ({ date, levelM })));
+    assert.deepEqual(r.series, SNAPSHOT.reservoirs[i].series.map(([date, levelM, baselineM]) => (baselineM == null ? { date, levelM } : { date, levelM, baselineM })));
   }
 });
 

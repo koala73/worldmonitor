@@ -1,6 +1,7 @@
 import type { GeoPoint } from '../../../shared/orbital/pass-geometry.js';
 import type { CatalogStatus, OrbitalCatalog } from './catalog-shape';
-import type { DaylightSpan, PassJobInput, PassJobReply, PassJobRequest, PassJobResult, PointPass, SatelliteOutcome } from './pass-job';
+import type { DaylightSpan, PassJobInput, PassJobReply, PassJobRequest, PassJobResult, PointPass, ReservoirNextPassEntries, ReservoirNextPassInput, SatelliteOutcome } from './pass-job';
+import type { ReservoirNextPass } from './reservoir-next-pass-expiry';
 import { assertPassQuery, type PassWindow } from './pass-query';
 
 const HOUR_MS = 3_600_000;
@@ -46,6 +47,12 @@ export interface PassClientDeps {
 export interface OrbitalPassClient {
   /** Starting a lookup cancels the previous one, which rejects with an AbortError. */
   lookup(query: PassLookupQuery, options?: PassLookupOptions): Promise<PointPassLookup>;
+  /**
+   * First predicted ICESat-2 crossing of each lake, computed off the main thread (in the pass worker, or in
+   * day-sized steps with yields when no worker can start). Independent of `lookup`, so neither cancels the other.
+   * Rejects with an AbortError when the signal aborts. Resolves null without usable ICESat-2 elements.
+   */
+  reservoirNextPasses(input: ReservoirNextPassInput, options?: { signal?: AbortSignal }): Promise<Map<string, ReservoirNextPass> | null>;
   dispose(): void;
 }
 
@@ -86,6 +93,7 @@ export function createOrbitalPassClient(deps: PassClientDeps = {}): OrbitalPassC
 
   let state: WorkerState = { kind: 'idle' };
   const pending = new Map<number, PendingJob>();
+  const pendingReservoir = new Map<number, { resolve: (passes: ReservoirNextPassEntries) => void; reject: (error: Error) => void }>();
   let nextId = 1;
   let cancelCurrent: (() => void) | null = null;
 
@@ -94,10 +102,18 @@ export function createOrbitalPassClient(deps: PassClientDeps = {}): OrbitalPassC
     if (state.kind !== 'unavailable') state = { kind: 'idle' };
     for (const job of pending.values()) job.reject(error);
     pending.clear();
+    for (const job of pendingReservoir.values()) job.reject(error);
+    pendingReservoir.clear();
   }
 
   function onReply(reply: PassJobReply): void {
     if (reply.type === 'ready') return;
+    const reservoirJob = pendingReservoir.get(reply.id);
+    if (reservoirJob) {
+      if (reply.type === 'reservoir-next-passes-result') { pendingReservoir.delete(reply.id); reservoirJob.resolve(reply.passes); }
+      else if (reply.type === 'error') { pendingReservoir.delete(reply.id); reservoirJob.reject(errorFromReply(reply.name, reply.message)); }
+      return;
+    }
     const job = pending.get(reply.id);
     if (!job) return;
     if (reply.type === 'progress') {
@@ -106,7 +122,7 @@ export function createOrbitalPassClient(deps: PassClientDeps = {}): OrbitalPassC
     }
     pending.delete(reply.id);
     if (reply.type === 'result') job.resolve(reply.result);
-    else job.reject(errorFromReply(reply.name, reply.message));
+    else if (reply.type === 'error') job.reject(errorFromReply(reply.name, reply.message));
   }
 
   /** Resolves null when the worker cannot be constructed or fails to load; rejects when it is not ready in time, download included. */
@@ -246,8 +262,60 @@ export function createOrbitalPassClient(deps: PassClientDeps = {}): OrbitalPassC
     }
   }
 
+  function runReservoirOnWorker(worker: PassWorkerLike, input: ReservoirNextPassInput, cancelled: Promise<never>): Promise<ReservoirNextPassEntries> {
+    const id = nextId++;
+    const job = new Promise<ReservoirNextPassEntries>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingReservoir.delete(id);
+        worker.postMessage({ type: 'cancel', id });
+        reject(new Error(`Reservoir next-pass scan timed out after ${requestTimeoutMs} ms`));
+      }, requestTimeoutMs);
+      pendingReservoir.set(id, {
+        resolve: (passes) => { clearTimeout(timer); resolve(passes); },
+        reject: (error) => { clearTimeout(timer); reject(error); },
+      });
+      worker.postMessage({ type: 'reservoir-next-passes', id, input });
+    });
+    cancelled.catch((error: Error) => {
+      const superseded = pendingReservoir.get(id);
+      if (!superseded) return;
+      pendingReservoir.delete(id);
+      superseded.reject(error);
+      worker.postMessage({ type: 'cancel', id });
+    });
+    return Promise.race([job, cancelled]);
+  }
+
+  async function reservoirNextPasses(input: ReservoirNextPassInput, options: { signal?: AbortSignal } = {}): Promise<Map<string, ReservoirNextPass> | null> {
+    let isCancelled = false;
+    let rejectCancelled!: (error: Error) => void;
+    const cancelled = new Promise<never>((_, reject) => { rejectCancelled = reject; });
+    cancelled.catch(() => {});
+    const cancel = () => {
+      isCancelled = true;
+      rejectCancelled(abortError());
+    };
+    if (options.signal?.aborted) cancel();
+    options.signal?.addEventListener('abort', cancel, { once: true });
+    try {
+      if (input.satellites.length === 0) return null;
+      const worker = await Promise.race([readyWorker(), cancelled]);
+      if (worker) {
+        const entries = await runReservoirOnWorker(worker, input, cancelled);
+        return entries ? new Map(entries) : null;
+      }
+      const { computeReservoirNextPassesChunked } = await import('./reservoir-next-pass');
+      const passes = await Promise.race([computeReservoirNextPassesChunked({ satellites: input.satellites }, input.sites, { isCancelled: () => isCancelled }, input.nowMs), cancelled]);
+      if (isCancelled) throw abortError();
+      return passes;
+    } finally {
+      options.signal?.removeEventListener('abort', cancel);
+    }
+  }
+
   return {
     lookup,
+    reservoirNextPasses,
     dispose() {
       cancelCurrent?.();
       resetWorker(abortError());

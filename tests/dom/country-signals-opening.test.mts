@@ -73,11 +73,12 @@ it.each([['IR', false], ['CN', false], ['IR', true], ['CN', true]] as const)('me
     expect(calls.length + 2).toBeLessThanOrEqual(64);
     expect(calls.filter(call => call.section === 'countrySignals' && call.arguments.family !== 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE')).toHaveLength(code === 'CN' ? 4 : 5);
     const deferred = qualified.families.filter(family => family.reason?.startsWith('Deferred:')).map(family => family.family);
-    expect(deferred).toHaveLength(3);
-    // Dark, imagery yields to every existing source; on, it is read before the budget runs out.
-    if (enabled) expect(deferred).not.toContain('imagery');
-    else expect(deferred[deferred.length - 1]).toBe('imagery');
-    expect(qualified.families.map(family => family.family)).toEqual(['outages', 'unrest', 'fires', 'radiation', 'sanctions', 'conflict', 'posture', 'imagery', 'military']);
+    expect(deferred).toHaveLength(4);
+    // Families are listed in contract order. Dark, imagery yields to every existing source and is deferred; on, it is read before the budget runs out.
+    if (enabled) { expect(deferred).not.toContain('imagery'); expect(deferred[deferred.length - 1]).toBe('water'); }
+    else expect(deferred.slice(-2)).toEqual(['imagery', 'water']);
+    expect(qualified.families.map(family => family.family)).toEqual(['outages', 'unrest', 'fires', 'radiation', 'sanctions', 'conflict', 'posture', 'imagery', 'water', 'military']);
     expect(qualified.details).not.toBeNull();
+    expect(calls.filter(call => call.section === 'reservoirs')).toHaveLength(0);
   } finally { controller.dispose(); panel.hide(); }
 });

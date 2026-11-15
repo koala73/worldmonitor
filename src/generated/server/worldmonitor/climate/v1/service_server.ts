@@ -181,6 +181,7 @@ export interface ReservoirLatestPass {
 export interface ReservoirLevelPoint {
   date: string;
   levelM: number;
+  baselineM?: number;
 }
 
 export interface ReservoirLevelsSource {
