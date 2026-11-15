@@ -1,6 +1,6 @@
 // Country rollups built by the real site seeder from flag records folded by the real change
 // lifecycle, so readers are tested against what the seeder publishes.
-import { buildCountryRollup, buildSiteRecord, evaluateSites, planPublication } from '../../scripts/_orbital-sites.mjs';
+import { buildCountryRollup, buildSiteRecord, countryKey, evaluateSites, ORBITAL_SITES_KEY, planPublication, SITES_SCHEMA } from '../../scripts/_orbital-sites.mjs';
 import { advanceTrack, FLAG_SCHEMA, FLAG_WORDING, geometryKey, newTrack, siteFlagState } from '../../scripts/shared/orbital/flag-record.js';
 
 const GEOMETRY = { constellation: 'sentinel-1', relativeOrbit: 28, orbitState: 'descending', mode: 'IW', polarizations: ['VH', 'VV'] };
@@ -45,6 +45,23 @@ export function rollupOf(countryCode, nowMs, entries, { evaluatedAt = nowMs } = 
   }));
   return buildCountryRollup(countryCode, records);
 }
+
+/** The sites index the seeder publishes beside these rollups, naming each one's revision. */
+export function indexFor(...rollups) {
+  return {
+    schema: SITES_SCHEMA,
+    countries: Object.fromEntries(rollups.map((r) => [r.countryCode, { revision: r.revision, asOf: r.asOf, siteCount: r.sites.length }])),
+  };
+}
+
+/** What a reader gets for one country: its rollup and the index that names it. */
+export const watchedRead = (rollup) => ({ rollup, index: rollup ? indexFor(rollup) : null });
+
+/** The Redis rows for these rollups and their index. */
+export const watchedKeys = (...rollups) => ({
+  [ORBITAL_SITES_KEY]: indexFor(...rollups),
+  ...Object.fromEntries(rollups.map((r) => [countryKey(r.countryCode), r])),
+});
 
 /** The rollup the seeder publishes when change scoring runs in shadow and confirms a flag. */
 export async function shadowedRollup(countryCode, nowMs, sites) {

@@ -54,9 +54,23 @@ describe('point context around a picked point', () => {
     assert.deepEqual(conflict.status === 'ok' && conflict.events, []);
   });
 
-  it('places a national outage by country rather than by distance', async () => {
+  it('matches an outage by its distance from the point, not by the country it sits in', async () => {
     const context = await loadPointContext(POINT, WINDOW, NOW, sources({
-      events: { outages: async () => [record('ae', 900, NOW - DAY, { countryCode: 'ae' }), record('ir', 900, NOW - DAY, { countryCode: 'IR' })] },
+      events: { outages: async () => [
+        record('near', 12, NOW - DAY, { countryCode: 'AE' }),
+        record('same-country-far', 300, NOW - DAY, { countryCode: 'AE' }),
+        record('other-country-near', 20, NOW - DAY, { countryCode: 'OM' }),
+      ] },
+    }));
+    const outages = context.events.outages;
+    assert.deepEqual(outages.status === 'ok' && outages.events.map((e) => e.id).sort(), ['near', 'other-country-near']);
+    assert.ok(outages.status === 'ok' && outages.events.every((e) => e.distanceKm !== null));
+  });
+
+  it('falls back to the country only for a record with no location', async () => {
+    const unplaced = (id: string, countryCode: string): FeedRecord => ({ id, lat: Number.NaN, lon: Number.NaN, timeMs: NOW - DAY, label: id, countryCode });
+    const context = await loadPointContext(POINT, WINDOW, NOW, sources({
+      events: { outages: async () => [unplaced('ae', 'ae'), unplaced('ir', 'IR')] },
     }));
     const outages = context.events.outages;
     assert.deepEqual(outages.status === 'ok' && outages.events.map((e) => [e.id, e.distanceKm]), [['ae', null]]);

@@ -9,7 +9,7 @@
 // delta and chokepoint exposure scores are not published, so they never appear.
 
 import { getCachedJson } from '../../../_shared/redis';
-import { CII_RISK_SCORE_CACHE_KEYS, ORBITAL_COUNTRY_KEY_PREFIX } from '../../../_shared/cache-keys';
+import { CII_RISK_SCORE_CACHE_KEYS, ORBITAL_COUNTRY_KEY_PREFIX, ORBITAL_SITES_KEY } from '../../../_shared/cache-keys';
 import { displayNameForIso2, normalizeCountryToIso2 } from '../../../_shared/country-normalize';
 import { CHOKEPOINT_REGISTRY } from '../../../_shared/chokepoint-registry';
 import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
@@ -509,14 +509,17 @@ function forecastEvidence(raw: unknown, code: string, name: string, nowMs: numbe
  * stale, and while change scoring is shadowed (the rollup then carries no flag).
  * Pure over the read, so the handler's cache key and the evidence pack agree.
  */
-export function countryImageryFlagsFrom(raw: unknown, countryCode: string, nowMs: number): ConfirmedSiteFlag[] {
-  const read = readCountryRollup(raw, countryCode, nowMs);
+export function countryImageryFlagsFrom({ rollup, index }: WatchedSiteRead, countryCode: string, nowMs: number): ConfirmedSiteFlag[] {
+  const read = readCountryRollup(rollup, index, countryCode, nowMs);
   return read.status === 'current' ? confirmedSiteFlags(read.rollup).slice(0, MAX_IMAGERY_FLAGS) : [];
 }
 
-/** The raw watched-site rollup the site seeder publishes for one country, or null. */
-export function readCountryWatchedSiteRollup(countryCode: string): Promise<unknown> {
-  return readKey(`${ORBITAL_COUNTRY_KEY_PREFIX}${countryCode}`);
+export interface WatchedSiteRead { rollup: unknown; index: unknown }
+
+/** The raw watched-site rollup the site seeder publishes for one country, and the sites index that names its revision. */
+export async function readCountryWatchedSiteRollup(countryCode: string): Promise<WatchedSiteRead> {
+  const [rollup, index] = await Promise.all([readKey(`${ORBITAL_COUNTRY_KEY_PREFIX}${countryCode}`), readKey(ORBITAL_SITES_KEY)]);
+  return { rollup, index };
 }
 
 export async function readCountryImageryFlags(countryCode: string, nowMs: number = Date.now()): Promise<ConfirmedSiteFlag[]> {
@@ -535,14 +538,15 @@ export async function readCountryImageryFlags(countryCode: string, nowMs: number
 function imageryEvidence(flags: ConfirmedSiteFlag[], name: string): EvidenceDraft[] {
   return flags.map((flag) => {
     const site = thirdPartyTitle(flag.name);
-    const raisedAt = formatDate(Date.parse(flag.raised.datetime));
     const confirmedAt = formatDate(Date.parse(flag.confirmed.datetime));
     const by = (platform: string | null) => (platform ? `a ${thirdPartyTitle(platform)} radar scene` : 'a radar scene');
     return {
       kind: 'imagery' as const,
       label: 'Satellite imagery statistics changed',
       value: site,
-      factText: `Imagery statistics changed at ${site} in ${name}: ${by(flag.raised.platform)} on ${raisedAt} raised the change and ${by(flag.confirmed.platform)} on ${confirmedAt} confirmed it.`,
+      factText: flag.raised
+        ? `Imagery statistics changed at ${site} in ${name}: ${by(flag.raised.platform)} on ${formatDate(Date.parse(flag.raised.datetime))} raised the change and ${by(flag.confirmed.platform)} on ${confirmedAt} confirmed it.`
+        : `Imagery statistics changed at ${site} in ${name}: ${by(flag.confirmed.platform)} on ${confirmedAt} confirmed the change.`,
       asOf: new Date(Date.parse(flag.confirmed.datetime)).toISOString(),
     };
   });

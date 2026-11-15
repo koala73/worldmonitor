@@ -12,6 +12,8 @@ const {
   SITE_CHANGE_EVENT_TYPE,
   WINDOW_COOLDOWN_MS,
   publishOrbitalSiteAlerts,
+  IMAGING_WINDOW_SEVERITY,
+  SITE_CHANGE_SEVERITY,
 } = require('../scripts/lib/orbital-site-alerts.cjs');
 
 const HOUR = 60 * 60 * 1000;
@@ -19,7 +21,7 @@ const NOW = Date.parse('2026-11-13T12:00:00.000Z');
 const iso = (ms) => new Date(ms).toISOString();
 
 const window = (noradId, offsetMs, category = 'open-optical') => ({
-  noradId, name: `SAT-${noradId}`, profileId: 'sentinel-2', category, time: iso(NOW + offsetMs), sunElevationDeg: 40,
+  noradId, name: `SAT-${noradId}`, profileId: 'sentinel-2', category, time: iso(NOW + offsetMs), sunElevationDeg: 40, coverage: true,
 });
 const flagWith = (...events) => ({ siteId: 'site-a', state: events.at(-1)?.kind ?? 'monitoring', events });
 const confirmed = (itemId, atMs = NOW - HOUR) => ({ kind: 'confirmed', itemId, datetime: iso(atMs), platform: 'sentinel-1a' });
@@ -88,15 +90,18 @@ describe('confirmed-change alerts', () => {
     assert.deepEqual(h.published, []);
   });
 
-  it('a second confirmation inside the cooldown is absorbed, and one after it fires', async () => {
+  it('a second confirmation inside the cooldown is deferred and fires once the cooldown ends', async () => {
     const h = harness();
     await h.run([site('site-a', { flag: flagWith(confirmed('scene-2')) })]);
-    await h.run([site('site-a', { flag: flagWith(confirmed('scene-2'), confirmed('scene-3', NOW + HOUR)) })], { now: NOW + 2 * HOUR });
+    const second = site('site-a', { flag: flagWith(confirmed('scene-2'), confirmed('scene-3', NOW + HOUR)) });
+    await h.run([second], { now: NOW + 2 * HOUR });
     assert.equal(h.published.length, 1, 'cooldown');
     const later = NOW + CHANGE_COOLDOWN_MS + 2 * HOUR;
-    await h.run([site('site-a', { flag: flagWith(confirmed('scene-3', NOW + HOUR), confirmed('scene-4', later - HOUR)) })], { now: later });
-    assert.equal(h.published.length, 2);
-    assert.equal(h.published[1].payload.itemId, 'scene-4');
+    await h.run([second], { now: later });
+    assert.equal(h.published.length, 2, 'the deferred confirmation is not dropped');
+    assert.equal(h.published[1].payload.itemId, 'scene-3');
+    await h.run([second], { now: later + HOUR });
+    assert.equal(h.published.length, 2, 'answered once');
   });
 
   it('drops a pending confirmation once it is older than a week', async () => {
@@ -145,6 +150,15 @@ describe('imaging-window alerts', () => {
     assert.deepEqual(h.published[0].payload.windows.map((w) => w.noradId), [2]);
   });
 
+  it('skips a window whose sensor does not acquire over the site', async () => {
+    const h = harness();
+    const sea = { ...window(1, HOUR), profileId: 'landsat', coverage: false };
+    const legacy = { ...window(2, 2 * HOUR) };
+    delete legacy.coverage;
+    await h.run([site('site-a', { nextWindows: [sea, legacy, window(3, 3 * HOUR, 'open-radar')] })]);
+    assert.deepEqual(h.published[0].payload.windows.map((w) => w.noradId), [3], 'no coverage, or unknown coverage, never alerts');
+  });
+
   it('alerts for open optical and radar sensors only', async () => {
     const h = harness();
     await h.run([site('site-a', { nextWindows: [window(1, HOUR, 'commercial-optical'), window(2, 2 * HOUR, 'weather')] })]);
@@ -171,6 +185,16 @@ describe('imaging-window alerts', () => {
     await h.run([site('site-a', { nextWindows: [{ ...window(2, 0), time: iso(nextDay + 2 * HOUR) }] })], { now: nextDay });
     assert.equal(h.published.length, 2);
     assert.deepEqual(h.published[1].payload.windows.map((w) => w.noradId), [2], 'the ended pass is not sent as upcoming');
+  });
+
+  it('neither alert is critical, so neither breaks through quiet hours', async () => {
+    const h = harness();
+    await h.run([site('site-a', { nextWindows: [window(1, HOUR)], flag: flagWith(confirmed('scene-2')) })]);
+    assert.deepEqual(Object.fromEntries(h.published.map((e) => [e.eventType, e.severity])), {
+      [IMAGING_WINDOW_EVENT_TYPE]: 'medium',
+      [SITE_CHANGE_EVENT_TYPE]: 'high',
+    });
+    assert.deepEqual([IMAGING_WINDOW_SEVERITY, SITE_CHANGE_SEVERITY], ['medium', 'high']);
   });
 
   it('asks the queue publisher to hold its dedup for the producer window', async () => {

@@ -279,7 +279,7 @@ async function dashboard(options: { hash?: string } = {}) {
 }
 
 const menuItem = (label: string) => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((el) => el.textContent === label);
-const closeLookup = () => document.querySelector<HTMLButtonElement>('.ow-close')!.click();
+const closeLookup = () => document.querySelector<HTMLButtonElement>('.ies-close')!.click();
 
 async function openFromContextMenu(): Promise<void> {
   menuHandler!({ ...POINT, screenX: 10, screenY: 10 });
@@ -299,7 +299,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  if (document.querySelector('.ow-close')) closeLookup();
+  if (document.querySelector('.ies-close')) closeLookup();
   dismissMapContextMenu();
   for (const cleanup of cleanups.splice(0)) cleanup();
   connectOrbitalLookupMap(() => null);
@@ -329,7 +329,7 @@ describe('the map while the satellite pass lookup is open', () => {
     const { fake } = await dashboard(options);
     await open();
 
-    expect(document.querySelector('.orbital-watch-sheet')).not.toBeNull();
+    expect(document.querySelector('.imagery-evidence-sheet')).not.toBeNull();
     expect(fake.zoomLog.length, 'the lookup moved the map').toBeGreaterThan(0);
     expect(Math.max(...fake.zoomLog)).toBeLessThanOrEqual(MAX_LOOKUP_ZOOM);
     expect(fake.getZoom()).toBeLessThanOrEqual(MAX_LOOKUP_ZOOM);
