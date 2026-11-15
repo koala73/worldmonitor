@@ -1,19 +1,5 @@
 import * as z from 'zod';
 
-export const AcquisitionConfigSchema = z.object({
-  provider: z.enum(['exa', 'firecrawl']),
-  fallback: z.enum(['exa', 'firecrawl']).optional(),
-  options: z
-    .object({
-      waitForSelector: z.string().optional(),
-      timeout: z.number().optional(),
-      retries: z.number().optional(),
-    })
-    .optional(),
-  searchMode: z.boolean().optional(),
-  searchQueryTemplate: z.string().optional(),
-});
-
 export const RateLimitSchema = z.object({
   requestsPerMinute: z.number().default(30),
   maxConcurrency: z.number().default(2),
@@ -111,7 +97,6 @@ export const RetailerConfigSchema = z.object({
     adapter: z.enum(['search']).default('search'),
     baseUrl: z.string().url(),
     rateLimit: RateLimitSchema.optional(),
-    acquisition: AcquisitionConfigSchema.optional(),
     searchConfig: SearchConfigSchema.optional(),
     discovery: z.object({
       mode: z.enum(['category_urls', 'sitemap', 'search']).default('category_urls'),

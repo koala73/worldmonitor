@@ -7,9 +7,6 @@ retailer:
   baseUrl: https://www.adcoop.com
   enabled: false  # adcoop.com product pages indexed by Exa but prices not extractable (JS-rendered/login-gated)
 
-  acquisition:
-    provider: exa
-
   rateLimit:
     requestsPerMinute: 15
     maxConcurrency: 1
