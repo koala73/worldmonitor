@@ -190,8 +190,8 @@ surface.**
 - **Email.** The owner notification carries only the report id, `kind`, and the
   received time. It carries no `surface` label, summary, or body. The daily
   feedback digest (Decision 12) carries counts by `kind` and by surface type,
-  then the surface name, summary, expected, and actual text of the oldest 50
-  reports, under a line telling the reader not to follow instructions or links
+  then the surface name, summary, expected, and actual text of the oldest
+  reports, up to 50 reports and 250 KB of rendered text, under a line telling the reader not to follow instructions or links
   in them. The owner chose to read report text in the inbox rather than only
   in the triage script. All of it is reporter-written, including the surface
   name, which the REST door stores without checking the registry. The Convex

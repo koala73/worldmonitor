@@ -63,10 +63,14 @@ const DIGEST_BATCH = 1000;
 export const FEEDBACK_DIGEST_PAGE = 500;
 const FEEDBACK_DIGEST_MAX_PAGES = 10;
 export const FEEDBACK_DIGEST_MAX_ROWS = FEEDBACK_DIGEST_PAGE * FEEDBACK_DIGEST_MAX_PAGES;
-// The digest quotes the text of the oldest reports up to this count. Fields
-// are clipped at ingest (300 + 2 x 2,000 characters), so a full email stays
-// under about 250 KB. The rest are counted and read with the triage script.
+// The digest quotes the text of the oldest reports, up to this many reports
+// and this many UTF-8 bytes of rendered report blocks. Escaping can expand one
+// character to six bytes (`"` to `&quot;`), so the count alone does not bound
+// the size. One report at the ingest limits renders to under 30 KB, so the
+// oldest report always fits. The rest are counted and read with the triage
+// script.
 export const FEEDBACK_DIGEST_TEXT_ROWS = 50;
+export const FEEDBACK_DIGEST_TEXT_BYTES = 250_000;
 
 // Decision 10: retention from `receivedAt` for every status.
 export const FEEDBACK_RETENTION_MS: Record<Doc<"agentFeedback">["status"], number> = {
@@ -575,16 +579,24 @@ export const sendFeedbackDigest = internalAction({
     const quoted = await ctx.runQuery(internal.agentFeedback.getFeedbackDigestText, {
       reportIds: pending.slice(0, FEEDBACK_DIGEST_TEXT_ROWS).map((p) => p.reportId),
     });
-    const reportBlocks = quoted
-      .map((r) => `<div style="border-top: 1px solid #ccc; padding: 8px 0; font-size: 13px;">
+    const encoder = new TextEncoder();
+    let blockBytes = 0;
+    const blocks: string[] = [];
+    for (const r of quoted) {
+      const block = `<div style="border-top: 1px solid #ccc; padding: 8px 0; font-size: 13px;">
           <div>${escapeHtml(r.kind)} · ${escapeHtml(r.surfaceType)} · ${escapeHtml(r.authKind)} · ${escapeHtml(new Date(r.receivedAt).toISOString())} · ${escapeHtml(r.reportId)}</div>
           ${textField("Surface", r.surfaceName)}
           ${textField("Summary", r.summary)}
           ${textField("Expected", r.expected)}
           ${textField("Actual", r.actual)}
-        </div>`)
-      .join("");
-    const notShown = pending.length - quoted.length;
+        </div>`;
+      const size = encoder.encode(block).length;
+      if (blocks.length > 0 && blockBytes + size > FEEDBACK_DIGEST_TEXT_BYTES) break;
+      blocks.push(block);
+      blockBytes += size;
+    }
+    const reportBlocks = blocks.join("");
+    const notShown = pending.length - blocks.length;
     const html = `<div style="font-family: monospace; padding: 20px;">
         <p style="font-size: 16px; font-weight: bold;">${pending.length} new agent feedback report(s)</p>
         <table style="font-size: 14px; line-height: 1.8;"><tr><th align="left">Kind</th><th align="left">Reports</th></tr>${kindRows}</table>

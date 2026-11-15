@@ -5,7 +5,11 @@ import { internal } from "../_generated/api";
 import {
   FEEDBACK_DIGEST_MAX_ROWS,
   FEEDBACK_DIGEST_PAGE,
+  FEEDBACK_DIGEST_TEXT_BYTES,
   FEEDBACK_DIGEST_TEXT_ROWS,
+  FEEDBACK_MAX_DETAIL,
+  FEEDBACK_MAX_SUMMARY,
+  FEEDBACK_MAX_SURFACE_NAME,
   FEEDBACK_REPORTER_HOURLY_CAP,
   FEEDBACK_RETRY_WINDOW_MS,
   FEEDBACK_SECURITY_EMAILS_PER_DAY,
@@ -385,6 +389,32 @@ describe("feedback digest", () => {
     expect(body).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(body).not.toContain("<script>");
     expect(body).not.toContain('<a href="https://evil.example"');
+  });
+
+  test("a byte budget bounds the email when escaping expands maximum-length text", async () => {
+    const bodies = captureResend();
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      const base = { ...report(), status: "received" as const, updatedAt: NOW };
+      for (let i = 0; i < FEEDBACK_DIGEST_TEXT_ROWS; i++) {
+        await ctx.db.insert("agentFeedback", {
+          ...base,
+          surfaceName: "é".repeat(FEEDBACK_MAX_SURFACE_NAME),
+          summary: '"'.repeat(FEEDBACK_MAX_SUMMARY),
+          expected: "<".repeat(FEEDBACK_MAX_DETAIL),
+          actual: "&".repeat(FEEDBACK_MAX_DETAIL),
+          receivedAt: NOW - DAY + i,
+        });
+      }
+    });
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: FEEDBACK_DIGEST_TEXT_ROWS });
+    const body = html(bodies[0]);
+    // Report blocks fit the budget; the fixed header and footer add a few KB.
+    expect(new TextEncoder().encode(body).length).toBeLessThan(FEEDBACK_DIGEST_TEXT_BYTES + 4_000);
+    const shown = (body.match(/<b>Summary:<\/b>/g) ?? []).length;
+    expect(shown).toBeGreaterThan(0);
+    expect(shown).toBeLessThan(FEEDBACK_DIGEST_TEXT_ROWS);
+    expect(body).toContain(`${FEEDBACK_DIGEST_TEXT_ROWS - shown} more report(s) not shown`);
   });
 
   test("shows text for the oldest reports only, and counts the rest", async () => {
