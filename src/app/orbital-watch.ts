@@ -16,7 +16,7 @@ import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 import { DASHBOARD_SITE_ORIGIN } from '@/config/dashboard-reference-links';
 import { isDesktopRuntime } from '@/config/desktop-runtime';
 import { buildOrbitalShareFragment, type OrbitalShareLink, type OrbitalSharePass } from '@/utils/urlState';
-import { claimMapUrlCentre, getOrbitalMapView, releaseMapUrlCentreOnUserMove, type MapCamera } from '@/app/orbital-map-focus';
+import { ORBITAL_LOOKUP_MAX_ZOOM, claimMapUrlCentre, getOrbitalMapView, releaseMapUrlCentreOnUserMove, type MapCamera } from '@/app/orbital-map-focus';
 import { visibleMapArea, type ScreenArea } from '@/utils/map-point-offset';
 
 let page: OrbitalWatchPage | null = null;
@@ -316,6 +316,8 @@ function ensurePage(): OrbitalWatchPage {
     page = new OrbitalWatchPage({
       onClose: () => {
         getOrbitalMapView()?.hold(false);
+        // Lift the cap first: the camera from before the lookup may be zoomed in past it, and carries no point.
+        getOrbitalMapView()?.capZoom(null);
         if (homeCamera) getOrbitalMapView()?.restore(homeCamera);
         homeCamera = null;
         releaseMapUrlCentreOnUserMove(document.getElementById('mapContainer'));
@@ -370,6 +372,10 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, map }: { recentre
   tools!.clearShare();
   showSearchRow(false);
   setOrbitalLookupOpen(true);
+  // Every way in comes through here: the map keeps its zoom from before, then is held where a tile cannot name the point (#10704).
+  const mapView = getOrbitalMapView();
+  homeCamera ??= mapView?.camera() ?? null;
+  mapView?.capZoom(ORBITAL_LOOKUP_MAX_ZOOM);
   if (sheet.isOpen && samePoint(point, at)) {
     if (moved) drawTarget(targetFor(at, null));
     sheet.setPlaceName(name);

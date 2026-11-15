@@ -7,7 +7,8 @@ vi.mock('@/services/orbital/pass-client', () => ({
 }));
 
 import { isMapUrlCentreClaimed, setOrbitalMapView } from '@/app/orbital-map-focus';
-import { openOrbitalWatch } from '@/app/orbital-watch';
+import { openOrbitalShareLink, openOrbitalWatch } from '@/app/orbital-watch';
+import { ORBITAL_LOOKUP_MAX_ZOOM } from '@/app/orbital-map-focus';
 
 const PALM = { lat: 25.112, lon: 55.139 };
 const rect = (left: number, top: number, width: number, height: number) => new DOMRect(left, top, width, height);
@@ -36,7 +37,7 @@ describe('orbital watch map focus', () => {
     const project = vi.fn(() => ({ x: 494, y: 450 }));
     let mapRect = rect(0, 0, 1440, 900);
     const hold = vi.fn();
-    const release = setOrbitalMapView({ rect: () => mapRect, center, project, hold, suppressLayers: vi.fn(), camera: () => null, restore: vi.fn() });
+    const release = setOrbitalMapView({ rect: () => mapRect, center, project, hold, suppressLayers: vi.fn(), camera: () => null, capZoom: () => {}, restore: vi.fn() });
     try {
       openOrbitalWatch(PALM, null);
       await frames(40);
@@ -63,7 +64,7 @@ describe('orbital watch map focus', () => {
   });
 
   it('leaves the point to the map when the map draws its own reticle there', async () => {
-    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center: () => true, project: () => ({ x: 494, y: 450 }), hold: vi.fn(), suppressLayers: vi.fn(), camera: () => null, restore: vi.fn() });
+    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center: () => true, project: () => ({ x: 494, y: 450 }), hold: vi.fn(), suppressLayers: vi.fn(), camera: () => null, capZoom: () => {}, restore: vi.fn() });
     const targets: unknown[] = [];
     try {
       openOrbitalWatch(PALM, null, { setOrbitalTrack: () => {}, setOrbitalTrackMarker: () => {}, setOrbitalTarget: (t) => targets.push(t) });
@@ -78,7 +79,7 @@ describe('orbital watch map focus', () => {
   it('keeps trying to centre until a booting map can move', async () => {
     let ready = false;
     const center = vi.fn(() => ready);
-    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center, project: () => null, hold: vi.fn(), suppressLayers: vi.fn(), camera: () => null, restore: vi.fn() });
+    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center, project: () => null, hold: vi.fn(), suppressLayers: vi.fn(), camera: () => null, capZoom: () => {}, restore: vi.fn() });
     try {
       openOrbitalWatch(PALM, null);
       await frames();
@@ -124,7 +125,7 @@ describe('orbital watch map focus', () => {
 
   it('leaves the dashboard layers on the map while the sheet is open', () => {
     const suppressLayers = vi.fn();
-    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center: () => true, project: () => null, hold: vi.fn(), suppressLayers, camera: () => null, restore: vi.fn() });
+    const release = setOrbitalMapView({ rect: () => rect(0, 0, 1440, 900), center: () => true, project: () => null, hold: vi.fn(), suppressLayers, camera: () => null, capZoom: () => {}, restore: vi.fn() });
     try {
       openOrbitalWatch(PALM, null);
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
@@ -145,6 +146,7 @@ describe('orbital watch map focus', () => {
       project: () => null,
       hold: vi.fn(),
       suppressLayers: vi.fn(),
+      capZoom: vi.fn(),
       camera: () => camera,
       restore,
     });
@@ -156,6 +158,35 @@ describe('orbital watch map focus', () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
       expect(document.querySelector('.imagery-evidence-sheet')).toBeNull();
       expect(restore, 'a second point keeps the camera from before the first').toHaveBeenCalledExactlyOnceWith(home);
+    } finally {
+      release();
+    }
+  });
+
+  it('caps the map before the sheet moves it, for a click and for a shared link, and lifts the cap before restoring on close', async () => {
+    const calls: string[] = [];
+    const release = setOrbitalMapView({
+      rect: () => rect(0, 0, 1440, 900),
+      center: () => { calls.push('center'); return true; },
+      project: () => null,
+      hold: vi.fn(),
+      suppressLayers: vi.fn(),
+      capZoom: (zoom) => { calls.push(`cap:${zoom}`); },
+      camera: () => ({ lat: 0, lon: 0, zoom: 12 }),
+      restore: () => { calls.push('restore'); },
+    });
+    try {
+      openOrbitalWatch(PALM, null);
+      await frames(40);
+      expect(calls.slice(0, 2), 'the cap lands before the first centre').toEqual([`cap:${ORBITAL_LOOKUP_MAX_ZOOM}`, 'center']);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(calls.slice(-2)).toEqual(['cap:null', 'restore']);
+      calls.length = 0;
+      openOrbitalShareLink({ point: PALM, pass: null, view: 'sheet' }, null);
+      await frames(40);
+      expect(calls[0]).toBe(`cap:${ORBITAL_LOOKUP_MAX_ZOOM}`);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(calls.slice(-2)).toEqual(['cap:null', 'restore']);
     } finally {
       release();
     }

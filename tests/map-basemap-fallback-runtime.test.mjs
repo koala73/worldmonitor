@@ -73,7 +73,7 @@ async function createHarness({ failReplacement = true, scheduleMicrotask = queue
     layerCache: new Map(),
   });
   for (const name of ['settleViewportMovement', 'stopTradeAnimation', 'stopPulseAnimation',
-    'stopDayNightTimer', 'stopWeatherRadar', 'stopLiveTankersLoop']) map[name] = () => {};
+    'stopDayNightTimer', 'stopWeatherRadar', 'stopLiveTankersLoop', 'applyZoomCap']) map[name] = () => {};
   for (const name of ['debouncedRebuildLayers', 'debouncedFetchBases', 'debouncedFetchAircraft',
     'rafUpdateLayers', 'heavyGate']) map[name] = { cancel() {} };
   await map.initMapLibre();

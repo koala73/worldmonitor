@@ -83,7 +83,7 @@ import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-sig
 import { showToast as showGlobalToast } from '@/utils/toast';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
 import { watchOrbitalEvidence, watchOrbitalRoute } from '@/app/orbital-route';
-import { setOrbitalMapView } from '@/app/orbital-map-focus';
+import { orbitalMapViewFor, setOrbitalMapView } from '@/app/orbital-map-focus';
 import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: no strikes in the
@@ -151,8 +151,6 @@ type CountryPresentation = {
 };
 
 const AVIATION_SIGNAL_TIMEOUT_MS = 2500;
-/** Close enough to read a city block or a port around a satellite pass lookup's point. */
-const ORBITAL_FOCUS_ZOOM = 11;
 
 export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
@@ -203,18 +201,7 @@ export class CountryIntelManager implements AppModule {
       }, 400);
     });
 
-    this.orbitalMapFocusUnsubscribe = setOrbitalMapView({
-      rect: () => this.ctx.map?.getViewportRect() ?? null,
-      center: (point, offset) => (this.ctx.map?.setCenterAt(point.lat, point.lon, ORBITAL_FOCUS_ZOOM, offset) ?? null) !== null,
-      project: (point) => this.ctx.map?.projectToClient(point.lat, point.lon) ?? null,
-      hold: (held) => this.ctx.map?.holdAutoRotate(held),
-      suppressLayers: (suppressed) => this.ctx.map?.suppressDataLayers(suppressed),
-      camera: () => {
-        const centre = this.ctx.map?.getCenter();
-        return centre && this.ctx.map ? { ...centre, zoom: this.ctx.map.getState().zoom } : null;
-      },
-      restore: ({ lat, lon, zoom }) => void this.ctx.map?.setCenter(lat, lon, zoom, { instant: true }),
-    });
+    this.orbitalMapFocusUnsubscribe = setOrbitalMapView(orbitalMapViewFor(() => this.ctx.map));
     if (ORBITAL_WATCH_ENABLED) {
       this.orbitalRouteUnsubscribe = watchOrbitalRoute(() => this.ctx.map);
       this.orbitalEvidenceUnsubscribe = watchOrbitalEvidence(() => this.ctx.map);

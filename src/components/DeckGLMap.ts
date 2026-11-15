@@ -965,6 +965,9 @@ export class DeckGLMap {
     windowMs: 60_000,
   });
   private destroyed = false;
+  private zoomCap: number | null = null;
+  /** The map's own max zoom, kept while a cap is on so lifting the cap puts it back. */
+  private uncappedMaxZoom: number | null = null;
   private distanceControl: MapDistanceControl | null = null;
   private usedFallbackStyle = false;
   private readonly chrome: boolean;
@@ -1297,6 +1300,7 @@ export class DeckGLMap {
         }
         : {}),
     });
+    this.applyZoomCap();
 
     const reportFatalBasemapFailure = (error: unknown, center = this.getCenter()): void => {
       const message = error instanceof Error ? error.message : String(error);
@@ -1368,6 +1372,7 @@ export class DeckGLMap {
             }
             : {}),
         });
+        this.applyZoomCap();
       } catch (error) {
         // MapLibre throws GPUInitializationError synchronously when WebGL2 is
         // gone (lost context, software renderer revoked, etc.). Catch it so it
@@ -7078,6 +7083,25 @@ export class DeckGLMap {
       pan: { ...this.state.pan },
       layers: { ...this.state.layers },
     };
+  }
+
+  /** Holds the map at `max` zoom or below, through a rebuilt basemap too, or lifts the cap with null. MapLibre clamps a map already past it. */
+  public setZoomCap(max: number | null): void {
+    this.zoomCap = max;
+    this.applyZoomCap();
+  }
+
+  private applyZoomCap(): void {
+    const map = this.maplibreMap;
+    if (!map) return;
+    if (this.zoomCap === null) {
+      if (this.uncappedMaxZoom !== null) map.setMaxZoom(this.uncappedMaxZoom);
+      this.uncappedMaxZoom = null;
+      return;
+    }
+    this.uncappedMaxZoom ??= map.getMaxZoom();
+    map.setMaxZoom(this.zoomCap);
+    this.state.zoom = Math.min(this.state.zoom, this.zoomCap);
   }
 
   // Zoom controls - public for external access
