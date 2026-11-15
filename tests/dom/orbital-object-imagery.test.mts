@@ -239,10 +239,18 @@ describe('#10758 item 3: the next pass is shared in browser memory', () => {
   });
 
   it('looks again once the remembered pass has happened', async () => {
-    harness.lookup.mockImplementationOnce(async () => passLookup([{ name: 'SOON', timeMs: Date.now() + 30 }]));
-    await loadObjectImagery({ kind: 'point', point });
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    const again = await loadObjectImagery({ kind: 'point', point });
+    const startMs = Date.now();
+    let clockMs = startMs;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => clockMs);
+    harness.lookup.mockImplementationOnce(async () => passLookup([{ name: 'SOON', timeMs: startMs + HOUR }]));
+    let again: ObjectImagery;
+    try {
+      expect((await loadObjectImagery({ kind: 'point', point })).nextPass?.satellite).toBe('SOON');
+      clockMs = startMs + HOUR + 1;
+      again = await loadObjectImagery({ kind: 'point', point });
+    } finally {
+      clock.mockRestore();
+    }
 
     expect(harness.lookup).toHaveBeenCalledTimes(2);
     expect(again.nextPass?.satellite).toBe('LANDSAT 9');

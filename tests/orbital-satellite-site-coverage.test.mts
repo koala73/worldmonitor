@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
-import { findPasses } from '../shared/orbital/pass-geometry.js';
+import { findPasses, ORBIT_ELEMENTS_MAX_AGE_DAYS } from '../shared/orbital/pass-geometry.js';
 import { SENSOR_PROFILES, matchSensorProfile } from '../shared/orbital/sensor-profiles.js';
 import { OPTICAL_MIN_SUN_ELEVATION_DEG } from '../shared/orbital/tiers.js';
 import { composeWatchedSites } from '../shared/watched-sites.ts';
@@ -170,7 +170,18 @@ describe('#10758 item 5: the coverage cache', () => {
     assert.deepEqual(cached, await fresh(EPOCH_MS));
   });
 
+  it('scans again once the element set has grown too old, as a fresh scan does', async () => {
+    const owner = [...sites];
+    const limitMs = orbitElementsFromTle(sentinel2a)!.epochMs + ORBIT_ELEMENTS_MAX_AGE_DAYS * DAY;
+    const inside = await sitesCoveredBySatellite({ tle: sentinel2a, sites: owner, nowMs: limitMs - 30 * MINUTE });
+    assert.equal(inside.status, 'ok');
+    const past = await sitesCoveredBySatellite({ tle: sentinel2a, sites: owner, nowMs: limitMs + MINUTE });
+    assert.equal(past.status, 'too-old');
+    assert.deepEqual(past, await fresh(limitMs + MINUTE));
+  });
+
   it('drops passes already behind on read, matching the fresh scan of the same window', async () => {
+    await sitesCoveredBySatellite({ tle: sentinel2a, sites, nowMs: EPOCH_MS });
     const readAt = EPOCH_MS + 40 * MINUTE;
     const cached = await sitesCoveredBySatellite({ tle: sentinel2a, sites, nowMs: readAt });
     assert.equal(cached.status, 'ok');

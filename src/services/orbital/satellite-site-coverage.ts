@@ -1,5 +1,5 @@
 import { twoline2satrec } from 'satellite.js';
-import { findPasses, type OrbitElements, type Pass } from '../../../shared/orbital/pass-geometry.js';
+import { findPasses, ORBIT_ELEMENTS_MAX_AGE_DAYS, type OrbitElements, type Pass } from '../../../shared/orbital/pass-geometry.js';
 import { matchSensorProfile, type SensorCategory, type SensorProfile } from '../../../shared/orbital/sensor-profiles.js';
 import { decidePassTier, OPTICAL_MIN_SUN_ELEVATION_DEG, type PassTier } from '../../../shared/orbital/tiers.js';
 import type { WatchedSite } from '../../../shared/watched-sites';
@@ -202,8 +202,10 @@ export async function sitesCoveredBySatellite(input: {
   if (!cache) coverageCaches.set(input.sites, cache = new BoundedCache<CoverageEntry>(16));
   const hours = input.hours ?? COVERAGE_WINDOW_HOURS;
   const key = `${input.tle.noradId}|${input.tle.name}|${input.tle.line1}|${input.tle.line2}|${hours}`;
+  const elements = orbitElementsFromTle(input.tle);
+  const elementsTooOld = !!elements && input.nowMs - elements.epochMs > ORBIT_ELEMENTS_MAX_AGE_DAYS * DAY_MS;
   let entry = cache.get(key, input.nowMs);
-  if (!entry || entry.work.abandoned || input.nowMs < entry.windowStartMs) {
+  if (!entry || entry.work.abandoned || elementsTooOld || input.nowMs < entry.windowStartMs) {
     const { tle, sites, nowMs } = input;
     const created: CoverageEntry = { windowStartMs: nowMs, work: shareWork((signal) => computeCoverage({ tle, sites, nowMs, hours, signal })) };
     const owner = cache;

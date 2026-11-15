@@ -123,6 +123,8 @@ async function nextPassAt(point: GeoPoint, signal?: AbortSignal): Promise<Object
     signal?.throwIfAborted();
     if (current === answer.revision && (!answer.pass || answer.pass.timeMs > Date.now())) return answer.pass;
     nextPasses.delete(key, cached);
+    const installed = nextPasses.get(key, Date.now());
+    if (installed && !installed.abandoned) return (await installed.join(signal, aborted)).pass;
   }
   const work = shareWork(async (shared) => {
     const lookup = await lookupPasses(point, shared);
@@ -173,7 +175,8 @@ async function withNextPass(image: LatestImage, pass: Promise<ObjectPass | null>
   );
   await Promise.resolve();
   if (!passDone) onImageReady?.({ ...image, nextPass: null, nextPassPending: true });
-  return { ...image, nextPass: await settledPass };
+  const nextPass = await settledPass;
+  return { ...image, nextPass: nextPass && nextPass.timeMs > Date.now() ? nextPass : null };
 }
 
 /**

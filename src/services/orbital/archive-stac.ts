@@ -288,11 +288,12 @@ export async function searchStacArchive(archive: StacArchiveId, query: StacSearc
     if (answers(candidate, archive, pointKey, collections, query.window, nowMs)) entry = candidate;
   }
   if (!entry) {
-    const key = `${archive}|${pointKey}|${[...collections].sort().join(',')}|${query.window.startMs}|${query.window.endMs}`;
+    const window: PassWindow = { startMs: query.window.startMs, endMs: query.window.endMs };
+    const key = `${archive}|${pointKey}|${[...collections].sort().join(',')}|${window.startMs}|${window.endMs}`;
     const { fetch, timeoutMs } = query;
     const created: StacCacheEntry = {
-      archive, pointKey, collections: new Set(collections), window: query.window, sentAtMs: nowMs,
-      work: shareWork((signal) => fetchStacSearch(archive, { point: query.point, window: query.window, collections, fetch, timeoutMs, signal })),
+      archive, pointKey, collections: new Set(collections), window, sentAtMs: nowMs,
+      work: shareWork((signal) => fetchStacSearch(archive, { point: query.point, window, collections, fetch, timeoutMs, signal })),
     };
     entry = created;
     const owner = cache;
