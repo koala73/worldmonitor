@@ -14,7 +14,7 @@ type Translate = ReservoirFormatContext['t'];
 const OPTICAL_NAMES: Record<string, string> = { 'sentinel-2': 'Sentinel-2', landsat: 'Landsat' };
 
 const readingDate = (reading: WaterReading, ctx: Pick<ReservoirFormatContext, 'locale' | 'nowMs'>) =>
-  formatPassDate(new Date(reading.time), ctx.locale, ctx.nowMs);
+  formatPassDate(new Date(reading.timeMs), ctx.locale, ctx.nowMs);
 
 const number = (value: number, locale: string) => new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value);
 

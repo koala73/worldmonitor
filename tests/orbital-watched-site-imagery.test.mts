@@ -108,8 +108,9 @@ describe('site record to popup imagery', () => {
     const summary = (entry: unknown) => ({ schema: 1, reservoirs: { 'reservoir:kariba': entry } });
     const latest = reading('2026-11-09T03:40:00Z', 62.4);
     const previous = reading('2026-10-28T03:40:00Z', 65.5);
+    const wire = ({ time, ...rest }: ReturnType<typeof reading>) => ({ timeMs: Date.parse(time), ...rest });
     assert.deepEqual(toWaterExtent('reservoir:kariba', summary({ areaKm2: 640, latest, sameOrbitPrevious: previous })), {
-      latest, sameOrbitPrevious: previous, boxKm2: 640,
+      latest: wire(latest), sameOrbitPrevious: wire(previous), boxKm2: 640,
     });
     // Other orbits, a later "previous" or a malformed one are not compared.
     for (const bad of [reading('2026-10-28T03:40:00Z', 65.5, 145), reading('2026-11-10T03:40:00Z', 65.5), { time: 'x', waterPercent: 1 }]) {

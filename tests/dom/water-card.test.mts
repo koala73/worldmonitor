@@ -14,7 +14,7 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); });
 
 const ctx = () => ({ t, locale: 'en-US', nowMs: Date.now() });
-const reading = (time: string, waterPercent: number) => ({ time, waterPercent, waterKm2: 318.5, platform: 'Sentinel-1A', relativeOrbit: 43 });
+const reading = (time: string, waterPercent: number) => ({ timeMs: Date.parse(time), waterPercent, waterKm2: 318.5, platform: 'Sentinel-1A', relativeOrbit: 43 });
 const extent = { latest: reading('2026-11-09T03:40:00Z', 62.4), sameOrbitPrevious: reading('2026-10-28T03:40:00Z', 65.5), boxKm2: 510 };
 
 const level = {

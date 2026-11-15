@@ -1241,9 +1241,10 @@ components:
         WaterReading:
             type: object
             properties:
-                time:
-                    type: string
-                    description: Scene time, ISO 8601 UTC.
+                timeMs:
+                    type: integer
+                    format: int64
+                    description: 'Scene time, Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
                 waterPercent:
                     type: number
                     format: double

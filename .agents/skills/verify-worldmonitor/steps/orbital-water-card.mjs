@@ -24,7 +24,8 @@ function waterExtent() {
   if (!file) throw new Error('set WM_VERIFY_WATER_SUMMARY to a water-extent summary JSON file');
   const entry = JSON.parse(readFileSync(file, 'utf8')).reservoirs?.[SITE.siteId];
   if (!entry?.latest) throw new Error(`${file} has no reading for ${SITE.siteId}`);
-  return { latest: entry.latest, ...(entry.sameOrbitPrevious && { sameOrbitPrevious: entry.sameOrbitPrevious }), boxKm2: entry.areaKm2 };
+  const wire = ({ time, ...rest }) => ({ timeMs: Date.parse(time), ...rest });
+  return { latest: wire(entry.latest), ...(entry.sameOrbitPrevious && { sameOrbitPrevious: wire(entry.sameOrbitPrevious) }), boxKm2: entry.areaKm2 };
 }
 
 export default async function ({ page, base, shot, log, expectVisible }) {

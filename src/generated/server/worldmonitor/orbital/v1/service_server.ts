@@ -207,7 +207,7 @@ export interface WaterExtent {
 }
 
 export interface WaterReading {
-  time: string;
+  timeMs: number;
   waterPercent: number;
   waterKm2: number;
   platform: string;

@@ -59,10 +59,10 @@ const RESERVOIR_SITE = /^reservoir:/;
 
 function toWaterReading(value: unknown): WaterReading | null {
   if (!isRecord(value)) return null;
-  const time = str(value.time);
+  const timeMs = Date.parse(str(value.time));
   const waterPercent = value.waterPercent;
-  if (!Number.isFinite(Date.parse(time)) || typeof waterPercent !== 'number' || !Number.isFinite(waterPercent)) return null;
-  return { time, waterPercent, waterKm2: num(value.waterKm2), platform: str(value.platform), relativeOrbit: Math.trunc(num(value.relativeOrbit)) };
+  if (!Number.isFinite(timeMs) || typeof waterPercent !== 'number' || !Number.isFinite(waterPercent)) return null;
+  return { timeMs, waterPercent, waterKm2: num(value.waterKm2), platform: str(value.platform), relativeOrbit: Math.trunc(num(value.relativeOrbit)) };
 }
 
 /** The site's entry in the water-extent summary; null when it has no reading. */
@@ -74,7 +74,7 @@ export function toWaterExtent(siteId: string, summary: unknown): WaterExtent | n
   if (!latest) return null;
   const previous = toWaterReading(entry.sameOrbitPrevious);
   const comparable = previous && latest.relativeOrbit > 0 && previous.relativeOrbit === latest.relativeOrbit
-    && Date.parse(previous.time) < Date.parse(latest.time);
+    && previous.timeMs < latest.timeMs;
   return { latest, ...(comparable && { sameOrbitPrevious: previous }), boxKm2: num(entry.areaKm2) };
 }
 

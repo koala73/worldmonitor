@@ -34,8 +34,8 @@ message SitePass {
 
 // WaterReading is one Sentinel-1 radar water-extent reading of a reservoir's core box.
 message WaterReading {
-  // Scene time, ISO 8601 UTC.
-  string time = 1;
+  // Scene time, Unix epoch milliseconds.
+  int64 time_ms = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Share of the core box that read as open water, in percent.
   double water_percent = 2;
   // That share as an area, in square kilometres.
