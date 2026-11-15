@@ -341,7 +341,7 @@ const emptyFallback: ListWeatherStationsResponse = { stations: [] };
 
 export async function fetchWeatherStations(network?: string): Promise<WeatherStation[]> {
   const response = await breaker.execute(async () => {
-    return client.listWeatherStations({ network: network ?? '', countryCode: '', pagination: undefined });
+    return client.listWeatherStations({ network: network ?? '', countryCode: '' });
   }, emptyFallback);
   return response.stations;
 }
