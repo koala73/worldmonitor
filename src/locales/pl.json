@@ -2363,7 +2363,7 @@
       "proLocked": "Uaktualnij do PRO, aby zobaczyć ocenę podatności surowców"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Tracker Handlu przez Hormuz</strong> — codzienne indeksy wysyłek WTO DataLab dla Cieśniny Hormuz: ropa naftowa, LNG i nawozy opuszczające Zatokę, towary rolne przybywające. Według objętości, średnia ze stycznia–marca 2025 = 100, tylko statki widoczne w AIS. Status i data pochodzą z najnowszej analizy WTO.",
+      "infoTooltip": "<strong>Tracker Handlu przez Hormuz</strong> — codzienne indeksy wysyłek WTO DataLab dla Cieśniny Hormuz: ropa naftowa, LNG i nawozy opuszczające Zatokę, towary rolne przybywające. Według objętości, średnia ze stycznia–marca 2025 = 100, tylko statki widoczne w AIS. Wykresy są dzienne; status pochodzi z komentarzy WTO.",
       "title": "Tracker Handlu przez Hormuz",
       "noData": "Brak danych",
       "notAvailable": "Niedostępne",
@@ -2376,8 +2376,10 @@
         "unavailable": "Dane Hormuz niedostępne",
         "failedToLoad": "Nie udało się załadować"
       },
-      "analysisDate": "Analiza WTO {{date}}",
-      "indexNote": "Indeks wysyłek według objętości, średnia ze stycznia–marca 2025 = 100"
+      "analysisDate": "Komentarz WTO {{date}}",
+      "indexNote": "Indeks wysyłek według objętości, średnia ze stycznia–marca 2025 = 100",
+      "dataThrough": "Dane dzienne do {{date}}",
+      "noShipments": "Brak zarejestrowanych przesyłek {{from}} do {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Kamery na żywo</strong> Transmisje na żywo z geopolitycznie istotnych miejsc na całym świecie: strefy konfliktu, stolice, przejścia graniczne i strategiczne wąskie gardła. Transmisje z YouTube i sieci publicznych."

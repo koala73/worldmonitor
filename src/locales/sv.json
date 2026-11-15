@@ -1959,7 +1959,7 @@
       "proLocked": "Uppgradera till PRO för råvarusårbarhetsbedömning"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz-handelsspårare</strong> Dagliga fraktindex från WTO DataLab för Hormuzsundet: råolja, LNG och gödsel som lämnar Persiska viken samt jordbruksvaror som anländer. Volymbaserat index, genomsnittet för januari–mars 2025 = 100, endast AIS-synliga fartyg. Status och datum kommer från WTO:s senaste analys.",
+      "infoTooltip": "<strong>Hormuz-handelsspårare</strong> Dagliga fraktindex från WTO DataLab för Hormuzsundet: råolja, LNG och gödsel som lämnar Persiska viken samt jordbruksvaror som anländer. Volymbaserat index, genomsnittet för januari–mars 2025 = 100, endast AIS-synliga fartyg. Diagram är dagliga; status är från WTO-kommentarer.",
       "title": "Hormuz-handelsspårare",
       "noData": "Ingen data",
       "notAvailable": "Ej tillgänglig",
@@ -1969,11 +1969,13 @@
         "unavailable": "Hormuz-data är inte tillgänglig",
         "failedToLoad": "Det gick inte att läsa in"
       },
-      "analysisDate": "WTO-analys {{date}}",
+      "analysisDate": "WTO-kommentar {{date}}",
       "indexNote": "Fraktindex baserat på volym, genomsnitt januari–mars 2025 = 100",
       "units": {
         "index": "index"
-      }
+      },
+      "dataThrough": "Daglig data till {{date}}",
+      "noShipments": "Ingen sjöfart registrerad {{from}} till {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Livewebbkameror</strong> Livesändningar från geopolitiskt betydelsefulla platser världen över: konfliktzoner, huvudstäder, gränsövergångar och strategiska flaskhalsar. Strömmar från YouTube och offentliga nätverk."
