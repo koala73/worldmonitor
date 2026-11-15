@@ -109,6 +109,9 @@ function focusMap(): void {
   if (markFrame === null) markFrame = requestAnimationFrame(trackMark);
 }
 
+/** The open point's archives have answered, so a linked pass can be selected at once. */
+let evidenceReady = false;
+
 /** A shared pass, once the lookup has it, is selected; a pass no longer there gets a note. */
 function applyLinkedPass(found: PointPassLookup): void {
   const wanted = linkedPass;
@@ -212,7 +215,9 @@ async function start(): Promise<void> {
     }
     loadContext(lookup, signal);
     await checkArchives(lookup, signal);
-    if (!signal.aborted) applyLinkedPass(lookup);
+    if (signal.aborted) return;
+    evidenceReady = true;
+    applyLinkedPass(lookup);
   } catch (error) {
     if (!isAbort(error) && !signal.aborted) show({ kind: 'unavailable' });
   }
@@ -369,9 +374,12 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, map }: { recentre
     if (moved) drawTarget(targetFor(at, null));
     sheet.setPlaceName(name);
     if (recentre) focusMap();
+    // A second link to the open point selects its pass now if the archives have answered, else when they do.
+    if (evidenceReady && lookup) applyLinkedPass(lookup);
     return;
   }
   clearTrack();
+  evidenceReady = false;
   point = at;
   drawTarget(targetFor(at, null));
   selectedPass = null;

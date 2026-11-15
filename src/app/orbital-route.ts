@@ -1,5 +1,6 @@
 import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
 import type { OrbitalTrackSurface } from '@/app/orbital-watch';
+import { takeOrbitalShareLink } from '@/app/orbital-share-link';
 import { parseOrbitalShareFragment } from '@/utils/urlState';
 
 export type OrbitalRouteView = 'sheet' | 'full';
@@ -35,6 +36,13 @@ export function watchOrbitalRoute(map: () => OrbitalTrackSurface | null = () => 
   if (parseOrbitalRoute(window.location.hash) && !parseOrbitalShareFragment(window.location.hash)) applyRoute(map);
   let routed = parseOrbitalRoute(window.location.hash) !== null;
   const onHashChange = () => {
+    // A share link pasted into this tab opens with its pass and leaves the live URL, as on a fresh load.
+    if (parseOrbitalShareFragment(window.location.hash)) {
+      const link = takeOrbitalShareLink();
+      routed = false;
+      if (link) void import('@/app/orbital-watch').then(({ openOrbitalShareLink }) => openOrbitalShareLink(link, document.getElementById('mapContainer'), map()));
+      return;
+    }
     const next = parseOrbitalRoute(window.location.hash) !== null;
     if (next || routed) applyRoute(map);
     routed = next;
