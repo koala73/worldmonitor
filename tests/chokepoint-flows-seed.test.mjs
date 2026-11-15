@@ -150,14 +150,26 @@ describe('computeFlowEstimate — DWT coverage rule', () => {
     assert.equal(estimate.disrupted, false);
   });
 
-  it('stays on DWT when recent DWT collapses to zero — that is the disruption signal', () => {
+  it('stays on DWT when recent tankers and DWT both fall to zero — that is the disruption signal', () => {
     const estimate = computeFlowEstimate(
-      historyWith({ recentTanker: 5, recentDwt: 0, baseTanker: 60, baseDwt: 50_000 }),
+      historyWith({ recentTanker: 0, recentDwt: 0, baseTanker: 60, baseDwt: 50_000 }),
       BASELINE_MBD,
     );
     assert.equal(estimate.source, 'portwatch-dwt');
     assert.equal(estimate.flowRatio, 0);
     assert.equal(estimate.disrupted, true);
+  });
+
+  it('uses trailing tanker counts when recent tankers report no DWT', () => {
+    // Normal traffic with blank tonnage: PortWatch stores the blank as 0, so
+    // DWT would read a closure that the counts do not show.
+    const estimate = computeFlowEstimate(
+      historyWith({ recentTanker: 60, recentDwt: 0, baseTanker: 60, baseDwt: 50_000 }),
+      BASELINE_MBD,
+    );
+    assert.equal(estimate.source, 'portwatch-counts');
+    assert.equal(estimate.flowRatio, 1);
+    assert.equal(estimate.disrupted, false);
   });
 
   it('falls back to counts when DWT covers less than half the baseline', () => {

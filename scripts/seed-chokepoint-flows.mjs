@@ -124,13 +124,14 @@ export function computeFlowEstimate(rawHistory, baselineMbd, yearBaseline = null
     useDwt = false;
     baseline90d = yearCount;
   } else {
-    // Prefer DWT (capTanker) when the baseline window has majority DWT coverage.
-    // Decision is based on the 90-day baseline, NOT the recent window — zero
-    // recent capTanker is the disruption signal, not a reason to abandon DWT.
+    // Prefer DWT (capTanker) when the baseline window has majority DWT coverage
+    // and the recent week reports it. Zero tonnage with zero tankers is the
+    // disruption signal; tankers with zero tonnage are unreported DWT, which
+    // only counts can measure.
     // Majority guard: partial DWT roll-out (1-2 days non-zero) should not
     // activate DWT mode and pull down the baseline average via zero-filled gaps.
     const dwtBaselineDays = prev90.filter(d => (d.capTanker ?? 0) > 0).length;
-    useDwt = dwtBaselineDays >= Math.ceil(prev90.length / 2);
+    useDwt = recentDwtReported && dwtBaselineDays >= Math.ceil(prev90.length / 2);
     baseline90d = useDwt
       ? avg(prev90.map(d => d.capTanker ?? 0))
       : avg(prev90.map(d => d.tanker ?? 0));
