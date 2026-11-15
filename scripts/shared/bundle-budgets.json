@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 481738
+    "raw": 448085
   },
   "chunks": {
     "analytics": {
@@ -40,14 +40,6 @@
     },
     "font-settings": {
       "raw": 574,
-      "files": 1
-    },
-    "geo-convergence": {
-      "raw": 5044,
-      "files": 1
-    },
-    "geo-distance": {
-      "raw": 28609,
       "files": 1
     },
     "globe-marker-probe": {
@@ -105,7 +97,7 @@
   },
   "deferred": {
     "total": {
-      "raw": 1586582
+      "raw": 1620235
     },
     "chunks": {
       "App": {
@@ -129,7 +121,7 @@
         "files": 1
       },
       "cached-risk-scores": {
-        "raw": 15477,
+        "raw": 20521,
         "files": 1
       },
       "checkout": {
@@ -169,7 +161,7 @@
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 165388,
+        "raw": 193997,
         "files": 1
       },
       "index": {
