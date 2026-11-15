@@ -402,6 +402,19 @@ describe('reservoir water extent: archive refusal and backoff', () => {
     assert.equal(writes[0].until, NOW + 30 * 60_000);
   });
 
+  it('publishes nothing new when the archive refuses the first statistics request after a good search', async () => {
+    const carried = { siteId: 'reservoir:kariba', observations: [], partialScenes: [], latest: { sceneId: 'old', time: new Date(NOW - DAY).toISOString() } };
+    const { fetchWaterExtent, writes, requests } = build({
+      fetchImpl: async (url) => (url.includes('/stac/') ? page([scene('s1', 2)]) : refused(429)),
+      previous: { reservoirs: { 'reservoir:kariba': carried } },
+    });
+    const data = await fetchWaterExtent();
+    assert.equal(requests.length, 2, 'search, refused statistics; nothing after');
+    assert.equal(writes.length, 1);
+    assert.match(data.publishBlocked, /HTTP 429/);
+    assert.equal(buildSeedOptions(2).declareRecords(data), 0, 'carried readings must not refresh seed freshness');
+  });
+
   it('reads and writes the backoff key the watched-sites seeder honours', () => {
     const source = readFileSync(new URL('../scripts/seed-orbital-water-extent.mjs', import.meta.url), 'utf8');
     assert.match(source, /ORBITAL_SITES_BACKOFF_KEY/);

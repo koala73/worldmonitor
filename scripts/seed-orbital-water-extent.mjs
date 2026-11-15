@@ -176,7 +176,7 @@ export function makeFetchWaterExtent({
       const next = nextBackoff(backoff, refused, now());
       await writeBackoff(next);
       console.warn(`  ARCHIVE REFUSED: ${refused}; no further requests this run, backing off until ${new Date(next.until).toISOString()}`);
-      if (tally.searched === 0) return { publishBlocked: refused, reservoirs: {} };
+      if (tally.answered === 0) return { publishBlocked: refused, reservoirs: {} };
     }
     // A run in which the archive answered nothing must not refresh seed-meta from the carried series.
     if (tally.searchFailed > 0 && tally.searched === 0) throw new Error(`every scene search failed (${errors[0]})`);
