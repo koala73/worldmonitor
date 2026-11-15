@@ -500,7 +500,8 @@
     "map": {
       "hideMap": "Hide Map",
       "showMap": "Show Map",
-      "clearTrails": "Clear trails"
+      "clearTrails": "Clear trails",
+      "locate": "Show my location"
     },
     "panel": {
       "addPanel": "Add Panel",

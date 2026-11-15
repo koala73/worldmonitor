@@ -15526,6 +15526,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "src/components/MapLocateControl.ts"
+        },
+        {
           "path": "src/embed/panels/fear-greed.ts"
         }
       ]

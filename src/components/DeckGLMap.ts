@@ -749,6 +749,8 @@ export class DeckGLMap {
   private militaryFlightClusters: MilitaryFlightCluster[] = [];
   private activeFlightTrails = new Set<string>();
   private clearTrailsBtn: HTMLButtonElement | null = null;
+  private zoomControlsEl: HTMLElement | null = null;
+  private mountedMapControl: HTMLElement | null = null;
   private militaryVessels: MilitaryVessel[] = [];
   private militaryVesselClusters: MilitaryVesselCluster[] = [];
   private serverBases: MilitaryBaseEnriched[] = [];
@@ -6205,6 +6207,12 @@ export class DeckGLMap {
     return [100, 100, 100, alpha];
   }
 
+  /** Adds a control below the zoom buttons, kept across a late controls build. */
+  public mountMapControl(el: HTMLElement): void {
+    this.mountedMapControl = el;
+    this.zoomControlsEl?.append(el);
+  }
+
   // UI Creation methods
   private createControls(): void {
     const controls = document.createElement('div');
@@ -6238,6 +6246,8 @@ export class DeckGLMap {
       else if (target.classList.contains('zoom-out')) this.zoomOut();
       else if (target.classList.contains('zoom-reset')) this.resetView();
     });
+    this.zoomControlsEl = controls.querySelector('.zoom-controls');
+    if (this.mountedMapControl) this.zoomControlsEl?.append(this.mountedMapControl);
 
     const viewSelect = controls.querySelector('.view-select') as HTMLSelectElement;
     viewSelect.value = this.state.view;

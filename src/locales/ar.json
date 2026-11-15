@@ -2147,7 +2147,14 @@
     "map": {
       "showMap": "إظهار الخريطة",
       "hideMap": "إخفاء الخريطة",
-      "clearTrails": "مسح المسارات"
+      "clearTrails": "مسح المسارات",
+      "locate": "إظهار موقعي"
+    },
+    "mapLocate": {
+      "locating": "جارٍ تحديد الموقع…",
+      "denied": "تم رفض الوصول إلى الموقع. استخدم البحث للعثور على مكان.",
+      "unavailable": "تعذّر العثور على الموقع. استخدم البحث للعثور على مكان.",
+      "noCountry": "لا توجد دولة في موقعك. استخدم البحث للعثور على مكان."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>انقطاعات الإنترنت</strong> انقطاعات الإنترنت وهجمات DDoS وحالات شذوذ حركة المرور في الوقت الفعلي من رصد الشبكات العالمي:<ul><li><strong>الانقطاعات</strong>: أعطال اتصال مرصودة عبر BGP حسب الدولة</li><li><strong>DDoS</strong>: تقارير الهجمات الحجمية حسب البروتوكول والناقل</li><li><strong>حالات الشذوذ</strong>: أنماط حركة غير معتادة من Cloudflare Radar</li></ul>",
@@ -4585,7 +4592,8 @@
   "contextMenu": {
     "openCountryBrief": "فتح ملخص البلد",
     "copyCoordinates": "نسخ الإحداثيات",
-    "satellitePasses": "الأقمار الصناعية التي مرت هنا"
+    "satellitePasses": "الأقمار الصناعية التي مرت هنا",
+    "imageryEvidenceHere": "أدلة صور فضائية هنا"
   },
   "shell": {
     "documentTitle": "لوحة مراقبة الذكاء العالمي في الوقت الفعلي — World Monitor",

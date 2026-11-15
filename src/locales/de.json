@@ -2106,7 +2106,14 @@
     "map": {
       "showMap": "Karte anzeigen",
       "hideMap": "Karte ausblenden",
-      "clearTrails": "Spuren löschen"
+      "clearTrails": "Spuren löschen",
+      "locate": "Meinen Standort anzeigen"
+    },
+    "mapLocate": {
+      "locating": "Standort wird ermittelt…",
+      "denied": "Standortzugriff verweigert. Nutzen Sie die Suche, um einen Ort zu finden.",
+      "unavailable": "Standort nicht gefunden. Nutzen Sie die Suche, um einen Ort zu finden.",
+      "noCountry": "An Ihrem Standort liegt kein Land. Nutzen Sie die Suche, um einen Ort zu finden."
     },
     "positiveNewsFeed": {
       "noStories": "Noch keine Beiträge in dieser Kategorie"
@@ -4497,7 +4504,8 @@
   "contextMenu": {
     "openCountryBrief": "Länderübersicht öffnen",
     "copyCoordinates": "Koordinaten kopieren",
-    "satellitePasses": "Satellitenüberflüge hier"
+    "satellitePasses": "Satellitenüberflüge hier",
+    "imageryEvidenceHere": "Bildbelege hier"
   },
   "shell": {
     "documentTitle": "World Monitor — Dashboard für globale Echtzeitinformationen",

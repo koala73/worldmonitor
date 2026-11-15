@@ -565,6 +565,8 @@ export class GlobeMap {
   private pendingPremiumLayerChanges = new Set<keyof MapLayers>();
   private savedDefaultMaterial: any = null;
   private controls: GlobeControlsLike | null = null;
+  private zoomControlsEl: HTMLElement | null = null;
+  private mountedMapControl: HTMLElement | null = null;
   private pendingMarkerGestureCleanup: (() => void) | null = null;
   private renderPaused = false;
   private autoRotateHeld = false;
@@ -2304,6 +2306,12 @@ export class GlobeMap {
 
   // ─── Overlay UI: zoom controls & layer panel ─────────────────────────────
 
+  /** Adds a control below the zoom buttons, kept across a late controls build. */
+  public mountMapControl(el: HTMLElement): void {
+    this.mountedMapControl = el;
+    this.zoomControlsEl?.append(el);
+  }
+
   private createControls(): void {
     const el = document.createElement('div');
     el.className = 'map-controls deckgl-controls';
@@ -2321,6 +2329,8 @@ export class GlobeMap {
       else if (target.classList.contains('zoom-out'))   this.zoomOutGlobe();
       else if (target.classList.contains('zoom-reset')) this.setView(this.currentView);
     });
+    this.zoomControlsEl = el.querySelector('.zoom-controls');
+    if (this.mountedMapControl) this.zoomControlsEl?.append(this.mountedMapControl);
   }
 
   private zoomInGlobe(): void {

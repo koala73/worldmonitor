@@ -68,31 +68,83 @@ export function getOrbitalMapView(): OrbitalMapView | null {
 }
 
 const USER_MOVE_EVENTS = ['pointerdown', 'wheel', 'keydown'] as const;
+type Centre = { lat: number; lon: number };
+/** The point a claim centred the map on, and a reader for the live centre. */
+export type MapUrlCentreAnchor = { point: Centre; read: () => Centre | null };
+/** Half the 0.01-degree share grid: a centre inside it has not left the claimed point. */
+const ANCHOR_TOLERANCE_DEG = 0.005;
 let urlClaimed = false;
+let ownsCentre: (() => boolean) | null = null;
+let anchor: MapUrlCentreAnchor | null = null;
+let userInput = false;
+/** A lookup opened inside an anchored claim: it moves the map off the point until it closes. */
+let nested = false;
 let stopWaiting: (() => void) | null = null;
+
+function endClaim(): void {
+  stopWaiting?.();
+  urlClaimed = false;
+  ownsCentre = null;
+  anchor = null;
+  userInput = false;
+  nested = false;
+}
+
+function anchorLeft(): boolean {
+  if (!anchor) return true;
+  const centre = anchor.read();
+  return !!centre && (Math.abs(centre.lat - anchor.point.lat) > ANCHOR_TOLERANCE_DEG
+    || Math.abs(centre.lon - anchor.point.lon) > ANCHOR_TOLERANCE_DEG);
+}
 
 /**
  * A lookup centres the map on the picked point, and the page URL is read by
  * analytics and error reporting, so the map's URL sync keeps the centre it
- * had before the lookup.
+ * had before the lookup. With `stillOwned`, the claim also ends once it returns
+ * false, e.g. when Search or a panel link has since moved the map elsewhere.
+ *
+ * With an `anchor` (the located device position), neither user input nor a
+ * newer viewport command ends the claim by itself: it ends only once the live
+ * centre has actually left the point. A zoom click, a Tab press, or a fit that
+ * has not landed yet would otherwise let the URL sync publish the position.
+ *
+ * A later claim with no anchor (a satellite lookup opened at the located
+ * point) keeps an anchored claim that is still active: replacing it would let
+ * the first gesture after that sheet closes publish the located position.
+ * The lookup's own offset centring must not end it either, so the anchor is
+ * judged again only once the lookup hands the centre back.
  */
-export function claimMapUrlCentre(): void {
+export function claimMapUrlCentre(stillOwned: (() => boolean) | null = null, anchorAt: MapUrlCentreAnchor | null = null): void {
   stopWaiting?.();
+  if (!anchorAt && urlClaimed && anchor) {
+    userInput = false;
+    nested = true;
+    return;
+  }
   urlClaimed = true;
+  ownsCentre = stillOwned;
+  anchor = anchorAt;
+  userInput = false;
+  nested = false;
 }
 
 /** Hands the URL centre back once the user moves the map themselves; until then it still shows the picked point. */
 export function releaseMapUrlCentreOnUserMove(map: HTMLElement | null): void {
   stopWaiting?.();
+  nested = false;
   if (!urlClaimed) return;
   if (!map) {
-    urlClaimed = false;
+    // An anchored claim still ends when the centre leaves its point.
+    if (!anchor) endClaim();
     return;
   }
   const onInput = (event: Event) => {
     if (!(event.target instanceof Node) || !map.contains(event.target)) return;
-    stopWaiting?.();
-    urlClaimed = false;
+    if (anchor) {
+      userInput = true;
+      return;
+    }
+    endClaim();
   };
   for (const type of USER_MOVE_EVENTS) document.addEventListener(type, onInput, true);
   stopWaiting = () => {
@@ -102,5 +154,28 @@ export function releaseMapUrlCentreOnUserMove(map: HTMLElement | null): void {
 }
 
 export function isMapUrlCentreClaimed(): boolean {
+  if (!urlClaimed) return false;
+  if (nested) return true;
+  const movedOn = userInput || (ownsCentre !== null && !ownsCentre());
+  if (movedOn && anchorLeft()) endClaim();
   return urlClaimed;
+}
+
+/**
+ * The map centre a share link or embed may carry. While a claim holds, that is
+ * the centre the address bar still shows (none if it shows none), never the
+ * claimed point.
+ */
+export function publishedMapCentre(live: Centre | null, addressBarHref: string): Centre | null {
+  if (!isMapUrlCentreClaimed()) return live;
+  let params: URLSearchParams;
+  try {
+    params = new URL(addressBarHref).searchParams;
+  } catch {
+    return null;
+  }
+  const lat = Number(params.get('lat'));
+  const lon = Number(params.get('lon'));
+  if (!params.has('lat') || !params.has('lon') || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  return { lat, lon };
 }

@@ -2127,7 +2127,14 @@
     "map": {
       "showMap": "Haritayı Göster",
       "hideMap": "Haritayı Gizle",
-      "clearTrails": "İzleri Temizle"
+      "clearTrails": "İzleri Temizle",
+      "locate": "Konumumu göster"
+    },
+    "mapLocate": {
+      "locating": "Konum bulunuyor…",
+      "denied": "Konum erişimi reddedildi. Bir yer bulmak için Ara'yı kullanın.",
+      "unavailable": "Konum bulunamadı. Bir yer bulmak için Ara'yı kullanın.",
+      "noCountry": "Konumunuzda ülke yok. Bir yer bulmak için Ara'yı kullanın."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>İnternet Kesintileri</strong> Küresel ağ izlemeden gerçek zamanlı internet kesintileri, DDoS saldırıları ve trafik anormallikleri:<ul><li><strong>Kesintiler</strong>: Ülkeye göre BGP ile tespit edilen bağlantı arızaları</li><li><strong>DDoS</strong>: Protokol ve vektöre göre hacimsel saldırı raporları</li><li><strong>Anormallikler</strong>: Cloudflare Radar'dan olağandışı trafik örüntüleri</li></ul>",
@@ -4497,7 +4504,8 @@
   "contextMenu": {
     "openCountryBrief": "Ülke özetini aç",
     "copyCoordinates": "Koordinatları kopyala",
-    "satellitePasses": "Buradan geçen uydular"
+    "satellitePasses": "Buradan geçen uydular",
+    "imageryEvidenceHere": "Buradaki uydu görüntü kanıtı"
   },
   "shell": {
     "documentTitle": "World Monitor — Gerçek Zamanlı Küresel İstihbarat Paneli",

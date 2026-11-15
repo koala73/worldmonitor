@@ -2122,7 +2122,14 @@
     "map": {
       "showMap": "Hiển thị bản đồ",
       "hideMap": "Ẩn bản đồ",
-      "clearTrails": "Xóa dấu vết"
+      "clearTrails": "Xóa dấu vết",
+      "locate": "Hiển thị vị trí của tôi"
+    },
+    "mapLocate": {
+      "locating": "Đang định vị…",
+      "denied": "Quyền truy cập vị trí bị từ chối. Dùng Tìm kiếm để tìm địa điểm.",
+      "unavailable": "Không tìm thấy vị trí. Dùng Tìm kiếm để tìm địa điểm.",
+      "noCountry": "Không có quốc gia tại vị trí của bạn. Dùng Tìm kiếm để tìm địa điểm."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Gián đoạn Internet</strong> Cắt internet, tấn công DDoS và bất thường lưu lượng thời gian thực từ giám sát mạng toàn cầu:<ul><li><strong>Cắt mạng</strong>: Lỗi kết nối BGP theo quốc gia</li><li><strong>DDoS</strong>: Báo cáo tấn công thể tích theo giao thức và vector</li><li><strong>Bất thường</strong>: Mẫu lưu lượng bất thường từ Cloudflare Radar</li></ul>",
@@ -4475,7 +4482,8 @@
   "contextMenu": {
     "openCountryBrief": "Mở tổng quan quốc gia",
     "copyCoordinates": "Sao chép tọa độ",
-    "satellitePasses": "Vệ tinh bay qua đây"
+    "satellitePasses": "Vệ tinh bay qua đây",
+    "imageryEvidenceHere": "Bằng chứng ảnh vệ tinh tại đây"
   },
   "shell": {
     "documentTitle": "World Monitor — Bảng điều khiển tình báo toàn cầu theo thời gian thực",

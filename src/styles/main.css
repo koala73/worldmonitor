@@ -6062,6 +6062,54 @@ body.playback-mode .status-dot {
   background: var(--border);
 }
 
+.map-locate {
+  position: relative;
+  display: flex;
+}
+
+.map-locate-btn[aria-busy='true'] {
+  cursor: progress;
+  color: var(--text-dim);
+}
+
+.map-locate-btn[aria-busy='true'] svg {
+  animation: map-locate-pulse 1s ease-in-out infinite;
+}
+
+.map-locate[data-state='located'] .map-locate-btn {
+  color: var(--green-text, var(--green));
+}
+
+.map-locate[data-state='denied'] .map-locate-btn,
+.map-locate[data-state='unavailable'] .map-locate-btn {
+  color: var(--yellow-text, var(--yellow));
+}
+
+.map-locate-status {
+  position: absolute;
+  top: 0;
+  right: calc(100% + 6px);
+  margin: 0;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 72px));
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.35;
+}
+
+@keyframes map-locate-pulse {
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-locate-btn[aria-busy='true'] svg {
+    animation: none;
+  }
+}
+
 .map-clear-trails-btn {
   padding: 4px 10px;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));

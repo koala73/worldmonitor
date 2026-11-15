@@ -2600,7 +2600,14 @@
     "map": {
       "showMap": "Show Map",
       "hideMap": "Hide Map",
-      "clearTrails": "Clear trails"
+      "clearTrails": "Clear trails",
+      "locate": "Show my location"
+    },
+    "mapLocate": {
+      "locating": "Locating…",
+      "denied": "Location access denied. Use Search to find a place.",
+      "unavailable": "Location not found. Use Search to find a place.",
+      "noCountry": "No country at your location. Use Search to find a place."
     },
     "climateNews": {
       "infoTooltip": "<strong>Climate News</strong> Latest environment and climate intelligence from Carbon Brief, UNEP, NASA, The Guardian, and other authoritative sources. Updated every 30 minutes.",
@@ -4971,7 +4978,8 @@
   "contextMenu": {
     "openCountryBrief": "Open Country Brief",
     "copyCoordinates": "Copy Coordinates",
-    "satellitePasses": "Satellite passes here"
+    "satellitePasses": "Satellite passes here",
+    "imageryEvidenceHere": "Imagery evidence here"
   },
   "auth": {
     "signIn": "Sign In",

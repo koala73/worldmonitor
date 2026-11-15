@@ -2479,7 +2479,14 @@
     "map": {
       "showMap": "Prikaži mapu",
       "hideMap": "Sakrij mapu",
-      "clearTrails": "Očisti tragove"
+      "clearTrails": "Očisti tragove",
+      "locate": "Prikaži moju lokaciju"
+    },
+    "mapLocate": {
+      "locating": "Određivanje lokacije…",
+      "denied": "Pristup lokaciji odbijen. Upotrijebite Pretragu da biste pronašli mjesto.",
+      "unavailable": "Lokacija nije pronađena. Upotrijebite Pretragu da biste pronašli mjesto.",
+      "noCountry": "Na vašoj lokaciji nema države. Upotrijebite Pretragu da biste pronašli mjesto."
     },
     "climateNews": {
       "infoTooltip": "<strong>Climate News</strong> Najnovije vijesti o okolišu i klimi od Carbon Brief, UNEP, NASA, The Guardian i drugih pouzdanih izvora. Ažurirano svakih 30 minuta.",
@@ -4619,7 +4626,8 @@
   "contextMenu": {
     "openCountryBrief": "Otvori Sažetak Zemlje",
     "copyCoordinates": "Kopiraj Koordinate",
-    "satellitePasses": "Preleti satelita ovdje"
+    "satellitePasses": "Preleti satelita ovdje",
+    "imageryEvidenceHere": "Dokazi iz snimaka ovdje"
   },
   "auth": {
     "signIn": "Prijava",
