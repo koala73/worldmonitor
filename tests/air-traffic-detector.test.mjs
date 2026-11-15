@@ -109,3 +109,16 @@ test('the stored state keeps one level of history, so it does not grow tick by t
   assert.equal(state.prior.prior, undefined);
   assert.ok(JSON.stringify(state).length < 1000);
 });
+
+test('the quiet-hours peak scans the whole local day, including the first hour of a 25-hour DST day', () => {
+  // 2026-11-01 in New York runs 04:00Z to 05:00Z the next day. The busiest
+  // baseline bin sits at 00:30 local (04:30Z), in the hour a fixed 24-hour
+  // scan from the end-of-day offset would skip.
+  const busy = new Set([1, 2, 3, 4].map((w) => sameLocalBin(Date.parse('2026-11-01T04:30:00Z'), w, 'America/New_York')));
+  const getPoint = (t) => ({ ...NORMAL, usLowClimbingAirline: busy.has(t) ? 500 : 100 });
+  assert.equal(detector.peakBaselineFor(Date.parse('2026-11-01T18:00:00Z'), getPoint), 500);
+  // The last bin of the day, 04:55Z on 2026-11-02, belongs to it too.
+  const late = new Set([1, 2, 3, 4].map((w) => sameLocalBin(Date.parse('2026-11-02T04:55:00Z'), w, 'America/New_York')));
+  const lateGet = (t) => ({ ...NORMAL, usLowClimbingAirline: late.has(t) ? 700 : 100 });
+  assert.equal(detector.peakBaselineFor(Date.parse('2026-11-01T18:00:00Z'), lateGet), 700);
+});

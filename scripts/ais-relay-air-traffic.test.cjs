@@ -30,11 +30,12 @@ const GLOBAL_SNAPSHOT = [
 const GLOBAL_TOTALS = { usSeen: 1500, usAirborne: 1200, usLowClimbing: 200, usLowClimbingAirline: 150, euAirborne: 2000 };
 const EUROPE_ONLY = repeat(400, () => row(50, 10));
 
-function createRedis({ abortPipelines = 0, firstPipelineDelayMs = 0, seedHashes = null, failHgetallPipelines = 0 } = {}) {
+function createRedis({ abortPipelines = 0, firstPipelineDelayMs = 0, seedHashes = null, failHgetallPipelines = 0, seedStrings = null, failGetKey = null } = {}) {
+  let getFailures = failGetKey ? failGetKey.times : 0;
   let pipelinesToAbort = abortPipelines;
   let hgetallFailures = failHgetallPipelines;
   let pipelineDelayMs = firstPipelineDelayMs;
-  const strings = new Map();
+  const strings = new Map(seedStrings ?? []);
   const hashes = new Map(seedHashes ?? []);
   const lists = new Map();
   const expireAt = new Map();
@@ -91,6 +92,14 @@ function createRedis({ abortPipelines = 0, firstPipelineDelayMs = 0, seedHashes 
         const delayMs = pipelineDelayMs;
         pipelineDelayMs = 0;
         setTimeout(() => res.end(JSON.stringify(body.map((command) => ({ result: run(command) })))), delayMs);
+        return;
+      }
+      if (req.url === '/pipeline' && Array.isArray(body) && getFailures > 0
+        && body.some((command) => String(command[0]).toUpperCase() === 'GET' && command[1] === failGetKey.key)) {
+        getFailures -= 1;
+        res.end(JSON.stringify(body.map((command) => (String(command[0]).toUpperCase() === 'GET' && command[1] === failGetKey.key
+          ? { error: 'ERR max requests limit exceeded' }
+          : { result: run(command) }))));
         return;
       }
       if (req.url === '/pipeline' && Array.isArray(body) && hgetallFailures > 0
@@ -601,4 +610,21 @@ test('lane 28: a tick whose bin ends before it records evaluates its own bin, an
     assert.equal(new Set(evaluated).size, evaluated.length, `each bin once: ${evaluated.join(' ')}`);
     assert.ok(lines.some((line) => /t=2026-11-13T20:30:00\.000Z skipped: 2026-11-13T20:35:00\.000Z already evaluated/.test(line)), lines.join('\n'));
   }, { seedHashes, firstPipelineDelayMs: 1200 });
+});
+
+test('lane 29: a failed read of the detector state leaves an active collapse in place, so its recovery is still sent', async () => {
+  const seedHashes = historyHashes('2026-10-14', '2026-11-08', ORDINARY_HISTORY);
+  const onset = Date.parse('2026-11-13T19:00:00Z');
+  const collapsed = { state: 'collapsed', run: 0, onset, lastT: Date.parse('2026-11-13T20:25:00Z'), prior: null, verdict: 'collapsed' };
+  await lane([GLOBAL_SNAPSHOT], {}, async ({ redis, relay }) => {
+    const queued = () => redis.list('wm:events:queue').map((m) => JSON.parse(m));
+    await relay.waitFor(() => queued().length >= 1, 'the recovery event');
+    assert.equal(queued()[0].payload.kind, 'recovery');
+    assert.equal(queued()[0].payload.onset, '2026-11-13T19:00:00.000Z');
+    assert.match(relay.output(), /\[AirTrafficDetector\] state read failed; skipping this bin/);
+  }, {
+    seedHashes,
+    seedStrings: [['aviation:traffic:detector:v1', JSON.stringify(collapsed)]],
+    failGetKey: { key: 'aviation:traffic:detector:v1', times: 1 },
+  });
 });

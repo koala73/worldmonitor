@@ -94,13 +94,21 @@ function baselineAt(t, field, getPoint, timeZone) {
   return values.length >= MIN_BASELINE_DAYS ? median(values) : null;
 }
 
+// The UTC instant of local midnight starting local day `day` (days since the
+// epoch in local time).
+function localMidnightUtc(day, timeZone) {
+  const wall = day * DAY_MS;
+  const guess = wall - tzOffsetMinutes(timeZone, wall) * 60_000;
+  return wall - tzOffsetMinutes(timeZone, guess) * 60_000;
+}
+
 // Largest SIGNAL baseline over the US-local day containing t, the reference
 // for the quiet-hours floor.
 function peakBaselineFor(t, getPoint) {
-  const offset = tzOffsetMinutes(US_TZ, t) * 60_000;
-  const localMidnight = Math.floor((t + offset) / DAY_MS) * DAY_MS - offset;
+  const localDay = Math.floor((t + tzOffsetMinutes(US_TZ, t) * 60_000) / DAY_MS);
   let peak = 0;
-  for (let bin = localMidnight; bin < localMidnight + DAY_MS; bin += BIN_MS) {
+  // Each midnight takes its own offset, so a DST day spans 23 or 25 hours.
+  for (let bin = localMidnightUtc(localDay, US_TZ); bin < localMidnightUtc(localDay + 1, US_TZ); bin += BIN_MS) {
     const base = baselineAt(bin, SIGNAL, getPoint, US_TZ);
     if (base !== null && base > peak) peak = base;
   }

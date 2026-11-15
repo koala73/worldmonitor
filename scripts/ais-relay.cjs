@@ -6834,7 +6834,12 @@ async function runAirTrafficDetector(t) {
       ['HGET', airTrafficDayKey(t, AIR_TRAFFIC_SERIES.opensky), String(t)],
       ['HGET', airTrafficDayKey(t, AIR_TRAFFIC_SERIES.wingbits), String(t)],
     ])) || [];
-    if (!stateRes || !pointRes) return;
+    // A failed read must not stand in for no state: during a collapse, the
+    // next bin would start from normal and the recovery would never be sent.
+    if (!stateRes || stateRes.error || !pointRes || pointRes.error) {
+      console.warn('[AirTrafficDetector] state read failed; skipping this bin');
+      return;
+    }
     if (!(await loadDetectorBaseline(t))) {
       console.warn('[AirTrafficDetector] baseline read failed; skipping this bin');
       return;

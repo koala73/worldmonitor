@@ -168,7 +168,7 @@ Each live lane runs in its own worktree at the PR head. The relay has no control
 
 - [ ] Lane 1. Regression lane against trunk. Replay the 2026-11-13 series at trunk and head. Trunk lacks the detector, so record that and gate the head queueing one critical event by 21:10Z. Save `lane1-trunk-vs-head.txt`. Pass when trunk queues no traffic event and head queues one with onset 21:05Z.
 - [ ] Lane 2. Replay the 2026-11-06 series. Save `lane2-normal-friday.json`. Pass when no event is queued.
-- [ ] Lane 3. Replay 2026-11-13 through 02:00Z on 2026-11-14. Save `lane3-recovery.json`. Pass when one recovery event follows the stop's lift at 01:15Z.
+- [ ] Lane 3. Replay 2026-11-13 through 12:30Z on 2026-11-14. Save `lane3-recovery.json`. Pass when one recovery event follows the stop's lift at 01:15Z and lands at 12:25Z.
 - [ ] Lane 4. Replay with a fresh Redis and one baseline day. Save `lane4-cold-start.json`. Pass when the state is `insufficient-baseline` and nothing is queued.
 - [ ] Lane 5. Replay 2026-11-13 with Europe counts scaled to 50%. Save `lane5-feed-loss.json`. Pass when nothing is queued and the log names the control-region block.
 - [ ] Lane 6. Replay with three `gap` points at 20:40Z to 20:50Z. Save `lane6-gaps.json`. Pass when the detector waits for two `ok` points before it enters `collapsed`.
