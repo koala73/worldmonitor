@@ -284,8 +284,9 @@ async function main() {
       fixture: { type: 'string' },
     },
   });
-  const cacheDir = values['cache-dir'] ?? mkdtempSync(join(tmpdir(), 'gdelt-archive-'));
-  mkdirSync(cacheDir, { recursive: true });
+  const downloads = command === 'v2' || command === 'daily';
+  const cacheDir = downloads ? (values['cache-dir'] ?? mkdtempSync(join(tmpdir(), 'gdelt-archive-'))) : null;
+  if (cacheDir) mkdirSync(cacheDir, { recursive: true });
   const log = (message) => process.stderr.write(`${message}\n`);
   if (command === 'v2') {
     const descriptors = await loadMasterDescriptors({ cacheDir });
@@ -323,7 +324,7 @@ async function main() {
     process.exitCode = 2;
     return;
   }
-  log(`cache: ${cacheDir}`);
+  if (cacheDir) log(`cache: ${cacheDir}`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {

@@ -121,3 +121,51 @@ A missing day is unknown, never quiet. `T` qualifies when all of the following h
 ### Copied magnitudes
 
 From the confirmed episode's `summarizeCountryEvents` output for that country, unchanged: `protest.current`, `protest.baselineMedian`, `conflict.current`, `conflict.baselineMedian` and `week.articles`, `week.conflict` and `week.protest`. The same values go to each of DE, FR, GB, JP, KR, PL and US, as in the existing P15b scenario. GDELT strike days are not copied, and other evidence stays at zero. The AE9 check repeats this week's level for eight weeks, with current equal to median, as before. The manifest records the episode country, the capture clock, the week and norm dates, every criterion's value and the full candidate list with each episode's statistics. The country identifies evidence, never a score target.
+
+### Validation results (2026-11-15)
+
+**The 2.0 rebuild reproduces both captures exactly.** Days 2026-10-15 to 2026-11-14 were rebuilt from 2,904 quarter-hour exports, every one verified against the master list's size and MD5. `compare` then ran `summarizeCountryEvents` at each capture's own clock (cursor `20261113094500` and `20261114054500`). For each of the 37 captured countries, it checked protest and conflict `current` and `baselineMedian`, the three `week` counts and the strike days, plus the readiness flags and `strikeDays`. All 300 fields match on both captures, with no mismatch at any tolerance: `current` matches to its rounded decimal.
+
+```
+node scripts/cii-gdelt-archive-rebuild.mjs v2 --from 2026-10-15 --to 2026-11-13 --out full.json
+node scripts/cii-gdelt-archive-rebuild.mjs v2 --from 2026-11-13 --to 2026-11-13 --cursor 20261113094500 --out partial.json
+node scripts/cii-gdelt-archive-rebuild.mjs compare --snapshot full.json,partial.json --cursor 20261113094500 --fixture tests/fixtures/cii/2026-11-13T0952Z.json
+```
+
+**The daily-file gate fails, so the scan was not run.** Daily-file counts compared with the 2.0 rebuild, for the seven countries:
+
+| Day | Country | 2.0 articles | Daily articles | Difference | 2.0 protest | Daily protest | Gate |
+|---|---|---|---|---|---|---|---|
+| 2026-11-10 | DE | 298 | 305 | 2.3% | 4 | 4 | pass |
+| 2026-11-10 | FR | 455 | 472 | 3.7% | 5 | 5 | pass |
+| 2026-11-10 | GB | 1,452 | 1,526 | 5.1% | 19 | 19 | **fail** |
+| 2026-11-10 | JP | 194 | 199 | 2.6% | 1 | 1 | pass |
+| 2026-11-10 | KR | 108 | 110 | 1.9% | 1 | 1 | pass |
+| 2026-11-10 | PL | 85 | 87 | 2.4% | 3 | 3 | pass |
+| 2026-11-10 | US | 7,351 | 7,631 | 3.8% | 67 | 69 | pass |
+| 2026-11-11 | DE | 247 | 256 | 3.6% | 3 | 3 | pass |
+| 2026-11-11 | FR | 367 | 376 | 2.5% | 3 | 3 | pass |
+| 2026-11-11 | GB | 1,452 | 1,523 | 4.9% | 12 | 14 | pass |
+| 2026-11-11 | JP | 180 | 184 | 2.2% | 0 | 0 | pass |
+| 2026-11-11 | KR | 120 | 122 | 1.7% | 2 | 2 | pass |
+| 2026-11-11 | PL | 99 | 99 | 0.0% | 3 | 3 | pass |
+| 2026-11-11 | US | 7,213 | 7,487 | 3.8% | 51 | 51 | pass |
+| 2026-11-12 | DE | 219 | 224 | 2.3% | 3 | 3 | pass |
+| 2026-11-12 | FR | 353 | 358 | 1.4% | 9 | 9 | pass |
+| 2026-11-12 | GB | 1,397 | 1,456 | 4.2% | 13 | 13 | pass |
+| 2026-11-12 | JP | 187 | 192 | 2.7% | 1 | 1 | pass |
+| 2026-11-12 | KR | 135 | 141 | 4.4% | 1 | 1 | pass |
+| 2026-11-12 | PL | 60 | 62 | 3.3% | 2 | 2 | pass |
+| 2026-11-12 | US | 7,304 | 7,573 | 3.7% | 53 | 55 | pass |
+
+One of 21 country-days exceeds the registered 5% article tolerance. As registered, the scan was not run. A queued scan process started when the validation run finished. It was stopped before it had fetched any daily file inside the window. No in-window count has been read.
+
+**Cause.** The daily file for 2026-11-10 holds exactly the same 124,504 events as that day's 96 quarter-hour exports: identical `GLOBALEVENTID` set, identical `SOURCEURL` and identical `ActionGeo_CountryCode` on every event. The only field that differs is `IsRootEvent`. 2,904 events (2.3%) are root events in the daily file but not in the quarter-hour exports, and none differ the other way. The seeder counts only root events, so the daily file over-counts articles by a few percent. The excess varies by country and day, and protest counts are almost unaffected. The daily file cannot reproduce the 2.0 root flag, so no column mapping repairs it.
+
+**Status.** P15b still has no recorded episode. Running the registered rule needs one of these owner rulings, each made before any in-window data is read:
+
+1. Amend the selection source: keep the daily file for screening, with the amended gate on the ratio the rule uses (week share over norm share) rather than on raw articles. The 2.0 confirmation step already re-tests every criterion on the scorer's own stream.
+2. Run the rule on the 2.0 stream at full resolution: about 400,000 sequential requests, more than four days.
+3. Shorten the window to what the 2.0 stream can cover in an acceptable time, justified from the construct.
+
+The criteria, thresholds, clustering, lower-median selection and copied magnitudes above stay as registered under any of the three.
