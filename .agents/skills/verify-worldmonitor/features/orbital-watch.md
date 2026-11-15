@@ -29,6 +29,8 @@ It fails if any request to a non-archive host carries the picked point, if an ar
 
 Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/orbital-watch-track.mjs --name orbital-track` for the `track` sub-feature. `WM_VERIFY_ORBITAL_MAP=flat` drives the flat map: on desktop it hides the software renderer name so `MapContainer` picks deck.gl, and with `WM_VERIFY_ORBITAL_VIEWPORT=mobile` it opens the lookup from the globe and switches to the 2D SVG map, which has no context menu. `WM_VERIFY_ORBITAL_THEME=light` drives the light theme. `npx playwright test e2e/orbital-watch-track.spec.ts` checks the deck.gl layers through the map harness.
 
+Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/orbital-map-popups.mjs --name orbital-popups` for the imagery row in map-object popups. It clicks Al Udeid air base, serves `/api/orbital/v1/get-watched-site-imagery` from the base's real newest Planetary Computer scene, reads the row and presses Open evidence. It fails if the site read carries anything but `site_id`, if the popup image is not a `blob:` URL, if a change-flag row renders, or if a non-archive request carries the base's coordinates. `WM_VERIFY_ORBITAL_VIEWPORT=mobile` and `WM_VERIFY_ORBITAL_THEME=light` work as above. Handles: `[data-orbital-imagery]`, `[data-orbital-image] img`, `[data-orbital-open-evidence]`.
+
 ## Proof limits
 
 - The point check covers requests the page makes. Sentry breadcrumb scrubbing is covered by `tests/orbital-privacy.test.mts`, because the dev server does not start Sentry.

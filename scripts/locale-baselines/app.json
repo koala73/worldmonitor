@@ -4498,5 +4498,14 @@
   "widgets.saveFailed": "Widget could not be saved. Please try again.",
   "widgets.send": "Send",
   "widgets.serverError": "Server error: {{status}}",
-  "widgets.unknownError": "Unknown error"
+  "widgets.unknownError": "Unknown error",
+  "orbitalWatch.popup.imageAlt": "Satellite view from {{source}}",
+  "orbitalWatch.popup.latest": "Latest image",
+  "orbitalWatch.popup.loading": "Checking satellite archives…",
+  "orbitalWatch.popup.nextPass": "Next pass",
+  "orbitalWatch.popup.noImage": "No recent image found",
+  "orbitalWatch.popup.noPass": "No pass due within 72 hours",
+  "orbitalWatch.popup.openEvidence": "Open evidence",
+  "orbitalWatch.popup.title": "Satellite imagery",
+  "orbitalWatch.popup.unavailable": "Satellite imagery did not load."
 }
