@@ -55,9 +55,12 @@ than a year cannot contaminate (PR #10784):
   `BASELINE_LAG_DAYS` are both 365). The Hub CSV path computes the same
   statistics from rows.
 - `buildBaseline` stores each mean only with its own coverage. The count mean
-  needs `tanker_days >= 300`. The DWT mean needs positive DWT on at least half
-  of the rows it averages (`cap_tanker_days >= ceil(cap_tanker_rows / 2)`),
-  because zero-filled gaps lower it.
+  needs `tanker_days >= 300`. The DWT mean needs at least 300 rows with a
+  capacity value and positive DWT on at least half of them
+  (`cap_tanker_rows >= 300` and `cap_tanker_days >= ceil(cap_tanker_rows / 2)`),
+  because zero-filled gaps lower it. The row floor matters on the CSV path,
+  where a blank capacity cell is not a row: without it, one DWT day among 364
+  blanks is a majority of one.
 - `computeFlowEstimate(rawHistory, baselineMbd, yearBaseline)` uses the
   year-earlier DWT mean, then the year-earlier count mean, and falls back to
   the trailing window only when neither is usable.
@@ -106,7 +109,8 @@ unreported-DWT rule keeps a missing value from reading as a measured zero.
   lagged window only delays the problem by its lag; only a baseline pinned
   before the event removes it.
 - Store a mean only with the count of the rows it averages, and gate each mean
-  on its own coverage. A coverage check that divides by another field's day
+  on its own coverage: a minimum row count as well as a majority, since a
+  majority of very few rows is no coverage at all. A coverage check that divides by another field's day
   count can pass while the mean itself is mostly zero-filled.
 - When a source stores a blank as 0, decide per field what a zero means. Apply
   that rule on every path that chooses the signal, including fallbacks; a
