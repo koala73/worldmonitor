@@ -5,6 +5,8 @@ import {
   COVERAGE_WINDOW_HOURS,
   loadWatchedSites,
   sitesCoveredBySatellite,
+  coverageAt,
+  COVERAGE_RENEW_MS,
   type SatelliteCoverage,
   type SiteCoverage,
   type TrackedSatelliteTle,
@@ -12,8 +14,6 @@ import {
 
 const HOUR_MS = 3_600_000;
 const MINUTE_MS = 60_000;
-/** An open card scans again once its 24-hour window has slid this far. */
-const WINDOW_RENEW_MS = HOUR_MS;
 const KEY = 'orbitalWatch.satelliteSites';
 
 function utcTime(ms: number): string {
@@ -136,12 +136,8 @@ export function advanceSatelliteSites(host: HTMLElement, nowMs: number): 'curren
   const state = sections.get(host);
   if (state?.kind !== 'coverage' || state.coverage.status !== 'ok') return 'current';
   const coverage = state.coverage;
-  if (nowMs - coverage.windowStartMs >= WINDOW_RENEW_MS) return 'rescan';
-  const sites = coverage.sites
-    .map((entry) => ({ site: entry.site, passes: entry.passes.filter((p) => p.timeMs > nowMs) }))
-    .filter((entry) => entry.passes.length > 0)
-    .sort((a, b) => a.passes[0]!.timeMs - b.passes[0]!.timeMs || a.site.name.localeCompare(b.site.name));
-  draw(host, { kind: 'coverage', coverage: { ...coverage, sites } }, nowMs);
+  if (nowMs - coverage.windowStartMs >= COVERAGE_RENEW_MS) return 'rescan';
+  draw(host, { kind: 'coverage', coverage: coverageAt(coverage, nowMs) }, nowMs);
   return 'current';
 }
 
