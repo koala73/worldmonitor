@@ -1583,6 +1583,11 @@ function shouldNotify(rule, event) {
   // treat them by their real (non-critical) severity.
   if (ORBITAL_SITE_EVENT_TYPES.includes(event?.eventType)) return true;
 
+  // The all-clear for a national air traffic collapse (scripts/shared/
+  // air-traffic-detector.cjs) goes to the realtime rules that got the critical
+  // alert. It stays high, so quiet hours silence it or hold it for Batch.
+  if (event?.eventType === 'aviation_traffic_collapse' && event?.payload?.kind === 'recovery') return true;
+
   const passesLegacy = matchesSensitivity(effectiveSensitivity, event.severity ?? 'high');
   if (!passesLegacy) return false;
 

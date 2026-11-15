@@ -2648,7 +2648,7 @@
       "proLocked": "Nadogradi na PRO za bodovanje ranjivosti roba"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Praćenje trgovine kroz Hormuz</strong> WTO DataLab dnevni indeksi pošiljki za Tjesnac Hormuz: sirova nafta, UPP i gnojivo koja napuštaju Perzijski zaljev, poljoprivredni proizvodi koji stižu. Po količini, prosječna vrijednost za siječanj–ožujak 2025. = 100, samo brodovi vidljivi na AIS-u. Status i datum dolaze iz najnovije WTO analize.",
+      "infoTooltip": "<strong>Praćenje trgovine kroz Hormuz</strong> WTO DataLab dnevni indeksi pošiljki za Tjesnac Hormuz: sirova nafta, UPP i gnojivo koja napuštaju Perzijski zaljev, poljoprivredni proizvodi koji stižu. Po količini, prosječna vrijednost za siječanj–ožujak 2025. = 100, samo brodovi vidljivi na AIS-u. Grafikoni su dnevni; status je iz WTO komentara.",
       "title": "Praćenje trgovine kroz Hormuz",
       "noData": "Nema podataka",
       "notAvailable": "N/A",
@@ -2658,11 +2658,13 @@
         "unavailable": "Hormuz podaci nisu dostupni",
         "failedToLoad": "Učitavanje nije uspjelo"
       },
-      "analysisDate": "WTO analiza {{date}}",
+      "analysisDate": "WTO komentar {{date}}",
       "indexNote": "Indeks pošiljki po količini, prosjek za siječanj–ožujak 2025. = 100",
       "units": {
         "index": "indeks"
-      }
+      },
+      "dataThrough": "Dnevni podaci do {{date}}",
+      "noShipments": "Nema zabilježenih otprema {{from}} do {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Live Webcams</strong> Živući prijenos iz geopolitički važnih lokacija diljem svijeta: područja sukoba, glavnih gradova, graničnih prijelaza i strateških tjesnaca. Tokovi iz YouTubea i javnih mreža."

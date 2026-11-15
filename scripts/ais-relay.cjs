@@ -121,6 +121,7 @@ const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps }
 const { recordPizzintHistory } = require('./shared/pizzint-history.cjs');
 const { aggregateStates: aggregateAirTrafficStates, gapPoint: airTrafficGapPoint, binStart: airTrafficBinStart, BIN_MS: AIR_TRAFFIC_BIN_MS } = require('./shared/air-traffic-aggregate.cjs');
 const { recordTrafficPoint, isOkPointValue: isOkAirTrafficPoint, dayKeyFor: airTrafficDayKey, SERIES: AIR_TRAFFIC_SERIES } = require('./shared/air-traffic-history.cjs');
+const airTrafficDetector = require('./shared/air-traffic-detector.cjs');
 const { CONUS_BOX: AIR_TRAFFIC_CONUS_BOX, EUROPE_BOX: AIR_TRAFFIC_EUROPE_BOX } = require('./shared/air-traffic-regions.cjs');
 const {
   stateRowsFromAreas: wingbitsTrafficStateRows,
@@ -6736,7 +6737,7 @@ async function seedTrafficSeries({ label, series, attempt }) {
   const existing = await upstashPipeline([['HGET', airTrafficDayKey(t, series), String(t)]]);
   if (isOkAirTrafficPoint(existing?.[0]?.result)) {
     console.log(`[${label}] t=${bin} already recorded; skipping fetch`);
-    return;
+    return t;
   }
   let result = null;
   let fetchedAt = Date.now();
@@ -6767,10 +6768,120 @@ async function seedTrafficSeries({ label, series, attempt }) {
   } else {
     console.log(`[${label}] t=${bin} status=gap reason=${result.gapReason} attempts=${attempts}`);
   }
+  return t;
 }
 
-function seedAirTrafficPoint() {
-  return seedTrafficSeries({ label: 'AirTraffic', series: AIR_TRAFFIC_SERIES.opensky, attempt: attemptAirTrafficPoint });
+async function seedAirTrafficPoint() {
+  // The bin this tick recorded, which may have ended while it was fetching.
+  const t = await seedTrafficSeries({ label: 'AirTraffic', series: AIR_TRAFFIC_SERIES.opensky, attempt: attemptAirTrafficPoint });
+  await runAirTrafficDetector(t);
+}
+
+// ── National departure-collapse detector (scripts/shared/air-traffic-detector.cjs)
+// Baseline days are past and immutable, so each UTC day hash is read once and
+// kept, trimmed to the fields the detector reads.
+const AIR_TRAFFIC_DETECTOR_STATE_KEY = 'aviation:traffic:detector:v1';
+const AIR_TRAFFIC_DETECTOR_STATE_TTL_SECONDS = 7 * 86400;
+const airTrafficDetectorDays = new Map();
+const DETECTOR_FIELDS = ['usSeen', 'euAirborne', airTrafficDetector.SIGNAL];
+
+function trimDetectorPoint(raw) {
+  try {
+    const p = JSON.parse(raw);
+    if (p?.status !== 'ok') return null;
+    return { status: 'ok', ...Object.fromEntries(DETECTOR_FIELDS.map((f) => [f, p[f]])) };
+  } catch { return null; }
+}
+
+// UTC days holding the baseline bins of bin t: each prior week's local day,
+// padded a day either side for the US and Europe offsets.
+function detectorBaselineDays(t) {
+  const days = new Set();
+  for (let w = 1; w <= airTrafficDetector.BASELINE_WEEKS; w += 1) {
+    for (const d of [-1, 0, 1]) days.add(new Date(t - w * 7 * 86_400_000 + d * 86_400_000).toISOString().slice(0, 10));
+  }
+  return [...days];
+}
+
+async function loadDetectorBaseline(t) {
+  const wanted = detectorBaselineDays(t);
+  for (const day of airTrafficDetectorDays.keys()) if (!wanted.includes(day)) airTrafficDetectorDays.delete(day);
+  const missing = wanted.filter((day) => !airTrafficDetectorDays.has(day));
+  if (missing.length === 0) return true;
+  const prefix = AIR_TRAFFIC_SERIES.opensky.prefix;
+  const results = await upstashPipeline(missing.map((day) => ['HGETALL', `${prefix}:${day}`]));
+  // A failed command must not be cached as an empty day, or the detector stays
+  // at insufficient-baseline until the day leaves the window.
+  if (!Array.isArray(results) || results.length !== missing.length || !results.every((r) => Array.isArray(r?.result))) return false;
+  missing.forEach((day, i) => {
+    const flat = results[i].result;
+    const points = new Map();
+    for (let j = 0; j + 1 < flat.length; j += 2) {
+      const point = trimDetectorPoint(flat[j + 1]);
+      if (point) points.set(Number(flat[j]), point);
+    }
+    airTrafficDetectorDays.set(day, points);
+  });
+  return true;
+}
+
+const detectorPoint = (bin) => airTrafficDetectorDays.get(new Date(bin).toISOString().slice(0, 10))?.get(bin);
+
+async function runAirTrafficDetector(t) {
+  try {
+    const [stateRes, pointRes, wingbitsRes] = (await upstashPipeline([
+      ['GET', AIR_TRAFFIC_DETECTOR_STATE_KEY],
+      ['HGET', airTrafficDayKey(t, AIR_TRAFFIC_SERIES.opensky), String(t)],
+      ['HGET', airTrafficDayKey(t, AIR_TRAFFIC_SERIES.wingbits), String(t)],
+    ])) || [];
+    // A failed read must not stand in for no state: during a collapse, the
+    // next bin would start from normal and the recovery would never be sent.
+    const answered = (res) => res && !res.error && 'result' in res;
+    if (!answered(stateRes) || !answered(pointRes)) {
+      console.warn('[AirTrafficDetector] state read failed; skipping this bin');
+      return;
+    }
+    if (!(await loadDetectorBaseline(t))) {
+      console.warn('[AirTrafficDetector] baseline read failed; skipping this bin');
+      return;
+    }
+    let state = null;
+    try {
+      state = stateRes.result === null ? null : JSON.parse(stateRes.result);
+    } catch {
+      // Only this relay writes the key. A value it cannot parse would stop the
+      // detector until the TTL if skipped, so it starts over, loudly.
+      console.warn('[AirTrafficDetector] stored state is unreadable; starting from normal');
+      state = null;
+    }
+    if (state && state.lastT > t) {
+      // A slow tick finished after the next bin's tick evaluated, and the run
+      // only moves forward.
+      console.log(`[AirTrafficDetector] t=${new Date(t).toISOString()} skipped: ${new Date(state.lastT).toISOString()} already evaluated`);
+      return;
+    }
+    const parse = (raw) => { try { return raw ? JSON.parse(raw) : undefined; } catch { return undefined; } };
+    const { state: next, event } = airTrafficDetector.evaluateCollapse(state, {
+      t,
+      point: parse(pointRes.result),
+      wingbits: parse(wingbitsRes?.result),
+      getPoint: detectorPoint,
+      peakBaseline: airTrafficDetector.peakBaselineFor(t, detectorPoint),
+    });
+    const bin = new Date(t).toISOString();
+    const fmt = (v) => (Number.isFinite(v) ? v.toFixed(2) : '-');
+    console.log(`[AirTrafficDetector] t=${bin} verdict=${next.verdict} state=${next.state} ratio=${fmt(next.ratio)} europe=${fmt(next.europe)} coverage=${fmt(next.coverage)}${next.coverageAgainst ? `(${next.coverageAgainst})` : ''}`);
+    if (event) {
+      const onset = new Date(event.onset).toISOString().slice(11, 16);
+      console.log(`[AirTraffic] ${event.kind === 'collapse' ? 'collapse entered' : 'collapse ended'} ratio=${event.ratio.toFixed(2)} onset=${onset}Z`);
+      // The state moves only once the event is queued, so a failed publish is
+      // retried on the next bin, which still meets the condition.
+      if (!(await publishNotificationEvent(airTrafficDetector.buildCollapseNotification(event)))) return;
+    }
+    await upstashSet(AIR_TRAFFIC_DETECTOR_STATE_KEY, next, AIR_TRAFFIC_DETECTOR_STATE_TTL_SECONDS);
+  } catch (e) {
+    console.warn('[AirTrafficDetector] error:', e?.message || e);
+  }
 }
 
 // Sleeps until Date.now reaches targetMs, rechecking after each timer so a

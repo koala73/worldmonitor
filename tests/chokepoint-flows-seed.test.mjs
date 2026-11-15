@@ -83,6 +83,61 @@ describe('computeFlowEstimate — flow ratio', () => {
   });
 });
 
+describe('computeFlowEstimate — year-earlier baseline', () => {
+  // Hormuz on 2026-11-15: about one tanker a day for months, against 49.3
+  // tankers and 2.29M DWT a day in the PortWatch year before. A trailing
+  // 90-day baseline sits inside the closure, so it read 82% of 21 mb/d.
+  const closedForMonths = () => makeDays(97, 1, 3_077);
+  const YEAR_EARLIER = { avgDaily: 87.4, days: 365, from: '2024-11-15', to: '2025-11-14', tankerAvgDaily: 49.3, capTankerAvgDaily: 2_294_291 };
+
+  it('measures a long closure against the year before, not against the closure', () => {
+    const estimate = computeFlowEstimate(closedForMonths(), BASELINE_MBD, YEAR_EARLIER);
+    assert.ok(estimate.flowRatio < 0.01, `expected <1% of the year-earlier tanker DWT, got ${estimate.flowRatio}`);
+    assert.ok(estimate.currentMbd < 0.5, `expected under 0.5 mb/d, got ${estimate.currentMbd}`);
+    assert.equal(estimate.disrupted, true);
+    assert.equal(estimate.source, 'portwatch-dwt');
+  });
+
+  it('falls back to tanker counts when the year-earlier row has no DWT mean', () => {
+    const { capTankerAvgDaily: _dwt, ...countsOnly } = YEAR_EARLIER;
+    const estimate = computeFlowEstimate(closedForMonths(), BASELINE_MBD, countsOnly);
+    assert.equal(estimate.source, 'portwatch-counts');
+    assert.equal(estimate.flowRatio, Math.round((1 / 49.3) * 1000) / 1000);
+    assert.equal(estimate.disrupted, true);
+  });
+
+  it('keeps the trailing 90-day baseline when the year-earlier row carries no tanker means', () => {
+    const totalsOnly = { avgDaily: 87.4, days: 365, from: '2024-11-15', to: '2025-11-14' };
+    const history = historyWith({ recentTanker: 60, recentDwt: 0, baseTanker: 60, baseDwt: 0 });
+    assert.equal(computeFlowEstimate(history, BASELINE_MBD, totalsOnly).flowRatio, 1);
+    assert.equal(computeFlowEstimate(history, BASELINE_MBD, null).flowRatio, 1);
+  });
+
+  it('uses the tanker-count baseline when recent days carry tankers but no DWT', () => {
+    // PortWatch blanks (stored as 0) mean DWT was not reported; a passing
+    // tanker always has tonnage. Reading them as zero DWT would report a
+    // closure at a strait running normally.
+    const history = makeDays(97, 49, 0);
+    const estimate = computeFlowEstimate(history, BASELINE_MBD, YEAR_EARLIER);
+    assert.equal(estimate.source, 'portwatch-counts');
+    assert.ok(Math.abs(estimate.flowRatio - 1) < 0.01, `got ${estimate.flowRatio}`);
+    assert.equal(estimate.disrupted, false);
+  });
+
+  it('keeps DWT when recent zero tonnage comes with zero tankers: that is a closure', () => {
+    const estimate = computeFlowEstimate(makeDays(97, 0, 0), BASELINE_MBD, YEAR_EARLIER);
+    assert.equal(estimate.source, 'portwatch-dwt');
+    assert.equal(estimate.flowRatio, 0);
+    assert.equal(estimate.disrupted, true);
+  });
+
+  it('reads a normal week as normal against the year before', () => {
+    const estimate = computeFlowEstimate(makeDays(97, 50, 2_300_000), BASELINE_MBD, YEAR_EARLIER);
+    assert.ok(Math.abs(estimate.flowRatio - 1) < 0.01, `got ${estimate.flowRatio}`);
+    assert.equal(estimate.disrupted, false);
+  });
+});
+
 describe('computeFlowEstimate — DWT coverage rule', () => {
   it('uses DWT when the baseline window has majority coverage', () => {
     // tanker counts look disrupted (10/60) but DWT is flat — DWT must win.
@@ -95,14 +150,26 @@ describe('computeFlowEstimate — DWT coverage rule', () => {
     assert.equal(estimate.disrupted, false);
   });
 
-  it('stays on DWT when recent DWT collapses to zero — that is the disruption signal', () => {
+  it('stays on DWT when recent tankers and DWT both fall to zero — that is the disruption signal', () => {
     const estimate = computeFlowEstimate(
-      historyWith({ recentTanker: 5, recentDwt: 0, baseTanker: 60, baseDwt: 50_000 }),
+      historyWith({ recentTanker: 0, recentDwt: 0, baseTanker: 60, baseDwt: 50_000 }),
       BASELINE_MBD,
     );
     assert.equal(estimate.source, 'portwatch-dwt');
     assert.equal(estimate.flowRatio, 0);
     assert.equal(estimate.disrupted, true);
+  });
+
+  it('uses trailing tanker counts when recent tankers report no DWT', () => {
+    // Normal traffic with blank tonnage: PortWatch stores the blank as 0, so
+    // DWT would read a closure that the counts do not show.
+    const estimate = computeFlowEstimate(
+      historyWith({ recentTanker: 60, recentDwt: 0, baseTanker: 60, baseDwt: 50_000 }),
+      BASELINE_MBD,
+    );
+    assert.equal(estimate.source, 'portwatch-counts');
+    assert.equal(estimate.flowRatio, 1);
+    assert.equal(estimate.disrupted, false);
   });
 
   it('falls back to counts when DWT covers less than half the baseline', () => {
