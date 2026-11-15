@@ -40,6 +40,8 @@ export type LiveStrip = { status: 'ok'; items: LiveItem[] } | { status: 'unavail
 export interface PointContext {
   events: Record<EventSourceId, EventLane>;
   live: Record<LiveSourceId, LiveStrip>;
+  /** ISO 3166-1 alpha-2 of the country the point is in, or null at sea or when the lookup failed. */
+  countryCode?: string | null;
 }
 
 /** A dated record from a global feed, before the browser filters it to the point. */
@@ -95,9 +97,11 @@ function nearbyEvents(records: FeedRecord[], point: GeoPoint, countryCode: strin
   const events: PointEvent[] = [];
   for (const record of records) {
     if (record.timeMs < window.startMs || record.timeMs > window.endMs) continue;
-    if (record.countryCode) {
-      if (record.countryCode.toUpperCase() !== countryCode) continue;
-      events.push({ id: record.id, timeMs: record.timeMs, label: record.label, distanceKm: null });
+    // A record with a location (an outage included) matches by distance; only one without falls back to its country.
+    if (!Number.isFinite(record.lat) || !Number.isFinite(record.lon)) {
+      if (record.countryCode && record.countryCode.toUpperCase() === countryCode) {
+        events.push({ id: record.id, timeMs: record.timeMs, label: record.label, distanceKm: null });
+      }
       continue;
     }
     const distanceKm = haversineKm(point.lat, point.lon, record.lat, record.lon);
@@ -144,6 +148,7 @@ export async function loadPointContext(
   return {
     events: Object.fromEntries(events) as Record<EventSourceId, EventLane>,
     live: Object.fromEntries(live) as Record<LiveSourceId, LiveStrip>,
+    countryCode,
   };
 }
 
@@ -187,14 +192,18 @@ const defaultSources: PointContextSources = {
       const outages = await fetchInternetOutages();
       // A failed outage request also comes back as an empty list, so only the breaker tells failure from a quiet week.
       if (outages.length === 0 && getOutagesDataState().mode === 'unavailable') throw new Error('outage feed unavailable');
-      return outages.map((outage) => ({
+      return outages.map((outage) => {
+        // The outage client fills a missing location with 0,0, so treat that as no location.
+        const placed = outage.lat !== 0 || outage.lon !== 0;
+        return {
         id: outage.id,
-        lat: outage.lat,
-        lon: outage.lon,
+        lat: placed ? outage.lat : Number.NaN,
+        lon: placed ? outage.lon : Number.NaN,
         timeMs: effectivePubDateMs(outage),
         label: outage.title,
         countryCode: nameToCountryCode(outage.country) ?? outage.country,
-      }));
+        };
+      });
     },
   },
   live: {
