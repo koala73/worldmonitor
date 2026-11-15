@@ -282,6 +282,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "deferred-to-future-tool: get_country_imagery_evidence stays unlisted while Orbital Watch is dark (#10721); restore it to the tool's _apiPaths by setting ORBITAL_MCP_TOOLS_PUBLISHED"],
   ["GET /api/orbital/v1/list-imaging-satellites",
     "deferred-to-future-tool: pure-read raw orbit elements; the subscription point-lookup tool computes passes from orbital:catalog:v1 instead of exposing the catalog"],
+  ["GET /api/orbital/v1/get-watched-site-imagery",
+    "deferred-to-future-tool: map-popup read of one watched site's newest image and next pass; the subscription country-evidence tool already returns every watched site's imagery from orbital:site:v1"],
   ["GET /api/cyber/v1/list-cyber-threats",
     "deferred-to-future-tool: pure-read but no MCP tool exposes cyber:threats:v2 yet — bundle into a future expanded-domain tool"],
   ["GET /api/economic/v1/get-bis-credit",
