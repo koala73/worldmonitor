@@ -6779,17 +6779,25 @@ async function seedAirTrafficPoint() {
 
 // ── National departure-collapse detector (scripts/shared/air-traffic-detector.cjs)
 // Baseline days are past and immutable, so each UTC day hash is read once and
-// kept, trimmed to the fields the detector reads.
-const AIR_TRAFFIC_DETECTOR_STATE_KEY = 'aviation:traffic:detector:v1';
+// kept, trimmed to the fields the detector reads. One key holds every market's
+// state, keyed by market code.
+const AIR_TRAFFIC_DETECTOR_STATE_KEY = 'aviation:traffic:detector:v2';
+// The US-only state before markets. Read while v2 is absent, so a collapse
+// active across the upgrade keeps its onset and still gets its recovery.
+const AIR_TRAFFIC_DETECTOR_LEGACY_STATE_KEY = 'aviation:traffic:detector:v1';
 const AIR_TRAFFIC_DETECTOR_STATE_TTL_SECONDS = 7 * 86400;
+const AIR_TRAFFIC_DETECTOR_MAX_WINDOW = Math.max(...airTrafficDetector.MARKETS.map((m) => m.window));
 const airTrafficDetectorDays = new Map();
-const DETECTOR_FIELDS = ['usSeen', 'euAirborne', airTrafficDetector.SIGNAL];
+const DETECTOR_FIELDS = ['usSeen', 'usAirborne', 'euAirborne', airTrafficDetector.SIGNAL];
 
 function trimDetectorPoint(raw) {
   try {
     const p = JSON.parse(raw);
     if (p?.status !== 'ok') return null;
-    return { status: 'ok', ...Object.fromEntries(DETECTOR_FIELDS.map((f) => [f, p[f]])) };
+    const markets = p.markets && typeof p.markets === 'object'
+      ? Object.fromEntries(Object.entries(p.markets).map(([code, m]) => [code, { seen: m?.seen, dep: m?.dep }]))
+      : undefined;
+    return { status: 'ok', ...Object.fromEntries(DETECTOR_FIELDS.map((f) => [f, p[f]])), markets };
   } catch { return null; }
 }
 
@@ -6829,15 +6837,19 @@ const detectorPoint = (bin) => airTrafficDetectorDays.get(new Date(bin).toISOStr
 
 async function runAirTrafficDetector(t) {
   try {
-    const [stateRes, pointRes, wingbitsRes] = (await upstashPipeline([
+    // The bins before t that the widest market window reads.
+    const recentBins = Array.from({ length: AIR_TRAFFIC_DETECTOR_MAX_WINDOW - 1 }, (_, i) => t - (i + 1) * 300_000);
+    const [stateRes, legacyRes, pointRes, wingbitsRes, ...recentRes] = (await upstashPipeline([
       ['GET', AIR_TRAFFIC_DETECTOR_STATE_KEY],
+      ['GET', AIR_TRAFFIC_DETECTOR_LEGACY_STATE_KEY],
       ['HGET', airTrafficDayKey(t, AIR_TRAFFIC_SERIES.opensky), String(t)],
       ['HGET', airTrafficDayKey(t, AIR_TRAFFIC_SERIES.wingbits), String(t)],
+      ...recentBins.map((bin) => ['HGET', airTrafficDayKey(bin, AIR_TRAFFIC_SERIES.opensky), String(bin)]),
     ])) || [];
     // A failed read must not stand in for no state: during a collapse, the
     // next bin would start from normal and the recovery would never be sent.
     const answered = (res) => res && !res.error && 'result' in res;
-    if (!answered(stateRes) || !answered(pointRes)) {
+    if (!answered(stateRes) || !answered(pointRes) || (stateRes.result === null && !answered(legacyRes))) {
       console.warn('[AirTrafficDetector] state read failed; skipping this bin');
       return;
     }
@@ -6845,38 +6857,53 @@ async function runAirTrafficDetector(t) {
       console.warn('[AirTrafficDetector] baseline read failed; skipping this bin');
       return;
     }
-    let state = null;
+    let states = {};
     try {
-      state = stateRes.result === null ? null : JSON.parse(stateRes.result);
+      const isObject = (v) => v && typeof v === 'object' && !Array.isArray(v);
+      if (stateRes.result !== null) {
+        const parsed = JSON.parse(stateRes.result);
+        states = isObject(parsed) ? parsed : {};
+      } else if (legacyRes.result !== null) {
+        const legacy = JSON.parse(legacyRes.result);
+        states = isObject(legacy) ? { US: legacy } : {};
+      }
     } catch {
       // Only this relay writes the key. A value it cannot parse would stop the
       // detector until the TTL if skipped, so it starts over, loudly.
       console.warn('[AirTrafficDetector] stored state is unreadable; starting from normal');
-      state = null;
+      states = {};
     }
-    if (state && state.lastT > t) {
+    const lastT = Math.max(0, ...Object.values(states).map((s) => (Number.isFinite(s?.lastT) ? s.lastT : 0)));
+    const bin = new Date(t).toISOString();
+    if (lastT > t) {
       // A slow tick finished after the next bin's tick evaluated, and the run
       // only moves forward.
-      console.log(`[AirTrafficDetector] t=${new Date(t).toISOString()} skipped: ${new Date(state.lastT).toISOString()} already evaluated`);
+      console.log(`[AirTrafficDetector] t=${bin} skipped: ${new Date(lastT).toISOString()} already evaluated`);
       return;
     }
     const parse = (raw) => { try { return raw ? JSON.parse(raw) : undefined; } catch { return undefined; } };
-    const { state: next, event } = airTrafficDetector.evaluateCollapse(state, {
-      t,
-      point: parse(pointRes.result),
-      wingbits: parse(wingbitsRes?.result),
-      getPoint: detectorPoint,
-      peakBaseline: airTrafficDetector.peakBaselineFor(t, detectorPoint),
-    });
-    const bin = new Date(t).toISOString();
+    const point = parse(pointRes.result);
+    const wingbits = parse(wingbitsRes?.result);
+    const recent = new Map(recentBins.map((bin, i) => [bin, trimDetectorPoint(recentRes[i]?.result)]));
+    const getPoint = (bin) => recent.get(bin) ?? detectorPoint(bin);
     const fmt = (v) => (Number.isFinite(v) ? v.toFixed(2) : '-');
-    console.log(`[AirTrafficDetector] t=${bin} verdict=${next.verdict} state=${next.state} ratio=${fmt(next.ratio)} europe=${fmt(next.europe)} coverage=${fmt(next.coverage)}${next.coverageAgainst ? `(${next.coverageAgainst})` : ''}`);
-    if (event) {
-      const onset = new Date(event.onset).toISOString().slice(11, 16);
-      console.log(`[AirTraffic] ${event.kind === 'collapse' ? 'collapse entered' : 'collapse ended'} ratio=${event.ratio.toFixed(2)} onset=${onset}Z`);
-      // The state moves only once the event is queued, so a failed publish is
-      // retried on the next bin, which still meets the condition.
-      if (!(await publishNotificationEvent(airTrafficDetector.buildCollapseNotification(event)))) return;
+    const next = { ...states };
+    for (const market of airTrafficDetector.MARKETS) {
+      const result = airTrafficDetector.evaluateCollapse(states[market.code] || null, {
+        t, point, wingbits, market, getPoint,
+        peakBaseline: airTrafficDetector.peakBaselineFor(t, detectorPoint, market),
+      });
+      const s = result.state;
+      console.log(`[AirTrafficDetector] t=${bin} market=${market.code} verdict=${s.verdict} state=${s.state} ratio=${fmt(s.ratio)} control=${fmt(s.control)} coverage=${fmt(s.coverage)}${s.coverageAgainst ? `(${s.coverageAgainst})` : ''}`);
+      if (result.event) {
+        const { event } = result;
+        const onset = new Date(event.onset).toISOString().slice(11, 16);
+        console.log(`[AirTraffic] ${market.code} ${event.kind === 'collapse' ? 'collapse entered' : 'collapse ended'} ratio=${event.ratio.toFixed(2)} onset=${onset}Z`);
+        // The market's state moves only once its event is queued, so a failed
+        // publish is retried on the next bin, which still meets the condition.
+        if (!(await publishNotificationEvent(airTrafficDetector.buildCollapseNotification(event)))) continue;
+      }
+      next[market.code] = s;
     }
     await upstashSet(AIR_TRAFFIC_DETECTOR_STATE_KEY, next, AIR_TRAFFIC_DETECTOR_STATE_TTL_SECONDS);
   } catch (e) {

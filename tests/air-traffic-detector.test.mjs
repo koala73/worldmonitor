@@ -122,3 +122,28 @@ test('the quiet-hours peak scans the whole local day, including the first hour o
   const lateGet = (t) => ({ ...NORMAL, usLowClimbingAirline: late.has(t) ? 700 : 100 });
   assert.equal(detector.peakBaselineFor(Date.parse('2026-11-01T18:00:00Z'), lateGet), 700);
 });
+
+test('a market window cannot enter on bins recorded while its coverage was lost', () => {
+  const GB = detector.MARKETS.find((m) => m.code === 'GB');
+  const t0 = Date.parse('2026-09-08T12:00:00Z');
+  const gb = (dep, seen) => ({ status: 'ok', usSeen: 3000, euAirborne: 2000, usLowClimbingAirline: 100, usAirborne: 2000, markets: { GB: { seen, dep } } });
+  const points = new Map();
+  for (let w = 1; w <= 4; w += 1) for (let i = -8; i < 8; i += 1) points.set(detector.sameLocalBin(t0 + i * BIN, w, GB.tz), gb(20, 100));
+  // Three bins of a regional receiver outage, then two restored bins at half
+  // the usual departures, which Wingbits confirms.
+  const now = [gb(0, 0), gb(0, 0), gb(0, 0), gb(10, 100), gb(10, 100)];
+  now.forEach((p, i) => points.set(t0 + i * BIN, p));
+  const getPoint = (t) => points.get(t);
+  let state = null;
+  const events = [];
+  const verdicts = [];
+  now.forEach((point, i) => {
+    const t = t0 + i * BIN;
+    const result = evaluateCollapse(state, { t, point, wingbits: { status: 'ok', markets: { GB: { seen: 100 } } }, getPoint, market: GB, peakBaseline: 80 });
+    state = result.state;
+    verdicts.push(state.verdict);
+    if (result.event) events.push(result.event);
+  });
+  assert.deepEqual(events, [], verdicts.join(','));
+  assert.equal(verdicts[4], 'blocked-coverage');
+});

@@ -134,12 +134,12 @@ describe('shouldNotify — national air traffic collapse', () => {
   const realtime = { digestMode: 'realtime', sensitivity: 'critical' };
 
   it('delivers the collapse to realtime rules', () => {
-    const event = buildCollapseNotification({ kind: 'collapse', t: onset + 300_000, onset, ratio: 0.2 });
+    const event = buildCollapseNotification({ market: 'US', kind: 'collapse', t: onset + 300_000, onset, ratio: 0.2 });
     assert.equal(shouldNotify(realtime, event), true);
   });
 
   it('delivers the recovery to the same realtime rules while it stays high, so quiet hours still hold it', () => {
-    const event = buildCollapseNotification({ kind: 'recovery', t: onset + 86_400_000, onset, ratio: 0.8 });
+    const event = buildCollapseNotification({ market: 'US', kind: 'recovery', t: onset + 86_400_000, onset, ratio: 0.8 });
     assert.equal(event.severity, 'high');
     assert.equal(shouldNotify(realtime, event), true);
     assert.equal(shouldNotify({ ...realtime, sensitivity: 'high' }, event), true);
