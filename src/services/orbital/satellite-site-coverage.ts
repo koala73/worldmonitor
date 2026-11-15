@@ -275,7 +275,13 @@ export async function satellitesCoveringSite(input: {
   const covering: SiteSatellite[] = [];
   let answered = 0;
   let failed = 0;
+  let sliceStart = performance.now();
   for (const tle of tles) {
+    if (performance.now() - sliceStart > YIELD_AFTER_MS) {
+      await nextTick();
+      signal?.throwIfAborted();
+      sliceStart = performance.now();
+    }
     const coverage = await sitesCoveredBySatellite({ tle, sites, nowMs, hours, signal });
     if (coverage.status === 'ok') answered++;
     else if (FAILED_SCANS.has(coverage.status)) failed++;
