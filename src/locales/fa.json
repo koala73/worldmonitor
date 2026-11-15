@@ -5506,7 +5506,28 @@
       "noPass": "هیچ گذری تا ۷۲ ساعت آینده نیست",
       "openEvidence": "باز کردن شواهد",
       "imageAlt": "نمای ماهواره‌ای از {{source}}",
-      "unavailable": "تصاویر ماهواره‌ای بارگیری نشد."
+      "unavailable": "تصاویر ماهواره‌ای بارگیری نشد.",
+      "fire": {
+        "title": "تشخیص آتش‌سوزی ماهواره‌ای",
+        "detected": "تشخیص‌شده",
+        "satellite": "ماهواره",
+        "confidence": "اعتماد‌پذیری",
+        "confidenceHigh": "بالا",
+        "confidenceNominal": "متوسط",
+        "confidenceLow": "پایین",
+        "power": "توان آتش",
+        "powerValue": "{{value}} مگاوات",
+        "region": "منطقه",
+        "source": "منبع",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "موزاییک روزانه",
+        "mosaicLoading": "بررسی NASA GIBS…",
+        "mosaicCaption": "ترکیبی از گذرهای {{source}} در روز {{date}}؛ آتش‌سوزی ممکن است توسط ابر یا دود پنهان باشد.",
+        "mosaicNone": "NASA GIBS موزاییک {{source}} برای {{date}} ندارد.",
+        "mosaicNoLayer": "موزاییک روزانه برای این ماهواره دسترس‌پذیر نیست.",
+        "mosaicUnavailable": "موزاییک روزانه بارگذاری نشد.",
+        "mosaicAlt": "موزاییک روزانه NASA GIBS {{source}} برای {{date}}"
+      }
     }
   },
   "settings": {

@@ -5506,7 +5506,28 @@
       "noPass": "72 órán belül nincs áthaladás",
       "openEvidence": "Bizonyítékok megnyitása",
       "imageAlt": "Műholdas nézet innen: {{source}}",
-      "unavailable": "A műholdképek nem töltődtek be."
+      "unavailable": "A műholdképek nem töltődtek be.",
+      "fire": {
+        "title": "Műhold tűzdetektálás",
+        "detected": "Észlelve",
+        "satellite": "Műhold",
+        "confidence": "Megbízhatóság",
+        "confidenceHigh": "Magas",
+        "confidenceNominal": "Normális",
+        "confidenceLow": "Alacsony",
+        "power": "Tűz teljesítménye",
+        "powerValue": "{{value}} MW",
+        "region": "Régió",
+        "source": "Forrás",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Napi mozaik",
+        "mosaicLoading": "NASA GIBS ellenőrzése…",
+        "mosaicCaption": "A nap {{source}} áthaladásainak összeállítása {{date}} napra; a tűz felhő vagy füst alatt rejtve lehet.",
+        "mosaicNone": "A NASA GIBS nem rendelkezik {{source}} mozaikkal {{date}} napra.",
+        "mosaicNoLayer": "Ehhez a műholdhoz nincs elérhető napi mozaik.",
+        "mosaicUnavailable": "A napi mozaik nem töltődött be.",
+        "mosaicAlt": "NASA GIBS {{source}} napi mozaik {{date}} napra"
+      }
     }
   },
   "settings": {

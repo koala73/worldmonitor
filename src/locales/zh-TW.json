@@ -5470,7 +5470,28 @@
       "noPass": "72 小時內無過境",
       "openEvidence": "開啟證據",
       "imageAlt": "來自 {{source}} 的衛星檢視",
-      "unavailable": "衛星影像載入失敗。"
+      "unavailable": "衛星影像載入失敗。",
+      "fire": {
+        "title": "衛星火災檢測",
+        "detected": "探測時間",
+        "satellite": "衛星",
+        "confidence": "置信度",
+        "confidenceHigh": "高",
+        "confidenceNominal": "中等",
+        "confidenceLow": "低",
+        "power": "火災功率",
+        "powerValue": "{{value}} MW",
+        "region": "地區",
+        "source": "資料來源",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "每日合成圖",
+        "mosaicLoading": "正在檢查 NASA GIBS…",
+        "mosaicCaption": "{{date}} 當天 {{source}} 過境資料的合成圖；火災可能被雲或煙霧遮擋。",
+        "mosaicNone": "NASA GIBS 沒有 {{date}} 的 {{source}} 合成圖。",
+        "mosaicNoLayer": "此衛星沒有可用的每日合成圖。",
+        "mosaicUnavailable": "每日合成圖載入失敗。",
+        "mosaicAlt": "NASA GIBS {{source}} {{date}} 每日合成圖"
+      }
     }
   },
   "settings": {

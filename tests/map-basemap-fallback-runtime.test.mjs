@@ -57,6 +57,7 @@ async function createHarness({ failReplacement = true, scheduleMicrotask = queue
   const map = new Harness();
   Object.assign(map, {
     controlDisclosureCleanups: [],
+    popup: { hide() {} },
     container: { querySelector: () => null },
     state: { view: 'global', zoom: 5 },
     pendingCenter: null,

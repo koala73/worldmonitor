@@ -195,7 +195,7 @@ interface TechEventMarker {
   daysUntil: number;
 }
 
-type FireMarker = { lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string };
+type FireMarker = { lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string; detected_at?: number; satellite?: string; source?: string };
 type CIIScore = { code: string; score: number; level: string };
 
 const EXCLUSIVE_CHOROPLETHS: Partial<Record<string, keyof MapLayers>> = {

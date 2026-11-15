@@ -5542,7 +5542,28 @@
       "noPass": "Nicio trecere în următoarele 72 de ore",
       "openEvidence": "Deschide dovezile",
       "imageAlt": "Vedere din satelit de la {{source}}",
-      "unavailable": "Imaginile din satelit nu s-au încărcat."
+      "unavailable": "Imaginile din satelit nu s-au încărcat.",
+      "fire": {
+        "title": "Detecție incendii prin satelit",
+        "detected": "Detectat",
+        "satellite": "Satelit",
+        "confidence": "Încredere",
+        "confidenceHigh": "Ridicată",
+        "confidenceNominal": "Nominală",
+        "confidenceLow": "Scăzută",
+        "power": "Puterea incendiului",
+        "powerValue": "{{value}} MW",
+        "region": "Regiune",
+        "source": "Sursă",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Mozaic zilei",
+        "mosaicLoading": "Se verifică NASA GIBS…",
+        "mosaicCaption": "Compozit al trecerilor {{source}} din ziua {{date}}; incendiul poate fi ascuns de nori sau fum.",
+        "mosaicNone": "NASA GIBS nu are mozaic {{source}} pentru {{date}}.",
+        "mosaicNoLayer": "Niciun mozaic zilei nu este disponibil pentru acest satelit.",
+        "mosaicUnavailable": "Mozaicul zilei nu s-a încărcat.",
+        "mosaicAlt": "Mozaic zilei NASA GIBS {{source}} pentru {{date}}"
+      }
     }
   },
   "settings": {

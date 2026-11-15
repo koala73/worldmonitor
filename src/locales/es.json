@@ -5542,7 +5542,28 @@
       "noPass": "Ningún paso previsto en 72 horas",
       "openEvidence": "Abrir evidencias",
       "imageAlt": "Vista satelital de {{source}}",
-      "unavailable": "No se pudieron cargar las imágenes satelitales."
+      "unavailable": "No se pudieron cargar las imágenes satelitales.",
+      "fire": {
+        "title": "Detección de incendios por satélite",
+        "detected": "Detectado",
+        "satellite": "Satélite",
+        "confidence": "Confianza",
+        "confidenceHigh": "Alta",
+        "confidenceNominal": "Media",
+        "confidenceLow": "Baja",
+        "power": "Potencia del incendio",
+        "powerValue": "{{value}} MW",
+        "region": "Región",
+        "source": "Fuente",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Mosaico diario",
+        "mosaicLoading": "Verificando NASA GIBS…",
+        "mosaicCaption": "Composición de los pases de {{source}} del día para {{date}}; el incendio puede estar oculto por nubes o humo.",
+        "mosaicNone": "NASA GIBS no tiene mosaico de {{source}} para {{date}}.",
+        "mosaicNoLayer": "No hay mosaico diario disponible para este satélite.",
+        "mosaicUnavailable": "El mosaico diario no se cargó.",
+        "mosaicAlt": "Mosaico diario de {{source}} de NASA GIBS para {{date}}"
+      }
     }
   },
   "settings": {

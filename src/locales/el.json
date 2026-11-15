@@ -5506,7 +5506,28 @@
       "noPass": "Καμία διέλευση εντός 72 ωρών",
       "openEvidence": "Άνοιγμα τεκμηρίων",
       "imageAlt": "Δορυφορική όψη από {{source}}",
-      "unavailable": "Οι δορυφορικές εικόνες δεν φορτώθηκαν."
+      "unavailable": "Οι δορυφορικές εικόνες δεν φορτώθηκαν.",
+      "fire": {
+        "title": "Ανίχνευση πυρκαγιάς δορυφόρου",
+        "detected": "Ανιχνεύθηκε",
+        "satellite": "Δορυφόρος",
+        "confidence": "Βαθμός εμπιστοσύνης",
+        "confidenceHigh": "Υψηλός",
+        "confidenceNominal": "Κανονικός",
+        "confidenceLow": "Χαμηλός",
+        "power": "Ισχύς πυρκαγιάς",
+        "powerValue": "{{value}} MW",
+        "region": "Περιοχή",
+        "source": "Πηγή",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Ημερήσιο μωσαϊκό",
+        "mosaicLoading": "Έλεγχος NASA GIBS…",
+        "mosaicCaption": "Σύνθεση των διαβάσεων {{source}} της ημέρας για {{date}}· η πυρκαγιά ενδέχεται να είναι κρυμμένη από σύννεφα ή καπνό.",
+        "mosaicNone": "Το NASA GIBS δεν διαθέτει μωσαϊκό {{source}} για {{date}}.",
+        "mosaicNoLayer": "Δεν υπάρχει διαθέσιμο ημερήσιο μωσαϊκό για αυτόν τον δορυφόρο.",
+        "mosaicUnavailable": "Το ημερήσιο μωσαϊκό δεν φορτώθηκε.",
+        "mosaicAlt": "NASA GIBS {{source}} ημερήσιο μωσαϊκό για {{date}}"
+      }
     }
   },
   "settings": {

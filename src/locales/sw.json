@@ -5506,7 +5506,28 @@
       "noPass": "Hakuna mpito ndani ya saa 72",
       "openEvidence": "Fungua ushahidi",
       "imageAlt": "Mwonekano wa setilaiti kutoka {{source}}",
-      "unavailable": "Picha za setilaiti hazikupakia."
+      "unavailable": "Picha za setilaiti hazikupakia.",
+      "fire": {
+        "title": "Utambuzi wa moto kwa setilaiti",
+        "detected": "Iligundulika",
+        "satellite": "Sateliti",
+        "confidence": "Ujitikisiko",
+        "confidenceHigh": "Juu",
+        "confidenceNominal": "Kawaida",
+        "confidenceLow": "Chini",
+        "power": "Nguvu ya moto",
+        "powerValue": "{{value}} MW",
+        "region": "Eneo",
+        "source": "Chanzo",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Mozaiki ya kila siku",
+        "mosaicLoading": "Kuangalia NASA GIBS…",
+        "mosaicCaption": "Picha iliyounganishwa ya mizunguko ya {{source}} ya siku ya {{date}}; moto unaweza kufichwa na mawingu au moshi.",
+        "mosaicNone": "NASA GIBS haina mozaiki ya {{source}} kwa {{date}}.",
+        "mosaicNoLayer": "Hakuna mozaiki ya kila siku inayopatikana kwa sateliti hii.",
+        "mosaicUnavailable": "Imeshindwa kupakia mozaiki ya kila siku.",
+        "mosaicAlt": "Mozaiki ya kila siku ya NASA GIBS {{source}} kwa {{date}}"
+      }
     }
   },
   "settings": {

@@ -5,7 +5,8 @@ import type { PointPass } from '@/services/orbital/pass-job';
 import type { EvidenceProgress, MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/match';
 import { ARCHIVE_REQUEST_TIMEOUT_MS, type ArchiveId } from '@/services/orbital/archive-result';
 import { ArchiveImageError, loadArchiveImage, type ArchiveImageResult, type LoadedArchiveImage } from '@/services/orbital/archive-image';
-import { hasNoDataAtPoint, MOSAIC_FALLBACK_DAYS, type CropPosition, type DailyMosaicRow } from '@/services/orbital/archive-gibs';
+import { noDataAtPoint } from '@/services/orbital/image-no-data';
+import { MOSAIC_FALLBACK_DAYS, type CropPosition, type DailyMosaicRow } from '@/services/orbital/archive-gibs';
 import { DEFAULT_CROP_HALF_SIZE_KM } from '@/services/orbital/crop-url';
 import { imageGrid, isClearScene } from '@/services/orbital/scene-history';
 import { acquisitionCredit, ORBITAL_WATCH_DOCS_URL, resultCredits, type ResultCredit } from '@/services/orbital/credits';
@@ -193,23 +194,7 @@ interface TileFallbacks {
   noDataAt?: CropPosition;
 }
 
-const NO_DATA_SAMPLE_PX = 32;
 const CROP_CENTRE: CropPosition = { x: 0.5, y: 0.5 };
-
-/** Unreadable pixels count as data, so a failed check never hides a real image. */
-function noDataAtPoint(img: HTMLImageElement, at: CropPosition): boolean {
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = NO_DATA_SAMPLE_PX;
-    canvas.height = NO_DATA_SAMPLE_PX;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return false;
-    ctx.drawImage(img, 0, 0, NO_DATA_SAMPLE_PX, NO_DATA_SAMPLE_PX);
-    return hasNoDataAtPoint(ctx.getImageData(0, 0, NO_DATA_SAMPLE_PX, NO_DATA_SAMPLE_PX).data, NO_DATA_SAMPLE_PX, NO_DATA_SAMPLE_PX, at);
-  } catch {
-    return false;
-  }
-}
 
 /**
  * The open lookup's images, painted from `blob:` URLs: archive image URLs carry the point,

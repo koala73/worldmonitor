@@ -5578,7 +5578,28 @@
       "noPass": "Пролётов в ближайшие 72 часа нет",
       "openEvidence": "Открыть доказательства",
       "imageAlt": "Спутниковый вид от {{source}}",
-      "unavailable": "Не удалось загрузить спутниковые снимки."
+      "unavailable": "Не удалось загрузить спутниковые снимки.",
+      "fire": {
+        "title": "Обнаружение пожаров со спутников",
+        "detected": "Обнаружено",
+        "satellite": "Спутник",
+        "confidence": "Уверенность",
+        "confidenceHigh": "Высокая",
+        "confidenceNominal": "Номинальная",
+        "confidenceLow": "Низкая",
+        "power": "Мощность пожара",
+        "powerValue": "{{value}} МВт",
+        "region": "Регион",
+        "source": "Источник",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Ежедневный мозаичный снимок",
+        "mosaicLoading": "Проверка NASA GIBS…",
+        "mosaicCaption": "Композит пролётов {{source}} за {{date}}; пожар может быть скрыт облаками или дымом.",
+        "mosaicNone": "NASA GIBS не имеет мозаичного снимка {{source}} за {{date}}.",
+        "mosaicNoLayer": "Ежедневный мозаичный снимок недоступен для этого спутника.",
+        "mosaicUnavailable": "Не удалось загрузить ежедневный мозаичный снимок.",
+        "mosaicAlt": "Ежедневный мозаичный снимок NASA GIBS {{source}} за {{date}}"
+      }
     }
   },
   "settings": {

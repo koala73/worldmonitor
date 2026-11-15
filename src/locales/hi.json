@@ -5506,7 +5506,28 @@
       "noPass": "72 घंटों में कोई गुज़रना नहीं",
       "openEvidence": "साक्ष्य खोलें",
       "imageAlt": "{{source}} से उपग्रह दृश्य",
-      "unavailable": "उपग्रह चित्र लोड नहीं हुए।"
+      "unavailable": "उपग्रह चित्र लोड नहीं हुए।",
+      "fire": {
+        "title": "उपग्रह अग्नि संसूचन",
+        "detected": "पता चला",
+        "satellite": "उपग्रह",
+        "confidence": "आत्मविश्वास",
+        "confidenceHigh": "उच्च",
+        "confidenceNominal": "सामान्य",
+        "confidenceLow": "निम्न",
+        "power": "अग्नि शक्ति",
+        "powerValue": "{{value}} MW",
+        "region": "क्षेत्र",
+        "source": "स्रोत",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "दैनिक मोज़ेक",
+        "mosaicLoading": "NASA GIBS जाँच की जा रही है…",
+        "mosaicCaption": "{{date}} को {{source}} के गुज़रने से बनी दैनिक संयुक्त छवि; आग बादलों या धुएँ में छिपी हो सकती है।",
+        "mosaicNone": "NASA GIBS के पास {{date}} के लिए {{source}} मोज़ेक नहीं है।",
+        "mosaicNoLayer": "इस उपग्रह के लिए कोई दैनिक मोज़ेक उपलब्ध नहीं है।",
+        "mosaicUnavailable": "दैनिक मोज़ेक लोड नहीं हुआ।",
+        "mosaicAlt": "NASA GIBS {{source}} {{date}} के लिए दैनिक मोज़ेक"
+      }
     }
   },
   "settings": {

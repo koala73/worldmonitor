@@ -5470,7 +5470,28 @@
       "noPass": "Không có lượt bay qua trong 72 giờ",
       "openEvidence": "Mở bằng chứng",
       "imageAlt": "Ảnh vệ tinh từ {{source}}",
-      "unavailable": "Không tải được ảnh vệ tinh."
+      "unavailable": "Không tải được ảnh vệ tinh.",
+      "fire": {
+        "title": "Phát hiện cháy từ vệ tinh",
+        "detected": "Được phát hiện",
+        "satellite": "Vệ tinh",
+        "confidence": "Độ tin cậy",
+        "confidenceHigh": "Cao",
+        "confidenceNominal": "Trung bình",
+        "confidenceLow": "Thấp",
+        "power": "Công suất cháy",
+        "powerValue": "{{value}} MW",
+        "region": "Khu vực",
+        "source": "Nguồn",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Ảnh ghép hàng ngày",
+        "mosaicLoading": "Đang kiểm tra NASA GIBS…",
+        "mosaicCaption": "Ảnh ghép từ các lượt quét {{source}} trong ngày {{date}}; cháy có thể bị che khuất bởi mây hoặc khói.",
+        "mosaicNone": "NASA GIBS không có ảnh ghép {{source}} cho {{date}}.",
+        "mosaicNoLayer": "Không có ảnh ghép hàng ngày cho vệ tinh này.",
+        "mosaicUnavailable": "Ảnh ghép hàng ngày không tải được.",
+        "mosaicAlt": "Ảnh ghép hàng ngày NASA GIBS {{source}} cho {{date}}"
+      }
     }
   },
   "settings": {

@@ -7428,6 +7428,25 @@ body.playback-mode .status-dot {
   box-shadow: 0 0 4px currentColor;
 }
 
+.fire-dot.fire-dot-popup {
+  pointer-events: auto;
+  cursor: pointer;
+  padding: 0;
+  border: 0;
+}
+
+.fire-dot.fire-dot-popup:focus-visible {
+  outline: 2px solid var(--text, #fff);
+  outline-offset: 3px;
+}
+
+/* Keeps a 4px dot a usable touch target. */
+.fire-dot.fire-dot-popup::after {
+  content: '';
+  position: absolute;
+  inset: -10px;
+}
+
 .nat-event-marker {
   position: absolute;
   transform: translate(-50%, -50%) scale(var(--marker-scale, 1));
@@ -10818,6 +10837,15 @@ a.prediction-link:hover {
 .popup-imagery-open:hover,
 .popup-imagery-open:focus-visible {
   filter: brightness(1.1);
+}
+
+/* Fire detection popup: the daily mosaic block sits above the imagery row (#10713). */
+.popup-fire-mosaic {
+  margin-top: 8px;
+}
+
+.popup-fire-mosaic-body .popup-imagery-status {
+  display: block;
 }
 
 button.popup-link {

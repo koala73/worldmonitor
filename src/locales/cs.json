@@ -5578,7 +5578,28 @@
       "noPass": "Během 72 hodin není plánován žádný přelet",
       "openEvidence": "Otevřít důkazy",
       "imageAlt": "Satelitní pohled z {{source}}",
-      "unavailable": "Satelitní snímky se nepodařilo načíst."
+      "unavailable": "Satelitní snímky se nepodařilo načíst.",
+      "fire": {
+        "title": "Detekce požáru ze satelitu",
+        "detected": "Detekováno",
+        "satellite": "Satelit",
+        "confidence": "Spolehlivost",
+        "confidenceHigh": "Vysoká",
+        "confidenceNominal": "Normální",
+        "confidenceLow": "Nízká",
+        "power": "Výkon požáru",
+        "powerValue": "{{value}} MW",
+        "region": "Oblast",
+        "source": "Zdroj",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Denní mozaika",
+        "mosaicLoading": "Kontrola NASA GIBS…",
+        "mosaicCaption": "Kompozice {{source}} snímků ze dne {{date}}; požár může být skryt mrakem nebo kouřem.",
+        "mosaicNone": "NASA GIBS nemá {{source}} mozaiku pro {{date}}.",
+        "mosaicNoLayer": "Pro tento satelit není dostupná denní mozaika.",
+        "mosaicUnavailable": "Denní mozaika se nenačetla.",
+        "mosaicAlt": "NASA GIBS {{source}} denní mozaika pro {{date}}"
+      }
     }
   },
   "settings": {

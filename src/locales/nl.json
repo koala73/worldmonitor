@@ -5506,7 +5506,28 @@
       "noPass": "Geen overkomst binnen 72 uur",
       "openEvidence": "Bewijs openen",
       "imageAlt": "Satellietbeeld van {{source}}",
-      "unavailable": "Satellietbeelden konden niet worden geladen."
+      "unavailable": "Satellietbeelden konden niet worden geladen.",
+      "fire": {
+        "title": "Satellietbranddetectie",
+        "detected": "Gedetecteerd",
+        "satellite": "Satelliet",
+        "confidence": "Betrouwbaarheid",
+        "confidenceHigh": "Hoog",
+        "confidenceNominal": "Gemiddeld",
+        "confidenceLow": "Laag",
+        "power": "Brandvermogen",
+        "powerValue": "{{value}} MW",
+        "region": "Regio",
+        "source": "Bron",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Dagelijks mozaïek",
+        "mosaicLoading": "NASA GIBS controleren…",
+        "mosaicCaption": "Een samengesteld beeld van de {{source}}-passes van {{date}}; het vuur kan verborgen zijn door wolken of rook.",
+        "mosaicNone": "NASA GIBS heeft geen {{source}}-mozaïek voor {{date}}.",
+        "mosaicNoLayer": "Er is geen dagelijks mozaïek beschikbaar voor deze satelliet.",
+        "mosaicUnavailable": "Het dagelijks mozaïek is niet geladen.",
+        "mosaicAlt": "Dagelijks NASA GIBS-mozaïek ({{source}}) voor {{date}}"
+      }
     }
   },
   "settings": {

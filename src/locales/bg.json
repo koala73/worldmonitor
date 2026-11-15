@@ -5506,7 +5506,28 @@
       "noPass": "Няма преминаване през следващите 72 часа",
       "openEvidence": "Отвори доказателствата",
       "imageAlt": "Сателитен изглед от {{source}}",
-      "unavailable": "Сателитните изображения не се заредиха."
+      "unavailable": "Сателитните изображения не се заредиха.",
+      "fire": {
+        "title": "Откриване на пожари от спътник",
+        "detected": "Открит",
+        "satellite": "Спътник",
+        "confidence": "Доверие",
+        "confidenceHigh": "Високо",
+        "confidenceNominal": "Номинално",
+        "confidenceLow": "Ниско",
+        "power": "Мощност на пожара",
+        "powerValue": "{{value}} MW",
+        "region": "Регион",
+        "source": "Източник",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Дневен мозайка",
+        "mosaicLoading": "Проверка на NASA GIBS…",
+        "mosaicCaption": "Композиция от преминаванията на {{source}} за дня на {{date}}; пожарът може да е скрит от облаци или дим.",
+        "mosaicNone": "NASA GIBS няма {{source}} мозайка за {{date}}.",
+        "mosaicNoLayer": "Няма налична дневна мозайка за този спътник.",
+        "mosaicUnavailable": "Дневната мозайка не се зареди.",
+        "mosaicAlt": "NASA GIBS {{source}} дневна мозайка за {{date}}"
+      }
     }
   },
   "settings": {
