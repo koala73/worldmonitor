@@ -22,7 +22,8 @@ import { createOrbitalPassClient, type OrbitalPassClient, type PointPassLookup }
 
 export type ImageryTarget =
   | { kind: 'site'; origin: WatchedSiteOrigin; point: GeoPoint }
-  | { kind: 'point'; point: GeoPoint };
+  /** `ownNextPass`: the popup already names the object's next measurement, so the row leaves its next pass out. */
+  | { kind: 'point'; point: GeoPoint; ownNextPass?: true };
 
 export interface ObjectImage {
   datetime: string;

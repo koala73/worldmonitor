@@ -26,7 +26,7 @@ vi.mock('@/services/orbital/object-imagery', () => ({
 }));
 
 import { MapPopup } from '@/components/MapPopup';
-import { mountImageryRow, renderImageryRow } from '@/components/map-popup-imagery';
+import { imageryTargetFor, mountImageryRow, renderImageryRow } from '@/components/map-popup-imagery';
 import { loadArchiveImage } from '@/services/orbital/archive-image';
 
 const NOW = Date.parse('2026-11-15T12:00:00Z');
@@ -104,6 +104,32 @@ describe('mountImageryRow', () => {
 
     expect(release).toHaveBeenCalledTimes(1);
     expect(row.querySelector('img')).toBeNull();
+  });
+});
+
+describe('next-pass stat', () => {
+  afterEach(() => { document.body.replaceChildren(); });
+
+  const statLabels = async (type: string, data: unknown) => {
+    const target = imageryTargetFor(type, data);
+    expect(target).not.toBeNull();
+    const holder = document.createElement('div');
+    holder.innerHTML = renderImageryRow();
+    const row = holder.firstElementChild as HTMLElement;
+    document.body.appendChild(row);
+    mountImageryRow(row, target!, { onOpenEvidence: vi.fn(), onLayout: vi.fn(), load: async () => imagery(), now: () => NOW });
+    await flush();
+    return [...row.querySelectorAll('.stat-label')].map((el) => el.textContent);
+  };
+
+  it('is left out of a reservoir popup, whose own card names the next ICESat-2 crossing', async () => {
+    const labels = await statLabels('reservoirLevel', { lat: 10, lon: 20 });
+    expect(labels).toEqual([en.orbitalWatch.popup.latest]);
+  });
+
+  it('stays in every other popup', async () => {
+    const labels = await statLabels('base', { id: 'b1', lat: 10, lon: 20 });
+    expect(labels).toEqual([en.orbitalWatch.popup.latest, en.orbitalWatch.popup.nextPass]);
   });
 });
 

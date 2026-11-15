@@ -44,7 +44,8 @@ export function imageryTargetFor(type: string, data: unknown): ImageryTarget | n
     }
     case 'reservoirLevel': {
       const r = data as PointData;
-      return { kind: 'point', point: { lat: r.lat, lon: r.lon } };
+      // The reservoir card names its next ICESat-2 crossing; a second "next pass" would compete with it.
+      return { kind: 'point', point: { lat: r.lat, lon: r.lon }, ownNextPass: true };
     }
     case 'iranEvent': {
       const e = data as EventPointData;
@@ -88,7 +89,7 @@ const formatUtc = (ms: number) => new Intl.DateTimeFormat(getCurrentLanguageTag(
 const PROFILE_NAMES: Record<string, string> = { 'sentinel-2': 'Sentinel-2', 'sentinel-1': 'Sentinel-1 radar', landsat: 'Landsat' };
 const profileName = (id: string) => PROFILE_NAMES[id] ?? id;
 
-export function renderImageryDetails(imagery: ObjectImagery, nowMs: number): string {
+export function renderImageryDetails(imagery: ObjectImagery, nowMs: number, showNextPass = true): string {
   const latestMs = imagery.latest ? Date.parse(imagery.latest.datetime) : NaN;
   const stale = Number.isFinite(latestMs) && nowMs - latestMs > IMAGE_STALE_MS;
   const latest = imagery.latest && Number.isFinite(latestMs)
@@ -100,7 +101,7 @@ export function renderImageryDetails(imagery: ObjectImagery, nowMs: number): str
   return `${imagery.latest ? '<div class="popup-imagery-frame" data-orbital-image></div>' : ''}
     <div class="popup-stats popup-imagery-stats">
       <div class="popup-stat${stale ? ' popup-imagery-stale' : ''}"><span class="stat-label">${label('latest')}</span><span class="stat-value">${latest}</span></div>
-      <div class="popup-stat"><span class="stat-label">${label('nextPass')}</span><span class="stat-value">${next}</span></div>
+      ${showNextPass ? `<div class="popup-stat"><span class="stat-label">${label('nextPass')}</span><span class="stat-value">${next}</span></div>` : ''}
     </div>
     ${renderChangeFlagRow(imagery)}
     <button type="button" class="popup-imagery-open" data-orbital-open-evidence>${label('openEvidence')}</button>`;
@@ -122,7 +123,7 @@ export function mountImageryRow(root: HTMLElement, target: ImageryTarget, hooks:
   if (!body) return () => {};
   void load(target, controller.signal).then(async (imagery) => {
     if (controller.signal.aborted) return;
-    setTrustedHtml(body, trustedHtml(renderImageryDetails(imagery, (hooks.now ?? Date.now)()), 'imagery row markup escapes every value'));
+    setTrustedHtml(body, trustedHtml(renderImageryDetails(imagery, (hooks.now ?? Date.now)(), !(target.kind === 'point' && target.ownNextPass)), 'imagery row markup escapes every value'));
     body.querySelector('[data-orbital-open-evidence]')?.addEventListener('click', () => hooks.onOpenEvidence(target));
     hooks.onLayout();
     const frame = body.querySelector<HTMLElement>('[data-orbital-image]');
