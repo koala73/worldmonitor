@@ -2116,7 +2116,14 @@
     "map": {
       "showMap": "Zobrazit mapu",
       "hideMap": "Skrýt mapu",
-      "clearTrails": "Vymazat stopy"
+      "clearTrails": "Vymazat stopy",
+      "locate": "Zobrazit moji polohu"
+    },
+    "mapLocate": {
+      "locating": "Zjišťování polohy…",
+      "denied": "Přístup k poloze byl odepřen. Místo najdete pomocí Hledat.",
+      "unavailable": "Poloha nebyla nalezena. Místo najdete pomocí Hledat.",
+      "noCountry": "Ve vaší poloze není žádná země. Místo najdete pomocí Hledat."
     },
     "positiveNewsFeed": {
       "noStories": "V této kategorii zatím nejsou žádné příběhy"
@@ -4539,7 +4546,8 @@
   "contextMenu": {
     "openCountryBrief": "Otevřít přehled země",
     "copyCoordinates": "Kopírovat souřadnice",
-    "satellitePasses": "Přelety satelitů zde"
+    "satellitePasses": "Přelety satelitů zde",
+    "imageryEvidenceHere": "Důkazy ze snímků zde"
   },
   "shell": {
     "documentTitle": "World Monitor — Přehled reálných globálních informací",

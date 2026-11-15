@@ -2473,7 +2473,14 @@
     "map": {
       "showMap": "Onyesha Ramani",
       "hideMap": "Ficha Ramani",
-      "clearTrails": "Njia wazi"
+      "clearTrails": "Njia wazi",
+      "locate": "Onyesha mahali nilipo"
+    },
+    "mapLocate": {
+      "locating": "Inatafuta mahali…",
+      "denied": "Ufikiaji wa mahali umekataliwa. Tumia Tafuta kupata mahali.",
+      "unavailable": "Mahali hapakupatikana. Tumia Tafuta kupata mahali.",
+      "noCountry": "Hakuna nchi mahali ulipo. Tumia Tafuta kupata mahali."
     },
     "climateNews": {
       "infoTooltip": "<strong>Habari za Hali ya Hewa</strong> Taarifa za hivi punde za mazingira na hali ya hewa kutoka Carbon Brief, UNEP, NASA, The Guardian, na vyanzo vingine vya mamlaka. Inasasishwa kila baada ya dakika 30.",
@@ -4585,7 +4592,8 @@
   "contextMenu": {
     "openCountryBrief": "Fungua Muhtasari wa Nchi",
     "copyCoordinates": "Nakili Viratibu",
-    "satellitePasses": "Satelaiti zinazopita hapa"
+    "satellitePasses": "Satelaiti zinazopita hapa",
+    "imageryEvidenceHere": "Ushahidi wa picha za satelaiti hapa"
   },
   "auth": {
     "signIn": "Ingia",

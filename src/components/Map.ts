@@ -213,6 +213,8 @@ export class MapComponent {
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
   private wrapper: HTMLElement;
   private overlays: HTMLElement;
+  private controlsEl: HTMLElement | null = null;
+  private mountedMapControl: HTMLElement | null = null;
   private markerSettleTimer: ReturnType<typeof setTimeout> | null = null;
   private clusterCanvas: HTMLCanvasElement;
   private clusterGl: WebGLRenderingContext | null = null;
@@ -576,9 +578,16 @@ export class MapComponent {
     }
   }
 
+  /** Adds a control below the zoom buttons, kept across a late controls build. */
+  public mountMapControl(el: HTMLElement): void {
+    this.mountedMapControl = el;
+    this.controlsEl?.append(el);
+  }
+
   private createControls(): HTMLElement {
     const controls = document.createElement('div');
     controls.className = 'map-controls';
+    this.controlsEl = controls;
     setTrustedHtml(controls, trustedHtml(`
       <button class="map-control-btn" data-action="zoom-in" aria-label="Zoom in">+</button>
       <button class="map-control-btn" data-action="zoom-out" aria-label="Zoom out">−</button>
@@ -593,6 +602,7 @@ export class MapComponent {
       else if (action === 'reset') this.reset();
     });
 
+    if (this.mountedMapControl) controls.append(this.mountedMapControl);
     return controls;
   }
 

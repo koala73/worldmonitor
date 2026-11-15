@@ -38,6 +38,7 @@ import {
 import {
   canonicalizeCountryCode,
   getCountryAtCoordinates,
+  getCountryNearCoordinates,
   getCountryCentroid,
   hasCountryGeometry,
   ME_STRIKE_BOUNDS,
@@ -56,7 +57,8 @@ import { collectStoryData } from '@/services/story-data';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
-import { showMapContextMenu } from '@/components/MapContextMenu';
+import { showMapContextMenu, type MapContextMenuItem } from '@/components/MapContextMenu';
+import { MapLocateControl } from '@/components/MapLocateControl';
 import { BETA_MODE } from '@/config/beta';
 import { mlWorker } from '@/services/ml-worker';
 import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
@@ -151,6 +153,8 @@ type CountryPresentation = {
 };
 
 const AVIATION_SIGNAL_TIMEOUT_MS = 2500;
+/** Town scale: the share grid's 0.01° cell stays well inside the view. */
+const LOCATE_ZOOM = 9;
 
 export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
@@ -168,6 +172,7 @@ export class CountryIntelManager implements AppModule {
   // don't re-hammer fetchProSections.
   private authUnsubscribe: (() => void) | null = null;
   private orbitalRouteUnsubscribe: (() => void) | null = null;
+  private locateControl: MapLocateControl | null = null;
   private orbitalEvidenceUnsubscribe: (() => void) | null = null;
   private orbitalMapFocusUnsubscribe: (() => void) | null = null;
   private entitlementUnsubscribe: (() => void) | null = null;
@@ -213,6 +218,8 @@ export class CountryIntelManager implements AppModule {
   }
 
   destroy(): void {
+    this.locateControl?.destroy();
+    this.locateControl = null;
     this.orbitalRouteUnsubscribe?.();
     this.orbitalRouteUnsubscribe = null;
     this.orbitalEvidenceUnsubscribe?.();
@@ -355,6 +362,39 @@ export class CountryIntelManager implements AppModule {
       items.push({ label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) });
       showMapContextMenu(payload.screenX, payload.screenY, items);
     });
+
+    const map = this.ctx.map;
+    this.locateControl?.destroy();
+    this.locateControl = new MapLocateControl({
+      centre: (point) => { map.setCenter(point.lat, point.lon, LOCATE_ZOOM); },
+      actions: (point) => this.locatedActions(point),
+    });
+    map.addMapControl(this.locateControl.element);
+  }
+
+  /**
+   * The locate menu. The point is the user's own position cut to the share grid, so
+   * the country comes from the local outlines only, never the reverse-geocode API.
+   */
+  private async locatedActions(point: { lat: number; lon: number }): Promise<MapContextMenuItem[]> {
+    const items: MapContextMenuItem[] = [];
+    await preloadCountryGeometry().catch(() => {});
+    const country = getCountryNearCoordinates(point.lat, point.lon);
+    if (country) items.push({
+      label: t('contextMenu.openCountryBrief'),
+      action: () => {
+        void this.openCountryBriefByCode(country.code, country.name)
+          .catch((err) => this.handleCountryBriefOpenError(err));
+      },
+    });
+    if (ORBITAL_WATCH_ENABLED) items.push({
+      label: t('contextMenu.imageryEvidenceHere'),
+      action: () => {
+        void import('@/app/orbital-watch').then(({ openOrbitalWatch }) =>
+          openOrbitalWatch(point, document.getElementById('mapContainer'), this.ctx.map));
+      },
+    });
+    return items;
   }
 
   private getCountryController(page: NonNullable<AppContext['countryBriefPage']>): CountryBriefController {

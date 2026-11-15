@@ -2122,7 +2122,14 @@
     "map": {
       "showMap": "顯示地圖",
       "hideMap": "隱藏地圖",
-      "clearTrails": "清除軌跡"
+      "clearTrails": "清除軌跡",
+      "locate": "顯示我的位置"
+    },
+    "mapLocate": {
+      "locating": "正在定位…",
+      "denied": "位置存取被拒絕。請使用搜尋查詢地點。",
+      "unavailable": "未找到位置。請使用搜尋查詢地點。",
+      "noCountry": "您所在位置沒有國家。請使用搜尋查詢地點。"
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>網際網路中斷</strong> 來自全球網路監測的即時網際網路中斷、DDoS 攻擊和流量異常：<ul><li><strong>中斷</strong>：按國家統計的 BGP 檢測連線故障</li><li><strong>DDoS</strong>：按協議和攻擊向量的流量攻擊報告</li><li><strong>異常</strong>：來自 Cloudflare Radar 的異常流量模式</li></ul>",
@@ -4473,7 +4480,8 @@
   "contextMenu": {
     "openCountryBrief": "開啟國家簡報",
     "copyCoordinates": "複製座標",
-    "satellitePasses": "經過此處的衛星"
+    "satellitePasses": "經過此處的衛星",
+    "imageryEvidenceHere": "此處的影像證據"
   },
   "shell": {
     "documentTitle": "World Monitor — 即時全球情報儀表板",

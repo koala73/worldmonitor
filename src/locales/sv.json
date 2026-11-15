@@ -1743,7 +1743,14 @@
     "map": {
       "showMap": "Visa karta",
       "hideMap": "Dölj karta",
-      "clearTrails": "Rensa spår"
+      "clearTrails": "Rensa spår",
+      "locate": "Visa min plats"
+    },
+    "mapLocate": {
+      "locating": "Hämtar plats…",
+      "denied": "Platsåtkomst nekad. Använd Sök för att hitta en plats.",
+      "unavailable": "Platsen hittades inte. Använd Sök för att hitta en plats.",
+      "noCountry": "Inget land på din plats. Använd Sök för att hitta en plats."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Internetstörningar</strong> Internetavbrott, DDoS-attacker och trafikavvikelser i realtid från global nätverksövervakning:<ul><li><strong>Avbrott</strong>: BGP-upptäckta anslutningsfel per land</li><li><strong>DDoS</strong>: rapporter om volymetriska attacker per protokoll och vektor</li><li><strong>Avvikelser</strong>: ovanliga trafikmönster från Cloudflare Radar</li></ul>",
@@ -4495,7 +4502,8 @@
   "contextMenu": {
     "openCountryBrief": "Öppna landsöversikt",
     "copyCoordinates": "Kopiera koordinater",
-    "satellitePasses": "Satellitpassager här"
+    "satellitePasses": "Satellitpassager här",
+    "imageryEvidenceHere": "Bildbevis här"
   },
   "shell": {
     "documentTitle": "World Monitor — Realtidsinstrumentpanel för global underrättelse",

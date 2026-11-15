@@ -2137,7 +2137,14 @@
     "map": {
       "showMap": "Pokaż mapę",
       "hideMap": "Ukryj mapę",
-      "clearTrails": "Wyczyść trasy"
+      "clearTrails": "Wyczyść trasy",
+      "locate": "Pokaż moją lokalizację"
+    },
+    "mapLocate": {
+      "locating": "Ustalanie lokalizacji…",
+      "denied": "Odmówiono dostępu do lokalizacji. Użyj wyszukiwania, aby znaleźć miejsce.",
+      "unavailable": "Nie znaleziono lokalizacji. Użyj wyszukiwania, aby znaleźć miejsce.",
+      "noCountry": "W Twojej lokalizacji nie ma kraju. Użyj wyszukiwania, aby znaleźć miejsce."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Zakłócenia internetu</strong> Awarie internetu, ataki DDoS i anomalie ruchu w czasie rzeczywistym z globalnego monitoringu sieci:<ul><li><strong>Awarie</strong>: wykryte przez BGP przerwy w łączności według krajów</li><li><strong>DDoS</strong>: raporty o atakach wolumetrycznych według protokołu i wektora</li><li><strong>Anomalie</strong>: nietypowe wzorce ruchu z Cloudflare Radar</li></ul>",
@@ -4539,7 +4546,8 @@
   "contextMenu": {
     "openCountryBrief": "Otwórz przegląd kraju",
     "copyCoordinates": "Kopiuj współrzędne",
-    "satellitePasses": "Przeloty satelitów tutaj"
+    "satellitePasses": "Przeloty satelitów tutaj",
+    "imageryEvidenceHere": "Dowody ze zdjęć satelitarnych tutaj"
   },
   "shell": {
     "documentTitle": "World Monitor — Tablica bieżącej analizy globalnej",

@@ -2132,7 +2132,14 @@
     "map": {
       "showMap": "Mostra mappa",
       "hideMap": "Nascondi mappa",
-      "clearTrails": "Cancella tracce"
+      "clearTrails": "Cancella tracce",
+      "locate": "Mostra la mia posizione"
+    },
+    "mapLocate": {
+      "locating": "Localizzazione…",
+      "denied": "Accesso alla posizione negato. Usa Cerca per trovare un luogo.",
+      "unavailable": "Posizione non trovata. Usa Cerca per trovare un luogo.",
+      "noCountry": "Nessun paese nella tua posizione. Usa Cerca per trovare un luogo."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Interruzioni Internet</strong> Disservizi internet in tempo reale, attacchi DDoS e anomalie di traffico dal monitoraggio di rete globale:<ul><li><strong>Disservizi</strong>: Interruzioni di connettività rilevate tramite BGP per paese</li><li><strong>DDoS</strong>: Rapporti di attacchi volumetrici per protocollo e vettore</li><li><strong>Anomalie</strong>: Pattern di traffico anomali da Cloudflare Radar</li></ul>",
@@ -4517,7 +4524,8 @@
   "contextMenu": {
     "openCountryBrief": "Apri scheda paese",
     "copyCoordinates": "Copia coordinate",
-    "satellitePasses": "Passaggi satellitari qui"
+    "satellitePasses": "Passaggi satellitari qui",
+    "imageryEvidenceHere": "Prove da immagini satellitari qui"
   },
   "shell": {
     "documentTitle": "World Monitor — Dashboard di intelligence globale in tempo reale",

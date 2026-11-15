@@ -1743,7 +1743,14 @@
     "map": {
       "showMap": "Kaart tonen",
       "hideMap": "Kaart verbergen",
-      "clearTrails": "Sporen wissen"
+      "clearTrails": "Sporen wissen",
+      "locate": "Mijn locatie tonen"
+    },
+    "mapLocate": {
+      "locating": "Locatie bepalen…",
+      "denied": "Locatietoegang geweigerd. Gebruik Zoeken om een plaats te vinden.",
+      "unavailable": "Locatie niet gevonden. Gebruik Zoeken om een plaats te vinden.",
+      "noCountry": "Geen land op uw locatie. Gebruik Zoeken om een plaats te vinden."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Internetstoringen</strong> Realtime internetstoringen, DDoS-aanvallen en verkeersafwijkingen uit wereldwijde netwerkmonitoring:<ul><li><strong>Storingen</strong>: via BGP gedetecteerde verbindingsstoringen per land</li><li><strong>DDoS</strong>: meldingen van volumetrische aanvallen per protocol en vector</li><li><strong>Afwijkingen</strong>: ongebruikelijke verkeerspatronen van Cloudflare Radar</li></ul>",
@@ -4495,7 +4502,8 @@
   "contextMenu": {
     "openCountryBrief": "Landenoverzicht openen",
     "copyCoordinates": "Coördinaten kopiëren",
-    "satellitePasses": "Satellietpassages hier"
+    "satellitePasses": "Satellietpassages hier",
+    "imageryEvidenceHere": "Bewijsmateriaal uit satellieten hier"
   },
   "shell": {
     "documentTitle": "World Monitor — Realtime wereldwijd inlichtingendashboard",

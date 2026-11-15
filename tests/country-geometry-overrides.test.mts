@@ -250,3 +250,19 @@ describe('country geometry recovery', () => {
     });
   }
 });
+
+describe('coastal country lookup', () => {
+  it('resolves a coastal city the simplified outline misses, and leaves open sea empty', async () => {
+    const bundled = JSON.parse(readFileSync(new URL('../public/data/countries.geojson', import.meta.url), 'utf8'));
+    globalThis.fetch = (async (input) => {
+      if (String(input) === '/data/countries.geojson') return jsonResponse(bundled);
+      return jsonResponse({ type: 'FeatureCollection', features: [] });
+    }) as typeof fetch;
+    const geometry = await loadFreshCountryGeometryModule();
+    await geometry.preloadCountryGeometry();
+    assert.equal(geometry.getCountryAtCoordinates(25.2, 55.27), null);
+    assert.equal(geometry.getCountryNearCoordinates(25.2, 55.27)?.code, 'AE');
+    assert.equal(geometry.getCountryNearCoordinates(48.86, 2.35)?.code, 'FR');
+    assert.equal(geometry.getCountryNearCoordinates(0, -30), null);
+  });
+});

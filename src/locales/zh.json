@@ -2122,7 +2122,14 @@
     "map": {
       "showMap": "显示地图",
       "hideMap": "隐藏地图",
-      "clearTrails": "清除轨迹"
+      "clearTrails": "清除轨迹",
+      "locate": "显示我的位置"
+    },
+    "mapLocate": {
+      "locating": "正在定位…",
+      "denied": "位置访问被拒绝。请使用搜索查找地点。",
+      "unavailable": "未找到位置。请使用搜索查找地点。",
+      "noCountry": "您所在位置没有国家。请使用搜索查找地点。"
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>互联网中断</strong> 来自全球网络监测的实时互联网中断、DDoS 攻击和流量异常：<ul><li><strong>中断</strong>：按国家统计的 BGP 检测连接故障</li><li><strong>DDoS</strong>：按协议和攻击向量的流量攻击报告</li><li><strong>异常</strong>：来自 Cloudflare Radar 的异常流量模式</li></ul>",
@@ -4473,7 +4480,8 @@
   "contextMenu": {
     "openCountryBrief": "打开国家简报",
     "copyCoordinates": "复制坐标",
-    "satellitePasses": "经过此处的卫星"
+    "satellitePasses": "经过此处的卫星",
+    "imageryEvidenceHere": "此处的影像证据"
   },
   "shell": {
     "documentTitle": "World Monitor — 实时全球情报仪表板",

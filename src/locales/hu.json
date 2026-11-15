@@ -2470,7 +2470,14 @@
     "map": {
       "showMap": "Térkép megjelenítése",
       "hideMap": "Térkép elrejtése",
-      "clearTrails": "Nyomok törlése"
+      "clearTrails": "Nyomok törlése",
+      "locate": "Saját helyzet megjelenítése"
+    },
+    "mapLocate": {
+      "locating": "Helymeghatározás…",
+      "denied": "A helyhozzáférés megtagadva. Hely kereséséhez használja a Keresést.",
+      "unavailable": "A helyzet nem található. Hely kereséséhez használja a Keresést.",
+      "noCountry": "Az Ön helyén nincs ország. Hely kereséséhez használja a Keresést."
     },
     "climateNews": {
       "infoTooltip": "<strong>Climate News</strong> A legfrissebb környezeti és éghajlati intelligencia a Carbon Brief, az UNEP, a NASA, a The Guardian és más megbízható forrásokból. 30 percenként frissítve.",
@@ -4585,7 +4592,8 @@
   "contextMenu": {
     "openCountryBrief": "Országbeszámoló megnyitása",
     "copyCoordinates": "Koordináták másolása",
-    "satellitePasses": "Műholdas áthaladások itt"
+    "satellitePasses": "Műholdas áthaladások itt",
+    "imageryEvidenceHere": "Képi bizonyíték itt"
   },
   "auth": {
     "signIn": "Bejelentkezés",

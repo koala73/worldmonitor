@@ -2473,7 +2473,14 @@
     "map": {
       "showMap": "نمایش نقشه",
       "hideMap": "پنهان کردن نقشه",
-      "clearTrails": "پاک کردن ردها"
+      "clearTrails": "پاک کردن ردها",
+      "locate": "نمایش موقعیت من"
+    },
+    "mapLocate": {
+      "locating": "در حال یافتن موقعیت…",
+      "denied": "دسترسی به موقعیت رد شد. برای یافتن مکان از جست‌وجو استفاده کنید.",
+      "unavailable": "موقعیت پیدا نشد. برای یافتن مکان از جست‌وجو استفاده کنید.",
+      "noCountry": "در موقعیت شما کشوری نیست. برای یافتن مکان از جست‌وجو استفاده کنید."
     },
     "climateNews": {
       "infoTooltip": "<strong>اخبار اقلیمی</strong> تازه‌ترین اطلاعات محیط‌زیستی و اقلیمی از Carbon Brief، UNEP، NASA، The Guardian و دیگر منابع معتبر. هر ۳۰ دقیقه به‌روز می‌شود.",
@@ -4585,7 +4592,8 @@
   "contextMenu": {
     "openCountryBrief": "باز کردن گزارش کشور",
     "copyCoordinates": "کپی مختصات",
-    "satellitePasses": "ماهواره‌هایی که از اینجا گذشتند"
+    "satellitePasses": "ماهواره‌هایی که از اینجا گذشتند",
+    "imageryEvidenceHere": "شواهد تصویری اینجا"
   },
   "auth": {
     "signIn": "ورود",

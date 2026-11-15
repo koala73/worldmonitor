@@ -2132,7 +2132,14 @@
     "map": {
       "showMap": "Arată harta",
       "hideMap": "Ascunde harta",
-      "clearTrails": "Șterge urmele"
+      "clearTrails": "Șterge urmele",
+      "locate": "Arată locația mea"
+    },
+    "mapLocate": {
+      "locating": "Se determină locația…",
+      "denied": "Accesul la locație a fost refuzat. Folosiți Căutare pentru a găsi un loc.",
+      "unavailable": "Locația nu a fost găsită. Folosiți Căutare pentru a găsi un loc.",
+      "noCountry": "Nicio țară la locația dvs. Folosiți Căutare pentru a găsi un loc."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Perturbări ale internetului</strong> Întreruperi, atacuri DDoS și anomalii de trafic în timp real din monitorizarea globală a rețelelor:<ul><li><strong>Întreruperi</strong>: pierderi de conectivitate pe țări detectate prin BGP</li><li><strong>DDoS</strong>: rapoarte de atacuri volumetrice pe protocol și vector</li><li><strong>Anomalii</strong>: tipare de trafic neobișnuite din Cloudflare Radar</li></ul>",
@@ -4517,7 +4524,8 @@
   "contextMenu": {
     "openCountryBrief": "Deschide prezentarea țării",
     "copyCoordinates": "Copiază coordonatele",
-    "satellitePasses": "Treceri de sateliți aici"
+    "satellitePasses": "Treceri de sateliți aici",
+    "imageryEvidenceHere": "Dovezi din imagini satelitare aici"
   },
   "shell": {
     "documentTitle": "World Monitor — Tabloul de Bord al Inteligenței Globale în Timp Real",

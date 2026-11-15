@@ -2122,7 +2122,14 @@
     "map": {
       "showMap": "地図を表示",
       "hideMap": "地図を非表示",
-      "clearTrails": "トレイルをクリア"
+      "clearTrails": "トレイルをクリア",
+      "locate": "現在地を表示"
+    },
+    "mapLocate": {
+      "locating": "現在地を取得中…",
+      "denied": "位置情報へのアクセスが拒否されました。検索で場所を探してください。",
+      "unavailable": "現在地が見つかりません。検索で場所を探してください。",
+      "noCountry": "現在地に国がありません。検索で場所を探してください。"
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>インターネット障害</strong> 世界のネットワーク監視によるリアルタイムのインターネット障害、DDoS 攻撃、トラフィック異常:<ul><li><strong>障害</strong>: BGP で検出された国別の接続障害</li><li><strong>DDoS</strong>: プロトコル・ベクトル別の大量攻撃レポート</li><li><strong>異常</strong>: Cloudflare Radar による異常なトラフィックパターン</li></ul>",
@@ -4473,7 +4480,8 @@
   "contextMenu": {
     "openCountryBrief": "国の概要を開く",
     "copyCoordinates": "座標をコピー",
-    "satellitePasses": "この地点を通過した衛星"
+    "satellitePasses": "この地点を通過した衛星",
+    "imageryEvidenceHere": "この地点の衛星画像の証拠"
   },
   "shell": {
     "documentTitle": "ワールドモニター — リアルタイム グローバルインテリジェンスダッシュボード",

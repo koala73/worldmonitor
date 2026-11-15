@@ -2132,7 +2132,14 @@
     "map": {
       "showMap": "Afficher la carte",
       "hideMap": "Masquer la carte",
-      "clearTrails": "Effacer les traces"
+      "clearTrails": "Effacer les traces",
+      "locate": "Afficher ma position"
+    },
+    "mapLocate": {
+      "locating": "Localisation…",
+      "denied": "Accès à la position refusé. Utilisez Recherche pour trouver un lieu.",
+      "unavailable": "Position introuvable. Utilisez Recherche pour trouver un lieu.",
+      "noCountry": "Aucun pays à votre position. Utilisez Recherche pour trouver un lieu."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Perturbations Internet</strong> Pannes Internet, attaques DDoS et anomalies de trafic en temps réel issues de la surveillance mondiale des réseaux :<ul><li><strong>Pannes</strong> : défaillances de connectivité détectées via BGP, par pays</li><li><strong>DDoS</strong> : rapports d’attaques volumétriques par protocole et vecteur</li><li><strong>Anomalies</strong> : schémas de trafic inhabituels issus de Cloudflare Radar</li></ul>",
@@ -4517,7 +4524,8 @@
   "contextMenu": {
     "openCountryBrief": "Ouvrir la fiche pays",
     "copyCoordinates": "Copier les coordonnées",
-    "satellitePasses": "Passages de satellites ici"
+    "satellitePasses": "Passages de satellites ici",
+    "imageryEvidenceHere": "Preuves d'imagerie ici"
   },
   "shell": {
     "documentTitle": "World Monitor — Tableau de Bord de Renseignement Mondial en Temps Réel",
