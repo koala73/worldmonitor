@@ -5,7 +5,7 @@ import test from 'node:test';
 import { gunzipSync } from 'node:zlib';
 
 const require = createRequire(import.meta.url);
-const { evaluateCollapse, peakBaselineFor } = require('../scripts/shared/air-traffic-detector.cjs');
+const { evaluateCollapse, peakBaselineFor, tzOffsetMinutes, US_TZ } = require('../scripts/shared/air-traffic-detector.cjs');
 
 // Every bin of every archive day, replayed in time order through the detector.
 // The archive has no Wingbits counterpart, so coverage falls back to OpenSky's
@@ -23,8 +23,9 @@ for (const [day, bins] of Object.entries(fixture.days)) {
 }
 const getPoint = (t) => points.get(t);
 const peakCache = new Map();
+// The peak is per US-local day, as the relay computes it for every bin.
 const peakFor = (t) => {
-  const key = Math.floor(t / 86_400_000);
+  const key = Math.floor((t + tzOffsetMinutes(US_TZ, t) * 60_000) / 86_400_000);
   if (!peakCache.has(key)) peakCache.set(key, peakBaselineFor(t, getPoint));
   return peakCache.get(key);
 };

@@ -588,3 +588,17 @@ test('lane 27: a baseline read that fails per command is retried on the next bin
     assert.doesNotMatch(relay.output(), /verdict=insufficient-baseline/);
   }, { seedHashes, failHgetallPipelines: 1 });
 });
+
+test('lane 28: a tick whose bin ends before it records evaluates its own bin, and skips it once a newer bin is evaluated', async () => {
+  const seedHashes = historyHashes('2026-10-14', '2026-11-08', ORDINARY_HISTORY);
+  await lane([EUROPE_ONLY], {}, async ({ redis, relay }) => {
+    await relay.waitFor(() => relay.lines().some((line) => line.includes('t=2026-11-13T20:30:00.000Z status=gap')), 'the delayed 20:30 tick');
+    await relay.waitFor(() => redis.points('2026-11-13').length >= 3, 'the bin after');
+    // The 20:35 tick evaluates first; the slow 20:30 tick then finds a newer
+    // state and leaves it alone rather than evaluating 20:35 a second time.
+    const lines = relay.output().split('\n').filter((line) => line.startsWith('[AirTrafficDetector] t='));
+    const evaluated = lines.filter((line) => line.includes(' verdict=')).map((line) => line.match(/t=(\S+)/)[1]);
+    assert.equal(new Set(evaluated).size, evaluated.length, `each bin once: ${evaluated.join(' ')}`);
+    assert.ok(lines.some((line) => /t=2026-11-13T20:30:00\.000Z skipped: 2026-11-13T20:35:00\.000Z already evaluated/.test(line)), lines.join('\n'));
+  }, { seedHashes, firstPipelineDelayMs: 1200 });
+});

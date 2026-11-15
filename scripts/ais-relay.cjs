@@ -6737,7 +6737,7 @@ async function seedTrafficSeries({ label, series, attempt }) {
   const existing = await upstashPipeline([['HGET', airTrafficDayKey(t, series), String(t)]]);
   if (isOkAirTrafficPoint(existing?.[0]?.result)) {
     console.log(`[${label}] t=${bin} already recorded; skipping fetch`);
-    return;
+    return t;
   }
   let result = null;
   let fetchedAt = Date.now();
@@ -6768,11 +6768,13 @@ async function seedTrafficSeries({ label, series, attempt }) {
   } else {
     console.log(`[${label}] t=${bin} status=gap reason=${result.gapReason} attempts=${attempts}`);
   }
+  return t;
 }
 
 async function seedAirTrafficPoint() {
-  await seedTrafficSeries({ label: 'AirTraffic', series: AIR_TRAFFIC_SERIES.opensky, attempt: attemptAirTrafficPoint });
-  await runAirTrafficDetector(airTrafficBinStart(Date.now()));
+  // The bin this tick recorded, which may have ended while it was fetching.
+  const t = await seedTrafficSeries({ label: 'AirTraffic', series: AIR_TRAFFIC_SERIES.opensky, attempt: attemptAirTrafficPoint });
+  await runAirTrafficDetector(t);
 }
 
 // ── National departure-collapse detector (scripts/shared/air-traffic-detector.cjs)
@@ -6839,6 +6841,12 @@ async function runAirTrafficDetector(t) {
     }
     let state = null;
     try { state = stateRes.result ? JSON.parse(stateRes.result) : null; } catch { state = null; }
+    if (state && state.lastT > t) {
+      // A slow tick finished after the next bin's tick evaluated, and the run
+      // only moves forward.
+      console.log(`[AirTrafficDetector] t=${new Date(t).toISOString()} skipped: ${new Date(state.lastT).toISOString()} already evaluated`);
+      return;
+    }
     const parse = (raw) => { try { return raw ? JSON.parse(raw) : undefined; } catch { return undefined; } };
     const { state: next, event } = airTrafficDetector.evaluateCollapse(state, {
       t,
