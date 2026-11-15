@@ -2210,6 +2210,40 @@ export class MapComponent {
     return { lat: centre?.[1] ?? 0, lng: centre?.[0] ?? 0 };
   }
 
+  /** A fire dot; a satellite detection is a button that opens its popup when Orbital Watch is on (#10713). */
+  private createFireDot(fire: MapComponent['firmsFireData'][number], pos: [number, number]): HTMLElement {
+    const color = fire.brightness > 400 ? getCSSColor('--semantic-critical') : fire.brightness > 350 ? getCSSColor('--semantic-high') : getCSSColor('--semantic-elevated');
+    const size = Math.max(4, Math.min(10, (fire.frp || 1) * 0.5));
+
+    const detection = fireDetectionPopupData(fire);
+    const dot = document.createElement(detection ? 'button' : 'div');
+    dot.className = 'fire-dot';
+    dot.style.left = `${pos[0]}px`;
+    dot.style.top = `${pos[1]}px`;
+    dot.style.width = `${size}px`;
+    dot.style.height = `${size}px`;
+    dot.style.backgroundColor = color;
+    dot.title = `${fire.region} — ${Math.round(fire.brightness)}K, ${fire.frp}MW`;
+
+    if (detection) {
+      dot.classList.add('fire-dot-popup');
+      (dot as HTMLButtonElement).type = 'button';
+      dot.setAttribute('aria-label', dot.title);
+      dot.addEventListener('click', (event) => {
+        const e = event as MouseEvent;
+        e.stopPropagation();
+        const rect = this.container.getBoundingClientRect();
+        // Enter and Space click with no pointer position, so anchor on the dot itself.
+        const at = e.detail === 0 ? dot.getBoundingClientRect() : null;
+        this.popup.show({
+          type: 'fireDetection', data: detection,
+          x: (at ? at.left + at.width / 2 : e.clientX) - rect.left, y: (at ? at.top + at.height / 2 : e.clientY) - rect.top,
+        });
+      });
+    }
+    return dot;
+  }
+
   /** True when this render pass withheld `marker` under the overlay budget (#7112). */
   private isOverlayMarkerCut(marker: unknown): boolean {
     return this.overlayMarkerCut.size > 0 && this.overlayMarkerCut.has(marker);
@@ -3933,37 +3967,7 @@ export class MapComponent {
         const pos = projection([fire.lon, fire.lat]);
         if (!pos) return;
 
-        const color = fire.brightness > 400 ? getCSSColor('--semantic-critical') : fire.brightness > 350 ? getCSSColor('--semantic-high') : getCSSColor('--semantic-elevated');
-        const size = Math.max(4, Math.min(10, (fire.frp || 1) * 0.5));
-
-        // A satellite detection opens its popup when Orbital Watch is on (#10713), so it is a button.
-        const detection = fireDetectionPopupData(fire);
-        const dot = document.createElement(detection ? 'button' : 'div');
-        dot.className = 'fire-dot';
-        dot.style.left = `${pos[0]}px`;
-        dot.style.top = `${pos[1]}px`;
-        dot.style.width = `${size}px`;
-        dot.style.height = `${size}px`;
-        dot.style.backgroundColor = color;
-        dot.title = `${fire.region} — ${Math.round(fire.brightness)}K, ${fire.frp}MW`;
-
-        if (detection) {
-          dot.classList.add('fire-dot-popup');
-          (dot as HTMLButtonElement).type = 'button';
-          dot.setAttribute('aria-label', dot.title);
-          dot.addEventListener('click', (event) => {
-            const e = event as MouseEvent;
-            e.stopPropagation();
-            const rect = this.container.getBoundingClientRect();
-            // Enter and Space click with no pointer position, so anchor on the dot itself.
-            const at = e.detail === 0 ? dot.getBoundingClientRect() : null;
-            this.popup.show({
-              type: 'fireDetection', data: detection,
-              x: (at ? at.left + at.width / 2 : e.clientX) - rect.left, y: (at ? at.top + at.height / 2 : e.clientY) - rect.top,
-            });
-          });
-        }
-
+        const dot = this.createFireDot(fire, pos);
         this.appendOverlay(dot);
       });
     }
