@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Documentation
-    url: https://github.com/koala73/worldmonitor/blob/main/docs/DOCUMENTATION.md
+    url: https://github.com/koala73/worldmonitor/blob/main/docs/documentation.mdx
     about: Read the full documentation before opening an issue
   - name: Discussions
     url: https://github.com/koala73/worldmonitor/discussions
