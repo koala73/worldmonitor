@@ -40,6 +40,8 @@ import {
   ENERGY_SPINE_KEY_PREFIX,
   CII_RISK_SCORE_CACHE_KEYS,
 } from '../../../_shared/cache-keys';
+import { isOrbitalWatchEnabled } from '../../orbital/v1/dark-launch';
+import { buildWatchedSiteImagery } from './chat-analyst-site-imagery';
 
 // TODO: multi-language digest search — currently only queries news:digest:v1:full:en.
 // When multi-language digests are available, fan out to news:digest:v1:full:<lang>
@@ -71,6 +73,7 @@ export interface AnalystContext {
   gasFlows?: string;
   oilStocksCover?: string;
   electricityMix?: string;
+  watchedSiteImagery?: string;
 }
 
 function safeStr(v: unknown): string {
@@ -1089,6 +1092,7 @@ const SOURCE_LABELS: Array<[keyof Omit<AnalystContext, 'timestamp' | 'degraded' 
   ['gasFlows', 'JODIGas'],
   ['oilStocksCover', 'IEAStocks'],
   ['electricityMix', 'ElecMix'],
+  ['watchedSiteImagery', 'Imagery'],
 ];
 
 export async function assembleAnalystContext(
@@ -1135,6 +1139,7 @@ export async function assembleAnalystContext(
   const needsGasFlows = iso2 != null && new Set(['economic', 'geo', 'all']).has(resolvedDomain);
   const needsOilStocksCover = iso2 != null && new Set(['economic', 'all']).has(resolvedDomain);
   const needsElectricityMix = iso2 != null && new Set(['economic', 'geo', 'all']).has(resolvedDomain);
+  const needsSiteImagery = isOrbitalWatchEnabled() && new Set(['geo', 'military', 'all']).has(resolvedDomain);
 
   const [
     insightsResult,
@@ -1158,6 +1163,7 @@ export async function assembleAnalystContext(
     gasFlowsResult,
     oilStocksCoverResult,
     electricityMixResult,
+    siteImageryResult,
   ] = await Promise.allSettled([
     getCachedJson(keys.insights, true),
     getCachedJson(keys.riskScores, true),
@@ -1180,6 +1186,7 @@ export async function assembleAnalystContext(
     needsGasFlows ? buildGasFlows(iso2!) : Promise.resolve(undefined),
     needsOilStocksCover ? buildOilStocksCover(iso2!) : Promise.resolve(undefined),
     needsElectricityMix ? buildElectricityMix(iso2!) : Promise.resolve(undefined),
+    needsSiteImagery ? buildWatchedSiteImagery(iso2, userQuery ?? '', instrumentTerms) : Promise.resolve(undefined),
   ]);
 
   const get = (r: PromiseSettledResult<unknown>) =>
@@ -1228,6 +1235,7 @@ export async function assembleAnalystContext(
     gasFlows: getOptStr(gasFlowsResult),
     oilStocksCover: getOptStr(oilStocksCoverResult),
     electricityMix: getOptStr(electricityMixResult),
+    watchedSiteImagery: getOptStr(siteImageryResult),
   };
 
   ctx.activeSources = SOURCE_LABELS
