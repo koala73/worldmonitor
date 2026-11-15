@@ -31,9 +31,12 @@ test('first fetch error is visible inside rollout grace without a success clock'
 });
 test('regional deadlines use persistent NX and existing budgets capped at one day', () => {
   const commands = regionalEnergyRolloutCommands(now, 'production');
-  // 23 regional feeds, reservoirLevels and orbitalCatalog, two commands each. orbitalSites
-  // claims none while Orbital Watch is dark (tests/orbital-sites-dark-launch-health.test.mjs).
-  assert.equal(commands.length, 50);
+  // 23 regional feeds, reservoirLevels, orbitalCatalog and airTrafficHistoryWingbits, two
+  // commands each. orbitalSites claims none while Orbital Watch is dark
+  // (tests/orbital-sites-dark-launch-health.test.mjs).
+  assert.equal(commands.length, 52);
+  const wingbits = commands.find(c => c[0] === 'SET' && c[1] === 'health:rollout-deadline:seed-meta:aviation:traffic-history-wingbits');
+  assert.deepEqual(wingbits.slice(2), [String(now + 60 * 60000), 'NX']);
   const cammesa = commands.find(c => c[0] === 'SET' && c[1].includes(':cammesa:'));
   assert.deepEqual(cammesa.slice(2), [String(now + 180 * 60000), 'NX']);
   const anp = commands.find(c => c[0] === 'SET' && c[1].includes(':anp:'));
