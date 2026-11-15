@@ -49,7 +49,7 @@ const SITE_LIST_KEY: Record<WatchedSiteOriginList, string> = {
 };
 
 /** Empty mount points other surfaces fill: the place search and the timeline. */
-export type OrbitalSlot = 'search' | 'timeline';
+export type OrbitalSlot = 'search' | 'timeline' | 'satellites';
 
 /** The mobile bottom sheet's three heights; the docked desktop sheet ignores it. */
 export type SheetHeight = 'collapsed' | 'half' | 'full';
@@ -644,6 +644,7 @@ export class OrbitalWatchPage {
     this.slots = {
       search: h('div', { className: 'ies-slot', dataset: { slot: 'search' }, hidden: true }),
       timeline: h('div', { className: 'ies-slot', dataset: { slot: 'timeline' } }),
+      satellites: h('div', { className: 'ies-slot', dataset: { slot: 'satellites' } }),
     };
     this.panel = h('div', { className: 'ies-panel' },
       this.handle,
@@ -910,6 +911,7 @@ export class OrbitalWatchPage {
       this.eventsSection(lookup),
       this.capabilitySection(lookup, passes, isPending),
       this.windowsSection(lookup, passes),
+      this.slots.satellites,
       h('div', { className: 'ies-alert', dataset: { section: 'alert' } },
         h('span', null, t('orbitalWatch.sheet.alert')),
         h('a', { className: 'ies-alert-cta', href: '/pro#pricing', target: '_blank', rel: 'noopener' }, t('orbitalWatch.sheet.alertCta'))),

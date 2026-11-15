@@ -217,3 +217,61 @@ export async function sitesCoveredBySatellite(input: {
   const coverage = await entry.work.join(input.signal, () => { throw new DOMException('Aborted', 'AbortError'); });
   return coverageAt(coverage, input.nowMs);
 }
+
+/** Half a 0.01° grid cell: a looked-up point this close to a site's coordinates is that site. */
+const SITE_MATCH_DEG = 0.005;
+
+/** The watched site at a looked-up point, nearest first; matched in the browser, so the point never leaves it. */
+export function watchedSiteAt(point: { lat: number; lon: number }, sites: readonly CoverageSite[]): CoverageSite | null {
+  let best: CoverageSite | null = null;
+  let bestOffset = Infinity;
+  for (const site of sites) {
+    const dLat = Math.abs(site.lat - point.lat);
+    const dLon = Math.abs(((site.lon - point.lon + 540) % 360) - 180);
+    if (dLat > SITE_MATCH_DEG || dLon > SITE_MATCH_DEG) continue;
+    const offset = dLat + dLon;
+    if (offset < bestOffset) {
+      best = site;
+      bestOffset = offset;
+    }
+  }
+  return best;
+}
+
+export interface SiteSatellite {
+  noradId: string;
+  name: string;
+  sensor: CoverageSensor;
+  /** Closest approaches inside the modelled footprint, earliest first. */
+  passes: CoveragePass[];
+}
+
+/** One stable registry per site, so a reopened site reads the satellites' cached scans. */
+const singleSiteRegistries = new Map<string, readonly CoverageSite[]>();
+
+/**
+ * The tracked satellites whose modelled footprint covers `site` in the window, earliest
+ * pass first: the reverse of `sitesCoveredBySatellite`, from the same scan, so a site
+ * and a satellite card always agree.
+ */
+export async function satellitesCoveringSite(input: {
+  site: CoverageSite;
+  tles: readonly TrackedSatelliteTle[];
+  nowMs: number;
+  hours?: number;
+  signal?: AbortSignal;
+}): Promise<SiteSatellite[]> {
+  const { site, tles, nowMs, hours, signal } = input;
+  let sites = singleSiteRegistries.get(site.id);
+  if (!sites) {
+    sites = [site];
+    singleSiteRegistries.set(site.id, sites);
+  }
+  const covering: SiteSatellite[] = [];
+  for (const tle of tles) {
+    const coverage = await sitesCoveredBySatellite({ tle, sites, nowMs, hours, signal });
+    const passes = coverage.status === 'ok' ? coverage.sites[0]?.passes : undefined;
+    if (coverage.status === 'ok' && passes?.length) covering.push({ noradId: tle.noradId, name: tle.name, sensor: coverage.sensor, passes });
+  }
+  return covering.sort((a, b) => a.passes[0]!.timeMs - b.passes[0]!.timeMs || a.name.localeCompare(b.name));
+}

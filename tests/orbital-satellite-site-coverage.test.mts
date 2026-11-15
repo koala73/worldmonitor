@@ -11,7 +11,9 @@ import {
   coverageAt,
   imagingProfileFor,
   orbitElementsFromTle,
+  satellitesCoveringSite,
   sitesCoveredBySatellite,
+  watchedSiteAt,
   type TrackedSatelliteTle,
 } from '../src/services/orbital/satellite-site-coverage.ts';
 import { classifyYaogan, trackedSatelliteType } from '../src/services/orbital/yaogan-class.ts';
@@ -152,9 +154,35 @@ describe('satellite site coverage', () => {
     assert.deepEqual(coverage, { status: 'unavailable' });
   });
 
-  it('exports no reverse site-to-satellites lookup until a site sheet links to it', async () => {
-    const mod = await import('../src/services/orbital/satellite-site-coverage.ts');
-    assert.equal('satellitesCoveringSite' in mod, false);
+  it('lists the satellites covering a site from the same scan as each satellite card', async () => {
+    const nowMs = EPOCH_MS + 6 * 3_600_000;
+    const tles = [sentinel2a, tle(40698, 'SENTINEL-2B'), tle(99999, 'UNPROFILED SAT')];
+    const card = await sitesCoveredBySatellite({ tle: sentinel2a, sites, nowMs });
+    assert.equal(card.status, 'ok');
+    if (card.status !== 'ok') return;
+    const entry = card.sites[0]!;
+    const site = sites.find((s) => s.id === entry.site.id)!;
+
+    const covering = await satellitesCoveringSite({ site, tles, nowMs });
+    const own = covering.find((s) => s.noradId === '40697');
+    assert.deepEqual(own?.passes, entry.passes, 'the site and the satellite card agree on the passes');
+    assert.equal(own?.sensor.profileId, card.sensor.profileId);
+    assert.ok(!covering.some((s) => s.noradId === '99999'), 'a satellite with no sensor profile covers nothing');
+    for (let i = 1; i < covering.length; i++) assert.ok(covering[i]!.passes[0]!.timeMs >= covering[i - 1]!.passes[0]!.timeMs);
+
+    const uncovered = sites.find((s) => !card.sites.some((e) => e.site.id === s.id))!;
+    const none = await satellitesCoveringSite({ site: uncovered, tles: [sentinel2a], nowMs });
+    assert.deepEqual(none, []);
+  });
+
+  it('matches a looked-up point to the watched site in its 0.01° cell, across the antimeridian', () => {
+    const site = { id: 'x:1', name: 'One', lat: 10.123, lon: 179.999, countryCode: 'XX' };
+    const near = { id: 'x:2', name: 'Two', lat: 10.12, lon: 179.996, countryCode: 'XX' };
+    assert.equal(watchedSiteAt({ lat: 10.12, lon: -180 }, [near, site])?.id, 'x:1');
+    assert.equal(watchedSiteAt({ lat: 10.12, lon: 179.996 }, [site, near])?.id, 'x:2');
+    assert.equal(watchedSiteAt({ lat: 10.13, lon: 179.99 }, [site]), null);
+    const real = sites[0]!;
+    assert.equal(watchedSiteAt({ lat: Math.round(real.lat * 100) / 100, lon: Math.round(real.lon * 100) / 100 }, sites)?.id, real.id);
   });
 });
 
@@ -229,7 +257,7 @@ describe('#10758 item 5: the coverage cache', () => {
 
 describe('privacy and dark launch', () => {
   it('computes coverage without a network call or analytics', () => {
-    for (const file of ['src/services/orbital/satellite-site-coverage.ts', 'src/services/orbital/yaogan-class.ts', 'src/components/orbital-satellite-sites-view.ts']) {
+    for (const file of ['src/services/orbital/satellite-site-coverage.ts', 'src/services/orbital/yaogan-class.ts', 'src/components/orbital-satellite-sites-view.ts', 'src/components/orbital-site-satellites-view.ts']) {
       const text = source(file);
       assert.doesNotMatch(text, /\bfetch\(|XMLHttpRequest|sendBeacon|ServiceClient|getRpcBaseUrl|trackEvent|umami|analytics/i, file);
     }

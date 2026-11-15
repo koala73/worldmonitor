@@ -5450,6 +5450,12 @@
       "passes_many": "{{count}} přeletu",
       "passes_other": "{{count}} přeletů"
     },
+    "siteSatellites": {
+      "heading": "Sledované satelity nad tímto místem · dalších {{hours}} h",
+      "none": "Žádný sledovaný snímkovací satelit toto místo během {{hours}} h nepokrývá.",
+      "notLoaded": "Pro nový pokus místo znovu otevřete; dráhové elementy satelitů se nenačetly.",
+      "failed": "Pro nový pokus místo znovu otevřete; výpočet přeletů selhal."
+    },
     "sheet": {
       "heading": "Důkazy ze snímků",
       "window": "Posledních {{days}} dní, příštích {{hours}} h",

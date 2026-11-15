@@ -5428,6 +5428,12 @@
       "passes_few": "{{count}} preleta",
       "passes_other": "{{count}} preleta"
     },
+    "siteSatellites": {
+      "heading": "Praćeni sateliti iznad ovog mjesta · sljedećih {{hours}} h",
+      "none": "Nijedan praćeni satelit za snimanje ne pokriva ovo mjesto unutar {{hours}} h.",
+      "notLoaded": "Ponovno otvorite mjesto za novi pokušaj; orbitalni elementi nisu učitani.",
+      "failed": "Ponovno otvorite mjesto za novi pokušaj; izračun preleta nije uspio."
+    },
     "sheet": {
       "heading": "Dokazi iz snimaka",
       "window": "Zadnjih {{days}} dana, idućih {{hours}} h",

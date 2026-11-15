@@ -130,6 +130,11 @@ export function setTrackedSatelliteTles(tles: readonly SatelliteTLE[], drawn: re
 }
 
 /** The element set the layer is drawing a tracked satellite from; coverage reports its age. */
+/** Every element set the layer draws. */
+export function getTrackedSatelliteTles(): SatelliteTLE[] {
+  return [...tleByNorad.values()];
+}
+
 export function getTrackedSatelliteTle(noradId: string): SatelliteTLE | null {
   return tleByNorad.get(noradId) ?? null;
 }

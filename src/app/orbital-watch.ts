@@ -11,8 +11,11 @@ import { OrbitalWatchPage, type OrbitalWatchState } from '@/components/OrbitalWa
 import { OrbitalTimeline, type OrbitalTimelineInput, type PointContextState } from '@/components/OrbitalTimeline';
 import { formatAcquiredLine, formatTargetCoordinates } from '@/components/orbital-target-label';
 import { loadPointContext } from '@/services/orbital/point-context';
-import { loadWatchedSiteRecord, watchedSiteAt } from '@/services/orbital/watched-site-at';
+import { loadWatchedSiteRecord, watchedSiteAt as watchedSiteRecordAt } from '@/services/orbital/watched-site-at';
 import { OrbitalPlaceTools } from '@/components/OrbitalPlaceTools';
+import { markSiteSatelliteSelected, siteSatellitesSection, type SiteSatellitesState } from '@/components/orbital-site-satellites-view';
+import { loadWatchedSites, satellitesCoveringSite, watchedSiteAt, type CoverageSite } from '@/services/orbital/satellite-site-coverage';
+import { fetchSatelliteTLEs, getTrackedSatelliteTles } from '@/services/satellites';
 import { confirmShareLinkCopied } from '@/components/share-link-button';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 import { DASHBOARD_SITE_ORIGIN } from '@/config/dashboard-reference-links';
@@ -39,6 +42,8 @@ let returnFocus: HTMLElement | null = null;
 let timeline: OrbitalTimeline | null = null;
 let timelinePasses: Pick<OrbitalTimelineInput, 'lookup' | 'passes' | 'acquisitions'> | null = null;
 let pointContext: PointContextState = { kind: 'loading' };
+/** The watched site at the open point and the tracked satellites over it, or null for any other point. */
+let siteSatellites: { site: CoverageSite; state: SiteSatellitesState } | null = null;
 let markFrame: number | null = null;
 let centredFor: string | null = null;
 /** Where the map was before the lookup first moved it; closing puts it back, so the point never becomes the map centre. */
@@ -158,6 +163,8 @@ function selectTimelinePass(key: string): void {
 function selectPass(noradId: number, timeMs: number): void {
   selectedPass = { noradId, timeMs };
   drawTimeline();
+  const slot = page?.slot('satellites');
+  if (slot) markSiteSatelliteSelected(slot, selectedKey());
   void showTrack(noradId, timeMs);
 }
 
@@ -192,7 +199,7 @@ function loadWatchedSite(at: GeoPoint): void {
   const controller = new AbortController();
   siteRun = controller;
   const { signal } = controller;
-  void watchedSiteAt(at).then(async (site) => {
+  void watchedSiteRecordAt(at).then(async (site) => {
     if (signal.aborted || !site) return;
     page?.setWatchedSite({ kind: 'loading', site });
     try {
@@ -204,6 +211,57 @@ function loadWatchedSite(at: GeoPoint): void {
       page?.setWatchedSite({ kind: 'failed', site });
     }
   }, () => {});
+}
+
+/** The lookup's own pass for a tracked satellite's approach, so its row selects it. */
+function lookupPassKey(noradId: string, timeMs: number): string | null {
+  const pass = (evidence?.passes ?? lookup?.passes)?.find((p) =>
+    String(p.noradId) === noradId && Math.abs(p.timeMs - timeMs) <= LINKED_PASS_TOLERANCE_MS && p.tier.kind !== 'daily-mosaic');
+  return pass ? `${pass.noradId}:${pass.timeMs}` : null;
+}
+
+function drawSiteSatellites(): void {
+  const slot = page?.slot('satellites');
+  if (!slot) return;
+  if (!siteSatellites) {
+    slot.replaceChildren();
+    return;
+  }
+  slot.replaceChildren(siteSatellitesSection(siteSatellites.site, siteSatellites.state, {
+    nowMs: Date.now(),
+    passKey: lookupPassKey,
+    selectedKey: selectedKey(),
+  }));
+}
+
+/**
+ * A watched site's sheet lists the tracked satellites that cover it, the reverse of a
+ * satellite card's site list. The site is matched and the passes projected in the
+ * browser from the public registry and element sets, so the point never leaves it.
+ */
+async function loadSiteSatellites(found: PointPassLookup, signal: AbortSignal): Promise<void> {
+  siteSatellites = null;
+  drawSiteSatellites();
+  const site = watchedSiteAt(found.point, await loadWatchedSites().catch(() => []));
+  if (!site || signal.aborted) return;
+  const draw = (state: SiteSatellitesState) => {
+    siteSatellites = { site, state };
+    drawSiteSatellites();
+  };
+  draw({ kind: 'projecting' });
+  try {
+    const tracked = getTrackedSatelliteTles();
+    const tles = tracked.length > 0 ? tracked : (await fetchSatelliteTLEs()) ?? [];
+    if (signal.aborted) return;
+    if (tles.length === 0) {
+      draw({ kind: 'not-loaded' });
+      return;
+    }
+    const satellites = await satellitesCoveringSite({ site, tles, nowMs: Date.now(), signal });
+    if (!signal.aborted) draw({ kind: 'ok', satellites });
+  } catch (error) {
+    if (!isAbort(error) && !signal.aborted) draw({ kind: 'failed' });
+  }
 }
 
 async function checkArchives(found: PointPassLookup, signal: AbortSignal): Promise<void> {
@@ -218,6 +276,7 @@ async function checkArchives(found: PointPassLookup, signal: AbortSignal): Promi
   if (signal.aborted) return;
   evidence = result;
   show({ kind: 'passes', lookup: found, archives: { kind: 'answered', evidence: result } });
+  drawSiteSatellites();
 }
 
 async function start(): Promise<void> {
@@ -242,6 +301,7 @@ async function start(): Promise<void> {
       lookup = found;
     }
     loadContext(lookup, signal);
+    void loadSiteSatellites(lookup, signal);
     await checkArchives(lookup, signal);
     if (signal.aborted) return;
     evidenceReady = true;

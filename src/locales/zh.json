@@ -5354,6 +5354,12 @@
       "count_other": "{{family}} 覆盖范围内有 {{count}} 个地点",
       "passes_other": "{{count}} 次过境"
     },
+    "siteSatellites": {
+      "heading": "此地点上空的跟踪卫星 · 未来 {{hours}} 小时",
+      "none": "{{hours}} 小时内没有跟踪中的成像卫星覆盖此地点。",
+      "notLoaded": "重新打开地点以重试；卫星轨道根数未加载。",
+      "failed": "重新打开地点以重试；过境计算失败。"
+    },
     "sheet": {
       "heading": "影像证据",
       "window": "过去 {{days}} 天，未来 {{hours}} 小时",

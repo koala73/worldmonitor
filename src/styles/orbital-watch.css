@@ -82,7 +82,7 @@
 .ies-thumb { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .ies-thumb-caption { font: 10px var(--font-mono); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ies-table { list-style: none; margin: 0; padding: 0; }
-.ies-row, .ies-event {
+.ies-row, .ies-event, .ies-static-row {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
