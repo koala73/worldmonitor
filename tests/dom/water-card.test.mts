@@ -1,8 +1,18 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { fillWaterExtentRow, renderWaterExtentRow, WATER_UNAVAILABLE, waterCard, waterExtentLines } from '@/components/water-card';
+const imagery = vi.hoisted(() => ({ result: null as unknown }));
+vi.mock('@/services/orbital/object-imagery', () => ({
+  loadObjectImagery: async () => imagery.result,
+  loadReservoirWaterExtent: async () => null,
+}));
+vi.mock('@/services/climate/reservoir-context-loader', () => ({
+  loadReservoirLevelsById: async () => new Map(),
+  loadReservoirNextPasses: async () => new Map(),
+}));
+
+import { fillWaterExtentRow, loadWaterCard, renderWaterExtentRow, WATER_UNAVAILABLE, waterCard, waterExtentLines } from '@/components/water-card';
 import type { ReservoirLevel } from '@/services/climate';
-import { reservoirAtPoint } from '@/services/climate/reservoir-context';
+import { reservoirAtPoint, STRATEGIC_RESERVOIR_SITES } from '@/services/climate/reservoir-context';
 import { t } from '@/services/i18n';
 import { initTestI18n } from './helpers/i18n.mts';
 
@@ -72,6 +82,15 @@ describe('water card (#10714)', () => {
     expect(value('extent')).toBe(t('components.reservoirLevels.water.unavailable'));
     expect(value('optical')).toBe(t('components.reservoirLevels.water.unavailable'));
     expect(card.textContent).not.toContain(t('components.reservoirLevels.water.extentNone'));
+  });
+
+  it('reads a failed optical search as unavailable and an empty one as no image', async () => {
+    const site = STRATEGIC_RESERVOIR_SITES[0]!;
+    const optical = async () => (await loadWaterCard(site, new AbortController().signal)).querySelector('[data-row="optical"] .wl-water-value')!.textContent;
+    imagery.result = { latest: null, imageSearchFailed: true, nextPass: null };
+    expect(await optical()).toBe(t('components.reservoirLevels.water.unavailable'));
+    imagery.result = { latest: null, nextPass: null };
+    expect(await optical()).toBe(t('components.reservoirLevels.water.opticalNone'));
   });
 
   it('finds the reservoir for an evidence point inside its core box or at its own map point', () => {

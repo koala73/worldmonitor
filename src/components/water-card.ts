@@ -137,7 +137,7 @@ export async function loadWaterCard(site: StrategicReservoirSite, signal: AbortS
   signal.throwIfAborted();
   const ctx = { t, locale: getLocale(), nowMs: Date.now() };
   const level = levels === WATER_UNAVAILABLE ? levels : levels.get(site.id) ?? null;
-  const optical = imagery === WATER_UNAVAILABLE ? imagery : imagery.latest ?? null;
+  const optical = imagery === WATER_UNAVAILABLE || (!imagery.latest && imagery.imageSearchFailed) ? WATER_UNAVAILABLE : imagery.latest;
   const name = level === WATER_UNAVAILABLE ? site.name : level?.name ?? site.name;
   return waterCard(name, { level, extent, optical, nextPass: passes?.get(site.id) ?? null }, ctx);
 }
