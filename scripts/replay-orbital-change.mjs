@@ -78,11 +78,11 @@ export async function replaySeries({ site, scenes, thresholds = CHANGE_THRESHOLD
 }
 
 /** The first raise inside each known event's window; a raise before the event or after the window does not count. */
-export async function replayKnownChanges({ dir = join(ROOT, KNOWN_CHANGE_DIR), thresholds } = {}) {
+export async function replayKnownChanges({ dir = join(ROOT, KNOWN_CHANGE_DIR), thresholds, scoreSeries = replaySeries } = {}) {
   const results = [];
   for (const file of readdirSync(dir).filter((name) => name.endsWith('.json')).sort()) {
     const fixture = JSON.parse(readFileSync(join(dir, file), 'utf8'));
-    const events = await replaySeries({ site: { id: file, ...fixture.point }, scenes: fixture.scenes, thresholds });
+    const events = await scoreSeries({ site: { id: file, ...fixture.point }, scenes: fixture.scenes, thresholds });
     const startMs = Date.parse(fixture.event.date);
     const endMs = startMs + fixture.event.windowDays * DAY_MS;
     const raises = events.filter((event) => event.kind === 'raised');
@@ -101,11 +101,11 @@ export async function replayKnownChanges({ dir = join(ROOT, KNOWN_CHANGE_DIR), t
 }
 
 /** Event counts over the recorded sample, for every sampled site and for the sites this scorer still scores. */
-export async function replaySample({ fixture = JSON.parse(readFileSync(join(ROOT, SAMPLE_FIXTURE), 'utf8')), thresholds } = {}) {
+export async function replaySample({ fixture = JSON.parse(readFileSync(join(ROOT, SAMPLE_FIXTURE), 'utf8')), thresholds, scoreSeries = replaySeries } = {}) {
   const excluded = changeScoringExclusions(WATCHED_SITES, SITE_WATER_PERCENT);
   const sites = [];
   for (const recorded of fixture.sites) {
-    const events = recorded.scenes.length ? await replaySeries({ site: recorded, scenes: recorded.scenes, thresholds }) : [];
+    const events = recorded.scenes.length ? await scoreSeries({ site: recorded, scenes: recorded.scenes, thresholds }) : [];
     const count = (kind) => events.filter((event) => event.kind === kind).length;
     sites.push({
       id: recorded.id,
@@ -142,9 +142,9 @@ export async function replaySample({ fixture = JSON.parse(readFileSync(join(ROOT
   return { window: { start: fixture.start, end: fixture.end }, all: totals(sites), scored: totals(sites.filter((site) => !site.excluded)), sites };
 }
 
-export async function replay({ thresholds = CHANGE_THRESHOLDS } = {}) {
-  const sample = await replaySample({ thresholds });
-  const known = await replayKnownChanges({ thresholds });
+export async function replay({ thresholds = CHANGE_THRESHOLDS, scoreSeries = replaySeries } = {}) {
+  const sample = await replaySample({ thresholds, scoreSeries });
+  const known = await replayKnownChanges({ thresholds, scoreSeries });
   const detected = known.filter((result) => result.detected).length;
   const scored = sample.scored;
   return {

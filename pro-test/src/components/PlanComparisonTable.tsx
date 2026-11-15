@@ -1,6 +1,7 @@
 import { Check } from 'lucide-react';
 import { currentLanguageBase, t } from '../i18n';
 import tiersJson from '../generated/tiers.json';
+import { orbitalWatchAccess, type OrbitalWatchAccess } from '../../../shared/orbital-watch-pricing';
 
 /**
  * Plan comparison on /pro. Every quota cell is read from the generated catalog
@@ -31,6 +32,11 @@ const TIERS = tiersJson as unknown as GeneratedTier[];
 const PERSONAL = ['free', 'pro'];
 const COMMERCIAL = ['proBusiness', 'api', 'apiBusiness', 'enterprise'];
 const ORDER = [...PERSONAL, ...COMMERCIAL];
+const ORBITAL_COPY: Record<OrbitalWatchAccess, string> = {
+  lookup: 'pricingTable.orbitalLookup',
+  'alerts-mcp': 'pricingTable.orbitalAlertsMcp',
+  'alerts-mcp-api': 'pricingTable.orbitalAlertsMcpApi',
+};
 
 // Seat counts are licence terms, not catalog limits: one named user on every
 // self-serve plan, five bundled Pro seats on API Business (public/pricing.md).
@@ -114,6 +120,16 @@ export const PlanComparisonTable = () => {
     },
     { label: t('pricingTable.rowSupport'), cell: tier => ({ text: t(SUPPORT[tier.localeKey] ?? 'pricingTable.supportStandard') }) },
   ];
+  // Orbital Watch stays off the table until launch (#10768).
+  if (tiers.some(tier => orbitalWatchAccess(tier.localeKey))) {
+    rows.splice(rows.length - 1, 0, {
+      label: t('pricingTable.rowOrbital'),
+      cell: tier => {
+        const access = orbitalWatchAccess(tier.localeKey);
+        return access ? { text: t(ORBITAL_COPY[access]) } : NONE;
+      },
+    });
+  }
 
   const highlight = (tier: GeneratedTier) => tier.localeKey === 'pro';
   const groupStart = (tier: GeneratedTier) => tier.localeKey === COMMERCIAL[0];

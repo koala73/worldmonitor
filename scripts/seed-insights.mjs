@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
 import { retainLastFailure } from './_last-failure.mjs';
 import {
   loadEnvFile,
@@ -99,6 +100,22 @@ const STORY_POOL_KEY = 'news:insights:v1:pool';
 const STORY_POOL_MAX_BYTES = 262_144;
 export const STORY_POOL_MAX_MEMBER_TITLES = 6;
 const CHINA_NEWS_DIGEST_LANGUAGE = 'zh';
+// Seven-day threat-level history behind the Threat Timeline panel. Each run
+// sees only the current digest window, so the per-day counts accumulate here:
+// one entry per story, keyed by member-headline fingerprints so a story that
+// stays in the digest for days counts once, on the day it was first seen.
+// Internal state, kept out of bootstrap; the published day counts ride in the
+// canonical payload as `threatTimeline`.
+const THREAT_HISTORY_KEY = 'news:insights:v1:threat-history';
+export const THREAT_TIMELINE_DAYS = 7;
+// Past the 7-day window plus a missed day of runs, so an outage does not reset it.
+const THREAT_HISTORY_TTL = 9 * 24 * 60 * 60;
+const THREAT_HISTORY_LEVELS = ['critical', 'high', 'medium', 'low', 'info'];
+const THREAT_HISTORY_DAY_MS = 24 * 60 * 60 * 1000;
+// MAX_ITEMS_PER_CATEGORY in server/worldmonitor/news/v1/list-feed-digest.ts
+// (pinned by tests/seed-insights-threat-history.test.mjs). A category at the
+// cap may have dropped older items; one below it is complete.
+export const DIGEST_CATEGORY_CAP = 20;
 
 // Defense-in-depth auth — see seed-infra.mjs for the same pattern + rationale.
 // Set WORLDMONITOR_RELAY_KEY on the Railway service (must match a value in
@@ -173,7 +190,7 @@ function insightsRunMeta(payload) {
  * marker for validation and afterPublish hooks.
  */
 export function publishInsightsPayload(data) {
-  const { chinaNewsCoverage: _chinaNewsCoverage, storyPool: _storyPool, ...payload } = data || {};
+  const { chinaNewsCoverage: _chinaNewsCoverage, storyPool: _storyPool, threatHistory: _threatHistory, ...payload } = data || {};
   const runMeta = insightsRunMeta(data);
   return runMeta ? attachInsightsRunMeta(payload, runMeta) : payload;
 }
@@ -919,6 +936,289 @@ export function preserveChinaNewsCoverageInLkg(existing, chinaNewsCoverage) {
   return chinaNewsCoverage ? { ...existing, chinaNewsCoverage } : existing;
 }
 
+export function preserveThreatHistoryInLkg(existing, threatHistory) {
+  return threatHistory ? { ...existing, threatHistory } : existing;
+}
+
+function threatHistoryLevel(value) {
+  const level = String(value ?? '').trim().toLowerCase();
+  return THREAT_HISTORY_LEVELS.includes(level) ? level : 'info';
+}
+
+function threatHistoryRank(level) {
+  return THREAT_HISTORY_LEVELS.length - THREAT_HISTORY_LEVELS.indexOf(level);
+}
+
+function threatHistoryDayKey(ms) {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+/** UTC day keys of the timeline window, oldest first, ending today. */
+export function threatTimelineWindow(nowMs) {
+  const today = Date.parse(`${threatHistoryDayKey(nowMs)}T00:00:00.000Z`);
+  return Array.from({ length: THREAT_TIMELINE_DAYS }, (_, index) =>
+    threatHistoryDayKey(today - (THREAT_TIMELINE_DAYS - 1 - index) * THREAT_HISTORY_DAY_MS));
+}
+
+function itemPubMs(value) {
+  if (typeof value === 'number') return Number.isFinite(value) && value > 0 ? value : null;
+  if (typeof value === 'string' && value.trim()) {
+    const ms = Date.parse(value);
+    return Number.isFinite(ms) && ms > 0 ? ms : null;
+  }
+  return null;
+}
+
+/** Same-headline fingerprint: case, punctuation and spacing do not split a story. */
+export function threatStoryFingerprint(title) {
+  const normalized = String(title ?? '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+  if (!normalized) return null;
+  return createHash('sha1').update(normalized).digest('hex').slice(0, 12);
+}
+
+const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const FINGERPRINT_RE = /^[0-9a-f]{12}$/;
+
+function normalizeThreatHistoryState(raw) {
+  const days = {};
+  const source = raw && typeof raw === 'object' && raw.days && typeof raw.days === 'object' ? raw.days : {};
+  for (const [date, stories] of Object.entries(source)) {
+    if (!DAY_KEY_RE.test(date) || !Array.isArray(stories)) continue;
+    const kept = [];
+    for (const story of stories) {
+      const keys = Array.isArray(story?.k) ? story.k.filter(k => typeof k === 'string' && FINGERPRINT_RE.test(k)) : [];
+      if (keys.length === 0) continue;
+      kept.push({ l: threatHistoryLevel(story.l), k: [...new Set(keys)] });
+    }
+    days[date] = kept;
+  }
+  const recordingSince = typeof raw?.recordingSince === 'string' && DAY_KEY_RE.test(raw.recordingSince)
+    ? raw.recordingSince
+    : null;
+  const partialDays = Array.isArray(raw?.partialDays)
+    ? raw.partialDays.filter(date => typeof date === 'string' && DAY_KEY_RE.test(date))
+    : [];
+  return { recordingSince, partialDays, days };
+}
+
+/**
+ * Add this run's clusters to the stored history. A cluster that shares any
+ * member headline with stored stories is those stories: they merge into one
+ * (earliest day, highest level, all headlines), and the merged story is never
+ * counted again. A new story lands on the UTC day of its earliest member
+ * headline. Days older than the window are dropped.
+ *
+ * `coverageStartMs` is how far back this run's digest is complete. When the
+ * previous run is older than that, the stories published in between are
+ * lost, so the days of that gap are recorded as partial.
+ */
+export function mergeThreatHistory(previous, clusters, { nowMs = Date.now(), pubMsByTitle = new Map(), coverageStartMs = null } = {}) {
+  const state = normalizeThreatHistoryState(previous);
+  const window = threatTimelineWindow(nowMs);
+  const oldest = window[0];
+  const today = window[window.length - 1];
+  const days = {};
+  const byFingerprint = new Map();
+  const storyDate = new Map();
+  for (const [date, stories] of Object.entries(state.days)) {
+    if (date < oldest || date > today) continue;
+    days[date] = stories;
+    for (const story of stories) {
+      storyDate.set(story, date);
+      for (const key of story.k) byFingerprint.set(key, story);
+    }
+  }
+
+  for (const cluster of Array.isArray(clusters) ? clusters : []) {
+    const titles = Array.isArray(cluster?.memberTitles) && cluster.memberTitles.length > 0
+      ? cluster.memberTitles
+      : [cluster?.primaryTitle];
+    const keys = [...new Set(titles.map(threatStoryFingerprint).filter(Boolean))];
+    if (keys.length === 0) continue;
+    const level = threatHistoryLevel(cluster?.threat?.level);
+    const matched = [...new Set(keys.map(key => byFingerprint.get(key)).filter(Boolean))];
+    if (matched.length > 0) {
+      matched.sort((a, b) => storyDate.get(a).localeCompare(storyDate.get(b), 'en-US'));
+      const [target, ...absorbed] = matched;
+      for (const story of absorbed) {
+        if (threatHistoryRank(story.l) > threatHistoryRank(target.l)) target.l = story.l;
+        const date = storyDate.get(story);
+        days[date] = days[date].filter(entry => entry !== story);
+        storyDate.delete(story);
+        for (const key of story.k) {
+          if (!target.k.includes(key)) target.k.push(key);
+          byFingerprint.set(key, target);
+        }
+      }
+      if (threatHistoryRank(level) > threatHistoryRank(target.l)) target.l = level;
+      for (const key of keys) {
+        if (byFingerprint.get(key) === target) continue;
+        target.k.push(key);
+        byFingerprint.set(key, target);
+      }
+      continue;
+    }
+    const pubTimes = titles.map(title => pubMsByTitle.get(title)).filter(ms => Number.isFinite(ms));
+    const fallbackMs = itemPubMs(cluster?.pubDate) ?? nowMs;
+    const firstSeenMs = Math.min(pubTimes.length > 0 ? Math.min(...pubTimes) : fallbackMs, nowMs);
+    const date = threatHistoryDayKey(firstSeenMs);
+    if (date < oldest) continue;
+    const story = { l: level, k: keys };
+    (days[date] ||= []).push(story);
+    storyDate.set(story, date);
+    for (const key of keys) byFingerprint.set(key, story);
+  }
+  for (const [date, stories] of Object.entries(days)) {
+    if (stories.length === 0) delete days[date];
+  }
+
+  const partialDays = new Set(state.partialDays);
+  const previousRunMs = itemPubMs(previous?.updatedAt);
+  if (state.recordingSince === null && Number.isFinite(coverageStartMs)
+    && coverageStartMs > Date.parse(`${today}T00:00:00.000Z`)) {
+    // First run: earlier days are partial by recordingSince, and today is
+    // partial too when the digest does not reach back to its midnight.
+    partialDays.add(today);
+  }
+  if (previousRunMs !== null && Number.isFinite(coverageStartMs) && previousRunMs < coverageStartMs) {
+    const gapEnd = threatHistoryDayKey(Math.min(coverageStartMs, nowMs));
+    for (let ms = Date.parse(`${threatHistoryDayKey(previousRunMs)}T00:00:00.000Z`); ; ms += THREAT_HISTORY_DAY_MS) {
+      const date = threatHistoryDayKey(ms);
+      if (date > gapEnd) break;
+      partialDays.add(date);
+    }
+  }
+
+  return {
+    version: 1,
+    recordingSince: state.recordingSince ?? today,
+    updatedAt: new Date(nowMs).toISOString(),
+    partialDays: [...partialDays].filter(date => date >= oldest && date <= today).sort(),
+    days,
+  };
+}
+
+/**
+ * How far back the digest is complete. A category at the producer cap drops
+ * its oldest items first, so the bound is the newest oldest-item among capped
+ * categories. Uncapped categories are complete back to the freshness floor;
+ * when none is capped, the oldest item bounds the digest. Null when the
+ * digest carries no dated items.
+ */
+export function digestCoverageStartMs(digest) {
+  const groups = digest?.categories && typeof digest.categories === 'object'
+    ? Object.values(digest.categories).map(bucket => (Array.isArray(bucket?.items) ? bucket.items : []))
+    : [digestItemsForInsights(digest)];
+  let cappedBound = null;
+  let oldestOverall = null;
+  for (const items of groups) {
+    const times = items.map(item => itemPubMs(item?.pubDate ?? item?.publishedAt ?? item?.date)).filter(ms => ms !== null);
+    if (times.length === 0) continue;
+    const oldestInGroup = Math.min(...times);
+    if (oldestOverall === null || oldestInGroup < oldestOverall) oldestOverall = oldestInGroup;
+    if (items.length >= DIGEST_CATEGORY_CAP && (cappedBound === null || oldestInGroup > cappedBound)) cappedBound = oldestInGroup;
+  }
+  return cappedBound ?? oldestOverall;
+}
+
+/** Earliest publish time per headline, for first-seen day placement. */
+export function buildPubMsByTitle(items) {
+  const byTitle = new Map();
+  for (const item of Array.isArray(items) ? items : []) {
+    const title = item?.title;
+    const ms = itemPubMs(item?.pubDate);
+    if (!title || ms === null) continue;
+    const previous = byTitle.get(title);
+    if (previous === undefined || ms < previous) byTitle.set(title, ms);
+  }
+  return byTitle;
+}
+
+/**
+ * Public day counts for the panel: the window's seven UTC days, oldest
+ * first. `recordingSince` is the first day the history was written; days
+ * before it hold only what that first digest still carried. `partialDays`
+ * are days a seeder outage left incomplete.
+ */
+export function projectThreatTimeline(state, { nowMs = Date.now() } = {}) {
+  const days = threatTimelineWindow(nowMs).map(date => {
+    const counts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+    for (const story of state?.days?.[date] ?? []) counts[threatHistoryLevel(story.l)] += 1;
+    return { date, counts };
+  });
+  const window = new Set(threatTimelineWindow(nowMs));
+  return {
+    version: 1,
+    recordingSince: state?.recordingSince ?? null,
+    updatedAt: state?.updatedAt ?? new Date(nowMs).toISOString(),
+    partialDays: (Array.isArray(state?.partialDays) ? state.partialDays : []).filter(date => window.has(date)),
+    days,
+  };
+}
+
+/**
+ * Read the stored history. A missing key is an empty history; a failed read
+ * returns undefined so the run skips the history rather than overwrite a
+ * week of counts with one digest.
+ */
+async function readThreatHistory() {
+  try {
+    const { url, token } = getRedisCredentials();
+    const resp = await fetch(`${url}/get/${encodeURIComponent(THREAT_HISTORY_KEY)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!resp.ok) return undefined;
+    const data = await resp.json();
+    return data.result ? JSON.parse(data.result) : null;
+  } catch (err) {
+    console.warn(`  Threat history read failed: ${err?.message || err}`);
+    return undefined;
+  }
+}
+
+/**
+ * Threat-timeline fields for the payload. When the history read failed, the
+ * stored week is intact but unread: keep the last published counts rather
+ * than drop the panel back to binning the top stories.
+ */
+export function threatTimelineFields(threatHistoryRun, existingInsights) {
+  if (threatHistoryRun) {
+    return { threatTimeline: threatHistoryRun.threatTimeline, threatHistory: threatHistoryRun.threatHistory };
+  }
+  const previous = existingInsights?.threatTimeline;
+  return previous && typeof previous === 'object' ? { threatTimeline: previous } : {};
+}
+
+async function readExistingInsightsOrNull() {
+  try {
+    return await readExistingInsights();
+  } catch {
+    return null;
+  }
+}
+
+async function buildThreatHistoryForRun(clusters, normalizedItems, digest, nowMs = Date.now()) {
+  const previous = await readThreatHistory();
+  if (previous === undefined) return null;
+  const threatHistory = mergeThreatHistory(previous, clusters, {
+    nowMs,
+    pubMsByTitle: buildPubMsByTitle(normalizedItems),
+    coverageStartMs: digestCoverageStartMs(digest),
+  });
+  const threatTimeline = projectThreatTimeline(threatHistory, { nowMs });
+  const stories = Object.values(threatHistory.days).reduce((sum, list) => sum + list.length, 0);
+  console.log(
+    `  Threat history: ${stories} stories over ${Object.keys(threatHistory.days).length} day(s), since ${threatHistory.recordingSince}`
+      + (threatHistory.partialDays.length > 0 ? `; partial ${threatHistory.partialDays.join(',')}` : ''),
+  );
+  return { threatHistory, threatTimeline };
+}
+
 export function normalizeDigestItemsForInsights(items) {
   return items.map(item => ({
     title: sanitizeTitle(item.title || item.headline || ''),
@@ -1016,6 +1316,7 @@ async function fetchInsights() {
 
   const clusters = clusterItems(normalizedItems);
   console.log(`  Clusters: ${clusters.length}`);
+  const threatHistoryRun = await buildThreatHistoryForRun(clusters, normalizedItems, digest);
 
   // #4920 coverage ledger: capture what the selection gates dropped.
   const selectionStats = {};
@@ -1262,6 +1563,7 @@ async function fetchInsights() {
     provenance,
     chinaNewsCoverage,
     storyPool,
+    ...threatTimelineFields(threatHistoryRun, threatHistoryRun ? null : await readExistingInsightsOrNull()),
   };
 
   // LKG preservation: don't overwrite "ok" with "degraded"
@@ -1270,7 +1572,10 @@ async function fetchInsights() {
     if (existing?.status === 'ok') {
       console.log('  LKG preservation: existing payload is "ok", skipping degraded overwrite');
       return decorateInsightsRun(
-        preserveStoryPoolInLkg(preserveChinaNewsCoverageInLkg(existing, chinaNewsCoverage), storyPool),
+        preserveThreatHistoryInLkg(
+          preserveStoryPoolInLkg(preserveChinaNewsCoverageInLkg(existing, chinaNewsCoverage), storyPool),
+          threatHistoryRun?.threatHistory,
+        ),
         {
           outcome: INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED,
           failureCode: synthesisFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
@@ -1335,13 +1640,25 @@ async function writeInsightsStoryPool(data) {
   await writeExtraKey(STORY_POOL_KEY, data.storyPool, CACHE_TTL);
 }
 
-async function finalizeInsightsRun(data, outcome, { previousMeta } = {}) {
+async function writeInsightsThreatHistory(data, { lockFence } = {}) {
+  if (!data?.threatHistory) {
+    // Digest unavailable or the history read failed: keep the stored week.
+    await extendExistingTtl([THREAT_HISTORY_KEY], THREAT_HISTORY_TTL);
+    return;
+  }
+  // Read-merge-write: fenced so a run that lost its lease cannot overwrite a
+  // newer run's history with its stale merge.
+  await writeExtraKey(THREAT_HISTORY_KEY, data.threatHistory, THREAT_HISTORY_TTL, undefined, { lockFence });
+}
+
+async function finalizeInsightsRun(data, outcome, { previousMeta, lockFence } = {}) {
   const [resolvedPreviousMeta] = await Promise.all([
     previousMeta === undefined
       ? readExistingSeedMeta('news', 'insights')
       : Promise.resolve(previousMeta),
     writeInsightsChinaCoverage(data),
     writeInsightsStoryPool(data),
+    writeInsightsThreatHistory(data, { lockFence }),
   ]);
   return {
     freshnessMetaPatch: buildInsightsFreshnessMetaPatch(
@@ -1365,19 +1682,22 @@ if (_isDirectRun) {
     // retained separately so the China audit can distinguish an unavailable
     // source from a globally outranked one without changing the public payload.
     preserveKeys: [CHINA_COVERAGE_KEY, STORY_POOL_KEY],
+    preserveKeyTtls: [{ key: THREAT_HISTORY_KEY, ttlSeconds: THREAT_HISTORY_TTL }],
     publishTransform: publishInsightsPayload,
-    afterPublish: async (data) => {
+    afterPublish: async (data, context) => {
       const runMeta = insightsRunMeta(data);
       return finalizeInsightsRun(
         data,
         runMeta?.outcome === INSIGHTS_RUN_OUTCOMES.PUBLISHED
           ? INSIGHTS_RUN_OUTCOMES.PUBLISHED
           : INSIGHTS_RUN_OUTCOMES.DEGRADED,
+        { lockFence: context?.lockFence },
       );
     },
     afterValidationSkip: async (data, context) => {
       return finalizeInsightsRun(data, INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED, {
         previousMeta: context.existingSeedMeta,
+        lockFence: context.lockFence,
       });
     },
   }).catch(async (err) => {

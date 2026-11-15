@@ -314,7 +314,12 @@ describe('realtime relay Teams dispatch', () => {
       if (url.includes('/LLEN/')) return Response.json({ result: 1 });
       if (url.includes('/LRANGE/')) return Response.json({ result: heldEvents.map(ev => JSON.stringify(ev)) });
       if (url.includes('/DEL/')) { deletedHeld.push(url); return Response.json({ result: 1 }); }
-      if (url.includes('/LREM/')) { removedHeld.push(url); return Response.json({ result: 1 }); }
+      if (url.endsWith('/pipeline')) {
+        const cmds = JSON.parse(String(init?.body ?? '[]'));
+        const lrem = cmds.filter((cmd) => cmd[0] === 'LREM');
+        removedHeld.push(...lrem.map((cmd) => cmd[3]));
+        return Response.json(cmds.map((cmd) => ({ result: cmd[0] === 'LREM' ? 1 : 'OK' })));
+      }
       return Response.json({ result: 'OK' });
     };
     return { relay: loaded.relay, posts, deactivations, held, deletedHeld, removedHeld };

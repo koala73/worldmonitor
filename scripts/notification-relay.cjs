@@ -516,29 +516,63 @@ function buildHeldTextParts(heldLines, { limit, measure }) {
 
 // Removes the items this drain read, each by its own value (LREM, count 1), and leaves the rest. DEL
 // would also discard an alert held while the sends were in flight, and a position-based trim shifts
-// when a hold at QUIET_HELD_MAX drops the head. Upstash /pipeline is not transactional, so nothing
-// here relies on atomicity: an item that is already gone is simply not removed.
+// when a hold at QUIET_HELD_MAX drops the head. The commands go through /pipeline in bounded chunks.
+// Upstash /pipeline is not transactional, so nothing here relies on atomicity: every command's own
+// result is read, an item that is already gone is simply not removed, and only failed ones are retried.
+const HELD_REMOVE_CHUNK = 50;
+
+async function lremPipeline(key, rawItems) {
+  // One outcome per item: 'removed', 'already-gone', 'failed-non-ok' or 'failed-timed-out'.
+  let res;
+  try {
+    res = await fetch(`${UPSTASH_URL}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
+      body: JSON.stringify(rawItems.map((raw) => ['LREM', key, '1', raw])),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    // The request itself rejected (timeout or network), which is not the same as a refusal.
+    return rawItems.map(() => 'failed-timed-out');
+  }
+  if (!res.ok) return rawItems.map(() => 'failed-non-ok');
+  let results;
+  try {
+    results = await res.json();
+  } catch (err) {
+    // Reading the body can hit the same timeout; only a body that parsed badly is a refusal.
+    if (!(err instanceof SyntaxError)) return rawItems.map(() => 'failed-timed-out');
+    results = null;
+  }
+  if (!Array.isArray(results) || results.length !== rawItems.length) return rawItems.map(() => 'failed-non-ok');
+  return results.map((entry) => {
+    const removed = entry && typeof entry === 'object' && !entry.error ? entry.result : null;
+    if (typeof removed !== 'number') return 'failed-non-ok';
+    return removed > 0 ? 'removed' : 'already-gone';
+  });
+}
+
 async function removeHeldItems(key, rawItems) {
   const result = { removed: 0, alreadyGone: 0, failedNonOk: 0, failedTimedOut: 0 };
-  for (const raw of rawItems) {
-    // One retry: a failed removal means a delivered alert stays held and is sent again.
-    let outcome = 'failed-non-ok';
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      try {
-        const removed = await upstashRest('LREM', key, '1', raw);
-        // upstashRest answers null for a non-OK response; the count is 1 (removed) or 0 (already gone).
-        if (removed === null || removed === undefined) { outcome = 'failed-non-ok'; continue; }
-        outcome = removed > 0 ? 'removed' : 'already-gone';
-        break;
-      } catch {
-        // The request itself rejected (timeout or network), which is not the same as a refusal.
-        outcome = 'failed-timed-out';
-      }
+  for (let start = 0; start < rawItems.length; start += HELD_REMOVE_CHUNK) {
+    let pending = rawItems.slice(start, start + HELD_REMOVE_CHUNK);
+    let outcomes = [];
+    // One retry, of the failed commands only: a failed removal means a delivered alert stays held and is sent again.
+    for (let attempt = 0; attempt < 2 && pending.length > 0; attempt += 1) {
+      outcomes = await lremPipeline(key, pending);
+      const retry = [];
+      outcomes.forEach((outcome, i) => {
+        if (outcome === 'removed') result.removed += 1;
+        else if (outcome === 'already-gone') result.alreadyGone += 1;
+        else retry.push(i);
+      });
+      outcomes = retry.map((i) => outcomes[i]);
+      pending = retry.map((i) => pending[i]);
     }
-    if (outcome === 'removed') result.removed += 1;
-    else if (outcome === 'already-gone') result.alreadyGone += 1;
-    else if (outcome === 'failed-timed-out') result.failedTimedOut += 1;
-    else result.failedNonOk += 1;
+    for (const outcome of outcomes) {
+      if (outcome === 'failed-timed-out') result.failedTimedOut += 1;
+      else result.failedNonOk += 1;
+    }
   }
   const failed = result.failedNonOk + result.failedTimedOut;
   if (failed > 0) {

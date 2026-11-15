@@ -9,6 +9,7 @@ import { CONFLICT_ZONES, INTEL_HOTSPOTS, STRATEGIC_WATERWAYS } from './geo-data'
 import { MILITARY_BASES_EXPANDED } from './military-bases-data';
 import { NUCLEAR_FACILITIES } from './nuclear-facilities-data';
 import { PORTS } from './ports-data';
+import reservoirRegistry from '../scripts/data/strategic-reservoirs.json';
 
 export type WatchedSiteOriginList =
   | 'hotspot'
@@ -16,7 +17,8 @@ export type WatchedSiteOriginList =
   | 'military-base'
   | 'nuclear-facility'
   | 'port'
-  | 'chokepoint';
+  | 'chokepoint'
+  | 'reservoir';
 
 export interface WatchedSiteOrigin {
   list: WatchedSiteOriginList;
@@ -32,8 +34,11 @@ export interface WatchedSite {
   lon: number;
   /** ISO 3166-1 alpha-2 code of the country the site is attributed to. */
   countryCode: string;
-  /** Maritime sites (ports, chokepoints) get imaging evidence but no land change score. */
-  surface: 'land' | 'maritime';
+  /**
+   * Maritime sites (ports, chokepoints) and water sites (reservoirs) get imaging evidence
+   * but no land change score; water sites get a radar water-extent series instead.
+   */
+  surface: 'land' | 'maritime' | 'water';
   origins: WatchedSiteOrigin[];
 }
 
@@ -109,6 +114,10 @@ function candidates(): WatchedSiteCandidate[] {
       origin: { list: 'chokepoint' as const, id: w.id }, name: w.name, lat: w.lat, lon: w.lon,
       countryCode: (CHOKEPOINT_COUNTRY_CODES as Record<string, readonly string[]>)[w.chokepointId]?.[0],
       surface: 'maritime' as const,
+    })),
+    ...(reservoirRegistry.reservoirs as ReadonlyArray<{ id: string; name: string; country: string; lat: number; lon: number }>).map((r) => ({
+      origin: { list: 'reservoir' as const, id: r.id }, name: r.name, lat: r.lat, lon: r.lon,
+      countryCode: r.country, surface: 'water' as const,
     })),
   ];
 }

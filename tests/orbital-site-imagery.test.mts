@@ -7,7 +7,7 @@ import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 import { getRequiredTier } from '../server/_shared/entitlement-check.ts';
 import { toCountryEvidence } from '../server/worldmonitor/orbital/v1/get-country-imagery-evidence.ts';
 import { orbitalWatchDarkResponse } from '../server/worldmonitor/orbital/v1/dark-launch.ts';
-import { countrySiteImagery, siteImagery } from '../server/worldmonitor/orbital/v1/site-imagery.ts';
+import { countrySiteImagery, imageryCredits, siteImagery } from '../server/worldmonitor/orbital/v1/site-imagery.ts';
 import { buildWatchedSiteImagery, formatSiteImagery, imageryCountries } from '../server/worldmonitor/intelligence/v1/chat-analyst-site-imagery.ts';
 import { assembleAnalystContext } from '../server/worldmonitor/intelligence/v1/chat-analyst-context.ts';
 import { buildAnalystLiveContext, buildAnalystSystemPrompt } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt.ts';
@@ -80,13 +80,13 @@ describe('watched-site imagery projection', () => {
     const evidence = toCountryEvidence('IR', INDEX, IR_ROLLUP, NOW);
     const after = Date.parse('2026-11-15T03:00:00Z');
     assert.equal(siteImagery(evidence.sites[0], after).nextPass, null);
-    assert.deepEqual(countrySiteImagery(evidence, after).credits, [IMAGE_CREDIT.copernicus(2026), IMAGE_CREDIT.usgs]);
+    assert.deepEqual(imageryCredits(countrySiteImagery(evidence, after).sites), [IMAGE_CREDIT.copernicus(2026), IMAGE_CREDIT.usgs]);
   });
 
   it('orders newest image first and lists each credit once, with the orbit credit when a pass is shown', () => {
     const imagery = countrySiteImagery(toCountryEvidence('IR', INDEX, IR_ROLLUP, NOW), NOW);
     assert.deepEqual(imagery.sites.map((s) => s.siteId), ['port-bandar-abbas', 'nuke-natanz', 'base-chabahar']);
-    assert.deepEqual(imagery.credits, [IMAGE_CREDIT.copernicus(2026), IMAGE_CREDIT.usgs, IMAGE_CREDIT.celestrak]);
+    assert.deepEqual(imageryCredits(imagery.sites), [IMAGE_CREDIT.copernicus(2026), IMAGE_CREDIT.usgs, IMAGE_CREDIT.celestrak]);
   });
 
   it('serves nothing from a stale rollup, through the REST currency rule', () => {

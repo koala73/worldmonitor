@@ -5362,8 +5362,6 @@
       "dailyMosaic": "每日镶嵌图",
       "weatherFrame": "气象图像",
       "change": "更换位置",
-      "share": "复制链接",
-      "shareCopied": "链接已复制",
       "showUtc": "UTC",
       "showLocal": "本地时间",
       "alert": "每次开放数据卫星过境上空前提醒，并在每幅新的无云影像出现时提醒。",

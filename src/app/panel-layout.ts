@@ -1176,6 +1176,7 @@ export class PanelLayoutManager implements AppModule {
         // Snapshot while the previous principal is still bound, then record
         // the user who is now locked out.
         const onAction = resolveGateAction(reason, {
+          panelKey: key,
           openAuthModal: () => this.ctx.authModal?.open(),
         });
         gatedPanel.showGatedCta(reason, onAction);

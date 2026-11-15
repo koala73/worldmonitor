@@ -6,6 +6,8 @@ import { describe, it } from 'node:test';
 
 import { composeWatchedSites, type WatchedSiteCandidate } from '../shared/watched-sites.ts';
 import { NUCLEAR_FACILITIES } from '../shared/nuclear-facilities-data.ts';
+import reservoirRegistry from '../scripts/data/strategic-reservoirs.json' with { type: 'json' };
+import { scoreSiteChange } from '../scripts/_orbital-change.mjs';
 import { isWatchedSitesModuleCurrent, renderWatchedSitesModule } from '../scripts/generate-orbital-watched-sites.mjs';
 import { WATCHED_SITES } from '../scripts/shared/orbital-watched-sites.generated.mjs';
 
@@ -28,12 +30,32 @@ describe('watched-site registry', () => {
 
   it('draws on every source list and marks ports and chokepoints maritime', () => {
     const lists = new Set(sites.flatMap((site) => site.origins.map((origin) => origin.list)));
-    assert.deepEqual([...lists].sort(), ['chokepoint', 'conflict-zone', 'hotspot', 'military-base', 'nuclear-facility', 'port']);
+    assert.deepEqual([...lists].sort(), ['chokepoint', 'conflict-zone', 'hotspot', 'military-base', 'nuclear-facility', 'port', 'reservoir']);
     const barakah = sites.find((site) => site.origins.some((o) => o.list === 'nuclear-facility' && o.id === NUCLEAR_FACILITIES.find((f) => f.operator === 'AE')?.id));
     assert.equal(barakah?.countryCode, 'AE');
     for (const site of sites.filter((s) => s.origins.every((o) => o.list === 'port' || o.list === 'chokepoint'))) {
       assert.equal(site.surface, 'maritime', site.id);
     }
+  });
+
+  it('carries every strategic reservoir as its own water site', () => {
+    const reservoirs = sites.filter((site) => site.origins.some((o) => o.list === 'reservoir'));
+    assert.equal(reservoirs.length, reservoirRegistry.reservoirs.length);
+    assert.equal(reservoirs.length, 50);
+    for (const entry of reservoirRegistry.reservoirs) {
+      const site = reservoirs.find((s) => s.id === `reservoir:${entry.id}`);
+      assert.ok(site, entry.id);
+      assert.equal(site.surface, 'water', entry.id);
+      assert.equal(site.countryCode, entry.country, entry.id);
+      assert.deepEqual([site.lat, site.lon], [entry.lat, entry.lon], entry.id);
+    }
+  });
+
+  it('keeps reservoir water sites out of the land change scorer', async () => {
+    const reservoir = sites.find((site) => site.id === 'reservoir:kariba')!;
+    const result = await scoreSiteChange({ site: reservoir } as Parameters<typeof scoreSiteChange>[0]);
+    assert.equal(result.flag, null);
+    assert.equal(result.requests, 0);
   });
 
   it('merges entries of different lists at the same place into one site with both origins', () => {

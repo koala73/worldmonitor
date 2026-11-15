@@ -129,6 +129,10 @@ function installHarness({ smembers = [], smembersOk = true, pipelineOk = true, p
     if (u.endsWith('/pipeline')) {
       let body = [];
       try { body = JSON.parse(opts.body); } catch { /* keep empty */ }
+      if (body.length > 0 && body.every((cmd) => cmd[0] === 'LREM')) {
+        calls.lrem.push(...body.map((cmd) => cmd[3]));
+        return { ok: true, json: async () => body.map(() => ({ result: 1 })) };
+      }
       calls.pipeline.push(body);
       return {
         ok: pipelineOk,
@@ -143,10 +147,6 @@ function installHarness({ smembers = [], smembersOk = true, pipelineOk = true, p
     // fallback treats anything else as a duplicate on the second call.
     if (held && path.startsWith('/LLEN/')) return { ok: true, json: async () => ({ result: held.length }) };
     if (held && path.startsWith('/LRANGE/')) return { ok: true, json: async () => ({ result: held }) };
-    if (path.startsWith('/LREM/')) {
-      calls.lrem.push(decodeURIComponent(path.split('/')[4]));
-      return { ok: true, json: async () => ({ result: 1 }) };
-    }
     if (path.startsWith('/DEL/')) {
       calls.del.push(decodeURIComponent(path.slice('/DEL/'.length)));
       return { ok: true, json: async () => ({ result: 1 }) };
