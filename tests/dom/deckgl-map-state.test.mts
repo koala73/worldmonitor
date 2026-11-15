@@ -874,3 +874,12 @@ describe('DeckGLMap storage facility clicks', () => {
     expect(document.querySelector('.map-popup')).toBeNull();
   });
 });
+
+describe('DeckGLMap teardown', () => {
+  it('closes its popup, which lives on document.body, when the renderer is destroyed', async () => {
+    const { map } = await createMap();
+    const hide = vi.spyOn((map as unknown as { popup: { hide: () => void } }).popup, 'hide');
+    map.destroy();
+    expect(hide).toHaveBeenCalledTimes(1);
+  });
+});

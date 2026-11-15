@@ -1289,6 +1289,18 @@ export class GlobeMap {
       const intensity = d.brightness > 400 ? '#ff2020' : d.brightness > 330 ? '#ff6600' : '#ffaa00';
       setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(`<div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:${intensity};text-shadow:0 0 4px ${intensity}88;">🔥</div>`), "legacy direct innerHTML migration"));
       el.title = `Fire — ${d.region}`;
+      // A satellite detection opens the fire popup, so it is a button the keyboard can reach too.
+      if (fireDetectionPopupData(d.detection)) {
+        el.setAttribute('role', 'button');
+        el.tabIndex = 0;
+        el.setAttribute('aria-label', el.title);
+        el.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          event.stopPropagation();
+          this.handleMarkerClick(d, el);
+        });
+      }
     } else if (d._kind === 'protest') {
       const typeColors: Record<string, string> = {
         riot: '#ff3030', protest: '#ffaa00', strike: '#44aaff',

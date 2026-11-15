@@ -255,4 +255,13 @@ describe('map fire rows', () => {
     expect(fire).toMatchObject({ detected_at: Date.parse('2026-11-14T10:42:00Z'), satellite: 'N', source: 'firms', confidence: 95 });
     expect(fireDetectionPopupData(fire, true)).not.toBeNull();
   });
+
+  it('leave out a detection with no position instead of placing it at 0°, 0°', async () => {
+    const { toMapFires } = await import('@/services/wildfires');
+    const fires = toMapFires([{
+      location: undefined, brightness: 351, frp: 12, confidence: 'FIRE_CONFIDENCE_HIGH', region: 'Ukraine',
+      detectedAt: Date.parse('2026-11-14T10:42:00Z'), dayNight: 'D', satellite: 'N', source: 'firms',
+    }]);
+    expect(fires).toEqual([]);
+  });
 });

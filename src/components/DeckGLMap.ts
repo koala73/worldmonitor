@@ -9432,6 +9432,8 @@ export class DeckGLMap {
     this.controlDisclosureCleanups.forEach(cleanup => cleanup());
     this.controlDisclosureCleanups = [];
     this.destroyed = true;
+    // The popup is appended to document.body, so removing the map container leaves it open.
+    this.popup.hide();
     this.aircraftFetchSeq += 1;
     this.deckFrameProvider.dispose();
     this.settleViewportMovement(false);

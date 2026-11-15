@@ -91,3 +91,17 @@ describe('SVG map fire dot', () => {
     expect(show).not.toHaveBeenCalled();
   });
 });
+
+describe('SVG map teardown', () => {
+  it('closes its popup, which lives on document.body, when the renderer is destroyed', () => {
+    const hide = vi.fn();
+    const map = Object.assign(Object.create(MapComponent.prototype), {
+      popup: { hide },
+      controlDisclosureCleanups: [], listenerAbort: new AbortController(),
+      markerSettleTimer: null, overlayBudgetReplanTimer: null, activeFlashes: new Map(),
+      resizeObserver: null, healthCheckLoop: null,
+    }) as { destroy: () => void };
+    map.destroy();
+    expect(hide).toHaveBeenCalledTimes(1);
+  });
+});

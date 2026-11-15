@@ -5447,13 +5447,13 @@
         "region": "Eneo",
         "source": "Chanzo",
         "sourceCredit": "NASA FIRMS",
-        "mosaicTitle": "Usanidi wa kila siku",
+        "mosaicTitle": "Mozaiki ya kila siku",
         "mosaicLoading": "Kuangalia NASA GIBS…",
         "mosaicCaption": "Picha iliyounganishwa ya mizunguko ya {{source}} ya siku ya {{date}}; moto unaweza kufichwa na mawingu au moshi.",
-        "mosaicNone": "NASA GIBS haina usanidi wa {{source}} kwa {{date}}.",
-        "mosaicNoLayer": "Hakuna usanidi wa kila siku unapatikana kwa sateliti hii.",
-        "mosaicUnavailable": "Usanidi wa kila siku haukumia.",
-        "mosaicAlt": "Usanidi wa kila siku wa NASA GIBS {{source}} kwa {{date}}"
+        "mosaicNone": "NASA GIBS haina mozaiki ya {{source}} kwa {{date}}.",
+        "mosaicNoLayer": "Hakuna mozaiki ya kila siku inayopatikana kwa sateliti hii.",
+        "mosaicUnavailable": "Imeshindwa kupakia mozaiki ya kila siku.",
+        "mosaicAlt": "Mozaiki ya kila siku ya NASA GIBS {{source}} kwa {{date}}"
       }
     }
   },

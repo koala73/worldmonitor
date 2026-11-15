@@ -124,9 +124,10 @@ export function flattenFires(regions: Record<string, FireDetection[]>): FireDete
 }
 
 export function toMapFires(fires: Array<Pick<FireDetection, 'location' | 'brightness' | 'frp' | 'confidence' | 'region' | 'detectedAt' | 'dayNight'> & Partial<Pick<FireDetection, 'satellite' | 'source'>>>): MapFire[] {
-  return fires.map(f => ({
-    lat: f.location?.latitude ?? 0,
-    lon: f.location?.longitude ?? 0,
+  // A detection with no position cannot be placed; defaulting it to 0°, 0° drew a fire off West Africa.
+  return fires.filter(f => f.location != null).map(f => ({
+    lat: f.location!.latitude,
+    lon: f.location!.longitude,
     brightness: f.brightness,
     frp: f.frp,
     confidence: confidenceToNumber(f.confidence),

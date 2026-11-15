@@ -9,14 +9,15 @@
  * WM_VERIFY_ORBITAL_VIEWPORT=mobile drives the 390px sheet on the SVG map;
  * WM_VERIFY_ORBITAL_THEME=light drives the light theme. The drive fails if the popup
  * paints an image from anything but a blob: URL, if the empty state still shows an
- * image, or if the fire's coordinates reach a non-archive host.
+ * image or does not say GIBS has no mosaic for the date, or if a request the popup makes
+ * carries the fire's point (as a pair or a box midpoint) to a non-archive host.
  */
 import { fixtureCatalog } from './orbital-watch.mjs';
+import { pointLeak } from './_point-leak.mjs';
 import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
 
 const FIRE = { lat: 48.5, lon: 37.25 };
 const ARCHIVE_HOSTS = ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com', 'gibs.earthdata.nasa.gov', 'view.eumetsat.int'];
-const COORD = /48\.5|37\.25/;
 const DAY_MS = 86_400_000;
 
 /** The newest UTC day the archive holds a VIIRS Suomi NPP mosaic for; GIBS can lag the calendar by days. */
@@ -74,6 +75,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await page.waitForTimeout(2500);
 
   const popup = page.locator('.map-popup');
+  // The map opens centred on the fire, so start-up viewport requests carry it by design; check the popup's own.
+  const fromClick = requests.length;
   if (renderer === 'svg') {
     await page.locator('.fire-dot-popup').first().waitFor({ state: 'attached', timeout: 30_000 });
     await page.locator('.fire-dot-popup').first().evaluate((el) => el.click());
@@ -90,8 +93,17 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await mosaic.waitFor({ timeout: 15_000 });
   log('facts', (await popup.locator('.popup-stats').first().innerText()).replace(/\s+/g, ' '));
   if (empty) {
-    await page.waitForFunction(() => !document.querySelector('[data-fire-mosaic] .popup-imagery-status')?.textContent?.includes('Checking'), null, { timeout: 30_000 });
+    await page.waitForFunction(() => {
+      const text = document.querySelector('[data-fire-mosaic] .popup-imagery-status')?.textContent?.trim() ?? '';
+      return text !== '' && !text.includes('Checking');
+    }, null, { timeout: 30_000 });
     if (await mosaic.locator('img').count()) throw new Error('the empty state still shows a mosaic image');
+    // Only the no-mosaic sentence for the detection's date passes; an archive error or a blank body fails.
+    const status = (await mosaic.locator('.popup-imagery-status').innerText()).trim();
+    const date = new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(Date.parse(`${day}T00:00:00Z`));
+    if (/^NASA GIBS has no .+ mosaic for (.+)\.$/.exec(status)?.[1] !== date) {
+      throw new Error(`the empty state says ${JSON.stringify(status)}, not that GIBS has no mosaic for ${date}`);
+    }
   } else {
     await mosaic.locator('[data-fire-mosaic-image] img').waitFor({ timeout: 60_000 });
     const src = await mosaic.locator('img').getAttribute('src');
@@ -105,9 +117,9 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await popup.evaluate((el) => { el.scrollTop = 0; });
   await shot(`fire-${empty ? 'none' : 'image'}-${mobile ? 'mobile' : 'desktop'}-${theme}`);
 
-  const leaks = requests.filter((r) => {
+  const leaks = requests.slice(fromClick).filter((r) => {
     const url = new URL(r.url);
-    return !ARCHIVE_HOSTS.includes(url.hostname) && (COORD.test(url.pathname + url.search) || COORD.test(r.body));
+    return !ARCHIVE_HOSTS.includes(url.hostname) && (pointLeak(url.pathname + url.search, FIRE) || pointLeak(r.body, FIRE));
   });
   if (leaks.length) throw new Error(`the fire's coordinates reached a non-archive host: ${leaks.map((r) => r.url).join(', ')}`);
   return { renderer, empty, leaks: leaks.length };
