@@ -71,6 +71,8 @@ export interface ServerThreatTimeline {
   /** First UTC day (YYYY-MM-DD) the history was written; earlier days are partial. */
   recordingSince: string | null;
   updatedAt: string;
+  /** Days inside the window a seeder outage left incomplete. */
+  partialDays?: string[];
   days: Array<{
     date: string;
     counts: { critical: number; high: number; medium: number; low: number; info: number };

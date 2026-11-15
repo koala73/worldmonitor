@@ -71,7 +71,7 @@ export interface ThreatTimelineState {
   statusMessage: string;
   degradedReasons: string[];
   hasData: boolean;
-  /** Set when day counts come from the seeded history rather than the listed items. */
+  /** Set when day counts come from the seeded history: its critical-to-low stories (info excluded). */
   historyStoryCount?: number;
 }
 
@@ -207,6 +207,7 @@ export function buildThreatTimelineStateFromHistory(
   const recordingSince = typeof history.recordingSince === 'string' && DAY_KEY_RE.test(history.recordingSince)
     ? history.recordingSince
     : recordedDates[0]!;
+  const outageDays = new Set(Array.isArray(history.partialDays) ? history.partialDays : []);
 
   const nowMs = options.nowMs ?? Date.now();
   const todayStart = utcDayStartMs(nowMs);
@@ -227,7 +228,7 @@ export function buildThreatTimelineStateFromHistory(
       startMs: dayStart,
       counts,
       total,
-      partial: key < recordingSince || key > lastRecorded,
+      partial: key < recordingSince || key > lastRecorded || outageDays.has(key),
     });
   }
 
@@ -240,7 +241,7 @@ export function buildThreatTimelineStateFromHistory(
       return { level, label: THREAT_LEVEL_LABELS[level], count: levelItems.length, items: levelItems.slice(0, 5) };
     })
     .filter((group) => group.count > 0);
-  const historyStoryCount = THREAT_LEVELS.reduce((sum, level) => sum + totals[level], 0);
+  const historyStoryCount = THREAT_LEVELS.reduce((sum, level) => (level === 'info' ? sum : sum + totals[level]), 0);
 
   return {
     days,
@@ -250,7 +251,7 @@ export function buildThreatTimelineStateFromHistory(
     status: options.status ?? 'ok',
     statusMessage: options.statusMessage ?? '',
     degradedReasons,
-    hasData: historyStoryCount > 0 || sortedItems.length > 0,
+    hasData: THREAT_LEVELS.some(level => totals[level] > 0) || sortedItems.length > 0,
     historyStoryCount,
   };
 }

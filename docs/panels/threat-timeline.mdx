@@ -7,9 +7,9 @@ The **Threat Timeline** panel (internal id `threat-timeline`) turns the threat-l
 
 ## What the panel shows
 
-A seven-day stacked timeline grouped by the canonical threat levels: `critical`, `high`, `medium`, `low`, and `info`.
+A seven-day stacked timeline grouped by threat level: `critical`, `high`, `medium`, and `low`. Stories the classifier leaves at `info` (no threat signal) are recorded but not charted: their volume follows news volume, not threat.
 
-- **Distribution chart** - one stacked bar per UTC day for the last seven days, including today. Each bar counts the distinct news stories first seen that day, by threat level. A story that stays in the news for several days counts once, on its first day. Days the history does not fully cover are drawn faded.
+- **Distribution chart** - one stacked bar per UTC day for the last seven days, including today. Each bar counts the distinct news stories first seen that day, by threat level. A story that stays in the news for several days counts once, on its first day. Days the history does not fully cover are drawn faded: days before recording began, and days a seeder outage longer than the digest's reach left incomplete.
 - **Trend summary** - critical/high stories over the week, days with at least one critical/high story, and a recent-vs-earlier label: the last three days against the first three. A move must be at least 2 stories and 25% to read as worsening or easing. Until seven days are recorded the label reads `Building`.
 - **Top stories now** - the current top stories, sorted by threat severity first, then recency, with up to five shown under each severity lane. Their counts are the current list, not the week.
 - **Source provenance** - each item keeps its source label and source-count badge when available. Fallback clustered stories can surface `Keyword fallback` when their threat label came from the local classifier.
@@ -31,7 +31,7 @@ The primary source is the existing intelligence insights snapshot read through `
 - Chart fields: `threatTimeline.days[].date` and `threatTimeline.days[].counts`, plus `threatTimeline.recordingSince`
 - Story list fields: `topStories[].threatLevel`, `topStories[].pubDate`, title, source, link, and source count
 
-Each insights run sees only the current news digest, so the seeder keeps the week in `news:insights:v1:threat-history`. Every clustered story in the digest is fingerprinted by its member headlines. A story that shares a headline with one already stored keeps its original day and takes the highest threat level seen. A new story is placed on the UTC day of its earliest headline. Stories older than the window drop out. The published `threatTimeline` is the seven daily counts from that history.
+Each insights run sees only the current news digest, so the seeder keeps the week in `news:insights:v1:threat-history`. Every clustered story in the digest is fingerprinted by its member headlines. A cluster that shares a headline with stored stories is those stories: they merge into one, keeping the earliest day and the highest threat level seen. A new story is placed on the UTC day of its earliest headline. Stories older than the window drop out. If the previous run is older than the oldest point the digest still covers completely, the days in between are listed in `partialDays`. The published `threatTimeline` is the seven daily counts from that history, with `partialDays` for the window.
 
 Payloads seeded before the history existed carry no `threatTimeline`. For those, the chart falls back to binning the top stories by publish date, which in practice fills only the current day.
 

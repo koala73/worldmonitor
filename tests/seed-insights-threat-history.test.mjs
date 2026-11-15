@@ -60,6 +60,67 @@ describe('seed-insights threat history', () => {
     assert.equal(third.recordingSince, '2026-11-15', 'recording start survives later runs');
   });
 
+  it('merges stored stories that a later cluster joins, keeping the earliest day and highest level', () => {
+    const pubMsByTitle = new Map([
+      ['Dam breach floods valley', NOW - 3 * DAY_MS],
+      ['Valley evacuated after dam failure', NOW - DAY_MS],
+    ]);
+    const first = seedInsights.mergeThreatHistory(null, [
+      cluster(['Dam breach floods valley'], { level: 'high' }),
+      cluster(['Valley evacuated after dam failure'], { level: 'critical' }),
+    ], { nowMs: NOW, pubMsByTitle });
+    assert.equal(Object.values(first.days).flat().length, 2, 'precondition: stored as two stories');
+
+    const joined = seedInsights.mergeThreatHistory(roundTrip(first), [
+      cluster(['Valley evacuated after dam failure', 'Dam breach floods valley'], { level: 'medium' }),
+    ], { nowMs: NOW + 30 * 60_000, pubMsByTitle });
+
+    const stories = Object.values(joined.days).flat();
+    assert.equal(stories.length, 1, 'the joined story counts once');
+    assert.deepEqual(Object.keys(joined.days).filter(date => joined.days[date].length > 0), ['2026-11-12']);
+    assert.equal(stories[0].l, 'critical');
+    assert.equal(stories[0].k.length, 2);
+
+    // Both headlines now resolve to the merged story.
+    const again = seedInsights.mergeThreatHistory(roundTrip(joined), [
+      cluster(['Dam breach floods valley'], { level: 'low' }),
+      cluster(['Valley evacuated after dam failure'], { level: 'low' }),
+    ], { nowMs: NOW + DAY_MS, pubMsByTitle });
+    assert.equal(Object.values(again.days).flat().length, 1);
+  });
+
+  it('marks days an outage left unrecoverable as partial', () => {
+    const before = seedInsights.mergeThreatHistory(null, [cluster(['Opening story'], { level: 'high' })], { nowMs: NOW - 5 * DAY_MS });
+    // The seeder was down five days; the digest only reaches back two.
+    const after = seedInsights.mergeThreatHistory(roundTrip(before), [cluster(['Return story'], { level: 'high' })], {
+      nowMs: NOW,
+      coverageStartMs: NOW - 2 * DAY_MS,
+    });
+    assert.deepEqual(after.partialDays, ['2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13']);
+    assert.deepEqual(seedInsights.projectThreatTimeline(after, { nowMs: NOW }).partialDays, after.partialDays);
+
+    // A short gap the digest covers adds nothing.
+    const next = seedInsights.mergeThreatHistory(roundTrip(after), [], { nowMs: NOW + 60 * 60_000, coverageStartMs: NOW - 2 * DAY_MS });
+    assert.deepEqual(next.partialDays, after.partialDays);
+
+    // Partial days leave with the window.
+    const later = seedInsights.mergeThreatHistory(roundTrip(next), [], { nowMs: NOW + 5 * DAY_MS, coverageStartMs: NOW });
+    assert.deepEqual(later.partialDays, []);
+  });
+
+  it('takes the coverage bound from the category whose oldest item is newest', () => {
+    const digest = {
+      categories: {
+        quiet: { items: [{ publishedAt: NOW - 4 * DAY_MS }, { publishedAt: NOW }] },
+        busy: { items: [{ publishedAt: NOW - DAY_MS }, { publishedAt: NOW }] },
+        empty: { items: [] },
+      },
+    };
+    assert.equal(seedInsights.digestCoverageStartMs(digest), NOW - DAY_MS);
+    assert.equal(seedInsights.digestCoverageStartMs([{ pubDate: NOW - 3 * DAY_MS }, { pubDate: NOW }]), NOW - 3 * DAY_MS);
+    assert.equal(seedInsights.digestCoverageStartMs({}), null);
+  });
+
   it('keeps earlier days across runs and drops days that leave the window', () => {
     let state = null;
     for (let day = 0; day < 9; day++) {

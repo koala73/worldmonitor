@@ -494,7 +494,7 @@ describe('ThreatTimelinePanel seeded history', () => {
     assert.deepEqual(state.days.map(day => day.total), [8, 3, 1, 0, 4, 1, 8]);
     assert.equal(state.days.filter(day => day.total > 0).length, 6, 'six of seven days carry stories');
     assert.deepEqual(state.totals, counts({ critical: 1, high: 5, medium: 10, low: 4, info: 5 }));
-    assert.equal(state.historyStoryCount, 25);
+    assert.equal(state.historyStoryCount, 20, 'info stories are not threat stories');
     assert.equal(state.days.some(day => day.partial), false);
     assert.deepEqual(
       describeThreatTimelineTrend(state.days),
@@ -544,6 +544,14 @@ describe('ThreatTimelinePanel seeded history', () => {
     assert.equal(state.days[5]?.counts.high, 3, 'yesterday keeps its count');
     assert.equal(state.days[6]?.total, 0);
     assert.equal(state.days[6]?.partial, true, 'today is not recorded yet');
+  });
+
+  it('marks outage days partial even inside the recorded range', () => {
+    const history = { ...seededHistory(NOW_MS, [{ high: 1 }, { high: 1 }, {}, {}, { high: 1 }, { high: 1 }, { high: 1 }]), partialDays: [dayKeyDaysAgo(NOW_MS, 4), dayKeyDaysAgo(NOW_MS, 3)] };
+    const state = buildThreatTimelineStateFromHistory(history, [], { nowMs: NOW_MS });
+    assert.ok(state);
+    assert.deepEqual(state.days.map(day => Boolean(day.partial)), [false, false, true, true, false, false, false]);
+    assert.equal(describeThreatTimelineTrend(state.days).label, 'Building');
   });
 
   it('returns null without a usable history so the caller falls back to the listed items', () => {
@@ -655,7 +663,7 @@ describe('ThreatTimelinePanel refresh behavior', () => {
 
       const now = Date.now();
       panel.updateFromServerInsights(runtimeServerInsights({
-        threatTimeline: seededHistory(now, [{ high: 2 }, { medium: 3 }, { high: 1 }, {}, { low: 4 }, { critical: 1 }, { high: 1 }]),
+        threatTimeline: seededHistory(now, [{ high: 2, info: 40 }, { medium: 3 }, { high: 1 }, {}, { low: 4 }, { critical: 1 }, { high: 1 }]),
       }));
       await waitForPanelRender();
 
@@ -666,8 +674,9 @@ describe('ThreatTimelinePanel refresh behavior', () => {
       };
       assert.ok(html.includes(`<title>${dayLabel(6)} High: 2</title>`), 'the oldest day has its own bar');
       assert.ok(html.includes(`<title>${dayLabel(2)} Low: 4</title>`));
-      assert.match(html, /12 stories over 7 days/);
+      assert.match(html, /12 threat stories over 7 days/);
       assert.match(html, /Top stories now/);
+      assert.doesNotMatch(html, /Info: \d|Info <strong>/, 'info is neither charted nor in the legend');
       assert.match(html, /Fresh server-backed escalation/);
     } finally {
       panel.destroy();

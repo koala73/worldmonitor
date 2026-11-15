@@ -20,7 +20,11 @@ import {
   type TimelineThreatLevel,
 } from './threat-timeline-utils';
 
-const STACK_LEVELS = [...THREAT_LEVELS].reverse() as TimelineThreatLevel[];
+// Info is the classifier's no-threat default, not a severity: it moves with
+// news volume rather than threat, and at ~45% of stories it flattened the
+// levels that matter. The chart and legend show threat levels only.
+const CHART_LEVELS = THREAT_LEVELS.filter(level => level !== 'info');
+const STACK_LEVELS = [...CHART_LEVELS].reverse() as TimelineThreatLevel[];
 
 interface StackRow {
   key: string;
@@ -40,7 +44,7 @@ export class ThreatTimelinePanel extends Panel {
       id: 'threat-timeline',
       title: 'Threat Timeline',
       showCount: false,
-      infoTooltip: 'Stories per day by threat level over the last seven days, each counted once on the day it first appeared. The list shows the current top stories.',
+      infoTooltip: 'Stories per day by threat level (critical to low) over the last seven days, each counted once on the day it first appeared. Unclassified (info) stories are not charted. The list shows the current top stories.',
       defaultRowSpan: 2,
     });
 
@@ -127,7 +131,7 @@ export class ThreatTimelinePanel extends Panel {
           </div>
         </div>
         ${chart}
-        <div class="threat-timeline-legend">${THREAT_LEVELS.map(level => `
+        <div class="threat-timeline-legend">${CHART_LEVELS.map(level => `
           <span class="threat-timeline-legend-item">
             <span class="threat-timeline-swatch" style="background:${THREAT_LEVEL_COLORS[level]}"></span>
             ${THREAT_LEVEL_LABELS[level]} <strong>${state.totals[level]}</strong>
@@ -148,7 +152,7 @@ export class ThreatTimelinePanel extends Panel {
     const items = `${total} top stor${total === 1 ? 'y' : 'ies'} from ${sourceLabel}`;
     if (state.historyStoryCount === undefined) return items;
     const stories = state.historyStoryCount;
-    return `${stories} stor${stories === 1 ? 'y' : 'ies'} over 7 days · ${items}`;
+    return `${stories} threat stor${stories === 1 ? 'y' : 'ies'} over 7 days · ${items}`;
   }
 
   private renderEmpty(message: string, reasons: string[] = []): void {
@@ -182,7 +186,7 @@ export class ThreatTimelinePanel extends Panel {
       low: day.counts.low,
       info: day.counts.info,
     }));
-    const maxTotal = Math.max(1, d3.max(days, day => day.total) ?? 1);
+    const maxTotal = Math.max(1, d3.max(days, day => CHART_LEVELS.reduce((sum, level) => sum + day.counts[level], 0)) ?? 1);
     const x = d3.scaleBand<string>()
       .domain(days.map(day => day.key))
       .range([margin.left, width - margin.right])

@@ -995,27 +995,36 @@ function normalizeThreatHistoryState(raw) {
   const recordingSince = typeof raw?.recordingSince === 'string' && DAY_KEY_RE.test(raw.recordingSince)
     ? raw.recordingSince
     : null;
-  return { recordingSince, days };
+  const partialDays = Array.isArray(raw?.partialDays)
+    ? raw.partialDays.filter(date => typeof date === 'string' && DAY_KEY_RE.test(date))
+    : [];
+  return { recordingSince, partialDays, days };
 }
 
 /**
  * Add this run's clusters to the stored history. A cluster that shares any
- * member headline with a stored story is that story: its level rises to the
- * highest seen and its new headlines join the story, but it is never counted
- * again. A new story lands on the UTC day of its earliest member headline.
- * Days older than the window are dropped.
+ * member headline with stored stories is those stories: they merge into one
+ * (earliest day, highest level, all headlines), and the merged story is never
+ * counted again. A new story lands on the UTC day of its earliest member
+ * headline. Days older than the window are dropped.
+ *
+ * `coverageStartMs` is how far back this run's digest is complete. When the
+ * previous run is older than that, the stories published in between are
+ * lost, so the days of that gap are recorded as partial.
  */
-export function mergeThreatHistory(previous, clusters, { nowMs = Date.now(), pubMsByTitle = new Map() } = {}) {
+export function mergeThreatHistory(previous, clusters, { nowMs = Date.now(), pubMsByTitle = new Map(), coverageStartMs = null } = {}) {
   const state = normalizeThreatHistoryState(previous);
   const window = threatTimelineWindow(nowMs);
   const oldest = window[0];
   const today = window[window.length - 1];
   const days = {};
   const byFingerprint = new Map();
+  const storyDate = new Map();
   for (const [date, stories] of Object.entries(state.days)) {
     if (date < oldest || date > today) continue;
     days[date] = stories;
     for (const story of stories) {
+      storyDate.set(story, date);
       for (const key of story.k) byFingerprint.set(key, story);
     }
   }
@@ -1027,13 +1036,25 @@ export function mergeThreatHistory(previous, clusters, { nowMs = Date.now(), pub
     const keys = [...new Set(titles.map(threatStoryFingerprint).filter(Boolean))];
     if (keys.length === 0) continue;
     const level = threatHistoryLevel(cluster?.threat?.level);
-    const known = keys.map(key => byFingerprint.get(key)).find(Boolean);
-    if (known) {
-      if (threatHistoryRank(level) > threatHistoryRank(known.l)) known.l = level;
+    const matched = [...new Set(keys.map(key => byFingerprint.get(key)).filter(Boolean))];
+    if (matched.length > 0) {
+      matched.sort((a, b) => storyDate.get(a).localeCompare(storyDate.get(b), 'en-US'));
+      const [target, ...absorbed] = matched;
+      for (const story of absorbed) {
+        if (threatHistoryRank(story.l) > threatHistoryRank(target.l)) target.l = story.l;
+        const date = storyDate.get(story);
+        days[date] = days[date].filter(entry => entry !== story);
+        storyDate.delete(story);
+        for (const key of story.k) {
+          if (!target.k.includes(key)) target.k.push(key);
+          byFingerprint.set(key, target);
+        }
+      }
+      if (threatHistoryRank(level) > threatHistoryRank(target.l)) target.l = level;
       for (const key of keys) {
-        if (byFingerprint.has(key)) continue;
-        known.k.push(key);
-        byFingerprint.set(key, known);
+        if (byFingerprint.get(key) === target) continue;
+        target.k.push(key);
+        byFingerprint.set(key, target);
       }
       continue;
     }
@@ -1044,15 +1065,50 @@ export function mergeThreatHistory(previous, clusters, { nowMs = Date.now(), pub
     if (date < oldest) continue;
     const story = { l: level, k: keys };
     (days[date] ||= []).push(story);
+    storyDate.set(story, date);
     for (const key of keys) byFingerprint.set(key, story);
+  }
+  for (const [date, stories] of Object.entries(days)) {
+    if (stories.length === 0) delete days[date];
+  }
+
+  const partialDays = new Set(state.partialDays);
+  const previousRunMs = itemPubMs(previous?.updatedAt);
+  if (previousRunMs !== null && Number.isFinite(coverageStartMs) && previousRunMs < coverageStartMs) {
+    const gapEnd = threatHistoryDayKey(Math.min(coverageStartMs, nowMs));
+    for (let ms = Date.parse(`${threatHistoryDayKey(previousRunMs)}T00:00:00.000Z`); ; ms += THREAT_HISTORY_DAY_MS) {
+      const date = threatHistoryDayKey(ms);
+      if (date > gapEnd) break;
+      partialDays.add(date);
+    }
   }
 
   return {
     version: 1,
     recordingSince: state.recordingSince ?? today,
     updatedAt: new Date(nowMs).toISOString(),
+    partialDays: [...partialDays].filter(date => date >= oldest && date <= today).sort(),
     days,
   };
+}
+
+/**
+ * How far back the digest is complete: each category is capped, so a busy
+ * category drops old items first. The bound is the newest of the categories'
+ * oldest items. Null when the digest carries no dated items.
+ */
+export function digestCoverageStartMs(digest) {
+  const groups = digest?.categories && typeof digest.categories === 'object'
+    ? Object.values(digest.categories).map(bucket => (Array.isArray(bucket?.items) ? bucket.items : []))
+    : [digestItemsForInsights(digest)];
+  let bound = null;
+  for (const items of groups) {
+    const times = items.map(item => itemPubMs(item?.pubDate ?? item?.publishedAt ?? item?.date)).filter(ms => ms !== null);
+    if (times.length === 0) continue;
+    const oldestInGroup = Math.min(...times);
+    if (bound === null || oldestInGroup > bound) bound = oldestInGroup;
+  }
+  return bound;
 }
 
 /** Earliest publish time per headline, for first-seen day placement. */
@@ -1071,7 +1127,8 @@ export function buildPubMsByTitle(items) {
 /**
  * Public day counts for the panel: the window's seven UTC days, oldest
  * first. `recordingSince` is the first day the history was written; days
- * before it hold only what that first digest still carried.
+ * before it hold only what that first digest still carried. `partialDays`
+ * are days a seeder outage left incomplete.
  */
 export function projectThreatTimeline(state, { nowMs = Date.now() } = {}) {
   const days = threatTimelineWindow(nowMs).map(date => {
@@ -1079,10 +1136,12 @@ export function projectThreatTimeline(state, { nowMs = Date.now() } = {}) {
     for (const story of state?.days?.[date] ?? []) counts[threatHistoryLevel(story.l)] += 1;
     return { date, counts };
   });
+  const window = new Set(threatTimelineWindow(nowMs));
   return {
     version: 1,
     recordingSince: state?.recordingSince ?? null,
     updatedAt: state?.updatedAt ?? new Date(nowMs).toISOString(),
+    partialDays: (Array.isArray(state?.partialDays) ? state.partialDays : []).filter(date => window.has(date)),
     days,
   };
 }
@@ -1108,16 +1167,20 @@ async function readThreatHistory() {
   }
 }
 
-async function buildThreatHistoryForRun(clusters, normalizedItems, nowMs = Date.now()) {
+async function buildThreatHistoryForRun(clusters, normalizedItems, digest, nowMs = Date.now()) {
   const previous = await readThreatHistory();
   if (previous === undefined) return null;
   const threatHistory = mergeThreatHistory(previous, clusters, {
     nowMs,
     pubMsByTitle: buildPubMsByTitle(normalizedItems),
+    coverageStartMs: digestCoverageStartMs(digest),
   });
   const threatTimeline = projectThreatTimeline(threatHistory, { nowMs });
   const stories = Object.values(threatHistory.days).reduce((sum, list) => sum + list.length, 0);
-  console.log(`  Threat history: ${stories} stories over ${Object.keys(threatHistory.days).length} day(s), since ${threatHistory.recordingSince}`);
+  console.log(
+    `  Threat history: ${stories} stories over ${Object.keys(threatHistory.days).length} day(s), since ${threatHistory.recordingSince}`
+      + (threatHistory.partialDays.length > 0 ? `; partial ${threatHistory.partialDays.join(',')}` : ''),
+  );
   return { threatHistory, threatTimeline };
 }
 
@@ -1218,7 +1281,7 @@ async function fetchInsights() {
 
   const clusters = clusterItems(normalizedItems);
   console.log(`  Clusters: ${clusters.length}`);
-  const threatHistoryRun = await buildThreatHistoryForRun(clusters, normalizedItems);
+  const threatHistoryRun = await buildThreatHistoryForRun(clusters, normalizedItems, digest);
 
   // #4920 coverage ledger: capture what the selection gates dropped.
   const selectionStats = {};
