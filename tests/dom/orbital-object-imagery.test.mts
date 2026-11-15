@@ -12,11 +12,13 @@ const harness = vi.hoisted(() => ({
   siteRead: null as unknown as Mock<(request: unknown, options?: WithSignal) => Promise<unknown>>,
   stac: null as unknown as Mock<(archive: string, query?: unknown) => Promise<unknown>>,
   evidence: null as unknown as Mock<(input?: unknown) => unknown>,
+  catalog: { fetchedAt: 1, inventoryVersion: 'v1' },
 }));
 
 vi.mock('@/services/orbital/pass-client', () => ({
   createOrbitalPassClient: () => ({ lookup: (query: unknown, options?: WithSignal) => harness.lookup(query, options), dispose: () => {} }),
 }));
+vi.mock('@/services/orbital/catalog', () => ({ loadOrbitalCatalog: async () => ({ ...harness.catalog }) }));
 vi.mock('@/services/orbital/archive-stac', () => ({ searchStacArchive: (archive: string, query: unknown) => harness.stac(archive, query) }));
 vi.mock('@/services/orbital/match', () => ({ assembleEvidence: (input: unknown) => harness.evidence(input) }));
 vi.mock('@/services/rpc-client', () => ({
@@ -30,7 +32,7 @@ vi.mock('../../shared/watched-sites', () => ({
   composeWatchedSites: () => [{ id: 'military-base:al_udeid', origins: [{ list: 'military-base', id: 'al_udeid' }] }],
 }));
 
-import { LATEST_IMAGE_DAYS, loadObjectImagery, type ImageryTarget } from '@/services/orbital/object-imagery';
+import { forgetNextPasses, LATEST_IMAGE_DAYS, loadObjectImagery, NEXT_PASS_HOURS, type ImageryTarget, type ObjectImagery } from '@/services/orbital/object-imagery';
 
 const HOUR = 3_600_000;
 const point = { lat: 25.12, lon: 51.31 };
@@ -41,6 +43,7 @@ const passLookup = (passes: Array<{ name: string; timeMs: number; inFootprint?: 
   point,
   window: { startMs: Date.now() - 30 * 24 * HOUR, endMs: Date.now() + 72 * HOUR },
   nowMs: Date.now(),
+  catalog: { status: 'ok', ...harness.catalog },
   passes: passes.map((p) => ({ profileId: 'sentinel-2', inFootprint: true, ...p })),
 });
 const record = (over: Record<string, unknown> = {}) => ({
@@ -52,6 +55,8 @@ const record = (over: Record<string, unknown> = {}) => ({
 const browserImage = 'https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a/items/S2A_X/thumbnail.jpg';
 
 beforeEach(() => {
+  forgetNextPasses();
+  harness.catalog = { fetchedAt: 1, inventoryVersion: 'v1' };
   harness.lookup = vi.fn<(query: unknown, options?: WithSignal) => Promise<unknown>>(async () => passLookup([{ name: 'LANDSAT 9', timeMs: Date.now() + 2 * HOUR }]));
   harness.siteRead = vi.fn<(request: unknown, options?: WithSignal) => Promise<unknown>>(async () => record());
   harness.stac = vi.fn<(archive: string, query?: unknown) => Promise<unknown>>(async (archive) => ({ status: 'ok', archive, items: [] }));
@@ -82,6 +87,18 @@ describe('loadObjectImagery: watched-site record', () => {
     expect(result.nextPass?.satellite).toBe('LANDSAT 9');
   });
 
+  it('keeps the painted record image when a newer pass lookup supersedes this one', async () => {
+    harness.siteRead.mockImplementation(async () => record({ nextPass: undefined }));
+    // The shared pass client rejects a superseded lookup with AbortError although this popup never closed.
+    harness.lookup.mockImplementation(async () => { throw new DOMException('Superseded by a newer pass lookup', 'AbortError'); });
+    const open = new AbortController();
+    const result = await loadObjectImagery(site, open.signal);
+
+    expect(open.signal.aborted).toBe(false);
+    expect(result.latest?.datetime).toBe('2026-11-13T07:00:00Z');
+    expect(result.nextPass).toBeNull();
+  });
+
   it('keeps the record image with no next pass when the local pass lookup fails', async () => {
     harness.siteRead.mockImplementation(async () => record({ nextPass: undefined }));
     harness.lookup.mockImplementation(async () => { throw new Error('catalog unavailable'); });
@@ -94,7 +111,7 @@ describe('loadObjectImagery: watched-site record', () => {
 
 describe('loadObjectImagery: fallback to the in-browser lookup', () => {
   const expectBrowserAnswer = (result: Awaited<ReturnType<typeof loadObjectImagery>>) => {
-    expect(harness.lookup).toHaveBeenCalledWith({ point }, expect.anything());
+    expect(harness.lookup).toHaveBeenCalledWith({ point, pastDays: 0, futureHours: NEXT_PASS_HOURS }, expect.anything());
     expect(harness.stac.mock.calls.map(([archive]) => archive).sort()).toEqual(['earth-search', 'planetary-computer']);
     expect(result.latest).toMatchObject({ datetime: '2026-11-12T10:00:00.000Z', archive: 'earth-search', candidates: [browserImage] });
     expect(result.nextPass?.satellite).toBe('LANDSAT 9');
@@ -190,5 +207,116 @@ describe('loadObjectImagery: a closed popup', () => {
 
     await loadObjectImagery(site, closed.signal);
     expect(harness.lookup).not.toHaveBeenCalled();
+  });
+});
+
+describe('#10758 item 1: the popup pass work', () => {
+  it('starts no pass job for a reservoir, which names its own next measurement', async () => {
+    const result = await loadObjectImagery({ kind: 'point', point, ownNextPass: true });
+
+    expect(harness.lookup).not.toHaveBeenCalled();
+    expect(result.latest).toMatchObject({ candidates: [browserImage] });
+    expect(result.nextPass).toBeNull();
+  });
+
+  it('asks the pass worker for the future window only', async () => {
+    await loadObjectImagery({ kind: 'point', point });
+    expect(harness.lookup.mock.calls[0]![0]).toEqual({ point, pastDays: 0, futureHours: NEXT_PASS_HOURS });
+  });
+
+  it('hands the image over before the pass worker answers', async () => {
+    let answerPasses!: (value: unknown) => void;
+    harness.lookup.mockImplementation(() => new Promise((resolve) => { answerPasses = resolve; }));
+    const early: ObjectImagery[] = [];
+    const pending = loadObjectImagery({ kind: 'point', point }, undefined, (imagery) => early.push(imagery));
+    await vi.waitFor(() => expect(early).toHaveLength(1));
+
+    expect(early[0]).toMatchObject({ latest: { candidates: [browserImage] }, nextPass: null, nextPassPending: true });
+    answerPasses(passLookup([{ name: 'LANDSAT 9', timeMs: Date.now() + 2 * HOUR }]));
+    expect((await pending).nextPass?.satellite).toBe('LANDSAT 9');
+  });
+
+  it('keeps a failed archive unavailable when no pass job runs', async () => {
+    harness.evidence.mockImplementation(() => ({ acquisitions: [], failures: [{ archive: 'earth-search', reason: 'timeout' }] }));
+    const result = await loadObjectImagery({ kind: 'point', point, ownNextPass: true });
+    expect(result).toMatchObject({ latest: null, imageSearchFailed: true });
+  });
+});
+
+describe('#10758 item 3: the next pass is shared in browser memory', () => {
+  it('reopening the same popup reuses the next pass until it happens', async () => {
+    await loadObjectImagery({ kind: 'point', point });
+    const again = await loadObjectImagery({ kind: 'point', point });
+
+    expect(harness.lookup).toHaveBeenCalledTimes(1);
+    expect(again.nextPass?.satellite).toBe('LANDSAT 9');
+  });
+
+  it('looks again once the remembered pass has happened', async () => {
+    const startMs = Date.now();
+    let clockMs = startMs;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => clockMs);
+    harness.lookup.mockImplementationOnce(async () => passLookup([{ name: 'SOON', timeMs: startMs + HOUR }]));
+    let again: ObjectImagery;
+    try {
+      expect((await loadObjectImagery({ kind: 'point', point })).nextPass?.satellite).toBe('SOON');
+      clockMs = startMs + HOUR + 1;
+      again = await loadObjectImagery({ kind: 'point', point });
+    } finally {
+      clock.mockRestore();
+    }
+
+    expect(harness.lookup).toHaveBeenCalledTimes(2);
+    expect(again.nextPass?.satellite).toBe('LANDSAT 9');
+  });
+
+  it('looks again when the catalog revision changed since the pass was remembered', async () => {
+    expect((await loadObjectImagery({ kind: 'point', point })).nextPass?.satellite).toBe('LANDSAT 9');
+    harness.catalog = { fetchedAt: 2, inventoryVersion: 'v2' };
+    harness.lookup.mockImplementation(async () => passLookup([{ name: 'SENTINEL-2B', timeMs: Date.now() + 3 * HOUR }]));
+    const again = await loadObjectImagery({ kind: 'point', point });
+
+    expect(harness.lookup).toHaveBeenCalledTimes(2);
+    expect(again.nextPass?.satellite).toBe('SENTINEL-2B');
+  });
+
+  it('a lookup that finishes after its entry was forgotten does not put it back', async () => {
+    let answerPasses!: (value: unknown) => void;
+    harness.lookup.mockImplementationOnce(() => new Promise((resolve) => { answerPasses = resolve; }));
+    const first = loadObjectImagery({ kind: 'point', point });
+    await vi.waitFor(() => expect(harness.lookup).toHaveBeenCalledTimes(1));
+    forgetNextPasses();
+    answerPasses(passLookup([{ name: 'LANDSAT 9', timeMs: Date.now() + 2 * HOUR }]));
+    await first;
+    await loadObjectImagery({ kind: 'point', point });
+
+    expect(harness.lookup).toHaveBeenCalledTimes(2);
+  });
+
+  it('looks again after a failed pass lookup', async () => {
+    harness.lookup.mockImplementationOnce(async () => { throw new Error('worker crashed'); });
+    expect((await loadObjectImagery({ kind: 'point', point })).nextPass).toBeNull();
+    expect((await loadObjectImagery({ kind: 'point', point })).nextPass?.satellite).toBe('LANDSAT 9');
+    expect(harness.lookup).toHaveBeenCalledTimes(2);
+  });
+
+  it('overlapping popups share one pass job, and closing one does not cancel the other', async () => {
+    let answerPasses!: (value: unknown) => void;
+    let jobSignal: AbortSignal | undefined;
+    harness.lookup.mockImplementation((_query, options) => {
+      jobSignal = options?.signal;
+      return new Promise((resolve) => { answerPasses = resolve; });
+    });
+    const closed = new AbortController();
+    const first = loadObjectImagery({ kind: 'point', point }, closed.signal);
+    const second = loadObjectImagery({ kind: 'point', point });
+    await vi.waitFor(() => expect(harness.lookup).toHaveBeenCalledTimes(1));
+    closed.abort();
+    await expect(first).rejects.toMatchObject({ name: 'AbortError' });
+
+    expect(jobSignal?.aborted).toBe(false);
+    answerPasses(passLookup([{ name: 'LANDSAT 9', timeMs: Date.now() + 2 * HOUR }]));
+    expect((await second).nextPass?.satellite).toBe('LANDSAT 9');
+    expect(harness.lookup).toHaveBeenCalledTimes(1);
   });
 });
