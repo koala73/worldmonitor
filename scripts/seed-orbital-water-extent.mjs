@@ -72,12 +72,7 @@ export function makeFetchWaterExtent({ sites = WATCHED_SITES, watchlist = loadWa
     let added = 0;
     const errors = [];
     for (const target of targets) {
-      const kept = prior[target.siteId];
-      if (now() >= deadlineMs && kept?.reservoirId === target.reservoirId) {
-        reservoirs[target.siteId] = kept;
-        continue;
-      }
-      const result = await measureReservoir(target, kept, { searchScenes, fetchStatistics, nowMs, deadlineMs, clock: now });
+      const result = await measureReservoir(target, prior[target.siteId], { searchScenes, fetchStatistics, nowMs, deadlineMs, clock: now });
       reservoirs[target.siteId] = result.record;
       requests += result.requests;
       added += result.added;

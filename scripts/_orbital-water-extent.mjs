@@ -147,19 +147,23 @@ export function searchSince(record, nowMs) {
 /**
  * Measure one reservoir. Scenes are taken newest first; a run that stops early (budget, upstream error)
  * keeps everything measured so far and leaves `searchedThrough` where it was so the rest is retried.
+ * Past the deadline it makes no request at all and carries the previous record (or an empty one).
  */
 export async function measureReservoir(target, previous, { searchScenes, fetchStatistics, nowMs, deadlineMs, clock = Date.now }) {
   const areaKm2 = boxAreaKm2(target.box);
   const untilIso = new Date(nowMs).toISOString();
   const base = { siteId: target.siteId, reservoirId: target.reservoirId, name: target.name, countryCode: target.countryCode, box: target.box, areaKm2 };
   const keep = previous && previous.reservoirId === target.reservoirId ? previous : null;
+  const carried = () => {
+    const observations = keep?.observations ?? [];
+    return { ...base, searchedThrough: keep?.searchedThrough ?? null, observations, partialScenes: keep?.partialScenes ?? [], latest: observations[0] ?? null };
+  };
+  if (clock() >= deadlineMs) return { record: carried(), requests: 0, added: 0, error: null };
   let scenes;
   try {
     scenes = scenesFromSearch(await searchScenes(stacSearchBody(target.box, searchSince(keep, nowMs), untilIso)));
   } catch (error) {
-    const observations = keep?.observations ?? [];
-    const record = { ...base, searchedThrough: keep?.searchedThrough ?? null, observations, partialScenes: keep?.partialScenes ?? [], latest: observations[0] ?? null };
-    return { record, requests: 1, added: 0, error: `search: ${error.message}` };
+    return { record: carried(), requests: 1, added: 0, error: `search: ${error.message}` };
   }
   const todo = pendingScenes(scenes, keep);
   const additions = [];

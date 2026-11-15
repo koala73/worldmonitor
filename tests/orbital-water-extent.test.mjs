@@ -93,14 +93,14 @@ describe('reservoir water extent: pure helpers', () => {
 
 describe('reservoir water extent: producer', () => {
   const sites = WATCHED_SITES.filter((s) => s.id === 'reservoir:kariba' || s.id === 'reservoir:kakhovka' || s.id === 'port:1');
-  const run = async ({ previous = null, statistics, search }) => {
+  const run = async ({ previous = null, statistics, search, budgetMs, now = () => NOW }) => {
     const calls = [];
     const fetchWaterExtent = makeFetchWaterExtent({
-      sites, watchlist,
+      sites, watchlist, budgetMs,
       readPrevious: async () => previous,
       searchScenes: async (body) => { calls.push(['search', body]); return search(body); },
       fetchStatistics: async (id, geometry) => { calls.push(['statistics', id, geometry]); return statistics(id); },
-      now: () => NOW,
+      now,
     });
     return { data: await fetchWaterExtent(), calls };
   };
@@ -142,6 +142,20 @@ describe('reservoir water extent: producer', () => {
     assert.deepEqual(kariba.observations.map((o) => o.sceneId), ['s2']);
     assert.deepEqual(kariba.partialScenes, []);
     assert.equal(kariba.searchedThrough, null, 'search window not advanced');
+  });
+
+  it('makes no request once the budget is spent, even for reservoirs never measured', async () => {
+    let clock = NOW;
+    const { data, calls } = await run({
+      budgetMs: 1_000,
+      now: () => clock,
+      search: () => { clock += 5_000; return { features: [scene('s1', 8)] }; },
+      statistics: () => stats(100, 10, 5),
+    });
+    assert.deepEqual(calls.map((c) => c[0]), ['search'], 'one search, then the deadline stops every request');
+    assert.deepEqual(Object.keys(data.reservoirs).sort(), ['reservoir:kakhovka', 'reservoir:kariba']);
+    const untouched = Object.values(data.reservoirs).find((r) => r.observations.length === 0);
+    assert.equal(untouched.searchedThrough, null);
   });
 
   it('keeps the series when the scene search fails', async () => {
