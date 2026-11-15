@@ -13,7 +13,7 @@ import type { SatellitePosition } from '@/services/satellites';
 
 const K = 'orbitalWatch.satelliteSites';
 const NOW = Date.UTC(2026, 10, 15, 12, 0);
-const sensor = { profileId: 'sentinel-2', family: 'Sentinel-2', category: 'civil' as const };
+const sensor = { profileId: 'sentinel-2', family: 'Sentinel-2', category: 'open-optical' as const };
 const site = (id: string, name: string) => ({ id, name, lat: 0, lon: 0, countryCode: 'XX' });
 const pass = (minutes: number, extra: Partial<{ edgeOfSwath: boolean }> = {}) => ({
   timeMs: NOW + minutes * 60_000, groundDistanceKm: 41.6, edgeOfSwath: false, direction: 'ascending' as const, tier: 'opportunity' as const, ...extra,
