@@ -3258,6 +3258,7 @@
         "extentChange": "{{delta}} puncte din {{date}} pe aceeași orbită",
         "extentNoComparison": "Nicio măsurătoare anterioară pe aceeași orbită pentru comparație",
         "extentNone": "Încă nicio măsurătoare radar",
+        "unavailable": "Nu s-a putut încărca; redeschideți pentru a reîncerca",
         "optical": "Cea mai recentă imagine optică",
         "opticalNone": "Nicio imagine optică în 30 de zile",
         "note": "Fiecare rând este o măsurătoare datată dintr-o trecere separată, nu o citire în timp real. Radarul măsoară apa deschisă din zona centrală a lacului de acumulare; apa încrețită de vânt poate fi citită ca uscat."

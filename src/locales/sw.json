@@ -3306,6 +3306,7 @@
         "extentChange": "Pointi {{delta}} tangu {{date}} kwenye obiti ileile",
         "extentNoComparison": "Hakuna kipimo cha awali kwenye obiti ileile cha kulinganisha",
         "extentNone": "Bado hakuna kipimo cha rada",
+        "unavailable": "Imeshindwa kupakia; fungua tena ili kujaribu upya",
         "optical": "Picha ya macho ya hivi karibuni",
         "opticalNone": "Hakuna picha ya macho ndani ya siku 30",
         "note": "Kila safu ni kipimo chenye tarehe kutoka kupita tofauti, si usomaji wa moja kwa moja. Rada hupima maji wazi katika eneo kuu la bwawa; maji yaliyochafuliwa na upepo yanaweza kusomeka kama nchi kavu."

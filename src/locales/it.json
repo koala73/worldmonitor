@@ -3258,6 +3258,7 @@
         "extentChange": "{{delta}} punti dal {{date}} sulla stessa orbita",
         "extentNoComparison": "Nessuna misura precedente sulla stessa orbita da confrontare",
         "extentNone": "Ancora nessuna misura radar",
+        "unavailable": "Caricamento non riuscito; riapri per riprovare",
         "optical": "Ultima immagine ottica",
         "opticalNone": "Nessuna immagine ottica entro 30 giorni",
         "note": "Ogni riga è una misura datata di un passaggio distinto, non una lettura in tempo reale. Il radar misura l’acqua libera nell’area centrale del bacino; l’acqua increspata dal vento può risultare come terra."

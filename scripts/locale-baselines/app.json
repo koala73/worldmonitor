@@ -1620,6 +1620,7 @@
   "components.reservoirLevels.water.note": "Each row is a dated measurement from a separate pass, not a live reading. Radar reads open water in the reservoir's core box; wind-roughened water can read as land.",
   "components.reservoirLevels.water.optical": "Latest optical image",
   "components.reservoirLevels.water.opticalNone": "No optical image within 30 days",
+  "components.reservoirLevels.water.unavailable": "Couldn't load; reopen to retry",
   "components.reservoirLevels.water.heading": "Water at {{name}}",
   "components.sanctionsPressure.designations_one": "{{count}} designation",
   "components.sanctionsPressure.designations_other": "{{count}} designations",

@@ -3216,6 +3216,7 @@
         "extentChange": "{{delta}} điểm kể từ {{date}} trên cùng quỹ đạo",
         "extentNoComparison": "Không có số đo trước đó trên cùng quỹ đạo để so sánh",
         "extentNone": "Chưa có số đo radar",
+        "unavailable": "Không tải được; mở lại để thử lại",
         "optical": "Ảnh quang học mới nhất",
         "opticalNone": "Không có ảnh quang học trong vòng 30 ngày",
         "note": "Mỗi hàng là một số đo có ghi ngày từ một lần bay qua riêng, không phải số đọc trực tiếp. Radar đo mặt nước mở trong vùng lõi của hồ chứa; mặt nước gợn sóng do gió có thể bị đọc thành đất liền."

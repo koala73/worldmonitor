@@ -3279,6 +3279,7 @@
         "extentChange": "{{delta}} pkt od {{date}} na tej samej orbicie",
         "extentNoComparison": "Brak wcześniejszego pomiaru na tej samej orbicie do porównania",
         "extentNone": "Brak jeszcze pomiaru radarowego",
+        "unavailable": "Nie udało się wczytać; otwórz ponownie, aby spróbować jeszcze raz",
         "optical": "Najnowszy obraz optyczny",
         "opticalNone": "Brak obrazu optycznego w ciągu 30 dni",
         "note": "Każdy wiersz to datowany pomiar z osobnego przelotu, a nie odczyt na żywo. Radar mierzy otwartą wodę w obszarze centralnym zbiornika; woda pomarszczona przez wiatr może zostać odczytana jako ląd."

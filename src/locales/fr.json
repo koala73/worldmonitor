@@ -3258,6 +3258,7 @@
         "extentChange": "{{delta}} points depuis le {{date}} sur la même orbite",
         "extentNoComparison": "Aucune mesure antérieure sur la même orbite pour comparer",
         "extentNone": "Pas encore de mesure radar",
+        "unavailable": "Chargement impossible ; rouvrez pour réessayer",
         "optical": "Dernière image optique",
         "opticalNone": "Aucune image optique sous 30 jours",
         "note": "Chaque ligne est une mesure datée issue d’un passage distinct, pas une lecture en direct. Le radar mesure l’eau libre dans la zone centrale du réservoir ; une eau ridée par le vent peut être lue comme de la terre."

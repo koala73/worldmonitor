@@ -3330,6 +3330,7 @@
         "extentChange": "{{delta}} bodova od {{date}} na istoj orbiti",
         "extentNoComparison": "Nema ranijeg mjerenja na istoj orbiti za usporedbu",
         "extentNone": "Još nema radarskog mjerenja",
+        "unavailable": "Učitavanje nije uspjelo; ponovno otvorite za novi pokušaj",
         "optical": "Najnovija optička snimka",
         "opticalNone": "Nema optičke snimke unutar 30 dana",
         "note": "Svaki je redak datirano mjerenje s zasebnog preleta, a ne očitanje uživo. Radar mjeri otvorenu vodu u središnjem području akumulacije; voda koju je vjetar namreškao može se očitati kao kopno."

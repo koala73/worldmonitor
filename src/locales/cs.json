@@ -3279,6 +3279,7 @@
         "extentChange": "{{delta}} bodu od {{date}} na stejné dráze",
         "extentNoComparison": "Žádné dřívější měření na stejné dráze ke srovnání",
         "extentNone": "Zatím žádné radarové měření",
+        "unavailable": "Nepodařilo se načíst; otevřete znovu a zkuste to znovu",
         "optical": "Nejnovější optický snímek",
         "opticalNone": "Žádný optický snímek do 30 dnů",
         "note": "Každý řádek je datované měření z jiného přeletu, nikoli aktuální údaj. Radar měří volnou vodu v jádrové oblasti nádrže; větrem zvlněná voda se může jevit jako souš."

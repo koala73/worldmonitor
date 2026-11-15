@@ -3216,6 +3216,7 @@
         "extentChange": "同一轨道自 {{date}} 以来变化 {{delta}} 个百分点",
         "extentNoComparison": "同一轨道没有更早的读数可供比较",
         "extentNone": "暂无雷达读数",
+        "unavailable": "加载失败；重新打开以重试",
         "optical": "最新光学影像",
         "opticalNone": "30 天内没有光学影像",
         "note": "每一行都是来自不同过境的带日期测量值，而非实时读数。雷达测量水库核心区域内的开阔水面；被风吹皱的水面可能被识别为陆地。"

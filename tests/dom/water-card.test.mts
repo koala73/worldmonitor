@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { fillWaterExtentRow, renderWaterExtentRow, waterCard, waterExtentLines } from '@/components/water-card';
+import { fillWaterExtentRow, renderWaterExtentRow, WATER_UNAVAILABLE, waterCard, waterExtentLines } from '@/components/water-card';
 import type { ReservoirLevel } from '@/services/climate';
 import { reservoirAtPoint } from '@/services/climate/reservoir-context';
 import { t } from '@/services/i18n';
@@ -63,6 +63,15 @@ describe('water card (#10714)', () => {
     const card = waterCard('Lake Kariba', { level: null, extent: null, optical: null, nextPass: null }, ctx());
     expect(card.querySelectorAll('.wl-water-row')).toHaveLength(4);
     expect(card.textContent).toContain(t('components.reservoirLevels.water.opticalNone'));
+  });
+
+  it('tells a failed read apart from a missing reading', () => {
+    expect(waterExtentLines(WATER_UNAVAILABLE, ctx())).toEqual([t('components.reservoirLevels.water.unavailable')]);
+    const card = waterCard('Lake Kariba', { level: null, extent: WATER_UNAVAILABLE, optical: WATER_UNAVAILABLE, nextPass: null }, ctx());
+    const value = (name: string) => card.querySelector(`[data-row="${name}"] .wl-water-value`)!.textContent;
+    expect(value('extent')).toBe(t('components.reservoirLevels.water.unavailable'));
+    expect(value('optical')).toBe(t('components.reservoirLevels.water.unavailable'));
+    expect(card.textContent).not.toContain(t('components.reservoirLevels.water.extentNone'));
   });
 
   it('finds the reservoir for an evidence point inside its core box or at its own map point', () => {

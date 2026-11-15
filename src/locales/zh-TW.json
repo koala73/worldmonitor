@@ -3216,6 +3216,7 @@
         "extentChange": "同一軌道自 {{date}} 以來變化 {{delta}} 個百分點",
         "extentNoComparison": "同一軌道沒有更早的讀數可供比較",
         "extentNone": "暫無雷達讀數",
+        "unavailable": "載入失敗；重新開啟以重試",
         "optical": "最新光學影像",
         "opticalNone": "30 天內沒有光學影像",
         "note": "每一行都是來自不同過境的帶日期測量值，而非即時讀數。雷達測量水庫核心區域內的開闊水面；被風吹皺的水面可能被識別為陸地。"

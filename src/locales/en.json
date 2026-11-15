@@ -3403,6 +3403,7 @@
         "extentChange": "{{delta}} points since {{date}} on the same orbit",
         "extentNoComparison": "No earlier reading on the same orbit to compare",
         "extentNone": "No radar reading yet",
+        "unavailable": "Couldn't load; reopen to retry",
         "optical": "Latest optical image",
         "opticalNone": "No optical image within 30 days",
         "note": "Each row is a dated measurement from a separate pass, not a live reading. Radar reads open water in the reservoir's core box; wind-roughened water can read as land."

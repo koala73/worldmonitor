@@ -11,6 +11,10 @@ import '../styles/reservoir-levels.css';
 
 type Translate = ReservoirFormatContext['t'];
 
+/** A row whose source could not be read, as opposed to one that has no reading. */
+export const WATER_UNAVAILABLE = 'unavailable' as const;
+type Loaded<T> = T | null | typeof WATER_UNAVAILABLE;
+
 const OPTICAL_NAMES: Record<string, string> = { 'sentinel-2': 'Sentinel-2', landsat: 'Landsat' };
 
 const readingDate = (reading: WaterReading, ctx: Pick<ReservoirFormatContext, 'locale' | 'nowMs'>) =>
@@ -19,8 +23,9 @@ const readingDate = (reading: WaterReading, ctx: Pick<ReservoirFormatContext, 'l
 const number = (value: number, locale: string) => new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value);
 
 /** "62.4% open water (318.5 km²) on 9 Nov", then the change since the last reading from the same orbit. */
-export function waterExtentLines(extent: WaterExtent | null, ctx: ReservoirFormatContext): string[] {
+export function waterExtentLines(extent: Loaded<WaterExtent>, ctx: ReservoirFormatContext): string[] {
   const { t, locale } = ctx;
+  if (extent === WATER_UNAVAILABLE) return [t('components.reservoirLevels.water.unavailable')];
   const latest = extent?.latest;
   if (!latest) return [t('components.reservoirLevels.water.extentNone')];
   const lines = [t('components.reservoirLevels.water.extentValue', {
@@ -45,7 +50,7 @@ export function renderWaterExtentRow(reservoirId: string, t: Translate): string 
     </div>`;
 }
 
-export function fillWaterExtentRow(row: HTMLElement, extent: WaterExtent | null, ctx: ReservoirFormatContext): void {
+export function fillWaterExtentRow(row: HTMLElement, extent: Loaded<WaterExtent>, ctx: ReservoirFormatContext): void {
   const value = row.querySelector('.wl-next-pass-value');
   if (!value) return;
   value.replaceChildren(...waterExtentLines(extent, ctx).map((line) => {
@@ -57,10 +62,10 @@ export function fillWaterExtentRow(row: HTMLElement, extent: WaterExtent | null,
 }
 
 export interface WaterCardInput {
-  level: ReservoirLevel | null;
-  extent: WaterExtent | null;
+  level: Loaded<ReservoirLevel>;
+  extent: Loaded<WaterExtent>;
   /** Newest optical scene of the reservoir; null when none was found. */
-  optical: ObjectImage | null;
+  optical: Loaded<ObjectImage>;
   nextPass: ReservoirNextPass | null;
 }
 
@@ -96,17 +101,18 @@ export function waterCard(name: string, input: WaterCardInput, ctx: ReservoirFor
   title.textContent = t('components.reservoirLevels.water.heading', { name });
   const { level, extent, optical, nextPass } = input;
   const pass = nextPass && reservoirNextPassExpiresAt(nextPass) > nowMs ? nextPass : null;
+  const unavailable = [t('components.reservoirLevels.water.unavailable')];
   const note = document.createElement('p');
   note.className = 'wl-water-note';
   note.textContent = t('components.reservoirLevels.water.note');
   card.append(
     title,
-    row('level', t('components.reservoirLevels.water.level'), level?.latest
-      ? [reservoirHeadline(level, ctx), reservoirMeasuredShort(level, ctx)]
+    row('level', t('components.reservoirLevels.water.level'), level === WATER_UNAVAILABLE ? unavailable
+      : level?.latest ? [reservoirHeadline(level, ctx), reservoirMeasuredShort(level, ctx)]
       : [t('components.reservoirLevels.noPass')]),
     row('extent', t('components.reservoirLevels.water.extent'), waterExtentLines(extent, ctx)),
-    row('optical', t('components.reservoirLevels.water.optical'), optical
-      ? [`${formatPassDate(new Date(optical.datetime), locale, nowMs)} · ${OPTICAL_NAMES[optical.profileId] ?? optical.profileId}`]
+    row('optical', t('components.reservoirLevels.water.optical'), optical === WATER_UNAVAILABLE ? unavailable
+      : optical ? [`${formatPassDate(new Date(optical.datetime), locale, nowMs)} · ${OPTICAL_NAMES[optical.profileId] ?? optical.profileId}`]
       : [t('components.reservoirLevels.water.opticalNone')]),
     row('pass', t('components.reservoirLevels.nextPass.label'), [pass ? reservoirNextPassText(pass, t, locale) : t('components.reservoirLevels.nextPass.unavailable')]),
     note,
@@ -123,13 +129,15 @@ export async function loadWaterCard(site: StrategicReservoirSite, signal: AbortS
   const [w, s, e, n] = site.core;
   const centre = { lat: Math.round(((s + n) / 2) * 100) / 100, lon: Math.round(((w + e) / 2) * 100) / 100 };
   const [levels, extent, imagery, passes] = await Promise.all([
-    loadReservoirLevelsById().catch(() => null),
-    loadReservoirWaterExtent(site.id, signal).catch(() => null),
-    loadObjectImagery({ kind: 'point', point: centre, ownNextPass: true, optical: true }, signal).catch(() => null),
+    loadReservoirLevelsById().catch(() => WATER_UNAVAILABLE),
+    loadReservoirWaterExtent(site.id, signal).catch(() => WATER_UNAVAILABLE),
+    loadObjectImagery({ kind: 'point', point: centre, ownNextPass: true, optical: true }, signal).catch(() => WATER_UNAVAILABLE),
     loadReservoirNextPasses(STRATEGIC_RESERVOIR_SITES, { signal }).catch(() => null),
   ]);
   signal.throwIfAborted();
   const ctx = { t, locale: getLocale(), nowMs: Date.now() };
-  const level = levels?.get(site.id) ?? null;
-  return waterCard(level?.name ?? site.name, { level, extent, optical: imagery?.latest ?? null, nextPass: passes?.get(site.id) ?? null }, ctx);
+  const level = levels === WATER_UNAVAILABLE ? levels : levels.get(site.id) ?? null;
+  const optical = imagery === WATER_UNAVAILABLE ? imagery : imagery.latest ?? null;
+  const name = level === WATER_UNAVAILABLE ? site.name : level?.name ?? site.name;
+  return waterCard(name, { level, extent, optical, nextPass: passes?.get(site.id) ?? null }, ctx);
 }

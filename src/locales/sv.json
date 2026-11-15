@@ -2853,6 +2853,7 @@
         "extentChange": "{{delta}} punkter sedan {{date}} på samma bana",
         "extentNoComparison": "Ingen tidigare mätning på samma bana att jämföra med",
         "extentNone": "Ingen radarmätning ännu",
+        "unavailable": "Kunde inte läsas in; öppna igen för att försöka på nytt",
         "optical": "Senaste optiska bild",
         "opticalNone": "Ingen optisk bild inom 30 dagar",
         "note": "Varje rad är en daterad mätning från en separat överflygning, inte ett livevärde. Radarn mäter öppet vatten i reservoarens kärnområde; vindkrusat vatten kan tolkas som land."

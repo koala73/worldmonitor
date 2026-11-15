@@ -3237,6 +3237,7 @@
         "extentChange": "{{delta}} Punkte seit {{date}} auf demselben Orbit",
         "extentNoComparison": "Keine frühere Messung auf demselben Orbit zum Vergleich",
         "extentNone": "Noch keine Radarmessung",
+        "unavailable": "Laden fehlgeschlagen; zum erneuten Versuch erneut öffnen",
         "optical": "Neuestes optisches Bild",
         "opticalNone": "Kein optisches Bild innerhalb von 30 Tagen",
         "note": "Jede Zeile ist eine datierte Messung eines eigenen Überflugs, kein Live-Wert. Das Radar erfasst offenes Wasser im Kernbereich des Stausees; vom Wind aufgeraute Wasserflächen können als Land erscheinen."
