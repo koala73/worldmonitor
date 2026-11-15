@@ -35,7 +35,6 @@ export interface CountrySiteImagery {
   stale: boolean;
   siteCount: number;
   sites: SiteImagery[];
-  credits: string[];
 }
 
 /** A pass whose time has gone by is no longer a prediction, so it is dropped rather than shown as next. */
@@ -61,5 +60,5 @@ export function imageryCredits(sites: readonly SiteImagery[]): string[] {
 export function countrySiteImagery(evidence: GetCountryImageryEvidenceResponse, nowMs: number): CountrySiteImagery {
   const sites = evidence.sites.map((site) => siteImagery(site, nowMs))
     .sort((a, b) => (b.latestImage?.datetime ?? '').localeCompare(a.latestImage?.datetime ?? '') || a.siteId.localeCompare(b.siteId));
-  return { countryCode: evidence.countryCode, asOf: evidence.asOf, stale: evidence.stale, siteCount: evidence.siteCount, sites, credits: imageryCredits(sites) };
+  return { countryCode: evidence.countryCode, asOf: evidence.asOf, stale: evidence.stale, siteCount: evidence.siteCount, sites };
 }

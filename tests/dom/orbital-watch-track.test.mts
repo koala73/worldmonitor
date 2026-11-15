@@ -228,7 +228,7 @@ describe('one pass selection for the list, the timeline and the maps', () => {
     const surfaceFor = (sink: Array<OrbitalTarget | null>): OrbitalTrackSurface =>
       ({ setOrbitalTrack: () => {}, setOrbitalTrackMarker: () => {}, setOrbitalTarget: (target) => sink.push(target) });
     const next = { lat: -17.7, lon: 178.5 };
-    openOrbitalShareLink({ point: next, pass: null, view: 'sheet' }, null, surfaceFor(shared));
+    openOrbitalShareLink({ point: next, pass: null }, null, surfaceFor(shared));
     expect(pins(shared)).toEqual([next]);
     const searched: Array<OrbitalTarget | null> = [];
     openOrbitalWatchSearch(null, surfaceFor(searched));
@@ -257,7 +257,7 @@ describe('one pass selection for the list, the timeline and the maps', () => {
       expect(location.hash).toBe('#orbital=25.11,55.14');
       expect(location.search).toBe('?view=global');
       expect(history.length).toBe(entries);
-      expect(takeOrbitalShareLink()).toEqual({ point: { lat: 25.11, lon: 55.14 }, pass: null, view: 'sheet' });
+      expect(takeOrbitalShareLink()).toEqual({ point: { lat: 25.11, lon: 55.14 }, pass: null });
       expect(location.hash).toBe('');
     } finally {
       unwatch();
