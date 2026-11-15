@@ -21,20 +21,42 @@ export type PlaceSearchOutcome =
   | { kind: 'failed' };
 
 const NUMBER = String.raw`([+-]?\d+(?:\.\d+)?)`;
-const COORDINATE_PAIR_RE = new RegExp(String.raw`^${NUMBER}\s*°?\s*([NS])?\s*[,;\s]\s*${NUMBER}\s*°?\s*([EW])?$`, 'i');
-/** Text made only of digits, signs, separators and hemisphere letters is a coordinate attempt, never a name. */
-const COORDINATE_SHAPED_RE = /^(?=.*\d)[\d\s.,;°+\-NSEWnsew]+$/;
+const UNSIGNED = String.raw`(\d+(?:\.\d+)?)`;
+/** Degree, minute and second marks as people paste them: ° or º, straight or curly primes and quotes. */
+const DEGREE = '[°º]';
+const MINUTE = "['′’]";
+const SECOND = `(?:["″”]|${MINUTE}{2})`;
+/** Decimal degrees, or degrees with minutes and seconds, then an optional hemisphere. */
+const COMPONENT = String.raw`${NUMBER}\s*${DEGREE}?\s*(?:${UNSIGNED}\s*${MINUTE}(?!${MINUTE})\s*)?(?:${UNSIGNED}\s*${SECOND}\s*)?([NSEW])?`;
+const COORDINATE_PAIR_RE = new RegExp(String.raw`^${COMPONENT}\s*[,;\s]\s*${COMPONENT}$`, 'i');
+/** Text made only of digits, signs, separators, brackets, degree marks and hemisphere letters is a coordinate attempt, never a name. */
+const COORDINATE_SHAPED_RE = /^(?=.*\d)[\d\s.,;°º'"′″’”()[\]+\-NSEWnsew]+$/;
 export const MIN_PLACE_QUERY_CHARS = 2;
 export const MAX_PLACE_QUERY_CHARS = 200;
+
+/** Signed degrees from one component, or null when its minutes or seconds cannot be read. */
+function componentDegrees(degrees: string, minutes: string | undefined, seconds: string | undefined, hemisphere: string | undefined, negative: string): number | null {
+  const whole = Number(degrees);
+  const min = minutes === undefined ? 0 : Number(minutes);
+  const sec = seconds === undefined ? 0 : Number(seconds);
+  if (min >= 60 || sec >= 60) return null;
+  if ((minutes !== undefined || seconds !== undefined) && !Number.isInteger(whole)) return null;
+  if (hemisphere && degrees.startsWith('-')) return null;
+  const magnitude = Math.abs(whole) + min / 60 + sec / 3600;
+  return degrees.startsWith('-') || hemisphere === negative ? -magnitude : magnitude;
+}
 
 export function parseTypedCoordinates(text: string): GeoPoint | 'invalid' | null {
   const trimmed = text.trim();
   if (!COORDINATE_SHAPED_RE.test(trimmed)) return null;
-  const match = COORDINATE_PAIR_RE.exec(trimmed);
+  const match = COORDINATE_PAIR_RE.exec(trimmed.replace(/^[([]\s*|\s*[)\]]$/g, ''));
   if (!match) return 'invalid';
-  const lat = Number(match[1]) * (match[2]?.toUpperCase() === 'S' ? -1 : 1);
-  const lon = Number(match[3]) * (match[4]?.toUpperCase() === 'W' ? -1 : 1);
-  if ((match[2] && Number(match[1]) < 0) || (match[4] && Number(match[3]) < 0)) return 'invalid';
+  const latHemisphere = match[4]?.toUpperCase();
+  const lonHemisphere = match[8]?.toUpperCase();
+  if ((latHemisphere && !'NS'.includes(latHemisphere)) || (lonHemisphere && !'EW'.includes(lonHemisphere))) return 'invalid';
+  const lat = componentDegrees(match[1]!, match[2], match[3], latHemisphere, 'S');
+  const lon = componentDegrees(match[5]!, match[6], match[7], lonHemisphere, 'W');
+  if (lat === null || lon === null) return 'invalid';
   if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return 'invalid';
   return { lat, lon };
 }
