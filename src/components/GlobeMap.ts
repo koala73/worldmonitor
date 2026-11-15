@@ -654,7 +654,6 @@ export class GlobeMap {
   private webcamMarkers: (WebcamMarkerData | WebcamClusterData)[] = [];
   /** Layers the marker budget is currently withholding markers from (#5368). */
   private markerTruncation: Record<string, GlobeLayerTruncation> = {};
-  /** HTML markers handed to globe.gl on the last flush — the per-frame cost driver. */
   private markerBudgetProfile: 'mobile' | 'desktop' = 'desktop';
   private webcamMarkerMode: string = (() => {
     try {
