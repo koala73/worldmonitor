@@ -121,7 +121,7 @@ describe('map locate control', () => {
     requestDevicePosition.mockResolvedValue(EXACT);
     const { control, centre } = mountControl(() => []);
     await control.locate();
-    expect(centre).toHaveBeenCalledExactlyOnceWith(ROUNDED);
+    expect(centre).not.toHaveBeenCalled();
     expect(control.state).toBe('empty');
     expect(document.querySelector('[role="menu"]')).toBeNull();
     expect(status(control).textContent).toBe('No country at your location. Use Search to find a place.');
@@ -188,8 +188,9 @@ describe('locate menu entries', () => {
 
   it('points to Search outside any country while Orbital Watch is off', async () => {
     geometry.getCountryNearCoordinates.mockReturnValue(null);
-    const { control } = await setUp();
+    const { control, map } = await setUp();
     expect(control.dataset.state).toBe('empty');
+    expect(map.setCenter).not.toHaveBeenCalled();
     expect(document.querySelector('[role="menu"]')).toBeNull();
   });
 

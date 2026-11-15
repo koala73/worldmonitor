@@ -10,7 +10,7 @@ export interface LocatedPoint {
 }
 
 export interface MapLocateControlCallbacks {
-  /** Centres the map on the located point. */
+  /** Centres the map on the located point once it has an action; an empty point leaves the map where it was. */
   centre: (point: LocatedPoint) => void;
   /** The menu entries for the located point; empty when nothing applies there. */
   actions: (point: LocatedPoint) => MapContextMenuItem[] | Promise<MapContextMenuItem[]>;
@@ -87,13 +87,13 @@ export class MapLocateControl {
       return;
     }
     const point = { lat: roundShareCoordinate(position.lat), lon: roundShareCoordinate(position.lon) };
-    this.callbacks.centre(point);
     const actions = await this.callbacks.actions(point);
     if (this.destroyed || request !== this.request) return;
     if (actions.length === 0) {
       this.setState('empty');
       return;
     }
+    this.callbacks.centre(point);
     this.setState('located');
     const rect = this.button.getBoundingClientRect();
     showMapContextMenu(Math.max(8, rect.left - MENU_WIDTH - 6), rect.top, actions);
