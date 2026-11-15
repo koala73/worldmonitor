@@ -53,7 +53,11 @@ test('history matches what buildHistory yields from the equivalent ArcGIS query 
 
 test('the baseline equals the outStatistics avg/count over the year-earlier window', () => {
   const result = chokepointsFromCsv(CSV, SINCE, WINDOW);
-  assert.deepEqual(result.korea_strait.baseline, { avgDaily: 222.1, days: 365, from: '2024-11-01', to: '2025-10-31' });
+  assert.deepEqual(result.korea_strait.baseline, {
+    avgDaily: 222.1, days: 365, from: '2024-11-01', to: '2025-10-31',
+    // Tanker count and tanker DWT over the same rows (awk: 60.2301, 826712.4411).
+    tankerAvgDaily: 60.2, capTankerAvgDaily: 826712,
+  });
   assert.equal(result.suez.baseline, null, '10 published days is below BASELINE_MIN_DAYS');
 });
 

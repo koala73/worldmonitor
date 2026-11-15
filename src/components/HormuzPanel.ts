@@ -49,6 +49,27 @@ function barChart(series: HormuzSeries[], color: string, unit: string, width = 2
   return `<svg class="hz-svg" viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="none" style="display:block;overflow:visible">${rects.join('')}${hits.join('')}</svg>`;
 }
 
+/**
+ * A run of zeros drawn as bars is a flat dashed line, which reads as missing
+ * data. When WTO recorded no shipments for the whole window, say so.
+ */
+function noShipmentsNote(series: HormuzSeries[], height = 52): string | null {
+  if (!series.length || series.some(p => p.value !== 0)) return null;
+  const from = series[0]!.date.slice(5);
+  const to = series[series.length - 1]!.date.slice(5);
+  return `<div class="hz-no-shipments" style="height:${height}px;display:flex;align-items:center;color:var(--text-dim);font-size:calc(10px * var(--wm-panel-effective-scale, 1));border-bottom:1px dashed ${ZERO_COLOR}">${escapeHtml(t('components.hormuzTracker.noShipments', { from, to }))}</div>`;
+}
+
+/** Newest day across the WTO series: the date the charts are current to. */
+function latestSeriesDate(charts: HormuzChart[]): string {
+  let latest = '';
+  for (const chart of charts) {
+    const last = chart.series[chart.series.length - 1]?.date ?? '';
+    if (last > latest) latest = last;
+  }
+  return latest;
+}
+
 function renderChart(chart: HormuzChart, idx: number): string {
   const color = CHART_COLORS[idx % CHART_COLORS.length] ?? '#3498db';
   const last = chart.series[chart.series.length - 1];
@@ -63,7 +84,7 @@ function renderChart(chart: HormuzChart, idx: number): string {
         <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(chart.title)}</span>
         <span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${color}">${escapeHtml(lastVal)} <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${unit} · ${escapeHtml(lastDate)}</span></span>
       </div>
-      <div style="position:relative">${barChart(chart.series, color, unit)}</div>
+      <div style="position:relative">${noShipmentsNote(chart.series) ?? barChart(chart.series, color, unit)}</div>
     </div>`;
 }
 
@@ -301,7 +322,14 @@ export class HormuzPanel extends Panel {
       ? d.charts.map((c, i) => renderChart(c, i)).join('')
       : `<div style="color:var(--text-dim);font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:8px 0">${escapeHtml(t('components.hormuzTracker.chartUnavailable'))}</div>`;
 
-    const dateStr = d.updatedDate ? `<span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(t('components.hormuzTracker.analysisDate', { date: d.updatedDate }))}</span>` : '';
+    // The charts refresh daily; WTO's written commentary does not. Lead with the
+    // data date so a months-old commentary date does not read as stale data.
+    const dataDate = latestSeriesDate(d.charts);
+    const dateLabels = [
+      dataDate ? t('components.hormuzTracker.dataThrough', { date: dataDate }) : '',
+      d.updatedDate ? t('components.hormuzTracker.analysisDate', { date: d.updatedDate }) : '',
+    ].filter(Boolean).join(' · ');
+    const dateStr = dateLabels ? `<span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(dateLabels)}</span>` : '';
     const dependencies = this.renderDependencies();
 
     const html = `

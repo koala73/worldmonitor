@@ -2353,7 +2353,7 @@
       "proLocked": "Passez à PRO pour l'évaluation de vulnérabilité des matières premières"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Suivi du commerce du Détroit d'Ormuz</strong> Indices de chargements quotidiens du WTO DataLab pour le détroit d'Ormuz : pétrole brut, GNL et engrais quittant le Golfe, produits agricoles arrivant. Par volume, moyenne janvier–mars 2025 = 100, navires visibles en AIS uniquement. Le statut et la date proviennent de la dernière analyse du WTO.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Indices d'expéditions quotidiens du WTO DataLab pour le détroit d'Ormuz : pétrole brut, GNL et engrais quittant le Golfe, produits agricoles arrivant. Par volume, moyenne jan.–mars 2025 = 100, navires visibles à l'AIS uniquement. Les graphiques sont quotidiens ; le statut provient du commentaire du WTO.",
       "title": "Suivi du commerce du Détroit d'Ormuz",
       "noData": "Aucune donnée",
       "notAvailable": "N/D",
@@ -2366,8 +2366,10 @@
         "unavailable": "Données d'Ormuz indisponibles",
         "failedToLoad": "Échec du chargement"
       },
-      "analysisDate": "Analyse OMC {{date}}",
-      "indexNote": "Indice d'expédition par volume, moyenne janvier–mars 2025 = 100"
+      "analysisDate": "Commentaire OMC {{date}}",
+      "indexNote": "Indice d'expédition par volume, moyenne janvier–mars 2025 = 100",
+      "dataThrough": "Données quotidiennes jusqu'au {{date}}",
+      "noShipments": "Aucun transport enregistré de {{from}} à {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Webcams en direct</strong> Flux en direct depuis des lieux géopolitiquement significatifs dans le monde : zones de conflit, capitales, postes frontières et points de passage stratégiques. Flux provenant de YouTube et réseaux publics."

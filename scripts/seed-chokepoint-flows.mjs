@@ -86,13 +86,19 @@ export function resolveFlowSource(useDwt) {
  * Per-chokepoint flow estimate from a PortWatch daily history and an EIA
  * baseline, or `null` when the history is too thin to be meaningful.
  *
+ * `yearBaseline` is the PortWatch seeder's year-earlier baseline. When it has
+ * a tanker DWT or tanker count mean, recent flow is measured against it. The
+ * trailing 90 days are the fallback only: inside a closure longer than 90 days
+ * they are the closure, so Hormuz at about one tanker a day read 82% of
+ * 21 mb/d.
+ *
  * Pure and exported for the same reason as `resolveFlowSource`: the window
  * arithmetic, the DWT-majority rule, and the 3-day disruption rule are the
  * behaviour worth testing, and a test that re-implements them proves nothing
  * about this function. Hazard annotation stays in `fetchAll` — it is metadata
  * that must not influence `currentMbd`, `flowRatio`, or `disrupted`.
  */
-export function computeFlowEstimate(rawHistory, baselineMbd) {
+export function computeFlowEstimate(rawHistory, baselineMbd, yearBaseline = null) {
   if (!Array.isArray(rawHistory) || !baselineMbd) return null;
 
   const history = [...rawHistory].sort((a, b) => a.date.localeCompare(b.date));
@@ -104,21 +110,32 @@ export function computeFlowEstimate(rawHistory, baselineMbd) {
   const prev90 = history.slice(-97, -7); // days [-97..-7], up to 90 days
   if (last7.length < 3 || prev90.length < 20) return null;
 
-  // Prefer DWT (capTanker) when the baseline window has majority DWT coverage.
-  // Decision is based on the 90-day baseline, NOT the recent window — zero
-  // recent capTanker is the disruption signal, not a reason to abandon DWT.
-  // Majority guard: partial DWT roll-out (1-2 days non-zero) should not
-  // activate DWT mode and pull down the baseline average via zero-filled gaps.
-  const dwtBaselineDays = prev90.filter(d => (d.capTanker ?? 0) > 0).length;
-  const useDwt = dwtBaselineDays >= Math.ceil(prev90.length / 2);
+  const yearDwt = Number(yearBaseline?.capTankerAvgDaily);
+  const yearCount = Number(yearBaseline?.tankerAvgDaily);
+  let useDwt;
+  let baseline90d;
+  if (Number.isFinite(yearDwt) && yearDwt >= 1) {
+    useDwt = true;
+    baseline90d = yearDwt;
+  } else if (Number.isFinite(yearCount) && yearCount >= 0.5) {
+    useDwt = false;
+    baseline90d = yearCount;
+  } else {
+    // Prefer DWT (capTanker) when the baseline window has majority DWT coverage.
+    // Decision is based on the 90-day baseline, NOT the recent window — zero
+    // recent capTanker is the disruption signal, not a reason to abandon DWT.
+    // Majority guard: partial DWT roll-out (1-2 days non-zero) should not
+    // activate DWT mode and pull down the baseline average via zero-filled gaps.
+    const dwtBaselineDays = prev90.filter(d => (d.capTanker ?? 0) > 0).length;
+    useDwt = dwtBaselineDays >= Math.ceil(prev90.length / 2);
+    baseline90d = useDwt
+      ? avg(prev90.map(d => d.capTanker ?? 0))
+      : avg(prev90.map(d => d.tanker ?? 0));
+  }
 
   const current7d = useDwt
     ? avg(last7.map(d => d.capTanker ?? 0))
     : avg(last7.map(d => d.tanker ?? 0));
-
-  const baseline90d = useDwt
-    ? avg(prev90.map(d => d.capTanker ?? 0))
-    : avg(prev90.map(d => d.tanker ?? 0));
 
   // Skip if baseline is too thin to be meaningful
   if (baseline90d < (useDwt ? 1 : 0.5)) return null;
@@ -164,7 +181,7 @@ export async function fetchAll() {
     const baseline = baselines?.chokepoints?.find(b => b.id === cp.baselineId);
     if (!baseline?.mbd) continue;
 
-    const estimate = computeFlowEstimate(pw.history, baseline.mbd);
+    const estimate = computeFlowEstimate(pw.history, baseline.mbd, pw.baseline);
     if (!estimate) continue;
 
     const hazard = findNearestHazard(disruptions?.events, cp.lat, cp.lon);

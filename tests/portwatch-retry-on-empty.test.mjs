@@ -23,6 +23,7 @@ import {
   baselineBudgetMs,
   baselineWindow,
   buildBaseline,
+  fetchBaselineStats,
   runFetchPipeline,
 } from '../scripts/seed-portwatch.mjs';
 
@@ -356,6 +357,33 @@ test('baseline window is the 12 UTC-aligned months ending one year ago, with inc
   // Day-aligned: any time of day on 2026-10-22 produces the same window.
   assert.deepEqual(baselineWindow(Date.UTC(2026, 9, 22, 0, 0, 1)), WINDOW);
   assert.deepEqual(baselineWindow(Date.UTC(2026, 9, 22, 23, 59, 59)), WINDOW);
+});
+
+test('buildBaseline carries the year-earlier tanker count and tanker DWT when the row has them', () => {
+  assert.deepEqual(
+    buildBaseline({ avg_total: 87.4, avg_tanker: 49.27945205479452, avg_cap_tanker: 2294290.520547945, day_count: 365 }, WINDOW),
+    { avgDaily: 87.4, days: 365, from: '2024-10-22', to: '2025-10-21', tankerAvgDaily: 49.3, capTankerAvgDaily: 2294291 },
+  );
+  // A malformed tanker statistic is dropped; the total-traffic baseline stands.
+  assert.deepEqual(
+    buildBaseline({ avg_total: 87.4, avg_tanker: 'x', avg_cap_tanker: -5, day_count: 365 }, WINDOW),
+    { avgDaily: 87.4, days: 365, from: '2024-10-22', to: '2025-10-21' },
+  );
+});
+
+test('fetchBaselineStats asks ArcGIS for the tanker count and tanker DWT means', async () => {
+  const realFetch = globalThis.fetch;
+  let requested = '';
+  globalThis.fetch = async (url) => { requested = String(url); return Response.json({ features: [{ attributes: { avg_total: 1, day_count: 365 } }] }); };
+  try {
+    await fetchBaselineStats('Strait of Hormuz', WINDOW);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  const stats = JSON.parse(new URL(requested).searchParams.get('outStatistics'));
+  const byName = Object.fromEntries(stats.map((s) => [s.outStatisticFieldName, `${s.statisticType}:${s.onStatisticField}`]));
+  assert.equal(byName.avg_tanker, 'avg:n_tanker');
+  assert.equal(byName.avg_cap_tanker, 'avg:capacity_tanker');
 });
 
 test('buildBaseline rounds the mean to one decimal and rejects malformed or thin rows', () => {

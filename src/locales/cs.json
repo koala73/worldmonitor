@@ -2363,7 +2363,7 @@
       "proLocked": "Upgradujte na PRO pro skórování zranitelnosti komodit"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Sledování obchodu v Hormuzu</strong> denní indexy zásilek WTO DataLab pro Hormuzský průliv: surová ropa, LNG a hnojiva vyvážená z Perského zálivu, zemědělské produkty přicházející. Dle objemu, průměr za leden–březen 2025 = 100, pouze AIS-viditelné lodě. Stav a datum pochází z nejnovější analýzy WTO.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> – denní indexy zásilek WTO DataLab pro Hormuzský průliv: ropa, LNG a hnojiva opouštějící Perský záliv, zemědělské zboží přicházející. Podle objemu, průměr led.–březen 2025 = 100, pouze plavidla viditelná přes AIS. Grafy jsou denní; stav je z komentářů WTO.",
       "title": "Sledování obchodu v Hormuzu",
       "noData": "Žádná data",
       "notAvailable": "N/A",
@@ -2373,11 +2373,13 @@
         "unavailable": "Data Hormuz není dostupná",
         "failedToLoad": "Načtení se nezdařilo"
       },
-      "analysisDate": "WTO analýza {{date}}",
+      "analysisDate": "Komentář WTO {{date}}",
       "indexNote": "Index přepravy podle objemu, průměr za leden–březen 2025 = 100",
       "units": {
         "index": "index"
-      }
+      },
+      "dataThrough": "Denní data do {{date}}",
+      "noShipments": "Žádné zásilky zaznamenány {{from}} až {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Živé kamery</strong> Živé přenosy z geopoliticky významných míst po celém světě: konfliktní zóny, hlavní města, hraniční přechody a strategické úzké profily. Streamy z YouTube a veřejných sítí."

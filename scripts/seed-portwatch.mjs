@@ -143,6 +143,8 @@ export async function fetchBaselineStats(portname, { fromEpoch, toEpoch }, timeo
     where: `portname='${portname.replace(/'/g, "''")}' AND date >= ${epochToTimestamp(fromEpoch)} AND date < ${epochToTimestamp(toEpoch)}`,
     outStatistics: JSON.stringify([
       { statisticType: 'avg', onStatisticField: 'n_total', outStatisticFieldName: 'avg_total' },
+      { statisticType: 'avg', onStatisticField: 'n_tanker', outStatisticFieldName: 'avg_tanker' },
+      { statisticType: 'avg', onStatisticField: 'capacity_tanker', outStatisticFieldName: 'avg_cap_tanker' },
       { statisticType: 'count', onStatisticField: 'n_total', outStatisticFieldName: 'day_count' },
     ]),
     f: 'json',
@@ -195,12 +197,32 @@ export async function fetchLatestQueryDate(afterDate, timeoutMs = BASELINE_REQUE
  * window holds fewer than BASELINE_MIN_DAYS published days or the row is
  * malformed. Null is stored as-is: consumers withhold the comparison rather
  * than compare against a partial year.
+ *
+ * `tankerAvgDaily` and `capTankerAvgDaily` (tanker count and tanker DWT) are
+ * added when the row has them. The chokepoint-flows seeder measures oil flow
+ * against them, because a trailing window inside a long closure reads the
+ * closure as normal.
  */
 export function buildBaseline(stats, window) {
   const avg = Number(stats?.avg_total);
   const days = Number(stats?.day_count);
   if (!Number.isFinite(avg) || avg < 0 || !Number.isInteger(days) || days < BASELINE_MIN_DAYS) return null;
-  return { avgDaily: Math.round(avg * 10) / 10, days, from: window.from, to: window.to };
+  const baseline = { avgDaily: Math.round(avg * 10) / 10, days, from: window.from, to: window.to };
+  const tanker = finiteNonNegative(stats.avg_tanker);
+  if (tanker !== null) baseline.tankerAvgDaily = Math.round(tanker * 10) / 10;
+  const capTanker = finiteNonNegative(stats.avg_cap_tanker);
+  if (capTanker !== null) baseline.capTankerAvgDaily = Math.round(capTanker);
+  return baseline;
+}
+
+function finiteNonNegative(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function mean(values) {
+  return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
 }
 
 export function buildHistory(features) {
@@ -271,7 +293,10 @@ export function chokepointsFromCsv(text, sinceEpoch, window) {
       throw new Error(`CSV export has an invalid date for ${cells[col.portname]}`);
     }
     if (date >= window.from && date < baselineEndDay && cells[col.n_total] !== '') {
-      (baselineTotals[id] ??= []).push(Number(cells[col.n_total]));
+      const base = (baselineTotals[id] ??= { total: [], tanker: [], capTanker: [] });
+      base.total.push(Number(cells[col.n_total]));
+      if (cells[col.n_tanker] !== '') base.tanker.push(Number(cells[col.n_tanker]));
+      if (cells[col.capacity_tanker] !== '') base.capTanker.push(Number(cells[col.capacity_tanker]));
     }
     if (date < sinceDay) continue;
     const attributes = { date };
@@ -281,8 +306,13 @@ export function chokepointsFromCsv(text, sinceEpoch, window) {
   const result = {};
   for (const [id, rows] of Object.entries(features)) {
     const history = buildHistory(rows);
-    const totals = baselineTotals[id] ?? [];
-    const stats = { avg_total: totals.length ? totals.reduce((a, b) => a + b, 0) / totals.length : null, day_count: totals.length };
+    const base = baselineTotals[id] ?? { total: [], tanker: [], capTanker: [] };
+    const stats = {
+      avg_total: mean(base.total),
+      avg_tanker: mean(base.tanker),
+      avg_cap_tanker: mean(base.capTanker),
+      day_count: base.total.length,
+    };
     result[id] = { history, wowChangePct: computeWow(history), baseline: buildBaseline(stats, window) };
   }
   if (Object.keys(result).length === 0) throw new Error('CSV export has no chokepoint rows in the history window');
