@@ -630,6 +630,22 @@ for (const [name, failure] of [['an error', {}], ['no result', { missingResult: 
   });
 });
 
+test('lane 31: a US collapse saved under the v1 key before the upgrade still gets its recovery', async () => {
+  const seedHashes = historyHashes('2026-10-14', '2026-11-08', ORDINARY_HISTORY);
+  const onset = Date.parse('2026-11-13T19:00:00Z');
+  const collapsed = { state: 'collapsed', run: 0, onset, lastT: Date.parse('2026-11-13T20:25:00Z'), prior: null, verdict: 'collapsed' };
+  await lane([GLOBAL_SNAPSHOT], {}, async ({ redis, relay }) => {
+    const queued = () => redis.list('wm:events:queue').map((m) => JSON.parse(m));
+    await relay.waitFor(() => queued().length >= 1, 'the recovery event');
+    assert.equal(queued()[0].payload.kind, 'recovery');
+    assert.equal(queued()[0].payload.onset, '2026-11-13T19:00:00.000Z');
+    await relay.waitFor(() => JSON.parse(redis.get('aviation:traffic:detector:v2') || '{}').US?.state === 'normal', 'the migrated state');
+  }, {
+    seedHashes,
+    seedStrings: [['aviation:traffic:detector:v1', JSON.stringify(collapsed)]],
+  });
+});
+
 // A UK stop: departures around the London, Manchester and other UK hubs fall
 // to a fifth of four weeks of history while the US, the control for Europe,
 // flies as usual.

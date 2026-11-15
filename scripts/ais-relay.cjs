@@ -6782,6 +6782,9 @@ async function seedAirTrafficPoint() {
 // kept, trimmed to the fields the detector reads. One key holds every market's
 // state, keyed by market code.
 const AIR_TRAFFIC_DETECTOR_STATE_KEY = 'aviation:traffic:detector:v2';
+// The US-only state before markets. Read while v2 is absent, so a collapse
+// active across the upgrade keeps its onset and still gets its recovery.
+const AIR_TRAFFIC_DETECTOR_LEGACY_STATE_KEY = 'aviation:traffic:detector:v1';
 const AIR_TRAFFIC_DETECTOR_STATE_TTL_SECONDS = 7 * 86400;
 const AIR_TRAFFIC_DETECTOR_MAX_WINDOW = Math.max(...airTrafficDetector.MARKETS.map((m) => m.window));
 const airTrafficDetectorDays = new Map();
@@ -6836,8 +6839,9 @@ async function runAirTrafficDetector(t) {
   try {
     // The bins before t that the widest market window reads.
     const recentBins = Array.from({ length: AIR_TRAFFIC_DETECTOR_MAX_WINDOW - 1 }, (_, i) => t - (i + 1) * 300_000);
-    const [stateRes, pointRes, wingbitsRes, ...recentRes] = (await upstashPipeline([
+    const [stateRes, legacyRes, pointRes, wingbitsRes, ...recentRes] = (await upstashPipeline([
       ['GET', AIR_TRAFFIC_DETECTOR_STATE_KEY],
+      ['GET', AIR_TRAFFIC_DETECTOR_LEGACY_STATE_KEY],
       ['HGET', airTrafficDayKey(t, AIR_TRAFFIC_SERIES.opensky), String(t)],
       ['HGET', airTrafficDayKey(t, AIR_TRAFFIC_SERIES.wingbits), String(t)],
       ...recentBins.map((bin) => ['HGET', airTrafficDayKey(bin, AIR_TRAFFIC_SERIES.opensky), String(bin)]),
@@ -6845,7 +6849,7 @@ async function runAirTrafficDetector(t) {
     // A failed read must not stand in for no state: during a collapse, the
     // next bin would start from normal and the recovery would never be sent.
     const answered = (res) => res && !res.error && 'result' in res;
-    if (!answered(stateRes) || !answered(pointRes)) {
+    if (!answered(stateRes) || !answered(pointRes) || (stateRes.result === null && !answered(legacyRes))) {
       console.warn('[AirTrafficDetector] state read failed; skipping this bin');
       return;
     }
@@ -6855,8 +6859,14 @@ async function runAirTrafficDetector(t) {
     }
     let states = {};
     try {
-      const parsed = stateRes.result === null ? null : JSON.parse(stateRes.result);
-      states = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      const isObject = (v) => v && typeof v === 'object' && !Array.isArray(v);
+      if (stateRes.result !== null) {
+        const parsed = JSON.parse(stateRes.result);
+        states = isObject(parsed) ? parsed : {};
+      } else if (legacyRes.result !== null) {
+        const legacy = JSON.parse(legacyRes.result);
+        states = isObject(legacy) ? { US: legacy } : {};
+      }
     } catch {
       // Only this relay writes the key. A value it cannot parse would stop the
       // detector until the TTL if skipped, so it starts over, loudly.
