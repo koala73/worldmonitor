@@ -780,9 +780,11 @@ scoring, and war-risk tiers, but `flowEstimate` is simply absent — not zero, n
 <a id="corpus-how-flow-is-down-is-decided"></a>
 ### How "flow is down" is decided
 
-Traffic is compared against itself. The last 7 days of shipping activity are
-measured against the previous 90 — so a quiet week in a normally quiet strait
-does not register, while the same drop in a busy one does. That ratio is then
+Traffic is compared against itself. The last 7 days of tanker activity are
+measured against the same strait a year earlier, so a quiet week in a normally
+quiet strait does not register, while the same drop in a busy one does. A
+year-earlier reference keeps a long closure visible: compared with its own
+recent months, a strait shut for a quarter would look normal. That ratio is then
 applied to the strait's known baseline oil volume to express the shortfall in
 barrels per day.
 
@@ -894,7 +896,8 @@ when using vessel counts. Rows below those floors are omitted rather than
 reported as zero flow.
 
 The `disrupted` boolean is separate from the color badge: it is true when each
-of the latest three individual days is below 85% of the same `baseline90d`.
+of the latest three individual days is below 85% of the same baseline (the
+year-earlier mean, or the trailing-window mean when it is the fallback).
 
 `latestDate` is the last PortWatch day the 7-day window covers. PortWatch
 publishes with a lag of several days (8-9 days in November 2026) and not every
@@ -1081,8 +1084,9 @@ in the dataset. The datasheet lists every withheld field and the reason.
   regions. Missing upstream coverage is surfaced as unavailable data, not
   synthesized as zero traffic.
 - Baselines are annual EIA reference levels used for mb/d conversion. The live
-  ratio itself uses recent PortWatch observations against the prior rolling
-  baseline window described above.
+  ratio itself uses recent PortWatch observations against the year-earlier
+  baseline described above, or the trailing window when that baseline is
+  missing.
 
 <a id="corpus-corrections"></a>
 ## Corrections
