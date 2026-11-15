@@ -98,7 +98,7 @@ export async function searchSceneHistory(
   }
   const result = await entry.work.join(options.signal, (): SceneHistory => ({ status: 'failed', failure: { archive, reason: 'aborted' } }));
   if (result.status !== 'ok') return result;
-  return { status: 'ok', scenes: result.scenes.filter((scene) => scene.startMs >= window.startMs && scene.startMs <= window.endMs) };
+  return { status: 'ok', scenes: result.scenes.filter((scene) => scene.endMs >= window.startMs && scene.startMs <= window.endMs) };
 }
 
 export interface DatedScene {
