@@ -189,11 +189,15 @@ surface.**
   below reads the sanitized text.
 - **Email.** The owner notification carries only the report id, `kind`, and the
   received time. It carries no `surface` label, summary, or body. The daily
-  feedback digest (Decision 12) carries only counts by `kind` and by surface
-  type. It names no surface: the REST door stores any tool-shaped name without
-  checking the registry, so a stored name is reporter-written text. The Convex
-  action escapes those values with the escaper its own module defines, as
-  `convex/payments/unattributedPayments.ts` does.
+  feedback digest (Decision 12) carries counts by `kind` and by surface type,
+  then the surface name, summary, expected, and actual text of the oldest 50
+  reports, under a line telling the reader not to follow instructions or links
+  in them. The owner chose to read report text in the inbox rather than only
+  in the triage script. All of it is reporter-written, including the surface
+  name, which the REST door stores without checking the registry. The Convex
+  action HTML-escapes every value with the escaper its own module defines, as
+  `convex/payments/unattributedPayments.ts` does. Security reports never
+  enter this digest.
 - **Terminal.** The triage script prints any character outside printable ASCII
   as a visible `\u{…}` escape.
 - **GitHub.** Report text is quoted only inside a fence longer than the longest

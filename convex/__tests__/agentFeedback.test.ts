@@ -5,6 +5,7 @@ import { internal } from "../_generated/api";
 import {
   FEEDBACK_DIGEST_MAX_ROWS,
   FEEDBACK_DIGEST_PAGE,
+  FEEDBACK_DIGEST_TEXT_ROWS,
   FEEDBACK_REPORTER_HOURLY_CAP,
   FEEDBACK_RETRY_WINDOW_MS,
   FEEDBACK_SECURITY_EMAILS_PER_DAY,
@@ -344,14 +345,18 @@ describe("feedback digest", () => {
     expect(body).toContain("<td>mcp_tool</td><td>2</td>");
     expect(body).toContain("<td>rpc</td><td>1</td>");
     expect(body).toContain("<td>other</td><td>1</td>");
-    // Surface names are reporter-written: the REST door stores any shaped
-    // name unchecked. They are counted by type, never shown.
+    // The owner reads each report's text in the email. It is reporter-written,
+    // so every field is HTML-escaped.
     for (const text of [
-      "DIGEST-SECRET-SUMMARY", "DIGEST-SECRET-EXPECTED", "OTHER-LABEL", "get_market_data", "list-market-quotes",
+      "DIGEST-SECRET-SUMMARY", "DIGEST-SECRET-EXPECTED", "get_market_data", "list-market-quotes",
+      ids.a, ids.b, ids.c, ids.d,
     ]) {
-      expect(body).not.toContain(text);
+      expect(body).toContain(text);
     }
+    expect(body).toContain("OTHER-LABEL-&lt;b&gt;");
+    expect(body).not.toContain("OTHER-LABEL-<b>");
     expect(body).not.toContain(ids.security);
+    expect(body).not.toContain(ids.announced);
 
     const stored = await rows(t);
     for (const id of [ids.a, ids.b, ids.c, ids.d]) {
@@ -364,16 +369,39 @@ describe("feedback digest", () => {
     expect(bodies).toHaveLength(1);
   });
 
-  test("a shaped but unregistered surface name never reaches the email", async () => {
+  test("report text is escaped so markup in it stays inert", async () => {
     const bodies = captureResend();
     const t = convexTest(schema, modules);
     await t.run((ctx) => ctx.db.insert("agentFeedback", {
-      ...report({ surfaceName: "urgent_rotate_api_key" }), status: "received", updatedAt: NOW, receivedAt: NOW - 1000,
+      ...report({
+        summary: `<a href="https://evil.example">click</a> & "quote"`,
+        actual: "<script>alert(1)</script>",
+      }),
+      status: "received", updatedAt: NOW, receivedAt: NOW - 1000,
     }));
     expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: 1 });
     const body = html(bodies[0]);
-    expect(body).toContain("<td>mcp_tool</td><td>1</td>");
-    expect(body).not.toContain("urgent_rotate");
+    expect(body).toContain("&lt;a href=&quot;https://evil.example&quot;&gt;click&lt;/a&gt; &amp; &quot;quote&quot;");
+    expect(body).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(body).not.toContain("<script>");
+    expect(body).not.toContain('<a href="https://evil.example"');
+  });
+
+  test("shows text for the oldest reports only, and counts the rest", async () => {
+    const bodies = captureResend();
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      const base = { ...report(), status: "received" as const, updatedAt: NOW };
+      for (let i = 0; i < FEEDBACK_DIGEST_TEXT_ROWS + 5; i++) {
+        await ctx.db.insert("agentFeedback", { ...base, summary: `ROW-${i}-END`, receivedAt: NOW - DAY + i });
+      }
+    });
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: FEEDBACK_DIGEST_TEXT_ROWS + 5 });
+    const body = html(bodies[0]);
+    expect(body).toContain("ROW-0-END");
+    expect(body).toContain(`ROW-${FEEDBACK_DIGEST_TEXT_ROWS - 1}-END`);
+    expect(body).not.toContain(`ROW-${FEEDBACK_DIGEST_TEXT_ROWS}-END`);
+    expect(body).toContain("5 more report(s) not shown");
   });
 
   test("reports the operator already moved out of received are not announced", async () => {
