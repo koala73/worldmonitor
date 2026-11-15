@@ -256,31 +256,31 @@ async function loadSiteSatellites(found: PointPassLookup, signal: AbortSignal): 
   };
   draw({ kind: 'projecting' });
   try {
-    const fallback = getTrackedSatelliteTles().length > 0 ? [] : (await fetchSatelliteTLEs()) ?? [];
+    let tles = getTrackedSatelliteTles();
+    if (tles.length === 0) tles = (await fetchSatelliteTLEs()) ?? [];
     if (signal.aborted) return;
-    // Each projection reads the layer's current set, so satellites it adds or re-elements later are included.
-    const currentTles = () => {
-      const tracked = getTrackedSatelliteTles();
-      return tracked.length > 0 ? tracked : fallback;
-    };
-    if (currentTles().length === 0) {
+    if (tles.length === 0) {
       draw({ kind: 'not-loaded' });
       return;
     }
+    let latest = 0;
+    // Each projection reads the layer's current set, so satellites it adds or re-elements later
+    // are included; a layer switched off since keeps projecting the last set it drew.
     const project = async () => {
-      const tles = currentTles();
-      // A layer switched off since keeps the last list rather than reading as no coverage.
-      if (tles.length === 0) return;
+      const tracked = getTrackedSatelliteTles();
+      if (tracked.length > 0) tles = tracked;
+      const ticket = ++latest;
       const satellites = await satellitesCoveringSite({ site, tles, nowMs: Date.now(), signal });
-      if (!signal.aborted) draw({ kind: 'ok', satellites });
+      if (!signal.aborted && ticket === latest) draw({ kind: 'ok', satellites });
     };
     await project();
     if (signal.aborted) return;
     // The open list moves with the clock: elapsed passes drop out and, once its window has
     // slid far enough, the cached scans renew, so no past pass is labelled upcoming.
     const clock = setInterval(() => {
+      const ticket = latest + 1;
       project().catch((error: unknown) => {
-        if (!isAbort(error) && !signal.aborted) draw({ kind: 'failed' });
+        if (!isAbort(error) && !signal.aborted && ticket === latest) draw({ kind: 'failed' });
       });
     }, SITE_SATELLITES_TICK_MS);
     signal.addEventListener('abort', () => clearInterval(clock), { once: true });
