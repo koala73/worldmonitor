@@ -888,7 +888,8 @@ export class MapContainer {
   }
 
   private rehydrateActiveMap(): void {
-    if (this.useDeckGL) this.deckGLMap?.setZoomCap(this.zoomCap);
+    // A renderer built while a lookup holds the zoom comes up held too; one built with no cap needs nothing.
+    if (this.useDeckGL && this.zoomCap != null) this.deckGLMap?.setZoomCap(this.zoomCap);
     // 1. Re-wire callbacks (through own public methods for adapter safety)
     if (this.cachedOnStateChanged) this.onStateChanged(this.cachedOnStateChanged);
     if (this.cachedOnLayerChange) this.setOnLayerChange(this.cachedOnLayerChange);
