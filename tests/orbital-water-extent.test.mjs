@@ -127,15 +127,30 @@ describe('reservoir water extent: producer', () => {
 
   it('carries the previous series forward and retries after an upstream error', async () => {
     const first = await run({ search: () => ({ features: [scene('s1', 8)] }), statistics: () => stats(100, 10, 5) });
+    let statisticsCalls = 0;
     const { data, calls } = await run({
       previous: first.data,
       search: () => ({ features: [scene('s2', 1), scene('s1', 8)] }),
-      statistics: () => { throw new Error('HTTP 502'); },
+      statistics: () => { statisticsCalls += 1; if (statisticsCalls === 1) throw new Error('HTTP 502'); return stats(100, 10, 5); },
     });
-    const kariba = data.reservoirs['reservoir:kariba'];
-    assert.deepEqual(kariba.observations.map((o) => o.sceneId), ['s1'], 'kept the earlier reading');
-    assert.equal(kariba.searchedThrough, first.data.reservoirs['reservoir:kariba'].searchedThrough, 'search window not advanced');
+    const failed = Object.values(data.reservoirs).find((r) => r.observations.length === 1);
+    const ok = Object.values(data.reservoirs).find((r) => r.observations.length === 2);
+    assert.deepEqual(failed.observations.map((o) => o.sceneId), ['s1'], 'kept the earlier reading');
+    assert.equal(failed.searchedThrough, first.data.reservoirs[failed.siteId].searchedThrough, 'search window not advanced');
+    assert.equal(ok.searchedThrough, new Date(NOW).toISOString());
     assert.deepEqual(calls.filter((c) => c[0] === 'statistics').map((c) => c[1]), ['s2', 's2'], 's1 is not requested again');
+  });
+
+  it('fails the run when the archive answers no request, so seed-meta is not refreshed', async () => {
+    const first = await run({ search: () => ({ features: [scene('s1', 8)] }), statistics: () => stats(100, 10, 5) });
+    await assert.rejects(
+      run({ previous: first.data, search: () => { throw new Error('HTTP 503'); }, statistics: () => stats(100, 10, 5) }),
+      /every scene search failed/,
+    );
+    await assert.rejects(
+      run({ previous: first.data, search: () => ({ features: [scene('s2', 1)] }), statistics: () => { throw new Error('HTTP 500'); } }),
+      /every statistics request failed/,
+    );
   });
 
   it('retries a scene whose statistics response is malformed instead of marking it partial', async () => {
@@ -160,10 +175,15 @@ describe('reservoir water extent: producer', () => {
     assert.equal(untouched.searchedThrough, null);
   });
 
-  it('keeps the series when the scene search fails', async () => {
+  it('keeps the series when one scene search fails', async () => {
     const first = await run({ search: () => ({ features: [scene('s1', 8)] }), statistics: () => stats(100, 10, 5) });
-    const { data } = await run({ previous: first.data, search: () => { throw new Error('HTTP 503'); }, statistics: () => stats(100, 10, 5) });
-    assert.deepEqual(data.reservoirs['reservoir:kariba'].observations.map((o) => o.sceneId), ['s1']);
+    let searches = 0;
+    const { data } = await run({
+      previous: first.data,
+      search: () => { searches += 1; if (searches === 1) throw new Error('HTTP 503'); return { features: [] }; },
+      statistics: () => stats(100, 10, 5),
+    });
+    for (const record of Object.values(data.reservoirs)) assert.deepEqual(record.observations.map((o) => o.sceneId), ['s1']);
   });
 
   it('follows search pages on the search host and flags a search with pages left over', async () => {

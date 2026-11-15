@@ -102,16 +102,24 @@ export function makeFetchWaterExtent({ sites = WATCHED_SITES, watchlist = loadWa
     const reservoirs = {};
     let requests = 0;
     let added = 0;
+    const tally = { searched: 0, searchFailed: 0, answered: 0, failed: 0 };
     const errors = [];
     for (const target of targets) {
       const result = await measureReservoir(target, prior[target.siteId], { searchScenes, fetchStatistics, nowMs, deadlineMs, clock: now });
       reservoirs[target.siteId] = result.record;
       requests += result.requests;
       added += result.added;
+      if (result.searched === true) tally.searched += 1;
+      if (result.searched === false) tally.searchFailed += 1;
+      tally.answered += result.answered;
+      tally.failed += result.failed;
       if (result.error) errors.push(`${target.reservoirId}: ${result.error}`);
     }
     console.log(`  Water extent: ${targets.length} reservoirs, ${added} new readings, ${requests} requests, ${errors.length} errors`);
     for (const line of errors.slice(0, 5)) console.warn(`  ${line}`);
+    // A run in which the archive answered nothing must not refresh seed-meta from the carried series.
+    if (tally.searchFailed > 0 && tally.searched === 0) throw new Error(`every scene search failed (${errors[0]})`);
+    if (tally.failed > 0 && tally.answered === 0) throw new Error(`every statistics request failed (${errors[0]})`);
     return {
       schema: WATER_EXTENT_SCHEMA,
       runAt: nowMs,

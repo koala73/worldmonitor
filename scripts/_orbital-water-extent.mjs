@@ -148,6 +148,7 @@ export function searchSince(record, nowMs) {
  * Measure one reservoir. Scenes are taken newest first; a run that stops early (budget, upstream error)
  * keeps everything measured so far and leaves `searchedThrough` where it was so the rest is retried.
  * Past the deadline it makes no request at all and carries the previous record (or an empty one).
+ * `searched` (null when skipped), `answered` and `failed` let the run tell an upstream outage from a quiet day.
  */
 export async function measureReservoir(target, previous, { searchScenes, fetchStatistics, nowMs, deadlineMs, clock = Date.now }) {
   const areaKm2 = boxAreaKm2(target.box);
@@ -158,7 +159,7 @@ export async function measureReservoir(target, previous, { searchScenes, fetchSt
     const observations = keep?.observations ?? [];
     return { ...base, searchedThrough: keep?.searchedThrough ?? null, observations, partialScenes: keep?.partialScenes ?? [], latest: observations[0] ?? null };
   };
-  if (clock() >= deadlineMs) return { record: carried(), requests: 0, added: 0, error: null };
+  if (clock() >= deadlineMs) return { record: carried(), requests: 0, added: 0, error: null, searched: null, answered: 0, failed: 0 };
   let scenes;
   let truncated;
   try {
@@ -166,13 +167,14 @@ export async function measureReservoir(target, previous, { searchScenes, fetchSt
     scenes = scenesFromSearch(collection);
     truncated = collection?.truncated === true;
   } catch (error) {
-    return { record: carried(), requests: 1, added: 0, error: `search: ${error.message}` };
+    return { record: carried(), requests: 1, added: 0, error: `search: ${error.message}`, searched: false, answered: 0, failed: 0 };
   }
   const todo = pendingScenes(scenes, keep);
   const additions = [];
   const partial = new Set(keep?.partialScenes ?? []);
   let requests = 1;
   let error = null;
+  let answered = 0;
   let complete = !truncated && todo.length === pendingScenes(scenes, keep, Infinity).length;
   for (const scene of todo) {
     if (clock() >= deadlineMs) { complete = false; break; }
@@ -181,6 +183,7 @@ export async function measureReservoir(target, previous, { searchScenes, fetchSt
       const reading = readingFromStatistics(await fetchStatistics(scene.sceneId, boxPolygon(target.box)), areaKm2);
       if (reading) additions.push({ ...scene, ...reading });
       else partial.add(scene.sceneId);
+      answered += 1;
     } catch (e) {
       error = `statistics ${scene.sceneId}: ${e.message}`;
       complete = false;
@@ -195,7 +198,7 @@ export async function measureReservoir(target, previous, { searchScenes, fetchSt
     partialScenes: [...partial].filter((id) => sceneIds.has(id) || !complete).slice(-200),
     latest: observations[0] ?? null,
   };
-  return { record, requests, added: additions.length, error };
+  return { record, requests, added: additions.length, error, searched: true, answered, failed: requests - 1 - answered };
 }
 
 /** Health counts reservoirs with a reading inside the last 60 days. */
