@@ -5777,6 +5777,19 @@
         "5": "odhlášení",
         "6": "smazání účtu, platba, odhlásit"
       }
+    },
+    "reservoirAlert": {
+      "title": "Upozornění na hladinu vody",
+      "description": "Upozornění když hladina vody strategické přehrady měřená lidarem klesne. NASA zveřejňuje každý průlet satelitu přibližně dva měsíce po jeho měření, takže každé upozornění uvádí datum měření.",
+      "scopeHint": "Vyberte až {{max}} přehrad. Upozornění se vztahují pouze na přehrady uvedené zde.",
+      "searchPlaceholder": "Přidejte přehradu podle názvu",
+      "searchLabel": "Přidat přehradu",
+      "removeLabel": "Odebrat {{name}}",
+      "thresholdLabel": "Prahová hladina",
+      "thresholdHint": "Upozornění když poslední naměřená hladina klesne pod toto procento naměřeného rozsahu přehrady, kde 0 je nejnižší a 100 nejvyšší naměřená hladina. Ponechte prázdné pro žádný práh.",
+      "thresholdInputLabel": "Prahová hladina, procento naměřeného rozsahu",
+      "seasonalLabel": "Pokles nad sezónní úroveň",
+      "seasonalHint": "Upozornění když poslední naměřená hladina je výrazně nižší, než obvykle měří tato přehrada v tuto dobu roku."
     }
   }
 }

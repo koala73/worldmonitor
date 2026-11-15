@@ -71,6 +71,19 @@ description: "World Monitor 通知系统 API 完整参考：涵盖通知渠道�
 
 `POST /api/notify` 拒绝这两种事件类型:只有关注站点采集器会发布它们。
 
+## 水库水位告警
+
+只有当 Pro 规则的 `eventTypes` 列出 `reservoir_level_alert` 时,规则才会收到它。`eventTypes` 为空的规则不会收到它,列出它也不会缩小规则的其他告警范围。规则的 `reservoirAlert` 对象指明关注哪些水库以及何时告警。
+
+- **设置**:`reservoirAlert` 为 `{ reservoirs, belowPercent?, seasonalDrop? }`。`reservoirs` 为水库 id,例如 `nasser` 或 `gerd`,最多 50 个,为空或缺省表示不接收水库告警。`belowPercent` 为 1 到 50 的整数:当最新测得水位低于该水库自身已测范围的这一百分比(0 为已测最低水位,100 为最高)时告警。`seasonalDrop: true` 表示当最新测得水位低于该水库的季节基线时告警。规则可设置其一或两者;两者都未设置则永不触发。历史不足、没有已测范围或季节基线的水库无法触发对应条件。
+- **测量日期**:水位来自 NASA ICESat-2 激光雷达,过境约两个月后才到达仪表盘。水库获得新的测量日期时发送一次告警,从不按时钟发送,标题和 `measuredAt` 给出该日期。没有有效测量日期的事件不匹配任何规则。上线后的首次采集只记录当前测量值,因此不会就历史数据告警。
+- **基线**:季节基线是战略水位采集器已计算的那一个(`scripts/_reservoir-levels.mjs` 中的 `seasonalBaseline`);告警只携带其判断,不新增第二套基线。
+- **严重级别**:始终为 `critical`,因为实时规则只投递 critical 事件。过滤条件是按水库的选择加入和规则自己的阈值。与其他队列事件一样,只投递给实时规则,不进入摘要。
+- **范围**:`countries` 范围不会过滤该事件。无效设置返回 `400 RESERVOIR_ALERT_INVALID`。请求该事件类型或列出水库需要 Pro 权益,否则返回 `402 PRO_REQUIRED`。
+- **载荷**:`title`、`source`(`NASA ICESat-2 lidar`)、`reservoirId`、`reservoirName`、`reservoirCountry`、`measuredAt`(`YYYY-MM-DD`)、`levelM`(高于 EGM2008 大地水准面的米数)、`percentOfRange`、`seasonalAnomalyM`、`seasonalZ`、`beyondSeasonalBaseline`,以及标识一次测量、在中继重发时保持不变的 `coalesceKey`。
+
+`POST /api/notify` 拒绝该事件类型:只有水库采集器会发布它。
+
 ## Webhook 投递契约
 
 当告警触发时,已注册的 webhook URL 将收到:

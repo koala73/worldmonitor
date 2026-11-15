@@ -5711,6 +5711,19 @@
         "5": "oturumu kapat",
         "6": "hesabı sil"
       }
+    },
+    "reservoirAlert": {
+      "title": "Su seviyesi uyarıları",
+      "description": "Stratejik bir rezervuarın lidar su seviyesi düşük olduğunda uyarı alın. NASA her uydu geçişini ölçüldükten yaklaşık iki ay sonra yayınlar, bu nedenle her uyarı ölçüm tarihini verir.",
+      "scopeHint": "En fazla {{max}} rezervuar seçin. Uyarılar yalnızca burada listelenen rezervuarları kapsar.",
+      "searchPlaceholder": "Reservoir adına göre ekleyin",
+      "searchLabel": "Rezervuar ekle",
+      "removeLabel": "{{name}} öğesini kaldır",
+      "thresholdLabel": "Seviye eşiği",
+      "thresholdHint": "En son ölçülen seviye, rezervuarın kendi ölçülen aralığının bu yüzdesinin altında olduğunda uyarı alın; burada 0 ölçülen en düşük seviye ve 100 en yüksek seviyedir. Eşik yoksa boş bırakın.",
+      "thresholdInputLabel": "Seviye eşiği, ölçülen aralığın yüzdesi",
+      "seasonalLabel": "Mevsimsel taban çizgisinin ötesinde düşüş",
+      "seasonalHint": "En son ölçülen seviye, o rezervuarın yılın bu döneminde genellikle ölçtüğü değerin önemli ölçüde altında olduğunda uyarı alın."
     }
   }
 }

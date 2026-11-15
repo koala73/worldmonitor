@@ -5678,6 +5678,19 @@
         "5": "登出",
         "6": "刪除帳戶, 退出登入"
       }
+    },
+    "reservoirAlert": {
+      "title": "水位告警",
+      "description": "當戰略水庫的光達水位低時發出告警。美國航天局在衛星過境測量約兩個月後公佈資料，因此每條告警都附帶測量日期。",
+      "scopeHint": "最多選擇 {{max}} 個水庫。告警僅覆蓋此處列出的水庫。",
+      "searchPlaceholder": "按名稱新增水庫",
+      "searchLabel": "新增水庫",
+      "removeLabel": "移除 {{name}}",
+      "thresholdLabel": "水位閾值",
+      "thresholdHint": "當最新測量水位低於該水庫已測量範圍的此百分比時發出告警，其中 0 是最低已測量水位，100 是最高已測量水位。留空則不設閾值。",
+      "thresholdInputLabel": "水位閾值，已測量範圍的百分比",
+      "seasonalLabel": "超過季節基線的下降",
+      "seasonalHint": "當最新測量水位明顯低於該水庫在一年中該時期的通常測量值時發出告警。"
     }
   }
 }

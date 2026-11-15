@@ -37,6 +37,7 @@ const {
 } = require('./shared/notification-dedup.cjs');
 const { COMPARE_AND_DELETE_SCRIPT } = require('./shared/compare-and-delete-script.cjs');
 const { ORBITAL_SITE_EVENT_TYPES } = require('./lib/orbital-site-alerts.cjs');
+const { RESERVOIR_ALERT_EVENT_TYPE, reservoirAlertDecision } = require('./lib/reservoir-level-alerts.cjs');
 const {
   parseSuppressionEntries,
   isLinkSuppressed,
@@ -1165,6 +1166,8 @@ function normalizeEventCountryCode(raw) {
 //    (eventMatchesChokepointScope) and opt-in only (#9217).
 //  - orbital_imaging_window, orbital_site_change: scoped by watched site
 //    (eventMatchesOrbitalSiteScope) and opt-in only.
+//  - reservoir_level_alert: scoped by the rule's own reservoir list and
+//    threshold (eventMatchesReservoirScope) and opt-in only.
 const PERMISSIVE_UNATTRIBUTED_EVENT_TYPES = new Set([
   'rss_alert',
   'keyword_spike',
@@ -1173,6 +1176,7 @@ const PERMISSIVE_UNATTRIBUTED_EVENT_TYPES = new Set([
   'watchlist_story_alert',
   'chokepoint_disruption',
   ...ORBITAL_SITE_EVENT_TYPES,
+  RESERVOIR_ALERT_EVENT_TYPE,
 ]);
 
 function isPermissiveUnattributedEvent(event) {
@@ -1296,6 +1300,8 @@ const OPT_IN_EVENT_TYPES = new Set([
   // Same opt-in contract as the watchlist row (#9217).
   CHOKEPOINT_DISRUPTION_EVENT_TYPE,
   ...ORBITAL_SITE_EVENT_TYPES,
+  // Same opt-in contract: the rule lists the type, its reservoirs and its criterion.
+  RESERVOIR_ALERT_EVENT_TYPE,
 ]);
 
 function ruleMatchesEventType(rule, event) {
@@ -1356,6 +1362,17 @@ function eventMatchesOrbitalSiteScope(event, rule) {
 }
 
 /**
+ * Narrows `reservoir_level_alert` to what the rule chose: its reservoirs, and a level below
+ * its threshold or a drop beyond the seasonal baseline. An absent or empty reservoir list
+ * means none, and an event without a dated measurement matches no rule. Every other event
+ * type passes through untouched.
+ */
+function eventMatchesReservoirScope(event, rule) {
+  if (event?.eventType !== RESERVOIR_ALERT_EVENT_TYPE) return true;
+  return reservoirAlertDecision(rule.reservoirAlert, event.payload).fire;
+}
+
+/**
  * Web push tag: a later push with the same tag replaces the earlier one in the
  * tray. Chokepoint and watched-site alerts carry their subject so two alerts in
  * one tick both stay visible.
@@ -1363,7 +1380,8 @@ function eventMatchesOrbitalSiteScope(event, rule) {
 function webPushTagFor(event, userId) {
   const subject = event?.eventType === CHOKEPOINT_DISRUPTION_EVENT_TYPE ? event?.payload?.chokepointId
     : ORBITAL_SITE_EVENT_TYPES.includes(event?.eventType) ? event?.payload?.siteId
-      : null;
+      : event?.eventType === RESERVOIR_ALERT_EVENT_TYPE ? event?.payload?.reservoirId
+        : null;
   return typeof subject === 'string' && subject
     ? `${event.eventType}:${subject}:${userId}`
     : `${event.eventType}:${userId}`;
@@ -1911,6 +1929,7 @@ async function processEvent(event) {
     eventMatchesTickerScope(event, r) &&
     eventMatchesChokepointScope(event, r) &&
     eventMatchesOrbitalSiteScope(event, r) &&
+    eventMatchesReservoirScope(event, r) &&
     (!event.variant || !r.variant || r.variant === event.variant) &&
     (!event.userId || r.userId === event.userId)
   );
@@ -1927,6 +1946,7 @@ async function processEvent(event) {
     eventMatchesTickerScope(event, r) &&
     eventMatchesChokepointScope(event, r) &&
     eventMatchesOrbitalSiteScope(event, r) &&
+    eventMatchesReservoirScope(event, r) &&
     (!event.variant || !r.variant || r.variant === event.variant) &&
     (!event.userId || r.userId === event.userId)
   ).length;

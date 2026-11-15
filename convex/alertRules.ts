@@ -17,6 +17,7 @@ import {
   listAlertRuleShapeViolations,
   type AlertRuleShapeCode,
   ORBITAL_SITE_ALERT_EVENT_TYPES,
+  RESERVOIR_ALERT_EVENT_TYPE,
 } from "../shared/alert-rule-shape";
 import { mergeEntitlementFeatures } from "./lib/entitlements";
 
@@ -36,7 +37,7 @@ type Sensitivity = "all" | "high" | "critical";
  * limit and stop delivery for every tenant. Every writer below calls this
  * before touching the table.
  */
-function assertRuleShape(args: { variant: string; eventTypes?: string[]; channels?: string[]; orbitalSites?: string[] }): void {
+function assertRuleShape(args: { variant: string; eventTypes?: string[]; channels?: string[]; orbitalSites?: string[]; reservoirAlert?: unknown }): void {
   const violation = getAlertRuleShapeViolation(args);
   if (violation) {
     throw new ConvexError({ code: violation.code, message: violation.message });
@@ -283,6 +284,35 @@ async function assertOrbitalAlertEntitlement(
   if (wantsEvent || (args.orbitalSites?.length ?? 0) > 0) await assertProEntitlement(ctx, userId);
 }
 
+/** Stored shape: reservoirs deduped in first-seen order; unset criteria stay absent. */
+function normalizeReservoirAlert(input: { reservoirs: string[]; belowPercent?: number; seasonalDrop?: boolean }) {
+  return {
+    reservoirs: dedupeStrings(input.reservoirs),
+    ...(input.belowPercent !== undefined ? { belowPercent: input.belowPercent } : {}),
+    ...(input.seasonalDrop !== undefined ? { seasonalDrop: input.seasonalDrop } : {}),
+  };
+}
+
+const reservoirAlertValidator = v.object({
+  reservoirs: v.array(v.string()),
+  belowPercent: v.optional(v.number()),
+  seasonalDrop: v.optional(v.boolean()),
+});
+
+/**
+ * The reservoir level alert is Pro-only on every writer, like the watched-site alerts:
+ * asking for the event type or listing a reservoir is what creates the rule, and
+ * clearing both stays open for cleanup.
+ */
+async function assertReservoirAlertEntitlement(
+  ctx: MutationCtx,
+  userId: string,
+  args: { eventTypes?: string[]; reservoirAlert?: { reservoirs: string[] } },
+): Promise<void> {
+  const wantsEvent = args.eventTypes?.includes(RESERVOIR_ALERT_EVENT_TYPE) ?? false;
+  if (wantsEvent || (args.reservoirAlert?.reservoirs.length ?? 0) > 0) await assertProEntitlement(ctx, userId);
+}
+
 export const getAlertRulesByUserId = internalQuery({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
@@ -306,11 +336,13 @@ export const setAlertRulesForUser = internalMutation({
     tickers: v.optional(v.array(v.string())),
     chokepoints: v.optional(v.array(v.string())),
     orbitalSites: v.optional(v.array(v.string())),
+    reservoirAlert: v.optional(reservoirAlertValidator),
   },
   handler: async (ctx, args) => {
     await assertAccountWritable(ctx, args.userId);
     assertRuleShape(args);
     await assertOrbitalAlertEntitlement(ctx, args.userId, args);
+    await assertReservoirAlertEntitlement(ctx, args.userId, args);
     const { userId, ...rest } = args;
     const eventTypes = dedupeStrings(rest.eventTypes);
     const channels = dedupeStrings(rest.channels);
@@ -353,6 +385,7 @@ export const setAlertRulesForUser = internalMutation({
       if (normalizedTickers !== undefined) patch.tickers = normalizedTickers;
       if (normalizedChokepoints !== undefined) patch.chokepoints = normalizedChokepoints;
       if (rest.orbitalSites !== undefined) patch.orbitalSites = dedupeStrings(rest.orbitalSites);
+      if (rest.reservoirAlert !== undefined) patch.reservoirAlert = normalizeReservoirAlert(rest.reservoirAlert);
       await ctx.db.patch(existing._id, patch);
     } else {
       await assertRuleSlotAvailable(ctx, userId);
@@ -368,6 +401,7 @@ export const setAlertRulesForUser = internalMutation({
         tickers: normalizedTickers,
         chokepoints: normalizedChokepoints,
         orbitalSites: rest.orbitalSites !== undefined ? dedupeStrings(rest.orbitalSites) : undefined,
+        reservoirAlert: rest.reservoirAlert !== undefined ? normalizeReservoirAlert(rest.reservoirAlert) : undefined,
         updatedAt: now,
       });
     }
@@ -543,6 +577,7 @@ export const setNotificationConfigForUser = internalMutation({
     tickers: v.optional(v.array(v.string())),
     chokepoints: v.optional(v.array(v.string())),
     orbitalSites: v.optional(v.array(v.string())),
+    reservoirAlert: v.optional(reservoirAlertValidator),
   },
   handler: async (ctx, args) => {
     await assertAccountWritable(ctx, args.userId);
@@ -613,6 +648,7 @@ export const setNotificationConfigForUser = internalMutation({
       if (normalizedTickers !== undefined) patch.tickers = normalizedTickers;
       if (normalizedChokepoints !== undefined) patch.chokepoints = normalizedChokepoints;
       if (args.orbitalSites !== undefined) patch.orbitalSites = dedupeStrings(args.orbitalSites);
+      if (args.reservoirAlert !== undefined) patch.reservoirAlert = normalizeReservoirAlert(args.reservoirAlert);
       await ctx.db.patch(existing._id, patch);
     } else {
       await assertRuleSlotAvailable(ctx, userId);
@@ -631,6 +667,7 @@ export const setNotificationConfigForUser = internalMutation({
         tickers: normalizedTickers,
         chokepoints: normalizedChokepoints,
         orbitalSites: args.orbitalSites !== undefined ? dedupeStrings(args.orbitalSites) : undefined,
+        reservoirAlert: args.reservoirAlert !== undefined ? normalizeReservoirAlert(args.reservoirAlert) : undefined,
         updatedAt: now,
       });
     }

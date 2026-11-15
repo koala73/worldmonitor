@@ -5744,6 +5744,19 @@
         "5": "cerrar sesión",
         "6": "eliminar cuenta"
       }
+    },
+    "reservoirAlert": {
+      "title": "Alertas de nivel de agua",
+      "description": "Alerta cuando el nivel de agua por lidar de un embalse estratégico es bajo. NASA publica cada paso de satélite aproximadamente dos meses después de medirlo, por lo que cada alerta proporciona su fecha de medición.",
+      "scopeHint": "Elige hasta {{max}} embalses. Las alertas cubren solo los embalses listados aquí.",
+      "searchPlaceholder": "Añade un embalse por nombre",
+      "searchLabel": "Añadir embalse",
+      "removeLabel": "Quitar {{name}}",
+      "thresholdLabel": "Umbral de nivel",
+      "thresholdHint": "Alerta cuando el último nivel medido está por debajo de este porcentaje del rango medido del embalse, donde 0 es el nivel más bajo medido y 100 el más alto. Deja en blanco si no deseas un umbral.",
+      "thresholdInputLabel": "Umbral de nivel, porcentaje del rango medido",
+      "seasonalLabel": "Caída por debajo de la línea base estacional",
+      "seasonalHint": "Alerta cuando el último nivel medido está muy por debajo de lo que ese embalse normalmente mide en esta época del año."
     }
   }
 }

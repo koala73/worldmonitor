@@ -5711,6 +5711,19 @@
         "5": "toka",
         "6": "futa akaunti"
       }
+    },
+    "reservoirAlert": {
+      "title": "Onyo za kiwango cha maji",
+      "description": "Pokea onyo wakati kiwango cha maji cha hazini ya kijeshi kinachopimwa kwa lidar kipo chini. NASA inachapisha kila kupita kwa satelaiti karibu miezi miwili baada ya kupimwa, kwa hiyo kila onyo inatoa tarehe ya kupima.",
+      "scopeHint": "Chagua hazini hadi {{max}}. Onyo zinashughulikia hazini tu zilizoorodheshwa hapa.",
+      "searchPlaceholder": "Ongeza hazini kwa jina",
+      "searchLabel": "Ongeza hazini",
+      "removeLabel": "Ondoa {{name}}",
+      "thresholdLabel": "Kiwango cha kizingiti",
+      "thresholdHint": "Pokea onyo wakati kiwango cha maji kilichopimwa karibuni kiko chini ya asilimia hii ya eneo lililopimwa la hazini, ambapo 0 ni kiwango cha chini zaidi kilichopimwa na 100 ni kiwango cha juu zaidi. Acha tupu kwa kizingiti hakuna.",
+      "thresholdInputLabel": "Kiwango cha kizingiti, asilimia ya eneo lililopimwa",
+      "seasonalLabel": "Kushuka zaidi ya mstari wa msingi wa kimsimu",
+      "seasonalHint": "Pokea onyo wakati kiwango cha maji kilichopimwa karibuni kiko chini sana ya kile hazini hii kawaida hupima kwa wakati huu wa mwaka."
     }
   }
 }
