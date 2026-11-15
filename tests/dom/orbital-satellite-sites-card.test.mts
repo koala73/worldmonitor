@@ -5,6 +5,19 @@ import { initTestI18n, restoreEnglish, tt, useCatalogue } from './helpers/i18n.m
 // Orbital Watch ships dark; these tests cover the satellite card it adds once the build turns it on.
 vi.mock('@/config/orbital-watch-flag', () => ({ ORBITAL_WATCH_ENABLED: true }));
 
+// The element set the layer draws and the coverage scan are controlled per test. By
+// default no element set is loaded, so the section settles on its "not loaded" note.
+const mocks = vi.hoisted(() => ({ getTrackedSatelliteTle: vi.fn(() => null as unknown), sitesCoveredBySatellite: vi.fn() }));
+vi.mock('@/services/satellites', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/satellites')>(),
+  getTrackedSatelliteTle: mocks.getTrackedSatelliteTle,
+}));
+vi.mock('@/services/orbital/satellite-site-coverage', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/orbital/satellite-site-coverage')>(),
+  loadWatchedSites: async () => [],
+  sitesCoveredBySatellite: mocks.sitesCoveredBySatellite,
+}));
+
 import { GlobeMap } from '@/components/GlobeMap';
 import { coverageNodes } from '@/components/orbital-satellite-sites-view';
 import { I18N_RESOURCES_LOADED_EVENT } from '@/services/i18n';
@@ -28,6 +41,9 @@ beforeAll(async () => {
 afterEach(async () => {
   await restoreEnglish();
   document.body.replaceChildren();
+  vi.useRealTimers();
+  mocks.getTrackedSatelliteTle.mockReset().mockReturnValue(null);
+  mocks.sitesCoveredBySatellite.mockReset();
 });
 
 describe('coverageNodes', () => {
@@ -168,5 +184,82 @@ describe('Orbital Watch satellite card', () => {
     expect(remove).toHaveBeenCalledWith(I18N_RESOURCES_LOADED_EVENT, expect.any(Function));
     expect(map.openSatelliteCard).toBeNull();
     remove.mockRestore();
+  });
+});
+
+const elementSet = (revision: string) => ({ noradId: '40697', name: 'SENTINEL-2A', type: 'optical', country: 'EU', line1: `1 40697U 15028A   26317.50000000  .00000100  00000-0  50000-4 0  999${revision}`, line2: '2 40697  98.5660  30.0000 0001000  90.0000 270.0000 14.30815000500000' });
+const okCoverage = (nowMs: number, sites: Array<[string, number[]]>): SatelliteCoverage => ({
+  status: 'ok', sensor, windowStartMs: nowMs, windowEndMs: nowMs + 86_400_000, orbitAgeDays: 0.4,
+  sites: sites.map(([id, minutes]) => ({ site: site(id, id.toUpperCase()), passes: minutes.map((m) => ({ ...pass(0), timeMs: nowMs + m * 60_000 })) })),
+});
+const listedSites = (host: HTMLElement) => [...host.querySelectorAll<HTMLElement>('li.osat-site')].map((row) => row.dataset.siteId);
+
+describe('Orbital Watch satellite card sites section', () => {
+  it('recomputes the sites when the layer swaps in a new element set for the same satellite', async () => {
+    mocks.getTrackedSatelliteTle.mockReturnValue(elementSet('0'));
+    mocks.sitesCoveredBySatellite.mockImplementationOnce(async ({ nowMs }) => okCoverage(nowMs, [['alpha', [30]]]));
+    const map = fakeGlobe();
+    map.setSatellites([satellite()]);
+    const host = openCard(map).querySelector<HTMLElement>('[data-osat-sites]')!;
+    await vi.waitFor(() => expect(listedSites(host)).toEqual(['alpha']));
+
+    mocks.getTrackedSatelliteTle.mockReturnValue(elementSet('1'));
+    mocks.sitesCoveredBySatellite.mockImplementationOnce(async ({ nowMs }) => okCoverage(nowMs, [['bravo', [45]]]));
+    map.setSatellites([satellite()]);
+    await vi.waitFor(() => expect(listedSites(host)).toEqual(['bravo']));
+    expect(mocks.sitesCoveredBySatellite.mock.calls[1]![0].tle.line1).toBe(elementSet('1').line1);
+  });
+
+  it('never paints a scan of the old element set that finishes after the swap', async () => {
+    mocks.getTrackedSatelliteTle.mockReturnValue(elementSet('0'));
+    let finishOld!: (coverage: SatelliteCoverage) => void;
+    mocks.sitesCoveredBySatellite.mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }));
+    const map = fakeGlobe();
+    map.setSatellites([satellite()]);
+    const host = openCard(map).querySelector<HTMLElement>('[data-osat-sites]')!;
+    await vi.waitFor(() => expect(mocks.sitesCoveredBySatellite).toHaveBeenCalledTimes(1));
+    const oldSignal = mocks.sitesCoveredBySatellite.mock.calls[0]![0].signal as AbortSignal;
+
+    mocks.getTrackedSatelliteTle.mockReturnValue(elementSet('1'));
+    mocks.sitesCoveredBySatellite.mockImplementationOnce(async ({ nowMs }) => okCoverage(nowMs, [['bravo', [45]]]));
+    map.setSatellites([satellite()]);
+    await vi.waitFor(() => expect(listedSites(host)).toEqual(['bravo']));
+    expect(oldSignal.aborted).toBe(true);
+
+    finishOld(okCoverage(Date.now(), [['alpha', [30]]]));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(listedSites(host)).toEqual(['bravo']);
+  });
+
+  it('moves the countdowns, drops passed sites and renews the window while open, and stops once closed', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    const start = Date.UTC(2026, 10, 15, 12, 0);
+    vi.setSystemTime(start);
+    mocks.getTrackedSatelliteTle.mockReturnValue(elementSet('0'));
+    mocks.sitesCoveredBySatellite.mockImplementation(async ({ nowMs }) => okCoverage(nowMs, [['alpha', [1]], ['bravo', [40, 45]]]));
+    const map = fakeGlobe();
+    map.setSatellites([satellite()]);
+    const host = openCard(map).querySelector<HTMLElement>('[data-osat-sites]')!;
+    await vi.waitFor(() => expect(listedSites(host)).toEqual(['alpha', 'bravo']));
+    expect(host.querySelector('[data-site-id="bravo"] .osat-site-detail')!.textContent).toContain('in 40 min');
+
+    vi.advanceTimersByTime(2 * 60_000);
+    expect(listedSites(host)).toEqual(['bravo']);
+    expect(host.querySelector('.osat-sites-note')!.textContent).toBe('1 site inside the Sentinel-2 footprint');
+    expect(host.querySelector('[data-site-id="bravo"] .osat-site-detail')!.textContent).toContain('in 38 min');
+
+    vi.advanceTimersByTime(45 * 60_000);
+    // Both bravo passes are now behind: the window empties rather than counting down from zero.
+    expect(listedSites(host)).toEqual([]);
+    expect(host.textContent).not.toMatch(/in 1 min/);
+    expect(mocks.sitesCoveredBySatellite).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(15 * 60_000);
+    await vi.waitFor(() => expect(mocks.sitesCoveredBySatellite).toHaveBeenCalledTimes(2));
+    expect(mocks.sitesCoveredBySatellite.mock.calls[1]![0].nowMs).toBeGreaterThanOrEqual(start + 60 * 60_000);
+
+    map.hideTooltip();
+    vi.advanceTimersByTime(3 * 60 * 60_000);
+    expect(mocks.sitesCoveredBySatellite).toHaveBeenCalledTimes(2);
   });
 });

@@ -12,6 +12,8 @@ import {
 
 const HOUR_MS = 3_600_000;
 const MINUTE_MS = 60_000;
+/** An open card scans again once its 24-hour window has slid this far. */
+const WINDOW_RENEW_MS = HOUR_MS;
 const KEY = 'orbitalWatch.satelliteSites';
 
 function utcTime(ms: number): string {
@@ -84,12 +86,22 @@ export function coverageNodes(coverage: SatelliteCoverage, nowMs: number): HTMLE
 /** What a section host shows, so it can be drawn again in the current language. */
 type SectionState = { kind: 'note'; key: string } | { kind: 'coverage'; coverage: SatelliteCoverage };
 const sections = new WeakMap<HTMLElement, SectionState>();
+/** The element set (both TLE lines) a section's scan ran on; null when none was loaded. */
+const scannedFrom = new WeakMap<HTMLElement, string | null>();
+
+function elementSetKey(noradId: string): string | null {
+  const tle = getTrackedSatelliteTle(noradId);
+  return tle ? `${tle.line1}\n${tle.line2}` : null;
+}
 
 function draw(host: HTMLElement, state: SectionState, nowMs: number): void {
   sections.set(host, state);
+  const scroll = host.querySelector('.osat-sites-list')?.scrollTop ?? 0;
   const heading = el('span', 'osat-sites-label', t(`${KEY}.heading`, { hours: COVERAGE_WINDOW_HOURS }));
   const body = state.kind === 'note' ? [note(t(state.key))] : coverageNodes(state.coverage, nowMs);
   host.replaceChildren(heading, ...body);
+  const list = host.querySelector('.osat-sites-list');
+  if (list && scroll) list.scrollTop = scroll;
   if (state.kind === 'coverage') host.dataset.coverage = state.coverage.status;
   else delete host.dataset.coverage;
 }
@@ -106,6 +118,29 @@ export function relabelSatelliteSites(host: HTMLElement): void {
   if (state) draw(host, state, Date.now());
 }
 
+/** True when the layer now draws a different element set than the one the section was scanned from. */
+export function satelliteSitesOutdated(host: HTMLElement, noradId: string): boolean {
+  return scannedFrom.has(host) && scannedFrom.get(host) !== elementSetKey(noradId);
+}
+
+/**
+ * Moves a listed section to `nowMs`: passes already behind are dropped and the
+ * countdowns redrawn. Returns 'rescan' once the window has slid far enough that the
+ * section should be computed again.
+ */
+export function advanceSatelliteSites(host: HTMLElement, nowMs: number): 'current' | 'rescan' {
+  const state = sections.get(host);
+  if (state?.kind !== 'coverage' || state.coverage.status !== 'ok') return 'current';
+  const coverage = state.coverage;
+  if (nowMs - coverage.windowStartMs >= WINDOW_RENEW_MS) return 'rescan';
+  const sites = coverage.sites
+    .map((entry) => ({ site: entry.site, passes: entry.passes.filter((p) => p.timeMs > nowMs) }))
+    .filter((entry) => entry.passes.length > 0)
+    .sort((a, b) => a.passes[0]!.timeMs - b.passes[0]!.timeMs || a.site.name.localeCompare(b.site.name));
+  draw(host, { kind: 'coverage', coverage: { ...coverage, sites } }, nowMs);
+  return 'current';
+}
+
 /**
  * Fills `host` with the watched sites the tracked satellite covers in the next 24 hours.
  * Everything is computed in the browser from the layer's element set and the public
@@ -114,6 +149,8 @@ export function relabelSatelliteSites(host: HTMLElement): void {
 export async function renderSatelliteSites(host: HTMLElement, noradId: string, name: string, signal?: AbortSignal): Promise<SatelliteCoverage | null> {
   showSatelliteSitesNote(host, 'projecting');
   const loaded = getTrackedSatelliteTle(noradId);
+  const key = loaded ? `${loaded.line1}\n${loaded.line2}` : null;
+  scannedFrom.set(host, key);
   const tle: TrackedSatelliteTle | null = loaded ? { noradId, name: loaded.name || name, line1: loaded.line1, line2: loaded.line2 } : null;
   if (!tle) {
     showSatelliteSitesNote(host, 'notLoaded');
@@ -130,7 +167,8 @@ export async function renderSatelliteSites(host: HTMLElement, noradId: string, n
     showSatelliteSitesNote(host, 'failed');
     return null;
   }
-  if (signal?.aborted || !host.isConnected) return null;
-  draw(host, { kind: 'coverage', coverage }, nowMs);
+  // A scan of an element set the layer has since replaced is never painted; the card rescans.
+  if (signal?.aborted || !host.isConnected || elementSetKey(noradId) !== key) return null;
+  draw(host, { kind: 'coverage', coverage }, Date.now());
   return coverage;
 }

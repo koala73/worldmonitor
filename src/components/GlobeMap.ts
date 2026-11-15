@@ -695,8 +695,14 @@ export class GlobeMap {
   private layerTogglesEl: HTMLElement | null = null;
   private tooltipEl: HTMLElement | null = null;
   private satelliteSitesAbort: AbortController | null = null;
-  private satelliteSitesView: { relabelSatelliteSites(host: HTMLElement): void } | null = null;
-  private openSatelliteCard: { id: string; el: HTMLElement } | null = null;
+  private satelliteSitesView: {
+    relabelSatelliteSites(host: HTMLElement): void;
+    satelliteSitesOutdated(host: HTMLElement, noradId: string): boolean;
+    advanceSatelliteSites(host: HTMLElement, nowMs: number): 'current' | 'rescan';
+  } | null = null;
+  private openSatelliteCard: { id: string; name: string; el: HTMLElement } | null = null;
+  private satelliteSitesClock: ReturnType<typeof setInterval> | null = null;
+  private satelliteSitesScanning = false;
   private satelliteCardI18nListener: (() => void) | null = null;
   private tooltipHideTimer: ReturnType<typeof setTimeout> | null = null;
   private satHoverStyle: HTMLStyleElement | null = null;
@@ -2076,7 +2082,9 @@ export class GlobeMap {
     const hideDelay = d._kind === 'webcam' ? 8000 : d._kind === 'webcam-cluster' ? 12000 : richKinds.has(d._kind) ? 6000 : 3500;
     if (!pinnedCard) this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), hideDelay);
     if (pinnedCard && d._kind === 'satellite') {
-      this.openSatelliteCard = { id: d.id, el };
+      this.openSatelliteCard = { id: d.id, name: d.name, el };
+      // Countdowns move and passed sites drop off while the card stays open.
+      this.satelliteSitesClock = setInterval(() => this.advanceSatelliteSites(), 30_000);
       this.satelliteCardI18nListener = () => this.relabelSatelliteCard();
       window.addEventListener(I18N_RESOURCES_LOADED_EVENT, this.satelliteCardI18nListener);
       this.fillSatelliteSites(el, d.id, d.name);
@@ -2190,6 +2198,16 @@ export class GlobeMap {
     }
     const body = open.el.querySelector<HTMLElement>('[data-osat-card-body]');
     if (body) setTrustedHtml(body, trustedHtml(this.satelliteCardBodyHtml(marker), 'satellite card fields escaped with escapeHtml'));
+    // The layer swapped in a new element set for this satellite: drop the old scan and rescan.
+    const host = open.el.querySelector<HTMLElement>('[data-osat-sites]');
+    if (host && this.satelliteSitesView?.satelliteSitesOutdated(host, open.id)) this.fillSatelliteSites(open.el, open.id, open.name);
+  }
+
+  private advanceSatelliteSites(): void {
+    const open = this.openSatelliteCard;
+    const host = open?.el.querySelector<HTMLElement>('[data-osat-sites]');
+    if (!open || !host || this.tooltipEl !== open.el || !this.satelliteSitesView || this.satelliteSitesScanning) return;
+    if (this.satelliteSitesView.advanceSatelliteSites(host, Date.now()) === 'rescan') this.fillSatelliteSites(open.el, open.id, open.name);
   }
 
   /** The full locale arrived after the card opened: redraw the header and the sites section in it. */
@@ -2204,8 +2222,10 @@ export class GlobeMap {
   private fillSatelliteSites(card: HTMLElement, noradId: string, name: string): void {
     const host = card.querySelector<HTMLElement>('[data-osat-sites]');
     if (!host) return;
+    this.satelliteSitesAbort?.abort();
     const abort = new AbortController();
     this.satelliteSitesAbort = abort;
+    this.satelliteSitesScanning = true;
     void import('./orbital-satellite-sites-view')
       .then((view) => {
         this.satelliteSitesView = view;
@@ -2224,6 +2244,9 @@ export class GlobeMap {
         note.textContent = t('orbitalWatch.satelliteSites.viewFailed');
         host.dataset.osatNote = 'viewFailed';
         host.replaceChildren(note);
+      })
+      .finally(() => {
+        if (this.satelliteSitesAbort === abort) this.satelliteSitesScanning = false;
       });
   }
 
@@ -2231,6 +2254,11 @@ export class GlobeMap {
     this.satelliteSitesAbort?.abort();
     this.satelliteSitesAbort = null;
     this.openSatelliteCard = null;
+    this.satelliteSitesScanning = false;
+    if (this.satelliteSitesClock) {
+      clearInterval(this.satelliteSitesClock);
+      this.satelliteSitesClock = null;
+    }
     if (this.satelliteCardI18nListener) {
       window.removeEventListener(I18N_RESOURCES_LOADED_EVENT, this.satelliteCardI18nListener);
       this.satelliteCardI18nListener = null;
