@@ -149,7 +149,7 @@ describe('locate menu entries', () => {
     const map = {
       onCountryClicked: () => {},
       onMapContextMenu: () => {},
-      setCenter: vi.fn(() => ++viewportAction),
+      setCenter: vi.fn((_lat: number, _lon: number, _zoom?: number) => ++viewportAction),
       isViewportActionCurrent: (token: number) => token === viewportAction,
       addMapControl: (el: HTMLElement) => { control = el; document.body.append(el); },
     };
