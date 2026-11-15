@@ -106,6 +106,7 @@
 .ies-group + .ies-group { margin-top: 10px; }
 .ies-group-title { margin: 0 0 4px; font-weight: 500; }
 .ies-more { margin-top: 6px; }
+.ies-table > [hidden] { display: none; }
 .ies-alert { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; font-size: 12px; color: var(--text-secondary); }
 .ies-alert-cta { font: 11px var(--font-mono); color: var(--green-text, var(--green)); text-decoration: none; border: 1px solid var(--green); border-radius: 3px; padding: 4px 8px; white-space: nowrap; }
 .ies-footer { border-top: 1px solid var(--border); padding: 8px 16px; font-size: 11px; color: var(--text-muted); }
