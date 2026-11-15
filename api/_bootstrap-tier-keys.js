@@ -143,7 +143,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
 
 const SLOW_KEY_NAMES = new Set([
   'bisPolicy', 'bisExchange', 'bisCredit', 'chinaMacro', 'chinaReleaseCalendar', 'chinaCorporateDisclosures', 'minerals', 'giving',
-  'sectors', 'etfFlows', 'wildfires', 'climateAnomalies', 'climateDisasters', 'co2Monitoring', 'oceanIce', 'climateNews',
+  'sectors', 'etfFlows', 'wildfires', 'climateAnomalies', 'co2Monitoring', 'oceanIce', 'climateNews',
   'radiationWatch', 'thermalEscalation', 'crossSourceSignals',
   'crossStraitActivity',
   'techReadiness', 'progressData', 'renewableEnergy',
@@ -187,6 +187,9 @@ const FAST_KEY_NAMES = new Set([
 ]);
 
 const ON_DEMAND_KEY_NAMES = new Set([
+  // The dashboard has no reader. The CLI climate view fetches this key itself,
+  // so the payload stays off the slow tier every visitor downloads.
+  'climateDisasters',
   'gridDisruptionClock',
   'ukmtoIncidents',
   'cyberThreats',

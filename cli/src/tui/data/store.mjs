@@ -9,6 +9,7 @@ export const SOURCES = {
   fast: { label: 'fast tier', path: '/api/bootstrap?tier=fast&public=1', every: MIN, bootstrap: true },
   slow: { label: 'slow tier', path: '/api/bootstrap?tier=slow&public=1', every: 5 * MIN, bootstrap: true },
   cyberThreats: { label: 'cyber threats', path: '/api/bootstrap?keys=cyberThreats&public=1', every: 2 * MIN, bootstrap: true },
+  climateDisasters: { label: 'climate disasters', path: '/api/bootstrap?keys=climateDisasters&public=1', every: 5 * MIN, bootstrap: true },
   liveVideoResolved: { label: 'live video ids', path: '/api/bootstrap?keys=liveVideoResolved&public=1', every: 10 * MIN, bootstrap: true },
   flightDelays: { label: 'airport delays', path: '/api/bootstrap?keys=flightDelays&public=1', every: 2 * MIN, bootstrap: true },
   forecasts: { label: 'forecasts', path: '/api/bootstrap?keys=forecasts&public=1', every: 5 * MIN, bootstrap: true },
@@ -34,7 +35,7 @@ export const SOURCES = {
 };
 
 // Sources loaded during the boot sequence, in order of usefulness.
-export const BOOT_ORDER = ['fast', 'digest', 'slow', 'cyberThreats', 'liveVideoResolved', 'forecasts', 'correlationCards', 'flightDelays', 'health', 'version'];
+export const BOOT_ORDER = ['fast', 'digest', 'slow', 'cyberThreats', 'climateDisasters', 'liveVideoResolved', 'forecasts', 'correlationCards', 'flightDelays', 'health', 'version'];
 
 export class Store extends EventEmitter {
   constructor(client, { now = () => Date.now(), sources = SOURCES } = {}) {
