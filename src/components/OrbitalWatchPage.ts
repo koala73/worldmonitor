@@ -680,8 +680,9 @@ export class OrbitalWatchPage {
         h('div', { className: 'ies-actions' },
           this.zone,
           this.shareButton,
-          this.changeButton,
-          this.closeButton)),
+          this.changeButton),
+        // Pinned to the panel's top-right corner, like every other dashboard overlay's close.
+        this.closeButton),
       this.slots.search,
       this.body,
       h('footer', { className: 'ies-footer' }, this.privacy));
