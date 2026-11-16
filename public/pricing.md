@@ -132,7 +132,8 @@ Instructions and limits: https://www.worldmonitor.app/docs/features#team-dashboa
         "instability scores",
         "watchlists",
         "3 dashboard tabs",
-        "5 cached-data MCP calls/day with a free account"
+        "5 cached-data MCP calls/day with a free account",
+        "Orbital Watch: satellite passes over any point, looked up in your browser; latest image and date on watched sites"
       ]
     },
     {
@@ -148,7 +149,8 @@ Instructions and limits: https://www.worldmonitor.app/docs/features#team-dashboa
         "500 dashboard-AI requests/day",
         "MCP",
         "10 custom dashboards",
-        "personal license"
+        "personal license",
+        "Orbital Watch: imaging-window alerts; satellite passes and watched-site imagery over MCP"
       ]
     },
     {
@@ -163,7 +165,8 @@ Instructions and limits: https://www.worldmonitor.app/docs/features#team-dashboa
         "2,500 dashboard-AI requests/day",
         "250 MCP calls/day",
         "priority support",
-        "travel risk assessment drafts in the dashboard and over MCP"
+        "travel risk assessment drafts in the dashboard and over MCP",
+        "Orbital Watch: imaging-window alerts; satellite passes and watched-site imagery over MCP"
       ]
     },
     {
@@ -179,7 +182,8 @@ Instructions and limits: https://www.worldmonitor.app/docs/features#team-dashboa
         "webhooks",
         "structured JSON",
         "OpenAPI docs",
-        "commercial license — internal use in your organization, not customer-facing products"
+        "commercial license — internal use in your organization, not customer-facing products",
+        "Orbital Watch: imaging-window alerts; satellite passes and watched-site imagery over MCP and the REST API"
       ]
     },
     {
@@ -195,7 +199,8 @@ Instructions and limits: https://www.worldmonitor.app/docs/features#team-dashboa
         "team dashboards (up to 25 per variant)",
         "commercial license — for your customers",
         "priority support",
-        "travel risk assessment drafts in the dashboard and over MCP"
+        "travel risk assessment drafts in the dashboard and over MCP",
+        "Orbital Watch: imaging-window alerts; satellite passes and watched-site imagery over MCP and the REST API"
       ]
     },
     {
@@ -210,7 +215,8 @@ Instructions and limits: https://www.worldmonitor.app/docs/features#team-dashboa
         "air-gapped",
         "dedicated support",
         "SSO/MFA/RBAC (by contract)",
-        "travel risk assessment drafts in the dashboard and over MCP"
+        "travel risk assessment drafts in the dashboard and over MCP",
+        "Orbital Watch: imaging-window alerts; satellite passes and watched-site imagery over MCP and the REST API"
       ]
     }
   ]

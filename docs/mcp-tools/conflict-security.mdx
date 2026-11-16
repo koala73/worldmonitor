@@ -249,3 +249,29 @@ curl -s https://worldmonitor.app/mcp \
     "params":{"name":"get_country_imagery_evidence","arguments":{"country_code":"UA"}}
   }'
 ```
+
+### `get_watched_site_imagery`
+
+Returns the watched sites in one country, newest image first. Each site carries its latest archive image (scene id, sensor, date and the credit line owed when citing it) and its next predicted imaging pass. `attribution` lists every credit line the listed sites owe, once each.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | **yes** | ISO 3166-1 alpha-2 or alpha-3 code or a country name, for example `IR`, `IRN` or `Iran`. |
+| `site` | string | no | Part of a site name or id, at most 80 characters, for example `Bandar Abbas`. Keeps only the sites that match. |
+
+- **API endpoint:** reads `GET /api/orbital/v1/get-country-imagery-evidence` and keeps the image and next pass per site.
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Freshness:** `stale: true` with an empty `sites` list when the country's site evidence is missing or older than 3 days. `siteCount` counts the country's watched sites before the `site` filter.
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_watched_site_imagery","arguments":{"country_code":"IR","site":"Bandar Abbas"}}
+  }'
+```

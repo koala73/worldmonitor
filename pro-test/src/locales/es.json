@@ -133,7 +133,7 @@
     "deliveryLabel": "Elige cómo la inteligencia te encuentra",
     "supplyChainLab": "Laboratorio de Estrés en la Cadena de Suministro",
     "supplyChainLabDesc": "Modela un shock de costos entre países y sectores. Clasifica la vulnerabilidad de materias primas por dependencia de cuellos de botella. Rastrea la concentración de mina a refinería y la divergencia del premio físico SGE–COMEX — la serie que se mueve antes de que salga en titulares.",
-    "roadmapNote": "En la hoja de ruta: vigilancia orbital, historial más extenso, capas de mapa premium."
+    "roadmapNote": "En la hoja de ruta: historial más extenso, capas de mapa premium."
   },
   "apiSection": {
     "apiTier": "NIVEL API",

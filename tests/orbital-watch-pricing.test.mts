@@ -13,11 +13,11 @@ import { CHANGE_SHADOW } from '../scripts/_orbital-change.mjs';
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
 describe('Orbital Watch on the pricing page and in the product facts (#10761)', () => {
-  it('stays hidden until launch', () => {
-    assert.equal(ORBITAL_WATCH_PRICING_PUBLISHED, false);
-    for (const tier of Object.keys(ORBITAL_WATCH_ACCESS)) assert.equal(orbitalWatchAccess(tier), null, tier);
-    for (const path of ['public/pricing.md', 'shared/product-facts.generated.json', 'docs/pricing.mdx', 'docs/zh/pricing.mdx']) {
-      assert.doesNotMatch(read(path), /Orbital Watch/, path);
+  it('is published at launch (#10768) on every pricing surface', () => {
+    assert.equal(ORBITAL_WATCH_PRICING_PUBLISHED, true);
+    for (const tier of Object.keys(ORBITAL_WATCH_ACCESS)) assert.equal(orbitalWatchAccess(tier), ORBITAL_WATCH_ACCESS[tier], tier);
+    for (const path of ['public/pricing.md', 'docs/pricing.mdx', 'docs/zh/pricing.mdx']) {
+      assert.match(read(path), /Orbital Watch/, path);
     }
   });
 
@@ -57,7 +57,7 @@ describe('Orbital Watch on the pricing page and in the product facts (#10761)', 
     assert.match(generator, /orbitalWatchAccess\(TIER_BY_PLAN_KEY\[planKey\]\)/);
     assert.match(generator, /orbitalWatchAccess\('free'\) \?/);
     for (const doc of ['docs/pricing.mdx', 'docs/zh/pricing.mdx']) {
-      assert.match(read(doc), /\{\/\* orbital-watch-pricing:start \*\/\}\n\{\/\* orbital-watch-pricing:end \*\/\}/, doc);
+      assert.match(read(doc), /\{\/\* orbital-watch-pricing:start \*\/\}\n[^]*Orbital Watch[^]*\{\/\* orbital-watch-pricing:end \*\/\}/, doc);
     }
   });
 });

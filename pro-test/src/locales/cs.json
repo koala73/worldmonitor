@@ -133,7 +133,7 @@
     "deliveryLabel": "Zvolte, jak vás zpravodajství najde",
     "supplyChainLab": "Laboratoř zátěže dodavatelského řetězce",
     "supplyChainLabDesc": "Modelujte nákladový šok napříč zeměmi a sektory. Řaďte zranitelnost komodit podle závislosti na kritických místech. Sledujte koncentraci od těžby až po rafinerii a divergenci fyzické prémie SGE–COMEX — řadu, která se pohybuje dříve než titulky.",
-    "roadmapNote": "Na plánech: orbitální sledování, delší historie, prémiové vrstvy map."
+    "roadmapNote": "Na plánu: delší historie, prémiové vrstvy mapy."
   },
   "apiSection": {
     "apiTier": "API ÚROVEŇ",

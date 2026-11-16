@@ -133,7 +133,7 @@
     "deliveryLabel": "Válassza ki, hogyan találjon Önre az intelligencia",
     "supplyChainLab": "Ellátásilánc-stresszlabor",
     "supplyChainLabDesc": "Költségsokkot szimulálhat országok és szektorok között. Rangsorolhatja az árucikkek sebezhetőségét szűk keresztmetszetek függőségei alapján. Nyomon követheti a bánya-finomítókoncentrációt és az SGE–COMEX fizikai prémium divergenciáját — azt a mutatót, amely a hírek előtt változik meg.",
-    "roadmapNote": "Tervezett funkciók: műholdas megfigyelés, hosszabb történelem, prémium térképrétegek."
+    "roadmapNote": "A terv szerint: hosszabb előzmények, prémium térképrétegek."
   },
   "apiSection": {
     "apiTier": "API SZINT",

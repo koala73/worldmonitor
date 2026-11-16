@@ -261,7 +261,7 @@
     "deliveryLabel": "Choose how intelligence finds you",
     "supplyChainLab": "Supply-Chain Stress Lab",
     "supplyChainLabDesc": "Model a cost shock across countries and sectors. Rank commodity vulnerability by chokepoint dependency. Track mine-to-refinery concentration and the SGE–COMEX physical premium divergence — the series that moves before the headline does.",
-    "roadmapNote": "On the roadmap: orbital surveillance, longer history, premium map layers."
+    "roadmapNote": "On the roadmap: longer history, premium map layers."
   },
   "apiSection": {
     "apiTier": "API TIER",

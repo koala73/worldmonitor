@@ -95,12 +95,12 @@ const SITE_SCHEMA = {
 };
 
 /**
- * Orbital Watch ships dark (#10710): its REST endpoints answer 404 until
- * ORBITAL_WATCH_ENABLED=true, so a listed tool would fail every call (#10721).
- * Set this true in the same change that turns the feature on, then regenerate
- * the server card and docs and bump SERVER_VERSION.
+ * The orbital REST endpoints answer 404 unless ORBITAL_WATCH_ENABLED=true (#10710),
+ * so the tools are listed only while the feature is launched (#10721, #10768).
+ * Turning it off again means setting this false, regenerating the server card and
+ * docs, and bumping SERVER_VERSION.
  */
-export const ORBITAL_MCP_TOOLS_PUBLISHED = false;
+export const ORBITAL_MCP_TOOLS_PUBLISHED = true;
 
 /**
  * The one catalog gate for every orbital MCP tool: listed together, by the constant

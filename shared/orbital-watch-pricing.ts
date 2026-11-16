@@ -1,11 +1,10 @@
 /**
- * Orbital Watch on the pricing page and in the product facts (#10761). Hidden until
- * launch (#10768): set this to true in the same change that turns on
- * VITE_ENABLE_ORBITAL_WATCH and ORBITAL_WATCH_ENABLED. The copy names only shipped,
- * gated features; before and after, own sites and the Business rows of #10713 are
- * not built yet.
+ * Orbital Watch on the pricing page and in the product facts (#10761), published at
+ * launch (#10768) together with VITE_ENABLE_ORBITAL_WATCH and ORBITAL_WATCH_ENABLED.
+ * The copy names only shipped, gated features; own sites and the Business rows of
+ * #10713 are not built yet.
  */
-export const ORBITAL_WATCH_PRICING_PUBLISHED = false;
+export const ORBITAL_WATCH_PRICING_PUBLISHED = true;
 
 /**
  * lookup: the browser-only point lookup and the public latest image on watched sites.

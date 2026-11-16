@@ -133,7 +133,7 @@
     "deliveryLabel": "Välj hur intelligence hittar dig",
     "supplyChainLab": "Stresstestlabb för leveranskedjan",
     "supplyChainLabDesc": "Modellera en kostnadschock över länder och sektorer. Rangordna råvaruöversälj efter beroende av flaskhalsar. Spåra koncentration från gruva till raffin och SGE–COMEX-premiumskillnaden — serien som rör sig före rubrikerna.",
-    "roadmapNote": "På vägkartan: orbitövervakning, längre historik, premiumkartlager."
+    "roadmapNote": "På vägkartan: längre historik, premiumkartlager."
   },
   "apiSection": {
     "apiTier": "API-NIVÅ",
