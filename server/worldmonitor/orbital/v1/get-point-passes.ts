@@ -141,7 +141,13 @@ export async function computePointPasses(
   };
 }
 
-const archiveFetch: FetchLike = (input, init = {}) => {
+/**
+ * A fresh transport for each request. `searchStacArchive` shares running searches per transport,
+ * which suits one browser tab but not an edge isolate: a request that touches another request's
+ * AbortSignal or fetch throws "Cannot perform I/O on behalf of a different request". A transport
+ * per request keeps every search inside the request that started it.
+ */
+const createArchiveFetch = (): FetchLike => (input, init = {}) => {
   const headers = new Headers(init.headers);
   headers.set('User-Agent', USER_AGENT);
   return globalThis.fetch(input, { ...init, headers });
@@ -158,7 +164,7 @@ export async function getPointPasses(ctx: ServerContext, _req: GetPointPassesReq
   const read = await readCachedJson(ORBITAL_CATALOG_KEY, true);
   if (read.status === 'error') console.warn(`[orbital-point-passes] ${ORBITAL_CATALOG_KEY} read failed`);
   const response = await computePointPasses(point, read.status === 'hit' ? read.value : null, Date.now(), {
-    fetch: archiveFetch,
+    fetch: createArchiveFetch(),
     signal: AbortSignal.timeout(ARCHIVE_TIMEOUT_MS),
   });
   // A partial or stale answer must not outlive the archive or catalog outage that caused it.

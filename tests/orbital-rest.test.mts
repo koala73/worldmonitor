@@ -141,6 +141,27 @@ describe('point passes over REST', () => {
     assert.deepEqual(first!.point, { lat: 39.74, lon: -104.99 });
   });
 
+  it('never lets one request join archive work another request started', async () => {
+    // An edge isolate serves many requests from one module. A request that reads an AbortSignal
+    // or a fetch another request created throws "Cannot perform I/O on behalf of a different
+    // request", so each request must run its own archive searches (#10768 launch 500s).
+    const fake = fakeArchiveFetch(ARCHIVE_RESPONSES.points.denver);
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => fake.fetch(String(input instanceof Request ? input.url : input), init)) as typeof fetch;
+    try {
+      const handler = route('/api/orbital/v1/get-point-passes');
+      const url = 'https://api.worldmonitor.app/api/orbital/v1/get-point-passes?lat=39.74&lon=-104.99';
+      const statuses = await Promise.all([handler(new Request(url)), handler(new Request(url))].map(async (res) => (await res).status));
+      assert.deepEqual(statuses, [200, 200]);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    const searches = fake.requests.filter((r) => r.url.endsWith('/search'));
+    for (const host of ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com']) {
+      assert.equal(searches.filter((r) => new URL(r.url).hostname === host).length, 2, `${host}: one search per request`);
+    }
+  });
+
   it('reports a missing catalog as stale with no passes', async () => {
     const fixture = ARCHIVE_RESPONSES.points.denver;
     const rest = await computePointPasses({ lat: 1, lon: 1 }, null, FIXTURE_NOW, { fetch: fakeArchiveFetch(fixture).fetch });
