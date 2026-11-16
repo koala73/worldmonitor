@@ -218,6 +218,16 @@ test("the fence is subject-specific and permits another account's writes", async
   expect(await user.mutation(api.userPreferences.setPreferences, {
     variant: "full", data: {}, expectedSyncVersion: 0,
   })).toMatchObject({ ok: true });
+  // Slack is a paid channel on the alert ladder (#4273), so the surviving
+  // account needs a live Pro entitlement for this write to pass the gate.
+  await t.run((ctx) => ctx.db.insert("entitlements", {
+    userId: "surviving", planKey: "pro_monthly",
+    features: {
+      tier: 1, maxDashboards: 10, apiAccess: true, apiRateLimit: 1000,
+      prioritySupport: true, exportFormats: ["json", "csv"],
+    },
+    validUntil: Date.now() + 86_400_000, updatedAt: Date.now(),
+  }));
   await t.mutation(internal.notificationChannels.setSlackOAuthChannelForUser, {
     userId: "surviving", webhookEnvelope: "encrypted-slack",
   });

@@ -5,6 +5,7 @@ const { Resend } = require('resend');
 const { appendUnsubscribeText, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
 const { sendResendEmail } = require('./lib/resend-send.cjs');
 const { decrypt } = require('./lib/crypto.cjs');
+const { freeTierAllowsEvent, freeTierAllowsEventType, freeTierAllowsChannel, freeTierCountryScope } = require('./lib/free-tier-delivery.cjs');
 const {
   assertNotificationWebhookDeliveryUrlSafe,
   postJsonWithPinnedAddress,
@@ -384,11 +385,15 @@ const ENTITLEMENT_FAILCLOSED_CACHE_TTL = 60;
  * legitimate PRO users for up to 60s after each cache miss. Pair with
  * monitoring on `[relay][entitlement-fail-closed]` log lines.
  */
-async function isUserPro(userId) {
+async function getUserTier(userId) {
   const cacheKey = `relay:entitlement:${userId}`;
   try {
     const cached = await upstashRest('GET', cacheKey);
-    if (cached !== null) return Number(cached) >= 1;
+    // A non-numeric cached value is a miss, never a tier: NaN would slip
+    // through the free-ladder rungs inconsistently (tier >= 1 and tier < 1
+    // are both false), skipping the free country-scope drop.
+    const cachedTier = Number(cached);
+    if (cached !== null && Number.isFinite(cachedTier)) return cachedTier;
   } catch { /* miss */ }
   try {
     const res = await fetch(`${CONVEX_SITE_URL}/relay/entitlement`, {
@@ -403,19 +408,19 @@ async function isUserPro(userId) {
       // Cache "0" with short TTL so subsequent events for this user during
       // the same outage skip the 5-sec fetch. Logged with stable prefix
       // for alerting on volume.
-      console.error(`[relay][entitlement-fail-closed] HTTP ${res.status} for ${userId}; dropping delivery`);
+      console.error(`[relay][entitlement-fail-closed] HTTP ${res.status} for ${userId}; clamping to free-tier delivery`);
       try { await upstashRest('SET', cacheKey, '0', 'EX', String(ENTITLEMENT_FAILCLOSED_CACHE_TTL)); } catch { /* cache write best-effort */ }
-      return false;
+      return 0;
     }
     const { tier } = await res.json();
     await upstashRest('SET', cacheKey, String(tier ?? 0), 'EX', String(ENTITLEMENT_CACHE_TTL));
-    return (tier ?? 0) >= 1;
+    return tier ?? 0;
   } catch (err) {
     // Same fail-CLOSED policy on transport error / timeout. Same short-TTL
     // cache write so we don't re-attempt the 5-sec fetch for every event.
-    console.error(`[relay][entitlement-fail-closed] error for ${userId}: ${err && err.message ? err.message : err}; dropping delivery`);
+    console.error(`[relay][entitlement-fail-closed] error for ${userId}: ${err && err.message ? err.message : err}; clamping to free-tier delivery`);
     try { await upstashRest('SET', cacheKey, '0', 'EX', String(ENTITLEMENT_FAILCLOSED_CACHE_TTL)); } catch { /* cache write best-effort */ }
-    return false;
+    return 0;
   }
 }
 
@@ -584,7 +589,8 @@ async function removeHeldItems(key, rawItems) {
 // Delivers (or discards) the held queue for a single user+variant.
 // Used by both drainBatchOnWake (wake-up) and processFlushQuietHeld (settings change).
 // allowedChannelTypes: which channels to attempt delivery on; null = use rule's channels.
-async function drainHeldForUser(userId, variant, allowedChannelTypes) {
+// ruleCountries: the holding rule's country scope, re-clamped at drain time for free tiers.
+async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountries) {
   const key = `digest:quiet-held:${userId}:${variant}`;
   const len = await upstashRest('LLEN', key);
   if (!len || len === 0) return;
@@ -600,13 +606,37 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
       if (ev) { parsedEvents.push(ev); itemIndex.set(ev, index); }
     } catch { /* an unreadable held item is skipped */ }
   });
+  // #4273: held entries were severity/scope-clamped at HOLD time, against the
+  // tier the account had then. An account that downgrades while events sit in
+  // the queue must not receive past-the-ladder alerts at drain time, so the
+  // severity and country rungs are re-applied per entry here against the tier
+  // the account has NOW (Strix review 4); the channel rung is applied below.
+  // Paid tiers pass through unchanged.
+  const drainTier = (await getUserTier(userId)) ?? 0;
+  const drainScope = freeTierCountryScope(drainTier, ruleCountries);
   // Re-check the operator set: a link blocked while the event sat in the
   // queue must not go out in the batch (#8401).
   const events = [];
+  // Raw items the tier clamp refused stay HELD rather than removed:
+  // getUserTier fails CLOSED to 0, so a transient entitlement outage must
+  // not erase a paid account's held batch — the entries wait for a later
+  // drain once the tier resolves (Greptile review 3). On a genuinely
+  // downgraded account they are never delivered and the key's TTL retires
+  // them. Suppressed-link and unreadable entries are still removed below.
+  const clampHeld = new Set();
   for (const ev of parsedEvents) {
+    const pastLadder = !freeTierAllowsEvent(drainTier, ev.severity ?? 'high')
+      || !freeTierAllowsEventType(drainTier, ev.eventType)
+      || (drainTier < 1 && (!drainScope.ok || !eventMatchesCountryScope(ev, { countries: drainScope.countries })));
+    if (pastLadder) { clampHeld.add(items[itemIndex.get(ev)]); continue; }
     if ((await suppressedLinksFor(ev, 1, 'stage=quiet-hours-drain')).length === 0) events.push(ev);
   }
-  if (events.length === 0) { await removeHeldItems(key, items); return; }
+  // What a successful drain may remove: everything except clamp-held entries.
+  const removable = items.filter((raw) => !clampHeld.has(raw));
+  if (events.length === 0) {
+    if (removable.length > 0) await removeHeldItems(key, removable);
+    return;
+  }
 
   const heldLines = formatHeldAlertLines(events);
   const lines = [`WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''} from quiet hours`, '', ...heldLines];
@@ -628,8 +658,12 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
     return;
   }
 
+  // #4273: the held-queue flush delivers like the realtime path — the
+  // severity and country rungs are re-applied per held entry above, and the
+  // same free-ladder channel clamp here.
   const verifiedChannels = channels.filter(c =>
     c.verified &&
+    freeTierAllowsChannel(drainTier, c.channelType) &&
     (c.channelType !== 'email' || c.emailOwnership === 'verified_account') &&
     (c.channelType !== 'telegram' || c.telegramOwnership === 'verified_callback') &&
     (allowedChannelTypes == null || allowedChannelTypes.includes(c.channelType)),
@@ -721,7 +755,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
     else mostDelivered = Math.max(mostDelivered, delivered);
   }
   if (anyDelivered) {
-    const cleared = await removeHeldItems(key, items);
+    const cleared = await removeHeldItems(key, removable);
     console.log(`[relay] drainHeldForUser: delivered ${events.length} held events to ${userId} (${variant})${cleared.failed > 0 ? `; ${cleared.failed} not removed` : ''}`);
   } else if (mostDelivered > 0) {
     // No channel took the whole batch, but some alerts already arrived: keep only the rest, so the
@@ -753,7 +787,7 @@ async function drainBatchOnWake() {
     r.quietHoursEnabled && r.quietHoursOverride === 'batch_on_wake' && !isInQuietHours(r),
   );
   for (const rule of batchRules) {
-    await drainHeldForUser(rule.userId, rule.variant ?? 'full', rule.channels ?? null);
+    await drainHeldForUser(rule.userId, rule.variant ?? 'full', rule.channels ?? null, rule.countries ?? null);
   }
 }
 
@@ -767,6 +801,7 @@ async function processFlushQuietHeld(event) {
   // getByEnabled is an internalQuery (GHSA-r649-4cqj-w93h), unreachable via
   // ConvexHttpClient.
   let allowedChannels = null;
+  let ruleCountries = null;
   try {
     const allRules = await fetchEnabledRules(true);
     const rule = Array.isArray(allRules)
@@ -774,6 +809,7 @@ async function processFlushQuietHeld(event) {
       : null;
     if (rule && Array.isArray(rule.channels) && rule.channels.length > 0) {
       allowedChannels = rule.channels;
+      ruleCountries = Array.isArray(rule.countries) ? rule.countries : null;
     }
   } catch (err) {
     // If the lookup fails, deliver nothing rather than fan out to wrong channels.
@@ -785,7 +821,7 @@ async function processFlushQuietHeld(event) {
     console.log(`[relay] flush_quiet_held: no active rule with channels for ${userId} (${variant}) — held alerts preserved`);
     return;
   }
-  await drainHeldForUser(userId, variant, allowedChannels);
+  await drainHeldForUser(userId, variant, allowedChannels, ruleCountries);
 }
 
 // ── Delivery: Telegram ────────────────────────────────────────────────────────
@@ -2149,22 +2185,49 @@ async function processEvent(event) {
 
   if (matching.length === 0) return;
 
-  // Batch PRO check: resolve all unique userIds in parallel instead of one-by-one.
-  // isUserPro() has a 15-min Redis cache, so this is cheap after the first call.
+  // Batch tier check: resolve all unique userIds in parallel instead of
+  // one-by-one. getUserTier() has a 15-min Redis cache, so this is cheap
+  // after the first call. #4273: free users (tier 0, including the
+  // fail-closed entitlement-outage value) now DELIVER, clamped to the free
+  // ladder — critical events only, web push + email only — instead of being
+  // skipped outright. The clamp also covers legacy wider-than-plan free rows
+  // the 2026-04-28 audit found, whatever their stored settings say.
   const uniqueUserIds = [...new Set(matching.map(r => r.userId))];
-  const proResults = await Promise.all(uniqueUserIds.map(async uid => [uid, await isUserPro(uid)]));
-  const proSet = new Set(proResults.filter(([, isPro]) => isPro).map(([uid]) => uid));
-  const skippedCount = uniqueUserIds.length - proSet.size;
-  if (skippedCount > 0) console.log(`[relay] Skipping ${skippedCount} non-PRO user(s)`);
+  const tierResults = await Promise.all(uniqueUserIds.map(async uid => [uid, await getUserTier(uid)]));
+  const tierByUser = new Map(tierResults);
 
   const text = formatMessage(event);
   const subject = formatSubject(event);
   const eventSeverity = event.severity ?? 'high';
+  let freeSeverityDrops = 0;
+  let freeEventTypeDrops = 0;
+  let freeScopeDrops = 0;
   let channelsFailedUsers = 0;
   let channelsFetchError = null;
 
   for (const rule of matching) {
-    if (!proSet.has(rule.userId)) continue;
+    const userTier = tierByUser.get(rule.userId) ?? 0;
+    if (!freeTierAllowsEvent(userTier, eventSeverity)) {
+      freeSeverityDrops += 1;
+      continue;
+    }
+    // Orbital watched-site alerts are Pro-only outright, whatever the ladder
+    // admits (convex/alertRules.ts assertOrbitalAlertEntitlement). That gate
+    // runs only at write time, so delivery re-applies it here or a
+    // downgraded account keeps the paid stream on its leftover rule.
+    if (!freeTierAllowsEventType(userTier, event.eventType)) {
+      freeEventTypeDrops += 1;
+      continue;
+    }
+    // Free rules must carry an explicit country scope; a legacy worldwide
+    // free row delivers nothing, and an over-cap one delivers only within
+    // its first entries — mirroring the write-path ladder. Runs before the
+    // quiet-hours hold so held batches are scope-clamped at hold time too.
+    const scope = freeTierCountryScope(userTier, rule.countries);
+    if (!scope.ok || (userTier < 1 && !eventMatchesCountryScope(event, { ...rule, countries: scope.countries }))) {
+      freeScopeDrops += 1;
+      continue;
+    }
 
     const quietAction = resolveQuietAction(rule, eventSeverity);
 
@@ -2246,6 +2309,7 @@ async function processEvent(event) {
 
     const verifiedChannels = channels.filter(c =>
       c.verified &&
+      freeTierAllowsChannel(userTier, c.channelType) &&
       (c.channelType !== 'email' || c.emailOwnership === 'verified_account') &&
       (c.channelType !== 'telegram' || c.telegramOwnership === 'verified_callback') &&
       rule.channels.includes(c.channelType));
@@ -2253,7 +2317,10 @@ async function processEvent(event) {
 
     let deliveryText = text;
     let impactText = '';
-    if (AI_IMPACT_ENABLED) {
+    // #4273: the AI-composed impact block is paid output — the free catalog
+    // grants no AI allowance, so tier-0 delivery must not trigger LLM
+    // inference now that free rules reach this loop (Strix review 6).
+    if (AI_IMPACT_ENABLED && userTier >= 1) {
       const impact = sanitizeImpactText(await generateEventImpact(event, rule));
       if (impact) {
         impactText = impact;
@@ -2298,6 +2365,9 @@ async function processEvent(event) {
     }
   }
 
+  if (freeSeverityDrops > 0) console.log(`[relay] Free-ladder severity clamp: dropped ${freeSeverityDrops} rule(s) for non-critical event (severity=${eventSeverity})`);
+  if (freeEventTypeDrops > 0) console.log(`[relay] Free-ladder event-type clamp: dropped ${freeEventTypeDrops} rule(s) for Pro-only event type (${String(event.eventType ?? 'unknown').replace(/[\r\n]/g, ' ').slice(0, 80)})`);
+  if (freeScopeDrops > 0) console.log(`[relay] Free-ladder country-scope clamp: dropped ${freeScopeDrops} rule(s) without a matching explicit country scope`);
   if (channelsFailedUsers > 0) await requeueAfterChannelsFailure(event, channelsFetchError, channelsFailedUsers);
 }
 

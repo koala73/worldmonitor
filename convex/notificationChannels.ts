@@ -10,6 +10,7 @@ import {
 import { internal } from "./_generated/api";
 import { channelTypeValidator } from "./constants";
 import { requireVerifiedAccountEmail } from "./lib/notificationEmail";
+import { assertAlertCapabilities, loadAlertCapabilities } from "./lib/alertCapabilities";
 
 type ChannelType = Infer<typeof channelTypeValidator>;
 
@@ -46,35 +47,29 @@ const ENQUEUE_WELCOME_SCRIPT = [
 ].join("\n");
 
 /**
- * Notifications are a PRO feature. Enforce the entitlement at the public
- * Convex write boundary so callers cannot bypass the edge API gate.
+ * Channel creation is gated by the caller's alert-ladder capabilities
+ * (#4273): free accounts hold the free channel set (web push + email), and
+ * every other channel type throws ALERT_CHANNEL_UPGRADE_REQUIRED with an
+ * upgrade hint — enforced at the Convex write boundary so callers cannot
+ * bypass the edge API gate. The old binary PRO_REQUIRED gate survives only
+ * as the Telegram pairing flow's reason string, which is a bot-facing
+ * contract.
  */
-async function hasProEntitlement(
+async function hasChannelCapability(
   ctx: MutationCtx,
   userId: string,
+  channelType: string,
 ): Promise<boolean> {
-  const entitlement = await ctx.db
-    .query("entitlements")
-    .withIndex("by_userId", (q) => q.eq("userId", userId))
-    .first();
-  const tier =
-    entitlement && entitlement.validUntil >= Date.now()
-      ? entitlement.features.tier
-      : 0;
-  return tier >= 1;
+  return (await loadAlertCapabilities(ctx, userId)).channels.has(channelType);
 }
 
-async function assertProEntitlement(
+async function assertChannelCapability(
   ctx: MutationCtx,
   userId: string,
+  channelType: string,
 ): Promise<void> {
-  if (!(await hasProEntitlement(ctx, userId))) {
-    throw new ConvexError({
-      code: "PRO_REQUIRED",
-      message:
-        "Notifications are a PRO feature. Upgrade to enable real-time and digest alerts.",
-    });
-  }
+  const caps = await loadAlertCapabilities(ctx, userId);
+  assertAlertCapabilities(caps, { channels: [channelType] });
 }
 
 /**
@@ -217,6 +212,9 @@ export const setChannelForUser = internalMutation({
   handler: async (ctx, args) => {
     await assertAccountWritable(ctx, args.userId);
     const { userId, channelType, webhookEnvelope, email, webhookLabel } = args;
+    // #4273: every branch below gates on the caller's alert-ladder channel
+    // set (free = web push + email), replacing the old email-only PRO gate.
+    await assertChannelCapability(ctx, userId, channelType);
     const existing = await ctx.db
       .query("notificationChannels")
       .withIndex("by_user_channel", (q) =>
@@ -233,7 +231,6 @@ export const setChannelForUser = internalMutation({
       const doc = { userId, channelType: "slack" as const, webhookEnvelope, verified: true, linkedAt: now };
       if (existing) { await ctx.db.replace(existing._id, doc); } else { channelId = String(await ctx.db.insert("notificationChannels", doc)); }
     } else if (channelType === "email") {
-      await assertProEntitlement(ctx, userId);
       const recipient = requireVerifiedAccountEmail(email, args.verifiedAccountEmail);
       const doc = { userId, channelType: "email" as const, email: recipient, emailOwnership: "verified_account" as const, verified: true, linkedAt: now };
       if (existing) { await ctx.db.replace(existing._id, doc); } else { channelId = String(await ctx.db.insert("notificationChannels", doc)); }
@@ -365,6 +362,10 @@ export const setSlackOAuthChannelForUser = internalMutation({
   },
   handler: async (ctx, args) => {
     await assertAccountWritable(ctx, args.userId);
+    // Layer-2 ladder gate (#4273): the OAuth start endpoints already deny
+    // free callers, but channel creation must not depend on an edge gate
+    // alone — and an entitlement that lapsed mid-OAuth-flow ends here.
+    await assertChannelCapability(ctx, args.userId, "slack");
     const existing = await ctx.db
       .query("notificationChannels")
       .withIndex("by_user_channel", (q) =>
@@ -400,6 +401,8 @@ export const setDiscordOAuthChannelForUser = internalMutation({
   },
   handler: async (ctx, args) => {
     await assertAccountWritable(ctx, args.userId);
+    // Layer-2 ladder gate (#4273) — see setSlackOAuthChannelForUser.
+    await assertChannelCapability(ctx, args.userId, "discord");
     const existing = await ctx.db
       .query("notificationChannels")
       .withIndex("by_user_channel", (q) =>
@@ -537,7 +540,7 @@ export const setChannel = internalMutation({
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
     const userId = identity.subject;
     await assertAccountWritable(ctx, userId);
-    await assertProEntitlement(ctx, userId);
+    await assertChannelCapability(ctx, userId, args.channelType);
 
     const existing = await ctx.db
       .query("notificationChannels")
@@ -630,7 +633,9 @@ export const createPairingToken = internalMutation({
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
     const userId = identity.subject;
     await assertAccountWritable(ctx, userId);
-    await assertProEntitlement(ctx, userId);
+    // Telegram pairing is reachable only on plans whose ladder includes the
+    // telegram channel (#4273) — today every paid tier, no free plan.
+    await assertChannelCapability(ctx, userId, "telegram");
 
     // Invalidate any existing unused tokens for this user
     const existing = await ctx.db
@@ -678,7 +683,7 @@ export const stagePairingToken = internalMutation({
     await assertAccountWritable(ctx, record.userId);
     if (record.used) return { ok: false, reason: "ALREADY_USED" as const, userId: null };
     if (record.expiresAt < Date.now()) return { ok: false, reason: "EXPIRED" as const, userId: null };
-    if (!(await hasProEntitlement(ctx, record.userId))) {
+    if (!(await hasChannelCapability(ctx, record.userId, "telegram"))) {
       return { ok: false, reason: "PRO_REQUIRED" as const, userId: null };
     }
     await ctx.db.patch(record._id, { pendingChatId: args.chatId });
@@ -700,7 +705,7 @@ export const claimPairingToken = internalMutation({
     if (record.used) return { ok: false, reason: "ALREADY_USED" as const };
     if (record.expiresAt < Date.now()) return { ok: false, reason: "EXPIRED" as const };
     if (record.pendingChatId !== args.chatId) return { ok: false, reason: "NOT_CONFIRMED" as const };
-    if (!(await hasProEntitlement(ctx, record.userId))) {
+    if (!(await hasChannelCapability(ctx, record.userId, "telegram"))) {
       return { ok: false, reason: "PRO_REQUIRED" as const };
     }
 

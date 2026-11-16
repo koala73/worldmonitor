@@ -398,13 +398,14 @@ describe("alertRules — setNotificationConfigForUser atomic pair update", () =>
     ).rejects.toThrow(/INCOMPATIBLE_DELIVERY|Real-time delivery is for Critical/i);
   });
 
-  test("free user (no entitlement) calling setNotificationConfigForUser → throws PRO_REQUIRED", async () => {
-    // Layer-2 gate: setNotificationConfigForUser is reachable from the public
-    // `/set-notification-config` HTTP action; a free-tier user hitting that
-    // endpoint must be rejected at the mutation, not just by the relay.
+  test("free user (no entitlement) widening past the ladder → structured capability denial (#4273)", async () => {
+    // Capability gate: setNotificationConfigForUser is reachable from the
+    // public `/set-notification-config` HTTP action; a free-tier user asking
+    // for an over-ladder rule must be rejected at the mutation, not just by
+    // the relay, with the structured ALERT_*_UPGRADE_REQUIRED code the HTTP
+    // action maps to a 402.
     //
-    // Note on identity context: unlike the public `setAlertRules` /
-    // `setDigestSettings` mutations (which derive `userId` from `ctx.auth`),
+    // Note on identity context: unlike the removed public mutations,
     // `setNotificationConfigForUser` takes `userId` as an arg — the HTTP
     // action sets it from the verified Clerk JWT. The entitlement check
     // reads the arg-supplied userId, so a `t.withIdentity(...)` wrapper is
@@ -418,13 +419,38 @@ describe("alertRules — setNotificationConfigForUser atomic pair update", () =>
         digestMode: "daily",
         sensitivity: "high",
       }),
-    ).rejects.toThrow(/PRO_REQUIRED|Notifications are a PRO feature/i);
+    ).rejects.toThrow(/ALERT_SENSITIVITY_UPGRADE_REQUIRED/);
   });
 
-  test("expired entitlement (validUntil < now) → throws PRO_REQUIRED", async () => {
+  test("free user writing a free-shaped rule → succeeds (#4273 free alert ladder)", async () => {
+    const t = convexTest(schema, modules);
+    // No entitlement row: the free ladder applies, and a critical-only
+    // realtime rule over the free channel set within the country limit is
+    // exactly what the ladder sells.
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      enabled: true,
+      eventTypes: [],
+      sensitivity: "critical",
+      channels: ["web_push", "email"],
+      countries: ["UA", "TW", "LB"],
+    });
+    const rows = await t.run(async (ctx) =>
+      ctx.db
+        .query("alertRules")
+        .withIndex("by_user_variant", (q) => q.eq("userId", USER.subject).eq("variant", VARIANT))
+        .collect(),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.enabled).toBe(true);
+    expect(rows[0]?.countries).toEqual(["UA", "TW", "LB"]);
+  });
+
+  test("expired entitlement (validUntil < now) → free ladder applies", async () => {
     // Mirrors entitlements.ts FREE_TIER_DEFAULTS fallback: an expired
-    // entitlement is treated identically to no entitlement. The mutation gate
-    // must apply the same semantics.
+    // entitlement is treated identically to no entitlement. The capability
+    // gate must apply the same semantics.
     const t = convexTest(schema, modules);
     await seedProEntitlement(t, USER.subject, Date.now() - 1000); // expired 1s ago
     await expect(
@@ -434,7 +460,7 @@ describe("alertRules — setNotificationConfigForUser atomic pair update", () =>
         digestMode: "daily",
         sensitivity: "high",
       }),
-    ).rejects.toThrow(/PRO_REQUIRED|Notifications are a PRO feature/i);
+    ).rejects.toThrow(/ALERT_SENSITIVITY_UPGRADE_REQUIRED/);
   });
 
   test("omitted sensitivity on patch preserves existing value", async () => {
