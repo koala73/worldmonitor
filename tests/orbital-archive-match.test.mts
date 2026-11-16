@@ -84,6 +84,54 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.deepEqual([crop.searchParams.get('item'), crop.searchParams.getAll('assets')], [item.itemId, ['hh']]);
   });
 
+  it('shows a new radar scene from its Earth Search preview when Planetary Computer answered without it (#10850)', () => {
+    // Earth Search publishes Sentinel-1 hours before Planetary Computer: on 2026-11-16, 0 of 100 scenes
+    // under 6 h old were on Planetary Computer, whose crop of them answers 404 "No item found".
+    const point = { lat: -12.05, lon: -77.04 };
+    const itemId = 'S1D_IW_GRDH_1SDV_20261116T094026_20261116T094100_005491_00A7DE';
+    const quickLook = `s3://sentinel-s1-l1c/GRD/2026/11/16/IW/DV/${itemId}_2250/preview/quick-look.png`;
+    const item = parseStacItem('earth-search', {
+      id: itemId,
+      collection: 'sentinel-1-grd',
+      properties: { datetime: '2026-11-16T09:40:43Z', start_datetime: '2026-11-16T09:40:26Z', end_datetime: '2026-11-16T09:41:00Z', platform: 'sentinel-1d', 'sar:polarizations': ['VV', 'VH'] },
+      assets: { thumbnail: { href: quickLook } },
+    } as never)!;
+    const lookup = { point, nowMs: Date.parse('2026-11-16T11:40:00Z'), passes: [] };
+    const fresh = assembleEvidence({ lookup, stac: [
+      { status: 'ok', archive: 'earth-search', items: [item] },
+      { status: 'ok', archive: 'planetary-computer', items: [] },
+    ] });
+    const imageUrl = fresh.acquisitions[0]!.imageUrl!;
+    assert.equal(new URL(imageUrl).hostname, 'sentinel-s1-l1c.s3.amazonaws.com', 'never a Planetary Computer crop of an item it does not hold');
+    assert.equal(imageUrl, item.previewUrl);
+
+    // Once Planetary Computer holds the scene, it is cropped there; and while Planetary Computer is silent the crop is still tried.
+    const ingested = assembleEvidence({ lookup, stac: [
+      { status: 'ok', archive: 'earth-search', items: [item] },
+      { status: 'ok', archive: 'planetary-computer', items: [{ ...item, archive: 'planetary-computer', previewUrl: null }] },
+    ] });
+    assert.equal(new URL(ingested.acquisitions[0]!.imageUrl!).hostname, 'planetarycomputer.microsoft.com');
+    const silent = assembleEvidence({ lookup, stac: [
+      { status: 'ok', archive: 'earth-search', items: [item] },
+      { status: 'failed', archive: 'planetary-computer', failure: { archive: 'planetary-computer', reason: 'network' } },
+    ] });
+    assert.equal(new URL(silent.acquisitions[0]!.imageUrl!).hostname, 'planetarycomputer.microsoft.com');
+  });
+
+  it('leaves a new radar scene without an image when Planetary Computer lacks it and Earth Search has no preview (#10850)', () => {
+    const item = parseStacItem('earth-search', {
+      id: 'S1D_IW_GRDH_1SDV_20261116T060708_20261116T060745_005488_00A7CD',
+      collection: 'sentinel-1-grd',
+      properties: { datetime: '2026-11-16T06:07:26Z', start_datetime: '2026-11-16T06:07:08Z', end_datetime: '2026-11-16T06:07:45Z', platform: 'sentinel-1d' },
+      assets: {},
+    } as never)!;
+    const evidence = assembleEvidence({ lookup: { point: { lat: -12.05, lon: -77.04 }, nowMs: Date.parse('2026-11-16T11:00:00Z'), passes: [] }, stac: [
+      { status: 'ok', archive: 'earth-search', items: [item] },
+      { status: 'ok', archive: 'planetary-computer', items: [] },
+    ] });
+    assert.equal(evidence.acquisitions[0]!.imageUrl, null);
+  });
+
   it('keeps Sentinel results and names the partial state for Landsat when Planetary Computer fails', async () => {
     const lookup = await fixtureLookup(dubai);
     const evidence = await findArchiveEvidence(lookup, { fetch: fakeArchiveFetch(dubai, { failing: ['planetarycomputer.microsoft.com'] }).fetch });
