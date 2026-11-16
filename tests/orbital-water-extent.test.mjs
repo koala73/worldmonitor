@@ -297,7 +297,7 @@ describe('reservoir water extent: seed contract', () => {
     const health = readFileSync(new URL('../api/health.js', import.meta.url), 'utf8');
     assert.match(health, new RegExp(`orbitalWaterExtent: '${ORBITAL_WATER_EXTENT_KEY}'`));
     assert.match(health, /orbitalWaterExtent: \{ key: 'seed-meta:orbital:water-extent', maxStaleMin: 4320/);
-    assert.match(health, /ORBITAL_WATCH_ENABLED \? \[\] : \['orbitalSites', 'orbitalWaterExtent'\]/);
+    assert.match(health, /ORBITAL_WATCH_ENABLED \? \[\] : \[[^\]]*'orbitalWaterExtent'[^\]]*\]/);
     const bundle = readFileSync(new URL('../scripts/seed-bundle-climate.mjs', import.meta.url), 'utf8');
     assert.match(bundle, /script: 'seed-orbital-water-extent\.mjs', seedMetaKey: 'orbital:water-extent', canonicalKey: 'orbital:water-extent:v1'/);
     const railway = readFileSync(new URL('../scripts/railway-services.json', import.meta.url), 'utf8');

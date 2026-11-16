@@ -672,6 +672,7 @@
       "scripts/seed-orbital-catalog.mjs",
       "scripts/_orbital-catalog.mjs",
       "scripts/_orbital-history.mjs",
+      "scripts/seed-orbital-maneuvers.mjs",
       "scripts/_orbital-maneuvers.mjs",
       "scripts/_r2-storage.mjs",
       "scripts/seed-orbital-sites.mjs",
