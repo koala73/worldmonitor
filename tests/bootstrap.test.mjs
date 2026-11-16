@@ -498,7 +498,8 @@ describe('Bootstrap tier definitions', () => {
   const PUBLISHED_CLI_SLOW_TIER_KEYS = [
     'sectors', 'etfFlows', 'climateAnomalies', 'climateDisasters', 'co2Monitoring', 'oceanIce',
     'radiationWatch', 'thermalEscalation', 'crossSourceSignals', 'wildfires', 'naturalEvents',
-    'cryptoQuotes', 'gulfQuotes', 'stablecoinMarkets', 'unrestEvents', 'ucdpEvents', 'techEvents',
+    'cryptoQuotes', 'defiTokens', 'aiTokens', 'otherTokens', 'gulfQuotes', 'stablecoinMarkets',
+    'unrestEvents', 'ucdpEvents', 'techEvents',
     'securityAdvisories', 'sanctionsPressure', 'fearGreedIndex', 'diseaseOutbreaks',
     'economicStress', 'fuelShortages',
   ];
