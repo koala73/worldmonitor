@@ -4383,6 +4383,21 @@
       "yellowWarning": "Yellow Warning",
       "orangeWarning": "Orange Warning",
       "redWarning": "Red Warning"
+    },
+    "displacement": {
+      "event": "Event",
+      "cause": "Cause",
+      "date": "Date",
+      "operation": "Operation",
+      "reportDate": "Report date",
+      "measure": "Measure",
+      "kinds": {
+        "outflow": "Outflows",
+        "return": "Returns",
+        "arrival": "Arrivals",
+        "death": "Deaths",
+        "encounter": "Encounters"
+      }
     }
   },
   "signals": {

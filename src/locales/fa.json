@@ -4337,6 +4337,21 @@
       "yellowWarning": "هشدار زرد",
       "orangeWarning": "هشدار نارنجی",
       "redWarning": "هشدار قرمز"
+    },
+    "displacement": {
+      "event": "رویداد",
+      "cause": "علت",
+      "date": "تاریخ",
+      "operation": "عملیات",
+      "reportDate": "تاریخ گزارش",
+      "measure": "سنجه",
+      "kinds": {
+        "outflow": "خروج‌ها",
+        "return": "بازگشت‌ها",
+        "arrival": "ورودها",
+        "death": "مرگ‌ها",
+        "encounter": "مواجهه‌ها"
+      }
     }
   },
   "signals": {

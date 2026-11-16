@@ -4290,6 +4290,21 @@
       "yellowWarning": "Aviso amarillo",
       "orangeWarning": "Aviso naranja",
       "redWarning": "Aviso rojo"
+    },
+    "displacement": {
+      "event": "Evento",
+      "cause": "Causa",
+      "date": "Fecha",
+      "operation": "Operación",
+      "reportDate": "Fecha del informe",
+      "measure": "Medida",
+      "kinds": {
+        "outflow": "Salidas",
+        "return": "Retornos",
+        "arrival": "Llegadas",
+        "death": "Muertes",
+        "encounter": "Encuentros"
+      }
     }
   },
   "signals": {

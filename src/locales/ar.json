@@ -4356,6 +4356,21 @@
       "yellowWarning": "إنذار أصفر",
       "orangeWarning": "إنذار برتقالي",
       "redWarning": "إنذار أحمر"
+    },
+    "displacement": {
+      "event": "الحدث",
+      "cause": "السبب",
+      "date": "التاريخ",
+      "operation": "العملية",
+      "reportDate": "تاريخ التقرير",
+      "measure": "المقياس",
+      "kinds": {
+        "outflow": "المغادرون",
+        "return": "العائدون",
+        "arrival": "الوافدون",
+        "death": "الوفيات",
+        "encounter": "حالات مرصودة على الحدود"
+      }
     }
   },
   "signals": {

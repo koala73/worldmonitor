@@ -74,6 +74,25 @@ describe('cross-border map markers', () => {
     expect(element.querySelector('.popup-close')).not.toBeNull();
   });
 
+  it('lays the cross-border popup out like every other map popup', () => {
+    const popup = Object.create(MapPopup.prototype) as { renderContent: (data: unknown) => string };
+    const element = document.createElement('div');
+    element.innerHTML = popup.renderContent({ type: 'crossBorder', data: { ...arrival, change: -1250, changeSince: '2026-09-01' } });
+    expect(element.innerHTML).not.toContain('<br>');
+    expect(element.querySelector('.popup-header.displacement .popup-title')?.textContent).toBe('CROSS-BORDER');
+    expect(element.querySelector('.popup-header .popup-badge.high')?.textContent?.trim()).toBe('ACCELERATING');
+    expect(element.querySelector('.popup-body .popup-location')?.textContent).toBe('Controlled arrivals');
+    const stats = Object.fromEntries([...element.querySelectorAll('.popup-stats .popup-stat')].map(stat => [
+      stat.querySelector('.stat-label')!.textContent!.trim(), stat.querySelector('.stat-value')!.textContent!.trim()]));
+    expect(stats).toEqual({ Count: '2,500', Type: 'Arrivals', Measure: 'daily', 'Last 30 days': '2,500 · +100%',
+      'Latest change': '-1,250 since 2026-09-01', Country: 'ES', 'Report date': '2026-10-19' });
+    expect(element.querySelector('.popup-attribution')?.textContent).toBe('Controlled publisher');
+    const death = popup.renderContent({ type: 'crossBorder', data: { ...arrival, kind: 'death', accelerating: false, last30Days: undefined, changePct: undefined, period: undefined } });
+    element.innerHTML = death;
+    expect(element.querySelector('.popup-badge')).toBeNull();
+    expect(element.textContent).toContain('Deaths');
+  });
+
   it('keeps an explicit zero and its observation period visible', () => {
     const element = document.createElement('div');
     element.innerHTML = renderCrossBorderDetails({ ...arrival, individuals: 0, last30Days: 0, changePct: 0, accelerating: false });

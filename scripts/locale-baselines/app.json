@@ -4638,5 +4638,16 @@
   "widgets.saveFailed": "Widget could not be saved. Please try again.",
   "widgets.send": "Send",
   "widgets.serverError": "Server error: {{status}}",
-  "widgets.unknownError": "Unknown error"
+  "widgets.unknownError": "Unknown error",
+  "popups.displacement.event": "Event",
+  "popups.displacement.cause": "Cause",
+  "popups.displacement.date": "Date",
+  "popups.displacement.operation": "Operation",
+  "popups.displacement.reportDate": "Report date",
+  "popups.displacement.measure": "Measure",
+  "popups.displacement.kinds.outflow": "Outflows",
+  "popups.displacement.kinds.return": "Returns",
+  "popups.displacement.kinds.arrival": "Arrivals",
+  "popups.displacement.kinds.death": "Deaths",
+  "popups.displacement.kinds.encounter": "Encounters"
 }
