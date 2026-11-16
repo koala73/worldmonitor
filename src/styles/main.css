@@ -15166,27 +15166,6 @@ button.popup-link {
   /* Estimated height before render */
 }
 
-/* Virtual list viewport */
-.virtual-viewport {
-  overflow-y: auto;
-  overflow-x: hidden;
-  height: 100%;
-  contain: strict;
-}
-
-.virtual-content {
-  position: relative;
-}
-
-.virtual-item {
-  contain: content;
-  will-change: transform;
-}
-
-.virtual-spacer {
-  pointer-events: none;
-}
-
 /* Performance hints for scrolling */
 .panel-content {
   will-change: scroll-position;

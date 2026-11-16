@@ -2254,15 +2254,7 @@ The worker manager implements:
 
 ### Virtual Scrolling
 
-Large lists (100+ news items) use virtualized rendering:
-
-**Fixed-Height Mode** (VirtualList):
-
-- Only renders items visible in viewport + 3-item overscan buffer
-- Element pooling—reuses DOM nodes rather than creating new ones
-- Invisible spacers maintain scroll position without rendering all items
-
-**Variable-Height Mode** (WindowedList):
+Large lists (100+ news items) use `WindowedList`:
 
 - Chunk-based rendering (10 items per chunk)
 - Renders chunks on-scroll with 1-chunk buffer
@@ -3287,7 +3279,7 @@ src/
 │   ├── SearchModal.ts        # Universal search (⌘K)
 │   ├── SignalModal.ts        # Signal intelligence display with focal points
 │   ├── PizzIntIndicator.ts   # Pentagon Pizza Index display
-│   ├── VirtualList.ts        # Virtual/windowed scrolling
+│   ├── VirtualList.ts        # Windowed scrolling
 │   ├── InsightsPanel.ts      # AI briefings + focal point display
 │   ├── EconomicPanel.ts      # FRED economic indicators
 │   ├── GdeltIntelPanel.ts    # Topic-based intelligence (cyber, military, etc.)

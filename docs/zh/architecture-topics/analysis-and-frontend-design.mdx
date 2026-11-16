@@ -66,7 +66,7 @@ World Monitor 使用原生 TypeScript 编写 — 不使用任何前端框架（R
 | 状态管理 | `localStorage` 存储用户偏好，`CustomEvent` 派发用于面板间通信（`wm:breaking-news`、`wm:deduct-context`、`theme-changed`、`ai-flow-changed`），以及集中式信号聚合器管理情报状态 |
 | 路由 | URL 查询参数（`?view=`、`?c=`、`?layers=`）在启动时解析；`history.pushState` 用于可分享的深链接 |
 | 响应式 | `SmartPollLoop` 和 `RefreshScheduler` 类，带命名刷新运行器、可见性感知调度和进行中去重 |
-| 虚拟滚动 | 自定义 `VirtualList`，带 DOM 元素池、上下占位 div 和 `requestAnimationFrame` 批处理的滚动处理 |
+| 虚拟滚动 | `WindowedList` 按块渲染行，并用 CSS containment 避免长列表为每一行创建 DOM 节点。 |
 
 ### 可辨识联合标记系统
 
