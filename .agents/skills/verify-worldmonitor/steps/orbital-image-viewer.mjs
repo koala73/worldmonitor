@@ -20,7 +20,9 @@ const SHEET = '.imagery-evidence-sheet';
 const START = { lat: -15, lon: 80, zoom: 4 };
 const isSearch = (url) => ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com'].includes(new URL(url).hostname) && new URL(url).pathname.endsWith('/search');
 // Sheet and viewer srcs that are neither a blob: nor a scene-wide archive preview: a point-bearing or off-allowlist URL.
-const unsafeSrcs = (srcs) => srcs.filter((src) => /^https?:/.test(src) && (POINT_IMAGE_HOSTS.includes(new URL(src).hostname) || !ARCHIVE_HOSTS.includes(new URL(src).hostname)));
+// Resolved against the page, so a relative or protocol-relative src is checked by the host it loads from.
+const unsafeSrcs = (srcs, base) => srcs.map((src) => new URL(src, base)).filter((url) => /^https?:$/.test(url.protocol)
+  && (POINT_IMAGE_HOSTS.includes(url.hostname) || !ARCHIVE_HOSTS.includes(url.hostname))).map(String);
 
 export default async function ({ page, base, shot, log, expectVisible }) {
   const mobile = process.env.WM_VERIFY_ORBITAL_VIEWPORT === 'mobile';
@@ -183,7 +185,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   if (pathLeaks.length) throw new Error(`the point survives the telemetry scrub: ${pathLeaks.map((l) => l.url).join(', ')}`);
   const vendorLeaks = requests.filter(({ url, body }) => VENDOR_URL.test(url) && leaking(`${url} ${body}`));
   if (vendorLeaks.length) throw new Error(`the point in a telemetry payload: ${vendorLeaks.map((l) => l.url).join(', ')}`);
-  const direct = unsafeSrcs(imgSrcs);
+  const direct = unsafeSrcs(imgSrcs, base);
   log('img srcs', imgSrcs.length, 'blob:', imgSrcs.filter((s) => s.startsWith('blob:')).length, 'point-bearing or off-allowlist srcs', direct.length);
   if (direct.length) throw new Error(`a point-bearing archive URL in an img src: ${direct.join(', ')}`);
   const lcpArchive = lcpUrls.filter((url) => url && !url.startsWith('blob:') && ARCHIVE_HOSTS.includes(new URL(url).hostname));

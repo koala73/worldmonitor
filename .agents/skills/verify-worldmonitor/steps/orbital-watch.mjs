@@ -411,7 +411,9 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await checkRequests('lookup');
   checkLcp('lookup');
   // A sheet image is a blob: or a scene-wide archive preview; anything else is point-bearing or off the allowlist.
-  const pointImgs = () => imgSrcs.filter((src) => /^https?:/.test(src) && (POINT_IMAGE_HOSTS.includes(new URL(src).hostname) || !PREVIEW_HOSTS.includes(new URL(src).hostname)));
+  // Resolved against the page, so a relative or protocol-relative src is checked by the host it loads from.
+  const pointImgs = () => imgSrcs.map((src) => new URL(src, base)).filter((url) => /^https?:$/.test(url.protocol)
+    && (POINT_IMAGE_HOSTS.includes(url.hostname) || !PREVIEW_HOSTS.includes(url.hostname))).map(String);
   const lookupDirect = pointImgs();
   log('img srcs set', imgSrcs.length, 'blob:', imgSrcs.filter((src) => src.startsWith('blob:')).length, 'point-bearing or off-allowlist srcs', lookupDirect.length);
   if (lookupDirect.length) throw new Error(`point-bearing archive URL in img src: ${lookupDirect.join(', ')}`);
