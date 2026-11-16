@@ -351,7 +351,7 @@ export const DOCS_PAGE_DATES: Record<string, { datePublished: string; dateModifi
   "methodology/capital-flows": {"datePublished":"2026-10-19","dateModified":"2026-11-10"},
   "methodology/china-activity-nowcast": {"datePublished":"2026-07-26","dateModified":"2026-11-10"},
   "methodology/chokepoints": {"datePublished":"2026-04-22","dateModified":"2026-11-10"},
-  "methodology/cii-risk-scores": {"datePublished":"2026-05-18","dateModified":"2026-11-12"},
+  "methodology/cii-risk-scores": {"datePublished":"2026-05-18","dateModified":"2026-11-16"},
   "methodology/country-history": {"datePublished":"2026-10-20","dateModified":"2026-10-20"},
   "methodology/country-resilience-index": {"datePublished":"2026-04-11","dateModified":"2026-11-01"},
   "methodology/defense-industrial-base": {"datePublished":"2026-08-31","dateModified":"2026-09-10"},
