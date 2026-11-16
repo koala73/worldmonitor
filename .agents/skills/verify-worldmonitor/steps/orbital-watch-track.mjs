@@ -1,6 +1,6 @@
 /**
- * Satellite passes here, ground track: pick a pass in the lookup sheet and see
- * its ground track, sensor footprint and replay marker on the map.
+ * Satellite passes here, ground track: pick a pass in the evidence sheet and see
+ * its ground track, sensor footprint and the satellite at closest approach on the map.
  *
  * WM_VERIFY_ORBITAL_MAP=flat drives the flat map: deck.gl on desktop, the SVG
  * map on phones. Headless Chromium has only software GL, which MapContainer
@@ -20,7 +20,7 @@ const CATALOG_PATH = '/api/orbital/v1/list-imaging-satellites';
 
 export default async function ({ page, base, shot: capture, log, expectVisible }) {
   const shot = async (name) => {
-    await page.evaluate(() => document.querySelector('.orbital-watch-sheet .ow-body')?.scrollTo(0, 0));
+    await page.evaluate(() => document.querySelector('.imagery-evidence-sheet .ies-body')?.scrollTo(0, 0));
     await capture(name);
   };
   const mobile = process.env.WM_VERIFY_ORBITAL_VIEWPORT === 'mobile';
@@ -50,92 +50,70 @@ export default async function ({ page, base, shot: capture, log, expectVisible }
   log('renderer', renderer);
   const expected = flat ? (mobile ? 'svg' : 'deckgl') : 'globe';
   if (renderer !== expected) throw new Error(`expected the ${expected} map, got ${renderer}`);
-  const sheet = await expectVisible('.orbital-watch-sheet');
+  const sheet = await expectVisible('.imagery-evidence-sheet');
   const collapse = page.locator('#mapContainer .toggle-collapse:visible').first();
   if (await collapse.count()) await collapse.click().catch(() => {});
-  const pointText = await sheet.locator('.ow-place').innerText();
+  const pointText = `${await sheet.locator('.ies-place').innerText()} ${await sheet.locator('.ies-coords').innerText()}`.trim();
   log('picked point', pointText);
-  const replays = sheet.locator('.ow-card .ow-replay');
-  await replays.first().waitFor({ timeout: 120_000 });
-  await sheet.locator('.ow-steps, .ow-progress').first().waitFor({ state: 'detached', timeout: 120_000 }).catch(() => {});
-  const cards = await sheet.locator('.ow-card:has(.ow-replay)').evaluateAll((els) => els.map((el) => ({
-    sensor: el.querySelector('[data-sensor]')?.getAttribute('data-sensor') ?? '', src: el.querySelector('img')?.getAttribute('src') ?? '',
+  await page.waitForFunction(() => document.querySelector('.imagery-evidence-sheet')?.dataset.state === 'answered', null, { timeout: 120_000 });
+  const rows = sheet.locator('.ies-row[data-key^="pass:"]:visible');
+  const passes = await rows.evaluateAll((els) => els.map((el) => ({
+    key: el.dataset.key, tier: el.dataset.tier, name: el.querySelector('.ies-name')?.textContent?.trim() ?? '',
   })));
-  log('replayable cards', JSON.stringify(cards));
-  const radar = cards.findIndex((card) => /sentinel-1/i.test(card.sensor));
-  const optical = cards.findIndex((card) => /sentinel-2|landsat/i.test(card.sensor));
+  log('pass rows', JSON.stringify(passes));
+  if (passes.length === 0) throw new Error('the answered sheet lists no passes');
+  const radar = passes.findIndex((pass) => /sentinel-1/i.test(pass.name));
+  const optical = passes.findIndex((pass) => /sentinel-2|landsat/i.test(pass.name));
   const firstIndex = optical >= 0 ? optical : 0;
-  const hud = page.locator('[data-slot="replay-hud"] .ow-replay-hud');
-  // Live breaking-news alerts push the phone map strip down under the replay HUD; dismiss them as a reader would.
+  // Live breaking-news alerts push the phone map strip down; dismiss them as a reader would.
   const dismissAlerts = () => page.evaluate(() => {
     for (const button of document.querySelectorAll('.breaking-alert-dismiss')) button.click();
   });
-  const play = async (index) => {
+  const mapPixels = async () => page.screenshot({ clip: await page.locator('#mapContainer').boundingBox() });
+  // The SVG map draws the track as DOM; deck.gl and the globe draw it on a canvas, so there the map must repaint.
+  const svgTracks = () => page.locator('#mapContainer .orbital-track').count();
+  const select = async (index) => {
     await dismissAlerts();
-    await replays.nth(index).scrollIntoViewIfNeeded();
-    await replays.nth(index).click();
-    await hud.waitFor();
-    return hud.locator('.ow-hud-label').textContent();
-  };
-  const firstName = await play(firstIndex);
-  log('replaying', firstName, 'crop', cards[firstIndex]?.src);
-  await sheet.locator('.ow-card img').first().evaluate((img) => img.complete || new Promise((done) => { img.onload = img.onerror = done; }));
-  await page.waitForTimeout(2_500);
-  await shot('replay-in-progress');
-  await page.waitForTimeout(7_000);
-  await shot('replay-at-closest-approach-acquired');
-  const midCountdown = await page.evaluate((secondsBefore) => {
-    const scrub = document.querySelector('[data-slot="replay-hud"] .ow-hud-scrub');
-    const countdown = document.querySelector('[data-slot="replay-hud"] .ow-hud-countdown');
-    const seek = (value) => { scrub.value = String(value); scrub.dispatchEvent(new Event('input')); };
-    const left = () => {
-      const [, h, m, s] = countdown.textContent.match(/(\d+):(\d+):(\d+)/) ?? [];
-      return Number(h) * 3600 + Number(m) * 60 + Number(s);
-    };
-    let lo = 0;
-    let hi = Number(scrub.max);
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      seek(mid);
-      if (left() > secondsBefore) lo = mid + 1; else hi = mid;
+    const row = sheet.locator(`.ies-row[data-key="${passes[index].key}"]:visible`).first();
+    const before = await mapPixels();
+    await row.scrollIntoViewIfNeeded();
+    await row.click();
+    await page.waitForFunction((key) => {
+      const current = [...document.querySelectorAll('.imagery-evidence-sheet .ies-row[aria-current="true"]')];
+      // A pass can be listed twice (its group and the latest section); every current row must be that pass.
+      return current.length > 0 && current.every((row) => row.dataset.key === key);
+    }, passes[index].key, { timeout: 10_000 });
+    if (renderer === 'svg') {
+      await page.locator('#mapContainer.orbital-tracked .orbital-track').first().waitFor({ timeout: 15_000 });
+      const tracks = await svgTracks();
+      if (tracks !== 1) throw new Error(`${tracks} drawn tracks after selecting ${passes[index].name}`);
+    } else {
+      let changed = false;
+      for (let tries = 0; tries < 30 && !changed; tries++) {
+        await page.waitForTimeout(500);
+        changed = !before.equals(await mapPixels());
+      }
+      if (!changed) throw new Error(`the map did not redraw after selecting ${passes[index].name}`);
     }
-    seek(lo);
-    return countdown.textContent;
-  }, 7);
-  log('scrubbed to', midCountdown);
-  await page.waitForTimeout(800);
-  await shot('scrubbed-seven-seconds-before-acquisition');
+    await page.waitForTimeout(2_500);
+    return passes[index].name;
+  };
+  const firstName = await select(firstIndex);
+  log('selected', firstName);
+  await shot('pass-track-and-footprint');
 
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await play(firstIndex);
-  await page.locator('[data-slot="replay-hud"] .ow-hud-reduced:visible').first().waitFor();
-  await page.waitForTimeout(800);
-  await shot('reduced-motion-static-swath');
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-
-  const secondIndex = radar >= 0 && radar !== firstIndex ? radar : cards.findIndex((_, i) => i !== firstIndex);
+  const secondIndex = radar >= 0 && radar !== firstIndex ? radar : passes.findIndex((_, i) => i !== firstIndex);
   let secondName = null;
   if (secondIndex >= 0) {
-    secondName = await play(secondIndex);
-    const huds = await page.locator('[data-slot="replay-hud"] .ow-replay-hud').count();
-    if (huds !== 1) throw new Error(`${huds} replay HUDs after replaying a second pass`);
-    await page.waitForTimeout(9_500);
+    secondName = await select(secondIndex);
     await shot(radar === secondIndex ? 'second-pass-sentinel-1-right-looking' : 'second-pass-replaces-first');
     log('replaced with', secondName);
   }
 
-  const full = sheet.locator('.ow-primary[data-action="open-full"]');
-  if (!mobile && await full.count()) {
-    await full.click();
-    await page.waitForTimeout(2_500);
-    await shot('full-view-replay-hud');
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(800);
-  }
-
-  await page.keyboard.press('Escape');
+  await sheet.locator('[data-action="close"]').click();
   await sheet.waitFor({ state: 'hidden' });
   await page.waitForTimeout(1_000);
+  if (renderer === 'svg' && await svgTracks()) throw new Error('the track stayed on the map after the sheet closed');
   await shot('track-removed-on-close');
 
   const picked = pointFromText(pointText);
