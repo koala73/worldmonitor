@@ -590,15 +590,31 @@ describe('orbital change stage in the site seeder', () => {
     assert.equal(flag.backfilledAt, null);
   });
 
-  it('spaces concurrent statistics requests by the throttle interval', async () => {
+  it('spaces concurrent statistics requests by the throttle interval, even when a timer fires late', async () => {
+    // A fake timer queue: the first wait wakes 6 ms late, as a loaded runner did on main (run 43802020434).
+    let now = 0;
+    let lateness = 6;
+    const timers = [];
+    const wait = (ms) => new Promise((resolve) => { timers.push({ at: now + ms + lateness, resolve }); lateness = 0; });
     const started = [];
     const fetchStatistics = makeStatisticsFetch({
       minIntervalMs: 40,
-      fetchImpl: async () => { started.push(performance.now()); return Response.json({ properties: { statistics: radarScene(40).statistics } }); },
+      clock: () => now,
+      wait,
+      fetchImpl: async () => { started.push(now); return Response.json({ properties: { statistics: radarScene(40).statistics } }); },
     });
-    await Promise.all([radarScene(40), radarScene(40), radarScene(40)].map((scene) => fetchStatistics(scene, {})));
-    started.sort((x, y) => x - y);
-    assert.ok(started.every((at, i) => i === 0 || at - started[i - 1] >= 35), `started at ${started}`);
+    const done = Promise.all([radarScene(40), radarScene(40), radarScene(40)].map((scene) => fetchStatistics(scene, {})));
+    for (;;) {
+      await new Promise((resolve) => setImmediate(resolve));
+      if (!timers.length) break;
+      timers.sort((x, y) => x.at - y.at);
+      const next = timers.shift();
+      now = next.at;
+      next.resolve();
+    }
+    await done;
+    assert.equal(started.length, 3);
+    assert.ok(started.every((at, i) => i === 0 || at - started[i - 1] >= 40), `started at ${started}`);
   });
 
   it('scores unfinished sites first, then the least recently scored, so sites a short budget missed catch up next run', async () => {
