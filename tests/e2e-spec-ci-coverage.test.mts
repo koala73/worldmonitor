@@ -3,16 +3,20 @@
 // running them; twenty of those had broken without anyone seeing it.
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import YAML from 'yaml';
+
+type Job = { steps?: { run?: string }[]; strategy?: { matrix?: Record<string, unknown> } };
+type Workflow = { jobs?: Record<string, Job> };
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const scripts: Record<string, string> = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')).scripts ?? {};
 const workflowsDir = resolve(root, '.github/workflows');
 const workflows = readdirSync(workflowsDir)
   .filter((name) => /\.ya?ml$/.test(name))
-  .map((name) => readFileSync(resolve(workflowsDir, name), 'utf8'));
+  .map((name) => YAML.parse(readFileSync(resolve(workflowsDir, name), 'utf8')) as Workflow);
 
 // Specs no workflow runs, each with the reason. Shrink this list; do not grow
 // it without a reason a reviewer can check.
@@ -34,49 +38,117 @@ const NOT_RUN_IN_CI: Record<string, string> = {
   'e2e/panel-drag-reorder.spec.ts': 'broken: 2 of 9 tests fail on main',
   'e2e/rag-vector-store.spec.ts': 'broken: 1 of 7 tests fails on main',
   'e2e/reservoir-levels.spec.ts': 'broken: 2 of 5 tests fail on main',
-  'e2e/settings-diagnostics-layout.spec.ts': 'broken on Linux: at 1.5x text the traffic log overflows its card by 27px (passes on macOS; CI run 43792167531)',
+  'e2e/settings-diagnostics-layout.spec.ts':
+    'broken on Linux: at 1.5x text the traffic log overflows its card by 27px (passes on macOS; CI run 43792167531)',
   'e2e/theme-toggle.spec.ts': 'broken: 7 of 8 tests fail on main',
   'e2e/ukmto-incidents.spec.ts': 'broken: 1 of 7 tests fails on main',
   'e2e/widget-builder.spec.ts': 'broken: 4 of 7 tests fail on main',
 };
 
-const SPEC = /e2e\/[\w.-]+\.spec\.[cm]?[jt]s/g;
+// Specs a CI script reaches by test title (-g) instead of by file path. The
+// guard checks that a workflow runs the script and that the spec holds the title.
+const RUN_BY_TITLE: Record<string, string> = {
+  'e2e/map-harness.spec.ts': 'test:e2e:visual:full',
+};
 
-function specsRunByCi(): Set<string> {
-  const found = new Set<string>();
-  const seen = new Set<string>();
+const SPEC = /e2e\/[\w./-]+\.spec\.[cm]?[jt]s/g;
+const NPM_RUN = /npm run ([\w:.-]+)/g;
+
+function listSpecs(dir = resolve(root, 'e2e')): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = resolve(dir, entry.name);
+    if (entry.isDirectory()) return listSpecs(path);
+    return /\.spec\.[cm]?[jt]s$/.test(entry.name) ? [relative(root, path)] : [];
+  });
+}
+
+// Each `${{ matrix.<key> }}` in a run command expands to that job's values for
+// the key, including `include` entries.
+function expandMatrix(command: string, matrix: Record<string, unknown> = {}): string[] {
+  const match = /\$\{\{\s*matrix\.([\w-]+)\s*\}\}/.exec(command);
+  if (!match) return [command];
+  const key = match[1];
+  const values = new Set<string>();
+  if (Array.isArray(matrix[key])) for (const value of matrix[key] as unknown[]) values.add(String(value));
+  if (Array.isArray(matrix.include)) {
+    for (const entry of matrix.include as Record<string, unknown>[]) if (key in entry) values.add(String(entry[key]));
+  }
+  return [...values].flatMap((value) => expandMatrix(command.replace(match[0], value), matrix));
+}
+
+// Only `run:` steps count, with shell comments removed: a spec named in a
+// paths filter, an artifact path or a comment is not run.
+function scriptsAndSpecsRunByCi(workflowList: Workflow[], scriptMap: Record<string, string>) {
+  const specs = new Set<string>();
+  const reached = new Set<string>();
   const visit = (name: string) => {
-    if (seen.has(name) || !(name in scripts)) return;
-    seen.add(name);
-    const command = scripts[name];
-    for (const match of command.matchAll(SPEC)) found.add(match[0]);
-    for (const match of command.matchAll(/npm run ([\w:.-]+)/g)) visit(match[1]);
+    if (reached.has(name) || !(name in scriptMap)) return;
+    reached.add(name);
+    for (const match of scriptMap[name].matchAll(SPEC)) specs.add(match[0]);
+    for (const match of scriptMap[name].matchAll(NPM_RUN)) visit(match[1]);
   };
-  for (const text of workflows) {
-    for (const match of text.matchAll(SPEC)) found.add(match[0]);
-    // `npm run test:e2e:ci-smoke:${{ matrix.shard }}` reaches every script the
-    // matrix expression can name, so the expression matches any suffix.
-    for (const match of text.matchAll(/npm run ([\w:.-]+(?:\$\{\{[^}]+\}\}[\w:.-]*)*)/g)) {
-      const pattern = new RegExp(`^${match[1].split(/\$\{\{[^}]+\}\}/).map((part) => part.replace(/[.*+?^$()|[\]\\]/g, '\\$&')).join('[\\w.-]+')}$`);
-      for (const script of Object.keys(scripts)) if (pattern.test(script)) visit(script);
+  for (const workflow of workflowList) {
+    for (const job of Object.values(workflow?.jobs ?? {})) {
+      for (const step of job.steps ?? []) {
+        if (typeof step.run !== 'string') continue;
+        for (const command of expandMatrix(step.run, job.strategy?.matrix)) {
+          const live = command
+            .split('\n')
+            .map((line) => line.replace(/(^|\s)#.*$/, ''))
+            .join('\n');
+          for (const match of live.matchAll(SPEC)) specs.add(match[0]);
+          for (const match of live.matchAll(NPM_RUN)) visit(match[1]);
+        }
+      }
     }
   }
-  return found;
+  return { specs, scripts: reached };
 }
 
 describe('e2e spec CI coverage', () => {
-  const specs = readdirSync(resolve(root, 'e2e'))
-    .filter((name) => /\.spec\.[cm]?[jt]s$/.test(name))
-    .map((name) => `e2e/${name}`);
-  const run = specsRunByCi();
+  const specs = listSpecs();
+  const run = scriptsAndSpecsRunByCi(workflows, scripts);
 
   it('runs every e2e spec in a CI workflow or names why it does not', () => {
-    const orphans = specs.filter((spec) => !run.has(spec) && !(spec in NOT_RUN_IN_CI));
-    assert.deepEqual(orphans, [], 'add each spec to a CI smoke shard (package.json test:e2e:ci-smoke:<n>), or list it in NOT_RUN_IN_CI with the reason');
+    const orphans = specs.filter((spec) => !run.specs.has(spec) && !(spec in NOT_RUN_IN_CI) && !(spec in RUN_BY_TITLE));
+    assert.deepEqual(
+      orphans,
+      [],
+      'add each spec to a CI smoke shard (package.json test:e2e:ci-smoke:<n>), or list it in NOT_RUN_IN_CI with the reason',
+    );
   });
 
   it('keeps NOT_RUN_IN_CI to specs that exist and are not run', () => {
-    const stale = Object.keys(NOT_RUN_IN_CI).filter((spec) => !specs.includes(spec) || run.has(spec));
+    const stale = Object.keys(NOT_RUN_IN_CI).filter((spec) => !specs.includes(spec) || run.specs.has(spec));
     assert.deepEqual(stale, [], 'remove these from NOT_RUN_IN_CI: they were deleted or CI runs them now');
+  });
+
+  it('runs each title-selected spec through a script a workflow reaches, and the spec holds that title', () => {
+    for (const [spec, script] of Object.entries(RUN_BY_TITLE)) {
+      assert.ok(run.scripts.has(script), `${script} must be run by a workflow`);
+      const title = /-g\s+"([^"]+)"/.exec(scripts[script] ?? '')?.[1];
+      assert.ok(title, `${script} must select tests with -g "<title>"`);
+      assert.ok(readFileSync(resolve(root, spec), 'utf8').includes(title), `${spec} must contain the title "${title}"`);
+    }
+  });
+
+  it('counts only scripts a run step reaches, through the matrix values the job names', () => {
+    const workflow: Workflow = {
+      jobs: {
+        e2e: {
+          strategy: { matrix: { part: ['a'], include: [{ part: 'b' }] } },
+          steps: [{ run: 'npm run test:e2e:${{ matrix.part }}' }, { run: '# npm run test:e2e:commented' }],
+        },
+      },
+    };
+    const probe = {
+      'test:e2e:a': 'playwright test e2e/a.spec.ts',
+      'test:e2e:b': 'npm run test:e2e:nested',
+      'test:e2e:nested': 'playwright test e2e/sub/nested.spec.ts',
+      'test:e2e:uncalled': 'playwright test e2e/uncalled.spec.ts',
+      'test:e2e:commented': 'playwright test e2e/commented.spec.ts',
+    };
+    const result = scriptsAndSpecsRunByCi([workflow], probe);
+    assert.deepEqual([...result.specs].sort(), ['e2e/a.spec.ts', 'e2e/sub/nested.spec.ts']);
   });
 });
