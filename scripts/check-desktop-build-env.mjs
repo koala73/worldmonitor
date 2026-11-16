@@ -37,12 +37,12 @@ export const REQUIRED_DESKTOP_BUILD_ENV = [
   'VITE_ENABLE_CYBER_LAYER', // Cyber Threats layer; absent => hidden (#5829 half)
   'VITE_WS_RELAY_URL', //       desktop military-flights direct OpenSky path
   'VITE_PMTILES_URL_PUBLIC', // self-hosted basemap on desktop (else OpenFreeMap fallback)
+  'VITE_ENABLE_ORBITAL_WATCH', // Orbital Watch satellite-pass lookup; absent => hidden (launched on the web in #10768)
 ];
 
 // SPA-read VITE_ vars that desktop builds deliberately do NOT set.
 // Every entry needs a reason: this map is the decision record.
 export const EXCLUDED_DESKTOP_BUILD_ENV = {
-  VITE_ENABLE_ORBITAL_WATCH: 'Orbital Watch ships dark (#10710); desktop keeps the satellite-pass lookup hidden until the web launch',
   VITE_COUNTRY_OVERRIDES_URL: 'plugin-only public asset path; desktop retains the existing map CDN default',
   VITE_ENABLE_IRAN_ATTACKS: 'feature sunset, default-off everywhere (#4982)',
   VITE_ENABLE_AIS: "opt-out flag (only 'false' disables); unset default is enabled — correct on desktop, where AIS is gated by the aisRelay keyring feature instead",
