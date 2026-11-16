@@ -59,7 +59,7 @@ export const ARCHIVE_MIN_INTERVAL_MS = 250;
 // Leaves the bundle section (9 minutes) room to publish after the evaluation stops.
 export const RUN_BUDGET_MS = 6 * 60_000;
 export const RECORD_TTL_SECONDS = 14 * 86_400;
-// Daily cadence; three missed days before health calls the sites stale.
+// Runs every 12 hours (seed-bundle-climate.mjs); three days without a run before health calls the sites stale.
 export const MAX_STALE_MIN = 4_320;
 const MGET_CHUNK = 100;
 const PIPELINE_CHUNK = 50;

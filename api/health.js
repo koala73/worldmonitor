@@ -995,12 +995,14 @@ const SEED_META = {
   // minRecordCount sits below the 297 profiled satellites the seeder kept from a 2026-11-14 CelesTrak active list.
   orbitalCatalog:   { key: 'seed-meta:orbital:catalog', maxStaleMin: 540, minRecordCount: 250, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:orbital:catalog',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10615, activationKey: 'seed-activated:orbital:catalog' } },
-  // Daily climate bundle member; 4320 = 3 missed days. One run evaluates the sites its budget
-  // allows and the index keeps every site evaluated so far, so the count reaches the 705-site
-  // registry within two runs; minRecordCount allows for the first run's partial pass.
+  // Climate bundle member every 12 hours; 4320 = 3 days. One run evaluates the sites its budget
+  // allows (171 of 705 on the 2026-11-16 launch run) and the count is the sites evaluated within the
+  // 3-day rollup window, so it fills over about two days and then holds the whole registry.
+  // minRecordCount sits below one run's count so a cold start's first run is not partial, and a
+  // seeder that stops evaluating still drops under it as its records age out of the window.
   // NOT_CONFIGURED while Orbital Watch is dark (DARK_LAUNCHED_KEYS). The deadline key is
   // separate from the one claimed on 2026-11-14 while dark, so launch starts a fresh window.
-  orbitalSites:     { key: 'seed-meta:orbital:sites', maxStaleMin: 4320, minRecordCount: 300, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:orbital:sites',
+  orbitalSites:     { key: 'seed-meta:orbital:sites', maxStaleMin: 4320, minRecordCount: 150, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:orbital:sites',
     rolloutDeadlineKey: 'health:rollout-deadline:orbital:sites:v1:launch',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10615, activationKey: 'seed-activated:orbital:sites' } },
   // Daily climate bundle member; 4320 = 3 missed days. Counts reservoirs with a radar reading in the

@@ -5,7 +5,7 @@
 import { FLAG_WORDING } from './flag-record.js';
 
 export const SITES_SCHEMA = 1;
-// Three days: the seeder runs daily and a whole registry pass can span two runs.
+// Three days: the seeder runs every 12 hours and a whole registry pass spans about four runs.
 export const ROLLUP_MAX_AGE_MS = 3 * 86_400_000;
 
 const scene = (value) => value && typeof value.itemId === 'string' && value.itemId
