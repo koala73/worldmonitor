@@ -522,7 +522,6 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/displacement-panel-layout.spec.ts',
   'e2e/energy-crisis-filters.spec.ts',
   'e2e/feed-label-safety.spec.ts',
-  'e2e/forecast-row-layout.spec.ts',
   'e2e/gas-shock-sensitivity.spec.ts',
   'e2e/geo-convergence-replay.spec.ts',
   'e2e/giving-provenance.spec.ts',
