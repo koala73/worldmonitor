@@ -44,6 +44,19 @@ async function landOnPricing(page: Page) {
   await page.waitForLoadState('networkidle');
   // Card entrance animations translate each card by up to 30px.
   await page.waitForTimeout(1_000);
+  const landingTop = await pricing.evaluate((el) => Math.round(el.getBoundingClientRect().top));
+  expect(landingTop, '#pricing must not scroll past the viewport top').toBeGreaterThanOrEqual(0);
+}
+
+async function visibleButtonRect(page: Page, plan: string) {
+  const button = checkoutButton(page, plan);
+  await expect(button, `#plan-${plan} checkout button`).toBeVisible();
+  const rect = await button.evaluate((el) => {
+    const { top, bottom } = el.getBoundingClientRect();
+    return { top, bottom };
+  });
+  expect(rect.top, `#plan-${plan} checkout button must not sit above the viewport`).toBeGreaterThanOrEqual(0);
+  return rect;
 }
 
 function checkoutButton(page: Page, plan: string) {
@@ -56,7 +69,7 @@ async function expectConsentDirectlyAboveEveryButton(page: Page) {
     await expect(button).toHaveCount(1);
     // #6976: the assent line must immediately precede every checkout button.
     const previous = await button.evaluate((el) => el.previousElementSibling?.getAttribute('data-checkout-consent'));
-    expect(previous, `#plan-${plan} checkout button must follow the consent line`).not.toBeNull();
+    expect(previous, `#plan-${plan} checkout button must follow the consent line`).toBe('');
   }
 }
 
@@ -65,7 +78,7 @@ test.describe('/pro#pricing checkout reach on a phone', () => {
 
   test('the Pro checkout button is within one screen of the landing point', async ({ page }) => {
     await landOnPricing(page);
-    const bottom = await checkoutButton(page, 'pro').evaluate((el) => el.getBoundingClientRect().bottom);
+    const { bottom } = await visibleButtonRect(page, 'pro');
     const innerHeight = await page.evaluate(() => window.innerHeight);
     expect(bottom, 'Pro checkout button bottom vs viewport height').toBeLessThanOrEqual(innerHeight);
     await expectConsentDirectlyAboveEveryButton(page);
@@ -78,7 +91,7 @@ test.describe('/pro#pricing checkout reach on a laptop', () => {
   test('every paid checkout button is above the fold', async ({ page }) => {
     await landOnPricing(page);
     for (const plan of PAID_PLANS) {
-      const top = await checkoutButton(page, plan).evaluate((el) => el.getBoundingClientRect().top);
+      const { top } = await visibleButtonRect(page, plan);
       expect(top, `#plan-${plan} checkout button top`).toBeLessThan(900);
     }
     await expectConsentDirectlyAboveEveryButton(page);
