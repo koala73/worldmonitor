@@ -1005,9 +1005,30 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // skips tier 0, so that rule would deliver nothing anywhere. After the
       // first alert-rule save lands (it narrows sensitivity to critical, the
       // realtime precondition), write the realtime mode the panel shows.
+      function buildDigestSettingsPayload(): Parameters<typeof setDigestSettings>[0] {
+        const modeEl = container.querySelector<HTMLSelectElement>('#usDigestMode');
+        const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
+        const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
+        return {
+          variant: SITE_VARIANT,
+          digestMode: (modeEl?.value ?? 'realtime') as DigestMode,
+          digestHour: hourEl ? Number(hourEl.value) : 8,
+          digestTimezone: tzEl?.value || detectedTz,
+          countries: countryPicker ? countryPicker.getValue() : undefined,
+        };
+      }
+
       function afterRuleSave<T>(p: Promise<T>, flush = false): Promise<T> {
-        if (!legacyDigestPending || legacyDigestConversionInFlight) return p;
+        // A flush may take over from an earlier non-flush attempt still in
+        // flight: during a flush the signal is already aborted, so that
+        // earlier attempt is guaranteed to skip its dispatch below and the
+        // two can never double-send (CodeRabbit follow-up).
+        if (!legacyDigestPending || (legacyDigestConversionInFlight && !flush)) return p;
         legacyDigestConversionInFlight = true;
+        // For a flush the panel is tearing down: capture the digest payload
+        // NOW, while the DOM still holds the final form state — by the time
+        // the flushed rule save settles, the host may have emptied it.
+        const flushPayload = flush ? buildDigestSettingsPayload() : null;
         return p.then(
           (result) => {
             if (!flush && signal.aborted) {
@@ -1018,7 +1039,24 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               legacyDigestConversionInFlight = false;
               return result;
             }
-            void sendDigestSettingsNow(flush).then(
+            if (flush && renderedUserId !== (getCurrentClerkUser()?.id ?? null)) {
+              // The account switched while the flushed rule save was in
+              // flight. authFetch pins identity when each request dispatches,
+              // so this write would carry the old panel's digest settings
+              // onto the new session's record — drop the conversion instead,
+              // the same trade as the abort listener's guard (CodeRabbit
+              // follow-up).
+              legacyDigestConversionInFlight = false;
+              return result;
+            }
+            let digestWrite: Promise<unknown>;
+            if (flushPayload) {
+              digestWrite = setDigestSettings(flushPayload, undefined);
+              fireForgetSave(digestWrite, 'save digest settings');
+            } else {
+              digestWrite = sendDigestSettingsNow(false);
+            }
+            void digestWrite.then(
               () => { legacyDigestPending = false; },
               () => { /* keep pending — a later rule save retries the conversion */ },
             ).then(() => { legacyDigestConversionInFlight = false; });
@@ -1467,16 +1505,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       };
 
       const sendDigestSettingsNow = (flush = false): Promise<unknown> => {
-        const modeEl = container.querySelector<HTMLSelectElement>('#usDigestMode');
-        const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
-        const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
-        const p = setDigestSettings({
-          variant: SITE_VARIANT,
-          digestMode: (modeEl?.value ?? 'realtime') as DigestMode,
-          digestHour: hourEl ? Number(hourEl.value) : 8,
-          digestTimezone: tzEl?.value || detectedTz,
-          countries: countryPicker ? countryPicker.getValue() : undefined,
-        }, flush ? undefined : signal);
+        const p = setDigestSettings(buildDigestSettingsPayload(), flush ? undefined : signal);
         fireForgetSave(p, 'save digest settings');
         return p;
       };

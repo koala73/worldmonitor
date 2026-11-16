@@ -595,6 +595,65 @@ describe('free alert ladder UI (#4273)', () => {
     vi.useRealTimers();
   });
 
+  it('a close-time flush takes over the conversion from an in-flight save (CodeRabbit follow-up)', async () => {
+    vi.useFakeTimers();
+    const container = await mount(data({
+      alertRules: [{
+        variant: 'full', enabled: true, eventTypes: [], sensitivity: 'critical',
+        channels: [], digestMode: 'daily', countries: ['UA'],
+      }],
+    } as Partial<ChannelsData>));
+    const resolvers: Array<() => void> = [];
+    channelMocks.saveAlertRules.mockImplementation(() => new Promise<void>((resolve) => { resolvers.push(resolve); }));
+    // Save 1 dispatches and stays in flight, holding the conversion attempt.
+    container.querySelector<HTMLButtonElement>(
+      '#usNotifCountryPicker .us-notif-country-chip:not(.us-notif-country-chip-on)',
+    )!.click();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(1);
+    // Edit 2 is still debouncing when the panel closes: the abort flush
+    // dispatches save 2, which must take the conversion over.
+    container.querySelector<HTMLButtonElement>(
+      '#usNotifCountryPicker .us-notif-country-chip.us-notif-country-chip-on',
+    )!.click();
+    cleanups.pop()!();
+    expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(2);
+    resolvers[1]!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(channelMocks.setDigestSettings).toHaveBeenCalledTimes(1);
+    expect((channelMocks.setDigestSettings.mock.lastCall?.[0] as { digestMode: string }).digestMode).toBe('realtime');
+    // Save 1 settles after teardown: its attempt skips, no second conversion.
+    resolvers[0]!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(channelMocks.setDigestSettings).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('drops the flush conversion when the account switches mid-save (CodeRabbit follow-up)', async () => {
+    vi.useFakeTimers();
+    const container = await mount(data({
+      alertRules: [{
+        variant: 'full', enabled: true, eventTypes: [], sensitivity: 'critical',
+        channels: [], digestMode: 'daily', countries: ['UA'],
+      }],
+    } as Partial<ChannelsData>));
+    let resolveSave: (() => void) | undefined;
+    channelMocks.saveAlertRules.mockImplementationOnce(() => new Promise<void>((resolve) => { resolveSave = resolve; }));
+    container.querySelector<HTMLButtonElement>(
+      '#usNotifCountryPicker .us-notif-country-chip:not(.us-notif-country-chip-on)',
+    )!.click();
+    cleanups.pop()!();
+    expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(1);
+    // The account switches while the flushed rule save is in flight: the
+    // delayed digest write would dispatch under the NEW session (authFetch
+    // pins identity at dispatch), so the conversion must be dropped.
+    clerkState.id = 'user_other';
+    resolveSave!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(channelMocks.setDigestSettings).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it('keeps the paid surface unchanged for a pro account', async () => {
     gate.tier = true;
     const container = await mount(data());
