@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import type { DisplacementEventsData, DisplacementFlow, InternalDisplacementData } from '../src/services/displacement';
 import { evidenceScreenshot } from './evidence-screenshot';
 
@@ -21,6 +21,16 @@ const events: DisplacementEventsData = {
   countries: [], missingCountries: [], asOf: '2026-11-01',
   points: [{ id: 'test-event', countryCode: 'ESP', countryName: 'Spain', conflict: false, figure: 900, displacementDate: '2026-10-15', eventName: 'Controlled flood <report>', hazardType: 'Flood', locationName: 'Madrid', lat: 40, lon: -4 }],
 };
+// .map-wrapper glides to a new centre with a 0.3s transform transition. A tap
+// sent before the glide ends aims at where the marker was; Chromium hit-tests
+// the tap at release, by which point the marker has moved (CI run 43727194139:
+// ~100px in 48ms, against a 27ms tap). getAnimations() flushes style, so a
+// transition that has not started yet is still waited for.
+const mapSettled = (page: Page) => page.locator('.map-wrapper').evaluate(async el => {
+  for (let running = el.getAnimations(); running.length; running = el.getAnimations()) {
+    await Promise.allSettled(running.map(animation => animation.finished));
+  }
+});
 const flows: DisplacementFlow[] = [{ originCode: 'UKR', originName: 'Ukraine', asylumCode: 'DEU', asylumName: 'Germany', refugees: 34000, originLat: 49, originLon: 32, asylumLat: 51, asylumLon: 10 }];
 
 for (const width of [390, 1280]) {
@@ -52,6 +62,7 @@ for (const width of [390, 1280]) {
           h.setOverlayZoom(8);
           h.setOverlayViewport(lat, lon);
         }, { lat, lon });
+        await mapSettled(page);
         await page.locator(`.displacement-${kind}`).tap();
         const popup = page.locator('.map-popup');
         await expect(popup).toBeVisible();

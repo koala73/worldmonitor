@@ -5557,6 +5557,7 @@
     "tile": {
       "failed": "Scenă neîncărcată · {{archive}}",
       "noPreview": "Nicio previzualizare publicată încă pentru această scenă",
+      "processing": "Scena este încă în procesare. Încercați din nou mai târziu.",
       "radar": "radar"
     },
     "target": {

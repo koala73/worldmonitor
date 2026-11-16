@@ -7,6 +7,8 @@ import type { MatchedAcquisition, OrbitalEvidence } from '@/services/orbital/mat
 import type { SceneHistory } from '@/services/orbital/scene-history';
 import { OrbitalWatchPage } from '@/components/OrbitalWatchPage';
 import { IMAGE_CREDIT } from '@/services/orbital/credits';
+import { ArchiveImageError } from '@/services/orbital/archive-image';
+import type { ArchiveFailure } from '@/services/orbital/archive-result';
 import {
   openOrbitalImageViewer,
   sceneFromAcquisition,
@@ -96,6 +98,38 @@ describe('orbital image viewer', () => {
     fail = false;
     viewer()!.querySelector<HTMLButtonElement>('[data-action="retry-image"]')!.click();
     await vi.waitFor(() => expect(srcOf('img.oiv-image')).toBe(landsat.imageUrl));
+  });
+
+  describe('a crop the archive has not served yet', () => {
+    const radar = (hoursAgo: number) => scene(hoursAgo / 24, null, { profileId: 'sentinel-1', platform: 'sentinel-1c', key: `sentinel-1c:${hoursAgo}` });
+    const stage = async (selected: MatchedAcquisition, failure: ArchiveFailure) => {
+      vi.spyOn(Date, 'now').mockReturnValue(NOW);
+      open(selected, { searchHistory: history([]), loadImage: async () => { throw new ArchiveImageError(failure); } });
+      await vi.waitFor(() => expect(viewer()!.querySelector('[data-action="retry-image"]')).not.toBeNull());
+      return viewer()!.querySelector<HTMLElement>('.oiv-stage')!;
+    };
+    const notFound: ArchiveFailure = { archive: 'planetary-computer', reason: 'http-status', httpStatus: 404 };
+
+    it('reads as still processing for a Sentinel-1 scene under a day old that answers 404', async () => {
+      const el = await stage(radar(3), notFound);
+      expect(el.dataset.state).toBe('processing');
+      expect(el.getAttribute('role')).toBe('status');
+      expect(el.textContent).toContain('Scene still processing. Try again later.');
+    });
+
+    it('stays a failure for an older Sentinel-1 404, a fresh Sentinel-1 non-404 and a fresh 404 from another mission', async () => {
+      for (const [selected, failure] of [
+        [radar(30), notFound],
+        [radar(3), { archive: 'planetary-computer', reason: 'http-status', httpStatus: 502 }],
+        [scene(3 / 24, 5), notFound],
+      ] as Array<[MatchedAcquisition, ArchiveFailure]>) {
+        const el = await stage(selected, failure);
+        expect(el.dataset.state, selected.key).toBeUndefined();
+        expect(el.getAttribute('role')).toBe('alert');
+        expect(el.textContent).toContain('Scene did not load');
+        document.querySelector<HTMLButtonElement>('.oiv-close')?.click();
+      }
+    });
   });
 
   it('credits EUMETSAT on a Meteosat frame and offers no time-lapse for a single frame', () => {

@@ -5521,6 +5521,7 @@
     "tile": {
       "failed": "Taswira haikupakia · {{archive}}",
       "noPreview": "Bado hakuna onyesho la kuchungulia lililochapishwa kwa taswira hii",
+      "processing": "Picha bado inachakatwa. Jaribu tena baadaye.",
       "radar": "rada"
     },
     "target": {

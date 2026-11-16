@@ -3202,6 +3202,7 @@
   "orbitalWatch.tierDef.likely": "Fixed-swath coverage included the point; no archived scene yet.",
   "orbitalWatch.tile.failed": "Scene did not load · {{archive}}",
   "orbitalWatch.tile.noPreview": "No preview published for this scene yet",
+  "orbitalWatch.tile.processing": "Scene still processing. Try again later.",
   "orbitalWatch.tile.radar": "radar",
   "orbitalWatch.timeline.away": "{{km}} km",
   "orbitalWatch.timeline.countryWide": "whole country",
