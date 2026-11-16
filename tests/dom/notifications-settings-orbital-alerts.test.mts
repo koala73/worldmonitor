@@ -49,6 +49,19 @@ vi.mock('@/services/clerk', () => ({
 
 vi.mock('@/services/entitlements', () => ({
   hasTier: () => true,
+  getEntitlementState: () => ({ features: { tier: 1 } }),
+  onEntitlementChange: (cb: (state: unknown) => void) => {
+    cb({ features: { tier: 1 } });
+    return () => {};
+  },
+  // Settled Pro verification: the panel holds a loading state while this is
+  // 'pending' (free alert ladder, #4273), which would blank every assertion
+  // in this suite.
+  getEntitlementVerificationStatus: () => 'ready',
+  onEntitlementVerificationChange: (cb: (status: string) => void) => {
+    cb('ready');
+    return () => {};
+  },
 }));
 
 vi.mock('@/services/market-watchlist', () => ({

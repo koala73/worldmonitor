@@ -3884,6 +3884,21 @@
       "yellowWarning": "Code geel",
       "orangeWarning": "Code oranje",
       "redWarning": "Code rood"
+    },
+    "displacement": {
+      "event": "Gebeurtenis",
+      "cause": "Oorzaak",
+      "date": "Datum",
+      "operation": "Operatie",
+      "reportDate": "Rapportdatum",
+      "measure": "Maatstaf",
+      "kinds": {
+        "outflow": "Uitstroom",
+        "return": "Terugkeer",
+        "arrival": "Aankomsten",
+        "death": "Doden",
+        "encounter": "Grensregistraties"
+      }
     }
   },
   "signals": {

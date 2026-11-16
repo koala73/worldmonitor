@@ -626,6 +626,7 @@ export class OrbitalWatchPage {
   private readonly changeButton: HTMLElement;
   private readonly closeButton: HTMLElement;
   private readonly sources: HTMLDetailsElement;
+  private readonly sourcesSummary: HTMLElement;
   private readonly privacy: HTMLElement;
   private readonly mapMark: HTMLElement;
   private readonly slots: Record<OrbitalSlot, HTMLElement>;
@@ -656,7 +657,9 @@ export class OrbitalWatchPage {
     this.changeButton = h('button', { type: 'button', className: 'ies-chip', dataset: { action: 'change' } });
     this.closeButton = h('button', { type: 'button', className: 'ies-close cdp-close', dataset: { action: 'close' } }, '×');
     this.body = h('div', { className: 'ies-body' });
-    this.sources = h('details', { className: 'ies-sources', hidden: true }) as HTMLDetailsElement;
+    // Sources end the scrolling body: pinned in the footer, an open list covered the results.
+    this.sourcesSummary = h('summary');
+    this.sources = h('details', { className: 'ies-sources', dataset: { section: 'sources' }, hidden: true }, this.sourcesSummary) as HTMLDetailsElement;
     this.privacy = h('div', { className: 'ies-privacy' });
     this.mapMark = h('div', { className: 'ies-mapmark', 'aria-hidden': 'true', hidden: true },
       h('span', { className: 'ies-mapmark-ring' }),
@@ -677,11 +680,12 @@ export class OrbitalWatchPage {
         h('div', { className: 'ies-actions' },
           this.zone,
           this.shareButton,
-          this.changeButton,
-          this.closeButton)),
+          this.changeButton),
+        // Pinned to the panel's top-right corner, like every other dashboard overlay's close.
+        this.closeButton),
       this.slots.search,
       this.body,
-      h('footer', { className: 'ies-footer' }, this.privacy, this.sources));
+      h('footer', { className: 'ies-footer' }, this.privacy));
     this.sheet = h('section', { className: 'imagery-evidence-sheet', role: 'dialog', 'aria-labelledby': titleId, tabindex: '-1', dataset: { height: this.height } },
       this.mapMark, this.panel);
     declareOverlay(this.sheet, { reload: 'safe' });
@@ -885,14 +889,15 @@ export class OrbitalWatchPage {
     this.state = state;
     this.sheet.dataset.state = state.kind === 'passes' ? (state.archives.kind === 'answered' ? 'answered' : 'checking') : state.kind;
     const active = document.activeElement as HTMLElement | null;
-    // The timeline and satellites slots are the same elements after the render, so a control in one keeps its focus.
-    const inTimeline = active !== null && (this.slots.timeline.contains(active) || this.slots.satellites.contains(active));
+    // The timeline and satellites slots and the sources list are the same elements after the render, so a control in one keeps its focus.
+    const inTimeline = active !== null
+      && (this.slots.timeline.contains(active) || this.slots.satellites.contains(active) || this.sources.contains(active));
     const focusKey = !inTimeline && this.body.contains(active) ? active?.dataset.key ?? active?.dataset.action ?? null : null;
     // Re-attaching the timeline slot resets its sideways scroll, so carry it over.
     const timelineLeft = this.slots.timeline.scrollLeft;
     stopWatchingNearView();
     nearViewRoot = this.body;
-    replaceChildren(this.body, ...this.renderState(state));
+    replaceChildren(this.body, ...this.renderState(state), this.sources);
     this.slots.timeline.scrollLeft = timelineLeft;
     if (inTimeline && active.isConnected) {
       active.focus({ preventScroll: true });
@@ -1186,8 +1191,10 @@ export class OrbitalWatchPage {
 
   private renderSources(credits: ResultCredit[]): void {
     this.sources.hidden = credits.length === 0;
-    replaceChildren(this.sources,
-      h('summary', null, t('orbitalWatch.sources.heading', { count: credits.length })),
+    // The summary stays in place across renders (moving a node drops its focus), so the toggle keeps keyboard focus.
+    this.sourcesSummary.textContent = t('orbitalWatch.sources.heading', { count: credits.length });
+    while (this.sources.lastChild !== this.sourcesSummary) this.sources.lastChild!.remove();
+    this.sources.append(
       h('ul', null, ...credits.map(({ source, text, href }) => h('li', null,
         href ? h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, source) : source,
         ' · ', text))),

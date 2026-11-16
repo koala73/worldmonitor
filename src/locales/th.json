@@ -4246,6 +4246,21 @@
       "yellowWarning": "คำเตือนระดับเหลือง",
       "orangeWarning": "คำเตือนระดับส้ม",
       "redWarning": "คำเตือนระดับแดง"
+    },
+    "displacement": {
+      "event": "เหตุการณ์",
+      "cause": "สาเหตุ",
+      "date": "วันที่",
+      "operation": "ปฏิบัติการ",
+      "reportDate": "วันที่รายงาน",
+      "measure": "ตัวชี้วัด",
+      "kinds": {
+        "outflow": "การไหลออก",
+        "return": "การเดินทางกลับ",
+        "arrival": "การเดินทางเข้า",
+        "death": "การเสียชีวิต",
+        "encounter": "กรณีที่บันทึกที่ชายแดน"
+      }
     }
   },
   "signals": {

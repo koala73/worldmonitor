@@ -6240,8 +6240,11 @@ body.playback-mode .status-dot {
 .layer-help-btn {
   /* WCAG 2.5.8 / issue #3112: 48x48 hit area. margin:-12px 0 keeps the box
      flush with its toggle-header siblings while ::before (inset:12px) renders
-     the visible 24px circle centred inside the 48px clickable target. */
+     the visible 24px circle centred inside the 48px clickable target.
+     isolation + the ::before z-index:-1 keep that opaque circle behind the
+     glyph; without them the positioned circle paints over the text. */
   position: relative;
+  isolation: isolate;
   width: 48px;
   height: 48px;
   margin: -12px 0;
@@ -6268,6 +6271,7 @@ body.playback-mode .status-dot {
   border: 1px solid var(--border);
   border-radius: 50%;
   pointer-events: none;
+  z-index: -1;
 }
 
 .layer-help-btn:hover {
@@ -7582,6 +7586,27 @@ body.playback-mode .status-dot {
 .popup-header.nat-event.floods .popup-title {
   color: var(--semantic-info);
 }
+
+/* Displacement and cross-border popups: the badge dot repeats the marker colour */
+.popup-header.displacement {
+  background: rgba(100, 150, 255, 0.06);
+}
+
+.popup-header.displacement .popup-title {
+  color: var(--semantic-low-text, var(--semantic-info));
+}
+
+.popup-badge.displacement-refugees,
+.popup-badge.displacement-idps,
+.popup-badge.displacement-conflict,
+.popup-badge.displacement-disaster {
+  color: var(--text-primary);
+}
+
+.popup-badge.displacement-refugees::before { background: #6496ff; }
+.popup-badge.displacement-idps::before { background: #b482ff; }
+.popup-badge.displacement-conflict::before { background: #e65a46; }
+.popup-badge.displacement-disaster::before { background: #4696e6; }
 
 /* Nuclear markers */
 .nuclear-marker {
@@ -30403,6 +30428,47 @@ body.map-width-resizing {
 
 .us-notif-ch-sub-warn {
   color: var(--settings-red);
+}
+
+/* Free alert ladder (#4273): banner, locked channel rows, per-rung CTAs. */
+.us-notif-ladder-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border: 1px solid #d4a843;
+  border-radius: 6px;
+  background: rgba(212, 168, 67, 0.08);
+}
+
+.us-notif-ladder-banner-text {
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.45;
+  opacity: 0.9;
+}
+
+.us-notif-ladder-cta {
+  flex-shrink: 0;
+  padding: 6px 14px;
+}
+
+.us-notif-ch-locked .us-notif-ch-icon,
+.us-notif-ch-locked .us-notif-ch-name,
+.us-notif-ch-locked .us-notif-ch-sub {
+  opacity: 0.55;
+}
+
+.us-notif-ladder-chip {
+  border-color: #d4a843;
+  color: #d4a843;
+  font-weight: 600;
+}
+
+.us-notif-scope-warn {
+  /* No display rule: the panel toggles this via the hidden attribute. */
+  margin-top: 6px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 
 .us-notif-ch-actions {

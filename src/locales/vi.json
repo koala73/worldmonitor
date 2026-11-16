@@ -4246,6 +4246,21 @@
       "yellowWarning": "Cảnh báo vàng",
       "orangeWarning": "Cảnh báo cam",
       "redWarning": "Cảnh báo đỏ"
+    },
+    "displacement": {
+      "event": "Sự kiện",
+      "cause": "Nguyên nhân",
+      "date": "Ngày",
+      "operation": "Hoạt động",
+      "reportDate": "Ngày báo cáo",
+      "measure": "Thước đo",
+      "kinds": {
+        "outflow": "Dòng đi",
+        "return": "Hồi hương",
+        "arrival": "Dòng đến",
+        "death": "Tử vong",
+        "encounter": "Trường hợp ghi nhận tại biên giới"
+      }
     }
   },
   "signals": {

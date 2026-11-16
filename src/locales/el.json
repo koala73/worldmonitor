@@ -4268,6 +4268,21 @@
       "yellowWarning": "Κίτρινη προειδοποίηση",
       "orangeWarning": "Πορτοκαλί προειδοποίηση",
       "redWarning": "Κόκκινη προειδοποίηση"
+    },
+    "displacement": {
+      "event": "Συμβάν",
+      "cause": "Αιτία",
+      "date": "Ημερομηνία",
+      "operation": "Επιχείρηση",
+      "reportDate": "Ημερομηνία αναφοράς",
+      "measure": "Μέτρο",
+      "kinds": {
+        "outflow": "Εκροές",
+        "return": "Επιστροφές",
+        "arrival": "Αφίξεις",
+        "death": "Θάνατοι",
+        "encounter": "Εντοπισμοί"
+      }
     }
   },
   "signals": {

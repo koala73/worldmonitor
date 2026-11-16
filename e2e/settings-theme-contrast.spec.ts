@@ -22,8 +22,22 @@ for (const theme of ['light', 'dark']) for (const standalone of [false, true]) {
     await page.route('**/src/services/entitlements.ts', async route => {
       const response = await route.fetch();
       const source = await response.text();
-      const body = source.replace(/export function hasTier\(minTier\) \{[\s\S]*?\n\}/, 'export function hasTier(minTier) { return true; }');
-      expect(body).not.toBe(source);
+      // The notifications panel reads the whole verified snapshot (#4273):
+      // hasTier drives the Pro re-render guard, getEntitlementState feeds
+      // resolveAlertCapabilities (a null state resolves to the free ladder,
+      // which locks the paid channel rows this test measures), and the
+      // verification status gates the loading state. Patch all three to a
+      // settled Pro account.
+      let body = source;
+      for (const [pattern, replacement] of [
+        [/export function hasTier\(minTier\) \{[\s\S]*?\n\}/, 'export function hasTier(minTier) { return true; }'],
+        [/export function getEntitlementState\(\) \{[\s\S]*?\n\}/, 'export function getEntitlementState() { return { features: { tier: 1 } }; }'],
+        [/export function getEntitlementVerificationStatus\(\) \{[\s\S]*?\n\}/, 'export function getEntitlementVerificationStatus() { return "ready"; }'],
+      ] as const) {
+        const next = body.replace(pattern, replacement);
+        expect(next).not.toBe(body);
+        body = next;
+      }
       await route.fulfill({ response, body });
     });
     await page.goto(standalone ? '/settings.html' : '/dashboard');

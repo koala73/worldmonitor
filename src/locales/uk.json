@@ -4381,6 +4381,21 @@
       "yellowWarning": "Жовтий рівень небезпеки",
       "orangeWarning": "Помаранчевий рівень небезпеки",
       "redWarning": "Червоний рівень небезпеки"
+    },
+    "displacement": {
+      "event": "Подія",
+      "cause": "Причина",
+      "date": "Дата",
+      "operation": "Операція",
+      "reportDate": "Дата звіту",
+      "measure": "Показник",
+      "kinds": {
+        "outflow": "Виїзд",
+        "return": "Повернення",
+        "arrival": "Прибуття",
+        "death": "Загибель",
+        "encounter": "Зафіксовані випадки"
+      }
     }
   },
   "signals": {

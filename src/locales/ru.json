@@ -4312,6 +4312,21 @@
       "yellowWarning": "Жёлтый уровень опасности",
       "orangeWarning": "Оранжевый уровень опасности",
       "redWarning": "Красный уровень опасности"
+    },
+    "displacement": {
+      "event": "Событие",
+      "cause": "Причина",
+      "date": "Дата",
+      "operation": "Операция",
+      "reportDate": "Дата отчёта",
+      "measure": "Показатель",
+      "kinds": {
+        "outflow": "Выезд",
+        "return": "Возвращения",
+        "arrival": "Прибытия",
+        "death": "Гибель",
+        "encounter": "Зафиксированные случаи"
+      }
     }
   },
   "signals": {

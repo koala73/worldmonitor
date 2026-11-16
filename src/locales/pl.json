@@ -4312,6 +4312,21 @@
       "yellowWarning": "Żółte ostrzeżenie",
       "orangeWarning": "Pomarańczowe ostrzeżenie",
       "redWarning": "Czerwone ostrzeżenie"
+    },
+    "displacement": {
+      "event": "Zdarzenie",
+      "cause": "Przyczyna",
+      "date": "Data",
+      "operation": "Operacja",
+      "reportDate": "Data raportu",
+      "measure": "Miara",
+      "kinds": {
+        "outflow": "Odpływy",
+        "return": "Powroty",
+        "arrival": "Przybycia",
+        "death": "Zgony",
+        "encounter": "Odnotowane przypadki"
+      }
     }
   },
   "signals": {

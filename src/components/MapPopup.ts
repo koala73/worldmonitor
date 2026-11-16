@@ -4,8 +4,8 @@ import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { Earthquake } from '@/services/earthquakes';
 import type { WeatherAlert } from '@/services/weather';
 import type { CrossBorderPoint } from '@/services/displacement';
-import { renderDisplacementDetails, type DisplacementMarker } from './displacement-marker';
-import { renderCrossBorderDetails } from './cross-border-marker';
+import { renderDisplacementPopup, type DisplacementMarker } from './displacement-marker';
+import { renderCrossBorderPopup } from './cross-border-marker';
 import type { RadiationObservation } from '@/services/radiation';
 import { UNDERSEA_CABLES } from '@/config/geo-map';
 import type { StartupHub, Accelerator, TechHQ, CloudRegion } from '@/config/tech-geo';
@@ -1028,11 +1028,9 @@ export class MapPopup {
       case 'news':
         return this.renderNewsPopup(data.data as NewsPopupData);
       case 'displacement':
-        return `<div class="popup-header"><span class="popup-title">${t('panels.displacement')}</span><button class="popup-close" aria-label="${t('common.close')}">×</button></div>`
-          + `<div class="popup-body">${renderDisplacementDetails(data.data as DisplacementMarker)}</div>`;
+        return renderDisplacementPopup(data.data as DisplacementMarker);
       case 'crossBorder':
-        return `<div class="popup-header"><span class="popup-title">${t('components.displacement.crossBorder')}</span><button class="popup-close" aria-label="${t('common.close')}">×</button></div>`
-          + `<div class="popup-body">${renderCrossBorderDetails(data.data as CrossBorderPoint)}</div>`;
+        return renderCrossBorderPopup(data.data as CrossBorderPoint);
       case 'radiation':
         return this.renderRadiationPopup(data.data as RadiationObservation);
       case 'reservoirLevel':

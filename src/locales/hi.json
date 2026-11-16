@@ -4337,6 +4337,21 @@
       "yellowWarning": "पीली चेतावनी",
       "orangeWarning": "नारंगी चेतावनी",
       "redWarning": "लाल चेतावनी"
+    },
+    "displacement": {
+      "event": "घटना",
+      "cause": "कारण",
+      "date": "तारीख",
+      "operation": "अभियान",
+      "reportDate": "रिपोर्ट की तारीख",
+      "measure": "माप",
+      "kinds": {
+        "outflow": "निकासी",
+        "return": "वापसी",
+        "arrival": "आगमन",
+        "death": "मौतें",
+        "encounter": "सीमा पर दर्ज मामले"
+      }
     }
   },
   "signals": {

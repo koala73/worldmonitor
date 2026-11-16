@@ -50,7 +50,7 @@ const titleOf = (n) => reservoirEvent(n).payload.title;
 
 /** Runs one drain. `failTelegramSend` lists 1-based send numbers that Telegram rejects. */
 /** `lremFails(raw)` answers 'status' (the command errors), 'throw' (its request rejects), 'body-timeout' (its body read times out), 'bad-json' (its body is not JSON), 'short' (its response lacks a result), 'non-numeric' (its result is not a count) or 'http' (its request is non-OK). */
-async function drain(held, { failTelegramSend = [], throwTelegramSend = [], onTelegramSend = null, lremFails = null, logs = null, removals = null } = {}) {
+async function drain(held, { failTelegramSend = [], throwTelegramSend = [], onTelegramSend = null, lremFails = null, logs = null, removals = null, entitlement = 1 } = {}) {
   const sent = [];
   const silence = [console.log, console.warn, console.error];
   console.log = console.warn = console.error = (...args) => { logs?.push(args.join(' ')); };
@@ -64,6 +64,15 @@ async function drain(held, { failTelegramSend = [], throwTelegramSend = [], onTe
     }
     if (path.includes('/relay/channels')) {
       return { ok: true, json: async () => [{ channelType: 'telegram', verified: true, telegramOwnership: 'verified_callback', chatId: 'chat-1' }] };
+    }
+    // Reservoir alerts are Pro-only, so the drains here run as a Pro user
+    // by default; without this the drain-time free-ladder clamp (#4273)
+    // drops every medium-severity held alert and nothing is sent.
+    // `entitlement: 'fail'` simulates an entitlement-endpoint outage, which
+    // getUserTier fails CLOSED to tier 0.
+    if (path.includes('/relay/entitlement')) {
+      if (entitlement === 'fail') return { ok: false, status: 503, json: async () => ({}) };
+      return { ok: true, json: async () => ({ tier: entitlement }) };
     }
     if (parsed.hostname === 'api.telegram.org') {
       sends += 1;
@@ -201,6 +210,26 @@ describe('quiet-hours drain with a long held batch', () => {
     const sent = await drain(held, { failTelegramSend: [1] });
     assert.deepEqual(sent, []);
     assert.equal(held.length, 60);
+  });
+
+  it('an entitlement outage keeps the held batch for a later drain (Greptile review 3)', async () => {
+    // getUserTier fails CLOSED to tier 0 on an outage, which clamps these
+    // medium-severity alerts past the free ladder. That must hold them, not
+    // delete them: once the tier resolves, the batch still delivers.
+    const held = asHeld(heldEvents(5));
+    const duringOutage = await drain(held, { entitlement: 'fail' });
+    assert.deepEqual(duringOutage, []);
+    assert.equal(held.length, 5, 'nothing is removed while the tier is fail-closed');
+    const sent = await drain(held);
+    for (let n = 0; n < 5; n += 1) assert.equal(countOf(sent, titleOf(n)), 1, `alert ${n} delivered once after the outage`);
+    assert.deepEqual(held, [], 'the queue clears once the batch really delivers');
+  });
+
+  it('a genuinely free tier holds past-ladder alerts without deleting them (TTL retires them)', async () => {
+    const held = asHeld(heldEvents(3));
+    const sent = await drain(held, { entitlement: 0 });
+    assert.deepEqual(sent, []);
+    assert.equal(held.length, 3);
   });
 });
 

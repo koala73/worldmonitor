@@ -27,7 +27,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px 10px;
+  padding: 14px 56px 10px 16px;
   border-bottom: 1px solid var(--border);
 }
 .ies-place-block { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -57,8 +57,23 @@
 /* The dashboard's share-link button, sized to the chips beside it. */
 .ies-actions .cdp-share-btn { min-height: 0; height: 24px; width: 28px; padding: 0; }
 .ies-actions .cdp-share-btn[hidden] { display: none; }
-.ies-close { font-size: 18px; line-height: 1; background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 2px 4px; }
-.ies-close:hover { color: var(--text); }
+/* The Country Brief's close (`.country-deep-dive .panel-close`): a square pinned top-right. */
+.ies-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ies-close:hover { border-color: var(--border-strong); }
 .ies-slot:empty { display: none; }
 .ies-slot[data-slot="search"] { padding: 8px 16px; border-bottom: 1px solid var(--border); }
 .ies-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 0 16px 12px; }
@@ -113,7 +128,8 @@
 .ies-privacy-row { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; min-width: 0; }
 .ies-privacy-line { flex: 1 1 auto; min-width: 0; max-width: 100%; margin: 0; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ies-privacy-more { flex: none; padding: 0; border: 0; background: none; color: var(--text-muted); cursor: pointer; font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; }
-.ies-sources summary { cursor: pointer; font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
+.ies-sources { padding: 10px 0 0; font-size: 11px; color: var(--text-muted); }
+.ies-sources summary { cursor: pointer; font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; }
 .ies-privacy-body { margin: 4px 0 0; }
 .ies-sources ul { margin: 4px 0; padding-left: 16px; }
 .ies-sources a, .ies-privacy a { color: var(--accent); }

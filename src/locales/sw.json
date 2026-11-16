@@ -4337,6 +4337,21 @@
       "yellowWarning": "Onyo la njano",
       "orangeWarning": "Onyo la machungwa",
       "redWarning": "Onyo jekundu"
+    },
+    "displacement": {
+      "event": "Tukio",
+      "cause": "Chanzo",
+      "date": "Tarehe",
+      "operation": "Operesheni",
+      "reportDate": "Tarehe ya ripoti",
+      "measure": "Kipimo",
+      "kinds": {
+        "outflow": "Wanaoondoka",
+        "return": "Wanaorejea",
+        "arrival": "Wanaowasili",
+        "death": "Vifo",
+        "encounter": "Matukio ya mpakani"
+      }
     }
   },
   "signals": {

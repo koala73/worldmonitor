@@ -4268,6 +4268,21 @@
       "yellowWarning": "Gelbe Warnung",
       "orangeWarning": "Orange Warnung",
       "redWarning": "Rote Warnung"
+    },
+    "displacement": {
+      "event": "Ereignis",
+      "cause": "Ursache",
+      "date": "Datum",
+      "operation": "Einsatz",
+      "reportDate": "Berichtsdatum",
+      "measure": "Messgröße",
+      "kinds": {
+        "outflow": "Abwanderungen",
+        "return": "Rückkehrer",
+        "arrival": "Ankünfte",
+        "death": "Todesfälle",
+        "encounter": "Grenzkontakte"
+      }
     }
   },
   "signals": {

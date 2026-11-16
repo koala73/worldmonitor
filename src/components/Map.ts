@@ -829,7 +829,7 @@ export class MapComponent {
     // Add help button
     const helpBtn = document.createElement('button');
     helpBtn.className = 'layer-help-btn';
-    helpBtn.textContent = '?';
+    helpBtn.textContent = 'i';
     helpBtn.title = t('components.deckgl.layerGuide');
     helpBtn.setAttribute('aria-label', t('components.deckgl.layerGuide'));
     helpBtn.addEventListener('click', () => this.showLayerHelp());
