@@ -385,25 +385,30 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   }
 
   const leaking = (text) => pointLeak(text, picked);
-  // The harness's own page loads carry the map centre in the query string; the app never navigates the page.
-  const leaks = requests.filter(({ url, body, harnessNavigation }) => !harnessNavigation && !ARCHIVE_HOSTS.includes(new URL(url).hostname)
-    && leaking(`${url} ${body}`));
-  log('requests', requests.length, 'archive requests', requests.filter(({ url }) => ARCHIVE_HOSTS.includes(new URL(url).hostname)).length);
-  if (leaks.length) throw new Error(`picked point left the browser: ${leaks.map((l) => l.url).join(', ')}`);
-  // Archives get the point, some as a crop box in the path; telemetry keeps an archive URL only after
-  // its coordinate params and path segments are scrubbed, so nothing of the point may survive that.
-  const pathLeaks = requests.filter(({ url }) => ARCHIVE_HOSTS.includes(new URL(url).hostname) && leaking(archiveUrlAfterScrub(url)));
-  log('archive requests with the point left after the telemetry scrub', pathLeaks.length);
-  if (pathLeaks.length) throw new Error(`picked point outside an archive URL's coordinate parts: ${pathLeaks.map((l) => l.url).join(', ')}`);
-  const vendor = requests.filter(({ url }) => VENDOR_URL.test(url));
-  const vendorLeaks = vendor.filter(({ url, body }) => leaking(`${url} ${body}`));
-  log('telemetry vendor requests', vendor.length, 'at', [...new Set(vendor.map(({ url }) => { const u = new URL(url); return u.host + u.pathname; }))], 'carrying the point', vendorLeaks.length);
-  if (vendorLeaks.length) throw new Error(`picked point in a telemetry payload: ${vendorLeaks.map((l) => l.url).join(', ')}`);
-  const navigations = (await page.evaluate(() => window.__wmNavigations)).map(pageUrlPlaces);
-  const centresNearPoint = navigations.filter(({ centre }) => centre && centre.off < 0.01).length;
-  log('same-document navigations', navigations.length, 'with a map centre within 0.01° of the point', centresNearPoint,
-    'with the orbital route', navigations.filter(({ route }) => route).length);
-  if (centresNearPoint) throw new Error('a same-document navigation put the picked point in the page query');
+  // No request outside the archives, and no telemetry payload, may carry the point; run after every scenario's page load.
+  const checkRequests = async (label) => {
+    // The harness's own page loads carry the map centre in the query string; the app never navigates the page.
+    const leaks = requests.filter(({ url, body, harnessNavigation }) => !harnessNavigation && !ARCHIVE_HOSTS.includes(new URL(url).hostname)
+      && leaking(`${url} ${body}`));
+    log(label, 'requests', requests.length, 'archive requests', requests.filter(({ url }) => ARCHIVE_HOSTS.includes(new URL(url).hostname)).length);
+    if (leaks.length) throw new Error(`picked point left the browser: ${leaks.map((l) => l.url).join(', ')}`);
+    // Archives get the point, some as a crop box in the path; telemetry keeps an archive URL only after
+    // its coordinate params and path segments are scrubbed, so nothing of the point may survive that.
+    const pathLeaks = requests.filter(({ url }) => ARCHIVE_HOSTS.includes(new URL(url).hostname) && leaking(archiveUrlAfterScrub(url)));
+    log('archive requests with the point left after the telemetry scrub', pathLeaks.length);
+    if (pathLeaks.length) throw new Error(`picked point outside an archive URL's coordinate parts: ${pathLeaks.map((l) => l.url).join(', ')}`);
+    const vendor = requests.filter(({ url }) => VENDOR_URL.test(url));
+    const vendorLeaks = vendor.filter(({ url, body }) => leaking(`${url} ${body}`));
+    log('telemetry vendor requests', vendor.length, 'at', [...new Set(vendor.map(({ url }) => { const u = new URL(url); return u.host + u.pathname; }))], 'carrying the point', vendorLeaks.length);
+    if (vendorLeaks.length) throw new Error(`picked point in a telemetry payload: ${vendorLeaks.map((l) => l.url).join(', ')}`);
+    const navigations = (await page.evaluate(() => window.__wmNavigations)).map(pageUrlPlaces);
+    const centresNearPoint = navigations.filter(({ centre }) => centre && centre.off < 0.01).length;
+    log('same-document navigations', navigations.length, 'with a map centre within 0.01° of the point', centresNearPoint,
+      'with the orbital route', navigations.filter(({ route }) => route).length);
+    if (centresNearPoint) throw new Error('a same-document navigation put the picked point in the page query');
+    return { leaks: leaks.length, vendorLeaks: vendorLeaks.length };
+  };
+  await checkRequests('lookup');
   checkLcp('lookup');
   // A sheet image is a blob: or a scene-wide archive preview; anything else is point-bearing or off the allowlist.
   const pointImgs = () => imgSrcs.filter((src) => /^https?:/.test(src) && (POINT_IMAGE_HOSTS.includes(new URL(src).hostname) || !PREVIEW_HOSTS.includes(new URL(src).hostname)));
@@ -417,6 +422,10 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await waitForBoot(page, { data: true });
   await waitForMap(page);
   await expectVisible(SHEET);
+  await answered();
+  // The shared sheet must paint its latest image before the image-source and LCP checks can mean anything.
+  await page.waitForFunction(() => [...document.querySelectorAll('.imagery-evidence-sheet .ow-tile-hero[data-state="loaded"] img[src^="blob:"]')]
+    .some((img) => img.complete && img.naturalWidth > 0), null, { timeout: 120_000 });
   const landed = await markAt();
   await page.waitForTimeout(5_000);
   const later = await markAt();
@@ -426,10 +435,12 @@ export default async function ({ page, base, shot, log, expectVisible }) {
     blob: img.getAttribute('src').startsWith('blob:'), painted: img.complete && img.naturalWidth > 0,
   })));
   log('shared link images', sharedImages.length, 'blob', sharedImages.filter((i) => i.blob).length, 'painted', sharedImages.filter((i) => i.painted).length);
+  if (!sharedImages.some((i) => i.blob && i.painted)) throw new Error('the shared link painted no blob: image');
   const directSrc = pointImgs();
   if (directSrc.length) throw new Error(`point-bearing archive URL in img src: ${directSrc.join(', ')}`);
   checkLcp('shared link');
   if (Math.abs(later.x - landed.x) > 4 || Math.abs(later.y - landed.y) > 4) throw new Error('the map drifted off a shared point');
+  const { leaks, vendorLeaks } = await checkRequests('lookup and shared link');
   await shot('shared-link');
-  return { mobile, picked, rows: rows.length, tiers, leaks: leaks.length, vendorLeaks: vendorLeaks.length, lcp: lcpUrls.filter(Boolean).length };
+  return { mobile, picked, rows: rows.length, tiers, leaks, vendorLeaks, lcp: lcpUrls.filter(Boolean).length };
 }
