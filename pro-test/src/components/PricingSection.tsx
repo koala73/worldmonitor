@@ -387,7 +387,12 @@ export function PricingSection({
         {/* Tier cards grid */}
         {/* 5 self-serve tiers since Pro Business was published (#5604):
             2-up on tablet, 3+2 on laptop, all five across on desktop.
-            Enterprise renders below as a band, not as a sixth column. */}
+            Enterprise renders below as a band, not as a sixth column.
+            Each card spans three subgrid rows (header, CTA, features), spaced
+            by the grid's row gap, so the CTAs sit above the feature lists and
+            still line up across a row.
+            Below md the highlighted tier moves first via CSS order only, so
+            DOM, tab and prerender order stay unchanged (#10843). */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           {/* Personal / Commercial axis header — xl only. It is a pair of grid
               children so the spans line up with the columns they label
@@ -424,9 +429,9 @@ export function PricingSection({
               <motion.div
                 key={tier.name}
                 id={`plan-${tierKey(tier)}`}
-                className={`relative bg-zinc-900 rounded-lg p-6 flex flex-col ${
+                className={`relative bg-zinc-900 rounded-lg p-6 row-span-3 grid grid-cols-1 grid-rows-subgrid ${
                   tier.highlighted
-                    ? 'border-2 border-wm-green shadow-lg shadow-wm-green/10'
+                    ? 'border-2 border-wm-green shadow-lg shadow-wm-green/10 order-first md:order-none'
                     : 'border border-wm-border'
                 }`}
                 initial={{ opacity: 0, y: 30 }}
@@ -442,29 +447,43 @@ export function PricingSection({
                   </div>
                 )}
 
-                {/* Tier name */}
-                <h3 className={`font-display text-lg font-bold mb-1 ${
-                  tier.highlighted ? 'text-wm-green' : 'text-wm-text'
-                }`}>
-                  {tier.name}
-                </h3>
+                {/* Header: name, description, price */}
+                <div>
+                  <h3 className={`font-display text-lg font-bold mb-1 ${
+                    tier.highlighted ? 'text-wm-green' : 'text-wm-text'
+                  }`}>
+                    {tier.name}
+                  </h3>
 
-                {/* Description */}
-                <p className="text-xs text-wm-muted mb-4">{localized.description}</p>
+                  {/* Description */}
+                  <p className="text-xs text-wm-muted mb-4">{localized.description}</p>
 
-                {/* Price */}
-                <div className="mb-6">
-                  <span className="text-4xl font-display font-bold break-words hyphens-auto">{price.amount}</span>
-                  <span className="text-sm text-wm-muted ml-1">{price.suffix}</span>
-                  {cta.type === 'checkout' && cta.billedMonthlyOnly && (
-                    <p className="mt-1 text-xs font-mono uppercase tracking-wider text-wm-muted">
-                      {t('pricing.billedMonthlyNote', { defaultValue: 'Billed monthly — no annual plan' })}
-                    </p>
-                  )}
+                  {/* Price */}
+                  <div>
+                    <span className="text-4xl font-display font-bold break-words hyphens-auto">{price.amount}</span>
+                    <span className="text-sm text-wm-muted ml-1">{price.suffix}</span>
+                    {cta.type === 'checkout' && cta.billedMonthlyOnly && (
+                      <p className="mt-1 text-xs font-mono uppercase tracking-wider text-wm-muted">
+                        {t('pricing.billedMonthlyNote', { defaultValue: 'Billed monthly — no annual plan' })}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* CTA above the features, bottom-aligned so a link CTA without
+                    the consent line still lines up with checkout buttons. */}
+                <div className="flex flex-col justify-end">
+                  <TierCta
+                    cta={cta}
+                    highlighted={!!tier.highlighted}
+                    loadingProductId={loadingProductId}
+                    rateLimited={rateLimited}
+                    onCheckout={handleCheckout}
+                  />
                 </div>
 
                 {/* Features */}
-                <ul className="space-y-3 mb-8 flex-1">
+                <ul className="space-y-3">
                   {localized.features.map((feature, fi) => (
                     <li key={fi} className="flex items-start gap-2 text-sm">
                       <Check className={`w-4 h-4 shrink-0 mt-0.5 ${
@@ -480,15 +499,6 @@ export function PricingSection({
                     </li>
                   ))}
                 </ul>
-
-                {/* CTA button */}
-                <TierCta
-                  cta={cta}
-                  highlighted={!!tier.highlighted}
-                  loadingProductId={loadingProductId}
-                  rateLimited={rateLimited}
-                  onCheckout={handleCheckout}
-                />
               </motion.div>
             );
           })}
