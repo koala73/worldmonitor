@@ -2106,7 +2106,14 @@
     "map": {
       "showMap": "Karte anzeigen",
       "hideMap": "Karte ausblenden",
-      "clearTrails": "Spuren löschen"
+      "clearTrails": "Spuren löschen",
+      "locate": "Meinen Standort anzeigen"
+    },
+    "mapLocate": {
+      "locating": "Standort wird ermittelt…",
+      "denied": "Standortzugriff verweigert. Nutzen Sie die Suche, um einen Ort zu finden.",
+      "unavailable": "Standort nicht gefunden. Nutzen Sie die Suche, um einen Ort zu finden.",
+      "noCountry": "An Ihrem Standort liegt kein Land. Nutzen Sie die Suche, um einen Ort zu finden."
     },
     "positiveNewsFeed": {
       "noStories": "Noch keine Beiträge in dieser Kategorie"
@@ -3221,6 +3228,19 @@
         "latestPass": "letzter ICESat-2-Überflug {{date}}",
         "sparkline": "Pegel über 36 Monate, saisonale Basis als gestrichelte Linie",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidar-Wasserspiegel aus datierten Überflügen, keine Live-Werte oder Speichervolumen."
+      },
+      "water": {
+        "heading": "Wasser am {{name}}",
+        "level": "Lidar-Pegel",
+        "extent": "Radar-Wasserfläche",
+        "extentValue": "{{percent}} % offenes Wasser ({{area}} km²) am {{date}}",
+        "extentChange": "{{delta}} Punkte seit {{date}} auf demselben Orbit",
+        "extentNoComparison": "Keine frühere Messung auf demselben Orbit zum Vergleich",
+        "extentNone": "Noch keine Radarmessung",
+        "unavailable": "Laden fehlgeschlagen; zum erneuten Versuch erneut öffnen",
+        "optical": "Neuestes optisches Bild",
+        "opticalNone": "Kein optisches Bild innerhalb von 30 Tagen",
+        "note": "Jede Zeile ist eine datierte Messung eines eigenen Überflugs, kein Live-Wert. Das Radar erfasst offenes Wasser im Kernbereich des Stausees; vom Wind aufgeraute Wasserflächen können als Land erscheinen."
       }
     },
     "gridDisruptionClock": {
@@ -4497,7 +4517,8 @@
   "contextMenu": {
     "openCountryBrief": "Länderübersicht öffnen",
     "copyCoordinates": "Koordinaten kopieren",
-    "satellitePasses": "Satellitenüberflüge hier"
+    "satellitePasses": "Satellitenüberflüge hier",
+    "imageryEvidenceHere": "Bildbelege hier"
   },
   "shell": {
     "documentTitle": "World Monitor — Dashboard für globale Echtzeitinformationen",
@@ -5204,6 +5225,7 @@
     "counts": {},
     "tier": {
       "checking": "Archiv wird geprüft",
+      "notInArchive": "nicht im Archiv",
       "confirmed": "bestätigt",
       "likely": "wahrscheinlich",
       "unmatchedImage": "Bild ohne berechneten Überflug",
@@ -5270,7 +5292,8 @@
       "metaSpot": "Bewölkung am Punkt",
       "metaScene": "Wolken der Szene",
       "metaSun": "Sonnenhöhe",
-      "showCloudy": "Bewölkte Tage einbeziehen ({{count}})"
+      "showCloudy": "Bewölkte Tage einbeziehen ({{count}})",
+      "eventMark": "Ereignis {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5378,6 +5401,12 @@
       "passes_one": "{{count}} Überflug",
       "passes_other": "{{count}} Überflüge"
     },
+    "siteSatellites": {
+      "heading": "Verfolgte Satelliten über diesem Ort · nächste {{hours}} h",
+      "none": "Kein verfolgter Bildsatellit erfasst diesen Ort innerhalb von {{hours}} h.",
+      "notLoaded": "Öffnen Sie den Ort erneut, um es erneut zu versuchen; die Bahnelemente wurden nicht geladen.",
+      "failed": "Öffnen Sie den Ort erneut, um es erneut zu versuchen; die Überflugberechnung ist fehlgeschlagen."
+    },
     "sheet": {
       "heading": "Bildbelege",
       "window": "Letzte {{days}} Tage, nächste {{hours}} h",
@@ -5470,7 +5499,7 @@
     "privacy": {
       "line": "Ihr Punkt geht nur an die Bildarchive.",
       "more": "Details",
-      "body": "Überflüge werden auf diesem Gerät berechnet. Um Bilder zu finden, sendet Ihr Browser den Punkt direkt an Earth Search, Planetary Computer, NASA GIBS und EUMETSAT; WorldMonitor erhält ihn nicht. Ein eingegebener Ortsname wird an WorldMonitor und OpenStreetMap Nominatim gesendet, um ihn zu finden. Geteilte Links behalten zwei Dezimalstellen (0,01°)."
+      "body": "Überflüge werden auf diesem Gerät berechnet. Um Bilder zu finden, sendet Ihr Browser den Punkt direkt an Earth Search, Planetary Computer, NASA GIBS und EUMETSAT; WorldMonitor erhält ihn nicht. Bei einem beobachteten Ort wird WorldMonitor nach dem Tagesprotokoll dieses Orts anhand seiner ID gefragt, nicht anhand Ihres Punkts. Ein eingegebener Ortsname wird an WorldMonitor und OpenStreetMap Nominatim gesendet, um ihn zu finden. Geteilte Links behalten zwei Dezimalstellen (0,01°)."
     },
     "sources": {
       "heading": "Quellen ({{count}})",
@@ -5492,6 +5521,7 @@
     "tile": {
       "failed": "Szene konnte nicht geladen werden · {{archive}}",
       "noPreview": "Noch keine Vorschau für diese Szene veröffentlicht",
+      "processing": "Szene wird noch verarbeitet. Später erneut versuchen.",
       "radar": "Radar"
     },
     "target": {
@@ -5505,6 +5535,13 @@
       "noImage": "Keine aktuelle Aufnahme gefunden",
       "noPass": "Kein Überflug in den nächsten 72 Stunden",
       "openEvidence": "Belege öffnen",
+      "compareEvent": "Vorher / nachher",
+      "compareEventLocked": "Vorher / nachher · Pro",
+      "compareSearching": "Suche Aufnahmen vor und nach dem {{date}}…",
+      "compareNoAfter": "Seit dem {{date}} noch keine klare Aufnahme.",
+      "compareNoAfterWindow": "Keine klare Aufnahme in den {{days}} Tagen nach dem {{date}}.",
+      "compareNoBefore": "Keine klare Aufnahme vor dem {{date}} im Archivzeitraum.",
+      "compareFailed": "Archivsuche fehlgeschlagen. Erneut versuchen.",
       "imageAlt": "Satellitenansicht von {{source}}",
       "unavailable": "Satellitenbilder konnten nicht geladen werden.",
       "fire": {
@@ -5527,6 +5564,23 @@
         "mosaicNoLayer": "Für diesen Satelliten ist kein tägliches Mosaik verfügbar.",
         "mosaicUnavailable": "Das tägliche Mosaik konnte nicht geladen werden.",
         "mosaicAlt": "Tägliches NASA-GIBS-Mosaik ({{source}}) für {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Beobachteter Ort",
+      "loading": "Tagesprotokoll des Orts wird geladen…",
+      "failed": "Das Tagesprotokoll des Orts wurde nicht geladen; öffnen Sie den Punkt erneut, um es noch einmal zu versuchen.",
+      "stale": "Für diesen Ort liegt keine aktuelle tägliche Prüfung vor.",
+      "checked": "Geprüft",
+      "noPass": "Kein bevorstehender Überflug erfasst",
+      "list": {
+        "hotspot": "Brennpunkt",
+        "conflictZone": "Konfliktzone",
+        "militaryBase": "Militärbasis",
+        "nuclearFacility": "Nuklearanlage",
+        "port": "Hafen",
+        "chokepoint": "Meerenge",
+        "reservoir": "Stausee"
       }
     }
   },

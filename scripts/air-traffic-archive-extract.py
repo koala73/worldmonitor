@@ -7,9 +7,10 @@
       from a snapshot at each bin start. A snapshot at bin T holds each
       aircraft's latest trace point in (T-60s, T]. --dump-bin also writes that
       bin's rows as OpenSky state rows, to check against aggregateStates.
-  python3 -I scripts/air-traffic-archive-extract.py fixture OUT_DIR FIXTURE.json.gz
+  python3 -I scripts/air-traffic-archive-extract.py fixture OUT_DIR [OUT_DIR ...] FIXTURE.json.gz
       Packs the extracted days into the detector replay fixture
-      (tests/fixtures/air-traffic-archive-series.json.gz).
+      (tests/fixtures/air-traffic-archive-series.json.gz). A day in a later
+      directory replaces the same day in an earlier one.
 """
 import gzip, io, json, math, os, re, subprocess, sys, tarfile, time
 AIRLINE = re.compile(r'^[A-Z]{3}[0-9]')
@@ -18,26 +19,40 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 
 
-def build_fixture(src, out):
+MARKET_CODES = ['GB', 'FR', 'DE', 'ES', 'IT']
+FIELDS = ['usSeen', 'euAirborne', 'usLowClimbingAirline', 'usAirborne'] + [f'{c}.{f}' for c in MARKET_CODES for f in ('seen', 'dep')]
+
+
+def fixture_row(p):
+    markets = p.get('markets')
+    row = [p['usSeen'], p['euAirborne'], p['usLowClimbingAirline'], p['usAirborne']]
+    for code in MARKET_CODES:
+        m = markets.get(code) if markets else None
+        row += [m['seen'], m['dep']] if m else [None, None]
+    return row
+
+
+def build_fixture(srcs, out):
     import glob
     days = {}
-    for f in sorted(glob.glob(os.path.join(src, '20*.json'))):
-        if 'rows' in f:
-            continue
-        d = json.load(open(f))
-        # A bin with under 1,000 states is an archive hole (and the 00:00 bin
-        # misses the minute before midnight); the relay would store a gap.
-        days[d['day'].replace('.', '-')] = [[p['usSeen'], p['euAirborne'], p['usLowClimbingAirline']]
-                                            if p['statesTotal'] >= 1000 else None for p in d['points']]
+    # Later directories win, so a re-extraction with more fields replaces a day.
+    for src in srcs:
+        for f in sorted(glob.glob(os.path.join(src, '20*.json'))):
+            if 'rows' in f:
+                continue
+            d = json.load(open(f))
+            # A bin with under 1,000 states is an archive hole (and the 00:00 bin
+            # misses the minute before midnight); the relay would store a gap.
+            days[d['day'].replace('.', '-')] = [fixture_row(p) if p['statesTotal'] >= 1000 else None for p in d['points']]
     doc = {'source': 'adsblol/globe_history_2026 prod releases via scripts/air-traffic-archive-extract.py',
-           'fields': ['usSeen', 'euAirborne', 'usLowClimbingAirline'], 'days': days}
+           'fields': FIELDS, 'days': dict(sorted(days.items()))}
     with gzip.GzipFile(out, 'wb', mtime=0) as g:
         g.write(json.dumps(doc, separators=(',', ':')).encode())
     print(len(days), 'days ->', out)
 
 
 if sys.argv[1:2] == ['fixture']:
-    build_fixture(sys.argv[2], sys.argv[3])
+    build_fixture(sys.argv[2:-1], sys.argv[-1])
     sys.exit(0)
 if sys.argv[1:2] != ['day']:
     sys.exit(__doc__)
@@ -48,13 +63,15 @@ R = json.loads(subprocess.check_output(['node', '-e', """
 const r = require('./scripts/shared/air-traffic-regions.cjs');
 const a = require('./scripts/shared/air-traffic-aggregate.cjs');
 console.log(JSON.stringify({ US_HUBS: r.US_HUBS, HUB_RADIUS_KM: r.HUB_RADIUS_KM, CONUS_BOX: r.CONUS_BOX,
-  EUROPE_BOX: r.EUROPE_BOX, LOW_ALTITUDE_M: a.LOW_ALTITUDE_M }));
+  EUROPE_BOX: r.EUROPE_BOX, EUROPE_MARKETS: r.EUROPE_MARKETS, LOW_ALTITUDE_M: a.LOW_ALTITUDE_M }));
 """], cwd=REPO))
 CONUS, EU = R['CONUS_BOX'], R['EUROPE_BOX']
 LOW_M = R['LOW_ALTITUDE_M']
 HUB_KM = R['HUB_RADIUS_KM']
 HUBS = [(h['iata'], math.radians(h['lat']), math.radians(h['lon']), math.cos(math.radians(h['lat']))) for h in R['US_HUBS']]
 HUB_SPAN_DEG = HUB_KM / 6371 * 180 / math.pi
+MARKETS = [(m['code'], [(math.radians(h['lat']), math.radians(h['lon']), math.cos(math.radians(h['lat']))) for h in m['hubs']])
+           for m in R['EUROPE_MARKETS']]
 FT = 0.3048
 MAX_AGE = 60
 BIN = 300
@@ -74,7 +91,8 @@ def in_box(lat, lon, b):
 def empty():
     return {'usSeen': 0, 'usAirborne': 0, 'usLowClimbing': 0, 'euAirborne': 0, 'statesTotal': 0,
             'usAirborneAirline': 0, 'usLowClimbingAirline': 0, 'euAirborneAirline': 0,
-            'hubs': {h[0]: {'air': 0, 'ground': 0, 'climb': 0, 'climbAirline': 0, 'groundAirline': 0} for h in HUBS}}
+            'hubs': {h[0]: {'air': 0, 'ground': 0, 'climb': 0, 'climbAirline': 0, 'groundAirline': 0} for h in HUBS},
+            'markets': {code: {'seen': 0, 'dep': 0} for code, _ in MARKETS}}
 
 
 acc = [empty() for _ in bins]
@@ -97,6 +115,14 @@ def add(i, row):
             a['euAirborne'] += 1
             if airline:
                 a['euAirborneAirline'] += 1
+        la, lo = math.radians(lat), math.radians(lon)
+        cl = math.cos(la)
+        for code, hubs in MARKETS:
+            if any(near(la, lo, cl, hl, hlo, hc) for hl, hlo, hc in hubs):
+                mk = a['markets'][code]
+                mk['seen'] += 1
+                if climbing and airline:
+                    mk['dep'] += 1
         return
     if not in_box(lat, lon, CONUS):
         return
@@ -126,13 +152,20 @@ def add(i, row):
                 hb['groundAirline'] += 1
 
 
+def near(la, lo, cl, hl, hlo, hc):
+    if abs(la - hl) * 180 / math.pi > HUB_SPAN_DEG:
+        return False
+    h = math.sin((la - hl) / 2) ** 2 + hc * cl * math.sin((lo - hlo) / 2) ** 2
+    return 2 * 6371 * math.asin(min(1, math.sqrt(h))) <= HUB_KM
+
+
 def num(v):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else None
 
 
 base = f'https://github.com/adsblol/globe_history_2026/releases/download/v{day}-planes-readsb-prod-0/v{day}-planes-readsb-prod-0.tar'
 # Days split into two or three parts; stop at the first part that does not exist.
-cmd = f'for s in aa ab ac ad ae; do curl -sfL --retry 5 --retry-delay 5 "{base}.$s" || break; done'
+cmd = f'for s in aa ab ac ad ae; do curl -sfL --retry 5 --retry-delay 5 --speed-limit 20000 --speed-time 120 "{base}.$s" || break; done'
 proc = subprocess.Popen(['/bin/sh', '-c', cmd], stdout=subprocess.PIPE, bufsize=1 << 20)
 t0 = time.time()
 n = 0

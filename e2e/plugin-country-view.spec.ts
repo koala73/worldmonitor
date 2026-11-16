@@ -8,6 +8,7 @@ import { assembleRawSignals, failedRawSignal, validateRawSignal, RAW_SIGNAL_FAMI
 import type { CountrySignalCounts } from '../src/types';
 import { buildDefenseIndustrialResponse } from '../shared/defense-industrial-response';
 import { imfPeriodData, captureImfPeriods, type ImfPeriodScenario } from './country-brief-fixtures';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 const root = process.cwd();
 for (const width of [1280, 390]) for (const scenario of ['mixed', 'legacy', 'partial', 'sparse'] as ImfPeriodScenario[]) {
@@ -342,7 +343,7 @@ test('native queued Norway factors render retained pillars after the website dea
   const factors = frame.locator('[data-brief-section=factors]');
   await expect(frame.locator('.cdp-country-name')).toHaveText('Norway');
   await factors.scrollIntoViewIfNeeded();
-  await factors.screenshot({ path: info.outputPath('norway-factors-loading.png') });
+  await evidenceScreenshot(factors, { path: info.outputPath('norway-factors-loading.png') });
   await expect(factors).toContainText('Production');
   const text = await factors.innerText();
   const dispatch = host.factorTrace.find(event => event.section === 'factors' && event.event === 'dispatch')!;
@@ -360,10 +361,10 @@ test('native queued Norway factors render retained pillars after the website dea
     maximum = Math.max(maximum, outstanding);
   }
   expect(maximum).toBe(3);
-  await factors.screenshot({ path: info.outputPath('norway-factors-ready-desktop.png') });
+  await evidenceScreenshot(factors, { path: info.outputPath('norway-factors-ready-desktop.png') });
   await page.setViewportSize({ width: 390, height: 844 });
   await factors.scrollIntoViewIfNeeded();
-  await factors.screenshot({ path: info.outputPath('norway-factors-ready-mobile.png') });
+  await evidenceScreenshot(factors, { path: info.outputPath('norway-factors-ready-mobile.png') });
   expect(host.unmanaged).toEqual([]);
   await writeFile(info.outputPath('norway-factors-trace.json'), JSON.stringify({ trace: host.factorTrace, text, computedAt: norwayFactors.scorecard.computedAt, controlledModuleOrder: true, originalIncidentTimingProven: false }, null, 2));
 });
@@ -374,7 +375,7 @@ test('native queued Norway factors preserve the designed unavailable card', asyn
   await expect(factors.locator('.cdp-five-factor-scorecard')).toHaveAttribute('data-brief-state', 'unavailable');
   await expect(factors).not.toContainText('Production');
   await factors.scrollIntoViewIfNeeded();
-  await factors.screenshot({ path: info.outputPath('norway-factors-unavailable.png') });
+  await evidenceScreenshot(factors, { path: info.outputPath('norway-factors-unavailable.png') });
   expect(host.unmanaged).toEqual([]);
 });
 
@@ -390,7 +391,7 @@ test('native queued Norway factors retain the actual dispatched host timeout', a
   expect(warnings.some(message => message.includes('WorldMonitor host request timed out.'))).toBe(true);
   await expect(factors.locator('.cdp-scorecard-pillar')).toHaveCount(0);
   await factors.scrollIntoViewIfNeeded();
-  await factors.screenshot({ path: info.outputPath('norway-factors-host-timeout.png') });
+  await evidenceScreenshot(factors, { path: info.outputPath('norway-factors-host-timeout.png') });
   await writeFile(info.outputPath('host-timeout-trace.json'), JSON.stringify({ trace: host.factorTrace, warnings, observedAt: Date.now(), actualPluginHostTimer: true }, null, 2));
 });
 
@@ -431,7 +432,7 @@ test('static country tiers match the website without adding host data readers', 
   await expect.poll(() => host.contexts.at(-1)?.sections.filter(section => section.state === 'loading').length).toBe(0);
   await writeFile(info.outputPath('static-tier-opening.json'), JSON.stringify({ context: host.contexts.at(-1), calls: host.calls }, null, 2));
   await expect.poll(() => host.contexts.at(-1)?.signals?.isTier1).toBe(true);
-  await page.screenshot({ path: info.outputPath('static-tier-us-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('static-tier-us-desktop.png'), fullPage: true });
   const initialCalls = host.calls.length;
   const selected = await host.action('select_country_view', { country_code: 'US', topic: 'security' });
   expect(selected).toMatchObject({ structuredContent: { countryCode: 'US', signals: { isTier1: true } } });
@@ -448,7 +449,7 @@ test('static country tiers match the website without adding host data readers', 
   expect(host.contexts.at(-1)?.signals?.protests).toBeNull();
   expect(host.admissions).toBe(2);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: info.outputPath('static-tier-ch-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('static-tier-ch-mobile.png'), fullPage: true });
 
   host.denyActivity();
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
@@ -458,7 +459,7 @@ test('static country tiers match the website without adding host data readers', 
   await expect.poll(() => host.contexts.at(-1)?.sections.find(section => section.section === 'signals')?.state).toBe('unavailable');
   await frame.getByRole('button', { name: 'Security', exact: true }).click();
   await frame.locator('[data-brief-section=signals]').scrollIntoViewIfNeeded();
-  await page.screenshot({ path: info.outputPath('static-tier-denied-ch-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('static-tier-denied-ch-mobile.png'), fullPage: true });
   await frame.getByRole('textbox', { name: 'Country name or code' }).fill('USA');
   await frame.getByRole('button', { name: 'Open country', exact: true }).click();
   await expect.poll(() => host.contexts.at(-1)?.countryCode).toBe('US');
@@ -468,7 +469,7 @@ test('static country tiers match the website without adding host data readers', 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await frame.getByRole('button', { name: 'Security', exact: true }).click();
   await frame.locator('[data-brief-section=signals]').scrollIntoViewIfNeeded();
-  await page.screenshot({ path: info.outputPath('static-tier-denied-us-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('static-tier-denied-us-desktop.png'), fullPage: true });
   expect(host.admissions).toBe(3);
   expect(host.unmanaged).toEqual([]);
   await writeFile(info.outputPath('static-tier-final.json'), JSON.stringify({ contexts: host.contexts, calls: host.calls, admissions: host.admissions }, null, 2));
@@ -486,7 +487,7 @@ test('country territory counts honor loaded polygons instead of neighboring boun
   const grid = military.locator('.cdp-military-grid');
   await expect(grid).toContainText('Own Flights1');
   await military.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: info.outputPath('country-territory-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('country-territory-desktop.png'), fullPage: true });
   await expect(grid).toContainText('Foreign Flights0');
   await expect(grid).toContainText('Naval Vessels0');
   await expect(grid).toContainText('Foreign PresenceUnknown');
@@ -497,7 +498,7 @@ test('country territory counts honor loaded polygons instead of neighboring boun
   expect(host.admissions).toBe(2);
   await page.setViewportSize({ width: 390, height: 844 });
   await military.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: info.outputPath('country-territory-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('country-territory-mobile.png'), fullPage: true });
 });
 
 test('country Signals reuse loaded military observations and keep missing sources explicit', async ({ page }, info) => {
@@ -521,14 +522,14 @@ test('country Signals reuse loaded military observations and keep missing source
   await frame.getByRole('button', { name: 'Security', exact: true }).click();
   expect(host.calls).toHaveLength(initialReads);
   expect(host.admissions).toBe(1);
-  await signals.screenshot({ path: info.outputPath('signals-observed-desktop.png') });
+  await evidenceScreenshot(signals, { path: info.outputPath('signals-observed-desktop.png') });
   host.activityOutage();
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
   await expect(signals).toContainText('Showing previously loaded observations');
   await expect(signals).toContainText('1 Naval Vessels');
   await expect(signals).toContainText('1 Military Air');
   await expect.poll(() => host.contexts.at(-1)?.signals?.militaryVessels).toBe(1);
-  await signals.screenshot({ path: info.outputPath('signals-source-outage-desktop.png') });
+  await evidenceScreenshot(signals, { path: info.outputPath('signals-source-outage-desktop.png') });
   host.activityRecover();
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
   await expect(signals).toContainText('1 Naval Vessels');
@@ -538,7 +539,7 @@ test('country Signals reuse loaded military observations and keep missing source
   expect(host.admissions).toBe(3);
   expect(host.unmanaged).toEqual([]);
   await page.setViewportSize({ width: 390, height: 844 });
-  await signals.screenshot({ path: info.outputPath('signals-recovered-mobile.png') });
+  await evidenceScreenshot(signals, { path: info.outputPath('signals-recovered-mobile.png') });
   expect(await frame.locator('body').evaluate(body => body.scrollWidth <= window.innerWidth + 1)).toBe(true);
   await writeFile(info.outputPath('signals-request-cost.json'), JSON.stringify({ surface: 'compiled opaque iframe, controlled observations', initialHostCalls: initialReads, initialDailyUnits: 1, navigationCalls: 0, newSignalsReaders: 1, signalProjection: 'observed military counts, remaining sources explicitly unavailable' }, null, 2));
   host.denyActivity();
@@ -562,9 +563,9 @@ test('informational advisories remain observed without caution escalation', asyn
   const signals = frame.locator('[data-brief-section=signals]');
   await expect(signals).toContainText('1 Advisory: Info');
   await expect(signals).not.toContainText('Exercise Caution');
-  await signals.screenshot({ path: info.outputPath('info-advisory-desktop.png') });
+  await evidenceScreenshot(signals, { path: info.outputPath('info-advisory-desktop.png') });
   await page.setViewportSize({ width: 390, height: 844 });
-  await signals.screenshot({ path: info.outputPath('info-advisory-mobile.png') });
+  await evidenceScreenshot(signals, { path: info.outputPath('info-advisory-mobile.png') });
 });
 
 for (const denied of [true, false]) test(`admission failure ${denied ? 'clears denied' : 'preserves transient'} raw Signals`, async ({ page }, info) => {
@@ -593,9 +594,9 @@ for (const denied of [true, false]) test(`admission failure ${denied ? 'clears d
     expect(exported).not.toContain('Earthquakes: 1');
     expect(exported).not.toContain('USGS and Natural Resources Canada');
   }
-  await signals.screenshot({ path: info.outputPath(`admission-${denied ? 'denied' : 'transient'}-desktop.png`) });
+  await evidenceScreenshot(signals, { path: info.outputPath(`admission-${denied ? 'denied' : 'transient'}-desktop.png`) });
   await page.setViewportSize({ width: 390, height: 844 });
-  await signals.screenshot({ path: info.outputPath(`admission-${denied ? 'denied' : 'transient'}-mobile.png`) });
+  await evidenceScreenshot(signals, { path: info.outputPath(`admission-${denied ? 'denied' : 'transient'}-mobile.png`) });
 });
 
 test('AI admission denial clears raw Signals and cancels late raw republishing', async ({ page }, info) => {
@@ -620,9 +621,9 @@ test('AI admission denial clears raw Signals and cancels late raw republishing',
   await expect(signals).toContainText('Earthquakes unavailable');
   await expect(signals).not.toContainText('USGS and Natural Resources Canada');
   expect(host.contexts.at(-1)?.signals?.earthquakes).toBeNull();
-  await signals.screenshot({ path: info.outputPath('ai-admission-denied-desktop.png') });
+  await evidenceScreenshot(signals, { path: info.outputPath('ai-admission-denied-desktop.png') });
   await page.setViewportSize({ width: 390, height: 844 });
-  await signals.screenshot({ path: info.outputPath('ai-admission-denied-mobile.png') });
+  await evidenceScreenshot(signals, { path: info.outputPath('ai-admission-denied-mobile.png') });
 });
 
 test.describe('localized normal travel advice', () => {
@@ -635,9 +636,9 @@ test.describe('localized normal travel advice', () => {
     await expect(signals).toContainText('Précautions habituelles');
     await expect(signals).not.toContainText('Normal Precautions');
     await expect(signals).not.toContainText('Faire preuve de prudence');
-    await signals.screenshot({ path: info.outputPath('normal-advice-fr-desktop.png') });
+    await evidenceScreenshot(signals, { path: info.outputPath('normal-advice-fr-desktop.png') });
     await page.setViewportSize({ width: 390, height: 844 });
-    await signals.screenshot({ path: info.outputPath('normal-advice-fr-mobile.png') });
+    await evidenceScreenshot(signals, { path: info.outputPath('normal-advice-fr-mobile.png') });
     host.releaseOrder();
   });
 });
@@ -653,7 +654,7 @@ test('raw Signals keep earthquake counts unknown and exclude foreign outages whe
   await expect(signals).toContainText('Earthquake country count is unknown because country geometry is unavailable.');
   await expect(signals).not.toContainText('1 Earthquakes');
   await expect(signals).not.toContainText('1 Outages');
-  await signals.screenshot({ path: info.outputPath('geometry-unavailable-signals.png') });
+  await evidenceScreenshot(signals, { path: info.outputPath('geometry-unavailable-signals.png') });
   host.releaseOrder();
 });
 
@@ -678,7 +679,7 @@ for (const order of ['military-first', 'raw-first'] as const) test(`observed raw
   await frame.getByRole('button', { name: 'Economy & trade', exact: true }).click();
   await frame.getByRole('button', { name: 'Security', exact: true }).click();
   expect(host.calls).toHaveLength(initialCalls); expect(host.admissions).toBe(1);
-  await signals.screenshot({ path: info.outputPath(`raw-signals-${order}-desktop.png`) });
+  await evidenceScreenshot(signals, { path: info.outputPath(`raw-signals-${order}-desktop.png`) });
   host.rawFail();
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
   await expect(signals).toContainText('these counts are not fresh');
@@ -686,10 +687,10 @@ for (const order of ['military-first', 'raw-first'] as const) test(`observed raw
   const coverage = (host.contexts.at(-1) as any).signalCoverage;
   expect(coverage.earthquakes.observation.retrievedAt).toBe('2026-10-05T12:00:00.000Z');
   expect(coverage.earthquakes.latestRetrievedAt).toBe('2026-10-05T12:30:00.000Z');
-  await signals.screenshot({ path: info.outputPath(`raw-signals-${order}-retained-desktop.png`) });
+  await evidenceScreenshot(signals, { path: info.outputPath(`raw-signals-${order}-retained-desktop.png`) });
   await page.setViewportSize({ width: 390, height: 844 });
   await signals.locator('p').filter({ hasText: 'earthquakes:' }).first().evaluate(element => element.scrollIntoView({ block: 'start' }));
-  await page.screenshot({ path: info.outputPath(`raw-signals-${order}-retained-mobile-coverage.png`) });
+  await evidenceScreenshot(page, { path: info.outputPath(`raw-signals-${order}-retained-mobile-coverage.png`) });
   await page.setViewportSize({ width: 1280, height: 720 });
   const downloadCount = host.downloads.length;
   await frame.getByRole('button', { name: 'Evidence', exact: true }).click();
@@ -704,20 +705,20 @@ for (const order of ['military-first', 'raw-first'] as const) test(`observed raw
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
   await expect.poll(() => host.contexts.at(-1)?.signals?.outages).toBe(0);
   await expect(signals).not.toContainText('these counts are not fresh');
-  await signals.screenshot({ path: info.outputPath(`raw-signals-${order}-zero-desktop.png`) });
+  await evidenceScreenshot(signals, { path: info.outputPath(`raw-signals-${order}-zero-desktop.png`) });
   host.rawDeny();
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
   await expect.poll(() => host.contexts.at(-1)?.signals?.earthquakes).toBeNull();
   await expect.poll(() => host.contexts.at(-1)?.signals?.militaryFlights).toBe(1);
-  await signals.screenshot({ path: info.outputPath(`raw-signals-${order}-denied-desktop.png`) });
+  await evidenceScreenshot(signals, { path: info.outputPath(`raw-signals-${order}-denied-desktop.png`) });
   host.rawRecover();
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
   await expect.poll(() => host.contexts.at(-1)?.signals?.earthquakes).toBe(1);
   await page.setViewportSize({ width: 390, height: 844 });
-  await signals.screenshot({ path: info.outputPath(`raw-signals-${order}-mobile.png`) });
+  await evidenceScreenshot(signals, { path: info.outputPath(`raw-signals-${order}-mobile.png`) });
   const rawScope = signals.locator('p').filter({ hasText: 'earthquakes:' }).first();
   await rawScope.evaluate(element => element.scrollIntoView({ block: 'start' }));
-  await page.screenshot({ path: info.outputPath(`raw-signals-${order}-mobile-coverage.png`) });
+  await evidenceScreenshot(page, { path: info.outputPath(`raw-signals-${order}-mobile-coverage.png`) });
   expect(await frame.locator('body').evaluate(body => body.scrollWidth <= window.innerWidth + 1)).toBe(true);
   expect(host.unmanaged).toEqual([]);
   await writeFile(info.outputPath('raw-signals-evidence.json'), JSON.stringify({ order, context: host.contexts.at(-1), initialCalls, rawCalls: host.calls.filter(call => call.arguments.section === 'signalsRaw').length, localTopicNavigationCalls: 0, calls: host.calls, proof: 'compiled opaque iframe, controlled observations; excludes native download, live auth, providers and source-time equality' }, null, 2));
@@ -750,10 +751,10 @@ test('cached country resource loads the current compiled panel after its old ass
   await frame.getByRole('button', { name: 'Back to country', exact: true }).click();
   await frame.getByRole('button', { name: 'Overview', exact: true }).click();
   expect(host.admissions).toBe(1);
-  await page.screenshot({ path: info.outputPath('cached-country-current-build.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('cached-country-current-build.png'), fullPage: true });
   await page.setViewportSize({ width: 430, height: 1200 });
   await expect(frame.locator('.cdp-country-name')).toHaveText('United States');
-  await page.screenshot({ path: info.outputPath('cached-country-current-build-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('cached-country-current-build-mobile.png'), fullPage: true });
 });
 
 test('country military observations render under one allocation and survive an AIS outage', async ({ page }, info) => {
@@ -771,10 +772,10 @@ test('country military observations render under one allocation and survive an A
   expect(host.admissions).toBe(1);
   expect(host.unmanaged).toEqual([]);
   await military.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: info.outputPath('country-military-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('country-military-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await military.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: info.outputPath('country-military-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('country-military-mobile.png'), fullPage: true });
   host.activityOutage();
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
   await expect(military.locator('.cdp-military-grid')).toContainText('Naval VesselsUnavailable');
@@ -784,7 +785,7 @@ test('country military observations render under one allocation and survive an A
   await expect.poll(() => host.contexts.at(-1)?.sections.find(section => section.section === 'military')?.renderedText).toContain('Live AIS observations unavailable');
   expect(host.admissions).toBe(2);
   await military.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: info.outputPath('country-military-outage-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('country-military-outage-mobile.png'), fullPage: true });
   host.activityRecover();
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
   await expect(military.locator('.cdp-military-grid')).toContainText('Naval Vessels1');
@@ -813,11 +814,11 @@ test('partial bootstrap coverage is visible and clears when the country recovers
   await frame.getByRole('button', { name: '← Back to brief', exact: true }).click();
   await frame.getByRole('button', { name: 'Economy & trade', exact: true }).click();
   await economic.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: info.outputPath('country-partial-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('country-partial-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 1000 });
   await economic.locator('.cdp-section-coverage').evaluate(element => element.scrollIntoView({ block: 'center' }));
   await expect(economic.locator('.cdp-section-coverage')).toBeInViewport();
-  await page.screenshot({ path: info.outputPath('country-partial-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('country-partial-mobile.png'), fullPage: true });
   host.complete();
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
   await expect(economic).toContainText('1.8%');
@@ -868,9 +869,9 @@ test('built opaque country view uses the shared sections, host reads, sources an
   for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 844]] as const) {
     await page.setViewportSize({ width, height });
     await frame.locator('[data-brief-section=economic]').scrollIntoViewIfNeeded();
-    await page.screenshot({ path: info.outputPath(`country-plugin-${name}.png`), fullPage: true });
+    await evidenceScreenshot(page, { path: info.outputPath(`country-plugin-${name}.png`), fullPage: true });
     await frame.locator('[data-brief-section=housing]').scrollIntoViewIfNeeded();
-    await page.screenshot({ path: info.outputPath(`country-housing-${name}.png`), fullPage: true });
+    await evidenceScreenshot(page, { path: info.outputPath(`country-housing-${name}.png`), fullPage: true });
     await expect.poll(() => frame.locator('body').evaluate(body => body.scrollWidth <= innerWidth + 1)).toBe(true);
   }
   expect(host.unmanaged).toEqual([]);
@@ -908,7 +909,7 @@ test('refresh keeps prior observations and delayed country work cannot repaint a
   await expect(facts.getByText('Controlled facts observed 2026-10-01.', { exact: true })).toBeVisible();
   for (const [name, width, height] of [['desktop', 1280, 900], ['mobile', 390, 844]] as const) {
     await page.setViewportSize({ width, height });
-    await facts.screenshot({ path: info.outputPath(`facts-third-failure-${name}.png`) });
+    await evidenceScreenshot(facts, { path: info.outputPath(`facts-third-failure-${name}.png`) });
   }
   host.denyFacts();
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
@@ -932,7 +933,7 @@ test('refresh keeps prior observations and delayed country work cannot repaint a
   await expect(facts.getByText('Controlled facts observed 2026-10-01.', { exact: true })).toBeVisible();
   for (const [name, width, height] of [['desktop', 1280, 900], ['mobile', 390, 844]] as const) {
     await page.setViewportSize({ width, height });
-    await facts.screenshot({ path: info.outputPath(`facts-recovered-${name}.png`) });
+    await evidenceScreenshot(facts, { path: info.outputPath(`facts-recovered-${name}.png`) });
   }
   const coverageReads = host.calls.filter(call => call.name === 'get_country_coverage').length;
   host.delayCoverage();
@@ -1017,7 +1018,22 @@ test('country navigation and repeated questions reuse reads and show a quota den
   await frame.getByRole('button', { name: 'Open country', exact: true }).click();
   await frame.getByRole('button', { name: 'Economy & trade', exact: true }).click();
   await frame.getByRole('button', { name: 'Resources & infrastructure', exact: true }).click();
-  expect(host.calls).toHaveLength(initialReads);
+  // Optional reads (reservoirs and the newer signal families) are outside the
+  // sections' loading state and can still be arriving here. Switching topics
+  // must reuse every read: nothing after this point may repeat an earlier call.
+  // A late read may arrive once; its next occurrence counts as a repeat.
+  const callKey = (call: HostCall) => JSON.stringify([call.name, call.arguments]);
+  const repeatedAfter = (index: number, ignore: (call: HostCall) => boolean = () => false) => {
+    const seen = new Set(host.calls.slice(0, index).map(callKey));
+    return host.calls.slice(index).filter(call => {
+      if (ignore(call)) return false;
+      const key = callKey(call);
+      if (seen.has(key)) return true;
+      seen.add(key);
+      return false;
+    });
+  };
+  expect(repeatedAfter(initialReads)).toEqual([]);
   expect(host.admissions).toBe(1);
   expect(host.calls.filter(call => call.arguments.section === 'risk')).toHaveLength(1);
   expect(host.calls.filter(call => call.name !== 'open_country_brief').every(call => call.arguments.panel_request === 'US.controlled-admission-1')).toBe(true);
@@ -1040,7 +1056,7 @@ test('country navigation and repeated questions reuse reads and show a quota den
   await expect.poll(() => host.admissions).toBe(beforeRefreshAdmissions + 1);
   await expect.poll(() => host.calls.filter(call => call.arguments.section === 'dependency').length).toBe(30);
   await expect.poll(() => host.contexts.at(-1)?.sections.filter(section => section.state === 'loading').length).toBe(0);
-  const refreshCalls = host.calls.length - beforeRefresh;
+  const refreshRequest = `US.controlled-admission-${host.admissions}`;
   await expect(frame.locator('#countryUsage')).toContainText('47 of 50 requests remaining');
   host.quota();
   const beforeDenied = host.calls.length;
@@ -1048,7 +1064,13 @@ test('country navigation and repeated questions reuse reads and show a quota den
   await expect(frame.locator('#countryStatus')).toContainText('Daily MCP quota exceeded');
   await expect(frame.locator('#countryStatus')).toContainText('UTC midnight');
   await expect(frame.locator('[data-brief-section=facts]')).toContainText('Washington, D.C.');
-  expect(host.calls).toHaveLength(beforeDenied + 1);
+  // The refresh before this one can still be finishing its optional reads,
+  // which carry its admission. The denied refresh itself makes only the
+  // admission call and no section read.
+  expect(host.calls.slice(beforeDenied).filter(call => call.arguments.panel_request !== refreshRequest).map(call => call.name)).toEqual(['open_country_brief']);
+  // A straggler is a first read; a section re-read under the old admission would repeat one.
+  expect(repeatedAfter(beforeDenied, call => call.name === 'open_country_brief')).toEqual([]);
+  const refreshCalls = host.calls.slice(beforeRefresh).filter(call => call.arguments.panel_request === refreshRequest).length + 1;
   await writeFile(info.outputPath('country-request-cost.json'), JSON.stringify({ measuredSurface: 'built opaque iframe, controlled host', initialHostCalls: initialReads, initialDailyUnits: 1, initialMs: Math.round(initialMs), repeatedCountryAndTopicsCalls: 0, navigationBackHostCalls: returnCalls, navigationBackDailyUnits: 0, refreshHostCalls: refreshCalls, refreshDailyUnits: 1, deniedRefreshSectionCalls: 0, deniedRefreshDailyUnits: 0 }, null, 2));
 });
 
@@ -1074,7 +1096,7 @@ test('Atlas counts open original asset details, evidence and timeline under one 
   await expect(energy).not.toContainText('Other country pipeline');
   await expect(energy.getByRole('button', { name: 'diesel — Controlled active shortage', exact: true })).toHaveCount(1);
   await energy.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: info.outputPath('atlas-counts-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('atlas-counts-desktop.png'), fullPage: true });
   await energy.getByRole('button', { name: 'Controlled US Pipeline', exact: true }).click();
   const output = frame.locator('[data-country-atlas-detail]');
   await expect(output).toContainText('Controlled operator statement');
@@ -1082,26 +1104,26 @@ test('Atlas counts open original asset details, evidence and timeline under one 
   await expect(output).toContainText('12.0 bcm/yr');
   await expect.poll(() => output.locator('.pp-drawer').evaluate(el => el.clientHeight >= el.scrollHeight - 1 && el.clientHeight > 250)).toBe(true);
   await output.locator('.pp-drawer').scrollIntoViewIfNeeded();
-  await page.screenshot({ path: info.outputPath('atlas-pipeline-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('atlas-pipeline-desktop.png'), fullPage: true });
   await output.getByRole('link', { name: '2026-10-01', exact: true }).click();
   await expect.poll(() => host.links).toContain('https://example.com/pipeline-source');
   await expect.poll(() => host.contexts.at(-1)).toMatchObject({ selectedAtlasAsset: { type: 'pipeline', id: 'us-pipeline', renderedText: expect.stringContaining('Controlled operator statement') } });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(() => output.locator('.pp-drawer').evaluate(el => el.clientHeight >= el.scrollHeight - 1 && el.clientHeight > 250)).toBe(true);
   await output.locator('.pp-drawer').scrollIntoViewIfNeeded();
-  await page.screenshot({ path: info.outputPath('atlas-pipeline-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('atlas-pipeline-mobile.png'), fullPage: true });
   await expect.poll(() => frame.locator('body').evaluate(body => body.scrollWidth <= innerWidth + 1)).toBe(true);
   await frame.getByRole('button', { name: 'Back to country', exact: true }).click();
   await energy.getByRole('button', { name: 'Controlled US Storage', exact: true }).click();
   await expect(output).toContainText('Controlled storage statement');
   await expect(output).toContainText('12 Mb');
   await expect.poll(() => output.locator('.sf-drawer').evaluate(el => el.clientHeight >= el.scrollHeight - 1)).toBe(true);
-  await page.screenshot({ path: info.outputPath('atlas-storage-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('atlas-storage-mobile.png'), fullPage: true });
   await frame.getByRole('button', { name: 'Back to country', exact: true }).click();
   await energy.getByRole('button', { name: 'diesel — Controlled active shortage', exact: true }).click();
   await expect(output).toContainText('Controlled shortage source');
   await expect.poll(() => output.locator('.fs-drawer').evaluate(el => el.clientHeight >= el.scrollHeight - 1)).toBe(true);
-  await page.screenshot({ path: info.outputPath('atlas-shortage-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('atlas-shortage-mobile.png'), fullPage: true });
   await frame.getByRole('button', { name: 'Back to country', exact: true }).click();
   expect(host.admissions).toBe(1);
   expect(host.unmanaged).toEqual([]);
@@ -1111,7 +1133,7 @@ test('Atlas counts open original asset details, evidence and timeline under one 
   await expect(energy).toContainText('Storage Atlas data is not authorized by this connection');
   await expect(energy).toContainText('Controlled US Pipeline');
   await energy.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: info.outputPath('atlas-denial-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('atlas-denial-mobile.png'), fullPage: true });
 });
 
 
@@ -1190,7 +1212,7 @@ test('transient Atlas failure preserves same-country rows and detail actions whi
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
   await expect(energy).toContainText('Storage Atlas data unavailable. Previously loaded Atlas observations remain visible.');
   await energy.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: info.outputPath('atlas-retained-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('atlas-retained-desktop.png'), fullPage: true });
   await energy.getByRole('button', { name: 'Controlled US Storage', exact: true }).click();
   await expect(frame.locator('[data-country-atlas-detail]')).toContainText('12 Mb');
   await frame.getByRole('button', { name: 'Back to country', exact: true }).click();
@@ -1212,12 +1234,16 @@ test('built country defense view and report preserve independent producer clocks
   await expect(military).toContainText('Supplier data retained');
   await expect(military).toContainText('Mapped coverage');
   await expect(military).not.toContainText('2026-10-05T07:00:00.000Z');
+  // Flights and vessels are a separate producer. When they land, the military
+  // body is rebuilt, defense mount included, so the nodes the loop scrolls to
+  // are replaced. Wait for that render first.
+  await expect(military).toContainText('Own Flights');
   for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 844]] as const) {
     await page.setViewportSize({ width, height });
     await military.getByText('World Bank snapshot assembled 2026-10-02T06:00:00.000Z', { exact: true }).scrollIntoViewIfNeeded();
     await expect(military.getByText('SIPRI (US) snapshot assembled 2026-10-01T05:00:00.000Z', { exact: true })).toBeInViewport();
     await expect.poll(() => frame.locator('body').evaluate(body => body.scrollWidth <= innerWidth + 1)).toBe(true);
-    await page.screenshot({ path: info.outputPath(`defense-clocks-${name}.png`), fullPage: true });
+    await evidenceScreenshot(page, { path: info.outputPath(`defense-clocks-${name}.png`), fullPage: true });
   }
   await openExport(frame);
   const report = frame.locator('.cdp-output-paper');
@@ -1227,7 +1253,7 @@ test('built country defense view and report preserve independent producer clocks
   await expect(report).not.toContainText('2026-10-05T07:00:00.000Z');
   await report.getByText('World Bank snapshot assembled 2026-10-02T06:00:00.000Z', { exact: true }).scrollIntoViewIfNeeded();
   await expect(report.getByText('SIPRI (US) snapshot assembled 2026-10-01T05:00:00.000Z', { exact: true })).toBeInViewport();
-  await page.screenshot({ path: info.outputPath('defense-clocks-report-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('defense-clocks-report-mobile.png'), fullPage: true });
   expect(host.unmanaged).toEqual([]);
 });
 
@@ -1255,13 +1281,13 @@ test('controlled whole-empty Timeline survives partial failure and recovery', as
     await expect(timeline.locator('.cdp-refresh-failure')).toHaveCount(1);
     await expect(facts).toContainText('Washington, D.C.');
   }
-  await timeline.screenshot({ path: info.outputPath('whole-empty-retained.png') });
+  await evidenceScreenshot(timeline, { path: info.outputPath('whole-empty-retained.png') });
   recovery.coverage = 'empty';
   await frame.getByRole('button', { name: 'Refresh country', exact: true }).click();
   await expect(timeline.locator('.cdp-refresh-failure')).toHaveCount(0);
   await expect(timeline.locator('svg text').filter({ hasText: 'No events in 7 days' })).toHaveCount(4);
   await expect(timeline.locator('circle')).toHaveCount(0);
-  await timeline.screenshot({ path: info.outputPath('whole-empty-recovered.png') });
+  await evidenceScreenshot(timeline, { path: info.outputPath('whole-empty-recovered.png') });
   expect(host.unmanaged).toEqual([]);
 });
 
@@ -1281,7 +1307,7 @@ test('controlled affected supplier names the modeled safe alternative', async ({
   await expect(products).toContainText('disruption 85/100');
   await expect(products).toContainText('US supplies 40% via routes avoiding this chokepoint.');
   await expect(products).toContainText('Omitted suppliers: 0');
-  await products.screenshot({ path: info.outputPath('affected-safe-suppliers.png') });
+  await evidenceScreenshot(products, { path: info.outputPath('affected-safe-suppliers.png') });
   expect(host.unmanaged).toEqual([]);
 });
 
@@ -1330,7 +1356,7 @@ test('controlled shortages distinguish empty, unavailable, retained, denial and 
   await expect(energy).toContainText('Fuel shortage Atlas data unavailable. Other loaded observations remain visible.');
   await expect(energy).not.toContainText('Controlled active shortage');
   await expect(energy).not.toContainText('No active fuel shortages');
-  await energy.screenshot({ path: info.outputPath('shortage-unavailable-after-denial.png') });
+  await evidenceScreenshot(energy, { path: info.outputPath('shortage-unavailable-after-denial.png') });
   recovery.shortages = 'upstream-unavailable';
   await refresh();
   await expect(energy).toContainText('Fuel shortage Atlas data unavailable. Other loaded observations remain visible.');
@@ -1341,7 +1367,7 @@ test('controlled shortages distinguish empty, unavailable, retained, denial and 
   await expect(energy).not.toContainText('Atlas data unavailable');
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 1000 });
-    await energy.screenshot({ path: info.outputPath(`shortage-empty-recovered-${width}.png`) });
+    await evidenceScreenshot(energy, { path: info.outputPath(`shortage-empty-recovered-${width}.png`) });
     await expect.poll(() => frame.locator('body').evaluate(body => body.scrollWidth <= innerWidth + 1)).toBe(true);
   }
   expect(host.unmanaged).toEqual([]);
@@ -1405,7 +1431,7 @@ test.describe('country view display modes', () => {
       expect(panel.width).toBeLessThanOrEqual(960);
       expect(panel.bottom).toBeLessThanOrEqual(size.height + 1);
       if (size.width > 960) expect(Math.abs(panel.left - panel.right)).toBeLessThanOrEqual(1);
-      await page.screenshot({ path: info.outputPath(`country-fullscreen-${size.width}.png`) });
+      await evidenceScreenshot(page, { path: info.outputPath(`country-fullscreen-${size.width}.png`) });
     });
   }
 

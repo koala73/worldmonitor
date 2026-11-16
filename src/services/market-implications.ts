@@ -60,10 +60,6 @@ export function normalizeCard(raw: Record<string, unknown>): MarketImplicationCa
 const cache = new Map<string, { data: MarketImplicationsData; cachedAt: number }>();
 const CACHE_TTL = 10 * 60 * 1000;
 
-export function getCachedMarketImplications(): MarketImplicationsData | null {
-  return cache.get('')?.data ?? null;
-}
-
 export async function fetchMarketImplications(frameworkId = ''): Promise<MarketImplicationsData | null> {
   const now = Date.now();
   const cached = cache.get(frameworkId);

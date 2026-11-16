@@ -1,5 +1,5 @@
 {
-  "$comment": "The official MCP registry refuses to republish a version whose payload changed, and publish-mcp-registry.mjs compares the WHOLE canonicalized manifest. Nothing forces SERVER_VERSION to move with that payload: server-card.json::tools tracks the code registry, so 68, 69, 71 and 72 tools all shipped under 1.17.0 while the published description sat frozen at 39 (#7372), and a copy edit to server.json::description does the same with even less of a version-bump smell. Each version therefore pins the exact payload it publishes — `tools` for a legible error, `manifestSha256` over the derived manifest for every other field. Changing what is published means bumping SERVER_VERSION (api/mcp/constants.ts) plus `version` and `serverInfo.version` in server-card.json and server.json, then adding a NEW entry here. Editing a published entry in place does not un-publish it: the registry still holds the old payload, so the publish job fails closed on every run until the version is bumped.",
+  "$comment": "The official MCP registry refuses to republish a version whose payload changed, and publish-mcp-registry.mjs compares the WHOLE canonicalized manifest. Nothing forces SERVER_VERSION to move with that payload: server-card.json::tools tracks the code registry, so 68, 69, 71 and 72 tools all shipped under 1.17.0 while the published description sat frozen at 39 (#7372), and a copy edit to server.json::description does the same with even less of a version-bump smell. Each version therefore pins the exact payload it publishes \u2014 `tools` for a legible error, `manifestSha256` over the derived manifest for every other field. Changing what is published means bumping SERVER_VERSION (api/mcp/constants.ts) plus `version` and `serverInfo.version` in server-card.json and server.json, then adding a NEW entry here. Editing a published entry in place does not un-publish it: the registry still holds the old payload, so the publish job fails closed on every run until the version is bumped.",
   "versions": {
     "1.17.0": {
       "tools": 72,
@@ -164,6 +164,14 @@
     "1.57.0": {
       "tools": 97,
       "manifestSha256": "83349c411dafa6f1b51f3280627f4a760dd775373bbefa54031f516a39d1befc"
+    },
+    "1.58.0": {
+      "tools": 100,
+      "manifestSha256": "f24ae98a3f98735b382327bb7eddddaa3fd645a6e40ced8ed41f315a2c651a99"
+    },
+    "1.59.0": {
+      "tools": 100,
+      "manifestSha256": "020a5505b4e7f5d9a3bc3970223a5aff0101fa2167931c9b2c74ba875491d02f"
     }
   }
 }

@@ -1746,7 +1746,14 @@
     "map": {
       "showMap": "Mostrar mapa",
       "hideMap": "Ocultar mapa",
-      "clearTrails": "Limpar rastros"
+      "clearTrails": "Limpar rastros",
+      "locate": "Mostrar minha localização"
+    },
+    "mapLocate": {
+      "locating": "Localizando…",
+      "denied": "Acesso à localização negado. Use Procurar para encontrar um lugar.",
+      "unavailable": "Localização não encontrada. Use Procurar para encontrar um lugar.",
+      "noCountry": "Nenhum país na sua localização. Use Procurar para encontrar um lugar."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Interrupções de internet</strong> Quedas de internet, ataques DDoS e anomalias de tráfego em tempo real do monitoramento global de redes:<ul><li><strong>Quedas</strong>: falhas de conectividade detectadas por BGP, por país</li><li><strong>DDoS</strong>: relatos de ataques volumétricos por protocolo e vetor</li><li><strong>Anomalias</strong>: padrões de tráfego incomuns do Cloudflare Radar</li></ul>",
@@ -2856,6 +2863,19 @@
         "latestPass": "última passagem do ICESat-2 {{date}}",
         "sparkline": "Nível de 36 meses com a base sazonal tracejada",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Níveis da superfície da água por lidar de passagens datadas, não leituras ao vivo nem volumes."
+      },
+      "water": {
+        "heading": "Água em {{name}}",
+        "level": "Nível por lidar",
+        "extent": "Extensão de água por radar",
+        "extentValue": "{{percent}}% de água aberta ({{area}} km²) em {{date}}",
+        "extentChange": "{{delta}} pontos desde {{date}} na mesma órbita",
+        "extentNoComparison": "Nenhuma leitura anterior na mesma órbita para comparar",
+        "extentNone": "Ainda sem leitura de radar",
+        "unavailable": "Não foi possível carregar; reabra para tentar novamente",
+        "optical": "Imagem óptica mais recente",
+        "opticalNone": "Nenhuma imagem óptica em 30 dias",
+        "note": "Cada linha é uma medição datada de uma passagem distinta, não uma leitura ao vivo. O radar mede a água aberta na área central do reservatório; água encrespada pelo vento pode ser lida como terra."
       }
     },
     "gridDisruptionClock": {
@@ -4519,7 +4539,8 @@
   "contextMenu": {
     "openCountryBrief": "Abrir resumo do país",
     "copyCoordinates": "Copiar coordenadas",
-    "satellitePasses": "Passagens de satélites aqui"
+    "satellitePasses": "Passagens de satélites aqui",
+    "imageryEvidenceHere": "Evidência de imagens de satélite aqui"
   },
   "shell": {
     "documentTitle": "World Monitor — Painel de Inteligência Global em Tempo Real",
@@ -5232,6 +5253,7 @@
     "counts": {},
     "tier": {
       "checking": "consultando arquivo",
+      "notInArchive": "não está no arquivo",
       "confirmed": "confirmado",
       "likely": "provável",
       "unmatchedImage": "imagem sem passagem calculada",
@@ -5298,7 +5320,8 @@
       "metaSpot": "Nuvem no ponto",
       "metaScene": "Nuvens da cena",
       "metaSun": "Elevação solar",
-      "showCloudy": "Incluir datas nubladas ({{count}})"
+      "showCloudy": "Incluir datas nubladas ({{count}})",
+      "eventMark": "Evento {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5410,6 +5433,12 @@
       "passes_many": "{{count}} passagens",
       "passes_other": "{{count}} passagens"
     },
+    "siteSatellites": {
+      "heading": "Satélites seguidos sobre este local · próximas {{hours}} h",
+      "none": "Nenhum satélite de imagem seguido cobre este local nas próximas {{hours}} h.",
+      "notLoaded": "Reabra o local para tentar novamente; os elementos orbitais não foram carregados.",
+      "failed": "Reabra o local para tentar novamente; o cálculo das passagens falhou."
+    },
     "sheet": {
       "heading": "Evidência de imagens de satélite",
       "window": "Últimos {{days}} dias, próximas {{hours}} h",
@@ -5506,7 +5535,7 @@
     "privacy": {
       "line": "Seu ponto vai apenas para os arquivos de imagens.",
       "more": "Detalhes",
-      "body": "As passagens são calculadas neste dispositivo. Para encontrar imagens, seu navegador envia o ponto direto para Earth Search, Planetary Computer, NASA GIBS e EUMETSAT; o WorldMonitor não o recebe. Um nome de lugar digitado vai para WorldMonitor e OpenStreetMap Nominatim para ser localizado. Links compartilhados mantêm duas casas decimais (0,01°)."
+      "body": "As passagens são calculadas neste dispositivo. Para encontrar imagens, seu navegador envia o ponto direto para Earth Search, Planetary Computer, NASA GIBS e EUMETSAT; o WorldMonitor não o recebe. Em um local monitorado, o WorldMonitor recebe o pedido do registro diário desse local pelo ID do local, não pelo seu ponto. Um nome de lugar digitado vai para WorldMonitor e OpenStreetMap Nominatim para ser localizado. Links compartilhados mantêm duas casas decimais (0,01°)."
     },
     "sources": {
       "heading": "Fontes ({{count}})",
@@ -5528,6 +5557,7 @@
     "tile": {
       "failed": "Cena não carregou · {{archive}}",
       "noPreview": "Nenhuma prévia publicada para esta cena ainda",
+      "processing": "A cena ainda está em processamento. Tente novamente mais tarde.",
       "radar": "radar"
     },
     "target": {
@@ -5541,6 +5571,13 @@
       "noImage": "Nenhuma imagem recente encontrada",
       "noPass": "Nenhuma passagem prevista em 72 horas",
       "openEvidence": "Abrir evidências",
+      "compareEvent": "Antes / depois",
+      "compareEventLocked": "Antes / depois · Pro",
+      "compareSearching": "Procurando cenas antes e depois de {{date}}…",
+      "compareNoAfter": "Ainda não há cena limpa desde {{date}}.",
+      "compareNoAfterWindow": "Nenhuma cena limpa nos {{days}} dias após {{date}}.",
+      "compareNoBefore": "Não há cena limpa antes de {{date}} na janela do arquivo.",
+      "compareFailed": "A busca no arquivo falhou. Tente novamente.",
       "imageAlt": "Vista de satélite de {{source}}",
       "unavailable": "Não foi possível carregar as imagens de satélite.",
       "fire": {
@@ -5563,6 +5600,23 @@
         "mosaicNoLayer": "Nenhum mosaico diário disponível para este satélite.",
         "mosaicUnavailable": "O mosaico diário não carregou.",
         "mosaicAlt": "Mosaico diário NASA GIBS {{source}} para {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Local monitorado",
+      "loading": "Carregando o registro diário do local…",
+      "failed": "O registro diário do local não carregou; reabra o ponto para tentar novamente.",
+      "stale": "Nenhuma verificação diária atual registrada para este local.",
+      "checked": "Verificado",
+      "noPass": "Nenhuma passagem futura registrada",
+      "list": {
+        "hotspot": "ponto crítico",
+        "conflictZone": "zona de conflito",
+        "militaryBase": "base militar",
+        "nuclearFacility": "instalação nuclear",
+        "port": "porto",
+        "chokepoint": "estreito",
+        "reservoir": "reservatório"
       }
     }
   },

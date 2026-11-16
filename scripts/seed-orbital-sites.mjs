@@ -59,7 +59,7 @@ export const ARCHIVE_MIN_INTERVAL_MS = 250;
 // Leaves the bundle section (9 minutes) room to publish after the evaluation stops.
 export const RUN_BUDGET_MS = 6 * 60_000;
 export const RECORD_TTL_SECONDS = 14 * 86_400;
-// Daily cadence; three missed days before health calls the sites stale.
+// Runs every 12 hours (seed-bundle-climate.mjs); three days without a run before health calls the sites stale.
 export const MAX_STALE_MIN = 4_320;
 const MGET_CHUNK = 100;
 const PIPELINE_CHUNK = 50;
@@ -74,12 +74,17 @@ export const CHANGE_BUDGET_MS = 2 * 60_000;
 
 /** Requests start at least `minIntervalMs` apart, even when several callers wait at once. */
 function makeThrottle({ minIntervalMs, clock, wait }) {
-  let nextSlot = -Infinity;
-  return async () => {
-    const slot = Math.max(clock(), nextSlot);
-    nextSlot = slot + minIntervalMs;
-    const gap = slot - clock();
-    if (gap > 0) await wait(gap);
+  // Callers take turns, and each turn measures from when the previous one was released, so a
+  // timer that fires late delays the requests after it instead of shortening the next gap.
+  let queue = Promise.resolve();
+  let released = -Infinity;
+  return () => {
+    const turn = queue.then(async () => {
+      for (let gap = released + minIntervalMs - clock(); gap > 0; gap = released + minIntervalMs - clock()) await wait(gap);
+      released = clock();
+    });
+    queue = turn.catch(() => {});
+    return turn;
   };
 }
 

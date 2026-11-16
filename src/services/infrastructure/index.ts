@@ -140,10 +140,6 @@ export function getOutagesDataState(): BreakerDataState {
   return outageBreaker.getDataState();
 }
 
-export function getOutagesStatus(): string {
-  return outageBreaker.getStatus();
-}
-
 // ========================================================================
 // DDoS Attacks -- L3/L4 attack summaries from Cloudflare Radar
 // ========================================================================

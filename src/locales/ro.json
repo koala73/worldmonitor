@@ -2132,7 +2132,14 @@
     "map": {
       "showMap": "Arată harta",
       "hideMap": "Ascunde harta",
-      "clearTrails": "Șterge urmele"
+      "clearTrails": "Șterge urmele",
+      "locate": "Arată locația mea"
+    },
+    "mapLocate": {
+      "locating": "Se determină locația…",
+      "denied": "Accesul la locație a fost refuzat. Folosiți Căutare pentru a găsi un loc.",
+      "unavailable": "Locația nu a fost găsită. Folosiți Căutare pentru a găsi un loc.",
+      "noCountry": "Nicio țară la locația dvs. Folosiți Căutare pentru a găsi un loc."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Perturbări ale internetului</strong> Întreruperi, atacuri DDoS și anomalii de trafic în timp real din monitorizarea globală a rețelelor:<ul><li><strong>Întreruperi</strong>: pierderi de conectivitate pe țări detectate prin BGP</li><li><strong>DDoS</strong>: rapoarte de atacuri volumetrice pe protocol și vector</li><li><strong>Anomalii</strong>: tipare de trafic neobișnuite din Cloudflare Radar</li></ul>",
@@ -3242,6 +3249,19 @@
         "latestPass": "ultima trecere ICESat-2 {{date}}",
         "sparkline": "Nivel pe 36 de luni, cu baza sezonieră punctată",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Niveluri lidar ale suprafeței apei din treceri datate, nu citiri live sau volume stocate."
+      },
+      "water": {
+        "heading": "Apa la {{name}}",
+        "level": "Nivel lidar",
+        "extent": "Suprafața apei prin radar",
+        "extentValue": "{{percent}}% apă deschisă ({{area}} km²) pe {{date}}",
+        "extentChange": "{{delta}} puncte din {{date}} pe aceeași orbită",
+        "extentNoComparison": "Nicio măsurătoare anterioară pe aceeași orbită pentru comparație",
+        "extentNone": "Încă nicio măsurătoare radar",
+        "unavailable": "Nu s-a putut încărca; redeschideți pentru a reîncerca",
+        "optical": "Cea mai recentă imagine optică",
+        "opticalNone": "Nicio imagine optică în 30 de zile",
+        "note": "Fiecare rând este o măsurătoare datată dintr-o trecere separată, nu o citire în timp real. Radarul măsoară apa deschisă din zona centrală a lacului de acumulare; apa încrețită de vânt poate fi citită ca uscat."
       }
     },
     "gridDisruptionClock": {
@@ -4519,7 +4539,8 @@
   "contextMenu": {
     "openCountryBrief": "Deschide prezentarea țării",
     "copyCoordinates": "Copiază coordonatele",
-    "satellitePasses": "Treceri de sateliți aici"
+    "satellitePasses": "Treceri de sateliți aici",
+    "imageryEvidenceHere": "Dovezi din imagini satelitare aici"
   },
   "shell": {
     "documentTitle": "World Monitor — Tabloul de Bord al Inteligenței Globale în Timp Real",
@@ -5232,6 +5253,7 @@
     "counts": {},
     "tier": {
       "checking": "se verifică arhiva",
+      "notInArchive": "nu e în arhivă",
       "confirmed": "confirmat",
       "likely": "probabil",
       "unmatchedImage": "imagine fără trecere calculată",
@@ -5298,7 +5320,8 @@
       "metaSpot": "Nori la punct",
       "metaScene": "Nori în scenă",
       "metaSun": "Înălțime soare",
-      "showCloudy": "Include datele înnorite ({{count}})"
+      "showCloudy": "Include datele înnorite ({{count}})",
+      "eventMark": "Eveniment {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5410,6 +5433,12 @@
       "passes_few": "{{count}} treceri",
       "passes_other": "{{count}} de treceri"
     },
+    "siteSatellites": {
+      "heading": "Sateliți urmăriți deasupra acestei locații · următoarele {{hours}} h",
+      "none": "Niciun satelit de imagistică urmărit nu acoperă această locație în {{hours}} h.",
+      "notLoaded": "Redeschideți locația pentru a reîncerca; elementele orbitale nu s-au încărcat.",
+      "failed": "Redeschideți locația pentru a reîncerca; calculul trecerilor a eșuat."
+    },
     "sheet": {
       "heading": "Dovezi din imagini satelitare",
       "window": "Ultimele {{days}} zile, următoarele {{hours}} h",
@@ -5506,7 +5535,7 @@
     "privacy": {
       "line": "Punctul tău merge doar către arhivele de imagini.",
       "more": "Detalii",
-      "body": "Trecerile sunt calculate pe acest dispozitiv. Pentru a găsi imagini, browserul tău trimite punctul direct la Earth Search, Planetary Computer, NASA GIBS și EUMETSAT; WorldMonitor nu îl primește. Un nume de loc introdus este trimis la WorldMonitor și OpenStreetMap Nominatim pentru a fi găsit. Linkurile partajate păstrează două zecimale (0,01°)."
+      "body": "Trecerile sunt calculate pe acest dispozitiv. Pentru a găsi imagini, browserul tău trimite punctul direct la Earth Search, Planetary Computer, NASA GIBS și EUMETSAT; WorldMonitor nu îl primește. Pentru un loc monitorizat, WorldMonitor este întrebat de înregistrarea zilnică a locului după ID-ul acestuia, nu după punctul dvs. Un nume de loc introdus este trimis la WorldMonitor și OpenStreetMap Nominatim pentru a fi găsit. Linkurile partajate păstrează două zecimale (0,01°)."
     },
     "sources": {
       "heading": "Surse ({{count}})",
@@ -5528,6 +5557,7 @@
     "tile": {
       "failed": "Scenă neîncărcată · {{archive}}",
       "noPreview": "Nicio previzualizare publicată încă pentru această scenă",
+      "processing": "Scena este încă în procesare. Încercați din nou mai târziu.",
       "radar": "radar"
     },
     "target": {
@@ -5541,6 +5571,13 @@
       "noImage": "Nu s-a găsit nicio imagine recentă",
       "noPass": "Nicio trecere în următoarele 72 de ore",
       "openEvidence": "Deschide dovezile",
+      "compareEvent": "Înainte / după",
+      "compareEventLocked": "Înainte / după · Pro",
+      "compareSearching": "Se caută imagini înainte și după {{date}}…",
+      "compareNoAfter": "Încă nu există o imagine clară după {{date}}.",
+      "compareNoAfterWindow": "Nicio imagine clară în cele {{days}} de zile după {{date}}.",
+      "compareNoBefore": "Nicio imagine clară înainte de {{date}} în intervalul arhivei.",
+      "compareFailed": "Căutarea în arhivă a eșuat. Încercați din nou.",
       "imageAlt": "Vedere din satelit de la {{source}}",
       "unavailable": "Imaginile din satelit nu s-au încărcat.",
       "fire": {
@@ -5563,6 +5600,23 @@
         "mosaicNoLayer": "Niciun mozaic zilei nu este disponibil pentru acest satelit.",
         "mosaicUnavailable": "Mozaicul zilei nu s-a încărcat.",
         "mosaicAlt": "Mozaic zilei NASA GIBS {{source}} pentru {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Loc monitorizat",
+      "loading": "Se încarcă înregistrarea zilnică a locului…",
+      "failed": "Înregistrarea zilnică a locului nu s-a încărcat; redeschideți punctul pentru a reîncerca.",
+      "stale": "Nu există o verificare zilnică actuală pentru acest loc.",
+      "checked": "Verificat",
+      "noPass": "Nicio trecere viitoare înregistrată",
+      "list": {
+        "hotspot": "punct fierbinte",
+        "conflictZone": "zonă de conflict",
+        "militaryBase": "bază militară",
+        "nuclearFacility": "instalație nucleară",
+        "port": "port",
+        "chokepoint": "strâmtoare",
+        "reservoir": "lac de acumulare"
       }
     }
   },

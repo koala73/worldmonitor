@@ -133,7 +133,7 @@
     "deliveryLabel": "Alege cum te găsește intelligence-ul",
     "supplyChainLab": "Laborator de stres al lanțului de aprovizionare",
     "supplyChainLabDesc": "Modelează un șoc de cost pe țări și sectoare. Clasifică vulnerabilitatea mărfurilor după dependența de puncte de strangulare. Urmărește concentrația mine-rafinărie și divergența primei fizice SGE–COMEX — seria care se mișcă înainte ca titlul să apară.",
-    "roadmapNote": "Pe foaia de parcurs: supraveghere orbitală, istoric mai lung, straturi de hartă premium."
+    "roadmapNote": "Pe roadmap: istoric mai lung, straturi de hartă premium."
   },
   "apiSection": {
     "apiTier": "NIVEL API",

@@ -9,15 +9,13 @@ import { renderCrossBorderDetails } from './cross-border-marker';
 import type { RadiationObservation } from '@/services/radiation';
 import { UNDERSEA_CABLES } from '@/config/geo-map';
 import type { StartupHub, Accelerator, TechHQ, CloudRegion } from '@/config/tech-geo';
-import type { TechHubActivity } from '@/services/tech-activity';
-import type { GeoHubActivity } from '@/services/geo-activity';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { assessCorroboration, corroborationLabelHtml, evidenceFromItem } from '@/utils/corroboration-flag';
 import { isMobileDevice, getCSSColor } from '@/utils';
 import { TransitChart } from '@/utils/transit-chart';
-import { hasImageryRow, imageryTargetFor, mountImageryRow, renderImageryRow } from './map-popup-imagery';
+import { eventTimeFor, hasImageryRow, imageryTargetFor, mountImageryRow, renderImageryRow, type EventCompareHooks } from './map-popup-imagery';
 import { mountFireMosaic, renderFireDetectionPopup, type FireDetectionPopupData } from './map-popup-fire';
-import { ORBITAL_EVIDENCE_EVENT } from '@/services/orbital/evidence-event';
+import { ORBITAL_EVENT_COMPARE_EVENT, ORBITAL_EVIDENCE_EVENT, type OrbitalEventCompareDetail } from '@/services/orbital/evidence-event';
 import { HS2RingChart } from '@/utils/hs2-ring-chart';
 import type { GetChokepointStatusResponse, TransitDayCount } from '@/services/supply-chain';
 import { fetchChokepointHistory } from '@/services/supply-chain';
@@ -38,6 +36,8 @@ import {
   reservoirNextPassText,
 } from './reservoir-levels-view';
 import { reservoirCard } from './reservoir-card';
+import { fillWaterExtentRow, renderWaterExtentRow, WATER_UNAVAILABLE } from './water-card';
+import { loadReservoirWaterExtent } from '@/services/orbital/object-imagery';
 import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticle } from '@/services/gdelt-intel';
 import { getWingbitsLiveFlight } from '@/services/wingbits';
 import { isFeatureAvailable } from '@/services/runtime-config';
@@ -47,7 +47,8 @@ import { getCableHealthRecord } from '@/services/cable-health';
 import { nameToCountryCode } from '@/services/country-geometry';
 import { sparkline } from '@/utils/sparkline';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
-import { getAuthState } from '@/services/auth-state';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { onEntitlementChange } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 import { bindCyberNetworkSection, renderCyberNetworkSection } from './cyber-network-info';
@@ -135,7 +136,7 @@ function fmtDelayMin(min: number | undefined): string {
 /** A news marker's popup: its title and, when known, the cluster's corroboration (#9213). */
 type NewsPopupData = Pick<NewsLocationMarker, 'title' | 'corroboration'>;
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'news' | 'crossBorder' | 'displacement' | 'storageFacility' | 'reservoirLevel' | 'fireDetection';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'news' | 'crossBorder' | 'displacement' | 'storageFacility' | 'reservoirLevel' | 'fireDetection';
 
 interface TechEventPopupData {
   id: string;
@@ -274,7 +275,7 @@ interface StorageFacilityPopupData {
 
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation | NewsPopupData | DisplacementMarker | CrossBorderPoint | StorageFacilityPopupData | ReservoirLevel | FireDetectionPopupData;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation | NewsPopupData | DisplacementMarker | CrossBorderPoint | StorageFacilityPopupData | ReservoirLevel | FireDetectionPopupData;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -334,20 +335,57 @@ export class MapPopup {
     const popup = this.popup;
     if (!target || !popup) return;
     const host = popup.querySelector<HTMLElement>('.popup-body') ?? popup;
-    const holder = document.createElement('div');
-    setTrustedHtml(holder, trustedHtml(renderImageryRow(), 'static locale strings'));
-    const row = holder.firstElementChild as HTMLElement | null;
-    if (!row) return;
-    host.appendChild(row);
-    this.disposeImagery = mountImageryRow(row, target, {
-      onLayout: () => {
-        if (this.popup === popup && !this.isMobileSheet) this.clampPopupToViewport();
-      },
-      onOpenEvidence: (picked) => {
-        this.hide();
-        window.dispatchEvent(new CustomEvent(ORBITAL_EVIDENCE_EVENT, { detail: picked.point }));
-      },
-    });
+    const mountRow = (): void => {
+      const holder = document.createElement('div');
+      setTrustedHtml(holder, trustedHtml(renderImageryRow(), 'static locale strings'));
+      const row = holder.firstElementChild as HTMLElement | null;
+      if (!row) return;
+      host.appendChild(row);
+      const eventMs = eventTimeFor(data.type, data.data);
+      let eventCompare: EventCompareHooks | undefined;
+      let unsubscribeAuth: (() => void) | null = null;
+      if (eventMs !== null) {
+        const access = hasPremiumAccess(getAuthState()) ? 'open' : 'locked';
+        if (access === 'locked') trackGateHit('orbital-event-compare');
+        eventCompare = {
+          eventMs,
+          access,
+          onOpen: (picked, anchorMs, pair) => {
+            this.hide();
+            const detail: OrbitalEventCompareDetail = { point: picked.point, eventMs: anchorMs, pair };
+            window.dispatchEvent(new CustomEvent(ORBITAL_EVENT_COMPARE_EVENT, { detail }));
+          },
+        };
+        // Access confirmed after the popup opened (sign-in or entitlements still loading) unlocks the row in place.
+        if (access === 'locked') {
+          const unlock = (state = getAuthState()) => {
+            if (this.popup !== popup || !hasPremiumAccess(state)) return;
+            this.disposeImagery?.();
+            this.disposeImagery = null;
+            row.remove();
+            mountRow();
+          };
+          const unsubscribeSignIn = subscribeAuthState((state) => unlock(state));
+          const unsubscribeEntitlement = onEntitlementChange(() => unlock());
+          unsubscribeAuth = () => { unsubscribeSignIn(); unsubscribeEntitlement(); };
+        }
+      }
+      const disposeRow = mountImageryRow(row, target, {
+        eventCompare,
+        onLayout: () => {
+          if (this.popup === popup && !this.isMobileSheet) this.clampPopupToViewport();
+        },
+        onOpenEvidence: (picked) => {
+          this.hide();
+          window.dispatchEvent(new CustomEvent(ORBITAL_EVIDENCE_EVENT, { detail: picked.point }));
+        },
+      });
+      this.disposeImagery = () => {
+        unsubscribeAuth?.();
+        disposeRow();
+      };
+    };
+    mountRow();
   }
 
   private disposeFireMosaic: (() => void) | null = null;
@@ -886,10 +924,6 @@ export class MapPopup {
       document.removeEventListener('keydown', this.handleEscapeKey);
       this.onClose?.();
     }
-  }
-
-  public setOnClose(callback: () => void): void {
-    this.onClose = callback;
   }
 
   public setCableActivity(advisories: CableAdvisory[], repairShips: RepairShip[]): void {
@@ -2379,12 +2413,19 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
             ${stat(t('components.reservoirLevels.popup.change365'), signed(r.change365dM))}
             ${stat(t('components.reservoirLevels.popup.measured'), escapeHtml(reservoirMeasured(r, ctx, true)))}
           </div>
+          ${this.renderReservoirWaterExtent(r)}
           ${this.renderReservoirNextPass(r)}
           ${spark ? `<div class="wl-popup-spark" role="img" aria-label="${escapeHtml(t('components.reservoirLevels.popup.sparkline'))}">${spark}</div>` : ''}
           <p class="wl-popup-source">${escapeHtml(t('components.reservoirLevels.source'))} <a href="${RESERVOIR_SOURCE_URL}" target="_blank" rel="noopener noreferrer">NASA ICESat-2 ATL13</a> / <a href="${RESERVOIR_ATL06_SOURCE_URL}" target="_blank" rel="noopener noreferrer">ATL06</a> (NSIDC) · ${escapeHtml(t('components.reservoirLevels.processedWith'))} <a href="${RESERVOIR_PROCESSING_URL}" target="_blank" rel="noopener noreferrer">SlideRule Earth</a></p>
         </div>
       </div>
     `;
+  }
+
+  // Radar water extent of the lake's core box (#10714), seeded from Sentinel-1; held to the same flag as the crossing.
+  private renderReservoirWaterExtent(r: ReservoirLevel): string {
+    if (!ORBITAL_WATCH_ENABLED || !STRATEGIC_RESERVOIR_SITES.some(site => site.id === r.id)) return '';
+    return renderWaterExtentRow(r.id, t);
   }
 
   // Next ICESat-2 crossing of the lake. Orbital pass geometry, so absent unless Orbital Watch is on;
@@ -2410,12 +2451,23 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
 
   private hydrateReservoirSections(popup: HTMLElement): void {
     const nextPass = popup.querySelector<HTMLElement>('[data-wl-next-pass]');
+    const waterExtent = popup.querySelector<HTMLElement>('[data-wl-water-extent]');
     const site = popup.querySelector<HTMLElement>('[data-wl-site-context]');
     const locale = getLocale();
-    if (nextPass) {
-      const id = nextPass.dataset.wlNextPass!;
+    if (nextPass || waterExtent) {
       this.reservoirScan?.abort();
-      const scan = this.reservoirScan = new AbortController();
+      this.reservoirScan = new AbortController();
+    }
+    const scan = this.reservoirScan;
+    if (waterExtent && scan) {
+      void loadReservoirWaterExtent(waterExtent.dataset.wlWaterExtent!, scan.signal).catch(() => WATER_UNAVAILABLE).then((extent) => {
+        if (scan.signal.aborted || !waterExtent.isConnected) return;
+        fillWaterExtentRow(waterExtent, extent, { t, locale, nowMs: Date.now() });
+        this.clampPopupToViewport();
+      });
+    }
+    if (nextPass && scan) {
+      const id = nextPass.dataset.wlNextPass!;
       void loadReservoirNextPasses(STRATEGIC_RESERVOIR_SITES, { signal: scan.signal }).then((passes) => {
         const value = nextPass.querySelector('.wl-next-pass-value');
         if (!value || !nextPass.isConnected) return;
@@ -2426,7 +2478,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
     }
     if (site) {
       const id = site.dataset.wlSiteContext!;
-      void loadReservoirLevelsById().then((levels) => {
+      void loadReservoirLevelsById().catch(() => new Map<string, ReservoirLevel>()).then((levels) => {
         const line = site.querySelector('.wl-site-context-level');
         if (!line || !site.isConnected) return;
         const level = levels.get(id);

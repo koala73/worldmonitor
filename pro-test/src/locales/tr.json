@@ -133,7 +133,7 @@
     "deliveryLabel": "İstihbaratın sizi nasıl bulacağını seçin",
     "supplyChainLab": "Tedarik Zinciri Stres Laboratuvarı",
     "supplyChainLabDesc": "Ülkeler ve sektörler arasında maliyet şokunun modelini oluşturun. Darboğaz bağımlılığına göre emtia kırılganlığını sıralayın. Madenden rafineri haline kadar konsantrasyon ve SGE–COMEX fiziksel premium farklılaşmasını izleyin — manşet gelmeden hareket eden seri.",
-    "roadmapNote": "Yol haritasında: yörüngesel gözetim, daha uzun geçmiş, premium harita katmanları."
+    "roadmapNote": "Yol haritasında: daha uzun geçmiş, premium harita katmanları."
   },
   "apiSection": {
     "apiTier": "API SEVİYESİ",

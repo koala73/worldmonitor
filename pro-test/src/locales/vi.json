@@ -133,7 +133,7 @@
     "deliveryLabel": "Chọn cách tình báo tìm đến bạn",
     "supplyChainLab": "Phòng Lab Áp lực Chuỗi cung ứng",
     "supplyChainLabDesc": "Mô phỏng một cú sốc chi phí trên các quốc gia và lĩnh vực. Xếp hạng lỗ hổng hàng hóa theo phụ thuộc điểm tắc nghẽn. Theo dõi tập trung từ mỏ đến nhà máy lọc và sự phân kỳ phí bảo hiểm vật lý SGE–COMEX — chuỗi dữ liệu thay đổi trước khi tiêu đề thay đổi.",
-    "roadmapNote": "Trên lộ trình: giám sát quỹ đạo, lịch sử dài hơn, lớp bản đồ cao cấp."
+    "roadmapNote": "Trên lộ trình phát triển: lịch sử dài hơn, các lớp bản đồ cao cấp."
   },
   "apiSection": {
     "apiTier": "CẤP ĐỘ API",

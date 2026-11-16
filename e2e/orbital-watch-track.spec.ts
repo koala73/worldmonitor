@@ -5,6 +5,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { findPasses, parseOrbitElements, type GeoPoint, type OmmRecord } from '../shared/orbital/pass-geometry.js';
 import { matchSensorProfile } from '../shared/orbital/sensor-profiles.js';
 import { buildPassTrack, type PassTrack, type TrackPoint } from '../src/services/orbital/track-geometry';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 type HarnessWindow = Window & {
   __mapHarness?: {
@@ -56,7 +57,7 @@ test('draws a selected pass track and footprint on the flat map, moves its marke
   await expect.poll(() => orbitalLayers(page)).toEqual(expect.arrayContaining([
     'orbital-track-marker-layer:1', 'orbital-swept-layer:1', 'orbital-leading-edge-layer:1',
   ]));
-  await page.screenshot({ path: '.claude/verify-evidence/orbital-track-flat.png' });
+  await evidenceScreenshot(page, { path: '.claude/verify-evidence/orbital-track-flat.png' });
   const moved = await page.evaluate((points) => (window as HarnessWindow).__mapHarness!.moveOrbitalMarkerCountingRenders(points), track.segments.flat().slice(0, 5));
   expect(moved).toEqual({ renders: 0, marker: track.segments.flat()[4] });
   await page.evaluate(() => (window as HarnessWindow).__mapHarness!.setOrbitalTrack(null));

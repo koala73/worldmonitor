@@ -117,7 +117,3 @@ export async function fetchCanadaRoads(): Promise<CanadaRoadRecord[]> {
 export function getCanadaRoadSourceStates(): CanadaRoadSourceStates {
   return { ...lastSourceStates };
 }
-
-export function getCanadaRoadsStatus(): string {
-  return breaker.getStatus();
-}

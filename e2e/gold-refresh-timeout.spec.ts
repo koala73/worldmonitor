@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 test('gold keeps its last successful data when refresh times out', async ({ page }, testInfo) => {
   let requests = 0;
@@ -39,7 +40,7 @@ test('gold keeps its last successful data when refresh times out', async ({ page
   await expect(content).toContainText('Updated 20m ago');
   await expect(content).not.toContainText('Updated just now');
   expect(requests).toBe(2);
-  await page.screenshot({ path: testInfo.outputPath('gold-refresh-timeout-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('gold-refresh-timeout-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: testInfo.outputPath('gold-refresh-timeout-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('gold-refresh-timeout-mobile.png'), fullPage: true });
 });

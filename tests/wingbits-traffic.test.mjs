@@ -59,6 +59,7 @@ test('a Wingbits point stores only what Wingbits measures, in its own keys', () 
   assert.equal('usLowClimbingAirline' in stored, false);
   assert.equal(stored.usAirborneAirline, 0, 'the row has no callsign');
   assert.deepEqual(stored.hubs.ATL, { air: 1, ground: 0 }, 'no departure count without a vertical rate');
+  assert.deepEqual(stored.markets.GB, { seen: 0 }, 'market coverage, but no departure count without a vertical rate');
   assert.equal(write.metaCommands[0][1], 'seed-meta:aviation:traffic-history-wingbits');
   assert.equal(write.metaCommands[1][1], 'seed-activated:aviation:traffic-history-wingbits');
 });

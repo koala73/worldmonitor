@@ -10,7 +10,6 @@
  * the adapter tries a configured item seed, then the normal Exa discovery flow in the
  * same run so the basket item is never left uncovered.
  *
- * Replaces ExaSearchAdapter's fragile regex-on-AI-summary approach.
  * Firecrawl renders JS so dynamic prices (Noon, etc.) are visible.
  * Domain allowlist + title plausibility check prevent wrong-product and SSRF risks.
  */

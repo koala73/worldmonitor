@@ -38,7 +38,7 @@ persistence are unchanged.
 
 ## Scrollers retained after inspection
 
-- `WatchlistTableView`, `.windowed-list`, and `.virtual-viewport` depend on their
+- `WatchlistTableView` and `.windowed-list` depend on their
   own scroll positions to render a window of rows. Removing their scrollports
   would break virtualization.
 - Consumer Prices, grocery/price comparison tables, National Debt, and Tech Events

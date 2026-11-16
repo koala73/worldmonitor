@@ -214,15 +214,6 @@ export function getCount(): Promise<number> {
   });
 }
 
-export function closeDB(): Promise<void> {
-  return enqueue(async () => {
-    if (db) {
-      db.close();
-      db = null;
-    }
-  });
-}
-
 export function resetStore(): Promise<void> {
   return enqueue(async () => {
     const database = await openDB();

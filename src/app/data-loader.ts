@@ -167,6 +167,7 @@ import type {
 import type { ChinaCorporateDisclosureSnapshot } from '@/components/market-disclosures';
 
 import type { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
+import type { DigestCoverageSummary } from '@/components/StatusPanel';
 import type { StockBacktestPanel } from '@/components/StockBacktestPanel';
 import type { PredictionPanel } from '@/components/PredictionPanel';
 import type { InsightsPanel } from '@/components/InsightsPanel';
@@ -1046,6 +1047,11 @@ export class DataLoaderManager implements AppModule {
    * guards throughout — persisted last-good digests from before the coverage
    * rollout carry no coverage field at all.
    */
+  private publishDigestCoverage(summary: DigestCoverageSummary): void {
+    this.ctx.digestCoverage = summary;
+    this.ctx.statusPanel?.updateDigestCoverage(summary);
+  }
+
   private reportDigestCoverage(
     digest: ListFeedDigestResponse | null,
     stateOverride?: 'stale' | 'unavailable',
@@ -1066,7 +1072,7 @@ export class DataLoaderManager implements AppModule {
     if (!cov || typeof cov.state !== 'string') {
       const categoryEntries = digest ? Object.entries(digest.categories) : [];
       const items = categoryEntries.flatMap(([, bucket]) => bucket.items);
-      this.ctx.statusPanel?.updateDigestCoverage({
+      this.publishDigestCoverage({
         state: stateOverride ?? 'unknown',
         itemsServed: items.length,
         publisherCount: new Set(items.map(item => item.source).filter(Boolean)).size,
@@ -1088,7 +1094,7 @@ export class DataLoaderManager implements AppModule {
     const state = stateOverride ?? (cov.state === 'complete' || cov.state === 'partial' || cov.state === 'stale' || cov.state === 'unavailable'
       ? cov.state
       : 'unknown');
-    this.ctx.statusPanel?.updateDigestCoverage({
+    this.publishDigestCoverage({
       state,
       itemsServed: Number(cov.itemsServed) || 0,
       publisherCount: Number(cov.publisherCount) || 0,

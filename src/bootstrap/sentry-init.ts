@@ -1231,6 +1231,17 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // frames). Left deliberately phrasing-agnostic after `Unexpected ` so
           // every engine's token/identifier/keyword/EOF wording is covered.
           || /appendChild.*Unexpected /.test(msg)
+          // Same insertion path, other parse-time failure: an injected script
+          // inserted twice redeclares its own top-level binding (WORLDMONITOR-1F5:
+          // `Identifier 'API_URL' has already been declared`, two `<anonymous>`
+          // frames, Chrome 157). Our bundle is ES modules, so no first-party
+          // top-level binding enters the global lexical scope. Identifier-agnostic
+          // because the same `!hasFirstParty` gate keeps a first-party loader's
+          // failure visible; the bare form without the prefix stays on the named
+          // ignoreErrors list. `\s` after `has`: the test harness strips
+          // `as <word>` from this body as a TS assertion, which would gut a
+          // literal space here.
+          || /appendChild.*Identifier '[^']+' has\salready been declared/.test(msg)
           // Platform-authenticator failure raised by the browser's WebAuthn /
           // Credential Management layer — `NotReadableError: An unknown error
           // occurred while talking to the credential manager.` The phrasing is

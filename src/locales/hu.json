@@ -2470,7 +2470,14 @@
     "map": {
       "showMap": "Térkép megjelenítése",
       "hideMap": "Térkép elrejtése",
-      "clearTrails": "Nyomok törlése"
+      "clearTrails": "Nyomok törlése",
+      "locate": "Saját helyzet megjelenítése"
+    },
+    "mapLocate": {
+      "locating": "Helymeghatározás…",
+      "denied": "A helyhozzáférés megtagadva. Hely kereséséhez használja a Keresést.",
+      "unavailable": "A helyzet nem található. Hely kereséséhez használja a Keresést.",
+      "noCountry": "Az Ön helyén nincs ország. Hely kereséséhez használja a Keresést."
     },
     "climateNews": {
       "infoTooltip": "<strong>Climate News</strong> A legfrissebb környezeti és éghajlati intelligencia a Carbon Brief, az UNEP, a NASA, a The Guardian és más megbízható forrásokból. 30 percenként frissítve.",
@@ -3290,6 +3297,19 @@
         "latestPass": "utolsó ICESat-2 áthaladás: {{date}}",
         "sparkline": "36 havi szint, a szezonális alapvonal szaggatott vonallal",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidaros vízfelszín-szintek dátumozott áthaladásokból, nem élő értékek vagy tárolt térfogatok."
+      },
+      "water": {
+        "heading": "Víz: {{name}}",
+        "level": "Lidaros vízszint",
+        "extent": "Radaros vízfelület",
+        "extentValue": "{{percent}}% nyílt víz ({{area}} km²), {{date}}",
+        "extentChange": "{{delta}} pont {{date}} óta ugyanazon a pályán",
+        "extentNoComparison": "Nincs korábbi mérés ugyanazon a pályán az összevetéshez",
+        "extentNone": "Még nincs radaros mérés",
+        "unavailable": "Nem sikerült betölteni; nyissa meg újra a próbálkozáshoz",
+        "optical": "Legújabb optikai kép",
+        "opticalNone": "Nincs optikai kép 30 napon belül",
+        "note": "Minden sor egy külön átvonulásból származó, dátummal ellátott mérés, nem élő adat. A radar a víztározó magterületén méri a nyílt vizet; a szél által fodrozott víz szárazföldnek tűnhet."
       }
     },
     "gridDisruptionClock": {
@@ -4587,7 +4607,8 @@
   "contextMenu": {
     "openCountryBrief": "Országbeszámoló megnyitása",
     "copyCoordinates": "Koordináták másolása",
-    "satellitePasses": "Műholdas áthaladások itt"
+    "satellitePasses": "Műholdas áthaladások itt",
+    "imageryEvidenceHere": "Képi bizonyíték itt"
   },
   "auth": {
     "signIn": "Bejelentkezés",
@@ -5204,6 +5225,7 @@
     "counts": {},
     "tier": {
       "checking": "archívum ellenőrzése",
+      "notInArchive": "nincs az archívumban",
       "confirmed": "megerősített",
       "likely": "valószínű",
       "unmatchedImage": "kép számított áthaladás nélkül",
@@ -5270,7 +5292,8 @@
       "metaSpot": "Felhőzet a pontban",
       "metaScene": "Jelenet felhőzete",
       "metaSun": "Nap magassági szöge",
-      "showCloudy": "Felhős dátumok megjelenítése ({{count}})"
+      "showCloudy": "Felhős dátumok megjelenítése ({{count}})",
+      "eventMark": "Esemény {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5378,6 +5401,12 @@
       "passes_one": "{{count}} áthaladás",
       "passes_other": "{{count}} áthaladás"
     },
+    "siteSatellites": {
+      "heading": "Követett műholdak a hely felett · következő {{hours}} h",
+      "none": "Egyetlen követett képalkotó műhold sem fedi le ezt a helyet {{hours}} órán belül.",
+      "notLoaded": "Az újrapróbáláshoz nyissa meg újra a helyet; a pályaelemek nem töltődtek be.",
+      "failed": "Az újrapróbáláshoz nyissa meg újra a helyet; az áthaladások számítása sikertelen."
+    },
     "sheet": {
       "heading": "Képi bizonyíték",
       "window": "Utolsó {{days}} nap, következő {{hours}} ó",
@@ -5470,7 +5499,7 @@
     "privacy": {
       "line": "A pont csak a képarchívumokba kerül.",
       "more": "Részletek",
-      "body": "Az áthaladásokat ez az eszköz számítja ki. A képek megkereséséhez a böngésző közvetlenül az Earth Search, a Planetary Computer, a NASA GIBS és az EUMETSAT felé küldi a pontot; a WorldMonitor nem kapja meg. A beírt helynév a WorldMonitorhoz és az OpenStreetMap Nominatimhez kerül a megtalálásához. A megosztott hivatkozások két tizedesjegyet őriznek meg (0,01°)."
+      "body": "Az áthaladásokat ez az eszköz számítja ki. A képek megkereséséhez a böngésző közvetlenül az Earth Search, a Planetary Computer, a NASA GIBS és az EUMETSAT felé küldi a pontot; a WorldMonitor nem kapja meg. Megfigyelt helyszínen a WorldMonitor a helyszín napi rekordját a helyszín azonosítója alapján kapja kérésként, nem az Ön pontja alapján. A beírt helynév a WorldMonitorhoz és az OpenStreetMap Nominatimhez kerül a megtalálásához. A megosztott hivatkozások két tizedesjegyet őriznek meg (0,01°)."
     },
     "sources": {
       "heading": "Források ({{count}})",
@@ -5492,6 +5521,7 @@
     "tile": {
       "failed": "Jelenet nem töltődött be · {{archive}}",
       "noPreview": "Ehhez a jelenethez még nincs előnézet közzétéve",
+      "processing": "A felvétel feldolgozása még folyamatban van. Próbálja újra később.",
       "radar": "radar"
     },
     "target": {
@@ -5505,6 +5535,13 @@
       "noImage": "Nincs friss felvétel",
       "noPass": "72 órán belül nincs áthaladás",
       "openEvidence": "Bizonyítékok megnyitása",
+      "compareEvent": "Előtte / utána",
+      "compareEventLocked": "Előtte / utána · Pro",
+      "compareSearching": "Felvételek keresése {{date}} előtt és után…",
+      "compareNoAfter": "{{date}} óta még nincs tiszta felvétel.",
+      "compareNoAfterWindow": "{{date}} után {{days}} napon belül nincs tiszta felvétel.",
+      "compareNoBefore": "{{date}} előtt nincs tiszta felvétel az archív időszakban.",
+      "compareFailed": "Az archívumkeresés sikertelen. Próbálja újra.",
       "imageAlt": "Műholdas nézet innen: {{source}}",
       "unavailable": "A műholdképek nem töltődtek be.",
       "fire": {
@@ -5527,6 +5564,23 @@
         "mosaicNoLayer": "Ehhez a műholdhoz nincs elérhető napi mozaik.",
         "mosaicUnavailable": "A napi mozaik nem töltődött be.",
         "mosaicAlt": "NASA GIBS {{source}} napi mozaik {{date}} napra"
+      }
+    },
+    "site": {
+      "heading": "Megfigyelt helyszín",
+      "loading": "A helyszín napi rekordjának betöltése…",
+      "failed": "A helyszín napi rekordja nem töltődött be; nyissa meg újra a pontot az újrapróbálkozáshoz.",
+      "stale": "Ehhez a helyszínhez nincs aktuális napi ellenőrzés.",
+      "checked": "Ellenőrizve",
+      "noPass": "Nincs rögzített közelgő áthaladás",
+      "list": {
+        "hotspot": "válsággóc",
+        "conflictZone": "konfliktuszóna",
+        "militaryBase": "katonai bázis",
+        "nuclearFacility": "nukleáris létesítmény",
+        "port": "kikötő",
+        "chokepoint": "szoros",
+        "reservoir": "víztározó"
       }
     }
   },

@@ -1420,7 +1420,13 @@ export function replayPendingProFunnelEvents(): void {
   }
   if (!raw) return;
 
-  const sanitized: Array<{ productId: string; surface: 'pro-page' | 'pro-resume'; authed: boolean; vw?: ViewportBand }> = [];
+  const sanitized: Array<{
+    productId: string;
+    surface: 'pro-page' | 'pro-resume';
+    authed: boolean;
+    newAccount?: boolean;
+    vw?: ViewportBand;
+  }> = [];
   try {
     const items: unknown = JSON.parse(raw);
     if (Array.isArray(items)) {
@@ -1433,6 +1439,7 @@ export function replayPendingProFunnelEvents(): void {
           productId: bucketProductIdForAnalytics(String(d.productId ?? '')),
           surface: d.surface === 'pro-resume' ? 'pro-resume' : 'pro-page',
           authed: Boolean(d.authed),
+          ...(typeof d.newAccount === 'boolean' ? { newAccount: d.newAccount } : {}),
           ...(isViewportBand(d.vw) ? { vw: d.vw } : {}),
         });
       }
@@ -1557,7 +1564,6 @@ export function trackProActivation(
 // ---------------------------------------------------------------------------
 
 export function trackEvent(_name: string, _props?: Record<string, unknown>): void {}
-export function trackEventBeforeUnload(_name: string, _props?: Record<string, unknown>): void {}
 
 // ---------------------------------------------------------------------------
 // Mission conversion funnel (ONBOARDING_STRATEGY.md, plan 2026-08-30-001)
@@ -1823,12 +1829,9 @@ export function replayPendingMissionReturn(): void {
     state.context.eventSurface,
   );
 }
-
-export function trackApiKeysSnapshot(): void {}
 export function trackUpdateShown(_current: string, _remote: string): void {}
 export function trackUpdateClicked(_version: string): void {}
 export function trackUpdateDismissed(_version: string): void {}
-export function trackDownloadBannerDismissed(): void {}
 
 // ---------------------------------------------------------------------------
 // Search

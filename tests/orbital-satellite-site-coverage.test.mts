@@ -11,6 +11,7 @@ import {
   coverageAt,
   imagingProfileFor,
   orbitElementsFromTle,
+  satellitesCoveringSite,
   sitesCoveredBySatellite,
   type TrackedSatelliteTle,
 } from '../src/services/orbital/satellite-site-coverage.ts';
@@ -152,9 +153,45 @@ describe('satellite site coverage', () => {
     assert.deepEqual(coverage, { status: 'unavailable' });
   });
 
-  it('exports no reverse site-to-satellites lookup until a site sheet links to it', async () => {
-    const mod = await import('../src/services/orbital/satellite-site-coverage.ts');
-    assert.equal('satellitesCoveringSite' in mod, false);
+  it('lists the satellites covering a site from the same scan as each satellite card', async () => {
+    const nowMs = EPOCH_MS + 6 * 3_600_000;
+    const tles = [sentinel2a, tle(40698, 'SENTINEL-2B'), tle(99999, 'UNPROFILED SAT')];
+    const card = await sitesCoveredBySatellite({ tle: sentinel2a, sites, nowMs });
+    assert.equal(card.status, 'ok');
+    if (card.status !== 'ok') return;
+    const entry = card.sites[0]!;
+    const site = sites.find((s) => s.id === entry.site.id)!;
+
+    const covering = await satellitesCoveringSite({ site, tles, nowMs });
+    const own = covering.find((s) => s.noradId === '40697');
+    assert.deepEqual(own?.passes, entry.passes, 'the site and the satellite card agree on the passes');
+    assert.equal(own?.sensor.profileId, card.sensor.profileId);
+    assert.ok(!covering.some((s) => s.noradId === '99999'), 'a satellite with no sensor profile covers nothing');
+    for (let i = 1; i < covering.length; i++) assert.ok(covering[i]!.passes[0]!.timeMs >= covering[i - 1]!.passes[0]!.timeMs);
+
+    const uncovered = sites.find((s) => !card.sites.some((e) => e.site.id === s.id))!;
+    const none = await satellitesCoveringSite({ site: uncovered, tles: [sentinel2a], nowMs });
+    assert.deepEqual(none, []);
+  });
+
+  it('fails a site whose every imaging scan failed, instead of reporting no coverage', async () => {
+    const site = sites[0]!;
+    await assert.rejects(satellitesCoveringSite({ site, tles: [sentinel2a], nowMs: EPOCH_MS - 30 * DAY }));
+    await assert.rejects(satellitesCoveringSite({ site, tles: [sentinel2a], nowMs: EPOCH_MS + 30 * DAY }));
+    assert.deepEqual(await satellitesCoveringSite({ site, tles: [tle(99999, 'UNPROFILED SAT')], nowMs: EPOCH_MS }), []);
+  });
+
+  it('reuses every satellite scan when a site is reopened, however many satellites are drawn', async () => {
+    const nowMs = EPOCH_MS + 6 * 3_600_000;
+    const card = await sitesCoveredBySatellite({ tle: sentinel2a, sites: [...sites], nowMs });
+    if (card.status !== 'ok') throw new Error('expected coverage');
+    const site = sites.find((s) => s.id === card.sites[0]!.site.id)!;
+    const tles = Array.from({ length: 40 }, (_, i) => tle(60_000 + i, 'SENTINEL-2A'));
+    const first = await satellitesCoveringSite({ site, tles, nowMs });
+    const again = await satellitesCoveringSite({ site, tles, nowMs: nowMs + 60_000 });
+    assert.equal(first.length, tles.length);
+    assert.equal(again.length, first.length);
+    again.forEach((s, i) => assert.equal(s.passes[0], first[i]!.passes[0], 'a reopened site reads the cached scan'));
   });
 });
 
@@ -229,7 +266,7 @@ describe('#10758 item 5: the coverage cache', () => {
 
 describe('privacy and dark launch', () => {
   it('computes coverage without a network call or analytics', () => {
-    for (const file of ['src/services/orbital/satellite-site-coverage.ts', 'src/services/orbital/yaogan-class.ts', 'src/components/orbital-satellite-sites-view.ts']) {
+    for (const file of ['src/services/orbital/satellite-site-coverage.ts', 'src/services/orbital/yaogan-class.ts', 'src/components/orbital-satellite-sites-view.ts', 'src/components/orbital-site-satellites-view.ts']) {
       const text = source(file);
       assert.doesNotMatch(text, /\bfetch\(|XMLHttpRequest|sendBeacon|ServiceClient|getRpcBaseUrl|trackEvent|umami|analytics/i, file);
     }

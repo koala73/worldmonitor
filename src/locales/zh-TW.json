@@ -2122,7 +2122,14 @@
     "map": {
       "showMap": "顯示地圖",
       "hideMap": "隱藏地圖",
-      "clearTrails": "清除軌跡"
+      "clearTrails": "清除軌跡",
+      "locate": "顯示我的位置"
+    },
+    "mapLocate": {
+      "locating": "正在定位…",
+      "denied": "位置存取被拒絕。請使用搜尋查詢地點。",
+      "unavailable": "未找到位置。請使用搜尋查詢地點。",
+      "noCountry": "您所在位置沒有國家。請使用搜尋查詢地點。"
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>網際網路中斷</strong> 來自全球網路監測的即時網際網路中斷、DDoS 攻擊和流量異常：<ul><li><strong>中斷</strong>：按國家統計的 BGP 檢測連線故障</li><li><strong>DDoS</strong>：按協議和攻擊向量的流量攻擊報告</li><li><strong>異常</strong>：來自 Cloudflare Radar 的異常流量模式</li></ul>",
@@ -3200,6 +3207,19 @@
         "latestPass": "最近 ICESat-2 過境 {{date}}",
         "sparkline": "36 個月水位，季節基線為虛線",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC)。來自帶日期過境的光達水面高度，並非即時讀數或庫容。"
+      },
+      "water": {
+        "heading": "{{name}}的水體",
+        "level": "光達水位",
+        "extent": "雷達水域面積",
+        "extentValue": "{{date}} 開闊水面 {{percent}}%（{{area}} km²）",
+        "extentChange": "同一軌道自 {{date}} 以來變化 {{delta}} 個百分點",
+        "extentNoComparison": "同一軌道沒有更早的讀數可供比較",
+        "extentNone": "暫無雷達讀數",
+        "unavailable": "載入失敗；重新開啟以重試",
+        "optical": "最新光學影像",
+        "opticalNone": "30 天內沒有光學影像",
+        "note": "每一行都是來自不同過境的帶日期測量值，而非即時讀數。雷達測量水庫核心區域內的開闊水面；被風吹皺的水面可能被識別為陸地。"
       }
     },
     "gridDisruptionClock": {
@@ -4475,7 +4495,8 @@
   "contextMenu": {
     "openCountryBrief": "開啟國家簡報",
     "copyCoordinates": "複製座標",
-    "satellitePasses": "經過此處的衛星"
+    "satellitePasses": "經過此處的衛星",
+    "imageryEvidenceHere": "此處的影像證據"
   },
   "shell": {
     "documentTitle": "World Monitor — 即時全球情報儀表板",
@@ -5176,6 +5197,7 @@
     "counts": {},
     "tier": {
       "checking": "正在檢查檔案庫",
+      "notInArchive": "檔案庫中無此影像",
       "confirmed": "已確認",
       "likely": "可能",
       "unmatchedImage": "無計算過境的影像",
@@ -5242,7 +5264,8 @@
       "metaSpot": "該點雲量",
       "metaScene": "場景雲量",
       "metaSun": "太陽高度",
-      "showCloudy": "包含多雲日期（{{count}}）"
+      "showCloudy": "包含多雲日期（{{count}}）",
+      "eventMark": "事件 {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5346,6 +5369,12 @@
       "count_other": "{{family}} 覆蓋範圍內有 {{count}} 個地點",
       "passes_other": "{{count}} 次過境"
     },
+    "siteSatellites": {
+      "heading": "此地點上空的跟蹤衛星 · 未來 {{hours}} 小時",
+      "none": "{{hours}} 小時內沒有跟蹤中的成像衛星覆蓋此地點。",
+      "notLoaded": "重新開啟地點以重試；衛星軌道根數未載入。",
+      "failed": "重新開啟地點以重試；過境計算失敗。"
+    },
     "sheet": {
       "heading": "影像證據",
       "window": "過去 {{days}} 天，未來 {{hours}} 小時",
@@ -5434,7 +5463,7 @@
     "privacy": {
       "line": "您的點位僅傳送到影象檔案庫。",
       "more": "詳情",
-      "body": "軌道過境時間在本裝置上計算。為了查詢影象，您的瀏覽器將該點位直接傳送到 Earth Search、Planetary Computer、NASA GIBS 和 EUMETSAT；WorldMonitor 不會收到它。輸入的地名將傳送到 WorldMonitor 和 OpenStreetMap Nominatim 進行定位。共享連結保留兩位小數（0.01°）。"
+      "body": "軌道過境時間在本裝置上計算。為了查詢影象，您的瀏覽器將該點位直接傳送到 Earth Search、Planetary Computer、NASA GIBS 和 EUMETSAT；WorldMonitor 不會收到它。在監測站點上，系統按站點 ID 向 WorldMonitor 請求該站點的每日記錄，而不是按您的點位。輸入的地名將傳送到 WorldMonitor 和 OpenStreetMap Nominatim 進行定位。共享連結保留兩位小數（0.01°）。"
     },
     "sources": {
       "heading": "資料來源 ({{count}})",
@@ -5456,6 +5485,7 @@
     "tile": {
       "failed": "場景載入失敗 · {{archive}}",
       "noPreview": "尚未釋出此場景的預覽",
+      "processing": "場景仍在處理中，請稍後再試。",
       "radar": "雷達"
     },
     "target": {
@@ -5469,6 +5499,13 @@
       "noImage": "未找到近期影像",
       "noPass": "72 小時內無過境",
       "openEvidence": "開啟證據",
+      "compareEvent": "前後對比",
+      "compareEventLocked": "前後對比 · Pro",
+      "compareSearching": "正在搜尋 {{date}} 前後的影像…",
+      "compareNoAfter": "{{date}} 之後尚無晴空影像。",
+      "compareNoAfterWindow": "{{date}} 之後 {{days}} 天內沒有晴空影像。",
+      "compareNoBefore": "存檔時段內沒有 {{date}} 之前的晴空影像。",
+      "compareFailed": "存檔搜尋失敗，請重試。",
       "imageAlt": "來自 {{source}} 的衛星檢視",
       "unavailable": "衛星影像載入失敗。",
       "fire": {
@@ -5491,6 +5528,23 @@
         "mosaicNoLayer": "此衛星沒有可用的每日合成圖。",
         "mosaicUnavailable": "每日合成圖載入失敗。",
         "mosaicAlt": "NASA GIBS {{source}} {{date}} 每日合成圖"
+      }
+    },
+    "site": {
+      "heading": "監測站點",
+      "loading": "正在載入站點的每日記錄…",
+      "failed": "站點的每日記錄未能載入；請重新開啟該點以重試。",
+      "stale": "此站點沒有當前的每日檢查記錄。",
+      "checked": "檢查時間",
+      "noPass": "沒有即將到來的過境記錄",
+      "list": {
+        "hotspot": "熱點",
+        "conflictZone": "衝突區",
+        "militaryBase": "軍事基地",
+        "nuclearFacility": "核設施",
+        "port": "港口",
+        "chokepoint": "咽喉要道",
+        "reservoir": "水庫"
       }
     }
   },

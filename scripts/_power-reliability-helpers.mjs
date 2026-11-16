@@ -23,26 +23,7 @@
 // "fresh" while the underlying WB data hadn't published a new year in
 // months.
 
-/**
- * Convert a year (number or numeric string like "2024") to end-of-year UTC ms.
- *
- * The WB indicator value labelled `"2024"` represents observations DURING
- * that calendar year, so the latest possible observation date is Dec 31.
- * End-of-year is the most defensible "newestItemAt" — it represents the
- * last possible date the report could be observing. Mirrors the
- * Sprint 3b end-of-period rationale.
- *
- * Returns null when input shape is unexpected — defensive against upstream
- * `record.date` parsing drift (WB API has been known to return null/empty
- * date for in-progress observations).
- *
- * @param {number|string} year
- */
-export function yearToEndOfYearMs(year) {
-  const n = typeof year === 'string' ? Number(year) : year;
-  if (!Number.isInteger(n) || n < 1900 || n > 9999) return null;
-  return Date.UTC(n, 11, 31, 23, 59, 59, 999);
-}
+import { yearToEndOfYearMs } from './_wb-country-dict-content-age-helpers.mjs';
 
 /**
  * Compute newest/oldest content timestamps from the per-country payload.

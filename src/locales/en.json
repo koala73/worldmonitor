@@ -2600,7 +2600,14 @@
     "map": {
       "showMap": "Show Map",
       "hideMap": "Hide Map",
-      "clearTrails": "Clear trails"
+      "clearTrails": "Clear trails",
+      "locate": "Show my location"
+    },
+    "mapLocate": {
+      "locating": "Locating…",
+      "denied": "Location access denied. Use Search to find a place.",
+      "unavailable": "Location not found. Use Search to find a place.",
+      "noCountry": "No country at your location. Use Search to find a place."
     },
     "climateNews": {
       "infoTooltip": "<strong>Climate News</strong> Latest environment and climate intelligence from Carbon Brief, UNEP, NASA, The Guardian, and other authoritative sources. Updated every 30 minutes.",
@@ -3387,6 +3394,19 @@
         "latestPass": "latest ICESat-2 pass {{date}}",
         "sparkline": "36-month water level; dashed line marks the seasonal baseline",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidar water-surface levels from dated passes, not live readings or storage volumes."
+      },
+      "water": {
+        "heading": "Water at {{name}}",
+        "level": "Lidar level",
+        "extent": "Radar water extent",
+        "extentValue": "{{percent}}% open water ({{area}} km²) on {{date}}",
+        "extentChange": "{{delta}} points since {{date}} on the same orbit",
+        "extentNoComparison": "No earlier reading on the same orbit to compare",
+        "extentNone": "No radar reading yet",
+        "unavailable": "Couldn't load; reopen to retry",
+        "optical": "Latest optical image",
+        "opticalNone": "No optical image within 30 days",
+        "note": "Each row is a dated measurement from a separate pass, not a live reading. Radar reads open water in the reservoir's core box; wind-roughened water can read as land."
       }
     }
   },
@@ -4702,6 +4722,7 @@
       "mosaic": "mosaic",
       "upcoming": "upcoming",
       "checking": "checking archive",
+      "notInArchive": "not in archive",
       "unmatchedImage": "image without computed pass",
       "weatherFrame": "weather frame",
       "unavailable": "unavailable"
@@ -4778,7 +4799,7 @@
     "privacy": {
       "line": "Your point goes only to the image archives.",
       "more": "Details",
-      "body": "Passes are computed on this device. To find images, your browser sends the point straight to Earth Search, Planetary Computer, NASA GIBS and EUMETSAT; WorldMonitor does not receive it. A typed place name goes to WorldMonitor and OpenStreetMap Nominatim to be found. Shared links keep two decimals (0.01°)."
+      "body": "Passes are computed on this device. To find images, your browser sends the point straight to Earth Search, Planetary Computer, NASA GIBS and EUMETSAT; WorldMonitor does not receive it. On a monitored site, WorldMonitor is asked for that site's daily record by the site's ID, not your point. A typed place name goes to WorldMonitor and OpenStreetMap Nominatim to be found. Shared links keep two decimals (0.01°)."
     },
     "sources": {
       "heading": "Sources ({{count}})",
@@ -4800,6 +4821,7 @@
     "tile": {
       "failed": "Scene did not load · {{archive}}",
       "noPreview": "No preview published for this scene yet",
+      "processing": "Scene still processing. Try again later.",
       "radar": "radar"
     },
     "satelliteSites": {
@@ -4843,6 +4865,12 @@
         }
       }
     },
+    "siteSatellites": {
+      "heading": "Tracked satellites over this site · next {{hours}} h",
+      "none": "No tracked imaging satellite covers this site within {{hours}} h.",
+      "notLoaded": "Reopen the site to retry; satellite orbit elements did not load.",
+      "failed": "Reopen the site to retry; the pass projection failed."
+    },
     "viewer": {
       "open": "Open scene: {{image}}",
       "imageAlt": "{{name}} scene, {{time}}",
@@ -4870,7 +4898,8 @@
       "metaSpot": "Cloud at point",
       "metaScene": "Scene cloud",
       "metaSun": "Sun elev.",
-      "showCloudy": "Include cloudy dates ({{count}})"
+      "showCloudy": "Include cloudy dates ({{count}})",
+      "eventMark": "Event {{date}}"
     },
     "search": {
       "label": "Place or coordinates",
@@ -4943,6 +4972,13 @@
       "noImage": "No recent image found",
       "noPass": "No pass due within 72 hours",
       "openEvidence": "Open evidence",
+      "compareEvent": "Before / after",
+      "compareEventLocked": "Before / after · Pro",
+      "compareSearching": "Searching scenes either side of {{date}}…",
+      "compareNoAfter": "No clear scene since {{date}} yet.",
+      "compareNoAfterWindow": "No clear scene in the {{days}} days after {{date}}.",
+      "compareNoBefore": "No clear scene before {{date}} in the archive window.",
+      "compareFailed": "Archive search failed. Try again.",
       "imageAlt": "Satellite view from {{source}}",
       "unavailable": "Satellite imagery did not load.",
       "fire": {
@@ -4966,12 +5002,30 @@
         "mosaicUnavailable": "The daily mosaic did not load.",
         "mosaicAlt": "NASA GIBS {{source}} daily mosaic for {{date}}"
       }
+    },
+    "site": {
+      "heading": "Monitored site",
+      "loading": "Loading the site's daily record…",
+      "failed": "The site's daily record did not load; reopen the point to retry.",
+      "stale": "No current daily check on record for this site.",
+      "checked": "Checked",
+      "noPass": "No upcoming pass on record",
+      "list": {
+        "hotspot": "hotspot",
+        "conflictZone": "conflict zone",
+        "militaryBase": "military base",
+        "nuclearFacility": "nuclear facility",
+        "port": "port",
+        "chokepoint": "chokepoint",
+        "reservoir": "reservoir"
+      }
     }
   },
   "contextMenu": {
     "openCountryBrief": "Open Country Brief",
     "copyCoordinates": "Copy Coordinates",
-    "satellitePasses": "Satellite passes here"
+    "satellitePasses": "Satellite passes here",
+    "imageryEvidenceHere": "Imagery evidence here"
   },
   "auth": {
     "signIn": "Sign In",

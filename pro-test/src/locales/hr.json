@@ -133,7 +133,7 @@
     "deliveryLabel": "Odaberite kako obavještajni uvidi dolaze do vas",
     "supplyChainLab": "Laboratorij za stres u lancu opskrbe",
     "supplyChainLabDesc": "Simulirajte šok troškova u zemljama i sektorima. Rangujte ranjivost roba prema ovisnosti o uskim grlima. Pratite koncentraciju od rudnika do rafinerije i divergenciju premije SGE–COMEX — seriju koja se mijenja prije nego što se vijest pojavi.",
-    "roadmapNote": "Na planu: orbitalno nadziranje, duža povijest, premium kartografske slojeve."
+    "roadmapNote": "Na planu razvoja: duža povijest, premium kartografski slojevi."
   },
   "apiSection": {
     "apiTier": "API RAZINA",

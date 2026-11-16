@@ -62,6 +62,7 @@ async function fixture(options: {
   href?: string;
   responses?: Response[];
   onGetToken?: (state: { user: unknown }) => void;
+  createdAt?: Date;
 }) {
   mock.method(console, 'error', () => {});
   mock.timers.enable({ apis: ['setTimeout'] });
@@ -69,14 +70,16 @@ async function fixture(options: {
   browser = new Window({ url: href });
   const state = {
     user: options.browserUser
-      ? { id: options.browserUser, primaryEmailAddress: { emailAddress: 'b@example.com' } }
+      ? { id: options.browserUser, primaryEmailAddress: { emailAddress: 'b@example.com' }, createdAt: options.createdAt }
       : null,
   };
   const navigations: string[] = [];
   const signIns: Array<{ afterSignInUrl?: string }> = [];
+  const signUps: Array<{ afterSignInUrl?: string }> = [];
   const bodies: Array<Record<string, unknown>> = [];
   let signOuts = 0;
   const replacedUrls: string[] = [];
+  const analyticsEvents: Array<{ event: string; data?: Record<string, unknown> }> = [];
   const globals: Record<string, unknown> = {
     document: browser.document,
     requestAnimationFrame: (callback: () => void) => { callback(); return 1; },
@@ -92,7 +95,7 @@ async function fixture(options: {
       },
       history: { replaceState: (_s: unknown, _t: string, url: string) => { replacedUrls.push(url); } },
       sessionStorage: browser.sessionStorage,
-      umami: { track() {} },
+      umami: { track: (event: string, data?: Record<string, unknown>) => { analyticsEvents.push({ event, data }); } },
       setTimeout: (...args: Parameters<typeof setTimeout>) => setTimeout(...args),
       clearTimeout: (id: ReturnType<typeof setTimeout>) => clearTimeout(id),
       setInterval: browser.setInterval.bind(browser), clearInterval: browser.clearInterval.bind(browser),
@@ -105,6 +108,7 @@ async function fixture(options: {
       get user() { return state.user; },
       session: { getToken: async () => { options.onGetToken?.(state); return 'synthetic-token'; } },
       openSignIn: (intent: { afterSignInUrl?: string }) => { signIns.push(intent); },
+      openSignUp: (intent: { afterSignInUrl?: string }) => { signUps.push(intent); },
       // Clerk navigates to its after-sign-out URL unless given a callback.
       signOut: async (callback?: () => void) => {
         signOuts++;
@@ -119,7 +123,7 @@ async function fixture(options: {
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   }
   const checkout = await import(`${moduleUrl}#${Math.random()}`);
-  return { checkout, navigations, signIns, bodies, signOuts: () => signOuts, state, replacedUrls };
+  return { checkout, navigations, signIns, signUps, bodies, signOuts: () => signOuts, state, replacedUrls, analyticsEvents };
 }
 
 const dialog = () => document.querySelector('[role="dialog"]');
@@ -158,6 +162,7 @@ it('switches to the desktop account and resumes the same checkout after sign-in'
   assert.equal(f.signOuts(), 1);
   assert.deepEqual(f.navigations, [], 'sign-out must not navigate away from /pro before sign-in opens');
   assert.equal(f.signIns.length, 1);
+  assert.deepEqual(f.signUps, [], 'switching to an existing desktop account is a sign-in, not a sign-up');
   const resume = new URL(f.signIns[0]!.afterSignInUrl!);
   assert.equal(resume.searchParams.get('wm_checkout_product'), 'synthetic-product');
   assert.equal(resume.searchParams.get('wm_checkout_handoff'), 'desktop');
@@ -194,11 +199,14 @@ it('keeps the old behaviour for a handoff that names no desktop account', async 
   assert.match(String(f.bodies[0]!.returnUrl), /wm_src=desktop/);
 });
 
-it('carries the desktop account through the sign-in detour of a signed-out browser', async () => {
+it('carries the desktop account through the auth detour of a signed-out browser', async () => {
   const f = await fixture({ browserUser: null });
-  assert.equal(await f.checkout.startCheckout('synthetic-product', {
+  const attempt = f.checkout.startCheckout('synthetic-product', {
     desktopHandoff: { account: digest(DESKTOP_USER) },
-  }), false);
+  });
+  await waitFor(() => dialog()?.id === 'wm-pro-auth-form-dialog', 'the sign-up or sign-in chooser opens');
+  button(/sign in/i)?.click();
+  assert.equal(await attempt, false);
   const resume = new URL(f.signIns[0]!.afterSignInUrl!);
   assert.equal(resume.searchParams.get('wm_checkout_account'), digest(DESKTOP_USER));
 });
@@ -330,3 +338,21 @@ it('checks the account again when another tab switches it while checkout fetches
   await waitFor(() => f.bodies.length === 1, 'checkout continues once the new account is confirmed');
   assert.doesNotMatch(String(f.bodies[0]!.returnUrl), /wm_src=desktop/);
 });
+
+for (const [name, createdAt, expected] of [
+  ['an account created a minute ago', new Date(Date.now() - 60_000), true],
+  ['an account created a day ago', new Date(Date.now() - 86_400_000), false],
+  ['an account with no creation time', undefined, false],
+] as const) {
+  it(`marks the resumed checkout newAccount:${expected} for ${name}`, async () => {
+    const f = await fixture({
+      browserUser: BROWSER_USER,
+      createdAt,
+      href: 'https://www.worldmonitor.app/pro?wm_checkout_product=synthetic-product#pricing',
+    });
+    assert.equal(await f.checkout.tryResumeCheckoutFromUrl(), true);
+    const resume = f.analyticsEvents.find((item) => item.event === 'checkout-start');
+    assert.equal(resume?.data?.surface, 'pro-resume');
+    assert.equal(resume?.data?.newAccount, expected);
+  });
+}

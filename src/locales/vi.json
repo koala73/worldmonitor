@@ -2122,7 +2122,14 @@
     "map": {
       "showMap": "Hiển thị bản đồ",
       "hideMap": "Ẩn bản đồ",
-      "clearTrails": "Xóa dấu vết"
+      "clearTrails": "Xóa dấu vết",
+      "locate": "Hiển thị vị trí của tôi"
+    },
+    "mapLocate": {
+      "locating": "Đang định vị…",
+      "denied": "Quyền truy cập vị trí bị từ chối. Dùng Tìm kiếm để tìm địa điểm.",
+      "unavailable": "Không tìm thấy vị trí. Dùng Tìm kiếm để tìm địa điểm.",
+      "noCountry": "Không có quốc gia tại vị trí của bạn. Dùng Tìm kiếm để tìm địa điểm."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Gián đoạn Internet</strong> Cắt internet, tấn công DDoS và bất thường lưu lượng thời gian thực từ giám sát mạng toàn cầu:<ul><li><strong>Cắt mạng</strong>: Lỗi kết nối BGP theo quốc gia</li><li><strong>DDoS</strong>: Báo cáo tấn công thể tích theo giao thức và vector</li><li><strong>Bất thường</strong>: Mẫu lưu lượng bất thường từ Cloudflare Radar</li></ul>",
@@ -3200,6 +3207,19 @@
         "latestPass": "lượt ICESat-2 gần nhất {{date}}",
         "sparkline": "Mực nước 36 tháng, đường cơ sở theo mùa là nét đứt",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Mực mặt nước bằng lidar từ các lượt có ngày, không phải số đo trực tiếp hay dung tích."
+      },
+      "water": {
+        "heading": "Nước tại {{name}}",
+        "level": "Mực nước lidar",
+        "extent": "Diện tích nước theo radar",
+        "extentValue": "{{percent}}% mặt nước mở ({{area}} km²) vào {{date}}",
+        "extentChange": "{{delta}} điểm kể từ {{date}} trên cùng quỹ đạo",
+        "extentNoComparison": "Không có số đo trước đó trên cùng quỹ đạo để so sánh",
+        "extentNone": "Chưa có số đo radar",
+        "unavailable": "Không tải được; mở lại để thử lại",
+        "optical": "Ảnh quang học mới nhất",
+        "opticalNone": "Không có ảnh quang học trong vòng 30 ngày",
+        "note": "Mỗi hàng là một số đo có ghi ngày từ một lần bay qua riêng, không phải số đọc trực tiếp. Radar đo mặt nước mở trong vùng lõi của hồ chứa; mặt nước gợn sóng do gió có thể bị đọc thành đất liền."
       }
     },
     "gridDisruptionClock": {
@@ -4475,7 +4495,8 @@
   "contextMenu": {
     "openCountryBrief": "Mở tổng quan quốc gia",
     "copyCoordinates": "Sao chép tọa độ",
-    "satellitePasses": "Vệ tinh bay qua đây"
+    "satellitePasses": "Vệ tinh bay qua đây",
+    "imageryEvidenceHere": "Bằng chứng ảnh vệ tinh tại đây"
   },
   "shell": {
     "documentTitle": "World Monitor — Bảng điều khiển tình báo toàn cầu theo thời gian thực",
@@ -5176,6 +5197,7 @@
     "counts": {},
     "tier": {
       "checking": "đang kiểm tra kho",
+      "notInArchive": "không có trong kho",
       "confirmed": "đã xác nhận",
       "likely": "có khả năng",
       "unmatchedImage": "ảnh không có lượt bay qua đã tính",
@@ -5242,7 +5264,8 @@
       "metaSpot": "Mây tại điểm",
       "metaScene": "Mây của cảnh",
       "metaSun": "Độ cao Mặt Trời",
-      "showCloudy": "Bao gồm ngày có mây ({{count}})"
+      "showCloudy": "Bao gồm ngày có mây ({{count}})",
+      "eventMark": "Sự kiện {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5346,6 +5369,12 @@
       "count_other": "{{count}} địa điểm trong vùng quan sát của {{family}}",
       "passes_other": "{{count}} lượt bay qua"
     },
+    "siteSatellites": {
+      "heading": "Vệ tinh được theo dõi trên địa điểm này · {{hours}} giờ tới",
+      "none": "Không có vệ tinh chụp ảnh được theo dõi nào bao phủ địa điểm này trong {{hours}} giờ.",
+      "notLoaded": "Mở lại địa điểm để thử lại; không tải được các phần tử quỹ đạo của vệ tinh.",
+      "failed": "Mở lại địa điểm để thử lại; tính toán lượt bay qua thất bại."
+    },
     "sheet": {
       "heading": "Bằng chứng ảnh vệ tinh",
       "window": "{{days}} ngày qua, {{hours}} h tới",
@@ -5434,7 +5463,7 @@
     "privacy": {
       "line": "Điểm của bạn chỉ được gửi đến kho lưu trữ ảnh.",
       "more": "Chi tiết",
-      "body": "Các lượt bay qua được tính trên thiết bị này. Để tìm ảnh, trình duyệt của bạn gửi điểm trực tiếp đến Earth Search, Planetary Computer, NASA GIBS và EUMETSAT; WorldMonitor không nhận được điểm này. Tên địa điểm bạn nhập được gửi đến WorldMonitor và OpenStreetMap Nominatim để tìm kiếm. Liên kết chia sẻ giữ hai chữ số thập phân (0,01°)."
+      "body": "Các lượt bay qua được tính trên thiết bị này. Để tìm ảnh, trình duyệt của bạn gửi điểm trực tiếp đến Earth Search, Planetary Computer, NASA GIBS và EUMETSAT; WorldMonitor không nhận được điểm này. Tại một địa điểm được giám sát, WorldMonitor được yêu cầu bản ghi hằng ngày của địa điểm đó theo ID của địa điểm, không phải điểm của bạn. Tên địa điểm bạn nhập được gửi đến WorldMonitor và OpenStreetMap Nominatim để tìm kiếm. Liên kết chia sẻ giữ hai chữ số thập phân (0,01°)."
     },
     "sources": {
       "heading": "Nguồn ({{count}})",
@@ -5456,6 +5485,7 @@
     "tile": {
       "failed": "Cảnh không tải được · {{archive}}",
       "noPreview": "Chưa công bố bản xem trước cho cảnh này",
+      "processing": "Cảnh vẫn đang được xử lý. Hãy thử lại sau.",
       "radar": "radar"
     },
     "target": {
@@ -5469,6 +5499,13 @@
       "noImage": "Không tìm thấy ảnh gần đây",
       "noPass": "Không có lượt bay qua trong 72 giờ",
       "openEvidence": "Mở bằng chứng",
+      "compareEvent": "Trước / sau",
+      "compareEventLocked": "Trước / sau · Pro",
+      "compareSearching": "Đang tìm ảnh trước và sau {{date}}…",
+      "compareNoAfter": "Chưa có ảnh rõ nào kể từ {{date}}.",
+      "compareNoAfterWindow": "Không có ảnh rõ nào trong {{days}} ngày sau {{date}}.",
+      "compareNoBefore": "Không có ảnh rõ trước {{date}} trong khoảng lưu trữ.",
+      "compareFailed": "Tìm kiếm kho lưu trữ thất bại. Hãy thử lại.",
       "imageAlt": "Ảnh vệ tinh từ {{source}}",
       "unavailable": "Không tải được ảnh vệ tinh.",
       "fire": {
@@ -5491,6 +5528,23 @@
         "mosaicNoLayer": "Không có ảnh ghép hàng ngày cho vệ tinh này.",
         "mosaicUnavailable": "Ảnh ghép hàng ngày không tải được.",
         "mosaicAlt": "Ảnh ghép hàng ngày NASA GIBS {{source}} cho {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Địa điểm được giám sát",
+      "loading": "Đang tải bản ghi hằng ngày của địa điểm…",
+      "failed": "Không tải được bản ghi hằng ngày của địa điểm; hãy mở lại điểm để thử lại.",
+      "stale": "Không có lần kiểm tra hằng ngày hiện tại cho địa điểm này.",
+      "checked": "Đã kiểm tra",
+      "noPass": "Không có lượt bay qua sắp tới trong bản ghi",
+      "list": {
+        "hotspot": "điểm nóng",
+        "conflictZone": "vùng xung đột",
+        "militaryBase": "căn cứ quân sự",
+        "nuclearFacility": "cơ sở hạt nhân",
+        "port": "cảng",
+        "chokepoint": "eo biển",
+        "reservoir": "hồ chứa"
       }
     }
   },

@@ -219,6 +219,7 @@ export class MapContainer {
   private useDeckGL: boolean;
   private useGlobe: boolean;
   private readonly chrome: boolean;
+  private mapControl: HTMLElement | null = null;
   private readonly mapLibreWorkerUrl: string | undefined;
   private readonly svgLayerToggleGuard: NonNullable<MapComponentOptions['canToggleLayer']>;
   private readonly isFreeTierFallbackActive: (() => boolean) | null;
@@ -890,6 +891,7 @@ export class MapContainer {
     if (this.cachedOnHotspotClicked) this.onHotspotClicked(this.cachedOnHotspotClicked);
     if (this.cachedOnAircraftPositionsUpdate) this.setOnAircraftPositionsUpdate(this.cachedOnAircraftPositionsUpdate);
     if (this.cachedOnMapContextMenu) this.onMapContextMenu(this.cachedOnMapContextMenu);
+    this.mountMapControl();
     if (this.escalationGettersRequested) this.applyEscalationGetters();
 
     // 2. Re-push all cached data
@@ -1006,6 +1008,11 @@ export class MapContainer {
 
   private markHumanViewportInteraction(): void {
     this.humanViewportInteractionToken += 1;
+  }
+
+  /** False once a later programmatic move (search, panel link, agent) has superseded the one that returned `viewportActionToken`. */
+  public isViewportActionCurrent(viewportActionToken: number): boolean {
+    return viewportActionToken === this.viewportActionToken;
   }
 
   /** Resolves after the current programmatic viewport transition is visible. */
@@ -1947,6 +1954,19 @@ export class MapContainer {
     if (ORBITAL_WATCH_ENABLED) this.svgMap?.setOnMapContextMenu(callback);
   }
 
+  /** Puts a control below the zoom buttons of whichever renderer is active, across renderer switches. */
+  public addMapControl(el: HTMLElement): void {
+    if (!this.chrome) return;
+    this.mapControl = el;
+    this.mountMapControl();
+  }
+
+  private mountMapControl(): void {
+    if (!this.mapControl) return;
+    const renderer = this.useGlobe ? this.globeMap : this.useDeckGL ? this.deckGLMap : this.svgMap;
+    renderer?.mountMapControl(this.mapControl);
+  }
+
   public fitCountry(code: string): void {
     if (this.useGlobe) { this.globeMap?.fitCountry(code); return; }
     if (this.useDeckGL) {
@@ -2184,11 +2204,8 @@ export class MapContainer {
     return this.useDeckGL;
   }
 
-  public isMobileMode(): boolean {
-    return this.isMobile;
-  }
-
   public destroy(): void {
+    this.mapControl = null;
     this.emergencyLayer.destroy();
     this.notamAirspaceLayer.destroy();
     this.destroyed = true;

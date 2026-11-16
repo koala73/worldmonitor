@@ -32,6 +32,7 @@ import {
   orderTargets,
   reservoirTargets,
   statisticsQuery,
+  waterExtentSummary,
 } from './_orbital-water-extent.mjs';
 
 loadEnvFile(import.meta.url);
@@ -39,6 +40,8 @@ loadEnvFile(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export const ORBITAL_WATER_EXTENT_KEY = 'orbital:water-extent:v1';
+/** Newest reading per reservoir, read by the water card (get-watched-site-imagery). */
+export const ORBITAL_WATER_EXTENT_LATEST_KEY = 'orbital:water-extent:latest:v1';
 export const ORBITAL_WATER_EXTENT_ACTIVATION_KEY = 'seed-activated:orbital:water-extent';
 export const WATCHLIST_PATH = join(__dirname, 'data', 'strategic-reservoirs.json');
 export const STATISTICS_URL = 'https://planetarycomputer.microsoft.com/api/data/v1/item/statistics';
@@ -205,6 +208,7 @@ export function buildSeedOptions(watchlistSize = loadWatchlist().length) {
     sourceVersion: 'planetary-computer-sentinel-1-rtc-vv-18db',
     schemaVersion: WATER_EXTENT_SCHEMA,
     maxStaleMin: MAX_STALE_MIN,
+    extraKeys: [{ key: ORBITAL_WATER_EXTENT_LATEST_KEY, transform: waterExtentSummary, ttl: TTL_SECONDS }],
     fetchPhaseTimeoutMs: RUN_BUDGET_MS + 60_000,
     lockTtlMs: RUN_BUDGET_MS + 3 * 60_000,
     afterFreshness: async () => {

@@ -100,8 +100,10 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('site read', read.pathname + read.search);
 
   await row.locator('[data-orbital-open-evidence]').click();
-  await expectVisible('.orbital-watch-sheet');
-  log('sheet place', await page.locator('.orbital-watch-sheet .ow-place').innerText().catch(() => ''));
+  await expectVisible('.imagery-evidence-sheet');
+  const sheetPlace = await page.locator('.imagery-evidence-sheet .ies-place').innerText();
+  log('sheet place', sheetPlace);
+  if (!sheetPlace.trim()) throw new Error('the evidence sheet opened with no place');
   await page.waitForTimeout(1500);
   await shot(`evidence-${mobile ? 'mobile' : 'desktop'}-${theme}`);
 

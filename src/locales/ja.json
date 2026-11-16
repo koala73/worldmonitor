@@ -2122,7 +2122,14 @@
     "map": {
       "showMap": "地図を表示",
       "hideMap": "地図を非表示",
-      "clearTrails": "トレイルをクリア"
+      "clearTrails": "トレイルをクリア",
+      "locate": "現在地を表示"
+    },
+    "mapLocate": {
+      "locating": "現在地を取得中…",
+      "denied": "位置情報へのアクセスが拒否されました。検索で場所を探してください。",
+      "unavailable": "現在地が見つかりません。検索で場所を探してください。",
+      "noCountry": "現在地に国がありません。検索で場所を探してください。"
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>インターネット障害</strong> 世界のネットワーク監視によるリアルタイムのインターネット障害、DDoS 攻撃、トラフィック異常:<ul><li><strong>障害</strong>: BGP で検出された国別の接続障害</li><li><strong>DDoS</strong>: プロトコル・ベクトル別の大量攻撃レポート</li><li><strong>異常</strong>: Cloudflare Radar による異常なトラフィックパターン</li></ul>",
@@ -3200,6 +3207,19 @@
         "latestPass": "最新の ICESat-2 通過 {{date}}",
         "sparkline": "36か月の水位（季節基準は破線）",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC)。日付付き通過のライダー水面高で、リアルタイム値や貯水量ではありません。"
+      },
+      "water": {
+        "heading": "{{name}}の水",
+        "level": "ライダー水位",
+        "extent": "レーダー水域面積",
+        "extentValue": "{{date}}時点で開水面 {{percent}}%（{{area}} km²）",
+        "extentChange": "同じ軌道の{{date}}から{{delta}}ポイント",
+        "extentNoComparison": "比較できる同じ軌道の過去の観測はありません",
+        "extentNone": "レーダー観測はまだありません",
+        "unavailable": "読み込めませんでした。開き直して再試行してください",
+        "optical": "最新の光学画像",
+        "opticalNone": "30日以内の光学画像はありません",
+        "note": "各行は別々の通過による日付付きの測定値で、リアルタイムの値ではありません。レーダーは貯水池の中心区域の開水面を測定します。風で波立った水面は陸地と判定されることがあります。"
       }
     },
     "gridDisruptionClock": {
@@ -4475,7 +4495,8 @@
   "contextMenu": {
     "openCountryBrief": "国の概要を開く",
     "copyCoordinates": "座標をコピー",
-    "satellitePasses": "この地点を通過した衛星"
+    "satellitePasses": "この地点を通過した衛星",
+    "imageryEvidenceHere": "この地点の衛星画像の証拠"
   },
   "shell": {
     "documentTitle": "ワールドモニター — リアルタイム グローバルインテリジェンスダッシュボード",
@@ -5176,6 +5197,7 @@
     "counts": {},
     "tier": {
       "checking": "アーカイブ確認中",
+      "notInArchive": "アーカイブになし",
       "confirmed": "確認済み",
       "likely": "可能性が高い",
       "unmatchedImage": "計算済みパスのない画像",
@@ -5242,7 +5264,8 @@
       "metaSpot": "地点の雲",
       "metaScene": "シーンの雲",
       "metaSun": "太陽仰角",
-      "showCloudy": "曇りの日を含める ({{count}})"
+      "showCloudy": "曇りの日を含める ({{count}})",
+      "eventMark": "イベント {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5346,6 +5369,12 @@
       "count_other": "{{family}}の観測範囲内に{{count}}地点",
       "passes_other": "{{count}}回の通過"
     },
+    "siteSatellites": {
+      "heading": "この地点上空の追跡衛星 · 今後{{hours}}時間",
+      "none": "{{hours}}時間以内にこの地点をカバーする追跡中の撮像衛星はありません。",
+      "notLoaded": "再試行するには地点を開き直してください。衛星の軌道要素を読み込めませんでした。",
+      "failed": "再試行するには地点を開き直してください。通過の計算に失敗しました。"
+    },
     "sheet": {
       "heading": "衛星画像の証拠",
       "window": "過去{{days}}日間、今後{{hours}}時間",
@@ -5434,7 +5463,7 @@
     "privacy": {
       "line": "ご指定のポイントはイメージアーカイブのみに送信されます。",
       "more": "詳細",
-      "body": "パスはこのデバイス上で計算されます。イメージを検索するとき、ブラウザはそのポイントを Earth Search、Planetary Computer、NASA GIBS、EUMETSAT に直接送信します。WorldMonitor は受信しません。入力された地名は WorldMonitor と OpenStreetMap Nominatim に送信され、検索されます。共有リンクは小数点以下2桁（0.01°）を保持します。"
+      "body": "パスはこのデバイス上で計算されます。イメージを検索するとき、ブラウザはそのポイントを Earth Search、Planetary Computer、NASA GIBS、EUMETSAT に直接送信します。WorldMonitor は受信しません。監視対象サイトでは、WorldMonitor にはそのサイトの日次記録をサイト ID で問い合わせ、ポイントは送信しません。入力された地名は WorldMonitor と OpenStreetMap Nominatim に送信され、検索されます。共有リンクは小数点以下2桁（0.01°）を保持します。"
     },
     "sources": {
       "heading": "ソース ({{count}})",
@@ -5456,6 +5485,7 @@
     "tile": {
       "failed": "シーン読み込み失敗 · {{archive}}",
       "noPreview": "このシーンのプレビューはまだ公開されていません",
+      "processing": "シーンはまだ処理中です。しばらくしてから再試行してください。",
       "radar": "レーダー"
     },
     "target": {
@@ -5469,6 +5499,13 @@
       "noImage": "最近の画像は見つかりません",
       "noPass": "72 時間以内に通過予定はありません",
       "openEvidence": "証拠を開く",
+      "compareEvent": "前後比較",
+      "compareEventLocked": "前後比較 · Pro",
+      "compareSearching": "{{date}} の前後のシーンを検索中…",
+      "compareNoAfter": "{{date}} 以降の晴天シーンはまだありません。",
+      "compareNoAfterWindow": "{{date}} から {{days}} 日以内の晴天シーンはありません。",
+      "compareNoBefore": "アーカイブ期間内に {{date}} より前の晴天シーンがありません。",
+      "compareFailed": "アーカイブ検索に失敗しました。再試行してください。",
       "imageAlt": "{{source}} による衛星画像",
       "unavailable": "衛星画像を読み込めませんでした。",
       "fire": {
@@ -5491,6 +5528,23 @@
         "mosaicNoLayer": "この衛星の日次モザイクは利用できません。",
         "mosaicUnavailable": "日次モザイクが読み込まれませんでした。",
         "mosaicAlt": "NASA GIBS {{source}} {{date}}の日次モザイク"
+      }
+    },
+    "site": {
+      "heading": "監視対象サイト",
+      "loading": "サイトの日次記録を読み込み中…",
+      "failed": "サイトの日次記録を読み込めませんでした。地点を開き直して再試行してください。",
+      "stale": "このサイトには現在の日次チェックの記録がありません。",
+      "checked": "確認日時",
+      "noPass": "予定されている通過の記録はありません",
+      "list": {
+        "hotspot": "ホットスポット",
+        "conflictZone": "紛争地域",
+        "militaryBase": "軍事基地",
+        "nuclearFacility": "核施設",
+        "port": "港湾",
+        "chokepoint": "海峡",
+        "reservoir": "貯水池"
       }
     }
   },

@@ -133,7 +133,7 @@
     "deliveryLabel": "选择情报如何找到您",
     "supplyChainLab": "供应链压力实验室",
     "supplyChainLabDesc": "对各国和行业进行成本冲击建模。按瓶颈依赖度对商品脆弱性排名。追踪矿山到炼油厂的浓度和上期所-COMEX 现货溢价差异 — 这是在头条新闻出现前就会变动的数据序列。",
-    "roadmapNote": "路线图中计划：卫星监测、更长历史数据、高级地图图层。"
+    "roadmapNote": "规划中：更长的历史记录、高级地图图层。"
   },
   "apiSection": {
     "apiTier": "API 等级",

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // Exercises the real layout, responsive relocation and existing click handler.
 test('dashboard names remain readable from tablet through desktop', async ({ page }) => {
@@ -25,13 +26,19 @@ test('dashboard names remain readable from tablet through desktop', async ({ pag
     await expect(switcher).toBeVisible();
     if (width > 1075) await expect(page.locator('.mission-preset-button')).toBeVisible();
     await expect(page.locator(width <= 980 ? '.dashboard-navigation-row .variant-switcher' : '.header-left .variant-switcher')).toHaveCount(1);
-    const labels = switcher.locator('.variant-label');
-    await expect(labels).toHaveCount(6);
-    for (const label of await labels.all()) {
-      await expect(label).toBeVisible();
-      await expect(label).toHaveCSS('opacity', '1');
-      expect(await label.evaluate(el => el.clientWidth >= el.scrollWidth)).toBe(true);
-    }
+    // One page read per poll covers every label: six labels, each visible at
+    // full opacity and not clipped. Per-label assertions made ~18 round trips
+    // per width, and on a CPU-bound CI runner the 29 widths ran past the
+    // test timeout.
+    await expect.poll(() => switcher.locator('.variant-label').evaluateAll(labels => labels.map(el => {
+      const box = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      return {
+        visible: box.width > 0 && box.height > 0 && style.visibility !== 'hidden',
+        opacity: style.opacity,
+        fits: el.clientWidth >= el.scrollWidth,
+      };
+    })), { message: `labels at ${width}px` }).toEqual(Array(6).fill({ visible: true, opacity: '1', fits: true }));
     const header = await page.locator('.header').evaluate(el => ({ width: el.clientWidth, content: el.scrollWidth }));
     expect(header.content).toBeLessThanOrEqual(header.width + 1);
     if (width <= 980) {
@@ -40,7 +47,7 @@ test('dashboard names remain readable from tablet through desktop', async ({ pag
       await expect(last).toBeInViewport();
     }
     if ([834, 940, 1440].includes(width)) {
-      await page.screenshot({ path: `test-results/dashboard-switcher-${width}.png` });
+      await evidenceScreenshot(page, { path: `test-results/dashboard-switcher-${width}.png` });
     }
   }
   await page.setViewportSize({ width: 1280, height: 900 });

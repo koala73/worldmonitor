@@ -505,6 +505,53 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/narrow-panel-overflow.spec.ts',
   'e2e/hormuz-chart-width.spec.ts',
   'e2e/population-exposure-legacy.spec.ts',
+  'e2e/a11y-landmarks-tablist.spec.ts',
+  'e2e/blocked-storage-services.spec.ts',
+  'e2e/brief-magazine.spec.ts',
+  'e2e/china-activity-nowcast-panel.spec.ts',
+  'e2e/circuit-breaker-persistence.spec.ts',
+  'e2e/collapsed-map-first-paint.spec.ts',
+  'e2e/correlation-panel-recovery.spec.ts',
+  'e2e/country-deep-dive-visibility.spec.ts',
+  'e2e/cross-source-signals-panel.spec.ts',
+  'e2e/cyber-network-popup.spec.ts',
+  'e2e/dashboard-cls.spec.ts',
+  'e2e/dashboard-switcher.spec.ts',
+  'e2e/dashboard-wide-layout.spec.ts',
+  'e2e/desktop-bottom-zone.spec.ts',
+  'e2e/displacement-panel-layout.spec.ts',
+  'e2e/energy-crisis-filters.spec.ts',
+  'e2e/feed-label-safety.spec.ts',
+  'e2e/gas-shock-sensitivity.spec.ts',
+  'e2e/geo-convergence-replay.spec.ts',
+  'e2e/giving-provenance.spec.ts',
+  'e2e/gold-refresh-timeout.spec.ts',
+  'e2e/grid-disruption-clock.spec.ts',
+  'e2e/header-cls.spec.ts',
+  'e2e/imd-hydration.spec.ts',
+  'e2e/imf-cache-recovery.spec.ts',
+  'e2e/insights-brief-readability.spec.ts',
+  'e2e/investments-panel.spec.ts',
+  'e2e/map-legend-disclosure.spec.ts',
+  'e2e/map-tooltip-external-values.spec.ts',
+  'e2e/mcp-webcam.spec.ts',
+  'e2e/mission-preview.spec.ts',
+  'e2e/news-context.spec.ts',
+  'e2e/news-panel-resize-hit-target.spec.ts',
+  'e2e/oil-price-freshness.spec.ts',
+  'e2e/panel-font-scaling.spec.ts',
+  'e2e/pinned-webcams.spec.ts',
+  'e2e/pro-activation.spec.ts',
+  'e2e/pro-banner-mobile.spec.ts',
+  'e2e/runtime-fetch.spec.ts',
+  'e2e/secondary-startup.spec.ts',
+  'e2e/service-status-cache-recovery.spec.ts',
+  'e2e/settings-phone-nav.spec.ts',
+  'e2e/settings-theme-contrast.spec.ts',
+  'e2e/stock-stored-coverage.spec.ts',
+  'e2e/ui-design-improvements.spec.ts',
+  'e2e/webcam-play-prompt.spec.ts',
+  'e2e/widget-sandbox.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [
@@ -3478,6 +3525,7 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
       'e2e/pro-hero-animation.spec.ts',
       'e2e/pro-hero-lcp.spec.ts',
       'e2e/pro-pricing-anchor.spec.ts',
+      'e2e/pro-pricing-cta-reach.spec.ts',
       'e2e/panel-gate-analytics.spec.ts',
       'e2e/welcome-nav-fit.spec.ts',
     ];
@@ -3511,5 +3559,47 @@ describe('Rust toolchain pin', () => {
       assert.match(String(toolchain), /^\d+\.\d+\.\d+$/, `${file} must pin an exact Rust release, not a channel like stable`);
     }
     assert.equal(new Set(pins.map((pin) => String(pin.toolchain))).size, 1, 'release and test builds must compile with one Rust release');
+  });
+});
+
+describe('evidence uploads never decide a test verdict', () => {
+  // Run 43094414605: every Playwright test in three smoke shards passed, then
+  // each job went red because the artifact service answered CreateArtifact
+  // with an HTML page. An upload carries evidence for a human, so its outage
+  // must not turn a passing job red. When the tests fail, their own step
+  // already fails the job. The screenshot gallery is the chrome-gallery job's
+  // product rather than evidence for another step, so losing it stays red.
+  const deliverables = new Set(['chrome-gallery: Upload screenshot gallery']);
+  type UploadStep = { name?: string; uses?: string; 'continue-on-error'?: unknown; parallel?: UploadStep[] };
+  const uploadsIn = (file: string) => {
+    const workflow = YAML.parse(read(resolve(workflowsDir, file))) as {
+      jobs: Record<string, { steps?: UploadStep[] }>;
+    };
+    // `parallel:` groups nest steps; an upload inside one must not escape.
+    const expand = (steps: UploadStep[]): UploadStep[] => steps.flatMap((step) => [step, ...expand(step.parallel ?? [])]);
+    return Object.entries(workflow.jobs).flatMap(([job, { steps = [] }]) =>
+      expand(steps)
+        .filter((step) => step.uses?.startsWith('actions/upload-artifact@'))
+        .map((step) => ({ id: `${job}: ${step.name ?? step.uses}`, step })),
+    );
+  };
+
+  for (const file of ['test.yml', 'e2e-visual.yml']) {
+    it(`${file}: every evidence upload continues on error`, () => {
+      const uploads = uploadsIn(file);
+      assert.ok(uploads.length > 0, `${file} must still upload test evidence`);
+      const strict = uploads
+        .filter(({ id, step }) => !deliverables.has(id) && step['continue-on-error'] !== true)
+        .map(({ id }) => id);
+      assert.deepEqual(strict, [], 'an upload outage would fail a job whose tests passed');
+    });
+  }
+
+  it('the screenshot gallery upload stays strict', () => {
+    const gallery = uploadsIn('e2e-visual.yml').filter(({ id }) => deliverables.has(id));
+    assert.equal(gallery.length, deliverables.size, 'the chrome-gallery job must still upload its gallery');
+    for (const { id, step } of gallery) {
+      assert.equal(step['continue-on-error'], undefined, `${id} is the job's product; losing it must fail the job`);
+    }
   });
 });

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 type LayerSnapshot = { id: string; dataCount: number };
 type OverlaySnapshot = {
@@ -215,8 +216,6 @@ const prepareVisualScenario = async (
 };
 
 test.describe('DeckGL map harness', () => {
-  test.describe.configure({ retries: 1 });
-
   test('serves requested runtime variant for this test run', async ({ page }) => {
     await waitForHarnessReady(page);
 
@@ -840,10 +839,10 @@ test('military bases retain the current viewport after reverse RPC completion', 
   await respond(current, 2);
   const count = () => page.evaluate(() => (window as HarnessWindow).__mapHarness!.getLayerDataCount('bases-layer'));
   await expect.poll(count).toBe(2);
-  await page.screenshot({ path: testInfo.outputPath('current-viewport-controlled-bases.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('current-viewport-controlled-bases.png') });
   await respond(first, 1);
   // Allow the older response and the next render frames to complete.
   await page.waitForTimeout(350);
   expect(await count()).toBe(2);
-  await page.screenshot({ path: testInfo.outputPath('after-older-response.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('after-older-response.png') });
 });

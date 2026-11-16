@@ -82,7 +82,7 @@
 .ies-thumb { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .ies-thumb-caption { font: 10px var(--font-mono); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ies-table { list-style: none; margin: 0; padding: 0; }
-.ies-row, .ies-event {
+.ies-row, .ies-event, .ies-static-row {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -106,13 +106,15 @@
 .ies-group + .ies-group { margin-top: 10px; }
 .ies-group-title { margin: 0 0 4px; font-weight: 500; }
 .ies-more { margin-top: 6px; }
+.ies-table > [hidden] { display: none; }
 .ies-alert { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; font-size: 12px; color: var(--text-secondary); }
 .ies-alert-cta { font: 11px var(--font-mono); color: var(--green-text, var(--green)); text-decoration: none; border: 1px solid var(--green); border-radius: 3px; padding: 4px 8px; white-space: nowrap; }
 .ies-footer { border-top: 1px solid var(--border); padding: 8px 16px; font-size: 11px; color: var(--text-muted); }
 .ies-privacy-row { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; min-width: 0; }
 .ies-privacy-line { flex: 1 1 auto; min-width: 0; max-width: 100%; margin: 0; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ies-privacy-more { flex: none; padding: 0; border: 0; background: none; color: var(--text-muted); cursor: pointer; font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; }
-.ies-sources summary { cursor: pointer; font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
+.ies-sources { padding: 10px 0 0; font-size: 11px; color: var(--text-muted); }
+.ies-sources summary { cursor: pointer; font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; }
 .ies-privacy-body { margin: 4px 0 0; }
 .ies-sources ul { margin: 4px 0; padding-left: 16px; }
 .ies-sources a, .ies-privacy a { color: var(--accent); }
@@ -204,7 +206,7 @@
   animation: ow-shimmer 1.4s linear infinite;
 }
 
-.ow-tile[data-state="failed"], .ow-tile[data-state="none"] { border-style: dashed; }
+.ow-tile[data-state="failed"], .ow-tile[data-state="processing"], .ow-tile[data-state="none"] { border-style: dashed; }
 
 .ow-tile[data-state="loaded"] { background: none; }
 
@@ -634,3 +636,6 @@
   .ies-slot[data-slot="timeline"] { overflow-x: auto; }
   .ies-slot[data-slot="timeline"] .ow-timeline { min-width: 640px; }
 }
+
+.ies-site-name { margin: 0; font-size: 12px; color: var(--text-secondary); }
+.ies-site-name strong { color: var(--text-primary); font-weight: 600; }

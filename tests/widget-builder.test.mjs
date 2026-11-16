@@ -2348,18 +2348,6 @@ describe('PRO widget — store and sanitizer', () => {
     );
   });
 
-  it('user identity migrates legacy wm-pro-key instead of reading localStorage directly', () => {
-    const identity = src('src/services/user-identity.ts');
-    assert.ok(
-      identity.includes('readLegacySessionKey') && identity.includes('migrateLegacyKeysToHttpOnlySession'),
-      'user-identity must route legacy wm-pro-key through the HttpOnly migration helper',
-    );
-    assert.ok(
-      !/localStorage\.getItem\(['"]wm-pro-key['"]/.test(identity),
-      'user-identity must not read wm-pro-key directly from localStorage',
-    );
-  });
-
   it('legacy wm-pro-html-{id} key remains supported for old PRO widgets', () => {
     assert.ok(
       store.includes('wm-pro-html-'),

@@ -95,7 +95,3 @@ export async function fetchCanadaAlerts(): Promise<CanadaAlert[]> {
     throw new Error('No Canada alerts data in bootstrap');
   }, []);
 }
-
-export function getCanadaAlertsStatus(): string {
-  return breaker.getStatus();
-}

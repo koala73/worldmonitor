@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
 import { FORECAST_ACCURACY_AUDIT_OVERRIDE } from '../shared/forecast-accuracy-audit';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // #8984: the four-column forecast row needs ~270px beside the title. The row
 // must lay out from the table's width, so every card keeps a readable title
@@ -103,7 +104,7 @@ test('forecast rows keep titles readable and data inside the row at every panel 
     await expect(page.locator(`${PANEL} a.fc-reliability`)).toHaveCount(FORECASTS.length, { timeout: 30_000 });
     const loaded = await measure(page);
     await page.locator(`${PANEL} .fc-prob-table`).evaluate((el) => el.scrollIntoView({ block: 'start' }));
-    await page.locator(PANEL).screenshot({ path: testInfo.outputPath(`forecast-rows-${size.width}${size.colSpan ? '-span2' : ''}.png`) });
+    await evidenceScreenshot(page.locator(PANEL), { path: testInfo.outputPath(`forecast-rows-${size.width}${size.colSpan ? '-span2' : ''}.png`) });
 
     const label = `${size.name} (table ${loaded.tableContent}px)`;
     modes.add(loaded.display);

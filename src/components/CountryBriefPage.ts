@@ -308,10 +308,6 @@ export class CountryBriefPage implements CountryBriefPanel {
     this.onShareStory = handler;
   }
 
-  public setExportImageHandler(handler: (code: string, name: string) => void): void {
-    this.onExportImage = handler;
-  }
-
   public showLoading(): void {
     this.currentCode = '__loading__';
     setTrustedHtml(this.overlay, trustedHtml(`

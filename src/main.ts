@@ -456,6 +456,16 @@ function shouldSuppressCspViolation(
       // Exact host + `.css` path, like the 6ppn rule; unpkg under script-src
       // still surfaces, which matters because it is a general npm CDN.
       if (url.protocol === 'https:' && url.hostname === 'unpkg.com' && cssFile.test(url.pathname)) return true;
+      // A Bloomberg page's own stylesheet set (its font service on bwbx.io, the
+      // corporate theme on bloomberg.com, the bbthat.com frontend), all blocked
+      // within one minute of one Safari 27.2 session: a page's <link> tags
+      // copied into ours by an extension. We load no Bloomberg stylesheet;
+      // bloomberg.com appears in src/ only as an HLS manifest, which these
+      // style-src rules do not touch (WORLDMONITOR-J0 round 8, every blocked
+      // URI since round 7 apart from one first-party maplibre sheet).
+      if (url.protocol === 'https:'
+          && (url.hostname === 'assets.bwbx.io' || url.hostname === 'www.bloomberg.com' || url.hostname === 'www.bbthat.com')
+          && cssFile.test(url.pathname)) return true;
     } catch { /* unparseable values fall through */ }
     // Extension bug: a literal unsubstituted `[email]` template placeholder as
     // the stylesheet URL. Not a parseable host; can never be first-party.
@@ -555,7 +565,6 @@ window.addEventListener('securitypolicyviolation', (e) => {
   });
 });
 
-import { debugGetCells, getCellCount } from '@/services/geo-convergence';
 import { initMetaTags } from '@/services/meta-tags';
 import { installFetchFailureAttribution } from '@/services/fetch-failure-attribution';
 import { installRuntimeFetchPatch, installWebApiRedirect } from '@/services/runtime';
@@ -567,7 +576,7 @@ import { applyDeviceTierClass } from '@/utils/device-tier';
 import { applyFont } from '@/services/font-settings';
 import { applyFontScale, FONT_SCALE_STORAGE_KEY } from '@/services/font-scale-settings';
 import { initAnalytics, rememberLandingUtm, trackContentHandoff } from '@/services/analytics';
-import { installChunkReloadGuard } from '@/bootstrap/chunk-reload';
+import { installChunkReloadGuard, readChunkModule } from '@/bootstrap/chunk-reload';
 import { initDebugBearRum } from '@/bootstrap/debugbear-rum';
 import { installStaleBundleCheck } from '@/bootstrap/stale-bundle-check';
 import { installBetaConsoleToggle } from '@/bootstrap/beta-console-toggle';
@@ -668,14 +677,20 @@ safeStorageRemove('wm-settings-open');
 // Both need i18n initialized so t() does not return undefined.
 const urlParams = new URLSearchParams(location.search);
 if (urlParams.get('settings') === '1') {
-  void Promise.all([import('./services/i18n'), import('./settings-window')]).then(
+  void Promise.all([
+    readChunkModule(import('./services/i18n')),
+    readChunkModule(import('./settings-window')),
+  ]).then(
     async ([i18n, m]) => {
       await i18n.initI18n();
       m.initSettingsWindow();
     }
   );
 } else if (urlParams.get('live-channels') === '1') {
-  void Promise.all([import('./services/i18n'), import('./live-channels-window')]).then(
+  void Promise.all([
+    readChunkModule(import('./services/i18n')),
+    readChunkModule(import('./live-channels-window')),
+  ]).then(
     async ([i18n, m]) => {
       await i18n.initI18n();
       m.initLiveChannelsWindow();
@@ -693,7 +708,7 @@ if (urlParams.get('settings') === '1') {
   });
   const webMcpController = registerWebMcpTools(bindings);
   // Import and constructor failures must reach the global startup error monitors.
-  void import('./App').then(({ App }) => {
+  void readChunkModule(import('./App')).then(({ App }) => {
     markLcpDebug('wm:boot:app-construct');
     const app = new App('app');
     resolveBindings(app.getWebMcpBindings());
@@ -730,12 +745,6 @@ if (urlParams.get('settings') === '1') {
     throw error;
   });
 }
-
-// Debug helpers for geo-convergence testing (remove in production)
-(window as unknown as Record<string, unknown>).geoDebug = {
-  cells: debugGetCells,
-  count: getCellCount,
-};
 
 installBetaConsoleToggle(window);
 

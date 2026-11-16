@@ -335,14 +335,6 @@
 }
 
 /* ==========================================================
-   Happy Download Banner — Rounded and warm
-   ========================================================== */
-[data-variant="happy"] .wm-dl-panel {
-  border-radius: 0 0 0 14px;
-  border-left-color: var(--green);
-}
-
-/* ==========================================================
    Happy Data Badges — Rounded pills
    ========================================================== */
 [data-variant="happy"] .panel-data-badge {

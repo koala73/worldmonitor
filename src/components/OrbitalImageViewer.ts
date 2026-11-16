@@ -1,14 +1,17 @@
 import type { GeoPoint } from '../../shared/orbital/pass-geometry.js';
-import type { LoadedArchiveImage } from '@/services/orbital/archive-image';
+import { ArchiveImageError, type LoadedArchiveImage } from '@/services/orbital/archive-image';
 import type { ArchiveFailure } from '@/services/orbital/archive-result';
 import type { ImagingProfileId } from '@/services/orbital/archive-stac';
 import type { DailyMosaicRow, GeostationaryRow } from '@/services/orbital/archive-gibs';
+import type { EventPair } from '@/services/orbital/event-imagery';
 import { DEFAULT_CROP_HALF_SIZE_KM } from '@/services/orbital/crop-url';
+import { isSceneStillProcessing } from '@/services/orbital/scene-processing';
 import { describePointCondition, type MatchedAcquisition, type OrbitalEvidence } from '@/services/orbital/match';
 import {
   CLEAR_LOOK_CLOUD_PCT,
   defaultCompareScene,
   isClearScene,
+  HISTORY_ARCHIVE,
   HISTORY_DAYS,
   searchSceneHistory,
   type DatedScene,
@@ -51,6 +54,10 @@ export interface ImageViewerSubject {
   historyProfile: ImagingProfileId | null;
   /** The place name, or null to show the rounded point. */
   place?: string | null;
+  /** Where the compare history window ends; `nowMs` when absent. Set when the window is anchored on an event. */
+  historyEndMs?: number;
+  /** The time of the map event the before/after is anchored on. */
+  eventMs?: number;
 }
 
 export interface ViewerDependencies {
@@ -137,6 +144,8 @@ export function scenesFromFrame(frame: GeostationaryRow): ViewerScene[] {
 
 type HistoryState =
   | { kind: 'none' }
+  /** The mission's earlier scenes are searched only once Compare is chosen. */
+  | { kind: 'idle' }
   | { kind: 'searching' }
   | { kind: 'failed'; failure: ArchiveFailure }
   | { kind: 'answered' };
@@ -204,11 +213,14 @@ export class OrbitalImageViewer {
   private showCloudy = false;
   private pickedCompareKey: string | null = null;
   private dividerPct = 50;
+  /** Set by the last render when the compare stage itself states the history outcome. */
+  private stageStatesHistory = false;
   /** Images loaded for painting, by archive URL, and those that failed, in this viewer. */
   private readonly painted = new Map<string, LoadedArchiveImage>();
   /** The archive URLs the last render shows; every other loaded image is released. */
   private readonly shownUrls = new Set<string>();
-  private readonly failedUrls = new Set<string>();
+  /** Why each failed image failed, when the archive said. */
+  private readonly failedUrls = new Map<string, ArchiveFailure | null>();
   private readonly pendingUrls = new Set<string>();
   private readonly deps: Required<ViewerDependencies>;
 
@@ -220,7 +232,7 @@ export class OrbitalImageViewer {
     };
     this.scenes = mergeScenes(subject.selected.collection, [subject.selected], subject.scenes);
     this.historyProfile = subject.selected.grid === 'north-up' ? subject.historyProfile : null;
-    this.history = this.historyProfile ? { kind: 'searching' } : { kind: 'none' };
+    this.history = this.historyProfile ? { kind: 'idle' } : { kind: 'none' };
     const titleId = 'orbital-image-viewer-title';
     this.body = h('div', { className: 'oiv-main' });
     this.dialog = h('section', { className: 'oiv-page oiv-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, tabindex: '-1' },
@@ -243,7 +255,7 @@ export class OrbitalImageViewer {
     document.body.appendChild(this.root);
     this.render();
     this.dialog.focus();
-    if (this.historyProfile) void this.loadHistory(this.historyProfile);
+    if (this.mode === 'change') this.ensureHistory();
   }
 
   get isOpen(): boolean {
@@ -261,6 +273,10 @@ export class OrbitalImageViewer {
     target?.focus({ preventScroll: true });
   }
 
+  private ensureHistory(): void {
+    if (this.historyProfile && this.history.kind === 'idle') void this.loadHistory(this.historyProfile);
+  }
+
   private async loadHistory(profileId: ImagingProfileId): Promise<void> {
     const { signal } = this.controller;
     this.history = { kind: 'searching' };
@@ -268,9 +284,11 @@ export class OrbitalImageViewer {
     let result: SceneHistory;
     try {
       await afterDebugBearRequestWindow(signal);
-      result = await this.deps.searchHistory(this.subject.point, profileId, this.subject.nowMs, { signal });
+      result = await this.deps.searchHistory(this.subject.point, profileId, this.subject.historyEndMs ?? this.subject.nowMs, { signal });
     } catch {
-      return;
+      if (signal.aborted) return;
+      // An unexpected throw would otherwise leave Compare searching forever with no retry.
+      result = { status: 'failed', failure: { archive: HISTORY_ARCHIVE[profileId], reason: 'invalid-response' } };
     }
     if (signal.aborted) return;
     if (result.status === 'failed') {
@@ -310,8 +328,8 @@ export class OrbitalImageViewer {
           if (signal.aborted) paint.release();
           else this.painted.set(url, paint);
         },
-        () => {
-          if (!signal.aborted) this.failedUrls.add(url);
+        (error: unknown) => {
+          if (!signal.aborted) this.failedUrls.set(url, error instanceof ArchiveImageError ? error.failure : null);
         },
       ).finally(() => {
         this.pendingUrls.delete(url);
@@ -330,16 +348,22 @@ export class OrbitalImageViewer {
     }
   }
 
-  /** Compare is offered only once a second scene of the collection exists, clear or hidden as cloudy. */
+  /**
+   * Compare is offered once a second scene of the collection exists, clear or hidden as cloudy, or while the
+   * mission's history has not answered yet. Once chosen it stays, so an empty or failed history says so in place.
+   */
   private get canCompare(): boolean {
     const { selected } = this.subject;
     return selected.grid === 'north-up' && !this.failedUrls.has(selected.imageUrl!)
-      && (this.compareCandidates.length > 0 || this.hiddenCloudyCount > 0);
+      && (this.compareCandidates.length > 0 || this.hiddenCloudyCount > 0
+        || this.history.kind === 'idle' || this.history.kind === 'searching'
+        || (this.mode === 'change' && this.history.kind !== 'none'));
   }
 
   startCompare(key: string): void {
     this.pickedCompareKey = key;
     this.mode = 'change';
+    if (this.isOpen) this.ensureHistory();
   }
 
   private render(): void {
@@ -348,6 +372,7 @@ export class OrbitalImageViewer {
     const focusedKey = active?.dataset?.key;
     if (this.mode === 'change' && !this.canCompare) this.mode = 'image';
     this.shownUrls.clear();
+    this.stageStatesHistory = false;
     replaceChildren(this.body,
       this.mode === 'change' ? this.renderCompareStage() : this.renderImageStage(),
       this.renderSide());
@@ -391,8 +416,9 @@ export class OrbitalImageViewer {
     const paint = this.painted.get(url);
     if (paint) return h('div', { className: 'oiv-stage' }, sceneImage(scene, 'oiv-image', paint), ...this.overlays(scene));
     if (this.failedUrls.has(url)) {
-      return h('div', { className: 'oiv-stage oiv-stage-empty', role: 'alert' },
-        h('span', { className: 'oiv-label' }, t('orbitalWatch.tile.failed', { archive: archiveHost(url).name.toUpperCase() })),
+      const processing = isSceneStillProcessing(this.failedUrls.get(url), { profileId: scene.collection, acquiredMs: scene.timeMs }, Date.now());
+      return h('div', { className: 'oiv-stage oiv-stage-empty', role: processing ? 'status' : 'alert', dataset: processing ? { state: 'processing' } : undefined },
+        h('span', { className: 'oiv-label' }, processing ? t('orbitalWatch.tile.processing') : t('orbitalWatch.tile.failed', { archive: archiveHost(url).name.toUpperCase() })),
         h('button', { type: 'button', className: 'oiv-button', dataset: { action: 'retry-image', url } }, t('countryBrief.retryBtn')));
     }
     return h('div', { className: 'oiv-stage oiv-skeleton', role: 'status' }, h('span', { className: 'oiv-label' }, t('orbitalWatch.row.imageLoading')));
@@ -401,14 +427,20 @@ export class OrbitalImageViewer {
   private renderCompareStage(): HTMLElement {
     const { selected } = this.subject;
     const others = this.compareCandidates;
-    const stillSearching = this.history.kind === 'searching' && !this.pickedCompareKey;
-    const other = stillSearching ? undefined : others.find((scene) => scene.key === this.compareKey);
+    const searching = this.history.kind === 'searching' || this.history.kind === 'idle';
+    const other = searching && !this.pickedCompareKey ? undefined : others.find((scene) => scene.key === this.compareKey);
     if (!other) {
-      const message = this.history.kind === 'searching'
+      const failure = this.history.kind === 'failed' ? this.history.failure : null;
+      this.stageStatesHistory = true;
+      // The selected scene is one side of whichever pair the history yields, so it stays loaded meanwhile.
+      if (searching) this.ensureLoaded([selected.imageUrl!]);
+      const message = searching
         ? t('orbitalWatch.viewer.searching', { days: HISTORY_DAYS })
-        : t('orbitalWatch.viewer.compareNone');
+        : failure ? this.historyFailureText(failure) : t('orbitalWatch.viewer.compareNone');
       return h('div', { className: 'oiv-column oiv-compare' },
-        h('div', { className: `oiv-stage ${this.history.kind === 'searching' ? 'oiv-skeleton' : 'oiv-stage-empty'}`, role: 'status' }, h('span', { className: 'oiv-label' }, message)));
+        h('div', { className: `oiv-stage ${searching ? 'oiv-skeleton' : 'oiv-stage-empty'}`, role: 'status' },
+          h('span', { className: 'oiv-label' }, message),
+          failure ? this.retryHistoryButton() : null));
     }
     const [before, after] = other.timeMs < selected.timeMs ? [other, selected] : [selected, other];
     const pair = [before.imageUrl!, after.imageUrl!];
@@ -424,17 +456,26 @@ export class OrbitalImageViewer {
         reticle(),
         h('span', { className: 'oiv-chip oiv-chip-before' }, chipDate(before.timeMs)),
         h('span', { className: 'oiv-chip oiv-chip-after' }, chipDate(after.timeMs))),
+      this.subject.eventMs === undefined ? null : h('p', { className: 'oiv-label oiv-event' }, this.eventMark),
       h('input', { type: 'range', min: '0', max: '100', value: String(this.dividerPct), className: 'oiv-divider', 'aria-label': t('orbitalWatch.viewer.divider'), dataset: { action: 'divider' } }),
       h('p', { className: 'oiv-credit' }, before.credit === after.credit ? after.credit : `${before.credit} · ${after.credit}`));
   }
 
-  private renderHistoryNote(): DomChild {
-    if (this.history.kind !== 'failed') return null;
-    const { failure } = this.history;
+  private historyFailureText(failure: ArchiveFailure): string {
     const key = failure.reason === 'timeout' ? 'orbitalWatch.viewer.historyTimeout' : 'orbitalWatch.viewer.historyFailed';
+    return t(key, { archive: ARCHIVE_NAME[failure.archive] });
+  }
+
+  private retryHistoryButton(): HTMLElement {
+    return h('button', { type: 'button', className: 'oiv-button', dataset: { action: 'retry-history' } }, t('countryBrief.retryBtn'));
+  }
+
+  /** Beside the compare stage when it still shows a pair; an empty stage states the failure itself. */
+  private renderHistoryNote(): DomChild {
+    if (this.history.kind !== 'failed' || this.stageStatesHistory) return null;
     return h('div', { className: 'oiv-note', role: 'note' },
-      h('p', null, t(key, { archive: ARCHIVE_NAME[failure.archive] })),
-      h('button', { type: 'button', className: 'oiv-button', dataset: { action: 'retry-history' } }, t('countryBrief.retryBtn')));
+      h('p', null, this.historyFailureText(this.history.failure)),
+      this.retryHistoryButton());
   }
 
   private renderSide(): HTMLElement {
@@ -465,19 +506,30 @@ export class OrbitalImageViewer {
       scene.sunElevationDeg !== null ? metaCell(t('orbitalWatch.viewer.metaSun'), scene.sunElevationDeg.toFixed(0), '°') : null);
   }
 
+  private get eventMark(): string {
+    return t('orbitalWatch.viewer.eventMark', { date: chipDate(this.subject.eventMs!) });
+  }
+
   private renderDates(): DomChild[] {
     const others = this.compareCandidates;
     const pickedKey = this.compareKey;
     const hidden = this.hiddenCloudyCount;
+    const { eventMs } = this.subject;
+    const items: DomChild[] = others.map((scene) => h('li', null, h('button', {
+      type: 'button',
+      className: 'oiv-date',
+      'aria-pressed': String(scene.key === pickedKey),
+      dataset: { action: 'compare-date', key: scene.key },
+    }, h('span', null, chipDate(scene.timeMs)), cloudWord(scene) ? h('span', { className: 'oiv-date-cloud' }, cloudWord(scene)!) : null)));
+    if (eventMs !== undefined && others.length > 0) {
+      // Dates run newest first; the event mark sits where the list crosses the event time.
+      const at = others.findIndex((scene) => scene.timeMs < eventMs);
+      items.splice(at === -1 ? items.length : at, 0, h('li', { className: 'oiv-date-event', role: 'separator' }, this.eventMark));
+    }
     return [
       h('p', { className: 'oiv-label oiv-side-label' }, t('orbitalWatch.viewer.compareDates')),
       others.length > 0
-        ? h('ul', { className: 'oiv-dates', role: 'group', 'aria-label': t('orbitalWatch.viewer.compareDates') }, ...others.map((scene) => h('li', null, h('button', {
-          type: 'button',
-          className: 'oiv-date',
-          'aria-pressed': String(scene.key === pickedKey),
-          dataset: { action: 'compare-date', key: scene.key },
-        }, h('span', null, chipDate(scene.timeMs)), cloudWord(scene) ? h('span', { className: 'oiv-date-cloud' }, cloudWord(scene)!) : null))))
+        ? h('ul', { className: 'oiv-dates', role: 'group', 'aria-label': t('orbitalWatch.viewer.compareDates') }, ...items)
         : null,
       hidden > 0 || this.showCloudy
         ? h('button', { type: 'button', className: 'oiv-toggle', 'aria-pressed': String(this.showCloudy), dataset: { action: 'show-cloudy' } }, t('orbitalWatch.viewer.showCloudy', { count: hidden }))
@@ -501,6 +553,7 @@ export class OrbitalImageViewer {
       case 'mode':
         this.mode = action.dataset.mode === 'change' ? 'change' : 'image';
         this.render();
+        if (this.mode === 'change') this.ensureHistory();
         return;
       case 'show-cloudy':
         this.showCloudy = !this.showCloudy;
@@ -548,6 +601,19 @@ export function openOrbitalImageViewer(subject: ImageViewerSubject, returnFocusT
 }
 
 export type ViewableImage = { kind: 'acquisition' | 'mosaic' | 'frame'; key: string };
+
+/** The viewer subject for a before/after anchored on a map event: it opens on the scene after the event, beside the one before. */
+export function subjectForEvent(point: GeoPoint, eventMs: number, pair: Extract<EventPair, { status: 'ok' }>, nowMs: number): ImageViewerSubject {
+  return {
+    point,
+    nowMs,
+    selected: sceneFromAcquisition(pair.after),
+    scenes: pair.scenes.map(sceneFromAcquisition),
+    historyProfile: pair.profileId,
+    historyEndMs: pair.windowEndMs,
+    eventMs,
+  };
+}
 
 /**
  * Builds the viewer subject for an image the lookup sheet shows, or null when that image is gone.

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { attachBrowserLossDiagnostics, pageBrowserLossEvents } from './browser-loss-diagnostics';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // Request budget for the news load on a default anonymous dashboard load (#5376).
 //
@@ -1118,8 +1119,8 @@ async function installDelayedSlowBootstrap(page: Page): Promise<{
 test.describe('dashboard container scroll hydration (#5876)', () => {
   // Drop routes before Playwright tears the page down. An in-flight
   // `route.fulfill` against a closed page surfaces as
-  // `Object with guid response@… was not bound in the connection`
-  // (playwright.config.ts retries). That is a harness race on teardown, not
+  // `Object with guid response@… was not bound in the connection`.
+  // That is a harness race on teardown, not
   // #6501 (browser gone during the first `page.goto`).
   test.afterEach(async ({ page }) => {
     await page.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
@@ -1186,7 +1187,7 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
       await expect.poll(() => stablecoinRequests.length).toBe(1);
       await expect(panel.locator('.stable-health')).toContainText('HEALTHY');
       expect(await lcpMarkCount(page, VIEWPORT_HYDRATION_MARK)).toBe(0);
-      await page.screenshot({ path: testInfo.outputPath('catchup-desktop.png') });
+      await evidenceScreenshot(page, { path: testInfo.outputPath('catchup-desktop.png') });
     } finally {
       release();
       slowBootstrap.release();
@@ -1241,7 +1242,7 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
         });
         expect(sideBySide, 'two panels must be visible side by side on first load').toBe(true);
       }
-      await page.screenshot({ path: testInfo.outputPath(`initial-${viewport.label}.png`) });
+      await evidenceScreenshot(page, { path: testInfo.outputPath(`initial-${viewport.label}.png`) });
       expect(initial.owner, 'the layout must use the expected dashboard scroll owner').toBe(
         viewport.scrollOwner,
       );
@@ -1287,7 +1288,7 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
       ).toBe(1);
       await expect(stablecoins.locator('.stable-health')).toContainText('HEALTHY');
       expect(stablecoinRequests).toHaveLength(1);
-      await page.screenshot({ path: testInfo.outputPath(`hydrated-${viewport.label}.png`) });
+      await evidenceScreenshot(page, { path: testInfo.outputPath(`hydrated-${viewport.label}.png`) });
     });
   }
 

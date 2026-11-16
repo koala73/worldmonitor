@@ -2479,7 +2479,14 @@
     "map": {
       "showMap": "Prikaži mapu",
       "hideMap": "Sakrij mapu",
-      "clearTrails": "Očisti tragove"
+      "clearTrails": "Očisti tragove",
+      "locate": "Prikaži moju lokaciju"
+    },
+    "mapLocate": {
+      "locating": "Određivanje lokacije…",
+      "denied": "Pristup lokaciji odbijen. Upotrijebite Pretragu da biste pronašli mjesto.",
+      "unavailable": "Lokacija nije pronađena. Upotrijebite Pretragu da biste pronašli mjesto.",
+      "noCountry": "Na vašoj lokaciji nema države. Upotrijebite Pretragu da biste pronašli mjesto."
     },
     "climateNews": {
       "infoTooltip": "<strong>Climate News</strong> Najnovije vijesti o okolišu i klimi od Carbon Brief, UNEP, NASA, The Guardian i drugih pouzdanih izvora. Ažurirano svakih 30 minuta.",
@@ -3314,6 +3321,19 @@
         "latestPass": "zadnji prelet ICESat-2 {{date}}",
         "sparkline": "Razina kroz 36 mjeseci sa sezonskom osnovicom kao isprekidanom crtom",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidarske razine vodene površine iz datiranih preleta, ne trenutna očitanja ni volumeni."
+      },
+      "water": {
+        "heading": "Voda na {{name}}",
+        "level": "Razina prema lidaru",
+        "extent": "Površina vode prema radaru",
+        "extentValue": "{{percent}} % otvorene vode ({{area}} km²) dana {{date}}",
+        "extentChange": "{{delta}} bodova od {{date}} na istoj orbiti",
+        "extentNoComparison": "Nema ranijeg mjerenja na istoj orbiti za usporedbu",
+        "extentNone": "Još nema radarskog mjerenja",
+        "unavailable": "Učitavanje nije uspjelo; ponovno otvorite za novi pokušaj",
+        "optical": "Najnovija optička snimka",
+        "opticalNone": "Nema optičke snimke unutar 30 dana",
+        "note": "Svaki je redak datirano mjerenje s zasebnog preleta, a ne očitanje uživo. Radar mjeri otvorenu vodu u središnjem području akumulacije; voda koju je vjetar namreškao može se očitati kao kopno."
       }
     },
     "gridDisruptionClock": {
@@ -4619,7 +4639,8 @@
   "contextMenu": {
     "openCountryBrief": "Otvori Sažetak Zemlje",
     "copyCoordinates": "Kopiraj Koordinate",
-    "satellitePasses": "Preleti satelita ovdje"
+    "satellitePasses": "Preleti satelita ovdje",
+    "imageryEvidenceHere": "Dokazi iz snimaka ovdje"
   },
   "auth": {
     "signIn": "Prijava",
@@ -5242,6 +5263,7 @@
     "counts": {},
     "tier": {
       "checking": "provjera arhiva",
+      "notInArchive": "nije u arhivu",
       "confirmed": "potvrđeno",
       "likely": "vjerojatno",
       "unmatchedImage": "snimka bez izračunatog prolaska",
@@ -5308,7 +5330,8 @@
       "metaSpot": "Oblak na točki",
       "metaScene": "Oblaci scene",
       "metaSun": "Visina sunca",
-      "showCloudy": "Uključi oblačne datume ({{count}})"
+      "showCloudy": "Uključi oblačne datume ({{count}})",
+      "eventMark": "Događaj {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5420,6 +5443,12 @@
       "passes_few": "{{count}} preleta",
       "passes_other": "{{count}} preleta"
     },
+    "siteSatellites": {
+      "heading": "Praćeni sateliti iznad ovog mjesta · sljedećih {{hours}} h",
+      "none": "Nijedan praćeni satelit za snimanje ne pokriva ovo mjesto unutar {{hours}} h.",
+      "notLoaded": "Ponovno otvorite mjesto za novi pokušaj; orbitalni elementi nisu učitani.",
+      "failed": "Ponovno otvorite mjesto za novi pokušaj; izračun preleta nije uspio."
+    },
     "sheet": {
       "heading": "Dokazi iz snimaka",
       "window": "Zadnjih {{days}} dana, idućih {{hours}} h",
@@ -5516,7 +5545,7 @@
     "privacy": {
       "line": "Vaša točka ide samo u arhive slika.",
       "more": "Pojedinosti",
-      "body": "Prolasci se izračunavaju na ovom uređaju. Za pronalaženje slika vaš preglednik šalje točku izravno servisima Earth Search, Planetary Computer, NASA GIBS i EUMETSAT; WorldMonitor je ne prima. Upisani naziv mjesta šalje se servisima WorldMonitor i OpenStreetMap Nominatim radi pronalaženja. Dijeljene poveznice čuvaju dva decimalna mjesta (0,01°)."
+      "body": "Prolasci se izračunavaju na ovom uređaju. Za pronalaženje slika vaš preglednik šalje točku izravno servisima Earth Search, Planetary Computer, NASA GIBS i EUMETSAT; WorldMonitor je ne prima. Na praćenoj lokaciji WorldMonitor se traži dnevni zapis te lokacije prema njezinu ID-u, a ne prema vašoj točki. Upisani naziv mjesta šalje se servisima WorldMonitor i OpenStreetMap Nominatim radi pronalaženja. Dijeljene poveznice čuvaju dva decimalna mjesta (0,01°)."
     },
     "sources": {
       "heading": "Izvori ({{count}})",
@@ -5538,6 +5567,7 @@
     "tile": {
       "failed": "Scena se nije učitala · {{archive}}",
       "noPreview": "Pregled za ovu scenu još nije objavljen",
+      "processing": "Scena se još obrađuje. Pokušajte ponovno kasnije.",
       "radar": "radar"
     },
     "target": {
@@ -5551,6 +5581,13 @@
       "noImage": "Nije pronađena nedavna snimka",
       "noPass": "Nema preleta u sljedeća 72 sata",
       "openEvidence": "Otvori dokaze",
+      "compareEvent": "Prije / poslije",
+      "compareEventLocked": "Prije / poslije · Pro",
+      "compareSearching": "Traže se snimke prije i poslije {{date}}…",
+      "compareNoAfter": "Još nema jasne snimke nakon {{date}}.",
+      "compareNoAfterWindow": "Nema jasne snimke u {{days}} dana nakon {{date}}.",
+      "compareNoBefore": "Nema jasne snimke prije {{date}} u razdoblju arhive.",
+      "compareFailed": "Pretraga arhive nije uspjela. Pokušajte ponovno.",
       "imageAlt": "Satelitski prikaz iz {{source}}",
       "unavailable": "Satelitske snimke nisu se učitale.",
       "fire": {
@@ -5573,6 +5610,23 @@
         "mosaicNoLayer": "Dnevni mozaik nije dostupan za ovaj satelit.",
         "mosaicUnavailable": "Dnevni mozaik se nije učitao.",
         "mosaicAlt": "NASA GIBS {{source}} dnevni mozaik za {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Praćena lokacija",
+      "loading": "Učitavanje dnevnog zapisa lokacije…",
+      "failed": "Dnevni zapis lokacije nije učitan; ponovno otvorite točku za novi pokušaj.",
+      "stale": "Za ovu lokaciju nema aktualne dnevne provjere.",
+      "checked": "Provjereno",
+      "noPass": "Nema nadolazećeg preleta u zapisu",
+      "list": {
+        "hotspot": "žarište",
+        "conflictZone": "zona sukoba",
+        "militaryBase": "vojna baza",
+        "nuclearFacility": "nuklearno postrojenje",
+        "port": "luka",
+        "chokepoint": "tjesnac",
+        "reservoir": "akumulacija"
       }
     }
   },

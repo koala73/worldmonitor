@@ -1599,6 +1599,7 @@ export class App {
       signalModal: null,
       ensureSignalModal: () => this.ensureSignalModal(),
       statusPanel: null,
+      digestCoverage: null,
       searchModal: null,
       findingsBadge: null,
       breakingBanner: null,

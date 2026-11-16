@@ -749,6 +749,8 @@ export class DeckGLMap {
   private militaryFlightClusters: MilitaryFlightCluster[] = [];
   private activeFlightTrails = new Set<string>();
   private clearTrailsBtn: HTMLButtonElement | null = null;
+  private zoomControlsEl: HTMLElement | null = null;
+  private mountedMapControl: HTMLElement | null = null;
   private militaryVessels: MilitaryVessel[] = [];
   private militaryVesselClusters: MilitaryVesselCluster[] = [];
   private serverBases: MilitaryBaseEnriched[] = [];
@@ -851,7 +853,6 @@ export class DeckGLMap {
   // Callbacks
   private onNewsClick?: (item: Pick<NewsLocationMarker, 'article' | 'title'>) => void;
   private onHotspotClick?: (hotspot: Hotspot) => void;
-  private onTradeArcClick?: (segment: TradeRouteSegment, waypoints: string[], x: number, y: number) => void;
   private onTimeRangeChange?: (range: TimeRange) => void;
   private onCountryClick?: (country: CountryClickPayload) => void;
   private onMapContextMenu?: (payload: { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }) => void;
@@ -5993,7 +5994,6 @@ export class DeckGLMap {
       }
       const waypoints = ROUTE_WAYPOINTS_MAP.get(segment.routeId) ?? [];
       this.popup.showRouteBreakdown(segment, waypoints, info.x, info.y);
-      this.onTradeArcClick?.(segment, waypoints, info.x, info.y);
       return;
     }
 
@@ -6205,6 +6205,12 @@ export class DeckGLMap {
     return [100, 100, 100, alpha];
   }
 
+  /** Adds a control below the zoom buttons, kept across a late controls build. */
+  public mountMapControl(el: HTMLElement): void {
+    this.mountedMapControl = el;
+    this.zoomControlsEl?.append(el);
+  }
+
   // UI Creation methods
   private createControls(): void {
     const controls = document.createElement('div');
@@ -6238,6 +6244,8 @@ export class DeckGLMap {
       else if (target.classList.contains('zoom-out')) this.zoomOut();
       else if (target.classList.contains('zoom-reset')) this.resetView();
     });
+    this.zoomControlsEl = controls.querySelector('.zoom-controls');
+    if (this.mountedMapControl) this.zoomControlsEl?.append(this.mountedMapControl);
 
     const viewSelect = controls.querySelector('.view-select') as HTMLSelectElement;
     viewSelect.value = this.state.view;
@@ -8603,16 +8611,6 @@ export class DeckGLMap {
     return getHotspotEscalation(hotspotId);
   }
 
-  /** Get military flight clusters for rendering/analysis */
-  public getMilitaryFlightClusters(): MilitaryFlightCluster[] {
-    return this.militaryFlightClusters;
-  }
-
-  /** Get military vessel clusters for rendering/analysis */
-  public getMilitaryVesselClusters(): MilitaryVesselCluster[] {
-    return this.militaryVesselClusters;
-  }
-
   public highlightAssets(assets: RelatedAsset[] | null): void {
     // Clear previous highlights
     Object.values(this.highlightedAssets).forEach(set => set.clear());
@@ -8634,10 +8632,6 @@ export class DeckGLMap {
 
   public setOnHotspotClick(callback: (hotspot: Hotspot) => void): void {
     this.onHotspotClick = callback;
-  }
-
-  public setOnTradeArcClick(cb: (segment: TradeRouteSegment, waypoints: string[], x: number, y: number) => void): void {
-    this.onTradeArcClick = cb;
   }
 
   public setOnTimeRangeChange(callback: (range: TimeRange) => void): void {

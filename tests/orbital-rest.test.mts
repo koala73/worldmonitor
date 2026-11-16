@@ -8,7 +8,7 @@ import { toCatalogResponse } from '../server/worldmonitor/orbital/v1/list-imagin
 import { orbitalHandler } from '../server/worldmonitor/orbital/v1/handler.ts';
 import { createOrbitalServiceRoutes } from '../src/generated/server/worldmonitor/orbital/v1/service_server.ts';
 import { toOrbitalCatalog } from '../src/services/orbital/catalog-shape.ts';
-import { PLANETARY_COMPUTER_NATURAL_COLOUR } from '../src/services/orbital/crop-url.ts';
+import { PLANETARY_COMPUTER_NATURAL_COLOUR, sentinel1CoPolarisation } from '../src/services/orbital/crop-url.ts';
 import { findArchiveEvidence } from '../src/services/orbital/match.ts';
 import { runPassJob } from '../src/services/orbital/pass-job.ts';
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
@@ -92,7 +92,8 @@ describe('point passes over REST', () => {
     for (const url of urls) {
       const render = PLANETARY_COMPUTER_NATURAL_COLOUR[url.searchParams.get('collection') ?? ''];
       assert.ok(render, `${url.searchParams.get('collection')} has a natural-colour rendering`);
-      assert.deepEqual(url.searchParams.getAll('assets'), render.filter(([key]) => key === 'assets').map(([, value]) => value));
+      const radar = url.searchParams.get('collection') === 'sentinel-1-grd' ? [sentinel1CoPolarisation(url.searchParams.get('item') ?? '')] : [];
+      assert.deepEqual(url.searchParams.getAll('assets'), [...radar, ...render.filter(([key]) => key === 'assets').map(([, value]) => value)]);
       assert.equal(url.searchParams.get('color_formula'), render.find(([key]) => key === 'color_formula')?.[1] ?? null);
       assert.ok(!url.searchParams.getAll('assets').includes('visual'), 'not the clipped visual asset');
     }
@@ -138,6 +139,27 @@ describe('point passes over REST', () => {
     const [first, second] = await Promise.all([a, b].map((p) => computePointPasses(p, storedCatalog, FIXTURE_NOW, { fetch: fakeArchiveFetch(fixture).fetch })));
     assert.deepEqual(first, second);
     assert.deepEqual(first!.point, { lat: 39.74, lon: -104.99 });
+  });
+
+  it('never lets one request join archive work another request started', async () => {
+    // An edge isolate serves many requests from one module. A request that reads an AbortSignal
+    // or a fetch another request created throws "Cannot perform I/O on behalf of a different
+    // request", so each request must run its own archive searches (#10768 launch 500s).
+    const fake = fakeArchiveFetch(ARCHIVE_RESPONSES.points.denver);
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => fake.fetch(String(input instanceof Request ? input.url : input), init)) as typeof fetch;
+    try {
+      const handler = route('/api/orbital/v1/get-point-passes');
+      const url = 'https://api.worldmonitor.app/api/orbital/v1/get-point-passes?lat=39.74&lon=-104.99';
+      const statuses = await Promise.all([handler(new Request(url)), handler(new Request(url))].map(async (res) => (await res).status));
+      assert.deepEqual(statuses, [200, 200]);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    const searches = fake.requests.filter((r) => r.url.endsWith('/search'));
+    for (const host of ['earth-search.aws.element84.com', 'planetarycomputer.microsoft.com']) {
+      assert.equal(searches.filter((r) => new URL(r.url).hostname === host).length, 2, `${host}: one search per request`);
+    }
   });
 
   it('reports a missing catalog as stale with no passes', async () => {

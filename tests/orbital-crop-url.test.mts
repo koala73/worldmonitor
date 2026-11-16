@@ -2,11 +2,11 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { parseStacItem } from '../src/services/orbital/archive-stac.ts';
-import { cropBox, eumetsatSnapshotUrl, gibsSnapshotUrl, planetaryComputerCropUrl, type CropBox } from '../src/services/orbital/crop-url.ts';
+import { cropBox, eumetsatSnapshotUrl, gibsSnapshotUrl, planetaryComputerCropUrl, sentinel1CoPolarisation, type CropBox } from '../src/services/orbital/crop-url.ts';
 import { isAllowedPreviewUrl } from '../src/utils/imagery-preview.ts';
 
 const S2_ITEM = 'S2B_MSIL2A_20261108T065109_R020_T40RCN_20261108T103534';
-const pcCrop = (box: CropBox, pixels?: number) => planetaryComputerCropUrl('sentinel-2-l2a', S2_ITEM, box, pixels);
+const pcCrop = (box: CropBox, pixels?: number) => planetaryComputerCropUrl({ collection: 'sentinel-2-l2a', itemId: S2_ITEM }, box, pixels);
 
 function assertValid(box: CropBox, point: { lat: number; lon: number }) {
   assert.ok(box.west >= -180 && box.east <= 180 && box.west < box.east, `longitudes ${box.west}..${box.east}`);
@@ -60,16 +60,60 @@ describe('point crop URLs', () => {
     assert.deepEqual(s2.searchParams.getAll('assets'), ['B04', 'B03', 'B02']);
     assert.equal(s2.searchParams.get('color_formula'), 'Gamma RGB 3.2 Saturation 0.8 Sigmoidal RGB 25 0.35');
     assert.equal(s2.searchParams.get('nodata'), '0');
-    const landsat = new URL(planetaryComputerCropUrl('landsat-c2-l2', 'LC09_L2SP_160043_20261103_02_T1', box)!);
+    const landsat = new URL(planetaryComputerCropUrl({ collection: 'landsat-c2-l2', itemId: 'LC09_L2SP_160043_20261103_02_T1' }, box)!);
     assert.deepEqual(landsat.searchParams.getAll('assets'), ['red', 'green', 'blue']);
     assert.equal(landsat.searchParams.get('color_formula'), 'gamma RGB 2.7, saturation 1.5, sigmoidal RGB 15 0.55');
     for (const url of [s2, landsat]) {
       assert.ok(!url.searchParams.getAll('assets').includes('visual'), 'not the TCI asset');
       assert.equal(url.searchParams.get('asset_bidx'), null);
     }
-    assert.equal(planetaryComputerCropUrl('sentinel-1-slc', 'S1', box), null, 'no crop without a published rendering');
-    const radar = new URL(planetaryComputerCropUrl('sentinel-1-grd', 'S1A_IW_GRDH', box)!);
-    assert.deepEqual([radar.searchParams.get('assets'), radar.searchParams.get('colormap_name')], ['vv', 'gray'], 'radar crops are greyscale VV backscatter');
+    assert.equal(planetaryComputerCropUrl({ collection: 'sentinel-1-slc', itemId: 'S1' }, box), null, 'no crop without a published rendering');
+    const radar = new URL(planetaryComputerCropUrl({ collection: 'sentinel-1-grd', itemId: 'S1A_IW_GRDH' }, box)!);
+    assert.deepEqual([radar.searchParams.getAll('assets'), radar.searchParams.get('colormap_name')], [['vv'], 'gray'], 'radar crops are greyscale backscatter, VV when the item says nothing');
+  });
+});
+
+describe('Sentinel-1 co-polarised channel', () => {
+  const box = cropBox({ lat: 78.22, lon: 15.65 });
+  const radarFeature = (id: string, polarizations?: string[]) => ({
+    id,
+    collection: 'sentinel-1-grd',
+    properties: { datetime: '2026-11-15T15:45:09Z', platform: 'SENTINEL-1D', 'sar:instrument_mode': 'IW', ...(polarizations ? { 'sar:polarizations': polarizations } : {}) },
+    assets: Object.fromEntries((polarizations ?? []).map((p) => [p.toLowerCase(), { href: `s3://sentinel-s1-l1c/${p.toLowerCase()}.tiff` }])),
+  });
+  const assetOf = (url: string | null) => new URL(url!).searchParams.getAll('assets');
+
+  it('crops an HH/HV polar scene from its HH channel', () => {
+    for (const archive of ['earth-search', 'planetary-computer'] as const) {
+      const item = parseStacItem(archive, radarFeature('S1D_IW_GRDH_1SDH_20261115T154457_20261115T154522_005480_00A78C', ['HH', 'HV']))!;
+      assert.deepEqual(item.polarizations, ['HH', 'HV']);
+      assert.deepEqual(assetOf(planetaryComputerCropUrl(item, box)), ['hh'], archive);
+    }
+  });
+
+  it('crops a VV/VH scene from its VV channel', () => {
+    const item = parseStacItem('earth-search', radarFeature('S1C_IW_GRDH_1SDV_20261113T104631_20261113T104708_010317_0149B2', ['VV', 'VH']))!;
+    assert.deepEqual(item.polarizations, ['VV', 'VH']);
+    assert.deepEqual(assetOf(planetaryComputerCropUrl(item, box)), ['vv']);
+  });
+
+  it('reads the channel from the product ID when the item has no polarisation list, as a seeded site image does', () => {
+    assert.deepEqual(assetOf(planetaryComputerCropUrl({ collection: 'sentinel-1-grd', itemId: 'S1C_EW_GRDM_1SDH_20261114T060556_20261114T060656_010329_014A19' }, box)), ['hh']);
+    assert.deepEqual(assetOf(planetaryComputerCropUrl({ collection: 'sentinel-1-grd', itemId: 'S1A_IW_GRDH_1SSH_20261101T000000_20261101T000025_056000_06DA00' }, box)), ['hh']);
+    assert.deepEqual(assetOf(planetaryComputerCropUrl({ collection: 'sentinel-1-grd', itemId: 'S1C_IW_GRDH_1SSV_20261101T000000_20261101T000025_010000_013800' }, box)), ['vv']);
+    assert.equal(parseStacItem('earth-search', radarFeature('S1D_IW_GRDH_1SDH_20261115T154457_20261115T154522_005480_00A78C'))!.polarizations, null);
+  });
+
+  it('prefers the listed polarisations over the product ID, and VV when it has both', () => {
+    assert.equal(sentinel1CoPolarisation('S1D_IW_GRDH_1SDV_X', ['hh', 'hv']), 'hh');
+    assert.equal(sentinel1CoPolarisation('S1D_IW_GRDH_1SDH_X', ['VV', 'VH']), 'vv');
+    assert.equal(sentinel1CoPolarisation('S1D_IW_GRDH_1SDH_X', ['HH', 'VV']), 'vv');
+    assert.equal(sentinel1CoPolarisation('S1D_IW_GRDH_1SDH_X', []), 'hh');
+    assert.equal(sentinel1CoPolarisation('unknown'), 'vv');
+  });
+
+  it('leaves optical crops without a radar channel', () => {
+    assert.deepEqual(assetOf(planetaryComputerCropUrl({ collection: 'sentinel-2-l2a', itemId: S2_ITEM, polarizations: ['HH'] }, box)), ['B04', 'B03', 'B02']);
   });
 });
 

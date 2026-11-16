@@ -1743,7 +1743,14 @@
     "map": {
       "showMap": "Kaart tonen",
       "hideMap": "Kaart verbergen",
-      "clearTrails": "Sporen wissen"
+      "clearTrails": "Sporen wissen",
+      "locate": "Mijn locatie tonen"
+    },
+    "mapLocate": {
+      "locating": "Locatie bepalen…",
+      "denied": "Locatietoegang geweigerd. Gebruik Zoeken om een plaats te vinden.",
+      "unavailable": "Locatie niet gevonden. Gebruik Zoeken om een plaats te vinden.",
+      "noCountry": "Geen land op uw locatie. Gebruik Zoeken om een plaats te vinden."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Internetstoringen</strong> Realtime internetstoringen, DDoS-aanvallen en verkeersafwijkingen uit wereldwijde netwerkmonitoring:<ul><li><strong>Storingen</strong>: via BGP gedetecteerde verbindingsstoringen per land</li><li><strong>DDoS</strong>: meldingen van volumetrische aanvallen per protocol en vector</li><li><strong>Afwijkingen</strong>: ongebruikelijke verkeerspatronen van Cloudflare Radar</li></ul>",
@@ -2837,6 +2844,19 @@
         "latestPass": "laatste ICESat-2-overkomst {{date}}",
         "sparkline": "Peil over 36 maanden met de seizoensbasis als stippellijn",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidar-waterstanden uit gedateerde overkomsten, geen live metingen of opslagvolumes."
+      },
+      "water": {
+        "heading": "Water bij {{name}}",
+        "level": "Lidarpeil",
+        "extent": "Wateroppervlak via radar",
+        "extentValue": "{{percent}}% open water ({{area}} km²) op {{date}}",
+        "extentChange": "{{delta}} punten sinds {{date}} op dezelfde baan",
+        "extentNoComparison": "Geen eerdere meting op dezelfde baan om te vergelijken",
+        "extentNone": "Nog geen radarmeting",
+        "unavailable": "Laden mislukt; open opnieuw om het nog eens te proberen",
+        "optical": "Nieuwste optische beeld",
+        "opticalNone": "Geen optisch beeld binnen 30 dagen",
+        "note": "Elke rij is een gedateerde meting van een afzonderlijke overkomst, geen actuele waarde. De radar meet open water in het kerngebied van het stuwmeer; door wind gerimpeld water kan als land worden gelezen."
       }
     },
     "gridDisruptionClock": {
@@ -4497,7 +4517,8 @@
   "contextMenu": {
     "openCountryBrief": "Landenoverzicht openen",
     "copyCoordinates": "Coördinaten kopiëren",
-    "satellitePasses": "Satellietpassages hier"
+    "satellitePasses": "Satellietpassages hier",
+    "imageryEvidenceHere": "Bewijsmateriaal uit satellieten hier"
   },
   "shell": {
     "documentTitle": "World Monitor — Realtime wereldwijd inlichtingendashboard",
@@ -5204,6 +5225,7 @@
     "counts": {},
     "tier": {
       "checking": "archief controleren",
+      "notInArchive": "niet in archief",
       "confirmed": "bevestigd",
       "likely": "waarschijnlijk",
       "unmatchedImage": "beeld zonder berekende passage",
@@ -5270,7 +5292,8 @@
       "metaSpot": "Bewolking op punt",
       "metaScene": "Bewolking van de scène",
       "metaSun": "Zonhoogte",
-      "showCloudy": "Bewolkte datums opnemen ({{count}})"
+      "showCloudy": "Bewolkte datums opnemen ({{count}})",
+      "eventMark": "Gebeurtenis {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5378,6 +5401,12 @@
       "passes_one": "{{count}} overkomst",
       "passes_other": "{{count}} overkomsten"
     },
+    "siteSatellites": {
+      "heading": "Gevolgde satellieten boven deze locatie · volgende {{hours}} u",
+      "none": "Geen gevolgde beeldsatelliet dekt deze locatie binnen {{hours}} u.",
+      "notLoaded": "Open de locatie opnieuw om het nogmaals te proberen; de baanelementen zijn niet geladen.",
+      "failed": "Open de locatie opnieuw om het nogmaals te proberen; de passageberekening is mislukt."
+    },
     "sheet": {
       "heading": "Bewijsmateriaal uit satellieten",
       "window": "Afgelopen {{days}} dagen, komende {{hours}} u",
@@ -5470,7 +5499,7 @@
     "privacy": {
       "line": "Je punt gaat alleen naar de beeldarchieven.",
       "more": "Details",
-      "body": "Passages worden op dit apparaat berekend. Om beelden te vinden, stuurt je browser het punt rechtstreeks naar Earth Search, Planetary Computer, NASA GIBS en EUMETSAT; WorldMonitor ontvangt het niet. Een getypte plaatsnaam gaat naar WorldMonitor en OpenStreetMap Nominatim om te worden gevonden. Gedeelde links behouden twee decimalen (0,01°)."
+      "body": "Passages worden op dit apparaat berekend. Om beelden te vinden, stuurt je browser het punt rechtstreeks naar Earth Search, Planetary Computer, NASA GIBS en EUMETSAT; WorldMonitor ontvangt het niet. Op een gemonitorde locatie wordt WorldMonitor om het dagelijkse overzicht van die locatie gevraagd via de ID van de locatie, niet via uw punt. Een getypte plaatsnaam gaat naar WorldMonitor en OpenStreetMap Nominatim om te worden gevonden. Gedeelde links behouden twee decimalen (0,01°)."
     },
     "sources": {
       "heading": "Bronnen ({{count}})",
@@ -5492,6 +5521,7 @@
     "tile": {
       "failed": "Scène kon niet laden · {{archive}}",
       "noPreview": "Nog geen voorbeeld gepubliceerd voor deze scène",
+      "processing": "Scène wordt nog verwerkt. Probeer het later opnieuw.",
       "radar": "radar"
     },
     "target": {
@@ -5505,6 +5535,13 @@
       "noImage": "Geen recent beeld gevonden",
       "noPass": "Geen overkomst binnen 72 uur",
       "openEvidence": "Bewijs openen",
+      "compareEvent": "Voor / na",
+      "compareEventLocked": "Voor / na · Pro",
+      "compareSearching": "Opnamen voor en na {{date}} zoeken…",
+      "compareNoAfter": "Nog geen heldere opname sinds {{date}}.",
+      "compareNoAfterWindow": "Geen heldere opname in de {{days}} dagen na {{date}}.",
+      "compareNoBefore": "Geen heldere opname vóór {{date}} in de archiefperiode.",
+      "compareFailed": "Zoeken in het archief mislukt. Probeer opnieuw.",
       "imageAlt": "Satellietbeeld van {{source}}",
       "unavailable": "Satellietbeelden konden niet worden geladen.",
       "fire": {
@@ -5527,6 +5564,23 @@
         "mosaicNoLayer": "Er is geen dagelijks mozaïek beschikbaar voor deze satelliet.",
         "mosaicUnavailable": "Het dagelijks mozaïek is niet geladen.",
         "mosaicAlt": "Dagelijks NASA GIBS-mozaïek ({{source}}) voor {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Gemonitorde locatie",
+      "loading": "Dagelijks overzicht van de locatie laden…",
+      "failed": "Het dagelijkse overzicht van de locatie is niet geladen; open het punt opnieuw om het nog eens te proberen.",
+      "stale": "Geen actuele dagelijkse controle vastgelegd voor deze locatie.",
+      "checked": "Gecontroleerd",
+      "noPass": "Geen komende overkomst vastgelegd",
+      "list": {
+        "hotspot": "brandhaard",
+        "conflictZone": "conflictgebied",
+        "militaryBase": "militaire basis",
+        "nuclearFacility": "nucleaire installatie",
+        "port": "haven",
+        "chokepoint": "zeestraat",
+        "reservoir": "stuwmeer"
       }
     }
   },

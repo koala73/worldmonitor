@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 test('German displacement fits individual narrow panels and keeps tab scrolling independent', async ({ page }, testInfo) => {
   test.setTimeout(120_000);
@@ -57,7 +58,7 @@ test('German displacement fits individual narrow panels and keeps tab scrolling 
       }));
     });
     await testInfo.attach(`geometry-${width}-${scale}`, { body: JSON.stringify(geometry), contentType: 'application/json' });
-    await panel.screenshot({ path: testInfo.outputPath(`displacement-${width}-${scale}.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`displacement-${width}-${scale}.png`) });
     expect.soft(geometry['.panel-content']!.scrollWidth - geometry['.panel-content']!.width, `${width}px: outer scroll`).toBeLessThanOrEqual(1);
     await expect.soft(grid).toHaveCSS('grid-template-columns', width <= 480 ? /^\S+ \S+$/ : /^\S+ \S+ \S+ \S+$/, { timeout: 2000 });
     expect.soft(await grid.locator('.disp-stat-label').evaluateAll(labels => labels.every(el => el.scrollWidth <= el.clientWidth + 1)), `${width}px: metric labels fit`).toBe(true);
@@ -102,7 +103,7 @@ test('German displacement fits individual narrow panels and keeps tab scrolling 
   await expect(grid).toHaveCSS('grid-template-columns', /^\S+ \S+$/);
   expect(await content.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await content.evaluate(el => { el.scrollTop = 0; });
-  await panel.screenshot({ path: testInfo.outputPath('displacement-phone.png') });
+  await evidenceScreenshot(panel, { path: testInfo.outputPath('displacement-phone.png') });
   await page.reload();
   await expect.poll(async () => {
     await panel.scrollIntoViewIfNeeded().catch(() => {});

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // The happy theme pads each Human Progress chart by 16px a side, but the chart
 // sized its SVG from the whole panel body, so every chart ran 32px past its box
@@ -70,7 +71,7 @@ test('Human Progress charts fit their box and keep axis years apart', async ({ b
         return panel.locator('.progress-chart-container svg').count();
       }, { message: `progress charts at ${viewport.width}px, ${fontScale * 100}% text`, timeout: 90_000 })
       .toBeGreaterThan(0);
-    await panel.screenshot({ path: testInfo.outputPath(`progress-${viewport.width}-${fontScale * 100}.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`progress-${viewport.width}-${fontScale * 100}.png`) });
 
     const fit = await measure(page);
     const label = `${viewport.width}px, ${fontScale * 100}% text (panel ${fit.panel}px)`;

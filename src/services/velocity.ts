@@ -95,30 +95,6 @@ export function enrichWithVelocity(clusters: ClusteredEvent[]): ClusteredEvent[]
   }));
 }
 
-export async function calculateVelocityWithML(cluster: ClusteredEvent): Promise<VelocityMetrics> {
-  const baseMetrics = calculateVelocity(cluster);
-
-  if (!mlWorker.isAvailable) return baseMetrics;
-
-  try {
-    const results = await mlWorker.classifySentiment([cluster.primaryTitle]);
-    const sentiment = results[0];
-    if (!sentiment) return baseMetrics;
-
-    const mlSentiment: SentimentType = sentiment.label === 'positive' ? 'positive' :
-      sentiment.label === 'negative' ? 'negative' : 'neutral';
-    const mlScore = sentiment.label === 'negative' ? -sentiment.score : sentiment.score;
-
-    return {
-      ...baseMetrics,
-      sentiment: mlSentiment,
-      sentimentScore: mlScore,
-    };
-  } catch {
-    return baseMetrics;
-  }
-}
-
 export async function enrichWithVelocityML(clusters: ClusteredEvent[]): Promise<ClusteredEvent[]> {
   if (!mlWorker.isAvailable) {
     return enrichWithVelocity(clusters);

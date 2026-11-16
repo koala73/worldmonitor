@@ -219,14 +219,6 @@ export function groupByCountry(events: UcdpGeoEvent[]): Map<string, UcdpGeoEvent
   return map;
 }
 
-export function groupByType(events: UcdpGeoEvent[]): Record<string, UcdpGeoEvent[]> {
-  return {
-    'state-based': events.filter(e => e.type_of_violence === 'state-based'),
-    'non-state': events.filter(e => e.type_of_violence === 'non-state'),
-    'one-sided': events.filter(e => e.type_of_violence === 'one-sided'),
-  };
-}
-
 const IRAN_RED_CATEGORIES = new Set(['military', 'airstrike', 'defense']);
 const IRAN_ORANGE_CATEGORIES = new Set(['political', 'international']);
 

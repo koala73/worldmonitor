@@ -576,10 +576,6 @@ export class StrategicRiskPanel extends Panel {
     super.destroy();
   }
 
-  public getOverview(): StrategicRiskOverview | null {
-    return this.overview;
-  }
-
   public getAlerts(): UnifiedAlert[] {
     return this.alerts;
   }

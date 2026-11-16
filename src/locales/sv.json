@@ -1743,7 +1743,14 @@
     "map": {
       "showMap": "Visa karta",
       "hideMap": "Dölj karta",
-      "clearTrails": "Rensa spår"
+      "clearTrails": "Rensa spår",
+      "locate": "Visa min plats"
+    },
+    "mapLocate": {
+      "locating": "Hämtar plats…",
+      "denied": "Platsåtkomst nekad. Använd Sök för att hitta en plats.",
+      "unavailable": "Platsen hittades inte. Använd Sök för att hitta en plats.",
+      "noCountry": "Inget land på din plats. Använd Sök för att hitta en plats."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Internetstörningar</strong> Internetavbrott, DDoS-attacker och trafikavvikelser i realtid från global nätverksövervakning:<ul><li><strong>Avbrott</strong>: BGP-upptäckta anslutningsfel per land</li><li><strong>DDoS</strong>: rapporter om volymetriska attacker per protokoll och vektor</li><li><strong>Avvikelser</strong>: ovanliga trafikmönster från Cloudflare Radar</li></ul>",
@@ -2837,6 +2844,19 @@
         "latestPass": "senaste ICESat-2-passage {{date}}",
         "sparkline": "Nivå över 36 månader med säsongsbasen streckad",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidarnivåer för vattenytan från daterade passager, inte liveavläsningar eller volymer."
+      },
+      "water": {
+        "heading": "Vatten vid {{name}}",
+        "level": "Lidarnivå",
+        "extent": "Vattenyta enligt radar",
+        "extentValue": "{{percent}} % öppet vatten ({{area}} km²) den {{date}}",
+        "extentChange": "{{delta}} punkter sedan {{date}} på samma bana",
+        "extentNoComparison": "Ingen tidigare mätning på samma bana att jämföra med",
+        "extentNone": "Ingen radarmätning ännu",
+        "unavailable": "Kunde inte läsas in; öppna igen för att försöka på nytt",
+        "optical": "Senaste optiska bild",
+        "opticalNone": "Ingen optisk bild inom 30 dagar",
+        "note": "Varje rad är en daterad mätning från en separat överflygning, inte ett livevärde. Radarn mäter öppet vatten i reservoarens kärnområde; vindkrusat vatten kan tolkas som land."
       }
     },
     "gridDisruptionClock": {
@@ -4497,7 +4517,8 @@
   "contextMenu": {
     "openCountryBrief": "Öppna landsöversikt",
     "copyCoordinates": "Kopiera koordinater",
-    "satellitePasses": "Satellitpassager här"
+    "satellitePasses": "Satellitpassager här",
+    "imageryEvidenceHere": "Bildbevis här"
   },
   "shell": {
     "documentTitle": "World Monitor — Realtidsinstrumentpanel för global underrättelse",
@@ -5204,6 +5225,7 @@
     "counts": {},
     "tier": {
       "checking": "kontrollerar arkiv",
+      "notInArchive": "finns inte i arkivet",
       "confirmed": "bekräftad",
       "likely": "sannolikt",
       "unmatchedImage": "bild utan beräknad passage",
@@ -5270,7 +5292,8 @@
       "metaSpot": "Moln vid punkt",
       "metaScene": "Moln i scenen",
       "metaSun": "Solhöjd",
-      "showCloudy": "Inkludera molniga datum ({{count}})"
+      "showCloudy": "Inkludera molniga datum ({{count}})",
+      "eventMark": "Händelse {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5378,6 +5401,12 @@
       "passes_one": "{{count}} passage",
       "passes_other": "{{count}} passager"
     },
+    "siteSatellites": {
+      "heading": "Spårade satelliter över platsen · kommande {{hours}} h",
+      "none": "Ingen spårad avbildningssatellit täcker platsen inom {{hours}} h.",
+      "notLoaded": "Öppna platsen igen för att försöka på nytt; banelementen kunde inte läsas in.",
+      "failed": "Öppna platsen igen för att försöka på nytt; passageberäkningen misslyckades."
+    },
     "sheet": {
       "heading": "Bildbevis",
       "window": "Senaste {{days}} dagar, nästa {{hours}} h",
@@ -5470,7 +5499,7 @@
     "privacy": {
       "line": "Din punkt skickas endast till bildarkiven.",
       "more": "Detaljer",
-      "body": "Passager beräknas på denna enhet. För att hitta bilder skickar din webbläsare punkten direkt till Earth Search, Planetary Computer, NASA GIBS och EUMETSAT; WorldMonitor tar inte emot den. Ett inskrivet ortnamn skickas till WorldMonitor och OpenStreetMap Nominatim för att hittas. Delade länkar behåller två decimaler (0,01°)."
+      "body": "Passager beräknas på denna enhet. För att hitta bilder skickar din webbläsare punkten direkt till Earth Search, Planetary Computer, NASA GIBS och EUMETSAT; WorldMonitor tar inte emot den. På en övervakad plats tillfrågas WorldMonitor om platsens dagliga register via platsens ID, inte din punkt. Ett inskrivet ortnamn skickas till WorldMonitor och OpenStreetMap Nominatim för att hittas. Delade länkar behåller två decimaler (0,01°)."
     },
     "sources": {
       "heading": "Källor ({{count}})",
@@ -5492,6 +5521,7 @@
     "tile": {
       "failed": "Scen laddades inte · {{archive}}",
       "noPreview": "Ingen förhandsvisning publicerad för denna scen ännu",
+      "processing": "Scenen bearbetas fortfarande. Försök igen senare.",
       "radar": "radar"
     },
     "target": {
@@ -5505,6 +5535,13 @@
       "noImage": "Ingen ny bild hittades",
       "noPass": "Ingen överflygning inom 72 timmar",
       "openEvidence": "Öppna bevis",
+      "compareEvent": "Före / efter",
+      "compareEventLocked": "Före / efter · Pro",
+      "compareSearching": "Söker bilder före och efter {{date}}…",
+      "compareNoAfter": "Ingen klar bild sedan {{date}} ännu.",
+      "compareNoAfterWindow": "Ingen klar bild under de {{days}} dagarna efter {{date}}.",
+      "compareNoBefore": "Ingen klar bild före {{date}} i arkivperioden.",
+      "compareFailed": "Arkivsökningen misslyckades. Försök igen.",
       "imageAlt": "Satellitvy från {{source}}",
       "unavailable": "Satellitbilderna kunde inte läsas in.",
       "fire": {
@@ -5527,6 +5564,23 @@
         "mosaicNoLayer": "Ingen daglig mosaik är tillgänglig för denna satellit.",
         "mosaicUnavailable": "Den dagliga mosaiken laddades inte.",
         "mosaicAlt": "NASA GIBS {{source}} daglig mosaik för {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Övervakad plats",
+      "loading": "Läser in platsens dagliga register…",
+      "failed": "Platsens dagliga register kunde inte läsas in; öppna punkten igen för att försöka på nytt.",
+      "stale": "Ingen aktuell daglig kontroll registrerad för den här platsen.",
+      "checked": "Kontrollerad",
+      "noPass": "Ingen kommande passage registrerad",
+      "list": {
+        "hotspot": "krishärd",
+        "conflictZone": "konfliktzon",
+        "militaryBase": "militärbas",
+        "nuclearFacility": "kärnteknisk anläggning",
+        "port": "hamn",
+        "chokepoint": "sund",
+        "reservoir": "vattenmagasin"
       }
     }
   },

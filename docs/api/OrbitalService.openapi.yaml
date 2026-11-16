@@ -1190,6 +1190,11 @@ components:
                     $ref: '#/components/schemas/SiteImage'
                 nextPass:
                     $ref: '#/components/schemas/SitePass'
+                waterExtent:
+                    $ref: '#/components/schemas/WaterExtent'
+                waterExtentUnavailable:
+                    type: boolean
+                    description: True when the radar summary could not be read, so an absent water_extent says nothing about the reservoir.
             description: |-
                 GetWatchedSiteImageryResponse is the public imagery summary of one watched site: its newest image and next pass.
                  It carries no change flag, coverage or pass history; those stay on the Pro surfaces.
@@ -1224,3 +1229,38 @@ components:
                     type: string
                     description: Pass time, ISO 8601 UTC.
             description: SitePass is the next pass expected to image a watched site.
+        WaterExtent:
+            type: object
+            properties:
+                latest:
+                    $ref: '#/components/schemas/WaterReading'
+                sameOrbitPrevious:
+                    $ref: '#/components/schemas/WaterReading'
+                boxKm2:
+                    type: number
+                    format: double
+                    description: Area of the core box the share is measured over, in square kilometres.
+            description: WaterExtent is a reservoir's newest radar water-extent reading and the newest earlier one from the same relative orbit.
+        WaterReading:
+            type: object
+            properties:
+                timeMs:
+                    type: integer
+                    format: int64
+                    description: 'Scene time, Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                waterPercent:
+                    type: number
+                    format: double
+                    description: Share of the core box that read as open water, in percent.
+                waterKm2:
+                    type: number
+                    format: double
+                    description: That share as an area, in square kilometres.
+                platform:
+                    type: string
+                    description: Satellite, e.g. "Sentinel-1A"; empty when the archive gives none.
+                relativeOrbit:
+                    type: integer
+                    format: int32
+                    description: Relative orbit of the scene; 0 when the archive gives none.
+            description: WaterReading is one Sentinel-1 radar water-extent reading of a reservoir's core box.

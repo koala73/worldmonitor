@@ -59,6 +59,13 @@ try {
 } catch (e) {
   console.error('[MiddleEastStrikes] Module failed to load — strike feed disabled:', e?.message || e);
 }
+// v2 strike rules (CII v15 B3) in shadow: own keys, own loop; v14 never reads them.
+let middleEastStrikesV2 = null;
+try {
+  middleEastStrikesV2 = require('./lib/middle-east-strikes-v2.cjs');
+} catch (e) {
+  console.error('[MiddleEastStrikesV2] Module failed to load — v2 strike tally disabled:', e?.message || e);
+}
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
 const { createXPollCycle, xPollSlot } = require('./lib/x-poll-cycle.cjs');
 const { createGuardedLookup, SSRF_BLOCKED_ERROR_CODE } = require('./lib/notification-webhook-ssrf.cjs');
@@ -2220,6 +2227,7 @@ async function pollTelegramOnce() {
         // The 200-item feed buffer turns over in ~90 minutes; strike candidates
         // are captured here so none age out before the 10-minute extractor runs.
         noteMiddleEastStrikeItem(item);
+        noteMiddleEastStrikeItemV2(item);
         if (!telegramState.cursorByHandle[handle] || msg.id > telegramState.cursorByHandle[handle]) {
           telegramState.cursorByHandle[handle] = msg.id;
         }
@@ -4974,11 +4982,6 @@ const RELAY_RECENCY_MS = 15 * 60 * 1000; // 15 min — matches client-side recen
 // ── Importance score parity with digest ──────────────────────────────────────
 // Source-tier data loaded via requireShared('source-tiers.json'), which resolves
 // to either repo-root shared/ OR scripts/shared/ depending on packaging root.
-// Both copies are enforced byte-identical by tests/edge-functions.test.mjs
-// ('scripts/shared/ stays in sync with shared/') and cross-checked in
-// tests/importance-score-parity.test.mjs.
-// Formula constants + computeImportanceScore mirror list-feed-digest.ts; parity
-// is enforced by tests/importance-score-parity.test.mjs.
 const RELAY_SOURCE_TIERS = {
   ...requireShared('source-tiers.json'),
   ...requireShared('x-account-source-tiers.json'),
@@ -5991,6 +5994,156 @@ function startMiddleEastStrikesLoop() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// v2 strike tally in shadow (CII v15 Stage B3) — Telegram + GDELT ->
+// conflict:iran-events:v2 and conflict:strike-pressure:v2
+// (logic and tests: scripts/lib/middle-east-strikes-v2.cjs).
+// The v1 loop above keeps writing conflict:iran-events:v1 and
+// conflict:strike-pressure:v1, which the live v14 scorer reads with no version
+// check, so the v2 rules run beside it on their own keys and their own
+// classifier cache. This loop has its own pending and done sets: a v2 classifier
+// failure keeps its posts waiting here without touching the v1 feed. It
+// accumulates v2 days for the v15 calibration captures; delete it when cii-v15
+// merges. Same switch as v1 (IRAN_EVENTS_ENABLED).
+// ─────────────────────────────────────────────────────────────
+const middleEastStrikeV2Pending = new Map();
+const middleEastStrikeV2Done = new Set();
+const middleEastStrikeV2Misses = new Map();
+let middleEastStrikesV2InFlight = false;
+
+function noteMiddleEastStrikeItemV2(item) {
+  if (!MIDDLE_EAST_STRIKES_ENABLED || !middleEastStrikesV2 || !item?.id || middleEastStrikeV2Pending.has(item.id) || middleEastStrikeV2Done.has(item.id)) return;
+  if (!middleEastStrikesV2.prefilterStrikeText(item.text)) return;
+  middleEastStrikeV2Pending.set(item.id, item);
+  while (middleEastStrikeV2Pending.size > MIDDLE_EAST_STRIKES_PENDING_MAX) {
+    const evicted = middleEastStrikeV2Pending.keys().next().value;
+    middleEastStrikeV2Pending.delete(evicted);
+    middleEastStrikeV2Misses.delete(evicted);
+  }
+}
+
+async function loadMiddleEastStrikeGdeltV2(processed) {
+  middleEastGdeltBulkPromise ??= import('./_conflict-gdelt-bulk.mjs');
+  let bulk;
+  try {
+    bulk = await middleEastGdeltBulkPromise;
+  } catch (e) {
+    middleEastGdeltBulkPromise = null;
+    console.warn('[MiddleEastStrikesV2] GDELT module failed to load:', e?.message || e);
+    return { candidates: [], processed, errors: [String(e?.message || e)], fetched: 0 };
+  }
+  try {
+    return await middleEastStrikesV2.fetchGdeltStrikeCandidates({ bulk, processed });
+  } catch (e) {
+    console.warn('[MiddleEastStrikesV2] GDELT backstop unavailable:', e?.message || e);
+    return { candidates: [], processed, errors: [String(e?.message || e)], fetched: 0 };
+  }
+}
+
+async function seedMiddleEastStrikesV2() {
+  if (middleEastStrikesV2InFlight) return;
+  middleEastStrikesV2InFlight = true;
+  const t0 = Date.now();
+  try {
+    for (const item of telegramState.items) noteMiddleEastStrikeItemV2(item);
+    for (const [id, item] of middleEastStrikeV2Pending) {
+      const ts = Date.parse(item.ts);
+      if (!Number.isFinite(ts) || t0 - ts > MIDDLE_EAST_STRIKES_PENDING_MAX_AGE_MS) { middleEastStrikeV2Pending.delete(id); middleEastStrikeV2Misses.delete(id); }
+    }
+    const pendingItems = [...middleEastStrikeV2Pending.values()];
+    const { status, doneIds, result, pressureStatus } = await middleEastStrikesV2.publishStrikeCycle({
+      now: t0,
+      pendingItems,
+      readStore: async () => {
+        let ok = true;
+        const value = await upstashGet(middleEastStrikesV2.STORE_KEY, () => { ok = false; });
+        return { ok, value };
+      },
+      writeStore: (store) => upstashSet(middleEastStrikesV2.STORE_KEY, store, MIDDLE_EAST_STRIKES_STORE_TTL_S),
+      writeCanonical: (payload, recordCount) => envelopeWrite(middleEastStrikesV2.CANONICAL_KEY, payload, MIDDLE_EAST_STRIKES_CANONICAL_TTL_S, {
+        recordCount,
+        sourceVersion: middleEastStrikesV2.SOURCE_VERSION,
+        zeroOk: true,
+      }),
+      writeSeedMeta: (meta) => upstashSet(middleEastStrikesV2.SEED_META_KEY, meta, MIDDLE_EAST_STRIKES_META_TTL_S),
+      readCache: (key) => upstashGet(key),
+      writeCache: (key, value, ttl) => upstashSet(key, value, ttl),
+      classify: (texts) => classifyFetchLlm(texts, middleEastStrikesV2.CLASSIFY_MAX_TEXT_CHARS, {
+        systemPrompt: middleEastStrikesV2.STRIKE_CLASSIFIER_PROMPT,
+        maxTokensPerItem: middleEastStrikesV2.CLASSIFY_MAX_TOKENS_PER_ITEM,
+        label: 'MiddleEastStrikesV2',
+      }),
+      loadGdelt: loadMiddleEastStrikeGdeltV2,
+      telegramPolledAt: telegramState.lastSuccessfulPollAt,
+      readPressure: async () => {
+        let ok = true;
+        const value = await upstashGet(middleEastStrikesV2.PRESSURE_KEY, () => { ok = false; });
+        return { ok, value };
+      },
+      writePressure: (pressure) => upstashSet(middleEastStrikesV2.PRESSURE_KEY, pressure, MIDDLE_EAST_STRIKE_PRESSURE_TTL_S),
+      writePressureMeta: async (meta) => {
+        if (!await upstashSet(middleEastStrikesV2.PRESSURE_SEED_META_KEY, meta, MIDDLE_EAST_STRIKES_META_TTL_S)) return false;
+        // Durable, no TTL: health reads the key as pending until the first
+        // healthy v2 tally publish and strict afterwards (api/health.js ACTIVATION_MARKERS).
+        // A failed marker write reports the publish as failed; the next healthy tick rewrites it.
+        return await upstashEval("return redis.call('SET', KEYS[1], ARGV[1])", [middleEastStrikesV2.PRESSURE_ACTIVATION_KEY], [String(t0)]) === 'OK';
+      },
+    });
+    for (const id of doneIds) {
+      middleEastStrikeV2Pending.delete(id);
+      middleEastStrikeV2Misses.delete(id);
+      middleEastStrikeV2Done.add(id);
+    }
+    if (result && !result.classifierFailed) {
+      for (const item of result.pending) {
+        const misses = (middleEastStrikeV2Misses.get(item.id) || 0) + 1;
+        if (misses < MIDDLE_EAST_STRIKES_MAX_MISSES) {
+          middleEastStrikeV2Misses.set(item.id, misses);
+          continue;
+        }
+        console.warn(`[MiddleEastStrikesV2] Dropping ${item.id}: unclassified after ${misses} answered cycles`);
+        middleEastStrikeV2Pending.delete(item.id);
+        middleEastStrikeV2Misses.delete(item.id);
+        middleEastStrikeV2Done.add(item.id);
+      }
+    }
+    while (middleEastStrikeV2Done.size > MIDDLE_EAST_STRIKES_DONE_MAX) {
+      middleEastStrikeV2Done.delete(middleEastStrikeV2Done.values().next().value);
+    }
+    if (!result) {
+      console.warn(`[MiddleEastStrikesV2] ${status} — cycle skipped, seed-meta not advanced`);
+      return;
+    }
+    const s = result.stats;
+    const summary = `${s.events} events, ${s.prefiltered} posts (${s.cacheHits} cached, ${s.classified} classified, ${s.retry} retry), ${s.gdeltCandidates} GDELT clusters from ${s.gdeltExportsFetched} exports, ${s.storeCandidates} stored, telegramLive=${s.telegramLive}, pressure=${pressureStatus}`;
+    if (status === 'ok') console.log(`[MiddleEastStrikesV2] ${summary} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    else console.warn(`[MiddleEastStrikesV2] ${status} — seed-meta not advanced; ${summary}`);
+  } catch (e) {
+    console.warn('[MiddleEastStrikesV2] Seed error:', e?.message || e);
+  } finally {
+    middleEastStrikesV2InFlight = false;
+  }
+}
+
+function startMiddleEastStrikesV2Loop() {
+  if (!MIDDLE_EAST_STRIKES_ENABLED) {
+    console.log('[MiddleEastStrikesV2] Disabled (IRAN_EVENTS_ENABLED is not true)');
+    return;
+  }
+  if (!middleEastStrikesV2) {
+    console.error('[MiddleEastStrikesV2] Disabled (module failed to load; see the startup error) — health will report STALE');
+    return;
+  }
+  if (!UPSTASH_ENABLED) {
+    console.log('[MiddleEastStrikesV2] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[MiddleEastStrikesV2] Loop starting (interval ${MIDDLE_EAST_STRIKES_INTERVAL_MS / 60000}min)`);
+  startBootSeedLoop('MiddleEastStrikesV2', middleEastStrikesV2.SEED_META_KEY, MIDDLE_EAST_STRIKES_INTERVAL_MS, seedMiddleEastStrikesV2,
+    (e) => console.warn('[MiddleEastStrikesV2] Initial seed error:', e?.message || e),
+    (e) => console.warn('[MiddleEastStrikesV2] Seed error:', e?.message || e));
+}
+
+// ─────────────────────────────────────────────────────────────
 // Service Statuses Seed — warm-pings Vercel RPC every 15 min
 // so service statuses are always cached (TTL is 30 min).
 // ─────────────────────────────────────────────────────────────
@@ -6779,17 +6932,25 @@ async function seedAirTrafficPoint() {
 
 // ── National departure-collapse detector (scripts/shared/air-traffic-detector.cjs)
 // Baseline days are past and immutable, so each UTC day hash is read once and
-// kept, trimmed to the fields the detector reads.
-const AIR_TRAFFIC_DETECTOR_STATE_KEY = 'aviation:traffic:detector:v1';
+// kept, trimmed to the fields the detector reads. One key holds every market's
+// state, keyed by market code.
+const AIR_TRAFFIC_DETECTOR_STATE_KEY = 'aviation:traffic:detector:v2';
+// The US-only state before markets. Read while v2 is absent, so a collapse
+// active across the upgrade keeps its onset and still gets its recovery.
+const AIR_TRAFFIC_DETECTOR_LEGACY_STATE_KEY = 'aviation:traffic:detector:v1';
 const AIR_TRAFFIC_DETECTOR_STATE_TTL_SECONDS = 7 * 86400;
+const AIR_TRAFFIC_DETECTOR_MAX_WINDOW = Math.max(...airTrafficDetector.MARKETS.map((m) => m.window));
 const airTrafficDetectorDays = new Map();
-const DETECTOR_FIELDS = ['usSeen', 'euAirborne', airTrafficDetector.SIGNAL];
+const DETECTOR_FIELDS = ['usSeen', 'usAirborne', 'euAirborne', airTrafficDetector.SIGNAL];
 
 function trimDetectorPoint(raw) {
   try {
     const p = JSON.parse(raw);
     if (p?.status !== 'ok') return null;
-    return { status: 'ok', ...Object.fromEntries(DETECTOR_FIELDS.map((f) => [f, p[f]])) };
+    const markets = p.markets && typeof p.markets === 'object'
+      ? Object.fromEntries(Object.entries(p.markets).map(([code, m]) => [code, { seen: m?.seen, dep: m?.dep }]))
+      : undefined;
+    return { status: 'ok', ...Object.fromEntries(DETECTOR_FIELDS.map((f) => [f, p[f]])), markets };
   } catch { return null; }
 }
 
@@ -6829,15 +6990,19 @@ const detectorPoint = (bin) => airTrafficDetectorDays.get(new Date(bin).toISOStr
 
 async function runAirTrafficDetector(t) {
   try {
-    const [stateRes, pointRes, wingbitsRes] = (await upstashPipeline([
+    // The bins before t that the widest market window reads.
+    const recentBins = Array.from({ length: AIR_TRAFFIC_DETECTOR_MAX_WINDOW - 1 }, (_, i) => t - (i + 1) * 300_000);
+    const [stateRes, legacyRes, pointRes, wingbitsRes, ...recentRes] = (await upstashPipeline([
       ['GET', AIR_TRAFFIC_DETECTOR_STATE_KEY],
+      ['GET', AIR_TRAFFIC_DETECTOR_LEGACY_STATE_KEY],
       ['HGET', airTrafficDayKey(t, AIR_TRAFFIC_SERIES.opensky), String(t)],
       ['HGET', airTrafficDayKey(t, AIR_TRAFFIC_SERIES.wingbits), String(t)],
+      ...recentBins.map((bin) => ['HGET', airTrafficDayKey(bin, AIR_TRAFFIC_SERIES.opensky), String(bin)]),
     ])) || [];
     // A failed read must not stand in for no state: during a collapse, the
     // next bin would start from normal and the recovery would never be sent.
     const answered = (res) => res && !res.error && 'result' in res;
-    if (!answered(stateRes) || !answered(pointRes)) {
+    if (!answered(stateRes) || !answered(pointRes) || (stateRes.result === null && !answered(legacyRes))) {
       console.warn('[AirTrafficDetector] state read failed; skipping this bin');
       return;
     }
@@ -6845,38 +7010,53 @@ async function runAirTrafficDetector(t) {
       console.warn('[AirTrafficDetector] baseline read failed; skipping this bin');
       return;
     }
-    let state = null;
+    let states = {};
     try {
-      state = stateRes.result === null ? null : JSON.parse(stateRes.result);
+      const isObject = (v) => v && typeof v === 'object' && !Array.isArray(v);
+      if (stateRes.result !== null) {
+        const parsed = JSON.parse(stateRes.result);
+        states = isObject(parsed) ? parsed : {};
+      } else if (legacyRes.result !== null) {
+        const legacy = JSON.parse(legacyRes.result);
+        states = isObject(legacy) ? { US: legacy } : {};
+      }
     } catch {
       // Only this relay writes the key. A value it cannot parse would stop the
       // detector until the TTL if skipped, so it starts over, loudly.
       console.warn('[AirTrafficDetector] stored state is unreadable; starting from normal');
-      state = null;
+      states = {};
     }
-    if (state && state.lastT > t) {
+    const lastT = Math.max(0, ...Object.values(states).map((s) => (Number.isFinite(s?.lastT) ? s.lastT : 0)));
+    const bin = new Date(t).toISOString();
+    if (lastT > t) {
       // A slow tick finished after the next bin's tick evaluated, and the run
       // only moves forward.
-      console.log(`[AirTrafficDetector] t=${new Date(t).toISOString()} skipped: ${new Date(state.lastT).toISOString()} already evaluated`);
+      console.log(`[AirTrafficDetector] t=${bin} skipped: ${new Date(lastT).toISOString()} already evaluated`);
       return;
     }
     const parse = (raw) => { try { return raw ? JSON.parse(raw) : undefined; } catch { return undefined; } };
-    const { state: next, event } = airTrafficDetector.evaluateCollapse(state, {
-      t,
-      point: parse(pointRes.result),
-      wingbits: parse(wingbitsRes?.result),
-      getPoint: detectorPoint,
-      peakBaseline: airTrafficDetector.peakBaselineFor(t, detectorPoint),
-    });
-    const bin = new Date(t).toISOString();
+    const point = parse(pointRes.result);
+    const wingbits = parse(wingbitsRes?.result);
+    const recent = new Map(recentBins.map((bin, i) => [bin, trimDetectorPoint(recentRes[i]?.result)]));
+    const getPoint = (bin) => recent.get(bin) ?? detectorPoint(bin);
     const fmt = (v) => (Number.isFinite(v) ? v.toFixed(2) : '-');
-    console.log(`[AirTrafficDetector] t=${bin} verdict=${next.verdict} state=${next.state} ratio=${fmt(next.ratio)} europe=${fmt(next.europe)} coverage=${fmt(next.coverage)}${next.coverageAgainst ? `(${next.coverageAgainst})` : ''}`);
-    if (event) {
-      const onset = new Date(event.onset).toISOString().slice(11, 16);
-      console.log(`[AirTraffic] ${event.kind === 'collapse' ? 'collapse entered' : 'collapse ended'} ratio=${event.ratio.toFixed(2)} onset=${onset}Z`);
-      // The state moves only once the event is queued, so a failed publish is
-      // retried on the next bin, which still meets the condition.
-      if (!(await publishNotificationEvent(airTrafficDetector.buildCollapseNotification(event)))) return;
+    const next = { ...states };
+    for (const market of airTrafficDetector.MARKETS) {
+      const result = airTrafficDetector.evaluateCollapse(states[market.code] || null, {
+        t, point, wingbits, market, getPoint,
+        peakBaseline: airTrafficDetector.peakBaselineFor(t, detectorPoint, market),
+      });
+      const s = result.state;
+      console.log(`[AirTrafficDetector] t=${bin} market=${market.code} verdict=${s.verdict} state=${s.state} ratio=${fmt(s.ratio)} control=${fmt(s.control)} coverage=${fmt(s.coverage)}${s.coverageAgainst ? `(${s.coverageAgainst})` : ''}`);
+      if (result.event) {
+        const { event } = result;
+        const onset = new Date(event.onset).toISOString().slice(11, 16);
+        console.log(`[AirTraffic] ${market.code} ${event.kind === 'collapse' ? 'collapse entered' : 'collapse ended'} ratio=${event.ratio.toFixed(2)} onset=${onset}Z`);
+        // The market's state moves only once its event is queued, so a failed
+        // publish is retried on the next bin, which still meets the condition.
+        if (!(await publishNotificationEvent(airTrafficDetector.buildCollapseNotification(event)))) continue;
+      }
+      next[market.code] = s;
     }
     await upstashSet(AIR_TRAFFIC_DETECTOR_STATE_KEY, next, AIR_TRAFFIC_DETECTOR_STATE_TTL_SECONDS);
   } catch (e) {
@@ -16119,6 +16299,7 @@ server.listen(PORT, RELAY_BIND_HOST, () => {
   startClassifySeedLoop();
   startDigestWarmLoop();
   startMiddleEastStrikesLoop();
+  startMiddleEastStrikesV2Loop();
   startServiceStatusesSeedLoop();
   startTheaterPostureSeedLoop();
   startAirTrafficLoop();

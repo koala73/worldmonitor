@@ -6,12 +6,19 @@ import { loadOrbitalCatalog } from '@/services/orbital/catalog';
 import { buildPassTrack, framingBounds, type FrameBounds, type OrbitalTarget, type PassTrack, type TrackPoint } from '@/services/orbital/track-geometry';
 import { ARCHIVE_SEARCHES, findArchiveEvidence, type MatchedAcquisition, type OrbitalEvidence } from '@/services/orbital/match';
 import { setOrbitalLookupOpen } from '@/services/orbital/lookup-host';
+import type { OrbitalEventCompareDetail } from '@/services/orbital/evidence-event';
 import { t } from '@/services/i18n';
 import { OrbitalWatchPage, type OrbitalWatchState } from '@/components/OrbitalWatchPage';
 import { OrbitalTimeline, type OrbitalTimelineInput, type PointContextState } from '@/components/OrbitalTimeline';
 import { formatAcquiredLine, formatTargetCoordinates } from '@/components/orbital-target-label';
 import { loadPointContext } from '@/services/orbital/point-context';
+import { loadWatchedSiteRecord, watchedSiteAt } from '@/services/orbital/watched-site-at';
 import { OrbitalPlaceTools } from '@/components/OrbitalPlaceTools';
+import { loadWaterCard } from '@/components/water-card';
+import { reservoirAtPoint } from '@/services/climate/reservoir-context';
+import { markSiteSatelliteSelected, siteSatellitesSection, type SiteSatellitesState } from '@/components/orbital-site-satellites-view';
+import { satellitesCoveringSite, type CoverageSite } from '@/services/orbital/satellite-site-coverage';
+import { fetchSatelliteTLEs, getTrackedSatelliteTles } from '@/services/satellites';
 import { confirmShareLinkCopied } from '@/components/share-link-button';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 import { DASHBOARD_SITE_ORIGIN } from '@/config/dashboard-reference-links';
@@ -25,6 +32,11 @@ let tools: OrbitalPlaceTools | null = null;
 let point: GeoPoint | null = null;
 let lookup: PointPassLookup | null = null;
 let run: AbortController | null = null;
+let siteRun: AbortController | null = null;
+/** The open point's site record failed; reopening the point reads it again. */
+let siteFailed = false;
+/** The open point is the user's own located position: no site read, since a site id would name where they are. */
+let pointIsLocated = false;
 let evidence: OrbitalEvidence | null = null;
 let linkedPass: OrbitalSharePass | null = null;
 /** The pass last selected in the sheet, so a shared link opens on it too. */
@@ -33,6 +45,9 @@ let returnFocus: HTMLElement | null = null;
 let timeline: OrbitalTimeline | null = null;
 let timelinePasses: Pick<OrbitalTimelineInput, 'lookup' | 'passes' | 'acquisitions'> | null = null;
 let pointContext: PointContextState = { kind: 'loading' };
+/** The watched site at the open point and the tracked satellites over it, or null for any other point. */
+let siteSatellites: { site: CoverageSite; state: SiteSatellitesState } | null = null;
+const SITE_SATELLITES_TICK_MS = 30_000;
 let markFrame: number | null = null;
 let centredFor: string | null = null;
 /** Where the map was before the lookup first moved it; closing puts it back, so the point never becomes the map centre. */
@@ -56,6 +71,23 @@ const MINUTE_MS = 60_000;
 const LINKED_PASS_TOLERANCE_MS = 2 * MINUTE_MS;
 
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
+
+let waterRun: AbortController | null = null;
+
+/** The water card (#10714) when the point lies on a strategic reservoir's open water. */
+function drawWater(at: GeoPoint | null): void {
+  waterRun?.abort();
+  waterRun = null;
+  const slot = page?.slot('water');
+  if (!slot) return;
+  slot.replaceChildren();
+  const site = at ? reservoirAtPoint(at.lat, at.lon) : null;
+  if (!site) return;
+  const controller = waterRun = new AbortController();
+  void loadWaterCard(site, controller.signal).then((card) => {
+    if (!controller.signal.aborted) slot.replaceChildren(card);
+  }).catch(() => {});
+}
 
 function cancel(): void {
   run?.abort();
@@ -152,6 +184,8 @@ function selectTimelinePass(key: string): void {
 function selectPass(noradId: number, timeMs: number): void {
   selectedPass = { noradId, timeMs };
   drawTimeline();
+  const slot = page?.slot('satellites');
+  if (slot) markSiteSatelliteSelected(slot, selectedKey());
   void showTrack(noradId, timeMs);
 }
 
@@ -178,6 +212,104 @@ function loadContext(found: PointPassLookup, signal: AbortSignal): void {
   });
 }
 
+/** When the point falls on a watched site, reads that site's public record by its id; the point stays here. */
+function loadWatchedSite(at: GeoPoint): void {
+  siteRun?.abort();
+  siteFailed = false;
+  if (pointIsLocated) { siteRun = null; page?.setWatchedSite({ kind: 'none' }); return; }
+  const controller = new AbortController();
+  siteRun = controller;
+  const { signal } = controller;
+  void watchedSiteAt(at).then(async (site) => {
+    if (signal.aborted || !site) return;
+    page?.setWatchedSite({ kind: 'loading', site });
+    try {
+      const record = await loadWatchedSiteRecord(site.id, signal);
+      if (!signal.aborted) page?.setWatchedSite({ kind: 'loaded', site, record });
+    } catch {
+      if (signal.aborted) return;
+      siteFailed = true;
+      page?.setWatchedSite({ kind: 'failed', site });
+    }
+  }, () => {});
+}
+
+/** The lookup's own pass for a tracked satellite's approach, so its row selects it. */
+function lookupPassKey(noradId: string, timeMs: number): string | null {
+  const pass = (evidence?.passes ?? lookup?.passes)?.find((p) =>
+    String(p.noradId) === noradId && Math.abs(p.timeMs - timeMs) <= LINKED_PASS_TOLERANCE_MS && p.tier.kind !== 'daily-mosaic');
+  return pass ? `${pass.noradId}:${pass.timeMs}` : null;
+}
+
+function drawSiteSatellites(): void {
+  const slot = page?.slot('satellites');
+  if (!slot) return;
+  if (!siteSatellites) {
+    slot.replaceChildren();
+    return;
+  }
+  const expanded = slot.querySelector('[data-section="site-satellites"] .ies-more')?.getAttribute('aria-expanded') === 'true';
+  const focused = document.activeElement instanceof HTMLElement && slot.contains(document.activeElement) ? document.activeElement : null;
+  const refocus = focused?.classList.contains('ies-more') ? '.ies-more' : focused?.dataset.key ? `[data-key="${CSS.escape(focused.dataset.key)}"]` : null;
+  slot.replaceChildren(siteSatellitesSection(siteSatellites.site, siteSatellites.state, {
+    nowMs: Date.now(),
+    passKey: lookupPassKey,
+    selectedKey: selectedKey(),
+    expanded,
+  }));
+  if (refocus) slot.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
+}
+
+/**
+ * A watched site's sheet lists the tracked satellites that cover it, the reverse of a
+ * satellite card's site list. The site is matched and the passes projected in the
+ * browser from the public registry and element sets, so the point never leaves it.
+ */
+async function loadSiteSatellites(found: PointPassLookup, signal: AbortSignal): Promise<void> {
+  siteSatellites = null;
+  drawSiteSatellites();
+  // The same cell match as the monitored-site block, so the two agree on which site this is.
+  const site = await watchedSiteAt(found.point).catch(() => null);
+  if (!site || signal.aborted) return;
+  const draw = (state: SiteSatellitesState) => {
+    siteSatellites = { site, state };
+    drawSiteSatellites();
+  };
+  draw({ kind: 'projecting' });
+  try {
+    let tles = getTrackedSatelliteTles();
+    if (tles.length === 0) tles = (await fetchSatelliteTLEs()) ?? [];
+    if (signal.aborted) return;
+    if (tles.length === 0) {
+      draw({ kind: 'not-loaded' });
+      return;
+    }
+    let latest = 0;
+    // Each projection reads the layer's current set, so satellites it adds or re-elements later
+    // are included; a layer switched off since keeps projecting the last set it drew.
+    const project = async () => {
+      const tracked = getTrackedSatelliteTles();
+      if (tracked.length > 0) tles = tracked;
+      const ticket = ++latest;
+      const satellites = await satellitesCoveringSite({ site, tles, nowMs: Date.now(), signal });
+      if (!signal.aborted && ticket === latest) draw({ kind: 'ok', satellites });
+    };
+    await project();
+    if (signal.aborted) return;
+    // The open list moves with the clock: elapsed passes drop out and, once its window has
+    // slid far enough, the cached scans renew, so no past pass is labelled upcoming.
+    const clock = setInterval(() => {
+      const ticket = latest + 1;
+      project().catch((error: unknown) => {
+        if (!isAbort(error) && !signal.aborted && ticket === latest) draw({ kind: 'failed' });
+      });
+    }, SITE_SATELLITES_TICK_MS);
+    signal.addEventListener('abort', () => clearInterval(clock), { once: true });
+  } catch (error) {
+    if (!isAbort(error) && !signal.aborted) draw({ kind: 'failed' });
+  }
+}
+
 async function checkArchives(found: PointPassLookup, signal: AbortSignal): Promise<void> {
   show({ kind: 'passes', lookup: found, archives: { kind: 'checking', total: ARCHIVE_SEARCHES.length, progress: null } });
   await afterDebugBearRequestWindow(signal);
@@ -190,6 +322,7 @@ async function checkArchives(found: PointPassLookup, signal: AbortSignal): Promi
   if (signal.aborted) return;
   evidence = result;
   show({ kind: 'passes', lookup: found, archives: { kind: 'answered', evidence: result } });
+  drawSiteSatellites();
 }
 
 async function start(): Promise<void> {
@@ -214,6 +347,7 @@ async function start(): Promise<void> {
       lookup = found;
     }
     loadContext(lookup, signal);
+    void loadSiteSatellites(lookup, signal);
     await checkArchives(lookup, signal);
     if (signal.aborted) return;
     evidenceReady = true;
@@ -303,7 +437,7 @@ function showSearchRow(open: boolean): void {
 }
 
 function ensurePage(): OrbitalWatchPage {
-  tools ??= new OrbitalPlaceTools({ onPick: (at, name) => lookAt(at, name, { recentre: true }), shareLink });
+  tools ??= new OrbitalPlaceTools({ onPick: (at, name, located) => lookAt(at, name, { recentre: true, located }), shareLink });
   if (!page) {
     page = new OrbitalWatchPage({
       onClose: () => {
@@ -314,6 +448,8 @@ function ensurePage(): OrbitalWatchPage {
         homeCamera = null;
         releaseMapUrlCentreOnUserMove(document.getElementById('mapContainer'));
         cancel();
+        siteRun?.abort();
+        siteRun = null;
         clearTrack();
         drawTarget(null);
         surface = null;
@@ -325,6 +461,7 @@ function ensurePage(): OrbitalWatchPage {
         returnFocus = null;
         timelinePasses = null;
         drawTimeline();
+        drawWater(null);
         tools!.reset();
         showSearchRow(false);
         setOrbitalLookupOpen(false);
@@ -357,7 +494,7 @@ function useSurface(map: OrbitalTrackSurface | null | undefined): boolean {
   return moved;
 }
 
-function lookAt(at: GeoPoint, name: string | null, { recentre, map }: { recentre: boolean; map?: OrbitalTrackSurface | null }): void {
+function lookAt(at: GeoPoint, name: string | null, { recentre, map, located = false }: { recentre: boolean; map?: OrbitalTrackSurface | null; located?: boolean }): void {
   const sheet = ensurePage();
   const moved = useSurface(map);
   tools!.clearNote();
@@ -371,6 +508,14 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, map }: { recentre
   if (sheet.isOpen && samePoint(point, at)) {
     if (moved) drawTarget(targetFor(at, null));
     sheet.setPlaceName(name);
+    // The same point reopened as the located position drops a pending read; reopened as a picked point it reads.
+    if (pointIsLocated !== located) {
+      pointIsLocated = located;
+      loadWatchedSite(at);
+      drawWater(located ? null : at);
+    } else if (siteFailed && !located) {
+      loadWatchedSite(at);
+    }
     if (recentre) focusMap();
     // A second link to the open point selects its pass now if the archives have answered, else when they do.
     if (evidenceReady && lookup) applyLinkedPass(lookup);
@@ -386,15 +531,25 @@ function lookAt(at: GeoPoint, name: string | null, { recentre, map }: { recentre
   claimMapUrlCentre();
   sheet.open(at, returnFocus);
   sheet.setPlaceName(name);
+  pointIsLocated = located;
+  loadWatchedSite(at);
   focusMap();
+  // The water card reads its reservoir by site id, which would name where a located user is.
+  drawWater(located ? null : at);
   void start();
 }
 
-/** Opens the satellite pass lookup for a point. The point stays in the browser. */
-export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null, map?: OrbitalTrackSurface | null): void {
+/** Opens the satellite pass lookup for a point. The point stays in the browser; `located` marks the user's own position. */
+export function openOrbitalWatch(at: GeoPoint, returnFocusTo: HTMLElement | null, map?: OrbitalTrackSurface | null, { located = false }: { located?: boolean } = {}): void {
   returnFocus = returnFocusTo;
   linkedPass = null;
-  lookAt(at, null, { recentre: false, map });
+  lookAt(at, null, { recentre: false, map, located });
+}
+
+/** Opens the image viewer in Compare on the pair found around a map event (#10713 unit 2). */
+export function openOrbitalEventCompare({ point, eventMs, pair }: OrbitalEventCompareDetail): void {
+  void import('@/components/OrbitalImageViewer').then(({ openOrbitalImageViewer, subjectForEvent }) =>
+    openOrbitalImageViewer(subjectForEvent(point, eventMs, pair, Date.now()), document.getElementById('mapContainer'), undefined, { compareKey: pair.before.key }));
 }
 
 /** Opens the lookup with no place yet, focused on its search field. */

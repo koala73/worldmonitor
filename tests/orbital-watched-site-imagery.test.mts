@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { WATCHED_SITE_ID, toWatchedSiteImagery } from '../server/worldmonitor/orbital/v1/get-watched-site-imagery.ts';
+import { WATCHED_SITE_ID, toWaterExtent, toWatchedSiteImagery } from '../server/worldmonitor/orbital/v1/get-watched-site-imagery.ts';
 import { ROLLUP_MAX_AGE_MS, SITES_SCHEMA } from '../shared/orbital/country-rollup.js';
 import { orbitalHandler } from '../server/worldmonitor/orbital/v1/handler.ts';
 import { createOrbitalServiceRoutes } from '../src/generated/server/worldmonitor/orbital/v1/service_server.ts';
@@ -80,6 +80,38 @@ describe('watched-site imagery read (KTD16)', () => {
     }
   });
 
+  it('flags an unreadable or missing radar summary instead of reading it as no water reading', async () => {
+    const env = { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN };
+    const realFetch = globalThis.fetch;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    const call = async (summaryStatus: number, result: unknown = null) => {
+      globalThis.fetch = (async (input: RequestInfo | URL) => String(input).includes('water-extent')
+        ? new Response(summaryStatus === 200 ? JSON.stringify({ result }) : 'down', { status: summaryStatus })
+        : new Response(JSON.stringify({ result: null }))) as typeof fetch;
+      const res = await route(new Request(`https://api.worldmonitor.app${PATH}?site_id=reservoir%3Akariba`));
+      assert.equal(res.status, 200);
+      return res.json() as Promise<Record<string, unknown>>;
+    };
+    try {
+      const failed = await call(500);
+      assert.equal(failed.waterExtentUnavailable, true);
+      assert.equal(failed.waterExtent, undefined);
+      // No summary key yet (before the first publish, or a lost write) is not "this reservoir has no reading".
+      const missing = await call(200);
+      assert.equal(missing.waterExtentUnavailable, true);
+      assert.equal(missing.waterExtent, undefined);
+      const empty = await call(200, JSON.stringify({ reservoirs: {} }));
+      assert.equal(empty.waterExtentUnavailable, undefined);
+      assert.equal(empty.waterExtent, undefined);
+    } finally {
+      globalThis.fetch = realFetch;
+      for (const [name, value] of [['UPSTASH_REDIS_REST_URL', env.url], ['UPSTASH_REDIS_REST_TOKEN', env.token]] as const) {
+        if (value === undefined) delete process.env[name]; else process.env[name] = value;
+      }
+    }
+  });
+
   it('is free for map objects while the per-point and per-country APIs stay Pro', () => {
     assert.ok(!PREMIUM_RPC_PATHS.has(PATH));
     assert.equal(getRequiredTier(PATH), null);
@@ -101,5 +133,26 @@ describe('site record to popup imagery', () => {
 
   it('falls back to the browser lookup when the record is stale', () => {
     assert.equal(fromSiteRecord(toWatchedSiteImagery('port:jebel_ali', null, NOW), NOW), null);
+  });
+
+  it('gives a reservoir its newest radar water reading and the same-orbit one before it', () => {
+    const reading = (time: string, waterPercent: number, relativeOrbit = 43) => ({ time, waterPercent, waterKm2: waterPercent * 2, platform: 'Sentinel-1A', relativeOrbit });
+    const summary = (entry: unknown) => ({ schema: 1, reservoirs: { 'reservoir:kariba': entry } });
+    const latest = reading('2026-11-09T03:40:00Z', 62.4);
+    const previous = reading('2026-10-28T03:40:00Z', 65.5);
+    const wire = ({ time, ...rest }: ReturnType<typeof reading>) => ({ timeMs: Date.parse(time), ...rest });
+    assert.deepEqual(toWaterExtent('reservoir:kariba', summary({ areaKm2: 640, latest, sameOrbitPrevious: previous })), {
+      latest: wire(latest), sameOrbitPrevious: wire(previous), boxKm2: 640,
+    });
+    // Other orbits, a later "previous" or a malformed one are not compared.
+    for (const bad of [reading('2026-10-28T03:40:00Z', 65.5, 145), reading('2026-11-10T03:40:00Z', 65.5), { time: 'x', waterPercent: 1 }]) {
+      assert.equal(toWaterExtent('reservoir:kariba', summary({ areaKm2: 640, latest, sameOrbitPrevious: bad }))?.sameOrbitPrevious, undefined);
+    }
+    // Readings without a relative orbit cannot be matched to one.
+    const unorbited = (time: string) => ({ time, waterPercent: 60, waterKm2: 120 });
+    assert.equal(toWaterExtent('reservoir:kariba', summary({ areaKm2: 640, latest: unorbited('2026-11-09T03:40:00Z'), sameOrbitPrevious: unorbited('2026-10-28T03:40:00Z') }))?.sameOrbitPrevious, undefined);
+    for (const missing of [null, {}, { reservoirs: {} }, summary(null), summary({ latest: { time: 'x', waterPercent: 1 } }), summary({ latest: { time: latest.time } })]) {
+      assert.equal(toWaterExtent('reservoir:kariba', missing), null);
+    }
   });
 });

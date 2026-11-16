@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // A table must fit its panel, or scroll inside it with a visible cue. The
 // panel body scrolls sideways without a visible scrollbar on touch screens and
@@ -131,7 +132,7 @@ test('panel tables fit the panel at phone width', async ({ browser }, testInfo) 
           return panel.locator('tbody tr').count();
         }, { message: `${id} rows at ${viewport.width}px`, timeout: 90_000 })
         .toBe(3);
-      await panel.screenshot({ path: testInfo.outputPath(`${id}-${viewport.width}.png`) });
+      await evidenceScreenshot(panel, { path: testInfo.outputPath(`${id}-${viewport.width}.png`) });
       const m = await measure(page, id);
       const label = `${id} at ${viewport.width}px (panel ${m.panel}px, table ${m.table}px)`;
       expect.soft(m.cellsPastPanel, `${label}: cells past the panel edge`).toEqual([]);
@@ -331,7 +332,7 @@ test('panel tables fit a narrow desktop column or scroll with a visible cue', as
           return panel.locator('tbody tr').count();
         }, { message: `${id} rows at ${viewport.width}px`, timeout: 90_000 })
         .toBeGreaterThanOrEqual(3);
-      await panel.screenshot({ path: testInfo.outputPath(`${id}-${viewport.width}.png`) });
+      await evidenceScreenshot(panel, { path: testInfo.outputPath(`${id}-${viewport.width}.png`) });
       const s = await readScroll(page, id);
       const label = `${id} at ${viewport.width}px (panel ${s.panel}px, ${s.scroller || 'no scroller'} hides ${s.overflow}px)`;
       expect(s.panel, `${label}: the panel sits in a sidebar column`).toBeLessThanOrEqual(400);
@@ -370,7 +371,7 @@ test('the table scroll cue follows the reading direction in RTL', async ({ brows
       return panel.locator('tbody tr').count();
     }, { timeout: 90_000 })
     .toBeGreaterThanOrEqual(3);
-  await panel.screenshot({ path: testInfo.outputPath('grocery-basket-rtl-1440.png') });
+  await evidenceScreenshot(panel, { path: testInfo.outputPath('grocery-basket-rtl-1440.png') });
   const s = await readScroll(page, 'grocery-basket');
   const label = `grocery-basket RTL (panel ${s.panel}px, hides ${s.overflow}px)`;
   expect(s.overflow, `${label}: the country matrix scrolls`).toBeGreaterThan(0);
@@ -696,7 +697,7 @@ test('the grocery total row keeps a visible separator and shows coverage in both
     await expect(totals.nth(1)).toContainText('2.5%');
     await panel.locator('.panel-resize-handle').press('ArrowDown');
     await totals.nth(0).scrollIntoViewIfNeeded();
-    await panel.screenshot({ path: testInfo.outputPath(`grocery-coverage-${theme}.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`grocery-coverage-${theme}.png`) });
     const separator = await panel.evaluate((el) => {
       const cell = el.querySelector('tr.gb-total-row td')!;
       const probe = document.createElement('span');

@@ -2473,7 +2473,14 @@
     "map": {
       "showMap": "Onyesha Ramani",
       "hideMap": "Ficha Ramani",
-      "clearTrails": "Njia wazi"
+      "clearTrails": "Njia wazi",
+      "locate": "Onyesha mahali nilipo"
+    },
+    "mapLocate": {
+      "locating": "Inatafuta mahali…",
+      "denied": "Ufikiaji wa mahali umekataliwa. Tumia Tafuta kupata mahali.",
+      "unavailable": "Mahali hapakupatikana. Tumia Tafuta kupata mahali.",
+      "noCountry": "Hakuna nchi mahali ulipo. Tumia Tafuta kupata mahali."
     },
     "climateNews": {
       "infoTooltip": "<strong>Habari za Hali ya Hewa</strong> Taarifa za hivi punde za mazingira na hali ya hewa kutoka Carbon Brief, UNEP, NASA, The Guardian, na vyanzo vingine vya mamlaka. Inasasishwa kila baada ya dakika 30.",
@@ -3290,6 +3297,19 @@
         "latestPass": "mpito wa mwisho wa ICESat-2 {{date}}",
         "sparkline": "Kiwango cha miezi 36 na msingi wa msimu kama mstari wa vistari",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Viwango vya uso wa maji vya lidar kutoka mipito yenye tarehe, si usomaji wa moja kwa moja wala ujazo."
+      },
+      "water": {
+        "heading": "Maji katika {{name}}",
+        "level": "Kiwango cha lidar",
+        "extent": "Eneo la maji kwa rada",
+        "extentValue": "{{percent}}% maji wazi ({{area}} km²) tarehe {{date}}",
+        "extentChange": "Pointi {{delta}} tangu {{date}} kwenye obiti ileile",
+        "extentNoComparison": "Hakuna kipimo cha awali kwenye obiti ileile cha kulinganisha",
+        "extentNone": "Bado hakuna kipimo cha rada",
+        "unavailable": "Imeshindwa kupakia; fungua tena ili kujaribu upya",
+        "optical": "Picha ya macho ya hivi karibuni",
+        "opticalNone": "Hakuna picha ya macho ndani ya siku 30",
+        "note": "Kila safu ni kipimo chenye tarehe kutoka kupita tofauti, si usomaji wa moja kwa moja. Rada hupima maji wazi katika eneo kuu la bwawa; maji yaliyochafuliwa na upepo yanaweza kusomeka kama nchi kavu."
       }
     },
     "gridDisruptionClock": {
@@ -4587,7 +4607,8 @@
   "contextMenu": {
     "openCountryBrief": "Fungua Muhtasari wa Nchi",
     "copyCoordinates": "Nakili Viratibu",
-    "satellitePasses": "Satelaiti zinazopita hapa"
+    "satellitePasses": "Satelaiti zinazopita hapa",
+    "imageryEvidenceHere": "Ushahidi wa picha za satelaiti hapa"
   },
   "auth": {
     "signIn": "Ingia",
@@ -5204,6 +5225,7 @@
     "counts": {},
     "tier": {
       "checking": "inakagua kumbukumbu",
+      "notInArchive": "haipo kwenye kumbukumbu",
       "confirmed": "imethibitishwa",
       "likely": "inawezekana",
       "unmatchedImage": "picha bila kupita kulikokokotolewa",
@@ -5270,7 +5292,8 @@
       "metaSpot": "Mawingu kwenye nukta",
       "metaScene": "Mawingu ya picha",
       "metaSun": "Mwinuko wa jua",
-      "showCloudy": "Jumuisha tarehe zenye mawingu ({{count}})"
+      "showCloudy": "Jumuisha tarehe zenye mawingu ({{count}})",
+      "eventMark": "Tukio {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5378,6 +5401,12 @@
       "passes_one": "Pito {{count}}",
       "passes_other": "Mapito {{count}}"
     },
+    "siteSatellites": {
+      "heading": "Setilaiti zinazofuatiliwa juu ya eneo hili · saa {{hours}} zijazo",
+      "none": "Hakuna setilaiti ya upigaji picha inayofuatiliwa inayofunika eneo hili ndani ya saa {{hours}}.",
+      "notLoaded": "Fungua eneo tena ili kujaribu upya; vipengele vya obiti vya setilaiti havikupakiwa.",
+      "failed": "Fungua eneo tena ili kujaribu upya; hesabu ya mapito imeshindwa."
+    },
     "sheet": {
       "heading": "Ushahidi wa picha za satelaiti",
       "window": "Siku {{days}} zilizopita, {{hours}} h zijazo",
@@ -5470,7 +5499,7 @@
     "privacy": {
       "line": "Eneo lako hutumwa kwa hifadhi za picha tu.",
       "more": "Maelezo",
-      "body": "Kupita kwa satelaiti kunakokotolewa kwenye kifaa hiki. Ili kupata picha, kivinjari chako hutuma eneo hilo moja kwa moja kwa Earth Search, Planetary Computer, NASA GIBS na EUMETSAT; WorldMonitor haipokei. Jina la mahali unaloandika hutumwa kwa WorldMonitor na OpenStreetMap Nominatim ili lipatikane. Viungo vinavyoshirikiwa huhifadhi desimali mbili (0.01°)."
+      "body": "Kupita kwa satelaiti kunakokotolewa kwenye kifaa hiki. Ili kupata picha, kivinjari chako hutuma eneo hilo moja kwa moja kwa Earth Search, Planetary Computer, NASA GIBS na EUMETSAT; WorldMonitor haipokei. Katika eneo linalofuatiliwa, WorldMonitor huombwa rekodi ya kila siku ya eneo hilo kwa kitambulisho cha eneo, si kwa kituo chako. Jina la mahali unaloandika hutumwa kwa WorldMonitor na OpenStreetMap Nominatim ili lipatikane. Viungo vinavyoshirikiwa huhifadhi desimali mbili (0.01°)."
     },
     "sources": {
       "heading": "Vyanzo ({{count}})",
@@ -5492,6 +5521,7 @@
     "tile": {
       "failed": "Taswira haikupakia · {{archive}}",
       "noPreview": "Bado hakuna onyesho la kuchungulia lililochapishwa kwa taswira hii",
+      "processing": "Picha bado inachakatwa. Jaribu tena baadaye.",
       "radar": "rada"
     },
     "target": {
@@ -5505,6 +5535,13 @@
       "noImage": "Hakuna picha ya hivi karibuni",
       "noPass": "Hakuna mpito ndani ya saa 72",
       "openEvidence": "Fungua ushahidi",
+      "compareEvent": "Kabla / baada",
+      "compareEventLocked": "Kabla / baada · Pro",
+      "compareSearching": "Inatafuta picha kabla na baada ya {{date}}…",
+      "compareNoAfter": "Bado hakuna picha safi tangu {{date}}.",
+      "compareNoAfterWindow": "Hakuna picha safi katika siku {{days}} baada ya {{date}}.",
+      "compareNoBefore": "Hakuna picha safi kabla ya {{date}} katika kipindi cha kumbukumbu.",
+      "compareFailed": "Utafutaji wa kumbukumbu umeshindwa. Jaribu tena.",
       "imageAlt": "Mwonekano wa setilaiti kutoka {{source}}",
       "unavailable": "Picha za setilaiti hazikupakia.",
       "fire": {
@@ -5527,6 +5564,23 @@
         "mosaicNoLayer": "Hakuna mozaiki ya kila siku inayopatikana kwa sateliti hii.",
         "mosaicUnavailable": "Imeshindwa kupakia mozaiki ya kila siku.",
         "mosaicAlt": "Mozaiki ya kila siku ya NASA GIBS {{source}} kwa {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Eneo linalofuatiliwa",
+      "loading": "Inapakia rekodi ya kila siku ya eneo…",
+      "failed": "Rekodi ya kila siku ya eneo haikupakia; fungua tena kituo ili kujaribu tena.",
+      "stale": "Hakuna ukaguzi wa sasa wa kila siku uliorekodiwa kwa eneo hili.",
+      "checked": "Imekaguliwa",
+      "noPass": "Hakuna mpito ujao uliorekodiwa",
+      "list": {
+        "hotspot": "eneo tete",
+        "conflictZone": "eneo la mzozo",
+        "militaryBase": "kambi ya kijeshi",
+        "nuclearFacility": "kituo cha nyuklia",
+        "port": "bandari",
+        "chokepoint": "mlango bahari",
+        "reservoir": "bwawa"
       }
     }
   },

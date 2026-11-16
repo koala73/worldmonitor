@@ -183,6 +183,8 @@ export interface GetWatchedSiteImageryResponse {
   stale: boolean;
   latestImage?: SiteImage;
   nextPass?: SitePass;
+  waterExtent?: WaterExtent;
+  waterExtentUnavailable?: boolean;
 }
 
 export interface SiteImage {
@@ -197,6 +199,20 @@ export interface SitePass {
   satellite: string;
   profileId: string;
   time: string;
+}
+
+export interface WaterExtent {
+  latest?: WaterReading;
+  sameOrbitPrevious?: WaterReading;
+  boxKm2: number;
+}
+
+export interface WaterReading {
+  timeMs: number;
+  waterPercent: number;
+  waterKm2: number;
+  platform: string;
+  relativeOrbit: number;
 }
 
 export interface FieldViolation {

@@ -22,11 +22,13 @@ import {
   scenesFromSearch,
   searchSince,
   statisticsQuery,
+  waterExtentSummary,
 } from '../scripts/_orbital-water-extent.mjs';
 import {
   ORBITAL_WATER_EXTENT_KEY,
   RUN_BUDGET_MS,
   buildSeedOptions,
+  ORBITAL_WATER_EXTENT_LATEST_KEY,
   loadWatchlist,
   MAX_SEARCH_PAGES,
   makeFetchWaterExtent,
@@ -262,6 +264,27 @@ describe('reservoir water extent: seed contract', () => {
     assert.equal(opts.validateFn({ schema: 1, reservoirs: { a: {}, b: {} } }), true);
     assert.equal(opts.validateFn({ schema: 1, reservoirs: { a: {} } }), false);
     assert.equal(typeof opts.afterFreshness, 'function');
+    assert.deepEqual(opts.extraKeys.map((k) => k.key), [ORBITAL_WATER_EXTENT_LATEST_KEY]);
+    assert.equal(opts.extraKeys[0].transform, waterExtentSummary);
+  });
+
+  it('summarises each reservoir as its newest reading and the newest earlier one from the same orbit', () => {
+    const obs = (sceneId, time, waterPercent, relativeOrbit) => ({ sceneId, time, waterPercent, waterKm2: waterPercent * 2, validPercent: 99, platform: 'Sentinel-1A', relativeOrbit, orbitState: 'ascending' });
+    const latest = obs('s3', '2026-11-09T03:40:00Z', 62.4, 43);
+    const observations = [latest, obs('s2', '2026-11-03T15:10:00Z', 70, 145), obs('s1', '2026-10-28T03:40:00Z', 65.5, 43)];
+    const summary = waterExtentSummary({ schema: 1, runAt: 1, reservoirs: {
+      'reservoir:kariba': { areaKm2: 640, observations, latest, partialScenes: [] },
+      'reservoir:empty': { areaKm2: 10, observations: [], latest: null },
+      'reservoir:lone': { areaKm2: 10, observations: [obs('x', '2026-11-01T00:00:00Z', 5, 9)], latest: obs('x', '2026-11-01T00:00:00Z', 5, 9) },
+    } });
+    assert.deepEqual(Object.keys(summary.reservoirs), ['reservoir:kariba', 'reservoir:lone']);
+    assert.deepEqual(summary.reservoirs['reservoir:kariba'], {
+      areaKm2: 640,
+      latest: { time: latest.time, waterPercent: 62.4, waterKm2: 124.8, platform: 'Sentinel-1A', relativeOrbit: 43 },
+      sameOrbitPrevious: { time: '2026-10-28T03:40:00Z', waterPercent: 65.5, waterKm2: 131, platform: 'Sentinel-1A', relativeOrbit: 43 },
+    });
+    assert.equal(summary.reservoirs['reservoir:lone'].sameOrbitPrevious, null);
+    assert.ok(!JSON.stringify(summary).includes('observations'), 'the series stays on the canonical key');
   });
 
   it('ships dark with Orbital Watch', () => {

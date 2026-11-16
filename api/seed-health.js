@@ -72,8 +72,10 @@ const SEED_DOMAINS = {
   'climate:reservoir-levels': { key: 'seed-meta:climate:reservoir-levels', intervalMin: 1440, minRecordCount: 50, activationKey: 'seed-activated:climate:reservoir-levels' },
   // Climate bundle member every 3h; health.js maxStaleMin:540. Pending until the first publication.
   'orbital:catalog': { key: 'seed-meta:orbital:catalog', intervalMin: 180, minRecordCount: 250, activationKey: 'seed-activated:orbital:catalog' },
-  // Daily bundle member; health.js maxStaleMin:4320. Pending until the first publication.
-  'orbital:sites': { key: 'seed-meta:orbital:sites', intervalMin: 1440, minRecordCount: 300, activationKey: 'seed-activated:orbital:sites' },
+  // Climate bundle member every 12h. intervalMin expresses health.js maxStaleMin:4320 as
+  // intervalMin * 2, and minRecordCount matches api/health.js (below one run's count, so a cold
+  // start's first run is not partial). Pending until the first publication.
+  'orbital:sites': { key: 'seed-meta:orbital:sites', intervalMin: 2160, minRecordCount: 150, activationKey: 'seed-activated:orbital:sites' },
   // #4920 completeness measurement — both run in the daily feed-validation
   // GitHub Actions workflow (00:00 UTC), not Railway. 1440-min cadence;
   // classifier stales at intervalMin*2 = one fully missed day.
@@ -153,6 +155,7 @@ const SEED_DOMAINS = {
   'positive-events:geo':      { key: 'seed-meta:positive-events:geo',      intervalMin: 30 },
   'intelligence:risk-scores': { key: 'seed-meta:intelligence:risk-scores', intervalMin: 15, ciiInputs: true }, // CII warm-ping every 8min; intervalMin*2 = 30min, aligned with api/health.js riskScores. ciiInputs grades the per-input report with the same policy (api/_cii-input-health.js).
   'conflict:iran-events':     { key: 'seed-meta:conflict:iran-events',     intervalMin: 22 }, // ais-relay Middle East strike loop every 10min; intervalMin*2 = 44min, aligned with api/health.js iranEvents (45).
+  'conflict:strike-pressure:v2': { key: 'seed-meta:conflict:strike-pressure:v2', intervalMin: 22, activationKey: 'seed-activated:conflict:strike-pressure:v2' }, // the relay's v2 shadow loop (CII v15 B3), same cadence; aligned with api/health.js strikePressureV2 (45).
   'conflict:strike-pressure': { key: 'seed-meta:conflict:strike-pressure', intervalMin: 22, activationKey: 'seed-activated:conflict:strike-pressure' }, // same relay loop adds each healthy window to the 30-day CII strike tally; aligned with api/health.js strikePressure (45).
   'conflict:ucdp-events':     { key: 'seed-meta:conflict:ucdp-events',     intervalMin: 210 },
   'conflict:acled-intel':     { key: 'seed-meta:conflict:acled-intel',     intervalMin: 19 },
@@ -372,6 +375,7 @@ const SEED_DOMAINS = {
 if ((process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() !== 'true') {
   delete SEED_DOMAINS['conflict:iran-events'];
   delete SEED_DOMAINS['conflict:strike-pressure'];
+  delete SEED_DOMAINS['conflict:strike-pressure:v2'];
 }
 
 function parseJsonValue(raw) {

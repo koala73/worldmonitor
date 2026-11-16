@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import ts from 'typescript';
 import { COUNTRY_RISK_APP_HTML } from '../api/mcp/ui/country-risk-app';
 import { buildPluginShell } from '../api/mcp/ui/_plugin-loader';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // The news view's entry chunk (plugin-<hash>.js), not shared chunks such as plugin-display-mode-<hash>.js.
 const PLUGIN_ENTRY_CHUNK = /^plugin-[\w-]{8}\.js$/;
@@ -231,7 +232,7 @@ for (const expired of [false, true]) {
     expect(page.url()).toBe(location);
     expect(navigations).toEqual([]);
     await writeFile(info.outputPath('blank-search-selection.json'), JSON.stringify({ contexts: host.contexts, calls: host.calls, expired, navigations }, null, 2));
-    await page.screenshot({ path: info.outputPath('blank-search-selected.png'), fullPage: true });
+    await evidenceScreenshot(page, { path: info.outputPath('blank-search-selected.png'), fullPage: true });
   });
 }
 
@@ -271,7 +272,7 @@ test(`Search reveals the secondary blank-link member at row 23 in a windowed pan
   await expect(row.locator('..')).toHaveAttribute('data-chunk', '2');
   await expect(frame.locator('.panel[hidden] .search-highlight')).toHaveCount(0);
   expect(host.calls).toHaveLength(beforeCalls);
-  await page.screenshot({ path: info.outputPath('windowed-search-row-23.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('windowed-search-row-23.png'), fullPage: true });
   await writeFile(info.outputPath('windowed-search-row-23.json'), JSON.stringify({ target, contexts: host.contexts, calls: host.calls }, null, 2));
 });
 }
@@ -373,7 +374,7 @@ test('loaded marker and search interactions retain original identity without dat
   await markers.first().click();
   const expected = { kind: 'news-article', link: 'https://example.com/second', title: 'Controlled earthquake report in Japan', source: 'Second publisher', displayLabel: 'Controlled earthquake report in Japan' };
   await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toEqual(expected);
-  await page.screenshot({ path: info.outputPath('latest-news-interaction-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('latest-news-interaction-desktop.png'), fullPage: true });
   await frame.locator('.popup-close').click();
   await frame.getByRole('combobox', { name: 'News source' }).selectOption('Fixture publisher');
   await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toBeNull();
@@ -422,7 +423,7 @@ test('a host without headline analysis gets no summarize or translate controls',
   await expect(frame.getByText('Controlled earthquake report in Japan').first()).toBeVisible();
   await expect(summarize.first()).toBeVisible();
   await expect(usage).toContainText('AI summaries and translations are separate requests');
-  await page.screenshot({ path: info.outputPath('headline-analysis-on.png') });
+  await evidenceScreenshot(page, { path: info.outputPath('headline-analysis-on.png') });
   const post = (structuredContent: Record<string, unknown>) => page.evaluate(content => {
     document.querySelector('iframe')!.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { structuredContent: content } }, '*');
   }, structuredContent);
@@ -433,7 +434,7 @@ test('a host without headline analysis gets no summarize or translate controls',
   await expect(frame.locator('.item-translate-btn:visible')).toHaveCount(0);
   await expect(usage).not.toContainText('AI summaries');
   await expect(frame.getByText('Controlled earthquake report in Japan').first()).toBeVisible();
-  await page.screenshot({ path: info.outputPath('headline-analysis-off.png') });
+  await evidenceScreenshot(page, { path: info.outputPath('headline-analysis-off.png') });
   // A later result without the flag restores them.
   await post({ ...host.snapshot });
   await expect(summarize.first()).toBeVisible();
@@ -448,7 +449,7 @@ test('loaded marker clicks need no server or model-context capability', async ({
   await frame.locator('.news-location-marker').click();
   await expect(frame.locator('.map-popup')).toBeVisible();
   await expect(frame.locator('.map-popup .popup-body')).toBeInViewport();
-  await page.screenshot({ path: info.outputPath('latest-news-interaction-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('latest-news-interaction-mobile.png'), fullPage: true });
   expect(host.contexts).toEqual([]);
   expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard']);
   expect(host.methods).not.toContain('ui/message');
@@ -466,7 +467,7 @@ test('loaded mobile marker selection publishes a receipt in a clean controlled v
   await expect.poll(() => host.contexts.at(-1)?.latestInteraction).toMatchObject({ kind: 'news-article', link: 'https://example.com/news', source: 'Fixture publisher', title: 'Controlled earthquake report in Japan' });
   await expect(frame.locator('#pluginStatus')).toBeEmpty();
   await expect(frame.locator('.map-popup .popup-body')).toBeInViewport();
-  await page.screenshot({ path: info.outputPath('latest-news-interaction-mobile-clean.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('latest-news-interaction-mobile-clean.png'), fullPage: true });
   expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard', 'get_natural_disasters']);
   expect(host.units).toBe(1);
   expect(host.methods).not.toContain('ui/message');
@@ -566,13 +567,13 @@ for (const mobile of [false, true]) {
     await expect(frame.locator('.news-location-marker')).toHaveCount(1);
     await expect(frame.locator('#pluginCategoryNotice')).toContainText('world');
     await expect(frame.locator('path.country').first()).toBeAttached();
-    await page.screenshot({ path: info.outputPath('category-initial-refusal.png'), fullPage: true });
+    await evidenceScreenshot(page, { path: info.outputPath('category-initial-refusal.png'), fullPage: true });
     await newsAction(page, 'apply_news_view', { source: 'Fixture publisher' });
     await expect(frame.locator('#pluginCategoryNotice')).toBeVisible();
     await frame.getByRole('combobox', { name: 'News category' }).selectOption('politics');
     await expect(frame.locator('#pluginCategoryNotice')).toBeHidden();
     await expect(frame.getByRole('combobox', { name: 'News category' }).locator('option:checked')).toHaveText('World News');
-    await page.screenshot({ path: info.outputPath('category-initial-recovered.png'), fullPage: true });
+    await evidenceScreenshot(page, { path: info.outputPath('category-initial-recovered.png'), fullPage: true });
     expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard']);
     expect(host.units).toBe(1);
     await writeFile(info.outputPath('category-initial-receipts.json'), JSON.stringify({ contexts: host.contexts, calls: host.calls }, null, 2));
@@ -606,11 +607,11 @@ test('unknown loaded category refuses the whole patch and preserves human camera
   await expect(frame.locator('.map-popup')).toHaveCount(popupsBefore);
   await expect(frame.locator('.news-location-marker')).toHaveCount(1);
   await expect(frame.locator('#pluginCategoryNotice')).toContainText('missing');
-  await page.screenshot({ path: info.outputPath('category-followup-refusal.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('category-followup-refusal.png'), fullPage: true });
   await frame.getByRole('button', { name: 'Clear filters', exact: true }).click();
   await expect(frame.locator('#pluginCategoryNotice')).toBeHidden();
   await expect(frame.getByRole('combobox', { name: 'News category' })).toHaveValue('');
-  await page.screenshot({ path: info.outputPath('category-followup-cleared.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('category-followup-cleared.png'), fullPage: true });
   expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard']);
   expect(host.units).toBe(1);
   await writeFile(info.outputPath('category-atomic-receipts.json'), JSON.stringify({ before, receipt, calls: host.calls }, null, 2));
@@ -686,11 +687,11 @@ for (const mobile of [false, true]) {
     await expect(frame.locator('.news-location-marker')).toHaveCount(1);
     await expect(frame.locator('#pluginCategoryNotice')).toContainText('not loaded');
     await expect(frame.locator('path.country').first()).toBeAttached();
-    await page.screenshot({ path: info.outputPath('category-pending-removal-refusal.png'), fullPage: true });
+    await evidenceScreenshot(page, { path: info.outputPath('category-pending-removal-refusal.png'), fullPage: true });
     await frame.getByRole('button', { name: 'Clear filters', exact: true }).click();
     await expect(frame.locator('#pluginCategoryNotice')).toBeHidden();
     await expect(frame.locator('[data-panel="fixture"]')).toBeVisible();
-    await page.screenshot({ path: info.outputPath('category-pending-removal-recovered.png'), fullPage: true });
+    await evidenceScreenshot(page, { path: info.outputPath('category-pending-removal-recovered.png'), fullPage: true });
     expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard', 'get_natural_disasters', 'open_news_dashboard']);
     expect(host.calls[1]?.arguments.panel_request).toBe('news.controlled-1');
     expect(host.units).toBe(2);
@@ -746,10 +747,10 @@ test('news category receipts retain the visible label without loading data', asy
   await expect(frame.getByRole('combobox', { name: 'News category' }).locator('option:checked')).toHaveText('World News');
   await expect(frame.locator('[data-panel="politics"]')).toContainText('Controlled earthquake report in Japan');
   await expect(page.locator('#categoryContext')).toHaveText('Controlled host receipt: category=politics, categoryLabel=World News');
-  await page.screenshot({ path: info.outputPath('news-category-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('news-category-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 430, height: 1500 });
   await expect(page.locator('#categoryContext')).toHaveText('Controlled host receipt: category=politics, categoryLabel=World News');
-  await page.screenshot({ path: info.outputPath('news-category-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('news-category-mobile.png'), fullPage: true });
   await expect.poll(() => host.contexts.at(-1)).toMatchObject({ view: { category: 'politics' }, categoryLabel: 'World News' });
   await page.evaluate(() => {
     const frame = document.querySelector('iframe')!;
@@ -800,12 +801,12 @@ test('news and map hydration share one request, toggles reuse data and refresh c
   expect(host.calls.at(-1)?.arguments.panel_request).toBe('news.controlled-2');
   expect(host.units).toBe(2);
   await expect(frame.locator('#mapContainer path.country').first()).toBeAttached();
-  await page.screenshot({ path: info.outputPath('news-plugin-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('news-plugin-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 430, height: 1500 });
   await page.locator('iframe').evaluate(element => { (element as HTMLIFrameElement).style.height = '1300px'; });
   await frame.locator('#panelsGrid').scrollIntoViewIfNeeded();
   await expect(frame.getByText('Controlled earthquake report in Japan', { exact: true })).toBeVisible();
-  await page.screenshot({ path: info.outputPath('news-plugin-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('news-plugin-mobile.png'), fullPage: true });
   host.deny();
   await frame.getByRole('button', { name: 'Refresh news', exact: true }).click();
   await expect(frame.locator('#pluginStatus')).toContainText('Daily MCP quota exceeded');
@@ -858,9 +859,9 @@ test('single-result panels show their paid usage notice without more data calls'
   const frame = page.frameLocator('iframe');
   await expect(frame.locator('#panel-usage')).toContainText('49 of 50 requests remaining');
   await expect(frame.locator('#country')).toContainText('United States');
-  await page.screenshot({ path: info.outputPath('single-panel-usage-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('single-panel-usage-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 430, height: 800 });
-  await page.screenshot({ path: info.outputPath('single-panel-usage-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('single-panel-usage-mobile.png'), fullPage: true });
 });
 
 test('refresh preserves newer filter and layer selections', async ({ page }) => {
@@ -1063,7 +1064,7 @@ for (const mobile of [false, true]) {
         await expect(frame.locator('#panelsGrid')).toContainText('Controlled earthquake report in Japan');
         expect(host.calls).toHaveLength(callsBefore);
         await writeFile(info.outputPath('human-interruption-receipt.json'), JSON.stringify({ receipt, effectiveCenter, hostCalls: host.calls.length }, null, 2));
-        await page.screenshot({ path: info.outputPath('human-interruption.png'), fullPage: true });
+        await evidenceScreenshot(page, { path: info.outputPath('human-interruption.png'), fullPage: true });
       });
     }
     test('renderer-only news actions preserve the focused camera in their receipts and immediate return to flat', async ({ page }, info) => {
@@ -1120,7 +1121,7 @@ for (const mobile of [false, true]) {
       expect(Math.abs(flat.center!.lon - captured.center!.lon)).toBeLessThanOrEqual(0.03 + 1.8 * (flatResult!.observedAt - capturedResult!.observedAt) / 1000);
       expect(host.calls).toHaveLength(callsBeforeSwitch);
       await writeFile(info.outputPath('renderer-camera-receipts.json'), JSON.stringify({ globe, captured, flat, callsBeforeSwitch, callsAfterSwitch: host.calls.length }, null, 2));
-      await page.screenshot({ path: info.outputPath('immediate-return-to-flat.png'), fullPage: true });
+      await evidenceScreenshot(page, { path: info.outputPath('immediate-return-to-flat.png'), fullPage: true });
       if (!mobile) {
         await frame.locator('#mapDimensionToggle [data-mode="globe"]').click();
         await expect.poll(() => host.viewReceipts.at(-1)?.renderer?.mode).toBe('globe');
@@ -1669,7 +1670,7 @@ for (const failure of ['human', 'nonhuman', 'button', 'readiness'] as const) {
     await expect(frame.locator('#pluginMapLayers input[value="natural"]')).toBeChecked();
     expect(host.calls).toHaveLength(before);
     await writeFile(info.outputPath('renderer-failure-trace.json'), JSON.stringify({ failure, trace, result, contexts: host.contexts, status: await frame.locator('#pluginStatus').textContent(), activeMode: await frame.locator('#mapDimensionToggle .active').getAttribute('data-mode'), calls: host.calls }, null, 2));
-    if (failure === 'button') await page.screenshot({ path: info.outputPath('ready-flat-incomplete-view.png'), fullPage: true });
+    if (failure === 'button') await evidenceScreenshot(page, { path: info.outputPath('ready-flat-incomplete-view.png'), fullPage: true });
   });
 }
 
@@ -1762,7 +1763,7 @@ test.describe('globe marker gestures', () => {
       await expect(frame.locator('#mapContainer button[aria-label="Close"]')).toBeVisible();
       await expect.poll(() => host.contexts.length).toBeGreaterThan(contextsBeforeClick);
       expect(host.contexts.at(-1)?.latestInteraction).toEqual(selected);
-      await page.screenshot({ path: info.outputPath(`marker-${gesture}-then-click.png`), fullPage: true });
+      await evidenceScreenshot(page, { path: info.outputPath(`marker-${gesture}-then-click.png`), fullPage: true });
     });
   }
 });
@@ -2019,5 +2020,5 @@ test('aged default clustered Search keeps the exact selected row highlighted aft
   });
   expect(geometry.inside).toBe(true);
   await writeFile(info.outputPath('aged-default-search.json'), JSON.stringify({ elapsed: Date.now() - started, geometry, contexts: host.contexts, calls: host.calls, assetsRewritten: false }, null, 2));
-  await page.screenshot({ path: info.outputPath('aged-default-search.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: info.outputPath('aged-default-search.png'), fullPage: true });
 });

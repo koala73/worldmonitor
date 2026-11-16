@@ -75,6 +75,9 @@ export function buildFixtures(now = new Date()) {
   return {
     get_country_history: { country_code: 'US' },
     get_defense_industrial_base: { country_code: 'DE' },
+    get_point_satellite_passes: { lat: 39.74, lon: -104.99 },
+    get_country_imagery_evidence: { country_code: 'UA' },
+    get_watched_site_imagery: { country_code: 'IR' },
     get_country_brief: { country_code: 'US' },
     get_country_risk: { country_code: 'US' },
     get_country_coverage: { country_code: 'US' },
@@ -226,6 +229,10 @@ export function evaluateCall({ status, body, error, timedOut }, validateOutput, 
     return { ok: false, kind: 'schema', detail: `outputSchema mismatch: ${truncate(errs, 300)}` };
   }
   const sc = result.structuredContent;
+  // The dispatcher's budget stub answers 200 and fits every schema, but carries none of the tool's data (#10849).
+  if (sc._budget_exceeded === true) {
+    return { ok: false, kind: 'budget_exceeded', detail: `answer of ${sc.actual_bytes} bytes over a ${sc.budget_bytes}-byte budget returned no data` };
+  }
   return { ok: true, kind: 'ok', detail: '', structuredContent: sc, ...(sc.stale === true ? { stale: true, cachedAt: sc.cached_at ?? null } : {}) };
 }
 

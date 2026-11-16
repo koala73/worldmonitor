@@ -565,6 +565,8 @@ export class GlobeMap {
   private pendingPremiumLayerChanges = new Set<keyof MapLayers>();
   private savedDefaultMaterial: any = null;
   private controls: GlobeControlsLike | null = null;
+  private zoomControlsEl: HTMLElement | null = null;
+  private mountedMapControl: HTMLElement | null = null;
   private pendingMarkerGestureCleanup: (() => void) | null = null;
   private renderPaused = false;
   private autoRotateHeld = false;
@@ -657,8 +659,6 @@ export class GlobeMap {
   private webcamMarkers: (WebcamMarkerData | WebcamClusterData)[] = [];
   /** Layers the marker budget is currently withholding markers from (#5368). */
   private markerTruncation: Record<string, GlobeLayerTruncation> = {};
-  /** HTML markers handed to globe.gl on the last flush — the per-frame cost driver. */
-  private renderedMarkerCount = 0;
   private markerBudgetProfile: 'mobile' | 'desktop' = 'desktop';
   private webcamMarkerMode: string = (() => {
     try {
@@ -2304,6 +2304,12 @@ export class GlobeMap {
 
   // ─── Overlay UI: zoom controls & layer panel ─────────────────────────────
 
+  /** Adds a control below the zoom buttons, kept across a late controls build. */
+  public mountMapControl(el: HTMLElement): void {
+    this.mountedMapControl = el;
+    this.zoomControlsEl?.append(el);
+  }
+
   private createControls(): void {
     const el = document.createElement('div');
     el.className = 'map-controls deckgl-controls';
@@ -2321,6 +2327,8 @@ export class GlobeMap {
       else if (target.classList.contains('zoom-out'))   this.zoomOutGlobe();
       else if (target.classList.contains('zoom-reset')) this.setView(this.currentView);
     });
+    this.zoomControlsEl = el.querySelector('.zoom-controls');
+    if (this.mountedMapControl) this.zoomControlsEl?.append(this.mountedMapControl);
   }
 
   private zoomInGlobe(): void {
@@ -2656,7 +2664,6 @@ export class GlobeMap {
     }
 
     this.markerTruncation = truncated;
-    this.renderedMarkerCount = markers.length;
     this.markerBudgetProfile = budget === GLOBE_MARKER_BUDGET_MOBILE ? 'mobile' : 'desktop';
     this.updateLayerTruncationLabels();
     setGlobeMarkerLoad({
@@ -3433,11 +3440,6 @@ export class GlobeMap {
   private reselectMarkersForViewport(): void {
     if (!Object.keys(this.markerTruncation).length) return;
     this.flushMarkers();
-  }
-
-  /** Markers currently handed to globe.gl, and what the budget withheld (#5368). */
-  public getMarkerBudgetState(): { rendered: number; truncated: Record<string, GlobeLayerTruncation> } {
-    return { rendered: this.renderedMarkerCount, truncated: this.markerTruncation };
   }
 
   private enforceLayerLimit(): void {
@@ -4458,8 +4460,6 @@ export class GlobeMap {
   public onHotspotClicked(cb: (h: Hotspot) => void): void { this.onHotspotClickCb = cb; }
   public onTimeRangeChanged(_cb: (r: TimeRange) => void): void {}
   public onStateChanged(cb: (s: MapContainerState) => void): void { this.onStateChangeCb = cb; }
-  public setOnCountry(_cb: any): void {}
-  public getHotspotLevel(_id: string) { return 'low'; }
 
   private async applyEnhancedVisuals(): Promise<void> {
     if (!this.globe || this.destroyed) return;

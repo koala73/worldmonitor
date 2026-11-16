@@ -219,11 +219,12 @@ export function buildBaseline(stats, window) {
   if (tanker !== null && Number(stats.tanker_days) >= BASELINE_MIN_DAYS) {
     baseline.tankerAvgDaily = Math.round(tanker * 10) / 10;
   }
-  // Same majority rule the flow seeder applies to its trailing window, over
-  // the rows the DWT mean averages rather than the n_total days.
+  // The DWT mean needs as many rows as the count mean, and the majority rule
+  // the flow seeder applies to its trailing window over those rows: blank
+  // capacity cells are not rows, so a majority alone could be one of one.
   const capTanker = finiteNonNegative(stats.avg_cap_tanker);
   const capRows = Number(stats.cap_tanker_rows);
-  if (capTanker !== null && Number.isInteger(capRows) && capRows > 0 && Number(stats.cap_tanker_days) >= Math.ceil(capRows / 2)) {
+  if (capTanker !== null && Number.isInteger(capRows) && capRows >= BASELINE_MIN_DAYS && Number(stats.cap_tanker_days) >= Math.ceil(capRows / 2)) {
     baseline.capTankerAvgDaily = Math.round(capTanker);
   }
   return baseline;

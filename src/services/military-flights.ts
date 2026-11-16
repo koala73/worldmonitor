@@ -607,32 +607,9 @@ export async function fetchMilitaryFlights(): Promise<{
 }
 
 /**
- * Get status of military flights tracking
- */
-export function getMilitaryFlightsStatus(): string {
-  return breaker.getStatus();
-}
-
-/**
  * Get flight by hex code
  */
 export function getFlightByHex(hexCode: string): MilitaryFlight | undefined {
   if (!flightCache) return undefined;
   return flightCache.data.find((f) => f.hexCode === hexCode.toUpperCase());
-}
-
-/**
- * Get flights by operator
- */
-export function getFlightsByOperator(operator: MilitaryOperator): MilitaryFlight[] {
-  if (!flightCache) return [];
-  return flightCache.data.filter((f) => f.operator === operator);
-}
-
-/**
- * Get interesting flights (near hotspots, special types)
- */
-export function getInterestingFlights(): MilitaryFlight[] {
-  if (!flightCache) return [];
-  return flightCache.data.filter((f) => f.isInteresting);
 }

@@ -163,7 +163,7 @@ import {
   type ResponsiveZoneListener,
 } from '@/app/responsive-zone-listener';
 import { stageVariantSelection } from '@/services/variant-panel-ownership';
-import { isMapUrlCentreClaimed } from '@/app/orbital-map-focus';
+import { isMapUrlCentreClaimed, publishedMapCentre } from '@/app/orbital-map-focus';
 import { transferSourceGateOwnershipToUser as releaseSourceGateOwnership } from '@/services/source-cap';
 
 /** Bound on each wait before the About-you card abstains for this load. */
@@ -1707,7 +1707,8 @@ export class EventHandlerManager implements AppModule {
     return buildMapUrl(baseUrl, {
       view: state.view,
       zoom: state.zoom,
-      center: isOrbitalLookupOpen() ? null : center,
+      // A claimed centre (a satellite lookup's point, or the located device position) stays out of copied links.
+      center: isOrbitalLookupOpen() ? null : publishedMapCentre(center, window.location.href),
       timeRange: state.timeRange,
       layers: state.layers,
       country: isCountryVisible ? code : pending?.code,
@@ -1721,7 +1722,7 @@ export class EventHandlerManager implements AppModule {
     const state = this.ctx.map.getState();
     return buildEmbedMapUrl(`${window.location.origin}/embed`, {
       layers: state.layers,
-      center: this.ctx.map.getCenter(),
+      center: publishedMapCentre(this.ctx.map.getCenter(), window.location.href),
       zoom: state.zoom,
       theme: getCurrentTheme(),
       variant: SITE_VARIANT as EmbedVariant,
@@ -2152,6 +2153,8 @@ export class EventHandlerManager implements AppModule {
       .then(({ StatusPanel }) => {
         if (this.ctx.isDestroyed) return;
         this.ctx.statusPanel = new StatusPanel();
+        // A digest that landed before this chunk loaded reported to nobody.
+        if (this.ctx.digestCoverage) this.ctx.statusPanel.updateDigestCoverage(this.ctx.digestCoverage);
       })
       .catch((err) => {
         console.error('[status-panel] failed to lazy-load StatusPanel', err);

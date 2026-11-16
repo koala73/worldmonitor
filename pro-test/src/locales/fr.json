@@ -133,7 +133,7 @@
     "deliveryLabel": "Choisissez comment le renseignement vous trouve",
     "supplyChainLab": "Laboratoire de stress de la chaîne d'approvisionnement",
     "supplyChainLabDesc": "Modélisez un choc de coût entre pays et secteurs. Classez la vulnérabilité des matières premières selon la dépendance aux points d'étranglement. Suivez la concentration mine-raffinerie et la divergence prime physique SGE–COMEX — la série qui bouge avant le gros titre.",
-    "roadmapNote": "En préparation : surveillance orbitale, historique plus long, couches de carte premium."
+    "roadmapNote": "En développement : historique plus long, couches de carte premium."
   },
   "apiSection": {
     "apiTier": "NIVEAU API",

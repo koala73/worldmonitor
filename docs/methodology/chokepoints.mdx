@@ -120,9 +120,9 @@ subset above:
    chokepoint: daily mean tanker deadweight tonnage (`capTankerAvgDaily`) and
    tanker count (`tankerAvgDaily`) over the 12 months ending one year before
    the run. Each mean is stored only with its own coverage: the count mean
-   needs at least 300 days with a tanker count, and the DWT mean needs DWT on
-   at least half of the days it averages, because zero-filled gaps would lower
-   it.
+   needs at least 300 days with a tanker count, and the DWT mean needs at
+   least 300 days with a capacity value, with positive DWT on at least half of
+   them, because zero-filled gaps would lower it.
 3. Choose the signal: tanker DWT when the year-earlier DWT mean is at least 1
    and each of the last seven days that had tankers reports their tonnage (a
    day with no tankers needs none), otherwise the tanker count when its mean
@@ -146,8 +146,8 @@ previous up-to-90 days. That happens when the baseline is missing (fewer than
 300 published days in that year, or the baseline query failed), or when the DWT
 mean fails step 3 (below 1, or recent tonnage unreported) and the tanker count
 mean is missing or below 0.5. The fallback window (`history.slice(-97, -7)`)
-uses DWT when at least half of its days have DWT coverage, otherwise tanker
-counts.
+uses DWT when at least half of its days have DWT coverage and the recent week
+reports tonnage under the same rule as step 3, otherwise tanker counts.
 
 Live flow is eligible only when the PortWatch series has at least 40 total days
 of history. After that gate, the seeder still requires at least three recent

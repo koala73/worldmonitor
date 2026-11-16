@@ -217,7 +217,3 @@ export async function fetchCachedTheaterPosture(
 export function getCachedPosture(): CachedTheaterPosture | null {
   return breaker.getCached();
 }
-
-export function hasCachedPosture(): boolean {
-  return breaker.getCached() !== null;
-}

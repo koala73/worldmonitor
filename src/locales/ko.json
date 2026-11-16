@@ -2122,7 +2122,14 @@
     "map": {
       "showMap": "지도 표시",
       "hideMap": "지도 숨기기",
-      "clearTrails": "추적 기록 삭제"
+      "clearTrails": "추적 기록 삭제",
+      "locate": "내 위치 표시"
+    },
+    "mapLocate": {
+      "locating": "위치 확인 중…",
+      "denied": "위치 접근이 거부되었습니다. 검색을 사용해 장소를 찾으세요.",
+      "unavailable": "위치를 찾을 수 없습니다. 검색을 사용해 장소를 찾으세요.",
+      "noCountry": "현재 위치에 국가가 없습니다. 검색을 사용해 장소를 찾으세요."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>인터넷 장애</strong> 글로벌 네트워크 모니터링을 통한 실시간 인터넷 장애, DDoS 공격, 트래픽 이상:<ul><li><strong>장애</strong>: BGP로 감지된 국가별 연결 장애</li><li><strong>DDoS</strong>: 프로토콜 및 벡터별 대규모 공격 보고</li><li><strong>이상</strong>: Cloudflare Radar의 비정상 트래픽 패턴</li></ul>",
@@ -3200,6 +3207,19 @@
         "latestPass": "최근 ICESat-2 통과 {{date}}",
         "sparkline": "36개월 수위, 계절 기준선은 점선",
         "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). 날짜가 있는 통과의 라이다 수면 높이로, 실시간 값이나 저수량이 아닙니다."
+      },
+      "water": {
+        "heading": "{{name}}의 물",
+        "level": "라이다 수위",
+        "extent": "레이더 수면 면적",
+        "extentValue": "{{date}} 기준 개방 수면 {{percent}}%({{area}} km²)",
+        "extentChange": "같은 궤도에서 {{date}} 이후 {{delta}}포인트",
+        "extentNoComparison": "비교할 같은 궤도의 이전 관측이 없습니다",
+        "extentNone": "아직 레이더 관측이 없습니다",
+        "unavailable": "불러오지 못했습니다. 다시 열어 재시도하세요",
+        "optical": "최신 광학 영상",
+        "opticalNone": "30일 이내 광학 영상이 없습니다",
+        "note": "각 행은 별도 통과에서 얻은 날짜가 있는 측정값이며 실시간 값이 아닙니다. 레이더는 저수지 핵심 구역의 개방 수면을 측정하며, 바람에 물결이 인 수면은 육지로 판독될 수 있습니다."
       }
     },
     "gridDisruptionClock": {
@@ -4475,7 +4495,8 @@
   "contextMenu": {
     "openCountryBrief": "국가 개요 열기",
     "copyCoordinates": "좌표 복사",
-    "satellitePasses": "이 지점을 지나는 위성"
+    "satellitePasses": "이 지점을 지나는 위성",
+    "imageryEvidenceHere": "이 지점의 위성 영상 증거"
   },
   "shell": {
     "documentTitle": "World Monitor — 실시간 글로벌 인텔리전스 대시보드",
@@ -5176,6 +5197,7 @@
     "counts": {},
     "tier": {
       "checking": "아카이브 확인 중",
+      "notInArchive": "아카이브에 없음",
       "confirmed": "확인됨",
       "likely": "가능성 높음",
       "unmatchedImage": "계산된 통과 없는 영상",
@@ -5242,7 +5264,8 @@
       "metaSpot": "지점의 구름",
       "metaScene": "장면 구름",
       "metaSun": "태양 고도",
-      "showCloudy": "흐린 날짜 포함 ({{count}})"
+      "showCloudy": "흐린 날짜 포함 ({{count}})",
+      "eventMark": "이벤트 {{date}}"
     },
     "timelapse": {},
     "passDetail": {
@@ -5346,6 +5369,12 @@
       "count_other": "{{family}} 관측 범위 내 {{count}}개 지점",
       "passes_other": "{{count}}회 통과"
     },
+    "siteSatellites": {
+      "heading": "이 지점 상공의 추적 위성 · 다음 {{hours}}시간",
+      "none": "{{hours}}시간 이내에 이 지점을 촬영 범위에 두는 추적 영상 위성이 없습니다.",
+      "notLoaded": "다시 시도하려면 지점을 다시 여세요. 위성 궤도 요소를 불러오지 못했습니다.",
+      "failed": "다시 시도하려면 지점을 다시 여세요. 통과 계산에 실패했습니다."
+    },
     "sheet": {
       "heading": "위성 영상 증거",
       "window": "지난 {{days}}일, 향후 {{hours}}시간",
@@ -5434,7 +5463,7 @@
     "privacy": {
       "line": "귀하의 포인트는 이미지 아카이브에만 전송됩니다.",
       "more": "세부정보",
-      "body": "패스는 이 기기에서 계산됩니다. 이미지를 찾기 위해 브라우저가 포인트를 Earth Search, Planetary Computer, NASA GIBS, EUMETSAT으로 직접 전송합니다. WorldMonitor는 이를 수신하지 않습니다. 입력한 지명은 WorldMonitor와 OpenStreetMap Nominatim으로 전송되어 검색됩니다. 공유 링크는 소수점 2자리(0.01°)로 유지됩니다."
+      "body": "패스는 이 기기에서 계산됩니다. 이미지를 찾기 위해 브라우저가 포인트를 Earth Search, Planetary Computer, NASA GIBS, EUMETSAT으로 직접 전송합니다. WorldMonitor는 이를 수신하지 않습니다. 모니터링 지점에서는 WorldMonitor에 사용자의 지점이 아닌 지점 ID로 해당 지점의 일일 기록을 요청합니다. 입력한 지명은 WorldMonitor와 OpenStreetMap Nominatim으로 전송되어 검색됩니다. 공유 링크는 소수점 2자리(0.01°)로 유지됩니다."
     },
     "sources": {
       "heading": "소스 ({{count}})",
@@ -5456,6 +5485,7 @@
     "tile": {
       "failed": "장면 로드 실패 · {{archive}}",
       "noPreview": "이 장면에 대한 미리보기가 아직 공개되지 않음",
+      "processing": "장면을 아직 처리하는 중입니다. 나중에 다시 시도하세요.",
       "radar": "레이더"
     },
     "target": {
@@ -5469,6 +5499,13 @@
       "noImage": "최근 영상을 찾을 수 없음",
       "noPass": "72시간 내 통과 예정 없음",
       "openEvidence": "증거 열기",
+      "compareEvent": "전 / 후",
+      "compareEventLocked": "전 / 후 · Pro",
+      "compareSearching": "{{date}} 전후 장면을 찾는 중…",
+      "compareNoAfter": "{{date}} 이후 맑은 장면이 아직 없습니다.",
+      "compareNoAfterWindow": "{{date}} 이후 {{days}}일 동안 맑은 장면이 없습니다.",
+      "compareNoBefore": "아카이브 기간에 {{date}} 이전 맑은 장면이 없습니다.",
+      "compareFailed": "아카이브 검색에 실패했습니다. 다시 시도하세요.",
       "imageAlt": "{{source}} 위성 화면",
       "unavailable": "위성 영상을 불러오지 못했습니다.",
       "fire": {
@@ -5491,6 +5528,23 @@
         "mosaicNoLayer": "이 위성에 사용 가능한 일일 모자이크가 없습니다.",
         "mosaicUnavailable": "일일 모자이크를 불러올 수 없습니다.",
         "mosaicAlt": "NASA GIBS {{source}} {{date}} 일일 모자이크"
+      }
+    },
+    "site": {
+      "heading": "모니터링 지점",
+      "loading": "지점의 일일 기록을 불러오는 중…",
+      "failed": "지점의 일일 기록을 불러오지 못했습니다. 다시 시도하려면 지점을 다시 여세요.",
+      "stale": "이 지점에 대한 현재 일일 점검 기록이 없습니다.",
+      "checked": "확인 시각",
+      "noPass": "예정된 통과 기록 없음",
+      "list": {
+        "hotspot": "핫스팟",
+        "conflictZone": "분쟁 지역",
+        "militaryBase": "군사 기지",
+        "nuclearFacility": "핵 시설",
+        "port": "항구",
+        "chokepoint": "해협",
+        "reservoir": "저수지"
       }
     }
   },
