@@ -1018,7 +1018,12 @@ test('country navigation and repeated questions reuse reads and show a quota den
   await frame.getByRole('button', { name: 'Open country', exact: true }).click();
   await frame.getByRole('button', { name: 'Economy & trade', exact: true }).click();
   await frame.getByRole('button', { name: 'Resources & infrastructure', exact: true }).click();
-  expect(host.calls).toHaveLength(initialReads);
+  // Optional reads (reservoirs and the newer signal families) are outside the
+  // sections' loading state and can still be arriving here. Switching topics
+  // must reuse every read: nothing after this point may repeat an earlier call.
+  const callKey = (call: HostCall) => JSON.stringify([call.name, call.arguments]);
+  const readsBeforeTopics = new Set(host.calls.slice(0, initialReads).map(callKey));
+  expect(host.calls.slice(initialReads).filter(call => readsBeforeTopics.has(callKey(call)))).toEqual([]);
   expect(host.admissions).toBe(1);
   expect(host.calls.filter(call => call.arguments.section === 'risk')).toHaveLength(1);
   expect(host.calls.filter(call => call.name !== 'open_country_brief').every(call => call.arguments.panel_request === 'US.controlled-admission-1')).toBe(true);
@@ -1041,7 +1046,7 @@ test('country navigation and repeated questions reuse reads and show a quota den
   await expect.poll(() => host.admissions).toBe(beforeRefreshAdmissions + 1);
   await expect.poll(() => host.calls.filter(call => call.arguments.section === 'dependency').length).toBe(30);
   await expect.poll(() => host.contexts.at(-1)?.sections.filter(section => section.state === 'loading').length).toBe(0);
-  const refreshCalls = host.calls.length - beforeRefresh;
+  const refreshRequest = `US.controlled-admission-${host.admissions}`;
   await expect(frame.locator('#countryUsage')).toContainText('47 of 50 requests remaining');
   host.quota();
   const beforeDenied = host.calls.length;
@@ -1049,7 +1054,14 @@ test('country navigation and repeated questions reuse reads and show a quota den
   await expect(frame.locator('#countryStatus')).toContainText('Daily MCP quota exceeded');
   await expect(frame.locator('#countryStatus')).toContainText('UTC midnight');
   await expect(frame.locator('[data-brief-section=facts]')).toContainText('Washington, D.C.');
-  expect(host.calls).toHaveLength(beforeDenied + 1);
+  // The refresh before this one can still be finishing its optional reads,
+  // which carry its admission. The denied refresh itself makes only the
+  // admission call and no section read.
+  expect(host.calls.slice(beforeDenied).filter(call => call.arguments.panel_request !== refreshRequest).map(call => call.name)).toEqual(['open_country_brief']);
+  // A straggler is a first read; a section re-read under the old admission would repeat one.
+  const readsBeforeDenied = new Set(host.calls.slice(0, beforeDenied).map(callKey));
+  expect(host.calls.slice(beforeDenied).filter(call => call.name !== 'open_country_brief' && readsBeforeDenied.has(callKey(call)))).toEqual([]);
+  const refreshCalls = host.calls.slice(beforeRefresh).filter(call => call.arguments.panel_request === refreshRequest).length + 1;
   await writeFile(info.outputPath('country-request-cost.json'), JSON.stringify({ measuredSurface: 'built opaque iframe, controlled host', initialHostCalls: initialReads, initialDailyUnits: 1, initialMs: Math.round(initialMs), repeatedCountryAndTopicsCalls: 0, navigationBackHostCalls: returnCalls, navigationBackDailyUnits: 0, refreshHostCalls: refreshCalls, refreshDailyUnits: 1, deniedRefreshSectionCalls: 0, deniedRefreshDailyUnits: 0 }, null, 2));
 });
 
