@@ -113,7 +113,8 @@
 .ies-privacy-row { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; min-width: 0; }
 .ies-privacy-line { flex: 1 1 auto; min-width: 0; max-width: 100%; margin: 0; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ies-privacy-more { flex: none; padding: 0; border: 0; background: none; color: var(--text-muted); cursor: pointer; font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; }
-.ies-sources summary { cursor: pointer; font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
+.ies-sources { padding: 10px 0 0; font-size: 11px; color: var(--text-muted); }
+.ies-sources summary { cursor: pointer; font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; }
 .ies-privacy-body { margin: 4px 0 0; }
 .ies-sources ul { margin: 4px 0; padding-left: 16px; }
 .ies-sources a, .ies-privacy a { color: var(--accent); }

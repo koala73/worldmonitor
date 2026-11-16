@@ -183,11 +183,11 @@ describe('imagery evidence sheet', () => {
     expect(sheet().dataset.height).toBe('half');
   });
 
-  it('lays the sheet out image first: evidence, latest image, water card slot, timeline, events, capability, windows, site satellites, alert', () => {
+  it('lays the sheet out image first: evidence, latest image, water card slot, timeline, events, capability, windows, site satellites, alert, sources', () => {
     const { all, confirmedNew } = tiered();
     mounted(answered(all, { acquisitions: [acquisition(confirmedNew)] }));
     const order = [...sheet().querySelector('.ies-body')!.children].map((el) => (el as HTMLElement).dataset.section ?? (el as HTMLElement).dataset.slot);
-    expect(order).toEqual(['evidence', 'latest', 'water', 'timeline', 'events', 'capability', 'windows', 'satellites', 'alert']);
+    expect(order).toEqual(['evidence', 'latest', 'water', 'timeline', 'events', 'capability', 'windows', 'satellites', 'alert', 'sources']);
     expect(sectionOf('alert').querySelector('a')!.getAttribute('href')).toBe('/pro#pricing');
   });
 
@@ -518,6 +518,23 @@ describe('imagery evidence sheet', () => {
     const sources = sheet().querySelector<HTMLElement>('.ies-sources')!;
     expect(sources.hidden).toBe(false);
     expect(sources.querySelector(`a[href="${ORBITAL_WATCH_DOCS_URL}"]`)).not.toBeNull();
+  });
+
+  it('scrolls its sources with the evidence, so an open list never pins over the results', () => {
+    const { all, confirmedNew } = tiered();
+    const state = answered(all, { acquisitions: [acquisition(confirmedNew)] });
+    const page = mounted(state);
+    const sources = sheet().querySelector<HTMLDetailsElement>('.ies-sources')!;
+    sources.open = true;
+    expect(sources.parentElement).toBe(sheet().querySelector('.ies-body'));
+    expect(sheet().querySelector('.ies-footer .ies-sources')).toBeNull();
+    expect(sheet().querySelector('.ies-footer .ies-privacy-line')).not.toBeNull();
+    page.render(state);
+    expect(sheet().querySelector('.ies-body')!.lastElementChild).toBe(sources);
+    expect(sources.open, 'a re-render keeps the list as the reader left it').toBe(true);
+    sources.querySelector<HTMLElement>('summary')!.focus();
+    page.render(state);
+    expect(document.activeElement, 'a re-render keeps focus on the list').toBe(sources.querySelector('summary'));
   });
 
   it('shows its fixed labels in the language chosen since it was last opened', async () => {
