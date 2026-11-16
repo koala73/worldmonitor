@@ -168,6 +168,10 @@
     "1.58.0": {
       "tools": 100,
       "manifestSha256": "f24ae98a3f98735b382327bb7eddddaa3fd645a6e40ced8ed41f315a2c651a99"
+    },
+    "1.59.0": {
+      "tools": 100,
+      "manifestSha256": "020a5505b4e7f5d9a3bc3970223a5aff0101fa2167931c9b2c74ba875491d02f"
     }
   }
 }
