@@ -6,7 +6,10 @@ import { installCountryBriefDesignData } from './country-brief-design-fixtures';
 import type { CountrySignalOutcome } from '../shared/country-signal-observations';
 import { evidenceScreenshot } from './evidence-screenshot';
 
-const recording = process.env.CI ? 'on-first-retry' : 'retain-on-failure';
+// Recording every test was most of this file's runtime (#8347), so CI records
+// nothing and a failure leaves its error, screenshot and evidence files.
+// Locally, failures keep a trace and video.
+const recording = process.env.CI ? 'off' : 'retain-on-failure';
 
 for (const [language, width, label] of [['fr', 1280, 'Débloquez 90 jours avec Pro'], ['ar', 390, 'افتح سجل 90 يومًا مع Pro']] as const) {
   test(`daily country history localizes ${language} at ${width}`, async ({ page, countryBrief }, testInfo) => {

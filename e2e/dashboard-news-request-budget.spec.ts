@@ -1119,8 +1119,8 @@ async function installDelayedSlowBootstrap(page: Page): Promise<{
 test.describe('dashboard container scroll hydration (#5876)', () => {
   // Drop routes before Playwright tears the page down. An in-flight
   // `route.fulfill` against a closed page surfaces as
-  // `Object with guid response@… was not bound in the connection`
-  // (playwright.config.ts retries). That is a harness race on teardown, not
+  // `Object with guid response@… was not bound in the connection`.
+  // That is a harness race on teardown, not
   // #6501 (browser gone during the first `page.goto`).
   test.afterEach(async ({ page }) => {
     await page.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
