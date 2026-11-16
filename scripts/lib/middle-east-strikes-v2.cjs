@@ -1031,17 +1031,24 @@ function normalizePeaks(previous) {
 }
 
 /**
- * The start of the span the window shows in full. Normally the window's own
- * start. A store cut at MAX_STORE_CANDIDATES lost its oldest reports, which may
- * have re-dated their incidents by up to LATE_REPORT_MS, and an event list cut
- * at MAX_EVENTS lost everything before its oldest event.
+ * A store cut at MAX_STORE_CANDIDATES lost its oldest reports, which may have
+ * re-dated their incidents by up to LATE_REPORT_MS: days before this time are
+ * not shown whole. Null when the store is under its cap.
  */
-function pressureCoverStart(now, storeCandidates, events) {
+function storeCutAt(storeCandidates) {
+  if (!Array.isArray(storeCandidates) || storeCandidates.length < MAX_STORE_CANDIDATES) return null;
+  const oldest = Math.min(...storeCandidates.map((c) => c?.ts).filter(Number.isFinite));
+  return Number.isFinite(oldest) ? oldest + LATE_REPORT_MS : null;
+}
+
+/**
+ * The start of the span the window shows in full: the window's own start, or
+ * later after a store cut (`cutAt`), or after an event list cut at MAX_EVENTS,
+ * which lost everything before its oldest event.
+ */
+function pressureCoverStart(now, events, cutAt = null) {
   let start = now - WINDOW_MS;
-  if (Array.isArray(storeCandidates) && storeCandidates.length >= MAX_STORE_CANDIDATES) {
-    const oldest = Math.min(...storeCandidates.map((c) => c.ts).filter(Number.isFinite));
-    if (Number.isFinite(oldest)) start = Math.max(start, oldest + LATE_REPORT_MS);
-  }
+  if (Number.isFinite(cutAt)) start = Math.max(start, cutAt);
   if (Array.isArray(events) && events.length >= MAX_EVENTS) {
     const oldest = Math.min(...events.map((e) => e?.timestamp).filter(Number.isFinite));
     if (Number.isFinite(oldest)) start = Math.max(start, oldest + 1);
@@ -1063,14 +1070,20 @@ function normalizePressure(previous, oldest) {
 }
 
 /**
- * Fold one published 72h window into the 30-day tally. A day that starts at or
- * after `coverStart` takes the window's counts; an older day keeps the stored
- * counts unless the window's weigh more. Idempotent: republishing a window
- * never changes the tally.
+ * Fold one published 72h window into the 30-day tally. A day the window shows
+ * whole takes the window's counts; an older day keeps the stored counts unless
+ * the window's weigh more. `cutAt` is this cycle's storeCutAt(); the tally
+ * keeps the latest cut until it leaves the window, because the reports a cut
+ * dropped stay gone after the store shrinks below its cap again. Idempotent:
+ * republishing a window never changes the tally.
  */
-function mergeStrikePressure(previous, events, now, coverStart = pressureCoverStart(now, null, events)) {
+function mergeStrikePressure(previous, events, now, cutAt = null) {
   const oldest = utcDay(now - (PRESSURE_DAYS - 1) * DAY_MS);
   const days = normalizePressure(previous, oldest);
+  const storedCut = previous?.version === PRESSURE_VERSION && Number.isFinite(previous?.storeCutAt) ? previous.storeCutAt : null;
+  const cuts = [storedCut, cutAt].filter(Number.isFinite);
+  const cut = cuts.length && Math.max(...cuts) > now - WINDOW_MS ? Math.max(...cuts) : null;
+  const coverStart = pressureCoverStart(now, events, cut);
   const storedPeaks = normalizePeaks(previous);
   const peaks = {};
   const windowDays = {};
@@ -1101,7 +1114,7 @@ function mergeStrikePressure(previous, events, now, coverStart = pressureCoverSt
       if (!stored || tallyWeight(tally) > tallyWeight(stored)) (days[day] ??= {})[iso2] = tally;
     }
   }
-  return { version: PRESSURE_VERSION, days, peaks, updatedAt: now };
+  return { version: PRESSURE_VERSION, days, peaks, ...(cut !== null ? { storeCutAt: cut } : {}), updatedAt: now };
 }
 
 // ---------------------------------------------------------------------------
@@ -1244,8 +1257,7 @@ async function publishStrikeCycle({
   if (!result || !outcome.canonicalWritten) return { ...outcome, pressureStatus: 'skipped' };
   const stored = await Promise.resolve(readPressure()).catch(() => null);
   if (!stored?.ok) return { ...outcome, pressureStatus: 'read-failed' };
-  const coverStart = pressureCoverStart(now, result.store?.candidates, result.payload.events);
-  const pressure = mergeStrikePressure(stored.value, result.payload.events, now, coverStart);
+  const pressure = mergeStrikePressure(stored.value, result.payload.events, now, storeCutAt(result.store?.candidates));
   if (!await Promise.resolve(writePressure(pressure)).catch(() => false)) return { ...outcome, pressureStatus: 'write-failed' };
   if (!result.healthy) return { ...outcome, pressureStatus: 'degraded' };
   const recordCount = Object.values(pressure.days).reduce((sum, byCountry) => sum + Object.keys(byCountry).length, 0);
@@ -1321,4 +1333,5 @@ module.exports = {
   PRESSURE_WEIGHTS,
   mergeStrikePressure,
   pressureCoverStart,
+  storeCutAt,
 };
