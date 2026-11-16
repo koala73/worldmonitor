@@ -113,8 +113,8 @@ describe('archive acquisitions attached to computed passes', () => {
     assert.equal(new URL(ingested.acquisitions[0]!.imageUrl!).hostname, 'planetarycomputer.microsoft.com');
     const silent = assembleEvidence({ lookup, stac: [
       { status: 'ok', archive: 'earth-search', items: [item] },
-      { status: 'error', archive: 'planetary-computer', reason: 'network' },
-    ] as never });
+      { status: 'failed', archive: 'planetary-computer', failure: { archive: 'planetary-computer', reason: 'network' } },
+    ] });
     assert.equal(new URL(silent.acquisitions[0]!.imageUrl!).hostname, 'planetarycomputer.microsoft.com');
   });
 
