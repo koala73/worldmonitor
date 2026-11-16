@@ -23,11 +23,11 @@ export function recentManeuvers(response: ListSatelliteManeuversResponse, nowMs:
   const recent = new Map<string, ManeuverCandidate>();
   if (response.stale) return recent;
   for (const candidate of response.candidates) {
-    const afterMs = Date.parse(candidate.toEpoch);
+    const afterMs = candidate.toEpoch;
     if (!Number.isFinite(afterMs) || nowMs - afterMs > MANEUVER_MARKER_DAYS * DAY_MS) continue;
     const id = String(candidate.noradId);
     const held = recent.get(id);
-    if (!held || Date.parse(held.toEpoch) < afterMs) recent.set(id, candidate);
+    if (!held || held.toEpoch < afterMs) recent.set(id, candidate);
   }
   return recent;
 }
@@ -68,5 +68,5 @@ export function maneuverChange(candidate: ManeuverCandidate): { key: string; val
 
 /** The UTC day of the epoch after the step, YYYY-MM-DD. */
 export function maneuverDay(candidate: ManeuverCandidate): string {
-  return candidate.toEpoch.slice(0, 10);
+  return new Date(candidate.toEpoch).toISOString().slice(0, 10);
 }

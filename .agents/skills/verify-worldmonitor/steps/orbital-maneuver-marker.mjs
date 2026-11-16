@@ -21,11 +21,11 @@ const ELEMENTS = [
 const marked = (id) => Number(id) % 3 === 0;
 
 function stubManeuvers(satellites) {
-  const toEpoch = new Date(Date.now() - DAY_MS).toISOString();
-  const fromEpoch = new Date(Date.now() - 2 * DAY_MS).toISOString();
+  const toEpoch = Date.now() - DAY_MS;
+  const fromEpoch = Date.now() - 2 * DAY_MS;
   const set = (epoch) => ({ epoch, meanMotion: 14.3, semiMajorAxisKm: 7164.1, eccentricity: 0.0001, inclination: 98.56, raan: 28.3, bstar: 0.0001 });
   const candidates = satellites.filter((s) => marked(s.id)).map((s, i) => ({
-    noradId: Number(s.id), regime: 'leo', fromEpoch, toEpoch, confirmedByEpoch: new Date(Date.now() - DAY_MS / 4).toISOString(),
+    noradId: Number(s.id), regime: 'leo', fromEpoch, toEpoch, confirmedByEpoch: Date.now() - DAY_MS / 4,
     expected: 0, observed: 0, threshold: 0.2, before: set(fromEpoch), after: set(toEpoch), ...ELEMENTS[i % ELEMENTS.length],
   }));
   return {

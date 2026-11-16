@@ -30,14 +30,14 @@ import { loadRecentManeuvers, MANEUVER_MARKER_DAYS, recentManeuvers, resetManeuv
 
 const NOW = Date.UTC(2026, 10, 16, 12, 0);
 const DAY_MS = 86_400_000;
-const set = (epoch: string, semiMajorAxisKm: number) => ({ epoch, meanMotion: 14.3, semiMajorAxisKm, eccentricity: 0.0001, inclination: 98.56, raan: 28.3, bstar: 0.0001 });
+const set = (epoch: number, semiMajorAxisKm: number) => ({ epoch, meanMotion: 14.3, semiMajorAxisKm, eccentricity: 0.0001, inclination: 98.56, raan: 28.3, bstar: 0.0001 });
 
 function candidate(overrides: Partial<ManeuverCandidate> = {}): ManeuverCandidate {
   return {
     noradId: 40697, element: 'semiMajorAxis', unit: 'km', regime: 'leo',
-    fromEpoch: '2026-11-13T15:03:05.963Z', toEpoch: '2026-11-14T15:03:05.963Z', confirmedByEpoch: '2026-11-15T15:03:05.963Z',
+    fromEpoch: Date.parse('2026-11-13T15:03:05.963Z'), toEpoch: Date.parse('2026-11-14T15:03:05.963Z'), confirmedByEpoch: Date.parse('2026-11-15T15:03:05.963Z'),
     expected: 7164.1, observed: 7165.3, residual: 1.2, threshold: 0.2,
-    before: set('2026-11-13T15:03:05.963Z', 7164.1), after: set('2026-11-14T15:03:05.963Z', 7165.3),
+    before: set(Date.parse('2026-11-13T15:03:05.963Z'), 7164.1), after: set(Date.parse('2026-11-14T15:03:05.963Z'), 7165.3),
     ...overrides,
   };
 }
@@ -61,9 +61,9 @@ afterEach(async () => {
 
 describe('recentManeuvers', () => {
   it('keeps each satellite\'s newest candidate from the last two weeks', () => {
-    const older = candidate({ toEpoch: '2026-11-10T00:00:00Z', element: 'inclination' });
+    const older = candidate({ toEpoch: Date.parse('2026-11-10T00:00:00Z'), element: 'inclination' });
     const newest = candidate();
-    const expired = candidate({ noradId: 1, toEpoch: new Date(NOW - (MANEUVER_MARKER_DAYS + 1) * DAY_MS).toISOString() });
+    const expired = candidate({ noradId: 1, toEpoch: NOW - (MANEUVER_MARKER_DAYS + 1) * DAY_MS });
     const map = recentManeuvers(response([older, newest, expired]), NOW);
     expect([...map.keys()]).toEqual(['40697']);
     expect(map.get('40697')).toBe(newest);
@@ -106,14 +106,29 @@ describe('satellite card', () => {
   const tle = { name: 'SENTINEL-2A', line1: '1 40697U', line2: '2 40697' };
   const coverage = { status: 'ok' as const, sensor: { profileId: 'sentinel-2', family: 'Sentinel-2', category: 'open-optical' as const }, windowStartMs: NOW, windowEndMs: NOW + DAY_MS, orbitAgeDays: 0.4, sites: [] };
 
-  it('puts the candidate line under the heading, and leaves it out when the list is unavailable', async () => {
+  it('draws the sites without waiting for the candidate read, then adds the line when it answers', async () => {
     mocks.getTrackedSatelliteTle.mockReturnValue(tle);
     mocks.sitesCoveredBySatellite.mockResolvedValue(coverage);
-    mocks.listSatelliteManeuvers.mockResolvedValue(response([candidate({ toEpoch: new Date(Date.now() - DAY_MS).toISOString() })]));
+    let answer!: (value: ListSatelliteManeuversResponse) => void;
+    mocks.listSatelliteManeuvers.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
     const host = document.createElement('div');
     document.body.append(host);
     await renderSatelliteSites(host, '40697', 'SENTINEL-2A');
+    expect(host.dataset.coverage).toBe('ok');
+    expect(host.querySelector('.osat-sites-maneuver')).toBeNull();
+    answer(response([candidate({ toEpoch: Date.now() - DAY_MS })]));
+    await vi.waitFor(() => expect(host.querySelector('.osat-sites-maneuver')).not.toBeNull());
     expect(host.children[1]!.classList.contains('osat-sites-maneuver')).toBe(true);
+  });
+
+  it('puts the candidate line under the heading, and leaves it out when the list is unavailable', async () => {
+    mocks.getTrackedSatelliteTle.mockReturnValue(tle);
+    mocks.sitesCoveredBySatellite.mockResolvedValue(coverage);
+    mocks.listSatelliteManeuvers.mockResolvedValue(response([candidate({ toEpoch: Date.now() - DAY_MS })]));
+    const host = document.createElement('div');
+    document.body.append(host);
+    await renderSatelliteSites(host, '40697', 'SENTINEL-2A');
+    await vi.waitFor(() => expect(host.children[1]!.classList.contains('osat-sites-maneuver')).toBe(true));
     expect(host.querySelector('.osat-sites-maneuver')!.textContent).toMatch(/^Candidate maneuver \d{4}-\d{2}-\d{2}: orbit raised 1\.2 km$/);
 
     resetManeuverCache();
@@ -122,6 +137,7 @@ describe('satellite card', () => {
     const other = document.createElement('div');
     document.body.append(other);
     await renderSatelliteSites(other, '40697', 'SENTINEL-2A');
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(other.querySelector('.osat-sites-maneuver')).toBeNull();
     expect(other.dataset.coverage).toBe('ok');
   });

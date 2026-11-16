@@ -186,8 +186,16 @@ export async function renderSatelliteSites(host: HTMLElement, noradId: string, n
   }
   // A scan of an element set the layer has since replaced is never painted; the card rescans.
   if (signal?.aborted || !host.isConnected || elementSetKey(noradId) !== key) return null;
-  const maneuver = (await maneuvers).get(noradId) ?? null;
-  if (signal?.aborted || !host.isConnected || elementSetKey(noradId) !== key) return null;
-  draw(host, { kind: 'coverage', coverage, maneuver }, Date.now());
+  // The sites are drawn as soon as they are ready; the optional candidate line follows when its
+  // read answers, so a slow or failed read never holds the list back. A rescan keeps the line it had.
+  const kept = renewing && shown?.kind === 'coverage' ? shown.maneuver : null;
+  draw(host, { kind: 'coverage', coverage, maneuver: kept }, Date.now());
+  void maneuvers.then((recent) => {
+    if (signal?.aborted || !host.isConnected || elementSetKey(noradId) !== key) return;
+    const state = sections.get(host);
+    const maneuver = recent.get(noradId) ?? null;
+    if (state?.kind !== 'coverage' || state.maneuver === maneuver) return;
+    draw(host, { ...state, maneuver }, Date.now());
+  });
   return coverage;
 }

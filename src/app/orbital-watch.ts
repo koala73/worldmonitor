@@ -280,11 +280,16 @@ async function loadSiteSatellites(found: PointPassLookup, signal: AbortSignal): 
     drawSiteSatellites();
   };
   draw({ kind: 'projecting' });
-  void loadRecentManeuvers().then((maneuvers) => {
-    if (signal.aborted) return;
-    siteManeuvers = maneuvers;
-    drawSiteSatellites();
-  });
+  // Read with the sheet and again on every clock tick: the shared list renews every 15 minutes,
+  // and a failed read is not cached, so an open sheet gains its markers once the list recovers.
+  const refreshManeuvers = () => {
+    void loadRecentManeuvers().then((maneuvers) => {
+      if (signal.aborted || maneuvers === siteManeuvers) return;
+      siteManeuvers = maneuvers;
+      drawSiteSatellites();
+    });
+  };
+  refreshManeuvers();
   try {
     let tles = getTrackedSatelliteTles();
     if (tles.length === 0) tles = (await fetchSatelliteTLEs()) ?? [];
@@ -308,6 +313,7 @@ async function loadSiteSatellites(found: PointPassLookup, signal: AbortSignal): 
     // The open list moves with the clock: elapsed passes drop out and, once its window has
     // slid far enough, the cached scans renew, so no past pass is labelled upcoming.
     const clock = setInterval(() => {
+      refreshManeuvers();
       const ticket = latest + 1;
       project().catch((error: unknown) => {
         if (!isAbort(error) && !signal.aborted && ticket === latest) draw({ kind: 'failed' });
