@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package worldmonitor.orbital.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ListSatelliteManeuversRequest optionally narrows the list to one satellite.
+message ListSatelliteManeuversRequest {
+  // NORAD catalogue number; 0 lists every profiled satellite.
+  int32 norad_id = 1 [(sebuf.http.query) = {name: "norad_id"}];
+}
+
+// ManeuverElementSet is one epoch's mean elements as the detector compared them.
+message ManeuverElementSet {
+  // Element epoch, ISO 8601 UTC.
+  string epoch = 1;
+  // Revolutions per day.
+  double mean_motion = 2;
+  // Semi-major axis derived from the mean motion, km.
+  double semi_major_axis_km = 3;
+  double eccentricity = 4;
+  // Degrees.
+  double inclination = 5;
+  // Right ascension of the ascending node, degrees.
+  double raan = 6;
+  // Drag term, inverse Earth radii.
+  double bstar = 7;
+}
+
+// ManeuverCandidate is a step in one element that left the satellite's own trend and was confirmed by the next epoch. It is a candidate, never a confirmed manoeuvre.
+message ManeuverCandidate {
+  int32 norad_id = 1;
+  // semiMajorAxis, inclination or raan (the node left after J2 regression).
+  string element = 2;
+  // km for semiMajorAxis, deg for the angles.
+  string unit = 3;
+  // leo, meo, geo or heo; selects the threshold floor.
+  string regime = 4;
+  // Epoch before the step, ISO 8601 UTC.
+  string from_epoch = 5;
+  // Epoch after the step, ISO 8601 UTC.
+  string to_epoch = 6;
+  // Following epoch that kept at least half of the step, ISO 8601 UTC.
+  string confirmed_by_epoch = 7;
+  // Value the baseline trend predicts at to_epoch.
+  double expected = 8;
+  // Value observed at to_epoch.
+  double observed = 9;
+  // observed minus expected.
+  double residual = 10;
+  // Threshold the residual exceeded: the regime floor or six times the baseline scatter, whichever is larger.
+  double threshold = 11;
+  ManeuverElementSet before = 12;
+  ManeuverElementSet after = 13;
+}
+
+// SatelliteManeuverStatus says whether the detector could judge a satellite, so no candidate is never read as no manoeuvre.
+message SatelliteManeuverStatus {
+  int32 norad_id = 1;
+  // evaluated, insufficient-baseline, stale, decaying or no-history.
+  string status = 2;
+  // leo, meo, geo or heo; empty when the satellite was not classified.
+  string regime = 3;
+  int32 candidate_count = 4;
+}
+
+// ListSatelliteManeuversResponse lists candidate manoeuvres, newest first. With no list stored, the lists are empty and stale is true.
+message ListSatelliteManeuversResponse {
+  repeated ManeuverCandidate candidates = 1;
+  repeated SatelliteManeuverStatus satellites = 2;
+  // Satellites the detector could judge.
+  int32 evaluated_satellites = 3;
+  // When the list was computed, as Unix epoch milliseconds; 0 with no list.
+  int64 generated_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int32 detection_version = 5;
+  // What the detector cannot see, e.g. that falls in LEO semi-major axis are not flagged while drag is unknown.
+  string method_note = 6;
+  // True when no list is stored or the stored one is older than its freshness limit.
+  bool stale = 7;
+}

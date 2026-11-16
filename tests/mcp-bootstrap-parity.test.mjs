@@ -335,8 +335,6 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred to a future FX tool. The previous reason here claimed ECB FX already covered this and was wrong on the facts (#6199): economic:ecb-fx-rates:v1 carries seven majors (USD GBP JPY CHF CAD CNY AUD) while this key carries 45 currencies including ARS, TRY, EGP, NGN, PKR, UAH and LBP — precisely the currencies whose collapses this key measures, and none of which ECB quotes. It now has a dashboard consumer (the FX panel) but still no MCP tool.'],
   ['orbital:water-extent:v1',
     'deferred: the water card (#10714 item 1) reads its compact orbital:water-extent:latest:v1 summary through get-watched-site-imagery; the full series has no MCP tool.'],
-  ['orbital:maneuvers:v1',
-    'deferred: candidate manoeuvres get list_satellite_maneuvers once the marker ships, and Orbital Watch is dark (#9110, #10721).'],
   ['intelligence:satellites:tle:v1',
     'deferred to a future space-domain tool. Not in v1 brainstorm inventory.'],
   ['intelligence:pizzint:seed:v1',

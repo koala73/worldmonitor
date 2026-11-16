@@ -2,7 +2,7 @@
 // Source: proto/worldmonitor/**/*.proto buf.validate annotations.
 
 export const GENERATED_PROTO_VALIDATION_RULE_COUNT = 739;
-export const GENERATED_REQUEST_METHOD_COUNT = 198;
+export const GENERATED_REQUEST_METHOD_COUNT = 199;
 
 export const GENERATED_REQUEST_TYPES = {
   "analyzeStock": "worldmonitor.market.v1.AnalyzeStockRequest",
@@ -161,6 +161,7 @@ export const GENERATED_REQUEST_TYPES = {
   "listRadiationObservations": "worldmonitor.radiation.v1.ListRadiationObservationsRequest",
   "listRetailerPriceSpreads": "worldmonitor.consumer_prices.v1.ListRetailerPriceSpreadsRequest",
   "listSanctionsPressure": "worldmonitor.sanctions.v1.ListSanctionsPressureRequest",
+  "listSatelliteManeuvers": "worldmonitor.orbital.v1.ListSatelliteManeuversRequest",
   "listSatellites": "worldmonitor.intelligence.v1.ListSatellitesRequest",
   "listServiceStatuses": "worldmonitor.infrastructure.v1.ListServiceStatusesRequest",
   "listSourceItems": "worldmonitor.news.v1.ListSourceItemsRequest",
@@ -2582,6 +2583,9 @@ export const GENERATED_MESSAGE_RULES = {
         "stringMaxBytes": 65536
       }
     }
+  },
+  "worldmonitor.orbital.v1.ListSatelliteManeuversRequest": {
+    "fields": {}
   },
   "worldmonitor.prediction.v1.ListPredictionMarketsRequest": {
     "fields": {

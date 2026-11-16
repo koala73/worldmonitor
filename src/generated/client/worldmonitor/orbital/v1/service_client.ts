@@ -215,6 +215,53 @@ export interface WaterReading {
   relativeOrbit: number;
 }
 
+export interface ListSatelliteManeuversRequest {
+  noradId: number;
+}
+
+export interface ListSatelliteManeuversResponse {
+  candidates: ManeuverCandidate[];
+  satellites: SatelliteManeuverStatus[];
+  evaluatedSatellites: number;
+  generatedAt: number;
+  detectionVersion: number;
+  methodNote: string;
+  stale: boolean;
+}
+
+export interface ManeuverCandidate {
+  noradId: number;
+  element: string;
+  unit: string;
+  regime: string;
+  fromEpoch: string;
+  toEpoch: string;
+  confirmedByEpoch: string;
+  expected: number;
+  observed: number;
+  residual: number;
+  threshold: number;
+  before?: ManeuverElementSet;
+  after?: ManeuverElementSet;
+}
+
+export interface ManeuverElementSet {
+  epoch: string;
+  meanMotion: number;
+  semiMajorAxisKm: number;
+  eccentricity: number;
+  inclination: number;
+  raan: number;
+  bstar: number;
+}
+
+export interface SatelliteManeuverStatus {
+  noradId: number;
+  status: string;
+  regime: string;
+  candidateCount: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -360,6 +407,31 @@ export class OrbitalServiceClient {
     }
 
     return await resp.json() as GetWatchedSiteImageryResponse;
+  }
+
+  async listSatelliteManeuvers(req: ListSatelliteManeuversRequest, options?: OrbitalServiceCallOptions): Promise<ListSatelliteManeuversResponse> {
+    let path = "/api/orbital/v1/list-satellite-maneuvers";
+    const params = new URLSearchParams();
+    if (req.noradId != null && req.noradId !== 0) params.set("norad_id", String(req.noradId));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListSatelliteManeuversResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {
