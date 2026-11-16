@@ -107,6 +107,16 @@ describe('orbit helpers', () => {
     assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, MEAN_MOTION: undefined }), null);
     assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, EPOCH: 'not a date' }), null);
   });
+
+  it('never turns a missing element into zero', () => {
+    for (const field of ['ECCENTRICITY', 'INCLINATION', 'RA_OF_ASC_NODE', 'MEAN_MOTION']) {
+      for (const missing of [null, '', '  ']) {
+        assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, [field]: missing }), null, `${field}=${JSON.stringify(missing)}`);
+      }
+    }
+    assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, BSTAR: null }).bstar, null, 'BSTAR stays nullable');
+    assert.equal(historyEntryFromOmm({ ...SENTINEL_2A, BSTAR: '0' }).bstar, 0);
+  });
 });
 
 describe('known manoeuvres are flagged once', () => {
@@ -180,6 +190,26 @@ describe('known false positives are not flagged', () => {
   it('a one-epoch element-set refit that the next epoch does not repeat', () => {
     const entries = history({ aKm: 6900, inclination: 97.4, events: [{ day: 15, dSma: 0.8, dInc: 0.05, once: true }] });
     assert.deepEqual(run(entries).candidates, []);
+  });
+
+  // A refit is a measurement error: only the reported inclination moves, never the true orbit.
+  const refitHistory = (days) => {
+    const entries = history({ aKm: 7071, inclination: 98.56, days, noise: { sma: 0, inc: 0, raan: 0 } });
+    entries[15] = { ...entries[15], inclination: entries[15].inclination + 0.3 };
+    return entries;
+  };
+
+  it('a refit kept out of later baselines, so it never surfaces as a delayed step (days 21 and 22)', () => {
+    const result = run(refitHistory(25));
+    assert.equal(result.status, 'evaluated');
+    assert.deepEqual(result.candidates, []);
+  });
+
+  it('a real step after a refit is still found against a clean baseline', () => {
+    const entries = refitHistory(25).map((e, day) => (day >= 21 ? { ...e, inclination: e.inclination - 0.04 } : e));
+    const result = run(entries);
+    assert.deepEqual(result.candidates.map((c) => [c.element, c.toEpoch]), [['inclination', new Date(T0 + 21 * DAY_MS).toISOString()]]);
+    assert.ok(Math.abs(result.candidates[0].residual + 0.04) < 0.002, `residual ${result.candidates[0].residual}`);
   });
 
   it('a step on the newest epoch waits for the next epoch to confirm it', () => {

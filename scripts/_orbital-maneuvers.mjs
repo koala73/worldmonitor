@@ -50,7 +50,9 @@ export const REGIME_FLOORS = Object.freeze({
 
 const ELEMENT_UNITS = Object.freeze({ semiMajorAxis: 'km', inclination: 'deg', raan: 'deg' });
 
+/** A finite number, or null for a missing value: null, undefined and blank strings never become 0. */
 function finite(value) {
+  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -146,9 +148,18 @@ function cleanHistory(entries) {
   return [...byEpoch.values()].sort((a, b) => a.epoch - b.epoch);
 }
 
-/** Series per element, t in days since the first epoch. RAAN is J2-corrected and unwrapped. */
+/**
+ * Series per element, t in days since the first epoch. RAAN is J2-corrected and unwrapped.
+ * The J2 rate comes from the satellite's median elements, not each epoch's own, so one bad
+ * element set (a refit) cannot leave a lasting step in the cumulative node series.
+ */
 function buildSeries(history) {
   const t0 = history[0].epoch;
+  const rate = j2RaanRateDegPerDay({
+    meanMotion: median(history.map((e) => e.meanMotion)),
+    eccentricity: median(history.map((e) => e.eccentricity)),
+    inclination: median(history.map((e) => e.inclination)),
+  });
   const sma = [];
   const inc = [];
   const raan = [];
@@ -160,7 +171,6 @@ function buildSeries(history) {
     if (k > 0) {
       const prev = history[k - 1];
       const dtDays = (entry.epoch - prev.epoch) / DAY_MS;
-      const rate = (j2RaanRateDegPerDay(prev) + j2RaanRateDegPerDay(entry)) / 2;
       residualRaan += wrapDeg(entry.raan - prev.raan - rate * dtDays);
     }
     raan.push({ t, y: residualRaan });
@@ -217,11 +227,14 @@ export function detectSatelliteManeuvers(entries, { nowMs, dragDisturbed, option
     const points = series[element];
     // The baseline never reaches back across a flagged step: the trend restarts after a burn.
     let baselineStart = 0;
+    // Epochs that left the trend for one epoch only (refits): kept out of every later baseline.
+    const refits = new Set();
     for (let k = 1; k + 1 < points.length; k++) {
       const prevT = points[k - 1].t;
       if (points[k].t - prevT > options.maxGapDays || points[k + 1].t - points[k].t > options.maxGapDays) continue;
       if (points[baselineStart].t > prevT - options.baselineDays) continue;
-      const baseline = points.slice(baselineStart, k).filter((p) => p.t >= prevT - options.baselineDays);
+      const baseline = [];
+      for (let i = baselineStart; i < k; i++) if (!refits.has(i) && points[i].t >= prevT - options.baselineDays) baseline.push(points[i]);
       if (baseline.length < options.minBaselineEpochs) continue;
 
       comparedSteps++;
@@ -231,7 +244,11 @@ export function detectSatelliteManeuvers(entries, { nowMs, dragDisturbed, option
       const residual = points[k].y - fit.predict(points[k].t);
       const confirming = points[k + 1].y - fit.predict(points[k + 1].t);
       if (Math.abs(residual) <= threshold) continue;
-      if (Math.sign(confirming) !== Math.sign(residual) || Math.abs(confirming) < options.confirmFraction * Math.abs(residual)) continue;
+      if (Math.sign(confirming) !== Math.sign(residual) || Math.abs(confirming) < options.confirmFraction * Math.abs(residual)) {
+        // The next epoch is back on the trend: epoch k was a refit, not a new level.
+        if (Math.abs(confirming) <= threshold) refits.add(k);
+        continue;
+      }
 
       const from = history[k - 1];
       const to = history[k];
