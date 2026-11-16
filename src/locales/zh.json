@@ -5197,6 +5197,7 @@
     "counts": {},
     "tier": {
       "checking": "正在检查档案库",
+      "notInArchive": "档案库中无此影像",
       "confirmed": "已确认",
       "likely": "可能",
       "unmatchedImage": "无计算过境的影像",

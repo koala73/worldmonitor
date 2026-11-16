@@ -5197,6 +5197,7 @@
     "counts": {},
     "tier": {
       "checking": "đang kiểm tra kho",
+      "notInArchive": "không có trong kho",
       "confirmed": "đã xác nhận",
       "likely": "có khả năng",
       "unmatchedImage": "ảnh không có lượt bay qua đã tính",

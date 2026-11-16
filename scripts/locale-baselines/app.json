@@ -3184,6 +3184,7 @@
   "orbitalWatch.tier.inReach": "in reach",
   "orbitalWatch.tier.likely": "likely",
   "orbitalWatch.tier.mosaic": "mosaic",
+  "orbitalWatch.tier.notInArchive": "not in archive",
   "orbitalWatch.tier.unavailable": "unavailable",
   "orbitalWatch.tier.unmatchedImage": "image without computed pass",
   "orbitalWatch.tier.upcoming": "upcoming",

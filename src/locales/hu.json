@@ -5225,6 +5225,7 @@
     "counts": {},
     "tier": {
       "checking": "archívum ellenőrzése",
+      "notInArchive": "nincs az archívumban",
       "confirmed": "megerősített",
       "likely": "valószínű",
       "unmatchedImage": "kép számított áthaladás nélkül",
