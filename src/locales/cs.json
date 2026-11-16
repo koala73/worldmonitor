@@ -4312,6 +4312,21 @@
       "yellowWarning": "Žlutá výstraha",
       "orangeWarning": "Oranžová výstraha",
       "redWarning": "Červená výstraha"
+    },
+    "displacement": {
+      "event": "Událost",
+      "cause": "Příčina",
+      "date": "Datum",
+      "operation": "Operace",
+      "reportDate": "Datum zprávy",
+      "measure": "Ukazatel",
+      "kinds": {
+        "outflow": "Odchody",
+        "return": "Návraty",
+        "arrival": "Příchody",
+        "death": "Úmrtí",
+        "encounter": "Zaznamenané případy"
+      }
     }
   },
   "signals": {

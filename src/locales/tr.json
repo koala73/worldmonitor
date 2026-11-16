@@ -4268,6 +4268,21 @@
       "yellowWarning": "Sarı uyarı",
       "orangeWarning": "Turuncu uyarı",
       "redWarning": "Kırmızı uyarı"
+    },
+    "displacement": {
+      "event": "Olay",
+      "cause": "Neden",
+      "date": "Tarih",
+      "operation": "Operasyon",
+      "reportDate": "Rapor tarihi",
+      "measure": "Ölçü",
+      "kinds": {
+        "outflow": "Çıkışlar",
+        "return": "Geri dönüşler",
+        "arrival": "Varışlar",
+        "death": "Ölümler",
+        "encounter": "Sınırda kayıtlı vakalar"
+      }
     }
   },
   "signals": {

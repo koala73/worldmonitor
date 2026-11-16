@@ -4268,6 +4268,21 @@
       "yellowWarning": "Жълт код",
       "orangeWarning": "Оранжев код",
       "redWarning": "Червен код"
+    },
+    "displacement": {
+      "event": "Събитие",
+      "cause": "Причина",
+      "date": "Дата",
+      "operation": "Операция",
+      "reportDate": "Дата на доклада",
+      "measure": "Показател",
+      "kinds": {
+        "outflow": "Изходящи",
+        "return": "Завърнали се",
+        "arrival": "Пристигащи",
+        "death": "Загинали",
+        "encounter": "Засечени случаи"
+      }
     }
   },
   "signals": {

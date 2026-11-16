@@ -4246,6 +4246,21 @@
       "yellowWarning": "黃色預警",
       "orangeWarning": "橙色預警",
       "redWarning": "紅色預警"
+    },
+    "displacement": {
+      "event": "事件",
+      "cause": "原因",
+      "date": "日期",
+      "operation": "行動",
+      "reportDate": "報告日期",
+      "measure": "衡量指標",
+      "kinds": {
+        "outflow": "外流",
+        "return": "返回",
+        "arrival": "抵達",
+        "death": "死亡",
+        "encounter": "邊境遭遇"
+      }
     }
   },
   "signals": {

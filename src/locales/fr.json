@@ -4290,6 +4290,21 @@
       "yellowWarning": "Vigilance jaune",
       "orangeWarning": "Vigilance orange",
       "redWarning": "Vigilance rouge"
+    },
+    "displacement": {
+      "event": "Événement",
+      "cause": "Cause",
+      "date": "Date",
+      "operation": "Opération",
+      "reportDate": "Date du rapport",
+      "measure": "Mesure",
+      "kinds": {
+        "outflow": "Départs",
+        "return": "Retours",
+        "arrival": "Arrivées",
+        "death": "Décès",
+        "encounter": "Rencontres à la frontière"
+      }
     }
   },
   "signals": {

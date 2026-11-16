@@ -3884,6 +3884,21 @@
       "yellowWarning": "Gul varning",
       "orangeWarning": "Orange varning",
       "redWarning": "Röd varning"
+    },
+    "displacement": {
+      "event": "Händelse",
+      "cause": "Orsak",
+      "date": "Datum",
+      "operation": "Insats",
+      "reportDate": "Rapportdatum",
+      "measure": "Mått",
+      "kinds": {
+        "outflow": "Utflöden",
+        "return": "Återvändande",
+        "arrival": "Ankomster",
+        "death": "Dödsfall",
+        "encounter": "Påträffanden"
+      }
     }
   },
   "signals": {

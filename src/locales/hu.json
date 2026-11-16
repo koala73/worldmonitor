@@ -4337,6 +4337,21 @@
       "yellowWarning": "Sárga figyelmeztetés",
       "orangeWarning": "Narancs figyelmeztetés",
       "redWarning": "Piros figyelmeztetés"
+    },
+    "displacement": {
+      "event": "Esemény",
+      "cause": "Ok",
+      "date": "Dátum",
+      "operation": "Művelet",
+      "reportDate": "Jelentés dátuma",
+      "measure": "Mérőszám",
+      "kinds": {
+        "outflow": "Kiáramlás",
+        "return": "Visszatérők",
+        "arrival": "Érkezők",
+        "death": "Halálesetek",
+        "encounter": "Határon rögzített esetek"
+      }
     }
   },
   "signals": {
