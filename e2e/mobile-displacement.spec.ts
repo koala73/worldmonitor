@@ -90,6 +90,58 @@ for (const width of [390, 1280]) {
   });
 }
 
+// Every render rebuilds the marker elements. A rebuild between press and
+// release used to put the release on a new element, so the browser sent the
+// click to the map and the tap opened nothing. Data refreshes and settling
+// renders land in that window on slow phones (CI flakes in runs 43727194139
+// and 43794884414).
+test.describe('SVG marker press across a rebuild', () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+  for (const input of ['touch', 'mouse'] as const) {
+    test(`a ${input} press opens the popup when a render lands before release`, async ({ page }, testInfo) => {
+      await page.goto('/tests/mobile-map-integration-harness.html?mobile=1');
+      await page.waitForFunction(() => (window as unknown as { __mobileMapIntegrationHarness: Harness }).__mobileMapIntegrationHarness?.ready);
+      await page.evaluate(events => {
+        const h = (window as unknown as { __mobileMapIntegrationHarness: Harness }).__mobileMapIntegrationHarness;
+        h.setDisplacementEvents(events);
+        h.toggleCrossBorderLayer();
+        h.setOverlayZoom(8);
+        h.setOverlayViewport(40, -4);
+      }, events);
+      const marker = page.locator('.displacement-idmc');
+      await expect(marker).toBeVisible();
+      const renders = () => page.evaluate(() => (window as unknown as { __mobileMapIntegrationHarness: { getOverlayBudgetState: () => { renders: number } } }).__mobileMapIntegrationHarness.getOverlayBudgetState().renders);
+      // Let the setup's own settle renders finish, so the only render inside
+      // the press is the one this test forces.
+      let previous = -1;
+      await expect.poll(async () => previous === (previous = await renders()), { intervals: [500] }).toBe(true);
+      const box = (await marker.boundingBox())!;
+      const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      const rendersAtPress = await renders();
+      const cdp = await page.context().newCDPSession(page);
+      if (input === 'touch') await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+      else { await page.mouse.move(point.x, point.y); await page.mouse.down(); }
+      // Render while the press is held, past the 100ms render throttle so the
+      // render is not just coalesced into a later frame.
+      await page.evaluate(async () => {
+        const h = (window as unknown as { __mobileMapIntegrationHarness: Harness }).__mobileMapIntegrationHarness;
+        await new Promise(resolve => setTimeout(resolve, 150));
+        h.forceRender();
+        await new Promise(resolve => setTimeout(resolve, 150));
+      });
+      if (input === 'touch') await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      else await page.mouse.up();
+      const popup = page.locator('.map-popup');
+      await expect(popup).toBeVisible();
+      await expect(popup).toContainText('Controlled flood <report>');
+      await expect(popup.locator('.popup-body')).toBeInViewport({ ratio: 1 });
+      await evidenceScreenshot(page, { path: testInfo.outputPath(`marker-press-across-rebuild-${input}.png`) });
+      // The render held back during the press still runs after it.
+      await expect.poll(renders).toBeGreaterThan(rendersAtPress);
+    });
+  }
+});
+
 test.describe('Dashboard displacement data path', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   test('loads IDMC bootstrap and DTM/UNHCR RPC data into the SVG map from a shared layer URL', async ({ page }, testInfo) => {

@@ -334,6 +334,13 @@ export class MapComponent {
   // through getOverlayMarkerBudgetState() so a test can assert that a view
   // another render already re-planned is not rebuilt again.
   private overlayRenderCount = 0;
+  // A mouse or pen click goes to the element under both press and release.
+  // renderDynamicLayers() replaces every marker, so a rebuild between the two
+  // sent the click to the map and the press opened nothing. While a press on a
+  // marker is down the rebuild waits, and runs once the press ends. Touch is
+  // exempt: Chromium hit-tests a tap at release, so it reaches the new marker.
+  private markerPressActive = false;
+  private dynamicRebuildDeferred = false;
   private lastTruncationLabelKey = '';
   private labelVisibilityScheduled = false;
   private pendingLabelVisibilityZoom = 1;
@@ -1123,6 +1130,23 @@ export class MapComponent {
 
   private setupZoomHandlers(): void {
     const signal = this.listenerAbort.signal;
+    this.wrapper.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch' || !(e.target instanceof Node)) return;
+      if (this.overlays.contains(e.target) || this.dynamicLayerGroup?.node()?.contains(e.target)) this.markerPressActive = true;
+    }, { capture: true, signal });
+    const endMarkerPress = () => {
+      if (!this.markerPressActive) return;
+      this.markerPressActive = false;
+      // The click follows pointerup in the same task; scheduleRender() waits for
+      // a frame, so the click reaches the marker it was pressed on.
+      if (this.dynamicRebuildDeferred) {
+        this.dynamicRebuildDeferred = false;
+        this.scheduleRender();
+      }
+    };
+    document.addEventListener('pointerup', endMarkerPress, { capture: true, signal });
+    document.addEventListener('pointercancel', endMarkerPress, { capture: true, signal });
+    window.addEventListener('blur', endMarkerPress, { signal });
     let isDragging = false;
     let lastPos = { x: 0, y: 0 };
     let lastTouchDist = 0;
@@ -1594,6 +1618,10 @@ export class MapComponent {
   // reached, so it runs synchronously. The re-entrancy token lets a chunked pass bail once a
   // newer render (which bumps the token and rebuilds) has superseded it.
   private async renderDynamicLayers(width: number, height: number, chunk = false): Promise<void> {
+    if (this.markerPressActive) {
+      this.dynamicRebuildDeferred = true;
+      return;
+    }
     const dynamicGroup = this.dynamicLayerGroup;
     const dynamicNode = dynamicGroup?.node();
     if (!dynamicGroup || !dynamicNode) return;
