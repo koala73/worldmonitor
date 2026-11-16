@@ -43,14 +43,8 @@ vi.mock('../config/loader.js', () => ({
   loadRetailerConfig: mocks.loadRetailerConfig,
   loadAllRetailerConfigs: mocks.loadAllRetailerConfigs,
 }));
-vi.mock('../acquisition/registry.js', () => ({
-  initProviders: vi.fn(),
-  teardownAll: vi.fn(),
-}));
 vi.mock('../acquisition/exa.js', () => ({ ExaProvider: class {} }));
 vi.mock('../acquisition/firecrawl.js', () => ({ FirecrawlProvider: class {} }));
-vi.mock('../adapters/generic.js', () => ({ GenericPlaywrightAdapter: class {} }));
-vi.mock('../adapters/exa-search.js', () => ({ ExaSearchAdapter: class {} }));
 vi.mock('../adapters/validator.js', () => ({ AUTO_MATCH_THRESHOLD: 0.9 }));
 vi.mock('./scrape-pin-recovery.js', () => ({
   handleStaleOnInStock: vi.fn(),
