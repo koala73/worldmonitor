@@ -184,6 +184,23 @@ describe('opening the lookup on a watched site', () => {
     await vi.waitFor(() => expect(siteSection()?.textContent).toContain('did not load'));
   });
 
+  it('reads no site record for the user\'s own located position, which would name where they are', async () => {
+    openOrbitalWatch(onSite, null, null, { located: true });
+    await vi.waitFor(() => expect(harness.lookup).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(harness.siteRead).not.toHaveBeenCalled();
+    expect(siteSection()).toBeNull();
+  });
+
+  it('reads the record again when the failed point is reopened, as the failure text says', async () => {
+    harness.siteRead.mockRejectedValueOnce(new Error('503'));
+    openOrbitalWatch(onSite, null);
+    await vi.waitFor(() => expect(siteSection()?.textContent).toContain('did not load'));
+    openOrbitalWatch(onSite, null);
+    await vi.waitFor(() => expect(siteSection()?.textContent).toContain('SENTINEL-2A'));
+    expect(harness.siteRead).toHaveBeenCalledTimes(2);
+  });
+
   it('aborts the site read when the sheet closes', async () => {
     let signal: AbortSignal | undefined;
     harness.siteRead.mockImplementationOnce((_request, options) => { signal = options?.signal; return new Promise(() => {}); });

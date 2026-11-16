@@ -998,7 +998,6 @@ export class OrbitalWatchPage {
       this.thumbStrip(summary, evidence));
   }
 
-  /** Every other image of the point; each starts loading only as it nears the viewport. */
   /** The site's daily record: its newest image, next pass and when it was checked. No change flag while flags are in shadow. */
   private siteSection(): DomChild {
     const state = this.watchedSite;
@@ -1022,6 +1021,7 @@ export class OrbitalWatchPage {
         cell(t('orbitalWatch.site.checked'), formatStamp(record.evaluatedAt))));
   }
 
+  /** Every other image of the point; each starts loading only as it nears the viewport. */
   private thumbStrip(summary: Tally, evidence: OrbitalEvidence | null): DomChild {
     const specs = thumbSpecs(summary.confirmed, summary.latest, evidence);
     if (specs.length === 0) return null;
