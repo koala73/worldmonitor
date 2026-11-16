@@ -1,9 +1,10 @@
 /**
- * Signed-out /pro checkout opens the sign-up form (#10842). It must stay a
- * plain `openSignUp`: Clerk's combined flow (`withSignUp`) hid new-email
- * sign-ups under strict enumeration protection (#10493, see
- * tests/clerk-signin-with-signup.test.mts). The desktop account switch stays a
- * sign-in, since that buyer already holds an account.
+ * Signed-out /pro checkout asks the buyer to pick sign-up or sign-in, then
+ * opens that form (#10842). Each must stay a plain `openSignUp`/`openSignIn`:
+ * Clerk's combined flow (`withSignUp`) hid new-email sign-ups under strict
+ * enumeration protection (#10493, see tests/clerk-signin-with-signup.test.mts).
+ * The desktop account switch stays a sign-in, since that buyer already holds
+ * an account.
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -23,10 +24,11 @@ describe('/pro checkout auth form', () => {
     assert.doesNotMatch(src, /withSignUp/);
   });
 
-  it('opens sign-up with both return URLs for a signed-out click', () => {
+  it('opens the chosen form with both return URLs for a signed-out click', () => {
     const inner = body('startCheckoutInner');
+    assert.match(inner, /askCheckoutAuthForm\(\)/);
     assert.match(inner, /c\.openSignUp\(\{\s*afterSignUpUrl:\s*returnUrl,\s*afterSignInUrl:\s*returnUrl\s*\}\)/);
-    assert.doesNotMatch(inner, /openSignIn\(/);
+    assert.match(inner, /c\.openSignIn\(\{\s*afterSignInUrl:\s*returnUrl,\s*afterSignUpUrl:\s*returnUrl\s*\}\)/);
   });
 
   it('keeps the desktop account switch on sign-in', () => {

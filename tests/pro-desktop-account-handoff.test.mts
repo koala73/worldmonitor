@@ -201,10 +201,13 @@ it('keeps the old behaviour for a handoff that names no desktop account', async 
 
 it('carries the desktop account through the auth detour of a signed-out browser', async () => {
   const f = await fixture({ browserUser: null });
-  assert.equal(await f.checkout.startCheckout('synthetic-product', {
+  const attempt = f.checkout.startCheckout('synthetic-product', {
     desktopHandoff: { account: digest(DESKTOP_USER) },
-  }), false);
-  const resume = new URL(f.signUps[0]!.afterSignInUrl!);
+  });
+  await waitFor(() => dialog()?.id === 'wm-pro-auth-form-dialog', 'the sign-up or sign-in chooser opens');
+  button(/sign in/i)?.click();
+  assert.equal(await attempt, false);
+  const resume = new URL(f.signIns[0]!.afterSignInUrl!);
   assert.equal(resume.searchParams.get('wm_checkout_account'), digest(DESKTOP_USER));
 });
 

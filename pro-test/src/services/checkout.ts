@@ -321,24 +321,26 @@ async function startCheckoutInner(
   });
 
   if (!c.user) {
-    // Signed-out buyers get the sign-up form, not sign-in (#10842). Under
-    // strict enumeration protection a new address in the sign-in form can
-    // reach a code screen without creating an account, a dead end for most
-    // buyers. Existing account holders switch via the "Sign in" footer link,
-    // so both return URLs carry the checkout intent; tryResumeCheckoutFromUrl
-    // picks it up on page load. On dismissal Clerk performs no navigation, so
-    // no resume. Never Clerk's combined sign-in/sign-up flow: it hid new-email
-    // sign-ups under strict enumeration protection (#10493).
+    // Signed-out buyers pick the form before Clerk opens (#10842). Under strict
+    // enumeration protection each form strands the other group: a new address
+    // in sign-in, or an existing one in sign-up, reaches a code screen that
+    // sends no code. Both return URLs carry the checkout intent, so the footer
+    // link in either form still resumes via tryResumeCheckoutFromUrl. Never
+    // Clerk's combined sign-in/sign-up flow: it hid new-email sign-ups under
+    // strict enumeration protection (#10493).
+    const form = await askCheckoutAuthForm();
+    if (form === 'cancel') return false;
     const returnUrl = buildCheckoutReturnUrl(window.location.href, productId, options);
     try {
-      c.openSignUp({ afterSignUpUrl: returnUrl, afterSignInUrl: returnUrl });
+      if (form === 'sign-up') c.openSignUp({ afterSignUpUrl: returnUrl, afterSignInUrl: returnUrl });
+      else c.openSignIn({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl });
     } catch (err) {
-      console.error('[checkout] Failed to open sign up:', err);
-      Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'checkout-sign-up' } });
-      showCheckoutErrorToast('Sign-up could not open. Please try again.');
+      console.error(`[checkout] Failed to open ${form}:`, err);
+      Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: `checkout-${form}` } });
+      showCheckoutErrorToast(`${form === 'sign-up' ? 'Sign-up' : 'Sign-in'} could not open. Please try again.`);
       return false;
     }
-    trackAuthStep(c, productId, 'sign-up');
+    trackAuthStep(c, productId, form);
     return false;
   }
 
@@ -1239,15 +1241,32 @@ type DesktopAccountChoice = 'switch-account' | 'upgrade-browser-account' | 'canc
 
 const PRO_DESKTOP_ACCOUNT_DIALOG_ID = 'wm-pro-desktop-account-dialog';
 
-function askDesktopAccountChoice(browserAccount: string, desktopAccountKnown: boolean): Promise<DesktopAccountChoice> {
+interface ChoiceButton<T extends string> {
+  choice: T;
+  label: string;
+  style: string;
+}
+
+const CHOICE_BUTTON_STYLE = 'border-radius:4px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;overflow-wrap:anywhere;';
+const PRIMARY_CHOICE_STYLE = 'background:#44ff88;color:#0a0a0a;border:none;font-weight:700;';
+const SECONDARY_CHOICE_STYLE = 'background:transparent;color:#e8e8e8;border:1px solid #444;';
+const CANCEL_CHOICE_STYLE = 'background:transparent;color:#aaa;border:1px solid #2a2a2a;';
+
+/** A modal with one button per choice. Escape and a backdrop click resolve `dismiss`. */
+function askChoice<T extends string>(
+  id: string,
+  titleHtml: string,
+  bodyHtml: string,
+  buttons: ChoiceButton<T>[],
+  { dismiss, focus, stacked = false }: { dismiss: T; focus: T; stacked?: boolean },
+): Promise<T> {
   return new Promise((resolve) => {
-    document.getElementById(PRO_DESKTOP_ACCOUNT_DIALOG_ID)?.remove();
-    const account = escapeHtml(browserAccount);
+    document.getElementById(id)?.remove();
     const backdrop = document.createElement('div');
-    backdrop.id = PRO_DESKTOP_ACCOUNT_DIALOG_ID;
+    backdrop.id = id;
     backdrop.setAttribute('role', 'dialog');
     backdrop.setAttribute('aria-modal', 'true');
-    backdrop.setAttribute('aria-labelledby', `${PRO_DESKTOP_ACCOUNT_DIALOG_ID}-title`);
+    backdrop.setAttribute('aria-labelledby', `${id}-title`);
     Object.assign(backdrop.style, {
       position: 'fixed',
       inset: '0',
@@ -1259,27 +1278,23 @@ function askDesktopAccountChoice(browserAccount: string, desktopAccountKnown: bo
       justifyContent: 'center',
       padding: '24px',
     });
-    const buttonStyle = 'border-radius:4px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;overflow-wrap:anywhere;';
+    const layout = stacked ? 'flex-direction:column;' : 'flex-wrap:wrap;justify-content:flex-end;';
     backdrop.innerHTML = `
       <div style="background:#141414;border:1px solid #2a2a2a;border-radius:8px;padding:20px 22px;max-width:460px;width:100%;color:#e8e8e8;font-family:'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace;box-shadow:0 12px 40px rgba(0,0,0,0.5);">
-        <h2 id="${PRO_DESKTOP_ACCOUNT_DIALOG_ID}-title" style="font-size:16px;font-weight:600;margin:0 0 10px 0;color:#fff;">${desktopAccountKnown ? 'This browser uses a different account' : 'Confirm the account to upgrade'}</h2>
+        <h2 id="${id}-title" style="font-size:16px;font-weight:600;margin:0 0 10px 0;color:#fff;">${titleHtml}</h2>
         <p style="font-size:13px;line-height:1.5;margin:0 0 18px 0;color:#c8c8c8;overflow-wrap:anywhere;">
-          ${desktopAccountKnown
-            ? `This browser is signed in as <strong style="color:#fff;">${account}</strong>, but your desktop app uses a different account. Checking out here upgrades ${account}, and the desktop app keeps its current plan.`
-            : `This browser is signed in as <strong style="color:#fff;">${account}</strong>. Your desktop app had not finished loading its account, so check that this is the one you use there. Checking out here upgrades ${account}.`}
+          ${bodyHtml}
         </p>
-        <div style="display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;">
-          <button data-choice="cancel" type="button" style="${buttonStyle}background:transparent;color:#aaa;border:1px solid #2a2a2a;">Cancel</button>
-          <button data-choice="upgrade-browser-account" type="button" style="${buttonStyle}background:transparent;color:#e8e8e8;border:1px solid #444;">Upgrade this account</button>
-          <button data-choice="switch-account" type="button" style="${buttonStyle}background:#44ff88;color:#0a0a0a;border:none;font-weight:700;">Switch account</button>
+        <div style="display:flex;${layout}gap:10px;">
+          ${buttons.map(b => `<button data-choice="${b.choice}" type="button" style="${CHOICE_BUTTON_STYLE}${b.style}">${b.label}</button>`).join('\n          ')}
         </div>
       </div>
     `;
     document.body.appendChild(backdrop);
 
     const returnFocusTo = document.activeElement as HTMLElement | null;
-    const buttons = Array.from(backdrop.querySelectorAll<HTMLButtonElement>('button'));
-    const finish = (choice: DesktopAccountChoice) => {
+    const buttonEls = Array.from(backdrop.querySelectorAll<HTMLButtonElement>('button'));
+    const finish = (choice: T) => {
       document.removeEventListener('keydown', onKey, true);
       backdrop.remove();
       returnFocusTo?.focus?.();
@@ -1287,25 +1302,59 @@ function askDesktopAccountChoice(browserAccount: string, desktopAccountKnown: bo
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        finish('cancel');
+        finish(dismiss);
         return;
       }
-      if (e.key !== 'Tab' || buttons.length === 0) return;
-      const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      if (e.key !== 'Tab' || buttonEls.length === 0) return;
+      const index = buttonEls.indexOf(document.activeElement as HTMLButtonElement);
       const next = e.shiftKey
-        ? buttons[index <= 0 ? buttons.length - 1 : index - 1]
-        : buttons[index === -1 || index === buttons.length - 1 ? 0 : index + 1];
+        ? buttonEls[index <= 0 ? buttonEls.length - 1 : index - 1]
+        : buttonEls[index === -1 || index === buttonEls.length - 1 ? 0 : index + 1];
       e.preventDefault();
       next?.focus();
     };
     backdrop.addEventListener('click', (e) => {
-      if (e.target === backdrop) return finish('cancel');
-      const choice = (e.target as HTMLElement).closest('button')?.dataset.choice as DesktopAccountChoice | undefined;
+      if (e.target === backdrop) return finish(dismiss);
+      const choice = (e.target as HTMLElement).closest('button')?.dataset.choice as T | undefined;
       if (choice) finish(choice);
     });
     document.addEventListener('keydown', onKey, true);
-    backdrop.querySelector<HTMLButtonElement>('[data-choice="switch-account"]')?.focus();
+    backdrop.querySelector<HTMLButtonElement>(`[data-choice="${focus}"]`)?.focus();
   });
+}
+
+function askDesktopAccountChoice(browserAccount: string, desktopAccountKnown: boolean): Promise<DesktopAccountChoice> {
+  const account = escapeHtml(browserAccount);
+  return askChoice<DesktopAccountChoice>(
+    PRO_DESKTOP_ACCOUNT_DIALOG_ID,
+    desktopAccountKnown ? 'This browser uses a different account' : 'Confirm the account to upgrade',
+    desktopAccountKnown
+      ? `This browser is signed in as <strong style="color:#fff;">${account}</strong>, but your desktop app uses a different account. Checking out here upgrades ${account}, and the desktop app keeps its current plan.`
+      : `This browser is signed in as <strong style="color:#fff;">${account}</strong>. Your desktop app had not finished loading its account, so check that this is the one you use there. Checking out here upgrades ${account}.`,
+    [
+      { choice: 'cancel', label: 'Cancel', style: CANCEL_CHOICE_STYLE },
+      { choice: 'upgrade-browser-account', label: 'Upgrade this account', style: SECONDARY_CHOICE_STYLE },
+      { choice: 'switch-account', label: 'Switch account', style: PRIMARY_CHOICE_STYLE },
+    ],
+    { dismiss: 'cancel', focus: 'switch-account' },
+  );
+}
+
+const PRO_AUTH_FORM_DIALOG_ID = 'wm-pro-auth-form-dialog';
+
+/** Which Clerk form a signed-out buyer needs; see startCheckoutInner (#10842). */
+function askCheckoutAuthForm(): Promise<CheckoutAuthForm | 'cancel'> {
+  return askChoice<CheckoutAuthForm | 'cancel'>(
+    PRO_AUTH_FORM_DIALOG_ID,
+    'Continue to checkout',
+    'Checkout needs a World Monitor account. Secure checkout opens right after.',
+    [
+      { choice: 'sign-up', label: 'New here? Create account', style: PRIMARY_CHOICE_STYLE },
+      { choice: 'sign-in', label: 'Have an account? Sign in', style: SECONDARY_CHOICE_STYLE },
+      { choice: 'cancel', label: 'Cancel', style: CANCEL_CHOICE_STYLE },
+    ],
+    { dismiss: 'cancel', focus: 'sign-up', stacked: true },
+  );
 }
 
 function escapeHtml(s: string): string {
