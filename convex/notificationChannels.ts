@@ -655,8 +655,7 @@ export const sendDisabledChannelNotice = internalAction({
       });
     } catch {
       if (attempt >= 5) {
-        console.warn("[notifications] Channel disable notice failed after retries");
-        return;
+        throw new Error(`[notifications] Channel disable notice failed after retries (${args.channelType})`);
       }
       await ctx.scheduler.runAfter(60_000 * 2 ** attempt, internal.notificationChannels.sendDisabledChannelNotice, {
         ...args, attempt: attempt + 1,

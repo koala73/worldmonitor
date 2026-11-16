@@ -104,7 +104,7 @@ describe("delivery failure lifecycle", () => {
     expect((await row())?.deliveryFailure).toBeUndefined();
   });
 
-  test("scheduled notice uses the verified account address and a stable provider idempotency key", async () => {
+  test.each([false, true])("scheduled notice uses the account address and stable idempotency after retry=%s", async retry => {
     const { t, report } = await setup();
     const oldKey = process.env.RESEND_API_KEY;
     process.env.CLERK_SECRET_KEY = "test-clerk";
@@ -117,17 +117,19 @@ describe("delivery failure lifecycle", () => {
       });
       expect(String(url)).toBe("https://api.resend.com/emails");
       sends.push({ headers: new Headers(init?.headers), body: JSON.parse(String(init?.body)) });
+      if (retry && sends.length === 1) return Response.json({ error: "temporary" }, { status: 503 });
       return Response.json({ id: "email-1" });
     });
     try {
       await report("HTTP 401");
       await report("HTTP 401");
       await t.finishAllScheduledFunctions(vi.runAllTimers);
-      expect(sends).toHaveLength(1);
+      expect(sends).toHaveLength(retry ? 2 : 1);
       expect(sends[0].body.to).toEqual(["account@example.com"]);
       expect(sends[0].body.text).toContain("HTTP 401");
       expect(sends[0].body.text).toContain("/dashboard?settings=notifications");
       expect(sends[0].headers.get("Idempotency-Key")).toMatch(/^channel-disabled-/);
+      expect(new Set(sends.map(send => send.headers.get("Idempotency-Key"))).size).toBe(1);
     } finally {
       if (oldKey === undefined) delete process.env.RESEND_API_KEY;
       else process.env.RESEND_API_KEY = oldKey;
