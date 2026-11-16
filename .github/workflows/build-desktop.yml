@@ -335,6 +335,7 @@ jobs:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
           VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
           VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_ENABLE_ORBITAL_WATCH: 'true'
           VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
           VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
@@ -374,6 +375,7 @@ jobs:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
           VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
           VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_ENABLE_ORBITAL_WATCH: 'true'
           VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
           VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
