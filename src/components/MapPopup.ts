@@ -47,7 +47,7 @@ import { getCableHealthRecord } from '@/services/cable-health';
 import { nameToCountryCode } from '@/services/country-geometry';
 import { sparkline } from '@/utils/sparkline';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
-import { getAuthState } from '@/services/auth-state';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 import { bindCyberNetworkSection, renderCyberNetworkSection } from './cyber-network-info';
@@ -341,6 +341,7 @@ export class MapPopup {
     host.appendChild(row);
     const eventMs = eventTimeFor(data.type, data.data);
     let eventCompare: EventCompareHooks | undefined;
+    let unsubscribeAuth: (() => void) | null = null;
     if (eventMs !== null) {
       const access = hasPremiumAccess(getAuthState()) ? 'open' : 'locked';
       if (access === 'locked') trackGateHit('orbital-event-compare');
@@ -353,8 +354,18 @@ export class MapPopup {
           window.dispatchEvent(new CustomEvent(ORBITAL_EVENT_COMPARE_EVENT, { detail }));
         },
       };
+      // Access confirmed after the popup opened (auth still loading) unlocks the row in place.
+      if (access === 'locked') {
+        unsubscribeAuth = subscribeAuthState((state) => {
+          if (this.popup !== popup || !hasPremiumAccess(state)) return;
+          this.disposeImagery?.();
+          this.disposeImagery = null;
+          row.remove();
+          this.mountImagery(data);
+        });
+      }
     }
-    this.disposeImagery = mountImageryRow(row, target, {
+    const disposeRow = mountImageryRow(row, target, {
       eventCompare,
       onLayout: () => {
         if (this.popup === popup && !this.isMobileSheet) this.clampPopupToViewport();
@@ -364,6 +375,10 @@ export class MapPopup {
         window.dispatchEvent(new CustomEvent(ORBITAL_EVIDENCE_EVENT, { detail: picked.point }));
       },
     });
+    this.disposeImagery = () => {
+      unsubscribeAuth?.();
+      disposeRow();
+    };
   }
 
   private disposeFireMosaic: (() => void) | null = null;
