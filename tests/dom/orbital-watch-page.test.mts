@@ -180,11 +180,11 @@ describe('imagery evidence sheet', () => {
     expect(sheet().dataset.height).toBe('half');
   });
 
-  it('lays the sheet out image first: evidence, latest image, water card slot, timeline, events, capability, windows, alert', () => {
+  it('lays the sheet out image first: evidence, latest image, water card slot, timeline, events, capability, windows, site satellites, alert', () => {
     const { all, confirmedNew } = tiered();
     mounted(answered(all, { acquisitions: [acquisition(confirmedNew)] }));
     const order = [...sheet().querySelector('.ies-body')!.children].map((el) => (el as HTMLElement).dataset.section ?? (el as HTMLElement).dataset.slot);
-    expect(order).toEqual(['evidence', 'latest', 'water', 'timeline', 'events', 'capability', 'windows', 'alert']);
+    expect(order).toEqual(['evidence', 'latest', 'water', 'timeline', 'events', 'capability', 'windows', 'satellites', 'alert']);
     expect(sectionOf('alert').querySelector('a')!.getAttribute('href')).toBe('/pro#pricing');
   });
 

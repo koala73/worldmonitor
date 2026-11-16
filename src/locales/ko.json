@@ -5367,6 +5367,12 @@
       "count_other": "{{family}} 관측 범위 내 {{count}}개 지점",
       "passes_other": "{{count}}회 통과"
     },
+    "siteSatellites": {
+      "heading": "이 지점 상공의 추적 위성 · 다음 {{hours}}시간",
+      "none": "{{hours}}시간 이내에 이 지점을 촬영 범위에 두는 추적 영상 위성이 없습니다.",
+      "notLoaded": "다시 시도하려면 지점을 다시 여세요. 위성 궤도 요소를 불러오지 못했습니다.",
+      "failed": "다시 시도하려면 지점을 다시 여세요. 통과 계산에 실패했습니다."
+    },
     "sheet": {
       "heading": "위성 영상 증거",
       "window": "지난 {{days}}일, 향후 {{hours}}시간",

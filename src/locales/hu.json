@@ -5399,6 +5399,12 @@
       "passes_one": "{{count}} áthaladás",
       "passes_other": "{{count}} áthaladás"
     },
+    "siteSatellites": {
+      "heading": "Követett műholdak a hely felett · következő {{hours}} h",
+      "none": "Egyetlen követett képalkotó műhold sem fedi le ezt a helyet {{hours}} órán belül.",
+      "notLoaded": "Az újrapróbáláshoz nyissa meg újra a helyet; a pályaelemek nem töltődtek be.",
+      "failed": "Az újrapróbáláshoz nyissa meg újra a helyet; az áthaladások számítása sikertelen."
+    },
     "sheet": {
       "heading": "Képi bizonyíték",
       "window": "Utolsó {{days}} nap, következő {{hours}} ó",

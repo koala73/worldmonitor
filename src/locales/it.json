@@ -5431,6 +5431,12 @@
       "passes_many": "{{count}} passaggi",
       "passes_other": "{{count}} passaggi"
     },
+    "siteSatellites": {
+      "heading": "Satelliti tracciati sopra questo sito · prossime {{hours}} h",
+      "none": "Nessun satellite di imaging tracciato copre questo sito entro {{hours}} h.",
+      "notLoaded": "Riapri il sito per riprovare; gli elementi orbitali non sono stati caricati.",
+      "failed": "Riapri il sito per riprovare; il calcolo dei passaggi non è riuscito."
+    },
     "sheet": {
       "heading": "Prove da immagini satellitari",
       "window": "Ultimi {{days}} giorni, prossime {{hours}} h",

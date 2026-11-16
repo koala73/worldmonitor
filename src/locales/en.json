@@ -4863,6 +4863,12 @@
         }
       }
     },
+    "siteSatellites": {
+      "heading": "Tracked satellites over this site · next {{hours}} h",
+      "none": "No tracked imaging satellite covers this site within {{hours}} h.",
+      "notLoaded": "Reopen the site to retry; satellite orbit elements did not load.",
+      "failed": "Reopen the site to retry; the pass projection failed."
+    },
     "viewer": {
       "open": "Open scene: {{image}}",
       "imageAlt": "{{name}} scene, {{time}}",

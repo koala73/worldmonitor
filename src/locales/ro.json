@@ -5431,6 +5431,12 @@
       "passes_few": "{{count}} treceri",
       "passes_other": "{{count}} de treceri"
     },
+    "siteSatellites": {
+      "heading": "Sateliți urmăriți deasupra acestei locații · următoarele {{hours}} h",
+      "none": "Niciun satelit de imagistică urmărit nu acoperă această locație în {{hours}} h.",
+      "notLoaded": "Redeschideți locația pentru a reîncerca; elementele orbitale nu s-au încărcat.",
+      "failed": "Redeschideți locația pentru a reîncerca; calculul trecerilor a eșuat."
+    },
     "sheet": {
       "heading": "Dovezi din imagini satelitare",
       "window": "Ultimele {{days}} zile, următoarele {{hours}} h",

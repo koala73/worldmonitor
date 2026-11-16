@@ -15,6 +15,9 @@ import { loadWatchedSiteRecord, watchedSiteAt } from '@/services/orbital/watched
 import { OrbitalPlaceTools } from '@/components/OrbitalPlaceTools';
 import { loadWaterCard } from '@/components/water-card';
 import { reservoirAtPoint } from '@/services/climate/reservoir-context';
+import { markSiteSatelliteSelected, siteSatellitesSection, type SiteSatellitesState } from '@/components/orbital-site-satellites-view';
+import { satellitesCoveringSite, type CoverageSite } from '@/services/orbital/satellite-site-coverage';
+import { fetchSatelliteTLEs, getTrackedSatelliteTles } from '@/services/satellites';
 import { confirmShareLinkCopied } from '@/components/share-link-button';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
 import { DASHBOARD_SITE_ORIGIN } from '@/config/dashboard-reference-links';
@@ -41,6 +44,9 @@ let returnFocus: HTMLElement | null = null;
 let timeline: OrbitalTimeline | null = null;
 let timelinePasses: Pick<OrbitalTimelineInput, 'lookup' | 'passes' | 'acquisitions'> | null = null;
 let pointContext: PointContextState = { kind: 'loading' };
+/** The watched site at the open point and the tracked satellites over it, or null for any other point. */
+let siteSatellites: { site: CoverageSite; state: SiteSatellitesState } | null = null;
+const SITE_SATELLITES_TICK_MS = 30_000;
 let markFrame: number | null = null;
 let centredFor: string | null = null;
 /** Where the map was before the lookup first moved it; closing puts it back, so the point never becomes the map centre. */
@@ -177,6 +183,8 @@ function selectTimelinePass(key: string): void {
 function selectPass(noradId: number, timeMs: number): void {
   selectedPass = { noradId, timeMs };
   drawTimeline();
+  const slot = page?.slot('satellites');
+  if (slot) markSiteSatelliteSelected(slot, selectedKey());
   void showTrack(noradId, timeMs);
 }
 
@@ -225,6 +233,82 @@ function loadWatchedSite(at: GeoPoint): void {
   }, () => {});
 }
 
+/** The lookup's own pass for a tracked satellite's approach, so its row selects it. */
+function lookupPassKey(noradId: string, timeMs: number): string | null {
+  const pass = (evidence?.passes ?? lookup?.passes)?.find((p) =>
+    String(p.noradId) === noradId && Math.abs(p.timeMs - timeMs) <= LINKED_PASS_TOLERANCE_MS && p.tier.kind !== 'daily-mosaic');
+  return pass ? `${pass.noradId}:${pass.timeMs}` : null;
+}
+
+function drawSiteSatellites(): void {
+  const slot = page?.slot('satellites');
+  if (!slot) return;
+  if (!siteSatellites) {
+    slot.replaceChildren();
+    return;
+  }
+  const expanded = slot.querySelector('[data-section="site-satellites"] .ies-more')?.getAttribute('aria-expanded') === 'true';
+  const focused = document.activeElement instanceof HTMLElement && slot.contains(document.activeElement) ? document.activeElement : null;
+  const refocus = focused?.classList.contains('ies-more') ? '.ies-more' : focused?.dataset.key ? `[data-key="${CSS.escape(focused.dataset.key)}"]` : null;
+  slot.replaceChildren(siteSatellitesSection(siteSatellites.site, siteSatellites.state, {
+    nowMs: Date.now(),
+    passKey: lookupPassKey,
+    selectedKey: selectedKey(),
+    expanded,
+  }));
+  if (refocus) slot.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
+}
+
+/**
+ * A watched site's sheet lists the tracked satellites that cover it, the reverse of a
+ * satellite card's site list. The site is matched and the passes projected in the
+ * browser from the public registry and element sets, so the point never leaves it.
+ */
+async function loadSiteSatellites(found: PointPassLookup, signal: AbortSignal): Promise<void> {
+  siteSatellites = null;
+  drawSiteSatellites();
+  // The same cell match as the monitored-site block, so the two agree on which site this is.
+  const site = await watchedSiteAt(found.point).catch(() => null);
+  if (!site || signal.aborted) return;
+  const draw = (state: SiteSatellitesState) => {
+    siteSatellites = { site, state };
+    drawSiteSatellites();
+  };
+  draw({ kind: 'projecting' });
+  try {
+    let tles = getTrackedSatelliteTles();
+    if (tles.length === 0) tles = (await fetchSatelliteTLEs()) ?? [];
+    if (signal.aborted) return;
+    if (tles.length === 0) {
+      draw({ kind: 'not-loaded' });
+      return;
+    }
+    let latest = 0;
+    // Each projection reads the layer's current set, so satellites it adds or re-elements later
+    // are included; a layer switched off since keeps projecting the last set it drew.
+    const project = async () => {
+      const tracked = getTrackedSatelliteTles();
+      if (tracked.length > 0) tles = tracked;
+      const ticket = ++latest;
+      const satellites = await satellitesCoveringSite({ site, tles, nowMs: Date.now(), signal });
+      if (!signal.aborted && ticket === latest) draw({ kind: 'ok', satellites });
+    };
+    await project();
+    if (signal.aborted) return;
+    // The open list moves with the clock: elapsed passes drop out and, once its window has
+    // slid far enough, the cached scans renew, so no past pass is labelled upcoming.
+    const clock = setInterval(() => {
+      const ticket = latest + 1;
+      project().catch((error: unknown) => {
+        if (!isAbort(error) && !signal.aborted && ticket === latest) draw({ kind: 'failed' });
+      });
+    }, SITE_SATELLITES_TICK_MS);
+    signal.addEventListener('abort', () => clearInterval(clock), { once: true });
+  } catch (error) {
+    if (!isAbort(error) && !signal.aborted) draw({ kind: 'failed' });
+  }
+}
+
 async function checkArchives(found: PointPassLookup, signal: AbortSignal): Promise<void> {
   show({ kind: 'passes', lookup: found, archives: { kind: 'checking', total: ARCHIVE_SEARCHES.length, progress: null } });
   await afterDebugBearRequestWindow(signal);
@@ -237,6 +321,7 @@ async function checkArchives(found: PointPassLookup, signal: AbortSignal): Promi
   if (signal.aborted) return;
   evidence = result;
   show({ kind: 'passes', lookup: found, archives: { kind: 'answered', evidence: result } });
+  drawSiteSatellites();
 }
 
 async function start(): Promise<void> {
@@ -261,6 +346,7 @@ async function start(): Promise<void> {
       lookup = found;
     }
     loadContext(lookup, signal);
+    void loadSiteSatellites(lookup, signal);
     await checkArchives(lookup, signal);
     if (signal.aborted) return;
     evidenceReady = true;

@@ -5399,6 +5399,12 @@
       "passes_one": "Pito {{count}}",
       "passes_other": "Mapito {{count}}"
     },
+    "siteSatellites": {
+      "heading": "Setilaiti zinazofuatiliwa juu ya eneo hili · saa {{hours}} zijazo",
+      "none": "Hakuna setilaiti ya upigaji picha inayofuatiliwa inayofunika eneo hili ndani ya saa {{hours}}.",
+      "notLoaded": "Fungua eneo tena ili kujaribu upya; vipengele vya obiti vya setilaiti havikupakiwa.",
+      "failed": "Fungua eneo tena ili kujaribu upya; hesabu ya mapito imeshindwa."
+    },
     "sheet": {
       "heading": "Ushahidi wa picha za satelaiti",
       "window": "Siku {{days}} zilizopita, {{hours}} h zijazo",

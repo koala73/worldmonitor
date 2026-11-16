@@ -5367,6 +5367,12 @@
       "count_other": "{{family}} 覆蓋範圍內有 {{count}} 個地點",
       "passes_other": "{{count}} 次過境"
     },
+    "siteSatellites": {
+      "heading": "此地點上空的跟蹤衛星 · 未來 {{hours}} 小時",
+      "none": "{{hours}} 小時內沒有跟蹤中的成像衛星覆蓋此地點。",
+      "notLoaded": "重新開啟地點以重試；衛星軌道根數未載入。",
+      "failed": "重新開啟地點以重試；過境計算失敗。"
+    },
     "sheet": {
       "heading": "影像證據",
       "window": "過去 {{days}} 天，未來 {{hours}} 小時",

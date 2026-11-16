@@ -16,12 +16,12 @@ const HOUR_MS = 3_600_000;
 const MINUTE_MS = 60_000;
 const KEY = 'orbitalWatch.satelliteSites';
 
-function utcTime(ms: number): string {
+export function utcTime(ms: number): string {
   const d = new Date(ms);
   return t(`${KEY}.utc`, { time: `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}` });
 }
 
-function untilLabel(ms: number, nowMs: number): string {
+export function untilLabel(ms: number, nowMs: number): string {
   const delta = Math.max(0, ms - nowMs);
   if (delta < HOUR_MS) return t(`${KEY}.inMinutes`, { minutes: Math.max(1, Math.round(delta / MINUTE_MS)) });
   return t(`${KEY}.inHours`, {

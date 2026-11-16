@@ -5399,6 +5399,12 @@
       "passes_one": "{{count}} Überflug",
       "passes_other": "{{count}} Überflüge"
     },
+    "siteSatellites": {
+      "heading": "Verfolgte Satelliten über diesem Ort · nächste {{hours}} h",
+      "none": "Kein verfolgter Bildsatellit erfasst diesen Ort innerhalb von {{hours}} h.",
+      "notLoaded": "Öffnen Sie den Ort erneut, um es erneut zu versuchen; die Bahnelemente wurden nicht geladen.",
+      "failed": "Öffnen Sie den Ort erneut, um es erneut zu versuchen; die Überflugberechnung ist fehlgeschlagen."
+    },
     "sheet": {
       "heading": "Bildbelege",
       "window": "Letzte {{days}} Tage, nächste {{hours}} h",

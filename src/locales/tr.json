@@ -5399,6 +5399,12 @@
       "passes_one": "{{count}} geçiş",
       "passes_other": "{{count}} geçiş"
     },
+    "siteSatellites": {
+      "heading": "Bu konum üzerindeki izlenen uydular · önümüzdeki {{hours}} sa",
+      "none": "{{hours}} sa içinde bu konumu kapsayan izlenen görüntüleme uydusu yok.",
+      "notLoaded": "Yeniden denemek için konumu tekrar açın; uydu yörünge elemanları yüklenmedi.",
+      "failed": "Yeniden denemek için konumu tekrar açın; geçiş hesaplaması başarısız oldu."
+    },
     "sheet": {
       "heading": "Uydu görüntü kanıtı",
       "window": "Son {{days}} gün, sonraki {{hours}} s",
