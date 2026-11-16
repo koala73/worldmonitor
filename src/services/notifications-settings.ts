@@ -344,8 +344,12 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       const ac = new AbortController();
       const { signal } = ac;
       // Set by renderNotifContent, read by afterRuleSave (#4273). Declared here so
-      // a synchronous first content render can never hit its TDZ.
+      // a synchronous first content render can never hit its TDZ. Stays true
+      // until the conversion's digest write SUCCEEDS, so a failed rule save or
+      // digest write leaves it for a later rule save to retry; the in-flight
+      // flag keeps concurrent rule saves from double-sending the conversion.
       let legacyDigestPending = false;
+      let legacyDigestConversionInFlight = false;
 
       if (!signedIn) {
         const upgradeBtn = container.querySelector<HTMLButtonElement>('#usNotifUpgradeBtn');
@@ -976,6 +980,13 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       let alertRuleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
       let qhDebounceTimer: ReturnType<typeof setTimeout> | null = null;
       let digestDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+      // The close-time flush target for digestDebounceTimer: hour/timezone
+      // saves flush through sendDigestSettingsNow, a pending delivery-mode
+      // change through its atomic setNotificationConfig closure (flushing the
+      // latter through setDigestSettings would drop the snapped sensitivity
+      // and be rejected as INCOMPATIBLE_DELIVERY for realtime). Set wherever
+      // the timer is armed, cleared when it fires.
+      let digestFlushNow: ((flush?: boolean) => unknown) | null = null;
 
       // Last web-push state actually rendered, so the permission watchers below
       // only re-render when it really changed.
@@ -994,13 +1005,30 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // skips tier 0, so that rule would deliver nothing anywhere. After the
       // first alert-rule save lands (it narrows sensitivity to critical, the
       // realtime precondition), write the realtime mode the panel shows.
-      function afterRuleSave<T>(p: Promise<T>): Promise<T> {
-        if (!legacyDigestPending) return p;
-        legacyDigestPending = false;
-        return p.then((result) => {
-          if (!signal.aborted) sendDigestSettingsNow();
-          return result;
-        });
+      function afterRuleSave<T>(p: Promise<T>, flush = false): Promise<T> {
+        if (!legacyDigestPending || legacyDigestConversionInFlight) return p;
+        legacyDigestConversionInFlight = true;
+        return p.then(
+          (result) => {
+            if (!flush && signal.aborted) {
+              // The panel tore down while this non-flush save was in flight.
+              // Don't dispatch a new write from here: the abort listener owns
+              // the close-time flush, and a post-teardown dispatch could run
+              // under a switched Clerk session (Strix review 17).
+              legacyDigestConversionInFlight = false;
+              return result;
+            }
+            void sendDigestSettingsNow(flush).then(
+              () => { legacyDigestPending = false; },
+              () => { /* keep pending — a later rule save retries the conversion */ },
+            ).then(() => { legacyDigestConversionInFlight = false; });
+            return result;
+          },
+          (err) => {
+            legacyDigestConversionInFlight = false;
+            throw err;
+          },
+        );
       }
 
       function fireForgetSave(p: Promise<unknown>, label: string): void {
@@ -1357,7 +1385,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         fireForgetSave(afterRuleSave(saveAlertRules({
           variant: SITE_VARIANT,
           ...state,
-        }, opts?.flush ? undefined : signal)), 'save alert rules');
+        }, opts?.flush ? undefined : signal), opts?.flush ?? false), 'save alert rules');
       }
 
       reloadNotifSection();
@@ -1438,25 +1466,29 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         }, 800);
       };
 
-      const sendDigestSettingsNow = (flush = false): void => {
+      const sendDigestSettingsNow = (flush = false): Promise<unknown> => {
         const modeEl = container.querySelector<HTMLSelectElement>('#usDigestMode');
         const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
         const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
-        fireForgetSave(setDigestSettings({
+        const p = setDigestSettings({
           variant: SITE_VARIANT,
           digestMode: (modeEl?.value ?? 'realtime') as DigestMode,
           digestHour: hourEl ? Number(hourEl.value) : 8,
           digestTimezone: tzEl?.value || detectedTz,
           countries: countryPicker ? countryPicker.getValue() : undefined,
-        }, flush ? undefined : signal), 'save digest settings');
+        }, flush ? undefined : signal);
+        fireForgetSave(p, 'save digest settings');
+        return p;
       };
 
       const saveDigestSettings = () => {
         if (digestDebounceTimer) clearTimeout(digestDebounceTimer);
         digestDebounceTimer = setTimeout(() => {
           digestDebounceTimer = null;
+          digestFlushNow = null;
           sendDigestSettingsNow();
         }, 800);
+        digestFlushNow = sendDigestSettingsNow;
       };
 
       // A pending debounced autosave is the user's last edit: dropping it on
@@ -1488,8 +1520,9 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (digestDebounceTimer !== null) {
           clearTimeout(digestDebounceTimer);
           digestDebounceTimer = null;
-          if (sameAccount) sendDigestSettingsNow(true);
+          if (sameAccount) (digestFlushNow ?? sendDigestSettingsNow)(true);
         }
+        digestFlushNow = null;
       });
 
       container.addEventListener('change', (e) => {
@@ -1553,9 +1586,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
           const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
           const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
-          if (digestDebounceTimer) clearTimeout(digestDebounceTimer);
-          digestDebounceTimer = setTimeout(() => {
-            digestDebounceTimer = null;
+          const sendModeChangeNow = (flush = false): void => {
             void (async () => {
               try {
                 const state = getCurrentAlertRuleFormState();
@@ -1566,7 +1597,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                   digestHour: hourEl ? Number(hourEl.value) : 8,
                   digestTimezone: tzEl?.value || detectedTz,
                   ...(snappedSensitivity ? { sensitivity: snappedSensitivity } : {}),
-                }, undefined, signal);
+                }, undefined, flush ? undefined : signal);
               } catch (err) {
                 if (err instanceof IncompatibleDeliveryError) {
                   const hint = container.querySelector<HTMLElement>('#usSensitivityHint');
@@ -1584,7 +1615,14 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 console.warn('[notifications] save digest mode failed (not saved):', err);
               }
             })();
+          };
+          if (digestDebounceTimer) clearTimeout(digestDebounceTimer);
+          digestDebounceTimer = setTimeout(() => {
+            digestDebounceTimer = null;
+            digestFlushNow = null;
+            sendModeChangeNow();
           }, 800);
+          digestFlushNow = sendModeChangeNow;
 
           if (!isRt) {
             const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');

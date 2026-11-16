@@ -533,6 +533,68 @@ describe('free alert ladder UI (#4273)', () => {
     vi.useRealTimers();
   });
 
+  it('keeps the legacy digest conversion retryable until the digest write succeeds (CodeRabbit)', async () => {
+    vi.useFakeTimers();
+    const container = await mount(data({
+      alertRules: [{
+        variant: 'full', enabled: true, eventTypes: [], sensitivity: 'critical',
+        channels: [], digestMode: 'daily', countries: ['UA'],
+      }],
+    } as Partial<ChannelsData>));
+    // The picker re-renders its chips on every change, so re-query each time;
+    // alternate add/remove to stay within the free 3-country cap. Each click
+    // arms one rule autosave.
+    const addChip = () => container.querySelector<HTMLButtonElement>(
+      '#usNotifCountryPicker .us-notif-country-chip:not(.us-notif-country-chip-on)',
+    )!.click();
+    const removeChip = () => container.querySelector<HTMLButtonElement>(
+      '#usNotifCountryPicker .us-notif-country-chip.us-notif-country-chip-on',
+    )!.click();
+    // 1. The rule save itself fails: the conversion must not be consumed.
+    channelMocks.saveAlertRules.mockRejectedValueOnce(new Error('offline'));
+    addChip();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(1);
+    expect(channelMocks.setDigestSettings).not.toHaveBeenCalled();
+    // 2. The rule save lands but the digest write fails: still pending.
+    channelMocks.setDigestSettings.mockRejectedValueOnce(new Error('offline'));
+    removeChip();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(2);
+    expect(channelMocks.setDigestSettings).toHaveBeenCalledTimes(1);
+    // 3. Both land: converted...
+    addChip();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(channelMocks.setDigestSettings).toHaveBeenCalledTimes(2);
+    expect((channelMocks.setDigestSettings.mock.lastCall?.[0] as { digestMode: string }).digestMode).toBe('realtime');
+    // ...and done: a later save does not re-send it.
+    removeChip();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(channelMocks.setDigestSettings).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it('completes the legacy digest conversion when the panel closes mid-debounce (CodeRabbit)', async () => {
+    vi.useFakeTimers();
+    const container = await mount(data({
+      alertRules: [{
+        variant: 'full', enabled: true, eventTypes: [], sensitivity: 'critical',
+        channels: [], digestMode: 'daily', countries: ['UA'],
+      }],
+    } as Partial<ChannelsData>));
+    container.querySelector<HTMLButtonElement>(
+      '#usNotifCountryPicker .us-notif-country-chip:not(.us-notif-country-chip-on)',
+    )!.click();
+    // Close before the 800ms debounce fires: the abort-time flush sends the
+    // rule save, and the conversion must follow it despite the aborted signal.
+    cleanups.pop()!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(1);
+    expect(channelMocks.setDigestSettings).toHaveBeenCalledTimes(1);
+    expect((channelMocks.setDigestSettings.mock.lastCall?.[0] as { digestMode: string }).digestMode).toBe('realtime');
+    vi.useRealTimers();
+  });
+
   it('keeps the paid surface unchanged for a pro account', async () => {
     gate.tier = true;
     const container = await mount(data());
