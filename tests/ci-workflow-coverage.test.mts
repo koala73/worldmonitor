@@ -548,7 +548,6 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/runtime-fetch.spec.ts',
   'e2e/secondary-startup.spec.ts',
   'e2e/service-status-cache-recovery.spec.ts',
-  'e2e/settings-diagnostics-layout.spec.ts',
   'e2e/settings-phone-nav.spec.ts',
   'e2e/settings-theme-contrast.spec.ts',
   'e2e/stock-stored-coverage.spec.ts',

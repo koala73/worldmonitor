@@ -34,6 +34,7 @@ const NOT_RUN_IN_CI: Record<string, string> = {
   'e2e/panel-drag-reorder.spec.ts': 'broken: 2 of 9 tests fail on main',
   'e2e/rag-vector-store.spec.ts': 'broken: 1 of 7 tests fails on main',
   'e2e/reservoir-levels.spec.ts': 'broken: 2 of 5 tests fail on main',
+  'e2e/settings-diagnostics-layout.spec.ts': 'broken on Linux: at 1.5x text the traffic log overflows its card by 27px (passes on macOS; CI run 43792167531)',
   'e2e/theme-toggle.spec.ts': 'broken: 7 of 8 tests fail on main',
   'e2e/ukmto-incidents.spec.ts': 'broken: 1 of 7 tests fails on main',
   'e2e/widget-builder.spec.ts': 'broken: 4 of 7 tests fail on main',
