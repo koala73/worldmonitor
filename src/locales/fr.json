@@ -1163,7 +1163,12 @@
       "printPdf": "Imprimer / PDF",
       "exportData": "Exporter les données",
       "moreActions": "Autres actions",
-      "shareLink": "Partager le lien"
+      "shareLink": "Partager le lien",
+      "sources": {
+        "summary": "Sources et fenêtres · {{count}} familles",
+        "note": "Les fenêtres des sources varient ; ce n’est pas un total sur 24 heures.",
+        "footer": "N’entre pas dans le CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Oléoduc",
@@ -2127,7 +2132,14 @@
     "map": {
       "showMap": "Afficher la carte",
       "hideMap": "Masquer la carte",
-      "clearTrails": "Effacer les traces"
+      "clearTrails": "Effacer les traces",
+      "locate": "Afficher ma position"
+    },
+    "mapLocate": {
+      "locating": "Localisation…",
+      "denied": "Accès à la position refusé. Utilisez Recherche pour trouver un lieu.",
+      "unavailable": "Position introuvable. Utilisez Recherche pour trouver un lieu.",
+      "noCountry": "Aucun pays à votre position. Utilisez Recherche pour trouver un lieu."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Perturbations Internet</strong> Pannes Internet, attaques DDoS et anomalies de trafic en temps réel issues de la surveillance mondiale des réseaux :<ul><li><strong>Pannes</strong> : défaillances de connectivité détectées via BGP, par pays</li><li><strong>DDoS</strong> : rapports d’attaques volumétriques par protocole et vecteur</li><li><strong>Anomalies</strong> : schémas de trafic inhabituels issus de Cloudflare Radar</li></ul>",
@@ -2348,7 +2360,7 @@
       "proLocked": "Passez à PRO pour l'évaluation de vulnérabilité des matières premières"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Suivi du commerce du Détroit d'Ormuz</strong> Indices de chargements quotidiens du WTO DataLab pour le détroit d'Ormuz : pétrole brut, GNL et engrais quittant le Golfe, produits agricoles arrivant. Par volume, moyenne janvier–mars 2025 = 100, navires visibles en AIS uniquement. Le statut et la date proviennent de la dernière analyse du WTO.",
+      "infoTooltip": "<strong>Suivi du commerce du Détroit d'Ormuz</strong> Indices de chargements quotidiens du WTO DataLab pour le détroit d'Ormuz : pétrole brut, GNL et engrais quittant le Golfe, produits agricoles arrivant. Par volume, moyenne janvier–mars 2025 = 100, navires visibles en AIS uniquement. Les graphiques sont quotidiens ; le statut provient du commentaire du WTO.",
       "title": "Suivi du commerce du Détroit d'Ormuz",
       "noData": "Aucune donnée",
       "notAvailable": "N/D",
@@ -2361,8 +2373,10 @@
         "unavailable": "Données d'Ormuz indisponibles",
         "failedToLoad": "Échec du chargement"
       },
-      "analysisDate": "Analyse OMC {{date}}",
-      "indexNote": "Indice d'expédition par volume, moyenne janvier–mars 2025 = 100"
+      "analysisDate": "Commentaire OMC {{date}}",
+      "indexNote": "Indice d'expédition par volume, moyenne janvier–mars 2025 = 100",
+      "dataThrough": "Données quotidiennes jusqu'au {{date}}",
+      "noShipments": "Aucun transport enregistré de {{from}} à {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Webcams en direct</strong> Flux en direct depuis des lieux géopolitiquement significatifs dans le monde : zones de conflit, capitales, postes frontières et points de passage stratégiques. Flux provenant de YouTube et réseaux publics."
@@ -3207,6 +3221,34 @@
         "change365": "Sur 12 mois",
         "measured": "Mesuré",
         "sparkline": "Niveau d’eau sur 36 mois"
+      },
+      "nextPass": {
+        "label": "Prochain passage d’ICESat-2",
+        "loading": "Chargement…",
+        "at": "{{date}} (prévu d’après les données orbitales du {{epoch}} ; les nuages peuvent bloquer le lidar)",
+        "none": "Aucune mesure sur cette période (jusqu’au {{date}}) ; données orbitales du {{epoch}}",
+        "unavailable": "Données orbitales indisponibles"
+      },
+      "siteContext": {
+        "label": "Réservoir stratégique sur ce site"
+      },
+      "energyContext": {
+        "heading": "Réservoirs stratégiques",
+        "hydro": "Hydroélectricité {{share}} % de l’énergie primaire"
+      },
+      "countryEvidence": {
+        "heading": "Niveaux d'eau",
+        "empty": "Aucun réservoir stratégique de ce pays n'est hors de sa référence saisonnière à son dernier passage.",
+        "measured": "Mesuré le {{date}}"
+      },
+      "card": {
+        "measured": "Mesuré {{date}} · {{age}}",
+        "noCrossing": "aucun dans cette fenêtre (jusqu’au {{date}})",
+        "crossing": "Passage ICESat-2 prévu",
+        "summary": "{{beyond}} sur {{total}} réservoirs hors de la référence saisonnière",
+        "latestPass": "dernier passage ICESat-2 {{date}}",
+        "sparkline": "Niveau sur 36 mois, référence saisonnière en pointillé",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Niveaux de surface de l’eau par lidar issus de passages datés, ni relevés en direct ni volumes stockés."
       }
     },
     "gridDisruptionClock": {
@@ -3295,7 +3337,6 @@
       }
     },
     "protest": {
-      "acledVerified": "ACLED (vérifié)",
       "gdelt": "GDELT",
       "records": "entrées",
       "mediaSignal": "Signal médiatique non vérifié",
@@ -4485,7 +4526,8 @@
   "contextMenu": {
     "openCountryBrief": "Ouvrir la fiche pays",
     "copyCoordinates": "Copier les coordonnées",
-    "satellitePasses": "Passages de satellites ici"
+    "satellitePasses": "Passages de satellites ici",
+    "imageryEvidenceHere": "Preuves d'imagerie ici"
   },
   "shell": {
     "documentTitle": "World Monitor — Tableau de Bord de Renseignement Mondial en Temps Réel",
@@ -5193,310 +5235,360 @@
     "errLoad": "L'évaluation de voyage n'a pas pu être ouverte. Rechargez la page et réessayez."
   },
   "orbitalWatch": {
-    "track": {
-      "unavailable": "La trace au sol de ce passage n'a pas pu être dessinée"
-    },
-    "replay": {
-      "acquisition": "ACQUISITION · {{name}}",
-      "acquired": "ACQUIS {{time}} · {{resolution}}",
-      "play": "Lire la relecture",
-      "pause": "Mettre la relecture en pause",
-      "scrub": "Position de la relecture",
-      "reducedMotion": "MOUVEMENT RÉDUIT"
-    },
-    "computing": "Chargement du catalogue de satellites…",
-    "computingProgress": "Calcul des passages : {{done}} sur {{total}} satellites",
-    "unavailable": "Le catalogue de satellites n’a pas pu être chargé, aucun passage n’a donc été calculé pour ce point.",
-    "checkingArchives": "Vérification des archives : {{done}} sur {{total}} ont répondu",
-    "confirmedCount": "Images confirmées : {{count}}",
-    "counts": {
-      "mosaics": "Mosaïques quotidiennes : {{count}}",
-      "frames": "Images météo : {{count}}",
-      "inRange": "Passages à portée : {{count}}"
-    },
-    "partial": "{{sources}} n’a pas répondu, certaines images de passages peuvent donc manquer.",
-    "stale": "Les données orbitales sont obsolètes. Le catalogue de satellites date de {{age}}, les heures de passage peuvent donc être inexactes.",
-    "empty": "Aucun satellite d’imagerie répertorié n’est passé au-dessus de ce point au cours des {{pastDays}} derniers jours et aucun n’y passera dans les {{futureHours}} prochaines heures.",
-    "sources": "Sources · {{count}}",
-    "sourcesDocs": "Comment ces sources sont utilisées",
-    "privacy": "Ce point reste dans votre navigateur. Il est envoyé uniquement aux archives publiques que votre navigateur interroge directement : Earth Search, Microsoft Planetary Computer, NASA GIBS et EUMETSAT. La recherche par nom de lieu est la seule exception : le nom saisi est envoyé au service de recherche de lieux.",
-    "inRange": "à portée",
+    "track": {},
+    "replay": {},
+    "counts": {},
     "tier": {
       "checking": "vérification de l’archive",
-      "confirmed": "image confirmée",
-      "likely": "probablement imagé",
-      "opportunity": "passage à venir",
-      "dailyMosaic": "dans la mosaïque quotidienne",
-      "withinReach": "à portée",
-      "capabilityOverhead": "capacité au-dessus",
-      "passedOverhead": "passé au-dessus",
-      "unmatchedImage": "image sans passage calculé",
+      "confirmed": "confirmé",
+      "likely": "probable",
+      "unmatchedImage": "image sans calcul de passage",
       "weatherFrame": "image météo",
-      "unavailable": "indisponible"
+      "unavailable": "indisponible",
+      "inReach": "à portée",
+      "capability": "pourrait imager",
+      "inRange": "en survol",
+      "mosaic": "mosaïque",
+      "upcoming": "à venir"
     },
     "row": {
       "offNadir": "{{deg}}° hors nadir",
-      "distance": "à {{km}} km de la trace au sol",
-      "orbitAge": "données orbitales datant de {{age}}",
-      "edgeOfSwath": "Bord de la fauchée",
-      "notInArchive": "Aucune image dans l’archive",
-      "geometryDisagreed": "Hors fauchée modélisée",
-      "archiveUnanswered": "L'archive n'a pas répondu",
-      "imageAlt": "Image de {{name}}, {{time}}",
-      "mosaicDays": "Jours dans l’archive : {{count}}",
-      "cadence": "nouvelle image toutes les {{minutes}} min",
-      "sourceUnavailable": "L’archive ne contient aucune image de cette source pour ces jours.",
-      "imageLoading": "Chargement de l’image…",
-      "imageFailed": "L’image ne s’est pas chargée. L’archive est peut-être lente ou indisponible.",
-      "noPreview": "L'archive n'a pas encore d'aperçu de cette scène."
+      "distance": "{{km}} km de la trace au sol",
+      "orbitAge": "Données orbitales",
+      "imageLoading": "Chargement de la scène…",
+      "satellite": "Satellite",
+      "sensor": "Capteur",
+      "time": "Heure",
+      "in": "Dans",
+      "tier": "Statut",
+      "elevation": "Élév.",
+      "point": "Point",
+      "pixel": "Pixel",
+      "credit": "Archive",
+      "orbitAgeValue": "{{age}} d'ancienneté"
     },
-    "dailyMosaics": "mosaïques quotidiennes",
-    "weatherFrames": "images météo",
     "ui": {
-      "change": "Modifier",
-      "share": "Partager",
-      "shareCopied": "Lien copié",
-      "headline": "Au cours des {{days}} derniers jours, {{satellites}} ont survolé {{place}}.",
-      "satellites_one": "{{count}} satellite",
-      "satellites_many": "{{count}} satellites",
-      "satellites_other": "{{count}} satellites",
-      "subline_one": "{{count}} image a été rendue publique.",
-      "subline_many": "{{count}} images ont été rendues publiques.",
-      "subline_other": "{{count}} images ont été rendues publiques.",
-      "closestLook": "Vue la plus proche",
-      "replay": "Rejouer",
-      "openFull": "Ouvrir la vue complète",
-      "previous": "Image précédente",
-      "next": "Image suivante",
-      "passes_one": "passage",
-      "passes_many": "passages",
-      "passes_other": "passages",
-      "showAll": "Afficher tous les passages",
-      "noRecentDays": "Aucun jour récent dans l’archive : {{sources}}",
-      "tab": {
-        "all": "Tout",
-        "detailed": "Détaillé",
-        "weather": "Météo"
-      },
-      "caption": {
-        "clear": "Dégagé au point",
-        "clearSceneCloud": "Dégagé au point · nébulosité de la scène {{pct}} %",
-        "clouded": "Nuageux · {{pct}} %",
-        "cloudShadow": "Ombre de nuage",
-        "spotNotChecked": "Point non vérifié pour les nuages",
-        "sceneCloud": "Nébulosité de la scène {{pct}} % · point non vérifié",
-        "radar": "Radar",
-        "dailyMosaic": "Mosaïque quotidienne",
-        "geostationary": "Disque complet géostationnaire",
-        "geostationaryCadence": "Géostationnaire · toutes les {{minutes}} min"
-      },
-      "tile": {
-        "failed": "Image indisponible · {{archive}}",
-        "noPreview": "L’archive n’a pas encore d’aperçu de cette scène"
-      },
-      "grid": {
-        "watched": "Observé",
-        "watchedDef": "Une archive publique détient une image de ce point.",
-        "likely": "Probablement observé",
-        "likelyDef": "Un capteur à fauchée fixe l’a couvert ; aucune image publiée pour l’instant.",
-        "could": "Aurait pu viser ici",
-        "couldDef": "Un capteur orientable ou commercial était à portée ; l’opérateur ne dit pas s’il a regardé.",
-        "overhead": "Passé au-dessus",
-        "overheadDef": "A traversé le ciel ici, sans preuve d’imagerie.",
-        "watchedShort": "Image dans une archive publique",
-        "watchedNoPreviewShort": "Archivé, sans aperçu public",
-        "likelyShort": "Couvert, pas encore d'image",
-        "likelyUnansweredDef": "Un capteur à fauchée fixe l'a couvert ; une archive n'a pas répondu, une image existe peut-être.",
-        "likelyUnansweredShort": "Couvert, l'archive n'a pas répondu",
-        "couldShort": "Capteur orientable à portée",
-        "overheadShort": "Survolé, sans image"
-      },
-      "group": {
-        "watched": "observés",
-        "likely": "probablement observés",
-        "upcoming": "à venir",
-        "could": "qui auraient pu viser ici",
-        "overhead": "passés au-dessus",
-        "weather_one": "source météo",
-        "weather_many": "sources météo",
-        "weather_other": "sources météo"
-      },
-      "order": {
-        "closest": "Vue la plus proche, puis plus récents",
-        "newest": "Plus récents d’abord",
-        "soonest": "Plus proches d’abord"
-      },
-      "row": {
-        "cloud": "Nuages {{pct}} %",
-        "days_one": "{{count}} jour",
-        "days_many": "{{count}} jours",
-        "days_other": "{{count}} jours",
-        "repeats": "{{count}} passages de ce satellite dans ce groupe"
-      },
-      "section": {
-        "summary": "Résumé",
-        "passes": "Passages"
-      },
-      "status": {
-        "objects": "{{count}} satellites d’imagerie · CelesTrak GP",
-        "fetched": "Récupéré {{time}} · {{ago}}",
-        "sun": "Soleil {{point}} · point subsolaire"
-      },
-      "step": {
-        "computing": "Calcul",
-        "catalogLoading": "Catalogue · chargement",
-        "catalog": "Catalogue · {{count}} satellites d’imagerie",
-        "propagating": "Propagation des orbites · {{done}} / {{total}}",
-        "archives": "Archives · {{done}} / {{total}} ont répondu",
-        "matching": "Association des scènes à {{passes}} passages",
-        "window": "Fenêtre de 7 jours · {{start}} → {{end}}",
-        "failed": "Échec",
-        "note": "Planetary Computer et NASA GIBS génèrent les images à la demande ; cette étape peut prendre quelques secondes."
-      },
-      "privacyLine": "Le point reste dans votre navigateur",
-      "privacyHow": "Comment",
-      "sources": "Sources",
-      "archiveScene": "Scène d'archive",
-      "archiveOnly": "Aucun passage calculé ne correspond à ces images ; elles sont donc présentées comme des scènes d'archive.",
-      "zoneShowUtc": "Afficher les heures en UTC",
-      "zoneShowLocal": "Afficher les heures à l'heure locale de ce lieu"
+      "tab": {},
+      "caption": {},
+      "tile": {},
+      "grid": {},
+      "group": {},
+      "order": {},
+      "row": {},
+      "section": {},
+      "status": {},
+      "step": {}
     },
     "viewer": {
-      "open": "Ouvrir la visionneuse : {{image}}",
-      "bestView": "Ouvrir la meilleure vue : {{name}}, {{time}}",
-      "imageAlt": "Image de {{name}}, {{time}}",
-      "close": "Fermer la visionneuse",
-      "northUp": "Le nord est en haut",
-      "unreferenced": "Orientation telle que fournie par l'archive ; le nord n'est pas indiqué",
-      "compareDates": "Autres dates de cette collection",
-      "compareNone": "Aucune autre scène de cette collection à comparer.",
-      "divider": "Séparateur avant/après",
-      "searching": "Recherche de scènes de ce lieu sur les {{days}} derniers jours",
-      "historyFailed": "{{archive}} n'a pas répondu, les scènes antérieures manquent.",
-      "historyTimeout": "{{archive}} n'a pas répondu à temps, les scènes antérieures manquent.",
-      "loading": "Chargement des images : {{loaded}} sur {{total}}",
-      "pause": "Pause",
-      "resume": "Lire",
-      "next": "Image suivante",
+      "open": "Ouvrir la scène : {{image}}",
+      "imageAlt": "Scène {{name}}, {{time}}",
+      "close": "Fermer la visionneuse de scène",
+      "northUp": "Nord vers le haut",
+      "unreferenced": "Orientation de l'archive ; nord non indiqué",
+      "compareDates": "Dates de cette collection",
+      "compareNone": "Aucune deuxième scène dans cette collection.",
+      "divider": "Séparateur de référence",
+      "searching": "Recherche parmi {{days}} jours de scènes archivées",
+      "historyFailed": "{{archive}} a renvoyé une erreur ; les scènes antérieures manquent.",
+      "historyTimeout": "{{archive}} a expiré ; les scènes antérieures manquent.",
+      "loading": "Images chargées : {{loaded}} sur {{total}}",
       "closeLabel": "Fermer",
-      "agoNow": "À l'instant",
+      "agoNow": "Maintenant",
       "agoHours": "il y a {{count}} h",
       "agoDays": "il y a {{count}} j",
       "clear": "Dégagé",
-      "clouded": "Nuageux · {{pct}} %",
-      "tabImage": "Image",
-      "tabChange": "Évolution",
+      "clouded": "Nuages {{pct}}%",
+      "tabImage": "Scène",
+      "tabChange": "Comparer",
       "metaAcquired": "Acquise",
       "metaDate": "Date",
       "metaPixel": "Pixel",
-      "metaSpot": "Nuages sur le point",
+      "metaSpot": "Nuages au point",
       "metaScene": "Nuages de la scène",
-      "metaSun": "Élévation du soleil",
-      "showCloudy": "Afficher les dates nuageuses ({{count}})"
+      "metaSun": "Élév. solaire",
+      "showCloudy": "Inclure les dates nuageuses ({{count}})"
     },
-    "timelapse": {
-      "heading": "Accéléré",
-      "entry": "Ce lieu, année par année",
-      "open": "Ouvrir l'accéléré annuel de ce lieu",
-      "searching": "Recherche d'une vue dégagée par an depuis 2015 · {{archive}}",
-      "loading": "Chargement des vues · {{loaded}} / {{total}}",
-      "failed": "{{archive}} n'a pas répondu, les vues annuelles manquent.",
-      "timeout": "{{archive}} n'a pas répondu à temps, les vues annuelles manquent.",
-      "partial": "Années manquantes car {{archive}} n'a pas répondu : {{count}}.",
-      "tooFew": "Vues annuelles dégagées de ce lieu : {{count}}. Un accéléré en demande {{min}}.",
-      "total": "Vues dégagées : {{count}} · une par an",
-      "years": "Années",
-      "share": "Partager",
-      "method": "Chaque image est le même carré de 6 km vu par Sentinel-2, en couleurs naturelles. Chaque année cherche dans une saison différente et garde sa scène la moins nuageuse ; une année sans scène sous 30 % de nuages est omise."
-    },
+    "timelapse": {},
     "passDetail": {
-      "back": "Tous les passages",
-      "altitude": "Altitude",
-      "offNadir": "Dépointage",
-      "crossed": "{{name}} est passé à {{altitude}} km d'altitude, {{distance}} km {{direction}}, à {{time}}, à {{speed}} km/s au sol.",
-      "crossedHeading": "{{name}} est passé à {{altitude}} km d'altitude, {{distance}} km {{direction}}, à {{time}}, en direction du {{heading}} à {{speed}} km/s au sol.",
-      "looking": "Il visait à {{deg}}° de la verticale.",
-      "sceneCloud": "Couverture nuageuse de la scène : {{pct}} %.",
-      "pixelLine": "Pixel de {{m}} m",
-      "swathLine": "Fauchée de {{km}} km",
-      "clearestLook": "Vue la plus dégagée",
-      "previous": "Passage précédent",
-      "next": "Passage suivant",
-      "dir": {
-        "n": "au nord",
-        "ne": "au nord-est",
-        "e": "à l'est",
-        "se": "au sud-est",
-        "s": "au sud",
-        "sw": "au sud-ouest",
-        "w": "à l'ouest",
-        "nw": "au nord-ouest"
-      },
-      "heading": {
-        "north": "nord",
-        "south": "sud"
-      }
+      "dir": {},
+      "heading": {}
     },
     "search": {
-      "label": "Nom de lieu ou coordonnées",
-      "placeholder": "Nom de lieu ou 48.8584, 2.2945",
+      "label": "Lieu ou coordonnées",
+      "placeholder": "Lieu ou 25.11, 55.14",
       "submit": "Rechercher",
-      "locate": "Utiliser ma position",
-      "hint": "Les coordonnées et votre position restent dans ce navigateur. Un nom de lieu recherché est envoyé à WorldMonitor et à Nominatim d'OpenStreetMap.",
-      "results": "Lieux correspondants",
+      "locate": "Ma position",
+      "hint": "Les coordonnées saisies et votre localisation ne sont jamais envoyées à WorldMonitor. Les noms de lieux saisis sont envoyés à WorldMonitor et OpenStreetMap Nominatim.",
+      "results": "Lieux",
       "searching": "Recherche…",
-      "tooShort": "Saisissez au moins deux caractères, ou des coordonnées comme 48.8584, 2.2945.",
-      "invalidCoordinates": "Ces coordonnées sont hors du globe. La latitude va de -90 à 90 et la longitude de -180 à 180.",
-      "failed": "La recherche de lieux est indisponible pour le moment. Les coordonnées et la carte fonctionnent toujours.",
-      "noResults": "Aucun lieu ne correspond à ce nom.",
-      "locating": "Localisation en cours…",
-      "locationDenied": "L'autorisation de localisation a été refusée. Recherchez un lieu ou faites un clic droit sur la carte.",
-      "locationUnavailable": "Votre position est introuvable. Recherchez un lieu ou faites un clic droit sur la carte.",
-      "idle": "Recherchez un lieu par nom ou coordonnées, utilisez votre position, ou faites un clic droit sur la carte pour voir quels satellites l'ont survolé."
+      "tooShort": "Entrez au moins deux caractères, ou des coordonnées comme 25.11, 55.14.",
+      "invalidCoordinates": "La latitude doit être entre -90 et 90, la longitude entre -180 et 180.",
+      "failed": "La recherche de lieu a échoué. Les coordonnées et les clics sur la carte fonctionnent toujours.",
+      "noResults": "Aucun lieu correspondant.",
+      "locating": "Localisation…",
+      "locationDenied": "Accès à la localisation refusé. Tapez un nom de lieu, ou faites un clic droit sur la carte.",
+      "locationUnavailable": "Position non trouvée. Tapez un nom de lieu, ou faites un clic droit sur la carte.",
+      "idle": "Tapez un nom de lieu, utilisez la localisation de votre appareil, ou faites un clic droit sur la carte pour afficher ses preuves d'imagerie."
     },
     "share": {
-      "copy": "Copier le lien de partage",
       "copied": "Lien copié",
-      "copyManually": "Copiez le lien ci-dessous",
+      "copyManually": "Copier ce lien",
       "link": "Lien de partage",
       "dismiss": "Fermer",
-      "passOutsideWindow": "Le passage lié est hors de la fenêtre actuelle, aucun passage n'est donc sélectionné.",
-      "passNotFound": "Le passage lié est introuvable parmi les passages recalculés, aucun passage n'est donc sélectionné."
+      "passOutsideWindow": "Le passage lié est en dehors de cette fenêtre ; aucun sélectionné.",
+      "passNotFound": "Le passage lié est absent de la liste recalculée ; aucun sélectionné."
     },
     "timeline": {
       "now": "maintenant",
       "nowAt": "Maintenant : {{time}}",
-      "density": "Passages {{label}}, de {{start}} à {{end}} : {{count}}",
-      "daylight": "Lumière du jour au point de {{start}} à {{end}}",
+      "density": "{{label}}, de {{start}} à {{end}} : {{count}}",
+      "daylight": "Jour ici : {{start}}–{{end}}",
       "unavailable": "indisponible",
-      "notRetained": "aucune donnée cette semaine",
-      "notRetainedSpan": "{{label}} : aucune donnée de {{start}} à {{end}}",
-      "countryWide": "à l'échelle du pays",
+      "notRetained": "flux sans historique",
+      "notRetainedSpan": "{{label}} : flux sans historique de {{start}} à {{end}}",
+      "countryWide": "pays entier",
       "source": {
         "conflict": "Conflits",
-        "fires": "Incendies",
+        "fires": "Incendie",
         "unrest": "Troubles",
-        "outages": "Coupures d'internet"
+        "outages": "Panne"
       },
       "live": {
-        "vessels": "Trafic maritime",
-        "militaryFlights": "Vols militaires",
+        "vessels": "Transport maritime",
+        "militaryFlights": "Aviation militaire",
         "gpsJamming": "Brouillage GPS"
       },
       "name": "Chronologie",
-      "span": "{{days}} jours · {{hours}} h à venir",
-      "daylightHere": "Lumière du jour ici",
+      "span": "{{days}} j en arrière · {{hours}} h en avant",
+      "daylightHere": "Jour au point",
       "row": {
-        "geo": "Géo",
-        "photo": "Photo",
-        "likely": "Probable",
-        "could": "Possible",
-        "overhead": "Passage"
+        "images": "Images",
+        "events": "Événements",
+        "passes": "Passages"
       },
-      "retained": "{{start}} au {{end}}",
-      "retainedDay": "{{day}} seulement",
-      "geoLine": "Géostationnaires en vue : {{names}}",
-      "away": "à {{km}} km"
+      "retained": "historique de {{start}} à {{end}}",
+      "retainedDay": "historique {{day}} seulement",
+      "geoLine": "Vue géostationnaire : {{names}}",
+      "away": "{{km}} km",
+      "densityTip_one": "{{count}} passage depuis {{start}} · {{names}}",
+      "densityTip_many": "{{count}} passages depuis {{start}} · {{names}}",
+      "densityTip_other": "{{count}} passages depuis {{start}} · {{names}}"
+    },
+    "satelliteSites": {
+      "heading": "Sites surveillés · prochaines {{hours}} h",
+      "projecting": "Calcul des passages…",
+      "notLoaded": "Cliquez de nouveau sur le satellite ; ses éléments orbitaux ne sont pas chargés.",
+      "failed": "Cliquez de nouveau sur le satellite pour réessayer ; le calcul des passages a échoué.",
+      "viewFailed": "Cliquez de nouveau sur le satellite pour réessayer ; la liste des sites n'a pas pu être chargée.",
+      "unavailable": "Cliquez de nouveau sur le satellite pour réessayer ; la géométrie des passages a rejeté ces éléments orbitaux.",
+      "signals": "Satellite de renseignement d'origine électromagnétique. Sans imageur, aucune couverture au sol n'est modélisée.",
+      "noProfile": "Aucun profil de capteur pour ce satellite ; sa couverture au sol n'est pas modélisée.",
+      "geostationary": "Géostationnaire : fixe au-dessus d'une longitude, donc aucun passage à lister.",
+      "badElements": "Les éléments orbitaux sont illisibles.",
+      "none": "Aucun site surveillé dans son empreinte au sol d'ici {{hours}} h.",
+      "utc": "{{time}} UTC",
+      "inMinutes": "dans {{minutes}} min",
+      "inHours": "dans {{hours}} h {{minutes}} min",
+      "offTrack": "à {{km}} km de la trace au sol",
+      "swathEdge": "au bord de la fauchée",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "Type",
+        "operator": "Opérateur",
+        "over": "Au-dessus de",
+        "ocean": "Océan",
+        "altBand": "Bande alt.",
+        "inclination": "Incl.",
+        "velocity": "Vitesse",
+        "types": {
+          "sar": "Imagerie SAR",
+          "optical": "Imagerie optique",
+          "military": "Militaire",
+          "sigint": "SIGINT",
+          "signals": "Renseignement électromagnétique"
+        }
+      },
+      "tooOld_one": "Les éléments orbitaux ont {{count}} jour, trop anciens pour calculer les passages.",
+      "tooOld_many": "Les éléments orbitaux ont {{count}} jours, trop anciens pour calculer les passages.",
+      "tooOld_other": "Les éléments orbitaux ont {{count}} jours, trop anciens pour calculer les passages.",
+      "count_one": "{{count}} site dans l'empreinte {{family}}",
+      "count_many": "{{count}} sites dans l'empreinte {{family}}",
+      "count_other": "{{count}} sites dans l'empreinte {{family}}",
+      "passes_one": "{{count}} passage",
+      "passes_many": "{{count}} passages",
+      "passes_other": "{{count}} passages"
+    },
+    "sheet": {
+      "heading": "Preuves d'imagerie",
+      "window": "Derniers {{days}} jours, prochaines {{hours}} h",
+      "apart": "Non comptabilisés :",
+      "newest": "plus récent {{when}}",
+      "newestNoPreview": "Dernière acquisition {{when}} sans aperçu ; scène antérieure affichée.",
+      "noneConfirmed": "Aucune image confirmée sur cette période",
+      "noneYet": "Archives en attente de réponse",
+      "latest": "Dernière image",
+      "latestNone": "Les archives n'ont rien renvoyé pour ce point et cette période.",
+      "latestChecking": "Recherche d'archives en cours. Les passages calculés sont listés ci-dessous.",
+      "compareWith": "Comparer avec",
+      "compareDate": "Date de référence",
+      "moreImages": "Autres images confirmées",
+      "imageAlt": "Scène {{sensor}}, {{time}}",
+      "dailyMosaic": "mosaïque quotidienne",
+      "weatherFrame": "image météo",
+      "change": "Changer de lieu",
+      "showUtc": "UTC",
+      "showLocal": "Heure locale",
+      "alert": "Alerte avant chaque passage ouvert au-dessus du point, et à chaque nouvelle image sans nuages.",
+      "alertCta": "Définir une alerte · Pro",
+      "height": {
+        "collapsed": "Panneau réduit. Agrandir à mi-hauteur",
+        "half": "Panneau à mi-hauteur. Agrandir en pleine hauteur",
+        "full": "Panneau agrandi. Réduire"
+      },
+      "apartMosaics_one": "{{count}} mosaïque quotidienne",
+      "apartMosaics_many": "{{count}} mosaïques quotidiennes",
+      "apartMosaics_other": "{{count}} mosaïques quotidiennes",
+      "apartFrames_one": "{{count}} image météorologique",
+      "apartFrames_many": "{{count}} images météorologiques",
+      "apartFrames_other": "{{count}} images météorologiques",
+      "apartInRange_one": "{{count}} passage en survol",
+      "apartInRange_many": "{{count}} passages à portée",
+      "apartInRange_other": "{{count}} passages en survol",
+      "confirmedCount_one": "{{count}} image confirmée",
+      "confirmedCount_many": "{{count}} images confirmées",
+      "confirmedCount_other": "{{count}} images confirmées"
+    },
+    "tierDef": {
+      "confirmed": "Une archive liste une scène couvrant le point.",
+      "likely": "La couverture de fauchée fixe incluait le point ; aucune scène archivée pour l'instant.",
+      "inReach": "Un capteur orientable pourrait viser ici. La programmation n'est pas publique.",
+      "capability": "Une classe de capteur sans archive publique était au-dessus."
+    },
+    "events": {
+      "heading": "Événements à ce point",
+      "kindLabel": "Type",
+      "detail": "Détail",
+      "now": "maintenant",
+      "loading": "Chargement des flux d'événements…",
+      "none": "Aucun événement dans un rayon de {{km}} km au cours des {{days}} derniers jours.",
+      "unavailable": "Non disponible : {{sources}}",
+      "kind": {
+        "conflict": "Conflit",
+        "fires": "Incendie",
+        "unrest": "Troubles",
+        "outages": "Panne",
+        "vessels": "Transport maritime",
+        "military-flights": "Aviation militaire",
+        "gps-jamming": "Brouillage GPS"
+      }
+    },
+    "capability": {
+      "heading": "Qui peut imager ce point",
+      "none": "Aucun passage de capteur pendant cette période.",
+      "tooOld": "Données orbitales trop anciennes pour calculer : {{names}}",
+      "showAll": "Afficher tous les {{count}}",
+      "showFewer": "Afficher moins",
+      "group": {
+        "open": "Données ouvertes",
+        "commercial": "Commercial",
+        "government": "Gouvernement",
+        "military": "Militaire",
+        "other": "Autre"
+      }
+    },
+    "windows": {
+      "heading": "Prochaines fenêtres de collecte",
+      "optical": "Optique ouverte",
+      "radar": "Radar ouvert",
+      "none": "Aucun passage optique ou radar ouvert dans les prochaines {{hours}} h."
+    },
+    "status": {
+      "catalog": "Chargement du catalogue de satellites…",
+      "computing": "Calcul des passages · satellite {{done}} sur {{total}}",
+      "checking": "Archives ayant répondu : {{done}} sur {{total}}",
+      "partial": "Pas de réponse de {{sources}}. Les comptages peuvent être sous-estimés.",
+      "staleCatalog": "Le catalogue date de {{age}} ; les heures prédites peuvent dériver.",
+      "empty": "Aucun satellite n'est passé à portée de ce point pendant cette période.",
+      "unavailable": "Les données de passage ne sont pas disponibles. Réessayez plus tard."
+    },
+    "privacy": {
+      "line": "Votre point ne va que dans les archives d'images.",
+      "more": "Détails",
+      "body": "Les passes sont calculées sur cet appareil. Pour trouver des images, votre navigateur envoie le point directement à Earth Search, Planetary Computer, NASA GIBS et EUMETSAT ; WorldMonitor ne le reçoit pas. Sur un site surveillé, WorldMonitor reçoit la demande du relevé quotidien de ce site par son identifiant, pas par votre point. Un nom de lieu saisi va à WorldMonitor et à OpenStreetMap Nominatim pour être localisé. Les liens partagés conservent deux décimales (0,01°)."
+    },
+    "sources": {
+      "heading": "Sources ({{count}})",
+      "docs": "Méthode et couverture",
+      "conflict": "événements de conflit et troubles",
+      "fires": "détections d'incendies",
+      "outages": "flux de pannes internet",
+      "vessels": "positions des navires"
+    },
+    "caption": {
+      "clear": "Aucun nuage au point",
+      "clearSceneCloud": "Aucun nuage au point · scène {{pct}}% nuages",
+      "clouded": "Nuage au point · {{pct}}%",
+      "cloudShadow": "Ombre au point",
+      "spotNotChecked": "Nébulosité au point inconnue",
+      "sceneCloud": "Scène {{pct}}% nuages · point inconnu",
+      "radar": "Radar · non affecté par les nuages"
+    },
+    "tile": {
+      "failed": "La scène n'a pas pu se charger · {{archive}}",
+      "noPreview": "Aucun aperçu publié pour cette scène pour l'instant",
+      "radar": "radar"
+    },
+    "target": {
+      "acquired": "ACQUIS {{time}} · {{resolution}}"
+    },
+    "popup": {
+      "title": "Imagerie satellite",
+      "loading": "Vérification des archives satellite…",
+      "latest": "Dernière image",
+      "nextPass": "Prochain passage",
+      "noImage": "Aucune image récente",
+      "noPass": "Aucun passage prévu sous 72 heures",
+      "openEvidence": "Ouvrir les preuves",
+      "imageAlt": "Vue satellite de {{source}}",
+      "unavailable": "L’imagerie satellite n’a pas pu être chargée.",
+      "fire": {
+        "title": "Détection d'incendies par satellite",
+        "detected": "Détecté",
+        "satellite": "Satellite",
+        "confidence": "Confiance",
+        "confidenceHigh": "Élevée",
+        "confidenceNominal": "Moyenne",
+        "confidenceLow": "Faible",
+        "power": "Puissance de l'incendie",
+        "powerValue": "{{value}} MW",
+        "region": "Région",
+        "source": "Source",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Mosaïque quotidienne",
+        "mosaicLoading": "Vérification de NASA GIBS…",
+        "mosaicCaption": "Composite des passages {{source}} du jour pour {{date}} ; l'incendie peut être masqué par les nuages ou la fumée.",
+        "mosaicNone": "NASA GIBS n'a pas de mosaïque {{source}} pour {{date}}.",
+        "mosaicNoLayer": "Aucune mosaïque quotidienne n'est disponible pour ce satellite.",
+        "mosaicUnavailable": "La mosaïque quotidienne n'a pas pu être chargée.",
+        "mosaicAlt": "Mosaïque quotidienne NASA GIBS {{source}} pour {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Site surveillé",
+      "loading": "Chargement du relevé quotidien du site…",
+      "failed": "Le relevé quotidien du site n’a pas pu être chargé ; rouvrez le point pour réessayer.",
+      "stale": "Aucune vérification quotidienne actuelle enregistrée pour ce site.",
+      "checked": "Vérifié",
+      "noPass": "Aucun passage à venir enregistré",
+      "list": {
+        "hotspot": "point chaud",
+        "conflictZone": "zone de conflit",
+        "militaryBase": "base militaire",
+        "nuclearFacility": "installation nucléaire",
+        "port": "port",
+        "chokepoint": "détroit",
+        "reservoir": "réservoir"
+      }
     }
   },
   "settings": {
@@ -5744,6 +5836,21 @@
         "5": "se déconnecter",
         "6": "supprimer le compte, plan"
       }
+    },
+    "reservoirAlert": {
+      "title": "Alertes de niveau d'eau",
+      "description": "Alerte lorsque le niveau d'eau lidar d'un réservoir stratégique est bas. La NASA publie chaque passage satellite environ deux mois après sa mesure, donc chaque alerte indique sa date de mesure.",
+      "scopeHint": "Choisissez jusqu'à {{max}} réservoirs. Les alertes ne couvrent que les réservoirs listés ici.",
+      "searchPlaceholder": "Ajouter un réservoir par nom",
+      "searchLabel": "Ajouter un réservoir",
+      "removeLabel": "Supprimer {{name}}",
+      "thresholdLabel": "Seuil de niveau",
+      "thresholdHint": "Alerte lorsque le dernier niveau mesuré est inférieur à ce pourcentage de la plage mesurée du réservoir, où 0 est le niveau le plus bas mesuré et 100 le plus haut. Laissez vide pour aucun seuil.",
+      "thresholdInputLabel": "Seuil de niveau, pourcentage de la plage mesurée",
+      "seasonalLabel": "Baisse au-delà de la ligne de base saisonnière",
+      "seasonalHint": "Alerte lorsque le dernier niveau mesuré est bien inférieur à ce que ce réservoir mesure généralement à cette période de l'année.",
+      "quietNote": "Ces alertes arrivent même quand les alertes en temps réel sont définies sur critique uniquement. Les heures silencieuses les désactivent.",
+      "quietNoteBatch": "Ces alertes arrivent même quand les alertes en temps réel sont définies sur critique uniquement. Les heures silencieuses les désactivent, ou les mettent en attente jusqu'à la fin des heures silencieuses si vous choisissez Batch."
     }
   }
 }

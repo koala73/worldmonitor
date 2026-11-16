@@ -121,8 +121,14 @@ const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps }
 const { recordPizzintHistory } = require('./shared/pizzint-history.cjs');
 const { aggregateStates: aggregateAirTrafficStates, gapPoint: airTrafficGapPoint, binStart: airTrafficBinStart, BIN_MS: AIR_TRAFFIC_BIN_MS } = require('./shared/air-traffic-aggregate.cjs');
 const { recordTrafficPoint, isOkPointValue: isOkAirTrafficPoint, dayKeyFor: airTrafficDayKey, SERIES: AIR_TRAFFIC_SERIES } = require('./shared/air-traffic-history.cjs');
-const { ADSBLOL_CIRCLES, ADSBLOL_RADIUS_NM } = require('./shared/air-traffic-regions.cjs');
-const { mergeSweep: mergeAdsbLolSweep } = require('./shared/adsblol-traffic.cjs');
+const airTrafficDetector = require('./shared/air-traffic-detector.cjs');
+const { CONUS_BOX: AIR_TRAFFIC_CONUS_BOX, EUROPE_BOX: AIR_TRAFFIC_EUROPE_BOX } = require('./shared/air-traffic-regions.cjs');
+const {
+  stateRowsFromAreas: wingbitsTrafficStateRows,
+  buildWingbitsViewportAreas,
+  WINGBITS_MAX_BOX_NM,
+  WINGBITS_MAX_VIEWPORT_AREAS,
+} = require('./shared/wingbits-traffic.cjs');
 const { pizzintVenuePoint } = require('./shared/pizzint-location.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = require('./shared/market-quote-refresh.cjs');
@@ -4968,11 +4974,6 @@ const RELAY_RECENCY_MS = 15 * 60 * 1000; // 15 min — matches client-side recen
 // ── Importance score parity with digest ──────────────────────────────────────
 // Source-tier data loaded via requireShared('source-tiers.json'), which resolves
 // to either repo-root shared/ OR scripts/shared/ depending on packaging root.
-// Both copies are enforced byte-identical by tests/edge-functions.test.mjs
-// ('scripts/shared/ stays in sync with shared/') and cross-checked in
-// tests/importance-score-parity.test.mjs.
-// Formula constants + computeImportanceScore mirror list-feed-digest.ts; parity
-// is enforced by tests/importance-score-parity.test.mjs.
 const RELAY_SOURCE_TIERS = {
   ...requireShared('source-tiers.json'),
   ...requireShared('x-account-source-tiers.json'),
@@ -6087,9 +6088,6 @@ function theaterDetectAircraftType(callsign) {
   return 'unknown';
 }
 
-const WINGBITS_MAX_BOX_NM = 2000;
-const WINGBITS_VIEWPORT_TILE_DEGREES = 30;
-const WINGBITS_MAX_VIEWPORT_AREAS = 36;
 
 const POSTURE_THEATERS = [
   { id: 'iran-theater', bounds: { north: 42, south: 20, east: 65, west: 30 }, thresholds: { elevated: 8, critical: 20 }, strikeIndicators: { minTankers: 2, minAwacs: 1, minFighters: 5 } },
@@ -6134,33 +6132,6 @@ function wingbitsIndexLookupCallsign(callsign) {
   return results;
 }
 
-function buildWingbitsViewportAreas(south, west, north, east) {
-  const latTiles = Math.max(1, Math.ceil((north - south) / WINGBITS_VIEWPORT_TILE_DEGREES));
-  const lonTiles = Math.max(1, Math.ceil((east - west) / WINGBITS_VIEWPORT_TILE_DEGREES));
-  if (latTiles * lonTiles > WINGBITS_MAX_VIEWPORT_AREAS) return null;
-
-  const areas = [];
-  for (let latIndex = 0; latIndex < latTiles; latIndex += 1) {
-    const tileSouth = south + latIndex * WINGBITS_VIEWPORT_TILE_DEGREES;
-    const tileNorth = Math.min(north, tileSouth + WINGBITS_VIEWPORT_TILE_DEGREES);
-    for (let lonIndex = 0; lonIndex < lonTiles; lonIndex += 1) {
-      const tileWest = west + lonIndex * WINGBITS_VIEWPORT_TILE_DEGREES;
-      const tileEast = Math.min(east, tileWest + WINGBITS_VIEWPORT_TILE_DEGREES);
-      const centerLat = (tileSouth + tileNorth) / 2;
-      const centerLon = (tileWest + tileEast) / 2;
-      areas.push({
-        alias: `viewport-${latIndex}-${lonIndex}`,
-        by: 'box',
-        la: centerLat,
-        lo: centerLon,
-        w: Math.max(1, Math.min((tileEast - tileWest) * 60 * Math.cos(centerLat * Math.PI / 180), WINGBITS_MAX_BOX_NM)),
-        h: Math.max(1, Math.min((tileNorth - tileSouth) * 60, WINGBITS_MAX_BOX_NM)),
-        unit: 'nm',
-      });
-    }
-  }
-  return areas;
-}
 
 async function handleWingbitsTrackRequest(req, res) {
   const apiKey = process.env.WINGBITS_API_KEY;
@@ -6752,13 +6723,16 @@ async function attemptAirTrafficPoint(fetchedAt) {
   }
 }
 
-async function seedAirTrafficPoint() {
+// One tick for one source: skip a bin already recorded, then up to
+// AIR_TRAFFIC_MAX_ATTEMPTS attempts that each start inside the bin, then write
+// a point or a gap into that source's own series.
+async function seedTrafficSeries({ label, series, attempt }) {
   const t = airTrafficBinStart(Date.now());
   const bin = new Date(t).toISOString();
-  const existing = await upstashPipeline([['HGET', airTrafficDayKey(t), String(t)]]);
+  const existing = await upstashPipeline([['HGET', airTrafficDayKey(t, series), String(t)]]);
   if (isOkAirTrafficPoint(existing?.[0]?.result)) {
-    console.log(`[AirTraffic] t=${bin} already recorded; skipping fetch`);
-    return;
+    console.log(`[${label}] t=${bin} already recorded; skipping fetch`);
+    return t;
   }
   let result = null;
   let fetchedAt = Date.now();
@@ -6766,10 +6740,10 @@ async function seedAirTrafficPoint() {
   // Every attempt starts inside bin t, so a retry can only fill this bin.
   while (attempts < AIR_TRAFFIC_MAX_ATTEMPTS && airTrafficBinStart(fetchedAt) === t) {
     attempts += 1;
-    result = await attemptAirTrafficPoint(fetchedAt);
+    result = await attempt(fetchedAt);
     if (result.point) break;
     if (attempts >= AIR_TRAFFIC_MAX_ATTEMPTS) break;
-    console.warn(`[AirTraffic] Attempt ${attempts} for t=${bin} failed (${result.gapReason}); retrying in ${Math.round(AIR_TRAFFIC_RETRY_DELAY_MS / 1000)}s`);
+    console.warn(`[${label}] Attempt ${attempts} for t=${bin} failed (${result.gapReason}); retrying in ${Math.round(AIR_TRAFFIC_RETRY_DELAY_MS / 1000)}s`);
     await new Promise((resolve) => setTimeout(resolve, AIR_TRAFFIC_RETRY_DELAY_MS));
     fetchedAt = Date.now();
   }
@@ -6777,11 +6751,158 @@ async function seedAirTrafficPoint() {
   // could describe it. The bin is still written, as a gap, never left missing.
   if (!result) result = { gapReason: 'bin ended' };
   const point = result.point || airTrafficGapPoint(t);
-  await recordTrafficPoint(point, upstashPipeline, result.point ? fetchedAt : t);
+  await recordTrafficPoint(point, upstashPipeline, result.point ? fetchedAt : t, series);
   if (point.status === 'ok') {
-    console.log(`[AirTraffic] t=${bin} status=ok us=${point.usSeen} usAirborne=${point.usAirborne} usLowClimbing=${point.usLowClimbing} eu=${point.euAirborne} hubs=${Object.keys(point.hubs).length} attempts=${attempts}`);
+    const counts = {
+      us: point.usSeen, usAirborne: point.usAirborne, usLowClimbing: point.usLowClimbing,
+      usLowClimbingAirline: point.usLowClimbingAirline, eu: point.euAirborne,
+    };
+    for (const name of ['usLowClimbing', 'usLowClimbingAirline']) if (!series.measures.includes(name)) delete counts[name];
+    const fields = Object.entries(counts).map(([name, value]) => `${name}=${value}`).join(' ');
+    console.log(`[${label}] t=${bin} status=ok ${fields} hubs=${Object.keys(point.hubs).length} attempts=${attempts}`);
   } else {
-    console.log(`[AirTraffic] t=${bin} status=gap reason=${result.gapReason} attempts=${attempts}`);
+    console.log(`[${label}] t=${bin} status=gap reason=${result.gapReason} attempts=${attempts}`);
+  }
+  return t;
+}
+
+async function seedAirTrafficPoint() {
+  // The bin this tick recorded, which may have ended while it was fetching.
+  const t = await seedTrafficSeries({ label: 'AirTraffic', series: AIR_TRAFFIC_SERIES.opensky, attempt: attemptAirTrafficPoint });
+  await runAirTrafficDetector(t);
+}
+
+// ── National departure-collapse detector (scripts/shared/air-traffic-detector.cjs)
+// Baseline days are past and immutable, so each UTC day hash is read once and
+// kept, trimmed to the fields the detector reads. One key holds every market's
+// state, keyed by market code.
+const AIR_TRAFFIC_DETECTOR_STATE_KEY = 'aviation:traffic:detector:v2';
+// The US-only state before markets. Read while v2 is absent, so a collapse
+// active across the upgrade keeps its onset and still gets its recovery.
+const AIR_TRAFFIC_DETECTOR_LEGACY_STATE_KEY = 'aviation:traffic:detector:v1';
+const AIR_TRAFFIC_DETECTOR_STATE_TTL_SECONDS = 7 * 86400;
+const AIR_TRAFFIC_DETECTOR_MAX_WINDOW = Math.max(...airTrafficDetector.MARKETS.map((m) => m.window));
+const airTrafficDetectorDays = new Map();
+const DETECTOR_FIELDS = ['usSeen', 'usAirborne', 'euAirborne', airTrafficDetector.SIGNAL];
+
+function trimDetectorPoint(raw) {
+  try {
+    const p = JSON.parse(raw);
+    if (p?.status !== 'ok') return null;
+    const markets = p.markets && typeof p.markets === 'object'
+      ? Object.fromEntries(Object.entries(p.markets).map(([code, m]) => [code, { seen: m?.seen, dep: m?.dep }]))
+      : undefined;
+    return { status: 'ok', ...Object.fromEntries(DETECTOR_FIELDS.map((f) => [f, p[f]])), markets };
+  } catch { return null; }
+}
+
+// UTC days holding the baseline bins of bin t: each prior week's local day,
+// padded a day either side for the US and Europe offsets.
+function detectorBaselineDays(t) {
+  const days = new Set();
+  for (let w = 1; w <= airTrafficDetector.BASELINE_WEEKS; w += 1) {
+    for (const d of [-1, 0, 1]) days.add(new Date(t - w * 7 * 86_400_000 + d * 86_400_000).toISOString().slice(0, 10));
+  }
+  return [...days];
+}
+
+async function loadDetectorBaseline(t) {
+  const wanted = detectorBaselineDays(t);
+  for (const day of airTrafficDetectorDays.keys()) if (!wanted.includes(day)) airTrafficDetectorDays.delete(day);
+  const missing = wanted.filter((day) => !airTrafficDetectorDays.has(day));
+  if (missing.length === 0) return true;
+  const prefix = AIR_TRAFFIC_SERIES.opensky.prefix;
+  const results = await upstashPipeline(missing.map((day) => ['HGETALL', `${prefix}:${day}`]));
+  // A failed command must not be cached as an empty day, or the detector stays
+  // at insufficient-baseline until the day leaves the window.
+  if (!Array.isArray(results) || results.length !== missing.length || !results.every((r) => Array.isArray(r?.result))) return false;
+  missing.forEach((day, i) => {
+    const flat = results[i].result;
+    const points = new Map();
+    for (let j = 0; j + 1 < flat.length; j += 2) {
+      const point = trimDetectorPoint(flat[j + 1]);
+      if (point) points.set(Number(flat[j]), point);
+    }
+    airTrafficDetectorDays.set(day, points);
+  });
+  return true;
+}
+
+const detectorPoint = (bin) => airTrafficDetectorDays.get(new Date(bin).toISOString().slice(0, 10))?.get(bin);
+
+async function runAirTrafficDetector(t) {
+  try {
+    // The bins before t that the widest market window reads.
+    const recentBins = Array.from({ length: AIR_TRAFFIC_DETECTOR_MAX_WINDOW - 1 }, (_, i) => t - (i + 1) * 300_000);
+    const [stateRes, legacyRes, pointRes, wingbitsRes, ...recentRes] = (await upstashPipeline([
+      ['GET', AIR_TRAFFIC_DETECTOR_STATE_KEY],
+      ['GET', AIR_TRAFFIC_DETECTOR_LEGACY_STATE_KEY],
+      ['HGET', airTrafficDayKey(t, AIR_TRAFFIC_SERIES.opensky), String(t)],
+      ['HGET', airTrafficDayKey(t, AIR_TRAFFIC_SERIES.wingbits), String(t)],
+      ...recentBins.map((bin) => ['HGET', airTrafficDayKey(bin, AIR_TRAFFIC_SERIES.opensky), String(bin)]),
+    ])) || [];
+    // A failed read must not stand in for no state: during a collapse, the
+    // next bin would start from normal and the recovery would never be sent.
+    const answered = (res) => res && !res.error && 'result' in res;
+    if (!answered(stateRes) || !answered(pointRes) || (stateRes.result === null && !answered(legacyRes))) {
+      console.warn('[AirTrafficDetector] state read failed; skipping this bin');
+      return;
+    }
+    if (!(await loadDetectorBaseline(t))) {
+      console.warn('[AirTrafficDetector] baseline read failed; skipping this bin');
+      return;
+    }
+    let states = {};
+    try {
+      const isObject = (v) => v && typeof v === 'object' && !Array.isArray(v);
+      if (stateRes.result !== null) {
+        const parsed = JSON.parse(stateRes.result);
+        states = isObject(parsed) ? parsed : {};
+      } else if (legacyRes.result !== null) {
+        const legacy = JSON.parse(legacyRes.result);
+        states = isObject(legacy) ? { US: legacy } : {};
+      }
+    } catch {
+      // Only this relay writes the key. A value it cannot parse would stop the
+      // detector until the TTL if skipped, so it starts over, loudly.
+      console.warn('[AirTrafficDetector] stored state is unreadable; starting from normal');
+      states = {};
+    }
+    const lastT = Math.max(0, ...Object.values(states).map((s) => (Number.isFinite(s?.lastT) ? s.lastT : 0)));
+    const bin = new Date(t).toISOString();
+    if (lastT > t) {
+      // A slow tick finished after the next bin's tick evaluated, and the run
+      // only moves forward.
+      console.log(`[AirTrafficDetector] t=${bin} skipped: ${new Date(lastT).toISOString()} already evaluated`);
+      return;
+    }
+    const parse = (raw) => { try { return raw ? JSON.parse(raw) : undefined; } catch { return undefined; } };
+    const point = parse(pointRes.result);
+    const wingbits = parse(wingbitsRes?.result);
+    const recent = new Map(recentBins.map((bin, i) => [bin, trimDetectorPoint(recentRes[i]?.result)]));
+    const getPoint = (bin) => recent.get(bin) ?? detectorPoint(bin);
+    const fmt = (v) => (Number.isFinite(v) ? v.toFixed(2) : '-');
+    const next = { ...states };
+    for (const market of airTrafficDetector.MARKETS) {
+      const result = airTrafficDetector.evaluateCollapse(states[market.code] || null, {
+        t, point, wingbits, market, getPoint,
+        peakBaseline: airTrafficDetector.peakBaselineFor(t, detectorPoint, market),
+      });
+      const s = result.state;
+      console.log(`[AirTrafficDetector] t=${bin} market=${market.code} verdict=${s.verdict} state=${s.state} ratio=${fmt(s.ratio)} control=${fmt(s.control)} coverage=${fmt(s.coverage)}${s.coverageAgainst ? `(${s.coverageAgainst})` : ''}`);
+      if (result.event) {
+        const { event } = result;
+        const onset = new Date(event.onset).toISOString().slice(11, 16);
+        console.log(`[AirTraffic] ${market.code} ${event.kind === 'collapse' ? 'collapse entered' : 'collapse ended'} ratio=${event.ratio.toFixed(2)} onset=${onset}Z`);
+        // The market's state moves only once its event is queued, so a failed
+        // publish is retried on the next bin, which still meets the condition.
+        if (!(await publishNotificationEvent(airTrafficDetector.buildCollapseNotification(event)))) continue;
+      }
+      next[market.code] = s;
+    }
+    await upstashSet(AIR_TRAFFIC_DETECTOR_STATE_KEY, next, AIR_TRAFFIC_DETECTOR_STATE_TTL_SECONDS);
+  } catch (e) {
+    console.warn('[AirTrafficDetector] error:', e?.message || e);
   }
 }
 
@@ -6819,99 +6940,65 @@ function startAirTrafficLoop() {
   }, AIR_TRAFFIC_START_DELAY_MS).unref?.();
 }
 
-// A second, independent series from adsb.lol receivers, kept in its own keys.
-// It never fills an OpenSky gap: the two networks see different aircraft, so a
-// ratio across them is meaningless. Read side by side, a drop in both is a real
-// event and a drop in one is that feed.
-// adsb.lol rate-limits a burst after about 10 requests; one request every 5s
-// held in a measured run. 12 circles take about a minute.
-// A keyless IP gets 500 requests a day (adsb.lol open-data API page),
-// and this loop needs 3,456 plus retries, while the theater loop already spends
-// 144 a day of the relay IP's quota on /v2/mil. The loop runs only with a key
-// whose quota covers it (a feeder key gives 7,200 a day).
-const ADSBLOL_API_KEY = process.env.ADSBLOL_API_KEY || '';
-// A 200 whose snapshot is older than this describes an earlier moment.
-const ADSBLOL_MAX_SNAPSHOT_AGE_MS = 60_000;
-const ADSBLOL_TRAFFIC_SPACING_MS = Number.isFinite(Number(process.env.ADSBLOL_TRAFFIC_SPACING_MS))
-  ? Math.max(0, Number(process.env.ADSBLOL_TRAFFIC_SPACING_MS)) : 5_000;
-const ADSBLOL_TRAFFIC_ATTEMPTS_PER_CIRCLE = 2;
-const ADSBLOL_TRAFFIC_ENABLED = process.env.ADSBLOL_TRAFFIC_ENABLED !== 'false';
+// A second, independent series from the Wingbits receiver network, kept in its
+// own keys. It never fills an OpenSky gap: the two networks see different
+// aircraft, so a ratio across them is meaningless. Read side by side, a drop in
+// both is a real event and a drop in one is that feed. One POST covers the
+// CONUS and Europe boxes, so a bin costs one request on the key the map
+// viewport and theater loop already use.
+const WINGBITS_TRAFFIC_AREAS = [['us', AIR_TRAFFIC_CONUS_BOX], ['eu', AIR_TRAFFIC_EUROPE_BOX]]
+  .flatMap(([region, box]) => buildWingbitsViewportAreas(box.south, box.west, box.north, box.east)
+    .map((area) => ({ ...area, alias: `${region}-${area.alias}` })));
 
-async function fetchAdsbLolCircle({ lat, lon }) {
+function sameAliases(areas, requested) {
+  const answered = areas.map((area) => area?.alias).sort();
+  const asked = requested.map((area) => area.alias).sort();
+  return answered.length === asked.length && answered.every((alias, i) => alias === asked[i]);
+}
+
+async function attemptWingbitsTrafficPoint(fetchedAt) {
   try {
-    const resp = await fetch(`https://api.adsb.lol/v2/point/${lat}/${lon}/${ADSBLOL_RADIUS_NM}`, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, 'x-api-key': ADSBLOL_API_KEY },
+    const resp = await fetch('https://customer-api.wingbits.com/v1/flights', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.WINGBITS_API_KEY, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+      body: JSON.stringify(WINGBITS_TRAFFIC_AREAS),
       signal: AbortSignal.timeout(20_000),
     });
-    if (!resp.ok) return { gap: `http ${resp.status}` };
-    let data;
-    try { data = await resp.json(); } catch { data = null; }
-    if (!Array.isArray(data?.ac) || !Number.isFinite(data.now)) return { gap: 'malformed' };
-    if (Math.abs(Date.now() - data.now) > ADSBLOL_MAX_SNAPSHOT_AGE_MS) return { gap: 'stale' };
-    return { data };
+    if (!resp.ok) return { gapReason: `http ${resp.status}` };
+    let areas;
+    try { areas = await resp.json(); } catch { areas = null; }
+    // Reports in a response whose body finishes after the bin ends describe the
+    // next bin, so they cannot be dated to this one.
+    if (airTrafficBinStart(Date.now()) !== airTrafficBinStart(fetchedAt)) return { gapReason: 'bin ended' };
+    // Every requested area must answer exactly once, or the point would
+    // undercount and read as a drop.
+    if (!Array.isArray(areas) || !sameAliases(areas, WINGBITS_TRAFFIC_AREAS)) return { gapReason: 'malformed' };
+    let rows;
+    try { rows = wingbitsTrafficStateRows(areas, Date.now()); } catch { return { gapReason: 'malformed' }; }
+    const point = aggregateAirTrafficStates(rows, fetchedAt);
+    if (point.statesTotal === 0) return { gapReason: 'empty' };
+    return { point };
   } catch (e) {
-    return { gap: e?.name === 'TimeoutError' ? 'timeout' : (e?.message || String(e)) };
+    return { gapReason: e?.name === 'TimeoutError' ? 'timeout' : (e?.message || String(e)) };
   }
 }
 
-// Every circle must answer, or the point would undercount and read as a drop.
-async function sweepAdsbLol(t) {
-  const responses = [];
-  for (const [index, circle] of ADSBLOL_CIRCLES.entries()) {
-    let result = null;
-    for (let attempt = 1; attempt <= ADSBLOL_TRAFFIC_ATTEMPTS_PER_CIRCLE; attempt += 1) {
-      if (airTrafficBinStart(Date.now()) !== t) return { gap: 'bin ended' };
-      result = await fetchAdsbLolCircle(circle);
-      // A response that lands after the bin ends belongs to no attempt of t.
-      if (airTrafficBinStart(Date.now()) !== t) return { gap: 'bin ended' };
-      if (result.data) break;
-      await new Promise((resolve) => setTimeout(resolve, ADSBLOL_TRAFFIC_SPACING_MS * 2));
-    }
-    if (!result.data) return { gap: `circle ${index + 1} ${result.gap}` };
-    responses.push(result.data);
-    if (index < ADSBLOL_CIRCLES.length - 1) await new Promise((resolve) => setTimeout(resolve, ADSBLOL_TRAFFIC_SPACING_MS));
-  }
-  return { responses };
+function seedWingbitsTrafficPoint() {
+  return seedTrafficSeries({ label: 'AirTrafficWingbits', series: AIR_TRAFFIC_SERIES.wingbits, attempt: attemptWingbitsTrafficPoint });
 }
 
-async function seedAdsbLolTrafficPoint() {
-  const series = AIR_TRAFFIC_SERIES.adsblol;
-  const t = airTrafficBinStart(Date.now());
-  const bin = new Date(t).toISOString();
-  const existing = await upstashPipeline([['HGET', airTrafficDayKey(t, series), String(t)]]);
-  if (isOkAirTrafficPoint(existing?.[0]?.result)) {
-    console.log(`[AirTrafficAdsbLol] t=${bin} already recorded; skipping fetch`);
+function startWingbitsTrafficLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[AirTrafficWingbits] Disabled (no Upstash Redis)');
     return;
   }
-  const fetchedAt = Date.now();
-  const sweep = await sweepAdsbLol(t);
-  let point = null;
-  let gapReason = sweep.gap || null;
-  if (sweep.responses) {
-    point = aggregateAirTrafficStates(mergeAdsbLolSweep(sweep.responses), fetchedAt);
-    if (point.statesTotal === 0) { point = null; gapReason = 'empty'; }
-  }
-  if (!point) point = airTrafficGapPoint(t);
-  await recordTrafficPoint(point, upstashPipeline, point.status === 'ok' ? fetchedAt : t, series);
-  if (point.status === 'ok') {
-    console.log(`[AirTrafficAdsbLol] t=${bin} status=ok us=${point.usSeen} usAirborne=${point.usAirborne} usLowClimbing=${point.usLowClimbing} eu=${point.euAirborne} hubs=${Object.keys(point.hubs).length}`);
-  } else {
-    console.log(`[AirTrafficAdsbLol] t=${bin} status=gap reason=${gapReason}`);
-  }
-}
-
-function startAdsbLolTrafficLoop() {
-  if (!UPSTASH_ENABLED || !ADSBLOL_TRAFFIC_ENABLED) {
-    console.log('[AirTrafficAdsbLol] Disabled');
+  if (!process.env.WINGBITS_API_KEY) {
+    console.log('[AirTrafficWingbits] Disabled (WINGBITS_API_KEY not set)');
     return;
   }
-  if (!ADSBLOL_API_KEY) {
-    console.log('[AirTrafficAdsbLol] Disabled (ADSBLOL_API_KEY not set; the keyless 500 requests a day cannot cover 3,456)');
-    return;
-  }
-  console.log(`[AirTrafficAdsbLol] loop starting (${ADSBLOL_CIRCLES.length} circles, ${ADSBLOL_TRAFFIC_SPACING_MS / 1000}s apart)`);
+  console.log(`[AirTrafficWingbits] loop starting (${WINGBITS_TRAFFIC_AREAS.length} areas in one request, up to ${AIR_TRAFFIC_MAX_ATTEMPTS} attempts)`);
   setTimeout(() => {
-    runAirTrafficLoop(seedAdsbLolTrafficPoint, 'AirTrafficAdsbLol').catch((e) => console.warn('[AirTrafficAdsbLol] Loop stopped:', e?.message || e));
+    runAirTrafficLoop(seedWingbitsTrafficPoint, 'AirTrafficWingbits').catch((e) => console.warn('[AirTrafficWingbits] Loop stopped:', e?.message || e));
   }, AIR_TRAFFIC_START_DELAY_MS).unref?.();
 }
 
@@ -16029,7 +16116,7 @@ server.listen(PORT, RELAY_BIND_HOST, () => {
     }
     // Same opt-in seam for scripts/ais-relay-air-traffic.test.cjs.
     if (process.env.RELAY_TEST_AIR_TRAFFIC_LOOP === 'true') startAirTrafficLoop();
-    if (process.env.RELAY_TEST_ADSBLOL_TRAFFIC_LOOP === 'true') startAdsbLolTrafficLoop();
+    if (process.env.RELAY_TEST_WINGBITS_TRAFFIC_LOOP === 'true') startWingbitsTrafficLoop();
     console.log('[Relay] Test mode enabled — background seed loops are disabled');
     return;
   }
@@ -16057,7 +16144,7 @@ server.listen(PORT, RELAY_BIND_HOST, () => {
   startServiceStatusesSeedLoop();
   startTheaterPostureSeedLoop();
   startAirTrafficLoop();
-  startAdsbLolTrafficLoop();
+  startWingbitsTrafficLoop();
 
   startWeatherSeedLoop();
   startSpendingSeedLoop();

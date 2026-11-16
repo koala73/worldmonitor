@@ -14,7 +14,7 @@ import { installLongPressContextMenu } from '@/utils/long-press';
 
 type ContextMenuPayload = { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string };
 
-const dashboardMap = { onCountryClicked: () => {}, onMapContextMenu: (cb: (payload: ContextMenuPayload) => void) => { menuHandler = cb; } };
+const dashboardMap = { onCountryClicked: () => {}, onMapContextMenu: (cb: (payload: ContextMenuPayload) => void) => { menuHandler = cb; }, addMapControl: () => {} };
 let menuHandler!: (payload: ContextMenuPayload) => void;
 
 async function mapWithMenu(): Promise<(payload: ContextMenuPayload) => void> {
@@ -50,7 +50,7 @@ describe('map context menu satellite pass entry', () => {
     expect(item).toBeDefined();
     item!.click();
     await vi.waitFor(() => expect(openOrbitalWatch).toHaveBeenCalledTimes(1));
-    expect(openOrbitalWatch).toHaveBeenCalledWith({ lat: payload.lat, lon: payload.lon }, map, 'sheet', dashboardMap);
+    expect(openOrbitalWatch).toHaveBeenCalledWith({ lat: payload.lat, lon: payload.lon }, map, dashboardMap);
     expect(document.querySelector('[role="menu"]')).toBeNull();
   });
 });

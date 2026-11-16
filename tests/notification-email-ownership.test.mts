@@ -59,6 +59,11 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
       if (url.includes('/LLEN/')) return Response.json({ result: 1 });
       if (url.includes('/LRANGE/')) return Response.json({ result: [JSON.stringify(queued[0])] });
       if (url.includes('/DEL/')) { heldDeleted = true; return Response.json({ result: 1 }); }
+      if (url.endsWith('/pipeline')) {
+        const cmds = JSON.parse(String(init?.body ?? '[]')) as string[][];
+        if (cmds.some((cmd) => cmd[0] === 'LREM')) heldDeleted = true;
+        return Response.json(cmds.map(() => ({ result: 1 })));
+      }
       if (url.includes('/SET/')) return Response.json({ result: 'OK' });
       throw new Error(`Unexpected transport: ${url}`);
     };

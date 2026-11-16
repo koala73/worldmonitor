@@ -406,8 +406,6 @@ export interface CommoditiesTabSelectionResult {
 import type {
   GetPhysicalDivergenceIndexResponse,
   GetPhysicalPremiumsResponse,
-  GetHyperliquidFlowResponse,
-  HyperliquidAssetFlow,
   PhysicalDivergenceReading,
   PhysicalDivergenceState,
   PhysicalPremiumRegime,
@@ -496,109 +494,6 @@ function physicalTrendArrow(trend: PhysicalPremiumTrend): string {
       throw new Error(`Unknown physical premium trend: ${String(exhaustive)}`);
     }
   }
-}
-
-function parseFiniteNumber(s: string): number | null {
-  if (typeof s !== 'string' || s === '') return null;
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
-}
-
-/**
- * OI Δ1h derived from sparkOi tail: (last - lookback) / lookback.
- * 12 samples back = 1h at 5min cadence. Returns null if too few samples.
- */
-function oiDelta1h(sparkOi: number[]): number | null {
-  if (!Array.isArray(sparkOi) || sparkOi.length < 13) return null;
-  const last = sparkOi[sparkOi.length - 1];
-  const lookback = sparkOi[sparkOi.length - 13];
-  if (last == null || lookback == null) return null;
-  if (!(lookback > 0) || !Number.isFinite(last)) return null;
-  return (last - lookback) / lookback;
-}
-
-/**
- * Map the raw bootstrap-hydrated seed snapshot (seeder JSON shape) into the
- * same view model the RPC mapper produces. Bootstrap returns the raw Redis
- * blob (numeric fields), not the proto response (string-encoded numbers).
- */
-export function mapHyperliquidFlowSeed(raw: Record<string, unknown>): HyperliquidFlowView | null {
-  const assets = Array.isArray(raw.assets) ? (raw.assets as Array<Record<string, unknown>>) : null;
-  if (!assets || assets.length === 0) return null;
-  const fxAssets: HyperliquidAssetView[] = [];
-  const commodityAssets: HyperliquidAssetView[] = [];
-  for (const a of assets) {
-    const funding = typeof a.funding === 'number' && Number.isFinite(a.funding) ? a.funding : null;
-    const sparkOi = Array.isArray(a.sparkOi) ? (a.sparkOi as number[]).filter((v) => Number.isFinite(v)) : [];
-    const sparkScore = Array.isArray(a.sparkScore) ? (a.sparkScore as number[]).filter((v) => Number.isFinite(v)) : [];
-    const view: HyperliquidAssetView = {
-      symbol: String(a.symbol ?? ''),
-      display: String(a.display ?? ''),
-      group: String(a.group ?? ''),
-      funding,
-      oiDelta1h: oiDelta1h(sparkOi),
-      composite: typeof a.composite === 'number' ? a.composite : 0,
-      warmup: Boolean(a.warmup),
-      stale: Boolean(a.stale),
-      sparkScore,
-    };
-    if (view.group === 'fx') fxAssets.push(view);
-    else commodityAssets.push(view);
-  }
-  return {
-    ts: typeof raw.ts === 'number' ? raw.ts : 0,
-    warmup: Boolean(raw.warmup),
-    fxAssets,
-    commodityAssets,
-    unavailable: false,
-  };
-}
-
-export function mapHyperliquidFlowResponse(resp: GetHyperliquidFlowResponse): HyperliquidFlowView {
-  const fxAssets: HyperliquidAssetView[] = [];
-  const commodityAssets: HyperliquidAssetView[] = [];
-  for (const a of resp.assets as HyperliquidAssetFlow[]) {
-    const view: HyperliquidAssetView = {
-      symbol: a.symbol,
-      display: a.display,
-      group: a.group,
-      funding: parseFiniteNumber(a.funding),
-      oiDelta1h: oiDelta1h(a.sparkOi),
-      composite: Number(a.composite || 0),
-      warmup: Boolean(a.warmup),
-      stale: Boolean(a.stale),
-      sparkScore: Array.isArray(a.sparkScore) ? a.sparkScore : [],
-    };
-    if (a.group === 'fx') fxAssets.push(view);
-    else commodityAssets.push(view);
-  }
-  return {
-    ts: Number(resp.ts || 0),
-    warmup: Boolean(resp.warmup),
-    fxAssets,
-    commodityAssets,
-    unavailable: false,
-  };
-}
-
-interface HyperliquidAssetView {
-  symbol: string;
-  display: string;
-  group: string;
-  funding: number | null;
-  oiDelta1h: number | null;
-  composite: number;
-  warmup: boolean;
-  stale: boolean;
-  sparkScore: number[];
-}
-
-interface HyperliquidFlowView {
-  ts: number;
-  warmup: boolean;
-  fxAssets: HyperliquidAssetView[];
-  commodityAssets: HyperliquidAssetView[];
-  unavailable: boolean;
 }
 
 // CCYUSD=X (e.g. EURUSD): USD is quote, rate = USD/FC → XAU_FC = XAU_USD / rate

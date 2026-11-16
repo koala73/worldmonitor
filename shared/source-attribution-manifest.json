@@ -1671,9 +1671,6 @@
       "references": [
         {
           "path": "scripts/seed-supply-chain-trade.mjs"
-        },
-        {
-          "path": "server/worldmonitor/trade/v1/_shared.ts"
         }
       ]
     },
@@ -7094,9 +7091,6 @@
       "references": [
         {
           "path": "scripts/seed-aviation.mjs"
-        },
-        {
-          "path": "server/worldmonitor/aviation/v1/_shared.ts"
         }
       ]
     },
@@ -8073,10 +8067,16 @@
           "path": "scripts/_orbital-sites.mjs"
         },
         {
+          "path": "scripts/_orbital-water-extent.mjs"
+        },
+        {
           "path": "scripts/measure-orbital-site-water.mjs"
         },
         {
           "path": "scripts/replay-orbital-change.mjs"
+        },
+        {
+          "path": "scripts/seed-orbital-water-extent.mjs"
         },
         {
           "path": "src/services/orbital/archive-stac.ts"
@@ -15519,6 +15519,9 @@
       "attribution": "Excluded from the provider count: standards reference, not an ingested source.",
       "status": "excluded",
       "references": [
+        {
+          "path": "src/components/MapLocateControl.ts"
+        },
         {
           "path": "src/embed/panels/fear-greed.ts"
         }

@@ -275,6 +275,7 @@ const EVENTS = {
   'sign-up-resume-dismissed': true,
   'sign-out': true,
   'gate-hit': true,
+  'panel-gate-click': true,
   // Free-user Pro strip call to action. Views are gate-hit feature=pro-banner;
   // clicks / views is the strip's click-through. `state` is upgrade | lapsed.
   'pro-banner-click': true,
@@ -1063,6 +1064,10 @@ export function trackGateHit(feature: string): void {
   track('gate-hit', { feature });
 }
 
+export function trackPanelGateClick(panel: string, reason: 'anonymous' | 'free_tier'): void {
+  track('panel-gate-click', { panel, reason });
+}
+
 // ---------------------------------------------------------------------------
 // Conversion funnel (#4931)
 // ---------------------------------------------------------------------------
@@ -1552,7 +1557,6 @@ export function trackProActivation(
 // ---------------------------------------------------------------------------
 
 export function trackEvent(_name: string, _props?: Record<string, unknown>): void {}
-export function trackEventBeforeUnload(_name: string, _props?: Record<string, unknown>): void {}
 
 // ---------------------------------------------------------------------------
 // Mission conversion funnel (ONBOARDING_STRATEGY.md, plan 2026-08-30-001)
@@ -1818,12 +1822,9 @@ export function replayPendingMissionReturn(): void {
     state.context.eventSurface,
   );
 }
-
-export function trackApiKeysSnapshot(): void {}
 export function trackUpdateShown(_current: string, _remote: string): void {}
 export function trackUpdateClicked(_version: string): void {}
 export function trackUpdateDismissed(_version: string): void {}
-export function trackDownloadBannerDismissed(): void {}
 
 // ---------------------------------------------------------------------------
 // Search

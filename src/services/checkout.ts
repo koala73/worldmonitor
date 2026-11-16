@@ -95,7 +95,6 @@ const CHECKOUT_REFERRAL_PARAM = 'checkoutReferral';
 const CHECKOUT_DISCOUNT_PARAM = 'checkoutDiscount';
 const PENDING_CHECKOUT_KEY = 'wm-pending-checkout';
 const POST_CHECKOUT_FLAG_KEY = 'wm-post-checkout';
-const APP_CHECKOUT_BASE_URL = `${WEB_APP_ORIGIN}/dashboard`;
 
 /**
  * The desktop "return to app" step (#5911). Handing checkout to the OS
@@ -296,21 +295,6 @@ export function initCheckoutWatchers(): void {
     }
     _lastUserId = nextId;
   });
-}
-
-export function buildCheckoutLaunchUrl(
-  productId: string,
-  options?: { referralCode?: string; discountCode?: string },
-): string {
-  const url = new URL(APP_CHECKOUT_BASE_URL);
-  url.searchParams.set(CHECKOUT_PRODUCT_PARAM, productId);
-  if (options?.referralCode) {
-    url.searchParams.set(CHECKOUT_REFERRAL_PARAM, options.referralCode);
-  }
-  if (options?.discountCode) {
-    url.searchParams.set(CHECKOUT_DISCOUNT_PARAM, options.discountCode);
-  }
-  return url.toString();
 }
 
 export function capturePendingCheckoutIntentFromUrl(): PendingCheckoutIntent | null {

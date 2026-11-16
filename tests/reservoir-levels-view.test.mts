@@ -9,11 +9,13 @@ import {
   needsAttention,
   reservoirDetail,
   reservoirHeadline,
+  reservoirNextPassText,
   reservoirMeasured,
   reservoirPlace,
   reservoirSparkline,
   reservoirTone,
   reservoirToneRgb,
+  resampleBaselineByTime,
   resampleByTime,
   sortReservoirs,
   statusLabel,
@@ -161,5 +163,42 @@ describe('reservoir wording', () => {
       { date: '2026-01-11', levelM: 110 },
     ], 3);
     assert.deepEqual(values.map((v) => Math.round(v * 1000) / 1000), [100, 105, 110]);
+  });
+});
+
+describe('reservoir context and next ICESat-2 crossing', () => {
+  it('labels a crossing as predicted from dated orbit data, and no crossing as a normal answer', () => {
+    const epoch = Date.parse('2026-11-13T18:00:00Z');
+    const windowEnd = Date.parse('2026-11-21T12:00:00Z');
+    assert.equal(
+      reservoirNextPassText({ status: 'pass', timeMs: Date.parse('2026-11-16T03:12:00Z'), windowEndMs: windowEnd, elementsEpochMs: epoch }, t, 'en-GB'),
+      'nextPass.at(date=16 Nov 2026,epoch=13 Nov 2026)',
+    );
+    assert.equal(
+      reservoirNextPassText({ status: 'none', windowEndMs: windowEnd, elementsEpochMs: epoch }, t, 'en-GB'),
+      'nextPass.none(date=21 Nov 2026,epoch=13 Nov 2026)',
+    );
+  });
+});
+
+describe('seasonal baseline resampling', () => {
+  it('leaves a gap where the seeder had no baseline instead of bridging it', () => {
+    const pts = [
+      { date: '2025-01-01', levelM: 10, baselineM: 10 },
+      { date: '2025-02-01', levelM: 11, baselineM: 11 },
+      { date: '2025-03-01', levelM: 12 },
+      { date: '2025-04-01', levelM: 13, baselineM: 13 },
+      { date: '2025-05-01', levelM: 14, baselineM: 14 },
+    ];
+    const base = resampleBaselineByTime(pts, 9);
+    assert.equal(base.length, 9);
+    assert.equal(base[0], 10);
+    assert.equal(base[8], 14);
+    assert.equal(base[4], null);
+    assert.ok(base.slice(3, 6).every((v) => v === null));
+  });
+
+  it('is empty with fewer than two baselined points', () => {
+    assert.deepEqual(resampleBaselineByTime([{ date: '2025-01-01', levelM: 1, baselineM: 1 }, { date: '2025-02-01', levelM: 2 }]), []);
   });
 });

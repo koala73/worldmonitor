@@ -1209,7 +1209,12 @@
       "shareLink": "링크 공유",
       "shareStory": "기사 공유",
       "printPdf": "인쇄 / PDF",
-      "exportData": "데이터 내보내기"
+      "exportData": "데이터 내보내기",
+      "sources": {
+        "summary": "출처와 기간 · {{count}}개 계열",
+        "note": "출처마다 기간이 다르며 24시간 합계가 아닙니다.",
+        "footer": "CII/CRI 입력값이 아닙니다."
+      }
     },
     "relatedAssets": {
       "pipeline": "파이프라인",
@@ -2117,7 +2122,14 @@
     "map": {
       "showMap": "지도 표시",
       "hideMap": "지도 숨기기",
-      "clearTrails": "추적 기록 삭제"
+      "clearTrails": "추적 기록 삭제",
+      "locate": "내 위치 표시"
+    },
+    "mapLocate": {
+      "locating": "위치 확인 중…",
+      "denied": "위치 접근이 거부되었습니다. 검색을 사용해 장소를 찾으세요.",
+      "unavailable": "위치를 찾을 수 없습니다. 검색을 사용해 장소를 찾으세요.",
+      "noCountry": "현재 위치에 국가가 없습니다. 검색을 사용해 장소를 찾으세요."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>인터넷 장애</strong> 글로벌 네트워크 모니터링을 통한 실시간 인터넷 장애, DDoS 공격, 트래픽 이상:<ul><li><strong>장애</strong>: BGP로 감지된 국가별 연결 장애</li><li><strong>DDoS</strong>: 프로토콜 및 벡터별 대규모 공격 보고</li><li><strong>이상</strong>: Cloudflare Radar의 비정상 트래픽 패턴</li></ul>",
@@ -2328,7 +2340,7 @@
       "proLocked": "PRO로 업그레이드하여 원자재 취약성 점수 확인"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>호르무즈 무역 추적기</strong> WTO DataLab의 호르무즈 해협 일일 해운 지수: 걸프만에서 나가는 원유, LNG, 비료 및 도착하는 농산물. 부피 기준, 2025년 1~3월 평균 = 100, AIS 식별 가능 선박만 포함. 상태 및 날짜는 WTO의 최신 분석에서 제공됩니다.",
+      "infoTooltip": "<strong>호르무즈 무역 추적기</strong> WTO DataLab의 호르무즈 해협 일일 해운 지수: 걸프만에서 나가는 원유, LNG, 비료 및 도착하는 농산물. 부피 기준, 2025년 1~3월 평균 = 100, AIS 식별 가능 선박만 포함. 차트는 일별 데이터이며, 상태는 WTO 논평에서 발췌.",
       "title": "호르무즈 무역 추적기",
       "noData": "데이터 없음",
       "notAvailable": "해당 없음",
@@ -2341,8 +2353,10 @@
         "unavailable": "호르무즈 데이터를 사용할 수 없음",
         "failedToLoad": "로드 실패"
       },
-      "analysisDate": "WTO 분석 {{date}}",
-      "indexNote": "부피 기준 해운 지수, 2025년 1~3월 평균 = 100"
+      "analysisDate": "WTO 평론 {{date}}",
+      "indexNote": "부피 기준 해운 지수, 2025년 1~3월 평균 = 100",
+      "dataThrough": "{{date}}까지의 일일 데이터",
+      "noShipments": "{{from}}부터 {{to}}까지 기록된 선적이 없습니다"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>실시간 웹캠</strong> 전 세계 지정학적으로 중요한 장소의 실시간 피드: 분쟁 지역, 수도, 국경 검문소, 전략적 병목지점. YouTube 및 공개 네트워크의 스트림."
@@ -3165,6 +3179,34 @@
         "change365": "12개월간",
         "measured": "측정일",
         "sparkline": "36개월 수위"
+      },
+      "nextPass": {
+        "label": "다음 ICESat-2 통과",
+        "loading": "불러오는 중…",
+        "at": "{{date}} ({{epoch}} 궤도 데이터 기준 예측, 구름이 라이다를 가릴 수 있음)",
+        "none": "이 기간에는 측정 없음({{date}}까지), {{epoch}} 궤도 데이터",
+        "unavailable": "궤도 데이터를 사용할 수 없음"
+      },
+      "siteContext": {
+        "label": "이 지점의 전략 저수지"
+      },
+      "energyContext": {
+        "heading": "전략 저수지",
+        "hydro": "수력 발전 1차 에너지의 {{share}}%"
+      },
+      "countryEvidence": {
+        "heading": "수위",
+        "empty": "이 나라의 전략 저수지 중 최근 통과 시 계절 기준선을 벗어난 곳은 없습니다.",
+        "measured": "{{date}} 측정"
+      },
+      "card": {
+        "measured": "측정 {{date}} · {{age}}",
+        "noCrossing": "이 기간에 없음({{date}}까지)",
+        "crossing": "ICESat-2 예상 통과",
+        "summary": "저수지 {{total}}곳 중 {{beyond}}곳이 계절 기준선 밖",
+        "latestPass": "최근 ICESat-2 통과 {{date}}",
+        "sparkline": "36개월 수위, 계절 기준선은 점선",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). 날짜가 있는 통과의 라이다 수면 높이로, 실시간 값이나 저수량이 아닙니다."
       }
     },
     "gridDisruptionClock": {
@@ -3254,7 +3296,6 @@
       }
     },
     "protest": {
-      "acledVerified": "ACLED (검증됨)",
       "gdelt": "GDELT",
       "records": "개 기록",
       "mediaSignal": "미확인 미디어 신호",
@@ -4441,7 +4482,8 @@
   "contextMenu": {
     "openCountryBrief": "국가 개요 열기",
     "copyCoordinates": "좌표 복사",
-    "satellitePasses": "이 지점을 지나는 위성"
+    "satellitePasses": "이 지점을 지나는 위성",
+    "imageryEvidenceHere": "이 지점의 위성 영상 증거"
   },
   "shell": {
     "documentTitle": "World Monitor — 실시간 글로벌 인텔리전스 대시보드",
@@ -5137,300 +5179,344 @@
     "errLoad": "여행 위험 평가를 열 수 없습니다. 페이지를 새로고침하고 다시 시도하세요."
   },
   "orbitalWatch": {
-    "track": {
-      "unavailable": "이 통과의 지상 궤적을 그릴 수 없습니다"
-    },
-    "replay": {
-      "acquisition": "촬영 · {{name}}",
-      "acquired": "촬영됨 {{time}} · {{resolution}}",
-      "play": "재생",
-      "pause": "일시정지",
-      "scrub": "재생 위치",
-      "reducedMotion": "동작 줄이기"
-    },
-    "computing": "위성 카탈로그를 불러오는 중…",
-    "computingProgress": "통과 계산 중: 위성 {{total}}개 중 {{done}}개",
-    "unavailable": "위성 카탈로그를 불러오지 못해 이 지점의 통과를 계산하지 않았습니다.",
-    "checkingArchives": "아카이브 확인 중: {{total}}곳 중 {{done}}곳 응답",
-    "confirmedCount": "확인된 영상: {{count}}",
-    "counts": {
-      "mosaics": "일일 모자이크: {{count}}",
-      "frames": "기상 영상: {{count}}",
-      "inRange": "범위 내 통과: {{count}}"
-    },
-    "partial": "{{sources}}이(가) 응답하지 않아 일부 통과에 영상이 없을 수 있습니다.",
-    "stale": "궤도 데이터가 오래되었습니다. 위성 카탈로그가 {{age}} 전 것이므로 통과 시간이 다를 수 있습니다.",
-    "empty": "지난 {{pastDays}}일 동안 이 지점 위를 지난 등록된 영상 위성이 없으며 향후 {{futureHours}}시간 동안에도 지나지 않습니다.",
-    "sources": "출처 · {{count}}",
-    "sourcesDocs": "이 출처를 사용하는 방법",
-    "privacy": "이 지점은 브라우저에만 남습니다. 브라우저가 직접 호출하는 공개 아카이브인 Earth Search, Microsoft Planetary Computer, NASA GIBS, EUMETSAT에만 전송됩니다. 유일한 예외는 지명 검색으로, 입력한 이름은 지명 검색 서비스로 전송됩니다.",
-    "inRange": "범위 내",
+    "track": {},
+    "replay": {},
+    "counts": {},
     "tier": {
       "checking": "아카이브 확인 중",
-      "confirmed": "확인된 영상",
-      "likely": "촬영 가능성 높음",
-      "opportunity": "예정된 통과",
-      "dailyMosaic": "일일 모자이크에 포함",
-      "withinReach": "범위 내",
-      "capabilityOverhead": "능력 상공 통과",
-      "passedOverhead": "상공 통과",
+      "confirmed": "확인됨",
+      "likely": "가능성 높음",
       "unmatchedImage": "계산된 통과 없는 영상",
       "weatherFrame": "기상 영상",
-      "unavailable": "사용할 수 없음"
+      "unavailable": "사용할 수 없음",
+      "inReach": "지향 가능",
+      "capability": "촬영 가능",
+      "inRange": "범위 내",
+      "mosaic": "모자이크",
+      "upcoming": "예정"
     },
     "row": {
       "offNadir": "천저에서 {{deg}}°",
-      "distance": "지상 궤적에서 {{km}}km",
-      "orbitAge": "궤도 데이터 {{age}} 전",
-      "edgeOfSwath": "관측폭 가장자리",
-      "notInArchive": "아카이브에 영상 없음",
-      "geometryDisagreed": "모델 관측 폭 밖",
-      "archiveUnanswered": "아카이브가 응답하지 않음",
-      "imageAlt": "{{name}} 영상, {{time}}",
-      "mosaicDays": "아카이브의 일수: {{count}}",
-      "cadence": "{{minutes}}분마다 새 영상",
-      "sourceUnavailable": "아카이브에 이 기간 동안 이 출처의 영상이 없습니다.",
-      "imageLoading": "이미지 불러오는 중…",
-      "imageFailed": "이미지를 불러오지 못했습니다. 아카이브가 느리거나 중단되었을 수 있습니다.",
-      "noPreview": "아카이브에 아직 이 장면의 미리보기가 없습니다."
+      "distance": "지상 궤적까지 {{km}} km",
+      "orbitAge": "궤도 데이터",
+      "imageLoading": "장면 로딩 중…",
+      "satellite": "위성",
+      "sensor": "센서",
+      "time": "시간",
+      "in": "남은 시간",
+      "tier": "상태",
+      "elevation": "앙각",
+      "point": "지점",
+      "pixel": "픽셀",
+      "credit": "아카이브",
+      "orbitAgeValue": "{{age}} 경과"
     },
-    "dailyMosaics": "일일 모자이크",
-    "weatherFrames": "기상 영상",
     "ui": {
-      "change": "변경",
-      "share": "공유",
-      "shareCopied": "링크 복사됨",
-      "headline": "지난 {{days}}일 동안 {{satellites}}이 {{place}} 위를 지나갔습니다.",
-      "satellites_other": "위성 {{count}}기",
-      "subline_other": "이미지 {{count}}장이 공개되었습니다.",
-      "closestLook": "가장 가까운 촬영",
-      "replay": "재생",
-      "openFull": "전체 보기 열기",
-      "previous": "이전 이미지",
-      "next": "다음 이미지",
-      "passes_other": "회 통과",
-      "showAll": "모든 통과 보기",
-      "noRecentDays": "아카이브에 최근 날짜 없음: {{sources}}",
-      "tab": {
-        "all": "전체",
-        "detailed": "상세",
-        "weather": "기상"
-      },
-      "caption": {
-        "clear": "지점 맑음",
-        "clearSceneCloud": "지점 맑음 · 장면 구름 {{pct}}%",
-        "clouded": "흐림 · {{pct}}%",
-        "cloudShadow": "구름 그림자",
-        "spotNotChecked": "지점 구름 미확인",
-        "sceneCloud": "장면 구름 {{pct}}% · 지점 미확인",
-        "radar": "레이더",
-        "dailyMosaic": "일일 모자이크",
-        "geostationary": "정지궤도 전체 디스크",
-        "geostationaryCadence": "정지궤도 · {{minutes}}분마다"
-      },
-      "tile": {
-        "failed": "이미지 없음 · {{archive}}",
-        "noPreview": "아카이브에 아직 이 장면의 미리보기가 없습니다"
-      },
-      "grid": {
-        "watched": "촬영됨",
-        "watchedDef": "공개 아카이브에 이 지점의 이미지가 있습니다.",
-        "likely": "촬영 가능성 높음",
-        "likelyDef": "고정 관측폭 센서가 포함했지만 아직 공개된 이미지가 없습니다.",
-        "could": "이곳을 겨눌 수 있었음",
-        "couldDef": "지향 가능하거나 상업용 센서가 범위 안에 있었으나 운영자는 관측 여부를 밝히지 않습니다.",
-        "overhead": "상공 통과",
-        "overheadDef": "촬영 증거 없이 이곳 하늘을 지나갔습니다.",
-        "watchedShort": "공개 아카이브에 영상 있음",
-        "watchedNoPreviewShort": "아카이브에 있음, 공개 미리보기 없음",
-        "likelyShort": "관측됨, 아직 영상 없음",
-        "likelyUnansweredDef": "고정 관측폭 센서가 이곳을 지났지만 아카이브가 응답하지 않아 이미지가 있을 수 있습니다.",
-        "likelyUnansweredShort": "관측됨, 아카이브 응답 없음",
-        "couldShort": "지향형 센서가 범위 내",
-        "overheadShort": "상공 통과, 영상 없음"
-      },
-      "group": {
-        "watched": "촬영됨",
-        "likely": "촬영 가능성 높음",
-        "upcoming": "예정",
-        "could": "이곳을 겨눌 수 있었음",
-        "overhead": "상공 통과",
-        "weather_other": "기상 소스"
-      },
-      "order": {
-        "closest": "가장 가까운 촬영, 이후 최신순",
-        "newest": "최신순",
-        "soonest": "빠른 순"
-      },
-      "row": {
-        "cloud": "구름 {{pct}}%",
-        "days_other": "{{count}}일",
-        "repeats": "이 그룹에서 이 위성의 통과 {{count}}회"
-      },
-      "section": {
-        "summary": "요약",
-        "passes": "통과"
-      },
-      "status": {
-        "objects": "{{count}}기의 영상 위성 · CelesTrak GP",
-        "fetched": "가져옴 {{time}} · {{ago}}",
-        "sun": "태양 {{point}} · 태양 직하점"
-      },
-      "step": {
-        "computing": "계산 중",
-        "catalogLoading": "카탈로그 · 불러오는 중",
-        "catalog": "카탈로그 · {{count}}기의 영상 위성",
-        "propagating": "궤도 계산 중 · {{done}} / {{total}}",
-        "archives": "아카이브 · {{done}} / {{total}} 응답",
-        "matching": "장면을 통과 {{passes}}회와 대조 중",
-        "window": "7일 범위 · {{start}} → {{end}}",
-        "failed": "실패",
-        "note": "Planetary Computer와 NASA GIBS는 요청 시 이미지를 생성하므로 이 단계는 몇 초 걸릴 수 있습니다."
-      },
-      "privacyLine": "지점은 브라우저에만 남습니다",
-      "privacyHow": "방법",
-      "sources": "출처",
-      "archiveScene": "아카이브 장면",
-      "archiveOnly": "계산된 통과와 일치하지 않는 영상이므로 아카이브 장면으로 표시합니다.",
-      "zoneShowUtc": "시간을 UTC로 표시",
-      "zoneShowLocal": "시간을 이 장소의 현지 시간으로 표시"
+      "tab": {},
+      "caption": {},
+      "tile": {},
+      "grid": {},
+      "group": {},
+      "order": {},
+      "row": {},
+      "section": {},
+      "status": {},
+      "step": {}
     },
     "viewer": {
-      "open": "이미지 뷰어 열기: {{image}}",
-      "bestView": "최적 이미지 열기: {{name}}, {{time}}",
-      "imageAlt": "{{name}} 이미지, {{time}}",
-      "close": "이미지 뷰어 닫기",
-      "northUp": "위쪽이 북쪽",
-      "unreferenced": "아카이브가 제공한 방향 그대로이며 북쪽은 표시되지 않음",
-      "compareDates": "이 컬렉션의 다른 날짜",
-      "compareNone": "비교할 같은 컬렉션의 다른 장면이 없습니다.",
-      "divider": "전후 비교 구분선",
-      "searching": "지난 {{days}}일간 이 장소의 장면을 찾는 중",
-      "historyFailed": "{{archive}}이(가) 응답하지 않아 이전 장면이 없습니다.",
-      "historyTimeout": "{{archive}}이(가) 제때 응답하지 않아 이전 장면이 없습니다.",
-      "loading": "프레임 불러오는 중: {{loaded}} / {{total}}",
-      "pause": "일시정지",
-      "resume": "재생",
-      "next": "다음 프레임",
+      "open": "장면 열기: {{image}}",
+      "imageAlt": "{{name}} 장면, {{time}}",
+      "close": "장면 뷰어 닫기",
+      "northUp": "북쪽이 위",
+      "unreferenced": "아카이브 원본 방향; 북쪽 미표시",
+      "compareDates": "이 컬렉션의 날짜",
+      "compareNone": "이 컬렉션에 두 번째 장면이 없습니다.",
+      "divider": "기준 영상 구분선",
+      "searching": "{{days}}일간의 아카이브 장면 검색 중",
+      "historyFailed": "{{archive}}에서 오류 발생; 이전 장면을 사용할 수 없습니다.",
+      "historyTimeout": "{{archive}} 시간 초과; 이전 장면을 사용할 수 없습니다.",
+      "loading": "로드된 프레임: {{loaded}}/{{total}}",
       "closeLabel": "닫기",
-      "agoNow": "방금",
+      "agoNow": "지금",
       "agoHours": "{{count}}시간 전",
       "agoDays": "{{count}}일 전",
       "clear": "맑음",
-      "clouded": "구름 · {{pct}}%",
-      "tabImage": "이미지",
-      "tabChange": "변화",
+      "clouded": "구름 {{pct}}%",
+      "tabImage": "장면",
+      "tabChange": "비교",
       "metaAcquired": "촬영",
       "metaDate": "날짜",
       "metaPixel": "픽셀",
-      "metaSpot": "지점 구름",
+      "metaSpot": "지점의 구름",
       "metaScene": "장면 구름",
       "metaSun": "태양 고도",
-      "showCloudy": "흐린 날짜 표시 ({{count}})"
+      "showCloudy": "흐린 날짜 포함 ({{count}})"
     },
-    "timelapse": {
-      "heading": "타임랩스",
-      "entry": "이곳의 연도별 변화",
-      "open": "이곳의 연도별 타임랩스 열기",
-      "searching": "2015년부터 해마다 맑은 장면 1개 찾는 중 · {{archive}}",
-      "loading": "장면 불러오는 중 · {{loaded}} / {{total}}",
-      "failed": "{{archive}}이(가) 응답하지 않아 연도별 장면이 없습니다.",
-      "timeout": "{{archive}}이(가) 제때 응답하지 않아 연도별 장면이 없습니다.",
-      "partial": "{{archive}} 무응답으로 빠진 연도: {{count}}.",
-      "tooFew": "이곳의 맑은 연도별 장면: {{count}}. 타임랩스에는 {{min}}개가 필요합니다.",
-      "total": "맑은 장면 {{count}}개 · 해마다 1개",
-      "years": "연도",
-      "share": "공유",
-      "method": "각 프레임은 Sentinel-2의 같은 6km 정사각형을 자연색으로 보여 줍니다. 해마다 다른 계절을 찾아 구름이 가장 적은 장면을 쓰며, 구름 30% 미만 장면이 없는 해는 뺍니다."
-    },
+    "timelapse": {},
     "passDetail": {
-      "back": "모든 통과",
-      "altitude": "고도",
-      "offNadir": "오프나디르",
-      "crossed": "{{name}}은(는) 고도 {{altitude}}km에서 이 지점의 {{direction}} {{distance}}km 지점을 {{time}}에 지상 속도 {{speed}}km/s로 지나갔습니다.",
-      "crossedHeading": "{{name}}은(는) 고도 {{altitude}}km에서 이 지점의 {{direction}} {{distance}}km 지점을 {{time}}에 {{heading}}으로 지상 속도 {{speed}}km/s로 지나갔습니다.",
-      "looking": "바로 아래에서 {{deg}}° 기울여 보고 있었습니다.",
-      "sceneCloud": "장면 구름량: {{pct}}%.",
-      "pixelLine": "{{m}}m 픽셀",
-      "swathLine": "{{km}}km 관측 폭",
-      "clearestLook": "가장 맑은 이미지",
-      "previous": "이전 통과",
-      "next": "다음 통과",
-      "dir": {
-        "n": "북쪽",
-        "ne": "북동쪽",
-        "e": "동쪽",
-        "se": "남동쪽",
-        "s": "남쪽",
-        "sw": "남서쪽",
-        "w": "서쪽",
-        "nw": "북서쪽"
-      },
-      "heading": {
-        "north": "북쪽",
-        "south": "남쪽"
-      }
+      "dir": {},
+      "heading": {}
     },
     "search": {
-      "label": "장소 이름 또는 좌표",
-      "placeholder": "장소 이름 또는 48.8584, 2.2945",
+      "label": "장소 또는 좌표",
+      "placeholder": "장소 또는 25.11, 55.14",
       "submit": "검색",
-      "locate": "내 위치 사용",
-      "hint": "좌표와 내 위치는 이 브라우저에만 남습니다. 검색한 장소 이름은 WorldMonitor와 OpenStreetMap의 Nominatim으로 전송됩니다.",
-      "results": "일치하는 장소",
+      "locate": "내 위치",
+      "hint": "입력한 좌표와 현재 위치는 WorldMonitor로 전송되지 않습니다. 입력한 장소명은 WorldMonitor와 OpenStreetMap Nominatim으로 전송됩니다.",
+      "results": "장소",
       "searching": "검색 중…",
-      "tooShort": "두 글자 이상 또는 48.8584, 2.2945 같은 좌표를 입력하세요.",
-      "invalidCoordinates": "이 좌표는 지구 범위를 벗어났습니다. 위도는 -90에서 90, 경도는 -180에서 180 사이입니다.",
-      "failed": "지금은 장소 검색을 사용할 수 없습니다. 좌표와 지도는 계속 작동합니다.",
-      "noResults": "이 이름과 일치하는 장소가 없습니다.",
-      "locating": "위치를 찾는 중…",
-      "locationDenied": "위치 권한이 거부되었습니다. 장소를 검색하거나 지도를 마우스 오른쪽 버튼으로 클릭하세요.",
-      "locationUnavailable": "위치를 찾을 수 없습니다. 장소를 검색하거나 지도를 마우스 오른쪽 버튼으로 클릭하세요.",
-      "idle": "이름이나 좌표로 장소를 검색하거나, 내 위치를 사용하거나, 지도를 마우스 오른쪽 버튼으로 클릭해 그 위를 지나간 위성을 확인하세요."
+      "tooShort": "최소 2글자를 입력하거나 25.11, 55.14 형식의 좌표를 입력하세요.",
+      "invalidCoordinates": "위도는 -90에서 90 사이, 경도는 -180에서 180 사이여야 합니다.",
+      "failed": "장소 검색 실패. 좌표와 지도 클릭은 계속 작동합니다.",
+      "noResults": "일치하는 장소가 없습니다.",
+      "locating": "위치 파악 중…",
+      "locationDenied": "위치 접근이 거부되었습니다. 장소명을 입력하거나 지도를 마우스 오른쪽 클릭하세요.",
+      "locationUnavailable": "위치를 찾을 수 없습니다. 장소명을 입력하거나 지도를 마우스 오른쪽 클릭하세요.",
+      "idle": "장소명을 입력하거나 기기 위치를 사용하거나 지도를 마우스 오른쪽 클릭하여 해당 지점의 영상 증거를 여세요."
     },
     "share": {
-      "copy": "공유 링크 복사",
       "copied": "링크가 복사되었습니다",
-      "copyManually": "아래 링크를 복사하세요",
+      "copyManually": "이 링크 복사",
       "link": "공유 링크",
       "dismiss": "닫기",
-      "passOutsideWindow": "링크된 통과가 현재 기간을 벗어나 선택된 통과가 없습니다.",
-      "passNotFound": "링크된 통과를 다시 계산한 통과 중에서 찾지 못해 선택된 통과가 없습니다."
+      "passOutsideWindow": "연결된 통과가 현재 기간 밖에 있어 선택된 통과가 없습니다.",
+      "passNotFound": "연결된 통과가 재계산된 목록에 없어 선택된 통과가 없습니다."
     },
     "timeline": {
       "now": "현재",
       "nowAt": "현재: {{time}}",
-      "density": "{{label}} 통과, {{start}}~{{end}}: {{count}}",
-      "daylight": "지점의 낮 시간 {{start}}~{{end}}",
+      "density": "{{label}}, {{start}}–{{end}}: {{count}}",
+      "daylight": "이곳의 낮 시간: {{start}}–{{end}}",
       "unavailable": "사용 불가",
-      "notRetained": "이번 주 데이터 없음",
-      "notRetainedSpan": "{{label}}: {{start}}~{{end}} 데이터 없음",
+      "notRetained": "피드에 기록 없음",
+      "notRetainedSpan": "{{label}}: {{start}}–{{end}} 피드 기록 없음",
       "countryWide": "전국",
       "source": {
         "conflict": "분쟁",
         "fires": "화재",
         "unrest": "소요",
-        "outages": "인터넷 장애"
+        "outages": "장애"
       },
       "live": {
-        "vessels": "선박 교통",
+        "vessels": "해운",
         "militaryFlights": "군용기",
         "gpsJamming": "GPS 교란"
       },
       "name": "타임라인",
-      "span": "{{days}}일 · 향후 {{hours}}시간",
-      "daylightHere": "이곳의 낮",
+      "span": "지난 {{days}}일 · 향후 {{hours}}시간",
+      "daylightHere": "지점의 낮 시간",
       "row": {
-        "geo": "정지",
-        "photo": "촬영",
-        "likely": "유력",
-        "could": "가능",
-        "overhead": "통과"
+        "images": "이미지",
+        "events": "이벤트",
+        "passes": "통과"
       },
-      "retained": "{{start}}~{{end}}",
-      "retainedDay": "{{day}}만",
-      "geoLine": "시야 내 정지궤도: {{names}}",
-      "away": "{{km}}km 거리"
+      "retained": "기록 {{start}}–{{end}}",
+      "retainedDay": "기록 {{day}}만",
+      "geoLine": "정지궤도 시야: {{names}}",
+      "away": "{{km}} km",
+      "densityTip_other": "{{start}}부터의 통과 {{count}}개 · {{names}}"
+    },
+    "satelliteSites": {
+      "heading": "감시 중인 지점 · 다음 {{hours}}시간",
+      "projecting": "통과 계산 중…",
+      "notLoaded": "위성을 다시 클릭하세요. 궤도 요소가 로드되지 않았습니다.",
+      "failed": "위성을 다시 클릭하여 재시도하세요. 통과 계산에 실패했습니다.",
+      "viewFailed": "위성을 다시 클릭하여 재시도하세요. 지점 목록을 로드할 수 없었습니다.",
+      "unavailable": "위성을 다시 클릭하여 재시도하세요. 통과 기하 계산에서 이 궤도 요소를 사용할 수 없습니다.",
+      "signals": "신호정보 위성입니다. 영상 센서가 없어 지상 관측 범위를 모델링하지 않습니다.",
+      "noProfile": "이 위성의 센서 프로필이 없어 지상 관측 범위를 모델링하지 않습니다.",
+      "geostationary": "정지궤도: 한 경도 위에 고정되어 있어 통과 목록이 없습니다.",
+      "badElements": "궤도 요소를 읽을 수 없습니다.",
+      "none": "{{hours}}시간 내에 관측 범위에 들어오는 감시 중인 지점이 없습니다.",
+      "utc": "{{time}} UTC",
+      "inMinutes": "{{minutes}}분 후",
+      "inHours": "{{hours}}시간 {{minutes}}분 후",
+      "offTrack": "지상 궤적에서 {{km}} km",
+      "swathEdge": "관측폭 가장자리",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "유형",
+        "operator": "운영 기관",
+        "over": "상공",
+        "ocean": "해양",
+        "altBand": "고도 범위",
+        "inclination": "경사각",
+        "velocity": "속도",
+        "types": {
+          "sar": "SAR 촬상",
+          "optical": "광학 촬상",
+          "military": "군사",
+          "sigint": "SIGINT",
+          "signals": "신호정보"
+        }
+      },
+      "tooOld_other": "궤도 요소가 {{count}}일 전 것이어서 통과를 계산하기에는 너무 오래되었습니다.",
+      "count_other": "{{family}} 관측 범위 내 {{count}}개 지점",
+      "passes_other": "{{count}}회 통과"
+    },
+    "sheet": {
+      "heading": "위성 영상 증거",
+      "window": "지난 {{days}}일, 향후 {{hours}}시간",
+      "apart": "집계 제외:",
+      "newest": "최신 {{when}}",
+      "newestNoPreview": "최신 촬영 {{when}}의 미리보기 없음; 이전 장면 표시",
+      "noneConfirmed": "이 기간의 확인된 영상 없음",
+      "noneYet": "아카이브 응답 대기 중",
+      "latest": "최신 영상",
+      "latestNone": "이 지점과 기간에 대해 아카이브에서 반환된 항목 없음",
+      "latestChecking": "아카이브 검색 진행 중. 계산된 패스가 아래에 나열됨",
+      "compareWith": "비교 대상",
+      "compareDate": "기준 날짜",
+      "moreImages": "기타 확인된 영상",
+      "imageAlt": "{{sensor}} 장면, {{time}}",
+      "dailyMosaic": "일일 모자이크",
+      "weatherFrame": "기상 프레임",
+      "change": "위치 변경",
+      "showUtc": "UTC",
+      "showLocal": "현지 시간",
+      "alert": "공개 데이터 위성이 상공을 통과하기 전과, 구름 없는 새 영상이 나올 때마다 알림",
+      "alertCta": "알림 설정 · Pro",
+      "height": {
+        "collapsed": "시트 축소됨. 절반 높이로 확장",
+        "half": "시트가 절반 높이. 전체 높이로 확장",
+        "full": "시트 확장됨. 축소"
+      },
+      "apartMosaics_other": "일일 모자이크 {{count}}개",
+      "apartFrames_other": "기상위성 프레임 {{count}}개",
+      "apartInRange_other": "범위 내 통과 {{count}}개",
+      "confirmedCount_other": "확인된 영상 {{count}}개"
+    },
+    "tierDef": {
+      "confirmed": "아카이브에 해당 지점을 포함하는 장면 목록 있음",
+      "likely": "고정 폭 커버리지가 해당 지점 포함; 아직 아카이브된 장면 없음",
+      "inReach": "조향 가능한 센서가 이 지점을 지향할 수 있음. 작업 지시는 공개되지 않음",
+      "capability": "공개 아카이브가 없는 센서 유형이 상공을 지나갔음"
+    },
+    "events": {
+      "heading": "이 지점의 이벤트",
+      "kindLabel": "유형",
+      "detail": "상세",
+      "now": "현재",
+      "loading": "이벤트 피드 로딩 중…",
+      "none": "지난 {{days}}일 동안 {{km}} km 범위 내 이벤트 없음",
+      "unavailable": "사용 불가: {{sources}}",
+      "kind": {
+        "conflict": "분쟁",
+        "fires": "화재",
+        "unrest": "소요",
+        "outages": "장애",
+        "vessels": "해운",
+        "military-flights": "군용기",
+        "gps-jamming": "GPS 재밍"
+      }
+    },
+    "capability": {
+      "heading": "이 지점을 관측할 수 있는 센서",
+      "none": "이 기간 내 센서 통과 없음",
+      "tooOld": "궤도 데이터 너무 오래됨: {{names}}",
+      "showAll": "전체 {{count}}개 표시",
+      "showFewer": "더 적게 표시",
+      "group": {
+        "open": "공개 데이터",
+        "commercial": "상업용",
+        "government": "정부",
+        "military": "군사",
+        "other": "기타"
+      }
+    },
+    "windows": {
+      "heading": "다음 관측 윈도우",
+      "optical": "공개 광학",
+      "radar": "공개 레이더",
+      "none": "{{hours}}시간 내 예정된 공개 광학 또는 레이더 통과 없음"
+    },
+    "status": {
+      "catalog": "위성 카탈로그 로딩 중…",
+      "computing": "통과 계산 중 · 위성 {{done}}/{{total}}",
+      "checking": "아카이브 응답: {{done}}/{{total}}",
+      "partial": "{{sources}}에서 응답 없음. 수치가 낮을 수 있습니다.",
+      "staleCatalog": "카탈로그가 {{age}} 지났습니다. 예측 시간이 어긋날 수 있습니다.",
+      "empty": "이 기간 동안 이 지점에 도달한 위성 없음",
+      "unavailable": "통과 데이터를 사용할 수 없습니다. 나중에 다시 시도하세요."
+    },
+    "privacy": {
+      "line": "귀하의 포인트는 이미지 아카이브에만 전송됩니다.",
+      "more": "세부정보",
+      "body": "패스는 이 기기에서 계산됩니다. 이미지를 찾기 위해 브라우저가 포인트를 Earth Search, Planetary Computer, NASA GIBS, EUMETSAT으로 직접 전송합니다. WorldMonitor는 이를 수신하지 않습니다. 모니터링 지점에서는 WorldMonitor에 사용자의 지점이 아닌 지점 ID로 해당 지점의 일일 기록을 요청합니다. 입력한 지명은 WorldMonitor와 OpenStreetMap Nominatim으로 전송되어 검색됩니다. 공유 링크는 소수점 2자리(0.01°)로 유지됩니다."
+    },
+    "sources": {
+      "heading": "소스 ({{count}})",
+      "docs": "방법 및 범위",
+      "conflict": "분쟁 및 소요 이벤트",
+      "fires": "화재 감지",
+      "outages": "인터넷 장애 피드",
+      "vessels": "선박 위치"
+    },
+    "caption": {
+      "clear": "지점에 구름 없음",
+      "clearSceneCloud": "지점에 구름 없음 · 장면 {{pct}}% 구름",
+      "clouded": "지점에 구름 · {{pct}}%",
+      "cloudShadow": "지점에 그림자",
+      "spotNotChecked": "지점 구름 불명",
+      "sceneCloud": "장면 {{pct}}% 구름 · 지점 불명",
+      "radar": "레이더 · 구름의 영향 없음"
+    },
+    "tile": {
+      "failed": "장면 로드 실패 · {{archive}}",
+      "noPreview": "이 장면에 대한 미리보기가 아직 공개되지 않음",
+      "radar": "레이더"
+    },
+    "target": {
+      "acquired": "촬영 {{time}} · {{resolution}}"
+    },
+    "popup": {
+      "title": "위성 영상",
+      "loading": "위성 아카이브 확인 중…",
+      "latest": "최신 영상",
+      "nextPass": "다음 통과",
+      "noImage": "최근 영상을 찾을 수 없음",
+      "noPass": "72시간 내 통과 예정 없음",
+      "openEvidence": "증거 열기",
+      "imageAlt": "{{source}} 위성 화면",
+      "unavailable": "위성 영상을 불러오지 못했습니다.",
+      "fire": {
+        "title": "위성 화재 감지",
+        "detected": "감지됨",
+        "satellite": "위성",
+        "confidence": "신뢰도",
+        "confidenceHigh": "높음",
+        "confidenceNominal": "보통",
+        "confidenceLow": "낮음",
+        "power": "화재 강도",
+        "powerValue": "{{value}} MW",
+        "region": "지역",
+        "source": "출처",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "일일 모자이크",
+        "mosaicLoading": "NASA GIBS 확인 중…",
+        "mosaicCaption": "{{date}}의 {{source}} 패스에 대한 일일 합성 이미지입니다. 화재가 구름이나 연기에 가려져 있을 수 있습니다.",
+        "mosaicNone": "NASA GIBS에 {{date}}의 {{source}} 모자이크가 없습니다.",
+        "mosaicNoLayer": "이 위성에 사용 가능한 일일 모자이크가 없습니다.",
+        "mosaicUnavailable": "일일 모자이크를 불러올 수 없습니다.",
+        "mosaicAlt": "NASA GIBS {{source}} {{date}} 일일 모자이크"
+      }
+    },
+    "site": {
+      "heading": "모니터링 지점",
+      "loading": "지점의 일일 기록을 불러오는 중…",
+      "failed": "지점의 일일 기록을 불러오지 못했습니다. 다시 시도하려면 지점을 다시 여세요.",
+      "stale": "이 지점에 대한 현재 일일 점검 기록이 없습니다.",
+      "checked": "확인 시각",
+      "noPass": "예정된 통과 기록 없음",
+      "list": {
+        "hotspot": "핫스팟",
+        "conflictZone": "분쟁 지역",
+        "militaryBase": "군사 기지",
+        "nuclearFacility": "핵 시설",
+        "port": "항구",
+        "chokepoint": "해협",
+        "reservoir": "저수지"
+      }
     }
   },
   "settings": {
@@ -5678,6 +5764,21 @@
         "5": "로그아웃",
         "6": "계정 삭제"
       }
+    },
+    "reservoirAlert": {
+      "title": "수위 알림",
+      "description": "전략적 저수지의 라이다 수위가 낮을 때 알림을 받습니다. NASA는 각 위성 촬영 이후 약 2개월 뒤에 데이터를 공개하므로 모든 알림에는 측정 날짜가 포함됩니다.",
+      "scopeHint": "최대 {{max}}개의 저수지를 선택합니다. 알림은 여기에 나열된 저수지에만 적용됩니다.",
+      "searchPlaceholder": "저수지 이름으로 추가",
+      "searchLabel": "저수지 추가",
+      "removeLabel": "{{name}} 제거",
+      "thresholdLabel": "수위 임계값",
+      "thresholdHint": "최신 측정 수위가 저수지의 측정 범위의 몇 퍼센트 이하일 때 알림을 받습니다. 여기서 0은 측정된 최저 수위, 100은 최고 수위입니다. 임계값을 설정하지 않으려면 비워 두세요.",
+      "thresholdInputLabel": "수위 임계값, 측정 범위의 백분율",
+      "seasonalLabel": "계절 기준선을 넘어 하락",
+      "seasonalHint": "최신 측정 수위가 해당 저수지가 일반적으로 이 시기에 측정하는 값보다 훨씬 낮을 때 알림을 받습니다.",
+      "quietNote": "이 알림은 실시간 알림이 중요(critical)만으로 설정되어 있어도 도착합니다. 조용한 시간 동안에는 알림이 울리지 않습니다.",
+      "quietNoteBatch": "이 알림은 실시간 알림이 중요(critical)만으로 설정되어 있어도 도착합니다. 조용한 시간 동안에는 알림이 울리지 않으며, Batch를 선택하면 조용한 시간이 끝날 때까지 보류됩니다."
     }
   }
 }

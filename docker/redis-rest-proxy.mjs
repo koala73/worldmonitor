@@ -557,6 +557,14 @@ const PHYSICAL_DIVERGENCE_PUBLISH_SCRIPT = [
   'end',
   'return #KEYS',
 ].join('\n');
+// PINNED COPY of scripts/seed-no2-activity.mjs PUBLISH_NO2_ACTIVITY_LUA.
+// The NO2 activity dataset and its activation marker must become visible
+// together, so health never sees a dataset without its marker or the reverse.
+const NO2_ACTIVITY_PUBLISH_SCRIPT = [
+  "redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])",
+  "redis.call('SET', KEYS[2], '1')",
+  'return 1',
+].join('\n');
 const SOURCE_RETRY_CLAIM_SCRIPT = [
   "if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end",
   "redis.call('SET', KEYS[1], ARGV[2], 'XX', 'KEEPTTL')",
@@ -908,6 +916,7 @@ const ALLOWED_EVAL_SCRIPTS = new Set([
   PHYSICAL_PREMIUM_HISTORY_APPEND_SCRIPT,
   PHYSICAL_PREMIUM_PUBLISH_SCRIPT,
   PHYSICAL_DIVERGENCE_PUBLISH_SCRIPT,
+  NO2_ACTIVITY_PUBLISH_SCRIPT,
   MILITARY_BASES_PUBLISH_ACTIVE_AND_META_SCRIPT,
   MILITARY_BASES_ARM_LEAKED_KEY_IF_INACTIVE_SCRIPT,
   MILITARY_BASES_ARM_STAGING_KEY_TTL_IF_INACTIVE_SCRIPT,

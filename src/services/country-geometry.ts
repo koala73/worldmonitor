@@ -382,6 +382,26 @@ export function getCountryAtCoordinates(lat: number, lon: number, candidateCodes
   return null;
 }
 
+const COASTAL_STEPS = [0.01, 0.02, 0.05, 0.1, 0.2] as const;
+const COMPASS: ReadonlyArray<[number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+/**
+ * Like getCountryAtCoordinates, but coastlines are simplified, so a point on reclaimed land or a pier can sit just outside its country.
+ * Small states such as Singapore and Bahrain have no outline, so a wide search answers with their neighbour; keep maxStep small when that matters.
+ */
+export function getCountryNearCoordinates(lat: number, lon: number, maxStep = 0.2): CountryHit | null {
+  const hit = getCountryAtCoordinates(lat, lon);
+  if (hit || !loadedGeoJson) return hit;
+  for (const step of COASTAL_STEPS) {
+    if (step > maxStep) break;
+    for (const [dLat, dLon] of COMPASS) {
+      const near = getCountryAtCoordinates(lat + dLat * step, lon + dLon * step);
+      if (near) return near;
+    }
+  }
+  return null;
+}
+
 export function isCoordinateInCountry(lat: number, lon: number, code: string): boolean | null {
   if (!loadedGeoJson) return null;
   const country = countryIndex.get(code.toUpperCase());
@@ -415,10 +435,6 @@ export function matchCountryNamesInText(text: string): string[] {
     }
   }
   return matched;
-}
-
-export function getAllCountryCodes(): string[] {
-  return [...countryIndex.keys()];
 }
 
 export function getCountryBbox(code: string): [number, number, number, number] | null {

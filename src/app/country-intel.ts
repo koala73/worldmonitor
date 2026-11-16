@@ -38,8 +38,10 @@ import {
 import {
   canonicalizeCountryCode,
   getCountryAtCoordinates,
+  getCountryNearCoordinates,
   getCountryCentroid,
   hasCountryGeometry,
+  isCountryGeometryLoaded,
   ME_STRIKE_BOUNDS,
   preloadCountryGeometry,
 } from '@/services/country-geometry';
@@ -56,7 +58,9 @@ import { collectStoryData } from '@/services/story-data';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
-import { showMapContextMenu } from '@/components/MapContextMenu';
+import { showMapContextMenu, type MapContextMenuItem } from '@/components/MapContextMenu';
+import { MapLocateControl } from '@/components/MapLocateControl';
+import { claimMapUrlCentre, releaseMapUrlCentreOnUserMove } from '@/app/orbital-map-focus';
 import { BETA_MODE } from '@/config/beta';
 import { mlWorker } from '@/services/ml-worker';
 import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
@@ -82,8 +86,8 @@ import { getChinaDecisionSignalsData } from '@/services/china-decision-signals';
 import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-signals';
 import { showToast as showGlobalToast } from '@/utils/toast';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
-import { watchOrbitalRoute } from '@/app/orbital-route';
-import { setOrbitalMapView } from '@/app/orbital-map-focus';
+import { watchOrbitalEvidence, watchOrbitalRoute } from '@/app/orbital-route';
+import { orbitalMapViewFor, setOrbitalMapView } from '@/app/orbital-map-focus';
 import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: no strikes in the
@@ -151,8 +155,10 @@ type CountryPresentation = {
 };
 
 const AVIATION_SIGNAL_TIMEOUT_MS = 2500;
-/** Close enough to read a city block or a port around a satellite pass lookup's point. */
-const ORBITAL_FOCUS_ZOOM = 11;
+/** Town scale: the share grid's 0.01° cell stays well inside the view. */
+const LOCATE_ZOOM = 9;
+// About 5 km: absorbs simplified coastlines without crossing a strait into the neighbour of an outline-less state like Singapore.
+const LOCATE_COAST_TOLERANCE_DEG = 0.05;
 
 export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
@@ -170,6 +176,8 @@ export class CountryIntelManager implements AppModule {
   // don't re-hammer fetchProSections.
   private authUnsubscribe: (() => void) | null = null;
   private orbitalRouteUnsubscribe: (() => void) | null = null;
+  private locateControl: MapLocateControl | null = null;
+  private orbitalEvidenceUnsubscribe: (() => void) | null = null;
   private orbitalMapFocusUnsubscribe: (() => void) | null = null;
   private entitlementUnsubscribe: (() => void) | null = null;
   private lastHadPremium = false;
@@ -202,19 +210,11 @@ export class CountryIntelManager implements AppModule {
       }, 400);
     });
 
-    this.orbitalMapFocusUnsubscribe = setOrbitalMapView({
-      rect: () => this.ctx.map?.getViewportRect() ?? null,
-      center: (point, offset) => (this.ctx.map?.setCenterAt(point.lat, point.lon, ORBITAL_FOCUS_ZOOM, offset) ?? null) !== null,
-      project: (point) => this.ctx.map?.projectToClient(point.lat, point.lon) ?? null,
-      hold: (held) => this.ctx.map?.holdAutoRotate(held),
-      suppressLayers: (suppressed) => this.ctx.map?.suppressDataLayers(suppressed),
-      camera: () => {
-        const centre = this.ctx.map?.getCenter();
-        return centre && this.ctx.map ? { ...centre, zoom: this.ctx.map.getState().zoom } : null;
-      },
-      restore: ({ lat, lon, zoom }) => void this.ctx.map?.setCenter(lat, lon, zoom, { instant: true }),
-    });
-    if (ORBITAL_WATCH_ENABLED) this.orbitalRouteUnsubscribe = watchOrbitalRoute(() => this.ctx.map);
+    this.orbitalMapFocusUnsubscribe = setOrbitalMapView(orbitalMapViewFor(() => this.ctx.map));
+    if (ORBITAL_WATCH_ENABLED) {
+      this.orbitalRouteUnsubscribe = watchOrbitalRoute(() => this.ctx.map);
+      this.orbitalEvidenceUnsubscribe = watchOrbitalEvidence(() => this.ctx.map);
+    }
     this.lastHadPremium = hasPremiumAccess(getAuthState());
     const syncPremiumAccess = () => this.handlePremiumAccessTransition(hasPremiumAccess(getAuthState()));
     this.authUnsubscribe = subscribeAuthState(syncPremiumAccess);
@@ -222,8 +222,12 @@ export class CountryIntelManager implements AppModule {
   }
 
   destroy(): void {
+    this.locateControl?.destroy();
+    this.locateControl = null;
     this.orbitalRouteUnsubscribe?.();
     this.orbitalRouteUnsubscribe = null;
+    this.orbitalEvidenceUnsubscribe?.();
+    this.orbitalEvidenceUnsubscribe = null;
     this.orbitalMapFocusUnsubscribe?.();
     this.orbitalMapFocusUnsubscribe = null;
     this.currentCountryPresentation = null;
@@ -356,12 +360,64 @@ export class CountryIntelManager implements AppModule {
         label: t('contextMenu.satellitePasses'),
         action: () => {
           void import('@/app/orbital-watch').then(({ openOrbitalWatch }) =>
-            openOrbitalWatch({ lat: payload.lat, lon: payload.lon }, document.getElementById('mapContainer'), 'sheet', this.ctx.map));
+            openOrbitalWatch({ lat: payload.lat, lon: payload.lon }, document.getElementById('mapContainer'), this.ctx.map));
         },
       });
       items.push({ label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) });
       showMapContextMenu(payload.screenX, payload.screenY, items);
     });
+
+    const map = this.ctx.map;
+    this.locateControl?.destroy();
+    this.locateControl = new MapLocateControl({
+      centre: (point) => {
+        // The URL sync would write the user's own position into the address bar,
+        // which shared links and analytics read. Keep the previous centre there
+        // until the map's centre actually leaves the located point.
+        // A globe or WebGL flight still reads a centre short of the point, so the
+        // claim cannot judge the centre until the flight has landed or stopped.
+        let token: number | null = null;
+        let landed = false;
+        claimMapUrlCentre(
+          () => token === null || map.isViewportActionCurrent(token),
+          { point, read: () => (landed ? map.getCenter() : null) },
+        );
+        token = map.setCenter(point.lat, point.lon, LOCATE_ZOOM);
+        const land = () => { landed = true; };
+        map.whenViewportSettled(token).then(land, land);
+        releaseMapUrlCentreOnUserMove(document.getElementById('mapContainer'));
+      },
+      actions: (point) => this.locatedActions(point),
+    });
+    map.addMapControl(this.locateControl.element);
+  }
+
+  /**
+   * The locate menu. The point is the user's own position cut to the share grid, so
+   * the country comes from the local outlines only, never the reverse-geocode API.
+   */
+  private async locatedActions(point: { lat: number; lon: number }): Promise<MapContextMenuItem[]> {
+    const items: MapContextMenuItem[] = [];
+    // A failed outline load must read as "location unavailable", not as "no country here".
+    await preloadCountryGeometry();
+    // The loader catches its own fetch failure and resolves with no outlines.
+    if (!isCountryGeometryLoaded()) throw new Error('country outlines unavailable');
+    const country = getCountryNearCoordinates(point.lat, point.lon, LOCATE_COAST_TOLERANCE_DEG);
+    if (country) items.push({
+      label: t('contextMenu.openCountryBrief'),
+      action: () => {
+        void this.openCountryBriefByCode(country.code, country.name)
+          .catch((err) => this.handleCountryBriefOpenError(err));
+      },
+    });
+    if (ORBITAL_WATCH_ENABLED) items.push({
+      label: t('contextMenu.imageryEvidenceHere'),
+      action: () => {
+        void import('@/app/orbital-watch').then(({ openOrbitalWatch }) =>
+          openOrbitalWatch(point, document.getElementById('mapContainer'), this.ctx.map, { located: true }));
+      },
+    });
+    return items;
   }
 
   private getCountryController(page: NonNullable<AppContext['countryBriefPage']>): CountryBriefController {

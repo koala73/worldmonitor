@@ -79,22 +79,6 @@ export type AboutYouSurface = (typeof ABOUT_YOU_SURFACES)[number];
  */
 export const ABOUT_YOU_RETURN_DELAY_MS = 24 * 60 * 60 * 1000;
 
-/**
- * Dodo's `cancellation_feedback` enum. Our gap-fill churn ask offers the same
- * list, so answers from Dodo and from us count in one column.
- */
-export const CHURN_REASON_IDS = [
-  'too_expensive',
-  'missing_features',
-  'switched_service',
-  'unused',
-  'customer_service',
-  'low_quality',
-  'too_complex',
-  'other',
-] as const;
-export type ChurnReasonId = (typeof CHURN_REASON_IDS)[number];
-
 export function isAboutYouChoiceQuestion(id: string): id is AboutYouChoiceQuestionId {
   return Object.prototype.hasOwnProperty.call(ABOUT_YOU_CHOICE_QUESTIONS, id);
 }
@@ -105,10 +89,6 @@ export function isAboutYouOption(questionId: AboutYouChoiceQuestionId, optionId:
 
 export function isAboutYouSurface(value: string): value is AboutYouSurface {
   return (ABOUT_YOU_SURFACES as readonly string[]).includes(value);
-}
-
-export function isChurnReasonId(value: string): value is ChurnReasonId {
-  return (CHURN_REASON_IDS as readonly string[]).includes(value);
 }
 
 /** Trim and cap free text; returns null when nothing is left to store. */

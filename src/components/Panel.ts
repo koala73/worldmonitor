@@ -3,7 +3,7 @@ import { invokeTauri } from '../services/tauri-bridge';
 import { t } from '../services/i18n';
 import { type DomChild, h, replaceChildren, safeHtml as sanitizeHtmlFragment, setTrustedHtml, trustedHtml, type TrustedHtml } from '../utils/dom-utils';
 import { safeHtmlToString, type SafeHtml } from '@/utils/sanitize';
-import { trackLayoutCustomized } from '@/services/analytics';
+import { trackGateHit, trackLayoutCustomized, trackPanelGateClick } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
@@ -34,8 +34,6 @@ import {
   setColSpanClass,
   syncColResizeAria,
 } from '@/utils/panel-grid';
-
-export type PanelSeverity = 'critical' | 'high' | 'medium' | 'low' | 'none';
 
 export interface PanelOptions {
   id: string;
@@ -143,7 +141,6 @@ export class Panel {
   private freshnessUnsubscribe: (() => void) | null = null;
   private freshnessRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private severityDotEl: HTMLElement | null = null;
-  private currentSeverity: PanelSeverity = 'none';
   private scopeChipEl: HTMLElement | null = null;
   protected panelId: string;
   private abortController: AbortController = new AbortController();
@@ -194,7 +191,6 @@ export class Panel {
   private retryCallback: (() => void) | null = null;
   private retryCountdownTimer: ReturnType<typeof setInterval> | null = null;
   private retryAttempt = 0;
-  private _fetching = false;
   private _locked = false;
   // Lock-awareness for subclasses that write positionally (insertBefore /
   // appendChild into this.content) instead of through the setContent* helpers.
@@ -208,6 +204,8 @@ export class Panel {
   // unchanged verdict skip the DOM teardown/rebuild (#4771 re-runs gating on
   // every subscription-row change, including fields irrelevant to gating).
   private _lastGateReason: PanelGateReason | null = null;
+  private static readonly viewedGatedPanels = new Set<string>();
+  private gateViewObserver: IntersectionObserver | null = null;
   // Snapshot of this.content's children at the moment showLocked /
   // showGatedCta replaces them with a lock CTA. unlockPanel re-attaches
   // these nodes so subclasses whose UI is constructed once (typically in
@@ -350,7 +348,7 @@ export class Panel {
 
     this.content.addEventListener('click', (e) => {
       const target = (e.target as HTMLElement).closest('[data-panel-retry]');
-      if (!target || this._fetching) return;
+      if (!target) return;
       this.retryCallback?.();
     });
 
@@ -1212,6 +1210,8 @@ export class Panel {
   }
 
   public showLocked(features: string[] = []): void {
+    this.stopGateViewObserver();
+    this._lastGateReason = null;
     this._locked = true;
     this.clearRetryCountdown();
     this._snapshotContentForRestore();
@@ -1313,6 +1313,7 @@ export class Panel {
     // Gating re-runs on every subscription-row change (#4771), including
     // Convex updates to fields irrelevant to the gate verdict.
     if (this._locked && this._lastGateReason === reason) return;
+    this.stopGateViewObserver();
     this._lastGateReason = reason;
 
     // Bail-out done — now commit to the locked state. Doing this AFTER the
@@ -1339,12 +1340,34 @@ export class Panel {
     else if (reason === PanelGateReason.FREE_TIER || reason === PanelGateReason.LAPSED) {
       ctaBtn.dataset.dashboardInteraction = 'upgrade';
     }
-    ctaBtn.addEventListener('click', onAction);
+    const tracksAcquisition = reason === PanelGateReason.ANONYMOUS || reason === PanelGateReason.FREE_TIER;
+    ctaBtn.addEventListener('click', () => {
+      if (tracksAcquisition) trackPanelGateClick(this.panelId, reason);
+      onAction();
+    });
 
     this.replaceContent(h('div', { className: 'panel-locked-state' }, iconEl, descEl, ctaBtn));
+    if (tracksAcquisition && !Panel.viewedGatedPanels.has(this.panelId)
+      && !this.destroyed && typeof IntersectionObserver !== 'undefined') {
+      const observer = new IntersectionObserver((entries) => {
+        if (this.gateViewObserver !== observer || !entries.some(entry => entry.isIntersecting && entry.intersectionRatio > 0)) return;
+        this.stopGateViewObserver();
+        if (Panel.viewedGatedPanels.has(this.panelId)) return;
+        Panel.viewedGatedPanels.add(this.panelId);
+        trackGateHit(`panel:${this.panelId}`);
+      }, { threshold: 0.001 });
+      this.gateViewObserver = observer;
+      observer.observe(this.element);
+    }
+  }
+
+  private stopGateViewObserver(): void {
+    this.gateViewObserver?.disconnect();
+    this.gateViewObserver = null;
   }
 
   public unlockPanel(): void {
+    this.stopGateViewObserver();
     if (!this._locked) return;
     this._locked = false;
     this._lastGateReason = null;
@@ -1468,16 +1491,6 @@ export class Panel {
 
   protected setRetryCallback(fn: (() => void) | null): void {
     this.retryCallback = fn;
-  }
-
-  protected setFetching(v: boolean): void {
-    this._fetching = v;
-    const btn = this.content.querySelector<HTMLButtonElement>('[data-panel-retry]');
-    if (btn) btn.disabled = v;
-  }
-
-  protected get isFetching(): boolean {
-    return this._fetching;
   }
 
   public showConfigError(message: string): void {
@@ -1811,36 +1824,6 @@ export class Panel {
   }
 
   /**
-   * Set the panel's severity level, controlling the header pulse dot speed.
-   * critical = 0.6s, high = 1s, medium = 1.8s, low = 2.5s, none = hidden.
-   */
-  public setSeverity(level: PanelSeverity): void {
-    if (level === this.currentSeverity) return;
-    this.currentSeverity = level;
-    if (!this.severityDotEl) return;
-    this.severityDotEl.className = 'panel-severity-dot';
-    if (level !== 'none') {
-      this.severityDotEl.classList.add(`severity-${level}`);
-      // Severity was color+animation only (and aria-hidden), i.e. absent from
-      // the accessibility tree entirely; expose it as a named image.
-      this.severityDotEl.removeAttribute('aria-hidden');
-      this.severityDotEl.setAttribute('role', 'img');
-      this.severityDotEl.setAttribute('aria-label', `${level} severity`);
-    } else {
-      this.severityDotEl.setAttribute('aria-hidden', 'true');
-      this.severityDotEl.removeAttribute('role');
-      this.severityDotEl.removeAttribute('aria-label');
-    }
-  }
-
-  /**
-   * Get the panel ID
-   */
-  public getId(): string {
-    return this.panelId;
-  }
-
-  /**
    * Reset panel height to default
    */
   public resetHeight(): void {
@@ -1888,6 +1871,7 @@ export class Panel {
 
   public destroy(): void {
     this.destroyed = true;
+    this.stopGateViewObserver();
     this.abortController.abort();
     this.clearRetryCountdown();
     this.unobserveViewport();

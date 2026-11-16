@@ -289,10 +289,6 @@ export class BboxValidationError extends Error {
   }
 }
 
-// Backwards-compatible alias for tests that imported BboxTooLargeError.
-// Prefer BboxValidationError for new code.
-export const BboxTooLargeError = BboxValidationError;
-
 function isValidLatLon(lat: number, lon: number): boolean {
   return (
     Number.isFinite(lat) && Number.isFinite(lon) &&

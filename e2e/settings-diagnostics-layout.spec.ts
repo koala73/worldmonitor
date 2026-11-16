@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // Exercise the real Settings page and rendering with a controlled native bridge.
 // This does not exercise Windows WebView2 or the real sidecar.
@@ -45,7 +46,7 @@ test('diagnostics fills tall windows and shrinks back without losing controls', 
   const log = page.locator('#trafficLog');
   const compactHeight = await log.evaluate(el => el.clientHeight);
   await expectFooterAccessible(page);
-  await page.screenshot({ path: testInfo.outputPath('diagnostics-compact.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('diagnostics-compact.png') });
 
   await page.setViewportSize({ width: 1600, height: 1200 });
   await expect.poll(() => log.evaluate(el => el.clientHeight)).toBeGreaterThan(compactHeight + 350);
@@ -53,7 +54,7 @@ test('diagnostics fills tall windows and shrinks back without losing controls', 
   await expectFooterAccessible(page);
   expect(await log.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
   expect(await page.locator('#contentArea').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath('diagnostics-tall.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('diagnostics-tall.png') });
 
   await page.getByRole('tab', { name: 'Overview', exact: true }).click();
   await expect(log).toHaveCount(0);
@@ -64,7 +65,7 @@ test('diagnostics fills tall windows and shrinks back without losing controls', 
   await log.scrollIntoViewIfNeeded();
   expect(await log.evaluate(el => el.clientHeight)).toBeGreaterThan(80);
   expect(await log.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath('diagnostics-minimum.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('diagnostics-minimum.png') });
 });
 
 test('refresh, sticky headers, Clear and enlarged text remain usable', async ({ page }, testInfo) => {
@@ -94,7 +95,7 @@ test('refresh, sticky headers, Clear and enlarged text remain usable', async ({ 
   const cardBox = (await page.locator('#diagnosticsSection').boundingBox())!;
   expect(logBox.y + logBox.height).toBeLessThanOrEqual(cardBox.y + cardBox.height);
   expect(await page.locator('#contentArea').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath('diagnostics-minimum-large-text.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('diagnostics-minimum-large-text.png') });
 
   await page.locator('#clearLogBtn').click();
   await expect(page.locator('#trafficCount')).toHaveText('(0)');
@@ -104,5 +105,5 @@ test('refresh, sticky headers, Clear and enlarged text remain usable', async ({ 
   await expectFooterAccessible(page);
   await page.locator('#clearLogBtn').scrollIntoViewIfNeeded();
   await expect(page.locator('#clearLogBtn')).toBeInViewport({ ratio: 1 });
-  await page.screenshot({ path: testInfo.outputPath('diagnostics-empty.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('diagnostics-empty.png') });
 });

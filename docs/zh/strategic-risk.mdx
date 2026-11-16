@@ -75,7 +75,7 @@ API 客户端应将 `StrategicRisk.level` 视为服务端严重性枚举，
 
 ### 统一告警系统
 
-来自所有模块的告警通过**时空去重**合并：
+聚合、CII、制裁和辐射告警通过**时空去重**合并：
 
 - **时间窗口**：2 小时内的告警可合并
 - **距离阈值**：200 公里内的告警可合并
@@ -85,13 +85,15 @@ API 客户端应将 `StrategicRisk.level` 视为服务端严重性枚举，
 
 ```
 Type: Composite Alert
-Title: Convergence + CII + Infrastructure: Ukraine
+Title: Convergence + CII: Ukraine
 Components:
   - Geographic Convergence: 4 event types in Kyiv region
   - CII Spike: Ukraine +15 points (Critical)
-  - Infrastructure: Black Sea cables at risk
 Priority: Critical
 ```
+
+级联分析模拟所选基础设施发生故障时的潜在影响。
+运行级联情景不会生成统一告警，也不表示该故障已经发生。
 
 ### 告警优先级
 
@@ -101,9 +103,9 @@ Priority: Critical
 
 | 优先级 | 判定条件 |
 |----------|----------|
-| **严重** | CII 国家严重等级（81-100）、聚合有 4+ 类型或评分 ≥90、级联严重影响、高影响辐射/制裁信号 |
-| **高** | CII 国家高等级（66-80）或 CII 变动 ≥30 分、聚合有 3+ 类型或评分 ≥70、级联影响 ≥5 个国家 |
-| **中** | CII 国家升高等级或 CII 变动 ≥15 分、聚合评分 ≥50、级联中等影响或 ≥3 个国家 |
+| **严重** | CII 国家严重等级（81-100）、聚合有 4+ 类型或评分 ≥90、高影响辐射/制裁信号 |
+| **高** | CII 国家高等级（66-80）或 CII 变动 ≥30 分、聚合有 3+ 类型或评分 ≥70 |
+| **中** | CII 国家升高等级或 CII 变动 ≥15 分、聚合评分 ≥50 |
 | **低** | 轻微变动与低影响事件 |
 
 ### 趋势检测

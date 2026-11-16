@@ -83,7 +83,7 @@ function makeEvent(link = EVIL) {
 let harnessSeq = 0;
 
 function installHarness({ smembers = [], smembersOk = true, pipelineOk = true, pipelineCommandError = false, held = null, rule = {} } = {}) {
-  const calls = { telegram: 0, telegramBodies: [], pipeline: [], smembers: 0, del: [] };
+  const calls = { telegram: 0, telegramBodies: [], pipeline: [], smembers: 0, del: [], lrem: [] };
   // Mutable so a test can flip Redis from healthy to down mid-scenario.
   const state = { smembersOk };
   const logs = [];
@@ -129,6 +129,10 @@ function installHarness({ smembers = [], smembersOk = true, pipelineOk = true, p
     if (u.endsWith('/pipeline')) {
       let body = [];
       try { body = JSON.parse(opts.body); } catch { /* keep empty */ }
+      if (body.length > 0 && body.every((cmd) => cmd[0] === 'LREM')) {
+        calls.lrem.push(...body.map((cmd) => cmd[3]));
+        return { ok: true, json: async () => body.map(() => ({ result: 1 })) };
+      }
       calls.pipeline.push(body);
       return {
         ok: pipelineOk,
@@ -343,7 +347,8 @@ describe('notification-relay link suppression (#8401)', () => {
     try {
       await relay.processEvent({ eventType: 'flush_quiet_held', userId: 'user-1', variant: 'full' });
       assert.equal(h.calls.telegram, 0);
-      assert.deepEqual(h.calls.del, ['digest:quiet-held:user-1:full']);
+      assert.deepEqual(h.calls.lrem, [blocked], 'the blocked item is removed by value, nothing else is touched');
+      assert.deepEqual(h.calls.del, []);
     } finally {
       h.restore();
     }

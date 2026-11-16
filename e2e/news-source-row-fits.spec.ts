@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // A news item's source row carries the publisher, credibility, corroboration,
 // alert and category badges. The row must keep every badge inside the panel
@@ -85,7 +86,7 @@ test('news source rows keep every badge inside the panel', async ({ browser }, t
       .toBe(ITEMS.length);
     await expect(panel.locator('.item.clustered .category-tag')).toHaveCount(2);
     await expect(panel.locator('.item.clustered .alert-tag')).toHaveCount(2);
-    await panel.screenshot({ path: testInfo.outputPath(`politics-${viewport.width}.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`politics-${viewport.width}.png`) });
     const m = await measure(page);
     const label = `politics at ${viewport.width}px (panel ${m.panel}px, ${m.badges} badges)`;
     expect(m.badges, `${label}: badges rendered`).toBeGreaterThanOrEqual(ITEMS.length * 4);

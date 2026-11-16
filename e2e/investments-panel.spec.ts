@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 test.describe('GCC investments coverage', () => {
   test('focusInvestmentOnMap enables layer and recenters map', async ({ page }) => {
@@ -155,6 +156,6 @@ for (const width of [1280, 390]) {
     await expect(search).toBeFocused();
     await expect(search).toHaveValue('port');
     await expect(page.locator('.fdi-row').first()).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath(`investments-search-${width}.png`), fullPage: true });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`investments-search-${width}.png`), fullPage: true });
   });
 }

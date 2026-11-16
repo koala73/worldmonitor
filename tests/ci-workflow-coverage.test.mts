@@ -498,6 +498,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/progress-chart-fits.spec.ts',
   'e2e/energy-table-values-whole.spec.ts',
   'e2e/panel-text-unclipped.spec.ts',
+  'e2e/orbital-watch-track.spec.ts',
   'e2e/regional-intelligence-region-select.spec.ts',
   'e2e/settings-home-list.spec.ts',
   'e2e/panel-grid-column-clamp.spec.ts',
@@ -3477,6 +3478,7 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
       'e2e/pro-hero-animation.spec.ts',
       'e2e/pro-hero-lcp.spec.ts',
       'e2e/pro-pricing-anchor.spec.ts',
+      'e2e/panel-gate-analytics.spec.ts',
       'e2e/welcome-nav-fit.spec.ts',
     ];
     const script = packageScripts['test:e2e:pro-gates'] ?? '';

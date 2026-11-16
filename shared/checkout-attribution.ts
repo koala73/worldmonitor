@@ -134,13 +134,6 @@ export function parseCheckoutContext(value: unknown): CheckoutContext | null {
   };
 }
 
-export function withCheckoutEventSurface(
-  context: CheckoutContext,
-  eventSurface: CheckoutSurface,
-): CheckoutContext {
-  return { ...context, eventSurface };
-}
-
 export function buildAttributedProUrl(
   baseUrl: string,
   attribution?: CheckoutAttribution | null,
@@ -153,6 +146,9 @@ export function buildAttributedProUrl(
   if (preview) {
     url.searchParams.set(CHECKOUT_MISSION_PARAM, preview.missionId);
     url.searchParams.set(CHECKOUT_PANEL_PARAM, preview.panelKey);
+  } else if (attribution?.missionId === undefined) {
+    const panelKey = parseCheckoutPanelKey(attribution?.panelKey);
+    if (panelKey) url.searchParams.set(CHECKOUT_PANEL_PARAM, panelKey);
   }
   return url.toString();
 }

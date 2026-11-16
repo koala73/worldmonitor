@@ -150,6 +150,38 @@ describe('deferred Sentry loader claims its own chunk failures', () => {
     assert.equal(reloads, 0);
   });
 
+  it('does not preventDefault a Sentry chunk failure, so Vite still rejects the import', async () => {
+    setWindow({ sessionStorage: fakeStorage(), localStorage: fakeStorage() });
+    const blocked = new TypeError(
+      'Failed to fetch dynamically imported module: https://www.worldmonitor.app/assets/sentry-AbC12345.js',
+    );
+    const { installChunkReloadGuard } = await freshGuardModule();
+    const target = new EventTarget();
+    let reloads = 0;
+    installChunkReloadGuard('build-A', { eventTarget: target, reload: () => { reloads += 1; } });
+    let prevented = false;
+    let settled: 'rejected' | 'fulfilled' = 'fulfilled';
+    try {
+      await claimSentryPreloadErrors(async () => {
+        const event = Object.assign(new Event('vite:preloadError', { cancelable: true }), { payload: blocked });
+        target.dispatchEvent(event);
+        prevented = event.defaultPrevented;
+        if (!event.defaultPrevented) {
+          settled = 'rejected';
+          throw blocked;
+        }
+        settled = 'fulfilled';
+        return undefined;
+      }, target);
+    } catch (thrown) {
+      assert.equal(thrown, blocked);
+    }
+    await settle();
+    assert.equal(prevented, false);
+    assert.equal(settled, 'rejected');
+    assert.equal(reloads, 0);
+  });
+
   it('leaves a URL-less failure (Safari) to the guard, which reloads once', async () => {
     setWindow({ sessionStorage: fakeStorage(), localStorage: fakeStorage() });
     const safari = new TypeError('Importing a module script failed.');
@@ -177,6 +209,105 @@ describe('deferred Sentry loader claims its own chunk failures', () => {
     assert.equal(await sentryLoadAttempt(target, stale), stale);
     await settle();
     assert.equal(reloads, 1);
+  });
+
+  it('a lazy import that Vite fulfills with undefined reloads once and does not yield a module', async () => {
+    setWindow({ sessionStorage: fakeStorage(), localStorage: fakeStorage() });
+    const stale = new TypeError(
+      'Failed to fetch dynamically imported module: https://finance.worldmonitor.app/assets/MapContainer-BOSxSEpN.js',
+    );
+    let reloads = 0;
+    const thrown: unknown[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const { installChunkReloadGuard, readChunkModule } = await freshGuardModule();
+      const target = new EventTarget();
+      installChunkReloadGuard('build-A', { eventTarget: target, reload: () => { reloads += 1; } });
+      // A vite:preloadError listener that calls preventDefault makes Vite's
+      // helper fulfill the import with undefined. The guard stands down.
+      target.addEventListener('vite:preloadError', (event) => event.preventDefault());
+      try {
+        thrown.push(await readChunkModule(vitePreloadFailure(target, stale)));
+      } catch (error) {
+        thrown.push(error);
+      }
+      await settle();
+    }
+    assert.equal(reloads, 1);
+    assert.equal(thrown.length, 3);
+    for (const error of thrown) {
+      assert.ok(error instanceof Error);
+      assert.equal(error instanceof TypeError, false);
+      assert.equal(error.message, 'Chunk module failed to load');
+    }
+  });
+
+  it('reloads a lazy import once when its preload error is claimed as a Sentry chunk', async () => {
+    setWindow({ sessionStorage: fakeStorage(), localStorage: fakeStorage() });
+    const blocked = new TypeError(
+      'Failed to fetch dynamically imported module: https://www.worldmonitor.app/assets/sentry-init-AbC12345.js',
+    );
+    let reloads = 0;
+    for (let i = 0; i < 3; i += 1) {
+      const { installChunkReloadGuard, readChunkModule } = await freshGuardModule();
+      const target = new EventTarget();
+      installChunkReloadGuard('build-A', { eventTarget: target, reload: () => { reloads += 1; } });
+      try {
+        await readChunkModule(claimSentryPreloadErrors(
+          () => vitePreloadFailure(target, blocked),
+          target,
+        ));
+        assert.fail('the import fulfilled');
+      } catch (thrown) {
+        assert.equal(thrown, blocked);
+      }
+      await settle();
+    }
+    assert.equal(reloads, 1);
+  });
+
+  it('counts the preload event and the lazy import as one reload', async () => {
+    setWindow({ sessionStorage: fakeStorage(), localStorage: fakeStorage() });
+    const stale = new TypeError(
+      'Failed to fetch dynamically imported module: https://www.worldmonitor.app/assets/MarketPanel-Xy98765.js',
+    );
+    const { installChunkReloadGuard, readChunkModule } = await freshGuardModule();
+    const target = new EventTarget();
+    let reloads = 0;
+    installChunkReloadGuard('build-A', { eventTarget: target, reload: () => { reloads += 1; } });
+    await assert.rejects(
+      () => readChunkModule(vitePreloadFailure(target, stale)),
+      (thrown: unknown) => thrown === stale,
+    );
+    await settle();
+    assert.equal(reloads, 1);
+  });
+
+  it('returns a loaded module without reloading', async () => {
+    setWindow({ sessionStorage: fakeStorage(), localStorage: fakeStorage() });
+    const { installChunkReloadGuard, readChunkModule } = await freshGuardModule();
+    const target = new EventTarget();
+    let reloads = 0;
+    installChunkReloadGuard('build-A', { eventTarget: target, reload: () => { reloads += 1; } });
+    const loaded = { MapContainer: function MapContainer() { return undefined; } };
+    assert.equal(await readChunkModule(Promise.resolve(loaded)), loaded);
+    await settle();
+    assert.equal(reloads, 0);
+  });
+
+  it('does not reload a missing module when no storage can record it', async () => {
+    setWindow({ sessionStorage: null, localStorage: null });
+    const { installChunkReloadGuard, readChunkModule } = await freshGuardModule();
+    const target = new EventTarget();
+    let reloads = 0;
+    installChunkReloadGuard('build-A', { eventTarget: target, reload: () => { reloads += 1; } });
+    await assert.rejects(
+      () => readChunkModule(Promise.resolve(undefined)),
+      (thrown: unknown) => thrown instanceof Error
+        && !(thrown instanceof TypeError)
+        && thrown.message === 'Chunk module failed to load',
+    );
+    await settle();
+    assert.equal(reloads, 0);
   });
 
   it('stops claiming once the Sentry load settles', async () => {

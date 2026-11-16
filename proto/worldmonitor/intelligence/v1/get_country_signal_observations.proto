@@ -18,6 +18,8 @@ enum CountrySignalFamily {
   COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE = 8;
   // Confirmed satellite imagery statistics changes at the country's watched sites.
   COUNTRY_SIGNAL_FAMILY_IMAGERY = 9;
+  // Strategic reservoirs whose dated ICESat-2 level moved beyond their seasonal baseline.
+  COUNTRY_SIGNAL_FAMILY_WATER = 10;
 }
 
 message GetCountrySignalObservationsRequest {

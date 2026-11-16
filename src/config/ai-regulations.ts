@@ -820,21 +820,6 @@ export const COUNTRY_REGULATION_PROFILES: CountryRegulationProfile[] = [
   },
 ];
 
-// Helper function to get regulation by ID
-export function getRegulationById(id: string): AIRegulation | undefined {
-  return AI_REGULATIONS.find(reg => reg.id === id);
-}
-
-// Helper function to get country profile
-export function getCountryProfile(countryCode: string): CountryRegulationProfile | undefined {
-  return COUNTRY_REGULATION_PROFILES.find(profile => profile.countryCode === countryCode);
-}
-
-// Helper function to get regulations by country
-export function getRegulationsByCountry(country: string): AIRegulation[] {
-  return AI_REGULATIONS.filter(reg => reg.country === country);
-}
-
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Dataset dates are calendar days ('YYYY-MM-DD' parses as UTC midnight).

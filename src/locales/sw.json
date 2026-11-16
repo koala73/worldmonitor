@@ -1362,7 +1362,12 @@
       "shareLink": "Shiriki kiungo",
       "shareStory": "Shiriki hadithi",
       "printPdf": "Chapisha / PDF",
-      "exportData": "Hamisha data"
+      "exportData": "Hamisha data",
+      "sources": {
+        "summary": "Vyanzo na vipindi · makundi {{count}}",
+        "note": "Vipindi vya vyanzo vinatofautiana; hii si jumla ya saa 24.",
+        "footer": "Si pembejeo ya CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Bomba",
@@ -2468,7 +2473,14 @@
     "map": {
       "showMap": "Onyesha Ramani",
       "hideMap": "Ficha Ramani",
-      "clearTrails": "Njia wazi"
+      "clearTrails": "Njia wazi",
+      "locate": "Onyesha mahali nilipo"
+    },
+    "mapLocate": {
+      "locating": "Inatafuta mahali…",
+      "denied": "Ufikiaji wa mahali umekataliwa. Tumia Tafuta kupata mahali.",
+      "unavailable": "Mahali hapakupatikana. Tumia Tafuta kupata mahali.",
+      "noCountry": "Hakuna nchi mahali ulipo. Tumia Tafuta kupata mahali."
     },
     "climateNews": {
       "infoTooltip": "<strong>Habari za Hali ya Hewa</strong> Taarifa za hivi punde za mazingira na hali ya hewa kutoka Carbon Brief, UNEP, NASA, The Guardian, na vyanzo vingine vya mamlaka. Inasasishwa kila baada ya dakika 30.",
@@ -2625,7 +2637,7 @@
       "proLocked": "Boreshaji hadi PRO kwa alama ya kufa kwa kilicho haraka cha bidhaa"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Kifuatiliaji cha Biashara cha Hormuz</strong> Fahirisi za kila siku za usafirishaji kupitia Mlango-bahari wa Hormuz kutoka WTO DataLab: mafuta ghafi, LNG na mbolea zinazoondoka Ghuba, na bidhaa za kilimo zinazowasili. Kwa kiasi, wastani wa Januari–Machi 2025 = 100, meli zinazoonekana kupitia AIS pekee. Hali na tarehe zinatoka kwenye uchambuzi wa hivi karibuni wa WTO.",
+      "infoTooltip": "<strong>Kifuatiliaji cha Biashara cha Hormuz</strong> Fahirisi za kila siku za usafirishaji kupitia Mlango-bahari wa Hormuz kutoka WTO DataLab: mafuta ghafi, LNG na mbolea zinazoondoka Ghuba, na bidhaa za kilimo zinazowasili. Kwa kiasi, wastani wa Januari–Machi 2025 = 100, meli zinazoonekana kupitia AIS pekee. Chati ni za kila siku; hali inatoka kwa maoni ya WTO.",
       "title": "Kifuatiliaji cha Biashara cha Hormuz",
       "noData": "Hakuna data",
       "notAvailable": "N/A",
@@ -2635,11 +2647,13 @@
         "unavailable": "Data ya Hormuz haipatikani",
         "failedToLoad": "Imeshindwa kupakia"
       },
-      "analysisDate": "Uchambuzi wa WTO {{date}}",
+      "analysisDate": "Maoni ya WTO {{date}}",
       "indexNote": "Fahirisi ya mizigo kwa kiasi, wastani wa Januari–Machi 2025 = 100",
       "units": {
         "index": "fahirisi"
-      }
+      },
+      "dataThrough": "Data ya kila siku hadi {{date}}",
+      "noShipments": "Hakuna mizigo iliyorekodiwa {{from}} hadi {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Kamera za Wavuti za Moja kwa Moja</strong> Mipasho ya moja kwa moja kutoka maeneo muhimu ya kijiografia duniani kote: maeneo ya migogoro, miji mikuu, vivuko vya mipaka, na maeneo ya kimkakati ya kukokota. Mitiririko kutoka kwa YouTube na mitandao ya umma."
@@ -3255,6 +3269,34 @@
         "change365": "Katika miezi 12",
         "measured": "Ilipimwa",
         "sparkline": "Kiwango cha maji kwa miezi 36"
+      },
+      "nextPass": {
+        "label": "Upitaji ujao wa ICESat-2",
+        "loading": "Inapakia…",
+        "at": "{{date}} (imetabiriwa kutoka data ya obiti ya {{epoch}}; mawingu yanaweza kuzuia lidar)",
+        "none": "Hakuna kipimo katika kipindi hiki (hadi {{date}}); data ya obiti ya {{epoch}}",
+        "unavailable": "Data ya obiti haipatikani"
+      },
+      "siteContext": {
+        "label": "Bwawa la kimkakati katika eneo hili"
+      },
+      "energyContext": {
+        "heading": "Mabwawa ya kimkakati",
+        "hydro": "Umeme wa maji {{share}}% ya nishati ya msingi"
+      },
+      "countryEvidence": {
+        "heading": "Viwango vya maji",
+        "empty": "Hakuna bwawa la kimkakati katika nchi hii lililo nje ya msingi wake wa msimu katika upitaji wake wa mwisho.",
+        "measured": "Imepimwa {{date}}"
+      },
+      "card": {
+        "measured": "Imepimwa {{date}} · {{age}}",
+        "noCrossing": "hakuna katika kipindi hiki (hadi {{date}})",
+        "crossing": "Mpito unaotabiriwa wa ICESat-2",
+        "summary": "Mabwawa {{beyond}} kati ya {{total}} nje ya msingi wa msimu",
+        "latestPass": "mpito wa mwisho wa ICESat-2 {{date}}",
+        "sparkline": "Kiwango cha miezi 36 na msingi wa msimu kama mstari wa vistari",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Viwango vya uso wa maji vya lidar kutoka mipito yenye tarehe, si usomaji wa moja kwa moja wala ujazo."
       }
     },
     "gridDisruptionClock": {
@@ -3344,7 +3386,6 @@
       }
     },
     "protest": {
-      "acledVerified": "ACLED (imethibitishwa)",
       "gdelt": "GDELT",
       "records": "rekodi",
       "mediaSignal": "Ishara ya habari ambayo haijathibitishwa",
@@ -4553,7 +4594,8 @@
   "contextMenu": {
     "openCountryBrief": "Fungua Muhtasari wa Nchi",
     "copyCoordinates": "Nakili Viratibu",
-    "satellitePasses": "Satelaiti zinazopita hapa"
+    "satellitePasses": "Satelaiti zinazopita hapa",
+    "imageryEvidenceHere": "Ushahidi wa picha za satelaiti hapa"
   },
   "auth": {
     "signIn": "Ingia",
@@ -5165,305 +5207,352 @@
     "errLoad": "Tathmini ya safari haikuweza kufunguliwa. Pakia upya ukurasa kisha ujaribu tena."
   },
   "orbitalWatch": {
-    "track": {
-      "unavailable": "Njia ya ardhini ya kupita huku haikuweza kuchorwa"
-    },
-    "replay": {
-      "acquisition": "UPIGAJI · {{name}}",
-      "acquired": "IMEPIGWA {{time}} · {{resolution}}",
-      "play": "Cheza marudio",
-      "pause": "Sitisha marudio",
-      "scrub": "Nafasi ya marudio",
-      "reducedMotion": "MWENDO ULIOPUNGUZWA"
-    },
-    "computing": "Inapakia orodha ya satelaiti…",
-    "computingProgress": "Inakokotoa mapito: {{done}} kati ya satelaiti {{total}}",
-    "unavailable": "Orodha ya satelaiti haikuweza kupakiwa, kwa hivyo hakuna mapito yaliyokokotolewa kwa sehemu hii.",
-    "checkingArchives": "Inakagua kumbukumbu: {{done}} kati ya {{total}} zimejibu",
-    "confirmedCount": "Picha zilizothibitishwa: {{count}}",
-    "counts": {
-      "mosaics": "Mosaiki za kila siku: {{count}}",
-      "frames": "Picha za hali ya hewa: {{count}}",
-      "inRange": "Mapito yaliyo karibu: {{count}}"
-    },
-    "partial": "{{sources}} haikujibu, kwa hivyo baadhi ya mapito huenda yakakosa picha.",
-    "stale": "Data ya obiti imepitwa na wakati. Orodha ya satelaiti ina umri wa {{age}}, kwa hivyo nyakati za mapito zinaweza kutofautiana.",
-    "empty": "Hakuna satelaiti ya upigaji picha iliyoorodheshwa iliyopita juu ya sehemu hii katika siku {{pastDays}} zilizopita wala haitapita katika saa {{futureHours}} zijazo.",
-    "sources": "Vyanzo · {{count}}",
-    "sourcesDocs": "Jinsi vyanzo hivi vinavyotumika",
-    "privacy": "Sehemu hii inabaki kwenye kivinjari chako. Inatumwa tu kwa kumbukumbu za umma ambazo kivinjari chako huziita moja kwa moja: Earth Search, Microsoft Planetary Computer, NASA GIBS na EUMETSAT. Kutafuta kwa jina la mahali ndiyo tofauti pekee: jina unaloandika linakwenda kwa huduma ya kutafuta majina ya mahali.",
-    "inRange": "karibu",
+    "track": {},
+    "replay": {},
+    "counts": {},
     "tier": {
       "checking": "inakagua kumbukumbu",
-      "confirmed": "picha imethibitishwa",
-      "likely": "huenda ilipigwa picha",
-      "opportunity": "pito lijalo",
-      "dailyMosaic": "katika mosaiki ya kila siku",
-      "withinReach": "karibu",
-      "capabilityOverhead": "uwezo juu",
-      "passedOverhead": "ilipita juu",
-      "unmatchedImage": "picha bila pito lililokokotolewa",
+      "confirmed": "imethibitishwa",
+      "likely": "inawezekana",
+      "unmatchedImage": "picha bila kupita kulikokokotolewa",
       "weatherFrame": "picha ya hali ya hewa",
-      "unavailable": "haipatikani"
+      "unavailable": "haipatikani",
+      "inReach": "inaweza kulengwa",
+      "capability": "inaweza kupicha",
+      "inRange": "ndani ya masafa",
+      "mosaic": "mozaiki",
+      "upcoming": "inayokuja"
     },
     "row": {
       "offNadir": "{{deg}}° kutoka nadiri",
-      "distance": "km {{km}} kutoka njia ya ardhini",
-      "orbitAge": "data ya obiti ya {{age}} iliyopita",
-      "edgeOfSwath": "Ukingo wa ukanda",
-      "notInArchive": "Hakuna picha kwenye kumbukumbu",
-      "geometryDisagreed": "Nje ya ukanda uliokadiriwa",
-      "archiveUnanswered": "Hifadhi haikujibu",
-      "imageAlt": "Picha ya {{name}}, {{time}}",
-      "mosaicDays": "Siku katika hifadhi: {{count}}",
-      "cadence": "picha mpya kila dakika {{minutes}}",
-      "sourceUnavailable": "Hifadhi haina picha kutoka chanzo hiki kwa siku hizi.",
-      "imageLoading": "Inapakia picha…",
-      "imageFailed": "Picha haikupakia. Hifadhi inaweza kuwa polepole au haipatikani.",
-      "noPreview": "Hifadhi bado haina onyesho la awali la tukio hili."
+      "distance": "{{km}} km hadi njia",
+      "orbitAge": "Data ya obiti",
+      "imageLoading": "Inapakia taswira…",
+      "satellite": "Satelaiti",
+      "sensor": "Kihisi",
+      "time": "Saa",
+      "in": "Lini",
+      "tier": "Hali",
+      "elevation": "Mwinuko",
+      "point": "Nukta",
+      "pixel": "Pikseli",
+      "credit": "Kumbukumbu",
+      "orbitAgeValue": "{{age}} iliyopita"
     },
-    "dailyMosaics": "picha mseto za kila siku",
-    "weatherFrames": "picha za hali ya hewa",
     "ui": {
-      "change": "Badilisha",
-      "share": "Shiriki",
-      "shareCopied": "Kiungo kimenakiliwa",
-      "headline": "Katika siku {{days}} zilizopita, {{satellites}} zilipita juu ya {{place}}.",
-      "satellites_one": "setilaiti {{count}}",
-      "satellites_other": "setilaiti {{count}}",
-      "subline_one": "Picha {{count}} ilitolewa hadharani.",
-      "subline_other": "Picha {{count}} zilitolewa hadharani.",
-      "closestLook": "Mtazamo wa karibu zaidi",
-      "replay": "Rudia",
-      "openFull": "Fungua mwonekano kamili",
-      "previous": "Picha iliyotangulia",
-      "next": "Picha inayofuata",
-      "passes_one": "pito",
-      "passes_other": "mapito",
-      "showAll": "Onyesha mapito yote",
-      "noRecentDays": "Hakuna siku za karibuni kwenye hifadhi: {{sources}}",
-      "tab": {
-        "all": "Zote",
-        "detailed": "Kina",
-        "weather": "Hali ya hewa"
-      },
-      "caption": {
-        "clear": "Wazi mahali hapa",
-        "clearSceneCloud": "Wazi mahali hapa · mawingu ya tukio {{pct}}%",
-        "clouded": "Mawingu · {{pct}}%",
-        "cloudShadow": "Kivuli cha wingu",
-        "spotNotChecked": "Mahali hapajakaguliwa kwa mawingu",
-        "sceneCloud": "Mawingu ya tukio {{pct}}% · mahali hapajakaguliwa",
-        "radar": "Rada",
-        "dailyMosaic": "Mozaiki ya kila siku",
-        "geostationary": "Diski nzima ya geostationary",
-        "geostationaryCadence": "Geostationary · kila dakika {{minutes}}"
-      },
-      "tile": {
-        "failed": "Picha haipatikani · {{archive}}",
-        "noPreview": "Hifadhi bado haina hakikisho la tukio hili"
-      },
-      "grid": {
-        "watched": "Imeonwa",
-        "watchedDef": "Hifadhi ya umma ina picha ya mahali hapa.",
-        "likely": "Huenda imeonwa",
-        "likelyDef": "Kihisi cha ukanda usiobadilika kilifunika; bado hakuna picha iliyochapishwa.",
-        "could": "Ingeweza kulenga hapa",
-        "couldDef": "Kihisi kinachoelekezwa au cha kibiashara kilikuwa karibu; mwendeshaji hasemi kama kiliangalia.",
-        "overhead": "Ilipita juu",
-        "overheadDef": "Ilivuka anga hapa, bila ushahidi wa picha.",
-        "watchedShort": "Picha katika hifadhi ya umma",
-        "watchedNoPreviewShort": "Kwenye hifadhi, hakuna onyesho la umma",
-        "likelyShort": "Imefunikwa, bado hakuna picha",
-        "likelyUnansweredDef": "Kihisi chenye ukanda usiobadilika kililifunika; hifadhi moja haikujibu, kwa hivyo picha huenda ipo.",
-        "likelyUnansweredShort": "Imefunikwa, hifadhi haikujibu",
-        "couldShort": "Kihisi kinachoelekezwa kipo karibu",
-        "overheadShort": "Ilipita juu, hakuna picha"
-      },
-      "group": {
-        "watched": "zilizoonwa",
-        "likely": "huenda zimeonwa",
-        "upcoming": "zijazo",
-        "could": "zingeweza kulenga hapa",
-        "overhead": "zilizopita juu",
-        "weather_one": "chanzo cha hali ya hewa",
-        "weather_other": "vyanzo vya hali ya hewa"
-      },
-      "order": {
-        "closest": "Mtazamo wa karibu, kisha mpya zaidi",
-        "newest": "Mpya zaidi kwanza",
-        "soonest": "Za karibu zaidi kwanza"
-      },
-      "row": {
-        "cloud": "Mawingu {{pct}}%",
-        "days_one": "siku {{count}}",
-        "days_other": "siku {{count}}",
-        "repeats": "mapito {{count}} ya setilaiti hii kwenye kundi"
-      },
-      "section": {
-        "summary": "Muhtasari",
-        "passes": "Mapito"
-      },
-      "status": {
-        "objects": "{{count}} setilaiti za upigaji picha · CelesTrak GP",
-        "fetched": "Imepakuliwa {{time}} · {{ago}}",
-        "sun": "Jua {{point}} · nukta chini ya jua"
-      },
-      "step": {
-        "computing": "Inakokotoa",
-        "catalogLoading": "Katalogi · inapakia",
-        "catalog": "Katalogi · {{count}} setilaiti za upigaji picha",
-        "propagating": "Inakokotoa mizunguko · {{done}} / {{total}}",
-        "archives": "Hifadhi · {{done}} / {{total}} zimejibu",
-        "matching": "Inalinganisha matukio na mapito {{passes}}",
-        "window": "Kipindi cha siku 7 · {{start}} → {{end}}",
-        "failed": "Imeshindwa",
-        "note": "Planetary Computer na NASA GIBS huunda picha zinapoombwa, kwa hivyo hatua hii inaweza kuchukua sekunde chache."
-      },
-      "privacyLine": "Sehemu inabaki kwenye kivinjari chako",
-      "privacyHow": "Vipi",
-      "sources": "Vyanzo",
-      "archiveScene": "Picha ya hifadhi",
-      "archiveOnly": "Hakuna mpito uliokokotolewa unaolingana na picha hizi, kwa hivyo zinaonyeshwa kama picha za hifadhi.",
-      "zoneShowUtc": "Onyesha nyakati kwa UTC",
-      "zoneShowLocal": "Onyesha nyakati kwa saa za mahali hapa"
+      "tab": {},
+      "caption": {},
+      "tile": {},
+      "grid": {},
+      "group": {},
+      "order": {},
+      "row": {},
+      "section": {},
+      "status": {},
+      "step": {}
     },
     "viewer": {
-      "open": "Fungua kitazamaji picha: {{image}}",
-      "bestView": "Fungua mwonekano bora: {{name}}, {{time}}",
-      "imageAlt": "Picha ya {{name}}, {{time}}",
-      "close": "Funga kitazamaji picha",
-      "northUp": "Kaskazini iko juu",
-      "unreferenced": "Mwelekeo kama ulivyotolewa na hifadhi; kaskazini haijawekwa alama",
-      "compareDates": "Tarehe nyingine za mkusanyiko huu",
-      "compareNone": "Hakuna picha nyingine ya mkusanyiko huu ya kulinganisha.",
-      "divider": "Kigawanyo cha kabla na baada",
-      "searching": "Inatafuta picha za mahali hapa za siku {{days}} zilizopita",
-      "historyFailed": "{{archive}} haikujibu, kwa hiyo picha za awali hazipo.",
-      "historyTimeout": "{{archive}} haikujibu kwa wakati, kwa hiyo picha za awali hazipo.",
-      "loading": "Inapakia fremu: {{loaded}} kati ya {{total}}",
-      "pause": "Sitisha",
-      "resume": "Cheza",
-      "next": "Fremu inayofuata",
+      "open": "Fungua taswira: {{image}}",
+      "imageAlt": "Taswira ya {{name}}, {{time}}",
+      "close": "Funga kionyeshi cha taswira",
+      "northUp": "Kaskazini juu",
+      "unreferenced": "Mwelekeo wa kumbukumbu; kaskazini haijaonyeshwa",
+      "compareDates": "Tarehe katika mkusanyo huu",
+      "compareNone": "Hakuna taswira ya pili katika mkusanyo huu.",
+      "divider": "Kigawanyaji cha taswira ya msingi",
+      "searching": "Inatafuta taswira za kumbukumbu za siku {{days}}",
+      "historyFailed": "{{archive}} ilirudisha hitilafu; taswira za zamani zinakosekana.",
+      "historyTimeout": "{{archive}} haikujibu kwa wakati; taswira za zamani zinakosekana.",
+      "loading": "Fremu zilizopakiwa: {{loaded}} ya {{total}}",
       "closeLabel": "Funga",
-      "agoNow": "Sasa hivi",
+      "agoNow": "Sasa",
       "agoHours": "saa {{count}} zilizopita",
       "agoDays": "siku {{count}} zilizopita",
       "clear": "Safi",
-      "clouded": "Mawingu · {{pct}}%",
-      "tabImage": "Picha",
-      "tabChange": "Mabadiliko",
+      "clouded": "Mawingu {{pct}}%",
+      "tabImage": "Taswira",
+      "tabChange": "Ulinganisho",
       "metaAcquired": "Ilipigwa",
       "metaDate": "Tarehe",
       "metaPixel": "Pikseli",
-      "metaSpot": "Mawingu mahali hapa",
+      "metaSpot": "Mawingu kwenye nukta",
       "metaScene": "Mawingu ya picha",
       "metaSun": "Mwinuko wa jua",
-      "showCloudy": "Onyesha tarehe zenye mawingu ({{count}})"
+      "showCloudy": "Jumuisha tarehe zenye mawingu ({{count}})"
     },
-    "timelapse": {
-      "heading": "Mfuatano wa muda",
-      "entry": "Mahali hapa, mwaka hadi mwaka",
-      "open": "Fungua mfuatano wa kila mwaka wa mahali hapa",
-      "searching": "Inatafuta picha moja safi kwa kila mwaka tangu 2015 · {{archive}}",
-      "loading": "Inapakia picha · {{loaded}} / {{total}}",
-      "failed": "{{archive}} haikujibu, kwa hiyo picha za kila mwaka hazipo.",
-      "timeout": "{{archive}} haikujibu kwa wakati, kwa hiyo picha za kila mwaka hazipo.",
-      "partial": "Miaka inayokosekana kwa sababu {{archive}} haikujibu: {{count}}.",
-      "tooFew": "Picha safi za kila mwaka za mahali hapa: {{count}}. Mfuatano unahitaji {{min}}.",
-      "total": "Picha safi: {{count}} · moja kwa mwaka",
-      "years": "Miaka",
-      "share": "Shiriki",
-      "method": "Kila fremu ni mraba uleule wa km 6 kutoka Sentinel-2, kwa rangi asilia. Kila mwaka hutafuta msimu tofauti na kubaki na picha yenye mawingu machache zaidi; mwaka usio na picha chini ya 30% ya mawingu huachwa."
-    },
+    "timelapse": {},
     "passDetail": {
-      "back": "Mapito yote",
-      "altitude": "Mwinuko",
-      "offNadir": "Mkengeuko kutoka nadiri",
-      "crossed": "{{name}} ilipita kilomita {{altitude}} juu, kilomita {{distance}} {{direction}}, saa {{time}}, kwa kasi ya km/s {{speed}} juu ya ardhi.",
-      "crossedHeading": "{{name}} ilipita kilomita {{altitude}} juu, kilomita {{distance}} {{direction}}, saa {{time}}, ikielekea {{heading}} kwa kasi ya km/s {{speed}} juu ya ardhi.",
-      "looking": "Ilikuwa ikitazama {{deg}}° mbali na wima.",
-      "sceneCloud": "Mawingu ya picha: {{pct}}%.",
-      "pixelLine": "Pikseli ya m {{m}}",
-      "swathLine": "Upana wa km {{km}}",
-      "clearestLook": "Mwonekano safi zaidi",
-      "previous": "Pito lililotangulia",
-      "next": "Pito linalofuata",
-      "dir": {
-        "n": "upande wa kaskazini",
-        "ne": "upande wa kaskazini-mashariki",
-        "e": "upande wa mashariki",
-        "se": "upande wa kusini-mashariki",
-        "s": "upande wa kusini",
-        "sw": "upande wa kusini-magharibi",
-        "w": "upande wa magharibi",
-        "nw": "upande wa kaskazini-magharibi"
-      },
-      "heading": {
-        "north": "kaskazini",
-        "south": "kusini"
-      }
+      "dir": {},
+      "heading": {}
     },
     "search": {
-      "label": "Jina la mahali au viwianishi",
-      "placeholder": "Jina la mahali au 48.8584, 2.2945",
+      "label": "Mahali au viwianishi",
+      "placeholder": "Mahali au 25.11, 55.14",
       "submit": "Tafuta",
-      "locate": "Tumia mahali nilipo",
-      "hint": "Viwianishi na mahali ulipo hubaki kwenye kivinjari hiki. Jina la mahali unalotafuta hutumwa kwa WorldMonitor na kwa Nominatim ya OpenStreetMap.",
-      "results": "Maeneo yanayolingana",
+      "locate": "Eneo langu",
+      "hint": "Viwianishi unavyoandika na eneo lako havitumwi kamwe kwa WorldMonitor. Majina ya mahali unayoandika hutumwa kwa WorldMonitor na OpenStreetMap Nominatim.",
+      "results": "Maeneo",
       "searching": "Inatafuta…",
-      "tooShort": "Andika angalau herufi mbili, au viwianishi kama 48.8584, 2.2945.",
-      "invalidCoordinates": "Viwianishi hivyo viko nje ya dunia. Latitudo ni kuanzia -90 hadi 90 na longitudo kuanzia -180 hadi 180.",
-      "failed": "Utafutaji wa maeneo haupatikani sasa. Viwianishi na ramani bado vinafanya kazi.",
-      "noResults": "Hakuna mahali panapolingana na jina hilo.",
-      "locating": "Inatafuta mahali ulipo…",
-      "locationDenied": "Ruhusa ya mahali imekataliwa. Tafuta mahali au bofya kulia kwenye ramani badala yake.",
-      "locationUnavailable": "Mahali ulipo hapakuweza kupatikana. Tafuta mahali au bofya kulia kwenye ramani badala yake.",
-      "idle": "Tafuta mahali kwa jina au viwianishi, tumia mahali ulipo, au bofya kulia kwenye ramani kuona satelaiti zilizopita juu yake."
+      "tooShort": "Ingiza angalau herufi mbili, au viwianishi kama 25.11, 55.14.",
+      "invalidCoordinates": "Latitudo lazima iwe -90 hadi 90 na longitudo -180 hadi 180.",
+      "failed": "Utafutaji wa mahali haukufaulu. Viwianishi na kubofya ramani bado vinafanya kazi.",
+      "noResults": "Hakuna mahali panapolingana.",
+      "locating": "Inatafuta eneo…",
+      "locationDenied": "Ruhusa ya eneo imekataliwa. Andika jina la mahali popote, au bofya kulia kwenye ramani.",
+      "locationUnavailable": "Eneo halikupatikana. Andika jina la mahali popote, au bofya kulia kwenye ramani.",
+      "idle": "Andika jina la mahali popote, tumia eneo la kifaa, au bofya kulia kwenye ramani ili kufungua ushahidi wa picha za satelaiti wa mahali hapo."
     },
     "share": {
-      "copy": "Nakili kiungo cha kushiriki",
       "copied": "Kiungo kimenakiliwa",
-      "copyManually": "Nakili kiungo kilicho hapa chini",
+      "copyManually": "Nakili kiungo hiki",
       "link": "Kiungo cha kushiriki",
       "dismiss": "Funga",
-      "passOutsideWindow": "Mpito uliounganishwa uko nje ya kipindi cha sasa, kwa hivyo hakuna mpito uliochaguliwa.",
-      "passNotFound": "Mpito uliounganishwa haukupatikana katika mipito iliyokokotolewa upya, kwa hivyo hakuna mpito uliochaguliwa."
+      "passOutsideWindow": "Kupita kulikounganishwa kuko nje ya dirisha hili; hakuna kilichochaguliwa.",
+      "passNotFound": "Kupita kulikounganishwa hakupo kwenye orodha iliyokokotolewa upya; hakuna kilichochaguliwa."
     },
     "timeline": {
       "now": "sasa",
       "nowAt": "Sasa: {{time}}",
-      "density": "Mapito ya {{label}}, kuanzia {{start}} hadi {{end}}: {{count}}",
-      "daylight": "Mchana kwenye eneo kuanzia {{start}} hadi {{end}}",
+      "density": "{{label}}, {{start}} hadi {{end}}: {{count}}",
+      "daylight": "Mwanga wa mchana hapa: {{start}}–{{end}}",
       "unavailable": "haipatikani",
-      "notRetained": "hakuna data wiki hii",
-      "notRetainedSpan": "{{label}}: hakuna data kuanzia {{start}} hadi {{end}}",
+      "notRetained": "mtiririko hauhifadhi historia",
+      "notRetainedSpan": "{{label}}: mtiririko hauna historia kuanzia {{start}} hadi {{end}}",
       "countryWide": "nchi nzima",
       "source": {
         "conflict": "Migogoro",
         "fires": "Moto",
         "unrest": "Machafuko",
-        "outages": "Kukatika kwa intaneti"
+        "outages": "Kukatika kwa huduma"
       },
       "live": {
-        "vessels": "Trafiki ya meli",
-        "militaryFlights": "Safari za ndege za kijeshi",
+        "vessels": "Urambazaji wa bahari",
+        "militaryFlights": "Ndege za kijeshi",
         "gpsJamming": "Uzuiaji wa GPS"
       },
       "name": "Ratiba ya wakati",
-      "span": "Siku {{days}} · saa {{hours}} zijazo",
-      "daylightHere": "Mchana hapa",
+      "span": "{{days}} d nyuma · {{hours}} h mbele",
+      "daylightHere": "Mwanga wa mchana kwenye nukta",
       "row": {
-        "geo": "Geo",
-        "photo": "Picha",
-        "likely": "Huenda",
-        "could": "Inawezekana",
-        "overhead": "Kupita"
+        "images": "Picha",
+        "events": "Matukio",
+        "passes": "Kupita"
       },
-      "retained": "{{start}} hadi {{end}}",
-      "retainedDay": "{{day}} pekee",
-      "geoLine": "Satelaiti tuli zinazoonekana: {{names}}",
-      "away": "km {{km}} mbali"
+      "retained": "historia {{start}} hadi {{end}}",
+      "retainedDay": "historia ya {{day}} pekee",
+      "geoLine": "Mtazamo wa obiti tuli: {{names}}",
+      "away": "{{km}} km",
+      "densityTip_one": "{{count}} kupita kutoka {{start}} · {{names}}",
+      "densityTip_other": "{{count}} kupita kutoka {{start}} · {{names}}"
+    },
+    "satelliteSites": {
+      "heading": "Maeneo yanayofuatiliwa · saa {{hours}} zijazo",
+      "projecting": "Inakokotoa mapito…",
+      "notLoaded": "Bofya satelaiti tena; vipengele vyake vya obiti havijapakiwa.",
+      "failed": "Bofya satelaiti tena ili kujaribu upya; ukokotoaji wa mapito umeshindwa.",
+      "viewFailed": "Bofya satelaiti tena ili kujaribu upya; orodha ya maeneo haikupakiwa.",
+      "unavailable": "Bofya satelaiti tena ili kujaribu upya; jiometri ya mapito ilikataa vipengele hivi vya obiti.",
+      "signals": "Satelaiti ya ujasusi wa mawimbi. Haina kifaa cha kupiga picha, kwa hivyo eneo la ardhini inalofunika halikokotolewi.",
+      "noProfile": "Hakuna wasifu wa kihisi kwa satelaiti hii, kwa hivyo eneo la ardhini inalofunika halikokotolewi.",
+      "geostationary": "Obiti tuli: satelaiti imesimama juu ya longitudo moja, kwa hivyo hakuna mapito ya kuorodhesha.",
+      "badElements": "Vipengele vya obiti havisomeki.",
+      "none": "Hakuna eneo linalofuatiliwa ndani ya eneo inalofunika katika saa {{hours}} zijazo.",
+      "utc": "{{time}} UTC",
+      "inMinutes": "baada ya dakika {{minutes}}",
+      "inHours": "baada ya saa {{hours}} dakika {{minutes}}",
+      "offTrack": "km {{km}} kutoka njia ya ardhini",
+      "swathEdge": "kwenye ukingo wa ukanda",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "Aina",
+        "operator": "Mwendeshaji",
+        "over": "Juu ya",
+        "ocean": "Bahari",
+        "altBand": "Ngazi ya mwinuko",
+        "inclination": "Mwinamo",
+        "velocity": "Kasi",
+        "types": {
+          "sar": "Upigaji picha wa SAR",
+          "optical": "Upigaji picha wa kioptiki",
+          "military": "Kijeshi",
+          "sigint": "SIGINT",
+          "signals": "Ujasusi wa mawimbi"
+        }
+      },
+      "tooOld_one": "Vipengele vya obiti vina umri wa siku {{count}}, ni vya zamani mno kukokotoa mapito.",
+      "tooOld_other": "Vipengele vya obiti vina umri wa siku {{count}}, ni vya zamani mno kukokotoa mapito.",
+      "count_one": "Eneo {{count}} ndani ya eneo la ufunikaji la {{family}}",
+      "count_other": "Maeneo {{count}} ndani ya eneo la ufunikaji la {{family}}",
+      "passes_one": "Pito {{count}}",
+      "passes_other": "Mapito {{count}}"
+    },
+    "sheet": {
+      "heading": "Ushahidi wa picha za satelaiti",
+      "window": "Siku {{days}} zilizopita, {{hours}} h zijazo",
+      "apart": "Hazijahesabiwa:",
+      "newest": "mpya zaidi {{when}}",
+      "newestNoPreview": "Picha ya hivi karibuni zaidi {{when}} haina onyesho la kuchungulia; taswira ya zamani zaidi inaonyeshwa.",
+      "noneConfirmed": "Hakuna picha zilizothibitishwa katika kipindi hiki",
+      "noneYet": "Kumbukumbu bado zinajibu",
+      "latest": "Picha ya hivi karibuni",
+      "latestNone": "Kumbukumbu hazikurudisha chochote kwa nukta hii na kipindi hiki.",
+      "latestChecking": "Utafutaji kwenye kumbukumbu unaendelea. Kupita kulikokokotolewa kumeorodheshwa hapa chini.",
+      "compareWith": "Linganisha na",
+      "compareDate": "Tarehe ya kulinganisha",
+      "moreImages": "Picha nyingine zilizothibitishwa",
+      "imageAlt": "Taswira ya {{sensor}}, {{time}}",
+      "dailyMosaic": "mozaiki ya kila siku",
+      "weatherFrame": "fremu ya satelaiti ya hali ya hewa",
+      "change": "Badilisha mahali",
+      "showUtc": "UTC",
+      "showLocal": "Saa ya ndani",
+      "alert": "Tahadhari kabla ya kila kupita kwa satelaiti ya data wazi juu ya nukta, na kwa kila picha mpya isiyo na mawingu.",
+      "alertCta": "Weka tahadhari · Pro",
+      "height": {
+        "collapsed": "Paneli imekunjwa. Panua hadi nusu ya urefu",
+        "half": "Paneli iko nusu ya urefu. Panua hadi urefu kamili",
+        "full": "Paneli imepanuliwa. Kunja"
+      },
+      "apartMosaics_one": "{{count}} mozaiki ya kila siku",
+      "apartMosaics_other": "{{count}} mozaiki za kila siku",
+      "apartFrames_one": "{{count}} fremu ya satelaiti ya hali ya hewa",
+      "apartFrames_other": "{{count}} fremu za satelaiti za hali ya hewa",
+      "apartInRange_one": "{{count}} kupita ndani ya masafa",
+      "apartInRange_other": "{{count}} kupita ndani ya masafa",
+      "confirmedCount_one": "{{count}} picha iliyothibitishwa",
+      "confirmedCount_other": "{{count}} picha zilizothibitishwa"
+    },
+    "tierDef": {
+      "confirmed": "Kumbukumbu inaorodhesha taswira inayofunika nukta hii.",
+      "likely": "Ukanda wa upigaji picha usiobadilika ulifunika nukta hii; bado hakuna taswira iliyohifadhiwa.",
+      "inReach": "Kihisi kinachoweza kuelekezwa kingeweza kulenga hapa. Ratiba ya upigaji picha si ya umma.",
+      "capability": "Aina ya kihisi isiyo na kumbukumbu ya umma ilipita juu ya nukta hii."
+    },
+    "events": {
+      "heading": "Matukio katika nukta hii",
+      "kindLabel": "Aina",
+      "detail": "Maelezo",
+      "now": "sasa",
+      "loading": "Inapakia mitiririko ya matukio…",
+      "none": "Hakuna matukio ndani ya {{km}} km katika siku {{days}} zilizopita.",
+      "unavailable": "Haipatikani: {{sources}}",
+      "kind": {
+        "conflict": "Mgogoro",
+        "fires": "Moto",
+        "unrest": "Machafuko",
+        "outages": "Kukatika kwa huduma",
+        "vessels": "Urambazaji wa bahari",
+        "military-flights": "Ndege za kijeshi",
+        "gps-jamming": "Kuingiliwa kwa GPS"
+      }
+    },
+    "capability": {
+      "heading": "Nani anaweza kupiga picha nukta hii",
+      "none": "Hakuna kupita kwa vihisi katika kipindi hiki.",
+      "tooOld": "Data ya obiti ni ya zamani mno kukokotoa: {{names}}",
+      "showAll": "Onyesha zote {{count}}",
+      "showFewer": "Onyesha chache",
+      "group": {
+        "open": "Data ya wazi",
+        "commercial": "Biashara",
+        "government": "Serikali",
+        "military": "Kijeshi",
+        "other": "Nyingine"
+      }
+    },
+    "windows": {
+      "heading": "Madirisha yajayo ya upigaji picha",
+      "optical": "Macho, data wazi",
+      "radar": "Rada, data wazi",
+      "none": "Hakuna kupita kwa data wazi kwa macho au rada ndani ya {{hours}} h."
+    },
+    "status": {
+      "catalog": "Inapakia katalogi ya satelaiti…",
+      "computing": "Inakokotoa kupita · satelaiti {{done}} ya {{total}}",
+      "checking": "Kumbukumbu zilizojibu: {{done}} ya {{total}}",
+      "partial": "Hakuna jibu kutoka {{sources}}. Hesabu zinaweza kuwa chini.",
+      "staleCatalog": "Katalogi ina umri wa {{age}}; nyakati zilizotabiriwa zinaweza kupotoka.",
+      "empty": "Hakuna satelaiti iliyoweza kulenga nukta hii katika kipindi hiki.",
+      "unavailable": "Data ya kupita haipatikani. Jaribu tena baadaye."
+    },
+    "privacy": {
+      "line": "Eneo lako hutumwa kwa hifadhi za picha tu.",
+      "more": "Maelezo",
+      "body": "Kupita kwa satelaiti kunakokotolewa kwenye kifaa hiki. Ili kupata picha, kivinjari chako hutuma eneo hilo moja kwa moja kwa Earth Search, Planetary Computer, NASA GIBS na EUMETSAT; WorldMonitor haipokei. Katika eneo linalofuatiliwa, WorldMonitor huombwa rekodi ya kila siku ya eneo hilo kwa kitambulisho cha eneo, si kwa kituo chako. Jina la mahali unaloandika hutumwa kwa WorldMonitor na OpenStreetMap Nominatim ili lipatikane. Viungo vinavyoshirikiwa huhifadhi desimali mbili (0.01°)."
+    },
+    "sources": {
+      "heading": "Vyanzo ({{count}})",
+      "docs": "Mbinu na kufunika",
+      "conflict": "matukio ya mgogoro na machafuko",
+      "fires": "ugunduzi wa moto",
+      "outages": "mtiririko wa kukatika kwa intaneti",
+      "vessels": "nafasi za meli"
+    },
+    "caption": {
+      "clear": "Hakuna mawingu kwenye nukta",
+      "clearSceneCloud": "Hakuna mawingu kwenye nukta · taswira {{pct}}% mawingu",
+      "clouded": "Mawingu kwenye nukta · {{pct}}%",
+      "cloudShadow": "Kivuli kwenye nukta",
+      "spotNotChecked": "Mawingu kwenye nukta hayajulikani",
+      "sceneCloud": "Taswira {{pct}}% mawingu · nukta haijulikani",
+      "radar": "Rada · haiathiriwi na mawingu"
+    },
+    "tile": {
+      "failed": "Taswira haikupakia · {{archive}}",
+      "noPreview": "Bado hakuna onyesho la kuchungulia lililochapishwa kwa taswira hii",
+      "radar": "rada"
+    },
+    "target": {
+      "acquired": "IMEPIGWA PICHA {{time}} · {{resolution}}"
+    },
+    "popup": {
+      "title": "Picha za setilaiti",
+      "loading": "Inakagua kumbukumbu za setilaiti…",
+      "latest": "Picha ya hivi karibuni",
+      "nextPass": "Mpito unaofuata",
+      "noImage": "Hakuna picha ya hivi karibuni",
+      "noPass": "Hakuna mpito ndani ya saa 72",
+      "openEvidence": "Fungua ushahidi",
+      "imageAlt": "Mwonekano wa setilaiti kutoka {{source}}",
+      "unavailable": "Picha za setilaiti hazikupakia.",
+      "fire": {
+        "title": "Utambuzi wa moto kwa setilaiti",
+        "detected": "Iligundulika",
+        "satellite": "Sateliti",
+        "confidence": "Ujitikisiko",
+        "confidenceHigh": "Juu",
+        "confidenceNominal": "Kawaida",
+        "confidenceLow": "Chini",
+        "power": "Nguvu ya moto",
+        "powerValue": "{{value}} MW",
+        "region": "Eneo",
+        "source": "Chanzo",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Mozaiki ya kila siku",
+        "mosaicLoading": "Kuangalia NASA GIBS…",
+        "mosaicCaption": "Picha iliyounganishwa ya mizunguko ya {{source}} ya siku ya {{date}}; moto unaweza kufichwa na mawingu au moshi.",
+        "mosaicNone": "NASA GIBS haina mozaiki ya {{source}} kwa {{date}}.",
+        "mosaicNoLayer": "Hakuna mozaiki ya kila siku inayopatikana kwa sateliti hii.",
+        "mosaicUnavailable": "Imeshindwa kupakia mozaiki ya kila siku.",
+        "mosaicAlt": "Mozaiki ya kila siku ya NASA GIBS {{source}} kwa {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Eneo linalofuatiliwa",
+      "loading": "Inapakia rekodi ya kila siku ya eneo…",
+      "failed": "Rekodi ya kila siku ya eneo haikupakia; fungua tena kituo ili kujaribu tena.",
+      "stale": "Hakuna ukaguzi wa sasa wa kila siku uliorekodiwa kwa eneo hili.",
+      "checked": "Imekaguliwa",
+      "noPass": "Hakuna mpito ujao uliorekodiwa",
+      "list": {
+        "hotspot": "eneo tete",
+        "conflictZone": "eneo la mzozo",
+        "militaryBase": "kambi ya kijeshi",
+        "nuclearFacility": "kituo cha nyuklia",
+        "port": "bandari",
+        "chokepoint": "mlango bahari",
+        "reservoir": "bwawa"
+      }
     }
   },
   "settings": {
@@ -5711,6 +5800,21 @@
         "5": "toka",
         "6": "futa akaunti"
       }
+    },
+    "reservoirAlert": {
+      "title": "Onyo za kiwango cha maji",
+      "description": "Pokea onyo wakati kiwango cha maji cha bwawa la kimkakati la kuhifadhi maji, kinachopimwa kwa lidar, kipo chini. NASA huchapisha kila njia ya satelaiti karibu miezi miwili baada ya kupimwa, kwa hiyo kila onyo hutoa tarehe ya kupimwa.",
+      "scopeHint": "Chagua hadi mabwawa {{max}} ya kuhifadhi maji. Maonyo yanahusu tu mabwawa yaliyoorodheshwa hapa.",
+      "searchPlaceholder": "Ongeza bwawa la kuhifadhi maji kwa jina",
+      "searchLabel": "Ongeza bwawa la kuhifadhi maji",
+      "removeLabel": "Ondoa {{name}}",
+      "thresholdLabel": "Kiwango cha kizingiti",
+      "thresholdHint": "Pokea onyo wakati kiwango kilichopimwa karibuni kiko chini ya asilimia hii ya wigo uliopimwa wa bwawa hilo, ambapo 0 ni kiwango cha chini kabisa kilichopimwa na 100 ni cha juu kabisa. Acha wazi ikiwa hutaki kizingiti.",
+      "thresholdInputLabel": "Kiwango cha kizingiti, asilimia ya eneo lililopimwa",
+      "seasonalLabel": "Kushuka zaidi ya mstari wa msingi wa kimsimu",
+      "seasonalHint": "Pokea onyo wakati kiwango kilichopimwa karibuni kiko chini sana ya kile ambacho bwawa hilo hupimwa kwa kawaida wakati huu wa mwaka.",
+      "quietNote": "Arifa hizi hufika hata wakati arifa za wakati halisi zimewekwa kwa muhimu tu. Saa za kimya huzinyamazisha.",
+      "quietNoteBatch": "Arifa hizi hufika hata wakati arifa za wakati halisi zimewekwa kwa muhimu tu. Saa za kimya huzinyamazisha, au huzishikilia hadi saa za kimya ziishe ukichagua Batch."
     }
   }
 }

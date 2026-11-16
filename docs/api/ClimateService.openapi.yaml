@@ -1466,6 +1466,10 @@ components:
                 levelM:
                     type: number
                     format: double
+                baselineM:
+                    type: number
+                    format: double
+                    description: Seasonal baseline median for this date (seasonalBaseline in scripts/_reservoir-levels.mjs); absent with too few prior seasons.
         ReservoirLevelsSource:
             type: object
             properties:

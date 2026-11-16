@@ -33,7 +33,14 @@ import { SITE_VARIANT } from '@/config/variant';
 import { CHOKEPOINT_REGISTRY } from '@/config/chokepoint-registry';
 import { mountCountryChipPicker, loadFollowedCountriesSafe, type CountryChipPickerHandle } from '@/utils/country-chip-picker';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
-import { ORBITAL_ALERT_SITES_MAX } from '../../shared/alert-rule-shape';
+import {
+  ORBITAL_ALERT_SITES_MAX,
+  RESERVOIR_ALERT_BELOW_PERCENT_MAX,
+  RESERVOIR_ALERT_BELOW_PERCENT_MIN,
+  RESERVOIR_ALERT_EVENT_TYPE,
+  RESERVOIR_ALERT_RESERVOIRS_MAX,
+  type ReservoirAlertSettings,
+} from '../../shared/alert-rule-shape';
 
 
 const QUIET_HOURS_BATCH_ENABLED = import.meta.env.VITE_QUIET_HOURS_BATCH_ENABLED !== '0';
@@ -50,6 +57,23 @@ const CHOKEPOINT_DISRUPTION_EVENT_TYPE = 'chokepoint_disruption';
 // Opt-in watched-site alerts, scoped by alertRules.orbitalSites (empty → none).
 const ORBITAL_WINDOW_EVENT_TYPE = 'orbital_imaging_window';
 const ORBITAL_CHANGE_EVENT_TYPE = 'orbital_site_change';
+
+type ReservoirOption = { id: string; name: string; country: string };
+let reservoirOptions: Promise<ReservoirOption[]> | null = null;
+// The watchlist comes from the reservoir levels API; loaded only when the settings open.
+function loadReservoirOptions(): Promise<ReservoirOption[]> {
+  // Not '@/services/climate': importing the service from here would hoist it into the main app chunk.
+  reservoirOptions ??= Promise.all([import('@/services/generated-rpc-clients'), import('@/services/rpc-client')]).then(async ([{ ClimateServiceClient }, { getRpcBaseUrl }]) => {
+    const client = new ClimateServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+    const resp = await client.listReservoirLevels({});
+    if (!resp.dataAvailable || !(resp.reservoirs ?? []).length) throw new Error('reservoir levels unavailable');
+    return resp.reservoirs
+      .map(({ id, name, country }) => ({ id, name, country }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }).catch((err) => { reservoirOptions = null; throw err; });
+  return reservoirOptions;
+}
+const reservoirLabel = (r: ReservoirOption): string => `${r.name} (${r.country})`;
 
 type WatchedSiteOption = { id: string; name: string; countryCode: string };
 let watchedSiteOptions: Promise<WatchedSiteOption[]> | null = null;
@@ -555,6 +579,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const orbitalWindowsOn = alertRule?.eventTypes?.includes(ORBITAL_WINDOW_EVENT_TYPE) ?? false;
         const orbitalChangesOn = alertRule?.eventTypes?.includes(ORBITAL_CHANGE_EVENT_TYPE) ?? false;
         const orbitalSites = alertRule?.orbitalSites ?? [];
+        const reservoirAlertOn = alertRule?.eventTypes?.includes(RESERVOIR_ALERT_EVENT_TYPE) ?? false;
+        const reservoirSettings: ReservoirAlertSettings = alertRule?.reservoirAlert ?? { reservoirs: [] };
 
         const hourOptions = Array.from({ length: 24 }, (_, h) => {
           const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
@@ -679,10 +705,46 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             </div>
             <div id="usOrbitalScope"${orbitalWindowsOn || orbitalChangesOn ? '' : ' hidden'}>
               <div class="ai-flow-toggle-desc" style="margin-bottom:6px">Your watched sites, up to ${ORBITAL_ALERT_SITES_MAX}. Alerts cover only the sites listed here.</div>
+              <div class="ai-flow-toggle-desc" id="usOrbitalCriticalNote" style="margin-bottom:6px">Alerts for these sites arrive even when realtime alerts are set to critical only. ${QUIET_HOURS_BATCH_ENABLED ? 'Quiet hours silence them, or hold them until quiet hours end if you choose Batch.' : 'Quiet hours silence them.'}</div>
               <div class="us-notif-country-chips" id="usOrbitalSiteChips">${orbitalSites.map((id) =>
                 `<button type="button" class="us-notif-country-chip us-notif-country-chip-on" data-orbital-site-id="${escapeHtml(id)}" aria-label="Remove ${escapeHtml(id)}">${escapeHtml(id)} ×</button>`).join('')}</div>
               <input type="search" id="usOrbitalSiteSearch" class="us-notif-country-add-input" list="usOrbitalSiteOptions" placeholder="Add a site by name" aria-label="Add a watched site" autocomplete="off" style="margin-top:6px;width:100%;box-sizing:border-box"${orbitalSites.length >= ORBITAL_ALERT_SITES_MAX ? ' disabled' : ''}>
               <datalist id="usOrbitalSiteOptions"></datalist>
+            </div>
+            <div class="ai-flow-toggle-row">
+              <div class="ai-flow-toggle-label-wrap">
+                <div class="ai-flow-toggle-label">${escapeHtml(t('settings.reservoirAlert.title'))}</div>
+                <div class="ai-flow-toggle-desc">${escapeHtml(t('settings.reservoirAlert.description'))}</div>
+              </div>
+              <label class="ai-flow-switch">
+                <input type="checkbox" id="usReservoirAlerts" aria-label="${escapeHtml(t('settings.reservoirAlert.title'))}"${reservoirAlertOn ? ' checked' : ''}>
+                <span class="ai-flow-slider"></span>
+              </label>
+            </div>
+            <div id="usReservoirScope"${reservoirAlertOn ? '' : ' hidden'}>
+              <div class="ai-flow-toggle-desc" style="margin-bottom:6px">${escapeHtml(t('settings.reservoirAlert.scopeHint', { max: RESERVOIR_ALERT_RESERVOIRS_MAX }))}</div>
+              <div class="ai-flow-toggle-desc" id="usReservoirQuietNote" style="margin-bottom:6px">${escapeHtml(t(QUIET_HOURS_BATCH_ENABLED ? 'settings.reservoirAlert.quietNoteBatch' : 'settings.reservoirAlert.quietNote'))}</div>
+              <div class="us-notif-country-chips" id="usReservoirChips">${reservoirSettings.reservoirs.map((id) =>
+                `<button type="button" class="us-notif-country-chip us-notif-country-chip-on" data-reservoir-id="${escapeHtml(id)}" aria-label="${escapeHtml(t('settings.reservoirAlert.removeLabel', { name: id }))}">${escapeHtml(id)} ×</button>`).join('')}</div>
+              <input type="search" id="usReservoirSearch" class="us-notif-country-add-input" list="usReservoirOptions" placeholder="${escapeHtml(t('settings.reservoirAlert.searchPlaceholder'))}" aria-label="${escapeHtml(t('settings.reservoirAlert.searchLabel'))}" autocomplete="off" style="margin-top:6px;width:100%;box-sizing:border-box"${reservoirSettings.reservoirs.length >= RESERVOIR_ALERT_RESERVOIRS_MAX ? ' disabled' : ''}>
+              <datalist id="usReservoirOptions"></datalist>
+              <div class="ai-flow-toggle-row" style="gap:8px;flex-wrap:wrap;margin-top:8px">
+                <div class="ai-flow-toggle-label-wrap">
+                  <div class="ai-flow-toggle-label">${escapeHtml(t('settings.reservoirAlert.thresholdLabel'))}</div>
+                  <div class="ai-flow-toggle-desc">${escapeHtml(t('settings.reservoirAlert.thresholdHint'))}</div>
+                </div>
+                <input type="number" id="usReservoirBelowPercent" class="unified-settings-select" min="${RESERVOIR_ALERT_BELOW_PERCENT_MIN}" max="${RESERVOIR_ALERT_BELOW_PERCENT_MAX}" step="1" inputmode="numeric" placeholder="%" aria-label="${escapeHtml(t('settings.reservoirAlert.thresholdInputLabel'))}" value="${reservoirSettings.belowPercent ?? ''}" style="width:5em">
+              </div>
+              <div class="ai-flow-toggle-row">
+                <div class="ai-flow-toggle-label-wrap">
+                  <div class="ai-flow-toggle-label">${escapeHtml(t('settings.reservoirAlert.seasonalLabel'))}</div>
+                  <div class="ai-flow-toggle-desc">${escapeHtml(t('settings.reservoirAlert.seasonalHint'))}</div>
+                </div>
+                <label class="ai-flow-switch">
+                  <input type="checkbox" id="usReservoirSeasonal" aria-label="${escapeHtml(t('settings.reservoirAlert.seasonalLabel'))}"${reservoirSettings.seasonalDrop ? ' checked' : ''}>
+                  <span class="ai-flow-slider"></span>
+                </label>
+              </div>
             </div>
             <div class="ai-flow-section-label" style="margin-top:8px">Quiet Hours</div>
             <div class="ai-flow-toggle-row">
@@ -805,6 +867,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           loadingEl.style.display = 'none';
           contentEl.style.display = 'block';
           mountOrbitalSitePicker();
+          mountReservoirPicker();
 
           // Tear down stale picker (if any) before mounting fresh one — the
           // innerHTML rewrite above orphans the previous root.
@@ -885,6 +948,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         tickers: string[];
         chokepoints: string[];
         orbitalSites: string[];
+        reservoirAlert: ReservoirAlertSettings;
       } {
         const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
         const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
@@ -893,6 +957,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const chokepointEl = container.querySelector<HTMLInputElement>('#usChokepointAlerts');
         const orbitalWindowsEl = container.querySelector<HTMLInputElement>('#usOrbitalWindowAlerts');
         const orbitalChangesEl = container.querySelector<HTMLInputElement>('#usOrbitalChangeAlerts');
+        const reservoirEl = container.querySelector<HTMLInputElement>('#usReservoirAlerts');
         const connectedChannelTypes = Array.from(
           container.querySelectorAll<HTMLElement>('[data-channel-type]'),
         )
@@ -914,7 +979,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         // Watched-site alerts: either toggle keeps the site list; both OFF clear it.
         const orbitalWindowsOn = orbitalWindowsEl?.checked ?? false;
         const orbitalChangesOn = orbitalChangesEl?.checked ?? false;
+        // Reservoir level alert: the toggle is the opt-in; OFF clears the reservoir list.
+        const reservoirOn = reservoirEl?.checked ?? false;
         const eventTypes = [
+          ...(reservoirOn ? [RESERVOIR_ALERT_EVENT_TYPE] : []),
           ...(watchlistOn ? [WATCHLIST_STORY_EVENT_TYPE] : []),
           ...(chokepointOn ? [CHOKEPOINT_DISRUPTION_EVENT_TYPE] : []),
           ...(orbitalWindowsOn ? [ORBITAL_WINDOW_EVENT_TYPE] : []),
@@ -934,7 +1002,71 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               .filter(Boolean)
             : [],
           orbitalSites: orbitalWindowsOn || orbitalChangesOn ? selectedOrbitalSites() : [],
+          reservoirAlert: reservoirOn ? readReservoirSettings() : { reservoirs: [] },
         };
+      }
+
+      function selectedReservoirs(): string[] {
+        return Array.from(container.querySelectorAll<HTMLElement>('#usReservoirChips [data-reservoir-id]'))
+          .map((el) => el.dataset.reservoirId ?? '')
+          .filter(Boolean);
+      }
+
+      function readReservoirSettings(): ReservoirAlertSettings {
+        const raw = container.querySelector<HTMLInputElement>('#usReservoirBelowPercent')?.value.trim() ?? '';
+        const parsed = raw === '' ? Number.NaN : Math.round(Number(raw));
+        const belowPercent = Number.isFinite(parsed)
+          ? Math.min(RESERVOIR_ALERT_BELOW_PERCENT_MAX, Math.max(RESERVOIR_ALERT_BELOW_PERCENT_MIN, parsed))
+          : undefined;
+        // Show the value that is saved, so the field never differs from the stored threshold.
+        const input = container.querySelector<HTMLInputElement>('#usReservoirBelowPercent');
+        if (input) input.value = belowPercent === undefined ? '' : String(belowPercent);
+        return {
+          reservoirs: selectedReservoirs(),
+          ...(belowPercent !== undefined ? { belowPercent } : {}),
+          seasonalDrop: container.querySelector<HTMLInputElement>('#usReservoirSeasonal')?.checked ?? false,
+        };
+      }
+
+      function renderReservoirChips(ids: string[], options: ReservoirOption[]): void {
+        const chips = container.querySelector<HTMLElement>('#usReservoirChips');
+        if (!chips) return;
+        const byId = new Map(options.map((r) => [r.id, r]));
+        setTrustedHtml(chips, trustedHtml(ids.map((id) => {
+          const option = byId.get(id);
+          const label = option ? reservoirLabel(option) : id;
+          return `<button type="button" class="us-notif-country-chip us-notif-country-chip-on" data-reservoir-id="${escapeHtml(id)}" aria-label="${escapeHtml(t('settings.reservoirAlert.removeLabel', { name: label }))}">${escapeHtml(label)} ×</button>`;
+        }).join(''), 'reservoir chips built from escaped registry fields'));
+        const search = container.querySelector<HTMLInputElement>('#usReservoirSearch');
+        if (search) search.disabled = ids.length >= RESERVOIR_ALERT_RESERVOIRS_MAX;
+      }
+
+      function mountReservoirPicker(): void {
+        // The watchlist is fetched only once the user turns the alert on (or already has it on).
+        if (container.querySelector<HTMLElement>('#usReservoirScope')?.hidden !== false) return;
+        void loadReservoirOptions().then((options) => {
+          if (signal.aborted) return;
+          const list = container.querySelector<HTMLElement>('#usReservoirOptions');
+          if (list) {
+            setTrustedHtml(list, trustedHtml(options.map((r) => `<option value="${escapeHtml(reservoirLabel(r))}"></option>`).join(''), 'reservoir options built from escaped registry fields'));
+          }
+          renderReservoirChips(selectedReservoirs(), options);
+        }).catch((err) => console.warn('[notifications] reservoirs unavailable:', err));
+      }
+
+      function addReservoir(input: HTMLInputElement): void {
+        const wanted = input.value.trim();
+        if (!wanted) return;
+        void loadReservoirOptions().then((options) => {
+          const match = options.find((r) => reservoirLabel(r) === wanted);
+          if (!match) return;
+          const ids = selectedReservoirs();
+          input.value = '';
+          if (ids.includes(match.id) || ids.length >= RESERVOIR_ALERT_RESERVOIRS_MAX) return;
+          renderReservoirChips([...ids, match.id], options);
+          if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
+          alertRuleDebounceTimer = setTimeout(() => saveCurrentAlertRule(), 800);
+        }).catch((err) => console.warn('[notifications] reservoirs unavailable:', err));
       }
 
       function selectedOrbitalSites(): string[] {
@@ -1236,12 +1368,20 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           addOrbitalSite(target as HTMLInputElement);
           return;
         }
+        if (target.id === 'usReservoirSearch') {
+          addReservoir(target as HTMLInputElement);
+          return;
+        }
+        if (target.id === 'usReservoirAlerts') {
+          container.querySelector<HTMLElement>('#usReservoirScope')?.toggleAttribute('hidden', !(target as HTMLInputElement).checked);
+          mountReservoirPicker();
+        }
         if (target.id === 'usOrbitalWindowAlerts' || target.id === 'usOrbitalChangeAlerts') {
           const anyOn = ['#usOrbitalWindowAlerts', '#usOrbitalChangeAlerts']
             .some((sel) => container.querySelector<HTMLInputElement>(sel)?.checked);
           container.querySelector<HTMLElement>('#usOrbitalScope')?.toggleAttribute('hidden', !anyOn);
         }
-        if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity' || target.id === 'usWatchlistAlerts' || target.id === 'usChokepointAlerts' || target.id === 'usOrbitalWindowAlerts' || target.id === 'usOrbitalChangeAlerts') {
+        if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity' || target.id === 'usWatchlistAlerts' || target.id === 'usChokepointAlerts' || target.id === 'usOrbitalWindowAlerts' || target.id === 'usOrbitalChangeAlerts' || target.id === 'usReservoirAlerts' || target.id === 'usReservoirBelowPercent' || target.id === 'usReservoirSeasonal') {
           if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
           alertRuleDebounceTimer = setTimeout(() => {
             // Source from the centralized helper so `countries` flows through.
@@ -1266,6 +1406,16 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (orbitalChip) {
           orbitalChip.remove();
           const search = container.querySelector<HTMLInputElement>('#usOrbitalSiteSearch');
+          if (search) search.disabled = false;
+          if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
+          alertRuleDebounceTimer = setTimeout(() => saveCurrentAlertRule(), 800);
+          return;
+        }
+
+        const reservoirChip = target.closest<HTMLElement>('#usReservoirChips [data-reservoir-id]');
+        if (reservoirChip) {
+          reservoirChip.remove();
+          const search = container.querySelector<HTMLInputElement>('#usReservoirSearch');
           if (search) search.disabled = false;
           if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
           alertRuleDebounceTimer = setTimeout(() => saveCurrentAlertRule(), 800);

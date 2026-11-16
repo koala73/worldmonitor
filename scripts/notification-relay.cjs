@@ -37,6 +37,7 @@ const {
 } = require('./shared/notification-dedup.cjs');
 const { COMPARE_AND_DELETE_SCRIPT } = require('./shared/compare-and-delete-script.cjs');
 const { ORBITAL_SITE_EVENT_TYPES } = require('./lib/orbital-site-alerts.cjs');
+const { RESERVOIR_ALERT_EVENT_TYPE, reservoirAlertDecision } = require('./lib/reservoir-level-alerts.cjs');
 const {
   parseSuppressionEntries,
   isLinkSuppressed,
@@ -462,6 +463,124 @@ function formatHeldAlertLines(events) {
   });
 }
 
+// Message limits of the text channels. Telegram refuses a sendMessage over 4096 characters (the whole
+// message is rejected). Discord content is capped at 2000 after escaping. Slack accepts far more, but
+// its own guidance is 4000 characters; 3900 leaves room for the escaping.
+const TELEGRAM_MAX_TEXT = 4096;
+const SLACK_MAX_TEXT = 3900;
+const TEAMS_HELD_LINES_PER_CARD_GROUP = 15;
+
+function chunkArray(items, size) {
+  const out = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/**
+ * Packs held alert lines into message parts that each fit `limit` after the channel's escaping
+ * (`measure`). Every line stays whole inside one part; a line too long for any part is shortened with
+ * an ellipsis rather than dropped. More than one part gets a "(part i of m)" label, and the last part
+ * ends with the dashboard link. Returns [{ text, count }], `count` being the alerts in that part.
+ */
+function buildHeldTextParts(heldLines, { limit, measure }) {
+  const total = heldLines.length;
+  const first = (suffix) => `WorldMonitor — ${total} held alert${total !== 1 ? 's' : ''} from quiet hours${suffix}`;
+  const later = (suffix) => `WorldMonitor — held alerts from quiet hours${suffix}`;
+  const footer = '\n\nView full dashboard → worldmonitor.app';
+  const widest = ` (part ${total} of ${total})`;
+  const overhead = Math.max(measure(first(widest)), measure(later(widest))) + measure('\n\n') + measure(footer);
+  const room = Math.max(1, limit - overhead - 1);
+  const fit = (line) => {
+    if (measure(line) <= room) return line;
+    let cut = line.length;
+    while (cut > 1 && measure(`${line.slice(0, cut)}…`) > room) cut -= 1;
+    return `${line.slice(0, cut)}…`;
+  };
+  const groups = [];
+  let current = [];
+  let used = 0;
+  for (const raw of heldLines) {
+    const line = fit(raw);
+    const cost = measure(line) + 1;
+    if (current.length > 0 && used + cost > room) { groups.push(current); current = []; used = 0; }
+    current.push(line);
+    used += cost;
+  }
+  if (current.length > 0 || groups.length === 0) groups.push(current);
+  return groups.map((group, i) => {
+    const suffix = groups.length > 1 ? ` (part ${i + 1} of ${groups.length})` : '';
+    const head = i === 0 ? first(suffix) : later(suffix);
+    return { text: `${head}\n\n${group.join('\n')}${i === groups.length - 1 ? footer : ''}`, count: group.length };
+  });
+}
+
+// Removes the items this drain read, each by its own value (LREM, count 1), and leaves the rest. DEL
+// would also discard an alert held while the sends were in flight, and a position-based trim shifts
+// when a hold at QUIET_HELD_MAX drops the head. The commands go through /pipeline in bounded chunks.
+// Upstash /pipeline is not transactional, so nothing here relies on atomicity: every command's own
+// result is read, an item that is already gone is simply not removed, and only failed ones are retried.
+const HELD_REMOVE_CHUNK = 50;
+
+async function lremPipeline(key, rawItems) {
+  // One outcome per item: 'removed', 'already-gone', 'failed-non-ok' or 'failed-timed-out'.
+  let res;
+  try {
+    res = await fetch(`${UPSTASH_URL}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
+      body: JSON.stringify(rawItems.map((raw) => ['LREM', key, '1', raw])),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    // The request itself rejected (timeout or network), which is not the same as a refusal.
+    return rawItems.map(() => 'failed-timed-out');
+  }
+  if (!res.ok) return rawItems.map(() => 'failed-non-ok');
+  let results;
+  try {
+    results = await res.json();
+  } catch (err) {
+    // Reading the body can hit the same timeout; only a body that parsed badly is a refusal.
+    if (!(err instanceof SyntaxError)) return rawItems.map(() => 'failed-timed-out');
+    results = null;
+  }
+  if (!Array.isArray(results) || results.length !== rawItems.length) return rawItems.map(() => 'failed-non-ok');
+  return results.map((entry) => {
+    const removed = entry && typeof entry === 'object' && !entry.error ? entry.result : null;
+    if (typeof removed !== 'number') return 'failed-non-ok';
+    return removed > 0 ? 'removed' : 'already-gone';
+  });
+}
+
+async function removeHeldItems(key, rawItems) {
+  const result = { removed: 0, alreadyGone: 0, failedNonOk: 0, failedTimedOut: 0 };
+  for (let start = 0; start < rawItems.length; start += HELD_REMOVE_CHUNK) {
+    let pending = rawItems.slice(start, start + HELD_REMOVE_CHUNK);
+    let outcomes = [];
+    // One retry, of the failed commands only: a failed removal means a delivered alert stays held and is sent again.
+    for (let attempt = 0; attempt < 2 && pending.length > 0; attempt += 1) {
+      outcomes = await lremPipeline(key, pending);
+      const retry = [];
+      outcomes.forEach((outcome, i) => {
+        if (outcome === 'removed') result.removed += 1;
+        else if (outcome === 'already-gone') result.alreadyGone += 1;
+        else retry.push(i);
+      });
+      outcomes = retry.map((i) => outcomes[i]);
+      pending = retry.map((i) => pending[i]);
+    }
+    for (const outcome of outcomes) {
+      if (outcome === 'failed-timed-out') result.failedTimedOut += 1;
+      else result.failedNonOk += 1;
+    }
+  }
+  const failed = result.failedNonOk + result.failedTimedOut;
+  if (failed > 0) {
+    console.warn(`[relay] drainHeldForUser: could not remove ${failed} delivered held alert${failed === 1 ? '' : 's'} (${result.failedNonOk} non-OK, ${result.failedTimedOut} timed out); they may be sent again`);
+  }
+  return { ...result, failed };
+}
+
 // Delivers (or discards) the held queue for a single user+variant.
 // Used by both drainBatchOnWake (wake-up) and processFlushQuietHeld (settings change).
 // allowedChannelTypes: which channels to attempt delivery on; null = use rule's channels.
@@ -473,14 +592,21 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
   const items = await upstashRest('LRANGE', key, String(-QUIET_HELD_MAX), '-1');
   if (!Array.isArray(items) || items.length === 0) return;
 
-  const parsedEvents = items.map(i => { try { return JSON.parse(i); } catch { return null; } }).filter(Boolean);
+  const parsedEvents = [];
+  const itemIndex = new Map(); // parsed event -> its position in `items`
+  items.forEach((raw, index) => {
+    try {
+      const ev = JSON.parse(raw);
+      if (ev) { parsedEvents.push(ev); itemIndex.set(ev, index); }
+    } catch { /* an unreadable held item is skipped */ }
+  });
   // Re-check the operator set: a link blocked while the event sat in the
   // queue must not go out in the batch (#8401).
   const events = [];
   for (const ev of parsedEvents) {
     if ((await suppressedLinksFor(ev, 1, 'stage=quiet-hours-drain')).length === 0) events.push(ev);
   }
-  if (events.length === 0) { await upstashRest('DEL', key); return; }
+  if (events.length === 0) { await removeHeldItems(key, items); return; }
 
   const heldLines = formatHeldAlertLines(events);
   const lines = [`WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''} from quiet hours`, '', ...heldLines];
@@ -508,19 +634,49 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
     (c.channelType !== 'telegram' || c.telegramOwnership === 'verified_callback') &&
     (allowedChannelTypes == null || allowedChannelTypes.includes(c.channelType)),
   );
+  // Text channels refuse a message over their own limit, and a long batch (a reservoir sweep alone can
+  // hold dozens of alerts) goes out as numbered parts that each keep every alert whole. `delivered`
+  // counts the alerts of the parts that went out, so a failed later part leaves only the unsent alerts
+  // held and a retry never repeats a part that already arrived.
+  const textLimits = {
+    telegram: { limit: TELEGRAM_MAX_TEXT, measure: (t) => t.length },
+    slack: { limit: SLACK_MAX_TEXT, measure: (t) => escapeSlackText(t).length },
+    discord: { limit: DISCORD_MAX_CONTENT, measure: (t) => escapeDiscordText(t).length },
+  };
+  const sendTextPart = (ch, part) => {
+    if (ch.channelType === 'telegram' && ch.chatId) return sendTelegram(userId, ch.chatId, part);
+    if (ch.channelType === 'slack' && ch.webhookEnvelope) return sendSlack(userId, ch.webhookEnvelope, part);
+    if (ch.channelType === 'discord' && ch.webhookEnvelope) return sendDiscord(userId, ch.webhookEnvelope, part);
+    return false;
+  };
   let anyDelivered = false;
+  let mostDelivered = 0;
   for (const ch of verifiedChannels) {
+    // Declared outside the try: a request that rejects after earlier parts went out must still count them.
+    let ok = false;
+    let delivered = 0;
     try {
-      let ok = false;
-      if (ch.channelType === 'telegram' && ch.chatId) ok = await sendTelegram(userId, ch.chatId, text);
-      else if (ch.channelType === 'slack' && ch.webhookEnvelope) ok = await sendSlack(userId, ch.webhookEnvelope, text);
-      else if (ch.channelType === 'discord' && ch.webhookEnvelope) ok = await sendDiscord(userId, ch.webhookEnvelope, text);
-      else if (ch.channelType === 'teams' && ch.webhookEnvelope) ok = await sendTeamsCards(userId, ch.webhookEnvelope, buildTeamsNoticePayloads({
-        title: lines[0],
-        lines: heldLines,
-        link: NOTIFY_DASHBOARD_URL,
-        linkTitle: 'Open dashboard',
-      }));
+      if (textLimits[ch.channelType]) {
+        const parts = buildHeldTextParts(heldLines, textLimits[ch.channelType]);
+        // `ok` is set only after the loop: a part whose request rejects must leave it false.
+        let allSent = true;
+        for (const part of parts) {
+          if (!(await sendTextPart(ch, part.text))) { allSent = false; break; }
+          delivered += part.count;
+        }
+        ok = allSent;
+      }
+      else if (ch.channelType === 'teams' && ch.webhookEnvelope) {
+        const groups = chunkArray(heldLines, TEAMS_HELD_LINES_PER_CARD_GROUP);
+        let allSent = true;
+        for (let i = 0; i < groups.length; i += 1) {
+          const title = groups.length > 1 ? `${lines[0]} (part ${i + 1} of ${groups.length})` : lines[0];
+          const payloads = buildTeamsNoticePayloads({ title, lines: groups[i], link: NOTIFY_DASHBOARD_URL, linkTitle: 'Open dashboard' });
+          if (!(await sendTeamsCards(userId, ch.webhookEnvelope, payloads))) { allSent = false; break; }
+          delivered += groups[i].length;
+        }
+        ok = allSent;
+      }
       else if (ch.channelType === 'email' && ch.email) {
         // Key the exact email Resend receives: a drain that filters out a
         // newly blocked link changes `text`, and reusing the key with a
@@ -558,14 +714,25 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
           eventType: 'quiet_hours_batch',
         });
       }
-      if (ok) anyDelivered = true;
     } catch (err) {
       console.warn(`[relay] drainHeldForUser: delivery error for ${userId}/${ch.channelType}:`, err.message);
     }
+    if (ok) anyDelivered = true;
+    else mostDelivered = Math.max(mostDelivered, delivered);
   }
   if (anyDelivered) {
-    await upstashRest('DEL', key);
-    console.log(`[relay] drainHeldForUser: delivered ${events.length} held events to ${userId} (${variant})`);
+    const cleared = await removeHeldItems(key, items);
+    console.log(`[relay] drainHeldForUser: delivered ${events.length} held events to ${userId} (${variant})${cleared.failed > 0 ? `; ${cleared.failed} not removed` : ''}`);
+  } else if (mostDelivered > 0) {
+    // No channel took the whole batch, but some alerts already arrived: keep only the rest, so the
+    // next drain does not send them again.
+    const remaining = events.length - mostDelivered;
+    // Remove each delivered alert by its own value (LREM, count 1), not by a position taken before the
+    // sends: a hold that arrives at QUIET_HELD_MAX meanwhile drops the oldest entry from the head and
+    // shifts every index. Upstash /pipeline is not transactional, so nothing here relies on atomicity;
+    // an entry that is already gone is simply not removed.
+    const cleared = await removeHeldItems(key, events.slice(0, mostDelivered).map((ev) => items[itemIndex.get(ev)]));
+    console.log(`[relay] drainHeldForUser: delivered ${mostDelivered} of ${events.length} held events to ${userId} (${variant}); ${remaining} stay held${cleared.failed > 0 ? `, ${cleared.failed} delivered but not removed` : ''}`);
   }
 }
 
@@ -1165,6 +1332,8 @@ function normalizeEventCountryCode(raw) {
 //    (eventMatchesChokepointScope) and opt-in only (#9217).
 //  - orbital_imaging_window, orbital_site_change: scoped by watched site
 //    (eventMatchesOrbitalSiteScope) and opt-in only.
+//  - reservoir_level_alert: scoped by the rule's own reservoir list and
+//    threshold (eventMatchesReservoirScope) and opt-in only.
 const PERMISSIVE_UNATTRIBUTED_EVENT_TYPES = new Set([
   'rss_alert',
   'keyword_spike',
@@ -1173,6 +1342,7 @@ const PERMISSIVE_UNATTRIBUTED_EVENT_TYPES = new Set([
   'watchlist_story_alert',
   'chokepoint_disruption',
   ...ORBITAL_SITE_EVENT_TYPES,
+  RESERVOIR_ALERT_EVENT_TYPE,
 ]);
 
 function isPermissiveUnattributedEvent(event) {
@@ -1296,6 +1466,8 @@ const OPT_IN_EVENT_TYPES = new Set([
   // Same opt-in contract as the watchlist row (#9217).
   CHOKEPOINT_DISRUPTION_EVENT_TYPE,
   ...ORBITAL_SITE_EVENT_TYPES,
+  // Same opt-in contract: the rule lists the type, its reservoirs and its criterion.
+  RESERVOIR_ALERT_EVENT_TYPE,
 ]);
 
 function ruleMatchesEventType(rule, event) {
@@ -1356,6 +1528,17 @@ function eventMatchesOrbitalSiteScope(event, rule) {
 }
 
 /**
+ * Narrows `reservoir_level_alert` to what the rule chose: its reservoirs, and a level below
+ * its threshold or a drop beyond the seasonal baseline. An absent or empty reservoir list
+ * means none, and an event without a dated measurement matches no rule. Every other event
+ * type passes through untouched.
+ */
+function eventMatchesReservoirScope(event, rule) {
+  if (event?.eventType !== RESERVOIR_ALERT_EVENT_TYPE) return true;
+  return reservoirAlertDecision(rule.reservoirAlert, event.payload).fire;
+}
+
+/**
  * Web push tag: a later push with the same tag replaces the earlier one in the
  * tray. Chokepoint and watched-site alerts carry their subject so two alerts in
  * one tick both stay visible.
@@ -1363,13 +1546,19 @@ function eventMatchesOrbitalSiteScope(event, rule) {
 function webPushTagFor(event, userId) {
   const subject = event?.eventType === CHOKEPOINT_DISRUPTION_EVENT_TYPE ? event?.payload?.chokepointId
     : ORBITAL_SITE_EVENT_TYPES.includes(event?.eventType) ? event?.payload?.siteId
-      : null;
+      : event?.eventType === RESERVOIR_ALERT_EVENT_TYPE ? event?.payload?.reservoirId
+        : null;
   return typeof subject === 'string' && subject
     ? `${event.eventType}:${subject}:${userId}`
     : `${event.eventType}:${userId}`;
 }
 
 function shouldNotify(rule, event) {
+  // Reservoir level alerts are scoped by the rule's own reservoir list, threshold and event-type
+  // opt-in, so the realtime critical-only gate does not apply. They are not critical, so quiet
+  // hours still silence them, or hold them under Batch (resolveQuietAction).
+  if (event?.eventType === RESERVOIR_ALERT_EVENT_TYPE) return true;
+
   // Coerce (effective realtime + non-critical) → 'critical' before consulting
   // sensitivity in either branch. The mutation validators + migration make this
   // state unreachable for new traffic; this catches in-flight rows during
@@ -1388,6 +1577,16 @@ function shouldNotify(rule, event) {
     effectiveDigestMode === 'realtime' && (rule.sensitivity === 'all' || rule.sensitivity === 'high')
       ? 'critical'
       : rule.sensitivity;
+
+  // Watched-site alerts are scoped by the rule's own site list and event-type
+  // opt-in, so the realtime critical-only gate does not apply; quiet hours still
+  // treat them by their real (non-critical) severity.
+  if (ORBITAL_SITE_EVENT_TYPES.includes(event?.eventType)) return true;
+
+  // The all-clear for a national air traffic collapse (scripts/shared/
+  // air-traffic-detector.cjs) goes to the realtime rules that got the critical
+  // alert. It stays high, so quiet hours silence it or hold it for Batch.
+  if (event?.eventType === 'aviation_traffic_collapse' && event?.payload?.kind === 'recovery') return true;
 
   const passesLegacy = matchesSensitivity(effectiveSensitivity, event.severity ?? 'high');
   if (!passesLegacy) return false;
@@ -1911,6 +2110,7 @@ async function processEvent(event) {
     eventMatchesTickerScope(event, r) &&
     eventMatchesChokepointScope(event, r) &&
     eventMatchesOrbitalSiteScope(event, r) &&
+    eventMatchesReservoirScope(event, r) &&
     (!event.variant || !r.variant || r.variant === event.variant) &&
     (!event.userId || r.userId === event.userId)
   );
@@ -1927,6 +2127,7 @@ async function processEvent(event) {
     eventMatchesTickerScope(event, r) &&
     eventMatchesChokepointScope(event, r) &&
     eventMatchesOrbitalSiteScope(event, r) &&
+    eventMatchesReservoirScope(event, r) &&
     (!event.variant || !r.variant || r.variant === event.variant) &&
     (!event.userId || r.userId === event.userId)
   ).length;
@@ -2223,6 +2424,8 @@ module.exports = {
   buildDiscordMessagePayload,
   buildTeamsAlertForEvent,
   formatHeldAlertLines,
+  buildHeldTextParts,
+  removeHeldItems,
   sendTeams,
   processWelcome,
   popNextEvent,

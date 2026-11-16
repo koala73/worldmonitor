@@ -36,25 +36,41 @@ const CONUS_BOX = Object.freeze({ south: 24.5, north: 49.5, west: -125.0, east: 
 // drop in both is a feed problem.
 const EUROPE_BOX = Object.freeze({ south: 36.0, north: 60.0, west: -10.0, east: 25.0 });
 
-// adsb.lol answers 250 nm radius queries and rate-limits a sweep at roughly one
-// request every 3 to 4 seconds, so a national sweep (about 50 circles) cannot
-// fit in a bin. These 10 circles are a set cover of the 20 hub discs, and two
-// more sample the Europe control region. Counts from them are a partial view;
-// compare them only with the same series' own baseline.
-const ADSBLOL_RADIUS_NM = 250;
-const ADSBLOL_CIRCLES = Object.freeze([
-  { lat: 41.12, lon: -73.21 }, // JFK, EWR, LGA, BOS
-  { lat: 26.77, lon: -80.58 }, // MCO, MIA, FLL
-  { lat: 34.49, lon: -115.19 }, // LAX, LAS, PHX
-  { lat: 31.45, lon: -96.19 }, // DFW, IAH
-  { lat: 34.43, lon: -82.69 }, // ATL, CLT
-  { lat: 42.1, lon: -85.63 }, // ORD, DTW
-  { lat: 37.62, lon: -122.38 }, // SFO
-  { lat: 39.86, lon: -104.67 }, // DEN
-  { lat: 44.88, lon: -93.22 }, // MSP
-  { lat: 47.45, lon: -122.31 }, // SEA
-  { lat: 51.47, lon: -0.45 }, // Europe control, London
-  { lat: 50.03, lon: 8.56 }, // Europe control, Frankfurt
-].map(Object.freeze));
+// National markets inside EUROPE_BOX, each measured around its busiest
+// airports. An aircraft within HUB_RADIUS_KM of any hub of a market counts once
+// for that market, so London's five airports do not count one climber five
+// times. tz is the market's local time for same-time baselines.
+const EUROPE_MARKETS = Object.freeze([
+  { code: 'GB', tz: 'Europe/London', hubs: [
+    { iata: 'LHR', lat: 51.4700, lon: -0.4543 }, { iata: 'LGW', lat: 51.1537, lon: -0.1821 },
+    { iata: 'MAN', lat: 53.3537, lon: -2.2750 }, { iata: 'STN', lat: 51.8860, lon: 0.2389 },
+    { iata: 'EDI', lat: 55.9500, lon: -3.3725 }, { iata: 'BHX', lat: 52.4539, lon: -1.7480 },
+    { iata: 'GLA', lat: 55.8719, lon: -4.4331 }, { iata: 'BRS', lat: 51.3827, lon: -2.7191 },
+  ] },
+  { code: 'FR', tz: 'Europe/Paris', hubs: [
+    { iata: 'CDG', lat: 49.0097, lon: 2.5479 }, { iata: 'ORY', lat: 48.7262, lon: 2.3652 },
+    { iata: 'NCE', lat: 43.6584, lon: 7.2159 }, { iata: 'LYS', lat: 45.7256, lon: 5.0811 },
+    { iata: 'MRS', lat: 43.4393, lon: 5.2214 }, { iata: 'TLS', lat: 43.6293, lon: 1.3638 },
+    { iata: 'BOD', lat: 44.8283, lon: -0.7156 }, { iata: 'NTE', lat: 47.1532, lon: -1.6107 },
+  ] },
+  { code: 'DE', tz: 'Europe/Berlin', hubs: [
+    { iata: 'FRA', lat: 50.0379, lon: 8.5622 }, { iata: 'MUC', lat: 48.3538, lon: 11.7861 },
+    { iata: 'BER', lat: 52.3667, lon: 13.5033 }, { iata: 'DUS', lat: 51.2895, lon: 6.7668 },
+    { iata: 'HAM', lat: 53.6304, lon: 9.9882 }, { iata: 'CGN', lat: 50.8659, lon: 7.1427 },
+    { iata: 'STR', lat: 48.6899, lon: 9.2220 },
+  ] },
+  { code: 'ES', tz: 'Europe/Madrid', hubs: [
+    { iata: 'MAD', lat: 40.4983, lon: -3.5676 }, { iata: 'BCN', lat: 41.2974, lon: 2.0833 },
+    { iata: 'PMI', lat: 39.5517, lon: 2.7388 }, { iata: 'AGP', lat: 36.6749, lon: -4.4991 },
+    { iata: 'ALC', lat: 38.2822, lon: -0.5582 }, { iata: 'VLC', lat: 39.4893, lon: -0.4816 },
+    { iata: 'SVQ', lat: 37.4180, lon: -5.8931 }, { iata: 'BIO', lat: 43.3011, lon: -2.9106 },
+  ] },
+  { code: 'IT', tz: 'Europe/Rome', hubs: [
+    { iata: 'FCO', lat: 41.8003, lon: 12.2389 }, { iata: 'MXP', lat: 45.6306, lon: 8.7281 },
+    { iata: 'BGY', lat: 45.6739, lon: 9.7042 }, { iata: 'NAP', lat: 40.8860, lon: 14.2908 },
+    { iata: 'CTA', lat: 37.4668, lon: 15.0664 }, { iata: 'VCE', lat: 45.5053, lon: 12.3519 },
+    { iata: 'BLQ', lat: 44.5354, lon: 11.2887 }, { iata: 'PMO', lat: 38.1760, lon: 13.0910 },
+  ] },
+].map((market) => Object.freeze({ ...market, hubs: Object.freeze(market.hubs.map(Object.freeze)) })));
 
-module.exports = { US_HUBS, HUB_RADIUS_KM, CONUS_BOX, EUROPE_BOX, ADSBLOL_RADIUS_NM, ADSBLOL_CIRCLES };
+module.exports = { US_HUBS, HUB_RADIUS_KM, CONUS_BOX, EUROPE_BOX, EUROPE_MARKETS };

@@ -314,19 +314,6 @@ export function showProBanner(container: HTMLElement): void {
   requestAnimationFrame(() => banner.classList.add('pro-banner-in'));
 }
 
-export function hideProBanner(): void {
-  if (!bannerEl) {
-    setReservation(false);
-    return;
-  }
-  bannerEl.classList.add('pro-banner-out');
-  scheduleBannerRemoval();
-}
-
-export function isProBannerVisible(): boolean {
-  return bannerEl !== null;
-}
-
 // Reactive sync with entitlement / subscription / auth state. App.ts calls
 // showProBanner() ONCE at init, so any later free↔pro flip (Dodo webhook lands
 // mid-session, plan cancelled, billing grace expires) OR Clerk hydration after

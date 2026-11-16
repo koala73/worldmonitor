@@ -65,7 +65,7 @@ World Monitor is written in vanilla TypeScript — no frontend framework (React,
 | State management | `localStorage` for user preferences, `CustomEvent` dispatch for inter-panel communication (`wm:breaking-news`, `wm:deduct-context`, `theme-changed`, `ai-flow-changed`), and a centralized signal aggregator for intelligence state |
 | Routing | URL query parameters (`?view=`, `?c=`, `?layers=`) parsed at startup; `history.pushState` for shareable deep links |
 | Reactivity | `SmartPollLoop` and `RefreshScheduler` classes with named refresh runners, visibility-aware scheduling, and in-flight deduplication |
-| Virtual scrolling | Custom `VirtualList` with DOM element pooling, top/bottom spacer divs, and `requestAnimationFrame`-batched scroll handling |
+| Virtual scrolling | `WindowedList` renders rows in chunks and uses CSS containment so a long list does not build a DOM node for every row. |
 
 ### Discriminated Union Marker System
 

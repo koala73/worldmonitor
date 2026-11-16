@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { join } from 'node:path';
 import { buildPluginShell } from '../api/mcp/ui/_plugin-loader';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // Built news-and-maps view in an opaque iframe with a controlled MCP Apps host.
 // Covers display modes (inline, side panel and fullscreen sizing), the handshake
@@ -153,7 +154,7 @@ test('fullscreen at 380 by 700 stacks the map above the news and fills the conta
   await host.frame.locator('#panelsGrid').scrollIntoViewIfNeeded();
   await page.waitForTimeout(300);
   expect(sizeChanges(host.messages)).toBe(before);
-  await page.screenshot({ path: info.outputPath('news-fullscreen-380.png') });
+  await evidenceScreenshot(page, { path: info.outputPath('news-fullscreen-380.png') });
 });
 
 test('fullscreen at 320 by 600 wraps the action row without horizontal overflow', async ({ page }) => {
@@ -182,7 +183,7 @@ test('fullscreen at 1500 by 800 puts map and news side by side, and inline sizin
   expect(Math.abs(map!.y - panels!.y)).toBeLessThan(map!.height);
   expect(panels!.x).toBeGreaterThan(map!.x);
   expect(panels!.y + panels!.height).toBeLessThanOrEqual(801);
-  await page.screenshot({ path: info.outputPath('news-fullscreen-1500.png') });
+  await evidenceScreenshot(page, { path: info.outputPath('news-fullscreen-1500.png') });
   const before = sizeChanges(host.messages);
   await setHostContext(page, { displayMode: 'inline', containerDimensions: { width: 1100, maxHeight: 6000 } }, { width: 1100, height: 1050 });
   await expect(body).not.toHaveAttribute('data-wm-fill');

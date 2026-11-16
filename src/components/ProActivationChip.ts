@@ -215,8 +215,3 @@ export async function maybeShowFinishSetupChip(options: ProActivationFlowOptions
   if (!shouldShowFinishSetupChip(results, dismissal, currentAccountKey, now)) return;
   renderChip(options);
 }
-
-/** Remove the chip if present (used by tests / teardown). */
-export function dismissFinishSetupChip(): void {
-  removeChip();
-}

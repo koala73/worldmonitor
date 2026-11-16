@@ -66,17 +66,6 @@ async function getRegistration(): Promise<ServiceWorkerRegistration | null> {
   }
 }
 
-/** Read-only: is there an existing push subscription for this device? */
-export async function getExistingSubscription(): Promise<PushSubscription | null> {
-  const reg = await getRegistration();
-  if (!reg) return null;
-  try {
-    return await reg.pushManager.getSubscription();
-  } catch {
-    return null;
-  }
-}
-
 interface SubscriptionPayload {
   endpoint: string;
   p256dh: string;

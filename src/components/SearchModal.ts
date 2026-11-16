@@ -285,10 +285,6 @@ export class SearchModal {
     this.onHumanInteraction = callback;
   }
 
-  public setOnQueryChange(callback: (rawInput: string) => void): void {
-    this.onQueryChange = callback;
-  }
-
   public setOnFlightSearch(callback: (callsign: string) => void): void {
     this.onFlightSearch = callback;
   }

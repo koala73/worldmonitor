@@ -12,6 +12,7 @@ import {
 import { sunElevationDeg } from '../../../shared/orbital/sun.js';
 import { decidePassTier, type PassTier } from '../../../shared/orbital/tiers.js';
 import { assertPassQuery, profileFor, type PassWindow } from './pass-query';
+import { computeReservoirNextPassesChunked, type ReservoirNextPass, type ReservoirPassSite } from './reservoir-next-pass';
 
 export type { PassWindow };
 
@@ -198,14 +199,26 @@ export function daylightSpans(point: GeoPoint, window: PassWindow, stepMs = DAYL
   return spans;
 }
 
+/** The ICESat-2 crossing scan for the strategic reservoirs, which needs only the catalog's satellites and the lake extents. */
+export interface ReservoirNextPassInput {
+  satellites: CatalogSatellite[];
+  sites: ReservoirPassSite[];
+  nowMs: number;
+}
+
+/** A Map does not survive every message transport, so predictions travel as entries. */
+export type ReservoirNextPassEntries = Array<[string, ReservoirNextPass]> | null;
+
 export type PassJobRequest =
   | { type: 'compute'; id: number; input: PassJobInput }
+  | { type: 'reservoir-next-passes'; id: number; input: ReservoirNextPassInput }
   | { type: 'cancel'; id: number };
 
 export type PassJobReply =
   | { type: 'ready' }
   | { type: 'progress'; id: number; done: number; total: number }
   | { type: 'result'; id: number; result: PassJobResult }
+  | { type: 'reservoir-next-passes-result'; id: number; passes: ReservoirNextPassEntries }
   | { type: 'error'; id: number; name: string; message: string };
 
 export function createPassJobHandler(post: (reply: PassJobReply) => void): (request: PassJobRequest) => void {
@@ -215,8 +228,22 @@ export function createPassJobHandler(post: (reply: PassJobReply) => void): (requ
       cancelled.add(request.id);
       return;
     }
+    const isCancelled = () => cancelled.has(request.id);
+    if (request.type === 'reservoir-next-passes') {
+      const { id, input } = request;
+      computeReservoirNextPassesChunked({ satellites: input.satellites }, input.sites, { isCancelled }, input.nowMs)
+        .then((passes) => {
+          if (!isCancelled()) post({ type: 'reservoir-next-passes-result', id, passes: passes ? [...passes] : null });
+        })
+        .catch((error: unknown) => {
+          if (isCancelled()) return;
+          const failure = error instanceof Error ? error : new Error(String(error));
+          post({ type: 'error', id, name: failure.name, message: failure.message });
+        })
+        .finally(() => cancelled.delete(id));
+      return;
+    }
     const { id, input } = request;
-    const isCancelled = () => cancelled.has(id);
     runPassJob(input, { isCancelled, onProgress: (done, total) => post({ type: 'progress', id, done, total }) })
       .then((result) => {
         if (result) post({ type: 'result', id, result });

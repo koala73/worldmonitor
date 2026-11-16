@@ -57,6 +57,7 @@ async function createHarness({ failReplacement = true, scheduleMicrotask = queue
   const map = new Harness();
   Object.assign(map, {
     controlDisclosureCleanups: [],
+    popup: { hide() {} },
     container: { querySelector: () => null },
     state: { view: 'global', zoom: 5 },
     pendingCenter: null,
@@ -73,7 +74,7 @@ async function createHarness({ failReplacement = true, scheduleMicrotask = queue
     layerCache: new Map(),
   });
   for (const name of ['settleViewportMovement', 'stopTradeAnimation', 'stopPulseAnimation',
-    'stopDayNightTimer', 'stopWeatherRadar', 'stopLiveTankersLoop']) map[name] = () => {};
+    'stopDayNightTimer', 'stopWeatherRadar', 'stopLiveTankersLoop', 'applyZoomCap']) map[name] = () => {};
   for (const name of ['debouncedRebuildLayers', 'debouncedFetchBases', 'debouncedFetchAircraft',
     'rafUpdateLayers', 'heavyGate']) map[name] = { cancel() {} };
   await map.initMapLibre();

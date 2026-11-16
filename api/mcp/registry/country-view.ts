@@ -47,7 +47,7 @@ const CHOKEPOINT_ID = 'Chokepoint to model, by registry id such as "hormuz_strai
 const FIXED_EMPTY = 'Unused: the reader always returns the full list, with no narrowing.';
 const BOX_UNUSED = 'Unused: the reader returns the global snapshot rather than a box query.';
 const NEXT_CURSOR = 'pagination.nextCursor from the previous page; empty for the first page.';
-const SIGNAL_FAMILY = 'Source family to read, one per request: COUNTRY_SIGNAL_FAMILY_OUTAGES (Internet outages), _UNREST (protests and riots), _FIRES (satellite fire detections), _RADIATION (radiation readings), _SANCTIONS (sanctions pressure), _CONFLICT (conflict events), _POSTURE (military theater posture), _IMAGERY (confirmed satellite imagery statistics changes at watched sites) or _FLIGHT_PAGE (one page of military flights over the country).';
+const SIGNAL_FAMILY = 'Source family to read, one per request: COUNTRY_SIGNAL_FAMILY_OUTAGES (Internet outages), _UNREST (protests and riots), _FIRES (satellite fire detections), _RADIATION (radiation readings), _SANCTIONS (sanctions pressure), _CONFLICT (conflict events), _POSTURE (military theater posture), _IMAGERY (confirmed satellite imagery statistics changes at watched sites), _WATER (strategic reservoirs whose dated lidar level is beyond its seasonal baseline) or _FLIGHT_PAGE (one page of military flights over the country).';
 const COUNTRY_SECTION_DOCS: Record<CountryReader, { summary: string; args: Record<string, string> }> = {
   countrySignals: { summary: 'One bounded country-qualified source family or eligible flight page. Requires a verified same-country panel.', args: { country_code: ISO2, family: SIGNAL_FAMILY, window_index: 'FLIGHT_PAGE only: which part of the country\'s flight search area to page; countries split into two boxes use 0 and 1, others 0.', cursor: `FLIGHT_PAGE only: ${NEXT_CURSOR}` } },
   signalsRaw: { summary: 'Attributed raw signal samples for one country: earthquakes, Internet outages, travel advisories and thermal escalations, each with scope, snapshot time and attribution. Needs a verified same-country paid panel token.', args: { country_code: `${ISO2} Must equal the country of the verified panel token.` } },
@@ -82,6 +82,7 @@ const COUNTRY_SECTION_DOCS: Record<CountryReader, { summary: string; args: Recor
   disruptions: { summary: 'Energy disruption events, optionally only those still ongoing.', args: { assetId: FIXED_EMPTY, assetType: FIXED_EMPTY, ongoingOnly: '"true" keeps only disruptions still ongoing; "false" includes resolved ones.' } },
   scenario: { summary: 'Energy supply shock scenario for one country and chokepoint at a chosen disruption share and fuel.', args: { country_code: ISO2, chokepoint_id: CHOKEPOINT_ID, disruption_pct: 'Share of the chokepoint flow disrupted, percent. Omitted or below 10: modelled as 10.', fuel_mode: 'Fuel to model: oil, gas or both.' } },
   defense: { summary: 'Defense industrial base indicators and arms-supplier shares for the country.', args: { country_code: ISO2 } },
+  reservoirs: { summary: 'Strategic Water Levels reservoirs located in the country, each with its NASA ICESat-2 lidar water-surface level, the date of the pass that measured it and its seasonal status. Dated context beside the energy mix, not a live reading, storage volume or input to the Composite Instability Index; dataAvailable false or an empty list is unknown, not zero.', args: { country_code: ISO2 } },
   no2: { summary: 'Sentinel-5P NO2 industrial activity direction for the country against the same window in prior years, with the Copernicus credit.', args: { country_code: ISO2, kind: 'Region type read: the country polygon only, not its industrial clusters.' } },
   markets: { summary: 'Prediction markets list with optional title and category narrowing.', args: { page_size: 'Markets to return.', query: 'Case-insensitive text to find in market titles; empty for every market.', category: 'Category bucket name to narrow to; empty for every category.', cursor: 'Unused: only the first page is readable here.' } },
   china: { summary: 'China decision signals.', args: {} },
@@ -193,7 +194,7 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
 }, {
   name: 'get_country_brief_section',
   title: 'Structured country data, one section',
-  description: 'Read one named structured data section for a country, raw values without narrative, and return {state: ready|locked|unavailable, section, value, retrievedAt, reason}. 39 readers selected by section: country facts and risk, energy and maritime, markets, trade, supply chain, resilience and demographics, defense, NO2 activity, China signals, housing and IMF macro, military flights, AIS vessels, the USNI fleet report and signalsRaw; each oneOf branch documents one section. Each section takes its own arguments object (key names differ: country_code, countryCode or iso2; numeric M49 codes for trade; HS codes for products) and rejects unknown keys. flights pages 100 rows at a time through cursor. signalsRaw returns attributed earthquake, Internet-outage, travel-advisory and thermal samples and needs a verified same-country paid panel token; every other section works with an ordinary paid credential. Unavailable evidence is unknown, not zero. Requires a paid plan; one downstream read, weight 2 on API plans.',
+  description: 'Read one named structured data section for a country, raw values without narrative, and return {state: ready|locked|unavailable, section, value, retrievedAt, reason}. 40 readers selected by section: country facts and risk, energy, reservoirs and maritime, markets, trade, supply chain, resilience and demographics, defense, NO2 activity, China signals, housing and IMF macro, military flights, AIS vessels, the USNI fleet and signalsRaw; each oneOf branch documents one section. Each section takes its own arguments object (key names differ: country_code, countryCode or iso2; numeric M49 codes for trade; HS codes for products) and rejects unknown keys. flights pages 100 rows at a time through cursor. signalsRaw returns attributed earthquake, Internet-outage, travel-advisory and thermal samples and needs a verified same-country paid panel token; every other section works with an ordinary paid credential. Unavailable evidence is unknown, not zero. Requires a paid plan; one downstream read, weight 2 on API plans.',
   _subscriptionOnly: true,
   _weight: 2,
   _outputBudgetBytes: COUNTRY_SECTION_BUDGET_BYTES,
@@ -297,7 +298,7 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
       ? bootstrapKeys.map(key => new URLSearchParams({ keys: key, public: '1' }))
       : [new URLSearchParams(Object.entries(args.data).map(([key, value]) => [key, String(value)]))];
     const results = await Promise.allSettled(queries.map(async query => {
-      if (['pipelineDetail', 'facilityDetail', 'shortageDetail'].includes(section)) query.delete('country_code');
+      if (['pipelineDetail', 'facilityDetail', 'shortageDetail', 'reservoirs'].includes(section)) query.delete('country_code');
       const url = `${base}${reader.path}${query.size ? `?${query}` : ''}`;
       const headers = bootstrapKeys ? {} : await buildAuthHeaders(context, 'GET', url, null);
       const response = await fetchMcpDownstream(url, { headers: { ...headers, 'User-Agent': 'WorldMonitor-MCP/1.0' }, signal: AbortSignal.timeout(15_000) }, execution);
@@ -306,7 +307,7 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
       await assertToolFetchOk(response, section, { preserveBackoff: true });
       return bootstrapKeys
         ? z.object({ data: z.record(z.string(), z.unknown()), missing: z.array(z.string()) }).parse(JSON.parse(new TextDecoder().decode(await readBoundedResponseBody(response, COUNTRY_SECTION_BUDGET_BYTES))))
-        : ['pipelines', 'facilities', 'shortages', 'pipelineDetail', 'facilityDetail', 'shortageDetail'].includes(section)
+        : ['pipelines', 'facilities', 'shortages', 'pipelineDetail', 'facilityDetail', 'shortageDetail', 'reservoirs'].includes(section)
           ? JSON.parse(new TextDecoder().decode(await readBoundedResponseBody(response, COUNTRY_SECTION_BUDGET_BYTES)))
           : response.json();
     }));
@@ -346,6 +347,11 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
       const belongs = section === 'pipelineDetail' ? asset && (asset.fromCountry === country || asset.toCountry === country || asset.transitCountries?.includes(country)) : asset?.country === country;
       const requestedId = parsed.data.arguments?.pipelineId ?? parsed.data.arguments?.facilityId ?? parsed.data.arguments?.shortageId;
       if (!asset || asset.id !== requestedId || value?.unavailable || !belongs) return { state: 'unavailable', section, reason: 'This asset detail is unavailable for the selected country.' };
+    }
+    if (section === 'reservoirs') {
+      const country = (args.data as { country_code: string }).country_code;
+      if (!value?.dataAvailable || !Array.isArray(value.reservoirs)) return { state: 'unavailable', section, reason: 'The Strategic Water Levels snapshot is unavailable.' };
+      value = { ...value, countryCode: country, reservoirs: value.reservoirs.filter((reservoir: { country?: unknown }) => typeof reservoir?.country === 'string' && reservoir.country.toUpperCase() === country) };
     }
     if (section === 'flights' && (!Array.isArray(value?.flights) || (!value.flights.length && !(parsed.data.arguments?.cursor && value.pagination?.totalCount > 0)))) return { state: 'unavailable', section, reason: 'Flight observations are unavailable or unconfirmed. An empty provider response is not evidence of zero activity.' };
     if (section === 'fleet' && !value?.report) return { state: 'unavailable', section, reason: 'The reported fleet roster is unavailable.' };

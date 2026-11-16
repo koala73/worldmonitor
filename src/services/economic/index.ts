@@ -9,7 +9,7 @@
 
 import { getRpcBaseUrl, getRpcErrorStatusCode } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
-import type { GetFredSeriesResponse, GetFredSeriesBatchResponse, ListWorldBankIndicatorsResponse, WorldBankCountryData as ProtoWorldBankCountryData, GetEnergyPricesResponse, EnergyPrice as ProtoEnergyPrice, GetEnergyCapacityResponse, GetBisPolicyRatesResponse, GetBisExchangeRatesResponse, GetBisCreditResponse, GetChinaMacroSnapshotResponse, BisPolicyRate, BisExchangeRate, BisCreditToGdp, GetNationalDebtResponse, NationalDebtEntry, GetBlsSeriesResponse, GetCrudeInventoriesResponse, CrudeInventoryWeek, GetNatGasStorageResponse, NatGasStorageWeek, GetEcbFxRatesResponse, EcbFxRate, GetEuGasStorageResponse, EuGasStorageHistoryEntry, GetEurostatCountryDataResponse, EurostatCountryEntry, GetOilStocksAnalysisResponse, OilStocksAnalysisMember, OilStocksRegionalSummary, OilStocksRegionalSummaryEurope, OilStocksRegionalSummaryAsiaPacific, OilStocksRegionalSummaryNorthAmerica } from '@/generated/client/worldmonitor/economic/v1/service_client';
+import type { GetFredSeriesResponse, GetFredSeriesBatchResponse, ListWorldBankIndicatorsResponse, WorldBankCountryData as ProtoWorldBankCountryData, GetEnergyPricesResponse, EnergyPrice as ProtoEnergyPrice, GetEnergyCapacityResponse, GetBisPolicyRatesResponse, GetBisExchangeRatesResponse, GetBisCreditResponse, BisPolicyRate, BisExchangeRate, BisCreditToGdp, GetNationalDebtResponse, NationalDebtEntry, GetBlsSeriesResponse, GetCrudeInventoriesResponse, CrudeInventoryWeek, GetNatGasStorageResponse, NatGasStorageWeek, GetEcbFxRatesResponse, EcbFxRate, GetEuGasStorageResponse, EuGasStorageHistoryEntry, GetEurostatCountryDataResponse, EurostatCountryEntry, GetOilStocksAnalysisResponse, OilStocksAnalysisMember, OilStocksRegionalSummary, OilStocksRegionalSummaryEurope, OilStocksRegionalSummaryAsiaPacific, OilStocksRegionalSummaryNorthAmerica } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getCSSColor } from '@/utils';
 import { isFeatureAvailable } from '../runtime-config';
@@ -53,7 +53,6 @@ const capacityBreaker = createCircuitBreaker<GetEnergyCapacityResponse>({ name: 
 const bisPolicyBreaker = createCircuitBreaker<GetBisPolicyRatesResponse>({ name: 'BIS Policy', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const bisEerBreaker = createCircuitBreaker<GetBisExchangeRatesResponse>({ name: 'BIS EER', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const bisCreditBreaker = createCircuitBreaker<GetBisCreditResponse>({ name: 'BIS Credit', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
-const chinaMacroBreaker = createCircuitBreaker<GetChinaMacroSnapshotResponse>({ name: 'China Macro Snapshot', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
 const emptyBlsFallback: GetBlsSeriesResponse = { series: undefined };
 const blsBreaker = createCircuitBreaker<FredSeries[]>({ name: 'BLS Batch', cacheTtlMs: 15 * 60 * 1000, persistCache: true });
@@ -196,10 +195,6 @@ export async function fetchFredData(): Promise<FredSeries[]> {
   return out;
 }
 
-export function getFredStatus(): string {
-  return fredBatchBreaker.getStatus();
-}
-
 // ========================================================================
 // BLS -- direct series not available on FRED (metro unemployment, ECI)
 // ========================================================================
@@ -290,25 +285,10 @@ function formatValueWithUnit(value: number, unit: string): string {
   return `${formatted}${unit}`;
 }
 
-export function formatFredValue(value: number | null, unit: string): string {
-  if (value === null) return 'N/A';
-  return formatValueWithUnit(value, unit);
-}
-
 export function formatChange(change: number | null, unit: string): string {
   if (change === null) return 'N/A';
   const sign = change > 0 ? '+' : change < 0 ? '-' : '';
   return `${sign}${formatValueWithUnit(Math.abs(change), unit)}`;
-}
-
-// ========================================================================
-// Oil/Energy -- replaces src/services/oil-analytics.ts
-// ========================================================================
-
-export interface OilDataPoint {
-  date: string;
-  value: number;
-  unit: string;
 }
 
 export interface OilMetric {
@@ -532,20 +512,6 @@ const TECH_INDICATORS: Record<string, string> = {
   'NE.EXP.GNFS.ZS': 'Exports of Goods & Services (% of GDP)',
 };
 
-const TECH_COUNTRIES = [
-  'USA', 'CHN', 'JPN', 'DEU', 'KOR', 'GBR', 'IND', 'ISR', 'SGP', 'TWN',
-  'FRA', 'CAN', 'SWE', 'NLD', 'CHE', 'FIN', 'IRL', 'AUS', 'BRA', 'IDN',
-  'ARE', 'SAU', 'QAT', 'BHR', 'EGY', 'TUR',
-  'MYS', 'THA', 'VNM', 'PHL',
-  'ESP', 'ITA', 'POL', 'CZE', 'DNK', 'NOR', 'AUT', 'BEL', 'PRT', 'EST',
-  'MEX', 'ARG', 'CHL', 'COL',
-  'ZAF', 'NGA', 'KEN',
-];
-
-export async function getAvailableIndicators(): Promise<{ indicators: Record<string, string>; defaultCountries: string[] }> {
-  return { indicators: TECH_INDICATORS, defaultCountries: TECH_COUNTRIES };
-}
-
 function buildWorldBankResponse(
   indicator: string,
   records: ProtoWorldBankCountryData[],
@@ -615,28 +581,6 @@ export async function getIndicatorData(
   return buildWorldBankResponse(indicator, resp.data);
 }
 
-export const INDICATOR_PRESETS = {
-  digitalInfrastructure: [
-    'IT.NET.USER.ZS',
-    'IT.CEL.SETS.P2',
-    'IT.NET.BBND.P2',
-    'IT.NET.SECR.P6',
-  ],
-  innovation: [
-    'GB.XPD.RSDV.GD.ZS',
-    'IP.PAT.RESD',
-    'IP.PAT.NRES',
-  ],
-  techTrade: [
-    'TX.VAL.TECH.MF.ZS',
-    'BX.GSR.CCIS.ZS',
-  ],
-  education: [
-    'SE.TER.ENRR',
-    'SE.XPD.TOTL.GD.ZS',
-  ],
-} as const;
-
 export interface TechReadinessScore {
   country: string;
   countryName: string;
@@ -704,22 +648,6 @@ export async function getTechReadinessRankings(
   return applyTechReadinessCoverage(data.techReadiness ?? [], countries);
 }
 
-export async function getCountryComparison(
-  indicator: string,
-  _countryCodes: string[],
-): Promise<WorldBankResponse> {
-  // All WB data is now pre-seeded by seed-wb-indicators.mjs.
-  // This function is unused but kept for API compat.
-  return {
-    indicator,
-    indicatorName: TECH_INDICATORS[indicator] || indicator,
-    metadata: { page: 0, pages: 0, total: 0 },
-    byCountry: {},
-    latestByCountry: {},
-    timeSeries: [],
-  };
-}
-
 // ========================================================================
 // BIS -- Central bank policy data
 // ========================================================================
@@ -781,33 +709,6 @@ export interface BisData {
   exchangeRates: BisExchangeRate[];
   creditToGdp: BisCreditToGdp[];
   fetchedAt: Date;
-}
-
-const emptyChinaMacroFallback: GetChinaMacroSnapshotResponse = {
-  countryCode: 'CN',
-  generatedAt: '',
-  status: 'unavailable',
-  launchReady: false,
-  contentObservationDate: '',
-  latestObservationDate: '',
-  indicators: [],
-  sourceDecisions: [],
-  releaseEvents: [],
-  unavailable: true,
-  schemaVersion: 2,
-  pillars: [],
-};
-
-export async function getChinaMacroSnapshotData(): Promise<GetChinaMacroSnapshotResponse> {
-  try {
-    return await chinaMacroBreaker.execute(
-      () => client.getChinaMacroSnapshot({}, { signal: AbortSignal.timeout(20_000) }),
-      emptyChinaMacroFallback,
-      { shouldCache: (r) => !r.unavailable && (r.indicators?.length ?? 0) > 0 },
-    );
-  } catch {
-    return emptyChinaMacroFallback;
-  }
 }
 
 export async function getBisCreditData(): Promise<GetBisCreditResponse> {

@@ -7,9 +7,7 @@
  * `requireShared()` resolves from
  * `../shared` OR `./shared` depending on packaging root, so Railway services
  * using rootDirectory=scripts (which cannot see repo-root shared/) pick up
- * scripts/shared/source-tiers.json — a byte-identical mirror enforced by
- * tests/edge-functions.test.mjs (`scripts/shared/ stays in sync with shared/`).
- * Byte-identity is also cross-checked by tests/importance-score-parity.test.mjs.
+ * scripts/shared/source-tiers.json.
  * Telegram and X tiers are additive typed overlays. Keeping them out of the RSS
  * JSON makes their registries mechanically testable and prevents renamed
  * channels or accounts from leaving stale public tier keys.

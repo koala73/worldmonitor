@@ -1209,7 +1209,12 @@
       "shareLink": "Chia sẻ liên kết",
       "shareStory": "Chia sẻ bài viết",
       "printPdf": "In / PDF",
-      "exportData": "Xuất dữ liệu"
+      "exportData": "Xuất dữ liệu",
+      "sources": {
+        "summary": "Nguồn và khung thời gian · {{count}} nhóm",
+        "note": "Khung thời gian của các nguồn khác nhau; đây không phải tổng 24 giờ.",
+        "footer": "Không phải đầu vào của CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Đường ống",
@@ -2117,7 +2122,14 @@
     "map": {
       "showMap": "Hiển thị bản đồ",
       "hideMap": "Ẩn bản đồ",
-      "clearTrails": "Xóa dấu vết"
+      "clearTrails": "Xóa dấu vết",
+      "locate": "Hiển thị vị trí của tôi"
+    },
+    "mapLocate": {
+      "locating": "Đang định vị…",
+      "denied": "Quyền truy cập vị trí bị từ chối. Dùng Tìm kiếm để tìm địa điểm.",
+      "unavailable": "Không tìm thấy vị trí. Dùng Tìm kiếm để tìm địa điểm.",
+      "noCountry": "Không có quốc gia tại vị trí của bạn. Dùng Tìm kiếm để tìm địa điểm."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>Gián đoạn Internet</strong> Cắt internet, tấn công DDoS và bất thường lưu lượng thời gian thực từ giám sát mạng toàn cầu:<ul><li><strong>Cắt mạng</strong>: Lỗi kết nối BGP theo quốc gia</li><li><strong>DDoS</strong>: Báo cáo tấn công thể tích theo giao thức và vector</li><li><strong>Bất thường</strong>: Mẫu lưu lượng bất thường từ Cloudflare Radar</li></ul>",
@@ -2328,7 +2340,7 @@
       "proLocked": "Nâng cấp lên PRO để xem điểm số lỗ hổng hàng hóa"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Theo dõi Thương mại Hormuz</strong> chỉ số lưu lượng hàng ngày từ WTO DataLab cho Eo biển Hormuz: dầu thô, LNG và phân bón rời khỏi Vịnh, hàng nông sản đến. Theo khối lượng, trung bình tháng 1–3 năm 2025 = 100, chỉ các tàu có tín hiệu AIS. Trạng thái và ngày tháng từ phân tích mới nhất của WTO.",
+      "infoTooltip": "<strong>Theo dõi Thương mại Hormuz</strong> chỉ số lưu lượng hàng ngày từ WTO DataLab cho Eo biển Hormuz: dầu thô, LNG và phân bón rời khỏi Vịnh, hàng nông sản đến. Theo khối lượng, trung bình tháng 1–3 năm 2025 = 100, chỉ các tàu có tín hiệu AIS. Biểu đồ là hàng ngày; trạng thái được lấy từ bình luận của WTO.",
       "title": "Theo dõi Thương mại Hormuz",
       "noData": "Không có dữ liệu",
       "notAvailable": "N/A",
@@ -2341,8 +2353,10 @@
         "unavailable": "Dữ liệu Hormuz không khả dụng",
         "failedToLoad": "Không tải được"
       },
-      "analysisDate": "Phân tích WTO {{date}}",
-      "indexNote": "Chỉ số lượng hàng hóa, mức trung bình tháng 1–3 năm 2025 = 100"
+      "analysisDate": "Bình luận WTO {{date}}",
+      "indexNote": "Chỉ số lượng hàng hóa, mức trung bình tháng 1–3 năm 2025 = 100",
+      "dataThrough": "Dữ liệu hàng ngày đến {{date}}",
+      "noShipments": "Không có lô hàng được ghi nhận {{from}} đến {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Webcam trực tiếp</strong> Luồng phát trực tiếp từ các địa điểm có ý nghĩa địa chính trị trên toàn thế giới: vùng xung đột, thủ đô, cửa khẩu biên giới và các điểm nghẽn chiến lược. Luồng từ YouTube và mạng công cộng."
@@ -3165,6 +3179,34 @@
         "change365": "Trong 12 tháng",
         "measured": "Ngày đo",
         "sparkline": "Mực nước trong 36 tháng"
+      },
+      "nextPass": {
+        "label": "Lần bay qua tiếp theo của ICESat-2",
+        "loading": "Đang tải…",
+        "at": "{{date}} (dự đoán từ dữ liệu quỹ đạo ngày {{epoch}}; mây có thể chặn lidar)",
+        "none": "Không có phép đo trong khoảng này (đến {{date}}); dữ liệu quỹ đạo ngày {{epoch}}",
+        "unavailable": "Không có dữ liệu quỹ đạo"
+      },
+      "siteContext": {
+        "label": "Hồ chứa chiến lược tại địa điểm này"
+      },
+      "energyContext": {
+        "heading": "Hồ chứa chiến lược",
+        "hydro": "Thủy điện {{share}}% năng lượng sơ cấp"
+      },
+      "countryEvidence": {
+        "heading": "Mực nước",
+        "empty": "Không hồ chứa chiến lược nào ở quốc gia này nằm ngoài đường cơ sở theo mùa ở lần đi qua gần nhất.",
+        "measured": "Đo ngày {{date}}"
+      },
+      "card": {
+        "measured": "Đo {{date}} · {{age}}",
+        "noCrossing": "không có trong khoảng này (đến {{date}})",
+        "crossing": "Lượt bay qua dự kiến của ICESat-2",
+        "summary": "{{beyond}}/{{total}} hồ chứa ngoài đường cơ sở theo mùa",
+        "latestPass": "lượt ICESat-2 gần nhất {{date}}",
+        "sparkline": "Mực nước 36 tháng, đường cơ sở theo mùa là nét đứt",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Mực mặt nước bằng lidar từ các lượt có ngày, không phải số đo trực tiếp hay dung tích."
       }
     },
     "gridDisruptionClock": {
@@ -3254,7 +3296,6 @@
       }
     },
     "protest": {
-      "acledVerified": "ACLED (đã xác minh)",
       "gdelt": "GDELT",
       "records": "bản ghi",
       "mediaSignal": "Tín hiệu truyền thông chưa xác minh",
@@ -4441,7 +4482,8 @@
   "contextMenu": {
     "openCountryBrief": "Mở tổng quan quốc gia",
     "copyCoordinates": "Sao chép tọa độ",
-    "satellitePasses": "Vệ tinh bay qua đây"
+    "satellitePasses": "Vệ tinh bay qua đây",
+    "imageryEvidenceHere": "Bằng chứng ảnh vệ tinh tại đây"
   },
   "shell": {
     "documentTitle": "World Monitor — Bảng điều khiển tình báo toàn cầu theo thời gian thực",
@@ -5137,300 +5179,344 @@
     "errLoad": "Không thể mở đánh giá chuyến đi. Tải lại trang và thử lại."
   },
   "orbitalWatch": {
-    "track": {
-      "unavailable": "Không thể vẽ vệt mặt đất của lượt bay qua này"
-    },
-    "replay": {
-      "acquisition": "THU NHẬN · {{name}}",
-      "acquired": "ĐÃ CHỤP {{time}} · {{resolution}}",
-      "play": "Phát lại",
-      "pause": "Tạm dừng phát lại",
-      "scrub": "Vị trí phát lại",
-      "reducedMotion": "GIẢM CHUYỂN ĐỘNG"
-    },
-    "computing": "Đang tải danh mục vệ tinh…",
-    "computingProgress": "Đang tính các lượt bay: {{done}} trên {{total}} vệ tinh",
-    "unavailable": "Không thể tải danh mục vệ tinh nên chưa tính được lượt bay nào cho điểm này.",
-    "checkingArchives": "Đang kiểm tra kho lưu trữ: {{done}} trên {{total}} đã phản hồi",
-    "confirmedCount": "Ảnh đã xác nhận: {{count}}",
-    "counts": {
-      "mosaics": "Ảnh ghép hằng ngày: {{count}}",
-      "frames": "Khung ảnh thời tiết: {{count}}",
-      "inRange": "Lượt bay trong tầm: {{count}}"
-    },
-    "partial": "{{sources}} không phản hồi nên một số lượt bay có thể thiếu ảnh.",
-    "stale": "Dữ liệu quỹ đạo đã cũ. Danh mục vệ tinh đã {{age}} nên thời gian bay qua có thể sai lệch.",
-    "empty": "Không có vệ tinh chụp ảnh nào trong danh mục bay qua điểm này trong {{pastDays}} ngày qua hoặc sẽ bay qua trong {{futureHours}} giờ tới.",
-    "sources": "Nguồn · {{count}}",
-    "sourcesDocs": "Cách sử dụng các nguồn này",
-    "privacy": "Điểm này được giữ trong trình duyệt của bạn. Điểm chỉ được gửi tới các kho lưu trữ công khai mà trình duyệt gọi trực tiếp: Earth Search, Microsoft Planetary Computer, NASA GIBS và EUMETSAT. Ngoại lệ duy nhất là tìm kiếm theo tên địa điểm: tên bạn nhập được gửi tới dịch vụ tìm kiếm địa điểm.",
-    "inRange": "trong tầm",
+    "track": {},
+    "replay": {},
+    "counts": {},
     "tier": {
       "checking": "đang kiểm tra kho",
-      "confirmed": "ảnh đã xác nhận",
-      "likely": "có thể đã chụp",
-      "opportunity": "lượt bay sắp tới",
-      "dailyMosaic": "trong ảnh ghép hằng ngày",
-      "withinReach": "trong tầm",
-      "capabilityOverhead": "năng lực trên không",
-      "passedOverhead": "đã bay qua",
-      "unmatchedImage": "ảnh không có lượt bay tính toán",
+      "confirmed": "đã xác nhận",
+      "likely": "có khả năng",
+      "unmatchedImage": "ảnh không có lượt bay qua đã tính",
       "weatherFrame": "ảnh thời tiết",
-      "unavailable": "không khả dụng"
+      "unavailable": "không khả dụng",
+      "inReach": "có thể hướng tới",
+      "capability": "có thể chụp ảnh",
+      "inRange": "trong phạm vi",
+      "mosaic": "ghép ảnh",
+      "upcoming": "sắp tới"
     },
     "row": {
       "offNadir": "lệch thiên đế {{deg}}°",
       "distance": "cách vết mặt đất {{km}} km",
-      "orbitAge": "dữ liệu quỹ đạo đã {{age}}",
-      "edgeOfSwath": "Mép dải quét",
-      "notInArchive": "Không có ảnh trong kho",
-      "geometryDisagreed": "Ngoài dải quét mô hình",
-      "archiveUnanswered": "Kho lưu trữ không phản hồi",
-      "imageAlt": "Ảnh {{name}}, {{time}}",
-      "mosaicDays": "Số ngày trong kho lưu trữ: {{count}}",
-      "cadence": "ảnh mới mỗi {{minutes}} phút",
-      "sourceUnavailable": "Kho lưu trữ không có ảnh từ nguồn này cho những ngày này.",
-      "imageLoading": "Đang tải ảnh…",
-      "imageFailed": "Ảnh không tải được. Kho lưu trữ có thể chậm hoặc ngừng hoạt động.",
-      "noPreview": "Kho lưu trữ chưa có bản xem trước của cảnh này."
+      "orbitAge": "Dữ liệu quỹ đạo",
+      "imageLoading": "Đang tải cảnh…",
+      "satellite": "Vệ tinh",
+      "sensor": "Cảm biến",
+      "time": "Thời gian",
+      "in": "Sau",
+      "tier": "Trạng thái",
+      "elevation": "Góc ngẩng",
+      "point": "Điểm",
+      "pixel": "Pixel",
+      "credit": "Kho lưu trữ",
+      "orbitAgeValue": "đã {{age}}"
     },
-    "dailyMosaics": "ảnh ghép hằng ngày",
-    "weatherFrames": "ảnh thời tiết",
     "ui": {
-      "change": "Đổi",
-      "share": "Chia sẻ",
-      "shareCopied": "Đã sao chép liên kết",
-      "headline": "Trong {{days}} ngày qua, {{satellites}} đã bay qua {{place}}.",
-      "satellites_other": "{{count}} vệ tinh",
-      "subline_other": "Đã công bố {{count}} ảnh.",
-      "closestLook": "Góc nhìn gần nhất",
-      "replay": "Phát lại",
-      "openFull": "Mở chế độ xem đầy đủ",
-      "previous": "Ảnh trước",
-      "next": "Ảnh tiếp theo",
-      "passes_other": "lượt bay qua",
-      "showAll": "Hiện tất cả lượt bay qua",
-      "noRecentDays": "Không có ngày gần đây trong kho lưu trữ: {{sources}}",
-      "tab": {
-        "all": "Tất cả",
-        "detailed": "Chi tiết",
-        "weather": "Thời tiết"
-      },
-      "caption": {
-        "clear": "Quang đãng tại điểm",
-        "clearSceneCloud": "Quang đãng tại điểm · mây toàn cảnh {{pct}}%",
-        "clouded": "Có mây · {{pct}}%",
-        "cloudShadow": "Bóng mây",
-        "spotNotChecked": "Chưa kiểm tra mây tại điểm này",
-        "sceneCloud": "Mây toàn cảnh {{pct}}% · chưa kiểm tra điểm này",
-        "radar": "Ra-đa",
-        "dailyMosaic": "Ảnh ghép hằng ngày",
-        "geostationary": "Toàn đĩa địa tĩnh",
-        "geostationaryCadence": "Địa tĩnh · mỗi {{minutes}} phút"
-      },
-      "tile": {
-        "failed": "Không có ảnh · {{archive}}",
-        "noPreview": "Kho lưu trữ chưa có ảnh xem trước của cảnh này"
-      },
-      "grid": {
-        "watched": "Đã chụp",
-        "watchedDef": "Một kho lưu trữ công khai có ảnh của điểm này.",
-        "likely": "Có thể đã chụp",
-        "likelyDef": "Cảm biến dải quét cố định đã bao phủ; chưa có ảnh được công bố.",
-        "could": "Có thể đã hướng về đây",
-        "couldDef": "Một cảm biến xoay được hoặc thương mại nằm trong tầm; nhà vận hành không cho biết có nhìn hay không.",
-        "overhead": "Đã bay qua",
-        "overheadDef": "Đã băng qua bầu trời nơi đây, không có bằng chứng chụp ảnh.",
-        "watchedShort": "Có ảnh trong kho lưu trữ công khai",
-        "watchedNoPreviewShort": "Có trong kho lưu trữ, không có bản xem trước công khai",
-        "likelyShort": "Đã phủ, chưa có ảnh",
-        "likelyUnansweredDef": "Một cảm biến dải quét cố định đã bao phủ điểm này; một kho lưu trữ không phản hồi, nên có thể có ảnh.",
-        "likelyUnansweredShort": "Đã bao phủ, kho lưu trữ không phản hồi",
-        "couldShort": "Cảm biến điều hướng trong tầm",
-        "overheadShort": "Bay qua, không có ảnh"
-      },
-      "group": {
-        "watched": "đã chụp",
-        "likely": "có thể đã chụp",
-        "upcoming": "sắp tới",
-        "could": "có thể đã hướng về đây",
-        "overhead": "đã bay qua",
-        "weather_other": "nguồn thời tiết"
-      },
-      "order": {
-        "closest": "Gần nhất, sau đó mới nhất",
-        "newest": "Mới nhất trước",
-        "soonest": "Sớm nhất trước"
-      },
-      "row": {
-        "cloud": "Mây {{pct}}%",
-        "days_other": "{{count}} ngày",
-        "repeats": "{{count}} lượt của vệ tinh này trong nhóm"
-      },
-      "section": {
-        "summary": "Tóm tắt",
-        "passes": "Lượt bay qua"
-      },
-      "status": {
-        "objects": "{{count}} vệ tinh chụp ảnh · CelesTrak GP",
-        "fetched": "Lấy lúc {{time}} · {{ago}}",
-        "sun": "Mặt Trời {{point}} · điểm cận nhật"
-      },
-      "step": {
-        "computing": "Đang tính",
-        "catalogLoading": "Danh mục · đang tải",
-        "catalog": "Danh mục · {{count}} vệ tinh chụp ảnh",
-        "propagating": "Đang tính quỹ đạo · {{done}} / {{total}}",
-        "archives": "Kho lưu trữ · {{done}} / {{total}} đã phản hồi",
-        "matching": "Đang khớp cảnh với {{passes}} lượt bay qua",
-        "window": "Khung 7 ngày · {{start}} → {{end}}",
-        "failed": "Thất bại",
-        "note": "Planetary Computer và NASA GIBS tạo ảnh theo yêu cầu, nên bước này có thể mất vài giây."
-      },
-      "privacyLine": "Điểm này chỉ ở trong trình duyệt của bạn",
-      "privacyHow": "Cách thức",
-      "sources": "Nguồn",
-      "archiveScene": "Cảnh lưu trữ",
-      "archiveOnly": "Không có lượt bay qua tính toán nào khớp với các ảnh này, nên chúng được hiển thị là cảnh lưu trữ.",
-      "zoneShowUtc": "Hiển thị thời gian theo UTC",
-      "zoneShowLocal": "Hiển thị thời gian theo giờ địa phương của nơi này"
+      "tab": {},
+      "caption": {},
+      "tile": {},
+      "grid": {},
+      "group": {},
+      "order": {},
+      "row": {},
+      "section": {},
+      "status": {},
+      "step": {}
     },
     "viewer": {
-      "open": "Mở trình xem ảnh: {{image}}",
-      "bestView": "Mở góc nhìn tốt nhất: {{name}}, {{time}}",
-      "imageAlt": "Ảnh của {{name}}, {{time}}",
-      "close": "Đóng trình xem ảnh",
-      "northUp": "Phía bắc ở trên",
-      "unreferenced": "Hướng như kho lưu trữ cung cấp; phía bắc không được đánh dấu",
-      "compareDates": "Các ngày khác của bộ sưu tập này",
-      "compareNone": "Không có cảnh nào khác của bộ sưu tập này để so sánh.",
-      "divider": "Vạch chia trước/sau",
-      "searching": "Đang tìm cảnh của nơi này trong {{days}} ngày qua",
-      "historyFailed": "{{archive}} không phản hồi nên thiếu các cảnh trước đó.",
-      "historyTimeout": "{{archive}} không phản hồi kịp nên thiếu các cảnh trước đó.",
-      "loading": "Đang tải khung hình: {{loaded}} / {{total}}",
-      "pause": "Tạm dừng",
-      "resume": "Phát",
-      "next": "Khung sau",
+      "open": "Mở cảnh: {{image}}",
+      "imageAlt": "Cảnh {{name}}, {{time}}",
+      "close": "Đóng trình xem cảnh",
+      "northUp": "Hướng bắc lên",
+      "unreferenced": "Hướng theo kho lưu trữ; không đánh dấu hướng bắc",
+      "compareDates": "Ngày trong bộ sưu tập này",
+      "compareNone": "Không có cảnh thứ hai trong bộ sưu tập này.",
+      "divider": "Đường chia tham chiếu",
+      "searching": "Tìm kiếm {{days}} ngày cảnh lưu trữ",
+      "historyFailed": "{{archive}} trả về lỗi; các cảnh cũ hơn bị thiếu.",
+      "historyTimeout": "{{archive}} hết thời gian chờ; các cảnh cũ hơn bị thiếu.",
+      "loading": "Khung hình được tải: {{loaded}} trên {{total}}",
       "closeLabel": "Đóng",
-      "agoNow": "Vừa xong",
+      "agoNow": "Bây giờ",
       "agoHours": "{{count}} giờ trước",
       "agoDays": "{{count}} ngày trước",
       "clear": "Quang",
-      "clouded": "Có mây · {{pct}}%",
-      "tabImage": "Ảnh",
-      "tabChange": "Thay đổi",
+      "clouded": "Mây {{pct}}%",
+      "tabImage": "Cảnh",
+      "tabChange": "So sánh",
       "metaAcquired": "Chụp lúc",
       "metaDate": "Ngày",
       "metaPixel": "Điểm ảnh",
       "metaSpot": "Mây tại điểm",
       "metaScene": "Mây của cảnh",
-      "metaSun": "Độ cao mặt trời",
-      "showCloudy": "Hiện ngày nhiều mây ({{count}})"
+      "metaSun": "Độ cao Mặt Trời",
+      "showCloudy": "Bao gồm ngày có mây ({{count}})"
     },
-    "timelapse": {
-      "heading": "Tua nhanh thời gian",
-      "entry": "Nơi này, qua từng năm",
-      "open": "Mở chuỗi tua nhanh theo năm của nơi này",
-      "searching": "Đang tìm mỗi năm một ảnh quang mây từ 2015 · {{archive}}",
-      "loading": "Đang tải ảnh · {{loaded}} / {{total}}",
-      "failed": "{{archive}} không phản hồi nên thiếu ảnh theo năm.",
-      "timeout": "{{archive}} không phản hồi kịp nên thiếu ảnh theo năm.",
-      "partial": "Số năm bị thiếu vì {{archive}} không phản hồi: {{count}}.",
-      "tooFew": "Ảnh quang mây theo năm của nơi này: {{count}}. Tua nhanh cần {{min}}.",
-      "total": "Ảnh quang mây: {{count}} · mỗi năm một ảnh",
-      "years": "Năm",
-      "share": "Chia sẻ",
-      "method": "Mỗi khung là cùng một ô vuông 6 km từ Sentinel-2, màu tự nhiên. Mỗi năm tìm ở một mùa khác và giữ cảnh ít mây nhất; năm không có cảnh dưới 30% mây sẽ bị bỏ qua."
-    },
+    "timelapse": {},
     "passDetail": {
-      "back": "Tất cả lượt bay qua",
-      "altitude": "Độ cao",
-      "offNadir": "Lệch thiên đế",
-      "crossed": "{{name}} bay qua ở độ cao {{altitude}} km, cách {{distance}} km {{direction}}, lúc {{time}}, với tốc độ mặt đất {{speed}} km/s.",
-      "crossedHeading": "{{name}} bay qua ở độ cao {{altitude}} km, cách {{distance}} km {{direction}}, lúc {{time}}, đi về phía {{heading}} với tốc độ mặt đất {{speed}} km/s.",
-      "looking": "Nó nhìn lệch {{deg}}° so với phương thẳng đứng.",
-      "sceneCloud": "Độ che phủ mây của cảnh: {{pct}}%.",
-      "pixelLine": "Điểm ảnh {{m}} m",
-      "swathLine": "Dải quét {{km}} km",
-      "clearestLook": "Ảnh trong nhất",
-      "previous": "Lượt bay trước",
-      "next": "Lượt bay sau",
-      "dir": {
-        "n": "về phía bắc",
-        "ne": "về phía đông bắc",
-        "e": "về phía đông",
-        "se": "về phía đông nam",
-        "s": "về phía nam",
-        "sw": "về phía tây nam",
-        "w": "về phía tây",
-        "nw": "về phía tây bắc"
-      },
-      "heading": {
-        "north": "bắc",
-        "south": "nam"
-      }
+      "dir": {},
+      "heading": {}
     },
     "search": {
-      "label": "Tên địa điểm hoặc tọa độ",
-      "placeholder": "Tên địa điểm hoặc 48.8584, 2.2945",
+      "label": "Địa điểm hoặc tọa độ",
+      "placeholder": "Địa điểm hoặc 25.11, 55.14",
       "submit": "Tìm",
-      "locate": "Dùng vị trí của tôi",
-      "hint": "Tọa độ và vị trí của bạn chỉ ở trong trình duyệt này. Tên địa điểm bạn tìm được gửi tới WorldMonitor và Nominatim của OpenStreetMap.",
-      "results": "Địa điểm phù hợp",
+      "locate": "Vị trí của tôi",
+      "hint": "Các tọa độ được nhập và vị trí của bạn không bao giờ được gửi đến WorldMonitor. Các tên địa điểm được nhập sẽ được gửi đến WorldMonitor và OpenStreetMap Nominatim.",
+      "results": "Địa điểm",
       "searching": "Đang tìm…",
-      "tooShort": "Nhập ít nhất hai ký tự, hoặc tọa độ như 48.8584, 2.2945.",
-      "invalidCoordinates": "Tọa độ này nằm ngoài địa cầu. Vĩ độ từ -90 đến 90 và kinh độ từ -180 đến 180.",
-      "failed": "Tìm địa điểm hiện không khả dụng. Tọa độ và bản đồ vẫn hoạt động.",
-      "noResults": "Không có địa điểm nào khớp với tên đó.",
-      "locating": "Đang xác định vị trí của bạn…",
-      "locationDenied": "Quyền truy cập vị trí đã bị từ chối. Hãy tìm một địa điểm hoặc nhấp chuột phải vào bản đồ.",
-      "locationUnavailable": "Không tìm thấy vị trí của bạn. Hãy tìm một địa điểm hoặc nhấp chuột phải vào bản đồ.",
-      "idle": "Tìm địa điểm theo tên hoặc tọa độ, dùng vị trí của bạn, hoặc nhấp chuột phải vào bản đồ để xem vệ tinh nào đã bay qua đó."
+      "tooShort": "Nhập ít nhất hai ký tự hoặc tọa độ như 25.11, 55.14.",
+      "invalidCoordinates": "Vĩ độ phải từ -90 đến 90 và kinh độ từ -180 đến 180.",
+      "failed": "Tìm kiếm địa điểm không thành công. Tọa độ và nhấp chuột bản đồ vẫn hoạt động.",
+      "noResults": "Không có địa điểm phù hợp.",
+      "locating": "Đang định vị…",
+      "locationDenied": "Quyền truy cập vị trí bị từ chối. Nhập bất kỳ tên địa điểm nào hoặc nhấp chuột phải trên bản đồ.",
+      "locationUnavailable": "Không tìm thấy vị trí. Nhập bất kỳ tên địa điểm nào hoặc nhấp chuột phải trên bản đồ.",
+      "idle": "Nhập bất kỳ tên địa điểm nào, sử dụng vị trí thiết bị hoặc nhấp chuột phải trên bản đồ để mở bằng chứng hình ảnh của nó."
     },
     "share": {
-      "copy": "Sao chép liên kết chia sẻ",
       "copied": "Đã sao chép liên kết",
-      "copyManually": "Sao chép liên kết bên dưới",
+      "copyManually": "Sao chép liên kết này",
       "link": "Liên kết chia sẻ",
       "dismiss": "Đóng",
-      "passOutsideWindow": "Lượt bay qua trong liên kết nằm ngoài khoảng thời gian hiện tại, nên không có lượt nào được chọn.",
-      "passNotFound": "Không tìm thấy lượt bay qua trong liên kết giữa các lượt đã tính lại, nên không có lượt nào được chọn."
+      "passOutsideWindow": "Lượt bay qua trong liên kết nằm ngoài khoảng thời gian này; không có lượt nào được chọn.",
+      "passNotFound": "Lượt bay qua trong liên kết không có trong danh sách được tính lại; không có lượt nào được chọn."
     },
     "timeline": {
       "now": "bây giờ",
       "nowAt": "Bây giờ: {{time}}",
-      "density": "Lượt bay qua {{label}}, từ {{start}} đến {{end}}: {{count}}",
-      "daylight": "Ánh sáng ban ngày tại điểm từ {{start}} đến {{end}}",
+      "density": "{{label}}, {{start}} đến {{end}}: {{count}}",
+      "daylight": "Ánh sáng ban ngày ở đây: {{start}}–{{end}}",
       "unavailable": "không khả dụng",
-      "notRetained": "không có dữ liệu tuần này",
-      "notRetainedSpan": "{{label}}: không có dữ liệu từ {{start}} đến {{end}}",
-      "countryWide": "toàn quốc",
+      "notRetained": "nguồn tin không lưu lịch sử",
+      "notRetainedSpan": "{{label}}: nguồn tin không có lịch sử từ {{start}} đến {{end}}",
+      "countryWide": "toàn bộ quốc gia",
       "source": {
         "conflict": "Xung đột",
         "fires": "Cháy",
         "unrest": "Bất ổn",
-        "outages": "Sự cố internet"
+        "outages": "Sự cố"
       },
       "live": {
-        "vessels": "Giao thông hàng hải",
-        "militaryFlights": "Chuyến bay quân sự",
+        "vessels": "Vận tải biển",
+        "militaryFlights": "Máy bay quân sự",
         "gpsJamming": "Gây nhiễu GPS"
       },
       "name": "Dòng thời gian",
-      "span": "{{days}} ngày · {{hours}} giờ tới",
-      "daylightHere": "Ban ngày tại đây",
+      "span": "{{days}} ngày qua · {{hours}} giờ tới",
+      "daylightHere": "Ánh sáng ban ngày tại điểm",
       "row": {
-        "geo": "Địa tĩnh",
-        "photo": "Ảnh",
-        "likely": "Có thể",
-        "could": "Khả dĩ",
-        "overhead": "Bay qua"
+        "images": "Hình ảnh",
+        "events": "Sự kiện",
+        "passes": "Lượt bay qua"
       },
-      "retained": "{{start}} đến {{end}}",
-      "retainedDay": "chỉ {{day}}",
+      "retained": "lịch sử {{start}} đến {{end}}",
+      "retainedDay": "lịch sử chỉ {{day}}",
       "geoLine": "Vệ tinh địa tĩnh trong tầm nhìn: {{names}}",
-      "away": "cách {{km}} km"
+      "away": "{{km}} km",
+      "densityTip_other": "{{count}} lượt bay qua từ {{start}} · {{names}}"
+    },
+    "satelliteSites": {
+      "heading": "Các địa điểm được theo dõi · {{hours}} giờ tới",
+      "projecting": "Đang tính các lượt bay qua…",
+      "notLoaded": "Nhấp lại vào vệ tinh; các phần tử quỹ đạo của nó chưa được tải.",
+      "failed": "Nhấp lại vào vệ tinh để thử lại; tính toán lượt bay qua không thành công.",
+      "viewFailed": "Nhấp lại vào vệ tinh để thử lại; danh sách địa điểm không tải được.",
+      "unavailable": "Nhấp lại vào vệ tinh để thử lại; hình học lượt bay qua đã từ chối các phần tử quỹ đạo này.",
+      "signals": "Vệ tinh tình báo tín hiệu. Không có thiết bị chụp ảnh, do đó vùng quan sát mặt đất không được mô phỏng.",
+      "noProfile": "Không có hồ sơ cảm biến cho vệ tinh này, do đó vùng quan sát mặt đất của nó không được mô phỏng.",
+      "geostationary": "Địa tĩnh: cố định phía trên một kinh độ, do đó không có lượt bay qua nào để liệt kê.",
+      "badElements": "Các phần tử quỹ đạo không thể đọc được.",
+      "none": "Không có địa điểm được theo dõi nào trong vùng quan sát của vệ tinh trong {{hours}} giờ tới.",
+      "utc": "{{time}} UTC",
+      "inMinutes": "sau {{minutes}} phút",
+      "inHours": "sau {{hours}} giờ {{minutes}} phút",
+      "offTrack": "cách vết mặt đất {{km}} km",
+      "swathEdge": "tại mép dải quét",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "Loại",
+        "operator": "Nhà khai thác",
+        "over": "Phía trên",
+        "ocean": "Đại dương",
+        "altBand": "Dải độ cao",
+        "inclination": "Độ nghiêng",
+        "velocity": "Vận tốc",
+        "types": {
+          "sar": "Chụp ảnh SAR",
+          "optical": "Chụp ảnh quang học",
+          "military": "Quân sự",
+          "sigint": "SIGINT",
+          "signals": "Tình báo tín hiệu"
+        }
+      },
+      "tooOld_other": "Các phần tử quỹ đạo đã có từ {{count}} ngày trước, quá cũ để tính các lượt bay qua.",
+      "count_other": "{{count}} địa điểm trong vùng quan sát của {{family}}",
+      "passes_other": "{{count}} lượt bay qua"
+    },
+    "sheet": {
+      "heading": "Bằng chứng ảnh vệ tinh",
+      "window": "{{days}} ngày qua, {{hours}} h tới",
+      "apart": "Không được tính:",
+      "newest": "mới nhất {{when}}",
+      "newestNoPreview": "Ảnh chụp mới nhất {{when}} không có bản xem trước; hiển thị cảnh cũ hơn.",
+      "noneConfirmed": "Không có ảnh xác nhận nào trong khoảng thời gian này",
+      "noneYet": "Kho lưu trữ vẫn đang phản hồi",
+      "latest": "Ảnh mới nhất",
+      "latestNone": "Kho lưu trữ không trả về kết quả nào cho điểm và khoảng thời gian này.",
+      "latestChecking": "Đang tìm trong kho lưu trữ. Các lượt bay qua đã tính được liệt kê bên dưới.",
+      "compareWith": "So sánh với",
+      "compareDate": "Ngày tham chiếu",
+      "moreImages": "Các ảnh xác nhận khác",
+      "imageAlt": "Cảnh {{sensor}}, {{time}}",
+      "dailyMosaic": "ghép ảnh hàng ngày",
+      "weatherFrame": "ảnh thời tiết",
+      "change": "Thay đổi vị trí",
+      "showUtc": "UTC",
+      "showLocal": "Giờ địa phương",
+      "alert": "Cảnh báo trước mỗi lượt vệ tinh dữ liệu mở bay qua trên đầu, và khi có ảnh không mây mới.",
+      "alertCta": "Đặt cảnh báo · Pro",
+      "height": {
+        "collapsed": "Bảng dữ liệu bị thu gọn. Mở rộng đến nửa chiều cao",
+        "half": "Bảng dữ liệu ở nửa chiều cao. Mở rộng toàn màn hình",
+        "full": "Bảng dữ liệu được mở rộng. Thu gọn"
+      },
+      "apartMosaics_other": "{{count}} ảnh ghép hàng ngày",
+      "apartFrames_other": "{{count}} khung ảnh vệ tinh thời tiết",
+      "apartInRange_other": "{{count}} lượt bay qua trong phạm vi",
+      "confirmedCount_other": "{{count}} ảnh được xác nhận"
+    },
+    "tierDef": {
+      "confirmed": "Kho lưu trữ có cảnh phủ điểm này.",
+      "likely": "Phạm vi chụp cố định bao gồm điểm; chưa có cảnh trong kho lưu trữ.",
+      "inReach": "Cảm biến có khả năng quay hướng có thể nhắm vào đây. Không công bố nhiệm vụ chụp.",
+      "capability": "Một loại cảm biến không có kho lưu trữ công khai đã bay qua trên đầu."
+    },
+    "events": {
+      "heading": "Sự kiện tại vị trí này",
+      "kindLabel": "Loại",
+      "detail": "Chi tiết",
+      "now": "bây giờ",
+      "loading": "Đang tải nguồn cấp sự kiện…",
+      "none": "Không có sự kiện trong vòng {{km}} km trong {{days}} ngày qua.",
+      "unavailable": "Không khả dụng: {{sources}}",
+      "kind": {
+        "conflict": "Xung đột",
+        "fires": "Cháy",
+        "unrest": "Bất ổn",
+        "outages": "Sự cố",
+        "vessels": "Vận tải biển",
+        "military-flights": "Chuyến bay quân sự",
+        "gps-jamming": "Nhiễu GPS"
+      }
+    },
+    "capability": {
+      "heading": "Ai có thể chụp ảnh điểm này",
+      "none": "Không có cảm biến nào bay qua trong giai đoạn này.",
+      "tooOld": "Dữ liệu quỹ đạo quá cũ để tính toán: {{names}}",
+      "showAll": "Hiển thị tất cả {{count}}",
+      "showFewer": "Hiển thị ít hơn",
+      "group": {
+        "open": "Dữ liệu mở",
+        "commercial": "Thương mại",
+        "government": "Chính phủ",
+        "military": "Quân sự",
+        "other": "Khác"
+      }
+    },
+    "windows": {
+      "heading": "Cửa sổ thu thập tiếp theo",
+      "optical": "Quang học mở",
+      "radar": "Radar mở",
+      "none": "Không có lượt bay qua quang học hoặc radar mở nào trong {{hours}} h tới."
+    },
+    "status": {
+      "catalog": "Đang tải danh mục vệ tinh…",
+      "computing": "Đang tính lượt bay qua · vệ tinh {{done}}/{{total}}",
+      "checking": "Kho lưu trữ đã trả lời: {{done}}/{{total}}",
+      "partial": "Không nhận được phản hồi từ {{sources}}. Số liệu có thể thấp.",
+      "staleCatalog": "Danh mục cũ {{age}}; thời gian dự báo có thể dịch chuyển.",
+      "empty": "Không có vệ tinh nào tiếp cận được điểm này trong giai đoạn này.",
+      "unavailable": "Dữ liệu lượt bay qua không khả dụng. Vui lòng thử lại sau."
+    },
+    "privacy": {
+      "line": "Điểm của bạn chỉ được gửi đến kho lưu trữ ảnh.",
+      "more": "Chi tiết",
+      "body": "Các lượt bay qua được tính trên thiết bị này. Để tìm ảnh, trình duyệt của bạn gửi điểm trực tiếp đến Earth Search, Planetary Computer, NASA GIBS và EUMETSAT; WorldMonitor không nhận được điểm này. Tại một địa điểm được giám sát, WorldMonitor được yêu cầu bản ghi hằng ngày của địa điểm đó theo ID của địa điểm, không phải điểm của bạn. Tên địa điểm bạn nhập được gửi đến WorldMonitor và OpenStreetMap Nominatim để tìm kiếm. Liên kết chia sẻ giữ hai chữ số thập phân (0,01°)."
+    },
+    "sources": {
+      "heading": "Nguồn ({{count}})",
+      "docs": "Phương pháp và phạm vi phủ",
+      "conflict": "sự kiện xung đột và bất ổn",
+      "fires": "phát hiện cháy",
+      "outages": "nguồn cấp sự cố mạng",
+      "vessels": "vị trí tàu"
+    },
+    "caption": {
+      "clear": "Không mây tại điểm",
+      "clearSceneCloud": "Không mây tại điểm · cảnh {{pct}}% mây",
+      "clouded": "Mây tại điểm · {{pct}}%",
+      "cloudShadow": "Bóng mây tại điểm",
+      "spotNotChecked": "Mây tại điểm không xác định",
+      "sceneCloud": "Cảnh {{pct}}% mây · điểm không xác định",
+      "radar": "Radar · không bị ảnh hưởng bởi mây"
+    },
+    "tile": {
+      "failed": "Cảnh không tải được · {{archive}}",
+      "noPreview": "Chưa công bố bản xem trước cho cảnh này",
+      "radar": "radar"
+    },
+    "target": {
+      "acquired": "ĐÃ CHỤP {{time}} · {{resolution}}"
+    },
+    "popup": {
+      "title": "Ảnh vệ tinh",
+      "loading": "Đang kiểm tra kho lưu trữ vệ tinh…",
+      "latest": "Ảnh mới nhất",
+      "nextPass": "Lượt bay qua tiếp theo",
+      "noImage": "Không tìm thấy ảnh gần đây",
+      "noPass": "Không có lượt bay qua trong 72 giờ",
+      "openEvidence": "Mở bằng chứng",
+      "imageAlt": "Ảnh vệ tinh từ {{source}}",
+      "unavailable": "Không tải được ảnh vệ tinh.",
+      "fire": {
+        "title": "Phát hiện cháy từ vệ tinh",
+        "detected": "Được phát hiện",
+        "satellite": "Vệ tinh",
+        "confidence": "Độ tin cậy",
+        "confidenceHigh": "Cao",
+        "confidenceNominal": "Trung bình",
+        "confidenceLow": "Thấp",
+        "power": "Công suất cháy",
+        "powerValue": "{{value}} MW",
+        "region": "Khu vực",
+        "source": "Nguồn",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Ảnh ghép hàng ngày",
+        "mosaicLoading": "Đang kiểm tra NASA GIBS…",
+        "mosaicCaption": "Ảnh ghép từ các lượt quét {{source}} trong ngày {{date}}; cháy có thể bị che khuất bởi mây hoặc khói.",
+        "mosaicNone": "NASA GIBS không có ảnh ghép {{source}} cho {{date}}.",
+        "mosaicNoLayer": "Không có ảnh ghép hàng ngày cho vệ tinh này.",
+        "mosaicUnavailable": "Ảnh ghép hàng ngày không tải được.",
+        "mosaicAlt": "Ảnh ghép hàng ngày NASA GIBS {{source}} cho {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Địa điểm được giám sát",
+      "loading": "Đang tải bản ghi hằng ngày của địa điểm…",
+      "failed": "Không tải được bản ghi hằng ngày của địa điểm; hãy mở lại điểm để thử lại.",
+      "stale": "Không có lần kiểm tra hằng ngày hiện tại cho địa điểm này.",
+      "checked": "Đã kiểm tra",
+      "noPass": "Không có lượt bay qua sắp tới trong bản ghi",
+      "list": {
+        "hotspot": "điểm nóng",
+        "conflictZone": "vùng xung đột",
+        "militaryBase": "căn cứ quân sự",
+        "nuclearFacility": "cơ sở hạt nhân",
+        "port": "cảng",
+        "chokepoint": "eo biển",
+        "reservoir": "hồ chứa"
+      }
     }
   },
   "settings": {
@@ -5678,6 +5764,21 @@
         "5": "đăng xuất",
         "6": "xóa tài khoản"
       }
+    },
+    "reservoirAlert": {
+      "title": "Cảnh báo mức nước",
+      "description": "Cảnh báo khi mức nước lidar của một hồ chứa chiến lược thấp. NASA công bố mỗi vòng quay vệ tinh khoảng hai tháng sau khi đo, vì vậy mỗi cảnh báo đều cung cấp ngày đo của nó.",
+      "scopeHint": "Chọn tối đa {{max}} hồ chứa. Cảnh báo chỉ bao gồm các hồ chứa được liệt kê ở đây.",
+      "searchPlaceholder": "Thêm hồ chứa theo tên",
+      "searchLabel": "Thêm hồ chứa",
+      "removeLabel": "Xóa {{name}}",
+      "thresholdLabel": "Ngưỡng mức nước",
+      "thresholdHint": "Cảnh báo khi mức nước đo được mới nhất dưới phần trăm này trong phạm vi đo được của chính hồ chứa, trong đó 0 là mức nước thấp nhất đo được và 100 là mức cao nhất. Để trống nếu không có ngưỡng.",
+      "thresholdInputLabel": "Ngưỡng mức nước, phần trăm phạm vi đo được",
+      "seasonalLabel": "Giảm vượt quá đường cơ sở theo mùa",
+      "seasonalHint": "Cảnh báo khi mức nước đo được mới nhất thấp hơn đáng kể so với những gì hồ chứa thường đo được vào thời điểm này trong năm.",
+      "quietNote": "Những cảnh báo này đến ngay cả khi cảnh báo thời gian thực chỉ được đặt ở mức quan trọng. Giờ yên tĩnh sẽ tắt chúng.",
+      "quietNoteBatch": "Những cảnh báo này đến ngay cả khi cảnh báo thời gian thực chỉ được đặt ở mức quan trọng. Giờ yên tĩnh sẽ tắt chúng hoặc giữ lại chúng cho đến khi giờ yên tĩnh kết thúc nếu bạn chọn Batch."
     }
   }
 }

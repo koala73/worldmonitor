@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { attachBrowserLossDiagnostics, pageBrowserLossEvents } from './browser-loss-diagnostics';
 import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 /**
  * Settings → SOURCES must reach the live dashboard when the modal closes (#6380).
@@ -248,8 +249,7 @@ test.describe('settings source live apply (#6380)', () => {
       else await expect(source).not.toHaveClass(/\bactive\b/);
       const capture = async (name: string) => {
         const path = testInfo.outputPath(`${locale}-${name}.png`);
-        await page.screenshot({ path });
-        await testInfo.attach(`${locale} ${name}`, { path, contentType: 'image/png' });
+        await evidenceScreenshot(page, { path }, { testInfo, name: `${locale} ${name}` });
       };
       await capture('desktop-default');
       await source.click();
@@ -297,8 +297,7 @@ test.describe('settings source live apply (#6380)', () => {
     expect(disabled).toContain('France 24 Asia Pacific');
     await page.locator('.sources-search input').fill('Guardian');
     const screenshotPath = testInfo.outputPath('regional-source-choice.png');
-    await page.screenshot({ path: screenshotPath });
-    await testInfo.attach('Regional source choice after reload', { path: screenshotPath, contentType: 'image/png' });
+    await evidenceScreenshot(page, { path: screenshotPath }, { testInfo, name: 'Regional source choice after reload' });
   });
 
   test('toggling sources and closing Settings reloads news once, without a reload', async ({ page }) => {

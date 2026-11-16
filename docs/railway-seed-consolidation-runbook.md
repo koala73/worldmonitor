@@ -1082,8 +1082,9 @@ detects old source material.
 ### Bundle 3 heavy: seed-bundle-static-ref-heavy (live, #6806)
 
 Arms-Suppliers (380s reservation) and Military-Bases (410s) cannot share a 570s
-tick — Railway kills a cron container at 10 minutes, so that ceiling is not
-negotiable. They CAN share a bundle: the runner defers whichever loses the tick
+admission budget. Project policy keeps configured budgets below 600s; it
+does not guarantee a maximum tick duration. Railway skips the next tick while one is
+still active. They CAN share a bundle: the runner defers whichever loses the tick
 to the next daily fire, and at 14-day and 30-day cadences a one-day deferral
 costs nothing. One service carries all three heavy members instead of three
 1-section services, because Railway caps a project at 100 and the fleet is at 82.
@@ -1163,7 +1164,7 @@ any red check anywhere strands this service's builds.
 | **Replaces** | 2 services |
 | **Net savings** | 1 slot |
 | **Members** | Resilience Scores (2h admission interval), Resilience Static (90d, skips most runs), Food Stocks (monthly USDA PSD + FAOSTAT fill; needs `USDA_FAS_PSD_API_KEY`), Five-Factor Scorecard (daily Redis-only scoring) |
-| **Wall budget** | 570 seconds, below Railway's 10-minute container kill. Section timeouts are 240s / 280s / 480s / 180s, so every member fits alone once the runner's 10s kill grace is added. Resilience Scores stays first because it keeps the ranking and interval caches alive. Five-Factor Scorecard stays last: if a long-cadence section consumes its reservation, the runner defers scorecard before start; it fits on the next normal tick when Static and Food skip. The 180s scorecard reservation contains the 25s source-read deadline, Redis retry ceiling, atomic publication, and process-cleanup headroom. |
+| **Wall budget** | 570 seconds, below the 600-second bundle wall cap (our own limit; Railway does not kill cron runs). Section timeouts are 240s / 280s / 480s / 180s, so every member fits alone once the runner's 10s kill grace is added. Resilience Scores stays first because it keeps the ranking and interval caches alive. Five-Factor Scorecard stays last: if a long-cadence section consumes its reservation, the runner defers scorecard before start; it fits on the next normal tick when Static and Food skip. The 180s scorecard reservation contains the 25s source-read deadline, Redis retry ceiling, atomic publication, and process-cleanup headroom. |
 | **Scorecard measurement** | Read-only production-source `--dry-run` on 2026-08-29: 196 countries, 3,716,740 serialized bytes, 1.82s wall time, and 220,577,792-byte maximum RSS. Validation passed and Redis was not modified. This is placement and payload-size evidence, not deployment or production-acceptance evidence. |
 | **Do not** | raise any section timeout above `maxBundleMs - 10_000`. A section whose timeout plus kill grace exceeds the budget is deferred on **every** tick while the bundle still exits 0 — #6556 ran this service dead for six hours behind a green badge. `tests/bundle-budget-admission.test.mjs` fails the PR, and `runBundle` refuses to start, but the arithmetic is worth knowing before you edit. |
 
@@ -1179,7 +1180,7 @@ any red check anywhere strands this service's builds.
 | **Net savings** | 1 slot |
 | **Members** | CII Economic Stress (1h), Correlation (5min), Market-Alert-Ledger (5min), Cross-Source Signals (15min), US States Grid Disruption Clock (10min), Cross-Strait Activity (3h), China Decision Signals (15min), Regional Snapshots (6h), Tension Evidence (15min) |
 | **Required env** | `JAPAN_MOD_PROXY_URL` or `PROXY_URL` (Cross-Strait Activity's Japan MOD exit; the section declares an any-of group, so either satisfies it and only an environment with neither fails as `CONFIG_ERROR`) |
-| **Note** | US States Grid Disruption Clock polls public outage and warning feeds. Cross-Strait Activity uses bounded MND/Japan MOD requests and a 3h freshness gate. China Decision Signals validates and republishes the public composition from its domain lanes. The bundle enforces a 570s wall-time admission budget so a non-fitting due section defers before Railway's 10-minute container limit. |
+| **Note** | US States Grid Disruption Clock polls public outage and warning feeds. Cross-Strait Activity uses bounded MND/Japan MOD requests and a 3h freshness gate. China Decision Signals validates and republishes the public composition from its domain lanes. The bundle enforces a 570s wall-time admission budget so a non-fitting due section defers. This does not guarantee completion before the next five-minute tick or a maximum tick duration. |
 
 CII Economic Stress reads six existing Redis inputs within a 30s section budget.
 The currency member needs the cleaned `daily90` block from `seed-fx-yoy`, which
@@ -1310,7 +1311,7 @@ Recovery is accepted only when:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 6 services |
 | **Net savings** | 5 slots |
-| **Members** | Zone Normals (monthly, skips ~359/360), Anomalies (3h, depends on zone-normals), Disasters (6h), Ocean Ice (daily), CO2 Monitoring (3 days), Orbital Catalog (2h, so every 3h tick), Orbital Sites (daily), Reservoir Levels (daily) |
+| **Members** | Zone Normals (monthly, skips ~359/360), Anomalies (3h, depends on zone-normals), Disasters (6h), Ocean Ice (daily), CO2 Monitoring (3 days), Orbital Catalog (2h, so every 3h tick), Orbital Sites (daily), Orbital Water Extent (daily, dark until Orbital Watch launches), Reservoir Levels (daily) |
 | **Note** | Zone-normals runs before anomalies (dependency ordering). Natural Events left the bundle on 2026-11-07: the standalone `seed-natural-events` service (`*/30`) is its sole producer. |
 
 ### Bundle 7: seed-bundle-energy-sources

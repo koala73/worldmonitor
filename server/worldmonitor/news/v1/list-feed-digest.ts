@@ -1019,45 +1019,13 @@ export async function fetchAndParseRss(
   variant: string,
   signal: AbortSignal,
 ): Promise<ParseResult> {
-  // v5 cache shape: identical struct to v4 but a new prefix invalidates
-  // every pre-fix entry on deploy. v4 entries cached pre-PR contain
-  // ParsedItems without the new isEphemeralLiveCoverage field. If a cache hit
-  // returned one of those, buildStoryTrackHsetFields would write
-  // `'isEphemeralLiveCoverage', undefined ? '1' : '0'` → '0' onto the
-  // story:track:v1 row, and buildDigest's stampMissing check would treat
-  // '0' as a genuine "not ephemeral live" verdict and skip the residue catch.
-  // Live-programming teasers could then silently slip through during the 1h
-  // healthy-cache rollout window. Bumping the prefix forces cold parseRssXml
-  // runs that stamp isEphemeralLiveCoverage correctly.
-  //
-  // (Same class of cache-prefix bump as v2→v3 and v3→v4, which this codebase
-  // already established as the correct cutover pattern for parsed-cache
-  // shape changes.)
-  // v5→v6 (#4920 review): ParseResult gained droppedFeedCap; warm v5 rows
-  // lack it and would undercount the coverage ledger for their whole TTL.
-  // v6→v7: ParsedItems now stamp historical explainers using their persisted
-  // publishedAt. Digest reads deliberately trust explicit isOpinion stamps,
-  // so warm v6 rows could retain an earlier "0" verdict for one cache TTL.
-  // Force a cold parse to stamp the stable ingest-time verdict immediately.
-  // v7→v8: extend the same exclusion policy to duration-led anniversary
-  // explainers ("10 years on from …"). Warm v7 rows already carry an
-  // authoritative isOpinion="0", so force another cold parse on rollout.
-  // v8→v9 (#7083): ParseResult gained the `attempt` field. Warm v8 rows
-  // lack it, so zero-item entries could not be classified between
-  // negative-cache and fresh-failure; force a cold parse on rollout.
-  // v9→v10 (#7748): retain a bounded country headline pool beyond entry five.
-  // v10→v11 (#8398): items gained the publisher-link ingest gate. Warm v10
-  // rows carry un-gated links, so force a cold parse to gate every link.
+  // Cache key is rss:feed:v11 from rssFeedCacheKey in _rss-cache.ts. Digest readers must call that helper so they share one prefix.
   const cacheKey = rssFeedCacheKey(variant, feed.url);
 
   try {
-    // Read cache unconditionally — the v5 prefix guarantees pre-fix
-    // poisoning can't reach this read, so we don't need a parsedTotal
-    // bypass. Honoring cached zero-from-zero entries IS the throttle:
-    // setCachedJson below writes them with CACHE_TTL_EMPTY_S, so the next
-    // request within 5 minutes hits cache instead of upstream. This is
-    // what the PR description claimed and what review P1 flagged was
-    // missing.
+    // Read the cache on every call. A cached zero-item parse is the throttle.
+    // setCachedJson writes it with CACHE_TTL_EMPTY_S, so the next request
+    // within 5 minutes hits cache instead of upstream.
     const cached = (await getCachedJson(cacheKey)) as ParseResult | null;
     if (cached) {
       if (cached.parsedTotal === 0 && cached.items.length === 0) {

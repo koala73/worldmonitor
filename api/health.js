@@ -295,7 +295,7 @@ const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLower
 // (server/worldmonitor/orbital/v1/dark-launch.ts). While it is off the seeder
 // writes nothing, so these keys read NOT_CONFIGURED and claim no rollout deadline.
 const ORBITAL_WATCH_ENABLED = (process.env.ORBITAL_WATCH_ENABLED ?? '').trim().toLowerCase() === 'true';
-const DARK_LAUNCHED_KEYS = new Set(ORBITAL_WATCH_ENABLED ? [] : ['orbitalSites']);
+const DARK_LAUNCHED_KEYS = new Set(ORBITAL_WATCH_ENABLED ? [] : ['orbitalSites', 'orbitalWaterExtent']);
 
 const BOOTSTRAP_KEYS = {
   earthquakes:       'seismology:earthquakes:v1',
@@ -424,6 +424,7 @@ const STANDALONE_KEYS = {
   // Watched-site satellite evidence index (scripts/seed-orbital-sites.mjs); per-site and
   // per-country records sit beside it. Read by the orbital RPCs, not the dashboard.
   orbitalSites: 'orbital:sites:v1',
+  orbitalWaterExtent: 'orbital:water-extent:v1',
   // Public chokepoint status open dataset index (/data/v1/chokepoints/), published
   // daily by .github/workflows/open-data-chokepoints.yml. Read only by
   // api/open-data-chokepoints.js, never by the dashboard.
@@ -719,8 +720,8 @@ const STANDALONE_KEYS = {
   // No dashboard consumer yet. Points live in one hash per UTC day, which health
   // cannot STRLEN, so the stable heartbeat each ok point advances is watched.
   airTrafficHistory:        'seed-meta:aviation:traffic-history',
-  // The same series from adsb.lol receivers, kept apart as a cross-check.
-  airTrafficHistoryAdsbLol: 'seed-meta:aviation:traffic-history-adsblol',
+  // The same series from Wingbits receivers, kept apart as a cross-check.
+  airTrafficHistoryWingbits: 'seed-meta:aviation:traffic-history-wingbits',
   resilienceStaticIndex:    'resilience:static:index:v1',
   resilienceStaticFao:      'resilience:static:fao',
   // USDA PSD food stocks + FAOSTAT production fill (#6440). RPC/MCP only —
@@ -990,13 +991,18 @@ const SEED_META = {
   orbitalCatalog:   { key: 'seed-meta:orbital:catalog', maxStaleMin: 540, minRecordCount: 250, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:orbital:catalog',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10615, activationKey: 'seed-activated:orbital:catalog' } },
   // Daily climate bundle member; 4320 = 3 missed days. One run evaluates the sites its budget
-  // allows and the index keeps every site evaluated so far, so the count reaches the 655-site
+  // allows and the index keeps every site evaluated so far, so the count reaches the 705-site
   // registry within two runs; minRecordCount allows for the first run's partial pass.
   // NOT_CONFIGURED while Orbital Watch is dark (DARK_LAUNCHED_KEYS). The deadline key is
   // separate from the one claimed on 2026-11-14 while dark, so launch starts a fresh window.
   orbitalSites:     { key: 'seed-meta:orbital:sites', maxStaleMin: 4320, minRecordCount: 300, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:orbital:sites',
     rolloutDeadlineKey: 'health:rollout-deadline:orbital:sites:v1:launch',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10615, activationKey: 'seed-activated:orbital:sites' } },
+  // Daily climate bundle member; 4320 = 3 missed days. Counts reservoirs with a radar reading in the
+  // last 60 days; a few huge lakes no single scene covers never get one (#10714).
+  // NOT_CONFIGURED while Orbital Watch is dark (DARK_LAUNCHED_KEYS).
+  orbitalWaterExtent: { key: 'seed-meta:orbital:water-extent', maxStaleMin: 4320, minRecordCount: 35, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:orbital:water-extent',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10714, activationKey: 'seed-activated:orbital:water-extent' } },
   unrestEvents:     { key: 'seed-meta:unrest:events',           maxStaleMin: 120 }, // 45min cron; 120 = 2h grace (was 75 = 30min buffer, too tight)
   cyberThreats:     { key: 'seed-meta:cyber:threats',           maxStaleMin: 240 }, // 2h interval; 240min = 2x interval
   cveReference: {
@@ -2455,16 +2461,19 @@ const SEED_META = {
       activationKey: 'seed-activated:aviation:traffic-history',
     },
   },
-  // Same loop schedule and heartbeat rule as airTrafficHistory, from adsb.lol.
-  airTrafficHistoryAdsbLol: {
-    key: 'seed-meta:aviation:traffic-history-adsblol',
+  // Same loop schedule and heartbeat rule as airTrafficHistory, from Wingbits.
+  airTrafficHistoryWingbits: {
+    key: 'seed-meta:aviation:traffic-history-wingbits',
     maxStaleMin: 20,
-    activationKey: 'seed-activated:aviation:traffic-history-adsblol',
+    // The relay has the key, so a series still unpublished an hour (12 bins)
+    // after deploy is broken, not pending.
+    firstPublicationMaxWaitMin: 60,
+    activationKey: 'seed-activated:aviation:traffic-history-wingbits',
     cutover: {
       mode: 'activation-marker',
       fromKey: null,
       issue: 10719,
-      activationKey: 'seed-activated:aviation:traffic-history-adsblol',
+      activationKey: 'seed-activated:aviation:traffic-history-wingbits',
     },
   },
   productCatalog:    { key: 'seed-meta:product-catalog',               maxStaleMin: 1080 }, // relay loop every 6h; 1080 = 18h = 3x interval
@@ -2612,7 +2621,7 @@ const SEED_META = {
   },
   // The heavy half of static-ref: Arms-Suppliers, Military-Bases and
   // Mineral-Production on one rotating daily tick (#6806). One heartbeat, not
-  // three — Railway's 10-minute container kill means no two of those members
+  // three — the 570s bundle budget means no two of those members
   // can share a tick, but they share a BUNDLE and the runner defers the loser
   // to tomorrow, which is free at 10/30/60-day cadences.
   staticRefHeavyBundleTick: {
@@ -2879,6 +2888,7 @@ const ON_DEMAND_KEYS = new Set([
   // New imaging catalog: absent before the climate bundle's first run after deploy.
   'orbitalCatalog',
   'orbitalSites',
+  'orbitalWaterExtent',
 
   'globalTendersColombiaSecop',
   'globalTendersKenyaPpip',
@@ -3048,7 +3058,7 @@ const ON_DEMAND_KEYS = new Set([
   // never covers a key that has data behind it (see classifyKey).
   'pizzintHistory',
   'airTrafficHistory', // empty until the relay's first ok point after deploy
-  'airTrafficHistoryAdsbLol', // empty until the first full adsb.lol sweep after deploy
+  'airTrafficHistoryWingbits', // empty until the relay's first ok Wingbits point after deploy
   'riskScoresHistory', // first fresh leader build atomically activates daily history
   'ciiEconomicStress', // pending until the first economic publication
   'ciiStructuralPrior', // pending until the first complete prior publication
@@ -3111,6 +3121,7 @@ const ACTIVATION_MARKERS = {
   reservoirLevels: SEED_META.reservoirLevels.activationKey,
   orbitalCatalog: SEED_META.orbitalCatalog.activationKey,
   orbitalSites: SEED_META.orbitalSites.activationKey,
+  orbitalWaterExtent: SEED_META.orbitalWaterExtent.activationKey,
 
   globalTendersColombiaSecop: SEED_META.globalTendersColombiaSecop.activationKey,
   globalTendersKenyaPpip: SEED_META.globalTendersKenyaPpip.activationKey,
@@ -3135,7 +3146,7 @@ const ACTIVATION_MARKERS = {
   pizzintHistory: SEED_META.pizzintHistory.activationKey,
   // Written with the first ok point (scripts/shared/air-traffic-history.cjs).
   airTrafficHistory: SEED_META.airTrafficHistory.activationKey,
-  airTrafficHistoryAdsbLol: SEED_META.airTrafficHistoryAdsbLol.activationKey,
+  airTrafficHistoryWingbits: SEED_META.airTrafficHistoryWingbits.activationKey,
   riskScoresHistory: SEED_META.riskScoresHistory.activationKey,
   ciiStructuralPrior: SEED_META.ciiStructuralPrior.activationKey,
   ciiEconomicStress: SEED_META.ciiEconomicStress.activationKey,

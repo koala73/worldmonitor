@@ -49,10 +49,6 @@ export function getOutletProfile(sourceName: string): OutletProfile | null {
   return Object.prototype.hasOwnProperty.call(PROFILES, sourceName) ? PROFILES[sourceName]! : null;
 }
 
-export function outletProfileNames(): string[] {
-  return Object.keys(PROFILES);
-}
-
 /** Profile facts as served next to provenance. Null when the outlet has no reviewed profile. */
 export interface OutletProfileFields {
   homeCountry: string | null;
