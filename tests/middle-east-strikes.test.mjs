@@ -162,6 +162,18 @@ describe('gazetteer', () => {
     assert.equal(gazetteer.resolvePlace({ place: 'Eilat' }).iso2, 'IL', 'no country given');
   });
 
+  it('finds a country-qualified place in another theater country', () => {
+    // "Eilat, Israel" has no exact key; filed under the attacker it fell back
+    // to Yemen's centroid and was tallied as a strike on Yemen.
+    for (const iso2 of ['YE', 'IR', undefined]) {
+      const place = gazetteer.resolvePlace({ place: 'Eilat, Israel', iso2 });
+      assert.equal(place?.key, 'IL:eilat', String(iso2));
+    }
+    assert.equal(gazetteer.resolvePlace({ place: 'Haifa port, Israel', iso2: 'LB' })?.iso2, 'IL');
+    // A name that matches places in two other countries stays ambiguous.
+    assert.equal(gazetteer.resolvePlace({ place: 'Haifa and Jizan', iso2: 'YE' }).iso2, 'YE');
+  });
+
   it('keeps an impact the classifier placed outside the theater out of it', () => {
     assert.equal(gazetteer.resolvePlace({ place: 'Tripoli', iso2: 'LY' }), null);
     assert.equal(gazetteer.resolvePlace({ place: 'Tripoli', iso2: 'LB' }).iso2, 'LB');
@@ -360,6 +372,19 @@ describe('GDELT backstop', () => {
       gdeltRow({ id: '3', fips: 'IR', lat: 35.69, lon: 51.42, numSources: 5, url: 'https://c.example/3', fullName: 'Tehran, Tehran, Iran' }),
     ].join('\n');
     assert.deepEqual(strikes.mapGdeltExportToStrikeCandidates(csv), []);
+  });
+
+  it('ignores West Bank rows coded as Israel', () => {
+    // FIPS IS covers the West Bank; these rows were tallied as Israeli strikes
+    // at the nearest Israeli place (Jenin -> Northern District, Nablus -> Kfar Saba).
+    const csv = [
+      gdeltRow({ id: '1', fips: 'IS', lat: 32.4608, lon: 35.3003, numSources: 5, url: 'https://a.example/1', fullName: 'Jenin, West Bank, Israel' }),
+      gdeltRow({ id: '2', fips: 'IS', lat: 32.2211, lon: 35.2544, numSources: 5, url: 'https://b.example/2', fullName: 'Nablus, West Bank, Israel' }),
+      gdeltRow({ id: '3', fips: 'IS', lat: 32.79, lon: 34.99, numSources: 5, url: 'https://c.example/3', fullName: 'Haifa, Haifa, Israel' }),
+    ].join('\n');
+    const cands = strikes.mapGdeltExportToStrikeCandidates(csv);
+    assert.deepEqual(cands.map((c) => c.iso2), ['IL']);
+    assert.match(cands[0].placeKey, /^IL:haifa/);
   });
 
   it('ignores Gaza coded as Israel and rows whose province GDELT could not resolve', () => {
@@ -768,7 +793,8 @@ describe('precision: one incident, once, on the country hit, dated to its first 
   });
 
   it('discards a tally written before these rules, instead of keeping its inflated days', () => {
-    const v1 = { version: 1, updatedAt: NOW - HOUR, days: { '2026-10-18': { SA: [3, 4, 2, 0] } } };
+    // 10-10 is outside the 72h window, so only the version decides.
+    const v1 = { version: 1, updatedAt: NOW - HOUR, days: { '2026-10-10': { SA: [3, 4, 2, 0] } } };
     assert.deepEqual(strikes.mergeStrikePressure(v1, [], NOW).days, {});
     const v2 = { ...v1, version: 2 };
     assert.deepEqual(strikes.mergeStrikePressure(v2, [], NOW).days, v1.days);
@@ -1023,6 +1049,74 @@ describe('strike pressure tally (conflict:strike-pressure:v1)', () => {
     assert.deepEqual(state.days, { '2026-10-15': { SA: [0, 1, 0, 0] } });
   });
 
+  it('counts an incident on one day when a later-arriving report from before midnight re-dates it', () => {
+    // Cycle 1 sees only the 00:10 report: one incident on 10-16. Cycle 2 gets
+    // a 23:55 report of the same strike; the incident is re-dated to 10-15
+    // and must leave 10-16.
+    const midnight = Date.parse('2026-10-16T00:00:00Z');
+    const first = [riyadh('b', midnight + 10 * MIN)];
+    let state = strikes.mergeStrikePressure(null, strikes.deriveStrikeEvents(first, midnight + 15 * MIN), midnight + 15 * MIN);
+    assert.deepEqual(state.days, { '2026-10-16': { SA: [0, 1, 0, 0] } });
+    const late = [...first, riyadh('a', midnight - 5 * MIN)];
+    const events = strikes.deriveStrikeEvents(late, midnight + 25 * MIN);
+    assert.equal(events.length, 1, 'one incident, dated to its earliest report');
+    state = strikes.mergeStrikePressure(state, events, midnight + 25 * MIN);
+    assert.deepEqual(state.days, { '2026-10-15': { SA: [0, 1, 0, 0] } });
+  });
+
+  it('counts a re-dated incident once through a full publish cycle', async () => {
+    const midnight = Date.parse('2026-10-19T00:00:00Z');
+    const redis = new Map();
+    const tg = (id, iso) => ({ id: `saudidcd:${id}`, channel: 'saudidcd', url: `https://t.me/SaudiDCD/${id}`, ts: iso, text: 'Missile hit a building in Riyadh' });
+    const cycle = (now, item) => strikes.publishStrikeCycle({
+      now,
+      pendingItems: [item],
+      readStore: async () => ({ ok: true, value: redis.get('store') ?? null }),
+      writeStore: async (v) => { redis.set('store', v); return true; },
+      writeCanonical: async () => true,
+      writeSeedMeta: async () => true,
+      readCache: async () => null,
+      writeCache: async () => true,
+      classify: async (texts) => texts.map((_, i) => ({ i, ...cls({ place: 'Riyadh' }) })),
+      loadGdelt: async (processed) => ({ candidates: [], processed, fetched: 0 }),
+      telegramPolledAt: now - MIN,
+      readPressure: async () => ({ ok: true, value: redis.get('pressure') ?? null }),
+      writePressure: async (v) => { redis.set('pressure', v); return true; },
+      writePressureMeta: async () => true,
+    });
+    await cycle(midnight + 15 * MIN, tg(2, '2026-10-19T00:10:00Z'));
+    await cycle(midnight + 25 * MIN, tg(1, '2026-10-18T23:55:00Z'));
+    assert.deepEqual(redis.get('pressure').days, { '2026-10-18': { SA: [0, 1, 0, 0] } });
+  });
+
+  it('keeps the larger stored count for a day the window covers only in part', () => {
+    // NOW - 72h falls at 12:00 on 10-16: the window no longer shows the
+    // morning of 10-16, so its view of that day cannot replace the tally.
+    const stored = { version: 2, days: { '2026-10-16': { SA: [0, 3, 0, 0] } }, updatedAt: NOW - 10 * MIN };
+    const out = strikes.mergeStrikePressure(stored, [ev('tg:SA:SA:riyadh:9', 'SA', 'high', 71 * HOUR)], NOW);
+    assert.deepEqual(out.days['2026-10-16'], { SA: [0, 3, 0, 0] });
+  });
+
+  it('rebuilds a day the window fully covers, dropping an incident the window no longer shows there', () => {
+    const stored = { version: 2, days: { '2026-10-18': { SA: [0, 2, 0, 0], YE: [0, 0, 0, 1] } }, updatedAt: NOW - 10 * MIN };
+    const out = strikes.mergeStrikePressure(stored, [ev('tg:SA:SA:riyadh:9', 'SA', 'high', 20 * HOUR)], NOW);
+    assert.deepEqual(out.days['2026-10-18'], { SA: [0, 1, 0, 0] });
+  });
+
+  it('keeps the larger stored count when the window was cut at MAX_EVENTS', () => {
+    const stored = { version: 2, days: { '2026-10-18': { SA: [0, 2, 0, 0] } }, updatedAt: NOW - 10 * MIN };
+    // 400 events from 11:00 on 10-18 onward: the cut may have dropped earlier 10-18 events.
+    const full = Array.from({ length: strikes.MAX_EVENTS }, (_, i) => ev(`tg:YE:YE:x:${i}`, 'YE', 'moderate', 25 * HOUR - i * MIN));
+    const out = strikes.mergeStrikePressure(stored, full, NOW);
+    assert.deepEqual(out.days['2026-10-18'].SA, [0, 2, 0, 0]);
+  });
+
+  it('shows days whole only after the late-report reach of a store cut at its cap', () => {
+    assert.equal(strikes.pressureCoverStart(NOW, [], []), NOW - 72 * HOUR);
+    const capped = Array.from({ length: 4000 }, (_, i) => ({ ts: NOW - 60 * HOUR + i * MIN }));
+    assert.equal(strikes.pressureCoverStart(NOW, capped, []), NOW - 60 * HOUR + 24 * HOUR);
+  });
+
   it('moves an event to its higher severity when later reports raise it, and never lowers it', () => {
     const first = strikes.mergeStrikePressure(null, [ev('tg:SA:SA:riyadh:1', 'SA', 'elevated', HOUR)], NOW);
     const raised = strikes.mergeStrikePressure(first, [ev('tg:SA:SA:riyadh:1', 'SA', 'critical', HOUR)], NOW);
@@ -1055,8 +1149,13 @@ describe('strike pressure tally (conflict:strike-pressure:v1)', () => {
   });
 
   it('survives a malformed stored snapshot without throwing or keeping garbage', () => {
-    const out = strikes.mergeStrikePressure({ version: 2, days: { 'not-a-date': { SA: [1, 0, 0, 0] }, '2026-10-18': { SA: 'x', YE: [0, 1, 0, 0] } }, events: [] }, [], NOW);
-    assert.deepEqual(out.days, { '2026-10-18': { YE: [0, 1, 0, 0] } });
+    const out = strikes.mergeStrikePressure({
+      version: 2, days: { 'not-a-date': { SA: [1, 0, 0, 0] }, '2026-10-10': { SA: 'x', YE: [0, 1, 0, 0] } },
+      peaks: { 'tg:SA:SA:riyadh:1': 'catastrophic', '': 'critical' }, events: [],
+    }, [ev('tg:SA:SA:riyadh:1', 'SA', 'high', HOUR)], NOW);
+    assert.deepEqual(out.days, { '2026-10-10': { YE: [0, 1, 0, 0] }, '2026-10-19': { SA: [0, 1, 0, 0] } });
+    assert.deepEqual(out.peaks, { 'tg:SA:SA:riyadh:1': 'high' });
+    assert.deepEqual(strikes.mergeStrikePressure({ version: 2, days: {}, peaks: ['critical'] }, [], NOW).peaks, {});
   });
 
   function pressureHarness(overrides = {}) {

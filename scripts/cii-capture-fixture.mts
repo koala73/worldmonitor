@@ -22,7 +22,7 @@ import { unwrapEnvelope } from '../server/_shared/seed-envelope.ts';
 import { parsePartyMonths, statePartyIso2 } from './shared/ucdp-state-parties.cjs';
 import { CII_COUNTRY_CODES } from '../shared/cii-weights.ts';
 import { CII_ADVISORY_LAST_GOOD_KEY } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
-import { CII_FORMULA_VERSION } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
+import { CII_FORMULA_VERSION, CII_STRIKE_EVENTS_KEY, CII_STRIKE_TALLY_KEY } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
 
 const { values } = parseArgs({
   options: {
@@ -79,10 +79,10 @@ const [
   gdeltCountryEvents, strikePressure, structuralPrior, economicStress,
 ] = await Promise.all([
   'conflict:ucdp-events:v1', 'infra:outages:v1', 'climate:anomalies:v2', 'wildfire:fires-summary:v1',
-  'intelligence:gpsjam:v2', 'conflict:iran-events:v1', 'relay:oref:history:v1', 'intelligence:advisories:v1',
+  'intelligence:gpsjam:v2', CII_STRIKE_EVENTS_KEY, 'relay:oref:history:v1', 'intelligence:advisories:v1',
   `displacement:summary:v1:${year}`, 'news:insights:v1', 'news:threat:summary:v1', 'aviation:delays-bootstrap:v2',
   'seismology:earthquakes:v1', 'sanctions:pressure:v1', 'sanctions:country-counts:v1', 'temporal:anomalies:v1',
-  'intelligence:military-cii:v1', 'gdelt:bulk:country-events:v1', 'conflict:strike-pressure:v1',
+  'intelligence:military-cii:v1', 'gdelt:bulk:country-events:v1', CII_STRIKE_TALLY_KEY,
   'intelligence:cii-structural-prior:v1', 'intelligence:cii-economic-stress:v1',
 ].map((key) => get(key)));
 const partyValue = (ucdp as { partyMonths?: unknown } | null)?.partyMonths;

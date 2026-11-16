@@ -462,7 +462,8 @@ const GDELT_DATELINE_KM = 30;
 //  - "X, <Country> (general), <Country>": the province is unknown and the city
 //    match is often wrong ("Al-Azhar, Saudi Arabia (general)" at 28.57,37.27);
 //  - Gaza is coded as Israel ("Gaza, Israel (general), Israel"), which would
-//    plot Gaza strikes in Ashkelon. Palestine is outside this feed's scope.
+//    plot Gaza strikes in Ashkelon, and so is the West Bank ("Jenin, West
+//    Bank, Israel" -> Northern District). Palestine is outside this feed's scope.
 const GDELT_UNKNOWN_PROVINCE_RE = /\(general\)/i;
 const GAZA_BBOX = { minLat: 31.2, maxLat: 31.62, minLon: 34.2, maxLon: 34.58 };
 
@@ -497,7 +498,8 @@ function mapGdeltExportToStrikeCandidates(csv) {
     const lon = Number(f[57]);
     const ts = gdeltStampToMs(f[59]);
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(ts) || (lat === 0 && lon === 0)) continue;
-    if (isDatelineCity(iso2, lat, lon) || isGaza(lat, lon) || GDELT_UNKNOWN_PROVINCE_RE.test(f[52])) continue;
+    if (isDatelineCity(iso2, lat, lon) || isGaza(lat, lon) || GDELT_UNKNOWN_PROVINCE_RE.test(f[52])
+      || gazetteer.namesPalestinianPlace(f[52])) continue;
     const near = gazetteer.nearestPlace(lat, lon, iso2, GDELT_NEAREST_PLACE_KM);
     const placeKey = near ? near.key : `${iso2}:geo:${lat.toFixed(1)},${lon.toFixed(1)}`;
     const placeName = near ? near.name : (String(f[52]).split(',')[0].trim() || gazetteer.COUNTRY_NAMES[iso2]);
@@ -957,15 +959,19 @@ function deriveStrikeEvents(candidates, now) {
 //
 // The canonical key carries a 72h window; the CII needs to know whether a
 // country has been hit day after day for weeks (CII v12 strike pressure). The
-// tally keeps, per country and UTC day, the largest severity count any
-// published window has shown for that day. It does not track event ids: an id
-// carries the 30-minute bucket of its session's first report, and sessions
-// re-partition when a late report with an earlier time arrives or the first
-// report leaves the window, so counting ids would count one incident twice.
-// Each day sits wholly inside the 72h window for about two days, so the
-// largest window view of it includes every late report. A later report that
-// raises an incident's severity raises the day's weighted total, so it
-// replaces the stored count rather than adding to it. The CII applies the
+// tally keeps severity counts per country and UTC day. It does not count event
+// ids: an id carries the 30-minute bucket of its session's first report, and
+// sessions re-partition when a late report with an earlier time arrives or the
+// first report leaves the window, so counting ids would count one incident
+// twice.
+// A day that starts inside the window is shown whole: every incident dated to
+// it has its first report in the window. Its window view replaces the stored
+// one, so an incident that a later-arriving earlier report re-dates across
+// midnight leaves the day it was first counted on. The oldest day in the
+// window is shown only in part, so it keeps the larger of the stored and the
+// window view (an incident re-dated into that day can be missed; a report
+// would have to arrive about two days late). An incident never drops below
+// the highest severity the window has shown for its id (`peaks`). The CII applies the
 // weights again (CII_STRIKE_SEVERITY_WEIGHTS, pinned to these by a test) and
 // the time decay. Interceptions (category 'defense') and incidents at sea (no
 // countryCode) are on the map but are not strikes on a country, so they are
@@ -1001,6 +1007,35 @@ function tallyWeight(tally) {
   return PRESSURE_SEVERITIES.reduce((sum, severity, i) => sum + tally[i] * PRESSURE_WEIGHTS[severity], 0);
 }
 
+function normalizePeaks(previous) {
+  const peaks = new Map();
+  if (previous?.version !== PRESSURE_VERSION) return peaks;
+  const stored = previous?.peaks && typeof previous.peaks === 'object' && !Array.isArray(previous.peaks) ? previous.peaks : {};
+  for (const [id, severity] of Object.entries(stored)) {
+    if (id && PRESSURE_SEVERITIES.includes(severity)) peaks.set(id, severity);
+  }
+  return peaks;
+}
+
+/**
+ * The start of the span the window shows in full. Normally the window's own
+ * start. A store cut at MAX_STORE_CANDIDATES lost its oldest reports, which may
+ * have re-dated their incidents by up to LATE_REPORT_MS, and an event list cut
+ * at MAX_EVENTS lost everything before its oldest event.
+ */
+function pressureCoverStart(now, storeCandidates, events) {
+  let start = now - WINDOW_MS;
+  if (Array.isArray(storeCandidates) && storeCandidates.length >= MAX_STORE_CANDIDATES) {
+    const oldest = Math.min(...storeCandidates.map((c) => c.ts).filter(Number.isFinite));
+    if (Number.isFinite(oldest)) start = Math.max(start, oldest + LATE_REPORT_MS);
+  }
+  if (Array.isArray(events) && events.length >= MAX_EVENTS) {
+    const oldest = Math.min(...events.map((e) => e?.timestamp).filter(Number.isFinite));
+    if (Number.isFinite(oldest)) start = Math.max(start, oldest + 1);
+  }
+  return start;
+}
+
 function normalizePressure(previous, oldest) {
   const days = {};
   if (previous?.version !== PRESSURE_VERSION) return days;
@@ -1015,13 +1050,16 @@ function normalizePressure(previous, oldest) {
 }
 
 /**
- * Fold one published 72h window into the 30-day tally: per country and day,
- * the window's severity counts replace the stored ones when they weigh more.
- * Idempotent: republishing a window never changes the tally.
+ * Fold one published 72h window into the 30-day tally. A day that starts at or
+ * after `coverStart` takes the window's counts; an older day keeps the stored
+ * counts unless the window's weigh more. Idempotent: republishing a window
+ * never changes the tally.
  */
-function mergeStrikePressure(previous, events, now) {
+function mergeStrikePressure(previous, events, now, coverStart = pressureCoverStart(now, null, events)) {
   const oldest = utcDay(now - (PRESSURE_DAYS - 1) * DAY_MS);
   const days = normalizePressure(previous, oldest);
+  const storedPeaks = normalizePeaks(previous);
+  const peaks = {};
   const windowDays = {};
   for (const event of Array.isArray(events) ? events : []) {
     const iso2 = event?.countryCode;
@@ -1036,16 +1074,21 @@ function mergeStrikePressure(previous, events, now) {
     // ages out; it simply stops being published.
     const day = utcDay(ts);
     if (day < oldest) continue;
+    const peak = storedPeaks.get(event.id);
+    const rank = Math.min(PRESSURE_SEVERITIES.indexOf(severity), peak ? PRESSURE_SEVERITIES.indexOf(peak) : Infinity);
+    peaks[event.id] = PRESSURE_SEVERITIES[rank];
     const tally = ((windowDays[day] ??= {})[iso2] ??= PRESSURE_SEVERITIES.map(() => 0));
-    tally[PRESSURE_SEVERITIES.indexOf(severity)] += 1;
+    tally[rank] += 1;
   }
+  const shownWhole = (day) => Date.parse(`${day}T00:00:00Z`) >= coverStart;
+  for (const day of Object.keys(days)) if (shownWhole(day)) delete days[day];
   for (const [day, byCountry] of Object.entries(windowDays)) {
     for (const [iso2, tally] of Object.entries(byCountry)) {
       const stored = days[day]?.[iso2];
       if (!stored || tallyWeight(tally) > tallyWeight(stored)) (days[day] ??= {})[iso2] = tally;
     }
   }
-  return { version: PRESSURE_VERSION, days, updatedAt: now };
+  return { version: PRESSURE_VERSION, days, peaks, updatedAt: now };
 }
 
 // ---------------------------------------------------------------------------
@@ -1188,7 +1231,8 @@ async function publishStrikeCycle({
   if (!result || !outcome.canonicalWritten) return { ...outcome, pressureStatus: 'skipped' };
   const stored = await Promise.resolve(readPressure()).catch(() => null);
   if (!stored?.ok) return { ...outcome, pressureStatus: 'read-failed' };
-  const pressure = mergeStrikePressure(stored.value, result.payload.events, now);
+  const coverStart = pressureCoverStart(now, result.store?.candidates, result.payload.events);
+  const pressure = mergeStrikePressure(stored.value, result.payload.events, now, coverStart);
   if (!await Promise.resolve(writePressure(pressure)).catch(() => false)) return { ...outcome, pressureStatus: 'write-failed' };
   if (!result.healthy) return { ...outcome, pressureStatus: 'degraded' };
   const recordCount = Object.values(pressure.days).reduce((sum, byCountry) => sum + Object.keys(byCountry).length, 0);
@@ -1263,4 +1307,5 @@ module.exports = {
   PRESSURE_SEVERITIES,
   PRESSURE_WEIGHTS,
   mergeStrikePressure,
+  pressureCoverStart,
 };

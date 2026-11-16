@@ -396,9 +396,11 @@ function resolvePlace({ place, iso2, text } = {}) {
       const hit = lookupExact(place, country) || findPlaceInText(place, country);
       if (hit) return hit;
     }
+    // "Eilat, Israel" has no exact key, so a qualified name is also searched
+    // for inside the string, as for the reported country.
     const elsewhere = FOCUS_COUNTRIES
       .filter((code) => code !== country)
-      .map((code) => lookupExact(place, code))
+      .map((code) => lookupExact(place, code) || findPlaceInText(place, code))
       .filter(Boolean);
     if (elsewhere.length === 1) return elsewhere[0];
   }
@@ -450,6 +452,7 @@ module.exports = {
   resolvePlace,
   countryPlace,
   nearestPlace,
+  namesPalestinianPlace,
   distanceKm,
   gazetteerPlaces: () => INDEX.places.slice(),
 };
