@@ -117,3 +117,13 @@ test('seed-health is pending before the first publication and ok after it', asyn
   installRedisMock({ activated: true, meta: { fetchedAt: now - 60_000, recordCount: 655 } });
   assert.equal((await seedHealthEntry()).status, 'ok');
 });
+
+test('seed-health agrees with health on a cold start\'s first run and on the staleness budget', async () => {
+  installRedisMock({ activated: true, meta: { fetchedAt: now - 60_000, recordCount: MEASURED_SITES_PER_RUN } });
+  assert.equal((await seedHealthEntry()).status, 'ok');
+  // Same 3-day budget as /api/health's maxStaleMin: still ok just inside it, stale just past it.
+  installRedisMock({ activated: true, meta: { fetchedAt: now - (MAX_STALE_MIN - 1) * 60_000, recordCount: 655 } });
+  assert.equal((await seedHealthEntry()).status, 'ok');
+  installRedisMock({ activated: true, meta: { fetchedAt: now - (MAX_STALE_MIN + 1) * 60_000, recordCount: 655 } });
+  assert.equal((await seedHealthEntry()).status, 'stale');
+});
