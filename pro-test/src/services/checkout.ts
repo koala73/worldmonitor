@@ -321,23 +321,24 @@ async function startCheckoutInner(
   });
 
   if (!c.user) {
-    // Intent travels via afterSignInUrl / afterSignUpUrl — bound to
-    // THIS specific openSignIn call. On successful sign-in, Clerk
-    // navigates to the returnUrl which carries the checkout intent
-    // in its query string; tryResumeCheckoutFromUrl picks it up on
-    // page load. On dismissal, Clerk performs no navigation, so no
-    // resume. Other /pro sign-in paths don't set these URLs, so they
-    // can't trigger surprise purchases.
+    // Signed-out buyers get the sign-up form, not sign-in (#10842). Under
+    // strict enumeration protection a new address in the sign-in form can
+    // reach a code screen without creating an account, a dead end for most
+    // buyers. Existing account holders switch via the "Sign in" footer link,
+    // so both return URLs carry the checkout intent; tryResumeCheckoutFromUrl
+    // picks it up on page load. On dismissal Clerk performs no navigation, so
+    // no resume. Never Clerk's combined sign-in/sign-up flow: it hid new-email
+    // sign-ups under strict enumeration protection (#10493).
     const returnUrl = buildCheckoutReturnUrl(window.location.href, productId, options);
     try {
-      c.openSignIn({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl });
+      c.openSignUp({ afterSignUpUrl: returnUrl, afterSignInUrl: returnUrl });
     } catch (err) {
-      console.error('[checkout] Failed to open sign in:', err);
-      Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'checkout-sign-in' } });
-      showCheckoutErrorToast('Sign-in could not open. Please try again.');
+      console.error('[checkout] Failed to open sign up:', err);
+      Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'checkout-sign-up' } });
+      showCheckoutErrorToast('Sign-up could not open. Please try again.');
       return false;
     }
-    trackAuthStep(c, productId, 'sign-in');
+    trackAuthStep(c, productId, 'sign-up');
     return false;
   }
 

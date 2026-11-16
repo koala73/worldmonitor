@@ -39,13 +39,14 @@ afterEach(async () => {
 });
 
 async function fixture(options: {
-  clerkError?: boolean; siteDataBlocked?: boolean; signInError?: boolean; signedOut?: boolean; missingToken?: boolean;
+  clerkError?: boolean; siteDataBlocked?: boolean; signUpError?: boolean; signedOut?: boolean; missingToken?: boolean;
   response?: () => Promise<Response>;
 } = {}) {
   mock.method(console, 'error', () => {});
   browser = new Window({ url: 'https://www.worldmonitor.app/pro#pricing' });
   const navigations: string[] = [];
   const signIns: unknown[] = [];
+  const signUps: Array<{ afterSignUpUrl?: string; afterSignInUrl?: string }> = [];
   const pageListeners = new Map<string, Set<(event: { persisted: boolean }) => void>>();
   const captures: unknown[][] = [];
   const analyticsEvents: Array<{ event: string; data?: Record<string, unknown> }> = [];
@@ -78,9 +79,10 @@ async function fixture(options: {
       return {
         user: options.signedOut ? null : { id: 'user_test' },
         session: { getToken: async () => options.missingToken ? null : 'synthetic-token' },
-        openSignIn: (intent: unknown) => {
-          if (options.signInError) throw new Error('Synthetic modal failure');
-          signIns.push(intent);
+        openSignIn: (intent: unknown) => { signIns.push(intent); },
+        openSignUp: (intent: { afterSignUpUrl?: string; afterSignInUrl?: string }) => {
+          if (options.signUpError) throw new Error('Synthetic modal failure');
+          signUps.push(intent);
         },
       };
     } },
@@ -95,12 +97,12 @@ async function fixture(options: {
   const firePageShow = (persisted: boolean) => {
     for (const fn of [...(pageListeners.get('pageshow') ?? [])]) fn({ persisted });
   };
-  return { checkout, phases, navigations, signIns, captures, analyticsEvents, requests: () => requests, options, firePageShow };
+  return { checkout, phases, navigations, signIns, signUps, captures, analyticsEvents, requests: () => requests, options, firePageShow };
 }
 
 for (const [name, options] of [
   ['auth loading fails', { clerkError: true }],
-  ['sign-in modal fails', { signedOut: true, signInError: true }],
+  ['sign-up modal fails', { signedOut: true, signUpError: true }],
   ['auth token is unavailable', { missingToken: true }],
   ['checkout returns 503', { response: async () => Response.json({ error: 'Service unavailable' }, { status: 503 }) }],
   ['network fails', { response: async () => { throw new TypeError('Failed to fetch'); } }],
@@ -133,17 +135,36 @@ it('keeps the retry toast and the Sentry report for any other auth load failure'
   assert.deepEqual(f.captures[0]?.[1], { tags: { surface: 'pro-marketing', action: 'load-clerk' } });
 });
 
-it('shows loading before auth resolves and leaves dismissed sign-in retryable', async () => {
+it('shows loading before auth resolves and leaves dismissed sign-up retryable', async () => {
   const f = await fixture({ signedOut: true });
   const attempt = f.checkout.startCheckout('synthetic-product');
   assert.equal(f.phases.at(-1)?.kind, 'loading_auth');
   assert.equal(await attempt, false);
-  assert.equal(f.signIns.length, 1);
+  assert.equal(f.signUps.length, 1);
   assert.equal(f.requests(), 0);
   assert.equal(f.phases.at(-1)?.kind, 'idle');
   assert.equal(document.querySelector('[role="alert"]'), null);
   await f.checkout.startCheckout('synthetic-product');
-  assert.equal(f.signIns.length, 2);
+  assert.equal(f.signUps.length, 2);
+});
+
+it('opens sign-up, not sign-in, for a signed-out click with the intent on both return URLs', async () => {
+  const f = await fixture({ signedOut: true });
+  assert.equal(await f.checkout.startCheckout('synthetic-product'), false);
+  assert.equal(f.signUps.length, 1);
+  assert.deepEqual(f.signIns, []);
+  const { afterSignUpUrl, afterSignInUrl } = f.signUps[0]!;
+  assert.ok(afterSignUpUrl);
+  assert.equal(afterSignInUrl, afterSignUpUrl, 'a buyer who switches to Sign in must resume the same checkout');
+  assert.equal(new URL(afterSignUpUrl).searchParams.get('wm_checkout_product'), 'synthetic-product');
+});
+
+it('reports a sign-up modal failure with the checkout-sign-up tag', async () => {
+  const f = await fixture({ signedOut: true, signUpError: true });
+  assert.equal(await f.checkout.startCheckout('synthetic-product'), false);
+  assert.equal(document.querySelector('[role="alert"]')?.textContent, 'Sign-up could not open. Please try again.');
+  assert.equal(f.captures.length, 1);
+  assert.deepEqual(f.captures[0]?.[1], { tags: { surface: 'pro-marketing', action: 'checkout-sign-up' } });
 });
 
 it('clears the old error and redirects when a later attempt succeeds', async () => {
@@ -219,11 +240,11 @@ it('records that the auth modal opened for a signed-out checkout click', async (
   const names = f.analyticsEvents.map(item => item.event);
   assert.deepEqual(names, ['checkout-start', 'checkout-auth-shown']);
   assert.equal(f.analyticsEvents[0]?.data?.authed, false);
-  assert.deepEqual(f.analyticsEvents[1]?.data, { productId: 'unknown', surface: 'pro-page', form: 'sign-in' });
+  assert.deepEqual(f.analyticsEvents[1]?.data, { productId: 'unknown', surface: 'pro-page', form: 'sign-up' });
 });
 
 it('does not record the auth modal as shown when it fails to open', async () => {
-  const f = await fixture({ signedOut: true, signInError: true });
+  const f = await fixture({ signedOut: true, signUpError: true });
   assert.equal(await f.checkout.startCheckout('synthetic-product'), false);
   assert.deepEqual(f.analyticsEvents.map(item => item.event), ['checkout-start']);
 });

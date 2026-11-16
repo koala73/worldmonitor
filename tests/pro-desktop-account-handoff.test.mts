@@ -75,6 +75,7 @@ async function fixture(options: {
   };
   const navigations: string[] = [];
   const signIns: Array<{ afterSignInUrl?: string }> = [];
+  const signUps: Array<{ afterSignInUrl?: string }> = [];
   const bodies: Array<Record<string, unknown>> = [];
   let signOuts = 0;
   const replacedUrls: string[] = [];
@@ -107,6 +108,7 @@ async function fixture(options: {
       get user() { return state.user; },
       session: { getToken: async () => { options.onGetToken?.(state); return 'synthetic-token'; } },
       openSignIn: (intent: { afterSignInUrl?: string }) => { signIns.push(intent); },
+      openSignUp: (intent: { afterSignInUrl?: string }) => { signUps.push(intent); },
       // Clerk navigates to its after-sign-out URL unless given a callback.
       signOut: async (callback?: () => void) => {
         signOuts++;
@@ -121,7 +123,7 @@ async function fixture(options: {
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   }
   const checkout = await import(`${moduleUrl}#${Math.random()}`);
-  return { checkout, navigations, signIns, bodies, signOuts: () => signOuts, state, replacedUrls, analyticsEvents };
+  return { checkout, navigations, signIns, signUps, bodies, signOuts: () => signOuts, state, replacedUrls, analyticsEvents };
 }
 
 const dialog = () => document.querySelector('[role="dialog"]');
@@ -160,6 +162,7 @@ it('switches to the desktop account and resumes the same checkout after sign-in'
   assert.equal(f.signOuts(), 1);
   assert.deepEqual(f.navigations, [], 'sign-out must not navigate away from /pro before sign-in opens');
   assert.equal(f.signIns.length, 1);
+  assert.deepEqual(f.signUps, [], 'switching to an existing desktop account is a sign-in, not a sign-up');
   const resume = new URL(f.signIns[0]!.afterSignInUrl!);
   assert.equal(resume.searchParams.get('wm_checkout_product'), 'synthetic-product');
   assert.equal(resume.searchParams.get('wm_checkout_handoff'), 'desktop');
@@ -196,12 +199,12 @@ it('keeps the old behaviour for a handoff that names no desktop account', async 
   assert.match(String(f.bodies[0]!.returnUrl), /wm_src=desktop/);
 });
 
-it('carries the desktop account through the sign-in detour of a signed-out browser', async () => {
+it('carries the desktop account through the auth detour of a signed-out browser', async () => {
   const f = await fixture({ browserUser: null });
   assert.equal(await f.checkout.startCheckout('synthetic-product', {
     desktopHandoff: { account: digest(DESKTOP_USER) },
   }), false);
-  const resume = new URL(f.signIns[0]!.afterSignInUrl!);
+  const resume = new URL(f.signUps[0]!.afterSignInUrl!);
   assert.equal(resume.searchParams.get('wm_checkout_account'), digest(DESKTOP_USER));
 });
 
