@@ -9,6 +9,7 @@ import {
   CLEAR_LOOK_CLOUD_PCT,
   defaultCompareScene,
   isClearScene,
+  HISTORY_ARCHIVE,
   HISTORY_DAYS,
   searchSceneHistory,
   type DatedScene,
@@ -280,7 +281,7 @@ export class OrbitalImageViewer {
     } catch {
       if (signal.aborted) return;
       // An unexpected throw would otherwise leave Compare searching forever with no retry.
-      result = { status: 'failed', failure: { archive: archiveHost(this.subject.selected.imageUrl).id, reason: 'invalid-response' } };
+      result = { status: 'failed', failure: { archive: HISTORY_ARCHIVE[profileId], reason: 'invalid-response' } };
     }
     if (signal.aborted) return;
     if (result.status === 'failed') {

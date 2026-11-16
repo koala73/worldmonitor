@@ -345,6 +345,16 @@ describe('orbital image viewer', () => {
     expect(viewer()!.querySelector('.oiv-slider')).not.toBeNull();
   });
 
+  it('names the archive the history searched when a radar history search throws', async () => {
+    const searchHistory = vi.fn(async (): Promise<SceneHistory> => { throw new Error('unexpected'); });
+    open(scene(1, null, { profileId: 'sentinel-1', key: 'sentinel-1c:1:radar' }), { searchHistory });
+    await settle();
+    showChange();
+    await settle();
+    expect(compareStatus()).toContain('Earth Search');
+    expect(compareStatus()).not.toContain('Planetary Computer');
+  });
+
   it('never renders an image from a host outside the archive allowlist', async () => {
     const selected = scene(1, 5);
     open(selected, { searchHistory: history([selected, scene(40, 3, { imageUrl: 'https://evil.example/x.png' })]) });
