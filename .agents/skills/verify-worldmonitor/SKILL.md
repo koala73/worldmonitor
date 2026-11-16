@@ -83,6 +83,7 @@ Ready-made steps, one per mapped feature:
 | `steps/global-search.mjs` | [Global search](features/global-search.md) |
 | `steps/map-layers.mjs` | [Map layers](features/map-layers.md) |
 | `steps/orbital-watch.mjs` | [Satellite passes here](features/orbital-watch.md) |
+| `steps/orbital-image-viewer.mjs` | [Orbital image viewer and Compare](features/orbital-watch.md) |
 | `steps/orbital-map-popups.mjs` | [Imagery row in map popups](features/orbital-watch.md) |
 | `steps/orbital-site-satellites.mjs` | [Watched site's tracked satellites](features/orbital-watch.md) |
 | `steps/_inspect.mjs` | not a feature — dumps live panel keys, layer handles, header ids, and the map renderer when a handle in the map has drifted |
