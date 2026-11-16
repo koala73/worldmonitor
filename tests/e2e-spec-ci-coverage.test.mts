@@ -145,6 +145,8 @@ describe('e2e spec CI coverage', () => {
   it('keeps NOT_RUN_IN_CI to specs that exist and are not run', () => {
     const stale = Object.keys(NOT_RUN_IN_CI).filter((spec) => !specs.includes(spec) || run.specs.has(spec));
     assert.deepEqual(stale, [], 'remove these from NOT_RUN_IN_CI: they were deleted or CI runs them now');
+    const unexplained = Object.entries(NOT_RUN_IN_CI).filter(([, reason]) => !reason.trim()).map(([spec]) => spec);
+    assert.deepEqual(unexplained, [], 'give each NOT_RUN_IN_CI entry a reason');
   });
 
   it('runs each title-selected spec through a script a workflow reaches, and the spec holds that title', () => {
