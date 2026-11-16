@@ -91,7 +91,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
       await shot(`event-no-pair-${view}`);
       throw new Error('the viewer did not open on a before/after pair');
     }
-    await page.waitForFunction(() => [...document.querySelectorAll('img.oiv-before, img.oiv-after')].every((img) => img.complete && img.naturalWidth > 0), null, { timeout: 60_000 }).catch(() => {});
+    await page.waitForFunction(() => [...document.querySelectorAll('img.oiv-before, img.oiv-after')].every((img) => img.complete && img.naturalWidth > 0), null, { timeout: 60_000 });
     log('event mark', await page.locator('.oiv-event').innerText());
     log('dates', (await page.locator('.oiv-dates').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 300));
     await page.mouse.move(1, 1);
