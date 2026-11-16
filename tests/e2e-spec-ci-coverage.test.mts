@@ -38,6 +38,8 @@ const NOT_RUN_IN_CI: Record<string, string> = {
   'e2e/nq-day-trader-mission.spec.ts': 'every test skips unless VITE_VARIANT=finance, and no job runs the finance variant',
   'e2e/oref-subscription-lifecycle.spec.ts': 'broken: 1 of 2 tests fails on main',
   'e2e/panel-drag-reorder.spec.ts': 'broken: 2 of 9 tests fail on main',
+  'e2e/panel-vertical-scroll.spec.ts':
+    'flaky: each test runs 1.9-2.5 min against its own 180s timeout and timed out at 1440px (CI run 43799166185)',
   'e2e/rag-vector-store.spec.ts': 'broken: 1 of 7 tests fails on main',
   'e2e/reservoir-levels.spec.ts': 'broken: 2 of 5 tests fail on main',
   'e2e/settings-diagnostics-layout.spec.ts':
