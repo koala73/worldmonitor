@@ -69,13 +69,51 @@ export default async function ({ page, base, shot: capture, log, expectVisible }
   const dismissAlerts = () => page.evaluate(() => {
     for (const button of document.querySelectorAll('.breaking-alert-dismiss')) button.click();
   });
-  const mapPixels = async () => page.screenshot({ clip: await page.locator('#mapContainer').boundingBox() });
+  // The sheet docks over the map and restyles the chosen row, so it is hidden while the map is captured.
+  const mapPixels = async () => {
+    const hideSheet = (hidden) => page.evaluate((hidden) => {
+      const el = document.querySelector('.imagery-evidence-sheet');
+      if (el) el.style.visibility = hidden ? 'hidden' : '';
+    }, hidden);
+    await hideSheet(true);
+    try {
+      return await page.screenshot({ clip: await page.locator('#mapContainer').boundingBox() });
+    } finally {
+      await hideSheet(false);
+    }
+  };
+  // Pixels that differ between two map captures; the globe keeps repainting a little on its own.
+  const changedPixels = (one, two) => page.evaluate(async ([one, two]) => {
+    const decode = async (png) => {
+      const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(png), (c) => c.charCodeAt(0))], { type: 'image/png' }));
+      const ctx = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d');
+      ctx.drawImage(bitmap, 0, 0);
+      return ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    };
+    const [x, y] = await Promise.all([decode(one), decode(two)]);
+    if (x.length !== y.length) return x.length / 4;
+    let n = 0;
+    for (let i = 0; i < x.length; i += 4) {
+      if (Math.abs(x[i] - y[i]) + Math.abs(x[i + 1] - y[i + 1]) + Math.abs(x[i + 2] - y[i + 2]) > 48) n++;
+    }
+    return n;
+  }, [one.toString('base64'), two.toString('base64')]);
   // The SVG map draws the track as DOM; deck.gl and the globe draw it on a canvas, so there the map must repaint.
   const svgTracks = () => page.locator('#mapContainer .orbital-track').count();
+  const svgGroundTrack = () => page.locator('#mapContainer .orbital-track').first()
+    .evaluate((layer) => [...layer.querySelectorAll('path:not([class])')].map((path) => path.getAttribute('d')).join('|'));
+  let drawn = null;
   const select = async (index) => {
     await dismissAlerts();
     const row = sheet.locator(`.ies-row[data-key="${passes[index].key}"]:visible`).first();
-    const before = await mapPixels();
+    let before = null;
+    let noise = 0;
+    if (renderer !== 'svg') {
+      const first = await mapPixels();
+      await page.waitForTimeout(1_000);
+      before = await mapPixels();
+      noise = await changedPixels(first, before);
+    }
     await row.scrollIntoViewIfNeeded();
     await row.click();
     await page.waitForFunction((key) => {
@@ -85,15 +123,24 @@ export default async function ({ page, base, shot: capture, log, expectVisible }
     }, passes[index].key, { timeout: 10_000 });
     if (renderer === 'svg') {
       await page.locator('#mapContainer.orbital-tracked .orbital-track').first().waitFor({ timeout: 15_000 });
+      await page.waitForFunction((previous) => {
+        const layer = document.querySelector('#mapContainer .orbital-track');
+        const shape = layer && [...layer.querySelectorAll('path:not([class])')].map((path) => path.getAttribute('d')).join('|');
+        return !!shape && shape !== previous;
+      }, drawn, { timeout: 15_000 });
       const tracks = await svgTracks();
       if (tracks !== 1) throw new Error(`${tracks} drawn tracks after selecting ${passes[index].name}`);
+      drawn = await svgGroundTrack();
     } else {
-      let changed = false;
-      for (let tries = 0; tries < 30 && !changed; tries++) {
+      // The selected pass's footprint and track must repaint well beyond the map's own idle flicker.
+      const needed = Math.max(4 * noise, 150);
+      let changed = 0;
+      for (let tries = 0; tries < 30 && changed < needed; tries++) {
         await page.waitForTimeout(500);
-        changed = !before.equals(await mapPixels());
+        changed = await changedPixels(before, await mapPixels());
       }
-      if (!changed) throw new Error(`the map did not redraw after selecting ${passes[index].name}`);
+      log('map repaint', JSON.stringify({ pass: passes[index].name, noise, changed, needed }));
+      if (changed < needed) throw new Error(`the map did not draw ${passes[index].name}: ${changed} pixels changed, needed ${needed}`);
     }
     await page.waitForTimeout(2_500);
     return passes[index].name;
@@ -102,7 +149,8 @@ export default async function ({ page, base, shot: capture, log, expectVisible }
   log('selected', firstName);
   await shot('pass-track-and-footprint');
 
-  const secondIndex = radar >= 0 && radar !== firstIndex ? radar : passes.findIndex((_, i) => i !== firstIndex);
+  const firstKey = passes[firstIndex].key;
+  const secondIndex = radar >= 0 && passes[radar].key !== firstKey ? radar : passes.findIndex((pass) => pass.key !== firstKey);
   let secondName = null;
   if (secondIndex >= 0) {
     secondName = await select(secondIndex);
