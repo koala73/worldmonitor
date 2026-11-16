@@ -56,11 +56,15 @@ interface ListedPass { tier?: unknown; timeMs?: unknown }
 /** Keeps at most `limit` passes per tier, nearest `computedAt` first, in their original (oldest first) order. */
 function capPerTier(passes: ListedPass[], computedAt: number, limit: number): ListedPass[] {
   const byTier = new Map<unknown, ListedPass[]>();
-  for (const pass of passes) byTier.set(pass.tier, [...(byTier.get(pass.tier) ?? []), pass]);
+  for (const pass of passes) {
+    const group = byTier.get(pass.tier);
+    if (group) group.push(pass);
+    else byTier.set(pass.tier, [pass]);
+  }
   const kept = new Set<ListedPass>();
   const distance = (pass: ListedPass) => Math.abs(Number(pass.timeMs) - computedAt);
   for (const group of byTier.values()) {
-    for (const pass of [...group].sort((a, b) => distance(a) - distance(b)).slice(0, limit)) kept.add(pass);
+    for (const pass of group.sort((a, b) => distance(a) - distance(b)).slice(0, limit)) kept.add(pass);
   }
   return passes.filter((pass) => kept.has(pass));
 }
